@@ -1,0 +1,248 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "AbilitySystem/CataclysmGameplayAbility.h"
+#include "CataclysmSkillSlots.generated.h"
+
+class UDataTable;
+
+/**
+ * What a skill in one slot is worth, how long it waits, and what it costs.
+ *
+ * A reading of one row of game/Data/SkillSlots.csv, which is generated from the
+ * Skill Slots sheet of docs/All_Things_Cataclysm.xlsx.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSkillSlotNumbers
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Slot")
+	ECataclysmAbilitySlot Slot = ECataclysmAbilitySlot::None;
+
+	/** Percent of weapon damage one use deals. For the Aura, per second. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Slot")
+	float DamagePercent = 0.0f;
+
+	/** Seconds before the skill can be used again, before any reduction. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Slot")
+	float Cooldown = 0.0f;
+
+	/** Mana one use costs AT LEVEL 100. Scale it with ManaCostAtLevel. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Slot")
+	float ManaCostAtLevel100 = 0.0f;
+
+	/** Mana restored per hit at level 100. Only the Basic Attack has any. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Slot")
+	float ManaOnHitAtLevel100 = 0.0f;
+
+	/** Fervour one use costs, at every level. Issue #1478. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Slot")
+	float FervourCost = 0.0f;
+
+	/** False when no row was found, which is the only way this is invalid. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Slot")
+	bool bFound = false;
+};
+
+/**
+ * The seven slots' numbers, read from the generated skill slot table.
+ *
+ * WHY THIS IS NOT PART OF THE WEAPON SKILL MATRIX. Cooldown and mana cost belong
+ * to the SLOT, not to the skill. No designed skill states either one, so a column
+ * on the Weapon Skills sheet would be 77 copies of seven values. This mirrors how
+ * the damage multiplier already worked: the slot supplies it, and a skill states
+ * its own only when it differs, which is what Skull Splitter does at 500%.
+ *
+ * WHAT WENT WRONG WITHOUT IT. Issue #155. The design already had a cooldown
+ * reduction formula, the Efficacy attribute scaling it, an affix granting it and
+ * 41 enchantments mentioning it -- all dividing a base cooldown that no skill
+ * supplied. Nothing reported it, because zero divided by anything is still zero.
+ */
+UCLASS()
+class CATACLYSM_API UCataclysmSkillSlots : public UObject
+{
+	GENERATED_BODY()
+
+public:
+	/** Where the imported skill slot table lives. */
+	static const TCHAR* TableAssetPath;
+
+	/**
+	 * The level every mana cost in the data is quoted at.
+	 *
+	 * Every other figure in this project is quoted at level 100 as well: the
+	 * class stat lines, the reference character and the damage targets.
+	 */
+	static constexpr int32 ManaCostReferenceLevel = 100;
+
+	/** The skill slot table, or null with the reason logged. */
+	static const UDataTable* LoadGeneratedTable();
+
+	/** The numbers for one slot. bFound is false when the table has no such row. */
+	static FCataclysmSkillSlotNumbers NumbersFor(const UDataTable* Table,
+												 ECataclysmAbilitySlot Slot);
+
+	/**
+	 * A mana cost quoted at level 100, scaled to a character of this level.
+	 *
+	 * COSTS RIDE THE DEFAULT MANA PROGRESSION, so a skill takes the same share
+	 * of a pool at level 1 as at level 100. A cost that never moved would be
+	 * crippling early and beneath notice late: a Ravager's pool runs from 40 to
+	 * 436. The number a player reads is still a flat quantity of mana, and it is
+	 * the same number for every class, which is what makes a larger pool buy
+	 * more casts rather than a proportionally larger price per cast.
+	 *
+	 * @param CostAtLevel100  the figure from the table
+	 * @param Level           the character's level, clamped to 1 and above
+	 */
+	static float ManaCostAtLevel(float CostAtLevel100, int32 Level);
+
+	/**
+	 * A mana-on-hit figure quoted at level 100, scaled to a character of this
+	 * level.
+	 *
+	 * THE SAME SCALING AS A COST, AND IT HAS TO BE. The design sets the basic
+	 * attack's return against the other slots' costs -- "The automatic basic
+	 * attack returns 6 mana each time it lands. At a typical 1.3 attacks per
+	 * second that is about 8 mana per second while fighting" -- against a Heavy
+	 * attack costing 10 mana per second. If the return rode the mana pool and
+	 * the costs did not, or the other way round, that relationship would hold at
+	 * exactly one level and nowhere else.
+	 *
+	 * A SEPARATE FUNCTION RATHER THAN A CALL TO ManaCostAtLevel, because a
+	 * function named for a cost being used to scale income reads as a bug six
+	 * months later, and because the two may yet need to scale differently.
+	 *
+	 * @param OnHitAtLevel100  the figure from the table
+	 * @param Level            the character's level, clamped to 1 and above
+	 */
+	static float ManaOnHitAtLevel(float OnHitAtLevel100, int32 Level);
+
+	/**
+	 * The stat a removal of mana on hit names. Issue #1791.
+	 *
+	 * THE FIGURE IS NOT A STAT AND THIS DOES NOT MAKE IT ONE. What a landed hit
+	 * returns is the slot's own number above, and nothing adds to it or scales
+	 * it. The stat exists so "You cannot regenerate mana through any means" can
+	 * take it away: `UCataclysmSkillTemplate::ApplyManaOnHit` asks
+	 * `UCataclysmAbilitySystemComponent::IsStatRemoved` for this name and returns
+	 * nothing while a removal reaches it.
+	 */
+	static const TCHAR* ManaOnHitStat;
+
+	/**
+	 * The stat a skill's mana cost is asked for. Issue #1815.
+	 *
+	 * THE SKILL'S OWN COST IS THE BASE, so the pipeline's shape gives every
+	 * sentence the data states without a new rule:
+	 * `(base + flat) x (1 + increases) x more`, with the removal kind of issue
+	 * #1791 as "costs no mana". "Your spells cost 10%-20% less mana" is a More
+	 * multiplier below zero, "Your spells mana costs are quadrupled" is +300,
+	 * and a character with no row is handed its own cost back unchanged.
+	 *
+	 * ASKED IN ONE PLACE, `UCataclysmGameplayAbility::ManaCostFor`, because four
+	 * things read a cost: the check that refuses a cast, the payment, an aura's
+	 * per-pulse upkeep and the skill bar that greys a box out. Any of them
+	 * reading the raw cost while another read this would charge one number and
+	 * show or refuse another.
+	 */
+	static const TCHAR* ManaCostStat;
+
+	/**
+	 * The stat that makes a skill's cooldown LONGER. Issue #1994.
+	 *
+	 * A SECOND STAT, NOT A NEGATIVE `cooldown_reduction`. That one divides, so
+	 * "Ultimate cooldowns increased by 100%" would need a row of -50, a number no
+	 * reader finds in the sentence, and its floor makes a negative lengthen
+	 * nothing anyway. This one multiplies, so the row carries the sentence's own
+	 * number: 100 doubles a cooldown.
+	 *
+	 * NOT NAMED "cooldown_increase", because "increased" already names a bucket,
+	 * and confusing a stat with a bucket is what issue #2000 was.
+	 *
+	 * ITS ROWS ARE FLAT. No class supplies a base, so an increased row alone is
+	 * worth nothing, exactly as for cooldown reduction. The flat rows summed are
+	 * the percentage.
+	 *
+	 * ASKED IN ONE PLACE, `UCataclysmGameplayAbility::CooldownAfterReduction`,
+	 * which is the only place a cooldown's length is worked out.
+	 */
+	static const TCHAR* CooldownLengtheningStat;
+
+	/**
+	 * The stat that makes a skill's cooldown RECOVER FASTER, whatever other cooldown reduction the character holds.
+	 * Issues #1820 and #41, ruled 2026-10-08 for the dungeon rule Fragmented Reality: "cooldowns recover 50% faster"
+	 * means a cooldown takes its length divided by 1.5, for a character with other reduction as for one with none.
+	 *
+	 * A THIRD STAT, NOT MORE `cooldown_reduction`. That stat's rows are added to each other before they divide, so 50
+	 * more of it divides a cooldown by 1.5 only for a character holding none. This one is a divisor of its own:
+	 *
+	 *     Final cooldown = Base x (1 + lengthening) / ((1 + reduction) x (1 + recovery))
+	 *
+	 * It is the `MoreMultiplier` of `UCataclysmCombatAttributeSet::FinalCooldown`, which nothing fed until this.
+	 *
+	 * ITS ROWS ARE FLAT AND ARE ADDED TO EACH OTHER. No class supplies a base, so the flat rows summed are the
+	 * percentage: two sources of 50 divide by 2, not by 2.25. A sum below nought divides by 1 and lengthens nothing;
+	 * lengthening is `CooldownLengtheningStat`'s job.
+	 *
+	 * ASKED IN ONE PLACE, `UCataclysmGameplayAbility::CooldownAfterReduction`, with the skill's tags. A COOLDOWN
+	 * ALREADY RUNNING IS NOT CHANGED when this stat changes: a cooldown's length is worked out once, as it is
+	 * committed.
+	 */
+	static const TCHAR* CooldownRecoveryStat;
+
+	/**
+	 * The tag marking that this slot is waiting to be used again.
+	 *
+	 * Invalid for the Basic Attack, which is correct rather than missing: it is
+	 * automatic so attack speed sets its rate, and it has no cooldown, so it needs
+	 * no tag saying it is on one.
+	 *
+	 * `Cooldown.Aura` FOR THE AURA KEY SINCE ISSUE #837 LAYER 3 (ruled
+	 * 2026-10-25, Q-L3a): any skill may sit on that key and a cooldown is kept by
+	 * the key, so a skill with a cooldown there waits under it. An aura there still
+	 * waits for nothing, because its length is nought.
+	 */
+	static FGameplayTag CooldownTag(ECataclysmAbilitySlot Slot);
+
+	/**
+	 * The stat that says a skill cannot be used at all. Issue #41, slice 3a.
+	 *
+	 * ABOVE ZERO MEANS LOCKED, and zero -- which is every character until
+	 * something says otherwise -- means usable. Asked with a fallback of zero,
+	 * so a character with no stat line at all is not locked.
+	 *
+	 * A STAT AND NOT A GAMEPLAY TAG, WHICH IS THE MAIN DECISION HERE. The
+	 * cooldown above is a tag, and copying that shape would need a row on the
+	 * Tags sheet of `docs/All_Things_Cataclysm.xlsx`, because
+	 * `game/Config/Tags/CataclysmTags.ini` is generated from it and says so in
+	 * its own header. A stat read through the pipeline needs nothing generated.
+	 * `UCataclysmDebuffs::DoNotExpireStat` is the precedent for an on-or-off
+	 * stat asked this way.
+	 *
+	 * AND IT MUST NOT REUSE THE COOLDOWN TAG, for three reasons that are not
+	 * about convenience. A silence would read to the player as a cooldown;
+	 * `UCataclysmSkillTemplate::RefundCooldown` removes every effect granting
+	 * that tag, so the Dagger's Slipstream refund would cancel a lock; and the
+	 * Aura and Basic slots have no cooldown tag to reuse.
+	 *
+	 * ONE NAME FOR EVERY SOURCE, because the scoping is already in the data.
+	 * `FCataclysmEnchantmentEffectRow::RequiredTags` means "tags a skill must
+	 * carry for this to apply to it. Empty applies to all", so a row scoped to
+	 * `Slot.Ultimate` locks one slot and an unscoped row locks every skill that
+	 * asks. Neither needs a second stat.
+	 *
+	 * THE WORD DIFFERS BY ROW AND THE STAT DOES NOT. The enchantment says
+	 * "disabled", the dungeon modifier Edict of Silence says "preventing all
+	 * skill usage". Naming it for the mechanism rather than for one row's
+	 * wording is what lets both use it.
+	 */
+	static const TCHAR* LockedStat;
+
+private:
+	/** The default class's maximum mana at a level, from the Class Stats line. */
+	static float DefaultMaxManaAtLevel(int32 Level);
+};

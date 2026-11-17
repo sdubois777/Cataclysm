@@ -1,0 +1,593 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmGameplayAbility.h"
+#include "GameplayTagContainer.h"
+#include "Subsystems/WorldSubsystem.h"
+#include "Templates/Function.h"
+#include "CataclysmCombatEvents.generated.h"
+
+class ACataclysmCharacterBase;
+class UCataclysmAbilitySystemComponent;
+struct FGameplayEffectModCallbackData;
+// FOR `AttackerOf` BELOW. Declared rather than included, which is what
+// `CataclysmSkillEffects.h` does for the same type and for the same reason: a
+// const reference in a declaration needs the name and not the definition.
+struct FGameplayEffectContextHandle;
+
+/**
+ * One blow, as the character it landed on resolved it. Issue #41, slice 4.
+ *
+ * BUILT ONCE AND HANDED OUT BY REFERENCE, AND VALID ONLY WHILE IT IS BEING
+ * HANDED OUT. The tag containers point at the effect's and the skill's own
+ * tags rather than holding copies, because a Horde wave on fire resolves
+ * hundreds of ticks a second and a copy each would be hundreds of allocations
+ * nobody asked for. A listener that wants to keep anything copies it.
+ *
+ * A PLAIN STRUCT AND NOT A USTRUCT, for the same reason: nothing reflects it,
+ * nothing saves it and every listener is C++.
+ */
+struct CATACLYSM_API FCataclysmHitNotice
+{
+	/**
+	 * The character the blow is credited to, which is the effect's instigator
+	 * for every blow but a minion's. Null for damage with no instigator.
+	 *
+	 * A MINION'S BLOW IS CREDITED TO THE MINION, since issue #1515, unless its
+	 * summoner holds the Conduit keystone. The minion strikes with its summoner
+	 * as the instigator, so `UCataclysmCombatEvents::NoteBlow` puts the minion
+	 * here instead; `ACataclysmMinion::HitsCountAsTheSummoners` is the question
+	 * it asks. Everything that gates on "was this mine" reads this field, so
+	 * that one line is what decides all of them.
+	 */
+	AActor* Attacker = nullptr;
+
+	/**
+	 * The actor that dealt it. A minion for a minion's blow, which is recorded as
+	 * the effect context's source object; otherwise the effect's causer, which
+	 * for every other blow in the game is the same actor as `Attacker`.
+	 */
+	AActor* DealtBy = nullptr;
+
+	/** The character it landed on. */
+	AActor* Target = nullptr;
+
+	/**
+	 * The skill that dealt it, or None when no skill did: a creature's attack,
+	 * a minion's blow, retaliation. Read from the skill INSTANCE the effect
+	 * context carries; see `FCataclysmHitDelivery::Skill`.
+	 */
+	FName SkillName;
+
+	/**
+	 * That skill's own tags, its whole set. Null when no skill dealt the blow.
+	 * Points at the skill's own container, which outlives the notice.
+	 *
+	 * AND FOR A BLOW THAT NAMES NO SKILL OBJECT BUT IS A BLOW OF A SKILL, the tags its delivery named
+	 * (`FCataclysmHitDelivery::SkillTagsWithNoSkill`): a buried weapon's leap, and a shot whose firing skill has gone,
+	 * with no skill name. #2475, under #2465's ruling N1. That pointer is the delivery's, valid while the notice is
+	 * handed out, as every pointer here is. AND FOR A DAMAGE OVER TIME TICK NAMING NO SKILL THAT STILL EXISTS, the tags
+	 * its own effect carries (`UCataclysmRuntimeEffect::SkillTagsWithNoSkill`): a buried weapon's burn, a ground zone's
+	 * own ailment, a burn whose skill has gone. Issue #2683.
+	 */
+	const FGameplayTagContainer* SkillTags = nullptr;
+
+	/**
+	 * What reached the target after every mitigation step: mana, energy shield
+	 * and health together. Zero for a blow that was evaded or fully mitigated.
+	 */
+	float Landed = 0.0f;
+
+	/** The part of `Landed` that reached health. */
+	float DealtToHealth = 0.0f;
+
+	bool bCritical = false;
+	bool bBlocked = false;
+	bool bEvaded = false;
+
+	/**
+	 * Whether this is the first blow of the attacker's to get through to the
+	 * target: `UCataclysmAbilitySystemComponent::NoteStruckBy`'s answer, which
+	 * is written before the blow is announced and so cannot be asked of the
+	 * target afterwards. Issue #1833 group E part 1, `first_hit_dealt`.
+	 */
+	bool bFirstFromAttacker = false;
+	bool bDamageOverTime = false;
+	bool bArea = false;
+
+	/**
+	 * Whether the blow was a melee attack, a ranged attack or a spell, and
+	 * whether a boss dealt it, copied from `FCataclysmIncomingHit`, which issue
+	 * #666 fills from the effect's tags and its causer. A spell that fires a
+	 * projectile is both a spell and ranged. A damage-over-time tick is none of
+	 * the first three.
+	 */
+	bool bIsMelee = false;
+	bool bIsRanged = false;
+	bool bIsSpell = false;
+	bool bFromBoss = false;
+
+	/**
+	 * Whether the blow is the consequence of a death and not a blow its attacker struck: an overkill explosion.
+	 * Ruled 2026-10-07. See `FCataclysmHitDelivery::bIsConsequenceOfADeath`. The attacker and the kill credit are
+	 * as for any blow; only the player's on-hit rows read this.
+	 */
+	bool bConsequenceOfADeath = false;
+
+	/**
+	 * Whether the target emptied the blow because it has become immune to this attacker's damage. Ruled
+	 * 2026-10-12. Copied from `FCataclysmDamageResult::bRefusedByImmunityToAttacker`. The blow is still announced,
+	 * so every listener still hears of it; the player's on-hit rows read this and act on none of it.
+	 */
+	bool bRefusedByImmunityToAttacker = false;
+
+	/**
+	 * Whether the blow is the explosion a damage over time ailment made when it ended by time, and not a blow its
+	 * attacker struck. Ruled 2026-10-13. See `FCataclysmHitDelivery::bIsAnExplosionAtAnAilmentsEnd`. The attacker
+	 * and the kill credit are as for any blow; only the player's on-hit rows read this.
+	 */
+	bool bExplosionAtAnAilmentsEnd = false;
+
+	/**
+	 * Whether the blow is a wearer's share of what another blow did to an ally beside it, and not a blow its attacker
+	 * struck at the target. Ruled 2026-10-15. See `FCataclysmHitDelivery::bIsAShareOfDamageDoneToAnAlly`. The
+	 * attacker and the kill credit are those of the ally's blow; the player's on-hit rows read this and act on none of
+	 * it. THE DUNGEON GAME MODE'S FLOOR RULES DO NOT READ IT, which the entry of 2026-10-15 in `docs/DECISIONS.md`
+	 * names as left for a change to that file.
+	 */
+	bool bShareOfDamageDoneToAnAlly = false;
+
+	/**
+	 * Whether the blow is the share of a point-blank skill's own blow that its attacker struck at an ally inside the
+	 * skill's area. Ruled 2026-10-15. See `FCataclysmHitDelivery::AreaSkillShareOnAnAllyPercent`. The player's on-hit
+	 * rows read this and act on none of it. THE DUNGEON GAME MODE'S FLOOR RULES DO NOT READ IT; the entry of
+	 * 2026-10-15 in `docs/DECISIONS.md` says what that leaves.
+	 */
+	bool bAreaSkillShareOnAnAlly = false;
+
+	/**
+	 * Metres from `DealtBy` to `Target` when the blow landed, or -1 when either is
+	 * missing. The number the enchantment and Demonic tree sessions call the
+	 * opponent's distance, which is the same from either side of the blow.
+	 */
+	float DistanceMetres = -1.0f;
+
+	/** Where the target stood. */
+	FVector Location = FVector::ZeroVector;
+
+	/**
+	 * The tags the effect carried to the target. NOT THE SKILL'S WHOLE TAG SET:
+	 * only what `UCataclysmSkillEffects::ApplyTypedSpec` puts on a damage effect
+	 * reaches this side -- the element, area, damage over time, melee and the
+	 * minion's exclusions. The skill's whole set is `SkillTags`. Null when the
+	 * notice is not for an effect.
+	 */
+	const FGameplayTagContainer* EffectTags = nullptr;
+
+	/**
+	 * The tags the effect grants the target while it runs. For a damage-over-time
+	 * tick this is where its ailment is -- `Keyword.DoT.Bleed` rather than the
+	 * bare `Keyword.DoT` above -- because `ApplyDamageOverTime` grants the
+	 * ailment's tag rather than carrying it. Null for anything but a tick.
+	 */
+	const FGameplayTagContainer* GrantedTags = nullptr;
+
+	/** Whether either container carries this tag, or one below it. */
+	bool HasTag(const FGameplayTag& Tag) const;
+};
+
+/**
+ * One death, with who is credited with it. Issue #41, slice 4.
+ *
+ * VALID ONLY WHILE IT IS BEING HANDED OUT, like the hit notice above.
+ */
+struct CATACLYSM_API FCataclysmDeathNotice
+{
+	AActor* Victim = nullptr;
+
+	/**
+	 * The character the last blow on record was credited to, or null when there
+	 * is none. A damage-over-time tick is a blow here, so a bleed kill names the
+	 * character who applied the bleed.
+	 */
+	AActor* Killer = nullptr;
+
+	/**
+	 * The actor that dealt the last blow on record. A minion for a minion's
+	 * kill, and otherwise the same actor as `Killer`.
+	 *
+	 * IT IS NO LONGER THE ONLY WAY TO TELL A MINION'S KILL APART. Until issue
+	 * #1515 a minion's kill named the SUMMONER as `Killer`, so a rule that had
+	 * to refuse one read this field; now `Killer` is the minion itself unless
+	 * the summoner holds the Conduit keystone. This field still says what
+	 * swung, which is what a rule naming the minion in a message wants.
+	 */
+	AActor* KillingCauser = nullptr;
+
+	/**
+	 * The skill that dealt the last blow on record, or None when no skill did
+	 * or when that skill has since been taken away.
+	 */
+	FName KillingSkillName;
+
+	/**
+	 * That skill's own tags, or null. AND FOR A LAST BLOW THAT NAMED NO SKILL OBJECT, a buried weapon's leap or a shot
+	 * whose firing skill has gone (#2475), the tags of the skill it was a blow of, which the victim's record of its last
+	 * blow keeps
+	 * (`FCataclysmLastBlow::SkillTagsWithNoSkill`), with no skill name. Ruled 2026-10-22 (#2465, N1 (a), N2 (a)).
+	 * AND THE SAME FOR A LAST BLOW THAT WAS A DAMAGE OVER TIME TICK NAMING NO SKILL THAT STILL EXISTS, whose effect
+	 * carried its skill's tags: a buried weapon's burn, a ground zone's own ailment, a burn whose skill has gone. #2683.
+	 */
+	const FGameplayTagContainer* KillingSkillTags = nullptr;
+
+	bool bByDamageOverTime = false;
+
+	/** The same four facts, for the last blow on record. See `FCataclysmHitNotice`. */
+	bool bIsMelee = false;
+	bool bIsRanged = false;
+	bool bIsSpell = false;
+	bool bFromBoss = false;
+
+	/**
+	 * Seconds between the last blow on record and the death, or -1 when there is
+	 * none. A death that did not come from a blow -- health written directly, a
+	 * console command -- still names the last attacker, and this is how a
+	 * listener tells the two apart.
+	 */
+	float SecondsSinceLastBlow = -1.0f;
+
+	/**
+	 * How far the blow that killed went past the health the victim held. Ruled 2026-10-07. Nought for a death
+	 * with no lethal blow on record. See `FCataclysmLastBlow::Overkill`.
+	 */
+	float Overkill = 0.0f;
+
+	FVector Location = FVector::ZeroVector;
+
+	/**
+	 * The killing blow's tags, what it carried and what it granted together.
+	 * Empty when the last blow on record did not bring health to zero, which is
+	 * a death that came from somewhere else. Never null.
+	 */
+	const FGameplayTagContainer* KillingTags = nullptr;
+
+	/**
+	 * Whether the last blow on record was the share of a point-blank skill's blow struck at this ally inside its area.
+	 * Ruled 2026-10-15: such a kill raises none of its killer's rows, `kill` included, and
+	 * `ACataclysmPlayerCharacter::OnSomethingDied` hears it as a death nobody killed. `Killer` still names the
+	 * striker for every other listener. See `FCataclysmLastBlow::bAreaSkillShareOnAnAlly`.
+	 */
+	bool bByAnAreaSkillShareOnAnAlly = false;
+
+	/**
+	 * The figure of the blow that killed, before the victim's mitigation. Ruled 2026-10-21 (traps layer 4, F10). Nought
+	 * for a death with no lethal blow on record. See `FCataclysmLastBlow::KillingBlowDamage`.
+	 */
+	float KillingBlowDamage = 0.0f;
+
+	/**
+	 * Whether the killer's own worn rows were acting when this death happened: a kill a row's action made. Issue
+	 * #2482, ruled by the coordinating session on 2026-10-26. The player's listener raises no row event on such a
+	 * death, `kill` or `nearby_death`, so a kill a row made does not fire rows again. Until the death queue that was
+	 * so by accident: the death was announced while the rows were still acting, and `ActOnEvent` drops an event raised
+	 * then. Handed-over work, the overkill explosion's, runs with no rows acting, so its kills still raise them.
+	 */
+	bool bWhileTheKillersRowsActed = false;
+};
+
+/**
+ * One skill used. Issue #41, slice 4, with the names the enchantment session
+ * proposed on 2026-09-11.
+ *
+ * SENT WHEN THE SKILL IS PAID FOR, NOT WHEN IT IS PRESSED. A skill the cost or
+ * the cooldown refuses sends nothing.
+ */
+struct CATACLYSM_API FCataclysmSkillUsedNotice
+{
+	AActor* User = nullptr;
+	FName SkillName;
+
+	/**
+	 * The skill's own tags. Null for a creature's ability, which carries none:
+	 * `FCataclysmEnemyAbility` has a name and a shape and no tag container.
+	 */
+	const FGameplayTagContainer* SkillTags = nullptr;
+
+	/** The slot it sits in. None for a creature's ability. */
+	ECataclysmAbilitySlot Slot = ECataclysmAbilitySlot::None;
+
+	FVector Location = FVector::ZeroVector;
+
+	/**
+	 * Where the use was aimed: for a player's skill the point the skill itself reads, which is under the cursor.
+	 * The user's own location when the caller gives none, which is every creature's ability. `Chaos_Wild_Magic`
+	 * aims the skill it triggers here, ruled 2026-10-04. Issue #41.
+	 */
+	FVector Aim = FVector::ZeroVector;
+
+	/**
+	 * Whether the skill used has a cooldown of its own, above nought: false for the basic attack and for an aura.
+	 * Ruled 2026-10-06, for rows about "your cooldown abilities". False when the caller does not say.
+	 */
+	bool bHasCooldown = false;
+};
+
+/**
+ * The last blow a character took, kept on its ability system so a death can
+ * say who dealt it.
+ *
+ * WHY IT HAS TO BE KEPT AT ALL. `UCataclysmSkillEffects::MarkDead` is where every
+ * death is recorded, and it is handed the victim and nothing else. The blow that
+ * killed it resolved a moment earlier in `UCataclysmVitalAttributeSet`, which is
+ * the one place that knows who struck.
+ *
+ * THE TAGS ARE COPIED ONLY FOR A BLOW THAT BRINGS HEALTH TO ZERO. Every other
+ * blow writes the cheap fields and leaves the tags empty, so an ordinary
+ * hit costs no allocation here.
+ */
+struct CATACLYSM_API FCataclysmLastBlow
+{
+	TWeakObjectPtr<AActor> Attacker;
+	TWeakObjectPtr<AActor> DealtBy;
+	/** The skill that dealt it, if one did. Weak, so it keeps no skill alive. */
+	TWeakObjectPtr<const UGameplayAbility> Skill;
+	bool bDamageOverTime = false;
+	bool bIsMelee = false;
+	bool bIsRanged = false;
+	bool bIsSpell = false;
+	bool bFromBoss = false;
+
+	/** World time of the blow. Negative means no blow is on record. */
+	double WorldSeconds = -1.0;
+
+	/** See the struct's comment. Empty unless the blow was lethal. */
+	FGameplayTagContainer KillingTags;
+
+	/**
+	 * `FCataclysmDamageResult::Overkill` of this blow, AND ONLY WHEN IT WAS LETHAL. Ruled 2026-10-07. A blow that
+	 * would have emptied health and did not kill -- one an Unholy Sigil held -- records nought here, as it
+	 * records no killing tags.
+	 */
+	float Overkill = 0.0f;
+
+	/**
+	 * Whether the blow was the share of a point-blank skill's blow struck at an ally inside its area, read off its
+	 * effect's stamp. Ruled 2026-10-15. Written for every blow on record, as the cheap fields are, and handed to the
+	 * death notice as `FCataclysmDeathNotice::bByAnAreaSkillShareOnAnAlly`.
+	 */
+	bool bAreaSkillShareOnAnAlly = false;
+
+	/**
+	 * This blow's figure before the victim's mitigation, `FCataclysmIncomingHit::Damage`, AND ONLY WHEN IT WAS LETHAL, as
+	 * `Overkill` is. Ruled 2026-10-21 (traps layer 4, F10), for "Enemies killed by traps explode, dealing 50%-100% of the
+	 * trap's damage": the trap's damage is the killing blow's own figure as dealt. Handed to the death notice as
+	 * `FCataclysmDeathNotice::KillingBlowDamage`.
+	 */
+	float KillingBlowDamage = 0.0f;
+
+	/**
+	 * For a blow that named no skill object, the tags of the skill it was a blow of, copied from
+	 * `FCataclysmHitDelivery::SkillTagsWithNoSkill`: a buried weapon's leap's throwing skill's, or the tags a shot whose
+	 * firing skill has gone was fired with (#2475). Ruled 2026-10-22 (#2465, N1 (a), N2 (a)). AND, for a damage over time
+	 * tick naming no skill that still exists, the tags its effect carried (`UCataclysmRuntimeEffect`, issue #2683). Written for every such blow on record, as `Skill` is, and empty for every other blow, so an
+	 * ordinary hit costs no allocation here. The death notice's `KillingSkillTags` points at it when no skill is named.
+	 */
+	FGameplayTagContainer SkillTagsWithNoSkill;
+
+	bool IsOnRecord() const { return WorldSeconds >= 0.0; }
+};
+
+DECLARE_MULTICAST_DELEGATE_OneParam(FCataclysmOnHit, const FCataclysmHitNotice&);
+DECLARE_MULTICAST_DELEGATE_OneParam(FCataclysmOnDeath, const FCataclysmDeathNotice&);
+DECLARE_MULTICAST_DELEGATE_OneParam(FCataclysmOnSkillUsed, const FCataclysmSkillUsedNotice&);
+
+/**
+ * A drop taken off the floor into an inventory. Issues #1820 and #41.
+ *
+ * BY HAND OR NOT, because the one listener cares which: Trick or Treat rolls only for a
+ * drop the player chose to pick up, and a crafting material swept up by walking near it is
+ * not a choice. `UCataclysmDropPickup::TakeInto` sends it after the item is in a slot.
+ *
+ * HERE BESIDE THE COMBAT NOTICES because this is the world's one announcer that dungeon
+ * rules already listen to, and a test world has it where it has no authority game mode.
+ */
+struct CATACLYSM_API FCataclysmLootTakenNotice
+{
+	/** Whoever's inventory took it. */
+	AActor* Taker = nullptr;
+
+	/** Where the drop lay. */
+	FVector Where = FVector::ZeroVector;
+
+	/** Whether the player clicked it, rather than walking near a crafting material. */
+	bool bByHand = false;
+
+	/** Whether a creature a dungeon rule raised mid-floor dropped it. */
+	bool bMarked = false;
+
+	/** Whether it was an infested drop, The Infested Hoard's. Issues #1820 and #41. */
+	bool bInfested = false;
+};
+
+DECLARE_MULTICAST_DELEGATE_OneParam(FCataclysmOnLootTaken, const FCataclysmLootTakenNotice&);
+
+/**
+ * A character was cleansed, by `UCataclysmDebuffs::Cleanse`. The character only: what the cleanse removed from its
+ * ability system is already gone, and a listener clears what it holds for that character. The dungeon game mode is the
+ * one listener, for the stacks whose rows say they are cleansed. Ruled 2026-09-26.
+ */
+DECLARE_MULTICAST_DELEGATE_OneParam(FCataclysmOnCleansed, AActor*);
+
+/**
+ * The one place a hit, a death or a skill used is announced. Issue #41, slice 4.
+ *
+ * WHAT WAS HERE BEFORE IT. No hit or death notice existed. The game's multicast
+ * delegates were for a projectile finishing, the stairs being taken, a choice
+ * button and the equipment changing, and this sits beside them and replaces
+ * none. Every reaction to a hit was a direct call written into the attribute set
+ * -- leech, retaliation, the Living Pyre's return, Infernal Brand, Beguiling --
+ * and those stay where they are. This is for listeners that are not part of the
+ * damage pipeline: dungeon modifiers, enchantment triggers and the Demonic
+ * trees' kill payouts.
+ *
+ * A WORLD SUBSYSTEM RATHER THAN A COMPONENT ON EACH CHARACTER, which the
+ * coordinating session approved on 2026-09-11. A floor rule that listens for
+ * every creature's death binds once here rather than to every creature as it
+ * spawns, and a listener for one character compares the notice's actors.
+ * `UCataclysmTargetCandidates` is the precedent for the shape.
+ *
+ * NOTHING IS BUILT WHEN NOTHING LISTENS. Every sender asks whether its delegate
+ * is bound before building a notice, so a world with no listeners pays one
+ * subsystem lookup per hit and nothing else.
+ */
+UCLASS()
+class CATACLYSM_API UCataclysmCombatEvents : public UWorldSubsystem
+{
+	GENERATED_BODY()
+
+public:
+	/** This world's announcer, or null in a world that has no subsystems. */
+	static UCataclysmCombatEvents* In(const UWorld* World);
+
+	FCataclysmOnHit OnHit;
+	FCataclysmOnDeath OnDeath;
+	FCataclysmOnSkillUsed OnSkillUsed;
+	FCataclysmOnLootTaken OnLootTaken;
+	FCataclysmOnCleansed OnCleansed;
+
+	/**
+	 * Whose blow this is: the minion that dealt it, unless its summoner holds
+	 * the Ritualist keystone Conduit, and the instigator for every other blow.
+	 *
+	 * ONE IMPLEMENTATION, BECAUSE THE ANSWER HAS TO BE THE SAME EVERYWHERE.
+	 * `NoteBlow` below asks it for the hit record and the announcement, and
+	 * everything that asks "was this hit mine" -- on-hit and on-kill effects,
+	 * kill credit and four dungeon floor rules -- reads that answer. Issue
+	 * #1515 made this a real question by giving a minion its own instigator;
+	 * before that, leaving the instigator alone was the same as naming the
+	 * summoner.
+	 *
+	 * IT WAS INLINE IN `NoteBlow` UNTIL A SECOND CALLER NEEDED IT.
+	 * `UCataclysmVitalAttributeSet` opens a window on the attacker when a Boss
+	 * is struck, and working the answer out a second time there is exactly how
+	 * the keystone would quietly stop applying to one of the two.
+	 */
+	static AActor* AttackerOf(const FGameplayEffectContextHandle& Context);
+
+	/**
+	 * The same rule for something done by an actor rather than by a gameplay
+	 * effect: a minion's act is the minion's own unless its summoner holds
+	 * Conduit, and anything else's act is its own. Issue #1815.
+	 *
+	 * FOR THE CROWD CONTROL WINDOW, whose appliers are handed the actor that
+	 * did it rather than an effect context. The version above asks this one, so
+	 * the rule is still written once.
+	 */
+	static AActor* AttackerOf(AActor* DealtBy);
+
+	/**
+	 * Announces a blow that has just resolved, and keeps it as the victim's last
+	 * blow. Called by `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`
+	 * once the damage result is known, for evaded and blocked blows as well.
+	 *
+	 * @param EffectTags  the effect's asset tags, which the attribute set has
+	 *                    already gathered once. Passed in so they are not
+	 *                    gathered a second time on every blow
+	 * @param bLethal  whether this blow brings the target's health to zero, which
+	 *                 is the one case the last-blow record copies the tags for
+	 * @param bFirstFromAttacker  whether this is the attacker's first blow to get
+	 *                 through to the target. See `FCataclysmHitNotice`
+	 */
+	static void NoteBlow(const FGameplayEffectModCallbackData& Data,
+						 const FCataclysmIncomingHit& Hit,
+						 const FCataclysmDamageResult& Outcome,
+						 const FGameplayTagContainer& EffectTags, bool bLethal,
+						 bool bFirstFromAttacker = false);
+
+	/**
+	 * Announces a death. Called by `UCataclysmSkillEffects::MarkDead`, the one
+	 * place a death is recorded, after the victim is marked dead -- so a listener
+	 * already sees it as a corpse, and `MarkDead` refusing a second time is what
+	 * makes this fire once a death.
+	 *
+	 * A DEATH RAISED WHILE ANOTHER IS BEING ANNOUNCED WAITS until every listener has heard that one. Issue #2482,
+	 * ruled by the coordinating session on 2026-10-26. Its notice is built when it happens, with its own copies of the
+	 * tag lists the notice points at, and it goes on the list `AfterThisDeathIsHeard` keeps, so deaths and handed-over
+	 * work are announced and done in the order they were raised. A death raised while none is being announced is
+	 * announced at once, and the count `DeathsSent` rises when the death happens either way.
+	 */
+	static void NoteDeath(AActor* Victim);
+
+	/**
+	 * Hand over work to be done once the death now being announced has been heard by EVERY listener. Ruled
+	 * 2026-10-07. For work a listener does about a death that may itself kill: the explosion a slain enemy makes
+	 * for its overkill.
+	 *
+	 * WHY. The engine calls the listeners to a death in an order it does not guarantee. A listener that killed a
+	 * second creature from inside its own call would have that second death announced before the listeners after
+	 * it had heard the first, and eight of the dungeon's rules give a different result when they hear two deaths
+	 * the wrong way round. Work handed over here runs after `NoteDeath`'s broadcast has returned, so every
+	 * listener hears the first death wholly before the second, whatever order they were bound in.
+	 *
+	 * WHEN IT RUNS. While no death is being announced, in the order handed over, deaths that waited among it. Called
+	 * while no death is being announced, the work is done at once. A death the work causes is announced in full from
+	 * inside it, and work handed over during THAT announcement runs when that announcement returns, so a chain nests
+	 * one level for each link and ends when a link kills nothing.
+	 *
+	 * WHAT IT DOES NOT ORDER. `NoteDeath` is called from `UCataclysmSkillEffects::MarkDead`, at the top of a
+	 * creature's `HandleDeath`. The rest of the first creature's `HandleDeath` -- drops, the ailment spread,
+	 * `afflicted_death` -- still runs after everything the work caused.
+	 */
+	void AfterThisDeathIsHeard(TFunction<void()> Work);
+
+	/**
+	 * Announces a skill paid for. Called by
+	 * `UCataclysmSkillTemplate::CommitAndBegin` once `CommitAbility` succeeds,
+	 * which every one of the eight skill shapes and the basic attack pass through.
+	 */
+	static void NoteSkillUsed(AActor* User, const FString& SkillName,
+							  const FGameplayTagContainer& SkillTags,
+							  ECataclysmAbilitySlot Slot, const FVector* Aim = nullptr,
+							  bool bHasCooldown = false);
+
+	/**
+	 * Announces a creature starting one of its abilities. Called by
+	 * `ACataclysmEnemyController` straight after each of its two
+	 * `UseEnemyAbility` calls, because no creature ability goes through
+	 * `CommitAndBegin`.
+	 */
+	static void NoteCreatureAbility(ACataclysmCharacterBase* Creature,
+									int32 AbilityIndex);
+
+	/** Announces a drop taken into `Taker`'s inventory. Called by `TakeInto` only. */
+	static void NoteLootTaken(AActor* Taker, const FVector& Where, bool bByHand,
+							  bool bMarked = false, bool bInfested = false);
+
+	/** Announces that `Character` was cleansed. Called by `UCataclysmDebuffs::Cleanse` only. */
+	static void NoteCleansed(AActor* Character);
+
+	/** How many of each have been sent in this world. Read by tests. */
+	uint32 HitsSent() const { return Hits; }
+	uint32 DeathsSent() const { return Deaths; }
+	uint32 SkillUsesSent() const { return SkillUses; }
+
+private:
+	/** Do the work handed over, oldest first, unless a death is being announced. See `AfterThisDeathIsHeard`. */
+	void DoWorkAfterDeaths();
+
+	/** Tell every listener of this death, then do the work and deaths that waited for it. See `NoteDeath`. */
+	void Announce(const FCataclysmDeathNotice& Notice);
+
+	uint32 Hits = 0;
+	uint32 Deaths = 0;
+	uint32 SkillUses = 0;
+
+	/** How many death announcements are in progress, one inside another. See `AfterThisDeathIsHeard`. */
+	int32 DeathsBeingAnnounced = 0;
+
+	/** Work waiting for the announcements in progress to finish. See `AfterThisDeathIsHeard`. */
+	TArray<TFunction<void()>> WorkAfterDeaths;
+};

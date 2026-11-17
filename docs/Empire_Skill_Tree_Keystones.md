@@ -1,14 +1,32 @@
 # Empire Skill Tree Keystones
 
-> Exported from Google Drive (Doc `1qhS-gsZvWEXgjefh4mrbrbezwyulD3L_dGwo_ybFgcM`),
-> last modified 2026-02-10. Source of truth is the Drive doc; this copy exists so
-> the sim and the Unreal data pipeline can be diffed against it in-repo.
+> **This file is commentary. `Empire_Development_Tree_Final.json` is the empire
+> tree.** That file is the node graph the passive tree editor reads and writes,
+> and it is what the game and the simulation are built against. This one is prose
+> describing the same tree, and it is older and smaller: it was last edited on
+> 2026-02-10 and the node graph on 2026-03-05, and it names 105 of the graph's 173
+> nodes. Where the two disagree about a node, the graph is right. Issue #25.
+>
+> **Three entries were removed from this file on 2026-08-05** because the tree
+> never had them. They were **Bounties** (a 10% chance for a dungeon to spawn a
+> gold-dropping Elite), **Weightless Spoils** (+10 inventory slots) and **The 4
+> Decision Nodes** (pick one Cataclysm type for 25% resistance). The project
+> owner settled it on issue #260: this file is brainstorming written before the
+> passive tree editor existed, so an idea here that is not in the graph was never
+> built rather than lost from it. The three are recorded in full in
+> `docs/DECISIONS.md` so the ideas survive, and one consequence of dropping
+> Weightless Spoils is issue #308: nothing in the design grants inventory slots.
+>
+> Exported from Google Drive (Doc `1qhS-gsZvWEXgjefh4mrbrbezwyulD3L_dGwo_ybFgcM`)
+> on 2026-08-02. As of that date the repository copy is the source of truth and is
+> not synced back to Drive; treat the Drive original as historical. See
+> `docs/README.md`.
 
 ### Tier 1: Foundations of the Empire
 
 - **The Aegis of Hope:** Your Outposts have 50% increased defenses.
 - **The Delver:** Reduces the number of days it takes to clear a dungeon by **5**, to a minimum of **1**.
-- **The Hoarder:** Loot rarity is increased by **25%** and quantity by **100%**.
+- **The Hoarder:** Magic Find is increased by **25%** and loot quantity by **100%**.
 
 ### Tier 2: The Edicts of Power
 
@@ -30,7 +48,7 @@
 
 ## The Empire Development Tree: Final Design
 
-The Empire Development Tree is a circular, four-branched skill tree that visually represents an empire expanding outwards from a central capital. The player invests points to progress through the tree, with each branch offering a unique path to victory.
+The Empire Development Tree is a circular, four-branched skill tree that visually represents an empire expanding outwards from a central Pillar. The player invests points to progress through the tree, with each branch offering a unique path to victory.
 
 The tree is divided into four distinct "pie slices," with each slice representing a core strategic path. The passives within each slice are tiered, radiating outwards from the center of the tree.
 
@@ -38,7 +56,7 @@ The tree is divided into four distinct "pie slices," with each slice representin
 
 1. **Architect:** Focuses on city defense, population management, and the overall resilience of the empire.
 2. **Explorer:** Focuses on dungeon speed, efficiency, and loot.
-3. **Treasurer:** Focuses on economy, gold drops, and generating resources.
+3. **Treasury:** Focuses on economy, gold drops, and generating resources.
 4. **Artisan:** Focuses on all aspects of crafting, enchanting, and item modification.
 
 ### The Final Capstones
@@ -47,7 +65,7 @@ The final ability in each branch is a powerful capstone passive. These are not m
 
 - **Architect: The Royal Engineer's Blessing** — For every city that has a defensive upgrade, all cities in your empire gain a **2%** passive defense bonus.
 - **Explorer: The Cartographer's Blessing** — For every city that has an Explorer-based city upgrade, loot quantity and rarity are increased by 5%.
-- **Tyrant: The Golden Touch** — For every city that has an economic upgrade, all gold and crafting materials dropped from dungeons are increased by **10%**.
+- **Treasury: The Golden Touch** — For every city that has an economic upgrade, all gold and crafting materials dropped from dungeons are increased by **10%**.
 - **Artisan: The Alchemist's Transmutation** — Increase the stats of a crafted affix on an item by 1% per passive point allocated in the Artisan branch.
 
 ## Architect Quadrant
@@ -68,9 +86,8 @@ The final ability in each branch is a powerful capstone passive. These are not m
 - **NOTABLE: Public Works:** -20% Gold cost for all City Upgrades.
 - **NOTABLE: Rapid Renovation:** -1 Day to city upgrade construction time (Min 1 day).
 
-### Tier 3: The Adaptive Bulwark (Decision Tier)
+### Tier 3: The Adaptive Bulwark
 
-- **The 4 Decision Nodes:** (Demonic/Celestial, etc.) — Choose one for each to get 25% Resistance.
 - **Global Vigilance (Max 20 pts):** -2% Damage from all sources (Surges/Dungeons) per point.
 - **Metropolitan Growth (Max 10 pts):** +15% Base City Population per point.
 - **NOTABLE: Martial Law:** At <10% City Health, Dungeon Resolution Timer is extended by +5 Days.
@@ -83,7 +100,7 @@ The final ability in each branch is a powerful capstone passive. These are not m
 - **Sovereign's Might (Max 25 pts):** +2% Global Damage Reduction for all cities per point.
 - **Manifest Destiny (Max 20 pts):** +2% Total Empire Population per point (Multiplicative).
 - **NOTABLE: Imperial Command:** Cities with 2+ upgrades take 40% less Surge damage.
-- **NOTABLE: Beacon of Hope:** Cities within 2 hexes of The Pillar have +50% Max Health.
+- **NOTABLE: Beacon of Hope:** Cities within 2 rings of the Pillar have +50% Max Health.
 - **NOTABLE: Last Stand Protocols:** Sanctuary defenses survive at 1 on first fatal dungeon resolution. (Resets every tier.)
 - **NOTABLE: The Architect's Legacy:** Reclaiming a fallen city now restores it to **75%** of its original Population/Defense instead of 50%.
 - **NOTABLE: The Mason's Guild:** Every 20 days, the Outpost or Bulwark with the lowest defense restores 20% of its Max Defense and 15% of its Max Population. This can target the same city multiple times.
@@ -98,7 +115,6 @@ The final ability in each branch is a powerful capstone passive. These are not m
 - **Master Trader (Max 10 pts):** +5% Gold gained when selling items in the Market per point.
 - **War Funding (Max 10 pts):** -2% cost for the first upgrade in a city per point.
 - **NOTABLE: Cleanup Crew:** When a dungeon is cleared, 10% of the Gold you *didn't* pick up off the ground is automatically sent to your stash.
-- **NOTABLE: Bounties:** Every dungeon has a 10% chance to spawn a "Bounty Target" (Elite) that drops a massive sack of Gold.
 
 ### Tier 2: Urban Investment
 
@@ -127,7 +143,7 @@ The final ability in each branch is a powerful capstone passive. These are not m
 - **Imperial Reserve (Max 25 pts):** +1% Global Damage Reduction for all cities for every 100,000 Gold in your Treasury (Capped at 25%).
 - **Golden Age (Max 25 pts):** +1% Total Empire Population per point (Wealth attracts people).
 - **NOTABLE: Economic Bailout:** If a City's health hits 0, you can pay a massive Gold fee (that scales with your level) to prevent it from becoming a **Fallen City**. (Once per city per "Tier".)
-- **NOTABLE: The Gilded Path:** Gain +1% Loot Rarity in dungeons for every 5% "Gold Cost Reduction" you have across the entire Empire Tree.
+- **NOTABLE: The Gilded Path:** Gain +1% Magic Find in dungeons for every 5% "Gold Cost Reduction" you have across the entire Empire Tree.
 - **NOTABLE: Stimulus Package:** If your Empire Population falls below 50% of its maximum possible value, Gold drops in dungeons are doubled until you reclaim a city.
 - **NOTABLE: Pax Imperialis:** For every 1,000 surviving citizens in your Empire, you generate 5 Gold every 1 day.
 
@@ -135,9 +151,9 @@ The final ability in each branch is a powerful capstone passive. These are not m
 
 ### Tier 1: The Scout
 
-- **Pacing (Max 10 pts):** -1 days from dungeon run time per point (Min 1).
-- **Eyes of the Empire (Max 10 pts):** +5% Loot Rarity per point.
-- **NOTABLE: Fleet Footed:** -5 days from dungeon run time.
+- **Pacing (Max 10 pts):** -2.5% of dungeon run time per point, multiplicative (Min 1).
+- **Eyes of the Empire (Max 10 pts):** +5% Magic Find per point.
+- **NOTABLE: Fleet Footed:** -12% of dungeon run time, multiplicative.
 - **NOTABLE: Field Depot (Rank 1):** A Stash appears every 30 floors in dungeons.
 - **NOTABLE: Tactical Entry:** If a dungeon has more than 50 floors, the days it takes to run are halved.
 
@@ -148,22 +164,21 @@ The final ability in each branch is a powerful capstone passive. These are not m
 - **Deep Boring (Max 10 pts):** +1 floors to dungeons per point.
 - **Gamble (Max 3 pts):** Every 20 days get one dungeon modifier reroll per point.
 - **NOTABLE: Efficiency Premium:** +5% Loot Quantity for every **Day** removed from a dungeon's default run time (capped at 50%).
-- **NOTABLE: Quality over Quantity:** +2% Loot Rarity for every **Floor** removed from the dungeon's default depth.
+- **NOTABLE: Quality over Quantity:** +2% Magic Find for every **Floor** removed from the dungeon's default depth.
 - **NOTABLE: Architectural Insight:** +1 floors to dungeons for every 10 points invested in the **Architect** branch.
 
 ### Tier 3: The Trailblazer
 
 - **Architect of Greed (Max 20 pts):** +1 floors to dungeons per point.
-- **Overclock (Max 20 pts):** -1 day from dungeon run time per point.
+- **Overclock (Max 20 pts):** -2.5% of dungeon run time per point, multiplicative.
 - **NOTABLE: Field Depot (Rank 2):** A Stash appears every 15 floors.
 - **NOTABLE: Temporal Efficiency:** Every 5 points invested in the **Artisan** branch increases loot quantity by 10%.
-- **NOTABLE: Weightless Spoils:** Adds 10 inventory slots.
 - **NOTABLE: The High Roller:** For every 10 floors **Added** to a dungeon, gain a 5% chance for the Boss to drop an additional Legendary or above item.
 
 ### Tier 4: Master Explorer
 
-- **Temporal Mastery (Max 25 pts):** -1 Day from dungeon run time per point.
-- **Manifest Wealth (Max 25 pts):** +1% Loot Rarity per floor cleared in the current dungeon.
+- **Temporal Mastery (Max 25 pts):** -2.5% of dungeon run time per point, multiplicative.
+- **Manifest Wealth (Max 25 pts):** +1% Magic Find per floor cleared in the current dungeon.
 - **NOTABLE: Field Depot (Rank 3):** A Stash appears every 5 floors.
 - **DECISION NOTABLE: Auto-Seller:** Items hidden by your loot filter are automatically sold for 25% gold value **OR** **Auto-Shatter:** Items hidden by your loot filter are automatically converted into crafting materials upon drop.
 - **NOTABLE: One-Day Specialist:** If a dungeon's run time is reduced to the **1-Day minimum**, all Loot Quantity/Rarity modifiers from the Explorer branch are doubled for that dungeon.
@@ -194,7 +209,7 @@ The final ability in each branch is a powerful capstone passive. These are not m
 - **Expanded Station (Smith, Max 3 pts):** Adds +1 Worker to the Smith station.
 - **Expanded Station (Enchantress, Max 3 pts):** Adds +1 Worker to the Enchantress station.
 - **NOTABLE: Master's Touch:** 1% chance per 100 CR on an item to reset the CR to 0 when crafting.
-- **NOTABLE: Architectural Synergy:** Every 10 points in the **Treasurer** branch reduces crafting gold costs by 5%.
+- **NOTABLE: Architectural Synergy:** Every 10 points in the **Treasury** branch reduces crafting gold costs by 5%.
 - **NOTABLE: Sovereign's Assembly:** Reduce total crafting time required by 50%.
 
 ### Tier 4: The Sovereign's Forge

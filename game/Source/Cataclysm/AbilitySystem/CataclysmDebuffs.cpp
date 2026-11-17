@@ -1,0 +1,790 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "AbilitySystem/CataclysmDebuffs.h"
+
+// For asking a character what a stat is worth with its own state in hand,
+// rather than reading the attribute. Issue #1033.
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmCombatEvents.h"
+// For whom a minion or a thrall follows, which `RefusedByARow` asks.
+#include "AbilitySystem/CataclysmCommand.h"
+#include "AbilitySystem/CataclysmFear.h"
+// For the attribute the duration stat is folded into. Issue #1033.
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+// For refusing a corpse, which `HoldStep` does. Issue #1070.
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmTargeting.h"
+#include "Character/CataclysmEnemyCharacter.h"
+#include "AbilitySystemComponent.h"
+#include "Cataclysm.h"
+// For FGameplayEffectQuery, which is how the debuffs running on a character are
+// found. Issue #1070.
+#include "GameplayEffect.h"
+#include "GameplayTagsManager.h"
+
+const TCHAR* UCataclysmDebuffs::DurationStat = TEXT("debuff_duration_taken");
+
+// WHAT CEASELESS PENANCE GRANTS. Issue #1070: "Debuffs on you no longer expire
+// while you are above 50% health."
+const TCHAR* UCataclysmDebuffs::DoNotExpireStat = TEXT("debuffs_do_not_expire");
+
+// WHAT WOUND CHANNELING'S SECOND CLAUSE GRANTS. Issue #1061: "you deal 1%
+// increased damage per point to enemies carrying a debuff you also carry."
+const TCHAR* UCataclysmDebuffs::SharedDebuffDamageStat =
+	TEXT("damage_to_enemies_sharing_a_debuff");
+
+const TCHAR* const UCataclysmDebuffs::DebuffRootNames[] = {
+	// EVERY DAMAGE OVER TIME, AS ONE BRANCH. Bleed, Burn, Disease, Generic,
+	// Necrosis, Poison and Void Splinter all hang off this, so naming the parent
+	// covers the ones that exist and the ones the design has not built yet.
+	TEXT("Keyword.DoT"),
+
+	// AND BEING STUNNED, WHICH IS NOT DAMAGE AND IS STILL A DEBUFF. All three
+	// games in the genre count it: Diablo 4 lists Stun among its eleven crowd
+	// control effects and Path of Exile lists stunning among its debuffs.
+	//
+	// `State.StunImmune` IS DELIBERATELY NOT HERE. It arrives with the stun,
+	// from the same call, and it protects the character rather than harming it.
+	// See the header.
+	TEXT("State.Stunned"),
+
+	// AND EVERY NAMED CURSE. Issue #1145. Shred, Madness, Cripple, Weaken,
+	// Quarry and the other twenty-three come from the Debuffs sheet of
+	// `docs/All_Things_Cataclysm.xlsx`, and since that sheet's name became a
+	// segment of the tag they all hang off this one parent.
+	//
+	// THE BUFFS ARE EXCLUDED BY NOT BEING UNDER IT, rather than by a list. The
+	// seventeen from the Buffs sheet are `Status.Buff.*`, so the Commander buff a
+	// Succubus grants its allies cannot be counted as a debuff by forgetting to
+	// name it. That is the whole reason the branch was split.
+	//
+	// `Status.DoT` IS NOT HERE ON PURPOSE. See the header: it would double-count
+	// against `Keyword.DoT` above.
+	TEXT("Status.Debuff"),
+};
+
+const int32 UCataclysmDebuffs::DebuffRootCount = UE_ARRAY_COUNT(DebuffRootNames);
+
+FGameplayTagContainer UCataclysmDebuffs::DebuffRoots()
+{
+	FGameplayTagContainer Roots;
+	for (int32 Index = 0; Index < DebuffRootCount; ++Index)
+	{
+		// ASKED FOR BY NAME AND NOT REQUIRED TO EXIST, the same way every other
+		// tag in this module is fetched. A vocabulary that has lost one leaves
+		// it out of the container instead of failing to start the game, and the
+		// count is then short by that branch rather than wrong about everything.
+		const FGameplayTag Tag = UGameplayTagsManager::Get().RequestGameplayTag(
+			FName(DebuffRootNames[Index]), /*ErrorIfNotFound=*/false);
+		if (Tag.IsValid())
+		{
+			Roots.AddTag(Tag);
+		}
+	}
+	return Roots;
+}
+
+FGameplayTagContainer UCataclysmDebuffs::TagsOn(
+	const UAbilitySystemComponent* AbilitySystem)
+{
+	FGameplayTagContainer Carried;
+
+	if (!AbilitySystem)
+	{
+		return Carried;
+	}
+
+	const FGameplayTagContainer Roots = DebuffRoots();
+	if (Roots.IsEmpty())
+	{
+		return Carried;
+	}
+
+	// WHAT WAS REALLY APPLIED, NOT WHAT THE CHARACTER ANSWERS YES TO. See the
+	// header: the engine counts a tag against its parents as well, so a single
+	// bleed makes `HasMatchingGameplayTag` true for both `Keyword.DoT.Bleed` and
+	// `Keyword.DoT`. This list holds one entry per effect.
+	FGameplayTagContainer Owned;
+	AbilitySystem->GetOwnedGameplayTags(Owned);
+
+	for (const FGameplayTag& Tag : Owned)
+	{
+		// MATCHES THE ROOT ITSELF AND ANYTHING UNDER IT. `MatchesAny` asks
+		// whether this tag or one of its parents is in the container, which is
+		// the direction wanted here: `Keyword.DoT.Bleed` matches the root
+		// `Keyword.DoT`, and `Keyword.Leech` matches nothing.
+		if (Tag.MatchesAny(Roots))
+		{
+			Carried.AddTag(Tag);
+		}
+	}
+
+	return Carried;
+}
+
+FGameplayTagContainer UCataclysmDebuffs::TagsOnActor(const AActor* Actor)
+{
+	return TagsOn(UCataclysmTargeting::AbilitySystemOf(Actor));
+}
+
+int32 UCataclysmDebuffs::CountOn(const UAbilitySystemComponent* AbilitySystem)
+{
+	// THE LENGTH OF THE LIST, SO THE TWO ANSWERS CANNOT DISAGREE. Issue #1057.
+	// This used to be its own walk of the owned tags; the list above is the same
+	// walk, and keeping two of them would let the seven nodes that pay per
+	// debuff count one set while the two nodes that spread one chose from
+	// another.
+	return TagsOn(AbilitySystem).Num();
+}
+
+int32 UCataclysmDebuffs::CountOnActor(const AActor* Actor)
+{
+	return CountOn(UCataclysmTargeting::AbilitySystemOf(Actor));
+}
+
+int32 UCataclysmDebuffs::Cleanse(AActor* Character)
+{
+	UAbilitySystemComponent* AbilitySystem = UCataclysmTargeting::AbilitySystemOf(Character);
+	if (!AbilitySystem)
+	{
+		return 0;
+	}
+
+	int32 Removed = 0;
+	// AND A FEAR, which lies outside the debuff roots but is crowd control someone else put on the player, as a
+	// stun is; ruled on 2026-09-26. Its immunity stays, as the stun's does.
+	FGameplayTagContainer Roots = DebuffRoots();
+	Roots.AddTag(UCataclysmFear::FearedTag());
+
+	// AN EMPTY CONTAINER WOULD MATCH EVERY EFFECT, buffs included, for the reason `HoldStep` gives, so nothing is
+	// removed when the vocabulary has lost every root. The announcement still goes, so the game mode's stacks clear.
+	if (!Roots.IsEmpty())
+	{
+		// THE CHARACTER, OR ITS ABILITY SYSTEM'S OWNER, IS ITSELF. A player's ability system belongs to its player
+		// state, and an effect the player put on itself names either the one or the other as its instigator.
+
+		// MATCHED ON THE TAGS THE EFFECT GRANTS, as `HoldStep` matches them; the match honours parents, so the three
+		// roots find every bleed, burn, curse and stun without listing them. A copy of the handles, since removing
+		// one changes the container they were read from.
+		const TArray<FActiveGameplayEffectHandle> Handles =
+			AbilitySystem->GetActiveEffects(FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(Roots));
+		for (const FActiveGameplayEffectHandle& Handle : Handles)
+		{
+			const FActiveGameplayEffect* Effect = AbilitySystem->GetActiveGameplayEffect(Handle);
+			if (!Effect)
+			{
+				continue;
+			}
+			// CONVERTED DAMAGE NOT YET TAKEN IS KEPT, AND NOTHING ELSE IS. Ruled 2026-10-06. This kept every
+			// effect the character had laid on themselves, for the sake of the one that is stored damage; a
+			// drawback a row lays on its own wearer is not that, and a cleanse answers it as it answers an
+			// enemy's. The conversion stamps its bleed; see `UCataclysmSkillEffects::ConvertedDamageDataName`.
+			if (Effect->Spec.GetSetByCallerMagnitude(
+					FName(UCataclysmSkillEffects::ConvertedDamageDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f)
+			{
+				continue;
+			}
+			// AND THE HEALING A NECROSIS DENIED, BEING DEALT. Issue #920, ruled by the coordinating session 2026-10-31:
+			// the denial has already happened, as it had when a cleanse ended the Necrosis. Its own mark, not the one
+			// above, which the bleed gate reads too.
+			if (Effect->Spec.GetSetByCallerMagnitude(
+					FName(UCataclysmSkillEffects::DeniedHealingDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f)
+			{
+				continue;
+			}
+			if (AbilitySystem->RemoveActiveGameplayEffect(Handle))
+			{
+				++Removed;
+			}
+		}
+	}
+
+	UCataclysmCombatEvents::NoteCleansed(Character);
+	return Removed;
+}
+
+bool UCataclysmDebuffs::ShareADebuff(const UAbilitySystemComponent* AbilitySystem,
+									 const AActor* Other)
+{
+	const FGameplayTagContainer Mine = TagsOn(AbilitySystem);
+	if (Mine.IsEmpty())
+	{
+		// A CHARACTER SUFFERING FROM NOTHING SHARES NOTHING, which is the
+		// ordinary answer for everybody but a hurt Masochist, and it is asked
+		// first because it is the cheap half.
+		return false;
+	}
+
+	const FGameplayTagContainer Theirs = TagsOnActor(Other);
+	for (const FGameplayTag& Tag : Theirs)
+	{
+		// EXACTLY, NOT BY THE PARENT BRANCH. See the header: burning and
+		// bleeding are both `Keyword.DoT` and are not the same debuff.
+		if (Mine.HasTagExact(Tag))
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+float UCataclysmDebuffs::DamageAgainstSharedDebuff(
+	const UAbilitySystemComponent* Source, const AActor* Target)
+{
+	if (!Source)
+	{
+		return 0.0f;
+	}
+
+	const FGameplayAttribute Attribute =
+		UCataclysmCombatAttributeSet::GetDamageVsSharedDebuffAttribute();
+	if (!Source->HasAttributeSetForAttribute(Attribute))
+	{
+		// AN ABILITY SYSTEM WITHOUT A COMBAT SET. Every enemy's plain attack
+		// comes through the hit path too, and several test harnesses build a
+		// component with fewer sets than a character has.
+		return 0.0f;
+	}
+
+	// THE STAT BEFORE THE COMPARISON, because it is the cheaper question and it
+	// is zero for every character in the game without the node. Asking the other
+	// way round would walk two tag containers on every blow anybody strikes.
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<UCataclysmAbilitySystemComponent>(Source);
+	const float Percent = Cataclysm
+		? Cataclysm->StatForSkill(FName(SharedDebuffDamageStat),
+								  FGameplayTagContainer(),
+								  Source->GetNumericAttribute(Attribute))
+		: Source->GetNumericAttribute(Attribute);
+
+	if (Percent <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	if (!ShareADebuff(Source, Target))
+	{
+		return 0.0f;
+	}
+
+	// A FRACTION, because the caller adds it into the increases bucket, which is
+	// a sum of fractions. The stat holds a percentage because that is what the
+	// node's sentence states.
+	return Percent / 100.0f;
+}
+
+FGameplayTag UCataclysmDebuffs::BleedTag()
+{
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Keyword.DoT.Bleed")), /*ErrorIfNotFound=*/false);
+}
+
+FGameplayTag UCataclysmDebuffs::NecrosisTag()
+{
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Keyword.DoT.Necrosis")), /*ErrorIfNotFound=*/false);
+}
+
+FGameplayTag UCataclysmDebuffs::CrippleTag()
+{
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Status.Debuff.Cripple")), /*ErrorIfNotFound=*/false);
+}
+
+FGameplayTag UCataclysmDebuffs::WeakenTag()
+{
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Status.Debuff.Weaken")), /*ErrorIfNotFound=*/false);
+}
+
+FGameplayTag UCataclysmDebuffs::DamageOverTimeTag()
+{
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Keyword.DoT")), /*ErrorIfNotFound=*/false);
+}
+
+FGameplayTag UCataclysmDebuffs::VoidSplinterTag()
+{
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Keyword.DoT.VoidSplinter")), /*ErrorIfNotFound=*/false);
+}
+
+bool UCataclysmDebuffs::IsBleeding(const UAbilitySystemComponent* AbilitySystem)
+{
+	const FGameplayTag Bleed = BleedTag();
+	return AbilitySystem && Bleed.IsValid()
+		&& AbilitySystem->HasMatchingGameplayTag(Bleed);
+}
+
+float UCataclysmDebuffs::DurationOn(const UAbilitySystemComponent* Defender,
+								   float DurationSeconds,
+								   const FGameplayTagContainer& AppliedTags)
+{
+	const FGameplayAttribute Attribute =
+		UCataclysmCombatAttributeSet::GetDebuffDurationTakenAttribute();
+
+	if (DurationSeconds <= 0.0f || !Defender
+		|| !Defender->HasAttributeSetForAttribute(Attribute))
+	{
+		// NO COMBAT SET MEANS THE DURATION IS UNCHANGED, which is the ordinary
+		// answer rather than a fault: a target that cannot hold the stat is not
+		// a target that halves everything put on it.
+		return DurationSeconds;
+	}
+
+	// ASKED FOR RATHER THAN READ, so a future row carrying a condition works.
+	// Neither of the two rows today carries one, so the attribute holds the
+	// same answer and both routes agree.
+	//
+	// NO SKILL TAGS. This is the DEFENDER'S stat, and the skill in the
+	// attacker's hand is the wrong question to scope it by -- the same reason
+	// the retaliation and damage-taken readings pass none either.
+	//
+	// THE TAGS OF THE EFFECT BEING APPLIED INSTEAD. Ruled 2026-10-06. They say
+	// what is arriving and not what anybody is casting, so "Bleeding on you
+	// lasts 50%-100% longer" is a row requiring the bleed tag. Empty for a
+	// caller with none, and a row with no required tags applies either way.
+	const UCataclysmAbilitySystemComponent* Asking =
+		Cast<const UCataclysmAbilitySystemComponent>(Defender);
+	const float Held = Defender->GetNumericAttribute(Attribute);
+	const float Percent = Asking
+		? Asking->StatForSkill(FName(DurationStat), AppliedTags,
+							   Held)
+		: Held;
+
+	// FLOORED AT NOTHING RATHER THAN AT THE NORMAL DURATION. A stat of zero is
+	// a legitimate future rule -- an effect that ends at once -- and a negative
+	// one is not, because a duration below nothing would make
+	// `ApplyTagForDuration` refuse the effect outright and read as immunity.
+	// Nothing today reduces this stat: both rows raise it.
+	return DurationSeconds * FMath::Max(0.0f, Percent) / NormalDuration;
+}
+
+bool UCataclysmDebuffs::DoNotExpireOn(
+	const UAbilitySystemComponent* AbilitySystem)
+{
+	const UCataclysmAbilitySystemComponent* Asking =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Asking)
+	{
+		return false;
+	}
+
+	// A FALLBACK OF ZERO AND NOT THE ATTRIBUTE, WHICH IS THE OPPOSITE OF WHAT
+	// `DurationOn` ABOVE PASSES, and the difference is the condition. That stat
+	// has a real base of 100 that every character carries, so its attribute
+	// holds the right answer when no stat line has been recorded. This one is
+	// granted only by a row carrying `health_above`, which is never folded into
+	// an attribute, so the attribute is zero for everybody at all times and
+	// passing it would say nothing. Zero is the honest fallback: an ability
+	// system with no stat line does not hold the option.
+	//
+	// NO SKILL TAGS. This is about the character rather than about anything it
+	// is casting, the same argument `DurationOn` makes.
+	return Asking->StatForSkill(FName(DoNotExpireStat), FGameplayTagContainer(),
+								0.0f) > 0.0f;
+}
+
+const TCHAR* UCataclysmDebuffs::GroundDownMetresStat =
+	TEXT("enemies_near_slowed_within_metres");
+const TCHAR* UCataclysmDebuffs::GroundDownPercentStat =
+	TEXT("enemies_near_slowed_percent");
+
+int32 UCataclysmDebuffs::GroundDownStep(AActor* Character, float StepSeconds)
+{
+	if (!Character || StepSeconds <= 0.0f || UCataclysmSkillEffects::IsDead(Character))
+	{
+		return 0;
+	}
+
+	const UCataclysmAbilitySystemComponent* Mine =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Character));
+	UWorld* World = Character->GetWorld();
+	if (!Mine || !World)
+	{
+		return 0;
+	}
+
+	const float Metres = Mine->StatForSkill(
+		FName(GroundDownMetresStat), FGameplayTagContainer(), 0.0f);
+	const float Percent = Mine->StatForSkill(
+		FName(GroundDownPercentStat), FGameplayTagContainer(), 0.0f);
+	if (Metres <= 0.0f || Percent <= 0.0f)
+	{
+		return 0;
+	}
+
+	const float Until = World->GetTimeSeconds() + GroundDownHeldSteps * StepSeconds;
+	int32 Slowed = 0;
+	for (AActor* Enemy : UCataclysmTargeting::FindEnemiesInSphere(
+			 World, Character, Character->GetActorLocation(), Metres * 100.0f))
+	{
+		if (ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Enemy))
+		{
+			Creature->NoteGroundDown(Percent, Until);
+			++Slowed;
+		}
+	}
+	return Slowed;
+}
+
+const TCHAR* UCataclysmDebuffs::NowhereToRunMetresStat =
+	TEXT("enemies_cannot_move_away_within_metres");
+
+int32 UCataclysmDebuffs::NowhereToRunStep(AActor* Character, float StepSeconds)
+{
+	if (!Character || StepSeconds <= 0.0f || UCataclysmSkillEffects::IsDead(Character))
+	{
+		return 0;
+	}
+
+	const UCataclysmAbilitySystemComponent* Mine =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Character));
+	UWorld* World = Character->GetWorld();
+	if (!Mine || !World)
+	{
+		return 0;
+	}
+
+	const float Metres = Mine->StatForSkill(
+		FName(NowhereToRunMetresStat), FGameplayTagContainer(), 0.0f);
+	if (Metres <= 0.0f)
+	{
+		return 0;
+	}
+
+	// THE SAME THREE STEPS GROUND DOWN HOLDS FOR, so a creature at the edge of
+	// the radius is not let go and caught again between two steps.
+	const float Until = World->GetTimeSeconds() + GroundDownHeldSteps * StepSeconds;
+	int32 Held = 0;
+	for (AActor* Enemy : UCataclysmTargeting::FindEnemiesInSphere(
+			 World, Character, Character->GetActorLocation(), Metres * 100.0f))
+	{
+		if (ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Enemy))
+		{
+			Creature->NoteHeldBy(Character, Until, Metres * 100.0f);
+			++Held;
+		}
+	}
+	return Held;
+}
+
+const TCHAR* UCataclysmDebuffs::AppliedHeldWithinMetresStat =
+	TEXT("applied_cripple_and_weaken_held_within_metres");
+
+int32 UCataclysmDebuffs::HoldAppliedNearbyStep(AActor* Character, float StepSeconds)
+{
+	if (!Character || StepSeconds <= 0.0f || UCataclysmSkillEffects::IsDead(Character))
+	{
+		return 0;
+	}
+
+	UCataclysmAbilitySystemComponent* Mine =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Character));
+	if (!Mine)
+	{
+		return 0;
+	}
+
+	const float Metres = Mine->StatForSkill(
+		FName(AppliedHeldWithinMetresStat), FGameplayTagContainer(), 0.0f);
+	if (Metres <= 0.0f)
+	{
+		return 0;
+	}
+
+	FGameplayTagContainer HeldKinds;
+	if (CrippleTag().IsValid())
+	{
+		HeldKinds.AddTag(CrippleTag());
+	}
+	if (WeakenTag().IsValid())
+	{
+		HeldKinds.AddTag(WeakenTag());
+	}
+	if (HeldKinds.IsEmpty())
+	{
+		return 0;
+	}
+	const FGameplayEffectQuery Query =
+		FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(HeldKinds);
+
+	int32 Held = 0;
+	for (AActor* Enemy : UCataclysmTargeting::FindEnemiesInSphere(
+			 Character->GetWorld(), Character, Character->GetActorLocation(),
+			 Metres * 100.0f))
+	{
+		UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Enemy);
+		if (!Theirs)
+		{
+			continue;
+		}
+		for (const FActiveGameplayEffectHandle& Handle : Theirs->GetActiveEffects(Query))
+		{
+			// "YOU APPLIED": the effect names this character as its instigator.
+			// Every ailment's context is made by `AddInstigator(Instigator,
+			// Instigator)`, so the actor is compared, and the ability system it
+			// resolves to as well, which is the player's for the player's pawn.
+			const FActiveGameplayEffect* Active = Theirs->GetActiveGameplayEffect(Handle);
+			if (!Active)
+			{
+				continue;
+			}
+			const FGameplayEffectContextHandle& Context = Active->Spec.GetContext();
+			if (Context.GetInstigator() != Character
+				&& Context.GetInstigatorAbilitySystemComponent() != Mine)
+			{
+				continue;
+			}
+			Theirs->ModifyActiveEffectStartTime(Handle, StepSeconds);
+			++Held;
+		}
+	}
+	return Held;
+}
+
+int32 UCataclysmDebuffs::HoldStep(AActor* Character, float StepSeconds)
+{
+	// A STEP OF NO TIME HOLDS NOTHING, rather than pushing every effect's start
+	// backwards on a negative one, which would make them expire sooner.
+	if (StepSeconds <= 0.0f)
+	{
+		return 0;
+	}
+
+	// A CORPSE IS SKIPPED, for the reason `UCataclysmHealthDebt::DrainIfDue`
+	// gives: a creature is destroyed on the step AFTER it dies, so there is a
+	// real window in which a dead one still stands there with an ability system
+	// and a burn on it.
+	if (!Character || UCataclysmSkillEffects::IsDead(Character))
+	{
+		return 0;
+	}
+
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Character));
+	if (!AbilitySystem || !DoNotExpireOn(AbilitySystem))
+	{
+		// EVERY CHARACTER IN THE GAME WITHOUT THAT CAPSTONE OPTION, and every
+		// character holding it that is not above half health. Asked before the
+		// effects are gathered, because gathering them is the expensive half.
+		return 0;
+	}
+
+	const FGameplayTagContainer Roots = DebuffRoots();
+	if (Roots.IsEmpty())
+	{
+		// THE VOCABULARY HAS LOST EVERY ROOT, which `DebuffRoots` allows rather
+		// than failing to start the game. An empty container would match every
+		// effect on the character, buffs included, so it is refused here.
+		return 0;
+	}
+
+	// MATCHED AGAINST THE TAGS THE EFFECT GRANTS. Every lasting effect this
+	// project applies attaches its tag through a
+	// `UTargetTagsGameplayEffectComponent`, and an owning-tags query compares
+	// against exactly those. The match honours parents, so naming `Keyword.DoT`
+	// finds a bleed and a burn without listing either.
+	const FGameplayEffectQuery Query =
+		FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(Roots);
+
+	int32 Held = 0;
+	for (const FActiveGameplayEffectHandle& Handle :
+		 AbilitySystem->GetActiveEffects(Query))
+	{
+		// NOT CONVERTED DAMAGE NOT YET TAKEN, WHOSE TOTAL IS FIXED WHEN IT IS CONVERTED. Ruled by the coordinating
+		// session 2026-11-01: an unbounded payout is a fault. Held, its expiry stood still while its period ran on, so
+		// a Masochist back above half health took the converted figure every second for as long as it stayed there.
+		// It runs its 5 seconds, as The Breaking Point says. The mark `Cleanse` and `ImmunityStep` keep it by.
+		const FActiveGameplayEffect* Holding = AbilitySystem->GetActiveGameplayEffect(Handle);
+		const float HeldStamp = Holding
+			? Holding->Spec.GetSetByCallerMagnitude(
+				  FName(UCataclysmSkillEffects::ConvertedDamageDataName), /*WarnIfNotFound=*/false, 0.0f)
+			: 0.0f;
+		if (HeldStamp > 0.0f)
+		{
+			continue;
+		}
+
+		// PUSHED FORWARD BY EXACTLY THE STEP, which is what makes the time
+		// remaining stand still rather than grow. The engine adds this to the
+		// effect's start time and re-arms its expiry.
+		AbilitySystem->ModifyActiveEffectStartTime(Handle, StepSeconds);
+		++Held;
+	}
+
+	if (Held > 0)
+	{
+		UE_LOG(LogCataclysm, VeryVerbose,
+			   TEXT("%s held %d debuff(s) still for %.2f seconds."),
+			   *GetNameSafe(Character), Held, StepSeconds);
+	}
+
+	return Held;
+}
+
+bool UCataclysmDebuffs::IsADebuff(const FGameplayTag& Tag)
+{
+	// THIS TAG OR ONE OF ITS PARENTS IS A ROOT, the direction `TagsOn` asks in.
+	return Tag.IsValid() && Tag.MatchesAny(DebuffRoots());
+}
+
+const TCHAR* UCataclysmDebuffs::DebuffedEnemiesDealLessPercentStat =
+	TEXT("debuffed_enemies_deal_less_percent");
+const TCHAR* UCataclysmDebuffs::ZoneDebuffsCountUnderStat =
+	TEXT("minion_hits_count_as_yours");
+
+namespace
+{
+	/** How many `FCataclysmZoneLaying` are held now. */
+	int32 CataclysmZonesLaying = 0;
+}
+
+FCataclysmZoneLaying::FCataclysmZoneLaying()
+{
+	++CataclysmZonesLaying;
+}
+
+FCataclysmZoneLaying::~FCataclysmZoneLaying()
+{
+	--CataclysmZonesLaying;
+}
+
+bool FCataclysmZoneLaying::IsLaying()
+{
+	return CataclysmZonesLaying > 0;
+}
+
+void UCataclysmDebuffs::NoteLaid(AActor* Instigator, AActor* Target, const FGameplayTag& Debuff,
+								 bool bIsASpreadCopy)
+{
+	// ONE A CHARACTER PUTS ON ITSELF IS NOT APPLYING ONE TO AN ENEMY, the test
+	// `ApplyDamageOverTime` makes before it raises `dot_applied`.
+	if (!Instigator || Instigator == Target || !IsADebuff(Debuff))
+	{
+		return;
+	}
+	UCataclysmAbilitySystemComponent* Carrier =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Target));
+	if (!Carrier)
+	{
+		return;
+	}
+
+	// WHOSE APPLICATION IT IS. A minion's is the minion's unless its summoner
+	// holds Conduit, the rule `UCataclysmCombatEvents::AttackerOf` keeps for a
+	// blow. A copy a spread makes is nobody's.
+	const UCataclysmAbilitySystemComponent* Applier = bIsASpreadCopy
+		? nullptr
+		: Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(
+			  UCataclysmCombatEvents::AttackerOf(Instigator)));
+
+	// AND A ZONE'S IS ITS OWNER'S ONLY UNDER CONDUIT. Ruled 2026-10-13. A zone
+	// names its owner as instigator, so the zone says so itself.
+	if (Applier && FCataclysmZoneLaying::IsLaying()
+		&& Applier->StatForSkill(FName(ZoneDebuffsCountUnderStat), FGameplayTagContainer(), 0.0f) <= 0.0f)
+	{
+		Applier = nullptr;
+	}
+
+	// NO TAGS: the row is about every debuff its wearer applies, with whatever.
+	const float Percent = Applier
+		? Applier->StatForSkill(FName(DebuffedEnemiesDealLessPercentStat), FGameplayTagContainer(), 0.0f)
+		: 0.0f;
+	Carrier->ReceiveDebuffDamageCut(Debuff, Applier, Percent);
+}
+
+float UCataclysmDebuffs::DealLessPercentOn(const UAbilitySystemComponent* Carrier)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(Carrier);
+	return Cataclysm ? Cataclysm->DebuffDamageCutPercentNow() : 0.0f;
+}
+
+const TCHAR* UCataclysmDebuffs::ImmuneAndAppliesNoneStat = TEXT("immune_to_debuffs_and_applies_none");
+
+bool UCataclysmDebuffs::HoldsImmuneAndAppliesNone(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* Holder =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Actor));
+	// THE FALLBACK IS NOUGHT: there is no gameplay attribute, and a character
+	// with no such row answers nought. NO TAGS: the row is about every debuff,
+	// whatever lays it.
+	return Holder && Holder->StatForSkill(FName(ImmuneAndAppliesNoneStat), FGameplayTagContainer(), 0.0f) > 0.0f;
+}
+
+bool UCataclysmDebuffs::RefusedByARow(const AActor* Instigator, const AActor* Target,
+									  const FGameplayTag& Debuff)
+{
+	// THE TAG FIRST, because most of what the four functions lay is asked here
+	// too and is no debuff: every buff, a stagger, a pin, a knockdown, a fear.
+	if (!IsADebuff(Debuff))
+	{
+		return false;
+	}
+	// IMMUNE, AND LAYS NONE. Ruled 2026-10-13.
+	if (HoldsImmuneAndAppliesNone(Target) || HoldsImmuneAndAppliesNone(Instigator))
+	{
+		return true;
+	}
+	// AND WHAT FOLLOWS A HOLDER LAYS NONE: its minion and its thrall, with or
+	// without Conduit. Null for anything that follows nobody.
+	const AActor* Commander = UCataclysmCommand::CommanderOf(Instigator);
+	return Commander && HoldsImmuneAndAppliesNone(Commander);
+}
+
+int32 UCataclysmDebuffs::ImmunityStep(AActor* Character)
+{
+	// A CORPSE IS SKIPPED, as every job on the per-character step skips one.
+	if (!Character || UCataclysmSkillEffects::IsDead(Character))
+	{
+		return 0;
+	}
+	UAbilitySystemComponent* AbilitySystem = UCataclysmTargeting::AbilitySystemOf(Character);
+	if (!AbilitySystem || !HoldsImmuneAndAppliesNone(Character))
+	{
+		// EVERY CHARACTER IN THE GAME WITHOUT THE ROW. Asked before the effects
+		// are gathered, because gathering them is the expensive half.
+		return 0;
+	}
+
+	// AN EMPTY CONTAINER WOULD MATCH EVERY EFFECT, buffs included, for the
+	// reason `HoldStep` gives.
+	const FGameplayTagContainer Roots = DebuffRoots();
+	if (Roots.IsEmpty())
+	{
+		return 0;
+	}
+
+	// A copy of the handles, since removing one changes the container they
+	// were read from.
+	int32 Removed = 0;
+	const TArray<FActiveGameplayEffectHandle> Handles =
+		AbilitySystem->GetActiveEffects(FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(Roots));
+	for (const FActiveGameplayEffectHandle& Handle : Handles)
+	{
+		const FActiveGameplayEffect* Effect = AbilitySystem->GetActiveGameplayEffect(Handle);
+		if (!Effect)
+		{
+			continue;
+		}
+		// CONVERTED DAMAGE NOT YET TAKEN IS KEPT, as `Cleanse` keeps it: it is
+		// damage already taken and stored, and removing it would delete it.
+		const float ConvertedStamp = Effect->Spec.GetSetByCallerMagnitude(
+			FName(UCataclysmSkillEffects::ConvertedDamageDataName), /*WarnIfNotFound=*/false, 0.0f);
+		if (ConvertedStamp > 0.0f)
+		{
+			continue;
+		}
+		if (AbilitySystem->RemoveActiveGameplayEffect(Handle))
+		{
+			++Removed;
+		}
+	}
+	return Removed;
+}

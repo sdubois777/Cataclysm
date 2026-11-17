@@ -1,0 +1,2568 @@
+{
+  "version": "1.0",
+  "metadata": {
+    "name": "Masochist Class Tree",
+    "description": "Single continuous web. The Path of Suffering runs up the centre and is what fills Fervour from health lost. Flesh Craver upper-left, Blood Tithe upper-right, Flagellant lower-left, Low Life lower-right. Keystones sit at the far end of each limb and need full investment in their parent. The four vow capstones are the 25/50/100/200 point tiers and stand apart from the web.",
+    "createdAt": "2026-08-06T00:00:00.000Z",
+    "updatedAt": "2026-08-06T00:00:00.000Z",
+    "pointBudget": 230
+  },
+  "viewport": {
+    "x": 1200.0,
+    "y": 200.0,
+    "zoom": 0.45
+  },
+  "nodes": [
+    {
+      "id": "basic_spine_000",
+      "position": {
+        "x": 0,
+        "y": 780
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Fervour",
+        "description": "Health you lose generates Fervour: 1 per 1% of maximum health lost to damage, and 1 per 1% of maximum health spent as an ability cost. While you have this, healing removes Fervour at the same rate, 1 per 1% of maximum health restored, so your health regeneration is what empties it rather than a timer.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_001",
+      "position": {
+        "x": -450,
+        "y": 648
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Pain Tolerance",
+        "description": "+1% increased Maximum Health and +0.5% increased Armor per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 12
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_002",
+      "position": {
+        "x": 675,
+        "y": 648
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Willing Flesh",
+        "description": "+2% increased Health Regeneration per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_003",
+      "position": {
+        "x": -300,
+        "y": 516
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Cataclysmic Resonance",
+        "description": "+1% increased damage per point for 5 seconds after you take damage of a Cataclysm type other than Demonic.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 12
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_004",
+      "position": {
+        "x": -300,
+        "y": 384
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Brutal Determination",
+        "description": "+0.4% Life Leech per point. The Masochist has no Life Leech of its own, so this is what the tree's other Life Leech nodes increase.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_005",
+      "position": {
+        "x": 900,
+        "y": 516
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Echoes of Agony",
+        "description": "Damage taken from damage over time effects is reduced by 1% per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_006",
+      "position": {
+        "x": -375,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Open Wounds",
+        "description": "+2% increased Fervour gained from health lost to damage per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_007",
+      "position": {
+        "x": 900,
+        "y": 384
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Blood Price",
+        "description": "+2% increased Fervour gained from health spent as an ability cost per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_008",
+      "position": {
+        "x": -375,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Scar Tissue",
+        "description": "+2% increased maximum Fervour per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_009",
+      "position": {
+        "x": 900,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Hardened Nerves",
+        "description": "+2% increased Crowd Control Resistance per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_010",
+      "position": {
+        "x": -150,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Retributive Instinct",
+        "description": "+3% increased Retaliation per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_spine_001",
+      "position": {
+        "x": 150,
+        "y": 516
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Communion of Pain",
+        "description": "While your Fervour is at maximum you deal 20% more damage and take 20% more damage.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_spine_002",
+      "position": {
+        "x": 0,
+        "y": 252
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Sanguine Ledger",
+        "description": "Health regeneration no longer removes Fervour, but your Health Regeneration is reduced by 50% (multiplicative).",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_spine_003",
+      "position": {
+        "x": -150,
+        "y": -144
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Reciprocity",
+        "description": "Your Retaliation damage is increased by 1% for each point of Fervour you currently hold.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_fc_stem0",
+      "position": {
+        "x": -450,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Iron Hide",
+        "description": "+3% increased Armor per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_fc_stem1",
+      "position": {
+        "x": -450,
+        "y": -144
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Bulk",
+        "description": "+1% increased Maximum Health per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_fc_stem2",
+      "position": {
+        "x": -300,
+        "y": -276
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Reprisal",
+        "description": "+3% increased Retaliation per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_fc_a0",
+      "position": {
+        "x": -600,
+        "y": -276
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Vicious Onslaught",
+        "description": "+1% increased Attack Damage per point for every 5% of your maximum health that is missing.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 12
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_fc_a1",
+      "position": {
+        "x": -600,
+        "y": -408
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Blood Offering",
+        "description": "Taking damage grants a stack of Bloodlust for 5 seconds, up to 5 stacks. Each stack gives +1% increased melee damage per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_fc_a2",
+      "position": {
+        "x": -600,
+        "y": -540
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Thirst for Pain",
+        "description": "While you are Bleeding, +2% increased Attack Speed per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_fc_b0",
+      "position": {
+        "x": -450,
+        "y": -276
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Battle-Scarred",
+        "description": "+2% increased Armor per point for each unique debuff on you.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_fc_b1",
+      "position": {
+        "x": -450,
+        "y": -408
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Undying Hunger",
+        "description": "+3% increased Life Leech per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_fc_b2",
+      "position": {
+        "x": -450,
+        "y": -540
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Mutilation Mastery",
+        "description": "Your melee critical strikes have a 5% chance per point to apply Bleeding.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_fc_c0",
+      "position": {
+        "x": -300,
+        "y": -408
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Gorge",
+        "description": "+2% increased Fervour gained from health lost to damage per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_fc_c1",
+      "position": {
+        "x": -300,
+        "y": -540
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Unflinching",
+        "description": "+2% increased Crowd Control Resistance per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_fc_kA",
+      "position": {
+        "x": -600,
+        "y": -672
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Carnage",
+        "description": "Killing an enemy while above 75 Fervour grants a stack of Carnage for 8 seconds, up to 10 stacks. Each stack gives 3% more melee damage.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_fc_kB",
+      "position": {
+        "x": -450,
+        "y": -672
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Wounds That Feed",
+        "description": "Healing from Life Leech does not remove Fervour.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_fc_kC",
+      "position": {
+        "x": -300,
+        "y": -672
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Flesh Craver",
+        "description": "You gain 30% more Fervour from health lost to damage, and 50% less Fervour from health spent as an ability cost.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_fl_stem0",
+      "position": {
+        "x": -900,
+        "y": 516
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Stigmata",
+        "description": "+2% increased damage over time damage per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_fl_stem1",
+      "position": {
+        "x": -900,
+        "y": 384
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Lingering Hurt",
+        "description": "+2% increased damage over time duration per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_fl_stem2",
+      "position": {
+        "x": -750,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Penitent",
+        "description": "+1% increased Maximum Health per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_fl_a0",
+      "position": {
+        "x": -1050,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Endurance in Suffering",
+        "description": "For each unique debuff on you, +1% increased damage and +0.5% increased Damage Reduction per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_fl_a1",
+      "position": {
+        "x": -1050,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Wound Channeling",
+        "description": "Damage from debuffs on you is increased by 1% per point, and you deal 1% increased damage per point to enemies carrying a debuff you also carry.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_fl_a2",
+      "position": {
+        "x": -1050,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Symphony of Pain",
+        "description": "Debuffs on you last 2% longer per point, and their effect on you is reduced by 1% per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_fl_b0",
+      "position": {
+        "x": -900,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Contagious Torment",
+        "description": "When a debuff on you deals damage, enemies within 6 metres have a 1% chance per point to receive a random debuff you carry.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_fl_b1",
+      "position": {
+        "x": -900,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Empathic Link",
+        "description": "When an enemy dies, its debuffs have a 2% chance per point to pass to a random enemy within 6 metres.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_fl_b2",
+      "position": {
+        "x": -900,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Beacon of Despair",
+        "description": "You radiate an aura that applies a random debuff to enemies within 6 metres every 3 seconds. The duration of those debuffs is increased by 4% per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_fl_c0",
+      "position": {
+        "x": -750,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Shared Agony",
+        "description": "+2% increased Fervour gained from health lost to damage over time per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_fl_c1",
+      "position": {
+        "x": -750,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Ceaseless",
+        "description": "+2% increased maximum Fervour per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_fl_kA",
+      "position": {
+        "x": -1050,
+        "y": -144
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Vessel of Plagues",
+        "description": "Debuffs on you last 50% longer, and debuffs on you deal 50% more damage to you.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_fl_kB",
+      "position": {
+        "x": -900,
+        "y": -144
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Doctrine of Pain",
+        "description": "You deal 4% more damage for each unique debuff on you.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_fl_kC",
+      "position": {
+        "x": -750,
+        "y": -144
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Flagellant",
+        "description": "Every debuff on you grants 5 Fervour per second for as long as it lasts.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_ll_stem0",
+      "position": {
+        "x": 450,
+        "y": 516
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Quickened",
+        "description": "+1% increased Movement Speed per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_ll_stem1",
+      "position": {
+        "x": 450,
+        "y": 384
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Razor's Edge",
+        "description": "+3% increased Critical Strike Multiplier per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_ll_stem2",
+      "position": {
+        "x": 600,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Defiance",
+        "description": "+2% increased Retaliation per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_ll_a0",
+      "position": {
+        "x": 300,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Living on the Edge",
+        "description": "While at or below 35% health, +2% increased damage per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_ll_a1",
+      "position": {
+        "x": 300,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Last Stand",
+        "description": "While at or below 20% health, +3% increased Critical Strike Chance per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_ll_a2",
+      "position": {
+        "x": 300,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "The Catalyst",
+        "description": "While at or below 5% health, your skills have a 5% chance per point not to go on cooldown.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_ll_b0",
+      "position": {
+        "x": 450,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Desperate Measures",
+        "description": "While at or below 50% health, +1% increased Movement Speed per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_ll_b1",
+      "position": {
+        "x": 450,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "The Breaking Point",
+        "description": "Dropping below 50% health converts all damage you take into Bleeding over 5 seconds. The conversion lasts 3 seconds, increased by 5% per point, and cannot happen more than once every 10 seconds.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_ll_b2",
+      "position": {
+        "x": 450,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Unstable Aura",
+        "description": "While at or below 10% health, you release a nova every 5 seconds dealing damage equal to 1% of your missing health per point to enemies within 6 metres.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_ll_c0",
+      "position": {
+        "x": 600,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Bloodletting",
+        "description": "+2% increased Fervour gained from health spent as an ability cost per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_ll_c1",
+      "position": {
+        "x": 600,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Threadbare",
+        "description": "+2% increased maximum Fervour per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_ll_kA",
+      "position": {
+        "x": 300,
+        "y": -144
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "The Edge",
+        "description": "While at or below 20% health you take 25% less damage and your Fervour does not decrease.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_ll_kB",
+      "position": {
+        "x": 450,
+        "y": -144
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Point of No Return",
+        "description": "You cannot be healed above 50% of your maximum health, but you deal 25% more damage.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_ll_kC",
+      "position": {
+        "x": 600,
+        "y": -144
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Low Life",
+        "description": "While at or below 35% health you gain 10 Fervour per second.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_25",
+      "position": {
+        "x": -1500,
+        "y": 780
+      },
+      "type": "capstone",
+      "data": {
+        "kind": "capstone",
+        "name": "The First Vow",
+        "description": "Unlocks at 25 points spent. Choose one. The choice is permanent.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1,
+        "isDecision": true,
+        "options": [
+          {
+            "name": "Water to Blood",
+            "description": "You no longer have a mana pool. All maximum mana is converted into added maximum health, and every ability costs health instead of mana."
+          },
+          {
+            "name": "Reprisal Wave",
+            "description": "Your retaliation damage strikes every enemy within 4 metres, not only the one that hit you."
+          },
+          {
+            "name": "Stigmatic",
+            "description": "Each debuff on you grants 4% increased damage and 4% increased health regeneration."
+          }
+        ],
+        "selectedOption": null,
+        "threshold": 25
+      },
+      "measured": {
+        "width": 20,
+        "height": 20
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_50",
+      "position": {
+        "x": -1500,
+        "y": 540
+      },
+      "type": "capstone",
+      "data": {
+        "kind": "capstone",
+        "name": "The Second Vow",
+        "description": "Unlocks at 50 points spent. Choose one. The choice is permanent.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1,
+        "isDecision": true,
+        "options": [
+          {
+            "name": "Rock Bottom",
+            "description": "A health cost can never reduce you below 1 health; anything you cannot pay becomes health debt instead. Dropping below 20% health clears all outstanding debt and grants 50 Fervour, no more than once every 30 seconds."
+          },
+          {
+            "name": "Feeding Wound",
+            "description": "Your life leech applies to your retaliation damage as well as to your attacks."
+          },
+          {
+            "name": "Ceaseless Penance",
+            "description": "Debuffs on you no longer expire while you are above 50% health."
+          }
+        ],
+        "selectedOption": null,
+        "threshold": 50
+      },
+      "measured": {
+        "width": 20,
+        "height": 20
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_100",
+      "position": {
+        "x": -1500,
+        "y": 300
+      },
+      "type": "capstone",
+      "data": {
+        "kind": "capstone",
+        "name": "The Third Vow",
+        "description": "Unlocks at 100 points spent. Choose one. The choice is permanent.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1,
+        "isDecision": true,
+        "options": [
+          {
+            "name": "Deficit",
+            "description": "Your damage is increased by 1% for every 2% of your maximum health you are missing or owe."
+          },
+          {
+            "name": "Glutton",
+            "description": "Your retaliation damage is increased by 1% for every 1% of life leech you have."
+          },
+          {
+            "name": "Doctrine Made Flesh",
+            "description": "Each debuff on you grants 1% more damage and reduces the damage that debuff deals to you by 10%."
+          }
+        ],
+        "selectedOption": null,
+        "threshold": 100
+      },
+      "measured": {
+        "width": 20,
+        "height": 20
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_200",
+      "position": {
+        "x": -1500,
+        "y": 60
+      },
+      "type": "capstone",
+      "data": {
+        "kind": "capstone",
+        "name": "The Final Vow",
+        "description": "Unlocks at 200 points spent. Choose one. The choice is permanent.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1,
+        "isDecision": true,
+        "options": [
+          {
+            "name": "The Last Drop",
+            "description": "While below 20% health your skills cost no health, and every skill you cast grants 10 Fervour."
+          },
+          {
+            "name": "Carnivore",
+            "description": "Every hit you take grants a stack of Carnage. Carnage has no maximum, and each stack grants 2% more damage."
+          },
+          {
+            "name": "Vessel Unbroken",
+            "description": "Debuffs on you deal no damage at all, and each one grants 5% more damage and 5 Fervour per second."
+          }
+        ],
+        "selectedOption": null,
+        "threshold": 200
+      },
+      "measured": {
+        "width": 20,
+        "height": 20
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_bt_stem0",
+      "position": {
+        "x": 900,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Blood Coin",
+        "description": "+2% increased Fervour gained from health spent as an ability cost per point.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 12
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_bt_stem1",
+      "position": {
+        "x": 900,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Deeper Cuts",
+        "description": "Your skills also cost 0.25% of your maximum health per point, in addition to any other cost. This cost generates Fervour like any other.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_bt_stem2",
+      "position": {
+        "x": 975,
+        "y": -144
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Ready Blood",
+        "description": "+2% increased maximum Health per point.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_bt_a0",
+      "position": {
+        "x": 750,
+        "y": -144
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Deferred Payment",
+        "description": "10% per point of the health a skill costs is not taken when the skill is used. It is taken 3 seconds later.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_bt_a1",
+      "position": {
+        "x": 750,
+        "y": -276
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Compound Interest",
+        "description": "+1% increased damage per point for every 5% of your maximum health you currently owe.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_bt_a2",
+      "position": {
+        "x": 750,
+        "y": -408
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Rolling Debt",
+        "description": "Paying a health cost while one is still owed extends the delay on what is owed by 0.5 seconds per point, to a maximum of 3 seconds.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_bt_kA",
+      "position": {
+        "x": 750,
+        "y": -540
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "The Reckoning",
+        "description": "Health costs are never taken. They accumulate as a debt. You deal 1% more damage for every 2% of your maximum health that you owe, and the debt is cleared by killing an enemy and never by time. If your debt ever exceeds your current health you begin to bleed out, losing health until you kill something or die of it.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_bt_b0",
+      "position": {
+        "x": 900,
+        "y": -276
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Blood Rush",
+        "description": "+2% increased damage per point for 2 seconds after you pay a health cost.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_bt_b1",
+      "position": {
+        "x": 900,
+        "y": -408
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Sanguine Momentum",
+        "description": "Each health cost paid within 3 seconds of the last grants a stack, up to 5 stacks. Each stack gives +1% increased attack speed per point.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_bt_b2",
+      "position": {
+        "x": 900,
+        "y": -540
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Grand Tithe",
+        "description": "A skill whose health cost is above 10% of your maximum health deals 4% increased damage per point.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_bt_kB",
+      "position": {
+        "x": 900,
+        "y": -672
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Exsanguinate",
+        "description": "Every skill costs an additional 15% of your current health, and every skill deals 40% more damage. A cost taken from current health cannot reduce it below 1.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_bt_c0",
+      "position": {
+        "x": 1050,
+        "y": -276
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Staunch",
+        "description": "The Fervour removed by your own health regeneration is reduced by 5% per point.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_bt_c1",
+      "position": {
+        "x": 1050,
+        "y": -408
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Deep Reserves",
+        "description": "+2% increased maximum Fervour per point.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_bt_kC",
+      "position": {
+        "x": 1050,
+        "y": -540
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Blood Tithe",
+        "description": "You gain 30% more Fervour from health spent as an ability cost, and 50% less Fervour from health lost to damage.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    }
+  ],
+  "uiElements": [
+    {
+      "id": "ui_textLabel_frame_1",
+      "type": "ui_textLabel",
+      "position": {
+        "x": -120.0,
+        "y": 1400.0
+      },
+      "zIndex": -1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_textLabel",
+        "color": "#e2e8f0",
+        "opacity": 0.7,
+        "text": "MASOCHIST",
+        "fontSize": 22
+      },
+      "measured": {
+        "width": 132,
+        "height": 33
+      },
+      "selected": false,
+      "dragging": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_1",
+      "source": "basic_spine_000",
+      "target": "basic_spine_001",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "e_2",
+      "source": "basic_spine_000",
+      "target": "basic_spine_002",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "e_3",
+      "source": "basic_spine_001",
+      "target": "basic_spine_003",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_4",
+      "source": "basic_spine_003",
+      "target": "basic_spine_004",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_5",
+      "source": "basic_spine_002",
+      "target": "basic_spine_005",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 3
+      },
+      "selected": false
+    },
+    {
+      "id": "e_6",
+      "source": "basic_spine_004",
+      "target": "basic_spine_006",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 5
+      },
+      "selected": false
+    },
+    {
+      "id": "e_7",
+      "source": "basic_spine_005",
+      "target": "basic_spine_007",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 5
+      },
+      "selected": false
+    },
+    {
+      "id": "e_8",
+      "source": "basic_spine_006",
+      "target": "basic_spine_008",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_9",
+      "source": "basic_spine_007",
+      "target": "basic_spine_009",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_10",
+      "source": "basic_spine_008",
+      "target": "basic_spine_010",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_11",
+      "source": "basic_spine_001",
+      "target": "keystone_spine_001",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 12
+      },
+      "selected": false
+    },
+    {
+      "id": "e_12",
+      "source": "basic_spine_004",
+      "target": "keystone_spine_002",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
+      },
+      "selected": false
+    },
+    {
+      "id": "e_13",
+      "source": "basic_spine_010",
+      "target": "keystone_spine_003",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_14",
+      "source": "basic_spine_008",
+      "target": "basic_fc_stem0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_15",
+      "source": "basic_fc_stem0",
+      "target": "basic_fc_stem1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_16",
+      "source": "basic_fc_stem1",
+      "target": "basic_fc_stem2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_17",
+      "source": "basic_fc_stem1",
+      "target": "basic_fc_a0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_18",
+      "source": "basic_fc_a0",
+      "target": "basic_fc_a1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_19",
+      "source": "basic_fc_a1",
+      "target": "basic_fc_a2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_20",
+      "source": "basic_fc_stem1",
+      "target": "basic_fc_b0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_21",
+      "source": "basic_fc_b0",
+      "target": "basic_fc_b1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_22",
+      "source": "basic_fc_b1",
+      "target": "basic_fc_b2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_23",
+      "source": "basic_fc_stem2",
+      "target": "basic_fc_c0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_24",
+      "source": "basic_fc_c0",
+      "target": "basic_fc_c1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_25",
+      "source": "basic_fc_a2",
+      "target": "keystone_fc_kA",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_26",
+      "source": "basic_fc_b2",
+      "target": "keystone_fc_kB",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_27",
+      "source": "basic_fc_c1",
+      "target": "keystone_fc_kC",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_42",
+      "source": "basic_spine_001",
+      "target": "basic_fl_stem0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_43",
+      "source": "basic_fl_stem0",
+      "target": "basic_fl_stem1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_44",
+      "source": "basic_fl_stem1",
+      "target": "basic_fl_stem2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_45",
+      "source": "basic_fl_stem1",
+      "target": "basic_fl_a0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_46",
+      "source": "basic_fl_a0",
+      "target": "basic_fl_a1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_47",
+      "source": "basic_fl_a1",
+      "target": "basic_fl_a2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_48",
+      "source": "basic_fl_stem1",
+      "target": "basic_fl_b0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_49",
+      "source": "basic_fl_b0",
+      "target": "basic_fl_b1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_50",
+      "source": "basic_fl_b1",
+      "target": "basic_fl_b2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_51",
+      "source": "basic_fl_stem2",
+      "target": "basic_fl_c0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_52",
+      "source": "basic_fl_c0",
+      "target": "basic_fl_c1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_53",
+      "source": "basic_fl_a2",
+      "target": "keystone_fl_kA",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_54",
+      "source": "basic_fl_b2",
+      "target": "keystone_fl_kB",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_55",
+      "source": "basic_fl_c1",
+      "target": "keystone_fl_kC",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_56",
+      "source": "basic_spine_002",
+      "target": "basic_ll_stem0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_57",
+      "source": "basic_ll_stem0",
+      "target": "basic_ll_stem1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_58",
+      "source": "basic_ll_stem1",
+      "target": "basic_ll_stem2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_59",
+      "source": "basic_ll_stem1",
+      "target": "basic_ll_a0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_60",
+      "source": "basic_ll_a0",
+      "target": "basic_ll_a1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_61",
+      "source": "basic_ll_a1",
+      "target": "basic_ll_a2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_62",
+      "source": "basic_ll_stem1",
+      "target": "basic_ll_b0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_63",
+      "source": "basic_ll_b0",
+      "target": "basic_ll_b1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_64",
+      "source": "basic_ll_b1",
+      "target": "basic_ll_b2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_65",
+      "source": "basic_ll_stem2",
+      "target": "basic_ll_c0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_66",
+      "source": "basic_ll_c0",
+      "target": "basic_ll_c1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_67",
+      "source": "basic_ll_a2",
+      "target": "keystone_ll_kA",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_68",
+      "source": "basic_ll_b2",
+      "target": "keystone_ll_kB",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_69",
+      "source": "basic_ll_c1",
+      "target": "keystone_ll_kC",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_70",
+      "source": "basic_spine_009",
+      "target": "basic_bt_stem0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_71",
+      "source": "basic_bt_stem0",
+      "target": "basic_bt_stem1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_72",
+      "source": "basic_bt_stem1",
+      "target": "basic_bt_stem2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_73",
+      "source": "basic_bt_stem1",
+      "target": "basic_bt_a0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_74",
+      "source": "basic_bt_stem2",
+      "target": "basic_bt_b0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_75",
+      "source": "basic_bt_stem2",
+      "target": "basic_bt_c0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_76",
+      "source": "basic_bt_a0",
+      "target": "basic_bt_a1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_77",
+      "source": "basic_bt_a1",
+      "target": "basic_bt_a2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_78",
+      "source": "basic_bt_a2",
+      "target": "keystone_bt_kA",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_79",
+      "source": "basic_bt_b0",
+      "target": "basic_bt_b1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_80",
+      "source": "basic_bt_b1",
+      "target": "basic_bt_b2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_81",
+      "source": "basic_bt_b2",
+      "target": "keystone_bt_kB",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_82",
+      "source": "basic_bt_c0",
+      "target": "basic_bt_c1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_83",
+      "source": "basic_bt_c1",
+      "target": "keystone_bt_kC",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    }
+  ]
+}

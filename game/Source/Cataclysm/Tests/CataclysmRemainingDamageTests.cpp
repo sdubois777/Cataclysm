@@ -1,0 +1,737 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "Misc/AutomationTest.h"
+
+#if WITH_DEV_AUTOMATION_TESTS
+
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmDebuffs.h"
+#include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmStatPipeline.h"
+#include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmTeams.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmPlayerCharacter.h"
+#include "Player/CataclysmPlayerState.h"
+#include "Tests/CataclysmTestWorld.h"
+#include "AbilitySystemComponent.h"
+#include "Engine/World.h"
+#include "GameFramework/Actor.h"
+#include "Misc/ScopeExit.h"
+
+/**
+ * Issue #1833 group D part 4, ruled 2026-10-01 under the owner's delegation: the
+ * remaining damage of the wearer's own damage over time effects, dealt at once.
+ * "When you die, all active DoTs on nearby enemies instantly deal their remaining
+ * damage" ends each one; "Necrosis effects deal 20%-40% of their remaining damage
+ * instantly when you land a critical strike" ends nothing.
+ *
+ * THE TICKS ARE REAL: each effect is applied through the game's own functions and
+ * the clock is run, so what remains is what the engine's period timer has left,
+ * not a number written by hand. THE DEATH IS REAL: the player dies through a blow,
+ * and `HandleDeath` raises `player_death`. Each action is built by hand, as the
+ * item would build it from a row; the rows have tests of their own.
+ */
+namespace CataclysmRemainingDamageTest
+{
+	constexpr float M = 100.0f;
+
+	/** A bare actor holding every attribute set, with a thousand health. */
+	struct FFighter
+	{
+		explicit FFighter(UWorld* World)
+		{
+			Actor = World->SpawnActor<AActor>();
+			check(Actor);
+			AbilitySystem = NewObject<UCataclysmAbilitySystemComponent>(Actor);
+			AbilitySystem->RegisterComponent();
+
+			// Raw pointers on purpose: AddAttributeSetSubobject is a template and
+			// a TObjectPtr deduces the wrapper rather than the set.
+			AbilitySystem->AddAttributeSetSubobject(NewObject<UCataclysmVitalAttributeSet>(Actor));
+			AbilitySystem->AddAttributeSetSubobject(NewObject<UCataclysmCombatAttributeSet>(Actor));
+			AbilitySystem->AddAttributeSetSubobject(
+				NewObject<UCataclysmResistanceAttributeSet>(Actor));
+			AbilitySystem->AddAttributeSetSubobject(
+				NewObject<UCataclysmAllResistanceAttributeSet>(Actor));
+			AbilitySystem->InitAbilityActorInfo(Actor, Actor);
+			AbilitySystem->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+			AbilitySystem->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetHealthAttribute(), 1000.0f);
+		}
+
+		~FFighter()
+		{
+			if (Actor)
+			{
+				Actor->Destroy();
+			}
+		}
+
+		TObjectPtr<AActor> Actor = nullptr;
+		TObjectPtr<UCataclysmAbilitySystemComponent> AbilitySystem = nullptr;
+	};
+
+	FGameplayTag Tag(const TCHAR* Name)
+	{
+		return FGameplayTag::RequestGameplayTag(FName(Name), /*ErrorIfNotFound=*/false);
+	}
+
+	float HealthOf(const AActor* Actor)
+	{
+		const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Actor);
+		return System ? System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute())
+					  : -1.0f;
+	}
+
+	/** The running effect granting `Granted` on `Actor`, or an invalid handle. */
+	FActiveGameplayEffectHandle Running(const AActor* Actor, const FGameplayTag& Granted)
+	{
+		const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Actor);
+		if (!System)
+		{
+			return FActiveGameplayEffectHandle();
+		}
+		const TArray<FActiveGameplayEffectHandle> Found = System->GetActiveEffects(
+			FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(FGameplayTagContainer(Granted)));
+		return Found.IsEmpty() ? FActiveGameplayEffectHandle() : Found[0];
+	}
+
+	float RemainingOn(const AActor* Actor, const FGameplayTag& Granted)
+	{
+		return UCataclysmSkillEffects::RemainingDamageOverTime(
+			UCataclysmTargeting::AbilitySystemOf(Actor), Running(Actor, Granted));
+	}
+
+	/** A damage over time of ten a tick for ten seconds, in `Instigator`'s name, unscaled. */
+	bool TenATick(AActor* Instigator, AActor* Target, const FGameplayTag& Granted,
+		float Seconds = 10.0f)
+	{
+		return UCataclysmSkillEffects::ApplyDamageOverTime(Instigator, Target,
+			/*DamagePerTick=*/10.0f, Seconds, Granted, /*bScalesWithInstigator=*/false);
+	}
+
+	/** A remaining damage action, as the item would build it from a row. */
+	FCataclysmPoolAction Remaining(ECataclysmRemainingDamage Kind, const TCHAR* Event, float Percent,
+		const FGameplayTag& Ailment = FGameplayTag())
+	{
+		FCataclysmPoolAction Action;
+		Action.Event = FName(Event);
+		Action.Pool = FName(Kind == ECataclysmRemainingDamage::Nearby
+			? UCataclysmAbilitySystemComponent::RemainingDamageNearbyAction
+			: UCataclysmAbilitySystemComponent::RemainingDamageTargetAction);
+		Action.Percent = Percent;
+		Action.RemainingDamage = Kind;
+		Action.Ailment = Ailment;
+		Action.TriggerKey = FName(*FString::Printf(TEXT("A_row:%s:%s"), *Action.Pool.ToString(), Event));
+		return Action;
+	}
+
+	/** A player pawn with its ability system on a player state, as the game wires it. */
+	ACataclysmPlayerCharacter* SpawnPlayer(UWorld* World, const FVector& Where)
+	{
+		ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+		ACataclysmPlayerCharacter* Actor =
+			World->SpawnActor<ACataclysmPlayerCharacter>(Where, FRotator::ZeroRotator);
+		if (State && Actor)
+		{
+			Actor->SetPlayerState(State);
+			Actor->OnRep_PlayerState();
+			return Actor;
+		}
+		return nullptr;
+	}
+
+	/** A creature of the monsters' side with a thousand health. */
+	ACataclysmEnemyCharacter* SpawnEnemy(UWorld* World, const FVector& Where)
+	{
+		ACataclysmEnemyCharacter* Actor =
+			World->SpawnActor<ACataclysmEnemyCharacter>(Where, FRotator::ZeroRotator);
+		if (Actor)
+		{
+			Actor->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+			Actor->SetHealth(1000.0f);
+			Actor->SetAttackDamage(50.0f);
+		}
+		return Actor;
+	}
+}
+
+#define CATACLYSM_TEST(TestClass, TestName) \
+	IMPLEMENT_SIMPLE_AUTOMATION_TEST(TestClass, TestName, \
+		EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter) \
+	bool TestClass::RunTest(const FString& Parameters)
+
+CATACLYSM_TEST(FCataclysmRemainingTicksTest,
+	"Cataclysm.RemainingDamage.TheTicksLeftAndAShareOfHealthOverThemAreWhatTheEngineWouldDeal")
+{
+	using Effects = UCataclysmSkillEffects;
+
+	// THE ENGINE'S RULE: the tick due now and every period after it, up to and
+	// including the end.
+	TestEqual(TEXT("due in 1, every 1, 10 left: 10"), Effects::DamageOverTimeTicksLeft(1.0f, 1.0f, 10.0f), 10);
+	TestEqual(TEXT("due in 0.5, every 1, 7.5 left: 8"), Effects::DamageOverTimeTicksLeft(0.5f, 1.0f, 7.5f), 8);
+	TestEqual(TEXT("due exactly at the end: 1"), Effects::DamageOverTimeTicksLeft(1.0f, 1.0f, 1.0f), 1);
+	TestEqual(TEXT("due after the end: 0"), Effects::DamageOverTimeTicksLeft(1.0f, 1.0f, 0.5f), 0);
+	TestEqual(TEXT("no period timer: 0"), Effects::DamageOverTimeTicksLeft(-1.0f, 1.0f, 10.0f), 0);
+	TestEqual(TEXT("no period: 0"), Effects::DamageOverTimeTicksLeft(1.0f, 0.0f, 10.0f), 0);
+	TestEqual(TEXT("never ends: 0"), Effects::DamageOverTimeTicksLeft(1.0f, 1.0f, -1.0f), 0);
+
+	// A SHARE OF CURRENT HEALTH, RULED 2026-10-01: Health x (1 - (1 - s)^n).
+	// 1000 x (1 - 0.99^4) = 39.403990.
+	TestEqual(TEXT("1% of 1000 over four ticks: 39.404"),
+		Effects::ShareOfHealthOverTicks(0.01f, 1000.0f, 1000.0f, false, 4), 39.40399f, 0.001f);
+	// A BOSS IS HELD AT HALF ITS MAXIMUM: 1000 x (1 - 0.5^4) = 937.5, held to 500.
+	TestEqual(TEXT("a boss at full health keeps half: 500"),
+		Effects::ShareOfHealthOverTicks(0.5f, 1000.0f, 1000.0f, true, 4), 500.0f, 0.001f);
+	TestEqual(TEXT("no tick left: nothing"),
+		Effects::ShareOfHealthOverTicks(0.01f, 1000.0f, 1000.0f, false, 0), 0.0f, 0.001f);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmRemainingAfterRealTicksTest,
+	"Cataclysm.RemainingDamage.AfterRealTicksTheBurstDealsWhatIsLeftAndEndsTheEffect")
+{
+	using namespace CataclysmRemainingDamageTest;
+
+	// TEN A TICK FOR TEN SECONDS, two and a half seconds in: two ticks have
+	// landed and eight are left, so the burst is 80 and the effect is gone. A
+	// SECOND ONE, REFRESHED to ten seconds at the same moment, has ten left.
+	//
+	// AND A SPENT BLEED OF THE WEARER'S BESIDE THE POISON, which the burst ends
+	// without paying. Issue #918, ruled 2026-10-31. The target is a plain actor
+	// that never moves, so the bleed deals nothing and the poison's figures are
+	// what they were; its four seconds of movement are written as spent by hand,
+	// so it has nothing left to pay, and its window still has seven and a half.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FGameplayTag Poison = Tag(TEXT("Keyword.DoT.Poison"));
+	if (!TestTrue(TEXT("set-up: the poison tag exists"), Poison.IsValid()))
+	{
+		return false;
+	}
+	{
+		const FFighter Wearer(World);
+		const FFighter Plain(World);
+		const FFighter Refreshed(World);
+		const FGameplayTag Bleed = Tag(TEXT("Keyword.DoT.Bleed"));
+		if (!TestTrue(TEXT("set-up: a poison lands"), TenATick(Wearer.Actor, Plain.Actor, Poison))
+			|| !TestTrue(TEXT("set-up: and a second"), TenATick(Wearer.Actor, Refreshed.Actor, Poison))
+			|| !TestTrue(TEXT("set-up: and the wearer's bleed on the first"),
+				Bleed.IsValid() && TenATick(Wearer.Actor, Plain.Actor, Bleed)))
+		{
+			return false;
+		}
+		CataclysmTestWorld::RunClock(World, 2.5f);
+		Plain.AbilitySystem->BleedMovingSeconds = UCataclysmDebuffs::BleedMovingSecondsCap;
+		if (!TestEqual(TEXT("set-up: two ticks of ten have landed"), HealthOf(Plain.Actor), 980.0f, 0.01f))
+		{
+			return false;
+		}
+		TestTrue(TEXT("set-up: the second is refreshed to ten seconds"),
+			TenATick(Wearer.Actor, Refreshed.Actor, Poison));
+
+		TestEqual(TEXT("eight ticks of ten are left"), RemainingOn(Plain.Actor, Poison), 80.0f, 0.01f);
+		TestEqual(TEXT("the refreshed one has ten left, the last at twelve seconds"),
+			RemainingOn(Refreshed.Actor, Poison), 100.0f, 0.01f);
+
+		TestEqual(TEXT("the burst reaches one effect"),
+			UCataclysmSkillEffects::DealRemainingDamageOverTime(
+				Wearer.Actor, Plain.Actor, 100.0f, FGameplayTag(), /*bEndEach=*/true), 1);
+		TestEqual(TEXT("and deals its eighty at once"), HealthOf(Plain.Actor), 900.0f, 0.01f);
+		TestFalse(TEXT("and the poison is gone"), Running(Plain.Actor, Poison).IsValid());
+		TestFalse(TEXT("and the spent bleed, which paid nothing and was not counted, is ended too"),
+			Running(Plain.Actor, Bleed).IsValid());
+
+		CataclysmTestWorld::RunClock(World, 3.0f);
+		TestEqual(TEXT("so nothing ticks after it"), HealthOf(Plain.Actor), 900.0f, 0.01f);
+	}
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmRemainingOnlyOwnTest,
+	"Cataclysm.RemainingDamage.OnlyTheWearersOwnEffectsAreDealtNotAnotherOrAMinions")
+{
+	using namespace CataclysmRemainingDamageTest;
+
+	// THREE EFFECTS ON ONE TARGET: the wearer's poison, another character's
+	// bleed, and a burn the wearer's minion set, which is the minion's by the
+	// ruling of 2026-09-17. Only the poison is dealt and ended.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FGameplayTag Poison = Tag(TEXT("Keyword.DoT.Poison"));
+	const FGameplayTag Bleed = Tag(TEXT("Keyword.DoT.Bleed"));
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	if (!TestTrue(TEXT("set-up: the three tags exist"), Poison.IsValid() && Bleed.IsValid() && Burn.IsValid()))
+	{
+		return false;
+	}
+	{
+		const FFighter Wearer(World);
+		const FFighter Other(World);
+		const FFighter Target(World);
+		ACataclysmMinion* Minion = ACataclysmMinion::Spawn(Wearer.Actor, FVector(0.0f, 3.0f * M, 0.0f),
+			/*Lifetime=*/60.0f, /*bBurns=*/false);
+		ON_SCOPE_EXIT { if (IsValid(Minion)) { Minion->Destroy(); } };
+		if (!TestNotNull(TEXT("set-up: the wearer's minion"), Minion)
+			|| !TestTrue(TEXT("set-up: the wearer's poison"), TenATick(Wearer.Actor, Target.Actor, Poison))
+			|| !TestTrue(TEXT("set-up: another's bleed"), TenATick(Other.Actor, Target.Actor, Bleed))
+			|| !TestTrue(TEXT("set-up: the minion's burn"), TenATick(Minion, Target.Actor, Burn)))
+		{
+			return false;
+		}
+		CataclysmTestWorld::RunClock(World, 2.5f);
+
+		TestEqual(TEXT("one effect is the wearer's"),
+			UCataclysmSkillEffects::DealRemainingDamageOverTime(
+				Wearer.Actor, Target.Actor, 100.0f, FGameplayTag(), /*bEndEach=*/true), 1);
+		TestFalse(TEXT("the wearer's poison is dealt and gone"), Running(Target.Actor, Poison).IsValid());
+		// A BLEED HAS LEFT ONLY WHAT ITS FOUR SECONDS OF MOVEMENT ALLOW. Issue #918, ruled 2026-10-31. Its timer has
+		// eight ticks left, and the target, a plain actor no sample reads, has never moved, so none of the four seconds
+		// is spent and four ticks of ten are what it can still deal.
+		TestEqual(TEXT("another's bleed keeps the four ticks its four seconds of movement allow"),
+			RemainingOn(Target.Actor, Bleed), 40.0f, 0.01f);
+		TestEqual(TEXT("the minion's burn keeps its eight ticks"), RemainingOn(Target.Actor, Burn), 80.0f, 0.01f);
+	}
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmRemainingShareOfHealthTest,
+	"Cataclysm.RemainingDamage.AShareOfCurrentHealthBurstsForWhatItsTicksWouldTake")
+{
+	using namespace CataclysmRemainingDamageTest;
+
+	// A VOID SPLINTER OF 1% A TICK FOR FOUR SECONDS, a second and a half in: one
+	// tick took 10 of 1000, and the three left would take 990 x (1 - 0.99^3) =
+	// 29.404, which the burst deals at once.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FGameplayTag Splinter = Tag(TEXT("Keyword.DoT.VoidSplinter"));
+	if (!TestTrue(TEXT("set-up: the Void Splinter tag exists"), Splinter.IsValid()))
+	{
+		return false;
+	}
+	{
+		const FFighter Wearer(World);
+		const FFighter Target(World);
+		if (!TestTrue(TEXT("set-up: a Void Splinter lands"),
+				UCataclysmSkillEffects::ApplyShareOfHealthOverTime(
+					Wearer.Actor, Target.Actor, 0.01f, 4.0f, Splinter)))
+		{
+			return false;
+		}
+		CataclysmTestWorld::RunClock(World, 1.5f);
+		if (!TestEqual(TEXT("set-up: one tick took 1% of 1000"), HealthOf(Target.Actor), 990.0f, 0.01f))
+		{
+			return false;
+		}
+		TestEqual(TEXT("three ticks left would take 29.404"), RemainingOn(Target.Actor, Splinter), 29.40399f, 0.01f);
+		UCataclysmSkillEffects::DealRemainingDamageOverTime(
+			Wearer.Actor, Target.Actor, 100.0f, FGameplayTag(), /*bEndEach=*/true);
+		TestEqual(TEXT("and the burst takes them at once"), HealthOf(Target.Actor), 990.0f - 29.40399f, 0.01f);
+	}
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmRemainingOnDeathTest,
+	"Cataclysm.RemainingDamage.OnDeathEveryOwnEffectWithinFiveMetresBurstsAndEnds")
+{
+	using namespace CataclysmRemainingDamageTest;
+
+	// "When you die, all active DoTs on nearby enemies instantly deal their
+	// remaining damage", BY HAND, THROUGH A REAL DEATH. The enemy three metres
+	// away takes its poison's eight remaining ticks at once and the poison ends;
+	// the enemy eight metres away keeps its poison running. Each tick's worth is
+	// read from the ticks that landed, so the creature's own defences are counted
+	// once in each.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FGameplayTag Poison = Tag(TEXT("Keyword.DoT.Poison"));
+	ACataclysmPlayerCharacter* Player = SpawnPlayer(World, FVector::ZeroVector);
+	ACataclysmEnemyCharacter* Near = SpawnEnemy(World, FVector(3.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Far = SpawnEnemy(World, FVector(8.0f * M, 0.0f, 0.0f));
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+	if (!TestNotNull(TEXT("a player"), Player) || !TestNotNull(TEXT("an enemy within five metres"), Near)
+		|| !TestNotNull(TEXT("an enemy beyond them"), Far)
+		|| !TestNotNull(TEXT("the player's ability system"), AbilitySystem)
+		|| !TestTrue(TEXT("set-up: the poison tag exists"), Poison.IsValid())
+		|| !TestTrue(TEXT("set-up: the player poisons the near enemy"), TenATick(Player, Near, Poison))
+		|| !TestTrue(TEXT("set-up: and the far one"), TenATick(Player, Far, Poison)))
+	{
+		return false;
+	}
+	AbilitySystem->SetPoolActions({Remaining(ECataclysmRemainingDamage::Nearby, TEXT("player_death"), 100.0f)});
+
+	CataclysmTestWorld::RunClock(World, 2.5f);
+	const float NearBefore = HealthOf(Near);
+	const float EachTick = (1000.0f - NearBefore) / 2.0f;
+	if (!TestTrue(*FString::Printf(TEXT("set-up: two ticks landed on the near enemy, %.2f each"), EachTick),
+			EachTick > 0.0f))
+	{
+		return false;
+	}
+	const float FarBefore = HealthOf(Far);
+
+	UCataclysmSkillEffects::ApplyDirectDamage(Near, Player, 100000.0f);
+	if (!TestTrue(TEXT("the player died"), UCataclysmSkillEffects::IsDead(Player)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the near enemy takes its eight remaining ticks at once"),
+		HealthOf(Near), NearBefore - 8.0f * EachTick, 0.05f);
+	TestFalse(TEXT("and its poison ends"), Running(Near, Poison).IsValid());
+	TestEqual(TEXT("the far enemy takes nothing at once"), HealthOf(Far), FarBefore, 0.01f);
+	TestTrue(TEXT("and its poison runs on"), Running(Far, Poison).IsValid());
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmRemainingNecrosisShareTest,
+	"Cataclysm.RemainingDamage.ACriticalStrikeDealsAShareOfItsTargetsNecrosisAndEndsNothing")
+{
+	using namespace CataclysmRemainingDamageTest;
+
+	// "Necrosis effects deal 20%-40% of their remaining damage instantly when you
+	// land a critical strike", BY HAND at 30%. The target carries the wearer's
+	// Necrosis and the wearer's burn, each with eight ticks of ten left. A
+	// critical strike on it deals 30% of the Necrosis's 80, which is 24, and
+	// neither effect is ended or reduced: the Necrosis still has 80 left.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FGameplayTag Necrosis = Tag(TEXT("Keyword.DoT.Necrosis"));
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	if (!TestTrue(TEXT("set-up: the two tags exist"), Necrosis.IsValid() && Burn.IsValid()))
+	{
+		return false;
+	}
+	{
+		const FFighter Wearer(World);
+		const FFighter Target(World);
+		Wearer.AbilitySystem->SetPoolActions({Remaining(ECataclysmRemainingDamage::Target,
+			TEXT("critical_strike"), 30.0f, Necrosis)});
+		if (!TestTrue(TEXT("set-up: the wearer's Necrosis"), TenATick(Wearer.Actor, Target.Actor, Necrosis))
+			|| !TestTrue(TEXT("set-up: and its burn"), TenATick(Wearer.Actor, Target.Actor, Burn)))
+		{
+			return false;
+		}
+		CataclysmTestWorld::RunClock(World, 2.5f);
+		if (!TestEqual(TEXT("set-up: two ticks of each have landed"), HealthOf(Target.Actor), 960.0f, 0.01f))
+		{
+			return false;
+		}
+
+		Wearer.AbilitySystem->ActOnEvent(FName(TEXT("critical_strike")), nullptr, 0.0f, true, Target.Actor);
+		TestEqual(TEXT("the critical strike deals 30% of the Necrosis's 80"),
+			HealthOf(Target.Actor), 936.0f, 0.01f);
+		TestEqual(TEXT("and the Necrosis still has its 80 left"), RemainingOn(Target.Actor, Necrosis), 80.0f, 0.01f);
+		TestEqual(TEXT("and the burn is untouched"), RemainingOn(Target.Actor, Burn), 80.0f, 0.01f);
+	}
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmWholeDurationTest,
+	"Cataclysm.RemainingDamage.ATenSecondEffectOfTenATickDealsAHundredOverItsWholeDuration")
+{
+	using namespace CataclysmRemainingDamageTest;
+
+	// THE FACT THE REMAINING DAMAGE RESTS ON: an effect lasting an exact multiple
+	// of its period delivers its last tick at expiry, so ten seconds of ten a
+	// second is a hundred. The engine runs that last tick only when its period
+	// timer is due as the duration ends, a float comparison on the timer manager's
+	// clock (GameplayEffect.cpp, `CheckDuration`). Measured 2026-10-01 at
+	// `RunClock` steps of 0.025, 0.05 and 0.1: ten ticks at each. The first test to
+	// measure a whole duration; `CataclysmDebuffTests.cpp` asks for "at least 30" of
+	// four ticks so that the edge cannot decide it.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FGameplayTag Poison = Tag(TEXT("Keyword.DoT.Poison"));
+	if (!TestTrue(TEXT("set-up: the poison tag exists"), Poison.IsValid()))
+	{
+		return false;
+	}
+	{
+		const FFighter Wearer(World);
+		const FFighter Target(World);
+		if (!TestTrue(TEXT("set-up: a poison lands"), TenATick(Wearer.Actor, Target.Actor, Poison)))
+		{
+			return false;
+		}
+		CataclysmTestWorld::RunClock(World, 11.0f);
+		TestEqual(TEXT("ten ticks of ten, the last at expiry"), HealthOf(Target.Actor), 900.0f, 0.01f);
+		TestFalse(TEXT("and the poison has ended"), Running(Target.Actor, Poison).IsValid());
+	}
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmDetonationFigureTest,
+	"Cataclysm.RemainingDamage.AVoidSplinterDetonatedDealsWhatItsTicksLeftWouldTakeRaisedByTheRowAndANewOneRunsWhole")
+{
+	using namespace CataclysmRemainingDamageTest;
+
+	// THE FIGURES OF A DETONATION, ruled 2026-10-06, on a target of a thousand health with no defences. A Void
+	// Splinter of 1% of current health a second for four seconds, a second and a half in: one tick has landed,
+	// so the target has 990 and three ticks are left. WHAT IS LEFT is what those three would take if nothing
+	// else struck, 990 x (1 - 0.99^3), and not a rate times a time. A row of 100 deals twice that at once. Then a
+	// NEW one runs whole: four ticks left, which land, and it ends four seconds after it was applied.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FGameplayTag Splinter = Tag(TEXT("Keyword.DoT.VoidSplinter"));
+	if (!TestTrue(TEXT("set-up: the void splinter tag exists"), Splinter.IsValid()))
+	{
+		return false;
+	}
+	{
+		const FFighter Wearer(World);
+		const FFighter Target(World);
+		const auto Apply = [&]()
+		{
+			return UCataclysmSkillEffects::ApplyShareOfHealthOverTime(
+				Wearer.Actor, Target.Actor, 0.01f, 4.0f, Splinter);
+		};
+		if (!TestTrue(TEXT("set-up: a void splinter lands"), Apply()))
+		{
+			return false;
+		}
+		CataclysmTestWorld::RunClock(World, 1.5f);
+		if (!TestEqual(TEXT("set-up: one tick of one per cent has landed"), HealthOf(Target.Actor), 990.0f, 0.01f))
+		{
+			return false;
+		}
+		const float Left = 990.0f * (1.0f - FMath::Pow(0.99f, 3.0f));
+		TestEqual(TEXT("what is left is what its three ticks would take of the 990 it has"),
+			RemainingOn(Target.Actor, Splinter), Left, 0.01f);
+
+		// WITH NO ROW, APPLYING IT AGAIN DOES WHAT IT DID BEFORE: nothing at once, and it lasts four seconds more.
+		TestTrue(TEXT("with no row it is applied again"), Apply());
+		TestEqual(TEXT("and takes nothing at once"), HealthOf(Target.Actor), 990.0f, 0.01f);
+
+		FCataclysmPoolAction Row;
+		Row.Rider = ECataclysmAilmentRider::DetonatesWhenReapplied;
+		Row.Ailment = Splinter;
+		Row.Percent = 100.0f;
+		Wearer.AbilitySystem->SetPoolActions({Row});
+		const float LeftNow = RemainingOn(Target.Actor, Splinter);
+		TestTrue(TEXT("with the row it is applied again"), Apply());
+		const float After = 990.0f - 2.0f * LeftNow;
+		if (!TestEqual(TEXT("a row of 100 deals twice what was left, at once"), HealthOf(Target.Actor), After, 0.02f))
+		{
+			return false;
+		}
+		TestEqual(TEXT("and a new one runs whole: four ticks of the health it has now"),
+			RemainingOn(Target.Actor, Splinter),
+			UCataclysmSkillEffects::ShareOfHealthOverTicks(0.01f, After, 1000.0f, /*bIsBoss=*/false, 4), 0.01f);
+
+		CataclysmTestWorld::RunClock(World, 4.5f);
+		TestEqual(TEXT("its four ticks land"), HealthOf(Target.Actor), After * FMath::Pow(0.99f, 4.0f), 0.05f);
+		TestFalse(TEXT("and it has ended, four seconds after it was applied"),
+			Running(Target.Actor, Splinter).IsValid());
+	}
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmApplicationRefreshesOthersTest,
+	"Cataclysm.RemainingDamage.ApplyingADamageOverTimeEffectRefreshesTheAppliersOthersOnThatTargetOnlyWhenARowSaysSo")
+{
+	using namespace CataclysmRemainingDamageTest;
+
+	// PLAGUE DOCTOR'S SIX-PIECE BONUS, with the stat held by hand. Ruled 2026-10-06. Three effects of ten a tick
+	// for ten seconds on one target: the wearer's poison, the wearer's bleed and another character's burn. Four
+	// and a half seconds in, each has six ticks left, 60. A PLAIN application of a disease leaves all three as they are. With
+	// the stat, an application of a necrosis gives the wearer's poison and bleed their own ten seconds again, 100
+	// each, and leaves the other character's burn at 60. And applying the poison again refreshes the bleed.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FGameplayTag Poison = Tag(TEXT("Keyword.DoT.Poison"));
+	const FGameplayTag Bleed = Tag(TEXT("Keyword.DoT.Bleed"));
+	const FGameplayTag Burn = Tag(TEXT("Keyword.DoT.Burn"));
+	const FGameplayTag Disease = Tag(TEXT("Keyword.DoT.Disease"));
+	const FGameplayTag Necrosis = Tag(TEXT("Keyword.DoT.Necrosis"));
+	if (!TestTrue(TEXT("set-up: the five ailment tags exist"),
+				  Poison.IsValid() && Bleed.IsValid() && Burn.IsValid() && Disease.IsValid() && Necrosis.IsValid()))
+	{
+		return false;
+	}
+	{
+		const FFighter Wearer(World);
+		const FFighter Other(World);
+		const FFighter Target(World);
+		if (!TestTrue(TEXT("set-up: the wearer's poison and bleed and another character's burn land"),
+					  TenATick(Wearer.Actor, Target.Actor, Poison) && TenATick(Wearer.Actor, Target.Actor, Bleed)
+						  && TenATick(Other.Actor, Target.Actor, Burn)))
+		{
+			return false;
+		}
+		// THE TARGET IS MOVING THROUGHOUT, so the bleed's ticks land and spend its four seconds of movement, and a
+		// refresh can be seen to give them back. Issue #918, ruled 2026-10-31. A plain actor, which no movement sample
+		// reads, so one note holds for the whole test. Nothing else here asks whether it moves.
+		Target.AbilitySystem->NoteMovedMetres(1.0f);
+
+		// FOUR AND A HALF SECONDS, BETWEEN TICKS. The first run of this test waited exactly four, and the tick due
+		// at second four had not landed: seven were left where six were expected.
+		CataclysmTestWorld::RunClock(World, 4.5f);
+		if (!TestEqual(TEXT("set-up: four and a half seconds in, the poison has six ticks left"),
+					   RemainingOn(Target.Actor, Poison), 60.0f, 0.01f))
+		{
+			return false;
+		}
+
+		// WITH NO ROW, ANOTHER APPLICATION REFRESHES NOTHING.
+		TestTrue(TEXT("with no row, the wearer applies a disease"), TenATick(Wearer.Actor, Target.Actor, Disease));
+		TestEqual(TEXT("and the poison still has six ticks left"), RemainingOn(Target.Actor, Poison), 60.0f, 0.01f);
+		// THE BLEED HAS NOTHING LEFT: its four ticks, at one to four seconds, spent its four seconds of movement, and
+		// what it has left is held to them although its timer has six. Issue #918, ruled 2026-10-31.
+		TestEqual(TEXT("and the bleed, its four seconds of movement spent, has nothing left"),
+			RemainingOn(Target.Actor, Bleed), 0.0f, 0.01f);
+
+		// WITH THE STAT.
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Inputs.FindOrAdd(FName(UCataclysmSkillEffects::DotApplicationRefreshesOthersStat)).Base = 1.0f;
+		Wearer.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		TestTrue(TEXT("with the stat, the wearer applies a necrosis"), TenATick(Wearer.Actor, Target.Actor, Necrosis));
+		TestEqual(TEXT("the poison has its own ten seconds again: ten ticks"),
+			RemainingOn(Target.Actor, Poison), 100.0f, 0.01f);
+		// THE REFRESH GIVES THE BLEED ITS WINDOW AND ITS FOUR SECONDS AGAIN, ruled 2026-10-31: ten ticks on its timer,
+		// four of them what its four seconds of movement allow.
+		TestEqual(TEXT("and the bleed has its window and its four seconds again: four ticks"),
+			RemainingOn(Target.Actor, Bleed), 40.0f, 0.01f);
+		TestEqual(TEXT("and the disease, which had lost nothing, is as it was"),
+			RemainingOn(Target.Actor, Disease), 100.0f, 0.01f);
+		TestEqual(TEXT("another character's burn is not refreshed"), RemainingOn(Target.Actor, Burn), 60.0f, 0.01f);
+
+		// AND THE EFFECTS KEEP THEIR OWN TICKS: two seconds on, each of the wearer's four has lost two.
+		CataclysmTestWorld::RunClock(World, 2.0f);
+		TestEqual(TEXT("two seconds on, the poison has eight ticks left"),
+			RemainingOn(Target.Actor, Poison), 80.0f, 0.01f);
+		// TWO MOVING TICKS, AT FIVE AND SIX SECONDS, SPENT TWO OF THE BLEED'S FOUR SECONDS.
+		TestEqual(TEXT("two seconds on, the bleed has two of its four seconds left: two ticks"),
+			RemainingOn(Target.Actor, Bleed), 20.0f, 0.01f);
+		TestTrue(TEXT("the wearer applies the poison again"), TenATick(Wearer.Actor, Target.Actor, Poison));
+		TestEqual(TEXT("which refreshes the bleed, and its four seconds again: four ticks"),
+			RemainingOn(Target.Actor, Bleed), 40.0f, 0.01f);
+		TestEqual(TEXT("and still not the other character's burn, which has four left"),
+			RemainingOn(Target.Actor, Burn), 40.0f, 0.01f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmARowsKillFiresNoKillRowTest,
+	"Cataclysm.DeathsHeardInOrder.AKillAPlayersRowMadeFiresTheirKillRowsNoMoreThanBefore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A kill a player's worn row makes inside another death's announcement does not fire their kill rows when it is
+ * heard. Issue #2482, ruled by the coordinating session on 2026-10-26: before the death queue that kill was heard while
+ * the rows were still acting, and dropped; it now waits, and the notice says a row made it. The player holds "on a
+ * kill, every own burn within five metres deals its remaining damage" and "enemies killed by you explode for the
+ * overkill". The player kills an enemy twenty metres away with a plain blow: its kill fires both rows, the remaining
+ * burn kills a burning enemy three metres from the player, and that death waits. NOTHING EXPLODES FROM IT, so the enemy
+ * beside it takes nothing. CONTROL: the plain kill's own explosion hurts the enemy beside THAT one.
+ */
+bool FCataclysmARowsKillFiresNoKillRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmRemainingDamageTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	ACataclysmPlayerCharacter* Player = SpawnPlayer(World, FVector::ZeroVector);
+	ACataclysmEnemyCharacter* Struck = SpawnEnemy(World, FVector(-20.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* BesideTheStruck = SpawnEnemy(World, FVector(-21.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Burning = SpawnEnemy(World, FVector(3.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* BesideTheBurning = SpawnEnemy(World, FVector(4.0f * M, 0.0f, 0.0f));
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+	if (!TestNotNull(TEXT("a player"), Player) || !TestNotNull(TEXT("an enemy to strike"), Struck)
+		|| !TestNotNull(TEXT("CONTROL: an enemy beside it"), BesideTheStruck)
+		|| !TestNotNull(TEXT("a burning enemy"), Burning) || !TestNotNull(TEXT("an enemy beside that"), BesideTheBurning)
+		|| !TestNotNull(TEXT("the player's ability system"), AbilitySystem)
+		|| !TestTrue(TEXT("set-up: the burn tag exists"), Burn.IsValid())
+		|| !TestTrue(TEXT("set-up: the player burns the enemy"), TenATick(Player, Burning, Burn)))
+	{
+		return false;
+	}
+
+	// THE TWO ROWS, as the loader builds them.
+	FCataclysmPoolAction Explodes;
+	Explodes.Event = FName(TEXT("kill"));
+	Explodes.Pool = FName(UCataclysmAbilitySystemComponent::ExplodeVictimForOverkillAction);
+	Explodes.Percent = 100.0f;
+	Explodes.bExplodeVictimForOverkill = true;
+	Explodes.TriggerKey = FName(TEXT("DeathsHeardInOrderTest:kill:explode"));
+	AbilitySystem->SetPoolActions({Remaining(ECataclysmRemainingDamage::Nearby, TEXT("kill"), 100.0f, Burn), Explodes});
+
+	// TWO TICKS LAND, AND THE BURNING ENEMY IS LEFT WITH ONE TICK'S HEALTH, so its eight remaining ticks kill it.
+	CataclysmTestWorld::RunClock(World, 2.5f);
+	const float EachTick = (1000.0f - HealthOf(Burning)) / 2.0f;
+	if (!TestTrue(*FString::Printf(TEXT("set-up: two ticks landed, %.2f each"), EachTick), EachTick > 0.0f))
+	{
+		return false;
+	}
+	UCataclysmTargeting::AbilitySystemOf(Burning)->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), EachTick);
+	const float BesideTheBurningBefore = HealthOf(BesideTheBurning);
+	const float BesideTheStruckBefore = HealthOf(BesideTheStruck);
+
+	// A FIXED AMOUNT, NOT A HIT: `ApplyHit` deals a percentage of the caster's attack damage, and this player's is never
+	// applied -- `SpawnPlayer` gives it a player state and no controller, and the class stat line that sets attack damage
+	// runs only in `PossessedBy`. Window w66 ran it with `ApplyHit` and the blow killed nothing.
+	UCataclysmSkillEffects::ApplyDirectDamage(Player, Struck, 100000.0f);
+	if (!TestTrue(TEXT("set-up: the plain blow killed the enemy struck"), UCataclysmSkillEffects::IsDead(Struck))
+		|| !TestTrue(TEXT("set-up: and its kill row's remaining burn killed the burning enemy"),
+					 UCataclysmSkillEffects::IsDead(Burning)))
+	{
+		return false;
+	}
+	TestTrue(FString::Printf(TEXT("CONTROL: the plain kill fired the kill row and exploded: %.1f to %.1f"),
+							 BesideTheStruckBefore, HealthOf(BesideTheStruck)),
+			 HealthOf(BesideTheStruck) < BesideTheStruckBefore);
+	TestEqual(TEXT("the kill the row made fired no kill row: the enemy beside it took nothing"),
+			  HealthOf(BesideTheBurning), BesideTheBurningBefore, 0.01f);
+	return true;
+}
+
+#undef CATACLYSM_TEST
+
+#endif // WITH_DEV_AUTOMATION_TESTS

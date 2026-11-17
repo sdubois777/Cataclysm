@@ -1,0 +1,1451 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "Misc/AutomationTest.h"
+
+#if WITH_AUTOMATION_TESTS
+
+#include "Data/CataclysmDataRows.h"
+#include "Engine/DataTable.h"
+#include "GameplayTagsManager.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+#include "Tests/CataclysmTestSkip.h"
+
+/**
+ * Loads every generated CSV through the struct it is supposed to match.
+ *
+ * This is the half a Python test cannot do. The generator can produce a
+ * perfectly well-formed CSV whose columns do not match the USTRUCT, and Unreal
+ * will import it without complaint -- the mismatched column simply arrives as
+ * its default value. Nothing reports it. The first symptom is a weight of zero
+ * or an empty description somewhere far from the cause.
+ *
+ * CreateTableFromCSVString returns one string per problem, so an unmatched
+ * column or a bad value fails the test with the engine's own message.
+ */
+
+namespace
+{
+	FString DataDir()
+	{
+		return FPaths::ProjectDir() / TEXT("Data");
+	}
+
+	/** Loads one CSV through RowStruct. Returns false and fills OutError on failure. */
+	template <typename RowType>
+	bool LoadTable(const TCHAR* FileName, int32& OutRowCount, FString& OutError)
+	{
+		const FString Path = DataDir() / FileName;
+
+		FString Contents;
+		if (!FFileHelper::LoadFileToString(Contents, *Path))
+		{
+			OutError = FString::Printf(TEXT("could not read %s"), *Path);
+			return false;
+		}
+
+		UDataTable* Table = NewObject<UDataTable>();
+		Table->RowStruct = RowType::StaticStruct();
+
+		const TArray<FString> Problems = Table->CreateTableFromCSVString(Contents);
+		if (Problems.Num() > 0)
+		{
+			OutError = FString::Printf(TEXT("%s: %d import problem(s): %s"),
+				FileName, Problems.Num(), *FString::Join(Problems, TEXT(" | ")));
+			return false;
+		}
+
+		OutRowCount = Table->GetRowMap().Num();
+		return true;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDataTablesImportTest,
+	"Cataclysm.Data.EveryGeneratedTableImports",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
+{
+	int32 Rows = 0;
+	FString Error;
+
+	// Row counts are pinned. A generator change that silently drops rows -- a
+	// header misread, an off-by-one on a column -- shows up here rather than as
+	// missing content much later.
+	struct FExpectation { const TCHAR* File; int32 ExpectedRows; };
+
+	#define CHECK_TABLE(RowType, File, Expected) \
+		Rows = 0; Error.Empty(); \
+		if (!LoadTable<RowType>(TEXT(File), Rows, Error)) \
+		{ AddError(Error); } \
+		else { TestEqual(TEXT(File) TEXT(" row count"), Rows, Expected); }
+
+	// 123 SINCE 2026-10-23, when the last three Celestial Edicts became rows (Abstinence, Vigil and Humility, G7c);
+	// 120 from 2026-10-22, when three became rows (Temperance, Patience and Stillness, G7b).
+	// 117 before that, not 116: the Corrupted Stalker was added for issue #504. It was the
+	// only dungeon modifier described in prose and missing from the data, and a
+	// modifier with no weight cannot contribute to a dungeon's Modifier Score.
+	CHECK_TABLE(FCataclysmDungeonModifierRow,   "DungeonModifiers.csv",      123)
+	CHECK_TABLE(FCataclysmWeaponSkillRow,       "WeaponSkills.csv",          403)
+	// 379, not 380. The two minion count enchantments were merged into one for
+	// issue #339: the rarer of the two granted half as much, and they said the
+	// same thing in different words.
+	//
+	// 380, not 381. One weight 1 positive enchantment was removed: it read "Your
+	// block chance applies to AOE damage at 50% effectiveness", which became
+	// strictly harmful once block was decided to apply to area damage by
+	// default at full effectiveness.
+	CHECK_TABLE(FCataclysmEnchantmentRow,       "EnchantmentsPositive.csv",  379)
+	// 196, not 195. The project owner wrote Shard of Anarchy's drawback on
+	// 2026-09-08, which was the fourteenth and last set to have one. Before it
+	// that set had three positive rows and no negative, so it could not be
+	// "paired and guaranteed" and was left out of the draw. Issue #1494.
+	CHECK_TABLE(FCataclysmEnchantmentRow,       "EnchantmentsNegative.csv",  196)
+	CHECK_TABLE(FCataclysmEnemyModifierRow,     "EnemyModifiers.csv",         80)
+	// 52, not 50. Stun and Knockdown were added for issue #363. Both are hard
+	// stops that section VI of the design document gives three rules to, and
+	// neither existed as a named effect the data could reference -- which is
+	// why the Brute's stomp states its stun as a standalone StunSeconds rider
+	// rather than as Effect=Stun.
+	//
+	// 50, not 46. Four player-applied debuffs were defined: Madness, Cripple,
+	// Shred and Weaken. Gems and affixes already named all four as effects they
+	// apply, and none of the four said what it did.
+	// 52, not 54. Issue #2533 retired two rows whose effect is built elsewhere and nothing read: the Warzone Control
+	// Points buff (the floor rule is whole without it) and Toxic Trail's own debuff (its effect is Poison).
+	CHECK_TABLE(FCataclysmStatusEffectRow,      "StatusEffects.csv",          52)
+	// 27, not 26. The Of Wasting gem was added to apply Necrosis, which was the
+	// one status effect in the data that nothing applied, and the Of Embers gem
+	// to apply Burn, which every designed Demonic skill applies and which no gem
+	// and no affix could reach.
+	CHECK_TABLE(FCataclysmGemRow,               "Gems.csv",                   27)
+	CHECK_TABLE(FCataclysmCityUpgradeRow,       "CityUpgrades.csv",           24)
+	// 46 SINCE 2026-08-23, issue #852, and it was 37. The one row named
+	// "Upgrade Stone (x)" was a placeholder that showed on screen that way.
+	// It became ten stones, "+1" through "+10", spread two to a rarity tier
+	// because ten in one tier would have crowded out everything else in it.
+	CHECK_TABLE(FCataclysmCraftingMaterialRow,  "CraftingMaterials.csv",      46)
+	// 55 bases across 11 slots, at least three per slot, because one base in a
+	// slot is not a choice.
+	CHECK_TABLE(FCataclysmItemBaseRow,          "ItemBases.csv",              55)
+	// 12: ten gear slots at one row each, and a weapon twice because its
+	// maximum depends on how many hands it takes. The four potion slots are
+	// not gear and nothing rolls one as a drop, so they are not here.
+	CHECK_TABLE(FCataclysmItemSocketRow,        "ItemSockets.csv",            12)
+	// 78: 53 single-stat affixes, 3 resistance families, 10 ailments and 12
+	// hybrids. The single-stat count rose from 35 on 2026-08-04: eight when
+	// gear began granting a percentage increase to each primary attribute, two
+	// when mana leech and energy shield leech were added for #214, and eight
+	// when increased damage against each enemy damage type was added for #213.
+	// 84, not 80. The four minion affixes landed with issue #337: increased
+	// minion damage, minion health and minion attack speed, plus the one
+	// hybrid, whose slot list is Ring alone because that is the only slot
+	// both of its halves roll on.
+	// 85, not 84. The chance to stun landed with issue #298 on 2026-08-16:
+	// an affix does grant a chance to stun, and a Blunt weapon's 10% is part
+	// of the same pool rather than a separate mechanic.
+	// 86, not 85, since 2026-09-04: Flat energy shield regeneration. Issue
+	// #1237. Health and mana both had a flat regeneration affix and energy
+	// shield had only the increased one, so a class with no energy shield
+	// regeneration base had nothing for that increase to multiply.
+	CHECK_TABLE(FCataclysmAffixRow,             "Affixes.csv",                86)
+	// 7: one per affix tier, T1 to T7, holding how heavily each is weighted
+	// when a drop rolls an affix. Which tiers are REACHABLE is decided by the
+	// difficulty tier instead, so this count does not move with it.
+	CHECK_TABLE(FCataclysmAffixTierRow,         "AffixTiers.csv",              7)
+	// 8: the eight gear rarities, one row each, in the same order and under
+	// the same names as ECataclysmRarity. The engine walks the ladder by that
+	// enum and looks each row up by its name, so a row missing here is a
+	// rarity a drop cannot roll.
+	CHECK_TABLE(FCataclysmGearRarityRow,        "GearRarity.csv",              8)
+	// 30: nine stats on the shared default line, plus what the Ravager,
+	// Ritualist and Masochist each override.
+	CHECK_TABLE(FCataclysmClassStatRow,         "ClassStats.csv",             33)
+	// 5. Two summoned creatures and three deployed machines. The Imp, which
+	// Summon Imp and Open the Rift both produce, and the Mote from Cinder Swarm
+	// landed with issue #336. The bolt turret, ballista and spike trap followed
+	// with issue #338, because their numbers lived only in prose and Iron
+	// Fortress deploys two ballistae AND three spike traps, which a skill row
+	// cannot say on its own.
+	// AND 6 SINCE 2026-10-16: the skill gadget, the machine a slot converted by an
+	// enchantment places. It casts the player's own skill and has no blow of its
+	// own, so no skill row produces it and its base damage is 0.
+	// AND 7 SINCE 2026-10-18: the Tyrant's Minion, which Tyrant's Chains' six-piece
+	// summons at a minion's death. No skill row produces it.
+	// AND 8 SINCE 2026-10-18 TOO: the Warhound, which Warlord's Will's six-piece
+	// summons on a blow taken. No skill row produces it.
+	// AND 9 SINCE THE SKILL TRAP, a slot converted into a placeable trap, ruled 2026-10-19, from 8.
+	CHECK_TABLE(FCataclysmMinionTypeRow,        "MinionTypes.csv",             9)
+	// 2, not 4. One row per (attribute, tag, stat) and only damage is decided:
+	// Spirit raises a Minion.Creature and Agility a Minion.Machine, both by 1%
+	// per point. Health is expressible in the same table and no figure has been
+	// chosen for it.
+	CHECK_TABLE(FCataclysmMinionScalingRow,     "MinionScaling.csv",           2)
+	// 17: eight attributes, each raising two stats, except Efficacy raising
+	// three.
+	CHECK_TABLE(FCataclysmAttributeEffectRow,   "Attributes.csv",             17)
+	// 7: the seven skill slots from the design document's Skill Slots table.
+	// Six a player chooses between plus the automatic Basic Attack.
+	CHECK_TABLE(FCataclysmSkillSlotRow,         "SkillSlots.csv",              7)
+	// 8: the seven Demonic Cataclysm enemies the design names for the vertical
+	// slice, plus the Baseline row, which is not a creature anyone fights but
+	// the abstract average the rarity ladder is read against. It rises to 15
+	// when the second Cataclysm's enemies are designed, so this pin is what
+	// notices an archetype silently going missing in the meantime.
+	CHECK_TABLE(FCataclysmEnemyArchetypeRow,    "EnemyArchetypes.csv",         8)
+	// 6, not 7. The ladder is Common, Elite, Legendary, Herald, Boss and
+	// Cataclysm Boss, matching scoring.RARITY_WEIGHTS. There is no "Rare": the
+	// design document's older list is superseded, which is issue #30.
+	CHECK_TABLE(FCataclysmEnemyRarityRow,       "EnemyRarities.csv",           6)
+	// 6, and it must be the same six. EnemyRarities comes from the simulation's
+	// enemy model and this comes from the workbook, so the generator
+	// cross-checks that they name the same rarities in the same order.
+	CHECK_TABLE(FCataclysmEnemyDropRow,         "EnemyDrops.csv",              6)
+	// 5: Common, Uncommon, Rare, Very Rare, Extremely Rare, as the Crafting
+	// sheet names them. The Materials column on each is checked against how
+	// many crafting materials really are in that tier.
+	CHECK_TABLE(FCataclysmMaterialTierRow,      "MaterialTiers.csv",           5)
+	// 8: one per damage type, and it is the same eight for good. The generator
+	// refuses to build this table unless every Element.* tag on the workbook's
+	// Tags sheet has exactly one row, so a ninth damage type raises this number
+	// and a missing one fails generation before it reaches here.
+	CHECK_TABLE(FCataclysmElementVisualRow,     "ElementVisuals.csv",          8)
+	// 441: every node of the six class trees that exist. Berserker holds 71
+	// and the other five hold 74 each. The design says "approximately 74
+	// nodes" per tree; the pin is what notices the generator silently dropping
+	// one, which would leave a hole in a tree the game draws. Issue #50.
+	//
+	// 293 UNTIL 2026-09-07, when the Ravager and Ritualist trees were added for
+	// issue #950 and brought 74 nodes each. That is the jump this pin is for:
+	// it rose by exactly two trees' worth, which is the check that nothing else
+	// moved at the same time.
+	//
+	// IT RISES A LOT AGAIN WHEN THE OTHER EIGHTEEN TREES ARRIVE, issue #24, and
+	// that is what a pin is for: a jump nobody meant is the same shape as a jump
+	// somebody did.
+	CHECK_TABLE(FCataclysmPassiveNodeRow,       "PassiveNodes.csv",          441)
+	// 416: every dependency edge of those six trees. Fewer than the nodes,
+	// because the four capstones of each tree deliberately have none -- a
+	// capstone tier is reached by total points spent rather than along a path.
+	// 278 until 2026-09-07, and the two new trees carry 69 edges each.
+	CHECK_TABLE(FCataclysmPassiveEdgeRow,       "PassiveEdges.csv",          416)
+	// 24 of the 293 nodes have an authored effect, and the small share is the
+	// point rather than a shortfall to be fixed by typing: most nodes are not
+	// stat modifiers under any authoring scheme. Issue #939 measures the gap.
+	//
+	// IT WAS 26 UNTIL 2026-08-25, when the Masochist's upper-right section was
+	// replaced. Three rows went with the nodes holding them -- maximum mana,
+	// mana regeneration and area of effect -- and one arrived for maximum
+	// health. The rest of the new section is mechanics rather than modifiers, so
+	// it adds nothing here. See docs/DECISIONS.md.
+	//
+	// AND UP TO 34 ON 2026-08-25, when Fervour was given a way of being
+	// generated. Ten rows on eight Masochist nodes: three on the tree's starting
+	// node, which grants all three rates at once, and one each on the seven
+	// nodes that increase or reduce one of them. Issue #954.
+	//
+	// AND TO 36 THE SAME DAY, for Pain Tolerance, which grants a maximum health
+	// increase and an armour increase in one sentence and needed no code at all.
+	//
+	// AND TO 38, for Last Stand and Desperate Measures, the first two nodes whose
+	// bonus depends on where the character's health is. Issue #959.
+	//
+	// AND TO 40 FOR ONE NODE, Living on the Edge, which grants increased damage
+	// below a health threshold. Two rows rather than one because the project
+	// owner settled on 2026-08-25 that "increased damage" on a passive node
+	// means attack damage and spell damage together, and not damage over time.
+	// Issue #958.
+	//
+	// AND TO 42 FOR ONE MORE, Blood Rush, which grants the same two stats for a
+	// short window after a health cost is paid. Issue #962.
+	//
+	// AND TO 43 FOR VICIOUS ONSLAUGHT, the first node whose bonus GROWS with a
+	// state rather than switching on and off with it. One row rather than two,
+	// because the node names Attack Damage outright. Issue #968.
+	//
+	// AND TO 44 FOR DEEPER CUTS, which adds a health cost to every skill the
+	// character uses. Issue #970.
+	//
+	// AND TO 45 FOR THE CATALYST, whose skills sometimes do not go on cooldown
+	// at all. Issue #973.
+	//
+	// AND TO 47 FOR CATACLYSMIC RESONANCE, the same two damage stats under a
+	// window opened by taking damage of a foreign Cataclysm type. Issue #975.
+	//
+	// AND TO 68 FOR THE THREE NODES THAT FINISH THE BLOOD TITHE BRANCH: two
+	// rows for Compound Interest, whose damage grows with what the character
+	// owes (#994); one for Rolling Debt, the seconds a further payment pushes an
+	// outstanding debt out (#995); and four for The Reckoning, which defers the
+	// whole of every cost, multiplies damage by what is owed, and carries the
+	// flag for a debt that is never taken on a timer (#997). The count also
+	// passed 61 for nodes landed between #975 and those three.
+	//
+	// AND TO 71 FOR THE THREE NODES BUILT ON A COUNT OF STACKS: one row each
+	// for Sanguine Momentum, Blood Offering and Carnage. Issues #1002, #1003
+	// and #1004.
+	//
+	// AND TO 75 FOR THE THREE NODES THAT CHANGE HOW FERVOUR MOVES: one row for
+	// Wounds That Feed (#1006), two for Sanguine Ledger (#1007) and one for Low
+	// Life (#1008).
+	//
+	// AND TO 77 FOR THE BREAKING POINT, which is two rows on one node. Issue
+	// #985. A `flat` flag saying the rule applies at all, and an `increased` of
+	// 5 on how long one turn of it lasts. The 3 second base that increase
+	// multiplies is NOT a row here and could not be: this sheet carries values
+	// PER POINT, and a base is not one.
+	//
+	// AND TO 91 FOR THE THREE NODES THAT CHANGE HOW MUCH DAMAGE THE CHARACTER
+	// TAKES. Issue #1026. Echoes of Agony is one row on `damage_over_time_taken`;
+	// Communion of Pain is three, because "deal 20% more damage" is the same two
+	// damage stats as ever plus the damage taken; The Edge is two, one per clause
+	// of its sentence.
+	//
+	// AND TO 93 FOR THE FIRST CAPSTONE OPTION EVER AUTHORED. Issue #1029. The
+	// Final Vow's second option is two rows, and the sheet gained an `Option`
+	// column so a row can say which of a capstone's three it belongs to.
+	//
+	// AND TO 94 FOR MUTILATION MASTERY. Issue #1032. One row, a flat chance
+	// that a melee critical strike applies Bleeding to what it hit.
+	//
+	// AND BACK DOWN TO 92 WHEN APOTHEOSIS WAS REMOVED. Issue #1031. The project
+	// owner rejected the drawback-bearing shape of the Masochist's twelve
+	// capstone options and had all twelve rewritten as pure upgrades. Apotheosis
+	// was The Final Vow's second option and the only one of the twelve with rows
+	// behind it; Carnivore takes that slot now. THE FIRST FALL IN THIS COUNT.
+	//
+	// AND TO 99 FOR THE FIRST TWO OF THOSE REWRITTEN OPTIONS. Issue #1040.
+	// Deficit is four rows, because "damage" is two stats on this sheet and
+	// "missing or owe" is two scales; Doctrine Made Flesh is three.
+	//
+	// AND TO 102 FOR STIGMATIC. Issue #1042. Three rows on The First Vow's
+	// third option, all scaled by how many debuffs the character carries.
+	//
+	// AND TO 106 FOR VESSEL UNBROKEN. Issue #1039. Four rows on The Final
+	// Vow's third option: a flag saying damage over time deals the character
+	// nothing, two for the damage each debuff multiplies, and the Fervour
+	// each grants a second.
+	//
+	// AND TO 107 FOR GLUTTON. Issue #1045. One row, on a new scale that
+	// reads how much life leech the character has.
+	//
+	// AND TO 109 FOR REPRISAL WAVE AND FEEDING WOUND. Issues #1047 and #1048.
+	// One row each, both on the second option of a capstone: The First Vow's
+	// carries the radius in metres over which retaliation now strikes, and The
+	// Second Vow's is a flag saying retaliation leeches.
+	//
+	// AND TO 112 FOR UNSTABLE AURA AND THE LAST DROP. Issues #1050 and #1051.
+	// One row for Unstable Aura, the share of missing health its nova deals per
+	// point, and two for The Last Drop, one per clause of its sentence. Unstable
+	// Aura was the last Masochist node that did nothing and was neither blocked
+	// on other work nor waiting on a design answer.
+	//
+	// AND TO 116 FOR SYMPHONY OF PAIN AND VESSEL OF PLAGUES. Issue #1033. Two
+	// rows each, one per clause, and both nodes share a new stat: how long a
+	// lasting harmful effect on the character itself runs.
+	//
+	// AND TO 118 FOR BEACON OF DESPAIR AND CONTAGIOUS TORMENT. Issues #1057 and
+	// #1058. One row each: how much longer the debuffs the aura applies last,
+	// and the chance one nearby enemy has of catching a debuff when a debuff on
+	// the character deals damage. They are the first two nodes in the game that
+	// put a NAMED status effect from `game/Data/StatusEffects.csv` on anybody.
+	//
+	// AND TO 121, WHICH FINISHES THE MASOCHIST TREE. Issues #1060 and #1061.
+	// One row for Empathic Link and two for Wound Channeling, one per clause.
+	// All 74 nodes of that tree now grant something.
+	//
+	// AND TO 122 FOR WATER TO BLOOD. Issue #1067. One flag row, on the FIRST
+	// OPTION of the first Masochist capstone: the character has traded its
+	// mana pool for health.
+	//
+	// AND TO 130 FOR THE LAST THREE CAPSTONE OPTIONS THAT GRANTED NOTHING.
+	// Issues #1069, #1070 and #1071. Three rows for Rock Bottom, one for
+	// Ceaseless Penance and four for Carnivore, one per clause of each. All
+	// twelve of the Masochist's capstone options now grant something, which the
+	// node count above could never see: a capstone counts as authored the
+	// moment ANY of its three options has a row.
+	// AND TO 202 FOR THE RAVAGER AND THE RITUALIST. Issue #1463. The two trees
+	// landed on 2026-09-07 with 148 nodes and 24 capstone options between them
+	// and no rows at all, so every one of them was text. Seventy-two rows on 66
+	// of those nodes now: 37 on 34 Ravager nodes and 35 on 32 Ritualist ones,
+	// five of them on three capstone options.
+	//
+	// ONLY THE NODES THAT NEED NO NEW CODE. The other 82 need a stat with no
+	// gameplay attribute behind it, a condition or a scale that does not exist,
+	// or a rule rather than a modifier. Every keystone in both trees is of that
+	// kind, which is the finding issue #939 made about the other trees.
+	//
+	// AND FOUR MORE FOR THE RITUALIST'S GENERATOR, 202 to 206. Issue #1518.
+	// Two rows on the tree's starting node, `Fervour`, which grants a rate per
+	// minion held and a lump when one dies; and two on `Binding Sigils`, which
+	// increases both. They are four of the 82 above rather than new nodes: the
+	// scale they needed, `minions_held`, and the two stats behind them were
+	// built by that issue, which is why the pass that authored the rest left
+	// them out.
+	//
+	// AND TO 208 FOR ATTENDANT AND ROOM FOR ONE MORE. Issue #1515. Two more of
+	// the 82 above, and neither needed new code: Attendant's scale,
+	// `minions_held`, arrived with #1518, and Room for One More is a flat 30 on
+	// `class_resource`, which always existed.
+	// 209 SINCE STANDING APART WAS BUILT. The Ritualist's 100-point capstone
+	// third option, "You take 25% less damage from enemies more than 6 metres
+	// away from you", had no row at all until a character could read how far
+	// away the enemy hitting it stood.
+	//
+	// AND 216 SINCE FIVE RAVAGER NODES LEARNED TO COUNT THE ENEMIES STANDING
+	// NEAR A CHARACTER. Issue #1597. Seven rows rather than five: `In Among
+	// Them` says "you deal 2% more damage" without naming a type, which is
+	// attack damage AND spell damage by the decision of 2026-08-25, and `Wade
+	// In` names two stats in one sentence. They are also the first rows to
+	// carry a `ReachMetres`, which is the radius the count is taken inside.
+	//
+	// AND 223 SINCE THE SIX AUTHORABLE NODES WERE AUTHORED, which is every node
+	// of the 73 still unbuilt across the Ravager and the Ritualist that could be
+	// written at all. Issue #1718 surveys the other 67 and names what each
+	// waits on. Seven rows rather than six: `Wearing Blows` grants a chance at
+	// both debuffs in one sentence.
+	//
+	// FIVE OF THE SEVEN ARE FLAT AND NOT INCREASED, because `CrippleChance` and
+	// `WeakenChance` both start at zero and `(base + flat) * (1 + increases)`
+	// makes an increase against nothing worth nothing.
+	//
+	// AND 238 SINCE THE THREE MINION STATS STOPPED BEING REFUSED. Issue #1733.
+	// The sentence above said 223 was every node that could be written at all,
+	// and that was true while three checks refused any row naming a stat with no
+	// gameplay attribute. They no longer do: those three stats are deliberately
+	// without one and bespoke code reads their increases, which
+	// `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` holds
+	// them to.
+	//
+	// THIRTEEN NODES AND ONE CAPSTONE OPTION, FIFTEEN ROWS. The option is
+	// `Bound Servants` on the Ritualist's 25-point capstone, which needs two
+	// rows because its sentence names two stats -- the same shape as `Wade In`
+	// above.
+	//
+	// THESE FIFTEEN ARE `increased` AND NOT `flat`, WHICH IS THE OPPOSITE OF THE
+	// PARAGRAPH ABOVE and worth saying so the two do not read as inconsistent.
+	// A `flat` row is right when a stat has a base of zero that something adds
+	// to. Nothing adds to these: `IncreasesForStat` returns the SUM OF THE
+	// INCREASES, which the engine applies to the minion's own figure from
+	// `game/Data/MinionTypes.csv`. A flat row would land in a bucket nothing
+	// reads.
+	// AND 253 SINCE 2026-09-14, for the four rows that make four nodes do
+	// something in play: the Ritualist's Dominion, Crowned and The Swarm, and
+	// the Ravager's Spreading Hurt. Issue #1718. Every stat and condition they
+	// name was built earlier; until these rows existed all four granted nothing.
+	// AND 286 SINCE LATER ON 2026-09-17, for the row that makes the Ritualist
+	// keystone Conduit do something in play: it grants
+	// minion_hits_count_as_yours, which UCataclysmCombatEvents::NoteBlow had
+	// been reading since that morning with nothing in the data supplying it,
+	// so the keystone granted nothing to a player who took it. Issue #1515.
+	// AND 288 SINCE 2026-09-18, for the TWO rows that make the Ritualist keystone
+	// Behind the Veil do something in play: minions_draw_nearby_enemies_metres at
+	// 10 and minions_draw_nearby_enemies_minimum at 3. Two rows and not one
+	// because the node states two numbers, a reach and a count, and both were
+	// ruled into the data rather than into code. The same shape as the entry
+	// above: UCataclysmCommand::MinionDrawingEnemyFrom read both stats before any
+	// row supplied them, so the keystone granted nothing. Issue #1515.
+	// AND 290 SINCE LATER ON 2026-09-18, for the two rows that make the
+	// Ravager node Set Against It do something in play: increased damage
+	// reduction and increased attack damage, both conditioned on holding 50
+	// or more Fervour. The condition they name was built the same day and
+	// could reach nothing until these rows existed. Issue #1515.
+	// AND 292 SINCE LATER ON 2026-09-18, for the two keystones that turn one
+	// pool into another: Weight Bearing, 1 armour for every 10 maximum
+	// health, and Vessel, 1 Fervour for every 20 maximum mana. Each is one
+	// flat row carrying a scale, and each needed a half that did not exist:
+	// a reading of how BIG a health bar is, and something that asks for the
+	// maximum class resource through the pipeline. Issue #1515.
+	// AND 294 SINCE 2026-09-23, for Attrition: a hundred chance to Cripple and
+	// a hundred to Weaken, both for melee attacks only. Issue #1515.
+	// AND 295 SINCE LATER ON 2026-09-23, for Kept Longer: +3% increased
+	// duration of what the character summons, per point. Issue #1515.
+	// AND 296 SINCE THEN, for Deeper Hurt: +3% increased duration of a Cripple
+	// or a Weaken the character applies, per point. Issue #1515.
+	// AND 297 SINCE LATER ON 2026-09-23, for Overreach: melee attacks reach 2
+	// metres further. Issue #1515.
+	// AND 299 SINCE THEN, for Press-Ganged and Rekindled: a lost minion is
+	// replaced, once every 10 seconds, or 5 for one that exploded. Issue #1515.
+	// AND 300 SINCE 2026-09-24, for Two Hands: 3% increased attack damage per
+	// point while wielding a two-handed weapon. Issue #1515.
+	// AND 302 SINCE THEN, for Set Upon and Set the Pack On: minions hit harder
+	// against an enemy their summoner damaged in the last 2 seconds. Issue #1515.
+	// AND 315 SINCE THEN, for the nine Demonic options built engine first, from
+	// Shared Ruin to Shared Blood: thirteen flat rows. Issue #1515.
+	// AND 321 SINCE 2026-09-25, for the last six Demonic options built engine
+	// first, one flat row each. Issue #1515.
+	// AND 323 SINCE 2026-09-25, for the two "At 4 points:" clauses, Scarred
+	// Plate's and Set Stance's, each a row from 4 points. Issue #1755.
+	// AND 324 SINCE 2026-09-27, for the Ritualist's risen imps: a third row on the
+	// starting node, curse_death_raises_imp. Issue #1479.
+	// AND 325 SINCE 2026-09-30, for Every Swing Lands' arc: a second row on
+	// the Ravager keystone, melee_arc_full_circle. Issue #1515.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        325)
+
+	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
+	// state one number each. The next fifty-seven, written on 2026-09-11 once
+	// an item kept where inside a range it rolled, are forty-eight ranged
+	// enchantments and P031, whose number was chosen under the owner's
+	// delegation. A sentence about damage is two rows, attack and spell.
+	//
+	// AND EIGHT FOR FOUR NAMED SETS, the same day: each set's 2-piece bonus and
+	// its drawback, for Archon's Aegis, Mana Weaver, Divine Retribution and
+	// Warlord's Will. The other ten sets are held, each waiting for something
+	// its rows need, which `docs/DECISIONS.md` lists set by set.
+	//
+	// AND NINE THAT NAME WHERE THE HIT CAME FROM, on 2026-09-12: "you take
+	// 20%-40% less damage from spells" and the like. Each is a `damage_taken`
+	// row carrying one of `hit_is_melee_attack`, `hit_is_ranged_attack`,
+	// `hit_is_spell` or `opponent_is_boss`, so it multiplies only a hit from
+	// that source. Issue #666. TWELVE rows are worded that way and three are
+	// not written: each of those needs two conditions at once, which one
+	// modifier cannot hold.
+	// 81 UNTIL 2026-09-12, when the first effect rows any SET bonus in this game
+	// has ever had were written: six, being the 2-piece bonus and the drawback of
+	// Brute's Heart and of Demon King's Regalia. Before them, 0 of the 81 rows
+	// belonged to a set, so every set bonus in the game granted nothing.
+	// AND 87 UNTIL LATER THE SAME DAY, when the two enchantments about staggered
+	// characters got three rows between them. Issue #45. THREE FOR TWO, because
+	// "Staggered enemies take 20%-35% increased damage from all sources" is the
+	// wearer's own damage across its types and so is an `attack_damage` row and a
+	// `spell_damage` row, while "Staggered enemies deal 15%-30% increased damage
+	// to you" is damage the wearer takes and is `damage_taken` alone.
+	// AND 91 WITH THE SKILL LOCK'S FIRST SOURCE, which is the first row in
+	// this file to take a skill away rather than change a number: "You cannot use
+	// movement abilities while stationary for more than 2 seconds", granting
+	// `skill_locked` scoped to `Slot.Movement` under the condition
+	// `stationary_for_seconds`. Issues #41 and #1628.
+	// AND 93 SINCE THE TWO STATS A STAGGERING CHARACTER CARRIES, later the same
+	// day: `stagger_duration`, how long a stagger this character applies runs,
+	// and `stagger_health_ceiling_reduction`, the health above which it cannot
+	// stagger at all. One row each. Issue #45.
+	// AND 103 OVER 88 SINCE THE FIRST SIX DAMAGE-CHANGE ROWS THAT NEEDED NO NEW
+	// MECHANISM, issue #1686 group A: two about the damage this character takes
+	// while moving or standing still, and four about the damage its own skills
+	// deal, scoped to a slot, a type or a keyword. SIX ENCHANTMENTS AND TEN ROWS,
+	// because a row about the damage a character's skills deal becomes one row on
+	// weapon damage and one on spell damage.
+	// AND 107 OVER 90 SINCE THE TWO ROWS THAT NEED A TAG AND A CONDITION AT
+	// ONCE, issue #1686: "Spells deal 20%-35% less damage while you are moving"
+	// and "Ranged skills deal 15%-30% less damage at close range (within 5
+	// meters)". TWO ENCHANTMENTS AND FOUR ROWS, the same doubling as above.
+	// THEY ARE THE FIRST ROWS ON A DAMAGE STAT TO CARRY BOTH a `RequiredTags`
+	// and a `Condition`; before them exactly one row in this table and
+	// PassiveEffects.csv together carried both, and that one is a flag stat.
+	// AND 108 OVER 91 SINCE THE MOVEMENT SPEED A FULL CLASS RESOURCE GRANTS,
+	// issue #1686: "When your class resource is full, your movement speed is
+	// increased by 15%-30%". ONE ROW OVER ONE ENCHANTMENT, because movement
+	// speed is one stat rather than the pair of damage types a skill can deal.
+	// The sentence states NO DURATION, which is what makes
+	// `class_resource_at_maximum` the honest reading; its neighbour saying "for
+	// 3 seconds" is deliberately still unwritten.
+	//
+	// AND 211 SINCE THE SIX MANA COST SENTENCES, issue #1815. ONE ROW EACH on
+	// `mana_cost`, the stat added in #1962, whose base is the cost the skill
+	// itself states rather than a figure the character holds: two reduce a
+	// cost, three raise one, and one removes it below half health.
+	// AND 244 SINCE THE THIRTY-THREE ROWS OF THE ENCHANTMENT SURVEY, issue
+	// #1815. Ten more sentences were approved and held: three belong to item
+	// sets, one needs a base no class supplies, and five are held on the words
+	// their sentences use. docs/DECISIONS.md carries each reason.
+	//
+	// AND 257 SINCE THE THIRTEEN ROWS ACROSS TEN SENTENCES that three pieces of
+	// engine work unblocked, from 244: issue #1981's cooldown lookup as issue
+	// #2000 repaired it (three rows), issue #1982's critical strike lookup
+	// against the character struck (one row), and pull request #1989's four
+	// conditions and two scale sources (nine rows). Issue #1988, which this
+	// sentence named until issue #2004, unblocked nothing: it asked for a
+	// check, and these rows closed it. NO SENTENCE WAS ADDED to the
+	// Enchantments sheet: all ten were already there with no effect row, so
+	// EnchantmentsPositive.csv and EnchantmentsNegative.csv keep their counts
+	// and only this table grows. Three shorten a
+	// cooldown and are FLAT rows, because an increase scales a base and
+	// cooldown reduction has none -- issue #2000 settled that. Three sentences
+	// take two rows each, one for attack damage and one for spell damage. Two
+	// of the ten could not state their row in the words they already had, and
+	// each gained a clause at the END of its sentence rather than a rewrite:
+	// the first 48 characters of a sentence are its row name and a dropped item
+	// stores that name, so rewriting inside them orphans saved items.
+	//
+	// AND 263 SINCE THE SIX COOLDOWN ROWS OF ISSUE #1994, from 257: the
+	// Boss window row on `cooldown_reduction`, and five drawbacks on the new
+	// `cooldown_lengthening`. One sentence was lengthened after its first 48
+	// characters, so EnchantmentsPositive.csv keeps its count.
+	//
+	// AND 264 SINCE ISSUE #2014: one flag row on "Energy shield can now be
+	// effected by bleed", granting `shield_absorbs_damage_over_time`, which
+	// since that issue lets a bleed into the wearer's energy shield.
+	//
+	// AND 270 SINCE GROUP B OF ISSUE #1815, from 264: the five movement speed windows' rows and the one lengthened to three seconds.
+	// One sentence was lengthened after its first 48 characters, so
+	// EnchantmentsPositive.csv keeps its count.
+	//
+	// AND 274 SINCE THE FIRST HIT AGAINST EACH ENEMY, issue #1815, from 270:
+	// four rows on three sentences that had none. "Deals 100%-300% bonus
+	// damage" is one row for attack damage and one for spell damage; "ignores
+	// all armor" and the first critical strike are one row each. No sentence
+	// changed, so both Enchantments CSVs keep their counts.
+	//
+	// AND 280 SINCE THE COMBAT STATE, issue #1815, from 274: six rows on five
+	// sentences that had none, one of them two rows for the two damage types.
+	// One sentence was lengthened after its first 48 characters, so
+	// EnchantmentsNegative.csv keeps its count.
+	//
+	// AND 293 SINCE ISSUE #1815'S SECTION C, from 280: thirteen rows on eight
+	// sentences that had none, five of them two rows for the two damage types.
+	// No sentence changed, so both Enchantments CSVs keep their counts.
+	//
+	// AND 294 SINCE THE MINION DRAWBACK, issue #1815, from 293: one row on
+	// "Each active minion reduces your maximum HP by 3%-6%".
+	//
+	// AND 298 SINCE ISSUE #1686'S FIRST WINDOW, from 294: four rows on three
+	// sentences that had none, one of them two rows for the two damage types.
+	// No sentence changed, so both Enchantments CSVs keep their counts.
+	//
+	// AND 303 SINCE THE CLASS POINT ROWS, issue #1686, from 298: five
+	// rows on three sentences that had none. No sentence changed.
+	//
+	// AND 304 SINCE THE NON-CRITICAL DRAWBACK, issue #1686, from 303.
+	//
+	// AND 305 SINCE THE PROJECTILE LATER-HIT DRAWBACK, issue #1686, from 304.
+	//
+	// AND 306 SINCE THE ZONE FIRST-SWEEP DRAWBACK, issue #1686, from 305.
+	//
+	// AND 307 SINCE THE MELEE-WHILE-MOVING DRAWBACK, issue #1686, from 306.
+	//
+	// AND 317 SINCE THE OWN-STACK ENCHANTMENTS, issue #1833, from 307.
+	//
+	// AND 321 SINCE THE NEXT-USE CHARGES, issue #1833, from 317.
+	//
+	// AND 325 SINCE THE TIMED GRANTS, issue #1833, from 321.
+	//
+	// AND 329 SINCE THE CONSECUTIVE HITS, issue #1833, from 325.
+	//
+	// AND 332 SINCE THE PLACED STACKS, issue #1833, from 329.
+	//
+	// AND 335 SINCE THE EVERY-Nth ROWS, issue #1833, from 332.
+	//
+	// AND 347 SINCE THE ROWS-ONLY BATCH, issue #1833, from 335.
+	//
+	// AND 355 SINCE THE SMALL ENGINE HALVES, issue #1833, from 347.
+	//
+	// AND 363 SINCE THE COOLDOWN RESET ACTION, issue #1833, from 355.
+	//
+	// AND 367 SINCE THE COOLDOWN REDUCTION, issue #1833, from 363.
+	//
+	// AND 372 SINCE DEPLOYABLE PART 1, issue #1833, from 367.
+	//
+	// AND 373 SINCE THE DEPLOYABLE CAP, issue #1833, from 372.
+	//
+	// AND 374 SINCE THE AURAS-AT-DEATH ROW, issue #1833, from 373.
+	//
+	// AND 380 SINCE THE SKILL CHARGES, issue #1833, from 374.
+	//
+	// AND 383 SINCE THE KILL COUNTER, issue #1833, from 380.
+	//
+	// AND 386 SINCE THE KILL COUNTER'S WEAPON ROWS, issue #1833, from 383.
+	//
+	// AND 389 SINCE DEPLOYABLE PART 2, issue #1833, from 386.
+	//
+	// AND 390 SINCE DEPLOYABLE PART 3, issue #1833, from 389.
+	//
+	// AND 394 SINCE THE ROWS WRITTEN AFTER THE SURVEY, issue #1833, from 390.
+	//
+	// AND 396 SINCE HEALTH RESERVATION, issue #1833, from 394.
+	//
+	// AND 402 SINCE THE DURATIONS, issue #1833, from 396.
+	//
+	// AND 408 SINCE PROJECTILES AND RANGE, issue #1833, from 402.
+	//
+	// AND 412 SINCE THE CONDITIONS, issue #1833, from 408.
+	//
+	// AND 416 SINCE THE CEILINGS AND COSTS, issue #1833, from 412.
+	//
+	// AND 421 SINCE THE SCALES, issue #1833, from 416.
+	//
+	// AND 423 SINCE THE RANDOM DAMAGE OVER TIME, issue #1833 group D, from 421.
+	//
+	// AND 428 SINCE THE HEALTH THRESHOLDS, issue #1833 group D part 2, from 423.
+	//
+	// AND 430 SINCE THE NEARBY ACTIONS, issue #1833 group D part 3, from 428.
+	//
+	// AND 432 SINCE THE REMAINING DAMAGE ACTIONS, issue #1833 group D part 4, from 430.
+	//
+	// AND 437 SINCE THE GADGET AND RESOURCE EVENTS, issue #1833 group D part 5, from 432.
+	//
+	// AND 447 SINCE THE STATUS ACTIONS, issue #1833 group E part 1, from 437.
+	//
+	// AND 452 SINCE THE BLOCK SHARE, issue #1833 group E part 2, from 447.
+	//
+	// AND 455 SINCE THE REFLECT AND THE BLOCK COUNT, issue #1833 group E part 3, from 452.
+	//
+	// AND 458 SINCE THE BUFFS SHARED WITH ALLIES, issue #1833 group E part 4a, from 455.
+	//
+	// AND 460 SINCE THE NECROSIS RISE AND THE RE-SUMMON, issue #1833 group E part 4b, from 458.
+	//
+	// AND 461 SINCE THE AURA'S SHARED IMMUNITIES, issue #1833 group E part 4c, from 460.
+	//
+	// AND 462 SINCE "YOUR MOVEMENT ABILITY HAS 2 CHARGES", issue #1833, from 461.
+	//
+	// AND 463 SINCE "YOU ARE CLEANSED EVERY 5 SECONDS", issue #1833, from 462.
+	//
+	// AND 467 SINCE THE FOUR SHARES OF THE WEARER'S OWN DAMAGE, issue #1833, from 463.
+	//
+	// AND 470 SINCE STARVATION'S TEN-PIECE BONUS, issue #1833, from 467.
+	//
+	// AND 471 SINCE BRUTE'S HEART'S ARMOUR BELOW HALF HEALTH, issue #1833, from 470.
+	//
+	// AND 476 SINCE THE FIVE NUMBERS HUNG ON AN AILMENT, issue #1833, from 471.
+	//
+	// AND 478 SINCE THE TWO SLOWS HUNG ON AN AILMENT, issue #1833, from 476.
+	//
+	// AND 479 SINCE THE FIRST ROW THAT REPEATS A SKILL, issue #1833, from 478.
+	//
+	// AND 484 SINCE FIVE MORE ROWS THAT REPEAT A SKILL, issue #1833, from 479.
+	//
+	// AND 485 SINCE THE MELEE ATTACKS ROW ON attack_use, issue #1833, from 484.
+	//
+	// AND 487 SINCE SPELLBLADE'S WILL'S FIRST BONUS AND ITS DRAWBACK, issue #1833, from 485.
+	//
+	// AND 488 SINCE THE ROW THAT PAYS A SKILL FROM HEALTH WHEN MANA IS SHORT, issue #1833, from 487.
+	//
+	// AND 490 SINCE REAPER'S EMBRACE'S FIRST BONUS AND ITS DRAWBACK, issue #1833, from 488.
+	//
+	// AND 493 SINCE THREE ROWS THAT ROLL FOR A USE TO DEAL NO DAMAGE, issue #1833, from 490.
+	//
+	// AND 496 SINCE THE ABSORB, REFLECT AND HIT-ALL ROWS, issue #1833, from 493.
+	//
+	// AND 497 SINCE SPELLBLADE'S WILL'S TEN-PIECE ROW, issue #1833, from 496.
+	//
+	// AND 498 SINCE THE REWORDED RESISTANCES ROW, issue #1833, from 497.
+	//
+	// AND 502 SINCE FOUR ROWS ON THE STATS A PERSISTENT AREA READS, issue #1833, from 498.
+	//
+	// AND 504 SINCE THE TWO ROWS THAT PASS AN AILMENT ON AT A DEATH, issue #1833, from 502.
+	//
+	// AND 506 SINCE THE TWO ROWS THAT ROLL FOR A USE TO HIT ITS OWN USER, issue #1833, from 504.
+	//
+	// AND 507 SINCE THE ROW THAT MAKES A VOID SPLINTER DETONATE, issue #1833, from 506.
+	//
+	// AND 511 SINCE THREE MORE PERSISTENT AREA SENTENCES, issue #1833, from 507.
+	//
+	// AND 512 SINCE THE ROW THAT PASSES A VOID SPLINTER ON AT A DEATH, issue #1833, from 511.
+	//
+	// AND 513 SINCE PLAGUE DOCTOR'S SIX-PIECE ROW, issue #1833, from 512.
+	//
+	// AND 519 SINCE SIX ROWS ON ZONES A SKILL LEAVES AND WHAT A ZONE DOES, issue #1833, from 513.
+	//
+	// AND 520 SINCE PLAGUE DOCTOR'S TEN-PIECE ROW, issue #1833, from 519.
+	//
+	// AND 521 SINCE THE ROW THAT MAKES A KILLED ENEMY EXPLODE ON ITS KILLER, issue #1833, from 520.
+	//
+	// AND 522 SINCE THE ROW THAT PASSES A BURN ON WHEN IT IS APPLIED, issue #1833, from 521.
+	//
+	// AND 523 SINCE THE BLOCK VALUE ROW, issue #1833, from 522.
+	//
+	// AND 535 SINCE TWELVE ROWS ON STATUSES AND DAMAGE OVER TIME ON THE WEARER, issue #1833, from 523.
+	//
+	// AND 536 SINCE THE BLEED LEECH ROW, issue #1833, from 535.
+	//
+	// AND 537 SINCE STARVATION'S SIX-PIECE ROW, issue #1833, from 536.
+	//
+	// AND 539 SINCE THE TWO ABSORBED-DAMAGE ROWS, issue #1833, from 537.
+	//
+	// AND 540 SINCE THE OVERKILL EXPLOSION ROW, issue #1833, from 539.
+	//
+	// AND 541 SINCE THE REWORDED DURATION ROW, issue #1833, from 540.
+	//
+	// AND 543 SINCE THE TWO CLASS RESOURCE GENERATION ROWS, issue #1833, from 541.
+	//
+	// AND 544 SINCE THE ROW ON DAMAGE OVER TIME WHILE MOVING, issue #1833, from 543.
+	//
+	// AND 543 SINCE THE TRAP DAMAGE SENTENCE WAS WRITTEN AGAIN AS ONE ROW ON MINION DAMAGE, issue #1833, from 544.
+	//
+	// AND 546 SINCE THREE TRAP ROWS ON THE COUNTS OF TRAPS AND GADGETS, issue #1833, from 543.
+	//
+	// AND 547 SINCE THE STRIKE ON AN EVADED RANGED ATTACK, issue #1833, from 546.
+	//
+	// AND 548 SINCE THE SHIELD EVERY TWELVE SECONDS, issue #1833, from 547.
+	//
+	// AND 549 SINCE THE SHIELD FROM OVERHEAL, issue #1833, from 548.
+	//
+	// AND 550 SINCE THE ROW THAT MAKES TRAPS LAST LONGER, issue #1833, from 549.
+	//
+	// AND 554 SINCE THREE SENTENCES ON DAMAGE OVER TIME, TIME IN COMBAT AND LEECHING, issue #1833, from 550.
+	//
+	// AND 558 SINCE FOUR ROWS ON STATS READ AT ONE PLACE, issue #1833, from 554.
+	//
+	// AND 562 SINCE FOUR ROWS ON WHAT A MOVEMENT SKILL DOES, issue #1833, from 558.
+	//
+	// AND 563 SINCE THE CROWD CONTROL HEALTH CEILING ROW, issue #1833, from 562.
+	//
+	// AND 565 SINCE THE RICOCHET ROW AND THE SPELLS PIERCE ROW, issue #1833, from 563.
+	//
+	// AND 570 SINCE THREE SENTENCES ON CHANNELLING, issue #1833, from 565.
+	//
+	// AND 572 SINCE TWO SENTENCES ON A HIT THAT CUTS A SKILL SHORT, issue #1833, from 570.
+	//
+	// AND 573 SINCE THE CAST DELAY ROW, issue #1833, from 572.
+	//
+	// AND 575 SINCE THE NECROSIS ROW AND THE MINIONS' DEFENCES ROW, issue #1833, from 573.
+	//
+	// AND 577 SINCE THE CHARGE ROWS, issue #1833, from 575.
+	//
+	// AND 579 SINCE THE FIRST-HIT AILMENTS ROW AND CHRONOMANCER'S SIX-PIECE, issue #1833, from 577.
+	//
+	// AND 580 SINCE DIVINE RETRIBUTION'S TEN-PIECE ROW, issue #1833, from 579.
+	//
+	// AND 581 SINCE THE ROW ON CLASS POINTS SPENT ABOVE THE MAX, issue #1833, from 580.
+	//
+	// AND 583 SINCE THE TWO ROWS THAT GRANT CLASS POINTS, issue #1833, from 581.
+	//
+	// AND 585 SINCE THE TWO HEALING-SKILL ROWS, issue #1833, from 583.
+	//
+	// AND 587 SINCE THE ROWS ON THE USE OF A HEALING SKILL, issue #1833, from 585.
+	//
+	// AND 589 SINCE MANA WEAVER'S SIX-PIECE ROWS, issue #1833, from 587.
+	//
+	// AND 594 SINCE THE WHOLE SET SHARD OF ANARCHY, issue #1833, from 589.
+	//
+	// AND 595 SINCE THE EXECUTE ROW, issue #1833, from 594.
+	//
+	// AND 596 SINCE THE ROW THAT MAKES RETALIATION SKIP MITIGATION, issue #1833, from 595.
+	//
+	// AND 597 SINCE THE ROW ON ENEMIES THAT SURVIVE FIVE SECONDS AFTER A FIRST HIT, issue #1833, from 596.
+	//
+	// AND 598 SINCE THE ROW THAT MAKES ENEMIES IMMUNE FIFTEEN SECONDS AFTER A FIRST HIT, issue #1833, from 597.
+	//
+	// AND 599 SINCE THE ROW THAT ADDS PROJECTILES TO A SKILL, issue #1833, from 598.
+	//
+	// AND 600 SINCE THE ROW THAT TELEPORTS ITS WEARER WHEN HIT, issue #1833, from 599.
+	//
+	// AND 602 SINCE THE TWO ROWS THAT DEAL A SHARE OF DAMAGE TAKEN OVER SECONDS, issue #1833, from 600.
+	//
+	// AND 603 SINCE THE ROW THAT MAKES AURAS MORE EFFECTIVE, issue #1833, from 602.
+	//
+	// AND 604 SINCE THE ROW THAT MAKES BUFFS MORE POTENT, issue #1833, from 603.
+	//
+	// AND 605 SINCE THE ROW ON A DEBUFF THAT CUTS WHAT ITS CARRIER DEALS, issue #1833, from 604.
+	//
+	// AND 606 SINCE THE ROW THAT MAKES ITS WEARER IMMUNE TO DEBUFFS AND LAY NONE, issue #1833, from 605.
+	//
+	// AND 607 SINCE THE ROW ON A BURN THAT ENDS BY TIME AND MAY EXPLODE, issue #1833, from 606.
+	//
+	// AND 608 SINCE THE ROW THAT MAKES GADGETS CHOOSE THE MOST HEALTH, issue #1833, from 607.
+	//
+	// AND 609 SINCE THE ROW THAT MAKES GADGETS FIRE A VOLLEY, issue #1833, from 608.
+	//
+	// AND 610 SINCE THE ROW THAT MAKES A GADGET BURST ON A KILL, issue #1833, from 609.
+	//
+	// AND 612 SINCE THE TWO ROWS THAT MAKE GADGETS TAKE NO DAMAGE AND DRAIN THEM, issue #1833, from 610.
+	//
+	// AND 613 SINCE THE ROW THAT MAKES GADGETS COPY THE LAST SKILL USED, issue #1833, from 612.
+	//
+	// AND 614 SINCE THE ROW OF MANA WEAVER'S TEN-PIECE BONUS, issue #1833, from 613.
+	//
+	// AND 615 SINCE THE ROW THAT GIVES ITS WEARER A SHARE OF DAMAGE DONE TO NEARBY ALLIES, issue #1833, from 614.
+	//
+	// AND 616 SINCE THE ROW THAT MAKES POINT BLANK SKILLS STRIKE NEARBY ALLIES, issue #1833, from 615.
+	//
+	// AND 620 SINCE THE FOUR ROWS THAT CONVERT A KEYED SLOT INTO A SKILL GADGET, issue #1833, from 616.
+	//
+	// AND 621 SINCE THE ROW THAT CONVERTS THE BASIC ATTACK INTO A SKILL GADGET, issue #1833, from 620.
+	//
+	// AND 623 SINCE THE NULL EMPEROR'S 2-PIECE AND ITS DRAWBACK, issue #1833, from 621.
+	//
+	// AND 624 SINCE THE NULL EMPEROR'S 6-PIECE, issue #1833, from 623.
+	//
+	// AND 625 SINCE THE NULL EMPEROR'S 10-PIECE, issue #1833, from 624.
+	//
+	// AND 630 SINCE THE FIVE ROWS OF WARLORD'S WILL'S 10-PIECE, issue #1833, from 625.
+	//
+	// AND 632 SINCE THE TWO ROWS OF SPELLBLADE'S WILL'S 6-PIECE, issue #1833, from 630.
+	//
+	// AND 636 SINCE THE FOUR ROWS OF TYRANT'S CHAINS' 6-PIECE, issue #1833, from 632.
+	//
+	// AND 641 SINCE THE FIVE ROWS OF THE DEMON KING'S REGALIA'S 10-PIECE, issue #1833, from 636.
+	//
+	// AND 646 SINCE THE FIVE ROWS OF BRUTE'S HEART'S 10-PIECE, issue #1833, from 641.
+	//
+	// AND 650 SINCE THE FOUR ROWS OF WARLORD'S WILL'S 6-PIECE, issue #1833, from 646.
+	//
+	// AND 654 SINCE THE FOUR AURA ROWS OF BRUTE'S HEART'S 6-PIECE, issue #1833, from 650.
+	//
+	// AND 662 SINCE THE EIGHT RESISTANCE ROWS OF BRUTE'S HEART'S 6-PIECE, issue #1833, from 654.
+	//
+	// AND 663 SINCE THE ROW OF TYRANT'S CHAINS' 10-PIECE, issue #1833, from 662.
+	//
+	// AND 666 SINCE THE THREE ROWS OF REAPER'S EMBRACE'S 6-PIECE, issue #1833, from 663.
+	//
+	// AND 668 SINCE THE TWO ROWS OF REAPER'S EMBRACE'S 10-PIECE, issue #1833, from 666.
+	//
+	// AND 675 SINCE THE SEVEN ROWS OF CHRONOMANCER'S TIME-LOCK'S 10-PIECE, issue #1833, from 668.
+	//
+	// AND 676 SINCE THE ROW THAT REFUSES BUFFS FROM ALLIES, issue #1833, from 675.
+	//
+	// AND 677 SINCE THE ROW BY WHICH A DEPLOYABLE'S BLAST STRIKES ITS WEARER, issue #1833, from 676.
+	//
+	// AND 678 SINCE THE ROW BY WHICH EVERY SKILL GADGET CASTS AT ITS WEARER'S DEATH, issue #1833, from 677.
+	//
+	// AND 681 SINCE THE THREE ROWS THAT CONVERT A SLOT INTO A PLACEABLE TRAP, issue #1833, from 678.
+	//
+	// AND 683 SINCE THE TWO ROWS THAT CONVERT THE SUPPORT AND BASIC SLOTS INTO TRAPS, issue #1833, from 681.
+	//
+	// AND 692 SINCE THE NINE ROWS OF TRAPS LAYER 3, issue #1833, from 683.
+	//
+	// AND 697 SINCE THE FIVE ROWS OF TRAPS LAYER 4, issue #1833, from 692.
+	//
+	// AND 703 SINCE THE SIX ROWS OF TRAPS LAYER 5, issue #1833, from 697.
+	//
+	// AND 706 SINCE THE THREE ROWS OF TRAPS LAYER 6, issue #1833, from 703.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    707)
+
+	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
+	// Issue #1125. The design has fourteen weapon bases and every one of them
+	// needs a row, including the three that draw nothing on purpose -- a base
+	// with no row would show no weapon and say nothing about why.
+	// tools/generate_datatables.py refuses to write the file if a weapon base
+	// is missing, and this is what notices if that check is ever loosened.
+	CHECK_TABLE(FCataclysmWeaponMeshRow,        "WeaponMeshes.csv",           14)
+
+	#undef CHECK_TABLE
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDataTableValuesTest,
+	"Cataclysm.Data.ValuesSurviveImport",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDataTableValuesTest::RunTest(const FString& Parameters)
+{
+	// Guards the test above. A row count can be right while every field is
+	// empty, because a column whose name does not match the struct imports as a
+	// default rather than an error.
+	FString Contents;
+	const FString Path = DataDir() / TEXT("DungeonModifiers.csv");
+	if (!FFileHelper::LoadFileToString(Contents, *Path))
+	{
+		AddError(FString::Printf(TEXT("could not read %s"), *Path));
+		return false;
+	}
+
+	UDataTable* Table = NewObject<UDataTable>();
+	Table->RowStruct = FCataclysmDungeonModifierRow::StaticStruct();
+	Table->CreateTableFromCSVString(Contents);
+
+	int32 WithWeight = 0;
+	int32 WithDescription = 0;
+	int32 WithCataclysm = 0;
+	for (const TPair<FName, uint8*>& Pair : Table->GetRowMap())
+	{
+		const auto* Row = reinterpret_cast<FCataclysmDungeonModifierRow*>(Pair.Value);
+		if (Row->Weight > 0.0f)          { ++WithWeight; }
+		if (!Row->Description.IsEmpty()) { ++WithDescription; }
+		if (!Row->CataclysmType.IsEmpty()) { ++WithCataclysm; }
+	}
+
+	// COMPARED AGAINST THE TABLE'S OWN ROW COUNT, not against a literal.
+	//
+	// All three of these read 116 until issue #363. Adding the Corrupted
+	// Stalker for issue #504 took the table to 117 and made all three false,
+	// and the number said nothing about what the test is for: the claim is that
+	// EVERY modifier carries these, not that 116 of them do. Written this way
+	// the assertion states the claim and cannot go stale when a modifier is
+	// added.
+	//
+	// The row count itself is pinned separately, by the CHECK_TABLE line above,
+	// so a table that silently lost rows is still caught. The guard here is
+	// only against comparing zero with zero if the table failed to load at all.
+	const int32 Total = Table->GetRowMap().Num();
+	TestTrue(TEXT("the dungeon modifier table loaded rows"), Total > 0);
+	TestEqual(TEXT("every dungeon modifier has a non-zero weight"), WithWeight, Total);
+	TestEqual(TEXT("every dungeon modifier has a description"), WithDescription, Total);
+	TestEqual(TEXT("every dungeon modifier names a Cataclysm"), WithCataclysm, Total);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDataTableTagsTest,
+	"Cataclysm.Data.EveryReferencedTagResolves",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDataTableTagsTest::RunTest(const FString& Parameters)
+{
+	// The generator checks tags against the spreadsheet. This checks them against
+	// the engine, which is what actually matters at runtime: a tag the engine
+	// does not know matches nothing and reports nothing.
+	const TCHAR* Files[] = { TEXT("WeaponSkills.csv"),
+							 TEXT("EnchantmentsPositive.csv"),
+							 TEXT("EnchantmentsNegative.csv") };
+
+	int32 Checked = 0;
+	for (const TCHAR* File : Files)
+	{
+		FString Contents;
+		if (!FFileHelper::LoadFileToString(Contents, *(DataDir() / File)))
+		{
+			AddError(FString::Printf(TEXT("could not read %s"), File));
+			continue;
+		}
+
+		TArray<FString> Lines;
+		Contents.ParseIntoArrayLines(Lines);
+		for (int32 Index = 1; Index < Lines.Num(); ++Index)
+		{
+			// Tags are the trailing quoted field in every one of these files.
+			int32 Start = INDEX_NONE;
+			if (!Lines[Index].FindLastChar(TEXT('"'), Start))
+			{
+				continue;
+			}
+			FString Segment = Lines[Index];
+			TArray<FString> Parts;
+			Segment.ParseIntoArray(Parts, TEXT(","), true);
+			for (FString Part : Parts)
+			{
+				Part.TrimStartAndEndInline();
+				Part.ReplaceInline(TEXT("\""), TEXT(""));
+				// Only consider things shaped like a tag: dotted, capitalised.
+				if (!Part.Contains(TEXT(".")) || Part.Contains(TEXT(" ")))
+				{
+					continue;
+				}
+				if (!FChar::IsUpper(Part[0]))
+				{
+					continue;
+				}
+				const FGameplayTag Tag = UGameplayTagsManager::Get()
+					.RequestGameplayTag(FName(*Part), /*ErrorIfNotFound=*/false);
+				if (!Tag.IsValid())
+				{
+					AddError(FString::Printf(
+						TEXT("%s line %d references unknown tag %s"),
+						File, Index + 1, *Part));
+				}
+				++Checked;
+			}
+		}
+	}
+
+	TestTrue(TEXT("some tags were actually checked"), Checked > 100);
+	return true;
+}
+
+
+/**
+ * Every generated CSV has a DataTable asset, and the two agree.
+ *
+ * WHY THIS IS THE ONLY GUARANTEE THERE IS. tools/generate_datatable_assets.py
+ * imports each CSV under game/Data/ into an asset under /Game/Data/. It cannot
+ * offer a --check mode the way tools/generate_datatables.py does, because a
+ * .uasset carries generated identifiers that differ between runs, so two runs
+ * over unchanged input do not produce identical bytes and a byte comparison
+ * would always report a difference.
+ *
+ * So the asset is compared against the CSV it came from instead. An asset that
+ * was never regenerated after a workbook change has the wrong rows, and the
+ * game would load stale data with nothing reporting it -- the CSV in a pull
+ * request would show the change and the game would not have it.
+ *
+ * Row NAMES are compared and not merely counts. A table that gained one row and
+ * lost another has the same count.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDataTableAssetsTest,
+	"Cataclysm.Data.EveryGeneratedTableHasAnAssetThatMatchesIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDataTableAssetsTest::RunTest(const FString& Parameters)
+{
+	// Asset name against CSV file. Every table the generator produces is here;
+	// one missing from this list would be one nothing ever checks.
+	//
+	// TWO WERE MISSING FOR THREE DAYS. DT_MinionTypes and DT_MinionScaling
+	// landed with issues #337 and #338 and were never added here, so neither
+	// asset was ever compared against its CSV and every test still passed. The
+	// sibling list of CHECK_TABLE lines above did not have the same hole,
+	// because tools/tests/test_unreal_pinned_row_counts.py fails when a
+	// generated CSV has no pin. This list now has a matching guard,
+	// tools/tests/test_unreal_asset_check_covers_every_table.py. Issue #702.
+	struct FPair { const TCHAR* Asset; const TCHAR* File; };
+	const FPair Tables[] = {
+		{ TEXT("DT_Affixes"),               TEXT("Affixes.csv") },
+		{ TEXT("DT_AffixTiers"),            TEXT("AffixTiers.csv") },
+		{ TEXT("DT_Attributes"),            TEXT("Attributes.csv") },
+		{ TEXT("DT_CityUpgrades"),          TEXT("CityUpgrades.csv") },
+		{ TEXT("DT_ClassStats"),            TEXT("ClassStats.csv") },
+		{ TEXT("DT_CraftingMaterials"),     TEXT("CraftingMaterials.csv") },
+		{ TEXT("DT_DungeonModifiers"),      TEXT("DungeonModifiers.csv") },
+		{ TEXT("DT_ElementVisuals"),        TEXT("ElementVisuals.csv") },
+		{ TEXT("DT_EnchantmentEffects"),    TEXT("EnchantmentEffects.csv") },
+		{ TEXT("DT_EnchantmentsNegative"),  TEXT("EnchantmentsNegative.csv") },
+		{ TEXT("DT_EnchantmentsPositive"),  TEXT("EnchantmentsPositive.csv") },
+		{ TEXT("DT_EnemyArchetypes"),       TEXT("EnemyArchetypes.csv") },
+		{ TEXT("DT_EnemyDrops"),            TEXT("EnemyDrops.csv") },
+		{ TEXT("DT_EnemyModifiers"),        TEXT("EnemyModifiers.csv") },
+		{ TEXT("DT_EnemyRarities"),         TEXT("EnemyRarities.csv") },
+		{ TEXT("DT_GearRarity"),            TEXT("GearRarity.csv") },
+		{ TEXT("DT_Gems"),                  TEXT("Gems.csv") },
+		{ TEXT("DT_ItemBases"),             TEXT("ItemBases.csv") },
+		{ TEXT("DT_ItemSockets"),           TEXT("ItemSockets.csv") },
+		{ TEXT("DT_MaterialTiers"),         TEXT("MaterialTiers.csv") },
+		{ TEXT("DT_MinionScaling"),         TEXT("MinionScaling.csv") },
+		{ TEXT("DT_PassiveEdges"),          TEXT("PassiveEdges.csv") },
+		{ TEXT("DT_PassiveEffects"),        TEXT("PassiveEffects.csv") },
+		{ TEXT("DT_PassiveNodes"),          TEXT("PassiveNodes.csv") },
+		{ TEXT("DT_MinionTypes"),           TEXT("MinionTypes.csv") },
+		{ TEXT("DT_SkillSlots"),            TEXT("SkillSlots.csv") },
+		{ TEXT("DT_StatusEffects"),         TEXT("StatusEffects.csv") },
+		{ TEXT("DT_WeaponMeshes"),          TEXT("WeaponMeshes.csv") },
+		{ TEXT("DT_WeaponSkills"),          TEXT("WeaponSkills.csv") },
+	};
+
+	for (const FPair& Pair : Tables)
+	{
+		const FString AssetPath =
+			FString::Printf(TEXT("/Game/Data/%s.%s"), Pair.Asset, Pair.Asset);
+
+		const UDataTable* Table = LoadObject<UDataTable>(nullptr, *AssetPath);
+		if (!Table)
+		{
+			AddError(FString::Printf(
+				TEXT("%s does not exist. Run tools/generate_datatable_assets.py."),
+				*AssetPath));
+			continue;
+		}
+
+		// The CSV it should have come from, read the same way the test above
+		// reads it, so the two halves cannot disagree about what the file is.
+		const FString Path = DataDir() / Pair.File;
+		FString Contents;
+		if (!FFileHelper::LoadFileToString(Contents, *Path))
+		{
+			AddError(FString::Printf(TEXT("could not read %s"), *Path));
+			continue;
+		}
+
+		UDataTable* FromCsv = NewObject<UDataTable>();
+		FromCsv->RowStruct = Table->RowStruct;
+		FromCsv->CreateTableFromCSVString(Contents);
+
+		TSet<FName> InAsset;
+		for (const TPair<FName, uint8*>& Row : Table->GetRowMap())
+		{
+			InAsset.Add(Row.Key);
+		}
+
+		TSet<FName> InCsv;
+		for (const TPair<FName, uint8*>& Row : FromCsv->GetRowMap())
+		{
+			InCsv.Add(Row.Key);
+		}
+
+		const TSet<FName> MissingFromAsset = InCsv.Difference(InAsset);
+		const TSet<FName> NotInCsv = InAsset.Difference(InCsv);
+
+		TestEqual(FString::Printf(
+			TEXT("%s has every row %s has"), Pair.Asset, Pair.File),
+			MissingFromAsset.Num(), 0);
+		TestEqual(FString::Printf(
+			TEXT("%s has no row %s does not"), Pair.Asset, Pair.File),
+			NotInCsv.Num(), 0);
+
+		if (MissingFromAsset.Num() > 0 || NotInCsv.Num() > 0)
+		{
+			AddError(FString::Printf(
+				TEXT("%s is stale. Run tools/generate_datatable_assets.py. ")
+				TEXT("%d row(s) only in the CSV, %d only in the asset."),
+				Pair.Asset, MissingFromAsset.Num(), NotInCsv.Num()));
+			continue;
+		}
+
+		// THE ROW NAMES MATCHING IS NOT ENOUGH, and this half was missing.
+		//
+		// Comparing only the key set says nothing about what is in the rows. It
+		// let a real staleness through: the sixteen Demonic skills landed in the
+		// CSV, the DataTable asset was never regenerated, and every row name
+		// still matched because the rows had always existed -- they were simply
+		// empty. The asset shipped with no Demonic skill in it and this test
+		// passed.
+		//
+		// Both sides are re-exported through the same function so the comparison
+		// is of contents rather than of file formatting.
+		//
+		// EDITOR ONLY, AND THAT IS THE ENGINE'S CHOICE RATHER THAN THIS TEST'S.
+		// UDataTable::GetTableAsCSV is declared inside #if WITH_EDITOR in
+		// Engine/Classes/Engine/DataTable.h. This file compiles under
+		// WITH_AUTOMATION_TESTS, which is true in a Development PACKAGED build
+		// and does not imply WITH_EDITOR, so without this guard the packaged
+		// `Cataclysm` target fails to compile while the `CataclysmEditor` target
+		// builds fine. It did fail, from 2026-09-01 to 2026-09-02, and nothing
+		// noticed because continuous integration does not build the C++ at all
+		// (that is #20). Issue #1196.
+		//
+		// There is no runtime substitute. The row-name comparison above uses
+		// GetRowMap and runs in both targets; only this contents comparison is
+		// lost, and the #else below says so rather than passing quietly.
+#if WITH_EDITOR
+		const FString AssetAsCsv = Table->GetTableAsCSV();
+		const FString FileAsCsv = FromCsv->GetTableAsCSV();
+		if (AssetAsCsv != FileAsCsv)
+		{
+			// Name the first row that differs. "Something differs somewhere in
+			// 398 rows" is not actionable.
+			TArray<FString> AssetLines, FileLines;
+			AssetAsCsv.ParseIntoArrayLines(AssetLines);
+			FileAsCsv.ParseIntoArrayLines(FileLines);
+
+			FString FirstDifference = TEXT("(could not isolate a line)");
+			for (int32 Line = 0; Line < FMath::Min(AssetLines.Num(), FileLines.Num()); ++Line)
+			{
+				if (AssetLines[Line] != FileLines[Line])
+				{
+					FirstDifference = FString::Printf(
+						TEXT("line %d:\n    asset: %s\n    csv:   %s"),
+						Line + 1,
+						*AssetLines[Line].Left(200),
+						*FileLines[Line].Left(200));
+					break;
+				}
+			}
+
+			AddError(FString::Printf(
+				TEXT("%s has the right rows but different contents from %s, so ")
+				TEXT("it is stale. Run tools/generate_datatable_assets.py. ")
+				TEXT("First difference at %s"),
+				Pair.Asset, Pair.File, *FirstDifference));
+		}
+#endif // WITH_EDITOR
+	}
+
+#if !WITH_EDITOR
+	// SAID ONCE, NOT ONCE PER TABLE. The loop above covers every generated
+	// DataTable, and one report naming the whole comparison is what a reader
+	// needs; twenty-eight identical lines would bury the run's other output.
+	CataclysmTestSkip::ReportSkippedHalf(*this,
+		TEXT("whether each DataTable asset's row CONTENTS match its CSV is not "
+			 "checked; that every row name is present in both is. "
+			 "UDataTable::GetTableAsCSV is editor-only and this is a packaged "
+			 "build, so the comparison cannot be made here. Run the automation "
+			 "tests against the CataclysmEditor target to check it."));
+#endif // !WITH_EDITOR
+
+	return true;
+}
+
+/**
+ * The DataTable asset holds a damage type LIMIT on every weapon, not a count.
+ *
+ * The column was renamed from DamageTypeSlots to MaxDamageTypes for #218,
+ * because the old name read as a count and the value has meant a maximum since
+ * #217. A rename like that can go wrong in a way nothing else here notices: the
+ * import test above loads the CSV through the struct and would catch a column
+ * with no matching property, but the asset comparison would not, because both
+ * halves would import the same missing column the same way and agree.
+ *
+ * So this reads the shipped asset and checks the numbers are the design's
+ * limits. Four for a one-hander and eight for a two-hander, from the Weapon
+ * Bases table in docs/Cataclysm_GDD_v2.md, and zero on anything that is not a
+ * weapon. Written here rather than read from the table under test.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmItemBaseMaxDamageTypesTest,
+	"Cataclysm.Data.ItemBasesHoldADamageTypeLimit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmItemBaseMaxDamageTypesTest::RunTest(const FString& Parameters)
+{
+	const UDataTable* Table = LoadObject<UDataTable>(
+		nullptr, TEXT("/Game/Data/DT_ItemBases.DT_ItemBases"));
+	if (!Table)
+	{
+		AddError(TEXT("DT_ItemBases does not exist. Run "
+					  "tools/generate_datatable_assets.py."));
+		return false;
+	}
+
+	int32 OneHanders = 0;
+	int32 TwoHanders = 0;
+	int32 NotWeapons = 0;
+
+	for (const TPair<FName, uint8*>& Pair : Table->GetRowMap())
+	{
+		const FCataclysmItemBaseRow* Row =
+			reinterpret_cast<const FCataclysmItemBaseRow*>(Pair.Value);
+
+		if (Row->Hands == 1)
+		{
+			++OneHanders;
+			TestEqual(FString::Printf(
+				TEXT("%s is one-handed and tops out at four damage types"),
+				*Row->BaseName), Row->MaxDamageTypes, 4);
+		}
+		else if (Row->Hands == 2)
+		{
+			++TwoHanders;
+			TestEqual(FString::Printf(
+				TEXT("%s is two-handed and tops out at eight damage types"),
+				*Row->BaseName), Row->MaxDamageTypes, 8);
+		}
+		else
+		{
+			++NotWeapons;
+			TestEqual(FString::Printf(
+				TEXT("%s is not a weapon and holds no damage types"),
+				*Row->BaseName), Row->MaxDamageTypes, 0);
+		}
+	}
+
+	// Without these the loop above passes on an empty table, which is the
+	// failure the rename could actually cause.
+	TestTrue(TEXT("the table has one-handed weapons"), OneHanders > 0);
+	TestTrue(TEXT("the table has two-handed weapons"), TwoHanders > 0);
+	TestTrue(TEXT("the table has bases that are not weapons"), NotWeapons > 0);
+
+	return true;
+}
+
+/**
+ * The effect palette arrives in the engine as colours and tags, not as defaults.
+ *
+ * WHAT THIS ADDS THAT THE PYTHON TESTS CANNOT. Two things, and both need the
+ * engine.
+ *
+ * FIRST, THE TYPES. FCataclysmElementVisualRow is the only row struct in this
+ * project holding an FLinearColor or an FGameplayTag, and both are imported from
+ * text by code that reports nothing when it fails: a cell Unreal cannot parse
+ * leaves the property at its C++ default and the row still imports. Comparing
+ * CSV headers against property names, which is what
+ * tools/tests/test_csv_columns_match_their_row_structs.py does, cannot see that
+ * -- the names match perfectly and the values are gone. So every default on that
+ * struct is deliberately a value the table never carries, and this test is what
+ * makes that arrangement worth having.
+ *
+ * SECOND, THE CONVERSION. tools/generate_datatables.py converts the design
+ * document's sRGB hex to linear in Python. The engine has its own conversion,
+ * FLinearColor::FromSRGBColor, which is what ACataclysmTelegraphMarker uses on
+ * the same document's hex. Those are two implementations of one curve, and
+ * nothing compared them until here. One row is checked in full against the
+ * engine's own function, which is all it takes to catch a curve that disagrees;
+ * tools/tests/test_element_visuals_match_the_design.py pins all eight rows to
+ * the design document, so the palette itself is covered there and is not copied
+ * into this file.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmElementVisualsTest,
+	"Cataclysm.Data.ElementVisualsCarryTheDesignedValues",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmElementVisualsTest::RunTest(const FString& Parameters)
+{
+	const UDataTable* Table = LoadObject<UDataTable>(
+		nullptr, TEXT("/Game/Data/DT_ElementVisuals.DT_ElementVisuals"));
+	if (!Table)
+	{
+		AddError(TEXT("DT_ElementVisuals does not exist. Run "
+					  "tools/generate_datatable_assets.py through "
+					  "tools/run_editor_python.py."));
+		return false;
+	}
+
+	// The CSV is written to six decimal places, so the engine's own conversion
+	// and the generator's agree to about a millionth. A tolerance and not an
+	// equality for that reason alone.
+	const float Tolerance = 1.0e-4f;
+
+	const TCHAR* ElementPrefix = TEXT("Element.");
+
+	TSet<FString> PrimariesSeen;
+	int32 Checked = 0;
+
+	for (const TPair<FName, uint8*>& Pair : Table->GetRowMap())
+	{
+		const FCataclysmElementVisualRow* Row =
+			reinterpret_cast<const FCataclysmElementVisualRow*>(Pair.Value);
+		const FString Key = Pair.Key.ToString();
+
+		// An FGameplayTag that failed to import, or that names something the
+		// engine does not declare, is invalid. A skill asking an invalid tag for
+		// its colours matches no row and still plays, with no complaint.
+		if (!Row->ElementTag.IsValid())
+		{
+			AddError(FString::Printf(
+				TEXT("row %s has no valid ElementTag, so nothing holding a "
+					 "damage type tag can find it."), *Key));
+			continue;
+		}
+
+		const FString TagText = Row->ElementTag.ToString();
+		TestTrue(FString::Printf(TEXT("%s is keyed on a damage type"), *Key),
+			TagText.StartsWith(ElementPrefix));
+
+		// The row key is the tag's leaf, which is what lets anything holding a
+		// tag reach its row without a second lookup table.
+		FString Leaf;
+		TagText.Split(TEXT("."), nullptr, &Leaf, ESearchCase::CaseSensitive,
+					  ESearchDir::FromEnd);
+		TestEqual(FString::Printf(
+			TEXT("row %s is named after the leaf of %s"), *Key, *TagText),
+			Leaf, Key);
+
+		// EVERY ROW HAVING A DIFFERENT PRIMARY IS THE CHECK THAT CATCHES THE
+		// WHOLE TABLE FAILING TO IMPORT. Eight rows all sitting on the struct's
+		// white default would pass every per-row check that only asks whether a
+		// colour is present.
+		const FString Primary = Row->PrimaryColour.ToString();
+		TestFalse(FString::Printf(
+			TEXT("%s has a primary colour no other damage type has"), *Key),
+			PrimariesSeen.Contains(Primary));
+		PrimariesSeen.Add(Primary);
+
+		// The secondary's job is to stay readable where the primary matches the
+		// floor, which it can only do by being much darker.
+		TestTrue(FString::Printf(
+			TEXT("%s's secondary is darker than its primary"), *Key),
+			Row->SecondaryColour.GetLuminance() < Row->PrimaryColour.GetLuminance());
+
+		// 1.0 and not 0.0. The struct defaults these to zero precisely so that
+		// this assertion can fail: the generator refuses a zero, so a row
+		// reading zero here did not import.
+		TestEqual(FString::Printf(TEXT("%s emissive multiplier"), *Key),
+			Row->EmissiveMultiplier, 1.0f, Tolerance);
+		TestEqual(FString::Printf(TEXT("%s spawn rate scale"), *Key),
+			Row->SpawnRateScale, 1.0f, Tolerance);
+		TestEqual(FString::Printf(TEXT("%s velocity scale"), *Key),
+			Row->VelocityScale, 1.0f, Tolerance);
+
+		++Checked;
+	}
+
+	// Without this the loop above passes on an empty table, which is what a
+	// stale or unbuilt asset actually looks like.
+	TestEqual(TEXT("every damage type was checked"), Checked, 8);
+
+	// The two conversions compared. Demonic, from the effect palette table in
+	// section XIII of docs/Cataclysm_GDD_v2.md.
+	const FCataclysmElementVisualRow* Demonic =
+		Table->FindRow<FCataclysmElementVisualRow>(
+			FName(TEXT("Demonic")), TEXT("ElementVisuals conversion check"));
+	if (!Demonic)
+	{
+		AddError(TEXT("DT_ElementVisuals has no row named Demonic."));
+		return false;
+	}
+
+	const FLinearColor ExpectedPrimary =
+		FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("FF7A2E")));
+	const FLinearColor ExpectedSecondary =
+		FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("3A0A02")));
+
+	TestTrue(FString::Printf(
+		TEXT("Demonic's primary is #FF7A2E converted to linear. Expected %s, "
+			 "got %s"), *ExpectedPrimary.ToString(),
+		*Demonic->PrimaryColour.ToString()),
+		Demonic->PrimaryColour.Equals(ExpectedPrimary, Tolerance));
+
+	TestTrue(FString::Printf(
+		TEXT("Demonic's secondary is #3A0A02 converted to linear. Expected %s, "
+			 "got %s"), *ExpectedSecondary.ToString(),
+		*Demonic->SecondaryColour.ToString()),
+		Demonic->SecondaryColour.Equals(ExpectedSecondary, Tolerance));
+
+	return true;
+}
+#endif // WITH_AUTOMATION_TESTS

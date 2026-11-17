@@ -1,0 +1,10724 @@
+"""Tests for the DataTable CSV generator.
+
+Most run against fixture workbooks built in the test, so a design change cannot
+break them. The last group checks the real workbook, because the committed CSVs
+going stale is the drift this tool exists to prevent.
+"""
+
+from __future__ import annotations
+
+import pathlib
+import sys
+
+import openpyxl
+import pytest
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+
+import generate_datatables as gen  # noqa: E402
+
+
+def workbook_with(path: pathlib.Path, sheets: dict[str, list[list]]) -> pathlib.Path:
+    """Build a workbook from {sheet name: rows}, always including a Tags sheet."""
+    book = openpyxl.Workbook()
+    book.remove(book.active)
+    if "Tags" not in sheets:
+        sheets = dict(sheets)
+        sheets["Tags"] = [["Tag Name", "Description"],
+                          ["Element.War", "Physical"],
+                          ["Slot.Ultimate", "Ultimates"]]
+    for name, rows in sheets.items():
+        sheet = book.create_sheet(name)
+        for row in rows:
+            sheet.append(row)
+    book.save(path)
+    return path
+
+
+class TestRowNames:
+    def test_row_names_are_safe_for_fnames(self):
+        assert gen.row_name("Fallen City", "Edict of Silence!") == \
+            "Fallen_City_Edict_of_Silence"
+
+    def test_empty_parts_are_skipped(self):
+        assert gen.row_name("", "Thing", "") == "Thing"
+
+    def test_a_name_that_reduces_to_nothing_is_an_error(self):
+        with pytest.raises(gen.DataError, match="could not build a row name"):
+            gen.row_name("!!!", "###")
+
+    def test_duplicate_row_names_get_suffixes(self):
+        rows = [{"Name": "A"}, {"Name": "A"}, {"Name": "A"}, {"Name": "B"}]
+        gen.unique(rows, "test")
+        assert [r["Name"] for r in rows] == ["A", "A_1", "A_2", "B"]
+
+
+class TestNamedCells:
+    def test_splits_name_from_description(self):
+        assert gen.split_named("Hellfire Aura: burns things") == \
+            ("Hellfire Aura", "burns things")
+
+    def test_a_cell_with_no_colon_keeps_the_whole_text(self):
+        assert gen.split_named("just a description") == ("", "just a description")
+
+
+class TestDungeonModifiers:
+    def test_reads_rows(self, tmp_path):
+        book = openpyxl.load_workbook(workbook_with(tmp_path / "w.xlsx", {
+            "Dungeon Modifiers": [["Cataclysm Type", "Modifier Name", "Weight", "Description"],
+                                  ["Demonic", "Hellfire", 20, "burns"]]}))
+        rows = gen.dungeon_modifiers(book)
+        assert rows == [{"Name": "Demonic_Hellfire", "CataclysmType": "Demonic",
+                         "ModifierName": "Hellfire", "Weight": 20.0,
+                         "Description": "burns"}]
+
+    def test_rejects_an_unknown_cataclysm(self, tmp_path):
+        book = openpyxl.load_workbook(workbook_with(tmp_path / "w.xlsx", {
+            "Dungeon Modifiers": [["Cataclysm Type", "Modifier Name", "Weight", "Description"],
+                                  ["Sparkly", "Thing", 1, "d"]]}))
+        with pytest.raises(gen.DataError, match="not a Cataclysm type"):
+            gen.dungeon_modifiers(book)
+
+    def test_rejects_a_non_numeric_weight(self, tmp_path):
+        book = openpyxl.load_workbook(workbook_with(tmp_path / "w.xlsx", {
+            "Dungeon Modifiers": [["Cataclysm Type", "Modifier Name", "Weight", "Description"],
+                                  ["Demonic", "Thing", "heavy", "d"]]}))
+        with pytest.raises(gen.DataError, match="not a number"):
+            gen.dungeon_modifiers(book)
+
+
+class TestEnchantments:
+    """The sheet holds two independent tables side by side."""
+
+    SHEET = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        ["More damage", "Generic", 1, "Element.War", None,
+         "No basic attack", "Generic", 2, "Slot.Ultimate"],
+        ["Only a positive", "Generic", 3, "Element.War", None, None, None, None, None],
+    ]
+
+    def test_positives_and_negatives_are_read_separately(self, tmp_path):
+        book = openpyxl.load_workbook(
+            workbook_with(tmp_path / "w.xlsx", {"Enchantments": self.SHEET}))
+        positives = gen.enchantments(book, negative=False)
+        negatives = gen.enchantments(book, negative=True)
+        assert len(positives) == 2
+        assert len(negatives) == 1
+        assert positives[0]["IsNegative"] == "False"
+        assert negatives[0]["IsNegative"] == "True"
+
+    def test_the_negatives_tag_column_is_read(self, tmp_path):
+        """Regression: an off-by-one once pointed this at the Weight column,
+        so no negative enchantment's tags were ever checked."""
+        book = openpyxl.load_workbook(
+            workbook_with(tmp_path / "w.xlsx", {"Enchantments": self.SHEET}))
+        assert gen.enchantments(book, negative=True)[0]["Tags"] == "Slot.Ultimate"
+
+    def test_a_short_negative_column_does_not_invent_rows(self, tmp_path):
+        book = openpyxl.load_workbook(
+            workbook_with(tmp_path / "w.xlsx", {"Enchantments": self.SHEET}))
+        assert all(r["Effect"] for r in gen.enchantments(book, negative=True))
+
+
+class TestReshapedSheets:
+    def test_enemy_modifiers_matrix_becomes_rows(self, tmp_path):
+        book = openpyxl.load_workbook(workbook_with(tmp_path / "w.xlsx", {
+            "Enemy Modifiers": [["Demonic Modifiers", "Death Modifiers"],
+                                ["Hellfire: burns", "Haunting: copies"],
+                                ["Brute: tanky", None]]}))
+        rows = gen.enemy_modifiers(book)
+        assert len(rows) == 3
+        assert {r["CataclysmType"] for r in rows} == {"Demonic", "Death"}
+        assert rows[0]["ModifierName"] == "Hellfire"
+
+    def test_status_effects_treat_the_first_row_as_data(self, tmp_path):
+        """These sheets have no header. Skipping row one loses an effect."""
+        book = openpyxl.load_workbook(workbook_with(tmp_path / "w.xlsx", {
+            "Buffs": [["Mana Surge: more damage"], ["Warhound: a minion"]],
+            "Debuffs": [["Wither: reduces things"]],
+            "DoTs": [["Bleed: hurts"]]}))
+        rows = gen.status_effects(book)
+        assert len(rows) == 4
+        assert {r["EffectKind"] for r in rows} == {"Buff", "Debuff", "DoT"}
+        assert any(r["EffectName"] == "Mana Surge" for r in rows)
+
+
+class TestCityUpgradeTiers:
+    """The tier cells use four notations and the sheet has no kind column."""
+
+    @pytest.mark.parametrize("cell,effect,kind,value,days", [
+        ("0.3",    "Increase max defense by 20%",         "Percent",         0.30, 0),
+        ("1",      "Remove 25% of dungeons",              "Percent",         1.00, 0),
+        ("10",     "no more than 15 dungeons",            "Flat",           10.00, 0),
+        ("8",      "take 4 less days to beat",            "Flat",            8.00, 0),
+        ("3x",     "provide 2x more experience",          "Multiplier",      3.00, 0),
+        ("10/10%", "Every 20 days ... heal 5%.",          "IntervalPercent", 0.10, 10),
+        ("5/15%",  "Every 20 days ... heal 5%.",          "IntervalPercent", 0.15, 5),
+        ("",       "anything",                            "",                0.00, 0),
+    ])
+    def test_each_notation_parses(self, cell, effect, kind, value, days):
+        assert gen.parse_tier(cell, effect, "Tier 2", 1) == (kind, value, days)
+
+    def test_the_days_half_of_the_pair_is_not_lost(self):
+        """Regression: this notation was once flattened to just the percentage,
+        which discarded the change to the trigger interval."""
+        _, value, days = gen.parse_tier("5/15%", "Every 20 days ... 5%", "T", 1)
+        assert (value, days) == (0.15, 5)
+
+    def test_a_bare_number_is_a_percentage_only_when_the_effect_says_so(self):
+        assert gen.parse_tier("10", "increase by 5%", "T", 1)[0] == "Percent"
+        assert gen.parse_tier("10", "5 more floors", "T", 1)[0] == "Flat"
+
+    def test_an_unreadable_cell_is_an_error(self):
+        with pytest.raises(gen.DataError, match="none of a percentage"):
+            gen.parse_tier("banana", "effect", "Tier 2", 7)
+
+
+class TestOneTimeUseUpgrades:
+    SHEET = [["Type", "Tier 1", "Tier 2", "Tier 3"],
+             ["Architect", "Increase max defense by 20%", 0.3, 0.4],
+             ["Architect*", "Restore defenses by 50%", 0.75, 1],
+             ["", "A last resort with no tiers", None, None]]
+
+    def _rows(self, tmp_path):
+        book = openpyxl.load_workbook(
+            workbook_with(tmp_path / "w.xlsx", {"City Upgrades": self.SHEET}))
+        return gen.city_upgrades(book)
+
+    def test_the_asterisk_marks_one_time_use(self, tmp_path):
+        rows = self._rows(tmp_path)
+        assert [r["IsOneTimeUse"] for r in rows] == ["False", "True", "True"]
+
+    def test_the_asterisk_is_stripped_from_the_branch(self, tmp_path):
+        """Nothing downstream should have to parse punctuation to know this."""
+        assert self._rows(tmp_path)[1]["Branch"] == "Architect"
+
+    def test_the_unbranched_upgrade_is_kept_and_marked(self, tmp_path):
+        row = self._rows(tmp_path)[2]
+        assert row["Branch"] == ""
+        assert row["BranchUndecided"] == "True"
+        assert row["IsOneTimeUse"] == "True"
+
+    def test_a_normal_upgrade_is_not_marked(self, tmp_path):
+        row = self._rows(tmp_path)[0]
+        assert row["IsOneTimeUse"] == "False"
+        assert row["BranchUndecided"] == "False"
+
+
+class TestGems:
+    def test_the_everyday_value_is_read_from_the_effect_text(self, tmp_path):
+        book = openpyxl.load_workbook(workbook_with(tmp_path / "w.xlsx", {
+            "Gems": [["Column 1", "Everyday Gemstone", "Quality Gemstone",
+                      "Superb Gemstone", "Masterful Gemstone", "Legendary Gemstone",
+                      "Mythical Gemstone", "Ascendant Gemstone",
+                      "Cataclysmic Gemstone", "Type"],
+                     ["Of The Abyss", "10% chance to apply void splinter",
+                      0.3, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, "Attack"]]}))
+        row = gen.gems(book)[0]
+        assert row["Everyday"] == pytest.approx(0.10)
+        assert row["Quality"] == pytest.approx(0.30)
+        assert row["Cataclysmic"] == pytest.approx(2.0)
+
+    def test_a_gem_with_no_percentage_in_its_text_is_an_error(self, tmp_path):
+        book = openpyxl.load_workbook(workbook_with(tmp_path / "w.xlsx", {
+            "Gems": [["Column 1", "Everyday Gemstone", "Quality Gemstone",
+                      "Superb Gemstone", "Masterful Gemstone", "Legendary Gemstone",
+                      "Mythical Gemstone", "Ascendant Gemstone",
+                      "Cataclysmic Gemstone", "Type"],
+                     ["Of Nothing", "does a thing", 0.3, 0.5, 0.75, 1.0, 1.25,
+                      1.5, 2.0, "Attack"]]}))
+        with pytest.raises(gen.DataError, match="states no percentage"):
+            gen.gems(book)
+
+    def test_two_gems_cannot_share_a_name(self, tmp_path):
+        """Issue #211. Two different gems were both called Of Recovery.
+
+        One raised health regeneration and one reduced cooldowns. `unique` gave
+        the second the row key `Gem_Of_Recovery_1`, so both imported and both
+        showed the player the same name, with nothing to tell them apart and
+        nothing anywhere reporting a problem. It stood for a month.
+        """
+        book = openpyxl.load_workbook(workbook_with(tmp_path / "w.xlsx", {
+            "Gems": [["Column 1", "Everyday Gemstone", "Quality Gemstone",
+                      "Superb Gemstone", "Masterful Gemstone", "Legendary Gemstone",
+                      "Mythical Gemstone", "Ascendant Gemstone",
+                      "Cataclysmic Gemstone", "Type"],
+                     ["Of Recovery", "Increases hp regen by 10%",
+                      0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.6, "Defense"],
+                     ["Of Recovery", "Increases CDR by 10%",
+                      0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.9, "Utility"]]}))
+        with pytest.raises(gen.DataError, match="already the name of the gem"):
+            gen.gems(book)
+
+    def test_two_gems_with_different_names_are_fine(self, tmp_path):
+        """The other side of it: the check must not refuse ordinary rows.
+
+        A guard that rejected two gems sharing an effect, or two gems in the
+        same type, would pass the test above and break the sheet.
+        """
+        book = openpyxl.load_workbook(workbook_with(tmp_path / "w.xlsx", {
+            "Gems": [["Column 1", "Everyday Gemstone", "Quality Gemstone",
+                      "Superb Gemstone", "Masterful Gemstone", "Legendary Gemstone",
+                      "Mythical Gemstone", "Ascendant Gemstone",
+                      "Cataclysmic Gemstone", "Type"],
+                     ["Of Recovery", "Increases hp regen by 10%",
+                      0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.6, "Defense"],
+                     ["Of Urgency", "Increases CDR by 10%",
+                      0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.9, "Utility"]]}))
+        names = [row["Name"] for row in gen.gems(book)]
+        assert names == ["Gem_Of_Recovery", "Gem_Of_Urgency"], (
+            "a gem row key must be readable, not a numeric suffix on someone "
+            "else's name")
+
+    @staticmethod
+    def one_gem(tmp_path, effect: str, *values):
+        """A workbook holding a single gem, so a value can be read back."""
+        return openpyxl.load_workbook(workbook_with(tmp_path / "w.xlsx", {
+            "Gems": [["Column 1", "Everyday Gemstone", "Quality Gemstone",
+                      "Superb Gemstone", "Masterful Gemstone",
+                      "Legendary Gemstone", "Mythical Gemstone",
+                      "Ascendant Gemstone", "Cataclysmic Gemstone", "Type"],
+                     ["Of Testing", effect, *values, "Utility"]]}))
+
+    def test_a_percentage_written_without_a_leading_zero_is_read_whole(
+            self, tmp_path):
+        """Issue #246. The pattern was `\\d+(?:\\.\\d+)?`, which needs a digit
+        before the decimal point, so ".5%" matched only its "5%" and the gem Of
+        The Goblin shipped at 0.05 -- ten times its stated value, and larger
+        than the six rarity tiers above it."""
+        book = self.one_gem(tmp_path, "Increases Magic Find by .5%",
+                            0.01, 0.015, 0.02, 0.025, 0.03, 0.035, 0.05)
+        assert gen.gems(book)[0]["Everyday"] == pytest.approx(0.005)
+
+    @pytest.mark.parametrize("effect,expected", [
+        ("Increases Magic Find by .5%", 0.005),
+        ("Increases Magic Find by 0.5%", 0.005),
+        ("Increases Mana by 5%", 0.05),
+        ("Increases AoE by 10%", 0.10),
+        ("Increases movespeed by 1%", 0.01),
+        ("20% chance to apply poison", 0.20),
+        ("Increases something by 2.5 %", 0.025),
+    ])
+    def test_every_way_a_percentage_gets_written(self, tmp_path, effect,
+                                                 expected):
+        """The wider pattern must still read the forms that already worked. A
+        fix that only handled the leading dot would be as wrong as the original.
+        Values below rise from the largest of these so the ladder check passes
+        whichever effect is used."""
+        book = self.one_gem(tmp_path, effect,
+                            0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9)
+        assert gen.gems(book)[0]["Everyday"] == pytest.approx(expected)
+
+    def test_a_gem_that_gets_worse_as_it_gets_rarer_is_an_error(self, tmp_path):
+        """The check that would have caught issue #246 whatever caused it.
+
+        Gear and gem rarity equal the difficulty tier, so this ladder is the
+        whole of a gem's progression. A tier paying less than the one below it
+        means finding a rarer gem is a downgrade, and nothing in the interface
+        would say so.
+        """
+        book = self.one_gem(tmp_path, "Increases Magic Find by 5%",
+                            0.01, 0.015, 0.02, 0.025, 0.03, 0.035, 0.05)
+        with pytest.raises(gen.DataError, match="does not get better as it gets"):
+            gen.gems(book)
+
+    def test_a_gem_that_stalls_at_one_tier_is_also_an_error(self, tmp_path):
+        """Equal is not rising. A tier worth exactly what the one below is worth
+        is a rarity step a player pays for and gets nothing from."""
+        book = self.one_gem(tmp_path, "Increases Magic Find by 1%",
+                            0.02, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07)
+        with pytest.raises(gen.DataError, match="does not get better as it gets"):
+            gen.gems(book)
+
+    def test_the_error_names_the_gem_and_shows_all_eight_values(self, tmp_path):
+        """A message giving only 'a gem is wrong' costs whoever reads it a
+        search of the sheet."""
+        book = self.one_gem(tmp_path, "Increases Magic Find by 5%",
+                            0.01, 0.015, 0.02, 0.025, 0.03, 0.035, 0.05)
+        with pytest.raises(gen.DataError) as caught:
+            gen.gems(book)
+        message = str(caught.value)
+        assert "Of Testing" in message
+        assert "0.05" in message and "0.01" in message
+
+    def test_a_rising_ladder_is_accepted(self, tmp_path):
+        """The other side of it. A check that refused ordinary gems would pass
+        every test above and break the whole sheet."""
+        book = self.one_gem(tmp_path, "Increases Magic Find by .5%",
+                            0.01, 0.015, 0.02, 0.025, 0.03, 0.035, 0.05)
+        row = gen.gems(book)[0]
+        assert row["Everyday"] == pytest.approx(0.005)
+        assert row["Cataclysmic"] == pytest.approx(0.05)
+
+
+class TestValidation:
+    def test_an_undefined_tag_is_reported(self):
+        tables = {"T": [{"Name": "row", "Tags": "Element.War, Type.Nonexistent"}]}
+        problems = gen.validate_tags(tables, {"Element", "Element.War"})
+        assert len(problems) == 1
+        assert "Type.Nonexistent" in problems[0]
+
+    def test_an_implicit_parent_is_accepted(self):
+        tables = {"T": [{"Name": "row", "Tags": "Item.Weapon"}]}
+        assert gen.validate_tags(tables, {"Item", "Item.Weapon", "Item.Weapon.Sword"}) == []
+
+    @pytest.mark.parametrize("weight", [0, -1, 101])
+    def test_a_weight_outside_the_range_is_reported(self, weight):
+        tables = {"T": [{"Name": "row", "Weight": weight}]}
+        assert len(gen.validate_weights(tables)) == 1
+
+    def test_a_valid_weight_passes(self):
+        assert gen.validate_weights({"T": [{"Name": "r", "Weight": 20}]}) == []
+
+    # A RETIRED ENCHANTMENT. Issue #1833, ruled 2026-09-25: weight 0 on an
+    # ordinary enchantment row means it never drops, and only there.
+    @pytest.mark.parametrize("table", ["EnchantmentsPositive", "EnchantmentsNegative"])
+    def test_weight_0_retires_an_ordinary_enchantment(self, table):
+        row = {"Name": "r", "Weight": 0, "EnchantmentType": "Generic"}
+        assert gen.validate_weights({table: [row]}) == []
+        assert gen.is_retired(table, row)
+
+    def test_weight_0_is_refused_on_a_set_row(self):
+        row = {"Name": "r", "Weight": 0, "EnchantmentType": "Set"}
+        assert len(gen.validate_weights({"EnchantmentsPositive": [row]})) == 1
+
+    def test_weight_0_is_refused_on_any_other_table(self):
+        row = {"Name": "r", "Weight": 0, "EnchantmentType": "Generic"}
+        assert len(gen.validate_weights({"Affixes": [row]})) == 1
+
+    def test_a_negative_weight_is_still_refused_on_an_enchantment(self):
+        row = {"Name": "r", "Weight": -1, "EnchantmentType": "Generic"}
+        assert len(gen.validate_weights({"EnchantmentsPositive": [row]})) == 1
+
+
+class TestAnEnchantmentRowMustStateAType:
+    """ISSUE #1486. One negative row had an empty Type for as long as the sheet
+    existed and nothing anywhere reported it.
+
+    WHY IT WAS SILENT. `UCataclysmDropRoll::EnchantmentSuitsSlot` decides
+    whether a row is a set by asking whether its type IS `Set`. An empty string
+    is not `Set`, so the blank row was drawn like any other drawback, which is
+    what the design wants of it. The fault only surfaces when something asks the
+    question the other way round -- a filter that keeps `Generic`, or a
+    validator requiring a known type -- and then one of the eight severe
+    drawbacks written at weight 1 vanishes from the pool with nothing failing.
+
+    THE COUNTER-TESTS MATTER AS MUCH AS THE FAULT ONES. A check that reported
+    every row would pass `test_a_blank_type_is_reported` and stop the sheet
+    generating at all, so `Generic`, `Set` and a lowercase spelling each have a
+    test saying they are accepted.
+    """
+
+    @staticmethod
+    def rows(*types: str) -> dict[str, list[dict]]:
+        return {"EnchantmentsNegative": [
+            {"Name": f"Negative_row_{i}", "EnchantmentType": written}
+            for i, written in enumerate(types)]}
+
+    def test_a_blank_type_is_reported(self):
+        """The exact fault. `''` is what the generator produces from an empty
+        cell, because `clean()` turns a `None` into one."""
+        problems = gen.validate_enchantment_types(self.rows(""))
+        assert len(problems) == 1, problems
+        assert "Negative_row_0" in problems[0]
+        assert "EnchantmentType is ''" in problems[0]
+
+    def test_a_cell_holding_only_spaces_is_reported(self):
+        """A cell someone typed a space into looks filled in the spreadsheet."""
+        assert len(gen.validate_enchantment_types(self.rows("   "))) == 1
+
+    def test_a_misspelt_type_is_reported(self):
+        """`Genric` reads as "not a set" exactly the way a blank does."""
+        problems = gen.validate_enchantment_types(self.rows("Genric"))
+        assert len(problems) == 1, problems
+        assert "'Genric'" in problems[0]
+
+    def test_generic_and_set_are_accepted(self):
+        assert gen.validate_enchantment_types(self.rows("Generic", "Set")) == []
+
+    def test_the_comparison_ignores_case(self):
+        """`EnchantmentSuitsSlot` passes `ESearchCase::IgnoreCase`, so a
+        lowercase cell works in the game. Failing generation over one would be
+        this check inventing a rule the game does not have."""
+        assert gen.validate_enchantment_types(self.rows("generic", "SET")) == []
+
+    def test_both_enchantment_tables_are_read(self):
+        """Reading only the negatives would miss a blank on the positive side,
+        and the positives are the larger table of the two."""
+        tables = {"EnchantmentsPositive": [{"Name": "Positive_row",
+                                            "EnchantmentType": ""}]}
+        problems = gen.validate_enchantment_types(tables)
+        assert len(problems) == 1, problems
+        assert "EnchantmentsPositive/Positive_row" in problems[0]
+
+    def test_a_table_that_carries_no_type_column_is_reported(self):
+        """A check that inspected nothing passes for the same reason a correct
+        sheet does, and from the outside the two are identical. This is the one
+        that tells them apart."""
+        tables = {"EnchantmentsNegative": [{"Name": "Negative_row"}]}
+        problems = gen.validate_enchantment_types(tables)
+        assert len(problems) == 1, problems
+        assert "inspected nothing" in problems[0]
+
+    def test_tables_without_either_enchantment_table_are_left_alone(self):
+        """Every other validator in this file returns nothing for a table set
+        that does not contain its subject, and this one must too, or the
+        fixture workbooks the rest of these tests build would all fail."""
+        assert gen.validate_enchantment_types({}) == []
+        assert gen.validate_enchantment_types({"Affixes": [{"Name": "a"}]}) == []
+
+
+class TestASkillRowCannotNameADamageTypeNobodyHas:
+    """ISSUE #579. The Damage Type column of the Weapon Skills sheet was checked
+    by nothing at all, one column over from a WeaponType column that has been
+    checked since a rename left five weapons with no skills.
+
+    WHY A BAD ONE IS SILENT. `UCataclysmWeaponSkills::SkillsFor` in the engine
+    compares the damage type exactly, so a row naming one nobody has is offered
+    to nobody: it generates cleanly, imports cleanly, fills no slot and reports
+    nothing. One misspelling costs one skill and says so nowhere.
+    """
+
+    DECLARED = {"Element.Demonic", "Element.War", "Item.Weapon.Sword"}
+
+    @staticmethod
+    def skills(*damage_types: str) -> dict[str, list[dict]]:
+        return {"WeaponSkills": [
+            {"Name": f"{d}_Sword_Heavy", "WeaponType": "Sword",
+             "DamageType": d, "Slot": "Heavy"} for d in damage_types]}
+
+    def test_declared_damage_types_pass(self):
+        assert gen.validate_weapon_skill_damage_types(
+            self.skills("Demonic", "War"), self.DECLARED) == []
+
+    def test_a_damage_type_nobody_declared_is_reported(self):
+        problems = gen.validate_weapon_skill_damage_types(
+            self.skills("Demonic", "War", "Demonc"), self.DECLARED)
+        assert len(problems) == 1
+        assert "'Demonc' is not declared" in problems[0]
+
+    def test_the_wildcard_is_refused_by_name_and_says_why(self):
+        """`All` is what the WEAPON column means by every weapon. Somebody
+        writing it in this column has guessed at a symmetry that is not there,
+        so the refusal says that rather than only listing the legal values."""
+        problems = gen.validate_weapon_skill_damage_types(
+            self.skills("Demonic", "War", "All"), self.DECLARED)
+        assert len(problems) == 1
+        assert "is not a wildcard" in problems[0]
+        assert "granted to nobody" in problems[0]
+
+    def test_a_damage_type_with_no_rows_at_all_is_reported(self):
+        """The other direction. A Cataclysm whose characters have no skills is a
+        hole rather than a design choice, which is the same check the weapon
+        column has carried since the rename that produced it."""
+        problems = gen.validate_weapon_skill_damage_types(
+            self.skills("Demonic"), self.DECLARED)
+        assert len(problems) == 1
+        assert "the War damage type has no rows at all" in problems[0]
+
+    def test_it_reads_the_tags_sheet_rather_than_a_list_written_here(self):
+        """So adding a ninth damage type to the design needs no change in
+        tools/generate_datatables.py."""
+        assert gen.validate_weapon_skill_damage_types(
+            self.skills("Rust"), {"Element.Rust"}) == []
+
+    def test_the_real_workbook_passes(self):
+        """The check above is worth nothing if it does not run against the
+        shipping data. All 398 rows name one of the eight declared types."""
+        import openpyxl
+        if not gen.WORKBOOK.is_file():
+            pytest.skip("the design workbook is not present")
+        book = openpyxl.load_workbook(gen.WORKBOOK, data_only=True)
+        tables = {"WeaponSkills": gen.weapon_skills(book)}
+        assert gen.validate_weapon_skill_damage_types(
+            tables, gen.declared_tags(book)) == []
+
+
+class TestWeaponTagsAreNamedAfterTheWeapon:
+    """ISSUE #620. Three weapons carried a tag named after what they used to be
+    called -- a Greataxe's rows said `Item.Weapon.2hAxe` -- and nothing compared
+    the two, so the old vocabulary survived a rename that corrected everything
+    else.
+
+    NOTHING WAS BROKEN BY IT, which is why it lasted. The naming was consistent
+    within the data, so every lookup worked and no test failed.
+    """
+
+    @staticmethod
+    def bases(*weapon_types: str) -> dict[str, list[dict]]:
+        return {"ItemBases": [{"Name": f"Weapon_{t}", "WeaponType": t}
+                              for t in weapon_types]}
+
+    def test_a_tag_named_after_the_weapon_passes(self):
+        assert gen.validate_weapon_tags(
+            self.bases("Greataxe"), {"Item.Weapon.Greataxe"}) == []
+
+    def test_the_old_name_is_reported_from_both_sides(self):
+        problems = gen.validate_weapon_tags(
+            self.bases("Greataxe"), {"Item.Weapon.2hAxe"})
+        assert len(problems) == 2
+        assert any("Item.Weapon.Greataxe is not declared" in p for p in problems)
+        assert any("Item.Weapon.2hAxe names no weapon type" in p
+                   for p in problems)
+
+    def test_a_weapon_with_no_tag_at_all_is_reported(self):
+        problems = gen.validate_weapon_tags(
+            self.bases("Sword", "Whip"), {"Item.Weapon.Sword"})
+        assert len(problems) == 1
+        assert "Item.Weapon.Whip is not declared" in problems[0]
+
+    def test_a_space_in_a_weapon_type_is_removed_and_nothing_else_is(self):
+        """A gameplay tag cannot contain a space and "2H Crossbow" does. The
+        letter case is not touched, so the tag is `Item.Weapon.2HCrossbow` and
+        not the `2hCrossbow` it used to be."""
+        assert gen.weapon_tag_leaf("2H Crossbow") == "2HCrossbow"
+        assert gen.validate_weapon_tags(
+            self.bases("2H Crossbow"), {"Item.Weapon.2HCrossbow"}) == []
+        assert gen.validate_weapon_tags(
+            self.bases("2H Crossbow"), {"Item.Weapon.2hCrossbow"}) != []
+
+    def test_tags_outside_the_weapon_prefix_are_ignored(self):
+        """It reads `Item.Weapon.*` and nothing else, so the other 166 declared
+        tags are not weapons that went missing."""
+        assert gen.validate_weapon_tags(
+            self.bases("Sword"),
+            {"Item.Weapon.Sword", "Item.Slot.Weapon", "Element.War"}) == []
+
+    def test_the_real_workbook_passes(self):
+        """The check above is worth nothing if it does not run against the
+        shipping data. This is what the four renames were for."""
+        import openpyxl
+        workbook = gen.WORKBOOK
+        if not workbook.is_file():
+            pytest.skip("the design workbook is not present")
+        book = openpyxl.load_workbook(workbook, data_only=True)
+        tables = {"ItemBases": gen.TABLES["ItemBases"](book)}
+        assert gen.validate_weapon_tags(tables, gen.declared_tags(book)) == []
+
+
+class TestShapeParams:
+    """A skill's shape names which template runs; its params are that template's numbers.
+
+    EVERY ONE OF THESE GUARDS EXISTS BECAUSE THE SILENT FAILURE IS THE BAD ONE.
+    A misspelled parameter would read as zero, and a shape with a radius of zero
+    hits nothing: it activates, spends mana, starts its cooldown, and does
+    nothing. That is the same failure as issue #155's cooldown of zero, which
+    went unnoticed across 77 skills.
+    """
+
+    def test_a_well_formed_cell_parses(self):
+        assert gen.parse_shape_params(
+            "Radius=4; Angle=120; Burn=1", "Strike", "here") == {
+                "Radius": "4", "Angle": "120", "Burn": "1"}
+
+    def test_an_empty_cell_is_no_parameters(self):
+        assert gen.parse_shape_params("", "Strike", "here") == {}
+
+    def test_a_parameter_the_shape_does_not_read_is_refused(self):
+        # Pierce belongs to Projectile. On a Strike it would be ignored, and the
+        # designer would have no way to tell it had been.
+        with pytest.raises(gen.DataError, match="no parameter 'Pierce'"):
+            gen.parse_shape_params("Pierce=3", "Strike", "here")
+
+    def test_a_misspelled_parameter_is_refused(self):
+        with pytest.raises(gen.DataError, match="no parameter 'Radiuss'"):
+            gen.parse_shape_params("Radiuss=4", "Strike", "here")
+
+    def test_a_rider_is_accepted_on_every_shape(self):
+        for shape in gen.SHAPE_PARAMS:
+            assert gen.parse_shape_params(
+                "GroundRadius=3; GroundDuration=6", shape, "here") == {
+                    "GroundRadius": "3", "GroundDuration": "6"}
+
+    def test_a_non_numeric_value_is_refused(self):
+        with pytest.raises(gen.DataError, match="not a number"):
+            gen.parse_shape_params("Radius=wide", "Strike", "here")
+
+    def test_a_missing_equals_is_refused(self):
+        with pytest.raises(gen.DataError, match="not Key=Value"):
+            gen.parse_shape_params("Radius 4", "Strike", "here")
+
+    def test_a_repeated_parameter_is_refused(self):
+        with pytest.raises(gen.DataError, match="given twice"):
+            gen.parse_shape_params("Radius=4; Radius=6", "Strike", "here")
+
+    def test_an_empty_value_is_refused(self):
+        with pytest.raises(gen.DataError, match="has no value"):
+            gen.parse_shape_params("Radius=", "Strike", "here")
+
+    def test_mode_takes_only_the_three_movement_kinds(self):
+        assert gen.parse_shape_params("Mode=Blink", "Movement", "here") == {
+            "Mode": "Blink"}
+        with pytest.raises(gen.DataError, match="not one of"):
+            gen.parse_shape_params("Mode=Teleport", "Movement", "here")
+
+    def test_an_unknown_shape_fails_generation(self, tmp_path):
+        path = workbook_with(tmp_path / "b.xlsx", {"Weapon Skills": [
+            ["Weapon Type", "Damage Type", "Slot", "Skill Name",
+             "Skill Description", "Tags", "Shape", "Shape Params"],
+            ["Sword", "War", "Heavy", "Cut", "Cuts.", "", "Wiggle", ""]]})
+        book = openpyxl.load_workbook(path, data_only=True)
+        with pytest.raises(gen.DataError, match="shape 'Wiggle' is not one of"):
+            gen.weapon_skills(book)
+
+    def test_parameters_without_a_shape_fail_generation(self, tmp_path):
+        path = workbook_with(tmp_path / "b.xlsx", {"Weapon Skills": [
+            ["Weapon Type", "Damage Type", "Slot", "Skill Name",
+             "Skill Description", "Tags", "Shape", "Shape Params"],
+            ["Sword", "War", "Heavy", "Cut", "Cuts.", "", "", "Radius=4"]]})
+        book = openpyxl.load_workbook(path, data_only=True)
+        with pytest.raises(gen.DataError, match="shape parameters but no shape"):
+            gen.weapon_skills(book)
+
+    def test_a_shape_without_a_skill_name_fails_generation(self, tmp_path):
+        path = workbook_with(tmp_path / "b.xlsx", {"Weapon Skills": [
+            ["Weapon Type", "Damage Type", "Slot", "Skill Name",
+             "Skill Description", "Tags", "Shape", "Shape Params"],
+            ["Sword", "War", "Heavy", "", "", "", "Strike", "Radius=4"]]})
+        book = openpyxl.load_workbook(path, data_only=True)
+        with pytest.raises(gen.DataError, match="shape but no skill name"):
+            gen.weapon_skills(book)
+
+    def test_a_sheet_without_the_two_columns_still_generates(self, tmp_path):
+        """The 61 War rows predate shapes and must keep generating."""
+        path = workbook_with(tmp_path / "b.xlsx", {"Weapon Skills": [
+            ["Weapon Type", "Damage Type", "Slot", "Skill Name",
+             "Skill Description", "Tags"],
+            ["Sword", "War", "Heavy", "Cut", "Cuts.", ""]]})
+        book = openpyxl.load_workbook(path, data_only=True)
+        rows = gen.weapon_skills(book)
+        assert rows[0]["Shape"] == "" and rows[0]["ShapeParams"] == ""
+
+
+class TestASkillsOwnCriticalStrikeChance:
+    """The Crit Chance column of the Weapon Skills sheet. Issue #657.
+
+    WHAT WAS MISSING. The design says critical strike chance belongs to the skill
+    being used -- its stat source table names "the skill being used" and adds "A
+    character has no critical strike chance in the abstract" -- and the sheet had
+    nowhere to say it. Every one of the 398 rows took the 5% default and a skill
+    designed to critically strike more or less often than average could not be
+    built.
+
+    THE SENTINEL IS -1 AND NOT 0, which is what most of these check. The decision
+    of 2026-08-04 says the 5% is "a default and not a floor: a skill that states
+    1% gets 1%", so a skill built never to critically strike states 0 and must get
+    0 rather than silently getting 5.
+    """
+
+    HEADERS = ["Weapon Type", "Damage Type", "Slot", "Skill Name",
+               "Skill Description", "Tags", "Shape", "Shape Params",
+               "Crit Chance"]
+
+    def rows(self, tmp_path, crit):
+        path = workbook_with(tmp_path / "b.xlsx", {"Weapon Skills": [
+            self.HEADERS,
+            ["Sword", "War", "Heavy", "Cut", "Cuts.", "", "", "", crit]]})
+        book = openpyxl.load_workbook(path, data_only=True)
+        return gen.weapon_skills(book)
+
+    def test_a_blank_cell_states_nothing(self, tmp_path):
+        assert self.rows(tmp_path, None)[0]["CritChancePercent"] == -1.0
+
+    def test_a_stated_chance_is_carried(self, tmp_path):
+        assert self.rows(tmp_path, 12.5)[0]["CritChancePercent"] == 12.5
+
+    def test_zero_is_a_real_answer_and_not_a_blank(self, tmp_path):
+        """A skill designed never to critically strike states 0 and gets 0."""
+        assert self.rows(tmp_path, 0)[0]["CritChancePercent"] == 0.0
+
+    def test_a_chance_written_as_text_is_read(self, tmp_path):
+        """A spreadsheet cell formatted as text still holds a number."""
+        assert self.rows(tmp_path, "7")[0]["CritChancePercent"] == 7.0
+
+    def test_something_that_is_not_a_number_fails_generation(self, tmp_path):
+        with pytest.raises(gen.DataError, match="is not a number"):
+            self.rows(tmp_path, "often")
+
+    def test_a_chance_above_the_hard_cap_fails_generation(self, tmp_path):
+        """Otherwise the engine clamps it to 100 and the row lies."""
+        with pytest.raises(gen.DataError, match="outside 0 to 100"):
+            self.rows(tmp_path, 150)
+
+    def test_a_negative_chance_fails_generation(self, tmp_path):
+        """-1 is the generator's own sentinel, not something a row may state."""
+        with pytest.raises(gen.DataError, match="outside 0 to 100"):
+            self.rows(tmp_path, -1)
+
+    def test_a_sheet_without_the_column_still_generates(self, tmp_path):
+        """Every row predates this column, so a short sheet must still work."""
+        path = workbook_with(tmp_path / "b.xlsx", {"Weapon Skills": [
+            ["Weapon Type", "Damage Type", "Slot", "Skill Name",
+             "Skill Description", "Tags"],
+            ["Sword", "War", "Heavy", "Cut", "Cuts.", ""]]})
+        book = openpyxl.load_workbook(path, data_only=True)
+        assert gen.weapon_skills(book)[0]["CritChancePercent"] == -1.0
+
+    def test_every_shipped_row_states_nothing(self):
+        """No skill is designed to differ yet, and that is the owner's call.
+
+        This is not a rule -- it is a record of where the data stands. When a
+        skill is deliberately given its own chance, change this test with it.
+        """
+        book = openpyxl.load_workbook(gen.WORKBOOK, data_only=True)
+        stated = {r["Name"]: r["CritChancePercent"]
+                  for r in gen.weapon_skills(book)
+                  if r["CritChancePercent"] != -1.0}
+        assert not stated, (
+            "these skill rows state a critical strike chance of their own: "
+            f"{stated}. That is allowed; update this test to say so.")
+
+
+class TestBasicAttacks:
+    """The basic attack on the weapon base. Issue #524.
+
+    THE SILENT FAILURE HERE IS A CHARACTER WITH NOTHING BETWEEN ITS COOLDOWNS.
+    Before this, `game/Data/WeaponSkills.csv` had 398 rows across six slots and
+    not one Basic row anywhere, so every character was granted five abilities and
+    no ordinary attack. The project owner found it by playing. An empty column is
+    exactly as invisible as an empty sheet, so the generator refuses one.
+    """
+
+    # EVERY COLUMN THE READER ASKS FOR, the ones this test leaves empty
+    # appended at the end so no row changes. Issue #1882: a column a
+    # sheet lacks is now refused rather than read as empty.
+    HEADERS = ["Base Name", "Slot", "Hands", "Sub-Type", "Weapon Type",
+               "Max Damage Types", "Implicit 1 Stat", "Implicit 1 Kind",
+               "Implicit 1 Value", "Attack Speed", "Basic Shape",
+               "Basic Shape Params", "Cells Wide", "Cells High",
+               "Implicit 2 Stat", "Implicit 2 Kind", "Implicit 2 Value"]
+
+    def sheet(self, tmp_path, *rows) -> "openpyxl.Workbook":
+        path = workbook_with(tmp_path / "b.xlsx",
+                             {"Item Bases": [self.HEADERS, *rows]})
+        return openpyxl.load_workbook(path, data_only=True)
+
+    def armed(self, **changes) -> list:
+        row = ["Sword", "Weapon", 1, "Slashing", "Sword", 4,
+               "attack_damage", "flat", 40.0, 1.3,
+               "Strike", "Radius=1.8; Angle=90; MaxTargets=1", 1, 3]
+        for column, value in changes.items():
+            row[self.HEADERS.index(column)] = value
+        return row
+
+    def test_a_base_with_no_footprint_is_refused(self, tmp_path):
+        """Issue #855. Every base needs one, because a base with no
+        footprint could not be placed in the bag at all and a zero would
+        read as a piece that takes no room rather than as one somebody
+        forgot to measure."""
+        for column in ("Cells Wide", "Cells High"):
+            with pytest.raises(gen.DataError, match=f"no {column}"):
+                gen.item_bases(self.sheet(
+                    tmp_path, self.armed(**{column: ""})))
+            with pytest.raises(gen.DataError, match=f"no {column}"):
+                gen.item_bases(self.sheet(
+                    tmp_path, self.armed(**{column: 0})))
+
+    def test_a_footprint_reaches_the_generated_row(self, tmp_path):
+        """The figures come from the footprint table in
+        docs/Inventory_Screen_Design.md and have to survive the trip."""
+        rows = gen.item_bases(self.sheet(
+            tmp_path, self.armed(**{"Cells Wide": 2, "Cells High": 6})))
+        assert rows[0]["CellsWide"] == 2
+        assert rows[0]["CellsHigh"] == 6
+
+    def test_an_armed_weapon_keeps_its_basic_attack(self, tmp_path):
+        rows = gen.item_bases(self.sheet(tmp_path, self.armed()))
+        assert rows[0]["BasicShape"] == "Strike"
+        assert rows[0]["BasicShapeParams"] == "Radius=1.8; Angle=90; MaxTargets=1"
+
+    def test_an_armed_weapon_with_no_basic_attack_is_refused(self, tmp_path):
+        """The exact hole issue #524 reported, moved to where it now lives."""
+        with pytest.raises(gen.DataError, match="no basic attack shape"):
+            gen.item_bases(self.sheet(
+                tmp_path, self.armed(**{"Basic Shape": "",
+                                        "Basic Shape Params": ""})))
+
+    def test_a_weapon_granting_no_attack_damage_gets_none_and_needs_none(
+            self, tmp_path):
+        """The Shield. It is a one-handed weapon that grants no attack damage,
+        so there is no hit to compose from it. Issue #619."""
+        shield = self.armed(**{"Base Name": "Shield", "Weapon Type": "Shield",
+                               "Implicit 1 Stat": "block_chance",
+                               "Basic Shape": "", "Basic Shape Params": ""})
+        rows = gen.item_bases(self.sheet(tmp_path, shield))
+        assert rows[0]["BasicShape"] == ""
+
+    def test_a_weapon_granting_no_attack_damage_may_not_state_one(self, tmp_path):
+        with pytest.raises(gen.DataError, match="100% of nothing"):
+            gen.item_bases(self.sheet(tmp_path, self.armed(
+                **{"Base Name": "Shield", "Weapon Type": "Shield",
+                   "Implicit 1 Stat": "block_chance"})))
+
+    def test_something_that_is_not_a_weapon_may_not_state_one(self, tmp_path):
+        """A glove can grant flat attack damage -- the Vambraces base grants 12 --
+        and still have no swing to describe."""
+        with pytest.raises(gen.DataError, match="not a weapon"):
+            gen.item_bases(self.sheet(tmp_path, self.armed(
+                **{"Base Name": "Vambraces", "Slot": "Gloves", "Hands": "",
+                   "Weapon Type": "", "Attack Speed": ""})))
+
+    def test_a_shape_a_swing_cannot_take_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="basic attack shape is 'Summon'"):
+            gen.item_bases(self.sheet(
+                tmp_path, self.armed(**{"Basic Shape": "Summon"})))
+
+    def test_a_misspelled_parameter_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="no parameter 'Radiuss'"):
+            gen.item_bases(self.sheet(tmp_path, self.armed(
+                **{"Basic Shape Params": "Radiuss=1.8"})))
+
+    def test_a_rider_is_refused_even_though_every_other_slot_may_carry_one(
+            self, tmp_path):
+        """A basic attack is 100% weapon damage and nothing else, which is what
+        makes it the anchor every other slot is a percentage of. `Burn=1` is
+        legal on any weapon skill and is not legal here."""
+        with pytest.raises(gen.DataError, match=r"carries \['Burn'\]"):
+            gen.item_bases(self.sheet(tmp_path, self.armed(
+                **{"Basic Shape Params":
+                   "Radius=1.8; Angle=90; MaxTargets=1; Burn=1"})))
+
+    def test_parameters_without_a_shape_are_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="parameters but no shape"):
+            gen.item_bases(self.sheet(
+                tmp_path, self.armed(**{"Basic Shape": ""})))
+
+    def test_the_two_basic_attack_shape_vocabularies_agree(self):
+        """`BASIC_ATTACK_SHAPES` exists in this generator and again in
+        `sim/cataclysm_sim/affixes.py`, which enforces the same rule on the
+        model. Two copies of a vocabulary drift, so they are compared here the
+        same way the two copies of the full shape vocabulary are."""
+        from cataclysm_sim import affixes as af
+
+        assert af.BASIC_ATTACK_SHAPES == gen.BASIC_ATTACK_SHAPES, (
+            "the basic attack shapes differ between affixes.py and "
+            "generate_datatables.py: "
+            f"{sorted(af.BASIC_ATTACK_SHAPES ^ gen.BASIC_ATTACK_SHAPES)}")
+
+    def test_the_basic_attack_shapes_are_shapes_the_generator_knows(self):
+        """Both names in BASIC_ATTACK_SHAPES appear in SHAPE_PARAMS, so a basic
+        attack is validated against a real parameter list rather than against a
+        missing dictionary key.
+
+        ONE VOCABULARY IS CHECKED HERE AND THAT IS ENOUGH, because
+        test_the_two_basic_attack_shape_vocabularies_agree above proves the copy
+        in affixes.py is the same set.
+
+        WHAT THIS DOES NOT CHECK is that a C++ ability template implements the
+        shape, which is the stronger property and is not knowable from Python.
+        Cataclysm.WeaponSlots.EveryArmedWeaponGrantsABasicAttack asserts it
+        against the real table, calling TemplateFor on every armed weapon's
+        basic attack shape.
+        """
+        assert gen.BASIC_ATTACK_SHAPES <= set(gen.SHAPE_PARAMS)
+
+
+class TestElementVisuals:
+    """The eight damage types' effect palette. Issue #549.
+
+    THE SILENT FAILURE HERE IS A COLOUR NOBODY ASKED FOR. `FColor::FromHex` does
+    not report bad input, which is how a length-only check in
+    ACataclysmTelegraphMarker accepted the word "nonsense" -- eight characters --
+    and produced a colour out of it. So the hex is checked character by
+    character, and these tests are what say that check works.
+    """
+
+    HEADERS = ["Element Tag", "Primary", "Secondary",
+               "Emissive Multiplier", "Spawn Rate Scale", "Velocity Scale"]
+
+    def sheet(self, tmp_path, *rows):
+        path = workbook_with(tmp_path / "b.xlsx",
+                             {"Element Visuals": [self.HEADERS, *rows]})
+        return openpyxl.load_workbook(path, data_only=True)
+
+    def test_reads_a_row_and_keys_it_on_the_tags_leaf(self, tmp_path):
+        book = self.sheet(tmp_path,
+                          ["Element.War", "#FFFFFF", "#000000", 1, 1, 1])
+        assert gen.element_visuals(book) == [{
+            "Name": "War",
+            "ElementTag": "Element.War",
+            "PrimaryColour": "(R=1.000000,G=1.000000,B=1.000000,A=1.000000)",
+            "SecondaryColour": "(R=0.000000,G=0.000000,B=0.000000,A=1.000000)",
+            "EmissiveMultiplier": 1.0,
+            "SpawnRateScale": 1.0,
+            "VelocityScale": 1.0,
+        }]
+
+    def test_the_design_documents_srgb_becomes_linear(self, tmp_path):
+        """#FF7A2E is Demonic's primary. Its middle channel is 0x7A, which is
+        122/255 = 0.478 in sRGB and 0.195 in linear. Writing the sRGB figure
+        into an FLinearColor would render a visibly paler orange."""
+        book = self.sheet(tmp_path,
+                          ["Element.War", "#FF7A2E", "#000000", 1, 1, 1])
+        primary = gen.element_visuals(book)[0]["PrimaryColour"]
+        assert primary == "(R=1.000000,G=0.194618,B=0.027321,A=1.000000)"
+
+    def test_a_leading_hash_is_optional(self, tmp_path):
+        book = self.sheet(tmp_path,
+                          ["Element.War", "FFFFFF", "#000000", 1, 1, 1])
+        assert gen.element_visuals(book)[0]["PrimaryColour"].startswith("(R=1.0")
+
+    def test_six_characters_that_are_not_hex_digits_are_refused(self, tmp_path):
+        """The real bug this guards. "wrong!" is six characters, so a check on
+        the length alone would accept it and produce some colour."""
+        book = self.sheet(tmp_path,
+                          ["Element.War", "wrong!", "#000000", 1, 1, 1])
+        with pytest.raises(gen.DataError, match="not six hex digits"):
+            gen.element_visuals(book)
+
+    @pytest.mark.parametrize("text", ["#FFF", "#FFFFFFFF", ""])
+    def test_a_hex_of_the_wrong_length_is_refused(self, tmp_path, text):
+        book = self.sheet(tmp_path,
+                          ["Element.War", text, "#000000", 1, 1, 1])
+        with pytest.raises(gen.DataError, match="not six hex digits"):
+            gen.element_visuals(book)
+
+    def test_a_key_that_is_not_a_damage_type_tag_is_refused(self, tmp_path):
+        book = self.sheet(tmp_path,
+                          ["Slot.Ultimate", "#FFFFFF", "#000000", 1, 1, 1])
+        with pytest.raises(gen.DataError, match="must start with 'Element.'"):
+            gen.element_visuals(book)
+
+    @pytest.mark.parametrize("column", [3, 4, 5])
+    @pytest.mark.parametrize("scale", [0, -1])
+    def test_a_scale_of_zero_or_less_is_refused(self, tmp_path, column, scale):
+        """Each of the three fails as a broken-looking effect rather than as
+        bad data: no particles, particles that never move, or a black effect."""
+        row = ["Element.War", "#FFFFFF", "#000000", 1, 1, 1]
+        row[column] = scale
+        book = self.sheet(tmp_path, row)
+        with pytest.raises(gen.DataError, match="makes the effect invisible"):
+            gen.element_visuals(book)
+
+    def test_an_empty_scale_is_refused(self, tmp_path):
+        book = self.sheet(tmp_path,
+                          ["Element.War", "#FFFFFF", "#000000", None, 1, 1])
+        with pytest.raises(gen.DataError, match="Emissive Multiplier is empty"):
+            gen.element_visuals(book)
+
+    def test_a_damage_type_with_no_row_is_reported(self):
+        tables = {"ElementVisuals": [{"Name": "War",
+                                      "ElementTag": "Element.War"}]}
+        problems = gen.validate_element_visuals(
+            tables, {"Element.War", "Element.Void", "Slot.Ultimate"})
+        assert len(problems) == 1
+        assert "Element.Void" in problems[0]
+
+    def test_a_row_naming_an_undeclared_tag_is_reported(self):
+        tables = {"ElementVisuals": [{"Name": "Sparkly",
+                                      "ElementTag": "Element.Sparkly"}]}
+        assert gen.validate_element_visuals(tables, {"Element.Sparkly"}) == []
+
+        problems = gen.validate_element_visuals(tables, {"Element.War"})
+        assert len(problems) == 2, problems
+        assert any("Element.War" in p and "no effect palette row" in p
+                   for p in problems)
+        assert any("Element.Sparkly" in p and "not declared" in p
+                   for p in problems)
+
+    def test_a_matching_set_reports_nothing(self):
+        tables = {"ElementVisuals": [{"Name": "War",
+                                      "ElementTag": "Element.War"}]}
+        assert gen.validate_element_visuals(
+            tables, {"Element.War", "Slot.Ultimate"}) == []
+
+
+# --------------------------------------------------------------------------
+# The three loot sheets, and the word an affix gives an item's name.
+#
+# EVERY GUARD BELOW IS SHOWN FAILING. A check that cannot fail is worthless, and
+# none of these would fail anywhere else: a drop weight of zero, a gate above +10
+# or a residue band running backwards all produce a table that loads cleanly and
+# carries the wrong numbers.
+# --------------------------------------------------------------------------
+
+GEAR_RARITY_HEADER = ["Rarity", "Drop Weight", "Gear Level Gate",
+                      "Residue On Drop Lowest", "Residue On Drop Highest",
+                      "Colour"]
+
+#: The real ladder, weakest first. Tests copy this and change one cell.
+GEAR_RARITY_ROWS = [
+    ["Everyday", 15625, 0, 38, 62, "#9D9D9D"],
+    ["Quality", 6250, 0, 75, 125, "#FFFFFF"],
+    ["Superb", 2500, 0, 112, 188, "#1EFF00"],
+    ["Masterful", 1000, 0, 150, 250, "#2E9BFF"],
+    ["Legendary", 125, 4, 188, 312, "#FFD100"],
+    ["Mythical", 25, 6, 225, 375, "#FF8000"],
+    ["Ascendant", 5, 8, 262, 438, "#A335EE"],
+    ["Cataclysmic", 1, 10, 300, 500, "#FF4040"],
+]
+
+
+def gear_rarity_book(tmp_path, rows):
+    return openpyxl.load_workbook(workbook_with(
+        tmp_path / "w.xlsx", {"Gear Rarity": [GEAR_RARITY_HEADER] + rows}))
+
+
+def changed(rows, index, column, value):
+    """A copy of `rows` with one cell replaced."""
+    out = [list(row) for row in rows]
+    out[index][GEAR_RARITY_HEADER.index(column)] = value
+    return out
+
+
+class TestGearRarity:
+    def test_reads_the_ladder_weakest_first(self, tmp_path):
+        rows = gen.gear_rarity(gear_rarity_book(tmp_path, GEAR_RARITY_ROWS))
+        assert [row["Rarity"] for row in rows] == list(gen.RARITY_LADDER)
+        assert rows[-1] == {
+            "Name": "Cataclysmic", "Rarity": "Cataclysmic",
+            "DropWeight": 1.0, "GearLevelGate": 10,
+            "ResidueOnDropLowest": 300.0, "ResidueOnDropHighest": 500.0,
+            "Colour": "(R=1.000000,G=0.051269,B=0.051269,A=1.000000)"}
+
+    def test_the_ladder_decides_the_order_not_the_sheet(self, tmp_path):
+        """A sheet sorted some other way still generates in ladder order, so
+        nothing downstream has to trust how the rows happen to be typed."""
+        backwards = list(reversed(GEAR_RARITY_ROWS))
+        rows = gen.gear_rarity(gear_rarity_book(tmp_path, backwards))
+        assert [row["Rarity"] for row in rows] == list(gen.RARITY_LADDER)
+
+    def test_rejects_a_rarity_that_is_not_on_the_ladder(self, tmp_path):
+        rows = changed(GEAR_RARITY_ROWS, 0, "Rarity", "Sparkly")
+        with pytest.raises(gen.DataError, match="is not a rarity"):
+            gen.gear_rarity(gear_rarity_book(tmp_path, rows))
+
+    def test_rejects_the_same_rarity_twice(self, tmp_path):
+        rows = changed(GEAR_RARITY_ROWS, 1, "Rarity", "Everyday")
+        with pytest.raises(gen.DataError, match="appears twice"):
+            gen.gear_rarity(gear_rarity_book(tmp_path, rows))
+
+    def test_rejects_a_ladder_with_a_rarity_missing(self, tmp_path):
+        with pytest.raises(gen.DataError, match="has no row for"):
+            gen.gear_rarity(gear_rarity_book(tmp_path, GEAR_RARITY_ROWS[:-1]))
+
+    def test_rejects_a_rarity_that_can_never_drop(self, tmp_path):
+        rows = changed(GEAR_RARITY_ROWS, 7, "Drop Weight", 0)
+        with pytest.raises(gen.DataError, match="can never drop"):
+            gen.gear_rarity(gear_rarity_book(tmp_path, rows))
+
+    def test_rejects_a_gate_above_the_highest_upgrade_level(self, tmp_path):
+        rows = changed(GEAR_RARITY_ROWS, 7, "Gear Level Gate", 11)
+        with pytest.raises(gen.DataError, match="outside 0 to 10"):
+            gen.gear_rarity(gear_rarity_book(tmp_path, rows))
+
+    def test_rejects_a_rarer_thing_that_drops_more_often(self, tmp_path):
+        """The one that would look like a working table. Making Cataclysmic
+        weigh 2000 keeps every other check happy and inverts the ladder."""
+        rows = changed(GEAR_RARITY_ROWS, 7, "Drop Weight", 2000)
+        with pytest.raises(gen.DataError, match="drops more often"):
+            gen.gear_rarity(gear_rarity_book(tmp_path, rows))
+
+    def test_rejects_a_gate_that_falls_as_rarity_rises(self, tmp_path):
+        rows = changed(GEAR_RARITY_ROWS, 7, "Gear Level Gate", 2)
+        with pytest.raises(gen.DataError, match="is gated lower"):
+            gen.gear_rarity(gear_rarity_book(tmp_path, rows))
+
+    def test_rejects_a_residue_band_that_runs_backwards(self, tmp_path):
+        rows = changed(GEAR_RARITY_ROWS, 0, "Residue On Drop Highest", 10)
+        with pytest.raises(gen.DataError, match="runs from"):
+            gen.gear_rarity(gear_rarity_book(tmp_path, rows))
+
+    def test_rejects_a_drop_carrying_no_residue(self, tmp_path):
+        rows = changed(GEAR_RARITY_ROWS, 0, "Residue On Drop Lowest", 0)
+        with pytest.raises(gen.DataError, match="Every drop carries some"):
+            gen.gear_rarity(gear_rarity_book(tmp_path, rows))
+
+    def test_rejects_a_residue_band_that_shrinks_as_rarity_rises(self, tmp_path):
+        """Both ends are checked, so a band that starts higher and ends lower
+        than the rarity below it is still caught."""
+        rows = changed(GEAR_RARITY_ROWS, 7, "Residue On Drop Highest", 400)
+        with pytest.raises(gen.DataError,
+                           match="ResidueOnDropHighest is smaller"):
+            gen.gear_rarity(gear_rarity_book(tmp_path, rows))
+
+
+    def test_every_rarity_is_drawn_in_its_own_colour(self, tmp_path):
+        """A player reads a rarity off the floor by the colour of its name, so
+        two rarities sharing one would be two things that cannot be told apart.
+        """
+        # QUALITY GIVEN EVERYDAY'S COLOUR. It used to be given white,
+        # which collided with Everyday until the two were swapped on
+        # 2026-08-19 under issue #711 and white became Quality's own.
+        rows = changed(GEAR_RARITY_ROWS, 1, "Colour", "#9D9D9D")
+        with pytest.raises(gen.DataError, match="same colour"):
+            gen.gear_rarity(gear_rarity_book(tmp_path, rows))
+
+    def test_a_colour_that_is_not_six_hex_digits_is_rejected(self, tmp_path):
+        """FColor::FromHex does not report bad input, so a nonsense value would
+        become a colour nobody chose. The generator checks every character."""
+        rows = changed(GEAR_RARITY_ROWS, 0, "Colour", "cornflower")
+        with pytest.raises(gen.DataError, match="six hex digits"):
+            gen.gear_rarity(gear_rarity_book(tmp_path, rows))
+
+    def test_a_missing_colour_is_rejected(self, tmp_path):
+        rows = changed(GEAR_RARITY_ROWS, 0, "Colour", None)
+        with pytest.raises(gen.DataError, match="six hex digits"):
+            gen.gear_rarity(gear_rarity_book(tmp_path, rows))
+
+    def test_the_colour_is_converted_from_srgb_to_linear(self, tmp_path):
+        """A colour picker shows sRGB and an FLinearColor is linear. Feeding the
+        raw figures through renders a visibly different colour, which is why
+        this conversion happens at generation rather than in the engine.
+
+        Mid grey is the case that shows it: 0x9D is 157 of 255, which is 0.616
+        as a raw fraction and 0.337 once converted.
+
+        EVERYDAY IS THE GREY ONE AND QUALITY THE WHITE ONE, which is the other
+        way round from how this test was first written. The two were swapped on
+        2026-08-19 under issue #711, because grey below white is what the genre
+        does and the reverse read as backwards to the project owner in play.
+        """
+        rows = gen.gear_rarity(gear_rarity_book(tmp_path, GEAR_RARITY_ROWS))
+        grey = next(r for r in rows if r["Rarity"] == "Everyday")
+        assert "R=0.337164" in grey["Colour"]
+        assert "0.615686" not in grey["Colour"], (
+            "the sRGB fraction reached the table unconverted")
+
+        white = next(r for r in rows if r["Rarity"] == "Quality")
+        assert white["Colour"] == "(R=1.000000,G=1.000000,B=1.000000,A=1.000000)"
+
+
+class TestItemSockets:
+    HEADER = ["Slot", "Hands", "Max Sockets"]
+    ROWS = [["Head", 0, 2], ["Chest", 0, 6],
+            ["Weapon", 1, 3], ["Weapon", 2, 6]]
+
+    def book(self, tmp_path, rows):
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "w.xlsx", {"Item Sockets": [self.HEADER] + rows}))
+
+    def test_a_weapon_gets_one_row_per_hand_count(self, tmp_path):
+        rows = gen.item_sockets(self.book(tmp_path, self.ROWS))
+        assert [row["Name"] for row in rows] == [
+            "Head", "Chest", "Weapon_1H", "Weapon_2H"]
+        assert rows[3] == {"Name": "Weapon_2H", "Slot": "Weapon",
+                           "Hands": 2, "MaxSockets": 6}
+
+    def test_rejects_a_weapon_taking_three_hands(self, tmp_path):
+        with pytest.raises(gen.DataError, match="takes 3 hands"):
+            gen.item_sockets(self.book(tmp_path, [["Weapon", 3, 4]]))
+
+    def test_rejects_the_same_slot_and_hand_count_twice(self, tmp_path):
+        with pytest.raises(gen.DataError, match="appears twice"):
+            gen.item_sockets(self.book(
+                tmp_path, [["Head", 0, 2], ["Head", 0, 3]]))
+
+    def test_rejects_a_slot_that_holds_no_gem(self, tmp_path):
+        with pytest.raises(gen.DataError, match="no gem could ever go in one"):
+            gen.item_sockets(self.book(tmp_path, [["Head", 0, 0]]))
+
+
+class TestAffixTiers:
+    HEADER = ["Tier", "Drop Weight"]
+    ROWS = [[1, 64], [2, 32], [3, 16]]
+
+    def book(self, tmp_path, rows):
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "w.xlsx", {"Affix Tiers": [self.HEADER] + rows}))
+
+    def test_reads_a_tier_per_row(self, tmp_path):
+        rows = gen.affix_tiers(self.book(tmp_path, self.ROWS))
+        assert rows == [{"Name": "T1", "Tier": 1, "DropWeight": 64.0},
+                        {"Name": "T2", "Tier": 2, "DropWeight": 32.0},
+                        {"Name": "T3", "Tier": 3, "DropWeight": 16.0}]
+
+    def test_rejects_a_gap_in_the_tiers(self, tmp_path):
+        """A drop draws from every tier at or below its cap, so a missing tier
+        is one the draw has no weight for rather than one that never rolls."""
+        with pytest.raises(gen.DataError, match="every tier from 1 upward"):
+            gen.affix_tiers(self.book(tmp_path, [[1, 64], [3, 16]]))
+
+    def test_rejects_tiers_that_do_not_start_at_one(self, tmp_path):
+        with pytest.raises(gen.DataError, match="every tier from 1 upward"):
+            gen.affix_tiers(self.book(tmp_path, [[2, 32], [3, 16]]))
+
+    def test_rejects_a_tier_that_can_never_roll(self, tmp_path):
+        with pytest.raises(gen.DataError, match="can never roll"):
+            gen.affix_tiers(self.book(tmp_path, [[1, 64], [2, 0]]))
+
+    def test_rejects_a_higher_tier_that_rolls_more_often(self, tmp_path):
+        with pytest.raises(gen.DataError, match="rolls more often"):
+            gen.affix_tiers(self.book(tmp_path, [[1, 64], [2, 128]]))
+
+
+class TestTheWordAnAffixGivesAnItemsName:
+    """An item is called `<rarity> <base> of <word>`, so only a suffix has one.
+
+    None of these would fail anywhere else. A suffix with no word leaves an item
+    that rolled it with nothing to be named after; a word on a prefix can never
+    be read, because the first word of the name is the rarity.
+    """
+
+    # EVERY COLUMN THE READER ASKS FOR, the ones this test leaves empty
+    # appended at the end so no row changes. Issue #1882: a column a
+    # sheet lacks is now refused rather than read as empty.
+    HEADER = ["Affix Name", "Affix Kind", "Position", "Stat", "Value Kind",
+              "Top Value", "Breadth", "Ailment", "Gem", "Hybrid Part 1",
+              "Hybrid Part 2", "Allowed Slots", "Name Word", "Floor",
+              "Percent"]
+
+    def row(self, name, position, word):
+        return [name, "Stat", position, "max_health", "flat", 100, None,
+                None, None, None, None, "Chest", word]
+
+    def book(self, tmp_path, rows):
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "w.xlsx", {"Affixes": [self.HEADER] + rows}))
+
+    def test_a_suffix_carries_its_word_into_the_table(self, tmp_path):
+        rows = gen.affixes(self.book(tmp_path, [
+            self.row("Flat life leech", "suffix", "the Leech"),
+            self.row("Flat maximum health", "prefix", None)]))
+        assert [row["NameWord"] for row in rows] == ["the Leech", ""]
+
+    def test_rejects_a_suffix_with_no_word(self, tmp_path):
+        with pytest.raises(gen.DataError, match="has no name word"):
+            gen.affixes(self.book(
+                tmp_path, [self.row("Flat life leech", "suffix", None)]))
+
+    def test_rejects_a_prefix_that_carries_one(self, tmp_path):
+        with pytest.raises(gen.DataError, match="could never appear"):
+            gen.affixes(self.book(
+                tmp_path, [self.row("Flat maximum health", "prefix", "Vigour")]))
+
+    def test_rejects_two_affixes_sharing_a_word(self, tmp_path):
+        """A player reading "of Warding" should find one thing."""
+        with pytest.raises(gen.DataError, match="is carried by both"):
+            gen.affixes(self.book(tmp_path, [
+                self.row("Single resistance", "suffix", "Warding"),
+                self.row("Two resistances", "suffix", "Warding")]))
+
+
+class TestSocketMaximaCoverEverySlotThatIsWorn:
+    """The Item Sockets and Item Bases sheets have to describe the same slots.
+
+    A slot missing from Item Sockets leaves a drop with nothing to say how many
+    sockets the piece can hold. A slot in Item Sockets that no base occupies is a
+    maximum nothing will ever read. Neither is reported anywhere else.
+    """
+
+    def tables(self, bases, sockets):
+        return {"ItemBases": [{"Name": f"b{i}", "Slot": slot, "Hands": hands}
+                              for i, (slot, hands) in enumerate(bases)],
+                "ItemSockets": [{"Name": f"s{i}", "Slot": slot, "Hands": hands}
+                                for i, (slot, hands) in enumerate(sockets)]}
+
+    def test_a_matching_set_reports_nothing(self):
+        pairs = [("Head", 0), ("Weapon", 1), ("Weapon", 2)]
+        assert gen.validate_socket_slots(self.tables(pairs, pairs)) == []
+
+    def test_a_worn_slot_with_no_maximum_is_reported(self):
+        problems = gen.validate_socket_slots(
+            self.tables([("Head", 0), ("Relic", 0)], [("Head", 0)]))
+        assert len(problems) == 1, problems
+        assert "Relic" in problems[0] and "which item bases occupy" in problems[0]
+
+    def test_a_maximum_for_a_slot_nobody_wears_is_reported(self):
+        problems = gen.validate_socket_slots(
+            self.tables([("Head", 0)], [("Head", 0), ("Wings", 0)]))
+        assert len(problems) == 1, problems
+        assert "Wings" in problems[0] and "no item base occupies" in problems[0]
+
+    def test_the_two_hand_counts_of_a_weapon_are_matched_separately(self):
+        """A one-handed maximum does not stand in for a two-handed one, which is
+        the whole reason a weapon has two rows."""
+        problems = gen.validate_socket_slots(
+            self.tables([("Weapon", 1), ("Weapon", 2)], [("Weapon", 1)]))
+        assert len(problems) == 1, problems
+        assert "at 2 hand(s)" in problems[0]
+
+
+class TestEnemyDropsAndTheRarityLadderStayInStep:
+    """The Enemy Drops sheet and the enemy rarity ladder come from different
+    places, and neither is checked against the other anywhere else.
+
+    `EnemyRarities.csv` is generated from `sim/cataclysm_sim/enemy_stats.py`,
+    whose ladder is a port of the external DungeonSimulator power model.
+    `EnemyDrops.csv` is typed into the workbook. A rarity in one and not the
+    other is a creature that drops nothing, or a drop rate for a creature that
+    cannot exist.
+    """
+
+    def tables(self, dropping, known):
+        return {
+            "EnemyDrops": [{"Name": name, "Step": step}
+                           for name, step in dropping],
+            "EnemyRarities": [{"Name": name, "Step": step}
+                              for name, step in known],
+        }
+
+    def test_a_matching_ladder_reports_nothing(self):
+        both = [("Common", 0), ("Elite", 1), ("Boss", 2)]
+        assert gen.validate_enemy_drop_rarities(self.tables(both, both)) == []
+
+    def test_a_rarity_that_drops_nothing_is_reported(self):
+        problems = gen.validate_enemy_drop_rarities(self.tables(
+            [("Common", 0), ("Elite", 1)],
+            [("Common", 0), ("Elite", 1), ("Boss", 2)]))
+        assert len(problems) == 1, problems
+        assert "Boss" in problems[0]
+
+    def test_a_drop_rate_for_a_creature_that_cannot_exist_is_reported(self):
+        problems = gen.validate_enemy_drop_rarities(self.tables(
+            [("Common", 0), ("Elite", 1), ("Sparkly", 2)],
+            [("Common", 0), ("Elite", 1)]))
+        assert len(problems) == 1, problems
+        assert "Sparkly" in problems[0]
+
+    def test_the_two_have_to_agree_on_the_order_as_well(self):
+        """Both tables carry a Step saying where a rarity sits, so membership
+        alone is not enough."""
+        problems = gen.validate_enemy_drop_rarities(self.tables(
+            [("Elite", 1), ("Common", 0)],
+            [("Common", 0), ("Elite", 1)]))
+        assert len(problems) == 1, problems
+        assert "same order" in problems[0]
+
+    def test_a_step_that_disagrees_is_reported(self):
+        problems = gen.validate_enemy_drop_rarities(self.tables(
+            [("Common", 0), ("Elite", 4)],
+            [("Common", 0), ("Elite", 1)]))
+        assert len(problems) == 1, problems
+        assert "Step 4" in problems[0]
+
+
+class TestMaterialTierCountsMatchTheMaterials:
+    """How often a NAMED top-tier material drops is the tier's share divided by
+    how many share it. Purified Essence is one of three in the top tier and is
+    the only thing that clears the Consumption Threshold, so a wrong count makes
+    that figure wrong and nothing else notices.
+    """
+
+    def tables(self, stated, materials):
+        return {
+            "MaterialTiers": [{"Name": f"T{i}", "TierName": name,
+                               "Materials": count}
+                              for i, (name, count) in enumerate(stated, 1)],
+            "CraftingMaterials": [
+                {"Name": f"m{i}", "TierAndSource": f"Tier {tier} ({name}). x"}
+                for i, (tier, name) in enumerate(materials)],
+        }
+
+    def test_a_matching_set_reports_nothing(self):
+        assert gen.validate_material_tier_counts(self.tables(
+            [("Common", 2), ("Rare", 1)],
+            [(1, "Common"), (1, "Common"), (3, "Rare")])) == []
+
+    def test_a_wrong_count_is_reported(self):
+        problems = gen.validate_material_tier_counts(self.tables(
+            [("Common", 4)],
+            [(1, "Common"), (1, "Common")]))
+        assert len(problems) == 1, problems
+        assert "says 4" in problems[0] and "has 2" in problems[0]
+
+    def test_a_tier_no_material_is_in_is_reported(self):
+        problems = gen.validate_material_tier_counts(self.tables(
+            [("Common", 1), ("Mythic", 1)], [(1, "Common")]))
+        assert any("Mythic" in p for p in problems), problems
+
+    def test_a_material_in_a_tier_with_no_row_is_reported(self):
+        problems = gen.validate_material_tier_counts(self.tables(
+            [("Common", 1)], [(1, "Common"), (9, "Impossible")]))
+        assert any("Impossible" in p for p in problems), problems
+
+    def test_unreadable_tier_cells_are_reported_rather_than_passing(self):
+        """A parser that matched nothing would make every check above vacuous,
+        so it says so instead of reporting no problems."""
+        problems = gen.validate_material_tier_counts({
+            "MaterialTiers": [{"Name": "T1", "TierName": "Common",
+                               "Materials": 1}],
+            "CraftingMaterials": [{"Name": "m", "TierAndSource": "who knows"}],
+        })
+        assert len(problems) == 1, problems
+        assert "could not be checked at all" in problems[0]
+
+
+class TestAPassiveNodeCanGrantSeveralStats:
+    """ISSUE #953. A node had exactly one effect row, because the DataTable's row
+    name WAS the node name.
+
+    THAT SHAPE CANNOT EXPRESS SEVERAL REAL NODES. "Pain Tolerance" in the
+    Masochist tree says "+1% increased Maximum Health and +0.5% increased Armor",
+    which is two stats, and the Masochist's starting node grants three Fervour
+    rates at once. The node moved into a column of its own and the row name
+    became the node with `#1`, `#2` and so on after it.
+
+    WHAT IS STILL REFUSED. The same node granting the same STAT twice, which is
+    what copying a spreadsheet row and forgetting to change the stat produces:
+    both would apply and the node would be worth double what its own description
+    says.
+    """
+
+    @staticmethod
+    def sheet(rows: list[list]) -> list[list]:
+        # EVERY COLUMN THE READER ASKS FOR, the ones this test leaves empty
+        # appended at the end so no row changes. Issue #1882: a column a
+        # sheet lacks is now refused rather than read as empty.
+        return [["Node", "Stat", "Value Kind", "Value Per Point",
+                 "Required Tags", "Condition", "Condition Value", "Scale",
+                 "Scale Step", "Option", "Reach Metres", "Min Points"]] + rows
+
+    def book(self, tmp_path, rows: list[list]):
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "effects.xlsx",
+            {"Passive Effects": self.sheet(rows)}))
+
+    def test_two_stats_on_one_node_both_survive(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["Masochist_basic_fc_stem1", "max_health", "increased", 1, None],
+            ["Masochist_basic_fc_stem1", "armor", "increased", 0.5, None],
+        ])
+        out = gen.passive_effects(rows)
+
+        assert [r["Stat"] for r in out] == ["max_health", "armor"]
+        assert all(r["Node"] == "Masochist_basic_fc_stem1" for r in out)
+
+    def test_the_row_names_are_the_node_and_an_index(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "max_health", "increased", 1, None],
+            ["A_node", "armor", "increased", 2, None],
+            ["B_node", "armor", "increased", 3, None],
+        ])
+        out = gen.passive_effects(rows)
+
+        assert [r["Name"] for r in out] == ["A_node#1", "A_node#2", "B_node#1"]
+
+    def test_the_same_stat_twice_on_one_node_is_refused(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "armor", "increased", 3, None],
+            ["A_node", "armor", "increased", 4, None],
+        ])
+        with pytest.raises(gen.DataError, match="same stat twice"):
+            gen.passive_effects(rows)
+
+    def test_a_stack_seconds_column_on_this_sheet_is_refused(self, tmp_path):
+        """Issue #1833. Only an enchantment's row counts stacks of its own."""
+        book = openpyxl.load_workbook(workbook_with(
+            tmp_path / "effects.xlsx",
+            {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
+                                  "Required Tags", "Stack Seconds"],
+                                 ["A_node", "armor", "increased", 3, None, None]]}))
+        with pytest.raises(gen.DataError, match="Stack Seconds"):
+            gen.passive_effects(book)
+
+    def test_an_offset_column_on_this_sheet_is_refused(self, tmp_path):
+        """Issue #1686. Only an enchantment's modifier reads an offset."""
+        book = openpyxl.load_workbook(workbook_with(
+            tmp_path / "effects.xlsx",
+            {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
+                                  "Required Tags", "Scale Offset"],
+                                 ["A_node", "armor", "increased", 3, None, None]]}))
+        with pytest.raises(gen.DataError, match="Scale Offset"):
+            gen.passive_effects(book)
+
+    def test_a_cap_column_on_this_sheet_is_refused(self, tmp_path):
+        """Issue #1815. Only an enchantment's modifier reads a cap, so a cap
+        written on this sheet would be dropped with no error."""
+        book = openpyxl.load_workbook(workbook_with(
+            tmp_path / "effects.xlsx",
+            {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
+                                  "Required Tags", "Scale Max Steps"],
+                                 ["A_node", "armor", "increased", 3, None, None]]}))
+        with pytest.raises(gen.DataError, match="Scale Max Steps"):
+            gen.passive_effects(book)
+
+    def test_a_node_name_containing_the_separator_is_refused(self, tmp_path):
+        """Otherwise a row name would be ambiguous about where the node ends."""
+        rows = self.book(tmp_path, [["A#node", "armor", "increased", 3, None]])
+        with pytest.raises(gen.DataError, match="number sign"):
+            gen.passive_effects(rows)
+
+    def test_a_bad_value_kind_is_still_refused(self, tmp_path):
+        rows = self.book(tmp_path, [["A_node", "armor", "sideways", 3, None]])
+        with pytest.raises(gen.DataError,
+                           match="not flat, increased, more or removed"):
+            gen.passive_effects(rows)
+
+    def test_a_removal_is_a_kind_a_node_may_carry(self, tmp_path):
+        """The sheets share one vocabulary of kinds. Issue #1791: no node removes
+        a stat yet, and the reader accepts one the way the enchantment reader
+        does, so the two cannot come to disagree."""
+        rows = self.book(tmp_path, [["A_node", "armor", "removed", 1, None]])
+        out = gen.passive_effects(rows)
+
+        assert [(r["Stat"], r["ValueKind"]) for r in out] == [("armor", "removed")]
+
+    def test_the_validator_checks_the_node_column_and_not_the_row_name(self):
+        """The row name carries a `#1` and no node is called that, so a validator
+        still reading the row name would report every row as unreachable."""
+        tables = {
+            "PassiveEffects": [{"Name": "Real_node#1", "Node": "Real_node",
+                                "Stat": "armor", "ValueKind": "increased",
+                                "RequiredTags": ""}],
+            "PassiveNodes": [{"Name": "Real_node"}],
+            "ClassStats": [{"Stat": "armor"}],
+        }
+        assert gen.validate_passive_effects(tables, set()) == []
+
+    def test_a_node_that_does_not_exist_is_still_reported(self):
+        tables = {
+            "PassiveEffects": [{"Name": "Ghost#1", "Node": "Ghost",
+                                "Stat": "armor", "ValueKind": "increased",
+                                "RequiredTags": ""}],
+            "PassiveNodes": [{"Name": "Real_node"}],
+            "ClassStats": [{"Stat": "armor"}],
+        }
+        problems = gen.validate_passive_effects(tables, set())
+        assert len(problems) == 1, problems
+        assert "no passive node is called Ghost" in problems[0]
+
+    def test_a_removal_is_not_asked_for_a_base(self):
+        """The rule `validate_enchantment_effects` has, on this sheet too, because
+        the two share one vocabulary of kinds. Issue #1791. The same row as an
+        increase is still reported, which is the control."""
+        removal = {"Name": "Real_node#1", "Node": "Real_node",
+                   "Stat": "resistance_war", "ValueKind": "removed",
+                   "RequiredTags": ""}
+        tables = {"PassiveEffects": [removal],
+                  "PassiveNodes": [{"Name": "Real_node"}],
+                  "ClassStats": [{"Stat": "armor"}]}
+        assert gen.validate_passive_effects(tables, set()) == []
+
+        tables["PassiveEffects"] = [dict(removal, ValueKind="increased")]
+        problems = gen.validate_passive_effects(tables, set())
+        assert len(problems) == 1 and "'resistance_war' is not a stat" in problems[0]
+
+    def test_a_flat_row_on_a_stat_the_game_reads_nowhere_is_refused(self):
+        """Issue #2582, the passive half of #2387. A flat row supplies its own
+        stat to the base check, so a flat node row on a misspelt name used to
+        pass and be written dead. THE CONTROLS pass: a flat row on a stat with an
+        attribute (`armor`) and on one with none (`leech_payout_rate`)."""
+        flat = {"Name": "Real_node#1", "Node": "Real_node", "Stat": "armor",
+                "ValueKind": "flat", "RequiredTags": ""}
+        for known in ("armor", "leech_payout_rate"):
+            tables = {"PassiveEffects": [dict(flat, Stat=known)],
+                      "PassiveNodes": [{"Name": "Real_node"}]}
+            assert gen.validate_passive_effects(tables, set()) == [], known
+
+        tables = {"PassiveEffects": [dict(flat, Stat="armour")],
+                  "PassiveNodes": [{"Name": "Real_node"}]}
+        problems = gen.validate_passive_effects(tables, set())
+        assert len(problems) == 1, problems
+        assert ("Real_node#1: 'armour' is a flat row on a stat the game reads "
+                "nowhere") in problems[0]
+
+
+class TestARowCountingNearbyEnemiesCarriesItsOwnRadius:
+    """ISSUE #1597. Two readings count the enemies standing near a character: the
+    condition `enemies_in_reach_at_least` and the scale `enemies_in_reach`. Both
+    need a radius, and neither neighbouring column can hold it -- `Condition
+    Value` holds the COUNT asked for, `Scale Step` holds how many enemies one
+    step is worth -- so the radius has a column of its own, `Reach Metres`.
+
+    THREE RULES, AND EACH FAILS IN THE DIRECTION THAT IS VISIBLE.
+
+    A row naming either reading MUST state a radius, because a modifier with no
+    radius counts nobody: the node would import cleanly, grant nothing, and say
+    so nowhere.
+
+    A row naming neither MUST NOT state one, because nothing would read it. A
+    number in a column the game never looks at is a statement somebody believes
+    is doing something.
+
+    A radius must be above nothing and no larger than 100 metres, which is the
+    bound `target_within_metres` uses and for the same reason.
+
+    THIS CLASS REPLACED ONE COVERING A TEMPORARY REFUSAL. Between the engine
+    learning the two names and the sheet gaining the column, a row using either
+    was refused outright, because it could only have counted nobody.
+    """
+
+    @staticmethod
+    def sheet(rows: list[list]) -> list[list]:
+        # EVERY COLUMN THE READER ASKS FOR, the ones this test leaves empty
+        # appended at the end so no row changes. Issue #1882: a column a
+        # sheet lacks is now refused rather than read as empty.
+        return [["Node", "Stat", "Value Kind", "Value Per Point",
+                 "Condition", "Condition Value", "Scale", "Scale Step",
+                 "Reach Metres", "Required Tags", "Option", "Min Points"]] + rows
+
+    def book(self, tmp_path, rows: list[list]):
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "reach.xlsx", {"Passive Effects": self.sheet(rows)}))
+
+    # THE FOUR CHECKS THE SHEET SHARES WITH THE ENCHANTMENT SHEETS, on the
+    # passive path. Issue #1593 moved `passive_effects` onto
+    # `_condition_and_scale`; until then no test drove these four refusals
+    # through this function, so the move could have dropped one in silence.
+
+    def test_an_unknown_condition_is_refused_on_a_passive_row(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "armor", "increased", 3,
+             "while_dancing", 3, None, None, None],
+        ])
+        with pytest.raises(gen.DataError, match="Passive Effects row .*cannot judge"):
+            gen.passive_effects(rows)
+
+    def test_a_value_beside_a_condition_that_compares_nothing_is_refused_on_a_passive_row(
+            self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "armor", "increased", 3,
+             "while_bleeding", 5, None, None, None],
+        ])
+        with pytest.raises(gen.DataError, match="compares nothing"):
+            gen.passive_effects(rows)
+
+    def test_a_condition_value_outside_its_range_is_refused_on_a_passive_row(
+            self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "armor", "increased", 3,
+             "health_at_or_below", 500, None, None, None],
+        ])
+        with pytest.raises(gen.DataError, match="between"):
+            gen.passive_effects(rows)
+
+    def test_an_unknown_scale_is_refused_on_a_passive_row(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "armor", "increased", 3,
+             None, None, "moons_held", 1, None],
+        ])
+        with pytest.raises(gen.DataError, match="Passive Effects row .*cannot judge"):
+            gen.passive_effects(rows)
+
+    def test_a_scale_step_of_nothing_is_refused_on_a_passive_row(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "armor", "increased", 3,
+             None, None, "minions_held", 0, None],
+        ])
+        with pytest.raises(gen.DataError, match="step of nothing"):
+            gen.passive_effects(rows)
+
+    def test_a_condition_row_carries_its_radius_to_the_output(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["Ravager_basic_spine_003", "attack_damage", "increased", 2,
+             "enemies_in_reach_at_least", 1, None, None, 4],
+        ])
+        out = gen.passive_effects(rows)
+
+        assert len(out) == 1
+        assert out[0]["Condition"] == "enemies_in_reach_at_least"
+        assert out[0]["ConditionValue"] == 1.0
+        assert out[0]["ReachMetres"] == 4.0
+
+    def test_a_scale_row_carries_its_radius_to_the_output(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["Ravager_keystone_d_kB", "attack_damage", "more", 2,
+             None, None, "enemies_in_reach", 1, 4],
+        ])
+        out = gen.passive_effects(rows)
+
+        assert out[0]["Scale"] == "enemies_in_reach"
+        assert out[0]["ScaleStep"] == 1.0
+        assert out[0]["ReachMetres"] == 4.0
+
+    def test_a_row_that_counts_nobody_says_so_rather_than_importing(self, tmp_path):
+        """The radius is missing, so the row would grant nothing silently."""
+        rows = self.book(tmp_path, [
+            ["A_node", "attack_damage", "increased", 2,
+             "enemies_in_reach_at_least", 1, None, None, None],
+        ])
+        with pytest.raises(gen.DataError, match="counts nobody"):
+            gen.passive_effects(rows)
+
+    def test_a_scale_row_with_no_radius_is_refused_too(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "attack_damage", "more", 2,
+             None, None, "enemies_in_reach", 1, None],
+        ])
+        with pytest.raises(gen.DataError, match="counts nobody"):
+            gen.passive_effects(rows)
+
+    def test_a_radius_on_a_row_that_reads_none_is_refused(self, tmp_path):
+        """Nothing would read it, so it is a number that looks as though it works."""
+        rows = self.book(tmp_path, [
+            ["A_node", "armor", "increased", 3,
+             "health_at_or_below", 20, None, None, 4],
+        ])
+        with pytest.raises(gen.DataError, match="Nothing would read it"):
+            gen.passive_effects(rows)
+
+    def test_a_radius_of_nothing_is_refused(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "attack_damage", "increased", 2,
+             "enemies_in_reach_at_least", 1, None, None, 0],
+        ])
+        with pytest.raises(gen.DataError, match="above 0"):
+            gen.passive_effects(rows)
+
+    def test_a_radius_past_a_hundred_metres_is_refused(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "attack_damage", "increased", 2,
+             "enemies_in_reach_at_least", 1, None, None, 140],
+        ])
+        with pytest.raises(gen.DataError, match="up to 100"):
+            gen.passive_effects(rows)
+
+    def test_a_row_using_neither_reading_still_imports_with_no_radius(self, tmp_path):
+        """The control. Without it, a refusal firing on every row would pass the
+        five refusal tests above and nothing here would say so."""
+        rows = self.book(tmp_path, [
+            ["A_node", "armor", "increased", 3,
+             "health_at_or_below", 20, "minions_held", 1, None],
+        ])
+        out = gen.passive_effects(rows)
+
+        assert len(out) == 1
+        assert out[0]["Condition"] == "health_at_or_below"
+        assert out[0]["Scale"] == "minions_held"
+        assert out[0]["ReachMetres"] == -1.0
+
+
+class TestABonusCanGrowWithDamageReductionOrMaximumMana:
+    """ISSUE #1515. Two scales read a stat the character has rather than a
+    state it is in: `damage_reduction`, for Weight Against Them's "+1% increased
+    Attack Damage for every 2% of Damage Reduction you have", and `max_mana`,
+    for Drawn Deep's "for every full 200 maximum mana you have".
+
+    EACH STEP HAS AN UPPER BOUND, AND A ROW PAST IT IS REFUSED. The damage
+    reduction reading stops at the 75% cap, so a step above 75 could never
+    pay; a maximum mana step above 1,000 is a judgement recorded beside the
+    bound in `tools/generate_datatables.py`.
+
+    NO ROW ON THE SHEET USES EITHER YET. The two rows wait on a turn of the
+    design workbook, so these tests are what holds the names and bounds until
+    then.
+    """
+
+    def book(self, tmp_path, rows: list[list]):
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "stat_scales.xlsx",
+            {"Passive Effects":
+             TestARowCountingNearbyEnemiesCarriesItsOwnRadius.sheet(rows)}))
+
+    def test_a_damage_reduction_scale_imports_with_its_step(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "attack_damage", "increased", 1,
+             None, None, "damage_reduction", 2, None],
+        ])
+        out = gen.passive_effects(rows)
+
+        assert len(out) == 1
+        assert out[0]["Scale"] == "damage_reduction"
+        assert out[0]["ScaleStep"] == 2.0
+
+    def test_a_damage_reduction_step_at_the_cap_imports(self, tmp_path):
+        """The control for the refusal below: 75 is inside the bound."""
+        rows = self.book(tmp_path, [
+            ["A_node", "attack_damage", "increased", 1,
+             None, None, "damage_reduction", 75, None],
+        ])
+        assert gen.passive_effects(rows)[0]["ScaleStep"] == 75.0
+
+    def test_a_damage_reduction_step_past_the_cap_is_refused(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "attack_damage", "increased", 1,
+             None, None, "damage_reduction", 76, None],
+        ])
+        with pytest.raises(gen.DataError, match="up to 75"):
+            gen.passive_effects(rows)
+
+    def test_a_maximum_mana_scale_imports_with_its_step(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "spell_damage", "increased", 1,
+             None, None, "max_mana", 200, None],
+        ])
+        out = gen.passive_effects(rows)
+
+        assert len(out) == 1
+        assert out[0]["Scale"] == "max_mana"
+        assert out[0]["ScaleStep"] == 200.0
+
+    def test_a_maximum_mana_step_past_a_thousand_is_refused(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "spell_damage", "increased", 1,
+             None, None, "max_mana", 1001, None],
+        ])
+        with pytest.raises(gen.DataError, match="up to 1000"):
+            gen.passive_effects(rows)
+
+
+class TestScaleStepHigh:
+    """The step that rolls with the value. Issue #1833, the kill counter:
+    "for every 100,000-500,000 kills" states the step as a range, and a row
+    writes it as Scale Step and Scale Step High so the item's roll picks one
+    step where it picks the value."""
+
+    WEAPON = "Positive_This_weapon_has_5_20_more_damage_for_every_100"
+    WEAPON_WORDS = "This weapon has 5-20% more damage for every 100,000-500,000 kills"
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WEAPON_WORDS, "Generic", 2, "Item.Slot.Weapon", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = ["Enchantment", "Effect", "Stat", "Value Kind", "Value Low",
+              "Value High", "Required Tags", "Condition", "Condition Value",
+              "Scale", "Scale Step", "Action", "Action Event", "Fraction Of",
+              "Scale Max Steps", "Stack Seconds", "Scale Offset",
+              "Every Seconds", "Every Nth", "Scale Step High",
+              "Stack Seconds High", "Condition 2", "Condition Value 2",
+              "Condition Value High", "Trigger Cooldown", "Event Value",
+              "Ailment", "Damage Share"]
+
+    def book(self, tmp_path, changes):
+        values = {"Enchantment": self.WEAPON, "Effect": self.WEAPON_WORDS,
+                  "Stat": "attack_damage", "Value Kind": "more",
+                  "Value Low": 5, "Value High": 20, "Scale": "weapon_kills",
+                  "Scale Step": 100000, "Scale Step High": 500000}
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "scale_step_high.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def test_a_stated_step_range_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, {}))
+        assert (out[0]["Scale"], out[0]["ScaleStep"], out[0]["ScaleStepHigh"]) == (
+            "weapon_kills", 100000.0, 500000.0)
+
+    def test_a_step_range_the_words_do_not_state_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="do not state as a range"):
+            gen.enchantment_effects(self.book(tmp_path, {"Scale Step High": 400000}))
+
+    def test_a_high_end_not_above_the_step_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="The high end is"):
+            gen.enchantment_effects(self.book(tmp_path, {"Scale Step": 500000,
+                                                         "Scale Step High": 100000}))
+
+    def test_a_high_end_with_no_scale_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="no scale"):
+            gen.enchantment_effects(self.book(tmp_path, {"Scale": None, "Scale Step": None}))
+
+
+class TestStackSecondsHigh:
+    """How long stacks last, rolling with the value. Issue #1833, ruled
+    2026-09-30 under the owner's delegation, following Scale Step High:
+    "Killing an enemy triggers a 1-2 second global cooldown on all your
+    skills" states the time as a range, and a row writes it as Stack Seconds
+    and Stack Seconds High so the item's roll picks one time where it picks
+    the value."""
+
+    LOCK = "Negative_Killing_an_enemy_triggers_a_1_2_second_global_co"
+    LOCK_WORDS = "Killing an enemy triggers a 1-2 second global cooldown on all your skills"
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        ["Double your energy shield", "Generic", 1, "Stat.Defense.EnergyShield",
+         None, LOCK_WORDS, "Generic", 3, "Stat.Utility.Cooldown"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER + ["Stack Seconds High"]
+
+    def book(self, tmp_path, changes):
+        values = {"Enchantment": self.LOCK, "Effect": self.LOCK_WORDS,
+                  "Stat": "skill_locked", "Value Kind": "flat",
+                  "Value Low": 1, "Value High": 1, "Scale": "own_stacks",
+                  "Scale Step": 1, "Action Event": "kill",
+                  "Scale Max Steps": 1, "Stack Seconds": 1,
+                  "Stack Seconds High": 2}
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "stack_seconds_high.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def test_a_stated_time_range_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, {}))
+        assert (out[0]["StackSeconds"], out[0]["StackSecondsHigh"]) == (1.0, 2.0)
+
+    def test_one_stated_time_carries_no_high_end(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, {"Stack Seconds High": None}))
+        assert (out[0]["StackSeconds"], out[0]["StackSecondsHigh"]) == (1.0, 0.0)
+
+    def test_a_time_range_the_words_do_not_state_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="do not state as a range"):
+            gen.enchantment_effects(self.book(tmp_path, {"Stack Seconds High": 3}))
+
+    def test_a_high_end_below_the_low_end_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="The high end is above Stack Seconds"):
+            gen.enchantment_effects(self.book(tmp_path, {"Stack Seconds": 2,
+                                                         "Stack Seconds High": 1}))
+
+    def test_a_high_end_equal_to_the_low_end_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="The high end is above Stack Seconds"):
+            gen.enchantment_effects(self.book(tmp_path, {"Stack Seconds High": 1}))
+
+    def test_a_high_end_past_the_bound_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="The high end is above Stack Seconds"):
+            gen.enchantment_effects(self.book(tmp_path, {
+                "Stack Seconds High": gen.MAX_STACK_SECONDS + 1}))
+
+    def test_a_high_end_with_no_stack_seconds_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="no Stack Seconds, so it would be dropped"):
+            gen.enchantment_effects(self.book(tmp_path, {
+                "Scale": None, "Scale Step": None, "Action Event": None,
+                "Scale Max Steps": None, "Stack Seconds": None}))
+
+
+class TestSecondConditionAndThresholdHigh:
+    """A second condition, and a threshold that rolls. Issue #1833 group C part
+    3a, ruled 2026-09-30 under the owner's delegation. "You take 20%-35%
+    increased damage from melee attacks while your HP is above 75%" names two
+    states, and both must hold; "Your abilities are free when above 80%-95% hp"
+    states its threshold as a range, which rolls with the value."""
+
+    FREE = "Positive_Your_abilities_are_free_when_above_80_95_hp"
+    FREE_WORDS = "Your abilities are free when above 80%-95% hp"
+    MELEE = "Negative_You_take_20_35_increased_damage_from_melee_att"
+    MELEE_WORDS = ("You take 20%-35% increased damage from melee attacks while "
+                   "your HP is above 75%")
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [FREE_WORDS, "Generic", 3, "Stat.Utility.Mana", None,
+         MELEE_WORDS, "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def book(self, tmp_path, values):
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "second_condition.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def melee(self, tmp_path, changes):
+        values = {"Enchantment": self.MELEE, "Effect": self.MELEE_WORDS,
+                  "Stat": "damage_taken", "Value Kind": "increased",
+                  "Value Low": 20, "Value High": 35,
+                  "Condition": "hit_is_melee_attack",
+                  "Condition 2": "health_above", "Condition Value 2": 75}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def free(self, tmp_path, changes):
+        values = {"Enchantment": self.FREE, "Effect": self.FREE_WORDS,
+                  "Stat": "mana_cost", "Value Kind": "more", "Value Low": -100,
+                  "Condition": "health_above", "Condition Value": 80,
+                  "Condition Value High": 95}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def test_a_second_condition_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.melee(tmp_path, {}))
+        assert (out[0]["Condition"], out[0]["Condition2"], out[0]["ConditionValue2"]) == (
+            "hit_is_melee_attack", "health_above", 75.0)
+
+    def test_a_second_condition_with_no_first_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="and no Condition"):
+            gen.enchantment_effects(self.melee(tmp_path, {"Condition": None}))
+
+    def test_an_unknown_second_condition_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="which the game cannot judge"):
+            gen.enchantment_effects(self.melee(tmp_path, {"Condition 2": "while_juggling"}))
+
+    def test_the_same_condition_twice_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="as both conditions"):
+            gen.enchantment_effects(self.melee(tmp_path, {
+                "Condition": "health_above", "Condition Value": 50}))
+
+    def test_a_second_value_out_of_bounds_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="second condition value of 150"):
+            gen.enchantment_effects(self.melee(tmp_path, {"Condition Value 2": 150}))
+
+    def test_a_second_value_with_no_second_condition_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="no Condition 2, so it would be dropped"):
+            gen.enchantment_effects(self.melee(tmp_path, {"Condition 2": None}))
+
+    def test_a_stated_threshold_range_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.free(tmp_path, {}))
+        assert (out[0]["ConditionValue"], out[0]["ConditionValueHigh"]) == (80.0, 95.0)
+
+    def test_a_threshold_range_the_words_do_not_state_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="do not state as a range"):
+            gen.enchantment_effects(self.free(tmp_path, {"Condition Value High": 90}))
+
+    def test_a_threshold_high_end_not_above_the_low_end_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="The high end is above Condition Value"):
+            gen.enchantment_effects(self.free(tmp_path, {"Condition Value": 95,
+                                                         "Condition Value High": 80}))
+
+    def test_a_threshold_high_end_with_no_condition_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="no condition that compares a value"):
+            gen.enchantment_effects(self.free(tmp_path, {"Condition": None,
+                                                         "Condition Value": None}))
+
+
+class TestTriggerCooldownAndRandomDot:
+    """An action row's trigger cooldown, and the random damage over time.
+    Issue #1833 group D, ruled 2026-09-30 under the owner's delegation: an
+    action row that makes something happen on a hit-fired event waits 0.25 s
+    after it fires unless its Trigger Cooldown says otherwise, and "Critical
+    strikes apply a random DoT to the target" applies one of five."""
+
+    CRIT = gen.row_name("Positive", "Critical strikes apply a random DoT to the target"[:48])
+    CRIT_WORDS = "Critical strikes apply a random DoT to the target"
+    BLOCK = gen.row_name("Positive", "Blocking an attack restores 3%-6% of your maximum HP"[:48])
+    BLOCK_WORDS = "Blocking an attack restores 3%-6% of your maximum HP"
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [CRIT_WORDS, "Generic", 4, "Trigger.OnCrit", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+        [BLOCK_WORDS, "Generic", 4, "Stat.Defense.Block", None,
+         None, None, None, None],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def book(self, tmp_path, values, header=None):
+        header = header or self.HEADER
+        row = [values.get(column) for column in header]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "trigger_cooldown.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [header, row]}))
+
+    def heal(self, tmp_path, changes, header=None):
+        values = {"Enchantment": self.BLOCK, "Effect": self.BLOCK_WORDS,
+                  "Action": "health", "Action Event": "block",
+                  "Value Low": 3, "Value High": 6}
+        values.update(changes)
+        return self.book(tmp_path, values, header)
+
+    def dot(self, tmp_path, changes):
+        values = {"Enchantment": self.CRIT, "Effect": self.CRIT_WORDS,
+                  "Action": "apply_random_dot", "Action Event": "critical_strike",
+                  "Value Low": 100}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def test_an_empty_cell_on_a_hit_fired_event_is_the_quarter_second(self, tmp_path):
+        out = gen.enchantment_effects(self.heal(tmp_path, {}))
+        assert out[0]["TriggerCooldown"] == gen.DEFAULT_TRIGGER_COOLDOWN == 0.25
+
+    def test_a_sheet_without_the_column_is_refused(self, tmp_path):
+        header = [h for h in self.HEADER if h != "Trigger Cooldown"]
+        with pytest.raises(gen.DataError, match="'Trigger Cooldown' column"):
+            gen.enchantment_effects(self.heal(tmp_path, {}, header))
+
+    def test_an_explicit_nought_is_none(self, tmp_path):
+        out = gen.enchantment_effects(self.heal(tmp_path, {"Trigger Cooldown": 0}))
+        assert out[0]["TriggerCooldown"] == 0.0
+
+    def test_a_stated_cooldown_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.heal(tmp_path, {"Trigger Cooldown": 600}))
+        assert out[0]["TriggerCooldown"] == 600.0
+
+    def test_an_event_no_hit_fires_takes_no_default(self, tmp_path):
+        out = gen.enchantment_effects(self.heal(tmp_path, {"Action Event": "kill"}))
+        assert out[0]["TriggerCooldown"] == 0.0
+
+    def test_a_stat_row_gets_no_default_and_refuses_one(self, tmp_path):
+        stat = {"Action": None, "Action Event": None, "Stat": "block_chance",
+                "Value Kind": "increased"}
+        assert gen.enchantment_effects(self.heal(tmp_path, stat))[0]["TriggerCooldown"] == 0.0
+        with pytest.raises(gen.DataError, match="never waits"):
+            gen.enchantment_effects(self.heal(tmp_path, dict(stat, **{"Trigger Cooldown": 1})))
+
+    def test_a_timed_row_refuses_one(self, tmp_path):
+        with pytest.raises(gen.DataError, match="never waits"):
+            gen.enchantment_effects(self.heal(tmp_path, {
+                "Action Event": "every_seconds", "Every Seconds": 10,
+                "Trigger Cooldown": 1}))
+
+    def test_a_cooldown_past_an_hour_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="up to 3600"):
+            gen.enchantment_effects(self.heal(tmp_path, {"Trigger Cooldown": 3601}))
+
+    def test_a_random_dot_on_a_critical_strike_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.dot(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["FractionOf"], out[0]["TriggerCooldown"]) == (
+            "apply_random_dot", "critical_strike", 100.0, "", 0.25)
+
+    def test_a_random_dot_on_retaliation_is_accepted(self, tmp_path):
+        out = gen.enchantment_effects(self.dot(tmp_path, {"Action Event": "retaliation_dealt"}))
+        assert out[0]["ActionEvent"] == "retaliation_dealt"
+
+    def test_a_random_dot_on_an_event_carrying_no_amount_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="what reached its health"):
+            gen.enchantment_effects(self.dot(tmp_path, {"Action Event": "hit_dealt"}))
+
+    def test_a_random_dot_chance_past_a_hundred_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="A chance is above 0"):
+            gen.enchantment_effects(self.dot(tmp_path, {"Value Low": 150}))
+
+    def test_a_random_dot_with_a_fraction_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="must be empty"):
+            gen.enchantment_effects(self.dot(tmp_path, {"Fraction Of": "maximum"}))
+
+
+class TestHealthThresholdAndFloorStart:
+    """A health crossing, its Event Value, the health cap and an explicit
+    cooldown on an own stack. Issue #1833 group D part 2, ruled 2026-09-30:
+    Archon's Aegis, the Demon King's Regalia and "You start every dungeon floor
+    at 30%-50% of your maximum HP"."""
+
+    FLOOR = gen.row_name("Negative", "You start every dungeon floor at 30%-50% of your maximum HP"[:48])
+    FLOOR_WORDS = "You start every dungeon floor at 30%-50% of your maximum HP"
+    ENCHANTMENTS = TestTriggerCooldownAndRandomDot.ENCHANTMENTS[:2] + [
+        [TestTriggerCooldownAndRandomDot.BLOCK_WORDS, "Generic", 4, "Stat.Defense.Block", None,
+         FLOOR_WORDS, "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestTriggerCooldownAndRandomDot.HEADER
+
+    def book(self, tmp_path, values):
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "threshold.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def heal(self, tmp_path, changes):
+        values = {"Enchantment": TestTriggerCooldownAndRandomDot.BLOCK,
+                  "Effect": TestTriggerCooldownAndRandomDot.BLOCK_WORDS,
+                  "Action": "health", "Action Event": "health_falls_below",
+                  "Event Value": 10, "Value Low": 3, "Value High": 6}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def stack(self, tmp_path, changes):
+        values = {"Enchantment": TestTriggerCooldownAndRandomDot.CRIT,
+                  "Effect": TestTriggerCooldownAndRandomDot.CRIT_WORDS,
+                  "Stat": "attack_damage", "Value Kind": "more", "Value Low": 100,
+                  "Scale": "own_stacks", "Scale Step": 1,
+                  "Action Event": "health_falls_below", "Event Value": 25,
+                  "Stack Seconds": 10, "Scale Max Steps": 1}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def cap(self, tmp_path, changes):
+        values = {"Enchantment": self.FLOOR, "Effect": self.FLOOR_WORDS,
+                  "Action": "health_capped_at", "Action Event": "floor_start",
+                  "Value Low": 30, "Value High": 50}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def test_a_crossing_row_carries_its_event_value(self, tmp_path):
+        out = gen.enchantment_effects(self.heal(tmp_path, {}))
+        assert (out[0]["ActionEvent"], out[0]["EventValue"]) == ("health_falls_below", 10.0)
+
+    def test_the_crossing_event_without_an_event_value_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="states no Event Value"):
+            gen.enchantment_effects(self.heal(tmp_path, {"Event Value": None}))
+
+    def test_an_event_value_on_another_event_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="Only health_falls_below reads one"):
+            gen.enchantment_effects(self.heal(tmp_path, {"Action Event": "block"}))
+
+    def test_an_event_value_of_a_hundred_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="above 0 and below 100"):
+            gen.enchantment_effects(self.heal(tmp_path, {"Event Value": 100}))
+
+    def test_the_crossing_is_not_hit_fired_so_takes_no_default_cooldown(self, tmp_path):
+        out = gen.enchantment_effects(self.heal(tmp_path, {}))
+        assert out[0]["TriggerCooldown"] == 0.0
+
+    def test_an_own_stack_takes_a_stated_cooldown(self, tmp_path):
+        out = gen.enchantment_effects(self.stack(tmp_path, {"Trigger Cooldown": 300}))
+        assert (out[0]["Scale"], out[0]["EventValue"], out[0]["TriggerCooldown"]) == (
+            "own_stacks", 25.0, 300.0)
+
+    def test_an_own_stack_takes_no_cooldown_by_default(self, tmp_path):
+        out = gen.enchantment_effects(self.stack(tmp_path, {"Action Event": "critical_strike",
+                                                            "Event Value": None}))
+        assert out[0]["TriggerCooldown"] == 0.0
+
+    def test_a_health_cap_row_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.cap(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["FractionOf"]) == (
+            "health_capped_at", "floor_start", 30.0, 50.0, "")
+
+    def test_a_health_cap_of_a_hundred_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="above 0 and below 100"):
+            gen.enchantment_effects(self.cap(tmp_path, {"Value Low": 100, "Value High": None}))
+
+    def test_a_health_cap_with_a_fraction_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="must be"):
+            gen.enchantment_effects(self.cap(tmp_path, {"Fraction Of": "maximum"}))
+
+
+class TestNearbyActionsAndTheirEvents:
+    """A smite or a heal of every enemy nearby, on a broken energy shield or the
+    player's death. Issue #1833 group D part 3, ruled 2026-10-01: "When your
+    energy shield is broken, you smite all nearby enemies" and "On death all
+    nearby enemies are healed for 10%-20% of their maximum HP"."""
+
+    SMITE_WORDS = "When your energy shield is broken, you smite all nearby enemies"
+    SMITE = gen.row_name("Positive", SMITE_WORDS[:48])
+    DEATH_WORDS = "On death all nearby enemies are healed for 10%-20% of their maximum HP"
+    DEATH = gen.row_name("Negative", DEATH_WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [SMITE_WORDS, "Generic", 4, "Stat.Defense.EnergyShield", None,
+         DEATH_WORDS, "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def book(self, tmp_path, values):
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "nearby.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def smite(self, tmp_path, changes):
+        values = {"Enchantment": self.SMITE, "Effect": self.SMITE_WORDS,
+                  "Action": "smite_nearby", "Action Event": "energy_shield_broken",
+                  "Value Low": 100}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def heal(self, tmp_path, changes):
+        values = {"Enchantment": self.DEATH, "Effect": self.DEATH_WORDS,
+                  "Action": "heal_nearby_enemies", "Action Event": "player_death",
+                  "Value Low": 10, "Value High": 20}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def test_a_smite_on_a_broken_shield_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.smite(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["FractionOf"]) == ("smite_nearby", "energy_shield_broken", 100.0, "")
+
+    def test_a_broken_shield_is_hit_fired_so_takes_the_quarter_second(self, tmp_path):
+        out = gen.enchantment_effects(self.smite(tmp_path, {}))
+        assert out[0]["TriggerCooldown"] == gen.DEFAULT_TRIGGER_COOLDOWN == 0.25
+
+    def test_a_heal_on_the_players_death_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.heal(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["FractionOf"]) == (
+            "heal_nearby_enemies", "player_death", 10.0, 20.0, "")
+
+    def test_the_players_death_is_not_hit_fired_so_takes_no_default_cooldown(self, tmp_path):
+        out = gen.enchantment_effects(self.heal(tmp_path, {}))
+        assert out[0]["TriggerCooldown"] == 0.0
+
+    def test_a_nearby_action_on_an_event_the_game_does_not_fire_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="which the game does not fire"):
+            gen.enchantment_effects(self.smite(tmp_path, {"Action Event": "shield_shattered"}))
+
+    def test_a_nearby_action_with_no_event_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="which the game does not fire"):
+            gen.enchantment_effects(self.smite(tmp_path, {"Action Event": None}))
+
+    def test_a_heal_of_more_than_a_whole_maximum_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="up to 100"):
+            gen.enchantment_effects(self.heal(tmp_path, {"Value Low": 150, "Value High": None}))
+
+    def test_a_smite_past_its_bound_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="up to 1000"):
+            gen.enchantment_effects(self.smite(tmp_path, {"Value Low": 1500}))
+
+    def test_a_nearby_action_with_a_fraction_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="must be empty"):
+            gen.enchantment_effects(self.heal(tmp_path, {"Fraction Of": "maximum"}))
+
+    def test_a_nearby_action_with_stacks_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="caps nothing"):
+            gen.enchantment_effects(self.smite(tmp_path, {"Scale Max Steps": 3}))
+
+
+class TestRemainingDamageAndTheAilmentColumn:
+    """The remaining damage of the wearer's own damage over time, around the
+    wearer on its death or on the event's target, and the Ailment column that
+    limits it. Issue #1833 group D part 4, ruled 2026-10-01: "When you die, all
+    active DoTs on nearby enemies instantly deal their remaining damage" and
+    "Necrosis effects deal 20%-40% of their remaining damage instantly when you
+    land a critical strike"."""
+
+    DEATH_WORDS = "When you die, all active DoTs on nearby enemies instantly deal their remaining damage"
+    DEATH = gen.row_name("Positive", DEATH_WORDS[:48])
+    NECROSIS_WORDS = "Necrosis effects deal 20%-40% of their remaining damage instantly when you land a critical strike"
+    NECROSIS = gen.row_name("Positive", NECROSIS_WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [DEATH_WORDS, "Generic", 4, "Keyword.DoT", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+        [NECROSIS_WORDS, "Generic", 4, "Keyword.DoT.Necrosis", None,
+         None, None, None, None],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def book(self, tmp_path, values, header=None):
+        header = header or self.HEADER
+        row = [values.get(column) for column in header]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "remaining.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [header, row]}))
+
+    def death(self, tmp_path, changes, header=None):
+        values = {"Enchantment": self.DEATH, "Effect": self.DEATH_WORDS,
+                  "Action": "dot_remaining_nearby", "Action Event": "player_death",
+                  "Value Low": 100}
+        values.update(changes)
+        return self.book(tmp_path, values, header)
+
+    def necrosis(self, tmp_path, changes):
+        values = {"Enchantment": self.NECROSIS, "Effect": self.NECROSIS_WORDS,
+                  "Action": "dot_remaining_target", "Action Event": "critical_strike",
+                  "Ailment": "Necrosis", "Value Low": 20, "Value High": 40}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def test_the_death_row_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.death(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["FractionOf"], out[0]["Ailment"], out[0]["TriggerCooldown"]) == (
+            "dot_remaining_nearby", "player_death", 100.0, "", "", 0.0)
+
+    def test_the_necrosis_row_is_carried_through_with_its_ailment(self, tmp_path):
+        out = gen.enchantment_effects(self.necrosis(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["Ailment"]) == (
+            "dot_remaining_target", "critical_strike", 20.0, 40.0, "Necrosis")
+
+    def test_a_critical_strike_is_hit_fired_so_takes_the_quarter_second(self, tmp_path):
+        out = gen.enchantment_effects(self.necrosis(tmp_path, {}))
+        assert out[0]["TriggerCooldown"] == gen.DEFAULT_TRIGGER_COOLDOWN == 0.25
+
+    def test_the_death_row_may_name_an_ailment(self, tmp_path):
+        out = gen.enchantment_effects(self.death(tmp_path, {"Ailment": "Burn"}))
+        assert out[0]["Ailment"] == "Burn"
+
+    def test_a_sheet_without_the_column_is_refused_now_its_rows_are_written(self, tmp_path):
+        header = [column for column in self.HEADER if column != "Ailment"]
+        with pytest.raises(gen.DataError, match="no 'Ailment' column"):
+            gen.enchantment_effects(self.death(tmp_path, {}, header=header))
+
+    def test_the_target_row_without_an_ailment_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="names no Ailment"):
+            gen.enchantment_effects(self.necrosis(tmp_path, {"Ailment": None}))
+
+    def test_an_ailment_the_game_does_not_have_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="not one the game has"):
+            gen.enchantment_effects(self.necrosis(tmp_path, {"Ailment": "Frostbite"}))
+
+    DETONATES = {"Action": "ailment_detonates_when_reapplied", "Action Event": None,
+                 "Ailment": "Void Splinter"}
+
+    def test_a_detonation_row_on_void_splinter_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.necrosis(tmp_path, dict(self.DETONATES)))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["Ailment"]) == (
+            "ailment_detonates_when_reapplied", "", 20.0, 40.0, "Void Splinter")
+
+    def test_a_detonation_row_on_an_ailment_the_game_does_not_detonate_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="detonates only Void Splinter"):
+            gen.enchantment_effects(self.necrosis(
+                tmp_path, dict(self.DETONATES, Ailment="Bleed")))
+
+    def test_another_rider_on_void_splinter_is_still_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="not one the game has"):
+            gen.enchantment_effects(self.necrosis(
+                tmp_path, dict(self.DETONATES, Action="ailment_damage_taken")))
+
+    def test_the_spread_at_a_death_may_name_void_splinter(self, tmp_path):
+        out = gen.enchantment_effects(self.necrosis(
+            tmp_path, dict(self.DETONATES, Action="ailment_spread_on_death")))
+        assert (out[0]["Action"], out[0]["Ailment"]) == ("ailment_spread_on_death", "Void Splinter")
+
+    def test_an_ailment_on_an_action_that_does_not_read_it_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="would be dropped"):
+            gen.enchantment_effects(self.death(tmp_path, {
+                "Action": "health", "Action Event": "block", "Ailment": "Burn"}))
+
+    def test_an_ailment_on_a_stat_row_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="would be dropped"):
+            gen.enchantment_effects(self.death(tmp_path, {
+                "Action": None, "Action Event": None, "Stat": "attack_damage",
+                "Value Kind": "increased", "Value Low": 10, "Ailment": "Burn"}))
+
+    def test_the_target_row_on_an_event_naming_nobody_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="cannot use"):
+            gen.enchantment_effects(self.necrosis(tmp_path, {"Action Event": "block"}))
+
+    def test_the_death_row_on_an_event_the_game_does_not_fire_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="cannot use"):
+            gen.enchantment_effects(self.death(tmp_path, {"Action Event": "shield_shattered"}))
+
+    def test_a_share_past_a_hundred_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="up to 100"):
+            gen.enchantment_effects(self.death(tmp_path, {"Value Low": 150}))
+
+    def test_a_remaining_damage_row_with_a_fraction_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="must be empty"):
+            gen.enchantment_effects(self.death(tmp_path, {"Fraction Of": "maximum"}))
+
+
+class TestGadgetDestroyedAndResourceConsumed:
+    """Two events and the rows they carry. Issue #1833 group D part 5, ruled
+    2026-10-01: "When any of your gadgets is destroyed, all remaining gadgets gain
+    30%-50% increased damage for 5 seconds", "Consuming a resource stack or charge
+    grants 5%-10% increased damage for 3 seconds" and "Each resource or charge
+    consumed restores 1%-3% of your maximum HP"."""
+
+    GADGET_WORDS = ("When any of your gadgets is destroyed, all remaining gadgets gain "
+                    "30%-50% increased damage for 5 seconds")
+    GADGET = gen.row_name("Positive", GADGET_WORDS[:48])
+    HEAL_WORDS = "Each resource or charge consumed restores 1%-3% of your maximum HP"
+    HEAL = gen.row_name("Positive", HEAL_WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [GADGET_WORDS, "Generic", 4, "Type.Deployable", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+        [HEAL_WORDS, "Generic", 4, "Stat.Defense.Life", None,
+         None, None, None, None],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def book(self, tmp_path, values):
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "gadget_resource.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def gadget(self, tmp_path, changes):
+        values = {"Enchantment": self.GADGET, "Effect": self.GADGET_WORDS,
+                  "Stat": "attack_damage", "Value Kind": "increased",
+                  "Value Low": 30, "Value High": 50, "Required Tags": "Type.Deployable",
+                  "Scale": "own_stacks", "Scale Step": 1,
+                  "Action Event": "gadget_destroyed", "Stack Seconds": 5,
+                  "Scale Max Steps": 1}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def heal(self, tmp_path, changes):
+        values = {"Enchantment": self.HEAL, "Effect": self.HEAL_WORDS,
+                  "Action": "health", "Action Event": "resource_consumed",
+                  "Value Low": 1, "Value High": 3}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def test_an_own_stack_on_a_gadget_destroyed_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.gadget(tmp_path, {}))
+        assert (out[0]["Scale"], out[0]["ActionEvent"], out[0]["RequiredTags"],
+                out[0]["StackSeconds"], out[0]["ScaleMaxSteps"]) == (
+            "own_stacks", "gadget_destroyed", "Type.Deployable", 5.0, 1)
+
+    def test_a_gadget_destroyed_is_not_hit_fired_so_takes_no_default_cooldown(self, tmp_path):
+        out = gen.enchantment_effects(self.heal(tmp_path, {"Action Event": "gadget_destroyed"}))
+        assert out[0]["TriggerCooldown"] == 0.0
+
+    def test_a_heal_on_a_resource_consumed_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.heal(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["FractionOf"], out[0]["TriggerCooldown"]) == (
+            "health", "resource_consumed", 1.0, 3.0, "maximum", 0.0)
+
+    def test_both_events_are_ones_an_action_row_may_name(self):
+        assert {"gadget_destroyed", "resource_consumed"} <= gen.action_events()
+
+    def test_neither_event_is_hit_fired(self):
+        assert not {"gadget_destroyed", "resource_consumed"} & set(gen.HIT_FIRED_EVENTS)
+
+
+class TestTheUseOfAHealingSkillIsAnEventOfItsOwn:
+    """`healing_skill_use`, ruled 2026-10-10 and built ahead of its row, for
+    "Using a healing skill grants 10%-20% increased damage for 5 seconds". The
+    game raises it for a skill carrying a tag under `Stat.Recovery`.
+
+    THE ROW HERE IS THE SHAPE THE RULING GIVES: an own stack on that event with
+    NO Required Tags, so the stat is unscoped. The grant is narrowed by the
+    event, because a row's Required Tags never narrow an own stack's grant. It
+    is on a made-up enchantment sheet holding the real sentence; no row of
+    `game/Data/EnchantmentEffects.csv` names the event yet.
+
+    THAT THE GAME RAISES THE NAME is held by
+    `test_pool_action_names_match_the_engine.py`, which reads the C++.
+    """
+
+    WORDS = "Using a healing skill grants 10%-20% increased damage for 5 seconds"
+    NAME = gen.row_name("Positive", WORDS[:48])
+    EVENT = "healing_skill_use"
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 4, "Stat.Offense.Damage", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def out(self, tmp_path, changes, base=None):
+        values = {"Enchantment": self.NAME, "Effect": self.WORDS}
+        values.update(base if base is not None else {
+            "Stat": "attack_damage", "Value Kind": "increased",
+            "Value Low": 10, "Value High": 20,
+            "Scale": "own_stacks", "Scale Step": 1,
+            "Action Event": self.EVENT, "Stack Seconds": 5,
+            "Scale Max Steps": 1})
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        return gen.enchantment_effects(openpyxl.load_workbook(workbook_with(
+            tmp_path / "healing_skill_use.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]})))
+
+    def test_the_ruled_row_is_carried_through_with_no_required_tags(self, tmp_path):
+        out = self.out(tmp_path, {})
+        assert (out[0]["Stat"], out[0]["ValueKind"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["RequiredTags"], out[0]["Scale"],
+                out[0]["ActionEvent"], out[0]["StackSeconds"],
+                out[0]["ScaleMaxSteps"], out[0]["TriggerCooldown"]) == (
+            "attack_damage", "increased", 10.0, 20.0, "", "own_stacks",
+            "healing_skill_use", 5.0, 1, 0.0)
+
+    def test_the_same_row_on_an_event_the_game_does_not_raise_is_refused(
+            self, tmp_path):
+        # THE CONTROL: the row above is accepted for its event's name and not
+        # because an own stack's event goes unread.
+        with pytest.raises(gen.DataError, match="to grant them"):
+            self.out(tmp_path, {"Action Event": "healing_skill_used"})
+
+    def test_an_action_row_on_it_is_accepted_and_waits_for_nothing(self, tmp_path):
+        out = self.out(tmp_path, {}, base={
+            "Action": "health", "Action Event": self.EVENT,
+            "Value Low": 10, "Value High": 20})
+        assert (out[0]["Action"], out[0]["ActionEvent"],
+                out[0]["TriggerCooldown"]) == ("health", "healing_skill_use", 0.0)
+
+    def test_it_is_an_event_with_no_clock_and_is_on_no_narrower_list(self):
+        assert self.EVENT in gen.ACTION_ONLY_EVENTS
+        assert self.EVENT in gen.action_events()
+        assert self.EVENT in gen.granting_events()
+        assert "seconds_after_" + self.EVENT not in gen.CONDITIONS
+        # NO HIT CAUSES IT, so a row on it takes no default trigger cooldown.
+        assert self.EVENT not in gen.HIT_FIRED_EVENTS
+        # IT CARRIES NO AMOUNT AND NAMES NO OTHER CHARACTER.
+        assert self.EVENT not in gen.EVENTS_WITH_AN_AMOUNT
+        assert self.EVENT not in gen.STRIKE_TARGET_EVENTS
+        assert self.EVENT not in gen.EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK
+        assert self.EVENT not in gen.CONSECUTIVE_HIT_EVENTS
+        # A ROW THAT REPEATS THE SKILL USED STAYS ON THE TWO EVENTS IT HAD.
+        assert gen.REPEAT_SKILL_EVENTS == ("skill_use", "attack_use")
+
+
+class TestAStatusLaidOnTheWearer:
+    """A status a row lays on its own wearer. Ruled 2026-10-06, for five
+    drawbacks. Three actions; the event need name no other character."""
+
+    HIT_WORDS = ("Taking a hit has a 15%-25% chance to trigger a random negative "
+                 "status effect on you")
+    HIT = gen.row_name("Negative", HIT_WORDS[:48])
+    STUN_WORDS = "After using a charge skill you are briefly stunned for 0.5-1 second"
+    STUN = gen.row_name("Negative", STUN_WORDS[:48])
+    DOT_WORDS = "When you apply a DOT, 1-4 stacks are applied to you"
+    DOT = gen.row_name("Negative", DOT_WORDS[:48])
+    TIMED_WORDS = "Every 15 seconds a random debuff is applied to you"
+    TIMED = gen.row_name("Negative", TIMED_WORDS[:48])
+    MANY_WORDS = "Whenever you apply a DOT, 1-40 stacks are applied to you"
+    MANY = gen.row_name("Negative", MANY_WORDS[:48])
+    # THE DRAWBACK OF THE SET SHARD OF ANARCHY, verbatim. Ruled 2026-10-12.
+    RESIST_WORDS = ("Every 5 seconds, one of your resistances is reduced to 0 "
+                    "until this triggers again")
+    RESIST = gen.row_name("Negative", RESIST_WORDS[:48])
+    # THE TWO-PIECE BONUS OF THE SAME SET, verbatim. Ruled 2026-10-12. TYPED
+    # GENERIC HERE, as the set sentences of the classes below are: a set is
+    # written whole or not at all, and this sheet holds one sentence of it.
+    BUFF_WORDS = ("Shard of Anarchy (2-Piece Bonus): Every 30 seconds, a random "
+                  "buff or debuff is applied to you")
+    BUFF = gen.row_name("Positive", BUFF_WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        ["Your block chance is increased by 10%-20%", "Generic", 4,
+         "Stat.Defense.Block", None, HIT_WORDS, "Generic", 3, "Keyword.Debuff"],
+        [BUFF_WORDS, "Generic", 4, "Stat.Defense.Block", None,
+         STUN_WORDS, "Generic", 4, "Keyword.Charge"],
+        [None, None, None, None, None, DOT_WORDS, "Generic", 2, "Keyword.DoT.Generic"],
+        [None, None, None, None, None, TIMED_WORDS, "Generic", 4, "Keyword.Debuff"],
+        [None, None, None, None, None, MANY_WORDS, "Generic", 2, "Keyword.DoT.Generic"],
+        [None, None, None, None, None, RESIST_WORDS, "Generic", 4, "Keyword.Debuff"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def book(self, tmp_path, values):
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "self.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def hit(self, tmp_path, changes):
+        values = {"Enchantment": self.HIT, "Effect": self.HIT_WORDS,
+                  "Action": "apply_status_to_self", "Action Event": "hit_taken",
+                  "Ailment": "Random Debuff", "Value Low": 15, "Value High": 25}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def stun(self, tmp_path, changes):
+        values = {"Enchantment": self.STUN, "Effect": self.STUN_WORDS,
+                  "Action": "apply_status_to_self_seconds", "Action Event": "skill_end",
+                  "Ailment": "Stun", "Value Low": 0.5, "Value High": 1,
+                  "Required Tags": "Keyword.Charge"}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def dot(self, tmp_path, changes):
+        values = {"Enchantment": self.DOT, "Effect": self.DOT_WORDS,
+                  "Action": "apply_status_to_self_sized", "Action Event": "dot_applied",
+                  "Ailment": "Applied DoT", "Value Low": 1, "Value High": 4}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def test_a_chance_row_on_a_hit_taken_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.hit(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["Ailment"]) == (
+            "apply_status_to_self", "hit_taken", 15.0, 25.0, "Random Debuff")
+
+    def test_a_chance_row_on_a_hit_taken_waits_the_default_trigger_cooldown(self, tmp_path):
+        out = gen.enchantment_effects(self.hit(tmp_path, {}))
+        assert out[0]["TriggerCooldown"] == gen.DEFAULT_TRIGGER_COOLDOWN
+
+    def test_a_seconds_row_on_a_skill_ending_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.stun(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["Ailment"], out[0]["RequiredTags"]) == (
+            "apply_status_to_self_seconds", "skill_end", 0.5, 1.0, "Stun",
+            "Keyword.Charge")
+
+    def test_a_sized_row_on_a_dot_applied_is_carried_through_and_waits_for_nothing(self, tmp_path):
+        out = gen.enchantment_effects(self.dot(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["Ailment"], out[0]["TriggerCooldown"]) == (
+            "apply_status_to_self_sized", "dot_applied", 1.0, 4.0, "Applied DoT", 0.0)
+
+    def test_a_timed_row_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, {
+            "Enchantment": self.TIMED, "Effect": self.TIMED_WORDS,
+            "Action": "apply_status_to_self", "Action Event": "every_seconds",
+            "Every Seconds": 15, "Ailment": "Random Debuff",
+            "Value Low": 100, "Value High": 100}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["EverySeconds"]) == (
+            "apply_status_to_self", "every_seconds", 15.0)
+
+    def resist(self, tmp_path, changes):
+        """The row the enchantment session will write for the drawback of the
+        set Shard of Anarchy: a resistance drawn and held at nought, every 5
+        seconds. Ruled 2026-10-12."""
+        values = {"Enchantment": self.RESIST, "Effect": self.RESIST_WORDS,
+                  "Action": "apply_status_to_self", "Action Event": "every_seconds",
+                  "Every Seconds": 5,
+                  "Ailment": gen.RANDOM_RESISTANCE_AT_NOUGHT_STATUS,
+                  "Value Low": 100, "Value High": 100}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def test_a_timed_row_that_holds_a_resistance_at_nought_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.resist(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["EverySeconds"],
+                out[0]["ValueLow"], out[0]["ValueHigh"], out[0]["Ailment"]) == (
+            "apply_status_to_self", "every_seconds", 5.0, 100.0, 100.0,
+            "Random Resistance At Nought")
+
+    def test_the_resistance_status_is_carried_through_at_another_period(self, tmp_path):
+        out = gen.enchantment_effects(self.resist(tmp_path, {"Every Seconds": 12}))
+        assert out[0]["EverySeconds"] == 12.0
+
+    def test_the_resistance_status_misspelt_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError,
+                           match="applies the status 'Random Resistance At Naught'"):
+            gen.enchantment_effects(self.resist(
+                tmp_path, {"Ailment": "Random Resistance At Naught"}))
+
+    def test_the_resistance_status_is_refused_on_the_seconds_form(self, tmp_path):
+        with pytest.raises(gen.DataError,
+                           match="applies the status 'Random Resistance At Nought'"):
+            gen.enchantment_effects(self.resist(tmp_path, {
+                "Action": "apply_status_to_self_seconds",
+                "Value Low": 5, "Value High": 5}))
+
+    def test_the_resistance_status_is_refused_on_the_action_that_lays_a_status_on_another(self, tmp_path):
+        """An enemy holds no per-type resistance, so the status is for a wearer
+        only and the list both actions share does not hold it."""
+        assert gen.RANDOM_RESISTANCE_AT_NOUGHT_STATUS not in gen.APPLY_STATUSES
+        with pytest.raises(gen.DataError,
+                           match="applies the status 'Random Resistance At Nought'"):
+            gen.enchantment_effects(self.resist(tmp_path, {
+                "Action": "apply_status", "Action Event": "hit_dealt",
+                "Every Seconds": None}))
+
+    def buff(self, tmp_path, changes):
+        """The row the enchantment session will write for the two-piece bonus
+        of the set Shard of Anarchy: a random buff or debuff, every 30 seconds.
+        Ruled 2026-10-12."""
+        values = {"Enchantment": self.BUFF, "Effect": self.BUFF_WORDS,
+                  "Action": "apply_status_to_self", "Action Event": "every_seconds",
+                  "Every Seconds": 30,
+                  "Ailment": gen.RANDOM_BUFF_OR_DEBUFF_STATUS,
+                  "Value Low": 100, "Value High": 100}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def test_a_timed_row_that_lays_a_random_buff_or_debuff_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.buff(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["EverySeconds"],
+                out[0]["ValueLow"], out[0]["ValueHigh"], out[0]["Ailment"]) == (
+            "apply_status_to_self", "every_seconds", 30.0, 100.0, 100.0,
+            "Random Buff or Debuff")
+
+    def test_the_buff_or_debuff_status_misspelt_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError,
+                           match="applies the status 'Random Buff and Debuff'"):
+            gen.enchantment_effects(self.buff(
+                tmp_path, {"Ailment": "Random Buff and Debuff"}))
+
+    @pytest.mark.parametrize("action, event, low, high", [
+        ("apply_status", "hit_dealt", 100, 100),
+        ("apply_status_seconds", "hit_dealt", 5, 5),
+        ("apply_status_to_self_seconds", "every_seconds", 5, 5),
+    ])
+    def test_the_buff_or_debuff_status_is_refused_on_every_other_status_action(
+            self, tmp_path, action, event, low, high):
+        """A buff is lines on a character's stat line, so the status is for a
+        wearer; and it has no seconds of the row's, so the seconds forms cannot
+        name it."""
+        assert gen.RANDOM_BUFF_OR_DEBUFF_STATUS not in gen.APPLY_STATUSES
+        with pytest.raises(gen.DataError,
+                           match="applies the status 'Random Buff or Debuff'"):
+            gen.enchantment_effects(self.buff(tmp_path, {
+                "Action": action, "Action Event": event,
+                "Every Seconds": 30 if event == "every_seconds" else None,
+                "Value Low": low, "Value High": high}))
+
+    def test_an_event_that_is_not_one_of_the_wearers_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="lays a status on its wearer on the event"):
+            gen.enchantment_effects(self.hit(tmp_path, {"Action Event": "kill"}))
+
+    def test_a_stun_is_refused_on_the_chance_action(self, tmp_path):
+        with pytest.raises(gen.DataError, match="applies the status 'Stun'"):
+            gen.enchantment_effects(self.hit(tmp_path, {"Ailment": "Stun"}))
+
+    def test_a_stun_is_refused_on_the_action_that_lays_a_status_on_another(self, tmp_path):
+        with pytest.raises(gen.DataError, match="applies the status 'Stun'"):
+            gen.enchantment_effects(self.book(tmp_path, {
+                "Enchantment": self.STUN, "Effect": self.STUN_WORDS,
+                "Action": "apply_status_seconds", "Action Event": "hit_dealt",
+                "Ailment": "Stun", "Value Low": 0.5, "Value High": 1}))
+
+    def test_the_sized_action_is_refused_off_dot_applied(self, tmp_path):
+        with pytest.raises(gen.DataError, match="written on dot_applied"):
+            gen.enchantment_effects(self.dot(tmp_path, {"Action Event": "hit_taken"}))
+
+    def test_another_action_is_refused_on_dot_applied(self, tmp_path):
+        with pytest.raises(gen.DataError, match="written on dot_applied"):
+            gen.enchantment_effects(self.hit(tmp_path, {"Action Event": "dot_applied"}))
+
+    def test_the_sized_action_names_only_the_applied_dot(self, tmp_path):
+        with pytest.raises(gen.DataError, match="applies the status 'Bleed'"):
+            gen.enchantment_effects(self.dot(tmp_path, {"Ailment": "Bleed"}))
+
+    def test_a_size_above_the_most_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="whole number from 1"):
+            gen.enchantment_effects(self.dot(tmp_path, {
+                "Enchantment": self.MANY, "Effect": self.MANY_WORDS,
+                "Value High": 40}))
+
+
+class TestApplyStatusAndItsEvents:
+    """A status applied to the other character of an event, a chance or for
+    stated seconds, named in the Ailment column; and the event `first_hit_dealt`.
+    Issue #1833 group E part 1, ruled 2026-10-01: "Retaliation damage has a
+    20%-40% chance to stagger the attacker" and "Retaliation damage applies a 2-4
+    second slow to the attacker"."""
+
+    STAGGER_WORDS = "Retaliation damage has a 20%-40% chance to stagger the attacker"
+    STAGGER = gen.row_name("Positive", STAGGER_WORDS[:48])
+    SLOW_WORDS = "Retaliation damage applies a 2-4 second slow to the attacker"
+    SLOW = gen.row_name("Positive", SLOW_WORDS[:48])
+    GADGET_WORDS = "Gadgets apply a 1-2 second stagger to enemies they hit, once every 5 seconds"
+    GADGET = gen.row_name("Positive", GADGET_WORDS[:48])
+    OVER_WORDS = "Retaliation damage has a 120% chance to stagger the attacker"
+    OVER = gen.row_name("Positive", OVER_WORDS[:48])
+    LONG_WORDS = "Retaliation damage applies a 12 second slow to the attacker"
+    LONG = gen.row_name("Positive", LONG_WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [STAGGER_WORDS, "Generic", 4, "Stat.Defense.Retaliation", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+        [SLOW_WORDS, "Generic", 4, "Stat.Defense.Retaliation", None,
+         None, None, None, None],
+        [GADGET_WORDS, "Generic", 4, "Type.Deployable", None,
+         None, None, None, None],
+        [OVER_WORDS, "Generic", 4, "Stat.Defense.Retaliation", None,
+         None, None, None, None],
+        [LONG_WORDS, "Generic", 4, "Stat.Defense.Retaliation", None,
+         None, None, None, None],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def book(self, tmp_path, values):
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "status.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def stagger(self, tmp_path, changes):
+        values = {"Enchantment": self.STAGGER, "Effect": self.STAGGER_WORDS,
+                  "Action": "apply_status", "Action Event": "retaliation_dealt",
+                  "Ailment": "Stagger", "Value Low": 20, "Value High": 40}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def slow(self, tmp_path, changes):
+        values = {"Enchantment": self.SLOW, "Effect": self.SLOW_WORDS,
+                  "Action": "apply_status_seconds", "Action Event": "retaliation_dealt",
+                  "Ailment": "Cripple", "Value Low": 2, "Value High": 4}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def test_a_chance_row_is_carried_through_with_its_status(self, tmp_path):
+        out = gen.enchantment_effects(self.stagger(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["FractionOf"], out[0]["Ailment"]) == (
+            "apply_status", "retaliation_dealt", 20.0, 40.0, "", "Stagger")
+
+    def test_a_seconds_row_is_carried_through_with_its_status(self, tmp_path):
+        out = gen.enchantment_effects(self.slow(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ValueLow"], out[0]["ValueHigh"],
+                out[0]["Ailment"]) == ("apply_status_seconds", 2.0, 4.0, "Cripple")
+
+    def test_retaliation_is_hit_fired_so_a_status_takes_the_quarter_second(self, tmp_path):
+        out = gen.enchantment_effects(self.stagger(tmp_path, {}))
+        assert out[0]["TriggerCooldown"] == gen.DEFAULT_TRIGGER_COOLDOWN == 0.25
+
+    def test_a_stated_trigger_cooldown_is_kept(self, tmp_path):
+        out = gen.enchantment_effects(self.slow(tmp_path, {
+            "Enchantment": self.GADGET, "Effect": self.GADGET_WORDS,
+            "Action Event": "deployable_hit", "Ailment": "Stagger",
+            "Value Low": 1, "Value High": 2, "Trigger Cooldown": 5}))
+        assert out[0]["TriggerCooldown"] == 5.0
+
+    @pytest.mark.parametrize("status", ["Bleed", "Cripple", "Random Debuff"])
+    def test_a_chance_row_may_name_an_ailment_or_the_random_debuff(self, tmp_path, status):
+        out = gen.enchantment_effects(self.stagger(tmp_path, {"Ailment": status}))
+        assert out[0]["Ailment"] == status
+
+    def test_the_first_hit_is_an_event_a_status_may_hang_on(self, tmp_path):
+        out = gen.enchantment_effects(self.stagger(tmp_path, {"Action Event": "first_hit_dealt"}))
+        assert out[0]["ActionEvent"] == "first_hit_dealt"
+        assert out[0]["TriggerCooldown"] == gen.DEFAULT_TRIGGER_COOLDOWN
+
+    def test_the_first_hit_is_an_event_the_game_fires_and_a_hit(self):
+        assert "first_hit_dealt" in gen.ACTION_ONLY_EVENTS
+        assert "first_hit_dealt" in gen.HIT_FIRED_EVENTS
+
+    def test_a_status_row_with_no_status_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="cannot"):
+            gen.enchantment_effects(self.stagger(tmp_path, {"Ailment": None}))
+
+    def test_a_status_the_game_does_not_have_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="cannot"):
+            gen.enchantment_effects(self.stagger(tmp_path, {"Ailment": "Frostbite"}))
+
+    def test_a_stun_is_refused_because_only_the_random_debuff_reaches_it(self, tmp_path):
+        with pytest.raises(gen.DataError, match="cannot"):
+            gen.enchantment_effects(self.stagger(tmp_path, {"Ailment": "Stun"}))
+
+    def test_seconds_for_a_status_whose_duration_cannot_be_stated_are_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="cannot"):
+            gen.enchantment_effects(self.slow(tmp_path, {"Ailment": "Bleed"}))
+
+    def test_a_status_on_an_event_naming_nobody_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="Only an event naming"):
+            gen.enchantment_effects(self.stagger(tmp_path, {"Action Event": "block"}))
+
+    def test_a_chance_past_a_hundred_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="up to 100"):
+            gen.enchantment_effects(self.stagger(tmp_path, {
+                "Enchantment": self.OVER, "Effect": self.OVER_WORDS,
+                "Value Low": 120, "Value High": 120}))
+
+    def test_seconds_past_the_bound_are_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="up to 10"):
+            gen.enchantment_effects(self.slow(tmp_path, {
+                "Enchantment": self.LONG, "Effect": self.LONG_WORDS,
+                "Value Low": 12, "Value High": 12}))
+
+    def test_a_status_row_with_a_fraction_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="must be empty"):
+            gen.enchantment_effects(self.stagger(tmp_path, {"Fraction Of": "maximum"}))
+
+class TestDamageImmunityAndTheShieldRecharge:
+    """A no-damage window opened for a row's seconds, and the event of the
+    energy shield filled by regeneration. Issue #1833 group E part 2, ruled
+    2026-10-02: "Archon's Aegis (6-Piece Bonus): When you block an attack, you
+    become immune to all damage for 3 seconds. (10s cd)" and "When your energy
+    shield fully recharges, release a nova dealing 50%-100% weapon damage to
+    nearby enemies"."""
+
+    IMMUNE_WORDS = ("Archon's Aegis (6-Piece Bonus): When you block an attack, you "
+                    "become immune to all damage for 3 seconds. (10s cd)")
+    IMMUNE = gen.row_name("Positive", IMMUNE_WORDS[:48])
+    NOVA_WORDS = ("When your energy shield fully recharges, release a nova dealing "
+                  "50%-100% weapon damage to nearby enemies")
+    NOVA = gen.row_name("Positive", NOVA_WORDS[:48])
+    LONG_WORDS = "When you block an attack, you become immune to all damage for 12 seconds"
+    LONG = gen.row_name("Positive", LONG_WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [IMMUNE_WORDS, "Generic", 4, "Stat.Defense.Block", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+        [NOVA_WORDS, "Generic", 4, "Keyword.Shield", None,
+         None, None, None, None],
+        [LONG_WORDS, "Generic", 4, "Stat.Defense.Block", None,
+         None, None, None, None],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def book(self, tmp_path, values):
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "immunity.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def immune(self, tmp_path, changes):
+        values = {"Enchantment": self.IMMUNE, "Effect": self.IMMUNE_WORDS,
+                  "Action": "damage_immunity", "Action Event": "block",
+                  "Value Low": 3, "Trigger Cooldown": 10}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def test_an_immunity_row_is_carried_through_with_its_cooldown(self, tmp_path):
+        out = gen.enchantment_effects(self.immune(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["FractionOf"], out[0]["TriggerCooldown"]) == (
+            "damage_immunity", "block", 3.0, "", 10.0)
+
+    def test_an_immunity_row_on_a_block_takes_the_quarter_second_when_it_states_none(
+            self, tmp_path):
+        out = gen.enchantment_effects(self.immune(tmp_path, {"Trigger Cooldown": None}))
+        assert out[0]["TriggerCooldown"] == gen.DEFAULT_TRIGGER_COOLDOWN
+
+    def test_an_immunity_row_on_an_event_the_game_does_not_fire_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="does not fire"):
+            gen.enchantment_effects(self.immune(tmp_path, {"Action Event": "parried"}))
+
+    def test_an_immunity_past_the_bound_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="up to 10"):
+            gen.enchantment_effects(self.immune(tmp_path, {
+                "Enchantment": self.LONG, "Effect": self.LONG_WORDS,
+                "Value Low": 12, "Trigger Cooldown": None}))
+
+    def test_an_immunity_row_with_a_fraction_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="must be empty"):
+            gen.enchantment_effects(self.immune(tmp_path, {"Fraction Of": "maximum"}))
+
+    def test_the_shield_recharge_is_an_event_a_nova_may_hang_on(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, {
+            "Enchantment": self.NOVA, "Effect": self.NOVA_WORDS,
+            "Action": "smite_nearby", "Action Event": "energy_shield_recharged",
+            "Value Low": 50, "Value High": 100}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"]) == ("smite_nearby", "energy_shield_recharged", 50.0, 100.0)
+
+    def test_the_shield_recharge_is_fired_by_the_game_and_is_no_hit(self, tmp_path):
+        assert "energy_shield_recharged" in gen.ACTION_ONLY_EVENTS
+        assert "energy_shield_recharged" not in gen.HIT_FIRED_EVENTS
+        out = gen.enchantment_effects(self.book(tmp_path, {
+            "Enchantment": self.NOVA, "Effect": self.NOVA_WORDS,
+            "Action": "smite_nearby", "Action Event": "energy_shield_recharged",
+            "Value Low": 50, "Value High": 100}))
+        assert out[0]["TriggerCooldown"] == 0.0
+
+class TestTeleportToARandomPointWhenHit:
+    """A row that moves its wearer to a random reachable point nearby when it is
+    hit. Ruled 2026-10-12 by the coordinating session under the owner's
+    delegation: "Teleport to a random location within 4 meters when hit". The
+    value is the metres, the event is `hit_taken` and no other, and the row
+    states its Trigger Cooldown because its sentence states none."""
+
+    WORDS = "Teleport to a random location within 4 meters when hit"
+    NAME = gen.row_name("Positive", WORDS[:48])
+    IMMUNE_WORDS = "When you are hit, you become immune to all damage for 3 seconds"
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 4, "Slot.Movement, Trigger.OnHit", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+        [IMMUNE_WORDS, "Generic", 4, "Stat.Defense.Block", None,
+         None, None, None, None],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def book(self, tmp_path, values, words=WORDS):
+        row = [values.get(column) for column in self.HEADER]
+        enchantments = [self.ENCHANTMENTS[0], [words] + self.ENCHANTMENTS[1][1:],
+                        self.ENCHANTMENTS[2]]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "teleport.xlsx",
+            {"Enchantments": enchantments,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def teleport(self, tmp_path, changes, words=WORDS):
+        values = {"Enchantment": gen.row_name("Positive", words[:48]),
+                  "Effect": words,
+                  "Action": "teleport_randomly", "Action Event": "hit_taken",
+                  "Value Low": 4, "Trigger Cooldown": 2}
+        values.update(changes)
+        return self.book(tmp_path, values, words)
+
+    def test_the_row_name_is_the_one_the_table_of_sentences_gives(self):
+        assert self.NAME == "Positive_Teleport_to_a_random_location_within_4_meters_wh"
+
+    def test_the_ruled_row_is_carried_through_with_its_metres_and_its_two_seconds(
+            self, tmp_path):
+        out = gen.enchantment_effects(self.teleport(tmp_path, {}))
+        assert len(out) == 1
+        assert out[0]["Enchantment"] == self.NAME
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["TriggerCooldown"], out[0]["RequiredTags"],
+                out[0]["FractionOf"], out[0]["Scale"], out[0]["Condition"]) == (
+            "teleport_randomly", "hit_taken", 4.0, 4.0, 2.0, "", "", "", "")
+
+    def test_control_another_action_on_a_hit_taken_takes_the_quarter_second_when_it_states_none(
+            self, tmp_path):
+        """So the refusal below is this action's own and not the event's."""
+        out = gen.enchantment_effects(self.book(tmp_path, {
+            "Enchantment": gen.row_name("Positive", self.IMMUNE_WORDS[:48]),
+            "Effect": self.IMMUNE_WORDS, "Action": "damage_immunity",
+            "Action Event": "hit_taken", "Value Low": 3}))
+        assert out[0]["TriggerCooldown"] == gen.DEFAULT_TRIGGER_COOLDOWN
+
+    def test_the_row_that_states_no_trigger_cooldown_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="states no Trigger Cooldown"):
+            gen.enchantment_effects(self.teleport(tmp_path, {"Trigger Cooldown": None}))
+
+    @pytest.mark.parametrize("seconds", [0, 0.25, 10])
+    def test_a_stated_trigger_cooldown_is_carried_through_and_nought_is_none(
+            self, tmp_path, seconds):
+        out = gen.enchantment_effects(self.teleport(tmp_path, {"Trigger Cooldown": seconds}))
+        assert out[0]["TriggerCooldown"] == float(seconds)
+
+    def test_the_action_is_one_that_takes_a_trigger_cooldown(self):
+        assert gen.takes_a_trigger_cooldown(gen.TELEPORT_RANDOMLY_ACTION)
+        assert gen.TELEPORT_RANDOMLY_ACTION not in gen.ACTIONS_WITH_NO_DEFAULT_TRIGGER_COOLDOWN
+
+    def test_the_name_misspelt_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="which is not one the game has"):
+            gen.enchantment_effects(self.teleport(tmp_path, {"Action": "teleport_random"}))
+
+    @pytest.mark.parametrize("event", ["melee_hit_taken", "block", "dodge", "hit_dealt",
+                                       "every_seconds", "skill_use", None])
+    def test_the_row_on_any_other_event_is_refused(self, tmp_path, event):
+        with pytest.raises(gen.DataError, match="for a hit taken and for nothing else"):
+            gen.enchantment_effects(self.teleport(tmp_path, {"Action Event": event}))
+
+    def test_the_list_of_events_is_hit_taken_alone(self):
+        assert gen.TELEPORT_RANDOMLY_EVENTS == ("hit_taken",)
+        assert set(gen.TELEPORT_RANDOMLY_EVENTS) <= gen.action_events()
+        assert set(gen.TELEPORT_RANDOMLY_EVENTS) <= set(gen.HIT_FIRED_EVENTS)
+        assert not set(gen.TELEPORT_RANDOMLY_EVENTS) & set(gen.EVENTS_WITH_AN_AMOUNT)
+
+    @pytest.mark.parametrize("metres", [0, -4, 21])
+    def test_metres_of_nought_or_below_or_past_the_bound_are_refused(self, tmp_path, metres):
+        words = self.WORDS.replace("4 meters", f"{metres} meters")
+        with pytest.raises(gen.DataError, match="It is above 0 and up to 20"):
+            gen.enchantment_effects(self.teleport(tmp_path, {"Value Low": metres}, words=words))
+
+    def test_metres_at_the_bound_are_carried_through(self, tmp_path):
+        words = self.WORDS.replace("4 meters", "20 meters")
+        out = gen.enchantment_effects(self.teleport(tmp_path, {"Value Low": 20}, words=words))
+        assert (out[0]["ValueLow"], out[0]["ValueHigh"]) == (20.0, 20.0)
+
+    def test_a_range_the_words_do_not_state_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="do not state in that order"):
+            gen.enchantment_effects(self.teleport(tmp_path, {"Value Low": 2, "Value High": 4}))
+
+    @pytest.mark.parametrize("column, written", [("Required Tags", "Slot.Movement"),
+                                                 ("Fraction Of", "maximum"),
+                                                 ("Value Kind", "increased"),
+                                                 ("Scale", "kills")])
+    def test_tags_a_fraction_a_value_kind_or_a_scale_is_refused(self, tmp_path, column, written):
+        with pytest.raises(gen.DataError,
+                           match="metres and its event carries no tags"):
+            gen.enchantment_effects(self.teleport(tmp_path, {column: written}))
+
+    def test_an_event_value_is_refused_as_on_every_event_but_the_threshold(self, tmp_path):
+        """The option not taken for the metres: Event Value is read by one event
+        and refused on every other, this one included."""
+        with pytest.raises(gen.DataError, match="states an Event Value"):
+            gen.enchantment_effects(self.teleport(tmp_path, {"Event Value": 4}))
+
+
+class TestRidersOnAnAilment:
+    """A number hung on an ailment the wearer applies. Issue #1833, ruled
+    2026-10-06: "Bleeding enemies take 20%-40% increased damage from all
+    sources". No event, an Ailment, and a percent."""
+
+    WORDS = "Bleeding enemies take 20%-40% increased damage from all sources"
+    NAME = gen.row_name("Positive", WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 4, "Keyword.DoT.Bleed", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def rider(self, tmp_path, changes):
+        values = {"Enchantment": self.NAME, "Effect": self.WORDS,
+                  "Action": "ailment_damage_taken", "Ailment": "Bleed",
+                  "Value Low": 20, "Value High": 40}
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "rider.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def test_a_rider_is_carried_through_with_its_ailment_and_no_event(self, tmp_path):
+        out = gen.enchantment_effects(self.rider(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["Ailment"],
+                out[0]["ValueLow"], out[0]["ValueHigh"], out[0]["FractionOf"],
+                out[0]["TriggerCooldown"]) == (
+            "ailment_damage_taken", "", "Bleed", 20.0, 40.0, "", 0.0)
+
+    def test_a_rider_with_an_event_is_refused(self, tmp_path):
+        # NOTHING FIRES A RIDER. An event on one would be a column nothing reads.
+        with pytest.raises(gen.DataError, match="must be empty"):
+            gen.enchantment_effects(self.rider(tmp_path, {"Action Event": "hit_dealt"}))
+
+    def test_a_rider_with_no_ailment_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="names no Ailment"):
+            gen.enchantment_effects(self.rider(tmp_path, {"Ailment": None}))
+
+    def test_a_rider_on_an_ailment_the_game_does_not_have_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="not one the game has"):
+            gen.enchantment_effects(self.rider(tmp_path, {"Ailment": "Void Splinter"}))
+
+    def test_a_rider_with_a_condition_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="must be empty"):
+            gen.enchantment_effects(self.rider(tmp_path, {
+                "Condition": "health_below", "Condition Value": 50}))
+
+
+class TestTheTimedCleanse:
+    """A cleanse on a clock. Issue #1833, written 2026-10-05: "You are cleansed
+    every 5 seconds". The game has cleansed on the timed event since 2026-09-26
+    and the generator refused the action's name until this."""
+
+    WORDS = "You are cleansed every 5 seconds"
+    NAME = gen.row_name("Positive", WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 4, "Trigger.Timer", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def cleanse(self, tmp_path, changes):
+        values = {"Enchantment": self.NAME, "Effect": self.WORDS,
+                  "Action": "cleanse", "Action Event": "every_seconds",
+                  "Every Seconds": 5, "Value Low": 100}
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "cleanse.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def test_a_timed_cleanse_is_carried_through_with_its_period(self, tmp_path):
+        out = gen.enchantment_effects(self.cleanse(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["EverySeconds"],
+                out[0]["ValueLow"], out[0]["FractionOf"], out[0]["TriggerCooldown"]) == (
+            "cleanse", "every_seconds", 5.0, 100.0, "", 0.0)
+
+    def test_a_cleanse_on_any_event_but_the_timed_one_is_refused(self, tmp_path):
+        # THE GAME READS THE FLAG ON THE TIMED PATH ONLY. A cleanse on a kill
+        # would reach the pool path, find no pool named cleanse and do nothing.
+        with pytest.raises(gen.DataError, match="on nothing else"):
+            gen.enchantment_effects(self.cleanse(tmp_path, {
+                "Action Event": "kill", "Every Seconds": None}))
+
+    def test_a_cleanse_with_a_size_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="is 100 and nothing else"):
+            gen.enchantment_effects(self.cleanse(tmp_path, {"Value Low": 50}))
+
+    def test_a_cleanse_with_a_fraction_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="must be empty"):
+            gen.enchantment_effects(self.cleanse(tmp_path, {"Fraction Of": "maximum"}))
+
+    def test_a_cleanse_with_no_period_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="would never grant"):
+            gen.enchantment_effects(self.cleanse(tmp_path, {"Every Seconds": None}))
+
+
+class TestReflectAndTheBlockCount:
+    """A share of what a block removed paid back to the attacker, a nearby blow
+    scaled by armour, and a nearby action on the Nth of its events inside a
+    window. Issue #1833 group E part 3, ruled 2026-10-02: "Reflect 20%-100% of
+    damage blocked back at attackers", "Blocking attacks deals 200%-400% of your
+    armor as damage to nearby enemies" and "Every 3 blocks in quick succession
+    triggers a shockwave dealing 100%-200% weapon damage to nearby enemies"."""
+
+    REFLECT_WORDS = "Reflect 20%-100% of damage blocked back at attackers"
+    REFLECT = gen.row_name("Positive", REFLECT_WORDS[:48])
+    ARMOUR_WORDS = "Blocking attacks deals 200%-400% of your armor as damage to nearby enemies"
+    ARMOUR = gen.row_name("Positive", ARMOUR_WORDS[:48])
+    WAVE_WORDS = ("Every 3 blocks in quick succession triggers a shockwave dealing "
+                  "100%-200% weapon damage to nearby enemies")
+    WAVE = gen.row_name("Positive", WAVE_WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [REFLECT_WORDS, "Generic", 4, "Stat.Defense.Block", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+        [ARMOUR_WORDS, "Generic", 4, "Stat.Defense.Block", None,
+         None, None, None, None],
+        [WAVE_WORDS, "Generic", 4, "Stat.Defense.Block", None,
+         None, None, None, None],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def book(self, tmp_path, values):
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "reflect.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def reflect(self, tmp_path, changes):
+        values = {"Enchantment": self.REFLECT, "Effect": self.REFLECT_WORDS,
+                  "Action": "reflect_blocked", "Action Event": "block",
+                  "Value Low": 20, "Value High": 100, "Trigger Cooldown": 0}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def wave(self, tmp_path, changes):
+        values = {"Enchantment": self.WAVE, "Effect": self.WAVE_WORDS,
+                  "Action": "smite_nearby", "Action Event": "block",
+                  "Value Low": 100, "Value High": 200, "Every Nth": 3, "Stack Seconds": 3}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def test_a_reflect_row_is_carried_through_with_no_cooldown(self, tmp_path):
+        out = gen.enchantment_effects(self.reflect(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["FractionOf"], out[0]["TriggerCooldown"]) == (
+            "reflect_blocked", "block", 20.0, 100.0, "", 0.0)
+
+    BLAST = {"Action": "blast_from_the_dying", "Action Event": "afflicted_death"}
+
+    def test_a_blast_from_the_dying_is_carried_through_with_no_cooldown(self, tmp_path):
+        out = gen.enchantment_effects(self.reflect(tmp_path, dict(self.BLAST)))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["FractionOf"], out[0]["TriggerCooldown"]) == (
+            "blast_from_the_dying", "afflicted_death", 20.0, 100.0, "", 0.0)
+
+    def test_a_blast_on_the_kill_event_is_refused(self, tmp_path):
+        # `kill` carries the slain enemy and its maximum health too, but its tags
+        # are the killing skill's and not the wearer's ailments on the body.
+        with pytest.raises(gen.DataError, match="whoever afflicted the dead enemy"):
+            gen.enchantment_effects(self.reflect(
+                tmp_path, dict(self.BLAST, **{"Action Event": "kill"})))
+
+    def test_a_reflect_on_an_event_carrying_no_block_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="Only an event carrying"):
+            gen.enchantment_effects(self.reflect(tmp_path, {"Action Event": "hit_taken"}))
+
+    def test_a_reflect_row_with_a_fraction_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="must be empty"):
+            gen.enchantment_effects(self.reflect(tmp_path, {"Fraction Of": "maximum"}))
+
+    def test_an_armour_nova_row_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, {
+            "Enchantment": self.ARMOUR, "Effect": self.ARMOUR_WORDS,
+            "Action": "smite_nearby_by_armor", "Action Event": "block",
+            "Value Low": 200, "Value High": 400}))
+        assert (out[0]["Action"], out[0]["ValueLow"], out[0]["ValueHigh"]) == (
+            "smite_nearby_by_armor", 200.0, 400.0)
+
+    def test_a_counted_nearby_row_carries_its_count_and_window(self, tmp_path):
+        out = gen.enchantment_effects(self.wave(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["EveryNth"], out[0]["StackSeconds"]) == (
+            "smite_nearby", 3, 3.0)
+
+    def test_a_counted_nearby_row_with_no_window_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="no Stack Seconds"):
+            gen.enchantment_effects(self.wave(tmp_path, {"Stack Seconds": None}))
+
+    def test_a_nearby_row_with_a_window_and_no_count_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="no Every Nth"):
+            gen.enchantment_effects(self.wave(tmp_path, {"Every Nth": None}))
+
+    def test_a_count_of_one_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="from 2"):
+            gen.enchantment_effects(self.wave(tmp_path, {"Every Nth": 1}))
+
+class TestOverkillExplosion:
+    """A row that makes an enemy its wearer kills explode for its overkill.
+    Ruled 2026-10-07: "Enemies killed by you explode for the overkill amount".
+    The value is the share of the overkill, in per cent, and the event is
+    `kill` and no other."""
+
+    WORDS = "Enemies killed by you explode for the overkill amount"
+    NAME = gen.row_name("Positive", WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 2, "Trigger.OnKill, Scope.Global", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def explode(self, tmp_path, changes):
+        values = {"Enchantment": self.NAME, "Effect": self.WORDS,
+                  "Action": "explode_victim_for_overkill", "Action Event": "kill",
+                  "Value Low": 100, "Value High": 100}
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "overkill.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def test_the_row_is_carried_through_on_kill_with_its_share_and_nothing_else(self, tmp_path):
+        out = gen.enchantment_effects(self.explode(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["FractionOf"], out[0]["Scale"],
+                out[0]["TriggerCooldown"]) == (
+            "explode_victim_for_overkill", "kill", 100.0, 100.0, "", "", 0.0)
+
+    @pytest.mark.parametrize("event", ["hit_dealt", "critical_strike", "skill_use",
+                                       "block", "timed", None])
+    def test_the_row_on_any_other_event_is_refused(self, tmp_path, event):
+        with pytest.raises(gen.DataError, match="Only a kill has a victim"):
+            gen.enchantment_effects(self.explode(tmp_path, {"Action Event": event}))
+
+    def test_a_share_at_the_bound_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.explode(
+            tmp_path, {"Value Low": gen.MAX_OVERKILL_EXPLOSION_SHARE,
+                       "Value High": gen.MAX_OVERKILL_EXPLOSION_SHARE}))
+        assert (out[0]["ValueLow"], out[0]["ValueHigh"]) == (1000.0, 1000.0)
+
+    # ONE NUMBER EACH, because the sentence states no range and a range is
+    # refused for that before the share is looked at.
+    @pytest.mark.parametrize("low, high", [(0, 0), (-5, -5), (1001, 1001)])
+    def test_a_share_of_nought_or_past_the_bound_is_refused(self, tmp_path, low, high):
+        with pytest.raises(gen.DataError, match="The share is above 0 and up to 1000"):
+            gen.enchantment_effects(self.explode(
+                tmp_path, {"Value Low": low, "Value High": high}))
+
+    @pytest.mark.parametrize("column, written", [("Fraction Of", "maximum"),
+                                                 ("Value Kind", "increased"),
+                                                 ("Scale", "kills")])
+    def test_a_fraction_a_value_kind_or_a_scale_is_refused(self, tmp_path, column, written):
+        with pytest.raises(gen.DataError, match="a share of the overkill and nothing else"):
+            gen.enchantment_effects(self.explode(tmp_path, {column: written}))
+
+    def test_a_trigger_cooldown_is_refused_because_the_sentence_has_none(self, tmp_path):
+        with pytest.raises(gen.DataError, match="Trigger Cooldown"):
+            gen.enchantment_effects(self.explode(tmp_path, {"Trigger Cooldown": 1}))
+
+
+class TestStrikeTarget:
+    """A row that deals a direct hit to the other character of its event.
+    Ruled 2026-10-07: "When you evade a ranged attack, throw an attack dealing
+    20-70% of your attack damage at that enemy". The value is the hit's size, in
+    per cent of attack damage, and the event is one that names a living
+    character other than the wearer."""
+
+    WORDS = ("When you evade a ranged attack, throw an attack dealing 20-70% of "
+             "your attack damage at that enemy")
+    NAME = gen.row_name("Positive", WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 4, "Stat.Defense.Evasion, Type.Projectile", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def strike(self, tmp_path, changes, words=WORDS):
+        values = {"Enchantment": gen.row_name("Positive", words[:48]),
+                  "Effect": words,
+                  "Action": "strike_target", "Action Event": "dodge",
+                  "Required Tags": "Type.Ranged",
+                  "Value Low": 20, "Value High": 70}
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        enchantments = [self.ENCHANTMENTS[0], [words] + self.ENCHANTMENTS[1][1:]]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "strike.xlsx",
+            {"Enchantments": enchantments,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def sized(self, tmp_path, low, high):
+        """The row with a sentence that states `low` to `high`, because a range
+        the words do not state is refused before the size is looked at."""
+        return self.strike(
+            tmp_path, {"Value Low": low, "Value High": high},
+            words=self.WORDS.replace("20-70%", f"{low}-{high}%"))
+
+    def test_the_row_is_carried_through_on_dodge_with_its_scope_and_the_hit_fired_wait(
+            self, tmp_path):
+        # `dodge` IS A HIT-FIRED EVENT, so a row that states no Trigger Cooldown
+        # takes the default.
+        out = gen.enchantment_effects(self.strike(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["RequiredTags"], out[0]["FractionOf"],
+                out[0]["Scale"], out[0]["TriggerCooldown"]) == (
+            "strike_target", "dodge", 20.0, 70.0, "Type.Ranged", "", "",
+            gen.DEFAULT_TRIGGER_COOLDOWN)
+
+    def test_a_trigger_cooldown_of_nought_is_carried_through_as_none(self, tmp_path):
+        out = gen.enchantment_effects(self.strike(tmp_path, {"Trigger Cooldown": 0}))
+        assert out[0]["TriggerCooldown"] == 0.0
+
+    @pytest.mark.parametrize("event", gen.STRIKE_TARGET_EVENTS)
+    def test_the_row_is_accepted_on_every_event_that_names_a_living_character(
+            self, tmp_path, event):
+        out = gen.enchantment_effects(self.strike(tmp_path, {"Action Event": event}))
+        assert (out[0]["Action"], out[0]["ActionEvent"]) == ("strike_target", event)
+
+    # `kill` AND `afflicted_death` NAME AN ENEMY THAT HAS DIED, and
+    # `gadget_destroyed` the wearer's own machine. The others name nobody.
+    @pytest.mark.parametrize("event", ["kill", "afflicted_death", "gadget_destroyed",
+                                       "hit_taken", "skill_use", "timed", None])
+    def test_the_row_on_an_event_with_nobody_to_strike_is_refused(self, tmp_path, event):
+        with pytest.raises(gen.DataError, match="names a living character other than"):
+            gen.enchantment_effects(self.strike(tmp_path, {"Action Event": event}))
+
+    def test_the_list_of_events_is_exactly_the_eight(self):
+        assert set(gen.STRIKE_TARGET_EVENTS) == {
+            "hit_dealt", "first_hit_dealt", "critical_strike", "deployable_hit",
+            "retaliation_dealt", "block", "melee_hit_taken", "dodge"}
+        assert set(gen.STRIKE_TARGET_EVENTS) <= gen.granting_events()
+
+    def test_a_size_at_the_bound_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(
+            self.sized(tmp_path, 20, int(gen.MAX_STRIKE_TARGET_PERCENT)))
+        assert (out[0]["ValueLow"], out[0]["ValueHigh"]) == (20.0, 1000.0)
+
+    @pytest.mark.parametrize("low, high", [(0, 70), (20, 1001)])
+    def test_a_size_of_nought_or_past_the_bound_is_refused(self, tmp_path, low, high):
+        with pytest.raises(gen.DataError, match="A strike is above 0 and up to 1000"):
+            gen.enchantment_effects(self.sized(tmp_path, low, high))
+
+    def test_a_size_the_words_do_not_state_is_refused_before_the_bound(self, tmp_path):
+        with pytest.raises(gen.DataError, match="do not state in that order"):
+            gen.enchantment_effects(self.strike(tmp_path, {"Value Low": 30}))
+
+    @pytest.mark.parametrize("column, written", [("Fraction Of", "maximum"),
+                                                 ("Value Kind", "increased"),
+                                                 ("Scale", "kills")])
+    def test_a_fraction_a_value_kind_or_a_scale_is_refused(self, tmp_path, column, written):
+        with pytest.raises(gen.DataError,
+                           match="a percentage of attack damage and nothing else"):
+            gen.enchantment_effects(self.strike(tmp_path, {column: written}))
+
+
+class TestExecuteTarget:
+    """A row that executes the enemy a hit leaves below a share of its health.
+    Ruled 2026-10-12 under the owner's delegation: "Strike skills have a 10%-20%
+    chance to execute enemies below 15% HP". The value is the chance, the
+    Condition is `target_health_below` and its value is the share, and the
+    event is `hit_dealt` and no other."""
+
+    WORDS = "Strike skills have a 10%-20% chance to execute enemies below 15% HP"
+    NAME = gen.row_name("Positive", WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 3, "Type.Strike, Trigger.LowLife", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def execute(self, tmp_path, changes, words=WORDS):
+        values = {"Enchantment": gen.row_name("Positive", words[:48]),
+                  "Effect": words,
+                  "Action": "execute_target", "Action Event": "hit_dealt",
+                  "Required Tags": "Type.Strike",
+                  "Condition": "target_health_below", "Condition Value": 15,
+                  "Value Low": 10, "Value High": 20}
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        enchantments = [self.ENCHANTMENTS[0], [words] + self.ENCHANTMENTS[1][1:]]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "execute.xlsx",
+            {"Enchantments": enchantments,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def test_the_ruled_row_is_carried_through_with_its_scope_its_share_and_no_wait(
+            self, tmp_path):
+        # `hit_dealt` IS A HIT-FIRED EVENT, AND AN EXECUTE TAKES NO DEFAULT WAIT
+        # ALL THE SAME. Ruled 2026-10-12: each enemy a strike leaves below the
+        # share rolls for itself.
+        out = gen.enchantment_effects(self.execute(tmp_path, {}))
+        assert len(out) == 1
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["RequiredTags"], out[0]["Condition"],
+                out[0]["ConditionValue"], out[0]["FractionOf"], out[0]["Scale"],
+                out[0]["TriggerCooldown"]) == (
+            "execute_target", "hit_dealt", 10.0, 20.0, "Type.Strike",
+            "target_health_below", 15.0, "", "", 0.0)
+
+    def test_the_control_another_action_on_the_same_event_takes_the_default_wait(
+            self, tmp_path):
+        """So the nought above is this action's and not the event's."""
+        assert "hit_dealt" in gen.HIT_FIRED_EVENTS
+        assert gen.takes_a_trigger_cooldown(gen.STRIKE_TARGET_ACTION)
+        assert gen.STRIKE_TARGET_ACTION not in gen.ACTIONS_WITH_NO_DEFAULT_TRIGGER_COOLDOWN
+        out = gen.enchantment_effects(TestStrikeTarget().strike(
+            tmp_path, {"Action Event": "hit_dealt", "Required Tags": None}))
+        assert out[0]["TriggerCooldown"] == gen.DEFAULT_TRIGGER_COOLDOWN
+
+    def test_execute_is_the_one_action_with_no_default_wait_and_may_state_one(self):
+        assert gen.ACTIONS_WITH_NO_DEFAULT_TRIGGER_COOLDOWN == (gen.EXECUTE_TARGET_ACTION,)
+        assert gen.takes_a_trigger_cooldown(gen.EXECUTE_TARGET_ACTION)
+
+    @pytest.mark.parametrize("stated", [0, 0.25, 10])
+    def test_a_stated_trigger_cooldown_is_carried_through(self, tmp_path, stated):
+        out = gen.enchantment_effects(self.execute(tmp_path, {"Trigger Cooldown": stated}))
+        assert out[0]["TriggerCooldown"] == float(stated)
+
+    def test_a_row_of_100_below_5_is_the_same_action(self, tmp_path):
+        """What another execute would state: always, below another share."""
+        words = "Enemies below 5% HP are instantly killed by your hits, 100% of the time"
+        out = gen.enchantment_effects(self.execute(
+            tmp_path, {"Value Low": 100, "Value High": 100, "Condition Value": 5,
+                       "Required Tags": None}, words=words))
+        assert (out[0]["Action"], out[0]["ValueLow"], out[0]["ValueHigh"],
+                out[0]["Condition"], out[0]["ConditionValue"],
+                out[0]["RequiredTags"]) == (
+            "execute_target", 100.0, 100.0, "target_health_below", 5.0, "")
+
+    def test_the_name_misspelt_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="which is not one the game has"):
+            gen.enchantment_effects(self.execute(tmp_path, {"Action": "execute_targets"}))
+
+    @pytest.mark.parametrize("event", ["first_hit_dealt", "critical_strike", "kill",
+                                       "hit_taken", "skill_use", "timed", None])
+    def test_the_row_on_any_other_event_is_refused(self, tmp_path, event):
+        with pytest.raises(gen.DataError, match="Only a hit dealt names the enemy"):
+            gen.enchantment_effects(self.execute(tmp_path, {"Action Event": event}))
+
+    def test_the_list_of_events_is_hit_dealt_alone(self):
+        assert gen.EXECUTE_TARGET_EVENTS == ("hit_dealt",)
+        assert set(gen.EXECUTE_TARGET_EVENTS) <= gen.granting_events()
+        assert set(gen.EXECUTE_TARGET_EVENTS) <= set(gen.EVENTS_WITH_AN_AMOUNT)
+
+    def test_the_row_with_no_condition_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="states that condition and no other"):
+            gen.enchantment_effects(self.execute(
+                tmp_path, {"Condition": None, "Condition Value": None}))
+
+    @pytest.mark.parametrize("condition, value", [("target_is_not_boss", None),
+                                                  ("health_below", 15),
+                                                  ("target_is_staggered", None)])
+    def test_the_row_with_any_other_condition_is_refused(self, tmp_path, condition, value):
+        with pytest.raises(gen.DataError, match="states that condition and no other"):
+            gen.enchantment_effects(self.execute(
+                tmp_path, {"Condition": condition, "Condition Value": value}))
+
+    def test_a_second_condition_is_refused_because_an_action_carries_one(self, tmp_path):
+        with pytest.raises(gen.DataError, match="An action carries one condition"):
+            gen.enchantment_effects(self.execute(
+                tmp_path, {"Condition 2": "target_is_not_boss"}))
+
+    @pytest.mark.parametrize("share", [0, 101, None])
+    def test_a_share_of_nought_or_past_the_whole_or_not_stated_is_refused(self, tmp_path, share):
+        with pytest.raises(gen.DataError, match="The share is its Condition Value, above 0"):
+            gen.enchantment_effects(self.execute(tmp_path, {"Condition Value": share}))
+
+    def test_a_share_of_the_whole_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.execute(tmp_path, {"Condition Value": 100}))
+        assert out[0]["ConditionValue"] == 100.0
+
+    @pytest.mark.parametrize("low, high", [(0, 20), (10, 101)])
+    def test_a_chance_of_nought_or_past_100_is_refused(self, tmp_path, low, high):
+        words = self.WORDS.replace("10%-20%", f"{low}%-{high}%")
+        with pytest.raises(gen.DataError, match="A chance is above 0 and up to 100"):
+            gen.enchantment_effects(self.execute(
+                tmp_path, {"Value Low": low, "Value High": high}, words=words))
+
+    def test_a_chance_the_words_do_not_state_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="do not state in that order"):
+            gen.enchantment_effects(self.execute(tmp_path, {"Value Low": 12}))
+
+    @pytest.mark.parametrize("column, written", [("Fraction Of", "maximum"),
+                                                 ("Value Kind", "increased"),
+                                                 ("Scale", "kills")])
+    def test_a_fraction_a_value_kind_or_a_scale_is_refused(self, tmp_path, column, written):
+        with pytest.raises(gen.DataError,
+                           match="the share of health, and nothing else"):
+            gen.enchantment_effects(self.execute(tmp_path, {column: written}))
+
+
+class TestTemporaryAbsorb:
+    """A row that grants its wearer a temporary absorb. The project owner,
+    2026-10-07: it is separate from the energy shield. "Every 12 seconds gain a
+    shield absorbing 15%-25% of your maximum HP in damage". The value is the
+    amount, in per cent of maximum health, and the event is the clock, which
+    counts only in combat."""
+
+    WORDS = ("Every 12 seconds gain a shield absorbing 15%-25% of your maximum "
+             "HP in damage")
+    NAME = gen.row_name("Positive", WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 3, "Trigger.Timer, Keyword.Shield", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def absorb(self, tmp_path, changes, words=WORDS):
+        values = {"Enchantment": gen.row_name("Positive", words[:48]),
+                  "Effect": words,
+                  "Action": "temporary_absorb", "Action Event": "every_seconds",
+                  "Every Seconds": 12,
+                  "Value Low": 15, "Value High": 25}
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        enchantments = [self.ENCHANTMENTS[0], [words] + self.ENCHANTMENTS[1][1:]]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "absorb.xlsx",
+            {"Enchantments": enchantments,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def sized(self, tmp_path, low, high):
+        """The row with a sentence that states `low` to `high`, because a range
+        the words do not state is refused before the size is looked at."""
+        return self.absorb(
+            tmp_path, {"Value Low": low, "Value High": high},
+            words=self.WORDS.replace("15%-25%", f"{low}%-{high}%"))
+
+    def test_the_row_is_carried_through_on_the_clock_with_its_period_and_no_wait(
+            self, tmp_path):
+        out = gen.enchantment_effects(self.absorb(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["EverySeconds"], out[0]["FractionOf"],
+                out[0]["Scale"], out[0]["TriggerCooldown"]) == (
+            "temporary_absorb", "every_seconds", 15.0, 25.0, 12.0, "", "", 0.0)
+
+    # ONLY THE CLOCK. Every other event the game raises is refused, the hit-fired
+    # ones and the ones that carry an amount among them.
+    @pytest.mark.parametrize("event", ["hit_taken", "kill", "dodge", "skill_use",
+                                       "energy_shield_broken", "timed", None])
+    def test_the_row_on_any_event_but_the_clock_is_refused(self, tmp_path, event):
+        with pytest.raises(gen.DataError, match="counts only in combat and on nothing else"):
+            gen.enchantment_effects(self.absorb(
+                tmp_path, {"Action Event": event, "Every Seconds": None}))
+
+    def test_the_clock_is_the_only_event_listed(self):
+        assert gen.TEMPORARY_ABSORB_EVENTS == (gen.TIMED_EVENT,)
+        assert set(gen.TEMPORARY_ABSORB_EVENTS) <= gen.granting_events()
+
+    def test_the_row_with_no_period_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="states no Every Seconds"):
+            gen.enchantment_effects(self.absorb(tmp_path, {"Every Seconds": None}))
+
+    def test_a_trigger_cooldown_is_refused_because_the_period_is_the_wait(self, tmp_path):
+        with pytest.raises(gen.DataError, match="states a Trigger Cooldown"):
+            gen.enchantment_effects(self.absorb(tmp_path, {"Trigger Cooldown": 12}))
+
+    def test_a_size_at_the_bound_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(
+            self.sized(tmp_path, 15, int(gen.MAX_TEMPORARY_ABSORB_PERCENT)))
+        assert (out[0]["ValueLow"], out[0]["ValueHigh"]) == (15.0, 100.0)
+
+    @pytest.mark.parametrize("low, high", [(0, 25), (15, 101)])
+    def test_a_size_of_nought_or_past_the_bound_is_refused(self, tmp_path, low, high):
+        with pytest.raises(gen.DataError, match="It is above 0 and up to 100"):
+            gen.enchantment_effects(self.sized(tmp_path, low, high))
+
+    def test_a_size_the_words_do_not_state_is_refused_before_the_bound(self, tmp_path):
+        with pytest.raises(gen.DataError, match="do not state in that order"):
+            gen.enchantment_effects(self.absorb(tmp_path, {"Value Low": 20}))
+
+    @pytest.mark.parametrize("column, written", [("Fraction Of", "maximum"),
+                                                 ("Value Kind", "increased"),
+                                                 ("Scale", "kills")])
+    def test_a_fraction_a_value_kind_or_a_scale_is_refused(self, tmp_path, column, written):
+        with pytest.raises(gen.DataError,
+                           match="a percentage of maximum health and nothing else"):
+            gen.enchantment_effects(self.absorb(tmp_path, {column: written}))
+
+    def test_it_is_not_one_of_the_pools_that_name_two_attributes(self):
+        assert gen.TEMPORARY_ABSORB_ACTION not in gen.POOL_ACTIONS
+
+
+class TestUseIncreaseSize:
+    """The size of a use's rolled increase is the row's Scale Step and Scale Step
+    High. Ruled 2026-10-06: "Your cooldown abilities have a 5%-20% chance to deal
+    50%-200% increased damage". On these two actions the pair is a size and not
+    a step."""
+
+    WORDS = ("Your cooldown abilities have a 5%-20% chance to deal 50%-200% "
+             "increased damage")
+    NAME = gen.row_name("Positive", WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 4, "Trigger.OnSkillUse, Scope.Global", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def increase(self, tmp_path, changes):
+        values = {"Enchantment": self.NAME, "Effect": self.WORDS,
+                  "Action": "cooldown_use_increased_damage",
+                  "Action Event": "skill_use", "Value Low": 5, "Value High": 20,
+                  "Scale Step": 50, "Scale Step High": 200}
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "increase.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    @pytest.mark.parametrize("action", ["use_increased_damage",
+                                        "cooldown_use_increased_damage"])
+    def test_a_row_stating_the_chance_and_the_size_is_carried_through(self, tmp_path, action):
+        out = gen.enchantment_effects(self.increase(tmp_path, {"Action": action}))
+        assert (out[0]["Action"], out[0]["ValueLow"], out[0]["ValueHigh"],
+                out[0]["Scale"], out[0]["ScaleStep"], out[0]["ScaleStepHigh"]) == (
+            action, 5.0, 20.0, "", 50.0, 200.0)
+
+    @pytest.mark.parametrize("missing", ["Scale Step", "Scale Step High"])
+    def test_a_row_missing_either_end_of_the_size_is_refused(self, tmp_path, missing):
+        with pytest.raises(gen.DataError, match="does not state how large"):
+            gen.enchantment_effects(self.increase(tmp_path, {missing: None}))
+
+    def test_a_row_stating_a_scale_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="Scale"):
+            gen.enchantment_effects(self.increase(tmp_path, {"Scale": "kills"}))
+
+    def test_a_size_the_sentence_does_not_state_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="do not state as a range"):
+            gen.enchantment_effects(self.increase(tmp_path, {"Scale Step High": 150}))
+
+    def test_a_size_with_its_ends_the_wrong_way_round_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="low end is above 0"):
+            gen.enchantment_effects(self.increase(
+                tmp_path, {"Scale Step": 200, "Scale Step High": 50}))
+
+
+class TestRepeatSkill:
+    """A row that repeats the skill just used, free. Mechanism B2, ruled
+    2026-10-05: "Every skill use has a 5%-15% chance to cast a second time for
+    free"."""
+
+    WORDS = "Every skill use has a 5%-15% chance to cast a second time for free"
+    NAME = gen.row_name("Positive", WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 2, "Trigger.OnSkillUse, Scope.Global", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def repeat(self, tmp_path, changes):
+        values = {"Enchantment": self.NAME, "Effect": self.WORDS,
+                  "Action": "repeat_skill", "Action Event": "skill_use",
+                  "Value Low": 5, "Value High": 15}
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "repeat.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def test_a_repeat_row_is_carried_through_with_its_chance_and_no_fraction(self, tmp_path):
+        out = gen.enchantment_effects(self.repeat(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["FractionOf"]) == (
+            "repeat_skill", "skill_use", 5.0, 15.0, "")
+
+    def test_a_repeat_row_may_be_written_on_the_event_that_includes_the_basic_attack(self, tmp_path):
+        out = gen.enchantment_effects(self.repeat(tmp_path, {"Action Event": "attack_use"}))
+        assert (out[0]["Action"], out[0]["ActionEvent"]) == ("repeat_skill", "attack_use")
+
+    def test_a_repeat_row_on_the_basic_attack_event_that_names_no_skill_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="names no skill to repeat"):
+            gen.enchantment_effects(self.repeat(tmp_path, {"Action Event": "basic_attack"}))
+
+    def test_a_repeat_row_on_an_event_that_names_no_skill_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="names no skill to repeat"):
+            gen.enchantment_effects(self.repeat(tmp_path, {"Action Event": "kill"}))
+
+    @pytest.mark.parametrize("action", ["trigger_held_skill", "trigger_held_spell"])
+    def test_a_row_that_triggers_a_held_skill_is_carried_through(self, tmp_path, action):
+        out = gen.enchantment_effects(self.repeat(
+            tmp_path, {"Action": action, "Action Event": "attack_use",
+                       "Value Low": 5, "Value High": 15}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["FractionOf"]) == (
+            action, "attack_use", 5.0, 15.0, "")
+
+    @pytest.mark.parametrize("action", ["trigger_held_skill", "trigger_held_spell"])
+    def test_a_row_that_triggers_a_held_skill_on_an_event_naming_no_skill_is_refused(
+            self, tmp_path, action):
+        with pytest.raises(gen.DataError, match="names no skill to repeat"):
+            gen.enchantment_effects(self.repeat(
+                tmp_path, {"Action": action, "Action Event": "kill"}))
+
+    @pytest.mark.parametrize("action", ["use_no_damage", "cooldown_use_no_damage"])
+    @pytest.mark.parametrize("event", ["skill_use", "attack_use"])
+    def test_a_row_that_rolls_a_use_dealing_no_damage_is_carried_through(
+            self, tmp_path, action, event):
+        out = gen.enchantment_effects(self.repeat(
+            tmp_path, {"Action": action, "Action Event": event}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["FractionOf"]) == (
+            action, event, 5.0, 15.0, "")
+
+    def test_a_row_that_rolls_a_use_dealing_no_damage_needs_an_event_that_names_a_skill(
+            self, tmp_path):
+        with pytest.raises(gen.DataError, match="names no skill to repeat"):
+            gen.enchantment_effects(self.repeat(
+                tmp_path, {"Action": "use_no_damage", "Action Event": "kill"}))
+
+    @pytest.mark.parametrize("action", ["use_increased_damage",
+                                        "cooldown_use_increased_damage"])
+    def test_a_row_that_rolls_increased_damage_without_its_size_is_refused(
+            self, tmp_path, action):
+        with pytest.raises(gen.DataError, match="does not state how large"):
+            gen.enchantment_effects(self.repeat(
+                tmp_path, {"Action": action, "Action Event": "skill_use"}))
+
+    def test_the_size_pair_is_refused_on_an_action_that_is_not_an_increase(self, tmp_path):
+        # The rule that was there before: a Scale Step High with no scale would be dropped.
+        with pytest.raises(gen.DataError, match="Scale Step High and no scale"):
+            gen.enchantment_effects(self.repeat(
+                tmp_path, {"Scale Step": 50, "Scale Step High": 200}))
+
+    @pytest.mark.parametrize("action", ["use_hits_its_user", "use_backfires"])
+    def test_a_row_that_rolls_a_use_hitting_its_user_is_carried_through(self, tmp_path, action):
+        out = gen.enchantment_effects(self.repeat(
+            tmp_path, {"Action": action, "Action Event": "skill_use"}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"]) == (action, "skill_use", 5.0, 15.0)
+
+    def test_a_row_that_rolls_a_strike_hitting_all_nearby_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.repeat(
+            tmp_path, {"Action": "use_hits_all_nearby", "Action Event": "skill_use"}))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"]) == ("use_hits_all_nearby", "skill_use", 5.0, 15.0)
+
+    def test_a_repeat_row_with_a_fraction_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="must be empty"):
+            gen.enchantment_effects(self.repeat(tmp_path, {"Fraction Of": "maximum"}))
+
+    # THE SHARE OF ITS DAMAGE THE REPEAT DEALS. The column the rows needed,
+    # 2026-10-06: empty is the whole and is written as 0.
+    def test_a_repeat_row_that_states_no_share_writes_none(self, tmp_path):
+        out = gen.enchantment_effects(self.repeat(tmp_path, {}))
+        assert out[0]["DamageShare"] == 0.0
+
+    def test_a_repeat_row_carries_the_share_it_states(self, tmp_path):
+        out = gen.enchantment_effects(self.repeat(tmp_path, {"Damage Share": 50}))
+        assert out[0]["DamageShare"] == 50.0
+
+    @pytest.mark.parametrize("share", [-50, 100.5, 150])
+    def test_a_share_outside_above_0_and_up_to_100_is_refused(self, tmp_path, share):
+        with pytest.raises(gen.DataError, match="above 0 and up to 100"):
+            gen.enchantment_effects(self.repeat(tmp_path, {"Damage Share": share}))
+
+    def test_a_share_on_a_row_that_repeats_nothing_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="states a Damage Share"):
+            gen.enchantment_effects(self.repeat(tmp_path, {
+                "Action": "mana", "Action Event": "kill", "Fraction Of": "maximum",
+                "Damage Share": 50}))
+
+
+class TestKeptStacksSpentToCastASkillAgain:
+    """`kept_stacks_repeat_skill`, ruled 2026-10-12 and built ahead of its
+    row, for "Shard of Anarchy (10-Piece Bonus): Every 30 seconds, you gain a
+    stack of 'Temporal Flux.' When you use a skill, you consume all stacks of
+    'Temporal Flux' and your skill is cast a random number of times. The bonus
+    is permanent for the rest of the dungeon".
+
+    ONE ROW STATES ALL OF IT: the period of the gain in Every Seconds, 30; the
+    most stacks in Scale Max Steps, 5; the kind of use that spends them as the
+    Action Event, `skill_use`; the share of its damage each extra cast deals
+    as the value, 100; and what the sentence calls the stacks in Ailment,
+    Temporal Flux.
+
+    THE SHEET HERE IS MADE UP AND SO IS WHERE THE SENTENCE SITS ON IT. The
+    words are the sentence without its set label, as a Generic row on the
+    Positive side. The real row is the enchantment session's to write, under
+    the label a set bonus has.
+    """
+
+    WORDS = ("Every 30 seconds, you gain a stack of 'Temporal Flux.' When you "
+             "use a skill, you consume all stacks of 'Temporal Flux' and your "
+             "skill is cast a random number of times. The bonus is permanent "
+             "for the rest of the dungeon")
+    NAME = gen.row_name("Positive", WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 2, "Trigger.OnSkillUse, Scope.Global", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+    RULED = {"Action": "kept_stacks_repeat_skill", "Action Event": "skill_use",
+             "Value Low": 100, "Every Seconds": 30, "Scale Max Steps": 5,
+             "Ailment": "Temporal Flux"}
+
+    def book(self, tmp_path, changes, rows=1):
+        values = {"Enchantment": self.NAME, "Effect": self.WORDS}
+        values.update(self.RULED)
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "kept.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER] + [row] * rows}))
+
+    def out(self, tmp_path, changes):
+        return gen.enchantment_effects(self.book(tmp_path, changes))
+
+    def test_the_ruled_row_is_carried_through_with_its_period_its_cap_and_its_share(
+            self, tmp_path):
+        out = self.out(tmp_path, {})
+        assert len(out) == 1
+        row = out[0]
+        assert (row["Enchantment"], row["Stat"], row["Action"],
+                row["ActionEvent"], row["ValueLow"], row["ValueHigh"],
+                row["EverySeconds"], row["ScaleMaxSteps"], row["Ailment"]) == (
+            self.NAME, "", "kept_stacks_repeat_skill", "skill_use", 100.0,
+            100.0, 30.0, 5, "Temporal Flux")
+        # AND NOTHING ELSE IS WRITTEN FOR IT: no lifetime, no fraction, no
+        # wait between firings, no share in the column `repeat_skill` reads,
+        # no tags, no condition and no scale.
+        assert (row["StackSeconds"], row["FractionOf"], row["TriggerCooldown"],
+                row["DamageShare"], row["RequiredTags"], row["Condition"],
+                row["Scale"], row["ValueKind"]) == (
+            0.0, "", 0.0, 0.0, "", "", "", "")
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+
+    def test_another_period_cap_and_share_inside_the_bounds_are_carried_too(
+            self, tmp_path):
+        """The mechanism is for any period, any cap and any share, so a row
+        other than the sentence's is carried, each bound itself included."""
+        for period, cap, share in ((10, 3, 50), (gen.MAX_EVERY_SECONDS, 1, 100),
+                                   (0.5, gen.MAX_SCALE_STEPS, 0.5)):
+            row = self.out(tmp_path, {"Every Seconds": period,
+                                      "Scale Max Steps": cap,
+                                      "Value Low": share})[0]
+            assert (row["EverySeconds"], row["ScaleMaxSteps"], row["ValueLow"],
+                    row["ValueHigh"]) == (
+                float(period), int(cap), float(share), float(share))
+
+    def test_the_names_the_game_reads(self):
+        assert gen.KEPT_STACKS_REPEAT_SKILL_ACTION == "kept_stacks_repeat_skill"
+        assert gen.KEPT_STACKS_REPEAT_SKILL_EVENTS == ("skill_use",)
+        # ITS EVENT NAMES A SKILL, as a repeat's must, and it is not the one
+        # that includes the basic attack.
+        assert set(gen.KEPT_STACKS_REPEAT_SKILL_EVENTS) <= set(gen.REPEAT_SKILL_EVENTS)
+        assert "attack_use" not in gen.KEPT_STACKS_REPEAT_SKILL_EVENTS
+        # NOT A POOL, AND NOT AN ACTION WHOSE VALUE IS A CHANCE.
+        assert gen.KEPT_STACKS_REPEAT_SKILL_ACTION not in gen.POOL_ACTIONS
+        assert gen.KEPT_STACKS_REPEAT_SKILL_ACTION not in gen.SKILL_IN_HAND_ACTIONS
+        assert not gen.takes_a_trigger_cooldown(gen.KEPT_STACKS_REPEAT_SKILL_ACTION)
+
+    @pytest.mark.parametrize("misspelt", ["kept_stack_repeat_skill",
+                                          "kept_stacks_repeat_skil",
+                                          "keep_stacks_repeat_skill"])
+    def test_a_misspelt_action_is_refused(self, tmp_path, misspelt):
+        with pytest.raises(gen.DataError, match="which is not one the game has"):
+            self.out(tmp_path, {"Action": misspelt, "Fraction Of": "maximum"})
+
+    # ONLY A PAID USE OF A SKILL SPENDS. The clock is not the row's event: its
+    # period is Every Seconds. `attack_use` would let the basic attack spend,
+    # which the ruling leaves out.
+    @pytest.mark.parametrize("event", ["every_seconds", "attack_use",
+                                       "healing_skill_use", "kill",
+                                       "basic_attack", "timed", None])
+    def test_the_row_on_any_event_but_a_skill_use_is_refused(self, tmp_path, event):
+        with pytest.raises(gen.DataError, match="the kind of use that spends them"):
+            self.out(tmp_path, {"Action Event": event})
+
+    def test_the_row_with_no_period_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError,
+                           match="gains kept stacks and states no Every Seconds"):
+            self.out(tmp_path, {"Every Seconds": None})
+
+    @pytest.mark.parametrize("period", [0, -30, 60.5, 300])
+    def test_a_period_of_nought_or_past_the_bound_is_refused(self, tmp_path, period):
+        with pytest.raises(gen.DataError, match="A period is above 0 and up to 60"):
+            self.out(tmp_path, {"Every Seconds": period})
+
+    def test_the_row_with_no_cap_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError,
+                           match="gains kept stacks and states no Scale Max Steps"):
+            self.out(tmp_path, {"Scale Max Steps": None})
+
+    @pytest.mark.parametrize("cap", [0, -5, 2.5, 101])
+    def test_a_cap_that_is_not_a_whole_number_from_1_is_refused(self, tmp_path, cap):
+        with pytest.raises(gen.DataError, match="A cap is a whole number of steps"):
+            self.out(tmp_path, {"Scale Max Steps": cap})
+
+    @pytest.mark.parametrize("share", [0, -100, 100.5, 500])
+    def test_a_share_outside_above_0_and_up_to_100_is_refused(self, tmp_path, share):
+        with pytest.raises(gen.DataError,
+                           match="the value is that share, above 0 and up to 100"):
+            self.out(tmp_path, {"Value Low": share})
+
+    def test_a_lifetime_is_refused_because_a_kept_stack_has_none(self, tmp_path):
+        with pytest.raises(gen.DataError, match="A kept stack has no lifetime"):
+            self.out(tmp_path, {"Stack Seconds": 30})
+
+    @pytest.mark.parametrize("column, written", [("Required Tags", "Type.Spell"),
+                                                 ("Condition", "health_below"),
+                                                 ("Fraction Of", "maximum"),
+                                                 ("Value Kind", "increased"),
+                                                 ("Scale", "own_stacks")])
+    def test_tags_a_condition_a_fraction_a_value_kind_or_a_scale_is_refused(
+            self, tmp_path, column, written):
+        with pytest.raises(gen.DataError,
+                           match="gains kept stacks on a clock and states"):
+            self.out(tmp_path, {column: written})
+
+    # EVERY OTHER COLUMN THE GAME WOULD NOT READ FOR THIS ACTION IS REFUSED BY
+    # THE RULE THAT WAS ALREADY THERE FOR IT.
+    @pytest.mark.parametrize("column, written, said", [
+        ("Trigger Cooldown", 5, "states a Trigger Cooldown"),
+        ("Damage Share", 50, "states a Damage Share"),
+        ("Every Nth", 3, "states Every Nth"),
+        ("Event Value", 25, "states an Event Value"),
+        ("Scale Offset", 100, "has an offset of"),
+        ("Scale Step High", 5, "Scale Step High and no scale"),
+        ("Stack Seconds High", 5, "Stack Seconds High and no Stack Seconds"),
+        ("Condition Value 2", 5, "Condition Value 2 and no Condition 2"),
+        ("Condition Value High", 5, "Condition Value High and no condition"),
+    ])
+    def test_a_column_the_game_would_not_read_for_it_is_refused(
+            self, tmp_path, column, written, said):
+        with pytest.raises(gen.DataError, match=said):
+            self.out(tmp_path, {column: written})
+
+    def test_the_row_with_no_name_for_its_stacks_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError,
+                           match="states no name for them in Ailment"):
+            self.out(tmp_path, {"Ailment": None})
+
+    # THE NAME IS ONE THE SENTENCE WRITES BETWEEN SINGLE QUOTES, whole, in
+    # its own letters, and without the full stop the sentence puts inside
+    # the quotes. An ailment's name is not one, and neither is a word the
+    # sentence uses outside quotes.
+    @pytest.mark.parametrize("named", ["Bleed", "Temporal", "Flux",
+                                       "Temporal Flux.", "temporal flux",
+                                       "skill"])
+    def test_a_name_the_sentence_does_not_give_the_stacks_is_refused(
+            self, tmp_path, named):
+        with pytest.raises(gen.DataError,
+                           match="do not write between single quotes"):
+            self.out(tmp_path, {"Ailment": named})
+
+    def test_the_name_is_still_refused_on_a_row_that_only_repeats(self, tmp_path):
+        """The cell carries a name for this action alone. The control is the
+        ruled row, which is carried with it."""
+        assert self.out(tmp_path, {})[0]["Ailment"] == "Temporal Flux"
+        with pytest.raises(gen.DataError, match="names the ailment"):
+            self.out(tmp_path, {"Action": "repeat_skill", "Every Seconds": None,
+                                "Scale Max Steps": None})
+
+    def test_the_row_written_twice_on_one_enchantment_is_refused(self, tmp_path):
+        """The game keys the stacks by the enchantment, the action and the
+        event, so two such rows on one enchantment would share one count."""
+        assert len(gen.enchantment_effects(self.book(tmp_path, {}, rows=1))) == 1
+        with pytest.raises(gen.DataError, match="grants the same stat twice"):
+            gen.enchantment_effects(self.book(tmp_path, {}, rows=2))
+
+    def test_a_period_or_a_cap_is_still_refused_on_a_row_that_only_repeats(
+            self, tmp_path):
+        """The two exceptions made for this action are for it alone. The
+        control is the same row with neither, which is carried."""
+        repeat = {"Action": "repeat_skill", "Every Seconds": None,
+                  "Scale Max Steps": None, "Ailment": None}
+        assert self.out(tmp_path, repeat)[0]["Action"] == "repeat_skill"
+        with pytest.raises(gen.DataError, match="states Every Seconds on the event"):
+            self.out(tmp_path, dict(repeat, **{"Every Seconds": 30}))
+        with pytest.raises(gen.DataError, match="steps and no scale"):
+            self.out(tmp_path, dict(repeat, **{"Scale Max Steps": 5}))
+
+
+class TestEnchantmentEffects:
+    """What an enchantment grants, read from the Enchantment Effects sheet. #45.
+
+    A row names an enchantment by the row name an item stores, repeats its
+    words, and states one stat, one bucket and a value or a range. Five kinds
+    of row are refused, and each is a mistake a person editing the sheet can
+    make: a name that matches nothing, words that no longer match the
+    enchantment, a range the words do not state in that order, a range on a set
+    row, and half a set.
+    """
+
+    # A SET ROW CARRIES WEIGHT 1 AND ITS SET NUMBER IN THE SET COLUMNS, K for a
+    # benefit and L for a drawback, since issue #1443.
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags", None,
+         "Positive Set", "Negative Set"],
+        ["Double your energy shield", "Generic", 1, "Stat.Defense.EnergyShield",
+         None, "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+        ["Archon's Aegis (2-Piece Bonus): Your block chance is increased by 25%",
+         "Set", 1, "Stat.Defense.Block", None,
+         "Your movement speed is reduced by 10%", "Set", 1,
+         "Stat.Utility.Movespeed", None, 5, 5],
+        ["Archon's Aegis (6-Piece Bonus): Your block value is doubled",
+         "Set", 1, "Stat.Defense.Block", None,
+         "You cannot block", "Generic", 2, "Stat.Defense.Block", None, 5, None],
+        ["Your block chance is increased by 10%-20%", "Generic", 3,
+         "Stat.Defense.Block", None,
+         "Your attack speed is reduced by 20%-35%", "Generic", 3,
+         "Stat.Offense.Speed"],
+        ["Blocking an attack restores 3%-6% of your maximum HP", "Generic", 3,
+         "Stat.Defense.Block", None,
+         "You take 5%-10% more damage", "Generic", 3,
+         "Stat.Defense.Life"],
+    ]
+    HEADER = ["Enchantment", "Effect", "Stat", "Value Kind", "Value Low",
+              "Value High", "Required Tags", "Condition", "Condition Value",
+              "Scale", "Scale Step", "Action", "Action Event", "Fraction Of",
+              "Scale Max Steps", "Stack Seconds", "Scale Offset",
+              "Every Seconds", "Every Nth", "Scale Step High",
+              "Stack Seconds High", "Condition 2", "Condition Value 2",
+              "Condition Value High", "Trigger Cooldown", "Event Value",
+              "Ailment", "Damage Share"]
+    SHIELD = "Positive_Double_your_energy_shield"
+    SHIELD_WORDS = "Double your energy shield"
+
+    def book(self, tmp_path, rows):
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "enchantment_effects.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER] + rows}))
+
+    def row(self, changes=None):
+        values = {"Enchantment": self.SHIELD, "Effect": self.SHIELD_WORDS,
+                  "Stat": "max_energy_shield", "Value Kind": "more",
+                  "Value Low": 100}
+        values.update(changes or {})
+        return [values.get(column) for column in self.HEADER]
+
+    def test_a_row_becomes_one_csv_row(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row()]))
+
+        assert out == [{
+            "Name": f"{self.SHIELD}#1", "Enchantment": self.SHIELD,
+            "Stat": "max_energy_shield", "ValueKind": "more",
+            "ValueLow": 100.0, "ValueHigh": 100.0, "RequiredTags": "",
+            "Condition": "", "ConditionValue": 0.0, "Scale": "",
+            "ScaleStep": 0.0, "Action": "", "ActionEvent": "",
+            "FractionOf": "", "ScaleMaxSteps": 0, "StackSeconds": 0.0, "ScaleOffset": 0.0,
+            "EverySeconds": 0.0, "EveryNth": 0, "ScaleStepHigh": 0.0,
+            "StackSecondsHigh": 0.0, "Condition2": "", "ConditionValue2": 0.0,
+            "ConditionValueHigh": 0.0, "TriggerCooldown": 0.0, "EventValue": 0.0,
+            "Ailment": "", "DamageShare": 0.0}]
+
+    # A ROW'S OWN STACKS. Issue #1833: the Action Event grants one, Stack
+    # Seconds is how long they last and Scale Max Steps the cap.
+    OWN = {"Scale": "own_stacks", "Scale Step": 1, "Action Event": "critical_strike",
+           "Stack Seconds": 5, "Scale Max Steps": 5}
+
+    def test_own_stacks_are_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row(self.OWN)]))
+        assert (out[0]["Scale"], out[0]["ActionEvent"], out[0]["StackSeconds"],
+                out[0]["ScaleMaxSteps"]) == ("own_stacks", "critical_strike", 5.0, 5)
+
+    def test_own_stacks_with_no_event_are_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="to grant them"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.OWN, "Action Event": None})]))
+
+    def test_own_stacks_on_an_event_the_game_does_not_record_are_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="to grant them"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.OWN, "Action Event": "sneeze"})]))
+
+    def test_own_stacks_with_no_seconds_are_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="no Stack Seconds"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.OWN, "Stack Seconds": None})]))
+
+    def test_own_stacks_with_no_cap_are_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="no cap"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.OWN, "Scale Max Steps": None})]))
+
+    def test_stack_seconds_on_another_scale_are_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="would\\s+be dropped|would be dropped"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {"Scale": "debuffs_carried", "Scale Step": 1, "Stack Seconds": 5})]))
+
+    # HITS IN A ROW ON ONE ENEMY. Issue #1833, phase 2: counted on hit_dealt,
+    # capped by Scale Max Steps, and with no timer.
+    CONSECUTIVE = {"Scale": "consecutive_hits", "Scale Step": 1,
+                   "Action Event": "hit_dealt", "Scale Max Steps": 8}
+
+    def test_consecutive_hits_are_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row(self.CONSECUTIVE)]))
+        assert (out[0]["Scale"], out[0]["ActionEvent"], out[0]["StackSeconds"],
+                out[0]["ScaleMaxSteps"]) == ("consecutive_hits", "hit_dealt", 0.0, 8)
+
+    @pytest.mark.parametrize("event", [None, "critical_strike", "hit_taken"])
+    def test_consecutive_hits_on_an_event_naming_nobody_struck_are_refused(
+            self, tmp_path, event):
+        with pytest.raises(gen.DataError, match="naming who was struck"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.CONSECUTIVE, "Action Event": event})]))
+
+    def test_consecutive_hits_with_stack_seconds_are_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="has no timer"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.CONSECUTIVE, "Stack Seconds": 5})]))
+
+    def test_consecutive_hits_with_no_cap_are_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="no cap"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.CONSECUTIVE, "Scale Max Steps": None})]))
+
+    def test_consecutive_hits_counted_two_at_a_time_are_refused(self, tmp_path):
+        with pytest.raises(gen.DataError):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.CONSECUTIVE, "Scale Step": 2})]))
+
+    # AN EVERY-Nth ROW. Issue #1833, phase 2: the action names what it counts,
+    # and Every Nth is N.
+    NTH = {"Stat": None, "Value Kind": None, "Action": "nth_spell_mana_cost",
+           "Value Low": 50, "Every Nth": 3}
+
+    def test_an_every_nth_row_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row(self.NTH)]))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["EveryNth"],
+                out[0]["FractionOf"]) == ("nth_spell_mana_cost", "", 3, "")
+
+    def test_an_every_nth_row_with_no_n_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="states no Every Nth"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.NTH, "Every Nth": None})]))
+
+    @pytest.mark.parametrize("n", [1, 2.5, 101])
+    def test_an_every_nth_row_with_an_n_outside_its_bounds_is_refused(
+            self, tmp_path, n):
+        with pytest.raises(gen.DataError, match="whole number from 2"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.NTH, "Every Nth": n})]))
+
+    @pytest.mark.parametrize("column, written", [
+        ("Action Event", "spell"), ("Scale", "debuffs_carried"),
+        ("Fraction Of", "maximum"), ("Value Kind", "increased")])
+    def test_an_every_nth_row_refuses_a_column_it_cannot_use(self, tmp_path,
+                                                              column, written):
+        with pytest.raises(gen.DataError, match="must be\\s+empty|must be empty"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.NTH, column: written})]))
+
+    def test_an_every_nth_row_with_stack_seconds_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="no window"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.NTH, "Stack Seconds": 5})]))
+
+    def test_every_nth_on_another_row_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="not an every-Nth action"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {"Every Nth": 3})]))
+
+    def test_an_attack_that_deals_no_damage_is_written_100(self, tmp_path):
+        attack = {**self.NTH, "Action": "nth_attack_no_damage", "Value Low": 100,
+                  "Every Nth": 10}
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row(attack)]))
+        assert (out[0]["ValueLow"], out[0]["EveryNth"]) == (100, 10)
+        with pytest.raises(gen.DataError, match="No damage is all"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**attack, "Value Low": 50})]))
+
+    # A COOLDOWN REDUCTION. Issue #1833, the cooldown reduction action: an
+    # action row whose value is seconds, above 0 and up to 60.
+    REDUCE = {"Stat": None, "Value Kind": None, "Action": "cooldown_reduce_all",
+              "Action Event": "resource_empty", "Value Low": 4}
+
+    def test_a_cooldown_reduction_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row(self.REDUCE)]))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["FractionOf"]) == ("cooldown_reduce_all", "resource_empty", 4.0, "")
+
+    @pytest.mark.parametrize("seconds", [0, -1, 61])
+    def test_a_cooldown_reduction_outside_its_bounds_is_refused(self, tmp_path, seconds):
+        with pytest.raises(gen.DataError, match="above 0 and up\\s+to 60|above 0 and up to 60"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.REDUCE, "Value Low": seconds})]))
+
+    def test_a_cooldown_reduction_of_exactly_60_seconds_is_accepted(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row(
+            {**self.REDUCE, "Value Low": 60})]))
+        assert out[0]["ValueLow"] == 60.0
+
+    def test_a_cooldown_reduction_with_no_event_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="names no event"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.REDUCE, "Action Event": None})]))
+
+    def test_a_next_spell_cooldown_charge_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row(
+            {"Stat": None, "Value Kind": None, "Action": "next_spell_cooldown_reduced",
+             "Action Event": "spell", "Value Low": 1.5, "Scale Max Steps": 1})]))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ScaleMaxSteps"]) == ("next_spell_cooldown_reduced", "spell", 1.5, 1)
+
+    # A STACK PLACED ON THE OTHER CHARACTER. Issue #1833, phase 2: an action
+    # row whose event names that character; Stack Seconds is required, the cap
+    # is not.
+    PLACED = {"Stat": None, "Value Kind": None, "Action": "enemy_armor_removed",
+              "Action Event": "hit_dealt", "Stack Seconds": 5, "Scale Max Steps": 6}
+
+    def test_a_placed_row_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row(self.PLACED)]))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["StackSeconds"],
+                out[0]["ScaleMaxSteps"], out[0]["FractionOf"]) == (
+                    "enemy_armor_removed", "hit_dealt", 5.0, 6, "")
+
+    def test_a_placed_row_with_no_cap_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row(
+            {**self.PLACED, "Scale Max Steps": None})]))
+        assert out[0]["ScaleMaxSteps"] == 0
+
+    @pytest.mark.parametrize("action, event", [
+        ("enemy_armor_removed", "melee_hit_taken"),
+        ("enemy_armor_removed", None),
+        ("attacker_damage_removed", "hit_dealt"),
+        ("attacker_damage_removed", "hit_taken")])
+    def test_a_placed_row_on_an_event_naming_nobody_it_places_on_is_refused(
+            self, tmp_path, action, event):
+        with pytest.raises(gen.DataError, match="naming the character"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.PLACED, "Action": action, "Action Event": event})]))
+
+    def test_a_placed_row_with_no_seconds_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="no Stack Seconds"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.PLACED, "Stack Seconds": None})]))
+
+    @pytest.mark.parametrize("column, written", [
+        ("Scale", "debuffs_carried"), ("Fraction Of", "maximum"),
+        ("Value Kind", "increased")])
+    def test_a_placed_row_refuses_a_column_it_cannot_use(self, tmp_path,
+                                                         column, written):
+        with pytest.raises(gen.DataError, match="must be\\s+empty|must be empty"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.PLACED, column: written})]))
+
+    # A CHARGE THE NEXT USE SPENDS. Issue #1833, phase 2: an action row whose
+    # event grants a charge, worth its value as increased damage, capped by
+    # Scale Max Steps.
+    NEXT = {"Stat": None, "Value Kind": None, "Action": "next_skill_damage",
+            "Action Event": "dodge", "Scale Max Steps": 1}
+
+    def test_a_next_use_row_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row(self.NEXT)]))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ScaleMaxSteps"],
+                out[0]["FractionOf"], out[0]["Stat"]) == (
+                    "next_skill_damage", "dodge", 1, "", "")
+
+    def test_a_next_use_row_with_no_event_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="names no event to grant it on"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.NEXT, "Action Event": None})]))
+
+    def test_a_next_use_row_with_no_cap_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="states no Scale Max Steps"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.NEXT, "Scale Max Steps": None})]))
+
+    @pytest.mark.parametrize("column, written", [
+        ("Scale", "debuffs_carried"), ("Fraction Of", "maximum"),
+        ("Value Kind", "increased")])
+    def test_a_next_use_row_refuses_a_column_it_cannot_use(self, tmp_path,
+                                                           column, written):
+        with pytest.raises(gen.DataError, match="must be empty"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.NEXT, column: written})]))
+
+    def test_two_rows_of_one_next_use_action_on_one_enchantment_are_refused(
+            self, tmp_path):
+        with pytest.raises(gen.DataError, match="two rows of the same next-use"):
+            gen.enchantment_effects(self.book(tmp_path, [
+                self.row(self.NEXT),
+                self.row({**self.NEXT, "Action Event": "block"})]))
+
+    # A ROW THAT GRANTS ON A CLOCK. Issue #1833, timed grants: the event is
+    # every_seconds and Every Seconds is the period.
+    TIMED = {"Action Event": "every_seconds", "Every Seconds": 8}
+
+    def test_a_timed_next_use_row_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row(
+            {**self.NEXT, **self.TIMED})]))
+        assert (out[0]["ActionEvent"], out[0]["EverySeconds"]) == ("every_seconds", 8.0)
+
+    def test_a_timed_own_stack_row_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row(
+            {**self.OWN, **self.TIMED})]))
+        assert (out[0]["Scale"], out[0]["ActionEvent"], out[0]["EverySeconds"]) == (
+            "own_stacks", "every_seconds", 8.0)
+
+    def test_every_seconds_with_no_period_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="states no Every Seconds"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.NEXT, "Action Event": "every_seconds"})]))
+
+    def test_a_period_on_any_other_event_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="Only every_seconds reads a period"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.NEXT, "Every Seconds": 8})]))
+
+    @pytest.mark.parametrize("period", [0, 61])
+    def test_a_period_outside_its_bounds_is_refused(self, tmp_path, period):
+        with pytest.raises(gen.DataError, match="A period is above 0"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.NEXT, **self.TIMED, "Every Seconds": period})]))
+
+    def test_every_seconds_is_not_an_event_the_game_fires_by_name(self):
+        """Issue #1833: the timed event is accepted beside the named ones, and is
+        kept out of the list the engine's named `ActOnEvent` calls are held to."""
+        assert gen.TIMED_EVENT == "every_seconds"
+        assert gen.TIMED_EVENT not in gen.action_events()
+        assert gen.TIMED_EVENT in gen.granting_events()
+
+    def test_a_next_skill_effectiveness_row_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row(
+            {**self.NEXT, "Action": "next_skill_effectiveness"})]))
+        assert out[0]["Action"] == "next_skill_effectiveness"
+
+    def test_an_event_on_a_stat_row_that_counts_no_stacks_is_refused(self, tmp_path):
+        """Before issue #1833 such an event was read by nothing and dropped."""
+        with pytest.raises(gen.DataError, match="own_stacks"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {"Action Event": "critical_strike"})]))
+
+    # AN OFFSET ON THE CLASS POINT SCALE. Issue #1686: "above 100" is 100.
+    def test_an_offset_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row({
+            "Scale": "class_points_spent", "Scale Step": 10,
+            "Scale Offset": 100})]))
+        assert out[0]["ScaleOffset"] == 100.0
+
+    def test_an_offset_on_another_scale_is_refused(self, tmp_path):
+        """The engine reads an offset on one scale only, so anywhere else it
+        would be dropped with no error."""
+        with pytest.raises(gen.DataError, match="would be dropped"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row({
+                "Scale": "debuffs_carried", "Scale Step": 1,
+                "Scale Offset": 100})]))
+
+    # AND ON THE TRAP SCALE, SINCE 2026-10-07: "for each other trap" is 1.
+    def test_an_offset_on_the_trap_scale_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row({
+            "Scale": "traps_active", "Scale Step": 1, "Scale Offset": 1})]))
+        assert (out[0]["Scale"], out[0]["ScaleStep"], out[0]["ScaleOffset"]) == (
+            "traps_active", 1.0, 1.0)
+
+    def test_an_offset_on_the_gadget_scale_is_refused(self, tmp_path):
+        """The gadget scale is carried through, and reads no offset: no
+        sentence says "each other gadget"."""
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row({
+            "Scale": "gadgets_active", "Scale Step": 1})]))
+        assert (out[0]["Scale"], out[0]["ScaleOffset"]) == ("gadgets_active", 0.0)
+        with pytest.raises(gen.DataError, match="would be dropped"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row({
+                "Scale": "gadgets_active", "Scale Step": 1,
+                "Scale Offset": 1})]))
+
+    def test_an_offset_with_no_scale_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="would be dropped"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row({
+                "Scale Offset": 100})]))
+
+    def test_an_offset_past_the_point_budget_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="from 0 to 230"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row({
+                "Scale": "class_points_spent", "Scale Step": 10,
+                "Scale Offset": 231})]))
+
+    # A CAP ON A SCALE. Issue #1815: "up to 10 stacks" is a cap of 10 steps.
+    def test_a_cap_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row({
+            "Scale": "debuffs_carried", "Scale Step": 1,
+            "Scale Max Steps": 5})]))
+        assert out[0]["ScaleMaxSteps"] == 5
+
+    def test_a_cap_with_no_scale_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="caps nothing"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row({
+                "Scale Max Steps": 5})]))
+
+    def test_a_cap_that_is_not_a_whole_number_of_steps_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="whole number of steps"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row({
+                "Scale": "debuffs_carried", "Scale Step": 1,
+                "Scale Max Steps": 2.5})]))
+
+    # AN ACTION ROW MOVES A POOL WHEN AN EVENT HAPPENS, rather than changing a
+    # stat. Issue #1815. Every refusal below is tested because a refusal that
+    # does not fire leaves a row that validates, writes, loads and grants
+    # nothing, with nothing anywhere saying so.
+
+    ACTION_ENCHANTMENT = "Positive_Blocking_an_attack_restores_3_6_of_your_maximu"
+    ACTION_WORDS = "Blocking an attack restores 3%-6% of your maximum HP"
+
+    def action_row(self, changes=None):
+        """A row restoring health on a block, with the stat columns empty."""
+        values = {
+            "Enchantment": self.ACTION_ENCHANTMENT,
+            "Effect": self.ACTION_WORDS,
+            "Stat": None, "Value Kind": None,
+            "Value Low": 3, "Value High": 6,
+            "Action": "health", "Action Event": "block",
+            "Fraction Of": "maximum",
+        }
+        values.update(changes or {})
+        return self.row(values)
+
+    def test_an_action_row_carries_its_pool_event_and_base(self, tmp_path):
+        out = gen.enchantment_effects(
+            self.book(tmp_path, [self.action_row()]))
+
+        assert out[0]["Action"] == "health"
+        assert out[0]["ActionEvent"] == "block"
+        assert out[0]["FractionOf"] == "maximum"
+        assert out[0]["Stat"] == ""
+        assert out[0]["ValueLow"] == 3.0 and out[0]["ValueHigh"] == 6.0
+
+    def test_an_empty_base_means_the_maximum(self, tmp_path):
+        # MOST SENTENCES SAY MAXIMUM OR SAY NOTHING, so the empty column is the
+        # common case and must not be left blank in the written row -- the game
+        # would have no name to match and would grant nothing.
+        out = gen.enchantment_effects(
+            self.book(tmp_path, [self.action_row({"Fraction Of": ""})]))
+
+        assert out[0]["FractionOf"] == "maximum"
+
+    def test_a_row_naming_a_stat_and_an_action_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="does one or the other"):
+            gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+                {"Stat": "max_health", "Value Kind": "increased"})]))
+
+    def test_a_row_naming_neither_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="names no stat and no"):
+            gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+                {"Action": ""})]))
+
+    def test_a_pool_the_game_does_not_have_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="which is not one the game has"):
+            gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+                {"Action": "stamina"})]))
+
+    def test_an_action_with_no_event_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="names no event"):
+            gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+                {"Action Event": ""})]))
+
+    def test_an_event_the_game_does_not_record_is_refused(self, tmp_path):
+        # THIS USED TO USE A CRITICAL STRIKE as its example of an event the
+        # game does not record. It records one now, so the example had to
+        # change -- which is the test noticing the vocabulary grew rather than
+        # quietly passing on a name that had become real.
+        with pytest.raises(gen.DataError, match="which the game does not record"):
+            gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+                {"Action Event": "sneezes_twice"})]))
+
+    def test_an_event_with_no_clock_of_its_own_is_accepted(self, tmp_path):
+        # FIVE EVENTS HAVE NO CLOCK, because every clock is something done TO
+        # the character and these are things the character DID.
+        # AND THE ONE THAT NEEDS A THRESHOLD IS GIVEN ONE: health_falls_below
+        # requires an Event Value, issue #1833 group D part 2.
+        for event in gen.ACTION_ONLY_EVENTS:
+            changes = {"Action Event": event}
+            if event == gen.THRESHOLD_EVENT:
+                changes["Event Value"] = 10
+            out = gen.enchantment_effects(self.book(tmp_path, [
+                self.action_row(changes)]))
+            assert out[0]["ActionEvent"] == event
+
+    def test_a_hit_dealt_is_not_a_hit_taken(self):
+        # THE SAME WORD AT OPPOSITE ENDS OF ONE BLOW. `hit_taken` is stamped on
+        # the character that was hit; `hit_dealt` fires on the one that hit. A
+        # test exists for this because the two are one character apart in
+        # writing and a whole side of the blow apart in meaning.
+        events = gen.action_events()
+        assert "hit_dealt" in events and "hit_taken" in events
+        assert "hit_dealt" in gen.ACTION_ONLY_EVENTS
+        assert "hit_taken" not in gen.ACTION_ONLY_EVENTS
+
+    def test_a_base_that_is_neither_maximum_nor_current_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="takes its percentage of"):
+            gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+                {"Fraction Of": "missing"})]))
+
+    def test_an_action_row_carrying_a_value_kind_is_refused(self, tmp_path):
+        # THE THREE BUCKETS MULTIPLY A STAT and an action has no stat, so a
+        # bucket here would be read by nothing.
+        with pytest.raises(gen.DataError, match="must be empty on an action row"):
+            gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+                {"Value Kind": "more"})]))
+
+    def test_an_action_row_may_carry_a_condition(self, tmp_path):
+        # THIS WAS A REFUSAL AND IS NOW A PERMISSION. It was refused while
+        # nothing judged a condition at the moment an action fires; the change
+        # that added the five clockless events judges it there, so
+        # "killing an enemy while below 30% HP" can be written.
+        #
+        # AND THE NAME IS A REAL ONE. This test first used a made-up condition
+        # and passed anyway, because the refusal it was written against fired
+        # before anything looked the name up. With the refusal gone the name is
+        # checked, which is the rule underneath doing its job.
+        out = gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+            {"Condition": "health_below", "Condition Value": 30})]))
+
+        assert out[0]["Condition"] == "health_below"
+        assert out[0]["ConditionValue"] == 30.0
+        assert out[0]["Action"] == "health"
+
+    def test_an_action_row_carrying_a_scale_is_still_refused(self, tmp_path):
+        # A SCALE SIZES A STAT'S MODIFIER and an action has no stat, so this one
+        # stays refused while the condition beside it does not.
+        with pytest.raises(gen.DataError, match="an action has no stat"):
+            gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+                {"Scale": "momentum_stacks", "Scale Step": 1})]))
+
+    def test_an_action_row_may_carry_required_tags(self, tmp_path):
+        # TWO ROWS ARE SCOPED: "melee kills" and "strike skills ... on hit".
+        # Type.Melee is on 31 of the 403 weapon skills and Type.Strike on 31,
+        # since issue #944 gave The Whole Weight the melee tag it lacked (30 and
+        # 31, measured 2026-09-14).
+        out = gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+            {"Required Tags": "Type.Melee", "Action Event": "kill"})]))
+
+        assert out[0]["RequiredTags"] == "Type.Melee"
+        assert out[0]["ActionEvent"] == "kill"
+
+    def test_a_fraction_of_the_events_own_amount_is_accepted(self, tmp_path):
+        # "Skills that cost HP restore that amount as mana" is a fraction of
+        # what the event carried rather than of a pool. The health cost was the
+        # only event carrying an amount until 2026-10-05; the two tests below
+        # are the two that joined it.
+        out = gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+            {"Action": "mana", "Action Event": "health_cost",
+             "Fraction Of": "event_amount"})]))
+
+        assert out[0]["FractionOf"] == "event_amount"
+
+    def test_a_share_of_a_hit_dealt_is_accepted_and_may_fire_on_every_hit(self, tmp_path):
+        # "You take 10%-20% of the damage dealt by your own point blank AOE
+        # skills", issue #1833, 2026-10-05. A STATED COOLDOWN OF 0 SURVIVES: a
+        # hit-fired event defaults to a quarter second, which would charge the
+        # wearer for one enemy of a burst that struck five.
+        out = gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+            {"Action Event": "hit_dealt", "Fraction Of": "event_amount",
+             "Trigger Cooldown": 0, "Required Tags": "Type.AOE.PointBlank"})]))
+
+        assert (out[0]["ActionEvent"], out[0]["FractionOf"],
+                out[0]["TriggerCooldown"], out[0]["RequiredTags"]) == (
+            "hit_dealt", "event_amount", 0.0, "Type.AOE.PointBlank")
+
+    def test_a_share_of_a_hit_dealt_waits_a_quarter_second_when_it_states_none(
+            self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+            {"Action Event": "hit_dealt", "Fraction Of": "event_amount"})]))
+
+        assert out[0]["TriggerCooldown"] == gen.DEFAULT_TRIGGER_COOLDOWN
+
+    def test_a_share_of_what_retaliation_dealt_is_accepted(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+            {"Action Event": "retaliation_dealt", "Fraction Of": "event_amount",
+             "Trigger Cooldown": 0})]))
+
+        assert (out[0]["ActionEvent"], out[0]["FractionOf"],
+                out[0]["TriggerCooldown"]) == ("retaliation_dealt", "event_amount", 0.0)
+
+    def test_a_fraction_of_an_amount_no_event_carries_is_refused(self, tmp_path):
+        # A ROW ASKING FOR THE AMOUNT OF AN EVENT THAT CARRIES NONE would
+        # resolve to nothing and say so nowhere, which is the silent failure
+        # this table keeps producing.
+        with pytest.raises(gen.DataError, match="carries no amount"):
+            gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+                {"Action Event": "block", "Fraction Of": "event_amount"})]))
+
+    def test_an_action_row_carrying_a_scale_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="would be dropped without"):
+            gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+                {"Scale": "momentum_stacks", "Scale Step": 1})]))
+
+    def test_the_event_vocabulary_is_the_clocks_plus_the_five_with_none(self):
+        # THE CLOCK HALF IS STILL DERIVED, so a clock added later cannot be
+        # missing from the actions. The other half is written out because those
+        # events have no clock to derive from, and this pins the union so that
+        # neither half can be dropped without a test saying so.
+        clocks = {name[len("seconds_after_"):] for name in gen.CONDITIONS
+                  if name.startswith("seconds_after_")}
+
+        assert gen.action_events() == clocks | set(gen.ACTION_ONLY_EVENTS)
+        assert clocks, "no clock names were derived at all"
+        assert gen.ACTION_ONLY_EVENTS, "the clockless list is empty"
+        assert not (clocks & set(gen.ACTION_ONLY_EVENTS)), (
+            "an event is in both halves, so one of them is wrong")
+
+    def test_every_event_that_carries_an_amount_is_an_event(self):
+        # A NAME IN THE SHORTER LIST THAT IS NOT IN THE LONGER ONE would refuse
+        # every row using it and look like a rule rather than a typo.
+        assert set(gen.EVENTS_WITH_AN_AMOUNT) <= gen.action_events()
+
+    def test_two_actions_on_one_enchantment_both_survive(self, tmp_path):
+        # THE ACTION COLUMNS ARE PART OF THE DUPLICATE KEY. Without them these
+        # two would read as one row written twice, because both have an empty
+        # stat, condition and scale.
+        out = gen.enchantment_effects(self.book(tmp_path, [
+            self.action_row(),
+            self.action_row({"Action": "class_resource"}),
+        ]))
+
+        assert [r["Action"] for r in out] == ["health", "class_resource"]
+
+    def test_two_action_rows_that_are_the_same_are_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="the same stat twice"):
+            gen.enchantment_effects(self.book(tmp_path, [
+                self.action_row(), self.action_row()]))
+
+    def test_two_stats_on_one_enchantment_both_survive(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [
+            self.row(),
+            self.row({"Stat": "max_health", "Value Kind": "increased",
+                      "Value Low": 5}),
+        ]))
+
+        assert [r["Name"] for r in out] == [f"{self.SHIELD}#1",
+                                            f"{self.SHIELD}#2"]
+
+    def test_a_drawback_can_be_named(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row({
+            "Enchantment": "Negative_You_have_20_less_hp",
+            "Effect": "You have 20% less hp.", "Stat": "max_health",
+            "Value Low": -20})]))
+
+        assert out[0]["Enchantment"] == "Negative_You_have_20_less_hp"
+        assert out[0]["ValueLow"] == -20.0
+
+    def test_a_condition_is_carried_across(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row({
+            "Condition": "health_below", "Condition Value": 30})]))
+
+        assert (out[0]["Condition"], out[0]["ConditionValue"]) == \
+            ("health_below", 30.0)
+
+    def test_an_enchantment_that_does_not_exist_is_refused(self, tmp_path):
+        book = self.book(tmp_path, [self.row({"Enchantment": "Positive_Ghost"})])
+        with pytest.raises(gen.DataError, match="no enchantment is called"):
+            gen.enchantment_effects(book)
+
+    def test_words_that_disagree_with_the_enchantment_are_refused(self,
+                                                                  tmp_path):
+        """A reworded enchantment must be read again before its numbers are
+        trusted, so a stale copy of its words is refused."""
+        book = self.book(tmp_path, [self.row({
+            "Effect": "Triple your energy shield"})])
+        with pytest.raises(gen.DataError, match="must agree"):
+            gen.enchantment_effects(book)
+
+    # A SET'S ROWS, AND THE RULE THAT THEY ARE WRITTEN WHOLE OR NOT AT ALL. A
+    # set's first bonus and its drawback turn on together at the same threshold,
+    # which the project owner ruled on 2026-09-08, so writing one without the
+    # other would be a bonus with no cost or a cost with no bonus.
+    SET_BONUS = "Positive_Archon_s_Aegis_2_Piece_Bonus_Your_block_chanc"
+    SET_BONUS_WORDS = ("Archon's Aegis (2-Piece Bonus): Your block chance is "
+                       "increased by 25%")
+    SET_SIX_WORDS = "Archon's Aegis (6-Piece Bonus): Your block value is doubled"
+    SET_DRAWBACK = "Negative_Your_movement_speed_is_reduced_by_10"
+    SET_DRAWBACK_WORDS = "Your movement speed is reduced by 10%"
+
+    def set_bonus(self, changes=None):
+        values = {"Enchantment": self.SET_BONUS, "Effect": self.SET_BONUS_WORDS,
+                  "Stat": "block_chance", "Value Kind": "increased",
+                  "Value Low": 25}
+        values.update(changes or {})
+        return self.row(values)
+
+    def set_drawback(self):
+        return self.row({"Enchantment": self.SET_DRAWBACK,
+                         "Effect": self.SET_DRAWBACK_WORDS,
+                         "Stat": "movement_speed", "Value Kind": "increased",
+                         "Value Low": -10})
+
+    def set_six_piece(self):
+        return self.row({"Enchantment": gen.row_name("Positive",
+                                                     self.SET_SIX_WORDS[:48]),
+                         "Effect": self.SET_SIX_WORDS, "Stat": "block_chance",
+                         "Value Kind": "more", "Value Low": 100})
+
+    def test_a_whole_set_is_accepted(self, tmp_path):
+        out = gen.enchantment_effects(self.book(
+            tmp_path, [self.set_bonus(), self.set_drawback()]))
+
+        assert [row["Enchantment"] for row in out] == [self.SET_BONUS,
+                                                       self.SET_DRAWBACK]
+        assert [row["ValueLow"] for row in out] == [25.0, -10.0]
+
+    def test_a_set_bonus_without_its_drawback_is_refused(self, tmp_path):
+        book = self.book(tmp_path, [self.set_bonus()])
+        with pytest.raises(gen.DataError, match="its drawback"):
+            gen.enchantment_effects(book)
+
+    def test_a_set_drawback_without_its_first_bonus_is_refused(self, tmp_path):
+        book = self.book(tmp_path, [self.set_drawback()])
+        with pytest.raises(gen.DataError, match="its first bonus"):
+            gen.enchantment_effects(book)
+
+    def test_a_higher_threshold_without_the_first_bonus_is_refused(self,
+                                                                   tmp_path):
+        """A player only ever reaches the 6-piece bonus through pieces that
+        already meet the 2-piece threshold, so writing it alone is the same
+        fault as writing half a set."""
+        book = self.book(tmp_path, [self.set_six_piece(), self.set_drawback()])
+        with pytest.raises(gen.DataError, match="its first bonus"):
+            gen.enchantment_effects(book)
+
+    def test_a_whole_set_with_a_higher_threshold_is_accepted(self, tmp_path):
+        out = gen.enchantment_effects(self.book(
+            tmp_path,
+            [self.set_bonus(), self.set_six_piece(), self.set_drawback()]))
+
+        assert len(out) == 3
+
+    def test_a_range_on_a_set_row_is_refused(self, tmp_path):
+        """An item records only a set's lowest threshold row, so nothing
+        records a roll for the 6-piece or 10-piece row."""
+        book = self.book(tmp_path, [
+            self.set_bonus({"Value Low": 20, "Value High": 30}),
+            self.set_drawback()])
+        with pytest.raises(gen.DataError, match="states one number"):
+            gen.enchantment_effects(book)
+
+    BLOCK = "Positive_Your_block_chance_is_increased_by_10_20"
+    BLOCK_WORDS = "Your block chance is increased by 10%-20%"
+    SLOWER = "Negative_Your_attack_speed_is_reduced_by_20_35"
+    SLOWER_WORDS = "Your attack speed is reduced by 20%-35%"
+
+    def test_a_range_its_words_state_is_kept(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row({
+            "Enchantment": self.BLOCK, "Effect": self.BLOCK_WORDS,
+            "Stat": "block_chance", "Value Kind": "increased",
+            "Value Low": 10, "Value High": 20})]))
+
+        assert (out[0]["ValueLow"], out[0]["ValueHigh"]) == (10.0, 20.0)
+
+    def test_a_drawback_range_carries_its_sign_in_the_sentences_order(
+            self, tmp_path):
+        """"Reduced by 20%-35%" is -20 at the lowest roll and -35 at the
+        highest, so the top roll gives the larger reduction the hover text
+        shows."""
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row({
+            "Enchantment": self.SLOWER, "Effect": self.SLOWER_WORDS,
+            "Stat": "attack_speed", "Value Kind": "increased",
+            "Value Low": -20, "Value High": -35})]))
+
+        assert (out[0]["ValueLow"], out[0]["ValueHigh"]) == (-20.0, -35.0)
+
+    def test_a_range_its_words_do_not_state_is_refused(self, tmp_path):
+        book = self.book(tmp_path, [self.row({"Value Low": 10,
+                                              "Value High": 30})])
+        with pytest.raises(gen.DataError, match="do not state in that order"):
+            gen.enchantment_effects(book)
+
+    def test_a_range_written_backwards_is_refused(self, tmp_path):
+        book = self.book(tmp_path, [self.row({
+            "Enchantment": self.BLOCK, "Effect": self.BLOCK_WORDS,
+            "Stat": "block_chance", "Value Kind": "increased",
+            "Value Low": 20, "Value High": 10})])
+        with pytest.raises(gen.DataError, match="do not state in that order"):
+            gen.enchantment_effects(book)
+
+    def test_a_range_with_two_signs_is_refused(self, tmp_path):
+        book = self.book(tmp_path, [self.row({
+            "Enchantment": self.SLOWER, "Effect": self.SLOWER_WORDS,
+            "Stat": "attack_speed", "Value Kind": "increased",
+            "Value Low": 20, "Value High": -35})])
+        with pytest.raises(gen.DataError, match="do not state in that order"):
+            gen.enchantment_effects(book)
+
+    def test_the_ranges_in_a_sentence_are_read_as_written(self):
+        assert gen.enchantment_ranges(
+            "a 20%-35% slow for 2-4 seconds") == [(20.0, 35.0), (2.0, 4.0)]
+        assert gen.enchantment_ranges(
+            "for every 100,000 - 500,000 kills") == [(100000.0, 500000.0)]
+        assert gen.enchantment_ranges("You lose 1-4% max resistances") == \
+            [(1.0, 4.0)]
+        assert gen.enchantment_ranges(
+            "Archon's Aegis (2-Piece Bonus): increased by 25%") == []
+
+    def test_an_unknown_condition_is_refused(self, tmp_path):
+        book = self.book(tmp_path, [self.row({"Condition": "while_dancing",
+                                              "Condition Value": 3})])
+        with pytest.raises(gen.DataError, match="cannot judge"):
+            gen.enchantment_effects(book)
+
+    def test_a_value_beside_a_condition_that_compares_nothing_is_refused(
+            self, tmp_path):
+        book = self.book(tmp_path, [self.row({"Condition": "while_bleeding",
+                                              "Condition Value": 5})])
+        with pytest.raises(gen.DataError, match="compares nothing"):
+            gen.enchantment_effects(book)
+
+    def test_an_unknown_scale_is_refused(self, tmp_path):
+        book = self.book(tmp_path, [self.row({"Scale": "moons_held",
+                                              "Scale Step": 1})])
+        with pytest.raises(gen.DataError, match="cannot judge"):
+            gen.enchantment_effects(book)
+
+    def test_a_bad_value_kind_is_refused(self, tmp_path):
+        book = self.book(tmp_path, [self.row({"Value Kind": "sideways"})])
+        with pytest.raises(gen.DataError,
+                           match="not flat, increased, more or removed"):
+            gen.enchantment_effects(book)
+
+    def test_a_removal_is_written_as_its_own_kind(self, tmp_path):
+        """"You have no armor" is a removal: the game multiplies the finished
+        armour by nothing. Issue #1791. The row states 1, which nothing reads."""
+        book = self.book(tmp_path, [self.row({"Stat": "armor",
+                                              "Value Kind": "removed",
+                                              "Value Low": 1})])
+        out = gen.enchantment_effects(book)
+
+        assert (out[0]["Stat"], out[0]["ValueKind"]) == ("armor", "removed")
+        assert out[0]["ValueLow"] == 1.0 and out[0]["ValueHigh"] == 1.0
+
+    def test_mana_on_hit_may_only_be_removed(self, tmp_path):
+        """The code reading `mana_on_hit` asks only whether it is removed, so an
+        increase on it would be written and read by nothing. Issue #1791. The
+        removal itself is accepted, which is the control."""
+        book = self.book(tmp_path, [self.row({"Stat": "mana_on_hit",
+                                              "Value Kind": "increased",
+                                              "Value Low": 20})])
+        with pytest.raises(gen.DataError, match="may only be removed"):
+            gen.enchantment_effects(book)
+
+        book = self.book(tmp_path, [self.row({"Stat": "mana_on_hit",
+                                              "Value Kind": "removed",
+                                              "Value Low": 1})])
+        assert gen.enchantment_effects(book)[0]["ValueKind"] == "removed"
+
+    def test_every_removal_only_stat_is_one_the_engine_records(self):
+        """A removal is recorded on a character only for a stat with an attribute
+        or on the engine's list of stats with none, and a stat that may only be
+        removed has no attribute. So each must be on that list, or its removal
+        row would be written and never reach the character."""
+        unrecorded = sorted(gen.REMOVAL_ONLY_STATS - gen.stats_with_no_attribute())
+        assert gen.REMOVAL_ONLY_STATS and not unrecorded, unrecorded
+
+    def test_an_action_row_may_not_be_a_removal(self, tmp_path):
+        """A removal is a kind of stat row, and an action row has no stat. The
+        refusal `_check_pool_action` makes of any kind reaches this one too."""
+        book = self.book(tmp_path, [self.action_row({"Value Kind": "removed"})])
+        with pytest.raises(gen.DataError, match="must be empty on an action row"):
+            gen.enchantment_effects(book)
+
+    def test_the_same_stat_twice_on_one_enchantment_is_refused(self, tmp_path):
+        book = self.book(tmp_path, [self.row(), self.row()])
+        with pytest.raises(gen.DataError, match="same stat twice"):
+            gen.enchantment_effects(book)
+
+    def test_the_validator_reports_a_stat_nothing_supplies(self):
+        tables = {"EnchantmentEffects": [
+            {"Name": "X#1", "Enchantment": "X", "Stat": "ghost_stat",
+             "ValueKind": "increased", "RequiredTags": ""}],
+            "ClassStats": [{"Stat": "armor"}]}
+        problems = gen.validate_enchantment_effects(tables, set())
+        assert len(problems) == 1, problems
+        assert "'ghost_stat' is not a stat" in problems[0]
+
+    def test_a_flat_row_supplies_its_own_stat(self):
+        """The retaliation radius has no class line and no other base; the flat
+        row in this sheet is what supplies it, as a flat passive row does. (It
+        has a gameplay attribute since this was written; the base check asks
+        for a base, which only the flat row gives it. Issue #2387.)"""
+        tables = {"EnchantmentEffects": [
+            {"Name": "X#1", "Enchantment": "X",
+             "Stat": "retaliation_radius_metres", "ValueKind": "flat",
+             "RequiredTags": ""}]}
+        assert gen.validate_enchantment_effects(tables, set()) == []
+
+    def test_a_flat_row_on_a_stat_the_game_reads_nowhere_is_refused(self):
+        """Issue #2387. A flat row supplies its own stat to the base check above,
+        so a flat row on a misspelt name used to pass and be written dead: the
+        game reads a stat row only for a name in `StatToAttribute` or
+        `StatsWithNoAttribute`. THE CONTROLS pass: a flat row on a stat with an
+        attribute (`retaliation_radius_metres`) and on one with none
+        (`leech_payout_rate`)."""
+        for known in ("retaliation_radius_metres", "leech_payout_rate"):
+            tables = {"EnchantmentEffects": [
+                {"Name": "X#1", "Enchantment": "X", "Stat": known,
+                 "ValueKind": "flat", "RequiredTags": ""}]}
+            assert gen.validate_enchantment_effects(tables, set()) == [], known
+
+        misspelt = {"Name": "X#1", "Enchantment": "X",
+                    "Stat": "retaliation_radius_metre", "ValueKind": "flat",
+                    "RequiredTags": ""}
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [misspelt]}, set())
+        assert len(problems) == 1, problems
+        assert ("X#1: 'retaliation_radius_metre' is a flat row on a stat the game "
+                "reads nowhere") in problems[0]
+
+        # AN ACTION ROW IS NOT A STAT ROW, so it is not asked.
+        action = dict(misspelt, Stat="", Action="health")
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [action]}, set()) == []
+
+    def test_the_stats_with_an_attribute_are_read_from_the_engine(self):
+        """`StatToAttribute` names a stat by literal (`agility`) or by constant
+        (`mana_regen`, `UCataclysmRegeneration::ManaRegenStat`); both kinds are
+        read. A stat on the other engine list (`leech_payout_rate`) is not in this
+        one, and a misspelt name is in neither."""
+        with_one = gen.stats_with_an_attribute()
+        assert {"agility", "mana_regen", "skill_locked", "retaliation"} <= with_one
+        assert "leech_payout_rate" not in with_one
+        assert "leech_payout_rate" in gen.stats_with_no_attribute()
+        assert "retaliation_radius_metre" not in (
+            with_one | gen.stats_with_no_attribute())
+
+    def test_a_removal_is_not_asked_for_a_base(self):
+        """A removal multiplies nothing, so a stat only an affix supplies -- which
+        this check does not count -- is one it may remove. Issue #1791: "You have
+        no resistances." is eight such rows. The same stat on an increase is
+        still refused, which is the control."""
+        removal = {"Name": "X#1", "Enchantment": "X", "Stat": "resistance_war",
+                   "ValueKind": "removed", "RequiredTags": ""}
+        tables = {"EnchantmentEffects": [removal], "ClassStats": [{"Stat": "armor"}]}
+        assert gen.validate_enchantment_effects(tables, set()) == []
+
+        increase = dict(removal, ValueKind="increased")
+        tables = {"EnchantmentEffects": [increase], "ClassStats": [{"Stat": "armor"}]}
+        problems = gen.validate_enchantment_effects(tables, set())
+        assert len(problems) == 1 and "'resistance_war' is not a stat" in problems[0]
+
+    def test_a_more_row_on_the_leech_payout_rate_stands_on_the_engines_base(self):
+        """Ruled 2026-10-07: the row that was worded "50% less tick rate for
+        your leech effects" until #1618, and reads "Your leech pays out 50%
+        more slowly" now, is a `more` row of -50 on `leech_payout_rate`. No
+        class line, attribute or flat row supplies that stat; its base of 100
+        is the engine's, listed in `ENGINE_SUPPLIED_BASES`, and that entry is
+        what lets the row through.
+        The same row on a stat that list does not hold is refused, which is
+        the control."""
+        slower = {"Name": "X#1", "Enchantment": "X", "Stat": "leech_payout_rate",
+                  "ValueKind": "more", "RequiredTags": ""}
+        tables = {"EnchantmentEffects": [slower], "ClassStats": [{"Stat": "armor"}]}
+        assert "leech_payout_rate" in gen.ENGINE_SUPPLIED_BASES
+        assert gen.validate_enchantment_effects(tables, set()) == []
+
+        unsupplied = dict(slower, Stat="leech_payout_rate_nothing_supplies")
+        tables = {"EnchantmentEffects": [unsupplied], "ClassStats": [{"Stat": "armor"}]}
+        problems = gen.validate_enchantment_effects(tables, set())
+        assert len(problems) == 1, problems
+        assert "'leech_payout_rate_nothing_supplies' is not a stat" in problems[0]
+
+    def test_the_validator_reports_an_undeclared_tag(self):
+        tables = {"EnchantmentEffects": [
+            {"Name": "X#1", "Enchantment": "X", "Stat": "armor",
+             "ValueKind": "increased", "RequiredTags": "Not.A.Tag"}],
+            "ClassStats": [{"Stat": "armor"}]}
+        problems = gen.validate_enchantment_effects(tables, {"Slot.Aura"})
+        assert problems == ["EnchantmentEffects/X#1: undefined tag Not.A.Tag"]
+
+    def test_a_row_that_moves_a_pool_is_not_asked_for_a_stat(self):
+        """A row moves a pool or changes a stat, never both, so a pool row's
+        stat is empty by design, and `enchantment_effects` refuses a row naming
+        both. This validator asked EVERY row for a stat with a base, so it
+        refused every pool row: none had been authored until the eight rows of
+        issue #1815 were run through the whole generator on 2026-09-16, and all
+        eight failed here.
+
+        THE TAG CHECK STILL APPLIES, which is the second half. A pool row honours
+        its required tags, so an undeclared one matches no skill exactly as it
+        would on a stat row."""
+        pool_row = {"Name": "X#1", "Enchantment": "X", "Stat": "",
+                    "ValueKind": "", "RequiredTags": "", "Action": "health"}
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [pool_row]}, set()) == []
+
+        tagged = dict(pool_row, RequiredTags="Not.A.Tag")
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [tagged]}, {"Slot.Aura"}) == [
+            "EnchantmentEffects/X#1: undefined tag Not.A.Tag"]
+
+
+class TestAgainstTheRealWorkbook:
+    def test_the_committed_csvs_are_current(self):
+        if not gen.WORKBOOK.is_file():
+            pytest.skip("design workbook not present")
+        assert gen.main(["--check"]) == 0, (
+            "game/Data/*.csv are out of date. "
+            "Run: python tools/generate_datatables.py"
+        )
+
+    def test_the_closing_line_names_the_directory_it_wrote_to(
+            self, tmp_path, capsys):
+        """Issue #1487. This line read `Wrote N CSVs to game/Data/` whatever
+        `--output-dir` was, because the option was added after the message.
+
+        WHY IT MATTERS ENOUGH FOR A TEST. Generating into a scratch directory
+        and comparing is the safe way to see what a workbook edit does, instead
+        of writing over `game/Data/` and hoping to undo it. The old line said
+        that run had written over the repository's data, so the next person
+        either loses a `git status` establishing it had not, or believes it and
+        restores files that were never touched.
+
+        IT WRITES SOMEWHERE HARMLESS AND CHECKS IT LANDED THERE, so this also
+        fails if `--output-dir` stops being honoured, not only if the message
+        stops naming it.
+        """
+        if not gen.WORKBOOK.is_file():
+            pytest.skip("design workbook not present")
+
+        destination = tmp_path / "generated"
+        assert gen.main(["--output-dir", str(destination)]) == 0
+
+        written = sorted(path.name for path in destination.glob("*.csv"))
+        assert written, (
+            f"--output-dir {destination} produced no CSVs, so the message this "
+            "test reads describes nothing.")
+
+        printed = capsys.readouterr().out.splitlines()
+        closing = printed[-1]
+        assert str(destination) in closing, (
+            f"the closing line names the wrong directory. It reads "
+            f"{closing!r} and the files were written to {destination}.")
+        assert "game/Data/" not in closing, (
+            f"the closing line still names game/Data/ although --output-dir "
+            f"sent the CSVs to {destination}. It reads {closing!r}. "
+            "Issue #1487.")
+        assert f"{len(written)} " in closing, (
+            f"the closing line reads {closing!r} and {len(written)} CSVs were "
+            "written, so the count does not describe the run.")
+
+    def test_every_table_has_rows(self):
+        if not gen.WORKBOOK.is_file():
+            pytest.skip("design workbook not present")
+        book = openpyxl.load_workbook(gen.WORKBOOK, data_only=True)
+        for name, builder in gen.TABLES.items():
+            assert len(builder(book)) > 0, f"{name} produced no rows"
+
+    def enchantment_tables(self) -> dict[str, list[dict]]:
+        if not gen.WORKBOOK.is_file():
+            pytest.skip("design workbook not present")
+        book = openpyxl.load_workbook(gen.WORKBOOK, data_only=True)
+        return {name: gen.TABLES[name](book)
+                for name in gen.ENCHANTMENT_TABLES}
+
+    def test_every_enchantment_row_in_the_sheet_states_a_type(self):
+        """Issue #1486, against the real sheet rather than a fixture."""
+        assert gen.validate_enchantment_types(self.enchantment_tables()) == []
+
+    def test_blanking_one_real_row_is_caught(self):
+        """THE TEST ABOVE PASSES WHETHER THE CHECK WORKS OR NOT. It says the
+        sheet is clean, which a check that inspected nothing would also say.
+        This one puts the fault back into the real rows and confirms exactly one
+        problem comes out naming exactly that row."""
+        tables = self.enchantment_tables()
+        broken = tables["EnchantmentsNegative"][0]
+        assert broken["EnchantmentType"], (
+            "the first negative row already has no type, so blanking it "
+            "changes nothing and this test proves nothing")
+        broken["EnchantmentType"] = ""
+
+        problems = gen.validate_enchantment_types(tables)
+        assert len(problems) == 1, problems
+        assert broken["Name"] in problems[0]
+
+    def test_the_set_rows_are_left_where_the_owner_put_them(self):
+        """A set row carries its set number, 5 to 18, in a column of its own and
+        the ordinary weight 1, since issue #1443 (the project owner's rulings of
+        2026-09-07 and 2026-09-08). This states the counts, the numbers and the
+        weight rather than trusting them."""
+        tables = self.enchantment_tables()
+        expected = {"EnchantmentsPositive": 42, "EnchantmentsNegative": 14}
+        for name, wanted in expected.items():
+            sets = [row for row in tables[name]
+                    if row["EnchantmentType"].strip().casefold() == "set"]
+            assert len(sets) == wanted, (
+                f"{name} holds {len(sets)} set rows, not {wanted}")
+            identifiers = sorted({int(row["SetId"]) for row in sets})
+            assert identifiers == list(range(5, 19)), (
+                f"{name} set numbers are {identifiers}, not 5 to 18")
+            weights = sorted({float(row["Weight"]) for row in sets})
+            assert weights == [1.0], (
+                f"{name} set rows carry the weights {weights}, not only 1")
+
+
+class TestAnAtNPointsRowStatesItsThreshold:
+    """ISSUE #1755. A node sentence's "At 4 points: ..." clause -- Set Stance's
+    and Scarred Plate's -- is a row with a `Min Points` column: it applies from
+    that many points in its own node, and then once rather than per point.
+
+    OPTIONAL UNTIL THE ROWS ARRIVED. The column was declared in `OPTIONAL_COLUMNS`
+    while the design workbook was with another session, so a sheet without it read
+    every row as 0. The rows change of 2026-09-25 put it in the workbook, and it is
+    required now like any other column.
+
+    A THRESHOLD IS A WHOLE NUMBER OF POINTS FROM 1, and one the node cannot
+    reach is reported, because no player could ever earn the row.
+    """
+
+    @staticmethod
+    def sheet(rows: list[list]) -> list[list]:
+        return [["Node", "Stat", "Value Kind", "Value Per Point",
+                 "Min Points", "Required Tags", "Condition", "Condition Value",
+                 "Scale", "Scale Step", "Option", "Reach Metres"]] + rows
+
+    def book(self, tmp_path, rows: list[list]):
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "threshold.xlsx", {"Passive Effects": self.sheet(rows)}))
+
+    def test_a_threshold_reaches_the_output_and_an_empty_one_is_nought(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["Ravager_basic_spine_008", "armor", "increased", 1.5, None],
+            ["Ravager_basic_spine_008", "crowd_control_resistance", "increased", 5, 4],
+        ])
+        out = gen.passive_effects(rows)
+
+        assert [(r["Stat"], r["MinPoints"]) for r in out] == [
+            ("armor", 0), ("crowd_control_resistance", 4)]
+
+    def test_the_same_stat_per_point_and_from_a_threshold_are_two_rows(self, tmp_path):
+        """The threshold is part of what makes a row distinct, since a node could
+        grant a stat per point and the same stat again, whole, from four."""
+        rows = self.book(tmp_path, [
+            ["A_node", "armor", "increased", 1, None],
+            ["A_node", "armor", "increased", 5, 4],
+        ])
+        assert len(gen.passive_effects(rows)) == 2
+
+    @pytest.mark.parametrize("written", [0, -1, 2.5])
+    def test_a_threshold_that_is_not_a_whole_number_from_one_is_refused(
+            self, tmp_path, written):
+        rows = self.book(tmp_path, [
+            ["A_node", "armor", "increased", 5, written],
+        ])
+        with pytest.raises(gen.DataError, match="whole number of points from 1"):
+            gen.passive_effects(rows)
+
+    def test_a_sheet_without_the_column_is_refused_now_the_rows_have_it(self, tmp_path):
+        """The column was optional until Set Stance's and Scarred Plate's rows came.
+
+        Until 2026-09-25 this read "a sheet without the column reads every row as
+        nought", which was the committed workbook before the rows. The rows change
+        put the column in the workbook and took it out of `OPTIONAL_COLUMNS`, so a
+        sheet without it is now refused like any other column the generator reads.
+        """
+        book = openpyxl.load_workbook(workbook_with(
+            tmp_path / "without.xlsx",
+            {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
+                                  "Required Tags", "Condition", "Condition Value",
+                                  "Scale", "Scale Step", "Option", "Reach Metres"],
+                                 ["A_node", "armor", "increased", 5]]}))
+        with pytest.raises(gen.DataError, match="Min Points"):
+            gen.passive_effects(book)
+
+    def test_a_threshold_the_node_cannot_reach_is_reported(self):
+        def tables(min_points):
+            return {
+                "PassiveEffects": [{"Name": "Real_node#1", "Node": "Real_node",
+                                    "Stat": "armor", "ValueKind": "increased",
+                                    "RequiredTags": "", "MinPoints": min_points}],
+                "PassiveNodes": [{"Name": "Real_node", "MaxPoints": 8}],
+                "ClassStats": [{"Stat": "armor"}],
+            }
+        assert gen.validate_passive_effects(tables(8), set()) == []
+        problems = gen.validate_passive_effects(tables(9), set())
+        assert len(problems) == 1 and "no player can ever earn it" in problems[0], problems
+
+
+class TestRangesThatRollDown:
+    """A sentence marks, by place, the ranges that roll from their second
+    number to their first, and a marked range's effect pair leaves the generator
+    written the other way round. Ruled 2026-10-05: a better roll gives the
+    better outcome. "When a minion dies it automatically re-summons after 3-6
+    seconds" is best at 3, and "This weapon has 5-20% more damage for every
+    100,000-500,000 kills" is best at 20 and at 100,000, so only its second
+    range is marked. Issue #1833."""
+
+    WAIT_WORDS = "When a minion dies it automatically re-summons after 3-6 seconds"
+    WAIT = gen.row_name("Positive", WAIT_WORDS[:48])
+    KILLS_WORDS = "This weapon has 5-20% more damage for every 100,000-500,000 kills"
+    KILLS = gen.row_name("Positive", KILLS_WORDS[:48])
+    HEADER = TestScaleStepHigh.HEADER
+
+    def sentences(self, wait_mark, kills_mark):
+        return [
+            ["Positives", "Type", "Weight", "Column 4", "Rolls Down",
+             "Negatives", "Type", "Weight", "Tags", "Rolls Down"],
+            [self.WAIT_WORDS, "Generic", 4, "Type.Minion", wait_mark,
+             "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life", None],
+            [self.KILLS_WORDS, "Generic", 4, "Item.Slot.Weapon", kills_mark,
+             None, None, None, None, None],
+        ]
+
+    def effects(self, tmp_path, wait_mark=None, kills_mark=None):
+        wait = {"Enchantment": self.WAIT, "Effect": self.WAIT_WORDS,
+                "Stat": "minion_resummoned_after_seconds", "Value Kind": "flat",
+                "Value Low": 3, "Value High": 6}
+        kills = {"Enchantment": self.KILLS, "Effect": self.KILLS_WORDS,
+                 "Stat": "attack_damage", "Value Kind": "more",
+                 "Value Low": 5, "Value High": 20, "Scale": "weapon_kills",
+                 "Scale Step": 100000, "Scale Step High": 500000}
+        book = openpyxl.load_workbook(workbook_with(
+            tmp_path / "rolls_down.xlsx",
+            {"Enchantments": self.sentences(wait_mark, kills_mark),
+             "Enchantment Effects": [self.HEADER]
+             + [[row.get(column) for column in self.HEADER] for row in (wait, kills)]}))
+        return {row["Enchantment"]: row for row in gen.enchantment_effects(book)}, book
+
+    def test_an_unmarked_range_is_written_in_its_sentences_order(self, tmp_path):
+        rows, book = self.effects(tmp_path)
+        assert (rows[self.WAIT]["ValueLow"], rows[self.WAIT]["ValueHigh"]) == (3, 6)
+        assert (rows[self.KILLS]["ScaleStep"], rows[self.KILLS]["ScaleStepHigh"]) == (100000, 500000)
+        assert [row["RollsDown"] for row in gen.enchantments(book, negative=False)] == ["", ""]
+
+    def test_a_marked_value_range_is_written_the_other_way_round(self, tmp_path):
+        rows, book = self.effects(tmp_path, wait_mark="1")
+        assert (rows[self.WAIT]["ValueLow"], rows[self.WAIT]["ValueHigh"]) == (6, 3)
+        assert gen.enchantments(book, negative=False)[0]["RollsDown"] == "1"
+
+    def test_only_the_marked_range_of_two_is_turned_round(self, tmp_path):
+        """The weapon kill sentence states two ranges and marks the second: its
+        step is turned round and its value is left as the sentence has it."""
+        rows, book = self.effects(tmp_path, kills_mark=2)
+        kills = rows[self.KILLS]
+        assert (kills["ValueLow"], kills["ValueHigh"]) == (5, 20)
+        assert (kills["ScaleStep"], kills["ScaleStepHigh"]) == (500000, 100000)
+        # A CELL TYPED AS A NUMBER STILL READS AS A PLACE.
+        assert gen.enchantments(book, negative=False)[1]["RollsDown"] == "2"
+
+    def test_both_ranges_can_be_marked(self):
+        assert gen.ranges_rolling_down("1, 2", self.KILLS_WORDS) == frozenset({1, 2})
+        assert gen.ranges_rolling_down("", self.KILLS_WORDS) == frozenset()
+
+    @pytest.mark.parametrize("cell", ["2", "0", "second", "1;2"])
+    def test_a_place_the_sentence_does_not_have_is_refused(self, cell):
+        """The wait sentence states one range, so only `1` names one."""
+        with pytest.raises(gen.DataError, match="Rolls Down"):
+            gen.ranges_rolling_down(cell, self.WAIT_WORDS, 7)
+
+
+class TestTheConditionsAndTheScaleOfTheSeventhOfOctober:
+    """`while_under_damage_over_time`, `in_combat_for_seconds` and
+    `seconds_leeching`, ruled 2026-10-07 and built ahead of their rows. Each
+    row here is the shape `docs/DECISIONS.md` of that day gives the session
+    that writes rows, on made-up enchantment sheets holding the real sentence.
+    """
+
+    HEADER = TestEnchantmentEffects.HEADER
+    TITLES = ["Positives", "Type", "Weight", "Column 4", None,
+              "Negatives", "Type", "Weight", "Tags"]
+    DOT = "Gain 50%-100% increased damage while under the effect of a DoT"
+    DRAIN = ("After 10 seconds in combat you begin losing 2%-4% of your maximum "
+             "HP per second")
+    LEECH = "While leeching, reduce your max resistances by 1%-3% per second"
+
+    def out(self, tmp_path, side, words, columns):
+        values = {"Enchantment": gen.row_name(side, words[:48]), "Effect": words}
+        values.update(columns)
+        row = [values.get(column) for column in self.HEADER]
+        if side == "Positive":
+            sentences = [words, "Generic", 3, "Keyword.DoT.Generic", None,
+                         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"]
+        else:
+            sentences = ["Double your energy shield", "Generic", 1,
+                         "Stat.Defense.EnergyShield", None,
+                         words, "Generic", 3, "Stat.Defense.Life"]
+        return gen.enchantment_effects(openpyxl.load_workbook(workbook_with(
+            tmp_path / "seventh.xlsx",
+            {"Enchantments": [self.TITLES, sentences],
+             "Enchantment Effects": [self.HEADER, row]})))
+
+    DOT_ROW = {"Stat": "attack_damage", "Value Kind": "increased",
+               "Value Low": 50, "Value High": 100,
+               "Condition": "while_under_damage_over_time"}
+    DRAIN_ROW = {"Value Low": -2, "Value High": -4, "Action": "health",
+                 "Action Event": "every_seconds", "Fraction Of": "maximum",
+                 "Every Seconds": 1, "Condition": "in_combat_for_seconds",
+                 "Condition Value": 10}
+    LEECH_ROW = {"Stat": "resistance_cap", "Value Kind": "flat",
+                 "Value Low": -1, "Value High": -3,
+                 "Scale": "seconds_leeching", "Scale Step": 1,
+                 "Scale Max Steps": 10}
+
+    @pytest.mark.parametrize("stat", ["attack_damage", "spell_damage"])
+    def test_the_damage_row_is_carried_through_and_its_asker_can_judge_it(
+            self, tmp_path, stat):
+        out = self.out(tmp_path, "Positive", self.DOT, dict(self.DOT_ROW, Stat=stat))
+        assert (out[0]["Stat"], out[0]["ValueKind"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["Condition"],
+                out[0]["ConditionValue"]) == (
+            stat, "increased", 50.0, 100.0, "while_under_damage_over_time", 0.0)
+        # IT ASKS ONLY THE WEARER'S OWN STATE, which every asker hands over.
+        assert gen.what_a_condition_needs("while_under_damage_over_time") == ""
+        assert gen.refuse_a_condition_nothing_asks_for("EnchantmentEffects", out) == []
+
+    def test_a_value_beside_the_damage_over_time_condition_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="compares nothing"):
+            self.out(tmp_path, "Positive", self.DOT,
+                     dict(self.DOT_ROW, **{"Condition Value": 1}))
+
+    def test_the_drain_is_carried_through_on_the_clock_with_its_wait(self, tmp_path):
+        out = self.out(tmp_path, "Negative", self.DRAIN, self.DRAIN_ROW)
+        assert (out[0]["Stat"], out[0]["Action"], out[0]["ActionEvent"],
+                out[0]["FractionOf"], out[0]["ValueLow"], out[0]["ValueHigh"],
+                out[0]["EverySeconds"], out[0]["Condition"],
+                out[0]["ConditionValue"]) == (
+            "", "health", "every_seconds", "maximum", -2.0, -4.0, 1.0,
+            "in_combat_for_seconds", 10.0)
+        # AN ACTION ROW'S CONDITION IS JUDGED WHERE THE ACTION FIRES, so the
+        # check on stats that are asked for has nothing to say about it.
+        assert gen.refuse_a_condition_nothing_asks_for("EnchantmentEffects", out) == []
+
+    def test_the_drains_wait_must_be_stated_and_inside_a_minute(self, tmp_path):
+        with pytest.raises(gen.DataError, match="Condition Value"):
+            self.out(tmp_path, "Negative", self.DRAIN,
+                     dict(self.DRAIN_ROW, **{"Condition Value": None}))
+        with pytest.raises(gen.DataError, match="between 0 and 60"):
+            self.out(tmp_path, "Negative", self.DRAIN,
+                     dict(self.DRAIN_ROW, **{"Condition Value": 61}))
+
+    def test_the_leech_row_is_carried_through_with_its_cap_and_has_an_asker(
+            self, tmp_path):
+        out = self.out(tmp_path, "Negative", self.LEECH, self.LEECH_ROW)
+        assert (out[0]["Stat"], out[0]["ValueKind"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["Scale"], out[0]["ScaleStep"],
+                out[0]["ScaleMaxSteps"]) == (
+            "resistance_cap", "flat", -1.0, -3.0, "seconds_leeching", 1.0, 10)
+        assert gen.refuse_a_scale_nothing_asks_for("EnchantmentEffects", out) == []
+
+    def test_the_leech_row_is_refused_without_a_cap_and_accepted_with_one(
+            self, tmp_path):
+        """Ruled 2026-10-07. The scale has no cap of its own, so a row that
+        states none would be uncapped, and is refused. The control is the
+        same row with its cap, which is carried through."""
+        out = self.out(tmp_path, "Negative", self.LEECH, self.LEECH_ROW)
+        assert (out[0]["Scale"], out[0]["ScaleMaxSteps"]) == ("seconds_leeching", 10)
+        with pytest.raises(gen.DataError, match="states no Scale Max Steps"):
+            self.out(tmp_path, "Negative", self.LEECH,
+                     dict(self.LEECH_ROW, **{"Scale Max Steps": None}))
+
+    def test_another_scale_still_needs_no_cap(self, tmp_path):
+        """The refusal is for the scales listed and no other: the kill
+        counter's row on the same stat states no cap and is carried through."""
+        assert gen.SCALES_THAT_NEED_A_CAP == {"seconds_leeching"}
+        row = dict(self.LEECH_ROW, **{"Scale": "character_kills",
+                                      "Scale Step": 100000,
+                                      "Scale Max Steps": None})
+        out = self.out(tmp_path, "Negative", self.LEECH, row)
+        assert (out[0]["Scale"], out[0]["ScaleMaxSteps"]) == ("character_kills", 0)
+
+    def test_the_leech_scale_is_refused_on_a_passive_row(self, tmp_path):
+        """The Passive Effects sheet has no cap column. The control is the
+        same row on a scale that needs none."""
+        passive = TestARowCountingNearbyEnemiesCarriesItsOwnRadius()
+        gen.passive_effects(passive.book(tmp_path, [
+            ["A_node", "armor", "increased", 3,
+             None, None, "seconds_in_combat", 1, None]]))
+        with pytest.raises(gen.DataError, match="needs a cap in Scale Max Steps"):
+            gen.passive_effects(passive.book(tmp_path, [
+                ["A_node", "armor", "increased", 3,
+                 None, None, "seconds_leeching", 1, None]]))
+
+    def test_a_leech_step_of_nothing_or_past_a_minute_is_refused(self, tmp_path):
+        for step in (0, 61):
+            with pytest.raises(gen.DataError, match="scaling step"):
+                self.out(tmp_path, "Negative", self.LEECH,
+                         dict(self.LEECH_ROW, **{"Scale Step": step}))
+
+    def test_the_resistance_cap_takes_the_scale_and_would_not_take_a_condition(
+            self):
+        """Why sentence three is a scale. `resistance_cap` is asked for with
+        its scaled rows worked out; it is not among the stats listed as asked
+        for under a condition, so the same row written as a condition would be
+        refused. The control is the first line: the scaled row is not."""
+        scaled = [{"Name": "A#1", "Stat": "resistance_cap",
+                   "Scale": "seconds_leeching"}]
+        conditioned = [{"Name": "A#1", "Stat": "resistance_cap",
+                        "Condition": "while_under_damage_over_time"}]
+        assert gen.refuse_a_scale_nothing_asks_for("EnchantmentEffects", scaled) == []
+        problems = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", conditioned)
+        assert len(problems) == 1 and "resistance_cap" in problems[0]
+
+
+class TestTheChannellingConditionsOfTheEighthOfOctober:
+    """`while_channelling` and `channelling_for_under_seconds`, ruled
+    2026-10-08 and built ahead of their rows. Each row here is the shape
+    `docs/DECISIONS.md` of that day gives the session that writes rows, on
+    made-up enchantment sheets holding the real sentence. Five rows for three
+    sentences: the drain, the two that stop movement, and the two damage rows.
+
+    THE FIRST OF THE TWO THAT STOP MOVEMENT IS THE FLAG `cannot_walk`, ruled the
+    same day. A walking speed taken to nothing was the other way to write it,
+    and the player character refuses a speed of nought; no such row is written.
+    """
+
+    HEADER = TestEnchantmentEffects.HEADER
+    TITLES = TestTheConditionsAndTheScaleOfTheSeventhOfOctober.TITLES
+    DRAIN = ("Channel skills drain 8%-15% of your maximum HP per second while "
+             "active")
+    STILL = "You cannot move while channeling any skill"
+    EARLY = ("Channel skills deal 30%-50% less damage during the first 2 "
+             "seconds of channeling")
+
+    def out(self, tmp_path, words, rows):
+        """The generator's rows for one Negative sentence and these effect
+        rows, each a dict of columns."""
+        effects = [self.HEADER]
+        for columns in rows:
+            values = {"Enchantment": gen.row_name("Negative", words[:48]),
+                      "Effect": words}
+            values.update(columns)
+            effects.append([values.get(column) for column in self.HEADER])
+        sentences = ["Double your energy shield", "Generic", 1,
+                     "Stat.Defense.EnergyShield", None,
+                     words, "Generic", 3, "Type.Channel"]
+        return gen.enchantment_effects(openpyxl.load_workbook(workbook_with(
+            tmp_path / "eighth.xlsx",
+            {"Enchantments": [self.TITLES, sentences],
+             "Enchantment Effects": effects})))
+
+    DRAIN_ROW = {"Value Low": -8, "Value High": -15, "Action": "health",
+                 "Action Event": "every_seconds", "Fraction Of": "maximum",
+                 "Every Seconds": 1, "Condition": "while_channelling"}
+    WALK_ROW = {"Stat": "cannot_walk", "Value Kind": "flat",
+                "Value Low": 1, "Value High": 1,
+                "Condition": "while_channelling"}
+    LOCK_ROW = {"Stat": "skill_locked", "Value Kind": "flat",
+                "Value Low": 1, "Value High": 1,
+                "Required Tags": "Slot.Movement",
+                "Condition": "while_channelling"}
+    EARLY_ROW = {"Stat": "attack_damage", "Value Kind": "more",
+                 "Value Low": -30, "Value High": -50,
+                 "Required Tags": "Type.Channel",
+                 "Condition": "channelling_for_under_seconds",
+                 "Condition Value": 2}
+
+    def test_the_drain_is_carried_through_on_the_clock_under_the_condition(
+            self, tmp_path):
+        out = self.out(tmp_path, self.DRAIN, [self.DRAIN_ROW])
+        assert len(out) == 1
+        assert (out[0]["Stat"], out[0]["Action"], out[0]["ActionEvent"],
+                out[0]["FractionOf"], out[0]["ValueLow"], out[0]["ValueHigh"],
+                out[0]["EverySeconds"], out[0]["Condition"],
+                out[0]["ConditionValue"]) == (
+            "", "health", "every_seconds", "maximum", -8.0, -15.0, 1.0,
+            "while_channelling", 0.0)
+        # AN ACTION ROW'S CONDITION IS JUDGED WHERE THE ACTION FIRES, so the
+        # check on stats that are asked for has nothing to say about it.
+        assert gen.refuse_a_condition_nothing_asks_for("EnchantmentEffects", out) == []
+
+    def test_the_two_rows_that_stop_movement_are_carried_through_together(
+            self, tmp_path):
+        out = self.out(tmp_path, self.STILL, [self.WALK_ROW, self.LOCK_ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["ConditionValue"]) for row in out] == [
+            ("cannot_walk", "flat", 1.0, 1.0, "", "while_channelling", 0.0),
+            ("skill_locked", "flat", 1.0, 1.0, "Slot.Movement",
+             "while_channelling", 0.0)]
+        # TWO ROWS ON ONE ENCHANTMENT, numbered in the order written.
+        assert [row["Name"].rsplit("#", 1)[1] for row in out] == ["1", "2"]
+        assert len({row["Enchantment"] for row in out}) == 1
+        # BOTH STATS ARE ASKED FOR WITH THE WEARER'S OWN STATE, which is all
+        # the condition needs.
+        assert gen.what_a_condition_needs("while_channelling") == ""
+        assert gen.refuse_a_condition_nothing_asks_for("EnchantmentEffects", out) == []
+
+    def test_the_two_damage_rows_are_carried_through_with_their_window(
+            self, tmp_path):
+        out = self.out(tmp_path, self.EARLY, [
+            self.EARLY_ROW, dict(self.EARLY_ROW, Stat="spell_damage")])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["ConditionValue"]) for row in out] == [
+            (stat, "more", -30.0, -50.0, "Type.Channel",
+             "channelling_for_under_seconds", 2.0)
+            for stat in ("attack_damage", "spell_damage")]
+        assert gen.what_a_condition_needs("channelling_for_under_seconds") == ""
+        assert gen.refuse_a_condition_nothing_asks_for("EnchantmentEffects", out) == []
+
+    def test_cannot_walk_is_a_stat_with_no_attribute_that_an_asker_can_judge(
+            self):
+        """What lets the row above through, each by name. The flag has no
+        gameplay attribute, so it is on the engine's list of stats that need
+        none; and it is asked for with the wearer's own state, which is all
+        `while_channelling` needs. The control is a stat on neither list."""
+        assert "cannot_walk" in gen.stats_with_no_attribute()
+        assert gen.CONDITIONED_STATS_WITH_AN_ASKER["cannot_walk"] == (
+            gen.ASKER_PASSES_NOTHING_MORE)
+        assert "walking_forbidden" not in gen.stats_with_no_attribute()
+        problems = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects",
+            [{"Name": "A#1", "Stat": "walking_forbidden",
+              "Condition": "while_channelling"}])
+        assert len(problems) == 1 and "walking_forbidden" in problems[0]
+
+    def test_a_value_beside_while_channelling_is_refused(self, tmp_path):
+        """It names a state. The control is the same row without the value,
+        which the first test of this class carries through."""
+        with pytest.raises(gen.DataError, match="compares nothing"):
+            self.out(tmp_path, self.DRAIN,
+                     [dict(self.DRAIN_ROW, **{"Condition Value": 1})])
+
+    def test_the_window_must_be_stated_and_inside_a_minute(self, tmp_path):
+        """The control is the same row with its 2, which the test of the
+        damage rows carries through."""
+        with pytest.raises(gen.DataError, match="Condition Value"):
+            self.out(tmp_path, self.EARLY,
+                     [dict(self.EARLY_ROW, **{"Condition Value": None})])
+        with pytest.raises(gen.DataError, match="between 0 and 60"):
+            self.out(tmp_path, self.EARLY,
+                     [dict(self.EARLY_ROW, **{"Condition Value": 61})])
+
+    def test_both_names_are_conditions_the_generator_knows(self):
+        """The names themselves, so a rename in one place fails here by name
+        and not only in the test that compares the table with the engine's."""
+        assert gen.CONDITIONS["while_channelling"] is None
+        assert gen.CONDITIONS["channelling_for_under_seconds"] == (
+            0.0, 60.0, "a number of seconds")
+
+
+class TestAHitCutsShortTheSkillInUse:
+    """`hit_taken_cancels_skills`, ruled 2026-10-08 and built ahead of its
+    rows. Each row here is the shape `docs/DECISIONS.md` of that day gives the
+    session that writes rows, on a made-up enchantment sheet holding the real
+    sentence. Two rows for two sentences, and one stat for both: the engine
+    asks it once for each running skill with that skill's own tags, so the
+    Required Tags cell is the whole difference between them.
+    """
+
+    ANY = "Taking a hit interrupts any skill currently being used"
+    CHANNEL = "Taking damage while channeling interrupts the channel immediately"
+    ROW = {"Stat": "hit_taken_cancels_skills", "Value Kind": "flat",
+           "Value Low": 1, "Value High": 1}
+
+    def out(self, tmp_path, words, rows):
+        return TestTheChannellingConditionsOfTheEighthOfOctober().out(
+            tmp_path, words, rows)
+
+    def test_the_row_for_any_skill_is_carried_through_with_no_tags(
+            self, tmp_path):
+        out = self.out(tmp_path, self.ANY, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"])
+                for row in out] == [
+            ("hit_taken_cancels_skills", "flat", 1.0, 1.0, "", "")]
+        # NO CONDITION, so the check on stats asked for under one has nothing
+        # to say, and the stat needs no entry among those.
+        assert gen.refuse_a_condition_nothing_asks_for("EnchantmentEffects", out) == []
+        assert "hit_taken_cancels_skills" not in gen.CONDITIONED_STATS_WITH_AN_ASKER
+
+    def test_the_row_for_a_channel_is_carried_through_with_its_tag(
+            self, tmp_path):
+        out = self.out(tmp_path, self.CHANNEL,
+                       [dict(self.ROW, **{"Required Tags": "Type.Channel"})])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"])
+                for row in out] == [
+            ("hit_taken_cancels_skills", "flat", 1.0, 1.0, "Type.Channel", "")]
+        assert gen.refuse_a_condition_nothing_asks_for("EnchantmentEffects", out) == []
+
+    def test_the_flag_is_a_stat_with_no_attribute(self):
+        """What lets the rows above name it: the flag has no gameplay
+        attribute, so it is on the engine's list of stats that need none. The
+        control is a made-up name that is on no list."""
+        assert "hit_taken_cancels_skills" in gen.stats_with_no_attribute()
+        assert "hit_taken_interrupts" not in gen.stats_with_no_attribute()
+
+
+class TestAFlagAgainstTheSufferingAurasManaDrain:
+    """`suffering_aura_mana_drain_immunity`, ruled 2026-10-09 and built ahead
+    of its row. One flag at a flat 1 with no tags and no condition: the
+    dungeon game mode asks whether it is above nought before the rule
+    Suffering Aura takes the player's mana.
+
+    THE SHEET HERE IS MADE UP AND SO IS WHERE THE SENTENCE SITS ON IT. The
+    words are the first half of Mana Weaver's six-piece bonus. The real row
+    is the enchantment session's to write, on the sheet and under the label a
+    set bonus has; this shows only that the generator carries a flat row on
+    this stat through, and that the name is on the engine's list.
+    """
+
+    WORDS = ("You gain an aura that makes you and nearby allies immune to all "
+             "mana-draining effects")
+    ROW = {"Stat": "suffering_aura_mana_drain_immunity", "Value Kind": "flat",
+           "Value Low": 1, "Value High": 1}
+
+    def out(self, tmp_path, words, rows):
+        return TestTheChannellingConditionsOfTheEighthOfOctober().out(
+            tmp_path, words, rows)
+
+    def test_the_row_is_carried_through_with_no_tags_and_no_condition(
+            self, tmp_path):
+        out = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"]) for row in out] == [
+            ("suffering_aura_mana_drain_immunity", "flat", 1.0, 1.0, "", "",
+             "", "")]
+        # NO CONDITION, so the check on stats asked for under one has nothing
+        # to say, and the stat needs no entry among those.
+        assert gen.refuse_a_condition_nothing_asks_for("EnchantmentEffects", out) == []
+        assert ("suffering_aura_mana_drain_immunity"
+                not in gen.CONDITIONED_STATS_WITH_AN_ASKER)
+
+    def test_the_flag_is_a_stat_with_no_attribute(self):
+        """What lets the row above name it: the flag has no gameplay
+        attribute, so it is on the engine's list of stats that need none. The
+        control is a made-up name that is on no list."""
+        assert ("suffering_aura_mana_drain_immunity"
+                in gen.stats_with_no_attribute())
+        assert "mana_drain_immunity" not in gen.stats_with_no_attribute()
+
+
+class TestRetaliationThatCannotBeMitigated:
+    """`retaliation_cannot_be_mitigated`, ruled 2026-10-12 and built ahead of
+    its row, for "Retaliation damage cannot be reduced or mitigated by the
+    attacker". One flag at a flat 1 with no Required Tags, no Condition and no
+    Scale: `UCataclysmRetaliation::CannotBeMitigatedFor` asks whether it is
+    above nought where retaliation is paid.
+
+    THE SHEET HERE IS MADE UP AND SO IS WHERE THE SENTENCE SITS ON IT. The
+    words are the real sentence, on the Negative side of a made-up sheet; the
+    real sentence is a Positive one. The real row is the enchantment session's
+    to write; this shows that the generator carries the ruled row through and
+    refuses every shape the game would answer no to.
+    """
+
+    WORDS = "Retaliation damage cannot be reduced or mitigated by the attacker"
+    STAT = "retaliation_cannot_be_mitigated"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 1, "Value High": 1}
+
+    def out(self, tmp_path, rows):
+        return TestTheChannellingConditionsOfTheEighthOfOctober().out(
+            tmp_path, self.WORDS, rows)
+
+    def refusals(self, rows):
+        return gen.refuse_a_retaliation_flag_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def test_the_ruled_row_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"]) for row in out] == [
+            (self.STAT, "flat", 1.0, 1.0, "", "", "", "")]
+        assert self.refusals(out) == []
+        # NO CONDITION AND NO SCALE, so neither of those checks has anything
+        # to say; and the whole sheet's validation has nothing to say either.
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+
+    def test_the_flag_is_a_stat_with_no_attribute(self):
+        """What lets the row above name it: the flag has no gameplay
+        attribute, so it is on the engine's list of stats that need none.
+        TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.RETALIATION_CANNOT_BE_MITIGATED_STAT == self.STAT
+        assert self.STAT in gen.stats_with_no_attribute()
+        assert "retaliation_cannot_be_reduced" not in gen.stats_with_no_attribute()
+
+    def test_the_generator_holds_exactly_the_name_the_engine_asks_for(self):
+        """The generator refuses bad rows by this name and the engine asks its
+        stat line for the name in `CataclysmRetaliation.cpp`. A name spelt
+        differently on the two sides would be refused by neither and read by
+        nothing. THE CONTROL is `retaliation_leeches`, read by the same
+        pattern from the line above it in that file, so a pattern that found
+        nothing would fail there first."""
+        import re
+        source = (gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+                  / "CataclysmRetaliation.cpp").read_text(encoding="utf-8")
+        names = dict(re.findall(
+            r'UCataclysmRetaliation::(\w+Stat)\s*=\s*TEXT\("([^"]+)"\)',
+            source))
+        assert names["LeechesStat"] == "retaliation_leeches"
+        assert names["CannotBeMitigatedStat"] == (
+            gen.RETALIATION_CANNOT_BE_MITIGATED_STAT)
+
+    def test_every_shape_the_game_would_answer_no_to_is_refused(
+            self, tmp_path):
+        """One change to the carried row at a time, each refused by its own
+        sentence. The control is the first line: the row unchanged is not
+        refused. A figure changed in one column is one refusal; a kind other
+        than flat is one."""
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert self.refusals([row]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"ValueKind": "more"}, "value kind 'more'"),
+                ({"RequiredTags": "Type.Melee"}, "under a required tag"),
+                ({"ValueLow": 0.0}, "states 0 on"),
+                ({"ValueHigh": 2.0}, "states 2 on"),
+                ({"ValueLow": -1.0}, "states -1 on"),
+                ({"ValueHigh": 0.5}, "states 0.5 on")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+        # BOTH FIGURES WRONG IS TWO REFUSALS, one for each column.
+        assert len(self.refusals([dict(row, ValueLow=1.0, ValueHigh=1.0)])) == 0
+        assert len(self.refusals([dict(row, ValueLow=2.0, ValueHigh=4.0)])) == 2
+
+    def test_a_misspelt_stat_is_refused_by_the_whole_sheets_validation(
+            self, tmp_path):
+        """A name one letter off is on no list of stats, so the check every
+        stat row passes refuses it. The control is the row spelt right."""
+        good = self.out(tmp_path, [self.ROW])
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": good}, set()) == []
+        misspelt = "retaliation_cannot_be_mitigatd"
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(good[0], Stat=misspelt,
+                                         ValueKind="increased")]},
+            set())
+        assert any(repr(misspelt) in problem and "is not a stat" in problem
+                   for problem in problems), problems
+
+    def test_a_condition_or_a_scale_on_the_flag_is_refused_elsewhere(
+            self, tmp_path):
+        """The stat is on neither the list of stats asked for under a
+        condition nor the list asked for under a scale, so the two checks that
+        read those lists refuse such a row. The control is the row unchanged."""
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="health_below")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="own_stacks")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+
+    def test_a_passive_nodes_row_and_another_stat_are_left_alone(self):
+        node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                    "Stat": self.STAT, "ValueKind": "increased",
+                    "ValuePerPoint": 1.0}
+        assert gen.refuse_a_retaliation_flag_row_the_game_cannot_read(
+            "PassiveEffects", [node_row]) == []
+        assert self.refusals([{"Name": "X#1", "Stat": "retaliation_leeches",
+                               "ValueKind": "increased", "ValueLow": 5.0,
+                               "ValueHigh": 9.0,
+                               "RequiredTags": "Type.Melee"}]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        """`validate_enchantment_effects` is what the generator runs over the
+        finished rows. The row unchanged gives it nothing to say; the row
+        under a required tag is refused there, in this check's words."""
+        out = self.out(tmp_path, [self.ROW])
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(out[0], RequiredTags="Type.Melee")]},
+            set())
+        assert any("under a required tag" in problem and repr(self.STAT) in problem
+                   for problem in problems), problems
+
+
+class TestACastDelayOnASkillsBlow:
+    """`blow_delay_seconds`, ruled 2026-10-08 and built ahead of its row. The
+    row here is the shape `docs/DECISIONS.md` of that day gives the session
+    that writes rows, on a made-up enchantment sheet holding the real
+    sentence. One row for one sentence: seconds, flat, rolled between the two
+    figures the sentence states, requiring the tag the sentence names.
+
+    A NUMBER AND NOT A FLAG. Its two values are the 0.75 and the 1.5 of the
+    sentence, so it is on no list of flags.
+    """
+
+    DELAY = ("Point blank AOE skills have a 0.75-1.5 second cast delay before "
+             "firing")
+    ROW = {"Stat": "blow_delay_seconds", "Value Kind": "flat",
+           "Value Low": 0.75, "Value High": 1.5,
+           "Required Tags": "Type.AOE.PointBlank"}
+
+    def out(self, tmp_path, words, rows):
+        return TestTheChannellingConditionsOfTheEighthOfOctober().out(
+            tmp_path, words, rows)
+
+    def test_the_row_is_carried_through_with_its_seconds_and_its_tag(
+            self, tmp_path):
+        out = self.out(tmp_path, self.DELAY, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"]) for row in out] == [
+            ("blow_delay_seconds", "flat", 0.75, 1.5, "Type.AOE.PointBlank",
+             "", "", "")]
+        # NO CONDITION, so the check on stats asked for under one has nothing
+        # to say, and the stat needs no entry among those.
+        assert gen.refuse_a_condition_nothing_asks_for("EnchantmentEffects", out) == []
+        assert "blow_delay_seconds" not in gen.CONDITIONED_STATS_WITH_AN_ASKER
+
+    def test_the_stat_is_one_with_no_attribute(self):
+        """What lets the row above name it: the seconds have no gameplay
+        attribute, so the name is on the engine's list of stats that need
+        none. The control is a made-up name that is on no list."""
+        assert "blow_delay_seconds" in gen.stats_with_no_attribute()
+        assert "cast_delay_seconds" not in gen.stats_with_no_attribute()
+
+
+class TestAnAilmentThatLowersMaximumHealth:
+    """`ailment_max_health_removed`, ruled 2026-10-08 and built ahead of its
+    row. The row here is the shape `docs/DECISIONS.md` of that day gives the
+    session that writes rows, on a made-up enchantment sheet holding the real
+    sentence. One row for one sentence: the tenth number a row may hang on an
+    ailment, with no event, the ailment the sentence names, and its two
+    figures as a percentage.
+
+    ITS BOUND IS ITS OWN. The other nine may state up to 100; this one stops at
+    `MAX_AILMENT_MAX_HEALTH_REMOVED`, so a lowered maximum is never nought.
+    """
+
+    WORDS = "Enemies with Necrosis have 1%-2% less maximum health"
+    #: MADE UP, for the bound alone. The generator holds a row's two figures to
+    #: the ones its sentence states, so a figure past the bound needs a
+    #: sentence that states it. No such sentence is in the design.
+    PAST_THE_BOUND = "Enemies with Necrosis have 1%-51% less maximum health"
+    AT_THE_BOUND = "Enemies with Necrosis have 50% less maximum health"
+    HEADER = TestScaleStepHigh.HEADER
+
+    def rider(self, tmp_path, changes, words=WORDS):
+        values = {"Enchantment": gen.row_name("Positive", words[:48]),
+                  "Effect": words,
+                  "Action": "ailment_max_health_removed", "Ailment": "Necrosis",
+                  "Value Low": 1, "Value High": 2}
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        enchantments = [
+            ["Positives", "Type", "Weight", "Column 4", None,
+             "Negatives", "Type", "Weight", "Tags"],
+            [words, "Generic", 4, "Keyword.DoT.Necrosis", None,
+             "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+        ]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "necrosis.xlsx",
+            {"Enchantments": enchantments,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def test_the_row_is_carried_through_with_its_ailment_and_no_event(
+            self, tmp_path):
+        out = gen.enchantment_effects(self.rider(tmp_path, {}))
+        assert len(out) == 1
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["Ailment"],
+                out[0]["ValueLow"], out[0]["ValueHigh"], out[0]["FractionOf"],
+                out[0]["TriggerCooldown"], out[0]["Stat"]) == (
+            "ailment_max_health_removed", "", "Necrosis", 1.0, 2.0, "", 0.0, "")
+
+    def test_it_is_one_of_the_numbers_a_row_may_hang_on_an_ailment(self):
+        """What makes the row above a rider and not a pool: the name is on the
+        list every rider check reads. The control is a made-up name on no
+        list."""
+        assert gen.AILMENT_MAX_HEALTH_ACTION == "ailment_max_health_removed"
+        assert gen.AILMENT_MAX_HEALTH_ACTION in gen.AILMENT_RIDER_ACTIONS
+        assert "ailment_max_health" not in gen.AILMENT_RIDER_ACTIONS
+        assert len(gen.AILMENT_RIDER_ACTIONS) == 10
+
+    def test_the_row_without_an_ailment_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="names no Ailment"):
+            gen.enchantment_effects(self.rider(tmp_path, {"Ailment": None}))
+
+    def test_the_row_above_its_bound_is_refused(self, tmp_path):
+        """51 is inside the 100 every rider is held to and outside this one's
+        own bound, so the refusal is this rider's and names the bound."""
+        assert gen.MAX_AILMENT_MAX_HEALTH_REMOVED == 50.0
+        with pytest.raises(gen.DataError, match="up to 50 per cent"):
+            gen.enchantment_effects(self.rider(tmp_path, {
+                "Value Low": 1, "Value High": 51}, self.PAST_THE_BOUND))
+
+    def test_the_row_at_its_bound_is_carried_through(self, tmp_path):
+        """The control for the refusal above: 50 is allowed, so it is the
+        figure past the bound that was refused and not the action."""
+        out = gen.enchantment_effects(self.rider(tmp_path, {
+            "Value Low": 50, "Value High": None}, self.AT_THE_BOUND))
+        assert (out[0]["Action"], out[0]["ValueLow"], out[0]["ValueHigh"]) == (
+            "ailment_max_health_removed", 50.0, 50.0)
+
+    def test_another_rider_may_still_state_what_this_one_may_not(self, tmp_path):
+        """The bound is this rider's alone: the armour rider on the same
+        made-up sentence, with the same 1 to 51, is carried through."""
+        out = gen.enchantment_effects(self.rider(tmp_path, {
+            "Action": "ailment_armor_removed", "Value Low": 1,
+            "Value High": 51}, self.PAST_THE_BOUND))
+        assert (out[0]["Action"], out[0]["ValueLow"], out[0]["ValueHigh"]) == (
+            "ailment_armor_removed", 1.0, 51.0)
+
+    def test_the_row_with_an_event_is_refused_as_any_rider_is(self, tmp_path):
+        with pytest.raises(gen.DataError, match="must be empty"):
+            gen.enchantment_effects(self.rider(tmp_path, {
+                "Action Event": "dot_applied"}))
+
+
+class TestMinionsTakeAShareOfTheirSummonersDefences:
+    """`minion_defences_percent_of_yours`, ruled 2026-10-08 and built ahead of
+    its row. The row here is the shape `docs/DECISIONS.md` of that day gives
+    the session that writes rows, on a made-up enchantment sheet holding the
+    real sentence. One row for one sentence and one figure for both armour and
+    resistances: flat, 10 to 25, and no Required Tags, so it reaches every
+    minion.
+    """
+
+    WORDS = "Summoned minions inherit 10%-25% of your armor and resistances"
+    NAME = gen.row_name("Positive", WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 4, "Type.Minion", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+    ROW = {"Stat": "minion_defences_percent_of_yours", "Value Kind": "flat",
+           "Value Low": 10, "Value High": 25}
+
+    def out(self, tmp_path, changes):
+        values = {"Enchantment": self.NAME, "Effect": self.WORDS}
+        values.update(self.ROW)
+        values.update(changes)
+        row = [values.get(column) for column in self.HEADER]
+        return gen.enchantment_effects(openpyxl.load_workbook(workbook_with(
+            tmp_path / "defences.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]})))
+
+    def test_the_row_is_carried_through_flat_with_no_tags(self, tmp_path):
+        out = self.out(tmp_path, {})
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"]) for row in out] == [
+            ("minion_defences_percent_of_yours", "flat", 10.0, 25.0, "", "",
+             "", "")]
+        # NO CONDITION, so the check on stats asked for under one has nothing
+        # to say, and the stat needs no entry among those.
+        assert gen.refuse_a_condition_nothing_asks_for("EnchantmentEffects", out) == []
+        assert ("minion_defences_percent_of_yours"
+                not in gen.CONDITIONED_STATS_WITH_AN_ASKER)
+
+    def test_the_stat_is_one_with_no_attribute(self):
+        """What lets the row above name it: a share of two figures the
+        summoner already has holds no gameplay attribute, so the name is on
+        the engine's list of stats that need none. TESTED BY NAME, because a
+        row carried through does not prove the listing. The control is a
+        made-up name that is on no list."""
+        assert "minion_defences_percent_of_yours" in gen.stats_with_no_attribute()
+        assert "minion_armor_percent_of_yours" not in gen.stats_with_no_attribute()
+
+
+class TestAWornRowGrantsClassPoints:
+    """`class_points_granted`, ruled 2026-10-09 and built ahead of its rows.
+    The rows here are the shape `docs/DECISIONS.md` of that day gives the
+    session that writes rows, on a made-up enchantment sheet holding the real
+    sentences. One flat row for each sentence, rolled between the sentence's
+    two figures, with no Required Tags, no Condition and no Scale.
+
+    THE GAME ROUNDS EACH ROW DOWN BY ITSELF, so the figures here need not be
+    whole and the generator does not ask that they are. What it does refuse is
+    every shape the game's one reader cannot count: the reader reads the row's
+    value and judges nothing else.
+    """
+
+    FIRST = "Gain 5-10 class points"
+    SECOND = "Gain 3-8 additional class points"
+    HEADER = TestEnchantmentEffects.HEADER
+    ROW = {"Stat": "class_points_granted", "Value Kind": "flat"}
+
+    def out(self, tmp_path, words, low, high):
+        values = {"Enchantment": gen.row_name("Positive", words[:48]),
+                  "Effect": words, "Value Low": low, "Value High": high}
+        values.update(self.ROW)
+        row = [values.get(column) for column in self.HEADER]
+        enchantments = [
+            ["Positives", "Type", "Weight", "Column 4", None,
+             "Negatives", "Type", "Weight", "Tags"],
+            [words, "Generic", 2, "Stat.Offense.Global", None,
+             "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+        ]
+        return gen.enchantment_effects(openpyxl.load_workbook(workbook_with(
+            tmp_path / "class_points.xlsx",
+            {"Enchantments": enchantments,
+             "Enchantment Effects": [self.HEADER, row]})))
+
+    def refusals(self, rows):
+        return gen.refuse_a_class_point_row_the_game_cannot_count(
+            "EnchantmentEffects", rows)
+
+    def test_each_sentences_row_is_carried_through_flat_and_is_not_refused(
+            self, tmp_path):
+        for words, low, high in ((self.FIRST, 5, 10), (self.SECOND, 3, 8)):
+            out = self.out(tmp_path, words, low, high)
+            assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                     row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                     row["Scale"], row["Action"]) for row in out] == [
+                ("class_points_granted", "flat", float(low), float(high), "",
+                 "", "", "")]
+            assert self.refusals(out) == []
+            # NO CONDITION AND NO SCALE, so neither of those checks has
+            # anything to say, and the stat needs no entry on their lists.
+            assert gen.refuse_a_condition_nothing_asks_for(
+                "EnchantmentEffects", out) == []
+            assert gen.refuse_a_scale_nothing_asks_for(
+                "EnchantmentEffects", out) == []
+        assert "class_points_granted" not in gen.CONDITIONED_STATS_WITH_AN_ASKER
+
+    def test_the_stat_is_one_with_no_attribute(self):
+        """What lets the rows above name it: a count of points holds no
+        gameplay attribute, so the name is on the engine's list of stats that
+        need none. TESTED BY NAME. The control is a made-up name on no list."""
+        assert gen.CLASS_POINTS_GRANTED_STAT == "class_points_granted"
+        assert gen.CLASS_POINTS_GRANTED_STAT in gen.stats_with_no_attribute()
+        assert "class_points_gained" not in gen.stats_with_no_attribute()
+
+    def test_every_shape_the_game_cannot_count_is_refused(self, tmp_path):
+        """One change to the carried row at a time, each refused once and by
+        its own sentence. The control is the first line: the row unchanged is
+        not refused."""
+        good = self.out(tmp_path, self.FIRST, 5, 10)[0]
+        assert self.refusals([good]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"ValueKind": "more"}, "value kind 'more'"),
+                ({"RequiredTags": "Type.Melee"}, "under a required tag"),
+                ({"Condition": "health_below"}, "under a condition"),
+                ({"Condition2": "health_below"}, "under a second condition"),
+                ({"Scale": "class_points_spent"}, "under a scale"),
+                ({"ValueLow": 0.5}, "states 0.5 class points"),
+                ({"ValueHigh": 11.0}, "states 11 class points")):
+            problems = self.refusals([dict(good, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert "class_points_granted" in problems[0] or "class points" in problems[0]
+
+    def test_a_figure_that_is_not_whole_is_not_refused(self, tmp_path):
+        """The game rounds a row down, so 5.5 to 9.5 is a legal pair of
+        figures here. The bounds are 1 and 10, each allowed."""
+        good = self.out(tmp_path, self.FIRST, 5, 10)[0]
+        assert self.refusals([dict(good, ValueLow=5.5, ValueHigh=9.5)]) == []
+        assert self.refusals([dict(good, ValueLow=1.0, ValueHigh=10.0)]) == []
+        assert (gen.MIN_CLASS_POINTS_GRANTED_BY_A_ROW,
+                gen.MAX_CLASS_POINTS_GRANTED_BY_A_ROW) == (1.0, 10.0)
+
+    def test_a_passive_node_may_not_grant_it_and_another_stat_is_left_alone(
+            self):
+        """The game reads class points from worn rows before the passive tree
+        is added, so a node's row on the stat is never read. The control is
+        the same node row on another stat, which this check says nothing
+        about."""
+        node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                    "Stat": "class_points_granted", "ValueKind": "flat",
+                    "ValuePerPoint": 1.0}
+        problems = gen.refuse_a_class_point_row_the_game_cannot_count(
+            "PassiveEffects", [node_row])
+        assert len(problems) == 1
+        assert "a passive node grants" in problems[0]
+        assert gen.refuse_a_class_point_row_the_game_cannot_count(
+            "PassiveEffects", [dict(node_row, Stat="max_health")]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        """`validate_enchantment_effects` is what the generator runs over the
+        finished rows. The row unchanged gives it nothing to say; the same row
+        made an increase is refused there, in this check's words."""
+        good = self.out(tmp_path, self.FIRST, 5, 10)[0]
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [good]}, set()) == []
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(good, ValueKind="increased")]}, set())
+        assert any("value kind 'increased'" in problem
+                   and "class_points_granted" in problem
+                   for problem in problems), problems
+
+
+class TestARowChangesWhatAHealingSkillRestores:
+    """`healing_skill_health_restored` and
+    `healing_skill_health_as_energy_shield`, ruled 2026-10-09 and built ahead
+    of their rows. The rows here are the shape `docs/DECISIONS.md` of that day
+    gives the session that writes rows, on a made-up enchantment sheet holding
+    the real sentences. One row for each sentence, rolled between the
+    sentence's two figures, with no Required Tags, no Condition and no Scale.
+
+    THE GAME ASKS FOR BOTH STATS WITH NO TAGS, where Living Pyre and Blood Pyre
+    pay their health, so a row requiring a tag would match nowhere and is
+    refused. Each stat has one value kind and the bounds its sentence states.
+    """
+
+    MORE = "Healing skills restore 30%-60% more HP"
+    SHIELD = ("Healing skills also restore 10%-20% of the healed amount as "
+              "energy shield")
+    HEADER = TestEnchantmentEffects.HEADER
+    MORE_ROW = {"Stat": "healing_skill_health_restored", "Value Kind": "more",
+                "Value Low": 30, "Value High": 60}
+    SHIELD_ROW = {"Stat": "healing_skill_health_as_energy_shield",
+                  "Value Kind": "flat", "Value Low": 10, "Value High": 20}
+
+    def out(self, tmp_path, words, columns):
+        values = {"Enchantment": gen.row_name("Positive", words[:48]),
+                  "Effect": words}
+        values.update(columns)
+        row = [values.get(column) for column in self.HEADER]
+        enchantments = [
+            ["Positives", "Type", "Weight", "Column 4", None,
+             "Negatives", "Type", "Weight", "Tags"],
+            [words, "Generic", 3, "Stat.Defense.Life", None,
+             "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+        ]
+        return gen.enchantment_effects(openpyxl.load_workbook(workbook_with(
+            tmp_path / "healing_skills.xlsx",
+            {"Enchantments": enchantments,
+             "Enchantment Effects": [self.HEADER, row]})))
+
+    def refusals(self, rows):
+        return gen.refuse_a_healing_skill_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def test_each_sentences_row_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        for words, columns, expected in (
+                (self.MORE, self.MORE_ROW,
+                 ("healing_skill_health_restored", "more", 30.0, 60.0)),
+                (self.SHIELD, self.SHIELD_ROW,
+                 ("healing_skill_health_as_energy_shield", "flat", 10.0,
+                  20.0))):
+            out = self.out(tmp_path, words, columns)
+            assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                     row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                     row["Scale"], row["Action"]) for row in out] == [
+                (*expected, "", "", "", "")]
+            assert self.refusals(out) == []
+            # NO CONDITION AND NO SCALE, so neither of those checks has
+            # anything to say.
+            assert gen.refuse_a_condition_nothing_asks_for(
+                "EnchantmentEffects", out) == []
+            assert gen.refuse_a_scale_nothing_asks_for(
+                "EnchantmentEffects", out) == []
+
+    def test_both_stats_are_ones_with_no_attribute(self):
+        """What lets the rows above name them: neither holds a gameplay
+        attribute, so both names are on the engine's list of stats that need
+        none. TESTED BY NAME. The control is a made-up name on no list."""
+        assert set(gen.HEALING_SKILL_STATS) == {
+            "healing_skill_health_restored",
+            "healing_skill_health_as_energy_shield"}
+        for stat in gen.HEALING_SKILL_STATS:
+            assert stat in gen.stats_with_no_attribute()
+        assert "healing_skill_health_given" not in gen.stats_with_no_attribute()
+
+    def test_the_kind_and_the_bounds_are_the_ones_each_sentence_states(self):
+        assert gen.HEALING_SKILL_STATS == {
+            "healing_skill_health_restored": ("more", 30.0, 60.0),
+            "healing_skill_health_as_energy_shield": ("flat", 10.0, 20.0)}
+
+    def test_every_shape_the_reader_gives_another_meaning_is_refused(
+            self, tmp_path):
+        """One change to a carried row at a time, each refused once and by
+        its own sentence. The control is the first line of each half: the row
+        unchanged is not refused."""
+        more = self.out(tmp_path, self.MORE, self.MORE_ROW)[0]
+        assert self.refusals([more]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"ValueKind": "flat"}, "value kind 'flat'"),
+                ({"RequiredTags": "Stat.Recovery"}, "under a required tag"),
+                ({"ValueLow": 29.0}, "states 29 on"),
+                ({"ValueHigh": 61.0}, "states 61 on")):
+            problems = self.refusals([dict(more, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert "healing_skill_health_restored" in problems[0]
+
+        shield = self.out(tmp_path, self.SHIELD, self.SHIELD_ROW)[0]
+        assert self.refusals([shield]) == []
+        for change, said in (
+                ({"ValueKind": "more"}, "value kind 'more'"),
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"RequiredTags": "Stat.Recovery"}, "under a required tag"),
+                ({"ValueLow": 9.0}, "states 9 on"),
+                ({"ValueHigh": 21.0}, "states 21 on")):
+            problems = self.refusals([dict(shield, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert "healing_skill_health_as_energy_shield" in problems[0]
+
+    def test_a_figure_inside_the_bounds_is_not_refused(self, tmp_path):
+        """A row may state a narrower pair than its sentence's, and each
+        bound itself is allowed."""
+        more = self.out(tmp_path, self.MORE, self.MORE_ROW)[0]
+        assert self.refusals([dict(more, ValueLow=40.0, ValueHigh=50.0)]) == []
+        assert self.refusals([dict(more, ValueLow=30.0, ValueHigh=60.0)]) == []
+
+    def test_a_condition_or_a_scale_on_either_stat_is_refused_elsewhere(
+            self, tmp_path):
+        """Neither stat is on the list of stats asked for under a condition
+        or the list asked for under a scale, so the two checks that read
+        those lists refuse such a row. The control is the row unchanged."""
+        more = self.out(tmp_path, self.MORE, self.MORE_ROW)[0]
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [more]) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [more]) == []
+        for stat in gen.HEALING_SKILL_STATS:
+            row = dict(more, Stat=stat)
+            conditioned = gen.refuse_a_condition_nothing_asks_for(
+                "EnchantmentEffects", [dict(row, Condition="health_below")])
+            assert len(conditioned) == 1 and stat in conditioned[0]
+            scaled = gen.refuse_a_scale_nothing_asks_for(
+                "EnchantmentEffects", [dict(row, Scale="own_stacks")])
+            assert len(scaled) == 1 and stat in scaled[0]
+
+    def test_a_passive_nodes_row_and_another_stat_are_left_alone(self):
+        """The check reads enchantment rows. A passive node's row states a
+        value per point, which the bounds do not describe; and a row on
+        another stat is not this check's to judge."""
+        node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                    "Stat": "healing_skill_health_restored",
+                    "ValueKind": "increased", "ValuePerPoint": 1.0}
+        assert gen.refuse_a_healing_skill_row_the_game_cannot_read(
+            "PassiveEffects", [node_row]) == []
+        assert self.refusals([{"Name": "X#1", "Stat": "healing_received",
+                               "ValueKind": "increased", "ValueLow": 1.0,
+                               "ValueHigh": 1.0,
+                               "RequiredTags": "Type.Melee"}]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        """`validate_enchantment_effects` is what the generator runs over the
+        finished rows. The row unchanged gives it nothing to say; the same row
+        made an increase is refused there, in this check's words."""
+        good = self.out(tmp_path, self.MORE, self.MORE_ROW)[0]
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [good]}, set()) == []
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(good, ValueKind="increased")]}, set())
+        assert any("value kind 'increased'" in problem
+                   and "healing_skill_health_restored" in problem
+                   for problem in problems), problems
+
+
+class TestAHitMayMakeItsWearerImmuneToItsDamageType:
+    """`damage_type_immunity_on_hit_chance` and
+    `damage_type_immunity_on_hit_seconds`, ruled 2026-10-12 and built ahead of
+    their rows, for "Shard of Anarchy (6-Piece Bonus): When you take damage,
+    you have a 10% chance to become immune to the damage type that hit you for
+    5 seconds". Two rows for one sentence, both flat with no Required Tags, no
+    Condition and no Scale: the chance, 10 to 10, and the seconds, 5 to 5.
+
+    THE SHEET HERE IS MADE UP AND SO IS WHERE THE SENTENCE SITS ON IT. The
+    words are the sentence without its set label, on the Negative side of a
+    made-up sheet. The real rows are the enchantment session's to write, under
+    the label a set bonus has; this shows that the generator carries the two
+    rows through and refuses every shape the game would open nothing for.
+    """
+
+    WORDS = ("When you take damage, you have a 10% chance to become immune to "
+             "the damage type that hit you for 5 seconds")
+    CHANCE = "damage_type_immunity_on_hit_chance"
+    SECONDS = "damage_type_immunity_on_hit_seconds"
+    CHANCE_ROW = {"Stat": CHANCE, "Value Kind": "flat",
+                  "Value Low": 10, "Value High": 10}
+    SECONDS_ROW = {"Stat": SECONDS, "Value Kind": "flat",
+                   "Value Low": 5, "Value High": 5}
+
+    def out(self, tmp_path, rows):
+        return TestTheChannellingConditionsOfTheEighthOfOctober().out(
+            tmp_path, self.WORDS, rows)
+
+    def refusals(self, rows):
+        return gen.refuse_a_damage_type_immunity_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def test_the_ruled_pair_of_rows_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, [self.CHANCE_ROW, self.SECONDS_ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"]) for row in out] == [
+            (self.CHANCE, "flat", 10.0, 10.0, "", "", "", ""),
+            (self.SECONDS, "flat", 5.0, 5.0, "", "", "", "")]
+        assert out[0]["Enchantment"] == out[1]["Enchantment"]
+        assert self.refusals(out) == []
+        # NO CONDITION AND NO SCALE, so neither of those checks has anything
+        # to say; and the whole sheet's validation has nothing to say either.
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+
+    def test_both_stats_are_ones_with_no_attribute(self):
+        """What lets the rows above name them: neither holds a gameplay
+        attribute, so both names are on the engine's list of stats that need
+        none. TESTED BY NAME. The control is a made-up name on no list."""
+        assert set(gen.DAMAGE_TYPE_IMMUNITY_ON_HIT_STATS) == {
+            self.CHANCE, self.SECONDS}
+        for stat in gen.DAMAGE_TYPE_IMMUNITY_ON_HIT_STATS:
+            assert stat in gen.stats_with_no_attribute()
+        assert "damage_type_immunity_chance" not in gen.stats_with_no_attribute()
+
+    def test_the_bounds_are_a_chance_up_to_100_and_seconds_up_to_the_windows_bound(
+            self):
+        assert gen.DAMAGE_TYPE_IMMUNITY_ON_HIT_STATS == {
+            self.CHANCE: (0.0, 100.0),
+            self.SECONDS: (0.0, gen.MAX_DAMAGE_IMMUNITY_SECONDS)}
+        assert gen.MAX_DAMAGE_IMMUNITY_SECONDS == 10.0
+
+    def test_any_chance_and_any_time_inside_the_bounds_is_not_refused(
+            self, tmp_path):
+        """The mechanism is for any chance and any time, so a pair other than
+        the sentence's is carried too, each bound itself included, and a pair
+        that rolls between two figures."""
+        chance, seconds = self.out(tmp_path, [self.CHANCE_ROW, self.SECONDS_ROW])
+        assert self.refusals([chance, seconds]) == []
+        for low, high, least, most in ((100.0, 100.0, 10.0, 10.0),
+                                       (0.5, 0.5, 0.25, 0.25),
+                                       (5.0, 25.0, 2.0, 8.0)):
+            assert self.refusals([
+                dict(chance, ValueLow=low, ValueHigh=high),
+                dict(seconds, ValueLow=least, ValueHigh=most)]) == []
+
+    def test_every_shape_the_game_would_open_nothing_for_is_refused(
+            self, tmp_path):
+        """One change to a carried pair at a time, each refused once and by
+        its own sentence. The control is the first line: the pair unchanged is
+        not refused."""
+        chance, seconds = self.out(tmp_path, [self.CHANCE_ROW, self.SECONDS_ROW])
+        assert self.refusals([chance, seconds]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"ValueKind": "more"}, "value kind 'more'"),
+                ({"RequiredTags": "Type.Melee"}, "under a required tag"),
+                ({"ValueLow": 0.0}, "states 0 on"),
+                ({"ValueLow": -10.0}, "states -10 on"),
+                ({"ValueHigh": 101.0}, "states 101 on")):
+            problems = self.refusals([dict(chance, **change), seconds])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.CHANCE) in problems[0]
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"RequiredTags": "Type.Melee"}, "under a required tag"),
+                ({"ValueLow": 0.0}, "states 0 on"),
+                ({"ValueHigh": 10.5}, "states 10.5 on")):
+            problems = self.refusals([chance, dict(seconds, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.SECONDS) in problems[0]
+
+    def test_one_of_the_two_stats_without_the_other_is_refused(self, tmp_path):
+        """The game opens a window only when both figures are above nought,
+        so an enchantment stating one alone grants nothing. Each half alone is
+        refused once, naming the stat that is missing; and the sheet's reader
+        carries the lone row through, so the refusal is this check's."""
+        chance, seconds = self.out(tmp_path, [self.CHANCE_ROW, self.SECONDS_ROW])
+        assert self.refusals([chance, seconds]) == []
+        alone = self.refusals([chance])
+        assert len(alone) == 1 and repr(self.SECONDS) in alone[0], alone
+        assert "states no row on" in alone[0]
+        alone = self.refusals([seconds])
+        assert len(alone) == 1 and repr(self.CHANCE) in alone[0], alone
+        # TWO ENCHANTMENTS EACH WITH ONE HALF ARE TWO REFUSALS: the two rows
+        # must be on the same enchantment.
+        elsewhere = dict(seconds, Name="Another#1", Enchantment="Another")
+        assert len(self.refusals([chance, elsewhere])) == 2
+        lone = self.out(tmp_path, [self.CHANCE_ROW])
+        assert [row["Stat"] for row in lone] == [self.CHANCE]
+        assert len(self.refusals(lone)) == 1
+
+    def test_a_misspelt_stat_is_refused_by_the_whole_sheets_validation(
+            self, tmp_path):
+        """A name one letter off is on no list of stats, so the check every
+        stat row passes refuses it. The control is the pair spelt right."""
+        good = self.out(tmp_path, [self.CHANCE_ROW, self.SECONDS_ROW])
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": good}, set()) == []
+        misspelt = "damage_type_immunity_on_hit_chanse"
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(good[0], Stat=misspelt,
+                                         ValueKind="increased"), good[1]]},
+            set())
+        assert any(repr(misspelt) in problem and "is not a stat" in problem
+                   for problem in problems), problems
+
+    def test_a_condition_or_a_scale_on_either_stat_is_refused_elsewhere(
+            self, tmp_path):
+        """Neither stat is on the list of stats asked for under a condition
+        or the list asked for under a scale, so the two checks that read
+        those lists refuse such a row. The control is the pair unchanged."""
+        out = self.out(tmp_path, [self.CHANCE_ROW, self.SECONDS_ROW])
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        for row in out:
+            conditioned = gen.refuse_a_condition_nothing_asks_for(
+                "EnchantmentEffects", [dict(row, Condition="health_below")])
+            assert len(conditioned) == 1 and row["Stat"] in conditioned[0]
+            scaled = gen.refuse_a_scale_nothing_asks_for(
+                "EnchantmentEffects", [dict(row, Scale="own_stacks")])
+            assert len(scaled) == 1 and row["Stat"] in scaled[0]
+
+    def test_a_passive_nodes_row_and_another_stat_are_left_alone(self):
+        node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                    "Stat": self.CHANCE, "ValueKind": "increased",
+                    "ValuePerPoint": 1.0}
+        assert gen.refuse_a_damage_type_immunity_row_the_game_cannot_read(
+            "PassiveEffects", [node_row]) == []
+        assert self.refusals([{"Name": "X#1", "Stat": "healing_received",
+                               "ValueKind": "increased", "ValueLow": 1.0,
+                               "ValueHigh": 1.0,
+                               "RequiredTags": "Type.Melee"}]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        """`validate_enchantment_effects` is what the generator runs over the
+        finished rows. The pair unchanged gives it nothing to say; the chance
+        alone is refused there, in this check's words."""
+        out = self.out(tmp_path, [self.CHANCE_ROW, self.SECONDS_ROW])
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [out[0]]}, set())
+        assert any("states no row on" in problem and repr(self.SECONDS) in problem
+                   for problem in problems), problems
+
+
+class TestAChargesDamageByTheShareOfItsRangeMoved:
+    """`share_of_range_moved`, ruled 2026-10-08 and built ahead of its rows.
+    The rows here are the shape `docs/DECISIONS.md` of that day gives the
+    session that writes rows, on a made-up enchantment sheet holding the real
+    sentence. Two rows for one sentence: attack damage and spell damage, each
+    `increased`, rolled between the sentence's two figures, requiring
+    `Keyword.Charge`, on the scale with a step of 1.
+
+    THE ONE SCALE WHOSE COUNT IS A FRACTION. The value is the bonus at the
+    skill's full range, so the step is 1 and nothing else, and a row states
+    neither a cap in steps nor an offset.
+    """
+
+    WORDS = ("Charge skills deal 30%-60% bonus damage proportional to distance "
+             "traveled")
+    NAME = gen.row_name("Positive", WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 3, "Keyword.Charge, Stat.Offense.Global", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestEnchantmentEffects.HEADER
+    ROW = {"Value Kind": "increased", "Value Low": 30, "Value High": 60,
+           "Required Tags": "Keyword.Charge",
+           "Scale": "share_of_range_moved", "Scale Step": 1}
+    BOTH = [dict(ROW, Stat="attack_damage"), dict(ROW, Stat="spell_damage")]
+
+    def out(self, tmp_path, rows):
+        effects = [self.HEADER]
+        for columns in rows:
+            values = {"Enchantment": self.NAME, "Effect": self.WORDS}
+            values.update(columns)
+            effects.append([values.get(column) for column in self.HEADER])
+        return gen.enchantment_effects(openpyxl.load_workbook(workbook_with(
+            tmp_path / "charge.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": effects})))
+
+    def test_both_rows_are_carried_through_with_the_scale_and_no_cap(
+            self, tmp_path):
+        out = self.out(tmp_path, self.BOTH)
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["ScaleStep"], row["ScaleMaxSteps"],
+                 row["ScaleOffset"], row["Action"]) for row in out] == [
+            ("attack_damage", "increased", 30.0, 60.0, "Keyword.Charge", "",
+             "share_of_range_moved", 1.0, 0, 0.0, ""),
+            ("spell_damage", "increased", 30.0, 60.0, "Keyword.Charge", "",
+             "share_of_range_moved", 1.0, 0, 0.0, "")]
+        # BOTH STATS ARE ASKED FOR WITH THE CHARGE'S DISTANCE, so neither the
+        # check on scaled stats nor the one on conditions has anything to say.
+        assert gen.refuse_a_scale_nothing_asks_for("EnchantmentEffects", out) == []
+        assert gen.refuse_a_condition_nothing_asks_for("EnchantmentEffects", out) == []
+
+    def test_the_scale_is_the_one_that_counts_a_fraction(self):
+        """The list, by name. The controls are the two neighbouring lists: it
+        needs no cap of the row's and reads no offset."""
+        assert gen.SCALES_THAT_COUNT_A_FRACTION == {"share_of_range_moved"}
+        assert gen.SCALES_THAT_COUNT_A_FRACTION <= set(gen.SCALES)
+        assert not gen.SCALES_THAT_COUNT_A_FRACTION & gen.SCALES_THAT_NEED_A_CAP
+        assert not gen.SCALES_THAT_COUNT_A_FRACTION & gen.SCALES_THAT_TAKE_AN_OFFSET
+
+    def test_a_cap_in_steps_is_refused_and_the_same_row_without_it_is_not(
+            self, tmp_path):
+        """Scale Max Steps caps whole steps and this scale has none. The
+        control is the first line: the same row with the column empty."""
+        row = dict(self.ROW, Stat="attack_damage")
+        assert self.out(tmp_path, [row])[0]["ScaleMaxSteps"] == 0
+        with pytest.raises(gen.DataError, match="counts a fraction"):
+            self.out(tmp_path, [dict(row, **{"Scale Max Steps": 1})])
+
+    def test_a_cap_is_still_carried_on_a_scale_that_counts_whole_steps(
+            self, tmp_path):
+        """The refusal is for the scales listed and no other: the same row on
+        a scale of whole steps keeps its cap."""
+        row = dict(self.ROW, Stat="attack_damage", **{
+            "Scale": "seconds_in_combat", "Scale Step": 1,
+            "Scale Max Steps": 5})
+        out = self.out(tmp_path, [row])
+        assert (out[0]["Scale"], out[0]["ScaleMaxSteps"]) == ("seconds_in_combat", 5)
+
+    def test_an_offset_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="reads an offset"):
+            self.out(tmp_path, [dict(self.ROW, Stat="attack_damage",
+                                     **{"Scale Offset": 1})])
+
+    @pytest.mark.parametrize("step", [0, 0.5, 2, 14])
+    def test_a_step_other_than_one_is_refused(self, tmp_path, step):
+        """There is no distance per step: the whole range is worth one value.
+        A step of 14, the metres of the longest charge, is the mistake this
+        is for."""
+        with pytest.raises(gen.DataError, match="scaling step"):
+            self.out(tmp_path, [dict(self.ROW, Stat="attack_damage",
+                                     **{"Scale Step": step})])
+
+    def test_the_scale_is_refused_on_a_stat_not_asked_with_the_charge(self):
+        """`crit_chance` is asked for through the pipeline, so a scaled row on
+        it passes the older check; its asker is not handed how far a charge
+        went, so this scale would read nought there every time. The controls
+        are the two designed stats on this scale, and `crit_chance` on a scale
+        that reads the character."""
+        assert "crit_chance" in gen.STATS_WITH_AN_ASKER
+        assert gen.STATS_ASKED_WITH_A_CHARGES_DISTANCE == {
+            "attack_damage", "spell_damage"}
+        for stat in ("attack_damage", "spell_damage"):
+            assert gen.refuse_a_scale_nothing_asks_for("EnchantmentEffects", [
+                {"Name": "A#1", "Stat": stat,
+                 "Scale": "share_of_range_moved"}]) == []
+        assert gen.refuse_a_scale_nothing_asks_for("EnchantmentEffects", [
+            {"Name": "A#1", "Stat": "crit_chance",
+             "Scale": "target_debuffs"}]) == []
+        problems = gen.refuse_a_scale_nothing_asks_for("EnchantmentEffects", [
+            {"Name": "A#1", "Stat": "crit_chance",
+             "Scale": "share_of_range_moved"}])
+        assert len(problems) == 1
+        assert "how far a charge had gone" in problems[0]
+        assert "crit_chance" in problems[0]
+
+
+class TestAllDotsOnTheFirstHitAndTheStunNearTheDying:
+    """One status name that is each of the five damage over time ailments, and
+    a stun on every enemy near a dying, afflicted enemy with a chance and a
+    duration on one row. Ruled 2026-10-08, for "Your first hit against each
+    enemy applies all your active DoTs instantly" and "Chronomancer's Time-Lock
+    (6-Piece Bonus)". Both sentences are the real ones.
+
+    THE SET SENTENCE IS TYPED GENERIC HERE, as the Archon's Aegis sentence is in
+    `TestDamageImmunityAndTheShieldRecharge`: a set is written whole or not at
+    all, and this workbook holds one of its rows."""
+
+    DOTS_WORDS = "Your first hit against each enemy applies all your active DoTs instantly"
+    DOTS = gen.row_name("Positive", DOTS_WORDS[:48])
+    LOCK_WORDS = ("Chronomancer's Time-Lock (6-Piece Bonus): When an enemy dies while "
+                  "affected by one of your debuffs, there is a 25% chance for a "
+                  "'Time-Lock' to occur. This freezes all nearby enemies for 2 seconds")
+    LOCK = gen.row_name("Positive", LOCK_WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [DOTS_WORDS, "Generic", 2, "Scope.FirstHit, Keyword.DoT.Generic", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+        [LOCK_WORDS, "Generic", 7, "Type.Debuff, Keyword.CC", None,
+         None, None, None, None],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def book(self, tmp_path, values):
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "status_layer.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def dots(self, tmp_path, changes):
+        values = {"Enchantment": self.DOTS, "Effect": self.DOTS_WORDS,
+                  "Action": "apply_status", "Action Event": "first_hit_dealt",
+                  "Ailment": gen.ALL_DOTS_STATUS, "Value Low": 100,
+                  "Trigger Cooldown": 0}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def lock(self, tmp_path, changes):
+        values = {"Enchantment": self.LOCK, "Effect": self.LOCK_WORDS,
+                  "Action": "stun_near_the_dying", "Action Event": "afflicted_death",
+                  "Value Low": 25, "Stack Seconds": 2}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    # ---- the first-hit row
+
+    def test_the_first_hit_row_is_carried_through_with_no_cooldown(self, tmp_path):
+        out = gen.enchantment_effects(self.dots(tmp_path, {}))
+        assert len(out) == 1
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["FractionOf"], out[0]["Ailment"],
+                out[0]["TriggerCooldown"], out[0]["StackSeconds"]) == (
+            "apply_status", "first_hit_dealt", 100.0, 100.0, "", "All DoTs", 0.0, 0.0)
+
+    def test_stack_seconds_on_an_action_that_does_not_read_it_is_refused(self, tmp_path):
+        """Issue #2337. A Stack Seconds cell on `apply_status`, which does not
+        read it, used to be written as 0.0 without a word. THE CONTROLS: the
+        same row without the cell is carried through, and the cell on the stun
+        near the dying, which reads it as the stun's seconds, is carried."""
+        out = gen.enchantment_effects(self.dots(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["StackSeconds"]) == ("apply_status", 0.0)
+
+        out = gen.enchantment_effects(self.lock(tmp_path, {}))
+        assert (out[0]["Action"], out[0]["StackSeconds"]) == ("stun_near_the_dying", 2.0)
+
+        with pytest.raises(gen.DataError,
+                           match="states Stack Seconds on the action apply_status, "
+                                 "which does not read it"):
+            gen.enchantment_effects(self.dots(tmp_path, {"Stack Seconds": 3}))
+
+    def test_the_actions_that_read_stack_seconds_are_the_reading_branches(self):
+        """The list the refusal reads is built from the names the reading
+        branches test, and holds no action that counts without a window."""
+        assert gen.ACTIONS_THAT_READ_STACK_SECONDS == {
+            *gen.PLACED_ACTIONS, *gen.NEARBY_ACTIONS,
+            gen.STUN_NEAR_THE_DYING_ACTION, gen.SLOW_FOR_SECONDS_ACTION}
+        for windowless in (*gen.NTH_ACTIONS, gen.KEPT_STACKS_REPEAT_SKILL_ACTION,
+                           gen.KEPT_STACKS_FREE_NEXT_ABILITY_ACTION,
+                           gen.GADGET_FIRES_AT_TRAP_ENEMY_ACTION, "apply_status"):
+            assert windowless not in gen.ACTIONS_THAT_READ_STACK_SECONDS, windowless
+
+    def test_without_its_stated_nought_the_first_hit_row_would_wait_a_quarter_second(
+            self, tmp_path):
+        """Why the row states a Trigger Cooldown of 0: the sentence says "against
+        each enemy", and one swing first-strikes several."""
+        out = gen.enchantment_effects(self.dots(tmp_path, {"Trigger Cooldown": None}))
+        assert out[0]["TriggerCooldown"] == gen.DEFAULT_TRIGGER_COOLDOWN == 0.25
+
+    def test_all_dots_is_refused_on_the_seconds_action(self, tmp_path):
+        with pytest.raises(gen.DataError, match="which apply_status_seconds cannot"):
+            gen.enchantment_effects(self.dots(tmp_path, {
+                "Action": "apply_status_seconds", "Value Low": 2}))
+
+    @pytest.mark.parametrize("action, event", [
+        ("apply_status_to_self", "hit_taken"),
+        ("apply_status_to_self_seconds", "hit_taken"),
+        ("apply_status_to_self_sized", "dot_applied"),
+    ])
+    def test_all_dots_is_refused_on_every_action_that_lays_a_status_on_the_wearer(
+            self, tmp_path, action, event):
+        with pytest.raises(gen.DataError, match=f"which {action} cannot"):
+            gen.enchantment_effects(self.dots(tmp_path, {
+                "Action": action, "Action Event": event, "Value Low": 2,
+                "Trigger Cooldown": None}))
+
+    def test_all_dots_is_not_an_ailment_another_action_may_name(self, tmp_path):
+        with pytest.raises(gen.DataError, match="is not one the game has"):
+            gen.enchantment_effects(self.dots(tmp_path, {
+                "Action": "dot_remaining_target", "Action Event": "hit_dealt",
+                "Value Low": 20, "Trigger Cooldown": None}))
+
+    def test_the_five_are_the_ailments_and_void_splinter_is_not_one(self):
+        assert gen.AILMENTS == ("Bleed", "Poison", "Disease", "Necrosis", "Burn")
+        assert "Void Splinter" not in gen.AILMENTS
+        assert gen.ALL_DOTS_STATUS not in gen.APPLY_STATUSES
+
+    # ---- the Time-Lock row
+
+    def test_the_time_lock_row_is_carried_through_with_its_chance_and_its_seconds(
+            self, tmp_path):
+        out = gen.enchantment_effects(self.lock(tmp_path, {}))
+        assert len(out) == 1
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["FractionOf"], out[0]["StackSeconds"],
+                out[0]["StackSecondsHigh"], out[0]["TriggerCooldown"],
+                out[0]["Ailment"]) == (
+            "stun_near_the_dying", "afflicted_death", 25.0, 25.0, "", 2.0, 0.0, 0.0, "")
+
+    @pytest.mark.parametrize("event", ["kill", "hit_dealt", "nearby_death", None])
+    def test_the_stun_is_refused_on_any_event_but_the_afflicted_death(self, tmp_path, event):
+        with pytest.raises(gen.DataError, match="whoever afflicted the dead enemy"):
+            gen.enchantment_effects(self.lock(tmp_path, {"Action Event": event}))
+
+    def test_the_stun_is_refused_without_its_seconds(self, tmp_path):
+        with pytest.raises(gen.DataError, match="states no Stack Seconds"):
+            gen.enchantment_effects(self.lock(tmp_path, {"Stack Seconds": None}))
+
+    def test_the_stun_is_refused_without_its_chance(self, tmp_path):
+        with pytest.raises(gen.DataError, match="Value Low is empty"):
+            gen.enchantment_effects(self.lock(tmp_path, {"Value Low": None}))
+
+    @pytest.mark.parametrize("chance", [0, -25, 120])
+    def test_a_chance_outside_nought_to_a_hundred_is_refused(self, tmp_path, chance):
+        with pytest.raises(gen.DataError, match="A chance is above 0 and up to 100"):
+            gen.enchantment_effects(self.lock(tmp_path, {"Value Low": chance}))
+
+    def test_a_chance_of_a_hundred_is_allowed(self, tmp_path):
+        out = gen.enchantment_effects(self.lock(tmp_path, {"Value Low": 100}))
+        assert out[0]["ValueLow"] == 100.0
+
+    @pytest.mark.parametrize("seconds", [0, -2, 12])
+    def test_seconds_outside_what_a_status_may_last_are_refused(self, tmp_path, seconds):
+        with pytest.raises(gen.DataError, match="A stun lasts above 0 and up to 10"):
+            gen.enchantment_effects(self.lock(tmp_path, {"Stack Seconds": seconds}))
+
+    def test_the_longest_a_stun_may_last_is_the_status_bound_and_not_the_stack_bound(
+            self, tmp_path):
+        assert gen.MAX_STATUS_SECONDS == 10.0 < gen.MAX_STACK_SECONDS
+        out = gen.enchantment_effects(self.lock(tmp_path, {"Stack Seconds": 10}))
+        assert out[0]["StackSeconds"] == 10.0
+
+    @pytest.mark.parametrize("column, written", [
+        ("Fraction Of", "maximum"), ("Value Kind", "more"), ("Scale", "own_stacks")])
+    def test_the_stun_with_a_column_it_does_not_read_is_refused(
+            self, tmp_path, column, written):
+        with pytest.raises(gen.DataError, match="must be empty"):
+            gen.enchantment_effects(self.lock(tmp_path, {column: written}))
+
+    def test_the_stun_naming_an_ailment_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="so it would be dropped"):
+            gen.enchantment_effects(self.lock(tmp_path, {"Ailment": "Poison"}))
+
+    def test_the_stun_hangs_on_an_event_the_game_fires_that_no_hit_fires(self):
+        assert gen.STUN_NEAR_THE_DYING_EVENTS == ("afflicted_death",)
+        assert "afflicted_death" in gen.ACTION_ONLY_EVENTS
+        assert "afflicted_death" not in gen.HIT_FIRED_EVENTS
+        assert "afflicted_death" in gen.EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK
+
+    def test_a_stated_trigger_cooldown_is_kept_on_the_stun(self, tmp_path):
+        out = gen.enchantment_effects(self.lock(tmp_path, {"Trigger Cooldown": 10}))
+        assert out[0]["TriggerCooldown"] == 10.0
+
+
+class TestEnemiesThatSurviveFiveSecondsAfterAFirstHit:
+    """`opponent_first_struck_by_you_seconds_ago`, ruled 2026-10-12 and built
+    ahead of its row, for "Enemies that survive more than 5 seconds after
+    first being hit gain 20%-40% increased damage". The row is the wearer's
+    own `damage_taken`, increased, 20 to 40, under that condition with 5:
+    the shape every merged row saying "enemies deal more damage" has.
+
+    THE SHEET HERE IS MADE UP. The words are the real sentence, a Negative
+    one, on a made-up sheet. The real row is the enchantment session's to
+    write; this shows that the generator carries the ruled row through and
+    refuses the wrong ones.
+    """
+
+    WORDS = ("Enemies that survive more than 5 seconds after first being hit "
+             "gain 20%-40% increased damage")
+    CONDITION = "opponent_first_struck_by_you_seconds_ago"
+    ROW = {"Stat": "damage_taken", "Value Kind": "increased",
+           "Value Low": 20, "Value High": 40,
+           "Condition": CONDITION, "Condition Value": 5}
+
+    def out(self, tmp_path, rows):
+        return TestTheChannellingConditionsOfTheEighthOfOctober().out(
+            tmp_path, self.WORDS, rows)
+
+    def test_the_ruled_row_is_carried_through_and_its_asker_can_judge_it(
+            self, tmp_path):
+        out = self.out(tmp_path, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["Condition"], row["ConditionValue"],
+                 row["Scale"], row["Action"]) for row in out] == [
+            ("damage_taken", "increased", 20.0, 40.0, self.CONDITION, 5.0,
+             "", "")]
+        # IT ASKS ABOUT THE BLOW BEING TAKEN, which `damage_taken` is handed.
+        assert gen.what_a_condition_needs(self.CONDITION) == "blow_taken"
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+
+    def test_control_the_same_row_under_a_merged_opponent_condition_passes(
+            self, tmp_path):
+        """The control for the refusals below: the made-up sheet carries a
+        `damage_taken` row under a condition that was merged long before."""
+        out = self.out(tmp_path, [dict(
+            self.ROW, **{"Condition": "opponent_is_staggered",
+                         "Condition Value": None})])
+        assert out[0]["Condition"] == "opponent_is_staggered"
+
+    def test_the_seconds_must_be_stated_and_inside_a_minute(self, tmp_path):
+        with pytest.raises(gen.DataError, match="Condition Value"):
+            self.out(tmp_path, [dict(self.ROW, **{"Condition Value": None})])
+        with pytest.raises(gen.DataError, match="between 0 and 60"):
+            self.out(tmp_path, [dict(self.ROW, **{"Condition Value": 61})])
+        with pytest.raises(gen.DataError, match="between 0 and 60"):
+            self.out(tmp_path, [dict(self.ROW, **{"Condition Value": -1})])
+
+    @pytest.mark.parametrize("stat", [
+        "attack_damage", "spell_damage", "movement_speed", "armor_penetration"])
+    def test_the_condition_on_a_stat_that_is_not_handed_a_blow_taken_is_refused(
+            self, tmp_path, stat):
+        """A stat asked for while a hit is DEALT, or with the wearer's state
+        alone, is handed no blow taken: the condition would be refused every
+        time it was judged and the row would grant nothing."""
+        out = self.out(tmp_path, [dict(self.ROW, Stat=stat)])
+        problems = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out)
+        assert len(problems) == 1
+        assert self.CONDITION in problems[0] and repr(stat) in problems[0]
+
+    @pytest.mark.parametrize("stat", [
+        "armor", "block_chance", "damage_reduction", "damage_taken", "evasion"])
+    def test_every_stat_asked_for_at_a_defence_step_can_judge_it(
+            self, tmp_path, stat):
+        out = self.out(tmp_path, [dict(self.ROW, Stat=stat)])
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+
+    def test_the_name_is_a_condition_of_a_blow_taken_with_a_seconds_bound(self):
+        assert self.CONDITION in gen.CONDITIONS_OF_A_BLOW_TAKEN
+        assert self.CONDITION not in gen.CONDITIONS_OF_A_HIT_DEALT
+        assert gen.CONDITIONS[self.CONDITION] == (
+            0.0, 60.0, "a number of seconds")
+
+
+class TestEnemiesImmuneFifteenSecondsAfterAFirstHit:
+    """`enemies_immune_to_you_after_seconds`, ruled 2026-10-12 and built ahead
+    of its row, for "Enemies that have been alive for more than 15 seconds
+    become immune to your damage until you disengage for 3 seconds". One stat
+    at a flat 15 with no Required Tags, no Condition, no Scale and no Action:
+    `UCataclysmAbilitySystemComponent::IsImmuneToDamageOf` asks the attacker
+    for it where a blow is resolved.
+
+    THE 3 SECONDS ARE NOT ON THE ROW. They are the game's combat lapse, and
+    every refusal about a figure says so.
+
+    THE SHEET HERE IS MADE UP. The words are the real sentence, a Negative
+    one. The real row is the enchantment session's to write; this shows that
+    the generator carries the ruled row through and refuses the wrong ones.
+    """
+
+    WORDS = ("Enemies that have been alive for more than 15 seconds become "
+             "immune to your damage until you disengage for 3 seconds")
+    STAT = "enemies_immune_to_you_after_seconds"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 15, "Value High": 15}
+    LAPSE = "are the game's own combat lapse (CombatLapseSeconds)"
+
+    def out(self, tmp_path, rows):
+        return TestTheChannellingConditionsOfTheEighthOfOctober().out(
+            tmp_path, self.WORDS, rows)
+
+    def refusals(self, rows):
+        return gen.refuse_an_enemies_immune_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def test_the_ruled_row_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"]) for row in out] == [
+            (self.STAT, "flat", 15.0, 15.0, "", "", "", "")]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+
+    def test_the_stat_has_no_attribute(self):
+        """TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.ENEMIES_IMMUNE_AFTER_SECONDS_STAT == self.STAT
+        assert self.STAT in gen.stats_with_no_attribute()
+        assert "enemies_immune_after_seconds" not in gen.stats_with_no_attribute()
+
+    def test_the_generator_holds_the_name_and_the_lapse_the_engine_has(self):
+        """The generator refuses bad rows by this name and the engine asks the
+        attacker's stat line for the name in
+        `CataclysmAbilitySystemComponent.cpp`. THE CONTROL is the seconds stat
+        of the damage type immunity, read by the same pattern from the same
+        file. And the 3 seconds every refusal quotes are the engine's own
+        `CombatLapseSeconds`, read out of the header."""
+        import re
+        folder = gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+        source = (folder / "CataclysmAbilitySystemComponent.cpp").read_text(
+            encoding="utf-8")
+        names = dict(re.findall(
+            r'UCataclysmAbilitySystemComponent::(\w+Stat)\s*=\s*TEXT\("([^"]+)"\)',
+            source))
+        assert names["DamageTypeImmunityOnHitSecondsStat"] == (
+            gen.DAMAGE_TYPE_IMMUNITY_ON_HIT_SECONDS_STAT)
+        assert names["EnemiesImmuneAfterSecondsStat"] == (
+            gen.ENEMIES_IMMUNE_AFTER_SECONDS_STAT)
+        header = (folder / "CataclysmAbilitySystemComponent.h").read_text(
+            encoding="utf-8")
+        (lapse,) = re.findall(
+            r"static constexpr float CombatLapseSeconds = ([0-9.]+)f;", header)
+        assert float(lapse) == gen.COMBAT_LAPSE_SECONDS == 3.0
+
+    def test_every_wrong_shape_is_refused_by_its_own_sentence(self, tmp_path):
+        """One change to the carried row at a time. The control is the first
+        line: the row unchanged is not refused."""
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert self.refusals([row]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"ValueKind": "more"}, "value kind 'more'"),
+                ({"RequiredTags": "Type.Melee"}, "under a required tag"),
+                ({"ValueLow": 0.0, "ValueHigh": 0.0}, "states 0 on"),
+                ({"ValueLow": -1.0, "ValueHigh": -1.0}, "states -1 on"),
+                ({"ValueLow": 61.0, "ValueHigh": 61.0}, "states 61 on"),
+                ({"Action": "health"}, "with the action 'health'")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+        # THE BOUND IS INCLUDED AT ITS TOP.
+        assert self.refusals([dict(row, ValueLow=60.0, ValueHigh=60.0)]) == []
+
+    def test_a_range_is_refused_and_told_the_three_seconds_are_not_a_cell(
+            self, tmp_path):
+        """15 to 18 is the row somebody writes who adds the 3 to the 15, and
+        3 to 15 the row of somebody who puts both figures in the two value
+        columns. Each is one refusal, and it says where the 3 seconds are."""
+        (row,) = self.out(tmp_path, [self.ROW])
+        for low, high in ((15.0, 18.0), (3.0, 15.0)):
+            problems = self.refusals([dict(row, ValueLow=low, ValueHigh=high)])
+            assert len(problems) == 1, problems
+            assert f"states {low:g} to {high:g} on" in problems[0]
+            assert "ONE figure" in problems[0] and self.LAPSE in problems[0]
+
+    @pytest.mark.parametrize("column", [
+        "ConditionValue", "ConditionValue2", "ConditionValueHigh",
+        "StackSeconds", "StackSecondsHigh", "EverySeconds", "TriggerCooldown",
+        "EventValue"])
+    def test_a_three_written_in_another_cell_is_refused_and_told_why(
+            self, tmp_path, column):
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert float(row[column]) == 0.0
+        problems = self.refusals([dict(row, **{column: 3.0})])
+        assert len(problems) == 1, problems
+        assert f"states 3 in {column} beside" in problems[0]
+        assert self.LAPSE in problems[0]
+        assert column in gen.COLUMNS_THE_IMMUNITY_ROW_DOES_NOT_READ
+
+    def test_a_second_row_holding_the_three_is_refused(self, tmp_path):
+        """Two flat rows on one stat are added together, so a second row of 3
+        would make the wait 18 seconds. One refusal for the enchantment,
+        however many rows it has; rows of two enchantments are not counted
+        together."""
+        (row,) = self.out(tmp_path, [self.ROW])
+        second = dict(row, Name=row["Name"].replace("#1", "#2"),
+                      ValueLow=3.0, ValueHigh=3.0)
+        third = dict(second, Name=row["Name"].replace("#1", "#3"))
+        for rows in ([row, second], [row, second, third]):
+            problems = self.refusals(rows)
+            assert len(problems) == 1, problems
+            assert "on more than one row" in problems[0]
+            assert self.LAPSE in problems[0]
+        other = dict(row, Name="Negative_Made_up#1", Enchantment="Negative_Made_up")
+        assert self.refusals([row, other]) == []
+
+    def test_a_condition_or_a_scale_on_the_stat_is_refused_elsewhere(
+            self, tmp_path):
+        (row,) = self.out(tmp_path, [self.ROW])
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="in_combat")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="seconds_in_combat")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+
+    def test_a_passive_nodes_row_and_another_stat_are_left_alone(self):
+        node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                    "Stat": self.STAT, "ValueKind": "increased",
+                    "ValuePerPoint": 1.0}
+        assert self.refusals([node_row]) == []
+        assert self.refusals([{"Name": "X#1", "Stat": "damage_taken",
+                               "ValueKind": "increased", "ValueLow": 20.0,
+                               "ValueHigh": 40.0,
+                               "RequiredTags": "Type.Melee"}]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        out = self.out(tmp_path, [self.ROW])
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(out[0], ValueLow=15.0, ValueHigh=18.0)]},
+            set())
+        assert any("ONE figure" in problem and repr(self.STAT) in problem
+                   for problem in problems), problems
+
+    def test_a_misspelt_stat_is_refused_by_the_whole_sheets_validation(
+            self, tmp_path):
+        """As the same test of the retaliation flag does it: the name one
+        letter off, with a kind that is not flat. The control is the row
+        spelt right.
+
+        WHAT THIS DOES NOT SHOW. Measured 2026-10-12: the same misspelt name
+        on a FLAT row is carried through and the sheet's validation says
+        nothing of it, so the ruled row misspelt would be accepted and read
+        by nothing. That is how the validation treats every flat row, it was
+        so before this stat, and it is not changed here."""
+        good = self.out(tmp_path, [self.ROW])
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": good}, set()) == []
+        misspelt = "enemies_immune_to_you_after_second"
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(good[0], Stat=misspelt,
+                                         ValueKind="increased")]},
+            set())
+        assert any(repr(misspelt) in problem and "is not a stat" in problem
+                   for problem in problems), problems
+
+
+class TestAShareOfDamageTakenIsDealtOverSeconds:
+    """`damage_taken_delayed_percent` and `damage_taken_delayed_seconds`, ruled
+    2026-10-12 and built ahead of their rows, for "25%-50% of damage taken is
+    dealt over 4-8 seconds". Two flat rows on ONE enchantment, the share 25
+    to 50 and the seconds 4 to 8, with no Required Tags, no Condition, no
+    Scale and no Action: `UCataclysmDelayedDamage::DelayShare` asks the struck
+    character for both where a blow's damage reaches health.
+
+    BOTH FIGURES COME FROM ONE ROLL BECAUSE BOTH ROWS ARE ROWS OF ONE
+    ENCHANTMENT. An item records one roll for each half of an enchantment
+    pair and the game rolls every row of that enchantment with it. What this
+    file can show of that is the half the generator owns: both rows are
+    carried under one enchantment's name, in the order the game rolls them
+    from, and a sheet that splits the two stats across enchantments, or
+    states one without the other, is refused. The rolling itself is the
+    engine's, and `CataclysmEnchantmentRollTests.cpp` reads it.
+
+    THE SHEET HERE IS MADE UP. The words are the real sentence, a Positive
+    one. The real rows are the enchantment session's to write; this shows
+    that the generator carries the ruled rows through and refuses the wrong
+    ones.
+    """
+
+    WORDS = "25%-50% of damage taken is dealt over 4-8 seconds"
+    SHARE = "damage_taken_delayed_percent"
+    SECONDS = "damage_taken_delayed_seconds"
+    SHARE_ROW = {"Stat": SHARE, "Value Kind": "flat",
+                 "Value Low": 25, "Value High": 50}
+    SECONDS_ROW = {"Stat": SECONDS, "Value Kind": "flat",
+                   "Value Low": 4, "Value High": 8}
+    HEADER = TestEnchantmentEffects.HEADER
+    TITLES = TestTheConditionsAndTheScaleOfTheSeventhOfOctober.TITLES
+
+    def out(self, tmp_path, rows):
+        """The generator's rows for the Positive sentence and these effect
+        rows, each a dict of columns. As `out` of
+        `TestTheChannellingConditionsOfTheEighthOfOctober`, with the sentence
+        in the Positive column."""
+        effects = [self.HEADER]
+        for columns in rows:
+            values = {"Enchantment": gen.row_name("Positive", self.WORDS[:48]),
+                      "Effect": self.WORDS}
+            values.update(columns)
+            effects.append([values.get(column) for column in self.HEADER])
+        sentences = [self.WORDS, "Generic", 3, "Keyword.DoT.Generic", None,
+                     "You have 20% less hp", "Generic", 1,
+                     "Stat.Defense.Health"]
+        return gen.enchantment_effects(openpyxl.load_workbook(workbook_with(
+            tmp_path / "delayed.xlsx",
+            {"Enchantments": [self.TITLES, sentences],
+             "Enchantment Effects": effects})))
+
+    def refusals(self, rows):
+        return gen.refuse_a_delayed_damage_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def pair(self, tmp_path):
+        share, seconds = self.out(tmp_path, [self.SHARE_ROW, self.SECONDS_ROW])
+        assert (share["Stat"], seconds["Stat"]) == (self.SHARE, self.SECONDS)
+        return share, seconds
+
+    def test_the_ruled_rows_are_carried_through_and_are_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, [self.SHARE_ROW, self.SECONDS_ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"]) for row in out] == [
+            (self.SHARE, "flat", 25.0, 50.0, "", "", "", ""),
+            (self.SECONDS, "flat", 4.0, 8.0, "", "", "", "")]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+
+    def test_both_figures_are_rows_of_one_enchantment_so_one_roll_sets_both(
+            self, tmp_path):
+        """What the generator owns of "one roll": both rows carry the one
+        enchantment's name, each range runs from its low end to its high end
+        as the sentence writes it, and each range is one the sentence states.
+        THE CONTROL is the last line: the same two stats under two
+        enchantments' names are refused, because those would be two rolls."""
+        share, seconds = self.pair(tmp_path)
+        name = gen.row_name("Positive", self.WORDS[:48])
+        assert share["Enchantment"] == seconds["Enchantment"] == name
+        assert (share["Name"], seconds["Name"]) == (name + "#1", name + "#2")
+        stated = gen.enchantment_ranges(self.WORDS)
+        assert stated == [(25.0, 50.0), (4.0, 8.0)]
+        assert (share["ValueLow"], share["ValueHigh"]) == stated[0]
+        assert (seconds["ValueLow"], seconds["ValueHigh"]) == stated[1]
+        # NO SECOND FIGURE IS HIDDEN IN A CELL THAT ROLLS APART FROM THE VALUE.
+        for row in (share, seconds):
+            assert (row["ScaleStep"], row["ScaleStepHigh"], row["StackSeconds"],
+                    row["StackSecondsHigh"]) == (0.0, 0.0, 0.0, 0.0)
+        split = dict(seconds, Name="Positive_Made_up#1",
+                     Enchantment="Positive_Made_up")
+        problems = self.refusals([share, split])
+        assert len(problems) == 2, problems
+        assert all("ONE enchantment" in problem for problem in problems)
+
+    def test_the_two_stats_have_no_attribute(self):
+        """TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.DAMAGE_TAKEN_DELAYED_PERCENT_STAT == self.SHARE
+        assert gen.DAMAGE_TAKEN_DELAYED_SECONDS_STAT == self.SECONDS
+        listed = gen.stats_with_no_attribute()
+        assert self.SHARE in listed and self.SECONDS in listed
+        assert "damage_taken_delayed" not in listed
+
+    def test_the_generator_holds_the_names_the_engine_has(self):
+        """The generator refuses bad rows by these names and the engine asks
+        the struck character's stat line for the names in
+        `CataclysmDelayedDamage.cpp`. THE CONTROL is that the pattern finds
+        exactly the two, so a name that moved file or changed form fails here
+        and does not pass by finding nothing."""
+        import re
+        folder = gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+        source = (folder / "CataclysmDelayedDamage.cpp").read_text(
+            encoding="utf-8")
+        names = dict(re.findall(
+            r'UCataclysmDelayedDamage::(\w+Stat)\s*=\s*TEXT\("([^"]+)"\)',
+            source))
+        assert names == {
+            "SharePercentStat": gen.DAMAGE_TAKEN_DELAYED_PERCENT_STAT,
+            "SecondsStat": gen.DAMAGE_TAKEN_DELAYED_SECONDS_STAT}
+
+    def test_every_wrong_shape_is_refused_by_its_own_sentence(self, tmp_path):
+        """One change to one of the two carried rows at a time. The control
+        is the first line: the pair unchanged is not refused."""
+        share, seconds = self.pair(tmp_path)
+        assert self.refusals([share, seconds]) == []
+        for stat, changed, kept in ((self.SHARE, share, seconds),
+                                    (self.SECONDS, seconds, share)):
+            for change, said in (
+                    ({"ValueKind": "increased"}, "value kind 'increased'"),
+                    ({"ValueKind": "more"}, "value kind 'more'"),
+                    ({"RequiredTags": "Type.Melee"}, "under a required tag"),
+                    ({"Action": "health"}, "with the action 'health'")):
+                problems = self.refusals([dict(changed, **change), kept])
+                assert len(problems) == 1, (stat, change, problems)
+                assert said in problems[0], (stat, change, problems)
+                assert repr(stat) in problems[0]
+
+    def test_a_figure_outside_its_bounds_is_refused(self, tmp_path):
+        """The share above 0 and at most 100; the seconds above 0 and at most
+        60. The bounds are included at their tops. Each refused row keeps the
+        range rising, so the bound is the one refusal."""
+        share, seconds = self.pair(tmp_path)
+        for changed, kept, low, high, said in (
+                (share, seconds, 0.0, 50.0, "states 0 on"),
+                (share, seconds, -5.0, 50.0, "states -5 on"),
+                (share, seconds, 25.0, 101.0, "states 101 on"),
+                (seconds, share, 0.0, 8.0, "states 0 on"),
+                (seconds, share, 4.0, 61.0, "states 61 on")):
+            problems = self.refusals(
+                [dict(changed, ValueLow=low, ValueHigh=high), kept])
+            assert len(problems) == 1, (low, high, problems)
+            assert said in problems[0] and repr(changed["Stat"]) in problems[0]
+        assert self.refusals([dict(share, ValueLow=25.0, ValueHigh=100.0),
+                              dict(seconds, ValueLow=4.0, ValueHigh=60.0)]) == []
+
+    def test_a_range_that_falls_is_refused(self, tmp_path):
+        """8 to 4 would give the longest spread to the lowest roll, and 50 to
+        25 the largest share. Both figures rise together, ruled."""
+        share, seconds = self.pair(tmp_path)
+        for changed, kept, low, high in ((seconds, share, 8.0, 4.0),
+                                         (share, seconds, 50.0, 25.0)):
+            problems = self.refusals(
+                [dict(changed, ValueLow=low, ValueHigh=high), kept])
+            assert len(problems) == 1, problems
+            assert f"states {low:g} to {high:g} on" in problems[0]
+            assert "the range must rise" in problems[0]
+
+    def test_one_stat_without_the_other_is_refused(self, tmp_path):
+        """The game delays nothing unless the wearer holds both. One refusal
+        for the enchantment, naming the stat it lacks."""
+        share, seconds = self.pair(tmp_path)
+        for alone, lacking in ((share, self.SECONDS), (seconds, self.SHARE)):
+            problems = self.refusals([alone])
+            assert len(problems) == 1, problems
+            assert f"and not {lacking!r}" in problems[0]
+            assert "ONE enchantment" in problems[0]
+
+    def test_a_stat_stated_twice_is_refused(self, tmp_path):
+        """Two flat rows on one stat are added together: a second share row of
+        25 to 50 would make the share 50 to 100."""
+        share, seconds = self.pair(tmp_path)
+        for twice, other in ((share, seconds), (seconds, share)):
+            again = dict(twice, Name=twice["Name"].split("#")[0] + "#3")
+            problems = self.refusals([twice, other, again])
+            assert len(problems) == 1, problems
+            assert "on more than one row" in problems[0]
+            assert repr(twice["Stat"]) in problems[0]
+
+    def test_a_range_on_one_row_and_a_single_figure_on_the_other_is_refused(
+            self, tmp_path):
+        """The sentence states two ranges. A share that rolls beside seconds
+        that do not is refused, and so is the reverse. THE CONTROL is two
+        single figures, which is a pair that does not roll and is accepted."""
+        share, seconds = self.pair(tmp_path)
+        fixed_share = dict(share, ValueLow=50.0, ValueHigh=50.0)
+        fixed_seconds = dict(seconds, ValueLow=8.0, ValueHigh=8.0)
+        assert self.refusals([fixed_share, fixed_seconds]) == []
+        for rows in ([share, fixed_seconds], [fixed_share, seconds]):
+            problems = self.refusals(rows)
+            assert len(problems) == 1, problems
+            assert "both rows state a range or neither does" in problems[0]
+
+    def test_a_condition_or_a_scale_on_either_stat_is_refused_elsewhere(
+            self, tmp_path):
+        for row in self.pair(tmp_path):
+            conditioned = gen.refuse_a_condition_nothing_asks_for(
+                "EnchantmentEffects", [dict(row, Condition="in_combat")])
+            assert len(conditioned) == 1 and row["Stat"] in conditioned[0]
+            scaled = gen.refuse_a_scale_nothing_asks_for(
+                "EnchantmentEffects", [dict(row, Scale="seconds_in_combat")])
+            assert len(scaled) == 1 and row["Stat"] in scaled[0]
+
+    def test_a_passive_nodes_row_and_another_stat_are_left_alone(self):
+        for stat in (self.SHARE, self.SECONDS):
+            node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                        "Stat": stat, "ValueKind": "increased",
+                        "ValuePerPoint": 1.0}
+            assert self.refusals([node_row]) == []
+        assert self.refusals([{"Name": "X#1", "Stat": "damage_taken",
+                               "ValueKind": "increased", "ValueLow": 20.0,
+                               "ValueHigh": 40.0,
+                               "RequiredTags": "Type.Melee"}]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        share, seconds = self.pair(tmp_path)
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [share, seconds]}, set()) == []
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [share]}, set())
+        assert any(f"and not {self.SECONDS!r}" in problem
+                   for problem in problems), problems
+
+    def test_a_misspelt_stat_is_refused_by_the_whole_sheets_validation(
+            self, tmp_path):
+        """As the same test of the stat before this one does it: the name one
+        letter off, with a kind that is not flat. The control is the pair
+        spelt right.
+
+        WHAT THIS DOES NOT SHOW. A misspelt name on a FLAT row is carried
+        through and the sheet's validation says nothing of it; that was
+        measured for the stat before this one on 2026-10-12 and is not
+        changed here. For this pair one misspelt name does leave the other
+        stat alone on its enchantment, which IS refused, and the last lines
+        read that."""
+        share, seconds = self.pair(tmp_path)
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [share, seconds]}, set()) == []
+        misspelt = "damage_taken_delayed_second"
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [share, dict(seconds, Stat=misspelt,
+                                                ValueKind="increased")]},
+            set())
+        assert any(repr(misspelt) in problem and "is not a stat" in problem
+                   for problem in problems), problems
+        flat = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [share, dict(seconds, Stat=misspelt)]},
+            set())
+        assert any(f"and not {self.SECONDS!r}" in problem
+                   for problem in flat), flat
+
+
+class TestADebuffOfTheWearersCutsWhatItsCarrierDeals:
+    """`debuffed_enemies_deal_less_percent`, ruled 2026-10-13 and built ahead
+    of its row, for "Applying a debuff to an enemy reduces their damage output
+    by 10%-20%". One flat row, 10 to 20, with no Required Tags, no Condition,
+    no Scale and no Action: `UCataclysmDebuffs::NoteLaid` asks the applier for
+    it where a debuff is put on another character.
+
+    THE SHEET HERE IS MADE UP. The words are the real sentence, a Positive
+    one. The real row is the enchantment session's to write; this shows that
+    the generator carries the ruled row through and refuses the wrong ones.
+    """
+
+    WORDS = ("Applying a debuff to an enemy reduces their damage output by "
+             "10%-20%")
+    STAT = "debuffed_enemies_deal_less_percent"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 10,
+           "Value High": 20}
+    HEADER = TestEnchantmentEffects.HEADER
+    TITLES = TestTheConditionsAndTheScaleOfTheSeventhOfOctober.TITLES
+
+    def out(self, tmp_path, rows):
+        """The generator's rows for the Positive sentence and these effect
+        rows, each a dict of columns. As `out` of
+        `TestAShareOfDamageTakenIsDealtOverSeconds`."""
+        effects = [self.HEADER]
+        for columns in rows:
+            values = {"Enchantment": gen.row_name("Positive", self.WORDS[:48]),
+                      "Effect": self.WORDS}
+            values.update(columns)
+            effects.append([values.get(column) for column in self.HEADER])
+        sentences = [self.WORDS, "Generic", 3, "Keyword.DoT.Generic", None,
+                     "You have 20% less hp", "Generic", 1,
+                     "Stat.Defense.Health"]
+        return gen.enchantment_effects(openpyxl.load_workbook(workbook_with(
+            tmp_path / "debuffcut.xlsx",
+            {"Enchantments": [self.TITLES, sentences],
+             "Enchantment Effects": effects})))
+
+    def refusals(self, rows):
+        return gen.refuse_a_debuff_cut_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def carried(self, tmp_path):
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert row["Stat"] == self.STAT
+        return row
+
+    def test_the_ruled_row_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"]) for row in out] == [
+            (self.STAT, "flat", 10.0, 20.0, "", "", "", "")]
+        assert gen.enchantment_ranges(self.WORDS) == [(10.0, 20.0)]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+
+    def test_the_stat_has_no_attribute(self):
+        """TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.DEBUFFED_ENEMIES_DEAL_LESS_PERCENT_STAT == self.STAT
+        listed = gen.stats_with_no_attribute()
+        assert self.STAT in listed
+        assert "debuffed_enemies_deal_less" not in listed
+
+    def test_the_generator_holds_the_name_the_engine_has(self):
+        """The generator refuses bad rows by this name and the engine asks the
+        applier's stat line for the name in `CataclysmDebuffs.cpp`. THE CONTROL
+        is the second line: the same pattern finds a name that has been in
+        that file since before this stat, so a pattern that found nothing
+        would fail there and not pass here by finding nothing."""
+        import re
+        folder = gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+        source = (folder / "CataclysmDebuffs.cpp").read_text(encoding="utf-8")
+        names = dict(re.findall(
+            r'UCataclysmDebuffs::(\w+Stat)\s*=\s*TEXT\("([^"]+)"\)', source))
+        assert names.get("DurationStat") == "debuff_duration_taken"
+        assert names.get("DebuffedEnemiesDealLessPercentStat") == self.STAT
+
+    def test_every_wrong_shape_is_refused_by_its_own_sentence(self, tmp_path):
+        """One change to the carried row at a time. The control is the first
+        line: the row unchanged is not refused."""
+        row = self.carried(tmp_path)
+        assert self.refusals([row]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"ValueKind": "more"}, "value kind 'more'"),
+                ({"RequiredTags": "Keyword.DoT"}, "under a required tag"),
+                ({"Action": "ailment_damage_dealt"},
+                 "with the action 'ailment_damage_dealt'")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+
+    def test_a_figure_outside_its_bounds_or_a_falling_range_is_refused(
+            self, tmp_path):
+        """Above 0 and at most 100, the top included. A range written 20 to 10
+        would give the larger cut to the lowest roll."""
+        row = self.carried(tmp_path)
+        for low, high, said in ((0.0, 20.0, "states 0 on"),
+                                (-10.0, 20.0, "states -10 on"),
+                                (10.0, 101.0, "states 101 on")):
+            problems = self.refusals([dict(row, ValueLow=low, ValueHigh=high)])
+            assert len(problems) == 1, (low, high, problems)
+            assert said in problems[0]
+        assert self.refusals([dict(row, ValueLow=10.0, ValueHigh=100.0)]) == []
+        falling = self.refusals([dict(row, ValueLow=20.0, ValueHigh=10.0)])
+        assert len(falling) == 1, falling
+        assert "states 20 to 10 on" in falling[0]
+        assert "the range must rise" in falling[0]
+
+    def test_the_stat_stated_twice_on_one_enchantment_is_refused(
+            self, tmp_path):
+        """Two flat rows on one stat are added together: a second row of 10 to
+        20 would make the cut 20 to 40."""
+        row = self.carried(tmp_path)
+        again = dict(row, Name=row["Name"].split("#")[0] + "#2")
+        problems = self.refusals([row, again])
+        assert len(problems) == 1, problems
+        assert "on more than one row" in problems[0]
+
+    def test_a_condition_or_a_scale_on_the_stat_is_refused_elsewhere(
+            self, tmp_path):
+        row = self.carried(tmp_path)
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="in_combat")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="target_debuffs")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+
+    def test_a_passive_nodes_row_and_another_stat_are_left_alone(self):
+        node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                    "Stat": self.STAT, "ValueKind": "increased",
+                    "ValuePerPoint": 1.0}
+        assert self.refusals([node_row]) == []
+        assert self.refusals([{"Name": "X#1", "Stat": "debuff_duration",
+                               "ValueKind": "increased", "ValueLow": 30.0,
+                               "ValueHigh": 60.0,
+                               "RequiredTags": "Type.Melee"}]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        row = self.carried(tmp_path)
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [row]}, set()) == []
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(row, RequiredTags="Keyword.DoT")]},
+            {"Keyword.DoT"})
+        assert any("under a required tag" in problem and self.STAT in problem
+                   for problem in problems), problems
+
+
+class TestAWearerImmuneToDebuffsThatAppliesNone:
+    """`immune_to_debuffs_and_applies_none`, ruled 2026-10-13 and built ahead
+    of its row, for "You are immune to debuffs but also cannot apply them".
+    One flag at a flat 1 with no Required Tags, no Condition, no Scale and no
+    Action: `UCataclysmDebuffs::HoldsImmuneAndAppliesNone` asks whether it is
+    above nought where a debuff is about to be put on a character.
+
+    THE SHEET HERE IS MADE UP. The words are the real sentence, a Negative
+    one. The real row is the enchantment session's to write; this shows that
+    the generator carries the ruled row through and refuses the wrong ones.
+    """
+
+    WORDS = "You are immune to debuffs but also cannot apply them"
+    STAT = "immune_to_debuffs_and_applies_none"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 1, "Value High": 1}
+
+    def out(self, tmp_path, rows):
+        return TestTheChannellingConditionsOfTheEighthOfOctober().out(
+            tmp_path, self.WORDS, rows)
+
+    def refusals(self, rows):
+        return gen.refuse_a_debuff_immunity_flag_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def carried(self, tmp_path):
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert row["Stat"] == self.STAT
+        return row
+
+    def test_the_ruled_row_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"]) for row in out] == [
+            (self.STAT, "flat", 1.0, 1.0, "", "", "", "")]
+        assert out[0]["Enchantment"] == gen.row_name("Negative", self.WORDS[:48])
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+
+    def test_the_flag_is_a_stat_with_no_attribute(self):
+        """TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.IMMUNE_TO_DEBUFFS_AND_APPLIES_NONE_STAT == self.STAT
+        listed = gen.stats_with_no_attribute()
+        assert self.STAT in listed
+        assert "immune_to_debuffs" not in listed
+
+    def test_the_generator_holds_the_name_the_engine_has(self):
+        """As the same test of the stat before this one, with the same
+        control: the pattern also finds a name that file held before."""
+        import re
+        folder = gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+        source = (folder / "CataclysmDebuffs.cpp").read_text(encoding="utf-8")
+        names = dict(re.findall(
+            r'UCataclysmDebuffs::(\w+Stat)\s*=\s*TEXT\("([^"]+)"\)', source))
+        assert names.get("DurationStat") == "debuff_duration_taken"
+        assert names.get("ImmuneAndAppliesNoneStat") == self.STAT
+
+    def test_every_wrong_shape_is_refused_by_its_own_sentence(self, tmp_path):
+        """One change to the carried row at a time. The control is the first
+        line: the row unchanged is not refused."""
+        row = self.carried(tmp_path)
+        assert self.refusals([row]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"ValueKind": "removed"}, "value kind 'removed'"),
+                ({"RequiredTags": "Keyword.DoT"}, "under a required tag"),
+                ({"Action": "cleanse"}, "with the action 'cleanse'"),
+                ({"ValueLow": 1.0, "ValueHigh": 2.0}, "states 1 to 2"),
+                ({"ValueLow": 0.0, "ValueHigh": 0.0}, "states 0 to 0"),
+                ({"ValueLow": 100.0, "ValueHigh": 100.0}, "states 100 to 100")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+
+    def test_a_condition_or_a_scale_on_the_flag_is_refused_elsewhere(
+            self, tmp_path):
+        """A row that made the wearer immune only some of the time is not
+        what was ruled, and the game asks the flag where no condition's state
+        is handed over."""
+        row = self.carried(tmp_path)
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="in_combat")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="debuffs_carried")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+
+    def test_a_passive_nodes_row_and_another_stat_are_left_alone(self):
+        node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                    "Stat": self.STAT, "ValueKind": "increased",
+                    "ValuePerPoint": 1.0}
+        assert self.refusals([node_row]) == []
+        assert self.refusals([{"Name": "X#1", "Stat": "ailment_immunity",
+                               "ValueKind": "flat", "ValueLow": 1.0,
+                               "ValueHigh": 1.0,
+                               "RequiredTags": "Keyword.DoT.Bleed"}]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        row = self.carried(tmp_path)
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [row]}, set()) == []
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(row, ValueLow=1.0, ValueHigh=2.0)]},
+            set())
+        assert any("states 1 to 2" in problem and self.STAT in problem
+                   for problem in problems), problems
+
+
+class TestABurnThatEndsByTimeMayExplode:
+    """`dot_explodes_at_expiry_chance`, ruled 2026-10-13 and built ahead of
+    its row, for "Your burn effects have a 20%-40% chance to explode for
+    double their remaining damage when they expire". One stat at a flat 20 to
+    40 under the one Required Tag `Keyword.DoT.Burn`, with no Condition, no
+    Scale and no Action: the game asks the applier for it in
+    `CataclysmSkillEffects.cpp` when a damage over time effect ends by time,
+    with the tags that effect granted.
+
+    THE REQUIRED TAG IS HOW THE ROW NAMES ITS AILMENT, so it is the one cell
+    this class is strictest about: none, two, and any tag but the Burn's are
+    each refused by a sentence of their own.
+
+    THE SHEET HERE IS MADE UP. The words are the real sentence, a Positive
+    one, with the tags its real row of the Enchantments sheet carries. The
+    real effect row is the enchantment session's to write; this shows that
+    the generator carries the proposed row through and refuses the wrong
+    ones.
+    """
+
+    WORDS = ("Your burn effects have a 20%-40% chance to explode for double "
+             "their remaining damage when they expire")
+    STAT = "dot_explodes_at_expiry_chance"
+    BURN = "Keyword.DoT.Burn"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 20,
+           "Value High": 40, "Required Tags": BURN}
+    HEADER = TestEnchantmentEffects.HEADER
+    TITLES = TestTheConditionsAndTheScaleOfTheSeventhOfOctober.TITLES
+    KNOWN = {BURN, "Keyword.DoT.Poison", "Type.AOE.PointBlank"}
+
+    def out(self, tmp_path, rows):
+        """The generator's rows for the Positive sentence and these effect
+        rows, each a dict of columns. As `out` of
+        `TestAShareOfDamageTakenIsDealtOverSeconds`."""
+        effects = [self.HEADER]
+        for columns in rows:
+            values = {"Enchantment": gen.row_name("Positive", self.WORDS[:48]),
+                      "Effect": self.WORDS}
+            values.update(columns)
+            effects.append([values.get(column) for column in self.HEADER])
+        sentences = [self.WORDS, "Generic", 3,
+                     "Keyword.DoT.Burn, Type.AOE.PointBlank", None,
+                     "You have 20% less hp", "Generic", 1,
+                     "Stat.Defense.Health"]
+        return gen.enchantment_effects(openpyxl.load_workbook(workbook_with(
+            tmp_path / "burn.xlsx",
+            {"Enchantments": [self.TITLES, sentences],
+             "Enchantment Effects": effects})))
+
+    def refusals(self, rows):
+        return gen.refuse_an_exploding_ailment_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def test_the_proposed_row_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, [self.ROW])
+        assert [(row["Name"], row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"], row["Ailment"])
+                for row in out] == [
+            ("Positive_Your_burn_effects_have_a_20_40_chance_to_explo#1",
+             self.STAT, "flat", 20.0, 40.0, self.BURN, "", "", "", "")]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, self.KNOWN) == []
+
+    def test_the_range_is_the_one_the_sentence_states(self, tmp_path):
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert gen.enchantment_ranges(self.WORDS) == [(20.0, 40.0)]
+        assert (row["ValueLow"], row["ValueHigh"]) == (20.0, 40.0)
+
+    def test_the_stat_has_no_attribute(self):
+        """TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.DOT_EXPLODES_AT_EXPIRY_CHANCE_STAT == self.STAT
+        assert self.STAT in gen.stats_with_no_attribute()
+        assert "dot_explodes_at_expiry" not in gen.stats_with_no_attribute()
+
+    def test_the_generator_holds_the_name_and_the_tag_the_engine_has(self):
+        """The generator refuses bad rows by this name and the engine asks
+        the applier's stat line for the name in `CataclysmSkillEffects.cpp`.
+        THE CONTROL is the flag of Plague Doctor's six-piece bonus, read by
+        the same pattern from the same file. And the one tag the generator
+        allows is the tag the engine's `BurnTag` asks for by name."""
+        import re
+        folder = gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+        source = (folder / "CataclysmSkillEffects.cpp").read_text(
+            encoding="utf-8")
+        names = dict(re.findall(
+            r'UCataclysmSkillEffects::(\w+Stat)\s*=\s*TEXT\("([^"]+)"\)',
+            source))
+        assert names["DotApplicationRefreshesOthersStat"] == (
+            "dot_application_refreshes_others")
+        assert names["DotExplodesAtExpiryChanceStat"] == (
+            gen.DOT_EXPLODES_AT_EXPIRY_CHANCE_STAT)
+        (burn,) = re.findall(
+            r'FGameplayTag UCataclysmSkillEffects::BurnTag\(\)\s*\{.*?'
+            r'FName\(TEXT\("([^"]+)"\)\)', source, flags=re.S)
+        assert gen.EXPLODING_AILMENT_TAGS == (burn,) == (self.BURN,)
+
+    def test_every_wrong_shape_is_refused_by_its_own_sentence(self, tmp_path):
+        """One change to the carried row at a time. The control is the first
+        line: the row unchanged is not refused."""
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert self.refusals([row]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"ValueKind": "more"}, "value kind 'more'"),
+                ({"RequiredTags": ""}, "under no required tag"),
+                ({"RequiredTags": "Keyword.DoT.Poison"},
+                 "under the required tag 'Keyword.DoT.Poison'"),
+                ({"RequiredTags": "Keyword.DoT"},
+                 "under the required tag 'Keyword.DoT'"),
+                ({"RequiredTags": "Keyword.DoT.Burn, Type.AOE.PointBlank"},
+                 "under 2 required tags"),
+                ({"ValueLow": 0.0}, "states 0 on"),
+                ({"ValueLow": -5.0}, "states -5 on"),
+                ({"ValueHigh": 101.0}, "states 101 on"),
+                ({"ValueLow": 40.0, "ValueHigh": 20.0}, "the range must rise"),
+                ({"Action": "health"}, "with the action 'health'")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+        # THE BOUND IS INCLUDED AT ITS TOP, AND A SINGLE FIGURE IS A ROW.
+        assert self.refusals([dict(row, ValueHigh=100.0)]) == []
+        assert self.refusals([dict(row, ValueLow=30.0, ValueHigh=30.0)]) == []
+
+    def test_a_row_with_no_tag_is_told_it_would_reach_every_ailment(
+            self, tmp_path):
+        (row,) = self.out(tmp_path, [self.ROW])
+        (problem,) = self.refusals([dict(row, RequiredTags="")])
+        assert "EVERY damage over time ailment" in problem
+        assert self.BURN in problem
+
+    def test_a_second_row_on_the_stat_is_refused(self, tmp_path):
+        """Two flat rows on one stat are added together, so a second row of
+        20 to 40 would make the chance 40 to 80. One refusal for the
+        enchantment, however many rows it has; rows of two enchantments are
+        not counted together."""
+        (row,) = self.out(tmp_path, [self.ROW])
+        second = dict(row, Name=row["Name"].replace("#1", "#2"))
+        third = dict(row, Name=row["Name"].replace("#1", "#3"))
+        for rows in ([row, second], [row, second, third]):
+            problems = self.refusals(rows)
+            assert len(problems) == 1, problems
+            assert "on more than one row" in problems[0]
+        other = dict(row, Name="Positive_Made_up#1",
+                     Enchantment="Positive_Made_up")
+        assert self.refusals([row, other]) == []
+
+    def test_a_condition_or_a_scale_on_the_stat_is_refused_elsewhere(
+            self, tmp_path):
+        (row,) = self.out(tmp_path, [self.ROW])
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="in_combat")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="seconds_in_combat")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+
+    def test_a_passive_nodes_row_and_another_stat_are_left_alone(self):
+        node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                    "Stat": self.STAT, "ValueKind": "increased",
+                    "ValuePerPoint": 1.0}
+        assert self.refusals([node_row]) == []
+        assert self.refusals([{"Name": "X#1", "Stat": "dot_damage",
+                               "ValueKind": "increased", "ValueLow": 30.0,
+                               "ValueHigh": 60.0,
+                               "RequiredTags": "Keyword.DoT.Poison"}]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        out = self.out(tmp_path, [self.ROW])
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, self.KNOWN) == []
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(out[0], RequiredTags="")]},
+            self.KNOWN)
+        assert any("EVERY damage over time ailment" in problem
+                   and repr(self.STAT) in problem
+                   for problem in problems), problems
+        poison = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(out[0],
+                                         RequiredTags="Keyword.DoT.Poison")]},
+            self.KNOWN)
+        assert any("only these are ruled to explode" in problem
+                   for problem in poison), poison
+
+    def test_a_misspelt_stat_is_refused_by_the_whole_sheets_validation(
+            self, tmp_path):
+        """As the same test of the stats before this one does it: the name
+        one letter off, with a kind that is not flat. The control is the row
+        spelt right.
+
+        WHAT THIS DOES NOT SHOW. A misspelt name on a FLAT row is carried
+        through and the sheet's validation says nothing of it; that was
+        measured for an earlier stat on 2026-10-12 and is not changed
+        here."""
+        good = self.out(tmp_path, [self.ROW])
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": good}, self.KNOWN) == []
+        misspelt = "dot_explodes_at_expiry_chanc"
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(good[0], Stat=misspelt,
+                                         ValueKind="increased")]},
+            self.KNOWN)
+        assert any(repr(misspelt) in problem and "is not a stat" in problem
+                   for problem in problems), problems
+
+
+class GadgetRowsOnAMadeUpSheet:
+    """What the classes below share: a made-up Enchantments sheet holding one
+    real sentence about gadgets on its Positive side, with the tag the real
+    sentence carries and a `Rolls Down` cell, and the effect rows written
+    under it. Not a test class: its name does not begin with `Test`.
+
+    THE SHEETS ARE MADE UP. The real rows are the enchantment session's to
+    write; these show that the generator carries each proposed row through
+    and refuses the shapes the game would give a gadget nothing for.
+    """
+
+    HEADER = TestScaleStepHigh.HEADER
+    TAG = "Type.Deployable"
+    #: What the sentence's own Tags cell holds. A class whose real sentence
+    #: carries more than the one tag says so.
+    SENTENCE_TAGS = TAG
+
+    def out(self, tmp_path, words, rows, rolls_down=None):
+        name = gen.row_name("Positive", words[:48])
+        effects = [self.HEADER]
+        for columns in rows:
+            values = {"Enchantment": name, "Effect": words}
+            values.update(columns)
+            effects.append([values.get(column) for column in self.HEADER])
+        sentences = [
+            ["Positives", "Type", "Weight", "Column 4", "Rolls Down",
+             "Negatives", "Type", "Weight", "Tags", "Rolls Down"],
+            [words, "Generic", 4, self.SENTENCE_TAGS, rolls_down,
+             "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life", None],
+        ]
+        return gen.enchantment_effects(openpyxl.load_workbook(workbook_with(
+            tmp_path / "gadgets.xlsx",
+            {"Enchantments": sentences, "Enchantment Effects": effects})))
+
+    def refusals(self, rows):
+        return gen.refuse_a_gadget_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def validation(self, rows):
+        """What the generator's check of the finished sheet says of these
+        rows, told that `Type.Deployable` is a tag the game has."""
+        return gen.validate_enchantment_effects(
+            {"EnchantmentEffects": rows}, {self.TAG})
+
+    @staticmethod
+    def names_in_the_engine():
+        """Every `ACataclysmMinion::...Stat` name `CataclysmMinion.cpp`
+        defines, by its C++ name."""
+        import re
+        source = (gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+                  / "CataclysmMinion.cpp").read_text(encoding="utf-8")
+        return dict(re.findall(
+            r'ACataclysmMinion::(\w+Stat)\s*=\s*TEXT\("([^"]+)"\)', source))
+
+
+class TestGadgetsChooseTheMostHealth(GadgetRowsOnAMadeUpSheet):
+    """`gadgets_target_most_health`, ruled 2026-10-13 and built ahead of its
+    row, for "Your gadgets prioritize the highest HP enemy within their range
+    instead of the nearest". One flag at a flat 1, scoped to
+    `Type.Deployable`: `ACataclysmMinion::MostHealthWithinReach` asks whether
+    it is above nought each time the shared brain chooses a gadget's target.
+    """
+
+    WORDS = ("Your gadgets prioritize the highest HP enemy within their range "
+             "instead of the nearest")
+    STAT = "gadgets_target_most_health"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 1, "Value High": 1,
+           "Required Tags": "Type.Deployable"}
+
+    def test_the_ruled_row_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"]) for row in out] == [
+            (self.STAT, "flat", 1.0, 1.0, "Type.Deployable", "", "", "")]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert self.validation(out) == []
+        # AND THE CONTROL OF THAT LAST LINE: told of no such tag, the sheet's
+        # validation refuses the row for its tag, so it does read the row.
+        assert any("undefined tag Type.Deployable" in problem
+                   for problem in gen.validate_enchantment_effects(
+                       {"EnchantmentEffects": out}, set()))
+
+    def test_the_flag_is_a_stat_with_no_attribute(self):
+        """TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.GADGETS_TARGET_MOST_HEALTH_STAT == self.STAT
+        assert self.STAT in gen.GADGET_FLAG_STATS
+        assert self.STAT in gen.GADGET_STATS
+        assert self.STAT in gen.stats_with_no_attribute()
+        assert "gadgets_target_highest_hp" not in gen.stats_with_no_attribute()
+
+    def test_the_generator_holds_exactly_the_name_the_engine_asks_for(self):
+        """A name spelt differently on the two sides would be refused by
+        neither and read by nothing. THE CONTROL is
+        `minion_death_blast_radius_metres`, read by the same pattern from the
+        same file, so a pattern that found nothing would fail there first."""
+        names = self.names_in_the_engine()
+        assert names["DeathBlastRadiusMetresStat"] == (
+            "minion_death_blast_radius_metres")
+        assert names["GadgetsTargetMostHealthStat"] == (
+            gen.GADGETS_TARGET_MOST_HEALTH_STAT)
+
+    def test_every_shape_the_game_would_give_nothing_for_is_refused(
+            self, tmp_path):
+        """One change to the carried row at a time, each refused once and by
+        its own sentence. The control is the first line: the row unchanged is
+        not refused."""
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert self.refusals([row]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"ValueKind": "more"}, "value kind 'more'"),
+                ({"RequiredTags": ""}, "under the required tags ''"),
+                ({"RequiredTags": "Type.Trap"},
+                 "under the required tags 'Type.Trap'"),
+                ({"RequiredTags": "Type.Deployable, Minion.Projectile"},
+                 "under the required tags"),
+                ({"Action": "health"}, "with the action 'health'"),
+                ({"ValueLow": 0.0}, "states 0 on"),
+                ({"ValueHigh": 2.0}, "states 2 on")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+        # BOTH FIGURES WRONG IS TWO REFUSALS, one for each column.
+        assert len(self.refusals([dict(row, ValueLow=2.0, ValueHigh=4.0)])) == 2
+
+    def test_a_condition_or_a_scale_on_the_flag_is_refused_elsewhere(
+            self, tmp_path):
+        """The stat is on neither the list of stats asked for under a
+        condition nor the list asked for under a scale. The control is the
+        row unchanged."""
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="while_stationary")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="gadgets_active")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+
+    def test_a_passive_nodes_row_and_another_stat_are_left_alone(self):
+        node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                    "Stat": self.STAT, "ValueKind": "increased",
+                    "ValuePerPoint": 1.0}
+        assert gen.refuse_a_gadget_row_the_game_cannot_read(
+            "PassiveEffects", [node_row]) == []
+        assert self.refusals([{"Name": "X#1", "Stat": "minion_health",
+                               "ValueKind": "increased", "ValueLow": 40.0,
+                               "ValueHigh": 70.0,
+                               "RequiredTags": "Type.Trap"}]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        """The row unchanged gives the sheet's validation nothing to say; the
+        row with no required tag is refused there, in this check's words."""
+        out = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert self.validation(out) == []
+        problems = self.validation([dict(out[0], RequiredTags="")])
+        assert any("under the required tags ''" in problem
+                   and repr(self.STAT) in problem
+                   for problem in problems), problems
+
+
+class TestGadgetsFireAVolley(GadgetRowsOnAMadeUpSheet):
+    """`gadget_volley_every_seconds`, ruled 2026-10-13 and built ahead of its
+    row, for "Gadgets fire at all enemies within range simultaneously once
+    every 5-8 seconds". One flat row scoped to `Type.Deployable`.
+
+    THE ROW ROLLS DOWN, ruled: 5 seconds is the better figure. The sheet
+    states the pair as the sentence does, 5 to 8, and the sentence's one
+    range is marked `1` in its `Rolls Down` cell, so the generator writes the
+    pair 8 to 5 and a roll of 1 is 5 seconds.
+    """
+
+    WORDS = ("Gadgets fire at all enemies within range simultaneously once "
+             "every 5-8 seconds")
+    STAT = "gadget_volley_every_seconds"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 5, "Value High": 8,
+           "Required Tags": "Type.Deployable"}
+
+    def test_the_ruled_row_with_its_mark_is_carried_through_falling(
+            self, tmp_path):
+        out = self.out(tmp_path, self.WORDS, [self.ROW], rolls_down="1")
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"]) for row in out] == [
+            (self.STAT, "flat", 8.0, 5.0, "Type.Deployable", "", "", "")]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert self.validation(out) == []
+
+    def test_the_same_row_without_the_mark_rises_and_is_refused(
+            self, tmp_path):
+        """What the enchantment session must not forget: with the `Rolls
+        Down` cell empty the pair is written 5 to 8, a roll of 1 would wait
+        the longest, and the row is refused once, in words that name the
+        column. The control is the test above, the same row with the mark."""
+        out = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert (out[0]["ValueLow"], out[0]["ValueHigh"]) == (5.0, 8.0)
+        problems = self.refusals(out)
+        assert len(problems) == 1, problems
+        assert "the pair must fall" in problems[0]
+        assert "Rolls Down" in problems[0]
+        assert repr(self.STAT) in problems[0]
+        assert any("the pair must fall" in problem
+                   for problem in self.validation(out))
+
+    def test_the_stat_is_one_with_no_attribute(self):
+        """TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.GADGET_VOLLEY_EVERY_SECONDS_STAT == self.STAT
+        assert self.STAT in gen.GADGET_STATS
+        assert self.STAT not in gen.GADGET_FLAG_STATS
+        assert self.STAT in gen.stats_with_no_attribute()
+        assert "gadget_volley_seconds" not in gen.stats_with_no_attribute()
+
+    def test_the_generator_holds_exactly_the_name_the_engine_asks_for(self):
+        """THE CONTROL is the flag of the layer before, read by the same
+        pattern from the same file."""
+        names = self.names_in_the_engine()
+        assert names["GadgetsTargetMostHealthStat"] == (
+            gen.GADGETS_TARGET_MOST_HEALTH_STAT)
+        assert names["GadgetVolleyEverySecondsStat"] == (
+            gen.GADGET_VOLLEY_EVERY_SECONDS_STAT)
+
+    def test_every_shape_the_game_would_give_nothing_for_is_refused(
+            self, tmp_path):
+        """One change to the carried row at a time, each refused once and by
+        its own sentence. The control is the first line. A single figure in
+        both columns is allowed: it neither rises nor falls."""
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW], rolls_down="1")
+        assert self.refusals([row]) == []
+        assert self.refusals([dict(row, ValueLow=6.0, ValueHigh=6.0)]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"RequiredTags": ""}, "under the required tags ''"),
+                ({"RequiredTags": "Type.Minion"},
+                 "under the required tags 'Type.Minion'"),
+                ({"Action": "strike_target"},
+                 "with the action 'strike_target'"),
+                ({"ValueLow": 5.0, "ValueHigh": 8.0}, "the pair must fall"),
+                ({"ValueHigh": 0.0}, "states 0 on"),
+                ({"ValueHigh": -5.0}, "states -5 on"),
+                ({"ValueLow": 61.0}, "states 61 on")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+
+    def test_a_second_row_of_seconds_on_one_enchantment_is_refused(
+            self, tmp_path):
+        """The game takes the shortest of the rows, so a second row would do
+        nothing. The control is one row; and the same stat on two different
+        enchantments is not refused, because each states it once."""
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW], rolls_down="1")
+        assert self.refusals([row]) == []
+        second = dict(row, Name=row["Enchantment"] + "#2")
+        problems = self.refusals([row, second])
+        assert len(problems) == 1, problems
+        assert "on more than one row" in problems[0]
+        assert "SHORTEST" in problems[0]
+        other = dict(row, Name="Positive_Another#1", Enchantment="Positive_Another")
+        assert self.refusals([row, other]) == []
+
+    def test_a_condition_or_a_scale_on_the_seconds_is_refused_elsewhere(
+            self, tmp_path):
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW], rolls_down="1")
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="while_stationary")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="gadgets_active")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+
+    def test_a_passive_nodes_row_is_left_alone(self):
+        node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                    "Stat": self.STAT, "ValueKind": "increased",
+                    "ValuePerPoint": 1.0}
+        assert gen.refuse_a_gadget_row_the_game_cannot_read(
+            "PassiveEffects", [node_row]) == []
+
+
+class TestGadgetsBurstOnAKill(GadgetRowsOnAMadeUpSheet):
+    """`gadgets_burst_on_kill`, ruled 2026-10-13 and built ahead of its row,
+    for "When a gadget kills an enemy, it fires an additional burst at the
+    nearest enemy within its range". One flag at a flat 1, scoped to
+    `Type.Deployable`, with no action and no action event:
+    `ACataclysmMinion::AttackTarget` asks whether it is above nought when a
+    blow of the gadget's own has killed.
+
+    THE SENTENCE'S OWN TAGS ARE TWO, `Type.Deployable, Trigger.OnKill`, and
+    the row requires the first alone.
+    """
+
+    WORDS = ("When a gadget kills an enemy, it fires an additional burst at "
+             "the nearest enemy within its range")
+    STAT = "gadgets_burst_on_kill"
+    SENTENCE_TAGS = "Type.Deployable, Trigger.OnKill"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 1, "Value High": 1,
+           "Required Tags": "Type.Deployable"}
+
+    def test_the_ruled_row_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"], row["ActionEvent"])
+                for row in out] == [
+            (self.STAT, "flat", 1.0, 1.0, "Type.Deployable", "", "", "", "")]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert self.validation(out) == []
+
+    def test_the_flag_is_a_stat_with_no_attribute(self):
+        """TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.GADGETS_BURST_ON_KILL_STAT == self.STAT
+        assert self.STAT in gen.GADGET_FLAG_STATS
+        assert self.STAT in gen.GADGET_STATS
+        assert self.STAT in gen.stats_with_no_attribute()
+        assert "gadget_kill_fires_burst" not in gen.stats_with_no_attribute()
+
+    def test_the_generator_holds_exactly_the_name_the_engine_asks_for(self):
+        """THE CONTROL is the flag of the first gadget layer, read by the
+        same pattern from the same file."""
+        names = self.names_in_the_engine()
+        assert names["GadgetsTargetMostHealthStat"] == (
+            gen.GADGETS_TARGET_MOST_HEALTH_STAT)
+        assert names["GadgetsBurstOnKillStat"] == (
+            gen.GADGETS_BURST_ON_KILL_STAT)
+
+    def test_every_shape_the_game_would_give_nothing_for_is_refused(
+            self, tmp_path):
+        """One change to the carried row at a time, each refused once and by
+        its own sentence. The control is the first line. THE SENTENCE'S OWN
+        TWO TAGS AS THE ROW'S REQUIRED TAGS ARE REFUSED: a gadget carries no
+        `Trigger.OnKill`, so that row would match no gadget."""
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert self.refusals([row]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"RequiredTags": ""}, "under the required tags ''"),
+                ({"RequiredTags": "Type.Deployable, Trigger.OnKill"},
+                 "under the required tags 'Type.Deployable, Trigger.OnKill'"),
+                ({"Action": "strike_target"},
+                 "with the action 'strike_target'"),
+                ({"ValueLow": 0.0}, "states 0 on"),
+                ({"ValueHigh": 2.0}, "states 2 on")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+
+    def test_a_condition_or_a_scale_on_the_flag_is_refused_elsewhere(
+            self, tmp_path):
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW])
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="while_stationary")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="gadgets_active")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+
+
+class TestGadgetsTakeNoDamageAndAreDrained(GadgetRowsOnAMadeUpSheet):
+    """`gadgets_take_no_damage` and `gadget_health_lost_percent_per_second`,
+    ruled 2026-10-13 and built ahead of their rows, for "Your gadgets are
+    invincible but lose 5% of their maximum HP per second passively". One
+    sentence is two rows on one enchantment, both flat and scoped to
+    `Type.Deployable`: the flag 1 to 1 and the percent 5 to 5.
+    `ACataclysmMinion::StepNoDamageAndDrain` reads both on the gadget's step.
+    """
+
+    WORDS = ("Your gadgets are invincible but lose 5% of their maximum HP per "
+             "second passively")
+    NO_DAMAGE = "gadgets_take_no_damage"
+    DRAIN = "gadget_health_lost_percent_per_second"
+    FLAG_ROW = {"Stat": NO_DAMAGE, "Value Kind": "flat", "Value Low": 1,
+                "Value High": 1, "Required Tags": "Type.Deployable"}
+    DRAIN_ROW = {"Stat": DRAIN, "Value Kind": "flat", "Value Low": 5,
+                 "Value High": 5, "Required Tags": "Type.Deployable"}
+
+    def pair(self, tmp_path):
+        return self.out(tmp_path, self.WORDS, [self.FLAG_ROW, self.DRAIN_ROW])
+
+    def test_the_two_ruled_rows_are_carried_through_and_are_not_refused(
+            self, tmp_path):
+        out = self.pair(tmp_path)
+        assert [(row["Name"].rsplit("#", 1)[1], row["Stat"], row["ValueKind"],
+                 row["ValueLow"], row["ValueHigh"], row["RequiredTags"],
+                 row["Condition"], row["Scale"], row["Action"])
+                for row in out] == [
+            ("1", self.NO_DAMAGE, "flat", 1.0, 1.0, "Type.Deployable", "", "",
+             ""),
+            ("2", self.DRAIN, "flat", 5.0, 5.0, "Type.Deployable", "", "",
+             "")]
+        assert out[0]["Enchantment"] == out[1]["Enchantment"]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert self.validation(out) == []
+
+    def test_both_are_stats_with_no_attribute_and_only_the_first_is_a_flag(
+            self):
+        """TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.GADGETS_TAKE_NO_DAMAGE_STAT == self.NO_DAMAGE
+        assert gen.GADGET_HEALTH_LOST_PERCENT_PER_SECOND_STAT == self.DRAIN
+        assert self.NO_DAMAGE in gen.GADGET_FLAG_STATS
+        assert self.DRAIN not in gen.GADGET_FLAG_STATS
+        assert {self.NO_DAMAGE, self.DRAIN} <= set(gen.GADGET_STATS)
+        assert {self.NO_DAMAGE, self.DRAIN} <= gen.stats_with_no_attribute()
+        assert "gadgets_are_invincible" not in gen.stats_with_no_attribute()
+
+    def test_the_generator_holds_exactly_the_names_the_engine_asks_for(self):
+        """THE CONTROL is the flag of the first gadget layer, read by the
+        same pattern from the same file. The second name's definition is
+        broken over two lines in the engine's file, which the pattern
+        allows for."""
+        names = self.names_in_the_engine()
+        assert names["GadgetsTargetMostHealthStat"] == (
+            gen.GADGETS_TARGET_MOST_HEALTH_STAT)
+        assert names["GadgetsTakeNoDamageStat"] == (
+            gen.GADGETS_TAKE_NO_DAMAGE_STAT)
+        assert names["GadgetHealthLostPercentPerSecondStat"] == (
+            gen.GADGET_HEALTH_LOST_PERCENT_PER_SECOND_STAT)
+
+    def test_every_shape_the_game_would_give_nothing_for_is_refused(
+            self, tmp_path):
+        """One change to one of the two carried rows at a time, each refused
+        once and by its own sentence. The control is the first line: the pair
+        unchanged is not refused."""
+        flag, drain = self.pair(tmp_path)
+        assert self.refusals([flag, drain]) == []
+        for which, change, said in (
+                ("flag", {"ValueKind": "increased"}, "value kind 'increased'"),
+                ("flag", {"RequiredTags": ""}, "under the required tags ''"),
+                ("flag", {"ValueHigh": 2.0}, "states 2 on"),
+                ("flag", {"Action": "health"}, "with the action 'health'"),
+                ("drain", {"ValueKind": "more"}, "value kind 'more'"),
+                ("drain", {"RequiredTags": "Type.Trap"},
+                 "under the required tags 'Type.Trap'"),
+                ("drain", {"ValueLow": 0.0, "ValueHigh": 0.0}, "states 0 on"),
+                ("drain", {"ValueLow": 101.0, "ValueHigh": 101.0},
+                 "states 101 on"),
+                ("drain", {"ValueLow": -5.0, "ValueHigh": -5.0},
+                 "states -5 on"),
+                ("drain", {"ValueHigh": 8.0}, "states ONE figure")):
+            rows = [dict(flag, **change) if which == "flag" else flag,
+                    dict(drain, **change) if which == "drain" else drain]
+            problems = self.refusals(rows)
+            assert len(problems) == 1, (which, change, problems)
+            assert said in problems[0], (which, change, problems)
+
+    def test_one_of_the_two_without_the_other_is_refused(self, tmp_path):
+        """The game would read either alone; the generator refuses it,
+        because the sentence gives both and one alone is a design nobody
+        ruled. The control is the pair. Each stat alone is one refusal that
+        names both; and the two on two different enchantments are two."""
+        flag, drain = self.pair(tmp_path)
+        assert self.refusals([flag, drain]) == []
+        for alone, missing in ((flag, self.DRAIN), (drain, self.NO_DAMAGE)):
+            problems = self.refusals([alone])
+            assert len(problems) == 1, problems
+            assert f"and not {missing!r}" in problems[0]
+            assert repr(alone["Stat"]) in problems[0]
+        apart = self.refusals(
+            [flag, dict(drain, Name="Positive_Another#1",
+                        Enchantment="Positive_Another")])
+        assert len(apart) == 2, apart
+
+    def test_either_stat_twice_on_one_enchantment_is_refused(self, tmp_path):
+        flag, drain = self.pair(tmp_path)
+        again = dict(drain, Name=drain["Enchantment"] + "#3")
+        problems = self.refusals([flag, drain, again])
+        assert len(problems) == 1, problems
+        assert "on more than one row" in problems[0]
+        assert repr(self.DRAIN) in problems[0]
+
+    def test_a_condition_or_a_scale_on_either_is_refused_elsewhere(
+            self, tmp_path):
+        for row in self.pair(tmp_path):
+            assert gen.refuse_a_condition_nothing_asks_for(
+                "EnchantmentEffects", [row]) == []
+            conditioned = gen.refuse_a_condition_nothing_asks_for(
+                "EnchantmentEffects", [dict(row, Condition="while_stationary")])
+            assert len(conditioned) == 1 and row["Stat"] in conditioned[0]
+            scaled = gen.refuse_a_scale_nothing_asks_for(
+                "EnchantmentEffects", [dict(row, Scale="gadgets_active")])
+            assert len(scaled) == 1 and row["Stat"] in scaled[0]
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        """The pair gives the sheet's validation nothing to say; the flag
+        alone is refused there, in this check's words."""
+        flag, drain = self.pair(tmp_path)
+        assert self.validation([flag, drain]) == []
+        problems = self.validation([flag])
+        assert any(f"and not {self.DRAIN!r}" in problem
+                   for problem in problems), problems
+
+
+class TestGadgetsCopyTheLastSkillUsed(GadgetRowsOnAMadeUpSheet):
+    """`gadgets_copy_your_last_skill`, ruled 2026-10-14 and built ahead of its
+    row, for "Gadgets copy the last skill you used and fire it at their target
+    once every 2 seconds". One flag at a flat 1, scoped to `Type.Deployable`,
+    with no action and no action event: `ACataclysmMinion::StepSkillCopy`
+    asks whether it is above nought on each step of the gadget. THE 2 SECONDS
+    ARE THE ENGINE'S, not the row's.
+    """
+
+    WORDS = ("Gadgets copy the last skill you used and fire it at their "
+             "target once every 2 seconds")
+    STAT = "gadgets_copy_your_last_skill"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 1, "Value High": 1,
+           "Required Tags": "Type.Deployable"}
+
+    def test_the_ruled_row_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"], row["ActionEvent"])
+                for row in out] == [
+            (self.STAT, "flat", 1.0, 1.0, "Type.Deployable", "", "", "", "")]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert self.validation(out) == []
+
+    def test_the_flag_is_a_stat_with_no_attribute(self):
+        """TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.GADGETS_COPY_YOUR_LAST_SKILL_STAT == self.STAT
+        assert self.STAT in gen.GADGET_FLAG_STATS
+        assert self.STAT in gen.GADGET_STATS
+        assert self.STAT in gen.stats_with_no_attribute()
+        assert "gadgets_copy_last_skill" not in gen.stats_with_no_attribute()
+
+    def test_the_generator_holds_exactly_the_name_the_engine_asks_for(self):
+        """THE CONTROL is the flag of the first gadget layer, read by the
+        same pattern from the same file."""
+        names = self.names_in_the_engine()
+        assert names["GadgetsTargetMostHealthStat"] == (
+            gen.GADGETS_TARGET_MOST_HEALTH_STAT)
+        assert names["GadgetsCopyYourLastSkillStat"] == (
+            gen.GADGETS_COPY_YOUR_LAST_SKILL_STAT)
+
+    def test_the_seconds_are_the_engines_and_are_the_sentences(self):
+        """THE 2 SECONDS ARE A FIGURE OF THE ENGINE, read here from the header
+        that holds it. The control is the drain's allowance in the same
+        header, read by the same pattern."""
+        import re
+        header = (gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+                  / "CataclysmMinion.h").read_text(encoding="utf-8")
+        figures = dict(re.findall(
+            r"static constexpr float (\w+) = ([0-9.]+)f;", header))
+        assert figures["DrainedToNothingShare"] == "0.0001"
+        assert float(figures["SecondsBetweenSkillCopies"]) == 2.0
+        assert "every 2 seconds" in self.WORDS
+
+    def test_every_shape_the_game_would_give_nothing_for_is_refused(
+            self, tmp_path):
+        """One change to the carried row at a time, each refused once and by
+        its own sentence. The control is the first line."""
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert self.refusals([row]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"RequiredTags": ""}, "under the required tags ''"),
+                ({"RequiredTags": "Type.Deployable, Type.Trap"},
+                 "under the required tags 'Type.Deployable, Type.Trap'"),
+                ({"Action": "strike_target"},
+                 "with the action 'strike_target'"),
+                ({"ValueLow": 0.0}, "states 0 on"),
+                ({"ValueLow": 2.0, "ValueHigh": 2.0}, "states 2 on")):
+            problems = self.refusals([dict(row, **change)])
+            if change.get("ValueLow") == 2.0:
+                assert len(problems) == 2, (change, problems)
+            else:
+                assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+
+    def test_a_condition_or_a_scale_on_the_flag_is_refused_elsewhere(
+            self, tmp_path):
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW])
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="while_stationary")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="gadgets_active")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+
+
+class TestUltimateCostDoublesInsteadOfCooldown:
+    """`ultimate_cost_doubles_instead_of_cooldown`, ruled 2026-10-14 and built
+    ahead of its row, for "Mana Weaver (10-Piece Bonus): Your ultimate ability
+    no longer has a cooldown. Instead, its mana cost is doubled every time you
+    use it. This cost resets at the beginning of every dungeon". One flag at a
+    flat 1 with no Required Tags, no Condition, no Scale and no Action:
+    `UCataclysmGameplayAbility::UltimateCostDoublesByARow` asks whether it is
+    above nought, with no tags, for a skill in the Ultimate slot.
+
+    THE SHEET HERE IS MADE UP AND SO IS WHERE THE SENTENCE SITS ON IT. The
+    words are the real sentence, on the Negative side of a made-up sheet; the
+    real sentence is a Positive set bonus. The real row is the enchantment
+    session's to write; this shows that the generator carries the ruled row
+    through and refuses every shape the game would answer no to.
+    """
+
+    WORDS = ("Mana Weaver (10-Piece Bonus): Your ultimate ability no longer "
+             "has a cooldown. Instead, its mana cost is doubled every time you "
+             "use it. This cost resets at the beginning of every dungeon")
+    STAT = "ultimate_cost_doubles_instead_of_cooldown"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 1, "Value High": 1}
+
+    def out(self, tmp_path, rows):
+        return TestTheChannellingConditionsOfTheEighthOfOctober().out(
+            tmp_path, self.WORDS, rows)
+
+    def refusals(self, rows):
+        return gen.refuse_an_ultimate_cost_doubling_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def test_the_ruled_row_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"], row["ActionEvent"])
+                for row in out] == [
+            (self.STAT, "flat", 1.0, 1.0, "", "", "", "", "")]
+        assert self.refusals(out) == []
+        # NO CONDITION AND NO SCALE, so neither of those checks has anything
+        # to say; and the whole sheet's validation has nothing to say either.
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+
+    def test_the_flag_is_a_stat_with_no_attribute(self):
+        """What lets the row above name it: the flag has no gameplay
+        attribute, so it is on the engine's list of stats that need none.
+        TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.ULTIMATE_COST_DOUBLES_INSTEAD_OF_COOLDOWN_STAT == self.STAT
+        assert self.STAT in gen.stats_with_no_attribute()
+        assert "ultimate_has_no_cooldown" not in gen.stats_with_no_attribute()
+
+    def test_the_generator_holds_exactly_the_name_the_engine_asks_for(self):
+        """The generator refuses bad rows by this name and the engine asks its
+        stat line for the name in `CataclysmGameplayAbility.cpp`. A name spelt
+        differently on the two sides would be refused by neither and read by
+        nothing. THE CONTROL is `skill_cost_paid_from_health`, read by the
+        same pattern from the same file, so a pattern that found nothing
+        would fail there first."""
+        import re
+        source = (gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+                  / "CataclysmGameplayAbility.cpp").read_text(encoding="utf-8")
+        names = dict(re.findall(
+            r'UCataclysmGameplayAbility::(\w+Stat)\s*=\s*TEXT\("([^"]+)"\)',
+            source))
+        assert names["CostPaidFromHealthStat"] == "skill_cost_paid_from_health"
+        assert names["UltimateCostDoublesInsteadOfCooldownStat"] == (
+            gen.ULTIMATE_COST_DOUBLES_INSTEAD_OF_COOLDOWN_STAT)
+
+    def test_the_cap_of_thirty_is_the_engines(self):
+        """THE CAP IS A FIGURE OF THE ENGINE, read here from the header that
+        holds it, and no cell of the row states it. The control is
+        `TeleportRandomlyDraws` in the same header, read by the same pattern."""
+        import re
+        header = (gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+                  / "CataclysmAbilitySystemComponent.h").read_text(
+                      encoding="utf-8")
+        figures = dict(re.findall(
+            r"static constexpr int32 (\w+) = (\d+);", header))
+        assert figures["TeleportRandomlyDraws"] == "8"
+        assert figures["MostUltimateCostDoublings"] == "30"
+
+    def test_every_shape_the_game_would_answer_no_to_is_refused(
+            self, tmp_path):
+        """One change to the carried row at a time, each refused by its own
+        sentence. The control is the first line: the row unchanged is not
+        refused. A figure changed in one column is one refusal; a kind other
+        than flat is one; a tag is one; an action is one."""
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert self.refusals([row]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"ValueKind": "more"}, "value kind 'more'"),
+                ({"RequiredTags": "Slot.Ultimate"}, "under a required tag"),
+                ({"Action": "mana"}, "with the action 'mana'"),
+                ({"ValueLow": 0.0}, "states 0 on"),
+                ({"ValueHigh": 2.0}, "states 2 on"),
+                ({"ValueLow": 30.0}, "states 30 on"),
+                ({"ValueHigh": 0.5}, "states 0.5 on")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+        # BOTH FIGURES WRONG IS TWO REFUSALS, one for each column.
+        assert len(self.refusals([dict(row, ValueLow=2.0, ValueHigh=4.0)])) == 2
+
+    def test_a_condition_or_a_scale_on_the_flag_is_refused_elsewhere(
+            self, tmp_path):
+        """The stat is on neither the list of stats asked for under a
+        condition nor the list asked for under a scale, so the two checks that
+        read those lists refuse such a row. The control is the row unchanged."""
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="health_below")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="own_stacks")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+
+    def test_a_passive_nodes_row_and_another_stat_are_left_alone(self):
+        node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                    "Stat": self.STAT, "ValueKind": "increased",
+                    "ValuePerPoint": 1.0}
+        assert gen.refuse_an_ultimate_cost_doubling_row_the_game_cannot_read(
+            "PassiveEffects", [node_row]) == []
+        assert self.refusals([{"Name": "X#1", "Stat": "mana_cost",
+                               "ValueKind": "more", "ValueLow": 100.0,
+                               "ValueHigh": 100.0,
+                               "RequiredTags": "Slot.Ultimate"}]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        """`validate_enchantment_effects` is what the generator runs over the
+        finished rows. The row unchanged gives it nothing to say; the row
+        under a required tag is refused there, in this check's words."""
+        out = self.out(tmp_path, [self.ROW])
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(out[0], RequiredTags="Slot.Ultimate")]},
+            set())
+        assert any("under a required tag" in problem
+                   and repr(self.STAT) in problem
+                   for problem in problems), problems
+
+
+class TestAShareOfDamageDoneToNearbyAllies:
+    """`damage_done_to_nearby_allies_taken_percent`, ruled 2026-10-15 and built
+    ahead of its row, for "You take 5%-15% damage done to nearby allies". One
+    stat at a flat 5 to 15 with no Required Tags, no Condition, no Scale and no
+    Action (R8): `UCataclysmAllyDamageShare::PercentHeldBy` asks for it with no
+    tags, of every character beside an ally whose health a blow reaches.
+
+    THE SHEET HERE IS MADE UP. The words are the real sentence, on the Negative
+    side, where the real one is. The real row is the enchantment session's to
+    write; this shows that the generator carries the ruled row through and
+    refuses every shape the game would read wrongly.
+    """
+
+    WORDS = "You take 5%-15% damage done to nearby allies"
+    STAT = "damage_done_to_nearby_allies_taken_percent"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 5,
+           "Value High": 15}
+
+    def out(self, tmp_path, rows):
+        return TestTheChannellingConditionsOfTheEighthOfOctober().out(
+            tmp_path, self.WORDS, rows)
+
+    def refusals(self, rows):
+        return gen.refuse_a_share_of_allies_damage_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def test_the_ruled_row_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"], row["ActionEvent"])
+                for row in out] == [
+            (self.STAT, "flat", 5.0, 15.0, "", "", "", "", "")]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+
+    def test_the_stat_is_a_stat_with_no_attribute(self):
+        """What lets the row above name it: the stat has no gameplay
+        attribute, so it is on the engine's list of stats that need none.
+        TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.DAMAGE_DONE_TO_NEARBY_ALLIES_TAKEN_PERCENT_STAT == self.STAT
+        assert self.STAT in gen.stats_with_no_attribute()
+        assert "damage_done_to_allies_taken" not in (
+            gen.stats_with_no_attribute())
+
+    def test_the_generator_holds_exactly_the_name_the_engine_asks_for(self):
+        """The generator refuses bad rows by this name and the engine asks its
+        stat line for the name in `CataclysmAllyDamageShare.cpp`. A name spelt
+        differently on the two sides would be refused by neither and read by
+        nothing. THE CONTROL is `damage_taken_delayed_percent`, read by the
+        same pattern from `CataclysmDelayedDamage.cpp`, whose definition is
+        split over two lines as this one is, so a pattern that found nothing
+        would fail there first."""
+        import re
+        abilities = gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+        pattern = r'U(Cataclysm\w+)::(\w+Stat)\s*=\s*TEXT\("([^"]+)"\)'
+
+        def names(file):
+            return {f"{owner}::{name}": value for owner, name, value in
+                    re.findall(pattern, (abilities / file).read_text(
+                        encoding="utf-8"))}
+
+        assert names("CataclysmDelayedDamage.cpp")[
+            "CataclysmDelayedDamage::SharePercentStat"] == (
+                "damage_taken_delayed_percent")
+        assert names("CataclysmAllyDamageShare.cpp")[
+            "CataclysmAllyDamageShare::PercentStat"] == (
+                gen.DAMAGE_DONE_TO_NEARBY_ALLIES_TAKEN_PERCENT_STAT)
+
+    def test_the_bound_of_100_is_the_one_the_engine_holds_the_figure_to(self):
+        """`PercentHeldBy` clamps the figure to between 0 and 100, read here
+        from its source; the generator's bound is the same 100. The control
+        is the clamp's lower bound, read by the same pattern."""
+        import re
+        source = (gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+                  / "CataclysmAllyDamageShare.cpp").read_text(encoding="utf-8")
+        clamp = re.search(
+            r"FMath::Clamp\(Cataclysm->StatForSkill\(FName\(PercentStat\), "
+            r"FGameplayTagContainer\(\), 0\.0f\), ([0-9.]+)f, ([0-9.]+)f\)",
+            source)
+        assert clamp is not None
+        assert float(clamp.group(1)) == 0.0
+        assert float(clamp.group(2)) == (
+            gen.MAX_DAMAGE_DONE_TO_NEARBY_ALLIES_TAKEN_PERCENT)
+
+    def test_every_shape_the_game_would_read_wrongly_is_refused(
+            self, tmp_path):
+        """One change to the carried row at a time, each refused by its own
+        sentence. The control is the first line: the row unchanged is not
+        refused. A kind other than flat is one refusal; a tag is one; an
+        action is one; a falling range is one; a figure out of bounds in one
+        column is one."""
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert self.refusals([row]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"ValueKind": "more"}, "value kind 'more'"),
+                ({"RequiredTags": "Type.Minion"}, "under a required tag"),
+                ({"Action": "health"}, "with the action 'health'"),
+                ({"ValueLow": 20.0}, "the range must rise"),
+                ({"ValueLow": 0.0}, "states 0 on"),
+                ({"ValueLow": -5.0}, "states -5 on"),
+                ({"ValueHigh": 150.0}, "states 150 on")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+        # A ROW OF ONE FIGURE AT THE BOUND IS ACCEPTED, and both columns out of
+        # bounds are two refusals.
+        assert self.refusals([dict(row, ValueLow=100.0, ValueHigh=100.0)]) == []
+        assert len(self.refusals([dict(row, ValueLow=-1.0,
+                                       ValueHigh=101.0)])) == 2
+
+    def test_a_condition_or_a_scale_on_the_stat_is_refused_elsewhere(
+            self, tmp_path):
+        """The stat is on neither the list of stats asked for under a
+        condition nor the list asked for under a scale, so the two checks that
+        read those lists refuse such a row. The control is the row unchanged."""
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="health_below")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="own_stacks")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+
+    def test_a_passive_nodes_row_and_another_stat_are_left_alone(self):
+        node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                    "Stat": self.STAT, "ValueKind": "increased",
+                    "ValuePerPoint": 1.0}
+        assert self.refusals([node_row]) == []
+        assert self.refusals([{"Name": "X#1",
+                               "Stat": "damage_taken_delayed_percent",
+                               "ValueKind": "increased", "ValueLow": 500.0,
+                               "ValueHigh": 1.0,
+                               "RequiredTags": "Type.Minion"}]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        """`validate_enchantment_effects` is what the generator runs over the
+        finished rows. The row unchanged gives it nothing to say; the row
+        under a required tag is refused there, in this check's words."""
+        out = self.out(tmp_path, [self.ROW])
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(out[0], RequiredTags="Type.Minion")]},
+            set())
+        assert any("under a required tag" in problem
+                   and repr(self.STAT) in problem
+                   for problem in problems), problems
+
+
+class TestAShareOfAPointBlankSkillsBlowOnAnAlly:
+    """`aoe_skill_damage_to_nearby_allies_percent`, ruled 2026-10-15 and built
+    ahead of its row, for "Your AOE skills deal 50%-75% of their damage to
+    nearby allies as well as enemies". One stat at a flat 50 to 75 with
+    Required Tags `Type.AOE.PointBlank`, no Condition, no Scale and no Action
+    (R10): `UCataclysmAreaShareOnAllies::PercentHeldFor` asks for it with the
+    skill's own tags, where a point-blank skill deals its own blow.
+
+    THE SHEET HERE IS MADE UP. The words are the real sentence, on the Negative
+    side, where the real one is. The real row is the enchantment session's to
+    write; this shows that the generator carries the ruled row through and
+    refuses every shape the game would read wrongly.
+    """
+
+    WORDS = ("Your AOE skills deal 50%-75% of their damage to nearby allies "
+             "as well as enemies")
+    STAT = "aoe_skill_damage_to_nearby_allies_percent"
+    TAG = "Type.AOE.PointBlank"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 50,
+           "Value High": 75, "Required Tags": TAG}
+
+    def out(self, tmp_path, rows):
+        return TestTheChannellingConditionsOfTheEighthOfOctober().out(
+            tmp_path, self.WORDS, rows)
+
+    def refusals(self, rows):
+        return gen.refuse_a_point_blank_share_on_allies_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def test_the_ruled_row_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"], row["ActionEvent"])
+                for row in out] == [
+            (self.STAT, "flat", 50.0, 75.0, self.TAG, "", "", "", "")]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, {self.TAG}) == []
+
+    def test_the_stat_is_a_stat_with_no_attribute(self):
+        """What lets the row above name it: the stat has no gameplay
+        attribute, so it is on the engine's list of stats that need none.
+        TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.AOE_SKILL_DAMAGE_TO_NEARBY_ALLIES_PERCENT_STAT == self.STAT
+        assert gen.AOE_SKILL_DAMAGE_TO_NEARBY_ALLIES_REQUIRED_TAG == self.TAG
+        assert self.STAT in gen.stats_with_no_attribute()
+        assert "aoe_skill_damage_to_allies" not in (
+            gen.stats_with_no_attribute())
+
+    def test_the_generator_holds_exactly_the_name_the_engine_asks_for(self):
+        """The generator refuses bad rows by this name and the engine asks its
+        stat line for the name in `CataclysmAreaShareOnAllies.cpp`. A name
+        spelt differently on the two sides would be refused by neither and
+        read by nothing. THE CONTROL is the name of "You take 5%-15% damage
+        done to nearby allies", read by the same pattern from
+        `CataclysmAllyDamageShare.cpp`, whose definition is split over two
+        lines as this one is, so a pattern that found nothing would fail there
+        first."""
+        import re
+        abilities = gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+        pattern = r'U(Cataclysm\w+)::(\w+Stat)\s*=\s*TEXT\("([^"]+)"\)'
+
+        def names(file):
+            return {f"{owner}::{name}": value for owner, name, value in
+                    re.findall(pattern, (abilities / file).read_text(
+                        encoding="utf-8"))}
+
+        assert names("CataclysmAllyDamageShare.cpp")[
+            "CataclysmAllyDamageShare::PercentStat"] == (
+                gen.DAMAGE_DONE_TO_NEARBY_ALLIES_TAKEN_PERCENT_STAT)
+        assert names("CataclysmAreaShareOnAllies.cpp")[
+            "CataclysmAreaShareOnAllies::PercentStat"] == (
+                gen.AOE_SKILL_DAMAGE_TO_NEARBY_ALLIES_PERCENT_STAT)
+
+    def test_the_bound_of_100_is_the_one_the_engine_holds_the_figure_to(self):
+        """`PercentHeldFor` clamps the figure to between 0 and 100, read here
+        from its source, asked with the skill's tags; the generator's bound is
+        the same 100. The control is the clamp's lower bound, read by the same
+        pattern."""
+        import re
+        source = (gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+                  / "CataclysmAreaShareOnAllies.cpp").read_text(
+                      encoding="utf-8")
+        clamp = re.search(
+            r"FMath::Clamp\(Cataclysm->StatForSkill\(FName\(PercentStat\), "
+            r"SkillTags, 0\.0f\), ([0-9.]+)f, ([0-9.]+)f\)",
+            source)
+        assert clamp is not None
+        assert float(clamp.group(1)) == 0.0
+        assert float(clamp.group(2)) == (
+            gen.MAX_AOE_SKILL_DAMAGE_TO_NEARBY_ALLIES_PERCENT)
+
+    def test_an_allys_share_is_delivered_as_an_enemys_blow_of_the_swing(self):
+        """`ShareTheBlowWithAllies` builds the delivery `HitTargets` builds,
+        field for field and in its order, so the ally's blow is priced as an
+        enemy's of the same swing (R4). Read from
+        `CataclysmSkillTemplate.cpp`: the `Delivery.<field> =` lines of the
+        one function, in order, are those of the other. THE CONTROL is
+        `HitScaled`, whose body sets no delivery field, read by the same
+        pattern; and the list read from `HitTargets` holds its first and last
+        field, so a pattern that found nothing cannot pass."""
+        import re
+        source = (gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+                  / "CataclysmSkillTemplate.cpp").read_text(encoding="utf-8")
+
+        def fields(function):
+            start = source.index(
+                f"float UCataclysmSkillTemplate::{function}(")
+            body = source[start:source.index("\n}\n", start)]
+            return re.findall(r"\bDelivery\.(\w+)\s*=", body)
+
+        enemy = fields("HitTargets")
+        assert enemy[0] == "CritChancePercent"
+        assert enemy[-1] == "DamageMultiplierSpent"
+        assert fields("ShareTheBlowWithAllies") == enemy
+        assert fields("HitScaled") == []
+
+    def test_every_shape_the_game_would_read_wrongly_is_refused(
+            self, tmp_path):
+        """One change to the carried row at a time, each refused by its own
+        sentence. The control is the first line: the row unchanged is not
+        refused. A kind other than flat is one refusal; a missing tag is one;
+        another tag in its place is one; an action is one; a falling range is
+        one; a figure out of bounds in one column is one."""
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert self.refusals([row]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"ValueKind": "more"}, "value kind 'more'"),
+                ({"RequiredTags": ""}, "without the required tag"),
+                ({"RequiredTags": "Type.AOE.Aura"},
+                 "without the required tag"),
+                ({"Action": "health"}, "with the action 'health'"),
+                ({"ValueLow": 80.0}, "the range must rise"),
+                ({"ValueLow": 0.0}, "states 0 on"),
+                ({"ValueLow": -5.0}, "states -5 on"),
+                ({"ValueHigh": 150.0}, "states 150 on")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+        # A NARROWER ROW IS ACCEPTED: the tag beside another. A ROW OF ONE
+        # FIGURE AT THE BOUND IS ACCEPTED, and both columns out of bounds are
+        # two refusals.
+        assert self.refusals([dict(
+            row, RequiredTags="Type.AOE.PointBlank, Element.Demonic")]) == []
+        assert self.refusals([dict(row, ValueLow=100.0,
+                                   ValueHigh=100.0)]) == []
+        assert len(self.refusals([dict(row, ValueLow=-1.0,
+                                       ValueHigh=101.0)])) == 2
+
+    def test_a_condition_or_a_scale_on_the_stat_is_refused_elsewhere(
+            self, tmp_path):
+        """The stat is on neither the list of stats asked for under a
+        condition nor the list asked for under a scale, so the two checks that
+        read those lists refuse such a row. The control is the row unchanged."""
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="health_below")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="own_stacks")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+
+    def test_a_passive_nodes_row_and_another_stat_are_left_alone(self):
+        node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                    "Stat": self.STAT, "ValueKind": "increased",
+                    "ValuePerPoint": 1.0}
+        assert self.refusals([node_row]) == []
+        assert self.refusals([{
+            "Name": "X#1",
+            "Stat": "damage_done_to_nearby_allies_taken_percent",
+            "ValueKind": "increased", "ValueLow": 500.0,
+            "ValueHigh": 1.0}]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        """`validate_enchantment_effects` is what the generator runs over the
+        finished rows. The row unchanged gives it nothing to say; the row
+        without its tag is refused there, in this check's words."""
+        out = self.out(tmp_path, [self.ROW])
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, {self.TAG}) == []
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(out[0], RequiredTags="")]},
+            {self.TAG})
+        assert any("without the required tag" in problem
+                   and repr(self.STAT) in problem
+                   for problem in problems), problems
+
+
+class TestASlotIsConvertedIntoAGadget(GadgetRowsOnAMadeUpSheet):
+    """`skill_slot_is_a_gadget`, ruled 2026-10-16 (S12) and built ahead of its
+    rows, for "Your heavy attack is converted into a deployable gadget that
+    fires your heavy attack at the nearest enemy within range once per heavy
+    attack cooldown. Scales off gadget damage." and its four siblings. One
+    flag at a flat 1 whose Required Tags is the slot's tag:
+    `UCataclysmAbilitySystemComponent::SlotIsASkillGadget` asks whether it is
+    above nought with the slot's skill tags, the way the lock is asked.
+
+    THE SENTENCE'S OWN TAGS ARE NOT THE ROW'S. The made-up sheet gives the
+    sentence `Type.Deployable, Slot.Heavy`, as the real Heavy sentence carries,
+    and the row requires `Slot.Heavy` alone. The first test shows the generator
+    carries such a row and refuses nothing: an effect's Required Tags need not
+    be the enchantment's own column-4 tags.
+    """
+
+    WORDS = ("Your heavy attack is converted into a deployable gadget that "
+             "fires your heavy attack at the nearest enemy within range once "
+             "per heavy attack cooldown. Scales off gadget damage.")
+    SENTENCE_TAGS = "Type.Deployable, Slot.Heavy"
+    STAT = "skill_slot_is_a_gadget"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 1, "Value High": 1,
+           "Required Tags": "Slot.Heavy"}
+
+    def refusals(self, rows):
+        return gen.refuse_a_skill_slot_gadget_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def validation(self, rows):
+        """What the generator's check of the finished sheet says of these
+        rows, told that the slot tag and `Type.Deployable` are tags the game
+        has."""
+        return gen.validate_enchantment_effects(
+            {"EnchantmentEffects": rows}, {"Slot.Heavy", self.TAG})
+
+    def test_the_ruled_row_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"], row["ActionEvent"])
+                for row in out] == [
+            (self.STAT, "flat", 1.0, 1.0, "Slot.Heavy", "", "", "", "")]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert self.validation(out) == []
+
+    def test_each_of_the_five_slots_is_accepted(self):
+        """THE CONTROL for the tag refusal below: every keyed slot's tag is
+        accepted, and the basic attack's since the second stack built its
+        click (ruled 2026-10-16: this asserted its refusal only because the
+        click was not built). A slot no row converts, the Aura's, and a
+        made-up one are still refused, once each."""
+        row = {"Name": "X#1", "Stat": self.STAT, "ValueKind": "flat",
+               "ValueLow": 1.0, "ValueHigh": 1.0}
+        for slot in ("Slot.Heavy", "Slot.Special", "Slot.Support",
+                     "Slot.Ultimate", "Slot.Basic"):
+            assert self.refusals([dict(row, RequiredTags=slot)]) == [], slot
+        for slot in ("Slot.Aura", "Slot.Nonsense"):
+            assert len(self.refusals([dict(row, RequiredTags=slot)])) == 1, (
+                slot)
+
+    def test_the_basic_attacks_row_is_carried_through_under_its_sentence(
+            self, tmp_path):
+        """The row the enchantment session is to write for "Your basic attack
+        is converted into a deployable gadget that fires your basic attack at
+        the nearest enemy within range, once per basic attack cooldown. Scales
+        off gadget damage.", under the sentence's own tags `Type.Deployable,
+        Slot.Basic, Scope.BasicOnly`: the row requires `Slot.Basic` alone and
+        nothing refuses it. THE CONTROL: the same row requiring the
+        sentence's whole tag list is refused, once."""
+        self.SENTENCE_TAGS = "Type.Deployable, Slot.Basic, Scope.BasicOnly"
+        words = ("Your basic attack is converted into a deployable gadget "
+                 "that fires your basic attack at the nearest enemy within "
+                 "range, once per basic attack cooldown. Scales off gadget "
+                 "damage.")
+        out = self.out(tmp_path, words, [dict(self.ROW,
+                                              **{"Required Tags": "Slot.Basic"})])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"], row["ActionEvent"])
+                for row in out] == [
+            (self.STAT, "flat", 1.0, 1.0, "Slot.Basic", "", "", "", "")]
+        assert self.refusals(out) == []
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, {"Slot.Basic", self.TAG}) == []
+        whole = [dict(out[0], RequiredTags=self.SENTENCE_TAGS)]
+        assert len(self.refusals(whole)) == 1
+
+    def test_the_flag_is_a_stat_with_no_attribute(self):
+        """TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.SKILL_SLOT_IS_A_GADGET_STAT == self.STAT
+        assert self.STAT in gen.stats_with_no_attribute()
+        assert "skill_slot_is_gadget" not in gen.stats_with_no_attribute()
+
+    def test_the_generator_holds_exactly_the_name_the_engine_asks_for(self):
+        """Read from the file that defines it, by the pattern
+        `names_in_the_engine` reads the minion's. THE CONTROL is the lock's
+        name in the skill slots file, read by the same pattern."""
+        import re
+        source_dir = gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+        pattern = r'(\w+)::(\w+Stat)\s*=\s*TEXT\("([^"]+)"\)'
+        system = (source_dir / "CataclysmAbilitySystemComponent.cpp").read_text(
+            encoding="utf-8")
+        slots = (source_dir / "CataclysmSkillSlots.cpp").read_text(
+            encoding="utf-8")
+        assert ("UCataclysmSkillSlots", "LockedStat", "skill_locked") in (
+            re.findall(pattern, slots))
+        assert ("UCataclysmAbilitySystemComponent", "SkillSlotIsAGadgetStat",
+                gen.SKILL_SLOT_IS_A_GADGET_STAT) in re.findall(pattern, system)
+
+    def test_every_shape_the_game_would_give_nothing_for_is_refused(
+            self, tmp_path):
+        """One change to the carried row at a time, each refused once and by
+        its own sentence. The control is the first line."""
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert self.refusals([row]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"RequiredTags": ""}, "under the required tags ''"),
+                ({"RequiredTags": "Type.Deployable"},
+                 "under the required tags 'Type.Deployable'"),
+                ({"RequiredTags": "Type.Deployable, Slot.Heavy"},
+                 "under the required tags 'Type.Deployable, Slot.Heavy'"),
+                ({"Action": "strike_target"},
+                 "with the action 'strike_target'"),
+                ({"ValueLow": 0.0}, "states 0 on"),
+                ({"ValueLow": 2.0, "ValueHigh": 2.0}, "states 2 on")):
+            problems = self.refusals([dict(row, **change)])
+            if change.get("ValueLow") == 2.0:
+                assert len(problems) == 2, (change, problems)
+            else:
+                assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+
+    def test_a_condition_or_a_scale_on_the_flag_is_refused_elsewhere(
+            self, tmp_path):
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW])
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="while_stationary")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="gadgets_active")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        """`validate_enchantment_effects` runs the refusal: the row unchanged
+        gives it nothing to say, and the row with no tag is refused there, in
+        this check's words."""
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert self.validation([row]) == []
+        problems = self.validation([dict(row, RequiredTags="")])
+        assert any("under the required tags ''" in problem
+                   and repr(self.STAT) in problem
+                   for problem in problems), problems
+
+
+class TestAHolderRefusesBuffsFromAllies:
+    """`ally_buffs_refused`, ruled 2026-10-19 (Q3 option a, A1 to A5) and
+    built ahead of its row, for "You cannot benefit from buffs applied by
+    allies". One flag at a flat 1 with no Required Tags, no Condition, no
+    Scale and no Action:
+    `UCataclysmAbilitySystemComponent::RefusesBuffsFromAllies` asks whether it
+    is above nought, off the receiver, before an ally is given a buff.
+
+    THE SHEET HERE IS MADE UP. The words are the real sentence, a Negative
+    one, on a made-up sheet whose tags are not the real enchantment's. The
+    real row is the enchantment session's to write; this shows that the
+    generator carries the proposed row through and refuses the wrong ones.
+    """
+
+    WORDS = "You cannot benefit from buffs applied by allies"
+    STAT = "ally_buffs_refused"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 1, "Value High": 1}
+
+    def out(self, tmp_path, rows):
+        return TestTheChannellingConditionsOfTheEighthOfOctober().out(
+            tmp_path, self.WORDS, rows)
+
+    def refusals(self, rows):
+        return gen.refuse_an_ally_buffs_refused_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def carried(self, tmp_path):
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert row["Stat"] == self.STAT
+        return row
+
+    def test_the_proposed_row_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"]) for row in out] == [
+            (self.STAT, "flat", 1.0, 1.0, "", "", "", "")]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+
+    def test_the_row_is_on_the_shipped_sentences_enchantment(self, tmp_path):
+        """The name is derived from the words, never typed, and the shipped
+        Negative sheet holds a sentence of that name with those words. The
+        control is the made-up sheet's other sentence, whose derived name the
+        shipped sheet does not hold."""
+        import csv
+        (row,) = self.out(tmp_path, [self.ROW])
+        name = gen.row_name("Negative", self.WORDS[:48])
+        assert row["Enchantment"] == name
+        shipped = gen.REPO_ROOT / "game" / "Data" / "EnchantmentsNegative.csv"
+        with shipped.open(encoding="utf-8", newline="") as handle:
+            effects = {r["Name"]: r["Effect"] for r in csv.DictReader(handle)}
+        assert effects.get(name) == self.WORDS
+        assert gen.row_name("Negative", "Double your energy shield") not in effects
+
+    def test_the_flag_is_a_stat_with_no_attribute(self):
+        """TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.ALLY_BUFFS_REFUSED_STAT == self.STAT
+        listed = gen.stats_with_no_attribute()
+        assert self.STAT in listed
+        assert "ally_buffs_refused_percent" not in listed
+
+    def test_the_generator_holds_the_name_the_engine_has(self):
+        """The generator refuses bad rows by this name and the engine asks for
+        it in `CataclysmAbilitySystemComponent.cpp`. THE CONTROL is
+        `aura_shares_immunities_with_allies`, read by the same pattern from the
+        same file, so a pattern that found nothing would fail there first."""
+        import re
+        folder = gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+        source = (folder / "CataclysmAbilitySystemComponent.cpp").read_text(
+            encoding="utf-8")
+        names = dict(re.findall(
+            r'UCataclysmAbilitySystemComponent::(\w+Stat)\s*=\s*TEXT\("([^"]+)"\)',
+            source))
+        assert names.get("AuraSharesImmunitiesStat") == (
+            "aura_shares_immunities_with_allies")
+        assert names.get("AllyBuffsRefusedStat") == self.STAT
+
+    def test_every_wrong_shape_is_refused_by_its_own_sentence(self, tmp_path):
+        """One change to the carried row at a time. The control is the first
+        line: the row unchanged is not refused."""
+        row = self.carried(tmp_path)
+        assert self.refusals([row]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"ValueKind": "more"}, "value kind 'more'"),
+                ({"RequiredTags": "Type.Buff"}, "under a required tag"),
+                ({"Action": "cleanse"}, "with the action 'cleanse'"),
+                ({"ValueLow": 1.0, "ValueHigh": 2.0}, "states 1 to 2"),
+                ({"ValueLow": 0.0, "ValueHigh": 0.0}, "states 0 to 0"),
+                ({"ValueLow": 100.0, "ValueHigh": 100.0}, "states 100 to 100")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+
+    def test_a_condition_or_a_scale_on_the_flag_is_refused_elsewhere(
+            self, tmp_path):
+        """The game asks the flag where no condition's state is handed over.
+        The control is the row unchanged, refused by neither."""
+        row = self.carried(tmp_path)
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="in_combat")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="debuffs_carried")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+
+    def test_a_passive_nodes_row_and_another_stat_are_left_alone(self):
+        node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                    "Stat": self.STAT, "ValueKind": "increased",
+                    "ValuePerPoint": 1.0}
+        assert self.refusals([node_row]) == []
+        assert self.refusals([{"Name": "X#1",
+                               "Stat": "aura_shares_immunities_with_allies",
+                               "ValueKind": "increased", "ValueLow": 5.0,
+                               "ValueHigh": 5.0,
+                               "RequiredTags": "Type.Buff"}]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        row = self.carried(tmp_path)
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [row]}, set()) == []
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(row, ValueLow=1.0, ValueHigh=2.0)]},
+            set())
+        assert any("states 1 to 2" in problem and repr(self.STAT) in problem
+                   for problem in problems), problems
+
+
+class TestADeployablesBlastStrikesItsWearer:
+    """`deployable_blasts_strike_self`, ruled 2026-10-19 (B1-B6) and built
+    ahead of its row, for "Your deployables and traps deal full damage to you
+    if you are within their blast radius", the deployable half. One flag at a
+    flat 1 with no Required Tags, no Condition, no Scale and no Action:
+    `UCataclysmDeployableSelfBlast::HeldBy` asks whether it is above nought,
+    with no tags, at each place a deployable's blast is struck.
+
+    THE SHEET HERE IS MADE UP. The words are the real sentence, on the Negative
+    side, where the real one is. The real row is the enchantment session's to
+    write; this shows that the generator carries the ruled row through and
+    refuses every shape the game would answer no to.
+    """
+
+    WORDS = ("Your deployables and traps deal full damage to you if you are "
+             "within their blast radius")
+    STAT = "deployable_blasts_strike_self"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 1, "Value High": 1}
+
+    def out(self, tmp_path, rows):
+        return TestTheChannellingConditionsOfTheEighthOfOctober().out(
+            tmp_path, self.WORDS, rows)
+
+    def refusals(self, rows):
+        return gen.refuse_a_deployable_self_blast_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    @staticmethod
+    def abilities():
+        return gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+
+    def test_the_ruled_row_is_carried_through_and_is_not_refused(
+            self, tmp_path):
+        out = self.out(tmp_path, [self.ROW])
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"], row["ActionEvent"])
+                for row in out] == [
+            (self.STAT, "flat", 1.0, 1.0, "", "", "", "", "")]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", out) == []
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+
+    def test_the_flag_is_a_stat_with_no_attribute(self):
+        """What lets the row above name it: the flag has no gameplay
+        attribute, so it is on the engine's list of stats that need none.
+        TESTED BY NAME. The control is a made-up name that is on no list."""
+        assert gen.DEPLOYABLE_BLASTS_STRIKE_SELF_STAT == self.STAT
+        assert self.STAT in gen.stats_with_no_attribute()
+        assert "deployables_strike_self" not in gen.stats_with_no_attribute()
+
+    def test_the_generator_holds_exactly_the_name_the_engine_asks_for(self):
+        """The generator refuses bad rows by this name and the engine asks its
+        stat line for the name in `CataclysmDeployableSelfBlast.cpp`. A name
+        spelt differently on the two sides would be refused by neither and
+        read by nothing. THE CONTROL is the name of "Your AOE skills deal
+        50%-75% of their damage to nearby allies as well as enemies", read by
+        the same pattern from `CataclysmAreaShareOnAllies.cpp`, so a pattern
+        that found nothing would fail there first."""
+        import re
+        pattern = r'U(Cataclysm\w+)::(\w+Stat)\s*=\s*TEXT\("([^"]+)"\)'
+
+        def names(file):
+            return {f"{owner}::{name}": value for owner, name, value in
+                    re.findall(pattern, (self.abilities() / file).read_text(
+                        encoding="utf-8"))}
+
+        assert names("CataclysmAreaShareOnAllies.cpp")[
+            "CataclysmAreaShareOnAllies::PercentStat"] == (
+                gen.AOE_SKILL_DAMAGE_TO_NEARBY_ALLIES_PERCENT_STAT)
+        assert names("CataclysmDeployableSelfBlast.cpp")[
+            "CataclysmDeployableSelfBlast::FlagStat"] == (
+                gen.DEPLOYABLE_BLASTS_STRIKE_SELF_STAT)
+
+    def test_the_wearers_blow_is_delivered_as_an_enemys_of_the_same_blast(
+            self):
+        """B3: the wearer is struck for the figure an enemy standing where it
+        stands would take. So each of the two new places that builds a
+        delivery for the wearer builds the one its site builds for an enemy,
+        field for field and in its order: in `CataclysmSkillTemplate.cpp`,
+        `StrikeTheWearerInItsDeployablesBlast` against `HitTargets`; in
+        `CataclysmProjectile.cpp`, `StrikeTheWearerInItsBlast` against
+        `HitOne`. THE CONTROL is `HitScaled`, whose body sets no delivery
+        field, read by the same pattern; and each list read from an enemy's
+        builder holds its first and last field, so a pattern that found
+        nothing cannot pass."""
+        import re
+
+        def fields(file, owner, returns, function):
+            source = (self.abilities() / file).read_text(encoding="utf-8")
+            start = source.index(f"{returns} {owner}::{function}(")
+            body = source[start:source.index("\n}\n", start)]
+            return re.findall(r"\bDelivery\.(\w+)\s*=", body)
+
+        template = ("CataclysmSkillTemplate.cpp", "UCataclysmSkillTemplate",
+                    "float")
+        enemy = fields(*template, "HitTargets")
+        assert enemy[0] == "CritChancePercent"
+        assert enemy[-1] == "DamageMultiplierSpent"
+        assert fields(*template, "StrikeTheWearerInItsDeployablesBlast") == (
+            enemy)
+        assert fields(*template, "HitScaled") == []
+
+        projectile = ("CataclysmProjectile.cpp", "ACataclysmProjectile",
+                      "void")
+        contact = fields(*projectile, "HitOne")
+        assert contact[0] == "CritChancePercent"
+        assert contact[-1] == "DamageMultiplierSpent"
+        assert fields(*projectile, "StrikeTheWearerInItsBlast") == contact
+
+    def test_every_shape_the_game_would_answer_no_to_is_refused(
+            self, tmp_path):
+        """One change to the carried row at a time, each refused by its own
+        sentence. The control is the first line: the row unchanged is not
+        refused. A figure changed in one column is one refusal; a kind other
+        than flat is one; a tag is one; an action is one."""
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert self.refusals([row]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"ValueKind": "more"}, "value kind 'more'"),
+                ({"RequiredTags": "Type.Deployable"}, "under a required tag"),
+                ({"Action": "health"}, "with the action 'health'"),
+                ({"ValueLow": 0.0}, "states 0 on"),
+                ({"ValueHigh": 2.0}, "states 2 on"),
+                ({"ValueHigh": 0.5}, "states 0.5 on")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+        # BOTH FIGURES WRONG IS TWO REFUSALS, one for each column.
+        assert len(self.refusals([dict(row, ValueLow=2.0, ValueHigh=4.0)])) == 2
+
+    def test_a_condition_or_a_scale_on_the_flag_is_refused_elsewhere(
+            self, tmp_path):
+        """The stat is on neither the list of stats asked for under a
+        condition nor the list asked for under a scale, so the two checks that
+        read those lists refuse such a row. The control is the row unchanged."""
+        (row,) = self.out(tmp_path, [self.ROW])
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        assert gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [row]) == []
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="health_below")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="own_stacks")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+
+    def test_a_passive_nodes_row_and_another_stat_are_left_alone(self):
+        node_row = {"Name": "Made_up_node#1", "Node": "Made_up_node",
+                    "Stat": self.STAT, "ValueKind": "increased",
+                    "ValuePerPoint": 1.0}
+        assert self.refusals([node_row]) == []
+        assert self.refusals([{
+            "Name": "X#1", "Stat": "aoe_skill_damage_to_nearby_allies_percent",
+            "ValueKind": "increased", "ValueLow": 500.0,
+            "ValueHigh": 1.0}]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        """`validate_enchantment_effects` is what the generator runs over the
+        finished rows. The row unchanged gives it nothing to say; the row at 2
+        is refused there, in this check's words."""
+        out = self.out(tmp_path, [self.ROW])
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": out}, set()) == []
+        problems = gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [dict(out[0], ValueHigh=2.0)]}, set())
+        assert any("states 2 on" in problem and repr(self.STAT) in problem
+                   for problem in problems), problems
+
+
+class TestGadgetsCastNowAtTheWearersDeath:
+    """A row that fires every gadget its wearer commands, once, at once, when
+    the wearer dies. Ruled 2026-10-19 by the coordinating session (C1-C4), for
+    "When you die, all your active traps and gadgets immediately trigger
+    simultaneously": the gadget half. The action is `gadgets_cast_now`, the
+    event `player_death` and no other, the value 100 and nothing else, and the
+    row takes no trigger cooldown."""
+
+    WORDS = ("When you die, all your active traps and gadgets immediately "
+             "trigger simultaneously")
+    NAME = gen.row_name("Positive", WORDS[:48])
+    HEAL_WORDS = "On death all nearby enemies are healed for 10%-20% of their maximum HP"
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 4, "Trigger.OnDeath, Type.Trap, Type.Deployable", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+        [HEAL_WORDS, "Generic", 4, "Trigger.OnDeath", None,
+         None, None, None, None],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def book(self, tmp_path, values):
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "gadgets_cast_now.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def fires(self, tmp_path, changes):
+        values = {"Enchantment": self.NAME, "Effect": self.WORDS,
+                  "Action": "gadgets_cast_now", "Action Event": "player_death",
+                  "Value Low": 100}
+        values.update(changes)
+        return self.book(tmp_path, values)
+
+    def test_the_row_name_is_the_shipped_enchantments(self):
+        assert self.NAME == "Positive_When_you_die_all_your_active_traps_and_gadgets"
+        shipped = (pathlib.Path(__file__).resolve().parents[2] / "game" / "Data"
+                   / "EnchantmentsPositive.csv").read_text(encoding="utf-8")
+        assert f"\n{self.NAME}," in shipped
+
+    def test_the_ruled_row_is_carried_through_cell_by_cell(self, tmp_path):
+        out = gen.enchantment_effects(self.fires(tmp_path, {}))
+        assert len(out) == 1
+        assert out[0]["Enchantment"] == self.NAME
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ValueHigh"], out[0]["TriggerCooldown"], out[0]["RequiredTags"],
+                out[0]["FractionOf"], out[0]["Scale"], out[0]["Condition"]) == (
+            "gadgets_cast_now", "player_death", 100.0, 100.0, 0.0, "", "", "", "")
+
+    def test_the_ruled_row_passes_the_whole_sheets_validation(self, tmp_path):
+        out = gen.enchantment_effects(self.fires(tmp_path, {}))
+        assert gen.validate_enchantment_effects({"EnchantmentEffects": out}, set()) == []
+
+    def test_the_action_takes_no_trigger_cooldown(self):
+        assert not gen.takes_a_trigger_cooldown(gen.GADGETS_CAST_NOW_ACTION)
+        assert gen.GADGETS_CAST_NOW_ACTION not in gen.POOL_ACTIONS
+
+    def test_control_another_action_on_the_death_may_state_a_trigger_cooldown(
+            self, tmp_path):
+        """So the refusal below is this action's own and not the event's."""
+        out = gen.enchantment_effects(self.book(tmp_path, {
+            "Enchantment": gen.row_name("Positive", self.HEAL_WORDS[:48]),
+            "Effect": self.HEAL_WORDS, "Action": "heal_nearby_enemies",
+            "Action Event": "player_death", "Value Low": 10, "Value High": 20,
+            "Trigger Cooldown": 1}))
+        assert out[0]["TriggerCooldown"] == 1.0
+
+    def test_a_stated_trigger_cooldown_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="states a Trigger Cooldown"):
+            gen.enchantment_effects(self.fires(tmp_path, {"Trigger Cooldown": 1}))
+
+    def test_the_name_misspelt_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="which is not one the game has"):
+            gen.enchantment_effects(self.fires(tmp_path, {"Action": "gadget_cast_now"}))
+
+    @pytest.mark.parametrize("event", ["kill", "gadget_destroyed", "hit_taken",
+                                       "every_seconds", "skill_use", None])
+    def test_the_row_on_any_other_event_is_refused(self, tmp_path, event):
+        with pytest.raises(gen.DataError,
+                           match="at the wearer's death and at nothing else"):
+            gen.enchantment_effects(self.fires(tmp_path, {"Action Event": event}))
+
+    def test_the_list_of_events_is_the_players_death_alone(self):
+        assert gen.GADGETS_CAST_NOW_EVENTS == ("player_death",)
+        assert set(gen.GADGETS_CAST_NOW_EVENTS) <= gen.action_events()
+
+    @pytest.mark.parametrize("value", [50, 0, 200])
+    def test_a_value_but_100_is_refused(self, tmp_path, value):
+        with pytest.raises(gen.DataError, match="its value is 100 and nothing else"):
+            gen.enchantment_effects(self.fires(tmp_path, {"Value Low": value}))
+
+    @pytest.mark.parametrize("column, written", [("Required Tags", "Type.Deployable"),
+                                                 ("Fraction Of", "maximum"),
+                                                 ("Value Kind", "increased"),
+                                                 ("Scale", "kills")])
+    def test_tags_a_fraction_a_value_kind_or_a_scale_is_refused(self, tmp_path, column,
+                                                                written):
+        with pytest.raises(gen.DataError,
+                           match="no size and its event carries no tags"):
+            gen.enchantment_effects(self.fires(tmp_path, {column: written}))
+
+    def test_scale_max_steps_is_refused_by_the_general_check(self, tmp_path):
+        with pytest.raises(gen.DataError, match="with no scale it caps nothing"):
+            gen.enchantment_effects(self.fires(tmp_path, {"Scale Max Steps": 3}))
+
+    def test_an_ailment_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="so it would be dropped"):
+            gen.enchantment_effects(self.fires(tmp_path, {"Ailment": "Burn"}))
+
+
+class TestASlotIsConvertedIntoATrap(GadgetRowsOnAMadeUpSheet):
+    """`skill_slot_is_a_trap`, ruled 2026-10-19 (T1-T19) and built ahead of its
+    rows, for "Your heavy attack is converted into a placeable trap. When
+    triggered, it fires your heavy attack at the nearest enemy. Scales off trap
+    damage. All placed copies share the heavy attack cooldown." and its Special
+    and Ultimate siblings. One flag at a flat 1 whose Required Tags is the
+    slot's tag: `UCataclysmAbilitySystemComponent::SlotIsASkillTrap` asks
+    whether it is above nought with the slot's skill tags, as the skill
+    gadget's flag is asked.
+
+    THE SENTENCE'S OWN TAGS ARE NOT THE ROW'S. The made-up sheet gives the
+    sentence `Type.Trap, Slot.Heavy`, as the real Heavy sentence carries, and
+    the row requires `Slot.Heavy` alone.
+    """
+
+    TAG = "Type.Trap"
+    WORDS = ("Your heavy attack is converted into a placeable trap. When "
+             "triggered, it fires your heavy attack at the nearest enemy. "
+             "Scales off trap damage. All placed copies share the heavy "
+             "attack cooldown.")
+    SENTENCE_TAGS = "Type.Trap, Slot.Heavy"
+    STAT = "skill_slot_is_a_trap"
+    ROW = {"Stat": STAT, "Value Kind": "flat", "Value Low": 1, "Value High": 1,
+           "Required Tags": "Slot.Heavy"}
+
+    def refusals(self, rows):
+        return gen.refuse_a_skill_slot_trap_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def validation(self, rows, tags=("Slot.Heavy",)):
+        return gen.validate_enchantment_effects(
+            {"EnchantmentEffects": rows}, set(tags) | {self.TAG})
+
+    def test_the_heavy_row_is_carried_through_and_is_not_refused(self, tmp_path):
+        out = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert out[0]["Enchantment"] == (
+            "Positive_Your_heavy_attack_is_converted_into_a_placeable")
+        assert [(row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"], row["ActionEvent"])
+                for row in out] == [
+            (self.STAT, "flat", 1.0, 1.0, "Slot.Heavy", "", "", "", "")]
+        assert self.refusals(out) == []
+        assert self.validation(out) == []
+
+    def test_the_special_and_ultimate_rows_are_carried_through_under_their_sentences(
+            self, tmp_path):
+        """The two other rows this layer proposes, each under its real
+        sentence and tags, refused by nothing."""
+        for words, tags, slot in (
+                ("Your special ability is converted into a placeable trap. When "
+                 "triggered, it activates your special ability centered on the "
+                 "triggering enemy. Scales off trap damage. All placed copies "
+                 "share the special ability cooldown.",
+                 "Type.Trap, Slot.Special", "Slot.Special"),
+                ("Your ultimate ability is converted into a placeable trap. When "
+                 "triggered, it fires your ultimate ability centered on the "
+                 "triggering enemy. Scales off trap damage. All placed copies "
+                 "share the ultimate cooldown.",
+                 "Type.Trap, Slot.Ultimate", "Slot.Ultimate")):
+            self.SENTENCE_TAGS = tags
+            out = self.out(tmp_path, words, [dict(self.ROW, **{"Required Tags": slot})])
+            assert out[0]["RequiredTags"] == slot
+            assert self.refusals(out) == [], slot
+            assert self.validation(out, (slot,)) == [], slot
+
+    def test_the_proposed_rows_are_the_shipped_sentences(self):
+        """THE NAMES ARE DERIVED, never typed: each sentence's name by the
+        generator's `row_name`, found in the shipped Positive sheet with those
+        words. THE CONTROL is a made-up sentence, whose name is not there."""
+        import csv
+        path = (gen.PLAYER_CLASS_STATS_CPP.parents[3] / "Data"
+                / "EnchantmentsPositive.csv")
+        with path.open(encoding="utf-8") as handle:
+            shipped = {row["Name"]: row for row in csv.DictReader(handle)}
+        for slot in ("heavy attack", "special ability", "ultimate ability"):
+            match = [row for row in shipped.values()
+                     if row["Effect"].startswith(
+                         f"Your {slot} is converted into a placeable trap.")]
+            assert len(match) == 1, slot
+            assert gen.row_name("Positive", match[0]["Effect"][:48]) == match[0]["Name"]
+        made_up = gen.row_name("Positive", "Your elbow is converted into a trap"[:48])
+        assert made_up not in shipped
+
+    def test_each_of_the_five_slots_is_accepted(self):
+        """Traps layer 2, ruled 2026-10-21, LIFTED THE REFUSAL of the Support's
+        and the basic attack's slot tags that layer 1 made (this test was
+        `test_the_three_built_slots_are_accepted_and_the_others_refused`, which
+        asserted both were refused once). Now the five slots the sentences
+        convert are accepted. THE CONTROL for the tag refusal: the Aura's, which
+        no sentence converts, and a made-up one are still refused, once each."""
+        row = {"Name": "X#1", "Stat": self.STAT, "ValueKind": "flat",
+               "ValueLow": 1.0, "ValueHigh": 1.0}
+        for slot in ("Slot.Heavy", "Slot.Special", "Slot.Ultimate", "Slot.Support",
+                     "Slot.Basic"):
+            assert self.refusals([dict(row, RequiredTags=slot)]) == [], slot
+        for slot in ("Slot.Aura", "Slot.Nonsense"):
+            assert len(self.refusals([dict(row, RequiredTags=slot)])) == 1, slot
+
+    def test_the_flag_is_a_stat_with_no_attribute(self):
+        assert gen.SKILL_SLOT_IS_A_TRAP_STAT == self.STAT
+        assert self.STAT in gen.stats_with_no_attribute()
+        assert "skill_slot_is_trap" not in gen.stats_with_no_attribute()
+
+    def test_the_generator_holds_exactly_the_names_the_engine_asks_for(self):
+        """Read from the files that define them. THE CONTROL is the gadget's
+        flag in the same file, read by the same pattern."""
+        import re
+        source_dir = gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+        pattern = r'(\w+)::(\w+Stat)\s*=\s*TEXT\("([^"]+)"\)'
+        system = (source_dir / "CataclysmAbilitySystemComponent.cpp").read_text(
+            encoding="utf-8")
+        found = re.findall(pattern, system)
+        assert ("UCataclysmAbilitySystemComponent", "SkillSlotIsAGadgetStat",
+                gen.SKILL_SLOT_IS_A_GADGET_STAT) in found
+        assert ("UCataclysmAbilitySystemComponent", "SkillSlotIsATrapStat",
+                gen.SKILL_SLOT_IS_A_TRAP_STAT) in found
+        minion = self.names_in_the_engine()
+        assert minion["TrapArmingSpeedStat"] == "trap_arming_speed"
+        assert minion["TrapTriggerRadiusStat"] == "trap_trigger_radius"
+        assert set(gen.TRAP_INCREASE_STATS) == {
+            minion["TrapArmingSpeedStat"], minion["TrapTriggerRadiusStat"]}
+
+    def test_every_shape_the_game_would_give_nothing_for_is_refused(self, tmp_path):
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert self.refusals([row]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"RequiredTags": ""}, "under the required tags ''"),
+                ({"RequiredTags": "Type.Trap"},
+                 "under the required tags 'Type.Trap'"),
+                ({"RequiredTags": "Type.Trap, Slot.Heavy"},
+                 "under the required tags 'Type.Trap, Slot.Heavy'"),
+                ({"Action": "strike_target"},
+                 "with the action 'strike_target'"),
+                ({"ValueLow": 0.0}, "states 0 on"),
+                ({"ValueLow": 2.0, "ValueHigh": 2.0}, "states 2 on")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == (2 if change.get("ValueLow") == 2.0 else 1), (
+                change, problems)
+            assert said in problems[0], (change, problems)
+            assert repr(self.STAT) in problems[0]
+
+    def test_a_condition_or_a_scale_on_the_flag_is_refused_elsewhere(self, tmp_path):
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW])
+        conditioned = gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="while_stationary")])
+        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        scaled = gen.refuse_a_scale_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Scale="traps_active")])
+        assert len(scaled) == 1 and self.STAT in scaled[0]
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        (row,) = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert self.validation([row]) == []
+        problems = self.validation([dict(row, RequiredTags="")])
+        assert any("under the required tags ''" in problem
+                   and repr(self.STAT) in problem for problem in problems), problems
+
+    #: Traps layer 2's two sentences, as `game/Data/EnchantmentsPositive.csv`
+    #: carries them, with their own tags and the one slot tag each row requires.
+    LAYER_TWO = (
+        ("Your support ability is converted into a placeable trap. When "
+         "triggered, it activates your support ability centered on the "
+         "triggering enemy. Scales off trap damage. All placed copies share "
+         "the support ability cooldown.",
+         "Type.Trap, Slot.Support, Type.Buff", "Slot.Support"),
+        ("Your basic attack is converted into a placeable trap. When "
+         "triggered, it fires your basic attack at the nearest enemy. Scales "
+         "off trap damage. Shares your basic attack cooldown across all "
+         "placed copies.",
+         "Type.Trap, Slot.Basic", "Slot.Basic"))
+
+    def test_the_support_and_basic_rows_are_carried_through_under_their_sentences(
+            self, tmp_path):
+        """Traps layer 2's two proposed rows, each under its real sentence and
+        the sentence's own tags, carried through as written and refused by
+        nothing. THE CONTROL: the same row requiring the sentence's whole tag
+        list is refused once, by the tag check, because the row requires the
+        slot's tag alone."""
+        for words, tags, slot in self.LAYER_TWO:
+            self.SENTENCE_TAGS = tags
+            out = self.out(tmp_path, words, [dict(self.ROW, **{"Required Tags": slot})])
+            assert [(row["Stat"], row["ValueKind"], row["ValueLow"], row["ValueHigh"],
+                     row["RequiredTags"], row["Condition"], row["Scale"],
+                     row["Action"], row["ActionEvent"]) for row in out] == [
+                (self.STAT, "flat", 1.0, 1.0, slot, "", "", "", "")], slot
+            assert self.refusals(out) == [], slot
+            assert self.validation(out, tuple(t.strip() for t in tags.split(","))) == [], slot
+            whole = self.refusals([dict(out[0], RequiredTags=tags)])
+            assert len(whole) == 1 and f"under the required tags {tags!r}" in whole[0], (
+                slot, whole)
+
+    def test_the_support_and_basic_names_are_the_shipped_sentences(self):
+        """THE NAMES ARE DERIVED, never typed: each of layer 2's sentences by
+        the generator's `row_name`, found in the shipped Positive sheet with
+        those words and those tags. THE CONTROL is a sentence no sheet has."""
+        import csv
+        path = (gen.PLAYER_CLASS_STATS_CPP.parents[3] / "Data"
+                / "EnchantmentsPositive.csv")
+        with path.open(encoding="utf-8") as handle:
+            shipped = {row["Name"]: row for row in csv.DictReader(handle)}
+        for words, tags, slot in self.LAYER_TWO:
+            name = gen.row_name("Positive", words[:48])
+            assert name in shipped, slot
+            assert shipped[name]["Effect"] == words, slot
+            assert shipped[name]["Tags"] == tags, slot
+        assert gen.row_name("Positive", "Your aura is converted into a placeable trap"[:48]) \
+            not in shipped
+
+
+class TestATrapsArmingAndTriggerRadiusIncreases(GadgetRowsOnAMadeUpSheet):
+    """`trap_arming_speed` and `trap_trigger_radius`, ruled 2026-10-19 (M3,
+    M4), read as increases with the trap's type tags. Their rows are a later
+    layer's; this shows the generator carries the shape the reader adds, for
+    "Traps arm 30%-60% faster" and "Traps have 30%-50% increased trigger
+    radius", and refuses the shapes it would read as nothing."""
+
+    TAG = "Type.Trap"
+
+    def refusals(self, rows):
+        return gen.refuse_a_trap_increase_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def test_each_rows_shape_is_carried_through_and_is_not_refused(self, tmp_path):
+        for words, stat, high in (("Traps arm 30%-60% faster", "trap_arming_speed", 60),
+                                  ("Traps have 30%-50% increased trigger radius",
+                                   "trap_trigger_radius", 50)):
+            out = self.out(tmp_path, words, [{
+                "Stat": stat, "Value Kind": "increased", "Value Low": 30,
+                "Value High": high, "Required Tags": "Type.Trap"}])
+            assert (out[0]["Stat"], out[0]["ValueKind"], out[0]["RequiredTags"]) == (
+                stat, "increased", "Type.Trap")
+            assert self.refusals(out) == [], stat
+            assert gen.validate_enchantment_effects(
+                {"EnchantmentEffects": out}, {self.TAG}) == [], stat
+
+    def test_both_are_stats_with_no_attribute(self):
+        """THE CONTROL is a made-up name on no list."""
+        for stat in gen.TRAP_INCREASE_STATS:
+            assert stat in gen.stats_with_no_attribute(), stat
+        assert "trap_arming_rate" not in gen.stats_with_no_attribute()
+
+    def test_every_shape_the_game_would_read_as_nothing_is_refused(self):
+        row = {"Name": "X#1", "Stat": "trap_arming_speed", "ValueKind": "increased",
+               "ValueLow": 30.0, "ValueHigh": 60.0, "RequiredTags": "Type.Trap"}
+        assert self.refusals([row]) == []
+        assert self.refusals([dict(row, RequiredTags="")]) == []
+        for change, said in (
+                ({"ValueKind": "flat"}, "value kind 'flat'"),
+                ({"ValueKind": "more"}, "value kind 'more'"),
+                ({"RequiredTags": "Type.Deployable"},
+                 "under the required tags 'Type.Deployable'"),
+                ({"RequiredTags": "Slot.Heavy"}, "under the required tags 'Slot.Heavy'"),
+                ({"Action": "strike_target"}, "with the action 'strike_target'")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+        other = dict(row, Stat="minion_damage", ValueKind="flat")
+        assert self.refusals([other]) == []
+
+
+class TestTheSkillTrapMinionType:
+    """The `SkillTrap` row of the Minion Types sheet this layer proposes for
+    the enchantment session to author, ruled 2026-10-19 (M1, T9): a machine of
+    the trap's tags, health 40 and 18 a level (the Spike Trap's), no damage,
+    no movement and no threat, its reach and notice the trigger radius of 3 m.
+    Carried through `minion_types` on a made-up sheet, as its neighbours in
+    `tools/tests/test_minion_stat_blocks.py` are. THE CONTROL is the same row
+    without its family's tag, refused."""
+
+    HEADERS = ["Minion Type", "Family", "Base Health", "Health Per Level",
+               "Base Damage", "Damage Per Level", "Explosion Percent Of Own Damage",
+               "Attack Interval Seconds", "Move Speed", "Threat Percent",
+               "Reach Cm", "Notice Radius Cm", "Target Mode", "Tags"]
+    ROW = ["SkillTrap", "Machine", 40.0, 18.0, 0.0, 0.0, 300.0, 1.0, 0.0, 0.0,
+           300.0, 300.0, "Nearest",
+           "Type.Minion, Type.Deployable, Minion.Machine, Type.Trap"]
+
+    def book(self, tmp_path, row):
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "trap.xlsx", {"Minion Types": [self.HEADERS, row]}))
+
+    def test_the_row_is_carried_through_as_proposed(self, tmp_path):
+        (row,) = gen.minion_types(self.book(tmp_path, list(self.ROW)))
+        assert row["Name"] == "SkillTrap"
+        assert [tag.strip() for tag in row["Tags"].split(",")] == [
+            "Type.Minion", "Type.Deployable", "Minion.Machine", "Type.Trap"]
+
+    def test_the_same_row_without_its_familys_tag_is_refused(self, tmp_path):
+        wrong = list(self.ROW)
+        wrong[-1] = "Type.Minion, Type.Deployable, Type.Trap"
+        with pytest.raises(gen.DataError, match="does not carry Minion.Machine"):
+            gen.minion_types(self.book(tmp_path, wrong))
+
+    def test_the_engine_names_the_row_and_the_trigger_radius_the_row_states(self):
+        """The type name the engine places by, and the 3 m the row's reach
+        repeats, read out of the C++ that holds them."""
+        import re
+        source_dir = gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+        cpp = (source_dir / "CataclysmMinion.cpp").read_text(encoding="utf-8")
+        header = (source_dir / "CataclysmMinion.h").read_text(encoding="utf-8")
+        assert re.search(r'ACataclysmMinion::SkillTrapTypeName\s*=\s*TEXT\("SkillTrap"\)', cpp)
+        radius = re.search(r"SkillTrapTriggerRadiusCm\s*=\s*([0-9.]+)f;", header)
+        assert radius and float(radius.group(1)) == self.ROW[10] == self.ROW[11]
+
+
+def test_the_two_trap_events_are_clockless_events_a_row_may_hang_on():
+    """Ruled 2026-10-19 (M2, M5): `trap_placed` and `trap_triggered` join
+    `ACTION_ONLY_EVENTS`, and, because each is raised with a character (the
+    trap, the triggering enemy) and no strike on either is ruled,
+    `EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK`. THE CONTROL: neither is a
+    clock, and neither is a strike event, whose eight a merged test pins."""
+    for event in ("trap_placed", "trap_triggered"):
+        assert event in gen.ACTION_ONLY_EVENTS, event
+        assert event in gen.action_events(), event
+        assert f"seconds_after_{event}" not in gen.CONDITIONS, event
+        assert event in gen.EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK, event
+        assert event not in gen.STRIKE_TARGET_EVENTS, event
+
+
+def shipped_positive_sentence(name: str) -> str:
+    """The words of the shipped Positive sentence named `name`, read and not
+    typed, so a sentence holding a dash keeps it."""
+    import csv
+    path = (gen.PLAYER_CLASS_STATS_CPP.parents[3] / "Data"
+            / "EnchantmentsPositive.csv")
+    with path.open(encoding="utf-8") as handle:
+        match = [row for row in csv.DictReader(handle) if row["Name"] == name]
+    assert len(match) == 1, name
+    return match[0]["Effect"]
+
+
+class TestTheTrapCapBonusAndTheNoExpireFlag(GadgetRowsOnAMadeUpSheet):
+    """`trap_cap_bonus` and `traps_do_not_expire`, ruled 2026-10-21 (traps
+    layer 3, M1, M2) and built ahead of their rows, for "Your trap skills get
+    +1-6 to max trap count" and "Traps do not expire, they remain armed until
+    triggered". Each is a flat figure asked off the player with `Type.Trap`
+    alone. The rows are the enchantment session's; this shows the generator
+    carries the shape the readers take and refuses the shapes they would read
+    as nothing."""
+
+    TAG = "Type.Trap"
+    CAP = ("Your trap skills get +1-6 to max trap count",
+           {"Stat": "trap_cap_bonus", "Value Kind": "flat", "Value Low": 1,
+            "Value High": 6, "Required Tags": "Type.Trap"})
+    EXPIRY = ("Positive_Traps_do_not_expire_they_remain_armed_until_tr",
+              {"Stat": "traps_do_not_expire", "Value Kind": "flat", "Value Low": 1,
+               "Value High": 1, "Required Tags": "Type.Trap"})
+
+    def refusals(self, rows):
+        return gen.refuse_a_trap_cap_or_expiry_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def test_each_rows_shape_is_carried_through_and_is_not_refused(self, tmp_path):
+        for words, row in ((self.CAP[0], self.CAP[1]),
+                           (shipped_positive_sentence(self.EXPIRY[0]), self.EXPIRY[1])):
+            out = self.out(tmp_path, words, [row])
+            assert [(each["Stat"], each["ValueKind"], each["ValueLow"],
+                     each["ValueHigh"], each["RequiredTags"], each["Action"])
+                    for each in out] == [
+                (row["Stat"], "flat", float(row["Value Low"]),
+                 float(row["Value High"]), "Type.Trap", "")], row["Stat"]
+            assert self.refusals(out) == [], row["Stat"]
+            assert self.validation(out) == [], row["Stat"]
+
+    def test_both_are_stats_with_no_attribute_named_as_the_engine_names_them(self):
+        """THE CONTROL is a made-up name on no list."""
+        for stat in (gen.TRAP_CAP_BONUS_STAT, gen.TRAPS_DO_NOT_EXPIRE_STAT):
+            assert stat in gen.stats_with_no_attribute(), stat
+        assert "trap_cap_bonuses" not in gen.stats_with_no_attribute()
+        engine = self.names_in_the_engine()
+        assert engine["TrapCapBonusStat"] == gen.TRAP_CAP_BONUS_STAT
+        assert engine["TrapsDoNotExpireStat"] == gen.TRAPS_DO_NOT_EXPIRE_STAT
+
+    def test_every_shape_the_game_would_read_as_nothing_is_refused(self):
+        cap = {"Name": "X#1", "Stat": "trap_cap_bonus", "ValueKind": "flat",
+               "ValueLow": 1.0, "ValueHigh": 6.0, "RequiredTags": "Type.Trap"}
+        flag = dict(cap, Stat="traps_do_not_expire", ValueHigh=1.0)
+        for row in (cap, flag):
+            assert self.refusals([row]) == [], row["Stat"]
+            assert self.refusals([dict(row, RequiredTags="")]) == [], row["Stat"]
+        for row, change, said in (
+                (cap, {"ValueKind": "increased"}, "value kind 'increased'"),
+                (cap, {"RequiredTags": "Type.Deployable"},
+                 "under the required tags 'Type.Deployable'"),
+                (cap, {"Action": "strike_target"}, "with the action 'strike_target'"),
+                (cap, {"ValueLow": 0.0}, "whole number of traps from 1"),
+                (cap, {"ValueHigh": 2.5}, "whole number of traps from 1"),
+                (cap, {"ValueHigh": 21.0}, "whole number of traps from 1"),
+                (flag, {"ValueKind": "more"}, "value kind 'more'"),
+                (flag, {"RequiredTags": "Slot.Heavy"}, "under the required tags 'Slot.Heavy'"),
+                (flag, {"ValueHigh": 2.0}, "states 1 and nothing else")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+        other = dict(cap, Stat="minion_cap_bonus", ValueKind="increased")
+        assert self.refusals([other]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        """A wrong row is refused by the generator's check of the finished
+        sheet, not only by the function called by hand. THE CONTROL is the
+        right row, refused by nothing above."""
+        out = self.out(tmp_path, self.CAP[0], [dict(self.CAP[1], **{"Value Kind": "increased"})])
+        problems = self.validation(out)
+        assert any("trap_cap_bonus" in problem and "'increased'" in problem
+                   for problem in problems), problems
+
+
+class TestTheSlowTheSizedBleedAndTheStacksThatLapseAlone(GadgetRowsOnAMadeUpSheet):
+    """The three things traps layer 3 added to what a row may say, ruled
+    2026-10-21 (M3, M4): `slow_for_seconds` on `trap_triggered`, the slow of a
+    stated strength on the enemy that set the trap off; `apply_status_sized` on
+    `deployable_hit`, a damage over time at a multiple of its size on every
+    enemy a trap's cast strikes; and an `own_stacks` row with no cap on
+    `trap_triggered`, whose stacks lapse alone. Each proposed row is carried
+    through under its real sentence and refused by nothing; each wrong shape
+    is refused by name."""
+
+    TAG = "Type.Trap"
+    SLOW_WORDS = "Traps apply a 20%-35% slow to triggered enemies for 2-4 seconds"
+    SLOW = {"Value Low": 20, "Value High": 35, "Required Tags": "Type.Trap",
+            "Action": "slow_for_seconds", "Action Event": "trap_triggered",
+            "Stack Seconds": 2, "Stack Seconds High": 4}
+    BLEED_WORDS = "Traps apply 1-2 bleed stacks to all enemies caught in their blast"
+    BLEED = {"Value Low": 1, "Value High": 2, "Required Tags": "Type.Trap",
+             "Action": "apply_status_sized", "Action Event": "deployable_hit",
+             "Ailment": "Bleed", "Trigger Cooldown": 0}
+    DAMAGE_WORDS = ("Each trap triggered in the last 10 seconds increases your "
+                    "damage by 8%-15%")
+    DAMAGE = [{"Stat": stat, "Value Kind": "increased", "Value Low": 8,
+               "Value High": 15, "Scale": "own_stacks", "Scale Step": 1,
+               "Action Event": "trap_triggered", "Stack Seconds": 10}
+              for stat in ("attack_damage", "spell_damage")]
+    EVASION_WORDS = ("Placing a trap generates a burst of evasion, granting "
+                     "10%-20% evasion chance for 3 seconds")
+    EVASION = {"Stat": "evasion", "Value Kind": "flat", "Value Low": 10,
+               "Value High": 20, "Scale": "own_stacks", "Scale Step": 1,
+               "Action Event": "trap_placed", "Scale Max Steps": 1,
+               "Stack Seconds": 3}
+
+    def test_the_slow_row_is_carried_through_and_is_not_refused(self, tmp_path):
+        out = self.out(tmp_path, self.SLOW_WORDS, [self.SLOW])
+        assert [(row["Action"], row["ActionEvent"], row["ValueLow"], row["ValueHigh"],
+                 row["StackSeconds"], row["StackSecondsHigh"], row["TriggerCooldown"],
+                 row["FractionOf"], row["Ailment"], row["RequiredTags"])
+                for row in out] == [
+            ("slow_for_seconds", "trap_triggered", 20.0, 35.0, 2.0, 4.0, 0.0, "", "",
+             "Type.Trap")]
+        assert self.validation(out) == []
+
+    def test_the_slow_is_refused_where_the_game_would_slow_nobody_or_drop_a_cell(
+            self, tmp_path):
+        """THE CONTROL is the row above, carried through."""
+        for change, said in (
+                ({"Action Event": "deployable_hit"}, "Only trap_triggered names"),
+                ({"Stack Seconds": None, "Stack Seconds High": None},
+                 "slows and states no Stack Seconds"),
+                ({"Ailment": "Cripple"}, "names the ailment 'Cripple'"),
+                ({"Value Kind": "flat"}, "states Value Kind 'flat'")):
+            with pytest.raises(gen.DataError, match=said):
+                self.out(tmp_path, self.SLOW_WORDS, [dict(self.SLOW, **change)])
+        # PAST CRIPPLE'S CAP, under made-up words that state the range, since
+        # the words are checked against the figures first.
+        with pytest.raises(gen.DataError, match="up to 80"):
+            self.out(tmp_path, "Traps apply a 85%-90% slow to triggered enemies for 2-4 seconds",
+                     [dict(self.SLOW, **{"Value Low": 85, "Value High": 90})])
+
+    def test_the_bleed_row_is_carried_through_and_is_not_refused(self, tmp_path):
+        out = self.out(tmp_path, self.BLEED_WORDS, [self.BLEED])
+        assert [(row["Action"], row["ActionEvent"], row["ValueLow"], row["ValueHigh"],
+                 row["Ailment"], row["TriggerCooldown"], row["RequiredTags"])
+                for row in out] == [
+            ("apply_status_sized", "deployable_hit", 1.0, 2.0, "Bleed", 0.0, "Type.Trap")]
+        assert self.validation(out) == []
+
+    def test_the_sized_bleed_is_refused_where_the_game_would_lay_nothing(self, tmp_path):
+        """THE CONTROL is the row above, carried through."""
+        for change, said in (
+                ({"Ailment": "Cripple"}, "applies the status 'Cripple'"),
+                ({"Action Event": "trap_placed"}, "applies a status on the event 'trap_placed'")):
+            with pytest.raises(gen.DataError, match=said):
+                self.out(tmp_path, self.BLEED_WORDS, [dict(self.BLEED, **change)])
+        # A SIZE IS WHOLE AT EACH END, under made-up words that state the range,
+        # since the words are checked against the figures first.
+        with pytest.raises(gen.DataError, match="times its ordinary size"):
+            self.out(tmp_path, "Traps apply 1.5-2 bleed stacks to all enemies caught in their blast",
+                     [dict(self.BLEED, **{"Value Low": 1.5})])
+
+    def test_the_damage_rows_with_no_cap_on_a_trap_triggered_are_carried_through(
+            self, tmp_path):
+        out = self.out(tmp_path, self.DAMAGE_WORDS, self.DAMAGE)
+        assert [(row["Stat"], row["Scale"], row["ActionEvent"], row["ScaleMaxSteps"],
+                 row["StackSeconds"]) for row in out] == [
+            ("attack_damage", "own_stacks", "trap_triggered", 0, 10.0),
+            ("spell_damage", "own_stacks", "trap_triggered", 0, 10.0)]
+
+    def test_an_own_stack_with_no_cap_is_still_refused_on_any_other_event(self, tmp_path):
+        """The guard against a cap forgotten stays everywhere else. THE CONTROL
+        is the evasion row on `trap_placed`, which states its cap of 1."""
+        out = self.out(tmp_path, self.EVASION_WORDS, [self.EVASION])
+        assert [(row["Stat"], row["ValueKind"], row["ActionEvent"], row["ScaleMaxSteps"],
+                 row["StackSeconds"]) for row in out] == [
+            ("evasion", "flat", "trap_placed", 1, 3.0)]
+        assert self.validation(out) == []
+        with pytest.raises(gen.DataError, match="states no cap in Scale Max Steps"):
+            self.out(tmp_path, self.EVASION_WORDS,
+                     [dict(self.EVASION, **{"Scale Max Steps": None})])
+
+    def test_the_lists_hold_one_event_each_and_the_item_reads_no_cap_as_lapsing_alone(self):
+        """The two events lists this layer adds name `trap_triggered` alone, and
+        the item marks an own-stack row of no cap as lapsing alone, read out of
+        the C++ that does it. THE CONTROL: a count of hits in a row is not
+        marked."""
+        import re
+        assert gen.SLOW_FOR_SECONDS_EVENTS == ("trap_triggered",)
+        assert gen.OWN_STACKS_LAPSING_ALONE_EVENTS == ("trap_triggered",)
+        item = (gen.PLAYER_CLASS_STATS_CPP.parents[1] / "Items"
+                / "CataclysmItem.cpp").read_text(encoding="utf-8")
+        assert re.search(r"Stack\.bOwnStacksLapseAlone = !bConsecutive && "
+                         r"Effect->ScaleMaxSteps <= 0;", item)
+
+
+class TestTheFiveHooksOnATrapsOwnBlow(GadgetRowsOnAMadeUpSheet):
+    """Traps layer 4, ruled 2026-10-21 by the coordinating session (F1 to
+    F12), built ahead of its rows: four stats a trap's trigger and its blows
+    are read by, each asked off the player with `Type.Trap` alone, and one
+    action on `kill`. Each proposed row is carried through under its real
+    sentence, read from the shipped sheet by the name `row_name` derives, and
+    refused by nothing; each wrong shape is refused by name."""
+
+    TAG = "Type.Trap"
+    #: The four stat rows: the sentence the brief quotes, and the cells.
+    STATS = [
+        ("Triggered traps have a 25%-50% chance to reset and rearm instead of "
+         "being consumed",
+         {"Stat": "trap_rearm_chance", "Value Kind": "flat", "Value Low": 25,
+          "Value High": 50, "Required Tags": "Type.Trap"}),
+        ("Traps deal 100%-200% increased damage to the first enemy that "
+         "triggers them",
+         {"Stat": "trap_damage_to_triggering_enemy", "Value Kind": "increased",
+          "Value Low": 100, "Value High": 200, "Required Tags": "Type.Trap"}),
+        ("Traps deal bonus damage equal to 5%-10% of the triggering enemy's "
+         "maximum HP",
+         {"Stat": "trap_triggering_enemy_max_health_damage", "Value Kind": "flat",
+          "Value Low": 5, "Value High": 10, "Required Tags": "Type.Trap"}),
+        ("Traps deal 30%-50% of their damage as a DoT over 3 seconds to "
+         "triggered enemies",
+         {"Stat": "trap_damage_over_time_share", "Value Kind": "flat",
+          "Value Low": 30, "Value High": 50, "Required Tags": "Type.Trap"}),
+    ]
+    EXPLOSION_WORDS = ("Enemies killed by traps explode, dealing 50%-100% of the "
+                       "trap's damage to all enemies within 4 meters")
+    EXPLOSION = {"Value Low": 50, "Value High": 100, "Required Tags": "Type.Trap",
+                 "Action": "explode_victim_for_killing_blow", "Action Event": "kill"}
+
+    def refusals(self, rows):
+        return gen.refuse_a_trap_blow_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def test_the_proposed_rows_are_the_shipped_sentences(self):
+        """The name each row is written under is `row_name` of its words, and
+        the shipped sheet holds exactly those words under that name."""
+        for words, _ in self.STATS + [(self.EXPLOSION_WORDS, None)]:
+            assert shipped_positive_sentence(gen.row_name("Positive", words[:48])) == words
+
+    def test_each_stat_rows_shape_is_carried_through_and_is_not_refused(self, tmp_path):
+        for words, row in self.STATS:
+            out = self.out(tmp_path, words, [row])
+            assert [(each["Stat"], each["ValueKind"], each["ValueLow"],
+                     each["ValueHigh"], each["RequiredTags"], each["Action"])
+                    for each in out] == [
+                (row["Stat"], row["Value Kind"], float(row["Value Low"]),
+                 float(row["Value High"]), "Type.Trap", "")], row["Stat"]
+            assert self.refusals(out) == [], row["Stat"]
+            assert self.validation(out) == [], row["Stat"]
+
+    def test_the_four_are_stats_with_no_attribute_named_as_the_engine_names_them(self):
+        """THE CONTROL is a made-up name on no list."""
+        names = (gen.TRAP_REARM_CHANCE_STAT, gen.TRAP_DAMAGE_TO_TRIGGERING_ENEMY_STAT,
+                 gen.TRAP_TRIGGERING_ENEMY_MAX_HEALTH_DAMAGE_STAT,
+                 gen.TRAP_DAMAGE_OVER_TIME_SHARE_STAT)
+        assert set(names) == set(gen.TRAP_BLOW_STAT_KINDS)
+        for stat in names:
+            assert stat in gen.stats_with_no_attribute(), stat
+        assert "trap_rearm_chances" not in gen.stats_with_no_attribute()
+        engine = self.names_in_the_engine()
+        assert engine["TrapRearmChanceStat"] == gen.TRAP_REARM_CHANCE_STAT
+        assert engine["TrapDamageToTriggeringEnemyStat"] == \
+            gen.TRAP_DAMAGE_TO_TRIGGERING_ENEMY_STAT
+        assert engine["TrapTriggeringEnemyMaxHealthDamageStat"] == \
+            gen.TRAP_TRIGGERING_ENEMY_MAX_HEALTH_DAMAGE_STAT
+        assert engine["TrapDamageOverTimeShareStat"] == gen.TRAP_DAMAGE_OVER_TIME_SHARE_STAT
+
+    def test_every_shape_the_game_would_read_as_nothing_is_refused(self):
+        rearm = {"Name": "X#1", "Stat": "trap_rearm_chance", "ValueKind": "flat",
+                 "ValueLow": 25.0, "ValueHigh": 50.0, "RequiredTags": "Type.Trap"}
+        first = dict(rearm, Stat="trap_damage_to_triggering_enemy", ValueKind="increased",
+                     ValueLow=100.0, ValueHigh=200.0)
+        health = dict(rearm, Stat="trap_triggering_enemy_max_health_damage",
+                      ValueLow=5.0, ValueHigh=10.0)
+        over_time = dict(rearm, Stat="trap_damage_over_time_share", ValueLow=30.0,
+                         ValueHigh=50.0)
+        for row in (rearm, first, health, over_time):
+            assert self.refusals([row]) == [], row["Stat"]
+            assert self.refusals([dict(row, RequiredTags="")]) == [], row["Stat"]
+        for row, change, said in (
+                (rearm, {"ValueKind": "increased"}, "value kind 'increased'"),
+                (first, {"ValueKind": "flat"}, "value kind 'flat'"),
+                (health, {"ValueKind": "more"}, "value kind 'more'"),
+                (over_time, {"ValueKind": "increased"}, "value kind 'increased'"),
+                (rearm, {"RequiredTags": "Type.Deployable"},
+                 "under the required tags 'Type.Deployable'"),
+                (over_time, {"RequiredTags": "Keyword.DoT.Generic"},
+                 "under the required tags 'Keyword.DoT.Generic'"),
+                (health, {"Action": "strike_target"}, "with the action 'strike_target'"),
+                (rearm, {"ValueHigh": 101.0}, "at most 100"),
+                (health, {"ValueLow": 0.0}, "above 0"),
+                (over_time, {"ValueHigh": 150.0}, "at most 100")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+        other = dict(rearm, Stat="trap_cap_bonus")
+        assert self.refusals([other]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        """A wrong row is refused by the generator's check of the finished
+        sheet, not only by the function called by hand. THE CONTROL is the
+        right row, refused by nothing above."""
+        words, row = self.STATS[0]
+        out = self.out(tmp_path, words, [dict(row, **{"Value Kind": "increased"})])
+        problems = self.validation(out)
+        assert any("trap_rearm_chance" in problem and "'increased'" in problem
+                   for problem in problems), problems
+
+    def test_the_explosion_row_is_carried_through_and_is_not_refused(self, tmp_path):
+        out = self.out(tmp_path, self.EXPLOSION_WORDS, [self.EXPLOSION])
+        assert [(row["Stat"], row["Action"], row["ActionEvent"], row["ValueLow"],
+                 row["ValueHigh"], row["FractionOf"], row["RequiredTags"])
+                for row in out] == [
+            ("", "explode_victim_for_killing_blow", "kill", 50.0, 100.0, "", "Type.Trap")]
+        assert self.validation(out) == []
+
+    def test_the_explosion_is_refused_where_the_game_would_explode_nothing(self, tmp_path):
+        """THE CONTROL is the row above, carried through."""
+        for change, said in (
+                ({"Action Event": "hit_dealt"}, "Only a kill has a victim and a killing blow"),
+                ({"Value Kind": "flat"}, "states Value Kind 'flat'"),
+                ({"Fraction Of": "maximum"}, "states Fraction Of 'maximum'")):
+            with pytest.raises(gen.DataError, match=said):
+                self.out(tmp_path, self.EXPLOSION_WORDS, [dict(self.EXPLOSION, **change)])
+        # PAST THE BOUND, under made-up words that state the range, since the
+        # words are checked against the figures first.
+        with pytest.raises(gen.DataError, match="up to 1000"):
+            self.out(tmp_path, "Enemies killed by traps explode, dealing 1500%-2000% of the "
+                     "trap's damage to all enemies within 4 meters",
+                     [dict(self.EXPLOSION, **{"Value Low": 1500, "Value High": 2000})])
+
+
+class TestTheTwoActionsOnTheWearersOtherTraps(GadgetRowsOnAMadeUpSheet):
+    """Traps layer 5, ruled 2026-10-22 by the coordinating session (H1 to H11)
+    and, on H5, by the owner, built ahead of its rows: `arm_traps_nearby` and
+    `trigger_traps_nearby`, each with its value the radius in metres (nought at
+    the wearer's death) and Scale Max Steps 1 for the nearest trap alone. Each
+    of the six proposed rows is carried through under its real sentence, read
+    from the shipped sheet by the name `row_name` derives, and refused by
+    nothing; each wrong shape is refused by name."""
+
+    TAG = "Type.Trap"
+    #: Each proposed row: design id, the sentence's words, and the cells.
+    ROWS = [
+        ("P212", "When a trap is triggered, the nearest unarmed trap within 10 "
+                 "meters arms instantly",
+         {"Action": "arm_traps_nearby", "Action Event": "trap_triggered",
+          "Value Low": 10, "Required Tags": "Type.Trap", "Scale Max Steps": 1}),
+        ("P017", "When a trap triggers it releases a shockwave that arms all traps "
+                 "within 15 meters instantly",
+         {"Action": "arm_traps_nearby", "Action Event": "trap_triggered",
+          "Value Low": 15, "Required Tags": "Type.Trap"}),
+        ("P065", "When a gadget is destroyed it arms all traps within 12 meters "
+                 "instantly",
+         {"Action": "arm_traps_nearby", "Action Event": "gadget_destroyed",
+          "Value Low": 12, "Required Tags": "Type.Deployable"}),
+        ("P054", "Traps trigger simultaneously when any one of them is triggered, "
+                 "if within 8-12 meters of each other",
+         {"Action": "trigger_traps_nearby", "Action Event": "trap_triggered",
+          "Value Low": 8, "Value High": 12, "Required Tags": "Type.Trap"}),
+        ("P220", "When a gadget is destroyed, the nearest active trap within 10 "
+                 "meters is triggered immediately",
+         {"Action": "trigger_traps_nearby", "Action Event": "gadget_destroyed",
+          "Value Low": 10, "Required Tags": "Type.Deployable", "Scale Max Steps": 1}),
+        ("P083", "When you die, all your active traps and gadgets immediately "
+                 "trigger simultaneously",
+         {"Action": "trigger_traps_nearby", "Action Event": "player_death",
+          "Value Low": 0}),
+    ]
+
+    def validation(self, rows):
+        """Told that both tags the rows require are tags the game has."""
+        return gen.validate_enchantment_effects(
+            {"EnchantmentEffects": rows}, {"Type.Trap", "Type.Deployable"})
+
+    def row(self, design):
+        return next((words, cells) for each, words, cells in self.ROWS if each == design)
+
+    def test_the_proposed_rows_are_the_shipped_sentences(self):
+        """The name each row is written under is `row_name` of its words, and
+        the shipped sheet holds exactly those words under that name."""
+        for _, words, _ in self.ROWS:
+            assert shipped_positive_sentence(gen.row_name("Positive", words[:48])) == words
+
+    def test_each_row_is_carried_through_cell_by_cell_and_is_not_refused(self, tmp_path):
+        for design, words, cells in self.ROWS:
+            out = self.out(tmp_path, words, [cells])
+            high = float(cells.get("Value High", cells["Value Low"]))
+            assert [(row["Stat"], row["Action"], row["ActionEvent"], row["ValueLow"],
+                     row["ValueHigh"], row["ScaleMaxSteps"], row["RequiredTags"],
+                     row["FractionOf"], row["TriggerCooldown"]) for row in out] == [
+                ("", cells["Action"], cells["Action Event"], float(cells["Value Low"]),
+                 high, cells.get("Scale Max Steps", 0), cells.get("Required Tags", ""),
+                 "", 0.0)], design
+            assert self.validation(out) == [], design
+
+    def test_the_names_are_the_engines_and_neither_is_a_pool_or_takes_a_trigger_cooldown(self):
+        """Read out of the C++ that defines them. THE CONTROL: a pool and an
+        action that takes a cooldown answer the other way."""
+        import re
+        engine = (gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+                  / "CataclysmAbilitySystemComponent.cpp").read_text(encoding="utf-8")
+        defined = dict(re.findall(
+            r'UCataclysmAbilitySystemComponent::(\w+Action)\s*=\s*TEXT\("([^"]+)"\)', engine))
+        assert defined["ArmTrapsNearbyAction"] == gen.ARM_TRAPS_NEARBY_ACTION
+        assert defined["TriggerTrapsNearbyAction"] == gen.TRIGGER_TRAPS_NEARBY_ACTION
+        for action in gen.TRAPS_NEARBY_ACTIONS:
+            assert action not in gen.POOL_ACTIONS, action
+            assert not gen.takes_a_trigger_cooldown(action), action
+            assert set(gen.TRAPS_NEARBY_EVENTS[action]) <= gen.action_events(), action
+        assert "health" in gen.POOL_ACTIONS
+        assert gen.takes_a_trigger_cooldown(gen.SLOW_FOR_SECONDS_ACTION)
+
+    def test_every_wrong_shape_is_refused_by_name(self, tmp_path):
+        """THE CONTROL is each row above, carried through."""
+        import re
+        for design, change, said in (
+                ("P212", {"Action Event": "kill"}, "on the event 'kill'"),
+                ("P212", {"Action Event": "player_death"}, "on the event 'player_death'"),
+                ("P054", {"Action Event": "hit_dealt"}, "on the event 'hit_dealt'"),
+                ("P017", {"Fraction Of": "maximum"}, "states Fraction Of 'maximum'"),
+                ("P017", {"Value Kind": "flat"}, "states Value Kind 'flat'"),
+                ("P017", {"Scale Max Steps": 2}, "It is 1, the nearest trap alone"),
+                ("P212", {"Trigger Cooldown": 1}, "states a Trigger Cooldown"),
+                ("P083", {"Value Low": 5}, "so the radius is 0, every trap"),
+                ("P083", {"Scale Max Steps": 1}, "acts on every trap, so the column"),
+                ("P083", {"Required Tags": "Type.Trap"}, "That event carries no tags"),
+                ("P220", {"Value Low": 0}, "The radius is above 0")):
+            words, cells = self.row(design)
+            with pytest.raises(gen.DataError, match=re.escape(said)):
+                self.out(tmp_path, words, [dict(cells, **change)])
+        # PAST THE BOUND, under made-up words that state the figure, since the
+        # words are checked against the figures first.
+        with pytest.raises(gen.DataError, match="up to 50"):
+            self.out(tmp_path, "When a trap triggers it releases a shockwave that arms all "
+                     "traps within 60 meters instantly",
+                     [dict(self.row("P017")[1], **{"Value Low": 60})])
+        # AND THE NAME MISSPELT.
+        with pytest.raises(gen.DataError, match="which is not one the game has"):
+            words, cells = self.row("P017")
+            self.out(tmp_path, words, [dict(cells, Action="arm_trap_nearby")])
+
+    def test_the_item_reads_the_count_and_the_two_flags(self):
+        """The item marks the row by its constant and reads Scale Max Steps 1
+        as the nearest trap alone, read out of the C++ with comments taken out.
+        THE CONTROL: the killing blow explosion's own line is found the same
+        way."""
+        import re
+        text = (gen.PLAYER_CLASS_STATS_CPP.parents[1] / "Items"
+                / "CataclysmItem.cpp").read_text(encoding="utf-8")
+        item = re.sub(r"/\*.*?\*/|//[^\n]*", "", text, flags=re.DOTALL)
+        assert re.search(r"Action\.bExplodeVictimForKillingBlow = Effect->Action\.Equals\(", item)
+        assert re.search(r"Action\.bArmTrapsNearby = Effect->Action\.Equals\(\s*"
+                         r"UCataclysmAbilitySystemComponent::ArmTrapsNearbyAction,", item)
+        assert re.search(r"Action\.bSetOffTrapsNearby = Effect->Action\.Equals\(\s*"
+                         r"UCataclysmAbilitySystemComponent::TriggerTrapsNearbyAction,", item)
+        assert re.search(r"Action\.bNearestTrapOnly =\s*\(Action\.bArmTrapsNearby \|\| "
+                         r"Action\.bSetOffTrapsNearby\) && Effect->ScaleMaxSteps == 1;", item)
+
+
+class TestAGadgetsShotAtATrapsEnemyAndATrapsPull(GadgetRowsOnAMadeUpSheet):
+    """Traps layer 6, ruled 2026-10-22 by the coordinating session (J1 to J10,
+    J2 changed: skill gadgets only), built ahead of its rows: the action
+    `gadget_fires_at_trap_enemy` on `trap_triggered`, its value a "more" in per
+    cent on the one shot, its Event Value the metres from the trap (nought any
+    distance) and its Every Nth the count of triggered traps; and the stat
+    `trap_pull_radius`, a flat radius in metres asked with `Type.Trap` alone.
+    Each of the three proposed rows is carried through under its real
+    sentence, read from the shipped sheet by the name `row_name` derives, and
+    refused by nothing; each wrong shape is refused by name."""
+
+    TAG = "Type.Trap"
+    #: Each proposed row: design id, the sentence's words, and the cells.
+    ROWS = [
+        ("P064", "When a trap is triggered near an active gadget, the gadget fires an "
+                 "immediate bonus shot at the triggering enemy",
+         {"Action": "gadget_fires_at_trap_enemy", "Action Event": "trap_triggered",
+          "Value Low": 100, "Required Tags": "Type.Trap", "Event Value": 10}),
+        ("P022", "For every 3 traps triggered, your nearest gadget fires a massive "
+                 "overcharged shot dealing 200%-400% of its normal damage",
+         {"Action": "gadget_fires_at_trap_enemy", "Action Event": "trap_triggered",
+          "Value Low": 200, "Value High": 400, "Required Tags": "Type.Trap",
+          "Every Nth": 3}),
+        ("P216", "When a trap triggers, all enemies within 4-6 meters are pulled "
+                 "toward the blast center",
+         {"Stat": "trap_pull_radius", "Value Kind": "flat", "Value Low": 4,
+          "Value High": 6, "Required Tags": "Type.Trap"}),
+    ]
+
+    def validation(self, rows):
+        """Told that both tags the sentences carry are tags the game has."""
+        return gen.validate_enchantment_effects(
+            {"EnchantmentEffects": rows}, {"Type.Trap", "Type.Deployable"})
+
+    def row(self, design):
+        return next((words, cells) for each, words, cells in self.ROWS if each == design)
+
+    def test_the_proposed_rows_are_the_shipped_sentences(self):
+        """The name each row is written under is `row_name` of its words, and
+        the shipped sheet holds exactly those words under that name."""
+        for _, words, _ in self.ROWS:
+            assert shipped_positive_sentence(gen.row_name("Positive", words[:48])) == words
+
+    def test_each_row_is_carried_through_cell_by_cell_and_is_not_refused(self, tmp_path):
+        for design, words, cells in self.ROWS:
+            out = self.out(tmp_path, words, [cells])
+            high = float(cells.get("Value High", cells["Value Low"]))
+            assert [(row["Stat"], row["ValueKind"], row["Action"], row["ActionEvent"],
+                     row["ValueLow"], row["ValueHigh"], row["RequiredTags"],
+                     row["FractionOf"], row["TriggerCooldown"], row["EventValue"],
+                     row["EveryNth"], row["StackSeconds"]) for row in out] == [
+                (cells.get("Stat", ""), cells.get("Value Kind", ""), cells.get("Action", ""),
+                 cells.get("Action Event", ""), float(cells["Value Low"]), high, "Type.Trap",
+                 "", 0.0, float(cells.get("Event Value", 0)), cells.get("Every Nth", 0),
+                 0.0)], design
+            assert self.validation(out) == [], design
+            assert gen.refuse_a_trap_pull_row_the_game_cannot_read(
+                "EnchantmentEffects", out) == [], design
+
+    def test_the_names_are_the_engines_and_the_action_is_no_pool_and_takes_no_cooldown(self):
+        """Read out of the C++ that defines them. THE CONTROL: a pool, an
+        action that takes a cooldown and a made-up stat answer the other way."""
+        import re
+        engine = (gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+                  / "CataclysmAbilitySystemComponent.cpp").read_text(encoding="utf-8")
+        defined = dict(re.findall(
+            r'UCataclysmAbilitySystemComponent::(\w+Action)\s*=\s*TEXT\("([^"]+)"\)', engine))
+        assert defined["GadgetFiresAtTrapEnemyAction"] == gen.GADGET_FIRES_AT_TRAP_ENEMY_ACTION
+        action = gen.GADGET_FIRES_AT_TRAP_ENEMY_ACTION
+        assert action not in gen.POOL_ACTIONS
+        assert not gen.takes_a_trigger_cooldown(action)
+        assert set(gen.GADGET_FIRES_AT_TRAP_ENEMY_EVENTS) <= gen.action_events()
+        assert "health" in gen.POOL_ACTIONS
+        assert gen.takes_a_trigger_cooldown(gen.SLOW_FOR_SECONDS_ACTION)
+        assert self.names_in_the_engine()["TrapPullRadiusStat"] == gen.TRAP_PULL_RADIUS_STAT
+        assert gen.TRAP_PULL_RADIUS_STAT in gen.stats_with_no_attribute()
+        assert "trap_pull_radii" not in gen.stats_with_no_attribute()
+
+    def test_every_wrong_shape_of_the_action_is_refused_by_name(self, tmp_path):
+        """THE CONTROL is each row above, carried through."""
+        import re
+        for design, change, said in (
+                ("P064", {"Action Event": "kill"}, "on the event 'kill'"),
+                ("P064", {"Action Event": "deployable_hit"}, "on the event 'deployable_hit'"),
+                ("P064", {"Fraction Of": "maximum"}, "states Fraction Of 'maximum'"),
+                ("P064", {"Value Kind": "flat"}, "states Value Kind 'flat'"),
+                ("P064", {"Trigger Cooldown": 1}, "states a Trigger Cooldown"),
+                ("P064", {"Event Value": 60}, "up to 50"),
+                ("P064", {"Value Low": 0}, "The figure is above 0"),
+                ("P022", {"Every Nth": 1}, "N is a whole number from 2"),
+                ("P022", {"Every Nth": 2.5}, "N is a whole number from 2"),
+                ("P022", {"Stack Seconds": 3}, "The count has no window")):
+            words, cells = self.row(design)
+            with pytest.raises(gen.DataError, match=re.escape(said)):
+                self.out(tmp_path, words, [dict(cells, **change)])
+        # AND THE NAME MISSPELT.
+        with pytest.raises(gen.DataError, match="which is not one the game has"):
+            words, cells = self.row("P064")
+            self.out(tmp_path, words, [dict(cells, Action="gadget_fire_at_trap_enemy")])
+
+    def test_every_shape_of_the_pull_the_game_would_read_as_nothing_is_refused(self, tmp_path):
+        """By the check of the finished sheet, not only by the function called
+        by hand. THE CONTROL is the right row and one requiring nothing,
+        refused by nothing."""
+        pull = {"Name": "X#1", "Stat": "trap_pull_radius", "ValueKind": "flat",
+                "ValueLow": 4.0, "ValueHigh": 6.0, "RequiredTags": "Type.Trap"}
+        refusals = gen.refuse_a_trap_pull_row_the_game_cannot_read
+        assert refusals("EnchantmentEffects", [pull]) == []
+        assert refusals("EnchantmentEffects", [dict(pull, RequiredTags="")]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"RequiredTags": "Keyword.CC"}, "under the required tags 'Keyword.CC'"),
+                ({"Action": "strike_target"}, "with the action 'strike_target'"),
+                ({"ValueLow": 0.0}, "above 0"),
+                ({"ValueHigh": 60.0}, "at most 50")):
+            problems = refusals("EnchantmentEffects", [dict(pull, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+        assert refusals("EnchantmentEffects", [dict(pull, Stat="trap_cap_bonus")]) == []
+        words, cells = self.row("P216")
+        out = self.out(tmp_path, words, [dict(cells, **{"Value Kind": "increased"})])
+        assert any("trap_pull_radius" in problem and "'increased'" in problem
+                   for problem in self.validation(out)), self.validation(out)
+
+    def test_the_item_reads_the_action_and_its_count_with_no_window(self):
+        """The item marks the row by its constant, and gives a count of Every
+        Nth with a window of nought, read out of the C++ with comments taken
+        out by tracking `/* ... */` and `//` (R-c). THE CONTROL: the nearest
+        trap's own line is found the same way."""
+        import re
+        text = (gen.PLAYER_CLASS_STATS_CPP.parents[1] / "Items"
+                / "CataclysmItem.cpp").read_text(encoding="utf-8")
+        item = re.sub(r"/\*.*?\*/|//[^\n]*", "", text, flags=re.DOTALL)
+        assert re.search(r"Action\.bNearestTrapOnly =\s*\(Action\.bArmTrapsNearby", item)
+        assert re.search(r"Action\.bGadgetFiresAtTrapEnemy = Effect->Action\.Equals\(\s*"
+                         r"UCataclysmAbilitySystemComponent::GadgetFiresAtTrapEnemyAction,", item)
+        assert re.search(r"if \(Action\.bGadgetFiresAtTrapEnemy && Effect->EveryNth > 1\)\s*\{\s*"
+                         r"Action\.EveryNth = Effect->EveryNth;\s*"
+                         r"Action\.CountWindowSeconds = 0\.0f;", item)
+
+
+class TestTheDamageTypesCarriedRow(GadgetRowsOnAMadeUpSheet):
+    """`damage_types_carried`, ruled 2026-10-25 (Q-D2 to Q-D6) and built
+    ahead of its row, for "This weapon has 2-4 damage types": a flat whole
+    number of damage types, read by the drop off the item's own drawn
+    enchantments and by no character. The row is the enchantment session's;
+    this shows the generator carries the shape the drop reads and refuses the
+    shapes it would read wrongly or not at all."""
+
+    TAG = "Item.Slot.Weapon"
+    WORDS = "This weapon has 2-4 damage types"
+    SENTENCE_TAGS = ("Element.Demonic, Element.Celestial, Element.Void, Element.Death, "
+                     "Element.War, Element.Pestilence, Element.Chaos, Element.Famine, "
+                     "Item.Slot.Weapon")
+    ROW = {"Stat": "damage_types_carried", "Value Kind": "flat", "Value Low": 2,
+           "Value High": 4}
+
+    def refusals(self, rows):
+        return gen.refuse_a_damage_types_carried_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def test_the_proposed_row_is_carried_through_and_is_not_refused(self, tmp_path):
+        """Under the real sentence's name, derived by `row_name`."""
+        assert gen.row_name("Positive", self.WORDS[:48]) == \
+            "Positive_This_weapon_has_2_4_damage_types"
+        assert shipped_positive_sentence(
+            "Positive_This_weapon_has_2_4_damage_types") == self.WORDS
+        out = self.out(tmp_path, self.WORDS, [self.ROW])
+        assert [(row["Name"], row["Stat"], row["ValueKind"], row["ValueLow"],
+                 row["ValueHigh"], row["RequiredTags"], row["Condition"],
+                 row["Scale"], row["Action"]) for row in out] == [
+            ("Positive_This_weapon_has_2_4_damage_types#1", "damage_types_carried",
+             "flat", 2.0, 4.0, "", "", "", "")]
+        assert self.refusals(out) == []
+        assert gen.refuse_a_condition_nothing_asks_for("EnchantmentEffects", out) == []
+        assert gen.refuse_a_scale_nothing_asks_for("EnchantmentEffects", out) == []
+        assert self.validation(out) == []
+
+    def test_the_stat_is_one_with_no_attribute_named_as_the_engine_names_it(self):
+        """THE CONTROL is a made-up name that is on no list."""
+        import re
+        assert gen.DAMAGE_TYPES_CARRIED_STAT in gen.stats_with_no_attribute()
+        assert "damage_types_carrying" not in gen.stats_with_no_attribute()
+        source = (gen.PLAYER_CLASS_STATS_CPP.parents[1] / "Items"
+                  / "CataclysmDropRoll.cpp").read_text(encoding="utf-8")
+        assert re.findall(r'UCataclysmDropRoll::DamageTypesCarriedStat\s*=\s*TEXT\("([^"]+)"\)',
+                          source) == [gen.DAMAGE_TYPES_CARRIED_STAT]
+
+    def test_every_shape_the_drop_would_read_wrongly_is_refused(self):
+        right = {"Name": "X#1", "Stat": "damage_types_carried", "ValueKind": "flat",
+                 "ValueLow": 2.0, "ValueHigh": 4.0, "RequiredTags": ""}
+        assert self.refusals([right]) == []
+        assert self.refusals([dict(right, ValueLow=1.0, ValueHigh=8.0)]) == []
+        for change, said in (
+                ({"ValueKind": "increased"}, "value kind 'increased'"),
+                ({"RequiredTags": "Item.Slot.Weapon"}, "required tags 'Item.Slot.Weapon'"),
+                ({"Action": "strike_target"}, "action 'strike_target'"),
+                ({"Condition": "while_stationary"}, "condition 'while_stationary'"),
+                ({"Scale": "max_health"}, "scale 'max_health'"),
+                ({"ValueLow": 0.0}, "whole number from 1 to 8"),
+                ({"ValueHigh": 2.5}, "whole number from 1 to 8"),
+                ({"ValueHigh": 9.0}, "whole number from 1 to 8")):
+            problems = self.refusals([dict(right, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+        assert self.refusals([dict(right, Stat="trap_cap_bonus", ValueKind="increased")]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        """A wrong row is refused by the generator's check of the finished
+        sheet, not only by the function called by hand. THE CONTROL is the
+        right row, refused by nothing in the test above."""
+        out = self.out(tmp_path, self.WORDS, [dict(self.ROW, **{"Value Kind": "increased"})])
+        assert any("damage_types_carried" in problem and "'increased'" in problem
+                   for problem in self.validation(out)), self.validation(out)
+
+
+class TestASetRowCarriesItsNumberInItsOwnColumn:
+    """ISSUE #1443, the project owner's ruling of 2026-09-07: "Add a SetId column
+    to the Enchantments sheet and give the set rows an ordinary 1-to-4 weight."
+
+    Each mistake is refused separately because each is quiet on its own: a set
+    row with no number belongs to no set and none of its bonuses can turn on, an
+    ordinary row with a number would be counted as a set piece, and a set row
+    whose weight is above 4 is the old meaning of the column come back.
+    """
+
+    @staticmethod
+    def row(kind="Set", weight=1, set_id="5"):
+        return {"Name": "r", "EnchantmentType": kind, "Weight": weight, "SetId": set_id}
+
+    def check(self, row, table="EnchantmentsPositive"):
+        return gen.validate_enchantment_set_ids({table: [row]})
+
+    def test_a_set_row_with_its_number_and_weight_1_passes(self):
+        assert self.check(self.row()) == []
+
+    def test_an_ordinary_row_with_no_number_passes(self):
+        assert self.check(self.row(kind="Generic", weight=3, set_id="0")) == []
+
+    @pytest.mark.parametrize("set_id", ["", "0"])
+    def test_a_set_row_with_no_number_is_refused(self, set_id):
+        assert len(self.check(self.row(set_id=set_id))) == 1
+
+    def test_an_ordinary_row_with_a_number_is_refused(self):
+        assert len(self.check(self.row(kind="Generic", weight=3, set_id="7"),
+                              table="EnchantmentsNegative")) == 1
+
+    @pytest.mark.parametrize("weight", [5, 18, 0, 2.5])
+    def test_a_set_row_whose_weight_is_not_a_whole_1_to_4_is_refused(self, weight):
+        assert len(self.check(self.row(weight=weight))) == 1
+
+    def test_the_set_number_is_read_from_its_own_column_and_not_the_weight(self):
+        """THE READING THE GAME MAKES, `UCataclysmDropRoll::EnchantmentSetId`:
+        the number comes from `SetId`, and a weight of 5 means nothing now."""
+        assert gen.enchantment_set_id(self.row(weight=1, set_id="12")) == 12
+        assert gen.enchantment_set_id(self.row(kind="Generic", weight=5, set_id="0")) == 0
+        assert gen.enchantment_set_id(self.row(weight=5, set_id="0")) == 0
+
+    @pytest.mark.parametrize("cell, expected", [(None, "0"), ("", "0"), (7, "7"), (7.0, "7")])
+    def test_a_set_number_cell_is_written_as_a_whole_number_or_0(self, cell, expected):
+        assert gen.set_number(cell, 2) == expected
+
+    @pytest.mark.parametrize("cell", [2.5, 0, -3])
+    def test_a_set_number_cell_that_is_not_a_whole_number_from_1_is_refused(self, cell):
+        with pytest.raises(gen.DataError, match="set number"):
+            gen.set_number(cell, 2)

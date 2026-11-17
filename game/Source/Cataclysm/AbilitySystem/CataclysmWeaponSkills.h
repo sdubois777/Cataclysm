@@ -1,0 +1,319 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "AbilitySystem/CataclysmGameplayAbility.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
+#include "CataclysmWeaponSkills.generated.h"
+
+class UCataclysmSkillTemplate;
+class UDataTable;
+
+/**
+ * One skill a weapon makes available, which slot it fills, and how it behaves.
+ *
+ * A thin reading of a row of game/Data/WeaponSkills.csv. The name and
+ * description are what a player is shown; the shape says which shared template
+ * runs it and the parameters are that template's numbers.
+ *
+ * A ROW WITH NO SHAPE IS A DESIGN THAT EXISTS AND BEHAVIOUR THAT DOES NOT. That
+ * is still true of all 61 War rows, which were written before shapes existed.
+ * They are granted the placeholder, which fills the slot and does nothing.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmWeaponSkill
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Weapon Skill")
+	ECataclysmAbilitySlot Slot = ECataclysmAbilitySlot::None;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Weapon Skill")
+	FString Name;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Weapon Skill")
+	FString Description;
+
+	/** Which template runs it. None means the row has no behaviour designed. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Weapon Skill")
+	ECataclysmSkillShape Shape = ECataclysmSkillShape::None;
+
+	/** That template's numbers, already parsed. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Weapon Skill")
+	FCataclysmSkillShapeParams Params;
+
+	/**
+	 * The row's Tags cell, parsed.
+	 *
+	 * WHAT THEY DECIDE. Which of the character's stat modifiers reach this
+	 * skill. UCataclysmStatPipeline::ModifierApplies asks whether the skill in
+	 * hand carries every tag a modifier requires, so an increase scoped to
+	 * Element.Demonic applies to Burning Wrath, which carries that tag, and not
+	 * to a War skill, which does not.
+	 *
+	 * They deliberately do NOT decide which template runs the skill; the Shape
+	 * column does, for the reason recorded on FCataclysmWeaponSkillRow::Shape.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Weapon Skill")
+	FGameplayTagContainer Tags;
+
+	/**
+	 * This skill's own base critical strike chance, or -1 to take the default.
+	 *
+	 * Carried from the row's Crit Chance column. See
+	 * `FCataclysmWeaponSkillRow::CritChancePercent` for why -1 rather than 0
+	 * means "the row says nothing". Issue #657.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Weapon Skill")
+	float CritChancePercent = -1.0f;
+
+	/**
+	 * What this skill is worth, waits and costs, or -1 to take its slot's.
+	 *
+	 * CARRIED UNCHANGED FROM THE TABLE, INCLUDING THE -1. The fallback is
+	 * applied where the ability is granted, so the slot's figure lives in one
+	 * place. See `FCataclysmWeaponSkillRow::DamagePercent`.
+	 */
+	float DamagePercent = -1.0f;
+
+	/** Seconds before it may be used again, or -1 to take its slot's. */
+	float Cooldown = -1.0f;
+
+	/** Mana one use costs at level 100, or -1 to take its slot's. */
+	float ManaCost = -1.0f;
+
+	/**
+	 * The slot this skill was MADE for: its row's Slot column, or Basic for the basic attack. Issue #837 layer 3.
+	 *
+	 * `Slot` ABOVE IS THE KEY IT SITS ON, and since layer 3 the player may put a skill on any of the six keys. Ruled
+	 * 2026-10-25 by the owner (O1): "A skill is already tagged as heavy/basic/support/etc. we don't need to do
+	 * anything. Where the user assigns it is irrelevant". So the KEY decides which button casts it and this decides
+	 * every rule: its numbers, the slot-scoped rows (its Tags keep their `Slot.<designed>` tag), its Fervour, Mana
+	 * Weaver's Ultimate rule, Edict of Stillness and the gadget conversions. The two are equal in the default fill.
+	 *
+	 * NONE MEANS THE SAME AS `Slot`, for a skill a test builds by hand. Read it through
+	 * `UCataclysmWeaponSkills::DesignedSlotOf`, which answers that.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Weapon Skill")
+	ECataclysmAbilitySlot DesignedSlot = ECataclysmAbilitySlot::None;
+
+	/** The row of game/Data/WeaponSkills.csv it was read from, e.g. `Demonic_Greataxe_Ultimate`. None for the basic attack. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Weapon Skill")
+	FName RowName;
+
+	/** The row's weapon type, "All" for an Aura. The basic attack's is its weapon's. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Weapon Skill")
+	FString WeaponType;
+
+	/** The row's damage type. Empty for the basic attack, which no damage type designs. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Weapon Skill")
+	FString DamageType;
+};
+
+/**
+ * One saved choice of which pool skill sits on which key. Issue #837 layer 3.
+ *
+ * BY ROW AND BY SLOT NAME: the row is `FCataclysmWeaponSkill::RowName` and the save writes the enum by its name
+ * ("Ultimate"), so neither the table's order nor the enum's moves a saved choice. Every field `SaveGame`, or the save
+ * writer writes an empty object.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSkillChoice
+{
+	GENERATED_BODY()
+
+	/** The key: one of the six, never the basic attack (O2). */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Weapon Skill")
+	ECataclysmAbilitySlot Slot = ECataclysmAbilitySlot::None;
+
+	/** The chosen skill's row in game/Data/WeaponSkills.csv. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Weapon Skill")
+	FName SkillRow;
+};
+
+/**
+ * Which skills a weapon makes available, read from the weapon skill matrix.
+ *
+ * WHAT DECIDES A CHARACTER'S SIX ABILITIES. The equipped weapon's TYPE and the
+ * DAMAGE TYPE it rolled, together. Nothing here names an ability, and nothing in
+ * C++ decides which skill fills which slot -- both come out of
+ * game/Data/WeaponSkills.csv, which is generated from the Weapon Skills sheet of
+ * docs/All_Things_Cataclysm.xlsx. That is what issue #36 means by the slots
+ * being data-driven: changing which skill a Dagger offers is a workbook edit.
+ *
+ * NOT EVERY COMBINATION EXISTS, AND THAT IS THE DESIGN. The design document
+ * gives each damage type its own list of weapon types. War has twelve and
+ * includes neither the Wand nor the Staff, so a War Wand has no skills at all
+ * and that is correct rather than missing. A caller gets an empty result and
+ * must cope with it.
+ *
+ * THE AURA IS WEAPON-INDEPENDENT. The matrix holds one Aura skill per damage
+ * type, on a row whose weapon type is "All" rather than a weapon. So a lookup
+ * asks twice: once for the weapon, and once for the weapon-independent rows.
+ */
+UCLASS()
+class CATACLYSM_API UCataclysmWeaponSkills : public UObject
+{
+	GENERATED_BODY()
+
+public:
+	/** The weapon type used by rows that apply whatever weapon is held. */
+	static const TCHAR* WeaponIndependent;
+
+	/**
+	 * Every skill available with this weapon and damage type, at most one per
+	 * slot.
+	 *
+	 * Rows with no skill name are skipped: the matrix states every combination
+	 * so an undesigned one is visible rather than absent, and an undesigned row
+	 * is not a skill.
+	 *
+	 * @param Table       the WeaponSkills DataTable
+	 * @param WeaponType  as ItemBases spells it, for example "Greatsword"
+	 * @param DamageType  for example "War"
+	 */
+	static TArray<FCataclysmWeaponSkill> SkillsFor(const UDataTable* Table,
+												   const FString& WeaponType,
+												   const FString& DamageType);
+
+	/**
+	 * Every named skill of a damage type, on every weapon type and the weapon-independent rows, in table order.
+	 *
+	 * NOT WHAT A CHARACTER HOLDS: `SkillsFor` answers that, for one weapon. This is the whole list a damage type has,
+	 * which is what `Chaos_Wild_Magic` draws from. A row with no skill name or no readable slot is left out, as
+	 * `SkillsFor` leaves it out. A row with no shape IS returned; whether it can do anything is the caller's question.
+	 */
+	static TArray<FCataclysmWeaponSkill> SkillsOfDamageType(const UDataTable* Table, const FString& DamageType);
+
+	/**
+	 * THE POOL: every skill a character wearing these weapon types and carrying these damage types may draw from. Issue
+	 * #837 layer 2, ruled 2026-10-25 (Q4, the owner: "every combination, as the design says").
+	 *
+	 * EVERY COMBINATION. For each damage type, each weapon type's designed rows, one per slot as `SkillsFor` reads one
+	 * pair, and then that damage type's weapon-independent rows (its Aura) once. `docs/Cataclysm_GDD_v2.md`: "Every
+	 * combination of an equipped weapon type and an available damage type contributes its skills to that pool." So a
+	 * Sword carrying Demonic beside an Axe carrying War pools the War Sword's rows and the Demonic Axe's too.
+	 *
+	 * A TYPE THAT GIVES NO WEAPON ROW GIVES NO AURA, for the reason `SkillsFor` gives: covered or not covered is all or
+	 * nothing, so a War Wand pools nothing at all.
+	 *
+	 * A MATCHED PAIR COUNTS ONCE: a weapon type or a damage type named twice is read once. One weapon type and one
+	 * damage type give exactly `SkillsFor`, in its order.
+	 *
+	 * IN ORDER: by damage type in the order given, and within a damage type by weapon type in the order given, each
+	 * pair in table order and the Aura after them. The order is what `DefaultFillFrom` reads, so the caller hands the
+	 * types in fill order (`UCataclysmWeaponSlotsComponent::InFillOrder`) and the weapons in slot order.
+	 */
+	static TArray<FCataclysmWeaponSkill> PoolFor(const UDataTable* Table, const TArray<FString>& WeaponTypes,
+												 const TArray<FString>& DamageTypes);
+
+	/**
+	 * THE DEFAULT FILL: for each slot, the first entry of the pool designed for it, in the pool's order. Issue #837
+	 * layer 2. "Keep the automatic filling as the starting point" (#837); the player cannot choose yet (layer 3).
+	 *
+	 * Each entry keeps the slot its row names, so a skill fills only its own designed slot here.
+	 */
+	static TArray<FCataclysmWeaponSkill> DefaultFillFrom(const TArray<FCataclysmWeaponSkill>& Pool);
+
+	/**
+	 * THE FILL WITH THE PLAYER'S CHOICES. Issue #837 layer 3, ruled 2026-10-25 (Q5, O2, O4).
+	 *
+	 * Each of the six keys takes its chosen row when that row is IN THE POOL, with `Slot` the key and `DesignedSlot`
+	 * kept; a key or a row named twice, the first choice wins. Every other key takes the first pool entry designed for
+	 * it that is not already held (O4), or stays empty. A chosen row NOT in the pool fills nothing and is not dropped:
+	 * the key shows its default and the choice is kept for when the weapon returns (Q5), because the choices are the
+	 * player state's and this only reads them. With no choice that applies, element for element `DefaultFillFrom`: the
+	 * keys in the order `DefaultFillFrom` gives them, then any key only a choice filled, in `CataclysmAbilitySlots::All`
+	 * order.
+	 */
+	static TArray<FCataclysmWeaponSkill> FillWithChoices(const TArray<FCataclysmWeaponSkill>& Pool,
+														 const TArray<FCataclysmSkillChoice>& Choices);
+
+	/** The slot a skill was made for: `DesignedSlot`, or `Slot` when none is set. EVERY RULE reading a held skill asks this (O1). */
+	static ECataclysmAbilitySlot DesignedSlotOf(const FCataclysmWeaponSkill& Skill)
+	{
+		return Skill.DesignedSlot != ECataclysmAbilitySlot::None ? Skill.DesignedSlot : Skill.Slot;
+	}
+
+	/** Whether a skill may be chosen for this key: the six, and not the basic attack, which comes from the weapon (O2). */
+	static bool IsChoosableSlot(ECataclysmAbilitySlot Slot)
+	{
+		return Slot != ECataclysmAbilitySlot::None && Slot != ECataclysmAbilitySlot::BasicAttack;
+	}
+
+	/** The name every basic attack carries. See BasicAttackFor for why it is one name. */
+	static const TCHAR* BasicAttackName;
+
+	/**
+	 * The basic attack the weapon itself supplies, read from the item base table.
+	 *
+	 * NOT FROM THE MATRIX, AND THAT IS THE DESIGN. The other six slots name a
+	 * skill per weapon type AND damage type; this one does not vary by damage
+	 * type, because the design document says the basic attack IS weapon damage.
+	 * So it is one entry per weapon on the Item Bases sheet rather than 75
+	 * near-identical matrix rows, and the matrix keeps holding one skill per
+	 * non-basic slot exactly as the design document states. Issue #524.
+	 *
+	 * IT IS ALSO WHY THIS TAKES NO DAMAGE TYPE. A weapon its damage type does not
+	 * cover -- a War Wand -- has no matrix skills at all and still swings, so it
+	 * still gets this.
+	 *
+	 * ONE NAME FOR ALL THIRTEEN. The design document says the basic attack is
+	 * generic and automatic rather than designed per weapon, so inventing 13
+	 * names would state a design the document does not have.
+	 *
+	 * @param BaseTable   the ItemBases DataTable
+	 * @param WeaponType  as ItemBases spells it, for example "Greatsword"
+	 * @return a skill in the BasicAttack slot, or one whose Slot is None when the
+	 *         weapon supplies no basic attack, which today is the Shield
+	 */
+	static FCataclysmWeaponSkill BasicAttackFor(const UDataTable* BaseTable,
+												const FString& WeaponType);
+
+	/** The slot named by a Slot column value, or None if it names no slot. */
+	static ECataclysmAbilitySlot SlotFromName(const FString& SlotName);
+
+	/**
+	 * The ability class that runs a shape.
+	 *
+	 * THE ONE PLACE A SHAPE BECOMES CODE. Everything else about a skill travels
+	 * as data; this function is the whole of the mapping from the Shape column
+	 * to a C++ class, which is what makes adding a skill of an existing shape a
+	 * workbook edit.
+	 *
+	 * @return null for None and for a shape with no template, and the caller
+	 *         grants the placeholder instead
+	 */
+	static TSubclassOf<UCataclysmGameplayAbility> TemplateFor(ECataclysmSkillShape Shape);
+
+	/**
+	 * Writes a row's name, description, parameters, tags and figures onto a granted skill.
+	 *
+	 * ONE FUNCTION BECAUSE TWO THINGS GRANT A SKILL FROM A ROW: the weapon slots component, for the skills a weapon
+	 * offers, and `UCataclysmTriggeredSkill`, for a skill started without a key. Written twice, the second copy would
+	 * miss the next field added. IT DOES NOT SET THE SLOT, which each caller decides: a weapon's grant takes it from
+	 * `GiveAbilityInSlot`, and a triggered skill sets the property with no key behind it.
+	 *
+	 * IT DOES SET THE DESIGNED SLOT, since issue #837 layer 3: `DesignedSlotOf(Skill)`, which every rule on the ability
+	 * reads (`UCataclysmGameplayAbility::GetDesignedSlot`).
+	 */
+	static void StampOnto(UCataclysmSkillTemplate& Template, const FCataclysmWeaponSkill& Skill);
+
+	/** Where the imported weapon skill matrix lives. */
+	static const TCHAR* TableAssetPath;
+
+	/**
+	 * The weapon skill matrix.
+	 *
+	 * Loads the DataTable ASSET rather than reading the CSV off disk, which is
+	 * what makes this work in a packaged build. The CSV files under game/Data/
+	 * are the reviewable form the workbook generates; they are not content, and
+	 * that folder is not cooked, so a packaged game does not contain them.
+	 * tools/generate_datatable_assets.py imports each one into /Game/Data/.
+	 * Issue #150.
+	 *
+	 * @return the table, or null with the reason logged
+	 */
+	static const UDataTable* LoadGeneratedTable();
+};

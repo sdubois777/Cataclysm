@@ -1,0 +1,1008 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Kismet/BlueprintFunctionLibrary.h"
+#include "CataclysmCombatOverlay.generated.h"
+
+struct FCataclysmDamageResult;
+struct FCataclysmIncomingHit;
+
+/**
+ * One floating number, waiting for the next frame that draws.
+ *
+ * IT HOLDS A WORLD POSITION RATHER THAN A SCREEN POSITION, because the camera
+ * moves between the hit landing and the number fading. A number pinned to
+ * screen pixels slides off whatever it was describing the moment the player
+ * walks.
+ */
+USTRUCT()
+struct CATACLYSM_API FCataclysmDamageNumber
+{
+	GENERATED_BODY()
+
+	/** What it says: a figure, or a word when nothing got through. */
+	FString Text;
+
+	/** What it means, said in colour. See ColourFor. */
+	FLinearColor Colour = FLinearColor::White;
+
+	/** Where it started, in centimetres. Above the head of what was hit. */
+	FVector WorldAnchor = FVector::ZeroVector;
+
+	/** The world's time in seconds when it appeared. */
+	float StartedAt = 0.0f;
+
+	/** Text size multiplier. A tick is drawn smaller than a blow. */
+	float Scale = 1.0f;
+};
+
+/**
+ * Every decision the combat overlay makes, and none of the drawing.
+ *
+ * THE SPLIT IS THE POINT, and it is copied from UCataclysmImpactEffect. The
+ * automation test command runs with -nullrhi, and AHUD::PostRender checks
+ * FApp::CanEverRender() before it calls DrawHUD at all, so no test in this
+ * project can watch anything reach the screen -- the same wall issue #559
+ * records for the impact particle. What CAN be tested is every judgement that
+ * leads up to the drawing, so every one of them lives here as a static function
+ * over plain numbers, needing no world, no canvas and no rendering device.
+ * ACataclysmHUD is then thin enough to read in one sitting.
+ *
+ * WHY A CANVAS HEADS-UP DISPLAY RATHER THAN UMG. This needs no module
+ * dependency, no widget Blueprint and no content asset of any kind: AHUD::
+ * DrawText falls back to GEngine->GetMediumFont() when given no font, and
+ * AHUD::Project does the world-to-screen arithmetic an overhead bar needs. A
+ * widget would have cost UMG, Slate and SlateCore on the module, plus either a
+ * binary .uasset that cannot be reviewed in a diff -- issue #140 records the
+ * editor rewriting those on open -- or a C++ UUserWidget whose widget tree has
+ * to be built in RebuildWidget, because NativeConstruct runs after the Slate
+ * root has already been captured and a tree built there never appears.
+ *
+ * THIS IS THE COMBAT READABILITY LAYER, NOT THE INTERFACE. Issue #49 is the
+ * designed heads-up display -- the empire status bar, the skill slots with
+ * their cooldowns, the minimap. The first two are drawn on this same canvas
+ * now, by `UCataclysmSkillBar` and `UCataclysmEmpireStatusBar`; the minimap is
+ * not built. All of it needs layout, text scaling and localisation in the end,
+ * which is UMG work, and this is expected to be replaced by it. Issue #650.
+ */
+UCLASS()
+class CATACLYSM_API UCataclysmCombatOverlay : public UBlueprintFunctionLibrary
+{
+	GENERATED_BODY()
+
+public:
+	//~ How long a number lives and how it behaves while it does.
+
+	/** Seconds a floating number lasts before it is dropped. */
+	static constexpr float NumberLifetimeSeconds = 1.1f;
+
+	/** How far up the screen a number travels over its whole life, in pixels. */
+	static constexpr float NumberRisePixels = 55.0f;
+
+	/** The share of a number's life it stays fully opaque for. */
+	static constexpr float NumberOpaqueShare = 0.55f;
+
+	/** A damage over time tick is drawn at this share of a blow's size. */
+	static constexpr float DamageOverTimeScale = 0.7f;
+
+	/**
+	 * A critical strike is drawn at this multiple of an ordinary blow's size.
+	 *
+	 * SIZE IS THE SECOND CHANNEL AND NOT THE ONLY ONE, since issue #668. It was
+	 * the only one, alongside an exclamation mark on the figure, and the project
+	 * owner played that and reported "you really can't tell the difference
+	 * between a crit and a normal hit even though it's slightly bigger and has an
+	 * exclamation point". The mark is gone and CriticalStrikeHex now carries the
+	 * distinction; this stays because a critical strike being larger is right,
+	 * not because it is sufficient.
+	 *
+	 * IT MULTIPLIES WITH THE TICK SIZE ABOVE rather than replacing it. Nothing in
+	 * the game can produce that combination today, because a damage over time
+	 * tick can never critically strike, but the arithmetic is written so that if
+	 * one ever could the number would still be smaller than a blow.
+	 */
+	static constexpr float CriticalStrikeScale = 1.35f;
+
+	/**
+	 * How many numbers may wait to be drawn at once.
+	 *
+	 * A CEILING RATHER THAN A HOPE. Issue #563 measured one player attack
+	 * producing seven impacts in five seconds, and an area skill landing on
+	 * twenty enemies produces twenty numbers in one frame. The oldest are
+	 * dropped first, so the ceiling costs the numbers already fading rather
+	 * than the ones just landed.
+	 */
+	static constexpr int32 MaxNumbersWaiting = 96;
+
+	/** Centimetres above the top of a creature that its bar and numbers sit. */
+	static constexpr float AnchorMarginCm = 30.0f;
+
+	//~ Colours, as six-digit sRGB hex, so they read straight against the tables
+	//~ in section XIII of docs/Cataclysm_GDD_v2.md. The leading hash is dropped
+	//~ because FColor::FromHex is what parses them, matching the constants on
+	//~ ACataclysmTelegraphMarker.
+
+	/**
+	 * The near-black behind every bar, and it is the telegraph's outer ring
+	 * value on purpose.
+	 *
+	 * FOR THE SAME REASON THE TELEGRAPH HAS ONE. The design's readability
+	 * guarantee is that a world surface stays under 30% brightness and an
+	 * effect's primary stays over 60%, which holds a fill against a floor but
+	 * says nothing about a thin bar seen against lava, against a gold Celestial
+	 * wall, or against another creature. A dark backing under the whole bar
+	 * makes the contrast a property of the bar rather than of wherever it
+	 * happens to be standing.
+	 */
+	static const TCHAR* BarBackingHex;
+
+	/**
+	 * Health, and NOT the telegraph's #FF3020.
+	 *
+	 * THAT RED IS RESERVED FOR THE WHOLE GAME. Section XIII of
+	 * docs/Cataclysm_GDD_v2.md gives it to the attack marker under the heading
+	 * "There is one telegraph colour for the whole game", and says it does not
+	 * vary by Cataclysm, by damage type or by enemy, because the marker has to
+	 * mean "this ground is about to hurt" everywhere. A health bar wearing
+	 * the same red weakens the only signal that has to survive every
+	 * environment. This is a darker, less saturated red that still reads as
+	 * health and cannot be mistaken for a warning.
+	 */
+	static const TCHAR* HealthFillHex;
+
+	/**
+	 * Health, on a creature the local player commands: a thrall or a summoned minion.
+	 * Issue #1715. The owner's ruling of 2026-09-13: "turn their healthbar green so you
+	 * know it's yours".
+	 *
+	 * NOT PESTILENCE'S #B4E84A. That yellow-green is a damage type's primary, and a bar
+	 * over a creature is a surface of its own, the same reason the shield's blue is not
+	 * Death's. A mid green, 6.0:1 against the bar's near-black backing.
+	 */
+	static const TCHAR* FollowerHealthFillHex;
+
+	/**
+	 * Which health fill a creature's bar is drawn in: `FollowerHealthFillHex` when the
+	 * local player commands it, `HealthFillHex` otherwise. Issue #1715.
+	 *
+	 * EVERYTHING THE PLAYER COMMANDS, A JUDGEMENT ruled by the coordinating session on
+	 * 2026-10-02 under the owner's delegation: the owner said it of a thrall, and the
+	 * reason he gave, "so you know it's yours", holds for a summoned minion too.
+	 *
+	 * ASKED BY `UCataclysmCommand::CommanderOf`, which answers a thrall's owner and a
+	 * minion's summoner.
+	 */
+	static const TCHAR* HealthFillHexFor(const AActor* Creature, const AActor* LocalPlayerPawn);
+
+	/**
+	 * The reserved part of the player's health bar: the right-hand end, from the
+	 * most health it may hold to its maximum. Issue #1833, ruled 2026-09-30, "a
+	 * system needs a visible part". A much darker shade of the fill, so the bar
+	 * reads as health that cannot be filled rather than as damage taken, which
+	 * is the empty part's plain background.
+	 */
+	static const TCHAR* HealthReservedHex;
+
+	/**
+	 * An energy shield, and the same blue a shield-absorbed number is drawn in.
+	 *
+	 * DELIBERATELY NOT DEATH'S #8FD8EC. That pale icy blue is a damage type's
+	 * primary, and the design permits the rarity and damage-type palettes to
+	 * overlap only because "the two palettes never share a surface". A bar over
+	 * a creature is a third surface, so it takes a blue of its own.
+	 */
+	static const TCHAR* ShieldFillHex;
+
+	/** The fill of the temporary absorb's segment at the end of the shield bar: a pale gold. */
+	static const TCHAR* TemporaryAbsorbFillHex;
+
+	/**
+	 * Mana.
+	 *
+	 * A BAR AT ALL BECAUSE ITS ABSENCE HID A BUG. Issue #653: mana was spent and
+	 * never returned, so every ability became permanently refused, and it was
+	 * reported from play as "sometimes all of my abilities just become disabled"
+	 * rather than as "I have run out of mana" -- because nothing on screen said
+	 * so. The design has listed mana as a player resource bar since section XIII
+	 * was written. It was left out of the first version of this overlay and
+	 * should not have been.
+	 *
+	 * DELIBERATELY NOT VOID'S #B978F5, which is a damage type's primary, and not
+	 * the shield's blue either, because a player reading two bars in a corner
+	 * has to tell them apart at a glance.
+	 */
+	static const TCHAR* ManaFillHex;
+
+	/**
+	 * Fervour, the one resource every class shares. Issue #954.
+	 *
+	 * A MAGENTA, AND THE CHOICE IS BY ELIMINATION RATHER THAN BY TASTE. The
+	 * design lists Fervour as a player resource bar and states no colour for it,
+	 * so what settles it is what is already spoken for:
+	 *
+	 *   the three bars it stacks with   health's dark red, mana's navy, the
+	 *                                   shield's sky blue
+	 *   reserved for the whole game     the telegraph's #FF3020, section XIII
+	 *   a floating number already       the critical strike's #FFA31F
+	 *   the eight damage type primaries  the nearest is Void's #7C30E9, which is
+	 *                                   markedly bluer
+	 *
+	 * Magenta is the largest part of the palette nothing else has taken, and it
+	 * is the reading that survives being put next to all three existing bars.
+	 */
+	static const TCHAR* FervourFillHex;
+
+	/**
+	 * The reserved section at the right end of the Fervour bar. Issue #1160: a
+	 * darker shade of the Fervour fill, so it reads as Fervour that is there but
+	 * held back, not as empty bar.
+	 */
+	static const TCHAR* ReservedFervourHex;
+
+	/** A figure that reached health. Warm near-white. */
+	static const TCHAR* ReachedHealthHex;
+
+	/** A figure a shield or mana pool swallowed. Matches the shield bar. */
+	static const TCHAR* AbsorbedHex;
+
+	/** An evaded, blocked or wholly mitigated hit. Mid grey. */
+	static const TCHAR* NothingThroughHex;
+
+	/**
+	 * A critical strike that got through. Amber orange.
+	 *
+	 * COLOUR NOW SAYS TWO THINGS, AND THAT IS A REVERSAL DECIDED BY PLAYING IT.
+	 * When the numbers were built under issue #518 colour was reserved to say
+	 * only where the damage went, and colouring numbers by damage type was
+	 * rejected to keep it that way. A critical strike was therefore marked by
+	 * size and by an exclamation mark instead. The project owner played that on
+	 * 2026-08-17 and reported that "you really can't tell the difference between
+	 * a crit and a normal hit". Issue #668.
+	 *
+	 * WHAT IT COSTS, STATED RATHER THAN DISCOVERED LATER. For a critical strike,
+	 * colour no longer separates a hit that reached health from one an energy
+	 * shield absorbed. The text still separates them -- "12 (+30)" against "12"
+	 * -- so the information moved rather than went. Diablo 4 makes the same
+	 * trade, white for an ordinary hit and yellow for a critical one.
+	 *
+	 * ORANGE RATHER THAN RED, AND THAT IS NOT A TASTE. #FF3020 is reserved
+	 * game-wide for the attack telegraph and nothing else may claim it. A red
+	 * number beside a red telegraph is exactly the confusion the reservation
+	 * exists to stop, so this sits far enough away in the green channel to be
+	 * told apart at a glance, and a test measures the distance rather than
+	 * checking the two strings differ.
+	 */
+	static const TCHAR* CriticalStrikeHex;
+
+	/** Parses one of the constants above. Black when it will not parse. */
+	static FLinearColor ColourFromHex(const TCHAR* Hex);
+
+	//~ The live switches. All three default to on.
+
+	/** Whether floating damage numbers are drawn at all. */
+	static bool DamageNumbersEnabled();
+
+	/** Whether a bar is drawn over damaged creatures. */
+	static bool OverheadBarsEnabled();
+
+	/** Whether the player's own health is drawn on the frame. */
+	static bool PlayerVitalsEnabled();
+
+	//~ What to draw, decided.
+
+	/**
+	 * Whether a landed hit is worth putting a number on.
+	 *
+	 * ALMOST EVERYTHING IS, and that is the opposite of the rule the impact
+	 * particle follows. UCataclysmImpactEffect::ShouldDrawFor refuses a hit
+	 * that never connected, because a burst appearing for it would make the
+	 * burst mean "an attack happened" rather than "that landed". A number is
+	 * the other way round: a hit that resolved to nothing is exactly the case
+	 * nobody can currently see, and it is what issues #483 and #644 are about
+	 * -- defensive layers combining to stop everything. So an evaded hit says
+	 * so, and a hit armour and resistance took to nothing shows a zero.
+	 *
+	 * THE ONE REFUSAL IS A CORPSE. UCataclysmDamageCalculation::Resolve ends
+	 * with FMath::Min(Damage, Vitals->GetHealth()), so every hit on something
+	 * already at zero health deals nothing. Issue #570 counted fifty-six of
+	 * those arriving over seventy seconds in one session. A killing blow is not
+	 * this case and must still be drawn: it leaves health at zero but dealt
+	 * real damage getting there, which is why the test is on both.
+	 */
+	static bool ShouldShowNumberFor(const FCataclysmIncomingHit& Hit,
+									const FCataclysmDamageResult& Outcome,
+									float HealthRemaining);
+
+	/**
+	 * What the number says.
+	 *
+	 * A WORD WHEN NOTHING GOT THROUGH AND A FIGURE WHEN SOMETHING DID, which
+	 * makes the text itself a second channel beside the colour. The design
+	 * requires that: "colour is still not the only channel", because a player
+	 * who cannot separate two hues still has to be able to separate two
+	 * outcomes.
+	 *
+	 * A hit that reached health past a shield says both figures, health first,
+	 * so one number covers one hit rather than two numbers racing each other up
+	 * the screen.
+	 *
+	 * IT SAYS NOTHING ABOUT A CRITICAL STRIKE, and briefly did. Issue #649 added
+	 * an exclamation mark to a critical strike's figure; the project owner played
+	 * it and could not tell a critical strike from an ordinary hit, so the mark
+	 * came out and the colour took the job. Issue #668.
+	 */
+	static FString TextFor(const FCataclysmDamageResult& Outcome);
+
+	/**
+	 * Whether this outcome is drawn as a critical strike.
+	 *
+	 * BOTH THAT IT WAS ONE AND THAT SOMETHING GOT THROUGH. The roll happens
+	 * before block, armour and resistance, so a critical strike can still be
+	 * stopped dead by a well-defended target -- and a grey, oversized "0!" would
+	 * say the opposite of what happened. The size and the mark ask this same
+	 * question so the two can never disagree.
+	 */
+	static bool ShowsCriticalStrike(const FCataclysmDamageResult& Outcome);
+
+	/** What colour that text is drawn in. Three cases, described above. */
+	static FLinearColor ColourFor(const FCataclysmDamageResult& Outcome);
+
+	/**
+	 * One damage figure as it is printed: rounded, but never rounded away.
+	 *
+	 * ANY DAMAGE AT ALL PRINTS AT LEAST 1, and that is the whole reason this is
+	 * a function rather than a call to FMath::RoundToInt. Rounding alone reads
+	 * 0.42 as "0", and "0" already means something specific here -- armour,
+	 * resistance and flat reduction stopped the whole blow. So a hit that did
+	 * something would say it did nothing, which is the one thing a damage number
+	 * must never do.
+	 *
+	 * IT IS NOT A RARE CASE. UCataclysmDamageCalculation::Resolve ends with
+	 * FMath::Min(Damage, Vitals->GetHealth()), so a killing blow's figure is
+	 * exactly the target's remaining health however large the blow was, and
+	 * health is an unrounded float that is only clamped. A creature sitting on
+	 * 0.3 health is alive, hittable, and killed by a blow that would have
+	 * printed "0".
+	 *
+	 * IT IS ALSO WHAT KEEPS THE TEXT AND THE COLOUR AGREEING. ColourFor asks
+	 * whether the raw figure is above zero; without this, the text could take
+	 * the "nothing got through" branch while the colour said the blow reached
+	 * health, and the two channels the design requires would contradict each
+	 * other on the same number.
+	 *
+	 * Returns 0, and only 0, when nothing at all arrived.
+	 */
+	static int32 FigureFor(float Amount);
+
+	/**
+	 * How large. A damage over time tick is drawn smaller than a blow, and a
+	 * critical strike that got through is drawn larger.
+	 *
+	 * IT NEEDS BOTH ARGUMENTS because the two facts live on different structs:
+	 * whether a hit was a tick is a property of the hit, and whether it landed as
+	 * a critical strike is decided while it is being resolved.
+	 */
+	static float ScaleFor(const FCataclysmIncomingHit& Hit,
+						  const FCataclysmDamageResult& Outcome);
+
+	/**
+	 * Whether a creature gets a bar over its head at this instant.
+	 *
+	 * NOTHING OVER AN UNDAMAGED CREATURE. That is the project owner's decision
+	 * and it is what Path of Exile does even with its own "Show Mini Life Bars
+	 * on Enemies" setting enabled: a bar appears once an enemy has been damaged
+	 * or moused over, and not before. It keeps the design's deliberately dark,
+	 * low-light world from being papered over with interface, and it makes the
+	 * bar mean "this fight has started" rather than "there is a creature here".
+	 *
+	 * Nothing over a corpse either. An enemy destroys itself on the tick after
+	 * it dies, so without this a bar at zero flashes for one frame.
+	 */
+	static bool ShouldShowBarFor(float Health, float MaxHealth);
+
+	/**
+	 * The same question for a character with an energy shield: a bar shows
+	 * once health OR the shield is below its maximum. Issue #1515, for Shared
+	 * Blood's minions, whose shield can be struck while health is full. Nothing
+	 * over a corpse, as above. A character with no shield answers exactly as
+	 * the overload above.
+	 */
+	static bool ShouldShowBarFor(float Health, float MaxHealth, float Shield,
+								 float MaxShield);
+
+	/** How much of a bar is filled, 0 to 1. Zero when the maximum is not real. */
+	static float BarFractionFor(float Current, float Maximum);
+
+	/**
+	 * One pool's figures, as they are printed on the bar: "112 / 250".
+	 *
+	 * A POOL THAT IS NOT EMPTY NEVER READS ZERO, and that is the whole reason
+	 * this is a function rather than a call to FString::Printf. Health, mana
+	 * and the energy shield are unrounded floats that are only clamped, so a
+	 * character sitting on 0.3 health is alive, standing and hittable --
+	 * and rounding alone prints "0 / 500" for them. A health readout saying
+	 * zero about something that is not dead is the one thing it must never do,
+	 * and it is the figure a player looks at hardest at exactly that moment.
+	 *
+	 * IT IS NOT A RARE CASE. UCataclysmDamageCalculation::Resolve ends with
+	 * FMath::Min(Damage, Vitals->GetHealth()), so a blow that would have killed
+	 * leaves health at exactly what was there rather than at a round number,
+	 * and regeneration adds fractions every tick. Issue #743 found it on the
+	 * player's own bars, where it had been since they were built.
+	 *
+	 * THE SAME RULE FigureFor FOLLOWS FOR A DAMAGE NUMBER, and for the same
+	 * reason. The two are separate functions because they print different
+	 * things: that one prints one figure and this prints a pair with a divider.
+	 *
+	 * @param Current  what is left in the pool
+	 * @param Maximum  how large the pool is
+	 * @return an empty string when there is no pool at all, which is every
+	 *         creature and every character before its attributes arrive
+	 */
+	static FString PoolTextFor(float Current, float Maximum);
+
+	//~ An enemy's rarity, said in a word over its head. Issue #740.
+
+	/**
+	 * The lowest rung that is marked. Common is not.
+	 *
+	 * MARKING EVERY CREATURE WOULD MARK NONE OF THEM. Common is 60% of what
+	 * spawns, so a word over every one of them is a word over most of the
+	 * screen, and the thing worth noticing is the exception.
+	 */
+	static constexpr int32 LowestMarkedRarityStep = 1;
+
+	/**
+	 * Whether an enemy's rarity is said over its head.
+	 *
+	 * BEFORE THE FIGHT, WHICH IS THE WHOLE POINT AND IS WHY THIS IS NOT
+	 * ShouldShowBarFor. That function deliberately shows nothing over an
+	 * undamaged creature. A rarity has to be readable while there is still a
+	 * choice about whether to engage: the design's rule that a boss cannot be
+	 * stunned at all is worth nothing to a player who finds out by spending the
+	 * stun. Path of Exile's own forum carries the complaint this avoids -- in a
+	 * large pack it is "impossible to know if one of them is an 'elite' mob
+	 * without first killing everything, or seeing one of its mods go off".
+	 * `docs/DECISIONS.md` names the source.
+	 *
+	 * NOTHING OVER A CORPSE, for the reason ShouldShowBarFor gives: an enemy
+	 * destroys itself on the tick after it dies, so without this the word would
+	 * flash for one frame at the end of every fight.
+	 *
+	 * @param RarityStep  0 for Common up to 5 for a Cataclysm Boss
+	 */
+	static bool ShouldShowRarityNameFor(int32 RarityStep, float Health,
+										float MaxHealth);
+
+	/**
+	 * Clear space between the top of a creature's health bar and the bottom of
+	 * the word over it, in pixels.
+	 *
+	 * ENOUGH TO CLEAR THE BAR AND ITS DARK BACKING, which are seven and two
+	 * pixels. Tuned by eye and expected to move; no test can see it.
+	 */
+	static constexpr float RarityNameGapPx = 6.0f;
+
+	/**
+	 * How big the word is, relative to a damage number.
+	 *
+	 * SMALLER THAN A BLOW LANDING. It is a label on a creature rather than
+	 * something that just happened, and it is on screen for as long as the
+	 * creature is, so at full size it would compete with the numbers that are
+	 * only there for a moment.
+	 */
+	static constexpr float RarityNameScale = 0.8f;
+
+	/**
+	 * The colour the word is drawn in.
+	 *
+	 * ONE COLOUR FOR EVERY RUNG, AND THAT IS DELIBERATE. The word itself says
+	 * which rung it is, so a colour would be a second copy of what the player
+	 * has already read. It also cannot be taken from anywhere: the design
+	 * document assigns the enemy rarity ladder no colours at all, and the eight
+	 * in the Interface Colour section are GEAR rarities, a different ladder with
+	 * different names and one more rung. Giving this ladder six colours is a
+	 * design decision that belongs in the workbook and the design document
+	 * rather than being invented here. Issue #740 records it as the next step if
+	 * the word alone turns out not to read at a glance.
+	 */
+	static const TCHAR* RarityNameHex;
+
+	/** Whether an enemy's rarity is drawn over it at all. */
+	static bool RarityNamesEnabled();
+
+	/**
+	 * What is said under a creature's health bar while part of its armour is
+	 * removed, such as "Armor -20%", or empty while none is. Rendering Blows,
+	 * issue #1515.
+	 *
+	 * SHOWN FOR AS LONG AS IT LASTS, because the removal is state on the
+	 * creature rather than a tagged debuff, so nothing else on screen would say
+	 * it was there. The owner's rule is that a system ships with a basic
+	 * in-game display. Drawn in the rarity name's ink and size: a label on a
+	 * creature, not a colour of its own.
+	 */
+	static FString ArmourRemovedTextFor(const AActor* Actor);
+
+	/**
+	 * What is said under a creature's health bar while Ground Down slows it,
+	 * such as "Slowed -15%", or empty while nothing does. Issue #1515.
+	 *
+	 * STATE ON THE CREATURE, like the armour removed, so nothing else on screen
+	 * would say it was there. Cripple is not said here: it is a tagged debuff,
+	 * named by `CrippledTextFor` (issue #2379).
+	 */
+	static FString SlowedTextFor(const AActor* Actor);
+
+	/**
+	 * "Held" under a creature's health bar while a holder of Nowhere to Run holds
+	 * it, or empty. Issue #1515, asked for 2026-09-25: a player cannot otherwise
+	 * tell a held creature from one that has simply stopped moving.
+	 */
+	static FString HeldTextFor(const AActor* Actor);
+
+	/**
+	 * "Feared" while `State.Feared` lasts on the actor, or empty. A creature's
+	 * status line shows it, and so does the line above the player's own bars.
+	 */
+	static FString FearedTextFor(const AActor* Actor);
+
+	/**
+	 * "Maddened" while `Status.Debuff.Madness` lasts on a living actor, or empty. Beside "Feared": a creature's status
+	 * line shows it, and so does the line above the player's own bars, which Insanity Bursts can madden. Until
+	 * 2026-09-26 Madness was said nowhere on screen.
+	 */
+	static FString MaddenedTextFor(const AActor* Actor);
+
+	/**
+	 * "Silenced" while `State.Silenced` lasts on the actor, or empty. Ruled 2026-10-17 (O5). Beside "Maddened" on a
+	 * creature's status line; the player is never silenced, so the line above its own bars does not ask.
+	 */
+	static FString SilencedTextFor(const AActor* Actor);
+
+	/**
+	 * "Crippled", "Weakened", "Shredded" and "Stunned" while `Status.Debuff.Cripple`, `Status.Debuff.Weaken`,
+	 * `Status.Debuff.Shred` and `State.Stunned` last on a living actor, or empty. Issue #2379: until then no screen
+	 * named them, while a worn row could put any of them on the player every 15 seconds. By name only, as "Feared"
+	 * and "Maddened" are. A creature's status line shows each, and so does the line above the player's own bars.
+	 */
+	static FString CrippledTextFor(const AActor* Actor);
+	static FString WeakenedTextFor(const AActor* Actor);
+	static FString ShreddedTextFor(const AActor* Actor);
+	static FString StunnedTextFor(const AActor* Actor);
+
+	/**
+	 * "Withering 3/10" while a living actor carries `Status.Debuff.Withering`, which is the count of Famine's
+	 * Withering Blows building towards its slow, or empty. Issue #1722: the project owner chose, on 2026-10-30, that
+	 * the count is shown from one to nine so the slow can be seen coming. The count and its cap are the stack
+	 * kind's (`UCataclysmStacks`); the form is the kept stacks' ("Temporal Flux 3/5").
+	 */
+	static FString WitheringTextFor(const AActor* Actor);
+
+	/** "Withered" while a living actor carries `Status.Debuff.Wither`, the slow at ten, or empty. Issue #1722. */
+	static FString WitheredTextFor(const AActor* Actor);
+
+	/**
+	 * "Touch of Nothing 3" while a living actor carries `Status.Debuff.TouchofNothing` and holds that many stacks, or
+	 * empty. Each stack refuses one buff the actor would gain. Issue #1722's Touch of Nothing.
+	 */
+	static FString TouchOfNothingTextFor(const AActor* Actor);
+
+	/**
+	 * "Negated" for `NegatedShownSeconds` after Touch of Nothing refused a buff the actor would have gained, or empty,
+	 * so a player whose buff did not arrive is told why. Issue #1722.
+	 */
+	static FString NegatedTextFor(const AActor* Actor);
+
+	/** How long "Negated" stays up after a refusal. A judgement of the writing session. */
+	static constexpr float NegatedShownSeconds = 2.0f;
+
+	/**
+	 * The buff a worn row drew for a living actor and its whole seconds left, such as "Commander 12s", or empty
+	 * while it holds none. Read from `UCataclysmAbilitySystemComponent::HeldRandomBuff` and
+	 * `HeldRandomBuffSecondsLeft`.
+	 *
+	 * WHY IT IS HERE. Ruled 2026-10-12 by the coordinating session: the held buff is shown wherever the drawn debuff
+	 * of the merged drawback is shown to the player. Of the five debuffs that draw can give, "Maddened" is the one
+	 * a screen names, on the line above the player's own bars, so the held buff is named there too, beside it.
+	 * And the owner's rule is that a system ships with a basic in-game display: without this a buff a row drew
+	 * changed the character's figures and nothing said which buff it was or how long it had left.
+	 *
+	 * THE SECONDS ARE ROUNDED UP, a judgement: a buff just laid reads "30s", and one in its last second reads "1s"
+	 * and never "0s" while it is still held.
+	 *
+	 * ON THE LINE ABOVE THE PLAYER'S OWN BARS, as an entry of `UCataclysmPlayerEffects` (issue #1591), and last on a
+	 * creature's status line, where it is empty today because no creature wears a row.
+	 */
+	static FString HeldBuffTextFor(const AActor* Actor);
+
+	/**
+	 * Every damage type a living actor is immune to for a time and the whole seconds left of each, such as
+	 * "Immune War 4s", or empty while no such window is open. Read from
+	 * `UCataclysmAbilitySystemComponent::DamageTypesImmuneTo` and `DamageTypeImmunitySecondsLeft`.
+	 *
+	 * WHY IT IS HERE. Ruled 2026-10-12 by the coordinating session: a text above the player's bars for each open
+	 * type, in the form of the held buff's. The windows are opened by a hit on the wearer of Shard of Anarchy's
+	 * six-piece bonus, and without this a blow of the type dealt nothing and nothing said why or for how long.
+	 *
+	 * SEVERAL TYPES ARE ONE TEXT, each written as it would be alone and joined by two spaces, as the parts of a
+	 * status line are: "Immune War 4s  Immune Demonic 2s". IN THE ORDER OF THE DAMAGE TYPE NAMES, War first and Void
+	 * last, which is the order `DamageTypesImmuneTo` answers in, so a type keeps its place while the others open
+	 * and end.
+	 *
+	 * THE SECONDS ARE ROUNDED UP, as the held buff's are: a window in its last second reads "1s" and never "0s".
+	 *
+	 * ON THE LINE ABOVE THE PLAYER'S OWN BARS, directly after the held buff's text, and after it on a creature's
+	 * status line, where it is empty today because no creature wears a row.
+	 */
+	static FString DamageTypeImmunityTextFor(const AActor* Actor);
+
+	/**
+	 * The kept stacks of each row a living actor wears that gains them, as the name the row gives them, the count
+	 * held and the cap, such as "Temporal Flux 3/5", or empty while it wears no such row. Read from
+	 * `UCataclysmAbilitySystemComponent::KeptStacksForDisplay`. Ruled 2026-10-12 by the coordinating session: a text
+	 * above the player's bars with the count and the cap.
+	 *
+	 * THE NAME IS THE ROW'S, from its Ailment cell (`FCataclysmPoolAction::StatusName`), which the generator
+	 * requires on such a row and checks against the row's own sentence. A worn action that states no name, which
+	 * only one made by hand can be, reads "Stacks".
+	 *
+	 * SHOWN WHILE THE ROW IS WORN, AT NOUGHT TOO, a judgement of the writing session: "Temporal Flux 0/5" tells a
+	 * player the bonus is there before the first stack is gained. Two such rows are joined by two spaces.
+	 *
+	 * ON THE LINE ABOVE THE PLAYER'S OWN BARS, after the held buff's text, and last on a creature's status line,
+	 * where it is empty today because no creature wears a row.
+	 */
+	static FString KeptStacksTextFor(const AActor* Actor);
+
+	/**
+	 * One row's entry on that line, PURE so a test can read the exact words: "Void 7/10", and at the cap of a row whose
+	 * stacks buy a free next ability, "Void 10/10: next ability free, 100% more damage". Ruled 2026-10-17 (O7, O8),
+	 * under the owner's rule that every system ships with a basic display: the wearer must see the count and that the
+	 * next press is the free one. A row that states no name reads "Stacks", as above.
+	 *
+	 * @param MorePercent  what that ability deals more, in per cent, whole; read only at the cap of such a row
+	 * @param bVoidAuraUp  whether these stacks hold the Null Emperor ten-piece's aura up now
+	 *                     (`UCataclysmVoidAura::IsUp`): the entry then ends ", void aura". Ruled 2026-10-17 (O9),
+	 *                     under the same rule: the wearer must see the aura is up
+	 */
+	static FString KeptStacksEntry(const FString& Name, int32 Held, int32 Cap, bool bFreeNextAbility = false,
+								   float MorePercent = 0.0f, bool bVoidAuraUp = false);
+
+	/**
+	 * What a living actor still owes of its delayed damage, such as "Owed 132", or empty while it owes nothing.
+	 * Read from `UCataclysmAbilitySystemComponent::DelayedDamageOwed`. Ruled 2026-10-12 by the coordinating
+	 * session, for "25%-50% of damage taken is dealt over 4-8 seconds": the wearer must see what is still owed.
+	 * Without it health falls for seconds after a blow and nothing says why or how much more is to come.
+	 *
+	 * THE FIGURE IS ROUNDED UP, a judgement: the last point still owed reads "Owed 1" and never "Owed 0".
+	 *
+	 * AS OF THE LAST DRAIN, which is a quarter of a second ago at most in play: the store is drained on the
+	 * regeneration step, and this reads what that step left.
+	 *
+	 * ON THE LINE ABOVE THE PLAYER'S OWN BARS, among the debuffs of `UCataclysmPlayerEffects` (issue #1591), and last
+	 * on a creature's status line, where it is empty today because no creature wears a row.
+	 */
+	static FString OwedTextFor(const AActor* Actor);
+
+	/**
+	 * "Harbinger" under the health bar of a living creature Plague Harbingers chose, or
+	 * empty. Issues #1820 and #41. First on the line, because it says what the creature is
+	 * and the others say what is being done to it.
+	 */
+	static FString HarbingerTextFor(const AActor* Actor);
+
+	/** "Seal Bearer" under a creature holding a piece of Infernal Seals' seal. Issues #1820 and #41. */
+	static FString SealBearerTextFor(const AActor* Actor);
+
+	/**
+	 * "Risen" over an imp that rose from a cursed enemy's death, for the two
+	 * seconds after it rose, or empty. Issue #1479, the Ritualist's starting node.
+	 * It tells the player where the imp came from; once that is seen, it is an
+	 * imp like any other.
+	 */
+	static FString RisenTextFor(const AActor* Actor);
+
+	/**
+	 * "Chorus" under the health bar of a living Eternal Chorus source, or empty. Issues #1820 and
+	 * #41. First on the line with "Harbinger", for that word's reason: it says what the creature is.
+	 */
+	static FString ChorusTextFor(const AActor* Actor);
+
+	/**
+	 * "Bloom" under the health bar of a living Necrotic Bloom flower, or empty. Issues #1820 and #41.
+	 * Beside "Chorus", for that word's reason: it says what the creature is.
+	 */
+	static FString BloomTextFor(const AActor* Actor);
+
+	/**
+	 * "Spire" under the health bar of a living Golden Spire, or empty. Issues #1820 and #41. Beside
+	 * "Chorus" and "Bloom", for their reason: it says what the creature is.
+	 */
+	static FString SpireTextFor(const AActor* Actor);
+
+	/**
+	 * "Guide" under the health bar of Demonic Guide's guide, or empty. Issues #1820 and #41. Beside "Harbinger", for
+	 * its reason: it says what the creature is.
+	 */
+	static FString GuideTextFor(const AActor* Actor);
+
+	/**
+	 * "Beacon" under the health bar of a living plague beacon, or empty. Issues #1820 and #41. Beside
+	 * the other floor sources' words, for their reason: it says what the creature is.
+	 */
+	static FString BeaconTextFor(const AActor* Actor);
+
+	/**
+	 * "Vein" under the health bar of a living infested vein, or empty. Issues #1820 and #41. Beside the other
+	 * floor sources' words, for their reason: it says what the creature is.
+	 */
+	static FString VeinTextFor(const AActor* Actor);
+
+	/**
+	 * "Sarcophagus" under the health bar of an obsidian sarcophagus, and "Vampire Lord" under the bar of the
+	 * lord one let out, or empty. Issues #1820 and #41. Beside the floor sources' words, for their reason: it
+	 * says what the creature is.
+	 */
+	static FString SarcophagusTextFor(const AActor* Actor);
+
+	/**
+	 * "Portal" under the health bar of a Portal Unleashing portal, and "Abomination" under the bar of a creature
+	 * one sent, or empty. Issues #1820 and #41. Beside the floor sources' words, for their reason: it says what
+	 * the creature is.
+	 */
+	static FString PortalTextFor(const AActor* Actor);
+
+	/**
+	 * "Carcass" under the health bar of a Carrion Feast carcass, and "Feeder" under the bar of a creature one became,
+	 * or empty. Issues #1820 and #41. Beside the floor sources' words, for their reason: it says what the creature is.
+	 */
+	static FString CarcassTextFor(const AActor* Actor);
+
+	/** "Gorged N" under the bar of a creature that has eaten N drops for Famished Beasts, or empty. Issues #1820, #41. */
+	static FString FamishedBeastsTextFor(const AActor* Actor);
+
+	/**
+	 * "Plaguebearer" under the bar of The Plaguebearer's creature, and "Diseased N" under the bar of a creature carrying
+	 * N of its stacks, or empty. Issues #1820 and #41. Beside the floor sources' words, for their reason.
+	 */
+	static FString PlaguebearerTextFor(const AActor* Actor);
+
+	/**
+	 * "Leader" under the bar of a Morale Break leader and "Panicked" under the bar of a creature fleeing because its
+	 * leader died, or empty. Issues #1820 and #41. Beside the floor sources' words, for their reason.
+	 */
+	static FString MoraleBreakTextFor(const AActor* Actor);
+
+	/**
+	 * "Infecting N" under the bar of a creature whose touches put N Contagion stacks on the player, or empty. Issues
+	 * #1820 and #41. Killing it removes them, so the label says which creature to kill.
+	 */
+	static FString ContagiousTouchTextFor(const AActor* Actor);
+
+	/** "Spirit" under the bar of a creature a Battlefield Relic brought, or empty. Issues #1820 and #41. */
+	static FString RelicSpiritTextFor(const AActor* Actor);
+
+	/** "Chaos Spawn" under the bar of a creature a Pandora's Box's waves brought, or empty. Issues #1820 and #41. */
+	static FString ChaosSpawnTextFor(const AActor* Actor);
+
+	/** "Assailant" under the bar of a creature a War Banner's waves brought, or empty. Issues #1820 and #41. */
+	static FString BannerAssailantTextFor(const AActor* Actor);
+
+	/** "Angel" under the bar of a creature Forced Tithes brought, or empty. Issues #1820 and #41. */
+	static FString TitheAngelTextFor(const AActor* Actor);
+
+	/**
+	 * "Quarantine: 5 <creature kind>" under the health bar of a Quarantine Breach containment, or empty. Issues
+	 * #1820 and #41. It says what breaking it releases, so breaking it is an informed choice, as ruled.
+	 */
+	static FString QuarantineTextFor(const AActor* Actor);
+
+	/**
+	 * "Infection Bloom" under the health bar of an infection bloom, or empty. Issues #1820 and #41. Beside the
+	 * floor sources' words, for their reason: it says what the creature is.
+	 */
+	static FString InfectionBloomTextFor(const AActor* Actor);
+
+	/**
+	 * "Rift" under the health bar of an Abyssal Rift, or empty. Issues #1820 and #41. Beside the floor sources'
+	 * words, for their reason: it says what the creature is.
+	 */
+	static FString RiftTextFor(const AActor* Actor);
+
+	/**
+	 * "Shrouded" under the health bar of a creature no damage reaches until light does, on a floor carrying Shadowy
+	 * Enemies, or empty. Issues #1820 and #41. It says why a blow on it did nothing.
+	 */
+	static FString ShroudedTextFor(const AActor* Actor);
+
+	/**
+	 * "Second Self" under the health bar of the minion or thrall A Second Self
+	 * chose, or empty. Issue #1515. First on the line, for "Harbinger"'s reason:
+	 * it says what the creature is. Nothing else on screen marks a minion.
+	 */
+	static FString SecondSelfTextFor(const AActor* Actor);
+
+	/**
+	 * "Voidling" under the health bar of a living voidling of the Void Parasite rule, or empty. Issues #1820
+	 * and #41. Beside the floor sources' words, for their reason: it says what the creature is.
+	 */
+	static FString VoidlingTextFor(const AActor* Actor);
+
+	/**
+	 * What is said under a creature's health bar while stacks placed on it cut
+	 * its damage, such as "Damage -15%", or empty while nothing does. Issue
+	 * #1833, phase 2: "Each melee hit you take reduces the attacker's damage".
+	 * State on the creature, like the armour removed.
+	 */
+	static FString DamageCutTextFor(const AActor* Actor);
+
+	/**
+	 * The one line drawn under a creature's health bar: every non-empty text
+	 * above, joined by two spaces, or empty. One line rather than one each, so
+	 * two never draw over each other. Issue #1515.
+	 *
+	 * IN THIS ORDER, which is not the order they are declared in: Second Self,
+	 * Harbinger, Chorus, Bloom, Spire, Beacon, Vein, the armour removed, the
+	 * slow, Held, the damage cut. What the creature is comes first, and what
+	 * is being done to it after (issues #41, #1515 and #1833). The buff a worn
+	 * row drew is last of all, since 2026-10-12.
+	 */
+	static FString StatusLineFor(const AActor* Actor);
+
+	/**
+	 * "Immune to you" under the health bar of a creature that has become immune to the damage of `LocalPlayerPawn`,
+	 * or empty. Ruled 2026-10-12, for "Enemies that have been alive for more than 15 seconds become immune to your
+	 * damage until you disengage for 3 seconds". It says why the player's blows on it do nothing.
+	 *
+	 * ASKED OF THE CREATURE, WITH THE PLAYER AS THE ATTACKER:
+	 * `UCataclysmAbilitySystemComponent::IsImmuneToDamageOf`, the function that refuses the blow, so the word and
+	 * the refusal cannot disagree. Empty with no player, for a dead creature, and for the player's own pawn.
+	 *
+	 * THE ONE TEXT ON THE LINE THAT DEPENDS ON WHO IS LOOKING, which is why it takes the pawn and the others do not.
+	 */
+	static FString ImmuneToPlayerTextFor(const AActor* Actor, const AActor* LocalPlayerPawn);
+
+	/**
+	 * The status line as `LocalPlayerPawn` sees it: `StatusLineFor(Actor)` with `ImmuneToPlayerTextFor` joined on
+	 * after it by two spaces. Ruled 2026-10-12. `ACataclysmHUD::DrawStatusLines` draws this one, with its owning
+	 * pawn. With no pawn it is `StatusLineFor(Actor)` and nothing more.
+	 */
+	static FString StatusLineFor(const AActor* Actor, const AActor* LocalPlayerPawn);
+
+	/**
+	 * Whether an actor is a candidate for an overhead bar at all.
+	 *
+	 * NOT THE PLAYER'S OWN PAWN, which has its bar on the frame instead, and
+	 * nothing marked dead. Separate from ShouldShowBarFor because this asks
+	 * about the actor and that asks about the numbers.
+	 */
+	static bool IsOverheadBarCandidate(const AActor* Actor,
+									   const AActor* LocalPlayerPawn);
+
+	/**
+	 * How far above an actor's own location its bar and numbers sit.
+	 *
+	 * READ OFF THE ACTOR'S BOUNDS rather than fixed, because a Brute and an Imp
+	 * are not the same height and a fixed offset puts one inside a head and the
+	 * other in mid air. An actor with no components has no bounds and gets the
+	 * margin alone, which is the honest answer for something with no body.
+	 */
+	static float AnchorHeightFor(const AActor* Actor);
+
+	/** How far up the screen a number has travelled, in pixels. */
+	static float RisePixelsFor(float Age);
+
+	/** How opaque a number is at a given age. Zero once it has expired. */
+	static float FadeFor(float Age);
+
+	/**
+	 * Reads health and maximum health off any actor that has an ability system.
+	 *
+	 * WORKS FOR PLAYER, ENEMY AND MINION ALIKE, because it goes through
+	 * UAbilitySystemGlobals::GetAbilitySystemComponentFromActor, which asks the
+	 * actor's IAbilitySystemInterface rather than assuming where the component
+	 * lives. The player's is on its player state and an enemy's is on its pawn,
+	 * and this does not have to know that.
+	 *
+	 * Returns false and writes nothing when the actor has no ability system or
+	 * no vital attribute set, which includes every actor before its ability
+	 * system has been initialised.
+	 */
+	static bool VitalsOf(const AActor* Actor, float& OutHealth,
+						 float& OutMaxHealth);
+
+	/**
+	 * How much of this actor's maximum health is reserved, or 0 for an actor
+	 * whose ability system is not this project's. Issue #1833. The HUD draws it
+	 * as the dark band at the end of the health bar.
+	 */
+	static float HealthReservedOf(const AActor* Actor);
+
+	/**
+	 * What this actor's temporary absorb holds, or 0 for an actor whose ability system is not this project's. The
+	 * project owner, 2026-10-07: it is separate from the energy shield. The HUD draws it as a second segment at
+	 * the end of the shield bar.
+	 */
+	static float TemporaryAbsorbOf(const AActor* Actor);
+
+	/**
+	 * The share of the shield bar the temporary absorb's segment takes: the absorb over the absorb and the
+	 * maximum energy shield together. So the bar's whole length stands for both, the shield's fill can never reach
+	 * the segment, and a character with no energy shield sees a bar that is all segment. Nought with nothing held.
+	 */
+	static float AbsorbSegmentFractionFor(float Absorb, float MaxShield);
+
+	/**
+	 * The figures on the shield bar: the pool's own, then "+25 absorb" while a temporary absorb is held, or
+	 * "25 absorb" alone for a character with no energy shield. An absorb of less than one point reads as one.
+	 */
+	static FString ShieldBarTextFor(float Shield, float MaxShield, float Absorb);
+
+	/** The same for an energy shield. False when the actor has no shield set. */
+	static bool ShieldOf(const AActor* Actor, float& OutShield,
+						 float& OutMaxShield);
+
+	/** The same for mana. False when the actor has no vital attribute set. */
+	static bool ManaOf(const AActor* Actor, float& OutMana, float& OutMaxMana);
+
+	/**
+	 * The same for Fervour, the one resource every class shares. Issue #954.
+	 *
+	 * FALSE FOR AN ACTOR THAT CANNOT MOVE IT, which is a stronger condition than
+	 * the other three use and is the point. Every class has a pool of 100, so a
+	 * check on the maximum would draw the bar for every character in the game
+	 * including the ones with no way of filling it, and a bar that can only ever
+	 * read zero says the opposite of what is true. This answers true only when
+	 * the character has spent a point on a generator, so the bar appearing IS
+	 * the confirmation that the node did something.
+	 */
+	/**
+	 * The Fervour this character's army holds back, for the bar's reserved
+	 * section. Issue #1160. What `FervourOf` answers as the maximum is already
+	 * the spendable part, so the whole bar is that plus this.
+	 */
+	static float ReservedFervourOf(const AActor* Actor);
+
+	/**
+	 * The words beside a reserved section, such as "30 reserved", or empty.
+	 * Issue #1160.
+	 */
+	static FString ReservedTextFor(float Reserved);
+
+	static bool FervourOf(const AActor* Actor, float& OutFervour,
+						  float& OutMaxFervour);
+
+	/**
+	 * Hands a landed hit to the heads-up display so it can be drawn.
+	 *
+	 * THE AVATAR IS THE CALLER'S PROBLEM, not this function's. It is passed the
+	 * actor already resolved by UCataclysmImpactEffect::ActorToDrawOn, because
+	 * an attribute set's GetOwningActor answers with the ability system's OWNER
+	 * and for the player that is the player state, which is not placed in the
+	 * world and reports the origin. Issue #562 drew every blow an enemy landed
+	 * on the player in the middle of the level for exactly that reason, and
+	 * issue #565 was the same mistake again in the death path.
+	 *
+	 * Does nothing when there is no world, no player controller, no heads-up
+	 * display, or the numbers are switched off. A dedicated server and every
+	 * automation test take that path.
+	 */
+	static void Record(const AActor* Struck, const FCataclysmIncomingHit& Hit,
+					   const FCataclysmDamageResult& Outcome);
+
+	/**
+	 * The word a shot a void aura consumed shows where it ended: "Consumed". Ruled 2026-10-17 (O9), under the owner's
+	 * rule that every system ships with a basic display: a shot that vanishes in the air must say why.
+	 */
+	static const TCHAR* ProjectileConsumedWord;
+
+	/**
+	 * Hand that word to the heads-up display, at `Where`, in the grey of a hit that got nothing through, through the
+	 * queue the floating damage numbers use. Does nothing where `Record` does nothing: no world, no player
+	 * controller, no heads-up display, or the numbers switched off. Every automation test takes that path.
+	 */
+	static void RecordProjectileConsumed(const AActor* Shot, const FVector& Where);
+};

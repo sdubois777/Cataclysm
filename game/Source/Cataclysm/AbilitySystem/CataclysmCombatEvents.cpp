@@ -1,0 +1,474 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "AbilitySystem/CataclysmCombatEvents.h"
+
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+// For the stamp of a point-blank skill's share struck at an ally. Ruled 2026-10-15.
+#include "AbilitySystem/CataclysmAreaShareOnAllies.h"
+// For the one question this file asks about a minion: whether its summoner
+// holds the keystone that makes its blows the summoner's. See NoteBlow.
+#include "AbilitySystem/CataclysmMinion.h"
+// For the name a blow that is the consequence of a death is stamped under.
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillTemplate.h"
+#include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystemComponent.h"
+#include "Character/CataclysmCharacterBase.h"
+#include "Engine/World.h"
+#include "GameplayEffectExtension.h"
+
+namespace
+{
+	/**
+	 * The actor a blow was dealt by.
+	 *
+	 * THE CONTEXT'S SOURCE OBJECT WHEN IT IS AN ACTOR, which is how a minion is
+	 * recorded -- `UCataclysmSkillEffects` puts `FCataclysmHitDelivery::DealtBy`
+	 * there -- and otherwise the causer, which for every other blow in the game
+	 * is the instigator itself. The causer is not changed for a minion because
+	 * eight places in `UCataclysmVitalAttributeSet` read it to decide how a blow
+	 * resolves, and slice 4 announces blows without changing how any resolves.
+	 */
+	AActor* CombatEventsDealtBy(const FGameplayEffectContextHandle& Context)
+	{
+		if (AActor* Source = Cast<AActor>(Context.GetSourceObject()))
+		{
+			return Source;
+		}
+		return Context.GetEffectCauser();
+	}
+
+	/**
+	 * The skill a blow came from, read from the effect context's INSTANCE.
+	 *
+	 * NOT `GetAbility`, which returns the class default object the context
+	 * also keeps. Every player skill is an instance of one of the eight
+	 * template classes with its name and tags set on the instance, so the
+	 * class default names no skill. See `FCataclysmHitDelivery::Skill`.
+	 */
+	const UCataclysmSkillTemplate* CombatEventsSkillOf(
+		const FGameplayEffectContextHandle& Context)
+	{
+		return Cast<UCataclysmSkillTemplate>(Context.GetAbilityInstance_NotReplicated());
+	}
+
+}
+
+bool FCataclysmHitNotice::HasTag(const FGameplayTag& Tag) const
+{
+	return (EffectTags && EffectTags->HasTag(Tag))
+		|| (GrantedTags && GrantedTags->HasTag(Tag));
+}
+
+UCataclysmCombatEvents* UCataclysmCombatEvents::In(const UWorld* World)
+{
+	return World ? World->GetSubsystem<UCataclysmCombatEvents>() : nullptr;
+}
+
+AActor* UCataclysmCombatEvents::AttackerOf(
+	const FGameplayEffectContextHandle& Context)
+{
+	AActor* Attacker = Context.GetInstigator();
+	AActor* DealtBy = CombatEventsDealtBy(Context);
+
+	// A MINION'S BLOW IS THE MINION'S OWN, UNLESS ITS SUMMONER HOLDS CONDUIT.
+	// Issue #1515. The project owner ruled on 2026-09-17 that a minion's blow
+	// carries only the minion's own stats and minion affixes, and that the
+	// Ritualist keystone Conduit is what turns the summoner's side of it back
+	// on: its on-hit and on-kill effects, its kill credit, and four dungeon
+	// floor rules all ask "was this hit mine" and read the answer from here.
+	//
+	// BOTH ANSWERS ARE STATED, AND THAT IS NOT VERBOSITY. This chose between the
+	// minion and the INSTIGATOR while a minion struck in its summoner's name, so
+	// leaving the instigator alone was the same as naming the summoner. The
+	// minion is its own instigator now, so the untouched case would name the
+	// minion twice and the keystone would quietly stop working.
+	// `Cataclysm.CombatEvents.TheConduitKeystoneCreditsAMinionsHitAndKillToItsSummoner`
+	// is the case that fails if this is ever collapsed back to one branch.
+	//
+	// HERE, AND IN ONE PLACE, BECAUSE THIS IS WHERE A BLOW BECOMES A RECORD.
+	// `NoteDeath` reads the killer out of the record `NoteBlow` writes rather
+	// than working it out again, so a kill follows a hit without a second
+	// decision. IT LIVES IN ITS OWN FUNCTION SINCE `UCataclysmVitalAttributeSet`
+	// gained a second reason to ask -- the window a Boss strike opens on the
+	// attacker -- because a second copy is how the keystone would come to apply
+	// to the kill credit and not to the window, with nothing to say so.
+	// THE MINION RULE LIVES IN THE ACTOR VERSION BELOW, and only a minion
+	// changes the answer, so anything else keeps the effect's instigator.
+	if (Cast<ACataclysmMinion>(DealtBy))
+	{
+		Attacker = AttackerOf(DealtBy);
+	}
+
+	return Attacker;
+}
+
+AActor* UCataclysmCombatEvents::AttackerOf(AActor* DealtBy)
+{
+	if (const ACataclysmMinion* Minion = Cast<ACataclysmMinion>(DealtBy))
+	{
+		return ACataclysmMinion::HitsCountAsTheSummoners(Minion)
+				   ? Minion->Summoner.Get()
+				   : DealtBy;
+	}
+
+	return DealtBy;
+}
+
+void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data,
+									  const FCataclysmIncomingHit& Hit,
+									  const FCataclysmDamageResult& Outcome,
+									  const FGameplayTagContainer& EffectTags,
+									  bool bLethal, bool bFirstFromAttacker)
+{
+	UAbilitySystemComponent* TargetSystem = &Data.Target;
+
+	// THE AVATAR, NOT THE OWNER, for the reason the attribute set gives at every
+	// such lookup: the player's ability system is owned by the player state,
+	// which is not a character and has no location.
+	AActor* Target = TargetSystem->GetAvatarActor();
+	if (!Target)
+	{
+		return;
+	}
+
+	UWorld* World = Target->GetWorld();
+	UCataclysmCombatEvents* Events = In(World);
+	const bool bListening = Events && Events->OnHit.IsBound();
+	const bool bReachedHealth = Outcome.DealtToHealth > 0.0f;
+
+	// NOTHING TO DO FOR MOST BLOWS IN A WORLD NOBODY LISTENS TO. A blow that did
+	// not reach health cannot be the one that killed, so it leaves no record,
+	// and with no listener it is announced to nobody.
+	if (!bReachedHealth && !bListening)
+	{
+		return;
+	}
+
+	const FGameplayEffectContextHandle& Context = Data.EffectSpec.GetContext();
+	// A TICK OF CONVERTED DAMAGE NAMES NO ATTACKER AND NO DEALER. Issue #2664, ruled by the coordinating session
+	// 2026-11-01. The Masochist's converted bleed is laid by the Masochist on itself, so its context names the
+	// character that took the blow; it is damage taken, deferred, and nobody dealt it. So the last blow it records
+	// names nobody, and a Masochist it kills dies uncredited, as a death by an area skill's share on an ally does,
+	// rather than being credited with killing itself. The hit notice names nobody either.
+	const bool bNobodyDealtIt = Hit.bIsConvertedDamage;
+	AActor* Attacker = bNobodyDealtIt ? nullptr : AttackerOf(Context);
+	AActor* DealtBy = bNobodyDealtIt ? nullptr : CombatEventsDealtBy(Context);
+
+	// WHAT A DAMAGE-OVER-TIME TICK GRANTS IS WHERE ITS AILMENT IS, and gathering
+	// it costs a container, so it is gathered only for a tick that is either
+	// listened for or lethal. See `FCataclysmHitNotice::GrantedTags`.
+	FGameplayTagContainer Granted;
+	if (Hit.bIsDamageOverTime && (bListening || bLethal))
+	{
+		Data.EffectSpec.GetAllGrantedTags(Granted);
+	}
+
+	if (bReachedHealth)
+	{
+		if (UCataclysmAbilitySystemComponent* Cataclysm =
+				Cast<UCataclysmAbilitySystemComponent>(TargetSystem))
+		{
+			FCataclysmLastBlow Blow;
+			Blow.Attacker = Attacker;
+			Blow.DealtBy = DealtBy;
+			Blow.Skill = Context.GetAbilityInstance_NotReplicated();
+			Blow.bDamageOverTime = Hit.bIsDamageOverTime;
+			Blow.bIsMelee = Hit.bIsMelee;
+			Blow.bIsRanged = Hit.bIsRanged;
+			Blow.bIsSpell = Hit.bIsSpell;
+			Blow.bFromBoss = Hit.bFromBoss;
+			Blow.WorldSeconds = World ? World->GetTimeSeconds() : 0.0;
+			// AND WHETHER IT IS THE SHARE OF A POINT-BLANK SKILL'S BLOW STRUCK AT AN ALLY, so a death it causes raises
+			// none of its striker's rows. Ruled 2026-10-15.
+			Blow.bAreaSkillShareOnAnAlly = UCataclysmAreaShareOnAllies::IsAShare(Data.EffectSpec);
+			// AND, FOR A BLOW NAMING NO SKILL OBJECT, THE TAGS OF THE SKILL IT IS A BLOW OF: a buried weapon's leap's, or a
+			// shot's whose firing skill has gone (#2475). Ruled 2026-10-22 (#2465, N2 (a)). AND A DAMAGE OVER TIME TICK
+			// NAMING NO SKILL THAT STILL EXISTS, whose effect carries them: a buried weapon's burn, a ground zone's own
+			// ailment, a burn whose skill has gone (#2683). A COPY, kept for every such
+			// blow on record as `Skill` is, so the death notice can point at it after the skill and the leap's component
+			// are gone. Empty for every other blow.
+			if (const FGameplayTagContainer* WithNoSkill =
+					UCataclysmSkillEffects::SkillTagsOfABlowWithNoSkill(Data.EffectSpec))
+			{
+				Blow.SkillTagsWithNoSkill = *WithNoSkill;
+			}
+
+			// THE TAGS ONLY FOR THE BLOW THAT KILLS. See `FCataclysmLastBlow`.
+			if (bLethal)
+			{
+				Blow.KillingTags = EffectTags;
+				Blow.KillingTags.AppendTags(Granted);
+				// AND HOW FAR IT WENT PAST THE HEALTH HELD, for the same blow only. Ruled 2026-10-07.
+				Blow.Overkill = Outcome.Overkill;
+				// AND ITS FIGURE BEFORE THE VICTIM'S MITIGATION, for the same blow only. Ruled 2026-10-21 (traps layer 4).
+				Blow.KillingBlowDamage = Hit.Damage;
+			}
+
+			Cataclysm->RecordLastBlow(MoveTemp(Blow));
+		}
+	}
+
+	if (!bListening)
+	{
+		return;
+	}
+
+	FCataclysmHitNotice Notice;
+	Notice.Attacker = Attacker;
+	Notice.DealtBy = DealtBy;
+	Notice.Target = Target;
+	if (const UCataclysmSkillTemplate* Skill = CombatEventsSkillOf(Context))
+	{
+		Notice.SkillName = FName(*Skill->SkillName);
+		Notice.SkillTags = &Skill->SkillTags;
+	}
+	// AND A BLOW NAMING NO SKILL OBJECT NAMES THE TAGS ITS DELIVERY NAMED FOR THE SKILL IT IS A BLOW OF, as its kill does,
+	// and no skill's name: a buried weapon's leap, and a shot whose firing skill has gone. #2475, under #2465's ruling N1.
+	// THE DELIVERY'S OWN POINTER, NOT A COPY: it is valid for the whole of `ApplyDirectDamage`'s application of this blow,
+	// and this notice is handed out and read inside it, the broadcast below being synchronous. AND A DAMAGE OVER TIME
+	// TICK NAMING NO SKILL THAT STILL EXISTS NAMES THE TAGS ITS EFFECT CARRIES, a pointer into that effect, which runs
+	// for the whole of the tick (#2683). Null for every other blow.
+	else
+	{
+		Notice.SkillTags = UCataclysmSkillEffects::SkillTagsOfABlowWithNoSkill(Data.EffectSpec);
+	}
+	Notice.Landed = Outcome.AbsorbedByMana + Outcome.AbsorbedByShield
+		+ Outcome.AbsorbedByTemporary + Outcome.DealtToHealth;
+	Notice.DealtToHealth = Outcome.DealtToHealth;
+	Notice.bCritical = Outcome.bWasCritical;
+	Notice.bBlocked = Outcome.bBlocked;
+	Notice.bEvaded = Outcome.bEvaded;
+	Notice.bFirstFromAttacker = bFirstFromAttacker;
+	Notice.bDamageOverTime = Hit.bIsDamageOverTime;
+	Notice.bArea = Hit.bIsArea;
+	Notice.bIsMelee = Hit.bIsMelee;
+	Notice.bIsRanged = Hit.bIsRanged;
+	Notice.bIsSpell = Hit.bIsSpell;
+	Notice.bFromBoss = Hit.bFromBoss;
+	// THE STAMP THE DELIVERY LEFT, read off the effect. Ruled 2026-10-07.
+	Notice.bConsequenceOfADeath = Data.EffectSpec.GetSetByCallerMagnitude(
+		FName(UCataclysmSkillEffects::ConsequenceOfADeathDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f;
+	// THE SHARED READING, NOT A COPY KEPT HERE. Until this was moved, this file
+	// held its own `CombatEventsMetresBetween` and the passive tree had no
+	// distance at all. Adding one to the hit would have made two definitions of
+	// the same measurement, and a passive row and this announcement could then
+	// have disagreed about one strike. Issue #1581 was that fault one layer up.
+	// AND WHETHER THE TARGET REFUSED IT AS IMMUNE TO THIS ATTACKER. Ruled 2026-10-12.
+	Notice.bRefusedByImmunityToAttacker = Outcome.bRefusedByImmunityToAttacker;
+	// AND WHETHER IT IS THE EXPLOSION AT AN AILMENT'S END, by the stamp its delivery left. Ruled 2026-10-13.
+	Notice.bExplosionAtAnAilmentsEnd = Data.EffectSpec.GetSetByCallerMagnitude(
+		FName(UCataclysmSkillEffects::ExplosionAtAnAilmentsEndDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f;
+	// AND WHETHER IT IS A WEARER'S SHARE OF AN ALLY'S BLOW, by the stamp its delivery left. Ruled 2026-10-15.
+	Notice.bShareOfDamageDoneToAnAlly = Data.EffectSpec.GetSetByCallerMagnitude(
+		FName(UCataclysmSkillEffects::ShareOfDamageDoneToAnAllyDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f;
+	// AND WHETHER IT IS THE SHARE OF A POINT-BLANK SKILL'S BLOW STRUCK AT AN ALLY, by the same stamp. Ruled 2026-10-15.
+	Notice.bAreaSkillShareOnAnAlly = UCataclysmAreaShareOnAllies::IsAShare(Data.EffectSpec);
+	// FROM WHERE THE BLOW WAS STRUCK when its effect says it was struck from a point, as `ApplyHit` measures it: a
+	// gadget's copy of its summoner's skill. Ruled 2026-10-14.
+	Notice.DistanceMetres = UCataclysmSkillEffects::MetresFromWhereItWasStruck(Data.EffectSpec, DealtBy, Target);
+	Notice.Location = Target->GetActorLocation();
+	Notice.EffectTags = &EffectTags;
+	Notice.GrantedTags = Hit.bIsDamageOverTime ? &Granted : nullptr;
+
+	++Events->Hits;
+	Events->OnHit.Broadcast(Notice);
+}
+
+void UCataclysmCombatEvents::NoteDeath(AActor* Victim)
+{
+	UWorld* World = Victim ? Victim->GetWorld() : nullptr;
+	UCataclysmCombatEvents* Events = In(World);
+	if (!Events || !Events->OnDeath.IsBound())
+	{
+		return;
+	}
+
+	// NEVER NULL, SO NO LISTENER HAS TO ASK. A death with no blow on record points
+	// here, at nothing.
+	static const FGameplayTagContainer NoTags;
+
+	FCataclysmDeathNotice Notice;
+	Notice.Victim = Victim;
+	Notice.Location = Victim->GetActorLocation();
+	Notice.KillingTags = &NoTags;
+
+	const UCataclysmAbilitySystemComponent* System =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Victim));
+	if (System && System->GetLastBlow().IsOnRecord())
+	{
+		const FCataclysmLastBlow& Blow = System->GetLastBlow();
+		Notice.Killer = Blow.Attacker.Get();
+		Notice.KillingCauser = Blow.DealtBy.Get();
+		if (const UCataclysmSkillTemplate* Skill =
+				Cast<UCataclysmSkillTemplate>(Blow.Skill.Get()))
+		{
+			Notice.KillingSkillName = FName(*Skill->SkillName);
+			Notice.KillingSkillTags = &Skill->SkillTags;
+		}
+		// AND A LAST BLOW THAT NAMED NO SKILL OBJECT NAMES THE TAGS OF THE SKILL IT WAS A BLOW OF, the copy on the record,
+		// and no skill's name: a buried weapon's leap, or a shot whose firing skill has gone (#2475). Ruled 2026-10-22
+		// (#2465, N1 (a), N2 (a)).
+		else if (!Blow.SkillTagsWithNoSkill.IsEmpty())
+		{
+			Notice.KillingSkillTags = &Blow.SkillTagsWithNoSkill;
+		}
+		Notice.bByDamageOverTime = Blow.bDamageOverTime;
+		Notice.bIsMelee = Blow.bIsMelee;
+		Notice.bIsRanged = Blow.bIsRanged;
+		Notice.bIsSpell = Blow.bIsSpell;
+		Notice.bFromBoss = Blow.bFromBoss;
+		Notice.SecondsSinceLastBlow =
+			static_cast<float>(World->GetTimeSeconds() - Blow.WorldSeconds);
+		Notice.KillingTags = &Blow.KillingTags;
+		Notice.Overkill = Blow.Overkill;
+		// AND WHETHER THAT BLOW WAS THE SHARE OF A POINT-BLANK SKILL'S BLOW STRUCK AT THIS ALLY. Ruled 2026-10-15.
+		Notice.bByAnAreaSkillShareOnAnAlly = Blow.bAreaSkillShareOnAnAlly;
+		// AND THE KILLING BLOW'S FIGURE BEFORE MITIGATION. Ruled 2026-10-21 (traps layer 4, F10).
+		Notice.KillingBlowDamage = Blow.KillingBlowDamage;
+	}
+
+	++Events->Deaths;
+
+	// WHETHER THE KILLER'S ROWS WERE ACTING, read now, while they still are. See `bWhileTheKillersRowsActed`.
+	if (const UCataclysmAbilitySystemComponent* KillersRows =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Notice.Killer)))
+	{
+		Notice.bWhileTheKillersRowsActed = KillersRows->IsActingOnAnEvent();
+	}
+
+	// A DEATH RAISED DURING ANOTHER'S ANNOUNCEMENT WAITS FOR IT, with its own copies of what its notice points at:
+	// the victim's record may change before it is heard. Issue #2482. See `NoteDeath`.
+	if (Events->DeathsBeingAnnounced > 0)
+	{
+		const FGameplayTagContainer KillingTags = *Notice.KillingTags;
+		const bool bHasSkillTags = Notice.KillingSkillTags != nullptr;
+		const FGameplayTagContainer SkillTags = bHasSkillTags ? *Notice.KillingSkillTags : FGameplayTagContainer();
+		const TWeakObjectPtr<UCataclysmCombatEvents> Announcer(Events);
+		Events->WorkAfterDeaths.Add([Announcer, Notice, KillingTags, bHasSkillTags, SkillTags]()
+		{
+			if (UCataclysmCombatEvents* Still = Announcer.Get())
+			{
+				FCataclysmDeathNotice Heard = Notice;
+				Heard.KillingTags = &KillingTags;
+				Heard.KillingSkillTags = bHasSkillTags ? &SkillTags : nullptr;
+				Still->Announce(Heard);
+			}
+		});
+		return;
+	}
+	Events->Announce(Notice);
+}
+
+void UCataclysmCombatEvents::Announce(const FCataclysmDeathNotice& Notice)
+{
+	// COUNTED WHILE IT IS IN PROGRESS, so work a listener hands over, and a death a listener causes, waits until every
+	// listener has heard this death. See `AfterThisDeathIsHeard` and `NoteDeath`.
+	++DeathsBeingAnnounced;
+	OnDeath.Broadcast(Notice);
+	--DeathsBeingAnnounced;
+	DoWorkAfterDeaths();
+}
+
+void UCataclysmCombatEvents::AfterThisDeathIsHeard(TFunction<void()> Work)
+{
+	if (!Work)
+	{
+		return;
+	}
+	if (DeathsBeingAnnounced == 0)
+	{
+		Work();
+		return;
+	}
+	WorkAfterDeaths.Add(MoveTemp(Work));
+}
+
+void UCataclysmCombatEvents::DoWorkAfterDeaths()
+{
+	// TAKEN OFF THE LIST BEFORE IT IS DONE, because the work may kill, and that death's own announcement comes
+	// back through here. It finds this piece already gone and does whatever is left.
+	while (DeathsBeingAnnounced == 0 && !WorkAfterDeaths.IsEmpty())
+	{
+		const TFunction<void()> Work = MoveTemp(WorkAfterDeaths[0]);
+		WorkAfterDeaths.RemoveAt(0);
+		Work();
+	}
+}
+
+void UCataclysmCombatEvents::NoteSkillUsed(AActor* User, const FString& SkillName,
+										   const FGameplayTagContainer& SkillTags,
+										   ECataclysmAbilitySlot Slot, const FVector* Aim, bool bHasCooldown)
+{
+	UCataclysmCombatEvents* Events = User ? In(User->GetWorld()) : nullptr;
+	if (!Events || !Events->OnSkillUsed.IsBound())
+	{
+		return;
+	}
+
+	FCataclysmSkillUsedNotice Notice;
+	Notice.User = User;
+	Notice.SkillName = FName(*SkillName);
+	Notice.SkillTags = &SkillTags;
+	Notice.Slot = Slot;
+	Notice.Location = User->GetActorLocation();
+	Notice.Aim = Aim ? *Aim : Notice.Location;
+	Notice.bHasCooldown = bHasCooldown;
+
+	++Events->SkillUses;
+	Events->OnSkillUsed.Broadcast(Notice);
+}
+
+void UCataclysmCombatEvents::NoteCreatureAbility(ACataclysmCharacterBase* Creature,
+												 int32 AbilityIndex)
+{
+	UCataclysmCombatEvents* Events = Creature ? In(Creature->GetWorld()) : nullptr;
+	if (!Events || !Events->OnSkillUsed.IsBound())
+	{
+		return;
+	}
+
+	FCataclysmSkillUsedNotice Notice;
+	Notice.User = Creature;
+	Notice.Location = Creature->GetActorLocation();
+
+	// ASKED FOR ONLY WHEN SOMETHING LISTENS, because `EnemyAbilities` answers
+	// with a fresh array. A creature's ability has a name and no tags, so the
+	// name is all there is to carry.
+	const TArray<FCataclysmEnemyAbility> Abilities = Creature->EnemyAbilities();
+	if (Abilities.IsValidIndex(AbilityIndex))
+	{
+		Notice.SkillName = Abilities[AbilityIndex].Name;
+	}
+
+	++Events->SkillUses;
+	Events->OnSkillUsed.Broadcast(Notice);
+}
+
+void UCataclysmCombatEvents::NoteLootTaken(AActor* Taker, const FVector& Where, bool bByHand,
+										   bool bMarked, bool bInfested)
+{
+	UCataclysmCombatEvents* Events = Taker ? In(Taker->GetWorld()) : nullptr;
+	if (!Events || !Events->OnLootTaken.IsBound())
+	{
+		return;
+	}
+
+	FCataclysmLootTakenNotice Notice;
+	Notice.Taker = Taker;
+	Notice.Where = Where;
+	Notice.bByHand = bByHand;
+	Notice.bMarked = bMarked;
+	Notice.bInfested = bInfested;
+	Events->OnLootTaken.Broadcast(Notice);
+}
+
+void UCataclysmCombatEvents::NoteCleansed(AActor* Character)
+{
+	UCataclysmCombatEvents* Events = Character ? In(Character->GetWorld()) : nullptr;
+	if (Events && Events->OnCleansed.IsBound())
+	{
+		Events->OnCleansed.Broadcast(Character);
+	}
+}

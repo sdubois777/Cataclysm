@@ -1,0 +1,7 @@
+# Dependencies for the scripts in tools/.
+#
+# Kept separate from sim/requirements-dev.txt on purpose. The simulation is pure
+# standard library Python and should stay that way; these are tooling
+# dependencies for reading the design workbook, and they must not become
+# something the simulation relies on.
+openpyxl==3.1.5

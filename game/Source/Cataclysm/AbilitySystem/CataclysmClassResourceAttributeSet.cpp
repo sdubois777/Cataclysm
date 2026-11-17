@@ -1,0 +1,350 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+// For the lookup that applies a scaled row to the maximum, which the
+// forwarder below asks instead of reading the attribute. Issue #1515.
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmCommand.h"
+#include "GameplayEffectExtension.h"
+#include "Net/UnrealNetwork.h"
+
+UCataclysmClassResourceAttributeSet::UCataclysmClassResourceAttributeSet()
+{
+	// Most class resources build up from nothing during a fight rather than
+	// starting full, so the current value starts at zero. The maximum matches
+	// the 0-100 range the one designed resource uses.
+	InitClassResource(0.0f);
+	InitMaxClassResource(100.0f);
+
+	// ZERO FOR ALL THREE RATES, AND THAT IS THE DESIGN RATHER THAN A GAP. A
+	// character gains and loses no Fervour until it spends a point on a tree's
+	// generator node, which is what makes that node worth a point. Issue #954.
+	InitFervourFromDamage(0.0f);
+	InitFervourFromCost(0.0f);
+	InitFervourLostToHealing(0.0f);
+
+	// AND ZERO FOR THE ADDED HEALTH COST, for the same reason. Issue #970.
+	// A character with no point in the Masochist's Deeper Cuts node pays only
+	// whatever cost a skill states for itself, which for every skill but Blood
+	// Pyre is nothing at all.
+	InitAddedHealthCost(0.0f);
+	InitAddedHealthCostOfCurrent(0.0f);
+	InitDeferredHealthCostShare(0.0f);
+	InitHealthOwed(0.0f);
+
+	// AND ZERO FOR BOTH DEBT RULES. Issues #995 and #997. A character with no
+	// point in Rolling Debt pushes nothing out, and one without The Reckoning
+	// has an ordinary debt that falls due on a timer.
+	InitHealthDebtDelayExtension(0.0f);
+	InitHealthDebtClearedOnlyByAKill(0.0f);
+
+	// AND ZERO FOR BOTH FERVOUR RULES. Issues #1006 and #1008. A character
+	// with no point in Sanguine Ledger or Wounds That Feed has healing that
+	// removes Fervour as usual, and one without Low Life gains none on a timer.
+	InitFervourLossSuppressed(0.0f);
+	InitFervourPerSecond(0.0f);
+	InitFervourPerEnemyInReach(0.0f);
+	InitFervourDecayPerSecond(0.0f);
+	InitFervourDecayGraceMetres(0.0f);
+	InitHealthRestoredOnKill(0.0f);
+	InitIncreasedDamageBoughtPerExtraEnemyHit(0.0f);
+	InitFervourPerEnemyHit(0.0f);
+	InitHealthRestoredOnKillAtNoCost(0.0f);
+	InitFervourOnEnemyDeathNearby(0.0f);
+
+	// AND ZERO FOR BOTH HALVES OF THE LAST DROP. Issue #1051. A character
+	// without that capstone option pays for its skills as usual and gains no
+	// Fervour for casting one. Both stay zero even for a character holding it,
+	// because both of its rows carry a health condition and a conditional bonus
+	// is never folded into an attribute.
+	InitFervourPerCast(0.0f);
+	InitHealthCostSuppressed(0.0f);
+	InitManaPoolBecomesHealth(0.0f);
+
+	InitDamageToBleedingOnLowHealth(0.0f);
+	InitDamageToBleedingWindow(0.0f);
+
+	// AND ZERO FOR ALL THREE OF ROCK BOTTOM'S. Issue #1069. A character without
+	// that capstone option pays what it can and dies of what it cannot, its
+	// debt is untouched by falling low, and no Fervour arrives from doing so.
+	InitUnpayableHealthCostBecomesDebt(0.0f);
+	InitDebtClearedOnDroppingLow(0.0f);
+	InitFervourOnDroppingLow(0.0f);
+
+	// AND ZERO FOR BOTH OF THE RITUALIST'S. Issue #1518. A character without
+	// that tree's starting node gains nothing from the minions it commands and
+	// nothing when one of them dies, which is what makes that node worth a
+	// point -- the same rule the three rates above follow.
+	InitFervourFromMinions(0.0f);
+	InitFervourOnMinionDeath(0.0f);
+
+	// AND ZERO FOR BOTH OF CARNIVORE'S. Issue #1071. A character without that
+	// option earns Carnage by killing rather than by being hit, and holds no
+	// more than the ten stacks `UCataclysmStacks::CapFor` allows.
+	InitCarnageFromDamageTaken(0.0f);
+	InitCarnageHasNoMaximum(0.0f);
+}
+
+void UCataclysmClassResourceAttributeSet::GetLifetimeReplicatedProps(
+	TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, ClassResource);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, MaxClassResource);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourFromDamage);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourFromCost);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourLostToHealing);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, AddedHealthCost);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, AddedHealthCostOfCurrent);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, DeferredHealthCostShare);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, HealthOwed);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, HealthDebtDelayExtension);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, HealthDebtClearedOnlyByAKill);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourLossSuppressed);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourPerSecond);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourPerEnemyInReach);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourDecayPerSecond);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourDecayGraceMetres);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, HealthRestoredOnKill);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, IncreasedDamageBoughtPerExtraEnemyHit);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourPerEnemyHit);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, HealthRestoredOnKillAtNoCost);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourOnEnemyDeathNearby);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourPerCast);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, HealthCostSuppressed);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, ManaPoolBecomesHealth);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, DamageToBleedingOnLowHealth);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, DamageToBleedingWindow);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, UnpayableHealthCostBecomesDebt);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, DebtClearedOnDroppingLow);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourOnDroppingLow);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourFromMinions);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourOnMinionDeath);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, CarnageFromDamageTaken);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, CarnageHasNoMaximum);
+}
+
+float UCataclysmClassResourceAttributeSet::MaximumClassResourceAsked() const
+{
+	if (const UCataclysmAbilitySystemComponent* Cataclysm =
+			Cast<UCataclysmAbilitySystemComponent>(
+				GetOwningAbilitySystemComponent()))
+	{
+		// LESS WHAT THE ARMY HOLDS BACK. Issue #1160: "holding a thrall
+		// reserves 30 Fervour", and an imp its 10 (#1934). Every gain and every
+		// spend clamps to this figure, so a reserved share can be neither
+		// filled nor spent. Never below zero.
+		return FMath::Max(0.0f, Cataclysm->MaximumClassResource()
+			- UCataclysmCommand::ReservedFervourOf(Cataclysm->GetAvatarActor()));
+	}
+	return GetMaxClassResource();
+}
+
+void UCataclysmClassResourceAttributeSet::PreAttributeChange(
+	const FGameplayAttribute& Attribute, float& NewValue)
+{
+	Super::PreAttributeChange(Attribute, NewValue);
+
+	if (Attribute == GetClassResourceAttribute())
+	{
+		// HELD BETWEEN NOTHING AND THE MAXIMUM. Issue #1031 removed the one
+		// thing that ever lifted the ceiling: The Final Vow's second option,
+		// Apotheosis, said "Your Fervour has no maximum", and all twelve
+		// Masochist capstone options were rewritten without it.
+		NewValue = FMath::Clamp(NewValue, 0.0f, MaximumClassResourceAsked());
+	}
+	else if (Attribute == GetDeferredHealthCostShareAttribute())
+	{
+		// HELD BETWEEN 0 AND 100, BECAUSE IT IS A SHARE OF A COST. Issue #991.
+		// Below zero it would take more than the cost now and leave a negative
+		// debt; above a hundred it would defer more than was charged and hand
+		// the character health back at the moment of the cast.
+		//
+		// A HUNDRED IS LEGITIMATE and is what the Masochist's Deferred Payment
+		// node reaches at its full ten points: the whole cost is taken later.
+		NewValue = FMath::Clamp(NewValue, 0.0f, 100.0f);
+	}
+	else if (Attribute == GetMaxClassResourceAttribute())
+	{
+		// Zero is legitimate: a character with no class tree invested has no
+		// resource, and should not be given a phantom one.
+		NewValue = FMath::Max(NewValue, 0.0f);
+	}
+	else if (Attribute == GetFervourFromDamageAttribute()
+		|| Attribute == GetFervourFromCostAttribute()
+		|| Attribute == GetFervourLostToHealingAttribute()
+		|| Attribute == GetAddedHealthCostAttribute()
+		|| Attribute == GetAddedHealthCostOfCurrentAttribute()
+		|| Attribute == GetHealthOwedAttribute()
+		|| Attribute == GetHealthDebtDelayExtensionAttribute()
+		|| Attribute == GetHealthDebtClearedOnlyByAKillAttribute()
+		|| Attribute == GetFervourLossSuppressedAttribute()
+		|| Attribute == GetFervourPerSecondAttribute()
+		|| Attribute == GetFervourPerEnemyInReachAttribute()
+		|| Attribute == GetFervourDecayPerSecondAttribute()
+		|| Attribute == GetFervourDecayGraceMetresAttribute()
+		|| Attribute == GetHealthRestoredOnKillAttribute()
+		|| Attribute == GetIncreasedDamageBoughtPerExtraEnemyHitAttribute()
+		|| Attribute == GetFervourPerEnemyHitAttribute()
+		|| Attribute == GetHealthRestoredOnKillAtNoCostAttribute()
+		|| Attribute == GetFervourOnEnemyDeathNearbyAttribute()
+		|| Attribute == GetFervourPerCastAttribute()
+		|| Attribute == GetHealthCostSuppressedAttribute()
+		|| Attribute == GetManaPoolBecomesHealthAttribute()
+		|| Attribute == GetDamageToBleedingOnLowHealthAttribute()
+		|| Attribute == GetDamageToBleedingWindowAttribute()
+		|| Attribute == GetUnpayableHealthCostBecomesDebtAttribute()
+		|| Attribute == GetDebtClearedOnDroppingLowAttribute()
+		|| Attribute == GetFervourOnDroppingLowAttribute()
+		|| Attribute == GetFervourFromMinionsAttribute()
+		|| Attribute == GetFervourOnMinionDeathAttribute()
+		|| Attribute == GetCarnageFromDamageTakenAttribute()
+		|| Attribute == GetCarnageHasNoMaximumAttribute())
+	{
+		// FLOORED AT ZERO, WHICH FOR A RATE MEANS "THIS DOES NOT MOVE THE BAR".
+		// A negative rate would invert the rule the node states: taking damage
+		// would empty Fervour and healing would fill it. Nothing in the design
+		// asks for that, and the one node that reduces a rate -- the Masochist's
+		// Staunch, at 5% per point over at most six points -- reaches 70% of the
+		// rate and not past zero. Issue #954.
+		//
+		// AND FOR THE ADDED HEALTH COST IT MEANS "THIS COSTS NOTHING EXTRA".
+		// Issue #970. A negative one would not be a smaller cost, it would be
+		// health handed back on every cast, which is the same class of inversion
+		// and is not what any node states.
+		//
+		// AND FOR THE DELAY EXTENSION IT MEANS "THIS PUSHES NOTHING OUT". Issue
+		// #995. A negative extension would pull a debt FORWARD, which is the
+		// opposite of what Rolling Debt says and would make a character worse
+		// off for spending points on it.
+		//
+		// AND FOR THE RECKONING FLAG IT MEANS "OFF". Issue #997. It is read as
+		// a yes or no rather than as a quantity, so anything above zero is yes;
+		// what has to be refused is a negative, which would read as off while
+		// looking like a real value in the debugger.
+		NewValue = FMath::Max(NewValue, 0.0f);
+	}
+}
+
+void UCataclysmClassResourceAttributeSet::PostGameplayEffectExecute(
+	const FGameplayEffectModCallbackData& Data)
+{
+	Super::PostGameplayEffectExecute(Data);
+
+	if (Data.EvaluatedData.Attribute == GetClassResourceAttribute())
+	{
+		// THIS KEEPS THE STORED BASE AT OR UNDER THE MAXIMUM, which
+		// `PreAttributeChange` does not. Issue #1036, read in the UE 5.8
+		// GameplayAbilities source on 2026-09-30: an instant effect reaches the
+		// pool through `FActiveGameplayEffectsContainer::ApplyModToAttribute`
+		// (GameplayEffect.cpp 4155-4161), which adds to the BASE and hands it to
+		// `SetAttributeBaseValue` (about 4001-4013). That stores the base as
+		// given -- this set does not override `PreAttributeBaseChange` -- and
+		// only then clamps the CURRENT value in `PreAttributeChange`. So an
+		// effect adding to a full pool left the base above the maximum, and the
+		// next effect taking Fervour away came off that hidden excess. Writing
+		// the pool back through its setter resets the base.
+		//
+		// A GUARD PROOF ON 2026-08-27 REMOVED THIS AND NOTHING FAILED, because
+		// every test then read only the current value, one write at a time.
+		// `Cataclysm.Fervour.AnEffectAtAFullPoolIsNotBankedForTheNextSpend`
+		// reads the second write.
+		SetClassResource(
+			FMath::Clamp(GetClassResource(), 0.0f, MaximumClassResourceAsked()));
+	}
+}
+
+TArray<FGameplayAttribute> UCataclysmClassResourceAttributeSet::GetAllAttributes()
+{
+	TArray<FGameplayAttribute> All = {
+		GetClassResourceAttribute(), GetMaxClassResourceAttribute()
+	};
+	All.Append(GetRateAttributes());
+
+	// THE ADDED HEALTH COST IS NOT A RATE, so it is listed here rather than in
+	// GetRateAttributes below. That function answers "can this character move
+	// Fervour at all", which is what decides whether the bar is drawn, and a
+	// character that pays health for its skills but converts none of it to
+	// Fervour should not be given a bar it can only read zero from. Issue #970.
+	All.Add(GetAddedHealthCostAttribute());
+	All.Add(GetAddedHealthCostOfCurrentAttribute());
+	All.Add(GetDeferredHealthCostShareAttribute());
+	All.Add(GetHealthOwedAttribute());
+	All.Add(GetHealthDebtDelayExtensionAttribute());
+	All.Add(GetHealthDebtClearedOnlyByAKillAttribute());
+	All.Add(GetFervourLossSuppressedAttribute());
+	All.Add(GetFervourPerSecondAttribute());
+	All.Add(GetFervourPerEnemyInReachAttribute());
+	All.Add(GetFervourDecayPerSecondAttribute());
+	All.Add(GetFervourDecayGraceMetresAttribute());
+	All.Add(GetHealthRestoredOnKillAttribute());
+	All.Add(GetIncreasedDamageBoughtPerExtraEnemyHitAttribute());
+	All.Add(GetFervourPerEnemyHitAttribute());
+	All.Add(GetHealthRestoredOnKillAtNoCostAttribute());
+	All.Add(GetFervourOnEnemyDeathNearbyAttribute());
+	All.Add(GetFervourPerCastAttribute());
+	All.Add(GetHealthCostSuppressedAttribute());
+	All.Add(GetManaPoolBecomesHealthAttribute());
+	All.Add(GetDamageToBleedingOnLowHealthAttribute());
+	All.Add(GetDamageToBleedingWindowAttribute());
+	All.Add(GetUnpayableHealthCostBecomesDebtAttribute());
+	All.Add(GetDebtClearedOnDroppingLowAttribute());
+	All.Add(GetFervourOnDroppingLowAttribute());
+	All.Add(GetCarnageFromDamageTakenAttribute());
+	All.Add(GetCarnageHasNoMaximumAttribute());
+	return All;
+}
+
+TArray<FGameplayAttribute> UCataclysmClassResourceAttributeSet::GetRateAttributes()
+{
+	// THE THREE THE MASOCHIST'S GENERATOR GRANTS, AND THE TWO THE RITUALIST'S
+	// DOES. Issue #1518. This answers "can this character move Fervour at all",
+	// which is what decides whether the bar is drawn, so a class whose generator
+	// grants neither of the health rates has to be represented here or its bar
+	// would never appear.
+	//
+	// `FervourFromMinions` READS ZERO EVEN FOR A RITUALIST HOLDING THE NODE,
+	// because its row carries a scale and a scaled bonus is never folded into an
+	// attribute. `FervourOnMinionDeath` is a plain flat row and reads 5, so it
+	// is the one that actually draws the bar. Both are listed because this is a
+	// question about the character rather than about which read happens to be
+	// non-zero, and a later node granting only the rate should still get a bar.
+	return { GetFervourFromDamageAttribute(), GetFervourFromCostAttribute(),
+			 GetFervourLostToHealingAttribute(), GetFervourFromMinionsAttribute(),
+			 GetFervourOnMinionDeathAttribute() };
+}
+
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, ClassResource)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, MaxClassResource)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourFromDamage)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourFromCost)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourLostToHealing)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, AddedHealthCost)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, AddedHealthCostOfCurrent)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, DeferredHealthCostShare)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, HealthOwed)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, HealthDebtDelayExtension)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, HealthDebtClearedOnlyByAKill)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourLossSuppressed)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourPerSecond)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourPerEnemyInReach)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourDecayPerSecond)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourDecayGraceMetres)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, HealthRestoredOnKill)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, IncreasedDamageBoughtPerExtraEnemyHit)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourPerEnemyHit)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, HealthRestoredOnKillAtNoCost)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourOnEnemyDeathNearby)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourPerCast)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, HealthCostSuppressed)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, ManaPoolBecomesHealth)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, DamageToBleedingOnLowHealth)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, DamageToBleedingWindow)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, UnpayableHealthCostBecomesDebt)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, DebtClearedOnDroppingLow)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourOnDroppingLow)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourFromMinions)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourOnMinionDeath)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, CarnageFromDamageTaken)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, CarnageHasNoMaximum)

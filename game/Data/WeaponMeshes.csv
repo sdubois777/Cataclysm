@@ -1,0 +1,15 @@
+Name,BaseName,Mesh,Scale
+Weapon_Sword,Sword,/Game/Medieval_Weapons/Meshes/VOL2/SM_Sword_1,1.0
+Weapon_Dagger,Dagger,/Game/Medieval_Weapons/Meshes/VOL2/SM_Dagger,1.0
+Weapon_Axe,Axe,/Game/Medieval_Weapons/Meshes/VOL2/SM_Axe,1.0
+Weapon_Shield,Shield,/Game/Medieval_Weapons/Meshes/VOL2/SM_Shield_1,1.0
+Weapon_Crossbow,Crossbow,/Game/Medieval_Weapons/Meshes/VOL2/SM_Crossbow,1.0
+Weapon_Spear,Spear,/Game/Medieval_Weapons/Meshes/VOL2/SM_Spear,1.0
+Weapon_Staff,Staff,/Game/Medieval_Weapons/Meshes/VOL2/SM_Staff,1.0
+Weapon_Greatsword,Greatsword,/Game/Medieval_Weapons/Meshes/VOL2/SM_Sword_3,1.45
+Weapon_Greataxe,Greataxe,/Game/Medieval_Weapons/Meshes/VOL2/SM_Axe,1.45
+Weapon_Warhammer,Warhammer,/Game/Medieval_Weapons/Meshes/VOL2/SM_Mace,1.45
+Weapon_Two_Handed_Crossbow,Two-Handed Crossbow,/Game/Medieval_Weapons/Meshes/VOL2/SM_Crossbow,1.25
+Weapon_Fist,Fist,,1.0
+Weapon_Wand,Wand,,1.0
+Weapon_Whip,Whip,,1.0

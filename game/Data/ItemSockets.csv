@@ -1,0 +1,13 @@
+Name,Slot,Hands,MaxSockets
+Head,Head,0,2
+Chest,Chest,0,6
+Shoulders,Shoulders,0,2
+Gloves,Gloves,0,2
+Pants,Pants,0,4
+Boots,Boots,0,2
+Belt,Belt,0,4
+Ring,Ring,0,1
+Necklace,Necklace,0,1
+Relic,Relic,0,4
+Weapon_1H,Weapon,1,3
+Weapon_2H,Weapon,2,6

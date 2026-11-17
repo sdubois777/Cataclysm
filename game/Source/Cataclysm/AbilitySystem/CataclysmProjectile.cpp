@@ -1,0 +1,1046 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "AbilitySystem/CataclysmProjectile.h"
+#include "AbilitySystem/CataclysmChorus.h"
+#include "AbilitySystem/CataclysmMeshWidth.h"
+#include "AbilitySystem/CataclysmProjectileEffect.h"
+// For what a blow resolved to, so a burn is refused on an evaded one.
+// Issue #1156.
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmDeployableSelfBlast.h"
+// For the Fervour each enemy a shot lands on earns. Issue #1515.
+#include "AbilitySystem/CataclysmFervour.h"
+#include "AbilitySystem/CataclysmGroundZone.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillTemplate.h"
+#include "AbilitySystem/CataclysmTargeting.h"
+// For the Null Emperor ten-piece's aura, which consumes an enemy's shot in flight, and the word it shows.
+#include "AbilitySystem/CataclysmVoidAura.h"
+#include "Interface/CataclysmCombatOverlay.h"
+#include "Cataclysm.h"
+// For the skill that fired it, which its blows carry. Issue #41, slice 4.
+#include "Abilities/GameplayAbility.h"
+#include "Components/SceneComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
+#include "Engine/World.h"
+
+namespace
+{
+	/**
+	 * A projectile with less than this left to travel has arrived.
+	 *
+	 * Compared against the remaining range rather than against zero so that
+	 * floating point cannot leave one with a hundredth of a centimetre to go and
+	 * another step to take.
+	 */
+	constexpr float CataclysmProjectileArrivedWithinCm = 0.1f;
+
+	/**
+	 * A cap on how much of one frame a single step may cover.
+	 *
+	 * A step is swept, so a long one is not a correctness problem in itself: the
+	 * capsule still covers every place the projectile passed. It is a problem
+	 * for the ORDER of what it passed. A projectile that does not pierce should
+	 * stop at the first enemy and then not exist for the second, and a step long
+	 * enough to contain both makes that ordering a property of the sweep rather
+	 * than of time. A tenth of a second at the fastest designed speed -- Chain
+	 * of Coals at 2000 centimetres per second -- is two metres.
+	 */
+	constexpr float CataclysmProjectileLongestStepSeconds = 0.1f;
+
+	/**
+	 * How long a finished projectile hangs about before being destroyed.
+	 *
+	 * NOT DESTROYED OUTRIGHT, so that whatever is listening on OnFinished can
+	 * still read where it stopped. Short enough that a real game never has one
+	 * of these on screen for a frame that matters.
+	 */
+	constexpr float CataclysmProjectileLingerSeconds = 0.01f;
+}
+
+ACataclysmProjectile::ACataclysmProjectile()
+{
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = true;
+
+	// NOT DECORATION, and this project has been caught by its absence twice. An
+	// actor whose components are all non-scene components has no root component,
+	// and an actor with no root component reports its location as the world
+	// origin however it was spawned.
+	Anchor = CreateDefaultSubobject<USceneComponent>(TEXT("Anchor"));
+	SetRootComponent(Anchor);
+
+	// A COMPONENT FOR A PROJECTILE THAT IS A PHYSICAL OBJECT, and nothing in it
+	// by default. Scaled in Fire, once BodyRadiusCm is known -- a piercing
+	// skill's projectile is as wide as the line it hits along, and everything
+	// else uses the standard body width.
+	PlaceholderBody = CreateDefaultSubobject<UStaticMeshComponent>(
+		TEXT("PlaceholderBody"));
+	PlaceholderBody->SetupAttachment(Anchor);
+	PlaceholderBody->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	// IT USED TO LOAD `/Engine/BasicShapes/Sphere` HERE AND THAT WAS THE SINGLE
+	// WORST-LOOKING THING IN THE GAME. The engine sphere has no material
+	// assigned, so it renders with Unreal's default grey. Every player fire bolt
+	// was a grey ball with a particle effect stuck around it, which is what the
+	// project owner meant on 2026-08-22 by "still just shooting regular looking
+	// grey orbs with some mediocre effects on them". Issue #811.
+	//
+	// THE REASON IT WAS ADDED HAS GONE. The comment that stood here said
+	// "SOMETHING TO SEE. Until this, every projectile in the game was
+	// invisible", and that was true: the actor's only component was the anchor
+	// and no effect existed. `NS_Proj_Body` was built in #558 and
+	// `UCataclysmProjectileEffect::AttachTo` gives every projectile a head, a
+	// trail and a light. The particle system IS the body of a magic bolt, and a
+	// grey ball inside it is not a fallback, it is something drawn on top of the
+	// art.
+	//
+	// A PROJECTILE THAT IS A REAL OBJECT STILL DRAWS A MESH, which is why the
+	// component stays. `SetBodyMesh` is how the Brute's thrown rock arrives, and
+	// a rock is a thing rather than a spell.
+	//
+	// WHAT THIS COSTS. A projectile whose effect is refused draws nothing at
+	// all. `FXT_Enemy` refuses one past 4000 cm, outside the view frustum, or
+	// beyond twenty live instances -- so what is lost is a grey ball in
+	// situations where the effect was already judged not worth drawing.
+}
+
+void ACataclysmProjectile::SetBodyMesh(UStaticMesh* Mesh)
+{
+	if (!PlaceholderBody)
+	{
+		return;
+	}
+
+	if (Mesh)
+	{
+		PlaceholderBody->SetStaticMesh(Mesh);
+	}
+
+	const UStaticMesh* Shown = PlaceholderBody->GetStaticMesh();
+	if (!Shown)
+	{
+		// NO MESH IS THE NORMAL CASE AND NOT A FAILURE. Since 2026-08-22 the
+		// constructor loads nothing, so every projectile that was not handed a
+		// real object arrives here with an empty component and is drawn entirely
+		// by NS_Proj_Body. There is nothing to size. It also covers the Brute
+		// throwing without the Paragon pack installed: no rock, no mesh, and the
+		// throw still flies and still deals damage.
+		return;
+	}
+
+	// FROM THE MESH'S OWN BOUNDS, so that a rock out of an art pack and an
+	// engine primitive both come out at BodyRadiusCm. The arithmetic is shared
+	// with the debris burst and with the rock the Brute carries, because the
+	// three of them drawing the same asset at different sizes is issue #453.
+	const float Scale = CataclysmMeshWidth::ScaleFor(Shown, BodyRadiusCm);
+	if (Scale <= 0.0f)
+	{
+		// Nothing to scale: no width, or no radius asked for. Left alone rather
+		// than collapsed to nothing.
+		return;
+	}
+
+	PlaceholderBody->SetRelativeScale3D(FVector(Scale, Scale, Scale));
+}
+
+float ACataclysmProjectile::LobFlightSecondsFor(float ApexFraction,
+											   float DistanceCm)
+{
+	// EITHER ONE AT OR BELOW ZERO MEANS THIS IS NOT A LOB, and zero is what
+	// `Fire` reads as a flat shot. A skill that states no arc, and a throw with
+	// nowhere to go, both arrive here and both get the same answer.
+	const float ApexCm = ApexFraction * DistanceCm;
+	if (ApexCm <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// See the header: a parabola sags `g * t * t / 8` below its own chord, so
+	// this is that inverted.
+	return FMath::Sqrt(8.0f * ApexCm / LobGravityCmPerSecondSquared);
+}
+
+ACataclysmProjectile* ACataclysmProjectile::Fire(
+	AActor* Instigator, const FVector& From, const FVector& To, float InRadiusCm,
+	float InSpeed, int32 InPierce, bool bInReturns, float InDamagePercent,
+	const FGameplayTagContainer& InSkillTags, bool bInBurns,
+	UStaticMesh* InBodyMesh, float InFlightSeconds, float InCritChancePercent,
+	float InSkillHealthCostPercent, const UGameplayAbility* InFiringSkill)
+{
+	UWorld* World = Instigator ? Instigator->GetWorld() : nullptr;
+	if (!World || InRadiusCm <= 0.0f)
+	{
+		return nullptr;
+	}
+	if (InSpeed <= 0.0f && InFlightSeconds <= 0.0f)
+	{
+		// A speed of zero is a beam, not a projectile. Infernal Lance is written
+		// that way and arrives at once, which the firing skill resolves itself.
+		//
+		// EITHER ONE WILL DO, because they are two ways of saying how quickly it
+		// gets there and a lob is given the second rather than the first. A
+		// caller passing neither has said nothing about how it moves.
+		return nullptr;
+	}
+
+	FVector Along = To - From;
+	Along.Z = 0.0f;
+	const float RangeCm = Along.Size();
+	if (RangeCm <= CataclysmProjectileArrivedWithinCm)
+	{
+		// Aimed at its own feet, which is what happens with no cursor. There is
+		// no path to fly along, so the caller resolves it as a landing instead.
+		return nullptr;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = Instigator;
+	SpawnParams.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	ACataclysmProjectile* Projectile = World->SpawnActor<ACataclysmProjectile>(
+		From, Along.Rotation(), SpawnParams);
+	if (!Projectile)
+	{
+		return nullptr;
+	}
+
+	Projectile->StartedAt = From;
+	Projectile->FurthestReached = From;
+	Projectile->Direction = Along / RangeCm;
+	Projectile->RadiusCm = InRadiusCm;
+
+	// REPLACED BELOW FOR A LOB, which works its ground speed out from its
+	// flight time instead and does not use InSpeed at all.
+	Projectile->SpeedCmPerSecond = InSpeed;
+	Projectile->RemainingRangeCm = RangeCm;
+	Projectile->bPierces = InPierce > 0;
+	Projectile->PiercesLeft = FMath::Max(0, InPierce);
+
+	// THE LOB, AND IT IS OFF UNLESS ASKED FOR. Issue #459. Direction above is
+	// already flattened, so a projectile with no flight time flies exactly the
+	// path it flew before this existed and every player skill is untouched.
+	//
+	// THE TWO HEIGHTS ARE KEPT BECAUSE A LOB HAS TO LAND SOMEWHERE. A straight
+	// shot ignores the height difference between where it was fired and what it
+	// was fired at, which is right for something travelling flat. One that
+	// lobs has to end at the height it was aimed at, or the Brute's rock would
+	// finish its parabola in the air at hand height.
+	Projectile->FlightSeconds = FMath::Max(0.0f, InFlightSeconds);
+	Projectile->TotalRangeCm = RangeCm;
+	Projectile->LaunchZ = From.Z;
+	Projectile->LandingZ = InFlightSeconds > 0.0f ? To.Z : From.Z;
+
+	if (Projectile->FlightSeconds > 0.0f)
+	{
+		// THE WHOLE OF THE BALLISTIC SOLVE, AND IT IS TWO LINES. Issue #465.
+		// Given two ends, a gravity and a time, the launch velocity is
+		// `(delta - 0.5 * g * t * t) / t`. Unreal solves the same problem the
+		// same way in UGameplayStatics::SuggestProjectileVelocity_MovingTarget,
+		// at GameplayStatics.cpp:3140 in 5.8; it is not called here only
+		// because that function insists on a live AActor* to aim at and this
+		// aims at a point on the ground.
+		//
+		// SPLIT INTO THE TWO PARTS THIS CLASS ACTUALLY USES. The horizontal
+		// part is a constant speed, which is what Step advances by. The
+		// vertical part is folded into ApexHeightCm, because the height at any
+		// point is worked out from the distance covered rather than integrated
+		// step by step -- see ArcHeightAfter.
+		Projectile->SpeedCmPerSecond = RangeCm / Projectile->FlightSeconds;
+
+		// HOW FAR A PARABOLA SAGS BELOW ITS OWN CHORD, which over a flight of
+		// t seconds is `g * t * t / 8` at the midpoint whatever the two ends
+		// are. That makes the apex a function of the time alone: two lobs of
+		// different lengths taking the same time rise the same height above
+		// their chords.
+		Projectile->ApexHeightCm = LobGravityCmPerSecondSquared
+			* Projectile->FlightSeconds * Projectile->FlightSeconds / 8.0f;
+	}
+	else
+	{
+		Projectile->ApexHeightCm = 0.0f;
+	}
+
+	// A piercing skill's Radius is the half-width of the line it hits along, so
+	// for one of those the flying object IS that wide. One that does not pierce
+	// has a Radius that means the blast where it stops, so the object gets the
+	// standard body width instead. See the comments on both fields.
+	Projectile->BodyRadiusCm =
+		Projectile->bPierces ? InRadiusCm : DefaultBodyRadiusCm;
+
+	// SIZED TO WHAT IT ACTUALLY HITS WITH, so what the player sees and what the
+	// sweep uses are the same width rather than two numbers that can disagree.
+	// SetBodyMesh does both the swap and the sizing; a null mesh sizes the
+	// placeholder sphere the constructor already put there.
+	Projectile->SetBodyMesh(InBodyMesh);
+
+	Projectile->bWillReturn = bInReturns;
+	Projectile->DamagePercent = InDamagePercent;
+	Projectile->SkillTags = InSkillTags;
+	Projectile->CritChancePercent = InCritChancePercent;
+	Projectile->SkillHealthCostPercent = InSkillHealthCostPercent;
+	Projectile->FiringSkill = InFiringSkill;
+
+	// AND WHAT THAT USE SPENT FROM NEXT-USE CHARGES, copied now for the reason
+	// the figures above are: the next use writes the skill's own copy before
+	// this one lands. Issue #1833, phase 2.
+	if (const UCataclysmSkillTemplate* Firing =
+			Cast<const UCataclysmSkillTemplate>(InFiringSkill))
+	{
+		Projectile->SpentIncreasePercent = Firing->LastNextUseIncreasePercent;
+		Projectile->SpentMoreMultiplier = Firing->LastNextUseMoreMultiplier;
+	}
+	Projectile->bBurns = bInBurns;
+
+	// LAST, AND THE ORDER MATTERS. The effect reads BodyRadiusCm for its size
+	// and the firer for its colour, and the firer is the actor's Owner, which
+	// SpawnActor set above. Attaching it any earlier would size every projectile
+	// at the clamped minimum and colour every one of them white.
+	//
+	// ITS RETURN VALUE IS DELIBERATELY DROPPED. Null is the ordinary answer past
+	// the effect type's cull distance, outside the view frustum, beyond twenty
+	// live instances, and in every automation test, which runs with -nullrhi.
+	// None of those is a reason not to fire the projectile.
+	UCataclysmProjectileEffect::AttachTo(Projectile);
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("A projectile left %s at %.0f cm/s for %.0f cm, piercing %d."),
+		*GetNameSafe(Instigator), InSpeed, RangeCm, InPierce);
+
+	return Projectile;
+}
+
+void ACataclysmProjectile::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+	Step(DeltaSeconds);
+}
+
+bool ACataclysmProjectile::Step(float DeltaSeconds)
+{
+	if (bFinished || DeltaSeconds <= 0.0f)
+	{
+		return false;
+	}
+
+	// A long frame is taken as several steps rather than one, so that what a
+	// projectile passes through, it passes through in order. See
+	// CataclysmProjectileLongestStepSeconds.
+	float SecondsLeft = DeltaSeconds;
+	while (SecondsLeft > 0.0f && !bFinished)
+	{
+		const float ThisStep =
+			FMath::Min(SecondsLeft, CataclysmProjectileLongestStepSeconds);
+		SecondsLeft -= ThisStep;
+
+		const FVector Previous = GetActorLocation();
+
+		// A PULLING ZONE TURNS THE FLIGHT FIRST, so this sub-step already travels the turned way. Singularity Wells.
+		TurnTowardAPull(Previous, ThisStep);
+
+		// THE SPEED IS ACROSS THE GROUND, AND IT IS THE SAME AT EVERY POINT OF
+		// THE FLIGHT. Issue #465. That is the whole of what makes this
+		// projectile motion rather than a shape being traced out: gravity acts
+		// downward and nothing acts sideways, so the horizontal component of a
+		// thrown object's velocity never changes and only the vertical one
+		// does. `SpeedCmPerSecond` is already that number for both kinds of
+		// shot -- given directly for a flat one, worked out from the flight
+		// time in Fire for a lob.
+		//
+		// WHAT THIS REPLACED. #462 divided the step by `sqrt(1 + slope*slope)`
+		// to hold the speed THROUGH THE AIR constant. That made the distance
+		// flown correct and the distribution of it wrong: a steep part of the
+		// path bought less ground than a shallow one, so the rock crossed most
+		// of the way early and then sank onto the marker at 62% of the ground
+		// speed it started with. The project owner reported it as throwing fast
+		// and then dropping slowly.
+		const float WantedCm =
+			FMath::Min(SpeedCmPerSecond * ThisStep, RemainingRangeCm);
+
+		FVector Wanted = Previous + Direction * WantedCm;
+
+		// THE HEIGHT IS SET, NOT ADDED TO. Direction is flat, so the horizontal
+		// part of the step above is the whole of the travel and an arcing
+		// projectile's height is a function of how far along it is rather than
+		// of where it was last frame. Working from the previous height instead
+		// would accumulate every rounding error of the flight.
+		//
+		// ArcHeightAfter returns the launch height unchanged when nothing asked
+		// for an arc, so this line does nothing at all to a straight shot.
+		Wanted.Z = ArcHeightAfter(TotalRangeCm - RemainingRangeCm + WantedCm);
+
+		// WORLD GEOMETRY FIRST, and only then who was standing there. A wall
+		// between the caster and an enemy behind it has to stop the projectile
+		// at the wall, so the sweep for enemies runs over the part of the step
+		// that actually happened rather than the part that was asked for.
+		const FVector Reached = TraceStep(Previous, Wanted);
+
+		SetActorLocation(Reached);
+
+		// THE HORIZONTAL DISTANCE, NOT THE DISTANCE THROUGH THE AIR. The range
+		// a projectile is given is a distance across the ground -- the Brute's
+		// rock reaches ten metres, meaning ten metres away, not ten metres of
+		// flight. An arc is longer through the air than across the ground, so
+		// counting the flown distance would land it short by the difference.
+		//
+		// IT CHANGES NOTHING FOR A STRAIGHT SHOT, because Direction is flattened
+		// for every projectile, so its two distances are the same number.
+		// Cataclysm.Skills.AStraightProjectileStillTravelsItsWholeRange is what
+		// says so.
+		RemainingRangeCm -= FVector::Dist2D(Previous, Reached);
+
+		// Tracked as it goes, so that a projectile which turns round still
+		// knows how far out it got. That is what the burning ground it leaves
+		// is measured along.
+		if (!bReturning)
+		{
+			FurthestReached = Reached;
+		}
+
+		// A VOID AURA BEFORE ANY HIT, so a shot it consumes on this step strikes nothing. The Null Emperor ten-piece.
+		if (TakenByAVoidAura(Previous, Reached))
+		{
+			return false;
+		}
+
+		if (HitAlongStep(Previous, Reached) || bFinished)
+		{
+			// Stopped on an enemy, or ran out of pierces part way through.
+			Finish();
+			return false;
+		}
+		if (bBlockedByGeometry)
+		{
+			Finish();
+			return false;
+		}
+		if (RemainingRangeCm <= CataclysmProjectileArrivedWithinCm)
+		{
+			if (bWillReturn && !bReturning)
+			{
+				BeginReturn();
+				continue;
+			}
+			Finish();
+			return false;
+		}
+	}
+
+	return !bFinished;
+}
+
+TArray<AActor*> ACataclysmProjectile::StruckEnemies() const
+{
+	TArray<AActor*> Struck;
+	Struck.Reserve(AlreadyHit.Num());
+	for (const TWeakObjectPtr<AActor>& One : AlreadyHit)
+	{
+		// HELD WEAKLY, because an enemy the bolt killed on its way through is
+		// gone by the time anything asks. Dropping it here is why a caller does
+		// not have to check.
+		AActor* Alive = One.Get();
+		if (IsValid(Alive))
+		{
+			Struck.Add(Alive);
+		}
+	}
+	return Struck;
+}
+
+float ACataclysmProjectile::ArcHeightAfter(float HorizontalTravelledCm) const
+{
+	if (ApexHeightCm <= 0.0f || TotalRangeCm <= 0.0f)
+	{
+		// Not lobbing. Whatever height it was fired at, it keeps, which is what
+		// this class did for every projectile before issue #459.
+		return LaunchZ;
+	}
+
+	const float Along = FMath::Clamp(HorizontalTravelledCm / TotalRangeCm,
+									 0.0f, 1.0f);
+
+	// THE STRAIGHT LINE BETWEEN THE TWO ENDS, PLUS A PARABOLA ON TOP OF IT.
+	// 4 * t * (1 - t) is zero at both ends and one in the middle, so the
+	// parabola adds nothing at the launch or the landing and the full apex
+	// halfway along. Splitting it this way is what lets the rock be thrown from
+	// a hand well above the ground and still finish at the height it was aimed
+	// at, rather than the arc being measured from one end.
+	//
+	// AND IT IS EXACTLY `z0 + vz*t - g*t*t/2`, WRITTEN IN THE OTHER VARIABLE.
+	// Issue #465. Substituting a constant horizontal speed into the textbook
+	// height-against-time turns it into this height-against-distance, with
+	// ApexHeightCm standing for `g * flight * flight / 8`. So this line was
+	// already real projectile motion before #465 and stayed unchanged by it;
+	// what changed is that the projectile now walks it at a constant ground
+	// speed, which is the other half of what makes a trajectory ballistic.
+	const float Straight = FMath::Lerp(LaunchZ, LandingZ, Along);
+	return Straight + ApexHeightCm * 4.0f * Along * (1.0f - Along);
+}
+
+FVector ACataclysmProjectile::TraceStep(const FVector& From, const FVector& To)
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return To;
+	}
+
+	FCollisionQueryParams Query(SCENE_QUERY_STAT(CataclysmProjectileFlight),
+								/*bInTraceComplex=*/false);
+	Query.AddIgnoredActor(this);
+	if (AActor* Firer = GetOwner())
+	{
+		Query.AddIgnoredActor(Firer);
+	}
+
+	// THE VISIBILITY CHANNEL, because it is the one that answers "does something
+	// solid stand between these two points". Pawns deliberately do not block it,
+	// so one character never counts as cover for the character behind them: who
+	// a projectile passes through is decided by Pierce, not by collision.
+	FHitResult Blocked;
+	if (World->LineTraceSingleByChannel(Blocked, From, To, ECC_Visibility, Query))
+	{
+		bBlockedByGeometry = true;
+		return Blocked.ImpactPoint;
+	}
+	return To;
+}
+
+bool ACataclysmProjectile::HitAlongStep(const FVector& Previous,
+										const FVector& Current)
+{
+	AActor* Firer = GetOwner();
+	if (!Firer)
+	{
+		return false;
+	}
+
+	// THE CAPSULE FROM WHERE IT WAS TO WHERE IT IS, not a sphere at where it is.
+	// That is the volume the projectile actually swept, so nothing thin enough
+	// to sit between two steps is missed. FindEnemiesInLine returns them sorted
+	// from the start of the segment, which is the order the projectile reached
+	// them and therefore the order a non-piercing one must consider them in.
+	const TArray<AActor*> Along = UCataclysmTargeting::FindEnemiesInLine(
+		GetWorld(), Firer, Previous, Current, BodyRadiusCm);
+
+	for (AActor* Target : Along)
+	{
+		if (AlreadyHit.Contains(Target))
+		{
+			continue;
+		}
+
+		// ANOTHER PROJECTILE OF THE SAME USE HAS LANDED ON THIS ONE, so this one passes through it: it does not
+		// strike it, stop at it or glance from it, and does not count it as hit. Ruled 2026-10-12. Never true for a
+		// projectile fired alone. See `JoinsAUse`.
+		if (WasLandedOnByAnotherOfItsUse(Target))
+		{
+			continue;
+		}
+		AlreadyHit.Add(Target);
+		LastTouchedEnemy = Target;
+
+		if (!bPierces)
+		{
+			// AN AXE THAT GLANCES HITS THIS ONE AND TURNS, rather than stopping.
+			// The Axe's Carom: "it glances from them to the next nearest and
+			// onward through three more". A glance is not a pierce: a piercing
+			// bolt carries straight on and never detonates, while this turns and
+			// keeps its detonation for wherever it finally stops.
+			if (BouncesLeft > 0)
+			{
+				HitOne(Target);
+				--BouncesLeft;
+				++BouncesMade;
+
+				// AND IT NO LONGER GOES OFF WHERE IT STOPS. It has struck what
+				// it touched, so the blast a non-piercing projectile makes would
+				// hit the last enemy a second time.
+				//
+				// UNLESS A ROW GAVE IT ITS BOUNCES. Ruled 2026-10-07: a skill that states no bounce keeps
+				// its blast for where it finally stops, and this enemy, struck here, is left out of it.
+				if (bKeepsItsBlast)
+				{
+					StruckOnAGlance.Add(Target);
+				}
+				else
+				{
+					bDetonatesWhenItStops = false;
+				}
+
+				// "Every enemy it touches after the first adds 20% to its
+				// damage." Raised after the hit, so the enemy that was struck
+				// pays the old figure and the next pays the new one.
+				DamagePercent += BounceDamagePercentPer;
+
+				if (GlanceOnwardFrom(Target->GetActorLocation()))
+				{
+					return false;
+				}
+
+				// NOTHING LEFT TO GLANCE TO, so the throw is over. Its remaining
+				// range is set to nothing rather than finishing outright, so a
+				// throw that returns still comes back: Carom "glances ... onward
+				// through three more ... then returns to your hand".
+				RemainingRangeCm = 0.0f;
+				return false;
+			}
+
+			// AN AXE THAT HAS ALREADY GLANCED HITS BY TOUCHING, so the enemy it
+			// reaches with no glances left is struck here and the throw ends.
+			// Three glances touch four enemies, which is what Carom's "onward
+			// through three more" means. A test caught the fourth being missed
+			// when the blast was turned off and nothing replaced it.
+			//
+			// ITS RANGE IS SET TO NOTHING RATHER THAN FINISHING OUTRIGHT, so a
+			// throw that returns still comes back to the hand.
+			if (!bDetonatesWhenItStops)
+			{
+				HitOne(Target);
+				RemainingRangeCm = 0.0f;
+				return false;
+			}
+
+			// It stops here. The hit itself happens in Finish, which detonates
+			// in a radius and catches this target along with anything standing
+			// near it, so hitting it now as well would hit it twice.
+			return true;
+		}
+
+		HitOne(Target);
+
+		--PiercesLeft;
+		if (PiercesLeft <= 0)
+		{
+			// Out of pierces. It has already hit this one on the way through, so
+			// it stops here, and a piercing projectile does not detonate.
+			bFinished = true;
+			return false;
+		}
+	}
+
+	return false;
+}
+
+void ACataclysmProjectile::HitOne(AActor* Target)
+{
+	AActor* Firer = GetOwner();
+	if (!Firer || !Target)
+	{
+		return;
+	}
+
+	// WHETHER THIS CAN BE EVADED COMES FROM SkillTags, which is carried from the
+	// skill that fired it. Emberhurl is `Type.Projectile` and nothing else, so it
+	// is a direct hit; a projectile whose skill is tagged `Type.AOE.PointBlank`
+	// detonates and cannot be evaded. Issue #513.
+	// AND ITS CRITICAL STRIKE CHANCE IS THE FIRING SKILL'S, carried the same way
+	// and for the same reason: a projectile lands after the skill that fired it
+	// has finished, so anything read off the character at that moment could belong
+	// to a different skill. -1 means the skill states none, which is every skill
+	// today and every enemy attack. Issue #657.
+	FCataclysmHitDelivery Delivery;
+	Delivery.CritChancePercent = CritChancePercent;
+
+	// AND WHAT THE FIRING SKILL COST, carried since it was fired for the same
+	// reason the chance above is. A projectile lands after the skill that
+	// fired it has finished, so asking the character at impact would credit
+	// this blow with whatever was last paid. Issue #983.
+	Delivery.SkillHealthCostPercent = SkillHealthCostPercent;
+
+	// AND THE SKILL THAT FIRED IT, kept since it was fired. Issue #41, slice 4.
+	Delivery.Skill = FiringSkill;
+
+	// AND THE ACTOR ITS USE WAS CAST FROM, which outlives the use: a skill gadget's shot landing after its one-use
+	// grant has ended is still priced as the gadget's. Ruled 2026-10-16, stack 2.
+	Delivery.CastBy = CastBy;
+
+	// AND, FOR A SHOT WHOSE FIRING SKILL HAS GONE SINCE IT WAS FIRED, THE TAGS IT WAS FIRED WITH, so its hit and its kill
+	// carry them as every other blow of a skill carries that skill's: a trap's rack axe landing after the trap's one-use
+	// grant was removed. #2475, under #2465's ruling N1. ONLY WHEN `FiringSkill` IS STALE: a shot whose skill is still
+	// there names it, and a shot fired with no skill at all, a creature's, names no tags, as before.
+	Delivery.SkillTagsWithNoSkill = FiringSkill.IsStale() ? &SkillTags : nullptr;
+
+	// AND WHERE ITS USE WAS CAST FROM, for the distance to the target. Ruled 2026-10-14: a gadget's copy.
+	Delivery.bStruckFromAPoint = bStrikesFromAPoint;
+	Delivery.StruckFromPoint = StrikesFromPoint;
+
+	// AND WHAT ITS USE SPENT FROM NEXT-USE CHARGES. Issue #1833, phase 2.
+	Delivery.IncreasedDamageSpentPercent = SpentIncreasePercent;
+	Delivery.DamageMultiplierSpent = SpentMoreMultiplier;
+
+	// WHICH SIDE THE FIRER IS ON, asked before the hit for the reason
+	// `UCataclysmSkillTemplate::HitTargets` gives: the hit can move what it
+	// struck. The same test as any blow's, ruled 2026-09-24 for issue #1938:
+	// "every enemy you strike from behind" does not leave out a thrown one.
+	// FROM WHERE ITS USE WAS CAST when that was another place than the firer's, ruled 2026-10-14: a gadget's copy.
+	const bool bFromBehind = bStrikesFromAPoint
+		? UCataclysmSkillEffects::IsBehindFrom(StrikesFromPoint, Target)
+		: UCataclysmSkillEffects::IsBehind(Firer, Target);
+
+	// AND EVERY LANDED CONTACT AFTER THE FIRST KEEPS THE FIRER'S LATER-HIT
+	// SHARE. Issue #1686: "Projectiles deal 20%-35% less damage on each
+	// subsequent hit after the first". Flat rather than per contact, ruled under
+	// the owner's delegation on 2026-09-23. A `more` on this contact's whole
+	// figure, so it multiplies whatever Carom's glances have already added to
+	// `DamagePercent`. A firer with no stat line -- a creature -- reads 100.
+	float Percent = DamagePercent;
+	if (LandedContacts > 0)
+	{
+		const UCataclysmAbilitySystemComponent* Asking =
+			Cast<const UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Firer));
+		const float LaterHitShare = Asking
+			? Asking->StatForSkill(
+				FName(UCataclysmDamageCalculation::ProjectileLaterHitDamageStat),
+				SkillTags,
+				UCataclysmDamageCalculation::NormalProjectileLaterHitDamage)
+			: UCataclysmDamageCalculation::NormalProjectileLaterHitDamage;
+		Percent *= FMath::Max(0.0f, LaterHitShare) / 100.0f;
+	}
+
+	FCataclysmDamageResult Resolved;
+	const float Dealt = UCataclysmSkillEffects::ApplyHit(
+		Firer, Target, Percent, SkillTags, Delivery, &Resolved);
+	if (Dealt > 0.0f && !Resolved.bEvaded)
+	{
+		++LandedContacts;
+
+		// AND THE OTHER PROJECTILES OF ITS USE ARE TOLD, so none of them strikes this enemy. Ruled 2026-10-12. The
+		// first to land keeps the enemy; a later landing of this projectile's own changes nothing.
+		const TWeakObjectPtr<AActor> Landed(Target);
+		if (LandedOnInItsUse.IsValid() && !LandedOnInItsUse->Contains(Landed))
+		{
+			LandedOnInItsUse->Add(Landed, NumberInItsUse);
+		}
+	}
+	if (Dealt > 0.0f)
+	{
+		++EnemiesHit;
+
+		// A DESIGNED BURN, because `bBurns` is the firing row's own `Burn=1`.
+		// Issue #917: a skill that states an ailment applies it whether or not
+		// the blow hurt, and only an incidental one has to clear the damage
+		// threshold.
+		//
+		// THE COMMENT THAT STOOD HERE SAID A BURN IS A SHARE OF THE HIT. That
+		// stopped being true on 2026-08-24, when burn became a flat 25 a second.
+		//
+		// AN EVADED SHOT SETS NOTHING ALIGHT. Issue #1156, decided on
+		// 2026-09-04: evasion says the shot never connected. One armour stopped
+		// dead still burns, because armour answers whether it hurt rather than
+		// whether it landed. The `Dealt > 0.0f` test above cannot ask this --
+		// that figure is what was SENT and is positive for an evaded shot, which
+		// is also why EnemiesHit counts one here.
+		//
+		// AND NOT FROM A SHOT CARRYING NO DAMAGE: the Nth attack of a worn
+		// "every Nth attack" row. Issue #1833, phase 2. Its own copy, because
+		// the skill's flag belongs to the next use by the time a slow shot
+		// lands.
+		//
+		// AND, FOR A SHOT WHOSE FIRING SKILL HAS GONE, THE TAGS IT WAS FIRED WITH, as its hit carries them (#2475), so
+		// a kill by the burn's ticks carries them too, with no skill name. Issue #2683, ruled 2026-11-01 (J3). Identity
+		// only (J1): such a burn is priced with no skill, as it was before this.
+		if (bBurns && !Resolved.bEvaded && SpentMoreMultiplier > 0.0f)
+		{
+			UCataclysmSkillEffects::ApplyBurn(Firer, Target, Dealt,
+											  /*bScalesWithInstigator=*/true,
+											  /*bBurnIsDesigned=*/true,
+											  /*DealtBy=*/nullptr,
+											  /*Skill=*/FiringSkill.Get(),
+											  /*SkillTagsWithNoSkill=*/FiringSkill.IsStale() ? &SkillTags : nullptr);
+		}
+
+		// AND THE FERVOUR THIS ENEMY EARNS THE FIRER, when the shot landed.
+		// Issue #1515, the Ravager's starting node: "1 for each enemy your
+		// attacks hit". A projectile's contact never passes through
+		// `UCataclysmSkillTemplate::HitTargets`, which pays for every other
+		// skill blow, so it pays here. EACH CONTACT IS ITS OWN LANDING, as ruled
+		// on 2026-09-16: a piercing shot pays for every enemy it passes through
+		// and a return pass pays again. Zero for a firer without the node,
+		// which is every enemy and every minion.
+		if (!Resolved.bEvaded)
+		{
+			UCataclysmFervour::GainForEnemiesHit(
+				UCataclysmTargeting::AbilitySystemOf(Firer), SkillTags,
+				/*EnemiesHit=*/1);
+
+			// AND THE FIRER'S RUNNING BUFFS ARE TOLD, BY THE SAME TEST. Issue
+			// #1938: Groundbreaker's "every blow you land" and Martyr's Ember's
+			// "each hit you land" name no kind of blow, and this contact never
+			// passes through `HitTargets`, which tells them for every other one.
+			// ONCE PER CONTACT, as the Fervour above: a piercing shot through five
+			// enemies spends Martyr's Ember's store five times.
+			UCataclysmSkillTemplate::NoteBlowLanded(
+				Firer, Target, Target->GetActorLocation(), bFromBehind);
+
+			// AND THE FIRER'S MINIONS REPEAT THE CONTACT, when it holds Chorus
+			// and a skill fired this. Last, since a repeat carries nothing and
+			// may kill the target. Issue #1515.
+			UCataclysmChorus::Repeat(Firer, Target, Dealt, FiringSkill.Get());
+		}
+	}
+}
+
+void ACataclysmProjectile::StrikeTheWearerInItsBlast(AActor* Wearer, int32 ContactsBefore)
+{
+	if (!Wearer || Wearer != GetOwner())
+	{
+		return;
+	}
+
+	// THE DELIVERY `HitOne` BUILDS FOR AN ENEMY, FIELD FOR FIELD AND IN ITS ORDER (B3).
+	// `TestADeployablesBlastStrikesItsWearer` in `tools/tests/test_generate_datatables.py` holds the two lists of fields
+	// to each other.
+	FCataclysmHitDelivery Delivery;
+	Delivery.CritChancePercent = CritChancePercent;
+	Delivery.SkillHealthCostPercent = SkillHealthCostPercent;
+	Delivery.Skill = FiringSkill;
+	Delivery.CastBy = CastBy;
+	Delivery.SkillTagsWithNoSkill = FiringSkill.IsStale() ? &SkillTags : nullptr;
+	Delivery.bStruckFromAPoint = bStrikesFromAPoint;
+	Delivery.StruckFromPoint = StrikesFromPoint;
+	Delivery.IncreasedDamageSpentPercent = SpentIncreasePercent;
+	Delivery.DamageMultiplierSpent = SpentMoreMultiplier;
+
+	// AND THE LATER-HIT SHARE AT THE COUNT THE BLAST ARRIVED WITH, as `HitOne` gives every enemy of the blast.
+	float Percent = DamagePercent;
+	if (ContactsBefore > 0)
+	{
+		const UCataclysmAbilitySystemComponent* Asking =
+			Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Wearer));
+		const float LaterHitShare = Asking
+			? Asking->StatForSkill(FName(UCataclysmDamageCalculation::ProjectileLaterHitDamageStat), SkillTags,
+								   UCataclysmDamageCalculation::NormalProjectileLaterHitDamage)
+			: UCataclysmDamageCalculation::NormalProjectileLaterHitDamage;
+		Percent *= FMath::Max(0.0f, LaterHitShare) / 100.0f;
+	}
+
+	// AND THEN THE SHARE'S MARK AT THE WHOLE OF THE FIGURE (B4). See `UCataclysmDeployableSelfBlast::StrikeWithASkillsBlow`.
+	UCataclysmDeployableSelfBlast::StrikeWithASkillsBlow(Wearer, Percent, SkillTags, Delivery);
+}
+
+void ACataclysmProjectile::GlancesOnward(int32 InBounces, float InReachCm,
+										float InDamagePercentPer, bool bInKeepsItsBlast)
+{
+	bKeepsItsBlast = bInKeepsItsBlast;
+	BouncesLeft = FMath::Max(0, InBounces);
+	BounceReachCm = FMath::Max(0.0f, InReachCm);
+	BounceDamagePercentPer = InDamagePercentPer;
+}
+
+void ACataclysmProjectile::JoinsAUse(
+	const TSharedPtr<TMap<TWeakObjectPtr<AActor>, int32>>& InLandedOnInItsUse, int32 InNumberInItsUse)
+{
+	LandedOnInItsUse = InLandedOnInItsUse;
+	NumberInItsUse = InNumberInItsUse;
+}
+
+bool ACataclysmProjectile::WasLandedOnByAnotherOfItsUse(AActor* Target) const
+{
+	if (!LandedOnInItsUse.IsValid() || !Target)
+	{
+		// Fired alone, which is every projectile of a user with no row and every creature's.
+		return false;
+	}
+	const int32* LandedBy = LandedOnInItsUse->Find(TWeakObjectPtr<AActor>(Target));
+	return LandedBy && *LandedBy != NumberInItsUse;
+}
+
+void ACataclysmProjectile::TurnTowardAPull(const FVector& At, float Seconds)
+{
+	// A LOBBED SHOT IS NOT TURNED: it is aimed at a point and must land there. Infernal Rain's fireball makes its patch
+	// where it was aimed, and a Brute's rock lands on its marker; bent by a well, either would land somewhere else.
+	// Ruled by the coordinating session, 2026-10-01.
+	if (FlightSeconds > 0.0f)
+	{
+		return;
+	}
+
+	// THE REGISTER, NOT THE WORLD: three zones at most are read, whatever else is on the floor.
+	const UWorld* World = GetWorld();
+	const ACataclysmGroundZone* Nearest = nullptr;
+	float NearestCm = 0.0f;
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& One : ACataclysmGroundZone::ProjectilePullZones())
+	{
+		const ACataclysmGroundZone* Zone = One.Get();
+		if (!IsValid(Zone) || Zone->GetWorld() != World || !Zone->Covers(At))
+		{
+			continue;
+		}
+		const float Cm = FVector::Dist2D(At, Zone->GetActorLocation());
+		if (!Nearest || Cm < NearestCm)
+		{
+			Nearest = Zone;
+			NearestCm = Cm;
+		}
+	}
+	if (!Nearest || NearestCm <= KINDA_SMALL_NUMBER)
+	{
+		return;
+	}
+	// ON THE GROUND PLANE, AS THE FLIGHT IS: the heading turns toward the centre by at most the zone's figure.
+	const FVector Toward = (Nearest->GetActorLocation() - At).GetSafeNormal2D();
+	const float Heading = FMath::Atan2(Direction.Y, Direction.X);
+	const float Wanted = FMath::Atan2(Toward.Y, Toward.X);
+	const float Most = FMath::DegreesToRadians(Nearest->ProjectilePullDegreesPerSecond()) * Seconds;
+	const float Turned = Heading + FMath::Clamp(FMath::FindDeltaAngleRadians(Heading, Wanted), -Most, Most);
+	Direction = FVector(FMath::Cos(Turned), FMath::Sin(Turned), 0.0f);
+}
+
+bool ACataclysmProjectile::TakenByAVoidAura(const FVector& From, const FVector& To)
+{
+	// ROLLED ONCE AND NEVER AGAIN, and only for a shot that deals something: a shot that only shows has nothing to
+	// consume. Ruled 2026-10-17 (O9).
+	if (bVoidAuraRolled || DamagePercent <= 0.0f)
+	{
+		return false;
+	}
+	const UCataclysmAbilitySystemComponent* Wearer =
+		UCataclysmVoidAura::AuraThatReaches(GetOwner(), GetWorld(), From, To);
+	if (!Wearer)
+	{
+		return false;
+	}
+	bVoidAuraRolled = true;
+	if (!UCataclysmVoidAura::RollConsumes(UCataclysmVoidAura::ConsumeChanceOf(Wearer)))
+	{
+		return false;
+	}
+
+	// CONSUMED: IT ENDS HERE WITH NO BLAST, NO HIT AND NO AILMENT. A lobbed blast is taken in the air, before it
+	// lands, which is why O9 chose the flight over the hit. `OnFinished` is still broadcast, so whatever counts the
+	// firer's shots in the air still hears that this one has stopped.
+	bConsumedByAVoidAura = true;
+	bDetonatesWhenItStops = false;
+	UCataclysmCombatOverlay::RecordProjectileConsumed(this, GetActorLocation());
+	Finish();
+	return true;
+}
+
+bool ACataclysmProjectile::GlanceOnwardFrom(const FVector& At)
+{
+	AActor* Firer = GetOwner();
+	if (!Firer || BounceReachCm <= 0.0f)
+	{
+		return false;
+	}
+
+	// NEAREST TO WHERE IT JUST LANDED, not to the caster. "It glances from them
+	// to the next nearest" describes a chain travelling outward through a group,
+	// which is what makes Carom worth throwing into a crowd.
+	for (AActor* Candidate : UCataclysmTargeting::FindEnemiesInSphere(
+			GetWorld(), Firer, At, BounceReachCm))
+	{
+		if (AlreadyHit.Contains(Candidate))
+		{
+			continue;
+		}
+
+		// NOR TOWARD ONE ANOTHER PROJECTILE OF ITS USE HAS LANDED ON, which it could not strike. Ruled 2026-10-12.
+		if (WasLandedOnByAnotherOfItsUse(Candidate))
+		{
+			continue;
+		}
+
+		// THE SAME THREE THINGS `BeginReturn` SETS, for the same reason: a
+		// direction to travel, how far is left, and which way to face.
+		const FVector Toward = Candidate->GetActorLocation() - At;
+		const FVector Flat = FVector(Toward.X, Toward.Y, 0.0f);
+		if (Flat.IsNearlyZero())
+		{
+			continue;
+		}
+
+		Direction = Flat.GetSafeNormal();
+		RemainingRangeCm = Flat.Size();
+		SetActorRotation(Direction.Rotation());
+		return true;
+	}
+
+	return false;
+}
+
+void ACataclysmProjectile::BeginReturn()
+{
+	bReturning = true;
+	Direction = -Direction;
+	RemainingRangeCm = FVector::Dist(GetActorLocation(), StartedAt);
+
+	// CLEARED, because Emberhurl "hits once going out and once returning to your
+	// hand". Everything it passed on the way out is a legal target again on the
+	// way back.
+	AlreadyHit.Reset();
+
+	SetActorRotation(Direction.Rotation());
+}
+
+void ACataclysmProjectile::Finish()
+{
+	if (bFinishedAndSettled)
+	{
+		return;
+	}
+	bFinishedAndSettled = true;
+	bFinished = true;
+	SetActorTickEnabled(false);
+
+	// A PROJECTILE THAT DOES NOT PIERCE DETONATES WHERE IT STOPPED, and where it
+	// stopped is now a real place rather than where it was aimed. Blood Pyre and
+	// Magma Quake go off against the first thing they touch, against the wall
+	// that blocked them, or at the end of the throw if they touch nothing.
+	if (!bPierces && bDetonatesWhenItStops)
+	{
+		if (AActor* Firer = GetOwner())
+		{
+			// ONE DETONATION IS ONE LANDING, however many it catches. Issue #1686,
+			// ruled under the owner's delegation on 2026-09-23. Every enemy in
+			// the blast is struck at the count the projectile arrived with, and
+			// the count moves by one afterwards if any of them was landed on.
+			const int32 LandedBefore = LandedContacts;
+			bool bAnyLanded = false;
+			for (AActor* Target : UCataclysmTargeting::FindEnemiesInSphere(
+					GetWorld(), Firer, GetActorLocation(), RadiusCm))
+			{
+				// NOT ONE IT ALREADY STRUCK BY GLANCING FROM THEM. Ruled 2026-10-07. Empty unless a row gave
+				// the shot its bounces.
+				if (StruckOnAGlance.Contains(Target))
+				{
+					continue;
+				}
+
+				// NOR ONE ANOTHER PROJECTILE OF ITS USE HAS LANDED ON. Ruled 2026-10-12. Asked for each enemy in
+				// turn, so one this blast itself lands on is not then refused to it.
+				if (WasLandedOnByAnotherOfItsUse(Target))
+				{
+					continue;
+				}
+				LandedContacts = LandedBefore;
+				HitOne(Target);
+				bAnyLanded = bAnyLanded || LandedContacts > LandedBefore;
+			}
+
+			// AND THE FIRER ITSELF, WHEN ITS DEPLOYABLE CAST THE USE AND IT STANDS INSIDE THE BLAST. Ruled 2026-10-19 (B2,
+			// B5), for "Your deployables and traps deal full damage to you if you are within their blast radius". THE
+			// DEPLOYABLE IS THE ONE THE SHOT CARRIES, `CastBy`, so a shot landing after its use has ended still knows it.
+			// The wearer is no landing: the count below is the enemies'. AND A SKILL TRAP ALREADY USED UP IS FOUND BY
+			// THE IDENTITY THE SHOT CARRIES (traps layer 7, K1, ruled 2026-10-22), since every shot of a trap's cast
+			// lands after the trap is gone and `Get` then answers null.
+			if (AActor* Wearer = UCataclysmDeployableSelfBlast::WearerInSphere(
+					GetWorld(), Firer, CastBy.Get(), GetActorLocation(), RadiusCm, CastBy))
+			{
+				StrikeTheWearerInItsBlast(Wearer, LandedBefore);
+			}
+			LandedContacts = LandedBefore + (bAnyLanded ? 1 : 0);
+		}
+	}
+
+	OnFinished.Broadcast(this);
+
+	// Kept for a moment rather than destroyed here, so that whatever listened
+	// can still read where it stopped in order to leave burning ground there.
+	SetLifeSpan(CataclysmProjectileLingerSeconds);
+}

@@ -1,0 +1,549 @@
+"""`game/README.md` describes the Unreal project. This checks it is still true.
+
+WHY THIS FILE EXISTS. The readme had a section headed "What is not here yet"
+that claimed the Gameplay Ability System was deliberately left out of the build
+dependencies and that `game/Content/` was empty apart from a placeholder. Both
+were true when written and both had been false for a long time by the time
+anyone noticed (issue #184). The readme is also where the build and asset
+regeneration commands live, so it is read often, and it was telling readers the
+opposite of what the repository contained.
+
+WHAT IS CHECKED. Two kinds of thing.
+
+1. Claims of absence. The readme says several systems do not exist yet. Each
+   check looks in the source tree for the thing said to be missing, and fails if
+   it is now there. This is what makes the section decay loudly: the session that
+   adds a heads-up display gets a failing test naming the paragraph to delete,
+   rather than leaving the claim to rot.
+
+2. File paths. Every path the readme names in backticks must exist. This catches
+   a readme that names a script or an asset that was renamed or never existed.
+
+NOTHING HERE ASSERTS A SYSTEM IS ABSENT. A check only fires when the readme
+still claims absence. Deleting the paragraph is always a valid way to make one
+pass, and is the right one once the system is real.
+"""
+
+from __future__ import annotations
+
+import ast
+import pathlib
+import re
+
+import pytest
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+GAME_DIR = REPO_ROOT / "game"
+README = GAME_DIR / "README.md"
+GAME_SOURCE = GAME_DIR / "Source"
+
+#: Directories that exist only after a build or a play session. A path under one
+#: of these is legitimately absent from a fresh clone, so it is not checked.
+GENERATED_DIRECTORIES = ("Saved", "Binaries", "Intermediate", "Build", "DerivedDataCache")
+
+#: File extensions worth resolving. A backticked token without one of these is
+#: prose, a command, a class name or a module name, not a path.
+PATH_SUFFIXES = (".py", ".cs", ".md", ".uasset", ".umap", ".uproject", ".xlsx")
+
+
+def readme_text() -> str:
+    return README.read_text(encoding="utf-8")
+
+
+def source_files() -> list[pathlib.Path]:
+    """Every C++ and build file in the Unreal project's source tree."""
+    return [
+        path
+        for pattern in ("*.h", "*.cpp", "*.cs")
+        for path in GAME_SOURCE.rglob(pattern)
+    ]
+
+
+def source_contains(pattern: str) -> list[str]:
+    """Names of source files matching a regular expression."""
+    compiled = re.compile(pattern)
+    return sorted(
+        path.relative_to(REPO_ROOT).as_posix()
+        for path in source_files()
+        if compiled.search(path.read_text(encoding="utf-8", errors="replace"))
+    )
+
+
+# --------------------------------------------------------------------------
+# The two claims issue #184 was about. These are the reverse of the checks
+# below: they fail if the false wording ever comes back.
+# --------------------------------------------------------------------------
+
+
+def test_the_readme_does_not_say_the_ability_system_is_missing() -> None:
+    """The Gameplay Ability System is a build dependency and has been for a while."""
+    build_rules = (GAME_SOURCE / "Cataclysm" / "Cataclysm.Build.cs").read_text(
+        encoding="utf-8"
+    )
+    if '"GameplayAbilities"' not in build_rules:
+        pytest.skip(
+            "Cataclysm.Build.cs no longer depends on GameplayAbilities, so the "
+            "readme claiming it is absent would be correct."
+        )
+
+    text = readme_text()
+    assert "Gameplay Ability System is not wired up" not in text, (
+        "game/README.md says the Gameplay Ability System is not wired up, but "
+        "Cataclysm.Build.cs lists GameplayAbilities as a public dependency and "
+        "game/Source/Cataclysm/AbilitySystem/ holds the component, five "
+        "attribute sets and the damage calculation. See issue #184."
+    )
+
+
+def test_the_readme_does_not_say_the_content_folder_is_empty() -> None:
+    """`game/Content/` holds a map, the generated data tables and the input
+    assets. The count is read from disk below rather than stated here, because a
+    stated one goes stale every time a table is added. Issue #550."""
+    assets = sorted(
+        path.relative_to(GAME_DIR).as_posix()
+        for suffix in ("*.uasset", "*.umap")
+        for path in (GAME_DIR / "Content").rglob(suffix)
+    )
+    if not assets:
+        pytest.skip("game/Content/ really is empty, so the readme would be correct.")
+
+    text = readme_text()
+    assert "`Content/` is empty" not in text, (
+        f"game/README.md says Content/ is empty, but it holds {len(assets)} "
+        f"assets, including {assets[0]}. See issue #184."
+    )
+
+
+# --------------------------------------------------------------------------
+# Claims of absence. Each fires only while the readme still makes the claim.
+# --------------------------------------------------------------------------
+
+
+def test_no_heads_up_display_claim_is_still_true() -> None:
+    """The readme says nothing uses UMG. Fail when something does."""
+    if "No heads-up display" not in readme_text():
+        pytest.skip("The readme no longer claims there is no heads-up display.")
+
+    users = source_contains(r'"UMG"|UUserWidget|\bAHUD\b')
+    assert not users, (
+        "game/README.md still says there is no heads-up display and nothing uses "
+        f"UMG, but these files do: {', '.join(users)}. Delete that bullet from "
+        "the 'What is not here yet' section."
+    )
+
+
+def test_no_save_system_claim_is_still_true() -> None:
+    """The readme says there is no USaveGame. Fail when one appears."""
+    if "No save or persistence" not in readme_text():
+        pytest.skip("The readme no longer claims there is no save system.")
+
+    users = source_contains(r"\bUSaveGame\b")
+    assert not users, (
+        "game/README.md still says there is no save or persistence, but these "
+        f"files reference USaveGame: {', '.join(users)}. Delete that bullet from "
+        "the 'What is not here yet' section."
+    )
+
+
+def test_the_empire_layer_claim_is_still_true() -> None:
+    """`CataclysmEmpire` holds a clock, a map, a surge scheduler and a day loop.
+
+    THE CLAIM NARROWS RATHER THAN GOING AWAY, AND HAS NOW DONE SO FOUR TIMES. It
+    said the module was empty until `UCataclysmDayClock` landed for issue #41,
+    then that it held only a clock until `UCataclysmEmpireMap` landed for issue
+    #1081, then only those two until `UCataclysmSurgeScheduler` landed for issue
+    #1083, then that nothing joined the three until `UCataclysmEmpireRun` landed
+    for issue #1084.
+
+    WHAT IS STILL TRUE IS THAT NOTHING TAKES THE PLAYER FROM THE MAP INTO A
+    DUNGEON, OR BACK. Walking one spends the empire's days since issue #1092, and
+    entering one is still done while already standing in `L_Dungeon` -- a console
+    command, or since issue #2715 a Walk button on an empire screen -- because
+    there is nowhere to stand between runs.
+
+    A SKIP HERE WOULD MEAN THE GUARD DID NOT RUN, which is why the phrase it
+    looks for is part of the sentence about what is missing rather than the old
+    headline. Rewriting the bullet without saying what is missing turns this off.
+    """
+    if "Nothing takes the player from the map into a dungeon" not in readme_text():
+        pytest.skip("The readme no longer says what the empire layer is missing.")
+
+    empire = GAME_SOURCE / "CataclysmEmpire"
+    expected = {
+        "CataclysmEmpire.Build.cs",
+        "CataclysmEmpire.cpp",
+        "CataclysmEmpire.h",
+        "CataclysmDayClock.h",
+        "CataclysmDayClock.cpp",
+        "CataclysmDayClockTests.cpp",
+        "CataclysmEmpireMap.h",
+        "CataclysmEmpireMap.cpp",
+        "CataclysmEmpireMapTests.cpp",
+        "CataclysmSurge.h",
+        "CataclysmSurge.cpp",
+        "CataclysmSurgeTests.cpp",
+        "CataclysmDungeonKind.h",
+        "CataclysmEmpireRun.h",
+        "CataclysmEmpireRun.cpp",
+        "CataclysmEmpireRunTests.cpp",
+        # City upgrades, added 2026-09-05. The readme's empire bullet now
+        # describes them, which is what this test is really checking; the file
+        # names are how it notices something arrived that the bullet does not
+        # mention.
+        "CataclysmCityUpgrade.h",
+        "CataclysmCityUpgrade.cpp",
+        "CataclysmCityUpgradeTests.cpp",
+        # The eight Cataclysms, added 2026-09-06 for issue #1357. The readme's
+        # empire bullet now has a paragraph on what the layer knows about them
+        # and on the two things it still does not, which is what this test is
+        # really checking.
+        "CataclysmRoster.h",
+        "CataclysmRoster.cpp",
+        "CataclysmRosterTests.cpp",
+        # Dungeon modifiers, added 2026-09-07 for issue #41. The readme's empire
+        # bullet now says a dungeon carries them and that nothing has been built
+        # to make any of them DO anything, which is what this test is really
+        # checking.
+        "CataclysmDungeonModifier.h",
+        "CataclysmDungeonModifier.cpp",
+        "CataclysmDungeonModifierTests.cpp",
+    }
+    unexpected = sorted(
+        path.relative_to(REPO_ROOT).as_posix()
+        for path in empire.rglob("*")
+        if path.is_file() and path.name not in expected
+    )
+    assert not unexpected, (
+        "game/README.md still says the empire layer holds a day clock, an empire "
+        "map, a surge scheduler and a day loop, but game/Source/CataclysmEmpire/ "
+        f"now also holds: {', '.join(unexpected)}. Update that bullet in the "
+        "'What is not here yet' section."
+    )
+
+
+#: Where the day is allowed to be advanced from, and why each one is allowed.
+#:
+#: The empire layer itself, obviously, and its own tests. The dungeon runtime,
+#: because walking down a floor costs a day to begin with and that is the point
+#: of issue #1092; since issue #41 the days a death costs are charged from the
+#: same file, in `EndTheDungeonForADeath`.
+#: The tests that drive either. And the file the console commands live in, where
+#: `Cataclysm.EmpireAdvance` is -- an odd home for them, but it is where every
+#: other console command in this project already is.
+DAY_ADVANCERS_ALLOWED = (
+    "game/Source/CataclysmEmpire/",
+    "game/Source/Cataclysm/Tests/",
+    "game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp",
+    "game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp",
+)
+
+
+def test_only_walking_a_dungeon_and_the_console_move_the_empires_day() -> None:
+    """The other half of the empire bullet, and the half a file list cannot see.
+
+    THE MODULE COULD GAIN NOTHING AND THE CLAIM STILL GO STALE. The test above
+    fails when a file appears in `CataclysmEmpire`; this one fails when some
+    OTHER part of the game starts moving time.
+
+    THE CLAIM HAS ALREADY NARROWED ONCE. It said only a console command moved the
+    day, until walking a dungeon started costing one per floor for issue #1092 --
+    which is exactly the change this guard existed to catch, and it caught it.
+    IT NARROWED AGAIN FOR ISSUE #41: dying inside a dungeon of the empire now
+    costs 5, 10 or 15 days, charged from the dungeon game mode, which was already
+    on the list below. What is left is the one the design still owes: the forge
+    costs twelve and does not exist.
+
+    IT IS THE POINT AT WHICH THE EMPIRE STOPS BEING A DEMONSTRATION. A player who
+    has to type a command to make time pass is looking at a diagram; a player
+    whose dungeon run costs them forty days is playing the game. Whoever spends a
+    day from somewhere new has to come here, which is the whole purpose of it.
+    """
+    if "Only walking a dungeon, dying in one and the" not in readme_text():
+        pytest.skip("The readme no longer says what may move the empire's day.")
+
+    movers = [
+        name
+        for name in source_contains(r"->AdvanceDays?\s*\(")
+        if not any(name.startswith(allowed)
+                   for allowed in DAY_ADVANCERS_ALLOWED)
+    ]
+
+    assert not movers, (
+        "game/README.md says only walking a dungeon, dying in one and the console "
+        f"commands move the empire's day, but these files advance it: {', '.join(movers)}."
+        " Update that bullet in the 'What is not here yet' section."
+    )
+
+
+#: How the readme may spell each count of dressed characters. Only the numbers
+#: that have ever been true are listed; dressing another character means adding a
+#: word here, which is a deliberate speed bump rather than an oversight.
+ART_CLAIM_WORDS = {
+    "No character has art": 0,
+    "One character has art": 1,
+    "Two characters have art": 2,
+    "Three characters have art": 3,
+    "Four characters have art": 4,
+    "Five characters have art": 5,
+    "Six characters have art": 6,
+    "Seven characters have art": 7,
+}
+
+
+def test_the_art_claim_matches_how_many_characters_have_a_mesh() -> None:
+    """The readme says how many characters wear real art. It has to be right.
+
+    THIS BULLET HAD NO GUARD AND THE TWO AROUND IT DID, which is how it stayed
+    saying "No art assets of any kind" while the Brute was given the Paragon
+    Rampage model. Counting characters that name a content path is a proxy, but
+    it is a proxy that moves the moment another one is dressed.
+
+    IT USED TO SKIP WHEN THE WORDING CHANGED, and that was a hole rather than a
+    kindness. The check was `if "One character has art" not in text: skip`, so
+    dressing a second character and updating the sentence to say so turned the
+    test off instead of re-aiming it. That happened on 2026-08-09 when the
+    Abyssal Warden was given the Paragon Grux model: the suite went from one
+    skip to two and the guard on this bullet stopped running. It now reads
+    whichever count the readme claims and fails if the readme claims none of
+    them, so there is no wording that silently disables it.
+    """
+    text = readme_text()
+
+    claimed = [count for phrase, count in ART_CLAIM_WORDS.items()
+               if phrase in text]
+
+    assert len(claimed) == 1, (
+        "game/README.md's 'What is not here yet' section must say exactly one "
+        f"of {sorted(ART_CLAIM_WORDS)}, and it says "
+        f"{len(claimed)} of them. That sentence is the only statement of how "
+        "much art the project has, and a wording this test does not recognise "
+        "would leave it unchecked."
+    )
+
+    character_dir = GAME_DIR / "Source" / "Cataclysm"
+    dressed = sorted(
+        path.stem
+        for path in character_dir.rglob("*.cpp")
+        if "Tests" not in path.parts
+        and "/Game/Paragon" in path.read_text(encoding="utf-8", errors="replace")
+    )
+
+    assert len(dressed) == claimed[0], (
+        f"game/README.md says {claimed[0]} character(s) have art, but the "
+        f"classes naming a Paragon content path are: "
+        f"{', '.join(dressed) or 'none'}. Update the 'What is not here yet' "
+        "section to match, and update game/docs/enemy-source-assets.md."
+    )
+
+
+def test_no_procedural_dungeon_claim_is_still_true() -> None:
+    """The readme says `L_Sandbox` is the only map this project authored.
+
+    THIRD-PARTY PACKS ARE EXCLUDED, and that is not the test being weakened. The
+    six free Paragon character packs each ship demo and lighting maps --
+    `Rampage.umap`, `Countess.umap`, `AnimationTestMap.umap` and others, sixteen
+    in total. They are downloaded content that `.gitignore` already excludes from
+    the repository, and none of them is a level this game plays. Counting them
+    would make this guard fail for everyone who has the art installed and pass
+    for everyone who does not, which is the opposite of useful.
+
+    The claim being guarded is about the project's own maps, so the folders git
+    ignores are skipped here for the same reason git ignores them.
+
+    WHICH FOLDERS THOSE ARE IS NOT DECIDED HERE. This used to test whether the
+    first path segment started with "Paragon", and `.gitignore` decided the same
+    thing separately. A pack from any other vendor would have been counted as
+    project content by this test and committed by git. Both now read one list,
+    written down once in `.gitignore`.
+    """
+    import sys
+
+    sys.path.insert(0, str(REPO_ROOT / "tools"))
+    import third_party_content
+
+    if "L_Sandbox` is the only map" not in readme_text():
+        pytest.skip("The readme no longer claims L_Sandbox is the only map.")
+
+    content = GAME_DIR / "Content"
+    maps = sorted(
+        path.name
+        for path in content.rglob("*.umap")
+        if not third_party_content.is_third_party(path.relative_to(content))
+    )
+    assert maps == ["L_Sandbox.umap"], (
+        "game/README.md says L_Sandbox is the only map, but game/Content/ holds "
+        f"these outside the third-party packs: {', '.join(maps)}."
+    )
+
+
+# --------------------------------------------------------------------------
+# Every path the readme names must exist.
+# --------------------------------------------------------------------------
+
+
+def backticked_paths() -> list[str]:
+    """Backtick-quoted tokens in the readme that look like repository files."""
+    found = []
+    for token in re.findall(r"`([^`\n]+)`", readme_text()):
+        token = token.strip()
+        # Commands, flags and engine paths are not repository files.
+        if token.startswith(("-", "/c/", "C:", '"')) or " " in token:
+            continue
+        # A bare extension, such as `.Build.cs`, names a kind of file rather than
+        # one file. The readme uses these when talking about all of them.
+        if token.startswith("."):
+            continue
+        if not token.endswith(PATH_SUFFIXES):
+            continue
+        if token.split("/")[0] in GENERATED_DIRECTORIES:
+            continue
+        found.append(token)
+    return sorted(set(found))
+
+
+def test_the_readme_only_names_files_that_exist() -> None:
+    """A renamed or invented script name is caught here.
+
+    Paths resolve relative to `game/` first, because the readme lives there and
+    its commands are written to be run from there, then relative to the
+    repository root, because it also names `sim/` and `tools/`.
+    """
+    tokens = backticked_paths()
+    assert tokens, "Found no file paths in game/README.md at all, which is wrong."
+
+    missing = [
+        token
+        for token in tokens
+        if not (GAME_DIR / token).exists() and not (REPO_ROOT / token).exists()
+    ]
+    assert not missing, (
+        "game/README.md names files that do not exist, relative to either "
+        f"game/ or the repository root: {', '.join(missing)}"
+    )
+
+
+# --------------------------------------------------------------------------
+# Counts the readme states, checked against the generators that produce them.
+# --------------------------------------------------------------------------
+#
+# WHY THESE ARE HERE. Issue #449. The readme said the DataTable asset generator
+# "rewrites all fourteen assets even when one CSV changed". Both halves were
+# wrong: it has rebuilt only what moved since issue #444, and there were
+# seventeen tables by then, not fourteen. The same sentence was repeated in
+# `tools/tests/test_datatable_assets_are_current.py`, where it is printed into
+# every failure message that file produces, so the one person guaranteed to read
+# it was the person who had just hit the failure and did not know the procedure.
+#
+# A count written into prose has now been wrong twice, so it is read out of the
+# generators instead of being trusted.
+
+#: How the readme spells the counts it states. Only the values these tests need.
+NUMBER_WORDS = {
+    2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven",
+    8: "eight", 9: "nine", 10: "ten", 11: "eleven", 12: "twelve",
+    13: "thirteen", 14: "fourteen", 15: "fifteen", 16: "sixteen",
+    17: "seventeen", 18: "eighteen", 19: "nineteen", 20: "twenty",
+    21: "twenty-one", 22: "twenty-two", 23: "twenty-three",
+    24: "twenty-four", 25: "twenty-five", 26: "twenty-six",
+    27: "twenty-seven", 28: "twenty-eight", 29: "twenty-nine",
+}
+
+DATATABLE_GENERATOR = REPO_ROOT / "tools" / "generate_datatables.py"
+ASSET_GENERATOR = REPO_ROOT / "tools" / "generate_datatable_assets.py"
+
+
+def _assignment(path: pathlib.Path, name: str) -> ast.expr:
+    """The value assigned to a module-level name, read without importing.
+
+    `generate_datatable_assets.py` imports `unreal` and cannot be imported at
+    all here, and `generate_datatables.py` maps table names to functions, so
+    neither can be read any other way.
+    """
+    if not path.is_file():
+        pytest.skip(f"{path.name} is not present")
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+                isinstance(target, ast.Name) and target.id == name
+                for target in node.targets):
+            return node.value
+    pytest.fail(f"{path.name} no longer has a module-level {name}")
+
+
+def workbook_table_count() -> int:
+    return len(_assignment(DATATABLE_GENERATOR, "TABLES").keys)
+
+
+def model_table_count() -> int:
+    return len(_assignment(DATATABLE_GENERATOR, "MODEL_TABLES").keys)
+
+
+def tree_table_count() -> int:
+    """The tables built from the class passive tree files in `docs/`.
+
+    A THIRD SOURCE, ADDED FOR ISSUE #50. The four class trees are authored in a
+    separate tool and exported as JSON, and the game cannot read those, so the
+    generator turns them into tables like everything else.
+    """
+    return len(_assignment(DATATABLE_GENERATOR, "TREE_TABLES").keys)
+
+
+def not_from_the_workbook() -> int:
+    return model_table_count() + tree_table_count()
+
+
+def asset_count() -> int:
+    return len(_assignment(ASSET_GENERATOR, "TABLES").elts)
+
+
+def test_the_two_generators_agree_on_how_many_tables_there_are() -> None:
+    """Otherwise the counts below could both be right and still disagree."""
+    assert asset_count() == workbook_table_count() + not_from_the_workbook(), (
+        f"tools/generate_datatable_assets.py builds an asset for "
+        f"{asset_count()} tables, but tools/generate_datatables.py writes "
+        f"{workbook_table_count()} CSV files from the workbook, "
+        f"{model_table_count()} from the simulation's enemy model and "
+        f"{tree_table_count()} from the class passive tree files. One of them "
+        f"has a table the other does not.")
+
+
+def test_the_readme_states_the_right_number_of_datatable_assets() -> None:
+    """The `Content/Data/` row, which has been wrong twice. Issue #449."""
+    total = NUMBER_WORDS[asset_count()]
+    from_workbook = NUMBER_WORDS[workbook_table_count()]
+    from_model = NUMBER_WORDS[model_table_count()]
+    from_trees = NUMBER_WORDS[tree_table_count()]
+
+    expected = (f"{total.capitalize()} DataTable assets: {from_workbook} "
+                f"imported from the design workbook, {from_model} from the "
+                f"simulation package's enemy model, and {from_trees} from the "
+                f"class passive tree files.")
+    assert expected in readme_text(), (
+        f"game/README.md does not describe Content/Data/ as it now is. It "
+        f"should say: {expected}")
+
+
+def test_the_readme_states_the_right_number_of_tables_not_from_the_workbook() -> None:
+    """The sentence just above the regeneration commands."""
+    expected = (f"{NUMBER_WORDS[not_from_the_workbook()].capitalize()} of the "
+                f"{NUMBER_WORDS[asset_count()]} do not come from the workbook.")
+    assert expected in readme_text(), (
+        f"game/README.md does not say how many tables come from somewhere other "
+        f"than the design workbook. It should say: {expected}")
+
+
+def test_the_readme_does_not_tell_the_reader_to_restore_untouched_assets() -> None:
+    """The instruction that was wrong rather than merely stale. Issue #449.
+
+    The generator has rebuilt only the tables whose CSV moved since issue #444,
+    so there are no untouched assets to restore. Following the old instruction
+    meant opening thirteen or more binary files looking for changes that were
+    not in them.
+    """
+    text = readme_text()
+    for wrong in ("rewrites all", "restore the ones whose CSV did not change",
+                  "`git restore` every asset whose"):
+        assert wrong not in text, (
+            f"game/README.md still says {wrong!r}, which describes the DataTable "
+            f"asset generator as it behaved before issue #444. It now rebuilds "
+            f"only the tables whose CSV changed, so there is nothing to restore.")

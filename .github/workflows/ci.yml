@@ -25,7 +25,7 @@ jobs:
   sim:
     name: Simulation checks
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     # The `secrets` context cannot be read from an `if:` condition, so the
     # token is lifted into the environment here and the optional steps below
     # test `env.DUNGEONSIM_TOKEN` instead.
@@ -42,10 +42,14 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-          cache-dependency-path: sim/requirements-dev.txt
+          cache-dependency-path: |
+            sim/requirements-dev.txt
+            tools/requirements.txt
 
       - name: Install development dependencies
-        run: python -m pip install --disable-pip-version-check -r sim/requirements-dev.txt
+        run: |
+          python -m pip install --disable-pip-version-check -r sim/requirements-dev.txt
+          python -m pip install --disable-pip-version-check -r tools/requirements.txt
 
       # Checks for real defects only: syntax errors, undefined names, unused
       # imports, and bugbear rules. Style and import order are not enforced.
@@ -53,8 +57,31 @@ jobs:
       - name: Lint
         run: python -m ruff check .
 
+      # -rs makes the run report WHY each test skipped. Without it the log
+      # gives a count and no reasons, because addopts in pyproject.toml is
+      # -q. On 2026-09-07 three sessions spent real time reconstructing why
+      # the runner skips 17 tests where a development machine skips 6; the
+      # answer was this flag. Seventeen extra lines is cheaper than having
+      # that conversation again. Issues #1417 and #1418.
       - name: Tests
-        run: python -m pytest
+        run: python -m pytest -rs
+
+      # game/Config/Tags/CataclysmTags.ini is generated from the Tags sheet of
+      # the design workbook. --check fails if the sheet was edited without
+      # regenerating. --strict fails if any sheet references a tag the
+      # vocabulary does not define; every reference resolves today and this
+      # keeps it that way. An enchantment with a tag that does not exist matches
+      # nothing, does not error, and is only noticed by its absence.
+      - name: Gameplay tag list is current
+        run: python tools/generate_gameplay_tags.py --check --strict
+
+      # game/Data/*.csv are generated from the same workbook and each matches a
+      # USTRUCT in game/Source/Cataclysm/Data/CataclysmDataRows.h. A column whose
+      # name does not match imports as a default value with no error, so this is
+      # checked here and again by an Unreal automation test that loads every CSV
+      # through its struct.
+      - name: DataTable CSVs are current
+        run: python tools/generate_datatables.py --check
 
       # The power model is a port of calculateScores.tsx in the separate
       # DungeonSimulator repository. This reports that it skipped, rather than

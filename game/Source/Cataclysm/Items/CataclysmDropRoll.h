@@ -1,0 +1,1324 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Items/CataclysmItem.h"
+#include "CataclysmDropRoll.generated.h"
+
+struct FCataclysmAffixRow;
+struct FCataclysmEnchantmentRow;
+struct FCataclysmEnemyDropRow;
+struct FCataclysmGearRarityRow;
+struct FCataclysmItemBaseRow;
+struct FCataclysmMaterialTierRow;
+class UDataTable;
+
+/**
+ * One affix that could roll on a piece, with its damage types already chosen.
+ *
+ * WHY THE DAMAGE TYPES ARE PICKED BEFORE THE DRAW RATHER THAN AFTER. A
+ * resistance family says how MANY damage types it covers and the item says
+ * which. Two families that both landed on Fire occupy the same stat group and
+ * may not sit on one item, and the draw is what enforces that -- so it has to
+ * know which types each candidate landed on before it chooses between them.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmAffixCandidate
+{
+	GENERATED_BODY()
+
+	/** Row name in the Affixes table. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Drop")
+	FName Affix;
+
+	/** Which damage types a resistance family landed on. Empty for every other
+	 *  kind, and also empty for a family covering all eight, because there is
+	 *  no choice to make -- the same convention FCataclysmRolledAffix uses. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Drop")
+	TArray<FName> DamageTypes;
+};
+
+
+/**
+ * One named set that a drop could make an item a piece of.
+ *
+ * A SET IS AN ENCHANTMENT HERE, NOT AN ITEM. The project owner ruled on
+ * 2026-09-08 that a set is built out of the player's own gear rather than found
+ * as fixed set items: an item that rolls Archon's Aegis becomes a piece of
+ * Archon's Aegis, and wearing two, six or ten such pieces turns on that set's
+ * 2-piece, 6-piece and 10-piece bonus. Diablo II, Diablo III and Last Epoch all
+ * make a set an item identity instead, and `docs/DECISIONS.md` records that
+ * declining that shape was deliberate rather than an oversight.
+ *
+ * SO THE THREE POSITIVE ROWS ARE THRESHOLDS AND NOT THREE THINGS TO HAND OUT.
+ * A drop that granted all three would be giving a 10-piece bonus to a player
+ * wearing one piece. `Representative` is the single row an item records to say
+ * which set it belongs to. `UCataclysmItemModifiers::AccumulateEnchantmentsInto`
+ * counts the worn pieces and turns each row on at its threshold, reading the
+ * thresholds from `Thresholds` below. Issue #45.
+ *
+ * WHAT IDENTIFIES A SET IS `SetId`, WHICH LIVES IN THE Weight COLUMN. That
+ * column does double duty on set rows and issue #1443 owns separating it. This
+ * struct is why that separation changes nothing outside the two functions that
+ * read the column: everything downstream takes SetId from here.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmEnchantmentSet
+{
+	GENERATED_BODY()
+
+	/** Which set this is. 5 is Archon's Aegis and 18 is Reaper's Embrace. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Drop")
+	int32 SetId = 0;
+
+	/**
+	 * The positive row an item records to say it is a piece of this set.
+	 *
+	 * THE LOWEST THRESHOLD, so a tool tip naming it describes the bonus the
+	 * player is closest to earning rather than one ten pieces away. Every set
+	 * written states its threshold as "(N-Piece Bonus)" and all 42 rows parse,
+	 * measured 2026-09-08; a set whose rows do not parse falls back to the
+	 * first row name in sorted order so the draw still works.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Drop")
+	FName Representative;
+
+	/** Every positive row of this set, sorted by threshold: 2, 6 then 10. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Drop")
+	TArray<FName> Positives;
+
+	/**
+	 * How many worn pieces each row of `Positives` needs, in the same order.
+	 *
+	 * READ FROM EACH ROW'S OWN "(N-Piece Bonus)". A row whose text states no
+	 * threshold holds MAX_int32, so it sorts last and no number of pieces turns
+	 * it on. The first entry is also where the set's drawback joins: the owner
+	 * ruled on 2026-09-08 that it joins at the set's first bonus.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Drop")
+	TArray<int32> Thresholds;
+
+	/**
+	 * The one negative row this set carries.
+	 *
+	 * GUARANTEED RATHER THAN DRAWN, which is what the design means by set
+	 * positives and negatives being "paired and guaranteed". An ordinary
+	 * enchantment draws its drawback from the bands at or below its benefit; a
+	 * set brings its own and skips that draw entirely.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Drop")
+	FName Negative;
+};
+
+
+/**
+ * What a drop is: which rarity it rolls, how many sockets it has, and what it is
+ * called. Ported from `sim/cataclysm_sim/loot.py` and
+ * `sim/cataclysm_sim/naming.py`, which are where the rules were argued out.
+ *
+ * IN ITS OWN FILE RATHER THAN BESIDE UCataclysmItemValues, which is where the
+ * rest of the item lives. Two reasons. Everything in `CataclysmItem.h` is a pure
+ * function of its arguments, and every function here draws random numbers, which
+ * is a different thing to test and a different thing to reason about. And these
+ * read three data tables that nothing else in the game reads yet.
+ *
+ * RANDOMNESS COMES IN AS AN FRandomStream RATHER THAN FROM FMath::Rand, so a
+ * test can seed it and get the same drop twice. `loot.py` takes a
+ * `random.Random` for the same reason.
+ *
+ * THE TABLES COME IN AS ARGUMENTS, the way UCataclysmItemModifiers takes them,
+ * so a test can build its own from the CSV rather than needing the imported
+ * asset. The Load* helpers are for the game.
+ *
+ * WHAT THIS DOES NOT DECIDE. Which item base drops, how many items a kill or a
+ * floor produces, which affixes are drawn, and what a socket is filled with.
+ * Those are the later parts of issue #44, and gems are issue #46.
+ */
+UCLASS()
+class CATACLYSM_API UCataclysmDropRoll : public UObject
+{
+	GENERATED_BODY()
+
+public:
+	/** The eight difficulty tiers. Mirrors affixes.DIFFICULTY_TIERS. */
+	static constexpr int32 DifficultyTiers = 8;
+
+	/**
+	 * How far above the difficulty tier's own rarity a drop rolls unpenalised.
+	 *
+	 * The same one-above the affix tier gate uses. With the ceiling sitting
+	 * exactly on the tier, the best thing a dungeon can produce at full weight
+	 * is something the player can already make, so the only reason to run one
+	 * is quantity.
+	 *
+	 * IT USED TO BE A HARD CAP AND IS NOW WHERE A PENALTY STARTS. See
+	 * RarityPenaltyAboveTheTier below.
+	 */
+	static constexpr int32 RaritiesAboveDifficulty = 1;
+
+	/**
+	 * What a rarity's weight is divided by for each rung it sits above the
+	 * tier's own reach.
+	 *
+	 * EVERY GEAR RARITY DROPS AT EVERY DIFFICULTY TIER. RaritiesAboveDifficulty
+	 * used to be a hard cap: nothing above it could drop at all, which left
+	 * difficulty tier 1 producing only Everyday and Quality items. The project
+	 * owner played that on 2026-08-23 and said it was too strict. Nothing is
+	 * forbidden now; a Cataclysmic at tier 1 is divided by 2 six times over, so
+	 * it arrives about one drop in 1.5 million rather than never.
+	 *
+	 * DIABLO II'S SHAPE. It has no hard gate on item quality either: a shallow
+	 * monster can produce a high-level unique at a much reduced chance.
+	 *
+	 * IT IS ZERO STEPS AT TIERS 7 AND 8, so both are a division by one and every
+	 * figure the 2026-08-18 decision set survives untouched. Mirrors
+	 * `RARITY_PENALTY_ABOVE_THE_TIER` in `sim/cataclysm_sim/loot.py`, and
+	 * `tools/tests/test_gear_rarity_gate_is_stated_everywhere.py` fails when the
+	 * two copies disagree.
+	 */
+	static constexpr float RarityPenaltyAboveTheTier = 2.0f;
+
+	/**
+	 * How many rarities sit below the enchantment boundary. Everyday to
+	 * Masterful. Mirrors `ORDINARY_RARITIES` in `sim/cataclysm_sim/loot.py`.
+	 *
+	 * THE FOUR WITH NO UPGRADE-LEVEL GATE. The four above it carry enchantments
+	 * and are gated on upgrade level, which is a real boundary in the design
+	 * rather than another rung. The two segments move differently with the
+	 * difficulty tier; see DropWeightAt.
+	 */
+	static constexpr int32 OrdinaryRarities = 4;
+
+	/**
+	 * How fast the ordinary segment falls, at difficulty tier 1 and at tier 8.
+	 *
+	 * EACH ORDINARY RARITY IS THIS MANY TIMES COMMONER THAN THE ONE ABOVE IT.
+	 * At 2.5, which the Gear Rarity table holds, Everyday is 61% of drops and
+	 * Masterful 4%. Below 1 the segment inverts and Masterful is the commonest
+	 * thing that drops, which is what tier 8 does at 0.8: Everyday 17%,
+	 * Quality 22%, Superb 27%, Masterful 34%.
+	 *
+	 * WHY IT MOVES WITH THE TIER. Issue #886. The project owner played it and
+	 * reported that only Everyday and Quality items ever drop and that it is
+	 * uninteresting. Measured, difficulty tiers 4 to 8 produced the same
+	 * distribution to within a tenth of a per cent, because only the ceiling
+	 * moved with the tier and the weights did not.
+	 *
+	 * MIRRORS `ORDINARY_FALL_AT_TIER_ONE` AND `ORDINARY_FALL_AT_DEEPEST` in
+	 * `sim/cataclysm_sim/loot.py`, where the reasoning and the genre sources
+	 * are written out. `tools/tests/test_unreal_drop_figures_match_the_model.py`
+	 * fails when the two copies disagree.
+	 */
+	static constexpr float OrdinaryFallAtTierOne = 2.5f;
+	static constexpr float OrdinaryFallAtDeepest = 0.8f;
+
+	/**
+	 * How much of magic find's multiplier the top of the rarity ladder gets.
+	 *
+	 * MAGIC FIND MULTIPLIES A RARITY'S WEIGHT, NOT ITS STEP OF THE CASCADE.
+	 * Everyday receives none of it and Cataclysmic receives the multiplier
+	 * raised to this power, with the rungs between spread evenly on the
+	 * exponent. Mirrors `MAGIC_FIND_REACH` in `sim/cataclysm_sim/loot.py`.
+	 *
+	 * WHY IT MOVED OFF THE STEP CHANCES. Issue #890. Magic find used to
+	 * multiply each rung, and a rung's chance stops at 1. Once a rung
+	 * saturated, every rarity below it became impossible and that rung took
+	 * everything reaching it: a Boss carries +300% magic find, so at difficulty
+	 * tier 8 it dropped Masterful 97.6% of the time and nothing below it, and
+	 * at tier 1 it dropped Quality 100% of the time. A weight cannot do that,
+	 * because a rung's share of the weight at or below it is always under one.
+	 */
+	static constexpr float MagicFindReach = 4.0f;
+
+	/**
+	 * What magic find approaches however much of it a character carries.
+	 *
+	 * BOTH HALVES OF ISSUE #890 WERE NEEDED. Putting magic find on the weights
+	 * stops it wiping out a rarity; on its own it then runs away instead,
+	 * because the multiplier is raised to MagicFindReach. +400% made a
+	 * Cataclysmic drop 77 times likelier where the design note of 2026-08-18
+	 * expected about 5.
+	 *
+	 * SO IT PASSES THROUGH `mf * Ceiling / (mf + Ceiling)` FIRST, which is
+	 * Diablo II's shape with a larger ceiling. It approaches this and never
+	 * reaches it, so no amount of stacked magic find takes a Cataclysmic drop
+	 * past about one in 333 at difficulty tier 8. Mirrors
+	 * `MAGIC_FIND_CEILING` in `sim/cataclysm_sim/loot.py`, where the reasoning
+	 * and the measurements are written out.
+	 *
+	 * THE MATERIAL TIER ROLL PASSES THROUGH IT TOO, since issue #891: the same
+	 * mechanism, with only the exponent different.
+	 */
+	static constexpr float MagicFindCeiling = 400.0f;
+
+	/**
+	 * How much of magic find's multiplier the top of the MATERIAL tier ladder
+	 * gets. Common receives none of it and Extremely Rare receives the effective
+	 * figure raised to this power, with the tiers between spread evenly on the
+	 * exponent. Mirrors `MATERIAL_MAGIC_FIND_REACH` in
+	 * `sim/cataclysm_sim/loot.py`, where the ruling and the measurements are
+	 * written out; `tools/tests/test_unreal_drop_figures_match_the_model.py`
+	 * fails when the two copies disagree.
+	 *
+	 * WHY IT EXISTS. Issue #891. The material roll multiplied each cascade step
+	 * by magic find and capped it at certainty, so at +500% the Uncommon rung
+	 * reached 1 and a Cataclysm Boss dropped no Common materials at all.
+	 *
+	 * WHY 3 AND NOT MagicFindReach. Ruled on 2026-11-02. On a five-rung ladder
+	 * falling four times a step, 4 lets enough magic find make a rarer tier the
+	 * commoner one; any reach of 3.445 or more does. 3 is the only whole number
+	 * that also keeps Very Rare and Extremely Rare no rarer from any enemy than
+	 * the old rule gave them, which needs 2.49 or more.
+	 */
+	static constexpr float MaterialMagicFindReach = 3.0f;
+
+	/** The same plus one, for which affix tiers a drop may reach. */
+	static constexpr int32 AffixTiersAboveDifficulty = 1;
+
+	/**
+	 * How far above the difficulty tier the best upgrade stone that can drop is.
+	 *
+	 * TWO, NOT ONE, AND THE DOCUMENT SAYS SO OUTRIGHT: "Gear level is tier + 2
+	 * capped at +10, which clears every rarity gate in section VI and reaches
+	 * exactly +10 at tier 8." Its difficulty tier table restates it a step at a
+	 * time, tier 1 giving "+3 upgrade level" through to tier 8 giving "+10".
+	 *
+	 * WHY TWO WHERE RARITY AND AFFIXES GET ONE. Those two gate a single roll,
+	 * and this gates a ladder: upgrading consumes two stones, and two stones of
+	 * a level combine into one of the next, so the stones a player finds are
+	 * spent well below the level they are aiming at. Two also makes the ladder
+	 * end where the game does -- tier 8 is the deepest tier, so a one-above cap
+	 * would mean the +10 stone never drops anywhere.
+	 */
+	static constexpr int32 UpgradeLevelsAboveDifficulty = 2;
+
+	/** How many rarities there are. Eight, one per ECataclysmRarity entry. */
+	static constexpr int32 RarityCount = 8;
+
+	// -----------------------------------------------------------------------
+	// The tables
+	// -----------------------------------------------------------------------
+
+	static const TCHAR* GearRarityTableAssetPath;
+	static const TCHAR* ItemSocketTableAssetPath;
+	static const TCHAR* AffixTierTableAssetPath;
+
+	/** The gear rarity table, or null with the reason logged. */
+	static const UDataTable* LoadGearRarityTable();
+
+	/** The socket maximum table, or null with the reason logged. */
+	static const UDataTable* LoadItemSocketTable();
+
+	/** The affix tier weight table, or null with the reason logged. */
+	static const UDataTable* LoadAffixTierTable();
+
+	/** The affix table, or null with the reason logged. Every affix a drop can
+	 *  roll, across the four kinds. */
+	static const UDataTable* LoadAffixTable();
+
+	static const TCHAR* PositiveEnchantmentTableAssetPath;
+	static const TCHAR* NegativeEnchantmentTableAssetPath;
+
+	/**
+	 * The two enchantment tables, or null with the reason logged.
+	 *
+	 * TWO TABLES AND NOT ONE, because a positive and a negative are separate
+	 * rows drawn from pools of different sizes -- 379 and 195 -- rather than two
+	 * columns of one authored pairing. The two halves are NOT independent of
+	 * each other: RollEnchantments draws the negative from the weights the
+	 * positive's weight allows. This comment used to give that independence as
+	 * the reason there are two tables, which stopped being true on 2026-09-07.
+	 */
+	static const UDataTable* LoadPositiveEnchantmentTable();
+	static const UDataTable* LoadNegativeEnchantmentTable();
+
+	/**
+	 * The GearRarity row name for a rarity: the ECataclysmRarity entry's own
+	 * name, which is what the generator writes as the key.
+	 *
+	 * That join is the reason the table carries no ladder column of its own; see
+	 * FCataclysmGearRarityRow. A Python test compares the two lists.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static FName RowNameFor(ECataclysmRarity Rarity);
+
+	/** One rarity's row, or null when the table is missing it. */
+	static const FCataclysmGearRarityRow* RarityRow(const UDataTable* GearRarityTable,
+													ECataclysmRarity Rarity);
+
+	// -----------------------------------------------------------------------
+	// Which rarity a drop rolls
+	// -----------------------------------------------------------------------
+
+	/**
+	 * The highest rarity a drop rolls at full weight at a difficulty tier.
+	 *
+	 * NOT A CAP, AND IT USED TO BE ONE. This was BestRarityOnADrop and named
+	 * the highest rarity a drop could roll at all; anything above it was
+	 * impossible. The project owner played that on 2026-08-23 and said it was
+	 * too strict, so every rarity now drops at every difficulty tier and this
+	 * is where RarityPenaltyAboveTheTier starts instead.
+	 *
+	 * Gear rarity equals the difficulty tier, plus the one-above that makes a
+	 * drop worth reading, stopping at Cataclysmic because nothing is above it.
+	 * So tiers 7 and 8 are both unpenalised the whole way up, the same way
+	 * affix tiers 6, 7 and 8 all reach T7.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static ECataclysmRarity HighestUnpenalisedRarity(int32 DifficultyTier);
+
+	/**
+	 * What a rarity's weight is divided by at this difficulty tier.
+	 *
+	 * One at or below the tier's own reach, and RarityPenaltyAboveTheTier once
+	 * per rung above it. Never zero and never infinite, so nothing is ever
+	 * forbidden -- which is the whole of the change. Mirrors
+	 * `penalty_above_the_tier` in `sim/cataclysm_sim/loot.py`.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static float PenaltyAboveTheTier(ECataclysmRarity Rarity,
+									 int32 DifficultyTier);
+
+	/** The upgrade level a piece must reach before it can be this rarity. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static int32 GearLevelGateFor(const UDataTable* GearRarityTable,
+								  ECataclysmRarity Rarity);
+
+	/** The lowest and highest residue a drop of this rarity can carry. */
+	static bool ResidueBandFor(const UDataTable* GearRarityTable,
+							   ECataclysmRarity Rarity,
+							   float& OutLowest, float& OutHighest);
+
+	/**
+	 * The residue one drop of this rarity arrives with.
+	 *
+	 * Uniform inside the band and a whole number of points, because residue is
+	 * counted in points everywhere else: the craft day penalty is `CR / 100`
+	 * rounded down and the gold multiplier is `(CR / 50) + 1`.
+	 */
+	static float RollResidue(const UDataTable* GearRarityTable,
+							 ECataclysmRarity Rarity, FRandomStream& Stream);
+
+	/**
+	 * How fast the ordinary segment falls at a difficulty tier.
+	 *
+	 * GEOMETRIC BETWEEN THE TWO ENDS, not in equal steps, because the number is
+	 * a ratio. Mirrors `ordinary_fall_at` in `sim/cataclysm_sim/loot.py`.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static float OrdinaryFallAt(int32 DifficultyTier);
+
+	/**
+	 * How heavily a rarity is weighted on a drop at this difficulty tier.
+	 *
+	 * THE TABLE HOLDS TIER 1 AND EVERY DEEPER TIER IS WORKED OUT FROM IT, so
+	 * `game/Data/GearRarity.csv` keeps one weight per rarity and no per-tier
+	 * table exists anywhere. Issue #886. Mirrors `drop_weight` in
+	 * `sim/cataclysm_sim/loot.py`.
+	 *
+	 * HOW THE TWO SEGMENTS MOVE, and they move differently on purpose:
+	 *
+	 *     ORDINARY, Everyday to Masterful. Masterful is the anchor and never
+	 *     moves. Each rarity below it is multiplied by the fall ratio's own
+	 *     change raised to how far below Masterful it sits, so the segment
+	 *     flattens toward Masterful as the tier rises.
+	 *
+	 *     ENCHANTED, Legendary to Cataclysmic. All four are scaled together by
+	 *     how much the ordinary segment shrank, which pins their share of the
+	 *     ladder. Legendary stays one in 204 and Cataclysmic one in 25,531 at
+	 *     every tier that reaches them, which is what the project owner chose
+	 *     on 2026-08-23.
+	 *
+	 * @return 0 when the table is missing or holds no row for the rarity
+	 */
+	/**
+	 * What magic find is worth after diminishing returns.
+	 *
+	 * Approaches MagicFindCeiling and never reaches it, so stacking magic find
+	 * always helps and never runs away. Mirrors `effective_magic_find` in
+	 * `sim/cataclysm_sim/loot.py`.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static float EffectiveMagicFind(float MagicFind);
+
+	/**
+	 * What magic find multiplies this rarity's drop weight by.
+	 *
+	 * ONE AT THE BOTTOM OF THE LADDER AND LARGEST AT THE TOP. Everyday's weight
+	 * is never touched, which is what stops magic find scaling the floor away.
+	 * Mirrors `magic_find_multiplier` in `sim/cataclysm_sim/loot.py`.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static float MagicFindMultiplier(ECataclysmRarity Rarity, float MagicFind);
+
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static float DropWeightAt(const UDataTable* GearRarityTable,
+							  ECataclysmRarity Rarity, int32 DifficultyTier,
+							  float MagicFind = 0.0f);
+
+	/**
+	 * The chance the cascade stops at this rung, given that it reached it.
+	 *
+	 * THE RUNG'S WEIGHT AS A SHARE OF EVERYTHING AT OR BELOW IT. That is what
+	 * turns a table of weights into a cascade: stopping at rung R with chance
+	 * w[R]/S[R], where S[R] is the weight of rungs 1 to R, leaves S[R-1]/S[R] to
+	 * carry on. Multiplied down from the top, every rung ends with w[R]/S[N] --
+	 * its own share of the whole reachable ladder, which is what a weight means.
+	 *
+	 * THE WEIGHTS COME FROM DropWeightAt AND SO DEPEND ON THE DIFFICULTY TIER.
+	 * Issue #886. Before it they were read straight out of the table and every
+	 * tier had the same shape, which is what made tiers 4 to 8 identical.
+	 *
+	 * MAGIC FIND MULTIPLIES IT, which is Path of Exile's stated behaviour: +100%
+	 * increased item rarity gives twice as many of every rarity above the floor.
+	 * Saturating at 1 is the only ceiling.
+	 *
+	 * @param MagicFind  an added percentage with a baseline of 0
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static float RarityStepChance(const UDataTable* GearRarityTable,
+								  ECataclysmRarity Rarity, int32 DifficultyTier,
+								  float MagicFind);
+
+	/**
+	 * What fraction of drops at this tier is each rarity, indexed by
+	 * ECataclysmRarity. Always RarityCount long; rarities out of reach are 0.
+	 *
+	 * EXACT RATHER THAN SAMPLED, so a test can check the shape without rolling
+	 * ten thousand drops and then arguing about noise. RollRarity draws from
+	 * exactly this distribution, and a test compares the two.
+	 */
+	static void RarityDistribution(const UDataTable* GearRarityTable,
+								   int32 DifficultyTier, float MagicFind,
+								   TArray<float>& OutShares);
+
+	/**
+	 * The rarity one drop rolls.
+	 *
+	 * Walks the rungs from the rarest down and stops at the first that succeeds,
+	 * which is the cascade itself rather than a lookup into the distribution
+	 * above. Written that way on purpose: the test that the two agree is what
+	 * proves the exact distribution describes what actually happens.
+	 */
+	static ECataclysmRarity RollRarity(const UDataTable* GearRarityTable,
+									   int32 DifficultyTier, float MagicFind,
+									   FRandomStream& Stream);
+
+	// -----------------------------------------------------------------------
+	// How many sockets it has
+	// -----------------------------------------------------------------------
+
+	/**
+	 * The most sockets this item base can have.
+	 *
+	 * From the base rather than from the slot alone, because a weapon's maximum
+	 * depends on how many hands it takes.
+	 *
+	 * @return -1 when the slot has no stated maximum, which is a data fault
+	 *         rather than a base that holds none
+	 */
+	static int32 MaxSocketsFor(const UDataTable* SocketTable,
+							   const FCataclysmItemBaseRow& Base);
+
+	/**
+	 * How many sockets one drop of this base arrives with.
+	 *
+	 * UNIFORM FROM NONE UP TO THE BASE'S MAXIMUM, chosen by the project owner on
+	 * 2026-08-18. Capping the roll by the difficulty tier the way Diablo 2 and
+	 * Path of Exile cap it by item level was put to them and declined, as was
+	 * weighting the roll toward fewer sockets. So a socket count carries no
+	 * progression: a tier 1 Chest can drop with all six.
+	 *
+	 * A DROP WITH NO SOCKETS IS NOT A RUINED ITEM. The Add Socket craft --
+	 * Shattered Core, 15 residue, 3 days -- only has something to do because
+	 * drops arrive below their maximum.
+	 *
+	 * @return 0 when the base has no stated maximum, so a data fault produces a
+	 *         plain item rather than a crash
+	 */
+	static int32 RollSockets(const UDataTable* SocketTable,
+							 const FCataclysmItemBaseRow& Base,
+							 FRandomStream& Stream);
+
+	// -----------------------------------------------------------------------
+	// What tier its affixes roll at
+	// -----------------------------------------------------------------------
+
+	/**
+	 * The highest affix tier a drop may reach at a difficulty tier.
+	 *
+	 * Every tier at or below it stays in the pool, so a deep drop is better on
+	 * average without being predictable. Path of Exile gates modifier tiers on
+	 * item level the same way, and item level expands which tiers are available
+	 * rather than removing the low ones.
+	 *
+	 * IT DOES NOT CAP CRAFTING, which has no tier gate at all. That is why a
+	 * rare high tier is a windfall rather than the route.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static int32 MaxAffixTierOnADrop(int32 DifficultyTier);
+
+
+
+	// -----------------------------------------------------------------------
+	// Rolling a whole item
+	// -----------------------------------------------------------------------
+
+	/**
+	 * Every stat group one affix would occupy on an item.
+	 *
+	 * TWO AFFIXES MAY NOT SHARE A GROUP, which is what stops one piece carrying
+	 * four different ways to grant the same stat. The rule, matching
+	 * `affixes.groups_of`:
+	 *
+	 *   Stat        one group, "<stat>.<flat or increased>"
+	 *   Ailment     one group, "ailment.<effect>"
+	 *   Hybrid      one per part, each read as the stat affix it names
+	 *   Resistance  one per damage type it covers, "resistance_<type>.flat"
+	 *
+	 * A HYBRID'S PARTS ARE LOOKED UP BY NAME, because the Affixes table stores
+	 * them as the affix names they are rather than as row keys.
+	 */
+	static void GroupsOf(const UDataTable* AffixTable,
+						 const FCataclysmAffixRow& Affix,
+						 const TArray<FName>& DamageTypes,
+						 TSet<FString>& OutGroups);
+
+	/**
+	 * Every affix that could roll on one slot in one position, each with its
+	 * resistance damage types already drawn.
+	 *
+	 * @param Position  "prefix" or "suffix". They are separate pools, and a stat
+	 *                  appearing as one never appears as the other.
+	 */
+	static void CandidatesFor(const UDataTable* AffixTable, const FString& Slot,
+							  const FString& Position, FRandomStream& Stream,
+							  TArray<FCataclysmAffixCandidate>& OutCandidates);
+
+	/**
+	 * Draw `Count` affixes at random, never two from one group.
+	 *
+	 * @return false when the candidates cannot supply that many distinct
+	 *         groups, which is a fault in the pool rather than an unlucky roll
+	 */
+	static bool DrawWithoutRepeatingAGroup(
+		const UDataTable* AffixTable,
+		const TArray<FCataclysmAffixCandidate>& Candidates, int32 Count,
+		FRandomStream& Stream, TArray<FCataclysmAffixCandidate>& OutDrawn);
+
+	/**
+	 * How one drop's affix slots divide into prefixes and suffixes.
+	 *
+	 * AN ODD COUNT PICKS A SIDE AT RANDOM. `UCataclysmItemValues::
+	 * PrefixSuffixSplit` returns the even shape, and a drop is where the other
+	 * way has to actually happen: without this every three-affix item in the
+	 * game would carry two prefixes and one suffix, a bias nobody chose.
+	 */
+	static void SplitForADrop(int32 Slots, FRandomStream& Stream,
+							  int32& OutPrefixes, int32& OutSuffixes);
+
+	/** Which gear slot a drop is for. Every slot the item bases occupy is
+	 *  equally likely; see the Python model's `roll_slot` for why that is not
+	 *  the same as every WORN position being equally likely. */
+	static FString RollSlot(const UDataTable* BaseTable, FRandomStream& Stream);
+
+	/** A random base within one slot, all equally likely. Returns NAME_None
+	 *  when the slot has no bases. */
+	static FName RollBase(const UDataTable* BaseTable, const FString& Slot,
+						  FRandomStream& Stream);
+
+	/**
+	 * Which damage types a weapon of this type can carry at all.
+	 *
+	 * The design document's Damage Types and Skill Availability table, read
+	 * out of the weapon skill matrix rather than restated. A Wand carries no
+	 * War because War has no caster build; a Shield carries only War,
+	 * Celestial and Chaos.
+	 *
+	 * A PAIRING COUNTS WHETHER OR NOT ITS SKILL IS DESIGNED. The matrix holds
+	 * a row for every combination the design allows and leaves SkillName
+	 * empty where the skill has not been written, so an undesigned pairing is
+	 * visible rather than absent. What a weapon may CARRY is what the design
+	 * allows, so this reads whether the row exists and not what is in it.
+	 * UCataclysmWeaponSkills::SkillsFor does the opposite on purpose, because
+	 * it returns skills rather than availability.
+	 *
+	 * @return the types in UCataclysmItemModifiers::DamageTypeNames order, so
+	 *         one seed rolls one weapon however the rows are sorted
+	 */
+	static TArray<FName> DamageTypesAvailableTo(const UDataTable* WeaponSkillTable,
+												const FString& WeaponType);
+
+	/**
+	 * The most damage types a weapon of this base can roll, at any tier.
+	 *
+	 * THE LOWER OF TWO LIMITS: the base's own (4 on a one-hander, 8 on a
+	 * two-hander) and how many damage types are designed for its weapon type at
+	 * all. A Shield's base limit is four and only three types exist for it; a
+	 * 2H Crossbow's is eight and only three exist for it. Without the second a
+	 * roll would ask for more distinct types than there are to draw.
+	 *
+	 * NO TIER, SINCE 2026-10-25. The project owner removed the tier cap: "I
+	 * think we should remove the tier cap. They're already gated by their level
+	 * with how many points they can spread out so getting a multi damage weapon
+	 * doesn't matter." It was the third limit, the lower of these and the tier
+	 * the weapon dropped on, from 2026-08-04. Mirrors max_damage_types() in
+	 * `sim/cataclysm_sim/affixes.py`, which holds the base's limit only.
+	 */
+	static int32 MaxDamageTypesFor(const FCataclysmItemBaseRow& BaseRow,
+								   int32 AvailableCount);
+
+	/**
+	 * The damage types one dropped weapon carries. Empty for a non-weapon.
+	 *
+	 * @param DifficultyTier  named only in the warning for a weapon that can
+	 *        carry none; since 2026-10-25 it caps nothing
+	 * @param Stream  drawn from without replacement, so no type repeats
+	 */
+	static TArray<FName> RollDamageTypes(const UDataTable* WeaponSkillTable,
+										 const FCataclysmItemBaseRow& BaseRow,
+										 int32 DifficultyTier,
+										 FRandomStream& Stream);
+
+	/**
+	 * The stat an enchantment effect row states for "This weapon has 2-4 damage
+	 * types": `damage_types_carried`, a flat whole number of damage types.
+	 * Ruled 2026-10-25 (Q-D5).
+	 *
+	 * AN ITEM'S STAT AND NOT A CHARACTER'S. The drop reads it off the item's own
+	 * drawn enchantments, in `DamageTypesCarriedBy`. It is on
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute` only so that a row
+	 * stating it is not refused as a stat with no attribute; `ApplyTo` then
+	 * records it on the wearer, where nothing reads it.
+	 */
+	static const TCHAR* DamageTypesCarriedStat;
+
+	/**
+	 * How many damage types an item's drawn enchantments say it holds, or 0 when
+	 * none of their effect rows states `DamageTypesCarriedStat`.
+	 *
+	 * THE ROW'S FIGURE AT THE ITEM'S OWN ROLL, `UCataclysmItemValues::
+	 * EnchantmentValue` of its two ends, which is what the hover text and every
+	 * other effect row use, turned into a whole number by `FMath::RoundToInt` as
+	 * "+1-3 to your max deployable count" is (Q-D2). A half's row is matched by
+	 * its Enchantment cell; the larger count wins if two halves state one.
+	 *
+	 * @param EnchantmentEffectTable  null reads as no row, so 0
+	 */
+	static int32 DamageTypesCarriedBy(const TArray<FCataclysmRolledEnchantment>& Enchantments,
+									  const UDataTable* EnchantmentEffectTable);
+
+	/**
+	 * Adds damage types to a weapon until it holds `Count`, NEVER TAKING ANY
+	 * AWAY: a weapon already holding at least that many is left as it is
+	 * (Q-D3).
+	 *
+	 * THE SAME UNIFORM DRAW AS RollDamageTypes, over the types designed for the
+	 * weapon type that it does not already hold, from the same stream (Q-D4).
+	 * War may be drawn, as any drop can already draw it. Capped by
+	 * `MaxDamageTypesFor`, the base's limit and those designed types, and by no
+	 * tier, which the project owner removed on 2026-10-25. Nothing is drawn when
+	 * nothing is added, so a weapon left as it is leaves the stream where it was.
+	 */
+	static void TopUpDamageTypes(const UDataTable* WeaponSkillTable,
+								 const FCataclysmItemBaseRow& BaseRow, int32 Count,
+								 FRandomStream& Stream, TArray<FName>& InOutDamageTypes);
+
+	// -----------------------------------------------------------------------
+	// Which enchantments a drop rolls
+	// -----------------------------------------------------------------------
+
+	/**
+	 * How much commoner each weight band is than the band above it. Four.
+	 *
+	 * A WEIGHT IS A STRENGTH TIER, NOT ONLY A RARITY. The project owner ruled on
+	 * 2026-09-07 that the column exists "to determine what benefits go with what
+	 * negatives ... to ensure you can't get the most powerful benefits with
+	 * negatives that barely do anything". So a weight says how rare a row is AND
+	 * which rows may be paired with it. RollEnchantments draws the benefit
+	 * first and the drawback at the benefit's weight or harsher; see it for the
+	 * whole rule.
+	 *
+	 * THE STEP OF FOUR IS THE OWNER'S 2026-09-07 RULING AND IS UNCHANGED. What
+	 * changed on 2026-09-07 is what it multiplies. It used to price a single
+	 * ROW, so the share of draws a weight took depended on how many rows the
+	 * sheet happened to carry at it, and 113 weight 3 rows against 28 weight 4
+	 * rows cancelled the step between those two rungs exactly: both came out at
+	 * about 42% of draws. It now prices a BAND, so the four shares are 1.2%,
+	 * 4.7%, 18.8% and 75.3% whatever the row counts do.
+	 *
+	 * PER BAND IS ALSO WHAT KEEPS THE DRAWBACK'S DRAW MEANINGFUL. The drawback
+	 * is drawn from weight 1 up to the benefit's weight, so the pool it comes
+	 * from changes size with every roll -- 22 negative rows when the benefit is
+	 * weight 1, all 182 when it is weight 4. Priced per row, the odds inside
+	 * that range would move with the row counts of whichever bands happened to
+	 * be in it. Priced per band, the same ladder simply renormalises over the
+	 * weights the floor allows.
+	 *
+	 * THE PROJECT ALREADY DRAWS A RARITY BAND THIS WAY AT THIS STEP.
+	 * `game/Data/MaterialTiers.csv` carries 256, 64, 16, 4, 1 across Common,
+	 * Uncommon, Rare, Very Rare and Extremely Rare -- a step of four -- and
+	 * RollMaterialTier draws the tier from those per-tier weights rather than
+	 * from how many rows sit at each.
+	 *
+	 * A TUNING VALUE, NOT A DERIVED ONE. The design document orders the four
+	 * weights and states no frequency, so this is expected to be retuned against
+	 * real play.
+	 */
+	static constexpr float EnchantmentWeightStep = 4.0f;
+
+	/** The lowest and highest weight the sheet may state. */
+	static constexpr float LowestEnchantmentWeight = 1.0f;
+	static constexpr float HighestEnchantmentWeight = 4.0f;
+
+	/** How many weight bands there are. Four. */
+	static constexpr int32 EnchantmentWeightCount =
+		static_cast<int32>(HighestEnchantmentWeight
+						   - LowestEnchantmentWeight) + 1;
+
+	/**
+	 * The relative frequency of one weight BAND: 1, 4, 16 or 64.
+	 *
+	 * INVERTED, because weight 1 is the RAREST and the sheet numbers it
+	 * lowest. The weight 4 band is drawn 64 times as often as the weight 1 band,
+	 * however many rows are written at either.
+	 *
+	 * ALSO THE TEST OF WHETHER A ROW CAN BE DRAWN AT ALL, which is why it takes
+	 * the sheet's number rather than a band index: a row whose Weight is not a
+	 * whole 1 to 4 prices at zero and EnchantmentCandidatesFor drops it.
+	 *
+	 * @return 0 for a weight outside 1 to 4, which is a row that cannot be drawn
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static float EnchantmentDrawWeight(float SheetWeight);
+
+	/**
+	 * Whether one enchantment row may appear on a gear slot.
+	 *
+	 * ONE RULE, AND ONLY ONE, SINCE 2026-09-08.
+	 *
+	 * IT USED TO REFUSE EVERY SET ROW AND NO LONGER DOES. That refusal was
+	 * justified by set positives and negatives being "paired and guaranteed",
+	 * read as meaning a set is handed out whole by some other mechanism. The
+	 * project owner ruled on 2026-09-08 that a set IS an enchantment, so the
+	 * rows belong in this draw after all -- they enter it through
+	 * EnchantmentSetsFor rather than as loose rows. A set row still never reaches
+	 * the ordinary pool: EnchantmentCandidatesFor leaves out every row typed
+	 * `Set`, by its type, since issue #1443 gave set rows an ordinary weight of
+	 * 1 and their set number a `SetId` column of its own.
+	 *
+	 * A SLOT TAG BINDS AND EVERY OTHER TAG DOES NOT. The project owner ruled on
+	 * 2026-09-07 that an enchantment's tags say what it AFFECTS, not which item
+	 * it may sit on. Three of the 574 rows also carry an `Item.Slot.` tag, all
+	 * three `Item.Slot.Weapon` and all three genuinely about a weapon -- "This
+	 * weapon has 2-4 damage types" cannot sit on a belt. So a row carrying one
+	 * or more `Item.Slot.` tags is restricted to those slots, and a row carrying
+	 * none may appear anywhere.
+	 */
+	static bool EnchantmentSuitsSlot(const FCataclysmEnchantmentRow& Row,
+									 const FString& Slot);
+
+	/** Every row of a table that may appear on a gear slot. */
+	static void EnchantmentCandidatesFor(const UDataTable* Table,
+										 const FString& Slot,
+										 TArray<FName>& OutCandidates);
+
+	/**
+	 * The same rows, sorted into the four weight bands.
+	 *
+	 * OutByWeight[0] holds the weight 1 rows and OutByWeight[3] the weight 4
+	 * rows. Always sized EnchantmentWeightCount, so a band with nothing in it
+	 * is an empty array rather than a missing one.
+	 *
+	 * ORDINARY ROWS ONLY. A set does not sit in a band as a row; it is added to
+	 * the weight 1 band as one draw option by RollEnchantments.
+	 */
+	static void EnchantmentCandidatesByWeight(
+		const UDataTable* Table, const FString& Slot,
+		TArray<TArray<FName>>& OutByWeight);
+
+	/**
+	 * Which named set a row belongs to, or 0 when it belongs to none.
+	 *
+	 * THE SET NUMBER HAS ITS OWN COLUMN, `FCataclysmEnchantmentRow::SetId`, since
+	 * issue #1443 (the project owner's ruling of 2026-09-07). Until then it was
+	 * the Weight column, 5 to 18 on a row typed `Set`, and this was the one place
+	 * that read the column that way, so this is the one place that changed.
+	 *
+	 * ANY NUMBER ABOVE 0, rather than a range of 5 to 18 written down here, so a
+	 * fifteenth set needs no change here. `tools/generate_datatables.py` refuses
+	 * a set row with no number and an ordinary row with one.
+	 *
+	 * NOT A UFUNCTION, for the same reason EnchantmentSuitsSlot is not: it takes
+	 * a data row that this header only forward-declares.
+	 *
+	 * @return the set identifier, or 0 for a row that is not a usable set row
+	 */
+	static int32 EnchantmentSetId(const FCataclysmEnchantmentRow& Row);
+
+	/**
+	 * Every named set a drop on this gear slot could make an item a piece of.
+	 *
+	 * A SET NEEDS BOTH HALVES TO BE OFFERED. Its positive rows say what the
+	 * player earns and its one negative row is the guaranteed cost; a set
+	 * missing either cannot be "paired and guaranteed" and is left out with a
+	 * warning rather than handed out half-formed.
+	 *
+	 * ALL FOURTEEN SETS ARE COMPLETE AS OF 2026-09-08. Shard of Anarchy, set 15,
+	 * had three positives and no negative until the owner wrote its drawback
+	 * that day, which closed issue #1494. This check is not left over from that:
+	 * a set written from now on will have a window between its positive rows
+	 * landing and its drawback landing, and a set offered in that window would
+	 * be a bonus with no cost. Nothing here names any set.
+	 *
+	 * SORTED BY IDENTIFIER, because a UDataTable is a map and walking one has no
+	 * guaranteed order. Without this the same seed would pick a different set on
+	 * a different run. `RollBase` and `RollMaterialTier` sort for that reason and
+	 * say so; `EnchantmentCandidatesFor` did not until 2026-09-08, which was a
+	 * defect rather than a decision and is fixed alongside this.
+	 */
+	static void EnchantmentSetsFor(const UDataTable* PositiveTable,
+								   const UDataTable* NegativeTable,
+								   const FString& Slot,
+								   TArray<FCataclysmEnchantmentSet>& OutSets);
+
+	/**
+	 * Every named set, whatever gear slot its rows suit. Issue #45.
+	 *
+	 * THE SAME GROUPING AS EnchantmentSetsFor, WITHOUT THE SLOT. Counting worn
+	 * pieces asks what a set is, not whether a drop on one slot could offer it,
+	 * and a piece already worn is a piece whatever slot its rows name. Both read
+	 * one function, so the drop and the character's stats cannot disagree about
+	 * which rows a set has, which threshold each needs, or which drawback it
+	 * carries. A set with no negative row is left out here as well, so worn
+	 * pieces of it grant nothing: never a bonus without its cost.
+	 */
+	static void EveryEnchantmentSet(const UDataTable* PositiveTable,
+									const UDataTable* NegativeTable,
+									TArray<FCataclysmEnchantmentSet>& OutSets);
+
+	/**
+	 * Pick one weight band, 1 to 4, from the bands offered.
+	 *
+	 * THE DESIGNED FREQUENCIES RENORMALISED OVER WHATEVER IS OFFERED. Both
+	 * halves of a pair use this. The benefit is offered every band that can
+	 * supply one; the drawback is offered weight 1 up to the benefit's weight,
+	 * which is how the floor is enforced -- a band above the benefit's weight is
+	 * simply never on the list.
+	 *
+	 * RENORMALISING IS THE WHOLE MECHANISM AND NOT A FALLBACK. Offered bands 1
+	 * and 2 it draws them 1 to 4, so a weight 2 benefit takes a weight 2
+	 * drawback 80% of the time and a weight 1 drawback the other 20%.
+	 *
+	 * @param bBandCanSupply one entry per band, lowest weight first
+	 * @return 0 when no band was offered, which the caller reports
+	 */
+	static int32 DrawEnchantmentWeight(const TArray<bool>& bBandCanSupply,
+									   FRandomStream& Stream);
+
+	/**
+	 * Draw one row name uniformly from one band, skipping names already taken.
+	 *
+	 * UNIFORM INSIDE A BAND, AND THAT IS A JUDGEMENT RATHER THAN A DERIVATION.
+	 * The weight is the only rank the design gives an enchantment, so rows
+	 * sharing one are equals as far as anything written down goes. If some rows
+	 * inside a band should be rarer than others, the sheet has no column saying
+	 * so and inventing one here would be inventing design.
+	 *
+	 * @return NAME_None when the band has nothing untaken left
+	 */
+	static FName DrawEnchantmentInBand(const TArray<FName>& BandCandidates,
+									   const TSet<FName>& Taken,
+									   FRandomStream& Stream);
+
+	/**
+	 * The enchantments one dropped item carries, each a positive and a negative.
+	 *
+	 * THE DRAWBACK IS NEVER MILDER THAN THE BENEFIT. The benefit's weight is
+	 * drawn first, at the frequencies EnchantmentDrawWeight states. The
+	 * drawback is then drawn from weight 1 up to the benefit's weight -- so it
+	 * matches the benefit or is harsher, and can never be weaker:
+	 *
+	 *     weight 1 benefit -> weight 1 drawback only
+	 *     weight 2 benefit -> weight 1 or 2
+	 *     weight 3 benefit -> weight 1, 2 or 3
+	 *     weight 4 benefit -> any
+	 *
+	 * A FLOOR RATHER THAN A MATCH, WHICH THE PROJECT OWNER CHOSE ON 2026-09-07
+	 * from three options. An exact match on both sides was offered and
+	 * rejected. The floor keeps the rule that you cannot buy the most powerful
+	 * benefits cheaply, while leaving room for a genuinely cursed low-value
+	 * item: a weight 4 benefit carrying a weight 1 drawback happens on 0.9% of
+	 * pairs and is a deliberate outcome, not a leak.
+	 *
+	 * WHAT IT REPLACED, AND WHY. The two halves used to be drawn independently,
+	 * and the design document used to say so. That sentence stated a goal --
+	 * "a strong positive is not guaranteed to come with a weak negative" -- that
+	 * the mechanism named in the same sentence defeated: measured on the shipped
+	 * pool for a chest piece, a weight 1 benefit came with a milder drawback
+	 * 99.2% of the time.
+	 *
+	 * EACH PAIR ROLLS ITS OWN WEIGHTS. A Cataclysmic item holds four pairs and
+	 * they are four separate bargains, not one repeated four times.
+	 *
+	 * NEITHER HALF REPEATS ON ONE PIECE. A Cataclysmic item holds four pairs and
+	 * a player reading four copies of one line would think the item was broken.
+	 * This is NOT the design's unique-per-character rule, which spans all worn
+	 * gear and is enforced at equip time; that is still unbuilt.
+	 *
+	 * @return false when a table is missing or no band can fill the count
+	 */
+	static bool RollEnchantments(
+		const UDataTable* PositiveTable, const UDataTable* NegativeTable,
+		const FString& Slot, int32 Count, FRandomStream& Stream,
+		TArray<FCataclysmRolledEnchantment>& OutRolled);
+
+	/**
+	 * Roll one whole item for a gear slot at a difficulty tier.
+	 *
+	 * THE ORDER IS RARITY, THEN CONTENTS. The rarity says how many enchantments
+	 * and how many regular affixes fill the four slots; the affixes are then
+	 * drawn to that count. Rolling the two counts independently would produce
+	 * something that is not a rarity most of the time.
+	 *
+	 * THE UPGRADE LEVEL IS THE FLOOR ITS RARITY FORCES and nothing more. A
+	 * Legendary drops at +4 because it could not be a Legendary below that.
+	 *
+	 * @param EnchantmentEffectTable  read only for `DamageTypesCarriedStat`
+	 *        rows; null draws no damage types for them, which is what every
+	 *        caller but the drop spawner passes
+	 * @return false when a table is missing or the pool cannot fill the item
+	 */
+	static bool RollItem(const UDataTable* BaseTable,
+						 const UDataTable* AffixTable,
+						 const UDataTable* GearRarityTable,
+						 const UDataTable* SocketTable,
+						 const UDataTable* AffixTierTable,
+						 const UDataTable* WeaponSkillTable,
+						 const UDataTable* PositiveEnchantmentTable,
+						 const UDataTable* NegativeEnchantmentTable,
+						 const FString& Slot, int32 DifficultyTier,
+						 float MagicFind, FRandomStream& Stream,
+						 FCataclysmItem& OutItem, bool bChaoticTiers = false,
+						 const UDataTable* EnchantmentEffectTable = nullptr);
+
+	// -----------------------------------------------------------------------
+	// What a kill drops
+	// -----------------------------------------------------------------------
+
+	/** A character with no bonuses. Loot quantity is a percentage of what would
+	 *  otherwise drop, so 100 leaves it unchanged. */
+	static constexpr float BaselineLootQuantity = 100.0f;
+
+	static const TCHAR* EnemyDropTableAssetPath;
+	static const TCHAR* MaterialTierTableAssetPath;
+	static const TCHAR* CraftingMaterialTableAssetPath;
+
+	/** What each enemy rarity drops, or null with the reason logged. */
+	static const UDataTable* LoadEnemyDropTable();
+
+	/** The crafting material tier weights, or null with the reason logged. */
+	static const UDataTable* LoadMaterialTierTable();
+
+	/**
+	 * One enemy rarity's drop row, or null.
+	 *
+	 * @param EnemyRarity  the row key, which is the same key
+	 *        `FCataclysmEnemyRarityRow` uses: "Common" through "Cataclysm_Boss".
+	 *        The two tables join on it.
+	 */
+	static const FCataclysmEnemyDropRow* EnemyDropRow(
+		const UDataTable* EnemyDropTable, FName EnemyRarity);
+
+	/**
+	 * How many gear items a kill of this rarity is expected to drop.
+	 *
+	 * @param LootQuantity  a percentage with a baseline of 100, so 400
+	 *        quadruples it. Every source of it in the design is an increase.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static float ExpectedGearDrops(const UDataTable* EnemyDropTable,
+								   FName EnemyRarity, float LootQuantity);
+
+	/** The same, for crafting materials, which drop on a separate roll. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static float ExpectedMaterialDrops(const UDataTable* EnemyDropTable,
+									   FName EnemyRarity, float LootQuantity);
+
+	/**
+	 * The magic find a kill of this rarity adds to its own drops.
+	 *
+	 * ADDED TO THE PLAYER'S OWN rather than multiplied by it, which is what
+	 * Path of Exile does with its own sources.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static float MagicFindFrom(const UDataTable* EnemyDropTable,
+							   FName EnemyRarity);
+
+	/**
+	 * Turn an expected number of drops into how many actually fall.
+	 *
+	 * A POISSON DRAW, SO THE COUNT VARIES FOR EVERY ENEMY. Decided by the
+	 * project owner on 2026-08-19: "item count should vary for every enemy".
+	 * Issue #725. `roll_count` in `sim/cataclysm_sim/loot.py` is the model this
+	 * mirrors and carries the full reasoning.
+	 *
+	 * WHAT IT REPLACED. The count used to be the whole part of the expected
+	 * value plus one more with probability equal to the fraction, so all the
+	 * randomness lived in the fraction and a rate that was a whole number had
+	 * none: a Boss at 5.0 dropped exactly five items every kill and a Cataclysm
+	 * Boss exactly twelve. Four of the six enemy rarities were fixed.
+	 *
+	 * THE MEAN IS UNCHANGED, which is why no number in `game/Data/EnemyDrops.csv`
+	 * moved. A Poisson draw averages the value it is given.
+	 *
+	 * IT CAN ANSWER ZERO FOR ANY RATE, including a Boss's, about 0.7% of the
+	 * time. No floor is applied here; whether a boss should be guaranteed one
+	 * item is a separate question and issue #725 records it as open.
+	 *
+	 * KNUTH'S METHOD, which needs only a uniform random number and so uses the
+	 * same stream as everything else. It draws about `Expected + 1` numbers, so
+	 * the most expensive call in the project -- a Cataclysm Boss's 24 expected
+	 * materials -- draws about 25. It terminates because `FRandomStream::FRand`
+	 * answers in [0, 1), so the running product strictly decreases and reaches
+	 * the limit in finite steps. The product and the limit are doubles rather
+	 * than floats so that a large expected value, which a big loot quantity
+	 * bonus could produce, does not underflow the limit to zero and turn a
+	 * bounded loop into a long one.
+	 */
+	static int32 RollDropCount(float Expected, FRandomStream& Stream);
+
+	/**
+	 * The tier one crafting material drops at, 1 to 5, or 0 when the table is
+	 * missing.
+	 *
+	 * MAGIC FIND RAISES IT, WHICH DEPARTS FROM THE GENRE. Path of Exile's item
+	 * rarity does not affect currency at all. It applies here because the enemy
+	 * rarity contribution exists so a harder enemy is more rewarding, and
+	 * materials are half of what a kill gives.
+	 *
+	 * IT RAISES THE WEIGHTS, NOT THE CASCADE'S STEPS, since issue #891. It used
+	 * to multiply each step and cap it at certainty, so at 500% magic find the
+	 * second rung saturated, nothing fell through to the commonest tier, and a
+	 * Cataclysm Boss dropped no Common materials at all. Now every tier keeps a
+	 * share at any magic find; a Cataclysm Boss drops Common 43.3% of the time.
+	 * See MaterialMagicFindReach.
+	 *
+	 * WHICH MATERIAL WITHIN THE TIER IS AN EQUAL CHANCE, and this does not make
+	 * it: the names are in the CraftingMaterials table.
+	 */
+	static int32 RollMaterialTier(const UDataTable* MaterialTierTable,
+								  float MagicFind, FRandomStream& Stream);
+
+	/** What fraction of material drops is each tier, indexed by tier minus one.
+	 *  Empty when the table is missing. The same weights RollMaterialTier
+	 *  rolls on, stated exactly. */
+	static void MaterialTierDistribution(const UDataTable* MaterialTierTable,
+										 float MagicFind,
+										 TArray<float>& OutShares);
+
+	/**
+	 * What magic find multiplies a material tier's drop weight by.
+	 *
+	 * ONE FOR THE COMMONEST TIER AND LARGEST FOR THE RAREST: the effective magic
+	 * find, after MagicFindCeiling, raised to (Tier - 1) / (TierCount - 1) of
+	 * MaterialMagicFindReach. Mirrors `material_magic_find_multiplier` in
+	 * `sim/cataclysm_sim/loot.py`.
+	 *
+	 * @param Tier       1 for the commonest material tier
+	 * @param TierCount  how many tiers the ladder has, 5 today
+	 */
+	static float MaterialMagicFindMultiplier(int32 Tier, int32 TierCount,
+											 float MagicFind);
+
+	/** The crafting material table, loaded once. Null when it cannot be read. */
+	static const UDataTable* LoadCraftingMaterialTable();
+
+	/**
+	 * Which crafting material drops, given the material tier it rolled and the
+	 * difficulty tier being played.
+	 *
+	 * @param MaterialTier   the rarity band, 1 to 5, from RollMaterialTier
+	 * @param DifficultyTier which of the eight tiers is being played, which caps
+	 *                       the upgrade stones this may produce
+	 * @return the row key in `game/Data/CraftingMaterials.csv`, or NAME_None
+	 *         when the band holds nothing this tier may have.
+	 *
+	 * THE TWO TIERS ARE DIFFERENT THINGS and the parameters are in the order the
+	 * roll happens: the material tier comes out of RollMaterialTier, and the
+	 * difficulty tier comes from the world. Passing them the wrong way round
+	 * compiles, so `AMaterialTierIsNotADifficultyTier` pins the difference.
+	 *
+	 * EQUAL CHANCE AMONG WHAT THE BAND ALLOWS. `roll_material_tier` in
+	 * `sim/cataclysm_sim/loot.py` picks the band and says the choice of material
+	 * within it belongs to "whoever holds that table", which is this.
+	 *
+	 * SO THE UPGRADE STONE CAP CHANGES THE ODDS OF EVERYTHING ELSE, because
+	 * excluding a stone leaves fewer materials to share the band. Five materials
+	 * share tier 5, of which two are the +9 and +10 stones, so Purified Essence
+	 * -- the only thing that clears the Consumption Threshold -- is one material
+	 * drop in 1,023 at tiers 1 to 6 where neither stone may drop, one in 1,364
+	 * at tier 7 where +9 may, and one in 1,705 at tier 8 where both may. 1,023
+	 * is the figure the tier weights were originally chosen against; the sim
+	 * models the uncapped 1,705, and `MATERIALS_IN_TIER` in loot.py says why it
+	 * rose. THE TOOL THE DESIGN LEANS ON GOT COMMONER WHERE IT IS NEEDED MOST,
+	 * which is the shallow tiers, and that is a consequence of the cap rather
+	 * than a thing the cap was chosen for.
+	 *
+	 * EVERY BAND KEEPS AT LEAST THREE NON-STONE MATERIALS, so no cap can empty
+	 * one. `validate_upgrade_stone_levels` in `tools/generate_datatables.py`
+	 * guards the stone ladder itself.
+	 *
+	 * THE CRAFTING SHEET HOLDS ACTIONS AS WELL AS MATERIALS, and they carry a
+	 * tier of 0 so that nothing can drop "Reroll Affix Value".
+	 */
+	static FName RollMaterial(const UDataTable* CraftingMaterialTable,
+							  int32 MaterialTier, int32 DifficultyTier,
+							  FRandomStream& Stream);
+
+	/**
+	 * The highest upgrade stone a drop may produce at a difficulty tier.
+	 *
+	 * Tier + 2, capped at +10, which is the design document's rule word for
+	 * word. Tier 1 gives +3 and tier 8 gives +10.
+	 *
+	 * IT DOES NOT CAP CRAFTING, exactly as the affix gate does not. Two stones
+	 * of a level combine into one of the next, so a player at a low tier can
+	 * still build a stone above what drops there -- it just costs the climb.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static int32 MaxUpgradeStoneOnADrop(int32 DifficultyTier);
+
+	/**
+	 * What a material of this tier is called, as a player reads it.
+	 *
+	 * The material's own name from the table, so "Purified Essence" rather than
+	 * "Tier 5 material". Empty when the row is missing.
+	 */
+	static FString MaterialNameOf(const UDataTable* CraftingMaterialTable,
+								  FName Material);
+
+	/**
+	 * Which tier a named crafting material is, 1 to 5.
+	 *
+	 * THE OPPOSITE DIRECTION FROM THE ROLL, which is why it did not exist until
+	 * something carried a material rather than dropped one. RollMaterialTier
+	 * picks the tier and RollMaterial then picks a material inside it, so a drop
+	 * never has to ask; a carried slot stores only the material's name, so the
+	 * inventory screen does. Issue #731.
+	 *
+	 * @return 0 for a material the table does not hold, and 0 for the nineteen
+	 *         crafting ACTIONS on that sheet, which carry a tier of 0 so that
+	 *         nothing can drop "Reroll Affix Value". Zero means "no tier" rather
+	 *         than a failure.
+	 */
+	static int32 MaterialTierOf(const UDataTable* CraftingMaterialTable,
+								FName Material);
+
+	/** The colour a material of this tier has its name drawn in, or white when
+	 *  the table is missing it. */
+	static FLinearColor MaterialColourFor(const UDataTable* MaterialTierTable,
+										  int32 Tier);
+
+	/**
+	 * The tier one affix rolls at on a drop at this difficulty tier.
+	 *
+	 * Each tier is half as likely as the one below, from the affix tier table.
+	 *
+	 * @return 1 when the table is missing, which is the floor rather than a
+	 *         failure: an affix with no tier is not an affix
+	 */
+	static int32 RollAffixTier(const UDataTable* AffixTierTable,
+							   int32 DifficultyTier, FRandomStream& Stream);
+
+	/**
+	 * The tier one affix rolls at on a drop from a floor carrying `Chaos_Chaotic_Loot`.
+	 * Issues #1820 and #41.
+	 *
+	 * EVENLY FROM T1 TO THE SAME CAP `RollAffixTier` HAS, `MaxAffixTierOnADrop`. The
+	 * row's "a wide range" flattens the odds and does NOT lift the cap:
+	 * docs/Cataclysm_GDD_v2.md section VII, "The affix tier column IS still a hard cap."
+	 * Ruled by the coordinating session under the owner's delegation, 2026-09-23. One
+	 * draw from the stream, the same as `RollAffixTier`, so every draw after it on the
+	 * same stream lands where it would have.
+	 */
+	static int32 RollChaoticAffixTier(int32 DifficultyTier, FRandomStream& Stream);
+};
+
+/**
+ * What a dropped item is called.
+ *
+ * `<rarity> <base name> of <word>`, with the word from the item's own strongest
+ * suffix affix. Ported from `sim/cataclysm_sim/naming.py`.
+ *
+ * THE FORMAT WAS SET BY THE PROJECT OWNER on 2026-08-18, issue #695: "Quality
+ * Item Type of Interesting word that fits the item. For example, Everyday Short
+ * Sword of Malice or Mythic Robes of The Night."
+ *
+ * THE WORD COMES FROM THE ITEM'S OWN AFFIXES, not from a flavour list. That is
+ * what Diablo 2 and Path of Exile do for magic items, and it means the name
+ * tells a player something true rather than being decoration.
+ *
+ * A NAME IS AN FString AND NOT AN FText, deliberately and temporarily. It is
+ * assembled from a rarity, a base name and an affix word, all three of which
+ * come out of the design workbook in English and none of which is a localisable
+ * asset yet. Localisation is issue #60, and it has to reach the tables before it
+ * can reach this.
+ */
+UCLASS()
+class CATACLYSM_API UCataclysmItemName : public UObject
+{
+	GENERATED_BODY()
+
+public:
+	/** How a rarity is spelt in a name. The ECataclysmRarity entry's name. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
+	static FString RarityWord(ECataclysmRarity Rarity);
+
+	/**
+	 * The word one affix gives an item's name, or empty when it gives none.
+	 *
+	 * Only a suffix has one. The first word of a name is the rarity, so a prefix
+	 * has nowhere to appear, and the generator refuses to write a word on one.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
+	static FString WordFor(const UDataTable* AffixTable, FName Affix);
+
+	/**
+	 * The affix on this item whose word the name uses.
+	 *
+	 * STRONGEST MEANS HIGHEST TIER, THEN HIGHEST ROLL, THEN FIRST ON THE ITEM.
+	 * All three are needed and the third matters most: without a final tie-break
+	 * the same item could be called two different things on two runs, because
+	 * affixes are stored in the order they were drawn and two of them can share
+	 * a tier and a roll.
+	 *
+	 * TIER BEFORE ROLL, because a tier is worth a seventh of the affix's top
+	 * value and a roll is worth at most a quarter of one tier. A perfect T6 can
+	 * beat a poor T7 in value, but the name follows the tier, which is the
+	 * number a player reads off the item.
+	 *
+	 * @return false when the item carries no suffix affix at all
+	 */
+	static bool StrongestSuffix(const FCataclysmItem& Item,
+								const UDataTable* AffixTable,
+								FCataclysmRolledAffix& OutAffix);
+
+	/**
+	 * What a rolled item is called.
+	 *
+	 * WHEN AN ITEM HAS NO SUFFIX AFFIX THE NAME STOPS AFTER THE BASE. An
+	 * Everyday piece carries one affix and it may be a prefix, so `Everyday
+	 * Short Sword` is a whole name. Also the project owner's choice, and it is
+	 * what Diablo 2 does. The missing words are themselves a signal that the
+	 * item is thin.
+	 *
+	 * @return an empty string when the base is not in the table, since an item
+	 *         whose base cannot be found has no name to give
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
+	static FString NameOf(const FCataclysmItem& Item,
+						  const UDataTable* BaseTable,
+						  const UDataTable* AffixTable);
+};

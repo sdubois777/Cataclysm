@@ -1,0 +1,557 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "Net/UnrealNetwork.h"
+
+const TCHAR* UCataclysmCombatAttributeSet::MaxCritChanceStat = TEXT("max_crit_chance");
+
+UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
+{
+	// Defence and utility start at zero: a character has these only if its
+	// class, gear or passives give them. Attributes cannot create a stat, so a
+	// zero here means the matching attribute does nothing, which is how a class
+	// declines to care about a stat.
+	InitArmor(0.0f);
+	InitEvasion(0.0f);
+	InitBlockChance(0.0f);
+	InitDamageReduction(0.0f);
+	// Zero until a passive tree grants one, which nothing does yet. See the
+	// attribute's comment for why that is stated rather than left to be found.
+	InitDamageReductionMore(0.0f);
+	InitRetaliation(0.0f);
+	InitCrowdControlResistance(0.0f);
+
+	InitAttackDamage(0.0f);      // supplied by the equipped weapon
+	InitCritChance(0.0f);        // supplied by the skill in use
+	// 100 UNLESS AN ENCHANTMENT LOWERS IT. Nothing does yet; see the attribute.
+	InitMaxCritChance(CritChanceCap);
+	InitCritMultiplier(150.0f);  // a critical strike is worth 1.5x by default
+	InitAttackSpeed(0.0f);       // supplied by the equipped weapon
+
+	// Percentages of what the skill or the effect itself does, so 100 means
+	// "unchanged". Zero here would leave Efficacy nothing to scale.
+	//
+	// The three damage over time levers all start at 100 for the same reason.
+	// They multiply each other, so a zero on any one of them would take a
+	// damage over time build's whole output to zero rather than only its own
+	// third of it. Issue #205.
+	InitAreaOfEffect(100.0f);
+	InitDotDamage(100.0f);
+	InitDotFrequency(100.0f);
+	InitDotDuration(100.0f);
+	InitStaggerDuration(100.0f);
+	InitStaggerHealthCeilingReduction(0.0f);
+	InitKnockdownSeconds(0.0f);
+
+	InitPenetration(0.0f);
+	// Zero, not 100, because it is an added percentage rather than a
+	// percentage OF something. Same shape as the resistance penetration
+	// above, and the rule test_stat_baselines_match_the_attribute_set.py
+	// holds. Issue #520.
+	InitArmorPenetration(0.0f);
+	InitSpellDamage(0.0f);
+
+	// Increased damage against one type of enemy. Zero for every class: no class
+	// is born better against a Cataclysm, because which Cataclysms a run faces
+	// is drawn at run start and the class is chosen before that.
+	InitDamageVsWar(0.0f);
+	InitDamageVsDemonic(0.0f);
+	InitDamageVsDeath(0.0f);
+	InitDamageVsPestilence(0.0f);
+	InitDamageVsFamine(0.0f);
+	InitDamageVsCelestial(0.0f);
+	InitDamageVsChaos(0.0f);
+	InitDamageVsVoid(0.0f);
+
+	InitMovementSpeed(4.0f);     // metres per second
+	InitCooldownReduction(0.0f);
+
+	// ZERO, AND IT STAYS ZERO ON THIS ATTRIBUTE BY DESIGN. Issue #973. Its only
+	// source is a passive node carrying a health condition, and a conditional
+	// bonus is never written onto a gameplay attribute. See the header.
+	InitCooldownSkipChance(0.0f);
+
+	// ZERO, AND IT STAYS ZERO FOR ANY CHARACTER WITHOUT THE NODE.
+	// Issue #1032. The Masochist's Mutilation Mastery is its only source.
+	InitBleedOnCritChance(0.0f);
+
+	// ZERO, AND IT STAYS ZERO FOR A CHARACTER WEARING NO AILMENT AFFIX AND
+	// HOLDING NO ROW THAT NAMES ONE. Issue #899. The chance to apply each
+	// ailment on a hit.
+	InitBleedChance(0.0f);
+	InitPoisonChance(0.0f);
+	InitDiseaseChance(0.0f);
+	InitVoidSplinterChance(0.0f);
+	InitNecrosisChance(0.0f);
+	InitBurnChance(0.0f);
+	InitMadnessChance(0.0f);
+	InitCrippleChance(0.0f);
+	InitWeakenChance(0.0f);
+	InitShredChance(0.0f);
+	InitStunChance(0.0f);
+
+	// A HUNDRED MEANS UNCHANGED, not zero. These multiply a magnitude rather
+	// than adding to a chance, so the neutral value is one times -- the same
+	// shape `InitDebuffDurationTaken(100.0f)` above uses, and the reason
+	// `UCataclysmDebuffs::NormalDuration` is also 100. A base of zero here
+	// would make every `increased` row multiply nothing and grant nothing.
+	InitCrippleMagnitude(100.0f);
+	InitWeakenMagnitude(100.0f);
+
+	// ZERO, BECAUSE IT IS A BONUS AND NOT THE FIGURE. Issue #1718. The
+	// Subjugate row states the threshold it is added to, so this starting at
+	// anything else would state that number a second time.
+	InitPossessionThresholdBonus(0.0f);
+
+	// ZERO FOR BOTH, FOR THE SAME REASON. Issue #1718. Each is applied to a
+	// figure a skill's own row states -- what a minion reserves, how many
+	// minions may be active -- so a starting value of anything else would
+	// state that number a second time. Zero also decides that a row moving
+	// either takes `flat`: an increase against zero grants nothing.
+	InitMinionReserveReduction(0.0f);
+	InitMinionCapBonus(0.0f);
+
+	// THE THREE ENERGY-SHIELD KEYSTONES, ALL FLAGS AT ZERO. Issue #1515.
+	// Zero is the rule the design states for every character that has not
+	// bought one: a shield stops hits and not ticks, it waits three seconds
+	// after damage before recharging, and mana regeneration feeds mana.
+	InitShieldAbsorbsDamageOverTime(0.0f);
+	InitShieldRechargesWhileDamaged(0.0f);
+	InitShieldRechargeHasNoDelay(0.0f);
+	InitAurasEndAtDeath(0.0f);
+	InitManaRegenRestoresShield(0.0f);
+
+	// AND THE TWO RAVAGER KEYSTONES THAT FORBID A DEFENCE. Issue #1515. Both
+	// zero, so armour penetration works and melee can be evaded for every
+	// character that has not bought the node -- which is the rule everywhere
+	// else in the game.
+	InitArmorPenetrationSuppressed(0.0f);
+	InitMeleeEvasionSuppressed(0.0f);
+	InitMovementSpeedReductionSuppressed(0.0f);
+	InitCrowdControlEndsWhenItsApplierDies(0.0f);
+
+	// AND DAMAGE OVER TIME HURTS EVERY CHARACTER UNLESS ONE CAPSTONE OPTION
+	// SAYS OTHERWISE. Issue #1039. The Masochist's Vessel Unbroken is its only
+	// source, and zero is the ordinary case.
+	InitDebuffDamageSuppressed(0.0f);
+
+	// AND RETALIATION ANSWERS ONLY WHAT HIT THE CHARACTER, AND LEECHES NOTHING,
+	// UNLESS A CAPSTONE OPTION SAYS OTHERWISE. Issues #1047 and #1048. Reprisal
+	// Wave is the only source of the first and Feeding Wound of the second, so
+	// zero is the ordinary case for both. A radius of zero means "only the one
+	// that hit you": the area search is skipped entirely rather than run with a
+	// radius too short to reach anything.
+	InitRetaliationRadiusMetres(0.0f);
+	InitRetaliationLeeches(0.0f);
+
+	// AND NO CHARACTER RELEASES A NOVA UNLESS ONE PASSIVE NODE SAYS SO. Issue
+	// #1050. The Masochist's Unstable Aura is its only source, and this stays
+	// zero even for a character holding it, because that row carries a health
+	// condition and a conditional bonus is never folded into an attribute.
+	// AND A LASTING EFFECT RUNS FOR ITS NORMAL TIME. Issue #1033. A hundred
+	// means unchanged, the same as the two damage-taken stats below; a base of
+	// zero would end every stun and every burn in the game the instant it
+	// landed. A character built by `UCataclysmPlayerClassStats::ApplyTo` has
+	// this overwritten from `EngineSuppliedBases`, which states the same 100.
+	InitDebuffDurationTaken(100.0f);
+
+	// AND THE DEBUFFS ON A CHARACTER COUNT DOWN AS USUAL. Issue #1070. Zero
+	// means the rule is off, and it stays zero even for a character holding
+	// Ceaseless Penance, because that row carries a health condition and a
+	// conditional bonus is never folded into an attribute.
+	InitDebuffsDoNotExpire(0.0f);
+	InitSkillLocked(0.0f);
+
+	InitNovaDamageOfMissingHealth(0.0f);
+
+	// BOTH ZERO, AND ZERO MEANS THE CHARACTER DOES NOT HOLD THE NODE.
+	// Issues #1057 and #1058. Beacon of Despair and Contagious Torment are
+	// the only sources of either, so every character in the game sits here
+	// until a point is spent.
+	InitAuraDebuffDuration(0.0f);
+	InitDebuffSpreadChance(0.0f);
+
+	// AND THE TWO THAT FINISH THE MASOCHIST TREE, both zero for the same
+	// reason. Issues #1060 and #1061.
+	InitDeathSpreadChance(0.0f);
+	InitDamageVsSharedDebuff(0.0f);
+
+	// A HUNDRED MEANS UNCHANGED, the same as AreaOfEffect above. Issue #1026.
+	// A character built by `UCataclysmPlayerClassStats::ApplyTo` has both
+	// overwritten from `EngineSuppliedBases`, which states the same 100. This is
+	// what an ability system that never runs that holds -- every enemy, and any
+	// test that builds one by hand -- and it means such a character takes exactly
+	// the damage it always did rather than none at all.
+	InitDamageTaken(100.0f);
+	InitDamageOverTimeTaken(100.0f);
+
+	// Magic find is an added percentage and has a flat source, the "Flat magic
+	// find" affix, so zero is right. Loot quantity is a percentage of what the
+	// dungeon would otherwise drop and every source of it is an increase, so
+	// 100 means "unchanged" and zero would leave every source nothing to
+	// scale. Issue #243.
+	InitMagicFind(0.0f);
+	InitLootQuantity(100.0f);
+}
+
+void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
+	TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, Armor);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, Evasion);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, BlockChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageReduction);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageReductionMore);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, Retaliation);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CrowdControlResistance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, AttackDamage);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CritChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MaxCritChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CritMultiplier);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, AttackSpeed);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, AreaOfEffect);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DotDamage);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DotFrequency);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DotDuration);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, StaggerDuration);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet,
+						StaggerHealthCeilingReduction);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, KnockdownSeconds);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, Penetration);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ArmorPenetration);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, SpellDamage);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageVsWar);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageVsDemonic);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageVsDeath);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageVsPestilence);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageVsFamine);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageVsCelestial);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageVsChaos);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageVsVoid);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MovementSpeed);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CooldownReduction);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CooldownSkipChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, BleedOnCritChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, BleedChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, PoisonChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DiseaseChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, VoidSplinterChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, NecrosisChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, BurnChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MadnessChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CrippleChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, WeakenChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ShredChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, StunChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CrippleMagnitude);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, WeakenMagnitude);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, PossessionThresholdBonus);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MinionReserveReduction);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MinionCapBonus);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ShieldAbsorbsDamageOverTime);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ShieldRechargesWhileDamaged);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ShieldRechargeHasNoDelay);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, AurasEndAtDeath);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ManaRegenRestoresShield);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ArmorPenetrationSuppressed);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MeleeEvasionSuppressed);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MovementSpeedReductionSuppressed);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CrowdControlEndsWhenItsApplierDies);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageTaken);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageOverTimeTaken);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DebuffDamageSuppressed);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, RetaliationRadiusMetres);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, RetaliationLeeches);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DebuffDurationTaken);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DebuffsDoNotExpire);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, SkillLocked);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, NovaDamageOfMissingHealth);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, AuraDebuffDuration);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DebuffSpreadChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DeathSpreadChance);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageVsSharedDebuff);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MagicFind);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, LootQuantity);
+}
+
+void UCataclysmCombatAttributeSet::PreAttributeChange(
+	const FGameplayAttribute& Attribute, float& NewValue)
+{
+	Super::PreAttributeChange(Attribute, NewValue);
+
+	if (Attribute == GetCritChanceAttribute())
+	{
+		// THE CAP IS THIS CHARACTER'S RATHER THAN THE GAME'S, since issue #680.
+		// It is 100 for everyone until an enchantment lowers it, and the
+		// Enchantments sheet of docs/All_Things_Cataclysm.xlsx carries one that
+		// does: "Your critical hit chance cannot exceed 30%-50%". Reading the
+		// attribute rather than the constant is what gives it somewhere to land.
+		NewValue = FMath::Clamp(NewValue, 0.0f, GetMaxCritChance());
+		return;
+	}
+
+	// A CHANCE IS BETWEEN NOTHING AND CERTAINTY. Issue #973. A value above 100
+	// is not a larger chance and a negative one is not a smaller chance; both
+	// are data that means nothing, and clamping says so once here rather than at
+	// the roll. No node reaches 100: The Catalyst stops at 40.
+	if (Attribute == GetCooldownSkipChanceAttribute()
+		|| Attribute == GetBleedOnCritChanceAttribute()
+		|| Attribute == GetDebuffSpreadChanceAttribute()
+		|| Attribute == GetDeathSpreadChanceAttribute())
+	{
+		NewValue = FMath::Clamp(NewValue, 0.0f, 100.0f);
+		return;
+	}
+
+	// A SHARE OF A HUNDRED, HELD INSIDE IT, AND NOT A CHANCE. Issue #45.
+	//
+	// THE REASONING IS ALREADY WRITTEN AND IS NOT REPEATED HERE. This is the
+	// same shape as `HealingCeilingReduction` in the VITAL set, and the comment
+	// on that clamp gives both arguments for it: "BELOW ZERO EACH WOULD INVERT
+	// ITSELF" -- a negative ceiling reduction would RAISE the ceiling above the
+	// maximum -- and past a hundred it "would go through zero". Read that one.
+	//
+	// A HUNDRED IS LEGITIMATE and means this character cannot stagger anything
+	// at all, because the ceiling is then zero and no living target is at or
+	// below zero health. No row states it, and it is not a data error if one
+	// ever does.
+	//
+	// THE PRECEDENT IS IN THE VITAL SET AND THIS STAT IS IN THE COMBAT SET, and
+	// that difference is deliberate rather than an oversight: the stat belongs
+	// to the character doing the staggering, which is an offence-side reading,
+	// while the healing ceiling belongs to the character being healed. The
+	// reasoning for the clamp transfers even though the location does not.
+	if (Attribute == GetStaggerHealthCeilingReductionAttribute())
+	{
+		NewValue = FMath::Clamp(NewValue, 0.0f, 100.0f);
+		return;
+	}
+
+	// THE ELEVEN CHANCES TO APPLY AN AILMENT ARE NOT IN THAT LIST, ON PURPOSE.
+	// Issue #899. Past certainty an ailment's chance becomes magnitude, so 250 is
+	// a real answer and a larger one than 100, and clamping it would throw away
+	// what the design says the excess is for. They take the floor of zero below
+	// with everything else.
+
+	if (Attribute == GetMaxCritChanceAttribute())
+	{
+		// THE CEILING ITSELF IS BOUNDED BY THE CONSTANT, so it can be lowered and
+		// never raised. The project owner ruled on 2026-08-17 that critical strike
+		// chance is hard-capped at 100% and nothing raises it. That is the
+		// opposite of maximum resistance, where one enchantment raises the cap to
+		// a ceiling of 90%.
+		NewValue = FMath::Clamp(NewValue, 0.0f, CritChanceCap);
+		return;
+	}
+
+	// CROWD CONTROL RESISTANCE GOES BELOW ZERO, TO -100, and is not floored at
+	// zero with the rest below. Issue #1951: below zero it lengthens crowd
+	// control, to at most twice at -100, and the pipeline that reads a player's
+	// total floors nothing. Floored here at zero, a creature could never be
+	// lengthened and a player's sheet would read 0 while its crowd control
+	// lasted longer. The one reader of this attribute is
+	// `UCataclysmSkillEffects::AfterCrowdControlResistance`, which expects it.
+	if (Attribute == GetCrowdControlResistanceAttribute())
+	{
+		NewValue = FMath::Max(NewValue,
+							  UCataclysmSkillEffects::MostCrowdControlLengthening);
+		return;
+	}
+
+	// Evasion is NOT clamped to its 60% soft cap, and block chance has no cap
+	// at all. Both are deliberate: gear enchantments may exceed the evasion cap,
+	// and a block removes only half a hit's damage, so even 100% block chance is
+	// not immunity.
+	//
+	// Damage reduction and retaliation are likewise left unbounded here; where
+	// they need bounding is in the damage calculation, against the final number,
+	// not against each contributing stat.
+	//
+	// THAT IS NOW TRUE OF DAMAGE REDUCTION AND IT WAS NOT UNTIL ISSUE #644. The
+	// paragraph above described where the bound belonged, and no bound existed
+	// in the damage calculation or anywhere else, so a character at 100 took
+	// nothing at all. It is capped now, at
+	// UCataclysmDamageCalculation::DamageReductionCap, inside
+	// EffectiveDamageReduction -- which is exactly where this comment always
+	// said it should be.
+	//
+	// RETALIATION IS STILL UNBOUNDED AND THAT IS A DIFFERENT QUESTION. It deals
+	// damage back rather than preventing any, so no amount of it makes anything
+	// immune to anything.
+	NewValue = FMath::Max(NewValue, 0.0f);
+}
+
+float UCataclysmCombatAttributeSet::FinalCooldown(float BaseCooldown,
+												  float CooldownIncreases,
+												  float MoreMultiplier)
+{
+	// Divide, never subtract. Subtracting reaches zero at 100 points of
+	// Efficacy; dividing halves the cooldown there and can never reach zero.
+	//
+	// The more multiplier divides as well rather than multiplying. A cooldown is
+	// a rate, so a source that makes it shorter has to divide; multiplying would
+	// mean a cooldown reduction gem made the cooldown longer. Because both
+	// buckets divide, no number of sources reaches zero.
+	return BaseCooldown / CooldownDivisor(CooldownIncreases, MoreMultiplier);
+}
+
+float UCataclysmCombatAttributeSet::DisplayedCooldownReduction(
+	float CooldownIncreases, float MoreMultiplier)
+{
+	const float Divisor = CooldownDivisor(CooldownIncreases, MoreMultiplier);
+	return 100.0f * (Divisor - 1.0f) / Divisor;
+}
+
+float UCataclysmCombatAttributeSet::CooldownDivisor(float CooldownIncreases,
+													float MoreMultiplier)
+{
+	// Both brackets are floored above zero so the division cannot produce a
+	// negative or infinite interval from bad data.
+	const float Increases = FMath::Max(CooldownIncreases, 0.0f);
+	const float More = FMath::Max(MoreMultiplier, UE_SMALL_NUMBER);
+	return (1.0f + Increases) * More;
+}
+
+float UCataclysmCombatAttributeSet::CooldownLengthFactor(float Lengthening)
+{
+	// Floored so a negative row cannot pass for a reduction by another route.
+	return 1.0f + FMath::Max(Lengthening, 0.0f);
+}
+
+TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
+{
+	return {
+		GetArmorAttribute(), GetEvasionAttribute(), GetBlockChanceAttribute(),
+		GetDamageReductionAttribute(), GetDamageReductionMoreAttribute(),
+		GetRetaliationAttribute(),
+		GetCrowdControlResistanceAttribute(),
+		GetAttackDamageAttribute(),
+		GetCritChanceAttribute(), GetMaxCritChanceAttribute(),
+		GetCritMultiplierAttribute(),
+		GetAttackSpeedAttribute(), GetAreaOfEffectAttribute(),
+		GetDotDamageAttribute(), GetDotFrequencyAttribute(),
+		GetDotDurationAttribute(), GetPenetrationAttribute(),
+		GetStaggerDurationAttribute(),
+		GetStaggerHealthCeilingReductionAttribute(),
+		GetKnockdownSecondsAttribute(),
+		GetArmorPenetrationAttribute(),
+		GetSpellDamageAttribute(),
+		GetDamageVsWarAttribute(), GetDamageVsDemonicAttribute(),
+		GetDamageVsDeathAttribute(), GetDamageVsPestilenceAttribute(),
+		GetDamageVsFamineAttribute(), GetDamageVsCelestialAttribute(),
+		GetDamageVsChaosAttribute(), GetDamageVsVoidAttribute(),
+		GetMovementSpeedAttribute(), GetCooldownReductionAttribute(),
+		GetCooldownSkipChanceAttribute(), GetBleedOnCritChanceAttribute(),
+		GetBleedChanceAttribute(), GetPoisonChanceAttribute(),
+		GetDiseaseChanceAttribute(), GetVoidSplinterChanceAttribute(),
+		GetNecrosisChanceAttribute(), GetBurnChanceAttribute(),
+		GetMadnessChanceAttribute(), GetCrippleChanceAttribute(),
+		GetWeakenChanceAttribute(), GetShredChanceAttribute(),
+		GetStunChanceAttribute(),
+		// HOW LARGE, WHERE THE ELEVEN ABOVE ARE HOW OFTEN. Issue #1767.
+		GetCrippleMagnitudeAttribute(), GetWeakenMagnitudeAttribute(),
+		// AND THE HEALTH THRESHOLD A BLOW MUST LEAVE A TARGET UNDER TO TAKE
+		// IT AS A THRALL, in percentage points added to the skill row's own
+		// figure. Issue #1718.
+		GetPossessionThresholdBonusAttribute(),
+		// AND WHAT ONE MINION RESERVES, AND HOW MANY MINIONS MAY BE ACTIVE,
+		// both applied to a figure the skill's own row states. Issue #1718.
+		GetMinionReserveReductionAttribute(), GetMinionCapBonusAttribute(),
+		GetShieldAbsorbsDamageOverTimeAttribute(),
+		GetShieldRechargesWhileDamagedAttribute(),
+		GetShieldRechargeHasNoDelayAttribute(),
+		GetAurasEndAtDeathAttribute(),
+		GetManaRegenRestoresShieldAttribute(),
+		GetArmorPenetrationSuppressedAttribute(),
+		GetMeleeEvasionSuppressedAttribute(),
+		GetMovementSpeedReductionSuppressedAttribute(),
+		GetCrowdControlEndsWhenItsApplierDiesAttribute(),
+		GetDamageTakenAttribute(), GetDamageOverTimeTakenAttribute(),
+		GetDebuffDamageSuppressedAttribute(),
+		GetRetaliationRadiusMetresAttribute(), GetRetaliationLeechesAttribute(),
+		GetDebuffDurationTakenAttribute(), GetDebuffsDoNotExpireAttribute(),
+		GetSkillLockedAttribute(),
+		GetNovaDamageOfMissingHealthAttribute(),
+		GetAuraDebuffDurationAttribute(), GetDebuffSpreadChanceAttribute(),
+		GetDeathSpreadChanceAttribute(), GetDamageVsSharedDebuffAttribute(),
+		GetMagicFindAttribute(), GetLootQuantityAttribute(),
+	};
+}
+
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, Armor)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, Evasion)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, BlockChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageReduction)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageReductionMore)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, Retaliation)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CrowdControlResistance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, AttackDamage)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CritChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MaxCritChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CritMultiplier)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, AttackSpeed)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, AreaOfEffect)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DotDamage)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DotFrequency)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DotDuration)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, StaggerDuration)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, StaggerHealthCeilingReduction)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, KnockdownSeconds)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, Penetration)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ArmorPenetration)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, SpellDamage)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageVsWar)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageVsDemonic)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageVsDeath)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageVsPestilence)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageVsFamine)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageVsCelestial)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageVsChaos)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageVsVoid)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MovementSpeed)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CooldownReduction)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CooldownSkipChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, BleedOnCritChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, BleedChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, PoisonChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DiseaseChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, VoidSplinterChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, NecrosisChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, BurnChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MadnessChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CrippleChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, WeakenChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ShredChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, StunChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CrippleMagnitude)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, WeakenMagnitude)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, PossessionThresholdBonus)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MinionReserveReduction)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MinionCapBonus)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ShieldAbsorbsDamageOverTime)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ShieldRechargesWhileDamaged)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ShieldRechargeHasNoDelay)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, AurasEndAtDeath)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ManaRegenRestoresShield)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ArmorPenetrationSuppressed)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MeleeEvasionSuppressed)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MovementSpeedReductionSuppressed)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CrowdControlEndsWhenItsApplierDies)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageTaken)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageOverTimeTaken)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DebuffDamageSuppressed)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, RetaliationRadiusMetres)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, RetaliationLeeches)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DebuffDurationTaken)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DebuffsDoNotExpire)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, SkillLocked)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, NovaDamageOfMissingHealth)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, AuraDebuffDuration)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DebuffSpreadChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DeathSpreadChance)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageVsSharedDebuff)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MagicFind)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, LootQuantity)

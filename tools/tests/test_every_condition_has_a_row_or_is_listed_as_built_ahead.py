@@ -1,0 +1,157 @@
+"""Every condition the generator knows is named by an effect row, or is listed here
+as built ahead of its row on purpose.
+
+WHY THIS EXISTS. Issue #1650. A condition is cheap to add and lands with its own
+tests; its data row usually needs the design workbook, which one session may
+edit at a time; and nothing anywhere failed when the row never followed. Six of
+the twenty conditions were named by no row on 2026-09-12, from at least two
+sessions, and a session finding one cold could not tell "built ahead on
+purpose" from "forgotten". This keeps the two apart: a session that lands a
+mechanism before its row adds the name to `BUILT_AHEAD_OF_THEIR_ROWS` with the
+reason, and one that forgets is told.
+
+IMPORTED, NOT GREPPED. `CONDITIONS` is a dict whose keys are the names; a
+pattern reading snake_case words out of the file's text also collects stat
+names and sentence fragments from the comments beside them, which is how a
+count of 33 was once reported for a dict of 20. Reading the keys gives the
+number.
+
+THE SAME SHAPE AS THE COVERAGE PINS in
+`tools/tests/test_enchantment_effects_match_the_row_text.py`: an expected set,
+held both ways. A name that gains a row must leave the list, so the list cannot
+rot into an allowance that excuses everything.
+
+THE CONTROL. `target_within_metres` is named by several enchantment effect rows.
+If it ever reads as unused, the reader is broken and the rest of this file
+means nothing.
+"""
+
+from __future__ import annotations
+
+import csv
+import pathlib
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+
+import generate_datatables as gen  # noqa: E402
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
+                 REPO_ROOT / "game" / "Data" / "PassiveEffects.csv")
+
+#: Conditions the generator knows that no effect row names today, each with
+#: why it was landed ahead of its row. Measured on `origin/development` at
+#: 1aacbb32, 2026-09-16: 38 conditions, 35 named by a row, these three not.
+#: `enemies_hit_at_least` was added and left again the same day, when
+#: Sundering's row was authored: measured on branch
+#: `feat/ritualist-nodes-say-minion`, 39 conditions, 36 named by a row, these
+#: three not.
+#: Measured on branch `feat/six-enumerators-conditions-and-scales`,
+#: 2026-09-18: 45 conditions, 39 named by a row, these six not.
+#: `metres_moved_before_attack` left on 2026-09-16, when Headlong's second
+#: clause took a row: measured on branch `feat/ravager-fervour-per-enemy-hit`,
+#: 39 conditions, 37 named by a row, these two not.
+#: FOUR LEFT ON 2026-09-18, when the thirteen enchantment rows were written:
+#: `opponent_within_metres`, `moved_within_seconds`, `class_resource_above` and
+#: `energy_shield_above_zero` each now have the row whose sentence asked for
+#: them. Measured on branch `data/thirteen-enchantment-rows`: 45 conditions,
+#: 43 named by a row, these two not.
+#: ONE JOINED ON 2026-09-18, `seconds_after_striking_a_boss`, the window a Boss
+#: strike opens: measured on branch `feat/a-boss-strike-opens-a-cooldown-window`,
+#: 47 conditions, 44 named by a row, these three not. The count rose by two and
+#: only one of them is the name above; the other is Set Against It's points
+#: threshold, which never passed through this list because its rows landed in
+#: the same change as the condition.
+#: AND IT LEFT ON 2026-09-23, when its row landed with issue #1994.
+#: TWO JOINED AND LEFT THE SAME DAY in one change, `enemies_hit_at_most` and
+#: `opponent_is_crowd_controlled` for issue #1686, with their rows.
+BUILT_AHEAD_OF_THEIR_ROWS = {
+    # Landed with the movement conditions for the dungeon-modifier work. The
+    # row that wants it is a passive node, not an enchantment: Iron Aegis, an
+    # option of the Bulwark tree's Second Oath, "Your Block Chance is doubled
+    # while you have not attacked in the last 3 seconds". Bulwark is a War
+    # class tree, so it waits on the rule that no War work is done yet.
+    "not_attacked_for_seconds",
+    # TWO JOINED ON 2026-10-07, ruled that day and built ahead of their rows
+    # while the design workbook is with another session: "Gain 50%-100%
+    # increased damage while under the effect of a DoT" and "After 10 seconds
+    # in combat you begin losing 2%-4% of your maximum HP per second".
+    # `docs/DECISIONS.md` of that day gives the shape of each row. Each leaves
+    # with its row.
+    # BOTH LEFT with their rows, issue #1833.
+    # TWO JOINED ON 2026-10-08, ruled that day and built ahead of their rows:
+    # "Channel skills drain 8%-15% of your maximum HP per second while active"
+    # and "You cannot move while channeling any skill" are under the first,
+    # and "Channel skills deal 30%-50% less damage during the first 2 seconds
+    # of channeling" is under the second. `docs/DECISIONS.md` of that day gives
+    # the shape of each row. Each leaves with its rows.
+    # BOTH LEFT with their rows, issue #1833.
+    # `target_in_your_zone` JOINED AND LEFT ON 2026-10-06: the engine half of "You
+    # deal 15%-30% increased damage to enemies standing in your persistent AOE
+    # zones" landed first and its row the same day, issue #1833.
+    # `target_carries_void_splinter` LEFT on 2026-10-01 with its row, "You deal
+    # 3%-5% more damage to an enemy carrying a void splinter", issue #1833 group
+    # E part 1.
+    # `opponent_first_struck_by_you_seconds_ago` JOINED AND LEFT ON 2026-10-12:
+    # the engine half of "Enemies that survive more than 5 seconds after first
+    # being hit gain 20%-40% increased damage" landed first and its row the
+    # same day, issue #1833.
+    # `hit_dealt_is_not_spell` JOINED AND LEFT ON 2026-10-17: ruled that day (O6)
+    # and built ahead of its row, the Null Emperor 2-piece "Your attacks have a
+    # 25% chance to silence an enemy for 1 second", which landed in the layer
+    # above the mechanism in the same build window.
+    # `target_is_silenced` JOINED AND LEFT ON 2026-10-17: ruled that day (O7) and
+    # built ahead of its row, the Null Emperor 6-piece "Every time you hit a
+    # silenced enemy, you gain a stack of 'Void.'", which landed in the layer
+    # above the mechanism in the same build window.
+    # `target_is_moving` JOINED ON 2026-10-23: ruled that day (#2235, Q1) and
+    # built ahead of its row on branch `feat/dot-target-moving`, for "While the
+    # enemy is moving, your DoTs on them deal 20%-40% more damage". The data
+    # commit on the same branch rewrites the row and takes this name out.
+    # TAKEN OUT ON 2026-10-24 by that data commit: the row names it now.
+}
+
+#: A condition several enchantment effect rows name. The control.
+KNOWN_USED = "target_within_metres"
+
+
+def conditions_named_by_a_row() -> set[str]:
+    used: set[str] = set()
+    for table in EFFECT_TABLES:
+        with table.open(newline="", encoding="utf-8") as handle:
+            for row in csv.DictReader(handle):
+                name = (row.get("Condition") or "").strip().lower()
+                if name:
+                    used.add(name)
+    return used
+
+
+def test_the_reader_sees_a_condition_that_rows_do_name() -> None:
+    """The control: a reader finding nothing would make every name look unused."""
+    assert KNOWN_USED in gen.CONDITIONS, f"{KNOWN_USED} is no longer a condition"
+    assert KNOWN_USED in conditions_named_by_a_row(), (
+        f"{KNOWN_USED} is named by effect rows and was not read as used; the "
+        f"reader is broken, so the check below cannot be trusted")
+
+
+def test_every_condition_is_named_by_a_row_or_listed_as_built_ahead() -> None:
+    unused = set(gen.CONDITIONS) - conditions_named_by_a_row()
+    forgotten = unused - BUILT_AHEAD_OF_THEIR_ROWS
+    assert not forgotten, (
+        f"no row in EnchantmentEffects.csv or PassiveEffects.csv names "
+        f"{sorted(forgotten)}. A condition nothing names cannot be reached in "
+        f"play. Author its row, or add the name to BUILT_AHEAD_OF_THEIR_ROWS in "
+        f"this file with the reason it landed first. Issue #1650.")
+
+
+def test_the_built_ahead_list_holds_nothing_a_row_now_names() -> None:
+    """A name that gained its row must leave the list, or the list rots."""
+    now_used = BUILT_AHEAD_OF_THEIR_ROWS & conditions_named_by_a_row()
+    assert not now_used, (
+        f"{sorted(now_used)} are listed as built ahead of their rows and a row "
+        f"now names them; delete them from BUILT_AHEAD_OF_THEIR_ROWS.")
+    unknown = BUILT_AHEAD_OF_THEIR_ROWS - set(gen.CONDITIONS)
+    assert not unknown, (
+        f"{sorted(unknown)} are listed here and are not conditions the generator "
+        f"knows; delete them from BUILT_AHEAD_OF_THEIR_ROWS.")

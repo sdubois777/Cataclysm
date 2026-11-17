@@ -1,0 +1,179 @@
+{
+  "what_this_is": "Written by tools/generate_datatable_assets.py. One entry per DataTable asset, holding the SHA-256 of the CSV it was built from at the time it was built. tools/tests/test_datatable_assets_are_current.py fails when a CSV has changed since. Regenerate with the command in game/README.md.",
+  "tables": [
+    {
+      "asset": "DT_Affixes",
+      "csv": "Affixes.csv",
+      "rows": 86,
+      "csv_sha256": "1e0770234d3187490b12264c23bc650b1a54a461b8fb8af4210b2f57e4664d72"
+    },
+    {
+      "asset": "DT_AffixTiers",
+      "csv": "AffixTiers.csv",
+      "rows": 7,
+      "csv_sha256": "a7a27b3df1e3cf18e0074cefb54c088075e6e54d0dc9ecf5f15ac4585f5fec37"
+    },
+    {
+      "asset": "DT_Attributes",
+      "csv": "Attributes.csv",
+      "rows": 17,
+      "csv_sha256": "b617db59785ee25e674534f10392215b71e3caf6279bbb17b03fa669be027752"
+    },
+    {
+      "asset": "DT_CityUpgrades",
+      "csv": "CityUpgrades.csv",
+      "rows": 24,
+      "csv_sha256": "7c3ef45db6f19a686e18b6c0d3d63b1295bddbe35b1f12daf869aedd7b462144"
+    },
+    {
+      "asset": "DT_ClassStats",
+      "csv": "ClassStats.csv",
+      "rows": 33,
+      "csv_sha256": "cebdb23de1799bab7cdc1c8b435b6a75ecb492b718634d7be185badd0d7332b1"
+    },
+    {
+      "asset": "DT_CraftingMaterials",
+      "csv": "CraftingMaterials.csv",
+      "rows": 46,
+      "csv_sha256": "32cb72e348d5a3f3fa91177a1e3383bf59f00d2b90528a928697aa3b540e5c8a"
+    },
+    {
+      "asset": "DT_DungeonModifiers",
+      "csv": "DungeonModifiers.csv",
+      "rows": 123,
+      "csv_sha256": "1559c3e353a50db53e4732e3d0f445ea0a1f16bca211ae49a499b2284453a9a0"
+    },
+    {
+      "asset": "DT_ElementVisuals",
+      "csv": "ElementVisuals.csv",
+      "rows": 8,
+      "csv_sha256": "610b18d95ab301584e75d0b493147d68eee84afecade9f3c2a1988253f132967"
+    },
+    {
+      "asset": "DT_EnchantmentEffects",
+      "csv": "EnchantmentEffects.csv",
+      "rows": 707,
+      "csv_sha256": "95eaf08cff5cc24f05542c191dd9c060adff6116e68520934ca8a465698324af"
+    },
+    {
+      "asset": "DT_EnchantmentsNegative",
+      "csv": "EnchantmentsNegative.csv",
+      "rows": 196,
+      "csv_sha256": "36d67caba4d0ddae8e990575183440491f2ba2ada47cd759ae738642b1701196"
+    },
+    {
+      "asset": "DT_EnchantmentsPositive",
+      "csv": "EnchantmentsPositive.csv",
+      "rows": 379,
+      "csv_sha256": "c62d67a7481bacacceb9e7a4ddbbafe25b3558294f778282d56a62fef978c7a4"
+    },
+    {
+      "asset": "DT_EnemyArchetypes",
+      "csv": "EnemyArchetypes.csv",
+      "rows": 8,
+      "csv_sha256": "001f699b8d2a7fe9d7a24dc932f693b6db881244aa5f0d667c89d7daa13f2af2"
+    },
+    {
+      "asset": "DT_EnemyDrops",
+      "csv": "EnemyDrops.csv",
+      "rows": 6,
+      "csv_sha256": "7c6c4cd63517b6a6f07439ced46506113890563c50d326103dc1b1d65a009bf5"
+    },
+    {
+      "asset": "DT_EnemyModifiers",
+      "csv": "EnemyModifiers.csv",
+      "rows": 80,
+      "csv_sha256": "32dfe33dd21973458d05fa9558bff5ed6fb36d8f47e4966ffee662593e551157"
+    },
+    {
+      "asset": "DT_EnemyRarities",
+      "csv": "EnemyRarities.csv",
+      "rows": 6,
+      "csv_sha256": "a56a3c5674ff25a590a5cc89dfbb57a075a3ef777d783e4bb04dd47b093967ca"
+    },
+    {
+      "asset": "DT_GearRarity",
+      "csv": "GearRarity.csv",
+      "rows": 8,
+      "csv_sha256": "33e5bf146c136e9102a55ef9c8065d7bd8bcaf7daf58814951fc13332f362a62"
+    },
+    {
+      "asset": "DT_Gems",
+      "csv": "Gems.csv",
+      "rows": 27,
+      "csv_sha256": "a743f8d36e688ea757217c7f13e0b7d1422b33d6bc9ac576e147bfef0ecc15e8"
+    },
+    {
+      "asset": "DT_ItemBases",
+      "csv": "ItemBases.csv",
+      "rows": 55,
+      "csv_sha256": "7019559c5970bdcb084f4798e6974df1abb4de61bc98edf09cfafe43f07f7342"
+    },
+    {
+      "asset": "DT_ItemSockets",
+      "csv": "ItemSockets.csv",
+      "rows": 12,
+      "csv_sha256": "d47726baef387f2a40da3b8fe17def45c7ac23a228daf0e9e040a206bd813de2"
+    },
+    {
+      "asset": "DT_MinionTypes",
+      "csv": "MinionTypes.csv",
+      "rows": 9,
+      "csv_sha256": "605f77483f30abf1c85c5a3d54fcd3765647ecd995f7c814475164c90eed4c95"
+    },
+    {
+      "asset": "DT_MaterialTiers",
+      "csv": "MaterialTiers.csv",
+      "rows": 5,
+      "csv_sha256": "1ddb2ed8c862162184fe314b5de3126a9dcc508de5a9f41e32efda7ea5d736c2"
+    },
+    {
+      "asset": "DT_MinionScaling",
+      "csv": "MinionScaling.csv",
+      "rows": 2,
+      "csv_sha256": "9b493ced6e4579024b0b40500cedaa699377817ac0ca708e62c8d0860f9f74b0"
+    },
+    {
+      "asset": "DT_PassiveEdges",
+      "csv": "PassiveEdges.csv",
+      "rows": 416,
+      "csv_sha256": "910f3a8262ed390836b19ceb214ff43b1bed38059e6ecb6b5c0210fb9665f320"
+    },
+    {
+      "asset": "DT_PassiveEffects",
+      "csv": "PassiveEffects.csv",
+      "rows": 325,
+      "csv_sha256": "9e488efd4507ddbc5781e5c8bd69ea6d7e96e145c4782155a1c6c51ac638b39d"
+    },
+    {
+      "asset": "DT_PassiveNodes",
+      "csv": "PassiveNodes.csv",
+      "rows": 441,
+      "csv_sha256": "620acefc5ba7c0942b547fe9558a3bd245cfd848fd2d6b804d0edbdb6642f1d3"
+    },
+    {
+      "asset": "DT_SkillSlots",
+      "csv": "SkillSlots.csv",
+      "rows": 7,
+      "csv_sha256": "402fca60e960369b248fd3102cbc3f59fe43b3944c47295db18ac6a8aa1099fb"
+    },
+    {
+      "asset": "DT_StatusEffects",
+      "csv": "StatusEffects.csv",
+      "rows": 52,
+      "csv_sha256": "50f7bf05ce08d87fa7d17f49db02f898564cef9083b5af68011665a2eef5a185"
+    },
+    {
+      "asset": "DT_WeaponMeshes",
+      "csv": "WeaponMeshes.csv",
+      "rows": 14,
+      "csv_sha256": "6eee2a30f4c7a156893877d274cd8b06492aba10ebfca2bf979b8329d5acd3fd"
+    },
+    {
+      "asset": "DT_WeaponSkills",
+      "csv": "WeaponSkills.csv",
+      "rows": 403,
+      "csv_sha256": "f67a52730e0e721e9fb36f7cf878595ddbc832d8050f7a3e2b82c36a937ffd7b"
+    }
+  ]
+}

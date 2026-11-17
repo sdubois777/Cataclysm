@@ -1,0 +1,3380 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "Misc/AutomationTest.h"
+
+#if WITH_AUTOMATION_TESTS
+
+// For killing a player and standing it back up, to see where it lands.
+// Issue #1103.
+#include "AbilitySystem/CataclysmGroundZone.h"
+#include "AbilitySystem/CataclysmProjectile.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmTelegraphMarker.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystemComponent.h"
+#include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmGatekeeperCharacter.h"
+#include "Character/CataclysmImpCharacter.h"
+#include "AbilitySystem/CataclysmCommand.h"
+#include "Character/CataclysmPlayerCharacter.h"
+#include "Components/CapsuleComponent.h"
+#include "Player/CataclysmPlayerState.h"
+#include "Dungeon/CataclysmDungeonFloor.h"
+#include "Dungeon/CataclysmDungeonGameMode.h"
+#include "Dungeon/CataclysmDungeonModifierEffects.h"
+#include "Dungeon/CataclysmDungeonStairs.h"
+#include "Dungeon/CataclysmFloorGenerator.h"
+#include "Dungeon/CataclysmFloorPopulation.h"
+#include "Empire/CataclysmDungeonKind.h"
+#include "Empire/CataclysmDungeonModifier.h"
+#include "Empire/CataclysmEmpireRun.h"
+#include "Empire/CataclysmRoster.h"
+#include "Engine/World.h"
+#include "EngineUtils.h"
+#include "HAL/IConsoleManager.h"
+#include "Items/CataclysmDroppedItem.h"
+#include "Misc/ScopeExit.h"
+#include "Tests/CataclysmTestWorld.h"
+#include "UObject/Class.h"
+
+/**
+ * Tests for the game mode that puts a player on a generated dungeon floor.
+ *
+ * WHAT THEY CAN AND CANNOT REACH. `StartPlay` cannot be called from an automation
+ * test: it wants a player controller and a pawn, and a test world has neither and
+ * cannot be given them -- `Tests/CataclysmTestWorld.h` records why. So the two
+ * steps it performs are public methods and these call them directly, which is the
+ * same shape the sandbox's own tests use for its creature spawners and for the
+ * same stated reason: a step left only inside `StartPlay` is a step nothing
+ * covers.
+ *
+ * WHAT IS THEREFORE NOT COVERED, said plainly: that `StartPlay` calls them, and
+ * in the right order. Two lines of it are unreachable from here.
+ */
+
+namespace CataclysmDungeonModeTest
+{
+	ACataclysmDungeonGameMode* SpawnMode(UWorld* World)
+	{
+		return World ? World->SpawnActor<ACataclysmDungeonGameMode>() : nullptr;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeBuildsAFloorTest,
+	"Cataclysm.DungeonMode.ItBuildsAFloorToStandOn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeBuildsAFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	ACataclysmDungeonFloor* Floor = Mode->BuildFloor();
+	if (!TestNotNull(TEXT("it built a floor"), Floor))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the floor has ground to stand on and stairs to reach"),
+			 Floor->IsBuilt());
+	TestEqual(TEXT("and the game mode remembers it"),
+			  Mode->CurrentFloor.Get(), Floor);
+
+	// IT IS THE FLOOR THE SETTINGS ASK FOR, not merely a floor. Building the same
+	// request straight from the generator has to give the same cells, or the
+	// settings on the game mode do not decide anything.
+	FCataclysmFloorRequest Request;
+	Request.DungeonSeed = Mode->DungeonSeed;
+	Request.FloorNumber = Mode->FloorNumber;
+	Request.Layout = Mode->Layout;
+
+	TestTrue(TEXT("it is the floor the game mode's own settings describe"),
+			 Floor->GetPlan().Cells
+				 == FCataclysmFloorGenerator::Generate(Request).Cells);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeRebuildsTest,
+	"Cataclysm.DungeonMode.ChangingTheFloorNumberBuildsThatFloorInPlace",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeRebuildsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	// THE SHAPE TAKING THE STAIRS WILL USE. Nothing advances the floor number
+	// yet, but when something does it will set it and build again, and it must
+	// get the next floor in the same actor rather than a second floor beside the
+	// first.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	Mode->FloorNumber = 1;
+	ACataclysmDungeonFloor* First = Mode->BuildFloor();
+	if (!TestNotNull(TEXT("it built the first floor"), First))
+	{
+		return false;
+	}
+	const TArray<ECataclysmFloorCell> FirstCells = First->GetPlan().Cells;
+
+	Mode->FloorNumber = 2;
+	ACataclysmDungeonFloor* Second = Mode->BuildFloor();
+	if (!TestNotNull(TEXT("it built the second floor"), Second))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the second floor is built in the same actor"), Second, First);
+	TestFalse(TEXT("and it is a different floor"),
+			  Second->GetPlan().Cells == FirstCells);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModePlacesThePlayerTest,
+	"Cataclysm.DungeonMode.ThePlayerIsStoodOnTheFloorAndNotInsideIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModePlacesThePlayerTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	// THE FAULT THIS RULES OUT IS SILENT AND LOOKS LIKE NOTHING. A character is a
+	// capsule whose origin is its middle, so putting that origin on the walking
+	// surface buries the lower half in the ground. What the player then sees is a
+	// character standing in a hole, or falling through the world.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerCharacter* Player =
+		World->SpawnActor<ACataclysmPlayerCharacter>(
+			FVector(50000.0f, 50000.0f, 50000.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a player character spawned"), Player))
+	{
+		return false;
+	}
+
+	// PLACING BEFORE THERE IS A FLOOR FAILS AND SAYS SO. A silent success here
+	// would put the player at the world origin on a floor that is not there.
+	TestFalse(TEXT("a pawn cannot be placed before a floor has been built"),
+			  Mode->PlaceAtEntrance(Player));
+
+	ACataclysmDungeonFloor* Floor = Mode->BuildFloor();
+	if (!TestNotNull(TEXT("it built a floor"), Floor))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the player is placed once there is a floor"),
+			 Mode->PlaceAtEntrance(Player));
+
+	// It is at the entrance, in the two directions that decide which cell it is
+	// standing on.
+	const FVector Entrance = Floor->EntranceWorld();
+	const FVector Standing = Player->GetActorLocation();
+
+	TestTrue(FString::Printf(
+		TEXT("the player stands on the cell the generator chose: at %s, the "
+			 "entrance is %s"),
+		*Standing.ToCompactString(), *Entrance.ToCompactString()),
+		FVector::Dist2D(Standing, Entrance) < 1.0f);
+
+	TestTrue(TEXT("and that cell is walkable"),
+			 Floor->GetPlan().IsFloor(Floor->CellOfWorld(Standing)));
+
+	// AND ABOVE THE SURFACE, NOT IN IT. Raised by the capsule's own half height,
+	// read from the pawn rather than assumed, because the three designed classes
+	// are not all the same size.
+	const float HalfHeight =
+		Player->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+
+	TestTrue(FString::Printf(
+		TEXT("the capsule's bottom rests on the surface: middle at %.1f, half "
+			 "height %.1f, surface at %.1f"),
+		Standing.Z, HalfHeight, Entrance.Z),
+		FMath::IsNearlyEqual(Standing.Z - HalfHeight, Entrance.Z, 1.0f));
+
+	TestTrue(TEXT("which means the player is above the floor, not inside it"),
+			 Standing.Z > Entrance.Z);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeNoSandboxCreaturesTest,
+	"Cataclysm.DungeonMode.ItDoesNotPutTheSandboxsCreaturesInADungeon",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeNoSandboxCreaturesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	// Every sandbox spawner places its creatures at a fixed offset from the world
+	// origin, which is where the sandbox's flat floor is. On a generated floor
+	// the world origin is the middle of the grid and is as likely to be inside
+	// solid rock as on the ground.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Dungeon = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Dungeon))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("a dungeon does not spawn the sandbox's creatures"),
+			  Dungeon->bSpawnsSandboxCreatures);
+
+	// THE CONTROL. Without this the check above passes on a flag nothing ever
+	// sets to true, which would say nothing about the sandbox still working.
+	ACataclysmGameMode* Sandbox = World->SpawnActor<ACataclysmGameMode>();
+	if (!TestNotNull(TEXT("the sandbox game mode spawned"), Sandbox))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("and the sandbox still does"),
+			 Sandbox->bSpawnsSandboxCreatures);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeSaveRecordTest,
+	"Cataclysm.DungeonMode.TheSaveRecordSaysWhichDungeonAndFloorNotSandbox",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeSaveRecordTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	// `FCataclysmSavedFloor` holds a dungeon name and a floor counted from 1. The
+	// sandbox's game mode writes "Sandbox" and 1 because the sandbox is the only
+	// level there is. A record that still said that while the player was three
+	// floors into a dungeon would be a record of the wrong place.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Dungeon = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Dungeon))
+	{
+		return false;
+	}
+
+	Dungeon->DungeonName = FName(TEXT("TheDeep"));
+	Dungeon->FloorNumber = 7;
+
+	TestEqual(TEXT("the record names the dungeon"),
+			  Dungeon->RunFloorName(), FName(TEXT("TheDeep")));
+	TestEqual(TEXT("and the floor of it"), Dungeon->RunFloorNumber(), 7);
+
+	// THE CONTROL, again: the sandbox still answers what it always did.
+	ACataclysmGameMode* Sandbox = World->SpawnActor<ACataclysmGameMode>();
+	if (!TestNotNull(TEXT("the sandbox game mode spawned"), Sandbox))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the sandbox still records itself as Sandbox"),
+			  Sandbox->RunFloorName(), FName(TEXT("Sandbox")));
+	TestEqual(TEXT("on floor 1, because a floor of zero would say nobody is in "
+				   "a dungeon"), Sandbox->RunFloorNumber(), 1);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Looking at another floor without rebuilding
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModeTest
+{
+	/**
+	 * Sets a console variable for as long as it is in scope, and puts it back.
+	 *
+	 * A TEST THAT LEFT ONE SET WOULD CHANGE EVERY TEST AFTER IT. Console
+	 * variables are global and the automation suite runs in one process, so
+	 * `Cataclysm.DungeonLayout` left at 1 would quietly carve caverns for the
+	 * five tests above and they would still pass, which is worse than failing.
+	 *
+	 * SET AT THE CONSOLE'S OWN PRIORITY, the same as
+	 * `CataclysmTestWorld::FScopedCritRoll` and for the reason recorded there:
+	 * Unreal remembers who set a console variable and silently discards a write
+	 * from code once the command line has set one.
+	 */
+	struct FScopedConsoleInt
+	{
+		FScopedConsoleInt(const TCHAR* Name, int32 Value)
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(Name);
+			if (Variable)
+			{
+				Previous = Variable->GetInt();
+				Variable->Set(Value, ECVF_SetByConsole);
+			}
+		}
+
+		~FScopedConsoleInt()
+		{
+			if (Variable)
+			{
+				Variable->Set(Previous, ECVF_SetByConsole);
+			}
+		}
+
+		IConsoleVariable* Variable = nullptr;
+		int32 Previous = 0;
+	};
+
+	/**
+	 * The same for a console variable holding a number with a fraction.
+	 *
+	 * A SEPARATE TYPE RATHER THAN A TEMPLATE. `IConsoleVariable` has a separate
+	 * `GetFloat` and `GetInt`, and `GetInt` on a float variable truncates, so a
+	 * scope guard that read the wrong one would restore 0.25 as 0 and silently
+	 * empty every floor in every test after it.
+	 */
+	struct FScopedConsoleFloat
+	{
+		FScopedConsoleFloat(const TCHAR* Name, float Value)
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(Name);
+			if (Variable)
+			{
+				Previous = Variable->GetFloat();
+				Variable->Set(Value, ECVF_SetByConsole);
+			}
+		}
+
+		~FScopedConsoleFloat()
+		{
+			if (Variable)
+			{
+				Variable->Set(Previous, ECVF_SetByConsole);
+			}
+		}
+
+		IConsoleVariable* Variable = nullptr;
+		float Previous = 0.0f;
+	};
+
+	/**
+	 * The same for a console variable holding a name rather than a number.
+	 *
+	 * A THIRD TYPE RATHER THAN A TEMPLATE, for the reason `FScopedConsoleFloat`
+	 * gives above and one more: `IConsoleVariable::GetString` on a number
+	 * variable answers with the number spelled out, so a guard that read the
+	 * wrong one would restore "2" into a variable expecting a sub-type's name
+	 * and quietly leave every later test asking for a dungeon nothing matches.
+	 */
+	struct FScopedConsoleString
+	{
+		FScopedConsoleString(const TCHAR* Name, const TCHAR* Value)
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(Name);
+			if (Variable)
+			{
+				Previous = Variable->GetString();
+				Variable->Set(Value, ECVF_SetByConsole);
+			}
+		}
+
+		~FScopedConsoleString()
+		{
+			if (Variable)
+			{
+				Variable->Set(*Previous, ECVF_SetByConsole);
+			}
+		}
+
+		IConsoleVariable* Variable = nullptr;
+		FString Previous;
+	};
+
+	/**
+	 * Every dungeon sub-type there is, read off the reflected enum.
+	 *
+	 * THE SAME SHAPE AS `EverySubType` IN `CataclysmFloorBriefTests.cpp` and
+	 * for the same two reasons written there: a sub-type added later is covered
+	 * without anybody remembering to come here, and the last entry is skipped
+	 * because Unreal appends a hidden `_MAX` that `NumEnums` counts.
+	 */
+	TArray<ECataclysmDungeonSubType> EverySubType()
+	{
+		TArray<ECataclysmDungeonSubType> Out;
+
+		const UEnum* Reflected = StaticEnum<ECataclysmDungeonSubType>();
+		if (!Reflected)
+		{
+			return Out;
+		}
+
+		for (int32 Index = 0; Index + 1 < Reflected->NumEnums(); ++Index)
+		{
+			Out.Add(static_cast<ECataclysmDungeonSubType>(
+				Reflected->GetValueByIndex(Index)));
+		}
+		return Out;
+	}
+
+	/** What the reflected enum calls one sub-type, for a message or a lookup. */
+	FString NameOf(ECataclysmDungeonSubType SubType)
+	{
+		const UEnum* Reflected = StaticEnum<ECataclysmDungeonSubType>();
+		return Reflected
+			? Reflected->GetNameStringByValue(static_cast<int64>(SubType))
+			: FString();
+	}
+
+	/** What the editor shows for one sub-type, which is not always its name. */
+	FString DisplayNameOf(ECataclysmDungeonSubType SubType)
+	{
+		const UEnum* Reflected = StaticEnum<ECataclysmDungeonSubType>();
+		return Reflected
+			? Reflected->GetDisplayNameTextByValue(static_cast<int64>(SubType)).ToString()
+			: FString();
+	}
+
+	/** One dungeon modifier, built by hand, with a danger nothing shares. */
+	FCataclysmDungeonModifier ModifierNamed(const TCHAR* Key, float Danger)
+	{
+		FCataclysmDungeonModifier Modifier;
+		Modifier.RowKey = FName(Key);
+		Modifier.ModifierName = FName(Key);
+		Modifier.Cataclysm = ECataclysmType::War;
+		Modifier.Danger = Danger;
+		return Modifier;
+	}
+
+	/**
+	 * Twenty modifiers for a floor to draw from.
+	 *
+	 * TWENTY, so a tier 4 dungeon drawing four of them has 4,845 sets to land
+	 * on and two floors drawing the same four is a coincidence rather than the
+	 * only thing the pool can produce. The same size and the same reasoning as
+	 * `Pool` in `CataclysmFloorBriefTests.cpp`.
+	 *
+	 * NAMED SO THAT NOTHING HERE COLLIDES WITH A DUNGEON'S OWN MODIFIER LIST,
+	 * which is what lets a test say "this floor re-drew" without depending on
+	 * what the draw gave.
+	 */
+	TArray<FCataclysmDungeonModifier> ModifierPoolOfTwenty()
+	{
+		TArray<FCataclysmDungeonModifier> Out;
+		for (int32 Index = 0; Index < 20; ++Index)
+		{
+			Out.Add(ModifierNamed(*FString::Printf(TEXT("PoolModifier_%02d"), Index),
+								  static_cast<float>(Index + 1)));
+		}
+		return Out;
+	}
+
+	/**
+	 * A floor's modifiers as one string, in a fixed order.
+	 *
+	 * SORTED, so that two floors carrying the same four modifiers in a
+	 * different order count as the same set rather than as a change.
+	 */
+	FString SortedKeysOf(const TArray<FName>& Keys)
+	{
+		TArray<FString> Names;
+		for (const FName& Key : Keys)
+		{
+			Names.Add(Key.ToString());
+		}
+		Names.Sort();
+		return FString::Join(Names, TEXT(","));
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeSeedControlTest,
+	"Cataclysm.DungeonMode.TheConsoleCanAskForAnotherDungeon",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeSeedControlTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	Mode->DungeonSeed = 5;
+
+	// Zero leaves the game mode's own setting alone, which is what a person who
+	// has never typed the command gets.
+	{
+		FScopedConsoleInt Untouched(TEXT("Cataclysm.DungeonSeed"), 0);
+		TestEqual(TEXT("with the console variable at zero, the setting decides"),
+				  Mode->ChooseSeed(), 5);
+	}
+
+	// A number above zero is that dungeon.
+	{
+		FScopedConsoleInt Asked(TEXT("Cataclysm.DungeonSeed"), 91);
+		TestEqual(TEXT("a number above zero is the dungeon walked"),
+				  Mode->ChooseSeed(), 91);
+	}
+
+	// Minus one rolls a new one. The entropy is passed in rather than read from
+	// the clock, because a test that rolled twice and expected two different
+	// numbers would be a test that usually passes.
+	{
+		FScopedConsoleInt Rolling(TEXT("Cataclysm.DungeonSeed"), -1);
+
+		const int32 First = Mode->ChooseSeed(/*Entropy=*/123456789);
+		const int32 Second = Mode->ChooseSeed(/*Entropy=*/987654321);
+
+		TestNotEqual(TEXT("two different moments give two different dungeons"),
+					 First, Second);
+		TestTrue(TEXT("and both are seeds the generator will accept"),
+				 First > 0 && Second > 0);
+
+		// AND IT DOES NOT SIMPLY RETURN THE SETTING, which is how this would
+		// look if the -1 case were never reached.
+		TestNotEqual(TEXT("a rolled seed is not the game mode's own setting"),
+					 First, Mode->DungeonSeed);
+
+		// The same moment gives the same dungeon, because the generator is
+		// deterministic and only the choice of seed is rolled.
+		TestEqual(TEXT("the same moment gives the same dungeon"),
+				  Mode->ChooseSeed(/*Entropy=*/123456789), First);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeFloorControlTest,
+	"Cataclysm.DungeonMode.TheConsoleCanAskForAnotherFloorOfTheSameDungeon",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeFloorControlTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	Mode->FloorNumber = 3;
+
+	{
+		FScopedConsoleInt Untouched(TEXT("Cataclysm.DungeonFloor"), 0);
+		TestEqual(TEXT("with the console variable at zero, the setting decides"),
+				  Mode->ChooseFloorNumber(), 3);
+	}
+
+	{
+		FScopedConsoleInt Asked(TEXT("Cataclysm.DungeonFloor"), 40);
+		TestEqual(TEXT("a number above zero is the floor walked"),
+				  Mode->ChooseFloorNumber(), 40);
+
+		// AND IT REACHES THE FLOOR THAT IS BUILT, not only this answer. A
+		// console variable nothing reads is a control that does nothing.
+		ACataclysmDungeonFloor* Floor = Mode->BuildFloor();
+		if (!TestNotNull(TEXT("it built a floor"), Floor))
+		{
+			return false;
+		}
+
+		FCataclysmFloorRequest Request;
+		Request.DungeonSeed = Mode->DungeonSeed;
+		Request.FloorNumber = 40;
+		Request.Layout = Mode->Layout;
+
+		TestTrue(TEXT("and the floor built is floor 40"),
+				 Floor->GetPlan().Cells
+					 == FCataclysmFloorGenerator::Generate(Request).Cells);
+	}
+
+	// Floors are counted from 1, so a negative asked for at the console cannot
+	// produce floor zero, which would mean nobody is in a dungeon.
+	{
+		FScopedConsoleInt Nonsense(TEXT("Cataclysm.DungeonFloor"), -7);
+		TestTrue(TEXT("a floor number is never below 1, whatever is typed"),
+				 Mode->ChooseFloorNumber() >= 1);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeLayoutControlTest,
+	"Cataclysm.DungeonMode.TheConsoleCanAskForAnotherLayoutFamily",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeLayoutControlTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	Mode->Layout = ECataclysmFloorLayout::Halls;
+
+	// MINUS ONE MEANS "USE THE SETTING" HERE AND ZERO DOES NOT, unlike the other
+	// two controls, because zero is a real answer: it is the Halls family.
+	{
+		FScopedConsoleInt Untouched(TEXT("Cataclysm.DungeonLayout"), -1);
+		TestEqual(TEXT("with the console variable at minus one, the setting decides"),
+				  Mode->ChooseLayout(), ECataclysmFloorLayout::Halls);
+	}
+
+	// Every family can be asked for by number, including the first one.
+	for (uint8 Which = 0; Which < static_cast<uint8>(ECataclysmFloorLayout::Count); ++Which)
+	{
+		FScopedConsoleInt Asked(TEXT("Cataclysm.DungeonLayout"), Which);
+		TestEqual(FString::Printf(TEXT("layout %d is %s"), Which,
+				  CataclysmFloorLayoutName(static_cast<ECataclysmFloorLayout>(Which))),
+				  Mode->ChooseLayout(), static_cast<ECataclysmFloorLayout>(Which));
+	}
+
+	// AND IT REACHES THE FLOOR THAT IS BUILT. Asking for caverns and getting
+	// halls is the failure this rules out.
+	{
+		FScopedConsoleInt Caverns(TEXT("Cataclysm.DungeonLayout"),
+			static_cast<int32>(ECataclysmFloorLayout::Caverns));
+
+		ACataclysmDungeonFloor* Floor = Mode->BuildFloor();
+		if (!TestNotNull(TEXT("it built a floor"), Floor))
+		{
+			return false;
+		}
+		TestEqual(TEXT("asking for caverns builds a cavern"),
+				  Floor->GetPlan().Layout, ECataclysmFloorLayout::Caverns);
+		TestNotEqual(TEXT("which is not the family the setting asks for"),
+					 Floor->GetPlan().Layout, Mode->Layout);
+	}
+
+	// A number nobody should type is refused rather than cast. Casting 40 to the
+	// enum would carve nothing and leave the player standing in the void.
+	{
+		FScopedConsoleInt Nonsense(TEXT("Cataclysm.DungeonLayout"), 40);
+		TestEqual(TEXT("a layout number out of range falls back to the setting"),
+				  Mode->ChooseLayout(), ECataclysmFloorLayout::Halls);
+	}
+	{
+		FScopedConsoleInt Nonsense(TEXT("Cataclysm.DungeonLayout"),
+			static_cast<int32>(ECataclysmFloorLayout::Count));
+		TestEqual(TEXT("and the count itself is not a layout"),
+				  Mode->ChooseLayout(), ECataclysmFloorLayout::Halls);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeSubTypeControlTest,
+	"Cataclysm.DungeonMode.TheConsoleCanAskForAnotherDungeonSubType",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeSubTypeControlTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	// THE SETTING IS SIEGE AND NOT NONE ON PURPOSE. None is what an unset
+	// control falls back to, what a default-constructed game mode carries and
+	// what a failed lookup would leave behind, so a test whose setting was None
+	// could not tell "the setting decided" from "nothing happened at all".
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Siege;
+
+	// AN EMPTY NAME MEANS "USE THE SETTING". The four controls above this one
+	// spell that as 0 or -1; a name has an emptiness of its own and does not
+	// need a number standing in for one.
+	//
+	// CLEARING IT IS ASKED FOR FROM A NAME THAT IS ALREADY SET, and that is
+	// deliberate. Writing an empty name over a variable that is already empty
+	// would pass whether clearing worked or did nothing at all, which is the
+	// shape of a check that cannot fail.
+	{
+		FScopedConsoleString Typed(TEXT("Cataclysm.DungeonSubType"), TEXT("Horde"));
+		if (!TestEqual(TEXT("a name typed at the console decides"),
+					   static_cast<uint8>(Mode->ChooseSubType()),
+					   static_cast<uint8>(ECataclysmDungeonSubType::Horde)))
+		{
+			return false;
+		}
+
+		{
+			FScopedConsoleString Cleared(TEXT("Cataclysm.DungeonSubType"), TEXT(""));
+			TestEqual(TEXT("clearing it hands the decision back to the setting"),
+					  static_cast<uint8>(Mode->ChooseSubType()),
+					  static_cast<uint8>(ECataclysmDungeonSubType::Siege));
+		}
+
+		TestEqual(TEXT("and putting the name back makes it decide again"),
+				  static_cast<uint8>(Mode->ChooseSubType()),
+				  static_cast<uint8>(ECataclysmDungeonSubType::Horde));
+	}
+
+	// AND WITH THE VARIABLE LEFT ALONE ENTIRELY, which is also what every scope
+	// above has to have restored it to.
+	TestEqual(TEXT("with nothing typed at all, the setting decides"),
+			  static_cast<uint8>(Mode->ChooseSubType()),
+			  static_cast<uint8>(ECataclysmDungeonSubType::Siege));
+
+	// EVERY SUB-TYPE CAN BE ASKED FOR BY ITS OWN NAME, read off the reflected
+	// enum rather than listed here, so a ninth sub-type is covered the day it
+	// is declared. That is the whole failure this issue is: a sub-type that
+	// exists in the enum and cannot be reached from anywhere.
+	const TArray<ECataclysmDungeonSubType> All = EverySubType();
+	if (!TestEqual(TEXT("the reflected enum holds the eight designed sub-types, the Hollow and the Ascendant"),
+				   All.Num(), 10))
+	{
+		return false;
+	}
+
+	for (ECataclysmDungeonSubType SubType : All)
+	{
+		const FString Name = NameOf(SubType);
+		FScopedConsoleString Asked(TEXT("Cataclysm.DungeonSubType"), *Name);
+		TestEqual(*FString::Printf(TEXT("\"%s\" is asked for and answered"), *Name),
+				  static_cast<uint8>(Mode->ChooseSubType()),
+				  static_cast<uint8>(SubType));
+	}
+
+	// NONE IS A REAL ANSWER AND NOT THE SAME AS TYPING NOTHING. It is the
+	// sub-type most dungeons have, so somebody comparing a Horde floor against
+	// an ordinary one has to be able to ask for the ordinary one while the
+	// setting says Siege.
+	{
+		FScopedConsoleString Ordinary(TEXT("Cataclysm.DungeonSubType"), TEXT("None"));
+		TestEqual(TEXT("asking for None beats a setting that says Siege"),
+				  static_cast<uint8>(Mode->ChooseSubType()),
+				  static_cast<uint8>(ECataclysmDungeonSubType::None));
+	}
+
+	// LETTER CASE DOES NOT MATTER, because the lookup goes through `FName`.
+	// Somebody typing at a console is not going to reproduce the capitals.
+	{
+		FScopedConsoleString Shouted(TEXT("Cataclysm.DungeonSubType"), TEXT("HORDE"));
+		TestEqual(TEXT("HORDE in capitals is Horde"),
+				  static_cast<uint8>(Mode->ChooseSubType()),
+				  static_cast<uint8>(ECataclysmDungeonSubType::Horde));
+	}
+	{
+		FScopedConsoleString Quiet(TEXT("Cataclysm.DungeonSubType"), TEXT("volatile"));
+		TestEqual(TEXT("volatile in lower case is Volatile"),
+				  static_cast<uint8>(Mode->ChooseSubType()),
+				  static_cast<uint8>(ECataclysmDungeonSubType::Volatile));
+	}
+
+	// AND BY THE NAME THE EDITOR SHOWS, WHICH IS NOT ALWAYS THE SAME STRING.
+	// `CowLevel` carries `UMETA(DisplayName = "Cow Level")`, and Unreal puts a
+	// space into any run-together name it shows even where no such meta exists,
+	// so somebody reading a sub-type off a details panel and typing what they
+	// see is typing something the enum does not literally contain. Every shown
+	// name is accepted, which is what dropping spaces before the lookup buys.
+	//
+	// THE STRINGS THE CONTROL PRINTS WHEN IT REFUSES A NAME ARE THE IDENTIFIERS
+	// IT WAS GIVEN BY THE SAME REFLECTED ENUM, and the loop above this one
+	// asserts every one of those is accepted. Between the two loops, every name
+	// the control names in its own error message is a name it takes.
+	for (ECataclysmDungeonSubType SubType : All)
+	{
+		const FString Shown = DisplayNameOf(SubType);
+		if (Shown.IsEmpty())
+		{
+			continue;
+		}
+
+		FScopedConsoleString Asked(TEXT("Cataclysm.DungeonSubType"), *Shown);
+		TestEqual(*FString::Printf(TEXT("the shown name \"%s\" is accepted"), *Shown),
+				  static_cast<uint8>(Mode->ChooseSubType()),
+				  static_cast<uint8>(SubType));
+	}
+
+	// AND ONE OF THOSE SHOWN NAMES REALLY DOES DIFFER FROM ITS IDENTIFIER, or
+	// the loop above compared eight strings with themselves and proved nothing.
+	// This is the sub-type the design writes as two words.
+	TestEqual(TEXT("the Cow Level sub-type is shown with a space in it"),
+			  DisplayNameOf(ECataclysmDungeonSubType::CowLevel),
+			  FString(TEXT("Cow Level")));
+	TestEqual(TEXT("while its identifier has none"),
+			  NameOf(ECataclysmDungeonSubType::CowLevel),
+			  FString(TEXT("CowLevel")));
+
+	// A WORD THAT IS NOT A SUB-TYPE LEAVES THE SETTING DECIDING. It cannot be
+	// clamped the way an out-of-range layout number is, because there is no
+	// number to clamp; what it must not do is answer None, which would look
+	// like an ordinary dungeon and read as the control being ignored.
+	//
+	// THE TWO REFUSALS BELOW EACH WRITE A WARNING TO THE LOG, and neither has
+	// to be declared with `AddExpectedError`. A warning does not fail an
+	// automation test: `FAutomationTestBase::bElevateLogWarningsToErrors` is
+	// false, which `CataclysmSaveFloorTests.cpp` records for the same reason.
+	{
+		FScopedConsoleString Nonsense(TEXT("Cataclysm.DungeonSubType"), TEXT("Marmalade"));
+		TestEqual(TEXT("a word that is not a sub-type falls back to the setting"),
+				  static_cast<uint8>(Mode->ChooseSubType()),
+				  static_cast<uint8>(ECataclysmDungeonSubType::Siege));
+	}
+
+	// AND NEITHER IS THE HIDDEN MAXIMUM ENTRY. It is the one wrong answer the
+	// lookup could give that would read as a right one: a real entry with a
+	// real index, which would be accepted and then handed to the floor rules as
+	// a value no dungeon can carry.
+	//
+	// ITS NAME IS READ OFF THE ENUM RATHER THAN WRITTEN HERE, and that is the
+	// difference between this test proving something and proving nothing. The
+	// entry is not emitted by Unreal's header tool -- the generated file lists
+	// only the eight declared sub-types -- it is added when the enum registers,
+	// by `UEnum::SetEnums`, which builds the name from the enumerators' common
+	// prefix. For this enum that prefix comes out empty, so the entry is stored
+	// as "ECataclysmDungeonSubType::_MAX" and comes back from
+	// `GetNameStringByIndex` with the namespace stripped, as "_MAX". Neither is
+	// the "ECataclysmDungeonSubType_MAX" somebody would guess, and a guessed
+	// name is refused for being unknown, which looks exactly like this guard
+	// working while leaving it untested.
+	{
+		const UEnum* Reflected = StaticEnum<ECataclysmDungeonSubType>();
+		if (!TestNotNull(TEXT("the sub-type enum is reflected"), Reflected))
+		{
+			return false;
+		}
+
+		TestEqual(TEXT("the enum carries one entry more than the ten sub-types"),
+				  Reflected->NumEnums(), All.Num() + 1);
+
+		const FString Hidden = Reflected->GetNameStringByIndex(Reflected->NumEnums() - 1);
+
+		// THE LOOKUP REALLY DOES FIND IT, which is what makes the refusal below
+		// worth asserting. Without this line a name the enum could not resolve
+		// at all would produce the same fallback and the guard would be untested.
+		TestEqual(TEXT("the reflected enum finds the hidden entry by that name"),
+				  Reflected->GetIndexByNameString(Hidden), Reflected->NumEnums() - 1);
+
+		FScopedConsoleString Asked(TEXT("Cataclysm.DungeonSubType"), *Hidden);
+		TestEqual(*FString::Printf(TEXT("the hidden entry %s is refused as a sub-type"),
+								   *Hidden),
+				  static_cast<uint8>(Mode->ChooseSubType()),
+				  static_cast<uint8>(ECataclysmDungeonSubType::Siege));
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeSubTypeReachesTheFloorTest,
+	"Cataclysm.DungeonMode.TheSubTypeAskedForReachesTheFloorThatIsBuilt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeSubTypeReachesTheFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// THE OTHER THREE CONTROLS ARE PINNED WHERE THEY MEAN "USE THE SETTING".
+	// Console variables are global and this suite runs in one process, so a
+	// layout or a floor number left behind by an earlier test would decide two
+	// of the assertions below and they would be measuring that instead. Zero is
+	// "use the setting" for the seed and the floor, and minus one is for the
+	// layout, which is why they are not the same number.
+	const FScopedConsoleInt SeedControl(TEXT("Cataclysm.DungeonSeed"), 0);
+	const FScopedConsoleInt FloorControl(TEXT("Cataclysm.DungeonFloor"), 0);
+	const FScopedConsoleInt LayoutControl(TEXT("Cataclysm.DungeonLayout"), -1);
+
+	// A GAME MODE PER SUB-TYPE AND NOT ONE REUSED. A Horde floor is kept rather
+	// than re-carved -- that is what `bSameArenaAsLastFloor` does -- so a second
+	// `BuildFloor` on the same game mode can answer with the floor the first one
+	// built and prove nothing about the second sub-type.
+	const auto FreshMode = [&World](ACataclysmDungeonGameMode*& Out) -> bool
+	{
+		Out = SpawnMode(World);
+		if (!Out)
+		{
+			return false;
+		}
+
+		// SAID OUT LOUD RATHER THAN LEFT AT THE DEFAULTS, so that what the
+		// assertions below mean does not move when a default does.
+		Out->DungeonSeed = 1;
+		Out->FloorNumber = 1;
+		Out->TotalFloors = 10;
+		Out->Layout = ECataclysmFloorLayout::Halls;
+		Out->DungeonSubType = ECataclysmDungeonSubType::None;
+		return true;
+	};
+
+	// THE CONTROL. With nothing typed, floor 1 of an ordinary ten-floor dungeon
+	// is halls, is not one wave, and has no boss at its exit. Every assertion
+	// below is a departure from this floor, so without it they would only show
+	// that a floor has some shape.
+	{
+		ACataclysmDungeonGameMode* Mode = nullptr;
+		if (!TestTrue(TEXT("an ordinary game mode spawned"), FreshMode(Mode)))
+		{
+			return false;
+		}
+
+		FScopedConsoleString Untouched(TEXT("Cataclysm.DungeonSubType"), TEXT(""));
+		ACataclysmDungeonFloor* Floor = Mode->BuildFloor();
+		if (!TestNotNull(TEXT("it built an ordinary floor"), Floor))
+		{
+			return false;
+		}
+
+		TestEqual(TEXT("an ordinary floor is carved by the layout setting"),
+				  static_cast<uint8>(Floor->GetPlan().Layout),
+				  static_cast<uint8>(ECataclysmFloorLayout::Halls));
+		TestFalse(TEXT("an ordinary floor's creatures are not one wave"),
+				  Mode->FloorBrief.bOneWave);
+		TestFalse(TEXT("nothing walks in around the outside of it"),
+				  Mode->FloorBrief.bWaveWalksIn);
+		TestFalse(TEXT("and floor 1 of ten has no boss at its exit"),
+				  Mode->FloorBrief.bBossAtTheExit);
+	}
+
+	// HORDE, TYPED AT THE CONSOLE, BUILDS THE ARENA. This is the work that
+	// merged in #1490 and that nobody could look at: one open space, the
+	// creatures one wave, and that wave walking in around the outside.
+	{
+		ACataclysmDungeonGameMode* Mode = nullptr;
+		if (!TestTrue(TEXT("a game mode for the Horde floor spawned"), FreshMode(Mode)))
+		{
+			return false;
+		}
+
+		FScopedConsoleString Horde(TEXT("Cataclysm.DungeonSubType"), TEXT("Horde"));
+
+		TestEqual(TEXT("the dungeon being built carries the sub-type asked for"),
+				  static_cast<uint8>(Mode->DungeonIdentity().SubType),
+				  static_cast<uint8>(ECataclysmDungeonSubType::Horde));
+
+		ACataclysmDungeonFloor* Floor = Mode->BuildFloor();
+		if (!TestNotNull(TEXT("it built a floor"), Floor))
+		{
+			return false;
+		}
+
+		TestEqual(TEXT("a Horde floor is one arena"),
+				  static_cast<uint8>(Floor->GetPlan().Layout),
+				  static_cast<uint8>(ECataclysmFloorLayout::Arena));
+		TestTrue(TEXT("its creatures are one wave"), Mode->FloorBrief.bOneWave);
+		TestTrue(TEXT("and that wave walks in around the outside"),
+				 Mode->FloorBrief.bWaveWalksIn);
+
+		// IT WAS THE CONSOLE AND NOT THE SETTINGS. Both of the settings that
+		// could have produced this floor are still where the control left them,
+		// so the arena came from the typed name and nothing else.
+		TestEqual(TEXT("the sub-type setting is still None"),
+				  static_cast<uint8>(Mode->DungeonSubType),
+				  static_cast<uint8>(ECataclysmDungeonSubType::None));
+		TestEqual(TEXT("and the layout setting still says halls"),
+				  static_cast<uint8>(Mode->Layout),
+				  static_cast<uint8>(ECataclysmFloorLayout::Halls));
+
+		// AND ENEMY SCORE READS THE SAME SUB-TYPE THE FLOOR WAS BUILT FROM.
+		// `UCataclysmEnemyScore::ScoreThisFloor` takes it from here, so a game
+		// mode that carved an arena and reported no sub-type would pay the
+		// wrong experience for every creature standing in it.
+		TestEqual(TEXT("the run reports the sub-type it is walking"),
+				  static_cast<uint8>(Mode->RunDungeonSubType()),
+				  static_cast<uint8>(ECataclysmDungeonSubType::Horde));
+	}
+
+	// ELITE, TYPED AT THE CONSOLE, PUTS A BOSS AT FLOOR 1'S EXIT. The control
+	// above showed that floor 1 of ten ordinarily has none, so this is the
+	// sub-type doing it and not the last floor of the dungeon.
+	{
+		ACataclysmDungeonGameMode* Mode = nullptr;
+		if (!TestTrue(TEXT("a game mode for the Elite floor spawned"), FreshMode(Mode)))
+		{
+			return false;
+		}
+
+		FScopedConsoleString Elite(TEXT("Cataclysm.DungeonSubType"), TEXT("Elite"));
+		ACataclysmDungeonFloor* Floor = Mode->BuildFloor();
+		if (!TestNotNull(TEXT("it built a floor"), Floor))
+		{
+			return false;
+		}
+
+		TestTrue(TEXT("every floor of an Elite dungeon has a boss at its exit"),
+				 Mode->FloorBrief.bBossAtTheExit);
+		TestEqual(TEXT("and the run reports it as Elite"),
+				  static_cast<uint8>(Mode->RunDungeonSubType()),
+				  static_cast<uint8>(ECataclysmDungeonSubType::Elite));
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeSubTypeVolatileTest,
+	"Cataclysm.DungeonMode.AskingForVolatileChangesTheModifiersEveryFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeSubTypeVolatileTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// THE TIER IS PINNED AT THE CONSOLE'S OWN PRIORITY AND NOT SET ON THE GAME
+	// MODE, and that is the whole of the trap issue #1470 records. How many
+	// modifiers a Volatile floor draws is the tier times one, and the tier is
+	// read through `ACataclysmGameMode::DifficultyTierFor`, which prefers the
+	// `Cataclysm.DifficultyTier` console variable whenever it is above zero.
+	// `CataclysmDroppedItemTests.cpp` writes that variable at console priority,
+	// and `Cataclysm.Drop` sorts before `Cataclysm.DungeonMode`, so in a full
+	// suite run the variable is already set when this test starts and the game
+	// mode's own tier field would be ignored. Writing it here at the same
+	// priority is what makes this test say the same thing alone and in a full
+	// run.
+	const CataclysmTestWorld::FScopedDifficultyTier Tier(4);
+	if (!TestTrue(TEXT("the difficulty tier console variable exists"), Tier.Found()))
+	{
+		return false;
+	}
+
+	// AND SO ARE THE TWO OTHER CONTROLS THAT WOULD OTHERWISE DECIDE WHICH FLOOR
+	// IS BUILT. Both take 0 to mean "use the game mode's setting", which is what
+	// this test needs, and neither is restored by anything outside its own test.
+	const FScopedConsoleInt SeedControl(TEXT("Cataclysm.DungeonSeed"), 0);
+	const FScopedConsoleInt FloorControl(TEXT("Cataclysm.DungeonFloor"), 0);
+
+	/**
+	 * A game mode carrying a pool to draw from and a dungeon list that shares
+	 * no name with it.
+	 *
+	 * THE DUNGEON'S OWN MODIFIERS ARE NOT DRAWN FROM THE POOL, deliberately and
+	 * unlike the arrangement in `CataclysmFloorBriefTests.cpp`. It makes "this
+	 * floor re-drew" a statement that cannot come out true or false by luck: a
+	 * floor carrying "TheDungeonsOwn" did not re-draw, and a floor carrying
+	 * anything else did.
+	 */
+	const auto ModeWithAPool = [&World](ACataclysmDungeonGameMode*& Out) -> bool
+	{
+		Out = SpawnMode(World);
+		if (!Out)
+		{
+			return false;
+		}
+
+		Out->DungeonSeed = 1;
+		Out->FloorNumber = 1;
+		Out->TotalFloors = 20;
+		Out->Layout = ECataclysmFloorLayout::Halls;
+		Out->DungeonSubType = ECataclysmDungeonSubType::None;
+		Out->DungeonModifiers = { FName(TEXT("TheDungeonsOwn")) };
+		Out->DungeonModifierScore = 100.0f;
+		Out->DungeonModifierPool = ModifierPoolOfTwenty();
+		return true;
+	};
+
+	// SIX FLOORS AND NOT TWO. Two floors drawing differently is what a rule that
+	// re-drew exactly once would also produce, so counting how many different
+	// sets six floors carry is what separates "changes every floor" from
+	// "changed once". The ordinary dungeon in the same shape is the control.
+	const int32 HowManyFloors = 6;
+
+	const auto SetsOverTheFloors =
+		[&ModeWithAPool, HowManyFloors](
+			const TCHAR* Typed, TSet<FString>& OutSets, int32& OutKeptItsOwn) -> bool
+	{
+		ACataclysmDungeonGameMode* Mode = nullptr;
+		if (!ModeWithAPool(Mode))
+		{
+			return false;
+		}
+
+		FScopedConsoleString Asked(TEXT("Cataclysm.DungeonSubType"), Typed);
+
+		OutKeptItsOwn = 0;
+		for (int32 FloorNumber = 1; FloorNumber <= HowManyFloors; ++FloorNumber)
+		{
+			Mode->FloorNumber = FloorNumber;
+			if (!Mode->BuildFloor())
+			{
+				return false;
+			}
+
+			OutSets.Add(SortedKeysOf(Mode->FloorBrief.Modifiers));
+			if (Mode->FloorBrief.Modifiers == Mode->DungeonModifiers)
+			{
+				++OutKeptItsOwn;
+			}
+		}
+		return true;
+	};
+
+	// THE CONTROL, FIRST. With nothing typed the dungeon has no sub-type, so
+	// every one of its floors carries the modifiers the dungeon itself drew.
+	// Without this, "the Volatile floors differed" could be something the floor
+	// pipeline does to every dungeon.
+	TSet<FString> OrdinarySets;
+	int32 OrdinaryKeptItsOwn = 0;
+	if (!TestTrue(TEXT("six floors of an ordinary dungeon were built"),
+				  SetsOverTheFloors(TEXT(""), OrdinarySets, OrdinaryKeptItsOwn)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("an ordinary dungeon carries one modifier set over six floors"),
+			  OrdinarySets.Num(), 1);
+	TestEqual(TEXT("and it is the dungeon's own on every one of them"),
+			  OrdinaryKeptItsOwn, HowManyFloors);
+
+	// AND NOW THE SAME DUNGEON WITH VOLATILE TYPED AT THE CONSOLE. Nothing else
+	// about the game mode differs: same seed, same length, same pool, same
+	// sub-type setting of None.
+	TSet<FString> VolatileSets;
+	int32 VolatileKeptItsOwn = 0;
+	if (!TestTrue(TEXT("six floors of a Volatile dungeon were built"),
+				  SetsOverTheFloors(TEXT("Volatile"), VolatileSets, VolatileKeptItsOwn)))
+	{
+		return false;
+	}
+
+	// EVERY FLOOR DREW AGAIN, which is the part of this that does not depend on
+	// what the draw happened to give. A floor that had not re-drawn would be
+	// carrying "TheDungeonsOwn", and none of them is.
+	TestEqual(TEXT("no Volatile floor kept the dungeon's own modifier list"),
+			  VolatileKeptItsOwn, 0);
+
+	// AND WHAT THEY DREW CHANGES FROM FLOOR TO FLOOR, which is the design
+	// sentence: "Dungeon modifiers change every floor." Four modifiers out of a
+	// pool of twenty is 4,845 possible sets, so six floors landing on one set is
+	// not something a working re-draw does; one set is what a re-draw that never
+	// advanced its stream would give, and that is the failure worth catching.
+	TestTrue(*FString::Printf(
+				 TEXT("six Volatile floors carried %d different modifier sets, "
+					  "which is more than the one an ordinary dungeon carries"),
+				 VolatileSets.Num()),
+			 VolatileSets.Num() > 1);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeSubTypeHelpNamesThemAllTest,
+	"Cataclysm.DungeonMode.TheSubTypeControlNamesEverySubTypeItTakes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeSubTypeHelpNamesThemAllTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	// WHY THIS TEST EXISTS. The lookup reads the reflected enum and cannot go
+	// stale, but the help text a person sees when they type the variable's name
+	// with no value is a list written out by hand. A ninth sub-type accepted by
+	// the control and missing from its help is this issue in miniature: it
+	// works and nobody knows it is there.
+	IConsoleObject* Control =
+		IConsoleManager::Get().FindConsoleObject(TEXT("Cataclysm.DungeonSubType"));
+	if (!TestNotNull(TEXT("the sub-type control is registered"), Control))
+	{
+		return false;
+	}
+
+	const FString Help = Control->GetHelp() ? Control->GetHelp() : TEXT("");
+	if (!TestTrue(TEXT("it has help text to read"), !Help.IsEmpty()))
+	{
+		return false;
+	}
+
+	const TArray<ECataclysmDungeonSubType> All = EverySubType();
+	if (!TestTrue(TEXT("the reflected enum holds sub-types to check for"),
+				  All.Num() > 0))
+	{
+		return false;
+	}
+
+	for (ECataclysmDungeonSubType SubType : All)
+	{
+		const FString Name = NameOf(SubType);
+		TestTrue(*FString::Printf(
+					 TEXT("the help text names %s, which the control accepts"),
+					 *Name),
+				 Help.Contains(Name, ESearchCase::CaseSensitive));
+	}
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Creatures on the floor
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeClassForTest,
+	"Cataclysm.DungeonMode.EveryCreatureThePlannerCanNameHasACharacterClass",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeClassForTest::RunTest(const FString& Parameters)
+{
+	// THE FAULT THIS RULES OUT IS SILENT AND SURVIVES EVERY OTHER TEST. The
+	// populator names creatures with a plain enum so it can be swept headlessly;
+	// the game mode maps each name to a class. A creature added to the enum and
+	// forgotten in that map is a creature the populator places and nothing
+	// spawns, so the floor is quietly short of creatures and every count in
+	// every log line still looks reasonable.
+	for (uint8 Which = 0; Which < static_cast<uint8>(ECataclysmDungeonCreature::Count); ++Which)
+	{
+		const ECataclysmDungeonCreature Creature =
+			static_cast<ECataclysmDungeonCreature>(Which);
+
+		TestNotNull(FString::Printf(TEXT("a %s can be spawned"),
+					CataclysmDungeonCreatureName(Creature)),
+					ACataclysmDungeonGameMode::ClassFor(Creature).Get());
+	}
+
+	// AND NO ORDINARY FLOOR CARRIES THE BOSS. The design places a Gatekeeper at
+	// the end of a dungeon, and this loop used to keep that promise by checking
+	// that NO creature the populator can name maps to the Gatekeeper class --
+	// because nothing held a floor count and there was no way to say "the end".
+	//
+	// **THAT IS NO LONGER HOW THE PROMISE IS KEPT, AND THE OLD CHECK WOULD NOW
+	// REFUSE THE FEATURE.** `FCataclysmFloorBrief::bBossAtTheExit` says which
+	// floors have an end, and `FCataclysmDungeonFloorRules::BossAtTheExit`
+	// decides: the last floor of any dungeon, and every floor of an Elite one.
+	// Issue #41.
+	//
+	// WHAT KEEPS IT OFF AN ORDINARY FLOOR IS THAT THE DENSITY CANNOT DRAW ONE.
+	// `FCataclysmFloorPopulator::PackKinds` is every group a floor is made of
+	// and the Gatekeeper is not among them, so the only route onto a floor is
+	// the boss rule.
+	for (const FCataclysmFloorPopulator::FPackKind& Kind :
+		 FCataclysmFloorPopulator::PackKinds())
+	{
+		TestNotEqual(FString::Printf(
+			TEXT("the density can draw a %s and it is not the boss"),
+			CataclysmDungeonCreatureName(Kind.Creature)),
+			ACataclysmDungeonGameMode::ClassFor(Kind.Creature).Get(),
+			static_cast<UClass*>(ACataclysmGatekeeperCharacter::StaticClass()));
+	}
+
+	// AND THE BOSS IS STILL SPAWNABLE, which is the other half and is what the
+	// loop above would pass without. A rule that places a Gatekeeper the game
+	// mode cannot spawn puts nothing on the floor and says nothing.
+	TestEqual(TEXT("and a Gatekeeper gives the Gatekeeper class"),
+		ACataclysmDungeonGameMode::ClassFor(
+			ECataclysmDungeonCreature::Gatekeeper).Get(),
+		static_cast<UClass*>(ACataclysmGatekeeperCharacter::StaticClass()));
+
+	// THE CONTROL. Without it the loop above passes on a `ClassFor` that returns
+	// null for everything, which is exactly the failure it is written against.
+	TestEqual(TEXT("and the map really is a map: an Imp gives the Imp class"),
+		ACataclysmDungeonGameMode::ClassFor(ECataclysmDungeonCreature::Imp).Get(),
+		static_cast<UClass*>(ACataclysmImpCharacter::StaticClass()));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModePopulatesTest,
+	"Cataclysm.DungeonMode.ItPutsCreaturesOnTheFloorAndNotInsideIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModePopulatesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	// POPULATING BEFORE THERE IS A FLOOR PLACES NOTHING AND SAYS SO. A silent
+	// success here would put sixty creatures at the world origin.
+	TestEqual(TEXT("nothing can be placed before a floor has been built"),
+			  Mode->PopulateFloor(), 0);
+
+	ACataclysmDungeonFloor* Floor = Mode->BuildFloor();
+	if (!TestNotNull(TEXT("it built a floor"), Floor))
+	{
+		return false;
+	}
+
+	// BUILDING A FLOOR DOES NOT POPULATE IT. The two are separate calls so that a
+	// test wanting only geometry does not pay for spawned characters, and so that
+	// walking an empty floor is one console command.
+	TestEqual(TEXT("building a floor puts nothing on it by itself"),
+			  Mode->FloorEnemies.Num(), 0);
+
+	const int32 Spawned = Mode->PopulateFloor();
+	TestTrue(FString::Printf(TEXT("populating it spawned creatures: %d"), Spawned),
+			 Spawned > 0);
+	TestEqual(TEXT("and the game mode remembers all of them"),
+			  Mode->FloorEnemies.Num(), Spawned);
+
+	int32 InRock = 0;
+	int32 SunkIntoTheGround = 0;
+	int32 Bosses = 0;
+
+	// HOW FAR THE BOTTOM OF A CAPSULE ENDS UP FROM THE WALKING SURFACE, at both
+	// ends. A count on its own says the height is wrong and nothing about
+	// whether it is a centimetre or a metre, and the two mean different faults.
+	float LowestOffset = MAX_flt;
+	float HighestOffset = -MAX_flt;
+
+	for (ACataclysmEnemyCharacter* Enemy : Mode->FloorEnemies)
+	{
+		if (!IsValid(Enemy))
+		{
+			continue;
+		}
+
+		if (Enemy->IsA(ACataclysmGatekeeperCharacter::StaticClass()))
+		{
+			++Bosses;
+		}
+
+		const FVector Where = Enemy->GetActorLocation();
+		const FIntPoint Cell = Floor->CellOfWorld(Where);
+
+		if (!Floor->GetPlan().IsFloor(Cell))
+		{
+			++InRock;
+			continue;
+		}
+
+		// ITS CAPSULE'S BOTTOM RESTS ON THE WALKING SURFACE. A character is a
+		// capsule whose origin is its middle, so putting that origin on the
+		// surface buries the lower half. The six creatures placed here are
+		// between 87.95 and 114 cm in half height and none of them is the base
+		// enemy's 80, so a single shared correction would be wrong for all six.
+		const UCapsuleComponent* Capsule = Enemy->GetCapsuleComponent();
+		const float HalfHeight = Capsule ? Capsule->GetScaledCapsuleHalfHeight() : 0.0f;
+		const float Surface = Floor->WorldOfCell(Cell).Z;
+		const float Offset = Where.Z - HalfHeight - Surface;
+
+		LowestOffset = FMath::Min(LowestOffset, Offset);
+		HighestOffset = FMath::Max(HighestOffset, Offset);
+
+		// A BAND RATHER THAN A SINGLE HEIGHT, AND THE REASON IS THE ENGINE'S AND
+		// NOT THIS PROJECT'S. A creature is spawned with its capsule bottom
+		// exactly on the surface, and Unreal's character movement then settles it
+		// a little way clear of the ground: `MAX_FLOOR_DIST` is 2.4 cm and every
+		// creature measured on 2026-08-21 ended up at exactly that. Asserting an
+		// exact height failed on 74 of 105 creatures for that reason alone.
+		//
+		// WHAT THE BAND STILL CATCHES is the fault worth catching: a creature
+		// buried in the floor, which is a negative offset, and one hanging in the
+		// air, which is a large positive one. Both are what a wrong capsule half
+		// height produces, and the six creatures here differ by 26 cm in half
+		// height so a shared constant would be wrong by far more than this band.
+		constexpr float DeepestAllowedCm = -0.5f;
+		constexpr float HighestAllowedCm = 5.0f;
+
+		if (Offset < DeepestAllowedCm || Offset > HighestAllowedCm)
+		{
+			++SunkIntoTheGround;
+		}
+	}
+
+	TestEqual(TEXT("no creature stands in solid rock"), InRock, 0);
+	TestEqual(FString::Printf(
+		TEXT("every creature rests on the walking surface rather than in it or "
+			 "above it; the capsule bottoms sat between %.2f and %.2f cm from "
+			 "the surface"), LowestOffset, HighestOffset),
+		SunkIntoTheGround, 0);
+	TestEqual(TEXT("and no boss is on an ordinary floor"), Bosses, 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeClearsOldCreaturesTest,
+	"Cataclysm.DungeonMode.GoingToAnotherFloorRemovesTheLastFloorsCreatures",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeClearsOldCreaturesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	// THE SHAPE TAKING THE STAIRS WILL USE, and the fault it must not have.
+	// `BuildFloor` replaces the floor inside the same actor, so creatures from
+	// the floor before would be left standing in mid-air over the new one, or
+	// inside its rock, still hunting the player. Nothing at run time reports it.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	// A THIN FLOOR ON PURPOSE. This test is about removal and not about density,
+	// and spawning two full floors' worth of characters to prove it would be
+	// slower for no extra evidence.
+	Mode->EnemyScale = 0.1f;
+	Mode->FloorNumber = 1;
+
+	if (!TestNotNull(TEXT("it built the first floor"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("and put creatures on it"), Mode->PopulateFloor() > 0))
+	{
+		return false;
+	}
+
+	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> FromTheFirstFloor;
+	for (ACataclysmEnemyCharacter* Enemy : Mode->FloorEnemies)
+	{
+		FromTheFirstFloor.Add(Enemy);
+	}
+
+	Mode->FloorNumber = 2;
+	if (!TestNotNull(TEXT("it built the second floor"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	const int32 OnTheSecond = Mode->PopulateFloor();
+	TestTrue(TEXT("and put creatures on that one too"), OnTheSecond > 0);
+
+	int32 Survivors = 0;
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& Old : FromTheFirstFloor)
+	{
+		if (Old.IsValid() && !Old->IsActorBeingDestroyed())
+		{
+			++Survivors;
+		}
+	}
+
+	TestEqual(FString::Printf(
+		TEXT("none of the first floor's %d creatures is still in the world"),
+		FromTheFirstFloor.Num()), Survivors, 0);
+	TestEqual(TEXT("and the game mode's list holds only the new floor's"),
+			  Mode->FloorEnemies.Num(), OnTheSecond);
+
+	// AND CLEARING BY HAND EMPTIES IT, which is what an empty floor needs.
+	Mode->ClearFloorEnemies();
+	TestEqual(TEXT("clearing removes every creature from the list"),
+			  Mode->FloorEnemies.Num(), 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeEnemyScaleTest,
+	"Cataclysm.DungeonMode.TheConsoleCanAskForMoreCreaturesOrForNone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeEnemyScaleTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	Mode->EnemyScale = 0.25f;
+
+	// BELOW ZERO MEANS "USE THE SETTING" HERE AND ZERO DOES NOT, unlike the seed
+	// and floor controls, because zero is a real answer: it is a floor with
+	// nothing on it.
+	{
+		FScopedConsoleFloat Untouched(TEXT("Cataclysm.DungeonEnemyScale"), -1.0f);
+		TestEqual(TEXT("below zero, the game mode's own setting decides"),
+				  Mode->ChooseEnemyScale(), 0.25f);
+	}
+	{
+		FScopedConsoleFloat Asked(TEXT("Cataclysm.DungeonEnemyScale"), 2.0f);
+		TestEqual(TEXT("a number at or above zero is the density used"),
+				  Mode->ChooseEnemyScale(), 2.0f);
+	}
+
+	// A NEGATIVE SETTING IS NOT A NEGATIVE NUMBER OF CREATURES. The property
+	// carries a clamp in the editor; a default saved before that clamp existed
+	// would not be re-clamped, and a negative reaching the populator would ask
+	// for a negative count.
+	{
+		FScopedConsoleFloat Untouched(TEXT("Cataclysm.DungeonEnemyScale"), -1.0f);
+		Mode->EnemyScale = -5.0f;
+		TestEqual(TEXT("a negative setting is read as an empty floor"),
+				  Mode->ChooseEnemyScale(), 0.0f);
+		Mode->EnemyScale = 0.25f;
+	}
+
+	// AND IT REACHES THE FLOOR THAT IS BUILT. A console variable nothing reads is
+	// a control that does nothing, which is the failure the layout control's own
+	// test was written against.
+	if (!TestNotNull(TEXT("it built a floor"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	int32 WithNone = 0;
+	{
+		FScopedConsoleFloat Empty(TEXT("Cataclysm.DungeonEnemyScale"), 0.0f);
+		WithNone = Mode->PopulateFloor();
+	}
+
+	int32 WithSome = 0;
+	{
+		FScopedConsoleFloat Some(TEXT("Cataclysm.DungeonEnemyScale"), 0.1f);
+		WithSome = Mode->PopulateFloor();
+	}
+
+	int32 WithMore = 0;
+	{
+		FScopedConsoleFloat More(TEXT("Cataclysm.DungeonEnemyScale"), 0.4f);
+		WithMore = Mode->PopulateFloor();
+	}
+
+	TestEqual(TEXT("a scale of zero leaves the floor empty"), WithNone, 0);
+	TestTrue(FString::Printf(TEXT("a small scale puts some on it: %d"), WithSome),
+			 WithSome > 0);
+	TestTrue(FString::Printf(
+		TEXT("and a larger scale puts more on it: %d against %d"),
+		WithMore, WithSome), WithMore > WithSome);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Where a player stands back up. Issue #1103
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonRevivalStandsAtTheEntranceTest,
+	"Cataclysm.DungeonMode.RevivingOnAGeneratedFloorStandsThePlayerAtItsEntrance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonRevivalStandsAtTheEntranceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	// WHAT WENT WRONG. Issue #1103, reported from play: "Whenever I die in the
+	// dungeon level, it spawns me outside of the map."
+	// `ACataclysmPlayerCharacter::HandleDeath` records the first `APlayerStart`
+	// in the level to stand back up at, and a dungeon floor is generated at run
+	// time, so the map's player start is nowhere near it.
+	//
+	// A TEST WORLD HAS NO PLAYER START AT ALL, so the recorded place is where
+	// the character fell, which this test moves away from the entrance on
+	// purpose. Without the fix the character comes back where it died; with it,
+	// at the entrance. The two assertions at the end are that pair.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	ACataclysmDungeonFloor* Floor = Mode->BuildFloor();
+	if (!TestNotNull(TEXT("it built a floor"), Floor))
+	{
+		return false;
+	}
+
+	// A PLAYER STATE AS WELL AS A PAWN, because a player's ability system lives
+	// on the state and nothing can die without one.
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	ACataclysmPlayerCharacter* Player =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector,
+													 FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a player state spawned"), PlayerState)
+		|| !TestNotNull(TEXT("a player character spawned"), Player))
+	{
+		return false;
+	}
+	Player->SetPlayerState(PlayerState);
+	Player->OnRep_PlayerState();
+
+	UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Player);
+	if (!TestNotNull(TEXT("the player has an ability system"), AbilitySystem))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the player starts at the entrance"),
+				  Mode->PlaceAtEntrance(Player)))
+	{
+		return false;
+	}
+	const FVector Entrance = Player->GetActorLocation();
+
+	// AND THEN IT WALKS OFF, which is what makes the check below mean something.
+	// A character that died standing on the entrance would land there whichever
+	// rule was used.
+	const FVector Away = Entrance + FVector(5'000.0f, 5'000.0f, 0.0f);
+	Player->SetActorLocation(Away);
+	TestTrue(TEXT("it is somewhere else now"),
+			 FVector::Dist2D(Player->GetActorLocation(), Entrance) > 1.0f);
+
+	// AND DIES THERE. Written rather than dealt, so the death is exact and this
+	// test measures where it stands back up rather than the damage pipeline.
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+	if (!TestTrue(TEXT("writing its health to zero killed it"),
+				  UCataclysmSkillEffects::IsDead(Player)))
+	{
+		return false;
+	}
+
+	// STOOD BACK UP BY HAND. `HandleDeath` schedules this on a timer and a world
+	// built by `UWorld::CreateWorld` is never ticked, so no timer in it fires.
+	Player->Revive();
+
+	TestFalse(TEXT("it is alive again"), UCataclysmSkillEffects::IsDead(Player));
+
+	const FVector StandingAgain = Player->GetActorLocation();
+
+	TestTrue(FString::Printf(
+		TEXT("it stands back up at the floor's entrance: at %s, the entrance is "
+			 "%s"),
+		*StandingAgain.ToCompactString(), *Entrance.ToCompactString()),
+		FVector::Dist2D(StandingAgain, Entrance) < 1.0f);
+
+	// SAID SEPARATELY, because this is the fault rather than a restatement of
+	// the line above. Before issue #1103 the character came back where it fell,
+	// which in the real dungeon level is the map's player start and is off the
+	// generated floor entirely.
+	TestTrue(TEXT("and not where it died"),
+			 FVector::Dist2D(StandingAgain, Away) > 1.0f);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// What a floor holds when the player leaves it. Issue #1176
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeClearsTheFloorTest,
+	"Cataclysm.DungeonMode.GoingDownAFlightOfStairsTakesTheLastFloorsContentsWithIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeClearsTheFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	/**
+	 * REPORTED FROM PLAY, NOT FOUND BY READING. Items left on the floor were
+	 * still visible while walking the next one, and the game slowed badly after
+	 * four or five floors. Issue #1176.
+	 *
+	 * WHY IT LOOKS LIKE THAT RATHER THAN LIKE LITTER LEFT BEHIND. `BuildFloor`
+	 * reuses one `ACataclysmDungeonFloor` actor, so every floor stands at the
+	 * same world coordinates and anything left over is inside the new floor.
+	 *
+	 * WHY IT SLOWS DOWN. `ACataclysmHUD::DrawDropNames` and
+	 * `ACataclysmPlayerController::CollectMaterialsNearby` each walk every
+	 * dropped item in the world every frame. Both were written when one floor's
+	 * worth was the most there could be.
+	 *
+	 * THE UNTRACKED CREATURE IS THE POINT OF THE IMP HERE.
+	 * `ClearFloorEnemies` only empties the array `PopulateFloor` filled, and a
+	 * Gatekeeper's called Imps are spawned straight into the world mid-fight and
+	 * were never in it. One spawned by hand stands in for that.
+	 */
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	// A THIN FLOOR, for the reason the test above gives: this is about removal
+	// and two full floors of characters would be slower for no more evidence.
+	Mode->EnemyScale = 0.1f;
+
+	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+
+	// ONE OF EVERY KIND A FIGHT LEAVES BEHIND, at made-up positions. Where they
+	// are does not matter; that they are in the world does.
+	const FRotator Level = FRotator::ZeroRotator;
+	TWeakObjectPtr<AActor> Drop =
+		World->SpawnActor<ACataclysmDroppedItem>(FVector(150.0f, 0.0f, 90.0f), Level);
+	TWeakObjectPtr<AActor> InFlight =
+		World->SpawnActor<ACataclysmProjectile>(FVector(200.0f, 0.0f, 120.0f), Level);
+	TWeakObjectPtr<AActor> Burning =
+		World->SpawnActor<ACataclysmGroundZone>(FVector(250.0f, 0.0f, 90.0f), Level);
+	TWeakObjectPtr<AActor> Telegraph =
+		World->SpawnActor<ACataclysmTelegraphMarker>(FVector(300.0f, 0.0f, 90.0f), Level);
+	TWeakObjectPtr<AActor> CalledImp =
+		World->SpawnActor<ACataclysmImpCharacter>(FVector(350.0f, 0.0f, 90.0f), Level);
+
+	const bool bAllPlaced = Drop.IsValid() && InFlight.IsValid() && Burning.IsValid()
+						 && Telegraph.IsValid() && CalledImp.IsValid();
+	if (!TestTrue(TEXT("one of each of the five kinds was left on the floor"),
+				  bAllPlaced))
+	{
+		return false;
+	}
+
+	// AND THE IMP IS NOT ONE THE GAME MODE KNOWS ABOUT, which is the case
+	// `ClearFloorEnemies` cannot reach. Stated as an assertion rather than
+	// assumed, because a later change that registers every spawned creature
+	// would quietly turn this test into a weaker one.
+	TestFalse(TEXT("the loose imp is not in the game mode's list"),
+			  Mode->FloorEnemies.Contains(Cast<ACataclysmEnemyCharacter>(CalledImp.Get())));
+
+	if (!TestTrue(TEXT("the second floor was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("the dropped item did not come with the player"), Drop.IsValid());
+	TestFalse(TEXT("nor did the projectile"), InFlight.IsValid());
+	TestFalse(TEXT("nor did the burning ground"), Burning.IsValid());
+	TestFalse(TEXT("nor did the telegraph marker"), Telegraph.IsValid());
+	TestFalse(TEXT("nor did the imp nobody was tracking"), CalledImp.IsValid());
+
+	int32 DropsLeft = 0;
+	for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+	{
+		if (IsValid(*It))
+		{
+			++DropsLeft;
+		}
+	}
+	TestEqual(TEXT("and no dropped item at all is left in the world"), DropsLeft, 0);
+
+	// THE OTHER HALF OF BEING RIGHT, and the one an over-eager clear would fail:
+	// the new floor still has to have its own creatures. Clearing after
+	// `PopulateFloor` instead of before would destroy the ones just spawned and
+	// every assertion above would still pass.
+	TestTrue(TEXT("and the new floor has creatures of its own"),
+			 Mode->FloorEnemies.Num() > 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeFirstFloorKeepsTheLevelTest,
+	"Cataclysm.DungeonMode.ArrivingOnTheFirstFloorTakesNothingOffTheLevel",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeFirstFloorKeepsTheLevelTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	/**
+	 * THE GUARD ON THE CLEAR, WHICH IS NOT DECORATION. `StartPlay` reaches
+	 * `GoToFloor` for the first floor of a run, and a level can hold actors
+	 * somebody placed by hand for the game mode to find. Emptying the world on
+	 * arrival would take those with it and the only symptom would be a level
+	 * that behaves differently from the one that was authored.
+	 *
+	 * A DROPPED ITEM STANDS IN FOR ANY OF THEM. It is the kind this reaches that
+	 * a player would notice first.
+	 */
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+	Mode->EnemyScale = 0.1f;
+
+	// BEFORE ANY FLOOR EXISTS, which is what makes this the first arrival rather
+	// than a change of floor.
+	TWeakObjectPtr<AActor> AlreadyThere = World->SpawnActor<ACataclysmDroppedItem>(
+		FVector(150.0f, 0.0f, 90.0f), FRotator::ZeroRotator);
+	if (!TestTrue(TEXT("something was standing in the level first"),
+				  AlreadyThere.IsValid()))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("what the level held is still there"), AlreadyThere.IsValid());
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A Horde dungeon's waves, driven the way the game drives them. Issue #1467
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModeTest
+{
+	/**
+	 * Kills one creature outright by writing its health to zero.
+	 *
+	 * WRITTEN RATHER THAN DEALT, so these tests measure the wave rule and not
+	 * the damage pipeline. `UCataclysmSkillEffects::IsDead` reads the same
+	 * attribute `ACataclysmDungeonGameMode::WaveStillAlive` asks about.
+	 *
+	 * @return whether it is dead afterwards. False means the creature had no
+	 *         ability system, which would make a kill count silently wrong.
+	 */
+	bool KillOutright(ACataclysmEnemyCharacter* Enemy)
+	{
+		if (!IsValid(Enemy))
+		{
+			return false;
+		}
+
+		UAbilitySystemComponent* Abilities = Enemy->GetAbilitySystemComponent();
+		if (!Abilities)
+		{
+			return false;
+		}
+
+		Abilities->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+
+		return UCataclysmSkillEffects::IsDead(Enemy);
+	}
+
+	/** A game mode set up as a Horde dungeon of `Floors` floors on one seed. */
+	ACataclysmDungeonGameMode* SpawnHorde(UWorld* World, int32 Seed, int32 Floors)
+	{
+		ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+
+		Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+		Mode->DungeonSeed = Seed;
+		Mode->TotalFloors = Floors;
+
+		// **A THIN WAVE ON PURPOSE.** An arena at the shipped density holds 73
+		// to 350 creatures and this test spawns and kills every one of them
+		// twice over. A tenth of the density keeps the wave big enough to have
+		// a threshold above zero and small enough to run quickly.
+		Mode->EnemyScale = 0.1f;
+
+		return Mode;
+	}
+
+	/**
+	 * Ticks the game mode a frame at a time until the arriving wave is all on
+	 * the floor, and returns how many frames that took, or -1 if it never
+	 * finished.
+	 *
+	 * THROUGH `Tick`, THE WAY PLAY DOES IT. Issue #1544 puts a wave down a few
+	 * creatures a frame rather than all at once, so a test that reads the whole
+	 * wave has to let it arrive first. Ticking is what the game does, so these
+	 * tests still drive the calls play makes.
+	 */
+	int32 LetTheWaveArrive(ACataclysmDungeonGameMode* Mode)
+	{
+		constexpr float OneFrame = 1.0f / 60.0f;
+		for (int32 Frames = 0; Frames <= 1000; ++Frames)
+		{
+			if (Mode->CreaturesStillArriving() == 0)
+			{
+				return Frames;
+			}
+			Mode->Tick(OneFrame);
+		}
+		return -1;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeHordeWavesTest,
+	"Cataclysm.DungeonMode.AHordeDungeonsWavesWalkInOneAfterAnotherInOneArena",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeHordeWavesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	// **THIS IS THE TEST THAT MATTERS FOR ISSUE #1467, AND WHY IS WORTH SAYING.**
+	// A test that built an `FCataclysmFloorBrief` by hand and asked the
+	// population pass for a wave would prove the pipeline works and would prove
+	// nothing about a Horde dungeon reaching it. This drives the game mode
+	// through the same calls play does -- `GoToFloor`, then `Tick` -- and reads
+	// what came out.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnHorde(World, /*Seed=*/4242, /*Floors=*/6);
+	if (!TestNotNull(TEXT("a Horde dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+
+	// **AND THE WAVE IS LET FINISH ARRIVING, BY TICKING.** Issue #1544 puts a
+	// wave down a few creatures a frame, and everything below reads the whole of
+	// it. `Cataclysm.DungeonMode.AHordeWaveArrivesOverSeveralFramesRatherThanAllInOne`
+	// is the test of the arriving itself.
+	if (!TestTrue(TEXT("the first wave finished arriving"), LetTheWaveArrive(Mode) >= 0))
+	{
+		return false;
+	}
+
+	// ---- Rule 4: one big open space --------------------------------------
+
+	ACataclysmDungeonFloor* Arena = Mode->CurrentFloor;
+	if (!TestNotNull(TEXT("it built an arena to fight in"), Arena))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a Horde dungeon's floor is one open space"),
+			  static_cast<int32>(Arena->GetPlan().Layout),
+			  static_cast<int32>(ECataclysmFloorLayout::Arena));
+
+	// ---- Rule 1: the wave walks in, around the outside --------------------
+
+	TestEqual(TEXT("the first wave has arrived"), Mode->WavesArrived, 1);
+
+	const int32 FirstWave = Mode->WaveSpawned;
+	if (!TestTrue(FString::Printf(
+					  TEXT("it put a wave on the floor: %d creatures"), FirstWave),
+				  FirstWave > 0))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("and every one of them is in the current wave"),
+			  Mode->CurrentWave.Num(), FirstWave);
+	TestEqual(TEXT("and all of them are alive"),
+			  Mode->WaveStillAlive(), FirstWave);
+
+	// **AND THEY SPAWNED AROUND THE OUTSIDE.** Measured against the middle of
+	// the arena rather than asserted: the mean distance of the wave from the rim
+	// must be well under the mean distance of every walkable cell from it, or
+	// the wave is simply spread over the floor.
+	const TArray<int32> FromRim = CataclysmFloorRimDistances(Arena->GetPlan());
+
+	float WaveFromRim = 0.0f;
+	int32 WaveCounted = 0;
+	for (const ACataclysmEnemyCharacter* Enemy : Mode->CurrentWave)
+	{
+		if (!IsValid(Enemy))
+		{
+			continue;
+		}
+		const int32 Index =
+			Arena->GetPlan().IndexOf(Arena->CellOfWorld(Enemy->GetActorLocation()));
+		if (Index == INDEX_NONE || FromRim[Index] == INDEX_NONE)
+		{
+			continue;
+		}
+		WaveFromRim += static_cast<float>(FromRim[Index]);
+		++WaveCounted;
+	}
+	WaveFromRim = WaveCounted > 0 ? WaveFromRim / static_cast<float>(WaveCounted) : 0.0f;
+
+	float FloorFromRim = 0.0f;
+	int32 FloorCounted = 0;
+	for (int32 Index = 0; Index < FromRim.Num(); ++Index)
+	{
+		if (FromRim[Index] == INDEX_NONE)
+		{
+			continue;
+		}
+		FloorFromRim += static_cast<float>(FromRim[Index]);
+		++FloorCounted;
+	}
+	FloorFromRim = FloorCounted > 0 ? FloorFromRim / static_cast<float>(FloorCounted) : 0.0f;
+
+	TestEqual(TEXT("every creature of the wave was found on the floor"),
+			  WaveCounted, FirstWave);
+
+	TestTrue(FString::Printf(
+				 TEXT("the wave stands %.2f cells from the rim on average and "
+					  "the floor's own cells average %.2f, so it is around the "
+					  "outside"), WaveFromRim, FloorFromRim),
+			 WaveFromRim < FloorFromRim);
+
+	// ---- Rule 3: a much larger aggro range, and only here -----------------
+
+	int32 WideEyed = 0;
+	for (const ACataclysmEnemyCharacter* Enemy : Mode->CurrentWave)
+	{
+		if (IsValid(Enemy)
+			&& FMath::IsNearlyEqual(
+				Enemy->SightRadiusMultiplier,
+				FCataclysmDungeonFloorRules::HordeSightRadiusMultiplier))
+		{
+			++WideEyed;
+		}
+	}
+	TestEqual(TEXT("every creature of the wave notices from the arena's own "
+				   "widened distance"),
+			  WideEyed, FirstWave);
+
+	// AND THAT REACHES THE WHOLE ARENA, which is what "they all always run
+	// towards the player" needs. Measured on a real creature rather than on the
+	// constant, because five of the seven override `SightRadiusCm` and would
+	// have ignored a multiplier written onto `NoticeRadiusCm`.
+	const ACataclysmEnemyCharacter* Any =
+		Mode->CurrentWave.Num() > 0 ? Mode->CurrentWave[0].Get() : nullptr;
+	if (TestNotNull(TEXT("there is a creature to measure"), Any))
+	{
+		const float Across = FCataclysmFloorGenerator::CellSizeCm
+			* FMath::Sqrt(static_cast<float>(
+				Arena->GetPlan().Width * Arena->GetPlan().Width
+					+ Arena->GetPlan().Height * Arena->GetPlan().Height));
+
+		TestTrue(FString::Printf(
+					 TEXT("a creature notices from %.0f cm and the arena is "
+						  "%.0f cm corner to corner"),
+					 Any->NoticesFromCm(), Across),
+				 Any->NoticesFromCm() >= Across);
+
+		// THE CONTROL ON THE SAME CREATURE. Without the multiplier it reaches a
+		// small fraction of the arena, which is what says the multiplier is
+		// doing the work and not the creature's own figure.
+		TestTrue(FString::Printf(
+					 TEXT("and without the arena's multiplier the same creature "
+						  "would notice from only %.0f cm"), Any->SightRadiusCm()),
+				 Any->SightRadiusCm() < Across);
+	}
+
+	// ---- No stairs: the way on is beating the wave ------------------------
+
+	TestNull(TEXT("a Horde dungeon has no stairs, because the way to the next "
+				  "floor is the next wave"),
+			 Mode->Stairs.Get());
+
+	// ---- Rule 2: the next wave arrives at a tenth, and NOT BEFORE ---------
+
+	const int32 Threshold =
+		FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(FirstWave);
+	if (!TestTrue(FString::Printf(
+					  TEXT("a wave of %d has a threshold of %d, which is above "
+						   "zero so 'not yet' and 'now' are distinguishable"),
+					  FirstWave, Threshold),
+				  Threshold > 0))
+	{
+		return false;
+	}
+
+	// **THE CONTROL, AND IT IS THE ONE THAT STOPS THIS TEST BEING A TAUTOLOGY.**
+	// Ticking with the wave standing must do nothing. Without it, a `Tick` that
+	// brought the next wave in unconditionally would pass every check below.
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks * 4.0f);
+	TestEqual(TEXT("ticking with the whole wave standing brings nothing in"),
+			  Mode->WavesArrived, 1);
+	TestEqual(TEXT("and leaves the floor where it was"), Mode->ChooseFloorNumber(), 1);
+
+	// KILLED DOWN TO ONE MORE THAN THE THRESHOLD, which is still too many.
+	TArray<ACataclysmEnemyCharacter*> Wave;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->CurrentWave)
+	{
+		Wave.Add(Enemy.Get());
+	}
+
+	int32 Killed = 0;
+	while (Killed < FirstWave - (Threshold + 1))
+	{
+		if (!TestTrue(TEXT("a creature of the wave was killed"),
+					  KillOutright(Wave[Killed])))
+		{
+			return false;
+		}
+		++Killed;
+	}
+
+	TestEqual(TEXT("the wave is down to one more than its threshold"),
+			  Mode->WaveStillAlive(), Threshold + 1);
+
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks * 4.0f);
+	TestEqual(TEXT("and one more than a tenth is still too many for the next "
+				   "wave to arrive"),
+			  Mode->WavesArrived, 1);
+
+	// ONE MORE, WHICH REACHES THE THRESHOLD EXACTLY.
+	if (!TestTrue(TEXT("one more creature was killed"),
+				  KillOutright(Wave[Killed])))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the wave is down to exactly a tenth"),
+			  Mode->WaveStillAlive(), Threshold);
+
+	// WHAT THE ARENA LOOKED LIKE BEFORE THE NEXT WAVE, so "the same space" can
+	// be a comparison rather than a claim.
+	const FCataclysmFloorPlan Before = Arena->GetPlan();
+	const TArray<ACataclysmEnemyCharacter*> Survivors = [&Mode]()
+	{
+		TArray<ACataclysmEnemyCharacter*> Left;
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->CurrentWave)
+		{
+			if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy))
+			{
+				Left.Add(Enemy.Get());
+			}
+		}
+		return Left;
+	}();
+
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks * 4.0f);
+
+	// ---- And the next wave walked in, into the same arena -----------------
+
+	TestEqual(TEXT("the second wave has arrived"), Mode->WavesArrived, 2);
+	TestEqual(TEXT("and it is floor 2 of the dungeon, so it cost a floor"),
+			  Mode->ChooseFloorNumber(), 2);
+	TestEqual(TEXT("and the game counted it as a floor descended"),
+			  Mode->FloorsDescended, 1);
+
+	// **THE SAME ARENA, AND THAT IS THE WHOLE OF RULE 4 AT THIS LEVEL.**
+	TestTrue(TEXT("it is the same floor actor"), Mode->CurrentFloor == Arena);
+	TestEqual(TEXT("the arena is the same width"),
+			  Arena->GetPlan().Width, Before.Width);
+	TestEqual(TEXT("and the same height"),
+			  Arena->GetPlan().Height, Before.Height);
+	TestEqual(TEXT("and the entrance has not moved"),
+			  Arena->GetPlan().Entrance.ToString(), Before.Entrance.ToString());
+	TestTrue(TEXT("and every cell of it is unchanged"),
+			 Arena->GetPlan().Cells == Before.Cells);
+
+	// **AND THE SECOND WAVE IS LET FINISH ARRIVING TOO**, for the reason the
+	// first one was: the checks below read what it put on the floor.
+	if (!TestTrue(TEXT("the second wave finished arriving"), LetTheWaveArrive(Mode) >= 0))
+	{
+		return false;
+	}
+
+	// **AND WHAT WAS LEFT OF THE LAST WAVE IS STILL FIGHTING.** The owner's rule
+	// leaves a tenth of it alive on purpose; deleting them would be the game
+	// tidying away enemies the player still has to deal with.
+	int32 StillUp = 0;
+	for (const ACataclysmEnemyCharacter* Survivor : Survivors)
+	{
+		if (IsValid(Survivor) && !UCataclysmSkillEffects::IsDead(Survivor))
+		{
+			++StillUp;
+		}
+	}
+	TestEqual(TEXT("what was left of the first wave is still standing"),
+			  StillUp, Threshold);
+
+	// AND THEY ARE NO LONGER WHAT THE NEXT WAVE IS COUNTED AGAINST, which is
+	// what makes "10% of the previous wave" a question about one wave.
+	for (ACataclysmEnemyCharacter* Survivor : Survivors)
+	{
+		if (Mode->CurrentWave.Contains(Survivor))
+		{
+			AddError(TEXT("a survivor of the first wave was counted as part of "
+						  "the second"));
+			return false;
+		}
+	}
+
+	TestTrue(FString::Printf(
+				 TEXT("the second wave put %d creatures on the floor"),
+				 Mode->WaveSpawned),
+			 Mode->WaveSpawned > 0);
+
+	// AND STILL NO STAIRS on the second wave either.
+	TestNull(TEXT("and still no stairs"), Mode->Stairs.Get());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeHordeWaveArrivesOverFramesTest,
+	"Cataclysm.DungeonMode.AHordeWaveArrivesOverSeveralFramesRatherThanAllInOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeHordeWaveArrivesOverFramesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	// **WHAT THIS GUARDS, AND IT FAILS ON THE CODE BEFORE ISSUE #1544.** A wave
+	// used to put every one of its creatures on the floor in the frame it
+	// arrived: 139 of them in the project owner's session on 2026-09-10, at
+	// about 1.2 ms each by the log's timestamps. Driven the way play drives it,
+	// through `GoToFloor` and then `Tick`.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnHorde(World, /*Seed=*/4242, /*Floors=*/6);
+	if (!TestNotNull(TEXT("a Horde dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	// A QUARTER OF THE SHIPPED DENSITY, rather than the tenth the other Horde
+	// tests use, so the wave is several times what one frame puts down and the
+	// arriving has frames to be counted over.
+	Mode->EnemyScale = 0.25f;
+
+	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+
+	ACataclysmDungeonFloor* Arena = Mode->CurrentFloor;
+	if (!TestNotNull(TEXT("it built an arena"), Arena))
+	{
+		return false;
+	}
+
+	// **THE WAVE THE FLOOR DECIDED, ASKED FOR A SECOND TIME.** The population
+	// pass takes only the plan, the density and the brief, and draws from the
+	// floor's own seed, so asking again gives the same creatures on the same
+	// cells. "How many arrive and where" is compared against this.
+	const FCataclysmFloorPopulation Planned = FCataclysmFloorPopulator::Populate(
+		Arena->GetPlan(), Mode->ChooseEnemyScale(), Mode->FloorBrief);
+	const int32 Whole = Planned.Enemies.Num();
+	const int32 PerFrame = ACataclysmDungeonGameMode::WaveCreaturesPerFrame;
+
+	if (!TestTrue(FString::Printf(
+					  TEXT("the wave is %d creatures, more than two frames' worth "
+						   "at %d a frame, so spreading it can be seen"),
+					  Whole, PerFrame),
+				  Whole > 2 * PerFrame))
+	{
+		return false;
+	}
+
+	// ---- The frame the wave arrives in ------------------------------------
+
+	const int32 InTheFirstFrame = Mode->CurrentWave.Num();
+
+	// **THE ASSERTION THAT FAILS ON THE OLD CODE**, where this read `Whole`.
+	TestTrue(FString::Printf(
+				 TEXT("the frame the wave arrives in puts %d of its %d creatures on "
+					  "the floor, not all of them"), InTheFirstFrame, Whole),
+			 InTheFirstFrame < Whole);
+	TestEqual(TEXT("and it puts exactly one frame's worth down"),
+			  InTheFirstFrame, PerFrame);
+	TestEqual(TEXT("and says how many are still to come"),
+			  Mode->CreaturesStillArriving(), Whole - InTheFirstFrame);
+	TestEqual(TEXT("and it is counted as the first wave from the frame it begins"),
+			  Mode->WavesArrived, 1);
+
+	// **A WAVE STILL ARRIVING IS NOT A WAVE THAT HAS BEEN BEATEN.** Kill every
+	// creature that has arrived so far. Judged only on what is standing, that
+	// is none of the wave left, and the next wave would come in on top of the
+	// rest of this one.
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->CurrentWave)
+	{
+		if (!TestTrue(TEXT("an arrived creature was killed"), KillOutright(Enemy.Get())))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("everything that has arrived is dead"), Mode->WaveStillAlive(), 0);
+	TestFalse(TEXT("and still the wave is not finished, because it has not all "
+				   "arrived"),
+			  Mode->ShouldTheNextWaveArrive());
+
+	// ---- Frame by frame ----------------------------------------------------
+
+	constexpr float OneFrame = 1.0f / 60.0f;
+	int32 Frames = 1;
+	while (Mode->CreaturesStillArriving() > 0)
+	{
+		const int32 BeforeThisFrame = Mode->CurrentWave.Num();
+		// A REAL NEXT FRAME, as play gives it. Issue #1554: the frame `GoToFloor`
+		// put the first few down in has had its share, so a `Tick` in that same
+		// frame puts nothing down; this loop counts frames, so each is a new one.
+		++GFrameCounter;
+		Mode->Tick(OneFrame);
+		const int32 ThisFrame = Mode->CurrentWave.Num() - BeforeThisFrame;
+		++Frames;
+
+		if (ThisFrame < 1 || ThisFrame > PerFrame)
+		{
+			AddError(FString::Printf(
+				TEXT("frame %d put %d creatures down; each frame has to put down "
+					 "at least one and at most %d"), Frames, ThisFrame, PerFrame));
+			return false;
+		}
+		if (Frames > Whole + 1)
+		{
+			AddError(TEXT("the wave was still arriving after more frames than it "
+						  "has creatures"));
+			return false;
+		}
+	}
+
+	TestEqual(FString::Printf(TEXT("a wave of %d at %d a frame took %d frames"),
+							  Whole, PerFrame, Frames),
+			  Frames, FMath::DivideAndRoundUp(Whole, PerFrame));
+
+	// AND THE NEXT WAVE DID NOT COME IN WHILE IT DID. Those frames crossed the
+	// quarter-second wave check more than once.
+	TestEqual(TEXT("no second wave arrived while the first was still arriving"),
+			  Mode->WavesArrived, 1);
+
+	// ---- How many arrived, and where ---------------------------------------
+
+	TestEqual(TEXT("every creature the wave decided on arrived"),
+			  Mode->CurrentWave.Num(), Whole);
+	TestEqual(TEXT("and the wave counts all of them"), Mode->WaveSpawned, Whole);
+
+	const int32 Compared = FMath::Min(Whole, Mode->CurrentWave.Num());
+	for (int32 Index = 0; Index < Compared; ++Index)
+	{
+		const ACataclysmEnemyCharacter* Enemy = Mode->CurrentWave[Index].Get();
+		const FCataclysmEnemyPlacement& Placement = Planned.Enemies[Index];
+		if (!IsValid(Enemy))
+		{
+			AddError(FString::Printf(TEXT("creature %d of the wave is gone"), Index));
+			return false;
+		}
+
+		// IN ORDER, ON ITS OWN CELL, AND AS ITS OWN KIND OF CREATURE.
+		const FIntPoint Cell = Arena->CellOfWorld(Enemy->GetActorLocation());
+		if (Cell != Placement.Cell
+			|| !Enemy->IsA(ACataclysmDungeonGameMode::ClassFor(Placement.Creature)))
+		{
+			AddError(FString::Printf(
+				TEXT("creature %d arrived on cell %s as %s; the wave placed a %s on "
+					 "cell %s"),
+				Index, *Cell.ToString(), *Enemy->GetClass()->GetName(),
+				CataclysmDungeonCreatureName(Placement.Creature),
+				*Placement.Cell.ToString()));
+			return false;
+		}
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeHordeLastWaveIsClearedTest,
+	"Cataclysm.DungeonMode.AHordeDungeonsLastWaveIsClearedRatherThanThinnedToATenth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeHordeLastWaveIsClearedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	// **THE FAULT THIS EXISTS FOR IS A DUNGEON YOU CAN BEAT WITHOUT KILLING ITS
+	// BOSS.** The owner's rule says when the NEXT wave spawns, and after the
+	// last wave there is no next one. Applying the tenth to it anyway would end
+	// the dungeon with a tenth of the wave standing -- and the Gatekeeper is
+	// placed into the last wave like every other creature, because
+	// `FCataclysmFloorBrief::bBossAtTheExit` is true on a dungeon's final floor
+	// and that floor is its final wave.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// **A RUN WITH A REAL DUNGEON IN IT, BECAUSE THE RULE TURNS ON
+	// `IsOnTheLastFloor`**, which reads the EMPIRE dungeon's floor count and
+	// not the game mode's own `TotalFloors` setting. Without a bound dungeon
+	// there is no bottom, the question cannot be asked, and the waves would run
+	// for ever the way pressing Play in `L_Dungeon` does.
+	//
+	// ONE DAY, WHICH IS THE FIRST SURGE. A run begins with an intact empire and
+	// nothing standing on it, so without this there is no dungeon to walk. The
+	// same two lines `CataclysmDungeonCostsDaysTests.cpp` uses, for the same
+	// reason.
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	if (!TestNotNull(TEXT("an empire run was made"), Run))
+	{
+		return false;
+	}
+	Run->Begin(/*Seed=*/5150);
+	Run->AdvanceDay();
+
+	if (!TestTrue(TEXT("the first surge put a dungeon on the map"),
+				  Run->Dungeons.Num() > 0))
+	{
+		return false;
+	}
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+	Mode->SetEmpireRunForTests(Run);
+	Mode->EnemyScale = 0.1f;
+
+	const int32 DungeonId = Run->Dungeons[0].DungeonId;
+	const int32 Floors = Run->Dungeons[0].Floors;
+
+	if (!TestTrue(FString::Printf(TEXT("it has a bottom: %d floors"), Floors),
+				  Floors > 1))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the dungeon was entered"),
+				  Mode->EnterEmpireDungeon(DungeonId)))
+	{
+		return false;
+	}
+
+	// **MADE A HORDE DUNGEON AFTER ENTERING, AND SAID PLAINLY.**
+	// `EnterEmpireDungeon` overwrites the sub-type from the dungeon it binds,
+	// so this has to come after it. Which dungeon a given seed's first surge
+	// rolls is not this test's subject; that a Horde dungeon's LAST wave has to
+	// be cleared is. Searching the map for a real Horde dungeon would make the
+	// test depend on a spawn-weight table that the owner has already changed
+	// twice.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+
+	// STRAIGHT TO THE LAST WAVE, which is the only one this rule is about.
+	if (!TestTrue(TEXT("the last wave was reached"), Mode->GoToFloor(Floors)))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the last wave is a wave"), Mode->FloorBrief.bWaveWalksIn);
+	TestTrue(TEXT("and it carries the dungeon's boss"),
+			 Mode->FloorBrief.bBossAtTheExit);
+	TestTrue(TEXT("and the game mode knows it is on the last floor"),
+			 Mode->IsOnTheLastFloor());
+
+	// **LET IT FINISH ARRIVING FIRST.** Issue #1544 puts a wave down a few
+	// creatures a frame, and what is counted below is the whole wave, its
+	// Gatekeeper included.
+	if (!TestTrue(TEXT("the last wave finished arriving"), LetTheWaveArrive(Mode) >= 0))
+	{
+		return false;
+	}
+
+	const int32 Spawned = Mode->WaveSpawned;
+	if (!TestTrue(FString::Printf(TEXT("the last wave arrived: %d creatures"),
+								  Spawned),
+				  Spawned > 0))
+	{
+		return false;
+	}
+
+	// **THE MEASUREMENT THAT MAKES THIS TEST MEAN SOMETHING.** An ordinary
+	// wave of this size would be finished at this many still standing.
+	const int32 OrdinaryThreshold =
+		FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(Spawned);
+	if (!TestTrue(FString::Printf(
+					  TEXT("an ordinary wave of %d would be finished with %d "
+						   "still standing, which is above zero so the two "
+						   "rules are distinguishable"),
+					  Spawned, OrdinaryThreshold),
+				  OrdinaryThreshold > 0))
+	{
+		return false;
+	}
+
+	// KILLED DOWN TO THAT THRESHOLD, LEAVING THE BOSS FOR LAST.
+	TArray<ACataclysmEnemyCharacter*> Wave;
+	ACataclysmEnemyCharacter* Boss = nullptr;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->CurrentWave)
+	{
+		if (IsValid(Enemy)
+			&& Enemy->IsA(ACataclysmGatekeeperCharacter::StaticClass()))
+		{
+			Boss = Enemy.Get();
+			continue;
+		}
+		Wave.Add(Enemy.Get());
+	}
+
+	if (!TestNotNull(TEXT("the last wave has a Gatekeeper in it"), Boss))
+	{
+		return false;
+	}
+
+	int32 Killed = 0;
+	while (Killed < Wave.Num() - (OrdinaryThreshold - 1))
+	{
+		if (!TestTrue(TEXT("a creature of the last wave was killed"),
+					  KillOutright(Wave[Killed])))
+		{
+			return false;
+		}
+		++Killed;
+	}
+
+	TestEqual(TEXT("the last wave is down to what would finish an ordinary one"),
+			  Mode->WaveStillAlive(), OrdinaryThreshold);
+	TestFalse(TEXT("and the boss is one of the survivors"),
+			  UCataclysmSkillEffects::IsDead(Boss));
+
+	// **AND THE DUNGEON IS NOT BEATEN.**
+	TestFalse(TEXT("a tenth of the last wave standing does not finish the "
+				   "dungeon"),
+			  Mode->ShouldTheNextWaveArrive());
+
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks * 4.0f);
+	TestTrue(TEXT("and ticking leaves the player in the dungeon"),
+			 Mode->EmpireDungeonId != INDEX_NONE);
+
+	// AND THEN THE REST OF THEM, THE BOSS LAST.
+	while (Killed < Wave.Num())
+	{
+		KillOutright(Wave[Killed]);
+		++Killed;
+	}
+	TestEqual(TEXT("only the boss is left"), Mode->WaveStillAlive(), 1);
+	TestFalse(TEXT("and it still does not finish the dungeon"),
+			  Mode->ShouldTheNextWaveArrive());
+
+	if (!TestTrue(TEXT("the boss was killed"), KillOutright(Boss)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the last wave is cleared"), Mode->WaveStillAlive(), 0);
+	TestTrue(TEXT("and now the dungeon is finished"),
+			 Mode->ShouldTheNextWaveArrive());
+
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks * 4.0f);
+	TestEqual(TEXT("and clearing it takes the player out of the dungeon"),
+			  Mode->EmpireDungeonId, static_cast<int32>(INDEX_NONE));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeHordeArenaSurvivesALoadTest,
+	"Cataclysm.DungeonMode.AHordeArenaBuiltStraightOntoWaveFiveIsTheSameArenaAsWaveOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeHordeArenaSurvivesALoadTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	// **THE CASE THAT KEEPING THE FLOOR ALREADY STANDING CANNOT COVER.** Waves 2
+	// and later keep the arena that is already built, which is how one space is
+	// held while the player plays. Loading a save taken on wave 5 builds a floor
+	// from nothing: there is no arena standing to keep, so the shape has to come
+	// from somewhere, and floor 5's own seed carves a DIFFERENT arena. Without
+	// `FCataclysmFloorBrief::CarvedAsFloorNumber` the player would come back
+	// into a space they had never been in.
+	//
+	// `Cataclysm.DungeonFloor` REACHES THE SAME PATH, so this is not only about
+	// saves: jumping to a floor to look at it builds one straight off too.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// ONE MODE THAT WALKS INTO WAVE 1, and another that is built straight onto
+	// wave 5. Two modes rather than one, because the whole question is what a
+	// floor built with nothing standing comes out as.
+	ACataclysmDungeonGameMode* FromTheTop = SpawnHorde(World, /*Seed=*/31337, /*Floors=*/9);
+	ACataclysmDungeonGameMode* Loaded = SpawnHorde(World, /*Seed=*/31337, /*Floors=*/9);
+	if (!TestNotNull(TEXT("the first game mode spawned"), FromTheTop)
+		|| !TestNotNull(TEXT("the second game mode spawned"), Loaded))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("wave 1 was reached"), FromTheTop->GoToFloor(1))
+		|| !TestTrue(TEXT("wave 5 was built straight off"), Loaded->GoToFloor(5)))
+	{
+		return false;
+	}
+
+	const FCataclysmFloorPlan& First = FromTheTop->CurrentFloor->GetPlan();
+	const FCataclysmFloorPlan& Fifth = Loaded->CurrentFloor->GetPlan();
+
+	TestEqual(TEXT("wave 5's arena is the same width as wave 1's"),
+			  Fifth.Width, First.Width);
+	TestEqual(TEXT("and the same height"), Fifth.Height, First.Height);
+	TestEqual(TEXT("and has its entrance in the same place"),
+			  Fifth.Entrance.ToString(), First.Entrance.ToString());
+	TestTrue(TEXT("and every cell of it is the same"), Fifth.Cells == First.Cells);
+
+	// **THE CONTROL.** An ordinary dungeon's floor 5 is a different floor from
+	// its floor 1, which is what says the check above measures the Horde rule
+	// and not some accident that makes every floor of every dungeon identical.
+	ACataclysmDungeonGameMode* Plain = SpawnMode(World);
+	ACataclysmDungeonGameMode* PlainDeep = SpawnMode(World);
+	if (!TestNotNull(TEXT("an ordinary game mode spawned"), Plain)
+		|| !TestNotNull(TEXT("a second ordinary game mode spawned"), PlainDeep))
+	{
+		return false;
+	}
+	Plain->DungeonSeed = 31337;
+	Plain->EnemyScale = 0.0f;
+	PlainDeep->DungeonSeed = 31337;
+	PlainDeep->EnemyScale = 0.0f;
+
+	if (!TestTrue(TEXT("an ordinary floor 1 was built"), Plain->GoToFloor(1))
+		|| !TestTrue(TEXT("an ordinary floor 5 was built"), PlainDeep->GoToFloor(5)))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("an ordinary dungeon's floor 5 is NOT its floor 1"),
+			  PlainDeep->CurrentFloor->GetPlan().Cells
+				  == Plain->CurrentFloor->GetPlan().Cells);
+
+	// **AND THE PLAYER IS ACTUALLY STOOD AT THE ENTRANCE, WHICH IS A SEPARATE
+	// FAULT WITH THE SAME CAUSE.** The rule that stops the player being moved
+	// between waves is written on "this floor is the same space as the last
+	// one", and that is true on wave 5 whether or not there is a wave 4 standing
+	// to be the same space as. A floor built from nothing has no "where they
+	// already were", so leaving them alone leaves them wherever the level put
+	// them -- which is not on the arena.
+	ACataclysmDungeonGameMode* Reloaded =
+		SpawnHorde(World, /*Seed=*/31337, /*Floors=*/9);
+	APawn* Standing = World->SpawnActor<ACataclysmPlayerCharacter>(
+		FVector(50'000.0f, 50'000.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a third game mode spawned"), Reloaded)
+		|| !TestNotNull(TEXT("a pawn was spawned to place"), Standing))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("wave 5 was built straight off with a pawn to place"),
+				  Reloaded->GoToFloor(5, Standing)))
+	{
+		return false;
+	}
+
+	const FVector Entrance = Reloaded->CurrentFloor->EntranceWorld();
+	const float FromEntrance =
+		FVector::Dist2D(Standing->GetActorLocation(), Entrance);
+
+	TestTrue(FString::Printf(
+				 TEXT("a wave-5 arena built from nothing stands the player at "
+					  "its entrance; the pawn ended up %.0f cm from it"),
+				 FromEntrance),
+			 FromEntrance < FCataclysmFloorGenerator::CellSizeCm);
+
+	// **THE CONTROL, AND IT IS THE HALF THAT PROVES THE CONDITION IS NOT SIMPLY
+	// "ALWAYS PLACE".** Going from wave 5 to wave 6 in the arena the player is
+	// already standing in must leave them where they are, mid-fight.
+	Standing->SetActorLocation(Entrance + FVector(2'000.0f, 2'000.0f, 0.0f));
+	const FVector MidFight = Standing->GetActorLocation();
+
+	if (!TestTrue(TEXT("wave 6 arrived"), Reloaded->GoToFloor(6, Standing)))
+	{
+		return false;
+	}
+
+	TestTrue(FString::Printf(
+				 TEXT("the next wave in the same arena leaves the player where "
+					  "they were; they moved %.0f cm"),
+				 FVector::Dist2D(Standing->GetActorLocation(), MidFight)),
+			 FVector::Dist2D(Standing->GetActorLocation(), MidFight) < 1.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeHordeRemovesOldStairsTest,
+	"Cataclysm.DungeonMode.EnteringAHordeArenaTakesTheLastDungeonsStairsOutOfIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeHordeRemovesOldStairsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	// **THE BUG THIS EXISTS FOR IS REACHABLE IN PLAY AND WAS IN THE FIRST
+	// VERSION OF THIS FEATURE.** `EnterEmpireDungeon` reuses one game mode and
+	// overwrites its sub-type, so a player who walks an ordinary dungeon and
+	// then enters a Horde one arrives in an arena with the last dungeon's stairs
+	// standing in it -- still watching for them, still bound to
+	// `HandleStairsTaken`. Walking over them would take a floor without fighting
+	// the wave and would spend a day for it.
+	//
+	// NOT PLACING THE STAIRS IS NOT ENOUGH, which is the whole point: the actor
+	// is already in the world and leaving `PlaceStairs` uncalled leaves it
+	// exactly where it was.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+	Mode->DungeonSeed = 909;
+	Mode->EnemyScale = 0.1f;
+
+	// AN ORDINARY DUNGEON FIRST, which is what puts the stairs in the world.
+	if (!TestTrue(TEXT("an ordinary dungeon's first floor was reached"),
+				  Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+
+	TWeakObjectPtr<ACataclysmDungeonStairs> Old = Mode->Stairs.Get();
+	if (!TestTrue(TEXT("the ordinary dungeon put stairs in the world"),
+				  Old.IsValid()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("and they are watching for the player"), Old->IsWatching());
+
+	// AND THEN A HORDE DUNGEON, the way entering one off the empire map does it:
+	// the sub-type is overwritten and floor 1 is built again.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+
+	if (!TestTrue(TEXT("the Horde dungeon's first floor was reached"),
+				  Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+
+	TestNull(TEXT("the game mode no longer holds any stairs"), Mode->Stairs.Get());
+	TestFalse(TEXT("and the old stairs are gone from the world rather than "
+				   "standing in the arena"),
+			  Old.IsValid());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeOrdinaryHasNoWavesTest,
+	"Cataclysm.DungeonMode.AnOrdinaryDungeonGetsNoWavesAndKeepsItsStairs",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDungeonModeOrdinaryHasNoWavesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	// **THE CONTROL FOR THE TEST ABOVE, ON THE SAME SEED.** Everything the wave
+	// machinery does has to be reachable only by a Horde dungeon. Without this,
+	// a `Tick` that advanced the floor whenever the creatures were dead would
+	// pass every check in that test and would quietly break every other dungeon
+	// in the game.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	// THE SAME SEED AND DEPTH AS THE HORDE TEST, and the sub-type left alone.
+	Mode->DungeonSeed = 4242;
+	Mode->TotalFloors = 6;
+	Mode->EnemyScale = 0.1f;
+
+	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("an ordinary dungeon counts no waves"), Mode->WavesArrived, 0);
+
+	// **AND ITS CREATURES ARE ALL PUT DOWN AT ONCE**, while the floor is built.
+	// Issue #1544 spreads only a wave that walks in. An ordinary floor keeps
+	// what it always did, and nothing is left arriving for `Tick` to put down.
+	TestEqual(TEXT("an ordinary floor leaves nothing still arriving"),
+			  Mode->CreaturesStillArriving(), 0);
+	TestTrue(FString::Printf(TEXT("and its creatures are already on the floor: %d"),
+							 Mode->FloorEnemies.Num()),
+			 Mode->FloorEnemies.Num() > 0);
+	TestFalse(TEXT("and its floor is not a wave, so nothing can bring one in"),
+			  Mode->ShouldTheNextWaveArrive());
+
+	// AND IT HAS STAIRS, which is how its player reaches the next floor.
+	TestNotNull(TEXT("an ordinary dungeon has stairs"), Mode->Stairs.Get());
+
+	// ITS CREATURES NOTICE FROM THEIR ORDINARY DISTANCE. Rule 3 must not leak.
+	int32 Widened = 0;
+	for (const ACataclysmEnemyCharacter* Enemy : Mode->FloorEnemies)
+	{
+		if (IsValid(Enemy)
+			&& !FMath::IsNearlyEqual(Enemy->SightRadiusMultiplier, 1.0f))
+		{
+			++Widened;
+		}
+	}
+	TestEqual(TEXT("and no creature of an ordinary dungeon has a widened aggro "
+				   "range"),
+			  Widened, 0);
+
+	// **AND KILLING EVERY CREATURE ON THE FLOOR DOES NOT MOVE IT ON.** An
+	// ordinary floor is left by walking to the stairs, and nothing about an
+	// empty floor should advance it.
+	int32 Killed = 0;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->FloorEnemies)
+	{
+		if (KillOutright(Enemy.Get()))
+		{
+			++Killed;
+		}
+	}
+	TestTrue(FString::Printf(TEXT("every creature on the floor was killed: %d"),
+							 Killed),
+			 Killed > 0);
+
+	for (int32 Ticks = 0; Ticks < 10; ++Ticks)
+	{
+		Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks * 2.0f);
+	}
+
+	TestEqual(TEXT("an emptied ordinary floor does not advance on its own"),
+			  Mode->ChooseFloorNumber(), 1);
+	TestEqual(TEXT("and no floor was descended"), Mode->FloorsDescended, 0);
+	TestEqual(TEXT("and no wave arrived"), Mode->WavesArrived, 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorChoosesOneMedicTest,
+	"Cataclysm.DungeonMode.AFloorCarryingFieldMedicGivesExactlyOneCreatureTheRole",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorChoosesOneMedicTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	// THROUGH `PopulateFloor` AND NOT BY CALLING THE CHOOSER, because what is
+	// in doubt is whether anything in the game reaches it at all. A test that
+	// called the chooser directly would pass on a branch where the two call
+	// sites had been deleted.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestNotNull(TEXT("it built a floor"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	const FName MedicKey =
+		FName(UCataclysmDungeonModifierEffects::FieldMedicKey);
+
+	// THE CONTROL FIRST, AND IT IS THE HALF THAT MATTERS MOST. Without it a
+	// rule that marked a medic on every floor, rule or no rule, would pass the
+	// half below and look correct.
+	Mode->FloorBrief.Modifiers.Remove(MedicKey);
+	if (!TestTrue(TEXT("a floor without the rule still has creatures on it"),
+				  Mode->PopulateFloor() > 0))
+	{
+		return false;
+	}
+
+	int32 MedicsWithoutTheRule = 0;
+	for (const ACataclysmEnemyCharacter* Enemy : Mode->FloorEnemies)
+	{
+		if (IsValid(Enemy) && Enemy->bHealsAlliesForTheFloorRule)
+		{
+			++MedicsWithoutTheRule;
+		}
+	}
+	TestEqual(TEXT("a floor without the rule has no medic"),
+			  MedicsWithoutTheRule, 0);
+
+	// NOW THE SAME FLOOR CARRYING THE RULE.
+	Mode->ClearFloorEnemies();
+	Mode->FloorBrief.Modifiers.AddUnique(MedicKey);
+	if (!TestTrue(TEXT("and it populates again"), Mode->PopulateFloor() > 0))
+	{
+		return false;
+	}
+
+	int32 Medics = 0;
+	int32 RarestStep = MIN_int32;
+	int32 MedicStep = MIN_int32;
+	for (const ACataclysmEnemyCharacter* Enemy : Mode->FloorEnemies)
+	{
+		if (!IsValid(Enemy))
+		{
+			continue;
+		}
+		RarestStep = FMath::Max(RarestStep, Enemy->RarityStep);
+		if (Enemy->bHealsAlliesForTheFloorRule)
+		{
+			++Medics;
+			MedicStep = Enemy->RarityStep;
+		}
+	}
+
+	TestEqual(TEXT("a floor carrying the rule has exactly one medic"),
+			  Medics, 1);
+
+	// AND IT IS THE RAREST CREATURE THERE, which is the nearest thing to the
+	// row's "elite" the game can say today.
+	TestEqual(TEXT("and the medic is the rarest creature on the floor"),
+			  MedicStep, RarestStep);
+
+	// AND A SECOND POPULATION DOES NOT ADD A SECOND ONE while the first is
+	// still standing.
+	Mode->PopulateFloor();
+	int32 MedicsAfterMore = 0;
+	for (const ACataclysmEnemyCharacter* Enemy : Mode->FloorEnemies)
+	{
+		if (IsValid(Enemy) && Enemy->bHealsAlliesForTheFloorRule)
+		{
+			++MedicsAfterMore;
+		}
+	}
+	TestEqual(TEXT("populating again leaves the floor with one medic"),
+			  MedicsAfterMore, 1);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeThrallLeavesTheWaveTest,
+	"Cataclysm.DungeonMode.AThrallTakenFromAWaveIsNotCountedAsStillStanding",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1202, ruled 2026-09-30. In a Horde arena the next wave comes when the
+ * current one is down to its threshold; a creature the player took from it is
+ * not standing in it, or holding a thrall would stop the arena.
+ */
+bool FCataclysmDungeonModeThrallLeavesTheWaveTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnHorde(World, /*Seed=*/4242, /*Floors=*/6);
+	if (!TestNotNull(TEXT("a Horde dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1))
+		|| !TestTrue(TEXT("the first wave finished arriving"), LetTheWaveArrive(Mode) >= 0))
+	{
+		return false;
+	}
+	const int32 FirstWave = Mode->WaveSpawned;
+	// ALWAYS SPAWNED: the arena's middle is occupied, and the test needs only a
+	// commander, not a place to stand.
+	FActorSpawnParameters Always;
+	Always.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	ACataclysmPlayerCharacter* Player = World->SpawnActor<ACataclysmPlayerCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator, Always);
+	if (!TestTrue(FString::Printf(TEXT("set-up: a wave of %d"), FirstWave), FirstWave > 0)
+		|| !TestNotNull(TEXT("a player character"), Player)
+		|| !TestEqual(TEXT("set-up: the whole wave stands"), Mode->WaveStillAlive(), FirstWave))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Taken = nullptr;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->CurrentWave)
+	{
+		if (IsValid(Enemy) && !Enemy->IsBoss() && !Enemy->bCannotBeHurt)
+		{
+			Taken = Enemy.Get();
+			break;
+		}
+	}
+	if (!TestNotNull(TEXT("set-up: a creature of the wave the player can take"), Taken) || !TestTrue(TEXT("the player takes one of the wave"), UCataclysmCommand::Subjugate(Player, Taken)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the wave counts one fewer standing"), Mode->WaveStillAlive(), FirstWave - 1);
+	return true;
+}
+
+/**
+ * The same dungeon seed builds the same floors' rarity rungs. Issue #2490.
+ *
+ * `docs/Cataclysm_GDD_v2.md`: "the same seed always produces the same floor". Until #2490 each creature drew its rung
+ * from its own identity and the clock, which no seed controls, so two builds of one floor could differ in what it held.
+ * Now a creature the floor places draws from the floor plan's seed and its place in the floor's list.
+ *
+ * FLOORS 1 TO 6 OF ONE DUNGEON SEED, BUILT TWICE, every creature's rung compared in the order it was placed. THE
+ * CONTROLS: at least one rung is above Common, so the lists are not two lists of nothing but Commons, which would agree
+ * however they were drawn; and the six floors do not all hold the same rungs, so the rung is drawn per floor and not
+ * fixed.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRarityFromTheFloorsSeedTest,
+	"Cataclysm.DungeonMode.TheSameDungeonSeedBuildsTheSameRarityRungsOnEachFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRarityFromTheFloorsSeedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+	Mode->DungeonSeed = 7;
+
+	const auto RungsOfFloor = [&](int32 Floor, TArray<int32>& Out) -> bool
+	{
+		Out.Reset();
+		if (!TestTrue(FString::Printf(TEXT("set-up: floor %d was reached"), Floor), Mode->GoToFloor(Floor)))
+		{
+			return false;
+		}
+		for (const ACataclysmEnemyCharacter* Creature : Mode->FloorEnemies)
+		{
+			Out.Add(IsValid(Creature) ? Creature->RarityStep : -1);
+		}
+		return TestTrue(FString::Printf(TEXT("set-up: floor %d holds creatures"), Floor), Out.Num() > 0);
+	};
+
+	TArray<TArray<int32>> First;
+	bool bAboveCommon = false;
+	for (int32 Floor = 1; Floor <= 6; ++Floor)
+	{
+		TArray<int32> Rungs;
+		if (!RungsOfFloor(Floor, Rungs))
+		{
+			return false;
+		}
+		for (const int32 Rung : Rungs)
+		{
+			bAboveCommon = bAboveCommon || Rung > 0;
+		}
+		First.Add(Rungs);
+	}
+
+	for (int32 Floor = 1; Floor <= 6; ++Floor)
+	{
+		TArray<int32> Again;
+		if (!RungsOfFloor(Floor, Again))
+		{
+			return false;
+		}
+		TestTrue(FString::Printf(TEXT("floor %d built again holds the same rungs in the same order"), Floor),
+				 Again == First[Floor - 1]);
+	}
+
+	TestTrue(TEXT("CONTROL: some creature on the six floors is above Common"), bAboveCommon);
+	bool bFloorsDiffer = false;
+	for (int32 Index = 1; Index < First.Num(); ++Index)
+	{
+		bFloorsDiffer = bFloorsDiffer || First[Index] != First[0];
+	}
+	TestTrue(TEXT("CONTROL: the six floors do not all hold the same rungs"), bFloorsDiffer);
+	return true;
+}
+
+/**
+ * The same dungeon seed builds the same floors' enemy modifiers. Issue #2669, ruled 2026-11-01.
+ *
+ * `docs/Cataclysm_GDD_v2.md`: "the same seed always produces the same floor". Until #2669 each creature the floor placed
+ * drew its modifiers from its own identity and the clock, which no seed controls, so two builds of one floor could differ
+ * in which creature carried Horde Leader; window w128C measured a test's order deciding it. Now it draws from the floor
+ * plan's seed and its place in the floor's list, as its rung has since #2490.
+ *
+ * FLOORS 1 TO 6 OF ONE DUNGEON SEED, BUILT TWICE in one session, each creature's modifiers compared in the order it was
+ * placed. Built twice so the clock and the creatures' identities differ between the builds. THE CONTROLS: some creature
+ * carries a modifier, so the lists are not lists of nothing, which would agree however they were drawn; and the six
+ * floors do not all carry the same ones, so the draw is per floor. Prints "SEEDED MODIFIERS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmModifiersFromTheFloorsSeedTest,
+	"Cataclysm.DungeonMode.TheSameDungeonSeedBuildsTheSameModifiersOnEachFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmModifiersFromTheFloorsSeedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnMode(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+	Mode->DungeonSeed = 7;
+
+	// EACH CREATURE'S MODIFIERS AS ONE STRING, in the order it was placed.
+	const auto ModifiersOfFloor = [&](int32 Floor, TArray<FString>& Out) -> bool
+	{
+		Out.Reset();
+		if (!TestTrue(FString::Printf(TEXT("set-up: floor %d was reached"), Floor), Mode->GoToFloor(Floor)))
+		{
+			return false;
+		}
+		for (const ACataclysmEnemyCharacter* Creature : Mode->FloorEnemies)
+		{
+			TArray<FString> Names;
+			if (IsValid(Creature))
+			{
+				for (const FName& Row : Creature->ModifierRows)
+				{
+					Names.Add(Row.ToString());
+				}
+			}
+			Out.Add(FString::Join(Names, TEXT("+")));
+		}
+		return TestTrue(FString::Printf(TEXT("set-up: floor %d holds creatures"), Floor), Out.Num() > 0);
+	};
+
+	TArray<TArray<FString>> First;
+	int32 Carrying = 0;
+	for (int32 Floor = 1; Floor <= 6; ++Floor)
+	{
+		TArray<FString> Modifiers;
+		if (!ModifiersOfFloor(Floor, Modifiers))
+		{
+			return false;
+		}
+		for (const FString& One : Modifiers)
+		{
+			Carrying += One.IsEmpty() ? 0 : 1;
+		}
+		First.Add(Modifiers);
+	}
+
+	int32 FloorsAlike = 0;
+	for (int32 Floor = 1; Floor <= 6; ++Floor)
+	{
+		TArray<FString> Again;
+		if (!ModifiersOfFloor(Floor, Again))
+		{
+			return false;
+		}
+		const bool bAlike = Again == First[Floor - 1];
+		FloorsAlike += bAlike ? 1 : 0;
+		TestTrue(FString::Printf(TEXT("floor %d built again holds the same modifiers in the same order"), Floor), bAlike);
+	}
+
+	bool bFloorsDiffer = false;
+	for (int32 Index = 1; Index < First.Num(); ++Index)
+	{
+		bFloorsDiffer = bFloorsDiffer || First[Index] != First[0];
+	}
+	AddInfo(FString::Printf(TEXT("SEEDED MODIFIERS: seed 7, floors 1 to 6; %d creature(s) carry a modifier; %d of 6 floors "
+								 "built again alike; floor 1's first five: [%s]"),
+							Carrying, FloorsAlike,
+							*FString::Join(TArray<FString>(First[0].GetData(), FMath::Min(5, First[0].Num())), TEXT(" | "))));
+	TestTrue(TEXT("CONTROL: some creature on the six floors carries a modifier"), Carrying > 0);
+	TestTrue(TEXT("CONTROL: the six floors do not all carry the same modifiers"), bFloorsDiffer);
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDungeonModeHordeFirstFrameTest,
+	"Cataclysm.DungeonMode.AHordeFloorsFirstFrameOfPlayPutsDownAtMostOneFramesShare",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1554. The frame play starts in ran `GoToFloor`, whose population pass puts the first wave's first
+ * `WaveCreaturesPerFrame` down, and then the first `Tick`, which put down as many again: eight in the owner's session of
+ * 2026-09-10. Here the floor start and a `Tick` run without the frame counter moving, as they did there, and the frame
+ * puts down one share; the next frame puts down the next. CONTROL: a later wave, brought in by `Tick`, puts down one
+ * share in the frame it begins and one in the next, as before.
+ */
+bool FCataclysmDungeonModeHordeFirstFrameTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModeTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = SpawnHorde(World, /*Seed=*/4242, /*Floors=*/6);
+	if (!TestNotNull(TEXT("a Horde dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+	// THE DENSITY `AHordeWaveArrivesOverSeveralFramesRatherThanAllInOne` USES, so a wave is several frames' shares.
+	Mode->EnemyScale = 0.25f;
+	const int32 PerFrame = ACataclysmDungeonGameMode::WaveCreaturesPerFrame;
+	constexpr float OneFrame = 1.0f / 60.0f;
+
+	// ---- The frame play starts in ----------------------------------------
+	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	const int32 Whole = Mode->CurrentWave.Num() + Mode->CreaturesStillArriving();
+	if (!TestTrue(FString::Printf(TEXT("set-up: the first wave of %d is more than two frames' shares"), Whole),
+				  Whole > 2 * PerFrame))
+	{
+		return false;
+	}
+	Mode->Tick(OneFrame);
+	const int32 InTheStartFrame = Mode->CurrentWave.Num();
+	++GFrameCounter;
+	Mode->Tick(OneFrame);
+	const int32 AfterTheNextFrame = Mode->CurrentWave.Num();
+	AddInfo(FString::Printf(TEXT("FIRST FRAME: the first wave put %d down in the frame play started and %d by the next"),
+							InTheStartFrame, AfterTheNextFrame));
+	TestEqual(TEXT("the frame play starts in puts down one frame's share, with its Tick"), InTheStartFrame, PerFrame);
+	TestEqual(TEXT("and the next frame puts down the next share"), AfterTheNextFrame, 2 * PerFrame);
+
+	// ---- CONTROL: a later wave, begun inside Tick ---------------------------
+	for (int32 Frames = 0; Frames <= 1000 && Mode->CreaturesStillArriving() > 0; ++Frames)
+	{
+		++GFrameCounter;
+		Mode->Tick(OneFrame);
+	}
+	TArray<ACataclysmEnemyCharacter*> FirstWave;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->CurrentWave)
+	{
+		FirstWave.Add(Enemy.Get());
+	}
+	for (ACataclysmEnemyCharacter* Enemy : FirstWave)
+	{
+		if (!TestTrue(TEXT("set-up: a creature of the first wave was killed"), KillOutright(Enemy)))
+		{
+			return false;
+		}
+	}
+	++GFrameCounter;
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks * 4.0f);
+	if (!TestEqual(TEXT("set-up: the second wave began"), Mode->WavesArrived, 2))
+	{
+		return false;
+	}
+	const int32 InItsFirstFrame = Mode->CurrentWave.Num();
+	if (!TestTrue(TEXT("set-up: the second wave is more than two frames' shares"),
+				  InItsFirstFrame + Mode->CreaturesStillArriving() > 2 * PerFrame))
+	{
+		return false;
+	}
+	++GFrameCounter;
+	Mode->Tick(OneFrame);
+	const int32 InItsSecondFrame = Mode->CurrentWave.Num();
+	AddInfo(FString::Printf(TEXT("FIRST FRAME: the second wave put %d down in the frame it began and %d by the next"),
+							InItsFirstFrame, InItsSecondFrame));
+	TestEqual(TEXT("CONTROL: a later wave puts down one share in the frame it begins"), InItsFirstFrame, PerFrame);
+	TestEqual(TEXT("CONTROL: and the next share in the next frame, as before"), InItsSecondFrame, 2 * PerFrame);
+	return true;
+}
+
+#endif // WITH_AUTOMATION_TESTS

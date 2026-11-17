@@ -1,0 +1,1258 @@
+"""Every place that asks for a stat is listed here, with what it hands over.
+
+WHY THIS EXISTS. Issue #1992. `UCataclysmAbilitySystemComponent::StatForSkill`
+takes the state a condition may read as POSITIONAL PARAMETERS WITH DEFAULTS --
+the target is the ninth, the distance to it the seventh, whether it is staggered
+the eighth. A call that stops early supplies nothing for the rest, **and nothing
+at that call site is written down to be wrong.** The condition then reads a field
+nobody filled, answers false every time, and the row grants nothing, with no
+error anywhere. That has happened three times: issues #1973, #1981 and #1982.
+
+WHAT THIS DOES NOT DO, AND CANNOT. It does not find the faults. Measured on
+af715829: of the 61 call sites, 54 pass three arguments and supply no state
+at all -- and nearly all of those are CORRECT, because there is no blow, no
+target and no skill in hand at a regeneration tick or a resource generator.
+Fifteen are in `CataclysmFervour.cpp` alone. A check that flagged every short
+call would report dozens of problems, be wrong about almost all of them, and be
+switched off.
+
+SO IT MAKES THE DECISION VISIBLE INSTEAD. `INVENTORY` records every call site
+and what it hands over, each with one short reason, so that a three-argument call
+in a regeneration tick is recorded as CORRECT rather than merely tolerated. A new
+call site, a changed one, or one that has gone all fail it, which forces whoever
+adds or edits a lookup to write down what state it passes.
+
+AND ONE THING IS ASSERTED OUTRIGHT. A call that hands over a target must hand
+over the distance and the stagger too, or be listed by name in
+`TARGET_WITHOUT_THE_DISTANCE_OR_THE_STAGGER` with the reason. That is issue
+#1992's own finding. It caught the change made for #1982, which passed a target
+and left both at their defaults; those two lookups were that list's only entries,
+and the list emptied when #1992 handed them the distance and the stagger.
+
+HOW IT READS THE SOURCE, said here because a check should report its own scope.
+Comments and string literals are blanked first, so a name in prose or inside
+`TEXT("...")` is never counted; the definition of the function itself is skipped;
+arguments are split by MATCHING PARENTHESES rather than on commas, because
+`FCataclysmBlowContext()` and `AbilitySystem->GetNumericAttribute(Speed)` hold
+commas and brackets of their own. Only `game/Source` is read, and anything under
+a `Tests` directory is excluded.
+
+THE KEY IS THE FILE AND THE WHOLE ARGUMENT LIST. Not the line number, which goes
+stale on any edit above it; not the stat name, because 11 of the 61 name
+their stat literally and the rest pass a variable. Measured: the whole argument
+list gives 61 distinct keys for 61 calls, with none colliding, where the file
+and the first argument alone collide on two calls in `CataclysmRegeneration.cpp`.
+
+THE LINES HERE ARE LONG ON PURPOSE. An argument list is data rather than prose,
+and splitting one across fragments would bury a real change in reflowing. This
+project does not enforce a line length; `pyproject.toml` selects `E9`, `F` and
+`B` only, and says why.
+"""
+
+from __future__ import annotations
+
+import pathlib
+import re
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+SOURCE_ROOT = REPO_ROOT / "game" / "Source"
+
+#: The commit the counts below were measured on. A count is a measurement of a
+#: tree rather than a property of the design, so it is labelled with the tree.
+MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
+
+#: How many call sites that commit held. THE INVENTORY BELOW HOLDS 69, counted
+#: with `len(INVENTORY)` on 2026-09-23 on branch `feat/zone-first-sweep`,
+#: and the extra are dated rather than folded into the figure above. Among
+#: them: issue #2000 replaced a rate lookup here with an asked-for reduction,
+#: the Behind the Veil keystone added one of its own, issue #1815's live
+#: maximum health added one, and issue #1686's non-critical share, projectile
+#: later-hit share and zone first-sweep share one each. THIS
+#: SENTENCE SAID 64 WHILE THE LIST HELD 66: a count carried forward by adding
+#: one keeps an earlier miscount. A count describes a tree, so the label
+#: stays with the tree it was taken on and the movement is written out.
+#: Issue #1833 group C part 3a added one more on 2026-09-30, the share of
+#: armour a critical strike ignores; part 3b one more, a share of the
+#: maximum mana added to a skill's cost.
+#: Issue #1833 group E part 3 added one more on 2026-10-02, the wearer's armour
+#: an armour nova strikes with.
+#: Issue #1833 group E part 4a added three more on 2026-10-02, the two reaches
+#: and the More damage `UCataclysmSharedBuffs::Step` gives allies.
+#: Part 4b added two more: the seconds a necrosis-risen imp lasts and the wait
+#: before a lost minion is summoned again.
+#: Part 4c added one more: the flag that shares an aura's immunities with allies.
+#: Damage over time on the wearer by ailment added one more on 2026-10-06, the
+#: flag by which a target refuses an ailment, and changed what two existing
+#: lookups hand over: the defender's stats and the duration of an effect on a
+#: character are now asked with the tags of what arrives.
+#: Absorbed damage stored added two more on 2026-10-07, the caps of the two
+#: stores, each asked where its store fills and where it is spent.
+#: The class resource generation rate added one more on 2026-10-07, asked by
+#: the one helper every gain of class resource goes through.
+#: Overheal becoming a temporary absorb added one more on 2026-10-07, the cap
+#: of what overheal may fill, asked where a heal of health did not all fit.
+#: The four one-site stats of 2026-10-07 added three more: how fast a payment
+#: of leech arrives, the least width of a strike's arc, and the seconds a
+#: staggered enemy is rooted. The fourth, the energy shield's own damage taken,
+#: is asked through `DefenderStat`, whose one call was already here.
+#: Four things a worn row makes a movement skill do added one more on
+#: 2026-10-07: one helper on the movement skill asks all four stats.
+#: The crowd control health ceiling added one more on 2026-10-07, asked of
+#: the applier where a stun, a knockdown, a fear or a displacement is applied.
+#: Ricochet and pierce from a worn row added two more on 2026-10-07, the
+#: bounces a row adds to a projectile skill and the flag by which it pierces
+#: all, each asked by one helper of `UCataclysmProjectileSkill`.
+#: The flag by which a worn row forbids walking added one more on 2026-10-08,
+#: asked by the one helper the player controller's refusal of a step calls.
+#: The flag by which a landed hit cuts short a running skill added one more on
+#: 2026-10-08, asked in `NoteHitTaken` with each running skill's tags.
+#: The seconds a worn row adds to a skill's wind-up added one more on
+#: 2026-10-08, asked in `SecondsUntilTheSwingConnects` with the skill's tags.
+#: The share of its summoner's armour and resistances a minion takes added one
+#: more on 2026-10-08, asked of the summoner in `InheritedDefencesOf` with the
+#: minion's own type tags, once for each blow a minion takes.
+#: A charge's blow being told how far the charge went added NONE on
+#: 2026-10-08 and changed what one existing lookup hands over: the spell
+#: damage lookup now passes the metres charged and the range the skill used,
+#: the eleventh and twelfth arguments, so its key here changed with it.
+#: How much faster a cooldown recovers added one more on 2026-10-09, asked in
+#: `CooldownAfterReduction` with the skill's tags beside the reduction and the
+#: lengthening, for the dungeon rule Fragmented Reality.
+#: The flag by which the dungeon rule Suffering Aura takes no mana from its
+#: holder added one more on 2026-10-10, asked by the one helper the condition
+#: on that rule's mana loss calls.
+#: An immunity to the damage type that hit added two more on 2026-10-12, the
+#: chance and the seconds, both asked by `RollDamageTypeImmunityOnHit` once a
+#: typed hit on its wearer has been taken.
+#: The flag by which retaliation cannot be mitigated added one more on
+#: 2026-10-12, asked by `UCataclysmRetaliation::CannotBeMitigatedFor` where a
+#: payment of retaliation is built.
+#: The seconds after which an enemy is immune to its attacker added one more
+#: on 2026-10-12, asked of the attacker by `IsImmuneToDamageOf` where a blow
+#: on that enemy is resolved.
+#: The projectiles a row adds to a projectile skill's one added one more on
+#: 2026-10-12, asked by `UCataclysmProjectileSkill::ExtraProjectilesWithRows`
+#: where the skill fires.
+#: A share of damage taken dealt over seconds added two more on 2026-10-12,
+#: the share and the seconds, both asked of the struck character by
+#: `UCataclysmDelayedDamage::DelayShare` where a blow's damage reaches health.
+#: Since 2026-10-13 the same two lookups are made by
+#: `UCataclysmDelayedDamage::ShareThatWouldBeDelayed`, which `DelayShare`
+#: calls and which the two saves from a lethal blow also ask. They moved and
+#: none was added, so the count did not change.
+#: A debuff of the wearer's cutting what its carrier deals added two more on
+#: 2026-10-13, both asked by `UCataclysmDebuffs::NoteLaid` where a debuff is
+#: put on another character: the cut, and the Conduit flag for what a zone lays.
+#: A wearer immune to debuffs that lays none added one more on 2026-10-13,
+#: asked by `UCataclysmDebuffs::HoldsImmuneAndAppliesNone`.
+#: The chance that a damage over time ailment explodes when it ends by time
+#: added one more on 2026-10-13, asked of the applier in
+#: `CataclysmSkillEffects.cpp` where the ended effect's removal is heard.
+#: The stats a summoner's row gives its gadgets added one more on 2026-10-13,
+#: asked by the one helper `ACataclysmMinion::SummonersGadgetStat` with the
+#: gadget's type tags; the first stat it is asked for is the flag by which a
+#: gadget chooses the enemy with the most health.
+#: The flag by which a skill in the Ultimate slot has no cooldown and a mana
+#: cost that doubles with each paid use added one more on 2026-10-15, asked
+#: with no tags by `UCataclysmGameplayAbility::UltimateCostDoublesByARow`, the
+#: one helper Mana Weaver's ten-piece bonus is read through.
+#: The percent of what reaches a nearby ally's health that its wearer takes
+#: added one more on 2026-10-15, asked with no tags by
+#: `UCataclysmAllyDamageShare::PercentHeldBy`, of the struck character and of
+#: every character beside it, from the damage branch of the vital set.
+#: The percent of a point-blank skill's blow that each ally inside its area is
+#: struck for added one more on 2026-10-15, asked with the skill's tags by
+#: `UCataclysmAreaShareOnAllies::PercentHeldFor`, through
+#: `UCataclysmSkillTemplate::AreaShareOnAlliesPercent`.
+#: The flag by which a slot's key places a skill gadget added one more on
+#: 2026-10-16, asked with the slot's skill tags by
+#: `UCataclysmAbilitySystemComponent::SlotIsASkillGadget`, from the press and
+#: from the skill bar.
+#: The chance the Null Emperor ten-piece's aura consumes an enemy's shot added
+#: one more on 2026-10-17, asked with no tags by
+#: `UCataclysmVoidAura::ConsumeChanceOf`, for each shot in flight near a
+#: wearer and for the line above the bars.
+#: The three figures of a reprieve from a lethal blow added one more on
+#: 2026-10-18, asked with no tags by
+#: `UCataclysmAbilitySystemComponent::LethalHitReprieveFigure`.
+#: Brute's Heart's Ground Pound added two more on 2026-10-18: the one helper
+#: `UCataclysmGroundPound::StatOf` its five stats are asked through, and the
+#: wearer's armour the pound strikes with, asked as the armour nova asks it.
+#: Warlord's Will's Warhound added one more on 2026-10-18: its summoner's
+#: armour, which each of its hits is a share of, asked as the armour nova asks
+#: it. Its four stats are asked through `SummonerStat`, already listed.
+#: Brute's Heart's taunt aura added one more on 2026-10-18: the one helper
+#: `UCataclysmTauntAura::StatOf` its four stats are asked through.
+#: Tyrant's Chains' ten-piece added NONE on 2026-10-18: its one stat, the
+#: seconds between a Tyrant's Minion's Ultimate casts, is asked through
+#: `SummonerStat`, already listed.
+#: Reaper's Embrace's six-piece added one more on 2026-10-18: the flag by which
+#: a minion's death leaves a Soul, asked with no tags off the commander by
+#: `ACataclysmReaperSoul::LeaveFor` from the commander's death hook.
+#: Reaper's Embrace's ten-piece added two more on 2026-10-19: the cull per
+#: stack of Soul Strike, asked with no tags off the wearer by
+#: `UCataclysmAbilitySystemComponent::CullSharePercentAgainst` when its hit
+#: lands, and the flag by which a kill spawns a minion, asked with no tags off
+#: the killer by `UCataclysmSummonSkill::SpawnOneAtAKill` at its kill.
+#: Chronomancer's Time-Lock's ten-piece added one more on 2026-10-19: the
+#: one helper `UCataclysmTimeLockRift::StatOf` its seven stats are asked
+#: through.
+#: "You cannot benefit from buffs applied by allies" added one more on
+#: 2026-10-19: the flag by which a character refuses the buffs other
+#: characters give it, asked with no tags off the receiver by
+#: `UCataclysmAbilitySystemComponent::RefusesBuffsFromAllies`.
+#: The flag by which a wearer's own deployable's blast strikes the wearer
+#: added one more on 2026-10-19, asked with no tags by
+#: `UCataclysmDeployableSelfBlast::HeldBy` at the five places a
+#: deployable's blast is struck. The wearer's blow in a projectile's
+#: explosion asks the later-hit share with the argument list `HitOne`
+#: already hands over in the same file, so it is the same key and none.
+#: Corrected on 2026-10-19 when that layer was moved onto development: it
+#: was written as 67 beside "added one more", and the ally-buff refusal's
+#: 68 had landed below it, so the count after both is 69.
+#: NO FIGURE IS KEPT HERE ANY MORE, ruled by the coordinating session on
+#: 2026-10-19: a number asserted nowhere had drifted from what it described
+#: (69 written, 165 found), so the failure message below prints the count the
+#: check measures instead. The dated lines above are kept as the history.
+#: The skill trap added two more on 2026-10-19: the flag by which a slot's
+#: press places a trap, asked by
+#: `UCataclysmAbilitySystemComponent::SlotIsASkillTrap`, and the lock of the
+#: skill that press uses, asked by `PressOfASkillTrapSlot`.
+#: Traps layer 3 added one more on 2026-10-21: the one helper
+#: `SkillTrapFigureOf` in `CataclysmMinion.cpp` that the trap cap bonus and the
+#: no-expire flag are asked through.
+#: The Edicts of Abstinence and Humility (G7c) added two more on 2026-10-23: the
+#: share of the mana a cast took that is also taken from health, asked in
+#: `UCataclysmGameplayAbility::ApplyCost` with the skill's tags once mana has
+#: been taken; and the flag by which a critical strike deals no extra damage,
+#: asked beside the critical multiplier in `CataclysmVitalAttributeSet.cpp`.
+#: A damage over time tick worth more while its target moves added two more on
+#: 2026-10-23 (#2235): the applier's `dot_damage` asked on a tick with the
+#: character it lands on, and the same asked with no target, in
+#: `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`.
+
+#: A call site this file must find. THE CONTROL: if the reader breaks, every
+#: name looks unused, the inventory looks complete, and nothing below means
+#: anything.
+A_CALL_SITE_THAT_HANDS_OVER_EVERYTHING = (
+    "game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp")
+
+#: A comment in the same file, used to prove the stripping happened at all.
+A_COMMENT_IN_THAT_FILE = "NEGATIVE IS CLAMPED AWAY FOR THE SAME REASON"
+
+#: What each optional parameter is when the caller says nothing. Positions are
+#: zero-based into the argument list.
+DEFAULTS = {3: "-1.0f", 4: "FCataclysmBlowContext()", 5: "-1.0f",
+            6: "-1.0f", 7: "false", 8: "nullptr", 9: "-1",
+            10: "-1.0f", 11: "-1.0f"}
+DISTANCE, STAGGER, TARGET = 6, 7, 8
+
+
+def code_only(text: str) -> str:
+    """`text` with comments and string literals blanked, same length.
+
+    THE SAME LENGTH, so an offset into the result is an offset into the source.
+
+    NOT BY LINE PREFIX. A wrapped expression can continue on a line that opens
+    with a star, so "the line starts with `*`" is not the same question as
+    "this is inside a comment".
+    """
+    out: list[str] = []
+    i, n = 0, len(text)
+    while i < n:
+        pair = text[i:i + 2]
+        if pair == "//":
+            j = text.find("\n", i)
+            end = n if j < 0 else j
+            out.append(" " * (end - i))
+            i = end
+        elif pair == "/*":
+            j = text.find("*/", i + 2)
+            end = n if j < 0 else j + 2
+            out.append(" " * (end - i))
+            i = end
+        elif text[i] == '"':
+            j = i + 1
+            while j < n and text[j] != '"':
+                j += 2 if text[j] == "\\" else 1
+            out.append(text[i:min(j + 1, n)])
+            i = min(j + 1, n)
+        else:
+            out.append(text[i])
+            i += 1
+    return "".join(out)
+
+
+def arguments_of(code: str, at: int) -> list[str] | None:
+    """The call's arguments, split by matching parentheses and whitespace-normalised."""
+    opened = code.index("(", at)
+    depth, start, args = 0, opened + 1, []
+    for k in range(opened, len(code)):
+        c = code[k]
+        if c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+            if depth == 0:
+                args.append(code[start:k])
+                return [" ".join(a.split()) for a in args]
+        elif c == "," and depth == 1:
+            args.append(code[start:k])
+            start = k + 1
+    return None
+
+
+def call_sites() -> dict[tuple[str, str], list[str]]:
+    """Every non-test call, keyed by file and whole argument list."""
+    found: dict[tuple[str, str], list[str]] = {}
+    for path in sorted(SOURCE_ROOT.rglob("*.cpp")):
+        if "Tests" in path.parts:
+            continue
+        code = code_only(path.read_text(encoding="utf-8", errors="replace"))
+        for m in re.finditer(r"(?<![A-Za-z_])StatForSkill\s*\(", code):
+            if code[max(0, m.start() - 2):m.start()].endswith("::"):
+                continue          # the definition, not a call
+            args = arguments_of(code, m.start())
+            if args is None:
+                continue
+            key = (path.relative_to(REPO_ROOT).as_posix(), ", ".join(args))
+            found[key] = args
+    return found
+
+
+INVENTORY = {
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(UCataclysmAbilitySystemComponent::AuraSharesImmunitiesStat), FGameplayTagContainer(), 0.0f'):
+        'a flag read on an aura\'s caster at each pulse, saying whether the allies '
+        'inside share its immunities; a pulse has no blow or target in hand; issue #1833',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmRisenImps.cpp',
+     'FName(NecrosisRiseSecondsStat), FGameplayTagContainer(), 0.0f'):
+        'how long an imp raised by a necrosis kill lasts, asked of the killer when '
+        'something it killed dies; the kill is over and no blow or skill is in hand; issue #1833',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(ResummonedAfterSecondsStat), FGameplayTagContainer(), 0.0f'):
+        'how long a summoner waits before a lost minion is summoned again, asked of '
+        'the summoner when its minion dies, with no blow or skill of its own in hand; issue #1833',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSharedBuffs.cpp',
+     'FName(UCataclysmAbilitySystemComponent::NearbyAlliesMoreDamageStat), NoTags, 0.0f'):
+        '"Nearby allies gain 10-20% more damage", read in a regeneration step on the wearer with no blow, target or skill in hand; issue #1833',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSharedBuffs.cpp',
+     'FName(UCataclysmAbilitySystemComponent::SelfBuffSharedWithinMetresStat), NoTags, 0.0f'):
+        "how far a running self buff's More damage reaches allies, read in the same step; a reach belongs to the wearer and not to one skill; issue #1833",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSharedBuffs.cpp',
+     'FName(UCataclysmAbilitySystemComponent::SupportBuffSharedWithinMetresStat), NoTags, 0.0f'):
+        "how far a Support skill's More damage reaches allies, read in the same step for the same reason; issue #1833",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(TEXT("armor")), FGameplayTagContainer(), Combat ? Combat->GetArmor() : 0.0f'):
+        "the wearer's own armour, which an armour nova strikes nearby enemies "
+        'with when it blocks; no skill and no blow of its own is in hand, and the '
+        'blow it blocked belongs to the attacker; issue #1833',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(AurasEndAtDeathStat), FGameplayTagContainer(), GetNumericAttribute(Flag)'):
+        'a flag read on the character that died, when its death is cleared, '
+        'with no skill and no blow in hand; issue #1833',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'Stat, FGameplayTagContainer(), GetNumericAttributeBase(MaxHealth)'):
+        "maximum health worked out again with the character's state now, so a "
+        'row sized by the minions held reaches the attribute; no tags, because '
+        'the fold it corrects had none, and no blow is in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmCommand.cpp',
+     'FName(Stat), FGameplayTagContainer(), 0.0f'):
+        "the two numbers Behind the Veil states -- how far a Ritualist's "
+        'minions draw nearby enemies off their summoner, and how many '
+        'minions that takes -- asked of the character a creature would '
+        'otherwise attack. No tags, because both are properties of that '
+        'character and not of any skill, and no blow is in hand: the '
+        'question is asked while a creature chooses whom to attack, '
+        'before anything is thrown',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAilments.cpp',
+     'FName(Kind.Stat), SkillTags, FromAttribute, SkillHealthCostPercent'):
+        "an ailment's chance and magnitude, asked with the skill's tags "
+        'so a row scoped to a kind of skill reaches it; no blow is in '
+        'hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAilments.cpp',
+     'FName(Kind.MagnitudeStat), SkillTags, Held, SkillHealthCostPercent'):
+        "an ailment's chance and magnitude, asked with the skill's tags "
+        'so a row scoped to a kind of skill reaches it; no blow is in '
+        'hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmBasicAttack.cpp',
+     'FName(TEXT("attack_speed")), FGameplayTagContainer(), AbilitySystem->GetNumericAttribute(Speed)'):
+        "the basic attack's own speed, asked before a blow is thrown",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmContagion.cpp',
+     'FName(AuraDurationStat), FGameplayTagContainer(), 0.0f'):
+        "an aura's duration and chance, asked of the character rather "
+        'than of a blow',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmContagion.cpp',
+     'FName(TormentChanceStat), FGameplayTagContainer(), 0.0f'):
+        "an aura's duration and chance, asked of the character rather "
+        'than of a blow',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmContagion.cpp',
+     'FName(DeathChanceStat), FGameplayTagContainer(), 0.0f'):
+        "an aura's duration and chance, asked of the character rather "
+        'than of a blow',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.cpp',
+     'FName(Stat), Tags, FromAttribute, -1.0f, Blow'):
+        "the defender's own stats, asked WITH THE BLOW so a row about "
+        'the hit being melee, ranged or a spell can be judged; and, for a '
+        "damage over time tick only, with the tick's own tags (ruled "
+        '2026-10-06) so a row may require the bleed tag or the damage over '
+        'time parent. A tick has no blow and a hit passes no tags',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDamageConversion.cpp',
+     'FName(UCataclysmDamageConversion::ActiveStat), FGameplayTagContainer(), System->GetNumericAttribute(Flag)'):
+        'how much of one damage type becomes another, a property of the '
+        'attacker',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp',
+     'FName(SharedDebuffDamageStat), FGameplayTagContainer(), Source->GetNumericAttribute(Attribute)'):
+        'what a debuff this character carries is worth, with no blow in '
+        'hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp',
+     'FName(DurationStat), AppliedTags, Held'):
+        'how long an effect lasts on this character, asked with the tags of '
+        'the effect being applied (ruled 2026-10-06) so a row may require '
+        'the bleed tag or the damage over time parent; no blow is in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp',
+     'FName(DoNotExpireStat), FGameplayTagContainer(), 0.0f'):
+        'what a debuff this character carries is worth, with no blow in '
+        'hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'Stat, Context, Plain'):
+        'class resource generation, asked on a timer with no blow, '
+        'target or skill in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(LossSuppressedStat), Healing, 0.0f'):
+        'class resource generation, asked on a timer with no blow, '
+        'target or skill in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(PerSecondStat), FGameplayTagContainer(), 0.0f'):
+        'class resource generation, asked on a timer with no blow, '
+        'target or skill in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(FromMinionsStat), FGameplayTagContainer(), 0.0f'):
+        'class resource generation, asked on a timer with no blow, '
+        'target or skill in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(PerEnemyInReachStat), FGameplayTagContainer(), 0.0f'):
+        'class resource generation, asked on a timer with no blow, '
+        'target or skill in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(DecayPerSecondStat), FGameplayTagContainer(), 0.0f'):
+        'class resource generation, asked on a timer with no blow, '
+        'target or skill in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(DecayGraceMetresStat), FGameplayTagContainer(), 0.0f'):
+        'class resource generation, asked on a timer with no blow, '
+        'target or skill in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(PerCastStat), FGameplayTagContainer(), 0.0f'):
+        'class resource generation, asked on a timer with no blow, '
+        'target or skill in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(OnDroppingLowStat), FGameplayTagContainer(), Resource->GetFervourOnDroppingLow()'):
+        'class resource generation, asked on a timer with no blow, '
+        'target or skill in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(HealthRestoredOnKillStat), FGameplayTagContainer(), 0.0f'):
+        'class resource generation, asked on a timer with no blow, '
+        'target or skill in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(HealthRestoredOnKillAtNoCostStat), FGameplayTagContainer(), Resource->GetHealthRestoredOnKillAtNoCost()'):
+        'class resource generation, asked on a timer with no blow, '
+        'target or skill in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(IncreasedDamageBoughtPerExtraEnemyHitStat), SkillTags, 0.0f'):
+        'class resource generation, asked on a timer with no blow, '
+        'target or skill in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(PerEnemyHitStat), SkillTags, 0.0f'):
+        'class resource generation, asked on a timer with no blow, '
+        'target or skill in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(OnMinionDeathStat), FGameplayTagContainer(), Resource->GetFervourOnMinionDeath()'):
+        'class resource generation, asked on a timer with no blow, '
+        'target or skill in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(OnEnemyDeathNearbyStat), FGameplayTagContainer(), Resource->GetFervourOnEnemyDeathNearby()'):
+        'class resource generation, asked on a timer with no blow, '
+        'target or skill in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
+     'FName(TEXT("cooldown_reduction")), SkillTags, AbilitySystem->GetNumericAttribute(Reduction)'):
+        'the cooldown reduction, asked with the tags of the skill so a row '
+        'scoped to a slot or a keyword reaches it; the attribute is the '
+        'fallback for a character with no recorded rows. Issue #2000 '
+        'replaced a rate lookup here that read the wrong bucket.',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
+     'FName(UCataclysmSkillSlots::CooldownLengtheningStat), SkillTags, 0.0f'):
+        'how much longer the cooldown is, asked with the tags of the skill so '
+        'a row scoped to a slot reaches only that slot; nought is the '
+        'fallback because the stat has no attribute. Issue #1994.',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
+     'FName(UCataclysmSkillSlots::CooldownRecoveryStat), SkillTags, 0.0f'):
+        'how much faster the cooldown recovers (issues #1820 and #41, the '
+        'dungeon rule Fragmented Reality), asked with the tags of the skill '
+        'as the reduction and the lengthening beside it are; nought is the '
+        'fallback because the stat has no attribute, and there is no blow',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
+     'FName(TEXT("cooldown_skip_chance")), FGameplayTagContainer(), 0.0f'):
+        'the chance a skill does not go on cooldown, asked of the '
+        'character',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
+     'FName(ManaCostAlsoTakenFromHealthPercentStat), SkillTagsForStats(), 0.0f'):
+        'the share of the mana a cast took that is also taken from health, the '
+        'Edict of Abstinence (G7c), asked with the tags of the skill once mana '
+        'has been taken; its only row carries no condition, so no blow or '
+        'target is needed; nought is the fallback because the stat has no '
+        'attribute.',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'FName(UCataclysmDamageCalculation::CriticalStrikesDealNoExtraDamageStat), AssetTags, 0.0f'):
+        'the flag by which a critical strike deals no extra damage, the Edict '
+        'of Humility (G7c), asked of the attacker with the blow\'s tags beside '
+        'the critical multiplier; its only row carries no condition, so no '
+        'target, distance or stagger is handed over; nought is the fallback '
+        'because the stat has no attribute.',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
+     'FName(ManaCostAsCurrentHealthPercentStat), SkillTagsForStats(), 0.0f'):
+        'the share of current health a cast pays instead of its mana, asked '
+        'with the tags of the skill; its only row carries mana_below, which '
+        'reads the caster\'s own mana, so no blow or target is needed; nought '
+        'is the fallback because the stat has no attribute. Issues #1820 and '
+        '#41.',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmHealthDebt.cpp',
+     'FName(UnpayableBecomesDebtStat), FGameplayTagContainer(), AbilitySystem->GetNumericAttribute(Flag)'):
+        "the health debt's own rates, read off the character",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmHealthDebt.cpp',
+     'FName(ClearedOnDroppingLowStat), FGameplayTagContainer(), AbilitySystem->GetNumericAttribute(Flag)'):
+        "the health debt's own rates, read off the character",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmLeech.cpp',
+     'FName(Stat), SkillTags, FromAttribute'):
+        'how much a leech returns, asked with the tags of the skill that dealt '
+        'the hit (issue #947) after the blow has already resolved',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmLeech.cpp',
+     'FName(TEXT("life_leech")), FGameplayTagContainer(), Vitals->GetLifeLeech()'):
+        'how much a leech returns, asked of the character after the '
+        'blow has already resolved',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmLowHealthRelief.cpp',
+     'FName(UCataclysmHealthDebt::ClearedOnDroppingLowStat), NoTags, AbilitySystem->GetNumericAttribute(Cleared)'):
+        "a relief that reads only the character's own health",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmLowHealthRelief.cpp',
+     'FName(UCataclysmFervour::OnDroppingLowStat), NoTags, AbilitySystem->GetNumericAttribute(Fervour)'):
+        "a relief that reads only the character's own health",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp',
+     'FName(Stat), FGameplayTagContainer(), 0.0f'):
+        "a minion's own health and damage, asked with an empty tag "
+        'container',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmNova.cpp',
+     'FName(DamageStat), FGameplayTagContainer(), 0.0f'):
+        "a nova's own figures, asked before it strikes anything",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.cpp',
+     'FName(UCataclysmDamageCalculation::ProjectileLaterHitDamageStat), SkillTags, UCataclysmDamageCalculation::NormalProjectileLaterHitDamage'):
+        "the share a projectile's later contact keeps (issue #1686), with "
+        "the firing skill's tags; the count of contacts is the "
+        "projectile's own, so no blow state is handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.cpp',
+     'FName(Stat), FGameplayTagContainer(), Stored'):
+        'a regeneration tick, which is a clock rather than a blow',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.cpp',
+     'FName(Stat), FGameplayTagContainer(), AbilitySystem->GetNumericAttribute( Attribute)'):
+        'a regeneration tick, which is a clock rather than a blow',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmRetaliation.cpp',
+     'FName(Stat), FGameplayTagContainer(), Held'):
+        "retaliation's own figures, read off the character that was hit",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
+     'FName(TEXT("spell_damage")), SkillTags, FromAttribute, SkillHealthCostPercent, FCataclysmBlowContext(), -1.0f, TargetDistanceMetres, bTargetIsStaggered, Target, EnemiesStruckTogether, MetresCharged, ChargeRangeMetres'):
+        "the attacker's damage for one blow, and the only call that "
+        'hands over the whole blow: distance, stagger, target and the '
+        'group struck; and, since 2026-10-08, how far a charge had gone '
+        'and the range it used, for the scale share_of_range_moved',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
+     'StatName, SkillTags, FromAttribute'):
+        'a figure read off the attacker with no blow in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
+     'FName(Stat), FGameplayTagContainer(), Held'):
+        'a figure read off the attacker with no blow in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
+     'FName(CrowdControlResistanceStat), FGameplayTagContainer(), Stat'):
+        'a figure read off the attacker with no blow in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(MeleeArcFullCircleStat), SkillTags, 0.0f'):
+        "Every Swing Lands' flag, asked as a melee swing picks its targets "
+        '(issue #1515); with the tags of the skill, no blow in hand yet',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmRisenImps.cpp',
+     'FName(UCataclysmRisenImps::RisesStat), FGameplayTagContainer(), 0.0f'):
+        "the Ritualist's risen-imp flag, asked of whoever laid a curse on a "
+        'creature that has just died (issue #1479); a death is not a skill, so no tags',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmPotions.cpp',
+     'FName(ForbiddenStat), FGameplayTagContainer(), 0.0f'):
+        "Hard Mode's flag, asked of the drinker before a potion is drunk and by "
+        'the boxes on screen (issue #806); a potion is not a skill, so no tags',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmPotions.cpp',
+     'FName(KillChargesLessStat), FGameplayTagContainer(), 0.0f'):
+        "Recession's share off every kill, asked of the killer as a kill is "
+        'credited (issue #806); a potion is not a skill, so no tags',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmPotions.cpp',
+     'FName(HealLessPerDrinkStat), FGameplayTagContainer(), 0.0f'):
+        "Diminishing Returns' share off each drink, asked of the drinker as a "
+        'potion is drunk (issue #806); a potion is not a skill, so no tags',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
+     'FName(DotApplicationRefreshesOthersStat), FGameplayTagContainer(EffectTag), 0.0f'):
+        "Plague Doctor's six-piece flag (ruled 2026-10-06), asked of the applier "
+        'where a damage over time effect is applied, with the tag of the ailment '
+        'applied; whether it holds, not a modifier of a blow',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
+     'FName(CrowdControlHealthCeilingStat), FGameplayTagContainer(), 0.0f'):
+        'the crowd control health ceiling (ruled 2026-10-07), asked of the '
+        'applier before a stun, a knockdown, a fear or a displacement is '
+        "applied; the target's health is read off the target and is not a "
+        'condition of the stat, so no target is handed over',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
+     'FName(KnockbackSuppressedStat), FGameplayTagContainer(), 0.0f'):
+        "Set Stance's flag, asked of the target of a knockback before it is "
+        'moved (issue #1755); whether it holds, not a modifier of a blow',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(UCataclysmDamageCalculation::ZoneFirstSweepDamageStat), SkillTags, UCataclysmDamageCalculation::NormalZoneFirstSweepDamage'):
+        "the share a skill's zone deals on its first sweep (issue #1686), "
+        "asked where the zone is priced; a zone is not a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(ClassResourceGenerationStat), FGameplayTagContainer(), NormalClassResourceGeneration'):
+        "how fast the class resource is gained (ruled 2026-10-07), asked at "
+        "each gain by ClassResourceGainScaled; a generation rate is the "
+        "character's and not a skill's, so no tags",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(UCataclysmDamageCalculation::PersistentAreaDurationStat), SkillTags, UCataclysmDamageCalculation::NormalPersistentAreaDuration'):
+        "the share of its stated time a ground zone or a terrain lasts (ruled "
+        "2026-10-06), asked where the area is left; an area is not a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(UCataclysmDamageCalculation::OnlyOnePersistentAreaStat), SkillTags, 0.0f'):
+        "whether a character may hold only one persistent area (ruled "
+        "2026-10-06), asked where an area is left; a flag, not a modifier of a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(UCataclysmDamageCalculation::ZoneDamagePerEnemyInsideStat), SkillTags, 0.0f'):
+        "how much more a zone's sweep deals for each enemy inside (ruled "
+        "2026-10-06), asked where the zone is priced; a zone is not a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(UCataclysmDamageCalculation::ZoneSlowPercentStat), SkillTags, 0.0f'):
+        "the slow a zone lays on those inside (ruled 2026-10-06), asked "
+        "where the zone is left; a zone is not a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(RiderStat), SkillTags, 0.0f'):
+        "one of four things a worn row makes a Movement skill do (ruled "
+        "2026-10-07): a pull where it arrived, a hit along a charge's path, "
+        "a random direction, an explosion at both ends; asked by the "
+        "movement skill with its own tags before any blow is in hand",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(SecondsStat), SkillTags, 0.0f'):
+        "how long the zone a row gives a skill lasts (ruled 2026-10-06), one "
+        "of two stats, asked where the zone is left; a zone is not a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(UCataclysmDamageCalculation::ZoneDamagesItsOwnerStat), SkillTags, 0.0f'):
+        "whether a zone also damages the character who left it (the owner's "
+        "decision of 2026-10-06), asked where the zone is left; a flag, not a modifier of a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(UCataclysmDamageCalculation::ZoneAppliesEffectsToOwnerStat), SkillTags, 0.0f'):
+        "whether a zone also lays its effects on the character who left it (the owner's "
+        "decision of 2026-10-06), asked where the zone is left; a flag, not a modifier of a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
+     'FName(UCataclysmDamageCalculation::AilmentImmunityStat), AppliedTags, 0.0f'):
+        "whether the target refuses the ailment being applied (ruled "
+        "2026-10-06), asked of the target with the ailment's own tag and the "
+        "damage over time parent; a flag, asked before any blow or tick exists",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(UCataclysmDamageCalculation::ZoneFollowsOwnerPercentStat), SkillTags, 0.0f'):
+        "the percent of its owner's walking speed at which a zone follows them "
+        "(ruled 2026-10-06), asked where the zone is left; a zone is not a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(UCataclysmDamageCalculation::ZoneStaggersOnEntryStat), SkillTags, 0.0f'):
+        "whether a zone staggers whoever enters it (ruled 2026-10-06), asked "
+        "where the zone is left; a flag, not a modifier of a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(UCataclysmDamageCalculation::ZoneAppliesOwnAilmentStat), SkillTags, 0.0f'):
+        "whether a zone lays the ailment of its own damage type (ruled "
+        "2026-10-06), asked where the zone is left; a flag, not a modifier of a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(UCataclysmSkillSlots::LockedStat), SkillTags, 0.0f'):
+        "a skill's own cost and shape, asked before any blow exists",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(UCataclysmSkillEffects::KnockdownSecondsStat), SkillTags, 0.0f'):
+        "a skill's own cost and shape, asked before any blow exists",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(TEXT("added_health_cost")), SkillTags, FromAttribute'):
+        "a skill's own cost and shape, asked before any blow exists",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(MeleeReachMetresStat), SkillTags, 0.0f'):
+        "a strike's own reach, asked with the skill's tags before any blow "
+        'exists',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(HealthCostSuppressedStat), FGameplayTagContainer(), 0.0f'):
+        "a skill's own cost and shape, asked before any blow exists",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(ManaPoolBecomesHealthStat), FGameplayTagContainer(), 0.0f'):
+        "a skill's own cost and shape, asked before any blow exists",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(TEXT("added_health_cost_of_current")), SkillTags, FromAttribute'):
+        "a skill's own cost and shape, asked before any blow exists",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(StatName), SkillTags, Mine->GetNumericAttribute(Stat)'):
+        "an aura's upkeep and a skill's own numbers, asked with no blow "
+        'in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(UCataclysmCommand::PossessionThresholdBonusStat), SkillTags, Mine->GetNumericAttribute(Stat)'):
+        "an aura's upkeep and a skill's own numbers, asked with no blow "
+        'in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(bForExplosion ? ReplacedOnExplosionStat : ReplacedOnDeathStat), FGameplayTagContainer(), 0.0f'):
+        "the seconds between replacements of a lost minion, a flag read off "
+        'the commander after a death, with no blow or skill in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmStacks.cpp',
+     'FName(CarnageFromDamageTakenStat), FGameplayTagContainer(), AbilitySystem->GetNumericAttribute(Flag)'):
+        'how long a stack lasts and how many may be held, read off the '
+        'character',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmStacks.cpp',
+     'FName(CarnageHasNoMaximumStat), FGameplayTagContainer(), AbilitySystem->GetNumericAttribute(Flag)'):
+        'how long a stack lasts and how many may be held, read off the '
+        'character',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'FName(UCataclysmDamageCalculation::MeleeEvasionSuppressedStat), AssetTags, Swinging->GetNumericAttribute(Suppressed)'):
+        'a defender reading with no blow in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'FName(TEXT("penetration")), AssetTags, Offence->GetPenetration(), -1.0f, FCataclysmBlowContext(), -1.0f, Hit.OpponentDistanceMetres, UCataclysmSkillEffects::IsStaggered(GetOwningActor()), GetOwningActor()'):
+        'resistance penetration, handed the character struck, the distance '
+        'to it and its stagger since issue #1833, so a first-hit row can '
+        'ask whether the enemy has been struck. This entry said "a defender '
+        'reading with no blow in hand" until then, which was never so: it '
+        'is the attacker\'s reading, made while the blow resolves',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'SurvivedEveryStat, FGameplayTagContainer(), 0.0f'):
+        "Nothing Stops It's interval, a flag read off the defender when a hit "
+        'would kill, with no skill of its own in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.cpp',
+     'FName(SharedBloodStat), FGameplayTagContainer(), 0.0f'):
+        "Shared Blood's share, asked of a minion's summoner in the minion's "
+        'regeneration step with no blow, target or skill in hand',
+    ('game/Source/Cataclysm/Items/CataclysmEquipmentComponent.cpp',
+     'FName(BothHandsFullStat), FGameplayTagContainer(), 0.0f'):
+        "Both Hands Full's flag, asked of the wearer when a weapon is put on "
+        'and after its passive allocation changes; no blow or skill in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFollowThrough.cpp',
+     'FName(UCataclysmFollowThrough::EverySecondsStat), FGameplayTagContainer(), 0.0f'):
+        "Follow Through's interval, asked of the killer after a kill and before "
+        'its repeat; a clock, not a blow modifier',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp',
+     'FName(NowhereToRunMetresStat), FGameplayTagContainer(), 0.0f'):
+        "Nowhere to Run's radius, asked of the holder in its step; a radius, "
+        'not a blow modifier',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(UCataclysmDebuffs::NowhereToRunMetresStat), FGameplayTagContainer(), 0.0f'):
+        "Nowhere to Run's radius as a no-decay radius, asked in the decay step "
+        'with no blow in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmShoulderThrough.cpp',
+     'FName(Stat), FGameplayTagContainer(), 0.0f'):
+        "Shoulder Through's switch, asked of the walker every frame it walks, "
+        'before any enemy is found; whether it is held, not a blow modifier',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmChorus.cpp',
+     'FName(Stat), FGameplayTagContainer(), 0.0f'):
+        "Chorus's switch, asked of the caster after each landed skill hit; "
+        'whether it is held, not a modifier of that hit',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSecondSelf.cpp',
+     'Held, FGameplayTagContainer(), 0.0f'):
+        "A Second Self's switch, asked of the commander in its regeneration "
+        'step, at a thrall taken, at an explosion and for the label; whether '
+        'it is held, not a blow modifier',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(MitigatedAddedCapStat), FGameplayTagContainer(), 0.0f'):
+        "Nothing Wasted's cap, asked of the holder as damage is stored and as "
+        'a melee hit spends it; a share of the hit, not a blow modifier',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(ShieldAbsorbedAddedCapStat), FGameplayTagContainer(), 0.0f'):
+        "the cap of the store of what the energy shield absorbed, asked of the "
+        'wearer as it is stored and as the next attack spends it; a share of '
+        'the hit, not a blow modifier',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(SpellAbsorbedAddedCapStat), FGameplayTagContainer(), 0.0f'):
+        "the cap of the store of absorbed spell damage, asked of the wearer as "
+        'it is stored and as the next attack spends it; a share of the hit, '
+        'not a blow modifier',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(OverhealAbsorbCapStat), FGameplayTagContainer(), 0.0f'):
+        "the most the temporary absorb can hold from overheal (ruled "
+        "2026-10-07), asked of the healed character by NoteOverheal where a "
+        "heal of health did not all fit; a heal is not a skill and has no "
+        "target, so no tags and no state",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmLeech.cpp',
+     'FName(PayoutRateStat), FGameplayTagContainer(), NormalPayoutRate'):
+        "how fast a payment of leech arrives (ruled 2026-10-07), asked of the "
+        "leecher by PayoutSecondsFor where a payment is made; the rate is the "
+        "character's and a retaliation has no skill, so no tags and no state",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(StrikeArcAtLeastDegreesStat), SkillTags, 0.0f'):
+        "the least width of a strike's arc (ruled 2026-10-07), asked as a "
+        "strike picks its targets; with the tags of the skill, which carry "
+        "its slot, and no blow in hand yet",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
+     'FName(UCataclysmSkillEffects::StaggerRootSecondsStat), FGameplayTagContainer(), 0.0f'):
+        "the seconds a staggered enemy is rooted (ruled 2026-10-07), asked of "
+        "the staggering character once its stagger has landed; a stagger is "
+        "not a skill and carries no tags, as the stagger stats beside it",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(RendPercentStat), FGameplayTagContainer(), 0.0f'):
+        "Rendering Blows' share, asked of the striker as a count of landed "
+        'melee hits is kept; a flag-like value, not a blow modifier',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(RendSecondsStat), FGameplayTagContainer(), 0.0f'):
+        "Rendering Blows' seconds, asked of the striker on the third landed "
+        'melee hit; a duration, not a blow modifier',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(SkillChargesBonusStat), SkillTags, 0.0f'):
+        "a skill's added charges (issue #1833), asked with the tags of the "
+        'skill so a row scoped to a slot reaches only that slot, before any '
+        'blow exists; the boss clock one row reads is kept on this ability '
+        'system and needs nothing handed over',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp',
+     'FName(GroundDownMetresStat), FGameplayTagContainer(), 0.0f'):
+        "Ground Down's radius, read in a regeneration step with no blow, "
+        'target or skill in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp',
+     'FName(GroundDownPercentStat), FGameplayTagContainer(), 0.0f'):
+        "Ground Down's share of a creature's speeds, read in the same step",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp',
+     'FName(AppliedHeldWithinMetresStat), FGameplayTagContainer(), 0.0f'):
+        "No Second Wind's radius, read in a regeneration step with no blow, "
+        'target or skill in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
+     'FName(CostPaidFromEnergyShieldStat), FGameplayTagContainer(), 0.0f'):
+        "Cast from Ward's flag, asked when a cost is weighed against the pools, "
+        'which is a question about the character and not about one skill',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
+     'FName(CostPaidFromHealthStat), FGameplayTagContainer(), 0.0f'):
+        'the flag that moves a cost onto health, asked when the pool that pays '
+        'is chosen, which is a question about the character and not one skill',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
+     'FName(CostPaidFromHealthWhenShortStat), FGameplayTagContainer(), 0.0f'):
+        'the health paid for each mana when mana is short, asked when a cost is '
+        'weighed against the pools, as Cast from Ward is',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'WardStat, FGameplayTagContainer(), 0.0f'):
+        "Sacrificial Ward's interval, a flag read off the defender when a blow "
+        'would break its energy shield, with no skill of its own in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'ImmuneForStat, FGameplayTagContainer(), 0.0f'):
+        "Nothing Stops It's no-damage seconds, read off the defender once a "
+        'lethal hit is survived',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'FName(TEXT("armor_penetration")), AssetTags, Offence->GetArmorPenetration(), -1.0f, FCataclysmBlowContext(), -1.0f, Hit.OpponentDistanceMetres, UCataclysmSkillEffects::IsStaggered(GetOwningActor()), GetOwningActor(), EnemiesStruckTogether'):
+        'armour penetration, handed the whole blow since issue #1992: '
+        'the character struck, the distance to it, its stagger and '
+        'the count of enemies struck together',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'FName(UCataclysmDamageCalculation::CriticalArmorPenetrationStat), AssetTags, 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, Hit.OpponentDistanceMetres, UCataclysmSkillEffects::IsStaggered(GetOwningActor()), GetOwningActor(), EnemiesStruckTogether'):
+        'the share of armour a critical strike ignores, issue #1833, handed '
+        'the same blow as armour penetration beside it',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
+     'FName(ManaCostAsMaximumManaPercentStat), SkillTagsForStats(), 0.0f'):
+        "a share of the maximum mana added to a skill's cost, issue #1833, "
+        "with the skill's tags and no blow, as the cost it is added to",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'FName(TEXT("crit_chance")), AssetTags, Offence->GetCritChance(), -1.0f, FCataclysmBlowContext(), -1.0f, Hit.OpponentDistanceMetres, UCataclysmSkillEffects::IsStaggered( GetOwningActor()), GetOwningActor()'):
+        'a critical strike stat, handed the whole blow since issue '
+        '#1992: the character struck (issue #1982), the distance to '
+        'it and its stagger',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'FName(TEXT("crit_multiplier")), AssetTags, Offence->GetCritMultiplier(), -1.0f, FCataclysmBlowContext(), -1.0f, Hit.OpponentDistanceMetres, UCataclysmSkillEffects::IsStaggered( GetOwningActor()), GetOwningActor()'):
+        'a critical strike stat, handed the whole blow since issue '
+        '#1992: the character struck (issue #1982), the distance to '
+        'it and its stagger',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'FName(UCataclysmDamageCalculation::NonCriticalDamageStat), AssetTags, UCataclysmDamageCalculation::NormalNonCriticalDamage, -1.0f, FCataclysmBlowContext(), -1.0f, Hit.OpponentDistanceMetres, UCataclysmSkillEffects::IsStaggered(GetOwningActor()), GetOwningActor()'):
+        'the share a hit keeps when its critical roll fails, asked on '
+        'the same terms as the critical multiplier beside it (issue #1686)',
+    ('game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp',
+     'FName(CrowdControlEndsWhenItsApplierDiesStat), FGameplayTagContainer(), Cataclysm->GetNumericAttribute( UCataclysmCombatAttributeSet:: GetCrowdControlEndsWhenItsApplierDiesAttribute())'):
+        'a character sheet reading, which has no skill or target in '
+        'hand at all',
+    ('game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp',
+     'FName(TEXT("movement_speed")), FGameplayTagContainer(), FromAttribute'):
+        'a character sheet reading, which has no skill or target in '
+        'hand at all',
+    ('game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp',
+     'FName(MovementSpeedReductionSuppressedStat), FGameplayTagContainer(), AbilitySystem->GetNumericAttribute( UCataclysmCombatAttributeSet:: GetMovementSpeedReductionSuppressedAttribute())'):
+        'a character sheet reading, which has no skill or target in '
+        'hand at all',
+    ('game/Source/Cataclysm/Interface/CataclysmSkillBar.cpp',
+     'FName(UCataclysmSkillSlots::LockedStat), Skill->SkillTags, 0.0f'):
+        'what the skill bar shows, which has no blow in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(ProjectileBouncesStat), SkillTags, 0.0f'):
+        "the bounces a row adds to a projectile skill's own (ruled 2026-10-07), "
+        "asked with the skill's tags where it fires, before any blow exists",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(ProjectilePierceAllStat), SkillTags, 0.0f'):
+        "whether a row makes a projectile skill pierce all (ruled 2026-10-07), "
+        "asked with the skill's tags where it fires, lands and leaves ground; "
+        "a flag, not a modifier of a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
+     'FName(CannotWalkStat), FGameplayTagContainer(), 0.0f'):
+        "whether a worn row forbids the character to walk (ruled 2026-10-08), "
+        "asked by CannotWalkByARow for the player controller's refusal of a "
+        "step; walking is not a skill, so no tags, and there is no blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(HitTakenCancelsSkillsStat), Running->SkillTags, 0.0f'):
+        "whether a landed hit cuts short a skill its wearer is using (ruled "
+        "2026-10-08), asked by NoteHitTaken once for each running skill with "
+        "that skill's tags; a flag about the skill, so the blow that landed "
+        "is not handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(BlowDelaySecondsStat), SkillTags, 0.0f'):
+        "the seconds a worn row adds to a skill's wind-up (ruled 2026-10-08), "
+        "asked by SecondsUntilTheSwingConnects with the skill's tags once it "
+        "is paid for; the skill has struck nothing yet, so there is no blow "
+        "and no target to hand over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.cpp',
+     'FName(UCataclysmDamageCalculation::MinionDefencesPercentOfYoursStat), Minion->TypeTags, 0.0f'):
+        "the share of its summoner's armour and resistances a minion takes "
+        "(ruled 2026-10-08), asked of the SUMMONER by InheritedDefencesOf with "
+        "the minion's own type tags; how large the share is does not depend "
+        "on the blow, and the summoner's armour is then asked WITH the blow "
+        "through DefenderStat",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
+     'FName(SufferingAuraManaDrainImmunityStat), FGameplayTagContainer(), 0.0f'):
+        "whether the dungeon rule Suffering Aura takes no mana from this "
+        "character (ruled 2026-10-09), asked by "
+        "ImmuneToSufferingAuraManaDrainByARow for the one condition on that "
+        "rule's mana loss; the drain is not a skill, so no tags, and there is "
+        "no blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(DamageTypeImmunityOnHitChanceStat), FGameplayTagContainer(), 0.0f'):
+        "the wearer's chance to become immune to the damage type of a hit it "
+        "has taken (ruled 2026-10-12), asked by RollDamageTypeImmunityOnHit "
+        "after the hit's health is written; the chance belongs to the wearer "
+        "and not to a skill, so no tags, and the hit is the attacker's and "
+        "already resolved, so no blow is handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(DamageTypeImmunityOnHitSecondsStat), FGameplayTagContainer(), 0.0f'):
+        "the seconds that immunity lasts (ruled 2026-10-12), asked in the "
+        "same function beside the chance and for the same reason: no tags "
+        "and no blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmRetaliation.cpp',
+     'FName(CannotBeMitigatedStat), FGameplayTagContainer(), 0.0f'):
+        "whether what this character's retaliation strikes cannot reduce or "
+        "mitigate it (ruled 2026-10-12), asked by CannotBeMitigatedFor where "
+        "Pay builds the blow it sends; retaliation is not a skill, so no "
+        "tags, and the flag is the retaliating character's own and asks "
+        "nothing about the blow it took or the character it strikes, so no "
+        "blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(EnemiesImmuneAfterSecondsStat), FGameplayTagContainer(), 0.0f'):
+        "how many seconds after its first hit on an enemy that enemy becomes "
+        "immune to this character's damage (ruled 2026-10-12), asked of the "
+        "attacker by IsImmuneToDamageOf where a blow on the enemy is "
+        "resolved; the rule is the attacker's whatever it strikes with, so "
+        "no tags, and it is refused for every kind of blow alike, so no blow "
+        "and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(ProjectileCountStat), SkillTags, 0.0f'):
+        "the projectiles a row adds to the one a projectile skill fires "
+        "(ruled 2026-10-12), asked by ExtraProjectilesWithRows with the "
+        "skill's tags where it fires, before any blow exists, as the bounces "
+        "a row adds are",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDelayedDamage.cpp',
+     'FName(SharePercentStat), FGameplayTagContainer(), 0.0f'):
+        "the share of what would reach health that is taken later instead "
+        "(ruled 2026-10-12), asked of the struck character by "
+        "ShareThatWouldBeDelayed, for DelayShare where a blow's damage "
+        "reaches health and, since 2026-10-13, for the two saves from a "
+        "lethal blow; the rule is about every blow "
+        "its wearer takes, whatever struck it and with whatever, so no tags, "
+        "no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDelayedDamage.cpp',
+     'FName(SecondsStat), FGameplayTagContainer(), 0.0f'):
+        "the seconds a delayed share is drained over (ruled 2026-10-12), "
+        "asked beside the share in ShareThatWouldBeDelayed and for the same "
+        "character; "
+        "no tags, no blow and no target, for the reason the share gives",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp',
+     'FName(DebuffedEnemiesDealLessPercentStat), FGameplayTagContainer(), 0.0f'):
+        "the percent less an enemy deals while it carries a debuff of this "
+        "character's (ruled 2026-10-13), asked of the applier by NoteLaid "
+        "where a debuff is put on another character; the row is about every "
+        "debuff its wearer applies with whatever, so no tags, and a debuff "
+        "is not a blow, so no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp',
+     'FName(ZoneDebuffsCountUnderStat), FGameplayTagContainer(), 0.0f'):
+        "whether a ground zone's owner holds Conduit (ruled 2026-10-13), "
+        "asked of the owner by NoteLaid just before the stat above, only "
+        "while a zone is laying its effects; a flag of the character's, so "
+        "no tags, no blow and no target",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp',
+     'FName(ImmuneAndAppliesNoneStat), FGameplayTagContainer(), 0.0f'):
+        "whether a character is given no debuff and lays none (ruled "
+        "2026-10-13), asked by HoldsImmuneAndAppliesNone of the target, of "
+        "the instigator and of whom the instigator follows where a debuff is "
+        "about to be laid, and of a character at its regeneration step; the "
+        "row is about every debuff whatever lays it, so no tags, and a "
+        "debuff is not a blow, so no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
+     'FName(UCataclysmSkillEffects::DotExplodesAtExpiryChanceStat), Granted, 0.0f'):
+        "the chance that a damage over time ailment explodes when it ends by "
+        "time (ruled 2026-10-13), asked of the applier where the ended "
+        "effect's removal is heard, with the tags that effect granted, so a "
+        "row requiring one ailment's tag reaches that ailment alone; no blow "
+        "exists yet and the stat is no modifier of one, so no blow and no "
+        "target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp',
+     'FName(Stat), TypeTags, 0.0f'):
+        "a stat a summoner's row gives its gadgets (ruled 2026-10-13), asked "
+        "of the summoner by SummonersGadgetStat with the gadget's own type "
+        "tags, so a row scoped to Type.Deployable matches; each is a flag or "
+        "a figure of the gadget's own behaviour, read when the gadget "
+        "chooses a target or on its step, with no blow and no target in hand",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
+     'FName(UltimateCostDoublesInsteadOfCooldownStat), FGameplayTagContainer(), 0.0f'):
+        "whether a skill in the Ultimate slot has no cooldown and a mana cost "
+        "that doubles with each paid use (Mana Weaver's ten-piece bonus, "
+        "ruled 2026-10-14), asked by UltimateCostDoublesByARow from "
+        "GetBaseCooldown, ManaCostFor and CommitAndBegin; no tags, because "
+        "the slot the skill holds decides and not its row's tags, and no "
+        "blow or target is in hand",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAllyDamageShare.cpp',
+     'FName(PercentStat), FGameplayTagContainer(), 0.0f'):
+        "the percent of what reaches a nearby ally's health that its wearer "
+        "takes (ruled 2026-10-15), asked by PercentHeldBy of the struck "
+        "character, of each character beside it and of each wearer when its "
+        "share is sent; the rule is about every blow any ally beside the "
+        "wearer takes, so no tags, and the blow in hand is the ally's and not "
+        "the wearer's, so no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAreaShareOnAllies.cpp',
+     'FName(PercentStat), SkillTags, 0.0f'):
+        "the percent of a point-blank skill's blow each ally inside its area "
+        "is struck for (ruled 2026-10-15), asked by PercentHeldFor before the "
+        "allies are searched for and again when they are struck; the skill's "
+        "own tags, because the row requires Type.AOE.PointBlank, and no "
+        "target, because the one figure serves every ally of the swing and "
+        "the row has no condition",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(SkillSlotIsAGadgetStat), SkillGadgetSlotTags(Slot), 0.0f'):
+        "whether a slot is converted into a skill gadget (ruled 2026-10-16), "
+        "asked by SlotIsASkillGadget from a slot's press and from the skill "
+        "bar with the held skill's tags and the slot's tag, as the lock is "
+        "asked; a press is not a blow and the row has no condition, so no "
+        "blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVoidAura.cpp',
+     'FName(ConsumeChanceStat), FGameplayTagContainer(), 0.0f'):
+        "the chance the Null Emperor ten-piece's aura consumes an enemy's shot "
+        "(ruled 2026-10-17, O9), asked by ConsumeChanceOf while the wearer "
+        "holds ten Void, for a shot in flight and for the line above the "
+        "bars; a shot is not one of the wearer's skills, so no tags, and no "
+        "blow has landed, so no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(Stat), FGameplayTagContainer(), 0.0f'):
+        "the three figures of a reprieve from a lethal blow (ruled 2026-10-18, "
+        "the Demon King's Regalia's ten-piece), asked by "
+        "LethalHitReprieveFigure off the defender when a blow or a tick would "
+        "kill; the rule is about any blow, so no tags, and its rows carry no "
+        "condition and are scaled only by their own stacks, which the "
+        "character's state already counts, so no blow and no target are "
+        "handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGroundPound.cpp',
+     'FName(Stat), FGameplayTagContainer(), 0.0f'):
+        "each of Brute's Heart's five Ground Pound stats (ruled 2026-10-17 "
+        "and 2026-10-18), asked by StatOf on the regeneration step and at a "
+        "kill; the pound is not one of the wearer's skills, so no tags, and "
+        "nothing has landed when they are asked, so no blow and no target "
+        "are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGroundPound.cpp',
+     'FName(TEXT("armor")), FGameplayTagContainer(), Combat ? Combat->GetArmor() : 0.0f'):
+        "the wearer's own armour, which the Ground Pound strikes every enemy "
+        "near with, asked as the armour nova in "
+        "CataclysmAbilitySystemComponent.cpp asks it (Q4 of 2026-10-18); no "
+        "skill and no blow of its own is in hand",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp',
+     'FName(TEXT("armor")), FGameplayTagContainer(), Combat ? Combat->GetArmor() : 0.0f'):
+        "the summoner's own armour, which each of a Warhound's hits is a "
+        "share of (Q5 of 2026-10-18), asked by WarhoundBlow as the armour "
+        "nova asks it; the summoner's armour is not a modifier of the "
+        "Warhound's blow, so no skill, no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmTauntAura.cpp',
+     'FName(Stat), FGameplayTagContainer(), 0.0f'):
+        "each of Brute's Heart's four taunt aura stats (ruled 2026-10-17 "
+        "and 2026-10-18), asked by StatOf on the regeneration step; the aura "
+        "is not one of the wearer's skills, so no tags, and the share of "
+        "health is judged by the aura itself with the wearer's own state, "
+        "so no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmReaperSoul.cpp',
+     'FName(MinionDeathLeavesSoulStat), FGameplayTagContainer(), 0.0f'):
+        "the flag by which a minion's or thrall's death leaves a Soul "
+        "(Reaper's Embrace's six-piece, ruled 2026-10-17 and 2026-10-18), "
+        "asked by LeaveFor off the commander from the death hook; the bonus "
+        "is the commander's and no skill of it is in hand, so no tags, and "
+        "nothing has landed on anybody, so no blow and no target are handed "
+        "over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(CullPercentPerSoulStrikeStackStat), FGameplayTagContainer(), 0.0f'):
+        "the cull per stack of Soul Strike (Reaper's Embrace's ten-piece, "
+        "ruled 2026-10-17 and 2026-10-19), asked by CullSharePercentAgainst "
+        "off the wearer when its hit lands; the bonus is about every hit of "
+        "the wearer's and the ruled row states no tag, so no tags, and the "
+        "share is judged on the struck character's health by KillIfLeftBelow "
+        "once the hit's damage is written, so no blow and no target are "
+        "handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(KillSpawnsMinionStat), FGameplayTagContainer(), 0.0f'):
+        "the flag by which a kill spawns one minion of the first summon skill "
+        "held (Reaper's Embrace's ten-piece, ruled 2026-10-19), asked by "
+        "SpawnOneAtAKill off the killer at its kill; the bonus is about any "
+        "kill and no skill of it is in hand, so no tags, and the kill has "
+        "already happened, so no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmTimeLockRift.cpp',
+     'FName(Stat), FGameplayTagContainer(), 0.0f'):
+        "each of Chronomancer's Time-Lock's seven temporal rift stats "
+        "(ruled 2026-10-08, 2026-10-17 and 2026-10-19), asked by StatOf on "
+        "the regeneration step; the rift is not one of the wearer's "
+        "skills, so no tags, and nothing has landed when they are asked, "
+        "so no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(AllyBuffsRefusedStat), FGameplayTagContainer(), 0.0f'):
+        "whether a character refuses buffs from allies (ruled 2026-10-19), "
+        "asked by RefusesBuffsFromAllies of each ally the shared buffs' step "
+        "and an aura's two passes are about to give a buff; the row is about "
+        "every buff whoever gives it, and the giver's skill is not the "
+        "receiver's, so no tags, and a buff is not a blow, so no blow and no "
+        "target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDeployableSelfBlast.cpp',
+     'FName(FlagStat), FGameplayTagContainer(), 0.0f'):
+        "the flag by which a wearer's own deployable's blast strikes the "
+        "wearer standing inside it (ruled 2026-10-19, B1-B6), asked by "
+        "HeldBy off the wearer at each of the five places a deployable's "
+        "blast is struck, before the wearer is looked for; a death blast "
+        "has no skill to scope it, so no tags, and the row has no "
+        "condition, so no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(SkillSlotIsATrapStat), SkillGadgetSlotTags(Slot), 0.0f'):
+        "whether a slot is converted into a skill trap (ruled 2026-10-19), "
+        "asked by SlotIsASkillTrap from a slot's press, from a trap's step "
+        "and from the skill bar with the held skill's tags and the slot's "
+        "tag, as the gadget's flag is asked; a press is not a blow and the "
+        "row has no condition, so no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(UCataclysmSkillSlots::LockedStat), Template->SkillTags, 0.0f'):
+        "the lock of the skill a trap slot's press would use (ruled "
+        "2026-10-19, T5 and T19: the press is the skill use), asked by "
+        "PressOfASkillTrapSlot with the skill's own tags as "
+        "UCataclysmSkillTemplate::CanActivateAbility asks it; a press is "
+        "not a blow, so no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp',
+     'FName(Stat), FGameplayTagContainer(TagOfATrap()), 0.0f'):
+        "the trap cap bonus and the no-expire flag (traps layer 3, ruled "
+        "2026-10-21, M1 and M2), asked by SkillTrapFigureOf off the player "
+        "with Type.Trap alone from a placing and from the skill bar; a "
+        "placing is not a blow and neither row has a condition, so no blow "
+        "and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(TEXT("attack_speed")), SkillTags, Attribute'):
+        "the attack speed a rack's seconds between throws are divided by "
+        "(issue #2233, ruled 2026-10-23), asked by SecondsBetweenThrows "
+        "with the skill's own tags once, when BeginEmptyingTheRack starts "
+        "the rack, the attribute the fallback; the throws have not landed, "
+        "so no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'FName(TEXT("dot_damage")), TickTags, 100.0f, -1.0f, FCataclysmBlowContext(), -1.0f, Hit.OpponentDistanceMetres, UCataclysmSkillEffects::IsStaggered(Ticked), Ticked'):
+        "the applier's dot_damage on each tick its stats priced, with the "
+        "character the tick lands on, the distance to it and its stagger "
+        "(ruled 2026-10-23, #2235, Q2 (a)); a tick is not a blow, so no blow, "
+        "no metres moved before it and no count of enemies struck",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'FName(TEXT("dot_damage")), TickTags, 100.0f'):
+        "the same dot_damage on the same tick with no target, the denominator "
+        "of the ratio (#2235, Q2 (a)): every row that holds without a target "
+        "cancels, so what the application baked in is not counted twice",
+}
+
+#: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only
+#: entries, and both now hand over the distance and the stagger.
+TARGET_WITHOUT_THE_DISTANCE_OR_THE_STAGGER: dict[tuple[str, str], str] = {}
+
+
+def test_the_reader_finds_the_call_sites_it_is_meant_to() -> None:
+    """The control. A broken reader makes every check below vacuous."""
+    found = call_sites()
+    assert found, "no call site was found at all; the reader is broken"
+    files = {file for file, _ in found}
+    assert A_CALL_SITE_THAT_HANDS_OVER_EVERYTHING in files, (
+        f"{A_CALL_SITE_THAT_HANDS_OVER_EVERYTHING} holds the one call that "
+        "hands over the whole blow and was not found, so the reader is broken")
+    assert any(len(args) >= 9 for args in found.values()), (
+        "no call was read as passing nine arguments, so the argument split is "
+        "broken and every check below would pass on nothing")
+
+
+def test_the_stripping_of_comments_actually_happens() -> None:
+    """Without this, a name in a comment would count as a call."""
+    path = REPO_ROOT / A_CALL_SITE_THAT_HANDS_OVER_EVERYTHING
+    raw = path.read_text(encoding="utf-8", errors="replace")
+    assert A_COMMENT_IN_THAT_FILE in raw, (
+        "the comment this check is anchored to has been reworded; re-anchor it "
+        "rather than deleting this test, which is the only thing keeping the "
+        "reader honest")
+    assert A_COMMENT_IN_THAT_FILE not in code_only(raw), (
+        "code_only left a comment in place, so a name in prose would be read "
+        "as a call")
+
+
+def test_every_call_site_is_in_the_inventory() -> None:
+    found = call_sites()
+    new = sorted(set(found) - set(INVENTORY))
+    assert not new, (
+        "these calls to StatForSkill are not in INVENTORY in this file:\n"
+        + "\n".join(f"  {file}\n    {args}" for file, args in new)
+        + "\n\nEither a call site was added, or an existing one's arguments "
+        "changed -- the key is the whole argument list, so a changed argument "
+        "reads as a new entry and a gone one. Add it with ONE SHORT REASON for "
+        "what it hands over, the way every entry there carries one. Issue #1992."
+        f"\n\nScope: parsed by matching parentheses over comment-stripped and "
+        f"string-stripped source, under {SOURCE_ROOT.name}, tests excluded. "
+        f"{len(found)} call sites were found in this tree.")
+
+
+def test_the_inventory_holds_no_call_site_that_has_gone() -> None:
+    """A list that keeps dead entries rots into an allowance that excuses everything."""
+    found = call_sites()
+    gone = sorted(set(INVENTORY) - set(found))
+    assert not gone, (
+        "INVENTORY lists these calls and the source no longer holds them:\n"
+        + "\n".join(f"  {file}\n    {args}" for file, args in gone)
+        + "\n\nA call site was removed or its arguments changed. Take the "
+        "entry out, or update it to what the call now hands over.")
+
+
+def test_a_call_that_hands_over_a_target_hands_over_the_distance_and_the_stagger() -> None:
+    """Issue #1992's own finding, asserted rather than only inventoried."""
+    short = []
+    for key, args in call_sites().items():
+        if len(args) <= TARGET or args[TARGET] == DEFAULTS[TARGET]:
+            continue          # hands over no target, so this says nothing
+        if args[DISTANCE] == DEFAULTS[DISTANCE] or args[STAGGER] == DEFAULTS[STAGGER]:
+            if key not in TARGET_WITHOUT_THE_DISTANCE_OR_THE_STAGGER:
+                short.append(key)
+    assert not short, (
+        "these calls hand over a target and leave the distance or the stagger "
+        "at its default:\n"
+        + "\n".join(f"  {file}\n    {args}" for file, args in short)
+        + "\n\nA row on that stat asking target_within_metres or "
+        "target_is_staggered would be accepted by every check, ship, and grant "
+        "nothing. Pass them, or list the call in "
+        "TARGET_WITHOUT_THE_DISTANCE_OR_THE_STAGGER with the reason. "
+        "Issue #1992.")
+
+
+def test_the_exemption_list_holds_nothing_that_now_hands_them_over() -> None:
+    """A name that gained its arguments must leave the list, or the list rots."""
+    found = call_sites()
+    fixed = []
+    for key in TARGET_WITHOUT_THE_DISTANCE_OR_THE_STAGGER:
+        args = found.get(key)
+        if args is None:
+            continue          # the other test reports a vanished call site
+        if (args[DISTANCE] != DEFAULTS[DISTANCE]
+                and args[STAGGER] != DEFAULTS[STAGGER]):
+            fixed.append(key)
+    assert not fixed, (
+        f"{sorted(fixed)} are listed as deliberately not handing over the "
+        "distance and the stagger, and now hand over both. Take them out of "
+        "TARGET_WITHOUT_THE_DISTANCE_OR_THE_STAGGER.")

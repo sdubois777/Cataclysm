@@ -1,0 +1,410 @@
+"""The Siege sub-type takes a share of its host every day it stands.
+
+WHY THIS FILE EXISTS. Issue #1329. The model gave a sub-type no behaviour beyond
+Cow Level's doubled walk and Sacrificial's doubled modifiers, so the Siege --
+about 13 in every 100 dungeons that reached the map at the weight of the day --
+did nothing at all. The project owner ruled on 2026-09-06, verbatim: "Yes — add
+it as part of this work". The weight was halved later the same day on issue
+#1349 and the share arriving is now about 6 in every 100.
+
+WHY IT COULD NOT WAIT. Issue #1327 turned every other city damage number into
+points so that raising a city's health would mean something. The Siege keeps a
+share of the maximum, by the same owner's separate ruling, so it is the one
+threat city health does not protect against. A measurement of how safe a fully
+invested empire is that leaves the Siege out overstates that safety by
+construction, and the combined defensive ceiling is exactly what #1327 is
+measuring.
+
+THIS IS AN ADDITION AND NOT A PORT, WHICH IS THE REVERSE OF THIS PROJECT'S USUAL
+DIRECTION. There was no model code to copy. Every rule comes from the Siege row
+of the sub-type table in `docs/Cataclysm_GDD_v2.md` and from the C++ that
+already implements it in
+`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`, so for once the
+game is the reference and the model is the follower. Each test below names where
+its rule came from.
+
+WHAT IS DELIBERATELY NOT MODELLED. "Pauses city upgrades." The model has no city
+upgrade system to pause -- `LethalityRules.city_upgrade_slots` is set by nothing
+and read by nothing, which issue #318 records. `TestTheRuleThatIsNotModelled`
+holds that omission in place so it stays known rather than silent.
+"""
+
+from __future__ import annotations
+
+from dataclasses import replace
+
+import pytest
+
+from cataclysm_sim import policies
+from cataclysm_sim.config import (
+    TREE_NONE, CityTier, DungeonType, EmpireTree, TuningConfig,
+)
+from cataclysm_sim.engine import Simulation
+
+
+def a_siege(sim: Simulation, tier: CityTier = CityTier.SANCTUARY,
+            stood_for: int = 0):
+    """Put one Siege on a city of that tier and return (dungeon, city)."""
+    city = next(c for c in sim.empire.cities.values() if c.tier is tier)
+    d = sim._make_dungeon(DungeonType.BASIC, city)
+    d.subtype = "Siege"
+    d.spawned_day = sim.day - stood_for
+    return d, city
+
+
+def sim_for(tree: EmpireTree = TREE_NONE, tier: int = 1) -> Simulation:
+    return Simulation(replace(TuningConfig(), tier=tier).with_tree(tree),
+                      seed=0)
+
+
+class TestWhatItTakesEachDay:
+    """The Siege row of the sub-type table in `docs/Cataclysm_GDD_v2.md`:
+    "Deals 1% damage to city defenses and population per day while active.
+    Increases in power by 2.5 points per day.\""""
+
+    def test_on_the_day_it_arrives_it_takes_the_flat_share_alone(self):
+        """The growth counts from the day the Siege arrived, so its first day
+        carries none of it. `FCataclysmDungeon::SpawnedDay` is the same rule."""
+        sim = sim_for()
+        d, city = a_siege(sim, stood_for=0)
+        before = city.defense
+        sim._apply_siege_damage()
+        assert before - city.defense == pytest.approx(city.max_defense * 0.01)
+
+    @pytest.mark.parametrize("days", [0, 1, 5, 20])
+    def test_each_later_day_adds_two_and_a_half_points(self, days):
+        """WRITTEN OUT RATHER THAN READ FROM THE CONFIG, for the same reason
+        `CataclysmEmpireRunTests.cpp` writes its copy out: a test that took the
+        growth from `cfg.siege_damage_growth_per_day` would expect no growth,
+        find no growth and pass with the constant set to zero. It was 10.0 here
+        until the owner cut the growth on issue #1349."""
+        sim = sim_for()
+        d, city = a_siege(sim, stood_for=days)
+        before = city.defense
+        sim._apply_siege_damage()
+        assert before - city.defense == pytest.approx(
+            city.max_defense * 0.01 + 2.5 * days)
+
+    def test_it_takes_the_same_from_the_population(self):
+        """Both halves apply to both pools. The design sentence names both, and
+        the sentence about the growth has the damage as its subject."""
+        sim = sim_for()
+        d, city = a_siege(sim, stood_for=7)
+        before = city.population
+        sim._apply_siege_damage()
+        assert before - city.population == pytest.approx(
+            city.max_population * 0.01 + 17.5)
+
+    def test_a_spawn_day_after_the_clock_does_not_heal_the_city(self):
+        """A dungeon built by hand in a test can carry a spawn day later than
+        the clock. A negative age would turn the growth into a repair."""
+        sim = sim_for()
+        d, city = a_siege(sim)
+        d.spawned_day = sim.day + 50
+        before = city.defense
+        sim._apply_siege_damage()
+        assert city.defense < before
+
+    def test_a_city_with_no_siege_on_it_is_untouched(self):
+        sim = sim_for()
+        city = next(c for c in sim.empire.cities.values()
+                    if c.tier is CityTier.SANCTUARY)
+        before = city.defense, city.population
+        sim._apply_siege_damage()
+        assert (city.defense, city.population) == before
+
+    def test_a_fallen_city_is_not_bitten_again(self):
+        sim = sim_for()
+        d, city = a_siege(sim, stood_for=3)
+        city.fallen = True
+        before = city.defense
+        sim._apply_siege_damage()
+        assert city.defense == before
+
+
+class TestTheDeliberateException:
+    """THE PERCENTAGE HERE IS NOT AN OVERSIGHT, AND THIS FILE IS WHERE THAT IS
+    ENFORCED RATHER THAN ONLY EXPLAINED.
+
+    Issue #1327 turned every other city damage number into points, precisely
+    because a share of the city's own maximum divided out of how long the city
+    survived and made every city-health upgrade worthless. The Siege keeps the
+    share. The project owner ruled on 2026-09-05, verbatim: "Keep it as a
+    deliberate exception (Recommended)", on the reasoning that a siege does not
+    care how thick your walls are.
+
+    Somebody measuring this later will find a city-health investment buying
+    nothing against a Siege and it will look exactly like the defect #1327 was
+    opened about. These tests say it is intended.
+    """
+
+    def days_to_empty(self, tree: EmpireTree) -> int:
+        """Days of Siege a Sanctuary survives, driven through the engine."""
+        sim = sim_for(tree)
+        d, city = a_siege(sim)
+        days = 0
+        while city.defense > 0 and days < 100_000:
+            sim._apply_siege_damage()
+            sim.day += 1
+            days += 1
+        return days
+
+    def test_the_flat_share_ignores_city_health_entirely(self):
+        """WITHOUT THE GROWTH, a city with a hundred times the defence lasts
+        exactly as long, because 1% of a bigger pool is a bigger bite. This is
+        the property the owner chose."""
+        no_growth = replace(TuningConfig(), tier=1,
+                            siege_damage_growth_per_day=0.0)
+        days = []
+        for mult in (1.0, 5.9, 100.0):
+            sim = Simulation(
+                no_growth.with_tree(EmpireTree(name="t", city_health_mult=mult)),
+                seed=0)
+            d, city = a_siege(sim)
+            n = 0
+            while city.defense > 0 and n < 10_000:
+                sim._apply_siege_damage()
+                n += 1
+            days.append(n)
+        assert days[0] == days[1] == days[2] == 100, (
+            f"city health changed how long a Siege takes: {days}. Either the "
+            "owner's deliberate exception has been removed, or the flat share "
+            "is no longer a share of the maximum.")
+
+    def test_but_the_growth_half_is_protected_by_city_health(self):
+        """The 2.5 points a day ARE absolute, so a bigger pool absorbs them for
+        longer. A Siege is therefore not wholly immune to city health -- only
+        its percentage half is, which is what makes the exception a situation
+        rather than a blanket."""
+        plain = self.days_to_empty(EmpireTree(name="none"))
+        sturdy = self.days_to_empty(EmpireTree(name="t", city_health_mult=5.9))
+        assert sturdy > plain, (
+            f"{sturdy} days against {plain}: the growth is no longer in points")
+
+    def test_damage_reduction_still_works_against_a_siege(self):
+        """THE OWNER'S RULING, 2026-09-06, verbatim: "Yes — damage reduction
+        still applies (Recommended)".
+
+        Written first as a reading and put to them as a confirm-or-overturn
+        against two alternatives -- that a siege ignores both defensive lines,
+        and that reduction applies at a reduced rate. Neither was taken.
+
+        The distinction that carried it: a siege ignores how much a city can
+        ABSORB and is still blunted by what REDUCES damage. Thickening a wall
+        and softening a blow are different claims.
+        """
+        plain = self.days_to_empty(EmpireTree(name="none"))
+        reduced = self.days_to_empty(
+            EmpireTree(name="d", city_damage_mult=0.5))
+        assert reduced > plain
+
+
+class TestItMatchesTheGamesOwnStatedFigures:
+    """THE STRONGEST CHECK AVAILABLE ON AN ADDITION THAT HAD NO REFERENCE CODE.
+
+    `CataclysmEmpireRun.h` does not only give the constants; it states what they
+    produce: "An unattended Siege empties an Outpost's defence in 25 days, a
+    Bulwark's in 39, a Sanctuary's in 55 and the Pillar's in 70." Those four
+    numbers were written from the C++ implementation, so reproducing them is a
+    check on the whole arithmetic -- the share, the growth, the order of the two
+    and the day the growth starts counting from -- rather than on four
+    constants copied across.
+
+    The figures come out of `1.25*D*D + 8.75*D >= max_defence` for an Outpost,
+    which is the flat 1% share plus 2.5 points for each day already stood --
+    `D*0.01*M + 2.5*D*(D-1)/2`, with `M` a thousand. At D = 25 that is exactly
+    1,000, which is why an Outpost falls on day 25 and not day 26.
+
+    THEY WERE 14 / 23 / 34 / 47 UNTIL 2026-09-06. The owner cut the growth from
+    10 to 2.5 on issue #1349 and these are the recomputed result, not a target:
+    the constant moved and this followed it. The same arithmetic at growth 10
+    still returns the old four, which is how the derivation above was checked.
+    """
+
+    @pytest.mark.parametrize("tier, days", [
+        (CityTier.OUTPOST, 25), (CityTier.BULWARK, 39),
+        (CityTier.SANCTUARY, 55), (CityTier.PILLAR, 70)])
+    def test_an_unattended_siege_empties_a_city_in_the_stated_days(
+            self, tier, days):
+        sim = sim_for()
+        d, city = a_siege(sim, tier=tier, stood_for=0)
+        n = 0
+        while city.defense > 0 and n < 10_000:
+            sim._apply_siege_damage()
+            sim.day += 1
+            n += 1
+        assert n == days, (
+            f"a Siege empties a {tier.value} in {n} days; "
+            f"game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h says "
+            f"{days}. The two implementations have diverged.")
+
+
+class TestOnePerCity:
+    """The Siege row of the sub-type table in `docs/Cataclysm_GDD_v2.md`:
+    "Max 1 per city.\""""
+
+    def test_a_second_siege_is_never_rolled_onto_one_city(self):
+        sim = sim_for()
+        city = next(c for c in sim.empire.cities.values()
+                    if c.tier is CityTier.OUTPOST)
+        d = sim._make_dungeon(DungeonType.BASIC, city)
+        d.subtype = "Siege"
+        for _ in range(400):
+            assert sim._roll_subtype(DungeonType.BASIC, city) != "Siege"
+
+    def test_a_refused_siege_becomes_another_subtype_rather_than_none(self):
+        """Every dungeon has a sub-type since issue #1293, so a refusal has to
+        be redistributed. A dropped one would quietly reintroduce the no
+        sub-type outcome that issue removed."""
+        sim = sim_for()
+        city = next(c for c in sim.empire.cities.values()
+                    if c.tier is CityTier.OUTPOST)
+        d = sim._make_dungeon(DungeonType.BASIC, city)
+        d.subtype = "Siege"
+        allowed = set(sim.cfg.SUBTYPE_SPAWN_WEIGHTS) - {"Siege"}
+        for _ in range(400):
+            assert sim._roll_subtype(DungeonType.BASIC, city) in allowed
+
+    def test_the_cap_is_per_city_and_not_per_empire(self):
+        sim = sim_for()
+        cities = [c for c in sim.empire.cities.values()
+                  if c.tier is CityTier.OUTPOST][:2]
+        d = sim._make_dungeon(DungeonType.BASIC, cities[0])
+        d.subtype = "Siege"
+        assert sim.sieges_on(cities[0].cid) == 1
+        assert sim.sieges_on(cities[1].cid) == 0
+        # The second city may still be given one.
+        assert any(sim._roll_subtype(DungeonType.BASIC, cities[1]) == "Siege"
+                   for _ in range(400))
+
+
+class TestTheShareThatReachesTheMap:
+    def test_the_one_per_city_cap_is_asked_in_play(self):
+        """THE CHECK THAT THE CAP IS WIRED INTO A CAMPAIGN: over eight campaigns
+        every Siege roll asks it.
+
+        WHAT THIS COUNTS CHANGED ON 2026-10-16, by the coordinating session's
+        ruling. Until then it was `test_fewer_sieges_arrive_than_are_rolled` and
+        asserted that the Siege share reaching the map was below its rolled
+        share of 7.5 in 100. Measured that day over 400 campaigns the arriving
+        share was 7.38% on development and 7.26% with the Quest timer rolled
+        from depth, within 0.2 points of the bound, so no sample size held it.
+        The reason, measured the same day: SINCE AN ORDINARY DUNGEON LEAVES
+        AFTER IT HITS (2026-10-12) THE CAP IS RARELY REACHED. Over seeds 0 to 99
+        it refused 9 of 581 Siege rolls, about one in 65, and over seeds 0 to 7
+        none of 49. So a campaign test that the cap REFUSES would need about a
+        hundred campaigns; that the cap refuses correctly is tested on a built
+        board below, and this test asks only that it is consulted.
+
+        `sieges_on` is also asked when a Quest dungeon carrying a Siege moves,
+        so only the calls made while a sub-type is being rolled are counted.
+        """
+        cfg = replace(TuningConfig(), tier=1).with_tree(TREE_NONE)
+        rolled = (100.0 * cfg.SUBTYPE_SPAWN_WEIGHTS["Siege"]
+                  / sum(cfg.SUBTYPE_SPAWN_WEIGHTS.values()))
+        assert rolled == pytest.approx(7.5)
+
+        asked = 0
+        for seed in range(8):
+            sim = Simulation(cfg, seed=seed)
+            state = {"rolling": False, "asked": 0}
+            roll, count = sim._roll_subtype, sim.sieges_on
+
+            def counting(city_id, _count=count, _state=state):
+                if _state["rolling"]:
+                    _state["asked"] += 1
+                return _count(city_id)
+
+            def rolling(dtype, city, _roll=roll, _state=state):
+                _state["rolling"] = True
+                try:
+                    return _roll(dtype, city)
+                finally:
+                    _state["rolling"] = False
+
+            sim.sieges_on = counting
+            sim._roll_subtype = rolling
+            sim.run(policies.triage)
+            asked += state["asked"]
+
+        assert asked >= 1, (
+            "over eight campaigns no Siege roll asked the one-per-city cap, so "
+            "the cap is not wired into the roll")
+
+    @pytest.mark.parametrize("dtype", [DungeonType.BASIC, DungeonType.QUEST])
+    def test_a_besieged_city_refuses_a_siege_draw_and_redistributes_it(self, dtype):
+        """THE CAP ITSELF, on a built board. The draw is made to come out
+        "Siege" every time, so the test does not depend on the 7.5 in 100
+        weight. A city already holding one Siege refuses it and the dungeon
+        gets another sub-type; THE CONTROL, a city holding none, keeps it.
+        """
+        class SiegeFirst:
+            """Stands in for the stream: a draw that can be "Siege" is; the
+            redistribution draw takes the first of what it is offered."""
+
+            def choices(self, population, weights=None, k=1):
+                return ["Siege"] if "Siege" in population else [population[0]]
+
+        cfg = replace(TuningConfig(), tier=1).with_tree(TREE_NONE)
+        sim = Simulation(cfg, seed=0)
+        sim.next_surge_day = float("inf")
+        outposts = [c for c in sim.empire.cities.values()
+                    if c.tier is CityTier.OUTPOST and not c.fallen]
+        besieged, quiet = outposts[0], outposts[1]
+        for d in list(sim.dungeons.values()):
+            if d.city_id in (besieged.cid, quiet.cid):
+                del sim.dungeons[d.did]
+
+        held = sim._make_dungeon(DungeonType.BASIC, besieged)
+        held.subtype = "Siege"
+        assert sim.sieges_on(besieged.cid) == cfg.siege_max_per_city == 1, (
+            "set-up: the besieged city holds exactly the one Siege the cap allows")
+        assert sim.sieges_on(quiet.cid) == 0, "set-up: the quiet city holds none"
+
+        sim.rng = SiegeFirst()
+        on_quiet = sim._roll_subtype(dtype, quiet)
+        on_besieged = sim._roll_subtype(dtype, besieged)
+
+        assert on_quiet == "Siege", (
+            f"CONTROL: a {dtype.value} dungeon on a city holding no Siege was "
+            f"given {on_quiet!r} although the draw was a Siege")
+        allowed = [n for n in sim.subtypes_allowed_on(dtype) if n != "Siege"]
+        assert on_besieged == allowed[0], (
+            f"a {dtype.value} dungeon on a city already holding a Siege was "
+            f"given {on_besieged!r}; the cap must refuse the Siege and "
+            f"redistribute to another sub-type ({allowed[0]!r} here)")
+
+class TestTheRuleThatIsNotModelled:
+    def test_there_is_still_no_city_upgrade_system_to_pause(self):
+        """"Pauses city upgrades" is the fourth rule on the design line and the
+        one this model cannot express. Issue #318. Held here so that the
+        omission stays known: if a city upgrade system is added and this test
+        starts failing, the Siege needs the rule it is currently missing.
+        """
+        import pathlib
+
+        root = pathlib.Path(__file__).resolve().parents[1] / "cataclysm_sim"
+        readers = [p.name for p in root.glob("*.py")
+                   if "city_upgrade_slots" in p.read_text(encoding="utf-8")
+                   and p.name != "config.py"]
+        assert readers == [], (
+            f"{readers} now read city_upgrade_slots, so the model has a city "
+            "upgrade system and the Siege must pause it. Issue #1329.")
+
+
+class TestItReachesTheDayLoop:
+    def test_a_siege_costs_a_city_defence_over_a_campaign(self):
+        """A model field that nothing calls would pass every test above."""
+        cfg = replace(TuningConfig(), tier=1).with_tree(TREE_NONE)
+        without = replace(cfg, siege_defence_bite_per_day=0.0,
+                          siege_population_bite_per_day=0.0,
+                          siege_damage_growth_per_day=0.0)
+        lost_with = sum(Simulation(cfg, seed=s).run(policies.triage).cities_lost
+                        for s in range(30))
+        lost_without = sum(
+            Simulation(without, seed=s).run(policies.triage).cities_lost
+            for s in range(30))
+        assert lost_with > lost_without, (
+            f"{lost_with} cities lost with Siege damage against "
+            f"{lost_without} without it, so `_apply_siege_damage` is not "
+            "reaching the day loop")

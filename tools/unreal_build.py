@@ -1,0 +1,1682 @@
+"""Build the Unreal project, run its tests, and prove a C++ guard fails.
+
+WHY THIS EXISTS. `tools/prove_guard.py` does break-and-restore for Python and
+says plainly that it does not run the Unreal build. This is that missing half.
+Three traps live here and every one of them produces *misleading evidence*
+rather than an obvious error.
+
+**A build that reports success and compiles nothing (issue #139).** Restoring a
+C++ file with a tool that preserves the modification time — `shutil.copy2`,
+`cp -p`, `robocopy` without `/COPY:DAT` adjusted — gives the restored file an
+mtime OLDER than the broken version it just replaced. UnrealBuildTool then
+decides the target is up to date, prints
+
+    Result: Succeeded
+
+and compiles nothing, so the binary still contains the broken code. Observed
+exactly that: after restoring `CataclysmAbilitySystemComponent.cpp` the suite
+reported 58 passing and 1 failing with "Expected The ability in the pressed slot
+activated to be true", while the restored file plainly contained the
+`TryActivateAbility` call. Reading the source and reading the build output both
+said everything was fine.
+
+`Result: Succeeded` is therefore not evidence that anything was built.
+`build()` returns which files were compiled, `BuildOutcome.up_to_date` says
+whether the build did nothing at all, and `prove_cpp_guard()` refuses to report a
+result from a build that compiled nothing.
+
+**`python tools/unreal_build.py build` prints that too, since issue #1599.** Its
+line reads `Build: Succeeded - 3 actions, 2 files compiled: ...` or `Build:
+Succeeded - target already up to date, 0 actions, nothing compiled`. Until then
+it printed `Build: Succeeded` and nothing else whenever the build had work to
+do, so the command everyone runs could not answer the question this docstring
+opens with, and a session had to call `build()` from a Python prompt to get it.
+
+**The unity build hides the filename.** UnrealBuildTool merges a module's .cpp
+files into `Module.<Module>.cpp`, so a compile line usually names the blob rather
+than the file. It also uses `git status` to pick an "adaptive non-unity working
+set", which means a file compiles under its own name exactly while it is modified
+and goes back into the blob once it is restored. So a break build names the file
+and the restore build names the blob, and a check that demanded the filename both
+times would fail on a correct run. `compiled_the_file()` accepts either.
+
+**The test command writes nothing useful to standard output.** Redirecting
+`UnrealEditor-Cmd.exe` captures only the software development kit validation
+banner. The results go to `game/Saved/Logs/Cataclysm.log`. `run_automation_tests()`
+reads that file rather than the pipe.
+
+## Using it from the command line
+
+    python tools/unreal_build.py build            # compile the editor target
+    python tools/unreal_build.py tests            # compile, then run the tests
+    python tools/unreal_build.py tests --prefix Cataclysm.Brute
+    python tools/unreal_build.py tests --no-build
+
+It exits non-zero when the build fails, when a test fails, and when no test
+results could be read at all. `--build` and `--tests` are accepted as spellings
+of the first two. Until issue #436 there was no entry point here and every one
+of those commands exited 0 having done nothing, which is the fourth trap and the
+worst of them, because it looks exactly like success.
+
+## Using it as a library
+
+    import sys
+    sys.path.insert(0, "tools")
+    from unreal_build import prove_cpp_guard
+
+    result = prove_cpp_guard(
+        {"game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp":
+            lambda text: text.replace("TryActivateAbility(Spec.Handle)",
+                                      "false")},
+        test_prefix="Cataclysm.Input",
+    )
+    print(result.summary)
+    assert result.failed          # the guard noticed
+
+Every build takes tens of seconds and the whole sequence runs four of them, so
+this is minutes rather than the seconds `prove_guard.py` takes. The editor must
+be closed: Live Coding holds the binaries and `Build.bat` refuses to start.
+"""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import dataclasses
+import json
+import os
+import pathlib
+import re
+import subprocess
+import sys
+import time
+from collections.abc import Callable, Mapping, Sequence
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
+GAME_DIR = REPO_ROOT / "game"
+PROJECT_FILE = GAME_DIR / "Cataclysm.uproject"
+TEST_LOG = GAME_DIR / "Saved" / "Logs" / "Cataclysm.log"
+
+ENGINE_ROOT = pathlib.Path(os.environ.get("UE_ROOT", r"C:\Program Files\Epic Games\UE_5.8"))
+BUILD_BATCH_FILE = ENGINE_ROOT / "Engine" / "Build" / "BatchFiles" / "Build.bat"
+EDITOR_CMD = ENGINE_ROOT / "Engine" / "Binaries" / "Win64" / "UnrealEditor-Cmd.exe"
+
+DEFAULT_TARGET = "CataclysmEditor"
+DEFAULT_PLATFORM = "Win64"
+DEFAULT_CONFIGURATION = "Development"
+
+#: `[3/12] Compile [x64] CataclysmProjectile.cpp`. The action count prefix is
+#: optional because a single-action build omits it in some engine versions.
+COMPILE_LINE = re.compile(r"^(?:\[\d+/\d+\]\s*)?Compile\s+\[[^\]]+\]\s+(\S+\.cpp)\s*$",
+                          re.MULTILINE)
+
+#: `Result: Succeeded`, or `Result: Failed (OtherCompilationError)`. Reading only
+#: the first word is deliberate: the parenthesised part varies and grepping for
+#: `Result:` alone is how a real compiler error gets missed.
+RESULT_LINE = re.compile(r"^Result:\s*(\w+)", re.MULTILINE)
+
+#: Printed when UnrealBuildTool decided there was nothing to do.
+UP_TO_DATE = "Target is up to date"
+
+#: `Using Unreal Build Accelerator local executor to run 4 action(s)`.
+ACTION_COUNT = re.compile(r"to run (\d+) action\(s\)")
+
+#: How many compiled files `BuildOutcome.what_it_did` will name before it prints
+#: the count alone. Issue #1599.
+#:
+#: TWELVE, BECAUSE THAT IS WHAT AN ORDINARY BUILD COMPILES. A module's .cpp
+#: files are normally merged into a handful of unity blobs, so a build after an
+#: edit to one or two files reports single figures; a full rebuild reports
+#: hundreds and naming them would bury the counts in front of them, which are
+#: the part a reader needs first.
+NAMED_COMPILE_LIMIT = 12
+
+#: How the automation runner reports one test, in `game/Saved/Logs/Cataclysm.log`:
+#: `... Test Completed. Result={Success} Name={Cataclysm.Skills.AThing} ...`
+TEST_RESULT = re.compile(r"Test Completed\. Result=\{(\w+)\}\s+Name=\{([^}]+)\}")
+
+#: `... Automation Test Queue Empty 141 tests performed.`
+TESTS_PERFORMED = re.compile(r"Automation Test Queue Empty\s+(\d+) tests performed")
+
+#: The engine's list of the tests a session will run, printed when the session starts and before any of them does:
+#: `LogAutomationCommandLine: Display: Found 141 automation tests based on 'Cataclysm.Skills.'`, then one line per
+#: test, `LogAutomationCommandLine: Display: <tab>Cataclysm.Skills.AThing`. Read by `performed_from_completed_lines`.
+#: The engine's smoke tests at start-up are not in it. Issue #2679.
+TESTS_FOUND = re.compile(r"LogAutomationCommandLine: Display: Found (\d+) automation tests based on ")
+FOUND_PATH = re.compile(r"LogAutomationCommandLine: Display: \t(\S+)")
+
+#: A test's result with its full name: `... Test Completed. Result={Fail} Name={AThing} Path={Cataclysm.Skills.AThing}`.
+#: `TEST_RESULT` reads the short `Name`; the requested list names tests by their full path. Issue #2679.
+COMPLETED_PATH = re.compile(r"Test Completed\. Result=\{\w+\}\s+Name=\{[^}]+\}\s+Path=\{([^}]+)\}")
+
+#: The token a test writes when it could not check part of what it is named for.
+#:
+#: FIFTEEN TESTS TAKE A SHORTER PATH WHEN THE PARAGON ART IS ABSENT, checking
+#: what can be checked without a skeletal mesh and returning early. Each said so
+#: in its own words, so telling "this ran" from "this skipped" meant knowing all
+#: fifteen wordings, and a sixteenth added later was invisible to anyone who had
+#: learned the list. `CataclysmTestSkip::ReportSkippedHalf`, in
+#: `game/Source/Cataclysm/Tests/CataclysmTestSkip.h`, now writes this one token,
+#: and `tools/tests/test_unreal_build.py` fails if the two spellings disagree.
+#:
+#: THE SAME LINE APPEARS TWICE PER SKIP, because the helper writes it by two
+#: routes on purpose: once through the automation controller's event block, and
+#: once straight into the log file under `LogCataclysm`, which does not depend on
+#: how the automation framework formats events. So the test names are collected
+#: into a set rather than counted. Issue #467.
+SKIPPED_HALF = re.compile(r"CATACLYSM_SKIPPED_HALF\s+(\S+)\s+--")
+
+#: The line `FCataclysmTestSaves` logs: what the tests' save slots came to. Issue #2658.
+#:
+#: ONLY AS THE CLEAN-UP WRITES IT, at a line's start or after its own `LogCataclysm: Display: ` prefix. A test may
+#: quote the line inside its own message -- `EachTestsEndLogsTheRunsTestSavesLine` prints "returned 'Test saves: ...'"
+#: through the automation controller -- and that quotation, which ends in "'; logged ...", is not the run's. Issue #2677.
+TEST_SAVES = re.compile(r"(?:^|LogCataclysm: Display: )(Test saves: \d+ written and deleted, \d+ left behind[^\r\n]*)",
+                        re.M)
+
+#: The automation controller's line as each requested test starts: `... Display: Test Started. Name={...}`. Only a
+#: "Test saves:" line after the last of these is the run's: the engine's smoke tests at start-up end about 607 tests
+#: before any requested one starts, and the clean-up logs a line at each of those ends too. Issue #2677.
+TEST_STARTED = "Test Started. Name={"
+
+#: That line's parts: N, M, and the names after M, which the C++ writes only when M > 0 -- the first ten, then
+#: "and K more" (`FCataclysmTestSaves::SummaryLine`). Read by `saves_failure`. Issue #2673.
+TEST_SAVES_PARTS = re.compile(r"Test saves: (\d+) written and deleted, (\d+) left behind(?:: (.+))?")
+
+#: The engine refusing to register a test, capturing the C++ class name.
+#:
+#: A REFUSED TEST DOES NOT RUN, IS NOT LISTED, AND IS NOT COUNTED, so the run
+#: reports a clean pass with one test missing. Unreal registers a test under its
+#: CLASS name -- the macro passes `TEXT(#TClass)` to `FAutomationTestBase` -- in a
+#: `TMap<FString, ...>`, which compares keys without regard to case. Two classes
+#: one letter's capitalisation apart are one key and the second is refused.
+#:
+#: That happened and cost a month. Issue #1666. The warning was printed at every
+#: editor start throughout and nobody read it, because reading it means finding
+#: one line in a log of roughly 370,000 characters.
+#:
+#: THE CLASS NAME IS THE ONLY THING THE ENGINE CAN NAME HERE. The readable test
+#: name lives on the instance that never registered, so it is not in the message
+#: and cannot be. The class name is also the identifier somebody has to change,
+#: which makes it the more useful of the two to report.
+#:
+#: UNLIKE `SKIPPED_HALF`, THIS WORDING IS THE ENGINE'S AND NOT THIS PROJECT'S. An
+#: engine upgrade could change it and silence every refusal.
+#: `tools/tests/test_unreal_build.py` reads the engine source and fails when the
+#: sentence is no longer there.
+REFUSED_REGISTRATION = re.compile(
+    r"Failed to register test with the name '([^']+)'")
+
+
+class BuildDidNothing(RuntimeError):
+    """A build reported success without compiling anything that was asked for.
+
+    This is the failure issue #139 records. Raising rather than returning is
+    deliberate: a caller that ignored a return value would go on to report test
+    results produced by a binary that does not match the source on disk.
+    """
+
+
+@dataclasses.dataclass(frozen=True)
+class BuildOutcome:
+    """What one run of `Build.bat` did."""
+
+    returncode: int
+    stdout: str
+    result: str | None
+    compiled: tuple[str, ...]
+    up_to_date: bool
+    actions: int | None
+
+    @property
+    def succeeded(self) -> bool:
+        return self.returncode == 0 and self.result == "Succeeded"
+
+    def compiled_the_file(self, source_path: str) -> bool:
+        """Whether this build rebuilt the code in `source_path`.
+
+        THREE ANSWERS COUNT, and every one of them is real evidence.
+
+        1. The file was compiled under its own name. UnrealBuildTool does that
+           while `git status` reports it modified -- the "adaptive non-unity
+           working set" the module docstring describes.
+
+        2. The module's unity blob was compiled. A module's .cpp files are
+           normally merged into `Module.<Module>.cpp`, and a large module is
+           split into numbered chunks: `Module.Cataclysm.1.cpp`,
+           `Module.Cataclysm.2.cpp`. Demanding the unnumbered spelling was the
+           second half of issue #384; this build really does print the numbered
+           ones, and neither equals `Module.Cataclysm.cpp`.
+
+        3. FOR A HEADER, a .cpp beside it was compiled. A header is never
+           compiled itself, so 1 can never hold for one -- which was the first
+           half of issue #384: `require_compiled` raised on every header path,
+           including on builds that had plainly rebuilt everything including it.
+
+        WHAT 3 IS AND IS NOT. It says the translation units next to the header
+        were rebuilt, not that every file including the header was. That is the
+        strongest statement the build output supports, because a header does not
+        appear in it at all. It is enough for what this is for: inside
+        `prove_cpp_guard` nothing but the edited files has changed, so a build
+        that rebuilt the header's neighbours rebuilt it for the reason it was
+        edited, and a build that rebuilt nothing -- the issue #139 failure this
+        whole check exists to catch -- still raises.
+        """
+        name = pathlib.PurePath(source_path).name
+        if name in self.compiled:
+            return True
+
+        module = module_of(source_path)
+        if module is not None and self.compiled_the_unity_blob(module):
+            return True
+
+        return (name.lower().endswith(".h")
+                and self.compiled_a_neighbour_of(source_path))
+
+    def compiled_the_unity_blob(self, module: str) -> bool:
+        """Whether `Module.<module>.cpp`, numbered or not, was compiled."""
+        pattern = re.compile(rf"^Module\.{re.escape(module)}(?:\.\d+)?\.cpp$")
+        return any(pattern.match(name) for name in self.compiled)
+
+    def compiled_a_neighbour_of(self, header_path: str) -> bool:
+        """Whether any .cpp in the same directory as a header was compiled.
+
+        Reads the directory rather than guessing, because a header does not
+        always have a .cpp of the same name -- an interface or a struct header
+        has none at all.
+        """
+        folder = (REPO_ROOT / header_path).parent
+        if not folder.is_dir():
+            return False
+
+        beside = {path.name for path in folder.glob("*.cpp")}
+        return any(name in beside for name in self.compiled)
+
+    @property
+    def summary(self) -> str:
+        if self.up_to_date:
+            return f"Result: {self.result}, target up to date, nothing compiled"
+        compiled = ", ".join(self.compiled) if self.compiled else "nothing"
+        return f"Result: {self.result}, compiled {compiled}"
+
+    @property
+    def what_it_did(self) -> str:
+        """What the build actually did, for the command line to print.
+
+        WHY THE COMMAND HAS TO SAY THIS. Issue #1599. `Build: Succeeded` is
+        printed identically whether the build compiled every source file or
+        none of them, and telling those two apart is the question this
+        project's own rules say to ask about a build. Issue #139 is the
+        incident: a restored source file looked older than the object built
+        from the broken version, so the build reported success, compiled
+        nothing, and the tests ran against the broken binary. Reading the
+        source and reading the build output both said everything was fine.
+
+        SEPARATE FROM `summary`, which `require_compiled` puts inside a raised
+        error and reads as a sentence about a failure. This one is appended to
+        a line that has already said whether the build succeeded, so it states
+        only the work.
+
+        THE ACTION COUNT IS INCLUDED EVEN THOUGH THE FILE COUNT IS USUALLY
+        ENOUGH, because they answer different questions. A link step and a
+        metadata write are actions and compile no file, so a build reporting
+        four actions and one compiled file is ordinary rather than suspicious,
+        and a reader who sees only one of the two numbers cannot tell.
+
+        `actions` IS None WHEN THE OUTPUT NEVER STATED ONE. That is said out
+        loud rather than printed as 0, because zero actions is a real and
+        meaningful answer and "the line was not there to read" is not the same
+        claim.
+        """
+        actions = ("actions unknown" if self.actions is None
+                   else f"{self.actions} action{'' if self.actions == 1 else 's'}")
+
+        if self.up_to_date:
+            return f"target already up to date, {actions}, nothing compiled"
+
+        if not self.compiled:
+            return f"{actions}, no file compiled"
+
+        count = (f"{len(self.compiled)} file"
+                 f"{'' if len(self.compiled) == 1 else 's'} compiled")
+        # THE NAMES WHEN THE LIST IS SHORT. A full rebuild compiles hundreds and
+        # printing them all would bury the counts above, which are the part a
+        # reader needs first.
+        if len(self.compiled) <= NAMED_COMPILE_LIMIT:
+            return f"{actions}, {count}: " + ", ".join(self.compiled)
+        return f"{actions}, {count}"
+
+
+@dataclasses.dataclass(frozen=True)
+class TestOutcome:
+    """What one automation test run reported, read from the log rather than stdout."""
+
+    #: NOT A TEST CLASS, despite the name. pytest collects anything called
+    #: `Test*`, and warns that it cannot because this has a constructor. The
+    #: warning is harmless and the noise is not: a real collection error looks
+    #: the same in a run's output.
+    __test__ = False
+
+    performed: int | None
+    succeeded: tuple[str, ...]
+    failed: tuple[str, ...]
+
+    #: Tests that passed while saying they could not check part of their subject.
+    #:
+    #: A PASS AND A SKIPPED HALF LOOK IDENTICAL IN THE COUNT, which is what this
+    #: exists to change. A test that checks nothing and returns true is counted as
+    #: a success, and the run's summary said "22 succeeded" whether or not any of
+    #: them had a subject left. Issue #467.
+    skipped_half: tuple[str, ...] = ()
+
+    #: C++ test classes the engine refused to register, so their tests never ran.
+    #:
+    #: NOT THE SAME KIND OF THING AS `skipped_half`, which is why it is a
+    #: separate field rather than another entry in that one. A skipped half is a
+    #: test that ran and checked less than its name claims; this is a test that
+    #: did not run at all and is absent from every count in the report. Issue
+    #: #1736.
+    refused_registration: tuple[str, ...] = ()
+
+    #: Whether `performed` was counted from the run's "Test Completed" lines, because the log has no queue-empty line.
+    #:
+    #: THE ENGINE LOG SOMETIMES STOPS RIGHT AFTER THE LAST TEST'S EVENTS, before "Automation Test Queue Empty N tests
+    #: performed" (issue #2679, three runs on 2026-11-01, one of them window w131's proof P3). Every requested test
+    #: then has its result in the log and the run read as crashed all the same. `performed_from_completed_lines`
+    #: counts it from the engine's own list of the run's tests instead, and this says so, so the fallback is never
+    #: silent: `summary` names it.
+    counted_from_completed_lines: bool = False
+
+    @property
+    def crashed(self) -> bool:
+        """The run never reported how many tests it performed.
+
+        THE COUNT IS THE ONLY EVIDENCE THE RUN FINISHED. `parse_test_log` reads
+        it from "Automation Test Queue Empty N tests performed", which the
+        engine prints when the queue drains. A run that died part way through
+        never prints it, so `performed` is None -- and `failed` is empty too,
+        because no failure was ever reported.
+
+        THAT USED TO READ AS A GUARD THAT DID NOT FIRE. `any_failed` was
+        `bool(self.failed)`, so a crash and a guard the break did not trip came
+        back identical, and a proof reported the guard worthless. Issue #1313.
+
+        Zero tests performed is the same state said differently and is caught
+        here too: the queue drained without running anything.
+        """
+        return self.performed is None or self.performed == 0
+
+    @property
+    def any_failed(self) -> bool:
+        """Whether any test reported a failure.
+
+        UNCHANGED, and deliberately still False for a crashed run -- no test
+        failed, because no test ran. `CppGuardResult.failed` is what must not
+        read that as a guard verdict, and `crashed` is what tells it apart.
+        """
+        return bool(self.failed)
+
+    @property
+    def summary(self) -> str:
+        performed = "unknown" if self.performed is None else self.performed
+        # SAID BESIDE THE COUNT IT QUALIFIES. Issue #2679.
+        counted = (" (counted from their Test Completed lines: the log has no queue-empty line, issue #2679)"
+                   if self.counted_from_completed_lines else "")
+        line = (f"{performed} tests performed{counted}, {len(self.succeeded)} succeeded, "
+                f"{len(self.failed)} failed")
+        if self.failed:
+            line += ": " + ", ".join(self.failed)
+
+        # SAID EVEN WHEN NOTHING FAILED, and said after the failures so a failure
+        # is still the first thing read. A run where every test passed and six of
+        # them checked half of what they are named for is not the same run as one
+        # where every test checked everything, and until this the two printed the
+        # same line.
+        if self.skipped_half:
+            line += (f". {len(self.skipped_half)} skipped part of what they "
+                     f"check: " + ", ".join(self.skipped_half))
+
+        # SAID LAST BECAUSE IT IS THE ONLY ONE THAT MAKES THE COUNT ITSELF WRONG.
+        # A failure and a skipped half are both statements about tests that ran;
+        # this says a test did not, so every number earlier in the line is short
+        # by however many are named here. Putting it at the end keeps it next to
+        # nothing else and makes it the last thing read.
+        if self.refused_registration:
+            # SAID PROPERLY FOR ONE AND FOR MANY. The first version of this read
+            # "refused to register 1, so they did not run", which is a sentence
+            # that cannot count, in the one message whose whole job is to be
+            # believed by somebody who has just been told their run is wrong.
+            # Both readings are tested, because until they were, only the
+            # singular one had ever been executed -- which is the same fault as
+            # a declared test that never runs, in the text this file prints.
+            count = len(self.refused_registration)
+            one = count == 1
+            line += (f". The engine refused to register {count} "
+                     f"{'test' if one else 'tests'}, so "
+                     f"{'it' if one else 'they'} never ran and "
+                     f"{'is' if one else 'are'} not in the counts above: "
+                     + ", ".join(self.refused_registration)
+                     + (". That is a C++ class name" if one
+                        else ". Those are C++ class names")
+                     + ". A class name is the registry key and is compared "
+                       "without regard to case, so the cause is usually another "
+                       "test class whose name differs only in capitalisation. "
+                       "Issue #1666.")
+        return line
+
+
+@dataclasses.dataclass(frozen=True)
+class CppGuardResult:
+    """What happened while the C++ files were broken."""
+
+    build: BuildOutcome
+    tests: TestOutcome
+
+    #: The same tests, run again after the files were restored and rebuilt.
+    #:
+    #: THE OTHER HALF OF THE PROOF, AND IT DID NOT EXIST UNTIL ISSUE #1663. A
+    #: guard proof is two claims -- the test FAILS without the fix and PASSES
+    #: with it -- and this function produced only the first. A test that fails
+    #: for the wrong reason, or always, gave a byte-identical result: the named
+    #: test failed, `crashed` False, the count matching. Every ordinary defect in
+    #: a new test survived it untouched.
+    #:
+    #: `None` WHEN THERE IS NO FIRST HALF TO PAIR WITH, which is a break that did
+    #: not compile and a run that never reported how many tests it performed.
+    #: Claiming a second half there would invite a reader to compare it against
+    #: nothing.
+    #:
+    #: IT COSTS A TEST RUN AND NO BUILD. The restore at the end of this
+    #: function's `finally` already rebuilds and refuses to go on unless that
+    #: rebuild compiled, so a correct binary is standing by the time this runs.
+    tests_restored: TestOutcome | None = None
+
+    @property
+    def crashed(self) -> bool:
+        """The test run did not finish, so it says nothing about the guard.
+
+        Issue #1313. A run that dies part way through reports no failures, and
+        no failures used to mean "the guard did not notice". It means the
+        measurement did not happen. `summary` says so rather than leaving a bare
+        False to be read as a verdict.
+        """
+        return self.build.succeeded and self.tests.crashed
+
+    @property
+    def named_failures(self) -> tuple[str, ...]:
+        """The automation tests that failed, by name.
+
+        ASSERT ON THIS RATHER THAN ON `failed`, the same rule the Python
+        `prove_guard.GuardResult` carries. It says what a guard proof means --
+        these named tests noticed the break -- where `failed` is also True when
+        the build did not compile, which proves nothing about the guard.
+
+        IT EXISTS SO THE TWO HELPERS READ ALIKE. `CLAUDE.md` documented
+        `assert result.named_failures` for both and only the Python one had it,
+        so the C++ example raised `AttributeError` and the proof never ran. Two
+        sessions lost time to it on 2026-09-07. Issue #1455.
+
+        **THESE ARE SHORT NAMES AND THE PYTHON ONES ARE NOT.** `parse_test_log`
+        records what the engine prints, so
+        `Cataclysm.Skills.ItLobsTheRockFromItsHandRatherThanItsWaist` appears
+        here as `ItLobsTheRockFromItsHandRatherThanItsWaist` alone, where the
+        Python helper returns a full pytest node id. A membership test written
+        with the group prefix matches nothing.
+
+        EMPTY FOR A RUN THAT MEASURED NOTHING, and that falls out rather than
+        being special-cased: a crashed run never reported a failure and a build
+        that did not compile never ran a test, so `tests.failed` is empty in
+        both. Read `crashed` and `build.succeeded` to tell those apart from a
+        guard the break genuinely did not trip -- `summary` says which.
+        """
+        return self.tests.failed
+
+    @property
+    def failed(self) -> bool:
+        """Whether the guard noticed, which is what proves it works.
+
+        A build that failed to compile counts. Breaking a file so it no longer
+        compiles is a blunt way to prove a guard, but it is not evidence the
+        guard fired, so callers should check `build.succeeded` too. `summary`
+        says which of the two happened.
+
+        FALSE FOR A CRASHED RUN, and `crashed` is what distinguishes that from a
+        guard the break did not trip. Issue #1313. The two used to be identical
+        and the confident reading -- "the guard is worthless" -- is the one a
+        person makes.
+        """
+        if self.crashed:
+            return False
+        return self.tests.any_failed or not self.build.succeeded
+
+    @property
+    def proved(self) -> bool:
+        """Both halves held, which is the only result that means anything.
+
+        THE TEST FAILED WITH THE BREAK IN AND PASSED WITH IT OUT. Either half
+        alone is worthless: a test that fails both times was never sensitive to
+        the mechanism, and a test that passes both times never noticed the
+        break. Issue #1663.
+
+        FALSE WHEN THERE IS NO SECOND HALF, including a break that did not
+        compile and a run that crashed. Those say the measurement did not
+        happen, and `summary` tells them apart from a guard that did not fire.
+        """
+        if self.tests_restored is None:
+            return False
+        if self.crashed or self.tests_restored.crashed:
+            return False
+        if not self.named_failures:
+            return False
+        return not self.tests_restored.failed
+
+    @property
+    def summary(self) -> str:
+        if not self.build.succeeded:
+            return f"the build itself failed: {self.build.summary}"
+        if self.crashed:
+            return ("NO MEASUREMENT: the test run never reported how many tests "
+                    "it performed, so it did not finish and says nothing about "
+                    "the guard. Read game/Saved/Logs/Cataclysm.log for why, and "
+                    "run it again. Issue #1313. " + self.tests.summary)
+
+        line = f"with the break in: {self.tests.summary}"
+        if self.tests_restored is None:
+            return line
+
+        line += f" | restored: {self.tests_restored.summary}"
+
+        # THE TWO ANSWERS THAT ARE NOT A PROOF, EACH SAID IN ITS OWN WORDS.
+        # Before issue #1663 both of these printed exactly what a successful
+        # proof printed, because only the first half was ever measured.
+        if self.tests_restored.crashed:
+            return ("NO MEASUREMENT of the second half: the run after the "
+                    "restore never reported how many tests it performed. " + line)
+        if self.tests_restored.failed:
+            return ("NOT A PROOF: " + ", ".join(self.tests_restored.failed)
+                    + " failed with the files RESTORED as well, so nothing here "
+                      "was sensitive to the break. " + line)
+        if not self.named_failures:
+            return ("NOT A PROOF: nothing failed with the break in, so no test "
+                    "here notices it. " + line)
+        return "PROVED: " + line
+
+
+def module_of(source_path: str) -> str | None:
+    """The Unreal module a source file belongs to, from its path.
+
+    `game/Source/Cataclysm/AbilitySystem/Thing.cpp` is in module `Cataclysm`.
+    Returns None for a path that is not under `game/Source/<Module>/`.
+    """
+    parts = pathlib.PurePath(source_path.replace("\\", "/")).parts
+    try:
+        source_index = parts.index("Source")
+    except ValueError:
+        return None
+    if source_index + 1 >= len(parts):
+        return None
+    return parts[source_index + 1]
+
+
+def parse_build_output(text: str) -> tuple[str | None, tuple[str, ...], bool, int | None]:
+    """Pull the result word, the compiled files, up-to-date and action count out."""
+    result_match = RESULT_LINE.search(text)
+    actions_match = ACTION_COUNT.search(text)
+    return (
+        result_match.group(1) if result_match else None,
+        tuple(COMPILE_LINE.findall(text)),
+        UP_TO_DATE in text,
+        int(actions_match.group(1)) if actions_match else None,
+    )
+
+
+def build(target: str = DEFAULT_TARGET,
+          platform: str = DEFAULT_PLATFORM,
+          configuration: str = DEFAULT_CONFIGURATION,
+          timeout: float | None = None,
+          *,
+          attempts: int = 5,
+          wait: Callable[[float], None] = time.sleep) -> BuildOutcome:
+    """Run `Build.bat` for one target and report what it actually compiled.
+
+    The editor must be closed. With it open the build refuses to start, because
+    Live Coding holds the binaries.
+
+    NO TIMEOUT, AND THAT IS THE LAW. This defaulted to 1800 seconds until issue
+    #1580. CLAUDE.md says never to put a timeout on an Unreal build: killing
+    the wrapper does not kill the compile workers, which Unreal Build
+    Accelerator runs detached, so they go on holding the build mutex after the
+    command has returned. The build is also started with `-WaitMutex`, so time
+    spent waiting for another session's build counted against the same limit.
+    `tools/tests/test_unreal_build.py` reads this signature and fails if a
+    finite default comes back. A caller that passes a number is choosing to
+    break the rule and must say why.
+
+    RETRIED ONLY ON THE ONE FAILURE THE PROJECT DOCUMENTS AS RETRYABLE. Issues
+    #1577 and #1802. The continuous integration runner is a Windows service on
+    this machine; while it compiles a pull request it holds UnrealBuildTool's
+    global mutex, and a build started then fails in about a quarter of a
+    second with `UnauthorizedAccessException` on opening
+    `Global\\UnrealBuildTool_Mutex_<hash>`. `-WaitMutex` cannot absorb that,
+    because the process fails while opening the named object, before it has
+    anything to wait on. CLAUDE.md's remedy is to wait about a minute and
+    retry, and that is what this does, `attempts` times at most, printing
+    each wait so the delay is visible. Two failures are deliberately NOT
+    retried: "Unable to build while Live Coding is active" means the editor
+    is open and CLAUDE.md says to ask its owner rather than wait, and a
+    compile error is a compile error. Both are told apart from the denial by
+    the text of the output, not by how fast the build failed.
+
+    @param attempts  how many times to run the build in all; 1 means never retry
+    @param wait      what to call with the seconds to wait; ONLY EVER PASSED BY
+                     TESTS, so they do not sleep a minute per case
+    """
+    if not BUILD_BATCH_FILE.is_file():
+        raise FileNotFoundError(
+            f"{BUILD_BATCH_FILE} does not exist. Set UE_ROOT to the engine "
+            "installation directory if it is not at the default location.")
+
+    outcome = run_build_once(target, platform, configuration, timeout)
+    for attempt in range(2, attempts + 1):
+        if outcome.succeeded or not is_mutex_denial(outcome.stdout):
+            break
+        print(f"Build: the continuous integration runner holds the UnrealBuildTool "
+              f"mutex; waiting {MUTEX_RETRY_WAIT_SECONDS:g} seconds and retrying "
+              f"({attempt} of {attempts}).", flush=True)
+        wait(MUTEX_RETRY_WAIT_SECONDS)
+        outcome = run_build_once(target, platform, configuration, timeout)
+    return outcome
+
+
+#: What the build prints when the continuous integration runner holds the
+#: UnrealBuildTool mutex. Both strings appear on the one line; either alone is
+#: taken as the denial, so a change to the exception's wording still matches.
+MUTEX_DENIAL_MARKERS = ("UnauthorizedAccessException", "UnrealBuildTool_Mutex")
+
+#: How long to wait before retrying a build the mutex denial stopped. CLAUDE.md
+#: says about a minute, and the runner's compile of a comment-only change took
+#: 1m15s when this was measured; a second wait covers that.
+MUTEX_RETRY_WAIT_SECONDS = 60.0
+
+#: How many builds `build()` runs in all before giving up on the denial.
+MUTEX_RETRY_ATTEMPTS = 5
+
+
+def is_mutex_denial(output: str) -> bool:
+    """Whether a failed build's output is the runner holding the mutex."""
+    return any(marker in output for marker in MUTEX_DENIAL_MARKERS)
+
+
+def run_build_once(target: str, platform: str, configuration: str,
+                   timeout: float | None) -> BuildOutcome:
+    """One run of `Build.bat`, read into a `BuildOutcome`. `build()` calls this;
+    tests replace it so the retry above can be driven without an engine."""
+    completed = subprocess.run(
+        [str(BUILD_BATCH_FILE), target, platform, configuration,
+         f"-Project={PROJECT_FILE}", "-WaitMutex"],
+        capture_output=True, text=True, cwd=GAME_DIR, timeout=timeout, check=False)
+
+    combined = completed.stdout + completed.stderr
+    result, compiled, up_to_date, actions = parse_build_output(combined)
+    return BuildOutcome(completed.returncode, combined, result, compiled, up_to_date, actions)
+
+
+def require_compiled(outcome: BuildOutcome, source_paths: Sequence[str]) -> None:
+    """Raise unless the build succeeded and rebuilt every named file.
+
+    This is the check issue #139 asks for. `Result: Succeeded` on its own is not
+    evidence: a build with a stale timestamp prints exactly that and compiles
+    nothing.
+    """
+    if not outcome.succeeded:
+        # TWO FAILURES WANT TWO SENTENCES. Issue #1802: the sentence about a
+        # compiler error is written for the common case and sent a reader
+        # looking for a mistake in their own break when the runner had simply
+        # taken the machine.
+        if is_mutex_denial(outcome.stdout):
+            raise BuildDidNothing(
+                f"The build did not succeed. {outcome.summary}\n"
+                "The continuous integration runner holds the UnrealBuildTool "
+                "mutex (UnauthorizedAccessException on "
+                "Global\\UnrealBuildTool_Mutex), and the build was retried "
+                "without getting it. Nothing is wrong with the source: wait "
+                "for the runner's compile to finish and run this again.")
+        raise BuildDidNothing(
+            f"The build did not succeed. {outcome.summary}\n"
+            "Read the whole tail of the build output, not only the Result line: "
+            "a compiler error appears above it.")
+
+    not_rebuilt = [path for path in source_paths if not outcome.compiled_the_file(path)]
+    if not_rebuilt:
+        raise BuildDidNothing(
+            "The build reported success but did not rebuild:\n  "
+            + "\n  ".join(not_rebuilt)
+            + f"\n{outcome.summary}\n"
+            "The binary therefore does not match the source on disk, and any "
+            "test result from it is meaningless. The usual cause is a restored "
+            "file whose modification time was preserved, so it looks older than "
+            "the object built from the broken version. See issue #139.")
+
+
+#: A test declaration in the C++ tree: the engine's registration macro, or one
+#: of this project's file-local wrappers around it, at the start of a line, with
+#: the test's dotted name as the first string literal after the class.
+#:
+#: ANCHORED AT LINE START ON PURPOSE. Issue #1707: the count is what a pull
+#: request quotes forward as a pre-registered figure, so it must be one anybody
+#: can re-derive from the tree with the same two anchored searches, and a
+#: mention of the macro in a comment or a string must not count.
+DECLARED_TEST = re.compile(
+    r"^(?:IMPLEMENT_SIMPLE_AUTOMATION_TEST|CATACLYSM_[A-Z_]*TEST)\(\s*\w+\s*,\s*"
+    r"\"([^\"]+)\"", re.MULTILINE)
+
+
+def declared_tests(source_root: pathlib.Path | None = None) -> tuple[str, ...]:
+    """Every automation test the C++ tree declares, by its dotted name.
+
+    WHY THE COMMAND PRINTS THIS. Issue #1707. A merged pull request recorded an
+    Unreal total that matched no tree in its range, and three predictions were
+    built on it before anybody could tell which part had drifted. A bare total
+    belongs to no tree; this puts the declared count, the commit it was
+    counted on and the names declared but not run beside the performed count,
+    so a body that copies the command's line carries its inputs.
+    """
+    root = GAME_DIR / "Source" if source_root is None else source_root
+    names: list[str] = []
+    for path in sorted(root.rglob("*.cpp")) + sorted(root.rglob("*.h")):
+        names.extend(DECLARED_TEST.findall(
+            path.read_text(encoding="utf-8", errors="replace")))
+    return tuple(names)
+
+
+def current_commit() -> str:
+    """The short hash of the checked-out commit, or 'unknown' if git cannot say."""
+    try:
+        return subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"], capture_output=True,
+            text=True, cwd=REPO_ROOT, check=True).stdout.strip() or "unknown"
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown"
+
+
+def declared_line(tests: "TestOutcome", declared: Sequence[str], commit: str) -> str:
+    """The line printed after the run's own: what the tree declares, where, and
+    which declared tests the run did not report.
+
+    COMPARED BY FULL DOTTED NAME WHEN THE LOG GIVES ONE, AND BY THE LAST SEGMENT
+    OTHERWISE. `CLAUDE.md` records that the engine's log names a test without
+    its group in front, while a declaration carries the whole dotted path; six
+    last segments are shared by more than one declaration (one per creature),
+    so a last-segment comparison can hide a missing twin, and the line says
+    which comparison it made.
+    """
+    reported = set(tests.succeeded + tests.failed)
+    by_full_name = any("." in name for name in reported)
+
+    def key(name: str) -> str:
+        return name if by_full_name else name.rsplit(".", 1)[-1]
+    seen = {key(name) for name in reported}
+    missing = sorted(name for name in declared if key(name) not in seen)
+    line = f"Declared: {len(declared)} tests in the tree at {commit}"
+    if tests.performed is not None:
+        line += f"; {tests.performed} performed, gap {len(declared) - tests.performed}"
+    if missing:
+        how = "full name" if by_full_name else "last segment, which can hide a twin"
+        line += (f"; declared but not reported by the run (compared by {how}): "
+                 + ", ".join(missing))
+    else:
+        line += "; every declared test was reported by the run"
+    return line + ". Issue #1707."
+
+
+#: How often `delete_when_released` tries again to delete a file another
+#: process holds open, and how long it goes on trying before it gives up. Issue
+#: #2459: twice the delete of the test log was refused because something still
+#: held the log, and each time a guard proof window was lost. The enchantment
+#: session's own check of the log waited about 5 seconds in window t74y before
+#: the file was free; two minutes allows for an editor still closing and still
+#: reports a file held for good within the window.
+HELD_FILE_RETRY_SECONDS = 2.0
+HELD_FILE_LIMIT_SECONDS = 120.0
+
+
+class FileStillHeld(RuntimeError):
+    """A file could not be deleted because another process kept it open."""
+
+
+def delete_when_released(path: pathlib.Path,
+                         *,
+                         retry_seconds: float = HELD_FILE_RETRY_SECONDS,
+                         limit_seconds: float = HELD_FILE_LIMIT_SECONDS,
+                         wait: Callable[[float], None] = time.sleep,
+                         clock: Callable[[], float] = time.monotonic) -> float:
+    """Delete `path`, waiting while another process holds it open.
+
+    Returns the seconds waited, 0 when the first attempt deleted it. A file
+    that is not there is not an error.
+
+    WHY IT WAITS. On Windows a file another process holds open without delete
+    sharing cannot be deleted: `unlink` raises `PermissionError` (WinError 32).
+    Issue #2459 has the two incidents, both on `game/Saved/Logs/Cataclysm.log`
+    just after an editor run. Each refused attempt is retried after
+    `retry_seconds`; once `limit_seconds` have passed it raises
+    `FileStillHeld`, naming the file and the time waited. Any other error is
+    raised at once. The first wait is printed, so a delay is visible.
+
+    @param wait   what to call with the seconds to wait; ONLY EVER PASSED BY
+                  TESTS, so they do not sleep
+    @param clock  where the time waited is read from; ONLY EVER PASSED BY TESTS
+    """
+    return _when_released(path, lambda: path.unlink(missing_ok=True), "deleted", "delete",
+                          retry_seconds=retry_seconds, limit_seconds=limit_seconds,
+                          wait=wait, clock=clock)
+
+
+def _when_released(path: pathlib.Path, attempt: Callable[[], object], done: str, verb: str,
+                   *,
+                   retry_seconds: float,
+                   limit_seconds: float,
+                   wait: Callable[[float], None],
+                   clock: Callable[[], float]) -> float:
+    """Call `attempt` until another process stops holding `path` open.
+
+    The loop `delete_when_released` had, shared with `move_aside_when_released`,
+    because a rename is refused on a held file exactly as a delete is (issue
+    #1533). `done` and `verb` only word the error. Returns the seconds waited.
+    """
+    started = clock()
+    announced = False
+    while True:
+        try:
+            attempt()
+            return clock() - started
+        except PermissionError as error:
+            waited = clock() - started
+            if waited >= limit_seconds:
+                raise FileStillHeld(
+                    f"{path} could not be {done}: another process held it open "
+                    f"for {waited:g} seconds, the limit, and Windows refuses to "
+                    f"{verb} a file held open ({error}). Issue #2459.") from error
+            # THE FIRST WAIT, BY A FLAG AND NOT BY `waited == 0`, which a real clock almost never reads after a
+            # refused attempt, so the line would rarely print (found in review, 2026-10-24, #2459).
+            if not announced:
+                announced = True
+                print(f"{path} is held open by another process; trying again every "
+                      f"{retry_seconds:g} seconds for up to {limit_seconds:g} "
+                      "seconds. Issue #2459.", flush=True)
+            wait(retry_seconds)
+
+
+#: The name a previous log is moved aside to by the tests command, before the
+#: build, followed by the time it was moved and `.log`. Issue #1533.
+MOVED_ASIDE_PREFIX = "Cataclysm-before-tests-"
+
+#: How many logs moved aside under `MOVED_ASIDE_PREFIX` are kept. Issue #1533.
+MOVED_ASIDE_KEPT = 3
+
+
+def move_aside_when_released(path: pathlib.Path,
+                             *,
+                             kept: int = MOVED_ASIDE_KEPT,
+                             stamp: Callable[[], str] = lambda: time.strftime("%Y.%m.%d-%H.%M.%S"),
+                             retry_seconds: float = HELD_FILE_RETRY_SECONDS,
+                             limit_seconds: float = HELD_FILE_LIMIT_SECONDS,
+                             wait: Callable[[float], None] = time.sleep,
+                             clock: Callable[[], float] = time.monotonic) -> pathlib.Path | None:
+    """Rename `path` beside itself as `MOVED_ASIDE_PREFIX` + a time, and keep
+    the newest `kept` of those. Returns where it went, or None when there was
+    nothing to move.
+
+    WHY. Issue #1533. The tests command deleted the log only once the build had
+    succeeded, so after a FAILED build `game/Saved/Logs/Cataclysm.log` was still
+    the previous run's complete log, with nothing in it saying so; anyone reading
+    the file read an earlier run's results. Moving it aside before the build
+    leaves no `Cataclysm.log` to read after a failed one. And moving rather than
+    deleting keeps what the file held: in the main checkout that can be the
+    owner's playtest log, which the delete in `run_automation_tests` used to
+    destroy on every test run.
+
+    ONLY NAMES WITH THE PREFIX ARE EVER DELETED, the oldest first by
+    modification time, which a rename keeps, so it is the age of what the log
+    says. The engine's own `Cataclysm-backup-*` logs and any log the owner
+    renamed are never touched.
+
+    @param stamp  the time written into the new name; ONLY EVER PASSED BY TESTS
+    """
+    if not path.is_file():
+        return None
+    target = path.with_name(f"{MOVED_ASIDE_PREFIX}{stamp()}.log")
+    count = 2
+    while target.exists():
+        target = path.with_name(f"{MOVED_ASIDE_PREFIX}{stamp()}-{count}.log")
+        count += 1
+    _when_released(path, lambda: path.rename(target), "moved aside", "rename",
+                   retry_seconds=retry_seconds, limit_seconds=limit_seconds,
+                   wait=wait, clock=clock)
+
+    moved = sorted(path.parent.glob(f"{MOVED_ASIDE_PREFIX}*.log"),
+                   key=lambda one: (one.stat().st_mtime, one.name), reverse=True)
+    for old in moved[kept:]:
+        old.unlink(missing_ok=True)
+    return target
+
+
+def run_automation_tests(prefix: str = "Cataclysm",
+                         timeout: float | None = None,
+                         *,
+                         wait: Callable[[float], None] = time.sleep) -> TestOutcome:
+    """Run the Unreal automation tests and read the results out of the log.
+
+    Standard output carries only the software development kit validation banner,
+    so the pipe is ignored and `game/Saved/Logs/Cataclysm.log` is read instead.
+    The log is deleted first, so a run that writes nothing cannot be mistaken for
+    the previous run's results. The delete waits while another process still
+    holds the log open (`delete_when_released`, issue #2459); `wait` is passed
+    only by tests.
+    """
+    if not EDITOR_CMD.is_file():
+        raise FileNotFoundError(
+            f"{EDITOR_CMD} does not exist. Set UE_ROOT to the engine "
+            "installation directory if it is not at the default location.")
+
+    TEST_LOG.parent.mkdir(parents=True, exist_ok=True)
+    delete_when_released(TEST_LOG, wait=wait)
+
+    subprocess.run(
+        [str(EDITOR_CMD), str(PROJECT_FILE),
+         f"-ExecCmds=Automation RunTests {prefix}",
+         "-unattended", "-nopause", "-nosplash", "-nullrhi",
+         "-testexit=Automation Test Queue Empty", "-log"],
+        capture_output=True, text=True, cwd=GAME_DIR, timeout=timeout, check=False)
+
+    if not TEST_LOG.is_file():
+        raise RuntimeError(
+            f"{TEST_LOG} was not written. The test run produced no log at all, "
+            "which usually means the editor failed to start.")
+    return parse_test_log(TEST_LOG.read_text(encoding="utf-8", errors="replace"))
+
+
+def parse_test_log(text: str) -> TestOutcome:
+    """Pull the per-test results and the total out of an automation run's log."""
+    succeeded: list[str] = []
+    failed: list[str] = []
+    for result, name in TEST_RESULT.findall(text):
+        (succeeded if result == "Success" else failed).append(name)
+
+    # De-duplicated and sorted, because the helper writes each line twice by two
+    # routes on purpose. See SKIPPED_HALF.
+    skipped = sorted(set(SKIPPED_HALF.findall(text)))
+
+    # DE-DUPLICATED DEFENSIVELY, NOT BECAUSE IT IS KNOWN TO REPEAT. Measured on
+    # 2026-09-13: the engine printed this exactly once per refusal, in each of
+    # nine logs, and a log holds one editor run -- `Cataclysm.log` carries a
+    # single "Log file open" line and is overwritten at the next start. That is
+    # unlike the skips above, which really are written twice by two routes.
+    # A set costs nothing and means a log that did hold two runs would report one
+    # collision once rather than as two separate problems.
+    refused = sorted(set(REFUSED_REGISTRATION.findall(text)))
+
+    performed_match = TESTS_PERFORMED.search(text)
+    performed = int(performed_match.group(1)) if performed_match else None
+    # THE QUEUE-EMPTY LINE FIRST, AND THE PER-TEST LINES ONLY WITHOUT IT. Issue #2679.
+    counted = False
+    if performed is None:
+        performed = performed_from_completed_lines(text)
+        counted = performed is not None
+    return TestOutcome(
+        performed,
+        tuple(succeeded),
+        tuple(failed),
+        tuple(skipped),
+        tuple(refused),
+        counted,
+    )
+
+
+def performed_from_completed_lines(text: str) -> int | None:
+    """How many tests a run performed, counted from its "Test Completed" lines, or None when that cannot be shown.
+
+    FOR A LOG WITH NO QUEUE-EMPTY LINE. Issue #2679: the engine log sometimes stops right after the last test's events,
+    so "Automation Test Queue Empty N tests performed" is missing from a run whose every test finished.
+
+    THE REQUESTED TESTS ARE THE ENGINE'S OWN LIST FOR THIS RUN: the "Found N automation tests based on '<prefix>'"
+    line and the N full test paths printed after it (`TESTS_FOUND`, `FOUND_PATH`). Not the prefix, whose matching is
+    the engine's (case-insensitive, a string and not a group), and not the declared count, which is read from the
+    source and has never been exact. THE LAST SUCH BLOCK, in case a log ever holds more than one; only the "Test
+    Completed" lines after it are counted. Measured on 2026-11-01: window w131's suite log printed "Found 4504", 4504
+    paths, and 4504 "Test Completed" lines; its P3 broken half printed "Found 1", one path and one "Test Completed"
+    line, and stopped there.
+
+    N ONLY WHEN EVERY LISTED TEST HAS A "Test Completed" LINE. A listed test with none -- the log cut off during it,
+    or before it started -- leaves the run unfinished, and None keeps it reading as crashed. So does a block whose
+    path lines are fewer than its N, a block of 0, and a log with no block at all.
+    """
+    blocks = list(TESTS_FOUND.finditer(text))
+    if not blocks:
+        return None
+    last = blocks[-1]
+    expected = int(last.group(1))
+    if expected == 0:
+        return None
+    after = text[last.end():]
+    paths: list[str] = []
+    for line in after.splitlines()[1:]:
+        listed = FOUND_PATH.search(line)
+        if not listed:
+            break
+        paths.append(listed.group(1))
+    if len(paths) != expected:
+        return None
+    completed = set(COMPLETED_PATH.findall(after))
+    if not set(paths) <= completed:
+        return None
+    return expected
+
+
+def test_saves_line(text: str) -> str:
+    """The run's "Test saves: N written and deleted, M left behind" line, or a line saying the log has none.
+
+    THE LAST ONE WRITTEN AFTER THE RUN'S LAST "Test Started" LINE (`TEST_STARTED`). Since issue #2677 the clean-up logs
+    the line at every test's end as well as at exit, and window w132 measured 607 such lines from the engine's smoke
+    tests at start-up, each "0 written and deleted, 0 left behind", before any requested test started. Read from the
+    whole log, one of those would stand in for a run whose own lines were lost and pass it with slots on disk; read
+    from after the last test's start, the line is the one logged as that test ended or the exit-time line after it,
+    whichever came last, and either carries the run's totals. A log with no "Test Started" line at all is read whole:
+    it started no requested test, so it holds no start-up line to mistake. A missing line is said, not hidden: it
+    means the hook that logs it did not run for the run's tests. Issues #2658, #2677.
+    """
+    start = text.rfind(TEST_STARTED)
+    found = TEST_SAVES.findall(text[start:] if start >= 0 else text)
+    return found[-1] if found else ("Test saves: (no line in the log after its last test started; the clean-up's "
+                                    "summary was not logged)")
+
+
+def saves_failure(tests: TestOutcome | None, saves_line: str) -> str | None:
+    """Why the run's save slots fail the `tests` command, or None when they do not. Issue #2673.
+
+    `saves_line` is what `test_saves_line` returned for the run's log. Two reasons, ruled 2026-11-01:
+
+    - **M > 0.** The tests left slots in `game/Saved/SaveGames` that were not there when the run started. Said with the
+      names the line gives. A narrow run (`--prefix`) is held to the same rule: its M counts what that subset left.
+    - **No line, from a run that performed at least one test.** The folder is taken at the first test's start, so such
+      a run should have logged one; without it the run has not shown that its tests' saves were deleted (window w129
+      logged none, from a clean-up whose summary hook never fired).
+
+    A RUN THAT PERFORMED NO TESTS OR CRASHED ALREADY FAILS FOR ITS OWN REASON, so a missing line adds nothing there and
+    None comes back: with no test started, nothing took the folder and nothing could log the line. Slots left behind
+    are still named for such a run, after its own reason, because they are on disk whatever stopped the run.
+
+    THIS READS NOTHING A GUARD PROOF READS. `prove_cpp_guard` judges its halves on `TestOutcome` alone, which
+    `parse_test_log` builds without looking at this line; only `exit_code_for`, which only `main` calls, uses this.
+    """
+    parts = TEST_SAVES_PARTS.fullmatch(saves_line)
+    if parts is None:
+        if tests is None or tests.crashed:
+            return None
+        return ("FAILED: the clean-up's summary was not logged, so the run has not shown its tests' saves were "
+                f"deleted. {tests.performed} tests were performed and the log holds no \"Test saves:\" line after its "
+                "last test started. "
+                "Issue #2673.")
+
+    left = int(parts.group(2))
+    if left == 0:
+        return None
+    names = parts.group(3) or "(the line names none)"
+    return (f"FAILED: the tests left {left} save slot{'' if left == 1 else 's'} behind in game/Saved/SaveGames: "
+            f"{names}. A run whose tests leave slots fails, a narrow one included; nothing was deleted. Issue #2673.")
+
+
+def restore_and_touch(path: pathlib.Path, content: bytes, not_before: float) -> None:
+    """Write the original bytes back and make sure the file looks newer than the build.
+
+    Writing normally gives the file the current time, which is already after the
+    object file built from the broken version. `not_before` is a belt: if the
+    filesystem's timestamp granularity leaves the restored file looking no newer
+    than the moment the break was made, the modification time is pushed forward
+    explicitly. That is the "touch the file after restoring it" in issue #139,
+    done every time rather than only when someone remembers.
+    """
+    path.write_bytes(content)
+    if path.stat().st_mtime <= not_before:
+        stamp = not_before + 1.0
+        os.utime(path, (stamp, stamp))
+
+
+#: Where `prove_cpp_guard` keeps the original bytes of every file it breaks,
+#: from before the first break until after the last restore. None means "the
+#: repository's own git directory", which is outside the working tree and
+#: survives anything that happens to the checkout; tests set a path of their
+#: own. Issue #1917.
+RECOVERY_FILE: pathlib.Path | None = None
+
+
+def recovery_file() -> pathlib.Path:
+    """The file the originals are saved to. See `RECOVERY_FILE`."""
+    if RECOVERY_FILE is not None:
+        return RECOVERY_FILE
+    git_dir = subprocess.run(
+        ["git", "rev-parse", "--git-dir"], cwd=REPO_ROOT,
+        capture_output=True, text=True, check=True).stdout.strip()
+    return (REPO_ROOT / git_dir).resolve() / "cpp_guard_originals.json"
+
+
+class InterruptedProofFound(RuntimeError):
+    """A saved-originals file exists, so an earlier proof never restored."""
+
+
+def refuse_if_a_proof_was_interrupted() -> None:
+    """Raise, naming the file and the way out, when a proof left one behind.
+
+    WHY A PROOF REFUSES RATHER THAN RESTORING FOR YOU. Issue #1917: the build
+    wrapper was seen to end after 17 seconds with exit 127 and no output while
+    the build it started ran on. A Python process ended from outside never
+    reaches its `finally`, so a proof interrupted that way leaves the break in
+    the worktree and nothing says so. Restoring silently at the start of the
+    next proof would hide that it happened; refusing puts the fact in front of
+    whoever runs the next one, and `restore-proof` is one command away.
+    """
+    path = recovery_file()
+    if not path.exists():
+        return
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+        files = ", ".join(sorted(record.get("files", {})))
+        when = record.get("saved_at", "an unknown time")
+    except (OSError, ValueError):
+        files, when = "files that could not be read", "an unknown time"
+    raise InterruptedProofFound(
+        f"An earlier prove_cpp_guard run saved the originals of {files} at "
+        f"{when} and never restored them, so the break may still be in the "
+        f"worktree: {path} exists. Run `python tools/unreal_build.py "
+        "restore-proof` to write the originals back, then rebuild. Issue "
+        "#1917.")
+
+
+def save_originals_for_recovery(originals: Mapping[pathlib.Path, bytes],
+                                broken_at: float) -> None:
+    """Write every original to the recovery file, before any break is made."""
+    path = recovery_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "saved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "broken_at": broken_at,
+        "repo_root": str(REPO_ROOT),
+        "files": {str(file.relative_to(REPO_ROOT)).replace("\\", "/"):
+                  base64.b64encode(content).decode("ascii")
+                  for file, content in originals.items()},
+    }
+    path.write_text(json.dumps(record, indent=1), encoding="utf-8")
+
+
+def forget_the_saved_originals() -> None:
+    """Delete the recovery file; called only once every file is restored."""
+    path = recovery_file()
+    if path.exists():
+        path.unlink()
+
+
+def restore_an_interrupted_proof() -> list[str]:
+    """Write back every original the recovery file holds, and delete it.
+
+    Returns the relative paths restored, oldest break first as saved; an empty
+    list when there is no recovery file. The caller must rebuild afterwards:
+    the binaries may still hold the break, which is issue #139's fault, and
+    `restore_and_touch` pushes each file's time past the recorded break so the
+    next build cannot skip it.
+    """
+    path = recovery_file()
+    if not path.exists():
+        return []
+    record = json.loads(path.read_text(encoding="utf-8"))
+    not_before = float(record.get("broken_at", time.time()))
+    restored: list[str] = []
+    for relative, encoded in record["files"].items():
+        restore_and_touch(REPO_ROOT / relative, base64.b64decode(encoded), not_before)
+        restored.append(relative)
+    path.unlink()
+    return restored
+
+
+def state_after_a_failed_restore(broken_build: "BuildOutcome | None") -> str:
+    """What the worktree holds when the rebuild after a restore did not compile.
+
+    THREE STATES, AND THEY DIFFER IN WHETHER A TEST RUN HERE MEANS ANYTHING.
+    Issue #1657. The exception raised for all three used to be identical.
+
+    A SEPARATE FUNCTION SO IT CAN BE READ WITHOUT RUNNING FOUR BUILDS, and so the
+    `finally` it is called from stays short. That block is built so a failure
+    during the restore cannot hide the failure that caused the run to unwind --
+    issue #384 -- and every line added to it is another thing that can raise in
+    the wrong place.
+    """
+    if broken_build is None:
+        # The build command itself never returned. Nothing was measured and
+        # nothing is known about the binaries, which is its own answer.
+        return ("The build with the break in it never reported at all, so what "
+                "these binaries hold is unknown. Build again before running any "
+                "test in this worktree.")
+
+    if not broken_build.succeeded:
+        # The break never compiled, so no test ever ran and no broken object was
+        # ever produced. The source on disk is correct and a build is owed.
+        return ("The break never compiled, so nothing ran against it and these "
+                "binaries are from the last good build, from correct source. A "
+                "build is owed because the restore moved the file's modification "
+                "time, and it will report actions -- that is expected here and is "
+                "NOT evidence the binaries held the break.")
+
+    return ("THE BINARIES IN THIS WORKTREE CONTAIN THE BREAK. The break compiled, "
+            "the tests ran against it, and the rebuild that was meant to undo it "
+            "did not compile. The source on disk is correct and the binaries are "
+            "not. Build again before running any test here, and discard any "
+            "timing or result taken from this worktree since.")
+
+
+def prove_cpp_guard(edits: Mapping[str, Callable[[str], str]],
+                    test_prefix: str = "Cataclysm",
+                    target: str = DEFAULT_TARGET,
+                    *,
+                    builder: Callable[[str], BuildOutcome] = build,
+                    tester: Callable[[str], TestOutcome] = run_automation_tests,
+                    ) -> CppGuardResult:
+    """Break C++ files, rebuild, run the tests, restore, and rebuild again.
+
+    @param edits        path relative to the repository root, and a function
+                        taking the file's text and returning the broken text. An
+                        edit that changes nothing raises, because a break that
+                        did not break anything makes a working guard look
+                        worthless.
+
+                        THE TEXT AN EDIT SEES HAS "\\n" LINE ENDINGS, whatever
+                        the file on disk has. It is read with Python's universal
+                        newlines, and every file under `game/Source/Cataclysm/`
+                        is CRLF, so a multi-line break string written with
+                        "\\r\\n" matches nothing at all. That raises the "changed
+                        nothing" error above rather than passing quietly, which
+                        is the right failure and still costs a cycle. Prefer a
+                        break with no line ending in it.
+    @param test_prefix  which automation tests to run, for example
+                        `Cataclysm.Skills`. Narrower is much faster.
+    @param builder      what runs a build. ONLY EVER PASSED BY TESTS, so that
+                        the order of the four steps below can be checked without
+                        an engine. One real run of this function takes minutes,
+                        which is why none of its sequencing was covered until
+                        issue #384.
+    @param tester       the same, for the automation test run.
+
+    Four builds' worth of time. Every file is restored in a `finally`, and the
+    restore is followed by a rebuild, so an exception or an interrupt cannot
+    leave a binary that disagrees with the source.
+
+    A `finally` CANNOT RUN IN A PROCESS THAT WAS ENDED FROM OUTSIDE, and issue
+    #1917 saw the build wrapper end that way with the build still running. So
+    before the first break is written, the original bytes of every file are
+    saved to `recovery_file()`, outside the working tree; the file is deleted
+    only after every restore has been written; a run that finds one already
+    there refuses to start; and `python tools/unreal_build.py restore-proof`
+    writes the originals back by hand.
+    """
+    if not edits:
+        raise ValueError("prove_cpp_guard needs at least one edit to make.")
+
+    originals: dict[pathlib.Path, bytes] = {}
+    broken_at = time.time()
+
+    #: What went wrong first, if anything did.
+    #:
+    #: KEPT SO THE RESTORE CANNOT HIDE IT. The `finally` below rebuilds and
+    #: checks that rebuild, and until issue #384 a failure there raised straight
+    #: over whatever had already gone wrong -- so the traceback a caller read
+    #: described the restore rather than the break that caused it. Issue #384
+    #: records seeing exactly that.
+    first_failure: BaseException | None = None
+
+    #: What the build with the break in it reported, or None if it never got that
+    #: far.
+    #:
+    #: BOUND HERE AND NOT ONLY IN THE `try`, WHICH THE HAPPY PATH NEVER NEEDS.
+    #: The `finally` below reads it to say which state the worktree was left in.
+    #: `builder(target)` can raise -- the mutex denied, the wrapper gone, the
+    #: machine taken -- and then the assignment inside the `try` never happens; a
+    #: read of an unbound name there would raise `UnboundLocalError` OVER the
+    #: failure that explains the run. That is issue #384's fault arriving from a
+    #: new direction: the code reporting which case you are in destroying the
+    #: report. `test_a_builder_that_raises_leaves_the_original_exception_intact`
+    #: is what keeps this line, because nothing else exercises it.
+    broken_build: BuildOutcome | None = None
+
+    try:
+        refuse_if_a_proof_was_interrupted()
+
+        # EVERY EDIT IS READ AND CHECKED BEFORE ANY IS WRITTEN, so that the
+        # originals can be saved outside the working tree first (issue #1917)
+        # and so that a second edit's error leaves the first file untouched.
+        broken_text: dict[pathlib.Path, str] = {}
+        for relative, edit in edits.items():
+            path = REPO_ROOT / relative
+            if not path.is_file():
+                raise FileNotFoundError(f"{relative} does not exist.")
+
+            originals[path] = path.read_bytes()
+            before = path.read_text(encoding="utf-8")
+            after = edit(before)
+            if after == before:
+                raise ValueError(
+                    f"The edit to {relative} changed nothing. A break that does "
+                    "not break anything makes a working guard look worthless.")
+            broken_text[path] = after
+
+        save_originals_for_recovery(originals, broken_at)
+        for path, after in broken_text.items():
+            # No `newline=` argument. `read_text` normalised the file's CRLF line
+            # endings to LF, and the default here converts them back on Windows,
+            # so the break changes only what the edit changed. Passing
+            # `newline=""` would rewrite every line ending in the file as well.
+            path.write_text(after, encoding="utf-8")
+
+        broken_at = time.time()
+        broken_build = builder(target)
+        if broken_build.succeeded:
+            # Only demand a rebuild when the build worked. A break that fails to
+            # compile is a legitimate, if blunt, way to reach the same evidence,
+            # and it never reaches a Compile line for the file.
+            require_compiled(broken_build, list(edits))
+            tests = tester(test_prefix)
+        else:
+            tests = TestOutcome(None, (), ())
+
+        broken = CppGuardResult(broken_build, tests)
+    except BaseException as error:
+        first_failure = error
+        raise
+    finally:
+        for path, content in originals.items():
+            restore_and_touch(path, content, broken_at)
+        if originals:
+            # ONLY ONCE EVERY RESTORE ABOVE HAS BEEN WRITTEN. A restore that
+            # raised never reaches this line, and the file stays for
+            # `restore-proof`. Issue #1917.
+            forget_the_saved_originals()
+            restored_build = builder(target)
+            try:
+                require_compiled(restored_build, list(edits))
+            except BuildDidNothing as restore_failure:
+                # AND SAY WHICH WORKTREE THIS LEAVES, WHICH THE SAME EXCEPTION
+                # USED TO ANSWER FOR TWO VERY DIFFERENT STATES. Issue #1657.
+                #
+                # A session that hit this reported the danger correctly and
+                # attributed it to the wrong one of the two, because nothing in
+                # the exception told them apart. Nor does the obvious check:
+                # building again reports actions in BOTH cases, because
+                # `restore_and_touch` forces the restored file's modification
+                # time past the break so the next build cannot skip it. That is
+                # what issue #139 asked for, and it means "1 file compiled" is
+                # not evidence the binaries had held the break.
+                restore_failure.add_note(state_after_a_failed_restore(broken_build))
+                if first_failure is None:
+                    raise
+                # THE FIRST FAILURE IS THE ONE THAT EXPLAINS THE RUN, so it is
+                # the one that propagates. Raising here would replace it with a
+                # complaint about the restore, which is what issue #384 saw:
+                # two tracebacks, the second hiding the first. The restore
+                # problem still has to reach the caller, so it is attached to
+                # the failure already on its way out.
+                first_failure.add_note(
+                    "The restore build was also unsatisfactory, and this is "
+                    "reported as a note so it does not hide the failure above:"
+                    f"\n{restore_failure}")
+
+    # THE SECOND HALF, AND IT IS OUT HERE RATHER THAN IN THE `finally` ON
+    # PURPOSE. Issue #1663 adds it; issue #384 says where it may not go. That
+    # `finally` is built so a failure during the restore cannot hide the failure
+    # that caused the run to unwind -- it keeps `first_failure` and attaches the
+    # restore's complaint as a note rather than raising over it. A test run can
+    # fail, crash, or find the machine taken, and any of those inside that block
+    # would do exactly what #384 stopped. Out here it runs only when nothing
+    # raised, because a raised proof never reaches this line at all.
+    #
+    # AND ONLY WHEN THERE IS A FIRST HALF TO PAIR IT WITH. A break that did not
+    # compile never ran the tests, and a crashed run never said how many it
+    # performed; pairing either with a fresh run would invite a reader to
+    # compare a real measurement against nothing. Both leave `performed` as
+    # None, so one test covers both.
+    #
+    # THE SAME `test_prefix`, WHICH IS WHAT MAKES THE TWO COMPARABLE. Passing it
+    # again rather than re-deriving it also means the selection rules cannot
+    # differ between the halves, whatever they are.
+    # A FAILURE IN THIS RUN PROPAGATES AND TAKES THE BROKEN HALF WITH IT, WHICH
+    # IS THE RIGHT DIRECTION EVEN THOUGH IT LOSES EVIDENCE ALREADY PAID FOR. If
+    # the second run cannot happen -- the machine taken, the editor gone -- then
+    # what is left is a broken half on its own, and reporting that as a proof is
+    # the whole fault issue #1663 is about. Losing four builds is the cheaper
+    # mistake. The worktree is safe either way: the restore and its rebuild have
+    # both completed by the time this line runs.
+    #
+    # THAT MUCH IS A JUDGEMENT. TWO FACTS SETTLE IT.
+    #
+    # A CAUGHT FAILURE WOULD PASS THE DOCUMENTED ASSERTION. `CLAUDE.md` tells
+    # every caller to write `assert result.named_failures`, and on a returned
+    # half-proof that is populated and truthy. So catching would hand back an
+    # object that satisfies the project's own instructions -- from the one
+    # function whose job is now to refuse half-proofs. An exception cannot be
+    # swallowed by a caller following the documentation; a returned object with
+    # `proved` False can be, by exactly the caller in a hurry.
+    #
+    # AND IT WOULD GIVE ONE SIGNAL TWO MEANINGS. `tests_restored` of None already
+    # means "there was no first half to pair with". A failed second run setting
+    # it to None as well would make it mean "the second half was attempted and
+    # failed" too, with no way to tell them apart -- which is issue #1657's defect
+    # reproduced inside the function, and a thing this file exists to stop.
+    if broken.build.succeeded and broken.tests.performed is not None:
+        return dataclasses.replace(broken, tests_restored=tester(test_prefix))
+    return broken
+
+
+# ---------------------------------------------------------------------------
+# Running this from the command line
+#
+# WHY THIS SECTION EXISTS. Issue #436. Until it was added this file was a
+# library with no `__main__` block, so
+#
+#     python tools/unreal_build.py --tests
+#
+# imported the module, defined these functions, printed nothing and exited 0.
+# An exit code of 0 with no output cannot be told apart from a successful run
+# whose output was filtered away, which is what a caller doing `| tail -8` sees.
+# It was run that way three times -- twice through one shell, once through
+# another with output redirected to a file -- and reported `exit=0` and an empty
+# file every time. Nothing had run at all.
+#
+# THAT IS THE SAME CLASS OF FAULT THIS WHOLE FILE EXISTS TO PREVENT: a report of
+# success from something that did no work. Issue #139 is the build version of
+# it, `BuildDidNothing` is the guard against that, and this was the same hole in
+# the front door.
+# ---------------------------------------------------------------------------
+
+#: What a caller may write instead of the subcommand.
+#:
+#: BOTH SPELLINGS ARE ACCEPTED ON PURPOSE. `--tests` is how the command was
+#: written in issue #436 and in the notes that led to it, so somebody will type
+#: it. A usage error would at least be loud, but accepting it costs one line.
+COMMAND_ALIASES = {"--build": "build", "--tests": "tests"}
+
+
+def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
+    """Read the command line. Raises SystemExit(2) on anything unrecognised.
+
+    SEPARATE FROM `main` SO IT CAN BE TESTED, because the alternative is a test
+    that starts a real Unreal build in order to find out whether a flag was
+    spelled correctly.
+    """
+    normalised = [COMMAND_ALIASES.get(word, word) for word in argv]
+
+    parser = argparse.ArgumentParser(
+        prog="python tools/unreal_build.py",
+        description="Build the Unreal project and run its automation tests.")
+    parser.add_argument(
+        "command", choices=("build", "tests", "restore-proof"),
+        help="build: compile the editor target. "
+             "tests: compile it and then run the automation tests. "
+             "restore-proof: write back the originals an interrupted "
+             "prove_cpp_guard run saved, then you rebuild (issue #1917).")
+    parser.add_argument(
+        "--prefix", default="Cataclysm",
+        help="only run tests whose name starts with this (default: Cataclysm)")
+    parser.add_argument(
+        "--target", default=DEFAULT_TARGET,
+        help=f"the build target (default: {DEFAULT_TARGET})")
+    parser.add_argument(
+        "--no-build", action="store_true",
+        help="with `tests`, run against the binaries already built")
+
+    return parser.parse_args(normalised)
+
+
+def exit_code_for(tests: TestOutcome | None, saves_line: str) -> int:
+    """0 only when tests actually ran, every one of them passed, and they left no save slot behind.
+
+    NOTHING RAN IS A FAILURE, NOT A PASS, and that is the whole point of this
+    function. `TestOutcome(None, (), ())` is what comes back when the log could
+    not be read: the editor never started, the run crashed, the log was locked.
+    Zero tests performed is the same thing said differently. Reporting either as
+    success is exactly the fault issue #436 was opened about, one level further
+    in.
+
+    `saves_line` is the run's "Test saves:" line as `test_saves_line` read it.
+    REQUIRED, NOT DEFAULTED, so no caller can skip the save check by leaving it
+    out. `saves_failure` says when it fails the run. Issue #2673.
+    """
+    if tests is None or tests.performed is None or tests.performed == 0:
+        return 1
+
+    # A TEST THE ENGINE REFUSED TO REGISTER IS A FAILURE THOUGH NOTHING FAILED.
+    # It is the one case where every number in the report is correct and the
+    # report is still wrong: the refused test is absent from performed, from
+    # succeeded and from failed alike, so a caller checking the exit code -- which
+    # `CLAUDE.md` tells every caller to do -- would read "everything is fine" from
+    # a run that lost a test. Issue #1736.
+    #
+    # NOT A NEW PRINCIPLE. The branch above already exits non-zero when the
+    # measurement cannot be trusted and no test failed: a run that reported no
+    # count, or a count of zero, fails here even though nothing failed. A refused
+    # registration is the same category -- a count that cannot be trusted --
+    # rather than a new kind of thing to fail on.
+    #
+    # AND PRINTING A LINE WAS ALREADY TRIED, BY THE ENGINE, AND DID NOT WORK.
+    # Unreal prints this refusal in plain words at every editor start. It did so
+    # across seven editor starts over five days while the missing test was being
+    # hunted, and nobody read it. Printing a line and stopping there would be
+    # choosing the one mechanism with a measured record of failing at this.
+    #
+    # MADE FATAL AT THE MOMENT THE COUNT WAS CLEAN, WHICH IS WHY IT COULD BE. On
+    # 2026-09-13, immediately after issue #1666 removed the only collision in the
+    # project, a whole-tree run reported 1,761 performed and zero refusals. So
+    # this breaks nothing on the day it lands. The same change a month later
+    # would have failed somebody's unrelated work and been blamed on this
+    # wrapper.
+    #
+    # A SKIPPED HALF IS DELIBERATELY NOT TREATED THIS WAY. Continuous integration
+    # and every worktree lack the Paragon art and report skipped halves on every
+    # run, so failing on those would make the exit code carry no information at
+    # all. The difference is that a skipped half can never be fixed there and a
+    # refused registration is always a defect.
+    if tests.refused_registration:
+        return 1
+
+    if tests.any_failed:
+        return 1
+
+    # SAVE SLOTS LEFT BEHIND, OR NO LINE SAYING WHETHER ANY WERE, FAIL THE RUN
+    # THOUGH EVERY TEST PASSED. Issue #2673, ruled 2026-11-01: #2658 printed the
+    # line and left the exit code alone until a window had shown M = 0; window
+    # w129B showed it over the whole suite. Last, because every reason above
+    # says more about the run than this one does. The same category as a
+    # refused registration: every test passed and the run still is not clean.
+    return 1 if saves_failure(tests, saves_line) else 0
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Build, or build and test, reporting what happened and why."""
+    arguments = parse_arguments(
+        list(argv if argv is not None else sys.argv[1:]))
+
+    if arguments.command == "restore-proof":
+        restored = restore_an_interrupted_proof()
+        if not restored:
+            print(f"Nothing to restore: {recovery_file()} does not exist, so no "
+                  "prove_cpp_guard run was interrupted between its break and "
+                  "its restore.")
+            return 1
+        print("Restored from the saved originals: " + ", ".join(restored))
+        print("Rebuild before running any test; the binaries may still hold "
+              "the break (python tools/unreal_build.py build).")
+        return 0
+
+    # THE PREVIOUS LOG MOVED ASIDE BEFORE THE BUILD, FOR THE TESTS COMMAND ONLY.
+    # Issue #1533. A failed build returns below before `run_automation_tests`
+    # deletes the log, which left the previous run's complete results in
+    # `Cataclysm.log` to be read as this run's. Moved, not deleted, so a playtest
+    # log in the main checkout is kept under a name that says what it is.
+    if arguments.command == "tests":
+        moved = move_aside_when_released(TEST_LOG)
+        if moved is not None:
+            print(f"Moved the previous {TEST_LOG.name} aside to {moved.name}, so "
+                  f"no earlier run's results can be read as this run's. Issue #1533.")
+
+    if not (arguments.command == "tests" and arguments.no_build):
+        outcome = build(arguments.target)
+        # WHAT IT DID, NOT ONLY THAT IT SUCCEEDED. Issue #1599. This line used
+        # to read `Build: Succeeded`, with `(nothing to do)` appended only when
+        # the target was already current -- so a build that DID compile said
+        # nothing whatever about what it compiled, and a session that had just
+        # rebased could not tell from the command whether its sources had been
+        # built. `build()` has always returned the file list, the action count
+        # and the up-to-date flag; the command threw all three away.
+        print(f"Build: {outcome.result} - {outcome.what_it_did}")
+
+        if not outcome.succeeded:
+            # THE COMPILER'S OWN WORDS, NOT A SUMMARY OF THEM. A compilation
+            # error is the thing the caller needs and there is no reading of it
+            # better than the one the compiler already wrote.
+            print(outcome.stdout)
+            return 1
+
+    if arguments.command == "build":
+        return 0
+
+    tests = run_automation_tests(arguments.prefix)
+    print(f"Tests: {tests.summary}")
+    # WHAT THE TESTS' SAVE SLOTS CAME TO, beside the result. Read again from the log the run left, as
+    # `run_automation_tests` read it. Printed since #2658; part of the exit code since #2673 (`saves_failure`).
+    saves_line = test_saves_line(TEST_LOG.read_text(encoding="utf-8", errors="replace") if TEST_LOG.is_file() else "")
+    print(saves_line)
+    # THE INPUTS BESIDE THE ANSWER. Issue #1707. A prefix narrows the run and not
+    # the tree, so with a prefix the gap is the tests outside it and the line
+    # still says what the whole tree declares; the names are the useful part.
+    print(declared_line(tests, declared_tests(), current_commit()))
+
+    code = exit_code_for(tests, saves_line)
+
+    # THE CONDITION USED TO BE "NON-ZERO AND NOTHING FAILED", which was the same
+    # thing as "no results were read" until a refused registration became a
+    # reason to exit non-zero. It is not the same thing now: a run can perform
+    # 1,761 tests, pass all of them, and still exit non-zero because one more was
+    # refused. Printing "No test results were read" there would be false, and
+    # false in the direction of sending the reader to look for a crashed editor.
+    # So this asks the question it means. Issues #436 and #1736.
+    if tests.crashed:
+        print(f"No test results were read from {TEST_LOG}. Either the run did "
+              f"not happen or its log could not be read. That is reported as a "
+              f"failure rather than a pass on purpose; see issue #436.")
+
+    # AFTER THE NO-RESULTS REASON, which stays first: a run that performed no
+    # tests fails for that, and `saves_failure` adds a missing line to it only
+    # when tests were performed. Issue #2673.
+    failure = saves_failure(tests, saves_line)
+    if failure:
+        print(failure)
+    return code
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

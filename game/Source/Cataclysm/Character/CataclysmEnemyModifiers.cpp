@@ -1,0 +1,1361 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "Character/CataclysmEnemyModifiers.h"
+
+#include "AbilitySystem/CataclysmMovement.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
+#include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmGroundZone.h"
+#include "AbilitySystem/CataclysmRegeneration.h"
+#include "AbilitySystem/CataclysmStacks.h"
+#include "AbilitySystem/CataclysmTelegraphMarker.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "EngineUtils.h"
+#include "Cataclysm.h"
+#include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmEnemyController.h"
+#include "Character/CataclysmFloorSourceCharacter.h"
+#include "Data/CataclysmDataRows.h"
+#include "Dungeon/CataclysmDungeonGameMode.h"
+#include "Engine/DataTable.h"
+#include "Engine/World.h"
+// For Starving Aura's debuff, built here. Issue #2539.
+#include "AbilitySystem/CataclysmDebuffs.h"
+#include "GameplayEffect.h"
+#include "GameplayEffectComponents/TargetTagsGameplayEffectComponent.h"
+#include "UObject/Package.h"
+
+const TCHAR* UCataclysmEnemyModifiers::GenericCataclysm = TEXT("Generic");
+
+const TCHAR* UCataclysmEnemyModifiers::TitanicResolveRow =
+	TEXT("Generic_Titanic_Resolve");
+const TCHAR* UCataclysmEnemyModifiers::OverpoweredRow =
+	TEXT("Generic_Overpowered");
+const TCHAR* UCataclysmEnemyModifiers::BloodthirstyRow =
+	TEXT("Generic_Bloodthirsty");
+const TCHAR* UCataclysmEnemyModifiers::ThornsOfGlassRow =
+	TEXT("Generic_Thorns_of_Glass");
+const TCHAR* UCataclysmEnemyModifiers::HellfireAuraRow =
+	TEXT("Demonic_Hellfire_Aura");
+const TCHAR* UCataclysmEnemyModifiers::UnyieldingRow =
+	TEXT("Generic_Unyielding");
+const TCHAR* UCataclysmEnemyModifiers::AbyssalAuraRow =
+	TEXT("Demonic_Abyssal_Aura");
+const TCHAR* UCataclysmEnemyModifiers::RelentlessRow =
+	TEXT("Generic_Relentless");
+const TCHAR* UCataclysmEnemyModifiers::ShielderRow =
+	TEXT("Generic_Shielder");
+const TCHAR* UCataclysmEnemyModifiers::PerfectAimRow =
+	TEXT("Generic_Perfect_Aim");
+const TCHAR* UCataclysmEnemyModifiers::HordeLeaderRow =
+	TEXT("Generic_Horde_Leader");
+const TCHAR* UCataclysmEnemyModifiers::PhasewalkerRow =
+	TEXT("Generic_Phasewalker");
+const TCHAR* UCataclysmEnemyModifiers::InfernalBrandRow =
+	TEXT("Demonic_Infernal_Brand");
+const TCHAR* UCataclysmEnemyModifiers::WitheringBlowsRow =
+	TEXT("Famine_Withering_Blows");
+const TCHAR* UCataclysmEnemyModifiers::TouchOfNothingRow =
+	TEXT("Void_Touch_of_Nothing");
+const TCHAR* UCataclysmEnemyModifiers::BeguilingRow =
+	TEXT("Demonic_Beguiling");
+const TCHAR* UCataclysmEnemyModifiers::InfernalSacrificeRow =
+	TEXT("Demonic_Infernal_Sacrifice");
+const TCHAR* UCataclysmEnemyModifiers::UnholySigilsRow =
+	TEXT("Demonic_Unholy_Sigils");
+const TCHAR* UCataclysmEnemyModifiers::SacrificialBondRow =
+	TEXT("Demonic_Sacrificial_Bond");
+const TCHAR* UCataclysmEnemyModifiers::InfernoChargeRow =
+	TEXT("Demonic_Inferno_Charge");
+const TCHAR* UCataclysmEnemyModifiers::StarvingAuraRow =
+	TEXT("Famine_Starving_Aura");
+
+const UDataTable* UCataclysmEnemyModifiers::LoadEnemyModifierTable()
+{
+	const UDataTable* Table = LoadObject<UDataTable>(
+		nullptr, TEXT("/Game/Data/DT_EnemyModifiers.DT_EnemyModifiers"));
+	if (!Table)
+	{
+		// NAMES BOTH SCRIPTS, because the two failures look the same from here:
+		// the workbook never produced the CSV, or the CSV was never imported as
+		// an asset. Every other loader in this project says the same thing.
+		UE_LOG(LogCataclysm, Error,
+			TEXT("Could not load DT_EnemyModifiers. It is produced by "
+				 "tools/generate_datatable_assets.py from "
+				 "game/Data/EnemyModifiers.csv, which "
+				 "tools/generate_datatables.py produces from the design "
+				 "workbook."));
+	}
+	return Table;
+}
+
+int32 UCataclysmEnemyModifiers::CountForRarityStep(int32 RarityStep)
+{
+	// THE STEP ITSELF. `docs/Cataclysm_GDD_v2.md` gives 0, 1, 2, 3, 4, 5 for
+	// Common through Cataclysm Boss and `game/Data/EnemyRarities.csv` numbers
+	// those same rungs 0 to 5, so the two ladders are one ladder.
+	//
+	// NOT CAPPED AT FIVE HERE. A step above the table's own is a caller error
+	// rather than a rung, and `ACataclysmEnemyCharacter::SetRarityStep` is where
+	// a step is bounded. Capping here as well would hide that.
+	return FMath::Max(0, RarityStep);
+}
+
+bool UCataclysmEnemyModifiers::IsDrawableBy(
+	const FCataclysmEnemyModifierRow& Row, FName CataclysmType)
+{
+	// THE WHOLE POOL RULE, IN ONE PLACE. `docs/Cataclysm_GDD_v2.md`: an enemy's
+	// modifiers are "drawn from its own Cataclysm's column and the Generic one".
+	return Row.CataclysmType.Equals(CataclysmType.ToString(),
+									ESearchCase::IgnoreCase)
+		|| Row.CataclysmType.Equals(GenericCataclysm, ESearchCase::IgnoreCase);
+}
+
+TArray<FName> UCataclysmEnemyModifiers::PoolFor(
+	const UDataTable* EnemyModifierTable, FName CataclysmType)
+{
+	TArray<FName> Pool;
+	if (!EnemyModifierTable)
+	{
+		return Pool;
+	}
+
+	EnemyModifierTable->ForeachRow<FCataclysmEnemyModifierRow>(
+		TEXT("UCataclysmEnemyModifiers::PoolFor"),
+		[&Pool, CataclysmType](const FName& Key,
+							   const FCataclysmEnemyModifierRow& Row)
+		{
+			if (IsDrawableBy(Row, CataclysmType))
+			{
+				Pool.Add(Key);
+			}
+		});
+
+	// SORTED, BECAUSE A DataTable IS A MAP. See the header: an unsorted walk
+	// would hand the same seed a different modifier on a different run, which is
+	// the fault `UCataclysmEnemyRarity::SpawnableSteps` sorts to avoid.
+	Pool.Sort([](const FName& A, const FName& B)
+	{
+		return A.LexicalLess(B);
+	});
+
+	return Pool;
+}
+
+TArray<FName> UCataclysmEnemyModifiers::Draw(
+	const UDataTable* EnemyModifierTable, FName CataclysmType, int32 Count,
+	FRandomStream& Stream, const TArray<FName>& Already)
+{
+	TArray<FName> Drawn;
+	if (Count <= 0)
+	{
+		return Drawn;
+	}
+
+	TArray<FName> Pool = PoolFor(EnemyModifierTable, CataclysmType);
+
+	// WHAT THE CREATURE ALREADY HAS IS OUT OF THE POOL BEFORE ANYTHING IS
+	// DRAWN, rather than being drawn and rejected. Rejecting would make the
+	// number of draws depend on what was already carried, so the same seed on
+	// two creatures that had been given different starting lists would produce
+	// unrelated results for the rest of the draw.
+	Pool.RemoveAll([&Already](const FName& Key)
+	{
+		return Already.Contains(Key);
+	});
+
+	while (Drawn.Num() < Count && Pool.Num() > 0)
+	{
+		const int32 Index = Stream.RandRange(0, Pool.Num() - 1);
+		Drawn.Add(Pool[Index]);
+
+		// REMOVED SO IT CANNOT COME UP AGAIN. `RemoveAtSwap` would be cheaper
+		// and would reorder what is left, which makes the draw depend on the
+		// order things were removed in as well as on the stream.
+		Pool.RemoveAt(Index);
+	}
+
+	return Drawn;
+}
+
+const FCataclysmEnemyModifierRow* UCataclysmEnemyModifiers::FindRow(
+	const UDataTable* EnemyModifierTable, FName Key)
+{
+	if (!EnemyModifierTable || Key.IsNone())
+	{
+		return nullptr;
+	}
+
+	return EnemyModifierTable->FindRow<FCataclysmEnemyModifierRow>(
+		Key, TEXT("UCataclysmEnemyModifiers::FindRow"), /*bWarnIfMissing=*/false);
+}
+
+// ---------------------------------------------------------------------------
+// What the carried modifiers do
+// ---------------------------------------------------------------------------
+
+bool UCataclysmEnemyModifiers::Carries(const TArray<FName>& Rows,
+									   const TCHAR* RowKey)
+{
+	return RowKey != nullptr && Rows.Contains(FName(RowKey));
+}
+
+float UCataclysmEnemyModifiers::MaxHealthMultiplier(const TArray<FName>& Rows)
+{
+	// ONE MODIFIER MOVES THIS TODAY. Written as a running multiplier rather
+	// than as a branch, so a second one that also scales health multiplies with
+	// it rather than replacing it.
+	float Multiplier = 1.0f;
+
+	if (Carries(Rows, TitanicResolveRow))
+	{
+		Multiplier *= TitanicResolveHealthMultiplier;
+	}
+
+	return Multiplier;
+}
+
+float UCataclysmEnemyModifiers::ForcedCritChance(const TArray<FName>& Rows)
+{
+	if (Carries(Rows, OverpoweredRow))
+	{
+		return OverpoweredCritChance;
+	}
+
+	return -1.0f;
+}
+
+float UCataclysmEnemyModifiers::LifeLeechPercent(const TArray<FName>& Rows)
+{
+	// A SUM, because two sources of leech should add rather than one winning.
+	float Percent = 0.0f;
+
+	if (Carries(Rows, BloodthirstyRow))
+	{
+		Percent += BloodthirstyLeechPercent;
+	}
+
+	return Percent;
+}
+
+float UCataclysmEnemyModifiers::RetaliationPercent(const TArray<FName>& Rows)
+{
+	float Percent = 0.0f;
+
+	if (Carries(Rows, ThornsOfGlassRow))
+	{
+		Percent += ThornsOfGlassRetaliationPercent;
+	}
+
+	return Percent;
+}
+
+float UCataclysmEnemyModifiers::HealthRegenShareOfMaximum(
+	const TArray<FName>& Rows)
+{
+	// A SUM, so a second modifier that also heals adds rather than replacing.
+	float Share = 0.0f;
+
+	if (Carries(Rows, RelentlessRow))
+	{
+		Share += RelentlessHealthPerSecondShare;
+	}
+
+	return Share;
+}
+
+float UCataclysmEnemyModifiers::EnergyShieldShareOfHealth(
+	const TArray<FName>& Rows)
+{
+	float Share = 0.0f;
+
+	if (Carries(Rows, ShielderRow))
+	{
+		Share += ShielderShareOfHealth;
+	}
+
+	return Share;
+}
+
+bool UCataclysmEnemyModifiers::AttacksCannotBeDodged(const TArray<FName>& Rows)
+{
+	return Carries(Rows, PerfectAimRow);
+}
+
+int32 UCataclysmEnemyModifiers::RallyAlliesOnDeath(AActor* Character)
+{
+	ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Character);
+	if (Enemy == nullptr || !Carries(Enemy->ModifierRows, HordeLeaderRow))
+	{
+		return 0;
+	}
+
+	const UWorld* World = Enemy->GetWorld();
+	if (World == nullptr)
+	{
+		return 0;
+	}
+
+	// THE COMMANDER BUFF, WHICH ALREADY EXISTS AND ALREADY SAYS THIS. Its own
+	// row reads "All nearby allies gain 20% increased movement speed and attack
+	// speed", which is what Horde Leader describes, and the Succubus already
+	// grants it. A second buff meaning the same thing would be two names for one
+	// effect.
+	const FGameplayTag Buff =
+		UCataclysmSkillShapes::StatusTagFor(TEXT("Commander"));
+	if (!Buff.IsValid())
+	{
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("Horde Leader cannot rally: there is no Status.Buff.Commander "
+				 "tag. See game/Config/Tags/CataclysmTags.ini."));
+		return 0;
+	}
+
+	// ALLIES AND NOT ENEMIES. `FindAlliesInSphere` excludes the creature itself,
+	// which is what is wanted here: a dead creature is not its own ally and the
+	// modifier is about what its death does for the rest of the pack.
+	const TArray<AActor*> Allies = UCataclysmTargeting::FindAlliesInSphere(
+		World, Enemy, Enemy->GetActorLocation(), AuraRadiusCm);
+
+	int32 Rallied = 0;
+	for (AActor* Ally : Allies)
+	{
+		if (UCataclysmSkillEffects::ApplyTagForDuration(Enemy, Ally, Buff,
+													   HordeLeaderSeconds))
+		{
+			++Rallied;
+		}
+	}
+
+	if (Rallied > 0)
+	{
+		UE_LOG(LogCataclysm, Log,
+			TEXT("%s died carrying Horde Leader and rallied %d all%s."),
+			*Enemy->GetName(), Rallied, Rallied == 1 ? TEXT("y") : TEXT("ies"));
+	}
+
+	return Rallied;
+}
+
+bool UCataclysmEnemyModifiers::PhaseStep(AActor* Character, float StepSeconds)
+{
+	ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Character);
+	if (Enemy == nullptr || !Carries(Enemy->ModifierRows, PhasewalkerRow))
+	{
+		return false;
+	}
+
+	// A DEAD CREATURE DOES NOT TELEPORT, the same guard the aura step carries
+	// and for the same reason: a step already in flight would otherwise land
+	// after the creature died.
+	if (UCataclysmSkillEffects::IsDead(Enemy))
+	{
+		return false;
+	}
+
+	Enemy->SecondsSincePhase += StepSeconds;
+	if (Enemy->SecondsSincePhase < PhasewalkerIntervalSeconds)
+	{
+		return false;
+	}
+	Enemy->SecondsSincePhase = 0.0f;
+
+	// A SEEDED DRAW RATHER THAN FRandRange, so two creatures phasing on the same
+	// step do not both go the same way. The same shape the modifier draw uses.
+	const UWorld* World = Enemy->GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+	FRandomStream Stream(Enemy->GetUniqueID()
+		^ static_cast<int32>(Now * 1000.0f) ^ PhaseDrawSalt);
+
+	const float Angle = Stream.FRandRange(0.0f, 360.0f);
+	const FVector Step(FMath::Cos(FMath::DegreesToRadians(Angle)),
+					   FMath::Sin(FMath::DegreesToRadians(Angle)), 0.0f);
+
+	// SWEPT, so it cannot phase into a wall. A blocked teleport moves it as far
+	// as it can go, which reads as the creature reappearing against the wall
+	// rather than inside it.
+	//
+	// NOT WHEN IT WOULD LAND FARTHER FROM A HOLDER OF NOWHERE TO RUN. Issue #1515,
+	// ruled 2026-09-25: a phase is the creature moving itself, and a held
+	// creature may not move itself away. The step is simply not made; its
+	// interval has started again, so it tries a new direction next time.
+	if (!Enemy->MayMoveItselfTo(Enemy->GetActorLocation() + Step * PhasewalkerDistanceCm))
+	{
+		return false;
+	}
+	const FVector Was = Enemy->GetActorLocation();
+	UCataclysmMovement::MoveWithoutSticking(Enemy, Step * PhasewalkerDistanceCm);
+
+	// A PHASE IS AN INSTANT RELOCATION, not ground walked. Issue #2388.
+	UCataclysmMovement::NoteRelocatedInstantly(Enemy, Was);
+
+	return true;
+}
+
+namespace
+{
+	/**
+	 * Starving Aura's debuff on one target: the row's Strength ADDED to
+	 * `UCataclysmVitalAttributeSet::HealingReceivedReduction` for the row's
+	 * duration, under `Status.Debuff.StarvingAura`. Issue #2539.
+	 *
+	 * NOT THROUGH `UCataclysmSkillEffects::ApplyNamedEffect`, which only LOWERS
+	 * the stats a row's `MovesStat` names. The row leaves that column empty and
+	 * the stat is named here, ruled 2026-10-26; #1144 is the open concern.
+	 *
+	 * BUILT AS `ApplyNamedEffectOnly` BUILDS ITS EFFECT, with the public calls
+	 * that file's private helpers make: an object of its own (#1501), a
+	 * duration, one additive modifier, the tag, and whatever already grants the
+	 * tag taken off first. So TWO STARVING CREATURES DO NOT STACK (ruled): the
+	 * later application replaces the earlier and the cut stays at the row's 50.
+	 *
+	 * ON THE CURRENT VALUE, NEVER THE BASE, which is why it ADDS to the floor
+	 * rules' share. Death's Embrace and Necrotic Ground reach the attribute as
+	 * its base through the stat refresh's `SetNumericAttributeBase`, which leaves
+	 * a running modifier standing, and this leaves their base alone. `TopUp`
+	 * clamps the sum at 100.
+	 *
+	 * AND THE DEBUFF RULES ABYSSAL AURA'S PATH ASKS: a row refusing debuffs
+	 * refuses it, the target's own stat sets how long it lasts, and the laying
+	 * is recorded.
+	 */
+	bool EnemyModifiersApplyStarvingAura(AActor* Starver, AActor* Starved,
+										 const FGameplayTag& StarvingTag,
+										 float StarvingSeconds, float StarvingPoints)
+	{
+		UAbilitySystemComponent* Defender = UCataclysmTargeting::AbilitySystemOf(Starved);
+		const FGameplayAttribute StarvedStat =
+			UCataclysmVitalAttributeSet::GetHealingReceivedReductionAttribute();
+		if (!Defender || !Defender->HasAttributeSetForAttribute(StarvedStat)
+			|| UCataclysmDebuffs::RefusedByARow(Starver, Starved, StarvingTag))
+		{
+			return false;
+		}
+		const float StarvedSeconds = UCataclysmDebuffs::DurationOn(
+			Defender, StarvingSeconds, FGameplayTagContainer(StarvingTag));
+		if (StarvedSeconds <= 0.0f)
+		{
+			return false;
+		}
+		UCataclysmDebuffs::NoteLaid(Starver, Starved, StarvingTag, /*bIsASpreadCopy=*/false);
+		UCataclysmSkillEffects::RemoveEffectsGranting(Starved, StarvingTag);
+
+		UObject* StarvingOuter = GetTransientPackage();
+		UGameplayEffect* Effect = NewObject<UGameplayEffect>(
+			StarvingOuter, MakeUniqueObjectName(StarvingOuter, UGameplayEffect::StaticClass(),
+												FName(TEXT("CataclysmStatus_StarvingAura"))));
+		Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
+		Effect->DurationMagnitude =
+			FGameplayEffectModifierMagnitude(FScalableFloat(StarvedSeconds));
+
+		FGameplayModifierInfo& Modifier = Effect->Modifiers.AddDefaulted_GetRef();
+		Modifier.Attribute = StarvedStat;
+		Modifier.ModifierOp = EGameplayModOp::Additive;
+		Modifier.ModifierMagnitude = FScalableFloat(StarvingPoints);
+
+		UTargetTagsGameplayEffectComponent& TagsComponent =
+			Effect->FindOrAddComponent<UTargetTagsGameplayEffectComponent>();
+		FInheritedTagContainer Granted;
+		Granted.Added.AddTag(StarvingTag);
+		TagsComponent.SetAndApplyTargetTagChanges(Granted);
+
+		// IN THE CREATURE'S NAME, as `ApplyStating` applies Abyssal Aura's.
+		UAbilitySystemComponent* Source = UCataclysmTargeting::AbilitySystemOf(Starver);
+		FGameplayEffectContextHandle Context = (Source ? Source : Defender)->MakeEffectContext();
+		Context.AddInstigator(Starver, Starver);
+		const FGameplayEffectSpec Spec(Effect, Context, /*Level=*/1.0f);
+		Defender->ApplyGameplayEffectSpecToSelf(Spec);
+		return true;
+	}
+}
+
+int32 UCataclysmEnemyModifiers::AuraStep(AActor* Character, float StepSeconds)
+{
+	ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Character);
+	if (Enemy == nullptr)
+	{
+		// THE PLAYER COMES THROUGH HERE EVERY STEP, because the step this hangs
+		// off is on the shared character base.
+		return 0;
+	}
+
+	// A CREATURE THAT STARTS NOTHING HOSTILE BURNS AND STRIPS NOBODY, however
+	// its modifiers were drawn. Issue #1680.
+	//
+	// THIS IS NOT AN EDGE CASE. The floor's medic is chosen as the rarest
+	// creature there, and rarity is how many modifiers a creature draws, so a
+	// medic is the creature most likely to have drawn one of these: 17% at
+	// Elite rising to 55% at Boss, out of a pool of 18 rows of which three are
+	// hostile with no decision behind them.
+	//
+	// SO WITHOUT THIS, MOST MEDICS WOULD WALK UP AND BURN THE PLAYER while
+	// never swinging, and the row exists to put a NON-THREATENING enemy on the
+	// floor.
+	const bool bHostile = !Enemy->TakesNoHostileAction();
+
+	const bool bBurns =
+		bHostile && Carries(Enemy->ModifierRows, HellfireAuraRow);
+	const bool bStripsResistance =
+		bHostile && Carries(Enemy->ModifierRows, AbyssalAuraRow);
+	const bool bStarves =
+		bHostile && Carries(Enemy->ModifierRows, StarvingAuraRow);
+
+	// AND WHETHER THE FLOOR MADE THIS ONE ITS MEDIC. TODAY THIS IS EXACTLY THE
+	// OPPOSITE OF `bHostile` ABOVE, AND BOTH NAMES ARE KEPT ON PURPOSE. They
+	// ask different questions -- one is "may this creature harm anybody", the
+	// other is "does this creature heal its allies" -- and they happen to have
+	// the same answer only because the medic is the one creature that takes no
+	// hostile action. A second such creature would separate them. Collapsing
+	// them into one would read as tidying and would be wrong.
+	//
+	// IT IS NOT A MODIFIER
+	// ROW. Being a medic comes from `game/Data/DungeonModifiers.csv` and is
+	// set at spawn; `ModifierRows` holds keys from a different table. The
+	// field's own comment says why the two are kept apart.
+	const bool bHealsAllies = Enemy->bHealsAlliesForTheFloorRule;
+
+	if (!bBurns && !bStripsResistance && !bStarves && !bHealsAllies)
+	{
+		// EVERY COMMON CREATURE COMES THROUGH HERE, carrying no aura and not
+		// being the floor's medic. The check that used to stand here asked
+		// whether `ModifierRows` was empty, which a medic can be.
+		return 0;
+	}
+
+	// A DEAD CREATURE BURNS NOBODY. The regeneration timer is cleared on death,
+	// but a step already in flight would otherwise land afterwards, which is the
+	// guard `ACataclysmSuccubusCharacter::PulseDominion` carries for the same
+	// reason.
+	if (UCataclysmSkillEffects::IsDead(Enemy))
+	{
+		return 0;
+	}
+
+	Enemy->SecondsSinceAuraPulse += StepSeconds;
+	if (!AuraPulseIsDue(Enemy->SecondsSinceAuraPulse))
+	{
+		return 0;
+	}
+	Enemy->SecondsSinceAuraPulse = 0.0f;
+
+	// ONE CLOCK, ADVANCED AND CLEARED IN ONE PLACE, AND EVERYTHING DUE FIRES
+	// FROM IT. The medic's pulse kept a second copy of those three lines
+	// until issue #1648 was wired up, so a creature that was both the floor's
+	// medic and carried an aura advanced the one clock twice every step and
+	// fired everything at twice the rate the design states.
+	int32 Touched = 0;
+	if (bHealsAllies)
+	{
+		Touched += HealAlliesPulse(Enemy);
+	}
+
+	if (!bBurns && !bStripsResistance && !bStarves)
+	{
+		// A MEDIC CARRYING NO AURA IS FINISHED. What follows searches for
+		// this creature's ENEMIES, which for a medic is work with no result.
+		return Touched;
+	}
+
+	const UWorld* World = Enemy->GetWorld();
+	if (World == nullptr)
+	{
+		return 0;
+	}
+
+	// EVERYTHING THIS CREATURE COUNTS AS AN ENEMY, which from a creature's point
+	// of view is the player. `FindEnemiesInSphere` is the same search every
+	// skill in the game uses, so a target that is out of reach of a swing is out
+	// of reach of this too.
+	const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
+		World, Enemy, Enemy->GetActorLocation(), AuraRadiusCm);
+
+	// THE ABYSSAL AURA'S DEBUFF AND HOW LONG IT LASTS, read from its own row
+	// rather than written here. `Debuff_Abyssal_Aura` in
+	// `game/Data/StatusEffects.csv` carries a strength of 25, a duration of 2
+	// seconds, and the two resistances it cuts. Every one of those was empty
+	// until 2026-09-05, so the effect applied nothing however it was reached.
+	FGameplayTag AbyssalTag;
+	float AbyssalSeconds = 0.0f;
+	if (bStripsResistance)
+	{
+		AbyssalTag = UCataclysmSkillShapes::StatusTagFor(TEXT("Abyssal Aura"));
+		AbyssalSeconds =
+			UCataclysmSkillEffects::NumbersForEffectTag(AbyssalTag).DurationSeconds;
+	}
+
+	// AND STARVING AURA'S, from `Debuff_Starving_Aura` in the same table: a
+	// strength of 50 and a duration of 2 seconds. Issue #2539.
+	FGameplayTag StarvingTag;
+	FCataclysmStatusEffectNumbers Starving;
+	if (bStarves)
+	{
+		StarvingTag = UCataclysmSkillShapes::StatusTagFor(TEXT("Starving Aura"));
+		Starving = UCataclysmSkillEffects::NumbersForEffectTag(StarvingTag);
+	}
+
+	for (AActor* Target : Caught)
+	{
+		bool bAnythingLanded = false;
+
+		// THE BURN IS DESIGNED, which is what the parameter means: "true when
+		// the skill's own row states it burns". Hellfire Aura's row is "Emits a
+		// burning aura that deals constant fire damage to nearby players", and
+		// `DoT_Burn`'s own row names this modifier as one of the two that apply
+		// it. So there is no hit to measure a threshold against and none is
+		// wanted -- an aura that only caught a player who had just been hit hard
+		// would not be an aura.
+		if (bBurns
+			&& UCataclysmSkillEffects::ApplyBurn(Enemy, Target, /*HitDamage=*/0.0f,
+												 /*bScalesWithInstigator=*/true,
+												 /*bBurnIsDesigned=*/true))
+		{
+			bAnythingLanded = true;
+		}
+
+		// AND THE RESISTANCE CUT, THROUGH THE SHARED NAMED-EFFECT PATH. That
+		// path reads which stats to move out of the row's own `MovesStat`
+		// column, added for issue #1144, and this is the effect that made the
+		// column necessary: it cuts TWO resistances, which no rule written in
+		// C++ for one stat could have said.
+		//
+		// NO MAGNITUDE PASSED, so the row's own strength of 25 is used. The
+		// modifier states no figure of its own beyond what the debuff says.
+		//
+		// RE-APPLIED EVERY PULSE AND THAT IS THE POINT. The effect is a single
+		// stack, so a second application refreshes the one that is there rather
+		// than adding a second. A player standing in the aura keeps it; one who
+		// walks out loses it when its two seconds run out.
+		if (bStripsResistance && AbyssalSeconds > 0.0f
+			&& UCataclysmSkillEffects::ApplyNamedEffect(
+				Enemy, Target, AbyssalTag, AbyssalSeconds, /*Magnitude=*/0.0f,
+				Enemy->DamageType))
+		{
+			bAnythingLanded = true;
+		}
+
+		// AND STARVING AURA'S CUT TO THE HEALTH THAT ARRIVES, re-applied every
+		// pulse as Abyssal Aura's is, so it holds while the target stands in the
+		// aura and lapses two seconds after it leaves. Issue #2539.
+		if (bStarves && Starving.DurationSeconds > 0.0f && Starving.Strength > 0.0f
+			&& EnemyModifiersApplyStarvingAura(Enemy, Target, StarvingTag,
+											   Starving.DurationSeconds, Starving.Strength))
+		{
+			bAnythingLanded = true;
+		}
+
+		if (bAnythingLanded)
+		{
+			++Touched;
+		}
+	}
+
+	return Touched;
+}
+
+float UCataclysmEnemyModifiers::CrowdControlResistancePercent(
+	const TArray<FName>& Rows)
+{
+	float Percent = 0.0f;
+
+	if (Carries(Rows, UnyieldingRow))
+	{
+		Percent += UnyieldingCrowdControlResistance;
+	}
+
+	return Percent;
+}
+
+float UCataclysmEnemyModifiers::BrandOnHit(AActor* Attacker, AActor* Target)
+{
+	ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Attacker);
+	if (Enemy == nullptr || !Carries(Enemy->ModifierRows, InfernalBrandRow))
+	{
+		return 0.0f;
+	}
+
+	// THE EXPLOSION IS NOT A HIT THAT BRANDS. Issue #1534. It is dealt further
+	// down as an ordinary blow from this creature, so the target's attribute
+	// set calls this function again from inside it. Branding there would put a
+	// stack back onto the count the explosion had just spent, where the row
+	// says the explosion consumes them all, and the next explosion would come
+	// one hit early. Refused before the tag as well as the count, so the
+	// explosion does not refresh the brand's visible status either.
+	if (Enemy->bInfernalBrandExploding)
+	{
+		return 0.0f;
+	}
+
+	UCataclysmAbilitySystemComponent* Branded =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Target));
+	if (Branded == nullptr)
+	{
+		return 0.0f;
+	}
+
+	// THE TAG AS WELL AS THE COUNT. The count is what explodes; the tag is what a
+	// player can see on themselves and what `Debuff_Infernal_Brand` in
+	// `game/Data/StatusEffects.csv` names. Without it the brand would be
+	// invisible until it went off.
+	const FGameplayTag Brand =
+		UCataclysmSkillShapes::StatusTagFor(TEXT("Infernal Brand"));
+	if (Brand.IsValid())
+	{
+		UCataclysmSkillEffects::ApplyTagForDuration(
+			Attacker, Target, Brand,
+			UCataclysmStacks::WindowSecondsFor(
+				ECataclysmStackKind::InfernalBrand));
+	}
+
+	if (!UCataclysmStacks::NoteInfernalBrand(Branded))
+	{
+		return 0.0f;
+	}
+
+	// AND THE BRAND'S TAG GOES WITH ITS STACKS. Issue #1537: the stacks were
+	// spent above and the tag stayed for the rest of its eight seconds, so a
+	// spent brand still counted as a debuff carried. Before the blow, so the
+	// explosion's own damage does not see it either.
+	UCataclysmSkillEffects::RemoveEffectsGranting(Target, Brand);
+
+	// FIVE TIMES THIS CREATURE'S OWN ATTACK DAMAGE, which the project owner
+	// chose: one hit's worth banked per stack. Read off the creature rather than
+	// written here, so a Herald's brand is a Herald's brand.
+	const UAbilitySystemComponent* Own =
+		UCataclysmTargeting::AbilitySystemOf(Attacker);
+	const float PerHit = Own
+		? Own->GetNumericAttribute(
+			  UCataclysmCombatAttributeSet::GetAttackDamageAttribute())
+		: 0.0f;
+
+	const float Damage = PerHit * InfernalBrandExplosionHits;
+	if (Damage <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// WHILE IT RESOLVES, THIS CREATURE IS MARKED AS EXPLODING, so the call the
+	// blow makes back into this function is refused at the top. The guard puts
+	// the flag back when this function returns, and the blow has resolved by
+	// then: the effect carrying it is instant.
+	TGuardValue<bool> Exploding(Enemy->bInfernalBrandExploding, true);
+
+	// AN ORDINARY DIRECT BLOW. The damage TYPE is not a parameter here: it is
+	// read off the instigator when the hit resolves, which is what makes the
+	// explosion count as this creature's own element without saying so twice.
+	UCataclysmSkillEffects::ApplyDirectDamage(Attacker, Target, Damage,
+											  FCataclysmHitDelivery());
+
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("%s's Infernal Brand reached five stacks on %s and dealt %.0f."),
+		   *Enemy->GetName(), *GetNameSafe(Target), Damage);
+
+	return Damage;
+}
+
+bool UCataclysmEnemyModifiers::WitherOnHit(AActor* Attacker, AActor* Target)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Attacker);
+	if (Enemy == nullptr || !Carries(Enemy->ModifierRows, WitheringBlowsRow))
+	{
+		return false;
+	}
+
+	UCataclysmAbilitySystemComponent* Withered =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Target));
+	if (Withered == nullptr)
+	{
+		return false;
+	}
+
+	// THE COUNT'S OWN STATUS, FOR THE COUNT'S OWN WINDOW, as Infernal Brand's
+	// tag is: put on, or refreshed, by every hit that adds a stack, so it lasts
+	// exactly as long as the count does and goes when the count lapses.
+	const FGameplayTag Withering =
+		UCataclysmSkillShapes::StatusTagFor(TEXT("Withering"));
+	if (Withering.IsValid())
+	{
+		UCataclysmSkillEffects::ApplyTagForDuration(
+			Attacker, Target, Withering,
+			UCataclysmStacks::WindowSecondsFor(ECataclysmStackKind::Withering));
+	}
+
+	if (!UCataclysmStacks::NoteWithering(Withered))
+	{
+		return false;
+	}
+
+	// AT TEN THE BUILDING STATUS GOES, as the brand's tag goes with its stacks
+	// (issue #1537), and the slow comes. Its figure and its seconds are the
+	// `Debuff_Wither` row's, read here and stated on the application, so a
+	// re-tune is a data change and the reader finds what was applied.
+	UCataclysmSkillEffects::RemoveEffectsGranting(Target, Withering);
+
+	const FGameplayTag Wither = UCataclysmSkillShapes::StatusTagFor(TEXT("Wither"));
+	if (!Wither.IsValid())
+	{
+		return false;
+	}
+	const FCataclysmStatusEffectNumbers Numbers =
+		UCataclysmSkillEffects::NumbersForEffectTag(Wither);
+	UCataclysmSkillEffects::ApplyTagForDuration(Attacker, Target, Wither,
+												Numbers.DurationSeconds, Numbers.Strength);
+
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("%s's Withering Blows reached ten stacks on %s: %.0f%% slower for %.1f s."),
+		   *Enemy->GetName(), *GetNameSafe(Target), Numbers.Strength, Numbers.DurationSeconds);
+
+	return true;
+}
+
+bool UCataclysmEnemyModifiers::TouchOfNothingOnHit(AActor* Attacker, AActor* Target)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Attacker);
+	if (Enemy == nullptr || !Carries(Enemy->ModifierRows, TouchOfNothingRow))
+	{
+		return false;
+	}
+
+	UCataclysmAbilitySystemComponent* Touched =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Target));
+	if (Touched == nullptr)
+	{
+		return false;
+	}
+
+	// THE STATUS FOR THE STACKS' WINDOW, put on or refreshed by every hit that adds one, as Withering's is: it
+	// lasts as long as the count and is what the count is shown beside. `NegatesTheNextBuff` takes it off with
+	// the last stack. It does nothing by itself.
+	const FGameplayTag Status = UCataclysmSkillShapes::StatusTagFor(TEXT("Touch of Nothing"));
+	if (Status.IsValid())
+	{
+		UCataclysmSkillEffects::ApplyTagForDuration(
+			Attacker, Target, Status,
+			UCataclysmStacks::WindowSecondsFor(ECataclysmStackKind::TouchOfNothing));
+	}
+	UCataclysmStacks::NoteTouchOfNothing(Touched);
+	return true;
+}
+
+bool UCataclysmEnemyModifiers::CharmWhoeverStruck(AActor* Struck,
+												  AActor* Striker)
+{
+	ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Struck);
+	if (Enemy == nullptr || !Carries(Enemy->ModifierRows, BeguilingRow))
+	{
+		return false;
+	}
+
+	if (Striker == nullptr || UCataclysmSkillEffects::IsDead(Enemy))
+	{
+		return false;
+	}
+
+	// **THE COOLDOWN IS WHAT STOPS IT BEING PERMANENT.** The charm triggers on
+	// the creature TAKING damage, so without one a player attacking at any
+	// reasonable speed would re-apply it before it expired and never be out of
+	// it. The project owner added it on 2026-09-05; the row states none.
+	const UWorld* World = Enemy->GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+	if (Enemy->CharmLastAppliedAt >= 0.0f
+		&& Now - Enemy->CharmLastAppliedAt < BeguilingCooldownSeconds)
+	{
+		return false;
+	}
+
+	const FGameplayTag Charm =
+		UCataclysmSkillShapes::StatusTagFor(TEXT("Beguiling"));
+	if (!Charm.IsValid())
+	{
+		return false;
+	}
+
+	if (!UCataclysmSkillEffects::ApplyTagForDuration(Enemy, Striker, Charm,
+													BeguilingSeconds))
+	{
+		return false;
+	}
+
+	Enemy->CharmLastAppliedAt = Now;
+
+	UE_LOG(LogCataclysm, Log, TEXT("%s beguiled %s for %.0f seconds."),
+		   *Enemy->GetName(), *GetNameSafe(Striker), BeguilingSeconds);
+
+	return true;
+}
+
+float UCataclysmEnemyModifiers::ShareOfDamageKept(AActor* Character, TArray<AActor*>* OutSharing)
+{
+	if (OutSharing)
+	{
+		OutSharing->Reset();
+	}
+
+	const ACataclysmEnemyCharacter* Enemy =
+		Cast<ACataclysmEnemyCharacter>(Character);
+	if (Enemy == nullptr || !Carries(Enemy->ModifierRows, SacrificialBondRow))
+	{
+		return 1.0f;
+	}
+
+	const UWorld* World = Enemy->GetWorld();
+	if (World == nullptr)
+	{
+		return 1.0f;
+	}
+
+	TArray<AActor*> Allies = UCataclysmTargeting::FindAlliesInSphere(
+		World, Enemy, Enemy->GetActorLocation(), SacrificialBondReach);
+
+	// ONLY A CREATURE THAT CAN LOSE HEALTH SHARES. Issue #1559, ruled 2026-09-30.
+	// A floor-rule object is not an ally in the row's sense, and a bonded
+	// creature must not push damage onto an objective the player is breaking. A
+	// creature that cannot be hurt, or is shrouded, would take its share and
+	// lose nothing, which would halve the hit for free. A player's thrall or
+	// minion is never here: it is on the player's team, and the search asks for
+	// this creature's.
+	//
+	// AND NOT ONE BEHIND A CLOSED SECTION BARRIER. Issues #1820 and #41, ruled 2026-10-08. The search above has no wall
+	// test, so on a floor in sections it finds an ally through a barrier, and a bonded creature that cannot be
+	// reached would then share every blow with one that can. Left out when both creatures carry a section, the
+	// sections differ, and a barrier between them is closed. A creature with no section is treated as it always
+	// was, and so is every creature on a floor with no sections: the game mode is asked only when this creature
+	// carries a section, and is found by walking the level, as the player's revival finds it.
+	const ACataclysmDungeonGameMode* SectionsOf = Enemy->FloorSection != INDEX_NONE
+		? ACataclysmDungeonGameMode::InWorld(Enemy->GetWorld())
+		: nullptr;
+	Allies.RemoveAll([Enemy, SectionsOf](const AActor* Ally)
+	{
+		const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Ally);
+		return Creature == nullptr
+			|| Creature->IsA<ACataclysmFloorSourceCharacter>()
+			|| Creature->bCannotBeHurt
+			|| Creature->bShrouded
+			|| (SectionsOf != nullptr && SectionsOf->AClosedBarrierStandsBetween(Enemy, Creature));
+	});
+
+	// NOBODY TO SHARE WITH MEANS IT KEEPS ALL OF IT, which is what makes the
+	// modifier answerable: pull the creature away from its pack, or kill the
+	// pack first.
+	if (Allies.IsEmpty())
+	{
+		return 1.0f;
+	}
+
+	// DIVIDED EVENLY BETWEEN THE CREATURE AND ITS ALLIES, reading the row as
+	// written: one ally halves what it takes, three leave it a quarter.
+	if (OutSharing)
+	{
+		*OutSharing = Allies;
+	}
+	return 1.0f / static_cast<float>(Allies.Num() + 1);
+}
+
+bool UCataclysmEnemyModifiers::IsProtectedBySigil(const AActor* Character)
+{
+	const ACataclysmEnemyCharacter* Standing =
+		Cast<ACataclysmEnemyCharacter>(Character);
+	if (Standing == nullptr)
+	{
+		return false;
+	}
+
+	const UWorld* World = Standing->GetWorld();
+	if (World == nullptr)
+	{
+		return false;
+	}
+
+	// ASKED OF WHOEVER IS ABOUT TO DIE, by looking for a sigil-caster it is an
+	// ally of. That is the opposite of keeping a flag on the protected creature,
+	// and it is deliberate: a creature that walks out of the sigil is killable
+	// on the next blow with nothing to clear and nothing to expire.
+	for (TActorIterator<ACataclysmEnemyCharacter> It(
+			 const_cast<UWorld*>(World)); It; ++It)
+	{
+		const ACataclysmEnemyCharacter* Caster = *It;
+		if (Caster == nullptr || Caster == Standing)
+		{
+			continue;
+		}
+
+		if (!Carries(Caster->ModifierRows, UnholySigilsRow)
+			|| Caster->SigilSecondsLeft <= 0.0f)
+		{
+			continue;
+		}
+
+		if (Caster->GetTeamAttitudeTowards(*Standing) != ETeamAttitude::Friendly)
+		{
+			continue;
+		}
+
+		const float Away =
+			(Standing->GetActorLocation() - Caster->SigilCentre).Size();
+		if (Away <= SigilRadiusCm)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+int32 UCataclysmEnemyModifiers::TimedStep(AActor* Character, float StepSeconds)
+{
+	ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Character);
+	if (Enemy == nullptr || Enemy->ModifierRows.IsEmpty())
+	{
+		return 0;
+	}
+
+	if (UCataclysmSkillEffects::IsDead(Enemy))
+	{
+		return 0;
+	}
+
+	UWorld* World = Enemy->GetWorld();
+	if (World == nullptr)
+	{
+		return 0;
+	}
+
+	int32 Acted = 0;
+
+	// A SIGIL THAT IS UP RUNS DOWN, whether or not this creature carries the
+	// modifier any more. Counted first so a sigil placed this step is not
+	// expired by the same step.
+	if (Enemy->SigilSecondsLeft > 0.0f)
+	{
+		Enemy->SigilSecondsLeft =
+			FMath::Max(0.0f, Enemy->SigilSecondsLeft - StepSeconds);
+	}
+
+	// -- Unholy Sigils --------------------------------------------------
+	if (Carries(Enemy->ModifierRows, UnholySigilsRow))
+	{
+		Enemy->SecondsSinceSigil += StepSeconds;
+		if (Enemy->SecondsSinceSigil >= SigilIntervalSeconds)
+		{
+			Enemy->SecondsSinceSigil = 0.0f;
+			Enemy->SigilSecondsLeft = SigilSeconds;
+
+			// WHERE IT STANDS WHEN IT CASTS, and it stays there. A sigil that
+			// followed the creature would be an aura, and the row calls it a
+			// sigil ON THE GROUND.
+			Enemy->SigilCentre = Enemy->GetActorLocation();
+			++Acted;
+
+			UE_LOG(LogCataclysm, Log,
+				   TEXT("%s laid an Unholy Sigil lasting %.0f seconds."),
+				   *Enemy->GetName(), SigilSeconds);
+		}
+	}
+
+	// -- Infernal Sacrifice ---------------------------------------------
+	// A MEDIC DOES NOT EAT ITS OWN PATIENTS, AND THAT IS A SEPARATE RULING
+	// FROM THE ONE ABOVE. Consuming an ally is plainly not an attack, so
+	// "it does not attack" does not reach it. What reaches it is the other
+	// half of the same row: the medic "constantly heals all other enemies in
+	// a large radius". A trait that consumes one contradicts what the row
+	// says the creature DOES, not merely what it is for. Issue #1680.
+	if (Carries(Enemy->ModifierRows, InfernalSacrificeRow)
+		&& !Enemy->TakesNoHostileAction())
+	{
+		Enemy->SecondsSinceSacrifice += StepSeconds;
+		if (Enemy->SecondsSinceSacrifice >= SacrificeIntervalSeconds)
+		{
+			Enemy->SecondsSinceSacrifice = 0.0f;
+
+			const TArray<AActor*> Allies =
+				UCataclysmTargeting::FindAlliesInSphere(
+					World, Enemy, Enemy->GetActorLocation(), AuraRadiusCm);
+
+			// ONE AT A TIME AND THE NEAREST, which `FindAlliesInSphere` returns
+			// first. A creature that ate its whole pack at once would replace
+			// the fight rather than change it.
+			for (AActor* Ally : Allies)
+			{
+				ACataclysmEnemyCharacter* Victim =
+					Cast<ACataclysmEnemyCharacter>(Ally);
+				if (Victim == nullptr
+					|| UCataclysmSkillEffects::IsDead(Victim))
+				{
+					continue;
+				}
+
+				Victim->HandleDeath();
+
+				// THROUGH TopUp, AS THE FIELD MEDIC'S HEAL IS, and not by writing
+				// the attribute. Issue #1611: the write reached none of the rules
+				// that stand between a restoration and a health bar -- the healing
+				// received, its reduction, an ailment's rider on it, the ceiling --
+				// so a diseased creature ate its pack-mate and healed the full
+				// quarter. TopUp also stops at the maximum, as the write did.
+				UAbilitySystemComponent* Own =
+					UCataclysmTargeting::AbilitySystemOf(Enemy);
+				if (Own)
+				{
+					const float Max = Own->GetNumericAttribute(
+						UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+					UCataclysmRegeneration::TopUp(
+						*Own, UCataclysmVitalAttributeSet::GetHealthAttribute(),
+						UCataclysmVitalAttributeSet::GetMaxHealthAttribute(),
+						Max * SacrificeHealShareOfHealth);
+				}
+
+				// AND THE DAMAGE BUFF THE ROW PROMISES. Commander is the buff
+				// this game has for "nearby allies hit harder and move faster";
+				// granting it to the creature itself is the closest thing to a
+				// temporary damage buff without inventing a second one.
+				const FGameplayTag Buff =
+					UCataclysmSkillShapes::StatusTagFor(TEXT("Commander"));
+				if (Buff.IsValid())
+				{
+					UCataclysmSkillEffects::ApplyTagForDuration(
+						Enemy, Enemy, Buff, SacrificeBuffSeconds);
+				}
+
+				++Acted;
+
+				UE_LOG(LogCataclysm, Log,
+					   TEXT("%s sacrificed %s and healed."),
+					   *Enemy->GetName(), *Victim->GetName());
+				break;
+			}
+		}
+	}
+
+	// -- Inferno Charge -------------------------------------------------
+	// A CHANNEL THE CREATURE MAY NO LONGER FINISH IS ABANDONED, rather than
+	// left counting nowhere. The brain stands a channelling creature still, so
+	// a channel frozen by the gate below would stand it still for good.
+	if (Enemy->IsChannellingInfernoCharge()
+		&& (!Carries(Enemy->ModifierRows, InfernoChargeRow)
+			|| Enemy->TakesNoHostileAction()))
+	{
+		Enemy->InfernoChannelSecondsLeft = 0.0f;
+		if (ACataclysmTelegraphMarker* Marker = Enemy->InfernoChargeMarker.Get())
+		{
+			Marker->Dismiss();
+		}
+		Enemy->InfernoChargeMarker = nullptr;
+	}
+
+	// AND A MEDIC NEVER CHARGES. Issue #1680, the same reading: a creature
+	// that dashes at the player and deals damage on arrival is threatening.
+	if (Carries(Enemy->ModifierRows, InfernoChargeRow) && !Enemy->IsCharging()
+		&& !Enemy->TakesNoHostileAction())
+	{
+		if (Enemy->IsChannellingInfernoCharge())
+		{
+			// THE CHANNEL RUNS OUT, THEN THE CHARGE SETS OFF. Issue #1560. The
+			// row: "Channel for 2 seconds, then dash towards the player".
+			Enemy->InfernoChannelSecondsLeft -= StepSeconds;
+			if (Enemy->InfernoChannelSecondsLeft <= KINDA_SMALL_NUMBER)
+			{
+				Enemy->InfernoChannelSecondsLeft = 0.0f;
+				if (ACataclysmTelegraphMarker* Marker =
+						Enemy->InfernoChargeMarker.Get())
+				{
+					Marker->Dismiss();
+				}
+				Enemy->InfernoChargeMarker = nullptr;
+
+				// THE CHARGE EVERY CREATURE ALREADY HAS. `BeginCharge` is on the
+				// base class and the Hellhound's own charge goes through it, so
+				// the lane, the damage and the shove are one implementation a
+				// player has already learned to read.
+				//
+				// TO THE POINT FIXED WHEN THE CHANNEL BEGAN, not where the player
+				// is now: a player who walked out of the drawn lane is not
+				// followed, which is what the two seconds buy.
+				Enemy->BeginCharge(Enemy->InfernoChargeTo,
+								   InfernoChargeSpeedCmPerSecond,
+								   InfernoChargeHalfWidthCm,
+								   InfernoChargeDamagePercent);
+
+				// AND THE PATH BURNS, ONLY IF THE CHARGE REALLY SET OFF. A
+				// creature standing in a pit is refused the charge, and a path
+				// of fire where nothing ran would be a lie on the floor.
+				//
+				// LAID NOW, ALONG THE WHOLE RUN, AND PRICED ONCE, for the
+				// reasons the Hellhound's `UseEnemyAbility` gives at length: a
+				// patch appearing only on arrival burns nobody who stood in it
+				// during the run, and a patch outlives the blow that left it.
+				// It burns the player and nobody on the creature's own side.
+				if (Enemy->IsCharging())
+				{
+					const float PerSecond =
+						UCataclysmSkillEffects::WeaponDamageOf(
+							UCataclysmTargeting::AbilitySystemOf(Enemy))
+						* InfernoPathPercent / 100.0f;
+					Enemy->LastInfernoPathLeftBurning =
+						ACataclysmGroundZone::SpawnAlong(
+							Enemy, Enemy->InfernoChargeFrom,
+							Enemy->InfernoChargeTo, InfernoChargeHalfWidthCm,
+							InfernoPathSeconds, PerSecond,
+							/*bBurnsEveryone=*/false);
+				}
+				++Acted;
+
+				UE_LOG(LogCataclysm, Log, TEXT("%s began an Inferno Charge."),
+					   *Enemy->GetName());
+			}
+		}
+		else
+		{
+			Enemy->SecondsSinceInfernoCharge += StepSeconds;
+
+			// NOT WHILE ITS OWN ABILITY IS WINDING UP. The brain stands the
+			// creature still for the channel above everything else it does, so
+			// a channel begun mid wind-up would hold that wind-up past the
+			// marker it drew. The timer keeps running and the channel begins
+			// after it.
+			const ACataclysmEnemyController* Brain =
+				Cast<ACataclysmEnemyController>(Enemy->GetController());
+			const bool bWindingUp = Brain && Brain->WindingUpAbility >= 0;
+
+			if (!bWindingUp
+				&& Enemy->SecondsSinceInfernoCharge
+					   >= InfernoChargeIntervalSeconds - InfernoChannelSeconds)
+			{
+				const TArray<AActor*> Ahead =
+					UCataclysmTargeting::FindEnemiesInSphere(
+						World, Enemy, Enemy->GetActorLocation(),
+						/*RadiusCm=*/2000.0f, /*MaxTargets=*/1);
+
+				// NOTHING TO CHARGE MEANS THE TIMER KEEPS RUNNING, so the
+				// creature channels as soon as somebody comes into range rather
+				// than waiting another twelve seconds after they do.
+				if (!Ahead.IsEmpty() && Ahead[0])
+				{
+					// ZERO, AND NOT COUNTED DURING THE CHANNEL, so it is still
+					// zero when the charge sets off and the next one is twelve
+					// seconds after this one, as it was before the channel.
+					Enemy->SecondsSinceInfernoCharge = 0.0f;
+					Enemy->InfernoChannelSecondsLeft = InfernoChannelSeconds;
+
+					// THE LANE IS FIXED NOW AND DRAWN ON THE FLOOR, from the
+					// creature's feet to the player's, through the one function
+					// every enemy marker goes through. See
+					// `ACataclysmEnemyController::FloorUnder`.
+					Enemy->InfernoChargeFrom = ACataclysmEnemyController::FloorUnder(
+						Enemy, Enemy->GetActorLocation());
+					Enemy->InfernoChargeTo = ACataclysmEnemyController::FloorUnder(
+						Enemy, Ahead[0]->GetActorLocation());
+					Enemy->InfernoChargeMarker = ACataclysmTelegraphMarker::ShowLine(
+						Enemy, Enemy->InfernoChargeFrom, Enemy->InfernoChargeTo,
+						InfernoChargeHalfWidthCm, InfernoChannelSeconds);
+					++Acted;
+
+					UE_LOG(LogCataclysm, Log,
+						   TEXT("%s began channelling an Inferno Charge."),
+						   *Enemy->GetName());
+				}
+			}
+		}
+	}
+
+	return Acted;
+}
+
+int32 UCataclysmEnemyModifiers::HealAlliesPulse(AActor* Character)
+{
+	ACataclysmEnemyCharacter* Medic = Cast<ACataclysmEnemyCharacter>(Character);
+	if (Medic == nullptr)
+	{
+		// THE PLAYER AND ANY OTHER ACTOR COME THROUGH HERE HARMLESSLY, the same
+		// refusal AuraStep makes for the same reason: the step this hangs off
+		// is on the shared character base.
+		return 0;
+	}
+
+	// A DEAD MEDIC HEALS NOBODY. The regeneration timer is cleared on death,
+	// but a step already in flight would otherwise land afterwards -- the same
+	// guard AuraStep carries above.
+	//
+	// AND IT IS WHY NO DEATH HOOK IS NEEDED. A creature-carried aura ends when
+	// the creature does because nothing calls this for a dead one, rather than
+	// because something noticed the death. That is the opposite of a floor
+	// hazard, which must outlive the death that created it -- issue #1605.
+	if (UCataclysmSkillEffects::IsDead(Medic))
+	{
+		return 0;
+	}
+
+	const UWorld* World = Medic->GetWorld();
+	if (World == nullptr)
+	{
+		return 0;
+	}
+
+	// ALLIES AND NOT ENEMIES, and not itself: FindAlliesInSphere excludes the
+	// instigator, which is what "all other enemies" asks for. It also excludes
+	// the dead, so a corpse is not healed back into the fight.
+	//
+	// THE SAME RADIUS EVERY AURA IN THIS GAME USES. Six metres, the project
+	// owner's decision of 2026-09-05, and the reason it is one number is that a
+	// player learns the distance once.
+	const TArray<AActor*> Allies = UCataclysmTargeting::FindAlliesInSphere(
+		World, Medic, Medic->GetActorLocation(), AuraRadiusCm);
+
+	int32 Healed = 0;
+	for (AActor* Ally : Allies)
+	{
+		UAbilitySystemComponent* AbilitySystem =
+			UCataclysmTargeting::AbilitySystemOf(Ally);
+		if (AbilitySystem == nullptr)
+		{
+			continue;
+		}
+
+		// A SHARE OF EACH ALLY'S OWN MAXIMUM RATHER THAN A FLAT AMOUNT, so one
+		// figure works for a Common creature and for a boss without being
+		// meaningless to one of them.
+		const float Maximum = AbilitySystem->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		const float Gain = Maximum * MedicHealPercentOfMaximumPerPulse / 100.0f;
+		if (Gain <= 0.0f)
+		{
+			// A CREATURE WITH NO MAXIMUM HEALTH IS NOT HEALED, rather than being
+			// given nothing and counted as though it had been.
+			continue;
+		}
+
+		// THROUGH TopUp RATHER THAN WRITING THE ATTRIBUTE, because that is what
+		// honours the maximum, the healing-received stat and everything else
+		// standing between a restoration and a health bar.
+		//
+		// NO Keyword.Regeneration TAG. That tag scopes a passive node to a
+		// character's own regeneration, and this is one creature healing
+		// another. Leech passes nothing for the same reason.
+		UCataclysmRegeneration::TopUp(
+			*AbilitySystem, UCataclysmVitalAttributeSet::GetHealthAttribute(),
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), Gain);
+		++Healed;
+	}
+
+	if (Healed > 0)
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("%s healed %d all%s for %.0f%% of maximum each."),
+			*Medic->GetName(), Healed, Healed == 1 ? TEXT("y") : TEXT("ies"),
+			MedicHealPercentOfMaximumPerPulse);
+	}
+
+	return Healed;
+}
+
+bool UCataclysmEnemyModifiers::AuraPulseIsDue(float SecondsSinceLastPulse)
+{
+	// AT OR PAST THE INTERVAL, not strictly past it. The per-character step runs
+	// at a fixed 0.25 seconds and the interval is a whole second, so the
+	// accumulated figure lands exactly on 1.0 rather than near it, and a strict
+	// comparison would make every pulse wait an extra step.
+	return SecondsSinceLastPulse >= AuraPulseIntervalSeconds;
+}

@@ -1,0 +1,528 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "Items/CataclysmWearing.h"
+
+#include "Cataclysm.h"
+
+#include "Data/CataclysmDataRows.h"
+#include "Engine/DataTable.h"
+#include "Items/CataclysmDroppedItem.h"
+#include "Items/CataclysmInventoryComponent.h"
+#include "Items/CataclysmItem.h"
+#include "Player/CataclysmGameMode.h"
+
+ECataclysmWearResult UCataclysmWearing::WearFromCarried(
+	UCataclysmInventoryComponent* Inventory,
+	UCataclysmEquipmentComponent* Equipment,
+	int32 CarriedSlot,
+	ECataclysmGearSlot& OutSlot,
+	bool bConfirmedPastThreshold,
+	int32 DifficultyTier)
+{
+	if (!Inventory || !Equipment)
+	{
+		return ECataclysmWearResult::NothingToWorkWith;
+	}
+
+	const FCataclysmItem* Carried = Inventory->ItemAt(CarriedSlot);
+	if (!Carried)
+	{
+		// EMPTY, OR HOLDING A CRAFTING MATERIAL. ItemAt answers nothing for a
+		// material rather than answering an item with no base, so both cases
+		// arrive here and neither is something to wear.
+		return ECataclysmWearResult::NothingToWear;
+	}
+
+	// COPIED BEFORE THE SLOT IS EMPTIED. The pointer is into the inventory's own
+	// array, so removing the item would leave it pointing at a cleared slot.
+	const FCataclysmItem Item = *Carried;
+
+	// -- refuse before anything moves --------------------------------------
+	// A WEAPON IS THE ONLY THING THAT CAN TAKE TWO PIECES OFF for one going on,
+	// and the slot this item is vacating only makes room for one. So it needs a
+	// second free slot, and the check happens here rather than after the fact:
+	// a half-completed change would have to be rolled back, and a rollback has
+	// failure modes of its own.
+	//
+	// ASKED OF THE EQUIPMENT, WHICH DECIDES IT. Issue #1515. Until Both Hands
+	// Full only a two-handed weapon over two held weapons took two off. Now a
+	// one-handed weapon over two two-handed ones does too, and a second
+	// two-handed weapon beside a first takes none.
+	//
+	// EVERYTHING ELSE IS A ONE-FOR-ONE SWAP AND ALWAYS FITS, including on a full
+	// bag, which is why this is not simply "refuse when the bag is full".
+	const UDataTable* BaseTable = UCataclysmItemModifiers::LoadBaseTable();
+	const FCataclysmItemBaseRow* Base = BaseTable
+		? BaseTable->FindRow<FCataclysmItemBaseRow>(
+			  Item.Base, TEXT("WearFromCarried"), /*bWarnIfMissing=*/false)
+		: nullptr;
+	const bool bWeapon = Base
+		&& UCataclysmGearSlots::CandidateSlotsFor(Base->Slot)
+			   .Contains(ECataclysmGearSlot::Weapon1);
+	const bool bTwoHanded = UCataclysmItemModifiers::IsTwoHanded(Item, BaseTable);
+	if (bWeapon && Inventory->NumFreeSlots() < 1
+		&& Equipment->WeaponsComingOffFor(bTwoHanded) > 1)
+	{
+		return ECataclysmWearResult::NoRoomInTheBag;
+	}
+
+	// ASKED AFTER THE ROOM, so a player is never asked about an equip that
+	// would then be refused anyway. Issue #2687.
+	if (!bConfirmedPastThreshold
+		&& CrossingFor(Inventory, Equipment, CarriedSlot, DifficultyTier).Crosses())
+	{
+		return ECataclysmWearResult::WouldCrossConsumptionThreshold;
+	}
+
+	// READ BEFORE THE SLOT IS EMPTIED, so the answer is about the item being
+	// worn and not about whatever lands in its slot afterwards. Issue #878.
+	const bool bWearingWhatIsHeld = Inventory->HeldSlot() == CarriedSlot;
+
+	Inventory->RemoveItemAt(CarriedSlot);
+
+	FCataclysmItem First;
+	FCataclysmItem Second;
+	const ECataclysmEquipResult Result =
+		Equipment->Equip(Item, First, Second, OutSlot);
+
+	if (Result != ECataclysmEquipResult::Equipped
+		&& Result != ECataclysmEquipResult::Swapped)
+	{
+		// IT GOES STRAIGHT BACK, and it always fits: the slot it came out of is
+		// still free because nothing has been put there.
+		Inventory->AddItem(Item);
+		return ECataclysmWearResult::CannotBeWorn;
+	}
+
+	// WEARING THE HELD ITEM ENDS THE HOLD. Ruled 2026-11-02 under issue #878.
+	// The hold is a slot number and not the item, so left in place it would
+	// pass to whatever lands in that slot next -- and what came off below
+	// lands exactly there whenever no lower slot is free, being put in the
+	// first free slot. The player would then see a piece they never
+	// picked up drawn on the pointer, and the next press would move it.
+	// Every wear the player chooses -- the right button's, the one asked about
+	// first (WearAfterConfirming) and the Cataclysm.Equip command's -- comes
+	// through here, so this is the one place that covers them all. Wearing a different item leaves the
+	// hold where it is: that item is still in its slot.
+	if (bWearingWhatIsHeld)
+	{
+		ReleaseHeld(Inventory);
+	}
+
+	bool bAnythingCameOff = false;
+	for (const FCataclysmItem& CameOff : {First, Second})
+	{
+		if (CameOff.Base.IsNone())
+		{
+			continue;
+		}
+		bAnythingCameOff = true;
+
+		// THE ANSWER IS READ. A refusal here would mean an item had been lost,
+		// and the check at the top of this function is what makes it impossible;
+		// if it ever happens, that check is wrong rather than this being a case
+		// to handle quietly.
+		if (Inventory->AddItem(CameOff) == INDEX_NONE)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("%s came off and the bag would not take it. An item has "
+						"been lost. UCataclysmWearing::WearFromCarried's room "
+						"check is wrong."),
+				   *CameOff.Base.ToString());
+		}
+	}
+
+	return bAnythingCameOff ? ECataclysmWearResult::Swapped
+							: ECataclysmWearResult::Worn;
+}
+
+ECataclysmWearResult UCataclysmWearing::TakeOffInto(
+	UCataclysmInventoryComponent* Inventory,
+	UCataclysmEquipmentComponent* Equipment,
+	ECataclysmGearSlot Slot,
+	int32* OutCarriedSlot)
+{
+	if (!Inventory || !Equipment)
+	{
+		return ECataclysmWearResult::NothingToWorkWith;
+	}
+
+	if (Equipment->SlotIsEmpty(Slot))
+	{
+		return ECataclysmWearResult::NothingWorn;
+	}
+
+	// -- refuse before anything moves --------------------------------------
+	// A CHARACTER MUST KEEP HOLD OF A WEAPON, AND ISSUE #841 IS WHERE THAT IS
+	// DECIDED. UCataclysmWeaponSlotsComponent grants the six ability slots from
+	// the worn weapon's type, so a character holding nothing has no skills.
+	//
+	// THIS COMMENT USED TO SAY THE RULE WAS WAITING ON MISSING CONTENT, naming
+	// four weapon types that had no Demonic skills. That was wrong: the design
+	// gives each damage type its own set of weapons and Demonic's set is those
+	// ten, deliberately. The four were never going to arrive, so the reason
+	// described a plan that did not exist. See the header on ECataclysmWearResult
+	// for the whole of it.
+	//
+	// COUNTED RATHER THAN READ OFF THE SLOT. A two-handed weapon is stored in
+	// the first weapon slot alone and leaves the second empty, so it counts as
+	// one and is refused, which is right -- it is the only weapon. Two
+	// one-handed weapons count as two and either one may come off.
+	//
+	// SWAPPING IS UNAFFECTED. Wearing a different weapon over this one goes
+	// through WearFromCarried, which never calls this.
+	if (UCataclysmGearSlots::IsWeaponSlot(Slot))
+	{
+		int32 WeaponsWorn = 0;
+		for (const ECataclysmGearSlot HeldWeaponSlot :
+			 UCataclysmGearSlots::WeaponSlots())
+		{
+			if (!Equipment->SlotIsEmpty(HeldWeaponSlot))
+			{
+				++WeaponsWorn;
+			}
+		}
+		if (WeaponsWorn <= 1)
+		{
+			return ECataclysmWearResult::TheLastWeapon;
+		}
+	}
+
+	// ASKED BEFORE THE PIECE COMES OFF. Taking it off first and finding nowhere
+	// to put it would leave it held by a local variable about to go out of
+	// scope, and there is no floor to drop it on from a screen.
+	if (Inventory->IsFull())
+	{
+		return ECataclysmWearResult::NoRoomInTheBag;
+	}
+
+	FCataclysmItem TakenOff;
+	if (!Equipment->Unequip(Slot, TakenOff))
+	{
+		return ECataclysmWearResult::NothingWorn;
+	}
+
+	const int32 LandedIn = Inventory->AddItem(TakenOff);
+	if (OutCarriedSlot)
+	{
+		*OutCarriedSlot = LandedIn;
+	}
+	return ECataclysmWearResult::TakenOff;
+}
+
+// ---------------------------------------------------------------------------
+// Moving a carried slot with the cursor. Issue #853.
+// ---------------------------------------------------------------------------
+
+ECataclysmWearResult UCataclysmWearing::PickUpCarried(
+	UCataclysmInventoryComponent* Inventory, int32 CarriedSlot)
+{
+	if (!Inventory)
+	{
+		return ECataclysmWearResult::NothingToWorkWith;
+	}
+	if (Inventory->IsHolding())
+	{
+		return ECataclysmWearResult::AlreadyHolding;
+	}
+	if (!Inventory->GetSlots().IsValidIndex(CarriedSlot)
+		|| UCataclysmInventoryComponent::SlotIsEmpty(
+			   Inventory->GetSlots()[CarriedSlot]))
+	{
+		return ECataclysmWearResult::NothingToPickUp;
+	}
+
+	Inventory->HoldSlot(CarriedSlot);
+	return ECataclysmWearResult::PickedUp;
+}
+
+ECataclysmWearResult UCataclysmWearing::PutDownCarried(
+	UCataclysmInventoryComponent* Inventory, int32 CarriedSlot)
+{
+	if (!Inventory)
+	{
+		return ECataclysmWearResult::NothingToWorkWith;
+	}
+	if (!Inventory->IsHolding())
+	{
+		return ECataclysmWearResult::NothingHeld;
+	}
+	if (!Inventory->GetSlots().IsValidIndex(CarriedSlot))
+	{
+		return ECataclysmWearResult::NothingToPickUp;
+	}
+
+	// READ BEFORE THE SWAP, because afterwards the target holds what was on
+	// the cursor and the two cases cannot be told apart.
+	const int32 From = Inventory->HeldSlot();
+	const bool bWasOccupied =
+		!UCataclysmInventoryComponent::SlotIsEmpty(
+			Inventory->GetSlots()[CarriedSlot])
+		&& CarriedSlot != From;
+
+	if (!Inventory->SwapSlots(From, CarriedSlot))
+	{
+		return ECataclysmWearResult::NothingToWorkWith;
+	}
+	Inventory->HoldSlot(INDEX_NONE);
+
+	return bWasOccupied ? ECataclysmWearResult::Exchanged
+						: ECataclysmWearResult::PutDown;
+}
+
+ECataclysmWearResult UCataclysmWearing::PickUpWorn(
+	UCataclysmInventoryComponent* Inventory,
+	UCataclysmEquipmentComponent* Equipment,
+	ECataclysmGearSlot Slot)
+{
+	if (!Inventory || !Equipment)
+	{
+		return ECataclysmWearResult::NothingToWorkWith;
+	}
+	if (Inventory->IsHolding())
+	{
+		return ECataclysmWearResult::AlreadyHolding;
+	}
+
+	// TAKEN OFF FIRST AND HELD SECOND, because a worn piece is not in the bag
+	// and the cursor holds a carried slot. Every refusal TakeOffInto makes --
+	// a full bag, a character's last weapon -- comes back unchanged and
+	// nothing is held.
+	int32 LandedIn = INDEX_NONE;
+	const ECataclysmWearResult Result =
+		TakeOffInto(Inventory, Equipment, Slot, &LandedIn);
+	if (Result != ECataclysmWearResult::TakenOff)
+	{
+		return Result;
+	}
+
+	if (LandedIn == INDEX_NONE)
+	{
+		// IT CAME OFF AND IS IN THE BAG, so nothing is lost; only the cursor
+		// missed it. Reported as taken off rather than picked up, because that
+		// is what happened.
+		return ECataclysmWearResult::TakenOff;
+	}
+
+	Inventory->HoldSlot(LandedIn);
+	return ECataclysmWearResult::PickedUp;
+}
+
+void UCataclysmWearing::ReleaseHeld(UCataclysmInventoryComponent* Inventory)
+{
+	if (Inventory)
+	{
+		Inventory->HoldSlot(INDEX_NONE);
+	}
+}
+
+ECataclysmWearResult UCataclysmWearing::DropCarried(
+	UCataclysmInventoryComponent* Inventory, int32 CarriedSlot, UWorld* World,
+	const FVector& At)
+{
+	if (!Inventory)
+	{
+		return ECataclysmWearResult::NothingToWorkWith;
+	}
+
+	const TArray<FCataclysmCarriedSlot>& Slots = Inventory->GetSlots();
+	if (!Slots.IsValidIndex(CarriedSlot)
+		|| UCataclysmInventoryComponent::SlotIsEmpty(Slots[CarriedSlot]))
+	{
+		return ECataclysmWearResult::NothingToDrop;
+	}
+
+	// COPIED BEFORE ANYTHING IS EMPTIED. RemoveItemAt overwrites the slot, so a
+	// reference into the array would be reading freed contents by the time the
+	// spawn needed them.
+	const FCataclysmCarriedSlot Leaving = Slots[CarriedSlot];
+
+	// THE FLOOR IS ASKED FIRST. If this fails the item is still in the bag and
+	// the character has lost nothing, which is this class's one rule. Emptying
+	// the slot first would destroy the item on a failed spawn, and a spawn is
+	// the only step here that can fail for a reason the rules did not choose.
+	// THE TWO NAMES FOR THE COUNT ARE NOT THE SAME. A carried slot calls it
+	// `Quantity` and a drop on the floor calls it `MaterialQuantity`.
+	if (!UCataclysmDropSpawner::PutOnTheFloor(World, At, Leaving.Item,
+											  Leaving.Material,
+											  Leaving.Quantity))
+	{
+		return ECataclysmWearResult::TheFloorRefusedIt;
+	}
+
+	Inventory->RemoveItemAt(CarriedSlot);
+
+	// THE CURSOR IS ONLY RELEASED WHEN IT WAS POINTING AT THIS SLOT. Dropping by
+	// console command while a screen holds a different slot must not silently
+	// put that other item down.
+	if (Inventory->HeldSlot() == CarriedSlot)
+	{
+		ReleaseHeld(Inventory);
+	}
+
+	return ECataclysmWearResult::Dropped;
+}
+
+// ---------------------------------------------------------------------------
+// Both Hands Full taken away. Issue #1515.
+// ---------------------------------------------------------------------------
+
+ECataclysmWearResult UCataclysmWearing::ReturnSecondTwoHandedWeapon(
+	UCataclysmInventoryComponent* Inventory, UCataclysmEquipmentComponent* Equipment,
+	UWorld* World, const FVector& At)
+{
+	if (!Inventory || !Equipment)
+	{
+		return ECataclysmWearResult::NothingToWorkWith;
+	}
+
+	// ONLY TWO TWO-HANDED WEAPONS HELD WITHOUT THE OPTION. Every other loadout
+	// is one the rules allow, so there is nothing to return.
+	const UDataTable* BaseTable = UCataclysmItemModifiers::LoadBaseTable();
+	const FCataclysmItem* First = Equipment->EquippedAt(ECataclysmGearSlot::Weapon1);
+	const FCataclysmItem* Second = Equipment->EquippedAt(ECataclysmGearSlot::Weapon2);
+	if (!First || !Second
+		|| !UCataclysmItemModifiers::IsTwoHanded(*First, BaseTable)
+		|| !UCataclysmItemModifiers::IsTwoHanded(*Second, BaseTable)
+		|| Equipment->MayHoldTwoTwoHanded())
+	{
+		return ECataclysmWearResult::NothingWorn;
+	}
+
+	// TO THE BAG WHEN IT HAS ROOM. The respec that took the option away is
+	// never refused for want of it: ruled 2026-09-24.
+	if (!Inventory->IsFull())
+	{
+		FCataclysmItem TakenOff;
+		Equipment->Unequip(ECataclysmGearSlot::Weapon2, TakenOff);
+		Inventory->AddItem(TakenOff);
+		return ECataclysmWearResult::TakenOff;
+	}
+
+	// AND ON THE FLOOR WHEN IT HAS NONE, asked first, as DropCarried asks it:
+	// a refused spawn leaves the weapon held rather than destroyed.
+	const FCataclysmItem Leaving = *Second;
+	if (!UCataclysmDropSpawner::PutOnTheFloor(World, At, Leaving, NAME_None, 0))
+	{
+		UE_LOG(LogCataclysm, Warning,
+			   TEXT("%s is a second two-handed weapon held without Both Hands "
+					"Full, the bag is full and the floor refused it, so it is "
+					"still held."),
+			   *Leaving.Base.ToString());
+		return ECataclysmWearResult::TheFloorRefusedIt;
+	}
+	FCataclysmItem Gone;
+	Equipment->Unequip(ECataclysmGearSlot::Weapon2, Gone);
+	return ECataclysmWearResult::Dropped;
+}
+
+ECataclysmWearResult UCataclysmWearing::WearAfterConfirming(
+	UCataclysmInventoryComponent* Inventory,
+	UCataclysmEquipmentComponent* Equipment,
+	int32 CarriedSlot,
+	const FCataclysmItem& AskedAbout,
+	ECataclysmGearSlot& OutSlot,
+	int32 DifficultyTier)
+{
+	if (!Inventory || !Equipment)
+	{
+		return ECataclysmWearResult::NothingToWorkWith;
+	}
+
+	// EVERY SAVED FIELD COMPARED, not the base alone: two helms of one base are
+	// two items, and the yes was given about one of them.
+	const FCataclysmItem* Now = Inventory->ItemAt(CarriedSlot);
+	if (!Now || !FCataclysmItem::StaticStruct()->CompareScriptStruct(Now, &AskedAbout, PPF_None))
+	{
+		return ECataclysmWearResult::NoLongerThere;
+	}
+	return WearFromCarried(Inventory, Equipment, CarriedSlot, OutSlot,
+						   /*bConfirmedPastThreshold=*/true, DifficultyTier);
+}
+
+FCataclysmThresholdCrossing UCataclysmWearing::CrossingFor(
+	const UCataclysmInventoryComponent* Inventory,
+	UCataclysmEquipmentComponent* Equipment,
+	int32 CarriedSlot,
+	int32 DifficultyTier)
+{
+	FCataclysmThresholdCrossing Crossing;
+	Crossing.Tier = DifficultyTier > 0 ? DifficultyTier : ACataclysmGameMode::DifficultyTierIn(Equipment);
+	Crossing.Threshold = UCataclysmEquipmentComponent::ConsumptionThresholdFor(Crossing.Tier);
+	if (!Equipment)
+	{
+		return Crossing;
+	}
+	Crossing.Now = Equipment->WornResidue();
+	Crossing.After = Crossing.Now;
+	if (const FCataclysmItem* Carried = Inventory ? Inventory->ItemAt(CarriedSlot) : nullptr)
+	{
+		Crossing.After = Equipment->WornResidueIfEquipped(*Carried);
+	}
+	return Crossing;
+}
+
+FString UCataclysmWearing::ThresholdQuestion(const FString& ItemName,
+											 const FCataclysmThresholdCrossing& Crossing)
+{
+	// AND THE CONSEQUENCE, IN THE DESIGN'S WORDS, now that the double exists (issue #2688): `docs/Cataclysm_GDD_v2.md`,
+	// "What crossing it does", its first two sentences word for word. Nothing about being consumed, which does not
+	// exist yet (#2693).
+	return FString::Printf(
+		TEXT("Wearing %s brings your Worn Residue to %d, past this tier's Consumption Threshold of %d. %s"),
+		ItemName.IsEmpty() ? TEXT("this") : *ItemName, FMath::RoundToInt(Crossing.After),
+		FMath::RoundToInt(Crossing.Threshold), ThresholdConsequence);
+}
+
+FString UCataclysmWearing::Explain(ECataclysmWearResult Result)
+{
+	switch (Result)
+	{
+	case ECataclysmWearResult::Worn:
+		return TEXT("Worn.");
+	case ECataclysmWearResult::Swapped:
+		return TEXT("Worn, and what came off is in the bag.");
+	case ECataclysmWearResult::TakenOff:
+		return TEXT("Taken off and put in the bag.");
+	case ECataclysmWearResult::NothingToWear:
+		return TEXT("There is nothing there to wear.");
+	case ECataclysmWearResult::NothingWorn:
+		return TEXT("Nothing is worn there.");
+	case ECataclysmWearResult::CannotBeWorn:
+		return TEXT("That goes in no slot this character has.");
+	case ECataclysmWearResult::NoRoomInTheBag:
+		return TEXT("There is no room in the bag, so nothing was moved.");
+	case ECataclysmWearResult::TheLastWeapon:
+		return TEXT("That is your only weapon, and you have to hold one. "
+					"Wear a different weapon over it instead.");
+	case ECataclysmWearResult::NothingToWorkWith:
+		return TEXT("This character has no inventory or no equipment.");
+	case ECataclysmWearResult::PickedUp:
+		return TEXT("Picked up.");
+	case ECataclysmWearResult::PutDown:
+		return TEXT("Put down.");
+	case ECataclysmWearResult::Exchanged:
+		return TEXT("Put down, and the two changed places.");
+	case ECataclysmWearResult::NothingToPickUp:
+		return TEXT("There is nothing there to pick up.");
+	case ECataclysmWearResult::NothingHeld:
+		return TEXT("Nothing is being held.");
+	case ECataclysmWearResult::AlreadyHolding:
+		return TEXT("Something is already being held. Put it down first.");
+	case ECataclysmWearResult::Dropped:
+		return TEXT("Dropped on the floor in front of you.");
+	case ECataclysmWearResult::NothingToDrop:
+		return TEXT("There is nothing there to drop.");
+	case ECataclysmWearResult::TheFloorRefusedIt:
+		return TEXT("It could not be put on the floor, so it is still in "
+					"the bag.");
+	case ECataclysmWearResult::WouldCrossConsumptionThreshold:
+		return TEXT("Wearing it would take your Worn Residue past this tier's "
+					"Consumption Threshold, so it was not put on. Confirm to "
+					"wear it.");
+	case ECataclysmWearResult::NoLongerThere:
+		return TEXT("It is no longer where it was when you were asked, so "
+					"nothing was put on.");
+	}
+	return FString();
+}

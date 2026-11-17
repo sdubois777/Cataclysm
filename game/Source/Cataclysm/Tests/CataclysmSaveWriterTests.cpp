@@ -1,0 +1,2643 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "Misc/AutomationTest.h"
+
+#if WITH_AUTOMATION_TESTS
+
+#include "AbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "Character/CataclysmPlayerCharacter.h"
+#include "Engine/World.h"
+#include "Kismet/GameplayStatics.h"
+#include "Player/CataclysmGameMode.h"
+#include "Player/CataclysmPlayerState.h"
+#include "Empire/CataclysmEmpireMap.h"
+#include "Empire/CataclysmEmpireRun.h"
+#include "Empire/CataclysmSurge.h"
+#include "Player/CataclysmGameInstance.h"
+#include "Save/CataclysmSaveGather.h"
+#include "Save/CataclysmSavePartition.h"
+#include "Save/CataclysmSaveRecords.h"
+#include "Save/CataclysmSaveStorage.h"
+#include "Save/CataclysmSaveTriggers.h"
+#include "Save/CataclysmSaveWriter.h"
+#include "Empire/CataclysmRoster.h"
+#include "Tests/CataclysmSaveExampleRecord.h"
+#include "Tests/CataclysmTestWorld.h"
+
+/**
+ * The clock, the triggers and the death write. Issue #750.
+ *
+ * THE ONE PROPERTY THE WHOLE FEATURE RESTS ON is that a death is on disk before
+ * the call that wrote it returns. `docs/Save_System_Design.md` section 6 calls it
+ * the one rule that cannot be relaxed: for a Hardcore character, death "is
+ * written in the same frame the health reaches zero, through the synchronous
+ * write, before the death is otherwise processed". An asynchronous death write
+ * still writes, a moment later, and that moment is exactly the window a player
+ * closing the game would use.
+ *
+ * THESE TESTS TOUCH THE DISK. Every slot they use is named for this test and
+ * deleted again on every path out, including the failing ones.
+ */
+namespace CataclysmSaveWriterTest
+{
+	static const TCHAR* SlotPrefix = TEXT("CataclysmAutomationTest_Writer_");
+	static constexpr int32 UserIndex = 0;
+
+	/**
+	 * A run and a character identifier that name slots nothing else uses.
+	 *
+	 * GENERATED PER TEST rather than fixed, so two tests running in either order
+	 * cannot read each other's files.
+	 */
+	struct FRun
+	{
+		FGuid RunId = FGuid::NewGuid();
+		FGuid CharacterId = FGuid::NewGuid();
+	};
+
+	/**
+	 * How long to let a background write finish before deleting its slot.
+	 *
+	 * **DELETING A FILE OUT FROM UNDER A WRITE IS WHAT MADE THIS SUITE FLAKY.**
+	 * An asynchronous write runs on a background thread, so a test that started
+	 * one and then cleaned up was racing it: the write landed on a file that had
+	 * just been deleted, failed, and `UCataclysmSaveWriter::Write` logged an
+	 * Error -- which fails whichever automation test is running when the callback
+	 * arrives, and that need not be the test that started the write. It passed
+	 * four full runs before it failed.
+	 *
+	 * TWO SECONDS IS FAR MORE THAN A TWO-KILOBYTE WRITE NEEDS and costs nothing
+	 * when the file is already there, which is the ordinary case: the wait ends
+	 * as soon as it appears and nothing is still writing it.
+	 */
+	static constexpr float LongestWaitForAWriteSeconds = 2.0f;
+
+	/**
+	 * Wait, briefly, for a slot to appear. Returns whether it did.
+	 *
+	 * AND FOR THE LAST WRITE HANDED OVER FOR IT TO FINISH. Issue #2495: a file
+	 * exists from the moment a write opens it, before that write has finished,
+	 * so a test that read or deleted the slot as soon as it appeared could meet
+	 * a write that was still running.
+	 */
+	static bool WaitForSlot(const FString& SlotName)
+	{
+		if (SlotName.IsEmpty())
+		{
+			return false;
+		}
+
+		const double GiveUpAt = FPlatformTime::Seconds() + LongestWaitForAWriteSeconds;
+		while (FPlatformTime::Seconds() < GiveUpAt)
+		{
+			if (UGameplayStatics::DoesSaveGameExist(SlotName, UserIndex)
+				&& !FCataclysmSaveStorage::HasAWriteInFlight(SlotName))
+			{
+				return true;
+			}
+			FPlatformProcess::Sleep(0.01f);
+		}
+		return false;
+	}
+
+	/**
+	 * Delete whatever a writer wrote, once anything in flight has landed.
+	 *
+	 * @param bWriteWasStarted  whether a write was started that has not been
+	 *                          seen to finish. When it was, this waits for the
+	 *                          file before deleting it, so the background write
+	 *                          cannot arrive afterwards and fail.
+	 */
+	static void Forget(const UCataclysmSaveWriter* Writer,
+					   bool bWriteWasStarted = false)
+	{
+		if (!Writer)
+		{
+			return;
+		}
+
+		for (const FString& Slot : { Writer->RunSlotName(), Writer->CharacterSlotName() })
+		{
+			if (Slot.IsEmpty())
+			{
+				continue;
+			}
+
+			if (bWriteWasStarted)
+			{
+				WaitForSlot(Slot);
+			}
+
+			if (UGameplayStatics::DoesSaveGameExist(Slot, UserIndex))
+			{
+				UGameplayStatics::DeleteGameInSlot(Slot, UserIndex);
+			}
+		}
+	}
+
+	/**
+	 * A world with a save writer in it, or null.
+	 *
+	 * A WORLD SUBSYSTEM EXISTS IN A TEST WORLD because `UWorld::CreateWorld`
+	 * reaches `UWorld::InitWorld`, which initialises the subsystem collection.
+	 * That is checked rather than assumed: every test below fails plainly if the
+	 * writer is not there.
+	 */
+	static UCataclysmSaveWriter* WriterIn(UWorld* World)
+	{
+		return UCataclysmSaveWriter::In(World);
+	}
+
+	/** The player pawn and the player state its ability system lives on. */
+	static ACataclysmPlayerCharacter* SpawnPlayer(UWorld* World)
+	{
+		ACataclysmPlayerCharacter* Pawn =
+			World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector,
+														 FRotator::ZeroRotator);
+		ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+		if (Pawn && State)
+		{
+			Pawn->SetPlayerState(State);
+			Pawn->OnRep_PlayerState();
+		}
+		return Pawn;
+	}
+
+	static bool SetHealth(AActor* Actor, float Health, float MaxHealth)
+	{
+		UAbilitySystemComponent* AbilitySystem = const_cast<UAbilitySystemComponent*>(
+			UCataclysmTargeting::AbilitySystemOf(Actor));
+		if (!AbilitySystem)
+		{
+			return false;
+		}
+
+		const FGameplayAttribute Max = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+		const FGameplayAttribute Now = UCataclysmVitalAttributeSet::GetHealthAttribute();
+		if (!AbilitySystem->HasAttributeSetForAttribute(Max)
+			|| !AbilitySystem->HasAttributeSetForAttribute(Now))
+		{
+			return false;
+		}
+
+		// MAXIMUM FIRST, THEN CURRENT. The vital attribute set clamps health to
+		// the maximum, so raising the current value first would clamp it back
+		// down to whatever the old maximum was.
+		AbilitySystem->SetNumericAttributeBase(Max, MaxHealth);
+		AbilitySystem->SetNumericAttributeBase(Now, Health);
+		return true;
+	}
+}
+
+/**
+ * Nothing is written until something says which run is being played.
+ *
+ * NOT A SWITCH, A CONSEQUENCE. A record is stored in a slot named after a
+ * generated identifier, and `FCataclysmSaveStorage::WriteToSlot` refuses an
+ * empty slot name on purpose -- writing to one would put every character in the
+ * game into a single shared file. Until `BeginRun` supplies an identifier there
+ * is nowhere to write, and every trigger is counted rather than logged.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterWaitsForARun,
+	"Cataclysm.SaveWriter.NothingIsWrittenUntilSomethingSaysWhichRunItIs",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterWaitsForARun::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	UCataclysmSaveWriter* Writer = WriterIn(World);
+	if (!TestNotNull(TEXT("a save writer in the world"), Writer))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	TestFalse(TEXT("it is not writing yet"), Writer->IsWriting());
+	TestTrue(TEXT("and it has no run slot to write to"), Writer->RunSlotName().IsEmpty());
+
+	TestFalse(TEXT("a creature dying writes nothing"),
+		Writer->NoteTrigger(ECataclysmSaveTrigger::CreatureDied));
+	TestFalse(TEXT("and neither does the character dying"),
+		Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied));
+
+	TestEqual(TEXT("nothing was written at all"), Writer->WritesStarted(), 0);
+	TestEqual(TEXT("and both triggers were counted as having nowhere to go"),
+		Writer->TriggersWithNowhereToWrite(), 2);
+
+	// AND THE TRIGGER IS STILL REMEMBERED, so a caller can tell that the writer
+	// saw the event and had nowhere to put it, rather than never being told.
+	TestEqual(TEXT("the last trigger is remembered even so"),
+		static_cast<int32>(Writer->LastTrigger()),
+		static_cast<int32>(ECataclysmSaveTrigger::CharacterDied));
+
+	const FRun Run;
+	Writer->BeginRun(Run.RunId, Run.CharacterId, FName(TEXT("Sandbox")), 1);
+
+	TestTrue(TEXT("once a run has begun it is writing"), Writer->IsWriting());
+	TestEqual(TEXT("and its run slot is the one the partition rule names"),
+		Writer->RunSlotName(), UCataclysmSavePartition::RunSlotName(Run.RunId));
+	TestEqual(TEXT("and its character slot likewise"),
+		Writer->CharacterSlotName(),
+		UCataclysmSavePartition::CharacterSlotName(Run.CharacterId));
+
+	Forget(Writer, /*bWriteWasStarted=*/true);
+	World->DestroyWorld(false);
+	return true;
+}
+
+/**
+ * A death is on disk before the call that wrote it returns.
+ *
+ * **THIS IS THE TEST THE FEATURE EXISTS FOR.** Section 6 names one rule that
+ * cannot be relaxed and this is it. A write handed to a background thread would
+ * still finish, a moment later, and the moment later is the window a player
+ * closing the game would use -- which is the escape the project owner set out to
+ * close on 2026-08-20.
+ *
+ * TWO THINGS ARE CHECKED AND BOTH ARE NEEDED. That the write was counted as a
+ * synchronous one, which fails deterministically if the rule is relaxed, and
+ * that the file is really there the instant the call returns, which is the thing
+ * a player would actually notice.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterDeathIsOnDiskImmediately,
+	"Cataclysm.SaveWriter.ADeathIsOnDiskBeforeTheCallThatWroteItReturns",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterDeathIsOnDiskImmediately::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	UCataclysmSaveWriter* Writer = WriterIn(World);
+	if (!TestNotNull(TEXT("a save writer in the world"), Writer))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	const FRun Run;
+	Writer->BeginRun(Run.RunId, Run.CharacterId, FName(TEXT("Sandbox")), 1);
+	Forget(Writer);
+
+	if (!TestFalse(TEXT("there is nothing in the slot to begin with"),
+				   UGameplayStatics::DoesSaveGameExist(Writer->RunSlotName(), UserIndex)))
+	{
+		Forget(Writer);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	const bool bWrote = Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+
+	// NOTHING BETWEEN THE CALL ABOVE AND THE CHECK BELOW. No tick, no sleep, no
+	// flush. If the write were handed to a background thread this would be a
+	// race, and it is not allowed to be one.
+	const bool bOnDisk =
+		UGameplayStatics::DoesSaveGameExist(Writer->RunSlotName(), UserIndex);
+
+	TestTrue(TEXT("the death write reported that it wrote"), bWrote);
+	TestTrue(TEXT("the file is on disk the instant the call returns"), bOnDisk);
+	TestEqual(TEXT("and it was counted as a synchronous write"),
+		Writer->SynchronousWrites(), 1);
+
+	Forget(Writer, /*bWriteWasStarted=*/true);
+	World->DestroyWorld(false);
+	return true;
+}
+
+/**
+ * Everything except a death is handed over rather than written on the spot.
+ *
+ * THE CONTRAST WITH THE TEST ABOVE IS THE POINT. A creature dying starts a write
+ * and is not counted as a synchronous one; the character dying is. Section 6:
+ * "Everything else may be written asynchronously."
+ *
+ * WHAT IS NOT CHECKED HERE is whether the asynchronous file has arrived, and
+ * that is deliberate: asserting that it has NOT arrived would be asserting a
+ * race, and asserting that it HAS would be waiting on a background thread.
+ * What is checked is the classification, which is what decides the behaviour.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterOtherWritesAreHandedOver,
+	"Cataclysm.SaveWriter.EverythingExceptADeathIsHandedOverRatherThanWrittenNow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterOtherWritesAreHandedOver::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	UCataclysmSaveWriter* Writer = WriterIn(World);
+	if (!TestNotNull(TEXT("a save writer in the world"), Writer))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	const FRun Run;
+	Writer->BeginRun(Run.RunId, Run.CharacterId, FName(TEXT("Sandbox")), 1);
+	Forget(Writer);
+
+	TestTrue(TEXT("a creature dying starts a write"),
+		Writer->NoteTrigger(ECataclysmSaveTrigger::CreatureDied));
+	TestEqual(TEXT("one write was started"), Writer->WritesStarted(), 1);
+	TestEqual(TEXT("and none of them was synchronous"), Writer->SynchronousWrites(), 0);
+
+	Forget(Writer, /*bWriteWasStarted=*/true);
+	World->DestroyWorld(false);
+	return true;
+}
+
+/**
+ * The run record is written at most once a frame, unless it is a death.
+ *
+ * FOUR CREATURES KILLED BY ONE BLOW RAISE FOUR TRIGGERS IN ONE FRAME, which is
+ * ordinary rather than unusual. Each would otherwise build the whole floor into
+ * JSON and hand it over separately, and every one of those writes but the last
+ * would be overwritten before it reached the disk. The state the last one writes
+ * is the state all four would have written, because the gather runs after all of
+ * them are dead.
+ *
+ * A DEATH IGNORES THE LIMIT, which is what the second half of this checks. The
+ * one rule section 6 does not relax cannot be skipped because something else
+ * wrote in the same frame.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterRunRecordOncePerFrame,
+	"Cataclysm.SaveWriter.TheRunRecordIsWrittenOncePerFrameUnlessItIsADeath",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterRunRecordOncePerFrame::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	UCataclysmSaveWriter* Writer = WriterIn(World);
+	if (!TestNotNull(TEXT("a save writer in the world"), Writer))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	const FRun Run;
+	Writer->BeginRun(Run.RunId, Run.CharacterId, FName(TEXT("Sandbox")), 1);
+	Forget(Writer);
+
+	TestTrue(TEXT("the first creature to die starts a write"),
+		Writer->NoteTrigger(ECataclysmSaveTrigger::CreatureDied));
+	TestFalse(TEXT("the second in the same frame does not"),
+		Writer->NoteTrigger(ECataclysmSaveTrigger::CreatureDied));
+	TestFalse(TEXT("nor the third"),
+		Writer->NoteTrigger(ECataclysmSaveTrigger::CreatureDied));
+	TestFalse(TEXT("nor a fight starting in the same frame"),
+		Writer->NoteTrigger(ECataclysmSaveTrigger::FightStarted));
+
+	TestEqual(TEXT("so one write was started for four events"),
+		Writer->WritesStarted(), 1);
+
+	// **LET THAT ASYNCHRONOUS WRITE LAND BEFORE ANYTHING TOUCHES ITS SLOT.**
+	//
+	// The write above went to the background. The one below is SYNCHRONOUS and
+	// goes to the SAME slot, and `Forget` at the end of this test deletes that
+	// slot -- after waiting only for the file to EXIST, which the synchronous
+	// write has by then already created. So without this the slot was deleted
+	// out from under a write that was still running, the write failed, and its
+	// callback logged an Error that the automation framework charged to
+	// whichever test was running when it arrived.
+	//
+	// SINCE #2495 `WaitForSlot` WAITS FOR THE WRITE AS WELL AS THE FILE, so the
+	// words "waiting only for the file to EXIST" describe it before that change.
+	//
+	// THAT IS THE FAILURE MODE `LongestWaitForAWriteSeconds` ABOVE ALREADY
+	// DESCRIBES. It was intermittent -- the comment records it passing four
+	// full runs before failing -- and it became reproducible on 2026-08-21 when
+	// the Gatekeeper's automation tests were added: those load the 1.35 GB
+	// Paragon Sevarog pack, which delays the background write past the
+	// deletion every time on this machine.
+	//
+	// IT DOES NOT CHANGE WHAT THIS TEST IS ABOUT. The premise is that four
+	// triggers in ONE frame produce one write, and `WriteTheRunRecord` decides
+	// that by comparing `GFrameCounter`. That counter is advanced by the
+	// engine's frame loop, which does not run inside a synchronous automation
+	// test body, so sleeping here does not advance it and every assertion below
+	// is still about the same frame.
+	TestTrue(TEXT("the asynchronous write reached the disk before anything "
+				  "else touched its slot"),
+		WaitForSlot(Writer->RunSlotName()));
+
+	// AND A DEATH IN THE SAME FRAME WRITES ANYWAY.
+	TestTrue(TEXT("the character dying writes despite the limit"),
+		Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied));
+	TestEqual(TEXT("which makes two writes"), Writer->WritesStarted(), 2);
+	TestEqual(TEXT("one of them synchronous"), Writer->SynchronousWrites(), 1);
+
+	Forget(Writer, /*bWriteWasStarted=*/true);
+	World->DestroyWorld(false);
+	return true;
+}
+
+/**
+ * The clock writes after its interval and not before.
+ *
+ * WHAT THE CLOCK IS FOR is the case where nothing happened: everything that
+ * happens inside a fight raises a trigger of its own, so this is the gap a
+ * player loses after walking around a city and quitting.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterClockWaits,
+	"Cataclysm.SaveWriter.TheClockWritesAfterItsIntervalAndNotBefore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterClockWaits::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	UCataclysmSaveWriter* Writer = WriterIn(World);
+	if (!TestNotNull(TEXT("a save writer in the world"), Writer))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	const FRun Run;
+	Writer->BeginRun(Run.RunId, Run.CharacterId, FName(TEXT("Sandbox")), 1);
+	Forget(Writer);
+
+	const float Interval = UCataclysmSaveTriggers::SecondsBetweenClockWrites;
+
+	// A HAIR UNDER THE INTERVAL, IN ONE STEP. Splitting it into many small ticks
+	// would test the same thing and would also be a test of floating point
+	// accumulation, which is not what this is about.
+	Writer->Tick(Interval - 0.01f);
+	TestEqual(TEXT("nothing is written before the interval is up"),
+		Writer->WritesStarted(), 0);
+
+	Writer->Tick(0.02f);
+	TestEqual(TEXT("and one write when it is"), Writer->WritesStarted(), 1);
+	TestEqual(TEXT("and the clock says so"),
+		static_cast<int32>(Writer->LastTrigger()),
+		static_cast<int32>(ECataclysmSaveTrigger::Clock));
+
+	// AND THE CLOCK STARTS AGAIN rather than writing on every tick from then on.
+	TestTrue(TEXT("the clock was restarted"),
+		Writer->SecondsSinceTheClockWrote() < Interval);
+
+	Forget(Writer, /*bWriteWasStarted=*/true);
+	World->DestroyWorld(false);
+	return true;
+}
+
+/**
+ * Health falling through the line writes, and health above it does not.
+ *
+ * WHAT THIS TEST CANNOT CHECK, SAID PLAINLY. A check written as "is health below
+ * the line" rather than "did it just fall through" would write the whole floor on
+ * every frame a wounded character stood still. **This test cannot see that**, and
+ * breaking the rule on purpose proved it: an automation test runs inside a single
+ * frame, so the writer's once-a-frame limit suppresses the extra writes and the
+ * count stays at one either way.
+ *
+ * `Cataclysm.SaveTriggers.HealthWritesOnTheWayThroughTheLineAndNotWhileBelowIt`
+ * is what guards the crossing rule, and it does catch that break. What is checked
+ * here is the half a rule about plain numbers cannot reach: that the writer looks
+ * at the right character's health at all, and writes for the right reason.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterHealthThreshold,
+	"Cataclysm.SaveWriter.HealthFallingThroughTheLineIsWhatMakesTheWriterWrite",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterHealthThreshold::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	UCataclysmSaveWriter* Writer = WriterIn(World);
+	ACataclysmPlayerCharacter* Player = SpawnPlayer(World);
+
+	if (!Writer || !Player)
+	{
+		AddError(TEXT("a writer and a player character were both needed"));
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	constexpr float MaxHealth = 1000.0f;
+	if (!SetHealth(Player, MaxHealth, MaxHealth))
+	{
+		AddError(TEXT("the player's health could not be set, so this would pass for "
+					  "the wrong reason"));
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	const FRun Run;
+	Writer->BeginRun(Run.RunId, Run.CharacterId, FName(TEXT("Sandbox")), 1);
+	Forget(Writer);
+
+	// A SMALL TICK, SO THE CLOCK CANNOT BE WHAT WRITES. Everything below has to
+	// be attributable to health.
+	constexpr float Sliver = 0.01f;
+
+	Writer->Tick(Sliver);
+	TestEqual(TEXT("a character at full health writes nothing"),
+		Writer->WritesStarted(), 0);
+
+	// HURT, BUT NOT THROUGH THE LINE.
+	const float Line = UCataclysmSaveTriggers::HealthFractionThatForcesAWrite;
+	SetHealth(Player, MaxHealth * (Line + 0.1f), MaxHealth);
+	Writer->Tick(Sliver);
+	TestEqual(TEXT("hurt but still above the line writes nothing"),
+		Writer->WritesStarted(), 0);
+
+	// AND THROUGH IT.
+	SetHealth(Player, MaxHealth * (Line - 0.1f), MaxHealth);
+	Writer->Tick(Sliver);
+	TestEqual(TEXT("falling through the line writes once"), Writer->WritesStarted(), 1);
+	TestEqual(TEXT("and says that is why"),
+		static_cast<int32>(Writer->LastTrigger()),
+		static_cast<int32>(ECataclysmSaveTrigger::HealthCrossedThreshold));
+
+	// AND STAYING THERE DOES NOT WRITE AGAIN, IN THIS FRAME. Three more ticks at
+	// a lower share each time. Read this for what it is: inside one frame the
+	// writer's once-a-frame limit would suppress these even if the crossing rule
+	// were broken, so this line does not prove the crossing rule. The trigger
+	// test named in the comment above is what does.
+	SetHealth(Player, MaxHealth * (Line - 0.2f), MaxHealth);
+	Writer->Tick(Sliver);
+	SetHealth(Player, MaxHealth * (Line - 0.3f), MaxHealth);
+	Writer->Tick(Sliver);
+	SetHealth(Player, MaxHealth * (Line - 0.4f), MaxHealth);
+	Writer->Tick(Sliver);
+
+	TestEqual(TEXT("staying below the line writes nothing further this frame"),
+		Writer->WritesStarted(), 1);
+
+	Forget(Writer, /*bWriteWasStarted=*/true);
+	World->DestroyWorld(false);
+	return true;
+}
+
+/**
+ * The game mode is what turns the writer on, and until it does nothing is
+ * written.
+ *
+ * WHY THIS TEST EXISTS AT ALL. Every other test in this file calls
+ * `BeginRun` itself, so all of them would go on passing with the game never
+ * calling it -- and the save system would be built, tested, and switched off in
+ * the running game with nothing saying so.
+ *
+ * IT CALLS `BeginSavingThisRun` RATHER THAN `StartPlay`. StartPlay wants a
+ * player controller and a pawn and cannot be reached from an automation test,
+ * which is the same reason `CataclysmSandboxTests.cpp` calls the three
+ * spawners directly. The one line StartPlay contributes is the call itself.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterTurnedOnByTheGameMode,
+	"Cataclysm.SaveWriter.TheGameModeIsWhatTurnsTheWriterOn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterTurnedOnByTheGameMode::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	UCataclysmSaveWriter* Writer = WriterIn(World);
+	ACataclysmGameMode* GameMode = World->SpawnActor<ACataclysmGameMode>();
+
+	if (!Writer || !GameMode)
+	{
+		AddError(TEXT("a writer and a game mode were both needed"));
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	TestFalse(TEXT("the writer is off before the game mode says anything"),
+		Writer->IsWriting());
+
+	TestTrue(TEXT("the game mode found the writer and told it"),
+		GameMode->BeginSavingThisRun());
+
+	TestTrue(TEXT("and the writer is now writing"), Writer->IsWriting());
+	TestFalse(TEXT("it has a run slot to write to"),
+		Writer->RunSlotName().IsEmpty());
+	TestFalse(TEXT("and a character slot"),
+		Writer->CharacterSlotName().IsEmpty());
+
+	// AND IT REALLY WRITES. Being switched on is not the same as writing, and
+	// a test that stopped at the flag would pass with the storage layer gone.
+	Forget(Writer);
+	TestTrue(TEXT("a death now reaches the disk"),
+		Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied));
+	TestTrue(TEXT("and the file is there"),
+		UGameplayStatics::DoesSaveGameExist(Writer->RunSlotName(), UserIndex));
+
+	// TWO SESSIONS DO NOT SHARE A SLOT. Each run gets its own identifier, so
+	// one session cannot overwrite another's record -- which is what a fixed
+	// slot name would do.
+	const FString FirstRun = Writer->RunSlotName();
+	GameMode->BeginSavingThisRun();
+	TestNotEqual(TEXT("a second run is written somewhere else"),
+		Writer->RunSlotName(), FirstRun);
+
+	Forget(Writer);
+	if (UGameplayStatics::DoesSaveGameExist(FirstRun, UserIndex))
+	{
+		UGameplayStatics::DeleteGameInSlot(FirstRun, UserIndex);
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The empire's clock reaches the run record, issue #1299
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterGathersTheClock,
+	"Cataclysm.SaveWriter.AGatheredRunRecordCarriesTheDayAndThePartOfADay",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterGathersTheClock::RunTest(const FString&)
+{
+	// THE ARITHMETIC ON ITS OWN, WITH NO WORLD. `RunClockFrom` takes a run
+	// rather than a world exactly so this can be written; the test below covers
+	// the writer finding the run.
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	UCataclysmRunSave* Record = NewObject<UCataclysmRunSave>();
+
+	// A RUN THAT HAS NOT BEGUN HAS NO CLOCK, and must not zero a record that
+	// already held a day. That is the state a save written before a campaign
+	// starts is in.
+	Record->Day = 118;
+	Record->PartialDay = 0.5f;
+
+	TestFalse(TEXT("a run that has not begun reads nothing"),
+			  FCataclysmSaveGather::RunClockFrom(*Run, *Record));
+
+	TestEqual(TEXT("and leaves the day it already held"), Record->Day, 118);
+	TestEqual(TEXT("and the part of a day too"), Record->PartialDay, 0.5f,
+			  0.0001f);
+
+	Run->Begin(1);
+
+	TestTrue(TEXT("a run that has begun reads"),
+			 FCataclysmSaveGather::RunClockFrom(*Run, *Record));
+	TestEqual(TEXT("a fresh run is on day zero"), Record->Day, 0);
+	TestEqual(TEXT("with nothing carried"), Record->PartialDay, 0.0f, 0.0001f);
+
+	Run->AdvanceDays(7);
+
+	TestTrue(TEXT("reading it again"),
+			 FCataclysmSaveGather::RunClockFrom(*Run, *Record));
+	TestEqual(TEXT("seven days later it is day seven"), Record->Day, 7);
+
+	// AND NOW THE HALF THAT WOULD OTHERWISE BE LOST. Three quarters of a day is
+	// spent, which is not enough to move the day, so a record keeping only `Day`
+	// would be identical to the one above and three quarters of a day of empire
+	// progress would vanish on every save.
+	const int32 DayBefore = Run->Day();
+	Run->SpendFloorTime(0.75f);
+
+	if (!TestEqual(TEXT("three quarters of a day does not move the day"),
+				   Run->Day(), DayBefore))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("reading a run mid-day"),
+			 FCataclysmSaveGather::RunClockFrom(*Run, *Record));
+
+	TestEqual(TEXT("the day is unchanged"), Record->Day, DayBefore);
+	TestEqual(TEXT("and the part of a day is carried"), Record->PartialDay,
+			  0.75f, 0.0001f);
+
+	// THE CONTROL FOR THE WHOLE TEST. If the gather left `PartialDay` at
+	// whatever the record already held, every figure above would still pass.
+	// Setting it to something else and reading again proves it is written.
+	Record->PartialDay = 0.25f;
+	FCataclysmSaveGather::RunClockFrom(*Run, *Record);
+
+	TestEqual(TEXT("and it is written rather than left alone"),
+			  Record->PartialDay, 0.75f, 0.0001f);
+
+	// AND THE WHOLE DAYS A WALK OWES, since 2026-10-24, with the same control:
+	// the record holds something else first, so a gather that left it alone
+	// would fail.
+	Run->OwedDays = 4;
+	Record->DaysOwed = 9;
+	FCataclysmSaveGather::RunClockFrom(*Run, *Record);
+	TestEqual(TEXT("and the days a walk owes are written too"), Record->DaysOwed, 4);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterWritesTheEmpiresDay,
+	"Cataclysm.SaveWriter.AWrittenRunRecordCarriesTheEmpiresDay",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterWritesTheEmpiresDay::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	UCataclysmSaveWriter* Writer = WriterIn(World);
+	if (!TestNotNull(TEXT("a save writer in the world"), Writer))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// A GAME INSTANCE, BECAUSE THAT IS WHERE A RUN LIVES. A world built by
+	// `UWorld::CreateWorld` has none, which is why the writer finds no run in an
+	// ordinary test. Giving it one is what lets this cover the path a real
+	// session takes rather than only the arithmetic.
+	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
+	World->SetGameInstance(Instance);
+
+	UCataclysmEmpireRun* Run = Instance->BeginEmpireRun(1);
+	if (!TestNotNull(TEXT("a run was begun"), Run))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	Run->AdvanceDays(23);
+	Run->SpendFloorTime(0.4f);
+
+	if (!TestEqual(TEXT("the run is on day 23"), Run->Day(), 23))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	const FRun Ids;
+	Writer->BeginRun(Ids.RunId, Ids.CharacterId, FName(TEXT("Sandbox")), 1);
+	Forget(Writer);
+
+	Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+
+	if (!TestTrue(TEXT("the run record reached the disk"),
+				  WaitForSlot(Writer->RunSlotName())))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// READ THE WAY THIS PROJECT WRITES, WHICH IS JSON AND NOT UNREAL'S BINARY
+	// SAVE FORMAT. `UGameplayStatics::LoadGameFromSlot` reads a slot as binary
+	// and, given this project's JSON, walks off into nonsense -- it crashed the
+	// editor with "FName's 1023 max length exceeded. Got 151653754 characters"
+	// the first time this test was run. `FCataclysmSaveStorage::ReadFromSlot` is
+	// the reader that matches the writer.
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+
+	UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(
+		FCataclysmSaveStorage::ReadFromSlot(
+			Writer->RunSlotName(), UserIndex, UCataclysmRunSave::StaticClass(),
+			GetTransientPackage(), Result, Message));
+
+	if (!TestNotNull(TEXT("and it reads back"), Read))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// THE DEFECT THIS TEST EXISTS FOR. Before issue #1299 the day was never
+	// written at all, so this read back as zero however long the run had gone on.
+	TestEqual(TEXT("the saved record carries the empire's day"), Read->Day, 23);
+
+	TestEqual(TEXT("and the part of a day that had not yet added up to one"),
+			  Read->PartialDay, 0.4f, 0.0001f);
+
+	Forget(Writer, /*bWriteWasStarted=*/true);
+	World->DestroyWorld(false);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterKeepsTheDayWithNoRun,
+	"Cataclysm.SaveWriter.WithNoEmpireRunASaveKeepsTheDayItAlreadyHad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterKeepsTheDayWithNoRun::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterTest;
+
+	// WHY THIS MATTERS. Pressing Play in a dungeon level to look at a floor is
+	// not a campaign, and a save written then must not stamp a zero over a day a
+	// loaded record already held, nor start a campaign in order to have a day to
+	// write. That was the one good half of the behaviour before issue #1299.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	UCataclysmSaveWriter* Writer = WriterIn(World);
+	if (!TestNotNull(TEXT("a save writer in the world"), Writer))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// A GAME INSTANCE WITH NO RUN STARTED, which is a different state from no
+	// game instance at all and is the one a player looking at a floor is in.
+	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
+	World->SetGameInstance(Instance);
+
+	if (!TestNull(TEXT("no run has been begun"), Instance->EmpireRun.Get()))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	const FRun Ids;
+	Writer->BeginRun(Ids.RunId, Ids.CharacterId, FName(TEXT("Sandbox")), 1);
+	Forget(Writer);
+
+	Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+
+	if (!TestTrue(TEXT("the run record reached the disk"),
+				  WaitForSlot(Writer->RunSlotName())))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// READ THE WAY THIS PROJECT WRITES, WHICH IS JSON AND NOT UNREAL'S BINARY
+	// SAVE FORMAT. `UGameplayStatics::LoadGameFromSlot` reads a slot as binary
+	// and, given this project's JSON, walks off into nonsense -- it crashed the
+	// editor with "FName's 1023 max length exceeded. Got 151653754 characters"
+	// the first time this test was run. `FCataclysmSaveStorage::ReadFromSlot` is
+	// the reader that matches the writer.
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+
+	UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(
+		FCataclysmSaveStorage::ReadFromSlot(
+			Writer->RunSlotName(), UserIndex, UCataclysmRunSave::StaticClass(),
+			GetTransientPackage(), Result, Message));
+
+	if (!TestNotNull(TEXT("and it reads back"), Read))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// A FRESH RECORD STARTS AT ZERO, so the figure alone proves little. What
+	// this pins is the line beside it: the writer did not begin a campaign in
+	// order to have a day to write. `EmpireRunFor` is asked not to.
+	TestEqual(TEXT("the day is left at what the record held"), Read->Day, 0);
+	TestNull(TEXT("and no campaign was started to save one"),
+			 Instance->EmpireRun.Get());
+
+	Forget(Writer, /*bWriteWasStarted=*/true);
+	World->DestroyWorld(false);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterGathersTheCities,
+	"Cataclysm.SaveWriter.AGatheredRunRecordCarriesTheCitiesAndWhatTheyHaveLeft",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterGathersTheCities::RunTest(const FString&)
+{
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	UCataclysmRunSave* Record = NewObject<UCataclysmRunSave>();
+
+	// A RUN THAT HAS NOT BEGUN HAS NO MAP, and must not empty a record that
+	// already held cities. That is the state a save written with no campaign
+	// running is in, and the same rule the day follows.
+	FCataclysmCity Placeholder;
+	Placeholder.CityId = 99;
+	Record->Cities.Add(Placeholder);
+	Record->CityUpgradeSlots = 2;
+
+	TestFalse(TEXT("a run that has not begun reads nothing"),
+			  FCataclysmSaveGather::CitiesFrom(*Run, *Record));
+
+	TestEqual(TEXT("and leaves the cities it already held"),
+			  Record->Cities.Num(), 1);
+	TestEqual(TEXT("and the slot count too"), Record->CityUpgradeSlots, 2);
+
+	Run->Begin(1);
+
+	if (!TestTrue(TEXT("a run that has begun reads"),
+				  FCataclysmSaveGather::CitiesFrom(*Run, *Record)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("all 25 cities are carried"), Record->Cities.Num(), 25);
+	TestEqual(TEXT("and the ordinary three upgrade slots"),
+			  Record->CityUpgradeSlots, 3);
+
+	// NOW DAMAGE THE EMPIRE AND READ IT AGAIN, because a record that matched a
+	// freshly built map would also match one that copied nothing.
+	UCataclysmEmpireMap* Map = Run->Map;
+	if (!TestNotNull(TEXT("the run has a map"), Map))
+	{
+		return false;
+	}
+
+	int32 Outpost = INDEX_NONE;
+	for (const FCataclysmCity& City : Map->Cities)
+	{
+		if (City.Tier == ECataclysmCityTier::Outpost)
+		{
+			Outpost = City.CityId;
+			break;
+		}
+	}
+
+	if (!TestTrue(TEXT("an Outpost was found"), Outpost != INDEX_NONE))
+	{
+		return false;
+	}
+
+	Map->Bite(Outpost, 0.3f, 0.2f);
+
+	FCataclysmCityUpgrade Upgrade;
+	Upgrade.RowName = FName(TEXT("Architect_This_city_has_25_more_defense"));
+	Upgrade.Effect = ECataclysmCityUpgradeEffect::MaxDefence;
+	Upgrade.Value = 0.25f;
+	Upgrade.Tier = 1;
+	Map->AddUpgrade(Outpost, Upgrade);
+
+	const FCataclysmCity* Live = Map->Find(Outpost);
+	if (!TestNotNull(TEXT("the bitten city is still on the map"), Live))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the bite really took something"),
+				  Live->Defence < Live->MaxDefence))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("and the upgrade really raised the maximum"),
+			 Live->MaxDefence > UCataclysmEmpireMap::OutpostMaxDefence);
+
+	if (!TestTrue(TEXT("reading the damaged empire"),
+				  FCataclysmSaveGather::CitiesFrom(*Run, *Record)))
+	{
+		return false;
+	}
+
+	// GUARDED, FOR THE REASON THE OTHER TEST IN THIS FILE GIVES AT LENGTH. A
+	// `prove_cpp_guard` run that empties the gather leaves no city to read, and
+	// indexing anyway crashes the editor rather than failing -- which the run
+	// then reports as "unknown tests performed", indistinguishable from a guard
+	// that did not fire.
+	if (!TestTrue(TEXT("the record carries the bitten city to read"),
+				  Record->Cities.IsValidIndex(Outpost)))
+	{
+		return false;
+	}
+
+	const FCataclysmCity& Saved = Record->Cities[Outpost];
+
+	TestEqual(TEXT("the record lines up by city identifier"), Saved.CityId,
+			  Outpost);
+	TestEqual(TEXT("the defence it has left"), Saved.Defence, Live->Defence,
+			  0.0001f);
+	TestEqual(TEXT("the population it has left"), Saved.Population,
+			  Live->Population, 0.0001f);
+	TestEqual(TEXT("the raised maximum defence"), Saved.MaxDefence,
+			  Live->MaxDefence, 0.0001f);
+	TestEqual(TEXT("the maximum population"), Saved.MaxPopulation,
+			  Live->MaxPopulation, 0.0001f);
+
+	// AND THE UPGRADE IT BOUGHT, field by field. A record that carried the
+	// numbers but dropped what the city had bought would restore an empire that
+	// forgot what the player spent slots on.
+	if (!TestEqual(TEXT("the upgrade it bought is carried"),
+				   Saved.Upgrades.Num(), 1))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("which row it came from"), Saved.Upgrades[0].RowName,
+			  Upgrade.RowName);
+	TestEqual(TEXT("what it does"),
+			  static_cast<uint8>(Saved.Upgrades[0].Effect),
+			  static_cast<uint8>(ECataclysmCityUpgradeEffect::MaxDefence));
+	TestEqual(TEXT("and by how much"), Saved.Upgrades[0].Value, 0.25f, 0.0001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterGathersVoidStacks,
+	"Cataclysm.SaveWriter.AGatheredRunRecordCarriesACitysVoidStacks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterGathersVoidStacks::RunTest(const FString&)
+{
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	UCataclysmRunSave* Record = NewObject<UCataclysmRunSave>();
+
+	Run->Begin(1);
+
+	UCataclysmEmpireMap* Map = Run->Map;
+	if (!TestNotNull(TEXT("the run has a map"), Map))
+	{
+		return false;
+	}
+
+	// THREE OUTPOSTS: one carrying four stacks and standing, one erased by ten,
+	// and one the Void never touched, which is the control.
+	TArray<int32> Outposts;
+	for (const FCataclysmCity& City : Map->Cities)
+	{
+		if (City.Tier == ECataclysmCityTier::Outpost && Outposts.Num() < 3)
+		{
+			Outposts.Add(City.CityId);
+		}
+	}
+
+	if (!TestEqual(TEXT("three Outposts were found"), Outposts.Num(), 3))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("four stacks do not fell the first"), Map->AddVoidStacks(Outposts[0], 4));
+	TestTrue(TEXT("ten erase the second"), Map->AddVoidStacks(Outposts[1], 10));
+
+	if (!TestTrue(TEXT("a run that has begun reads"),
+				  FCataclysmSaveGather::CitiesFrom(*Run, *Record)))
+	{
+		return false;
+	}
+
+	// GUARDED, for the reason `AGatheredRunRecordCarriesTheCitiesAndWhatTheyHaveLeft`
+	// gives: indexing a record a broken gather left empty would crash the editor
+	// rather than fail.
+	for (const int32 CityId : Outposts)
+	{
+		if (!TestTrue(TEXT("the record carries the city to read"),
+					  Record->Cities.IsValidIndex(CityId)))
+		{
+			return false;
+		}
+	}
+
+	const FCataclysmCity& Stacked = Record->Cities[Outposts[0]];
+	const FCataclysmCity& Gone = Record->Cities[Outposts[1]];
+	const FCataclysmCity& Untouched = Record->Cities[Outposts[2]];
+
+	TestEqual(TEXT("the record lines up by city identifier"), Stacked.CityId, Outposts[0]);
+	TestEqual(TEXT("the standing city's four stacks are carried"), Stacked.VoidStacks, 4);
+	TestFalse(TEXT("and it is carried standing"), Stacked.bFallen);
+
+	TestEqual(TEXT("the erased city's ten are carried"), Gone.VoidStacks, 10);
+	TestTrue(TEXT("and it is carried erased"), Gone.bErased);
+	TestTrue(TEXT("and marked"), Gone.bDoomed);
+
+	TestEqual(TEXT("CONTROL: the untouched city carries none"), Untouched.VoidStacks, 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterGathersHollowFrom,
+	"Cataclysm.SaveWriter.AGatheredRunRecordCarriesADungeonsHollowFrom",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterGathersHollowFrom::RunTest(const FString&)
+{
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	UCataclysmRunSave* Record = NewObject<UCataclysmRunSave>();
+
+	Run->Begin(1);
+	Run->AdvanceDay();
+
+	if (!TestTrue(TEXT("the first wave put two dungeons on the map at least"),
+				  Run->Dungeons.Num() >= 2))
+	{
+		return false;
+	}
+
+	// THE FIRST IS MADE A HOLLOW BY HAND, made with the natural floors it has,
+	// so tomorrow it loses one. The next that is not a Hollow is the control.
+	FCataclysmDungeon& Made = Run->Dungeons[0];
+	Made.Type = ECataclysmDungeonType::Quest;
+	Made.SubType = ECataclysmDungeonSubType::Hollow;
+	Made.Cataclysm = ECataclysmType::Void;
+	Made.HollowFrom = Made.Floors - Made.UpgradeFloors;
+
+	const int32 HollowId = Made.DungeonId;
+	const int32 MadeWith = Made.HollowFrom;
+	const int32 FloorsBefore = Made.Floors;
+
+	int32 ControlId = INDEX_NONE;
+	for (int32 Index = 1; Index < Run->Dungeons.Num(); ++Index)
+	{
+		if (!Run->Dungeons[Index].IsHollow())
+		{
+			ControlId = Run->Dungeons[Index].DungeonId;
+			break;
+		}
+	}
+
+	if (!TestTrue(TEXT("set-up: it was made with more than one floor, so it can shrink"),
+				  MadeWith > 1 && Made.HollowFloorsLeftToLose() > 0)
+		|| !TestTrue(TEXT("set-up: and another dungeon that is not a Hollow stands"),
+					 ControlId != INDEX_NONE))
+	{
+		return false;
+	}
+
+	// A DAY, SO THE HOLLOW SHRINKS BEFORE IT IS GATHERED.
+	Run->AdvanceDay();
+
+	FString Why;
+	if (!TestTrue(TEXT("a run that has begun is gathered"),
+				  FCataclysmSaveGather::DungeonsFrom(*Run, *Record, Why)))
+	{
+		AddError(FString::Printf(TEXT("it said: %s"), *Why));
+		return false;
+	}
+
+	const FCataclysmDungeon* Hollow = Record->Dungeons.FindByPredicate(
+		[HollowId](const FCataclysmDungeon& Dungeon) { return Dungeon.DungeonId == HollowId; });
+	const FCataclysmDungeon* Control = Record->Dungeons.FindByPredicate(
+		[ControlId](const FCataclysmDungeon& Dungeon) { return Dungeon.DungeonId == ControlId; });
+	const FCataclysmDungeonTimer* Timer = Record->DungeonTimers.FindByPredicate(
+		[HollowId](const FCataclysmDungeonTimer& Counting) { return Counting.DungeonId == HollowId; });
+
+	if (!TestNotNull(TEXT("the record carries the Hollow"), Hollow)
+		|| !TestNotNull(TEXT("and the control"), Control)
+		|| !TestNotNull(TEXT("and the Hollow's timer"), Timer))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the Hollow's HollowFrom is carried"), Hollow->HollowFrom, MadeWith);
+	TestEqual(TEXT("and it is carried a Hollow"),
+			  static_cast<int32>(Hollow->SubType),
+			  static_cast<int32>(ECataclysmDungeonSubType::Hollow));
+	TestEqual(TEXT("one floor shallower than the day before"), Hollow->Floors, FloorsBefore - 1);
+	TestEqual(TEXT("and its timer in the record says the same floors"), Timer->Floors, Hollow->Floors);
+
+	TestEqual(TEXT("CONTROL: a dungeon that is not a Hollow carries nought"), Control->HollowFrom, 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterWritesTheCities,
+	"Cataclysm.SaveWriter.AWrittenRunRecordCarriesTheCitiesThroughTheFile",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterWritesTheCities::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	UCataclysmSaveWriter* Writer = WriterIn(World);
+	if (!TestNotNull(TEXT("a save writer in the world"), Writer))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
+	World->SetGameInstance(Instance);
+
+	UCataclysmEmpireRun* Run = Instance->BeginEmpireRun(1);
+	if (!TestNotNull(TEXT("a run was begun"), Run))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// A CITY THAT HAS TAKEN A BEATING, so the file has something to carry that a
+	// freshly built map would not produce.
+	int32 Outpost = INDEX_NONE;
+	for (const FCataclysmCity& City : Run->Map->Cities)
+	{
+		if (City.Tier == ECataclysmCityTier::Outpost)
+		{
+			Outpost = City.CityId;
+			break;
+		}
+	}
+
+	Run->Map->Bite(Outpost, 0.4f, 0.25f);
+	const float DefenceLeft = Run->Map->Find(Outpost)->Defence;
+
+	const FRun Ids;
+	Writer->BeginRun(Ids.RunId, Ids.CharacterId, FName(TEXT("Sandbox")), 1);
+	Forget(Writer);
+
+	Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+
+	if (!TestTrue(TEXT("the run record reached the disk"),
+				  WaitForSlot(Writer->RunSlotName())))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(
+		FCataclysmSaveStorage::ReadFromSlot(
+			Writer->RunSlotName(), UserIndex, UCataclysmRunSave::StaticClass(),
+			GetTransientPackage(), Result, Message));
+
+	if (!TestNotNull(TEXT("and it reads back"), Read))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// THE DEFECT THIS TEST EXISTS FOR. Before issue #1307 no city reached a save
+	// at all, so this read back empty however much of the empire had been lost.
+	TestEqual(TEXT("all 25 cities survive the file"), Read->Cities.Num(), 25);
+	TestEqual(TEXT("and the upgrade slot count"), Read->CityUpgradeSlots, 3);
+
+	// STOP HERE RATHER THAN INDEX AN EMPTY ARRAY. Everything below reads one
+	// city out of the record, and if nothing was written there is no city to
+	// read. **The first version of this test indexed it regardless and CRASHED
+	// THE EDITOR** when a `prove_cpp_guard` run broke the gather -- so the proof
+	// reported "unknown tests performed" rather than a failure, which reads like
+	// a guard that did not fire. A test must fail when its subject is missing,
+	// not take the process down.
+	if (!TestTrue(TEXT("the file carries the bitten city to read"),
+				  Read->Cities.IsValidIndex(Outpost)))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	const FCataclysmCity& Restored = Read->Cities[Outpost];
+
+	TestEqual(TEXT("the bitten city kept the defence it had left"),
+			  Restored.Defence, DefenceLeft, 0.01f);
+
+	// WHAT MUST NOT SURVIVE THE FILE. The adjacency is rebuilt by
+	// `UCataclysmEmpireMap::Build`, so writing it would store 96 integers that
+	// can never legitimately differ. Reading them back empty is the proof they
+	// were never written.
+	TestEqual(TEXT("the outward lanes were not written"),
+			  Restored.Outward.Num(), 0);
+	TestEqual(TEXT("nor the inward ones"), Restored.Inward.Num(), 0);
+	TestTrue(TEXT("nor the city's name"), Restored.Name.IsEmpty());
+
+	// AND THE CONTROL: the live map really does have those lanes, so the empty
+	// arrays above are the save dropping them rather than the map never having
+	// had any.
+	TestTrue(TEXT("the live city really has lanes to drop"),
+			 Run->Map->Find(Outpost)->Inward.Num() > 0);
+
+	Forget(Writer, /*bWriteWasStarted=*/true);
+	World->DestroyWorld(false);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterRefusesAMismatchedPair,
+	"Cataclysm.SaveWriter.ADungeonWithNoTimerIsRefusedRatherThanWritten",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterRefusesAMismatchedPair::RunTest(const FString&)
+{
+	// THE TEST THE WHOLE CHECK EXISTS FOR. A well-formed pair round-tripping
+	// proves nothing about the failure this guards against, so the mismatched
+	// states below are built deliberately, one of each kind.
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	Run->Begin(1);
+	Run->AdvanceDay();
+
+	if (!TestTrue(TEXT("the first wave put dungeons on the map"),
+				  Run->DungeonCount() > 0))
+	{
+		return false;
+	}
+
+	FString Why;
+
+	// THE CONTROL. A run nobody has interfered with agrees with itself, so a
+	// refusal below is the mismatch rather than the check refusing everything.
+	if (!TestTrue(TEXT("an untouched run agrees with itself"),
+				  UCataclysmEmpireRun::DungeonsAgreeWithTimers(
+					  Run->Dungeons, Run->Clock->Timers, Why)))
+	{
+		AddError(FString::Printf(TEXT("it said: %s"), *Why));
+		return false;
+	}
+
+	UCataclysmRunSave* Record = NewObject<UCataclysmRunSave>();
+
+	if (!TestTrue(TEXT("and so it is written"),
+				  FCataclysmSaveGather::DungeonsFrom(*Run, *Record, Why)))
+	{
+		return false;
+	}
+
+	const int32 WrittenDungeons = Record->Dungeons.Num();
+	TestEqual(TEXT("with one timer for each dungeon"),
+			  Record->DungeonTimers.Num(), WrittenDungeons);
+
+	// NOW A TIMER SIMPLY MISSING, which leaves the two lists different lengths.
+	{
+		UCataclysmEmpireRun* Broken = NewObject<UCataclysmEmpireRun>();
+		Broken->Begin(1);
+		Broken->AdvanceDay();
+		Broken->Clock->Timers.RemoveAt(0);
+
+		FString Refusal;
+		TestFalse(TEXT("a missing timer is refused"),
+				  FCataclysmSaveGather::DungeonsFrom(*Broken, *Record, Refusal));
+
+		// THE COUNTS ARE WHAT DIFFER HERE, so that is what the refusal says. The
+		// case where a dungeon is unmatched while the COUNTS AGREE is below, and
+		// it is a different branch: this assertion was written expecting that
+		// message and the test caught it.
+		TestTrue(TEXT("and the refusal counts both lists"),
+				 Refusal.Contains(TEXT("timers count down")));
+
+		// AND THE RECORD WAS NOT HALF WRITTEN. It still holds what the sound run
+		// put there, rather than a list from one run and a list from another.
+		TestEqual(TEXT("the record kept the dungeons it already held"),
+				  Record->Dungeons.Num(), WrittenDungeons);
+		TestEqual(TEXT("and the timers"), Record->DungeonTimers.Num(),
+				  WrittenDungeons);
+	}
+
+	// AND A TIMER WITH NO DUNGEON. It would bite a city on behalf of nothing.
+	{
+		UCataclysmEmpireRun* Broken = NewObject<UCataclysmEmpireRun>();
+		Broken->Begin(1);
+		Broken->AdvanceDay();
+		Broken->Dungeons.RemoveAt(0);
+
+		FString Refusal;
+		TestFalse(TEXT("a timer with no dungeon is refused"),
+				  FCataclysmSaveGather::DungeonsFrom(*Broken, *Record, Refusal));
+
+		TestTrue(TEXT("and the refusal says so"),
+				 Refusal.Contains(TEXT("not standing"))
+					 || Refusal.Contains(TEXT("timers count down")));
+	}
+
+	// A DUNGEON WITH NO TIMER WHILE THE COUNTS STILL AGREE, which the length
+	// comparison cannot see. One timer is pointed at a dungeon that is not
+	// there, so one dungeon is left unmatched and one timer is orphaned, and
+	// both lists are still the same length.
+	{
+		UCataclysmEmpireRun* Broken = NewObject<UCataclysmEmpireRun>();
+		Broken->Begin(1);
+		Broken->AdvanceDay();
+
+		if (Broken->Clock->Timers.Num() > 0)
+		{
+			Broken->Clock->Timers[0].DungeonId = 9999;
+
+			FString Refusal;
+			TestFalse(TEXT("an unmatched dungeon is refused even when the "
+						   "counts agree"),
+					  FCataclysmSaveGather::DungeonsFrom(*Broken, *Record,
+														 Refusal));
+
+			TestTrue(TEXT("and the refusal names the dungeon with no timer"),
+					 Refusal.Contains(TEXT("no timer")));
+		}
+	}
+
+	// AND THE CASE EQUAL TOTALS WOULD HIDE: two timers for one dungeon and none
+	// for another. The counts match and every dungeon is findable, so a check
+	// that only compared lengths, or only looked each dungeon up, would pass.
+	{
+		UCataclysmEmpireRun* Broken = NewObject<UCataclysmEmpireRun>();
+		Broken->Begin(1);
+		Broken->AdvanceDay();
+
+		if (Broken->Clock->Timers.Num() >= 2)
+		{
+			Broken->Clock->Timers[1].DungeonId =
+				Broken->Clock->Timers[0].DungeonId;
+
+			FString Refusal;
+			TestFalse(TEXT("two timers for one dungeon is refused"),
+					  FCataclysmSaveGather::DungeonsFrom(*Broken, *Record,
+														 Refusal));
+
+			TestTrue(TEXT("and the refusal counts them"),
+					 Refusal.Contains(TEXT("2 timers")));
+		}
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterWritesTheDungeons,
+	"Cataclysm.SaveWriter.AWrittenRunRecordCarriesTheStandingDungeons",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterWritesTheDungeons::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	UCataclysmSaveWriter* Writer = WriterIn(World);
+	if (!TestNotNull(TEXT("a save writer in the world"), Writer))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
+	World->SetGameInstance(Instance);
+
+	UCataclysmEmpireRun* Run = Instance->BeginEmpireRun(1);
+	if (!TestNotNull(TEXT("a run was begun"), Run))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// ENOUGH DAYS THAT TIMERS HAVE MOVED AND DUNGEONS HAVE RESOLVED, so the
+	// board is one a freshly begun run could not produce.
+	Run->AdvanceDays(200);
+
+	const int32 Standing = Run->DungeonCount();
+	if (!TestTrue(TEXT("dungeons are standing to save"), Standing > 0))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// AND THE PLAYER IS INSIDE ONE, so the note of which dungeon is being walked
+	// has something to carry.
+	const int32 Walked = Run->Dungeons[0].DungeonId;
+	Run->Clock->EnterDungeon(Walked);
+
+	const FRun Ids;
+	Writer->BeginRun(Ids.RunId, Ids.CharacterId, FName(TEXT("Sandbox")), 1);
+	Forget(Writer);
+
+	Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+
+	if (!TestTrue(TEXT("the run record reached the disk"),
+				  WaitForSlot(Writer->RunSlotName())))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(
+		FCataclysmSaveStorage::ReadFromSlot(
+			Writer->RunSlotName(), UserIndex, UCataclysmRunSave::StaticClass(),
+			GetTransientPackage(), Result, Message));
+
+	if (!TestNotNull(TEXT("and it reads back"), Read))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// THE DEFECT THIS TEST EXISTS FOR. Before this change no dungeon reached a
+	// save at all, so a restored empire would have had cities and nothing
+	// besieging them.
+	TestEqual(TEXT("every standing dungeon survives the file"),
+			  Read->Dungeons.Num(), Standing);
+	TestEqual(TEXT("with one timer each"), Read->DungeonTimers.Num(), Standing);
+	TestEqual(TEXT("and the dungeon the player was inside"),
+			  Read->CurrentDungeonId, Walked);
+
+	// AND THE PAIR THAT CAME BACK STILL AGREES, checked with the same function
+	// the save used. A file that round-tripped into a disagreeing pair would be
+	// a serialisation fault rather than a gather one, and nothing else here
+	// would catch it.
+	FString Why;
+	if (!TestTrue(TEXT("the pair read back still agrees"),
+				  UCataclysmEmpireRun::DungeonsAgreeWithTimers(
+					  Read->Dungeons, Read->DungeonTimers, Why)))
+	{
+		AddError(FString::Printf(TEXT("it said: %s"), *Why));
+	}
+
+	// AND ONE DUNGEON'S DETAIL SURVIVED, not merely the count. A record that
+	// wrote the right number of default-constructed dungeons would pass above.
+	if (Read->Dungeons.Num() > 0 && Run->Dungeons.Num() > 0)
+	{
+		const FCataclysmDungeon& Live = Run->Dungeons[0];
+		const FCataclysmDungeon& Saved = Read->Dungeons[0];
+
+		TestEqual(TEXT("its number"), Saved.DungeonId, Live.DungeonId);
+		TestEqual(TEXT("which city it assaults"), Saved.CityId, Live.CityId);
+		TestEqual(TEXT("how deep it is"), Saved.Floors, Live.Floors);
+		TestEqual(TEXT("how many of those floors a city upgrade moved"),
+				  Saved.UpgradeFloors, Live.UpgradeFloors);
+		TestEqual(TEXT("what it does differently"),
+				  static_cast<uint8>(Saved.SubType),
+				  static_cast<uint8>(Live.SubType));
+		TestEqual(TEXT("how long walking it costs"), Saved.WalkDays,
+				  Live.WalkDays, 0.001f);
+		TestEqual(TEXT("and which day it arrived"), Saved.SpawnedDay,
+				  Live.SpawnedDay);
+	}
+
+	Forget(Writer, /*bWriteWasStarted=*/true);
+	World->DestroyWorld(false);
+	return true;
+}
+
+/**
+ * The floors a city upgrade moved on a dungeon survive the run record. Written 2026-10-16.
+ *
+ * WHY A NUMBER IS WRITTEN BY HAND. `FCataclysmDungeon::UpgradeFloors` is set in play in one place,
+ * `CataclysmSurge.cpp` where a dungeon is made, and only on a city that bought one of the two upgrades that move
+ * floors. A run in which nobody bought one has nought on every dungeon, so
+ * `Cataclysm.SaveWriter.AWrittenRunRecordCarriesTheStandingDungeons`, which compares the saved figure with the
+ * live one, compares nought with nought and would pass with a file that dropped the field. Since 2026-10-13 a
+ * dungeon's hit is sized by `Floors` less `UpgradeFloors`, so a restored run that lost the field would hit harder
+ * than the run that was saved.
+ *
+ * ONE DAY IS ADVANCED, which lands the opening wave; nothing more is needed for a dungeon to stand. Seven is not a
+ * figure any rule gives: it is not nought and it is not a dungeon's whole depth.
+ *
+ * THIS TEST TOUCHES THE DISK, as every test in this file does, and deletes its slots on every path out.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterKeepsUpgradeFloorsTest,
+	"Cataclysm.SaveWriter.AWrittenRunRecordKeepsTheFloorsACityUpgradeMovedOnADungeon",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterKeepsUpgradeFloorsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	UCataclysmSaveWriter* Writer = WriterIn(World);
+	if (!TestNotNull(TEXT("a save writer in the world"), Writer))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
+	World->SetGameInstance(Instance);
+
+	UCataclysmEmpireRun* Run = Instance->BeginEmpireRun(1);
+	if (!TestNotNull(TEXT("a run was begun"), Run))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// ONE DAY, WHICH LANDS THE OPENING WAVE.
+	Run->AdvanceDays(1);
+
+	if (!TestTrue(TEXT("dungeons are standing to save"), Run->DungeonCount() > 0))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// SEVEN FLOORS MOVED, WRITTEN BY HAND ON ONE STANDING DUNGEON, which is found again in the file by its number.
+	const int32 FloorsMoved = 7;
+	Run->Dungeons[0].UpgradeFloors = FloorsMoved;
+	const int32 MovedId = Run->Dungeons[0].DungeonId;
+
+	const FCataclysmDungeon* AboutToBeWritten = Run->FindDungeon(MovedId);
+	if (!TestTrue(TEXT("CONTROL: the dungeon about to be written holds 7 floors a city upgrade moved, not nought"),
+				  AboutToBeWritten != nullptr && AboutToBeWritten->UpgradeFloors == FloorsMoved))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	const FRun Ids;
+	Writer->BeginRun(Ids.RunId, Ids.CharacterId, FName(TEXT("Sandbox")), 1);
+	Forget(Writer);
+
+	Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+
+	if (!TestTrue(TEXT("the run record reached the disk"),
+				  WaitForSlot(Writer->RunSlotName())))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(
+		FCataclysmSaveStorage::ReadFromSlot(
+			Writer->RunSlotName(), UserIndex, UCataclysmRunSave::StaticClass(),
+			GetTransientPackage(), Result, Message));
+
+	if (!TestNotNull(TEXT("and it reads back"), Read))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	const FCataclysmDungeon* Saved = nullptr;
+	for (const FCataclysmDungeon& Candidate : Read->Dungeons)
+	{
+		if (Candidate.DungeonId == MovedId)
+		{
+			Saved = &Candidate;
+		}
+	}
+
+	if (TestNotNull(TEXT("the dungeon is in the file, found by its number"), Saved))
+	{
+		TestEqual(TEXT("the floors a city upgrade moved survive the file"), Saved->UpgradeFloors, FloorsMoved);
+	}
+
+	Forget(Writer, /*bWriteWasStarted=*/true);
+	World->DestroyWorld(false);
+	return true;
+}
+
+/**
+ * A restored schedule rolls the wave the live run would have rolled.
+ *
+ * **THIS IS THE TEST THE WHOLE SLICE EXISTS FOR, AND IT COMPARES THE NEXT WAVE
+ * RATHER THAN THE SEED ON PURPOSE.** `FRandomStream` is half savable: the
+ * engine's reflected declaration marks the seed a run STARTED from with
+ * `SaveGame` and the position it has reached without it. So a save that embedded
+ * the stream would write a plausible number, read the same plausible number back,
+ * and satisfy any test that compared saved seeds -- while giving the restored run
+ * a different future from the one it was saved with. Rolling a wave from the
+ * restored state and comparing it against the wave the live run actually rolls is
+ * the only comparison that can tell those two apart.
+ *
+ * IT ROLLS BOTH WAVES AGAINST THE LIVE RUN'S MAP, deliberately. Which cities a
+ * wave lands on depends on which are still standing, and after four hundred days
+ * that is nothing like a fresh empire -- so rolling the second wave against a
+ * fresh map would compare two things at once and fail for the wrong reason. The
+ * map is saved by the previous slice and covered by its own tests; what is on
+ * trial here is the schedule and the stream.
+ *
+ * IT BUILDS THE RESTORED SCHEDULER BY HAND because there is nothing else to use.
+ * Applying a record to a run is the next slice and does not exist yet. So this
+ * proves the record HOLDS ENOUGH to reproduce the future; it does not prove any
+ * restore is correct, and cannot until there is one.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterScheduleRollsTheSameWave,
+	"Cataclysm.SaveWriter.ASavedScheduleRollsTheSameNextWave",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterScheduleRollsTheSameWave::RunTest(const FString&)
+{
+	// BOTH ESCALATIONS AND THE HARSHEST LETHALITY, so that every schedule field
+	// this record carries actually changes what a wave is. Under `Static` at
+	// rung 0 the surge index moves nothing, and a record that dropped it would
+	// pass.
+	constexpr int32 StartingSeed = 4242;
+
+	UCataclysmEmpireRun* Live = NewObject<UCataclysmEmpireRun>();
+	Live->Begin(StartingSeed, ECataclysmSurgeMode::Both, /*LethalityRung=*/2);
+
+	if (!TestNotNull(TEXT("the run has a scheduler"), Live->Surges.Get())
+		|| !TestNotNull(TEXT("and a map"), Live->Map.Get()))
+	{
+		return false;
+	}
+
+	// AS DEEP INTO THE RUN AS THE EMPIRE SURVIVES, WHICH IS NOT A FIXED NUMBER
+	// OF DAYS. It has to be deep: on day 0 the position the stream has reached
+	// and the seed it started from are the same number, so a save that rewound
+	// the stream would be indistinguishable from one that did not. But under
+	// both escalations at the harshest lethality, with nobody clearing anything,
+	// the frontier is gone well before four hundred days -- and a wave rolled
+	// onto an empire with no city left to attack comes back EMPTY, which would
+	// make every comparison below pass without comparing anything. A fixed
+	// number of days was tried first and did exactly that.
+	//
+	// SO IT STOPS WHILE THERE IS STILL A FRONTIER, and says how far it got.
+	//
+	// A FRONTIER OF SEVERAL CITIES AND NOT MERELY ONE. Run until only one city
+	// is left and every dungeon in the wave lands on that one city, so
+	// comparing which city each landed on cannot fail whatever the stream does.
+	// Several cities give the target roll something to choose between, and the
+	// wave below is checked to have used more than one.
+	//
+	// **HOW FAR IT GETS IS A MEASUREMENT AND IT MOVES.** It reported 231 days
+	// before the dungeon sub-type distribution changed and 211 after, because
+	// Siege rose from 10 in 100 to 15 and a Siege destroys the city it stands
+	// on. The line below prints whatever it is now rather than this comment
+	// being the record of it.
+	constexpr int32 MostDays = 400;
+	constexpr int32 FewestCitiesWorthComparing = 5;
+
+	int32 Advanced = 0;
+	while (Advanced < MostDays
+		   && Live->Map->ExposedCities().Num() >= FewestCitiesWorthComparing)
+	{
+		Live->AdvanceDay();
+		++Advanced;
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("advanced %d days: %d cities still on the frontier, %d surges "
+			 "escalated, %d waves landed"),
+		Advanced, Live->Map->ExposedCities().Num(), Live->Surges->SurgeIndex,
+		Live->Surges->SurgesFired));
+
+	if (!TestTrue(TEXT("the empire still has a frontier to put a dungeon on"),
+				  Live->Map->ExposedCities().Num() > 0))
+	{
+		return false;
+	}
+
+	UCataclysmRunSave* Record = NewObject<UCataclysmRunSave>();
+
+	if (!TestTrue(TEXT("the schedule is read"),
+				  FCataclysmSaveGather::SurgeScheduleFrom(*Live, *Record)))
+	{
+		return false;
+	}
+
+	// THE CONTROL FOR EVERYTHING BELOW. If the stream had not moved, restoring
+	// the starting seed would look right and this test would prove nothing.
+	if (!TestNotEqual(TEXT("the stream has moved away from where it started"),
+					  Record->RandomStreamSeed, StartingSeed))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the escalation mode is carried"),
+			  static_cast<uint8>(Record->SurgeMode),
+			  static_cast<uint8>(Live->Surges->Mode));
+	TestEqual(TEXT("the lethality rung is carried"), Record->SurgeLethalityRung,
+			  Live->Surges->LethalityRung);
+	TestEqual(TEXT("the surge index is carried"), Record->SurgeIndex,
+			  Live->Surges->SurgeIndex);
+	TestEqual(TEXT("and how many waves have landed"), Record->SurgesFired,
+			  Live->Surges->SurgesFired);
+	TestEqual(TEXT("and when the next one is due"), Record->NextSurgeDay,
+			  Live->Surges->NextSurgeDay, 0.0001f);
+
+	// AND THE SURGE INDEX IS NOT ITS DEFAULT, or the comparison below could not
+	// tell a carried one from a forgotten one.
+	if (!TestTrue(TEXT("surges have fired, so the index means something"),
+				  Record->SurgeIndex > 0))
+	{
+		return false;
+	}
+
+	// THE WAVE THE LIVE RUN ROLLS, from its own stream. Taken from the genuine
+	// article rather than from a copy of the saved number, so that what follows
+	// compares the record against the run and not the record against itself.
+	const int32 FirstDungeonId = 5000;
+	const TArray<FCataclysmDungeon> FromLive = Live->Surges->RollWave(
+		*Live->Map, Live->Day(), FirstDungeonId, Live->Stream);
+
+	if (!TestTrue(TEXT("the wave is not empty, or nothing is being compared"),
+				  FromLive.Num() > 0))
+	{
+		// WHICH OF THE TWO REASONS IT WAS. Either there is no city left to
+		// attack, or there are cities and the schedule asked for no dungeons;
+		// the fix is different for each and the count alone does not say.
+		AddError(FString::Printf(
+			TEXT("day %d, %d cities on the frontier, %d dungeons due in the "
+				 "next surge"),
+			Live->Day(), Live->Map->ExposedCities().Num(),
+			Live->Surges->DungeonsInNextSurge()));
+		return false;
+	}
+
+	// AND IT LANDED ON MORE THAN ONE CITY, so that comparing which city each
+	// dungeon assaults is a comparison rather than a formality.
+	TSet<int32> CitiesHit;
+	for (const FCataclysmDungeon& Dungeon : FromLive)
+	{
+		CitiesHit.Add(Dungeon.CityId);
+	}
+
+	if (!TestTrue(TEXT("the wave landed on more than one city"),
+				  CitiesHit.Num() > 1))
+	{
+		AddError(FString::Printf(TEXT("%d dungeons, all on city %d"),
+								 FromLive.Num(), FromLive[0].CityId));
+		return false;
+	}
+
+	// AND NOW THE SAME QUESTION PUT TO THE RECORD ALONE.
+	UCataclysmSurgeScheduler* Restored = NewObject<UCataclysmSurgeScheduler>();
+	Restored->Mode = Record->SurgeMode;
+	Restored->LethalityRung = Record->SurgeLethalityRung;
+	Restored->SurgeIndex = Record->SurgeIndex;
+	Restored->SurgesFired = Record->SurgesFired;
+	Restored->NextSurgeDay = Record->NextSurgeDay;
+
+	FRandomStream RestoredStream;
+	RestoredStream.Initialize(Record->RandomStreamSeed);
+
+	const TArray<FCataclysmDungeon> FromRestored = Restored->RollWave(
+		*Live->Map, Live->Day(), FirstDungeonId, RestoredStream);
+
+	if (!TestEqual(TEXT("the restored schedule rolls a wave of the same size"),
+				   FromRestored.Num(), FromLive.Num()))
+	{
+		return false;
+	}
+
+	for (int32 Index = 0; Index < FromLive.Num(); ++Index)
+	{
+		const FCataclysmDungeon& Was = FromLive[Index];
+		const FCataclysmDungeon& Now = FromRestored[Index];
+
+		TestEqual(*FString::Printf(TEXT("dungeon %d assaults the same city"),
+								   Index),
+				  Now.CityId, Was.CityId);
+		TestEqual(*FString::Printf(TEXT("dungeon %d is the same depth"), Index),
+				  Now.Floors, Was.Floors);
+		TestEqual(*FString::Printf(TEXT("dungeon %d does the same thing "
+									   "differently"), Index),
+				  static_cast<uint8>(Now.SubType),
+				  static_cast<uint8>(Was.SubType));
+		TestEqual(*FString::Printf(TEXT("dungeon %d costs the same walk"),
+								   Index),
+				  Now.WalkDays, Was.WalkDays, 0.001f);
+	}
+
+	// THE CONTROL THAT MAKES ALL OF THAT MEAN SOMETHING: the stream rewound to
+	// the seed the run started from -- which is exactly what saving
+	// `FRandomStream` directly would restore -- rolls a DIFFERENT wave. Without
+	// this the loop above would pass if every wave were the same for any seed.
+	FRandomStream Rewound;
+	Rewound.Initialize(StartingSeed);
+
+	const TArray<FCataclysmDungeon> FromRewound = Restored->RollWave(
+		*Live->Map, Live->Day(), FirstDungeonId, Rewound);
+
+	bool bRewoundDiffers = FromRewound.Num() != FromLive.Num();
+	for (int32 Index = 0; !bRewoundDiffers && Index < FromLive.Num(); ++Index)
+	{
+		bRewoundDiffers = FromRewound[Index].CityId != FromLive[Index].CityId
+						  || FromRewound[Index].Floors != FromLive[Index].Floors
+						  || FromRewound[Index].SubType
+								 != FromLive[Index].SubType;
+	}
+
+	TestTrue(TEXT("a stream rewound to the starting seed rolls a different "
+				  "wave, so the comparison above is not vacuous"),
+			 bRewoundDiffers);
+
+	// AND A SECOND CONTROL, FOR THE OTHER HALF OF THE RECORD. A schedule
+	// restored with the right stream but a forgotten surge index brings a wave of
+	// a different size, because escalation counts that index. So the five plain
+	// numbers are load-bearing too, and not merely along for the ride with the
+	// seed.
+	UCataclysmSurgeScheduler* Forgetful = NewObject<UCataclysmSurgeScheduler>();
+	Forgetful->Mode = Record->SurgeMode;
+	Forgetful->LethalityRung = Record->SurgeLethalityRung;
+	Forgetful->SurgesFired = Record->SurgesFired;
+	Forgetful->NextSurgeDay = Record->NextSurgeDay;
+	// AND `SurgeIndex` LEFT AT ITS DEFAULT, which is the whole point.
+
+	FRandomStream ForgetfulStream;
+	ForgetfulStream.Initialize(Record->RandomStreamSeed);
+
+	const TArray<FCataclysmDungeon> FromForgetful = Forgetful->RollWave(
+		*Live->Map, Live->Day(), FirstDungeonId, ForgetfulStream);
+
+	TestNotEqual(TEXT("a schedule that forgot how far it had escalated rolls a "
+					  "wave of a different size"),
+				 FromForgetful.Num(), FromLive.Num());
+
+	return true;
+}
+
+/**
+ * The schedule and the stream position reach the file, through the writer.
+ *
+ * SEPARATE FROM THE TEST ABOVE, AND NOT THE SAME QUESTION. That one asks whether
+ * the record holds enough; this asks whether the writer puts it there and whether
+ * it survives being written as JSON and read back. A gather that was never called
+ * would satisfy the first and fail this.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterWritesTheSchedule,
+	"Cataclysm.SaveWriter.AWrittenRunRecordCarriesTheSurgeSchedule",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterWritesTheSchedule::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterTest;
+
+	constexpr int32 StartingSeed = 4242;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	UCataclysmSaveWriter* Writer = WriterIn(World);
+	if (!TestNotNull(TEXT("a save writer in the world"), Writer))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
+	World->SetGameInstance(Instance);
+
+	// NOT THE DEFAULT MODE OR THE DEFAULT RUNG, so that a writer which never
+	// asked for the schedule would leave the record's defaults in place and be
+	// caught, rather than writing the right answer by accident.
+	UCataclysmEmpireRun* Run = Instance->BeginEmpireRun(
+		StartingSeed, ECataclysmSurgeMode::Both, /*LethalityRung=*/2);
+
+	if (!TestNotNull(TEXT("a run was begun"), Run))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	Run->AdvanceDays(400);
+
+	// THE TWO SURGE COUNTS HOLD THE SAME NUMBER IN A LIVE RUN, so one is moved
+	// by hand. `SurgeIndex` counts what escalation reads and `SurgesFired`
+	// counts waves landed, and today a city falling advances both -- 22 and 22,
+	// measured over a run like this one. Two integer fields holding the same
+	// number round-trip perfectly with their VALUES SWAPPED, so a gather that
+	// put one in the other's field would pass every check below and every check
+	// anything else could make by playing the game. Separating them is the only
+	// way to have the two assertions further down mean two different things.
+	//
+	// IF `bCityFallAdvancesEscalation` EVER BECOMES FALSE the two will differ on
+	// their own and this line can go.
+	Run->Surges->SurgesFired += 3;
+
+	const int32 LiveSeed = Run->Stream.GetCurrentSeed();
+	const int32 LiveIndex = Run->Surges->SurgeIndex;
+	const int32 LiveFired = Run->Surges->SurgesFired;
+	const float LiveDue = Run->Surges->NextSurgeDay;
+
+	if (!TestTrue(TEXT("surges have fired, so these are not all defaults"),
+				  LiveIndex > 0 && LiveFired > 0))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// AND THE TIE REALLY IS BROKEN, or the two assertions below are one
+	// assertion written twice.
+	if (!TestNotEqual(TEXT("the two surge counts are different numbers"),
+					  LiveIndex, LiveFired))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	const FRun Ids;
+	Writer->BeginRun(Ids.RunId, Ids.CharacterId, FName(TEXT("Sandbox")), 1);
+	Forget(Writer);
+
+	Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+
+	if (!TestTrue(TEXT("the run record reached the disk"),
+				  WaitForSlot(Writer->RunSlotName())))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(
+		FCataclysmSaveStorage::ReadFromSlot(
+			Writer->RunSlotName(), UserIndex, UCataclysmRunSave::StaticClass(),
+			GetTransientPackage(), Result, Message));
+
+	if (!TestNotNull(TEXT("and it reads back"), Read))
+	{
+		AddError(FString::Printf(TEXT("it was refused: %s -- %s"),
+			FCataclysmSaveStorage::Describe(Result), *Message));
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	TestEqual(TEXT("the escalation mode survives the file"),
+			  static_cast<uint8>(Read->SurgeMode),
+			  static_cast<uint8>(ECataclysmSurgeMode::Both));
+	TestEqual(TEXT("the lethality rung survives"), Read->SurgeLethalityRung, 2);
+	TestEqual(TEXT("how far escalation had got"), Read->SurgeIndex, LiveIndex);
+	TestEqual(TEXT("how many waves had landed"), Read->SurgesFired, LiveFired);
+	TestEqual(TEXT("and when the next one was due"), Read->NextSurgeDay, LiveDue,
+			  0.001f);
+
+	// THE FIELD THIS SLICE WAS DIFFICULT FOR. A save that embedded the stream
+	// would read back the seed the run started from, which is a plausible number
+	// in the right field -- the failure that looks exactly like success.
+	TestEqual(TEXT("the stream's position survives the file"),
+			  Read->RandomStreamSeed, LiveSeed);
+	TestNotEqual(TEXT("and it is the position reached, not the seed started "
+					  "from"),
+				 Read->RandomStreamSeed, StartingSeed);
+
+	Forget(Writer, /*bWriteWasStarted=*/true);
+	World->DestroyWorld(false);
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterGathersLeftEdict,
+	"Cataclysm.SaveWriter.AGatheredRunRecordCarriesTheEdictLeftOnACity",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterGathersLeftEdict::RunTest(const FString&)
+{
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	UCataclysmRunSave* Record = NewObject<UCataclysmRunSave>();
+	Run->Begin(1);
+
+	const FName Silence(TEXT("Celestial_Edict_of_Silence"));
+	TestTrue(TEXT("an Edict is left on city 0 on day 5"), Run->Map->LeaveEdict(0, Silence, 5));
+
+	if (!TestTrue(TEXT("a run that has begun reads"), FCataclysmSaveGather::CitiesFrom(*Run, *Record))
+		|| !TestTrue(TEXT("the record carries city 0"), Record->Cities.IsValidIndex(0))
+		|| !TestTrue(TEXT("and city 1"), Record->Cities.IsValidIndex(1)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the record carries the left Edict"), Record->Cities[0].LeftEdict, Silence);
+	TestEqual(TEXT("and the day it ends"), Record->Cities[0].LeftEdictUntilDay, 35);
+	TestTrue(TEXT("CONTROL: a city carrying none carries none in the record"), Record->Cities[1].LeftEdict.IsNone());
+	TestEqual(TEXT("CONTROL: and no day"), Record->Cities[1].LeftEdictUntilDay, 0);
+	return true;
+}
+
+namespace CataclysmSaveWriterWaitTest
+{
+	/**
+	 * How long the large record's label is, in characters, and so roughly its
+	 * size on disk in bytes: 32 MB, as in the test of issue #2494.
+	 *
+	 * LARGE SO THAT ITS WRITE IS STILL RUNNING WHEN `WaitForSlot` FIRST LOOKS.
+	 * The record is built and turned into bytes before it is handed over, so
+	 * the background task has only the file to write, and 32 MB takes
+	 * milliseconds against the microseconds between handing it over and the
+	 * first look. Read, not measured.
+	 */
+	static constexpr int32 LargeLabelLength = 32 * 1024 * 1024;
+
+	/** How long to let a write finish before the slot is deleted. */
+	static constexpr double LongestDrainSeconds = 30.0;
+
+	static UCataclysmSaveExampleRecord* ExampleRecordOfSize(int32 Gold, int32 LabelLength)
+	{
+		UCataclysmSaveExampleRecord* Record = NewObject<UCataclysmSaveExampleRecord>();
+		Record->SchemaVersion = UCataclysmSaveExampleRecord::SchemaVersionNow;
+		Record->Label = FString::ChrN(LabelLength, TEXT('x'));
+		Record->Gold = Gold;
+		return Record;
+	}
+
+	/** Wait, for longer than `WaitForSlot` does, until nothing writes a slot. */
+	static bool WaitUntilNothingIsWriting(const FString& Slot)
+	{
+		const double GiveUpAt = FPlatformTime::Seconds() + LongestDrainSeconds;
+		while (FCataclysmSaveStorage::HasAWriteInFlight(Slot))
+		{
+			if (FPlatformTime::Seconds() >= GiveUpAt)
+			{
+				return false;
+			}
+			FPlatformProcess::Sleep(0.01f);
+		}
+		return true;
+	}
+
+	static void DeleteSlot(const FString& Slot)
+	{
+		if (UGameplayStatics::DoesSaveGameExist(Slot, CataclysmSaveWriterTest::UserIndex))
+		{
+			UGameplayStatics::DeleteGameInSlot(Slot, CataclysmSaveWriterTest::UserIndex);
+		}
+	}
+}
+
+/**
+ * `WaitForSlot` returns only once the write to the slot has finished, not as
+ * soon as its file exists, so the record it waited for reads back. Issue #2495.
+ *
+ * WHAT THIS GUARDS. Six tests above read a slot with
+ * `FCataclysmSaveStorage::ReadFromSlot` once `WaitForSlot` returns, and
+ * `Forget` deletes a slot once it does. A file exists from the moment a write
+ * opens it; a read of it while the write still holds it open is refused, and a
+ * delete under it makes the write fail.
+ *
+ * THE CONTROL COMES FIRST: a small record to an empty slot, which reads back
+ * whether or not the wait looks at the write.
+ *
+ * THE LARGE RECORD GOES TO A SLOT THAT ALREADY HOLDS A FILE, so that a wait
+ * which looked only for a file would end on its first look, while the large
+ * write is still running. Without the wait for the write, by reading, no write
+ * is finished at that moment and the read meets either the old record or a
+ * file that is being written. The callbacks are unset on purpose: a write that
+ * fails while the guard is in would otherwise log an error in a later test.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterWaitForSlotWaitsForTheWrite,
+	"Cataclysm.SaveWriter.TheTestsWaitForAWriteToFinishNotOnlyForItsFile",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterWaitForSlotWaitsForTheWrite::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterTest;
+	using namespace CataclysmSaveWriterWaitTest;
+
+	// THE CONTROL: a small record queued to an empty slot.
+	{
+		const FString ControlSlot = FString(SlotPrefix) + TEXT("WaitForSlotControl");
+		DeleteSlot(ControlSlot);
+
+		const UCataclysmSaveExampleRecord* Small = ExampleRecordOfSize(7, 0);
+		FString Error;
+		const bool bQueued = FCataclysmSaveStorage::WriteToSlotAsync(
+			Small, ControlSlot, UserIndex, nullptr, Error);
+		const bool bThere = WaitForSlot(ControlSlot);
+		const bool bStillWriting = FCataclysmSaveStorage::HasAWriteInFlight(ControlSlot);
+
+		ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+		FString Message;
+		const UCataclysmSaveExampleRecord* Read = Cast<UCataclysmSaveExampleRecord>(
+			FCataclysmSaveStorage::ReadFromSlot(
+				ControlSlot, UserIndex, UCataclysmSaveExampleRecord::StaticClass(),
+				GetTransientPackage(), Result, Message));
+		const bool bDrained = WaitUntilNothingIsWriting(ControlSlot);
+
+		TestTrue(FString::Printf(TEXT("control: the small write was handed over (%s)"), *Error),
+			bQueued);
+		TestTrue(TEXT("control: WaitForSlot says the slot is there"), bThere);
+		TestFalse(TEXT("control: and no write to it is in flight when it returns"), bStillWriting);
+		TestTrue(FString::Printf(TEXT("control: it reads back (%s: %s)"),
+			FCataclysmSaveStorage::Describe(Result), *Message),
+			FCataclysmSaveStorage::Succeeded(Result));
+		TestEqual(TEXT("control: and it is the record written"), Read ? Read->Gold : -1, 7);
+
+		if (bDrained)
+		{
+			DeleteSlot(ControlSlot);
+		}
+	}
+
+	const FString LargeSlot = FString(SlotPrefix) + TEXT("WaitForSlotLarge");
+	DeleteSlot(LargeSlot);
+
+	// EVERY RECORD IS BUILT BEFORE ANYTHING IS WRITTEN, so the gap between the
+	// large write being handed over and the wait is as short as it can be made.
+	const UCataclysmSaveExampleRecord* First = ExampleRecordOfSize(1, 0);
+	const UCataclysmSaveExampleRecord* Large = ExampleRecordOfSize(2, LargeLabelLength);
+
+	FString FirstError;
+	const bool bFirstWritten =
+		FCataclysmSaveStorage::WriteToSlot(First, LargeSlot, UserIndex, FirstError);
+
+	FString QueueError;
+	const bool bQueued = FCataclysmSaveStorage::WriteToSlotAsync(
+		Large, LargeSlot, UserIndex, nullptr, QueueError);
+
+	// AT ONCE. Nothing between the handing over above and this call.
+	const bool bThere = WaitForSlot(LargeSlot);
+	const bool bStillWriting = FCataclysmSaveStorage::HasAWriteInFlight(LargeSlot);
+
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	const UCataclysmSaveExampleRecord* Read = Cast<UCataclysmSaveExampleRecord>(
+		FCataclysmSaveStorage::ReadFromSlot(
+			LargeSlot, UserIndex, UCataclysmSaveExampleRecord::StaticClass(),
+			GetTransientPackage(), Result, Message));
+
+	// AND THEN EVERYTHING IS LET FINISH BEFORE THE SLOT IS DELETED, so a write
+	// still running when the guard is broken does not fail under the delete.
+	const bool bDrained = WaitUntilNothingIsWriting(LargeSlot);
+
+	TestTrue(FString::Printf(TEXT("the slot was first written with a small record (%s)"),
+		*FirstError), bFirstWritten);
+	TestTrue(FString::Printf(TEXT("the large write was handed over (%s)"), *QueueError),
+		bQueued);
+	TestTrue(TEXT("WaitForSlot says the slot is there"), bThere);
+	TestFalse(TEXT("and no write to it is in flight when it returns"), bStillWriting);
+	TestTrue(FString::Printf(TEXT("the slot reads back (%s: %s)"),
+		FCataclysmSaveStorage::Describe(Result), *Message),
+		FCataclysmSaveStorage::Succeeded(Result));
+	TestEqual(TEXT("and it is the large record, not the one written first"),
+		Read ? Read->Gold : -1, 2);
+	TestEqual(TEXT("and its label is whole"), Read ? Read->Label.Len() : -1, LargeLabelLength);
+	TestTrue(TEXT("every write to the slot finished within the wait"), bDrained);
+
+	if (bDrained)
+	{
+		DeleteSlot(LargeSlot);
+	}
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// What the player has achieved this run. Issue #1374.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmSaveWriterProgressTest
+{
+	/** Puts a value that is no field's default into each of the fourteen progress fields. Returns the Cataclysm used. */
+	ECataclysmType Achieve(UCataclysmEmpireRun& Run)
+	{
+		const ECataclysmType Faced = Run.ActiveCataclysms.Num() > 0 ? Run.ActiveCataclysms[0] : ECataclysmType::Demonic;
+		Run.QuestObjectives = 3;
+		Run.QuestObjectivesByCataclysm.FindOrAdd(Faced) = 2;
+		Run.BasicDungeonsCleared = 11;
+		Run.DungeonsCleared = 14;
+		Run.DungeonsDetonated = 5;
+		Run.QuestHits = 2;
+		Run.SurgesFromEmptyBoard = 4;
+		Run.NextDungeonId = 41;
+		Run.LastHitDay = 37;
+		Run.LastHitCityId = 9;
+		Run.bLastHitWasAQuestTimer = true;
+		Run.LastMoveDay = 35;
+		Run.LastMoveFromCityId = 6;
+		Run.LastMoveToCityId = 12;
+		return Faced;
+	}
+
+	/** How many of the fourteen fields of `Record` equal `Run`'s. All fourteen is a record that kept everything. */
+	int32 Matching(const UCataclysmEmpireRun& Run, const UCataclysmRunSave& Record, FString& OutDiffering)
+	{
+		int32 Same = 0;
+		const auto Check = [&](bool bSame, const TCHAR* Name)
+		{
+			Same += bSame ? 1 : 0;
+			if (!bSame)
+			{
+				OutDiffering += OutDiffering.IsEmpty() ? Name : *FString::Printf(TEXT(", %s"), Name);
+			}
+		};
+		Check(Record.QuestObjectives == Run.QuestObjectives, TEXT("QuestObjectives"));
+		Check(Record.QuestObjectivesByCataclysm.OrderIndependentCompareEqual(Run.QuestObjectivesByCataclysm),
+			  TEXT("QuestObjectivesByCataclysm"));
+		Check(Record.BasicDungeonsCleared == Run.BasicDungeonsCleared, TEXT("BasicDungeonsCleared"));
+		Check(Record.DungeonsCleared == Run.DungeonsCleared, TEXT("DungeonsCleared"));
+		Check(Record.DungeonsDetonated == Run.DungeonsDetonated, TEXT("DungeonsDetonated"));
+		Check(Record.QuestHits == Run.QuestHits, TEXT("QuestHits"));
+		Check(Record.SurgesFromEmptyBoard == Run.SurgesFromEmptyBoard, TEXT("SurgesFromEmptyBoard"));
+		Check(Record.NextDungeonId == Run.NextDungeonId, TEXT("NextDungeonId"));
+		Check(Record.LastHitDay == Run.LastHitDay, TEXT("LastHitDay"));
+		Check(Record.LastHitCityId == Run.LastHitCityId, TEXT("LastHitCityId"));
+		Check(Record.bLastHitWasAQuestTimer == Run.bLastHitWasAQuestTimer, TEXT("bLastHitWasAQuestTimer"));
+		Check(Record.LastMoveDay == Run.LastMoveDay, TEXT("LastMoveDay"));
+		Check(Record.LastMoveFromCityId == Run.LastMoveFromCityId, TEXT("LastMoveFromCityId"));
+		Check(Record.LastMoveToCityId == Run.LastMoveToCityId, TEXT("LastMoveToCityId"));
+		return Same;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterProgressRoundTripTest,
+	"Cataclysm.SaveWriter.ARunsProgressSurvivesTheRecordAndItsJson",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterProgressRoundTripTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterProgressTest;
+
+	// ISSUE #1374. Gathered from a run, written to JSON and read back, each of the fourteen progress fields equals
+	// the run's. CONTROL: gathered from a run that has achieved nothing, they equal its defaults, which differ from
+	// the values set here in every field, so the comparison can tell a gathered value from a default.
+	UCataclysmEmpireRun* Fresh = NewObject<UCataclysmEmpireRun>();
+	UCataclysmEmpireRun* Played = NewObject<UCataclysmEmpireRun>();
+	Fresh->Begin(1);
+	Played->Begin(1);
+	const ECataclysmType Faced = Achieve(*Played);
+
+	UCataclysmRunSave* FromFresh = NewObject<UCataclysmRunSave>();
+	UCataclysmRunSave* FromPlayed = NewObject<UCataclysmRunSave>();
+	if (!TestTrue(TEXT("set-up: a fresh run's progress is gathered"), FCataclysmSaveGather::ProgressFrom(*Fresh, *FromFresh))
+		|| !TestTrue(TEXT("set-up: a played run's progress is gathered"), FCataclysmSaveGather::ProgressFrom(*Played, *FromPlayed)))
+	{
+		return false;
+	}
+
+	// STAMPED AS THE WRITER STAMPS IT (`UCataclysmSaveWriter::WriteTheRunRecord`). A record made here is version 0,
+	// and reading refuses anything below the first real version, which window w91 found (#1374).
+	FromPlayed->SchemaVersion = UCataclysmRunSave::SchemaVersionNow;
+	FString Json;
+	FString Error;
+	if (!TestTrue(TEXT("set-up: the played record is written to JSON"), FCataclysmSaveStorage::ToJson(FromPlayed, Json, Error)))
+	{
+		AddError(Error);
+		return false;
+	}
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	UCataclysmRunSave* Back = Cast<UCataclysmRunSave>(
+		FCataclysmSaveStorage::FromJson(Json, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
+	if (!TestNotNull(TEXT("set-up: and read back"), Back))
+	{
+		AddError(Message);
+		return false;
+	}
+
+	FString FreshDiffers;
+	FString BackDiffers;
+	FString DefaultsShared;
+	const int32 FreshSame = Matching(*Fresh, *FromFresh, FreshDiffers);
+	const int32 BackSame = Matching(*Played, *Back, BackDiffers);
+	const int32 FreshAgainstPlayed = Matching(*Played, *FromFresh, DefaultsShared);
+	AddInfo(FString::Printf(TEXT("RUN PROGRESS: %d of 14 survive the JSON (%s differ); a fresh run gathers %d of 14 of "
+								 "its own; the fresh record matches the played run in %d of 14; %s holds %d objectives"),
+							BackSame, BackDiffers.IsEmpty() ? TEXT("none") : *BackDiffers, FreshSame, FreshAgainstPlayed,
+							*UEnum::GetValueAsString(Faced), Back->QuestObjectivesByCataclysm.FindRef(Faced)));
+	TestEqual(TEXT("every progress field survives the record and its JSON"), BackSame, 14);
+	TestEqual(TEXT("CONTROL: a fresh run gathers its own fourteen defaults"), FreshSame, 14);
+	TestEqual(TEXT("CONTROL: and those differ from the played run's in every field"), FreshAgainstPlayed, 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterWritesTheProgressTest,
+	"Cataclysm.SaveWriter.AWrittenRunRecordCarriesWhatThePlayerAchieved",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterWritesTheProgressTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterTest;
+	using namespace CataclysmSaveWriterProgressTest;
+
+	// ISSUE #1374, THROUGH THE WRITER AND THE DISK, the way
+	// `AWrittenRunRecordCarriesTheCitiesThroughTheFile` carries the cities: the record the writer itself writes
+	// holds the run's progress.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	UCataclysmSaveWriter* Writer = WriterIn(World);
+	if (!TestNotNull(TEXT("a save writer in the world"), Writer))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
+	World->SetGameInstance(Instance);
+
+	UCataclysmEmpireRun* Run = Instance->BeginEmpireRun(1);
+	if (!TestNotNull(TEXT("a run was begun"), Run))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+	Achieve(*Run);
+
+	const FRun Ids;
+	Writer->BeginRun(Ids.RunId, Ids.CharacterId, FName(TEXT("Sandbox")), 1);
+	Forget(Writer);
+
+	Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+
+	if (!TestTrue(TEXT("the run record reached the disk"), WaitForSlot(Writer->RunSlotName())))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(
+		FCataclysmSaveStorage::ReadFromSlot(
+			Writer->RunSlotName(), UserIndex, UCataclysmRunSave::StaticClass(),
+			GetTransientPackage(), Result, Message));
+	if (!TestNotNull(TEXT("and it reads back"), Read))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	FString Differing;
+	const int32 Same = Matching(*Run, *Read, Differing);
+	AddInfo(FString::Printf(TEXT("WRITTEN PROGRESS: %d of 14 in the file match the run (%s differ); quest objectives %d"),
+							Same, Differing.IsEmpty() ? TEXT("none") : *Differing, Read->QuestObjectives));
+	TestEqual(TEXT("the file the writer wrote holds every progress field"), Same, 14);
+
+	Forget(Writer, /*bWriteWasStarted=*/true);
+	World->DestroyWorld(false);
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// What the run is: its tier and the Cataclysms it faces. Issue #1471.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmSaveWriterIdentityTest
+{
+	/** The list as names, so a line in the log and a comparison of order read the same. */
+	FString Names(const TArray<ECataclysmType>& Cataclysms)
+	{
+		FString Out;
+		for (const ECataclysmType Type : Cataclysms)
+		{
+			Out += Out.IsEmpty() ? UEnum::GetValueAsString(Type) : TEXT(",") + UEnum::GetValueAsString(Type);
+		}
+		return Out;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterIdentityRoundTripTest,
+	"Cataclysm.SaveWriter.ARunsTierAndCataclysmsSurviveTheRecordAndItsJson",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterIdentityRoundTripTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterIdentityTest;
+
+	// ISSUE #1471. A run begun at tier 4, gathered, written to JSON and read back, keeps tier 4 and the same
+	// Cataclysms in the same order: the list of a UENUM is written by name and read back by name. CONTROL: a run
+	// begun at tier 1 gathers tier 1 and a list of a different length, so the test can tell the two tiers apart.
+	UCataclysmEmpireRun* AtFour = NewObject<UCataclysmEmpireRun>();
+	UCataclysmEmpireRun* AtOne = NewObject<UCataclysmEmpireRun>();
+	AtFour->Begin(1, ECataclysmSurgeMode::Static, 0, 4);
+	AtOne->Begin(1, ECataclysmSurgeMode::Static, 0, 1);
+
+	UCataclysmRunSave* FromFour = NewObject<UCataclysmRunSave>();
+	UCataclysmRunSave* FromOne = NewObject<UCataclysmRunSave>();
+	if (!TestTrue(TEXT("set-up: the tier 4 run is gathered"), FCataclysmSaveGather::IdentityFrom(*AtFour, *FromFour))
+		|| !TestTrue(TEXT("set-up: the tier 1 run is gathered"), FCataclysmSaveGather::IdentityFrom(*AtOne, *FromOne)))
+	{
+		return false;
+	}
+
+	// STAMPED AS THE WRITER STAMPS IT, which window w91 found a record made here needs (#1374).
+	FromFour->SchemaVersion = UCataclysmRunSave::SchemaVersionNow;
+	FString Json;
+	FString Error;
+	if (!TestTrue(TEXT("set-up: the tier 4 record is written to JSON"), FCataclysmSaveStorage::ToJson(FromFour, Json, Error)))
+	{
+		AddError(Error);
+		return false;
+	}
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	UCataclysmRunSave* Back = Cast<UCataclysmRunSave>(
+		FCataclysmSaveStorage::FromJson(Json, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
+	if (!TestNotNull(TEXT("set-up: and read back"), Back))
+	{
+		AddError(Message);
+		return false;
+	}
+
+	AddInfo(FString::Printf(TEXT("RUN IDENTITY: tier %d facing %s; read back tier %d facing %s; tier 1 gathers tier %d facing %s"),
+							AtFour->DifficultyTier, *Names(AtFour->ActiveCataclysms), Back->DifficultyTier,
+							*Names(Back->ActiveCataclysms), FromOne->DifficultyTier, *Names(FromOne->ActiveCataclysms)));
+	TestEqual(TEXT("the tier survives the record and its JSON"), Back->DifficultyTier, 4);
+	TestEqual(TEXT("and the Cataclysms, in the run's order"), Names(Back->ActiveCataclysms), Names(AtFour->ActiveCataclysms));
+	TestEqual(TEXT("CONTROL: a tier 1 run gathers tier 1"), FromOne->DifficultyTier, 1);
+	TestTrue(TEXT("CONTROL: and a list of a different length from tier 4's"),
+			 FromOne->ActiveCataclysms.Num() != AtFour->ActiveCataclysms.Num());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWriterWritesTheIdentityTest,
+	"Cataclysm.SaveWriter.AWrittenRunRecordCarriesItsTierAndCataclysms",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWriterWritesTheIdentityTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveWriterTest;
+	using namespace CataclysmSaveWriterIdentityTest;
+
+	// ISSUE #1471, THROUGH THE WRITER AND THE DISK, the harness of
+	// `AWrittenRunRecordCarriesTheCitiesThroughTheFile`: the file the writer itself writes holds the run's tier and
+	// its Cataclysms.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	UCataclysmSaveWriter* Writer = WriterIn(World);
+	if (!TestNotNull(TEXT("a save writer in the world"), Writer))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
+	World->SetGameInstance(Instance);
+
+	UCataclysmEmpireRun* Run = Instance->BeginEmpireRun(1, ECataclysmSurgeMode::Static, 0, 4);
+	if (!TestNotNull(TEXT("a run was begun"), Run))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	const FRun Ids;
+	Writer->BeginRun(Ids.RunId, Ids.CharacterId, FName(TEXT("Sandbox")), 1);
+	Forget(Writer);
+
+	Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+
+	if (!TestTrue(TEXT("the run record reached the disk"), WaitForSlot(Writer->RunSlotName())))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(
+		FCataclysmSaveStorage::ReadFromSlot(
+			Writer->RunSlotName(), UserIndex, UCataclysmRunSave::StaticClass(),
+			GetTransientPackage(), Result, Message));
+	if (!TestNotNull(TEXT("and it reads back"), Read))
+	{
+		Forget(Writer, /*bWriteWasStarted=*/true);
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	AddInfo(FString::Printf(TEXT("WRITTEN IDENTITY: the run is tier %d facing %s; the file holds tier %d facing %s"),
+							Run->DifficultyTier, *Names(Run->ActiveCataclysms), Read->DifficultyTier,
+							*Names(Read->ActiveCataclysms)));
+	TestEqual(TEXT("the file the writer wrote holds the run's tier"), Read->DifficultyTier, Run->DifficultyTier);
+	TestEqual(TEXT("and its Cataclysms, in order"), Names(Read->ActiveCataclysms), Names(Run->ActiveCataclysms));
+
+	Forget(Writer, /*bWriteWasStarted=*/true);
+	World->DestroyWorld(false);
+	return true;
+}
+
+#endif // WITH_AUTOMATION_TESTS

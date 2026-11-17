@@ -1,0 +1,1037 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "GameplayTagContainer.h"
+#include "Character/CataclysmCharacterBase.h"
+#include "AbilitySystem/CataclysmAbilitySet.h"
+#include "CataclysmPlayerCharacter.generated.h"
+
+class UAnimSequence;
+class USkeletalMeshComponent;
+class UStaticMeshComponent;
+class UCameraComponent;
+class UCataclysmEquipmentComponent;
+class UCataclysmInventoryComponent;
+class UCataclysmWeaponSlotsComponent;
+class USpringArmComponent;
+struct FOnAttributeChangeData;
+struct FCataclysmDeathNotice;
+struct FCataclysmHitNotice;
+struct FCataclysmSkillUsedNotice;
+struct FCataclysmItem;
+enum class ECataclysmGearSlot : uint8;
+enum class ECataclysmWearResult : uint8;
+
+/**
+ * The player pawn. Its ability system component lives on the player state, so
+ * that it survives the death and respawn the design treats as routine.
+ */
+
+/**
+ * Whether a character is expected to be wearing a weapon at this moment.
+ *
+ * BECAUSE ONE MOMENT IN A CHARACTER'S LIFE IS NOT LIKE THE OTHERS, and until
+ * issue #933 the difference was reported as a fault. `PossessedBy` runs BEFORE
+ * `BeginPlay` for the pawn a game mode spawns at level start -- measured on
+ * 2026-08-25, not assumed -- and `GiveStartingWeapon` runs from `BeginPlay`. So
+ * at possession no weapon is worn yet and that is the design working.
+ *
+ * A WEAPON IS EXPECTED EVERYWHERE ELSE, and there the complaint is the whole
+ * point. Issue #840 was a character wearing nothing and swinging a Greataxe
+ * anyway, which nothing on screen said and which made equipping a whip look
+ * like the character getting weaker for no reason.
+ */
+UENUM()
+enum class ECataclysmWeaponExpected : uint8
+{
+	/** Something is meant to be worn. Say so in the log when nothing is. */
+	Yes,
+
+	/** Possession, which happens before the starting weapon is put on. */
+	NotYet,
+};
+
+UCLASS()
+class CATACLYSM_API ACataclysmPlayerCharacter : public ACataclysmCharacterBase
+{
+	GENERATED_BODY()
+
+public:
+	ACataclysmPlayerCharacter();
+
+	/**
+	 * How fast the player walks before any class has been chosen, in centimetres
+	 * per second.
+	 *
+	 * WHAT IT REPLACED. Nothing set a walk speed at all until this constant
+	 * existed, so the player ran at Unreal's engine default of 600 -- see
+	 * `MaxWalkSpeed` in
+	 * Engine/Source/Runtime/Engine/Private/Components/CharacterMovementComponent.cpp.
+	 * The design gives the three Demonic classes 4.6, 3.5 and 4.0 metres per
+	 * second and not one of them reached the game. Issue #391.
+	 *
+	 * WHY THIS FIGURE AND NOT A NEW ONE. It is the shared `Default` line in
+	 * game/Data/ClassStats.csv, `movement_speed` 4.0, which is also what
+	 * UCataclysmCombatAttributeSet starts the MovementSpeed attribute at and what
+	 * the Masochist walks at. There is no class selection yet, so a character
+	 * that has chosen nothing walks at the line every class inherits rather than
+	 * at an engine constant.
+	 *
+	 * ONLY THE STARTING POINT. The pawn follows the MovementSpeed attribute from
+	 * the moment there is an ability system to read it from, so gear, passives
+	 * and effects move it. See InitAbilityActorInfo.
+	 */
+	static constexpr float DefaultWalkSpeedCmPerSecond = 400.0f;
+
+	/**
+	 * Centimetres in a metre.
+	 *
+	 * The design and the simulation state movement speed in metres per second;
+	 * UCharacterMovementComponent walks in centimetres per second. The factor is
+	 * applied in ApplyMovementSpeed and nowhere else.
+	 */
+	static constexpr float CentimetresPerMetre = 100.0f;
+
+	/**
+	 * The radius of the player's collision capsule, in centimetres: the
+	 * `CapsuleRadius` this class's constructor gives its capsule, 42.
+	 *
+	 * PUBLIC FOR THE ONE QUESTION ANOTHER CLASS ASKS OF IT. Every creature's melee
+	 * reach is designed against this body -- the Brute's 90 cm is its own 48 plus
+	 * this 42 -- so `ACataclysmEnemyController::ReachAgainstCm` reads it to say
+	 * how far that reach goes against a body of another size. Issue #2706.
+	 *
+	 * A FUNCTION AND NOT THE CONSTANT MOVED HERE, so the figure stays written once,
+	 * in the `.cpp`, where the Python checks that compare it with the model read
+	 * it.
+	 */
+	static float CapsuleRadiusCm();
+
+	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
+
+	/**
+	 * Writes a movement speed, stated in metres per second, onto the movement
+	 * component.
+	 *
+	 * A NON-POSITIVE SPEED IS REFUSED RATHER THAN WRITTEN. An ability system that
+	 * holds no combat attribute set reports zero rather than failing, and a
+	 * MaxWalkSpeed of zero is a character who cannot move with nothing on screen
+	 * to say why. Refusing leaves whatever speed was last valid, which for a pawn
+	 * whose attributes have not arrived yet is DefaultWalkSpeedCmPerSecond.
+	 *
+	 * NOTHING IN THE PROJECT ROOTS THE PLAYER, so nothing is being blocked by
+	 * this. A designed root is a status effect and would stop movement through
+	 * the movement mode rather than by setting a speed of zero.
+	 *
+	 * Public so a test can drive it without building an ability system. The game
+	 * reaches it through the MovementSpeed attribute.
+	 */
+	void ApplyMovementSpeed(float MetresPerSecond);
+
+	/**
+	 * Works the speed out again and writes it, asking for any bonus that depends
+	 * on the character's state rather than reading the attribute.
+	 *
+	 * WHY THE ATTRIBUTE IS NOT ENOUGH SINCE ISSUE #959. The Masochist's Desperate
+	 * Measures node gives movement speed only "while at or below 50% health".
+	 * Such a bonus is deliberately never written onto the attribute -- it would
+	 * be stale the moment health moved -- so a speed read straight off the
+	 * attribute is the speed of a character with no condition on it.
+	 *
+	 * CALLED ON FOUR EVENTS, AND SINCE ISSUE #1821 ON TIME PASSING TOO.
+	 * `OnMovementSpeedChanged` (gear, a level, an attribute point),
+	 * `OnClassResourceChanged`, `HealthChanged` and `InitAbilityActorInfo` are
+	 * the events. All go through here, so no two of them can produce different
+	 * speeds.
+	 *
+	 * A CONDITION THAT CHANGES WITH NO EVENT -- a timer running out, a body
+	 * walking closer -- was read late or not at all until issue #1821: the
+	 * Ravager keystone Unstoppable's "while an enemy is within four metres" took
+	 * effect only when the player's health next moved. It now reaches the
+	 * movement component through `RefreshMovementSpeedIfItCanChangeUnannounced`,
+	 * on the quarter-second regeneration step and on every event that opens a
+	 * timed window. Count the callers rather than quoting a number; this said
+	 * "two places" once and the number has moved three times.
+	 */
+	void RefreshMovementSpeed();
+
+	/**
+	 * Whether the movement speed could have changed since it was last asked for
+	 * without any event telling this character. Issue #1821.
+	 *
+	 * TRUE WHEN EITHER SPEED STAT CARRIES A ROW whose condition depends on time,
+	 * motion, surroundings or an attribute nothing here listens to, as
+	 * `UCataclysmStatPipeline::WhatConditionDependsOn` classifies it, or a row
+	 * whose size is scaled by anything, since every scale source measures
+	 * something that moves on its own. False for every character with no such
+	 * row, which is nearly every character, and then the step does no work.
+	 */
+	bool MovementSpeedCanChangeUnannounced() const;
+
+	/**
+	 * Asks for the movement speed again, but only when
+	 * `MovementSpeedCanChangeUnannounced` says it could have moved. Issue #1821.
+	 * Called on every regeneration step and on every action event.
+	 */
+	void RefreshMovementSpeedIfItCanChangeUnannounced();
+
+	/**
+	 * How many times `RefreshMovementSpeedIfItCanChangeUnannounced` has asked.
+	 * Issue #1821.
+	 *
+	 * FOR A TEST, which has to see that a character with nothing to watch costs
+	 * nothing on the step: a speed that came out right would say nothing about
+	 * how often it was asked for.
+	 */
+	int32 GetUnannouncedSpeedRefreshCount() const
+	{
+		return UnannouncedSpeedRefreshCount;
+	}
+
+	/**
+	 * The stat name saying nothing may lower this character's movement speed.
+	 *
+	 * HERE RATHER THAN ON THE ATTRIBUTE SET, because this project keeps a
+	 * stat-name constant on the class that READS it: the damage and defence
+	 * names sit on `UCataclysmDamageCalculation`, the minion ones on
+	 * `UCataclysmCommand`, crowd control resistance on `UCataclysmSkillEffects`.
+	 * `RefreshMovementSpeed` is the only reader of this one.
+	 *
+	 * ONE SPELLING, BECAUSE TWO WOULD FAIL SILENTLY. It has to match the key in
+	 * `UCataclysmPlayerClassStats::StatToAttribute` and the `Stat` column of the
+	 * rows; a disagreement of one character would grant the node and never read
+	 * it, with nothing anywhere saying so.
+	 */
+	static const TCHAR* MovementSpeedReductionSuppressedStat;
+
+	/**
+	 * The stat name saying a crowd control effect on this character ends when
+	 * the enemy that applied it dies. Issue #1515.
+	 *
+	 * HERE FOR THE SAME REASON AS THE ONE ABOVE: this project keeps a
+	 * stat-name constant on the class that READS it, and
+	 * `EndCrowdControlAppliedBy` below is its only reader.
+	 */
+	static const TCHAR* CrowdControlEndsWhenItsApplierDiesStat;
+
+	/**
+	 * A character died somewhere. If this character killed it and holds Nothing
+	 * Moves You, every crowd control effect that dead character applied to this
+	 * one ends now. Issue #1515.
+	 *
+	 * A STUN IS WHAT THAT REACHES TODAY. Crowd control in this game is a stun
+	 * and displacement; displacement is instantaneous and has nothing to end.
+	 *
+	 * THE RE-STUN WINDOW IS LEFT ALONE. `ApplyStun` also applies a StunImmune
+	 * tag for five seconds, which is this character's PROTECTION rather than
+	 * something done to it. Ending that would leave them re-stunnable sooner,
+	 * which is the opposite of what the node promises.
+	 */
+	void OnSomethingDied(const FCataclysmDeathNotice& Notice);
+
+	/**
+	 * Make Follow Through's waiting repeat, or ask again next frame while the
+	 * killing use is still running. Issue #1515. A timer rather than `Tick`,
+	 * because this character's tick turns itself off once the camera settles.
+	 */
+	void ContinueFollowThrough();
+
+	/**
+	 * A blow this character dealt, for the worn rows that act on one.
+	 *
+	 * TWO EVENTS COME OUT OF ONE ANNOUNCEMENT: a hit dealt, and a critical
+	 * strike when that hit was one. They are separate because a row may want
+	 * either, and a critical strike is a kind of hit rather than a different
+	 * thing.
+	 *
+	 * `hit_dealt` IS NOT `seconds_after_hit_taken`, which is the same word at
+	 * the opposite end of one blow: that one is stamped on whoever was hit.
+	 */
+	void OnSomethingWasHit(const FCataclysmHitNotice& Notice);
+
+	/**
+	 * A skill this character used, for the worn rows that act on one.
+	 *
+	 * NOT THE BASIC ATTACK, ruled 2026-09-14: it is the slot the design calls
+	 * automatic and free, and a row generating resource on it would generate
+	 * constantly. Every other shape is a skill use.
+	 */
+	void OnSkillWasUsed(const FCataclysmSkillUsedNotice& Notice);
+
+	/**
+	 * How near a death has to be to count as near this character.
+	 *
+	 * THE SAME 300 cm THE THREE DUNGEON RULES USE for a thing that happens at a
+	 * point -- Withered Ground, Singularity Wells and Infernal Rain, which tie
+	 * their three together with a static assertion. COPIED AS A CONCLUSION AND
+	 * NOT DERIVED AGAIN, and declared here rather than reached for across the
+	 * module, because an enchantment is not a dungeon rule and a character file
+	 * should not depend on the dungeon rule library to know how far away is
+	 * near.
+	 */
+	static constexpr float NearbyDeathRadiusCm = 300.0f;
+
+	/**
+	 * End every crowd control effect on this character that the named actor
+	 * applied. Issue #1515.
+	 *
+	 * PUBLIC SO A TEST CAN DRIVE IT WITHOUT A DEATH, which is the same reason
+	 * `ApplyMovementSpeed` and `ApplyChosenClassStats` above are public. The
+	 * game reaches it only through `OnSomethingDied`.
+	 *
+	 * IT DOES NOT CHECK THE FLAG. The caller does, so a test can exercise the
+	 * removal and the gate separately rather than only together.
+	 */
+	void EndCrowdControlAppliedBy(const AActor* Applier);
+
+	/**
+	 * The character's health moved, so a bonus that depends on it may have come
+	 * on or gone off. Issue #959.
+	 */
+	virtual void HealthChanged() override;
+
+	/** Server: the pawn has been possessed and the player state is available. */
+	virtual void PossessedBy(AController* NewController) override;
+
+	/**
+	 * Puts the class stat line named by `Cataclysm.PlayerClass`, resolved at the
+	 * level named by `Cataclysm.PlayerLevel`, onto this character.
+	 *
+	 * CALLED FROM PossessedBy AND NOWHERE ELSE. Not from InitAbilityActorInfo,
+	 * which is documented as safe to run twice and does: a whole stat line
+	 * written from there would overwrite anything else that had set an attribute
+	 * and would refill the character's health each time.
+	 *
+	 * PUBLIC SO A TEST CAN DRIVE IT, which is the same reason the projectile
+	 * exposes `Step` and the strike template exposes `SwingOnce`. A test world
+	 * built with `UWorld::CreateWorld` has no controller to possess with, so
+	 * possession itself cannot be reached; this is the one step that matters.
+	 */
+	void ApplyChosenClassStats();
+
+	/**
+	 * Makes the character match what was chosen in the character creator.
+	 *
+	 * THREE THINGS, AND ALL THREE HAVE TO MOVE TOGETHER. The chosen weapon type
+	 * decides which item is worn, the chosen damage type decides which six
+	 * skills that weapon grants, and the ability slots then have to be filled
+	 * again from the pair. Moving one without the others is exactly issue #840
+	 * one field along: a character holding a whip and swinging a Greataxe.
+	 *
+	 * IT DOES NOTHING AT ALL WHEN NOBODY HAS CHOSEN, and that is what makes it
+	 * safe to call from possession. `ACataclysmPlayerState::HasChosenAtCreation`
+	 * is false for every character stood up by an automation test and for every
+	 * character that existed before the creator did, so all of them keep exactly
+	 * the Greataxe and the Demonic damage type they had.
+	 *
+	 * THE OLD WEAPON GOES INTO THE BAG rather than being destroyed, which is the
+	 * rule `UCataclysmWearing` exists to keep.
+	 *
+	 * PUBLIC SO THE SCREEN AND A TEST CAN BOTH DRIVE IT, which is the same
+	 * reason `ApplyChosenClassStats` above is public.
+	 *
+	 * @return false when nothing was chosen, when there is no player state, or
+	 *         when the weapon could not be changed. Says so in the log.
+	 */
+	bool ApplyCreationChoice();
+
+	/**
+	 * Fills the six ability slots again from what is worn and what the player chose. Issue #837 layer 3.
+	 *
+	 * WHAT `ACataclysmPlayerState::AssignSkill` AND `ClearSkillChoice` CALL, so a choice reaches the keys at once. The
+	 * private `FillAbilitySlotsFromWornWeapon`, and then, since layer 4 (ruled Q3a), a skill that changed keys takes
+	 * its running cooldown and charges with it (`UCataclysmAbilitySystemComponent::CarryCooldownsToNewKeys`). No stat
+	 * line is written.
+	 */
+	void RefillAbilitySlots();
+
+	/** Client: the player state has replicated. There is no PossessedBy here. */
+	virtual void OnRep_PlayerState() override;
+
+	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaSeconds) override;
+
+	/**
+	 * Puts the Mannequin model on the mesh before any component registers.
+	 * Issue #1542. RightHandWeapon and LeftHandWeapon hang from the mesh's
+	 * HandGrip sockets, and registering them asks the mesh where those are. See
+	 * ACataclysmCharacterBase::WearBodyBeforeComponentsRegister.
+	 */
+	virtual void PreRegisterAllComponents() override;
+
+	/**
+	 * Moves the camera nearer or further by whole wheel notches.
+	 *
+	 * Positive zooms in, which is what a wheel pushed forward reports and what
+	 * every game in the genre does with it. The result is clamped, so a player
+	 * holding the wheel down cannot end up inside the character or looking at the
+	 * whole level.
+	 */
+	void AddCameraZoom(float Notches);
+
+	/**
+	 * Darken the camera for a limited sight, or undo it at 0. The vision system's first drawing of darkness: the
+	 * camera's own vignette and a darker exposure, set here with no asset, so it is not an edge at the radius.
+	 * Issues #1820 and #41.
+	 */
+	void SetSightDarkness(float RadiusCm);
+
+	/** The sight the camera is darkened for, or 0. For tests, which have no renderer to look at. */
+	float SightDarknessRadiusCm() const { return SightDarknessRadius; }
+
+	/**
+	 * The distance the camera is moving toward, in centimetres.
+	 *
+	 * This is not the same as the boom's current length: the camera eases toward
+	 * this over a few frames rather than jumping. Reading the boom mid-glide
+	 * gives an intermediate value, which is why the target is exposed separately.
+	 */
+	float GetTargetCameraDistance() const { return TargetCameraDistance; }
+
+	/**
+	 * How long the player lies dead before coming back, in seconds.
+	 *
+	 * A JUDGEMENT, AND LABELLED AS ONE. No design document describes the moment
+	 * of death at all -- there is no death screen, no prompt, no input lockout
+	 * and no stated timing anywhere in `docs/`. Three seconds is long enough
+	 * that the death is visible as an event rather than a flicker, and short
+	 * enough that testing combat by dying repeatedly is not tedious. It is
+	 * expected to change once the death moment is designed.
+	 */
+	static constexpr float RespawnDelaySeconds = 3.0f;
+
+	/**
+	 * Stop, and come back after `RespawnDelaySeconds`.
+	 *
+	 * WHAT A DEATH IS, IN ORDER. Here, at the killing blow: the save is written,
+	 * the player is marked dead and halted, a worn row that acts on death fires,
+	 * and `Revive` is scheduled. In `Revive`, when the delay is over: a death
+	 * inside a dungeon of the empire ends the walk of that dungeon, resolves it
+	 * if it is an ordinary one and costs the lethality mode's days -- issue #41
+	 * -- and then the character stands back up whole.
+	 *
+	 * THE DAYS AND THE RESOLVE ARE NOT CHARGED HERE. The comment at the end of
+	 * this function says why they wait for `Revive`.
+	 */
+	virtual void HandleDeath() override;
+
+	/**
+	 * Undo the death: end the walk of the dungeon the character died in, clear
+	 * the mark, clear everything temporary on the character, refill, and stand
+	 * up. Issues #1535 and #41.
+	 *
+	 * WHERE IT STANDS UP IS NOT THE CAPITAL. The design says a death "respawns
+	 * the player at the capital", and the capital as a place is not built --
+	 * issue #48. It stands up at the entrance of the dungeon floor still
+	 * standing, or at the level's player start where there is no such floor.
+	 *
+	 * Public so a test can run it without waiting out a timer, and so the moment
+	 * of coming back is one function rather than a lambda inside the timer.
+	 */
+	void Revive();
+
+	/** Whether the player is currently dead and waiting to come back. */
+	bool IsAwaitingRespawn() const;
+
+	/**
+	 * How long the notice saying what a death cost stays on the heads-up display, in seconds. Issue #41, 2026-11-02.
+	 *
+	 * A JUDGEMENT, AND LABELLED AS ONE. The ruling asked for the duration other timed notices use, and the heads-up
+	 * display has no timed notice of a sentence to take one from: the timed texts it draws are a damage number
+	 * (`UCataclysmCombatOverlay::NumberLifetimeSeconds`, 1.1), the word "Negated" (`NegatedShownSeconds`, 2) and the
+	 * creature panel's linger (`UCataclysmCreaturePanel::LingerSeconds`, 1), each one word or one number. This line
+	 * runs to about thirty words, which at about four words a second is seven or eight seconds of reading; 8 is that,
+	 * and play settles it, as it settles `RespawnDelaySeconds` above.
+	 */
+	static constexpr float DeathCostNoticeSeconds = 8.0f;
+
+	/**
+	 * The notice saying what the last death cost, at a moment of the world's time, or empty: the line
+	 * `ACataclysmDungeonGameMode::DeathCostLine` gave when the character stood back up from a death that ended a walk,
+	 * for `DeathCostNoticeSeconds` from that moment. Issue #41, 2026-11-02.
+	 *
+	 * THE TIME IS THE CALLER'S, as `ACataclysmHUD::DropExpired` takes it, so a test can ask about any moment without
+	 * ticking a world. The heads-up display passes the world's time.
+	 *
+	 * NOTHING IS POSTED for a death that ended no walk: no dungeon of the empire bound, the playtest switch set, or
+	 * the Cataclysm's own dungeon.
+	 */
+	FString DeathCostNoticeAt(float WorldSeconds) const;
+
+	/**
+	 * Whether `DeathCostNoticeAt` would answer the notice at that moment, without copying it: what the heads-up
+	 * display asks every frame. The one place the notice's seconds are counted.
+	 */
+	bool DeathCostNoticeIsUpAt(float WorldSeconds) const;
+
+	/** The world's time the notice was posted at, or -1 when none has been. For tests. */
+	float DeathCostNoticePostedAtSeconds() const { return DeathCostNoticePostedAt; }
+
+	/**
+	 * What the character carries, and what it is wearing.
+	 *
+	 * ACCESSORS RATHER THAN MAKING THE COMPONENTS PUBLIC, because the
+	 * pointers are protected so that only this class decides when they are
+	 * replaced. Reading them is safe; reassigning them is not.
+	 */
+	UCataclysmInventoryComponent* GetInventory() const { return Inventory; }
+
+	/**
+	 * Put on an item the player has said yes to wearing past the Consumption Threshold, and mark the character when
+	 * the equip crosses it. Issues #2687 and #2688. The inventory screen's "Wear it" and `Cataclysm.Equip <slot>
+	 * confirm` both come here, so the mark has one place it is set.
+	 *
+	 * MARKED BEFORE THE EQUIP, NOT AFTER. Taking the item out of the bag and putting what came off back in each raise
+	 * the inventory's save trigger, and that writes the character record there and then. Marked afterwards, that record
+	 * would be written without the mark, and a player who quit at once would load unmarked: the escape the saved mark
+	 * exists to close (ruled 2026-11-02). An equip that then does not happen takes the mark back, unless the character
+	 * was marked already, and raises the trigger once more so the record says so too.
+	 *
+	 * ONLY A CROSSING MARKS: a yes on an equip that stays below the threshold, or was already past it, puts the item on
+	 * and marks nothing.
+	 *
+	 * AND THE CROSSING CAPTURES THE BUILD THE DOUBLE WEARS, AFTER THE EQUIP (the owner's decision of 2026-11-02, O4: the
+	 * double is the character as it was at the crossing), keeps it on the player state beside the mark, and raises the
+	 * save trigger again so the character record holds both. Only when no build is held already. Issue #2688.
+	 *
+	 * @param AskedAbout  the item the question named, which the carried slot must still hold exactly; null for the
+	 *                    console's confirm, which named a slot and no item.
+	 */
+	ECataclysmWearResult WearPastTheThreshold(int32 CarriedSlot, const FCataclysmItem* AskedAbout, ECataclysmGearSlot& OutSlot);
+
+	/** What the character is wearing. Issue #828. */
+	UCataclysmEquipmentComponent* GetEquipment() const { return Equipment; }
+
+	/** The ItemBases row the character begins wearing. Issue #840. */
+	FName GetStartingWeaponBase() const { return StartingWeaponBase; }
+
+	/**
+	 * Draws whatever is worn in the two weapon slots, and clears a hand that
+	 * holds nothing. Issue #1125.
+	 *
+	 * CLEARS AS WELL AS SETS, WHICH IS THE HALF THAT BREAKS SILENTLY. Taking a
+	 * weapon off has to remove its mesh, and a version that only ever assigned
+	 * would leave the last weapon in the character's hand for ever -- looking
+	 * exactly like a weapon that was still equipped, while every number said
+	 * otherwise. That is issue #840 one step along: the character's hand and
+	 * the character's stats disagreeing, with nothing on screen to say so.
+	 *
+	 * HUNG ON OnEquipmentChanged RATHER THAN A NEW MOMENT, because that already
+	 * runs on every equipment change and already recomputes the stat line and
+	 * the ability slots from the same event.
+	 *
+	 * PUBLIC SO A TEST CAN DRIVE IT, which is the same reason
+	 * `ApplyChosenClassStats` and `Revive` are public. A test world built with
+	 * `UWorld::CreateWorld` has no controller to possess with, so a test cannot
+	 * rely on the equipment broadcast reaching a handler bound at BeginPlay.
+	 */
+	void RefreshWeaponMeshes();
+
+	/**
+	 * Which worn weapon each hand draws: Weapon1 in the right and Weapon2 in the
+	 * left, except that ONE WEAPON WORN IS DRAWN IN THE RIGHT HAND, whichever slot
+	 * holds it (ruled 2026-10-25; "There is no primary hand"). Null for an empty
+	 * hand. Static and art-free so a test can ask it on a machine without the
+	 * weapons pack.
+	 */
+	static void WeaponsInHands(const UCataclysmEquipmentComponent* FromEquipment,
+							   const FCataclysmItem*& OutRight,
+							   const FCataclysmItem*& OutLeft);
+
+	/**
+	 * Swings when the character uses any skill, including the basic attack.
+	 * Issue #1126.
+	 *
+	 * THROUGH THE ANIMATION BLUEPRINT'S SLOT, UNLIKE THE DEATH CLIP. `ABP_Unarmed`
+	 * carries a `DefaultSlot`, so an attack blends over the locomotion graph and
+	 * back out again rather than cutting to it and cutting back. A death is the
+	 * opposite case and is played onto the component directly, because it has to
+	 * hold its last frame; see PlayDeathAnimation.
+	 *
+	 * ROOT MOTION IS SWITCHED OFF, AND NOT HERE. All four attack clips carry it
+	 * and an animation instance defaults to taking root motion from montages, so
+	 * without something stopping it every swing walks the character forward --
+	 * which the project owner saw and reported on 2026-09-01 as "just a slide
+	 * forward". What stops it is `SetRootMotionMode(IgnoreRootMotion)` in
+	 * `ResolveAnimationBlueprint`, which also records the approach that was
+	 * tried first and did nothing.
+	 *
+	 * THE CLIPS ARE LONGER THAN THE INTERVAL THEY FIT IN, so the rate is raised
+	 * rather than the clip being cut off. Attack speed in
+	 * `game/Data/ItemBases.csv` runs 1.2 to 1.5 swings a second, an interval of
+	 * 0.833 down to 0.667 seconds, and the shortest clip is 1.0 second. The rule
+	 * is the Abyssal Warden's: never slower than authored, only faster, and only
+	 * when it must be.
+	 *
+	 * PUBLIC SO A TEST CAN DRIVE IT, which is the same reason `Revive` and
+	 * `RefreshWeaponMeshes` above are. The base class declares this public, so
+	 * an override tucked into the protected section narrows it and stops
+	 * anything outside the class from calling it -- which the build refuses
+	 * rather than allowing quietly.
+	 */
+	virtual void PlayAttackAnimation() override;
+
+	// ----------------------------------------------------------------------
+	// Art. Issue #1124.
+	// ----------------------------------------------------------------------
+	//
+	// WHERE THESE ASSETS CAME FROM AND WHY THEY ARE COPIES. They were copied
+	// out of the engine's own template resources, at
+	// Engine/Templates/TemplateResources/High/Characters/Content/Mannequins.
+	// That is the folder Unreal copies into a project made from the Third
+	// Person template, so the assets already record /Game/Characters/Mannequins
+	// as their own package path and an ordinary file copy put them in the right
+	// place with every reference intact.
+	//
+	// NOT LOADED FROM THE ENGINE WHERE THEY SIT, because template resources are
+	// not a mounted content root: the editor cannot see them at all until they
+	// are copied into a project. game/docs/player-source-assets.md records what
+	// was taken and what was deliberately left behind.
+
+	/** The skeletal mesh. `SKM_Manny_Simple` is the body; `SK_Mannequin`
+	 *  beside it is the Skeleton every clip below is bound to. */
+	static const TCHAR* BodyMeshPath;
+
+	/**
+	 * The animation Blueprint's generated class. The `_C` suffix is what makes
+	 * it the class rather than the asset, and without it
+	 * `TryLoadClass<UAnimInstance>` returns null and the character holds its
+	 * reference pose.
+	 *
+	 * EPIC'S OWN, AND IT DRIVES AN ORDINARY `ACharacter`. `ABP_Unarmed` casts
+	 * its owner to `ACharacter` and reads velocity and falling state off the
+	 * standard `UCharacterMovementComponent`, which is exactly what this pawn
+	 * has, so it needed no change to work here. Its blend space blends idle,
+	 * walk and run by speed and direction.
+	 *
+	 * THE OTHER MANNEQUIN ANIMATION BLUEPRINT IN THE ENGINE DOES NOT WORK HERE.
+	 * `ABP_Manny`, in the experimental MoverExamples plugin, casts to
+	 * `MoverExamplesCharacter` and reads a `CharacterMoverComponent`. This
+	 * project does not use the Mover plugin, so that cast fails every frame and
+	 * the blend space gets no speed at all.
+	 */
+	static const TCHAR* AnimationBlueprintPath;
+
+	/** The folder holding the six death clips, and their names in it. */
+	static const TCHAR* DeathAnimationFolder;
+	static const TCHAR* DeathAnimationNames[6];
+
+	/**
+	 * The folder holding the attack clips, and the three that are used.
+	 *
+	 * THREE OF THE FOUR THE ENGINE SHIPS. `MM_ChargedAttack` is copied beside
+	 * them and is deliberately not in this list: at 1.8333 seconds it is nearly
+	 * three times a fast weapon's swing interval, so cycling it into an attack
+	 * that fires by itself would mean playing it at close to triple speed. It is
+	 * there for a skill that deserves a heavier swing, which is work this does
+	 * not do.
+	 *
+	 * MEASURED, NOT ESTIMATED. `MM_Attack_01` and `MM_Attack_02` are 1.0 second
+	 * each and `MM_Attack_03` is 1.6667, read through the editor on 2026-09-01.
+	 * `game/docs/player-source-assets.md` records all four.
+	 */
+	static const TCHAR* AttackAnimationFolder;
+	static const TCHAR* AttackAnimationNames[3];
+
+	/**
+	 * The animation Blueprint slot an attack is played into.
+	 *
+	 * `ABP_Unarmed` carries a slot node named `DefaultSlot`, which is what lets
+	 * an attack blend over the locomotion graph instead of replacing it.
+	 * `ACataclysmAbyssalWardenCharacter` wanted exactly this and could not have
+	 * it, because no animation Blueprint has ever been authored for that
+	 * creature.
+	 */
+	static const FName AttackSlotName;
+
+	/**
+	 * How long an attack takes to blend in and out of the locomotion graph.
+	 *
+	 * SHORTER IN THAN OUT, WHICH IS DELIBERATE. A swing should arrive promptly
+	 * or it reads as late against the damage, which already lands at the start
+	 * of the ability. Leaving is not urgent, so a longer blend out settles back
+	 * into walking without a visible step.
+	 *
+	 * A JUDGEMENT. Nothing measured these; they are a starting point and are
+	 * expected to change once somebody watches a fight.
+	 */
+	static constexpr float AttackBlendInSeconds = 0.10f;
+	static constexpr float AttackBlendOutSeconds = 0.25f;
+
+	/**
+	 * The most an attack clip may be sped up to fit the swing interval.
+	 *
+	 * A CEILING RATHER THAN A HOPE, the same shape as the Abyssal Warden's
+	 * MaximumPlayRate and the ceiling on how long a corpse is kept. Attack speed
+	 * is a stat that affixes and passives raise, and nothing in the design caps
+	 * it, so a character stacked far enough would otherwise ask for a clip at
+	 * ten times speed, which is a blur rather than a swing. Past this the
+	 * animation simply stops keeping up with the damage.
+	 */
+	static constexpr float MaximumAttackPlayRate = 2.5f;
+
+protected:
+	virtual void InitAbilityActorInfo() override;
+
+	/** Asks for the movement speed again if it could have moved. Issue #1821. */
+	virtual void AfterRegenerationStep() override;
+
+	/**
+	 * How near and how far the camera may get, in centimetres.
+	 *
+	 * The range is a judgement, not something the genre settles. Path of Exile 2,
+	 * Last Epoch and Diablo 4 all put zoom on the wheel between a fixed minimum
+	 * and maximum, and all three keep the range deliberately narrow, but their
+	 * numbers are in their own units and their own art scale and do not transfer.
+	 * These were chosen by looking at the game and are expected to change.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Camera", meta = (ClampMin = "1.0"))
+	float MinCameraDistance = 500.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Camera", meta = (ClampMin = "1.0"))
+	float MaxCameraDistance = 1200.0f;
+
+	/** How far one wheel notch moves the camera, in centimetres. Seven notches
+	 *  cover the whole range, which is a short flick of the wheel. */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Camera", meta = (ClampMin = "1.0"))
+	float CameraZoomStep = 100.0f;
+
+	/**
+	 * How quickly the camera reaches a new distance. Larger is faster.
+	 *
+	 * Eased rather than snapped, which is a judgement. One notch is an eighth of
+	 * the whole range, and moving that far between two frames reads as the view
+	 * cutting rather than the camera moving. At 10 the camera covers most of a
+	 * notch in about a fifth of a second.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Camera", meta = (ClampMin = "0.1"))
+	float CameraZoomInterpSpeed = 10.0f;
+
+	/** Holds the camera above and behind. Uses absolute rotation, so it does not
+	 *  spin when the character turns. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Camera")
+	TObjectPtr<USpringArmComponent> CameraBoom;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Camera")
+	TObjectPtr<UCameraComponent> TopDownCamera;
+
+	/**
+	 * Puts the Mannequin body, its animation Blueprint and its death clips on
+	 * this character. Issue #1124.
+	 *
+	 * WHAT IT REPLACED. Two engine primitives from /Engine/BasicShapes: a
+	 * cylinder for the body and a cone stuck on the front, because with a bare
+	 * cylinder there was no way to see which way the character faced. Nothing
+	 * could be hung on either of them and neither could play anything, so a
+	 * player character had no death animation at all.
+	 *
+	 * CALLED FROM BeginPlay AND NOT FROM THE CONSTRUCTOR. Loading assets in a
+	 * constructor also loads them for the class default object, which is built
+	 * during module startup. This is the same place and the same reason
+	 * `ACataclysmAbyssalWardenCharacter::ResolveBody` is called from.
+	 *
+	 * @return false when the mesh could not be loaded, which leaves an
+	 *         invisible capsule that still walks and still fights. That is the
+	 *         state a checkout without the Mannequin assets is in, and it says
+	 *         so in the log rather than failing.
+	 */
+	bool ResolveBody();
+
+	/**
+	 * Points the mesh component at `ABP_Unarmed`, or falls back to playing
+	 * single clips when it cannot be loaded.
+	 *
+	 * SEPARATE FROM ResolveBody SO REVIVING CAN REACH IT ON ITS OWN. Dying
+	 * switches the component into single-node mode to hold the last frame of a
+	 * death clip, so coming back has to put the animation Blueprint back
+	 * without reloading the mesh and the six clips again.
+	 *
+	 * @return whether an animation Blueprint is now driving the mesh
+	 */
+	bool ResolveAnimationBlueprint(USkeletalMeshComponent* MeshComponent);
+
+	/**
+	 * Draws one of the six death clips, at its authored speed.
+	 *
+	 * SINGLE-NODE MODE RATHER THAN THE ANIMATION BLUEPRINT'S SLOT, and the
+	 * reason is timing rather than taste. `ABP_Unarmed` does have a
+	 * `DefaultSlot` -- that is what issue #1126 should swing attacks through --
+	 * but a montage blends back out to the locomotion graph when its clip ends.
+	 * The death clips are around 1.1 seconds and `RespawnDelaySeconds` is 3, so
+	 * through the slot the corpse would stand back up in an idle pose and wait
+	 * there for nearly two seconds. Played onto the component directly it holds
+	 * its last frame, which is what a body on the floor should do. `Revive`
+	 * puts the animation Blueprint back.
+	 *
+	 * @return the clip's length in seconds, or 0 when there was nothing to play
+	 */
+	float PlayDeathAnimation();
+
+	/**
+	 * The six death clips, in the order `Anims/Death` lists them.
+	 *
+	 * A NULL ENTRY IS KEPT rather than dropped, which is the rule
+	 * `ACataclysmEnemyCharacter::PlayDeathAnimation` already follows: dropping
+	 * one would change how many clips there are and therefore which one every
+	 * death draws.
+	 */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UAnimSequence>> DeathAnimations;
+
+	/**
+	 * The attack clips, drawn in turn rather than at random.
+	 *
+	 * IN TURN, UNLIKE THE DEATH CLIPS, and the difference is how often they are
+	 * seen. A death happens once and a random draw stops two deaths in a row
+	 * looking identical. A basic attack fires every two thirds of a second, and
+	 * a random draw over three clips repeats one about a third of the time,
+	 * which reads as the animation sticking. Cycling is what
+	 * `ACataclysmAbyssalWardenCharacter` does with its left and right swings.
+	 */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UAnimSequence>> AttackAnimations;
+
+	/** Which attack clip comes next. Wraps. */
+	int32 NextAttackAnimation = 0;
+
+	/**
+	 * What is drawn in each hand. Issue #1125.
+	 *
+	 * WHAT THEY REPLACED: nothing at all. No weapon was drawn anywhere in this
+	 * game. A player equipped a Greataxe, its stats and its six skills changed,
+	 * and nothing on screen changed.
+	 *
+	 * ONE PER HAND, BECAUSE THE DESIGN HAS AN OFF-HAND. The Shield is a
+	 * one-handed base, so a character can hold a sword and a shield at once.
+	 * With two worn, `ECataclysmGearSlot::Weapon1` is drawn in the right hand and
+	 * `Weapon2` in the left; ONE WORN IS DRAWN IN THE RIGHT HAND whichever slot
+	 * holds it, because the slots carry no meaning (`WeaponsInHands`).
+	 *
+	 * A TWO-HANDED WEAPON DRAWS IN THE RIGHT HAND ONLY, and that is a
+	 * limitation rather than a decision. `UCataclysmEquipmentComponent` puts a
+	 * two-handed weapon in Weapon1 and blocks Weapon2, so the left hand is
+	 * empty. Making both hands hold it needs an animation authored for it, and
+	 * there is no two-handed grip pose in anything this project owns.
+	 *
+	 * ATTACHED TO THE MESH'S HAND SOCKETS, not to the capsule, so they follow
+	 * the animation. `SK_Mannequin` ships `HandGrip_R` and `HandGrip_L`, so
+	 * neither socket had to be authored.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Weapon")
+	TObjectPtr<UStaticMeshComponent> RightHandWeapon;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Weapon")
+	TObjectPtr<UStaticMeshComponent> LeftHandWeapon;
+
+	/**
+	 * Fills the six ability slots from the equipped weapon.
+	 *
+	 * On the pawn rather than the player state, unlike the ability system
+	 * component: what is held is a property of the body, and a respawned
+	 * character equips again rather than inheriting what the corpse held.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Weapon")
+	TObjectPtr<UCataclysmWeaponSlotsComponent> WeaponSlots;
+
+	/**
+	 * The 48 carried slots. Issue #714.
+	 *
+	 * On the pawn for the same reason the weapon slots are: what is
+	 * carried is a property of the body. What happens to it on death is
+	 * not decided here and is not decided anywhere yet -- the design's
+	 * lethality modes say what happens to the CHARACTER, and issue #529
+	 * is what would have to record either answer.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Items")
+	TObjectPtr<UCataclysmInventoryComponent> Inventory;
+
+	/**
+	 * What the character is wearing. Issue #828.
+	 *
+	 * On the pawn for the same reason the carried inventory and the weapon
+	 * slots are: what is worn is a property of the body.
+	 *
+	 * WHAT IT IS FOR. Until it existed, a character's stats came from the
+	 * class line alone, so every character at a given level was identical and
+	 * nothing the player found changed anything. ApplyChosenClassStats now
+	 * asks it for the modifiers the worn items grant, and OnEquipmentChanged
+	 * recomputes when they change.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Items")
+	TObjectPtr<UCataclysmEquipmentComponent> Equipment;
+
+	/**
+	 * The weapon the character begins wearing. A row name in ItemBases.
+	 *
+	 * A REAL ITEM, WORN IN A REAL SLOT, and that is the point of it. Issue #840
+	 * was reported as equipping a whip making the character much weaker than
+	 * holding nothing. It was not holding nothing: the weapon slot was empty and
+	 * UCataclysmWeaponSlotsComponent::StartingWeaponType made it swing a
+	 * Greataxe anyway, worth 72 attack damage doubled for being two-handed
+	 * against a whip's 32. Nothing on screen said so, because there was no item
+	 * to show. Giving the character an actual Everyday Greataxe means the gear
+	 * panel draws it, Cataclysm.ShowEquipment lists it, and putting a whip on is
+	 * a swap the player can see rather than a silent downgrade.
+	 *
+	 * IT MUST NAME THE SAME WEAPON TYPE AS UCataclysmWeaponSlotsComponent'S
+	 * StartingWeaponType, which is still what the fallback in OnEquipmentChanged
+	 * uses. The two are checked against each other by
+	 * Cataclysm.WeaponSlots.TheStartingWeaponItemMatchesTheStartingWeaponType.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Items")
+	FName StartingWeaponBase = TEXT("Weapon_Greataxe");
+
+private:
+	/**
+	 * Wears StartingWeaponBase, if the character is wearing no weapon at all.
+	 *
+	 * ASKS WHETHER A WEAPON IS WORN RATHER THAN KEEPING A FLAG, so that running
+	 * twice cannot produce two axes. Possession happens more than once on a
+	 * listen server, and everything else in InitAbilityActorInfo is written to
+	 * survive that.
+	 * SINCE #2290: by reading the engine, not by running it, that is doubtful.
+	 * No game code possesses the player's pawn a second time, and in
+	 * single play and for a listen server's own pawn only PossessedBy should
+	 * reach InitAbilityActorInfo; see `MovementSpeedChangedHandle`. Asking
+	 * rather than keeping a flag is still right for a second possession or a
+	 * client's second call. NOT TESTED.
+	 */
+	void GiveStartingWeapon();
+
+	/**
+	 * Fills the six ability slots from the weapon that is worn.
+	 *
+	 * SEPARATE FROM OnEquipmentChanged BECAUSE THAT ONE ALSO WRITES ATTRIBUTES,
+	 * and writing them is only correct when something actually changed.
+	 * OnEquipmentChanged calls UCataclysmEquipmentComponent::RefreshAttributes,
+	 * which applies the whole class stat line. InitAbilityActorInfo runs more
+	 * than once -- the server reaches it from PossessedBy and a client from
+	 * OnRep_PlayerState -- so applying a stat line from there overwrites any
+	 * attribute something else has already set. Three tests exist because that
+	 * happened once already: Cataclysm.Player.MovementSpeedFollowsTheAttribute,
+	 * Cataclysm.PlayerStats.APlayerCharacterLeavesThePlaceholderBehind and
+	 * Cataclysm.Death.APlayerStandsBackUpRatherThanBeingRemoved.
+	 *
+	 * So possession fills the ability slots and nothing else.
+	 */
+	void FillAbilitySlotsFromWornWeapon(
+		ECataclysmWeaponExpected Expected = ECataclysmWeaponExpected::Yes);
+
+	/** Passes the attribute's new value, in metres per second, to
+	 *  ApplyMovementSpeed. Bound in InitAbilityActorInfo. */
+	void OnMovementSpeedChanged(const FOnAttributeChangeData& Data);
+
+	/** So that a second InitAbilityActorInfo replaces the binding rather than
+	 *  adding a second one. That function runs from both PossessedBy and
+	 *  OnRep_PlayerState, and on a listen server both happen.
+	 *  SINCE #2290: by reading the engine, not by running it, that is doubtful.
+	 *  `APawn::OnRep_PlayerState` is a RepNotify that no engine runtime source
+	 *  calls directly, and `APawn::PossessedBy` calls `SetPlayerState` and not
+	 *  `OnRep_PlayerState`, so in single play and for a listen server's own pawn
+	 *  only PossessedBy should reach it. A second call would come from a client
+	 *  whose player state replicates more than once, or from a second
+	 *  possession. NOT TESTED. */
+	FDelegateHandle MovementSpeedChangedHandle;
+
+	/** Refreshes the walking speed when the Cripple tag is gained or lost. Issue #2273. */
+	void OnCrippleChanged(const FGameplayTag Tag, int32 NewCount);
+
+	/** The binding of `OnCrippleChanged`, kept so a second set-up does not leave two. */
+	FDelegateHandle CrippleChangedHandle;
+
+	/** The same handler bound to the Wither tag, which slows the walk too. Issue #1722. */
+	FDelegateHandle WitherChangedHandle;
+
+	/** Refreshes the walking speed when the character begins channelling and when it stops. Ruled 2026-10-08: a
+	 *  speed row under `while_channelling` moves no attribute. No row of that day's needs it; one may be written.
+	 *  Bound in InitAbilityActorInfo to `UCataclysmAbilitySystemComponent::OnChannellingChanged`. */
+	void OnChannellingChanged(bool bIsChannelling);
+
+	/** The binding of `OnChannellingChanged`, kept so a second set-up does not leave two. */
+	FDelegateHandle ChannellingChangedHandle;
+
+	/** Re-asks for the movement speed when the class resource pool or its
+	 *  maximum moves, so a bonus conditioned on the pool being full reaches the
+	 *  movement component. Issue #1825. Bound in InitAbilityActorInfo. */
+	void OnClassResourceChanged(const FOnAttributeChangeData& Data);
+
+	/** Two handles for one handler, because the condition reads two attributes
+	 *  and each delegate hands back its own. Replaced rather than added for the
+	 *  reason the handle above is. */
+	FDelegateHandle ClassResourceChangedHandle;
+	FDelegateHandle MaxClassResourceChangedHandle;
+
+	/** Asks for the movement speed again when an event opens a timed window.
+	 *  Issue #1821. Bound in InitAbilityActorInfo to
+	 *  `UCataclysmAbilitySystemComponent::OnActionEvent`. */
+	void OnActionEvent(FName Event);
+
+	/** Replaced rather than added, for the reason the handles above are. */
+	FDelegateHandle ActionEventHandle;
+
+	/** The binding of `OnSomethingDied` to `UCataclysmCombatEvents::OnDeath`, kept so a second set-up does not leave
+	 *  two. Issue #2290: without it a second set-up heard every death twice. */
+	FDelegateHandle SomethingDiedHandle;
+
+	/** The binding of `OnSomethingWasHit` to `UCataclysmCombatEvents::OnHit`, kept for the same reason. Issue #2290. */
+	FDelegateHandle SomethingWasHitHandle;
+
+	/** The binding of `OnSkillWasUsed` to `UCataclysmCombatEvents::OnSkillUsed`, kept for the same reason. Issue #2290. */
+	FDelegateHandle SkillWasUsedHandle;
+
+	/** See `GetUnannouncedSpeedRefreshCount`. */
+	int32 UnannouncedSpeedRefreshCount = 0;
+
+	/**
+	 * Recomputes the stat line and refills the ability slots after a change
+	 * to what is worn.
+	 *
+	 * BOTH, AND NOT JUST THE STATS. A weapon is the one piece of gear that
+	 * decides which abilities the character has, so equipping one has to reach
+	 * UCataclysmWeaponSlotsComponent as well. Everything else only moves
+	 * numbers.
+	 */
+	void OnEquipmentChanged();
+
+	/** What the starting ability set granted, so it can be removed on unequip. */
+	FCataclysmAbilitySetHandles GrantedHandles;
+
+	/** Where the camera is heading. Set from the boom's own length at BeginPlay,
+	 *  so the resting distance is stated once, in the constructor. */
+	float TargetCameraDistance = 0.0f;
+
+	/** The sight the camera was last darkened for, or 0. */
+	float SightDarknessRadius = 0.0f;
+
+	/** Counts down `RespawnDelaySeconds` from the moment of death. */
+	FTimerHandle RespawnTimer;
+
+	/** Where to stand up again, chosen at death rather than at revival so a
+	 *  level with no player start still puts the character back where it fell
+	 *  instead of at the world origin. */
+	FVector RespawnLocation = FVector::ZeroVector;
+	FRotator RespawnRotation = FRotator::ZeroRotator;
+
+	/** The notice `DeathCostNoticeAt` answers, and the world's time it was posted at, or -1. Issue #41. */
+	FString DeathCostNotice;
+	float DeathCostNoticePostedAt = -1.0f;
+
+	// --- The basic attack is NOT here any more. Issue #1187 -----------------
+	//
+	// THIS CLASS USED TO OWN A TIMER that re-armed itself at the equipped
+	// weapon's attack speed and swung whenever any creature was inside the basic
+	// attack's reach. That was issues #36 and #647, and it was what the design
+	// asked for: "The basic attack is on no key. It fires automatically...
+	// Nothing the player presses triggers it."
+	//
+	// THE PROJECT OWNER REVERSED THAT ON 2026-09-02, after playing it. A swing
+	// now happens because the player clicked a creature, so the whole of it --
+	// which creature, whether it is in reach, and how often -- belongs to
+	// `ACataclysmPlayerController` where the click arrives.
+	//
+	// `UCataclysmBasicAttack` STILL HOLDS EVERY JUDGEMENT, unchanged, and that
+	// is why the move cost nothing: the reach, the rate, and whether a stunned
+	// character may swing were already static functions with tests on them.
+};

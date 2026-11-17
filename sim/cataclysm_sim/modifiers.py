@@ -1,26 +1,49 @@
-"""Dungeon modifiers, generated from the Dungeon Modifiers sheet.
+"""Dungeon modifiers, a copy of `game/Data/DungeonModifiers.csv`.
 
 Each entry is (name, score). The sheet's 'Weight' column is used as the
 modifier's score, which feeds straight into calculateScores' modifierScore.
 
-NOTE: that column currently does double duty -- it reads like a spawn weight
-(higher = more common) but is being consumed as a power score (higher = more
-dangerous). That makes the MOST COMMON modifiers also the MOST DANGEROUS,
-which is backwards from the usual convention. Flagged, not resolved.
+THIS IS A COPY AND IT DRIFTED. It held 116 rows against the data file's 117
+from issue #504 until issue #1282, missing the Corrupted Stalker, and nothing
+compared the two. `tools/tests/test_dungeon_modifier_port.py` now does, in the
+shape of the four guards that already existed for the power model, the day
+clock, the surge scheduler and the empire map. Add a row here and to the data
+file together, or that guard fails.
+
+THE WEIGHT COLUMN IS A DANGER SCORE, higher being more dangerous, which is what
+this module has always consumed it as. Settled by issue #1298 after the project
+owner delegated it. `game/Source/Cataclysm/Data/CataclysmDataRows.h` described it
+as "Selection weight. Higher is more common." and is corrected; it never read the
+field to decide how often a modifier appears, so nothing behaved on the wrong
+reading. See docs/DECISIONS.md, "The dungeon modifier Weight column is a danger
+score".
 """
 
 from __future__ import annotations
 
+#: The Cataclysm Type meaning "every Cataclysm draws this", rather than one.
+#: `tools/generate_datatables.py` already lists it in its own CATACLYSM_TYPES,
+#: and ten enemy modifiers use it the same way. The project owner chose it for
+#: the Corrupted Stalker on 2026-08-14 -- see docs/DECISIONS.md, "The Corrupted
+#: Stalker is a Generic dungeon modifier at weight 20".
+GENERIC = "Generic"
+
 MODIFIERS: dict[str, list[tuple[str, float]]] = {
     'Celestial': [
         ('Edict of Silence', 20),
+        ('Edict of Temperance', 20),
         ('Divine Resurgence', 15),
+        ('Edict of Abstinence', 15),
+        ('Edict of Humility', 15),
+        ('Edict of Patience', 15),
+        ('Edict of Vigil', 15),
         ('Eternal Chorus', 15),
         ('Forced Tithes', 15),
         ('Holy Repercussions', 15),
         ('Sanctioned Passage', 15),
         ('Angelic Wardens', 10),
         ('Divine Wrath', 10),
+        ('Edict of Stillness', 10),
         ('Hallowed Groundfall', 10),
         ('Heaven’s Quake', 10),
         ('Lightforged Walls', 10),
@@ -65,7 +88,7 @@ MODIFIERS: dict[str, list[tuple[str, float]]] = {
     ],
     'Demonic': [
         ('Blood Bond', 20),
-        ('Infernal Brand', 20),
+        ('Brand of the Aggressor', 20),
         ('Blood Altar', 15),
         ('Abyssal Rifts', 10),
         ('Blood Gates', 10),
@@ -85,7 +108,7 @@ MODIFIERS: dict[str, list[tuple[str, float]]] = {
         ('Dehydration', 15),
         ('Ravenous Hoard', 15),
         ('Scarcity', 15),
-        ('Withering Touch', 15),
+        ('Wasting Sickness', 15),
         ('Desperate Measures', 10),
         ('Diminishing Returns', 10),
         ('Famished Beasts', 10),
@@ -95,6 +118,12 @@ MODIFIERS: dict[str, list[tuple[str, float]]] = {
         ('Luxury Hoarders', 5),
         ('Recession', 5),
         ('Withered Ground', 5),
+    ],
+    # One row, and the only Generic dungeon modifier. No Cataclysm draws it:
+    # `pool_for` below leaves it out, and `Simulation._carries_the_corrupted_
+    # stalker` grants it outside the slots.
+    'Generic': [
+        ('Corrupted Stalker', 20),
     ],
     'Pestilence': [
         ('Plague Convergence', 20),
@@ -120,9 +149,9 @@ MODIFIERS: dict[str, list[tuple[str, float]]] = {
         ('Shadowy Enemies', 15),
         ('Singularity Wells', 15),
         ("The Nihil's Embrace", 15),
-        ('All Consuming', 10),
         ('Anti-Magic Zones', 10),
         ('Mind-Shattering Illusions', 10),
+        ('Nothing Is Forgotten', 10),
         ('Portal Unleashing', 10),
         ('Void Parasite', 10),
         ('Grasping Tentacles', 5),
@@ -146,4 +175,49 @@ MODIFIERS: dict[str, list[tuple[str, float]]] = {
     ],
 }
 
+#: Every key of MODIFIERS, which INCLUDES `Generic`. That is not the roster of
+#: eight Cataclysms a run picks from -- `config.CATACLYSM_ROSTER` is. Nothing
+#: reads this today; it is kept because the data file has the same column.
 CATACLYSM_TYPES = tuple(sorted(MODIFIERS))
+
+
+def pool_for(active_types) -> list[tuple[str, float]]:
+    """Every modifier the given Cataclysms can draw from.
+
+    THE RULE LIVES HERE AND NOT IN ITS CALLERS. Issue #1282 is a table that
+    drifted from its source because there were two copies of it; there were also
+    two copies of this rule, in `engine.Simulation.__init__` and in
+    `analyse_dungeons.pool_for`. One rule, one place -- which is why issue #1303
+    was a one-function change.
+
+    GENERIC MODIFIERS ARE NOT IN THIS POOL, ON PURPOSE. The project owner ruled
+    on 2026-09-05 that the Corrupted Stalker, the only Generic dungeon modifier,
+    is "granted separately" and does not compete for one of a dungeon's modifier
+    slots. A dungeon carries one modifier per difficulty tier and draws them from
+    here, so anything in here competes for a slot by construction.
+
+    Issue #1282 put it in here, on the reading that "drawable by every
+    Cataclysm" meant "in every pool". That reading was recorded as a reading
+    rather than a decision, and issue #1303 is the owner rejecting it.
+
+    IT IS GRANTED OUTSIDE THE POOL, since 2026-10-25 (issue #1308). What
+    causes it to appear was decided by the project owner on 2026-09-05 and
+    recorded on 2026-10-24: every dungeon has an independent 5% chance of
+    carrying it, outside the modifier slots (`docs/DECISIONS.md`, "2026-09-05
+    (recorded 2026-10-24) -- The Corrupted Stalker is granted by a flat 5%
+    chance on any dungeon, outside the modifier slots", and Section VIII of
+    `docs/Cataclysm_GDD_v2.md`). `Simulation._carries_the_corrupted_stalker`
+    makes that roll, and `TuningConfig.corrupted_stalker_chance` is the 5%.
+
+    WHEN THAT RULE ARRIVES IT MUST CARRY THE WEIGHT WITH IT. The same section
+    says "Each dungeon modifier carries a weight, and the sum of the weights on
+    a dungeon is the Modifier Score", so a separately granted Corrupted Stalker
+    still adds its 20 to the dungeon it lands on. Granted separately is not
+    granted weightlessly.
+    """
+    return [m for t in active_types for m in MODIFIERS.get(t, [])]
+
+
+#: The Corrupted Stalker's row: its name and its weight, read from the table
+#: rather than written again, so the weight it adds is the one the table holds.
+CORRUPTED_STALKER: tuple[str, float] = MODIFIERS[GENERIC][0]

@@ -1,0 +1,2512 @@
+"""The Unreal surge scheduler's constants must match the simulation's.
+
+WHY THIS EXISTS AT ALL. `UCataclysmSurgeScheduler` in the `CataclysmEmpire`
+module is a port of `Simulation.surge_count`, `surge_gap` and `trigger_surge` in
+`sim/cataclysm_sim/engine.py`, and of the surge constants in `config.py`. Two
+copies of a number are two numbers, and the power model in
+`sim/cataclysm_sim/scoring.py` silently drifted from its own source twice, which
+is why `CLAUDE.md` carries a rule about it.
+
+This is the third of these, after `test_day_clock_port.py` and
+`test_empire_map_port.py`, for the third thing ported into that module.
+
+WHY IT MATTERS MORE HERE THAN FOR THE OTHER TWO. How surges escalate is an OPEN
+TUNING QUESTION rather than a settled design: `sim/experiments.py` sweeps the four
+modes against each other, and the answer it eventually gives is only worth
+anything if the game runs the same arithmetic the sweep did.
+
+WHAT IT DOES NOT CHECK. That the scheduler behaves -- that an accelerating run
+really shortens its gap and stops at the floor, that Heretic really brings more
+dungeons at the cap, that a wave lands only on the frontier. Those are Unreal
+automation tests under the `Cataclysm.Surge` prefix. A test written against a
+constant cannot notice that the constant is wrong, and a test that reads the
+constant out of the source cannot notice that the code ignores it.
+
+IT READS TWO HEADERS. `CataclysmSurge.h` is the scheduler and is most of this
+file. `CataclysmEmpireRun.h` holds what a Siege costs its host every day, and
+`TestWhatASiegeCostsItsHost` is the only thing here that reads it -- see the
+note there for why those three constants run the opposite way round from every
+other number in this file. Issue #1353.
+"""
+
+from __future__ import annotations
+
+import pathlib
+import re
+
+import pytest
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+SURGE_HEADER = (REPO_ROOT / "game" / "Source" / "CataclysmEmpire" / "Empire"
+                / "CataclysmSurge.h")
+
+SURGE_TESTS = (REPO_ROOT / "game" / "Source" / "CataclysmEmpire" / "Tests"
+               / "CataclysmSurgeTests.cpp")
+
+#: The empire run, which owns what a Siege costs its host every day. A different
+#: header from the scheduler's, so it needs its own fixture.
+RUN_HEADER = (REPO_ROOT / "game" / "Source" / "CataclysmEmpire" / "Empire"
+              / "CataclysmEmpireRun.h")
+
+
+def read(path: pathlib.Path) -> str:
+    if not path.is_file():
+        pytest.skip(f"{path.name} is not present")
+    return path.read_text(encoding="utf-8")
+
+
+def constant(text: str, name: str, pattern: str, *,
+             where: str = SURGE_HEADER.name) -> str:
+    """One `static constexpr` value out of a header, by name.
+
+    `where` NAMES THE FILE THE TEXT CAME FROM and only the failure message uses
+    it. It defaults to the surge header because that is what every caller read
+    until this file grew a second one; a caller passing `run_header` must pass
+    `where=RUN_HEADER.name` too, or a renamed constant is reported against a
+    file it was never in.
+    """
+    match = re.search(
+        rf"static\s+constexpr\s+\w+\s+{name}\s*=\s*({pattern})\s*;", text)
+    if not match:
+        pytest.fail(f"could not find {name} in {where}; has it been renamed?")
+    return match.group(1)
+
+
+def number(text: str, name: str, *, where: str = SURGE_HEADER.name) -> float:
+    return float(constant(text, name, r"-?[0-9.]+f?", where=where).rstrip("f"))
+
+
+def flag(text: str, name: str) -> bool:
+    return constant(text, name, r"true|false") == "true"
+
+
+def code_only(text: str) -> str:
+    """C++ with its comments taken out and its whitespace flattened.
+
+    BOTH ARE NEEDED BY THE EMPTY-BOARD CHECKS BELOW. The comments beside the
+    rule name every identifier those checks look for, so a search of the raw
+    file passes when only a comment mentions one; and the conditions they look
+    for are wrapped across lines.
+    """
+    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.DOTALL)
+    text = re.sub(r"//[^\n]*", " ", text)
+    return " ".join(text.split())
+
+
+def body_of(source: str, signature: str) -> str:
+    """One C++ function, from its signature to the first closing brace in the
+    first column, as code only."""
+    parts = source.split(signature, 1)
+    if len(parts) != 2:
+        pytest.fail(f"could not find {signature} -- has it been renamed?")
+    return code_only(parts[1].split("\n}", 1)[0])
+
+
+@pytest.fixture(scope="module")
+def surge_header() -> str:
+    return read(SURGE_HEADER)
+
+
+@pytest.fixture(scope="module")
+def run_header() -> str:
+    return read(RUN_HEADER)
+
+
+@pytest.fixture(scope="module")
+def model():
+    from cataclysm_sim.config import TuningConfig
+    return TuningConfig()
+
+
+class TestTheCadence:
+    # `IntervalDays` AND `DungeonsPerSurge` ARE HELD EQUAL AGAIN. The model
+    # went to 90 days and 5 dungeons on 2026-10-13 and the game kept 120 and
+    # 4 until its own layer, with the difference recorded in a file of its
+    # own. The game's layer moved both constants and deleted that file, as
+    # the file said to. `docs/DECISIONS.md`, 2026-10-13.
+    #
+    # `DungeonsPerSurge` WAS OUT OF THIS TABLE FROM 2026-10-16 TO 2026-10-20.
+    # The model went to an opening wave of 12 and then 8 a wave on the first
+    # of those days, and the game kept 5 a wave with no opening size until its
+    # own layer on the second, with the difference recorded in a file of its
+    # own as on 2026-10-13. The game's layer put the row back, added the
+    # opening size beside it, and took the wave checks out of that file, as
+    # the file said to. `docs/DECISIONS.md`, 2026-10-20.
+    NUMBERS = {
+        "IntervalDays": "surge_interval_days",
+        "DungeonsPerSurge": "surge_dungeon_count",
+        "OpeningDungeonsPerSurge": "surge_opening_count",
+        "IntervalDecay": "surge_interval_decay",
+        "LeastIntervalDays": "surge_interval_min",
+        "CountGrowthPerSurge": "surge_count_growth",
+        "MostDungeonsPerSurge": "surge_count_max",
+    }
+
+    def test_every_cadence_number_matches(self, surge_header, model):
+        for unreal_name, model_name in self.NUMBERS.items():
+            unreal = number(surge_header, unreal_name)
+            expected = float(getattr(model, model_name))
+
+            assert unreal == pytest.approx(expected), (
+                f"{unreal_name}: Unreal has {unreal}, the model has {expected}")
+
+    def test_the_decay_shortens_and_the_growth_lengthens(self, surge_header):
+        """Not a copy of anything: a decay above 1 would make an accelerating
+        surge slower each time, and a growth below 0 would make a swelling one
+        smaller. Either would still pass the comparison above if the simulation
+        had the same mistake."""
+        assert 0.0 < number(surge_header, "IntervalDecay") < 1.0
+        assert number(surge_header, "CountGrowthPerSurge") > 0.0
+
+    def test_the_floor_is_below_the_interval_and_the_ceiling_above_the_count(
+            self, surge_header):
+        """A floor above the starting gap would make an accelerating run slower
+        than a static one from its first surge, and a ceiling below the starting
+        count would make a swelling one smaller than a static one."""
+        assert (number(surge_header, "LeastIntervalDays")
+                < number(surge_header, "IntervalDays"))
+        assert (number(surge_header, "MostDungeonsPerSurge")
+                > number(surge_header, "DungeonsPerSurge"))
+        assert (number(surge_header, "MostDungeonsPerSurge")
+                >= number(surge_header, "OpeningDungeonsPerSurge"))
+
+    def test_both_start_the_first_wave_from_the_opening_size(self, model):
+        """THE OPENING SIZE IS READ, AND READ ONLY AT WAVE INDEX 0, in both.
+
+        `TestTheCadence.NUMBERS` holds `OpeningDungeonsPerSurge` equal to
+        `surge_opening_count`, and that comparison would pass with a constant
+        nothing reads. So the model is asked for its first two waves at an
+        opening size that differs from the later one, and the game's
+        `DungeonsInNextSurge` is read for the choice it makes: the opening size
+        when `SurgeIndex` is 0 and `DungeonsPerSurge` otherwise, as
+        `Simulation.surge_count` chooses on `surge_index`. Since 2026-10-20 in
+        the game and 2026-10-16 in the model.
+        """
+        from types import SimpleNamespace
+
+        from cataclysm_sim.engine import Simulation
+
+        first = Simulation.surge_count(SimpleNamespace(cfg=model, surge_index=0))
+        second = Simulation.surge_count(SimpleNamespace(cfg=model, surge_index=1))
+        assert model.surge_opening_count != model.surge_dungeon_count, (
+            "CONTROL: the model's opening size equals its later wave, so the "
+            "two assertions below cannot tell which one a wave read")
+        assert (first, second) == (model.surge_opening_count,
+                                   model.surge_dungeon_count), (
+            f"the model's first two waves are {first} and {second}, not "
+            f"{model.surge_opening_count} and {model.surge_dungeon_count}")
+
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmSurge.cpp")
+        body = body_of(source, "int32 UCataclysmSurgeScheduler::DungeonsInNextSurge()")
+        assert re.search(
+            r"SurgeIndex\s*==\s*0\s*\?\s*OpeningDungeonsPerSurge\s*:\s*"
+            r"DungeonsPerSurge\b", body), (
+            "DungeonsInNextSurge no longer starts from OpeningDungeonsPerSurge "
+            "when SurgeIndex is 0 and from DungeonsPerSurge otherwise. The "
+            "model's Simulation.surge_count does: its first wave is "
+            "surge_opening_count. Code read: " + body[:300])
+
+
+class TestWhatACityFallingDoes:
+    def test_a_fall_fires_a_surge_in_both(self, surge_header, model):
+        assert flag(surge_header, "bSurgeOnCityFall") == model.surge_on_city_fall
+
+    def test_a_fall_escalates_in_both(self, surge_header, model):
+        assert (flag(surge_header, "bCityFallAdvancesEscalation")
+                == model.city_fall_advances_escalation)
+
+    def test_a_fall_asks_the_flag_and_the_least_interval_in_both(
+            self, surge_header, model):
+        """The flag AND the least interval, in both halves. Issue #2380.
+
+        THE TWO TESTS ABOVE HOLD THE FLAGS EQUAL AND SAY NOTHING ABOUT WHEN A
+        FALL'S SURGE FIRES. The model has refused one inside
+        `surge_interval_min` since issue #1432; the game asked only its flag
+        until issue #2380, and nothing here noticed.
+
+        THE MODEL'S HALF IS ITS TWO LINES, quoted from `Simulation._fall` with
+        its comment lines taken out, because the comment above them names
+        `surge_interval_min` too.
+
+        THE GAME'S HALF IS READ AS CODE ONLY, in two places. The scheduler's
+        `IsDueOnCityFall` must hold the flag and the interval in one
+        expression, and `CityFell` must ask that function and nothing else
+        before it fires. A helper nobody calls would pass the first half.
+
+        THE COMPARISON'S DIRECTION IS PART OF IT, as it is for the empty
+        board: both fire AT the interval, so `>` in the game would refuse the
+        fall that comes exactly 25 days after a surge.
+
+        WHAT THIS CANNOT SAY. That a fall inside the interval really brings no
+        wave is `Cataclysm.EmpireRun.ACityFallingInsideTheLeastIntervalStill
+        FallsAndBringsNoWave` and the three Unreal tests beside it.
+        """
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        fall = "\n".join(
+            line for line in inspect.getsource(Simulation._fall).splitlines()
+            if not line.lstrip().startswith("#"))
+
+        for line in ("if (cfg.surge_on_city_fall",
+                     "and self.days_since_last_surge() >= cfg.surge_interval_min):",
+                     "self.trigger_surge(from_city_fall=True)"):
+            assert line in fall, (
+                f"Simulation._fall no longer has `{line}`. If the model's "
+                "rule for a fall's surge changed, the game's "
+                "UCataclysmSurgeScheduler::IsDueOnCityFall has to change "
+                "with it and this test with both. Issues #1432 and #2380")
+
+        assert fall.count("self.trigger_surge(") == 1, (
+            "Simulation._fall fires a surge from more than one place, so the "
+            "two lines quoted above are no longer its whole condition")
+
+        assert (number(surge_header, "LeastIntervalDays")
+                == pytest.approx(model.surge_interval_min)), (
+            "LeastIntervalDays and surge_interval_min differ, so a fall's "
+            "surge is refused for a different number of days in each half")
+
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmSurge.cpp")
+        due = body_of(source, "UCataclysmSurgeScheduler::IsDueOnCityFall(")
+
+        asked = ("return bSurgeOnCityFall "
+                 "&& DaysSinceLastSurge(Day) >= LeastIntervalDays;")
+        assert asked in due, (
+            "UCataclysmSurgeScheduler::IsDueOnCityFall no longer holds "
+            f"`{asked}`. It must ask the flag and that the last surge is at "
+            "least LeastIntervalDays behind, which are the two things "
+            "Simulation._fall asks. Issue #2380")
+
+        run = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                   / "Empire" / "CataclysmEmpireRun.cpp")
+        fell = body_of(run, "void UCataclysmEmpireRun::CityFell(")
+
+        rule = ("if (Surges->IsDueOnCityFall(OutReport.Day)) "
+                "{ FireSurge(OutReport.Day, true, OutReport); }")
+        assert rule in fell, (
+            "UCataclysmEmpireRun::CityFell no longer asks IsDueOnCityFall "
+            "for the day on the report before it fires the fall's surge. "
+            "Issue #2380")
+
+        assert fell.count("FireSurge(") == 1, (
+            "CityFell fires a surge from more than one place, so one of them "
+            "does not ask IsDueOnCityFall")
+
+        assert "bSurgeOnCityFall" not in fell, (
+            "CityFell reads bSurgeOnCityFall itself. The flag is asked inside "
+            "IsDueOnCityFall, with the least interval beside it; asking the "
+            "bare flag here is the rule the game had before issue #2380")
+
+
+class TestWhatAnEmptyBoardDoes:
+    """The game fires a surge on an empty board, as the model does.
+
+    The project owner ruled on 2026-09-07, verbatim: "Anytime there are no
+    longer dungeons on the board, a surge happens." Issue #1406 built that in
+    the model and issue #1414 ported it to the game on 2026-10-12.
+
+    **THIS CLASS RECORDED A DIVERGENCE UNTIL THEN.** It held a test named
+    `test_the_game_has_no_board_empty_trigger_yet`, which asserted that
+    `bSurgeOnEmptyBoard` was ABSENT from `CataclysmSurge.h` and existed to fail
+    when the port landed. It did, and the checks below replace it.
+
+    WHAT THESE CAN AND CANNOT SAY. They read source text: that the flag
+    matches, that the game's rule asks the same three things, and that it is
+    asked where the model asks. That the rule BEHAVES is the Unreal tests'
+    job -- `Cataclysm.EmpireRun.ClearingTheLastDungeonBringsTheNextSurgeTheNextDay`
+    and the four beside it.
+    """
+
+    def test_the_model_fires_a_surge_on_an_empty_board(self, model):
+        """The model's half of the rule, which is what #1414 copied."""
+        assert model.surge_on_empty_board is True, (
+            "TuningConfig.surge_on_empty_board is off. The owner ruled the "
+            "rule on 2026-09-07 and issue #1406 built it; turning it off is a "
+            "design change and needs their ruling, not a default")
+
+    def test_the_brake_is_the_gap_the_game_already_carries(self, surge_header,
+                                                           model):
+        """`surge_interval_min` is the ONLY brake on the trigger and the game
+        holds the same number as `LeastIntervalDays`. Issue #1414 used that
+        constant and did not add a second one;
+        `test_the_games_rule_asks_what_the_models_asks` is what says so.
+
+        `TestTheCadence` already compares the two; this says which rule now
+        depends on them being equal.
+        """
+        assert (number(surge_header, "LeastIntervalDays")
+                == pytest.approx(model.surge_interval_min))
+
+    def test_an_empty_board_fires_a_surge_in_both(self, surge_header, model):
+        """The flag, the way `test_a_fall_fires_a_surge_in_both` holds its own.
+
+        THIS REPLACES `test_the_game_has_no_board_empty_trigger_yet`, whose
+        failure message asked for exactly this.
+        """
+        assert (flag(surge_header, "bSurgeOnEmptyBoard")
+                == model.surge_on_empty_board), (
+            "UCataclysmSurgeScheduler::bSurgeOnEmptyBoard and "
+            "TuningConfig.surge_on_empty_board disagree, so one half fires a "
+            "surge on an empty board and the other does not. The owner ruled "
+            "the rule on 2026-09-07; issues #1406 and #1414")
+
+    def test_the_games_rule_asks_what_the_models_asks(self):
+        """The flag, the board and the least interval, in both.
+
+        A FLAG THE CODE IGNORES WOULD PASS THE TEST ABOVE, so this reads the
+        function that decides. The model refuses on three lines; the game
+        answers with one expression holding the same three.
+
+        THE COMPARISON'S DIRECTION IS PART OF IT. The model refuses while the
+        gap is BELOW the minimum and the game fires when it is AT OR ABOVE it,
+        which are the same rule; `>` in the game would fire a day late.
+        """
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        asked = inspect.getsource(Simulation._maybe_surge_on_empty_board)
+
+        for line in ("if not cfg.surge_on_empty_board:",
+                     "if not self.board_is_empty():",
+                     "if self.days_since_last_surge() < cfg.surge_interval_min:"):
+            assert line in asked, (
+                f"Simulation._maybe_surge_on_empty_board no longer has "
+                f"`{line}`. If the model's rule changed, the game's "
+                "UCataclysmSurgeScheduler::IsDueOnEmptyBoard has to change "
+                "with it and this test with both")
+
+        empty = inspect.getsource(Simulation.board_is_empty)
+        assert "return not self.dungeons" in empty, (
+            "Simulation.board_is_empty no longer counts every dungeon of every "
+            "kind. The game passes `Dungeons.Num()`, which does")
+
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmSurge.cpp")
+        due = body_of(source, "UCataclysmSurgeScheduler::IsDueOnEmptyBoard(")
+
+        for part in ("return bSurgeOnEmptyBoard",
+                     "&& DungeonsStanding <= 0",
+                     "&& DaysSinceLastSurge(Day) >= LeastIntervalDays;"):
+            assert part in due, (
+                "UCataclysmSurgeScheduler::IsDueOnEmptyBoard no longer holds "
+                f"`{part}`. It must ask the flag, that nothing stands, and "
+                "that the last surge is at least LeastIntervalDays behind -- "
+                "the three refusals of "
+                "Simulation._maybe_surge_on_empty_board. Issue #1414")
+
+    def test_both_measure_the_gap_from_the_last_surge_of_any_cause(self):
+        """`days_since_last_surge` against `DaysSinceLastSurge`.
+
+        The model reads the last entry of `surge_log`, which `trigger_surge`
+        appends to whatever fired it, and answers the day itself while the log
+        is empty. The game writes `LastSurgeDay` in `RecordSurge`, which every
+        surge goes through, and starts it at 0.
+        """
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        since = inspect.getsource(Simulation.days_since_last_surge)
+        assert "return float(self.day)" in since, (
+            "the model no longer counts the start of the run as day 0 before "
+            "any surge has landed; the game's LastSurgeDay starts at 0 for "
+            "that reason")
+        assert "return float(self.day - self.surge_log[-1][0])" in since, (
+            "the model no longer measures from the last entry of surge_log")
+
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmSurge.cpp")
+
+        assert ("return static_cast<float>(Day - LastSurgeDay);"
+                in body_of(source,
+                           "UCataclysmSurgeScheduler::DaysSinceLastSurge(")), (
+            "UCataclysmSurgeScheduler::DaysSinceLastSurge no longer answers "
+            "the days since LastSurgeDay. Issue #1414")
+
+        assert "LastSurgeDay = Day;" in body_of(
+            source, "UCataclysmSurgeScheduler::RecordSurge("), (
+            "UCataclysmSurgeScheduler::RecordSurge no longer writes "
+            "LastSurgeDay, so the empty-board rule measures its least interval "
+            "from the start of the run for ever. Issue #1414")
+
+        header = code_only(read(SURGE_HEADER))
+        assert "int32 LastSurgeDay = 0;" in header, (
+            "LastSurgeDay no longer starts at 0 in CataclysmSurge.h. The "
+            "model counts the start of the run as day 0")
+
+    def test_both_ask_at_the_end_of_the_day_and_through_the_ordinary_surge(
+            self):
+        """WHERE the rule is asked, which no constant can show.
+
+        THE MODEL ASKS BELOW `_open_last_stand` AND ABOVE THE PLAYER'S TURN.
+        Its comment says why: every removal the day makes is above it, and a
+        surge fired a moment before the Last Stand opens would deepen that
+        fight. It also asks below its timer loop, so a wave the empty board
+        brings does not lose a day on the day it lands.
+
+        THE GAME ASKS LAST IN `AdvanceDay`, below the clock, the Sieges and the
+        resolves, and not while the Pillar can be reached -- the game has no
+        Last Stand dungeon to make its board non-empty, so it asks the
+        condition the Last Stand would have supplied.
+
+        AND BOTH FIRE IT AS AN ORDINARY SURGE: the model calls
+        `trigger_surge()` with no flag and the game calls `FireSurge` with
+        `bFromCityFall` false, so the clock is reset from today and the
+        escalation counter advances.
+        """
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        # THE DAY'S EVENTS ARE IN `_empire_day` SINCE 2026-10-24, when a
+        # walk's days began to run as the walk ends; `step` calls it before
+        # `_player_day`, which is the player's turn.
+        day = inspect.getsource(Simulation._empire_day)
+        last_stand = day.index("self._open_last_stand()")
+        asked = day.index("self._maybe_surge_on_empty_board()")
+        ticked = day.index("d.resolve_in -= 1.0")
+
+        assert ticked < last_stand < asked, (
+            "Simulation._empire_day no longer asks the empty-board rule after "
+            "the timers and the Last Stand. The game's AdvanceDay asks it "
+            "last; if the model moved, the game has to move with it")
+
+        step = inspect.getsource(Simulation.step)
+        assert ("self._empire_day()" in step and "self._player_day(policy)" in step
+                and step.index("self._empire_day()") < step.index("self._player_day(policy)")), (
+            "Simulation.step no longer runs the empire's day before the "
+            "player's turn, so the empty-board rule is no longer asked before "
+            "the player chooses")
+
+        fired = inspect.getsource(Simulation._maybe_surge_on_empty_board)
+        assert "self.trigger_surge()" in fired, (
+            "the model no longer fires its empty-board surge as an ordinary "
+            "one, with no city-fall flag")
+
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmEmpireRun.cpp")
+        day = body_of(source,
+                      "FCataclysmDayReport UCataclysmEmpireRun::AdvanceDay(")
+
+        rule = ("if (!Report.bPillarExposed && "
+                "Surges->IsDueOnEmptyBoard(Today, Dungeons.Num())) "
+                "{ FireSurge(Today, false, Report);")
+        assert rule in day, (
+            "UCataclysmEmpireRun::AdvanceDay no longer asks "
+            "IsDueOnEmptyBoard for today with every dungeon standing, behind "
+            "the Pillar not being exposed, and fires an ordinary surge when "
+            "it answers yes. Issue #1414")
+
+        for earlier in ("Clock->AdvanceDay();", "ApplySiegeDamage(Report);",
+                        "ResolveDungeon(DungeonId, Report);",
+                        "Report.bPillarExposed = Map->IsPillarExposed();"):
+            assert earlier in day and day.index(earlier) < day.index(rule), (
+                f"UCataclysmEmpireRun::AdvanceDay asks the empty-board rule "
+                f"before `{earlier}`. It must be asked last, after every "
+                "removal the day makes and after the timers have moved, "
+                "which is where Simulation.step asks. Issue #1414")
+
+        assert day.count("IsDueOnEmptyBoard(") == 1, (
+            "AdvanceDay asks the empty-board rule more than once in a day")
+
+        assert "++SurgesFromEmptyBoard;" in day, (
+            "AdvanceDay no longer counts the surges an empty board fired, "
+            "which is the game's RunResult.surges_from_empty_board")
+
+
+class TestTheLethalityModes:
+    def test_only_heretic_changes_the_wave(self):
+        """The Unreal side has one constant, for Heretic, and answers 1.0 for
+        anything else. That is only correct while the other two modes really are
+        1.0 in the model."""
+        from cataclysm_sim.config import LETHALITY_RULES, LethalityMode
+
+        assert LETHALITY_RULES[
+            LethalityMode.STANDARD].surge_dungeon_multiplier == 1.0
+        assert LETHALITY_RULES[
+            LethalityMode.HARDCORE].surge_dungeon_multiplier == 1.0
+
+    def test_heretics_multiplier_matches(self, surge_header):
+        from cataclysm_sim.config import LETHALITY_RULES, LethalityMode
+
+        unreal = number(surge_header, "HereticDungeonMultiplier")
+        expected = LETHALITY_RULES[
+            LethalityMode.HERETIC].surge_dungeon_multiplier
+
+        assert unreal == pytest.approx(expected), (
+            f"Unreal has {unreal}, the model has {expected}")
+
+    def test_the_multiplier_is_applied_after_the_cap_in_both(self, model):
+        """THE ORDER, NOT THE NUMBER, and it cannot be read off a constant.
+
+        The simulation caps the count and then multiplies. Doing it the other way
+        makes Heretic identical to Standard at every surge that reaches the cap,
+        which is where the extra dungeons would hurt most. This is what says the
+        model still does it that way, so the Unreal side copying the order is
+        still copying something true.
+        """
+        from cataclysm_sim.config import (LethalityMode, SurgeMode,
+                                          TuningConfig)
+        from cataclysm_sim.engine import Simulation
+
+        heretic = Simulation(
+            TuningConfig(surge_mode=SurgeMode.SWELLING)
+            .with_lethality(LethalityMode.HERETIC), seed=0)
+        standard = Simulation(
+            TuningConfig(surge_mode=SurgeMode.SWELLING)
+            .with_lethality(LethalityMode.STANDARD), seed=0)
+
+        # Far past the point where a swelling count reaches its ceiling.
+        heretic.surge_index = standard.surge_index = 40
+
+        assert standard.surge_count() == model.surge_count_max, (
+            "a swelling Standard run no longer reaches the ceiling at surge 40, "
+            "so this test is no longer asking about the cap at all")
+        assert heretic.surge_count() > standard.surge_count(), (
+            "the model now caps AFTER multiplying, so Heretic and Standard send "
+            "the same wave at the ceiling. The Unreal side still multiplies last")
+
+
+class TestWhereAWaveLands:
+    WEIGHTS = {
+        "OutpostTargetWeight": "Outpost",
+        "BulwarkTargetWeight": "Bulwark",
+        "SanctuaryTargetWeight": "Sanctuary",
+        "PillarTargetWeight": "Pillar",
+    }
+
+    def test_every_tiers_weight_matches(self, surge_header, model):
+        from cataclysm_sim.config import CityTier
+
+        for unreal_name, tier_name in self.WEIGHTS.items():
+            unreal = number(surge_header, unreal_name)
+            expected = model.SURGE_TARGET_WEIGHT[CityTier(tier_name)]
+
+            assert unreal == pytest.approx(expected), (
+                f"{unreal_name}: Unreal has {unreal}, the model has {expected}")
+
+    def test_the_pillar_is_never_a_target(self, surge_header, model):
+        """A rule rather than a preference: the Pillar is only ever attacked in
+        the Last Stand, when the Cataclysm comes to the player."""
+        from cataclysm_sim.config import CityTier
+
+        assert number(surge_header, "PillarTargetWeight") == 0.0
+        assert model.SURGE_TARGET_WEIGHT[CityTier.PILLAR] == 0.0
+
+    def test_a_smaller_city_is_hit_more_often(self, surge_header):
+        """The frontier is Outposts before anything else, which is what makes the
+        empire crumble from the outside in rather than at random."""
+        weights = [number(surge_header, name) for name in self.WEIGHTS]
+        assert weights == sorted(weights, reverse=True), weights
+
+
+class TestWhatADungeonIs:
+    def test_the_resolve_jitter_matches(self, surge_header, model):
+        unreal = number(surge_header, "ResolveJitter")
+        assert unreal == pytest.approx(model.resolve_jitter), (
+            f"Unreal has {unreal}, the model has {model.resolve_jitter}")
+
+    def test_the_jitter_cannot_reorder_two_depths(self, surge_header, model):
+        """A jitter of 50% would let an 8-floor dungeon outlast a 15-floor one on
+        the same city, and the trade the whole strategy layer rests on -- deeper
+        is slower to clear AND slower to bite -- would stop being reliable."""
+        jitter = number(surge_header, "ResolveJitter")
+
+        shallow = (model.resolve_base_days + 8 * model.resolve_floor_ratio)
+        deep = (model.resolve_base_days + 15 * model.resolve_floor_ratio)
+
+        assert shallow * (1 + jitter) < deep * (1 - jitter), (
+            f"at a jitter of {jitter} an 8-floor dungeon can outlast a 15-floor "
+            "one on the same Outpost")
+
+    # Every (dungeon kind, city tier) pair the model holds, written out by hand
+    # rather than read from either side. Two copies of a number are two numbers;
+    # this is deliberately a THIRD, so that the model and the C++ drifting
+    # together still fails.
+    #
+    # THE DAMAGE COLUMNS ARE POINTS AND PEOPLE, NOT FRACTIONS OF THE CITY.
+    # Issue #1327 changed the model and issue #1331 changed the game. Each value
+    # is the fraction it replaced multiplied by that tier's base maximum:
+    # 10% of 1,000, 9% of 3,000, 8% of 8,000 and 6% of 20,000 for defence.
+    #
+    # THE THREE NON-BASIC KINDS ALL CARRY NO DAMAGE IN THEIR OWN ROWS. A
+    # Fallen City and a Cataclysm stand on a city whose damage is already
+    # done. A Quest dungeon, in the model since 2026-10-13, hits its host with
+    # the BASIC row of the host's tier and its own rows stay zero; in the
+    # game it takes nothing yet.
+    #
+    # THE CATACLYSM HAS ONE ROW. `config.DUNGEON_SPECS` holds it only for the
+    # Pillar and `TuningConfig.spec` raises when asked for another, so there are
+    # thirteen pairs and not sixteen.
+    #
+    # THE FOUR BASIC ROWS' DAMAGE IS 0.7 OF WHAT IT WAS, in the model since
+    # 2026-10-16 and in the game since 2026-10-20. Until then they were 100
+    # and 250 on an Outpost, 270 and 1,000 on a Bulwark, 640 and 2,400 on a
+    # Sanctuary, 1,200 and 4,500 on the Pillar. Between those two days the
+    # model check below skipped these eight numbers and the two halves were
+    # pinned apart in a file of their own; the game's layer wrote the new rows
+    # here and took the skip out, as that file said to.
+    SPECS = {
+        ("Basic", "Outpost"):        (8, 15, 70.0, 175.0),
+        ("Basic", "Bulwark"):        (15, 25, 189.0, 700.0),
+        ("Basic", "Sanctuary"):      (25, 40, 448.0, 1680.0),
+        ("Basic", "Pillar"):         (40, 60, 840.0, 3150.0),
+
+        ("Quest", "Outpost"):        (20, 30, 0.0, 0.0),
+        ("Quest", "Bulwark"):        (30, 45, 0.0, 0.0),
+        ("Quest", "Sanctuary"):      (30, 50, 0.0, 0.0),
+        ("Quest", "Pillar"):         (50, 70, 0.0, 0.0),
+
+        ("FallenCity", "Outpost"):   (20, 35, 0.0, 0.0),
+        ("FallenCity", "Bulwark"):   (40, 60, 0.0, 0.0),
+        ("FallenCity", "Sanctuary"): (60, 85, 0.0, 0.0),
+        ("FallenCity", "Pillar"):    (80, 120, 0.0, 0.0),
+
+        ("Cataclysm", "Pillar"):     (100, 150, 0.0, 0.0),
+    }
+
+    @staticmethod
+    def unreal_specs() -> dict:
+        """`SpecFor` in `CataclysmSurge.cpp`, read back as a table.
+
+        WHY THIS PARSES RATHER THAN SEARCHES FOR SUBSTRINGS. The earlier version
+        of this test asked whether `LeastFloors = 15;` appeared anywhere in the
+        file. That was already loose with four rows and is useless with thirteen:
+        `LeastFloors = 20;` is correct for a Quest on an Outpost and for a Fallen
+        City on an Outpost, so a search cannot tell a right pairing from a wrong
+        one, and swapping two rows would pass. This reads which block each number
+        is actually in.
+
+        `default:` IS THE OUTPOST. The C++ writes the Outpost as the default arm
+        of each tier switch rather than naming it, which is the file's existing
+        style. The Cataclysm has no tier switch at all -- one `if` on the Pillar
+        -- so it is read separately.
+        """
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmSurge.cpp")
+
+        body = source.split("UCataclysmSurgeScheduler::SpecFor(", 1)[1]
+        body = body.split("return Spec;", 1)[0]
+
+        found = {}
+        kinds = re.split(r"case ECataclysmDungeonType::(\w+):", body)
+
+        # re.split leaves the text before the first match at index 0, then
+        # alternates name, block, name, block.
+        for index in range(1, len(kinds), 2):
+            kind = kinds[index]
+            block = kinds[index + 1]
+
+            tiers = re.split(r"case ECataclysmCityTier::(\w+):|(default):",
+                             block)
+
+            if len(tiers) > 1:
+                for spot in range(1, len(tiers), 3):
+                    named, fallback = tiers[spot], tiers[spot + 1]
+                    tier = "Outpost" if fallback else named
+                    numbers = TestWhatADungeonIs._numbers_in(tiers[spot + 2])
+                    if numbers is not None:
+                        found[(kind, tier)] = numbers
+                continue
+
+            # NO TIER SWITCH, SO ONE ARM GUARDED BY AN `if`. That is the
+            # Cataclysm, which exists on one tier only.
+            #
+            # THE TIER IS READ FROM THE CODE RATHER THAN ASSUMED TO BE THE
+            # PILLAR. An earlier version of this parser recorded the Pillar
+            # whenever it saw one mentioned, which made
+            # `test_the_game_builds_no_cataclysm_below_the_pillar` incapable of
+            # failing: it could never record a lesser tier, so it asserted
+            # something the parser had already made impossible.
+            named = re.search(r"Tier == ECataclysmCityTier::(\w+)", block)
+            numbers = TestWhatADungeonIs._numbers_in(block)
+            if named and numbers is not None:
+                found[(kind, named.group(1))] = numbers
+
+        return found
+
+    @staticmethod
+    def _numbers_in(block: str):
+        """The four spec numbers in one arm, or None if it sets no floors.
+
+        DAMAGE THAT IS NOT WRITTEN IS ZERO, because `FCataclysmDungeonSpec`
+        declares both numbers `0.0f` and the three new kinds leave them alone.
+        Reading an absent line as zero is what the struct actually does; reading
+        it as missing would report every new row as broken.
+        """
+        def one(name: str, fallback):
+            hit = re.search(r"Spec\." + name + r"\s*=\s*([0-9.]+)f?;", block)
+            return type(fallback)(hit.group(1)) if hit else fallback
+
+        if not re.search(r"Spec\.LeastFloors", block):
+            return None
+
+        return (one("LeastFloors", 0), one("MostFloors", 0),
+                one("DefenceDamage", 0.0), one("PopulationDamage", 0.0))
+
+    def test_the_model_holds_the_thirteen_specs_this_test_expects(self, model):
+        """The model against the hand-written table above.
+
+        BOTH SIDES NOW HOLD POINTS, so this compares them directly. Issue #1327
+        changed the model from a fraction of the host city's own maximum to a
+        number of points, because the maximum divided out of how long a city
+        survived and every city-health upgrade in the design was worth nothing;
+        issue #1331 did the same to the game, where `UCataclysmEmpireMap::Bite`
+        had the same shape and its whole call chain depended on it.
+
+        WHILE THE TWO DISAGREED IN SHAPE this asserted the PRODUCT -- the
+        model's points against the game's fraction times that tier's maximum --
+        so the divergence could not widen unnoticed while #1331 waited. That
+        scaffolding is gone now that both sides say the same thing.
+        """
+        from cataclysm_sim.config import CityTier, DungeonType
+
+        for (kind, tier_name), (least, most, defence, pop) in self.SPECS.items():
+            tier = CityTier(tier_name)
+            spec = model.spec(DungeonType(kind), tier)
+
+            assert spec.floors == (least, most), (
+                f"{kind} on {tier_name}: this test expects {(least, most)} "
+                f"floors, the model has {spec.floors}")
+
+            assert spec.defense_damage == pytest.approx(defence), (
+                f"{kind} on {tier_name}: the model removes "
+                f"{spec.defense_damage} defence points and this test expects "
+                f"{defence}")
+            assert spec.population_damage == pytest.approx(pop), (
+                f"{kind} on {tier_name}: the model removes "
+                f"{spec.population_damage} people and this test expects {pop}")
+
+    def test_both_sides_hold_points_rather_than_fractions(self, model):
+        """A fraction is below one and a point count is not.
+
+        WITHOUT THIS the test above would go on passing if BOTH sides quietly
+        became fractions again together, which is the state issues #1327 and
+        #1331 exist to prevent. Only the Basic rows are checked because the
+        other three kinds deal no damage by design.
+
+        AND IT IS ASKED OF THE C++ TOO. The hand-written table above is a third
+        copy that both sides are compared against, so a table edited back to
+        fractions would take both implementations with it and every equality
+        check in this file would still pass.
+        """
+        from cataclysm_sim.config import CityTier, DungeonType
+
+        found = self.unreal_specs()
+
+        for (kind, tier_name) in self.SPECS:
+            if kind != "Basic":
+                continue
+
+            spec = model.spec(DungeonType(kind), CityTier(tier_name))
+            assert spec.defense_damage > 1.0, (
+                f"{tier_name} takes {spec.defense_damage} defence damage in "
+                "the model, which is a fraction rather than a number of points")
+            assert spec.population_damage > 1.0
+
+            _, _, defence, population = found[(kind, tier_name)]
+            assert defence > 1.0, (
+                f"CataclysmSurge.cpp gives a {tier_name} dungeon {defence} "
+                "defence damage, which is a fraction rather than points")
+            assert population > 1.0
+
+    def test_the_game_no_longer_takes_a_share_of_the_city_when_a_dungeon_resolves(
+            self):
+        """`ResolveDungeon` calls the points path, not the share path.
+
+        THE HALF OF ISSUE #1331 THE SPEC TABLE CANNOT SHOW. Points in the table
+        would still buy the player nothing if the map went on multiplying them
+        by the city's own maximum on the way in, and that multiplication lived
+        in `UCataclysmEmpireMap::Bite` rather than in the table.
+
+        `Bite` STILL EXISTS AND THAT IS DELIBERATE -- it is the share shape the
+        Siege sub-type keeps by the owner's ruling of 2026-09-05, "Keep it as a
+        deliberate exception (Recommended)". So the check is that the RESOLVE
+        path does not use it, not that it is gone.
+        """
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmEmpireRun.cpp")
+
+        resolving = source.split("UCataclysmEmpireRun::ResolveDungeon(", 1)[1]
+        resolving = resolving.split("\n}", 1)[0]
+
+        assert "Map->Damage(" in resolving, (
+            "ResolveDungeon no longer calls UCataclysmEmpireMap::Damage, so a "
+            "dungeon resolving may have gone back to taking a share of its "
+            "city. Issue #1331")
+
+        assert "Map->Bite(" not in resolving, (
+            "ResolveDungeon calls UCataclysmEmpireMap::Bite, which takes a "
+            "SHARE of the city's maximum. That share divides out of how many "
+            "resolves a city survives and makes every city-health upgrade "
+            "worth nothing. Issue #1331")
+
+    def test_the_map_takes_points_and_not_a_share_of_the_maximum(self):
+        """The subtraction in `Damage` has no `MaxDefence` in it.
+
+        THE ONE LINE THE WHOLE ISSUE IS ABOUT. It read
+        `City->Defence -= City->MaxDefence * DefenceTaken;`.
+        """
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmEmpireMap.cpp")
+
+        damaging = source.split("UCataclysmEmpireMap::Damage(", 1)[1]
+        damaging = damaging.split("\n}", 1)[0]
+
+        assert "City->Defence -= DefenceTaken;" in damaging, (
+            "UCataclysmEmpireMap::Damage no longer subtracts the points it was "
+            "given. Issue #1331")
+
+        assert "MaxDefence" not in damaging and "MaxPopulation" not in damaging, (
+            "UCataclysmEmpireMap::Damage mentions a city maximum again. The "
+            "damage a dungeon deals must not scale with the pool it comes out "
+            "of, or raising a city's ceiling buys nothing. Issue #1331")
+
+    def test_a_siege_still_takes_a_share_of_the_city_and_that_is_the_ruling(self):
+        """The one place a city maximum is still a factor, on purpose.
+
+        THIS TEST GUARDS A DECISION RATHER THAN A DEFECT, and it is the reverse
+        of the two above. Issue #1331 turned every dungeon resolve into points;
+        the project owner was asked whether the Siege should follow and answered
+        on 2026-09-05, verbatim: "Keep it as a deliberate exception
+        (Recommended)" -- a siege does not care how thick your walls are.
+
+        SO A LATER SESSION TIDYING THE LAST PERCENTAGE OUT OF FRESHLY-FLATTENED
+        CODE FAILS HERE rather than silently removing the one threat that
+        city-health investment does not protect against.
+        `sim/cataclysm_sim/engine.py::_apply_siege_damage` is the same shape and
+        `docs/DECISIONS.md` carries the ruling.
+        """
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmEmpireRun.cpp")
+
+        besieging = source.split("UCataclysmEmpireRun::ApplySiegeDamage(", 1)[1]
+        besieging = besieging.split("\n}", 1)[0]
+
+        assert "City->MaxDefence * SiegeDefenceBitePerDay" in besieging, (
+            "ApplySiegeDamage no longer takes a share of the city's maximum "
+            "defence. That share is the project owner's deliberate exception "
+            "of 2026-09-05 and not an oversight left over from issue #1331")
+
+        assert "City->MaxPopulation * SiegePopulationBitePerDay" in besieging, (
+            "ApplySiegeDamage no longer takes a share of the city's maximum "
+            "population. See above")
+
+        # AND THE GROWTH IS STILL POINTS, which is the half of a Siege that city
+        # health DOES protect against -- 2.5 points is 0.25% of an Outpost's
+        # defence and 0.0125% of the Pillar's.
+        assert "SiegeDamageGrowthPerDay * Host.Value" in besieging, (
+            "ApplySiegeDamage no longer grows by a flat number of points per "
+            "day the Siege has stood. Issue #1329")
+
+    def test_the_model_holds_no_other_spec(self, model):
+        """Thirteen and not sixteen. A Cataclysm exists only at the Pillar, and
+        a fourteenth row appearing in the model without appearing here would
+        otherwise go unnoticed by every check in this file."""
+        held = {(kind.value, tier.value) for kind, tier in model.DUNGEON_SPECS}
+
+        assert held == set(self.SPECS), (
+            f"the model holds {sorted(held - set(self.SPECS))} that this test "
+            f"does not, and lacks {sorted(set(self.SPECS) - held)}")
+
+    def test_every_dungeon_spec_matches_in_the_game(self):
+        """The C++ switch against the same hand-written table.
+
+        WHAT THIS CATCHES THAT THE MODEL TEST DOES NOT. `SpecFor` is a switch
+        written by hand and the model is a dictionary. Nothing but this compares
+        them, and until issue #1324 nothing compared any kind but `Basic` -- so
+        the game answering only for Basic while the model answered for all four
+        went unreported for as long as both existed.
+        """
+        found = self.unreal_specs()
+
+        assert found == self.SPECS, (
+            "CataclysmSurge.cpp and this test disagree.\n"
+            f"  only in the C++: {sorted(set(found) - set(self.SPECS))}\n"
+            f"  only in this test: {sorted(set(self.SPECS) - set(found))}\n"
+            + "\n".join(
+                f"  {pair}: the C++ has {found[pair]}, this test expects "
+                f"{self.SPECS[pair]}"
+                for pair in sorted(set(found) & set(self.SPECS))
+                if found[pair] != self.SPECS[pair]))
+
+    def test_the_game_builds_no_cataclysm_below_the_pillar(self):
+        """The model raises when asked for one, so the C++ must not answer.
+
+        A plausible-looking floor range for a Cataclysm on an Outpost would be
+        an invented number, and this repository has been bitten by those.
+        """
+        found = self.unreal_specs()
+
+        for tier in ("Outpost", "Bulwark", "Sanctuary"):
+            assert ("Cataclysm", tier) not in found, (
+                f"CataclysmSurge.cpp answers a Cataclysm spec on a {tier}, "
+                "which the model has no row for")
+
+    def test_a_surge_lands_a_basic_or_a_quest_and_nothing_else(self):
+        """A wave a surge rolls is `Basic` or `Quest`. Never the other two.
+
+        THIS TEST HAS BEEN RENAMED TWICE AND BOTH RENAMES ARE THE POINT.
+
+        Slice 1 of #1324 called it `test_nothing_creates_a_dungeon_that_is_not_basic_yet`,
+        and its docstring said `MakeDungeon` "is the only thing that puts a
+        dungeon on the map". Slice 2 made both claims false -- a city that falls
+        becomes a Fallen City dungeon -- and the test kept passing, because it
+        only ever read `MakeDungeon`. Slice 2 renamed it to
+        `test_a_surge_still_lands_only_basic_dungeons`, which said what it
+        actually checked.
+
+        Slice 3 has now made THAT name false: a surge rolls a Quest dungeon
+        `QuestChance` of the time. So the name changes again rather than the
+        assertion being loosened while the name stays, which is the failure mode
+        the epic named as worse than a failing test.
+
+        WHAT IT STILL GUARDS, and it is a real thing rather than a formality.
+        A Fallen City must keep coming from `MakeFallenCityDungeon` and nowhere
+        else, and the Cataclysm boss dungeon from `MakeCataclysmDungeon`, which
+        slice 6b added on 2026-11-02 for a run that has earned it, and nowhere
+        else -- that dungeon is the win condition and issue #43 also reaches for
+        it, so a surge landing one by accident is exactly what this stops. The
+        name still says what it checks, so it did not change a third time.
+        """
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmSurge.cpp")
+
+        rolled = source.split("UCataclysmSurgeScheduler::RollKind(", 1)[1]
+        rolled = rolled.split("\n}", 1)[0]
+
+        assert "ECataclysmDungeonType::Quest" in rolled, (
+            "RollKind no longer answers Quest, so a surge lands none. Issue "
+            "#1324 slice 3 is what made it")
+
+        assert "ECataclysmDungeonType::Basic" in rolled, (
+            "RollKind no longer answers Basic, so every dungeon a surge lands "
+            "is a Quest")
+
+        made = source.split("UCataclysmSurgeScheduler::MakeDungeon(", 1)[1]
+        made = made.split("return Dungeon;", 1)[0]
+
+        for kind in ("FallenCity", "Cataclysm"):
+            for where, body in (("RollKind", rolled), ("MakeDungeon", made)):
+                assert f"ECataclysmDungeonType::{kind}" not in body, (
+                    f"{where} mentions {kind}, so a surge may now land one. A "
+                    "Fallen City comes from MakeFallenCityDungeon and the "
+                    "Cataclysm from MakeCataclysmDungeon; see issue #1324")
+
+    def test_only_a_city_falling_and_an_earned_boss_create_a_dungeon_a_surge_did_not(self):
+        """Two routes put a dungeon on the map that no surge rolled, and two only.
+
+        CALLED `test_only_a_city_falling_creates_a_dungeon_a_surge_did_not` UNTIL
+        2026-11-02, when slice 6b of #1324 added the second route and made the
+        old name false. Slice 2 added `MakeFallenCityDungeon`; slice 6b added
+        `MakeCataclysmDungeon`, the boss dungeon a run earns. This is the guard
+        that a fourth route does not appear without being noticed: the three
+        makers on `UCataclysmSurgeScheduler` are the whole of how a dungeon comes
+        to exist, and each of the two that a surge does not call has exactly one
+        caller in the run.
+        """
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmSurge.cpp")
+
+        makers = re.findall(r"UCataclysmSurgeScheduler::(Make\w*Dungeon)\(",
+                            source)
+
+        assert sorted(set(makers)) == ["MakeCataclysmDungeon", "MakeDungeon",
+                                       "MakeFallenCityDungeon"], (
+            f"the makers of a dungeon are now {sorted(set(makers))}. A new one "
+            "means a new way for a dungeon to exist; see issue #1324")
+
+        run = TestWhatClearingADungeonCounts.code_only(
+            read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire" / "Empire"
+                 / "CataclysmEmpireRun.cpp"), "//")
+        assert run.count("UCataclysmSurgeScheduler::MakeCataclysmDungeon(") == 1, (
+            "the run calls MakeCataclysmDungeon other than once, from "
+            "OpenCataclysmDungeonIfEarned, so the boss dungeon has another way "
+            "onto the board")
+        opener = run.split("void UCataclysmEmpireRun::OpenCataclysmDungeonIfEarned()", 1)
+        assert len(opener) == 2 and "MakeCataclysmDungeon(" in opener[1].split("\n}\n", 1)[0], (
+            "MakeCataclysmDungeon is no longer called from "
+            "OpenCataclysmDungeonIfEarned")
+
+        # AND THE BOSS ONE IS THE ONLY THING THAT NAMES THE CATACLYSM KIND.
+        boss = source.split("UCataclysmSurgeScheduler::MakeCataclysmDungeon(\n", 1)[1]
+        boss = boss.split("\n}", 1)[0]
+
+        assert "Dungeon.Type = ECataclysmDungeonType::Cataclysm;" in boss, (
+            "MakeCataclysmDungeon no longer makes a Cataclysm dungeon")
+        for kind in ("Quest", "FallenCity", "Basic"):
+            assert f"ECataclysmDungeonType::{kind}" not in boss, (
+                f"MakeCataclysmDungeon mentions {kind}; it should build one "
+                "kind only")
+
+        # AND THE FALLEN CITY ONE IS THE ONLY THING THAT NAMES A KIND A SURGE
+        # DOES NOT ROLL.
+        fallen = source.split("MakeFallenCityDungeon(\n", 1)[1]
+        fallen = fallen.split("\n}", 1)[0]
+
+        assert "ECataclysmDungeonType::FallenCity" in fallen, (
+            "MakeFallenCityDungeon no longer makes a Fallen City")
+
+        for kind in ("Quest", "Cataclysm"):
+            assert f"ECataclysmDungeonType::{kind}" not in fallen, (
+                f"MakeFallenCityDungeon mentions {kind}; it should build one "
+                "kind only")
+
+
+class TestWhatASiegeCostsItsHost:
+    """What a Siege costs its host, in the game and in the model.
+
+    FOUR NUMBERS: the three a Siege bites with, which live in
+    `CataclysmEmpireRun.h`, and the cap on how many may stand on one city, which
+    lives with the scheduler in `CataclysmSurge.h`.
+
+    THIS IS THE ONE PORT CHECK IN THIS FILE THAT RUNS THE OTHER WAY ROUND.
+    Everywhere else the model came first and the game copied it. The Siege did
+    not: `CataclysmEmpireRun.h` was written from the design document while the
+    model gave a sub-type no behaviour at all, and `_apply_siege_damage` was
+    added to `sim/cataclysm_sim/engine.py` afterwards, on 2026-09-06, under
+    issue #1329. The header says so itself -- "The two must now be kept in step
+    like every other ported number" -- and until issue #1353 nothing made them.
+
+    SO A READER WHO ASSUMES THE MODEL IS AUTHORITATIVE WOULD CORRECT THE WRONG
+    SIDE. The failure messages below name the game's value first for that
+    reason, and the design document sentence each number came from is quoted
+    beside the table.
+
+    WHAT `sim/tests/test_siege_subtype.py` CANNOT DO, WHICH IS WHY THIS EXISTS.
+    Its `TestItMatchesTheGamesOwnStatedFigures` asserts that an unattended Siege
+    empties the four city sizes in 25, 39, 55 and 70 days. Those four figures
+    are literals copied out of this header's own prose, and that test runs the
+    MODEL and nothing else -- so it notices the model drifting away from them
+    and cannot notice the C++ constants moving underneath them.
+
+    WHAT THIS DOES NOT CHECK, because
+    `test_a_siege_still_takes_a_share_of_the_city_and_that_is_the_ruling` above
+    already does: that `ApplySiegeDamage` still USES all three, in the shapes
+    the ruling of 2026-09-05 calls for. A constant the code ignores would
+    satisfy every assertion here.
+    """
+
+    #: The game's name for each constant, the model's name for it, and the value
+    #: both must hold.
+    #:
+    #: THE VALUE IS A THIRD COPY, WRITTEN OUT BY HAND ON PURPOSE, as the spec
+    #: table above is. Comparing the two implementations against each other
+    #: alone would pass for a pair edited together, which is the easier mistake
+    #: to make here than a one-sided edit: a session porting a design change
+    #: touches both files.
+    #:
+    #: All three come from the Siege row of the sub-type table in
+    #: `docs/Cataclysm_GDD_v2.md`: "Deals 1% damage to city defenses and
+    #: population per day while active. Increases in power by 2.5 points per
+    #: day."
+    #:
+    #: THE GROWTH WAS 10 UNTIL 2026-09-06, when the owner cut it on issue #1349
+    #: -- verbatim, "Halve the rate and cut the growth". The two 1% shares were
+    #: explicitly left alone by that ruling.
+    #:
+    #: THE ROW AND NOT A LINE NUMBER, DELIBERATELY. Eight places in this
+    #: repository cited that sentence by line number -- seven as "line 3744"
+    #: and one as "line 3732" -- and the document had grown past both. Issue
+    #: #1355 replaced every one of them with this row citation, and
+    #: `tools/tests/test_the_design_document_is_cited_by_name.py` holds them
+    #: there. Issue #1366 widened that guard from the Siege row to every
+    #: passage the repository cites, which is why it was renamed.
+    #:
+    #: THE NUMBER WENT STALE TWICE IN ONE DAY, which is the whole argument.
+    #: #1355 was filed naming 3801 as the correct line; by the time it was
+    #: fixed, later edits had carried the row to 3839.
+    BITES = {
+        "SiegeDefenceBitePerDay": ("siege_defence_bite_per_day", 0.01),
+        "SiegePopulationBitePerDay": ("siege_population_bite_per_day", 0.01),
+        "SiegeDamageGrowthPerDay": ("siege_damage_growth_per_day", 2.5),
+    }
+
+    def test_every_siege_constant_matches(self, run_header, model):
+        for cpp_name, (model_name, expected) in self.BITES.items():
+            assert hasattr(model, model_name), (
+                f"TuningConfig no longer has {model_name}, which is the "
+                f"model's copy of {cpp_name} in {RUN_HEADER.name}")
+
+            game = number(run_header, cpp_name, where=RUN_HEADER.name)
+            held = float(getattr(model, model_name))
+
+            assert game == pytest.approx(held), (
+                f"{cpp_name} is {game} in {RUN_HEADER.name} and "
+                f"TuningConfig.{model_name} is {held} in the model. The game "
+                "is the reference for the Siege; see this class's note")
+            assert game == pytest.approx(expected), (
+                f"{cpp_name} is {game} in the game and TuningConfig."
+                f"{model_name} is {held} in the model, so the two agree -- but "
+                f"this test's third copy says {expected}. Both sides appear to "
+                "have been edited together")
+
+    def test_the_bites_are_shares_and_the_growth_is_points(self, run_header):
+        """The SHAPES, which a pair of numbers wrong in the same way would pass.
+
+        THIS IS THE SAME ARGUMENT AS
+        `test_both_sides_hold_points_rather_than_fractions` above and the
+        opposite conclusion, because the Siege is the opposite case. Issue #1331
+        turned every dungeon resolve into points; the project owner was asked
+        whether the Siege should follow and answered on 2026-09-05, verbatim,
+        "Keep it as a deliberate exception (Recommended)". So its two bites stay
+        shares of the city's maximum -- a siege does not care how thick your
+        walls are -- while its growth is points, and the growth is the half of a
+        Siege that city health does protect against.
+
+        A bite of 1.0 would empty any city on the day the Siege arrived, and a
+        growth below 1.0 would be a fraction wearing a points name.
+        """
+        for name in ("SiegeDefenceBitePerDay", "SiegePopulationBitePerDay"):
+            share = number(run_header, name, where=RUN_HEADER.name)
+            assert 0.0 < share < 1.0, (
+                f"{name} is {share}, which is not a share of the city's "
+                "maximum. That share is the owner's deliberate exception of "
+                "2026-09-05, not an oversight left over from issue #1331")
+
+        growth = number(run_header, "SiegeDamageGrowthPerDay",
+                        where=RUN_HEADER.name)
+        assert growth > 1.0, (
+            f"SiegeDamageGrowthPerDay is {growth}, which reads as a fraction "
+            "rather than the number of points the design states. Issue #1329")
+
+    def test_the_one_per_city_cap_matches(self, surge_header, model):
+        """"Max 1 per city", which lives with the scheduler that enforces it.
+
+        THE ONE SIEGE NUMBER THAT IS NOT IN THE OTHER HEADER. `SiegesPerCity` is
+        the scheduler's, because refusing a second Siege is a rolling decision
+        rather than a daily cost, so this reads `surge_header` like the rest of
+        the file.
+
+        THE BEHAVIOUR IS CHECKED ELSEWHERE AND ONLY THE NUMBER IS HERE.
+        `UCataclysmSurgeScheduler::RollSubType` spreads a refused Siege across
+        the other six sub-types and `Simulation._roll_subtype` does the same;
+        `sim/tests/test_siege_subtype.py::TestOnePerCity` and the
+        `Cataclysm.Surge` automation tests own that.
+        """
+        game = number(surge_header, "SiegesPerCity")
+
+        assert game == pytest.approx(float(model.siege_max_per_city)), (
+            f"{SURGE_HEADER.name} caps a city at {game} Sieges and the model's "
+            f"siege_max_per_city is {model.siege_max_per_city}")
+        assert game == pytest.approx(1.0), (
+            f"both sides now cap a city at {game} Sieges. The Siege row of the "
+            "sub-type table in `docs/Cataclysm_GDD_v2.md` says "
+            "\"Max 1 per city\"")
+
+
+class TestWhatAFallenCityIs:
+    """A city that falls becomes a dungeon standing on itself.
+
+    Slice 2 of issue #1324. The retaken city's half-restore is compared in
+    `test_empire_map_port.py`, which owns `UCataclysmEmpireMap::RetakenFraction`;
+    what is here is the dungeon the fall leaves behind.
+    """
+
+    def test_it_never_resolves_in_either(self, surge_header, model):
+        """Its timer is set past the end of any run, in both.
+
+        A Fallen City has no consequence left to apply -- the city it stands on
+        has already fallen -- so a timer is meaningless for it. The model says so
+        with `TuningConfig.fallen_city_resolve_days`, which also serves the
+        Cataclysm's dungeon; until 2026-10-16 it was the `(999, 999)` on every
+        Fallen City row.
+        """
+        unreal = number(surge_header, "FallenCityResolveDays")
+
+        assert model.fallen_city_resolve_days == pytest.approx(unreal), (
+            f"the model gives a Fallen City {model.fallen_city_resolve_days} "
+            f"days, the game gives {unreal}")
+
+    def test_it_takes_nothing_from_the_city_in_either(self, model):
+        """It destroys nothing at any tier. The city has already fallen.
+
+        ZERO IS ZERO IN EITHER UNIT, which is why this test did not have to
+        change its meaning when issue #1327 turned the model's damage from a
+        fraction of the city's maximum into a number of points. It changed its
+        FIELD NAMES only. The game still holds fractions, and
+        `test_every_dungeon_spec_matches_in_the_game` above is what converts
+        between the two by multiplying the game's fraction by the tier's own
+        maximum. A Fallen City needs no conversion, because it destroys nothing
+        under either unit.
+        """
+        from cataclysm_sim.config import CityTier, DungeonType
+
+        for tier in ("Outpost", "Bulwark", "Sanctuary", "Pillar"):
+            spec = model.spec(DungeonType.FALLEN_CITY, CityTier(tier))
+            assert spec.defense_damage == 0.0, tier
+            assert spec.population_damage == 0.0, tier
+
+    def test_the_games_depth_is_the_siege_that_took_the_city(self):
+        """The game derives the depth; it does not roll it.
+
+        `docs/Cataclysm_GDD_v2.md` section VIII: "Floor count equals the number
+        of dungeons that were in the city when it fell (minimum 20/40/60 for
+        Outpost/Bulwark/Sanctuary)". The spec's shallow ends ARE those minimums,
+        so the game reads the floor from there rather than writing it twice.
+        """
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmSurge.cpp")
+
+        made = source.split("MakeFallenCityDungeon(", 1)[1].split("\n}", 1)[0]
+
+        assert "FMath::Max(Absorbed, Spec.LeastFloors)" in made, (
+            "MakeFallenCityDungeon no longer takes the deeper of the absorbed "
+            "count and the tier's minimum, which is the design's rule")
+
+        assert "Stream" not in made, (
+            "MakeFallenCityDungeon draws on a random stream. A Fallen City's "
+            "depth is determined by what the city was carrying, not rolled")
+
+    @pytest.mark.parametrize("tier", ["Outpost", "Bulwark", "Sanctuary", "Pillar"])
+    @pytest.mark.parametrize("carrying", [0, 1, 3, 150])
+    def test_the_model_sizes_it_by_the_games_rule(self, tier, carrying):
+        """ISSUE #1341, FIXED. This class held a test that asserted the model
+        rolled the depth while the game derived it, so the two disagreeing
+        would not read as drift, and said it should be replaced by one
+        comparing the two rules once the model was fixed. This is that.
+
+        The model's `_fall` is driven with `carrying` ordinary dungeons on a
+        city of each size, and the Fallen City it leaves must be as deep as the
+        game's `MakeFallenCityDungeon` makes it: `FMath::Max(1, DungeonsAbsorbed)`,
+        then `FMath::Max(Absorbed, Spec.LeastFloors)`. Both halves read the same
+        shallow ends, which `TestTheSpecTable` compares. 150 is above every
+        spec's deep end, so a model that still rolled could not pass by landing
+        on the number, and 0 checks the game's floor of one.
+        """
+        from dataclasses import replace
+
+        from cataclysm_sim.config import TREE_NONE, CityTier, DungeonType, TuningConfig
+        from cataclysm_sim.engine import Simulation
+
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmSurge.cpp")
+        made = source.split("MakeFallenCityDungeon(", 1)[1].split("\n}", 1)[0]
+        assert "FMath::Max(1, DungeonsAbsorbed)" in made
+        assert "FMath::Max(Absorbed, Spec.LeastFloors)" in made
+
+        cfg = replace(TuningConfig(), tier=1, surge_on_city_fall=False,
+                      surge_on_empty_board=False).with_tree(TREE_NONE)
+        sim = Simulation(cfg, seed=3)
+        sim.next_surge_day = float("inf")
+        sim.dungeons.clear()
+        city = next(c for c in sim.empire.cities.values()
+                    if c.tier is CityTier(tier) and not c.fallen)
+        for _ in range(carrying):
+            sim._make_dungeon(DungeonType.BASIC, city)
+        sim._fall(city)
+        fallen = [d for d in sim.dungeons.values()
+                  if d.dtype is DungeonType.FALLEN_CITY and d.city_id == city.cid]
+        assert len(fallen) == 1
+
+        least = cfg.spec(DungeonType.FALLEN_CITY, CityTier(tier)).floors[0]
+        games = max(max(1, carrying), least)
+        assert fallen[0].floors == games, (
+            f"a {tier} that fell carrying {carrying} ordinary dungeons left a "
+            f"{fallen[0].floors}-floor Fallen City in the model; the game's rule "
+            f"gives {games}. Issue #1341.")
+
+class TestWhatAQuestDungeonIs:
+    """A surge rolls one instead of a Basic, it refreshes instead of biting,
+    and its timer running out moves it to an adjacent city.
+
+    Slices 3 and 4 of issue #1324. Slice 3 shipped with a
+    `test_neither_moves_a_quest_dungeon_yet` recording relocation as scope; the
+    relocation tests at the end of this class replace it, and the reason they
+    are several rather than one is that a move is several decisions the design
+    does not spell out: that they both move it, what they both count as
+    adjacent, what they both do when there is nowhere to go, **how likely each
+    is to take a move it could take**, and **which destinations a dungeon
+    carrying a Siege may not have**. The last two are the owner's rulings of
+    2026-09-06, "A chance each time" with the number 0.5, and "Check the limit
+    on arrival too" -- issues #1324 and #1371.
+    """
+
+    def test_the_chance_a_surge_rolls_one_matches(self, surge_header, model):
+        """`QuestChance` against `config.quest_dungeon_chance`.
+
+        **THIS NUMBER IS KNOWN TO BE SUPERSEDED AND THIS TEST IS STILL THE RIGHT
+        ONE.** The project owner ruled on 2026-09-06, verbatim "It should depend
+        on the Cataclysm", so the settled design is a rule keyed on which
+        Cataclysm sent the wave rather than a single figure. The game cannot
+        express that yet -- its empire layer has no Cataclysm identity at all --
+        and issue #1357 owns getting there.
+
+        Until it does, both halves hold the same flat number and the job of this
+        file is to make sure they hold the SAME one. A drift here would mean the
+        game rolling Quest dungeons at a rate no balance figure was measured at.
+        """
+        unreal = number(surge_header, "QuestChance")
+
+        assert model.quest_dungeon_chance == pytest.approx(unreal), (
+            f"the model rolls a Quest dungeon {model.quest_dungeon_chance:.0%} "
+            f"of the time and the game {unreal:.0%}")
+
+    def test_both_kinds_take_their_timer_from_one_formula_in_both(
+            self, surge_header):
+        """A Basic and a Quest dungeon take their timer from one formula, in both.
+
+        THIS WAS `test_the_model_rolls_its_timer_from_its_depth_and_the_game_not_yet`
+        UNTIL 2026-10-19. The owner decided on 2026-10-16 that a Quest
+        dungeon's timer scales with its depth like other dungeons, and the
+        flat 25 days is retired. The model changed first, and that check held
+        the game's `QuestResolveDays = 25` in place with an instruction to
+        replace it with this one when the game layer landed. It landed on
+        2026-10-19: `UCataclysmSurgeScheduler::MakeDungeon` gives every kind
+        `Base * Jitter`, and the constant is gone.
+
+        WHAT EACH HALF IS HELD TO. The model rolls a Basic and a Quest dungeon's
+        timer down one branch of `Simulation._make_dungeon` and reads no timer
+        range from a row. The game assigns `ResolveDays` in one statement that
+        asks nothing about the kind, and its header no longer defines a flat
+        Quest timer for anything to reach for.
+        """
+        engine = read(REPO_ROOT / "sim" / "cataclysm_sim" / "engine.py")
+        made = engine.split("def _make_dungeon(", 1)[1].split("d = Dungeon(", 1)[0]
+
+        assert "if dtype in (DungeonType.BASIC, DungeonType.QUEST):" in made, (
+            "the model no longer rolls a Quest dungeon's timer with the "
+            "ordinary dungeon's formula")
+        assert "spec.resolve_days" not in made, (
+            "the model reads a timer range from a row again")
+
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmSurge.cpp")
+        body = source.split("UCataclysmSurgeScheduler::MakeDungeon(", 1)[1]
+        body = body.split("return Dungeon;", 1)[0]
+
+        assert "Dungeon.ResolveDays = Base * Jitter;" in body, (
+            "MakeDungeon no longer gives a dungeon the timer its depth gives, "
+            "jittered")
+
+        # THE STATEMENT THAT ASSIGNS THE TIMER, read whole up to its semicolon,
+        # so a branch written across lines is still seen.
+        assignments = [
+            part.split(";", 1)[0]
+            for part in body.split("Dungeon.ResolveDays =")[1:]
+        ]
+        assert len(assignments) == 1, (
+            f"MakeDungeon assigns ResolveDays {len(assignments)} times; one "
+            "statement for every kind is the rule")
+        assert "Kind ==" not in assignments[0] \
+            and "Type ==" not in assignments[0], (
+                "MakeDungeon branches on the kind when it assigns the timer "
+                f"again: {assignments[0].strip()!r}")
+
+        assert "QuestResolveDays" not in surge_header, (
+            "CataclysmSurge.h names QuestResolveDays again. A Quest dungeon's "
+            "timer comes from its depth since 2026-10-19")
+
+    def test_its_own_rows_carry_no_damage_in_the_model(self, model):
+        """A Quest row holds no damage at any tier.
+
+        THIS WAS `test_it_takes_nothing_from_the_city_in_either` UNTIL
+        2026-10-13, AND THE NAME BECAME FALSE FOR THE MODEL. A Quest
+        dungeon's timer running out now hits its host in the model, with
+        the ORDINARY row of the host's tier, and since its layer of
+        2026-10-13 the game does the same. The Quest rows themselves are
+        still zero in both halves:
+        `test_every_dungeon_spec_matches_in_the_game` holds that. The hit is
+        held together in
+        `test_a_quest_dungeons_timer_hits_in_the_model_and_in_the_game.py`.
+
+        ZERO IS ZERO IN EITHER UNIT, so this survived issue #1327 turning the
+        model's damage from a fraction of the city's maximum into a number of
+        points, exactly as the Fallen City version of it did.
+        """
+        from cataclysm_sim.config import CityTier, DungeonType
+
+        for tier in ("Outpost", "Bulwark", "Sanctuary", "Pillar"):
+            spec = model.spec(DungeonType.QUEST, CityTier(tier))
+            assert spec.defense_damage == 0.0, tier
+            assert spec.population_damage == 0.0, tier
+
+    def test_both_single_it_out_by_kind_before_anything_is_taken(self):
+        """Both halves decide on the KIND, not on the damage being zero.
+
+        THIS WAS `test_neither_lets_one_bite_its_host_when_the_timer_runs_out`
+        UNTIL 2026-10-13, AND THEN
+        `test_both_single_it_out_by_kind_and_only_the_game_lets_it_off` while
+        the model hit the host and the game did not. Both hit it now; the hit
+        is held together in
+        `test_a_quest_dungeons_timer_hits_in_the_model_and_in_the_game.py`.
+        What this still holds in BOTH halves: `resolves` / `Resolves` is
+        "ordinary and nothing else", and each resolve function asks the
+        kind before anything is taken. The paragraph below was written
+        when neither half hit, and is kept for its reasoning.
+
+        WHY THAT DISTINCTION IS WORTH A TEST. All four Quest rows carry zero
+        damage today, so a check of the numbers would give the same answer for
+        the wrong reason. Issue #1327 made city damage flat points and asked, as
+        issue #1324's own ninth design question, whether the three non-Basic
+        kinds should deal any at all. If that is ever answered yes, a
+        zero-valued check silently starts letting a Quest dungeon detonate. The
+        design speaks about the kind, so both halves read the kind.
+        """
+        import inspect
+
+        from cataclysm_sim.engine import Dungeon, Simulation
+
+        resolves = inspect.getsource(Dungeon.resolves.fget)
+
+        assert "DungeonType.BASIC" in resolves, (
+            "Simulation's Dungeon.resolves no longer answers on the kind. If "
+            "the model now decides by reading the damage, the game's "
+            "FCataclysmDungeon::Resolves has to change with it")
+
+        resolve = inspect.getsource(Simulation._resolve)
+
+        assert "d.dtype is DungeonType.QUEST" in resolve, (
+            "Simulation._resolve no longer singles a Quest dungeon out before "
+            "it detonates")
+
+        run = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire" / "Empire"
+                   / "CataclysmEmpireRun.cpp")
+
+        body = run.split("UCataclysmEmpireRun::ResolveDungeon(", 1)[1]
+        body = body.split("\n}", 1)[0]
+
+        assert "if (!Dungeon->Resolves())" in body, (
+            "UCataclysmEmpireRun::ResolveDungeon no longer asks whether the "
+            "dungeon is an ordinary one, so a Quest dungeon now takes its own "
+            "row scaled by its depth and leaves the map like an ordinary "
+            "dungeon. Issue #1324 slice 3")
+
+        header = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmSurge.h")
+
+        assert ("bool Resolves() const { return Type == "
+                "ECataclysmDungeonType::Basic; }") in header, (
+            "FCataclysmDungeon::Resolves is no longer 'Basic and nothing "
+            "else', which is what Dungeon.resolves in the model says")
+
+    def test_the_jitter_is_drawn_whatever_the_kind(self):
+        """In the game the resolve jitter is drawn for every kind of dungeon.
+
+        THIS WAS `test_the_game_does_not_roll_its_timer_from_its_depth` UNTIL
+        2026-10-19, and its first two checks held the game's flat Quest timer:
+        the branch on the kind and `? QuestResolveDays`. The owner decided on
+        2026-10-16 that a Quest dungeon's timer scales with its depth, and the
+        game layer of 2026-10-19 removed both;
+        `test_both_kinds_take_their_timer_from_one_formula_in_both` holds what
+        replaced them. This keeps the check that outlives the change.
+
+        **THE JITTER DRAW HAPPENS WHATEVER THE KIND.** That is not decoration: a
+        kind that took fewer numbers off the stream would change every later
+        roll in the run depending on which kinds came out earlier.
+        """
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmSurge.cpp")
+
+        made = source.split("UCataclysmSurgeScheduler::MakeDungeon(", 1)[1]
+        made = made.split("return Dungeon;", 1)[0]
+
+        assert "const float Jitter" in made and "Dungeon.ResolveDays" in made, (
+            "MakeDungeon no longer draws `const float Jitter` before it "
+            "assigns `Dungeon.ResolveDays`, so this check reads nothing")
+
+        # THE DRAW IS UNCONDITIONAL, so every kind costs the stream the same.
+        jitter = made.split("const float Jitter", 1)[1]
+        jitter = jitter.split("Dungeon.ResolveDays", 1)[0]
+
+        assert "Kind ==" not in jitter and "Type ==" not in jitter, (
+            "the resolve jitter is now drawn conditionally. A Quest dungeon "
+            "must take the same number of draws off the stream as a Basic one, "
+            "or which kinds came out earlier changes every later roll")
+
+    def test_both_move_it_to_an_adjacent_city_and_neither_moves_it_anywhere(
+            self, model):
+        """Slice 4 of issue #1324, and the rule both halves must now share.
+
+        THIS REPLACES `test_neither_moves_a_quest_dungeon_yet`, which asserted
+        the absence of the move on purpose while it was still scope. It said so
+        in its own docstring -- "when slice 4 lands it should fail" -- and it
+        did.
+
+        **THE MODEL WAS THE DEFECT AND THE GAME WAS NEVER BROUGHT INTO STEP WITH
+        IT.** `Simulation._resolve` moved a Quest dungeon to a uniformly random
+        exposed city anywhere on the map, through `Empire.exposed_cities()`,
+        which filters for exposure and nothing else. The design says "may move
+        to ADJACENT city" and the project owner ruled on 2026-09-06, verbatim
+        "Adjacent, and fix the simulation". So this checks BOTH halves ask for
+        neighbours, and that the model's old call is gone rather than sitting
+        beside the new one.
+        """
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        assert model.quest_relocates is True, (
+            "the model has stopped relocating quest dungeons. That is not the "
+            "fix issue #1324 asked for -- the owner ruled the move should be to "
+            "an ADJACENT city, not that it should stop")
+
+        resolve = inspect.getsource(Simulation._resolve)
+
+        assert "self.empire.adjacent_exposed_cities(city)" in resolve, (
+            "Simulation._resolve no longer moves a quest dungeon to an adjacent "
+            "city. The owner ruled on 2026-09-06, verbatim \"Adjacent, and fix "
+            "the simulation\"; issue #1324 slice 4")
+
+        # THE OLD CALL HAS TO BE GONE, not merely joined by the new one. A
+        # `_resolve` that fell back to `exposed_cities()` when no neighbour was
+        # exposed would pass the assertion above and still teleport.
+        assert "self.empire.exposed_cities()" not in resolve, (
+            "Simulation._resolve still reaches for every exposed city on the "
+            "map. Whatever it does with the result, the move-anywhere rule the "
+            "owner called a defect is back in the function")
+
+        run = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                   / "Empire" / "CataclysmEmpireRun.cpp")
+
+        moved = run.split("UCataclysmEmpireRun::RelocateQuestDungeon(", 1)
+        assert len(moved) == 2, (
+            "UCataclysmEmpireRun::RelocateQuestDungeon is gone. It is the "
+            "game's half of the relocation rule and the only thing in that "
+            "class that moves a dungeon; issue #1324 slice 4")
+
+        body = moved[1].split("\n}\n", 1)[0]
+
+        assert "UCataclysmSurgeScheduler::PickRelocation" in body, (
+            "RelocateQuestDungeon no longer asks the scheduler where to move "
+            "to. `PickRelocation` is where the adjacency rule lives, and a "
+            "second copy of it here is how the two would drift")
+
+        # THE BITING PATH IS STILL UNABLE TO MOVE ANYTHING. The const pointer in
+        # `ResolveDungeon` was the structural fact the replaced test rested on,
+        # and it still holds: the mutable lookup is in `RelocateQuestDungeon`
+        # alone. A first attempt at the replaced test asserted that "CityId ="
+        # did not appear anywhere in `ResolveDungeon`, which was wrong in the
+        # loose direction -- it already reads `const int32 CityId =
+        # Dungeon->CityId;`.
+        resolving = run.split("UCataclysmEmpireRun::ResolveDungeon(", 1)[1]
+        resolving = resolving.split("\n}\n", 1)[0]
+
+        assert "const FCataclysmDungeon* Dungeon = FindDungeon(DungeonId);" \
+            in resolving, (
+                "UCataclysmEmpireRun::ResolveDungeon no longer holds the "
+                "dungeon by const pointer. Moving a dungeon belongs in "
+                "RelocateQuestDungeon, and keeping the biting path unable to "
+                "move one is what says so structurally rather than by comment")
+
+    def test_the_two_adjacency_rules_name_the_same_three_kinds_of_link(self):
+        """What "adjacent" means, in both halves, read out of the source.
+
+        THE DESIGN NEVER DEFINES IT, so this is a decision rather than a port,
+        and it is recorded in `docs/DECISIONS.md`. Both halves take every link
+        the map has: the neighbours one ring out, the neighbours one ring in,
+        and the rim's perimeter links. `test_quest_objective_counts_are_stated.py`
+        guards the decision entry itself.
+
+        WHY THE PERIMETER IS THE ONE WORTH CHECKING. Dropping it is the change
+        somebody would make while tidying, because `UCataclysmEmpireMap`'s own
+        class comment used to say adjacency was strictly orthogonal. It costs
+        about ten percentage points of relocation frequency -- 79.5% of quest
+        timers having somewhere to go against 69.1% -- and nothing else in
+        either codebase would notice.
+
+        **THE COMMENTS ARE STRIPPED BEFORE ANYTHING IS SEARCHED FOR, AND THE
+        FIRST VERSION OF THIS TEST DID NOT DO THAT.** It looked for the bare
+        string `City.Perimeter` anywhere in the function. Proving it fired meant
+        commenting the append out -- the obvious surgical break -- and the
+        string was still there, in the comment, so the test passed against a
+        game that had stopped counting the perimeter. It was a guard that could
+        not fail. Both halves now match the whole statement with its comments
+        removed.
+        """
+        import inspect
+
+        from cataclysm_sim.world import Empire
+
+        def code_only(text: str, marker: str) -> str:
+            """The lines of `text` with everything after `marker` removed."""
+            return "\n".join(line.split(marker, 1)[0] for line in
+                             text.splitlines())
+
+        neighbours = code_only(inspect.getsource(Empire.neighbours), "#")
+
+        for link in ("list(c.outward)", "list(c.inward)", "list(c.perimeter)"):
+            assert link in neighbours, (
+                f"Empire.neighbours no longer counts {link}. All three links "
+                "are adjacency in this project; see docs/DECISIONS.md, "
+                "2026-09-06")
+
+        surge = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                     / "Empire" / "CataclysmSurge.cpp")
+
+        adjacent = surge.split(
+            "UCataclysmSurgeScheduler::AdjacentCities(", 1)[1]
+        adjacent = code_only(adjacent.split("\n}\n", 1)[0], "//")
+
+        for link in ("City.Outward", "City.Inward", "City.Perimeter"):
+            statement = f"Neighbours.Append({link});"
+            assert statement in adjacent, (
+                f"UCataclysmSurgeScheduler::AdjacentCities no longer counts "
+                f"{link}, so the game and the model disagree about which "
+                "cities are adjacent")
+
+    def test_both_leave_it_where_it_stands_when_no_neighbour_is_exposed(self):
+        """The design says a Quest dungeon "MAY move", and this is where the
+        "may" comes from: no die roll, just a dungeon with nowhere to go.
+
+        AND NEITHER HALF MAY TAKE A DRAW ON THAT PATH. The model's
+        `self.rng.choice` sits behind `if targets`, and the game's
+        `PickRelocation` returns before `Stream.RandRange`. A draw on the empty
+        case would put the two streams permanently out of step, which is the
+        same rule `MakeDungeon` follows for the resolve jitter.
+        """
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        resolve = inspect.getsource(Simulation._resolve)
+
+        choice = resolve.split("adjacent_exposed_cities(city)", 1)[1]
+        choice = choice.split("return", 1)[0]
+
+        assert "if targets:" in choice, (
+            "Simulation._resolve no longer guards its relocation draw on there "
+            "being a target. An unguarded draw both crashes on the empty list "
+            "and, if made safe some other way, takes a number off the stream on "
+            "a day the game would not")
+
+        surge = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                     / "Empire" / "CataclysmSurge.cpp")
+
+        picked = surge.split(
+            "UCataclysmSurgeScheduler::PickRelocation(", 1)[1]
+        picked = picked.split("\n}\n", 1)[0]
+
+        empty, drawn = picked.split("return INDEX_NONE;", 1)
+
+        assert "Targets.Num() == 0" in empty, (
+            "UCataclysmSurgeScheduler::PickRelocation no longer answers "
+            "INDEX_NONE for a dungeon with no exposed neighbour. That is the "
+            "design's \"may move\", and without it the function has to invent "
+            "somewhere to send it")
+
+        assert "Stream." not in empty and "Stream." in drawn, (
+            "PickRelocation now touches the stream before it knows whether it "
+            "has anywhere to send the dungeon. The model takes no draw on that "
+            "path, so the two runs would diverge from the first quest timer "
+            "that fires with nowhere to go")
+
+    def test_the_chance_it_takes_a_move_it_could_take_matches(
+            self, surge_header, model):
+        """`QuestMoveChance` against `config.quest_move_chance`.
+
+        **THE OWNER RULED THE MECHANIC AND THEN THE NUMBER**, both on
+        2026-09-06: verbatim "A chance each time", and then verbatim "0.5".
+        Before that a Quest dungeon moved whenever an adjacent exposed city
+        existed, which the ruling calls incomplete rather than wrong.
+
+        BALANCE DID NOT CHOOSE IT AND THIS TEST IS NOT WHERE THAT ARGUMENT
+        LIVES. `sim/analyse_quest_move_chance.py` measured the ladder over
+        10,000 campaigns and every response was flat; issue #1324 records the
+        curve. The job here is only that the two halves hold the SAME number, so
+        the game does not move quest dungeons at a rate no measurement was taken
+        at.
+        """
+        unreal = number(surge_header, "QuestMoveChance")
+
+        assert model.quest_move_chance == pytest.approx(unreal), (
+            f"the model moves a Quest dungeon that could move "
+            f"{model.quest_move_chance:.0%} of the time and the game "
+            f"{unreal:.0%}")
+
+    def test_both_draw_the_target_before_they_flip_the_coin(self):
+        """**THE ORDER, AND IT IS THE PORT RATHER THAN A STYLE.**
+
+        Two draws happen per quest timer that has somewhere to go: which city,
+        and whether to take it. Both halves take them in that order, so a timer
+        costs each stream the same two numbers whether the dungeon moves or
+        stays. Flipping first and drawing a target only on success would save a
+        number on the days the dungeon stays -- and the two implementations
+        would then diverge from the first quest timer that declined.
+
+        **AND THE COIN IS NOT IN `PickRelocation`.** That function answers
+        WHERE, and `INDEX_NONE` from it means the map refused. A coin folded
+        into it would make "nowhere to go" and "decided not to"
+        indistinguishable, and
+        `Cataclysm.Surge.AQuestDungeonRelocatesOnlyToAnAdjacentExposedCity`
+        checks every refusal against the map.
+        """
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        def code_only(text: str, marker: str) -> str:
+            return "\n".join(line.split(marker, 1)[0] for line in
+                             text.splitlines())
+
+        # **THE COMMENTS ARE STRIPPED AND THE FIRST VERSION OF THIS TEST DID NOT
+        # DO THAT.** `_resolve` explains the order in a comment that names
+        # `cfg.quest_move_chance`, so the "the coin is not read first" assertion
+        # failed against the very code it was written for -- a guard failing for
+        # a reason that has nothing to do with what it guards. The same mistake
+        # in the other direction is what let `City.Perimeter` pass against a
+        # game that had stopped counting it.
+        resolve = code_only(inspect.getsource(Simulation._resolve), "#")
+
+        after = resolve.split("self.rng.choice(targets)", 1)
+        assert len(after) == 2, (
+            "Simulation._resolve no longer draws a relocation target with "
+            "self.rng.choice(targets). Issue #1324 slice 4")
+
+        assert "self.rng.random() < cfg.quest_move_chance" in after[1], (
+            "Simulation._resolve does not flip the move coin after drawing the "
+            "target. The owner ruled the chance on 2026-09-06, verbatim \"A "
+            "chance each time\", and chose 0.5; the coin must come SECOND or "
+            "the game's stream and the model's part company")
+
+        assert "quest_move_chance" not in after[0], (
+            "Simulation._resolve reads the move chance before it has drawn a "
+            "target. The game draws the target first, so this would put the "
+            "two streams out of step on every quest timer that declines")
+
+        surge = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                     / "Empire" / "CataclysmSurge.cpp")
+
+        picked = code_only(
+            surge.split("UCataclysmSurgeScheduler::PickRelocation(", 1)[1]
+            .split("\n}\n", 1)[0], "//")
+
+        assert "QuestMoveChance" not in picked, (
+            "UCataclysmSurgeScheduler::PickRelocation now reads the move "
+            "chance. It answers WHERE a dungeon would go and INDEX_NONE from "
+            "it means the map refused; folding the coin in makes \"nowhere to "
+            "go\" and \"decided not to\" the same answer")
+
+        run = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                   / "Empire" / "CataclysmEmpireRun.cpp")
+
+        moved = code_only(
+            run.split("UCataclysmEmpireRun::RelocateQuestDungeon(", 1)[1]
+            .split("\n}\n", 1)[0], "//")
+
+        # **THE WHOLE STATEMENT, NOT THE CONSTANT'S NAME.** The name appears in
+        # this function's comments as well, so a search for it over the
+        # unstripped text would pass against a build that had stopped flipping
+        # anything.
+        assert ("Stream.FRand() >= UCataclysmSurgeScheduler::QuestMoveChance"
+                in moved), (
+            "UCataclysmEmpireRun::RelocateQuestDungeon no longer flips the "
+            "move coin against QuestMoveChance. The owner ruled the chance on "
+            "2026-09-06, verbatim \"A chance each time\", and chose 0.5; issue "
+            "#1324")
+
+        assert moved.index("PickRelocation") < moved.index("Stream.FRand()"), (
+            "UCataclysmEmpireRun::RelocateQuestDungeon flips the move coin "
+            "before it asks PickRelocation where to go. The model draws the "
+            "target first, so this would take a number off the stream on a "
+            "quest timer the model spends nothing on")
+
+    def test_both_refuse_a_besieged_city_to_a_dungeon_carrying_a_siege(self):
+        """**"Max 1 per city" IS CHECKED ON ARRIVAL AND NOT ONLY AT SPAWN.**
+
+        The project owner ruled on 2026-09-06, verbatim "Check the limit on
+        arrival too". Issue
+        [#1371](https://github.com/sdubois777/Cataclysm/issues/1371). Before
+        that a Quest dungeon that had rolled Siege could walk onto a city that
+        already had one, because `Simulation._roll_subtype` and
+        `UCataclysmSurgeScheduler::RollSubType` are the only two places the cap
+        was read and neither is on the relocation path.
+
+        **THE COMMENTS ARE STRIPPED FIRST.** Both files explain the rule in a
+        comment that names `sieges_on` and `SiegesPerCity`, so a bare substring
+        search would match the explanation and pass against a build that had
+        stopped doing it. That exact failure has already happened once on issue
+        #1324, on `City.Perimeter`.
+
+        THE BEHAVIOUR IS PROVED ELSEWHERE, deliberately.
+        `TestASiegeMayNotWalkOntoABesiegedCity` in
+        `sim/tests/test_quest_relocation_is_adjacent.py` and
+        `Cataclysm.EmpireRun.ARelocatingSiegeRefusesACityThatAlreadyHasOne`
+        build the situation and watch it. This is the cheap guard that fails in
+        the fast suite when one side of the port is changed alone.
+        """
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        def code_only(text: str, marker: str) -> str:
+            return "\n".join(line.split(marker, 1)[0] for line in
+                             text.splitlines())
+
+        resolve = code_only(inspect.getsource(Simulation._resolve), "#")
+
+        assert "self.sieges_on(" in resolve, (
+            "Simulation._resolve no longer asks how many Sieges stand on a "
+            "relocation target. The design says \"Max 1 per city\" and the "
+            "owner ruled on 2026-09-06, verbatim \"Check the limit on arrival "
+            "too\"; issue #1371")
+
+        assert "cfg.siege_max_per_city" in resolve, (
+            "Simulation._resolve counts Sieges on a relocation target without "
+            "comparing the count against the cap, so the number it reads "
+            "decides nothing")
+
+        assert 'd.subtype == "Siege"' in resolve, (
+            "Simulation._resolve applies the Siege cap without asking whether "
+            "the MOVING dungeon carries one. The cap is \"max 1 Siege per "
+            "city\", not \"one dungeon per besieged city\"")
+
+        surge = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                     / "Empire" / "CataclysmSurge.cpp")
+
+        picked = code_only(
+            surge.split("UCataclysmSurgeScheduler::PickRelocation(", 1)[1]
+            .split("\n}\n", 1)[0], "//")
+
+        # **THE WHOLE CONDITION, NOT THE NAMES IN IT, AND THIS TEST ASSERTED
+        # THE NAMES UNTIL IT WAS PROVED WORTHLESS.** `bCarriesSiege` is also
+        # the name of one of this function's parameters and `SiegesPerCity`
+        # is named in its own doc comment, so the slice above contains both
+        # whatever the body does. Replacing `if (bCarriesSiege` with
+        # `if (false` -- the whole rule disabled -- left the old assertion
+        # green. It is the same mistake the coin check below records making,
+        # and it is why that one reads a whole statement.
+        #
+        # THE WHITESPACE IS FLATTENED FIRST so the search survives
+        # reformatting, which a line-by-line one would not: the condition is
+        # wrapped across three lines and its indentation is tabs.
+        flat_picked = " ".join(picked.split())
+
+        assert ("if (bCarriesSiege "
+                "&& SiegesPerCityNow.IsValidIndex(CityId) "
+                "&& SiegesPerCityNow[CityId] >= SiegesPerCity)"
+                in flat_picked), (
+            "UCataclysmSurgeScheduler::PickRelocation no longer refuses a "
+            "besieged city to a dungeon carrying a Siege, so the game and the "
+            "model disagree about where a wandering Siege may land; issue "
+            "#1371")
+
+        run = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                   / "Empire" / "CataclysmEmpireRun.cpp")
+
+        moved = code_only(
+            run.split("UCataclysmEmpireRun::RelocateQuestDungeon(", 1)[1]
+            .split("\n}\n", 1)[0], "//")
+
+        # THE WHITESPACE IS FLATTENED so every search below survives
+        # reformatting. Each of them reads a whole statement rather than a
+        # name, and each of the three was a name search until breaking the
+        # rule it guards left it green.
+        flat_moved = " ".join(moved.split())
+
+        # **THE WHOLE ASSIGNMENT, NOT THE ENUMERATOR.**
+        # `ECataclysmDungeonSubType::Siege` is named again a few lines down,
+        # in the loop that counts the Sieges standing on the map, so a search
+        # for it alone passes against a function that has stopped working out
+        # whether the MOVER carries one. Proved: replacing the right-hand side
+        # with `false` left the old assertion green, and a `bCarriesSiege`
+        # that is always false makes the rule in `PickRelocation`
+        # unreachable -- which is the state issue #1324 slice 2 found in
+        # `UCataclysmEmpireMap::Retake`.
+        assert ("const bool bCarriesSiege = Dungeon->SubType "
+                "== ECataclysmDungeonSubType::Siege;" in flat_moved), (
+            "UCataclysmEmpireRun::RelocateQuestDungeon no longer tells "
+            "PickRelocation whether the moving dungeon carries a Siege, so the "
+            "rule in PickRelocation can never fire. A rule that is right and "
+            "unreachable is what issue #1324 slice 2 found in "
+            "UCataclysmEmpireMap::Retake")
+
+        # **AND THE WHOLE ARGUMENT LIST.** A bare "SiegesStanding" search
+        # passes against a call that declares the array, fills it, and then
+        # hands `PickRelocation` an empty one -- which is the "caller did not
+        # say" convention and refuses nothing. Proved: replacing the argument
+        # with `TArray<int32>()` left the old assertion green.
+
+        assert ("*Map, *From, Stream, bCarriesSiege, SiegesStanding);"
+                in flat_moved), (
+            "UCataclysmEmpireRun::RelocateQuestDungeon no longer hands "
+            "PickRelocation the Sieges standing on the map. It treats an "
+            "empty array as \"the caller did not say\" and refuses nothing, "
+            "so the check would silently do nothing")
+
+    def test_neither_half_carries_the_new_hosts_tier_with_the_dungeon(self):
+        """**A RELOCATED DUNGEON KEEPS THE TIER ITS DEPTH WAS ROLLED FROM.**
+
+        The project owner ruled on 2026-09-06, verbatim "Keeps everything, fix
+        the size". `Dungeon.city_tier` and `FCataclysmDungeon::CityTier` are the
+        tier the DEPTH was rolled from, not the host's tier, and each is read to
+        find the specification row whose floor midpoint the depth is divided by.
+        Both implementations used to assign the destination's tier while leaving
+        the floor count alone, so the two halves of that division named
+        different rows.
+
+        **WHY A SOURCE-LEVEL CHECK ON TOP OF TWO CAMPAIGN TESTS.** The campaign
+        tests are the ones that prove the behaviour, and the C++ one costs four
+        builds to prove it fires. This one costs nothing, fails in the fast
+        suite, and is the guard that catches somebody putting either line back
+        while looking at only one side of the port. Issue #1324.
+
+        THE COMMENTS ARE STRIPPED FIRST, because both files explain the removed
+        line in a comment that names it, and a bare substring search would match
+        the explanation. That failure has already happened once on this issue,
+        on `City.Perimeter`.
+        """
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        def code_only(text: str, marker: str) -> str:
+            return "\n".join(line.split(marker, 1)[0] for line in
+                              text.splitlines())
+
+        resolve = code_only(inspect.getsource(Simulation._resolve), "#")
+
+        assert "city_tier =" not in resolve, (
+            "Simulation._resolve assigns city_tier again. It is the tier the "
+            "dungeon's DEPTH was rolled from and the floor count does not move "
+            "either; the owner ruled on 2026-09-06, verbatim \"Keeps "
+            "everything, fix the size\". See TestWhatARelocatedDungeonKeeps in "
+            "sim/tests/test_quest_relocation_is_adjacent.py")
+
+        run = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                   / "Empire" / "CataclysmEmpireRun.cpp")
+
+        moved = run.split("UCataclysmEmpireRun::RelocateQuestDungeon(", 1)[1]
+        moved = code_only(moved.split("\n}\n", 1)[0], "//")
+
+        assert "CityTier =" not in moved, (
+            "UCataclysmEmpireRun::RelocateQuestDungeon assigns CityTier again, "
+            "so the game and the model disagree about what a moving dungeon "
+            "carries. `BiteScale` divides Floors by the midpoint of "
+            "SpecFor(Type, CityTier) and Floors does not move")
+
+        # AND THE MOVE ITSELF IS STILL THERE, or the two assertions above are
+        # satisfied by a function that stopped moving anything at all.
+        assert "CityId = MovingTo;" in moved, (
+            "RelocateQuestDungeon no longer moves the dungeon, so the checks "
+            "above prove nothing")
+
+
+class TestWhatClearingADungeonCounts:
+    """Both halves keep the same three tallies, and raise them in the same place.
+
+    Slice 5 of issue #1324. `UCataclysmEmpireRun` gained `DungeonsCleared`,
+    `BasicDungeonsCleared` and `QuestObjectives`; the model has held `cleared`,
+    `basic_cleared` and `objectives` since before the game had any of them.
+
+    **WHY A SOURCE-LEVEL CHECK RATHER THAN A COMPARISON OF TWO NUMBERS.** The
+    two implementations cannot be run against each other -- the model has a
+    player and the empire module deliberately does not -- so what can be kept in
+    step is which event raises which tally. Three Unreal campaign tests under
+    `Cataclysm.EmpireRun` prove the game's behaviour and the model's own tests
+    prove its; this is the guard that catches somebody changing one side's RULE
+    while looking only at that side.
+
+    THE COMMENTS ARE STRIPPED FIRST. Both files explain these tallies in
+    comments that name the other side's fields, and a bare substring search
+    would match the explanation. That has already gone wrong once on this issue,
+    on `City.Perimeter`.
+    """
+
+    @staticmethod
+    def code_only(text: str, marker: str) -> str:
+        return "\n".join(line.split(marker, 1)[0] for line in text.splitlines())
+
+    @staticmethod
+    def cleared_in_the_game() -> str:
+        """`UCataclysmEmpireRun::ClearDungeon`, without its comments."""
+        run = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                   / "Empire" / "CataclysmEmpireRun.cpp")
+        body = run.split("UCataclysmEmpireRun::ClearDungeon(", 1)[1]
+        return TestWhatClearingADungeonCounts.code_only(
+            body.split("\n}\n", 1)[0], "//")
+
+    @staticmethod
+    def removed_in_the_game() -> str:
+        """`UCataclysmEmpireRun::RemoveDungeon`, without its comments."""
+        run = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                   / "Empire" / "CataclysmEmpireRun.cpp")
+        body = run.split("UCataclysmEmpireRun::RemoveDungeon(", 1)[1]
+        return TestWhatClearingADungeonCounts.code_only(
+            body.split("\n}\n", 1)[0], "//")
+
+    @staticmethod
+    def cleared_in_the_model() -> str:
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        return TestWhatClearingADungeonCounts.code_only(
+            inspect.getsource(Simulation._finish_current), "#")
+
+    def test_both_count_every_kind_of_dungeon_the_player_beat(self):
+        """The plain total, which is what an end-of-run summary reports."""
+        assert "self.cleared += 1" in self.cleared_in_the_model(), (
+            "Simulation._finish_current no longer counts a dungeon cleared")
+
+        assert "++DungeonsCleared;" in self.cleared_in_the_game(), (
+            "UCataclysmEmpireRun::ClearDungeon no longer counts a dungeon "
+            "cleared. It is the port of Simulation.cleared; see issue #1324 "
+            "slice 5")
+
+    def test_both_keep_the_ordinary_count_separate_from_the_total(self):
+        """**THE ONE THE CATACLYSM BOSS DUNGEON'S DEPTH READS.**
+
+        `docs/Cataclysm_GDD_v2.md` section VIII: "Every **ordinary** dungeon
+        defeated adds one floor to the Cataclysm boss dungeon. Quest dungeons
+        and retaken Dungeon Cities do not". Settled with the project owner on
+        2026-09-06.
+
+        So a build that grew the boss from the plain total would make pursuing
+        the win condition raise the difficulty of the fight it unlocks, which is
+        the exact thing that sentence exists to forbid. Issue #1315 is the
+        growth and it is not built yet; the counter it will read is.
+        """
+        model = self.cleared_in_the_model()
+
+        assert "self.basic_cleared += 1" in model, (
+            "Simulation no longer keeps basic_cleared, which is what "
+            "cataclysm_floors_per_dungeon_cleared multiplies")
+
+        assert "if d.dtype is DungeonType.BASIC:" in model, (
+            "Simulation._finish_current no longer guards basic_cleared on the "
+            "dungeon being an ordinary one")
+
+        game = self.cleared_in_the_game()
+
+        assert "++BasicDungeonsCleared;" in game, (
+            "UCataclysmEmpireRun::ClearDungeon no longer counts ordinary "
+            "dungeons separately, so nothing holds the number the Cataclysm "
+            "boss dungeon's depth is meant to come from. Issues #1324 and "
+            "#1315")
+
+        assert "Kind == ECataclysmDungeonType::Basic" in game, (
+            "ClearDungeon no longer guards BasicDungeonsCleared on the kind "
+            "being Basic, so a Quest dungeon or a retaken Fallen City would "
+            "deepen the boss")
+
+    def test_both_count_one_objective_per_quest_dungeon_and_no_other_kind(self):
+        """The project owner ruled on 2026-09-06, verbatim "Yes -- one dungeon,
+        one objective", and `docs/Cataclysm_GDD_v2.md` section XI states it."""
+        model = self.cleared_in_the_model()
+
+        assert "self.objectives += 1" in model, (
+            "Simulation._finish_current no longer earns an objective")
+
+        assert "if d.dtype is DungeonType.QUEST:" in model, (
+            "Simulation._finish_current no longer guards the objective on the "
+            "dungeon being a Quest one")
+
+        game = self.cleared_in_the_game()
+
+        assert "++QuestObjectives;" in game, (
+            "UCataclysmEmpireRun::ClearDungeon no longer earns a quest "
+            "objective. Issue #1324 slice 5")
+
+        assert "Kind == ECataclysmDungeonType::Quest" in game, (
+            "ClearDungeon no longer guards QuestObjectives on the kind being "
+            "Quest, so any dungeon beaten would count towards the win")
+
+        # AND NO OTHER KIND IS TREATED AS PROGRESS. `Cataclysm` has exactly one
+        # meaning in this function -- winning the run, since slice 6e
+        # (2026-11-03) -- and `FallenCity` has exactly one -- retaking the city,
+        # which slice 2 added and which is not a tally.
+        #
+        # THIS SAID `Cataclysm` HAD NO MEANING HERE AT ALL and asserted the name
+        # was absent, until slice 6e made beating the boss the win. The win is
+        # still neither an ordinary clear nor a quest objective, which is what
+        # the count of one and the block's contents below hold.
+        cataclysm_uses = game.count("ECataclysmDungeonType::Cataclysm")
+
+        assert cataclysm_uses == 1, (
+            f"ClearDungeon names the Cataclysm kind {cataclysm_uses} times. "
+            "It should name it once, to win the run (slice 6e); opening and "
+            "deepening the boss since slice 6b go through "
+            "OpenCataclysmDungeonIfEarned and DeepenCataclysmDungeon, which "
+            "name the kind themselves")
+
+        win = game[game.index("ECataclysmDungeonType::Cataclysm"):]
+        win = win[:win.index("}")]
+
+        assert "bWon = true;" in win, (
+            "ClearDungeon names the Cataclysm kind for something other than "
+            "the win")
+        assert "Objectives" not in win and "Cleared" not in win, (
+            "beating the Cataclysm boss dungeon is counted as progress "
+            "towards the win it is")
+
+        fallen_uses = game.count("ECataclysmDungeonType::FallenCity")
+
+        assert fallen_uses == 1, (
+            f"ClearDungeon names FallenCity {fallen_uses} times. It should "
+            "name it once, to decide whether beating it retakes the city. "
+            "docs/Cataclysm_GDD_v2.md section VIII: a retaken Dungeon City is "
+            "not an ordinary dungeon defeated and does not deepen the boss, "
+            "and it is not a quest objective either")
+
+        assert "bWasFallenCity" in game, (
+            "ClearDungeon no longer retakes the city when a Fallen City "
+            "dungeon is beaten, which slice 2 of issue #1324 built")
+
+    def test_neither_counts_a_dungeon_a_falling_city_absorbed(self):
+        """**NOBODY WALKED IT.**
+
+        A city that falls takes every dungeon standing on it into the Fallen
+        City dungeon it becomes. Counting those would pay a player for losing a
+        city and, for a Quest dungeon, hand them an objective for watching one
+        be destroyed. The game keeps the two paths in separate functions for
+        exactly this reason and the model pops the dictionary directly.
+        """
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        fall = self.code_only(inspect.getsource(Simulation._fall), "#")
+
+        for tally in ("self.cleared", "self.basic_cleared", "self.objectives"):
+            assert f"{tally} +=" not in fall, (
+                f"Simulation._fall raises {tally}. A dungeon absorbed by a "
+                "falling city was not beaten by anybody")
+
+        removed = self.removed_in_the_game()
+
+        for tally in ("DungeonsCleared", "BasicDungeonsCleared",
+                      "QuestObjectives"):
+            assert f"++{tally}" not in removed, (
+                f"UCataclysmEmpireRun::RemoveDungeon raises {tally}. That is "
+                "the path a falling city uses to absorb the dungeons standing "
+                "on it, and it is separate from ClearDungeon so that it counts "
+                "nothing. Issue #1324 slice 5")
+
+    def test_both_halves_count_a_detonation_where_the_city_pays(self):
+        """**THEY USED TO DIFFER AND ISSUE #1373 ENDED THAT.**
+
+        `UCataclysmEmpireRun::DungeonsDetonated` has always been raised where
+        the city is damaged. `Simulation.resolved` was raised ABOVE the model's
+        own guard, so a Fallen City dungeon's timer running out counted there
+        and took nothing -- measured at 10 of 3,665 over thirty campaigns at
+        `TuningConfig()` defaults on the `triage` policy, while
+        `RunResult.dungeons_resolved` documented itself as "times a dungeon
+        detonated undefeated". The model's line moved below its guard, the same
+        thirty campaigns now count 3,655 with none of them free, and the two
+        halves are one number.
+
+        THIS ASSERTS THE ORDER IN BOTH FILES rather than either alone, because
+        the defect was a line in the wrong place and not a missing line. A test
+        that only checked the count exists would have passed throughout.
+        """
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        resolve = self.code_only(inspect.getsource(Simulation._resolve), "#")
+
+        before, _, after = resolve.partition("self.resolved += 1")
+
+        assert after, (
+            "Simulation._resolve no longer raises self.resolved at all")
+
+        assert "if not d.resolves or city.fallen:" in before, (
+            "Simulation._resolve raises self.resolved ABOVE the guard that "
+            "decides whether the city pays anything, so a Fallen City dungeon "
+            "and a dungeon on a fallen city are counted as detonations that "
+            "took nothing. RunResult.dungeons_resolved says \"times a dungeon "
+            "detonated undefeated\" and would stop being that. Issue #1373")
+
+        assert "return" not in after.split("city.defense -=", 1)[0], (
+            "there is now a return between the self.resolved count and the "
+            "city damage below it, so a resolve can be counted without the "
+            "city paying for it. Issue #1373")
+
+        run = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                   / "Empire" / "CataclysmEmpireRun.cpp")
+        resolved = run.split("UCataclysmEmpireRun::ResolveDungeon(", 1)[1]
+        resolved = self.code_only(resolved.split("\n}\n", 1)[0], "//")
+
+        counted, _, rest = resolved.partition("++DungeonsDetonated;")
+
+        assert rest, (
+            "UCataclysmEmpireRun::ResolveDungeon no longer counts a "
+            "detonation. Issue #1324 slice 5")
+
+        # EVERY EARLY RETURN COMES FIRST. The kind that does not detonate and
+        # the host that has already fallen both return above this line, so the
+        # count cannot be reached by a timer that costs the empire nothing.
+        assert "return;" in counted, (
+            "the DungeonsDetonated count has moved above the returns that let "
+            "a timer run out without costing anything, so it now counts timers "
+            "rather than damage")
+
+        assert "return;" not in rest, (
+            "there is now a return between the DungeonsDetonated count and the "
+            "damage below it, so a resolve can be counted without the city "
+            "paying for it")
+
+
+class TestTheEarnedBossDungeon:
+    """**THE CATACLYSM BOSS DUNGEON OPENS THE SAME WAY IN BOTH HALVES.** Issue
+    #1324 slice 6b, 2026-11-02.
+
+    The project owner, that day, verbatim: "On no city (Recommended)". The
+    coordinating session ruled the rest: its depth is a roll from the Cataclysm
+    row plus one floor for every ordinary dungeon defeated, before it opens and
+    after; it is never a Siege (held in `test_dungeon_subtype_port.py`); it is
+    sent by the newest active Cataclysm. The model's
+    `Simulation._maybe_open_cataclysm` and `_deepen_cataclysm` are the original;
+    `UCataclysmEmpireRun::OpenCataclysmDungeonIfEarned`, `DeepenCataclysmDungeon`
+    and `UCataclysmSurgeScheduler::MakeCataclysmDungeon` the copy.
+
+    WHAT THIS CANNOT SEE. That either side behaves: `sim/tests/
+    test_the_earned_boss_stands_on_no_city_and_grows.py` runs the model and the
+    Unreal group `Cataclysm.EarnedBoss.` the game. This catches somebody changing
+    one side's rule while looking only at that side.
+    """
+
+    RUN_SOURCE = (REPO_ROOT / "game" / "Source" / "CataclysmEmpire" / "Empire"
+                  / "CataclysmEmpireRun.cpp")
+    SURGE_SOURCE = (REPO_ROOT / "game" / "Source" / "CataclysmEmpire" / "Empire"
+                    / "CataclysmSurge.cpp")
+
+    @staticmethod
+    def model_code(function) -> str:
+        import inspect
+        return TestWhatClearingADungeonCounts.code_only(
+            inspect.getsource(function), "#")
+
+    def test_both_put_it_on_no_city(self):
+        from cataclysm_sim.engine import Simulation
+
+        assert "d.city_id = None" in self.model_code(
+            Simulation._maybe_open_cataclysm), (
+                "Simulation._maybe_open_cataclysm no longer puts the earned boss "
+                "on no city; the owner ruled it on 2026-11-02")
+
+        made = body_of(read(self.SURGE_SOURCE),
+                       "FCataclysmDungeon UCataclysmSurgeScheduler::MakeCataclysmDungeon(")
+        assert "Dungeon.CityId = INDEX_NONE;" in made, (
+            "MakeCataclysmDungeon no longer puts the boss on no city")
+
+    def test_both_roll_it_from_the_pillars_cataclysm_row(self):
+        from cataclysm_sim.engine import Simulation
+
+        opened = self.model_code(Simulation._maybe_open_cataclysm)
+        assert "self._make_dungeon(DungeonType.CATACLYSM," in opened
+        assert "self.empire.cities[self.empire.pillar_id]" in opened
+
+        made = body_of(read(self.SURGE_SOURCE),
+                       "FCataclysmDungeon UCataclysmSurgeScheduler::MakeCataclysmDungeon(")
+        assert ("SpecFor(ECataclysmDungeonType::Cataclysm, "
+                "ECataclysmCityTier::Pillar)") in made, (
+            "MakeCataclysmDungeon no longer rolls from the Pillar's Cataclysm "
+            "row, the only one a Cataclysm has")
+
+    def test_both_open_it_last_in_the_quest_branch_of_a_clear(self):
+        from cataclysm_sim.engine import Simulation
+
+        model = self.model_code(Simulation._finish_current)
+        quest = model.split("if d.dtype is DungeonType.QUEST:", 1)[1]
+        quest = quest.split("if d.dtype is DungeonType.CATACLYSM:", 1)[0]
+        assert "self._maybe_open_cataclysm()" in quest, (
+            "Simulation._finish_current no longer opens the boss in its quest "
+            "branch")
+
+        game = TestWhatClearingADungeonCounts.cleared_in_the_game()
+        branch = game.split("if (Kind == ECataclysmDungeonType::Quest)", 1)[1]
+        branch = branch.split("if (bWasFallenCity", 1)[0]
+        assert "++QuestObjectives;" in branch
+        assert branch.rstrip().rstrip("}").rstrip().endswith(
+            "OpenCataclysmDungeonIfEarned();"), (
+            "ClearDungeon's quest branch no longer ends by opening the boss "
+            "dungeon, which is where the model opens it")
+
+    def test_both_deepen_it_on_every_ordinary_clear(self):
+        """Before it opens AND after: the clear that raises the count deepens a
+        boss already standing, in both halves."""
+        from cataclysm_sim.engine import Simulation
+
+        model = self.model_code(Simulation._finish_current)
+        ordinary = model.split("if d.dtype is DungeonType.BASIC:", 1)[1]
+        ordinary = ordinary.split("city = ", 1)[0]
+        assert "self.basic_cleared += 1" in ordinary
+        assert "self._deepen_cataclysm()" in ordinary, (
+            "an ordinary clear no longer deepens an open boss in the model")
+
+        game = TestWhatClearingADungeonCounts.cleared_in_the_game()
+        branch = game.split("if (Kind == ECataclysmDungeonType::Basic)", 1)[1]
+        branch = branch.split("if (Kind == ECataclysmDungeonType::Quest)", 1)[0]
+        assert "++BasicDungeonsCleared;" in branch
+        assert "DeepenCataclysmDungeon();" in branch, (
+            "an ordinary clear no longer deepens an open boss in the game")
+
+    def test_both_work_the_depth_out_from_the_count(self, surge_header, model):
+        from cataclysm_sim.engine import Simulation
+
+        deepen = self.model_code(Simulation._deepen_cataclysm)
+        assert ("self.basic_cleared * self.cfg.cataclysm_floors_per_dungeon_cleared"
+                in deepen)
+        assert "d.floors = self.cataclysm_base_floors + earned" in deepen
+
+        floors_now = body_of(read(self.RUN_SOURCE),
+                             "int32 UCataclysmEmpireRun::CataclysmDungeonFloorsNow() const")
+        assert ("CataclysmDungeonBaseFloors + BasicDungeonsCleared * "
+                "UCataclysmSurgeScheduler::CataclysmFloorsPerOrdinaryDungeon"
+                in floors_now), (
+            "CataclysmDungeonFloorsNow no longer works the depth out as the roll "
+            "plus the ordinary dungeons defeated")
+
+        assert (number(surge_header, "CataclysmFloorsPerOrdinaryDungeon")
+                == model.cataclysm_floors_per_dungeon_cleared), (
+            "the floors an ordinary dungeon adds to the boss differ between "
+            "UCataclysmSurgeScheduler::CataclysmFloorsPerOrdinaryDungeon and "
+            "config.cataclysm_floors_per_dungeon_cleared")
+
+    def test_both_send_it_from_the_newest_active_cataclysm(self):
+        from cataclysm_sim.engine import Simulation
+
+        assert "self.active_types[-1]" in self.model_code(
+            Simulation._maybe_open_cataclysm)
+
+        opener = body_of(read(self.RUN_SOURCE),
+                         "void UCataclysmEmpireRun::OpenCataclysmDungeonIfEarned()")
+        assert "ActiveCataclysms.Last()" in opener
+
+    def test_no_timer_runs_out_on_it_in_either(self):
+        """The model skips the timer of a dungeon on no city; the game gives it
+        one that a day cannot move."""
+        from cataclysm_sim.engine import Simulation
+
+        day = self.model_code(Simulation._empire_day)
+        assert "if d.city_id is None:" in day, (
+            "Simulation._empire_day runs a timer on a dungeon that stands on no "
+            "city again")
+
+        made = body_of(read(self.SURGE_SOURCE),
+                       "FCataclysmDungeon UCataclysmSurgeScheduler::MakeCataclysmDungeon(")
+        assert "Dungeon.ResolveDays = NeverResolveDays;" in made
+
+
+class TestTheEscalationModes:
+    def test_the_enum_names_the_same_four_modes(self, surge_header):
+        from cataclysm_sim.config import SurgeMode
+
+        block = re.search(
+            r"enum\s+class\s+ECataclysmSurgeMode\s*:\s*uint8\s*\{(.*?)\}",
+            surge_header, re.DOTALL)
+        if not block:
+            pytest.fail("could not find ECataclysmSurgeMode in "
+                        f"{SURGE_HEADER.name}; has it been renamed?")
+
+        names = {name.lower()
+                 for name, _ in re.findall(r"(\w+)\s*=\s*(\d+)",
+                                           block.group(1))}
+
+        expected = {mode.value.lower() for mode in SurgeMode}
+
+        assert names == expected, (
+            f"Unreal names {sorted(names)}, the model names {sorted(expected)}")
+
+
+class TestTheHandWorkedFiguresInTheUnrealTest:
+    """`CataclysmSurgeTests.cpp` asserts a ladder of counts and gaps that was
+    read out of the simulation by running it. This is what notices if the model
+    changes afterwards -- the Unreal test would keep passing against figures that
+    no longer describe anything.
+    """
+
+    @staticmethod
+    def the_games_cadence() -> dict:
+        """The game's interval, opening wave and later wave, read out of its
+        header.
+
+        THE LADDERS BELOW ARE THE MODEL'S ARITHMETIC AT THE GAME'S THREE
+        STARTING NUMBERS: 90 days, an opening wave of 12 and 8 a wave after
+        it, in both halves since the game's layer of 2026-10-20, and
+        `TestTheCadence` holds them equal, so this is also the ladder at
+        `TuningConfig()`. It is still read from the header: what this class
+        holds is that the model's FORMULA gives the Unreal test's figures from
+        the game's own constants. The figures in `CataclysmSurgeTests.cpp` and
+        below were taken at 120 and 4 until 2026-10-13, at 90 and 5 with no
+        opening size until 2026-10-20, and changed together each time.
+
+        FROM 2026-10-16 TO 2026-10-20 THE MODEL WAS GIVEN AN OPENING SIZE
+        EQUAL TO `DungeonsPerSurge`, because the game had none; the ruling of
+        2026-10-16 said these checks would move with the game's layer, and
+        they did.
+        """
+        header = read(SURGE_HEADER)
+        return dict(
+            surge_interval_days=number(header, "IntervalDays"),
+            surge_dungeon_count=int(number(header, "DungeonsPerSurge")),
+            surge_opening_count=int(number(header, "OpeningDungeonsPerSurge")))
+
+    def gap_at(self, mode, index: float) -> float:
+        from cataclysm_sim.config import SurgeMode, TuningConfig
+        from cataclysm_sim.engine import Simulation
+
+        simulation = Simulation(TuningConfig(
+            surge_mode=SurgeMode(mode), **self.the_games_cadence()), seed=0)
+        simulation.surge_index = index
+        return simulation.surge_gap()
+
+    def count_at(self, mode, lethality, index: int) -> int:
+        from cataclysm_sim.config import LethalityMode, SurgeMode, TuningConfig
+        from cataclysm_sim.engine import Simulation
+
+        simulation = Simulation(
+            TuningConfig(surge_mode=SurgeMode(mode),
+                         **self.the_games_cadence())
+            .with_lethality(LethalityMode(lethality)), seed=0)
+        simulation.surge_index = index
+        return simulation.surge_count()
+
+    def test_the_accelerating_ladder_still_holds(self):
+        assert self.gap_at("accelerating", 0) == pytest.approx(90.0, abs=0.01)
+        assert self.gap_at("accelerating", 1) == pytest.approx(79.2, abs=0.01)
+        assert self.gap_at("accelerating", 2) == pytest.approx(69.696, abs=0.01)
+        assert self.gap_at("accelerating", 3) == pytest.approx(61.3325, abs=0.01)
+        assert self.gap_at("accelerating", 10) == pytest.approx(25.0651, abs=0.01)
+        assert self.gap_at("accelerating", 11) == pytest.approx(25.0, abs=0.01)
+        assert self.gap_at("accelerating", 13) == pytest.approx(25.0, abs=0.01)
+
+    def test_the_swelling_ladder_still_holds(self):
+        """The opening 12, then 8 plus half a dungeon a surge, truncated, to
+        the ceiling of 14, first reached at index 12. Until 2026-10-20 it was
+        5, 5, 6, 6, 7 and the ceiling at index 18."""
+        assert self.count_at("swelling", "standard", 0) == 12
+        assert self.count_at("swelling", "standard", 1) == 8
+        assert self.count_at("swelling", "standard", 2) == 9
+        assert self.count_at("swelling", "standard", 3) == 9
+        assert self.count_at("swelling", "standard", 4) == 10
+        assert self.count_at("swelling", "standard", 11) == 13
+        assert self.count_at("swelling", "standard", 12) == 14
+        assert self.count_at("swelling", "standard", 17) == 14
+        assert self.count_at("swelling", "standard", 18) == 14
+        assert self.count_at("swelling", "standard", 20) == 14
+
+    def test_heretic_brings_a_quarter_more_at_the_opening_and_after(self):
+        """trunc(12 x 1.25) = 15 at the opening wave and trunc(8 x 1.25) =
+        10 after it, a quarter more each time. At 5 a wave, until
+        2026-10-20, it was trunc(6.25) = 6, a fifth more; at a wave of four
+        it was 5, a quarter more. The design document says "25% more
+        dungeons"."""
+        assert self.count_at("static", "standard", 0) == 12
+        assert self.count_at("static", "hardcore", 0) == 12
+        assert self.count_at("static", "heretic", 0) == 15
+        assert self.count_at("static", "standard", 1) == 8
+        assert self.count_at("static", "hardcore", 1) == 8
+        assert self.count_at("static", "heretic", 1) == 10
+
+    def test_heretic_at_the_ceiling_is_still_seventeen(self):
+        """The figure the ordering argument turns on. If it ever equals the
+        Standard ceiling again, the cap has moved back in front of the
+        multiplier."""
+        assert self.count_at("swelling", "heretic", 20) == 17
+        assert self.count_at("swelling", "standard", 20) == 14
+
+    def test_the_unreal_test_carries_those_same_figures(self):
+        text = read(SURGE_TESTS)
+
+        for figure in ("79.2f", "69.696f", "61.3325f", "25.0651f"):
+            assert figure in text, (
+                f"CataclysmSurgeTests.cpp no longer asserts {figure}; the "
+                "accelerating ladder there and the model's have parted")

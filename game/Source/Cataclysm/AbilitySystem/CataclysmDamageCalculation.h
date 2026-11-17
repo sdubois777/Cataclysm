@@ -1,0 +1,1559 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+// For FGameplayAttribute, which ResistanceAttributeFor answers with. The
+// mitigation order reads that slot and the Wand's Shred writes it.
+#include "AttributeSet.h"
+#include "GameplayTagContainer.h"
+// For FCataclysmBlowContext, which `BlowContextFor` below RETURNS BY VALUE, so a
+// forward declaration is not enough -- the type has to be complete here.
+//
+// SAFE IN ONE DIRECTION ONLY, AND THIS IS THAT DIRECTION. CataclysmStatPipeline.h
+// includes CoreMinimal.h, GameplayTagContainer.h and its own generated header,
+// and nothing from this file, so there is no cycle to create.
+#include "AbilitySystem/CataclysmStatPipeline.h"
+#include "CataclysmDamageCalculation.generated.h"
+
+class UAbilitySystemComponent;
+
+/**
+ * What an incoming hit is, as far as the defender's mitigation cares.
+ *
+ * Kept separate from the gameplay effect that carries the damage so the
+ * calculation can be tested directly, without building an effect spec.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmIncomingHit
+{
+	GENERATED_BODY()
+
+	/** Damage before any mitigation. */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	float Damage = 0.0f;
+
+	/** Which of the eight resistances applies. Empty means none of them do. */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	FName DamageType;
+
+	/**
+	 * Which of the eight this hit is DRAWN as. Empty means the effect keeps the
+	 * colours it was authored with.
+	 *
+	 * A SECOND FIELD BECAUSE THESE ARE TWO QUESTIONS. `DamageType` above answers
+	 * "which resistance applies", and for a player's hit the answer is none: an
+	 * enemy holds one generic resistance and has nothing to choose between, so a
+	 * player's damage arrives untyped by design. That was settled on 2026-08-12
+	 * and it is still true.
+	 *
+	 * But a player's skill DOES have a damage type -- 51 of the 58 shaped rows
+	 * of `game/Data/WeaponSkills.csv` are Demonic and 7 are War -- and it is
+	 * what the bolt and the burst should be coloured by. Answering both
+	 * questions with one field meant every player effect drew white, which is
+	 * the colour that was chosen to mean "nothing set this". Issue #803.
+	 *
+	 * FOR AN ENEMY THE TWO ARE ALWAYS EQUAL, because an enemy's damage is typed
+	 * and the type is the same tag. The fields only differ for a player.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	FName EffectDamageType;
+
+	/** Percentage points subtracted from the defender's resistance. */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	float ResistancePenetration = 0.0f;
+
+	/** Percentage of the defender's armor ignored, from gear and sub-type. */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	float ArmorPenetration = 0.0f;
+
+	/**
+	 * A further percentage of the defender's armor ignored WHEN THIS BLOW
+	 * CRITICALLY STRIKES, added to `ArmorPenetration` in `Resolve` after the
+	 * roll. Issue #1833, ruled 2026-09-30: "Your critical strikes ignore
+	 * 20%-40% of enemy armor". A stat of its own rather than a condition on
+	 * armour penetration, because penetration is asked before `Resolve` rolls
+	 * the critical strike, so no such condition could be answered there.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	float CriticalArmorPenetration = 0.0f;
+
+	/**
+	 * Whether this blow cannot be dodged at all.
+	 *
+	 * A PROPERTY OF THE BLOW AND NOT OF THE DEFENDER, which is what makes it
+	 * a flag here rather than a stat on either side. Evasion is rolled on
+	 * the target, so the only way an attacker can refuse it is for the blow
+	 * itself to say so.
+	 *
+	 * ITS ONE SOURCE IS THE PERFECT AIM ENEMY MODIFIER, whose row reads
+	 * "Attacks cannot be dodged". Added 2026-09-05.
+	 *
+	 * IT CANNOT MAKE AREA DAMAGE ANY MORE UNAVOIDABLE THAN IT ALREADY IS.
+	 * Evasion never applies to area damage, so this changes nothing there.
+	 */
+	bool bCannotBeEvaded = false;
+
+	/**
+	 * Whether the defender cannot reduce or mitigate this blow. Ruled 2026-10-12 under the owner's delegation, for
+	 * "Retaliation damage cannot be reduced or mitigated by the attacker". Read into here by
+	 * `UCataclysmVitalAttributeSet` from the stamp `UCataclysmSkillEffects::CannotBeMitigatedDataName`; see
+	 * `FCataclysmHitDelivery::bCannotBeMitigated`. Its one source is retaliation from a character holding
+	 * `UCataclysmRetaliation::CannotBeMitigatedStat`.
+	 *
+	 * WHAT `Resolve` SKIPS FOR IT, the six: step 1, evasion, so the blow is never reported evaded; step 2, block,
+	 * so it is never reported blocked and `DamageBlocked` is nought; step 3, armour, the defender's own and what a
+	 * minion takes from its summoner, so `RemovedByArmour` is nought; step 4, resistance, WHEN THE FIGURE THE BLOW
+	 * MEETS IS ABOVE NOUGHT; step 5, damage reduction, the capped line and the multiplicative one, so
+	 * `RemovedByDamageReduction` is nought; and step 6, `damage_taken` with what rides on the defender's ailments,
+	 * WHEN ITS NET EFFECT ON THE BLOW IS A REDUCTION.
+	 *
+	 * WHAT `Resolve` STILL DOES TO IT. The critical strike roll and the non-critical share, which belong to
+	 * whoever is swinging and which retaliation is forbidden by another flag. `BonusDamagePercent`, the share on
+	 * top for the Nth hit of the defender's worn "every Nth hit you take" row: it is not one of the six and it
+	 * raises the blow. For a tick of damage over time, `debuff_damage_suppressed` and `damage_over_time_taken`;
+	 * no blow carries both this and the tick flag today. Step 6b, the temporary absorb; step 7, mana, for a tick
+	 * only; step 8, the energy shield, with the magic sub-type's share and the defender's
+	 * `energy_shield_damage_taken`; step 9, the slashing sub-type's share against health.
+	 *
+	 * THE ATTACKER'S TWO PENETRATIONS ARE READ AND THEN HAVE NOTHING TO CUT INTO, because the armour and the
+	 * resistance they would lower are not applied.
+	 *
+	 * THE FLAG NEVER LOWERS A BLOW. Ruled 2026-10-12. A resistance below nought, the difficulty tier's penalty
+	 * inside it included, raises this blow as it raises any other, and so does a `damage_taken` above 100. Each
+	 * step this blow skips can only lower a blow, and each step that can raise one is applied when it raises. So
+	 * on the same defender this blow is never smaller than the same blow without the flag, and before the pools
+	 * it is never smaller than the figure it arrived with.
+	 *
+	 * THE ORDER FOR THIS BLOW: the critical strike, if the blow may make one; a resistance below nought; a
+	 * `damage_taken` above 100; the Nth hit's share; the temporary absorb; mana, for a tick; the energy shield;
+	 * health. Every step before the pools is a multiplication, so their order among themselves changes nothing.
+	 */
+	bool bCannotBeMitigated = false;
+
+	/**
+	 * The attacker's chance to critically strike, 0-100.
+	 *
+	 * READ OFF THE ATTACKER AND CARRIED, for the same reason the two penetration
+	 * figures above are: `Resolve` is given the defender and never sees who is
+	 * swinging. Zero means this hit cannot critically strike, which is the case
+	 * for a damage over time tick and for a minion's blow.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	float CritChance = 0.0f;
+
+	/**
+	 * What a critical strike is worth, as a percentage. 150 means one and a half
+	 * times the hit. The design's default class stat line supplies 150 and no
+	 * class overrides it.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	float CritMultiplier = 150.0f;
+
+	/**
+	 * What share of itself this hit keeps if its critical roll fails, as a
+	 * percentage. Issue #1686. 100 changes nothing, which is every hit that
+	 * never asks: a creature's, a minion's, retaliation and a tick. See
+	 * `UCataclysmDamageCalculation::NonCriticalDamageStat`.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	float NonCriticalDamagePercent = 100.0f;
+
+	/**
+	 * What this hit takes on top, as a percentage, because it is the Nth of the
+	 * defender's worn "every Nth hit you take" row. Issue #1833, phase 2. 0
+	 * changes nothing, which is every other hit. A multiplier of its own,
+	 * applied beside the damage-taken step.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	float BonusDamagePercent = 0.0f;
+
+	/** Area damage cannot be evaded. It can still be blocked. */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	bool bIsArea = false;
+
+	/**
+	 * Bleed, poison, burn and the rest. It restarts the energy shield's
+	 * recharge, and it is never evaded, because a tick is not a direct attack.
+	 * Issue #1584.
+	 *
+	 * THE SHIELD ABSORBS IT, UNLESS IT IS A BLEED: see `bIsBleed`. Until issue
+	 * #2014 no tick of any kind reached the shield.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	bool bIsDamageOverTime = false;
+
+	/**
+	 * A damage-over-time tick that is a bleed. Issue #2014.
+	 *
+	 * THE ONE KIND OF DAMAGE OVER TIME AN ENERGY SHIELD DOES NOT ABSORB. The
+	 * project owner, 2026-09-18: "every DoT except bleed reaches ES." A bleed
+	 * passes to health unless the defender carries
+	 * `shield_absorbs_damage_over_time`, which the Warded keystone and the
+	 * "Energy shield can now be effected by bleed" drawback grant.
+	 *
+	 * FILLED FROM THE TICK'S GRANTED TAGS, NOT ITS ASSET TAGS.
+	 * `UCataclysmSkillEffects::ApplyDamageOverTime` grants the ailment's tag,
+	 * `Keyword.DoT.Bleed`, and carries only the bare `Keyword.DoT` as an asset
+	 * tag. A ground zone's tick and a dungeon hazard's carry no ailment at all,
+	 * so they are not bleeds and the shield takes them.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	bool bIsBleed = false;
+
+	/**
+	 * A tick of converted damage not yet taken: the bleed the Masochist's The Breaking Point lays on its own
+	 * character, stamped with `UCataclysmSkillEffects::ConvertedDamageDataName`. Ruled by the coordinating session
+	 * 2026-11-01, and by the project owner the same day: "No: stored total is fixed".
+	 *
+	 * `Resolve` SKIPS STEPS 2 TO 6 AND THE SLASHING BONUS FOR IT. The blow was resolved against every defence
+	 * before it was converted, so meeting block, armour, resistance, damage reduction and damage taken again would
+	 * mitigate it twice; and no "debuffs on you" or "damage over time taken" row changes it, Vessel Unbroken's
+	 * suppression included. It still meets the temporary absorb, the mana a row puts first and the energy shield,
+	 * which decide who pays and not how much, and the immunities and saves after `Resolve`.
+	 *
+	 * FILLED BY `UCataclysmVitalAttributeSet` from the stamp, for a tick only.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	bool bIsConvertedDamage = false;
+
+	/**
+	 * Which ailment a damage-over-time tick is: the tags under `Keyword.DoT` its effect grants, so
+	 * `Keyword.DoT.Bleed` for a bleed. Empty for a hit, and for a tick with no ailment (a ground zone's, a dungeon
+	 * hazard's). Ruled 2026-10-06.
+	 *
+	 * WHAT IT IS FOR. The defender's stats about a tick are asked with these tags, so a row may require one:
+	 * "Bleed effects applied to you deal 30%-50% increased damage" is `damage_over_time_taken` requiring the bleed
+	 * tag. `Resolve` adds the `Keyword.DoT` parent to what it asks with, and the bleed tag where `bIsBleed` is set,
+	 * so a hit built by hand with only the two booleans is still asked as a bleed.
+	 *
+	 * FILLED WHERE `bIsBleed` IS, from the same granted tags, in `UCataclysmVitalAttributeSet`.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	FGameplayTagContainer DamageOverTimeTags;
+
+	/** 10% more damage to what reaches health. */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	bool bIsSlashing = false;
+
+	/** Strips 10% more energy shield per hit. */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	bool bIsMagic = false;
+
+	/**
+	 * Ignores a further share of the defender's armor, on top of ArmorPenetration.
+	 *
+	 * A FLAG RATHER THAN A NUMBER ADDED BY THE CALLER, so the combination lives
+	 * in `Resolve` where the rest of the mitigation order lives. That mirrors
+	 * `Attacker.total_armor_ignored` in `sim/cataclysm_sim/damage.py`, which adds
+	 * `PIERCING_ARMOR_IGNORED` to whatever the attacker's own stat holds and
+	 * clamps the sum. A caller adding the 20% itself would put the same rule in
+	 * as many places as there are callers.
+	 *
+	 * Issue #639.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	bool bIsPiercing = false;
+
+	/**
+	 * Carries a chance to stun rather than a damage bonus.
+	 *
+	 * THE ONLY SUB-TYPE WHOSE EFFECT IS NOT DAMAGE, which is why it is read by
+	 * the attribute set that resolves a hit rather than by `Resolve`: a stun is
+	 * applied through `UCataclysmSkillEffects::ApplyStun`, which enforces the
+	 * three anti-stun-lock rules, and `Resolve` is pure arithmetic with no way
+	 * to reach any of that. Issue #639.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	bool bIsBlunt = false;
+
+	/**
+	 * Whether the blow was struck in melee. Issue #1032.
+	 *
+	 * NOT A WEAPON SUB-TYPE LIKE THE FOUR ABOVE, and that is why it sits apart
+	 * from them. Slashing, piercing, magic and blunt are properties of the
+	 * WEAPON in the attacker's hand; this is a property of how the blow was
+	 * thrown, and a ranged weapon and a melee one can both be slashing.
+	 *
+	 * READ FROM `Type.Melee` ON THE EFFECT, the same way `bIsArea` and
+	 * `bIsDamageOverTime` are read from their own tags. Both sides already carry
+	 * it: six of the seven enemy abilities since issue #1020, and 27 rows of
+	 * `game/Data/WeaponSkills.csv` including every Fist skill the Masochist uses.
+	 *
+	 * MELEE IS NOT A MITIGATION LAYER, and `Resolve` only hands this on. Since
+	 * issue #666 it passes it, with the two below, to the damage taken lookup,
+	 * for a modifier that asks about the hit. The first rule that asked about it
+	 * fires when a blow lands, which is `UCataclysmVitalAttributeSet`'s job:
+	 * Mutilation Mastery, "Your melee critical strikes have a 5% chance per point
+	 * to apply Bleeding."
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	bool bIsMelee = false;
+
+	/**
+	 * Whether the blow came from range. Issue #666.
+	 *
+	 * READ FROM `Type.Ranged` ON THE EFFECT, the way `bIsMelee` is read from
+	 * `Type.Melee`. `UCataclysmSkillEffects::ApplyHit` sets it for a skill
+	 * carrying `Type.Ranged` or `Type.Projectile`, because a projectile is
+	 * ranged, and `ApplyTypedSpec` puts the one tag on the spec.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	bool bIsRanged = false;
+
+	/** Whether the blow was a spell: `Type.Spell` on the effect. Issue #666. */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	bool bIsSpell = false;
+
+	/**
+	 * Whether the creature that threw the blow is a boss. Issue #666.
+	 *
+	 * READ OFF THE EFFECT'S CAUSER, the creature the Perfect Aim check already
+	 * reads, with `ACataclysmEnemyCharacter::IsBoss`. A blow from anything that
+	 * is not an enemy creature is not from a boss.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	bool bFromBoss = false;
+
+	/**
+	 * Metres from the character that dealt this blow to the one taking it, or
+	 * -1 when it is not known.
+	 *
+	 * THE FIRST FIELD HERE THAT IS A POSITION RATHER THAN A PROPERTY OF THE
+	 * BLOW, and it is here for the same reason the four above are: `Resolve` is
+	 * handed the defender's ability system and nothing else, so anything the
+	 * defender's stats need to know about the other side has to ride on the hit.
+	 *
+	 * -1 RATHER THAN ZERO FOR "NOT KNOWN". Zero is a real reading, because two
+	 * characters can stand on the same spot. `SkillHealthCostPercent` uses the
+	 * same convention and says so.
+	 *
+	 * FILLED IN ONE PLACE, `UCataclysmVitalAttributeSet`, which is the only
+	 * place in the game that builds one of these and which has both characters
+	 * in hand. It measures with `UCataclysmTargeting::MetresBetween`, the same
+	 * function `UCataclysmCombatEvents` reports a blow's distance with, so a
+	 * passive row and the combat log cannot disagree about one strike.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	float OpponentDistanceMetres = -1.0f;
+
+	/**
+	 * Whether whoever threw the blow is staggered. Issue #45.
+	 *
+	 * READ OFF THE EFFECT'S CAUSER AS AN ACTOR, not as an enemy creature. A
+	 * knockback, pull or knockdown leaves the Staggered state on anything it
+	 * moves, the player included, so this is not a creature rarity the way
+	 * `bFromBoss` above is and is read outside that cast.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	bool bFromStaggered = false;
+
+	/**
+	 * Whether whoever threw the blow is under crowd control. Issue #1686.
+	 *
+	 * READ OFF THE EFFECT'S CAUSER AS AN ACTOR, for the reason `bFromStaggered`
+	 * above gives: a pin, a slow or madness lands on anything, the player
+	 * included. `UCataclysmSkillEffects::IsCrowdControlled` says what counts.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	bool bFromCrowdControlled = false;
+
+	/**
+	 * Which debuffs whoever threw the blow is carrying. Issue #1515.
+	 *
+	 * READ OFF THE EFFECT'S CAUSER AS AN ACTOR, for the reason `bFromStaggered`
+	 * above is: a debuff lands on anything, the player included, so this is not a
+	 * property of an enemy creature and is read outside that cast.
+	 *
+	 * A CONTAINER RATHER THAN A BOOLEAN PER AILMENT, so that a later condition
+	 * naming a different debuff needs no new field here and no new line at the
+	 * one place that fills this.
+	 *
+	 * FILLED ON EVERY HIT RATHER THAN ONLY WHEN A ROW ASKS, WHICH IS THE ONE
+	 * PLACE THIS MECHANISM DOES NOT GATE THE WALK. The attacker's side is gated
+	 * -- `UCataclysmAbilitySystemComponent::WithTargetState` has the rows in
+	 * hand and skips the walk unless one of them asks. This site has only the two
+	 * characters, so there is nothing here to ask.
+	 *
+	 * WHAT IT COSTS, PLAINLY: one `UCataclysmDebuffs::TagsOnActor` call per hit
+	 * taken, beside the `IsStaggered` call already on the line above. It is
+	 * bounded by the hits a character TAKES rather than the blows every creature
+	 * DEALS, which is the side that made the attacker's gate worth building. If a
+	 * row ever lands on `opponent_carries_weaken` and this shows up in a profile,
+	 * `WithTargetState` is the pattern to copy -- the defender's own stat list
+	 * is available inside its lookup, which is where the question can be asked.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	FGameplayTagContainer AttackerDebuffs;
+
+	/**
+	 * How long ago, in seconds, the character TAKING this blow first got a blow
+	 * through to whoever threw it, or -1 when it never has or it is not known.
+	 * Ruled 2026-10-12 under the owner's delegation, for "Enemies that survive
+	 * more than 5 seconds after first being hit gain 20%-40% increased damage".
+	 *
+	 * READ OFF THE EFFECT'S CAUSER, the actor `bFromStaggered` above reads, by
+	 * `UCataclysmAbilitySystemComponent::SecondsSinceFirstStruckBy` asked about
+	 * the defender's ability system. So it is the thrower's record of the
+	 * defender: a creature the defender has never struck answers -1.
+	 *
+	 * -1 FOR "NEVER" AND FOR "NOT KNOWN", as `OpponentDistanceMetres` uses it.
+	 * Nought is a real reading: the creature struck a moment ago strikes back
+	 * in the same instant.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	float SecondsSinceDefenderFirstStruckAttacker = -1.0f;
+
+	/**
+	 * What a damage over time tick is multiplied by for its applier's `dot_damage` rows that are judged against the
+	 * character it lands on. Ruled 2026-10-23 (#2235, Q2 (a)), for "While the enemy is moving, your DoTs on them deal
+	 * 20%-40% more damage". 1 changes nothing, which is every hit and every tick but one marked
+	 * `UCataclysmSkillEffects::PricedFromItsAppliersStatsDataName`.
+	 *
+	 * THE RATIO OF TWO ASKS AT THE TICK, written by `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`: the
+	 * applier's `dot_damage` asked with this character as the target, over the same asked with no target. Every row
+	 * that holds without a target is in both and cancels, so a row already baked into the tick's figure when it was
+	 * applied (Plague Doctor's unconditioned 25% more) is not counted twice. For a MORE row the ratio is exactly its
+	 * multiplier. AN INCREASED target-conditioned row is judged against the wearer's state at the tick, not at
+	 * application: its share is divided by the wearer's increases as they stand at the tick.
+	 *
+	 * `Resolve` MULTIPLIES BY IT BESIDE `damage_over_time_taken`, in the tick branch, so a tick whose damage is
+	 * suppressed is still nothing.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	float TargetConditionedDotDamageMultiplier = 1.0f;
+};
+
+/** What the calculation decided, step by step, so it can be inspected. */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmDamageResult
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
+	bool bEvaded = false;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
+	bool bBlocked = false;
+
+	/**
+	 * What the block removed from the blow, before armour and resistance: its
+	 * share, or all of it when the block negated the hit. Zero when the blow was
+	 * not blocked. Issue #1833 group E part 3, ruled 2026-10-02: "Reflect 20%-100%
+	 * of damage blocked back at attackers" reflects a share of this.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
+	float DamageBlocked = 0.0f;
+
+	/**
+	 * The hit landed as a critical strike and its damage above already carries
+	 * the multiplier.
+	 *
+	 * ON THE RESULT AND NOT ONLY ON THE HIT, because the two functions that pick
+	 * a floating damage number's colour and text are given the result alone. A
+	 * flag on the incoming hit would be invisible to everything that draws.
+	 *
+	 * NEVER TRUE ON AN EVADED HIT. The roll is made after the evasion step, so a
+	 * hit that never landed is not reported as a critical strike that never
+	 * landed.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
+	bool bWasCritical = false;
+
+	/**
+	 * What the defender's TEMPORARY ABSORB took of the blow. The project owner, 2026-10-07: it is separate from the
+	 * energy shield. Taken before the mana, the energy shield and health, from every kind of damage, a bleed tick
+	 * included. See step 6b of `UCataclysmDamageCalculation::Resolve` and
+	 * `UCataclysmAbilitySystemComponent::GrantTemporaryAbsorb`.
+	 *
+	 * NOT PART OF `AbsorbedByShield`, so nothing that asks what the energy shield absorbed counts it: the store
+	 * `NoteShieldAbsorbedDamage` fills, the shield-broken event and the Sacrificial Ward all read that figure alone.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
+	float AbsorbedByTemporary = 0.0f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
+	float AbsorbedByMana = 0.0f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
+	float AbsorbedByShield = 0.0f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
+	float DealtToHealth = 0.0f;
+
+	/**
+	 * How far the blow went past the health the defender held: the damage that reached the health step, less that
+	 * health, and never below nought. Ruled 2026-10-07, for "Enemies killed by you explode for the overkill
+	 * amount".
+	 *
+	 * NOUGHT FOR EVERY BLOW THAT DOES NOT EXCEED THE DEFENDER'S HEALTH, an exactly lethal one included, and for a
+	 * blow on a character whose health is already nought, which kills nothing. `DealtToHealth` is the same blow
+	 * clamped to that health, so the two add up to what reached the health step. A lethal damage over time tick
+	 * records it as a hit does.
+	 *
+	 * NOTHING IN THE CALCULATION READS IT. Leech, the floating number and everything else go on reading
+	 * `DealtToHealth`.
+	 *
+	 * ONE STEP OUTSIDE THE CALCULATION READS IT, since issue #2289: Sacrificial Bond's sharing in
+	 * `UCataclysmVitalAttributeSet` adds it to what reached health to have the whole blow again, and divides
+	 * that. It writes nothing here, so a bonded creature's kill records the whole blow less its health, not its
+	 * kept share less its health.
+	 *
+	 * AND A SECOND STEP THERE READS IT, since 2026-10-12, in the same way and just above the bond's: the share of a
+	 * blow that a worn row takes later instead of now (`UCataclysmDelayedDamage::DelayShare`) is a share of the
+	 * whole blow, which is what reached health and this figure together. It writes nothing here either.
+	 *
+	 * IT IS NOT BY ITSELF A SIGN THAT THE BLOW KILLED. `UCataclysmVitalAttributeSet` empties it for a blow that
+	 * no longer empties health once its own steps have run (an immune, absorbing or reflecting wearer, a blow
+	 * saved at one point, a creature no damage reaches), but two later steps there leave `DealtToHealth` as it
+	 * is and still keep the creature alive: Sacrificial Bond's sharing, when the creature's share of the whole
+	 * blow is under its health, and the Unholy Sigil. A reader that wants the overkill of a KILL takes it from
+	 * the blow the death followed.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
+	float Overkill = 0.0f;
+
+	/**
+	 * Whether the blow was emptied because the character struck has become immune to the one attacker that threw
+	 * it. Ruled 2026-10-12, for "Enemies that have been alive for more than 15 seconds become immune to your
+	 * damage until you disengage for 3 seconds".
+	 *
+	 * THE CALCULATION NEVER SETS IT. `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` sets it where it
+	 * empties such a blow, after `Resolve` has returned, and nothing else does. A blow emptied by the no-damage
+	 * window, by a window against its damage type or by a creature no damage reaches does not carry it.
+	 *
+	 * THREE READERS. `UCataclysmCombatEvents::NoteBlow` copies it to the hit's announcement, where the player's
+	 * on-hit rows refuse the blow. `ACataclysmMinion::AttackTarget` reads it to tell its summoner's
+	 * `deployable_hit` rows the blow did not land. `UCataclysmCombatOverlay::TextFor` prints the words the status
+	 * line uses in place of a figure.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
+	bool bRefusedByImmunityToAttacker = false;
+
+	/**
+	 * How much of the hit the armour step took away, and how much the two
+	 * damage reduction lines took away between them: each is the damage before
+	 * its own step less the damage after it. Issue #1515, for Nothing Wasted,
+	 * which stores exactly these two.
+	 *
+	 * TWO FIGURES AND NOT ONE, because resistance sits between them. What
+	 * resistance removes is in neither.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
+	float RemovedByArmour = 0.0f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
+	float RemovedByDamageReduction = 0.0f;
+};
+
+/**
+ * The damage calculation, ported from `sim/cataclysm_sim/damage.py`.
+ *
+ * THE ORDER, from the Damage Calculation section of the design document:
+ * evasion, block, armor, resistance, flat damage reduction, mana, energy
+ * shield, health.
+ *
+ * WHY THIS IS A SEPARATE CLASS rather than sitting inside the attribute set:
+ * every step of it is arithmetic on numbers, and pulling it out means the whole
+ * order can be tested by passing values in, without constructing an ability
+ * system component and an effect spec for each case.
+ */
+UCLASS()
+class CATACLYSM_API UCataclysmDamageCalculation : public UObject
+{
+	GENERATED_BODY()
+
+public:
+	/** K in `armor / (armor + K)` is this times the difficulty tier. */
+	static constexpr float ArmorConstantPerTier = 800.0f;
+
+	/** Armor alone never removes more than this share of a hit. */
+	static constexpr float ArmorReductionCap = 75.0f;
+
+	/** How much resistance is worth against damage, however high it is. */
+	static constexpr float ResistanceCap = 70.0f;
+
+	/**
+	 * The first difficulty tier that takes resistance off a player.
+	 *
+	 * NOTHING BEFORE IT, SO THE EARLY GAME IS UNTOUCHED. A character at the
+	 * first three tiers has almost no resistance gear, and a penalty there
+	 * would punish the one group least able to answer it.
+	 */
+	static constexpr int32 FirstPenalisedDifficultyTier = 4;
+
+	/**
+	 * How much resistance each penalised difficulty tier takes off a player.
+	 *
+	 * SO A TIER 8 CHARACTER NEEDS 145 RATHER THAN 70. Five penalised tiers,
+	 * four through eight, at fifteen points each is seventy-five.
+	 */
+	static constexpr float ResistancePenaltyPerTier = 15.0f;
+
+	/**
+	 * The most the flat damage reduction stat removes from a hit.
+	 *
+	 * IT WAS THE ONE LAYER WITH NOTHING HOLDING IT. Evasion has a soft cap and
+	 * covers direct attacks only, block removes half a hit so even certainty is
+	 * not immunity, armour follows a curve that cannot reach 100 and is capped at
+	 * 75 besides, and resistance is capped at 70. This is a flat percentage off
+	 * everything, with no curve, no roll and no per-type split, and at 100 it was
+	 * exact immunity. The design document says "No combination of these layers
+	 * reaches immunity. Each has either a cap or a curve that cannot reach zero
+	 * damage", and the second sentence was not true of this one. Issue #644.
+	 *
+	 * THE SAME FIGURE AS ArmorReductionCap, so the design has one number for the
+	 * most a single unconditional mitigation layer may remove. Path of Exile caps
+	 * the closest thing it ships at 90%, and that was deliberately not copied:
+	 * its 90% covers physical damage alone where this covers all eight types.
+	 *
+	 * Mirrors `DAMAGE_REDUCTION_CAP` in `sim/cataclysm_sim/damage.py`, and
+	 * `tools/tests/test_the_damage_reduction_cap_is_one_number.py` fails if the
+	 * two ever disagree.
+	 */
+	static constexpr float DamageReductionCap = 75.0f;
+
+	/**
+	 * The most one "more" damage reduction source may remove, as a percentage.
+	 *
+	 * NOT THE SAME BOUND AS `DamageReductionCap` ABOVE, and it is not a balance
+	 * figure. That one bounds the additive pool. The project owner decided on
+	 * 2026-08-17 that it binds that pool only, because sources in the
+	 * multiplicative bucket each remove a share of what the ones before them
+	 * left and so cannot reach 100% however many there are.
+	 *
+	 * THIS BOUNDS ONE SOURCE, and exists only to keep that sentence true: a
+	 * single factor of exactly 100 would remove all the damage and make a
+	 * character immune, which is the failure `DamageReductionCap` was added for.
+	 * Nothing in the design comes near it -- the largest multiplicative node in
+	 * any class tree is 3% per point over 8 points, which is 24%.
+	 *
+	 * Mirrors `MORE_DAMAGE_REDUCTION_CAP` in `sim/cataclysm_sim/damage.py`.
+	 * Issue #665.
+	 */
+	static constexpr float MoreDamageReductionCap = 99.0f;
+
+	/**
+	 * The two stats saying what share of a hit this character actually takes.
+	 *
+	 * ONE FOR EVERY HIT AND ONE FOR A DAMAGE OVER TIME TICK, and a tick meets
+	 * BOTH. Issue #1026. Two stats rather than one scoped modifier, because
+	 * `RequiredTags` scopes a modifier to the skill in the character's own hand
+	 * and a character being hit is not swinging -- `DefenderStat` in the
+	 * implementation file says so at length. The hit's own nature picks which
+	 * stats are read, the way `ResistanceFor` beside it picks a resistance slot
+	 * from the hit's damage type.
+	 *
+	 * SINCE 2026-10-06 THE TICK'S STAT IS ASKED WITH THE TICK'S OWN TAGS, the ailment's and the `Keyword.DoT`
+	 * parent, so a row on `damage_over_time_taken` may require one of them. They are the tags of what is arriving
+	 * and not of a skill in the defender's hand. A row with no required tags reads as it did.
+	 *
+	 * NAMED CONSTANTS RATHER THAN LITERALS, because
+	 * `UCataclysmPlayerClassStats` names the same two strings in two maps and a
+	 * spelling that stopped matching would silently leave the stat with no base
+	 * and no attribute. That is the failure issue #1025 was about.
+	 */
+	static const TCHAR* DamageTakenStat;
+	static const TCHAR* DamageOverTimeTakenStat;
+
+	/**
+	 * What share of its damage an ATTACKER'S hit keeps when its critical roll
+	 * fails, as a percentage. Issue #1686: "Non-critical strikes deal 20%-35%
+	 * less damage" is a `more` row on it.
+	 *
+	 * A STAT OF ITS OWN, NOT A CONDITION ON ATTACK DAMAGE, because the
+	 * attacker's damage is asked for before the roll exists. It is asked beside
+	 * the critical multiplier, carried on the hit, and applied in `Resolve`
+	 * after the roll. No gameplay attribute: its base is
+	 * `NormalNonCriticalDamage`, supplied by
+	 * `UCataclysmPlayerClassStats::EngineSuppliedBases`.
+	 */
+	static const TCHAR* NonCriticalDamageStat;
+
+	/**
+	 * Above nought, an ATTACKER'S critical strike deals no extra damage: the critical multiplier it is asked for is held
+	 * at `NoExtraCriticalMultiplier`. The Edict of Humility, "a critical strike deals no extra damage", written by
+	 * `UCataclysmDungeonModifierEffects::StatModifiersFor`. 2026-10-23, G7c.
+	 *
+	 * ASKED BESIDE THE MULTIPLIER IN `UCataclysmVitalAttributeSet`, with the blow's tags, and read as a flag. No gameplay
+	 * attribute and no base, so it is in `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. A CRITICAL STRIKE STILL
+	 * COUNTS AS ONE: the roll, the result's `bWasCritical`, the hit notice and every on-crit row are untouched, ruled
+	 * 2026-10-23 on Path of Exile's Elemental Overload ("Your Critical Strikes do not deal extra Damage").
+	 */
+	static const TCHAR* CriticalStrikesDealNoExtraDamageStat;
+
+	/**
+	 * The share of a blocked hit that a block removes, in per cent, on the
+	 * DEFENDER. Issue #1833 group E part 2, ruled 2026-10-02: "You block for
+	 * 65%-75% of damage instead of the normal 50%" is flat 15 to 25 on a base of
+	 * `BlockDamageReduction`, supplied by
+	 * `UCataclysmPlayerClassStats::EngineSuppliedBases`. Read through
+	 * `BlockShareOf`, which caps it at `MaxBlockDamageReduction`.
+	 */
+	static const TCHAR* BlockDamageReductionStat;
+
+	/**
+	 * The chance, in per cent, that a block removes ALL of the hit rather than
+	 * its share, on the DEFENDER. Issue #1833 group E part 2: "Blocking an attack
+	 * has a 20%-40% chance to fully negate all damage". Rolled inside the block,
+	 * so it covers whatever a block covers.
+	 */
+	static const TCHAR* BlockNegationChanceStat;
+
+	/**
+	 * The chance, in per cent, that a SPELL that hits the defender is absorbed and deals nothing. Ruled 2026-10-06:
+	 * "Spells that hit you have a 15%-30% chance to be absorbed dealing no damage". On the DEFENDER, no gameplay
+	 * attribute, so it is in `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. See `SpellIsAbsorbed`.
+	 */
+	static const TCHAR* SpellAbsorbChanceStat;
+
+	/**
+	 * The chance, in per cent, that a MELEE hit on the defender is reflected: the defender takes none of it and the
+	 * whole hit, before the defender's mitigation, is paid back as retaliation. Ruled 2026-10-06: "Melee attacks
+	 * that hit you have a 10%-20% chance to be reflected back as retaliation damage". See `MeleeIsReflected` and
+	 * `UCataclysmRetaliation::PayReflected`.
+	 */
+	static const TCHAR* MeleeReflectChanceStat;
+
+	/**
+	 * Rolls the defender's `spell_absorb_chance` against this blow. False, with no roll, for a blow that is not a
+	 * spell, for a tick of damage over time, and for a defender carrying none of the stat. `Cataclysm.SpellAbsorbRoll`
+	 * pins the roll. ONE ROLL FOR ONE INCOMING BLOW; the caller asks once.
+	 */
+	static bool SpellIsAbsorbed(const UAbilitySystemComponent* Defender, const FCataclysmIncomingHit& Hit);
+
+	/** The same for `melee_reflect_chance` and a melee blow. `Cataclysm.MeleeReflectRoll` pins the roll. */
+	static bool MeleeIsReflected(const UAbilitySystemComponent* Defender, const FCataclysmIncomingHit& Hit);
+
+	/**
+	 * The share a block removes from `Defender`'s hit: `BlockDamageReductionStat`
+	 * asked with the blow, `BlockDamageReduction` for a defender with no stat
+	 * line, held between 0 and `MaxBlockDamageReduction`.
+	 */
+	static float BlockShareOf(const UAbilitySystemComponent* Defender,
+							  const FCataclysmBlowContext& Blow);
+
+	/**
+	 * What share of its damage a projectile's landed contact keeps after its
+	 * first, as a percentage. Issue #1686: "Projectiles deal 20%-35% less
+	 * damage on each subsequent hit after the first" is a `more` row on it.
+	 *
+	 * FLAT, NOT PER CONTACT, ruled under the owner's delegation on 2026-09-23:
+	 * the first landed contact keeps all of itself and every one after it
+	 * keeps this share. Asked for and applied by `ACataclysmProjectile`, which
+	 * is what counts its own contacts. No gameplay attribute: its base is
+	 * `NormalProjectileLaterHitDamage`, supplied by
+	 * `UCataclysmPlayerClassStats::EngineSuppliedBases`.
+	 */
+	static const TCHAR* ProjectileLaterHitDamageStat;
+
+	/**
+	 * What share of its damage a skill's persistent zone deals on its FIRST
+	 * sweep, as a percentage. Issue #1686: "Persistent AOE zones deal 20%-35%
+	 * less damage on initial placement" is a `more` row on it.
+	 *
+	 * THE FIRST SWEEP, BECAUSE A ZONE DEALS NOTHING AT THE INSTANT IT IS
+	 * PLACED: `ACataclysmGroundZone` sweeps first a full tick in, so a zone
+	 * left by a skill that already hit everyone there does not hit them twice
+	 * at once. Ruled under the owner's delegation on 2026-09-23. Asked by
+	 * `UCataclysmSkillTemplate::LeaveGroundAlong` where the zone is priced;
+	 * based at 100 by `UCataclysmPlayerClassStats::EngineSuppliedBases`.
+	 */
+	static const TCHAR* ZoneFirstSweepDamageStat;
+
+	/**
+	 * FOUR MORE STATS A PERSISTENT AREA READS, each asked once where a skill leaves the area, with the skill's tags.
+	 * Ruled 2026-10-06. "Persistent AOE effects" are ground zones and terrain; not auras and not the tether.
+	 *
+	 * `persistent_area_duration`: what share of its stated time a ground zone or a terrain lasts, based at 100.
+	 * "Persistent AOE effects expire 40%-60% faster".
+	 *
+	 * `zone_damage_per_enemy_inside`: how much more, in per cent, a ground zone's sweep deals for each enemy it
+	 * finds inside. "Persistent AOE zones deal 10%-20% increased damage for each enemy standing in them".
+	 *
+	 * `zone_slow_percent`: the slow a ground zone lays on those inside, each sweep. "Your persistent AOE zones also
+	 * slow enemies within them by 20%-35%".
+	 *
+	 * `only_one_persistent_area`: above nought, a new ground zone or terrain ends every earlier one its owner's
+	 * skills left. "You can only have 1 persistent AOE effect active at a time".
+	 */
+	static const TCHAR* PersistentAreaDurationStat;
+	static const TCHAR* ZoneDamagePerEnemyInsideStat;
+	static const TCHAR* ZoneSlowPercentStat;
+	static const TCHAR* OnlyOnePersistentAreaStat;
+
+	/**
+	 * TWO MORE A GROUND ZONE READS WHERE A SKILL LEAVES IT, each a flag: above nought is yes. Ruled 2026-10-06.
+	 *
+	 * `zone_staggers_on_entry`: "Enemies that enter your persistent AOE zones are briefly staggered". The game's
+	 * own stagger at its own length, once for each enemy each time it enters.
+	 *
+	 * `zone_applies_own_ailment`: "Persistent AOE zones apply a DoT to enemies standing in them". The ailment of
+	 * the zone's own damage type, `UCataclysmAilments::AilmentOfDamageType`, at that ailment's ordinary figures, by
+	 * the zone's owner, once a sweep.
+	 */
+	static const TCHAR* ZoneStaggersOnEntryStat;
+	static const TCHAR* ZoneAppliesOwnAilmentStat;
+
+	/**
+	 * TWO BY WHICH A ROW GIVES A GROUND ZONE TO A SKILL THAT STATES NONE, each a number of seconds: nought is no
+	 * zone. Ruled 2026-10-06. Read by `UCataclysmSkillTemplate::LeaveRowZoneAt` with the skill's own tags, so a row
+	 * restricted to a kind of skill reaches only that kind.
+	 *
+	 * `zone_at_start_and_end_seconds`: "Your movement ability leaves a persistent AOE zone at both start and end
+	 * locations for 3-5 seconds". Read only by a Movement skill, where it began and where it arrived.
+	 *
+	 * `zone_at_impact_seconds`: "Charge skills leave a persistent AOE zone at the impact point for 3-6 seconds" and
+	 * "Your spells leave a persistent AOE zone at the impact point lasting 2-4 seconds". Read where a Movement
+	 * skill arrived, where a projectile's flight ended, under a strike's user and under each target of a curse.
+	 *
+	 * A SKILL THAT STATES GROUND OF ITS OWN GETS NONE FROM EITHER.
+	 */
+	static const TCHAR* ZoneAtStartAndEndSecondsStat;
+	static const TCHAR* ZoneAtImpactSecondsStat;
+
+	/**
+	 * TWO BY WHICH A ZONE REACHES THE CHARACTER WHO LEFT IT, each a flag: above nought is yes. Read where the zone
+	 * is left. THE OWNER DECIDED ON 2026-10-06 that a character's own skills and zones may hurt them where a row's
+	 * sentence says so; the own-side rule of 2026-08-20 stays the default for everything else.
+	 *
+	 * `zone_damages_its_owner`: "Persistent AOE zones also damage you if you stand in them". The zone's own sweep
+	 * figure, through the owner's defences, and it can kill.
+	 *
+	 * `zone_applies_effects_to_owner`: "Your persistent AOE zones apply their effects to you if you stand in them".
+	 * The curse, the slow, the stagger on entry and the ailment. Not the damage, which is the other row's.
+	 */
+	static const TCHAR* ZoneDamagesItsOwnerStat;
+	static const TCHAR* ZoneAppliesEffectsToOwnerStat;
+
+	/**
+	 * `zone_follows_owner_percent`: "Your persistent AOE zones follow you as you move at 50% of your movement
+	 * speed". The percent of its owner's walking speed at which a zone moves toward where its owner stands; nought
+	 * is a zone that stays where it was left. Read where the zone is left. Ruled 2026-10-06.
+	 */
+	static const TCHAR* ZoneFollowsOwnerPercentStat;
+
+	/**
+	 * `minions_leave_chaos_pools`: "Your minions leave behind chaos pools when they die". A flag on the commander:
+	 * above nought is yes. Read by `ACataclysmMinion::HandleDeath`. Ruled 2026-10-06.
+	 */
+	static const TCHAR* MinionsLeaveChaosPoolsStat;
+
+	/**
+	 * THREE ABOUT DAMAGE OVER TIME ON THE CHARACTER WHO CARRIES THEM. Ruled 2026-10-06. None has an attribute.
+	 *
+	 * `ailment_immunity`: "Unaffected by bleeding". A flag, above nought is yes, asked with the tags of the ailment
+	 * being applied, so its row requires the bleed tag. Read by `UCataclysmSkillEffects::ApplyDamageOverTime`,
+	 * which then applies nothing at all. Converted damage not yet taken is not refused.
+	 *
+	 * `bleed_damage_taken_from_energy_shield`: "10%-20% of bleed damage you take is taken from your energy shield
+	 * instead of your health". The percent of a bleed tick the energy shield takes, as far as the shield has it.
+	 * Read in `Resolve`, and only for a bleed the shield would otherwise let through.
+	 *
+	 * `damage_over_time_taken_from_mana_first`: "DoTs deal damage to your mana pool first". A flag. Every damage
+	 * over time tick takes one point of mana for one point of damage, as far as the mana goes, before the shield
+	 * and health. Read in `Resolve`; `UCataclysmVitalAttributeSet` writes the mana.
+	 */
+	static const TCHAR* AilmentImmunityStat;
+	static const TCHAR* BleedDamageTakenFromEnergyShieldStat;
+	static const TCHAR* DamageOverTimeTakenFromManaFirstStat;
+
+	/**
+	 * `energy_shield_damage_taken`: "Your energy shield takes 30%-50% increased damage". Ruled 2026-10-07. Percent
+	 * points, flat, nought for unchanged. No gameplay attribute. Read in `Resolve` at the energy shield step and
+	 * nowhere else: the shield loses that much more for each point of the blow it stops, and what reaches health is
+	 * not made larger. Floored at nought where it is read.
+	 */
+	static const TCHAR* EnergyShieldDamageTakenStat;
+
+	/**
+	 * Whether damage over time deals this character nothing at all.
+	 * Issue #1039. Zero for no, above zero for yes.
+	 *
+	 * A FLAG RATHER THAN A THIRD REDUCTION, because a Less multiplier is
+	 * floored at -99 and "no damage at all" is not 99% less. See the
+	 * attribute's own declaration in `UCataclysmCombatAttributeSet`.
+	 */
+	static const TCHAR* DebuffDamageSuppressedStat;
+
+	/**
+	 * The stat saying this character's energy shield absorbs damage over time
+	 * as well as hits. Issue #1515.
+	 *
+	 * `Ritualist_keystone_c_kA` Warded is the only source, and its row is a
+	 * flag: above zero or not, with nothing in between meaning anything.
+	 *
+	 * ONE SITE READS IT, the line in `Resolve` deciding whether the shield
+	 * applies to this hit at all. Every place downstream reads
+	 * `FCataclysmDamageOutcome::AbsorbedByShield`, which is zero for a tick
+	 * today only because that line makes it so, so they all follow with no
+	 * change of their own.
+	 */
+	static const TCHAR* ShieldAbsorbsDamageOverTimeStat;
+
+	/**
+	 * The stat saying no attacker ignores any of this character's armour.
+	 * Issue #1515.
+	 *
+	 * `Ravager_keystone_spine_001` Ironhide is the only source: "Your Armor
+	 * cannot be ignored: armor penetration and piercing weapons remove none of
+	 * it." Its row is a flag.
+	 *
+	 * READ ON THE DEFENDER, because the node protects the armour of whoever
+	 * bought it. It is applied where the attacker's penetration and the weapon's
+	 * share are summed, so both halves of the row's sentence are covered by one
+	 * read rather than two.
+	 */
+	static const TCHAR* ArmorPenetrationSuppressedStat;
+
+	/**
+	 * `minion_defences_percent_of_yours`: the share of its summoner's armour
+	 * and resistances a minion takes, in percent. Ruled 2026-10-08 under the
+	 * owner's delegation: "Summoned minions inherit 10%-25% of your armor and
+	 * resistances". Asked of the SUMMONER with the minion's own type tags, at
+	 * the two places `Resolve` takes a defender's armour and its resistance,
+	 * and nowhere else. No gameplay attribute: rows only.
+	 *
+	 * READ AT THE BLOW AND NEVER COPIED ONTO THE MINION, which holds neither a
+	 * combat set nor a resistance set, so a change of the summoner's gear
+	 * reaches a minion already out. ONE FIGURE SERVES BOTH. See
+	 * `InheritedDefencesOf` in the `.cpp`.
+	 */
+	static const TCHAR* MinionDefencesPercentOfYoursStat;
+
+	/**
+	 * The share of armour a critical strike ignores on top of the rest, asked of
+	 * the ATTACKER where armour penetration is. Issue #1833, "Your critical
+	 * strikes ignore 20%-40% of enemy armor". Carried on
+	 * `FCataclysmIncomingHit::CriticalArmorPenetration`; no gameplay attribute,
+	 * so it is in `UCataclysmPlayerClassStats::StatsWithNoAttribute()`.
+	 */
+	static const TCHAR* CriticalArmorPenetrationStat;
+
+	/**
+	 * The stat saying this character's melee attacks cannot be evaded. Issue
+	 * #1515.
+	 *
+	 * `Ravager_keystone_spine_002` Every Swing Lands is the only source: "Your
+	 * melee attacks cannot be evaded, and your melee arc is a full circle rather
+	 * than a cone." Only the first clause is built; the arc is deferred.
+	 *
+	 * READ ON THE ATTACKER, AND NOT AT THE EVASION STEP. Evasion is rolled on
+	 * the defender, so an attacker can only refuse it on the blow it sends. This
+	 * stat is read where the blow is assembled, in
+	 * `UCataclysmVitalAttributeSet`, and sets `bCannotBeEvaded` below -- which
+	 * the evasion step already honours and has since the Perfect Aim enemy
+	 * modifier was built.
+	 */
+	static const TCHAR* MeleeEvasionSuppressedStat;
+
+	/**
+	 * What either of those two reads when nothing has changed it.
+	 *
+	 * A HUNDRED IS THE IDENTITY FOR A MULTIPLIER, so a character with no node
+	 * spent takes exactly the damage the layers above it left. Every node that
+	 * moves these is written as a percentage of what would otherwise arrive, and
+	 * a base of zero would leave an increase and a `more` both worth nothing.
+	 *
+	 * IT IS BOTH THE ATTRIBUTE'S STARTING VALUE AND THE STAT'S BASE.
+	 * `UCataclysmCombatAttributeSet` starts both attributes here, which is what
+	 * an enemy holds, and `UCataclysmPlayerClassStats::EngineSuppliedBases`
+	 * states the same figure as the base a player's stat line is built from.
+	 */
+	static constexpr float NormalDamageTaken = 100.0f;
+
+	/** `NonCriticalDamageStat`'s base: a non-critical hit keeps all of itself. */
+	static constexpr float NormalNonCriticalDamage = 100.0f;
+
+	/**
+	 * What `CriticalStrikesDealNoExtraDamageStat` holds the critical multiplier at: 100, a critical strike worth the hit
+	 * and no more. ABOVE NOUGHT ON PURPOSE: `Resolve` rolls only while the multiplier is above nought, so a held
+	 * multiplier still rolls and still reports a critical strike. 2026-10-23, G7c.
+	 */
+	static constexpr float NoExtraCriticalMultiplier = 100.0f;
+
+	/** `ProjectileLaterHitDamageStat`'s base: a later contact keeps all of itself. */
+	static constexpr float NormalProjectileLaterHitDamage = 100.0f;
+
+	/** `ZoneFirstSweepDamageStat`'s base: a first sweep deals all of a tick. */
+	static constexpr float NormalZoneFirstSweepDamage = 100.0f;
+
+	/** `PersistentAreaDurationStat`'s base: an area lasts all of its stated time. */
+	static constexpr float NormalPersistentAreaDuration = 100.0f;
+
+	/** Negative resistance means taking extra damage. This bounds how bad. */
+	static constexpr float ResistanceFloor = -100.0f;
+
+	/**
+	 * A successful block removes this share of the hit, and the base of
+	 * `BlockDamageReductionStat`.
+	 */
+	static constexpr float BlockDamageReduction = 50.0f;
+
+	/**
+	 * The most a block may remove, 85 per cent. LABELLED JUDGEMENT of 2026-10-02,
+	 * issue #1833 group E part 2, after Last Epoch, the one game of the three
+	 * researched whose block removes a share and states a cap: "Block
+	 * Effectiveness caps at 85% Damage Reduction" (maxroll.gg). Held below all of
+	 * a hit so "a chance to fully negate all damage" keeps a meaning.
+	 */
+	static constexpr float MaxBlockDamageReduction = 85.0f;
+
+	/** Slashing against health, and magic against energy shield. */
+	static constexpr float SubtypeBonus = 10.0f;
+
+	/**
+	 * A piercing weapon ignores this share of the defender's armor, on top of
+	 * whatever the attacker's own armour penetration stat holds.
+	 *
+	 * Mirrors `PIERCING_ARMOR_IGNORED` in `sim/cataclysm_sim/damage.py`, and the
+	 * Weapon Sub-Types table it comes from. Issue #639.
+	 */
+	static constexpr float PiercingArmorIgnored = 20.0f;
+
+	/**
+	 * A Blunt weapon's chance to stun on every hit, as a percentage.
+	 *
+	 * Mirrors `BLUNT_STUN_CHANCE` in `sim/cataclysm_sim/damage.py`. It is part of
+	 * the same pool an affix adds to, settled by the project owner on
+	 * 2026-08-16, rather than a mechanic of its own.
+	 */
+	static constexpr float BluntStunChance = 10.0f;
+
+	/**
+	 * How long a stun applied by a chance lasts before the overflow lengthens
+	 * it, in seconds.
+	 *
+	 * Mirrors `INCIDENTAL_STUN_SECONDS`. Deliberately the shortest duration any
+	 * designed skill uses, so something that can stun on every hit does not
+	 * outclass the skills whose whole purpose is stunning.
+	 */
+	static constexpr float IncidentalStunSeconds = 0.75f;
+
+	/** Chance to stun caps here, and everything past it becomes duration. */
+	static constexpr float StunChanceCap = 100.0f;
+
+	/**
+	 * The longest a stun may last however much chance is stacked, in seconds.
+	 *
+	 * Mirrors `LONGEST_STUN_SECONDS`. It is the longest stun the design already
+	 * contains -- the Brute's Heart ten-piece set bonus -- and it is below the 5
+	 * second immunity window on purpose: a stun as long as the window would hold
+	 * a target for ever, which is the failure the whole anti-stun-lock rule
+	 * exists to stop.
+	 */
+	static constexpr float LongestStunSeconds = 3.0f;
+
+	/**
+	 * Split a total chance to stun into the chance it applies at and how long
+	 * the stun then lasts.
+	 *
+	 * THE RULE THE PROJECT OWNER SET FOR DAMAGE OVER TIME ON 2026-08-03, applied
+	 * to stun on 2026-08-16: chance caps at 100% and everything past it
+	 * multiplies the magnitude. A stun has no damage, so its magnitude is its
+	 * duration. Mirrors `stun_application` in `sim/cataclysm_sim/damage.py`.
+	 *
+	 * @param TotalChance   every source added together, uncapped
+	 * @param OutChance     the chance the stun is rolled at, capped at 100
+	 * @param OutSeconds    how long it lasts, capped at LongestStunSeconds
+	 */
+	static void StunApplication(float TotalChance, float& OutChance,
+								float& OutSeconds);
+
+	/** Seconds after taking damage before an energy shield starts refilling. */
+	static constexpr float EnergyShieldRechargeDelay = 3.0f;
+
+	/** What every damage type's gameplay tag begins with. `Element.` */
+	static const TCHAR* ElementTagPrefix;
+
+	/**
+	 * The tag that says a hit swept a volume rather than touching one target.
+	 *
+	 * `Type.AOE`, the parent of the three the vocabulary declares -- Aura,
+	 * Persistent and PointBlank. A parent matches any of its children, so an
+	 * effect carrying a specific one is area damage without having to list them.
+	 */
+	static const TCHAR* AreaDamageTagName;
+
+	/**
+	 * The tag that says a hit is damage over time.
+	 *
+	 * `Keyword.DoT`, the parent of Bleed, Burn, Disease, Generic, Necrosis,
+	 * Poison and VoidSplinter.
+	 */
+	static const TCHAR* DamageOverTimeTagName;
+
+	/**
+	 * The tag that says a blow was struck in melee. Issue #1032.
+	 *
+	 * `Type.Melee`. Both sides already carry it: six of the seven enemy
+	 * abilities since issue #1020, and 27 rows of `game/Data/WeaponSkills.csv`
+	 * including every Fist skill the Masochist uses.
+	 *
+	 * NOT A PARENT OF ANYTHING, unlike the two above. It is a leaf, so a hit
+	 * either carries it or does not.
+	 */
+	static const TCHAR* MeleeTagName;
+
+	/**
+	 * The tags that say a blow came from range. Issue #666.
+	 *
+	 * `Type.Ranged` is "Any ranged skill regardless of delivery method" and
+	 * `Type.Projectile` is "Skills that fire a traveling entity". A skill carrying
+	 * either is ranged, and only `Type.Ranged` is put on the damage effect.
+	 * `UCataclysmSkillEffects::IsRanged` is the one place that reads both.
+	 */
+	static const TCHAR* RangedTagName;
+	static const TCHAR* ProjectileTagName;
+
+	/**
+	 * The tag that says a hit may not critically strike, whoever threw it.
+	 *
+	 * `Keyword.NoCrit`. IT EXISTS FOR SUMMONED MINIONS. A minion's blow is dealt
+	 * in its summoner's name -- `ACataclysmMinion` calls
+	 * `UCataclysmSkillEffects::ApplyHit` with the summoner as the attacker --
+	 * so the attacker the engine sees when it reads a critical strike chance is
+	 * the player. The design forbids that inheritance in as many words:
+	 * "A minion takes neither the summoner's critical strike chance nor its
+	 * multiplier", and minion damage was set at the top of its band precisely
+	 * because it has no critical strike layer to compound with.
+	 * See "A minion reaches its summoner through exactly three channels"
+	 * and "Each grants 1.0% increased minion damage per point" in
+	 * `docs/Cataclysm_GDD_v2.md`.
+	 *
+	 * A TAG RATHER THAN A FIELD, because this has to survive the trip from the
+	 * caller to the defender's attribute set, and a gameplay effect spec carries
+	 * tags. It is the same route `Type.AOE` and `Keyword.DoT` already take.
+	 */
+	static const TCHAR* NoCriticalStrikeTagName;
+
+	/**
+	 * The tag that says a hit ignores none of the target's armour or resistance.
+	 *
+	 * `Keyword.NoPenetration`. IT EXISTS FOR SUMMONED MINIONS, and for the same
+	 * reason `Keyword.NoCrit` above does: a minion's blow is dealt in its
+	 * summoner's name, so the attacker the engine reads a penetration figure off
+	 * is the player. The design blocks that inheritance twice over. It names
+	 * penetration in the list of what does not cross -- "A minion does not take
+	 * the summoner's weapon damage, flat added damage, attack speed, critical
+	 * strike chance or multiplier, penetration..." -- and it states the general
+	 * rule the list is an instance of: "A minion reaches its summoner through
+	 * exactly three channels, and nothing else crosses", those three being its
+	 * side, its base health and damage raised by the summoner's level, and
+	 * increased damage from one primary attribute. See "A minion reaches
+	 * its summoner through exactly three channels" in
+	 * `docs/Cataclysm_GDD_v2.md`, the table under it, and the "Everything
+	 * else is blocked" rule after that.
+	 *
+	 * IT STOPS BOTH PENETRATION STATS AND THE WEAPON SUB-TYPE'S SHARE. There are
+	 * three ways a summoner's armour penetration reaches a minion's blow, not
+	 * one: the `Penetration` attribute, the `ArmorPenetration` attribute, and a
+	 * piercing weapon, which `Resolve` turns into a further 20% of armour
+	 * ignored. The third arrives by a different route -- the weapon sub-type is
+	 * read off the effect causer rather than off the attacker's attributes -- and
+	 * a fix that stopped only the first two would leave a minion penetrating
+	 * armour whenever its summoner held a piercing weapon.
+	 *
+	 * A MINION HAS NO PENETRATION OF ITS OWN TO PUT IN ITS PLACE, so this leaves
+	 * a minion's blow at zero. `game/Data/MinionTypes.csv` states no penetration
+	 * for any type, `game/Data/MinionScaling.csv` scales only damage, and
+	 * `ACataclysmMinion` carries no combat attribute set to hold one. If a
+	 * minion-scoped penetration modifier is ever written, it belongs on the
+	 * minion rather than here: the design's rule is that a modifier reaches a
+	 * minion only when it names minions.
+	 */
+	static const TCHAR* NoPenetrationTagName;
+
+	/**
+	 * The tag that says a hit carries none of the attacker's weapon sub-type.
+	 *
+	 * `Keyword.NoWeaponSubType`. IT EXISTS FOR SUMMONED MINIONS, the third of
+	 * three exclusions built for the same reason. A minion's blow is dealt in its
+	 * summoner's name, and the weapon a hit is credited to is read off the effect
+	 * causer, which is that same summoner, so without this a minion inherits
+	 * whatever is in the player's hand: a sword makes it deal 10% more to health
+	 * and a wand makes it strip 10% more energy shield.
+	 *
+	 * THE DESIGN'S GENERAL RULE IS WHAT BLOCKS IT, rather than a sentence naming
+	 * sub-types. "A minion reaches its summoner through exactly three channels,
+	 * and nothing else crosses" -- its side, its base health and damage raised by
+	 * the summoner's level, and increased damage from one primary attribute --
+	 * followed by "Everything else is blocked unless a modifier says minion."
+	 * A weapon sub-type is not one of the three. See
+	 * `docs/Cataclysm_GDD_v2.md:1747` and the table above it. Issue #676.
+	 *
+	 * IT OVERLAPS WITH `Keyword.NoPenetration` ON PIERCING, on purpose. Piercing's
+	 * whole effect is armour penetration, so a hit that may not penetrate must not
+	 * get it either. Two independent reasons block the same flag and a hit needs
+	 * only one of them.
+	 */
+	static const TCHAR* NoWeaponSubTypeTagName;
+
+	/** `Keyword.NoLeech`. See NoLeechTag. */
+	static const TCHAR* NoLeechTagName;
+
+	/** `Keyword.NoRetaliation`. See NoRetaliationTag. */
+	static const TCHAR* NoRetaliationTagName;
+
+	/**
+	 * The key a hit's own critical strike chance is carried under.
+	 *
+	 * `Data.SkillCritChance`. NOT A TAG ANYTHING IS SCOPED BY. The other tag
+	 * names on this class go into a container and are asked yes-or-no questions.
+	 * This one names a NUMBER: Unreal's set-by-caller magnitudes are a map from
+	 * tag to float on a gameplay effect spec, and this is that map's key. It
+	 * never appears in a tag container, so nothing can match on it by accident.
+	 *
+	 * `Data.` IS THE ENGINE'S OWN NAMESPACE FOR THIS. Unreal's samples key
+	 * set-by-caller magnitudes `Data.Damage`, `Data.Duration` and so on, and this
+	 * follows that rather than inventing a scheme.
+	 *
+	 * WHY A NUMBER HAS TO TRAVEL AT ALL. Critical strike chance belongs to the
+	 * skill being used, not to the character using it, and a character holds six
+	 * skills at once against one `CritChance` attribute. So the skill's own base
+	 * rides on the hit and the attribute holds the default. Issue #657.
+	 */
+	static const TCHAR* SkillCritChanceDataTagName;
+
+	/**
+	 * The marker that says an effect's `Element.*` tag is about colour only.
+	 *
+	 * `Data.ElementIsForColourOnly`. A player's damage effect carries its
+	 * skill's element tag so the bolt and the burst can be coloured by it, and
+	 * carries this beside it so the defender does not read that tag as a
+	 * resistance to apply. Issue #803.
+	 *
+	 * PUT ON AT THE SOURCE, NOT DECIDED AT THE FAR END. The obvious alternative
+	 * was for the defender to ask who hit it and work the answer out. That
+	 * breaks when the attacker is gone: an enemy's burn ticking on the player
+	 * after the enemy is dead would find no attacker and stop applying the
+	 * player's resistance to it part way through. The marker is stamped on the
+	 * effect while the attacker is still there, so it survives.
+	 *
+	 * `Data.` IS THE ENGINE'S OWN NAMESPACE FOR A TAG THAT NAMES A MECHANISM
+	 * rather than a property, which is why `Data.SkillCritChance` above uses it
+	 * too. Nothing scopes a modifier by it.
+	 */
+	static const TCHAR* ElementIsForColourOnlyTagName;
+
+	/** `Type.AOE`, or an invalid tag if the vocabulary has lost it. */
+	static FGameplayTag AreaDamageTag();
+
+	/** `Keyword.DoT`, or an invalid tag if the vocabulary has lost it. */
+	static FGameplayTag DamageOverTimeTag();
+
+	/** `Type.Melee`, or an invalid tag if the vocabulary has lost it. #1032. */
+	static FGameplayTag MeleeTag();
+
+	/** `Type.Ranged`, or an invalid tag if the vocabulary has lost it. #666. */
+	static FGameplayTag RangedTag();
+
+	/** `Type.Projectile`, or an invalid tag if the vocabulary lost it. #666. */
+	static FGameplayTag ProjectileTag();
+
+	/** `Keyword.NoCrit`, or an invalid tag if the vocabulary has lost it. */
+	static FGameplayTag NoCriticalStrikeTag();
+
+	/** `Keyword.NoPenetration`, or an invalid tag if the vocabulary lost it. */
+	static FGameplayTag NoPenetrationTag();
+
+	/** `Keyword.NoWeaponSubType`, or an invalid tag if the vocabulary lost it. */
+	static FGameplayTag NoWeaponSubTypeTag();
+
+	/**
+	 * A blow that gives its attacker no leech, whatever the attacker has.
+	 *
+	 * THE FOURTH EXCLUSION A SUMMONED MINION CARRIES, alongside no critical
+	 * strike, no penetration and no weapon sub-type, and blocked by the same
+	 * design sentence: a minion reaches its summoner through exactly three
+	 * channels, and leech is named among what does not cross. Without it a
+	 * minion's blow would leech for its summoner, because the blow is dealt
+	 * in the summoner's name and the leech is read off the attacker.
+	 */
+	static FGameplayTag NoLeechTag();
+
+	/**
+	 * A blow that provokes no retaliation from what it strikes.
+	 *
+	 * THE FIFTH EXCLUSION A SUMMONED MINION CARRIES, and the only one of the
+	 * five that protects the summoner rather than the target. Retaliation is
+	 * dealt back to the effect's CAUSER, which is the summoner for a minion's
+	 * blow, so without this a caster standing well away from the fight would
+	 * take damage every time one of its imps struck a retaliating enemy.
+	 *
+	 * THE CAUSER AND NOT WHO THE BLOW IS CREDITED TO, and the two parted company
+	 * in issue #1515: a minion's hit is now credited to the minion unless its
+	 * summoner holds the Conduit keystone, while the causer stays the summoner
+	 * either way. This exclusion is needed whatever the keystone says.
+	 */
+	static FGameplayTag NoRetaliationTag();
+
+	/** `Data.SkillCritChance`, or an invalid tag if the vocabulary lost it. */
+	static FGameplayTag SkillCritChanceDataTag();
+
+	/**
+	 * `Data.ElementIsForColourOnly`, or an invalid tag if the vocabulary lost
+	 * it.
+	 */
+	static FGameplayTag ElementIsForColourOnlyTag();
+
+	/**
+	 * A damage type as the gameplay tag that carries it on an effect.
+	 *
+	 * "Demonic" becomes `Element.Demonic`. Returns an invalid tag for a name the
+	 * tag vocabulary has no `Element.*` entry for, and for `NAME_None`.
+	 *
+	 * WHY A TAG RATHER THAN THE NAME ITSELF: a gameplay effect can carry tags and
+	 * cannot carry an FName, and the eight `Element.*` tags already exist in
+	 * `game/Config/Tags/CataclysmTags.ini` because stat modifiers scope to them.
+	 * See `DamageTypeFromTags` for the way back.
+	 */
+	static FGameplayTag ElementTagFor(FName DamageType);
+
+	/**
+	 * The damage type an effect's tags say it is, or `NAME_None` for an untyped
+	 * hit.
+	 *
+	 * THE INVERSE OF `ElementTagFor`, AND IT LIVES BESIDE IT ON PURPOSE. The two
+	 * are the only encoding and decoding of a damage type in the project, and if
+	 * they ever disagreed the type would vanish silently and every resistance
+	 * would go back to doing nothing, which is exactly the state issue #486
+	 * describes.
+	 */
+	static FName DamageTypeFromTags(const FGameplayTagContainer& Tags);
+
+	/**
+	 * The resistance attribute a damage type is read from, or an invalid
+	 * attribute for an untyped hit or a type nobody has heard of.
+	 *
+	 * THE ONE PLACE THAT PAIRS A DAMAGE TYPE WITH ITS RESISTANCE SLOT. The
+	 * mitigation order reads it to work out what a blow is reduced by, and the
+	 * Wand's Shred writes it to reduce that resistance for a duration. A second
+	 * copy of the pairing is how the two would come to disagree, which is the
+	 * reasoning `ElementTagFor` and `DamageTypeFromTags` already give for living
+	 * beside each other.
+	 *
+	 * IT ANSWERS THE PER-TYPE SLOT ONLY. The generic All Resistance attribute
+	 * applies to everything by definition, so it is not one of these eight and
+	 * is added separately by whoever needs a total.
+	 */
+	static FGameplayAttribute ResistanceAttributeFor(FName DamageType);
+
+	/**
+	 * What a character's per-type resistance to a damage type reads as, before
+	 * the generic figure, the difficulty tier's penalty, penetration and the cap.
+	 * Nought for an untyped hit, a type nobody has heard of, and a character
+	 * that does not hold the eight per-type figures, which is every enemy.
+	 *
+	 * THE ONE PLACE A PER-TYPE RESISTANCE IS READ FOR WHAT A BLOW MEETS, since
+	 * 2026-10-12. The mitigation order, the character sheet and
+	 * `Cataclysm.ShowResistances` all read through it. It is the attribute's
+	 * current value plus what a row under a condition or a scale adds now, which
+	 * the stat refresh could not fold into the attribute
+	 * (`UCataclysmAbilitySystemComponent::AttributeWithWhatWasNotFolded`, since
+	 * 2026-10-18), except that a resistance a worn row is holding at nought
+	 * (`UCataclysmAbilitySystemComponent::ResistanceHeldAtNought`) reads as
+	 * nought when that sum is above nought. A held resistance whose sum is under
+	 * nought reads as it is.
+	 */
+	static float TypedResistanceOf(const UAbilitySystemComponent* Defender,
+								   FName DamageType);
+
+	/** Armor as a percentage of damage removed. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Damage")
+	static float ArmorReduction(float Armor, int32 Tier);
+
+	/**
+	 * Resistance after penetration, then capped.
+	 *
+	 * Penetration is subtracted BEFORE the cap. That order is the only thing
+	 * that makes over-capping worth anything: against 30 penetration a defender
+	 * at 100 resistance still sits at the 70 cap, where one at exactly 70 drops
+	 * to 40. Capping first would make every point above 70 worthless.
+	 *
+	 * PENETRATION STOPS AT ZERO. `docs/Cataclysm_GDD_v2.md` states in section X
+	 * that "penetration beyond an enemy's resistance grants no bonus, so
+	 * over-stacking it does not become a damage multiplier against the enemies
+	 * that need it least". Until issue #482 the subtraction ran on into negative
+	 * resistance, so 50 penetration against a 35% target landed 115% of a hit.
+	 *
+	 * A NATIVELY NEGATIVE RESISTANCE IS LEFT ALONE, which is why the floor is not
+	 * simply zero. Enchantments push a target under zero deliberately and that
+	 * target takes extra damage; penetration must not create that state itself.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Damage")
+	static float EffectiveResistance(float Resistance, float Penetration);
+
+	/**
+	 * `EffectiveResistance` under a cap other than `ResistanceCap`: the
+	 * defender's own, from `ResistanceCapOf`. Issue #1833.
+	 */
+	static float EffectiveResistanceUnderCap(float Resistance, float Penetration,
+											 float Cap);
+
+	/**
+	 * The stat that moves a character's resistance cap, in points. Issue
+	 * #1833: "You lose 1-4% max resistances for every 100,000 - 500,000 kills"
+	 * and "You have +10 maximum resists". No gameplay attribute: rows only.
+	 */
+	static const TCHAR* ResistanceCapStat;
+
+	/**
+	 * The hard ceiling on any resistance cap. The design caps the maximum at
+	 * 90%; `tools/tests/test_maximum_resistance.py` pins that sentence.
+	 */
+	static constexpr float ResistanceCapCeiling = 90.0f;
+
+	/**
+	 * The cap a character's resistance is held to: `ResistanceCap`, moved by
+	 * `ResistanceCapStat` rows, then held to 0 to `ResistanceCapCeiling`.
+	 * Issue #1833, ruled 2026-09-25 under the owner's delegation.
+	 *
+	 * ASKED WITH `StatAppliedTo` AND 70 AS THE BASE, not `StatForSkill` with 70
+	 * as a fallback: the second evaluates on a recorded base of nought once any
+	 * row exists, so a -1 row would leave a cap of -1. Anything with no stat
+	 * line, which is every creature, reads 70.
+	 */
+	static float ResistanceCapOf(const UAbilitySystemComponent* Defender);
+
+	/**
+	 * How much resistance this difficulty tier takes off a player.
+	 *
+	 * WHY A PENALTY EXISTS AT ALL. Issue #1229. The cap is 70 and a player
+	 * needed exactly 70 at every tier from one to eight, so the number being
+	 * chased never moved. That fixed target is what forced every resistance
+	 * affix to be small: the stat only ever needed filling once, so each
+	 * affix had to be a small share of 70 or a handful of pieces reached the
+	 * cap. The worst roll of `All resistances` was 0.60, which a player
+	 * cannot feel.
+	 *
+	 * MOVING THE TARGET IS WHAT BUYS THE ROOM. A tier 8 character needs 145
+	 * to sit at the cap, so every source of resistance can be about twice as
+	 * large and still land in the same place.
+	 *
+	 * PATH OF EXILE 2'S SHAPE, WITH THE RAMP MOVED LATER. That game takes 10
+	 * points per act, 60 in total, so a player needs 135 to sit at a 75 cap.
+	 * This starts at difficulty tier 4 rather than the first, because the
+	 * early game is where a worthless affix already hurts most.
+	 *
+	 * @return zero below the first penalised tier, and never negative
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Damage")
+	static float ResistancePenaltyAt(int32 DifficultyTier);
+
+	/**
+	 * How much resistance the difficulty tier takes off this defender.
+	 *
+	 * A PLAYER ONLY, AND THAT IS THE WHOLE POINT. An enemy has its own
+	 * resistance, and a penalty that took from both would cancel out and
+	 * change nothing.
+	 *
+	 * ASKED OF THE WORLD RATHER THAN STORED ON THE CHARACTER. The difficulty
+	 * tier changes when a player enters a different dungeon, and the stat
+	 * line is recomputed when equipment changes rather than when that
+	 * happens -- so an attribute holding the penalty would carry the previous
+	 * dungeon's figure until the player happened to swap a ring.
+	 *
+	 * @return zero for an enemy, for a null defender, and for any defender
+	 *         whose world has no game mode to ask
+	 */
+	static float ResistancePenaltyFor(const UAbilitySystemComponent* Defender);
+
+	/**
+	 * The same, for a difficulty tier the caller already knows.
+	 *
+	 * WHAT THE HIT USES. `Resolve` is given the tier and already uses it for
+	 * the armour curve, so reading a second one out of the world inside the
+	 * same function would be a hidden dependency and a way for the two to
+	 * disagree about which dungeon is being played.
+	 *
+	 * IT IS ALSO WHAT MAKES THE PENALTY TESTABLE THROUGH A HIT. An automation
+	 * world has no game mode, so the form above always answers the lowest
+	 * tier there and a test could only ever reach it by setting a global
+	 * console variable.
+	 *
+	 * @return zero for an enemy and for a null defender
+	 */
+	static float ResistancePenaltyFor(const UAbilitySystemComponent* Defender,
+									  int32 DifficultyTier);
+
+	/**
+	 * Flat damage reduction as a percentage of damage removed, capped.
+	 *
+	 * A FUNCTION RATHER THAN A CLAMP AT THE CALL SITE, so the cap lives in one
+	 * place and the mitigation step stays one line, which is what ArmorReduction
+	 * and EffectiveResistance already do for their own caps.
+	 *
+	 * THE FLOOR IS ZERO, WHICH IS WHAT SEPARATES IT FROM EffectiveResistance.
+	 * That one floors at -100 on purpose, because a negative resistance means
+	 * taking extra damage and several enchantments inflict one deliberately.
+	 * Nothing in the design grants negative flat damage reduction.
+	 *
+	 * Mirrors `effective_damage_reduction` in `sim/cataclysm_sim/damage.py`.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Damage")
+	static float EffectiveDamageReduction(float Reduction);
+
+	/**
+	 * Several "more" damage reductions as one percentage of damage removed.
+	 *
+	 * Each source removes a share of what the ones before it left, so two
+	 * sources of 20% remove 36% between them and not 40%. That is the whole
+	 * difference between this bucket and the additive pool
+	 * `EffectiveDamageReduction` bounds, and it is the defensive half of the rule
+	 * the design already states for offence: `(base + flat) x (1 + increases) x
+	 * more1 x more2`, where each "more" is its own multiplier rather than joining
+	 * a sum.
+	 *
+	 * TWELVE PASSIVE TREE NODES SAY "(multiplicative)" AND MEAN THIS. Eleven in
+	 * the Bulwark tree and one in the Saboteur tree grant damage reduction and
+	 * carry the word. The project owner confirmed on 2026-08-17 that
+	 * multiplicative means "more", which is what Path of Exile and Last Epoch
+	 * both call it. Issue #665.
+	 *
+	 * IT CANNOT REACH 100% AND THAT IS THE POINT. Every factor removes a share of
+	 * what is left, so the product never reaches zero, and the 75% cap on the
+	 * additive pool has nothing to prevent here. Each factor is separately
+	 * clamped by `MoreDamageReductionCap`, because a single factor of exactly 100
+	 * would be exact immunity.
+	 *
+	 * Mirrors `combined_more_damage_reduction` in `sim/cataclysm_sim/damage.py`.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Damage")
+	static float CombinedMoreDamageReduction(const TArray<float>& Factors);
+
+	/**
+	 * What a damage taken modifier may ask about this hit.
+	 *
+	 * THE ONE PLACE THE ANSWER IS DECIDED, and `Resolve` calls it for the damage
+	 * taken lookup, which is the only lookup in the game that has a hit in hand.
+	 *
+	 * A DAMAGE OVER TIME TICK ANSWERS NOTHING TO EVERY QUESTION: false to the
+	 * four facts and -1 to the distance. That is deliberate and it is a
+	 * judgement rather than a limitation -- `docs/DECISIONS.md` carries it with
+	 * what it costs the player. The short version: a tick is not a hit, so "you
+	 * take 20% less damage from spells" must not shrink a burn a spell left
+	 * behind, and the creature that lit the fire may have walked away, so a
+	 * distance measured when the tick fires describes something that is not
+	 * striking.
+	 *
+	 * PUBLIC SO A TEST CAN DRIVE IT DIRECTLY. It was a file-local helper until a
+	 * test needed to assert what a tick hands a passive row. Building the answer
+	 * by hand in the test instead would have asserted that a structure the test
+	 * filled holds what the test put in it, which proves nothing about this.
+	 */
+	static FCataclysmBlowContext BlowContextFor(const FCataclysmIncomingHit& Hit);
+
+	/**
+	 * Run one hit through the whole order against a character's attribute sets.
+	 *
+	 * `EvasionRoll`, `BlockRoll` and `CritRoll` are 0-100 values supplied by the
+	 * caller so that tests can pin them. Pass a negative number to roll here.
+	 */
+	static FCataclysmDamageResult Resolve(const FCataclysmIncomingHit& Hit,
+										  const UAbilitySystemComponent* Defender,
+										  int32 Tier,
+										  float EvasionRoll = -1.0f,
+										  float BlockRoll = -1.0f,
+										  float CritRoll = -1.0f);
+};

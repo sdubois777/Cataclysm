@@ -1,0 +1,5746 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "AbilitySystem/CataclysmSkillEffects.h"
+// For the reach every spread of an ailment has.
+#include "AbilitySystem/CataclysmContagion.h"
+// For the chances to apply an ailment that a blow carries. Issue #899.
+#include "AbilitySystem/CataclysmAilments.h"
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmMovement.h"
+// For the resistance a Shred reduces. The per-type slot is picked by
+// UCataclysmDamageCalculation::ResistanceAttributeFor and the generic one is
+// what an untyped attacker cuts instead.
+#include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmResistanceAttributeSet.h"
+#include "Character/CataclysmPlayerClassStats.h"
+// For a curse that passes to the nearest enemy when its holder dies.
+// The Wand's Anathema is the only thing that marks a creature that way.
+// For a weapon left in a creature that tears free when it dies. The Axe's
+// Harrower is the only thing that buries one.
+#include "AbilitySystem/CataclysmBuriedWeapon.h"
+// For announcing a death to whatever listens. Issue #41, slice 4.
+#include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmCommand.h"
+#include "AbilitySystem/CataclysmCurseSpread.h"
+// For a line of creatures run through by one spear, which comes apart when any
+// one of them dies. The Spear's Skewer is the only thing that binds one.
+#include "AbilitySystem/CataclysmPinnedLine.h"
+// For the effect every run-time application is built as, which can carry a skill's tags without the skill. #2683.
+#include "AbilitySystem/CataclysmRuntimeEffect.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmDamageCalculation.h"
+// For how long a lasting harmful effect really runs on its target, which is
+// the target's own stat rather than the attacker's. Issue #1033.
+#include "AbilitySystem/CataclysmDebuffs.h"
+// For a skill gadget's blow, priced as the gadget's. Ruled 2026-10-16.
+#include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmFear.h"
+#include "AbilitySystem/CataclysmSilence.h"
+// A taunt is crowd control, as a silence is. Warlord's Will's six-piece, ruled 2026-10-18 (B).
+#include "AbilitySystem/CataclysmTaunt.h"
+#include "AbilitySystem/CataclysmStatPipeline.h"
+#include "AbilitySystem/CataclysmSkillTemplate.h"
+// For a swing drawn back, which a stagger and a death both lose. Issue #1141.
+#include "AbilitySystem/CataclysmSkillTemplates.h"
+#include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmTeams.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystemComponent.h"
+#include "Cataclysm.h"
+// For the boss check in ApplyStun: boss-ness lives on the enemy as its rarity
+// step, so rule three has to ask the enemy class. Issue #395.
+#include "Character/CataclysmEnemyCharacter.h"
+#include "Data/CataclysmDataRows.h"
+#include "Engine/DataTable.h"
+#include "GameplayEffect.h"
+#include "TimerManager.h"
+#include "GameplayEffectComponents/TargetTagsGameplayEffectComponent.h"
+#include "GameplayTagsManager.h"
+// For the console variable that pins the roll of an ailment exploding at its end. Ruled 2026-10-13.
+#include "HAL/IConsoleManager.h"
+
+namespace
+{
+	/**
+	 * A gameplay effect built for this one application, under a name that can
+	 * collide with nothing.
+	 *
+	 * THE UNIQUE NAME IS THE WHOLE POINT AND IT IS NOT COSMETIC. Issue #1501.
+	 * Every effect built at run time in this file used to be given a FIXED name
+	 * in the transient package -- `CataclysmStatus_Pinned`, and one name per tag
+	 * for the others. Asking Unreal for an object whose name is already taken
+	 * does not produce a second object. `StaticAllocateObject` destroys the
+	 * existing one in place, calling `Obj->~UObject()`, and constructs the new
+	 * one at the same address, under a comment reading "Replace an existing
+	 * object without affecting the original's address or index".
+	 *
+	 * WHAT THAT DESTROYED, AND WHY IT CRASHED SOMEWHERE ELSE ENTIRELY. When a
+	 * lasting effect carrying attribute modifiers is applied to somebody, the
+	 * engine keeps RAW POINTERS into that effect's `Modifiers` array: it hands
+	 * `&ModInfo.SourceTags` and `&ModInfo.TargetTags` to the target's attribute
+	 * aggregator, which holds them as bare `const FGameplayTagRequirements*` and
+	 * owns nothing. Building the next effect freed that array while an earlier
+	 * target's aggregator still pointed into it. Nothing read those pointers
+	 * until an attribute was recalculated -- so the game crashed on whoever next
+	 * changed a piece of gear or spent a passive point, at a different invalid
+	 * address each time, which is what said it was freed memory rather than a
+	 * missing check.
+	 *
+	 * THE READABLE PART OF THE NAME IS KEPT, so a log line or a debugger still
+	 * says which effect this is. `MakeUniqueObjectName` puts a number after it.
+	 *
+	 * IT COSTS ONE TRANSIENT OBJECT PER APPLICATION, where reusing one name cost
+	 * none. That is the ordinary way to build a gameplay effect at run time and
+	 * garbage collection is what clears them. The cheaper version was cheap
+	 * because it was wrong.
+	 *
+	 * AND IT IS A `UCataclysmRuntimeEffect`, A `UGameplayEffect` CARRYING ONE MORE FIELD. Issue #2683, the subclass
+	 * approved by the coordinating session 2026-11-01 (J4). The field is the tags of the skill a damage over time effect's
+	 * ticks are ticks of, for a tick whose skill has gone or that never had one; see the class. Every effect built here
+	 * is one, with that field empty unless `ApplyDamageOverTime` writes it, and the whole automation suite is the check
+	 * that nothing else changed. Effects built elsewhere, in `CataclysmGameplayAbility.cpp` and
+	 * `CataclysmEnemyModifiers.cpp`, stay the plain class.
+	 */
+	UCataclysmRuntimeEffect* MakeRuntimeEffect(const FString& Purpose)
+	{
+		UObject* Outer = GetTransientPackage();
+		return NewObject<UCataclysmRuntimeEffect>(
+			Outer,
+			MakeUniqueObjectName(Outer, UCataclysmRuntimeEffect::StaticClass(),
+								 FName(*Purpose)));
+	}
+
+	/**
+	 * Whether a running effect is converted damage not yet taken: the bleed the Masochist's damage conversion lays on
+	 * its own character, stamped with `UCataclysmSkillEffects::ConvertedDamageDataName`. Issue #2275.
+	 *
+	 * THE ONE QUESTION THE BLEED SLOT ASKS OF IT, so the slot and the strongest-application rule cannot disagree about
+	 * what they skip: `TagAndReplaceAnyExisting` does not take one off, and `RunningApplicationOf` does not find one.
+	 * The mark is the one `UCataclysmDebuffs::Cleanse` keeps and the bleed gate exempts; no new mark was added.
+	 */
+	bool IsConvertedDamageNotYetTaken(const FActiveGameplayEffect* Active)
+	{
+		return Active
+			&& Active->Spec.GetSetByCallerMagnitude(
+				FName(UCataclysmSkillEffects::ConvertedDamageDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f;
+	}
+
+	/**
+	 * Grant a tag for as long as this effect lasts, and take off whatever was
+	 * granting that tag already.
+	 *
+	 * ONE EFFECT PER TAG PER TARGET IS THE DESIGN'S RULE: a second burn
+	 * refreshes the first rather than adding a second. Issue #1062.
+	 *
+	 * IT USED TO HAPPEN BY ACCIDENT AND NOW HAPPENS ON PURPOSE. Issue #1501.
+	 * The engine decides whether two effects stack by comparing
+	 * `ActiveEffect.Spec.Def == Spec.Def`, a raw pointer comparison, and every
+	 * application being rebuilt at one address is what used to make that true.
+	 * That address reuse is the fault which crashed the game, so the rule it was
+	 * quietly carrying has to be kept some other way. Removing what is already
+	 * there is that way, and it is what `ReleasePin` and the Succubus aura
+	 * already do to take an effect off.
+	 *
+	 * CALLED IMMEDIATELY BEFORE THE EFFECT IS APPLIED, by all four callers. The
+	 * two that apply a figure, `ApplyPin` and `ApplyNamedEffect`, have already
+	 * taken the running application off by then. Since issue #1503 they compare
+	 * the two applications first and size the winner against the target without
+	 * the one it replaces, so for them nothing is left here to remove.
+	 *
+	 * THIS PARAGRAPH USED TO SAY THE OPPOSITE: that removing any earlier would
+	 * hand `ApplyNamedEffect` the unreduced resistance. The unreduced figure was
+	 * the right one. Sizing a new Shred against the resistance the running Shred
+	 * had already cut, and then giving that cut back, is what made applying the
+	 * same Shred again raise the target's resistance.
+	 *
+	 * THE STACKING FIELDS BELOW ARE STILL SET THOUGH THEY NO LONGER DECIDE
+	 * ANYTHING HERE, because they state the intent and would still hold if two
+	 * applications ever came to share one definition again.
+	 *
+	 * WHY THE DEPRECATION IS SUPPRESSED HERE AND NOT WORKED AROUND. Unreal 5.7
+	 * deprecated writing UGameplayEffect::StackingType directly and offers
+	 * SetStackingType instead -- but that setter is inside WITH_EDITOR, so it
+	 * does not exist in a packaged build. Assigning the field is the only route
+	 * available at runtime until the engine provides one. Kept in one function
+	 * so there is a single place to change when it does.
+	 *
+	 * ONE STACK ONLY is the design's rule for every ailment and damage over time
+	 * effect a player applies,
+	 * and it is aggregated by TARGET rather than by source so that two
+	 * characters burning the same enemy still produce one burn.
+	 *
+	 * EXCEPT CONVERTED DAMAGE NOT YET TAKEN, WHICH HOLDS NO SLOT. Issue #2275, ruled by the coordinating session
+	 * 2026-11-01. The bleed the Masochist's damage conversion lays on its own character is a blow already taken and
+	 * stored, not an application of the ailment, so nothing laid here takes one off, and one is laid with
+	 * `bTakesTheSlot` false: it grants the tag and removes nothing, so each converted blow runs as its own effect
+	 * beside every other bleed. See `IsConvertedDamageNotYetTaken`.
+	 */
+	void TagAndReplaceAnyExisting(UGameplayEffect* Effect,
+								  const FGameplayTag& EffectTag,
+								  AActor* Target,
+								  bool bTakesTheSlot = true)
+	{
+		if (!Effect || !EffectTag.IsValid())
+		{
+			return;
+		}
+
+		if (bTakesTheSlot)
+		{
+			// WHATEVER WAS ALREADY GRANTING THIS TAG COMES OFF FIRST, so the effect
+			// about to be applied is the only one. Taking it off is also what
+			// unregisters its modifiers from the target's attribute aggregators,
+			// which is the half that matters here: an effect left registered is an
+			// effect whose tag requirements are still being read on every
+			// recalculation.
+			//
+			// BUT NOT CONVERTED DAMAGE NOT YET TAKEN. Issue #2275: until it, an enemy's stronger bleed took the
+			// Masochist's converted bleed off here, and what it had left to deal was lost. The same query
+			// `RemoveEffectsGranting` makes, `MakeQuery_MatchAnyOwningTags`, so nothing else it removes changes.
+			//
+			// AND ONLY WHERE THE OWNER IS AUTHORITATIVE, the guard the engine's `RemoveActiveEffectsWithGrantedTags`
+			// makes before it removes anything, kept now the removal is one effect at a time. Ruled by the coordinating
+			// session 2026-11-01: the game is single-player today, but a guard the engine path had is not dropped.
+			UAbilitySystemComponent* Holder = UCataclysmTargeting::AbilitySystemOf(Target);
+			if (Holder && Holder->IsOwnerActorAuthoritative())
+			{
+				FGameplayTagContainer Granting;
+				Granting.AddTag(EffectTag);
+				for (const FActiveGameplayEffectHandle& Handle :
+						 Holder->GetActiveEffects(FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(Granting)))
+				{
+					if (!IsConvertedDamageNotYetTaken(Holder->GetActiveGameplayEffect(Handle)))
+					{
+						Holder->RemoveActiveGameplayEffect(Handle);
+					}
+				}
+			}
+
+			PRAGMA_DISABLE_DEPRECATION_WARNINGS
+			Effect->StackingType = EGameplayEffectStackingType::AggregateByTarget;
+			PRAGMA_ENABLE_DEPRECATION_WARNINGS
+
+			Effect->StackLimitCount = 1;
+			Effect->StackDurationRefreshPolicy =
+				EGameplayEffectStackingDurationPolicy::RefreshOnSuccessfulApplication;
+		}
+
+		UTargetTagsGameplayEffectComponent& TagsComponent =
+			Effect->FindOrAddComponent<UTargetTagsGameplayEffectComponent>();
+		FInheritedTagContainer Granted;
+		Granted.Added.AddTag(EffectTag);
+		TagsComponent.SetAndApplyTargetTagChanges(Granted);
+	}
+
+	/**
+	 * The application of an effect already running on a target, and what it
+	 * stated. Issue #1503.
+	 *
+	 * WHAT IT STATED RATHER THAN WHAT IT TOOK. The project owner ruled on
+	 * 2026-09-09 that two applications are compared by the magnitudes they
+	 * state, before the target's resistances: "A 50% Shred beats a 30% Shred
+	 * whatever state the target is in". What an application took has already
+	 * been clamped against the target, so what it stated travels on the effect
+	 * beside it, as a set-by-caller number that no modifier reads.
+	 */
+	struct FRunningApplication
+	{
+		FActiveGameplayEffectHandle Handle;
+		float Stated = 0.0f;
+		/** Negative when the effect never runs out. */
+		float SecondsLeft = 0.0f;
+		bool bFound = false;
+	};
+
+	/** Set while `UCataclysmSkillEffects::ApplySpreadCopy` runs. See it. */
+	bool bApplyingASpreadCopy = false;
+
+	/**
+	 * Set while `UCataclysmSkillEffects::ApplyDamageOverTime` takes a running effect off to lay a stronger one of the
+	 * same ailment in its place. Issue #920: a Necrosis replaced that way has not ended, so the healing it denied is
+	 * not dealt yet. See `DealTheDeniedHealingWhenANecrosisEnds`.
+	 */
+	bool bReplacingARunningDamageOverTime = false;
+
+	/**
+	 * The strongest application granting this tag on this target, if any.
+	 *
+	 * AN EFFECT CARRYING NO STATEMENT STATED NOTHING. That is anything granted
+	 * by `ApplyTagForDuration`, a pin holding a target without an increase
+	 * among them, and it loses to an application stating anything at all.
+	 */
+	FRunningApplication RunningApplicationOf(const UAbilitySystemComponent* Defender,
+											 const FGameplayTag& EffectTag)
+	{
+		FRunningApplication Running;
+		if (!Defender || !EffectTag.IsValid())
+		{
+			return Running;
+		}
+
+		FGameplayTagContainer Granted;
+		Granted.AddTag(EffectTag);
+
+		const UWorld* World = Defender->GetWorld();
+		const float Now = World ? World->GetTimeSeconds() : 0.0f;
+
+		for (const FActiveGameplayEffectHandle& Handle : Defender->GetActiveEffects(
+				 FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(Granted)))
+		{
+			const FActiveGameplayEffect* Active =
+				Defender->GetActiveGameplayEffect(Handle);
+			if (!Active)
+			{
+				continue;
+			}
+			// NOT CONVERTED DAMAGE NOT YET TAKEN, which is no application of the ailment and holds no slot. Issue
+			// #2275, ruled by the coordinating session 2026-11-01. Until it, an enemy's weaker bleed only refreshed
+			// the Masochist's converted bleed, so it had no effect of its own: a cleanse kept it, and its time ticked
+			// at the converted figure, exempt from the movement gate. And a converted blow weaker than a running
+			// bleed only refreshed it and was lost. Every caller asks about an application, so none is shown one.
+			if (IsConvertedDamageNotYetTaken(Active))
+			{
+				continue;
+			}
+
+			const float Stated = FMath::Max(0.0f,
+				Active->Spec.GetSetByCallerMagnitude(
+					FName(UCataclysmSkillEffects::StatedMagnitudeDataName),
+					/*WarnIfNotFound=*/false, /*DefaultIfNotFound=*/0.0f));
+			if (!Running.bFound || Stated > Running.Stated)
+			{
+				Running.Handle = Handle;
+				Running.Stated = Stated;
+				Running.SecondsLeft = Active->GetTimeRemaining(Now);
+				Running.bFound = true;
+			}
+		}
+		return Running;
+	}
+
+	/**
+	 * Keep the running application going for at least this long. Issue #1503.
+	 *
+	 * THE THIRD RULING OF 2026-09-09: "A weaker application still refreshes the
+	 * duration. Its figures are refused; its timing is not." The running effect
+	 * is moved rather than rebuilt, so its figures, its instigator and its
+	 * handle all stay as they were.
+	 *
+	 * NEVER SHORTER, WHICH IS A JUDGEMENT THE RULING DOES NOT STATE. A weaker
+	 * application lasting less than the running one has left changes nothing.
+	 * The ruling's reason is keeping an effect running, and cutting one short
+	 * would work against that. `docs/DECISIONS.md` records the judgement.
+	 *
+	 * BY MOVING ITS START, which is the one lever the engine offers on a running
+	 * effect. `ModifyActiveEffectStartTime` shifts the start, and
+	 * `FActiveGameplayEffectsContainer::CheckDuration` then sets the expiry
+	 * timer again from the new end.
+	 */
+	void RefreshRunningApplication(UAbilitySystemComponent* Defender,
+								   const FRunningApplication& Running,
+								   float SecondsOnTarget)
+	{
+		if (!Defender || !Running.bFound || Running.SecondsLeft < 0.0f)
+		{
+			return;
+		}
+
+		const float Longer = SecondsOnTarget - Running.SecondsLeft;
+		if (Longer > 0.0f)
+		{
+			Defender->ModifyActiveEffectStartTime(Running.Handle, Longer);
+		}
+	}
+
+	/**
+	 * Apply an effect built for one application, carrying what it stated.
+	 * Issue #1503.
+	 */
+	void ApplyStating(UGameplayEffect* Effect, UAbilitySystemComponent* Source,
+					  UAbilitySystemComponent* Defender, AActor* Instigator,
+					  float Stated)
+	{
+		FGameplayEffectContextHandle Context = Source->MakeEffectContext();
+		Context.AddInstigator(Instigator, Instigator);
+
+		FGameplayEffectSpec Spec(Effect, Context, /*Level=*/1.0f);
+		Spec.SetSetByCallerMagnitude(
+			FName(UCataclysmSkillEffects::StatedMagnitudeDataName), Stated);
+		Defender->ApplyGameplayEffectSpecToSelf(Spec);
+	}
+}
+
+// THE TWO STATS A STAGGERING CHARACTER CAN CARRY. Issue #45. Spelled here
+// exactly as `game/Data/EnchantmentEffects.csv` spells them, and held to the
+// engine by the stat-name map in `CataclysmPlayerClassStats.cpp`.
+const TCHAR* UCataclysmSkillEffects::StaggerDurationStat =
+	TEXT("stagger_duration");
+
+const TCHAR* UCataclysmSkillEffects::DebuffDurationStat = TEXT("debuff_duration");
+const TCHAR* UCataclysmSkillEffects::DotApplicationRefreshesOthersStat =
+	TEXT("dot_application_refreshes_others");
+
+float UCataclysmSkillEffects::DebuffDurationMultiplierOf(const UAbilitySystemComponent* Source)
+{
+	const UCataclysmAbilitySystemComponent* Mine =
+		Cast<const UCataclysmAbilitySystemComponent>(Source);
+	return Mine
+		? FMath::Max(0.0f, 1.0f + Mine->IncreasesForStat(FName(DebuffDurationStat),
+														 FGameplayTagContainer()))
+		: 1.0f;
+}
+const TCHAR* UCataclysmSkillEffects::StaggerHealthCeilingStat =
+	TEXT("stagger_health_ceiling_reduction");
+const TCHAR* UCataclysmSkillEffects::StaggerRootSecondsStat =
+	TEXT("stagger_root_seconds");
+const TCHAR* UCataclysmSkillEffects::CrowdControlHealthCeilingStat =
+	TEXT("crowd_control_health_ceiling_reduction");
+const TCHAR* UCataclysmSkillEffects::KnockdownSecondsStat =
+	TEXT("knockdown_seconds");
+const TCHAR* UCataclysmSkillEffects::CrowdControlResistanceStat =
+	TEXT("crowd_control_resistance");
+const TCHAR* UCataclysmSkillEffects::KnockbackSuppressedStat =
+	TEXT("knockback_suppressed");
+
+const TCHAR* UCataclysmSkillEffects::BurnRowName = TEXT("DoT_Burn");
+const TCHAR* UCataclysmSkillEffects::BleedRowName = TEXT("DoT_Bleed");
+const TCHAR* UCataclysmSkillEffects::ConvertedDamageDataName = TEXT("Cataclysm.ConvertedDamage");
+const TCHAR* UCataclysmSkillEffects::DeniedHealingDataName = TEXT("Cataclysm.DeniedHealing");
+const TCHAR* UCataclysmSkillEffects::ConsequenceOfADeathDataName = TEXT("Cataclysm.ConsequenceOfADeath");
+const TCHAR* UCataclysmSkillEffects::CannotBeEvadedDataName = TEXT("Cataclysm.CannotBeEvaded");
+const TCHAR* UCataclysmSkillEffects::CannotBeMitigatedDataName = TEXT("Cataclysm.CannotBeMitigated");
+const TCHAR* UCataclysmSkillEffects::NamedArmorPenetrationDataName =
+	TEXT("Cataclysm.NamedArmorPenetration");
+const TCHAR* UCataclysmSkillEffects::RowsAnswerToAnEventDataName = TEXT("Cataclysm.RowsAnswerToAnEvent");
+const TCHAR* UCataclysmSkillEffects::StatedMagnitudeDataName =
+	TEXT("Cataclysm.StatedMagnitude");
+
+const TCHAR* UCataclysmSkillEffects::StatusEffectTableAssetPath =
+	TEXT("/Game/Data/DT_StatusEffects.DT_StatusEffects");
+
+const UDataTable* UCataclysmSkillEffects::LoadStatusEffectTable()
+{
+	const UDataTable* Table = LoadObject<UDataTable>(nullptr, StatusEffectTableAssetPath);
+	if (!Table)
+	{
+		UE_LOG(LogCataclysm, Error,
+			TEXT("Could not load %s. It is produced by "
+				 "tools/generate_datatable_assets.py from "
+				 "game/Data/StatusEffects.csv."), StatusEffectTableAssetPath);
+	}
+	return Table;
+}
+
+float UCataclysmSkillEffects::WeaponDamageOf(const UAbilitySystemComponent* AbilitySystem)
+{
+	if (!AbilitySystem)
+	{
+		return 0.0f;
+	}
+	// LESS BY WHAT RIDES ON THE AILMENTS IT CARRIES. Issue #1833, ruled
+	// 2026-10-06: "Poisoned enemies deal 2%-4% less damage" is a multiplier on
+	// what its attacks are worth, as Weaken is, and multiplies with Weaken, whose
+	// cut is already in the attribute read here.
+	const float Cut = FMath::Clamp(
+		UCataclysmAbilitySystemComponent::AilmentRiderPercentOn(
+			AbilitySystem, ECataclysmAilmentRider::DamageDealt),
+		0.0f, 100.0f);
+	// AND LESS AGAIN WHILE IT CARRIES A DEBUFF OF A CHARACTER WHOSE ROW SAYS SO.
+	// Ruled 2026-10-13: "Applying a debuff to an enemy reduces their damage
+	// output by 10%-20%". One cut however many debuffs, and a multiplier of its
+	// own, so it multiplies with the poison rider above and with Weaken.
+	const float DebuffCut = UCataclysmDebuffs::DealLessPercentOn(AbilitySystem);
+	return AbilitySystem->GetNumericAttribute(
+			   UCataclysmCombatAttributeSet::GetAttackDamageAttribute())
+		* (1.0f - Cut / 100.0f) * (1.0f - DebuffCut / 100.0f);
+}
+
+FGameplayTag UCataclysmSkillEffects::SpellTag()
+{
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(SpellTagName), /*ErrorIfNotFound=*/false);
+}
+
+bool UCataclysmSkillEffects::IsSpell(const FGameplayTagContainer& SkillTags)
+{
+	const FGameplayTag Spell = SpellTag();
+	return Spell.IsValid() && SkillTags.HasTag(Spell);
+}
+
+bool UCataclysmSkillEffects::IsRanged(const FGameplayTagContainer& SkillTags)
+{
+	// EITHER TAG, BECAUSE A PROJECTILE IS RANGED. Issue #666. The vocabulary
+	// declares `Type.Projectile` as "Skills that fire a traveling entity" and
+	// `Type.Ranged` as "Any ranged skill regardless of delivery method". Most
+	// projectile skills carry only the first; the Brute's rock carries both.
+	for (const FGameplayTag& Tag : { UCataclysmDamageCalculation::RangedTag(),
+									 UCataclysmDamageCalculation::ProjectileTag() })
+	{
+		if (Tag.IsValid() && SkillTags.HasTag(Tag))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+float UCataclysmSkillEffects::SpellDamageOf(const UAbilitySystemComponent* Source,
+										   const FGameplayTagContainer& SkillTags,
+										   float SkillHealthCostPercent,
+										   float TargetDistanceMetres,
+										   bool bTargetIsStaggered,
+										   const AActor* Target,
+										   int32 EnemiesStruckTogether,
+										   float MetresCharged,
+										   float ChargeRangeMetres)
+{
+	const FGameplayAttribute Spell =
+		UCataclysmCombatAttributeSet::GetSpellDamageAttribute();
+	if (!Source || !Source->HasAttributeSetForAttribute(Spell))
+	{
+		return 0.0f;
+	}
+
+	const float FromAttribute = Source->GetNumericAttribute(Spell);
+
+	// ASKED FOR RATHER THAN READ, so a bonus the attribute could not carry
+	// reaches the spell. Issue #958. The attribute was worked out with no skill
+	// in hand and nothing known about the character, so a modifier requiring a
+	// tag and a modifier requiring a state were both left out of it.
+	// `StatForSkill` runs the same pipeline again with both in hand, and
+	// answers the attribute's own figure when nothing was recorded.
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(Source);
+	const float Value = Cataclysm
+		// THE POSITIONAL ARGUMENTS IN BETWEEN ARE SPELT OUT BECAUSE THE GAP IS
+		// REAL. A spell's damage receives the skill's cost and, since issue
+		// #1596, how far away the target stood -- but NO blow context and NOT
+		// the distance the character moved, so a spell damage row conditioned
+		// on either of those silently grants nothing. That gap is older than
+		// this line and is recorded as its own issue.
+		//
+		// AND HOW MANY ENEMIES THE ATTACK STRUCK, since issue #1686, which the
+		// point blank drawback's spell damage row asks about.
+		//
+		// AND HOW FAR A CHARGE HAD GONE, WITH THE RANGE IT USED, ruled
+		// 2026-10-08, which the charge sentence's spell damage row is scaled
+		// by. That is NOT the distance moved before the blow, which this call
+		// still does not receive.
+		? Cataclysm->StatForSkill(FName(TEXT("spell_damage")), SkillTags,
+								  FromAttribute, SkillHealthCostPercent,
+								  FCataclysmBlowContext(),
+								  /*MetresMovedBeforeBlow=*/-1.0f,
+								  TargetDistanceMetres, bTargetIsStaggered,
+								  Target, EnemiesStruckTogether,
+								  MetresCharged, ChargeRangeMetres)
+		: FromAttribute;
+
+	return FMath::Max(0.0f, Value);
+}
+
+float UCataclysmSkillEffects::IncreasesBehindAttackDamage(
+	const UAbilitySystemComponent* Source)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(Source);
+
+	// AN ABILITY SYSTEM THIS PROJECT DID NOT MAKE REMEMBERS NOTHING, and zero is
+	// the right answer for it: with no increases the bracket below is one and
+	// the arithmetic is what it was before this existed.
+	return Cataclysm ? FMath::Max(0.0f, Cataclysm->GetAttackDamageIncreases())
+					 : 0.0f;
+}
+
+float UCataclysmSkillEffects::IncreasesForSkill(
+	const UAbilitySystemComponent* Source,
+	const FGameplayTagContainer& SkillTags, float SkillHealthCostPercent,
+	float MetresMovedBeforeBlow, float TargetDistanceMetres,
+	bool bTargetIsStaggered, const AActor* Target,
+	int32 EnemiesStruckTogether, float MetresCharged, float ChargeRangeMetres)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(Source);
+	if (!Cataclysm)
+	{
+		return IncreasesBehindAttackDamage(Source);
+	}
+
+	// NEGATIVE IS CLAMPED AWAY FOR THE SAME REASON THE OTHER ONE CLAMPS IT.
+	// This multiplies the whole hit, and a sum of increases below -100% would
+	// turn a blow into healing rather than into a very small blow.
+	return FMath::Max(
+		0.0f, Cataclysm->AttackDamageIncreasesForSkill(
+				  SkillTags, SkillHealthCostPercent, MetresMovedBeforeBlow,
+				  TargetDistanceMetres, bTargetIsStaggered, Target,
+				  EnemiesStruckTogether, MetresCharged, ChargeRangeMetres));
+}
+
+float UCataclysmSkillEffects::MoreForSkill(
+	const UAbilitySystemComponent* Source,
+	const FGameplayTagContainer& SkillTags, float SkillHealthCostPercent,
+	float MetresMovedBeforeBlow, float TargetDistanceMetres,
+	bool bTargetIsStaggered, const AActor* Target,
+	int32 EnemiesStruckTogether, float MetresCharged, float ChargeRangeMetres)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(Source);
+
+	// AN ABILITY SYSTEM THIS PROJECT DID NOT MAKE RECORDS NO STAT LINE, and 1
+	// is the right answer for it: its attribute is then the whole of the hit,
+	// exactly as it was before this existed.
+	return Cataclysm
+		? Cataclysm->AttackDamageMoreForSkill(SkillTags, SkillHealthCostPercent,
+											  MetresMovedBeforeBlow,
+											  TargetDistanceMetres,
+											  bTargetIsStaggered, Target,
+											  EnemiesStruckTogether,
+											  MetresCharged, ChargeRangeMetres)
+		: 1.0f;
+}
+
+float UCataclysmSkillEffects::AttackDamageWithNoTarget(
+	const UAbilitySystemComponent* Source, const FGameplayTagContainer& SkillTags,
+	float SkillHealthCostPercent, float MetresMovedBeforeBlow, float ExtraIncreases)
+{
+	// `ApplyHit`'S WEAPON PART, WITH THE SAME FLOOR ON THE DIVISOR, and with no target, no target distance, no
+	// stagger, no enemy count and no charge: each is left at its "not known" default, which refuses. Issue #2234.
+	const float Folded = IncreasesBehindAttackDamage(Source);
+	return WeaponDamageOf(Source) / FMath::Max(1.0f + Folded, UE_KINDA_SMALL_NUMBER)
+		* MoreForSkill(Source, SkillTags, SkillHealthCostPercent, MetresMovedBeforeBlow)
+		* (1.0f + IncreasesForSkill(Source, SkillTags, SkillHealthCostPercent, MetresMovedBeforeBlow)
+		   + ExtraIncreases);
+}
+
+float UCataclysmSkillEffects::SkillHitWithNoTarget(
+	const UAbilitySystemComponent* Source, const FGameplayTagContainer& SkillTags, float DamagePercent,
+	float SkillHealthCostPercent, float MetresMovedBeforeBlow, float ExtraIncreases)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(Source);
+	const FGameplayTag NamesGadgets =
+		FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false);
+
+	// A SKILL THAT IS NOT A SPELL ADDS NO SPELL DAMAGE, so its figure is the weapon part's at its percent, the
+	// expression each caller used before #2498. AND THE FLAT ATTACK DAMAGE ROWS THE ATTRIBUTE CANNOT CARRY, as
+	// `ApplyHit` adds them (#2499): outside the percent and inside the increases (Q-F1), never a row naming gadgets
+	// (Q-F3, which keeps a gadget's ground off "per hit", ruling 6 of #2234). With none, that same expression.
+	if (!IsSpell(SkillTags))
+	{
+		const float LineFlat = Cataclysm
+			? Cataclysm->FlatTheAttributeCannotCarry(FName(TEXT("attack_damage")), NamesGadgets, SkillTags,
+													 /*Target=*/nullptr)
+			: 0.0f;
+		if (LineFlat <= 0.0f)
+		{
+			return AttackDamageWithNoTarget(Source, SkillTags, SkillHealthCostPercent, MetresMovedBeforeBlow,
+											ExtraIncreases)
+				* DamagePercent / 100.0f;
+		}
+		const float Folded = IncreasesBehindAttackDamage(Source);
+		const float WeaponPart = WeaponDamageOf(Source) / FMath::Max(1.0f + Folded, UE_KINDA_SMALL_NUMBER)
+			* MoreForSkill(Source, SkillTags, SkillHealthCostPercent, MetresMovedBeforeBlow);
+		return (WeaponPart * DamagePercent / 100.0f + LineFlat)
+			* (1.0f + IncreasesForSkill(Source, SkillTags, SkillHealthCostPercent, MetresMovedBeforeBlow)
+			   + ExtraIncreases);
+	}
+
+	// A SPELL'S SPELL DAMAGE, ASKED AS `ApplyHit` ASKS IT, with no target, distance, stagger, count or charge. Without
+	// `Type.Deployable` while a skill gadget's blow is priced (Q-S2): the component's `SkillGadgetBeingPriced` is set
+	// exactly then, by the scope `ApplyHit` and `LeaveZoneAlong` open for a gadget's cast, and `ApplyHit` asks the same
+	// question of its delivery to decide the same removal.
+	FGameplayTagContainer SpellTags = SkillTags;
+	if (Cataclysm && Cataclysm->SkillGadgetBeingPriced.Get() && NamesGadgets.IsValid())
+	{
+		SpellTags.RemoveTag(NamesGadgets);
+	}
+	const float SpellFlat = SpellDamageOf(Source, SpellTags, SkillHealthCostPercent,
+										  /*TargetDistanceMetres=*/-1.0f, /*bTargetIsStaggered=*/false,
+										  /*Target=*/nullptr, /*EnemiesStruckTogether=*/-1,
+										  /*MetresCharged=*/-1.0f, /*ChargeRangeMetres=*/-1.0f);
+
+	// AND `ApplyHit`'S BRACKET: the weapon part at the skill's percent, the spell damage beside it, and one plus the
+	// line's increases on both, each lookup asked once.
+	const float Folded = IncreasesBehindAttackDamage(Source);
+	const float WeaponPart = WeaponDamageOf(Source) / FMath::Max(1.0f + Folded, UE_KINDA_SMALL_NUMBER)
+		* MoreForSkill(Source, SkillTags, SkillHealthCostPercent, MetresMovedBeforeBlow);
+	return (WeaponPart * DamagePercent / 100.0f + SpellFlat)
+		* (1.0f + IncreasesForSkill(Source, SkillTags, SkillHealthCostPercent, MetresMovedBeforeBlow)
+		   + ExtraIncreases);
+}
+
+float UCataclysmSkillEffects::DamageAgainstTypeOf(
+	const UAbilitySystemComponent* Source, const AActor* Target)
+{
+	// ONLY AN ENEMY CARRIES A DAMAGE TYPE, so a hit on anything else finds no
+	// type to match and the affix correctly does nothing. That is the design's
+	// own rule: "They read the target, not the weapon."
+	const FName Type = DamageTypeOf(Target);
+	if (Type.IsNone() || !Source)
+	{
+		return 0.0f;
+	}
+
+	// BUILT ONCE ON FIRST USE RATHER THAN AS A FILE-SCOPE STATIC, for the reason
+	// UCataclysmPlayerClassStats::StatToAttribute gives: an FGameplayAttribute
+	// wraps an FProperty found by reflection, and that data is not ready during
+	// static initialisation.
+	static const TMap<FName, FGameplayAttribute> Against = []
+	{
+		using Combat = UCataclysmCombatAttributeSet;
+		return TMap<FName, FGameplayAttribute>{
+			{TEXT("War"), Combat::GetDamageVsWarAttribute()},
+			{TEXT("Demonic"), Combat::GetDamageVsDemonicAttribute()},
+			{TEXT("Death"), Combat::GetDamageVsDeathAttribute()},
+			{TEXT("Pestilence"), Combat::GetDamageVsPestilenceAttribute()},
+			{TEXT("Famine"), Combat::GetDamageVsFamineAttribute()},
+			{TEXT("Celestial"), Combat::GetDamageVsCelestialAttribute()},
+			{TEXT("Chaos"), Combat::GetDamageVsChaosAttribute()},
+			{TEXT("Void"), Combat::GetDamageVsVoidAttribute()},
+		};
+	}();
+
+	const FGameplayAttribute* Attribute = Against.Find(Type);
+	if (!Attribute || !Source->HasAttributeSetForAttribute(*Attribute))
+	{
+		return 0.0f;
+	}
+
+	// A FRACTION, because it joins the increases bucket, which is a sum of
+	// fractions. The attribute holds a percentage because that is what an affix
+	// grants.
+	return FMath::Max(0.0f, Source->GetNumericAttribute(*Attribute)) / 100.0f;
+}
+
+float UCataclysmSkillEffects::ModifiedDamage(const UAbilitySystemComponent* Source,
+											 float BaseDamage,
+											 const FGameplayTagContainer& SkillTags,
+											 float SkillHealthCostPercent,
+											 float MetresMovedBeforeBlow,
+											 float TargetDistanceMetres,
+											 bool bTargetIsStaggered,
+											 const AActor* Target,
+											 int32 EnemiesStruckTogether,
+											 float MetresCharged,
+											 float ChargeRangeMetres)
+{
+	// An ability system component this project did not make carries no modifier
+	// list, which is not a fault: an enemy's plain melee attack goes through
+	// here too and has nothing to scale it.
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<UCataclysmAbilitySystemComponent>(Source);
+	if (!Cataclysm || BaseDamage <= 0.0f)
+	{
+		return BaseDamage;
+	}
+
+	const TArray<FCataclysmStatModifier>& Modifiers = Cataclysm->GetStatModifiers();
+	if (Modifiers.IsEmpty())
+	{
+		return BaseDamage;
+	}
+
+	// Base is the skill's damage, not the weapon's. A skill buff's increase is
+	// written against what the skill deals -- Burning Wrath reads "4% increased
+	// fire damage", not "4% increased weapon damage" -- so the skill's own
+	// percentage has already been applied by the time this runs.
+	// AND ASKED AGAINST WHAT IS TRUE OF THE CHARACTER, NOT AGAINST NOTHING.
+	// Issue #1685. This passed three arguments, and `Evaluate`'s fourth defaults
+	// to an empty `FCataclysmStatConditions` -- so every CONDITION on a runtime
+	// modifier was judged against a world in which nothing is true and the
+	// modifier was worth nothing. Four live damage paths come through here:
+	// retaliation, a hit, a skill template's hit damage and a damage-over-time
+	// tick.
+	//
+	// IT COST NOTHING VISIBLE, WHICH IS WHY IT LASTED. Both runtime modifiers
+	// the game adds are unconditional -- a skill's own self buff and an aura's
+	// ally increase -- so nothing was wrong until somebody wrote the first
+	// conditional one, at which point it would have been silently zero in the
+	// player's favour.
+	//
+	// `CurrentConditions` IS PUBLIC FOR EXACTLY THIS CALLER. Its comment says so:
+	// "PUBLIC SO A CALLER THAT RUNS THE PIPELINE ITSELF CAN ASK, rather than
+	// building its own and getting a different answer."
+	//
+	// AND THE PER-BLOW FACTS ARE NOW PASSED THROUGH. Issue #1729. They stayed at
+	// their defaults when #1685 was fixed, which left a condition about the BLOW
+	// -- the health cost paid, the distance moved, the target's distance, whether
+	// the target was staggered -- judged against a world in which no blow exists.
+	// That is the same silent zero as #1685, one layer in, and it cost nothing
+	// only because the two runtime modifiers the game adds are unconditional.
+	//
+	// ONLY ONE CALLER HAS ANYTHING TO PASS, MEASURED RATHER THAN ASSUMED.
+	// `ApplyHit` computes all four and was already handing them to `MoreForSkill`
+	// and `SpellDamageOf` three lines above its call to this function. The other
+	// four callers -- retaliation, two burn spreads and a patch of burning
+	// ground -- have no blow in hand and pass nothing, which is the correct
+	// answer for them rather than a gap:
+	//
+	//   retaliation prices ONE amount and pays it to every enemy in a sphere --
+	//     `UCataclysmRetaliation::Pay` calls `AmountFor` once, before its loop --
+	//     so there is no single target distance to pass rather than one that is
+	//     merely out of scope. Pricing per target would change what retaliation
+	//     IS, from one payment to a payment each, which is a design question;
+	//   a burn spread prices the caster's own attack with no target chosen;
+	//   burning ground is priced ONCE when the patch is created, deliberately
+	//     not per tick, because a patch outlives the skill that left it.
+	//
+	// So a modifier conditioned on a per-blow fact does not apply to those, and
+	// that is what the design says should happen.
+	//
+	// ONE OF THE FOUR IS A JUDGEMENT RATHER THAN A FACT, AND IT IS WORTH SAYING
+	// WHICH. The target's distance is genuinely absent at all four: there is no
+	// target, or there are many. The health cost a skill paid is different --
+	// a skill that cost health has a cost whether or not this function was
+	// handed it, and the two burn spreads simply do not have it in scope. It is
+	// "not known" today because nothing asks. `CataclysmSkillTemplate.cpp` at
+	// 1191 and 1292 both anticipate the caller that would: "a future ailment
+	// stating a percent of the hit would need exactly this number." Whoever
+	// writes that has to decide separately whether the per-blow conditions
+	// apply to it, and should not read these defaults as settling it.
+	//
+	// THE BLOW BEING TAKEN IS NOT AMONG THEM, AND IS NOT AN OMISSION.
+	// `CurrentConditions` also accepts an `FCataclysmBlowContext` describing a
+	// blow being TAKEN, for the conditions that ask what hit the character. This
+	// function prices a blow being DEALT, and the only caller in the project that
+	// supplies one is the defender-side stat lookup in
+	// `CataclysmAbilitySystemComponent.cpp`. Adding it here would be a parameter
+	// no caller could fill.
+	//
+	// AND WHICH AILMENTS THE TARGET IS CARRYING, WHEN THERE IS ONE. Issue #1515.
+	// `ApplyHit` is the one caller of the five with a target in hand, the same
+	// one that supplies the four facts above; the other four pass nothing and a
+	// row asking about an ailment correctly grants them nothing.
+	// `WithTargetState` walks the target's tags only if one of these rows
+	// asks, so a skill with no such row pays one pass over its own modifier
+	// list.
+	return UCataclysmStatPipeline::Evaluate(
+		BaseDamage, Modifiers, SkillTags,
+		UCataclysmAbilitySystemComponent::WithTargetState(
+			Modifiers, Target,
+			Cataclysm->CurrentConditions(SkillHealthCostPercent,
+										 FCataclysmBlowContext(),
+										 MetresMovedBeforeBlow,
+										 TargetDistanceMetres,
+										 bTargetIsStaggered,
+										 EnemiesStruckTogether,
+										 MetresCharged,
+										 ChargeRangeMetres))).Final;
+}
+
+float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
+									   float DamagePercent,
+									   const FGameplayTagContainer& SkillTags,
+									   const FCataclysmHitDelivery& Delivery,
+									   FCataclysmDamageResult* OutResolved)
+{
+	// CLEARED FIRST, SO EVERY EARLY RETURN BELOW REPORTS "NOTHING LANDED"
+	// WITHOUT HAVING TO SAY SO. Issue #1156. There are five of them -- no
+	// damage percent, a missing ability system on either side, an untargetable
+	// target, and a caster with no weapon damage -- and a caller that read a
+	// stale result after one of those would be told about somebody else's blow.
+	if (OutResolved)
+	{
+		*OutResolved = FCataclysmDamageResult();
+	}
+
+	if (DamagePercent <= 0.0f)
+	{
+		// A Support skill's slot damage is zero by design -- the Skill Slots
+		// sheet says so -- so this is the ordinary case for a buff, not a fault.
+		return 0.0f;
+	}
+
+	UAbilitySystemComponent* Source = UCataclysmTargeting::AbilitySystemOf(Instigator);
+	UAbilitySystemComponent* Defender = UCataclysmTargeting::AbilitySystemOf(Target);
+	if (!Source || !Defender)
+	{
+		return 0.0f;
+	}
+
+	// NOTHING CAN TOUCH A CHARACTER THAT CANNOT BE TOUCHED. The Dagger's
+	// Everywhere at Once: "for 4 seconds you are nowhere long enough to be hit
+	// ... nothing can touch you between arrivals."
+	//
+	// HERE, BECAUSE THIS IS THE ONE PLACE EVERY BLOW IN THE GAME IS DEALT. A
+	// strike, a projectile, an aura pulse, a minion's swing and a patch of
+	// burning ground all arrive at this function, so one test covers all of them
+	// -- the same argument that put the knockback and forced-movement riders in
+	// `HitTargets`.
+	//
+	// BEFORE ANY OF THE PIPELINE BELOW, so an untargetable character is not
+	// merely taking zero: nothing is computed, nothing is applied, and no rider
+	// downstream sees a blow that landed for nothing. `ApplyHit` returning zero
+	// is what every caller already treats as "this did not land".
+	//
+	// IT DOES NOT STOP DAMAGE OVER TIME ALREADY ON THE CHARACTER. A burn deals
+	// its damage through the attribute set rather than through this function, so
+	// a fire lit before the skill went up keeps burning. That is the right
+	// reading of "nothing can touch you", which is about being reached.
+	if (IsUntargetable(Target))
+	{
+		return 0.0f;
+	}
+
+	// A SKILL GADGET'S CAST IS PRICED AS THE GADGET'S, IN FIVE PARTS, ruled 2026-10-16 (S5) for "Scales off gadget
+	// damage". Its skill tags carry `Type.Deployable`, given by `ACataclysmMinion::CastPlayersSkillFromHere`, so the
+	// increases naming gadgets join `Applying` below. And here: (a) the spell part leaves out the spell damage rows
+	// naming `Type.Deployable`, because "Gadgets deal 20%-40% increased damage" is written on attack damage and spell
+	// damage both and the attack damage row already reaches the whole blow; (b, c) while the blow is priced the
+	// player's conditions read the gadget's age and the gadget's stillness; (d) the flat attack damage rows naming
+	// gadgets are added to the blow; (e) `deployable_hit` is raised once it is dealt. Nothing for every other blow,
+	// a gadget's copy of its summoner's last skill included: `SkillGadgetCasting` answers null for it. ASKED OF THE
+	// DELIVERY, which carries the gadget for a blow landing after its use has ended (stack 2, item 3).
+	const ACataclysmMinion* const SkillGadget = ACataclysmMinion::SkillGadgetCasting(Delivery);
+	UCataclysmAbilitySystemComponent* const GadgetsPlayer =
+		SkillGadget ? Cast<UCataclysmAbilitySystemComponent>(Source) : nullptr;
+	const FGameplayTag NamesGadgets =
+		FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false);
+	UCataclysmAbilitySystemComponent::FPricingASkillGadgetsBlow PricedForTheGadget(GadgetsPlayer, SkillGadget);
+	FGameplayTagContainer TagsForSpellDamage = SkillTags;
+	if (GadgetsPlayer && NamesGadgets.IsValid())
+	{
+		TagsForSpellDamage.RemoveTag(NamesGadgets);
+	}
+
+	// THE THREE-BUCKET PIPELINE, REOPENED. Issue #895.
+	//
+	// `AttackDamage` is already `(base + flat) x (1 + increases)`, and two
+	// things have to join those buckets rather than sitting outside them:
+	//
+	//   FLAT SPELL DAMAGE joins the flat bucket, for a skill carrying the
+	//   `Type.Spell` tag. The project owner chose on 2026-08-24 that a spell
+	//   keeps the weapon's damage as its base and spell damage is added on top,
+	//   rather than replacing it as Path of Exile does. That keeps a Wand's own
+	//   38 flat damage worth something to the caster holding it.
+	//
+	//   INCREASED DAMAGE AGAINST THE TARGET'S TYPE joins the increases bucket.
+	//   The design: "a conditional increase joins the increases bracket rather
+	//   than becoming a third multiplier. That is what Diablo 4 and Last Epoch
+	//   both do." The difference is large -- a character at +125% increased
+	//   damage with a top-tier +400% conditional affix deals 6.25 times its base
+	//   if the two add and 11.25 times if they multiply.
+	//
+	// SO THE BRACKET IS UNDONE AND REDONE. Dividing by (1 + increases) recovers
+	// what the flat bucket held, the spell damage is added to it, and the whole
+	// thing is multiplied by (1 + increases + conditional) once.
+	//
+	// A CHARACTER WITH NEITHER GETS EXACTLY WHAT IT GOT BEFORE. With no
+	// increases and no conditional bonus both figures are zero, the division and
+	// the multiplication are both by one, and this is the line it replaces.
+	//
+	// THE TWO BRACKETS ARE NOT THE SAME SUM, since issue #958, and using one
+	// figure for both is what stopped a passive node saying "while at or below
+	// 35% health, +2% increased damage per point" from reaching anything.
+	//
+	//   `Folded` is what was put INTO the attribute, worked out with no skill in
+	//   hand and nothing known about the character, so it is what has to come
+	//   back out to recover the flat bucket.
+	//
+	//   `Applying` is what should be multiplied back IN: the same sum worked out
+	//   again for the skill being used and the state the character is in, so a
+	//   modifier scoped by tag or by health is counted this time.
+	//
+	// THEY ARE EQUAL FOR A CHARACTER CARRYING NEITHER KIND, which is every
+	// character before this issue, so nothing else changes.
+	// AND WHAT THIS SKILL COST TRAVELS INTO BOTH OF THEM. Issue #983. Grand
+	// Tithe reads "a skill whose health cost is above 10% of your maximum
+	// health deals 4% increased damage per point", which no state built from
+	// the character alone can judge: the same character using two skills an
+	// instant apart answers it differently for each.
+	//
+	// NOT INTO `Folded`, DELIBERATELY, and that is the same split issue #958
+	// drew for a health condition. `Folded` is what was put INTO the
+	// attribute, worked out with no skill in hand, so it must stay worked out
+	// that way or the bonus would be divided straight back out again.
+	// HOW FAR AWAY THE TARGET STOOD, MEASURED ONCE FOR THIS BLOW and read by
+	// all three of the lookups below. Issue #1596. `MetresBetween` is the one
+	// definition of the distance between two actors in the tree, so a row and
+	// the hit announcement cannot disagree about one strike.
+	//
+	// A BLOW THAT CARRIES NO TARGET DISTANCE REPORTS -1, WHICH REFUSES. That
+	// is a minion's blow: see `bCarriesNoTargetDistance` for why the reading
+	// is refused rather than measured from the summoner.
+	//
+	// AND A BLOW STRUCK FROM A POINT IS MEASURED FROM THE POINT, as `MetresFromWhereItWasStruck` measures it for the
+	// announcement and the defender, so the three still agree. Ruled 2026-10-14: a gadget's copy.
+	const float TargetDistanceMetres = Delivery.bCarriesNoTargetDistance
+		? -1.0f
+		: (Delivery.bStruckFromAPoint && Target
+			? static_cast<float>(FVector::Dist(Delivery.StruckFromPoint, Target->GetActorLocation()) / 100.0f)
+			: UCataclysmTargeting::MetresBetween(Instigator, Target));
+
+	// AND WHETHER THAT TARGET IS STAGGERED, read once for this blow beside the
+	// distance above and given to the same three lookups. Issue #45.
+	// "Staggered enemies take 20%-35% increased damage from all sources" is the
+	// row, and `IsStaggered` is the one answer to that question in the tree.
+	//
+	// A BLOW THAT CARRIES NO TARGET STATE REPORTS FALSE, WHICH REFUSES, and that
+	// is a minion's blow again. The ground is NOT the one the distance gives:
+	// the staggered state of the minion's target is the right reading rather
+	// than a wrong one, since it is a fact about the target and not about where
+	// the summoner stands. It is refused because of WHOSE bonus it is -- a
+	// player's conditional damage bonus does not reach a minion's blow.
+	// `bCarriesNoTargetState` carries that, beside the seven exclusions already
+	// there.
+	const bool bTargetIsStaggered =
+		!Delivery.bCarriesNoTargetState && IsStaggered(Target);
+
+	// AND THE TARGET ITSELF, FOR THE CONDITIONS THAT ASK WHICH AILMENTS IT IS
+	// CARRYING. Issue #1515. Withheld by the same flag and for the same reason
+	// as the staggered state directly above: the ailments on a minion's target
+	// are a true fact about that target, and a player's conditional damage bonus
+	// still should not reach a minion's blow.
+	//
+	// NULL RATHER THAN A SECOND FLAG, because null is already what every caller
+	// with no target passes and what `WithTargetState` already refuses on.
+	// A flag would be a second way to say the same thing and a second way to
+	// forget it.
+	const AActor* const AilmentTarget =
+		Delivery.bCarriesNoTargetState ? nullptr : Target;
+
+	const float Folded = IncreasesBehindAttackDamage(Source);
+	// AND HOW FAR A CHARGE HAD GONE WHEN THIS BLOW LANDED, WITH THE RANGE IT
+	// USED, to the same four lookups the facts above reach. Ruled 2026-10-08.
+	// Both are -1 for every blow that is not a charge's own, and a row scaled by
+	// `share_of_range_moved` is then worth nothing.
+	const float Applying =
+		IncreasesForSkill(Source, SkillTags, Delivery.SkillHealthCostPercent,
+						  Delivery.MetresMovedBeforeBlow,
+						  TargetDistanceMetres, bTargetIsStaggered,
+						  AilmentTarget, Delivery.EnemiesStruckTogether,
+						  Delivery.MetresCharged, Delivery.ChargeRangeMetres);
+	// AND A SECOND BONUS DECIDED BY THE TARGET, added into the same sum. Issue
+	// #1061. The Masochist's Wound Channeling: "you deal 1% increased damage per
+	// point to enemies carrying a debuff you also carry."
+	//
+	// THE SAME BRACKET AS THE ONE ABOVE, WHICH IS THE WHOLE POINT OF ADDING IT
+	// HERE. Both are increases, and increases are a sum; giving either its own
+	// multiplication would make it worth more than its sentence says on an
+	// invested character and exactly the same on a fresh one -- so it would look
+	// right in the situation somebody is most likely to check it in.
+	//
+	// TWO TERMS AND NOT ONE FUNCTION, because they answer different questions of
+	// the target. One reads the creature's damage type and the other compares
+	// two lists of debuffs, and neither is a special case of the other.
+	const float Conditional = DamageAgainstTypeOf(Source, Target)
+		+ UCataclysmDebuffs::DamageAgainstSharedDebuff(Source, Target);
+
+	// AND THE DAMAGE THIS ATTACK BOUGHT WITH FERVOUR, into the same sum and for
+	// the same reason: it is an increase, and increases are added. Issue #1515.
+	// Bought With Ruin: "Each enemy your melee attack hits beyond the first
+	// costs 2 Fervour and deals +3% increased damage per point." Paid once for
+	// the whole attack before its first blow, so every blow of that attack
+	// carries the same figure; zero for every other blow in the game.
+	//
+	// AND WHAT THE USE SPENT FROM NEXT-USE CHARGES, into the same sum for the same
+	// reason. Issue #1833, phase 2.
+	const float Bought =
+		(FMath::Max(0.0f, Delivery.IncreasedDamageBoughtPercent)
+		 + FMath::Max(0.0f, Delivery.IncreasedDamageSpentPercent)) / 100.0f;
+
+	// AND THE "MORE" MULTIPLIERS ARE WORKED OUT AGAIN AS THE INCREASES ARE.
+	// `MoreForSkill` is 1 for a character whose "more" modifiers on attack
+	// damage are all unconditional, because those are already in the attribute.
+	// It is larger than 1 by exactly the ones the attribute could not carry,
+	// which depend on the skill or on the character's state: Communion of
+	// Pain's 20% more at full Fervour, Doctrine of Pain's 4% more for each
+	// debuff. Before this line none of them reached an attack.
+	//
+	// ON THE WEAPON'S PART AND NOT ON THE SPELL DAMAGE ADDED BELOW. That part
+	// comes from `SpellDamageOf`, which asks for spell damage in full and so
+	// already carries spell damage's own "more" multipliers. Multiplying it by
+	// attack damage's as well would count a node that grants both twice.
+	const float BeforeIncreases =
+		WeaponDamageOf(Source) / FMath::Max(1.0f + Folded, UE_KINDA_SMALL_NUMBER)
+		* MoreForSkill(Source, SkillTags, Delivery.SkillHealthCostPercent,
+					  Delivery.MetresMovedBeforeBlow, TargetDistanceMetres,
+					  bTargetIsStaggered, AilmentTarget,
+					  Delivery.EnemiesStruckTogether,
+					  Delivery.MetresCharged, Delivery.ChargeRangeMetres);
+	const float Flat = IsSpell(SkillTags)
+		? SpellDamageOf(Source, TagsForSpellDamage, Delivery.SkillHealthCostPercent,
+						TargetDistanceMetres, bTargetIsStaggered,
+						AilmentTarget, Delivery.EnemiesStruckTogether,
+						Delivery.MetresCharged, Delivery.ChargeRangeMetres)
+		: 0.0f;
+
+	// THE SAME FOUR FACTS THE TWO CALLS ABOVE ALREADY USE. Issue #1729. They were
+	// computed for `MoreForSkill` and `SpellDamageOf` and then stopped here, so a
+	// runtime stat modifier conditioned on the blow was judged against no blow.
+	// This is the one call site in the project that has them.
+	// WHAT STACKS PLACED ON THE ATTACKER LEAVE OF ITS BLOW. Issue #1833, phase
+	// 2: "Each melee hit you take reduces the attacker's damage by 3%-5% for 3
+	// seconds, stacking up to 5 times". Against anyone it strikes (ruled
+	// 2026-09-24). Only blows through here are cut; the design log's entry
+	// names the ones that are not.
+	const UCataclysmAbilitySystemComponent* Striking =
+		Cast<const UCataclysmAbilitySystemComponent>(Source);
+	const float Kept = Striking ? 1.0f - Striking->DamageCutPercentNow() / 100.0f : 1.0f;
+
+	// AND A SKILL GADGET'S FLAT ROWS (S5 d): "Gadgets deal bonus damage equal to 3%-6% of your maximum HP per hit".
+	// Beside the spell part and outside the skill's percent, because "per hit" states an amount; the increases below
+	// reach it, as the naming increases reach a gadget's own blow. Nought for every other blow.
+	const float GadgetFlat = GadgetsPlayer
+		? GadgetsPlayer->FlatOfStatNamingTag(FName(TEXT("attack_damage")), NamesGadgets, SkillTags, AilmentTarget)
+		: 0.0f;
+
+	// AND THE FLAT ATTACK DAMAGE ROWS THE ATTRIBUTE CANNOT CARRY, issue #2499, ruled 2026-10-25: "Your skills deal
+	// 10%-30% of your current mana as more damage". Beside the spell part and outside the skill's percent (Q-F1), as
+	// its `spell_damage` twin sits; for a skill that is not a Spell only (Q-F2), since a Spell takes that twin through
+	// `SpellDamageOf` and the sentence counts once; and never a row naming gadgets (Q-F3), which `GadgetFlat` prices.
+	const UCataclysmAbilitySystemComponent* const LinesOwner = Cast<const UCataclysmAbilitySystemComponent>(Source);
+	const float LineFlat = LinesOwner && !IsSpell(SkillTags)
+		? LinesOwner->FlatTheAttributeCannotCarry(FName(TEXT("attack_damage")), NamesGadgets, SkillTags, AilmentTarget)
+		: 0.0f;
+
+	// A SKILL TRAP'S CAST IS PRICED AS THE TRAP'S, BY ONE ADDED READ, ruled 2026-10-19 (T10) for "Scales off trap
+	// damage": the player's `minion_damage` rows naming `Type.Trap`, their increases into the bucket below and their
+	// "more" on the whole blow. The cast carries `Type.Trap` and not `Type.Deployable`, so no gadget row reaches it and
+	// `GadgetsPlayer` is null for it. Nought and one for every other blow.
+	const ACataclysmMinion* const SkillTrap = SkillGadget ? nullptr : ACataclysmMinion::SkillTrapCasting(Delivery);
+	// AND A BLOW OF A SKILL TRAP ALREADY USED UP IS PRICED THE SAME WAY (ruled 2026-10-21, #2462): a shot or a rack's
+	// throw landing late, a buried weapon's leap, a later blow of the use. The trap is named by what the blow carries,
+	// the delivery's `CastBy`, else its skill's `FreeRepeatCastBy` while that use runs, and found BY IDENTITY among the
+	// player's used-up traps (`SpentSkillTrapNamed`), so a skill gadget's late blow, which is never kept there, stays the
+	// player's (P5). Asked only when no living gadget or trap prices the blow, so no blow is priced twice.
+	const UCataclysmSkillTemplate* const DeliveredBy = Cast<const UCataclysmSkillTemplate>(Delivery.Skill.Get());
+	const TWeakObjectPtr<AActor> NamedCastBy = !Delivery.CastBy.IsExplicitlyNull()
+		? Delivery.CastBy
+		: (DeliveredBy ? DeliveredBy->FreeRepeatCastBy : TWeakObjectPtr<AActor>());
+	UCataclysmAbilitySystemComponent* const SpentTrapsPlayer =
+		SkillGadget || SkillTrap ? nullptr : Cast<UCataclysmAbilitySystemComponent>(Source);
+	UCataclysmAbilitySystemComponent::FSpentSkillTrap SpentTrap;
+	const bool bASpentTrapsBlow = SpentTrapsPlayer && SpentTrapsPlayer->SpentSkillTrapNamed(NamedCastBy, SpentTrap);
+	UCataclysmAbilitySystemComponent* const TrapsPlayer =
+		SkillTrap || bASpentTrapsBlow ? Cast<UCataclysmAbilitySystemComponent>(Source) : nullptr;
+	float TrapIncreases = 0.0f;
+	float TrapMore = 1.0f;
+	if (TrapsPlayer)
+	{
+		TrapsPlayer->TrapDamageNamingTrap(SkillTags, AilmentTarget, TrapIncreases, TrapMore);
+	}
+	// AND A BLOW OF A TRAP'S CAST ON THE ENEMY THAT SET THAT TRIGGER OFF (traps layer 4, ruled 2026-10-21, F4 to F7), of a
+	// trap standing or used up, a late blow included, and no other enemy the cast strikes: "Traps deal 100%-200%
+	// increased damage to the first enemy that triggers them" joins the trap rows' increases; and the trigger's FIRST such
+	// blow adds "bonus damage equal to 5%-10% of the triggering enemy's maximum HP" flat before the increases, once per
+	// trigger, in full against a boss. Not for a tick, which is no hit.
+	const AActor* const TrapsTriggeringEnemy = SkillTrap
+		? SkillTrap->SkillTrapTriggeringEnemy.Get()
+		: (bASpentTrapsBlow ? SpentTrap.TriggeringEnemy.Get() : nullptr);
+	const bool bOnTrapsTriggeringEnemy =
+		TrapsPlayer && Target && Target == TrapsTriggeringEnemy && !Delivery.bIsDamageOverTime;
+	float TrapsEnemyHealthFlat = 0.0f;
+	if (bOnTrapsTriggeringEnemy)
+	{
+		TrapIncreases += ACataclysmMinion::SkillTrapIncreaseOnItsEnemyFor(Instigator);
+		const float EnemyHealthSharePercent = ACataclysmMinion::SkillTrapShareOfItsEnemysHealthFor(Instigator);
+		const bool bEnemyHealthShareGiven =
+			SkillTrap ? SkillTrap->bSkillTrapGaveItsEnemysHealthShare : SpentTrap.bGaveItsEnemysHealthShare;
+		if (EnemyHealthSharePercent > 0.0f && !bEnemyHealthShareGiven)
+		{
+			TrapsEnemyHealthFlat = Defender->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute())
+				* EnemyHealthSharePercent / 100.0f;
+			if (SkillTrap)
+			{
+				SkillTrap->bSkillTrapGaveItsEnemysHealthShare = true;
+			}
+			else
+			{
+				TrapsPlayer->NoteSpentSkillTrapGaveItsEnemysHealthShare(NamedCastBy);
+			}
+		}
+	}
+
+	// AND WITHERED TOUCH ON THE ATTACKER ITSELF, ruled 2026-10-26: "Take 20% off every blow the player deals, weapon and
+	// spell parts both". A "less" on the whole blow, as `Kept` is. NOT FOR A USE A MINION CAST IN ITS NAME, a skill
+	// gadget's, a skill trap's or a gadget's copy: those name the minion in `NamedCastBy`, and only a minion is ever
+	// named there. A minion's own swing never comes here; it is the minion's `ApplyDirectDamage`.
+	const float KeptUnderTheCurse = NamedCastBy.IsExplicitlyNull() ? KeptUnderWitheredTouch(Instigator) : 1.0f;
+
+	const float Damage = ModifiedDamage(
+		Source,
+		(BeforeIncreases * DamagePercent / 100.0f + Flat + GadgetFlat + TrapsEnemyHealthFlat + LineFlat)
+			* (1.0f + Applying + Conditional + Bought + TrapIncreases)
+			* TrapMore
+			// AND THE EFFECTIVENESS THE USE SPENT, a "more" on the whole blow.
+			// Issue #1833, timed grants. One for every other blow.
+			* FMath::Max(0.0f, Delivery.DamageMultiplierSpent)
+			* Kept
+			* KeptUnderTheCurse
+			* UCataclysmCommand::ThrallDamageMultiplierAgainst(Instigator, Target),
+		SkillTags,
+		Delivery.SkillHealthCostPercent,
+		Delivery.MetresMovedBeforeBlow,
+		TargetDistanceMetres,
+		bTargetIsStaggered,
+		AilmentTarget,
+		Delivery.EnemiesStruckTogether,
+		Delivery.MetresCharged,
+		Delivery.ChargeRangeMetres);
+	if (Damage <= 0.0f)
+	{
+		// A character with no weapon damage. Expected before a weapon is
+		// equipped, and worth saying once rather than silently dealing nothing.
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("%s hit %s for %.0f%% of a weapon damage of zero."),
+			*GetNameSafe(Instigator), *GetNameSafe(Target), DamagePercent);
+		return 0.0f;
+	}
+
+	// THE SKILL'S OWN TAGS DECIDE WHETHER THIS IS AREA DAMAGE, and a caller may
+	// also say so outright. The two are combined rather than one overriding the
+	// other, because a skill row and an enemy's C++ ability answer the same
+	// question by different routes and neither should be able to cancel the other.
+	FCataclysmHitDelivery Arrived = Delivery;
+	Arrived.bIsArea = Arrived.bIsArea || IsAreaDamage(SkillTags);
+
+	// AND WHETHER IT WAS STRUCK IN MELEE, read the same way and combined the
+	// same way. Issue #1032. `Type.Melee` is on both sides' skills already: six
+	// of the seven enemy abilities and 27 rows of the weapon skill sheet.
+	//
+	// HERE RATHER THAN AT EACH CALLER, because this is the one place every
+	// damaging blow passes through holding its own tags -- which is the reason
+	// the damage type is set here too, three lines down.
+	{
+		const FGameplayTag Melee = UCataclysmDamageCalculation::MeleeTag();
+		Arrived.bIsMelee =
+			Arrived.bIsMelee || (Melee.IsValid() && SkillTags.HasTag(Melee));
+	}
+
+	// AND WHETHER IT CAME FROM RANGE OR WAS A SPELL, read and combined the same
+	// way. Issue #666. A projectile is ranged: see `IsRanged`. Nothing here asks
+	// whether a ranged hit is also a spell; the conditions that read these do.
+	Arrived.bIsRanged = Arrived.bIsRanged || IsRanged(SkillTags);
+	Arrived.bIsSpell = Arrived.bIsSpell || IsSpell(SkillTags);
+
+	// AND THE SKILL'S OWN DAMAGE TYPE GOES WITH IT, so the bolt and the burst
+	// can be drawn in it. Only for colour: see the field's declaration. Set here
+	// and not by each caller because this is the one place every damaging skill
+	// passes through holding its own tags. Issue #803.
+	//
+	// ROUND-TRIPPED THROUGH THE ONE DECODER rather than by looking for a tag
+	// under `Element` here. DamageTypeFromTags and ElementTagFor are the only
+	// encoding and decoding of a damage type in the project and their comments
+	// say why they live beside each other. A third place that picked the tag out
+	// itself is how the two would come to disagree.
+	if (!Arrived.SkillElement.IsValid())
+	{
+		Arrived.SkillElement = UCataclysmDamageCalculation::ElementTagFor(
+			UCataclysmDamageCalculation::DamageTypeFromTags(SkillTags));
+	}
+
+	// AND WHAT THE ATTACKER HAS A CHANCE TO APPLY WITH IT. Issue #899. Worked
+	// out here because this is the one place a blow is built holding the
+	// skill's own tags, so a chance scoped to melee, or conditioned on the
+	// attacker's health, counts when it holds. The defender rolls them once it
+	// knows what the blow did: `UCataclysmAilments::RollOnLandedBlow`.
+	//
+	// ADDED TO WHATEVER THE CALLER PUT THERE, because the design sums every
+	// source of a chance: "The chance summed is the total across every source".
+	if (!Arrived.bCarriesNoAilmentChance && !Arrived.bIsDamageOverTime)
+	{
+		for (const TPair<FName, float>& Chance : UCataclysmAilments::ChancesFor(
+				 Source, SkillTags, Delivery.SkillHealthCostPercent))
+		{
+			Arrived.AilmentChances.FindOrAdd(Chance.Key) += Chance.Value;
+		}
+	}
+
+	// THE FIGURE IS WHAT WAS SENT AND THE OUT PARAMETER IS WHAT BECAME OF IT.
+	// Issue #1156. Keeping the return value as the sent figure is deliberate:
+	// every caller uses it to scale a rider, and a rider scaled by what got
+	// through armour would shrink as the target's defences grew. What none of
+	// them could do before was ask whether the blow landed at all.
+	// AND WHAT NOTHING WASTED STORED, ON A MELEE BLOW THAT IS NOT A TICK. Issue
+	// #1515. Added to the finished figure, after the attacker's own increases and
+	// multipliers, so "up to 100% of that attack's damage" is measured against
+	// the figure it is added to; the target's mitigation still applies to the
+	// whole (ruled 2026-09-24). The store is emptied by this blow, so the next
+	// target of the same use gets nothing, and `HitTargets` hits nearest first:
+	// that order is the only thing making "the first target" the nearest one.
+	//
+	// A SHARE OF A POINT-BLANK SKILL'S BLOW STRUCK AT AN ALLY IS THE ROW'S PERCENT OF THE FIGURE PRICED ABOVE FOR THAT
+	// ALLY, and spends neither store below. Ruled 2026-10-15 (R4, R7), for "Your AOE skills deal 50%-75% of their
+	// damage to nearby allies as well as enemies": the stores are the enemies' to spend, as without the row. See
+	// `FCataclysmHitDelivery::AreaSkillShareOnAnAllyPercent`.
+	const bool bAShareOnAnAlly = Arrived.AreaSkillShareOnAnAllyPercent > 0.0f;
+	float Sent = bAShareOnAnAlly ? Damage * Arrived.AreaSkillShareOnAnAllyPercent / 100.0f : Damage;
+	if (Arrived.bIsMelee && !Arrived.bIsDamageOverTime && !bAShareOnAnAlly)
+	{
+		if (UCataclysmAbilitySystemComponent* Holder =
+				Cast<UCataclysmAbilitySystemComponent>(Source))
+		{
+			Sent += Holder->SpendStoredMitigatedDamage(Damage);
+		}
+	}
+
+	// AND WHAT THE TWO STORES OF ABSORBED DAMAGE HOLD, ON THE NEXT ATTACK. Ruled
+	// 2026-10-07: "next attack" is any hit that is not a spell and not a tick,
+	// the basic attack included, so a ranged blow spends these and does not
+	// spend Nothing Wasted's above. Each cap is measured against `Damage`, the
+	// hit's own figure, and not against `Sent`, so the three stores worn
+	// together can take one hit to four times its own damage and no further.
+	if (!Arrived.bIsSpell && !Arrived.bIsDamageOverTime && !bAShareOnAnAlly)
+	{
+		if (UCataclysmAbilitySystemComponent* Holder =
+				Cast<UCataclysmAbilitySystemComponent>(Source))
+		{
+			Sent += Holder->SpendStoredAbsorbedDamage(Damage);
+		}
+	}
+
+	// THE PRICING ENDS BEFORE THE BLOW IS DEALT, so whatever the blow provokes is judged on the player and not on
+	// the gadget. AND A SKILL GADGET'S BLOW ON AN ENEMY IS ANNOUNCED AS `deployable_hit` (S5 e), as a machine's own
+	// blow is in `ACataclysmMinion::AttackTarget`, with the gadget's type tags, landed only when it was not evaded and
+	// not refused as immune to its attacker. Not for a share struck at an ally, and not for a tick.
+	PricedForTheGadget.End();
+	// AND A SKILL TRAP'S BLOW ON AN ENEMY IS ANNOUNCED THE SAME WAY, with the trap's type tags (ruled 2026-10-19, M5), so a
+	// row on `deployable_hit` naming `Type.Trap` reaches the enemies a trap's cast strikes.
+	UCataclysmAbilitySystemComponent* const MachinesPlayer = GadgetsPlayer ? GadgetsPlayer : TrapsPlayer;
+	const ACataclysmMinion* const Machine = GadgetsPlayer ? SkillGadget : SkillTrap;
+	if (!MachinesPlayer || bAShareOnAnAlly || Arrived.bIsDamageOverTime)
+	{
+		return ApplyDirectDamage(Instigator, Target, Sent, Arrived, OutResolved)
+			? Sent : 0.0f;
+	}
+	// AND A LATE BLOW OF A TRAP ALREADY USED UP IS ANNOUNCED AS THE TRAP'S, with the tags it was kept with (ruled
+	// 2026-10-21, #2462), as a living trap's blow is below. A ZONE'S SWEEP NEVER REACHES HERE: it is dealt through
+	// `ApplyDirectDamage` as damage over time, and a tick is not a hit (Z1 (a)).
+	FGameplayTagContainer GadgetsTags = Machine ? Machine->TypeTags : SpentTrap.TypeTags;
+	// A SKILL TRAP IS NOT A GADGET (ruled 2026-10-07), SO ITS EVENT CARRIES ITS TYPE TAGS LESS `Type.Deployable` (ruled
+	// 2026-10-20, Q-A (a)): a gadget row on `deployable_hit` requiring that tag does not reach a trap's hit, and an
+	// untagged row still does. A skill gadget's event is unchanged.
+	if (!GadgetsPlayer && NamesGadgets.IsValid())
+	{
+		GadgetsTags.RemoveTag(NamesGadgets);
+	}
+	FCataclysmDamageResult OwnResult;
+	FCataclysmDamageResult* const Result = OutResolved ? OutResolved : &OwnResult;
+	const bool bDealt = ApplyDirectDamage(Instigator, Target, Sent, Arrived, Result);
+	// A SKILL TRAP'S EVENT CARRIES WHAT ITS BLOW TOOK FROM HEALTH (traps layer 3, 2026-10-21), so a status row on it
+	// meets the owner's rule of a tenth (#917) with the blow's own figure: "Traps cause a bleed of 1-2 times normal
+	// strength in every enemy caught in their blast". A skill gadget's still carries nought, as every machine's own blow does.
+	const float TrapsBlowDealt = GadgetsPlayer ? 0.0f : Result->DealtToHealth;
+	// AND THE TRAP KEEPS WHAT ITS CAST TOOK FROM THE ENEMY THAT SET IT OFF, for the slow's rule of a tenth (the owner,
+	// 2026-10-21: "Follow the tenth rule"). A TRAP ALREADY USED UP KEEPS NOTHING: a slow waiting for a late blow of its
+	// cast on this enemy is asked instead (ruled 2026-10-21, brief 60c), with the identity the used-up trap was found by
+	// above, so one match decides the price, the event and the slow, and each happens once for the blow.
+	if (Machine && !GadgetsPlayer)
+	{
+		Machine->NoteSkillTrapBlowOn(Target, Result->DealtToHealth);
+		// AND, SINCE A TRAP MAY REARM (traps layer 4, ruled 2026-10-22, G2), A STANDING TRAP'S BLOW ASKS A WAITING SLOW
+		// TOO, with the trap's identity, as a used-up trap's does below: a shot of an earlier trigger landing while the
+		// rearmed trap stands lays the slow that trigger left waiting. A blow of a trap that never rearmed finds none,
+		// since its cast's blows land before `trap_triggered` leaves one.
+		MachinesPlayer->LayALateSkillTrapSlow(NamedCastBy, Target, Result->DealtToHealth);
+	}
+	else if (!Machine)
+	{
+		MachinesPlayer->LayALateSkillTrapSlow(SpentTrap.Trap, Target, Result->DealtToHealth);
+	}
+	// AND "Traps deal 30%-50% of their damage as a DoT over 3 seconds to triggered enemies" (traps layer 4, F8, F9): AN
+	// EXTRA damage over time on top of this blow, which is unchanged, a share of what it took from health, on the enemy
+	// that set the trap off and no other, when the blow took a tenth of its maximum health.
+	if (bOnTrapsTriggeringEnemy && bDealt)
+	{
+		ACataclysmMinion::LaySkillTrapsDamageOverTime(Instigator, Target, Result->DealtToHealth);
+	}
+	MachinesPlayer->ActOnEvent(FName(TEXT("deployable_hit")), &GadgetsTags, TrapsBlowDealt,
+							  /*bLanded=*/!Result->bEvaded && !Result->bRefusedByImmunityToAttacker, Target);
+	return bDealt ? Sent : 0.0f;
+}
+
+bool UCataclysmSkillEffects::ReduceHealthDirectly(AActor* Instigator,
+												 AActor* Target, float Amount)
+{
+	if (Amount <= 0.0f)
+	{
+		return false;
+	}
+
+	UAbilitySystemComponent* Source = UCataclysmTargeting::AbilitySystemOf(Instigator);
+	UAbilitySystemComponent* Struck = UCataclysmTargeting::AbilitySystemOf(Target);
+	if (!Source || !Struck
+		|| !Struck->GetSet<UCataclysmVitalAttributeSet>())
+	{
+		return false;
+	}
+
+	// AND NOTHING IS TAKEN FROM A CHARACTER THAT HAS BECOME IMMUNE TO THE
+	// INSTIGATOR. Ruled 2026-10-12, for "Enemies that have been alive for more
+	// than 15 seconds become immune to your damage until you disengage for 3
+	// seconds": while an enemy is immune to the wearer nothing of the wearer's
+	// reaches its health, and this write goes round the place where a blow is
+	// resolved, which is where the refusal of a blow sits. The one loss this
+	// function makes on another character in a wearer's name today is an
+	// execute, `UCataclysmAbilitySystemComponent::ExecuteIfLeftBelow`.
+	//
+	// THE INSTIGATOR AS IT IS HANDED IN, and not `AttackerOf`: this is not a
+	// blow and has no dealer apart from its instigator. A loss a character
+	// takes from itself is never refused; `IsImmuneToDamageOf` answers false
+	// for the character itself.
+	if (const UCataclysmAbilitySystemComponent* Refusing =
+			Cast<UCataclysmAbilitySystemComponent>(Struck))
+	{
+		if (Refusing->IsImmuneToDamageOf(Source))
+		{
+			return false;
+		}
+	}
+
+	// THE HEALTH ATTRIBUTE AND NOT THE DAMAGE META ATTRIBUTE. That is what keeps
+	// this from being a hit: the vital attribute set only runs the mitigation
+	// order when the Damage attribute changes, and handles the Health attribute
+	// changing with a clamp and a death check.
+	UGameplayEffect* Effect = MakeRuntimeEffect(TEXT("CataclysmHealthLoss"));
+	Effect->DurationPolicy = EGameplayEffectDurationType::Instant;
+
+	const int32 Index = Effect->Modifiers.Num();
+	Effect->Modifiers.SetNum(Index + 1);
+	FGameplayModifierInfo& Modifier = Effect->Modifiers[Index];
+	Modifier.Attribute = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	Modifier.ModifierOp = EGameplayModOp::Additive;
+	Modifier.ModifierMagnitude = FScalableFloat(-Amount);
+
+	FGameplayEffectContextHandle Context = Source->MakeEffectContext();
+	Context.AddInstigator(Instigator, Instigator);
+	Struck->ApplyGameplayEffectToSelf(Effect, /*Level=*/1.0f, Context);
+	return true;
+}
+
+namespace
+{
+	/**
+	 * The effect `ApplyDirectDamage` is applying now and the tags its delivery named for a blow naming no skill object
+	 * (`FCataclysmHitDelivery::SkillTagsWithNoSkill`), or null tags. Ruled 2026-10-22 (#2465, N2 (a)). Set for the whole
+	 * of each application and put back after it, so a blow dealt from inside one, an explosion at the death it causes,
+	 * names its own.
+	 */
+	struct FSkillEffectsBlowNamingNoSkill
+	{
+		const UGameplayEffect* Effect = nullptr;
+		const FGameplayTagContainer* Tags = nullptr;
+	};
+	FSkillEffectsBlowNamingNoSkill BlowNamingNoSkillBeingApplied;
+}
+
+const FGameplayTagContainer* UCataclysmSkillEffects::SkillTagsOfABlowWithNoSkill(const FGameplayEffectSpec& Spec)
+{
+	// MATCHED BY THE EFFECT, so a blow reaching the attribute set some other way while this one is applied, a tick laid
+	// at the death it causes, is not taken for it.
+	if (BlowNamingNoSkillBeingApplied.Tags && Spec.Def.Get() == BlowNamingNoSkillBeingApplied.Effect)
+	{
+		return BlowNamingNoSkillBeingApplied.Tags;
+	}
+
+	// AND A DAMAGE OVER TIME TICK CARRIES THEM ON ITS OWN EFFECT, which `ApplyDamageOverTime` wrote when it laid it.
+	// Issue #2683. A tick is executed from the running effect's own spec
+	// (`FActiveGameplayEffectsContainer::InternalExecutePeriodicGameplayEffect` hands `ActiveEffect.Spec` to
+	// `ExecuteActiveEffectsFrom`, whose callback data is that spec), so `Spec.Def` here is the effect that was laid.
+	// ONLY WHILE THE TICK NAMES NO SKILL THAT STILL EXISTS: a tick whose skill is still there names it, and its
+	// record and notices read the skill's own tags, so nothing is copied for it. The tags are identity only (J1).
+	if (const UCataclysmRuntimeEffect* Laid = Cast<UCataclysmRuntimeEffect>(Spec.Def.Get()))
+	{
+		if (!Laid->SkillTagsWithNoSkill.IsEmpty() && !Spec.GetContext().GetAbilityInstance_NotReplicated())
+		{
+			return &Laid->SkillTagsWithNoSkill;
+		}
+	}
+	return nullptr;
+}
+
+bool UCataclysmSkillEffects::ApplyDirectDamage(AActor* Instigator, AActor* Target,
+											   float Damage,
+											   const FCataclysmHitDelivery& Delivery,
+											   FCataclysmDamageResult* OutResolved)
+{
+	if (Damage <= 0.0f)
+	{
+		return false;
+	}
+
+	UAbilitySystemComponent* Source = UCataclysmTargeting::AbilitySystemOf(Instigator);
+	UAbilitySystemComponent* Defender = UCataclysmTargeting::AbilitySystemOf(Target);
+	if (!Source || !Defender)
+	{
+		return false;
+	}
+
+	// Written into the Damage META attribute, which the defender's vital
+	// attribute set intercepts in PostGameplayEffectExecute and runs through
+	// UCataclysmDamageCalculation::Resolve -- evasion, block, armor, resistance,
+	// flat reduction, mana, energy shield, health, in that order. Nothing here
+	// decides how much of it lands.
+	UGameplayEffect* Effect = MakeRuntimeEffect(TEXT("CataclysmSkillHit"));
+	Effect->DurationPolicy = EGameplayEffectDurationType::Instant;
+
+	const int32 Index = Effect->Modifiers.Num();
+	Effect->Modifiers.SetNum(Index + 1);
+	FGameplayModifierInfo& Modifier = Effect->Modifiers[Index];
+	Modifier.Attribute = UCataclysmVitalAttributeSet::GetDamageAttribute();
+	Modifier.ModifierOp = EGameplayModOp::Additive;
+	Modifier.ModifierMagnitude = FScalableFloat(Damage);
+
+	FGameplayEffectContextHandle Context = Source->MakeEffectContext();
+	Context.AddInstigator(Instigator, Instigator);
+
+	// AND THE ACTOR THAT DEALT IT, WHEN THAT IS NOT THE INSTIGATOR. Issue #41,
+	// slice 4. A minion's blow is dealt in its summoner's name, so the
+	// instigator and the causer above are both the summoner. The source object
+	// is read by the hit and death notices and by nothing that works out
+	// damage, so all eight places in `UCataclysmVitalAttributeSet` that read the
+	// causer behave exactly as they did.
+	if (AActor* Dealer = Delivery.DealtBy.Get())
+	{
+		Context.AddSourceObject(Dealer);
+	}
+
+	// AND THE SKILL THAT DEALT IT, on the context's own field for one. Issue
+	// #41, slice 4. Read by the hit and death notices, from the instance: see
+	// `FCataclysmHitDelivery::Skill`. Nothing that works out damage reads it.
+	if (const UGameplayAbility* Skill = Delivery.Skill.Get())
+	{
+		Context.SetAbility(Skill);
+	}
+
+	// THE STAMP IS READ BEFORE AND AFTER, AND THAT IS THE WHOLE MECHANISM.
+	// Issue #1156. The effect above is Instant, so the defender's
+	// `PostGameplayEffectExecute` runs inside `ApplyTypedSpec` and records what
+	// the blow resolved to on the defender's own component. A stamp that did not
+	// move means the blow never reached the attribute set at all -- an immunity,
+	// a missing set, a refused spec -- and the record then belongs to some
+	// earlier blow, so it must not be reported as this one's.
+	UCataclysmAbilitySystemComponent* Resolver =
+		Cast<UCataclysmAbilitySystemComponent>(Defender);
+	const uint32 Before = Resolver ? Resolver->GetResolvedHitStamp() : 0;
+
+	// AND THE TAGS OF THE SKILL A BLOW NAMING NO SKILL OBJECT IS A BLOW OF, a buried weapon's leap's or a shot's whose
+	// firing skill has gone, for this effect while it is applied: the record of the last blow keeps them for the death
+	// notice, and the hit notice names them (#2475). Ruled 2026-10-22 (#2465, N2 (a)).
+	// Null tags for every other blow, which names them so for any blow dealt from inside this one.
+	{
+		const TGuardValue<FSkillEffectsBlowNamingNoSkill> NamingNoSkill(BlowNamingNoSkillBeingApplied,
+			FSkillEffectsBlowNamingNoSkill{Effect, Delivery.SkillTagsWithNoSkill});
+		ApplyTypedSpec(Effect, Context, Defender, Instigator, Delivery);
+	}
+
+	if (OutResolved)
+	{
+		*OutResolved = (Resolver && Resolver->GetResolvedHitStamp() != Before)
+			? Resolver->GetLastResolvedHit()
+			: FCataclysmDamageResult();
+	}
+
+	return true;
+}
+
+int32 UCataclysmSkillEffects::ExplodeForOverkill(AActor* Killer, const AActor* Victim, const FVector& At,
+												 float Overkill, float SharePercent, float RadiusCm)
+{
+	const float Damage = Overkill * SharePercent / 100.0f;
+	if (!IsValid(Killer) || Overkill <= 0.0f || SharePercent <= 0.0f || Damage <= 0.0f)
+	{
+		return 0;
+	}
+
+	const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
+		Killer->GetWorld(), Killer, At, RadiusCm);
+
+	// AREA DAMAGE, NOT RETALIATED AGAINST, as `ACataclysmMinion::DeathBlast` delivers a blast at a death. AND
+	// NEVER A CRITICAL STRIKE, said here because a direct blow in a player's name is rolled for one otherwise.
+	// AND NO WEAPON SUB-TYPE, so what is sent is the overkill and not the overkill through the killer's weapon.
+	// No damage type is written: `NAME_None` asks the attacker, and a player's blow is untyped.
+	FCataclysmHitDelivery Delivery;
+	Delivery.bIsArea = true;
+	Delivery.bCannotBeRetaliatedAgainst = true;
+	Delivery.bCannotCriticallyStrike = true;
+	Delivery.bCarriesNoWeaponSubType = true;
+	// AND IT DOES NOT LEECH. Ruled 2026-10-07: the explosion is the consequence of a death and not a blow the
+	// killer struck, so the killer takes nothing back from it.
+	Delivery.bCannotLeech = true;
+	// AND IT FIRES NONE OF THE KILLER'S ON-HIT ROWS, for the same reason. Ruled 2026-10-07.
+	Delivery.bIsConsequenceOfADeath = true;
+
+	int32 Struck = 0;
+	for (AActor* Target : Caught)
+	{
+		// ASKED AGAIN, because a blow earlier in this loop may have killed it through a chain.
+		if (!IsValid(Target) || Target == Victim || IsDead(Target))
+		{
+			continue;
+		}
+		if (ApplyDirectDamage(Killer, Target, Damage, Delivery))
+		{
+			++Struck;
+		}
+	}
+	return Struck;
+}
+
+const TCHAR* UCataclysmSkillEffects::DotExplodesAtExpiryChanceStat = TEXT("dot_explodes_at_expiry_chance");
+const TCHAR* UCataclysmSkillEffects::ExplosionAtAnAilmentsEndDataName = TEXT("Cataclysm.ExplosionAtAnAilmentsEnd");
+
+const TCHAR* UCataclysmSkillEffects::StruckFromSetDataName = TEXT("Cataclysm.StruckFromSet");
+const TCHAR* UCataclysmSkillEffects::StruckFromXDataName = TEXT("Cataclysm.StruckFromX");
+const TCHAR* UCataclysmSkillEffects::StruckFromYDataName = TEXT("Cataclysm.StruckFromY");
+const TCHAR* UCataclysmSkillEffects::StruckFromZDataName = TEXT("Cataclysm.StruckFromZ");
+const TCHAR* UCataclysmSkillEffects::ShareOfDamageDoneToAnAllyDataName = TEXT("Cataclysm.ShareOfDamageDoneToAnAlly");
+const TCHAR* UCataclysmSkillEffects::AreaSkillShareOnAnAllyDataName = TEXT("Cataclysm.AreaSkillShareOnAnAlly");
+
+float UCataclysmSkillEffects::MetresFromWhereItWasStruck(const FGameplayEffectSpec& Spec, const AActor* From,
+														 const AActor* To)
+{
+	// THE STAMP WHEN THE BLOW CARRIES ONE, measured as `MetresBetween` measures, in three dimensions. Ruled
+	// 2026-10-14: a gadget's copy is measured from the gadget.
+	if (To && Spec.GetSetByCallerMagnitude(FName(StruckFromSetDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f)
+	{
+		const FVector At(Spec.GetSetByCallerMagnitude(FName(StruckFromXDataName), /*WarnIfNotFound=*/false, 0.0f),
+						 Spec.GetSetByCallerMagnitude(FName(StruckFromYDataName), /*WarnIfNotFound=*/false, 0.0f),
+						 Spec.GetSetByCallerMagnitude(FName(StruckFromZDataName), /*WarnIfNotFound=*/false, 0.0f));
+		return static_cast<float>(FVector::Dist(At, To->GetActorLocation()) / 100.0f);
+	}
+	return UCataclysmTargeting::MetresBetween(From, To);
+}
+
+/**
+ * Pins the roll made against the chance that a damage over time ailment explodes when it ends by time, 0 to 100,
+ * for tests. Negative, the default, rolls for real. Ruled 2026-10-13; the same shape as `Cataclysm.ExecuteRoll`. A
+ * chance of 100 or more is not compared with the roll at all.
+ */
+static TAutoConsoleVariable<float> CVarDotExplodesAtExpiryRoll(
+	TEXT("Cataclysm.DotExplodesAtExpiryRoll"), -1.0f,
+	TEXT("Pins the 0-100 roll made against the chance that a damage over time ailment explodes when it ends by "
+		 "time. Negative rolls for real."),
+	ECVF_Default);
+
+float UCataclysmSkillEffects::WholeStatedDamageOverTime(float DamagePerTick, float SecondsPerTick,
+														 float DurationSeconds)
+{
+	if (DamagePerTick <= 0.0f || SecondsPerTick <= 0.0f || DurationSeconds <= 0.0f)
+	{
+		return 0.0f;
+	}
+	// THE FIRST TICK IS A WHOLE INTERVAL IN, because no damage over time effect here ticks as it is applied, and
+	// the last is the one due as the duration ends. `DamageOverTimeTicksLeft` holds that rule and its tolerance.
+	return DamagePerTick
+		* static_cast<float>(DamageOverTimeTicksLeft(SecondsPerTick, SecondsPerTick, DurationSeconds));
+}
+
+int32 UCataclysmSkillEffects::ExplodeAtAnAilmentsEnd(AActor* Applier, AActor* Carrier, const FVector& At,
+													 float Damage, FName DamageType)
+{
+	if (!IsValid(Applier) || Damage <= 0.0f)
+	{
+		return 0;
+	}
+
+	// THE CARRIER FIRST AND BY NAME, THEN WHOEVER ELSE THE SEARCH FINDS. Ruled 2026-10-13: "every enemy of the
+	// applier within 5 metres of the carrier, the carrier included". `IsHostileTo` refuses a carrier that is dead
+	// or on the applier's side.
+	TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
+		Applier->GetWorld(), Applier, At, ExplosionAtAnAilmentsEndRadiusCm);
+	Caught.Remove(Carrier);
+	if (IsValid(Carrier) && UCataclysmTargeting::IsHostileTo(Carrier, Applier))
+	{
+		Caught.Insert(Carrier, 0);
+	}
+
+	// THE OVERKILL EXPLOSION'S DELIVERY, flag for flag, with three differences. It is marked as what it is and not
+	// as the consequence of a death, it says outright that it carries no chance to apply an ailment, and it
+	// carries a damage type, below. See `ExplodeForOverkill` for each of the others.
+	FCataclysmHitDelivery Delivery;
+	Delivery.bIsArea = true;
+	Delivery.bCannotBeRetaliatedAgainst = true;
+	Delivery.bCannotCriticallyStrike = true;
+	Delivery.bCarriesNoWeaponSubType = true;
+	Delivery.bCannotLeech = true;
+	Delivery.bCarriesNoAilmentChance = true;
+	Delivery.bIsAnExplosionAtAnAilmentsEnd = true;
+	// THE AILMENT'S OWN TYPE, which the caller read off the effect that ended. `NAME_None` asks the applier, as
+	// the ailment's own ticks did when it was laid with none.
+	Delivery.DamageType = DamageType;
+
+	int32 Struck = 0;
+	for (AActor* Target : Caught)
+	{
+		// ASKED AGAIN, because a blow earlier in this loop may have killed it through a chain.
+		if (!IsValid(Target) || IsDead(Target))
+		{
+			continue;
+		}
+		if (ApplyDirectDamage(Applier, Target, Damage, Delivery))
+		{
+			++Struck;
+		}
+	}
+	return Struck;
+}
+
+namespace
+{
+	/**
+	 * What a damage over time effect applied by `ApplyDamageOverTime` is told when it is removed. Ruled 2026-10-13
+	 * under the owner's delegation: when it ended BY TIME, it has its applier's chance to explode for double what
+	 * it was laid to deal over its whole duration.
+	 *
+	 * WHAT THE ENGINE SAYS, read in UE 5.8's GameplayEffect.cpp. Every active effect carries
+	 * `FActiveGameplayEffectEvents::OnEffectRemoved`, broadcast from `InternalOnActiveGameplayEffectRemoved` with
+	 * an `FGameplayEffectRemovalInfo`. Its `bPrematureRemoval` is false from exactly one place,
+	 * `FActiveGameplayEffectsContainer::CheckDuration`, which is the duration running out, and true from
+	 * `RemoveActiveGameplayEffect` and `RemoveActiveEffects`, which are every other removal this project makes: a
+	 * cleanse, the burst that ends an effect, a replacement by a stronger application and a removal by the tag
+	 * granted. So the engine tells an end by time and no clock is compared here.
+	 *
+	 * THE LAST TICK HAS BEEN DEALT WHEN THIS IS CALLED. `CheckDuration` runs the tick that is due as the duration
+	 * ends before it removes the effect, and stops without removing it if that tick caused the effect's removal.
+	 * So the explosion below comes after the last tick, in the same call.
+	 *
+	 * A CARRIER THAT IS DEAD DOES NOT EXPLODE, AND THAT IS ASKED HERE BECAUSE THE ENGINE DOES NOT SAY IT. A death
+	 * removes none of the dead character's effects: `MarkDead` leaves them in place, and an enemy's body is kept
+	 * for the length of its death clip. A Burn can run out on a body, and a Burn's last tick can be what kills,
+	 * and the engine reports each as an end by time.
+	 *
+	 * THE APPLIER IS WHOEVER THE EFFECT'S BLOWS ARE CREDITED TO, by `UCataclysmCombatEvents::AttackerOf`: a
+	 * minion's ailment is the minion's, and its summoner's only while the summoner holds Conduit. An applier that
+	 * is gone or dead explodes nothing. THE CHANCE IS ASKED OF IT NOW, so a row put on after the ailment was laid
+	 * counts and one taken off does not.
+	 *
+	 * EVERYTHING IS READ OFF THE ENDED EFFECT BEFORE ANY BLOW IS DEALT. The first blow lands on the carrier,
+	 * inside the engine's own removal of this effect, and may kill it.
+	 */
+	void ExplodeWhenADamageOverTimeEndsByTime(const FGameplayEffectRemovalInfo& Removal)
+	{
+		if (Removal.bPrematureRemoval || !Removal.ActiveEffect || !Removal.OwningASC)
+		{
+			return;
+		}
+		const FActiveGameplayEffect& Ended = *Removal.ActiveEffect;
+		AActor* Carrier = Removal.OwningASC->GetAvatarActor();
+		if (!IsValid(Carrier) || UCataclysmSkillEffects::IsDead(Carrier) || !Ended.Spec.Def)
+		{
+			return;
+		}
+
+		// NOT AN AILMENT A CHARACTER HAS ON ITSELF. "Your burn effects" are the ones laid on somebody else, as the
+		// riders of an ailment and `dot_applied` read it. `ApplyDamageOverTime` does not listen for one, and this
+		// asks again because Conduit can make a minion's ailment on its own summoner the summoner's.
+		AActor* Applier = UCataclysmCombatEvents::AttackerOf(Removal.EffectContext);
+		if (!IsValid(Applier) || Applier == Carrier || UCataclysmSkillEffects::IsDead(Applier))
+		{
+			return;
+		}
+		const UCataclysmAbilitySystemComponent* Its =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Applier));
+		if (!Its)
+		{
+			return;
+		}
+
+		// ASKED WITH WHAT THE ENDED EFFECT GRANTED, which is its ailment's tag, so a row requiring
+		// `Keyword.DoT.Burn` reaches a Burn alone. A fallback of nought: a character with no row has no chance.
+		FGameplayTagContainer Granted;
+		Ended.Spec.GetAllGrantedTags(Granted);
+		const float Chance = Its->StatForSkill(
+			FName(UCataclysmSkillEffects::DotExplodesAtExpiryChanceStat), Granted, 0.0f);
+		if (Chance <= 0.0f)
+		{
+			return;
+		}
+
+		// WHAT IT WAS LAID TO DEAL: its figure a tick, as `RemainingDamageOverTime` reads one, over the ticks of
+		// its own full duration. The duration is the one the effect was applied with, which a refresh does not
+		// change: a refresh moves the effect's start.
+		float PerTick = 0.0f;
+		const TArray<FGameplayModifierInfo>& Modifiers = Ended.Spec.Def->Modifiers;
+		for (int32 Index = 0; Index < Modifiers.Num(); ++Index)
+		{
+			if (Modifiers[Index].Attribute == UCataclysmVitalAttributeSet::GetDamageAttribute())
+			{
+				PerTick += Ended.Spec.GetModifierMagnitude(Index);
+			}
+		}
+		const float Whole = UCataclysmSkillEffects::WholeStatedDamageOverTime(
+			PerTick, Ended.GetPeriod(), Ended.GetDuration());
+		if (Whole <= 0.0f)
+		{
+			return;
+		}
+
+		// ONE ROLL FOR ONE AILMENT THAT ENDED BY TIME, and no trigger cooldown. A CHANCE OF 100 IS ALWAYS, compared
+		// rather than rolled, because `FRandRange` can return 100 itself; as an execute's is. A chance below 100
+		// fails on a roll equal to it.
+		const float Pinned = CVarDotExplodesAtExpiryRoll.GetValueOnAnyThread();
+		const float Roll = Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+		if (Chance < 100.0f && Roll >= Chance)
+		{
+			return;
+		}
+
+		// THE AILMENT'S OWN DAMAGE TYPE, off the tags its ticks carried. An element carried for colour only is not
+		// a type, as the attribute set reads it.
+		FGameplayTagContainer AssetTags;
+		Ended.Spec.GetAllAssetTags(AssetTags);
+		const FName DamageType =
+			AssetTags.HasTag(UCataclysmDamageCalculation::ElementIsForColourOnlyTag())
+				? FName(NAME_None)
+				: UCataclysmDamageCalculation::DamageTypeFromTags(AssetTags);
+
+		UCataclysmSkillEffects::ExplodeAtAnAilmentsEnd(
+			Applier, Carrier, Carrier->GetActorLocation(),
+			Whole * UCataclysmSkillEffects::ExplosionAtAnAilmentsEndMultiple, DamageType);
+	}
+
+	/**
+	 * What a Necrosis applied by `ApplyDamageOverTime` is told when it is removed: deal the healing it denied. Issue
+	 * #920, ruled by the coordinating session 2026-10-31 (Q4). "Denies the affected target all healing for that time,
+	 * dealing the denied amount as damage over the following 5 seconds": the TOTAL denied while the Necrosis held,
+	 * `UCataclysmAbilitySystemComponent::NecrosisDeniedHealing`, which `UCataclysmRegeneration::TopUp` added to, is
+	 * dealt over the 5 seconds after it ends.
+	 *
+	 * WHY ITS REMOVAL AND NOT ITS TAG. The engine tells every removal of an active effect through this delegate, the
+	 * one `ExplodeWhenADamageOverTimeEndsByTime` above listens on, and from inside the removal itself: its duration
+	 * running out (`CheckDuration`), a cleanse, a remaining-damage burst that ends it, and a removal by the tag it
+	 * granted. "For any reason" (Q4) is exactly that list, so `bPrematureRemoval` is not read. A watch on the tag would
+	 * hear the same ends, and would also hear the count fall to nought in the middle of a replacement:
+	 * `TagAndReplaceAnyExisting` takes the running Necrosis off BEFORE the stronger one is applied. So would this
+	 * delegate, which is why `ApplyDamageOverTime` raises `bReplacingARunningDamageOverTime` around that removal and
+	 * this keeps the total and returns: a Necrosis replaced by a stronger one still holds, and its total keeps growing
+	 * (Q4: "a refresh extends that time"). A weaker or equal application only moves the running one's start, which is
+	 * no removal at all.
+	 *
+	 * A CARRIER THAT DIED FIRST TAKES NOTHING MORE (Q4). A death removes none of the dead character's effects, so a
+	 * Necrosis can run out on a body, and its last tick can be what kills; the engine reports each as an end. The
+	 * total is emptied either way.
+	 *
+	 * WHAT IT LAYS IS PLAIN DAMAGE OVER TIME AND NOT A NECROSIS, which would deny healing again and owe it again. It
+	 * GRANTS NO TAG, so it is no ailment: nothing reads its carrier as carrying it, a debuff count does not count it,
+	 * no stronger-application rule meets it, and a second payout runs beside a first. Its ticks carry the ended
+	 * Necrosis's own asset tags, the damage over time flag and its element, and its context, so they are credited
+	 * and typed as the Necrosis's own ticks were and meet the carrier's resistances as every tick does; the
+	 * set-by-caller numbers are not carried, so it is not priced from the applier's stats a second time; it carries
+	 * one of its own, `DeniedHealingDataName`, which a cleanse and a refresh of the applier's others read. One tick a
+	 * second (`BaseSecondsPerTick`) for `UCataclysmDebuffs::NecrosisDeniedHealingSeconds`, each a fifth of the total,
+	 * the last on the window's end; the applier's three damage over time stats and the carrier's duration stat do not
+	 * move it, so the total dealt is the total denied before resistances. Judgements by the writing session.
+	 */
+	void DealTheDeniedHealingWhenANecrosisEnds(const FGameplayEffectRemovalInfo& Removal)
+	{
+		if (bReplacingARunningDamageOverTime || !Removal.ActiveEffect || !Removal.OwningASC)
+		{
+			return;
+		}
+		UCataclysmAbilitySystemComponent* Carrier = Cast<UCataclysmAbilitySystemComponent>(Removal.OwningASC.Get());
+		if (!Carrier)
+		{
+			return;
+		}
+		const float Denied = Carrier->NecrosisDeniedHealing;
+		Carrier->NecrosisDeniedHealing = 0.0f;
+		const AActor* Body = Carrier->GetAvatarActor();
+		if (Denied <= 0.0f || !IsValid(Body) || UCataclysmSkillEffects::IsDead(Body))
+		{
+			return;
+		}
+
+		// READ OFF THE ENDED NECROSIS BEFORE ANYTHING IS LAID: its asset tags.
+		FGameplayTagContainer AssetTags;
+		Removal.ActiveEffect->Spec.GetAllAssetTags(AssetTags);
+
+		const float Seconds = UCataclysmDebuffs::NecrosisDeniedHealingSeconds;
+		const float Period = UCataclysmSkillEffects::BaseSecondsPerTick;
+		UGameplayEffect* Effect = MakeRuntimeEffect(TEXT("CataclysmNecrosisDeniedHealing"));
+		Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
+		Effect->DurationMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(Seconds));
+		Effect->Period = FScalableFloat(Period);
+		// THE FIRST TICK A SECOND AFTER THE NECROSIS ENDS, as every damage over time's first tick lands.
+		Effect->bExecutePeriodicEffectOnApplication = false;
+
+		const int32 Index = Effect->Modifiers.Num();
+		Effect->Modifiers.SetNum(Index + 1);
+		FGameplayModifierInfo& Modifier = Effect->Modifiers[Index];
+		Modifier.Attribute = UCataclysmVitalAttributeSet::GetDamageAttribute();
+		Modifier.ModifierOp = EGameplayModOp::Additive;
+		Modifier.ModifierMagnitude = FScalableFloat(Denied / (Seconds / Period));
+
+		FGameplayEffectSpec Spec(Effect, Removal.EffectContext, /*Level=*/1.0f);
+		Spec.AppendDynamicAssetTags(AssetTags);
+		// AND STAMPED AS THE HEALING A NECROSIS DENIED, so a later cleanse keeps it and a row refreshing the applier's
+		// other damage over time leaves it alone. Ruled by the coordinating session 2026-10-31: the denial has already
+		// happened, and a payout made longer would deal more than was denied. See `DeniedHealingDataName`.
+		Spec.SetSetByCallerMagnitude(FName(UCataclysmSkillEffects::DeniedHealingDataName), 1.0f);
+		Carrier->ApplyGameplayEffectSpecToSelf(Spec);
+	}
+}
+
+const TCHAR* UCataclysmSkillEffects::PointBlankAreaTagName =
+	TEXT("Type.AOE.PointBlank");
+const TCHAR* UCataclysmSkillEffects::SpellTagName = TEXT("Type.Spell");
+
+const TCHAR* UCataclysmSkillEffects::AuraAreaTagName = TEXT("Type.AOE.Aura");
+
+bool UCataclysmSkillEffects::IsAreaDamage(const FGameplayTagContainer& SkillTags)
+{
+	if (SkillTags.IsEmpty())
+	{
+		return false;
+	}
+
+	UGameplayTagsManager& Tags = UGameplayTagsManager::Get();
+	for (const TCHAR* Name : { PointBlankAreaTagName, AuraAreaTagName })
+	{
+		const FGameplayTag Tag =
+			Tags.RequestGameplayTag(FName(Name), /*ErrorIfNotFound=*/false);
+		if (Tag.IsValid() && SkillTags.HasTag(Tag))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+FName UCataclysmSkillEffects::DamageTypeOf(const AActor* Attacker)
+{
+	// ONLY AN ENEMY'S DAMAGE IS TYPED. The project owner settled this on
+	// 2026-08-12: a player has eight resistances because eight Cataclysms attack
+	// them, so an enemy's hit has to say which one applies. An enemy has ONE
+	// generic resistance that meets every hit whatever it is, so a player's hit
+	// has nothing to choose between and carries no type at all.
+	//
+	// A minion's or a projectile's hit is typed by whoever fired it, because the
+	// instigator passed down the chain is that character rather than the thing it
+	// sent. So an enemy's projectile is Demonic and a player's is untyped, which
+	// is the same rule and not a special case.
+	if (const ACataclysmEnemyCharacter* Enemy =
+			Cast<ACataclysmEnemyCharacter>(Attacker))
+	{
+		return Enemy->DamageType;
+	}
+
+	// A FLOOR HAZARD'S BLOW IS NOT TYPED HERE, AND THAT IS ISSUE #1924. Every
+	// dungeon floor rule deals damage in the name of the floor's one hazard source,
+	// and this function once answered that source's own type field -- a single
+	// value the last rule to place something had written. On a floor carrying two
+	// Cataclysms a blow could meet the other rule's resistance, and a rule that
+	// never wrote the field dealt its damage untyped unless another rule had. A
+	// floor blow now carries its row's type on `FCataclysmHitDelivery::DamageType`
+	// and a floor patch on `ACataclysmGroundZone::DamageType`, and
+	// `ApplyTypedSpec` reads those before asking here, so the source answers
+	// NAME_None like anything else that is not a creature.
+
+	return NAME_None;
+}
+
+void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
+											 const FGameplayEffectContextHandle& Context,
+											 UAbilitySystemComponent* Defender,
+											 const AActor* Attacker,
+											 const FCataclysmHitDelivery& Delivery,
+											 float StatedMagnitude)
+{
+	// BUILT AS A SPEC RATHER THAN HANDED TO ApplyGameplayEffectToSelf, purely so
+	// a tag can be put on it. That overload builds the spec itself and gives no
+	// chance to add one, and a dynamic asset tag is how the hit's damage type
+	// reaches the defender: see UCataclysmDamageCalculation::ElementTagFor.
+	FGameplayEffectSpec Spec(Effect, Context, /*Level=*/1.0f);
+
+	// THE BLOW'S OWN TYPE WHEN IT CARRIES ONE, OTHERWISE THE ATTACKER'S, AND
+	// EITHER IS WHAT DECIDES A RESISTANCE. A dungeon floor's blows carry their
+	// rule's type (issue #1924), because the actor they are dealt in the name of is
+	// shared by every rule on the floor. Every other blow carries none and is typed
+	// as before: an enemy's hit says which of the player's eight resistances meets
+	// it, and a player's hit says nothing, because an enemy holds one generic
+	// resistance and has nothing to choose between.
+	const FName BlowType = Delivery.DamageType.IsNone()
+		? DamageTypeOf(Attacker)
+		: Delivery.DamageType;
+	const FGameplayTag Element = UCataclysmDamageCalculation::ElementTagFor(BlowType);
+	if (Element.IsValid())
+	{
+		Spec.AddDynamicAssetTag(Element);
+	}
+	else if (Delivery.SkillElement.IsValid())
+	{
+		// A PLAYER'S HIT: THE SKILL'S TYPE, FOR COLOUR AND NOTHING ELSE. Without
+		// this every effect a player skill produced drew in the authored
+		// default, which is white, so a Demonic skill and a War skill looked the
+		// same and both looked like the "nothing set this" case. Issue #803.
+		//
+		// THE MARKER IS WHAT KEEPS THE DAMAGE RULE INTACT. The defender reads
+		// the element tag for what to draw either way, and reads it as a
+		// resistance to apply only when this marker is absent. Stamped here,
+		// where the attacker is known and alive, so an enemy's burn still
+		// resolves correctly after the enemy is dead.
+		const FGameplayTag ColourOnly =
+			UCataclysmDamageCalculation::ElementIsForColourOnlyTag();
+		if (ColourOnly.IsValid())
+		{
+			Spec.AddDynamicAssetTag(Delivery.SkillElement);
+			Spec.AddDynamicAssetTag(ColourOnly);
+		}
+	}
+
+	// HOW THE HIT ARRIVED, as two more tags on the same spec. Added only when
+	// true, so an ordinary direct blow carries nothing extra.
+	if (Delivery.bIsArea)
+	{
+		const FGameplayTag Area = UCataclysmDamageCalculation::AreaDamageTag();
+		if (Area.IsValid())
+		{
+			Spec.AddDynamicAssetTag(Area);
+		}
+	}
+	if (Delivery.bIsDamageOverTime)
+	{
+		const FGameplayTag OverTime =
+			UCataclysmDamageCalculation::DamageOverTimeTag();
+		if (OverTime.IsValid())
+		{
+			Spec.AddDynamicAssetTag(OverTime);
+		}
+	}
+	if (Delivery.bIsMelee)
+	{
+		// Issue #1032. Without this the defender cannot tell a melee blow from
+		// any other, because a skill's tags stop where the blow is built and
+		// only what is added here reaches whoever it lands on.
+		const FGameplayTag Melee = UCataclysmDamageCalculation::MeleeTag();
+		if (Melee.IsValid())
+		{
+			Spec.AddDynamicAssetTag(Melee);
+		}
+	}
+	// AND FROM RANGE, AND AS A SPELL: the same journey, for the same reason.
+	// Issue #666. One tag says ranged, whichever of the two the skill carried.
+	if (Delivery.bIsRanged)
+	{
+		const FGameplayTag Ranged = UCataclysmDamageCalculation::RangedTag();
+		if (Ranged.IsValid())
+		{
+			Spec.AddDynamicAssetTag(Ranged);
+		}
+	}
+	if (Delivery.bIsSpell)
+	{
+		const FGameplayTag Spell = UCataclysmSkillEffects::SpellTag();
+		if (Spell.IsValid())
+		{
+			Spec.AddDynamicAssetTag(Spell);
+		}
+	}
+	if (Delivery.bCannotCriticallyStrike)
+	{
+		const FGameplayTag NoCrit =
+			UCataclysmDamageCalculation::NoCriticalStrikeTag();
+		if (NoCrit.IsValid())
+		{
+			Spec.AddDynamicAssetTag(NoCrit);
+		}
+	}
+	if (Delivery.bCannotPenetrate)
+	{
+		const FGameplayTag NoPenetration =
+			UCataclysmDamageCalculation::NoPenetrationTag();
+		if (NoPenetration.IsValid())
+		{
+			Spec.AddDynamicAssetTag(NoPenetration);
+		}
+	}
+
+	if (Delivery.bCarriesNoWeaponSubType)
+	{
+		const FGameplayTag NoSubType =
+			UCataclysmDamageCalculation::NoWeaponSubTypeTag();
+		if (NoSubType.IsValid())
+		{
+			Spec.AddDynamicAssetTag(NoSubType);
+		}
+	}
+
+	if (Delivery.bCannotLeech)
+	{
+		const FGameplayTag NoLeech = UCataclysmDamageCalculation::NoLeechTag();
+		if (NoLeech.IsValid())
+		{
+			Spec.AddDynamicAssetTag(NoLeech);
+		}
+	}
+
+	if (Delivery.bCannotBeRetaliatedAgainst)
+	{
+		const FGameplayTag NoRetaliation =
+			UCataclysmDamageCalculation::NoRetaliationTag();
+		if (NoRetaliation.IsValid())
+		{
+			Spec.AddDynamicAssetTag(NoRetaliation);
+		}
+	}
+
+	// THE SKILL'S OWN CRITICAL STRIKE CHANCE, AS A NUMBER RATHER THAN A TAG.
+	// Everything above is a yes-or-no property and rides as a tag. This is a
+	// figure, so it rides as a set-by-caller magnitude, which is Unreal's own way
+	// to attach a number to one application of an effect. Added only when the
+	// skill states one, so a hit that says nothing carries nothing and the
+	// defender reads the attacker's attribute exactly as before. Issue #657.
+	if (Delivery.CritChancePercent >= 0.0f)
+	{
+		const FGameplayTag CritChanceKey =
+			UCataclysmDamageCalculation::SkillCritChanceDataTag();
+		if (CritChanceKey.IsValid())
+		{
+			Spec.SetSetByCallerMagnitude(CritChanceKey, Delivery.CritChancePercent);
+		}
+	}
+
+	// WHAT A LASTING APPLICATION STATED, for the next application of the same
+	// effect on this target to be compared with. Issue #1503. Only damage over
+	// time passes one here; a direct blow passes none and carries nothing.
+	if (StatedMagnitude >= 0.0f)
+	{
+		Spec.SetSetByCallerMagnitude(FName(StatedMagnitudeDataName),
+									 StatedMagnitude);
+	}
+
+	// AND WHETHER IT IS CONVERTED DAMAGE NOT YET TAKEN, which a cleanse keeps. Ruled 2026-10-06.
+	if (Delivery.bIsConvertedDamage)
+	{
+		Spec.SetSetByCallerMagnitude(FName(ConvertedDamageDataName), 1.0f);
+	}
+
+	// AND WHETHER IT IS THE CONSEQUENCE OF A DEATH, which fires none of its dealer's on-hit rows. Ruled 2026-10-07.
+	if (Delivery.bIsConsequenceOfADeath)
+	{
+		Spec.SetSetByCallerMagnitude(FName(ConsequenceOfADeathDataName), 1.0f);
+	}
+
+	// AND WHETHER IT CANNOT BE EVADED, which the target reads before it rolls its evasion. Ruled 2026-10-07.
+	if (Delivery.bCannotBeEvaded)
+	{
+		Spec.SetSetByCallerMagnitude(FName(CannotBeEvadedDataName), 1.0f);
+	}
+
+	// AND WHETHER THE TARGET CANNOT REDUCE OR MITIGATE IT, which the target reads before it resolves the blow.
+	// Ruled 2026-10-12. Not stamped when false, so every other blow is as it was.
+	if (Delivery.bCannotBeMitigated)
+	{
+		Spec.SetSetByCallerMagnitude(FName(CannotBeMitigatedDataName), 1.0f);
+	}
+
+	// AND THE SHARE OF ARMOUR A MODIFIER NAMING THE BLOW'S KIND SAYS IT IGNORES, which the target adds to
+	// the hit's armour penetration. Ruled 2026-10-07. Nought is not stamped, so every other blow is as it was.
+	if (Delivery.NamedArmorPenetrationPercent > 0.0f)
+	{
+		Spec.SetSetByCallerMagnitude(
+			FName(NamedArmorPenetrationDataName), Delivery.NamedArmorPenetrationPercent);
+	}
+
+	// AND WHETHER A WORN ROW STRUCK IT IN ANSWER TO AN EVENT, which is not recorded as a first blow. Ruled 2026-10-07.
+	if (Delivery.bIsARowsAnswerToAnEvent)
+	{
+		Spec.SetSetByCallerMagnitude(FName(RowsAnswerToAnEventDataName), 1.0f);
+	}
+
+	// AND WHETHER IT IS THE EXPLOSION AT AN AILMENT'S END, which fires none of its applier's on-hit rows and is not
+	// recorded as a first blow. Ruled 2026-10-13.
+	if (Delivery.bIsAnExplosionAtAnAilmentsEnd)
+	{
+		Spec.SetSetByCallerMagnitude(FName(ExplosionAtAnAilmentsEndDataName), 1.0f);
+	}
+
+	// AND WHERE IT WAS STRUCK FROM, WHEN THAT WAS NOT ITS INSTIGATOR'S PLACE: a gadget's copy of its summoner's
+	// skill. Ruled 2026-10-14. The hit announcement and the defender read it through `MetresFromWhereItWasStruck`.
+	// Not stamped otherwise, so every other blow is as it was.
+	if (Delivery.bStruckFromAPoint)
+	{
+		Spec.SetSetByCallerMagnitude(FName(StruckFromSetDataName), 1.0f);
+		Spec.SetSetByCallerMagnitude(FName(StruckFromXDataName), static_cast<float>(Delivery.StruckFromPoint.X));
+		Spec.SetSetByCallerMagnitude(FName(StruckFromYDataName), static_cast<float>(Delivery.StruckFromPoint.Y));
+		Spec.SetSetByCallerMagnitude(FName(StruckFromZDataName), static_cast<float>(Delivery.StruckFromPoint.Z));
+	}
+
+	// AND WHETHER IT IS A WEARER'S SHARE OF WHAT A BLOW DID TO AN ALLY BESIDE IT, which raises none of the wearer's
+	// rows and none of its attacker's, and is never shared again. Ruled 2026-10-15. Not stamped otherwise.
+	if (Delivery.bIsAShareOfDamageDoneToAnAlly)
+	{
+		Spec.SetSetByCallerMagnitude(FName(ShareOfDamageDoneToAnAllyDataName), 1.0f);
+	}
+
+	// AND WHETHER IT IS THE SHARE OF A POINT-BLANK SKILL'S BLOW STRUCK AT AN ALLY INSIDE ITS AREA, which raises none of
+	// its striker's rows, the kill included. Ruled 2026-10-15. Not stamped otherwise.
+	if (Delivery.AreaSkillShareOnAnAllyPercent > 0.0f)
+	{
+		Spec.SetSetByCallerMagnitude(FName(AreaSkillShareOnAnAllyDataName), 1.0f);
+	}
+
+	// AND THE SHARE OF THE TARGET'S CURRENT HEALTH A TICK TAKES, which only Void
+	// Splinter carries. Issue #915. The target turns it into the tick's damage
+	// from the health it has when the tick lands.
+	if (Delivery.ShareOfCurrentHealth >= 0.0f)
+	{
+		Spec.SetSetByCallerMagnitude(FName(ShareOfCurrentHealthDataName),
+									 Delivery.ShareOfCurrentHealth);
+	}
+
+	// AND WHETHER A DAMAGE OVER TIME EFFECT'S FIGURE WAS PRICED FROM ITS APPLIER'S OWN STATS, which its ticks read.
+	// Ruled 2026-10-23 (#2235). Not stamped otherwise, so every other effect is as it was.
+	if (Delivery.bPricedFromItsAppliersStats)
+	{
+		Spec.SetSetByCallerMagnitude(FName(PricedFromItsAppliersStatsDataName), 1.0f);
+	}
+
+	// AND HOW MANY ENEMIES THE ATTACK STRUCK TOGETHER, for the armour
+	// penetration lookup where the blow lands. Issue #1515. Sent only when
+	// there is a count, so a blow without one reads the -1 that refuses.
+	if (Delivery.EnemiesStruckTogether >= 0)
+	{
+		Spec.SetSetByCallerMagnitude(
+			FName(EnemiesStruckTogetherDataName),
+			static_cast<float>(Delivery.EnemiesStruckTogether));
+	}
+
+	// AND THE ATTACKER'S CHANCE TO APPLY EACH AILMENT, as more numbers under
+	// plain names. Issue #899. `UCataclysmAilments::RollOnLandedBlow` reads them
+	// on the defender's side once the blow has resolved. A tick of damage over
+	// time and a blow that may carry none write none, whatever is in the map.
+	if (!Delivery.bCarriesNoAilmentChance && !Delivery.bIsDamageOverTime)
+	{
+		for (const TPair<FName, float>& Chance : Delivery.AilmentChances)
+		{
+			if (Chance.Value > 0.0f)
+			{
+				Spec.SetSetByCallerMagnitude(Chance.Key, Chance.Value);
+			}
+		}
+	}
+
+	Defender->ApplyGameplayEffectSpecToSelf(Spec);
+}
+
+FCataclysmStatusEffectNumbers UCataclysmSkillEffects::BurnNumbers()
+{
+	return StatusEffectNumbers(BurnRowName, TEXT("Burn"));
+}
+
+FCataclysmStatusEffectNumbers UCataclysmSkillEffects::BleedNumbers()
+{
+	return StatusEffectNumbers(BleedRowName, TEXT("Bleed"));
+}
+
+FCataclysmStatusEffectNumbers UCataclysmSkillEffects::StatusEffectNumbers(
+	const TCHAR* RowName, const TCHAR* HumanName)
+{
+	FCataclysmStatusEffectNumbers Numbers;
+
+	const UDataTable* Table = LoadStatusEffectTable();
+	if (!Table)
+	{
+		return Numbers;
+	}
+
+	const FCataclysmStatusEffectRow* Row = Table->FindRow<FCataclysmStatusEffectRow>(
+		FName(RowName), TEXT("UCataclysmSkillEffects::StatusEffectNumbers"),
+		/*bWarnIfRowMissing=*/false);
+	if (!Row)
+	{
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("The status effect table has no %s row, so nothing can apply "
+				 "%s at all."), RowName, HumanName);
+		return Numbers;
+	}
+
+	Numbers.DurationSeconds = Row->DurationSeconds;
+	Numbers.FlatDamagePerTick = Row->FlatDamagePerTick;
+	Numbers.PercentOfHit = Row->PercentOfHit;
+	Numbers.PercentOfCurrentHealth = Row->PercentOfCurrentHealth;
+
+	// AND HOW LARGE THE EFFECT IS, WHICH IS NOT DAMAGE. Shred's 10 resistance
+	// and Cripple's 30% slow are read from here by `ApplyNamedEffect`, and that
+	// is a different path from the damage over time one below: an effect can
+	// carry a strength and no per-tick amount, and Shred does.
+	Numbers.Strength = Row->Strength;
+
+	// AND WHERE THAT STRENGTH STOPS. Issue #1256. The column has existed since
+	// issue #904 and NOTHING READ IT: it was declared on the row struct,
+	// mentioned in one comment saying it "IS NOT REACHED AND IS NOT CHECKED",
+	// and read by no code anywhere in `game/Source`. Cripple's row promised a
+	// cap of 80% that could not be enforced because the figure never left the
+	// table.
+	Numbers.StrengthCap = Row->StrengthCap;
+
+	// BOTH HALVES ARE NEEDED AND EITHER ONE MISSING IS THE SAME FAULT. Burn had
+	// neither until issue #895, and an effect lasting zero seconds or worth zero
+	// damage is indistinguishable from an effect nobody wrote -- which is exactly
+	// how the missing cooldown in issue #155 stayed hidden.
+	//
+	// EITHER BASE SATISFIES THE SECOND HALF. Burn states a flat amount since
+	// 2026-08-24 and stated a percent of the hit before that, and Bleed states a
+	// flat 20 a second; all are a per-tick amount this path can apply. A percent
+	// of the target's current health is deliberately NOT accepted: it is a
+	// different amount every tick, so it cannot be resolved to the one fixed
+	// figure this path needs, and `ApplyShareOfHealthOverTime` applies it instead.
+	const bool bStatesAnAmount = Numbers.FlatDamagePerTick > 0.0f
+		|| Numbers.PercentOfHit > 0.0f;
+	Numbers.bUsable = Numbers.DurationSeconds > 0.0f && bStatesAnAmount;
+
+	// THE WARNING IS NOT `!bUsable`, AND THAT IS THE WHOLE OF ISSUE #1516.
+	// `bUsable` asks whether this row is DAMAGE OVER TIME, and four callers read
+	// it for exactly that, so it is right that Shred's is false and it is left
+	// alone here. Reading it a second way -- as "is this row broken" -- is what
+	// accused five working rows of lacking damage they were never meant to carry.
+	// It fired 16,033 times in the 2026-09-09 Horde session, 56% of all 28,693
+	// lines, 12,284 of them Shred alone.
+	//
+	// A STRENGTH IS THE OTHER WAY A ROW CAN BE WRITTEN, which the comment fifteen
+	// lines above already says: Shred's 10 resistance and Cripple's 30% slow are
+	// applied by `ApplyNamedEffect` and never by the path below.
+	//
+	// A ROW STATING NEITHER STILL WARNS, and that is the half worth keeping. That
+	// row is the one nobody wrote -- Burn had neither until issue #895 -- and a
+	// guard relaxed past this point could not fire at all.
+	const bool bStatesAStrength = Numbers.Strength > 0.0f;
+
+	// AND A ROW THAT IS ONLY ITS TAG IS THE THIRD WAY. Issue #899. Madness states
+	// a duration and nothing else, because `UCataclysmTeams` reads its tag and
+	// there is no number to apply, which `ApplyNamedEffect` says in terms. It
+	// warned all the same, and the chance to madden reads its row on every blow
+	// that lands it, so this would have fired on every one. A damage over time
+	// row still has to state an amount, and a row stating no duration still
+	// warns: the Necrotic Fog row, which
+	// `ARowStatingNeitherAStrengthNorAnAmountStillWarns` reads.
+	const bool bIsOnlyATag = Numbers.DurationSeconds > 0.0f
+		&& !Row->EffectKind.Equals(TEXT("DoT"), ESearchCase::IgnoreCase);
+
+	// AND A SHARE OF THE TARGET'S CURRENT HEALTH IS THE FOURTH. Issue #915. Void
+	// Splinter's row states a duration and 1% of current health, and
+	// `ApplyShareOfHealthOverTime` applies exactly that. `bUsable` stays false
+	// for it, because the fixed-amount path cannot apply it, and the chance to
+	// apply it reads this row on every blow that lands it.
+	const bool bStatesAShareOfHealth = Numbers.DurationSeconds > 0.0f
+		&& Numbers.PercentOfCurrentHealth > 0.0f;
+	if (!Numbers.bUsable && !bStatesAStrength && !bIsOnlyATag
+		&& !bStatesAShareOfHealth)
+	{
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("%s states a duration of %.1fs, a flat %.1f a tick and %.0f%% "
+				 "of the hit. The duration and one of the two amounts must be "
+				 "above zero or nothing is applied. They come from columns B, H "
+				 "and C of the DoTs sheet."),
+			HumanName, Numbers.DurationSeconds, Numbers.FlatDamagePerTick,
+			Numbers.PercentOfHit);
+	}
+
+	return Numbers;
+}
+
+FName UCataclysmSkillEffects::StatusEffectRowForTag(const FGameplayTag& EffectTag)
+{
+	if (!EffectTag.IsValid())
+	{
+		return NAME_None;
+	}
+
+	const UDataTable* Table = LoadStatusEffectTable();
+	if (!Table)
+	{
+		return NAME_None;
+	}
+
+	// THE LAST SEGMENT ONLY. `Status.DoT.VoidSplinter` and `Keyword.DoT.VoidSplinter`
+	// are the same effect under two branches, and the branch says which VOCABULARY
+	// the tag came from rather than which effect it is. See the header.
+	FString Whole = EffectTag.ToString();
+	FString Segment = Whole;
+	int32 LastDot = INDEX_NONE;
+	if (Whole.FindLastChar(TEXT('.'), LastDot))
+	{
+		Segment = Whole.RightChop(LastDot + 1);
+	}
+	if (Segment.IsEmpty())
+	{
+		return NAME_None;
+	}
+
+	FName Found = NAME_None;
+	Table->ForeachRow<FCataclysmStatusEffectRow>(
+		TEXT("UCataclysmSkillEffects::StatusEffectRowForTag"),
+		[&Found, &Segment](const FName& RowName,
+						   const FCataclysmStatusEffectRow& Row)
+		{
+			if (!Found.IsNone())
+			{
+				// ForeachRow HAS NO WAY TO STOP, so the first match is kept and
+				// the rest of the walk does nothing. The table is 52 rows.
+				return;
+			}
+
+			// THE SAME REDUCTION `tag_segment` IN
+			// `tools/generate_gameplay_tags.py` DOES: letters and digits kept,
+			// everything else dropped. "Void Splinter" becomes "VoidSplinter"
+			// and "Touch of Nothing" becomes "TouchofNothing", which is what
+			// that script produced and what the tag list holds.
+			FString Reduced;
+			Reduced.Reserve(Row.EffectName.Len());
+			for (const TCHAR Letter : Row.EffectName)
+			{
+				if (FChar::IsAlnum(Letter))
+				{
+					Reduced.AppendChar(Letter);
+				}
+			}
+
+			// CASE-SENSITIVE, BECAUSE THE TAG AND THE NAME ARE GENERATED FROM
+			// THE SAME CELL. A difference in case would mean the tag list and
+			// the effect table had drifted, and answering anyway would hide it.
+			if (Reduced.Equals(Segment, ESearchCase::CaseSensitive))
+			{
+				Found = RowName;
+			}
+		});
+
+	return Found;
+}
+
+float UCataclysmSkillEffects::AsMultiplier(const UAbilitySystemComponent* Source,
+										  const FGameplayAttribute& Stat)
+{
+	// A BASELINE OF 100 MEANS UNCHANGED, which is what the design gives area of
+	// effect and all three damage over time stats: "They are percentages of
+	// whatever the skill or the effect itself does, so their baseline is 100%
+	// rather than zero."
+	//
+	// AND A CHARACTER WITH NO SUCH ATTRIBUTE IS UNCHANGED TOO. Every enemy in
+	// the game holds the combat attribute set, so this is the path an ability
+	// system this project did not make would take.
+	if (!Source || !Source->HasAttributeSetForAttribute(Stat))
+	{
+		return 1.0f;
+	}
+
+	// CLAMPED AT ZERO RATHER THAN ALLOWED NEGATIVE. Nothing in the design states
+	// a negative one, and a negative duration or interval is not a smaller
+	// effect, it is an effect that cannot be applied at all.
+	return FMath::Max(0.0f, Source->GetNumericAttribute(Stat) / 100.0f);
+}
+
+float UCataclysmSkillEffects::AsMultiplierForSkill(
+	const UAbilitySystemComponent* Source, const FGameplayAttribute& Stat,
+	FName StatName, const FGameplayTagContainer& SkillTags)
+{
+	// THE SAME TWO GUARDS AS AsMultiplier, AND THEY COME FIRST FOR THE SAME
+	// REASON. A blow dealt in someone else's name has no source, and an ability
+	// system without the attribute has nothing to scale.
+	if (!Source || !Source->HasAttributeSetForAttribute(Stat))
+	{
+		return 1.0f;
+	}
+
+	const float FromAttribute = Source->GetNumericAttribute(Stat);
+
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(Source);
+	const float Value = Cataclysm
+		? Cataclysm->StatForSkill(StatName, SkillTags, FromAttribute)
+		: FromAttribute;
+
+	return FMath::Max(0.0f, Value / 100.0f);
+}
+
+FCataclysmDamageOverTimeNumbers UCataclysmSkillEffects::DamageOverTimeNumbers(
+	const UAbilitySystemComponent* Source, float DamagePerTick,
+	float DurationSeconds, const FGameplayTagContainer& Tags)
+{
+	FCataclysmDamageOverTimeNumbers Numbers;
+	if (DamagePerTick <= 0.0f || DurationSeconds <= 0.0f)
+	{
+		return Numbers;
+	}
+
+	// ALL THREE ARE ASKED FOR RATHER THAN READ. Issue #947. The attribute is
+	// worked out with every condition refused, so "While moving, your DoTs deal
+	// 20%-40% increased damage" was dropped in silence. SINCE #2235 (ruled
+	// 2026-10-23, the owner's reword) that row reads "While the enemy is moving,
+	// your DoTs on them deal 20%-40% more damage", under `target_is_moving`, and
+	// is judged on each tick against the enemy the tick lands on, in
+	// `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`; asked here with no
+	// target, it is refused and adds nothing to the figure laid.
+	//
+	// THE CALLER'S TAGS, SINCE ISSUE #1833'S SMALL ENGINE HALVES: the ailment's
+	// own `Keyword.DoT.*` tag and the applying skill's tags. Until then this
+	// passed an empty container, so "Burn effects you apply deal 30%-60%
+	// increased damage per second", scoped to `Keyword.DoT.Burn`, applied to
+	// nothing. A condition still works whatever the tags are, and an unscoped
+	// row applies with any tags. Measured 2026-09-25: no row in the enchantment
+	// or passive sheets scoped any of these three stats before this, so nothing
+	// that existed starts to apply. A skill-scoped row on them would from now.
+	//
+	// TWO OF THE THREE UNBLOCKED NO ROW WHEN ISSUE #947 CHANGED THEM, for
+	// consistency. Only `dot_damage` was asked for by an authored enchantment
+	// then; leaving duration and frequency reading the attribute in a function
+	// whose third line asks would have left the next reader to work out whether
+	// the difference was deliberate. `dot_duration` has a row of its own since
+	// issue #1833, "Poison you apply lasts 30%-60% longer".
+	// No row exercises `dot_frequency`, so the unchanged-behaviour control in
+	// CataclysmPlayerClassStatsTests.cpp is still what stands behind it, and it
+	// lists all three.
+	const float FrequencyScale = AsMultiplierForSkill(
+		Source, UCataclysmCombatAttributeSet::GetDotFrequencyAttribute(),
+		FName(TEXT("dot_frequency")), Tags);
+
+	// A FREQUENCY OF ZERO WOULD BE A DIVISION BY ZERO, and is refused rather
+	// than clamped to something invented. Nothing in the game can produce one:
+	// the class line gives 100 and every source is an increase.
+	if (FrequencyScale <= 0.0f)
+	{
+		return Numbers;
+	}
+
+	Numbers.DamagePerTick = DamagePerTick * AsMultiplierForSkill(
+		Source, UCataclysmCombatAttributeSet::GetDotDamageAttribute(),
+		FName(TEXT("dot_damage")), Tags);
+	// AND `debuff_duration`'s INCREASES IN THE SAME BUCKET. Issue #1833, ruled
+	// 2026-09-30: a damage over time effect is a debuff the character applies.
+	// `dot_duration` carries only increased rows, so its multiplier is one
+	// plus its increases and adding these beside them is one bucket.
+	Numbers.DurationSeconds = DurationSeconds * FMath::Max(0.0f, AsMultiplierForSkill(
+		Source, UCataclysmCombatAttributeSet::GetDotDurationAttribute(),
+		FName(TEXT("dot_duration")), Tags)
+		+ DebuffDurationMultiplierOf(Source) - 1.0f);
+
+	// FREQUENCY DIVIDES THE GAP BETWEEN TICKS. More of it is a shorter gap and
+	// so more ticks in the same time, which is what "More ticks in the same
+	// time | Rises" means in the design's own table.
+	Numbers.SecondsPerTick = BaseSecondsPerTick / FrequencyScale;
+
+	Numbers.Ticks = Numbers.SecondsPerTick > 0.0f
+		? Numbers.DurationSeconds / Numbers.SecondsPerTick
+		: 0.0f;
+	Numbers.TotalDamage = Numbers.DamagePerTick * Numbers.Ticks;
+
+	Numbers.bUsable = Numbers.DamagePerTick > 0.0f
+		&& Numbers.DurationSeconds > 0.0f && Numbers.SecondsPerTick > 0.0f;
+	return Numbers;
+}
+
+bool UCataclysmSkillEffects::ApplyDamageOverTime(
+	AActor* Instigator, AActor* Target, float DamagePerTick,
+	float DurationSeconds, const FGameplayTag& EffectTag,
+	bool bScalesWithInstigator, AActor* DealtBy, const UGameplayAbility* Skill,
+	FName DamageType, bool bIsConvertedDamage, const FGameplayTagContainer* SkillTagsWithNoSkill)
+{
+	if (DamagePerTick <= 0.0f || DurationSeconds <= 0.0f)
+	{
+		return false;
+	}
+
+	// NOTHING FROM A USE THAT DEALS NO DAMAGE: the Nth attack of a worn "every
+	// Nth attack" row. Issue #1833, phase 2, ruled 2026-09-24: its burn too.
+	if (const UCataclysmSkillTemplate* Using = Cast<UCataclysmSkillTemplate>(Skill))
+	{
+		if (Using->bThisUseDealsNoDamage)
+		{
+			return false;
+		}
+	}
+
+	UAbilitySystemComponent* Source = UCataclysmTargeting::AbilitySystemOf(Instigator);
+	UAbilitySystemComponent* Defender = UCataclysmTargeting::AbilitySystemOf(Target);
+	if (!Source || !Defender)
+	{
+		return false;
+	}
+
+	// WHAT IS BEING APPLIED, AS THE TARGET'S OWN STATS ARE ASKED ABOUT IT: the
+	// ailment's tag and the parent every damage over time has. Ruled 2026-10-06.
+	// Not the applying skill's tags, which are the attacker's.
+	FGameplayTagContainer AppliedTags;
+	if (EffectTag.IsValid())
+	{
+		AppliedTags.AddTag(EffectTag);
+	}
+	const FGameplayTag DamageOverTimeParent = UCataclysmDamageCalculation::DamageOverTimeTag();
+	if (DamageOverTimeParent.IsValid())
+	{
+		AppliedTags.AddTag(DamageOverTimeParent);
+	}
+
+	// "UNAFFECTED BY BLEEDING" REFUSES IT HERE, BEFORE ANYTHING ELSE. Ruled
+	// 2026-10-06. A target carrying `ailment_immunity` for this ailment is not
+	// given it at all: nothing reads them as bleeding, the applier's `dot_applied`
+	// event below is not raised, the applier's ailment riders are not handed
+	// over, and a running effect is not refreshed. A copy a spread makes comes
+	// through here and is refused alike.
+	//
+	// NOT CONVERTED DAMAGE. The Masochist's converted bleed is damage already
+	// taken and stored, not an ailment somebody applied, and refusing it would
+	// put the whole of it straight onto health. A judgement by the writing
+	// session, 2026-10-06, for the coordinating session to confirm.
+	if (!bIsConvertedDamage)
+	{
+		const UCataclysmAbilitySystemComponent* Refusing =
+			Cast<const UCataclysmAbilitySystemComponent>(Defender);
+		if (Refusing
+			&& Refusing->StatForSkill(FName(UCataclysmDamageCalculation::AilmentImmunityStat),
+									  AppliedTags, 0.0f) > 0.0f)
+		{
+			return false;
+		}
+	}
+
+	// AND A ROW MAY REFUSE EVERY DEBUFF, TO ITS WEARER AND FROM IT. Ruled
+	// 2026-10-13: "You are immune to debuffs but also cannot apply them". Here,
+	// before the applier's event, its spread, its riders and the refresh, so
+	// nothing is done for a refused application and ITS DAMAGE IS LOST.
+	//
+	// CONVERTED DAMAGE TOO, unlike the refusal above. The Masochist's converted
+	// bleed is a debuff on its own character; `UCataclysmDamageConversion` takes
+	// the blow off health at once when this answers false, so none is deleted.
+	if (UCataclysmDebuffs::RefusedByARow(Instigator, Target, EffectTag))
+	{
+		return false;
+	}
+
+	// THE ATTACKER'S THREE STATS, AND UNTIL ISSUE #895 NONE OF THEM WAS READ.
+	// All three attributes existed, were clamped and were replicated, and the
+	// comment that used to stand here said the frequency stat "is not wired in
+	// yet". The three affixes granting them were worth nothing.
+	//
+	// NULL FOR A BLOW DEALT IN SOMEONE ELSE'S NAME, which is how a minion's burn
+	// declines the summoner's three stats without this function needing to know
+	// what a minion is.
+	// ASKED WITH THE AILMENT'S OWN TAG AND THE SKILL'S, so a row scoped to one
+	// ailment reaches it. Issue #1833, the small engine halves.
+	FGameplayTagContainer AskedWith;
+	if (EffectTag.IsValid())
+	{
+		AskedWith.AddTag(EffectTag);
+	}
+	if (const UCataclysmSkillTemplate* Applying = Cast<UCataclysmSkillTemplate>(Skill))
+	{
+		AskedWith.AppendTags(Applying->SkillTags);
+	}
+	// AND WITHERED TOUCH ON THE APPLIER ITSELF, ruled 2026-10-26: "every damage-over-time tick it applies". Priced in
+	// when the effect is laid, as the applier's three stats are. Only for an effect scaled by its applier and laid on
+	// another character, so not a spread copy, a trap's share or converted damage; and not for a use a minion cast in
+	// the applier's name, whose skill names that minion in `FreeRepeatCastBy`, as `ApplyHit` leaves it out.
+	const UCataclysmSkillTemplate* const CastFor = Cast<UCataclysmSkillTemplate>(Skill);
+	const bool bCastByAMinion = CastFor && !CastFor->FreeRepeatCastBy.IsExplicitlyNull();
+	const float KeptUnderTheCurse = bScalesWithInstigator && Instigator != Target
+		&& !bCastByAMinion ? KeptUnderWitheredTouch(Instigator) : 1.0f;
+	const FCataclysmDamageOverTimeNumbers Numbers = DamageOverTimeNumbers(
+		bScalesWithInstigator ? Source : nullptr, DamagePerTick * KeptUnderTheCurse,
+		DurationSeconds, AskedWith);
+	if (!Numbers.bUsable)
+	{
+		return false;
+	}
+
+	// THE STRONGEST APPLICATION WINS HERE TOO. Issue #1503. The project owner's
+	// 2026-09-09 ruling lists "the helpers that apply damage, damage over time,
+	// stuns, pins and named status effects" among what it affects, and its
+	// precedent is Path of Exile's ignite, where only the strongest one deals
+	// damage. A weaker bleed, poison, burn, disease or necrosis leaves a
+	// stronger running one alone and only refreshes how long it runs.
+	//
+	// AND SO DOES AN EQUAL ONE, WHICH MATTERS MOST HERE. A replacement is a new
+	// effect, and a new one first ticks a whole interval after it lands, so an
+	// equal application landing sooner than that restarted the interval.
+	// Measured on 2026-09-11: the same bleed applied again every 0.6 of its
+	// interval dealt nothing in 4.2 seconds. A refresh moves only the running
+	// effect's start, so its ticks carry on.
+	//
+	// COMPARED BY DAMAGE A SECOND, WHICH IS A JUDGEMENT, and `docs/DECISIONS.md`
+	// records it. What an application states is the damage one tick deals and
+	// how often it ticks, both after the attacker's own three stats and before
+	// the target's resistances, which meet every tick alike. Per second rather
+	// than per tick, because the frequency stat makes the same damage a tick
+	// worth more each second. Not the total, because how long it runs is
+	// refreshed separately under the third ruling.
+	const float Stated = Numbers.DamagePerTick / Numbers.SecondsPerTick;
+
+	// AN APPLICATION TO ANOTHER CHARACTER IS AN EVENT FOR WHOEVER APPLIED IT,
+	// a refresh of one already running included. Issue #1833: "Applying a DoT
+	// to an enemy grants 5%-10% increased damage for 4 seconds". Raised on the
+	// instigator's own ability system, so a minion's is the minion's. One the
+	// character puts on itself is not applying one to an enemy.
+	//
+	// NOT FOR A COPY A SPREAD MAKES. Issue #919. See `ApplySpreadCopy`.
+	if (Instigator != Target && !bApplyingASpreadCopy)
+	{
+		if (UCataclysmAbilitySystemComponent* Applier =
+				Cast<UCataclysmAbilitySystemComponent>(Source))
+		{
+			// WHICH AILMENT IT WAS, for a row that lays the same on its wearer. Ruled 2026-10-06. Recorded
+			// before the event, which is when such a row reads it.
+			if (const FCataclysmAilmentKind* AppliedKind = UCataclysmAilments::KindWithTag(EffectTag))
+			{
+				Applier->NoteDotApplied(AppliedKind->Ailment);
+			}
+			else
+			{
+				Applier->NoteDotApplied(FString());
+			}
+			Applier->ActOnEvent(FName(TEXT("dot_applied")));
+		}
+	}
+
+	// A ROW MAY PASS THIS APPLICATION ON TO ENEMIES NEAR THE TARGET. Ruled
+	// 2026-10-06: "Burn effects you apply spread to 1-2 nearby enemies". Asked of
+	// the instigator's own rows, so a minion's application spreads nothing of its
+	// owner's. NOT FOR A COPY A SPREAD MAKES, which is the guard the ruling asks
+	// for: a copy that spread on application would cross a whole pack from one
+	// application.
+	if (Instigator != Target && !bApplyingASpreadCopy)
+	{
+		const UCataclysmAbilitySystemComponent* Own = Cast<UCataclysmAbilitySystemComponent>(Source);
+		const int32 Count = Own
+			? FMath::RoundToInt(Own->AilmentRiderPercentFor(
+				  EffectTag, ECataclysmAilmentRider::SpreadOnApplication))
+			: 0;
+		if (Count > 0)
+		{
+			FRunningAilment Applied;
+			Applied.Ailment = EffectTag;
+			Applied.DamagePerSecond = Stated;
+			Applied.SecondsLeft = Numbers.DurationSeconds;
+			Applied.Applier = Instigator;
+			SpreadOnApplication(Instigator, Target, Applied, Count);
+		}
+	}
+
+	// AND AT PLAGUE'S CAP EVERY DAMAGE OVER TIME OF THE APPLIER'S ON THE TARGET SPREADS, THEN THE STACKS ARE SPENT. Ruled
+	// 2026-10-26 for the random buff Plague (issue #2538, batch 4): "With 10 stacks held, the next damage-over-time
+	// application spreads every damage-over-time ailment of the wearer's that is running on the struck enemy, the one
+	// being laid included. Each spreads to every enemy within 3 m with the time it has left". The stacks are gained on
+	// `dot_applied` above, so the application that gains the tenth is the one that spreads. Guarded as the spread above
+	// is: not on oneself, and not for a copy, which raises no `dot_applied` and so neither gains a stack nor spreads.
+	//
+	// THE APPLICATION BEING LAID IS NOT RUNNING YET: it lands below. So it is added by hand, as the spread above builds
+	// it, with its whole duration. Only an earlier application of the same ailment can already be running, and then one
+	// spreads: the stronger a second, as the target keeps the stronger, with the longer time if the running one is kept.
+	if (Instigator != Target && !bApplyingASpreadCopy)
+	{
+		if (UCataclysmAbilitySystemComponent* Own = Cast<UCataclysmAbilitySystemComponent>(Source))
+		{
+			TArray<FName> AtTheirCap;
+			for (const FCataclysmPoolAction& Action : Own->GetPoolActions())
+			{
+				if (Action.bKeptStacksSpreadDots && Action.KeptStackCap > 0
+					&& Own->KeptStacksHeld(Action.KeptStackKey) >= Action.KeptStackCap)
+				{
+					AtTheirCap.AddUnique(Action.KeptStackKey);
+				}
+			}
+			if (!AtTheirCap.IsEmpty())
+			{
+				// THE SIX AILMENTS THAT DEAL DAMAGE OVER TIME, kept in step with the list in
+				// `UCataclysmContagion::AnnounceAfflictedDeath`.
+				FGameplayTagContainer DamageOverTime;
+				for (const TCHAR* Name : {TEXT("Keyword.DoT.Bleed"), TEXT("Keyword.DoT.Poison"),
+						 TEXT("Keyword.DoT.Disease"), TEXT("Keyword.DoT.Necrosis"), TEXT("Keyword.DoT.Burn"),
+						 TEXT("Keyword.DoT.VoidSplinter")})
+				{
+					const FGameplayTag Each = FGameplayTag::RequestGameplayTag(FName(Name), /*ErrorIfNotFound=*/false);
+					if (Each.IsValid())
+					{
+						DamageOverTime.AddTag(Each);
+					}
+				}
+				// ONLY THE APPLIER'S OWN, as ruled: `ReadForABlast` keeps an ailment only when the applier's is running.
+				FCataclysmBlastRead Read = UCataclysmContagion::ReadForABlast(Instigator, Target, &DamageOverTime);
+				FRunningAilment Applied;
+				Applied.Ailment = EffectTag;
+				Applied.DamagePerSecond = Stated;
+				Applied.SecondsLeft = Numbers.DurationSeconds;
+				Applied.Applier = Instigator;
+				FRunningAilment* Earlier = Read.Carried.FindByPredicate(
+					[&EffectTag](const FRunningAilment& One) { return One.Ailment == EffectTag; });
+				if (!Earlier)
+				{
+					Read.Carried.Add(Applied);
+				}
+				else if (Earlier->DamagePerSecond >= Applied.DamagePerSecond)
+				{
+					Earlier->SecondsLeft = FMath::Max(Earlier->SecondsLeft, Applied.SecondsLeft);
+				}
+				else
+				{
+					*Earlier = Applied;
+				}
+				UCataclysmContagion::GiveSpreadCopiesNear(Instigator, Read, PlagueSpreadMetres);
+				for (const FName& Key : AtTheirCap)
+				{
+					Own->SpendKeptStacks(Key);
+				}
+			}
+		}
+	}
+
+	// AND WHAT THE APPLIER'S WORN ROWS HANG ON THIS AILMENT GOES ONTO THE
+	// CARRIER. Issue #1833, ruled 2026-10-06: "Bleeding enemies take 20%-40%
+	// increased damage from all sources". HERE, BEFORE THE TWO BRANCHES BELOW, so
+	// an application that only refreshes a stronger running effect hands them
+	// over as one that makes a new effect does. The instigator's own rows: a
+	// minion's ailment is the minion's, ruled 2026-09-17, so it carries none.
+	if (Instigator != Target)
+	{
+		if (UCataclysmAbilitySystemComponent* Carrier =
+				Cast<UCataclysmAbilitySystemComponent>(Defender))
+		{
+			Carrier->ReceiveAilmentRiders(
+				EffectTag, Cast<UCataclysmAbilitySystemComponent>(Source));
+		}
+	}
+
+	// AND A DEBUFF OF THE APPLIER'S MAY CUT WHAT ITS CARRIER DEALS. Ruled
+	// 2026-10-13. Beside the riders and before the two branches below, so a
+	// refresh records it as a new effect does. A copy a spread makes records
+	// nobody. See `UCataclysmDebuffs::NoteLaid`.
+	UCataclysmDebuffs::NoteLaid(Instigator, Target, EffectTag, bApplyingASpreadCopy);
+
+	// A ROW MAY MAKE THIS APPLICATION REFRESH THE INSTIGATOR'S OTHER DAMAGE OVER
+	// TIME EFFECTS ON THE TARGET. See `DotApplicationRefreshesOthersStat`. Not for
+	// a copy a spread makes, which nobody applied, and asked of the instigator's
+	// own rows, so a minion's application refreshes nothing of its owner's.
+	if (Instigator != Target && !bApplyingASpreadCopy)
+	{
+		const UCataclysmAbilitySystemComponent* Own = Cast<UCataclysmAbilitySystemComponent>(Source);
+		if (Own && Own->StatForSkill(FName(DotApplicationRefreshesOthersStat),
+									 FGameplayTagContainer(EffectTag), 0.0f) > 0.0f)
+		{
+			RefreshOtherDamageOverTime(Instigator, Target, EffectTag);
+		}
+	}
+
+	// A BLEED THAT LANDS STARTS ITS FOUR SECONDS OF MOVEMENT AGAIN, WHETHER IT REPLACES THE RUNNING ONE OR ONLY
+	// REFRESHES IT. Issue #918, ruled 2026-10-31. One bleed at a time, so the count belongs to the carrier and the one a
+	// stronger bleed replaces takes its count with it. `UCataclysmVitalAttributeSet` reads and adds to it at each tick.
+	//
+	// A REFRESH TOO, RULED BY THE COORDINATING SESSION, 2026-10-31: under the one-slot rule a refresh stands for a new
+	// application, and in the genre each new bleed carries its own full duration. A refresh gives the running bleed a
+	// new window; with the old count kept, a bleed refreshed by every blow of a fast
+	// attacker would deal four seconds of ticks and then nothing for as long as the blows kept coming, while the target
+	// still read as bleeding. Here, before the branch below, so the refresh and the replacement both reach it.
+	//
+	// NOT FOR CONVERTED DAMAGE. Issue #2275, ruled by the coordinating session 2026-11-01. A converted blow is no
+	// application of the ailment and refreshes no bleed, and its own ticks neither read nor add to the count, which the
+	// gate exempts them from. Until it, a blow converted while an enemy's bleed ran gave that bleed its four seconds
+	// back.
+	if (EffectTag == UCataclysmDebuffs::BleedTag() && !bIsConvertedDamage)
+	{
+		if (UCataclysmAbilitySystemComponent* Carrier = Cast<UCataclysmAbilitySystemComponent>(Defender))
+		{
+			Carrier->BleedMovingSeconds = 0.0f;
+		}
+	}
+
+	// CONVERTED DAMAGE NOT YET TAKEN NEITHER REFRESHES NOR IS REFRESHED. Issue #2275, ruled by the coordinating
+	// session 2026-11-01: "converts all damage you take into Bleeding over 5 seconds" is said of each blow, and the
+	// design's health-debt paragraph is "the same rule with the sign reversed" as leech, where "Each hit starts its own
+	// 3-second payout". So every converted blow is laid below as its own effect, beside every other bleed, and
+	// `RunningApplicationOf` does not show one to anybody else's application. Until it, a converted blow no stronger
+	// than a running bleed only refreshed that bleed, and the blow was taken off neither health nor anything else.
+	const FRunningApplication Running = RunningApplicationOf(Defender, EffectTag);
+	if (!bIsConvertedDamage && Running.bFound && Running.Stated >= Stated)
+	{
+		RefreshRunningApplication(Defender, Running,
+			UCataclysmDebuffs::DurationOn(Defender, Numbers.DurationSeconds, AppliedTags));
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("%s applied %s to %s at %.1f a second, and the running one at "
+				 "%.1f a second stands."),
+			*GetNameSafe(Instigator), *EffectTag.ToString(), *GetNameSafe(Target),
+			Stated, Running.Stated);
+		return true;
+	}
+
+	// ONE NAME PER EFFECT AND NOT ONE FOR ALL OF THEM. Issue #1062. This was a
+	// constant, `CataclysmDamageOverTime`, so every damage over time effect in
+	// the game was built under one name -- and with the stacking helper below
+	// setting AggregateByTarget and a stack limit of one, the single-stack rule
+	// then applied ACROSS different effects instead of within one. Setting a
+	// character alight while it was bleeding replaced the bleed, and both
+	// applications reported success.
+	//
+	// AND SINCE ISSUE #1501, ONE NAME PER APPLICATION RATHER THAN PER EFFECT.
+	// Two applications sharing a name is what destroyed a running effect's
+	// modifiers and crashed the game; `MakeRuntimeEffect` above gives the full
+	// account. The rule that a second burn refreshes the first rather than
+	// adding a second is unchanged, and is now kept by
+	// `TagAndReplaceAnyExisting` taking the existing effect off, rather than by
+	// two applications happening to land on one object.
+	//
+	// `ApplyTagForDuration` ALREADY DID THIS, and it is why a character can carry
+	// three separate tagged effects and could not carry two burns. That function
+	// is where the shape below is copied from.
+	UCataclysmRuntimeEffect* Effect = MakeRuntimeEffect(
+		FString::Printf(TEXT("CataclysmDamageOverTime_%s"),
+						*EffectTag.ToString()));
+	Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
+
+	// AND THE TAGS OF THE SKILL ITS TICKS ARE TICKS OF, KEPT ON THE EFFECT ITSELF, so a kill by a tick carries them to
+	// the killer's rows when no skill is named by then. Issue #2683. The tags handed in when there are any -- a buried
+	// weapon's burn, a ground zone's own ailment, a tether's or a projectile's burn whose skill has gone -- and
+	// otherwise the tags of the skill handed in, so a burn whose skill's grant is removed mid-burn keeps them.
+	//
+	// IDENTITY ONLY. Ruled by the coordinating session 2026-11-01 (J1). WRITTEN AFTER THE PRICING ABOVE AND READ BY
+	// NOTHING THAT PRICES: the caster's damage over time stats were asked above with a real skill's tags only
+	// (`AskedWith`), and tags without a skill never reach them. `SkillTagsOfABlowWithNoSkill` reads these for the record
+	// of the last blow and the hit notice, and only for a tick naming no skill that still exists.
+	if (SkillTagsWithNoSkill && !SkillTagsWithNoSkill->IsEmpty())
+	{
+		Effect->SkillTagsWithNoSkill = *SkillTagsWithNoSkill;
+	}
+	else if (const UCataclysmSkillTemplate* Laying = Cast<UCataclysmSkillTemplate>(Skill))
+	{
+		Effect->SkillTagsWithNoSkill = Laying->SkillTags;
+	}
+	// AND THE TARGET'S OWN STAT DECIDES HOW LONG IT REALLY LASTS, after the
+	// attacker's three stats above have decided what it deals and how often.
+	// Issue #1033. The other path is `ApplyTagForDuration`; both call this so
+	// that a stun and a burn cannot disagree.
+	//
+	// THE TICK LENGTH IS NOT SCALED WITH IT, so a longer burn is more ticks of
+	// the same size rather than the same number of slower ones. That is what
+	// makes a node lengthening an effect on the character worth something to a
+	// class paid per effect carried, and it matches how the attacker's own
+	// duration stat already behaves in `DamageOverTimeNumbers`.
+	//
+	// BUT NOT CONVERTED DAMAGE, WHOSE TOTAL IS FIXED WHEN IT IS CONVERTED. Ruled by the coordinating session
+	// 2026-11-01, on The Breaking Point's own words, "converts all damage you take into Bleeding over 5 seconds": a
+	// converted blow always runs its 5 seconds, so no duration stat adds a tick of the same size to it. Until then
+	// Vessel of Plagues' "Debuffs on you last 50% longer" made a blow of 100 take seven ticks of 20, 140. The owner
+	// ruled the same day that "debuffs on you" wording does not change converted damage: "No: stored total is fixed".
+	Effect->DurationMagnitude = FGameplayEffectModifierMagnitude(
+		FScalableFloat(bIsConvertedDamage ? Numbers.DurationSeconds : UCataclysmDebuffs::DurationOn(
+			Defender, Numbers.DurationSeconds, AppliedTags)));
+	Effect->Period = FScalableFloat(Numbers.SecondsPerTick);
+
+	// False, so the first tick lands a second in rather than at once. Applying
+	// on the instant would mean a skill that reapplies burn faster than once a
+	// second dealt its whole burn on every application.
+	Effect->bExecutePeriodicEffectOnApplication = false;
+
+	const int32 Index = Effect->Modifiers.Num();
+	Effect->Modifiers.SetNum(Index + 1);
+	FGameplayModifierInfo& Modifier = Effect->Modifiers[Index];
+	Modifier.Attribute = UCataclysmVitalAttributeSet::GetDamageAttribute();
+	Modifier.ModifierOp = EGameplayModOp::Additive;
+	Modifier.ModifierMagnitude = FScalableFloat(Numbers.DamagePerTick);
+
+	// A RUNNING EFFECT TAKEN OFF HERE IS REPLACED, NOT ENDED: a stronger one of the same ailment is applied straight
+	// after. Issue #920: so a Necrosis taken off here does not deal the healing it denied, which stays owed to the one
+	// that replaces it. See `DealTheDeniedHealingWhenANecrosisEnds`. Nothing refuses the application below once the
+	// immunity and a row's refusal above have passed, so the replacement always lands.
+	//
+	// A CONVERTED BLOW TAKES NO SLOT AND TAKES NOTHING OFF. Issue #2275: it grants the tag and runs beside whatever
+	// else is granting it, an enemy's bleed and the earlier converted blows included. An ordinary bleed laid here takes
+	// off every running bleed but converted damage, which `TagAndReplaceAnyExisting` leaves.
+	{
+		TGuardValue<bool> Replacing(bReplacingARunningDamageOverTime, true);
+		TagAndReplaceAnyExisting(Effect, EffectTag, Target, /*bTakesTheSlot=*/!bIsConvertedDamage);
+	}
+
+	FGameplayEffectContextHandle Context = Source->MakeEffectContext();
+	Context.AddInstigator(Instigator, Instigator);
+	// AND WHAT DEALT IT, for the reason `ApplyDirectDamage` gives: a minion's
+	// burn is applied in its summoner's name. Issue #41, slice 4.
+	if (DealtBy)
+	{
+		Context.AddSourceObject(DealtBy);
+	}
+	// AND THE SKILL THAT APPLIED IT, so the notice of every tick can name it.
+	// See `ApplyDirectDamage`. Issue #41, slice 4.
+	if (Skill)
+	{
+		Context.SetAbility(Skill);
+	}
+	// Typed the same way a direct hit is. A burn left by an enemy is that
+	// enemy's damage type, so the player's resistance to it applies to every
+	// tick and not only to the blow that started it.
+	//
+	// AND MARKED AS DAMAGE OVER TIME, which restarts an energy shield's refill
+	// wait and cannot be evaded. Issue #513. Whether the shield ABSORBS it is the
+	// ailment's granted tag: every kind but bleed, since issue #2014. Until then
+	// no tick reached the shield.
+	FCataclysmHitDelivery Delivery;
+	Delivery.bIsDamageOverTime = true;
+	Delivery.DamageType = DamageType;
+	Delivery.bIsConvertedDamage = bIsConvertedDamage;
+	// AND WHETHER ITS FIGURE WAS PRICED FROM THE APPLIER'S OWN STATS, so each tick asks the applier's `dot_damage`
+	// rows judged against the character it lands on. Ruled 2026-10-23 (#2235): only such a tick reads the attacker.
+	// `bScalesWithInstigator` is exactly whether `DamageOverTimeNumbers` above was handed the applier; it is off for
+	// a spread copy, the trap's share, a minion's burn and converted damage. NOT ONE THE APPLIER LAYS ON ITSELF: the
+	// sentence is about "the enemy" and "them".
+	Delivery.bPricedFromItsAppliersStats = bScalesWithInstigator && Instigator != Target;
+	ApplyTypedSpec(Effect, Context, Defender, Instigator, Delivery, Stated);
+
+	// AND A NECROSIS'S END IS LISTENED FOR, WHATEVER ENDS IT, because then it deals the healing it denied. Issue #920,
+	// ruled by the coordinating session 2026-10-31. See `DealTheDeniedHealingWhenANecrosisEnds`. Every Necrosis laid
+	// here, a spread copy's and one a character lays on itself included; the listener deals nothing when nothing was
+	// denied. AN APPLICATION THAT ONLY REFRESHED A RUNNING ONE RETURNED ABOVE, so a running Necrosis is listened to once.
+	const FGameplayTag LaidNecrosis = UCataclysmDebuffs::NecrosisTag();
+	if (LaidNecrosis.IsValid() && EffectTag == LaidNecrosis)
+	{
+		const FRunningApplication Laid = RunningApplicationOf(Defender, EffectTag);
+		FOnActiveGameplayEffectRemoved_Info* WhenRemoved =
+			Laid.bFound ? Defender->OnGameplayEffectRemoved_InfoDelegate(Laid.Handle) : nullptr;
+		if (WhenRemoved)
+		{
+			WhenRemoved->AddStatic(&DealTheDeniedHealingWhenANecrosisEnds);
+		}
+	}
+
+	// AND ITS END IS LISTENED FOR, because one that ends by time may explode. Ruled 2026-10-13. See
+	// `ExplodeWhenADamageOverTimeEndsByTime`, which asks the applier's row when the effect ends and does nothing
+	// for an applier with none.
+	//
+	// THE EFFECT JUST APPLIED IS THE ONE RUNNING UNDER THIS TAG: `TagAndReplaceAnyExisting` took every other one
+	// off. None is found when the target refused the application, and then nothing is listened for. CONVERTED DAMAGE
+	// it leaves running, and `RunningApplicationOf` does not show it (issue #2275), so a converted bleed stronger than
+	// this one is not the one listened to, as it was until that change.
+	//
+	// NOT AN AILMENT A CHARACTER LAYS ON ITSELF, and not converted damage, which nobody applied.
+	//
+	// AN APPLICATION THAT ONLY REFRESHED A RUNNING EFFECT RETURNED ABOVE, so a running effect is listened to once.
+	if (EffectTag.IsValid() && Instigator != Target && !bIsConvertedDamage)
+	{
+		const FRunningApplication Laid = RunningApplicationOf(Defender, EffectTag);
+		FOnActiveGameplayEffectRemoved_Info* WhenRemoved =
+			Laid.bFound ? Defender->OnGameplayEffectRemoved_InfoDelegate(Laid.Handle) : nullptr;
+		if (WhenRemoved)
+		{
+			WhenRemoved->AddStatic(&ExplodeWhenADamageOverTimeEndsByTime);
+		}
+	}
+
+	return true;
+}
+
+const TCHAR* UCataclysmSkillEffects::ShareOfCurrentHealthDataName =
+	TEXT("Cataclysm.ShareOfCurrentHealth");
+const TCHAR* UCataclysmSkillEffects::EnemiesStruckTogetherDataName =
+	TEXT("Cataclysm.EnemiesStruckTogether");
+const TCHAR* UCataclysmSkillEffects::PricedFromItsAppliersStatsDataName =
+	TEXT("Cataclysm.PricedFromItsAppliersStats");
+
+float UCataclysmSkillEffects::ShareOfHealthTick(float Share, float Health,
+												float MaxHealth, bool bIsBoss)
+{
+	if (Share <= 0.0f || Health <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const float Amount = Share * Health;
+	return FMath::Min(Amount, ShareOfHealthRoomLeft(Health, MaxHealth, bIsBoss));
+}
+
+float UCataclysmSkillEffects::ShareOfHealthRoomLeft(float Health, float MaxHealth,
+													 bool bIsBoss)
+{
+	// A BOSS IS NEVER TAKEN BELOW HALF ITS MAXIMUM HEALTH BY THIS EFFECT, so
+	// what it may still take from a boss is whatever the boss holds above that
+	// line, and nothing once it is at or below it. Issue #915. The owner asked
+	// for bosses to be protected; the form and the number are a judgement the
+	// coordinating session approved on 2026-09-11, and `docs/DECISIONS.md`
+	// carries the sources: Diablo 2's Static Field stops at 50% of a monster's
+	// health in Hell, and Grim Dawn instead gives bosses a high resistance to
+	// damage of this kind.
+	//
+	// ANYTHING ELSE MAY BE TAKEN WHOLE, which is all the health it has.
+	//
+	// ASKED TWICE FOR ONE TICK, AND BOTH ARE NEEDED. `ShareOfHealthTick` asks
+	// before the target's defences, which is what keeps a boss's armour and
+	// resistance worth having against it, and `UCataclysmVitalAttributeSet`
+	// asks again about what finally reaches health, so a stat making the boss
+	// take more damage than normal cannot carry a tick past the line.
+	if (!bIsBoss)
+	{
+		return FMath::Max(0.0f, Health);
+	}
+	return FMath::Max(0.0f, Health - BossFloorShareOfMaxHealth * MaxHealth);
+}
+
+bool UCataclysmSkillEffects::ApplyShareOfHealthOverTime(
+	AActor* Instigator, AActor* Target, float SharePerTick,
+	float DurationSeconds, const FGameplayTag& EffectTag, bool bScalesWithInstigator)
+{
+	if (SharePerTick <= 0.0f || DurationSeconds <= 0.0f || !EffectTag.IsValid())
+	{
+		return false;
+	}
+
+	UAbilitySystemComponent* Source = UCataclysmTargeting::AbilitySystemOf(Instigator);
+	UAbilitySystemComponent* Defender = UCataclysmTargeting::AbilitySystemOf(Target);
+	if (!Source || !Defender)
+	{
+		return false;
+	}
+
+	// A ROW MAY REFUSE EVERY DEBUFF, TO ITS WEARER AND FROM IT, as
+	// `ApplyDamageOverTime` asks. Ruled 2026-10-13. Before the detonation and
+	// the riders below, so nothing is done for a refused application.
+	if (UCataclysmDebuffs::RefusedByARow(Instigator, Target, EffectTag))
+	{
+		return false;
+	}
+
+	// TWO OF THE ATTACKER'S THREE DAMAGE OVER TIME STATS, AND NOT THE THIRD. The
+	// project owner's answer on #915: the damage stat does not raise the share,
+	// and frequency and duration still apply. `DamageOverTimeNumbers` would
+	// multiply the share by the damage stat, so the two kept here are read the
+	// way it reads them.
+	//
+	// AND THEY ARE ASKED FOR HERE TOO, so the sentence above stays true. Issue
+	// #947 moved the three stats in `DamageOverTimeNumbers` from a plain
+	// attribute read to an ask; leaving these two reading the attribute would
+	// have made "read the way it reads them" false, and a reader checking that
+	// claim would have found the two functions disagreeing with no reason given.
+	// ASKED WITH THE AILMENT'S OWN TAG, as `ApplyDamageOverTime` asks. Issue
+	// #1833, the small engine halves.
+	//
+	// A COPY IS APPLIED AS IT IS. With `bScalesWithInstigator` off, the share a
+	// tick and the seconds handed in are used unchanged, at the plain one second
+	// a tick: the figures of a running Void Splinter already hold its applier's
+	// two stats, and applying them again would make each copy last longer than
+	// the one it was copied from. See `ApplySpreadCopy`.
+	const FGameplayTagContainer AskedWith(EffectTag);
+	const float FrequencyScale = bScalesWithInstigator
+		? AsMultiplierForSkill(
+			  Source, UCataclysmCombatAttributeSet::GetDotFrequencyAttribute(),
+			  FName(TEXT("dot_frequency")), AskedWith)
+		: 1.0f;
+	if (FrequencyScale <= 0.0f)
+	{
+		return false;
+	}
+	const float SecondsPerTick = BaseSecondsPerTick / FrequencyScale;
+	const float Duration = bScalesWithInstigator
+		? DurationSeconds * AsMultiplierForSkill(
+			  Source, UCataclysmCombatAttributeSet::GetDotDurationAttribute(),
+			  FName(TEXT("dot_duration")), AskedWith)
+		: DurationSeconds;
+
+	// AND THE TARGET'S OWN STAT DECIDES HOW LONG IT REALLY LASTS, as for every
+	// other lasting effect. Issue #1033. A duration taken to nothing applies
+	// nothing, rather than an effect the engine would treat as lasting for ever.
+	//
+	// WITH ITS OWN TAG AND THE DAMAGE OVER TIME PARENT, as `ApplyDamageOverTime`
+	// passes. Ruled 2026-10-06.
+	FGameplayTagContainer AppliedTags = AskedWith;
+	AppliedTags.AddTag(UCataclysmDamageCalculation::DamageOverTimeTag());
+	const float OnTarget = UCataclysmDebuffs::DurationOn(Defender, Duration, AppliedTags);
+	if (OnTarget <= 0.0f)
+	{
+		return false;
+	}
+
+	// A DETONATION, WHEN A ROW OF THE INSTIGATOR'S SAYS SO. Ruled 2026-10-06 for
+	// "Void splinter stacks detonate for 50%-100% increased damage": the stack is
+	// the one running effect, and applying the ailment again to an enemy carrying
+	// the instigator's own application is what detonates it. What the running one
+	// had left is dealt at once and it ends, so the application below starts a
+	// new one at its full duration. Only the instigator's own is detonated:
+	// `DealRemainingDamageOverTime` reads the effects whose instigator it is
+	// handed, so another character's stands and the comparison below treats it
+	// as it always has. A boss is held at its line by what "left" means for a
+	// share of health. See `RemainingDamageOverTime`.
+	//
+	// A COPY MADE BY A SPREAD NEVER DETONATES ANYTHING: nobody applied it.
+	const float Detonation =
+		bApplyingASpreadCopy ? 0.0f : DetonationPercentWhenReapplied(Source, EffectTag);
+
+	// THE NUMBERS THE INSTIGATOR'S ROWS HANG ON THIS AILMENT GO TO THE CHARACTER
+	// STRUCK, as `ApplyDamageOverTime` hands them over, whether this application
+	// makes a new effect or only refreshes a stronger one. What reads one today
+	// is the spread at a death: "Void splinter stacks spread to nearby enemies
+	// when the afflicted enemy dies". The instigator's own rows: a minion's
+	// ailment is the minion's, ruled 2026-09-17, so it carries none.
+	if (Instigator != Target)
+	{
+		if (UCataclysmAbilitySystemComponent* Carrier =
+				Cast<UCataclysmAbilitySystemComponent>(Defender))
+		{
+			Carrier->ReceiveAilmentRiders(
+				EffectTag, Cast<UCataclysmAbilitySystemComponent>(Source));
+		}
+	}
+
+	// AND A DEBUFF OF THE APPLIER'S MAY CUT WHAT ITS CARRIER DEALS, as
+	// `ApplyDamageOverTime` records it. Ruled 2026-10-13.
+	UCataclysmDebuffs::NoteLaid(Instigator, Target, EffectTag, bApplyingASpreadCopy);
+
+	// A ROW MAY MAKE THIS APPLICATION REFRESH THE INSTIGATOR'S OTHER DAMAGE OVER
+	// TIME EFFECTS ON THE TARGET. See `DotApplicationRefreshesOthersStat`. Not for
+	// a copy a spread makes, which nobody applied, and asked of the instigator's
+	// own rows, so a minion's application refreshes nothing of its owner's.
+	if (Instigator != Target && !bApplyingASpreadCopy)
+	{
+		const UCataclysmAbilitySystemComponent* Own = Cast<UCataclysmAbilitySystemComponent>(Source);
+		if (Own && Own->StatForSkill(FName(DotApplicationRefreshesOthersStat),
+									 FGameplayTagContainer(EffectTag), 0.0f) > 0.0f)
+		{
+			RefreshOtherDamageOverTime(Instigator, Target, EffectTag);
+		}
+	}
+
+	if (Detonation > 0.0f
+		&& DealRemainingDamageOverTime(Instigator, Target, Detonation, EffectTag, /*bEndEach=*/true) > 0)
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("%s applied %s again to %s and what was left was dealt at %.0f per cent."),
+			*GetNameSafe(Instigator), *EffectTag.ToString(), *GetNameSafe(Target), Detonation);
+	}
+
+	// AND WITHERED TOUCH ON THE APPLIER, ruled 2026-10-26 (#2541), under the ruling that cuts "every damage-over-time
+	// tick it applies": the share is cut when it is laid, as `ApplyDamageOverTime` cuts a tick's figure, and before
+	// the comparison below, so a cursed one is weighed at what it will take. Only for an effect scaled by its applier
+	// and laid on another character, as there, so never a spread copy, which arrives with that off. A minion's is laid
+	// in its own name, and the curse is on the player.
+	SharePerTick *= bScalesWithInstigator && Instigator != Target ? KeptUnderWitheredTouch(Instigator) : 1.0f;
+
+	// THE STRONGEST APPLICATION WINS, BY SHARE A SECOND, the comparison
+	// `ApplyDamageOverTime` makes by damage a second. Issue #1503. An equal or
+	// weaker one only refreshes how long the running one lasts and never
+	// shortens it, so the running one's ticks carry on.
+	const float Stated = SharePerTick / SecondsPerTick;
+	const FRunningApplication Running = RunningApplicationOf(Defender, EffectTag);
+	if (Running.bFound && Running.Stated >= Stated)
+	{
+		RefreshRunningApplication(Defender, Running, OnTarget);
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("%s applied %s to %s at %.3f of current health a second, and "
+				 "the running one at %.3f stands."),
+			*GetNameSafe(Instigator), *EffectTag.ToString(), *GetNameSafe(Target),
+			Stated, Running.Stated);
+		return true;
+	}
+
+	UGameplayEffect* Effect = MakeRuntimeEffect(
+		FString::Printf(TEXT("CataclysmShareOfHealth_%s"), *EffectTag.ToString()));
+	Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
+	Effect->DurationMagnitude =
+		FGameplayEffectModifierMagnitude(FScalableFloat(OnTarget));
+	Effect->Period = FScalableFloat(SecondsPerTick);
+	Effect->bExecutePeriodicEffectOnApplication = false;
+
+	// A DAMAGE OF ONE, WHICH THE TARGET REPLACES ON EVERY TICK. The periodic
+	// modifier is what makes a tick reach the target's
+	// `UCataclysmVitalAttributeSet` at all, and the share carried on the effect
+	// is what that set turns into the tick's real damage, from the health it has
+	// at that moment.
+	const int32 Index = Effect->Modifiers.Num();
+	Effect->Modifiers.SetNum(Index + 1);
+	FGameplayModifierInfo& Modifier = Effect->Modifiers[Index];
+	Modifier.Attribute = UCataclysmVitalAttributeSet::GetDamageAttribute();
+	Modifier.ModifierOp = EGameplayModOp::Additive;
+	Modifier.ModifierMagnitude = FScalableFloat(1.0f);
+
+	TagAndReplaceAnyExisting(Effect, EffectTag, Target);
+
+	FGameplayEffectContextHandle Context = Source->MakeEffectContext();
+	Context.AddInstigator(Instigator, Instigator);
+	FCataclysmHitDelivery Delivery;
+	Delivery.bIsDamageOverTime = true;
+	Delivery.ShareOfCurrentHealth = SharePerTick;
+	ApplyTypedSpec(Effect, Context, Defender, Instigator, Delivery, Stated);
+
+	return true;
+}
+
+int32 UCataclysmSkillEffects::RefreshOtherDamageOverTime(const AActor* Owner, AActor* Target,
+														 const FGameplayTag& Except)
+{
+	UAbilitySystemComponent* Defender = UCataclysmTargeting::AbilitySystemOf(Target);
+	const UWorld* World = Defender ? Defender->GetWorld() : nullptr;
+	if (!Owner || !Defender || !World)
+	{
+		return 0;
+	}
+	const float Now = World->GetTimeSeconds();
+
+	// WHAT EACH NEEDS IS TAKEN FIRST, because moving an effect's start changes
+	// the list being read.
+	TArray<TPair<FActiveGameplayEffectHandle, float>> Moves;
+	bool bRefreshesABleed = false;
+	for (const FActiveGameplayEffectHandle& Handle : Defender->GetActiveEffects(FGameplayEffectQuery()))
+	{
+		const FActiveGameplayEffect* Active = Defender->GetActiveGameplayEffect(Handle);
+		if (!Active || Active->Spec.GetContext().GetInstigator() != Owner)
+		{
+			continue;
+		}
+		FGameplayTagContainer Granted;
+		Active->Spec.GetAllGrantedTags(Granted);
+		if (Except.IsValid() && Granted.HasTag(Except))
+		{
+			continue;
+		}
+		// NOT THE HEALING A NECROSIS DENIED. Issue #920, ruled by the coordinating session 2026-10-31: its total is the
+		// total denied, and its whole window again would deal more than that.
+		if (Active->Spec.GetSetByCallerMagnitude(FName(DeniedHealingDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f)
+		{
+			continue;
+		}
+		// ONLY AN EFFECT THAT STILL HAS DAMAGE TO DEAL. `RemainingDamageOverTime`
+		// is nought for anything that deals no damage a tick.
+		//
+		// BY ITS TIMER ALONE, NOT HELD TO A BLEED'S FOUR SECONDS OF MOVEMENT. Issue #918: a bleed that has spent its
+		// four seconds still has its window, and this refresh restarts the four seconds (ruled 2026-10-31), so it
+		// must still be found.
+		if (RemainingDamageOverTime(Defender, Handle, /*bHeldToABleedsMovement=*/false) <= 0.0f)
+		{
+			continue;
+		}
+		// ITS OWN FULL DURATION: the one it was applied with, which the engine
+		// keeps, less what it has left.
+		const float Longer = Active->GetDuration() - Active->GetTimeRemaining(Now);
+		if (Longer > 0.0f)
+		{
+			Moves.Emplace(Handle, Longer);
+			bRefreshesABleed = bRefreshesABleed || Granted.HasTag(UCataclysmDebuffs::BleedTag());
+		}
+	}
+	for (const TPair<FActiveGameplayEffectHandle, float>& Move : Moves)
+	{
+		Defender->ModifyActiveEffectStartTime(Move.Key, Move.Value);
+	}
+	// A BLEED GIVEN ITS WHOLE WINDOW AGAIN STARTS ITS FOUR SECONDS OF MOVEMENT AGAIN, as a bleed refreshed in
+	// `ApplyDamageOverTime` does. Issue #918; the same ruling by the coordinating session, 2026-10-31.
+	if (bRefreshesABleed)
+	{
+		if (UCataclysmAbilitySystemComponent* Carrier = Cast<UCataclysmAbilitySystemComponent>(Defender))
+		{
+			Carrier->BleedMovingSeconds = 0.0f;
+		}
+	}
+	return Moves.Num();
+}
+
+int32 UCataclysmSkillEffects::SpreadOnApplication(AActor* Applier, AActor* Target,
+												  const FRunningAilment& Applied, int32 Count)
+{
+	if (!Applier || !Target || Count <= 0)
+	{
+		return 0;
+	}
+	const FVector Centre = Target->GetActorLocation();
+	TArray<AActor*> Nearby = UCataclysmTargeting::FindEnemiesInSphere(
+		Target->GetWorld(), Applier, Centre, UCataclysmContagion::SpreadFromTheDyingMetres * 100.0f);
+	Nearby.Remove(Target);
+	const FGameplayTag Ailment = Applied.Ailment;
+	Nearby.RemoveAll([&Ailment](const AActor* Candidate)
+	{
+		const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Candidate);
+		return !Its || Its->HasMatchingGameplayTag(Ailment);
+	});
+	Nearby.Sort([&Centre](const AActor& A, const AActor& B)
+	{
+		return FVector::DistSquared(A.GetActorLocation(), Centre)
+			< FVector::DistSquared(B.GetActorLocation(), Centre);
+	});
+	int32 Copies = 0;
+	for (int32 Index = 0; Index < Nearby.Num() && Index < Count; ++Index)
+	{
+		if (ApplySpreadCopy(Applier, Nearby[Index], Applied))
+		{
+			++Copies;
+		}
+	}
+	return Copies;
+}
+
+float UCataclysmSkillEffects::DetonationPercentWhenReapplied(
+	const UAbilitySystemComponent* Applier, const FGameplayTag& Ailment)
+{
+	const UCataclysmAbilitySystemComponent* Own = Cast<UCataclysmAbilitySystemComponent>(Applier);
+	const float Increase = Own
+		? Own->AilmentRiderPercentFor(Ailment, ECataclysmAilmentRider::DetonatesWhenReapplied)
+		: 0.0f;
+	// A ROW MAKES IT DETONATE FOR THE WHOLE OF WHAT WAS LEFT, RAISED BY ITS
+	// FIGURE. With no row it deals what the ailment deals by itself, which is
+	// nothing today.
+	const float Base = Increase > 0.0f ? 100.0f : DetonationPercentByItself;
+	return FMath::Max(0.0f, Base * (1.0f + Increase / 100.0f));
+}
+
+int32 UCataclysmSkillEffects::DamageOverTimeTicksLeft(float FirstTickInSeconds,
+													 float SecondsPerTick, float SecondsLeft)
+{
+	if (SecondsPerTick <= 0.0f || SecondsLeft < 0.0f || FirstTickInSeconds < 0.0f
+		|| FirstTickInSeconds > SecondsLeft + KINDA_SMALL_NUMBER)
+	{
+		return 0;
+	}
+	return 1 + FMath::FloorToInt32(
+		(SecondsLeft - FirstTickInSeconds + KINDA_SMALL_NUMBER) / SecondsPerTick);
+}
+
+float UCataclysmSkillEffects::ShareOfHealthOverTicks(float Share, float Health,
+													 float MaxHealth, bool bIsBoss,
+													 int32 Ticks)
+{
+	if (Share <= 0.0f || Health <= 0.0f || Ticks <= 0)
+	{
+		return 0.0f;
+	}
+	const float Taken = Health * (1.0f - FMath::Pow(1.0f - FMath::Min(Share, 1.0f),
+													 static_cast<float>(Ticks)));
+	return FMath::Min(Taken, ShareOfHealthRoomLeft(Health, MaxHealth, bIsBoss));
+}
+
+float UCataclysmSkillEffects::RemainingDamageOverTime(const UAbilitySystemComponent* Defender,
+													  const FActiveGameplayEffectHandle& Handle,
+													  bool bHeldToABleedsMovement)
+{
+	const UWorld* World = Defender ? Defender->GetWorld() : nullptr;
+	const FActiveGameplayEffect* Active =
+		Defender ? Defender->GetActiveGameplayEffect(Handle) : nullptr;
+	if (!World || !Active || Active->bIsInhibited || !Active->Spec.Def)
+	{
+		return 0.0f;
+	}
+
+	// ONLY AN EFFECT THAT TICKS ON HEALTH: a period, and a modifier on Damage.
+	float PerTick = 0.0f;
+	bool bDamages = false;
+	const TArray<FGameplayModifierInfo>& Modifiers = Active->Spec.Def->Modifiers;
+	for (int32 Index = 0; Index < Modifiers.Num(); ++Index)
+	{
+		if (Modifiers[Index].Attribute == UCataclysmVitalAttributeSet::GetDamageAttribute())
+		{
+			bDamages = true;
+			PerTick += Active->Spec.GetModifierMagnitude(Index);
+		}
+	}
+	const float SecondsPerTick = Active->GetPeriod();
+	if (!bDamages || SecondsPerTick <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// BOTH FROM THE TIMER MANAGER'S CLOCK, which is the one the engine ticks and
+	// expires the effect on. The world clock is a different number at the same
+	// moment: measured in the test world, 0.05 s ahead, which counted one tick too
+	// few. The world clock is used only for an effect with no duration timer.
+	const FTimerManager& Timers = World->GetTimerManager();
+	const float FirstTickIn = Timers.TimerExists(Active->PeriodHandle)
+		? Timers.GetTimerRemaining(Active->PeriodHandle)
+		: -1.0f;
+	const float SecondsLeft = Timers.TimerExists(Active->DurationHandle)
+		? Timers.GetTimerRemaining(Active->DurationHandle)
+		: Active->GetTimeRemaining(World->GetTimeSeconds());
+	int32 Ticks = DamageOverTimeTicksLeft(FirstTickIn, SecondsPerTick, SecondsLeft);
+
+	// AND A BLEED NEVER MORE THAN ITS FOUR SECONDS OF MOVEMENT ALLOW. Issue #918, ruled by the coordinating session on
+	// 2026-10-31: a bleed stops after four seconds of movement, so what it has left can never be more than the ticks
+	// that budget still lets land. Counted the way the gate in `UCataclysmVitalAttributeSet` lets them through: a tick
+	// lands while the count is short of the cap, and adds its period. NOT whether the carrier is moving now, which says
+	// nothing about how it will move. NOT CONVERTED DAMAGE, which the gate exempts and which deals its whole total.
+	if (Ticks > 0 && bHeldToABleedsMovement)
+	{
+		FGameplayTagContainer Granted;
+		Active->Spec.GetAllGrantedTags(Granted);
+		const UCataclysmAbilitySystemComponent* Carrier = Cast<const UCataclysmAbilitySystemComponent>(Defender);
+		const bool bConvertedDamage = Active->Spec.GetSetByCallerMagnitude(
+			FName(ConvertedDamageDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f;
+		if (Carrier && !bConvertedDamage && Granted.HasTag(UCataclysmDebuffs::BleedTag()))
+		{
+			const int32 TheBudgetAllows = FMath::Max(0, FMath::CeilToInt32(
+				(UCataclysmDebuffs::BleedMovingSecondsCap - KINDA_SMALL_NUMBER - Carrier->BleedMovingSeconds)
+				/ SecondsPerTick));
+			Ticks = FMath::Min(Ticks, TheBudgetAllows);
+		}
+	}
+	if (Ticks <= 0)
+	{
+		return 0.0f;
+	}
+
+	// A SHARE OF CURRENT HEALTH, whose ticks each take the share of the health
+	// held when they land. Ruled 2026-10-01: what its ticks would take if
+	// nothing else struck.
+	const float Share = Active->Spec.GetSetByCallerMagnitude(
+		FName(ShareOfCurrentHealthDataName), /*WarnIfNotFound=*/false,
+		/*DefaultIfNotFound=*/-1.0f);
+	if (Share >= 0.0f)
+	{
+		const ACataclysmEnemyCharacter* AsEnemy =
+			Cast<ACataclysmEnemyCharacter>(Defender->GetAvatarActor());
+		return ShareOfHealthOverTicks(Share,
+			Defender->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()),
+			Defender->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()),
+			AsEnemy && AsEnemy->IsBoss(), Ticks);
+	}
+	return FMath::Max(0.0f, PerTick) * static_cast<float>(Ticks);
+}
+
+bool UCataclysmSkillEffects::RunningAilmentOn(AActor* Carrier, const FGameplayTag& Ailment,
+											  FRunningAilment& Out)
+{
+	const UAbilitySystemComponent* Defender = UCataclysmTargeting::AbilitySystemOf(Carrier);
+	const FRunningApplication Running = RunningApplicationOf(Defender, Ailment);
+	if (!Running.bFound || Running.Stated <= 0.0f || Running.SecondsLeft <= 0.0f)
+	{
+		return false;
+	}
+	const FActiveGameplayEffect* Active = Defender->GetActiveGameplayEffect(Running.Handle);
+	if (!Active)
+	{
+		return false;
+	}
+	Out.Ailment = Ailment;
+	Out.DamagePerSecond = Running.Stated;
+	Out.SecondsLeft = Running.SecondsLeft;
+	// A SHARE OF HEALTH CARRIES ITS SHARE ON THE EFFECT, and nothing else does.
+	Out.bShareOfHealth = Active->Spec.GetSetByCallerMagnitude(
+		FName(ShareOfCurrentHealthDataName), /*WarnIfNotFound=*/false,
+		/*DefaultIfNotFound=*/-1.0f) >= 0.0f;
+	Out.Applier = Active->Spec.GetContext().GetInstigator();
+	return true;
+}
+
+bool UCataclysmSkillEffects::ApplySpreadCopy(AActor* Applier, AActor* Target,
+											 const FRunningAilment& Running)
+{
+	if (!Applier || !Target || Running.DamagePerSecond <= 0.0f || Running.SecondsLeft <= 0.0f)
+	{
+		return false;
+	}
+
+	// THE FIGURE A SECOND AS THE FIGURE A TICK, AT THE PLAIN ONE SECOND A TICK.
+	// With `bScalesWithInstigator` off the two numbers handed in are used as
+	// they are, so the copy deals what the original dealt a second for the
+	// seconds it had left.
+	TGuardValue<bool> Copying(bApplyingASpreadCopy, true);
+	if (Running.bShareOfHealth)
+	{
+		// THE SAME SHARE A SECOND FOR THE SECONDS LEFT. Each tick takes its share
+		// of the health the character it is now on holds, so a copy on a
+		// creature with more health deals more than the original would have.
+		return ApplyShareOfHealthOverTime(Applier, Target, Running.DamagePerSecond,
+										  Running.SecondsLeft, Running.Ailment,
+										  /*bScalesWithInstigator=*/false);
+	}
+	return ApplyDamageOverTime(Applier, Target, Running.DamagePerSecond, Running.SecondsLeft,
+							   Running.Ailment, /*bScalesWithInstigator=*/false);
+}
+
+int32 UCataclysmSkillEffects::DealRemainingDamageOverTime(const AActor* Owner, AActor* Target,
+														  float Percent,
+														  const FGameplayTag& OnlyGranting,
+														  bool bEndEach)
+{
+	UAbilitySystemComponent* Defender = UCataclysmTargeting::AbilitySystemOf(Target);
+	if (!Owner || !Defender || Percent <= 0.0f)
+	{
+		return 0;
+	}
+
+	// WHAT EACH BURST NEEDS IS TAKEN FIRST, because ending an effect, or the
+	// burst itself killing the target, changes the list being read.
+	struct FBurst
+	{
+		FActiveGameplayEffectHandle Handle;
+		FGameplayEffectContextHandle Context;
+		FGameplayTagContainer AssetTags;
+		FGameplayTagContainer GrantedTags;
+		float Amount = 0.0f;
+	};
+	TArray<FBurst> Bursts;
+	TArray<FActiveGameplayEffectHandle> SpentBleeds;
+	for (const FActiveGameplayEffectHandle& Handle : Defender->GetActiveEffects(FGameplayEffectQuery()))
+	{
+		const FActiveGameplayEffect* Active = Defender->GetActiveGameplayEffect(Handle);
+		if (!Active || Active->Spec.GetContext().GetInstigator() != Owner)
+		{
+			continue;
+		}
+		FBurst Burst;
+		Active->Spec.GetAllGrantedTags(Burst.GrantedTags);
+		if (OnlyGranting.IsValid() && !Burst.GrantedTags.HasTag(OnlyGranting))
+		{
+			continue;
+		}
+		Burst.Amount = RemainingDamageOverTime(Defender, Handle) * Percent / 100.0f;
+		if (Burst.Amount <= 0.0f)
+		{
+			// A SPENT BLEED PAYS NOTHING AND IS STILL ENDED. Issue #918, ruled by the coordinating session on
+			// 2026-10-31. A bleed whose four seconds of movement are spent has nothing left to deal, but its window
+			// still runs and its tag with it, so the slow rider and the bleed-scoped rows still read it. The row says
+			// it ends each damage over time, so only the payment is skipped. Found by asking again by the timer alone:
+			// an effect with ticks left there and none held to its movement is exactly such a bleed. NOT COUNTED in
+			// what this returns, which is the bursts paid.
+			if (bEndEach && RemainingDamageOverTime(Defender, Handle, /*bHeldToABleedsMovement=*/false) > 0.0f)
+			{
+				SpentBleeds.Add(Handle);
+			}
+			continue;
+		}
+		Burst.Handle = Handle;
+		Burst.Context = Active->Spec.GetContext();
+		Active->Spec.GetAllAssetTags(Burst.AssetTags);
+		Bursts.Add(MoveTemp(Burst));
+	}
+
+	for (const FActiveGameplayEffectHandle& Spent : SpentBleeds)
+	{
+		Defender->RemoveActiveGameplayEffect(Spent);
+	}
+
+	for (const FBurst& Burst : Bursts)
+	{
+		if (bEndEach)
+		{
+			Defender->RemoveActiveGameplayEffect(Burst.Handle);
+		}
+
+		UGameplayEffect* Effect = MakeRuntimeEffect(TEXT("CataclysmRemainingDamageOverTime"));
+		Effect->DurationPolicy = EGameplayEffectDurationType::Instant;
+		const int32 Index = Effect->Modifiers.Num();
+		Effect->Modifiers.SetNum(Index + 1);
+		FGameplayModifierInfo& Modifier = Effect->Modifiers[Index];
+		Modifier.Attribute = UCataclysmVitalAttributeSet::GetDamageAttribute();
+		Modifier.ModifierOp = EGameplayModOp::Additive;
+		Modifier.ModifierMagnitude = FScalableFloat(Burst.Amount);
+
+		// THE TICK'S OWN TAGS: its element and the damage over time flag as asset
+		// tags, and what it granted, which is how the damage branch knows a bleed.
+		FGameplayEffectSpec Spec(Effect, Burst.Context, /*Level=*/1.0f);
+		Spec.AppendDynamicAssetTags(Burst.AssetTags);
+		Spec.DynamicGrantedTags.AppendTags(Burst.GrantedTags);
+		Defender->ApplyGameplayEffectSpecToSelf(Spec);
+	}
+	return Bursts.Num();
+}
+
+FGameplayTag UCataclysmSkillEffects::BurnTag()
+{
+	// Requested by name rather than declared as a native tag, for the same
+	// reason CataclysmAbilitySlots requests the slot tags by name: a native
+	// declaration would create the tag whether or not the workbook still lists
+	// it, hiding exactly the disagreement that matters.
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Keyword.DoT.Burn")), /*ErrorIfNotFound=*/false);
+}
+
+bool UCataclysmSkillEffects::ApplyBurn(AActor* Instigator, AActor* Target,
+									   float HitDamage,
+									   bool bScalesWithInstigator,
+									   bool bBurnIsDesigned, AActor* DealtBy,
+									   const UGameplayAbility* Skill,
+									   const FGameplayTagContainer* SkillTagsWithNoSkill)
+{
+	const FCataclysmStatusEffectNumbers Burn = BurnNumbers();
+	if (!Burn.bUsable)
+	{
+		return false;
+	}
+
+	// A DESIGNED BURN SKIPS THE THRESHOLD AND ONLY THE THRESHOLD, which is the
+	// shape `ApplyStun` below already has and the wording section VI of the
+	// design document uses: a hit must take a tenth of maximum health "unless
+	// the skill states stunning as its effect". Issue #917 settled on 2026-09-02
+	// that an ailment reads the same way.
+	//
+	// UNTIL THEN THIS REFUSED ANY HIT THAT DEALT NOTHING. That was arithmetic
+	// while burn was a percent of the hit -- a zero hit made a zero burn, which
+	// `ApplyDamageOverTime` refused anyway -- and it became a decision when burn
+	// went flat on 2026-08-24. Three rows had never worked because of it: the
+	// Greataxe's Burning Wrath, the Spear's Held Fast and the Wand's Hex of
+	// Cinders all state a burn on a Support slot whose damage is zero by design.
+	//
+	// IT DOES NOT TAKE THE STUN'S OTHER TWO RULES. The five second immunity
+	// window and boss immunity belong to hard stops, which completely stop a
+	// target operating. A burn is damage over time, and a boss burns.
+	if (!bBurnIsDesigned)
+	{
+		const UAbilitySystemComponent* Defender =
+			UCataclysmTargeting::AbilitySystemOf(Target);
+		if (!Defender)
+		{
+			return false;
+		}
+
+		// A TARGET ALREADY DEAD IS NOT SET ALIGHT, matching the stun. Without
+		// this a killing blow would ignite a corpse.
+		const float Health = Defender->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetHealthAttribute());
+		const float MaxHealth = Defender->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		if (Health <= 0.0f || MaxHealth <= 0.0f
+			|| HitDamage < MaxHealth * StunDamageThresholdPercent / 100.0f)
+		{
+			return false;
+		}
+	}
+
+	// WHAT THE TABLE STATES IS WHAT ONE TICK DEALS, AND IT WAS READ AS A TOTAL
+	// UNTIL ISSUE #895. Under that reading raising the tick rate divided one
+	// total into more, smaller ticks, so Damage over Time Frequency could not be
+	// worth anything -- and the design's reason for having three separate stats
+	// is that all three multiply.
+	//
+	// THE AMOUNT IS FLAT RATHER THAN A SHARE OF THE HIT since 2026-08-24, which
+	// the project owner chose because a share of the hit multiplies twice: the
+	// hit grows about fifteenfold across the eight difficulty tiers and the
+	// three stats multiply on top. Burn is now 25 a second for four seconds,
+	// which is 100 before those stats. DamagePerTickAgainst still reads the
+	// percent-of-hit column, so a row stating one would work unchanged.
+	return ApplyDamageOverTime(Instigator, Target,
+							   Burn.DamagePerTickAgainst(HitDamage),
+							   Burn.DurationSeconds, BurnTag(),
+							   bScalesWithInstigator, DealtBy, Skill, /*DamageType=*/NAME_None,
+							   /*bIsConvertedDamage=*/false, SkillTagsWithNoSkill);
+}
+
+FGameplayTag UCataclysmSkillEffects::StunnedTag()
+{
+	// Requested by name rather than declared natively, for the reason BurnTag
+	// gives: a native declaration would create the tag whether or not the
+	// workbook still lists it, hiding exactly the disagreement that matters.
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("State.Stunned")), /*ErrorIfNotFound=*/false);
+}
+
+FGameplayTag UCataclysmSkillEffects::StunImmuneTag()
+{
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("State.StunImmune")), /*ErrorIfNotFound=*/false);
+}
+
+FGameplayTag UCataclysmSkillEffects::KnockedDownTag()
+{
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("State.KnockedDown")), /*ErrorIfNotFound=*/false);
+}
+
+FGameplayTag UCataclysmSkillEffects::PinnedTag()
+{
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("State.Pinned")), /*ErrorIfNotFound=*/false);
+}
+
+FGameplayTag UCataclysmSkillEffects::StaggeredTag()
+{
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("State.Staggered")), /*ErrorIfNotFound=*/false);
+}
+
+bool UCataclysmSkillEffects::IsStunned(const AActor* Actor)
+{
+	return HasTag(Actor, StunnedTag());
+}
+
+bool UCataclysmSkillEffects::IsKnockedDown(const AActor* Actor)
+{
+	return HasTag(Actor, KnockedDownTag());
+}
+
+bool UCataclysmSkillEffects::IsPinned(const AActor* Actor)
+{
+	return HasTag(Actor, PinnedTag());
+}
+
+const TCHAR* UCataclysmSkillEffects::CannotWalkStat = TEXT("cannot_walk");
+
+bool UCataclysmSkillEffects::CannotWalkByARow(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* Walker =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Actor));
+	if (!Walker)
+	{
+		return false;
+	}
+
+	// THE FALLBACK IS NOUGHT: there is no gameplay attribute, and a character
+	// with no such row answers nought and walks. NO TAGS: walking is not a
+	// skill. The row's condition is judged inside the lookup, from the
+	// character's state now, which is what makes "while channeling" true only
+	// while it is.
+	return Walker->StatForSkill(FName(CannotWalkStat), FGameplayTagContainer(), 0.0f) > 0.0f;
+}
+
+const TCHAR* UCataclysmSkillEffects::SufferingAuraManaDrainImmunityStat =
+	TEXT("suffering_aura_mana_drain_immunity");
+
+bool UCataclysmSkillEffects::ImmuneToSufferingAuraManaDrainByARow(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* Holder =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Actor));
+	if (!Holder)
+	{
+		return false;
+	}
+
+	// THE FALLBACK IS NOUGHT: there is no gameplay attribute, and a character
+	// with no such row answers nought and is drained. NO TAGS: the drain is a
+	// dungeon rule's and not a skill's. A condition on the row, if one is ever
+	// written, is judged inside the lookup from the character's state now.
+	return Holder->StatForSkill(FName(SufferingAuraManaDrainImmunityStat), FGameplayTagContainer(), 0.0f) > 0.0f;
+}
+
+bool UCataclysmSkillEffects::IsStaggered(const AActor* Actor)
+{
+	return HasTag(Actor, StaggeredTag());
+}
+
+bool UCataclysmSkillEffects::IsCrowdControlled(const AActor* Actor)
+{
+	return IsStunned(Actor) || IsKnockedDown(Actor) || IsPinned(Actor)
+		|| HasTag(Actor, UCataclysmDebuffs::CrippleTag())
+		|| UCataclysmTeams::IsMaddened(Actor)
+		|| UCataclysmFear::IsFeared(Actor)
+		|| UCataclysmSilence::IsSilenced(Actor)
+		// AND A TAUNT, WHILE IT LASTS, ruled 2026-10-18 (B) for Warlord's Will's six-piece: "a taunted creature
+		// answers yes to IsCrowdControlled while the taunt lasts".
+		|| UCataclysmTaunt::IsTaunted(Actor);
+}
+
+FGameplayTag UCataclysmSkillEffects::UntargetableTag()
+{
+	// Requested by name rather than declared natively, for the reason `BurnTag`
+	// gives: a native declaration would create the tag whether or not the
+	// workbook still lists it, hiding exactly the disagreement that matters.
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("State.Untargetable")), /*ErrorIfNotFound=*/false);
+}
+
+bool UCataclysmSkillEffects::ApplyUntargetable(AActor* Instigator,
+											   AActor* Target,
+											   float DurationSeconds)
+{
+	if (DurationSeconds <= 0.0f)
+	{
+		// A row stating `Untargetable=1` and no duration protects nobody, rather
+		// than protecting them for ever.
+		return false;
+	}
+
+	return ApplyTagForDuration(Instigator, Target, UntargetableTag(),
+							   DurationSeconds);
+}
+
+bool UCataclysmSkillEffects::IsUntargetable(const AActor* Actor)
+{
+	return HasTag(Actor, UntargetableTag());
+}
+
+bool UCataclysmSkillEffects::CannotAct(const AActor* Actor)
+{
+	// THE DESIGN'S OWN ROW AND NOT EITHER HALF OF IT. Section VI puts Stun and
+	// Knockdown together as the two effects that "completely stop the target
+	// operating any part of its character", so everything that has to refuse to
+	// drive a character asks this rather than `IsStunned`.
+	//
+	// A PIN IS NOT HERE. It stops movement and leaves everything else, which is
+	// the whole difference between the two groups.
+	return IsStunned(Actor) || IsKnockedDown(Actor);
+}
+
+bool UCataclysmSkillEffects::IsBehind(const AActor* Attacker,
+									  const AActor* Target)
+{
+	if (!IsValid(Attacker) || !IsValid(Target))
+	{
+		return false;
+	}
+
+	// FROM THE ATTACKER'S OWN PLACE, through the one body below. Ruled
+	// 2026-10-14; see `IsBehindFrom`.
+	return IsBehindFrom(Attacker->GetActorLocation(), Target);
+}
+
+bool UCataclysmSkillEffects::IsBehindFrom(const FVector& AttackerAt,
+										  const AActor* Target)
+{
+	if (!IsValid(Target))
+	{
+		return false;
+	}
+
+	// THE TARGET'S FACING, FLATTENED. Both reasons are in the header: what makes
+	// a blow a blow in the back is that the creature taking it was looking the
+	// other way, and a ledge above a creature is behind it or not for the same
+	// reason level ground is.
+	FVector Facing = Target->GetActorForwardVector();
+	Facing.Z = 0.0f;
+
+	FVector ToAttacker = AttackerAt - Target->GetActorLocation();
+	ToAttacker.Z = 0.0f;
+
+	// `Normalize` ANSWERS FALSE FOR A VECTOR TOO SHORT TO HAVE A DIRECTION, and
+	// both cases are real. Two characters standing in the same place have no
+	// direction between them, and an actor with no rotation at all -- which a
+	// bare test fighter can be -- has no facing to be behind.
+	if (!Facing.Normalize() || !ToAttacker.Normalize())
+	{
+		return false;
+	}
+
+	// THE ANGLE BETWEEN THE TARGET'S FACING AND THE DIRECTION TO THE ATTACKER.
+	// Zero means the attacker is directly in front and 180 means directly
+	// behind, so the distance from straight-behind is what is left of half a
+	// turn -- and the arc is symmetric about the back, which is why one
+	// subtraction answers both sides of it.
+	const float FromFacing = FMath::RadiansToDegrees(FMath::Acos(
+		FMath::Clamp(static_cast<float>(FVector::DotProduct(Facing, ToAttacker)),
+					 -1.0f, 1.0f)));
+
+	return 180.0f - FromFacing <= RearArcDegrees / 2.0f;
+}
+
+namespace
+{
+	/**
+	 * Move a target by an offset, under the design's diminishing-returns rule.
+	 *
+	 * ONE BODY FOR EVERY DISPLACEMENT IN THE GAME. A knockback, a pull, a drag
+	 * and a launch differ only in which way they point, and section VI of
+	 * `docs/Cataclysm_GDD_v2.md` limits all four the same way: each displacement
+	 * applied to a target already displaced inside the last 5 seconds moves it
+	 * half as far as the one before. Writing that rule once is the point of this
+	 * function; four copies of it would drift.
+	 *
+	 * HALVED FOR EACH DISPLACEMENT THE TARGET HAS ALREADY TAKEN INSIDE THE
+	 * WINDOW: the full distance, then half, then a quarter, resetting once 5
+	 * seconds pass with no displacement at all. Three shoves inside the window
+	 * move a target seven metres in total rather than twelve, which is what stops
+	 * it being held at the far end of a room. Issues #302 and #628.
+	 *
+	 * ASKED OF THE TARGET, because the count belongs to the target rather than to
+	 * whatever is shoving: the previous shove was usually a different attack and
+	 * often a different actor. It is kept on the ability system component because
+	 * that is what everything hittable has.
+	 *
+	 * A DISPLACEMENT RATHER THAN AN IMPULSE, because most of what this hits has
+	 * no physics body and a knockback that silently did nothing would look
+	 * exactly like a knockback. Swept, so a shove into a wall stops at the wall
+	 * and a launch under a ceiling stops at the ceiling.
+	 *
+	 * @param Offset  the full move, before the halving rule
+	 * @return whether the target was moved
+	 */
+	bool CataclysmDisplace(AActor* Instigator, AActor* Target,
+						   const FVector& Offset)
+	{
+		if (!IsValid(Target) || Offset.IsNearlyZero())
+		{
+			return false;
+		}
+
+		// A HEALTH CEILING THE SHOVING CHARACTER CAN CARRY. Ruled 2026-10-07:
+		// "You cannot apply CC effects to enemies above 50% HP". See
+		// `UCataclysmSkillEffects::CrowdControlRefusedByHealthCeiling`.
+		//
+		// HERE RATHER THAN IN THE FOUR VERBS, for the reason the immunity
+		// check below gives, and beside it because the ruling is that this
+		// row covers exactly what that immunity covers.
+		//
+		// FIRST, so a refused shove spends none of the target's window, breaks
+		// no held swing, and returns false to a verb that then staggers
+		// nothing and notes no crowd control on the instigator.
+		if (UCataclysmSkillEffects::CrowdControlRefusedByHealthCeiling(
+				Instigator, Target))
+		{
+			return false;
+		}
+
+		// A SKILL THE TARGET IS RUNNING MAY REFUSE TO BE MOVED AT ALL. Section VI
+		// of the design document sanctions it: "outright immunity to displacement
+		// still exists, as a skill effect rather than as a rule", and names five
+		// skills that say so. The Greatsword's Unbroken -- "cannot be staggered"
+		// -- is a sixth, and this project's own tag vocabulary is what settles
+		// that stagger means displacement here: `Keyword.Stagger` is described as
+		// "stagger and knockback effects".
+		//
+		// HERE RATHER THAN IN THE FOUR VERBS ABOVE IT, because a knockback, a
+		// pull, a drag and a launch are one body with four directions and this is
+		// that body. A row immune to being shoved is immune to being hauled.
+		//
+		// BEFORE THE DIMINISHING-RETURNS SHARE IS TAKEN, so a refused
+		// displacement does not spend the target's window. Being immune should
+		// not make the next shove -- after the immunity ends -- land for half.
+		if (UCataclysmSkillTemplate::IsImmuneTo(Target, TEXT("Displacement")))
+		{
+			return false;
+		}
+
+		// AND THE TARGET'S CROWD CONTROL RESISTANCE SHORTENS THE MOVE, at 100
+		// stopping it entirely. Since 2026-09-05; before it the stat did
+		// nothing about being shoved at all.
+		//
+		// HERE RATHER THAN IN THE FOUR VERBS ABOVE, for the reason the
+		// immunity check gives: a knockback, a pull, a drag and a launch are
+		// one body with four directions and this is that body.
+		//
+		// BEFORE THE DIMINISHING-RETURNS SHARE, so a fully resisted shove does
+		// not spend the target's window, which is what the immunity check
+		// above is placed early for.
+		const float Reach = UCataclysmSkillEffects::ShoveAfterCrowdControlResistance(
+			Target, Offset.Size());
+		if (Reach <= 0.0f)
+		{
+			return false;
+		}
+		const FVector Resisted = Offset.GetSafeNormal() * Reach;
+
+		float Share = 1.0f;
+		if (UCataclysmAbilitySystemComponent* TargetAbilities =
+				Cast<UCataclysmAbilitySystemComponent>(
+					UCataclysmTargeting::AbilitySystemOf(Target)))
+		{
+			Share = TargetAbilities->TakeNextDisplacementShare();
+		}
+
+		// SWEPT AND NOT REFUSED FOR STARTING ON THE FLOOR. Issue #2203.
+		UCataclysmMovement::MoveWithoutSticking(Target, Resisted * Share);
+
+		// DISPLACEMENT DONE TO A CREATURE IS NOT ITS OWN MOVEMENT, so Nowhere to
+		// Run measures from where it landed rather than undoing it. Issue #1515,
+		// ruled 2026-09-25.
+		if (ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Target))
+		{
+			Creature->NoteDisplaced();
+		}
+
+		// AND A SWING DRAWN BACK IS LOST, IF ITS ROW SAYS A STAGGER LOSES IT.
+		// The Greatsword's Backswing: "being staggered loses the swing
+		// entirely", written as `ChargeBreaksOn=Stagger`. Issue #1141.
+		//
+		// HERE BECAUSE THIS IS THE ONE BODY EVERY DISPLACEMENT IN THE GAME PASSES
+		// THROUGH, which is the same argument the immunity check above it makes.
+		// A knockback, a pull, a drag and a launch are one function with four
+		// directions, and a swing lost to being shoved should not depend on which
+		// of the four did the shoving.
+		//
+		// AFTER THE MOVE RATHER THAN BEFORE IT, so a displacement that the
+		// immunity refused or that moved the target nowhere breaks nothing. The
+		// row says being staggered loses the swing, and a shove that did not
+		// land is not a stagger.
+		//
+		// `Movement` IS TREATED AS THE SAME EVENT, and `HoldBreaksOn`'s header
+		// says why: a character holding a swing cannot walk, so being shoved is
+		// the only way it moves. No row names `Movement` today.
+		//
+		// INERT FOR EVERYTHING BUT TWO ROWS. `HeldSwingOn` answers null for any
+		// character with no swing drawn back, which is every character in the
+		// game except one holding a Greatsword's Heavy or Ultimate.
+		if (UCataclysmStrikeSkill* Held =
+				UCataclysmStrikeSkill::HeldSwingOn(Target))
+		{
+			if (Held->HoldBreaksOn(TEXT("Stagger"))
+				|| Held->HoldBreaksOn(TEXT("Movement")))
+			{
+				Held->BreakTheHold(TEXT("a stagger"));
+			}
+		}
+
+		return true;
+	}
+}
+
+namespace
+{
+	/** One of the staggering character's own stats, by name. Zero when unknown. */
+	float StaggerStatOf(const AActor* Instigator, const TCHAR* Stat,
+						const FGameplayAttribute& Attribute, float WhenUnknown)
+	{
+		const UAbilitySystemComponent* Source =
+			UCataclysmTargeting::AbilitySystemOf(Instigator);
+		if (!Source || !Source->HasAttributeSetForAttribute(Attribute))
+		{
+			return WhenUnknown;
+		}
+
+		const float Held = Source->GetNumericAttribute(Attribute);
+		const UCataclysmAbilitySystemComponent* Asking =
+			Cast<const UCataclysmAbilitySystemComponent>(Source);
+
+		// ASKED FOR RATHER THAN READ, so a future row carrying a condition works,
+		// and NO SKILL TAGS -- a displacement is not a skill and carries none of
+		// its own. Both are the choices `UCataclysmDebuffs::DurationOn` makes for
+		// the other end of this same duration.
+		return Asking ? Asking->StatForSkill(FName(Stat), FGameplayTagContainer(),
+											 Held)
+					  : Held;
+	}
+}
+
+namespace
+{
+	/**
+	 * Roots an enemy its staggerer has just staggered, when the staggerer
+	 * carries `stagger_root_seconds`. Ruled 2026-10-07: "Enemies you stagger are
+	 * also briefly rooted for 0.5-1.5 seconds".
+	 *
+	 * A ROOT IS A PIN WITH NO INCREASE: the target cannot walk and can still
+	 * turn and attack. REFUSED FOR A TARGET IMMUNE TO CROWD CONTROL, which
+	 * `ApplyPin` does not ask for itself: one whose crowd control resistance
+	 * takes a hold to nothing, and one a running skill makes immune. A
+	 * resistance below a hundred does not shorten it, as it does not shorten
+	 * any other pin.
+	 */
+	void CataclysmSkillEffectsRootAfterStagger(AActor* Instigator, AActor* Target)
+	{
+		const UCataclysmAbilitySystemComponent* Asking =
+			Cast<const UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Instigator));
+		const float RootSeconds = Asking
+			? Asking->StatForSkill(FName(UCataclysmSkillEffects::StaggerRootSecondsStat),
+								   FGameplayTagContainer(), 0.0f)
+			: 0.0f;
+		if (RootSeconds <= 0.0f || !UCataclysmTargeting::IsHostileTo(Target, Instigator)
+			|| UCataclysmSkillEffects::AfterCrowdControlResistance(Target, RootSeconds) <= 0.0f
+			|| UCataclysmSkillTemplate::IsImmuneTo(Target, TEXT("Pin")))
+		{
+			return;
+		}
+		UCataclysmSkillEffects::ApplyPin(Instigator, Target, RootSeconds);
+	}
+}
+
+bool UCataclysmSkillEffects::ApplyStagger(AActor* Instigator, AActor* Target,
+										  float Seconds)
+{
+	// A HEALTH CEILING THE STAGGERING CHARACTER CAN CARRY. Issue #45, for
+	// "You cannot stagger enemies above 50% HP".
+	//
+	// THE STAT IS A REDUCTION OF THE CEILING, so zero leaves it at 100 and
+	// nothing is above 100 per cent -- a character without the row staggers
+	// exactly what it staggered before. That is the shape
+	// `HealingCeilingReduction` already has and it is why it is a reduction.
+	//
+	// IT WITHHOLDS THE MARKER, NOT THE SHOVE. Being staggered does not stop the
+	// target acting; it is a state other rows read. The knockback, pull or
+	// knockdown that got here has already landed and is untouched -- only the
+	// tag is refused, so the rows conditioned on it do not fire against a
+	// healthy target.
+	const float Reduction = FMath::Clamp(
+		StaggerStatOf(Instigator, StaggerHealthCeilingStat,
+					  UCataclysmCombatAttributeSet::
+						  GetStaggerHealthCeilingReductionAttribute(),
+					  /*WhenUnknown=*/0.0f),
+		0.0f, 100.0f);
+	if (Reduction > 0.0f)
+	{
+		const UAbilitySystemComponent* Struck =
+			UCataclysmTargeting::AbilitySystemOf(Target);
+		if (!Struck)
+		{
+			// NO ATTRIBUTES MEANS NO HEALTH TO COMPARE, and a target whose health
+			// cannot be read is not a target the ceiling can refuse. Left
+			// staggerable rather than refused, because refusing on an unknown
+			// would make the row stronger than it says.
+			return ApplyTagForDuration(Instigator, Target, StaggeredTag(), Seconds);
+		}
+
+		const float MaxHealth = Struck->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		const float Health = Struck->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetHealthAttribute());
+		if (MaxHealth > 0.0f)
+		{
+			const float Percent =
+				FMath::Clamp(Health / MaxHealth * 100.0f, 0.0f, 100.0f);
+			if (Percent > 100.0f - Reduction)
+			{
+				return false;
+			}
+		}
+	}
+
+	// AND HOW LONG THE STAGGER THIS CHARACTER APPLIES LASTS. Issue #45, for
+	// "Stagger effects you apply last 50%-100% longer". A percentage of normal,
+	// 100 unchanged, which is the shape `DotDuration` has.
+	//
+	// TWO CHARACTERS REACH ONE DURATION AND THEY MULTIPLY. This is the
+	// instigator's; `ApplyTagForDuration` then applies the TARGET's
+	// `debuff_duration_taken` to the result. Each is already the sum of its own
+	// owner's increases, because each runs through that owner's stat pipeline,
+	// so the two scalars multiply rather than summing across characters. There
+	// is no sum available between two characters' attribute lines.
+	// `docs/DECISIONS.md` records that, and records that extending the damage
+	// pipeline's shape to a duration is an extension rather than a finding of
+	// the research that adopted it.
+	const float Applied = StaggerStatOf(
+		Instigator, StaggerDurationStat,
+		UCataclysmCombatAttributeSet::GetStaggerDurationAttribute(),
+		/*WhenUnknown=*/NormalStaggerDuration);
+	const float Scaled =
+		Seconds * FMath::Max(0.0f, Applied) / NormalStaggerDuration;
+	if (Scaled <= 0.0f)
+	{
+		// A DURATION TAKEN TO NOTHING APPLIES NOTHING, rather than an effect with
+		// no duration, which the engine treats as lasting for ever. The same
+		// guard `ApplyTagForDuration` makes for the target's side. Unreachable
+		// today: nothing lowers this stat.
+		return false;
+	}
+
+	// A TAG HELD FOR A DURATION, which is the shape every timed state in this
+	// file takes. `ApplyTagForDuration` also lets the target's own debuff
+	// duration stat lengthen it, which is what the Masochist branch pays for,
+	// and keeps the longer of two applications rather than cutting one short.
+	if (!ApplyTagForDuration(Instigator, Target, StaggeredTag(), Scaled))
+	{
+		return false;
+	}
+
+	// AND A STAGGER THAT LANDED MAY ROOT. Ruled 2026-10-07. After every refusal
+	// above, so a stagger the health ceiling refused roots nobody.
+	CataclysmSkillEffectsRootAfterStagger(Instigator, Target);
+	return true;
+}
+
+namespace
+{
+	/**
+	 * Opens the crowd control window on whoever the act belongs to. Issue
+	 * #1815: "Applying a CC effect grants 10%-20% increased movement speed for
+	 * 3 seconds".
+	 *
+	 * CROWD CONTROL IS WHAT `crowd_control_resistance` SHORTENS, ruled under the
+	 * owner's delegation on 2026-09-23: a stun, a knockdown and a displacement
+	 * (knockback, pull, launch). Stagger, pin and the cripple slow are not. Each
+	 * of those five appliers calls this once it has succeeded, so a refused or
+	 * fully resisted one opens nothing.
+	 *
+	 * ON `UCataclysmCombatEvents::AttackerOf`, so a minion's stun opens its own
+	 * window, and its summoner's only under the Ritualist keystone Conduit.
+	 */
+	void CataclysmSkillEffectsNoteCrowdControl(AActor* Instigator)
+	{
+		AActor* Owner = UCataclysmCombatEvents::AttackerOf(Instigator);
+		if (UCataclysmAbilitySystemComponent* Cataclysm =
+				Cast<UCataclysmAbilitySystemComponent>(
+					UCataclysmTargeting::AbilitySystemOf(Owner)))
+		{
+			Cataclysm->NoteCrowdControlApplied();
+		}
+	}
+}
+
+bool UCataclysmSkillEffects::ApplyKnockback(AActor* Instigator, AActor* Target,
+											float DistanceCm)
+{
+	if (DistanceCm <= 0.0f || !IsValid(Instigator) || !IsValid(Target))
+	{
+		return false;
+	}
+
+	// FROM THE INSTIGATOR'S OWN PLACE, through the one body below. Ruled
+	// 2026-10-14; see `ApplyKnockbackFrom`.
+	return ApplyKnockbackFrom(Instigator, Target, Instigator->GetActorLocation(),
+							  DistanceCm);
+}
+
+bool UCataclysmSkillEffects::ApplyKnockbackFrom(AActor* Instigator, AActor* Target,
+												const FVector& From, float DistanceCm)
+{
+	if (DistanceCm <= 0.0f || !IsValid(Instigator) || !IsValid(Target))
+	{
+		return false;
+	}
+
+	// Away from whatever hit it, along the ground.
+	FVector Away = Target->GetActorLocation() - From;
+	Away.Z = 0.0f;
+	if (Away.IsNearlyZero())
+	{
+		// Standing exactly on the instigator. There is no direction to push in,
+		// and picking one arbitrarily would shove a target somewhere nobody could
+		// have predicted.
+		return false;
+	}
+
+	// A TARGET THAT CANNOT BE KNOCKED BACK IS NOT MOVED, AND NOT STAGGERED
+	// EITHER. Issue #1755, Set Stance. Asked of the target through the pipeline
+	// so a row that holds only while an enemy is near reaches it, and before the
+	// displacement so a refused shove spends none of the target's window.
+	if (const UCataclysmAbilitySystemComponent* Held =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Target)))
+	{
+		if (Held->StatForSkill(FName(KnockbackSuppressedStat),
+							   FGameplayTagContainer(), 0.0f) > 0.0f)
+		{
+			return false;
+		}
+	}
+
+	if (!CataclysmDisplace(Instigator, Target,
+						   Away.GetSafeNormal() * DistanceCm))
+	{
+		return false;
+	}
+
+	// AND A SHOVE THAT LANDED LEAVES THE TARGET STAGGERED, which is the owner's
+	// answer of 2026-09-11. A shove an immunity refused, or one crowd control
+	// resistance took to nothing, returned above and staggers nothing.
+	ApplyStagger(Instigator, Target);
+	CataclysmSkillEffectsNoteCrowdControl(Instigator);
+	return true;
+}
+
+bool UCataclysmSkillEffects::ApplyPushAside(AActor* Instigator, AActor* Target,
+											const FVector& Direction, float DistanceCm)
+{
+	if (DistanceCm <= 0.0f || !IsValid(Instigator) || !IsValid(Target))
+	{
+		return false;
+	}
+
+	FVector Along = Direction;
+	Along.Z = 0.0f;
+	if (Along.IsNearlyZero())
+	{
+		return false;
+	}
+
+	// THE SAME DISPLACEMENT AND THE SAME STAGGER AS A KNOCKBACK, which is what
+	// ruling it displacement means. Only the direction differs.
+	if (!CataclysmDisplace(Instigator, Target,
+						   Along.GetSafeNormal() * DistanceCm))
+	{
+		return false;
+	}
+	ApplyStagger(Instigator, Target);
+	CataclysmSkillEffectsNoteCrowdControl(Instigator);
+	return true;
+}
+
+bool UCataclysmSkillEffects::ApplyPull(AActor* Instigator, AActor* Target,
+									   float DistanceCm)
+{
+	if (!IsValid(Instigator) || !IsValid(Target))
+	{
+		return false;
+	}
+
+	// TOWARD THE INSTIGATOR'S OWN PLACE, through the one body below. Ruled
+	// 2026-10-14; see `ApplyPullFrom`.
+	return ApplyPullFrom(Instigator, Target, Instigator->GetActorLocation(),
+						 DistanceCm);
+}
+
+bool UCataclysmSkillEffects::ApplyPullFrom(AActor* Instigator, AActor* Target,
+										   const FVector& From, float DistanceCm)
+{
+	if (!IsValid(Instigator) || !IsValid(Target))
+	{
+		return false;
+	}
+
+	// Toward whatever hauled it, along the ground. The opposite of a knockback's
+	// direction and nothing else about it differs.
+	FVector Toward = From - Target->GetActorLocation();
+	Toward.Z = 0.0f;
+	if (Toward.IsNearlyZero())
+	{
+		// Already standing on the instigator, which is where a pull would put
+		// it. Nothing to do, and no direction to do it in.
+		return false;
+	}
+
+	// ZERO OR LESS MEANS THE WHOLE WAY, WHICH IS WHAT BOTH ROWS THAT PULL ASK
+	// FOR. The Whip's The Gathering hauls its catch "into a burning heap at your
+	// feet" and its Reel dumps them "at your feet"; neither states a distance,
+	// and neither could without repeating its own range in a second cell.
+	//
+	// A STATED DISTANCE IS HONOURED AND IS NEVER LONGER THAN THE GAP, so a pull
+	// that overshot would not drag a target past the caster and out the far
+	// side.
+	const float Gap = Toward.Size();
+	const float Move = DistanceCm > 0.0f ? FMath::Min(DistanceCm, Gap) : Gap;
+
+	if (!CataclysmDisplace(Instigator, Target, Toward.GetSafeNormal() * Move))
+	{
+		return false;
+	}
+
+	// AND A PULL THAT LANDED LEAVES THE TARGET STAGGERED, the second of the
+	// three verbs the owner named. A drag is this function applied after the
+	// caster has moved, so it staggers too.
+	ApplyStagger(Instigator, Target);
+	CataclysmSkillEffectsNoteCrowdControl(Instigator);
+	return true;
+}
+
+bool UCataclysmSkillEffects::ApplyLaunch(AActor* Instigator, AActor* Target,
+										 float DistanceCm)
+{
+	if (DistanceCm <= 0.0f || !IsValid(Instigator) || !IsValid(Target))
+	{
+		return false;
+	}
+
+	// STRAIGHT UP, AND THE INSTIGATOR'S POSITION DOES NOT ENTER INTO IT. Upthrust
+	// drives a ridge of rock out of the ground and throws whatever stood on it
+	// into the air, so the direction is the world's up and not a line between two
+	// actors. The instigator is still required, so that a launch with no source
+	// is refused the same way every other displacement here is.
+	if (!CataclysmDisplace(Instigator, Target,
+						   FVector(0.0f, 0.0f, DistanceCm)))
+	{
+		return false;
+	}
+
+	CataclysmSkillEffectsNoteCrowdControl(Instigator);
+	return true;
+}
+
+FGameplayTag UCataclysmSkillEffects::DeadTag()
+{
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("State.Dead")), /*ErrorIfNotFound=*/false);
+}
+
+bool UCataclysmSkillEffects::IsDead(const AActor* Actor)
+{
+	return HasTag(Actor, DeadTag());
+}
+
+bool UCataclysmSkillEffects::MarkDead(AActor* Actor)
+{
+	UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Actor);
+	const FGameplayTag Dead = DeadTag();
+	if (!System || !Dead.IsValid() || System->HasMatchingGameplayTag(Dead))
+	{
+		return false;
+	}
+
+	// A CURSE THAT PASSES ON DOES SO NOW, BEFORE THE DEATH IS RECORDED. The
+	// Wand's Anathema: "anything that dies while damned passes the curse to the
+	// nearest living enemy". Here rather than in each character class, because
+	// this is the one place a death is recorded for the player and for every
+	// creature -- so one killed by a burn, by a patch of burning ground or by
+	// another creature passes its curse the same way one killed by a blow does.
+	//
+	// BEFORE THE TAG RATHER THAN AFTER IT, so the search for the next holder is
+	// made while the dying creature is still an ordinary target and has to be
+	// excluded by name, which `SpreadFromDying` does. Ordering it the other way
+	// would make it depend on how every other reader treats a corpse.
+	//
+	// INERT FOR EVERY CREATURE CARRYING NO SPREADING CURSE, which is all of them
+	// but the targets of one Anathema: it costs a component lookup.
+	UCataclysmCurseSpread::SpreadFromDying(Actor);
+
+	// AND A WEAPON LEFT IN IT TEARS FREE, for the same reasons and at the same
+	// moment. The Axe's Harrower: "when that enemy dies it tears free and
+	// buries itself in the nearest living enemy within 10 meters". Inert for
+	// every creature with nothing buried in it, which is all of them but one
+	// Harrower's host: it costs a component lookup.
+	UCataclysmBuriedWeapon::LeapFromDying(Actor);
+
+	// AND A LINE RUN THROUGH BY ONE SPEAR COMES APART, for the third time for
+	// the same reasons and at the same moment. The Spear's Skewer: "the whole
+	// line is held together for 4 seconds. Killing any one of them frees the
+	// rest." A pinned creature standing in fire is exactly how a line is likely
+	// to end, and being here rather than in a character class is what makes that
+	// free the others the same way a killing blow does. Inert for every creature
+	// bound to no line, which is all of them but one Skewer's catch: it costs a
+	// component lookup.
+	UCataclysmPinnedLine::ReleaseFromDying(Actor);
+
+	// AND A SWING THIS CHARACTER HAD DRAWN BACK IS LOST, for the fourth time for
+	// the same reasons and at the same moment. The Greatsword's The Whole
+	// Weight: "if you are killed during the wind-up, nothing lands at all",
+	// written as `ChargeBreaksOn=Death`. Issue #1141.
+	//
+	// UNCONDITIONALLY RATHER THAN ONLY FOR A ROW THAT NAMES `Death`, and that is
+	// the one of these four hooks that does not read the row first. A corpse
+	// cannot swing whatever its row says, so a hold left standing here would be
+	// a timer waiting to deal damage on behalf of somebody who is dead. What
+	// `ChargeBreaksOn=Death` adds is that the row SAYS so; the behaviour is not
+	// optional.
+	//
+	// INERT FOR EVERY CHARACTER WITH NO SWING DRAWN BACK, which is all of them
+	// but one holding a Greatsword's Heavy or Ultimate: it costs a walk over the
+	// dying character's own running abilities.
+	if (UCataclysmStrikeSkill* Held = UCataclysmStrikeSkill::HeldSwingOn(Actor))
+	{
+		Held->BreakTheHold(TEXT("death"));
+	}
+
+	// AND A WEAPON THIS CHARACTER LEFT STANDING IN THE GROUND COMES BACK, for the
+	// fifth time for the same reasons and at the same moment. The Greatsword's
+	// Buried Fire leaves the sword planted for up to ten seconds, and the project
+	// owner answered on 2026-09-10 that it returns when its owner dies and that
+	// the burning ground it stands in stays. Issue #1535.
+	//
+	// ENDING THE SKILL IS WHAT BRINGS IT BACK, because
+	// `UCataclysmStrikeSkill::EndAbility` is the one place the sword leaves the
+	// ground and the hands are filled again. The burning ground is a separate
+	// actor with its own lifespan and is not touched. Nothing erupts: the
+	// eruption is what pulling the sword free buys, and a death is not a pull.
+	//
+	// AND A SWORD NOT IN THE GROUND YET IS NEVER PLANTED. The skill is found from
+	// the moment it is used, and ending it clears the timer of a swing that has
+	// not connected, which would otherwise plant the sword after the death.
+	// Whether any other blow still waiting for its swing should land after its
+	// owner dies is issue #1549.
+	//
+	// INERT FOR EVERY CHARACTER NOT USING BURIED FIRE, which is all of them but a
+	// Greatsword holder part way through it: it costs a walk over the dying
+	// character's own running abilities, the same walk `HeldSwingOn` makes.
+	if (UCataclysmStrikeSkill* Planter = UCataclysmStrikeSkill::PlantingSkillOn(Actor))
+	{
+		Planter->ReturnTheWeapon(TEXT("death"));
+	}
+
+	// LOOSELY RATHER THAN THROUGH AN EFFECT, because every other tag here is
+	// granted for a duration and this one must never expire on its own. A
+	// duration effect with an infinite duration would do the same thing with
+	// more moving parts and one more way to get the duration wrong. What takes
+	// it off again is ClearDead below, called deliberately.
+	System->AddLooseGameplayTag(Dead);
+
+	// AND THE DEATH IS ANNOUNCED, AFTER THE TAG. Issue #41, slice 4. Here for
+	// the reason every hook above gives: this is the one place a death is
+	// recorded for the player and for every creature, however it died. After
+	// the tag, so a listener already sees a corpse; and because the top of this
+	// function refuses a character already dead, a death is announced once.
+	UCataclysmCombatEvents::NoteDeath(Actor);
+	return true;
+}
+
+bool UCataclysmSkillEffects::ClearDead(AActor* Actor)
+{
+	UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Actor);
+	const FGameplayTag Dead = DeadTag();
+	if (!System || !Dead.IsValid() || !System->HasMatchingGameplayTag(Dead))
+	{
+		return false;
+	}
+
+	System->RemoveLooseGameplayTag(Dead);
+	return true;
+}
+
+float UCataclysmSkillEffects::AfterCrowdControlResistance(const AActor* Target,
+																  float Amount)
+{
+	if (Amount <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const UAbilitySystemComponent* Defender =
+		UCataclysmTargeting::AbilitySystemOf(Target);
+	if (!Defender)
+	{
+		return Amount;
+	}
+
+	const UCataclysmCombatAttributeSet* Combat =
+		Defender->GetSet<UCataclysmCombatAttributeSet>();
+	if (!Combat)
+	{
+		// NO SUCH ATTRIBUTE MEANS NO RESISTANCE, not zero effect. A target that
+		// does not carry the stat takes the whole of it.
+		return Amount;
+	}
+
+	// ASKED THROUGH THE STAT PIPELINE RATHER THAN READ OFF THE ATTRIBUTE, so a
+	// CONDITIONED row can reach it. Issue #1515. `Ravager_keystone_spine_003`
+	// Unstoppable grants this stat only "while an enemy is within 4 metres of
+	// you", and a conditioned row is never folded into a gameplay attribute --
+	// so reading the attribute would report the base for ever and the node would
+	// do nothing. Same defect, same repair, as evasion in #1784 and the
+	// regeneration rates in #1038.
+	//
+	// THE ATTRIBUTE IS THE FALLBACK, so nothing changes for a target the
+	// pipeline knows nothing about. `StatForSkill` answers the fallback when the
+	// stat line holds no entry, which is every creature in the game and a player
+	// before its first refresh. Every existing caller gets what it got before.
+	//
+	// NO TAGS, because this is a property of the character being controlled
+	// rather than of the skill doing the controlling. A row conditioned on the
+	// incoming effect would need the tags of the thing applying it, which this
+	// function is not given and deliberately does not take.
+	float Stat = Combat->GetCrowdControlResistance();
+	if (const UCataclysmAbilitySystemComponent* Asking =
+			Cast<UCataclysmAbilitySystemComponent>(Defender))
+	{
+		Stat = Asking->StatForSkill(FName(CrowdControlResistanceStat),
+									FGameplayTagContainer(), Stat);
+
+		// A NEGATIVE TOTAL IS DIVIDED BY ITS INCREASES, NOT MULTIPLIED. Issue
+		// #2057, ruled 2026-09-30. The pipeline multiplies (base + flat) by
+		// (1 + increases), so with a drawback taking the total below zero,
+		// "increased crowd control resistance" made crowd control last LONGER.
+		// Here, and only here, a negative total is (base + flat) x more /
+		// (1 + increases): increases shrink the penalty, reductions deepen it.
+		// Six rows give this stat an increase: Masochist_basic_spine_009,
+		// Masochist_basic_fc_c1, Ravager_basic_a_stem2, Ravager_basic_a_c0,
+		// Ritualist_basic_c_c0 and Ravager_basic_spine_008#2.
+		//
+		// INCREASES OF -100% OR WORSE leave nothing to divide by, and are
+		// taken to the floor below. A judgement, not a ruling: no row reduces
+		// this stat at all today.
+		FCataclysmStatBreakdown Parts;
+		if (Asking->StatBreakdownForSkill(FName(CrowdControlResistanceStat),
+										  FGameplayTagContainer(), Parts)
+			&& Parts.RemovedCount == 0)
+		{
+			const float Unincreased =
+				(Parts.Base + Parts.Flat) * Parts.MoreMultiplier;
+			if (Unincreased < 0.0f)
+			{
+				const float Divisor = 1.0f + Parts.SumOfIncreases / 100.0f;
+				Stat = Divisor > 0.0f ? Unincreased / Divisor
+									  : MostCrowdControlLengthening;
+			}
+		}
+	}
+
+	// FLOORED AT -100 AND NOT CAPPED ABOVE, the decisions the header records.
+	// Below zero the effect lengthens, to at most twice its amount. Issue
+	// #1951: until then this floor was zero, and "CC effects applied to you
+	// last 40%-70% longer" did nothing.
+	const float Resisted = FMath::Max(MostCrowdControlLengthening, Stat);
+	if (Resisted >= 100.0f)
+	{
+		return 0.0f;
+	}
+
+	return Amount * (1.0f - Resisted / 100.0f);
+}
+
+float UCataclysmSkillEffects::HeldSecondsAfterCrowdControlResistance(
+	const AActor* Target, float Seconds)
+{
+	const float After = AfterCrowdControlResistance(Target, Seconds);
+
+	// A LENGTHENED HOLD STOPS AT THE ANTI-STUN-LOCK BOUND, and one already
+	// there is not lengthened. The header says why. Never shortened by it.
+	const float Bound =
+		FMath::Max(Seconds, UCataclysmDamageCalculation::LongestStunSeconds);
+	return FMath::Min(After, Bound);
+}
+
+float UCataclysmSkillEffects::ShoveAfterCrowdControlResistance(
+	const AActor* Target, float Distance)
+{
+	// SHORTENED BY RESISTANCE AND NEVER LENGTHENED, for the header's reason.
+	return FMath::Min(AfterCrowdControlResistance(Target, Distance), Distance);
+}
+
+bool UCataclysmSkillEffects::CrowdControlRefusedByHealthCeiling(
+	const AActor* Instigator, const AActor* Target)
+{
+	const UCataclysmAbilitySystemComponent* Applier =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Instigator));
+	if (!Applier)
+	{
+		return false;
+	}
+
+	// THE STAT IS A REDUCTION OF THE CEILING, so nought leaves it at 100 and
+	// nothing is above 100 per cent. THE FALLBACK IS NOUGHT: there is no
+	// gameplay attribute, and a character with no such row answers nought.
+	// NO TAGS: this is asked for a stun, a knockdown, a fear and a shove
+	// alike, and a row scoped to a skill's tags would never apply.
+	const float CeilingReduction = FMath::Clamp(
+		Applier->StatForSkill(FName(CrowdControlHealthCeilingStat),
+							  FGameplayTagContainer(), 0.0f),
+		0.0f, 100.0f);
+	if (CeilingReduction <= 0.0f)
+	{
+		return false;
+	}
+
+	// ONLY AN ENEMY. "You cannot apply CC effects to ENEMIES above 50% HP".
+	// `IsHostileTo` answers no for the instigator itself, for a target with
+	// no ability system and for a corpse, and none of those is refused here.
+	if (!UCataclysmTargeting::IsHostileTo(Target, Instigator))
+	{
+		return false;
+	}
+
+	const UAbilitySystemComponent* Controlled =
+		UCataclysmTargeting::AbilitySystemOf(Target);
+	const FGameplayAttribute MaxHealthAttribute =
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	if (!Controlled || !Controlled->HasAttributeSetForAttribute(MaxHealthAttribute))
+	{
+		// NO HEALTH TO COMPARE IS NOT A REFUSAL, for the reason `ApplyStagger`
+		// gives: refusing on an unknown would make the row stronger than it
+		// says.
+		return false;
+	}
+
+	const float CeilingMaxHealth = Controlled->GetNumericAttribute(MaxHealthAttribute);
+	if (CeilingMaxHealth <= 0.0f)
+	{
+		return false;
+	}
+
+	// ABOVE, NOT AT: a target at exactly the ceiling can be controlled.
+	const float HealthPercent = FMath::Clamp(
+		Controlled->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetHealthAttribute())
+			/ CeilingMaxHealth * 100.0f,
+		0.0f, 100.0f);
+	return HealthPercent > 100.0f - CeilingReduction;
+}
+
+bool UCataclysmSkillEffects::ApplyStun(AActor* Instigator, AActor* Target,
+									   float DurationSeconds, float DamageDealt,
+									   bool bStunIsDesigned)
+{
+	if (DurationSeconds <= 0.0f)
+	{
+		return false;
+	}
+
+	// A HEALTH CEILING THE STUNNING CHARACTER CAN CARRY. Ruled 2026-10-07:
+	// "You cannot apply CC effects to enemies above 50% HP". BEFORE EVERY
+	// OTHER RULE, and for a designed stun as much as an incidental one: the
+	// sentence is about who applies it, not about how hard the blow was. A
+	// refusal here tags nothing, opens no immunity window on the target and
+	// notes no crowd control on the instigator, which is the last line of
+	// this function.
+	if (CrowdControlRefusedByHealthCeiling(Instigator, Target))
+	{
+		return false;
+	}
+
+	// RULE ZERO SINCE 2026-09-05: THE TARGET'S CROWD CONTROL RESISTANCE
+	// SHORTENS IT, AND AT 100 IT DOES NOT LAND AT ALL. Before this the stat
+	// touched only the CHANCE of an incidental blunt stun, so the four skills
+	// that stun by design ignored it completely.
+	//
+	// FIRST, AND BEFORE THE DESIGNED-STUN EXEMPTION BELOW. A designed stun
+	// skips the damage threshold because an attack built to stun should not
+	// fail to when it lands; it does not skip the target's own resistance,
+	// any more than a designed blow skips armour.
+	DurationSeconds = HeldSecondsAfterCrowdControlResistance(Target, DurationSeconds);
+	if (DurationSeconds <= 0.0f)
+	{
+		return false;
+	}
+
+	// RULE TWO: A STUNNED TARGET CANNOT BE STUNNED AGAIN FOR FIVE SECONDS.
+	// Checked first because it is the cheapest and because it applies to every
+	// stun, designed or incidental. A designed stun does not escape it: that is
+	// the whole reason the Brute's Stomp has a five second cooldown rather than
+	// a cooldown from the Heavy slot's one-to-four second band.
+	if (HasTag(Target, StunImmuneTag()))
+	{
+		return false;
+	}
+
+	// AND A SKILL THE TARGET IS RUNNING MAY REFUSE IT OUTRIGHT. Section VI of
+	// the design document sanctions skill-stated immunity, and a row writing
+	// `Immune=Stun` or `Immune=CrowdControl` says so.
+	//
+	// BESIDE THE WINDOW ABOVE RATHER THAN BELOW THE DAMAGE THRESHOLD, because
+	// it applies to a designed one as much as to an incidental one: "cannot be
+	// stunned" is not a question about how hard the blow was.
+	if (UCataclysmSkillTemplate::IsImmuneTo(Target, TEXT("Stun")))
+	{
+		return false;
+	}
+
+	// RULE ONE: A HIT MUST TAKE AT LEAST A TENTH OF MAXIMUM HEALTH TO STUN.
+	//
+	// A DESIGNED STUN SKIPS THIS AND ONLY THIS. An attack whose entire purpose
+	// is to stun should not fail to when it lands, so the Stomp does not have to
+	// clear the bar. It still obeys the window above. The distinction is
+	// stun_is_designed in sim/cataclysm_sim/damage.py.
+	if (!bStunIsDesigned)
+	{
+		const UAbilitySystemComponent* Defender =
+			UCataclysmTargeting::AbilitySystemOf(Target);
+		if (!Defender)
+		{
+			return false;
+		}
+
+		// A target already dead is not stunned, matching can_be_stunned in the
+		// model. Without this a killing blow would stun a corpse.
+		const float Health = Defender->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetHealthAttribute());
+		if (Health <= 0.0f)
+		{
+			return false;
+		}
+
+		const float MaxHealth = Defender->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		if (MaxHealth <= 0.0f)
+		{
+			return false;
+		}
+
+		if (DamageDealt < MaxHealth * StunDamageThresholdPercent / 100.0f)
+		{
+			return false;
+		}
+	}
+
+	// RULE THREE: A BOSS CANNOT BE STUNNED AT ALL. Section VI of the design
+	// document, and the last of its three anti-stun-lock rules to arrive --
+	// issue #395. Boss-ness derives from the rarity the spawner set, steps 4
+	// and 5 of the ladder: Boss and Cataclysm Boss. See
+	// ACataclysmEnemyCharacter::IsBoss for why it is rarity rather than a flag
+	// or a tag.
+	//
+	// UNCONDITIONALLY, INCLUDING FOR A DESIGNED STUN. bStunIsDesigned exists to
+	// skip the damage THRESHOLD above, because an attack built to stun should
+	// not fail to when it lands; it does not skip the immunity window and it
+	// does not skip this. "At all" means at all.
+	if (const ACataclysmEnemyCharacter* Enemy =
+			Cast<ACataclysmEnemyCharacter>(Target))
+	{
+		if (Enemy->IsBoss())
+		{
+			return false;
+		}
+	}
+
+	if (!ApplyTagForDuration(Instigator, Target, StunnedTag(), DurationSeconds))
+	{
+		return false;
+	}
+
+	// THE WINDOW STARTS WHEN THE STUN DOES, not when it ends, which is why five
+	// seconds of immunity and 1.5 seconds of stun leave a 3.5 second gap the
+	// target can act in before it can be stunned again.
+	ApplyTagForDuration(Instigator, Target, StunImmuneTag(),
+						StunImmunityWindowSeconds);
+
+	CataclysmSkillEffectsNoteCrowdControl(Instigator);
+	return true;
+}
+
+bool UCataclysmSkillEffects::ApplyKnockdown(AActor* Instigator, AActor* Target,
+											float DurationSeconds,
+											float DamageDealt,
+											bool bKnockdownIsDesigned)
+{
+	if (DurationSeconds <= 0.0f)
+	{
+		return false;
+	}
+
+	// A HEALTH CEILING THE CHARACTER KNOCKING DOWN CAN CARRY, as for a stun and
+	// asked first for the same reasons. Ruled 2026-10-07. A refusal leaves no
+	// stagger either: the stagger is the last thing this function applies.
+	if (CrowdControlRefusedByHealthCeiling(Instigator, Target))
+	{
+		return false;
+	}
+
+	// RULE ZERO, AS FOR A STUN: THE TARGET'S CROWD CONTROL RESISTANCE SHORTENS
+	// IT, AND AT 100 IT DOES NOT LAND AT ALL. Ruled 2026-09-17, issue #1815.
+	// Knockdown was built on 2026-09-01 and the owner's decision of 2026-09-05
+	// that gave the stat its reach named stuns and shoves only, so until this a
+	// knockdown floored a creature carrying Unyielding, "Immunity to crowd
+	// control effects", for its whole length. Diablo IV shortens a knockdown by
+	// the same stat that shortens a stun.
+	//
+	// FIRST, for the reasons `ApplyStun` gives: a designed knockdown skips the
+	// damage threshold and not the target's own resistance, and a knockdown the
+	// target resists entirely opens no immunity window and leaves no stagger.
+	DurationSeconds = HeldSecondsAfterCrowdControlResistance(Target, DurationSeconds);
+	if (DurationSeconds <= 0.0f)
+	{
+		return false;
+	}
+
+	// AND THE SAME THREE ANTI-STUN-LOCK RULES A STUN TAKES, IN THE SAME ORDER,
+	// because section VI of the design document puts the two effects in one row
+	// of its table and says so outright: "The same exemption applies as for
+	// stun: a skill whose stated effect is to knock down ignores the damage
+	// threshold, and does not ignore boss immunity or the immunity window."
+	//
+	// RULE TWO FIRST, AND IT IS THE SAME WINDOW RATHER THAN A SECOND ONE. "The
+	// two share one window rather than one each, because two 3-second holds taken
+	// in turn is exactly the failure the window exists to stop." So a target just
+	// stunned cannot be knocked down, and a target just knocked down cannot be
+	// stunned -- which is only true because both read and write this one tag.
+	if (HasTag(Target, StunImmuneTag()))
+	{
+		return false;
+	}
+
+	// AND A SKILL THE TARGET IS RUNNING MAY REFUSE IT OUTRIGHT. Section VI of
+	// the design document sanctions skill-stated immunity, and a row writing
+	// `Immune=Knockdown` or `Immune=CrowdControl` says so.
+	//
+	// BESIDE THE WINDOW ABOVE RATHER THAN BELOW THE DAMAGE THRESHOLD, because
+	// it applies to a designed one as much as to an incidental one: "cannot be knocked
+	// down" is not a question about how hard the blow was.
+	if (UCataclysmSkillTemplate::IsImmuneTo(Target, TEXT("Knockdown")))
+	{
+		return false;
+	}
+
+	// RULE ONE: A HIT MUST TAKE AT LEAST A TENTH OF MAXIMUM HEALTH. A designed
+	// knockdown skips this and only this, exactly as a designed stun does. All
+	// three rows that state `ForcedMovement=Knockdown` are designed, so this
+	// branch is the one an incidental knockdown would take if one ever existed.
+	if (!bKnockdownIsDesigned)
+	{
+		const UAbilitySystemComponent* Defender =
+			UCataclysmTargeting::AbilitySystemOf(Target);
+		if (!Defender)
+		{
+			return false;
+		}
+
+		// A target already dead is not put on the floor, for the reason a
+		// killing blow does not stun a corpse.
+		const float Health = Defender->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetHealthAttribute());
+		const float MaxHealth = Defender->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		if (Health <= 0.0f || MaxHealth <= 0.0f
+			|| DamageDealt < MaxHealth * StunDamageThresholdPercent / 100.0f)
+		{
+			return false;
+		}
+	}
+
+	// RULE THREE: A BOSS CANNOT BE KNOCKED DOWN AT ALL. Unconditionally,
+	// including for a designed knockdown, which is what "at all" means and is
+	// how the stun above reads the same sentence.
+	if (const ACataclysmEnemyCharacter* Enemy =
+			Cast<ACataclysmEnemyCharacter>(Target))
+	{
+		if (Enemy->IsBoss())
+		{
+			return false;
+		}
+	}
+
+	if (!ApplyTagForDuration(Instigator, Target, KnockedDownTag(), DurationSeconds))
+	{
+		return false;
+	}
+
+	ApplyTagForDuration(Instigator, Target, StunImmuneTag(),
+						StunImmunityWindowSeconds);
+
+	// AND A KNOCKDOWN LEAVES THE TARGET STAGGERED, the third verb the owner
+	// named on 2026-09-11. Its second runs inside the knockdown's two to three,
+	// and it stops nothing the knockdown does not already stop: what reads the
+	// stagger is a separate question from what the knockdown refuses.
+	ApplyStagger(Instigator, Target);
+
+	CataclysmSkillEffectsNoteCrowdControl(Instigator);
+	return true;
+}
+
+bool UCataclysmSkillEffects::ApplyPin(AActor* Instigator, AActor* Target,
+									  float DurationSeconds,
+									  float DamageTakenIncrease)
+{
+	if (DurationSeconds <= 0.0f)
+	{
+		return false;
+	}
+
+	// NONE OF THE THREE ANTI-STUN-LOCK RULES IS CHECKED HERE, AND THAT IS THE
+	// DECISION RATHER THAN AN OMISSION. A pinned target still turns, attacks and
+	// uses any skill that does not need movement, so it fails the design's own
+	// test for what the rules cover. The header carries the full reasoning and
+	// issue #1149 puts it to the project owner.
+	const FGameplayTag Pinned = PinnedTag();
+	if (!Pinned.IsValid())
+	{
+		return false;
+	}
+
+	UAbilitySystemComponent* Source = UCataclysmTargeting::AbilitySystemOf(Instigator);
+	UAbilitySystemComponent* Defender = UCataclysmTargeting::AbilitySystemOf(Target);
+	if (!Source || !Defender)
+	{
+		return false;
+	}
+
+	// THE STRONGEST APPLICATION WINS, which the project owner ruled on
+	// 2026-09-09. Issue #1503. A pin arriving on a target already held by a
+	// stronger or equal one leaves that pin's increase standing and only
+	// refreshes how long it runs, never shortening it. A pin stating no
+	// increase states zero, so it can never take
+	// Impale's increase away, which it did while every pin replaced the last.
+	//
+	// A TARGET THAT CANNOT HOLD THE INCREASE is given the bare tag below, which
+	// carries no statement, so on such a target the newest pin replaces the
+	// running one as before. No figure can differ there, only the time left.
+	const float Stated = FMath::Max(0.0f, DamageTakenIncrease);
+	const FRunningApplication Running = RunningApplicationOf(Defender, Pinned);
+	if (Running.bFound && Running.Stated >= Stated)
+	{
+		RefreshRunningApplication(Defender, Running,
+			UCataclysmDebuffs::DurationOn(Defender, DurationSeconds,
+										  FGameplayTagContainer(Pinned)));
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("%s pinned %s again stating %.0f%%, and the running pin's "
+				 "%.0f%% stands."),
+			*GetNameSafe(Instigator), *GetNameSafe(Target), Stated,
+			Running.Stated);
+		return true;
+	}
+
+	// THE TAG ALONE WHEN THE SKILL STATES NO MAGNITUDE, which is three of the
+	// four rows that pin: Nail Down, Skewer and Thicket all hold a target still
+	// and say nothing about what it then takes. Only Impale states 30.
+	const FGameplayAttribute Taken =
+		UCataclysmCombatAttributeSet::GetDamageTakenAttribute();
+	if (DamageTakenIncrease <= 0.0f || !Defender->HasAttributeSetForAttribute(Taken))
+	{
+		return ApplyTagForDuration(Instigator, Target, Pinned, DurationSeconds);
+	}
+
+	const float OnTarget =
+		UCataclysmDebuffs::DurationOn(Defender, DurationSeconds,
+									  FGameplayTagContainer(Pinned));
+	if (OnTarget <= 0.0f)
+	{
+		return false;
+	}
+
+	UGameplayEffect* Effect = MakeRuntimeEffect(TEXT("CataclysmStatus_Pinned"));
+	Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
+	Effect->DurationMagnitude =
+		FGameplayEffectModifierMagnitude(FScalableFloat(OnTarget));
+
+	// ADDED TO THE DAMAGE TAKEN STAT, WHOSE BASELINE IS A HUNDRED. Impale's "30%
+	// more damage from every source" is +30 on a stat that reads 100 unchanged,
+	// which `UCataclysmDamageCalculation` divides by 100 at step 6. So a pinned
+	// target reads 130 and takes 1.3 times what it otherwise would.
+	//
+	// ON THE SAME EFFECT AS THE TAG, WHICH IS WHY NOTHING HAS TO TAKE IT BACK.
+	// The increase expires when the pin does and is removed when the pin is
+	// removed, so no path -- an early release, a death, a second pin -- can leave
+	// a creature permanently softer. That is the whole reason it is one effect
+	// and not a tag plus a separate modifier.
+	const int32 Index = Effect->Modifiers.Num();
+	Effect->Modifiers.SetNum(Index + 1);
+	FGameplayModifierInfo& Modifier = Effect->Modifiers[Index];
+	Modifier.Attribute = Taken;
+	Modifier.ModifierOp = EGameplayModOp::Additive;
+	Modifier.ModifierMagnitude = FScalableFloat(DamageTakenIncrease);
+
+	TagAndReplaceAnyExisting(Effect, Pinned, Target);
+	ApplyStating(Effect, Source, Defender, Instigator, Stated);
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("%s pinned %s for %.1fs, and it takes %.0f%% more damage while "
+			 "held."),
+		*GetNameSafe(Instigator), *GetNameSafe(Target), OnTarget,
+		DamageTakenIncrease);
+
+	return true;
+}
+
+bool UCataclysmSkillEffects::ReleasePin(AActor* Target)
+{
+	// THE EFFECT AND NOT THE TAG, so Impale's damage taken increase comes off
+	// with it. Removing the tag alone would leave a creature softer for the rest
+	// of what would have been the pin, with nothing left saying why.
+	return RemoveEffectsGranting(Target, PinnedTag()) > 0;
+}
+
+bool UCataclysmSkillEffects::HasTag(const AActor* Actor, const FGameplayTag& Tag)
+{
+	const UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Actor);
+	return AbilitySystem && Tag.IsValid() && AbilitySystem->HasMatchingGameplayTag(Tag);
+}
+
+float UCataclysmSkillEffects::StatedStrengthOn(const AActor* Target,
+											   const FGameplayTag& EffectTag)
+{
+	const UAbilitySystemComponent* Defender =
+		UCataclysmTargeting::AbilitySystemOf(Target);
+	if (!Defender || !EffectTag.IsValid())
+	{
+		return -1.0f;
+	}
+
+	// THE SAME READ THE STRONGEST-WINS RULE MAKES, rather than a second way of
+	// asking. `RunningApplicationOf` answers with the running application that
+	// stated the most, which is the one whose figure is in force.
+	const FRunningApplication Running = RunningApplicationOf(
+		const_cast<UAbilitySystemComponent*>(Defender), EffectTag);
+	if (!Running.bFound || Running.Stated <= 0.0f)
+	{
+		// NOTHING RUNNING, OR RUNNING AND STATING NOTHING. Both are "no figure
+		// to report" and the caller falls back to the row. They are not told
+		// apart because no caller has a different answer for them.
+		return -1.0f;
+	}
+
+	return Running.Stated;
+}
+
+bool UCataclysmSkillEffects::ApplyTagForDuration(
+	AActor* Instigator, AActor* Target, const FGameplayTag& EffectTag,
+	float DurationSeconds, float StatedStrength)
+{
+	if (!EffectTag.IsValid() || DurationSeconds <= 0.0f)
+	{
+		return false;
+	}
+
+	UAbilitySystemComponent* Source = UCataclysmTargeting::AbilitySystemOf(Instigator);
+	UAbilitySystemComponent* Defender = UCataclysmTargeting::AbilitySystemOf(Target);
+	if (!Source || !Defender)
+	{
+		return false;
+	}
+
+	// A ROW MAY REFUSE EVERY DEBUFF, TO ITS WEARER AND FROM IT. Ruled
+	// 2026-10-13. Asked with the tag about to be laid, so only a tag under a
+	// debuff root is refused: a stun and a named curse are, and a stagger, a
+	// pin, a knockdown, a fear, an immunity and every buff are not.
+	if (UCataclysmDebuffs::RefusedByARow(Instigator, Target, EffectTag))
+	{
+		return false;
+	}
+
+	// AND THE TARGET'S OWN STAT DECIDES HOW LONG IT REALLY LASTS. Issue
+	// #1033. Two Masochist nodes lengthen the harmful effects on the
+	// character itself, because eleven nodes in that branch pay it for each
+	// one it carries. Unchanged for every other character in the game.
+	//
+	// ONE OF THE TWO PATHS THAT APPLY A LASTING EFFECT, and the other is
+	// `ApplyDamageOverTime`. Honouring one and not the other would lengthen a
+	// stun and not a burn, or the reverse, with nothing reporting it.
+	//
+	// AND THE INSTIGATOR'S LENGTHENING BEFORE IT. Issue #1833,
+	// `debuff_duration`. ONLY ON AN ENEMY: a tag a character puts on itself or
+	// on an ally is a buff or a state, and "debuffs you apply to enemies" is
+	// the sentence. Ruled 2026-09-30. `IsHostileTo` answers no for the
+	// instigator itself, so no separate "not the target" test is needed.
+	const float Lengthened = UCataclysmTargeting::IsHostileTo(Target, Instigator)
+		? DurationSeconds * DebuffDurationMultiplierOf(Source)
+		: DurationSeconds;
+	// ASKED WITH THE EFFECT'S OWN TAG. Ruled 2026-10-06. A tag under the damage
+	// over time parent satisfies a row requiring that parent, as any child tag
+	// satisfies its parent.
+	const float OnTarget =
+		UCataclysmDebuffs::DurationOn(Defender, Lengthened,
+									  FGameplayTagContainer(EffectTag));
+	if (OnTarget <= 0.0f)
+	{
+		// A DURATION THE TARGET'S STAT TOOK TO NOTHING APPLIES NOTHING, rather
+		// than applying an effect with no duration, which the engine would
+		// treat as lasting for ever. Unreachable today: nothing lowers the stat.
+		return false;
+	}
+
+	// AND A DEBUFF OF THE INSTIGATOR'S MAY CUT WHAT ITS CARRIER DEALS. Ruled
+	// 2026-10-13. Before the two branches below, so a refresh records it as a new
+	// effect does. A tag that is not a debuff records nothing: a stagger, a pin,
+	// a knockdown, a fear and every buff pass through here too. NEVER A SPREAD'S
+	// COPY: `ApplySpreadCopy` copies damage over time, which is not applied here.
+	UCataclysmDebuffs::NoteLaid(Instigator, Target, EffectTag, /*bIsASpreadCopy=*/false);
+
+	// AN EFFECT THAT IS ONLY A TAG IS COMPARED BY HOW LONG IT LASTS. Issue #1576,
+	// a judgement the coordinating session approved on 2026-09-11 for the
+	// owner's review list. It states no other figure, so the stronger of two
+	// applications is the one that lasts longer: a shorter one changes nothing,
+	// and a longer one extends the running one to its own length. That is the
+	// owner's ruling of 2026-09-09, that the strongest application wins and
+	// never cuts the running one short, applied to an effect whose only figure
+	// is its duration. Until then this replaced the running effect every time,
+	// so a 7.5 second Madness from a chance to madden past 100% was cut to 3
+	// seconds by a later ordinary one.
+	//
+	// A REFRESH MOVES ONLY THE RUNNING EFFECT'S START, the refresh `ApplyPin`,
+	// `ApplyNamedEffect` and `ApplyDamageOverTime` already use. The tag is never
+	// taken off and put back, so nothing waiting for it to end sees it end.
+	// THAT EXEMPTION ENDS WHERE A FIGURE BEGINS. Issue #1256. The judgement above
+	// rests on an effect having "no figure but its duration", and Cripple now
+	// states one: the slow it applied, after its cap. So the owner's ruling of
+	// 2026-09-09 applies to it in full rather than in the reduced form -- the
+	// STRONGER APPLICATION'S FIGURE WINS, and a weaker one still refreshes the
+	// duration without shortening it.
+	//
+	// EVERY CALLER THAT STATES NOTHING IS UNTOUCHED, which before this change was
+	// all of them: `StatedStrength` is zero, the running figure is zero, and
+	// `0 > 0` is false, so the branch below is never taken and the effect is
+	// compared by duration exactly as issue #1576 decided.
+	const FRunningApplication Running = RunningApplicationOf(Defender, EffectTag);
+	if (Running.bFound && StatedStrength <= Running.Stated)
+	{
+		RefreshRunningApplication(Defender, Running, OnTarget);
+		return true;
+	}
+
+	// A STRONGER FIGURE REPLACES THE RUNNING ONE AND NEVER SHORTENS IT. "Its
+	// figures are refused; its timing is not" is the ruling for the weaker
+	// direction, and the same sentence read the other way is why this takes the
+	// longer of the two durations rather than its own.
+	const float Lasts = Running.bFound
+		? FMath::Max(OnTarget, Running.SecondsLeft)
+		: OnTarget;
+
+	UGameplayEffect* Effect = MakeRuntimeEffect(
+		FString::Printf(TEXT("CataclysmStatus_%s"), *EffectTag.ToString()));
+	Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
+	Effect->DurationMagnitude =
+		FGameplayEffectModifierMagnitude(FScalableFloat(Lasts));
+
+	TagAndReplaceAnyExisting(Effect, EffectTag, Target);
+
+	// APPLIED SO IT CARRIES WHAT IT STATED, which is the whole of the per-target
+	// store this change needed and did not have to build. `ApplyStating` writes
+	// the figure as a set-by-caller magnitude on the spec and
+	// `RunningApplicationOf` above reads it back, both of which existed for the
+	// strongest-wins rule. The one thing missing was this path calling it: it
+	// used `ApplyGameplayEffectToSelf` directly, so every tag-only effect stated
+	// zero and the comparison was nothing against nothing.
+	ApplyStating(Effect, Source, Defender, Instigator, StatedStrength);
+
+	return true;
+}
+
+namespace
+{
+	/**
+	 * The name in the data that is not a stat: the resistance matching whoever
+	 * applied the effect. Shred's rule, which no fixed stat can express.
+	 */
+	const TCHAR* StatOfSourceElement = TEXT("resistance_of_source_element");
+
+	/**
+	 * The `MovesStatBy` value that makes a strength a share of the stat rather
+	 * than a number of points off it. Empty and `points` both mean points, so
+	 * every row written before this column existed keeps its behaviour.
+	 */
+	const TCHAR* StrengthIsAProportion = TEXT("proportion");
+
+	/**
+	 * Which attributes a named status effect moves, for a hit of this type.
+	 *
+	 * READ OUT OF THE DATA SINCE ISSUE #1144, and it used to be one effect's
+	 * name written here. That issue said so itself: "The second effect that
+	 * needs one is the point at which this should become a column rather than a
+	 * second name written into C++." Abyssal Aura was that second effect, so the
+	 * pairing is now the `MovesStat` column of the Status Effects sheet and this
+	 * resolves whatever it says.
+	 *
+	 * A LIST, BECAUSE AN EFFECT MAY MOVE MORE THAN ONE. Abyssal Aura cuts both
+	 * Demonic and War resistance, which no single-attribute answer could say.
+	 *
+	 * ONE EFFECT WITH A STRENGTH IS DELIBERATELY NOT IN THE COLUMN. Cripple's
+	 * slow is applied by its own code, because an enemy's speed reads its tag
+	 * (issue #1152) and no enemy attribute is read for speed at all.
+	 *
+	 * THIS SAID "TWO EFFECTS" AND NAMED WEAKEN AS THE SECOND, which stopped
+	 * being true when Weaken moved onto the column. It also counted wrong while
+	 * it was true: five rows of `game/Data/StatusEffects.csv` carry a strength
+	 * and no stat name -- Cripple, Weaken, Quarry, Feasting and Necrosis -- and
+	 * only Cripple is an effect this path would otherwise handle. Counting the
+	 * rows this function could reach is the count that means anything here.
+	 *
+	 * THIS SAID MOVING CRIPPLE HERE "WOULD APPLY IT TWICE" AND THAT WAS WRONG.
+	 * Measured for issue #1256: it would apply it ZERO times, for two reasons
+	 * either of which is enough. This path SUBTRACTS its figure from an
+	 * attribute, which is right for Shred taking 10 off a resistance of 40 and
+	 * wrong for Cripple's 30, which means thirty per cent SLOWER. And no enemy
+	 * attribute is read for speed at all: walk speed is
+	 * `DesignedWalkSpeedCmPerSecond * SpeedMultiplier()` and the attack interval
+	 * divides by the same, so a modifier on `movement_speed` would move a number
+	 * nothing reads. An enemy's `attack_speed` starts at zero and is never
+	 * written, so `FMath::Min(Size, Current)` is zero there and the loop below
+	 * adds no modifier at all.
+	 *
+	 * THE CORRECTION MATTERS BECAUSE THE WRONG VERSION POINTED SOMEWHERE
+	 * DANGEROUS. "It would apply twice" tells the next person to delete the
+	 * working reader, which is the one change that stops the curse working.
+	 */
+	TArray<FGameplayAttribute> CataclysmStatsMovedByEffect(
+		const UDataTable* StatusEffectTable, const FGameplayTag& EffectTag,
+		FName DamageType, bool& bOutByProportion)
+	{
+		TArray<FGameplayAttribute> Moved;
+
+		// POINTS UNTIL THE ROW SAYS OTHERWISE, so every path that returns early
+		// below leaves the caller with the behaviour that existed before this
+		// column did. A row the table does not hold cannot be a proportion.
+		bOutByProportion = false;
+
+		const FName Row =
+			UCataclysmSkillEffects::StatusEffectRowForTag(EffectTag);
+		if (Row.IsNone())
+		{
+			return Moved;
+		}
+
+		// THE TABLE IS PASSED IN RATHER THAN LOADED HERE, because the loader
+		// is private to UCataclysmSkillEffects and this is a free function.
+		const FCataclysmStatusEffectRow* Found = StatusEffectTable
+			? StatusEffectTable->FindRow<FCataclysmStatusEffectRow>(
+				  Row, TEXT("CataclysmStatsMovedByEffect"),
+				  /*bWarnIfMissing=*/false)
+			: nullptr;
+		if (Found == nullptr || Found->MovesStat.IsEmpty())
+		{
+			return Moved;
+		}
+
+		bOutByProportion = Found->MovesStatBy.TrimStartAndEnd().Equals(
+			StrengthIsAProportion, ESearchCase::IgnoreCase);
+
+		TArray<FString> Names;
+		Found->MovesStat.ParseIntoArray(Names, TEXT(","), /*CullEmpty=*/true);
+
+		const TMap<FString, FGameplayAttribute>& Map =
+			UCataclysmPlayerClassStats::StatToAttribute();
+
+		for (FString Name : Names)
+		{
+			Name.TrimStartAndEndInline();
+
+			// THE ONE NAME THAT IS NOT A STAT. Shred cuts whatever the source's
+			// own element is, so no fixed stat can say it.
+			if (Name.Equals(StatOfSourceElement, ESearchCase::IgnoreCase))
+			{
+				const FGameplayAttribute Typed =
+					UCataclysmDamageCalculation::ResistanceAttributeFor(DamageType);
+				Moved.Add(Typed.IsValid()
+					? Typed
+					: UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute());
+				continue;
+			}
+
+			// A NAME THE GAME DOES NOT KNOW IS DROPPED RATHER THAN GUESSED AT,
+			// and it cannot arrive here anyway: `tools/generate_datatables.py`
+			// checks every name in that column against the 46 character sheet
+			// stats and refuses to write the table otherwise.
+			if (const FGameplayAttribute* Attribute = Map.Find(Name))
+			{
+				if (Attribute->IsValid())
+				{
+					Moved.Add(*Attribute);
+				}
+			}
+		}
+
+		return Moved;
+	}
+}
+
+FCataclysmStatusEffectNumbers UCataclysmSkillEffects::NumbersForEffectTag(
+	const FGameplayTag& EffectTag)
+{
+	const FName Row = StatusEffectRowForTag(EffectTag);
+	if (Row.IsNone())
+	{
+		return FCataclysmStatusEffectNumbers();
+	}
+
+	// The two strings live until the end of this full expression, which is as
+	// long as StatusEffectNumbers looks at them.
+	const FString RowName = Row.ToString();
+	const FString HumanName = EffectTag.ToString();
+	return StatusEffectNumbers(*RowName, *HumanName);
+}
+
+float UCataclysmSkillEffects::KeptUnderWitheredTouch(const AActor* Attacker)
+{
+	// THE TAG THROUGH THE ONE NAME-TO-TAG HELPER, AND THE FIGURE FROM ITS ROW, so the 20 lives in the table alone.
+	const FGameplayTag Withered = UCataclysmSkillShapes::StatusTagFor(TEXT("Withered Touch"));
+	if (!HasTag(Attacker, Withered))
+	{
+		return 1.0f;
+	}
+	return FMath::Clamp(1.0f - NumbersForEffectTag(Withered).Strength / 100.0f, 0.0f, 1.0f);
+}
+
+bool UCataclysmSkillEffects::ApplyNamedEffect(
+	AActor* Instigator, AActor* Target, const FGameplayTag& EffectTag,
+	float DurationSeconds, float Magnitude, FName DamageType)
+{
+	// MADNESS TAKES THE WINDOW AND BOSS IMMUNITY, as the design document's table
+	// of hard stops rules and as fear does. STATED THERE AND NOT BUILT until the
+	// fear change of 2026-09-25: every Madness -- the ailment chance, Whisper of
+	// Madness, Crawling Insanity -- arrives through this function, so the rules
+	// are asked here, once. A Madness that lands opens the shared window.
+	const bool bMadness = EffectTag.IsValid() && EffectTag == UCataclysmTeams::MadnessTag();
+	if (bMadness && UCataclysmFear::RefusedByTheRedirectionRules(Target))
+	{
+		return false;
+	}
+	const bool bApplied = ApplyNamedEffectOnly(Instigator, Target, EffectTag, DurationSeconds,
+											   Magnitude, DamageType);
+	if (bMadness && bApplied)
+	{
+		UCataclysmFear::OpenTheSharedWindow(Instigator, Target);
+	}
+	return bApplied;
+}
+
+bool UCataclysmSkillEffects::ApplyNamedEffectOnly(
+	AActor* Instigator, AActor* Target, const FGameplayTag& EffectTag,
+	float DurationSeconds, float Magnitude, FName DamageType)
+{
+	if (!EffectTag.IsValid() || DurationSeconds <= 0.0f)
+	{
+		return false;
+	}
+
+	// A ROW MAY REFUSE EVERY DEBUFF, TO ITS WEARER AND FROM IT. Ruled
+	// 2026-10-13. First, so a refused application takes no running effect off
+	// to replace it.
+	if (UCataclysmDebuffs::RefusedByARow(Instigator, Target, EffectTag))
+	{
+		return false;
+	}
+
+	bool bByProportion = false;
+	const TArray<FGameplayAttribute> Stats = CataclysmStatsMovedByEffect(
+		LoadStatusEffectTable(), EffectTag, DamageType, bByProportion);
+	if (Stats.IsEmpty())
+	{
+		// THE TAG IS THE WHOLE EFFECT, which is true of most debuffs. Madness is
+		// the one that matters: `UCataclysmTeams` reads the tag and makes the
+		// creature hostile to everything, so there is no number to apply and
+		// nothing is missing.
+		return ApplyTagForDuration(Instigator, Target, EffectTag, DurationSeconds);
+	}
+
+	UAbilitySystemComponent* Source = UCataclysmTargeting::AbilitySystemOf(Instigator);
+	UAbilitySystemComponent* Defender = UCataclysmTargeting::AbilitySystemOf(Target);
+	if (!Source || !Defender)
+	{
+		return ApplyTagForDuration(Instigator, Target, EffectTag, DurationSeconds);
+	}
+
+	// ONLY THE STATS THIS TARGET ACTUALLY HAS. A target with no resistance set at
+	// all still takes the tag, so a curse is never silently refused for want of
+	// a stat it does not carry.
+	TArray<FGameplayAttribute> Held;
+	for (const FGameplayAttribute& Stat : Stats)
+	{
+		if (Defender->HasAttributeSetForAttribute(Stat))
+		{
+			Held.Add(Stat);
+		}
+	}
+
+	if (Held.IsEmpty())
+	{
+		return ApplyTagForDuration(Instigator, Target, EffectTag, DurationSeconds);
+	}
+
+	// THE SKILL'S OWN FIGURE FIRST AND THE EFFECT'S DESIGNED ONE OTHERWISE.
+	// Anathema states 40 and the Status Effects sheet gives Shred 10, so a skill
+	// that says nothing still applies the effect the design describes.
+	float Size = Magnitude;
+	if (Size <= 0.0f)
+	{
+		Size = NumbersForEffectTag(EffectTag).Strength;
+	}
+
+	// THE STRONGEST APPLICATION WINS, which the project owner ruled on
+	// 2026-09-09. Issue #1503, and `docs/DECISIONS.md` carries all three parts.
+	// Two applications are compared by what they STATE, before the target's
+	// resistances, and an effect naming several stats is compared as one whole:
+	// its figure summed over the stats it touches. A weaker or equal
+	// application leaves the running one's figures alone and only refreshes how
+	// long it runs, never shortening it.
+	const float Stated =
+		FMath::Max(0.0f, Size) * static_cast<float>(Held.Num());
+
+	// AND A DEBUFF OF THE INSTIGATOR'S MAY CUT WHAT ITS CARRIER DEALS, as
+	// `ApplyTagForDuration` records it for an effect that is only a tag. Ruled
+	// 2026-10-13. Before the refresh below, so a weaker application records it.
+	UCataclysmDebuffs::NoteLaid(Instigator, Target, EffectTag, /*bIsASpreadCopy=*/false);
+
+	const FRunningApplication Running = RunningApplicationOf(Defender, EffectTag);
+	if (Running.bFound && Running.Stated >= Stated)
+	{
+		RefreshRunningApplication(Defender, Running,
+			UCataclysmDebuffs::DurationOn(Defender, DurationSeconds,
+										  FGameplayTagContainer(EffectTag)));
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("%s applied %s to %s stating %.0f, and the running one stating "
+				 "%.0f stands."),
+			*GetNameSafe(Instigator), *EffectTag.ToString(), *GetNameSafe(Target),
+			Stated, Running.Stated);
+		return true;
+	}
+
+	// AND THE ONE IT REPLACES COMES OFF BEFORE IT IS SIZED, so it is sized
+	// against the target as it stands without it. Sizing it first, against the
+	// resistance the running one had already cut, is what made applying the
+	// same Shred again raise the target's resistance: measured on 2026-09-11
+	// before this change, a target at 40 cut to 10 by a 30 Shred read 30 after
+	// the same Shred landed again.
+	RemoveEffectsGranting(Target, EffectTag);
+
+	if (bByProportion)
+	{
+		// A SHARE IS BOUNDED BY ITSELF AND NOT BY THE STAT. Clamping it the way
+		// the points path does below, and then subtracting it, reduces the stat
+		// by `min(Size, Current) / Current` -- which is the intended
+		// `Size / 100` ONLY when the stat is exactly 100.
+		//
+		// THE EIGHT DESIGNED ATTACK DAMAGE FIGURES RUN FROM 9 TO 42, so a
+		// subtracted Weaken of 20 takes an Imp at 9 and a Hellhound at 19 to
+		// zero, a Corrupted Sentinel at 22 down by 91%, and a Gatekeeper at 42
+		// down by 48%. It is STRONGEST against the weakest creature, it exceeds
+		// its own 80 cap on every one of them, and at that cap it takes all of
+		// them to zero -- which the design forbids in as many words: "an enemy
+		// that deals no damage is harmless, which is a stun by another name".
+		//
+		// A HUNDRED IS THE CEILING, so the multiplier lands at zero rather than
+		// below it. The design caps Weaken at 80 for a stated reason -- "an
+		// enemy that deals no damage is harmless, which is a stun by another
+		// name" -- and this clamp is not that cap. It is the guard that stops a
+		// row stating 120 from making an enemy heal what it hits.
+		Size = FMath::Clamp(Size, 0.0f, 100.0f);
+	}
+	else
+	{
+		// IT CANNOT TAKE A RESISTANCE PAST ZERO, which the Shred row states
+		// outright. The other half of that sentence -- the excess lengthening
+		// the effect instead of being discarded -- is not built, and #1144
+		// carries it.
+		//
+		// THE MOST ANY ONE OF THEM HAS, so an effect naming two stats is not
+		// held back to the smaller of them. Each modifier is clamped again below
+		// against the stat it moves, so a target with 40 Demonic and 0 War
+		// resistance loses 25 Demonic and nothing else rather than losing
+		// nothing at all.
+		float Most = 0.0f;
+		for (const FGameplayAttribute& Stat : Held)
+		{
+			Most = FMath::Max(Most, Defender->GetNumericAttribute(Stat));
+		}
+
+		// NOTHING LEFT TO TAKE STILL APPLIES THE EFFECT, with no modifier on it.
+		// The tag goes on because carrying the curse is what a second skill
+		// asking "is it shredded?" reads. The statement goes on because the next
+		// application is compared with what this one stated, whatever it took.
+		Size = FMath::Clamp(Size, 0.0f, Most);
+	}
+
+	const float OnTarget = UCataclysmDebuffs::DurationOn(Defender, DurationSeconds,
+														 FGameplayTagContainer(EffectTag));
+	if (OnTarget <= 0.0f)
+	{
+		return false;
+	}
+
+	UGameplayEffect* Effect = MakeRuntimeEffect(
+		FString::Printf(TEXT("CataclysmStatus_%s"), *EffectTag.ToString()));
+	Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
+	Effect->DurationMagnitude =
+		FGameplayEffectModifierMagnitude(FScalableFloat(OnTarget));
+
+	// SUBTRACTED RATHER THAN SET, so two sources of Shred stack down the same
+	// resistance and the attribute returns to where it was when each expires.
+	// The single-stack rule below still holds: a second Shred refreshes the one
+	// effect rather than adding a second, so the reduction does not double from
+	// reapplication.
+	// ONE MODIFIER PER STAT THE EFFECT NAMES, all on the one effect, so they
+	// arrive together and expire together. Abyssal Aura's two resistances are
+	// one debuff a player reads once, not two that could fall off separately.
+	TArray<FString> Cut;
+	for (const FGameplayAttribute& Stat : Held)
+	{
+		if (bByProportion)
+		{
+			// NOTHING TO TAKE STILL APPLIES THE EFFECT, with no modifier, for
+			// the reason given where the points path says the same.
+			if (Size <= 0.0f)
+			{
+				continue;
+			}
+
+			// A "MORE" MULTIPLIER, NOT AN INCREASE, and the two are different
+			// operations in the engine as well as in the design. Read out of
+			// `GameplayEffectAggregator.cpp`, an attribute resolves as
+			// `((Base + Additive) * MultiplyAdditive / DivideAdditive *
+			// MultiplyCompound) + AddFinal`; `MultiplyAdditive` sums each
+			// modifier's distance from 1 and `MultiplyCompound` multiplies them.
+			// `docs/Cataclysm_GDD_v2.md` states the same shape for the character
+			// sheet and calls the second kind a "more" multiplier.
+			//
+			// SUMMED, TWO 80% REDUCTIONS WOULD REACH A NEGATIVE MULTIPLIER:
+			// 1 + (-0.8) + (-0.8) is -0.6. `WeaponDamageOf` returns the
+			// aggregate with no clamp, so that would arrive at the damage
+			// calculation as an enemy whose blows heal. Compounded, 0.2 x 0.2 is
+			// 0.04 -- it approaches nothing and never crosses it.
+			//
+			// NOTHING ELSE MODIFIES AN ENEMY'S ATTACK DAMAGE TODAY, so no
+			// current test can tell the two operations apart. This is chosen for
+			// the second modifier, which does not exist yet, and
+			// `docs/DECISIONS.md` records it as a judgement rather than a
+			// reading.
+			const int32 Index = Effect->Modifiers.Num();
+			Effect->Modifiers.SetNum(Index + 1);
+			FGameplayModifierInfo& Modifier = Effect->Modifiers[Index];
+			Modifier.Attribute = Stat;
+			Modifier.ModifierOp = EGameplayModOp::MultiplyCompound;
+			Modifier.ModifierMagnitude = FScalableFloat(1.0f - Size / 100.0f);
+
+			Cut.Add(FString::Printf(TEXT("%s by %.0f%%"), *Stat.GetName(), Size));
+			continue;
+		}
+
+		// CLAMPED AGAIN PER STAT, so no single one is taken past zero. A target
+		// with 40 Demonic and 0 War resistance loses 25 Demonic and nothing off
+		// the War it does not have.
+		const float Current =
+			FMath::Max(0.0f, Defender->GetNumericAttribute(Stat));
+		const float Taken = FMath::Min(Size, Current);
+		if (Taken <= 0.0f)
+		{
+			continue;
+		}
+
+		const int32 Index = Effect->Modifiers.Num();
+		Effect->Modifiers.SetNum(Index + 1);
+		FGameplayModifierInfo& Modifier = Effect->Modifiers[Index];
+		Modifier.Attribute = Stat;
+		Modifier.ModifierOp = EGameplayModOp::Additive;
+		Modifier.ModifierMagnitude = FScalableFloat(-Taken);
+
+		Cut.Add(FString::Printf(TEXT("%s by %.0f"), *Stat.GetName(), Taken));
+	}
+
+	// EVERY NAMED STAT ALREADY AT NOTHING leaves the effect with no modifier, and
+	// it still goes on, for the reason given where it is sized above.
+	TagAndReplaceAnyExisting(Effect, EffectTag, Target);
+	ApplyStating(Effect, Source, Defender, Instigator, Stated);
+
+	const FString CutText = Cut.IsEmpty()
+		? FString(TEXT("nothing"))
+		: FString::Join(Cut, TEXT(", "));
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("%s applied %s to %s for %.1fs stating %.0f, cutting %s."),
+		*GetNameSafe(Instigator), *EffectTag.ToString(), *GetNameSafe(Target),
+		OnTarget, Stated, *CutText);
+
+	return true;
+}
+
+int32 UCataclysmSkillEffects::CopyDebuffsTo(
+	AActor* Instigator, const AActor* From, const TArray<AActor*>& To,
+	FName DamageType)
+{
+	if (!From || To.IsEmpty())
+	{
+		return 0;
+	}
+
+	// NAMED CURSES AND NOTHING ELSE, which this used to say and did not do.
+	// Issue #1145. It matched every tag beginning `Status.`, and until that issue
+	// that branch held the eighteen buffs as well as the twenty-seven curses --
+	// so an enemy carrying the Commander buff a Succubus grants its allies had
+	// that buff copied onto the two nearest enemies by a skill whose description
+	// says it spreads curses.
+	//
+	// `Status.Debuff.` NOW NAMES EXACTLY THE DEBUFFS SHEET, because the sheet an
+	// effect comes from is a segment of its tag. A buff is excluded by not being
+	// under that branch rather than by being listed somewhere.
+	//
+	// STILL GATHERED HERE RATHER THAN ASKED OF `UCataclysmDebuffs::TagsOnActor`,
+	// and the difference is deliberate. That function answers everything under
+	// the debuff roots, which includes `Keyword.DoT` and `State.Stunned`, and
+	// neither can be spread by copying a tag: a burn's per-tick amount comes from
+	// the hit that caused it rather than travelling with the tag, and a stun
+	// arrives with a `State.StunImmune` companion that is not copied here.
+	UAbilitySystemComponent* Carrier = UCataclysmTargeting::AbilitySystemOf(From);
+	if (!Carrier)
+	{
+		return 0;
+	}
+
+	FGameplayTagContainer Owned;
+	Carrier->GetOwnedGameplayTags(Owned);
+
+	FGameplayTagContainer Carried;
+	for (const FGameplayTag& One : Owned)
+	{
+		if (One.ToString().StartsWith(TEXT("Status.Debuff."),
+									  ESearchCase::CaseSensitive))
+		{
+			Carried.AddTag(One);
+		}
+	}
+
+	if (Carried.IsEmpty())
+	{
+		return 0;
+	}
+
+	int32 Applied = 0;
+	for (AActor* Recipient : To)
+	{
+		if (!IsValid(Recipient) || Recipient == From)
+		{
+			continue;
+		}
+
+		for (const FGameplayTag& Curse : Carried)
+		{
+			// THE EFFECT'S OWN DESIGNED DURATION, not what is left of the
+			// original. Neither row that spreads states a duration for the copy,
+			// and handing on the remaining time would make a curse spread late
+			// worth almost nothing.
+			const float Seconds = NumbersForEffectTag(Curse).DurationSeconds;
+			if (Seconds <= 0.0f)
+			{
+				continue;
+			}
+
+			if (ApplyNamedEffect(Instigator, Recipient, Curse, Seconds,
+								 /*Magnitude=*/0.0f, DamageType))
+			{
+				++Applied;
+			}
+		}
+	}
+
+	if (Applied > 0)
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("%s copied %d curses from %s onto %d others, %d applications."),
+			*GetNameSafe(Instigator), Carried.Num(), *GetNameSafe(From),
+			To.Num(), Applied);
+	}
+
+	return Applied;
+}
+
+int32 UCataclysmSkillEffects::RemoveEffectsGranting(
+	AActor* Target, const FGameplayTag& EffectTag)
+{
+	if (!EffectTag.IsValid())
+	{
+		return 0;
+	}
+
+	UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Target);
+	if (!AbilitySystem)
+	{
+		return 0;
+	}
+
+	// ASKED BEFORE AND AFTER, because RemoveActiveEffectsWithGrantedTags returns
+	// void. A caller that cannot tell whether anything was taken away cannot be
+	// tested, and the aura this exists for needs exactly that: a test has to be
+	// able to say that killing the Succubus took the buff OFF, rather than that
+	// it called something.
+	const bool bHadIt = AbilitySystem->HasMatchingGameplayTag(EffectTag);
+
+	FGameplayTagContainer Granted;
+	Granted.AddTag(EffectTag);
+	AbilitySystem->RemoveActiveEffectsWithGrantedTags(Granted);
+
+	return (bHadIt && !AbilitySystem->HasMatchingGameplayTag(EffectTag)) ? 1 : 0;
+}

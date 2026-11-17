@@ -1,0 +1,2112 @@
+"""Every authored enchantment effect matches the words of its enchantment.
+
+WHY THIS EXISTS. Issue #45. An enchantment says what it does in a sentence
+written for a player -- "Double your energy shield" -- and carries no stat name
+and no number a machine can read. The Enchantment Effects sheet of
+`docs/All_Things_Cataclysm.xlsx` is where those are written, and
+`tools/generate_datatables.py` turns it into `game/Data/EnchantmentEffects.csv`.
+
+**That is two statements of one fact in two files.** The generator already
+refuses a row whose `Effect` cell does not repeat its enchantment's words
+exactly, so an enchantment that is reworded cannot keep its old numbers without
+anyone noticing. What that cannot catch is a number typed wrong in the first
+place, and that is what this file checks.
+
+WHAT IS ASSERTED HERE.
+
+    every effect names an enchantment that exists
+    a set with any effect row is written whole: its first bonus and its
+      drawback, which turn on together at the same threshold
+    the sets written are the ones counted here, so a set only starts working
+      when somebody means it to
+    a row stating a range states one its enchantment's words state, in their
+      order and with one sign, because the game shows the item's number in
+      place of that range
+    a row stating one value finds it in its enchantment's words outside any
+      range, as a number or as the multiplying word the sentence uses
+      ("Double", "tripled")
+    every condition value appears in those words too
+    an effect in the `more` bucket is on a sentence worded as a multiplier, and
+      one in the `increased` bucket on a sentence worded as an increase
+    an effect that removes its stat states 1 and is on a sentence saying the
+      stat is gone, with no, cannot, can't or zero
+    a negative value is on a sentence that takes something away, or, on
+      crowd_control_resistance alone, on one saying the effect lasts longer
+    a sentence stating no number is excused from the checks that need one
+      only while docs/DECISIONS.md records the number chosen for it
+    the two enchantment tables state as many ranges as were measured, which
+      holds the generator's reader and the game's reader to one answer
+    the coverage is what it is measured to be, so it only moves deliberately
+
+WHAT THIS CANNOT CHECK is whether the stat chosen is the right stat. Nothing
+automatic can read "Double your life leech" and know that `life_leech` rather
+than `mana_leech` is meant, which is why the sheet is written by hand and
+reviewed. `test_passive_effects_match_the_node_text.py` is the same check for
+the passive trees.
+"""
+
+from __future__ import annotations
+
+import csv
+import pathlib
+import re
+import sys
+
+import pytest
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+DATA = REPO_ROOT / "game" / "Data"
+EFFECTS_CSV = DATA / "EnchantmentEffects.csv"
+ENCHANTMENT_CSVS = (DATA / "EnchantmentsPositive.csv",
+                    DATA / "EnchantmentsNegative.csv")
+
+sys.path.insert(0, str(REPO_ROOT / "tools"))
+
+import generate_datatables as gen  # noqa: E402
+
+#: Words that state a `more` multiplier without a number, and the value each
+#: one means. "Double your energy shield" is +100% more; "tripled" is +200%.
+#: "DOUBLES" JOINED ON 2026-10-07 for "Each gadget on the battlefield doubles
+#: the damage of all your traps", the one sentence in the two tables that says
+#: it. Ruled by the coordinating session under the owner's delegation.
+MULTIPLYING_WORDS = {"double": 100.0, "doubled": 100.0, "doubles": 100.0, "twice": 100.0,
+                     "triple": 200.0, "tripled": 200.0, "quadrupled": 300.0,
+                     "halved": -50.0}
+
+#: A sentence worded as a multiplier, which is what the `more` bucket is for.
+MULTIPLIER = re.compile(
+    r"\b(more|less|double|doubled|doubles|twice|triple|tripled|quadrupled|halved|slowed|ignore|ignores)\b",
+    re.IGNORECASE)
+
+#: A sentence worded as an increase, which is the `increased` bucket.
+#: THE VERB IN ALL THREE TENSES, not only the past participle. 13 enchantment
+#: sentences say "reduces" and 9 say "reduce" against 31 that say "reduced", and
+#: until 2026-09-14 not one of the first two had an effect row -- so this pattern
+#: accepted the meaning and refused two of its tenses, and nothing could notice.
+#: `Negative_Taking_a_hit_reduces_your_damage_by_5_10_for_3` is the row that
+#: exposed it. THIS WIDENS THE TENSE AND NOT THE MEANING: a sentence admitted by
+#: one form is admitted by the others for exactly the same reason, so the check
+#: is no weaker than it was.
+#:
+#: AND THE PRESENT PARTICIPLE, for the same reason, on 2026-09-24. "Critical
+#: strikes grant a stack of power increasing all damage by 3%-5%" was the first
+#: increased row whose sentence says "increasing"; issue #1833.
+INCREASE = re.compile(
+    r"\b(increase|increases|increased|increasing|reduce|reduces|reduced|reducing"
+    r"|faster|slower|longer|less time"
+    r"|larger|gain|lose)\b"
+    # AND "bonus", BUT NEVER THE SET LABEL. Measured 2026-09-18: 13
+    # sentences use it as an effect word, 39 carry it ONLY inside
+    # "(N-Piece Bonus)" where it names a set and claims nothing about a
+    # number, and 3 carry both. A plain word match would let a set label
+    # satisfy this rule.
+    r'|(?<!-Piece )\bbonus\b',
+    re.IGNORECASE)
+
+#: A sentence that takes something away, which is where a negative value goes.
+#: The same three tenses, for the same reason as above.
+#:
+#: `drain`, `drains` AND `drained` ADDED ON 2026-09-14, a labelled judgement
+#: recorded in docs/DECISIONS.md. This one widens the MEANING and not a tense:
+#: no word already here means it. Four enchantment sentences use it, and the
+#: only one with an effect row -- "Using your ultimate ability drains 20%-40%
+#: of your maximum HP" -- is written as a POSITIVE added_health_cost, so it
+#: never reaches this pattern and nothing could notice the word missing.
+#: "Dodging an attack drains 5%-10% of your class resource" is the first row
+#: that will be negative on a sentence using it.
+#:
+#: `minus` ADDED ON 2026-09-25, a labelled judgement recorded in
+#: docs/DECISIONS.md, for "Minus 2-4 to your max minion count", issue #1833.
+#: It widens the MEANING, as `drain` did: "minus 2" is 2 taken away.
+#:
+#: `losing` ADDED ON 2026-10-07, a labelled judgement recorded in
+#: docs/DECISIONS.md, for "After 10 seconds in combat you begin losing 2%-4%
+#: of your maximum HP per second". It widens a TENSE and not the meaning:
+#: `lose` was already here. Swept first: that sentence is the only one of the
+#: two enchantment tables that uses the word, and it had no row on that day.
+TAKING = re.compile(
+    r"\b(less|reduce|reduces|reduced|lose|losing|slower|shorter|halved|slowed"
+    r"|drain|drains|drained|ignore|ignores|minus)\b",
+    re.IGNORECASE)
+
+#: WORDS ADDED ON 2026-09-11 FOR THE RANGED ROWS, a labelled judgement recorded
+#: in docs/DECISIONS.md. "Gain 20%-50% movespeed" and "Lose 5%-15% attack speed"
+#: are this genre's wording for an increase and a reduction, and "You are
+#: permanently slowed by 10%-20%" is a multiplier that takes speed away. Adding
+#: them loosens the three patterns above, which is why the decision is written
+#: down rather than only made here.
+
+#: A stat on which a negative value makes what the character suffers last
+#: LONGER, so its sentence says "longer" rather than a word that takes away.
+#: "CC effects applied to you last 40%-70% longer" is a negative
+#: `crowd_control_resistance`. Accepted on this stat only: on a duration, a
+#: negative value beside "longer" would be a sign error, and is still refused.
+LONGER_WHEN_NEGATIVE = {"crowd_control_resistance"}
+LONGER = re.compile(r"\blonger\b", re.IGNORECASE)
+
+#: A stat on which a negative value is what the sentence says the ENEMY GAINS.
+#: "Enemies within 5 metres gain 20%-40% resistances" was ruled on 2026-10-05
+#: to be read on the wearer's side, as that much less `penetration`, so its
+#: row is negative and its sentence says "gain". Accepted on this stat only,
+#: and only for a sentence whose subject is enemies: "You gain 20% penetration"
+#: beside a negative value would be a sign error, and is still refused.
+GAINED_BY_ENEMIES_WHEN_NEGATIVE = {"penetration"}
+
+#: A stat on which a negative value makes something END SOONER, so its sentence
+#: says "expire ... faster" rather than a word that takes away. "Persistent AOE
+#: effects expire 40%-60% faster" is 40% to 60% less `persistent_area_duration`.
+#: Accepted on this stat only: "faster" beside a negative value on a speed
+#: would be a sign error, and is still refused.
+EXPIRES_FASTER_WHEN_NEGATIVE = {"persistent_area_duration"}
+EXPIRES_FASTER = re.compile(r"\bexpires?\b.*\bfaster\b", re.IGNORECASE)
+ENEMIES_GAIN = re.compile(r"^enemies\b.*\bgain\b", re.IGNORECASE)
+
+#: A stat on which a negative value makes something ARRIVE MORE SLOWLY, so its
+#: sentence says "more slowly" rather than a word that takes away. "Your leech
+#: pays out 50% more slowly" is a `more` of -50 on `leech_payout_rate`, the
+#: owner's wording of #1618. Ruled by the coordinating session on 2026-10-28:
+#: accepted on this stat only, because "slowly" in TAKING would let a negative
+#: row on any stat pass on that word.
+SLOWER_WHEN_NEGATIVE = {"leech_payout_rate"}
+MORE_SLOWLY = re.compile(r"\bmore\s+slowly\b", re.IGNORECASE)
+
+#: A sentence saying a stat is gone, which is what the `removed` kind is for.
+#: Issue #1791. The eleven sentences it was written for say it four ways: "You
+#: have no armor" and "You no longer regenerate mana", "Cannot block", "Can't
+#: regen your hp", and "Your maximum mana is reduced to zero". A removal states
+#: no number, so these words are the only thing in the sentence to hold it to.
+#:
+#: WHOLE WORDS, so that "Nobody" and "cannon" do not read as a removal.
+#: `test_a_removal_is_read_from_whole_words_only` holds that on made-up
+#: sentences.
+#:
+#: `disabled` ADDED ON 2026-09-23, a labelled judgement made under the owner's
+#: delegation, with the `drain` widening of 2026-09-14 as its precedent. It widens
+#: the MEANING by one word that says a thing is gone: "HP regeneration is disabled
+#: during combat". Swept first: two sentences use it, both removals -- that one,
+#: and "Your own ultimate ability is disabled", which has no row.
+REMOVING = re.compile(r"\b(no|cannot|can't|zero|does not|disabled|free)\b", re.IGNORECASE)
+
+#: Stats whose value is a yes or a no rather than a quantity, so the sentence
+#: states no number for it and should not. `skill_locked` above zero means the
+#: character's skills are refused; the sentence says what happens and the 1 says
+#: that it happens. Issues #41 and #1628.
+#:
+#: NOT THE SAME THING AS `JUDGED_NUMBERS` BELOW, which is for a sentence stating
+#: no number at all, where somebody chose a magnitude. The skill lock's sentence
+#: does state a number -- "2 seconds" -- and that number is its CONDITION value,
+#: which `test_every_condition_value_appears_in_the_words_too` checks like any
+#: other. Only the 1 is exempt, and only on these stats.
+#:
+#: `test_every_flag_stat_row_states_one` keeps this honest: a row on one of these
+#: stats states 1 and nothing else, so the exemption cannot grow to cover a
+#: magnitude nobody wrote down.
+#:
+#: `shield_absorbs_damage_over_time` JOINED ON 2026-09-23, issue #2014, with
+#: "Energy shield can now be effected by bleed". Above zero it lets a bleed into
+#: the wearer's energy shield; the sentence says what happens and the 1 says
+#: that it happens.
+#:
+#: `shield_recharge_has_no_delay` JOINED ON 2026-09-25, issue #1833's small
+#: engine halves, with "Energy shield regeneration begins immediately after
+#: taking damage with no delay". Above zero the shield recharges at its whole
+#: rate inside the wait after being damaged.
+#:
+#: `auras_end_at_death` JOINED ON 2026-09-25, issue #1833, with "When you die
+#: all your buffs are removed", which the owner kept: above zero, a death also
+#: ends the wearer's running auras.
+#:
+#: `aura_shares_immunities_with_allies` JOINED ON 2026-10-04, issue #1833 group
+#: E part 4c, with "Your aura also applies its effect to all allies within
+#: range": above zero, the allies inside the wearer's aura share the immunities
+#: it gives its caster.
+#: `skill_cost_paid_from_health` TOOK THE PLACE OF `mana_pool_becomes_health`
+#: ON 2026-10-06, issue #2228: above zero, a skill's cost comes out of health
+#: and the mana pool is left alone. "While below 50% HP, all skills cost HP
+#: instead of mana" moved to it, and no enchantment row states the old stat any
+#: more, so `test_every_flag_stat_is_still_used` would refuse it here.
+#: TWO JOINED ON 2026-10-06 with their rows, issue #1833: `zone_staggers_on_entry`,
+#: "Enemies that enter your persistent AOE zones are briefly staggered", and
+#: `zone_applies_own_ailment`, "Persistent AOE zones apply a DoT to enemies
+#: standing in them". A zone asks each whether it is above nought.
+FLAG_STATS = {"skill_locked", "skill_cost_paid_from_health", "auras_end_at_death",
+              "shield_absorbs_damage_over_time", "shield_recharge_has_no_delay",
+              "aura_shares_immunities_with_allies", "zone_staggers_on_entry",
+              "zone_applies_own_ailment",
+              # JOINED 2026-10-06 with Plague Doctor's six-piece row: above nought,
+              # applying a damage over time effect refreshes the applier's others.
+              "dot_application_refreshes_others",
+              # TWO MORE JOINED 2026-10-06 with their rows: a zone that also damages
+              # its owner, and minions that leave a chaos pool where they die.
+              "zone_damages_its_owner", "minions_leave_chaos_pools",
+              # THREE MORE JOINED 2026-10-07 with their rows: "Unaffected by
+              # bleeding", "DoTs deal damage to your mana pool first" and "Your
+              # persistent AOE zones apply their effects to you if you stand in
+              # them". The game asks each whether it is above nought.
+              "ailment_immunity", "damage_over_time_taken_from_mana_first",
+              "zone_applies_effects_to_owner",
+              # THREE MORE JOINED with their rows, issue #1833: "Your movement
+              # abilities pull all nearby enemies to you on arrival", "Your
+              # movement abilities now move you in a random direction" and "Your
+              # movement abilities cause an explosion at the starting and end
+              # locations". A movement skill asks each whether it is above nought.
+              "movement_pulls_nearby_on_arrival", "movement_random_direction",
+              "movement_explodes_at_both_ends",
+              # ONE MORE JOINED with its row, issue #1833: "Spells pierce through all
+              # enemies in their path". A projectile skill asks whether it is above nought.
+              "projectile_pierce_all",
+              # ONE MORE JOINED with its row, issue #1833: "You cannot move while
+              # channeling any skill". The player controller asks whether it is
+              # above nought before it lets the character take a step.
+              "cannot_walk",
+              # ONE MORE JOINED with its rows, issue #1833: "Taking a hit
+              # interrupts any skill currently being used" and "Taking damage
+              # while channeling interrupts the channel immediately". The game
+              # asks whether it is above nought for each running skill when a
+              # hit lands.
+              "hit_taken_cancels_skills",
+              # ONE MORE JOINED with its row, issue #1833: the first half of
+              # Mana Weaver's six-piece bonus, "You gain an aura that makes you
+              # and nearby allies immune to all mana-draining effects". The
+              # dungeon game mode asks whether it is above nought before the
+              # rule Suffering Aura takes the player's mana. The holder only,
+              # and that one rule's drain only.
+              "suffering_aura_mana_drain_immunity",
+              # ONE MORE JOINED with its row, issue #1833: "Retaliation damage
+              # cannot be reduced or mitigated by the attacker". Where
+              # retaliation is paid, the game asks whether it is above nought.
+              "retaliation_cannot_be_mitigated",
+              # ONE MORE JOINED with its row, issue #1833: "You are immune to debuffs but
+              # also cannot apply them". The four functions that lay a debuff ask whether it
+              # is above nought for the target, the instigator and the instigator's
+              # commander.
+              "immune_to_debuffs_and_applies_none",
+              # ONE MORE JOINED with its row, issue #1833: "Your gadgets prioritize the
+              # highest HP enemy within their range instead of the nearest". A gadget asks
+              # its summoner whether it is above nought each time it picks a target.
+              "gadgets_target_most_health",
+              # ONE MORE JOINED with its row, issue #1833: "When a gadget kills an enemy, it
+              # fires an additional burst at the nearest enemy within its range". A gadget
+              # asks its summoner whether it is above nought when its own blow has killed.
+              "gadgets_burst_on_kill",
+              # ONE MORE JOINED with its rows, issue #1833: the first half of "Your gadgets
+              # are invincible but lose 5% of their maximum HP per second passively". A
+              # gadget asks its summoner whether it is above nought on each of its steps.
+              "gadgets_take_no_damage",
+              # gadgets copy the last skill their summoner used, every 2 seconds
+              # (2026-10-14)
+              "gadgets_copy_your_last_skill",
+              # Mana Weaver ten-piece: no cooldown on the Ultimate, its mana cost doubles
+              # per paid use this dungeon (2026-10-15)
+              "ultimate_cost_doubles_instead_of_cooldown",
+              # The flag by which a converted slot's key places a skill gadget instead of
+              # casting its skill, a flat 1 requiring the slot's tag. Ruled 2026-10-16.
+              "skill_slot_is_a_gadget",
+              # Tyrant's Chains' six-piece, ruled 2026-10-18 (Q1): the flag by which a
+              # commander's death blast deals Death damage. Its row states 1 and the
+              # sentence's "as Death damage" says so in words.
+              "minion_death_blast_deals_death",
+              # Reaper's Embrace's six-piece, ruled 2026-10-18 (R1-R8): the flag by which
+              # a minion's death leaves a Soul. Its row states 1 and the sentence's "it
+              # leaves behind a "Soul"" says so in words.
+              "minion_death_leaves_soul",
+              # Reaper's Embrace's ten-piece, ruled 2026-10-19 (C1-C8): the flag by which
+              # a kill spawns one of the wearer's minions. Its row states 1 and the
+              # sentence's "Killing an enemy instanly spawns one of your minions" says so in
+              # words.
+              "minion_kill_spawns_minion",
+              # "You cannot benefit from buffs applied by allies", ruled 2026-10-19 (Q3 a,
+              # A1-A5): the flag by which the receiver refuses every buff another
+              # character gives it. Its row states 1 and the sentence names no number.
+              "ally_buffs_refused",
+              # "Your deployables and traps deal full damage to you if you are within
+              # their blast radius", the deployable half, ruled 2026-10-19 (Q1, B1-B6):
+              # the flag by which the wearer's own deployable's blast strikes the wearer
+              # inside it. Its row states 1 and the sentence names no number.
+              "deployable_blasts_strike_self",
+              # Traps layer 1, ruled 2026-10-19 (T1-T19) and 2026-10-20: the flag by which a slot,
+              # named by its Required Tags, is converted into a placeable trap. Each of its rows
+              # states 1 and the sentences name no number.
+              "skill_slot_is_a_trap",
+              # Traps layer 3, ruled 2026-10-21 (M2): the flag by which a trap placed while it is worn
+              # has no life span. Its row states 1 and the sentence names no number.
+              "traps_do_not_expire"}
+
+#: Stats whose row carries 100 MINUS a number the sentence states, so the row
+#: and the words say the same thing two ways round. The ruling of 2026-09-14 on
+#: issue #1793, made by the coordinating session under the project owner's
+#: delegation of that date.
+#:
+#: `healing_ceiling_reduction` IS WHAT THIS EXISTS FOR, and it is not in the
+#: list yet. `UCataclysmRegeneration::TopUp` computes
+#: `Ceiling *= (100 - Reduction) / 100`, so "You cannot heal above 60% of your
+#: maximum HP" is a row carrying 40. The sentence says 60 and the row must say
+#: 40, and `test_a_single_value_appears_in_its_words_outside_any_range` is right
+#: to refuse a value that appears nowhere in its own words.
+#:
+#: THE SENTENCE IS THE CLEARER OF THE TWO AND STAYS AS IT IS. A player reads a
+#: ceiling more easily than a reduction, and the stat stays a reduction for the
+#: reasons `CataclysmVitalAttributeSet.h:183-189` gives: a stat holding the
+#: ceiling itself would need 0 to mean "no cap", which reads as "cannot be
+#: healed at all", and two such sources would sum in the flat bucket to 100 and
+#: thereby REMOVE the cap. So neither the words nor the stat move, and the check
+#: learns the relationship between them instead.
+#:
+#: EMPTY UNTIL ITS ROWS EXIST, which is the whole reason
+#: `test_the_complement_list_holds_what_it_is_measured_to_hold` is below. The
+#: two rows that fill it -- "You cannot heal above 60% of your maximum HP" and
+#: "You cannot be healed above 75% of your maximum HP" -- are authored in the
+#: design workbook, and a name added here before them would be an exemption with
+#: nothing to excuse.
+#:
+#: FILLED ON 2026-09-14, with the two rows. "You cannot heal above 60% of your
+#: maximum HP" is `healing_ceiling_reduction` flat 40 and "You cannot be healed
+#: above 75%" is flat 25, and each sentence states the complement of its row.
+#: AND "energy_shield_recharge_ceiling_reduction" SINCE 2026-09-30, issue
+#: #1833: "Your energy shield cannot recharge above 50% of its maximum" is
+#: flat 50, which leaves 50 of 100, the healing ceiling's shape.
+COMPLEMENT_STATS: set[str] = {"healing_ceiling_reduction",
+                              "energy_shield_recharge_ceiling_reduction"}
+
+#: Words that state one stat's value without a number, per stat. Issue #1815.
+#:
+#: "IMMUNE" IS 100 ON `crowd_control_resistance` AND ON NOTHING ELSE. Ruled
+#: 2026-09-17 under the project owner's delegation: "While below 30% HP you are
+#: immune to crowd control" is that stat, flat 100, because at 100
+#: `UCataclysmSkillEffects::AfterCrowdControlResistance` lets no stun, knockdown
+#: or shove land -- the one place the owner let a stat reach immunity, on
+#: 2026-09-05. The knockdown joined the three on 2026-09-17, which is what the
+#: row waited for.
+#:
+#: PER STAT, NOT A SECOND `MULTIPLYING_WORDS`, because the same word means a
+#: different number, or none, on another stat. The sentence also states a number,
+#: 30, which is its condition value, so `JUDGED_NUMBERS` cannot excuse it: that
+#: list is for sentences that state no number at all.
+#:
+#: "ALL" IS 100 ON `armor_penetration`, ruled 2026-09-23 under the owner's
+#: delegation for "Your first hit against each enemy ignores all armor". The
+#: engine clamps armour penetration at 100 (`CataclysmDamageCalculation.cpp`),
+#: so 100 is all of it. The same reasoning as "immune" above, on one stat.
+STATED_BY_WORD: dict[str, dict[str, float]] = {
+    "crowd_control_resistance": {"immune": 100.0},
+    "armor_penetration": {"all": 100.0},
+    # "NEARBY" IS 5 ON `minion_death_blast_radius_metres` AND "SHORT" IS 10 ON
+    # `minion_death_summons_tyrants_minion_seconds`, for Tyrant's Chains' six-piece,
+    # "...to all nearby enemies ... for a short duration": 5 m is the recorded
+    # stand-in for "nearby", and 10 s was ruled 2026-10-18 (Q2) under the owner's
+    # delegation. One word per stat, each the one that row's sentence uses.
+    "minion_death_blast_radius_metres": {"nearby": 5.0},
+    "minion_death_summons_tyrants_minion_seconds": {"short": 10.0},
+    # "RARE" IS 1 ON `lethal_hit_reprieve_kill_rarity_at_least`, for the Demon King's
+    # Regalia's ten-piece, "Killing a Rare or higher enemy": the game has no Rare rung,
+    # and "Rare or higher" is Elite and above, rung 1, ruled 2026-10-17.
+    "lethal_hit_reprieve_kill_rarity_at_least": {"rare": 1.0},
+    # AND "RAGE" IS 10 ON `lethal_hit_reprieve_every_seconds`, the same sentence's
+    # "during Demonic Rage": the reprieve's interval is the Demonic Rage's own 10 s
+    # (the six-piece's "for 10 seconds"), so one reprieve a Rage. Ruled 2026-10-18 to be
+    # stated on purpose: the set label's 10 used to admit it, and no longer does.
+    "lethal_hit_reprieve_every_seconds": {"rage": 10.0},
+    # "LARGE" IS 8 ON `ground_pound_radius_metres`, for Brute's Heart's ten-piece, "to all
+    # enemies in a large radius": 8 m, the game's figure for a set's "area" (Warlord's
+    # Will's ten-piece), ruled 2026-10-18 (Q1) under the owner's delegation.
+    "ground_pound_radius_metres": {"large": 8.0},
+    # "ARMOR" IS 20 ON `warhound_percent_of_armor` AND "TAUNTS" IS 3 ON
+    # `warhound_taunt_seconds`, for Warlord's Will's six-piece, "The Warhound taunts
+    # enemies and deals damage based on your armor": 20% of the summoner's armour a hit,
+    # ruled 2026-10-18 (Q5) under the owner's delegation, and the 3 s taunt the owner
+    # ruled on 2026-10-17 (#6). One word on one stat each.
+    "warhound_percent_of_armor": {"armor": 20.0},
+    "warhound_taunt_seconds": {"taunts": 3.0},
+    # BRUTE'S HEART'S SIX-PIECE TAUNT AURA, "a powerful aura that taunts all nearby
+    # enemies": "NEARBY" IS 5 ON `taunt_aura_radius_metres` (the project's nearby, 5 m,
+    # ruled 2026-10-18, Q1), "TAUNTS" IS 3 ON `taunt_aura_taunt_seconds` (the taunt's 3 s,
+    # the owner's #6), and "AURA" IS 1 ON `taunt_aura_every_seconds`: the word naming
+    # what pulses, once a second, the coordinating session's Q2 ruling of 2026-10-18 under
+    # the owner's delegation. One word on one stat each.
+    "taunt_aura_radius_metres": {"nearby": 5.0},
+    "taunt_aura_taunt_seconds": {"taunts": 3.0},
+    "taunt_aura_every_seconds": {"aura": 1.0},
+    # "RESET" AND "RESETS" ARE 100 ON THE COOLDOWN RESET ACTIONS, whose value is
+    # a chance: a sentence that resets and states no chance resets every time.
+    # Issue #1833, the cooldown reset action. One word per action, the one its
+    # own row's sentence uses, so each is needed by a row.
+    # AND "REFRESHED" IS 100 ON `cooldown_reset_all`, for Divine Retribution's
+    # ten-piece bonus, "all of your skills are instantly refreshed": the same
+    # reasoning, a sentence that refreshes and states no chance refreshes every
+    # time. Needed by that row and by no other.
+    "cooldown_reset_all": {"reset": 100.0, "refreshed": 100.0},
+    "cooldown_reset_others": {"resets": 100.0},
+    "cooldown_reset_special": {"reset": 100.0},
+    "cooldown_reset_heavy": {"resets": 100.0},
+    # AND "ALL" IS 100 ON `penetration`, for "Your first hit against each enemy
+    # in a combat ignores all resistances", issue #1833's small engine halves.
+    # The same reasoning as armour: penetration stops at the target's own
+    # resistance (`UCataclysmDamageCalculation::EffectiveResistance`), so 100
+    # is all of it.
+    "penetration": {"all": 100.0},
+    # "NO" IS 100 ON `nth_attack_no_damage`: "Every 10th attack deals no
+    # damage" is all of the attack's damage, and the generator requires 100.
+    # Issue #1833, every Nth. An action row has no stat, so its ACTION is the
+    # key here, which the two readers below use in its place.
+    "nth_attack_no_damage": {"no": 100.0},
+    # "APPLY" AND "APPLIES" ARE 100 ON `apply_random_dot`, whose value is a
+    # chance: "Critical strikes apply a random DoT to the target" applies one
+    # every time. Issue #1833 group D. One word for each of its two rows'
+    # sentences, so each is needed by a row.
+    "apply_random_dot": {"apply": 100.0, "applies": 100.0},
+    # "SMITE" IS 100 ON `smite_nearby`, a share of weapon damage: the 2026-09-11
+    # judgement "Smite ... a nova at 100% of weapon damage". Issue #1833 group D
+    # part 3, for "Divine Retribution (6-Piece Bonus): When your energy shield is
+    # broken, you smite all nearby enemies".
+    "smite_nearby": {"smite": 100.0},
+    # "REMAINING" IS 100 ON `dot_remaining_nearby`, a share of the remaining
+    # damage: "When you die, all active DoTs on nearby enemies instantly deal
+    # their remaining damage" deals all of it. Issue #1833 group D part 4.
+    "dot_remaining_nearby": {"remaining": 100.0},
+    # "ALWAYS" AND "APPLIES" ARE 100 ON `apply_status`, whose value is a chance:
+    # "Your critical strikes always cause bleeding" and "Your retaliation damage
+    # also applies a bleed stack to the attacker" apply it every time. Issue
+    # #1833 group E part 1. One word for each of its two rows' sentences, so
+    # each is needed by a row.
+    "apply_status": {"always": 100.0, "applies": 100.0},
+    # "CLEANSED" IS 100 ON `cleanse`: "You are cleansed every 5 seconds" removes
+    # all of what a cleanse removes, and the generator requires 100. Issue #1833.
+    "cleanse": {"cleansed": 100.0},
+    # "TRIGGER" IS 100 ON `gadgets_cast_now`: "When you die, all your active traps and gadgets immediately trigger
+    # simultaneously" fires every gadget, and the generator requires 100 and reads it nowhere. Ruled by the
+    # coordinating session on 2026-10-19.
+    "gadgets_cast_now": {"trigger": 100.0},
+    # "ALL" IS 0 ON `trigger_traps_nearby` AT THE DEATH: "When you die, all your active traps and gadgets immediately
+    # trigger simultaneously", its trap half, sets off every standing trap wherever it stands, and the generator
+    # requires a radius of 0 on `player_death`. Ruled by the coordinating session on 2026-10-22 (traps layer 5, H8).
+    "trigger_traps_nearby": {"all": 0.0},
+    # "SHOT" IS 100 ON `gadget_fires_at_trap_enemy`: "When a trap is triggered near an active gadget, the gadget fires an
+    # immediate bonus shot at the triggering enemy" fires one whole shot, a "more" of 100 per cent; the every-third row
+    # states its own 200%-400%. Ruled by the coordinating session on 2026-10-22 (traps layer 6, J2, J6).
+    "gadget_fires_at_trap_enemy": {"shot": 100.0},
+    # "ECHO" IS 100 ON `repeat_skill`, whose value is a chance: "Your spells
+    # echo +1 time" repeats every time. Mechanism B2, ruled 2026-10-05: an
+    # echo is read as a second free activation. The two rows that say "twice"
+    # need no word here, because "twice" already reads as 100 everywhere.
+    "repeat_skill": {"echo": 100.0},
+    # "NEAREST" IS 1 ON `ailment_spread_on_death`, whose value is how many: "its
+    # bleed spreads to the nearest enemy within 5 metres" is one enemy. The 5
+    # in that sentence is the distance, which is the reach every spread at a
+    # death has and is no cell of the row.
+    "ailment_spread_on_death": {"nearest": 1.0},
+    # "APPLIED" IS 100 ON THE ACTION THAT LAYS A STATUS ON ITS WEARER, whose
+    # value is a chance: "Every 15 seconds a random debuff is applied to you"
+    # states no chance, so it is applied every time, as "reset" is on the
+    # cooldown reset actions. 2026-10-07.
+    # AND "REDUCED" IS 100 ON THE SAME ACTION, for the set Shard of Anarchy's
+    # drawback, "Every 5 seconds, one of your resistances is reduced to 0 until
+    # this triggers again": it states no chance, so one is reduced every time.
+    # 2026-10-12. THE COST OF THIS WORD: this table matches single words and not
+    # phrases, so it cannot say "reduced to 0". A later sentence on this action
+    # that says "reduced by 10%" would therefore be excused a stated 100 that it
+    # does not state. Whoever writes such a row has to read this entry again.
+    "apply_status_to_self": {"applied": 100.0, "reduced": 100.0},
+    # "CAST" IS 100 ON THE ACTION THAT SPENDS KEPT STACKS TO CAST A SKILL AGAIN,
+    # whose value is the share of its damage each extra cast deals: "your skill
+    # is cast a random number of times" states no share, and each cast at the
+    # whole of its damage is ruled 2026-10-12 in the entry on kept stacks, as
+    # the merged "cast a second time" rows are.
+    "kept_stacks_repeat_skill": {"cast": 100.0},
+}
+
+#: The label a set bonus's sentence opens with, as in "Plague Doctor (10-Piece
+#: Bonus): ...". Its number counts the pieces worn and states nothing about what
+#: the bonus does, so `test_every_judged_number_is_still_needed` reads a sentence
+#: without it. Added 2026-10-07 with the first set bonus whose number is a
+#: judgement. ONLY THE LABEL: a number anywhere else in the sentence still ends
+#: the excuse, which `test_a_set_label_is_not_a_number_the_sentence_states` holds.
+SET_LABEL = re.compile(r"\(\d+-Piece Bonus\)")
+
+#: Enchantments whose sentence states no number, so the number was chosen under
+#: the project owner's delegation of 2026-09-11 and recorded as a labelled
+#: judgement in docs/DECISIONS.md. Each is excused from the two checks that need
+#: the number, or an increase word, in the sentence, and from nothing else.
+#: `test_every_judged_number_is_still_needed` keeps this list honest.
+JUDGED_NUMBERS = {
+    # "Your retaliation damage scales with your current HP percentage -- the
+    # lower your HP the higher the retaliation": 1% increased retaliation
+    # damage for every 2% of maximum health missing.
+    "Positive_Your_retaliation_damage_scales_with_your_current",
+    # "Skills that cost HP restore that amount as mana": the whole of the
+    # health the cost took, returned as mana, so 100 of the amount the event
+    # carried. "that amount" is all of it.
+    "Positive_Skills_that_cost_HP_restore_that_amount_as_mana",
+    # "Void splinter stacks spread to nearby enemies when the afflicted enemy
+    # dies": every enemy within 5 metres, ruled 2026-10-06. The row's value is
+    # how many it passes to, and 100 is a count no pack reaches.
+    "Positive_Void_splinter_stacks_spread_to_nearby_enemies_wh",
+    # "Plague Doctor (10-Piece Bonus): When an enemy dies while affected by a
+    # DoT from you, it explodes and applies all of your DoTs to all nearby
+    # enemies": the explosion is 20 per cent of the dead enemy's maximum health,
+    # ruled 2026-10-06 and 2026-10-07.
+    "Positive_Plague_Doctor_10_Piece_Bonus_When_an_enemy_di",
+    # "Damage absorbed by your energy shield is converted to bonus damage on
+    # your next attack" and "Absorbed spell damage is converted to bonus damage
+    # on your next attack": the row's value is the most the store may add, as a
+    # share of the hit it is added to, and 100 is ruled 2026-10-07 in the entry
+    # "Absorbed damage stored".
+    "Positive_Damage_absorbed_by_your_energy_shield_is_convert",
+    "Positive_Absorbed_spell_damage_is_converted_to_bonus_dama",
+    # "Enemies killed by you explode for the overkill amount": the row's value
+    # is the share of the overkill the explosion deals, and "the overkill
+    # amount" is all of it, 100. Ruled 2026-10-07 in the entry "Overkill
+    # explosion, first part".
+    "Positive_Enemies_killed_by_you_explode_for_the_overkill_a",
+}
+
+#: Enchantments whose sentence states A TOTAL and whose row grants what is
+#: ADDED to a base, as (the base, the stat). "Your movement ability has 2
+#: charges" is `skill_charges_bonus` 1: a skill always holds one charge, which
+#: `UCataclysmAbilitySystemComponent::SkillChargesMaximum` adds the bonus to, so
+#: the sentence's 2 is that 1 and the row's 1. Issue #1833, 2026-10-05. The
+#: sibling of the generator's `BASE_PLUS_RANGE_ENCHANTMENTS`, which does the
+#: same for a range. `test_every_base_plus_single_value_is_still_needed` keeps
+#: it honest.
+BASE_PLUS_SINGLE_VALUES = {
+    "Positive_Your_movement_ability_has_2_charges": (1.0, "skill_charges_bonus"),
+}
+
+#: How many rows are written, and over how many enchantments. Pinned so that
+#: the coverage only moves when somebody means it to, and says so in
+#: `docs/DECISIONS.md` at the same time.
+#: Seven rows over seven enchantments until 2026-09-11, when the ranged
+#: enchantments' rows were written, and 64 over 56 until the four buildable
+#: sets got their eight rows, and 81 over 73 until Brute's Heart and Demon
+#: King's Regalia got six rows between them on 2026-09-12, and 87 over 77
+#: until the two staggered damage enchantments got three rows between them
+#: later the same day. Issue #45.
+#:
+#: THREE ROWS FOR TWO ENCHANTMENTS, WHICH IS THE SHEET'S PATTERN AND NOT A
+#: MISCOUNT. "Staggered enemies take 20%-35% increased damage from all sources"
+#: is the wearer's own damage across its types, so it is an `attack_damage` row
+#: and a `spell_damage` row; "Staggered enemies deal 15%-30% increased damage to
+#: you" is damage the wearer takes, which is `damage_taken` alone.
+#:
+#: 91 OVER 80 SINCE THE SKILL LOCK GOT ITS FIRST SOURCE, the same
+#: day: "You cannot use movement abilities while stationary for more than 2
+#: seconds" is the first row in this file to take a skill away rather than change
+#: a number. Issues #41 and #1628.
+#:
+#: AND 93 OVER 82 SINCE THE TWO STAGGER STATS A STAGGERING CHARACTER CARRIES,
+#: later the same day: "Stagger effects you apply last 50%-100% longer" and "You
+#: cannot stagger enemies above 50% HP". ONE ROW EACH, so both numbers move by
+#: two -- unlike the three-rows-for-two-enchantments entry above, where one
+#: enchantment needed a row per damage type. Issue #45.
+#:
+#: AND 103 OVER 88 SINCE THE FIRST SIX DAMAGE-CHANGE ROWS THAT NEEDED NO NEW
+#: MECHANISM, issue #1686 group A. SIX ENCHANTMENTS AND TEN ROWS: a row about
+#: the damage a character's own skills deal becomes one row on `attack_damage`
+#: and one on `spell_damage`, which is what the built "Melee skills deal
+#: 20%-40% increased damage" does. The two about damage TAKEN are one row each.
+#: AND 107 OVER 90 SINCE THE TWO ROWS THAT NEED A TAG AND A CONDITION AT ONCE,
+#: issue #1686: "Spells deal 20%-35% less damage while you are moving" and
+#: "Ranged skills deal 15%-30% less damage at close range (within 5 meters)".
+#: TWO ENCHANTMENTS AND FOUR ROWS, the same doubling as the entry above.
+#:
+#: THE SECOND SENTENCE GAINED ITS DISTANCE SO THIS FILE COULD KEEP REFUSING A
+#: HIDDEN NUMBER. `test_every_condition_value_appears_in_the_words_too` rejected
+#: the row while it said only "at close range", and it was right to:
+#: `target_within_metres` acts on a number the player could not read. The
+#: sentence was changed rather than this file. `docs/DECISIONS.md` carries why
+#: five metres, and why an appended clause is safe when a reworded opening is
+#: not.
+#: AND 108 OVER 91 SINCE THE MOVEMENT SPEED A FULL CLASS RESOURCE GRANTS, issue
+#: #1686: "When your class resource is full, your movement speed is increased by
+#: 15%-30%". ONE ROW OVER ONE ENCHANTMENT, so both numbers move by one -- unlike
+#: the entry above, where four rows covered two enchantments.
+#:
+#: ITS PRECEDENT IS ONE ROW UP IN THE SAME TABLE. The critical strike sibling,
+#: "When your class resource is full, critical strike chance is increased by
+#: 15%-30%", is built on the same condition and states no duration either. The
+#: third sibling says "for 3 seconds" and stays unwritten, because a duration
+#: needs a condition the pipeline has not got.
+#: AND 109 OVER 92 SINCE THE ULTIMATE LOCK, issue #1754: "Your ultimate ability
+#: cannot be used unless you are below 50% HP". ONE ROW OVER ONE ENCHANTMENT, so
+#: both numbers move by one -- the enchantment had no effect row at all before
+#: this, which is what makes it newly authored as well as newly rowed.
+#:
+#: IT IS THE FIRST ROW IN THE GAME TO USE `health_at_or_above`. Issue #1653 added
+#: that predicate for this exact sentence and closed, leaving the row unwritten
+#: and `docs/DECISIONS.md` still saying the predicate did not exist. Nothing used
+#: it for the whole time in between.
+#:
+#: THE SHAPE IS COPIED FROM THE MOVEMENT LOCK and not invented: same `skill_locked`
+#: stat, same `flat` 1, a slot tag in place of a slot tag and a condition in place
+#: of a condition. The only fields that differ are `Slot.Ultimate` for
+#: `Slot.Movement` and `health_at_or_above` 50 for `stationary_for_seconds` 2.
+#: AND 144 OVER 121 SINCE THE ROWS THAT ISSUE #1642'S SURVEY FOUND WRITABLE,
+#: issue #45. FIFTEEN ENCHANTMENTS AND TWENTY-ONE ROWS: six of the fifteen say
+#: "your damage", which is one `attack_damage` row and one `spell_damage` row
+#: each, and the other nine are one row apiece.
+#:
+#: THE SURVEY OFFERED THIRTY-THREE AND SEVENTEEN OF THEM COULD NOT BE WRITTEN.
+#: Eleven were proposed as `more` at -100 to mean "you have no armour", "cannot
+#: block", "can't regen your hp" and the like.
+#: `UCataclysmStatPipeline::LessMultiplierFloor` is -99 and `Accumulate` clamps
+#: to it, so such a row leaves the wearer a hundredth of the stat rather than
+#: none of it. A sentence stating a total removal is a rule and not a
+#: magnitude, which this project already writes as a flag stat of 1 --
+#: `FLAG_STATS` above, and the seven nodes at
+#: `test_passive_effects_match_the_node_text.py`. Each of the eleven needs its
+#: own flag stat and the C++ that reads it. Issue #1791.
+#:
+#: TWO MORE WERE REFUSED BY THE TWO CHECKS MEETING. A minion row is read
+#: through `IncreasesForStat`, which returns the increases alone, so only the
+#: `increased` bucket reaches a minion at all; but "20%-50% less hp" and "50%
+#: more damage" are worded as multipliers, and
+#: `test_an_increased_row_is_worded_as_an_increase` refuses an `increased` row
+#: whose sentence says neither increased nor reduced. Issue #1792. Two further
+#: rows fell with them because a set is written whole or not at all.
+#:
+#: AND TWO STATE A NUMBER THEIR ROW CANNOT CARRY. `healing_ceiling_reduction`
+#: is the number taken off 100, so "you cannot heal above 60%" is a 40 that its
+#: own sentence never says, and
+#: `test_a_single_value_appears_in_its_words_outside_any_range` is right to
+#: refuse it. Issue #1793.
+#: AND 148 OVER 125 SINCE THE ROWS THE RULINGS OF 2026-09-14 UNBLOCKED, issues
+#: #1792 and #1793. FOUR ENCHANTMENTS AND FOUR ROWS, one apiece.
+#:
+#: TWO ARE MINION ROWS AND BOTH ARE `increased`, WHICH IS NOT A STYLE CHOICE. A
+#: minion reads its summoner's `minion_health` and `minion_damage` through
+#: `IncreasesForStat`, which returns the increases alone, so a `more` row and a
+#: `flat` row on those two stats are computed and then discarded. Set 6 lands
+#: whole on them: its drawback and its first bonus.
+#:
+#: A FIFTH ROW WAS RULED AND IS NOT HERE. "Your minions have 20%-50% less hp"
+#: needed its sentence reworded to reach the `increased` bucket, and the whole
+#: sentence is 33 characters, so the reword moves the row name a dropped item
+#: stores and orphans every saved item carrying it. Issue #1799 carries that to
+#: the project owner. The sibling reword, Tyrant's Chains, was safe because its
+#: changed word sits past the 48-character cap, and it is written.
+#: AND 169 OVER 141 SINCE THE EIGHT ROWS THAT MOVE A POOL WHEN AN EVENT
+#: HAPPENS, from 161 over 133, issue #1815. ONE ROW EACH:
+#: a row moves one pool, where the damage rows above need one for attack and
+#: one for spell. Seven fire on a block, a dodge or a class resource reaching
+#: zero; the eighth returns the health a skill's cost took as mana and states
+#: no number, which is why its enchantment is in JUDGED_NUMBERS.
+#: AND 176 OVER 148 SINCE THE SEVEN ROWS ON A KILL, A CRITICAL STRIKE,
+#: A DEATH NEARBY, A SKILL USE OR A STRIKE'S HIT, from 169 over
+#: 141, issue #1815. ONE ROW EACH, because a row moves one pool.
+#: AND 201 OVER 160 SINCE THE ELEVEN SENTENCES THAT REMOVE A STAT AND
+#: STARVATION'S 2-PIECE BONUS, from 176 over 148, issue
+#: #1791. "You have no resistances." is eight rows, one per resistance.
+#: AND 204 OVER 162 SINCE "You cannot evade or block melee attacks" AND
+#: "Cannot evade melee attacks", from 201 over 160, issue #1815. The
+#: first is two rows, one removal each for evasion and block chance.
+#: AND 205 OVER 163 SINCE "While below 30% HP you are immune to crowd
+#: control", from 204 over 162, issue #1815. ONE FLAT ROW: 100
+#: crowd control resistance under health_below 30, which is immunity because at
+#: 100 AfterCrowdControlResistance lets nothing land. It was held until a
+#: knockdown read that stat, in #1954.
+#: AND 211 OVER 169 SINCE THE SIX MANA COST SENTENCES, from 205 over 163,
+#: issue #1815. ONE ROW EACH on `mana_cost`, whose base is not a figure the
+#: character holds but the cost the skill itself states: two that reduce a cost,
+#: three that raise one, and one removal under `health_below` 50. The stat and
+#: its four readers were built in #1962; these are its first enchantment rows.
+#: AND 257 OVER 198 SINCE THE THIRTEEN ROWS ACROSS TEN SENTENCES that issues
+#: #1981 and #1982 unblocked, from 244 over 188. #1988 WAS NAMED HERE TOO AND
+#: DOES NOT BELONG: it asks for a check that every scale source is named by a
+#: row or listed as landed ahead of it, and these rows add no check.
+#: NO SENTENCE WAS ADDED
+#: TO THE ENCHANTMENTS SHEET: the second number counts enchantments that have
+#: at least one effect row, and these ten already existed with none, so it
+#: moves by ten while the sheet itself gains nothing.
+#: Three shorten a cooldown as flat rows, because an increase scales a base and
+#: cooldown reduction has none; three sentences take two rows each, one for
+#: attack damage and one for spell damage; the rest are one row each.
+#: AND 263 OVER 204 SINCE THE SIX COOLDOWN ROWS OF ISSUE #1994,
+#: from 257 over 198: one row each on six enchantments that had
+#: none. The Boss window row is a flat `cooldown_reduction` under
+#: `seconds_after_striking_a_boss` 4, its sentence lengthened after its first
+#: 48 characters so its row name holds; the five drawbacks that make a
+#: cooldown longer are flat `cooldown_lengthening` rows carrying their
+#: sentences' own numbers.
+#: AND 264 OVER 205 SINCE ISSUE #2014, from 263 over 204: one flag row on
+#: "Energy shield can now be effected by bleed", an enchantment that had none.
+#: It grants `shield_absorbs_damage_over_time`, which since that issue lets a
+#: bleed into the wearer's energy shield.
+#: AND 270 OVER 211 SINCE GROUP B OF ISSUE #1815, from 264
+#: over 205: one row each on 6 enchantments that had none -- the five movement speed windows' rows and the one lengthened to three seconds.
+#: AND 274 OVER 214 SINCE THE FIRST HIT AGAINST EACH ENEMY, issue #1815, from
+#: 270 over 211: four rows on three enchantments that had none. "Deals
+#: 100%-300% bonus damage" is an attack damage row and a spell damage row;
+#: "ignores all armor" and the first critical strike are one row each.
+#: AND 280 OVER 219 SINCE THE COMBAT STATE, issue #1815, from 274 over 214: six
+#: rows on five enchantments that had none. "Your damage is reduced ... out of
+#: combat" is an attack damage row and a spell damage row; the rest are one row
+#: each. One sentence was lengthened after its first 48 characters.
+#: AND 293 OVER 227 SINCE ISSUE #1815'S SECTION C, from 280 over 219: thirteen
+#: rows on eight enchantments that had none. Five sentences are about the
+#: wearer's damage and take an attack damage row and a spell damage row each;
+#: the low mana drawback, the critical strike chance and the Spells-only buff
+#: row are one row each.
+#: AND 294 OVER 228 SINCE THE MINION DRAWBACK, issue #1815, from 293 over 227:
+#: "Each active minion reduces your maximum HP by 3%-6%", one row.
+#: AND 298 OVER 231 SINCE ISSUE #1686'S FIRST WINDOW, from 294 over 228: four
+#: rows on three enchantments that had none. "Point blank AOE skills deal
+#: 15%-25% less damage to a single target" is an attack damage row and a spell
+#: damage row; the aura and crowd control drawbacks are one row each.
+#: AND 303 OVER 234 SINCE THE CLASS POINT ROWS, issue #1686,
+#: from 298 over 231: five rows on three enchantments that had none.
+#: The two damage sentences take an attack damage row and a spell damage
+#: row each; the maximum health drawback is one row.
+#: AND 304 OVER 235 SINCE THE NON-CRITICAL DRAWBACK,
+#: issue #1686, from 303 over 234: one row on one enchantment.
+#: AND 305 OVER 236 SINCE THE PROJECTILE LATER-HIT DRAWBACK,
+#: issue #1686, from 304 over 235: one row on one enchantment.
+#: AND 306 OVER 237 SINCE THE ZONE FIRST-SWEEP DRAWBACK,
+#: issue #1686, from 305 over 236: one row on one enchantment.
+#: AND 307 OVER 238 SINCE THE MELEE-WHILE-MOVING DRAWBACK,
+#: issue #1686, from 306 over 237: one row on one enchantment.
+#: AND 317 OVER 245 SINCE THE OWN-STACK ENCHANTMENTS,
+#: issue #1833, from 307 over 238: ten rows on seven enchantments.
+#: AND 321 OVER 249 SINCE THE NEXT-USE CHARGES,
+#: issue #1833, from 317 over 245: one row on each of four enchantments.
+#: AND 325 OVER 252 SINCE THE TIMED GRANTS,
+#: issue #1833, from 321 over 249: four rows on three enchantments.
+#: AND 329 OVER 254 SINCE THE CONSECUTIVE HITS,
+#: issue #1833, from 325 over 252: four rows on two enchantments.
+#: AND 332 OVER 257 SINCE THE PLACED STACKS,
+#: issue #1833, from 329 over 254: three rows on three enchantments.
+#: AND 335 OVER 260 SINCE THE EVERY-Nth ROWS,
+#: issue #1833, from 332 over 257: three rows on three enchantments.
+#: AND 347 OVER 271 SINCE THE ROWS-ONLY BATCH,
+#: issue #1833, from 335 over 260: twelve rows on eleven enchantments.
+#: AND 355 OVER 279 SINCE THE SMALL ENGINE HALVES,
+#: issue #1833, from 347 over 271: eight rows on eight enchantments.
+#: A minion row may be `more` from here on: minion health reads the More
+#: bucket through `MultiplierForStatAgainst` since this change.
+#: AND 363 OVER 287 SINCE THE COOLDOWN RESET ACTION,
+#: issue #1833, from 355 over 279: eight rows on eight enchantments.
+#: AND 367 OVER 291 SINCE THE COOLDOWN REDUCTION,
+#: issue #1833, from 363 over 287: four rows on four enchantments.
+#: AND 372 OVER 296 SINCE DEPLOYABLE PART 1,
+#: issue #1833, from 367 over 291: five rows on five enchantments.
+#: AND 373 OVER 297 SINCE THE DEPLOYABLE CAP,
+#: issue #1833, from 372 over 296: one row on one enchantment.
+#: AND 374 OVER 298 SINCE THE AURAS-AT-DEATH ROW,
+#: issue #1833, from 373 over 297: one row on one enchantment.
+#: AND 380 OVER 304 SINCE THE SKILL CHARGES,
+#: issue #1833, from 374 over 298: six rows on six enchantments.
+#: AND 383 OVER 306 SINCE THE KILL COUNTER,
+#: issue #1833, from 380 over 304: three rows on two enchantments.
+#: AND 386 OVER 308 SINCE THE KILL COUNTER'S WEAPON ROWS,
+#: issue #1833, from 383 over 306: three rows on two enchantments.
+#: AND 389 OVER 311 SINCE DEPLOYABLE PART 2,
+#: issue #1833, from 386 over 308: three rows on three enchantments.
+#: AND 390 OVER 312 SINCE DEPLOYABLE PART 3,
+#: issue #1833, from 389 over 311: one row on one enchantment.
+#: AND 394 OVER 316 SINCE THE ROWS WRITTEN AFTER THE
+#: SURVEY OF 2026-09-30, issue #1833, from 390 over 312: four rows on
+#: four enchantments.
+#: AND 396 OVER 318 SINCE HEALTH RESERVATION,
+#: issue #1833, from 394 over 316: two rows on two enchantments.
+#: AND 402 OVER 324 SINCE THE DURATIONS,
+#: issue #1833, from 396 over 318: six rows on six enchantments.
+#: AND 408 OVER 330 SINCE PROJECTILES AND RANGE,
+#: issue #1833, from 402 over 324: six rows on six enchantments.
+#: AND 412 OVER 334 SINCE THE CONDITIONS,
+#: issue #1833, from 408 over 330: four rows on four enchantments.
+#: AND 416 OVER 338 SINCE THE CEILINGS AND COSTS,
+#: issue #1833, from 412 over 334: four rows on four enchantments.
+#: AND 421 OVER 342 SINCE THE SCALES,
+#: issue #1833, from 416 over 338: five rows on four enchantments.
+#: AND 423 OVER 344 SINCE THE RANDOM DAMAGE OVER TIME,
+#: issue #1833 group D, from 421 over 342: two rows on two enchantments.
+#: AND 428 OVER 347 SINCE THE HEALTH THRESHOLDS,
+#: issue #1833 group D part 2, from 423 over 344: five rows on three enchantments.
+#: AND 430 OVER 349 SINCE THE NEARBY ACTIONS,
+#: issue #1833 group D part 3, from 428 over 347: two rows on two enchantments.
+#: AND 432 OVER 351 SINCE THE REMAINING DAMAGE ACTIONS,
+#: issue #1833 group D part 4, from 430 over 349: two rows on two enchantments.
+#: AND 437 OVER 354 SINCE THE GADGET AND RESOURCE EVENTS,
+#: issue #1833 group D part 5, from 432 over 351: five rows on three enchantments.
+#: AND 447 OVER 363 SINCE THE STATUS ACTIONS AND TWO PLAIN-DATA ROWS,
+#: issue #1833 group E part 1, from 437 over 354: ten rows on nine enchantments.
+#: AND 452 OVER 368 SINCE THE BLOCK SHARE AND THE RECHARGE NOVA,
+#: issue #1833 group E part 2, from 447 over 363: five rows on five enchantments.
+#: AND 455 OVER 371 SINCE THE REFLECT, THE BLOCK COUNT AND THE ARMOUR NOVA,
+#: issue #1833 group E part 3, from 452 over 368: three rows on three enchantments.
+#: AND 458 OVER 374 SINCE THE BUFFS SHARED WITH ALLIES,
+#: issue #1833 group E part 4a, from 455 over 371: three rows on three enchantments.
+#: AND 460 OVER 376 SINCE THE NECROSIS RISE AND THE RE-SUMMON,
+#: issue #1833 group E part 4b, from 458 over 374: two rows on two enchantments.
+#: AND 461 OVER 377 SINCE THE AURA'S SHARED IMMUNITIES,
+#: issue #1833 group E part 4c, from 460 over 376: one row on one enchantment.
+#: AND 462 OVER 378 SINCE "YOUR MOVEMENT ABILITY HAS 2 CHARGES",
+#: issue #1833, 2026-10-05, from 461 over 377: one row on one enchantment.
+#: AND 463 OVER 379 SINCE "YOU ARE CLEANSED EVERY 5 SECONDS",
+#: issue #1833, 2026-10-05, from 462 over 378: one row on one enchantment.
+#: AND 467 OVER 383 SINCE THE FOUR SHARES OF THE WEARER'S OWN DAMAGE,
+#: issue #1833, 2026-10-05, from 463 over 379: four rows on four enchantments.
+#: AND 470 OVER 384 SINCE STARVATION'S TEN-PIECE BONUS,
+#: issue #1833, 2026-10-05, from 467 over 383: three rows on one enchantment.
+#: AND 471 OVER 385 SINCE BRUTE'S HEART'S ARMOUR BELOW HALF HEALTH,
+#: issue #1833, 2026-10-05, from 470 over 384: one row on one enchantment.
+#: AND 476 OVER 390 SINCE THE FIVE NUMBERS HUNG ON AN AILMENT,
+#: issue #1833, 2026-10-06, from 471 over 385: five rows on five enchantments.
+#: AND 478 OVER 392 SINCE THE TWO SLOWS HUNG ON AN AILMENT,
+#: issue #1833, 2026-10-06, from 476 over 390: two rows on two enchantments.
+#: AND 479 OVER 393 SINCE THE FIRST ROW THAT REPEATS A SKILL,
+#: issue #1833, 2026-10-06, from 478 over 392: one row on one enchantment.
+#: AND 484 OVER 398 SINCE FIVE MORE ROWS THAT REPEAT A SKILL,
+#: issue #1833, 2026-10-06, from 479 over 393: five rows on five enchantments.
+#: AND 485 OVER 399 SINCE THE MELEE ATTACKS ROW ON attack_use,
+#: issue #1833, 2026-10-06, from 484 over 398: one row on one enchantment.
+#: AND 487 OVER 401 SINCE SPELLBLADE'S WILL'S FIRST BONUS AND ITS DRAWBACK,
+#: issue #1833, 2026-10-06, from 485 over 399: two rows on two enchantments.
+#: AND 488 OVER 402 SINCE THE ROW THAT PAYS A SKILL FROM HEALTH WHEN MANA IS SHORT,
+#: issue #1833, 2026-10-06, from 487 over 401: one row on one enchantment.
+#: AND 490 OVER 404 SINCE REAPER'S EMBRACE'S FIRST BONUS AND ITS DRAWBACK,
+#: issue #1833, 2026-10-06, from 488 over 402: two rows on two enchantments.
+#: AND 493 OVER 407 SINCE THREE ROWS THAT ROLL FOR A USE TO DEAL NO DAMAGE,
+#: issue #1833, 2026-10-06, from 490 over 404: three rows on three enchantments.
+#: AND 496 OVER 410 SINCE THE ABSORB, REFLECT AND HIT-ALL ROWS,
+#: issue #1833, 2026-10-06, from 493 over 407: three rows on three enchantments.
+#: AND 497 OVER 411 SINCE SPELLBLADE'S WILL'S TEN-PIECE ROW,
+#: issue #1833, 2026-10-06, from 496 over 410: one row on one enchantment.
+#: AND 498 OVER 412 SINCE THE REWORDED RESISTANCES ROW,
+#: issue #1833, 2026-10-06, from 497 over 411: one row on one enchantment.
+#: AND 502 OVER 416 SINCE FOUR ROWS ON THE STATS A PERSISTENT AREA READS,
+#: issue #1833, 2026-10-06, from 498 over 412: four rows on four enchantments.
+#: AND 504 OVER 418 SINCE THE TWO ROWS THAT PASS AN AILMENT ON AT A DEATH,
+#: issue #1833, 2026-10-06, from 502 over 416: two rows on two enchantments.
+#: AND 506 OVER 420 SINCE THE TWO ROWS THAT ROLL FOR A USE TO HIT ITS OWN USER,
+#: issue #1833, 2026-10-06, from 504 over 418: two rows on two enchantments.
+#: AND 507 OVER 421 SINCE THE ROW THAT MAKES A VOID SPLINTER DETONATE,
+#: issue #1833, 2026-10-06, from 506 over 420: one row on one enchantment.
+#: AND 511 OVER 424 SINCE THREE MORE PERSISTENT AREA SENTENCES,
+#: issue #1833, 2026-10-06, from 507 over 421: four rows on three enchantments.
+#: AND 512 OVER 425 SINCE THE ROW THAT PASSES A VOID SPLINTER ON AT A DEATH,
+#: issue #1833, 2026-10-06, from 511 over 424: one row on one enchantment.
+#: AND 513 OVER 426 SINCE PLAGUE DOCTOR'S SIX-PIECE ROW,
+#: issue #1833, 2026-10-06, from 512 over 425: one row on one enchantment.
+#: AND 519 OVER 432 SINCE SIX ROWS ON ZONES A SKILL LEAVES AND WHAT A ZONE DOES,
+#: issue #1833, 2026-10-06, from 513 over 426: six rows on six enchantments.
+#: AND 520 OVER 433 SINCE PLAGUE DOCTOR'S TEN-PIECE ROW,
+#: issue #1833, 2026-10-07, from 519 over 432: one row on one enchantment.
+#: AND 521 OVER 434 SINCE THE ROW THAT MAKES A KILLED ENEMY EXPLODE ON ITS KILLER,
+#: issue #1833, 2026-10-07, from 520 over 433: one row on one enchantment.
+#: AND 522 OVER 435 SINCE THE ROW THAT PASSES A BURN ON WHEN IT IS APPLIED,
+#: issue #1833, 2026-10-07, from 521 over 434: one row on one enchantment.
+#: AND 523 OVER 436 SINCE THE BLOCK VALUE ROW,
+#: issue #1833, 2026-10-07, from 522 over 435: one row on one enchantment.
+#: AND 535 OVER 448 SINCE TWELVE ROWS ON STATUSES AND DAMAGE OVER TIME ON THE WEARER,
+#: issue #1833, 2026-10-07, from 523 over 436: twelve rows on twelve enchantments.
+#: AND 536 OVER 449 SINCE THE BLEED LEECH ROW,
+#: issue #1833, 2026-10-07, from 535 over 448: one row on one enchantment.
+#: AND 537 OVER 450 SINCE STARVATION'S SIX-PIECE ROW,
+#: issue #1833, 2026-10-07, from 536 over 449: one row on one enchantment.
+#: AND 539 OVER 452 SINCE THE TWO ABSORBED-DAMAGE ROWS,
+#: issue #1833, 2026-10-07, from 537 over 450: two rows on two enchantments.
+#: AND 540 OVER 453 SINCE THE OVERKILL EXPLOSION ROW,
+#: issue #1833, 2026-10-07, from 539 over 452: one row on one enchantment.
+#: AND 541 OVER 454 SINCE THE REWORDED DURATION ROW,
+#: issue #1833, 2026-10-07, from 540 over 453: one row on one enchantment.
+#: AND 543 OVER 456 SINCE THE TWO CLASS RESOURCE GENERATION ROWS,
+#: issue #1833, 2026-10-07, from 541 over 454: two rows on two enchantments.
+#: AND 544 OVER 457 SINCE THE ROW ON DAMAGE OVER TIME WHILE MOVING,
+#: issue #1833, 2026-10-07, from 543 over 456: one row on one enchantment.
+#: AND 543 OVER 457 SINCE THE TRAP DAMAGE SENTENCE WAS WRITTEN AGAIN AS ONE ROW ON MINION DAMAGE,
+#: issue #1833, 2026-10-07, from 544 over 457: two rows removed and one written, on one enchantment.
+#: AND 546 OVER 460 SINCE THREE TRAP ROWS ON THE COUNTS OF TRAPS AND GADGETS,
+#: issue #1833, 2026-10-07, from 543 over 457: three rows on three enchantments.
+#: AND 547 OVER 461 SINCE THE STRIKE ON AN EVADED RANGED ATTACK,
+#: issue #1833, 2026-10-07, from 546 over 460: one row on one enchantment.
+#: AND 548 OVER 462 SINCE THE SHIELD EVERY TWELVE SECONDS,
+#: issue #1833, 2026-10-07, from 547 over 461: one row on one enchantment.
+#: AND 549 OVER 463 SINCE THE SHIELD FROM OVERHEAL,
+#: issue #1833, 2026-10-07, from 548 over 462: one row on one enchantment.
+#: AND 550 OVER 464 SINCE THE ROW THAT MAKES TRAPS LAST LONGER,
+#: issue #1833, 2026-10-08, from 549 over 463: one row on one enchantment.
+#: AND 554 OVER 467 SINCE THREE SENTENCES ON DAMAGE OVER TIME, TIME IN COMBAT AND LEECHING,
+#: issue #1833, 2026-10-08, from 550 over 464: four rows on three enchantments.
+#: AND 558 OVER 471 SINCE FOUR ROWS ON STATS READ AT ONE PLACE,
+#: issue #1833, 2026-10-08, from 554 over 467: four rows on four enchantments.
+#: AND 562 OVER 475 SINCE FOUR ROWS ON WHAT A MOVEMENT SKILL DOES,
+#: issue #1833, 2026-10-08, from 558 over 471: four rows on four enchantments.
+#: AND 563 OVER 476 SINCE THE CROWD CONTROL HEALTH CEILING ROW,
+#: issue #1833, 2026-10-08, from 562 over 475: one row on one enchantment.
+#: AND 565 OVER 478 SINCE THE RICOCHET ROW AND THE SPELLS PIERCE ROW,
+#: issue #1833, 2026-10-08, from 563 over 476: two rows on two enchantments.
+#: AND 570 OVER 481 SINCE THREE SENTENCES ON CHANNELLING,
+#: issue #1833, 2026-10-08, from 565 over 478: five rows on three enchantments.
+#: AND 572 OVER 483 SINCE TWO SENTENCES ON A HIT THAT CUTS A SKILL SHORT,
+#: issue #1833, 2026-10-08, from 570 over 481: two rows on two enchantments.
+#: AND 573 OVER 484 SINCE THE CAST DELAY ROW,
+#: issue #1833, 2026-10-08, from 572 over 483: one row on one enchantment.
+#: AND 575 OVER 486 SINCE THE NECROSIS ROW AND THE MINIONS' DEFENCES ROW,
+#: issue #1833, 2026-10-08, from 573 over 484: two rows on two enchantments.
+#: AND 577 OVER 487 SINCE THE CHARGE ROWS,
+#: issue #1833, 2026-10-08, from 575 over 486: two rows on one enchantment.
+#: AND 579 OVER 489 SINCE THE FIRST-HIT AILMENTS ROW AND CHRONOMANCER'S SIX-PIECE,
+#: issue #1833, 2026-10-08, from 577 over 487: two rows on two enchantments.
+#: AND 580 OVER 490 SINCE DIVINE RETRIBUTION'S TEN-PIECE ROW,
+#: issue #1833, 2026-10-09, from 579 over 489: one row on one enchantment.
+#: AND 581 OVER 491 SINCE THE ROW ON CLASS POINTS SPENT ABOVE THE MAX,
+#: issue #1833, 2026-10-09, from 580 over 490: one row on one enchantment.
+#: AND 583 OVER 493 SINCE THE TWO ROWS THAT GRANT CLASS POINTS,
+#: issue #1833, 2026-10-10, from 581 over 491: two rows on two enchantments.
+#: AND 585 OVER 495 SINCE THE TWO HEALING-SKILL ROWS,
+#: issue #1833, 2026-10-10, from 583 over 493: two rows on two enchantments.
+#: AND 587 OVER 496 SINCE THE ROWS ON THE USE OF A HEALING SKILL,
+#: issue #1833, 2026-10-10, from 585 over 495: two rows on one enchantment.
+#: AND 589 OVER 497 SINCE MANA WEAVER'S SIX-PIECE ROWS,
+#: issue #1833, 2026-10-12, from 587 over 496: two rows on one enchantment.
+#: AND 594 OVER 501 SINCE THE WHOLE SET SHARD OF ANARCHY,
+#: issue #1833, 2026-10-12, from 589 over 497: five rows on four enchantments.
+#: AND 595 OVER 502 SINCE THE EXECUTE ROW,
+#: issue #1833, 2026-10-12, from 594 over 501: one row on one enchantment.
+#: AND 596 OVER 503 SINCE THE ROW THAT MAKES RETALIATION SKIP MITIGATION,
+#: issue #1833, 2026-10-12, from 595 over 502: one row on one enchantment.
+#: AND 597 OVER 504 SINCE THE ROW ON ENEMIES THAT SURVIVE FIVE SECONDS AFTER A FIRST HIT,
+#: issue #1833, 2026-10-12, from 596 over 503: one row on one enchantment.
+#: AND 598 OVER 505 SINCE THE ROW THAT MAKES ENEMIES IMMUNE FIFTEEN SECONDS AFTER A FIRST HIT,
+#: issue #1833, 2026-10-12, from 597 over 504: one row on one enchantment.
+#: AND 599 OVER 506 SINCE THE ROW THAT ADDS PROJECTILES TO A SKILL,
+#: issue #1833, 2026-10-12, from 598 over 505: one row on one enchantment.
+#: AND 600 OVER 507 SINCE THE ROW THAT TELEPORTS ITS WEARER WHEN HIT,
+#: issue #1833, 2026-10-12, from 599 over 506: one row on one enchantment.
+#: AND 602 OVER 508 SINCE THE TWO ROWS THAT DEAL A SHARE OF DAMAGE TAKEN OVER SECONDS,
+#: issue #1833, 2026-10-12, from 600 over 507: two rows on one enchantment.
+#: AND 603 OVER 509 SINCE THE ROW THAT MAKES AURAS MORE EFFECTIVE,
+#: issue #1833, 2026-10-13, from 602 over 508: one row on one enchantment.
+#: AND 604 OVER 510 SINCE THE ROW THAT MAKES BUFFS MORE POTENT,
+#: issue #1833, 2026-10-13, from 603 over 509: one row on one enchantment.
+#: AND 605 OVER 511 SINCE THE ROW ON A DEBUFF THAT CUTS WHAT ITS CARRIER DEALS,
+#: issue #1833, 2026-10-13, from 604 over 510: one row on one enchantment.
+#: AND 606 OVER 512 SINCE THE ROW THAT MAKES ITS WEARER IMMUNE TO DEBUFFS AND LAY NONE,
+#: issue #1833, 2026-10-13, from 605 over 511: one row on one enchantment.
+#: AND 607 OVER 513 SINCE THE ROW ON A BURN THAT ENDS BY TIME AND MAY EXPLODE,
+#: issue #1833, 2026-10-13, from 606 over 512: one row on one enchantment.
+#: AND 608 OVER 514 SINCE THE ROW THAT MAKES GADGETS CHOOSE THE MOST HEALTH,
+#: issue #1833, 2026-10-13, from 607 over 513: one row on one enchantment.
+#: AND 609 OVER 515 SINCE THE ROW THAT MAKES GADGETS FIRE A VOLLEY,
+#: issue #1833, 2026-10-13, from 608 over 514: one row on one enchantment.
+#: AND 610 OVER 516 SINCE THE ROW THAT MAKES A GADGET BURST ON A KILL,
+#: issue #1833, 2026-10-13, from 609 over 515: one row on one enchantment.
+#: AND 612 OVER 517 SINCE THE TWO ROWS THAT MAKE GADGETS TAKE NO DAMAGE AND DRAIN THEM,
+#: issue #1833, 2026-10-13, from 610 over 516: two rows on one enchantment.
+#: AND 613 OVER 518 SINCE THE ROW THAT MAKES GADGETS COPY THE LAST SKILL USED,
+#: issue #1833, 2026-10-14, from 612 over 517: one row on one enchantment.
+#: AND 614 OVER 519 SINCE THE ROW OF MANA WEAVER'S TEN-PIECE BONUS,
+#: issue #1833, 2026-10-15, from 613 over 518: one row on one enchantment.
+#: AND 615 OVER 520 SINCE THE ROW THAT GIVES ITS WEARER A SHARE OF DAMAGE DONE TO NEARBY ALLIES,
+#: issue #1833, 2026-10-15, from 614 over 519: one row on one enchantment.
+#: AND 616 OVER 521 SINCE THE ROW THAT MAKES POINT BLANK SKILLS STRIKE NEARBY ALLIES,
+#: issue #1833, 2026-10-16, from 615 over 520: one row on one enchantment.
+#: AND 620 OVER 525 SINCE THE FOUR ROWS THAT CONVERT A KEYED SLOT INTO A SKILL GADGET,
+#: issue #1833, 2026-10-16, from 616 over 521: four rows on four enchantments.
+#: AND 621 OVER 526 SINCE THE ROW THAT CONVERTS THE BASIC ATTACK INTO A SKILL GADGET,
+#: issue #1833, 2026-10-16, from 620 over 525: one row on one enchantment.
+#: AND 623 OVER 528 SINCE THE NULL EMPEROR'S 2-PIECE AND ITS DRAWBACK,
+#: issue #1833, 2026-10-17, from 621 over 526: two rows on two enchantments.
+#: AND 624 OVER 529 SINCE THE NULL EMPEROR'S 6-PIECE,
+#: issue #1833, 2026-10-17, from 623 over 528: one row on one enchantment.
+#: AND 625 OVER 530 SINCE THE NULL EMPEROR'S 10-PIECE,
+#: issue #1833, 2026-10-17, from 624 over 529: one row on one enchantment.
+#: AND 630 OVER 531 SINCE THE FIVE ROWS OF WARLORD'S WILL'S 10-PIECE,
+#: issue #1833, 2026-10-18, from 625 over 530: five rows on one enchantment.
+#: AND 632 OVER 532 SINCE THE TWO ROWS OF SPELLBLADE'S WILL'S 6-PIECE,
+#: issue #1833, 2026-10-18, from 630 over 531: two rows on one enchantment.
+#: AND 636 OVER 533 SINCE THE FOUR ROWS OF TYRANT'S CHAINS' 6-PIECE,
+#: issue #1833, 2026-10-18, from 632 over 532: four rows on one enchantment.
+#: AND 641 OVER 534 SINCE THE FIVE ROWS OF THE DEMON KING'S REGALIA'S 10-PIECE,
+#: issue #1833, 2026-10-18, from 636 over 533: five rows on one enchantment.
+#: AND 646 OVER 535 SINCE THE FIVE ROWS OF BRUTE'S HEART'S 10-PIECE,
+#: issue #1833, 2026-10-18, from 641 over 534: five rows on one enchantment.
+#: AND 650 OVER 536 SINCE THE FOUR ROWS OF WARLORD'S WILL'S 6-PIECE,
+#: issue #1833, 2026-10-18, from 646 over 535: four rows on one enchantment.
+#: AND 654 OVER 536 SINCE THE FOUR AURA ROWS OF BRUTE'S HEART'S 6-PIECE,
+#: issue #1833, 2026-10-18, from 650 over 536: four rows on an enchantment that already has one.
+#: AND 662 OVER 536 SINCE THE EIGHT RESISTANCE ROWS OF BRUTE'S HEART'S 6-PIECE,
+#: issue #1833, 2026-10-18, from 654 over 536: eight rows on an enchantment that already has five.
+#: AND 663 OVER 537 SINCE THE ROW OF TYRANT'S CHAINS' 10-PIECE,
+#: issue #1833, 2026-10-18, from 662 over 536: one row on one enchantment.
+#: AND 666 OVER 538 SINCE THE THREE ROWS OF REAPER'S EMBRACE'S 6-PIECE,
+#: issue #1833, 2026-10-19, from 663 over 537: three rows on one enchantment.
+#: AND 668 OVER 539 SINCE THE TWO ROWS OF REAPER'S EMBRACE'S 10-PIECE,
+#: issue #1833, 2026-10-19, from 666 over 538: two rows on one enchantment.
+#: AND 675 OVER 540 SINCE THE SEVEN ROWS OF CHRONOMANCER'S TIME-LOCK'S 10-PIECE,
+#: issue #1833, 2026-10-19, from 668 over 539: seven rows on one enchantment.
+#: AND 676 OVER 541 SINCE THE ROW THAT REFUSES BUFFS FROM ALLIES,
+#: issue #1833, 2026-10-19, from 675 over 540: one row on one enchantment.
+#: AND 677 OVER 542 SINCE THE ROW BY WHICH A DEPLOYABLE'S BLAST STRIKES ITS WEARER,
+#: issue #1833, 2026-10-19, from 676 over 541: one row on one enchantment.
+#: AND 678 OVER 543 SINCE THE ROW BY WHICH EVERY SKILL GADGET CASTS AT ITS WEARER'S DEATH,
+#: issue #1833, 2026-10-19, from 677 over 542: one row on one enchantment.
+#: AND 681 OVER 546 SINCE THE THREE ROWS THAT CONVERT A SLOT INTO A PLACEABLE TRAP,
+#: issue #1833, 2026-10-20, from 678 over 543: three rows on three enchantments.
+#: AND 683 OVER 548 SINCE THE TWO ROWS THAT CONVERT THE SUPPORT AND BASIC SLOTS INTO TRAPS,
+#: issue #1833, 2026-10-21, from 681 over 546: two rows on two enchantments.
+#: AND 692 OVER 556 SINCE THE NINE ROWS OF TRAPS LAYER 3,
+#: issue #1833, 2026-10-21, from 683 over 548: nine rows on eight enchantments.
+#: AND 697 OVER 561 SINCE THE FIVE ROWS OF TRAPS LAYER 4,
+#: issue #1833, 2026-10-22, from 692 over 556: five rows on five enchantments.
+#: AND 703 OVER 566 SINCE THE SIX ROWS OF TRAPS LAYER 5,
+#: issue #1833, 2026-10-22, from 697 over 561: six rows, five on new enchantments and a second row on one.
+#: AND 706 OVER 569 SINCE THE THREE ROWS OF TRAPS LAYER 6,
+#: issue #1833, 2026-10-22, from 703 over 566: three rows on three enchantments.
+AUTHORED_ROWS = 707
+AUTHORED_ENCHANTMENTS = 570
+
+#: How many rows remove their stat, measured with the 201 above. Issue #1791.
+#: Without it `test_a_removed_row_is_worded_as_a_removal` and
+#: `test_every_removed_row_states_one` pass on a table holding no removal at
+#: all, which is what a table built before the rows existed looks like.
+#: AND 25 SINCE THE THREE MELEE REMOVALS, from 22, issue #1815: the first
+#: removals with a condition, which take the stat away from a melee blow alone.
+#: AND 26 SINCE "While below 50% HP your skills cost no mana", from 25, issue
+#: #1815: the first removal on the enchantment side whose base is a figure the
+#: caller supplies rather than one the character holds. Ritual Focus, the
+#: passive node added in #1966, is the same shape on the passive side.
+#: AND 32 SINCE "HP regeneration is disabled during combat", from 31, issue
+#: #1815: a removal under `in_combat`.
+#: AND 33 SINCE "Your abilities are free when above 80%-95% hp",
+#: from 32, issue #1833: a removal under a rolled health_above.
+#: AND 34 SINCE "Kills no longer generate any experience",
+#: from 33, issue #1833: experience_gain removed.
+REMOVED_ROWS = 34
+
+#: The named sets whose rows are written, by the identifier their Weight column
+#: carries: Archon's Aegis (5), Mana Weaver (8), Brute's Heart (9), Demon King's
+#: Regalia (11), Divine Retribution (16) and Warlord's Will (17). The other
+#: eight wait for what their rows need, and `docs/DECISIONS.md` says what each
+#: one waits for.
+#:
+#: SIX OF FOURTEEN SINCE 2026-09-12, and four before that. Brute's Heart and
+#: Demon King's Regalia were both waiting for one reading: an attacker asking
+#: how far away its target is, which is `target_within_metres`. Their 2-piece
+#: bonuses differ by one word -- one says "increased" and the other "more" --
+#: which is why that reading is a condition on a row rather than a value added
+#: in code. Their drawbacks needed nothing new and are written with them,
+#: because a set is written whole or not at all.
+#:
+#: SEVEN OF FOURTEEN SINCE 2026-09-13. Plague Doctor (12) needed nothing new:
+#: its 2-piece bonus is one `dot_damage` row and its drawback two rows on the
+#: two direct damage stats. Its 6-piece and 10-piece rows still wait, and a set
+#: counts as working here once any of its rows is written.
+#:
+#: EIGHT OF FOURTEEN SINCE 2026-09-14. Tyrant's Chains (6) needed one ruling and
+#: no new mechanism: its first bonus and its drawback are both minion rows in
+#: the `increased` bucket.
+#:
+#: NINE OF FOURTEEN SINCE 2026-09-16. Starvation (13) needed the removal of
+#: issue #1791: its drawback, "You have no health/mana/es regen", is three
+#: removed rows, and its 2-piece bonus three flat leech rows. Its 6-piece and
+#: 10-piece rows still wait.
+#:
+#: ELEVEN OF FOURTEEN SINCE 2026-10-06. Spellblade's Will (10) needed the
+#: action that triggers a different held skill: its 2-piece bonus is one
+#: `trigger_held_skill` row on `attack_use` and its drawback one `attack_damage`
+#: row scoped to melee. Its 6-piece and 10-piece rows still wait.
+#:
+#: TWELVE OF FOURTEEN SINCE 2026-10-06. Reaper's Embrace (18) needed a stat that
+#: can raise the health a heal restores: its 2-piece bonus is one
+#: `healing_received` row in the more bucket and its drawback one `health_regen`
+#: row. Its 6-piece and 10-piece rows still wait.
+#:
+#: THIRTEEN OF FOURTEEN SINCE 2026-10-12. Shard of Anarchy (15) is written
+#: whole: its drawback, and its 2-piece, 6-piece and 10-piece bonuses, five rows
+#: on the four mechanisms the entries of that day built. Null Emperor (14) is
+#: the one set with no row.
+#:
+#: FOURTEEN OF FOURTEEN SINCE 2026-10-17. Null Emperor (14) needed enemy
+#: silence: its 2-piece bonus is one `apply_status` "Silence" row on a hit that
+#: is not a spell, and its drawback one `skill_locked` row on the ultimate. Its
+#: 6-piece and 10-piece rows still wait.
+SETS_THAT_WORK = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
+
+#: How many ranges the two enchantment tables state, measured on 2026-09-11
+#: with a separate search of the two CSV files. The game's own reader,
+#: `UCataclysmItemValues::EnchantmentRanges`, is held to the same number by
+#: `Cataclysm.Enchantments.EveryRangeTheTablesStateIsFoundAndReplaced`, so the
+#: generator and the game cannot read the sentences differently.
+#:
+#: 391 SINCE 2026-10-07, when the owner's reword of "DoTs last 2x-4x as long on
+#: you" to "DoTs on you have 100%-300% more duration" made that sentence state
+#: a range a reader reads.
+STATED_RANGES = 391
+
+
+def read(path: pathlib.Path) -> list[dict]:
+    with path.open(encoding="utf-8", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+@pytest.fixture(scope="module")
+def effects() -> list[dict]:
+    if not EFFECTS_CSV.is_file():
+        pytest.skip(f"{EFFECTS_CSV.name} has not been generated")
+    rows = read(EFFECTS_CSV)
+    assert rows, (f"{EFFECTS_CSV.name} is empty, so every check below would "
+                  f"pass having read nothing")
+    return rows
+
+
+@pytest.fixture(scope="module")
+def enchantments() -> dict[str, dict]:
+    rows: dict[str, dict] = {}
+    for path in ENCHANTMENT_CSVS:
+        for row in read(path):
+            rows[row["Name"]] = row
+    assert len(rows) > 500, "the two enchantment tables did not load"
+    return rows
+
+
+def numbers_in(text: str) -> set[float]:
+    """Every number in a sentence, with thousands commas read as such."""
+    return {float(n.replace(",", ""))
+            for n in re.findall(r"(?:\d[\d,]*\d|\d)(?:\.\d+)?", text)}
+
+
+def outside_ranges(text: str) -> str:
+    """The sentence with every range it states taken out."""
+    return gen.ENCHANTMENT_RANGE.sub(" ", text)
+
+
+def words_of(row: dict, enchantments: dict[str, dict]) -> str:
+    return enchantments[row["Enchantment"]]["Effect"]
+
+
+def ranges_marked_down(row: dict, enchantments: dict[str, dict]) -> set:
+    """The ranges of this row's sentence that its sentence row marks as rolling
+    from their second number to their first. See the generator's
+    `ranges_rolling_down`: a better roll gives the better outcome, ruled
+    2026-10-05, so a few ranges run against their sentence."""
+    sentence = enchantments[row["Enchantment"]]
+    places = gen.ranges_rolling_down(sentence.get("RollsDown", ""), sentence["Effect"])
+    return {stated for place, stated
+            in enumerate(gen.enchantment_ranges(sentence["Effect"]), start=1)
+            if place in places}
+
+
+def fault_in_the_order(pair, row, enchantments) -> str:
+    """Why this pair is not written the way its sentence says, or "".
+
+    A PAIR IS WRITTEN IN ITS SENTENCE'S ORDER, UNLESS THE SENTENCE MARKS THAT
+    RANGE, AND THEN THE OTHER WAY ROUND. Both halves are faults: a marked range
+    left in the sentence's order would roll one way in the hover text and the
+    other in the effect, and so would an unmarked range written backwards.
+    """
+    stated = gen.enchantment_ranges(words_of(row, enchantments))
+    marked = ranges_marked_down(row, enchantments)
+    backwards = (pair[1], pair[0])
+    if pair in stated and pair not in marked:
+        return ""
+    if backwards in marked:
+        return ""
+    if pair in marked:
+        return "its sentence marks that range as rolling down and the row is not written backwards"
+    if backwards in stated:
+        return "it is written backwards and its sentence does not mark that range"
+    return "its sentence does not state that range"
+
+
+#: A HEALTH DRAIN WORDED AS DAMAGE TAKES HEALTH AWAY. Issue #1833's small engine
+#: halves, a labelled judgement recorded in docs/DECISIONS.md: "Every hit you
+#: take deals an additional 5%-10% of your maximum HP as bonus damage" is a
+#: negative action on the `health` pool, and damage to the wearer's health is
+#: what a negative value there means. Accepted on the health pool's action rows
+#: only; a stat row saying "damage" with a negative value is still refused.
+DAMAGE = re.compile(r"\bdamage\b", re.IGNORECASE)
+
+
+def takes_something_away(stat: str, words: str, action: str = "") -> bool:
+    """Whether a negative value belongs on these words for this stat, or for
+    this action when the row moves a pool."""
+    return bool(TAKING.search(words)) or (
+        stat in LONGER_WHEN_NEGATIVE and bool(LONGER.search(words))) or (
+        stat in GAINED_BY_ENEMIES_WHEN_NEGATIVE and bool(ENEMIES_GAIN.search(words))) or (
+        stat in EXPIRES_FASTER_WHEN_NEGATIVE and bool(EXPIRES_FASTER.search(words))) or (
+        stat in SLOWER_WHEN_NEGATIVE and bool(MORE_SLOWLY.search(words))) or (
+        action == "health" and bool(DAMAGE.search(words)))
+
+
+def value_is_stated(stat: str, value: float, words: str,
+                    complement_stats: set[str] | None = None,
+                    stated_by_word: dict[str, dict[str, float]] | None = None
+                    ) -> bool:
+    """Whether a row's single value can be read out of its own sentence.
+
+    FOUR WAYS IT CAN BE: the number itself is in the words; a multiplying word
+    such as "doubled" means it; for a stat in `complement_stats`, the words
+    state 100 minus it; or a word `stated_by_word` gives for this stat, such as
+    "immune" on crowd_control_resistance, means it.
+
+    THE EXEMPT SET IS A PARAMETER SO IT CAN BE EXERCISED WHILE THE REAL ONE IS
+    EMPTY. `test_the_complement_exemption_reads_only_its_own_stats` passes a set
+    of its own, which is the arrangement
+    `test_longer_excuses_a_negative_value_on_one_stat_only` uses above and for
+    the same reason: a check proved only against the real tables stops being
+    proved the moment those tables change.
+    """
+    if complement_stats is None:
+        complement_stats = COMPLEMENT_STATS
+    if stated_by_word is None:
+        stated_by_word = STATED_BY_WORD
+
+    # NOT THE SET LABEL'S NUMBER, which counts the pieces worn and states nothing about what the bonus does
+    # (`SET_LABEL` above). Ruled 2026-10-18: until then a row whose value equalled its piece count passed here
+    # by that coincidence alone, and so would a wrong one; the Demon King's Regalia's ten-piece interval was the
+    # one row that did, and it is now stated by word below.
+    stated = numbers_in(outside_ranges(SET_LABEL.sub(" ", words)))
+    if abs(value) in stated:
+        return True
+
+    spelled = {word.lower() for word in re.findall(r"[A-Za-z]+", words)}
+    if any(MULTIPLYING_WORDS.get(word) == value for word in spelled):
+        return True
+
+    # AND A WORD THAT MEANS A NUMBER ON THIS STAT ALONE.
+    if any(stated_by_word.get(stat, {}).get(word) == value for word in spelled):
+        return True
+
+    # AND THE COMPLEMENT, FOR THE STATS THAT CARRY ONE. A row of 40 on a
+    # sentence saying 60 is the same fact twice, not a number nobody wrote.
+    return stat in complement_stats and (100.0 - abs(value)) in stated
+
+
+def test_every_effect_names_an_enchantment_that_exists(effects, enchantments):
+    missing = sorted(r["Name"] for r in effects
+                     if r["Enchantment"] not in enchantments)
+    assert not missing, (
+        f"{missing} name enchantments neither table holds, so they would "
+        f"apply to nothing. The generator refuses such a row, so the CSV is "
+        f"older than the workbook.")
+
+
+def set_rows(enchantments: dict[str, dict]):
+    """Each set's bonus rows, sorted by threshold, and its drawback rows."""
+    bonuses: dict[int, list[tuple[int, str]]] = {}
+    drawbacks: dict[int, list[str]] = {}
+    for name, row in enchantments.items():
+        set_id = gen.enchantment_set_id(row)
+        if not set_id:
+            continue
+        if row["IsNegative"] == "True":
+            drawbacks.setdefault(set_id, []).append(name)
+        else:
+            threshold = gen.set_piece_threshold(row["Effect"])
+            bonuses.setdefault(set_id, []).append(
+                (gen.UNREACHABLE_THRESHOLD if threshold is None else threshold,
+                 name))
+    return ({set_id: sorted(rows) for set_id, rows in bonuses.items()},
+            {set_id: sorted(rows) for set_id, rows in drawbacks.items()})
+
+
+def test_every_set_with_an_effect_is_written_whole(effects, enchantments):
+    """A set's first bonus and its drawback turn on together, at the same
+    threshold, which the project owner ruled on 2026-09-08. So a set written by
+    halves would be a bonus with no cost, or a cost with no bonus. The generator
+    refuses that; this holds the file it wrote to the same rule."""
+    written = {row["Enchantment"] for row in effects}
+    bonuses, drawbacks = set_rows(enchantments)
+
+    half = []
+    for set_id in sorted(set(bonuses) | set(drawbacks)):
+        ordered, named = bonuses.get(set_id, []), drawbacks.get(set_id, [])
+        if not ({name for _, name in ordered} | set(named)) & written:
+            continue
+        if not ordered or ordered[0][1] not in written:
+            half.append(f"set {set_id} has no effect on its first bonus")
+        if not named or named[0] not in written:
+            half.append(f"set {set_id} has no effect on its drawback")
+    assert not half, "; ".join(half)
+
+
+def test_the_sets_that_work_are_the_ones_counted_here(effects, enchantments):
+    """Thirteen of the fourteen sets have a row written: Archon's Aegis (5),
+    Tyrant's Chains (6), Chronomancer's Time-Lock (7), Mana Weaver (8), Brute's Heart (9), Spellblade's
+    Will (10), Demon King's Regalia (11), Plague Doctor (12), Starvation (13), Shard of Anarchy (15),
+    Divine Retribution (16), Warlord's Will (17) and Reaper's Embrace (18). The other one, Null
+    Emperor (14), waits for what its rows need. This moves only when somebody means it to.
+
+    THIS SENTENCE SAID "FOUR" AND NAMED FOUR WHILE THE LIST BELOW HELD SIX.
+    The count above it was kept current and this one was not, so read the
+    constant rather than this paragraph if they ever disagree again."""
+    written = {row["Enchantment"] for row in effects}
+    bonuses, drawbacks = set_rows(enchantments)
+    working = sorted(
+        set_id for set_id in set(bonuses) | set(drawbacks)
+        if ({name for _, name in bonuses.get(set_id, [])}
+            | set(drawbacks.get(set_id, []))) & written)
+
+    assert working == SETS_THAT_WORK
+
+
+def test_a_range_is_one_the_words_state(effects, enchantments):
+    """The game shows the item's number in place of the range in the sentence,
+    so a row whose two ends are not that range, in that order, would give the
+    character one number and the player another."""
+    wrong = []
+    for row in effects:
+        low, high = float(row["ValueLow"]), float(row["ValueHigh"])
+        if low == high:
+            continue
+        text = words_of(row, enchantments)
+        # OR ITS COMPLEMENT, FOR THE ENCHANTMENTS THE GENERATOR NAMES. Issue
+        # #1833: "Your maximum HP cannot exceed 40%-60% of its normal value" is
+        # -60 to -40, and each end leaves the share the sentence shows there.
+        shown = ((100.0 - abs(low), 100.0 - abs(high))
+                 if row["Enchantment"] in gen.COMPLEMENT_RANGE_ENCHANTMENTS
+                 and low < 0 else (abs(low), abs(high)))
+        # OR ITS BASE PLUS THE VALUE, FOR THE ENCHANTMENTS THE GENERATOR NAMES.
+        # Issue #1833 group E part 2: "You block for 65%-75% of damage instead
+        # of the normal 50%" is 15 to 25 on a base of 50.
+        if row["Enchantment"] in gen.BASE_PLUS_RANGE_ENCHANTMENTS and low >= 0:
+            base = gen.BASE_PLUS_RANGE_ENCHANTMENTS[row["Enchantment"]]
+            shown = (base + low, base + high)
+        # IN THE SENTENCE'S ORDER, OR AGAINST IT WHEN THE SENTENCE MARKS THE
+        # RANGE. See `fault_in_the_order`.
+        fault = fault_in_the_order(shown, row, enchantments)
+        if (low < 0) != (high < 0) or fault:
+            wrong.append(f"{row['Name']}: {low:g} to {high:g} against {text!r}"
+                         f"{': ' + fault if fault else ''}")
+    assert not wrong, "; ".join(wrong)
+
+
+#: How many sentences mark a range as rolling down, and how many effect pairs
+#: are written backwards for them. Measured on 2026-10-05 with the ruling that
+#: a better roll gives the better outcome: three benefits (the re-summon wait,
+#: the free-abilities threshold, the weapon kill step) and four drawbacks (the
+#: maximum health cap, the critical chance cap, the floor-start health, the
+#: lifetime kill step); the weapon kill sentence has two rows. WITHOUT THESE
+#: THE TEST BELOW PASSES ON TABLES THAT MARK NOTHING.
+#: 8 AND 9 SINCE 2026-10-13, from 7 and 8: a fourth benefit, "Gadgets fire at all
+#: enemies within range simultaneously once every 5-8 seconds", whose one range
+#: rolls down because 5 seconds is the better figure. Ruled that day under the
+#: owner's rule of 2026-10-05; its row is written 8 to 5. Issue #1833.
+SENTENCES_MARKING_A_RANGE = 8
+PAIRS_WRITTEN_BACKWARDS = 9
+
+#: Each ranged pair a row can carry, as (first column, second column). The
+#: value pair is compared as the sentence shows it, which the test below works
+#: out; these three are compared as written.
+#:
+#: `StackSeconds` IS NOT ALWAYS A STACK'S TIME. Since 2026-10-08 it is also how
+#: long the stun of `stun_near_the_dying` lasts, on a row whose value is its
+#: chance: "a 25% chance ... freezes all nearby enemies for 2 seconds" is a
+#: value of 25 and Stack Seconds of 2. See `MAX_STACK_SECONDS` in the generator
+#: for everything the column holds.
+SECONDARY_PAIRS = (("ScaleStep", "ScaleStepHigh"),
+                   ("StackSeconds", "StackSecondsHigh"),
+                   ("ConditionValue", "ConditionValueHigh"))
+
+
+def test_a_pair_runs_against_its_sentence_exactly_when_the_sentence_marks_it(
+        effects, enchantments):
+    """ONE SOURCE, TWO READERS, CHECKED FROM THE DATA. The hover text rolls a
+    range downward when the sentence row's `RollsDown` names it, and the effect
+    row's pair is what the character receives. Every pair of every row is in
+    its sentence's order unless the sentence marks that range, and against it
+    when it does; and every mark is used by a row, so no mark is left naming a
+    range nothing rolls. Issue #1833, ruled 2026-10-05."""
+    wrong = []
+    backwards = 0
+    used: dict[str, set] = {}
+    for row in effects:
+        marked = ranges_marked_down(row, enchantments)
+        for first, second in SECONDARY_PAIRS:
+            low, high = float(row[first]), float(row[second])
+            if not high or low == high:
+                continue
+            fault = fault_in_the_order((low, high), row, enchantments)
+            if fault:
+                wrong.append(f"{row['Name']} {first} {low:g} to {high:g}: {fault}")
+            elif (high, low) in marked:
+                backwards += 1
+                used.setdefault(row["Enchantment"], set()).add((high, low))
+        low, high = float(row["ValueLow"]), float(row["ValueHigh"])
+        if low != high:
+            shown = ((100.0 - abs(low), 100.0 - abs(high))
+                     if row["Enchantment"] in gen.COMPLEMENT_RANGE_ENCHANTMENTS
+                     and low < 0 else (abs(low), abs(high)))
+            if row["Enchantment"] in gen.BASE_PLUS_RANGE_ENCHANTMENTS and low >= 0:
+                base = gen.BASE_PLUS_RANGE_ENCHANTMENTS[row["Enchantment"]]
+                shown = (base + low, base + high)
+            if (shown[1], shown[0]) in marked:
+                backwards += 1
+                used.setdefault(row["Enchantment"], set()).add((shown[1], shown[0]))
+    assert not wrong, "; ".join(wrong)
+
+    built = {row["Enchantment"] for row in effects}
+    unused = []
+    marking = 0
+    for name, sentence in enchantments.items():
+        places = gen.ranges_rolling_down(sentence.get("RollsDown", ""), sentence["Effect"])
+        if not places:
+            continue
+        marking += 1
+        if name not in built:
+            continue
+        stated = gen.enchantment_ranges(sentence["Effect"])
+        for place in sorted(places):
+            if stated[place - 1] not in used.get(name, set()):
+                unused.append(f"{name} range {place}")
+    assert not unused, (
+        "a sentence marks a range as rolling down and no effect row of it "
+        "carries that range backwards, so the hover text would roll it one way "
+        "and nothing would follow: " + "; ".join(unused))
+    assert (marking, backwards) == (SENTENCES_MARKING_A_RANGE, PAIRS_WRITTEN_BACKWARDS), (
+        f"{marking} sentences mark a range and {backwards} pairs are written "
+        f"backwards; {SENTENCES_MARKING_A_RANGE} and {PAIRS_WRITTEN_BACKWARDS} "
+        f"were measured. Move the two constants with the reason.")
+
+
+#: A SINGLE VALUE A RULING SETS AND THE SENTENCE DOES NOT STATE, exactly as
+#: (enchantment, stat, value). NOT `JUDGED_NUMBERS`, which excuses a whole
+#: enchantment whose sentence states no number at all; this sentence states its
+#: other numbers, and every other row on it is still checked against them.
+#: `test_every_ruled_number_is_still_needed` refuses an entry no row uses or one
+#: the words already state.
+#:
+#: CHRONOMANCER'S TIME-LOCK'S TEN-PIECE, ITS RIFT'S WHOLE LENGTH AT MOST 10 S: the
+#: owner's #10 of 2026-10-17, option text "The rift lasts 1 s longer for each
+#: enemy caught, at most 10 s; an enemy already caught in it is not frozen
+#: again". The sentence says only "extends the duration by 1s". Ruled into this
+#: check by the coordinating session on 2026-10-19.
+RULED_NUMBERS: set[tuple[str, str, float]] = {
+    ("Positive_Chronomancer_s_Time_Lock_10_Piece_Bonus_Every",
+     "time_lock_rift_most_seconds", 10.0),
+}
+
+
+def test_a_single_value_appears_in_its_words_outside_any_range(effects,
+                                                              enchantments):
+    """A single value that is only an end of a range the sentence states is a
+    range written as one number, and would ignore the roll."""
+    wrong = []
+    for row in effects:
+        value = float(row["ValueLow"])
+        if value != float(row["ValueHigh"]):
+            continue
+        if row["Enchantment"] in JUDGED_NUMBERS:
+            continue
+        if row["Stat"] in FLAG_STATS:
+            continue
+        if (row["Enchantment"], row["Stat"], value) in RULED_NUMBERS:
+            continue
+        # A REMOVAL STATES 1 AND NO SENTENCE SAYS IT, for the reason a flag
+        # stat's does not. Issue #1791. `test_every_removed_row_states_one`
+        # keeps the excuse from covering a magnitude, and
+        # `test_a_removed_row_is_worded_as_a_removal` checks the words instead.
+        if row["ValueKind"] == "removed":
+            continue
+        text = words_of(row, enchantments)
+        # A TOTAL IS THE BASE PLUS THE ROW'S VALUE, FOR THE FEW NAMED. See
+        # `BASE_PLUS_SINGLE_VALUES`.
+        base, base_stat = BASE_PLUS_SINGLE_VALUES.get(row["Enchantment"], (0.0, ""))
+        if base_stat == row["Stat"]:
+            value += base
+        # AN ACTION ROW HAS NO STAT, SO ITS ACTION STANDS IN FOR ONE as the
+        # key of a word that states a value. Issue #1833, every Nth.
+        if not value_is_stated(row["Stat"] or row["Action"], value, text):
+            wrong.append(f"{row['Name']}: {value:g} against {text!r}")
+    assert not wrong, (
+        "these values appear nowhere in their enchantment's words outside a "
+        "range, as a number, as a multiplying word, as the complement of a "
+        "number for a stat in COMPLEMENT_STATS, or as a word STATED_BY_WORD "
+        "gives for the stat: " + "; ".join(wrong))
+
+
+#: Words that state a CONDITION's value without a number, per condition. Issue
+#: #1815. The sibling of `STATED_BY_WORD`, which is keyed by stat and covers a
+#: row's value; this is keyed by condition and covers its condition value, and
+#: `test_every_condition_value_appears_in_the_words_too` alone reads it.
+#:
+#: "LOW MANA" IS 35 ON `mana_below`, a labelled judgement tied to the ruling of
+#: 2026-09-23 under the owner's delegation that low mana is below 35% of maximum
+#: mana (Path of Exile 2's Low Mana is 35%, and this game's own Low Life keystone
+#: is 35%). "Take 10%-40% more damage when on low mana" is 41 characters, so a
+#: clause stating the number could not be appended without renaming its row.
+#: `test_the_low_mana_row_is_refused_without_its_word` is the control.
+#:
+#: "SINGLE TARGET" IS 1 ON `enemies_hit_at_most`, ruled 2026-09-23 under the
+#: owner's delegation for "Point blank AOE skills deal 15%-25% less damage to a
+#: single target": exactly one enemy struck by the attack. Issue #1686.
+CONDITION_VALUE_STATED_BY_WORD: dict[str, dict[str, float]] = {
+    "mana_below": {"low mana": 35.0},
+    "enemies_hit_at_most": {"single target": 1.0},
+}
+
+
+def condition_values_not_stated(effects, enchantments, word_map) -> list[str]:
+    """The rows whose condition value is neither a number in their sentence nor
+    stated by a phrase `word_map` gives their condition."""
+    wrong = []
+    for r in effects:
+        # AND THE SECOND CONDITION'S VALUE, AND THE ROLLED THRESHOLD'S HIGH END,
+        # since issue #1833 gave a row both. A fixture written before those
+        # columns carries neither, which reads as nought and is skipped.
+        for condition, column in ((r["Condition"], "ConditionValue"),
+                                  (r.get("Condition2", ""), "ConditionValue2"),
+                                  (r["Condition"], "ConditionValueHigh")):
+            value = float(r.get(column) or 0.0)
+            if not value:
+                continue
+            words = words_of(r, enchantments)
+            by_word = {amount for phrase, amount in word_map.get(condition, {}).items()
+                       if re.search(rf"\b{re.escape(phrase)}\b", words, re.IGNORECASE)}
+            if value not in numbers_in(words) | by_word:
+                wrong.append(f"{r['Name']}: {column} {r[column]} against {words!r}")
+    return wrong
+
+
+def test_every_condition_value_appears_in_the_words_too(effects, enchantments):
+    wrong = condition_values_not_stated(effects, enchantments,
+                                        CONDITION_VALUE_STATED_BY_WORD)
+    assert not wrong, "; ".join(wrong)
+
+
+def test_the_low_mana_row_is_refused_without_its_word(effects, enchantments):
+    """The control for the word map above: with it emptied, the low mana row is
+    named, so the map is what lets it through and the check can still fail."""
+    wrong = condition_values_not_stated(effects, enchantments, {})
+    assert any(line.startswith("Negative_Take_10_40_more_damage_when_on_low_mana#1:")
+               for line in wrong), wrong
+
+
+def test_the_single_target_rows_are_refused_without_their_words(effects, enchantments):
+    """The same control for "single target": with the map emptied, both point
+    blank rows are named, so the map is what lets them through. Issue #1686."""
+    wrong = condition_values_not_stated(effects, enchantments, {})
+    for suffix in ("#1:", "#2:"):
+        assert any(line.startswith(
+            "Negative_Point_blank_AOE_skills_deal_15_25_less_damage" + suffix)
+            for line in wrong), wrong
+
+
+#: Words that state an offset without a digit. Ruled 2026-10-07: "for each
+#: other trap" leaves out the one trap that is striking, which is an offset of
+#: 1 on `traps_active`. No row carried one on that day; the scale was built
+#: ahead of its row.
+#:
+#: AND "ABOVE THE MAX" IS 230, ruled 2026-10-09 by the coordinating session, for
+#: "Each class point above the max reduces your max resistances by 2%-5%". The
+#: owner's word "the max" is the 230 of `UCataclysmPassivePoints::Budget` (100
+#: levels give 150, eight bosses give 80), accepted by the owner on 2026-10-09
+#: in the words "your rec on all the open questions". The phrase is accepted for
+#: an offset of 230 and no other. If the budget moves, this entry and the row's
+#: Scale Offset move with it.
+WORDS_THAT_STATE_AN_OFFSET: dict[float, tuple[str, ...]] = {
+    1.0: ("each other",),
+    230.0: ("above the max",),
+}
+
+
+def offsets_not_stated(effects, enchantments) -> list[str]:
+    """The rows whose Scale Offset is neither a number in their own sentence
+    nor stated by its words."""
+    wrong = []
+    for r in effects:
+        offset = float(r.get("ScaleOffset") or 0.0)
+        words = words_of(r, enchantments) if offset else ""
+        in_words = any(phrase in words.lower()
+                       for phrase in WORDS_THAT_STATE_AN_OFFSET.get(offset, ()))
+        if offset and not in_words and offset not in numbers_in(words):
+            wrong.append(f"{r['Name']}: {offset:g} against {words!r}")
+    return wrong
+
+
+def test_every_scale_offset_appears_in_the_words(effects, enchantments):
+    """"Above 100" is an offset of 100. Issue #1686. An offset the sentence
+    does not state is a number nobody wrote."""
+    wrong = offsets_not_stated(effects, enchantments)
+    assert not wrong, "; ".join(wrong)
+
+
+def test_the_offset_check_can_fail():
+    """The control: a row whose offset its words do not state is named."""
+    effects = [{"Name": "A#1", "Enchantment": "A", "ScaleOffset": "100.0"}]
+    enchantments = {"A": {"Effect": "for every 10 class points spent above 50"}}
+    assert offsets_not_stated(effects, enchantments) == [
+        "A#1: 100 against 'for every 10 class points spent above 50'"]
+
+
+def test_each_other_states_an_offset_of_one_and_no_other():
+    """Ruled 2026-10-07. "For each other trap" is an offset of 1 and passes;
+    the same words do not excuse an offset of 2, and an offset of 1 on a
+    sentence without them is still named."""
+    words = ("Traps deal 15%-30% increased damage for each other trap "
+             "currently active on the battlefield")
+    enchantments = {"A": {"Effect": words},
+                    "B": {"Effect": "Each active gadget increases trap damage by 10%-20%"}}
+    assert offsets_not_stated(
+        [{"Name": "A#1", "Enchantment": "A", "ScaleOffset": "1.0"}], enchantments) == []
+    assert offsets_not_stated(
+        [{"Name": "A#1", "Enchantment": "A", "ScaleOffset": "2.0"}], enchantments) == [
+            f"A#1: 2 against {words!r}"]
+    assert offsets_not_stated(
+        [{"Name": "B#1", "Enchantment": "B", "ScaleOffset": "1.0"}], enchantments) == [
+            "B#1: 1 against 'Each active gadget increases trap damage by 10%-20%'"]
+
+
+def test_a_more_row_is_worded_as_a_multiplier(effects, enchantments):
+    wrong = [f"{r['Name']}: {words_of(r, enchantments)!r}"
+             for r in effects
+             if r["ValueKind"] == "more"
+             # A SHARE OF THE NORMAL VALUE IS THE MULTIPLIER ITSELF, stated as
+             # what is left rather than what is taken. Issue #1833.
+             and r["Enchantment"] not in gen.COMPLEMENT_RANGE_ENCHANTMENTS
+             and not MULTIPLIER.search(words_of(r, enchantments))]
+    assert not wrong, (
+        "these rows are in the more bucket and their sentence does not say "
+        "more, less, double or the like: " + "; ".join(wrong))
+
+
+def test_an_increased_row_is_worded_as_an_increase(effects, enchantments):
+    wrong = [f"{r['Name']}: {words_of(r, enchantments)!r}"
+             for r in effects
+             if r["ValueKind"] == "increased"
+             and r["Enchantment"] not in JUDGED_NUMBERS
+             and not INCREASE.search(words_of(r, enchantments))]
+    assert not wrong, (
+        "these rows are in the increased bucket and their sentence does not "
+        "say increased, reduced or the like: " + "; ".join(wrong))
+
+
+def test_a_removed_row_is_worded_as_a_removal(effects, enchantments):
+    """A row that takes its stat to nothing is on a sentence saying the stat is
+    gone. Issue #1791. The words are all there is to check a removal against,
+    because it states no number."""
+    wrong = [f"{r['Name']}: {words_of(r, enchantments)!r}"
+             for r in effects
+             if r["ValueKind"] == "removed"
+             and not REMOVING.search(words_of(r, enchantments))]
+    assert not wrong, (
+        "these rows remove their stat and their sentence does not say no, "
+        "cannot, can't or zero: " + "; ".join(wrong))
+
+
+def test_every_removed_row_states_one(effects):
+    """A removal carries no amount, so its row states 1 and nothing else. That
+    is what excuses it from the check that a value appears in its words, and
+    this keeps the excuse from covering a number somebody meant. The argument
+    `test_every_flag_stat_row_states_one` makes, for a kind rather than a stat."""
+    wrong = [f"{r['Name']}: {r['ValueLow']} to {r['ValueHigh']}"
+             for r in effects
+             if r["ValueKind"] == "removed"
+             and (float(r["ValueLow"]) != 1.0
+                  or float(r["ValueHigh"]) != 1.0)]
+    assert not wrong, (
+        "these rows remove their stat and state something other than 1, so "
+        "they are excused the value-in-words check while carrying a "
+        "magnitude: " + "; ".join(wrong))
+
+
+def test_a_removal_is_read_from_whole_words_only():
+    """The removal words, checked on made-up sentences for the reason
+    `test_a_sentence_that_drains_takes_something_away` gives: a rule checked
+    only against the real tables stops being checked when they change.
+
+    THE LAST FOUR ARE THE CONTROL. Three hold "no" or "zero" inside a longer
+    word, and one says "can" without the negation; none says a stat is gone."""
+    for words in ("You have no armor", "You no longer regenerate mana",
+                  "Cannot block", "Can't regen your hp",
+                  "Your maximum mana is reduced to zero"):
+        assert REMOVING.search(words), words
+    for words in ("Nobody escapes your armor", "Your cannons fire twice",
+                  "You can block twice as often",
+                  "Zeroes in on the weakest enemy"):
+        assert not REMOVING.search(words), words
+
+
+def test_a_negative_value_is_on_words_that_take_something_away(effects,
+                                                              enchantments):
+    wrong = [f"{r['Name']}: {words_of(r, enchantments)!r}"
+             for r in effects
+             if float(r["ValueLow"]) < 0
+             # "CANNOT EXCEED 40%" TAKES THE REST AWAY, for the reason the more
+             # check above gives. Issue #1833.
+             and r["Enchantment"] not in gen.COMPLEMENT_RANGE_ENCHANTMENTS
+             and not takes_something_away(r["Stat"], words_of(r, enchantments),
+                                          r["Action"])]
+    assert not wrong, "; ".join(wrong)
+
+
+def test_the_complement_exemption_reads_only_its_own_stats():
+    """The complement check, on made-up rows, so that no change to the real
+    tables can hide a mistake in it and so that it is exercised at all while
+    COMPLEMENT_STATS is empty. The same arrangement, and the same argument, as
+    `test_longer_excuses_a_negative_value_on_one_stat_only` below."""
+    exempt = {"healing_ceiling_reduction"}
+    ceiling = "You cannot heal above 60% of your maximum HP"
+
+    # THE CASE IT EXISTS FOR: the row says 40 and the words say 60.
+    assert value_is_stated("healing_ceiling_reduction", 40.0, ceiling, exempt)
+    assert value_is_stated(
+        "healing_ceiling_reduction", 25.0,
+        "You cannot be healed above 75% of your maximum HP", exempt)
+
+    # AND IT IS THE COMPLEMENT AND NOT ANY NUMBER. A row of 40 against a
+    # sentence saying 70 is a mismatch and stays one.
+    assert not value_is_stated(
+        "healing_ceiling_reduction", 40.0,
+        "You cannot heal above 70% of your maximum HP", exempt)
+
+    # AND IT REACHES ONLY THE STATS NAMED. The same row on another stat is
+    # refused, so the exemption cannot leak across the sheet.
+    assert not value_is_stated("max_health", 40.0, ceiling, exempt)
+
+    # AND AN EMPTY SET CHANGES NOTHING ABOUT THE ORDINARY TWO WAYS. This is what
+    # holds while the real list is empty: the check still accepts a number in
+    # the words and a multiplying word, and still refuses everything else.
+    assert value_is_stated("max_health", 50.0, "Your health is reduced by 50%", set())
+    assert value_is_stated("max_energy_shield", 100.0, "Double your energy shield", set())
+    assert not value_is_stated("healing_ceiling_reduction", 40.0, ceiling, set())
+
+
+def test_a_word_states_a_value_only_on_its_own_stat():
+    """The word rule, on made-up sentences, for the reason
+    `test_the_complement_exemption_reads_only_its_own_stats` gives. Issue #1815.
+
+    THE FIRST ASSERTION IS THE CASE IT EXISTS FOR; the rest are the control. The
+    word means its number and no other, on its stat and no other, and only when
+    the sentence says the word."""
+    words = {"crowd_control_resistance": {"immune": 100.0}}
+    sentence = "While below 30% HP you are immune to crowd control"
+
+    assert value_is_stated("crowd_control_resistance", 100.0, sentence,
+                           set(), words)
+    assert not value_is_stated("crowd_control_resistance", 50.0, sentence,
+                               set(), words)
+    assert not value_is_stated("max_health", 100.0, sentence, set(), words)
+    assert not value_is_stated(
+        "crowd_control_resistance", 100.0,
+        "While below 30% HP you resist crowd control", set(), words)
+    # AND THE REAL TABLE IS WHAT THE TEST ABOVE READS BY DEFAULT.
+    assert value_is_stated("crowd_control_resistance", 100.0, sentence)
+
+
+def test_applied_states_every_time_only_on_the_action_that_lays_a_status_on_its_wearer():
+    """Ruled 2026-10-07, on made-up sentences and the real table. "Applied" with
+    no chance stated is 100 on `apply_status_to_self`, whose value is a chance,
+    and on nothing else: not on its two sibling actions, whose values are
+    seconds and a size, not on a stat, and not as any other number."""
+    sentence = "Every 15 seconds a random debuff is applied to you"
+
+    assert value_is_stated("apply_status_to_self", 100.0, sentence)
+    assert not value_is_stated("apply_status_to_self", 50.0, sentence)
+    assert not value_is_stated("apply_status_to_self", 100.0,
+                               "Every 15 seconds a random debuff lands on you")
+    for other in ("apply_status_to_self_seconds", "apply_status_to_self_sized",
+                  "cooldown_use_increased_damage", "damage_over_time_taken", "max_health"):
+        assert not value_is_stated(other, 100.0, sentence), other
+
+
+def test_doubles_is_a_multiplier_of_one_hundred_and_only_as_a_whole_word():
+    """Ruled 2026-10-07, on made-up sentences. "Doubles" words a `more` row and
+    states 100, as "double" and "doubled" do; it states no other number, and a
+    longer word that only begins with it is not read."""
+    sentence = "Each lantern doubles the damage of your snares"
+
+    assert MULTIPLIER.search(sentence)
+    assert value_is_stated("minion_damage", 100.0, sentence)
+    assert not value_is_stated("minion_damage", 50.0, sentence)
+    assert not value_is_stated("minion_damage", 200.0, sentence)
+    longer = "Each lantern doublespeaks the damage of your snares"
+    assert not MULTIPLIER.search(longer)
+    assert not value_is_stated("minion_damage", 100.0, longer)
+
+
+def test_every_word_stated_value_is_still_needed(effects, enchantments):
+    """An excuse that outlives its reason hides a real mismatch, the argument
+    `test_every_judged_number_is_still_needed` makes. Each word in
+    STATED_BY_WORD must still be what admits a row: a single value on its stat,
+    on a sentence saying the word, that the other three ways cannot read out of
+    the words. Issue #1815.
+
+    PER WORD, NOT PER STAT. `crowd_control_resistance` had a row before the word
+    existed, "CC effects applied to you last 40%-70% longer", so a stat that
+    still has a row says nothing about whether its word is still needed."""
+    for stat, meanings in sorted(STATED_BY_WORD.items()):
+        for word, value in sorted(meanings.items()):
+            needing = [
+                r["Name"] for r in effects
+                if (r["Stat"] or r["Action"]) == stat
+                and float(r["ValueLow"]) == value == float(r["ValueHigh"])
+                and word in {w.lower() for w in
+                             re.findall(r"[A-Za-z]+", words_of(r, enchantments))}
+                and not value_is_stated(stat, value, words_of(r, enchantments),
+                                        None, {})]
+            assert needing, (
+                f"no row needs {word!r} to state {value:g} on {stat}, so the "
+                f"word should leave STATED_BY_WORD")
+
+
+def test_every_complement_stat_is_still_used(effects):
+    """An exemption that outlives its reason hides a real mismatch, which is the
+    argument `test_every_flag_stat_is_still_used` and
+    `test_every_judged_number_is_still_needed` both make."""
+    written = {r["Stat"] for r in effects}
+    unused = sorted(COMPLEMENT_STATS - written)
+    assert not unused, (
+        f"{unused} are excused the value-in-words check by way of their "
+        f"complement and no row grants them")
+
+
+def test_every_complement_range_enchantment_is_still_needed(effects, enchantments):
+    """An exemption that outlives its reason hides a real mismatch, the argument
+    `test_every_complement_stat_is_still_used` makes. Each enchantment in the
+    generator's `COMPLEMENT_RANGE_ENCHANTMENTS` must still have a row whose range
+    its sentence states only as a complement. Issue #1833, the rows-only
+    batch."""
+    for name in sorted(gen.COMPLEMENT_RANGE_ENCHANTMENTS):
+        needing = []
+        for r in effects:
+            if r["Enchantment"] != name:
+                continue
+            low, high = float(r["ValueLow"]), float(r["ValueHigh"])
+            # JUDGED BY ORDER AS WELL AS BY NUMBERS. Both of today's roll down,
+            # so their pairs are written against the sentence, and "cannot
+            # exceed 40%-60%" written -40 to -60 has the sentence's own numbers
+            # in it while still meaning the complement: at a roll of 0 it takes
+            # 40 where the text shows 60. So the question is whether the plain
+            # reading is a fault and the complement is not. See
+            # `fault_in_the_order`.
+            plain = (abs(low), abs(high))
+            complement = (100.0 - abs(low), 100.0 - abs(high))
+            if (fault_in_the_order(plain, r, enchantments)
+                    and not fault_in_the_order(complement, r, enchantments)):
+                needing.append(r["Name"])
+        assert needing, (
+            f"no row of {name} states its range as a complement, so it should "
+            f"leave COMPLEMENT_RANGE_ENCHANTMENTS")
+
+
+def test_every_base_plus_single_value_is_still_needed(effects, enchantments):
+    """An exemption that outlives its reason hides a real mismatch. Each name in
+    `BASE_PLUS_SINGLE_VALUES` must still have a row of its stat whose value its
+    sentence does not state and whose value plus the base it does."""
+    for name, (base, stat) in sorted(BASE_PLUS_SINGLE_VALUES.items()):
+        needing = [
+            r["Name"] for r in effects
+            if r["Enchantment"] == name and r["Stat"] == stat
+            and float(r["ValueLow"]) == float(r["ValueHigh"])
+            and not value_is_stated(stat, float(r["ValueLow"]), words_of(r, enchantments))
+            and value_is_stated(stat, float(r["ValueLow"]) + base, words_of(r, enchantments))]
+        assert needing, (
+            f"no {stat} row of {name} states its value only as {base:g} plus "
+            f"it, so it should leave BASE_PLUS_SINGLE_VALUES")
+
+
+def test_every_base_plus_range_enchantment_is_still_needed(effects, enchantments):
+    """The same argument for the generator's `BASE_PLUS_RANGE_ENCHANTMENTS`:
+    each must still have a row whose range its sentence states only as the base
+    plus the value. Issue #1833 group E part 2."""
+    for name, base in sorted(gen.BASE_PLUS_RANGE_ENCHANTMENTS.items()):
+        needing = []
+        for r in effects:
+            if r["Enchantment"] != name:
+                continue
+            low, high = float(r["ValueLow"]), float(r["ValueHigh"])
+            stated = gen.enchantment_ranges(words_of(r, enchantments))
+            if (abs(low), abs(high)) not in stated and (base + low, base + high) in stated:
+                needing.append(r["Name"])
+        assert needing, (
+            f"no row of {name} states its range as the base {base:g} plus the "
+            f"value, so it should leave BASE_PLUS_RANGE_ENCHANTMENTS")
+
+
+def test_the_complement_list_holds_what_it_is_measured_to_hold():
+    """WITHOUT THIS THE TWO TESTS ABOVE CANNOT FAIL. Both loop over
+    COMPLEMENT_STATS, and it is empty, so both pass having checked nothing --
+    which is the "guard over an empty list" this project already warns about in
+    `CataclysmPassiveTreeTests.cpp`. This says what the list holds today, so
+    filling it is a deliberate edit here rather than a silent one.
+
+    IT HELD NOTHING UNTIL 2026-09-14, and this assertion is what made that
+    honest rather than vacuous. `healing_ceiling_reduction` went in with the two
+    rows that need it, in one commit, so the exemption and its users have never
+    existed apart. Issue #1793."""
+    assert COMPLEMENT_STATS == {"healing_ceiling_reduction",
+                                "energy_shield_recharge_ceiling_reduction"}, (
+        f"COMPLEMENT_STATS holds {sorted(COMPLEMENT_STATS)}. If that is "
+        f"deliberate, change this test and check that every name in it has a "
+        f"row in game/Data/EnchantmentEffects.csv.")
+
+
+def test_longer_excuses_a_negative_value_on_one_stat_only():
+    """The one widening this file allows, checked on made-up rows so that no
+    change to the real tables can hide a mistake in it. A negative
+    crowd_control_resistance makes crowd control last longer; a negative
+    value beside "longer" on a duration is a sign error and stays refused."""
+    assert takes_something_away(
+        "crowd_control_resistance", "CC effects applied to you last 40%-70% longer")
+    assert not takes_something_away(
+        "debuff_duration_taken", "Debuffs on you last 20%-30% longer")
+    assert not takes_something_away(
+        "crowd_control_resistance", "CC effects applied to you are 40%-70% stronger")
+
+
+def test_enemies_gaining_excuses_a_negative_value_on_one_stat_only():
+    """The second widening this file allows, checked on made-up rows as the one
+    above is. Less penetration for the wearer is what "enemies gain resistances"
+    means; the same words on another stat, or a gain that is not the enemies',
+    stay refused."""
+    assert takes_something_away(
+        "penetration", "Enemies within 5 metres gain 20%-40% resistances")
+    assert not takes_something_away(
+        "armor", "Enemies within 5 metres gain 20%-40% resistances")
+    assert not takes_something_away(
+        "penetration", "You gain 20%-40% penetration against enemies")
+
+
+def test_expiring_faster_excuses_a_negative_value_on_one_stat_only():
+    """The third widening this file allows, checked on made-up rows as the two
+    above are. Less time for an area is what "expire faster" means; "faster" on
+    a speed beside a negative value stays refused."""
+    assert takes_something_away(
+        "persistent_area_duration", "Persistent AOE effects expire 40%-60% faster")
+    assert not takes_something_away(
+        "projectile_speed", "Projectiles travel 30%-50% faster")
+    assert not takes_something_away(
+        "persistent_area_duration", "Persistent AOE effects are 40%-60% larger")
+
+
+def test_paying_out_more_slowly_excuses_a_negative_value_on_one_stat_only():
+    """The fourth widening this file allows, ruled 2026-10-28 for #1618 and
+    checked on made-up rows as the three above are. A smaller pay-out rate is
+    what "pays out more slowly" means; the same words on another stat, and the
+    stat beside words that say neither, stay refused."""
+    assert takes_something_away(
+        "leech_payout_rate", "Your leech pays out 50% more slowly")
+    assert not takes_something_away(
+        "life_leech", "Your leech pays out 50% more slowly")
+    assert not takes_something_away(
+        "leech_payout_rate", "Your leech pays out over 6 seconds")
+
+
+def test_a_sentence_that_drains_takes_something_away():
+    """The word added on 2026-09-14, checked on made-up sentences for the
+    reason the test above gives: a rule checked only against the real tables
+    stops being checked the moment those tables change.
+
+    ALL THREE TENSES, because the sentences use two of them and a reword could
+    use the third. The last two assertions are the control: the word has to be
+    what admits the sentence, rather than something else in it, and it has to
+    be the whole word."""
+    assert takes_something_away(
+        "class_resource",
+        "Dodging an attack drains 5%-10% of your class resource")
+    assert takes_something_away(
+        "health", "Channel skills drain 8%-15% of your maximum HP per second")
+    assert takes_something_away(
+        "class_resource",
+        "Your class resource is drained by 5%-10% when you dodge")
+    assert not takes_something_away(
+        "class_resource",
+        "Dodging an attack costs 5%-10% of your class resource")
+    assert not takes_something_away(
+        "class_resource", "Dodging an attack blocks your class drainpipe")
+
+
+def test_a_sentence_that_says_losing_takes_something_away():
+    """The tense added on 2026-10-07, on made-up sentences for the reason the
+    test above gives. The last two assertions are the control: the word has
+    to be what admits the sentence, and it has to be the whole word."""
+    assert takes_something_away(
+        "", "After 10 seconds in combat you begin losing 2%-4% of your "
+            "maximum HP per second", "health")
+    assert takes_something_away("", "You lose 15% of your max hp every 5 seconds")
+    assert not takes_something_away(
+        "", "After 10 seconds in combat you begin paying 2%-4% of your "
+            "maximum HP per second", "health")
+    assert not takes_something_away(
+        "", "After 10 seconds in combat you begin closing 2%-4% of your "
+            "maximum HP per second", "health")
+
+
+def test_the_tables_state_the_measured_number_of_ranges(enchantments):
+    counted = sum(len(gen.enchantment_ranges(row["Effect"]))
+                  for row in enchantments.values())
+    assert counted == STATED_RANGES, (
+        f"the generator reads {counted} ranges in the two enchantment tables, "
+        f"and {STATED_RANGES} were measured. Either the sentences changed, or "
+        f"the reader in tools/generate_datatables.py no longer reads what "
+        f"UCataclysmItemValues::EnchantmentRanges reads. Change this number "
+        f"and the automation test that pins the same count together.")
+
+
+def test_the_coverage_is_what_it_is_measured_to_be(effects):
+    assert len(effects) == AUTHORED_ROWS, (
+        f"{len(effects)} effect rows, pinned at {AUTHORED_ROWS}. Change the "
+        f"pin and the entry in docs/DECISIONS.md that states it together.")
+    assert len({r["Enchantment"] for r in effects}) == AUTHORED_ENCHANTMENTS
+
+
+def test_the_removed_rows_are_the_ones_counted_here(effects):
+    """The two removal checks above loop over the rows that remove a stat, so
+    a table with none passes both. This is what makes them read something.
+    Issue #1791."""
+    removed = sum(1 for r in effects if r["ValueKind"] == "removed")
+    assert removed == REMOVED_ROWS, (
+        f"{removed} rows remove their stat, pinned at {REMOVED_ROWS}. Change "
+        f"the pin with the rows.")
+
+
+def test_every_flag_stat_row_states_one(effects):
+    """A stat whose value is a yes states 1, so the exemption above cannot come
+    to cover a magnitude the sentence does not mention."""
+    wrong = [f"{r['Name']}: {r['ValueLow']} to {r['ValueHigh']}"
+             for r in effects
+             if r["Stat"] in FLAG_STATS
+             and (float(r["ValueLow"]) != 1.0
+                  or float(r["ValueHigh"]) != 1.0)]
+    assert not wrong, (
+        "these rows are on an on-or-off stat and state something other than 1, "
+        "so they are excused the check that a value appears in its words while "
+        "carrying a magnitude: " + "; ".join(wrong))
+
+
+def test_every_flag_stat_is_still_used(effects):
+    """An exemption that outlives its reason hides a real mismatch, which is the
+    argument `test_every_judged_number_is_still_needed` makes below."""
+    written = {r["Stat"] for r in effects}
+    unused = sorted(FLAG_STATS - written)
+    assert not unused, (
+        f"{unused} are excused the value-in-words check and no row grants them")
+
+
+def test_a_set_label_is_not_a_number_the_sentence_states():
+    # The label alone is taken out; a figure the sentence states stays.
+    plain = "Plague Doctor (10-Piece Bonus): it explodes"
+    assert numbers_in(plain) == {10.0}
+    assert not numbers_in(SET_LABEL.sub(" ", plain))
+    assert numbers_in(SET_LABEL.sub(" ", plain + " for 20% of its health")) == {20.0}
+    assert numbers_in(SET_LABEL.sub(" ", "Gain 10 armour per piece worn")) == {10.0}
+
+
+def test_every_ruled_number_is_still_needed(effects, enchantments):
+    """Each `RULED_NUMBERS` entry must still be a single value of a row of its
+    enchantment and stat, and its words must still not state it, or the entry
+    excuses nothing and should go."""
+    wrong = []
+    for enchantment, stat, value in sorted(RULED_NUMBERS):
+        rows = [r for r in effects
+                if r["Enchantment"] == enchantment and r["Stat"] == stat
+                and float(r["ValueLow"]) == value == float(r["ValueHigh"])]
+        if not rows:
+            wrong.append(f"{enchantment} / {stat} / {value:g}: no row states it")
+            continue
+        if value_is_stated(stat, value, words_of(rows[0], enchantments)):
+            wrong.append(f"{enchantment} / {stat} / {value:g}: its words state it already")
+    assert not wrong, "RULED_NUMBERS entries that excuse nothing: " + "; ".join(wrong)
+
+
+def test_every_judged_number_is_still_needed(effects, enchantments):
+    """An excuse that outlives its reason hides a real mismatch. Each name in
+    JUDGED_NUMBERS must still have a row, and its sentence must still state no
+    number; once the words gain one, the row is checked like every other."""
+    written = {r["Enchantment"] for r in effects}
+    for name in sorted(JUDGED_NUMBERS):
+        assert name in written, f"{name} is excused but has no effect row"
+        assert not numbers_in(SET_LABEL.sub(" ", enchantments[name]["Effect"])), (
+            f"{name}'s words now state a number, so it needs no excuse: "
+            f"{enchantments[name]['Effect']!r}")

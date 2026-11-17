@@ -1,0 +1,3136 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmCommand.h"
+#include "AbilitySystem/CataclysmSecondSelf.h"
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmMovement.h"
+// For the owner's rule of a tenth, asked of a trap's damage over time. Traps layer 4, 2026-10-21.
+#include "AbilitySystem/CataclysmAilments.h"
+// For what a blow resolved to, so a burn is refused on an evaded one.
+// Issue #1156.
+#include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmDeployableSelfBlast.h"
+// For the chaos pool a killed minion leaves its commander. Ruled 2026-10-06.
+#include "AbilitySystem/CataclysmGroundZone.h"
+#include "AbilitySystem/CataclysmSkillTemplate.h"
+#include "AbilitySystem/CataclysmRegeneration.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmTeams.h"
+// For the copy of its summoner's last skill a gadget casts. Ruled 2026-10-14.
+#include "AbilitySystem/CataclysmTriggeredSkill.h"
+// For a skill gadget's clock, its skill and which skills it may cast. Ruled 2026-10-16.
+#include "AbilitySystem/CataclysmSkillSlots.h"
+#include "Dungeon/CataclysmDungeonModifierEffects.h"
+#include "Items/CataclysmWeaponSlotsComponent.h"
+#include "AbilitySystem/CataclysmWeaponSkills.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
+// For the basic attack gadget's clock, the player's swing interval. Ruled 2026-10-16, stack 2.
+#include "AbilitySystem/CataclysmBasicAttack.h"
+// For a Warhound's blow, its taunt and where it appears. Warlord's Will's six-piece, ruled 2026-10-17 and 2026-10-18.
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmSkillTemplates.h"
+#include "AbilitySystem/CataclysmTaunt.h"
+#include "HAL/IConsoleManager.h"
+#include "Cataclysm.h"
+#include "Character/CataclysmEnemyController.h"
+// For the level a minion's own health and damage are raised by, and for the
+// fallback when the summoner has no player state. Issue #340.
+#include "Character/CataclysmPlayerClassStats.h"
+#include "GameFramework/Pawn.h"
+#include "Player/CataclysmPlayerState.h"
+#include "Player/CataclysmGameMode.h"
+#include "Player/CataclysmPowerScore.h"
+#include "Character/CataclysmEnemyCharacter.h"
+#include "Components/CapsuleComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Data/CataclysmDataRows.h"
+#include "Engine/DataTable.h"
+#include "Engine/StaticMesh.h"
+#include "Engine/World.h"
+#include "GameFramework/CharacterMovementComponent.h"
+// For a skill trap's tint, dim while arming and lit when armed. Ruled 2026-10-19 (T12).
+#include "Materials/MaterialInstanceDynamic.h"
+#include "UObject/ConstructorHelpers.h"
+
+namespace
+{
+	/** Half-height and radius of the imp's collision capsule, in centimetres. */
+	constexpr float MinionCapsuleRadius = 30.0f;
+	constexpr float MinionCapsuleHalfHeight = 45.0f;
+
+	/**
+	 * How a minion's blow arrives, for either of the two ways it deals damage.
+	 *
+	 * A MINION NEVER CRITICALLY STRIKES, and saying so at the call site is the
+	 * only way to get that right. Its damage is dealt in its summoner's name --
+	 * the two ApplyHit calls below pass `Summoner` as the attacker -- so the
+	 * character whose critical strike chance the engine reads is the player.
+	 * The design forbids the inheritance: "A minion does not take the summoner's
+	 * weapon damage, flat added damage, attack speed, critical strike chance or
+	 * multiplier, penetration" (docs/Cataclysm_GDD_v2.md:1747), and minion damage
+	 * was fitted at the top of its band precisely because a minion "has no
+	 * critical strike layer to compound with" (:1776).
+	 *
+	 * AND IT PENETRATES NOTHING, which is the other half of that same sentence.
+	 * Both penetration stats are read off the attacker in the same place the
+	 * critical strike chance is, and a piercing weapon adds a third share of
+	 * armour ignored on top, so an imp was cutting into a target's armour and
+	 * resistance by whatever its summoner's gear supplied. Issue #659. A minion
+	 * has nothing of its own to put in its place -- no type in
+	 * `game/Data/MinionTypes.csv` states penetration and a minion carries no
+	 * combat attribute set -- so it penetrates zero.
+	 *
+	 * AND IT CARRIES NO WEAPON SUB-TYPE, which is the third thing that crossed by
+	 * the same route. The weapon a hit is credited to is read off the effect
+	 * causer, which is this summoner, so a sword made an imp deal 10% more to
+	 * health and a wand made it strip 10% more energy shield. No sentence of the
+	 * design names sub-types; the general rule blocks them, because a minion
+	 * reaches its summoner through exactly three channels and this is not one of
+	 * them. Issue #676.
+	 */
+	/**
+	 * The level a minion's own base health and damage are raised by.
+	 *
+	 * THE SUMMONER'S, NOT THE MINION'S. A minion has no level of its own; the
+	 * design's phrase is "the type's own base, raised by the summoner's
+	 * level".
+	 *
+	 * THE FALLBACK IS NOT A CORNER CASE. A character's level lives on its
+	 * player state, and an ENEMY summoner has none -- which is what the two
+	 * branches below the player's answer.
+	 * `UCataclysmEquipmentComponent` asks the same question the same way.
+	 *
+	 * AN ENEMY SUMMONER IS AT ITS TIER'S REFERENCE LEVEL. Issue #1702, ruled
+	 * 2026-10-29, a judgement following a precedent: the design raises a
+	 * minion by "the summoner's level" and an enemy has none, so it takes the
+	 * level `UCataclysmPowerScore::ReferenceCharacter` gives the difficulty
+	 * tier, which is how the Corrupted Stalker takes its own. No shipped path
+	 * reaches this today: risen imps need their curser or killer to hold a
+	 * stat only a player's stat line carries.
+	 *
+	 * A MINION SUMMONER IS AT ITS OWN SUMMONER'S LEVEL, asked the same way.
+	 *
+	 * AND ANYTHING ELSE FALLS BACK TO A PREVIEW CONTROL, which only test
+	 * scaffolding reaches today: a bare actor standing in for a summoner.
+	 * `UCataclysmPlayerClassStats::ChosenLevel` is documented as "which level
+	 * the console variable asks for", meant for previewing class stats in the
+	 * editor rather than describing anything in the world. Kept, ruled the
+	 * same day, because every minion figure those tests assert is at it.
+	 */
+	int32 LevelOfSummoner(const AActor* Summoner, int32 Depth = 0)
+	{
+		if (const APawn* Pawn = Cast<const APawn>(Summoner))
+		{
+			if (const ACataclysmPlayerState* State =
+					Pawn->GetPlayerState<ACataclysmPlayerState>())
+			{
+				return State->GetCharacterLevel();
+			}
+		}
+		if (const ACataclysmMinion* Minion = Cast<const ACataclysmMinion>(Summoner))
+		{
+			// A CHAIN OF MINIONS IS FOLLOWED, NOT LOOPED: a summoner that names
+			// itself, or a ring, stops at the preview level below.
+			if (Depth < 8 && Minion->Summoner != Summoner)
+			{
+				return LevelOfSummoner(Minion->Summoner, Depth + 1);
+			}
+		}
+		else if (Summoner && Summoner->IsA<ACataclysmEnemyCharacter>())
+		{
+			return UCataclysmPowerScore::ReferenceCharacter(
+				ACataclysmGameMode::DifficultyTierIn(Summoner)).Level;
+		}
+		return UCataclysmPlayerClassStats::ChosenLevel();
+	}
+
+	/**
+	 * A base figure raised by a level, which is how the minion type table is
+	 * read.
+	 *
+	 * `Base + PerLevel * Level`, AND THE ARITHMETIC IS NOT A CHOICE. The other
+	 * reading, `Base + PerLevel * (Level - 1)`, is what the simulation's
+	 * character model uses for a PLAYER -- and the minion table's numbers were
+	 * authored against this one. `tools/tests/test_minion_stat_blocks.py`
+	 * asserts three imps out-damage their summoner's basic attack at every
+	 * difficulty tier; at tier 1 that is 410 a second against the summoner's
+	 * 382 under this arithmetic and 378 under the other, so the other fails.
+	 * Every tier from 2 upward holds either way, which is why it had to be
+	 * measured rather than argued.
+	 *
+	 * THE TWO CONVENTIONS DIFFER BY ONE LEVEL'S WORTH AND NOTHING SAYS THEY
+	 * ARE MEANT TO. Issue #1700 carries it, rather than quietly aligning them,
+	 * because changing either is a balance change nobody asked for. Everything
+	 * about a minion uses this form -- `tools/tests/test_minion_stat_blocks.py`
+	 * lines 49 and 54 have since before this code was written -- and everything
+	 * about a player uses the other, in `CataclysmClassStats.cpp`,
+	 * `CataclysmSkillSlots.cpp` and `sim/cataclysm_sim/character.py`.
+	 */
+	float RaisedByLevel(float Base, float PerLevel, int32 Level)
+	{
+		return Base + PerLevel * static_cast<float>(Level);
+	}
+
+	/**
+	 * What one of the summoner's stats stands at, or nothing.
+	 *
+	 * THE SIBLING OF `UCataclysmCommand::SummonerMultiplierFor`, which lived
+	 * above this until issue #1715 moved it, and it reads a flag rather
+	 * than a multiplier: `minion_explodes_on_death` is a stat a passive row
+	 * sets to one, so what matters is whether it is above zero. Issue #1515.
+	 *
+	 * `StatForSkill` RATHER THAN THE ATTRIBUTE, because the stat has no
+	 * gameplay attribute at all -- it is one of the names in
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute` -- so the recorded
+	 * stat line is the only place its value exists. Nothing for a summoner
+	 * with no stat line, which is ordinary: an enemy summoner never has one.
+	 */
+	float SummonerStat(const AActor* Summoner, const TCHAR* Stat)
+	{
+		const UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Summoner));
+		return Theirs
+			? Theirs->StatForSkill(FName(Stat), FGameplayTagContainer(), 0.0f)
+			: 0.0f;
+	}
+
+	// ANY ACTOR RATHER THAN A MINION, SINCE SHARED RUIN. Issue #1515. A thrall
+	// is a taken enemy character, and its death blast is dealt by the thrall.
+	FCataclysmHitDelivery MinionDelivery(AActor* Minion, bool bIsArea)
+	{
+		FCataclysmHitDelivery Delivery;
+		Delivery.bIsArea = bIsArea;
+
+		// AND THE MINION IS NAMED AS WHAT DEALT IT. Issue #41, slice 4. It goes
+		// on the effect as the source object, which the hit and death notices
+		// read to say a minion struck and which none of the rules that work out
+		// damage reads, so every exclusion below works exactly as it did.
+		//
+		// AND SINCE ISSUE #1515 IT DECIDES WHOSE THE BLOW IS. The notice's
+		// attacker used to be the instigator for every blow, which made a
+		// minion's hit and kill the summoner's; `UCataclysmCombatEvents::
+		// NoteBlow` now reads this field, asks
+		// `ACataclysmMinion::HitsCountAsTheSummoners`, and credits the summoner
+		// only when it holds the Conduit keystone.
+		Delivery.DealtBy = Minion;
+
+		// THESE THREE ARE NO LONGER THE ONLY THING STOPPING A SUMMONER'S NUMBERS.
+		// Issue #1515. Until 2026-09-17 a minion struck in its summoner's name,
+		// so a critical strike chance, a penetration figure and a weapon
+		// sub-type were all read off the summoner unless a flag said otherwise,
+		// and a reading added later crossed to every minion in the game until
+		// somebody remembered to add a flag for it. The minion is its own
+		// instigator now: it carries no combat attribute set and no weapon, so
+		// those readings find nothing of its own. The flags are kept because
+		// they state the rule rather than leaving it to what a minion happens
+		// not to have, and because issue #340 may one day give a minion figures
+		// of its own -- at which point "a minion never critically strikes" has
+		// to go on being true.
+		Delivery.bCannotCriticallyStrike = true;
+		Delivery.bCannotPenetrate = true;
+		Delivery.bCarriesNoWeaponSubType = true;
+
+		// AND NO LEECH, WHICH IS NOW A DIFFERENT QUESTION FROM THE THREE ABOVE.
+		// Leech is read off the attacker's VITAL attribute set, and a minion has
+		// one -- its leech figures exist and are zero -- so "a minion does not
+		// take its summoner's leech" is true of its own accord since the
+		// instigator changed. What this flag now forbids is a minion leeching
+		// from figures of ITS OWN, which the design does not ask for and no data
+		// can produce today. It is kept so that this change moves no behaviour,
+		// and the decision to keep it is recorded rather than assumed. Issue
+		// #895.
+		Delivery.bCannotLeech = true;
+
+		// THE RETALIATION EXCLUSION IS GONE, AND THAT IS A DECISION RATHER THAN
+		// AN OVERSIGHT. The project owner decided on 2026-09-18 that a minion
+		// takes the retaliation its own blow provokes, as the thing that swung
+		// would in any other case. The exclusion existed to stop a summoner
+		// standing well away from the fight taking damage for its minion's blow,
+		// and that reason went with the instigator: retaliation is paid back to
+		// whoever dealt the blow, and a minion now deals its own. Minion builds
+		// lose minions to reflecting enemies, which the owner accepted.
+		// `Cataclysm.Retaliation.AMinionTakesTheRetaliationItsOwnBlowProvokes`
+		// is the case that holds it.
+
+		// AND IT CARRIES NO CHANCE TO APPLY AN AILMENT. The chances are worked
+		// out from the attacker when the blow is built, so this stopped a
+		// summoner's chance to bleed from gear reaching every imp. The design
+		// names "chance to apply an ailment" among what does not cross, and the
+		// flag says so rather than resting on a minion having no such chances of
+		// its own. Issue #899.
+		Delivery.bCarriesNoAilmentChance = true;
+
+		// AND IT REPORTS NO DISTANCE TO ITS TARGET, the seventh. Issue #1596.
+		//
+		// THIS ONE IS NOT LIKE THE SIX ABOVE AND THE DIFFERENCE IS WORTH SAYING.
+		// Each of those stops a CAPABILITY of the summoner's from crossing -- its
+		// critical strike, its penetration, its weapon, its leech, its ailment
+		// chances -- and in each case the number that would have crossed was
+		// simply the wrong number. Here the number is defensible: a distance
+		// measured on this blow is the summoner's distance to the minion's
+		// target, and "enemies within 5 meters of you" is a question about where
+		// the WEARER stands, so that is arguably what the sentence asks for.
+		//
+		// IT IS REFUSED ON A DIFFERENT GROUND: a player's conditional damage
+		// bonus should not reach a minion's blow at all. Path of Exile treats a
+		// minion's actions as separate from its summoner's, and Last Epoch's own
+		// documentation says a character's modifiers do not apply unless minions
+		// are specified. `docs/DECISIONS.md` carries the sources and the ruling.
+		//
+		// AND IT IS SAID HERE RATHER THAN LEFT TO HAPPEN BY ITSELF. A row scoped
+		// to a skill tag already cannot match this blow, because the two ApplyHit
+		// calls below pass an empty tag container -- but that is a coincidence
+		// rather than a safeguard, and it would vanish the moment a minion's blow
+		// carried its skill's tags.
+		Delivery.bCarriesNoTargetDistance = true;
+
+		// AND IT REPORTS NO STATE OF ITS TARGET EITHER, the eighth. Issue #45.
+		//
+		// THE SAME GROUND AS THE SEVENTH AND A WEAKER CASE FOR MEASURING IT. The
+		// distance above at least reports the wrong end of the blow; whether this
+		// minion's target is staggered is a fact about that target and is exactly
+		// the same whoever struck it, so there is no wrong number here to point
+		// at. It is refused purely because a player's conditional damage bonus
+		// should not reach a minion's blow -- which is the real reason the
+		// seventh is refused as well, stated there in full.
+		//
+		// SET TOGETHER WITH THE SEVENTH AND ALWAYS WILL BE. If a third reading of
+		// the target appears, the three should become one flag.
+		Delivery.bCarriesNoTargetState = true;
+		return Delivery;
+	}
+
+	/** How fast it walks, in centimetres per second, when its type states
+	 *  nothing. Faster than a monster, because Summon Imp is written as "fast
+	 *  swarming melee". A type that states a move speed overrides it. */
+	constexpr float MinionWalkSpeedCmPerSecond = 500.0f;
+
+	/** Where the imported minion type table lives. */
+	const TCHAR* MinionTypeTablePath = TEXT("/Game/Data/DT_MinionTypes.DT_MinionTypes");
+}
+
+const UDataTable* ACataclysmMinion::LoadTypeTable()
+{
+	const UDataTable* Table = LoadObject<UDataTable>(nullptr, MinionTypeTablePath);
+	if (!Table)
+	{
+		// Loudly, and naming both scripts, because the two failures look the
+		// same from here: the workbook never produced the CSV, or the CSV was
+		// never imported as an asset.
+		UE_LOG(LogCataclysm, Error,
+			TEXT("Could not load %s. It is produced by "
+				 "tools/generate_datatable_assets.py from game/Data/"
+				 "MinionTypes.csv, which tools/generate_datatables.py produces "
+				 "from the Minion Types sheet of "
+				 "docs/All_Things_Cataclysm.xlsx."), MinionTypeTablePath);
+	}
+	return Table;
+}
+
+const FCataclysmMinionTypeRow* ACataclysmMinion::FindType(
+	const UDataTable* Table, const FString& InTypeName)
+{
+	if (!Table || InTypeName.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	// MATCHED ON THE ROW NAME, which is what the Minions parameter writes:
+	// `Ballista:2` names the Ballista row. The generator's
+	// validate_minion_references already refuses a name the sheet does not
+	// have, so a miss here means the table is stale rather than the cell wrong.
+	const FCataclysmMinionTypeRow* Found = nullptr;
+	Table->ForeachRow<FCataclysmMinionTypeRow>(
+		TEXT("ACataclysmMinion::FindType"),
+		[&](const FName& RowName, const FCataclysmMinionTypeRow& Row)
+		{
+			if (!Found && RowName.ToString().Equals(InTypeName, ESearchCase::IgnoreCase))
+			{
+				Found = &Row;
+			}
+		});
+
+	return Found;
+}
+
+FCataclysmHitDelivery ACataclysmMinion::OwnBlowDelivery(AActor* Follower)
+{
+	return MinionDelivery(Follower, /*bIsArea=*/false);
+}
+
+bool ACataclysmMinion::HitsCountAsTheSummoners(const ACataclysmMinion* Minion)
+{
+	// THE SUMMONER IS ASKED, NOT THE MINION, because the keystone is the
+	// summoner's and a minion carries no passive tree of its own. The header
+	// says what the flag means and what it leaves alone.
+	return IsValid(Minion)
+		&& SummonerStat(Minion->Summoner,
+						TEXT("minion_hits_count_as_yours")) > 0.0f;
+}
+
+ACataclysmMinion::ACataclysmMinion()
+{
+	// Nothing to do per frame. Its controller thinks on a timer and the
+	// character movement component walks it.
+	PrimaryActorTick.bCanEverTick = false;
+	bReplicates = true;
+
+	// The same brain a monster has. What differs is its side and what its
+	// attacks are worth, not how it decides.
+	AIControllerClass = ACataclysmEnemyController::StaticClass();
+	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
+
+	AbilitySystemComponent = CreateDefaultSubobject<UCataclysmAbilitySystemComponent>(
+		TEXT("AbilitySystemComponent"));
+	AbilitySystemComponent->SetIsReplicated(true);
+
+	VitalAttributes = CreateDefaultSubobject<UCataclysmVitalAttributeSet>(
+		TEXT("VitalAttributes"));
+
+	// SMALLER THAN AN ENEMY AND SMALLER THAN THE PLAYER, so that three of them
+	// around a fight are recognisable as imps rather than as more monsters.
+	GetCapsuleComponent()->InitCapsuleSize(MinionCapsuleRadius, MinionCapsuleHalfHeight);
+
+	GetCharacterMovement()->MaxWalkSpeed = MinionWalkSpeedCmPerSecond;
+	bUseControllerRotationYaw = false;
+	GetCharacterMovement()->bOrientRotationToMovement = true;
+	GetCharacterMovement()->RotationRate = FRotator(0.0f, 640.0f, 0.0f);
+
+	// A stand-in body, for the same reason the player and every enemy have one:
+	// this project's Content folder holds no meshes at all, so without it an imp
+	// is an invisible capsule and there is no way to tell whether one is there.
+	PlaceholderBody = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PlaceholderBody"));
+	PlaceholderBody->SetupAttachment(RootComponent);
+	PlaceholderBody->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	PlaceholderBody->SetRelativeScale3D(FVector(
+		(MinionCapsuleRadius * 2.0f) / ACataclysmCharacterBase::BasicShapeSize,
+		(MinionCapsuleRadius * 2.0f) / ACataclysmCharacterBase::BasicShapeSize,
+		(MinionCapsuleHalfHeight * 2.0f) / ACataclysmCharacterBase::BasicShapeSize));
+
+	// A cone rather than the cylinder the player and enemies use, so an imp is
+	// distinguishable from both at a glance. Engine content, found by path, so
+	// this adds no asset to the project. A failure here is not fatal: the
+	// capsule is still there and still takes damage, it is just invisible.
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> ConeMesh(
+		TEXT("/Engine/BasicShapes/Cone.Cone"));
+	if (ConeMesh.Succeeded())
+	{
+		PlaceholderBody->SetStaticMesh(ConeMesh.Object);
+	}
+}
+
+UAbilitySystemComponent* ACataclysmMinion::GetAbilitySystemComponent() const
+{
+	return AbilitySystemComponent;
+}
+
+void ACataclysmMinion::BeginPlay()
+{
+	Super::BeginPlay();
+
+	if (AbilitySystemComponent)
+	{
+		AbilitySystemComponent->InitAbilityActorInfo(this, this);
+	}
+}
+
+namespace
+{
+	FGameplayTag DeployableTag()
+	{
+		return FGameplayTag::RequestGameplayTag(
+			FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false);
+	}
+
+	/** The tag that makes a machine a trap. Ruled 2026-10-07. See `IsTrap`. */
+	FGameplayTag TagOfATrap()
+	{
+		return FGameplayTag::RequestGameplayTag(
+			FName(TEXT("Type.Trap")), /*ErrorIfNotFound=*/false);
+	}
+}
+
+bool ACataclysmMinion::IsDeployable() const
+{
+	const FGameplayTag Deployable = DeployableTag();
+	return Deployable.IsValid() && TypeTags.HasTagExact(Deployable);
+}
+
+bool ACataclysmMinion::IsTrap() const
+{
+	const FGameplayTag Trap = TagOfATrap();
+	return IsDeployable() && Trap.IsValid() && TypeTags.HasTagExact(Trap);
+}
+
+bool ACataclysmMinion::IsGadget() const
+{
+	return IsDeployable() && !IsTrap();
+}
+
+const TCHAR* ACataclysmMinion::GadgetsTargetMostHealthStat = TEXT("gadgets_target_most_health");
+
+float ACataclysmMinion::SummonersGadgetStat(const TCHAR* Stat) const
+{
+	// THE GADGET TEST FIRST, so an imp, a mote and a trap ask their summoner nothing and are answered nought.
+	if (!IsGadget() || !IsValid(Summoner))
+	{
+		return 0.0f;
+	}
+
+	// THE SUMMONER'S STAT LINE, WITH THIS GADGET'S TAGS. Nothing recorded for the stat answers the fallback of
+	// nought, which is every summoner holding no such row.
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Summoner));
+	return Theirs ? Theirs->StatForSkill(FName(Stat), TypeTags, 0.0f) : 0.0f;
+}
+
+TArray<AActor*> ACataclysmMinion::HostilesWithinReach() const
+{
+	return HostilesWithin(ReachCm);
+}
+
+TArray<AActor*> ACataclysmMinion::HostilesWithin(float Reach) const
+{
+	// THE SPHERE `AttackOnce` SEARCHES, nearest first and leaving out the dead, and then the brain's own measure
+	// of reach. The header says why both.
+	const FVector Here = GetActorLocation();
+	TArray<AActor*> Within = UCataclysmTargeting::FindEnemiesInSphere(GetWorld(), this, Here, Reach);
+	const float Furthest = Reach + ReachAllowanceCm;
+	Within.RemoveAll([&Here, Furthest](const AActor* Each)
+	{
+		return !IsValid(Each) || FVector::Dist2D(Here, Each->GetActorLocation()) > Furthest;
+	});
+	return Within;
+}
+
+AActor* ACataclysmMinion::MostHealthWithinReach() const
+{
+	return MostHealthWithin(ReachCm);
+}
+
+AActor* ACataclysmMinion::MostHealthWithin(float Reach) const
+{
+	if (SummonersGadgetStat(GadgetsTargetMostHealthStat) <= 0.0f)
+	{
+		return nullptr;
+	}
+
+	// THE MOST HEALTH HELD NOW, AND OF TWO HOLDING THE SAME THE NEARER. The distance is compared by hand and not
+	// left to the order the search answers in, so the rule for a tie is written where it is applied.
+	const FVector Here = GetActorLocation();
+	AActor* Most = nullptr;
+	float MostHealth = 0.0f;
+	double MostDistanceSquared = 0.0;
+	for (AActor* Each : HostilesWithin(Reach))
+	{
+		const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Each);
+		const float Health =
+			Its ? Its->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) : 0.0f;
+		const double DistanceSquared = FVector::DistSquared2D(Here, Each->GetActorLocation());
+		if (!Most || Health > MostHealth || (Health == MostHealth && DistanceSquared < MostDistanceSquared))
+		{
+			Most = Each;
+			MostHealth = Health;
+			MostDistanceSquared = DistanceSquared;
+		}
+	}
+	return Most;
+}
+
+AActor* ACataclysmMinion::FurthestWithinReach() const
+{
+	if (!bTargetsTheFurthest)
+	{
+		return nullptr;
+	}
+
+	// THE FURTHEST ALONG THE FLOOR OF THOSE WITHIN REACH, AND OF TWO AT THE SAME DISTANCE THE EARLIER. Compared by
+	// hand, as `MostHealthWithin` compares health, so the rule for a tie is written where it is applied.
+	const FVector Here = GetActorLocation();
+	AActor* FurthestFound = nullptr;
+	double FurthestFoundDistanceSquared = 0.0;
+	for (AActor* Each : HostilesWithinReach())
+	{
+		const double DistanceSquared = FVector::DistSquared2D(Here, Each->GetActorLocation());
+		if (!FurthestFound || DistanceSquared > FurthestFoundDistanceSquared)
+		{
+			FurthestFound = Each;
+			FurthestFoundDistanceSquared = DistanceSquared;
+		}
+	}
+	return FurthestFound;
+}
+
+const TCHAR* ACataclysmMinion::GadgetVolleyEverySecondsStat = TEXT("gadget_volley_every_seconds");
+
+float ACataclysmMinion::VolleyEverySeconds() const
+{
+	if (!IsGadget() || !IsValid(Summoner))
+	{
+		return 0.0f;
+	}
+
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Summoner));
+	const FCataclysmStatInputs* Line =
+		Theirs ? Theirs->GetStatInputs(FName(GadgetVolleyEverySecondsStat)) : nullptr;
+	if (!Line)
+	{
+		return 0.0f;
+	}
+
+	// THE SHORTEST OF THE ROWS THAT REACH THIS GADGET. The header says why the rows are read and not their sum.
+	// `ModifierApplies` is the pipeline's own test of a row's required tags, asked with this gadget's.
+	float Seconds = 0.0f;
+	for (const FCataclysmStatModifier& Row : Line->Modifiers)
+	{
+		if (Row.Bucket != ECataclysmStatBucket::Flat || Row.Value <= 0.0f
+			|| !UCataclysmStatPipeline::ModifierApplies(Row, TypeTags, FCataclysmStatConditions()))
+		{
+			continue;
+		}
+		Seconds = Seconds <= 0.0f ? Row.Value : FMath::Min(Seconds, Row.Value);
+	}
+	return Seconds;
+}
+
+void ACataclysmMinion::GadgetStep(AActor* Character)
+{
+	ACataclysmMinion* Gadget = Cast<ACataclysmMinion>(Character);
+
+	// A SKILL TRAP'S STEP, BEFORE THE REFUSAL OF WHAT IS NOT A GADGET, because a trap is not one (ruled 2026-10-07) and
+	// takes nothing of a gadget's step. Ruled 2026-10-19 (M4). Nothing for any other minion, a Spike Trap included.
+	if (Gadget && Gadget->IsSkillTrap())
+	{
+		Gadget->StepSkillTrap();
+		return;
+	}
+
+	if (!Gadget || !Gadget->IsGadget() || UCataclysmSkillEffects::IsDead(Gadget))
+	{
+		return;
+	}
+
+	// NO DAMAGE AND THE DRAIN FIRST, because the drain can end the gadget and one it has just ended fires
+	// nothing on this step. Ruled 2026-10-13, for "Your gadgets are invincible but lose 5% of their maximum HP
+	// per second passively".
+	if (!Gadget->StepNoDamageAndDrain())
+	{
+		return;
+	}
+
+	// THE COPY OF THE SUMMONER'S LAST SKILL, ON ITS OWN CLOCK, BEFORE THE VOLLEY, which returns early for a gadget
+	// whose summoner holds no volley row. Ruled 2026-10-14. A copy's blows are the summoner's and do not come back on
+	// the gadget, but a gadget a copy has somehow ended fires no volley on this step.
+	Gadget->StepSkillCopy();
+	if (UCataclysmSkillEffects::IsDead(Gadget))
+	{
+		return;
+	}
+
+	// AND A SKILL GADGET'S CAST OF ITS PLAYER'S SKILL, ON ITS OWN CLOCK. Ruled 2026-10-16. Nothing for a gadget that
+	// is not one. After the copy, as the copy is before the volley, and for the same reason.
+	Gadget->StepSkillGadget();
+	if (UCataclysmSkillEffects::IsDead(Gadget))
+	{
+		return;
+	}
+
+	// THE VOLLEY'S CLOCK. Nothing for a gadget whose summoner holds no such row, which is every gadget until a
+	// row is written.
+	const float Seconds = Gadget->VolleyEverySeconds();
+	if (Seconds <= 0.0f)
+	{
+		return;
+	}
+	const float Age = Gadget->GetGameTimeSinceCreation();
+
+	// THE FIRST VOLLEY COMES ON THE FIRST STEP THAT FINDS AN ENEMY WITHIN REACH, AND THE SECONDS RUN FROM IT.
+	// The coordinating session's judgement of 2026-10-13, changing what was first built, which waited the row's
+	// whole seconds from the placing: a Bolt Turret stands 5 seconds, so it fired at most once, as it left.
+	//
+	// A STEP THAT FINDS NOBODY COSTS NOTHING: no volley is counted and no clock is started, however long the
+	// gadget has stood. AND A GADGET THAT CANNOT ACT WAITS: its first volley is not lost, it comes on the first
+	// step that finds an enemy within reach while the gadget can act. A gadget that comes to hold the row late
+	// is under the same rule, because it has fired no volley yet.
+	//
+	// THIS IS ONE SEARCH OF ITS REACH ON EVERY STEP UNTIL THE FIRST VOLLEY, four a second, for a gadget of a
+	// holder and for no other. It is the physics sphere issue #1547 took out of the brain's choice of target.
+	if (!Gadget->bHasFiredAVolley)
+	{
+		if (UCataclysmSkillEffects::CannotAct(Gadget) || Gadget->HostilesWithinReach().IsEmpty())
+		{
+			return;
+		}
+		Gadget->bHasFiredAVolley = true;
+		Gadget->LastVolleyAtAgeSeconds = Age;
+		Gadget->FireVolley();
+		return;
+	}
+
+	if (Age - Gadget->LastVolleyAtAgeSeconds < Seconds)
+	{
+		return;
+	}
+
+	// IT HAS COME ROUND AGAIN. The beat is kept from the first volley: the mark moves on by the row's seconds
+	// and not to now, so a step that arrives late does not push the next volley back. A mark that is still a
+	// whole period behind is brought to now; that is a gadget whose row grew shorter or was lost and held again.
+	Gadget->LastVolleyAtAgeSeconds += Seconds;
+	if (Age - Gadget->LastVolleyAtAgeSeconds >= Seconds)
+	{
+		Gadget->LastVolleyAtAgeSeconds = Age;
+	}
+
+	// A GADGET THAT CANNOT ACT FIRES NOTHING, as the brain fires nothing for it, and THIS volley is lost: only
+	// the first one waits. A volley that comes round with nobody within reach is fired at nobody and the beat
+	// goes on.
+	if (UCataclysmSkillEffects::CannotAct(Gadget))
+	{
+		return;
+	}
+	Gadget->FireVolley();
+}
+
+int32 ACataclysmMinion::FireVolley()
+{
+	++VolleysFired;
+
+	// THE LIST IS TAKEN ONCE, BEFORE THE FIRST BLOW, which is what "simultaneously" means here: everybody within
+	// reach as the volley begins.
+	int32 Struck = 0;
+	for (AActor* Each : HostilesWithinReach())
+	{
+		// ONE STRUCK EARLIER IN THIS VOLLEY MAY HAVE ENDED THIS ONE, or ended the gadget: a blow can set off
+		// something that kills a neighbour, and a gadget takes the retaliation its own blow provokes.
+		if (UCataclysmSkillEffects::IsDead(this))
+		{
+			break;
+		}
+		if (!IsValid(Each) || UCataclysmSkillEffects::IsDead(Each))
+		{
+			continue;
+		}
+		AttackTarget(Each);
+		++Struck;
+	}
+	return Struck;
+}
+
+const TCHAR* ACataclysmMinion::GadgetsCopyYourLastSkillStat = TEXT("gadgets_copy_your_last_skill");
+
+bool ACataclysmMinion::StepSkillCopy()
+{
+	// NOTHING FOR A GADGET WHOSE SUMMONER HOLDS NO ROW, and nothing for anything that is not a gadget: an imp, a
+	// mote and a Spike Trap are answered nought before their summoner is asked.
+	if (SummonersGadgetStat(GadgetsCopyYourLastSkillStat) <= 0.0f)
+	{
+		return false;
+	}
+	const float Age = GetGameTimeSinceCreation();
+
+	// BEFORE THE FIRST COPY, EVERY STEP TRIES, and the clock starts on the first copy that starts. See the header.
+	if (!bHasCopiedASkill)
+	{
+		if (!CopySummonersLastSkill())
+		{
+			return false;
+		}
+		bHasCopiedASkill = true;
+		LastSkillCopyAtAgeSeconds = Age;
+		return true;
+	}
+
+	if (Age - LastSkillCopyAtAgeSeconds < SecondsBetweenSkillCopies)
+	{
+		return false;
+	}
+
+	// IT HAS COME ROUND AGAIN, and the beat is kept as the volley's is: the mark moves on by the 2 seconds and not to
+	// now, and a mark still a whole period behind is brought to now. A BEAT THAT CASTS NOTHING IS PASSED OVER: the mark
+	// has moved on all the same, so the next copy is 2 seconds later and not at the next step that could cast one.
+	LastSkillCopyAtAgeSeconds += SecondsBetweenSkillCopies;
+	if (Age - LastSkillCopyAtAgeSeconds >= SecondsBetweenSkillCopies)
+	{
+		LastSkillCopyAtAgeSeconds = Age;
+	}
+	return CopySummonersLastSkill();
+}
+
+AActor* ACataclysmMinion::SkillCopyTarget() const
+{
+	// THE BRAIN'S OWN CHOICE, so "Your gadgets prioritize the highest HP enemy" and a Quarry mark reach the copy as
+	// they reach the gadget's shot. Ruled 2026-10-14.
+	const ACataclysmEnemyController* Brain = Cast<ACataclysmEnemyController>(GetController());
+	AActor* Chosen = Brain ? Brain->ChooseTarget() : nullptr;
+	if (!IsValid(Chosen) || UCataclysmSkillEffects::IsDead(Chosen))
+	{
+		return nullptr;
+	}
+
+	// AND ONLY WHILE IT STANDS WITHIN THIS GADGET'S REACH, BY THE BRAIN'S OWN MEASURE: a choice beyond it is one the
+	// gadget does not fire at either, because a gadget does not walk. See `HostilesWithinReach`.
+	return FVector::Dist2D(GetActorLocation(), Chosen->GetActorLocation()) <= ReachCm + ReachAllowanceCm
+		? Chosen
+		: nullptr;
+}
+
+bool ACataclysmMinion::CopySummonersLastSkill()
+{
+	// A GADGET, standing and able to act, OF A SUMMONER THAT IS STILL HERE AND ALIVE.
+	AActor* const Caster = Summoner.Get();
+	if (!IsGadget() || UCataclysmSkillEffects::IsDead(this) || UCataclysmSkillEffects::CannotAct(this)
+		|| !IsValid(Caster) || UCataclysmSkillEffects::IsDead(Caster))
+	{
+		return false;
+	}
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Caster));
+	const FCataclysmWeaponSkill* Recorded = Theirs ? Theirs->SkillGadgetsCopy() : nullptr;
+	if (!Recorded)
+	{
+		return false;
+	}
+	AActor* Target = SkillCopyTarget();
+	if (!Target)
+	{
+		return false;
+	}
+
+	// THE ROW AS IT WAS USED, whether or not the summoner still holds it: the coordinating session's ruling of
+	// 2026-10-14 (option B). Copied, because starting a skill may change what the record holds. Asked once more
+	// whether a row may cast it again, which it was when it was recorded.
+	const FCataclysmWeaponSkill Skill = *Recorded;
+	if (!UCataclysmTriggeredSkill::RepeatsFromARow(Skill))
+	{
+		return false;
+	}
+
+	// GRANTED TO THE SUMMONER FOR ONE USE, FREE, FROM HERE, AT THE TARGET, AT THE WHOLE OF ITS DAMAGE.
+	const FVector From = GetActorLocation();
+	if (!UCataclysmTriggeredSkill::Trigger(Caster, Skill, Target->GetActorLocation(), /*DamageShare=*/1.0f,
+										   /*bPaysCost=*/false, &From, /*CastBy=*/this))
+	{
+		return false;
+	}
+	++SkillCopiesMade;
+	return true;
+}
+
+// ==========================================================================
+// The skill gadget. Ruled 2026-10-16 (S1-S14); the header carries the rulings.
+// ==========================================================================
+
+const TCHAR* ACataclysmMinion::SkillGadgetTypeName = TEXT("SkillGadget");
+
+namespace
+{
+	/**
+	 * How far short of its clock a skill gadget's step may come and still cast, in seconds. A clock read from a world
+	 * whose time has been added up in floating point can fall a hair short of the figure it was built to equal; a
+	 * thousandth of a second is far inside the quarter-second step.
+	 */
+	constexpr float SkillGadgetClockAllowanceSeconds = 0.001f;
+}
+
+ACataclysmMinion* ACataclysmMinion::PlaceSkillGadget(AActor* Player, ECataclysmAbilitySlot Slot,
+													 const FVector& Location)
+{
+	if (!IsValid(Player) || Slot == ECataclysmAbilitySlot::None)
+	{
+		return nullptr;
+	}
+
+	// A LIFETIME OF A SECOND, TAKEN AWAY AT ONCE BELOW. `Spawn` refuses nought, and the engine's `SetLifeSpan(0)` is
+	// "never expires", which is S8's "no lifespan".
+	ACataclysmMinion* Placed =
+		Spawn(Player, Location, /*Lifetime=*/1.0f, /*bBurns=*/false, FString(SkillGadgetTypeName));
+	if (!Placed)
+	{
+		return nullptr;
+	}
+	if (Placed->TypeName != SkillGadgetTypeName || !Placed->IsGadget())
+	{
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("The minion type '%s' is missing or is not a gadget, so no skill gadget was placed. Run "
+				 "tools/generate_datatable_assets.py."), SkillGadgetTypeName);
+		Placed->Destroy();
+		return nullptr;
+	}
+	Placed->SetLifeSpan(0.0f);
+
+	// OUTSIDE EVERY SUMMON CAP, S8: it fills none and is never destroyed to make room in one.
+	Placed->bOutsideSummonCaps = true;
+	Placed->SkillGadgetSlot = Slot;
+	Placed->SkillGadgetPlacedAtSeconds = Placed->GetWorld()->GetTimeSeconds();
+	return Placed;
+}
+
+bool ACataclysmMinion::IsSkillGadget() const
+{
+	return SkillGadgetSlot != ECataclysmAbilitySlot::None && IsGadget();
+}
+
+void ACataclysmMinion::MoveSkillGadgetTo(const FVector& Location)
+{
+	// MOVED, NOT REPLACED: its health, its clock and its age are its own and stay. S6.
+	const FVector Was = GetActorLocation();
+	SetActorLocation(Location, /*bSweep=*/false, /*OutSweepHitResult=*/nullptr, ETeleportType::TeleportPhysics);
+
+	// AN INSTANT RELOCATION, not ground walked. Issue #2388.
+	UCataclysmMovement::NoteRelocatedInstantly(this, Was);
+	SkillGadgetPlacedAtSeconds = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
+}
+
+float ACataclysmMinion::SecondsSinceSkillGadgetPlaced() const
+{
+	const UWorld* World = GetWorld();
+	return World ? FMath::Max(0.0f, World->GetTimeSeconds() - SkillGadgetPlacedAtSeconds) : 0.0f;
+}
+
+bool ACataclysmMinion::SkillGadgetsSkill(FCataclysmWeaponSkill& Out) const
+{
+	// WHAT THE PLAYER'S WEAPON SLOTS HOLD NOW for the slot, as the bar and the press read it.
+	const UCataclysmWeaponSlotsComponent* Slots =
+		IsValid(Summoner) ? Summoner->FindComponentByClass<UCataclysmWeaponSlotsComponent>() : nullptr;
+	const ECataclysmAbilitySlot Slot = SkillGadgetSlot;
+	const FCataclysmWeaponSkill* Held = Slots && Slot != ECataclysmAbilitySlot::None
+		? Slots->GetAvailableSkills().FindByPredicate(
+			  [Slot](const FCataclysmWeaponSkill& Skill) { return Skill.Slot == Slot; })
+		: nullptr;
+	if (!Held)
+	{
+		return false;
+	}
+	Out = *Held;
+	return true;
+}
+
+float ACataclysmMinion::SkillGadgetSecondsBetweenCasts(const FCataclysmWeaponSkill& Skill) const
+{
+	// THE ROW'S OWN COOLDOWN WHEN IT STATES ONE, AND ITS SLOT'S WHEN IT DOES NOT, as `HeldSkillsToTrigger` reads it.
+	// THROUGH THE PLAYER'S COOLDOWN ROWS WITH THE SKILL'S OWN TAGS, so "Ultimate cooldowns increased" reaches the
+	// Ultimate gadget. NOT `GetBaseCooldown`: Mana Weaver's ten-piece answers nought there for the Ultimate (S2).
+	const UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Summoner);
+	const float Base = Skill.Cooldown >= 0.0f
+		? Skill.Cooldown
+		: UCataclysmSkillSlots::NumbersFor(UCataclysmSkillSlots::LoadGeneratedTable(),
+										   UCataclysmWeaponSkills::DesignedSlotOf(Skill)).Cooldown;
+	const float AfterRows = UCataclysmGameplayAbility::CooldownAfterReduction(Theirs, Base, Skill.Tags);
+
+	// AND SHORTENED BY "Gadgets fire 20%-40% faster" (S3), as a minion's interval is shortened by attack speed: one
+	// over one plus the increases, with this gadget's type tags, the reading `UCataclysmCommand` makes for a swing.
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(Theirs);
+	const float Faster = Cataclysm
+		? FMath::Max(0.0f, Cataclysm->IncreasesForStat(FName(TEXT("minion_attack_speed")), TypeTags))
+		: 0.0f;
+
+	// THE BASIC ATTACK'S CLOCK IS THE PLAYER'S SWING INTERVAL, "once per basic attack cooldown" (stack 2, item 1;
+	// S2): `SecondsBetweenSwingsFor` of the player, shortened by the fire-rate row as the keyed clock is. Its slot
+	// table's cooldown is nought and states no wait. NOUGHT, "never swing", STAYS NOUGHT, which `StepSkillGadget`
+	// reads as never cast. The player's own Cripple reaches it, because it is read off the player's avatar.
+	if (UCataclysmWeaponSkills::DesignedSlotOf(Skill) == ECataclysmAbilitySlot::BasicAttack)
+	{
+		const float Swing = UCataclysmBasicAttack::SecondsBetweenSwingsFor(Cataclysm);
+		return Swing > 0.0f ? Swing / (1.0f + Faster) : 0.0f;
+	}
+	return AfterRows / (1.0f + Faster);
+}
+
+float ACataclysmMinion::SkillGadgetReachCm(const FCataclysmWeaponSkill& Skill) const
+{
+	// THE SKILL'S OWN REACH, AS ITS ROW STATES IT (S4), and not the type row's: a Strike from the gadget lands only
+	// within its radius of the gadget. A judgement of the writing session: the row's figure and not one an area row
+	// has widened, so the gadget never aims at an enemy its strike would reach only with a row it may lose.
+	float Stated = 0.0f;
+	switch (Skill.Shape)
+	{
+	case ECataclysmSkillShape::Strike:
+		Stated = Skill.Params.RadiusCm;
+		break;
+	case ECataclysmSkillShape::Projectile:
+	case ECataclysmSkillShape::Debuff:
+		Stated = Skill.Params.RangeCm;
+		break;
+	default:
+		break;
+	}
+
+	// RAISED BY "Gadgets have 20%-40% increased attack range", with this gadget's type tags, as `Spawn` raises a
+	// type's reach; a multiplier of nought or less keeps the stated figure, as there.
+	const float Multiplier = UCataclysmCommand::SummonerMultiplierFor(Summoner, TEXT("minion_range"), TypeTags);
+	return Stated * (Multiplier > 0.0f ? Multiplier : 1.0f);
+}
+
+bool ACataclysmMinion::SkillGadgetMayCast(const FCataclysmWeaponSkill& Skill)
+{
+	// THE SELF BUFF REFUSAL OF `RepeatsFromARow` IS WHAT IS LEFT OUT HERE, for this caller only (S13). It guards
+	// against a second running copy of a self buff adding a second "more"; the player no longer casts the skill, and
+	// `CastPlayersSkillFromHere` grants none while one this gadget granted still runs.
+	return UCataclysmWeaponSkills::TemplateFor(Skill.Shape).Get() != nullptr
+		&& UCataclysmDungeonModifierEffects::WildMagicLeavesOut(Skill) == ECataclysmWildMagicLeftOut::InThePool;
+}
+
+bool ACataclysmMinion::StepSkillGadget()
+{
+	if (!IsSkillGadget())
+	{
+		return false;
+	}
+	const float Age = GetGameTimeSinceCreation();
+
+	// THE BASIC ATTACK'S GADGET KEEPS ITS BEAT (stack 2, P1), as the copy's clock does: the next cast is due one
+	// interval after the last was due, and a mark more than one interval behind is brought to now, so the average
+	// rate is the swing interval's and not the quarter-second step's. A step that casts nothing moves nothing, as the
+	// keyed clock waits. AN INTERVAL OF NOUGHT OR LESS NEVER CASTS, the first cast included. The header says more.
+	if (SkillGadgetSlot == ECataclysmAbilitySlot::BasicAttack)
+	{
+		FCataclysmWeaponSkill Basic;
+		const float Interval = SkillGadgetsSkill(Basic) ? SkillGadgetSecondsBetweenCasts(Basic) : 0.0f;
+		if (Interval <= 0.0f
+			|| (bSkillGadgetHasCast
+				&& Age - LastSkillGadgetCastAtAgeSeconds < Interval - SkillGadgetClockAllowanceSeconds)
+			|| !CastPlayersSkillFromHere())
+		{
+			return false;
+		}
+		if (!bSkillGadgetHasCast)
+		{
+			bSkillGadgetHasCast = true;
+			LastSkillGadgetCastAtAgeSeconds = Age;
+			return true;
+		}
+		LastSkillGadgetCastAtAgeSeconds += Interval;
+		if (Age - LastSkillGadgetCastAtAgeSeconds >= Interval)
+		{
+			LastSkillGadgetCastAtAgeSeconds = Age;
+		}
+		return true;
+	}
+
+	// AFTER THE FIRST CAST, NOTHING UNTIL ITS CLOCK HAS RUN, READ AGAIN EACH STEP, so a row put on or taken off, or a
+	// change of weapon, moves the next cast. The header says why a step that casts nothing waits.
+	if (bSkillGadgetHasCast)
+	{
+		FCataclysmWeaponSkill Skill;
+		if (!SkillGadgetsSkill(Skill)
+			|| Age - LastSkillGadgetCastAtAgeSeconds
+				< SkillGadgetSecondsBetweenCasts(Skill) - SkillGadgetClockAllowanceSeconds)
+		{
+			return false;
+		}
+	}
+	if (!CastPlayersSkillFromHere())
+	{
+		return false;
+	}
+	bSkillGadgetHasCast = true;
+	LastSkillGadgetCastAtAgeSeconds = Age;
+	return true;
+}
+
+bool ACataclysmMinion::CastPlayersSkillFromHere(bool bEvenForADeadPlayer, AActor* AimedAt, float ShotDamageMultiplier)
+{
+	// A SKILL GADGET, STANDING AND ABLE TO ACT, OF A PLAYER STILL HERE AND ALIVE. S11: the gadgets stay through the
+	// player's death and cast nothing while it lasts; THE ONE CAST THE DEATH ITSELF MAKES is the exception (ruled
+	// 2026-10-19, C2), and is let through only that refusal. See `FireForItsSummonersDeath`.
+	AActor* const Player = Summoner.Get();
+	if (!IsSkillGadget() || UCataclysmSkillEffects::IsDead(this) || UCataclysmSkillEffects::CannotAct(this)
+		|| !IsValid(Player) || (!bEvenForADeadPlayer && UCataclysmSkillEffects::IsDead(Player)))
+	{
+		return false;
+	}
+
+	// AND ONLY WHILE THE SLOT IS STILL CONVERTED. A judgement of the writing session: a player who takes the row off
+	// casts the skill again with its key, and a gadget casting it as well would be the skill twice. The gadget stands
+	// and casts nothing until the row is worn again; nothing destroys it, because nothing hears the gear change.
+	UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+	if (!Theirs || !Theirs->SlotIsASkillGadget(SkillGadgetSlot))
+	{
+		return false;
+	}
+
+	// A SHAPELESS SKILL CASTS NOTHING (S10), nor one no row may cast again. See `SkillGadgetMayCast`.
+	FCataclysmWeaponSkill Skill;
+	if (!SkillGadgetsSkill(Skill) || !SkillGadgetMayCast(Skill))
+	{
+		return false;
+	}
+
+	// THE PLAYER'S OWN ROW, WITH `Type.Deployable` ADDED TO ITS TAGS (S5), which `StampOnto` makes the one-use grant's
+	// skill tags inside `Trigger`. AIMED BY THE SKILL'S OWN REACH (S4) AND STARTED FROM HERE by the part a Tyrant's
+	// Minion shares, `StartPlayersSkillFromHere`, since Tyrant's Chains' ten-piece: the self buff's 8 m and its
+	// running copy (S13), the highest-health row and the nearest enemy (S4, S9), and the free start (S1) are there.
+	FCataclysmWeaponSkill AsTheGadgets = Skill;
+	AsTheGadgets.Tags.AddTag(DeployableTag());
+	// AND, FOR A SHOT A TRAP'S ROW ASKS (traps layer 6, J2, J3, J6), AT THE ENEMY IT NAMES AND AT ITS "MORE"; null and one
+	// for the clock's own cast and the death's.
+	if (!StartPlayersSkillFromHere(Player, AsTheGadgets, SkillGadgetReachCm(Skill), AimedAt, /*CastFromPlace=*/nullptr,
+								   ShotDamageMultiplier))
+	{
+		return false;
+	}
+	++SkillGadgetCastsMade;
+	return true;
+}
+
+int32 ACataclysmMinion::FireEveryGadgetAtTheDeathOf(AActor* Dying)
+{
+	// NOTHING FIRES WHILE THE DYING PLAYER'S ABILITY LIST IS LOCKED (#2472, ruled 2026-10-22): a death inside one of its
+	// own activations would have every cast refused at `UCataclysmTriggeredSkill::Trigger`. The casts are kept, and the
+	// end of that activation fires them by this same walk (`UCataclysmAbilitySystemComponent::DrainWaitingGadgetDeathCasts`).
+	if (UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Dying)))
+	{
+		if (Theirs->KeepGadgetDeathCastsWhileLocked())
+		{
+			return 0;
+		}
+	}
+
+	// THE LIST IS TAKEN ONCE, BEFORE THE FIRST GADGET FIRES, as a volley takes its list: every skill gadget standing as
+	// the death is raised. A cast that somehow ended a later gadget leaves that one firing nothing (C3). SKILL GADGETS
+	// ONLY: War's gadgets are not fired by this action, by the no-War mandate (ruled 2026-10-19, J2).
+	TArray<ACataclysmMinion*> Standing;
+	for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Dying))
+	{
+		ACataclysmMinion* AsGadget = Cast<ACataclysmMinion>(Follower);
+		if (IsValid(AsGadget) && AsGadget->IsSkillGadget())
+		{
+			Standing.Add(AsGadget);
+		}
+	}
+	int32 Fired = 0;
+	for (ACataclysmMinion* Each : Standing)
+	{
+		if (IsValid(Each) && Each->FireForItsSummonersDeath())
+		{
+			++Fired;
+		}
+	}
+	return Fired;
+}
+
+bool ACataclysmMinion::FireForItsSummonersDeath()
+{
+	// A SKILL GADGET ONLY (J2): any other gadget fires nothing.
+	if (!IsSkillGadget() || UCataclysmSkillEffects::IsDead(this) || UCataclysmSkillEffects::CannotAct(this))
+	{
+		return false;
+	}
+
+	// IT CASTS ITS PLAYER'S SKILL ONCE BY ITS CLOCK'S OWN PATH (C2), THE CLOCK LEFT AS IT WAS (C4).
+	if (!CastPlayersSkillFromHere(/*bEvenForADeadPlayer=*/true))
+	{
+		return false;
+	}
+	++SkillGadgetDeathCastsMade;
+	return true;
+}
+
+void ACataclysmMinion::SkillGadgetClock(float& OutRemaining, float& OutDuration) const
+{
+	OutRemaining = 0.0f;
+	OutDuration = 0.0f;
+	FCataclysmWeaponSkill Skill;
+	if (!IsSkillGadget() || !bSkillGadgetHasCast || !SkillGadgetsSkill(Skill))
+	{
+		return;
+	}
+	OutDuration = SkillGadgetSecondsBetweenCasts(Skill);
+	OutRemaining =
+		FMath::Max(0.0f, OutDuration - (GetGameTimeSinceCreation() - LastSkillGadgetCastAtAgeSeconds));
+}
+
+const ACataclysmMinion* ACataclysmMinion::SkillGadgetCasting(const UGameplayAbility* Skill)
+{
+	// THE ACTOR A FREE START WAS CAST BY, when that is a skill gadget. A copy is cast by a gadget too, and is not one.
+	const UCataclysmSkillTemplate* Template = Cast<const UCataclysmSkillTemplate>(Skill);
+	const ACataclysmMinion* Gadget = Template ? Cast<const ACataclysmMinion>(Template->FreeRepeatCastBy.Get()) : nullptr;
+	return Gadget && Gadget->IsSkillGadget() ? Gadget : nullptr;
+}
+
+const ACataclysmMinion* ACataclysmMinion::SkillGadgetCasting(const FCataclysmHitDelivery& Delivery)
+{
+	// WHAT THE BLOW CARRIES FIRST, because a blow landing after its use has ended has no skill left to ask (stack 2,
+	// item 3). A gadget's copy carries the copying gadget, which is no skill gadget, and is answered by the skill.
+	const ACataclysmMinion* Carried = Cast<const ACataclysmMinion>(Delivery.CastBy.Get());
+	return Carried && Carried->IsSkillGadget() ? Carried : SkillGadgetCasting(Delivery.Skill.Get());
+}
+
+const TCHAR* ACataclysmMinion::GadgetsTakeNoDamageStat = TEXT("gadgets_take_no_damage");
+const TCHAR* ACataclysmMinion::GadgetHealthLostPercentPerSecondStat =
+	TEXT("gadget_health_lost_percent_per_second");
+
+bool ACataclysmMinion::StepNoDamageAndDrain()
+{
+	// THE WINDOW IS RENEWED ON EVERY STEP WHILE THE FLAG IS HELD, and left to lapse when it is not. `Spawn`
+	// takes a gadget's first step as it places it, so the window is open from the first moment.
+	if (AbilitySystemComponent && SummonersGadgetStat(GadgetsTakeNoDamageStat) > 0.0f)
+	{
+		AbilitySystemComponent->GrantDamageImmunity(NoDamageRenewalSeconds);
+	}
+
+	// AND THE DRAIN. The time since the last step is taken off the clock whether or not anything is owed for it,
+	// so a gadget that comes to hold the row late is charged from then and not from its placing.
+	const float Age = GetGameTimeSinceCreation();
+	const float Elapsed = Age - LastDrainAtAgeSeconds;
+	LastDrainAtAgeSeconds = Age;
+
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	if (!AbilitySystemComponent || !AbilitySystemComponent->HasAttributeSetForAttribute(Health))
+	{
+		return true;
+	}
+	if (SpawnedMaxHealth <= 0.0f)
+	{
+		SpawnedMaxHealth =
+			AbilitySystemComponent->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	}
+
+	const float Percent = SummonersGadgetStat(GadgetHealthLostPercentPerSecondStat);
+	if (Percent <= 0.0f || Elapsed <= 0.0f || SpawnedMaxHealth <= 0.0f)
+	{
+		return true;
+	}
+
+	const float Loss = SpawnedMaxHealth * Percent / 100.0f * Elapsed;
+	const float Current = AbilitySystemComponent->GetNumericAttribute(Health);
+	if (Current - Loss > SpawnedMaxHealth * DrainedToNothingShare)
+	{
+		// A DIRECT WRITE TO HEALTH, as the delayed share of damage taken is drained. It is not a blow, so the
+		// no-damage window above does not meet it.
+		AbilitySystemComponent->ApplyModToAttribute(Health, EGameplayModOp::Additive, -Loss);
+		return true;
+	}
+
+	// AND THIS STEP TAKES THE LAST OF IT. Ruled 2026-10-13: a gadget the drain empties dies as destroyed.
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("%s lost the last %.1f of its health to its summoner's drain and was destroyed."),
+		   *GetName(), Current);
+
+	// KILLED BY NOBODY, then health to nought and `HandleDeath`, the pair the delayed damage's drain uses. The
+	// write reaches the death through the attribute hook, and `HandleDeath` refuses a second time.
+	AbilitySystemComponent->RecordLastBlow(FCataclysmLastBlow());
+	AbilitySystemComponent->SetNumericAttributeBase(Health, 0.0f);
+	HandleDeath();
+	return false;
+}
+
+ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Location,
+										  float Lifetime, bool bBurns,
+										  const FString& InTypeName,
+										  float HealthPercent)
+{
+	if (!IsValid(InSummoner) || Lifetime <= 0.0f)
+	{
+		return nullptr;
+	}
+
+	UWorld* World = InSummoner->GetWorld();
+	if (!World)
+	{
+		return nullptr;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	// OWNED BY THE SUMMONER, and that is load-bearing rather than tidiness.
+	// UCataclysmTeams::TeamOf follows the owner chain, so ownership is what
+	// keeps a summon on its summoner's side on a client, where the team assigned
+	// below is a server-side value that is not itself replicated.
+	SpawnParams.Owner = InSummoner;
+	SpawnParams.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	ACataclysmMinion* Minion = World->SpawnActor<ACataclysmMinion>(
+		ACataclysmMinion::StaticClass(), Location, FRotator::ZeroRotator, SpawnParams);
+	if (!Minion)
+	{
+		return nullptr;
+	}
+
+	Minion->Summoner = InSummoner;
+	Minion->bBurnsWhatItHits = bBurns;
+
+	// Issue #1479: "the oldest" across every source of one kind. Game thread
+	// only, like every spawn, so a plain counter is enough.
+	static int64 NextSpawnOrder = 0;
+	Minion->SpawnOrder = ++NextSpawnOrder;
+
+	// WHEN IT CAME UNDER COMMAND, for A Second Self's "held longest". Issue #1515.
+	Minion->CommandedSinceSeconds = World->GetTimeSeconds();
+
+	// ITS OWN NUMBERS, IF IT WAS TOLD WHAT IT IS. Before issue #622 every minion
+	// carried one set of compile-time constants, so a ballista and an imp were
+	// the same creature with a different name in the prose. A minion spawned
+	// without a type keeps those defaults, which is what the tests that predate
+	// this rely on.
+	if (const FCataclysmMinionTypeRow* Type = FindType(LoadTypeTable(), InTypeName))
+	{
+		Minion->TypeName = InTypeName;
+		Minion->bIsMachine = Type->Family.Equals(TEXT("Machine"), ESearchCase::IgnoreCase);
+
+		// ITS TYPE ROW'S TAGS, which every summoner lookup below is asked with.
+		// Issue #1833, deployable Part 1.
+		TArray<FString> Named;
+		Type->Tags.ParseIntoArray(Named, TEXT(","), /*InCullEmpty=*/true);
+		for (FString& Each : Named)
+		{
+			Each.TrimStartAndEndInline();
+			const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(
+				FName(*Each), /*ErrorIfNotFound=*/false);
+			if (Tag.IsValid())
+			{
+				Minion->TypeTags.AddTag(Tag);
+			}
+		}
+		// AND LENGTHENED BY THE SUMMONER'S `minion_range`, asked with this
+		// minion's type tags so "Gadgets have 20%-40% increased attack range"
+		// reaches a machine and not an imp. Issue #1833, ruled 2026-09-30.
+		//
+		// BOTH FIGURES, a judgement of that ruling: a minion finds what to attack
+		// within its notice radius and strikes within its reach, so a gadget
+		// whose reach alone grew would still fire only at what it noticed. The
+		// two are equal on Bolt Turret and Ballista today.
+		//
+		// A SNAPSHOT AT THE SUMMONING, as health and duration are, and a
+		// multiplier of nought or less keeps the stated figures, as duration's
+		// does.
+		const float RangeMultiplier =
+			UCataclysmCommand::SummonerMultiplierFor(InSummoner, TEXT("minion_range"), Minion->TypeTags);
+		const float Lengthened = RangeMultiplier > 0.0f ? RangeMultiplier : 1.0f;
+		Minion->ReachCm = Type->ReachCm * Lengthened;
+		Minion->NoticeRadiusCm = Type->NoticeRadiusCm * Lengthened;
+		Minion->AttackIntervalSeconds = Type->AttackIntervalSeconds;
+
+		// AND WHETHER IT TAKES THE FURTHEST ENEMY WITHIN ITS REACH, which only the Ballista's row says. Issues #2397
+		// and #1712. ANYTHING THAT IS NOT "Furthest", IN ANY CASE, IS NEAREST, an empty column included, so a value
+		// the generator should have refused leaves the minion choosing as every minion did before the column was read.
+		Minion->bTargetsTheFurthest = Type->TargetMode.Equals(TEXT("Furthest"), ESearchCase::IgnoreCase);
+
+		// AND WHETHER ANY CREATURE SEEKS IT AT ALL: not when its row states a threat of nought. The owner's decision of
+		// 2026-11-01, issue #2553, "Nearest; threat 0 untargeted". NOUGHT OR LESS AND NOTHING ABOVE, so a turret at 5
+		// is still sought by distance alone; `UCataclysmTargetCandidates::NearestHostile` is the reader.
+		Minion->bDrawsNoAttention = Type->ThreatPercent <= 0.0f;
+
+		// THE MOVE SPEED IS WRITTEN IN METRES PER SECOND and Unreal walks in
+		// centimetres, the same conversion the shape parameters make.
+		// A ZERO IS NOT A MISSING NUMBER HERE: it is what makes a turret, a
+		// ballista and a spike trap stay where they are put, which is the whole
+		// behavioural difference between the Summon shape and the Deployable
+		// shape. Issue #621.
+		Minion->bStaysWhereItIsPut = Type->MoveSpeed <= 0.0f;
+		if (UCharacterMovementComponent* Movement = Minion->GetCharacterMovement())
+		{
+			Movement->MaxWalkSpeed = Type->MoveSpeed * 100.0f;
+		}
+
+		// AND ITS OWN HEALTH AND DAMAGE, RAISED BY THE SUMMONER'S LEVEL. Issue
+		// #340. The decision of 2026-08-06 reversed the rule this file used to
+		// carry -- a minion deals its OWN damage, not a share of its summoner's
+		// weapon -- and the four columns behind it have been in
+		// `game/Data/MinionTypes.csv` since, read by nothing.
+		//
+		// THE LEVEL IS READ ONCE. It cannot change while this minion exists.
+		const int32 Level = LevelOfSummoner(InSummoner);
+		Minion->OwnDamagePerHit =
+			RaisedByLevel(Type->BaseDamage, Type->DamagePerLevel, Level);
+
+		// AND WHAT ITS DEATH IS WORTH, AS A SHARE OF THAT BLOW. Issue #1515.
+		// The type row states it, so an explosion is the minion's own figure
+		// rather than the summoning skill's percentage of the summoner's
+		// weapon. Only the radius still comes from the skill.
+		Minion->ExplosionPercentOfOwnDamage = Type->ExplosionPercentOfOwnDamage;
+
+		// MAXIMUM FIRST, THEN CURRENT, and the order is not incidental: the
+		// vital attribute set clamps health to the maximum in
+		// `PreAttributeChange`, so raising the current value first would clamp
+		// it straight back down to the old maximum.
+		// `ACataclysmEnemyCharacter` sets a creature's health the same way and
+		// records the same reason.
+		//
+		// HEALTH IS TAKEN ONCE, AT THE SUMMONING, AND THAT IS A SNAPSHOT. Issue
+		// #898. Damage is read fresh at every blow and attack speed at every
+		// swing, so this is the one minion figure that does not follow a gear
+		// change. It is a pool: the maximum is written to an attribute here and
+		// nothing re-runs this when equipment or passives change.
+		//
+		// AND THAT IS THE CASE THE DESIGN ALREADY NAMES. The decision of
+		// 2026-09-13, section "Minions update live rather than snapshotting",
+		// records the owner's ruling that minions should update "anytime
+		// gear/passives/skills change", calls it "Not built, and not urgent by
+		// the same ruling", and says where it bites: "A per-swing read is live
+		// by construction, so this constrains health, which is set once at
+		// spawn, and not a stat asked for at the moment of a blow."
+		//
+		// So damage and attack speed satisfy that ruling by the way they are
+		// read, and this line is the one place it is outstanding. Deferred by
+		// the ruling rather than missed.
+		//
+		// A MULTIPLIER OF ZERO LEAVES THE MINION ITS DEFAULT HEALTH rather than
+		// being born dead, because the guard below already refuses a figure of
+		// zero -- which it was written for a type row that states no health. No
+		// shipped data reaches -100% minion health; this says what would happen
+		// rather than adding a floor nobody chose.
+		const float OwnHealth =
+			RaisedByLevel(Type->BaseHealth, Type->HealthPerLevel, Level)
+			* UCataclysmCommand::SummonerMultiplierFor(InSummoner, TEXT("minion_health"), Minion->TypeTags);
+		if (Minion->AbilitySystemComponent && OwnHealth > 0.0f)
+		{
+			Minion->AbilitySystemComponent->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), OwnHealth);
+			Minion->AbilitySystemComponent->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetHealthAttribute(), OwnHealth);
+		}
+
+		// AND A SHARE OF ITS SUMMONER'S SHIELD, FULL, IF THE SUMMONER HOLDS
+		// SHARED BLOOD. Issue #1515. The step keeps it in line afterwards.
+		UCataclysmRegeneration::SharedBloodStep(Minion, 0.0f, /*bFill=*/true);
+	}
+	else if (!InTypeName.IsEmpty())
+	{
+		// Named something the table does not have. Loud, because the generator
+		// refuses an unknown name, so reaching here means the imported asset is
+		// older than the sheet -- and the symptom is a ballista that behaves
+		// like an imp, which nothing else would report.
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("No minion type named '%s'. It was spawned carrying the "
+				 "defaults instead. Run tools/generate_datatable_assets.py."),
+			*InTypeName);
+	}
+
+	// HEALTH FROM THE TYPE IS SET ABOVE, WHERE THE ROW IS IN HAND. This one is
+	// the share a DEPLOYED machine was told to start at, which is a different
+	// number: Iron Fortress deploys a ballista at a stated percentage. It is
+	// recorded and not yet applied -- issue #340's remaining half.
+	Minion->DeployedHealthPercent = HealthPercent;
+
+	// The summoner's side, not one of its own. A Ritualist's imps must be
+	// friendly to a second player in the party, not merely to the Ritualist,
+	// and ownership alone cannot say that.
+	Minion->SetGenericTeamId(UCataclysmTeams::TeamOf(InSummoner));
+
+	// THE LIFETIME THE SKILL STATES, RAISED BY THE SUMMONER'S `minion_duration`.
+	// Issue #1515: `Ritualist_basic_b_c0` Kept Longer, "+3% increased duration of
+	// what you summon per point". Everything summoned comes through here, a
+	// deployed machine as well as a summoned minion, and the stat belongs to the
+	// summoner, so both are "what you summon".
+	//
+	// FIXED AT THE SUMMONING, like health above and for the reason given there:
+	// the owner's ruling that minions follow later gear and passive changes is
+	// recorded as not built, and this is a second figure it covers.
+	//
+	// A MULTIPLIER OF ZERO OR LESS KEEPS THE STATED LIFETIME, and this guard is
+	// not the one health has for the same case. `SetLifeSpan(0)` means "never
+	// expires", so a reduction of a hundred per cent would otherwise make a
+	// minion permanent. No shipped row reduces the duration; this says what
+	// would happen rather than leaving it to the engine's meaning of zero.
+	const float Duration =
+		Lifetime * UCataclysmCommand::SummonerMultiplierFor(InSummoner, TEXT("minion_duration"), Minion->TypeTags);
+	Minion->SetLifeSpan(Duration > 0.0f ? Duration : Lifetime);
+
+	// AND A GADGET TAKES ITS FIRST STEP AS IT IS PLACED. Ruled 2026-10-13. The step every character has comes a
+	// quarter of a second after the spawn, and a gadget whose summoner's row says it takes no damage would take
+	// damage until then. It does nothing for anything that is not a gadget, and at an age of nought the drain is
+	// owed nothing and no volley's clock has come round; it is here for the window, and it records the maximum
+	// health the gadget was placed with.
+	GadgetStep(Minion);
+
+	return Minion;
+}
+
+void ACataclysmMinion::AttackOnce()
+{
+	// Nearest first, one target. Used by tests and by anything that wants one
+	// swing without a controller; the ordinary case is the controller calling
+	// AttackTarget with what it chose.
+	const TArray<AActor*> Nearby = UCataclysmTargeting::FindEnemiesInSphere(
+		GetWorld(), this, GetActorLocation(), ReachCm, /*MaxTargets=*/1);
+	if (Nearby.IsEmpty())
+	{
+		return;
+	}
+
+	AttackTarget(Nearby[0]);
+}
+
+void ACataclysmMinion::AttackTarget(AActor* Target)
+{
+	if (!IsValid(Summoner) || !IsValid(Target))
+	{
+		return;
+	}
+
+	// ITS OWN DAMAGE, NOT A SHARE OF ITS SUMMONER'S WEAPON. Issue #340. This
+	// file dealt 30% of the summoner's weapon until the decision of 2026-08-06
+	// reversed that: "a minion reaches its summoner through three channels and
+	// nothing else: its side, its base health and damage raised by the
+	// summoner's level, and increased damage from one primary attribute
+	// declared per minion type. **Everything else is blocked unless a modifier
+	// names minions.**"
+	//
+	// THAT LAST SENTENCE USED TO BE MISSING FROM THIS COMMENT, and without it
+	// the rule reads as forbidding minion gear. It does not: the same entry
+	// summarises the owner's reversal in three parts, the third being "minion
+	// affixes exist on gear on top of that", and it names an existing
+	// minion-inheritance enchantment as a deliberate exception. A stat called
+	// `minion_damage` is the case the qualifier is for. Issue #898.
+	//
+	// `ApplyDirectDamage` RATHER THAN `ApplyHit`, AND THAT IS THE WHOLE POINT.
+	// `ApplyHit` computes weapon damage times a percentage and runs the
+	// CASTER'S stat modifiers over it before handing the result to this same
+	// function. Going through it would let EVERY increase the summoner carries
+	// reach a minion's blow -- their increased attack damage, their increased
+	// fire damage, all of it -- and that is the fourth channel the rule blocks.
+	// The multiplier applied below is not: it comes from one stat that names
+	// minions and nothing else.
+	//
+	// THE THIRD CHANNEL ARRIVES THROUGH THE SAME MULTIPLIER, SINCE ISSUE #340.
+	// `game/Data/MinionScaling.csv` names one primary attribute per minion
+	// type -- Spirit for a `Minion.Creature`, Agility for a `Minion.Machine`,
+	// one percent a point -- and `UCataclysmPlayerClassStats::ApplyTo` records
+	// each row as an increase on the summoner's `minion_damage` line requiring
+	// the row's tag. Asking with this minion's own type tags, below, is what
+	// lets Spirit reach an imp and not a ballista. In the increased bucket, so
+	// it adds to gear's increased minion damage rather than multiplying it.
+	// All three channels now work.
+	//
+	// IT IS NOT A PATH INVENTED FOR MINIONS. `ACataclysmGroundZone` uses the
+	// same one in `ACataclysmGroundZone::Sweep` for a damaging area on the
+	// floor: a zone deals the figure it was built with to everything standing
+	// in it, and no stat of the caster's is read at the moment it ticks.
+	// `CataclysmNova.cpp`, `CataclysmRetaliation.cpp`,
+	// `CataclysmSkillTemplates.cpp` and `CataclysmEnemyModifiers.cpp` are the
+	// other four callers.
+	//
+	// THE SUMMONER IS STILL THE INSTIGATOR. The Conduit keystone reads "damage
+	// dealt by your minions counts as damage you dealt, for every effect of
+	// yours that asks", and which side the blow belongs to is decided the same
+	// way. Making the minion the instigator would be a smaller change to write
+	// and would break both.
+	//
+	// THE DEFENDER'S MITIGATION STILL APPLIES. This is not
+	// `ReduceHealthDirectly`, which bypasses every layer; evasion, block,
+	// armour and resistance all run, and `Resolved` reports what they made of
+	// it.
+	//
+	// A MINION WITH NO TYPE FALLS BACK TO THE OLD SHARE, AND THE GAME CAN
+	// REACH THAT. `CataclysmSkillTemplates.cpp:3260` produces an empty type
+	// name whenever a summoning skill's shape parameters name no minion
+	// kind, and the deployable template at line 3022 passes its own name
+	// through the same way. No shipped skill row leaves it empty today --
+	// `test_every_demonic_minion_skill_produces_a_type_the_table_defines`
+	// in `tools/tests/test_minion_stat_blocks.py` holds that -- so this is
+	// what a mis-authored row degrades to, not a shape only tests reach.
+	// Three tests older than the minion type table also summon one.
+	FCataclysmDamageResult Resolved;
+	float Dealt = 0.0f;
+	// A WARHOUND'S BLOW IS A SHARE OF ITS SUMMONER'S ARMOUR, IN PLACE OF ITS TYPE'S OWN DAMAGE. Warlord's Will's
+	// six-piece, ruled 2026-10-18 (Q5): "deals damage based on your armor", 20% a hit. Everything below that raises a
+	// minion's blow raises it as it raises any other.
+	const float OwnBlow = bIsWarhound ? WarhoundBlow() : OwnDamagePerHit;
+	if (OwnBlow > 0.0f)
+	{
+		// AND THE SUMMONER'S INCREASED MINION DAMAGE ON TOP, WHICH IS NEW. Issue
+		// #898. Until this, `game/Data/Affixes.csv` granted `minion_damage` and
+		// nothing in the engine read it.
+		//
+		// HERE RATHER THAN AT THE SUMMONING, so that it is not a snapshot. A
+		// player who changes gear sees this blow change on the next swing, the
+		// same way `UCataclysmCommand::AttackIntervalScaleFor` already reads
+		// minion attack speed fresh. Only health is frozen, because it is a
+		// pool; `Spawn` records why.
+		//
+		// THE BRANCH STILL TESTS THE TYPE ROW'S OWN FIGURE, NOT THIS ONE. A
+		// multiplier of zero must not send a typed minion down the typeless
+		// fallback below, which deals a share of the summoner's weapon and is a
+		// different rule entirely.
+		//
+		// AND AGAINST THE CHARACTER STRUCK, SINCE ISSUE #1515, so a row asking
+		// whether the summoner damaged it recently -- Set Upon, Set the Pack
+		// On -- can hold, and a "more" row counts.
+		//
+		// AND A MACHINE'S BLOW TAKES ITS SUMMONER'S attack_damage ROWS THAT NAME
+		// `Type.Deployable`, AND ONLY THOSE. Issue #1833, deployable Part 1,
+		// ruled 2026-09-25: a modifier naming gadgets reaches a gadget's blow.
+		// attack_damage alone, because "Gadgets deal 20%-40% increased damage"
+		// is written on attack_damage and spell_damage both, and reading both
+		// would count one sentence twice; a machine's bolt is an attack.
+		float Own = OwnBlow;
+		if (IsDeployable())
+		{
+			if (const UCataclysmAbilitySystemComponent* Theirs =
+					Cast<UCataclysmAbilitySystemComponent>(
+						UCataclysmTargeting::AbilitySystemOf(Summoner)))
+			{
+				// WITH THE MACHINE'S AGE, which the two age rows read. Issue
+				// #1833, deployable Part 2.
+				Own = Theirs->StatNamingTagAppliedTo(
+					FName(TEXT("attack_damage")), DeployableTag(), Own, TypeTags, Target,
+					GetGameTimeSinceCreation());
+			}
+		}
+		// AND THE MINION'S OWN BUFFS, SINCE ISSUE #1771, ruled 2026-09-30. A
+		// minion's hits are its own, so a buff written onto its own ability
+		// system -- an aura's ally bonus is the one writer today -- reaches its
+		// blow, through the one reader of that list, with the minion's type
+		// tags as the blow's. The summoner's multiplier above reads the
+		// summoner's stat lines, a different list, so nothing is counted twice.
+		const float Damage = UCataclysmSkillEffects::ModifiedDamage(
+			UCataclysmTargeting::AbilitySystemOf(this),
+			Own * UCataclysmCommand::SummonerMultiplierAgainst(Summoner, TEXT("minion_damage"), Target, TypeTags),
+			TypeTags, /*SkillHealthCostPercent=*/-1.0f, /*MetresMovedBeforeBlow=*/-1.0f,
+			/*TargetDistanceMetres=*/-1.0f, /*bTargetIsStaggered=*/false, Target);
+
+		// THE MINION IS THE INSTIGATOR OF ITS OWN BLOW, SINCE ISSUE #1515. It
+		// was the summoner until 2026-09-17, which is why everything read off
+		// "the attacker" while a blow resolves had to be blocked by name. A
+		// minion carries no combat attribute set and no weapon, so the same
+		// readings now find nothing of its own rather than everything of its
+		// summoner's, and a reading added later is blocked because it finds
+		// nothing rather than because somebody remembered the list.
+		//
+		// AND A TRAP'S BLOW IGNORES THE SHARE OF ARMOUR ITS SUMMONER'S ROWS
+		// NAMING `Type.Trap` STATE, AND NO OTHER. Ruled 2026-10-07, for "Your
+		// traps ignore 20%-40% of enemy armor": a flat `armor_penetration`
+		// row requiring `Type.Trap`. The design's rule is that a minion takes
+		// nothing of its summoner's unless a modifier names it, and this
+		// modifier names it. The same reader the gadget damage rows use above,
+		// with a figure of nought, so the answer is those rows and nothing
+		// else: not the summoner's attribute, and not a row with no tag.
+		//
+		// `bCannotPenetrate` STAYS SET AND MEANS WHAT IT MEANT. The figure
+		// travels beside it, on the delivery, and is nought for a ballista, for
+		// an imp, and for a trap whose summoner has no such row.
+		//
+		// A ROW NAMING `Type.Deployable` ON `armor_penetration` IS NOT READ.
+		// The ruling names traps only, and no row is written that way today.
+		FCataclysmHitDelivery BlowDelivery = MinionDelivery(this, /*bIsArea=*/false);
+		if (IsTrap())
+		{
+			if (const UCataclysmAbilitySystemComponent* NamingTraps =
+					Cast<UCataclysmAbilitySystemComponent>(
+						UCataclysmTargeting::AbilitySystemOf(Summoner)))
+			{
+				BlowDelivery.NamedArmorPenetrationPercent =
+					NamingTraps->StatNamingTagAppliedTo(
+						FName(TEXT("armor_penetration")), TagOfATrap(), /*Figure=*/0.0f,
+						TypeTags, Target, GetGameTimeSinceCreation());
+			}
+		}
+		UCataclysmSkillEffects::ApplyDirectDamage(
+			this, Target, Damage,
+			BlowDelivery, &Resolved);
+		Dealt = Damage;
+	}
+	// AND NOTHING AT ALL WITHOUT A TYPE ROW, SINCE ISSUE #1515. A minion used
+	// to fall back to 30% of its SUMMONER'S weapon damage here, which the
+	// owner ruled a bug on 2026-09-17: a minion's blow carries the minion's
+	// own numbers. `tools/generate_datatables.py` now refuses a summoning row
+	// that names no minion type, so a minion with no stat block cannot be
+	// summoned by shipped data at all, and one made any other way swings for
+	// nothing rather than for its summoner.
+
+	// AND THE BURN TAKES NONE OF THE SUMMONER'S DAMAGE OVER TIME STATS, for the
+	// same reason its blow takes no critical strike, no penetration, no weapon
+	// sub-type and no leech: it is applied with the summoner as the instigator,
+	// and the design names damage over time among what a minion does not take
+	// from its summoner. Issue #895.
+	// A DESIGNED BURN, because `bBurnsWhatItHits` comes from the minion's own
+	// row in the Minion Types sheet rather than from a chance on hit. Issue
+	// #917: a designed ailment applies whether or not the blow hurt.
+	//
+	// AN EVADED SWING SETS NOTHING ALIGHT. Issue #1156, decided on 2026-09-04.
+	// This one blow is evadable -- it is a single strike rather than area
+	// damage, which the explosion below records -- so the test is worth making
+	// here and would be worth nothing there.
+	// A MACHINE'S BLOW IS ANNOUNCED TO ITS SUMMONER as `deployable_hit`, with
+	// the machine's tags and the enemy struck, and landed only when it was not
+	// evaded. Issue #1833, deployable Part 2: "Gadgets apply a 15%-25% armor
+	// reduction to enemies they hit for 3 seconds" places a stack on that
+	// enemy. A new event rather than `hit_dealt`, ruled 2026-09-25, because
+	// `hit_dealt` carries unscoped rows that would begin firing on every
+	// machine's blow.
+	if (IsDeployable() && OwnDamagePerHit > 0.0f)
+	{
+		if (UCataclysmAbilitySystemComponent* Theirs =
+				Cast<UCataclysmAbilitySystemComponent>(
+					UCataclysmTargeting::AbilitySystemOf(Summoner)))
+		{
+			// AND NOT LANDED WHEN THE ENEMY REFUSED IT AS IMMUNE TO ITS ATTACKER. Ruled
+			// 2026-10-12. A machine's blow is refused that way only while its summoner
+			// holds Conduit, which makes the blow the summoner's.
+			Theirs->ActOnEvent(FName(TEXT("deployable_hit")), &TypeTags, 0.0f,
+							   /*bLanded=*/!Resolved.bEvaded && !Resolved.bRefusedByImmunityToAttacker,
+							   Target);
+		}
+	}
+
+	if (bBurnsWhatItHits && !Resolved.bEvaded)
+	{
+		// THE MINION SETS THE FIRE, AS IT DEALT THE BLOW. Ruled on 2026-09-17
+		// under the project owner's delegation, with the instigator change
+		// above: a burn a minion's swing applies is the minion's, or a minion's
+		// swing and the fire it starts would belong to different characters.
+		UCataclysmSkillEffects::ApplyBurn(this, Target, Dealt,
+										  /*bScalesWithInstigator=*/false,
+										  /*bBurnIsDesigned=*/true, /*DealtBy=*/this);
+	}
+
+	// AND A WARHOUND'S HIT TAUNTS THE ENEMY STRUCK, for its summoner's row's seconds. Warlord's Will's six-piece, ruled
+	// 2026-10-17 (#6) and 2026-10-18 (Q1, Q2); what a taunt is, and what refuses it, is `UCataclysmTaunt`'s. A HIT, as
+	// the burn above is: a blow that was dealt and not evaded, and not one the enemy refused as immune to its attacker.
+	if (bIsWarhound && Dealt > 0.0f && !Resolved.bEvaded && !Resolved.bRefusedByImmunityToAttacker)
+	{
+		UCataclysmTaunt::ApplyTaunt(this, Target, SummonerStat(Summoner, WarhoundTauntSecondsStat));
+	}
+
+	++AttacksMade;
+
+	// AND A GADGET WHOSE BLOW KILLED FIRES A BURST, WHERE ITS SUMMONER'S ROW SAYS SO. Ruled 2026-10-13 by the
+	// coordinating session under the owner's delegation, for "When a gadget kills an enemy, it fires an additional
+	// burst at the nearest enemy within its range". One ordinary blow, at once, at the nearest enemy within its
+	// reach, or nothing if there is none.
+	//
+	// WHETHER THIS BLOW KILLED IS READ OFF THE ENEMY AND NOT OFF THE DEATH'S ANNOUNCEMENT. The blow reached health
+	// (`Resolved` is what the enemy made of it; a blow on a body reaches nothing), the enemy is dead now, and the
+	// record of the last blow on it, which is what a death names its killer from, says this gadget dealt it and
+	// that it was not a tick. So a kill made inside this call by something else does not count: a row of the
+	// summoner's that the `deployable_hit` above fired is dealt by the summoner, and a tick of a burn set above is
+	// a tick. Under Conduit the record's attacker is the summoner and what dealt it is still this gadget, so the
+	// kill counts.
+	//
+	// LAST IN THIS FUNCTION, so the death has been announced to every listener and the dead enemy's own
+	// `HandleDeath` has finished before the burst strikes anybody. A listener to the death that struck from inside
+	// it is what `UCataclysmCombatEvents::AfterThisDeathIsHeard` exists to order; this needs none of it.
+	//
+	// IT CALLS THIS FUNCTION AGAIN, so a kill by a burst fires another, as ruled. HOW DEEP IT CAN GO: one call for
+	// each kill in a row, and each needs a living enemy within reach that the burst then kills. The search leaves
+	// out the dead, so no enemy is struck by two bursts of one chain, and the chain is no longer than the number
+	// of enemies standing within reach when it began. It stops at the first burst that does not kill, or that
+	// finds nobody. A gadget that died in its own blow, to the retaliation it provoked, fires nothing.
+	if (Resolved.DealtToHealth > 0.0f && UCataclysmSkillEffects::IsDead(Target)
+		&& !UCataclysmSkillEffects::IsDead(this))
+	{
+		const UCataclysmAbilitySystemComponent* Killed =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Target));
+		const bool bOwnBlowKilled = Killed && Killed->GetLastBlow().IsOnRecord()
+			&& Killed->GetLastBlow().DealtBy.Get() == this && !Killed->GetLastBlow().bDamageOverTime;
+		if (bOwnBlowKilled && SummonersGadgetStat(GadgetsBurstOnKillStat) > 0.0f)
+		{
+			const TArray<AActor*> WithinReach = HostilesWithinReach();
+			if (!WithinReach.IsEmpty())
+			{
+				++BurstsFired;
+				AttackTarget(WithinReach[0]);
+			}
+		}
+	}
+}
+
+const TCHAR* ACataclysmMinion::GadgetsBurstOnKillStat = TEXT("gadgets_burst_on_kill");
+
+void ACataclysmMinion::HandleDeath()
+{
+	// THE TAG AND NOTHING ELSE. Issue #1518. Every reader that asks whether a
+	// character is alive asks `UCataclysmSkillEffects::IsDead`, which reads this
+	// tag, and before this override a minion never took it: the base class's
+	// `HandleDeath` is empty and this class did not override it, so a minion at
+	// zero health went on answering "alive" for ever.
+	//
+	// `MarkDead` REFUSES A SECOND TIME, which is what makes a death happen once
+	// however many writes at zero health reach it -- a burn ticking on a body,
+	// two blows in the same frame.
+	//
+	// AND A SECOND DEATH DOES NOTHING HERE EITHER. Issue #1528. Until then
+	// this ignored what `MarkDead` answered, so a second call still ran the
+	// explosion below, and a minion that exploded could explode twice. Found
+	// while changing this function and fixed in the same change, ruled
+	// 2026-09-30.
+	if (!UCataclysmSkillEffects::MarkDead(this))
+	{
+		return;
+	}
+
+	// A GADGET KILLED IS A GADGET DESTROYED, told to its summoner before the
+	// explosion below can return. Issue #1833 group D part 5, ruled 2026-10-01:
+	// "destroyed" means killed, so a gadget whose lifespan runs out, or one the
+	// summon cap removes to make room, raises nothing; neither reaches this
+	// function. A gadget is what `IsDeployable` says, traps included.
+	//
+	// A SKILL TRAP'S DEATH RAISES NOTHING, ruled 2026-10-19 (T14: `gadget_destroyed` narrowed to gadgets, "a trap's death
+	// raises nothing until a row needs it"). Narrowed for the skill trap alone: a Spike Trap still raises it, because the
+	// owner's no-War mandate leaves Iron Fortress's traps as they are (T15) and merged tests assert it does.
+	if (IsDeployable() && !IsSkillTrap())
+	{
+		if (UCataclysmAbilitySystemComponent* Theirs = Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Summoner)))
+		{
+			Theirs->NoteGadgetDestroyed(this, TypeTags);
+		}
+	}
+
+	// AND IT MAY BLOW UP ON THE WAY OUT. Issue #1515.
+	// `Ritualist_keystone_b_kB` Every One Bursts: "Every minion explodes when
+	// it dies, as one destroyed to make room for another does, with the radius
+	// and damage of the skill that brought it."
+	//
+	// THE SUMMONER'S STAT DECIDES, NOT THE MINION'S. What the player chose is
+	// on the player, and `Explode` already reads the summoner for everything
+	// else the blow needs.
+	//
+	// BOTH FIGURES MUST BE THERE. A minion nobody told what its explosion is
+	// does not explode, because `Explode` destroys the actor whether or not it
+	// finds anything to hurt; it leaves the level the quiet way below instead.
+	//
+	// THE FERVOUR A SUMMONER GAINS FOR LOSING A MINION IS ALREADY SAFE. It is
+	// granted before this runs, and `CataclysmVitalAttributeSet.cpp` says why:
+	// a death handler may remove the actor, and the code that finds the
+	// commander cannot walk the ownership chain of one that is leaving.
+	// AND THE POOL IT LEAVES, where its commander's row says so. Ruled 2026-10-06. BEFORE THE EXPLOSION, which
+	// destroys this actor: a minion that explodes was killed too, and leaves its pool as well.
+	LeaveChaosPool();
+
+	if (ExplodesOnDeath())
+	{
+		Explode();
+		return;
+	}
+
+	// A MINION THAT DIED QUIETLY STOPS AT ONCE AND IS GONE HALF A SECOND
+	// LATER. Issue #1528, ruled 2026-09-30. Until then the body stood where it
+	// died, with its collision and its tick, until the lifespan `Spawn` gave
+	// it ran out: an imp killed a second after its summoning stood for
+	// nineteen more. Gadgets are minions and are included, ruled the same day:
+	// a destroyed turret standing until its lifespan ends is the same fault.
+	//
+	// WHAT STOPS AT ONCE is what the enemy's death stops, for the same
+	// reasons `ACataclysmEnemyCharacter::HandleDeath` gives: its movement
+	// (`DisableMovement` also clears the velocity) and its collision, so the
+	// body neither blocks anything nor is found by an overlap search. Not its
+	// tick, which the enemy also stops: a minion's actor never ticks, because
+	// the constructor sets `bCanEverTick` false.
+	// Not copied from there: loot and the run record, which a summoned thing
+	// does not have.
+	//
+	// WHY A DELAY RATHER THAN `Destroy`. The code after a lethal blow draws
+	// the blow's impact and damage number on the actor it struck; destroyed
+	// in the same call, the killing blow on a minion would show neither. Half
+	// a second is a judgement, not a figure from the design or research.
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+	{
+		Movement->DisableMovement();
+	}
+	SetActorEnableCollision(false);
+	SetLifeSpan(DeadBodySeconds);
+}
+
+ACataclysmGroundZone* ACataclysmMinion::LeaveChaosPool()
+{
+	// "YOUR MINIONS" ARE WHATEVER CARRIES `Type.Minion`. Ruled 2026-10-06. Every row of the minion type table
+	// carries it today, the Bolt Turret, the Ballista and the Spike Trap included; a minion with no type row has
+	// no tags and leaves nothing.
+	const FGameplayTag MinionTag = FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Type.Minion")), /*ErrorIfNotFound=*/false);
+	if (!IsValid(Summoner) || !MinionTag.IsValid() || !TypeTags.HasTag(MinionTag)
+		|| SummonerStat(Summoner, UCataclysmDamageCalculation::MinionsLeaveChaosPoolsStat) <= 0.0f)
+	{
+		return nullptr;
+	}
+
+	// A SHARE OF ITS OWN BLOW, the figure settled when it was summoned. Its explosion takes its summoner's minion
+	// damage on top of that figure since issue #340 (`Explode`); this pool was not part of that ruling and still does
+	// not. A sweep is dealt as direct damage by the commander, so nothing of the commander's raises it after this.
+	const float PerSweep = OwnDamagePerHit * ChaosPoolPercentOfOwnBlow / 100.0f;
+	if (PerSweep <= 0.0f)
+	{
+		return nullptr;
+	}
+
+	static const FName Chaos(TEXT("Chaos"));
+	return UCataclysmSkillTemplate::LeaveAZoneFor(
+		Summoner, GetActorLocation(), GetActorLocation(), ChaosPoolRadiusCm, ChaosPoolSeconds, PerSweep,
+		TypeTags, /*HandedDamageType=*/Chaos, /*AilmentOfType=*/Chaos,
+		// NO SKILL LEFT IT: the minion's death did, so its sweeps name none, as before issue #1585.
+		/*LeftBy=*/nullptr);
+}
+
+bool ACataclysmMinion::ExplodesOnDeath() const
+{
+	return ExplosionRadiusCm > 0.0f && ExplosionPercentOfOwnDamage > 0.0f
+		&& SummonerStat(Summoner, TEXT("minion_explodes_on_death")) > 0.0f;
+}
+
+void ACataclysmMinion::RecordExplosionRadius(float RadiusCm)
+{
+	ExplosionRadiusCm = RadiusCm;
+}
+
+void ACataclysmMinion::Explode()
+{
+	// WHAT IT IS WORTH IS ITS OWN BLOW, NOT ITS SUMMONER'S WEAPON. Issue
+	// #1515. `game/Data/MinionTypes.csv` states the share -- the owner's
+	// figure of 2026-09-17 is three of its own blows for every kind -- and
+	// until then the caller passed the summoning skill's damage percentage,
+	// which `ApplyHit` read against the summoner's weapon.
+	//
+	// ITS BLOW AS DEALT, WITH THE SUMMONER'S MINION DAMAGE ON IT. Ruled
+	// 2026-11-02 by the coordinating session under the owner's delegation,
+	// issue #340: the explosion is a share of the blow `AttackTarget` deals, so
+	// it takes the same multiplier -- gear's increased minion damage, a "more"
+	// row, and the summoner's attribute through `game/Data/MinionScaling.csv` --
+	// asked with this minion's own type tags, as a thrall's explosion already
+	// was (`ThrallExplosionDamage`). THIS COMMENT USED TO SAY THE MULTIPLIER WAS
+	// "IN THE BLOW ALREADY", which was false: `OwnDamagePerHit` is the type
+	// row's figure raised by level and nothing else, and the multiplier is
+	// applied in `AttackTarget` to the swing alone, so it never reached here.
+	//
+	// READ ONCE, WITH NO TARGET, because an explosion has many. The part of
+	// minion damage conditioned on the enemy struck cannot apply, as for a
+	// thrall. `minion_explosion_damage`, Volatile's stat, is a separate
+	// multiplier below and is not read twice.
+	const float OwnBlow = OwnDamagePerHit
+		* UCataclysmCommand::SummonerMultiplierFor(Summoner, TEXT("minion_damage"), TypeTags);
+	const float Damage = OwnBlow * ExplosionPercentOfOwnDamage / 100.0f;
+
+	if (IsValid(Summoner) && ExplosionRadiusCm > 0.0f && Damage > 0.0f)
+	{
+		// THE SUMMONER'S OWN STAT ON THE EXPLOSION'S DAMAGE. Issue #1515.
+		// `Ritualist_basic_b_a2` Volatile: "+3% increased damage of the
+		// explosion a minion leaves per point."
+		//
+		// HERE RATHER THAN AT EITHER CALLER, so both causes of an explosion
+		// take it: the summon cap destroying the oldest, and a death under
+		// `minion_explodes_on_death`. The sentence names the explosion rather
+		// than what caused it.
+		//
+		// AREA OF EFFECT IS STILL NOT TAKEN, and that is unchanged: the
+		// radius is the skill's stated figure, as the caller's comment in
+		// `CataclysmSkillTemplates.cpp` records for issues #910 and #340.
+		// This stat is the damage and only the damage.
+		const float Scaled = Damage
+			* UCataclysmCommand::SummonerMultiplierFor(Summoner, TEXT("minion_explosion_damage"), TypeTags);
+
+		const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
+			GetWorld(), this, GetActorLocation(),
+			ExplosionRadiusCm * UCataclysmSecondSelf::AreaMultiplierFor(this));
+
+		for (AActor* Target : Caught)
+		{
+			// AREA DAMAGE: an explosion swept a sphere. The melee attack
+			// above is a single blow and stays evadable. Issue #513.
+			// AN AMOUNT, NOT A PERCENTAGE, SINCE ISSUE #1515: `ApplyHit` reads a
+			// percentage against the INSTIGATOR'S weapon, which is the summoner's
+			// and is exactly what a minion's blow must not use. `ApplyDirectDamage`
+			// takes the figure as it stands, which is how `AttackTarget` deals a
+			// typed minion's swing.
+			//
+			// AND THE MINION IS THE INSTIGATOR HERE TOO, for the reason its
+			// swing gives above: an explosion is the minion's, not its
+			// summoner's, and the summoner's own numbers must not be what the
+			// blow is resolved against.
+			//
+			// AND THE MINION'S OWN BUFFS, as its swing reads them. Issue #1771,
+			// ruled 2026-09-30: an explosion is a hit the minion deals.
+			const float Landed = UCataclysmSkillEffects::ModifiedDamage(
+				UCataclysmTargeting::AbilitySystemOf(this), Scaled, TypeTags,
+				/*SkillHealthCostPercent=*/-1.0f, /*MetresMovedBeforeBlow=*/-1.0f,
+				/*TargetDistanceMetres=*/-1.0f, /*bTargetIsStaggered=*/false, Target);
+			float Dealt = 0.0f;
+			UCataclysmSkillEffects::ApplyDirectDamage(
+				this, Target, Landed,
+				MinionDelivery(this, /*bIsArea=*/true));
+			Dealt = Landed;
+			// Designed, for the reason the melee attack above records.
+			//
+			// AND NOT TESTED FOR EVASION, DELIBERATELY. An explosion is area
+			// damage and `UCataclysmDamageCalculation::Resolve` does not roll
+			// evasion against area damage at all, so the test the melee attack
+			// above makes for issue #1156 could never fire here. A check that
+			// cannot fail is worse than no check, because it reads as one.
+			if (bBurnsWhatItHits)
+			{
+				UCataclysmSkillEffects::ApplyBurn(
+					this, Target, Dealt,
+					/*bScalesWithInstigator=*/false,
+					/*bBurnIsDesigned=*/true, /*DealtBy=*/this);
+			}
+		}
+
+		// AND ITS SUMMONER, WHEN THIS IS A DEPLOYABLE, THE SUMMONER HOLDS THE ROW AND STANDS INSIDE THE SAME SPHERE. Ruled
+		// 2026-10-19 (B2, B3, B5), for "Your deployables and traps deal full damage to you if you are within their blast
+		// radius": the figure an enemy standing there is struck for, priced for the summoner, with the explosion's own
+		// delivery; damage only, so no burn. A skill gadget deals nothing here, its own damage being nought.
+		if (AActor* Wearer = UCataclysmDeployableSelfBlast::WearerInSphere(
+				GetWorld(), Summoner.Get(), this, GetActorLocation(),
+				ExplosionRadiusCm * UCataclysmSecondSelf::AreaMultiplierFor(this)))
+		{
+			const float LandedOnTheWearer = UCataclysmSkillEffects::ModifiedDamage(
+				UCataclysmTargeting::AbilitySystemOf(this), Scaled, TypeTags,
+				/*SkillHealthCostPercent=*/-1.0f, /*MetresMovedBeforeBlow=*/-1.0f,
+				/*TargetDistanceMetres=*/-1.0f, /*bTargetIsStaggered=*/false, Wearer);
+			UCataclysmDeployableSelfBlast::StrikeWithADeathBlast(
+				this, Wearer, LandedOnTheWearer, MinionDelivery(this, /*bIsArea=*/true));
+		}
+	}
+
+	Destroy();
+}
+
+const TCHAR* ACataclysmMinion::DeathBlastPercentOfMaximumHealthStat =
+	TEXT("minion_death_blast_percent_of_maximum_health");
+const TCHAR* ACataclysmMinion::DeathBlastRadiusMetresStat =
+	TEXT("minion_death_blast_radius_metres");
+
+int32 ACataclysmMinion::DeathBlast(AActor* Lost, const AActor* Commander)
+{
+	if (!IsValid(Lost) || !Commander)
+	{
+		return 0;
+	}
+
+	// BOTH FIGURES ARE THE COMMANDER'S, and either at nothing means no blast: a
+	// share with no radius reaches nobody, and a radius with no share deals
+	// nothing.
+	const float Percent =
+		SummonerStat(Commander, DeathBlastPercentOfMaximumHealthStat);
+	const float RadiusMetres = SummonerStat(Commander, DeathBlastRadiusMetresStat);
+	if (Percent <= 0.0f || RadiusMetres <= 0.0f)
+	{
+		return 0;
+	}
+
+	// THE DYING CREATURE'S OWN MAXIMUM, which is what "that minion's maximum
+	// health" names. Read now, while it still has an ability system to read.
+	const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Lost);
+	const float Maximum = Its
+		? Its->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute())
+		: 0.0f;
+	const float Damage = Maximum * Percent / 100.0f;
+	if (Damage <= 0.0f)
+	{
+		return 0;
+	}
+
+	const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
+		Lost->GetWorld(), Lost, Lost->GetActorLocation(),
+		RadiusMetres * 100.0f * UCataclysmSecondSelf::AreaMultiplierFor(Lost));
+
+	// AREA DAMAGE WITH THE MINION'S OWN DELIVERY, as its explosion is, AND NOT
+	// RETALIATED AGAINST. Area damage provokes retaliation, and retaliation is
+	// paid back to whoever dealt the blow: here that is a creature whose death
+	// is being handled, so a reflected blow would write its health again and
+	// run the death a second time.
+	FCataclysmHitDelivery Delivery = MinionDelivery(Lost, /*bIsArea=*/true);
+	Delivery.bCannotBeRetaliatedAgainst = true;
+	// AND DEATH DAMAGE WHERE THE COMMANDER'S ROW SAYS SO, Tyrant's Chains' six-piece, ruled 2026-10-18 (Q1). Shared
+	// Ruin's own blast keeps the dying creature's type: its node states no flag.
+	if (SummonerStat(Commander, DeathBlastDealsDeathStat) > 0.0f)
+	{
+		Delivery.DamageType = FName(TEXT("Death"));
+	}
+
+	// AND THE DYING CREATURE'S OWN BUFFS. Issue #1771, ruled 2026-09-30: the
+	// blast is a hit it deals. A minion's type tags stand for the blow's; a
+	// thrall has none, so only its unscoped buffs apply.
+	const ACataclysmMinion* AsMinion = Cast<ACataclysmMinion>(Lost);
+	const FGameplayTagContainer LostTags =
+		AsMinion ? AsMinion->TypeTags : FGameplayTagContainer();
+	for (AActor* Target : Caught)
+	{
+		const float Landed = UCataclysmSkillEffects::ModifiedDamage(
+			Its, Damage, LostTags, /*SkillHealthCostPercent=*/-1.0f,
+			/*MetresMovedBeforeBlow=*/-1.0f, /*TargetDistanceMetres=*/-1.0f,
+			/*bTargetIsStaggered=*/false, Target);
+		UCataclysmSkillEffects::ApplyDirectDamage(Lost, Target, Landed, Delivery);
+	}
+
+	// AND THE DYING DEPLOYABLE'S SUMMONER, WHEN IT HOLDS THE ROW AND STANDS INSIDE THE SAME SPHERE. Ruled 2026-10-19 (B2,
+	// B3, B5), for "Your deployables and traps deal full damage to you if you are within their blast radius": the figure
+	// an enemy standing there is struck for, priced for the summoner, with the blast's own delivery. Nobody for a thrall
+	// or a minion that is no deployable. NOT IN THE COUNT RETURNED, which stays the enemies caught.
+	if (AActor* Wearer = UCataclysmDeployableSelfBlast::WearerInSphere(
+			Lost->GetWorld(), AsMinion ? AsMinion->Summoner.Get() : nullptr, Lost, Lost->GetActorLocation(),
+			RadiusMetres * 100.0f * UCataclysmSecondSelf::AreaMultiplierFor(Lost)))
+	{
+		const float LandedOnTheWearer = UCataclysmSkillEffects::ModifiedDamage(
+			Its, Damage, LostTags, /*SkillHealthCostPercent=*/-1.0f,
+			/*MetresMovedBeforeBlow=*/-1.0f, /*TargetDistanceMetres=*/-1.0f,
+			/*bTargetIsStaggered=*/false, Wearer);
+		UCataclysmDeployableSelfBlast::StrikeWithADeathBlast(Lost, Wearer, LandedOnTheWearer, Delivery);
+	}
+	return Caught.Num();
+}
+
+float ACataclysmMinion::ThrallExplosionDamage(const AActor* Lost, const AActor* Commander)
+{
+	// A THRALL ONLY: a summoned minion's explosion is `Explode`'s, and a creature nobody commands is no thrall.
+	if (!IsValid(Lost) || !Commander || Lost->IsA<ACataclysmMinion>()
+		|| UCataclysmCommand::CommanderOf(Lost) != Commander
+		|| SummonerStat(Commander, TEXT("minion_explodes_on_death")) <= 0.0f)
+	{
+		return 0.0f;
+	}
+	const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Lost);
+	const float AttackDamage = Its
+		? Its->GetNumericAttribute(UCataclysmCombatAttributeSet::GetAttackDamageAttribute())
+		: 0.0f;
+	// AS A `Minion.Creature`, for the reason `UCataclysmCommand::ThrallDamageMultiplierAgainst` gives (issue #340,
+	// ruled 2026-11-02): its commander's Spirit reaches its explosion as it reaches its blow. Volatile's
+	// `minion_explosion_damage` is still asked with no tags; no row of it carries one.
+	const float OwnBlow = AttackDamage
+		* UCataclysmCommand::SummonerMultiplierFor(Commander, TEXT("minion_damage"), UCataclysmCommand::ThrallMinionTags());
+	return OwnBlow * ThrallExplosionPercentOfOwnDamage / 100.0f
+		* UCataclysmCommand::SummonerMultiplierFor(Commander, TEXT("minion_explosion_damage"), FGameplayTagContainer());
+}
+
+int32 ACataclysmMinion::ThrallBurst(AActor* Lost, const AActor* Commander)
+{
+	const float Damage = ThrallExplosionDamage(Lost, Commander);
+	if (Damage <= 0.0f)
+	{
+		return 0;
+	}
+
+	const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
+		Lost->GetWorld(), Lost, Lost->GetActorLocation(),
+		ThrallExplosionRadiusCm * UCataclysmSecondSelf::AreaMultiplierFor(Lost));
+
+	// AREA DAMAGE THE DYING THRALL DEALS, NOT RETALIATED AGAINST, for the reason `DeathBlast` gives: a reflected blow
+	// would write the health of a creature whose death is being handled and run the death a second time.
+	FCataclysmHitDelivery Delivery = MinionDelivery(Lost, /*bIsArea=*/true);
+	Delivery.bCannotBeRetaliatedAgainst = true;
+	const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Lost);
+	for (AActor* Target : Caught)
+	{
+		// AND ITS OWN BUFFS, as Shared Ruin's blast reads a thrall's: unscoped only, a thrall having no type tags.
+		const float Landed = UCataclysmSkillEffects::ModifiedDamage(
+			Its, Damage, FGameplayTagContainer(), /*SkillHealthCostPercent=*/-1.0f,
+			/*MetresMovedBeforeBlow=*/-1.0f, /*TargetDistanceMetres=*/-1.0f,
+			/*bTargetIsStaggered=*/false, Target);
+		UCataclysmSkillEffects::ApplyDirectDamage(Lost, Target, Landed, Delivery);
+	}
+	return Caught.Num();
+}
+
+// ==========================================================================
+// Tyrant's Chains, six-piece. Owner's ruling #3 of 2026-10-17 and the
+// coordinating session's rulings of 2026-10-18; the header carries them.
+// ==========================================================================
+
+const TCHAR* ACataclysmMinion::DeathBlastDealsDeathStat = TEXT("minion_death_blast_deals_death");
+const TCHAR* ACataclysmMinion::TyrantsMinionSecondsStat = TEXT("minion_death_summons_tyrants_minion_seconds");
+const TCHAR* ACataclysmMinion::TyrantsMinionTypeName = TEXT("TyrantsMinion");
+
+ACataclysmMinion* ACataclysmMinion::TyrantsMinionOf(const AActor* Commander)
+{
+	// EVERYTHING THE COMMANDER COMMANDS, WHICH LEAVES OUT THE DEAD, so a Tyrant's Minion whose death is being
+	// handled is not "the one standing".
+	for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Commander))
+	{
+		ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Follower);
+		if (IsValid(Minion) && Minion->bIsTyrantsMinion)
+		{
+			return Minion;
+		}
+	}
+	return nullptr;
+}
+
+ACataclysmMinion* ACataclysmMinion::SummonTyrantsMinion(AActor* Commander, bool bLostWasTyrantsMinion,
+														const FVector& Where)
+{
+	// ITS OWN DEATH SUMMONS NONE, ruling #3. A dead commander summons nothing, as a re-summon is refused for one.
+	if (bLostWasTyrantsMinion || !IsValid(Commander) || UCataclysmSkillEffects::IsDead(Commander))
+	{
+		return nullptr;
+	}
+	const float Seconds = SummonerStat(Commander, TyrantsMinionSecondsStat);
+	if (Seconds <= 0.0f)
+	{
+		return nullptr;
+	}
+
+	// ONE STANDING IS REFRESHED AND NO SECOND IS MADE, ruling #3 and Q5: its time restarts at the full length and its
+	// health is kept. THE LENGTH `Spawn` WOULD GIVE A NEW ONE, the stated seconds raised by `minion_duration`, with
+	// the same guard against a multiplier of nought, which `SetLifeSpan` would read as "never expires".
+	if (ACataclysmMinion* Standing = TyrantsMinionOf(Commander))
+	{
+		const float Duration = Seconds
+			* UCataclysmCommand::SummonerMultiplierFor(Commander, TEXT("minion_duration"), Standing->TypeTags);
+		Standing->SetLifeSpan(Duration > 0.0f ? Duration : Seconds);
+		return Standing;
+	}
+
+	// WHERE THE LOST ONE STOOD, a judgement: the sentence says only that it is summoned. Told no explosion radius,
+	// as no summon skill made it, so Every One Bursts does not explode it; Shared Ruin's blast and this bonus's do.
+	ACataclysmMinion* Made = Spawn(Commander, Where, Seconds, /*bBurns=*/false, FString(TyrantsMinionTypeName));
+	if (Made)
+	{
+		// OUTSIDE EVERY SUMMON CAP, Q4, as a necrosis-risen imp and a skill gadget are.
+		Made->bOutsideSummonCaps = true;
+		Made->bIsTyrantsMinion = true;
+	}
+	return Made;
+}
+
+// ==========================================================================
+// Warlord's Will, six-piece. Owner's ruling #6 of 2026-10-17 and the
+// coordinating session's rulings of 2026-10-18; the header carries them.
+// ==========================================================================
+
+const TCHAR* ACataclysmMinion::WarhoundChanceStat = TEXT("warhound_summon_chance");
+const TCHAR* ACataclysmMinion::WarhoundSecondsStat = TEXT("warhound_seconds");
+const TCHAR* ACataclysmMinion::WarhoundArmourPercentStat = TEXT("warhound_percent_of_armor");
+const TCHAR* ACataclysmMinion::WarhoundTauntSecondsStat = TEXT("warhound_taunt_seconds");
+const TCHAR* ACataclysmMinion::WarhoundTypeName = TEXT("Warhound");
+
+/**
+ * Pins the roll `RollForWarhoundOnHitTaken` makes against its chance, 0 to 100, for tests. Negative, the default, rolls
+ * at random. A roll below the chance summons; one equal to it does not.
+ */
+static TAutoConsoleVariable<float> CVarWarhoundRoll(
+	TEXT("Cataclysm.WarhoundRoll"), -1.0f,
+	TEXT("Pins the roll a Warlord's Will six-piece wearer makes for a Warhound when struck, 0 to 100. Negative rolls."),
+	ECVF_Default);
+
+namespace
+{
+	/**
+	 * When each wearer last summoned or refreshed its Warhound, in its world's seconds, keyed weakly. HELD HERE AND NOT
+	 * ON THE ABILITY SYSTEM, as `UCataclysmGroundPound` keeps its clocks. A gone wearer's entry is dropped when the next
+	 * is written.
+	 */
+	TMap<TWeakObjectPtr<AActor>, float>& WarhoundSummonedAt()
+	{
+		static TMap<TWeakObjectPtr<AActor>, float> Held;
+		return Held;
+	}
+}
+
+ACataclysmMinion* ACataclysmMinion::WarhoundOf(const AActor* Summoner)
+{
+	// EVERYTHING THE SUMMONER COMMANDS, WHICH LEAVES OUT THE DEAD, as `TyrantsMinionOf` asks.
+	for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Summoner))
+	{
+		ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Follower);
+		if (IsValid(Minion) && Minion->bIsWarhound)
+		{
+			return Minion;
+		}
+	}
+	return nullptr;
+}
+
+ACataclysmMinion* ACataclysmMinion::SummonWarhound(AActor* Summoner)
+{
+	if (!IsValid(Summoner) || UCataclysmSkillEffects::IsDead(Summoner))
+	{
+		return nullptr;
+	}
+	const float Seconds = SummonerStat(Summoner, WarhoundSecondsStat);
+	if (Seconds <= 0.0f)
+	{
+		return nullptr;
+	}
+
+	// ONE STANDING IS REFRESHED AND NO SECOND IS MADE (Q3): its time restarts at the full length and its health is
+	// kept. The length `Spawn` would give a new one, with the same guard against a multiplier of nought.
+	if (ACataclysmMinion* Standing = WarhoundOf(Summoner))
+	{
+		const float Duration = Seconds
+			* UCataclysmCommand::SummonerMultiplierFor(Summoner, TEXT("minion_duration"), Standing->TypeTags);
+		Standing->SetLifeSpan(Duration > 0.0f ? Duration : Seconds);
+		return Standing;
+	}
+
+	// WHERE A RE-SUMMONED MINION APPEARS, in front of its summoner: a judgement, since the sentence names no place and
+	// no minion has died where it could stand. Told no explosion radius, as no summon skill made it.
+	const FVector Where = Summoner->GetActorLocation()
+		+ Summoner->GetActorForwardVector() * UCataclysmSummonSkill::ResummonDistanceCm;
+	ACataclysmMinion* Made = Spawn(Summoner, Where, Seconds, /*bBurns=*/false, FString(WarhoundTypeName));
+	if (Made)
+	{
+		// OUTSIDE EVERY SUMMON CAP (Q3), as a Tyrant's Minion is.
+		Made->bOutsideSummonCaps = true;
+		Made->bIsWarhound = true;
+	}
+	return Made;
+}
+
+ACataclysmMinion* ACataclysmMinion::RollForWarhoundOnHitTaken(AActor* Struck)
+{
+	if (!IsValid(Struck) || UCataclysmSkillEffects::IsDead(Struck))
+	{
+		return nullptr;
+	}
+	// A CHARACTER WITH NO SUCH ROW STOPS HERE, which is every character but a six-piece wearer.
+	const float Chance = SummonerStat(Struck, WarhoundChanceStat);
+	if (Chance <= 0.0f)
+	{
+		return nullptr;
+	}
+
+	// WITHIN A QUARTER OF A SECOND OF THE LAST SUMMON OR REFRESH, NO BLOW ROLLS (Q4).
+	const UWorld* World = Struck->GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+	if (const float* Last = WarhoundSummonedAt().Find(TWeakObjectPtr<AActor>(Struck)))
+	{
+		if (Now - *Last < WarhoundSummonCooldownSeconds)
+		{
+			return nullptr;
+		}
+	}
+
+	// A CHANCE OF 100 OR MORE IS NOT ROLLED, and one below it is compared with the roll: a roll equal to the chance
+	// fails. The shape of `RollDamageTypeImmunityOnHit`, the other "when you take damage, a 10% chance" row.
+	if (Chance < 100.0f)
+	{
+		const float Pinned = CVarWarhoundRoll.GetValueOnAnyThread();
+		const float Roll = Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+		if (Roll >= Chance)
+		{
+			return nullptr;
+		}
+	}
+
+	ACataclysmMinion* Made = SummonWarhound(Struck);
+	if (Made)
+	{
+		for (auto It = WarhoundSummonedAt().CreateIterator(); It; ++It)
+		{
+			if (!It.Key().IsValid())
+			{
+				It.RemoveCurrent();
+			}
+		}
+		WarhoundSummonedAt().Add(TWeakObjectPtr<AActor>(Struck), Now);
+	}
+	return Made;
+}
+
+float ACataclysmMinion::WarhoundBlow() const
+{
+	if (!bIsWarhound)
+	{
+		return 0.0f;
+	}
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Summoner));
+	if (!Theirs)
+	{
+		return 0.0f;
+	}
+	// THE SUMMONER'S ARMOUR, ASKED AS THE ARMOUR NOVA AND THE GROUND POUND ASK IT: the stat with every row on it, the
+	// attribute as the fallback. Read at each blow, so a change of gear moves the next hit.
+	const UCataclysmCombatAttributeSet* Combat = Theirs->GetSet<UCataclysmCombatAttributeSet>();
+	const float Armour = Theirs->StatForSkill(FName(TEXT("armor")), FGameplayTagContainer(),
+		Combat ? Combat->GetArmor() : 0.0f);
+	return FMath::Max(0.0f, Armour) * SummonerStat(Summoner, WarhoundArmourPercentStat) / 100.0f;
+}
+
+// ==========================================================================
+// Tyrant's Chains, ten-piece. The coordinating session's ruling #7 of
+// 2026-10-17 and its rulings T1-T7 of 2026-10-18; the header carries them.
+// ==========================================================================
+
+const TCHAR* ACataclysmMinion::TyrantsMinionCastsUltimateEverySecondsStat =
+	TEXT("tyrants_minion_casts_ultimate_every_seconds");
+
+float ACataclysmMinion::TyrantsUltimateSecondsBetweenCasts() const
+{
+	// OFF THE COMMANDER WITH NO TAGS, as the six-piece's seconds are read. Nought for every minion that is not one.
+	return bIsTyrantsMinion ? SummonerStat(Summoner, TyrantsMinionCastsUltimateEverySecondsStat) : 0.0f;
+}
+
+bool ACataclysmMinion::TyrantsMinionStep(AActor* Character)
+{
+	ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Character);
+	if (!Minion || !Minion->bIsTyrantsMinion || UCataclysmSkillEffects::IsDead(Minion))
+	{
+		return false;
+	}
+	const float Seconds = Minion->TyrantsUltimateSecondsBetweenCasts();
+	if (Seconds <= 0.0f)
+	{
+		return false;
+	}
+	const float Age = Minion->GetGameTimeSinceCreation();
+
+	// THE KEYED SKILL GADGET'S CLOCK (T6): AFTER THE FIRST CAST, NOTHING UNTIL THE ROW'S SECONDS HAVE RUN since the
+	// last that started, read again each step so a row put on or taken off moves the next cast. With the same
+	// thousandth of a second of allowance, for a world time added up in floating point. A step that casts nothing
+	// moves nothing and waits.
+	if (Minion->bTyrantsUltimateHasCast
+		&& Age - Minion->LastTyrantsUltimateCastAtAgeSeconds < Seconds - SkillGadgetClockAllowanceSeconds)
+	{
+		return false;
+	}
+	if (!Minion->CastPlayersUltimateFromHere())
+	{
+		return false;
+	}
+	Minion->bTyrantsUltimateHasCast = true;
+	Minion->LastTyrantsUltimateCastAtAgeSeconds = Age;
+	return true;
+}
+
+bool ACataclysmMinion::CastPlayersUltimateFromHere()
+{
+	// A TYRANT'S MINION, STANDING AND ABLE TO ACT, OF A COMMANDER STILL HERE AND ALIVE, HOLDING THE STAT (T7).
+	AActor* const Player = Summoner.Get();
+	if (!bIsTyrantsMinion || UCataclysmSkillEffects::IsDead(this) || UCataclysmSkillEffects::CannotAct(this)
+		|| !IsValid(Player) || UCataclysmSkillEffects::IsDead(Player) || TyrantsUltimateSecondsBetweenCasts() <= 0.0f)
+	{
+		return false;
+	}
+
+	// WHAT THE COMMANDER HOLDS IN THE ULTIMATE SLOT NOW (T2), as `SkillGadgetsSkill` reads a slot, REFUSED AS A SKILL
+	// GADGET REFUSES (T2). NOT ASKED WHETHER THE SLOT IS CONVERTED: a converted Ultimate is still cast (T3).
+	// THE SKILL MADE FOR THE ULTIMATE SLOT, ON WHICHEVER KEY IT SITS, since issue #837 layer 3: "An Ultimate on the
+	// Heavy key is still an Ultimate in every rule" (O1, 2026-10-25).
+	const UCataclysmWeaponSlotsComponent* Slots = Player->FindComponentByClass<UCataclysmWeaponSlotsComponent>();
+	const FCataclysmWeaponSkill* Held = Slots
+		? Slots->GetAvailableSkills().FindByPredicate([](const FCataclysmWeaponSkill& Skill)
+			  { return UCataclysmWeaponSkills::DesignedSlotOf(Skill) == ECataclysmAbilitySlot::Ultimate; })
+		: nullptr;
+	if (!Held || !SkillGadgetMayCast(*Held))
+	{
+		return false;
+	}
+
+	// THE COMMANDER'S OWN ROW AS IT STANDS, WITH NO TAG ADDED (T1), so it is priced at the commander's numbers and no
+	// gadget or minion row reaches it; this minion is no skill gadget, so `SkillGadgetCasting` answers null for it.
+	// AIMED BY THE SKILL'S OWN REACH (T5) and started from here by the skill gadget's own path (T4, T5, #7).
+	const FCataclysmWeaponSkill Skill = *Held;
+	if (!StartPlayersSkillFromHere(Player, Skill, SkillGadgetReachCm(Skill)))
+	{
+		return false;
+	}
+	++TyrantsUltimateCastsMade;
+	return true;
+}
+
+bool ACataclysmMinion::StartPlayersSkillFromHere(AActor* Player, const FCataclysmWeaponSkill& Skill, float SkillReachCm,
+												  AActor* AimedAt, const FVector* CastFromPlace, float ShotDamageMultiplier)
+{
+	UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+	if (!Theirs)
+	{
+		return false;
+	}
+
+	// FROM A PLACE A SKILL TRAP NAMES, OR FROM HERE (ruled 2026-10-19, M5). The 8 m below is measured from this minion
+	// either way, so a support trap's self buff reaches the player standing within 8 m of the trap (T7).
+	const FVector Here = GetActorLocation();
+	const FVector From = CastFromPlace ? *CastFromPlace : Here;
+	FVector Aim = From;
+	if (Skill.Shape == ECataclysmSkillShape::SelfBuff)
+	{
+		// THE SELF BUFF IS THE PLAYER'S, AND ONLY WITHIN 8 M OF THIS MINION (S13; T4 for a Tyrant's Minion). Its enemy
+		// areas are measured from where it is cast. NOT WHILE ONE THIS MINION GRANTED STILL
+		// RUNS: a second running copy would add a second "more" to the player, which the player's own press could
+		// never do.
+		if (FVector::Dist2D(Here, Player->GetActorLocation()) > SkillGadgetSelfBuffReachCm + ReachAllowanceCm)
+		{
+			return false;
+		}
+		for (const FGameplayAbilitySpec& Spec : Theirs->GetActivatableAbilities())
+		{
+			const UCataclysmSkillTemplate* Running = Cast<UCataclysmSkillTemplate>(Spec.GetPrimaryInstance());
+			if (Running && Spec.IsActive() && Running->FreeRepeatCastBy.Get() == this)
+			{
+				return false;
+			}
+		}
+	}
+	else if (IsValid(AimedAt))
+	{
+		// A SKILL TRAP'S TRIGGERING ENEMY (T13), aimed at whatever the skill's reach: the trap has chosen it.
+		Aim = AimedAt->GetActorLocation();
+	}
+	else if (CastFromPlace)
+	{
+		// A SKILL TRAP SET OFF WITH NO ENEMY NEAR CASTS AT ITS OWN PLACE (T11).
+		Aim = From;
+	}
+	else
+	{
+		// THE NEAREST LIVING ENEMY WITHIN THE SKILL'S OWN REACH OF THIS MINION (S4; T5), by the brain's measure along
+		// the floor, as `HostilesWithinReach` takes it for the type's reach.
+		if (SkillReachCm <= 0.0f)
+		{
+			return false;
+		}
+		// OR, FOR A SKILL GADGET WHOSE PLAYER HOLDS "Your gadgets prioritize the highest HP enemy within their range
+		// instead of the nearest", THE ONE HOLDING THE MOST HEALTH NOW WITHIN THAT SAME REACH (stack 2, item 4; S9).
+		// Null without the row, and null for anything that is not a gadget, a Tyrant's Minion included; then the
+		// nearest.
+		AActor* Target = MostHealthWithin(SkillReachCm);
+		if (!Target)
+		{
+			const TArray<AActor*> Within = HostilesWithin(SkillReachCm);
+			Target = Within.IsEmpty() ? nullptr : Within[0];
+		}
+		if (!Target)
+		{
+			return false;
+		}
+		Aim = Target->GetActorLocation();
+	}
+
+	// GRANTED TO THE PLAYER, FREE, FROM HERE, AT THE WHOLE OF ITS DAMAGE, CAST BY THIS MINION (S1; #7). OR AT A TRAP ROW'S
+	// "MORE" ON THE WHOLE OF THIS ONE CAST (traps layer 6, J6), the share every damage path of a use reads.
+	return UCataclysmTriggeredSkill::Trigger(Player, Skill, Aim, /*DamageShare=*/ShotDamageMultiplier, /*bPaysCost=*/false,
+											 &From, /*CastBy=*/this);
+}
+
+// ==========================================================================
+// The skill trap. Ruled 2026-10-19 (T1-T19); the header carries the rulings.
+// ==========================================================================
+
+const TCHAR* ACataclysmMinion::SkillTrapTypeName = TEXT("SkillTrap");
+const TCHAR* ACataclysmMinion::TrapArmingSpeedStat = TEXT("trap_arming_speed");
+const TCHAR* ACataclysmMinion::TrapTriggerRadiusStat = TEXT("trap_trigger_radius");
+
+namespace
+{
+	/** The player's own increases of `Stat` for a trap of `TrapTags`, or nought. Floored at nought. */
+	float SkillTrapIncreasesOf(const AActor* Player, const TCHAR* Stat, const FGameplayTagContainer& TrapTags)
+	{
+		const UCataclysmAbilitySystemComponent* Theirs =
+			Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+		return Theirs ? FMath::Max(0.0f, Theirs->IncreasesForStat(FName(Stat), TrapTags)) : 0.0f;
+	}
+}
+
+float ACataclysmMinion::SkillTrapArmingSecondsFor(const AActor* Player, const FGameplayTagContainer& TrapTags)
+{
+	// FASTER IS A RATE, so the seconds are divided by one plus the increases, as "Gadgets fire 20%-40% faster" divides a
+	// gadget's clock. 60% faster arms in 1/1.6 of a second.
+	return SkillTrapArmSeconds / (1.0f + SkillTrapIncreasesOf(Player, TrapArmingSpeedStat, TrapTags));
+}
+
+float ACataclysmMinion::SkillTrapTriggerRadiusCmFor(const AActor* Player, const FGameplayTagContainer& TrapTags)
+{
+	// "INCREASED TRIGGER RADIUS" IS A SIZE, so the radius is multiplied by one plus the increases. NOT the type row's
+	// reach, which `Spawn` lengthens by "Gadgets have 20%-40% increased attack range" because a trap carries
+	// `Type.Deployable`: the radius is the constant of T2 and this stat alone.
+	return SkillTrapTriggerRadiusCm * (1.0f + SkillTrapIncreasesOf(Player, TrapTriggerRadiusStat, TrapTags));
+}
+
+TArray<ACataclysmMinion*> ACataclysmMinion::SkillTrapsOf(const AActor* Player)
+{
+	TArray<ACataclysmMinion*> Traps;
+	for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Player))
+	{
+		ACataclysmMinion* AsTrap = Cast<ACataclysmMinion>(Follower);
+		if (IsValid(AsTrap) && !AsTrap->IsActorBeingDestroyed() && AsTrap->IsSkillTrap())
+		{
+			Traps.Add(AsTrap);
+		}
+	}
+	Traps.Sort([](const ACataclysmMinion& Left, const ACataclysmMinion& Right)
+	{
+		return Left.SpawnOrder < Right.SpawnOrder;
+	});
+	return Traps;
+}
+
+ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbilitySlot Slot, const FVector& Location)
+{
+	if (!IsValid(Player) || Slot == ECataclysmAbilitySlot::None)
+	{
+		return nullptr;
+	}
+
+	// ITS 20 S (T4), lengthened by `Spawn` with the summoner's `minion_duration` rows naming its tags: "Traps last
+	// 50%-100% longer before expiring". THE LIFESPAN IS THE EXPIRY: the engine destroys the actor, and no trigger runs.
+	ACataclysmMinion* Placed =
+		Spawn(Player, Location, SkillTrapSeconds, /*bBurns=*/false, FString(SkillTrapTypeName));
+	if (!Placed)
+	{
+		return nullptr;
+	}
+	if (Placed->TypeName != SkillTrapTypeName || !Placed->IsTrap())
+	{
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("The minion type '%s' is missing or is not a trap, so no skill trap was placed. Run "
+				 "tools/generate_datatable_assets.py."), SkillTrapTypeName);
+		Placed->Destroy();
+		return nullptr;
+	}
+
+	// AT MOST FIVE FOR THE PLAYER, ACROSS EVERY CONVERTED SLOT (T6), AND THE CAP BONUS MORE (M1): THE OLDEST ARE DESTROYED
+	// WITHOUT TRIGGERING, before the new one is told its slot, so it is not among them. Destroyed and not killed: no
+	// `HandleDeath`, no cast.
+	TArray<ACataclysmMinion*> Standing = SkillTrapsOf(Player);
+	while (Standing.Num() >= SkillTrapsMostFor(Player))
+	{
+		Standing[0]->Destroy();
+		Standing.RemoveAt(0);
+	}
+
+	// OUTSIDE EVERY SUMMON CAP, as a skill gadget is (S8): its own cap is the one above.
+	Placed->bOutsideSummonCaps = true;
+	// AND NO LIFE SPAN WHILE THE PLAYER HOLDS "Traps do not expire, they remain armed until triggered" (M2 (a)), as a
+	// skill gadget has none: taken at placing, so a trap placed without it keeps its 20 s. The cap above still applies.
+	if (SkillTrapsDoNotExpireFor(Player))
+	{
+		Placed->SetLifeSpan(0.0f);
+	}
+	Placed->SkillTrapSlot = Slot;
+	Placed->SkillTrapArmsAtAgeSeconds =
+		Placed->GetGameTimeSinceCreation() + SkillTrapArmingSecondsFor(Player, Placed->TypeTags);
+	Placed->bSkillTrapArmed = false;
+	Placed->ShowSkillTrapTint();
+
+	// AND THE PLAYER IS TOLD, with the trap's tags, for a row on placing a trap (M2).
+	if (UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player)))
+	{
+		const FGameplayTagContainer TrapTags = Placed->TypeTags;
+		Theirs->ActOnEvent(FName(TEXT("trap_placed")), &TrapTags, /*EventAmount=*/0.0f, /*bLanded=*/true, Placed);
+	}
+	return Placed;
+}
+
+bool ACataclysmMinion::IsSkillTrap() const
+{
+	return SkillTrapSlot != ECataclysmAbilitySlot::None && IsTrap();
+}
+
+bool ACataclysmMinion::SkillTrapCastsAroundItsEnemy(ECataclysmAbilitySlot Slot)
+{
+	// "CENTERED ON THE TRIGGERING ENEMY", the words of the Special's, the Support's and the Ultimate's sentences.
+	return Slot == ECataclysmAbilitySlot::Special || Slot == ECataclysmAbilitySlot::Support
+		|| Slot == ECataclysmAbilitySlot::Ultimate;
+}
+
+bool ACataclysmMinion::SkillTrapsSkill(FCataclysmWeaponSkill& Out) const
+{
+	const UCataclysmWeaponSlotsComponent* Slots =
+		IsValid(Summoner) ? Summoner->FindComponentByClass<UCataclysmWeaponSlotsComponent>() : nullptr;
+	const ECataclysmAbilitySlot Slot = SkillTrapSlot;
+	const FCataclysmWeaponSkill* Held = Slots && Slot != ECataclysmAbilitySlot::None
+		? Slots->GetAvailableSkills().FindByPredicate(
+			  [Slot](const FCataclysmWeaponSkill& Skill) { return Skill.Slot == Slot; })
+		: nullptr;
+	if (!Held)
+	{
+		return false;
+	}
+	Out = *Held;
+	return true;
+}
+
+bool ACataclysmMinion::StepSkillTrap()
+{
+	if (!IsSkillTrap() || IsActorBeingDestroyed() || UCataclysmSkillEffects::IsDead(this))
+	{
+		return false;
+	}
+
+	// ARMED ONCE ITS AGE REACHES THE MARK (T1, M3), with the skill gadget's thousandth of a second for a world time
+	// added up in floating point. The tint follows.
+	if (!bSkillTrapArmed)
+	{
+		if (GetGameTimeSinceCreation() < SkillTrapArmsAtAgeSeconds - SkillGadgetClockAllowanceSeconds)
+		{
+			return false;
+		}
+		bSkillTrapArmed = true;
+		ShowSkillTrapTint();
+	}
+
+	// A TRAP THAT CANNOT ACT, OF A PLAYER GONE OR DEAD, OR WHOSE SLOT IS NO LONGER CONVERTED, WAITS ARMED, as a skill
+	// gadget casts nothing then (S11 and the gadget's judgement on a row taken off).
+	AActor* const Player = Summoner.Get();
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+	if (UCataclysmSkillEffects::CannotAct(this) || !IsValid(Player) || UCataclysmSkillEffects::IsDead(Player)
+		|| !Theirs || !Theirs->SlotIsASkillTrap(SkillTrapSlot))
+	{
+		return false;
+	}
+
+	// THE FIRST ENEMY WITHIN ITS RADIUS, NEAREST FIRST (T2, M4), by the brain's measure along the floor.
+	const TArray<AActor*> Near = HostilesWithin(SkillTrapTriggerRadiusCmFor(Player, TypeTags));
+	return !Near.IsEmpty() && TriggerSkillTrap(Near[0]);
+}
+
+bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy, bool bEvenForADeadPlayer)
+{
+	AActor* const Player = Summoner.Get();
+	UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+	if (!IsSkillTrap() || IsActorBeingDestroyed() || UCataclysmSkillEffects::IsDead(this) || !Theirs
+		|| (!bEvenForADeadPlayer && UCataclysmSkillEffects::IsDead(Player)))
+	{
+		return false;
+	}
+
+	// A SKILL THAT CANNOT BE CAST NEVER TRIGGERS (T8, the gadget's S10): the trap stays as it is and is not used up.
+	FCataclysmWeaponSkill Skill;
+	if (!SkillTrapsSkill(Skill) || !SkillGadgetMayCast(Skill))
+	{
+		return false;
+	}
+
+	// "WHEN A TRAP TRIGGERS, ALL ENEMIES WITHIN 4-6 METERS ARE PULLED TOWARD THE BLAST CENTER" (traps layer 6, J7, J8):
+	// BEFORE THE CAST, so the pulled are in the blast, and before the place and the aim below are read, so a cast centred
+	// on the triggering enemy is centred where the pull has left it. Nothing without the row; a forced trap pulls too.
+	PullEnemiesToThisSkillTrap(Player);
+
+	// THE PLAYER'S OWN ROW, WITH `Type.Trap` ADDED AND NOT `Type.Deployable` (M5), so the trap rows reach it and the
+	// gadget rows do not (a trap is not a gadget, 2026-10-07). AT THE ENEMY FROM HERE, OR FROM THE ENEMY'S PLACE; with
+	// no enemy, at this trap's own place (T11).
+	FCataclysmWeaponSkill AsTheTraps = Skill;
+	AsTheTraps.Tags.AddTag(TagOfATrap());
+	AActor* const Enemy = IsValid(TriggeringEnemy) ? TriggeringEnemy : nullptr;
+	const FVector Place = Enemy ? Enemy->GetActorLocation() : GetActorLocation();
+	// BY THE SENTENCE OF THE SLOT THE SKILL WAS MADE FOR, NOT THE KEY THE TRAP WAS PLACED FROM: ruled 2026-10-25 (Q-L3b,
+	// under O1), so an Ultimate on the Heavy key casts as the Ultimate's sentence says. Issue #837 layer 3.
+	const ECataclysmAbilitySlot SentenceSlot = UCataclysmWeaponSkills::DesignedSlotOf(Skill);
+	const bool bFromThePlace = !Enemy || SkillTrapCastsAroundItsEnemy(SentenceSlot);
+	// THE BASIC ATTACK AND THE HEAVY "FIRE ... AT THE NEAREST ENEMY" (ruled 2026-10-21): at the nearest living enemy now,
+	// which the triggering enemy usually is; the slots cast around it keep the triggering enemy.
+	AActor* const AimedAtEnemy = SkillTrapFiresAtTheNearestEnemy(SentenceSlot) ? SkillTrapNearestEnemyTo(Enemy) : Enemy;
+	// THE ENEMY THAT SET IT OFF, AND NOTHING TAKEN FROM IT YET: `ApplyHit` keeps what the cast's blows take from it, for
+	// the slow's rule of a tenth (the owner, 2026-10-21).
+	SkillTrapTriggeringEnemy = Enemy;
+	SkillTrapTookFromItsEnemy = 0.0f;
+	// AND THIS TRIGGER'S SHARE OF THAT ENEMY'S MAXIMUM HEALTH NOT YET ADDED: once per trigger (traps layer 4, F6).
+	bSkillTrapGaveItsEnemysHealthShare = false;
+	// NO REACH IS ASKED: a target or a place is always given, so the search by reach is never made.
+	if (!StartPlayersSkillFromHere(Player, AsTheTraps, /*SkillReachCm=*/0.0f, AimedAtEnemy,
+								   bFromThePlace ? &Place : nullptr))
+	{
+		return false;
+	}
+	++SkillTrapTriggersMade;
+
+	// TOLD BEFORE IT IS USED UP (M5), with the trap's tags and the enemy that set it off (T13), so a row can find it, AND
+	// WHAT THE CAST HAS TAKEN FROM THAT ENEMY SO FAR as the amount, which the slow's rule of a tenth reads.
+	const FGameplayTagContainer TrapTags = TypeTags;
+	// AND WHICH TRAP IT IS, while the event is raised, so a slow no blow has yet earned can wait for a later blow of this
+	// cast (ruled 2026-10-21, brief 60c).
+	Theirs->SkillTrapRaisingItsTrigger = this;
+	Theirs->ActOnEvent(FName(TEXT("trap_triggered")), &TrapTags, /*EventAmount=*/SkillTrapTookFromItsEnemy,
+					   /*bLanded=*/true, Enemy);
+	Theirs->SkillTrapRaisingItsTrigger.Reset();
+
+	// OR IT REARMS, "Triggered traps have a 25%-50% chance to reset and rearm instead of being consumed" (traps layer 4,
+	// F1 to F3): ROLLED AT EVERY TRIGGER, after the event above, which is raised at every trigger. A trap that passes
+	// STAYS where it is and is ARMED AGAIN after the ordinary arming time, so it cannot trigger twice on one step; it
+	// keeps the life span it was placed with and still counts against the cap; and, not used up, it is not kept among the
+	// used-up traps, so a later blow of its cast finds it standing.
+	if (!IsActorBeingDestroyed() && SkillTrapRollsToRearm(Player))
+	{
+		bSkillTrapArmed = false;
+		SkillTrapArmsAtAgeSeconds = GetGameTimeSinceCreation() + SkillTrapArmingSecondsFor(Player, TypeTags);
+		ShowSkillTrapTint();
+		return true;
+	}
+
+	// AND KEPT ON THE PLAYER AS USED UP, with its type tags, so a blow of its cast landing after it is gone (a shot, a
+	// rack's throw, a buried weapon's leap, a zone laid where a shot ends) is still priced and announced as the trap's
+	// (ruled 2026-10-21, #2462).
+	Theirs->NoteSkillTrapSpent(this, TypeTags);
+
+	// USED UP: destroyed, with no explosion and no `gadget_destroyed`, because `HandleDeath` is not run.
+	Destroy();
+	return true;
+}
+
+const ACataclysmMinion* ACataclysmMinion::SkillTrapCasting(const UGameplayAbility* Skill)
+{
+	const UCataclysmSkillTemplate* Template = Cast<const UCataclysmSkillTemplate>(Skill);
+	const ACataclysmMinion* Trap = Template ? Cast<const ACataclysmMinion>(Template->FreeRepeatCastBy.Get()) : nullptr;
+	return Trap && Trap->IsSkillTrap() ? Trap : nullptr;
+}
+
+const ACataclysmMinion* ACataclysmMinion::SkillTrapCasting(const FCataclysmHitDelivery& Delivery)
+{
+	const ACataclysmMinion* Carried = Cast<const ACataclysmMinion>(Delivery.CastBy.Get());
+	return Carried && Carried->IsSkillTrap() ? Carried : SkillTrapCasting(Delivery.Skill.Get());
+}
+
+FLinearColor ACataclysmMinion::SkillTrapTintFor(bool bArmed)
+{
+	// A JUDGEMENT OF THE WRITING SESSION: a dark grey that reads as "not yet" and an ember orange that reads as live.
+	return bArmed ? FLinearColor(1.0f, 0.35f, 0.05f) : FLinearColor(0.12f, 0.12f, 0.12f);
+}
+
+void ACataclysmMinion::ShowSkillTrapTint()
+{
+	SkillTrapTintShown = SkillTrapTintFor(bSkillTrapArmed);
+	if (PlaceholderBody)
+	{
+		if (UMaterialInstanceDynamic* Paint = PlaceholderBody->CreateDynamicMaterialInstance(0))
+		{
+			Paint->SetVectorParameterValue(TEXT("Color"), SkillTrapTintShown);
+		}
+	}
+}
+
+// ==========================================================================
+// Traps, layer 2: the basic attack's and the Heavy's aim. Ruled 2026-10-21 (L3, and the heavy trap's aim).
+// ==========================================================================
+
+bool ACataclysmMinion::SkillTrapFiresAtTheNearestEnemy(ECataclysmAbilitySlot Slot)
+{
+	// "FIRES YOUR BASIC ATTACK AT THE NEAREST ENEMY" AND "FIRES YOUR HEAVY ATTACK AT THE NEAREST ENEMY": the same words
+	// get the same reading (ruled 2026-10-21).
+	return Slot == ECataclysmAbilitySlot::BasicAttack || Slot == ECataclysmAbilitySlot::Heavy;
+}
+
+AActor* ACataclysmMinion::SkillTrapNearestEnemyTo(AActor* TriggeringEnemy) const
+{
+	if (!IsValid(TriggeringEnemy))
+	{
+		return nullptr;
+	}
+
+	// NO FARTHER THAN THE ENEMY THAT SET IT OFF STANDS, so anything nearer is inside the search; the sphere finds that
+	// enemy itself, and the brain's measure along the floor keeps it, since a distance along the floor is never longer.
+	// The search leaves the dead out, so a triggering enemy already dead gives way to the nearest living one, and with
+	// none living the cast goes at the triggering enemy as layer 1's did.
+	const float NoFartherCm = FVector::Dist(GetActorLocation(), TriggeringEnemy->GetActorLocation());
+	const TArray<AActor*> Living = HostilesWithin(NoFartherCm);
+	return Living.IsEmpty() ? TriggeringEnemy : Living[0];
+}
+
+// ==========================================================================
+// Traps, layer 3: the cap bonus and the no-expire flag. Ruled 2026-10-21 (M1, M2).
+// ==========================================================================
+
+const TCHAR* ACataclysmMinion::TrapCapBonusStat = TEXT("trap_cap_bonus");
+const TCHAR* ACataclysmMinion::TrapsDoNotExpireStat = TEXT("traps_do_not_expire");
+
+namespace
+{
+	/** The player's own figure of `Stat` for its traps, asked with `Type.Trap` alone, or nought with no stat line. */
+	float SkillTrapFigureOf(const AActor* Player, const TCHAR* Stat)
+	{
+		const UCataclysmAbilitySystemComponent* Theirs =
+			Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+		return Theirs ? Theirs->StatForSkill(FName(Stat), FGameplayTagContainer(TagOfATrap()), /*Fallback=*/0.0f) : 0.0f;
+	}
+}
+
+int32 ACataclysmMinion::SkillTrapsMostFor(const AActor* Player)
+{
+	// "+1-6 TO MAX TRAP COUNT" IS A WHOLE NUMBER OF TRAPS, so the rolled figure is rounded, as a minion cap's bonus is
+	// (`MinionCapFor`), and the cap is at least one, as that one is.
+	return FMath::Max(1, SkillTrapsMostPerPlayer + FMath::RoundToInt(SkillTrapFigureOf(Player, TrapCapBonusStat)));
+}
+
+bool ACataclysmMinion::SkillTrapsDoNotExpireFor(const AActor* Player)
+{
+	return SkillTrapFigureOf(Player, TrapsDoNotExpireStat) > 0.0f;
+}
+
+void ACataclysmMinion::NoteSkillTrapBlowOn(const AActor* Struck, float DealtToHealth) const
+{
+	// THE LARGEST SINGLE BLOW, since the rule of a tenth is asked of one blow and not of a sum.
+	if (Struck && Struck == SkillTrapTriggeringEnemy.Get())
+	{
+		SkillTrapTookFromItsEnemy = FMath::Max(SkillTrapTookFromItsEnemy, DealtToHealth);
+	}
+}
+
+// ==========================================================================
+// Traps, layer 4: the rearm chance, and the three hooks on a trap's blow on its triggering enemy. Ruled 2026-10-21
+// (F1 to F9); the header carries the rulings.
+// ==========================================================================
+
+const TCHAR* ACataclysmMinion::TrapRearmChanceStat = TEXT("trap_rearm_chance");
+const TCHAR* ACataclysmMinion::TrapDamageToTriggeringEnemyStat = TEXT("trap_damage_to_triggering_enemy");
+const TCHAR* ACataclysmMinion::TrapTriggeringEnemyMaxHealthDamageStat = TEXT("trap_triggering_enemy_max_health_damage");
+const TCHAR* ACataclysmMinion::TrapDamageOverTimeShareStat = TEXT("trap_damage_over_time_share");
+
+float ACataclysmMinion::SkillTrapRearmChanceFor(const AActor* Player)
+{
+	return FMath::Max(0.0f, SkillTrapFigureOf(Player, TrapRearmChanceStat));
+}
+
+bool ACataclysmMinion::SkillTrapRollsToRearm(const AActor* Player)
+{
+	// A CHANCE OF 100 IS ALWAYS AND ONE OF NOUGHT NEVER, compared rather than rolled, as a held skill's trigger compares
+	// its chance; between them a roll below the chance passes.
+	const float Chance = SkillTrapRearmChanceFor(Player);
+	return Chance >= 100.0f || (Chance > 0.0f && FMath::FRandRange(0.0f, 100.0f) < Chance);
+}
+
+float ACataclysmMinion::SkillTrapIncreaseOnItsEnemyFor(const AActor* Player)
+{
+	return SkillTrapIncreasesOf(Player, TrapDamageToTriggeringEnemyStat, FGameplayTagContainer(TagOfATrap()));
+}
+
+float ACataclysmMinion::SkillTrapShareOfItsEnemysHealthFor(const AActor* Player)
+{
+	return FMath::Max(0.0f, SkillTrapFigureOf(Player, TrapTriggeringEnemyMaxHealthDamageStat));
+}
+
+float ACataclysmMinion::SkillTrapShareAsDamageOverTimeFor(const AActor* Player)
+{
+	return FMath::Max(0.0f, SkillTrapFigureOf(Player, TrapDamageOverTimeShareStat));
+}
+
+bool ACataclysmMinion::LaySkillTrapsDamageOverTime(AActor* Player, AActor* Struck, float DealtToHealth)
+{
+	// A GENERIC DAMAGE OVER TIME AND NOT AN AILMENT (F9): its own tag, so a second blow lays over it as every damage over
+	// time does, the stronger a second replacing it and a weaker refreshing its time, and it never stacks.
+	const FGameplayTag Generic =
+		FGameplayTag::RequestGameplayTag(FName(TEXT("Keyword.DoT.Generic")), /*ErrorIfNotFound=*/false);
+	const float SharePercent = SkillTrapShareAsDamageOverTimeFor(Player);
+	if (SharePercent <= 0.0f || !Generic.IsValid() || !IsValid(Struck) || UCataclysmSkillEffects::IsDead(Struck))
+	{
+		return false;
+	}
+
+	// THE OWNER'S RULE OF A TENTH (#917), against what this blow took from that enemy's health: "Follow the tenth rule",
+	// which the owner holds for every lasting effect a trap lays on an enemy (F9).
+	if (!UCataclysmAilments::BlowCanCarryAnAilment(Struck, DealtToHealth))
+	{
+		return false;
+	}
+
+	// THE SHARE OF WHAT THE BLOW TOOK, OVER THE SENTENCE'S 3 SECONDS AT ONE TICK A SECOND, and NOT RAISED BY THE PLAYER'S
+	// OWN DAMAGE OVER TIME STATS: the blow it is a share of was priced with the player's numbers already, and the
+	// sentence states its time. The target's own resistances and duration rows still meet it, as every tick.
+	const float Whole = DealtToHealth * SharePercent / 100.0f;
+	const float Ticks = SkillTrapDamageOverTimeSeconds / UCataclysmSkillEffects::BaseSecondsPerTick;
+	return UCataclysmSkillEffects::ApplyDamageOverTime(Player, Struck, Whole / Ticks, SkillTrapDamageOverTimeSeconds,
+													   Generic, /*bScalesWithInstigator=*/false);
+}
+
+// ==========================================================================
+// Traps, layer 5: arming and setting off the player's other traps. Ruled 2026-10-22 (H1 to H11; H5 (b) by the owner);
+// the header carries the rulings.
+// ==========================================================================
+
+namespace
+{
+	/**
+	 * `Player`'s standing skill traps other than `Except`, within `RadiusCm` of `Place` along the floor, or every one for
+	 * a null `Place`, the oldest first. A dead trap is not standing.
+	 */
+	TArray<ACataclysmMinion*> SkillTrapsStandingNear(const AActor* Player, const FVector* Place, float RadiusCm,
+													 const AActor* Except)
+	{
+		TArray<ACataclysmMinion*> Near = ACataclysmMinion::SkillTrapsOf(Player);
+		Near.RemoveAll([Place, RadiusCm, Except](const ACataclysmMinion* Each)
+		{
+			return Each == Except || UCataclysmSkillEffects::IsDead(Each)
+				|| (Place && FVector::Dist2D(*Place, Each->GetActorLocation()) > RadiusCm);
+		});
+		return Near;
+	}
+
+	/** Of `Traps`, only the one nearest `Place` along the floor, the older of two at one distance; none stays none. */
+	void KeepTheSkillTrapNearest(TArray<ACataclysmMinion*>& Traps, const FVector& Place)
+	{
+		ACataclysmMinion* Nearest = nullptr;
+		double NearestSquared = 0.0;
+		// OLDEST FIRST, so a later trap at the same distance does not displace an earlier one.
+		for (ACataclysmMinion* Each : Traps)
+		{
+			const double Squared = FVector::DistSquared2D(Place, Each->GetActorLocation());
+			if (!Nearest || Squared < NearestSquared)
+			{
+				Nearest = Each;
+				NearestSquared = Squared;
+			}
+		}
+		Traps.Reset();
+		if (Nearest)
+		{
+			Traps.Add(Nearest);
+		}
+	}
+}
+
+int32 ACataclysmMinion::ArmSkillTrapsNear(const AActor* Player, const FVector& Place, float RadiusCm, bool bNearestOnly,
+										  const AActor* Except)
+{
+	// ONLY THE UNARMED ARE COUNTED, so "the nearest unarmed trap" passes over an armed one nearer (H2).
+	TArray<ACataclysmMinion*> Unarmed = SkillTrapsStandingNear(Player, &Place, RadiusCm, Except);
+	Unarmed.RemoveAll([](const ACataclysmMinion* Each) { return Each->bSkillTrapArmed; });
+	if (bNearestOnly)
+	{
+		KeepTheSkillTrapNearest(Unarmed, Place);
+	}
+	for (ACataclysmMinion* Each : Unarmed)
+	{
+		// AS IF ITS ARMING TIME HAD PASSED, AND DRAWN ARMED (H2). Nothing else of it is touched: no event, its life span and
+		// the cap as they were.
+		Each->bSkillTrapArmed = true;
+		Each->SkillTrapArmsAtAgeSeconds = FMath::Min(Each->SkillTrapArmsAtAgeSeconds, Each->GetGameTimeSinceCreation());
+		Each->ShowSkillTrapTint();
+	}
+	return Unarmed.Num();
+}
+
+int32 ACataclysmMinion::SetOffSkillTrapsNear(AActor* Player, const FVector* Place, float RadiusCm, bool bNearestOnly,
+											 const AActor* Except, bool bEvenForADeadPlayer)
+{
+	UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+	if (!Theirs)
+	{
+		return 0;
+	}
+
+	// THE LIST TAKEN ONCE, BEFORE THE FIRST IS SET OFF, as `FireEveryGadgetAtTheDeathOf` takes its own: armed and unarmed
+	// alike (H4), none already set off in this chain (H5 (b)), none that cannot act or whose slot is no longer converted,
+	// as its own step casts nothing then.
+	TArray<ACataclysmMinion*> Standing = SkillTrapsStandingNear(Player, Place, RadiusCm, Except);
+	const TArray<TWeakObjectPtr<AActor>>& SetOffThisChain = Theirs->SkillTrapsSetOffThisChain;
+	Standing.RemoveAll([&SetOffThisChain, Theirs](const ACataclysmMinion* Each)
+	{
+		// A STANDING TRAP IS ITSELF IN THE LIST WHILE IT STANDS, so comparing what the list names now is enough here.
+		const bool bSetOffAlready = SetOffThisChain.ContainsByPredicate([Each](const TWeakObjectPtr<AActor>& Fired)
+		{
+			return Fired.Get() == Each;
+		});
+		return bSetOffAlready || UCataclysmSkillEffects::CannotAct(Each) || !Theirs->SlotIsASkillTrap(Each->SkillTrapSlot);
+	});
+	if (bNearestOnly && Place)
+	{
+		KeepTheSkillTrapNearest(Standing, *Place);
+	}
+
+	// RECORDED, NOT SET OFF HERE (G-1 (a)): the outermost drain sets each off at depth nought, as a whole trigger. INTO THE
+	// CHAIN WHEN RECORDED, before it goes off, so it is never recorded twice and nothing its own `trap_triggered` sets in
+	// motion can choose it again.
+	for (ACataclysmMinion* Each : Standing)
+	{
+		Theirs->SkillTrapsSetOffThisChain.Add(TWeakObjectPtr<AActor>(Each));
+		Theirs->QueueSkillTrapSetOff(Each, bEvenForADeadPlayer);
+	}
+	return Standing.Num();
+}
+
+AActor* ACataclysmMinion::SkillTrapEnemyForAForcedTrigger() const
+{
+	// ITS OWN TRIGGER RADIUS, as its step measures it, nearest first and leaving out the dead.
+	const TArray<AActor*> Near = HostilesWithin(SkillTrapTriggerRadiusCmFor(Summoner.Get(), TypeTags));
+	return Near.IsEmpty() ? nullptr : Near[0];
+}
+
+// ==========================================================================
+// Traps, layer 6: a nearby skill gadget fires at a trap's enemy, and a trap pulls enemies into its blast. Ruled
+// 2026-10-22 (J1 to J10, J2 changed: skill gadgets only); the header carries the rulings.
+// ==========================================================================
+
+const TCHAR* ACataclysmMinion::TrapPullRadiusStat = TEXT("trap_pull_radius");
+
+ACataclysmMinion* ACataclysmMinion::SkillGadgetNearestTo(const AActor* Player, const FVector& Place, float RadiusCm)
+{
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+	if (!Theirs)
+	{
+		return nullptr;
+	}
+
+	// SKILL GADGETS ONLY (J2): a War gadget, a trap, an imp and a mote are passed over. STANDING, ABLE TO ACT AND OF A SLOT
+	// STILL CONVERTED, as a gadget that could cast nothing is no active gadget. ALONG THE FLOOR, the oldest first, so a
+	// later gadget at the same distance does not displace an earlier one.
+	ACataclysmMinion* Nearest = nullptr;
+	double NearestSquared = 0.0;
+	TArray<ACataclysmMinion*> Standing;
+	for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Player))
+	{
+		ACataclysmMinion* AsGadget = Cast<ACataclysmMinion>(Follower);
+		if (IsValid(AsGadget) && !AsGadget->IsActorBeingDestroyed() && AsGadget->IsSkillGadget()
+			&& !UCataclysmSkillEffects::IsDead(AsGadget) && !UCataclysmSkillEffects::CannotAct(AsGadget)
+			&& Theirs->SlotIsASkillGadget(AsGadget->SkillGadgetSlot))
+		{
+			Standing.Add(AsGadget);
+		}
+	}
+	Standing.Sort([](const ACataclysmMinion& Left, const ACataclysmMinion& Right)
+	{
+		return Left.SpawnOrder < Right.SpawnOrder;
+	});
+	for (ACataclysmMinion* Each : Standing)
+	{
+		const double Squared = FVector::DistSquared2D(Place, Each->GetActorLocation());
+		// A RADIUS OF NOUGHT IS ANY DISTANCE (J5).
+		if (RadiusCm > 0.0f && Squared > FMath::Square(static_cast<double>(RadiusCm + ReachAllowanceCm)))
+		{
+			continue;
+		}
+		if (!Nearest || Squared < NearestSquared)
+		{
+			Nearest = Each;
+			NearestSquared = Squared;
+		}
+	}
+	return Nearest;
+}
+
+bool ACataclysmMinion::FireSkillGadgetAtTrapEnemy(AActor* Enemy, float ShotDamageMultiplier)
+{
+	// AT THAT ENEMY OR NOT AT ALL (J3): none, dead or gone, no shot. A SKILL GADGET ONLY (J2).
+	if (!IsValid(Enemy) || UCataclysmSkillEffects::IsDead(Enemy) || !IsSkillGadget() || UCataclysmSkillEffects::IsDead(this)
+		|| UCataclysmSkillEffects::CannotAct(this))
+	{
+		return false;
+	}
+
+	// ITS SKILL ONCE BY ITS CLOCK'S OWN PATH, AIMED AT THE ENEMY, AT THE ROW'S "MORE" (J2, J6), THE CLOCK LEFT AS IT WAS.
+	if (!CastPlayersSkillFromHere(/*bEvenForADeadPlayer=*/false, Enemy, ShotDamageMultiplier))
+	{
+		return false;
+	}
+	++SkillGadgetTrapShotsMade;
+	return true;
+}
+
+float ACataclysmMinion::SkillTrapPullRadiusCmFor(const AActor* Player)
+{
+	// THE ROW'S METRES, IN CENTIMETRES.
+	return FMath::Max(0.0f, SkillTrapFigureOf(Player, TrapPullRadiusStat)) * 100.0f;
+}
+
+int32 ACataclysmMinion::PullEnemiesToThisSkillTrap(AActor* Player)
+{
+	const float PullRadiusCm = SkillTrapPullRadiusCmFor(Player);
+	if (PullRadiusCm <= 0.0f || !IsValid(Player))
+	{
+		return 0;
+	}
+
+	// THE LIST TAKEN ONCE, BEFORE THE FIRST IS MOVED: every living enemy within the rolled metres, by the step's measure
+	// along the floor, the enemy that set the trap off among them (J8).
+	const FVector TrapPlace = GetActorLocation();
+	int32 Pulled = 0;
+	for (AActor* Each : HostilesWithin(PullRadiusCm))
+	{
+		if (!IsValid(Each) || UCataclysmSkillEffects::IsDead(Each))
+		{
+			continue;
+		}
+		// TO 1 M FROM THE TRAP, so bodies do not overlap; ONE ALREADY THAT NEAR STAYS, since a pull of nought would be
+		// a pull of the whole way.
+		const float Gap = static_cast<float>(FVector::Dist2D(TrapPlace, Each->GetActorLocation()));
+		if (Gap <= SkillTrapPullsToCm + ReachAllowanceCm)
+		{
+			continue;
+		}
+		if (UCataclysmSkillEffects::ApplyPullFrom(Player, Each, TrapPlace, Gap - SkillTrapPullsToCm))
+		{
+			++Pulled;
+		}
+	}
+	return Pulled;
+}

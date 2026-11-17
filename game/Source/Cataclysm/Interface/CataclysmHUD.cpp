@@ -1,0 +1,1660 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "Interface/CataclysmHUD.h"
+#include "Dungeon/CataclysmFloorObject.h"
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmPotions.h"
+#include "AbilitySystem/CataclysmReaperSoul.h"
+#include "AbilitySystem/CataclysmTargeting.h"
+#include "Character/CataclysmCharacterBase.h"
+#include "Character/CataclysmPlayerCharacter.h"
+#include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmEnemyRarity.h"
+#include "Dungeon/CataclysmDungeonGameMode.h"
+#include "Dungeon/CataclysmHarvestedSoul.h"
+#include "Engine/Canvas.h"
+#include "Engine/Engine.h"
+#include "Engine/EngineTypes.h"
+#include "Engine/Font.h"
+#include "Engine/World.h"
+#include "EngineUtils.h"
+#include "Interface/CataclysmCreaturePanel.h"
+#include "Interface/CataclysmEmpireStatusBar.h"
+#include "Interface/CataclysmPlayerEffects.h"
+#include "Interface/CataclysmSkillBar.h"
+#include "Items/CataclysmDroppedItem.h"
+#include "Player/CataclysmPlayerController.h"
+
+ACataclysmHUD::ACataclysmHUD()
+{
+	// NOTHING HERE TICKS. AHUD is driven by PostRender, which the player
+	// controller calls once a frame after the scene is drawn, so a tick would
+	// only be a second clock saying the same thing.
+	PrimaryActorTick.bCanEverTick = false;
+}
+
+void ACataclysmHUD::DrawHUD()
+{
+	Super::DrawHUD();
+
+	// A HEADS-UP DISPLAY WITH NO CANVAS IS NOT AN ERROR. PostRender only
+	// supplies one when there is something to draw on, and the checks the
+	// engine makes before then -- FApp::CanEverRender() among them -- mean this
+	// method does not run at all under -nullrhi.
+	if (!Canvas)
+	{
+		return;
+	}
+
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	DropExpired(World->GetTimeSeconds());
+
+	if (UCataclysmCombatOverlay::PlayerVitalsEnabled())
+	{
+		DrawPlayerVitals();
+	}
+
+	// THE BOTTOM MIDDLE, WHICH THE VITALS DO NOT USE. They stack upward from the
+	// bottom LEFT, so the two do not collide -- and
+	// `Cataclysm.SkillBar.TheBarDoesNotRunIntoTheHealthAndManaBars` holds that.
+	if (UCataclysmSkillBar::Enabled())
+	{
+		DrawSkillBar();
+	}
+
+	// THE BOTTOM RIGHT, WHICH NEITHER THE VITALS NOR THE SKILL BAR USE.
+	// `Cataclysm.Potions.TheBoxesDoNotRunIntoTheSkillBarOrTheVitals` holds that.
+	if (UCataclysmPotions::Enabled())
+	{
+		DrawPotions();
+	}
+
+	// THE TOP LEFT, WHICH NOTHING ELSE ON THE DUNGEON SCREEN USES. Issue #49. It
+	// shrinks to stay clear of the creature panel at its narrowest; see
+	// `UCataclysmEmpireStatusBar::ScaleToFit`.
+	if (UCataclysmEmpireStatusBar::Enabled())
+	{
+		DrawEmpireStatusBar();
+	}
+
+	if (UCataclysmCombatOverlay::OverheadBarsEnabled())
+	{
+		DrawOverheadBars();
+	}
+
+	if (UCataclysmCombatOverlay::RarityNamesEnabled())
+	{
+		DrawRarityNames();
+	}
+
+	// UNDER THE BAR, WHICH THE RARITY NAME DOES NOT USE. Issue #1515.
+	if (UCataclysmCombatOverlay::OverheadBarsEnabled())
+	{
+		DrawStatusLines();
+	}
+
+	DrawDamageNumbers();
+	DrawDropNames();
+	DrawFloorObjectNames();
+	DrawReaperSoulNames();
+	DrawHarvestedSoulNames();
+
+	// WHAT THE LAST DEATH COST, for a few seconds after standing back up. Issue #41, 2026-11-02.
+	DrawDeathCostNotice();
+
+	// LAST, SO IT SITS ON TOP OF EVERYTHING. The panel hides most of what is
+	// behind it and covers a strip of the screen; a damage number or a drop
+	// name drawn after it would print over the text describing the creature.
+	if (UCataclysmCreaturePanel::CreaturePanelEnabled())
+	{
+		DrawCreaturePanel();
+	}
+}
+
+void ACataclysmHUD::AddDamageNumber(const FCataclysmDamageNumber& Number)
+{
+	Numbers.Add(Number);
+
+	// THE OLDEST GO FIRST. They are the ones already fading, so the ceiling
+	// costs the numbers a player has largely finished reading rather than the
+	// one describing the blow that just landed.
+	const int32 Excess =
+		Numbers.Num() - UCataclysmCombatOverlay::MaxNumbersWaiting;
+	if (Excess > 0)
+	{
+		Numbers.RemoveAt(0, Excess, EAllowShrinking::No);
+	}
+}
+
+void ACataclysmHUD::DropExpired(float WorldSeconds)
+{
+	Numbers.RemoveAll([WorldSeconds](const FCataclysmDamageNumber& Number)
+	{
+		return WorldSeconds - Number.StartedAt
+			>= UCataclysmCombatOverlay::NumberLifetimeSeconds;
+	});
+}
+
+UFont* ACataclysmHUD::OverlayFont() const
+{
+	// THE ENGINE'S OWN FONT, WHICH IS WHY THIS FEATURE SHIPS NO ASSET. There is
+	// no font anywhere under game/Content and none is needed: AHUD::DrawText
+	// falls back to the engine's font when handed null, and one is asked for
+	// explicitly only so GetTextSize measures the same font that DrawText will
+	// draw with. A mismatch there would centre text against the wrong width.
+	//
+	// THE LARGE ONE RATHER THAN THE MEDIUM ONE, SINCE ISSUE #671. The project
+	// owner played a build where every number was drawn at 1.6 times the medium
+	// font and reported it as "pretty small". Scaling a fixed-size font further
+	// eventually blurs it rather than enlarging it, so the larger face carries
+	// part of the increase and the scale carries the rest.
+	return GEngine ? GEngine->GetLargeFont() : nullptr;
+}
+
+void ACataclysmHUD::DrawBar(float ScreenX, float ScreenY, float Width,
+							float Height, float Fraction,
+							const FLinearColor& Fill, float Opacity)
+{
+	FLinearColor Backing =
+		UCataclysmCombatOverlay::ColourFromHex(
+			UCataclysmCombatOverlay::BarBackingHex);
+	Backing.A = Opacity;
+
+	// THE DARK BACKING IS DRAWN WIDER THAN THE FILL ON EVERY SIDE, so it reads
+	// as an outline. It is the same trick the attack telegraph uses with its
+	// outermost near-black ring, and for the same reason: the design guarantees
+	// a world surface stays under 30% brightness, which holds a large fill
+	// against a floor but says nothing about a seven pixel bar seen against
+	// Demonic lava or a Celestial wall. With the backing, the contrast is a
+	// property of the bar rather than of wherever it is standing.
+	DrawRect(Backing, ScreenX - BarBackingInsetPx, ScreenY - BarBackingInsetPx,
+			 Width + BarBackingInsetPx * 2.0f,
+			 Height + BarBackingInsetPx * 2.0f);
+
+	const float Filled = Width * FMath::Clamp(Fraction, 0.0f, 1.0f);
+	if (Filled <= 0.0f)
+	{
+		return;
+	}
+
+	FLinearColor Drawn = Fill;
+	Drawn.A = Opacity;
+	DrawRect(Drawn, ScreenX, ScreenY, Filled, Height);
+}
+
+FBox2D ACataclysmHUD::MeasureTextCentred(const FString& Text, float CentreX,
+										float TopY, float Scale)
+{
+	UFont* Font = OverlayFont();
+
+	// THE BASE SIZE IS APPLIED AT THIS ONE POINT rather than at each caller. It
+	// covers the floating damage numbers and the player's own health and mana
+	// figures together, and the project owner's complaint after playing was that
+	// the font is "too small in general" rather than about either one. Issue
+	// #668.
+	//
+	// THE CALLER'S Scale STAYS RELATIVE. UCataclysmCombatOverlay::ScaleFor
+	// answers 1.0 for an ordinary blow, 0.7 for a damage over time tick and 1.35
+	// for a critical strike, and those are ratios between numbers rather than
+	// absolute sizes. Multiplying here keeps that separation: the overlay decides
+	// what is bigger than what, and the heads-up display decides how big.
+	//
+	// MEASURING AND DRAWING BOTH DO THIS MULTIPLICATION, and they have to agree,
+	// which is why DrawOutlinedText takes the same Scale rather than a size in
+	// pixels.
+	const float Sized = Scale * TextScale;
+
+	float Width = 0.0f;
+	float Height = 0.0f;
+	GetTextSize(Text, Width, Height, Font, Sized);
+
+	const float Left = CentreX - Width * 0.5f;
+
+	// THE RECTANGLE THE TEXT ITSELF FILLS, not the outline around it. The
+	// outline is one pixel of spread and including it would make two names
+	// drawn close together overlap slightly more than they look like they do.
+	return FBox2D(FVector2D(Left, TopY), FVector2D(Left + Width, TopY + Height));
+}
+
+FBox2D ACataclysmHUD::DrawTextCentred(const FString& Text,
+									  const FLinearColor& Colour, float CentreX,
+									  float TopY, float Scale)
+{
+	const FBox2D Where = MeasureTextCentred(Text, CentreX, TopY, Scale);
+	DrawOutlinedText(Text, Colour, Where.Min.X, Where.Min.Y, Scale);
+	return Where;
+}
+
+void ACataclysmHUD::DrawOutlinedText(const FString& Text,
+									 const FLinearColor& Colour, float Left,
+									 float Top, float Scale)
+{
+	UFont* Font = OverlayFont();
+	const float Sized = Scale * TextScale;
+
+	// A BLACK OUTLINE, BECAUSE A COLOUR ALONE DOES NOT SURVIVE THE FLOOR IT IS
+	// STANDING ON. The project owner played a build without one and reported the
+	// numbers washing out against pale stone; the critical strike colour is amber
+	// orange and the ordinary one a warm near-white, and both are light. Issue
+	// #671.
+	//
+	// THE SAME ANSWER THE BARS ALREADY USE, and for the reason DrawBar states:
+	// the design guarantees a world surface stays under 30% brightness, which is
+	// enough for a large fill and says nothing about a few pixels of text seen
+	// against Demonic lava or a Celestial wall. With an outline, the contrast is
+	// a property of the text rather than of wherever it is drawn.
+	//
+	// EIGHT OFFSETS RATHER THAN FOUR. Four leaves the diagonals thin, and it
+	// shows at this size. The cost is eight extra text draws per number, bounded
+	// by UCataclysmCombatOverlay::MaxNumbersWaiting at 96 numbers, so the worst
+	// frame draws 864 of them. That is a real number and it is why the ceiling
+	// on waiting numbers exists.
+	const float Spread = FMath::Max(1.0f, FMath::RoundToFloat(Sized));
+	const FVector2D Offsets[] = {
+		{ -Spread, -Spread }, { 0.0f, -Spread }, { Spread, -Spread },
+		{ -Spread,    0.0f },                    { Spread,    0.0f },
+		{ -Spread,  Spread }, { 0.0f,  Spread }, { Spread,  Spread },
+	};
+
+	FLinearColor Outline = FLinearColor::Black;
+	Outline.A = Colour.A;
+
+	for (const FVector2D& Offset : Offsets)
+	{
+		DrawText(Text, Outline, Left + Offset.X, Top + Offset.Y, Font, Sized);
+	}
+
+	DrawText(Text, Colour, Left, Top, Font, Sized);
+}
+
+void ACataclysmHUD::DrawEmpireStatusBar()
+{
+	// THE FIGURES EVERY FRAME, AND THEY ARE A FEW INTEGERS: the run's dungeon count, its day, the days owed and one
+	// pass over its dungeons into a set held inline.
+	const FCataclysmEmpireStatusFacts Facts = UCataclysmEmpireStatusBar::FactsForWorld(this);
+
+	// NOTHING WHILE NO RUN IS BOUND, ruling (c) of 2026-11-02.
+	if (!Facts.bRunBound)
+	{
+		return;
+	}
+
+	// THE LINE ONLY WHEN A FIGURE HAS CHANGED. Writing it is four formatted strings and measuring it asks the font for
+	// every glyph, and the figures change a few times a day of play rather than sixty times a second. Measured at its
+	// own size, so it can be shrunk to the room beside the creature panel below.
+	if (EmpireStatusLine.IsEmpty() || !Facts.HasTheSameFiguresAs(EmpireStatusFactsDrawn))
+	{
+		EmpireStatusLine = UCataclysmEmpireStatusBar::LineFor(Facts);
+		EmpireStatusFactsDrawn = Facts;
+
+		const FBox2D AtBase = MeasureTextCentred(EmpireStatusLine, 0.0f, 0.0f, UCataclysmEmpireStatusBar::BaseScale);
+		EmpireStatusWidthAtBase = static_cast<float>(AtBase.Max.X - AtBase.Min.X);
+	}
+
+	// THE SCALE EVERY FRAME, since the window can be resized under a line that has not changed.
+	const float Scale =
+		UCataclysmEmpireStatusBar::ScaleToFit(EmpireStatusWidthAtBase, static_cast<float>(Canvas->SizeX));
+
+	DrawOutlinedText(EmpireStatusLine, UCataclysmCombatOverlay::ColourFromHex(UCataclysmEmpireStatusBar::TextHex),
+					 UCataclysmEmpireStatusBar::LeftPx, UCataclysmEmpireStatusBar::TopPx, Scale);
+}
+
+void ACataclysmHUD::DrawPlayerPool(float Top, float Current, float Maximum,
+								   const TCHAR* FillHex, float Reserved,
+								   const TCHAR* ReservedHex, bool bLabelReserved)
+{
+	const float Left = PlayerBarMarginPx;
+
+	DrawBar(Left, Top, PlayerBarWidthPx, PlayerBarHeightPx,
+			UCataclysmCombatOverlay::BarFractionFor(Current, Maximum),
+			UCataclysmCombatOverlay::ColourFromHex(FillHex), 1.0f);
+
+	// THE RESERVED PART, AT THE END THE FILL CAN NEVER REACH. Issue #1833. Its
+	// share of the bar is the same fraction the fill uses, so a character with
+	// 80% reserved sees the last four fifths of its bar dark, and the fill
+	// stops where the band begins. Before the figures, which stay readable.
+	const float Band = UCataclysmCombatOverlay::BarFractionFor(Reserved, Maximum);
+	if (Band > 0.0f)
+	{
+		DrawBar(Left + PlayerBarWidthPx * (1.0f - Band), Top,
+				PlayerBarWidthPx * Band, PlayerBarHeightPx, 1.0f,
+				UCataclysmCombatOverlay::ColourFromHex(
+					ReservedHex ? ReservedHex
+								: UCataclysmCombatOverlay::HealthReservedHex), 1.0f);
+
+		// THE FIGURE, ON THE FERVOUR BAR ONLY. Ruled 2026-09-30: a Fervour
+		// reserve decides whether the next summon is allowed, so the player
+		// needs the number in a fight; a health reserve is on the sheet.
+		if (bLabelReserved)
+		{
+			DrawTextCentred(UCataclysmCombatOverlay::ReservedTextFor(Reserved),
+							FLinearColor::White,
+							Left + PlayerBarWidthPx * (1.0f - Band * 0.5f),
+							Top + 2.0f, 1.0f);
+		}
+	}
+
+	// THE FIGURES AS WELL AS THE BAR, because the whole reason this exists is to
+	// judge combat numbers. A bar answers "how close am I to dying" and the
+	// figures answer "did that hit do what the design says". Issue #518 was
+	// about the second one, and issue #653 showed the first is not enough on its
+	// own either: a mana pool at zero and a mana pool at one look the same on a
+	// bar that short, and the difference decides whether anything can be cast.
+	//
+	// AND THE FIGURES ARE NOT PRINTED HERE. UCataclysmCombatOverlay::PoolTextFor
+	// is what builds them, because a pool with anything left in it must never
+	// read zero and rounding alone breaks that. Issue #743: this printed
+	// "0 / 500" for a character alive on a fraction of a point, which is the
+	// one thing a health readout must not say about somebody still standing.
+	DrawTextCentred(
+		UCataclysmCombatOverlay::PoolTextFor(Current, Maximum),
+		FLinearColor::White, Left + PlayerBarWidthPx * 0.5f, Top + 2.0f, 1.0f);
+}
+
+void ACataclysmHUD::DrawDeathCostNotice()
+{
+	// NOTHING HERE DECIDES ANYTHING, for the reason this class's header gives. Whether the notice is up and what it
+	// says is `ACataclysmPlayerCharacter::DeathCostNoticeIsUpAt` and `DeathCostNoticeAt`, whose words are
+	// `UCataclysmEmpireMapLayout::LastDeathLine`; this lays them out and draws them.
+	const ACataclysmPlayerCharacter* Player = Cast<ACataclysmPlayerCharacter>(GetOwningPawn());
+	const UWorld* World = GetWorld();
+	if (Player == nullptr || World == nullptr || Canvas == nullptr)
+	{
+		return;
+	}
+
+	// WHETHER IT IS UP EVERY FRAME, AND THAT IS TWO FLOATS COMPARED: no string is copied while it is down, which is
+	// nearly always.
+	const float Now = static_cast<float>(World->GetTimeSeconds());
+	if (!Player->DeathCostNoticeIsUpAt(Now))
+	{
+		return;
+	}
+
+	// THE LINES ONLY WHEN THE POSTING HAS CHANGED, the form `DrawEmpireStatusBar` keeps its line in (issue #49).
+	// Copying the notice, splitting it and measuring it asks the font for every glyph, and a notice is posted once a
+	// death rather than sixty times a second.
+	//
+	// TWO LINES, BROKEN AFTER THE FIRST SENTENCE: where and when the player died, then what it cost. As one line it
+	// is wider than most screens at this display's text size.
+	const float PostedAt = Player->DeathCostNoticePostedAtSeconds();
+	if (DeathCostNoticeLines.IsEmpty() || PostedAt != DeathCostNoticeLinesPostedAt)
+	{
+		const FString Notice = Player->DeathCostNoticeAt(Now);
+		DeathCostNoticeLines.Reset();
+		FString Head;
+		FString Tail;
+		if (Notice.Split(TEXT(". "), &Head, &Tail, ESearchCase::CaseSensitive))
+		{
+			DeathCostNoticeLines.Add(Head + TEXT("."));
+			DeathCostNoticeLines.Add(Tail);
+		}
+		else
+		{
+			DeathCostNoticeLines.Add(Notice);
+		}
+		DeathCostNoticeLinesPostedAt = PostedAt;
+
+		DeathCostNoticeWidestAtScale = 0.0f;
+		for (const FString& Line : DeathCostNoticeLines)
+		{
+			const FBox2D Measured = MeasureTextCentred(Line, 0.0f, 0.0f, DeathCostNoticeScale);
+			DeathCostNoticeWidestAtScale =
+				FMath::Max(DeathCostNoticeWidestAtScale, static_cast<float>(Measured.GetSize().X));
+		}
+	}
+
+	// AND SHRUNK TO FIT when the wider line would still run past the screen's edges: a long list of fallen cities
+	// can. EVERY FRAME, since the window can be resized under a notice that has not changed.
+	const float Widest = DeathCostNoticeWidestAtScale;
+	const float Room = static_cast<float>(Canvas->SizeX) * DeathCostNoticeWidthShare;
+	const float FittedScale = (Widest > Room && Widest > 0.0f)
+		? DeathCostNoticeScale * Room / Widest
+		: DeathCostNoticeScale;
+
+	// IN THE NOTICE INK THE SKILL BAR'S OWN NOTICE USES, centred, a little above the middle of the screen, which is
+	// clear of the bars at the bottom and of the creature panel at the top.
+	const FLinearColor Ink = UCataclysmCombatOverlay::ColourFromHex(UCataclysmSkillBar::LockedNoticeInkHex);
+	float Top = static_cast<float>(Canvas->SizeY) * DeathCostNoticeTopShare;
+	for (const FString& Line : DeathCostNoticeLines)
+	{
+		const FBox2D Drawn = DrawTextCentred(Line, Ink, static_cast<float>(Canvas->SizeX) * 0.5f, Top, FittedScale);
+		Top = static_cast<float>(Drawn.Max.Y) + DeathCostNoticeLineGapPx;
+	}
+}
+
+void ACataclysmHUD::DrawPotions()
+{
+	const APawn* Pawn = GetOwningPawn();
+	if (!Pawn || !Canvas)
+	{
+		return;
+	}
+
+	const float Size = UCataclysmPotions::BoxSizePx;
+	const FLinearColor Edge =
+		UCataclysmCombatOverlay::ColourFromHex(UCataclysmSkillBar::BoxEdgeHex);
+	const FLinearColor Backing =
+		UCataclysmCombatOverlay::ColourFromHex(UCataclysmSkillBar::ReadyHex);
+	const FLinearColor Fill =
+		UCataclysmCombatOverlay::ColourFromHex(UCataclysmCombatOverlay::HealthFillHex);
+	const FLinearColor Dimmed =
+		UCataclysmCombatOverlay::ColourFromHex(UCataclysmSkillBar::CoolingHex);
+	const bool bForbidden = UCataclysmPotions::AreForbiddenFor(Pawn);
+
+	for (int32 Slot = 0; Slot < UCataclysmPotions::SlotCount; ++Slot)
+	{
+		const float Charges = UCataclysmPotions::ChargesIn(Pawn, Slot);
+		const FVector2D At =
+			UCataclysmPotions::BoxOriginFor(Slot, Canvas->SizeX, Canvas->SizeY);
+
+		DrawRect(Edge, At.X - BarBackingInsetPx, At.Y - BarBackingInsetPx,
+				 Size + BarBackingInsetPx * 2.0f, Size + BarBackingInsetPx * 2.0f);
+		DrawRect(Backing, At.X, At.Y, Size, Size);
+
+		// THE CHARGES, FILLED FROM THE BOTTOM, the way a flask is drawn.
+		const float Filled = Size * UCataclysmPotions::FillFractionFor(Charges);
+		DrawRect(Fill, At.X, At.Y + Size - Filled, Size, Filled);
+
+		const int32 Drinks = UCataclysmPotions::DrinksIn(Charges);
+		if (Drinks == 0 || bForbidden)
+		{
+			DrawRect(Dimmed, At.X, At.Y, Size, Size);
+		}
+
+		// CROSSED OUT WHERE THE FLOOR FORBIDS POTIONS, the Famine modifier Hard
+		// Mode, so a refused key is explained before it is pressed.
+		if (bForbidden)
+		{
+			DrawLine(At.X, At.Y, At.X + Size, At.Y + Size, FLinearColor::Red, 2.0f);
+			DrawLine(At.X + Size, At.Y, At.X, At.Y + Size, FLinearColor::Red, 2.0f);
+		}
+
+		const float Centre = At.X + Size * 0.5f;
+		// The key is the slot's number plus one: slot 0 is on the 2 key.
+		DrawTextCentred(FString::FromInt(Slot + 2), FLinearColor::White, Centre,
+						At.Y + SkillBarKeyInsetPx, SkillBarKeyScale);
+		DrawTextCentred(FString::FromInt(Drinks), FLinearColor::White, Centre,
+						At.Y + Size * 0.5f, SkillBarKeyScale);
+	}
+}
+
+void ACataclysmHUD::DrawSkillBar()
+{
+	const APawn* Pawn = GetOwningPawn();
+	if (!Pawn || !Canvas)
+	{
+		return;
+	}
+
+	const TArray<FCataclysmSkillBarSlot> Slots = UCataclysmSkillBar::Read(Pawn);
+	if (Slots.Num() == 0)
+	{
+		return;
+	}
+
+	const float Size = UCataclysmSkillBar::BoxSizePx;
+	const FLinearColor Edge =
+		UCataclysmCombatOverlay::ColourFromHex(UCataclysmSkillBar::BoxEdgeHex);
+
+	for (int32 Index = 0; Index < Slots.Num(); ++Index)
+	{
+		const FCataclysmSkillBarSlot& Box = Slots[Index];
+		const FVector2D At = UCataclysmSkillBar::BoxOriginFor(
+			Index, Slots.Num(), Canvas->SizeX, Canvas->SizeY);
+
+		// THE DARK EDGE IS DRAWN WIDER THAN THE BOX ON EVERY SIDE, the same trick
+		// the health bars use and for the reason recorded on `DrawBar`: the
+		// contrast becomes a property of the box rather than of whatever the
+		// player happens to be standing on.
+		DrawRect(Edge, At.X - BarBackingInsetPx, At.Y - BarBackingInsetPx,
+				 Size + BarBackingInsetPx * 2.0f,
+				 Size + BarBackingInsetPx * 2.0f);
+
+		DrawRect(UCataclysmSkillBar::TintFor(Box), At.X, At.Y, Size, Size);
+
+		// THE WAIT IS A DARK SWEEP THAT DRAINS FROM THE TOP, so the box uncovers
+		// itself as the wait runs down and a glance says how much is left without
+		// reading the number.
+		const float Waiting = UCataclysmSkillBar::CooldownFractionFor(
+			Box.CooldownRemaining, Box.CooldownDuration);
+
+		if (Waiting > 0.0f)
+		{
+			DrawRect(UCataclysmCombatOverlay::ColourFromHex(
+						 UCataclysmSkillBar::CoolingHex),
+					 At.X, At.Y, Size, Size * Waiting);
+		}
+
+		const float Centre = At.X + Size * 0.5f;
+		const FLinearColor Ink = FLinearColor::White;
+
+		// THE KEY IN THE TOP CORNER, the skill's name across the bottom, and the
+		// seconds left in the middle where the eye already is while waiting.
+		if (!Box.Key.IsEmpty())
+		{
+			DrawTextCentred(Box.Key, Ink, Centre, At.Y + SkillBarKeyInsetPx,
+							SkillBarKeyScale);
+		}
+
+		const FString Waited = UCataclysmSkillBar::CooldownTextFor(Box.CooldownRemaining);
+		if (!Waited.IsEmpty())
+		{
+			DrawTextCentred(Waited, Ink, Centre,
+							At.Y + Size * 0.5f - SkillBarWaitInsetPx,
+							SkillBarWaitScale);
+		}
+
+		// THE USES HELD, IN THE BOTTOM OF THE BOX, for a skill that holds more
+		// than one. Issue #1833, skill charges.
+		const FString Held = UCataclysmSkillBar::ChargesTextFor(Box.Charges, Box.MaxCharges);
+		if (!Held.IsEmpty())
+		{
+			DrawTextCentred(Held, Ink, Centre,
+							At.Y + Size - SkillBarChargesInsetPx, SkillBarKeyScale);
+		}
+
+		const FString Name = UCataclysmSkillBar::ShortNameFor(Box.Name);
+		if (!Name.IsEmpty())
+		{
+			DrawTextCentred(Name, Ink, Centre, At.Y + Size + SkillBarNameGapPx,
+							SkillBarNameScale);
+		}
+
+		// AND, ABOVE A BOX SHORT OF FERVOUR, WHAT IT NEEDS. Issue #1478. Grey
+		// alone reads as "no mana", and a War character has no Fervour bar to
+		// look at. Above the box, where the name below it cannot collide.
+		const FString Fervour = UCataclysmSkillBar::FervourTextFor(Box);
+		if (!Fervour.IsEmpty())
+		{
+			DrawTextCentred(Fervour, Ink, Centre, At.Y - SkillBarFervourGapPx,
+							SkillBarKeyScale);
+		}
+
+		// AND, ABOVE A SKILL GADGET'S BOX THAT CAN NEVER CAST ITS SKILL, SO.
+		// Ruled 2026-10-16 (S10). Where the Fervour line goes, which a gadget's
+		// box never shows: `UCataclysmSkillBar::Read` counts it affordable.
+		const FString Idle = UCataclysmSkillBar::SkillGadgetTextFor(Box);
+		if (!Idle.IsEmpty())
+		{
+			DrawTextCentred(Idle, Ink, Centre, At.Y - SkillBarFervourGapPx,
+							SkillBarKeyScale);
+		}
+
+		// AND, ABOVE A SKILL TRAP'S BOX, ITS TRAPS STANDING OVER THE MOST, OR
+		// THAT IT CAN NEVER CAST ITS SKILL. Ruled 2026-10-19 (M7, T8). Where the
+		// Fervour line goes, and one line higher when that is drawn too: a
+		// trap's press pays the skill's Fervour, so its box may be short of it.
+		const FString Traps = UCataclysmSkillBar::SkillTrapTextFor(Box);
+		if (!Traps.IsEmpty())
+		{
+			DrawTextCentred(Traps, Ink, Centre,
+							At.Y - SkillBarFervourGapPx * (Fervour.IsEmpty() ? 1.0f : 2.0f),
+							SkillBarKeyScale);
+		}
+	}
+
+	// AND IN WORDS WHEN EVERY ONE OF THEM IS LOCKED. Issue #1810. Six boxes
+	// changing colour is a signal to a player looking at the bar, and the
+	// complaint this answers is from one who is not: a key pressed, nothing
+	// happening, and no reason given reads as the game having stopped working.
+	//
+	// NO NEW SURFACE, WHICH WAS THE CONDITION THIS WAS BUILT UNDER. It is another
+	// caller of `DrawTextCentred`, the same helper the rarity names and the
+	// cooldown figures already use. There is no notice or banner system in this
+	// module and this change does not start one.
+	//
+	// ABOVE THE BAR AND CENTRED ON IT, so it sits where the boxes it explains
+	// are and not over the middle of the fight.
+	if (UCataclysmSkillBar::EverySkillIsLocked(Slots))
+	{
+		const FVector2D First = UCataclysmSkillBar::BoxOriginFor(
+			0, Slots.Num(), Canvas->SizeX, Canvas->SizeY);
+
+		DrawTextCentred(UCataclysmSkillBar::LockedNotice(),
+						UCataclysmCombatOverlay::ColourFromHex(
+							UCataclysmSkillBar::LockedNoticeInkHex),
+						Canvas->SizeX * 0.5f,
+						First.Y - SkillBarLockedNoticeGapPx,
+						SkillBarLockedNoticeScale);
+	}
+
+	// AND THE NEXT-USE CHARGES HELD, ABOVE THE BAR. Issue #1833, phase 2: a
+	// held charge nothing shows cannot be judged in play. Another caller of
+	// `DrawTextCentred`, for the reason the notice above gives.
+	if (const UCataclysmAbilitySystemComponent* Cataclysm =
+			Cast<const UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Pawn)))
+	{
+		float SkillPercent = 0.0f;
+		float AttackPercent = 0.0f;
+		int32 SkillCount = 0;
+		int32 AttackCount = 0;
+		Cataclysm->NextUseChargesByKind(SkillPercent, SkillCount,
+										AttackPercent, AttackCount);
+		// AND OWN STACKS, one entry per enchantment. Issue #1833.
+		TArray<FString> OwnStacks;
+		for (const UCataclysmAbilitySystemComponent::FHeldOwnStacks& Held :
+			 Cataclysm->OwnStacksByEnchantment())
+		{
+			OwnStacks.Add(UCataclysmSkillBar::OwnStacksEntry(
+				Held.Stats, Held.Held, Held.Cap, Held.bConsecutiveHits));
+		}
+		// AND EVERY "EVERY Nth" COUNT, after them. Issue #1833, phase 2.
+		for (const UCataclysmAbilitySystemComponent::FHeldNthCount& Held :
+			 Cataclysm->NthCountsForDisplay())
+		{
+			OwnStacks.Add(UCataclysmSkillBar::NthEntry(Held.Kind, Held.Count, Held.EveryNth));
+		}
+		// AND NOTHING WASTED'S STORE ON THE SAME LINE, AND FOLLOW THROUGH'S WAIT.
+		// Issue #1515.
+		TArray<FString> Parts;
+		for (const FString& Part :
+			 {UCataclysmSkillBar::NextUseLine(
+				  SkillPercent, SkillCount, AttackPercent, AttackCount,
+				  Cataclysm->NextUseEffectivenessHeld(), OwnStacks),
+			  UCataclysmSkillBar::StoredDamageLine(Cataclysm->StoredMitigatedDamageNow()),
+			  // AND THE TWO STORES OF ABSORBED DAMAGE, each its own entry. Ruled
+			  // 2026-10-07.
+			  UCataclysmSkillBar::StoredAttackDamageLine(
+				  Cataclysm->StoredShieldAbsorbedDamageNow(), TEXT("shield")),
+			  UCataclysmSkillBar::StoredAttackDamageLine(
+				  Cataclysm->StoredSpellAbsorbedDamageNow(), TEXT("spell")),
+			  // AND WHAT THE NEXT SPELL'S COOLDOWN WILL LOSE. Issue #1833.
+			  UCataclysmSkillBar::NextSpellCooldownLine(
+				  Cataclysm->NextSpellCooldownSecondsHeld()),
+			  UCataclysmSkillBar::FollowThroughLine(Cataclysm->FollowThroughSecondsLeft()),
+			  // AND THE BASIC ATTACK'S GADGET, while that slot is converted: the bar has no box for it. Ruled
+			  // 2026-10-16, skill gadgets stack 2 (item 6).
+			  UCataclysmSkillBar::BasicGadgetTextOf(Pawn),
+			  // AND THE BASIC ATTACK'S TRAP, while that slot is converted into one. Ruled 2026-10-21, traps layer 2 (L2).
+			  UCataclysmSkillBar::BasicTrapTextOf(Pawn)})
+		{
+			if (!Part.IsEmpty())
+			{
+				Parts.Add(Part);
+			}
+		}
+		const FString Line = FString::Join(Parts, TEXT("   "));
+		if (!Line.IsEmpty())
+		{
+			const FVector2D First = UCataclysmSkillBar::BoxOriginFor(
+				0, Slots.Num(), Canvas->SizeX, Canvas->SizeY);
+			const float Gaps =
+				UCataclysmSkillBar::EverySkillIsLocked(Slots) ? 2.0f : 1.0f;
+			DrawTextCentred(Line,
+							UCataclysmCombatOverlay::ColourFromHex(
+								UCataclysmSkillBar::LockedNoticeInkHex),
+							Canvas->SizeX * 0.5f,
+							First.Y - SkillBarLockedNoticeGapPx * Gaps,
+							SkillBarNextUseScale);
+		}
+	}
+
+	// AND, WHILE THE CURSOR IS OVER A BOX, WHAT THAT SKILL IS AND DOES. Issue #1193. The cursor is shown throughout
+	// play (`ACataclysmPlayerController` sets `bShowMouseCursor`, and click-to-move reads `GetMousePosition` the same
+	// way), so the box under it is found each frame. Drawn last, so nothing on the bar covers it.
+	const APlayerController* Viewer = GetOwningPlayerController();
+	float MouseX = 0.0f;
+	float MouseY = 0.0f;
+	if (Viewer && Viewer->GetMousePosition(MouseX, MouseY))
+	{
+		const int32 Hovered = UCataclysmSkillBar::BoxUnder(FVector2D(MouseX, MouseY), Slots.Num(), Canvas->SizeX,
+														   Canvas->SizeY);
+		if (Slots.IsValidIndex(Hovered))
+		{
+			DrawSkillPopup(Slots[Hovered],
+						   UCataclysmSkillBar::BoxOriginFor(Hovered, Slots.Num(), Canvas->SizeX, Canvas->SizeY));
+		}
+	}
+}
+
+void ACataclysmHUD::DrawSkillPopup(const FCataclysmSkillBarSlot& Slot, const FVector2D& BoxOrigin)
+{
+	const TArray<FString> Lines = UCataclysmSkillBar::PopupLinesFor(Slot);
+	if (Lines.IsEmpty() || !Canvas)
+	{
+		return;
+	}
+
+	// MEASURED FIRST, so the backing fits the widest line and the pop-up can be kept on the screen.
+	float Widest = 0.0f;
+	float LineHeight = 0.0f;
+	for (const FString& Line : Lines)
+	{
+		const FBox2D Size = MeasureTextCentred(Line, 0.0f, 0.0f, SkillBarNameScale);
+		Widest = FMath::Max(Widest, Size.GetSize().X);
+		LineHeight = FMath::Max(LineHeight, Size.GetSize().Y);
+	}
+	const float Width = Widest + SkillPopupPaddingPx * 2.0f;
+	const float Height = Lines.Num() * LineHeight + (Lines.Num() - 1) * SkillPopupLineGapPx + SkillPopupPaddingPx * 2.0f;
+
+	// ABOVE THE BOX, clear of the Fervour and gadget lines drawn just over it, and held inside the screen's edges.
+	const float Left = FMath::Clamp(BoxOrigin.X, 0.0f, FMath::Max(0.0f, Canvas->SizeX - Width));
+	const float Top = FMath::Max(0.0f, BoxOrigin.Y - SkillPopupGapAboveBoxPx - Height);
+
+	DrawRect(UCataclysmCombatOverlay::ColourFromHex(UCataclysmSkillBar::BoxEdgeHex), Left, Top, Width, Height);
+	float Y = Top + SkillPopupPaddingPx;
+	for (const FString& Line : Lines)
+	{
+		DrawOutlinedText(Line, FLinearColor::White, Left + SkillPopupPaddingPx, Y, SkillBarNameScale);
+		Y += LineHeight + SkillPopupLineGapPx;
+	}
+}
+
+void ACataclysmHUD::DrawPlayerVitals()
+{
+	const APawn* Pawn = GetOwningPawn();
+	if (!Pawn)
+	{
+		return;
+	}
+
+	float Health = 0.0f;
+	float MaxHealth = 0.0f;
+	if (!UCataclysmCombatOverlay::VitalsOf(Pawn, Health, MaxHealth))
+	{
+		// NO ABILITY SYSTEM YET IS A NORMAL FRAME, not a fault. The player's
+		// lives on its player state, and on a client that arrives by
+		// replication some frames after the pawn does.
+		return;
+	}
+
+	// STACKED UPWARD FROM THE BOTTOM LEFT CORNER, health nearest the corner.
+	// Health is the one a player looks at while being hit, so it is the one that
+	// does not move when a bar above it appears or disappears.
+	float Top = Canvas->SizeY - PlayerBarMarginPx - PlayerBarHeightPx;
+
+	DrawPlayerPool(Top, Health, MaxHealth,
+				   UCataclysmCombatOverlay::HealthFillHex,
+				   UCataclysmCombatOverlay::HealthReservedOf(Pawn));
+
+	// MANA NEXT, AND ALWAYS. Every class has a mana pool -- the design's stat
+	// table gives all three Demonic classes one -- so unlike the shield below
+	// there is no case where the bar would be permanently empty and meaningless.
+	//
+	// IT IS HERE BECAUSE ITS ABSENCE HID A BUG. Issue #653: mana was spent and
+	// never returned, so every ability became permanently refused, and it was
+	// reported as "sometimes all of my abilities just become disabled" because
+	// nothing on screen said the pool was empty.
+	float Mana = 0.0f;
+	float MaxMana = 0.0f;
+	if (UCataclysmCombatOverlay::ManaOf(Pawn, Mana, MaxMana) && MaxMana > 0.0f)
+	{
+		Top -= PlayerBarHeightPx + PlayerBarGapPx;
+		DrawPlayerPool(Top, Mana, MaxMana,
+					   UCataclysmCombatOverlay::ManaFillHex);
+	}
+
+	// THE ENERGY SHIELD LAST AND ONLY WHEN THERE IS ONE. A class with no energy
+	// shield is a design position rather than an error state --
+	// UCataclysmVitalAttributeSet::PreAttributeChange says so -- and a bar
+	// permanently at zero would say the opposite.
+	//
+	// AND THE TEMPORARY ABSORB IS A SECOND SEGMENT ON THE SAME BAR, at its
+	// right-hand end, in its own colour. The project owner, 2026-10-07: it is
+	// separate from the energy shield. Ruled the same day: a second segment on
+	// the shield bar. The bar's whole length then stands for the maximum shield
+	// and the absorb together, so the shield's fill can never reach the segment.
+	// A character with no energy shield holding an absorb gets the bar too, all
+	// of it segment. With nothing held the bar is drawn exactly as before.
+	float Shield = 0.0f;
+	float MaxShield = 0.0f;
+	const bool bHasShield = UCataclysmCombatOverlay::ShieldOf(Pawn, Shield, MaxShield)
+		&& MaxShield > 0.0f;
+	const float Absorb = UCataclysmCombatOverlay::TemporaryAbsorbOf(Pawn);
+	if (bHasShield && Absorb <= 0.0f)
+	{
+		Top -= PlayerBarHeightPx + PlayerBarGapPx;
+		DrawPlayerPool(Top, Shield, MaxShield,
+					   UCataclysmCombatOverlay::ShieldFillHex);
+	}
+	else if (Absorb > 0.0f)
+	{
+		Top -= PlayerBarHeightPx + PlayerBarGapPx;
+		const float ShieldHeld = bHasShield ? Shield : 0.0f;
+		const float ShieldTop = bHasShield ? MaxShield : 0.0f;
+		const float Segment =
+			UCataclysmCombatOverlay::AbsorbSegmentFractionFor(Absorb, ShieldTop);
+		DrawBar(PlayerBarMarginPx, Top, PlayerBarWidthPx, PlayerBarHeightPx,
+				UCataclysmCombatOverlay::BarFractionFor(ShieldHeld, ShieldTop + Absorb),
+				UCataclysmCombatOverlay::ColourFromHex(
+					UCataclysmCombatOverlay::ShieldFillHex), 1.0f);
+		DrawBar(PlayerBarMarginPx + PlayerBarWidthPx * (1.0f - Segment), Top,
+				PlayerBarWidthPx * Segment, PlayerBarHeightPx, 1.0f,
+				UCataclysmCombatOverlay::ColourFromHex(
+					UCataclysmCombatOverlay::TemporaryAbsorbFillHex), 1.0f);
+		DrawTextCentred(
+			UCataclysmCombatOverlay::ShieldBarTextFor(ShieldHeld, ShieldTop, Absorb),
+			FLinearColor::White, PlayerBarMarginPx + PlayerBarWidthPx * 0.5f,
+			Top + 2.0f, 1.0f);
+	}
+
+	// AND FERVOUR ON TOP, ONLY FOR A CHARACTER THAT CAN MOVE IT. Issue #954.
+	// The design has listed it as a player resource bar since section XIII was
+	// written, and the project owner's standing rule of 2026-08-24 is that a
+	// system they cannot see in game is not finished.
+	//
+	// `FervourOf` REFUSES A CHARACTER WITH NO GENERATOR, which is why there is
+	// no maximum check here as there is on the two above. Every class has a pool
+	// of 100 and almost no character has a way to fill it, so a check on the
+	// maximum would draw a bar that could only ever read zero. As it stands the
+	// bar appearing is itself the confirmation that a generator node worked.
+	//
+	// ON TOP RATHER THAN BESIDE HEALTH, because health must not move when a bar
+	// above it appears: it is the one a player watches while being hit.
+	float Fervour = 0.0f;
+	float MaxFervour = 0.0f;
+	const float ReservedFervour = UCataclysmCombatOverlay::ReservedFervourOf(Pawn);
+	if (UCataclysmCombatOverlay::FervourOf(Pawn, Fervour, MaxFervour)
+		&& MaxFervour + ReservedFervour > 0.0f)
+	{
+		Top -= PlayerBarHeightPx + PlayerBarGapPx;
+		DrawPlayerPool(Top, Fervour, MaxFervour + ReservedFervour,
+					   UCataclysmCombatOverlay::FervourFillHex, ReservedFervour,
+					   UCataclysmCombatOverlay::ReservedFervourHex,
+					   /*bLabelReserved=*/true);
+	}
+
+	// AND EVERYTHING AFFECTING THE PLAYER, ABOVE THE BARS, IN ONE LIST. Issue #1591, ruled 2026-11-01 by the
+	// coordinating session. Until then this function drew fourteen texts one by one -- Feared, Maddened, the four
+	// tagged debuffs, Withering and Withered, Touch of Nothing and Negated, the held buff, the immunities, the kept
+	// stacks and what is owed -- and a bleed, a burn, a knockdown, a pin, a stagger, every other named debuff, every
+	// buff and Forced March's stacks were drawn nowhere. `UCataclysmPlayerEffects` builds the list, those fourteen
+	// texts included and each by its own function, so nothing is drawn twice.
+	//
+	// DEBUFFS FIRST IN RED, THEN BUFFS IN WHITE, at most `MostShown` lines and then "+N more". READ TOP DOWN, the
+	// last line sitting where the first of the old texts did, just above the bars: a judgement, so the list reads
+	// in its own order rather than upward. Polled each frame like everything else here.
+	const TArray<FCataclysmPlayerEffect> Shown =
+		UCataclysmPlayerEffects::ShownFrom(UCataclysmPlayerEffects::EntriesFor(Pawn));
+	const float LineStep = PlayerBarHeightPx + PlayerBarGapPx;
+	float LineTop = Top - LineStep * Shown.Num();
+	for (const FCataclysmPlayerEffect& Entry : Shown)
+	{
+		DrawTextCentred(UCataclysmPlayerEffects::TextFor(Entry),
+						UCataclysmCombatOverlay::ColourFromHex(Entry.bDebuff ? UCataclysmPlayerEffects::DebuffInkHex
+																				: UCataclysmPlayerEffects::BuffInkHex),
+						PlayerBarMarginPx + PlayerBarWidthPx * 0.5f, LineTop, 1.0f);
+		LineTop += LineStep;
+	}
+}
+
+void ACataclysmHUD::DrawOverheadBars()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	const AActor* LocalPawn = GetOwningPawn();
+
+	// EVERY CHARACTER RATHER THAN EVERY ENEMY. ACataclysmCharacterBase covers
+	// the enemy branch, both its subclasses, and a minion, which is a separate
+	// branch off the same base. A minion is the player's rather than an
+	// opponent, and a bar over one is the same answer to the same question:
+	// something with health has been hurt. Last Epoch treats minions the same
+	// way, with their own toggle beside enemies and players.
+	for (TActorIterator<ACataclysmCharacterBase> It(World); It; ++It)
+	{
+		const ACataclysmCharacterBase* Character = *It;
+		if (!UCataclysmCombatOverlay::IsOverheadBarCandidate(Character,
+															 LocalPawn))
+		{
+			continue;
+		}
+
+		float Health = 0.0f;
+		float MaxHealth = 0.0f;
+		if (!UCataclysmCombatOverlay::VitalsOf(Character, Health, MaxHealth))
+		{
+			continue;
+		}
+
+		// AND ITS SHIELD, IF IT HAS ONE. Issue #1515: a Shared Blood minion's
+		// shield can be struck while its health is full.
+		float Shield = 0.0f;
+		float MaxShield = 0.0f;
+		UCataclysmCombatOverlay::ShieldOf(Character, Shield, MaxShield);
+
+		if (!UCataclysmCombatOverlay::ShouldShowBarFor(Health, MaxHealth,
+													  Shield, MaxShield))
+		{
+			continue;
+		}
+
+		const FVector Anchor = Character->GetActorLocation()
+			+ FVector(0.0f, 0.0f,
+					  UCataclysmCombatOverlay::AnchorHeightFor(Character));
+
+		// THE Z TEST IS WHAT REJECTS ANYTHING BEHIND THE CAMERA, and it is the
+		// part that matters. Either value of bClampToZeroPlane works: with it
+		// true a point behind the camera comes back with Z forced to zero, and
+		// with it false the engine's reversed-Z projection makes Z negative
+		// there. False is passed only so the depth is the projection's own
+		// answer rather than a clamped one. The engine's own
+		// AHUD::GetActorsInSelectionRectangle uses the other combination.
+		const FVector Screen = Project(Anchor, /*bClampToZeroPlane=*/false);
+		if (Screen.Z <= 0.0f)
+		{
+			continue;
+		}
+
+		DrawBar(Screen.X - OverheadBarWidthPx * 0.5f, Screen.Y,
+				OverheadBarWidthPx, OverheadBarHeightPx,
+				UCataclysmCombatOverlay::BarFractionFor(Health, MaxHealth),
+				UCataclysmCombatOverlay::ColourFromHex(
+					UCataclysmCombatOverlay::HealthFillHexFor(Character, LocalPawn)),
+				1.0f);
+
+		// THE SHIELD ABOVE THE HEALTH, in the colour the player's own shield is
+		// drawn in, the way the player's pools stack. Issue #1515.
+		if (MaxShield > 0.0f)
+		{
+			DrawBar(Screen.X - OverheadBarWidthPx * 0.5f,
+					Screen.Y - OverheadBarHeightPx - BarBackingInsetPx,
+					OverheadBarWidthPx, OverheadBarHeightPx,
+					UCataclysmCombatOverlay::BarFractionFor(Shield, MaxShield),
+					UCataclysmCombatOverlay::ColourFromHex(
+						UCataclysmCombatOverlay::ShieldFillHex),
+					1.0f);
+		}
+	}
+}
+
+void ACataclysmHUD::DrawRarityNames()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	// ENEMIES ONLY, AND NOT EVERY CHARACTER. DrawOverheadBars walks
+	// ACataclysmCharacterBase because a minion has health too; a minion has no
+	// rarity, so this walks the enemy branch instead.
+	const AActor* LocalPawn = GetOwningPawn();
+
+	// LOADED ONCE FOR THE WHOLE WALK. A creature fetching its own would repeat
+	// the lookup for every enemy on screen, every frame, for a table that cannot
+	// change while the level is loaded.
+	const UDataTable* Rarities = UCataclysmEnemyRarity::LoadEnemyRarityTable();
+
+	const FLinearColor Ink = UCataclysmCombatOverlay::ColourFromHex(
+		UCataclysmCombatOverlay::RarityNameHex);
+
+	for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+	{
+		const ACataclysmEnemyCharacter* Enemy = *It;
+		if (!UCataclysmCombatOverlay::IsOverheadBarCandidate(Enemy, LocalPawn))
+		{
+			continue;
+		}
+
+		float Health = 0.0f;
+		float MaxHealth = 0.0f;
+		if (!UCataclysmCombatOverlay::VitalsOf(Enemy, Health, MaxHealth))
+		{
+			continue;
+		}
+
+		if (!UCataclysmCombatOverlay::ShouldShowRarityNameFor(
+				Enemy->RarityStep, Health, MaxHealth))
+		{
+			continue;
+		}
+
+		const FString Word =
+			UCataclysmEnemyRarity::RarityNameForStep(Rarities, Enemy->RarityStep);
+		if (Word.IsEmpty())
+		{
+			// A RUNG THE TABLE DOES NOT NAME DRAWS NOTHING, rather than an empty
+			// outline over the creature's head.
+			continue;
+		}
+
+		const FVector Anchor = Enemy->GetActorLocation()
+			+ FVector(0.0f, 0.0f,
+					  UCataclysmCombatOverlay::AnchorHeightFor(Enemy));
+
+		// THE Z TEST IS WHAT REJECTS ANYTHING BEHIND THE CAMERA, the same test
+		// and the same reasoning as DrawOverheadBars.
+		const FVector Screen = Project(Anchor, /*bClampToZeroPlane=*/false);
+		if (Screen.Z <= 0.0f)
+		{
+			continue;
+		}
+
+		// MEASURED BEFORE IT IS DRAWN, because DrawTextCentred places the TOP of
+		// the text at the height it is given, and this word has to sit above the
+		// bar rather than start where the bar starts.
+		const FBox2D Measured = MeasureTextCentred(
+			Word, Screen.X, 0.0f, UCataclysmCombatOverlay::RarityNameScale);
+		const float Height = static_cast<float>(Measured.Max.Y - Measured.Min.Y);
+
+		DrawTextCentred(Word, Ink, Screen.X,
+						Screen.Y - Height
+							- UCataclysmCombatOverlay::RarityNameGapPx
+							- BarBackingInsetPx,
+						UCataclysmCombatOverlay::RarityNameScale);
+	}
+}
+
+void ACataclysmHUD::DrawStatusLines()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	const AActor* LocalPawn = GetOwningPawn();
+	const FLinearColor Ink = UCataclysmCombatOverlay::ColourFromHex(
+		UCataclysmCombatOverlay::RarityNameHex);
+
+	// EVERY CHARACTER AND NOT ONLY A CREATURE, since issue #1515: an imp can be
+	// A Second Self's chosen minion, and its line is where that is said.
+	for (TActorIterator<ACataclysmCharacterBase> It(World); It; ++It)
+	{
+		const ACataclysmCharacterBase* Enemy = *It;
+		if (!UCataclysmCombatOverlay::IsOverheadBarCandidate(Enemy, LocalPawn))
+		{
+			continue;
+		}
+
+		// WITH THE OWNING PAWN, since 2026-10-12: one text on the line, "Immune to you", depends on who is looking.
+		const FString Words = UCataclysmCombatOverlay::StatusLineFor(Enemy, LocalPawn);
+		if (Words.IsEmpty())
+		{
+			continue;
+		}
+
+		const FVector Anchor = Enemy->GetActorLocation()
+			+ FVector(0.0f, 0.0f,
+					  UCataclysmCombatOverlay::AnchorHeightFor(Enemy));
+
+		// THE Z TEST IS WHAT REJECTS ANYTHING BEHIND THE CAMERA, the same test
+		// and the same reasoning as DrawOverheadBars.
+		const FVector Screen = Project(Anchor, /*bClampToZeroPlane=*/false);
+		if (Screen.Z <= 0.0f)
+		{
+			continue;
+		}
+
+		// THE TOP OF THE TEXT UNDER THE BOTTOM OF THE BAR AND ITS BACKING.
+		DrawTextCentred(Words, Ink, Screen.X,
+						Screen.Y + OverheadBarHeightPx + BarBackingInsetPx
+							+ UCataclysmCombatOverlay::RarityNameGapPx,
+						UCataclysmCombatOverlay::RarityNameScale);
+	}
+}
+
+const ACataclysmEnemyCharacter* ACataclysmHUD::CreatureUnderCursor() const
+{
+	const ACataclysmPlayerController* Player =
+		Cast<ACataclysmPlayerController>(GetOwningPlayerController());
+	if (!Player)
+	{
+		return nullptr;
+	}
+
+	// A CURSOR OVER AN OPEN SCREEN POINTS AT NOTHING IN THE WORLD. See the
+	// header: without this a cursor resting on an inventory cell would describe
+	// whatever creature happens to stand behind the panel.
+	if (Player->CursorIsOverInterface())
+	{
+		return nullptr;
+	}
+
+	// PAWN OBJECTS RATHER THAN THE VISIBILITY CHANNEL, which is the whole trick
+	// and is explained on the header. The engine's stock Pawn and CharacterMesh
+	// collision profiles both set Visibility to Ignore, so a visibility trace
+	// goes straight through every creature in the game.
+	TArray<TEnumAsByte<EObjectTypeQuery>> Creatures;
+	Creatures.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn));
+
+	FHitResult Hit;
+	if (!Player->GetHitResultUnderCursorForObjects(
+			Creatures, /*bTraceComplex=*/false, Hit))
+	{
+		return nullptr;
+	}
+
+	// A MINION AND THE PLAYER ARE PAWNS TOO, and neither is described here: a
+	// minion has no rarity and no archetype, and the player's own health is on
+	// the frame already. The cast is what excludes them.
+	return Cast<ACataclysmEnemyCharacter>(Hit.GetActor());
+}
+
+void ACataclysmHUD::DrawCreaturePanel()
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	const float Now = World->GetTimeSeconds();
+
+	// POINTING AT A CREATURE RESTARTS THE CLOCK, and pointing at a DIFFERENT
+	// creature replaces the one being described on the same frame. So moving
+	// between two enemies in a pack never shows the wrong one, and only
+	// pointing at nothing leaves the last one on screen.
+	if (const ACataclysmEnemyCharacter* Pointed = CreatureUnderCursor())
+	{
+		Described = Pointed;
+		DescribedAt = Now;
+	}
+
+	// GET() RATHER THAN A RAW POINTER, because the creature may have been
+	// destroyed since the cursor was on it. A weak pointer answers nullptr.
+	const ACataclysmEnemyCharacter* Creature = Described.Get();
+	if (!Creature)
+	{
+		return;
+	}
+
+	// AND IT DOES NOT GO THE MOMENT THE CURSOR DOES. See
+	// UCataclysmCreaturePanel::StillDescribed for why the panel is held on
+	// screen after the cursor has left the creature.
+	if (!UCataclysmCreaturePanel::StillDescribed(Now - DescribedAt))
+	{
+		Described.Reset();
+		return;
+	}
+
+	float Health = 0.0f;
+	float MaxHealth = 0.0f;
+	if (!UCataclysmCombatOverlay::VitalsOf(Creature, Health, MaxHealth))
+	{
+		return;
+	}
+
+	if (!UCataclysmCreaturePanel::ShouldShowFor(Creature, GetOwningPawn(),
+											   Health, MaxHealth))
+	{
+		return;
+	}
+
+	// THE WORDS FIRST, ALL OF THEM, before anything is measured. Each comes out
+	// of a generated table rather than out of this file, so a creature or a rung
+	// renamed in the design workbook is renamed on screen.
+	const FString Title = UCataclysmCreaturePanel::TitleFor(
+		UCataclysmCreaturePanel::ArchetypeNameForRow(
+			UCataclysmCreaturePanel::LoadEnemyArchetypeTable(),
+			Creature->ArchetypeRow),
+		UCataclysmEnemyRarity::RarityNameForStep(
+			UCataclysmEnemyRarity::LoadEnemyRarityTable(),
+			Creature->RarityStep));
+
+	const FString HealthText =
+		UCataclysmCombatOverlay::PoolTextFor(Health, MaxHealth);
+
+	TArray<FString> ModifierNames;
+	UCataclysmCreaturePanel::ModifierNamesFor(
+		UCataclysmCreaturePanel::LoadEnemyModifierTable(),
+		Creature->ModifierRows, ModifierNames);
+
+	// AND, FIRST UNDER THE HEALTH BAR, WHETHER THIS IS THE FLOOR'S COMMANDER. Issue
+	// #1997. The dungeon floor rule `War_March_of_Progress` pays for killing one chosen
+	// creature a floor, and this line is how a player finds out which. The lookup goes
+	// through the game mode, which no automation test can reach from here; the line itself
+	// comes from `LinesUnderTheHealthBar`, which a test reads.
+	TArray<FString> Modifiers;
+	UCataclysmCreaturePanel::LinesUnderTheHealthBar(
+		ACataclysmDungeonGameMode::IsTheFloorsCommanderIn(this, Creature), ModifierNames,
+		Modifiers);
+
+	// MEASURED IN FULL BEFORE ANYTHING IS DRAWN, because the panel is as wide as
+	// the widest line inside it. The X and Y passed here are throwaway: only the
+	// width and height of each measurement are used, and the real positions are
+	// worked out once the panel's box is known.
+	const FBox2D TitleBox = MeasureTextCentred(
+		Title, 0.0f, 0.0f, UCataclysmCreaturePanel::TitleScale);
+	const FBox2D FiguresBox = MeasureTextCentred(
+		HealthText, 0.0f, 0.0f, UCataclysmCreaturePanel::LineScale);
+
+	const float TitleHeight = static_cast<float>(TitleBox.Max.Y - TitleBox.Min.Y);
+	const float FiguresHeight =
+		static_cast<float>(FiguresBox.Max.Y - FiguresBox.Min.Y);
+
+	// THE HEALTH ROW IS AS TALL AS THE TALLER OF THE TWO THINGS IN IT. The
+	// figures are drawn centred ON the bar, the way the player's own pools are
+	// drawn, and the text is taller than the bar at every size this uses -- so
+	// sizing the row to the bar alone would clip the figures against the
+	// panel's edge.
+	const float HealthRowHeight = FMath::Max(
+		UCataclysmCreaturePanel::HealthBarHeightPx, FiguresHeight);
+
+	float ContentWidth = FMath::Max(
+		static_cast<float>(TitleBox.Max.X - TitleBox.Min.X),
+		static_cast<float>(FiguresBox.Max.X - FiguresBox.Min.X));
+	float ContentHeight =
+		TitleHeight + UCataclysmCreaturePanel::LineGapPx + HealthRowHeight;
+
+	TArray<FBox2D> ModifierBoxes;
+	ModifierBoxes.Reserve(Modifiers.Num());
+	for (const FString& Name : Modifiers)
+	{
+		const FBox2D Box = MeasureTextCentred(
+			Name, 0.0f, 0.0f, UCataclysmCreaturePanel::LineScale);
+		ModifierBoxes.Add(Box);
+
+		ContentWidth = FMath::Max(
+			ContentWidth, static_cast<float>(Box.Max.X - Box.Min.X));
+		ContentHeight += UCataclysmCreaturePanel::LineGapPx
+			+ static_cast<float>(Box.Max.Y - Box.Min.Y);
+	}
+
+	const FBox2D Panel = UCataclysmCreaturePanel::PanelBoxFor(
+		FVector2D(Canvas->SizeX, Canvas->SizeY), ContentWidth, ContentHeight);
+
+	FLinearColor Fill = UCataclysmCombatOverlay::ColourFromHex(
+		UCataclysmCreaturePanel::PanelHex);
+	Fill.A = UCataclysmCreaturePanel::PanelOpacity;
+	DrawRect(Fill, static_cast<float>(Panel.Min.X),
+			 static_cast<float>(Panel.Min.Y),
+			 static_cast<float>(Panel.Max.X - Panel.Min.X),
+			 static_cast<float>(Panel.Max.Y - Panel.Min.Y));
+
+	// THE EDGE, WHICH IS THE ONLY THING THAT MAKES THE PANEL A SHAPE. The fill
+	// is near-black so the text stays readable, and a near-black panel over a
+	// floor at the brightness the design caps a world surface at measures
+	// 1.86:1 -- so on pale stone the fill alone is very nearly invisible.
+	// UCataclysmCreaturePanel::EdgeHex carries the measurements.
+	DrawBorder(Panel, UCataclysmCreaturePanel::EdgePx,
+			   UCataclysmCombatOverlay::ColourFromHex(
+				   UCataclysmCreaturePanel::EdgeHex));
+
+	const FLinearColor Ink = UCataclysmCombatOverlay::ColourFromHex(
+		UCataclysmCreaturePanel::InkHex);
+
+	const float CentreX =
+		static_cast<float>(Panel.Min.X + Panel.Max.X) * 0.5f;
+	const float InnerLeft =
+		static_cast<float>(Panel.Min.X) + UCataclysmCreaturePanel::PaddingPx;
+	const float InnerWidth = static_cast<float>(Panel.Max.X - Panel.Min.X)
+		- UCataclysmCreaturePanel::PaddingPx * 2.0f;
+
+	float Top = static_cast<float>(Panel.Min.Y)
+		+ UCataclysmCreaturePanel::PaddingPx;
+
+	DrawTextCentred(Title, Ink, CentreX, Top,
+					UCataclysmCreaturePanel::TitleScale);
+	Top += TitleHeight + UCataclysmCreaturePanel::LineGapPx;
+
+	// THE BAR SITS IN THE MIDDLE OF ITS ROW and the figures sit in the middle of
+	// the bar, so the two stay lined up whichever of them is the taller.
+	const float BarTop = Top
+		+ (HealthRowHeight - UCataclysmCreaturePanel::HealthBarHeightPx) * 0.5f;
+
+	// AN OUTLINE AND A FILL RATHER THAN DrawBar, WHICH IS A TRACK AND A FILL.
+	// DrawBar paints its dark backing in UCataclysmCombatOverlay::BarBackingHex,
+	// which is the same near-black this panel is, so inside the panel the
+	// backing would be invisible and the bar would have no visible extent at
+	// all. See UCataclysmCreaturePanel::BarOutlinePx for why a lighter track
+	// cannot be used instead: there is no grey that separates from both the
+	// panel and the health red.
+	DrawRect(UCataclysmCombatOverlay::ColourFromHex(
+				 UCataclysmCombatOverlay::HealthFillHexFor(Creature, GetOwningPawn())),
+			 InnerLeft, BarTop,
+			 InnerWidth * UCataclysmCombatOverlay::BarFractionFor(Health,
+																  MaxHealth),
+			 UCataclysmCreaturePanel::HealthBarHeightPx);
+
+	DrawBorder(FBox2D(FVector2D(InnerLeft, BarTop),
+					  FVector2D(InnerLeft + InnerWidth,
+								BarTop + UCataclysmCreaturePanel::HealthBarHeightPx)),
+			   UCataclysmCreaturePanel::BarOutlinePx,
+			   UCataclysmCombatOverlay::ColourFromHex(
+				   UCataclysmCreaturePanel::EdgeHex));
+
+	DrawTextCentred(HealthText, Ink, CentreX,
+					Top + (HealthRowHeight - FiguresHeight) * 0.5f,
+					UCataclysmCreaturePanel::LineScale);
+	Top += HealthRowHeight;
+
+	// THE LINES UNDER THE BAR LAST: "this floor's Commander" when this creature is
+	// it (issue #1997), then the modifiers, which are the reason this panel exists.
+	// See ACataclysmEnemyCharacter::ModifierRows for how a creature is given
+	// modifiers (issue #742).
+	for (int32 Index = 0; Index < ModifierBoxes.Num(); ++Index)
+	{
+		Top += UCataclysmCreaturePanel::LineGapPx;
+		DrawTextCentred(Modifiers[Index], Ink, CentreX, Top,
+						UCataclysmCreaturePanel::LineScale);
+		Top += static_cast<float>(
+			ModifierBoxes[Index].Max.Y - ModifierBoxes[Index].Min.Y);
+	}
+}
+
+void ACataclysmHUD::DrawDropNames()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	// REBUILT EVERY FRAME, because a name that was not drawn this frame is not
+	// clickable this frame. A drop behind the camera, or one just picked up, has
+	// to leave this list or a click at its old position would still find it.
+	DropNameRects.Reset();
+	DropsNamed.Reset();
+
+	// WHERE THE CHARACTER IS STANDING, because since issue #1116 a name is only
+	// drawn for a drop within ten metres of them.
+	//
+	// NOBODY TO MEASURE FROM DRAWS NOTHING, and it draws nothing AFTER the two
+	// lists have been emptied. Returning before that would leave last frame's
+	// rectangles in place and a click would still find drops through them.
+	const APawn* LocalPawn = GetOwningPawn();
+	if (!LocalPawn)
+	{
+		return;
+	}
+
+	// WHICH DROPS ARE NEAR ENOUGH TO NAME IS DECIDED OUTSIDE THIS DRAW CALL, by
+	// UCataclysmDropPickup::DropsToName, which is where it can be tested with
+	// real drops at real distances. Nothing inside DrawHUD can be: AHUD checks
+	// FApp::CanEverRender() first and the automation command passes -nullrhi.
+	//
+	// ASKED FOR EACH FRAME rather than kept as a list here. A drop appears when
+	// something dies and goes away when it is picked up, and neither of those
+	// happens through this class; keeping a copy would be a second record of
+	// what is on the floor and a way for the two to disagree.
+	TArray<ACataclysmDroppedItem*> Nearby;
+	UCataclysmDropPickup::DropsToName(World, LocalPawn->GetActorLocation(),
+									  Nearby);
+
+	// MEASURED FIRST AND DRAWN AFTERWARDS, in two passes over the same list,
+	// because where a name goes depends on where the other names went. Drawing
+	// as they were found would print the first one before it was known that the
+	// third would land on top of it.
+	for (ACataclysmDroppedItem* Drop : Nearby)
+	{
+		const FVector Anchor = Drop->GetActorLocation()
+			+ FVector(0.0f, 0.0f, ACataclysmDroppedItem::NameHeightCm);
+
+		// THE Z TEST IS WHAT REJECTS ANYTHING BEHIND THE CAMERA, the same test
+		// and the same reasoning as DrawOverheadBars above.
+		const FVector Screen = Project(Anchor, /*bClampToZeroPlane=*/false);
+		if (Screen.Z <= 0.0f)
+		{
+			continue;
+		}
+
+		// THE WHOLE TAG IS RECORDED, NOT JUST THE TEXT. TagAround grows the
+		// text by its padding and its rarity's border thickness, so a
+		// Cataclysmic tag is 11 pixels bigger on every side than its letters.
+		// Recording only the text would let two tags print over each other
+		// while their texts did not, and would leave a click on the border
+		// finding nothing.
+		//
+		// THE TWO ARRAYS ARE APPENDED TOGETHER AND NOWHERE ELSE, which is what
+		// keeps index N of one describing the same drop as index N of the other.
+		const FBox2D Text = MeasureTextCentred(Drop->DisplayName, Screen.X,
+											   Screen.Y, 1.0f);
+		DropNameRects.Add(UCataclysmDropPickup::TagAround(
+			Text, UCataclysmDropPickup::NameBorderThicknessOf(*Drop)));
+		DropsNamed.Add(Drop);
+	}
+
+	// NOTHING IS DRAWN YET, so a tag that would have sat on top of another can
+	// still be moved. The rectangles that move are the same ones a click is
+	// tested against, so a name stays clickable wherever it ends up.
+	UCataclysmDropPickup::SeparateOverlappingNames(
+		DropNameRects, UCataclysmDropPickup::NameGapPx);
+
+	for (int32 Index = 0; Index < DropNameRects.Num(); ++Index)
+	{
+		const ACataclysmDroppedItem* Drop = DropsNamed[Index].Get();
+		if (!Drop)
+		{
+			continue;
+		}
+
+		const FBox2D& Tag = DropNameRects[Index];
+		const int32 Thickness =
+			UCataclysmDropPickup::NameBorderThicknessOf(*Drop);
+
+		// THE BORDER IS THE SECOND CHANNEL, and it is drawn before the text so
+		// the letters sit on top of it rather than under it.
+		DrawBorder(Tag, static_cast<float>(Thickness), Drop->NameColour);
+
+		// THE TEXT SITS INSIDE THE BORDER AND ITS PADDING. TagAround grew the
+		// text by exactly this much on every side, so undoing it here puts the
+		// letters back where they were measured.
+		const float Inset = static_cast<float>(
+			UCataclysmDropPickup::NameBorderPaddingPx + Thickness);
+		DrawOutlinedText(Drop->DisplayName, Drop->NameColour,
+						 Tag.Min.X + Inset, Tag.Min.Y + Inset, 1.0f);
+	}
+}
+
+void ACataclysmHUD::DrawBorder(const FBox2D& Around, float Thickness,
+							   const FLinearColor& Colour)
+{
+	if (!Around.bIsValid || Thickness <= 0.0f)
+	{
+		return;
+	}
+
+	// A BLACK BAND ONE PIXEL WIDER ON EACH SIDE, DRAWN FIRST. See the header for
+	// why the border needs its own contrast rather than relying on the floor.
+	FLinearColor Edge = FLinearColor::Black;
+	Edge.A = Colour.A;
+
+	const auto Hollow = [this](const FBox2D& Box, float Deep,
+							   const FLinearColor& Paint)
+	{
+		const float Width = static_cast<float>(Box.Max.X - Box.Min.X);
+		const float Height = static_cast<float>(Box.Max.Y - Box.Min.Y);
+		const float Left = static_cast<float>(Box.Min.X);
+		const float Top = static_cast<float>(Box.Min.Y);
+
+		DrawRect(Paint, Left, Top, Width, Deep);
+		DrawRect(Paint, Left, Top + Height - Deep, Width, Deep);
+		DrawRect(Paint, Left, Top, Deep, Height);
+		DrawRect(Paint, Left + Width - Deep, Top, Deep, Height);
+	};
+
+	Hollow(FBox2D(Around.Min - FVector2D(1.0, 1.0),
+				  Around.Max + FVector2D(1.0, 1.0)), Thickness + 2.0f, Edge);
+	Hollow(Around, Thickness, Colour);
+}
+
+void ACataclysmHUD::DrawFloorObjectNames()
+{
+	// REBUILT EVERY FRAME, for the reason the drops' names are: a tag not drawn this frame is not clickable this frame.
+	ObjectNameRects.Reset();
+	ObjectsNamed.Reset();
+
+	UWorld* World = GetWorld();
+	const APawn* LocalPawn = GetOwningPawn();
+	if (!World || !LocalPawn)
+	{
+		return;
+	}
+
+	// AS FAR AS A DROP'S NAME IS SHOWN, so a floor object is named from as far off as a drop is.
+	TArray<ACataclysmFloorObject*> Nearby;
+	ACataclysmFloorObject::ObjectsToName(World, LocalPawn->GetActorLocation(), UCataclysmDropPickup::NameShownRangeCm,
+										 Nearby);
+
+	// A PLAIN BORDER, the thinnest a drop's name has: an object has no rarity to show.
+	constexpr int32 BorderPx = 1;
+	for (ACataclysmFloorObject* Object : Nearby)
+	{
+		const FVector Screen = Project(
+			Object->GetActorLocation() + FVector(0.0f, 0.0f, ACataclysmFloorObject::NameHeightCm),
+			/*bClampToZeroPlane=*/false);
+		if (Screen.Z <= 0.0f)
+		{
+			continue;
+		}
+		const FBox2D Text = MeasureTextCentred(Object->DisplayName, Screen.X, Screen.Y, 1.0f);
+		ObjectNameRects.Add(UCataclysmDropPickup::TagAround(Text, BorderPx));
+		ObjectsNamed.Add(Object);
+	}
+
+	UCataclysmDropPickup::SeparateOverlappingNames(ObjectNameRects, UCataclysmDropPickup::NameGapPx);
+
+	for (int32 Index = 0; Index < ObjectNameRects.Num(); ++Index)
+	{
+		const ACataclysmFloorObject* Object = ObjectsNamed[Index].Get();
+		if (!Object)
+		{
+			continue;
+		}
+		const FBox2D& Tag = ObjectNameRects[Index];
+		DrawBorder(Tag, static_cast<float>(BorderPx), Object->NameColour);
+		const float Inset = static_cast<float>(UCataclysmDropPickup::NameBorderPaddingPx + BorderPx);
+		DrawOutlinedText(Object->DisplayName, Object->NameColour, Tag.Min.X + Inset, Tag.Min.Y + Inset, 1.0f);
+	}
+}
+
+void ACataclysmHUD::DrawReaperSoulNames()
+{
+	UWorld* World = GetWorld();
+	const APawn* LocalPawn = GetOwningPawn();
+	if (!World || !LocalPawn)
+	{
+		return;
+	}
+
+	// AS FAR AS A DROP'S NAME IS SHOWN, and every Soul there, whosever it is: a Soul is a thing on the floor, as a drop
+	// is, and the tag says nothing about who may take it.
+	TArray<ACataclysmReaperSoul*> Nearby;
+	ACataclysmReaperSoul::SoulsToName(World, LocalPawn->GetActorLocation(), UCataclysmDropPickup::NameShownRangeCm,
+									  Nearby);
+	TArray<FVector> Over;
+	for (const ACataclysmReaperSoul* Soul : Nearby)
+	{
+		Over.Add(Soul->GetActorLocation());
+	}
+	DrawPlainTags(Over, ACataclysmReaperSoul::NameHeightCm, FString(ACataclysmReaperSoul::NameText),
+				  ACataclysmReaperSoul::NameColour());
+}
+
+void ACataclysmHUD::DrawHarvestedSoulNames()
+{
+	UWorld* World = GetWorld();
+	const APawn* LocalPawn = GetOwningPawn();
+	if (!World || !LocalPawn)
+	{
+		return;
+	}
+
+	// AS FAR AS A DROP'S NAME IS SHOWN, as a Reaper's Soul's is. Issue #1671.
+	TArray<ACataclysmHarvestedSoul*> Floating;
+	ACataclysmHarvestedSoul::FloatingIn(World, nullptr, Floating);
+	const FVector Standing = LocalPawn->GetActorLocation();
+	TArray<FVector> Over;
+	for (const ACataclysmHarvestedSoul* Soul : Floating)
+	{
+		if (FVector::Dist2D(Soul->GetActorLocation(), Standing) <= UCataclysmDropPickup::NameShownRangeCm)
+		{
+			Over.Add(Soul->GetActorLocation());
+		}
+	}
+	DrawPlainTags(Over, ACataclysmHarvestedSoul::NameHeightCm, FString(ACataclysmHarvestedSoul::NameText),
+				  ACataclysmHarvestedSoul::NameColour());
+}
+
+void ACataclysmHUD::DrawPlainTags(const TArray<FVector>& Over, float HeightCm, const FString& Words,
+								  const FLinearColor& Ink)
+{
+	// A PLAIN BORDER, as a floor object's: a soul has no rarity to show. Measured first and drawn after, so two souls
+	// together do not print over each other.
+	constexpr int32 BorderPx = 1;
+	TArray<FBox2D> Boxes;
+	for (const FVector& Point : Over)
+	{
+		const FVector Screen = Project(Point + FVector(0.0f, 0.0f, HeightCm), /*bClampToZeroPlane=*/false);
+		if (Screen.Z <= 0.0f)
+		{
+			continue;
+		}
+		Boxes.Add(UCataclysmDropPickup::TagAround(MeasureTextCentred(Words, Screen.X, Screen.Y, 1.0f), BorderPx));
+	}
+
+	UCataclysmDropPickup::SeparateOverlappingNames(Boxes, UCataclysmDropPickup::NameGapPx);
+
+	const float Inset = static_cast<float>(UCataclysmDropPickup::NameBorderPaddingPx + BorderPx);
+	for (const FBox2D& Tag : Boxes)
+	{
+		DrawBorder(Tag, static_cast<float>(BorderPx), Ink);
+		DrawOutlinedText(Words, Ink, Tag.Min.X + Inset, Tag.Min.Y + Inset, 1.0f);
+	}
+}
+
+ACataclysmFloorObject* ACataclysmHUD::FloorObjectUnderPoint(const FVector2D& Point) const
+{
+	const int32 Index = UCataclysmDropPickup::IndexOfNameUnderPoint(ObjectNameRects, Point);
+	if (Index == INDEX_NONE || !ObjectsNamed.IsValidIndex(Index))
+	{
+		return nullptr;
+	}
+	return ObjectsNamed[Index].Get();
+}
+
+ACataclysmDroppedItem* ACataclysmHUD::DropUnderPoint(const FVector2D& Point) const
+{
+	const int32 Index =
+		UCataclysmDropPickup::IndexOfNameUnderPoint(DropNameRects, Point);
+	if (Index == INDEX_NONE || !DropsNamed.IsValidIndex(Index))
+	{
+		return nullptr;
+	}
+
+	// GET() RATHER THAN A RAW POINTER, because the drop may have been destroyed
+	// since it was drawn. A weak pointer answers nullptr; a raw one would not.
+	return DropsNamed[Index].Get();
+}
+
+void ACataclysmHUD::DrawDamageNumbers()
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	const float Now = World->GetTimeSeconds();
+
+	for (const FCataclysmDamageNumber& Number : Numbers)
+	{
+		const float Age = Now - Number.StartedAt;
+		const float Opacity = UCataclysmCombatOverlay::FadeFor(Age);
+		if (Opacity <= 0.0f)
+		{
+			continue;
+		}
+
+		const FVector Screen =
+			Project(Number.WorldAnchor, /*bClampToZeroPlane=*/false);
+		if (Screen.Z <= 0.0f)
+		{
+			continue;
+		}
+
+		// IT RISES IN SCREEN PIXELS RATHER THAN IN CENTIMETRES. A world-space
+		// rise looks different depending on how far away the blow landed and how
+		// far the camera is zoomed out, and the mouse wheel zooms this camera.
+		// A pixel rise looks the same everywhere, which is what makes several
+		// numbers at different distances readable at once.
+		const float Top = Screen.Y - UCataclysmCombatOverlay::RisePixelsFor(Age);
+
+		FLinearColor Colour = Number.Colour;
+		Colour.A = Opacity;
+
+		DrawTextCentred(Number.Text, Colour, Screen.X, Top, Number.Scale);
+	}
+}

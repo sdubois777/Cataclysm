@@ -1,0 +1,1119 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "Player/CataclysmGameMode.h"
+#include "Character/CataclysmEnemyRarity.h"
+#include "Player/CataclysmPlayerController.h"
+#include "Player/CataclysmPlayerState.h"
+#include "Cataclysm.h"
+#include "Empire/CataclysmEmpireRun.h"
+#include "Character/CataclysmAbyssalWardenCharacter.h"
+#include "Character/CataclysmBruteCharacter.h"
+#include "Character/CataclysmCorruptedSentinelCharacter.h"
+#include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmHellhoundCharacter.h"
+#include "Character/CataclysmImpCharacter.h"
+#include "Character/CataclysmPlayerCharacter.h"
+#include "Character/CataclysmGatekeeperCharacter.h"
+#include "Character/CataclysmSuccubusCharacter.h"
+#include "Interface/CataclysmHUD.h"
+#include "Engine/World.h"
+#include "GameFramework/PlayerStart.h"
+#include "EngineUtils.h"
+#include "Engine/Engine.h"
+#include "HAL/IConsoleManager.h"
+#include "Save/CataclysmSaveWriter.h"
+#include "Kismet/GameplayStatics.h"
+#include "Player/CataclysmGameInstance.h"
+#include "Save/CataclysmSaveLoad.h"
+#include "Save/CataclysmSaveStorage.h"
+
+/**
+ * Play at a difficulty tier without editing the game mode's default.
+ *
+ * ZERO MEANS "USE THE GAME MODE'S", the same shape as the Brute's two cooldown
+ * overrides in `CataclysmBruteCharacter.cpp`. A sentinel rather than a second
+ * copy of the default, so the real figure has one home.
+ *
+ * WHAT IT IS FOR. The tier decides what armour is worth and nothing else, and
+ * the difference is large: the Abyssal Warden's 5,954 armour removes 75% of a
+ * hit at tier 1 against 48.19% at tier 8. Switching while standing in the
+ * sandbox is how that gets judged by play rather than by arithmetic.
+ */
+static TAutoConsoleVariable<int32> CVarDifficultyTier(
+	TEXT("Cataclysm.DifficultyTier"),
+	0,
+	TEXT("The difficulty tier every hit resolves at, 1 to 8. 0 uses the game "
+		 "mode's own DifficultyTier. It decides what armour is worth and "
+		 "nothing else: armour removes armor / (armor + 800 x tier) of a hit, "
+		 "capped at 75 percent, so the same armour is worth far more at tier 1."),
+	ECVF_Default);
+
+int32 ACataclysmGameMode::DifficultyTierFor(const ACataclysmGameMode* Mode)
+{
+	// THE CONSOLE VARIABLE WINS, so a tier chosen while playing takes effect on
+	// the next hit rather than on the next launch.
+	const int32 Override = CVarDifficultyTier.GetValueOnAnyThread();
+	if (Override > 0)
+	{
+		return FMath::Clamp(Override, LowestDifficultyTier,
+							HighestDifficultyTier);
+	}
+
+	if (Mode)
+	{
+		return FMath::Clamp(Mode->DifficultyTier, LowestDifficultyTier,
+							HighestDifficultyTier);
+	}
+
+	// No game mode. Every automation test builds a bare world, and a hit
+	// resolved there still has to produce a number.
+	return LowestDifficultyTier;
+}
+
+bool ACataclysmGameMode::DropsAreChaoticIn(const UObject* WorldContext)
+{
+	if (WorldContext && GEngine)
+	{
+		if (const UWorld* World = GEngine->GetWorldFromContextObject(
+				WorldContext, EGetWorldErrorMode::ReturnNull))
+		{
+			if (const ACataclysmGameMode* Mode = World->GetAuthGameMode<ACataclysmGameMode>())
+			{
+				return Mode->DropsAreChaotic();
+			}
+		}
+	}
+	return false;
+}
+
+int32 ACataclysmGameMode::DifficultyTierIn(const UObject* WorldContext)
+{
+	const ACataclysmGameMode* Mode = nullptr;
+	if (WorldContext && GEngine)
+	{
+		if (const UWorld* World = GEngine->GetWorldFromContextObject(
+				WorldContext, EGetWorldErrorMode::ReturnNull))
+		{
+			Mode = World->GetAuthGameMode<ACataclysmGameMode>();
+		}
+	}
+
+	return DifficultyTierFor(Mode);
+}
+
+ACataclysmGameMode::ACataclysmGameMode()
+{
+	DefaultPawnClass = ACataclysmPlayerCharacter::StaticClass();
+	PlayerControllerClass = ACataclysmPlayerController::StaticClass();
+
+	// The player state is where the ability system component lives, so naming it
+	// here is not optional dressing: with the default APlayerState the pawn finds
+	// no ability system, InitAbilityActorInfo returns early, and the character
+	// spawns with no attributes and no abilities and no error.
+	PlayerStateClass = ACataclysmPlayerState::StaticClass();
+
+	// NAMED HERE RATHER THAN IN A CONFIG FILE, so it holds for any level opened
+	// directly and for a test world alike, the same as the three above. Without
+	// this line the engine spawns a bare AHUD, which draws nothing, and there is
+	// no error to follow -- a heads-up display that is simply absent looks
+	// exactly like one that is switched off.
+	//
+	// It draws three things: a bar over creatures that have been hurt, a number
+	// where each blow lands, and the player's own health. Issue #518.
+	HUDClass = ACataclysmHUD::StaticClass();
+}
+
+void ACataclysmGameMode::StartPlay()
+{
+	Super::StartPlay();
+
+	// After the player start exists and before anything can be pressed. Spawning
+	// from here rather than from the level means the sandbox's contents are
+	// reviewable text rather than bytes inside L_Sandbox.umap.
+	//
+	// SKIPPED ENTIRELY BY A DUNGEON. Every one of these places its creatures at
+	// a fixed offset from the world origin, which is where the sandbox's flat
+	// floor is and is not where a generated dungeon floor is walkable.
+	if (bSpawnsSandboxCreatures)
+	{
+		SpawnTrainingDummies();
+		SpawnBrutes();
+		SpawnAbyssalWardens();
+		SpawnHellhounds();
+		SpawnImps();
+		SpawnCorruptedSentinels();
+		SpawnSuccubi();
+		SpawnGatekeepers();
+	}
+
+	// AND THE GAME STARTS SAVING ITSELF. Its own method rather than four lines
+	// here, so that a test can reach it: StartPlay wants a player controller and
+	// a pawn and cannot be called from one.
+	BeginSavingThisRun();
+
+	// AND THE CHARACTER THE SELECT SCREEN CHOSE, if one is pending and the player has started. Select-screen step 3a.
+	LoadThePendingCharacter();
+
+	// AND THE TIER OF THE RUN THE GAME INSTANCE HOLDS, which this new game mode did not have. Issue #1472.
+	TakeTheRunsTier(); // A level's start: the run's tier.
+}
+
+bool ACataclysmGameMode::TakeTheRunsTier()
+{
+	const UCataclysmEmpireRun* Run = UCataclysmGameInstance::EmpireRunFor(this, /*bStartIfNone=*/false);
+	if (!Run)
+	{
+		return false;
+	}
+	DifficultyTier = FMath::Clamp(Run->DifficultyTier, LowestDifficultyTier, HighestDifficultyTier); // A level's: the run's tier.
+	return true;
+}
+
+void ACataclysmGameMode::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
+{
+	Super::HandleStartingNewPlayer_Implementation(NewPlayer);
+
+	// THE OTHER HALF: whichever of this and `StartPlay` comes second finds the writer writing and the character standing.
+	LoadThePendingCharacter();
+}
+
+ACataclysmGameMode::EPendingLoad ACataclysmGameMode::MakeThePendingCharacter(UCataclysmGameInstance& Instance,
+																			 UCataclysmSaveWriter& Writer,
+																			 ACataclysmPlayerCharacter& Character)
+{
+	const FCataclysmPendingCreation Creation = Instance.PendingCreation;
+	Instance.PendingCreation = FCataclysmPendingCreation(); // A new character's: cleared before it is made.
+	ACataclysmPlayerState* State = Character.GetPlayerState<ACataclysmPlayerState>();
+	if (!State)
+	{
+		UE_LOG(LogCataclysm, Warning, TEXT("A new character could not be made: the player has no player state"));
+		return EPendingLoad::Refused;
+	}
+
+	// ITS NAME AND PARTITION, AND ITS WEAPON TYPE AND DAMAGE TYPE, which the screen checked before it handed them over.
+	State->SetIdentity(Creation.Name, Creation.Partition); // A new character's: its name and partition.
+	State->SetCreationChoice(Creation.WeaponType, Creation.DamageType);
+	Character.ApplyCreationChoice();
+
+	// ITS CATACLYSM ORDER SEED, DRAWN ONCE, HERE, AND NEVER AGAIN: `docs/Cataclysm_GDD_v2.md`, Ending a Run, "The order a
+	// character adds Cataclysms in is drawn once when the character is created". The record keeps it, and every run of
+	// this character faces the first N of its order. The clock and the processor's cycle counter together, so it is not
+	// the run's seed below read twice. Issue #1324 slice 6a.
+	State->SetCataclysmOrderSeed(static_cast<int32>(
+		(FDateTime::Now().GetTicks() ^ static_cast<int64>(FPlatformTime::Cycles64())) & 0x7FFFFFFF));
+
+	// ITS EMPIRE RUN, AT ITS LETHALITY: the fresh start's run, when one began, is Standard's.
+	const int32 Seed = static_cast<int32>(FDateTime::Now().GetTicks() & 0x7FFFFFFF);
+	Instance.BeginACharactersEmpireRun(Seed, State->GetCataclysmOrderSeed(), // A new character's: its own draw.
+									   ECataclysmSurgeMode::Static,
+									   static_cast<int32>(Creation.Partition.Lethality), // A new character's: its run's lethality.
+									   State->GetDifficultyTier()); // A new character's: its run at its tier. Issue #1472.
+	TakeTheRunsTier(); // A new character's: this level fought at its run's tier.
+
+	// AND WRITTEN AT ONCE, so the select screen lists it even if the player quits before anything else writes.
+	Writer.NoteTrigger(ECataclysmSaveTrigger::CharacterCreated); // A new character's: written at once.
+	UE_LOG(LogCataclysm, Log, TEXT("A new character, '%s', was made and written"), *Creation.Name);
+	return EPendingLoad::Created;
+}
+
+ACataclysmGameMode::EPendingLoad ACataclysmGameMode::LoadThePendingCharacter()
+{
+	UWorld* World = GetWorld();
+	UCataclysmGameInstance* Instance = World ? Cast<UCataclysmGameInstance>(World->GetGameInstance()) : nullptr;
+	if (!Instance || (!Instance->PendingCreation.bPending && !Instance->PendingCharacterId.IsValid()))
+	{
+		return EPendingLoad::NothingPending;
+	}
+	UCataclysmSaveWriter* Writer = UCataclysmSaveWriter::In(World);
+	ACataclysmPlayerCharacter* Character = nullptr;
+	for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It && !Character; ++It)
+	{
+		Character = It->IsValid() ? Cast<ACataclysmPlayerCharacter>((*It)->GetPawn()) : nullptr;
+	}
+	if (!Writer || !Writer->IsWriting() || !Character)
+	{
+		return EPendingLoad::Waiting;
+	}
+
+	// A NEW CHARACTER, from the new-character screen, rather than a saved one. Select-screen step 4a.
+	if (Instance->PendingCreation.bPending)
+	{
+		return MakeThePendingCharacter(*Instance, *Writer, *Character);
+	}
+
+	// THE FRESH RUN'S TWO SLOTS, NOTED BEFORE THE LOAD; the only names the clean-up below may delete.
+	const FString FreshRunSlot = Writer->RunSlotName();
+	const FString FreshCharacterSlot = Writer->CharacterSlotName();
+	const FGuid Chosen = Instance->PendingCharacterId;
+	Instance->PendingCharacterId.Invalidate(); // A pending load's: cleared before it runs.
+
+	const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*World, *Character, Chosen); // The arrival's load.
+
+	// THE FRESH SLOTS GO, whatever the load did. NEVER THE CHOSEN CHARACTER'S OWN SLOT, which no fresh identifier names;
+	// AND, AFTER A LOAD, NEVER WHAT THE WRITER NOW WRITES: were this ever run a second time, the names it noted would be
+	// the loaded ones. After a refusal the writer still writes the fresh pair, and those go.
+	const FString ChosenSlot = UCataclysmSavePartition::CharacterSlotName(Chosen);
+	const bool bTheWriterMovedOn = Report.Outcome != ECataclysmLoadOutcome::Refused;
+	for (const FString& Fresh : {FreshRunSlot, FreshCharacterSlot})
+	{
+		if (Fresh.IsEmpty() || Fresh == ChosenSlot
+			|| (bTheWriterMovedOn && (Fresh == Writer->RunSlotName() || Fresh == Writer->CharacterSlotName()))) // Never the writer's after a load.
+		{
+			continue;
+		}
+		const double GiveUpAt = FPlatformTime::Seconds() + 2.0;
+		while (FCataclysmSaveStorage::HasAWriteInFlight(Fresh) && FPlatformTime::Seconds() < GiveUpAt)
+		{
+			FPlatformProcess::Sleep(0.01f);
+		}
+		if (UGameplayStatics::DoesSaveGameExist(Fresh, UCataclysmSaveWriter::UserIndex))
+		{
+			UGameplayStatics::DeleteGameInSlot(Fresh, UCataclysmSaveWriter::UserIndex); // A pending load's: a fresh slot.
+		}
+	}
+
+	switch (Report.Outcome)
+	{
+		case ECataclysmLoadOutcome::Loaded:
+			UE_LOG(LogCataclysm, Log, TEXT("The select screen's character: %s"), *Report.Why);
+			TakeTheRunsTier(); // An arrival's: the loaded run's tier.
+			return EPendingLoad::Loaded;
+		case ECataclysmLoadOutcome::LoadedWithANewRun:
+			TakeTheRunsTier();
+			Instance->LastLoadNotice = Report.Why;
+			UE_LOG(LogCataclysm, Warning, TEXT("The select screen's character: %s"), *Report.Why);
+			return EPendingLoad::LoadedWithANewRun;
+		default:
+			break;
+	}
+
+	// REFUSED: the reason kept for the select screen, and back to it. Not in an automation test, which cannot travel.
+	Instance->LastLoadRefusal = Report.Why; // A pending load's: the refusal kept for the screen.
+	UE_LOG(LogCataclysm, Warning, TEXT("The select screen's character was refused: %s"), *Report.Why);
+	FrontEndRequest = FrontEndMap;
+	if (!GIsAutomationTesting)
+	{
+		UGameplayStatics::OpenLevel(this, FName(FrontEndMap));
+	}
+	return EPendingLoad::Refused;
+}
+
+bool ACataclysmGameMode::BeginSavingThisRun()
+{
+	UCataclysmSaveWriter* Writer = UCataclysmSaveWriter::In(GetWorld());
+	if (!Writer)
+	{
+		// NOT A FAILURE WORTH LOGGING. A world with no save writer is a world
+		// built without subsystems, which is a thing a test does deliberately.
+		return false;
+	}
+
+	// TWO IDENTIFIERS GENERATED HERE AND NOWHERE ELSE. When something chooses
+	// between a new run and a saved one -- issue #753 -- this is the line it
+	// replaces: the identifiers come out of the character being continued
+	// instead of out of thin air.
+	//
+	// THE FLOOR IS NAMED FOR THE SANDBOX AND NUMBERED 1, because the sandbox is
+	// the only level there is and a floor of zero means "nobody is in a
+	// dungeon", which would make the record say the fight is not happening.
+	Writer->BeginRun(FGuid::NewGuid(), FGuid::NewGuid(),
+					 RunFloorName(), RunFloorNumber());
+	return true;
+}
+
+int32 ACataclysmGameMode::RarityStepFor(int32 Setting,
+									   const AActor* Spawned,
+									   const FRandomStream* FromTheFloor) const
+{
+	if (Setting != UCataclysmEnemyRarity::RollTheRarity)
+	{
+		// A RUNG WAS ASKED FOR, so it is used exactly. This is what a person
+		// testing one rarity sets, and what an automation test passes.
+		return Setting;
+	}
+
+	const UWorld* World = GetWorld();
+	if (!World || !Spawned)
+	{
+		return 0;
+	}
+
+	// A STREAM PER CREATURE, SEEDED FROM ITS OWN IDENTITY AND THE CLOCK. The
+	// same shape ACataclysmEnemyCharacter uses to seed its drop roll, and for
+	// the same reason it gives: creatures made in the same frame must not all
+	// come out the same, and a shared stream would make them do exactly that.
+	//
+	// OR THE FLOOR'S, FOR A CREATURE THE FLOOR ITSELF PLACES, since issue #2490:
+	// a stream made from the floor's seed and the creature's place in the
+	// floor's list, so the same seed builds the same floor, as
+	// `docs/Cataclysm_GDD_v2.md` promises ("the same seed always produces the
+	// same floor"). A COPY, so the caller's stream is not moved by this draw.
+	//
+	// OR A SEED A TEST SETS, `RarityRollSeed`, since issue #888. The default draw is
+	// seeded by the creature's identity and the clock, and in an automation test
+	// the world is new and its clock reads nearly nought, so the clock adds nothing
+	// and the identity -- the creature's slot in the engine's object array -- is
+	// what decides: it depends on every object the tests before it made. A set seed
+	// draws the same rarities in the same order however the run began.
+	FRandomStream Stream = FromTheFloor != nullptr
+		? *FromTheFloor
+		: RarityRollSeed != 0
+		? FRandomStream(static_cast<int32>(HashCombine(GetTypeHash(RarityRollSeed), GetTypeHash(RarityRollsMade++))))
+		: FRandomStream(Spawned->GetUniqueID()
+			  ^ static_cast<int32>(World->GetTimeSeconds() * 1000.0f));
+
+	// EVERY CREATURE DRAWS ITS OWN, INDEPENDENTLY. See UCataclysmEnemyRarity for
+	// why an independent draw rather than a guaranteed count per floor.
+	const UDataTable* Table = UCataclysmEnemyRarity::LoadEnemyRarityTable();
+	const int32 Step = UCataclysmEnemyRarity::RollRarityStep(Table, Stream);
+
+	// SAID OUT LOUD, BECAUSE NOTHING ON SCREEN SAYS IT. An enemy's rarity has no
+	// name plate, no colour and no size, and the three things it changes -- how
+	// many items the kill drops, the magic find it adds to its own drops, and
+	// whether it can be stunned -- are all invisible until the creature is dead.
+	// Without this line the only way to find out what spawned is to kill it and
+	// infer from the loot. Issue #740 is the screen work that would make this
+	// line unnecessary.
+	//
+	// Log rather than Verbose, deliberately. It is one line per creature at the
+	// start of a session, and it is the only evidence a person has that the draw
+	// happened at all.
+	UE_LOG(LogCataclysm, Log, TEXT("%s spawned as %s (rarity step %d)."),
+		   *GetNameSafe(Spawned),
+		   *UCataclysmEnemyRarity::RarityNameForStep(Table, Step), Step);
+
+	return Step;
+}
+
+int32 ACataclysmGameMode::SpawnAbyssalWardens()
+{
+	UWorld* World = GetWorld();
+	if (!World || AbyssalWardenCount <= 0)
+	{
+		return 0;
+	}
+
+	FVector Centre = FVector::ZeroVector;
+	for (TActorIterator<APlayerStart> It(World); It; ++It)
+	{
+		Centre = It->GetActorLocation();
+		break;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	// RAISED BY THE DIFFERENCE IN CAPSULE HALF-HEIGHT, the same correction
+	// SpawnBrutes makes. The player start sits at the height a default capsule
+	// needs, and this creature's is 34 cm taller than the base enemy's, so
+	// spawning at the same height buries its feet until the movement component
+	// pushes it out.
+	constexpr float BaseEnemyCapsuleHalfHeight = 80.0f;
+	const float RiseCm =
+		ACataclysmAbyssalWardenCharacter::WardenCapsuleHalfHeight
+		- BaseEnemyCapsuleHalfHeight;
+
+	int32 Spawned = 0;
+	for (int32 Index = 0; Index < AbyssalWardenCount; ++Index)
+	{
+		// Spread around the same centre when there is more than one, and
+		// directly in front when there is one.
+		const float Angle = 2.0f * PI * static_cast<float>(Index)
+						  / static_cast<float>(FMath::Max(AbyssalWardenCount, 1));
+		const FVector Where = Centre + FVector(
+			FMath::Cos(Angle) * AbyssalWardenDistanceCm,
+			FMath::Sin(Angle) * AbyssalWardenDistanceCm,
+			RiseCm);
+
+		const FRotator Facing = (Centre - Where).Rotation();
+
+		ACataclysmAbyssalWardenCharacter* Warden =
+			World->SpawnActor<ACataclysmAbyssalWardenCharacter>(
+				ACataclysmAbyssalWardenCharacter::StaticClass(), Where, Facing,
+				SpawnParams);
+		if (!Warden)
+		{
+			continue;
+		}
+
+		Warden->SetHealth(AbyssalWardenHealth);
+		Warden->SetAttackDamage(AbyssalWardenAttackDamage);
+
+		// ARMOUR ARRIVES FROM THE SPAWNER, which is what the enemy class's own
+		// header says it must, and until issue #525 nothing anywhere called this.
+		// Every enemy in the sandbox had none, so the difficulty tier divided a
+		// zero and made no difference to anything.
+		Warden->SetArmour(AbyssalWardenArmour);
+
+		// RARITY ARRIVES FROM THE SPAWNER TOO, and until issue #721 nothing
+		// anywhere called this outside the automation tests, so every
+		// creature in a play session was Common and dropped 0.16 items.
+		Warden->SetRarityStep(RarityStepFor(AbyssalWardenRarityStep, Warden));
+		Warden->DrawModifiersForRarity();
+
+		AbyssalWardens.Add(Warden);
+		++Spawned;
+	}
+
+	// THE LOG SAYS IT CANNOT CHASE, because that is the first thing anybody
+	// watching it will notice and it is designed rather than broken.
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("Put %d Abyssal Wardens %.0f cm from %s. Each has %.0f health and "
+			 "%.0f armour at difficulty tier %d, "
+			 "hits for %.0f every %.1f s, walks at %.0f cm/s and never runs. "
+			 "Its Molten Roar marks a %.0f cm ring every %.0f s. It has no "
+			 "charge and cannot close on a player who walks away: issue #491."),
+		Spawned, AbyssalWardenDistanceCm, *Centre.ToCompactString(),
+		AbyssalWardenHealth, AbyssalWardenArmour, DifficultyTierFor(this),
+		AbyssalWardenAttackDamage,
+		ACataclysmAbyssalWardenCharacter::DesignedAttackIntervalSeconds,
+		ACataclysmAbyssalWardenCharacter::DesignedWalkSpeedCmPerSecond,
+		ACataclysmAbyssalWardenCharacter::MoltenRoarRadiusCm,
+		ACataclysmAbyssalWardenCharacter::MoltenRoarCooldownSeconds);
+
+	return Spawned;
+}
+
+int32 ACataclysmGameMode::SpawnHellhounds()
+{
+	UWorld* World = GetWorld();
+	if (!World || HellhoundCount <= 0)
+	{
+		return 0;
+	}
+
+	FVector Centre = FVector::ZeroVector;
+	for (TActorIterator<APlayerStart> It(World); It; ++It)
+	{
+		Centre = It->GetActorLocation();
+		break;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	// RAISED BY THE DIFFERENCE IN CAPSULE HALF-HEIGHT, the same correction the
+	// other two spawners make. The player start sits at the height a default
+	// capsule needs, and this creature's is 26.25 cm taller than the base
+	// enemy's, so spawning at the same height buries its feet until the movement
+	// component pushes it out.
+	constexpr float BaseEnemyCapsuleHalfHeight = 80.0f;
+	const float RiseCm =
+		ACataclysmHellhoundCharacter::HellhoundCapsuleHalfHeight
+		- BaseEnemyCapsuleHalfHeight;
+
+	// FROM A BEARING RATHER THAN FROM ZERO, and this is the only spawner that
+	// does. The header says why: a single creature otherwise goes directly in
+	// front at +X, and the Brute and the Abyssal Warden already stand on that
+	// line with no floor left beyond them.
+	const float BearingRadians = FMath::DegreesToRadians(HellhoundBearingDegrees);
+
+	int32 Spawned = 0;
+	for (int32 Index = 0; Index < HellhoundCount; ++Index)
+	{
+		// Spread around the same centre when there is more than one, starting
+		// from the bearing rather than from +X.
+		const float Angle = BearingRadians
+						  + 2.0f * PI * static_cast<float>(Index)
+							  / static_cast<float>(FMath::Max(HellhoundCount, 1));
+		const FVector Where = Centre + FVector(
+			FMath::Cos(Angle) * HellhoundDistanceCm,
+			FMath::Sin(Angle) * HellhoundDistanceCm,
+			RiseCm);
+
+		const FRotator Facing = (Centre - Where).Rotation();
+
+		ACataclysmHellhoundCharacter* Hellhound =
+			World->SpawnActor<ACataclysmHellhoundCharacter>(
+				ACataclysmHellhoundCharacter::StaticClass(), Where, Facing,
+				SpawnParams);
+		if (!Hellhound)
+		{
+			continue;
+		}
+
+		Hellhound->SetHealth(HellhoundHealth);
+		Hellhound->SetAttackDamage(HellhoundAttackDamage);
+		Hellhound->SetArmour(HellhoundArmour);
+		Hellhound->SetRarityStep(RarityStepFor(HellhoundRarityStep, Hellhound));
+		Hellhound->DrawModifiersForRarity();
+
+		Hellhounds.Add(Hellhound);
+		++Spawned;
+	}
+
+	// THE LOG SAYS IT CATCHES THE PLAYER, because that is the first thing
+	// anybody watching it will notice and it is the design rather than the
+	// defect issue #417 records on the Brute.
+	//
+	// AND THAT ITS FIRE BURNS ITSELF, because a creature losing health while
+	// nothing is attacking it looks like a bug and is not one.
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("Put %d Hellhounds %.0f cm from %s on a bearing of %.0f degrees. "
+			 "Each has %.0f health and %.0f armour at difficulty tier %d, "
+			 "bites for %.0f every %.1f s, and moves at %.0f cm/s -- faster "
+			 "than any player class, so it cannot be walked away from. Its "
+			 "Hellrush charges %.0f cm every %.0f s and leaves that lane "
+			 "burning for %.0f s, and THAT FIRE BURNS THE HELLHOUND ITSELF and "
+			 "any other enemy standing in it. It is the only thing in the game "
+			 "that does."),
+		Spawned, HellhoundDistanceCm, *Centre.ToCompactString(),
+		HellhoundBearingDegrees,
+		HellhoundHealth, HellhoundArmour, DifficultyTierFor(this),
+		HellhoundAttackDamage,
+		ACataclysmHellhoundCharacter::DesignedAttackIntervalSeconds,
+		ACataclysmHellhoundCharacter::DesignedWalkSpeedCmPerSecond,
+		ACataclysmHellhoundCharacter::HellrushRangeCm,
+		ACataclysmHellhoundCharacter::HellrushCooldownSeconds,
+		ACataclysmHellhoundCharacter::HellrushGroundSeconds);
+
+	return Spawned;
+}
+
+int32 ACataclysmGameMode::SpawnImps()
+{
+	UWorld* World = GetWorld();
+	if (!World || ImpCount <= 0)
+	{
+		return 0;
+	}
+
+	FVector Centre = FVector::ZeroVector;
+	for (TActorIterator<APlayerStart> It(World); It; ++It)
+	{
+		Centre = It->GetActorLocation();
+		break;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	// RAISED BY THE DIFFERENCE IN CAPSULE HALF-HEIGHT, the same correction the
+	// other three spawners make. This creature's capsule is 7.95 cm taller than
+	// the base enemy's, which is the smallest difference of the four.
+	constexpr float BaseEnemyCapsuleHalfHeight = 80.0f;
+	const float RiseCm =
+		ACataclysmImpCharacter::ImpCapsuleHalfHeight - BaseEnemyCapsuleHalfHeight;
+
+	// THE MIDDLE OF THE PACK, NOT WHERE ANY ONE OF THEM STANDS. Every other
+	// spawner spreads its creatures around the player start; this one spreads
+	// them around a point of their own, so ten arrive as a group standing
+	// together rather than as a ring already surrounding the player.
+	const float BearingRadians = FMath::DegreesToRadians(ImpBearingDegrees);
+	const FVector PackCentre = Centre + FVector(
+		FMath::Cos(BearingRadians) * ImpDistanceCm,
+		FMath::Sin(BearingRadians) * ImpDistanceCm,
+		RiseCm);
+
+	int32 Spawned = 0;
+	for (int32 Index = 0; Index < ImpCount; ++Index)
+	{
+		const float Angle = 2.0f * PI * static_cast<float>(Index)
+						  / static_cast<float>(FMath::Max(ImpCount, 1));
+		const FVector Where = PackCentre + FVector(
+			FMath::Cos(Angle) * ImpPackRadiusCm,
+			FMath::Sin(Angle) * ImpPackRadiusCm,
+			0.0f);
+
+		// EACH FACES THE PLAYER START rather than the middle of its own pack,
+		// which is what makes ten of them read as one group looking the same way.
+		const FRotator Facing = (Centre - Where).Rotation();
+
+		ACataclysmImpCharacter* Imp = World->SpawnActor<ACataclysmImpCharacter>(
+			ACataclysmImpCharacter::StaticClass(), Where, Facing, SpawnParams);
+		if (!Imp)
+		{
+			continue;
+		}
+
+		Imp->SetHealth(ImpHealth);
+		Imp->SetAttackDamage(ImpAttackDamage);
+
+		// NO SetArmour CALL, AND IT IS DELIBERATE. See the header: this
+		// creature's designed armour share is exactly zero and it is the only
+		// one in the roster with none. Calling SetArmour(0) would look like a
+		// figure somebody chose rather than one the design refuses to give.
+		Imp->SetRarityStep(RarityStepFor(ImpRarityStep, Imp));
+		Imp->DrawModifiersForRarity();
+
+		Imps.Add(Imp);
+		++Spawned;
+	}
+
+	// THE LOG SAYS WHAT THE PACK IS WORTH TOGETHER, because no single one of
+	// these creatures is worth anything and reading ten separate spawn lines
+	// does not add up to that.
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("Put %d Imps around a point %.0f cm from %s on a bearing of %.0f "
+			 "degrees, each %.0f cm from the middle of the pack. Each has %.0f "
+			 "health, NO ARMOUR, and 25%% evasion, and swipes for %.0f every "
+			 "%.1f s at a reach of %.0f cm -- which is the SECOND rank of a "
+			 "crowd, so twenty can hit a player at once. Together they are "
+			 "%.0f health and %.0f damage a second. They move at %.0f cm/s, "
+			 "faster than any player class, so walking away is not an escape. "
+			 "They walk as a Detour crowd, so they should queue into rings "
+			 "around the player rather than shove (issue #761)."),
+		Spawned, ImpDistanceCm, *Centre.ToCompactString(), ImpBearingDegrees,
+		ImpPackRadiusCm, ImpHealth, ImpAttackDamage,
+		ACataclysmImpCharacter::DesignedAttackIntervalSeconds,
+		ACataclysmImpCharacter::DesignedMeleeReachCm,
+		ImpHealth * Spawned,
+		ImpAttackDamage * Spawned
+			/ ACataclysmImpCharacter::DesignedAttackIntervalSeconds,
+		ACataclysmImpCharacter::DesignedWalkSpeedCmPerSecond);
+
+	return Spawned;
+}
+
+int32 ACataclysmGameMode::SpawnCorruptedSentinels()
+{
+	UWorld* World = GetWorld();
+	if (!World || CorruptedSentinelCount <= 0)
+	{
+		return 0;
+	}
+
+	FVector Centre = FVector::ZeroVector;
+	for (TActorIterator<APlayerStart> It(World); It; ++It)
+	{
+		Centre = It->GetActorLocation();
+		break;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	// RAISED BY THE DIFFERENCE IN CAPSULE HALF-HEIGHT, the same correction every
+	// other spawner makes. **It matters more for this creature than for any of
+	// them**, because it cannot walk: a creature spawned with its feet buried
+	// normally has the movement component push it out, and this one has no
+	// movement to do it with.
+	constexpr float BaseEnemyCapsuleHalfHeight = 80.0f;
+	const float RiseCm =
+		ACataclysmCorruptedSentinelCharacter::SentinelCapsuleHalfHeight
+		- BaseEnemyCapsuleHalfHeight;
+
+	const float BearingRadians =
+		FMath::DegreesToRadians(CorruptedSentinelBearingDegrees);
+
+	int32 Spawned = 0;
+	for (int32 Index = 0; Index < CorruptedSentinelCount; ++Index)
+	{
+		const float Angle = BearingRadians
+			+ 2.0f * PI * static_cast<float>(Index)
+				/ static_cast<float>(FMath::Max(CorruptedSentinelCount, 1));
+		const FVector Where = Centre + FVector(
+			FMath::Cos(Angle) * CorruptedSentinelDistanceCm,
+			FMath::Sin(Angle) * CorruptedSentinelDistanceCm,
+			RiseCm);
+
+		// FACING THE PLAYER START, AND IT CANNOT WALK ROUND TO FACE ANYTHING
+		// ELSE. It turns at 480 degrees a second, so it tracks a player who
+		// circles it; where it starts pointed still decides what it sees first.
+		const FRotator Facing = (Centre - Where).Rotation();
+
+		ACataclysmCorruptedSentinelCharacter* Sentinel =
+			World->SpawnActor<ACataclysmCorruptedSentinelCharacter>(
+				ACataclysmCorruptedSentinelCharacter::StaticClass(), Where,
+				Facing, SpawnParams);
+		if (!Sentinel)
+		{
+			continue;
+		}
+
+		Sentinel->SetHealth(CorruptedSentinelHealth);
+		Sentinel->SetAttackDamage(CorruptedSentinelAttackDamage);
+		Sentinel->SetArmour(CorruptedSentinelArmour);
+		Sentinel->SetRarityStep(
+			RarityStepFor(CorruptedSentinelRarityStep, Sentinel));
+		Sentinel->DrawModifiersForRarity();
+
+		CorruptedSentinels.Add(Sentinel);
+		++Spawned;
+	}
+
+	// THE LOG SAYS IT CANNOT MOVE, because a creature standing still while being
+	// shot at looks broken and is not.
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("Put %d Corrupted Sentinels %.0f cm from %s on a bearing of %.0f "
+			 "degrees. Each has %.0f health with %.0f%% of it as an energy "
+			 "shield, %.0f armour at difficulty tier %d, and **CANNOT MOVE AT "
+			 "ALL** -- its designed speed is zero, so walking out of its range "
+			 "ends the fight. Its Siege Bolt marks a %.0f cm lane for %.2f s "
+			 "and then flies %.0f cm, every %.1f s. Its Brimstone Mortar marks "
+			 "a %.0f cm circle for %.2f s and lobs onto it, every %.0f s."),
+		Spawned, CorruptedSentinelDistanceCm, *Centre.ToCompactString(),
+		CorruptedSentinelBearingDegrees,
+		CorruptedSentinelHealth,
+		ACataclysmCorruptedSentinelCharacter::DesignedEnergyShieldFraction
+			* 100.0f,
+		CorruptedSentinelArmour, DifficultyTierFor(this),
+		ACataclysmCorruptedSentinelCharacter::SiegeBoltRadiusCm,
+		ACataclysmCorruptedSentinelCharacter::SiegeBoltWindUpSeconds,
+		ACataclysmCorruptedSentinelCharacter::SiegeBoltRangeCm,
+		ACataclysmCorruptedSentinelCharacter::DesignedAttackIntervalSeconds,
+		ACataclysmCorruptedSentinelCharacter::BrimstoneMortarRadiusCm,
+		ACataclysmCorruptedSentinelCharacter::BrimstoneMortarWindUpSeconds,
+		ACataclysmCorruptedSentinelCharacter::BrimstoneMortarCooldownSeconds);
+
+	return Spawned;
+}
+
+int32 ACataclysmGameMode::SpawnSuccubi()
+{
+	UWorld* World = GetWorld();
+	if (!World || SuccubusCount <= 0)
+	{
+		return 0;
+	}
+
+	FVector Centre = FVector::ZeroVector;
+	for (TActorIterator<APlayerStart> It(World); It; ++It)
+	{
+		Centre = It->GetActorLocation();
+		break;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	// RAISED BY THE DIFFERENCE IN CAPSULE HALF-HEIGHT, the same correction every
+	// other spawner makes. This creature is 90.4 cm to the base enemy's 80, so
+	// it rises 10.4 cm.
+	constexpr float BaseEnemyCapsuleHalfHeight = 80.0f;
+	const float RiseCm =
+		ACataclysmSuccubusCharacter::SuccubusCapsuleHalfHeight
+		- BaseEnemyCapsuleHalfHeight;
+
+	const float BearingRadians = FMath::DegreesToRadians(SuccubusBearingDegrees);
+
+	int32 Spawned = 0;
+	for (int32 Index = 0; Index < SuccubusCount; ++Index)
+	{
+		const float Angle = BearingRadians
+			+ 2.0f * PI * static_cast<float>(Index)
+				/ static_cast<float>(FMath::Max(SuccubusCount, 1));
+		const FVector Where = Centre + FVector(
+			FMath::Cos(Angle) * SuccubusDistanceCm,
+			FMath::Sin(Angle) * SuccubusDistanceCm,
+			RiseCm);
+
+		// FACING THE PLAYER START. It turns at 480 degrees a second and it can
+		// walk, so where it starts pointed only decides what it sees first.
+		const FRotator Facing = (Centre - Where).Rotation();
+
+		ACataclysmSuccubusCharacter* Succubus =
+			World->SpawnActor<ACataclysmSuccubusCharacter>(
+				ACataclysmSuccubusCharacter::StaticClass(), Where, Facing,
+				SpawnParams);
+		if (!Succubus)
+		{
+			continue;
+		}
+
+		Succubus->SetHealth(SuccubusHealth);
+		Succubus->SetAttackDamage(SuccubusAttackDamage);
+		Succubus->SetArmour(SuccubusArmour);
+		Succubus->SetRarityStep(RarityStepFor(SuccubusRarityStep, Succubus));
+		Succubus->DrawModifiersForRarity();
+
+		Succubi.Add(Succubus);
+		++Spawned;
+	}
+
+	// THE LOG SAYS WHAT THE AURA DOES, because nothing on screen does. Nothing
+	// draws a mark on a buffed creature, so the only way to see the aura is to
+	// notice that the creatures near the Succubus move and swing faster.
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("Put %d Succubi %.0f cm from %s on a bearing of %.0f degrees -- "
+			 "**the first diagonal, because the four cardinal ones are taken**. "
+			 "Each has %.0f health with a further %.0f%% of it as an energy "
+			 "shield, %.0f armour at difficulty tier %d, and walks at %.0f "
+			 "cm/s. Its Soulfire marks a %.0f cm lane for %.2f s and then flies "
+			 "%.0f cm at %.0f cm/s, every %.1f s. Its Wither the Living curses "
+			 "one target within %.0f cm for %.0f s, every %.0f s, **with no "
+			 "ground marker at all** -- it is read off the caster and answered "
+			 "by interrupting. Its Dominion is held on for as long as it lives "
+			 "and grants %s to every ALLY within %.0f cm."),
+		Spawned, SuccubusDistanceCm, *Centre.ToCompactString(),
+		SuccubusBearingDegrees, SuccubusHealth,
+		ACataclysmSuccubusCharacter::DesignedEnergyShieldFraction * 100.0f,
+		SuccubusArmour, DifficultyTierFor(this),
+		ACataclysmSuccubusCharacter::DesignedWalkSpeedCmPerSecond,
+		ACataclysmSuccubusCharacter::SoulfireRadiusCm,
+		ACataclysmSuccubusCharacter::SoulfireWindUpSeconds,
+		ACataclysmSuccubusCharacter::SoulfireRangeCm,
+		ACataclysmSuccubusCharacter::SoulfireSpeedCmPerSecond,
+		ACataclysmSuccubusCharacter::DesignedAttackIntervalSeconds,
+		ACataclysmSuccubusCharacter::WitherRangeCm,
+		ACataclysmSuccubusCharacter::WitherDurationSeconds,
+		ACataclysmSuccubusCharacter::WitherCooldownSeconds,
+		ACataclysmSuccubusCharacter::DominionEffectName,
+		ACataclysmSuccubusCharacter::DominionRadiusCm);
+
+	return Spawned;
+}
+
+int32 ACataclysmGameMode::SpawnGatekeepers()
+{
+	UWorld* World = GetWorld();
+	if (!World || GatekeeperCount <= 0)
+	{
+		return 0;
+	}
+
+	FVector Centre = FVector::ZeroVector;
+	for (TActorIterator<APlayerStart> It(World); It; ++It)
+	{
+		Centre = It->GetActorLocation();
+		break;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	// RAISED BY THE DIFFERENCE IN CAPSULE HALF-HEIGHT, the same correction every
+	// other spawner makes, and **by far the largest of them**: this creature is
+	// 155.53 cm to the base enemy's 80, so it rises 75.53 cm. Spawned without it,
+	// three quarters of a metre of a three metre creature would be underground.
+	constexpr float BaseEnemyCapsuleHalfHeight = 80.0f;
+	const float RiseCm =
+		ACataclysmGatekeeperCharacter::GatekeeperCapsuleHalfHeight
+		- BaseEnemyCapsuleHalfHeight;
+
+	const float BearingRadians =
+		FMath::DegreesToRadians(GatekeeperBearingDegrees);
+
+	int32 Spawned = 0;
+	for (int32 Index = 0; Index < GatekeeperCount; ++Index)
+	{
+		const float Angle = BearingRadians
+			+ 2.0f * PI * static_cast<float>(Index)
+				/ static_cast<float>(FMath::Max(GatekeeperCount, 1));
+		const FVector Where = Centre + FVector(
+			FMath::Cos(Angle) * GatekeeperDistanceCm,
+			FMath::Sin(Angle) * GatekeeperDistanceCm,
+			RiseCm);
+
+		// FACING THE PLAYER START. It turns at 480 degrees a second and it walks,
+		// so where it starts pointed only decides what it sees first.
+		const FRotator Facing = (Centre - Where).Rotation();
+
+		ACataclysmGatekeeperCharacter* Gatekeeper =
+			World->SpawnActor<ACataclysmGatekeeperCharacter>(
+				ACataclysmGatekeeperCharacter::StaticClass(), Where, Facing,
+				SpawnParams);
+		if (!Gatekeeper)
+		{
+			continue;
+		}
+
+		// **HEALTH BEFORE ANYTHING ELSE, AND IT IS WHAT THE PHASES ARE FRACTIONS
+		// OF.** `SetHealth` writes both the maximum and the current value, and
+		// `RefreshPhase` divides one by the other -- so a creature whose health
+		// has not been set yet has a maximum of zero and refuses to move phase at
+		// all. That refusal is deliberate; see RefreshPhase.
+		Gatekeeper->SetHealth(GatekeeperHealth);
+		Gatekeeper->SetAttackDamage(GatekeeperAttackDamage);
+		Gatekeeper->SetArmour(GatekeeperArmour);
+		Gatekeeper->SetRarityStep(
+			RarityStepFor(GatekeeperRarityStep, Gatekeeper));
+		Gatekeeper->DrawModifiersForRarity();
+
+		Gatekeepers.Add(Gatekeeper);
+		++Spawned;
+	}
+
+	// THE LOG SAYS WHERE THE PHASES ARE, because nothing on screen does. A phase
+	// adds an ability and changes no number, so the only visible sign is the
+	// creature doing something it had not done before -- which is
+	// indistinguishable from a cooldown coming up. Issue #740 is the screen work
+	// that would make this line unnecessary.
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("Put %d Gatekeepers %.0f cm from %s on a bearing of %.0f degrees -- "
+			 "**the seventh direction, and further out than anything else because "
+			 "it notices at %.0f cm**. Each has %.0f health, %.0f armour at "
+			 "difficulty tier %d, %.0f%% resistance, and stands %.2f m tall. "
+			 "**PHASE 2 BEGINS AT %.0f HEALTH AND PHASE 3 AT %.0f**, and a phase "
+			 "adds an ability and changes no number. It opens with Dread Cleave, "
+			 "a %.0f cm sweep marked for %.2f s every %.1f s, and Soulfall, a "
+			 "%.0f cm circle lobbed up to %.0f cm that leaves the ground burning "
+			 "for %.0f s. At phase 2 it calls %d Imps every %.0f s to a cap of "
+			 "%d. At phase 3 it adds Soul Harvest, a %.0f cm ring marked for "
+			 "%.1f s and worth %.0f%% of a hit."),
+		Spawned, GatekeeperDistanceCm, *Centre.ToCompactString(),
+		GatekeeperBearingDegrees,
+		ACataclysmGatekeeperCharacter::GatekeeperNoticeRadiusCm,
+		GatekeeperHealth, GatekeeperArmour, DifficultyTierFor(this),
+		ACataclysmGatekeeperCharacter::DesignedResistancePercent,
+		ACataclysmGatekeeperCharacter::GatekeeperCapsuleHalfHeight * 2.0f / 100.0f,
+		GatekeeperHealth
+			* ACataclysmGatekeeperCharacter::SecondPhaseHealthFraction,
+		GatekeeperHealth
+			* ACataclysmGatekeeperCharacter::ThirdPhaseHealthFraction,
+		ACataclysmGatekeeperCharacter::DreadCleaveRadiusCm,
+		ACataclysmGatekeeperCharacter::DreadCleaveWindUpSeconds,
+		ACataclysmGatekeeperCharacter::DesignedAttackIntervalSeconds,
+		ACataclysmGatekeeperCharacter::SoulfallRadiusCm,
+		ACataclysmGatekeeperCharacter::SoulfallRangeCm,
+		ACataclysmGatekeeperCharacter::SoulfallGroundSeconds,
+		ACataclysmGatekeeperCharacter::CallTheDamnedCount,
+		ACataclysmGatekeeperCharacter::CallTheDamnedCooldownSeconds,
+		ACataclysmGatekeeperCharacter::CallTheDamnedMaxAlive,
+		ACataclysmGatekeeperCharacter::SoulHarvestRadiusCm,
+		ACataclysmGatekeeperCharacter::SoulHarvestWindUpSeconds,
+		ACataclysmGatekeeperCharacter::SoulHarvestDamagePercent);
+
+	return Spawned;
+}
+
+int32 ACataclysmGameMode::SpawnBrutes()
+{
+	UWorld* World = GetWorld();
+	if (!World || BruteCount <= 0)
+	{
+		return 0;
+	}
+
+	FVector Centre = FVector::ZeroVector;
+	for (TActorIterator<APlayerStart> It(World); It; ++It)
+	{
+		Centre = It->GetActorLocation();
+		break;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	// RAISED BY THE DIFFERENCE IN CAPSULE HALF-HEIGHT. The player start sits at
+	// the height a default capsule needs, and the Brute's is 30 cm taller than
+	// the base enemy's, so spawning at the same Z buries its feet in the floor
+	// until the movement component pushes it out.
+	constexpr float BaseEnemyCapsuleHalfHeight = 80.0f;
+	const float RiseCm =
+		ACataclysmBruteCharacter::BruteCapsuleHalfHeight - BaseEnemyCapsuleHalfHeight;
+
+	int32 Spawned = 0;
+	for (int32 Index = 0; Index < BruteCount; ++Index)
+	{
+		// Spread around the same centre when there is more than one, and
+		// directly in front when there is one.
+		const float Angle = 2.0f * PI * static_cast<float>(Index)
+						  / static_cast<float>(FMath::Max(BruteCount, 1));
+		const FVector Where = Centre + FVector(
+			FMath::Cos(Angle) * BruteDistanceCm,
+			FMath::Sin(Angle) * BruteDistanceCm,
+			RiseCm);
+
+		const FRotator Facing = (Centre - Where).Rotation();
+
+		ACataclysmBruteCharacter* Brute = World->SpawnActor<ACataclysmBruteCharacter>(
+			ACataclysmBruteCharacter::StaticClass(), Where, Facing, SpawnParams);
+		if (!Brute)
+		{
+			continue;
+		}
+
+		Brute->SetHealth(BruteHealth);
+		Brute->SetAttackDamage(BruteAttackDamage);
+
+		// See the note beside the Abyssal Warden's call. This is the creature the
+		// design calls heavily armoured, and it had no armour at all until
+		// issue #525.
+		Brute->SetArmour(BruteArmour);
+
+		// See the note beside the Abyssal Warden's call.
+		Brute->SetRarityStep(RarityStepFor(BruteRarityStep, Brute));
+		Brute->DrawModifiersForRarity();
+
+		Brutes.Add(Brute);
+		++Spawned;
+	}
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("Put %d Brutes %.0f cm from %s. Each has %.0f health and %.0f "
+			 "armour at difficulty tier %d, hits for "
+			 "%.0f every %.1f s, walks at %.0f cm/s and turns at %.0f deg/s."),
+		Spawned, BruteDistanceCm, *Centre.ToCompactString(),
+		BruteHealth, BruteArmour, DifficultyTierFor(this), BruteAttackDamage,
+		ACataclysmBruteCharacter::DesignedAttackIntervalSeconds,
+		ACataclysmBruteCharacter::DesignedWalkSpeedCmPerSecond,
+		ACataclysmBruteCharacter::DesignedTurnRateDegreesPerSecond);
+
+	return Spawned;
+}
+
+int32 ACataclysmGameMode::SpawnTrainingDummies()
+{
+	UWorld* World = GetWorld();
+	if (!World || TrainingDummyCount <= 0)
+	{
+		return 0;
+	}
+
+	// Around the player start rather than around the world origin, so the ring
+	// is where the player actually appears whatever the level looks like. The
+	// origin is the fallback when a level has no player start at all.
+	FVector Centre = FVector::ZeroVector;
+	for (TActorIterator<APlayerStart> It(World); It; ++It)
+	{
+		Centre = It->GetActorLocation();
+		break;
+	}
+
+	FActorSpawnParameters SpawnParams;
+
+	// AlwaysSpawn, because a dummy that overlaps the floor or another dummy
+	// should still exist. The alternative silently produces fewer than asked
+	// for, and a sandbox that sometimes has four enemies and sometimes five is
+	// worse than one that always has five.
+	SpawnParams.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	int32 Spawned = 0;
+	for (int32 Index = 0; Index < TrainingDummyCount; ++Index)
+	{
+		const float Angle = 2.0f * PI * static_cast<float>(Index)
+						  / static_cast<float>(TrainingDummyCount);
+		const FVector Where = Centre + FVector(
+			FMath::Cos(Angle) * TrainingDummyRingRadius,
+			FMath::Sin(Angle) * TrainingDummyRingRadius,
+			0.0f);
+
+		// Facing the centre, so a ring of them looks deliberate rather than
+		// scattered.
+		const FRotator Facing = (Centre - Where).Rotation();
+
+		ACataclysmEnemyCharacter* Dummy = World->SpawnActor<ACataclysmEnemyCharacter>(
+			ACataclysmEnemyCharacter::StaticClass(), Where, Facing, SpawnParams);
+		if (!Dummy)
+		{
+			continue;
+		}
+
+		// Both remembered and applied, so it does not matter whether the ability
+		// system has been wired up yet. See ACataclysmEnemyCharacter::SetHealth.
+		Dummy->SetHealth(TrainingDummyHealth);
+		Dummy->SetAttackDamage(TrainingDummyAttackDamage);
+		Dummy->SetRarityStep(RarityStepFor(TrainingDummyRarityStep, Dummy));
+		Dummy->DrawModifiersForRarity();
+
+		TrainingDummies.Add(Dummy);
+		++Spawned;
+	}
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("Put %d training dummies in a ring of %.0f cm around %s. "
+			 "Each has %.0f health and hits for %.0f."),
+		Spawned, TrainingDummyRingRadius, *Centre.ToCompactString(),
+		TrainingDummyHealth, TrainingDummyAttackDamage);
+
+	return Spawned;
+}

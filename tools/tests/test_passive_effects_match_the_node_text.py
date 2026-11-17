@@ -1,0 +1,3447 @@
+"""Every authored passive effect matches the words of the node it is about.
+
+WHY THIS EXISTS. Issue #936. A passive tree node says what it does in a sentence
+written for a player -- "+2% increased Life Leech per point" -- and carries no
+stat name and no number anywhere a machine can read. The project owner chose on
+2026-08-25 to author those numbers in the design workbook, in a `Passive Effects`
+sheet, which `tools/generate_datatables.py` turns into
+`game/Data/PassiveEffects.csv`.
+
+**That is two statements of one fact in two files, and the second can be edited
+without the first.** A number changed in the workbook and not in the tree, or a
+node renamed in the tree and not in the workbook, gives a game that grants
+something the design never said. Neither errors.
+
+AN AUTOMATED TRANSCRIPTION WAS TRIED FIRST AND WAS WRONG. Deriving the sheet from
+the descriptions with a parser produced 44 rows of which about fifteen were
+wrong: eight melee-only bonuses were written as global increases, a node about
+damage over time DURATION was mapped to damage over time DAMAGE, and a node about
+how much Fervour a character gains was mapped to a damage stat because the words
+"damage over time" appear in it. So the rows were selected by reading instead,
+and this is what keeps them honest afterwards.
+
+WHAT IS ASSERTED HERE.
+
+    every effect names a node that exists
+    every effect's value appears, as a number, in that node's own description
+    an effect in the `more` bucket is on a node whose description says it
+      multiplies, in either of the two wordings the trees use
+    every stat named is a stat some class line or attribute supplies
+    every required tag is one the workbook declares
+    no node grants the same stat twice, though it may grant two different ones
+    every row name is its node and the index of that node's effect
+    the coverage is what it is measured to be, so it can only move deliberately
+
+WHAT THIS CANNOT CHECK, and it is worth being plain about: whether the stat
+chosen is the RIGHT stat. Nothing automatic can read "+2% increased Life Leech"
+and know that `life_leech` rather than `health_regen` is meant. That is why the
+sheet is written by hand and reviewed. This catches the mistakes a hand-written
+table actually makes -- a wrong number, a renamed node, a stat that does not
+exist -- rather than a wrong judgement.
+"""
+
+from __future__ import annotations
+
+import csv
+import pathlib
+import re
+import sys
+
+import pytest
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+DATA = REPO_ROOT / "game" / "Data"
+EFFECTS_CSV = DATA / "PassiveEffects.csv"
+NODES_CSV = DATA / "PassiveNodes.csv"
+CLASS_STATS_CSV = DATA / "ClassStats.csv"
+ATTRIBUTES_CSV = DATA / "Attributes.csv"
+ITEM_BASES_CSV = DATA / "ItemBases.csv"
+WEAPON_SKILLS_CSV = DATA / "WeaponSkills.csv"
+WORKBOOK = REPO_ROOT / "docs" / "All_Things_Cataclysm.xlsx"
+
+# WHICH STATS GEAR SUPPLIES IS THE GENERATOR'S RULE, imported rather than written
+# out a second time here. `validate_passive_effects` in that file refuses exactly
+# the rows this file refuses, and two spellings of one rule is the drift this
+# whole file exists to catch.
+sys.path.insert(0, str(REPO_ROOT / "tools"))
+
+import generate_datatables as gen  # noqa: E402
+
+#: The value kinds a row may carry: the three buckets of the damage pipeline,
+#: and a removal, which takes the stat to nothing (issue #1791). Anything else
+#: is a typo. The generator's own tuple rather than a copy of it, for the reason
+#: the import above gives; `test_value_kinds_match_the_engine.py` holds that
+#: tuple to the names the game reads.
+KINDS = set(gen.VALUE_KINDS)
+
+
+def words_of(row: dict, nodes: dict) -> str:
+    """The sentence a row has to agree with.
+
+    A CAPSTONE'S OWN DESCRIPTION SAYS NOTHING ABOUT WHAT ITS OPTIONS DO.
+    Issue #1029. All four Masochist capstones read "Unlocks at N points spent.
+    Choose one. The choice is permanent." and the effect is in one of the three
+    `OptionNDescription` columns beside it.
+
+    **Every check in this file that compares a row against a sentence would have
+    been reading the wrong sentence**, and the direction of the failure is what
+    makes this worth a helper rather than a special case in each. A capstone row
+    checked against "Choose one. The choice is permanent." finds no number, no
+    condition wording and no "more", so the checks fail loudly the first time --
+    which is how this was found. But a row whose value happens to appear in the
+    boilerplate would pass for the wrong reason, and "25 points spent" contains
+    a 25.
+
+    A ROW WITH NO OPTION IS UNCHANGED, which is every row in the four trees
+    except the capstones'.
+    """
+    node = nodes[row["Node"]]
+    option = int(row.get("Option", 0) or 0)
+    if not option:
+        return node["Description"]
+
+    described = node.get(f"Option{option}Description", "")
+    assert described, (
+        f"{row['Name']} names option {option} and {row['Node']} has no "
+        f"Option{option}Description, so there is no sentence to check it "
+        "against. Either the tree was re-authored or the option is wrong."
+    )
+    return described
+
+#: A description saying its number multiplies rather than joining the sum.
+#:
+#: TWO WORDINGS FOR ONE THING, AND BOTH TREES ARE RIGHT. Issue #977. The Bulwark
+#: tree writes "+1.5% damage reduction per point (multiplicative)" on all ten of
+#: its multiplying nodes. The Masochist tree writes "You gain 30% more Fervour
+#: from health lost to damage, and 50% less Fervour from health spent as an
+#: ability cost" and never uses the word "multiplicative" anywhere. Neither tree
+#: uses the other's wording.
+#:
+#: `docs/DECISIONS.md` settles that they mean the same thing, twice. On
+#: 2026-08-14: the wording "more" and "less" is "the multipliers that apply
+#: separately instead of joining the additive bucket", and that entry names
+#: Masochist keystones among the twelve keystones already using it. On
+#: 2026-08-17 the project owner ruled that "multiplicative means more".
+#:
+#: THE SECOND PATTERN NEEDS A NUMBER AND A PERCENT SIGN IN FRONT OF THE WORD, or
+#: ordinary English matches: "3 or more enemies", "more than 10 meters" and "5 or
+#: more affixes" are not magnitudes. It is the same expression
+#: `tools/tests/test_class_passive_trees.py` uses for the same reason, kept
+#: separate rather than imported because that file pins counts against the tree
+#: JSON while this one reads the generated CSV.
+#:
+#: A THIRD ALTERNATIVE, THE BARE WORD "halved", WAS HERE AND CAME BACK OUT.
+#: Issue #1009. Sanguine Ledger was the only node in the game that needed it, its
+#: sentence contained no digits at all, and carrying it meant two other checks in
+#: this file had to widen for the same one node. The project owner chose to
+#: reword the node on 2026-08-26 instead: it now reads "your Health Regeneration
+#: is reduced by 50% (multiplicative)", which the first alternative already
+#: matches. **A wording that needs three checks widened at once is the wording
+#: rather than the checks being wrong**, and that is the lesson to reuse.
+#:
+#: SO THIS PATTERN NOW ASKS FOR A NUMBER EVERYWHERE, which is what makes it worth
+#: having. A sentence stating no magnitude cannot be tied to a magnitude in a
+#: spreadsheet, however honest the word in it is.
+MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
+                        re.IGNORECASE)
+
+#: How many rows the effects file holds altogether.
+#:
+#: TWO NUMBERS RATHER THAN ONE SINCE ISSUE #953, because a node may now have
+#: several rows. This is the row count and `AUTHORED_NODES` below is the count of
+#: nodes with at least one, which is the number that measures the tree. They were
+#: the same figure while a node could grant only one stat.
+#:
+#: IT WENT UP FROM 24 ON 2026-08-25, when Fervour was given a way of being
+#: generated: ten rows on eight Masochist nodes. Three of the ten are on the
+#: tree's starting node, which grants all three Fervour rates at once and could
+#: not be written down at all before #953. Issue #954.
+#:
+#: AND UP AGAIN BY TWO THE SAME DAY, for Pain Tolerance, which grants a maximum
+#: health increase and an armour increase in one sentence. That is the other node
+#: #953 was opened for and it needed no code at all.
+#:
+#: AND BY TWO MORE, for the first two nodes whose bonus depends on where the
+#: character's health is: Last Stand and Desperate Measures. Issue #959.
+#:
+#: AND BY TWO MORE AGAIN, both on one node. Living on the Edge reads "While at or
+#: below 35% health, +2% increased damage per point", and the project owner
+#: settled on 2026-08-25 that "increased damage" on a passive node means every
+#: kind of damage the character DEALS -- attack damage and spell damage -- and
+#: not damage over time. So it is two rows rather than one. Issue #958.
+#:
+#: AND BY TWO MORE, again both on one node. Blood Rush reads "+2% increased
+#: damage per point for 2 seconds after you pay a health cost", so it is the same
+#: two stats, under the first condition that depends on WHEN something happened
+#: rather than on what is true now. Issue #962.
+#:
+#: AND BY ONE, for Vicious Onslaught: "+1% increased Attack Damage per point for
+#: every 5% of your maximum health that is missing". One row rather than two
+#: because the node names Attack Damage outright. It is the first bonus whose
+#: SIZE grows with a state rather than switching on and off with it. Issue #968.
+#:
+#: AND BY ONE, for Deeper Cuts: "Your skills also cost 1% of your maximum
+#: health per point, in addition to any other cost." A `flat` row, because the
+#: stat it supplies is zero for every class and this node is its only source.
+#: Issue #970.
+#:
+#: AND BY ONE, for The Catalyst: "While at or below 5% health, your skills
+#: have a 5% chance per point not to go on cooldown." A `flat` row carrying
+#: the health threshold, because nothing else supplies the stat. Issue #973.
+#:
+#: AND BY TWO, both on one node. Cataclysmic Resonance reads "+1% increased
+#: damage per point for 5 seconds after you take damage of a Cataclysm type
+#: other than Demonic", so it is the same two damage stats under the second
+#: kind of timed window. Issue #975.
+#:
+#: AND BY FOUR, two on each of two keystones, and they are the first keystones
+#: in the project with an authored effect at all. Flesh Craver and Blood Tithe
+#: are mirror images: each grants "30% more" of one of the two ways Fervour is
+#: gained and "50% less" of the other. Four `more` rows, which is what those
+#: words mean. Issue #978.
+#:
+#: AND BY ONE, for Reciprocity: "Your Retaliation damage is increased by 1% for
+#: each point of Fervour you currently hold." One row, and the second bonus in
+#: the project whose SIZE grows with a state rather than switching on and off
+#: with it. Issue #980.
+#:
+#: AND BY TWO, both on one node. Grand Tithe reads "A skill whose health
+#: cost is above 10% of your maximum health deals 4% increased damage per
+#: point", so it is the same two damage stats under the first condition that
+#: asks about the SKILL rather than about the character. Issue #983.
+#:
+#: AND BY THREE, all on one node. Exsanguinate reads "Every skill costs an
+#: additional 15% of your current health, and every skill deals 40% more
+#: damage": a `flat` row for the cost, because that stat is zero for every
+#: class and this node is its only source, and the two damage stats in the
+#: `more` bucket. It is the first node to hold rows in two different
+#: buckets. Issue #986.
+#:
+#: AND BY THREE MORE, all on one node again. Point of No Return reads "You
+#: cannot be healed above 50% of your maximum health, but you deal 25% more
+#: damage": a `flat` row reducing the ceiling healing may reach, and the two
+#: damage stats in the `more` bucket. Issue #988.
+#:
+#: AND BY ONE, for Deferred Payment: "10% per point of the health a skill
+#: costs is not taken when the skill is used. It is taken 3 seconds later."
+#: A `flat` row, because the stat it supplies is zero for every class and
+#: this node is its only source. Issue #991.
+#:
+#: AND BY SEVEN, FOR THE THREE NODES THAT FINISH THE BLOOD TITHE BRANCH.
+#: Compound Interest is two damage rows whose size grows with what the character
+#: owes, issue #994. Rolling Debt is one `flat` row, the seconds one further
+#: payment pushes a debt out, issue #995. The Reckoning is four: a `flat` 100
+#: deferring the whole cost, the two damage stats in the `more` bucket growing
+#: with what is owed, and a `flat` flag for the rules that a debt is never taken
+#: on a timer, is cleared by a kill, and kills a character it passes. Issue #997.
+#:
+#: AND BY THREE, ONE EACH FOR THE THREE NODES THAT NEEDED A STACK COUNT THAT
+#: BUILDS AND EXPIRES. Sanguine Momentum grants attack speed per stack, Blood
+#: Offering grants melee damage per stack, and Carnage multiplies melee damage
+#: per stack. One row each rather than two, because each names a single stat:
+#: this game has no cast speed at all (#1000), and melee damage is attack damage
+#: rather than both damage stats. Issues #1002, #1003 and #1004.
+#:
+#: AND BY FOUR, FOR THE THREE NODES THAT CHANGE HOW THE FERVOUR POOL MOVES.
+#: Wounds That Feed is one `flat` flag scoped to leech healing (#1006). Sanguine
+#: Ledger is two: the same flag scoped to regeneration healing, and a `more` of
+#: -50 on health regeneration, which is its cost (#1007). Low Life is one `flat`
+#: row granting Fervour every second below a health threshold (#1008).
+#:
+#: AND BY TWO, BOTH ON ONE NODE, FOR THE BREAKING POINT. Issue #985. It reads
+#: "Dropping below 50% health converts all damage you take into Bleeding over 5
+#: seconds. The conversion lasts 3 seconds, increased by 5% per point, and cannot
+#: happen more than once every 10 seconds." That is a rule and a magnitude, so it
+#: is a `flat` flag saying the rule applies and an `increased` of 5 on how long
+#: one turn of it lasts.
+#:
+#: THE 3 SECONDS IS NOT A ROW HERE AND COULD NOT BE. This sheet carries values
+#: PER POINT, and 3 seconds is the base the node's increase multiplies, so it is
+#: on the Masochist's own line in the `Class Stats` sheet instead. An `increased`
+#: row with no base under it is worth nothing, which is what
+#: `test_every_stat_is_one_the_game_supplies` exists to refuse.
+#:
+#: AND BY EIGHT, FOR THE FIVE NODES THAT ASK ABOUT THE DEBUFFS THE CHARACTER IS
+#: CARRYING. Issue #962. Thirst for Pain is one `increased` row on attack speed
+#: conditioned on the character Bleeding. The other four scale with a count of
+#: debuffs: Battle-Scarred is one row on armour, Endurance in Suffering is three
+#: -- attack damage, spell damage and damage reduction -- Doctrine of Pain is two
+#: `more` rows on the two damage stats, and Flagellant is one `flat` row granting
+#: Fervour every second for each debuff.
+#:
+#: THAT IS SEVEN NODES' WORTH OF SENTENCE IN FIVE NODES, WHICH IS WHY IT IS EIGHT
+#: ROWS AND NOT FIVE. "Increased damage" is two stats in this project, because a
+#: character deals attack damage and spell damage and no single stat covers both.
+#:
+#: AND TO 91 ON 2026-08-27, FOR THE THREE NODES THAT CHANGE HOW MUCH DAMAGE THE
+#: CHARACTER TAKES. Issue #1026. Six rows across three nodes: Echoes of Agony is
+#: one row on `damage_over_time_taken`; Communion of Pain is three, because
+#: "deal 20% more damage" is the same two damage stats as ever plus the damage
+#: taken; The Edge is two, one per clause of its sentence.
+#:
+#: AND TO 93 ON 2026-08-27, FOR THE FIRST CAPSTONE OPTION EVER AUTHORED.
+#: Issue #1029. The Final Vow's second option, "Apotheosis, but For the Mind",
+#: is two rows: a flag saying the class resource pool has no maximum, and the
+#: damage taken that pays for it, scaled by how much of the pool is held.
+#:
+#: AND TO 94 ON 2026-08-27, FOR MUTILATION MASTERY. Issue #1032. One row:
+#: a flat 5 per point on the chance a melee critical strike applies
+#: Bleeding, which is 40% at the node's full eight points.
+#:
+#: AND DOWN TO 92 ON 2026-08-27, WHEN APOTHEOSIS WAS REMOVED. Issue #1031. The
+#: project owner judged the twelve Masochist capstone options poor and had all
+#: twelve rewritten as pure upgrades with no drawbacks. Apotheosis was The Final
+#: Vow's second option and the only one with rows behind it; Carnivore takes
+#: that slot, so both of its rows describe a node that no longer exists. THIS IS
+#: THE FIRST TIME THIS COUNT HAS GONE DOWN.
+#:
+#: AND TO 99 ON 2026-08-27, FOR THE FIRST TWO OF THE REWRITTEN CAPSTONE OPTIONS.
+#: Issue #1040. Deficit is four rows -- "damage" is two stats in this sheet and
+#: "missing or owe" is two scales -- and Doctrine Made Flesh is three: two for
+#: the damage it multiplies per debuff, and one flat reduction of the damage a
+#: debuff deals back.
+#:
+#: AND TO 102 ON 2026-08-27, FOR STIGMATIC. Issue #1042. Three rows: two
+#: for the damage it increases per debuff carried, and one for the health
+#: regeneration, which only reaches a character at all because issue #1038
+#: made the regeneration step ASK for its rate rather than read the gameplay
+#: attribute a scaled bonus is never folded into.
+#:
+#: AND TO 106 ON 2026-08-27, FOR VESSEL UNBROKEN. Issue #1039. Four rows: a flag
+#: saying damage over time deals the character nothing, two for the damage each
+#: debuff multiplies, and the Fervour each grants a second.
+#:
+#: AND TO 107 ON 2026-08-27, FOR GLUTTON. Issue #1045. ONE row, because
+#: retaliation is a single stat where "damage" is two. AUTHORED_NODES does not
+#: move with it: Glutton is the second option of a capstone whose other two are
+#: already authored, and a capstone counts once.
+#:
+#: AND TO 109 ON 2026-08-27, FOR REPRISAL WAVE AND FEEDING WOUND. Issues #1047
+#: and #1048. ONE row each, and both are single stats for the reason Glutton's is:
+#: everything they change is about retaliation, which this sheet spells as one
+#: stat. Reprisal Wave's row carries the radius in metres its own sentence
+#: states; Feeding Wound's is a flag, because its sentence states a rule and
+#: holds no digit at all.
+#:
+#: AND TO 112 ON 2026-08-27, FOR UNSTABLE AURA AND THE LAST DROP. Issues #1050
+#: and #1051. Unstable Aura is one row, the 1% of missing health its nova deals
+#: per point; the 5 seconds between novas and the 6 metres they reach are
+#: constants of the mechanic, the way The Breaking Point's are. The Last Drop is
+#: two, one per clause: a flag saying its skills cost no health, and the Fervour
+#: every cast grants. Both of its rows carry `health_below`, which is a new
+#: condition and the reason that option needed one.
+#:
+#: AND TO 116 ON 2026-08-28, FOR SYMPHONY OF PAIN AND VESSEL OF PLAGUES.
+#: Issue #1033. Two rows each, one per clause. Both nodes were on the blocked
+#: list until the project owner settled two readings on 2026-08-28: that
+#: Symphony of Pain's "their effect on you" means the DAMAGE a debuff deals,
+#: and that the number of DIFFERENT debuffs a character may carry is
+#: deliberately unlimited, which made Vessel of Plagues' first clause doubling
+#: nothing and got it reworded.
+#:
+#: Issues #1057 and #1058 added one row each on 2026-08-28. Beacon of
+#: Despair states how much longer the debuffs its aura applies last and
+#: Contagious Torment states the chance one enemy has of catching a debuff,
+#: and both are `flat` rows because each supplies its own base and because a
+#: stat reading zero is how the code knows the character has no points in
+#: the node.
+#:
+#: AND TO 121 ON THE SAME DAY, finishing the tree. Issues #1060 and #1061:
+#: one row for Empathic Link, and TWO for Wound Channeling, one per clause
+#: of its sentence. Its first clause is an `increased` row, because
+#: `damage_over_time_taken` has a real base of 100; its second is `flat`,
+#: holding the percentage its reader turns into a fraction.
+#:
+#: AND TO 122 FOR WATER TO BLOOD. Issue #1067. One flag row, on the FIRST
+#: OPTION of the first Masochist capstone, saying the character has traded
+#: its mana pool for health.
+#:
+#: AND TO 130 ON 2026-08-28, FOR THE LAST THREE CAPSTONE OPTIONS THAT GRANTED
+#: NOTHING. Issues #1069, #1070 and #1071. Eight rows, one per clause:
+#:
+#:   Rock Bottom         3   a flag saying an unpayable health cost becomes
+#:                           debt instead of killing, a flag saying a drop to
+#:                           low health clears that debt, and the 50 Fervour
+#:                           the same drop grants
+#:   Ceaseless Penance   1   a flag saying debuffs on the character do not
+#:                           expire, carrying the new `health_above` condition
+#:   Carnivore           4   a flag saying a hit taken grants a Carnage stack,
+#:                           a flag saying Carnage has no maximum, and the 2%
+#:                           more damage a stack is worth, which is two rows
+#:                           because "damage" is two stats in this sheet
+#:
+#: AND TO 197 ON 2026-09-09, FOR THE RAVAGER AND THE RITUALIST. Issue #1463.
+#: Seventy-two rows on 66 nodes: 37 rows on 34 Ravager nodes and 35 rows on 32
+#: Ritualist ones, five of them on three capstone options. Every one of them is a plain per-point stat modifier the
+#: node's own sentence already states, which is what made them transcribable at
+#: all; the two trees were written with per-point wording on purpose.
+#:
+#: MORE ROWS THAN NODES BECAUSE FOUR NODES STATE TWO STATS. Thick Hide is armour
+#: and maximum health, Closing Ground and Hunter's Pace are movement speed and
+#: attack speed, and Long Stride is one stat but its neighbours are not.
+#:
+#: TWO OF THE 67 CARRY A SCALE, and it is the one scale that already existed.
+#: Unspent Ruin and Banked Ruin read "for every full 20 Fervour you currently
+#: hold" and "for every full 25", which is `class_resource_held` with a step of
+#: 20 and of 25.
+#:
+#: THE REST OF THE TWO TREES IS NOT AUTHORED AND THE REASON IS NOT LAZINESS.
+#: 84 of the 148 nodes need something that does not exist yet: a stat with no
+#: gameplay attribute behind it (every minion node, issue #898), a condition
+#: nothing can express ("while an enemy is within 4 metres"), a scale nothing
+#: counts ("for each enemy your attack hits beyond the first"), or a rule rather
+#: than a modifier, which is every keystone. Issue #1463 lists them one by one.
+#:
+#: AND TO 206 ON 2026-09-09, when the Ritualist's generator was built. Issue
+#: #1518. Four rows on two nodes: the tree's starting node `Fervour` grants the
+#: rate and the death bonus, and `Binding Sigils` increases both. The rate is
+#: the first row in the sheet to carry the scale `minions_held`, which that
+#: issue added, so it is also the first Fervour generator authored for a class
+#: other than the Masochist.
+#:
+#: AND TO 208 ON 2026-09-11, for two Ritualist nodes that needed no new code.
+#: Issue #1515. `Attendant` grants spell damage for each minion held, through
+#: the scale `minions_held` that #1518 added, and `Room for One More` grants a
+#: flat 30 maximum Fervour. Both stats and the scale already existed.
+#: AND TO 209 ON 2026-09-12, for the Ritualist's 100-point capstone third
+#: option, `Standing Apart`: "You take 25% less damage from enemies more than 6
+#: metres away from you". It is the first row in the sheet to carry the
+#: condition `attacker_beyond_metres`, because until that day nothing in the
+#: game could answer how far away the character that struck had stood. One row,
+#: one node, and the stat it moves already existed.
+#: AND TO 216 ON 2026-09-12, for the seven rows that count the enemies
+#: standing near a character. Issue #1597. Five Ravager nodes, and seven
+#: rows rather than five: `In Among Them` says "you deal 2% more damage"
+#: without naming a type, which the decision of 2026-08-25 makes attack
+#: damage AND spell damage, and `Wade In` names two stats in one sentence.
+#: AND TO 223 ON 2026-09-13, for the six nodes that were the ONLY six of the 73
+#: unbuilt Ravager and Ritualist nodes that could be authored at all. Issue
+#: #1718 surveys the other 67 and names the mechanism each waits on. Seven rows
+#: rather than six: `Wearing Blows` grants a chance at both debuffs in one
+#: sentence.
+#:
+#: FIVE OF THE SEVEN ARE FLAT AND NOT INCREASED. `CrippleChance` and
+#: `WeakenChance` both start at zero, and the pipeline computes
+#: `(base + flat) * (1 + increases)`, so an increase against a base of nothing
+#: is worth nothing. `bleed_on_crit_chance` and `debuff_spread_chance` are the
+#: existing rows of that shape; `crit_chance` uses `increased` and is right to,
+#: because it has a real base of 5.
+#: AND TO 238 ON 2026-09-13, for the fifteen rows the three minion stats
+#: allowed once they stopped being refused. Issue #1733. Thirteen nodes granting
+#: increased Minion Damage, Health or Attack Speed, plus two rows for
+#: `Bound Servants`, the first option of the Ritualist's 25-point capstone,
+#: which reads "Your minions deal 25% increased damage and have 25% increased
+#: health" and had never granted anything.
+#:
+#: RE-DERIVED FROM THE REGENERATED FILE RATHER THAN ADDED TO. Incrementing a
+#: count preserves a wrong one.
+#:
+#: AND TO 240 ON 2026-09-13. Two Ravager nodes, `Run Them Ragged` and `Nothing
+#: Left In Them`, which are the first rows in the game to ask what ailment the
+#: character being hit is carrying. Issue #1515. A third node in the same branch,
+#: `Wearing Them Down`, has its condition built and no row: it grants increased
+#: DAMAGE REDUCTION, and which stat that row should target is with the project
+#: owner on issue #1748.
+#:
+#: AND TO 242 ON 2026-09-13. Two more nodes, `Cornered Quarry` and `Broken Will`,
+#: which are the first rows in the game to ask how much health the character
+#: being HIT has left. Issue #1515. Every health predicate before them read the
+#: character's own health or a cost.
+#:
+#: AND TO 245 ON 2026-09-13. Three rows for ONE capstone option -- `The Final
+#: Pact`'s second, "Each minion you have grants you 4% more damage and 4%
+#: increased Maximum Energy Shield". **No new mechanism at all**: `minions_held`
+#: already existed and `Masochist_capstone_100#5` and `#6` are the same sentence
+#: shape with a different scale.
+#:
+#: THREE ROWS FOR ONE OPTION IS THE UNQUALIFIED WORD "DAMAGE". This project
+#: writes it as `attack_damage` plus `spell_damage`, which is why the damage half
+#: is two rows and the energy shield half is one.
+#:
+#: AND TO 246 ON 2026-09-13. ONE row, for `Cold Reading`
+#: (`Ritualist_basic_c_a2`): "+2% increased Spell Damage per point while your
+#: Energy Shield is full". Issue #1515. It is one row and not two because the
+#: node names `Spell Damage` specifically rather than the unqualified word the
+#: entry above is about.
+#:
+#: IT NEEDED A NEW PREDICATE, `energy_shield_at_maximum`. Nothing could read an
+#: energy shield at all: `class_resource_at_maximum` asks the same question about
+#: a different pool, and the six health predicates read health. The condition and
+#: the row land together, which is what `target_health_below` did two changes
+#: ago rather than a choice made here.
+#:
+#: AND TO 247 ON 2026-09-14. ONE row, for `Wearing Them Down`
+#: (`Ravager_basic_c_b2`): "+2% increased Damage Reduction per point against
+#: enemies you have Weakened". Issue #1515, under the project owner's ruling on
+#: issue #1748 that the node grants increased damage reduction rather than less
+#: damage taken.
+#:
+#: IT NEEDED NO NEW PREDICATE AND ONE ARGUMENT. `opponent_carries_weaken`
+#: already existed, wired at both ends and used by no row -- but the damage
+#: reduction lookup in `UCataclysmDamageCalculation::Resolve` was the one
+#: defender-side lookup of seven that did not pass the blow record, so a row
+#: landing on it found an empty container and granted nothing. The row and that
+#: argument land together, which is the same shape as the condition and the row
+#: landing together in the entry above.
+#:
+#: AND TO 249 ON 2026-09-14. Two rows, for the Ravager's `Dragging Weight`
+#: (`Ravager_basic_c_a1`) and `Sapped` (`Ravager_basic_c_b1`), which raise how
+#: large a Cripple and a Weaken this character applies. Issue #1767.
+#:
+#: BOTH ARE `increased` ROWS, WHICH IS THE OPPOSITE OF THE TWO NODES DIRECTLY
+#: ABOVE THEM ON THE TREE and the thing to get right here. `Ravager_basic_c_a0`
+#: and `Ravager_basic_c_b0` grant the chance to apply the same two ailments and
+#: are authored `flat`, because `cripple_chance` starts at zero and an increase
+#: against zero grants nothing. `cripple_magnitude` starts at 100, supplied by
+#: `UCataclysmPlayerClassStats::EngineSuppliedBases`, so a `flat` row would add
+#: three percentage points to a hundred instead of three per cent of it.
+#: AND TO 253 ON 2026-09-14. Four rows, and they are the rows that make four
+#: nodes actually do something in play: the Ritualist's `Dominion`
+#: (`Ritualist_keystone_a_kA`), `Crowned` (`Ritualist_keystone_a_kC`) and
+#: `The Swarm` (`Ritualist_keystone_b_kA`), and the Ravager's `Spreading Hurt`
+#: (`Ravager_basic_c_c0`). Issue #1718. Every stat and condition they name was
+#: built in an earlier change; until these rows existed, all four nodes granted
+#: nothing.
+#:
+#: THREE ARE `flat` AND ONE IS `increased`, for the reason the entry above
+#: gives. `possession_threshold_bonus`, `minion_reserve_reduction` and
+#: `minion_cap_bonus` all start at zero, so an increase against them would grant
+#: nothing; `area_of_effect` starts at 100, so a flat row would add four
+#: percentage points instead of four per cent.
+#:
+#: `Crowned` IS A POSITIVE 5 AND NOT A NEGATIVE 5, and that is not a style
+#: choice. `UCataclysmCombatAttributeSet::PreAttributeChange` floors every
+#: attribute in that set at zero, so a bonus of -5 is stored as 0 and the node
+#: does nothing at all. The stat names the SIZE of the reduction and the one
+#: read site subtracts it, which is how `healing_ceiling_reduction` and the
+#: other four `_reduction` stats in this project are already spelled.
+#: AND TO 268 ON 2026-09-14. Five rows on three Ravager nodes, none of which
+#: held a row before: the tree's starting node `Fervour`
+#: (`Ravager_basic_spine_000`) takes THREE, because its one sentence states
+#: three separate things -- a rate from nearby enemies, a decay rate, and the
+#: radius that stops the decay -- and each is its own stat. `Held Ground`
+#: (`Ravager_basic_d_b0`) and `No Ground Given` (`Ravager_keystone_d_kC`) take
+#: one each. Issue #1515.
+#:
+#: ONE OF THE FIVE IS `increased` AND THE OTHER FOUR ARE `flat`, which is the
+#: exception the rule above describes rather than a lapse.
+#: `fervour_per_enemy_in_reach` is zero for every character until the starting
+#: node grants it flat, so Held Ground's "+2% increased Fervour gained from
+#: enemies near you" has that flat value to multiply.
+#: AND TO 270 ON 2026-09-16. Two rows on two Ravager nodes, neither of which
+#: held a row before: `Wrung Out` (`Ravager_basic_d_c1`), the tree's first
+#: Fervour spender, and `Grinding Halt` (`Ravager_keystone_c_kC`), which grants
+#: the starting node's rate over crippled enemies only. Issue #1515.
+#: AND TO 273 ON 2026-09-16. Three rows on three Ravager nodes, none of which
+#: held a row before, and all three read how many enemies one attack struck
+#: together: `Cleaving Arc` (`Ravager_basic_b_a2`), `Bought With Ruin`
+#: (`Ravager_basic_b_b2`) and `Sundering` (`Ravager_keystone_b_kA`). Issue
+#: #1515. The same workbook turn renamed the Stat of two Ritualist rows,
+#: which moves no count.
+#: AND TO 276 ON 2026-09-16. Three rows that needed no new stat of their own:
+#: the Ravager's starting node `Fervour` (`Ravager_basic_spine_000`) takes a
+#: fourth, "1 for each enemy your attacks hit"; `Press the Advantage`
+#: (`Ritualist_basic_a_b2`) takes its first; and The First Onslaught's option
+#: `Headlong` (`Ravager_capstone_25`, option 3) takes a second, for its
+#: clause "your first melee attack after moving 5 metres deals 50% increased
+#: damage". Issue #1515.
+#: AND TO 280 ON 2026-09-17. Four rows, one on each of four nodes that held
+#: none: `Weight Against Them` (`Ravager_capstone_100`, option 2) and `Drawn
+#: Deep` (`Ritualist_basic_d_a2`), on the damage reduction and maximum mana
+#: scales; `Long Hold` (`Ravager_capstone_50`, option 3) and `Fed by the
+#: Fallen` (`Ritualist_capstone_50`, option 2), on the two death stats that
+#: cost nothing. Issue #1515.
+#: AND TO 282 ON 2026-09-17. Two rows for `Never Lets Go`
+#: (`Ravager_capstone_25`, option 2), which needed nothing built: a
+#: hundred `cripple_chance`, and 20% increased attack damage under the
+#: condition that already existed for a crippled target. Issue #1515.
+#: AND TO 285 ON 2026-09-17. Three Ritualist rows, one on each of three
+#: nodes that held none: `Every One Bursts` (`Ritualist_keystone_b_kB`), a
+#: flag of one; `Volatile` (`Ritualist_basic_b_a2`), 3% increased explosion
+#: damage a point; and `Ritual Focus` (`Ritualist_keystone_d_kB`), the
+#: FIRST REMOVAL ROW IN THIS SHEET -- twenty-five exist on the Enchantment
+#: Effects sheet, and none had gone through the passive-effects path
+#: before. Issue #1515.
+#:
+#: AND 286 SINCE THE CONDUIT KEYSTONE WAS GIVEN ITS ROW, on 2026-09-17:
+#: `Ritualist_keystone_spine_003` grants `minion_hits_count_as_yours` as a flag
+#: of one, which is what makes a minion's hit and kill count as its summoner's.
+#: The engine read that stat from the day before; until this row there was
+#: nothing in the data to grant it, so the keystone did nothing in play.
+#:
+#: AND TO 288 ON 2026-09-18, when `Behind the Veil`
+#: (`Ritualist_keystone_spine_002`) was given its TWO rows:
+#: `minions_draw_nearby_enemies_metres` at 10 and
+#: `minions_draw_nearby_enemies_minimum` at 3. It is the same shape as the
+#: entry above and for the same reason -- the engine read both stats before any
+#: row granted them -- and it is two rows rather than one because the node
+#: states two numbers, a reach and a count, and a reader of the rows must see
+#: both.
+#:
+#: AND TO 290 ON 2026-09-18, when `Set Against It` (`Ravager_basic_a_b1`) was
+#: given its two rows: +2% increased damage reduction and +3% increased attack
+#: damage per point, both conditioned on holding 50 or more Fervour. Two rows
+#: because the node states two bonuses, and no scale on either: "per point" in a
+#: node's sentence means per PASSIVE point spent, which is what the three
+#: unscaled rows above and the Masochist's low-life nodes already show.
+#:
+#: AND TO 292 ON 2026-09-18, for the two keystones that turn one pool into
+#: another: `Ravager_keystone_a_kC` Weight Bearing, 1 armour for every 10
+#: maximum health, and `Ritualist_keystone_d_kC` Vessel, 1 Fervour for every 20
+#: maximum mana. One row each, both flat and both scaled, and both nodes had
+#: none before.
+#:
+#: AND TO 294 ON 2026-09-23, for `Ravager_keystone_c_kA` Attrition: flat 100
+#: `cripple_chance` and flat 100 `weaken_chance`, each for melee attacks only.
+#: Unwritable until an ailment chance was asked for with the skill's tags,
+#: which `UCataclysmAilments::ChancesFor` now does.
+#:
+#: AND TO 295 ON 2026-09-23, for `Ritualist_basic_b_c0` Kept Longer: +3%
+#: increased `minion_duration` per point, a stat with no attribute that
+#: `ACataclysmMinion::Spawn` reads on the lifetime a summoning states.
+#:
+#: AND TO 296 ON 2026-09-23, for `Ravager_basic_c_stem2` Deeper Hurt: +3%
+#: increased `cripple_and_weaken_duration` per point, read by
+#: `UCataclysmAilments::Apply` where a Cripple or a Weaken is created.
+#:
+#: AND TO 297 ON 2026-09-23, for `Ravager_keystone_b_kC` Overreach: 2 metres of
+#: `melee_reach_metres`, flat, for `Type.Melee` skills, read by
+#: `UCataclysmSkillTemplate::MeleeReachBonusCm` on a strike's reach and the
+#: basic attack's walk.
+#:
+#: AND TO 299 ON 2026-09-23, for `Ritualist_keystone_a_kB` Press-Ganged and
+#: `Ritualist_keystone_b_kC` Rekindled: flat `minion_death_replaced_every_seconds`
+#: 10 and `minion_explosion_replaced_every_seconds` 5, read by
+#: `UCataclysmSummonSkill::ReplaceLost` after a commanded death.
+#:
+#: AND TO 300 ON 2026-09-24, for `Ravager_basic_b_b0` Two Hands: 3% increased
+#: `attack_damage` per point while `wielding_two_handed_weapon`.
+#:
+#: AND TO 302 ON 2026-09-24, for `Ritualist_basic_a_b0` Set Upon and the first
+#: option of `Ritualist_capstone_100`, Set the Pack On: `minion_damage` 2%
+#: increased per point and 25% more, each while
+#: `target_damaged_by_you_within_seconds` 2.
+#:
+#: AND TO 315 ON 2026-09-24, for the nine Demonic options built engine first:
+#: two rows each for Shared Ruin, Nothing Stops It, Rendering Blows and Ground
+#: Down, and one each for Sacrificial Ward, Cast from Ward, No Second Wind,
+#: Nothing Wasted and Shared Blood, every one flat. Issue #1515.
+#:
+#: AND TO 321 ON 2026-09-25, for the last six Demonic options built engine
+#: first, one flat row each: Nowhere to Run, Both Hands Full, Shoulder Through,
+#: Follow Through, A Second Self and Chorus. Issue #1515.
+#:
+#: AND TO 323 ON 2026-09-25, for the two "At 4 points:" clauses, each a row
+#: with `MinPoints` 4 on a node that already had one: Scarred Plate's
+#: `crowd_control_resistance` and Set Stance's `knockback_suppressed`. The
+#: nodes already counted, so `AUTHORED_NODES` does not move. Issue #1755.
+#:
+#: AND TO 324 ON 2026-09-27, for the Ritualist's risen imps: a third row on the
+#: starting node, `curse_death_raises_imp` flat 1. The node already counted, so
+#: `AUTHORED_NODES` does not move. Issue #1479.
+#:
+#: AND TO 325 ON 2026-09-30, for Every Swing Lands' arc: a second row on
+#: `Ravager_keystone_spine_002`, `melee_arc_full_circle` flat 1. The node
+#: already counted, so `AUTHORED_NODES` does not move. Issue #1515.
+AUTHORED_ROWS = 325
+
+#: How many of the 441 nodes have an authored effect.
+#:
+#: THAT FIGURE SAID 293 AND MATCHED NOTHING IN THE DATA. Measured on 2026-09-13
+#: from `game/Data/PassiveNodes.csv`: 441 nodes, of which 327 are basic, 90 are
+#: keystones and 24 are capstones, across six trees of 74 apiece except the
+#: Berserker's 71. None of those is 293, so it was not a subset either -- it is
+#: a total from before the trees were finished, left behind when they grew.
+#:
+#: PINNED RATHER THAN LEFT AS A FLOOR, and the reason is that this number is the
+#: honest measure of how much of the passive tree actually does anything. Issue
+#: #939 measures the gap and lists what each remaining group would need. A change
+#: to this number should be somebody's decision, not a side effect.
+#:
+#: IT WENT DOWN FROM 26 TO 24 ON 2026-08-25, AND THAT WAS THE DECISION. Replacing
+#: the Masochist's upper-right section removed three authored rows -- maximum
+#: mana, mana regeneration and area of effect -- because the nodes holding them
+#: are gone. One row arrived, for maximum health. The rest of the new section is
+#: mechanics rather than modifiers: a cost taken late, a stack that expires, a
+#: debt that has to be settled. None of those can be written as a row here, which
+#: is the same finding issue #939 made about the other nodes.
+#:
+#: THEN UP TO 32 THE SAME DAY, from the eight Masochist nodes issue #954 made
+#: work: the tree's starting node, five that increase one of the two ways Fervour
+#: is gained, one scoped to damage over time, and one that reduces how much
+#: health regeneration takes back out.
+#:
+#: AND TO 33, for Pain Tolerance, then 35 for Last Stand and Desperate Measures,
+#: the first two nodes whose bonus depends on where the character's health is.
+#: 35 of 293 altogether, and 31 of the Masochist tree's own 74. Issue #959.
+#:
+#: AND TO 36 FOR ONE NODE, Living on the Edge, which grants increased damage
+#: below a health threshold. It is 36 of 293 altogether and 32 of the Masochist
+#: tree's own 74. Issue #958.
+#:
+#: AND TO 37 FOR ONE MORE, Blood Rush, which grants increased damage for a short
+#: window after a health cost is paid. 37 of 293 altogether and 33 of the
+#: Masochist tree's own 74. Issue #962.
+#:
+#: AND TO 38 FOR ONE MORE, Vicious Onslaught, whose bonus grows with how much
+#: health is missing. 38 of 293 altogether and 34 of the Masochist tree's own 74.
+#: Issue #968.
+#:
+#: AND TO 39 FOR ONE MORE, Deeper Cuts, which adds a health cost to every
+#: skill the character uses. 39 of 293 altogether and 35 of the Masochist
+#: tree's own 74. Issue #970.
+#:
+#: AND TO 40 FOR ONE MORE, The Catalyst, whose skills sometimes do not go on
+#: cooldown at all. 40 of 293 altogether and 36 of the Masochist tree's own
+#: 74. Issue #973.
+#:
+#: AND TO 41 FOR ONE MORE, Cataclysmic Resonance. 41 of 293 altogether and 37
+#: of the Masochist tree's own 74. Issue #975.
+#:
+#: AND TO 43 FOR TWO MORE, Flesh Craver and Blood Tithe, which trade one of the
+#: two ways Fervour is gained against the other. 43 of 293 altogether and 39 of
+#: the Masochist tree's own 74. They are the first keystones with an authored
+#: effect: every node here before them was a basic node. Issue #978.
+#:
+#: AND TO 44 FOR ONE MORE, Reciprocity, whose retaliation damage grows with how
+#: much Fervour the character is holding. 44 of 293 altogether and 40 of the
+#: Masochist tree's own 74. Issue #980.
+#:
+#: AND TO 45 FOR ONE MORE, Grand Tithe, whose damage depends on what the
+#: skill in hand cost. 45 of 293 altogether and 41 of the Masochist tree's
+#: own 74. Issue #983.
+#:
+#: AND TO 46 FOR ONE MORE, Exsanguinate, which charges every skill a share
+#: of current health and pays for it in damage. 46 of 293 altogether and 42
+#: of the Masochist tree's own 74. Issue #986.
+#:
+#: AND TO 47 FOR ONE MORE, Point of No Return, which trades how far healing
+#: may take the character for damage. 47 of 293 altogether and 43 of the
+#: Masochist tree's own 74. Issue #988.
+#:
+#: AND TO 48 FOR ONE MORE, Deferred Payment, the first node built on a
+#: character being able to owe health. 48 of 293 altogether and 44 of the
+#: Masochist tree's own 74. Issue #991.
+#:
+#: AND TO 51 FOR THREE MORE, which finish the Blood Tithe branch: Compound
+#: Interest, whose damage grows with what the character owes; Rolling Debt,
+#: which pushes an outstanding debt further out every time another cost is
+#: paid; and The Reckoning, whose debt is never taken on a timer, is cleared
+#: only by a kill, and kills the character if it passes their health. 51 of
+#: 293 altogether and 47 of the Masochist tree's own 74. Issues #994, #995
+#: and #997.
+#:
+#: AND TO 54 FOR THREE MORE, the three nodes built on a count of stacks that
+#: builds on an event and stops counting when the character goes long enough
+#: without it: Sanguine Momentum, Blood Offering and Carnage. 54 of 293
+#: altogether and 50 of the Masochist tree's own 74. Issues #1002, #1003 and
+#: #1004.
+#:
+#: TWO OF THOSE THREE ARE SCOPED TO `Type.Melee`, AND THAT TAG NOW REACHES 27
+#: SKILLS RATHER THAN 6. Issue #999. The project owner decided on 2026-08-26 that
+#: a strike is what "melee" means for a weapon skill, so `Type.Melee` was added to
+#: every one of the 27 rows of `game/Data/WeaponSkills.csv` carrying
+#: `Type.Strike`. Blood Offering's and Carnage's bonuses reached six skills of 398
+#: before that and reach twenty-seven now.
+#:
+#: THE GAP IT LEAVES IS STILL WORTH KNOWING ABOUT WHEN READING THIS NUMBER. This
+#: count measures whether a node has an authored effect, which is not the same
+#: question as whether that effect reaches much. Nothing here would notice a row
+#: scoped to a tag no skill carries.
+#:
+#: AND TO 57 FOR THREE MORE, the three nodes that change how the Fervour pool
+#: moves: Wounds That Feed and Sanguine Ledger stop healing removing it, for
+#: leech and for regeneration respectively, and Low Life fills it every second
+#: while the character is at low health. 57 of 293 altogether and 53 of the
+#: Masochist tree's own 74. Issues #1006, #1007 and #1008.
+#:
+#: AND TO 58 FOR THE BREAKING POINT, which is worth more than one to the count
+#: it is part of. Issue #985. Eleven further Masochist nodes ask about debuffs
+#: the character is carrying -- "While you are Bleeding", "for each unique debuff
+#: on you" -- and nothing in this game put a status effect on the PLAYER at all.
+#: This node is the tree's own answer to that: a Masochist that bleeds itself
+#: needs no enemy system. 58 of 293 altogether and 54 of the Masochist tree's own
+#: 74.
+#:
+#: AND BY FIVE ON 2026-08-26, FOR THE NODES THAT ASK BACK. Issue #962. Once
+#: something counts the harmful effects a character is under, Thirst for Pain,
+#: Battle-Scarred, Endurance in Suffering, Doctrine of Pain and Flagellant are a
+#: condition, a scale and eight rows of data. 63 of 293 altogether and 59 of the
+#: Masochist tree's own 74.
+#:
+#: THREE OF THE ELEVEN NODES THE LINE ABOVE COUNTED ARE NOT AMONG THEM, and the
+#: comment above overstated what The Breaking Point unblocks. Contagious Torment,
+#: Empathic Link and Beacon of Despair are about debuffs on ENEMIES and are
+#: blocked on issues #742 and #674, which nothing here touches. Three more --
+#: Wound Channeling, Symphony of Pain and Vessel of Plagues -- need machinery
+#: beyond a count: a stat for damage taken from damage over time, stats for a
+#: debuff's duration and magnitude on the defender, and a cap on how many
+#: debuffs a character may carry. None of those exists.
+#:
+#: AND BY THREE ON 2026-08-27. Issue #1026. A `damage_taken` stat and a second
+#: one for a hit that is damage over time make Echoes of Agony, Communion of
+#: Pain and The Edge authorable, and a condition for being at full Fervour is
+#: what Communion of Pain needed besides. 66 of 293 altogether and 62 of the
+#: Masochist tree's own 74.
+#:
+#: AND BY ONE ON 2026-08-27, for The Final Vow. Issue #1029. A capstone counts
+#: once however many of its three options are authored, and one of that node's
+#: three is. 67 of 293 altogether and 63 of the Masochist tree's own 74.
+#:
+#: AND BY ONE MORE ON 2026-08-27, for Mutilation Mastery. Issue #1032.
+#: 68 of 293 altogether and 64 of the Masochist tree's own 74.
+#:
+#: AND DOWN BY ONE ON 2026-08-27, when Apotheosis was removed. Issue #1031. The
+#: Final Vow's only authored option went with the rewrite of all twelve capstone
+#: options, and a capstone with no authored option counts for nothing, so The
+#: Final Vow leaves this count entirely. 67 of 293 altogether and 63 of the
+#: Masochist tree's own 74.
+#:
+#: AND BACK UP BY ONE ON 2026-08-27, for The Third Vow. Issue #1040. TWO of the
+#: rewritten capstone options were authored and they gain ONE node between them,
+#: because both are options of `Masochist_capstone_100` and a capstone counts
+#: once however many of its three are authored. 68 of 293 altogether and 64 of
+#: the Masochist tree's own 74.
+#:
+#: AND BY ONE MORE ON 2026-08-27, for The First Vow. Issue #1042. Stigmatic
+#: is the first of that capstone's three options to be authored, so the node
+#: joins this count. 69 of 293 altogether and 65 of the Masochist tree's own
+#: 74.
+#:
+#: AND BY ONE MORE ON 2026-08-27, for The Final Vow. Issue #1039. Vessel Unbroken
+#: is the first of that capstone's three options to be authored since Apotheosis
+#: was removed, so the node rejoins this count. 70 of 293 altogether and 66 of
+#: the Masochist tree's own 74.
+#:
+#: AND BY ONE MORE ON 2026-08-27, FOR THE SECOND VOW. Issues #1047 and #1048. TWO
+#: capstone options were authored and they gain ONE node between them: Feeding
+#: Wound is the first of The Second Vow's three options to be authored, so that
+#: node joins the count, and Reprisal Wave is a second option of The First Vow,
+#: which Stigmatic already put here. A capstone counts once. 71 of 293 altogether
+#: and 67 of the Masochist tree's own 74.
+#:
+#: AND BY ONE MORE ON 2026-08-27, FOR UNSTABLE AURA. Issues #1050 and #1051. TWO
+#: things were authored and they gain ONE node between them: Unstable Aura is a
+#: basic node with nothing authored before, and The Last Drop is a second option
+#: of The Final Vow, which Vessel Unbroken already put here. 72 of 293
+#: altogether and 68 of the Masochist tree's own 74.
+#:
+#: THE SIX MASOCHIST NODES STILL DOING NOTHING ARE ALL BLOCKED OR UNDECIDED.
+#: Three need a way to put a debuff on an ENEMY (issues #742 and #674), one has
+#: a reading question open (#1033), one needs a cap on how many unique debuffs a
+#: character may carry that no document decides, and one needs a comparison
+#: between the character's debuffs and an enemy's. Unstable Aura was the last
+#: unblocked one.
+#:
+#: AND BY TWO MORE ON 2026-08-28. Issue #1033. Symphony of Pain and Vessel of
+#: Plagues are both basic-or-keystone nodes with nothing authored before, so
+#: they gain one each rather than sharing a capstone. 74 of 293 altogether and
+#: 70 of the Masochist tree's own 74.
+#:
+#: THE MASOCHIST TREE IS FINISHED. All 74 of its nodes grant something as of
+#: 2026-08-28. The last four went in two changes: Beacon of Despair and
+#: Contagious Torment (#1057, #1058), then Empathic Link and Wound
+#: Channeling (#1060, #1061), which is what took this from 74 to 78.
+#:
+#: THE OTHER THREE TREES ARE WHERE THE REMAINING GAP IS. Bulwark has 3 of
+#: its 74 nodes authored, Saboteur 1 of 74, and Berserker none of its 71.
+#: Issue #939 measures why most nodes are not stat modifiers under any
+#: authoring scheme, and that reasoning is unchanged.
+#:
+#: AND TO 144 ON 2026-09-09, when the Ravager and the Ritualist got the rows
+#: they could have without new code. Issue #1463. Ravager 34 of its 74 and
+#: Ritualist 32 of its 74, so the share that grants something is 144 of 441
+#: rather than 78 of 441 -- 33% where it was 18%.
+#:
+#: THE SIX TREES NOW STAND AT: Masochist 74 of 74, Ravager 34 of 74, Ritualist
+#: 32 of 74, Bulwark 3 of 74, Saboteur 1 of 74, Berserker 0 of 71.
+#:
+#: AND TO 146 ON 2026-09-09, when the Ritualist's generator was built. Issue
+#: #1518. Two more Ritualist nodes grant something: `Fervour`, the tree's
+#: starting node, and `Binding Sigils`. Both needed the new scale `minions_held`
+#: and the two new stats behind it, which is why #1463 left them out rather than
+#: missing them. The Ritualist is now 34 of its 74.
+#:
+#: AND TO 148 ON 2026-09-11, for the same two rows' nodes, `Attendant` and
+#: `Room for One More`. Issue #1515. The Ritualist is now 36 of its 74.
+#: AND TO 149 ON 2026-09-12, for the Ritualist's 100-point capstone, whose
+#: third option `Standing Apart` was built: "You take 25% less damage from
+#: enemies more than 6 metres away from you". It needed a reading that did not
+#: exist until that day -- how far away the character that struck had stood --
+#: which is why it was among the unauthored rather than among the missed. The
+#: Ritualist is now 37 of its 74.
+#: AND TO 153 ON 2026-09-12, for four Ravager nodes that count nearby
+#: enemies: `Weight of the Axe`, `Onset`, `Unbreaking` and `In Among
+#: Them`. Issue #1597. The fifth node authored that day,
+#: `The First Onslaught`, was already counted -- it had a row for another
+#: of its three options -- which is exactly the blind spot
+#: `AUTHORED_OPTIONS` below exists to cover. The Ravager is now 38 of
+#: its 74.
+#: AND TO 159 ON 2026-09-13. Six nodes, and they are the whole of what could be
+#: authored: issue #1718 surveyed all 73 unbuilt Ravager and Ritualist nodes and
+#: found six writable with the stats, conditions and scales that exist. The
+#: other 67 wait on about a dozen mechanisms, the largest group being the 14
+#: that need the three minion stats of #898.
+#:
+#: SO THIS NUMBER IS NOW NEAR ITS CEILING UNTIL A MECHANISM LANDS, which is
+#: worth saying beside a figure described as what the feature is judged on. It
+#: cannot be raised again by authoring; the next rise has to be bought with
+#: code.
+#: AND TO 172 ON 2026-09-13, WHICH IS THE CEILING BEING LIFTED RATHER THAN
+#: REACHED. The sentence above said this could not rise again by authoring and
+#: that the next rise had to be bought with code. It was, by #1724 and #1732:
+#: the three minion stats are now read by the engine, and #1733 stopped three
+#: checks refusing rows that name them. Thirteen nodes followed.
+#: AND TO 174 ON 2026-09-13, BOUGHT WITH CODE AGAIN AND BY THE SAME ROUTE. Issue
+#: #1515. The stat pipeline could ask whether the character being hit was
+#: staggered and whether it was a boss, but not what ailment it was carrying.
+#: `Run Them Ragged` and `Nothing Left In Them` are the first two nodes that
+#: could be authored once it could. The Ravager is now 45 of its 74.
+#:
+#: THAT 45 WAS MEASURED AND NOT ADDED. The entry above says 38, and 38 plus this
+#: change's two is 40, which is wrong -- work merged in between raised it. The
+#: line eight comments up already says "incrementing a count preserves a wrong
+#: one" and this is what it was warning about.
+#: AND TO 176 ON 2026-09-13, bought with code for the third time in one day and
+#: by the same route each time. Issue #1515. The stat pipeline gained a
+#: predicate reading the TARGET's share of its own maximum health, which no
+#: existing one could express: all six health predicates before it read the
+#: character's own health, its cost, or the time since it paid one. Measured from
+#: `CONDITIONS` in `tools/generate_datatables.py`, not counted by eye -- a first
+#: draft said eight by counting `FCataclysmStatConditions` FIELDS as predicates,
+#: which they are not. `Cornered Quarry` and `Broken Will` followed.
+#:
+#: MEASURED, NOT INCREMENTED, AND THE TREE FIGURES WITH IT. The Ravager is 46 of
+#: its 74 and the Ritualist 52 of its 74. The entry above says the Ravager was
+#: 45; adding one to that happens to be right here and was still not how this
+#: was arrived at, because the same addition was wrong two changes ago.
+#: AND TO 177 ON 2026-09-13, WHICH IS ONE AND NOT THREE. Three rows landed but
+#: they are all on `Ritualist_capstone_200`, which had none, so exactly one node
+#: gained its first row. **Measured, not added** -- adding the row count to the
+#: node count is the mistake this entry exists to stop.
+#:
+#: THE RAVAGER DID NOT MOVE. It is 46 of its 74 and the Ritualist 53 of its 74.
+#:
+#: AND TO 178 ON 2026-09-13. One node, `Cold Reading`
+#: (`Ritualist_basic_c_a2`), which had no row. Issue #1515.
+#:
+#: MEASURED AGAIN RATHER THAN ADDED, and the tree figures with it: the Ravager
+#: is 46 of its 74 and DID NOT MOVE, the Ritualist is 54 of its 74. Adding one
+#: to the entry above happens to be right again, and is again not how this was
+#: arrived at. The counts were read out of `game/Data/PassiveEffects.csv` and
+#: `game/Data/PassiveNodes.csv` together, by matching each node's name against
+#: the set of nodes holding a row.
+#:
+#: AND TO 179 ON 2026-09-14. One node, `Wearing Them Down`
+#: (`Ravager_basic_c_b2`), which had no row. Issue #1515.
+#:
+#: MEASURED RATHER THAN ADDED, and this time the Ravager is the one that moves:
+#: it is 47 of its 74, and the Ritualist is 54 of its 74 and DID NOT MOVE. Read
+#: out of `game/Data/PassiveEffects.csv` and `game/Data/PassiveNodes.csv`
+#: together, by matching each node's name against the set of nodes holding a row.
+#:
+#: AND TO 181 LATER THE SAME DAY. Two nodes, `Dragging Weight`
+#: (`Ravager_basic_c_a1`) and `Sapped` (`Ravager_basic_c_b1`), neither of which
+#: had a row before. Issue #1767. Measured the same way, and the Ravager is
+#: again the only tree that moves: 49 of its 74, where the Masochist is 74 of
+#: 74, the Ritualist 54 of 74, the Bulwark 3, the Saboteur 1 and the Berserker
+#: none.
+#: AND TO 185 ON 2026-09-14. Four nodes, none of which held a row before: the
+#: Ritualist's `Dominion` (`Ritualist_keystone_a_kA`), `Crowned`
+#: (`Ritualist_keystone_a_kC`) and `The Swarm` (`Ritualist_keystone_b_kA`), and
+#: the Ravager's `Spreading Hurt` (`Ravager_basic_c_c0`). Issue #1718.
+#:
+#: MEASURED PER TREE RATHER THAN ADDED TO THE FIGURE ABOVE, and two trees move
+#: this time: the Ritualist is 57 of its 74 and the Ravager 50 of its 74. The
+#: Masochist is 74 of 74, the Bulwark 3, the Saboteur 1 and the Berserker none.
+#: AND TO 196 ON 2026-09-14. Three Ravager nodes, none of which held a row
+#: before: the tree's starting node `Fervour`, `Held Ground` and `No Ground
+#: Given`. Issue #1515.
+#:
+#: THE TWO COUNTS MOVE BY DIFFERENT AMOUNTS AGAIN, five rows over three nodes,
+#: because the starting node's sentence states three things.
+#:
+#: MEASURED PER TREE: the Ravager is 58 of its 74 and the Ritualist 60 of its
+#: 74. The Masochist is 74 of 74, the Bulwark 3, the Saboteur 1 and the
+#: Berserker none.
+#: AND TO 198 ON 2026-09-16. `Wrung Out` and `Grinding Halt`. Issue #1515.
+#: One row each, so this and the row count move together this time.
+#:
+#: MEASURED PER TREE: the Ravager is 60 of its 74 and the Ritualist 60 of its
+#: 74. The Masochist is 74 of 74, the Bulwark 3, the Saboteur 1 and the
+#: Berserker none.
+#: AND TO 201 ON 2026-09-16. `Cleaving Arc`, `Bought With Ruin` and
+#: `Sundering`, one row each, so this and the row count move together.
+#:
+#: MEASURED PER TREE: the Ravager is 63 of its 74 and the Ritualist 60 of its
+#: 74. The Masochist is 74 of 74, the Bulwark 3, the Saboteur 1 and the
+#: Berserker none.
+#: AND TO 202 ON 2026-09-16. `Press the Advantage` only: the other two rows
+#: of that workbook turn went to a node and a capstone that already had one.
+#:
+#: MEASURED PER TREE: the Ravager is 63 of its 74 and the Ritualist 61 of its
+#: 74. The Masochist is 74 of 74, the Bulwark 3, the Saboteur 1 and the
+#: Berserker none.
+#: AND TO 206 ON 2026-09-17. All four rows of that turn went to nodes with
+#: no row before, so this and the row count move together.
+#:
+#: MEASURED PER TREE: the Ravager is 65 of its 74 and the Ritualist 63 of its
+#: 74. The Masochist is 74 of 74, the Bulwark 3, the Saboteur 1 and the
+#: Berserker none.
+#: AND TO 209 ON 2026-09-17. All three rows of that turn went to nodes with
+#: no row before, so this and the row count move together.
+#:
+#: MEASURED PER TREE: the Ritualist is 66 of its 74 and the Ravager 65 of
+#: its 74. The Masochist is 74 of 74, the Bulwark 3, the Saboteur 1 and the
+#: Berserker none.
+#:
+#: AND TO 210 LATER THE SAME DAY, when `Conduit`
+#: (`Ritualist_keystone_spine_003`) was given the row that grants
+#: `minion_hits_count_as_yours`. That node had none before, so this and the row
+#: count moved together again, and the Ritualist is 67 of its 74.
+#:
+#: AND TO 211 ON 2026-09-18, when `Behind the Veil`
+#: (`Ritualist_keystone_spine_002`) was given its two rows. That node had none
+#: before, so this moved with the row count for the third time, and the
+#: Ritualist is 68 of its 74. TWO ROWS RAISED THIS BY ONE, because it counts
+#: nodes and not rows.
+#:
+#: AND TO 212 ON 2026-09-18, when `Set Against It` (`Ravager_basic_a_b1`) was
+#: given the two rows above. That node had none before, so this moved with the
+#: row count for the fourth time, and the Ravager is 56 of its 74.
+#:
+#: AND TO 214 ON 2026-09-18, for the two keystones above. Neither had a row, so
+#: this moved with the row count for the fifth time, and the Ravager is 67 of
+#: its 74 with the Ritualist 69 of its 74.
+#:
+#: AND TO 215 ON 2026-09-23, for Attrition (`Ravager_keystone_c_kA`), which had
+#: no row. Measured then: the Ravager is 68 of its 74, the Ritualist 69 of its
+#: 74 and the Masochist 74 of its 74.
+#:
+#: AND TO 216 ON 2026-09-23, for Kept Longer (`Ritualist_basic_b_c0`), which had
+#: no row. Measured then: the Ravager is 68 of its 74, the Ritualist 70 of its
+#: 74 and the Masochist 74 of its 74.
+#:
+#: AND TO 217 ON 2026-09-23, for Deeper Hurt (`Ravager_basic_c_stem2`), which had
+#: no row. Measured then: the Ravager is 69 of its 74, the Ritualist 70 of its
+#: 74 and the Masochist 74 of its 74.
+#:
+#: AND TO 218 ON 2026-09-23, for Overreach (`Ravager_keystone_b_kC`), which had
+#: no row. Measured then: the Ravager is 70 of its 74, the Ritualist 70 of its
+#: 74 and the Masochist 74 of its 74.
+#:
+#: AND TO 220 ON 2026-09-23, for Press-Ganged (`Ritualist_keystone_a_kB`) and
+#: Rekindled (`Ritualist_keystone_b_kC`), which had no rows. Measured then: the
+#: Ravager is 70 of its 74, the Ritualist 72 of its 74 and the Masochist 74 of
+#: its 74.
+#:
+#: AND TO 221 ON 2026-09-24, for Two Hands (`Ravager_basic_b_b0`), which had no
+#: row. Measured then: the Ravager is 71 of its 74, the Ritualist 72 of its 74
+#: and the Masochist 74 of its 74.
+#:
+#: AND TO 222 ON 2026-09-24, for Set Upon (`Ritualist_basic_a_b0`), which had
+#: no row. Set the Pack On moves `AUTHORED_OPTIONS` and not this: its capstone
+#: already had a row for its third option. Measured then: the Ravager is 71 of
+#: its 74, the Ritualist 73 of its 74 and the Masochist 74 of its 74.
+#:
+#: AND TO 225 ON 2026-09-24, for the three of the nine Demonic options built
+#: engine first whose nodes had no row: No Second Wind
+#: (`Ravager_keystone_c_kB`), Sacrificial Ward (`Ritualist_keystone_c_kC`) and
+#: the Final Onslaught (`Ravager_capstone_200`), for its third option. The other
+#: six are options on capstones that already had a row, and move
+#: `AUTHORED_OPTIONS` alone. Measured then: the Ravager is 73 of its 74, the
+#: Ritualist 74 of its 74 and the Masochist 74 of its 74. Issue #1515.
+#:
+#: AND TO 226 ON 2026-09-25: Follow Through (`Ravager_keystone_b_kB`), the one
+#: of the last six Demonic options whose node had no row. The other five are
+#: options on capstones that already had one, and move `AUTHORED_OPTIONS` alone.
+#: Issue #1515.
+AUTHORED_NODES = 226
+
+#: How many of the capstone options that are NAMED actually grant something.
+#:
+#: WHY A SECOND COUNT, WHEN `AUTHORED_NODES` ALREADY EXISTS. That one counts
+#: NODES, and a capstone counts once if ANY of its three options has a row. So a
+#: capstone with one authored option and two empty ones reads as done. The
+#: Masochist tree was reported as 74 of 74 nodes granting something while four of
+#: its twelve options granted nothing, and the project owner found out by taking
+#: Water to Blood in play and getting nothing. Issue #1066.
+#:
+#: NAMED OPTIONS ONLY, because the Saboteur's four capstones name none at all --
+#: issue #935 -- and counting twelve options nobody wrote as unauthored would mix
+#: two different problems into one number.
+#:
+#: IT WENT FROM 8 TO 9 ON 2026-08-28, when Water to Blood was built. The eight
+#: before it are spread across the Masochist's four capstones; the Bulwark's
+#: twelve and the Berserker's twelve are all unauthored, which is part of those
+#: trees being unbuilt rather than a capstone problem.
+#:
+#: AND FROM 9 TO 12 LATER THE SAME DAY, which finishes the Masochist tree at
+#: the level this number measures. Issues #1069, #1070 and #1071 built Rock
+#: Bottom, Ceaseless Penance and Carnivore, the last three of its twelve
+#: options that granted nothing. All twelve now do.
+#:
+#: AND FROM 12 TO 15 ON 2026-09-09, for the three of the Ravager's and the
+#: Ritualist's 24 new options that are plain stat modifiers. Issue #1463.
+#: Warded Flesh and Open Channel are authored in full; Headlong is authored
+#: for its movement speed only, because its second clause needs a "first
+#: attack after moving 5 metres" trigger that does not exist.
+#:
+#: THE OTHER 45 NAMED OPTIONS ARE UNAUTHORED: twelve each on the Bulwark and
+#: the Berserker, eleven on the Ravager and ten on the Ritualist. This said 24
+#: and named two trees until 2026-09-09, which was written before the Ravager
+#: and Ritualist trees existed.
+#:
+#: THE 21 THAT REMAIN ON THOSE TWO TREES ARE UNAUTHORED FOR A REASON RATHER
+#: THAN BY OMISSION. Issue #1463 read all 24. They are rules, triggers or
+#: minion stats -- "You may hold a two-handed weapon in each hand", "Your
+#: minions repeat each skill you cast" -- so authoring them is the C++ half of
+#: that issue and not this sheet.
+#:
+#: AND 16 ON 2026-09-12, when the Ritualist's 100-point capstone third option,
+#: `Standing Apart`, was built: "You take 25% less damage from enemies more than
+#: 6 metres away from you". It is the first of the 21 that were unauthored on
+#: those two trees to be finished, and it was unauthored for exactly the reason
+#: recorded above -- it needed a reading that did not exist, in this case how far
+#: away the character that struck had stood.
+#:
+#: THE OTHER TWO OPTIONS OF THAT SAME CAPSTONE ARE STILL UNAUTHORED. `Set the
+#: Pack On` needs "enemies you have damaged in the last 2 seconds", and `Shared
+#: Ruin` needs a burst when a minion dies. Both are triggers rather than
+#: modifiers, so neither is this sheet's work.
+#:
+#: If this number rises without one of the four unfinished trees being
+#: started, something has been authored by accident.
+#: AND TO 17 ON 2026-09-12, for `Wade In`, the first option of the
+#: Ravager's 25-point capstone: "Each enemy within 4 metres of you
+#: grants 3% increased Armor and 3% increased Attack Damage". Issue
+#: #1597. Its node already had a row for option 3, so `AUTHORED_NODES`
+#: did not move for it and this number did.
+#: AND TO 18 ON 2026-09-13, for `Bound Servants`, the first option of the
+#: Ritualist's 25-point capstone. Issue #1733. Its node already had rows for
+#: options 2 and 3, so `AUTHORED_NODES` did not move for it and this number did
+#: -- the same shape as `Wade In` above.
+#: AND TO 19 ON 2026-09-13. `The Final Pact`'s second option, the one capstone
+#: option in either Demonic tree that could be authored with no new mechanism.
+#:
+#: THIS COUNT IS THE REASON THIS TEST EXISTS AND IT CAUGHT ITS OWN CASE. A
+#: briefing listing the counts this change moves named three -- the row count in
+#: `CataclysmDataTableTests.cpp`, `AUTHORED_ROWS` and `AUTHORED_NODES` -- and not
+#: this one. **A change authoring a capstone OPTION moves a count that a change
+#: authoring a plain node does not**, which is exactly the blind spot recorded
+#: above: a capstone counts once however many of its three options work.
+#: AND TO 22 ON 2026-09-17: `Weight Against Them`, `Long Hold` and `Fed by the
+#: Fallen`, one capstone option each; `Drawn Deep` is a plain node and moves
+#: `AUTHORED_NODES` alone. Issue #1515.
+#: AND TO 23 ON 2026-09-17: `Never Lets Go`, the First Onslaught's second
+#: option. Its node already had rows for the other two options, so
+#: `AUTHORED_NODES` does not move. Issue #1515.
+#: AND TO 24 ON 2026-09-24: `Set the Pack On`, the Third Pact's first option.
+#: Its node already had a row for the third, so `AUTHORED_NODES` does not move
+#: for it. Issue #1515.
+#: AND TO 31 ON 2026-09-24: seven options built engine first. Shared Ruin,
+#: Nothing Stops It, Cast from Ward, Rendering Blows, Ground Down, Nothing
+#: Wasted and Shared Blood. Only the Final Onslaught's Nothing Stops It moves
+#: `AUTHORED_NODES` too; the other six capstones already had a row. Issue #1515.
+#: AND TO 36 ON 2026-09-25: Nowhere to Run, Both Hands Full, Shoulder
+#: Through, A Second Self and Chorus. Follow Through is a keystone and moves
+#: `AUTHORED_NODES` instead. Issue #1515.
+AUTHORED_OPTIONS = 36
+
+#: How many capstone options are named at all, across every tree.
+#:
+#: 36 UNTIL 2026-09-07, when the Ravager and Ritualist trees landed for issue
+#: #950 with twelve capstones between them, three options each.
+NAMED_OPTIONS = 60
+
+#: How many nodes there are altogether, so the share is visible in the failure
+#: message rather than needing to be worked out.
+#:
+#: 293 UNTIL 2026-09-07. The two trees added for issue #950 are 74 nodes each.
+#:
+#: THE SHARE THAT GRANTS SOMETHING FELL, AND THAT IS THE POINT OF PRINTING BOTH.
+#: `AUTHORED_NODES` did not move, because a node's numbers are authored in the
+#: design workbook's `Passive Effects` sheet and no rows were written for either
+#: new tree. So 78 of 441 nodes grant something where 78 of 293 did. Authoring
+#: them is issue #1463, opened with the trees rather than left implied.
+TOTAL_NODES = 441
+
+
+def rows_of(path: pathlib.Path) -> list[dict]:
+    if not path.is_file():
+        pytest.skip(f"{path.name} is not present. Run "
+                    "python tools/generate_datatables.py")
+    with path.open(newline="", encoding="utf-8-sig") as handle:
+        return list(csv.DictReader(handle))
+
+
+@pytest.fixture(scope="module")
+def effects() -> list[dict]:
+    return rows_of(EFFECTS_CSV)
+
+
+@pytest.fixture(scope="module")
+def nodes() -> dict[str, dict]:
+    return {row["Name"]: row for row in rows_of(NODES_CSV)}
+
+
+@pytest.fixture(scope="module")
+def skill_shape_params() -> dict[str, dict[str, float]]:
+    """Each skill's `ShapeParams`, parsed, keyed by the skill's own name.
+
+    READ SO THAT `VALUE_IS_A_DIFFERENCE` BELOW CANNOT GO STALE. A node there
+    adjusts a figure a skill's row states, and its workbook value is the
+    DIFFERENCE between that figure and the one the node's sentence states. If
+    the base were written out here as a constant, re-tuning the skill row would
+    leave the node's arithmetic silently wrong and nothing would say so.
+    """
+    parsed: dict[str, dict[str, float]] = {}
+    for row in rows_of(WEAPON_SKILLS_CSV):
+        values: dict[str, float] = {}
+        for part in row["ShapeParams"].split(";"):
+            if "=" not in part:
+                continue
+            key, _, raw = part.partition("=")
+            try:
+                values[key.strip()] = float(raw.strip())
+            except ValueError:
+                # `Minions=Imp:1` and other non-numeric parameters. Nothing
+                # here asks about one, and refusing would make this fixture
+                # fail on rows it has no opinion about.
+                continue
+        parsed[row["SkillName"]] = values
+    return parsed
+
+
+@pytest.fixture(scope="module")
+def stats() -> set[str]:
+    # A FLAT ROW IN THE EFFECTS FILE SUPPLIES A STAT TOO, and so does a flat
+    # implicit on an item base. See `test_every_stat_is_one_the_game_supplies`
+    # below for why, and for why a rolled affix does not.
+    return ({row["Stat"] for row in rows_of(CLASS_STATS_CSV)}
+            | {row["Stat"] for row in rows_of(ATTRIBUTES_CSV)}
+            | {row["Stat"] for row in rows_of(EFFECTS_CSV)
+               if row["ValueKind"].strip().lower() == "flat"}
+            | gen.item_base_flat_stats(rows_of(ITEM_BASES_CSV))
+            # AND A COLUMN ON AN ITEM BASE SUPPLIES ONE TOO, since issue #1002.
+            # A swing rate is a column rather than an implicit, because two
+            # weapons average theirs; see `item_base_column_stats` in
+            # tools/generate_datatables.py for why that is a real base under an
+            # increase all the same.
+            | gen.item_base_column_stats(rows_of(ITEM_BASES_CSV))
+            # AND A BASE THE ENGINE STATES IN C++, since issue #985. That one
+            # cannot be seen from any CSV, so it is named one stat at a time with
+            # the code that supplies it. Imported rather than restated for the
+            # reason the header of this file gives about the generator's own
+            # rule: two spellings of one rule is the drift this whole file exists
+            # to catch.
+            #
+            # NAMING ONE HERE IS AN EXEMPTION, AND AN EXEMPTION IS A PROMISE.
+            # Issue #1025: the first entry named a constant nothing ever put on a
+            # character, so this fixture said the stat was supplied, the check
+            # below passed, and the base really was zero.
+            # `test_every_engine_supplied_base_names_code_that_exists` is the
+            # nearest a Python test can get to holding the other side of it. The
+            # rest is held in the engine, by
+            # `Cataclysm.PlayerStats.EveryEngineSuppliedBaseReachesACharacter`.
+            | set(gen.ENGINE_SUPPLIED_BASES)
+            # AND THE STATS THAT DELIBERATELY HAVE NO ATTRIBUTE, since #1733.
+            #
+            # A DIFFERENT KIND OF ENTRY FROM THE LINE ABOVE, and the difference
+            # is the whole reason it is a separate call. `ENGINE_SUPPLIED_BASES`
+            # promises code puts a BASE on the character. These have no base and
+            # can have none: a minion's damage, health and attack interval come
+            # from its own type row, and a summoner's gear supplies an increase
+            # to apply to that rather than a value of its own. `mana_on_hit` is
+            # the basic attack's own figure, and a row may only remove it
+            # (issue #1791).
+            #
+            # READ OUT OF THE C++ RATHER THAN RESTATED. `ENGINE_SUPPLIED_BASES`
+            # is a Python restatement held honest by a symbol-existence check;
+            # this one cannot drift because there is only one list.
+            # `test_the_exempt_stats_are_read_from_the_engine` below states what
+            # that parse is allowed to return.
+            | gen.stats_with_no_attribute())
+
+
+@pytest.fixture(scope="module")
+def declared_tags() -> set[str]:
+    openpyxl = pytest.importorskip("openpyxl")
+    if not WORKBOOK.is_file():
+        pytest.skip(f"{WORKBOOK.name} is not present")
+
+    book = openpyxl.load_workbook(WORKBOOK, read_only=True)
+    declared = {str(row[0]).strip()
+                for row in book["Tags"].iter_rows(values_only=True)
+                if row and row[0]} - {"Tag Name"}
+
+    # THE PARENTS UNREAL CREATES IMPLICITLY COUNT TOO. Declaring `Type.AOE.Aura`
+    # gives `Type` and `Type.AOE` as well, so a required tag naming one of those
+    # is legitimate. `known_tags` in tools/generate_datatables.py does the same.
+    known: set[str] = set()
+    for tag in declared:
+        parts = tag.split(".")
+        for depth in range(1, len(parts) + 1):
+            known.add(".".join(parts[:depth]))
+    return known
+
+
+def test_every_effect_is_about_a_node_that_exists(effects, nodes):
+    missing = sorted({row["Node"] for row in effects} - set(nodes))
+    assert not missing, (
+        f"{EFFECTS_CSV.name} grants something to {missing}, and "
+        f"{NODES_CSV.name} has no such node. The effect reaches nothing, and "
+        "nothing at run time reports it."
+    )
+
+
+def test_every_row_name_is_its_node_and_an_index(effects):
+    """The row name is the DataTable's key and nothing reads it.
+
+    IT USED TO BE THE NODE NAME AND THAT IS WHY THIS EXISTS. Issue #953 gave a
+    node the right to several rows, which a key cannot express, so the node moved
+    into a column of its own and the row name became the node with `#1`, `#2` and
+    so on after it. A row whose name no longer agrees with its `Node` column
+    would still load and still apply, so nothing would report it; what it would
+    break is a person reading the file.
+    """
+    counts: dict[str, int] = {}
+    for row in effects:
+        counts[row["Node"]] = counts.get(row["Node"], 0) + 1
+        expected = f"{row['Node']}#{counts[row['Node']]}"
+        assert row["Name"] == expected, (
+            f"a row for {row['Node']} is named {row['Name']!r} and should be "
+            f"{expected!r}. Regenerate with python tools/generate_datatables.py."
+        )
+
+
+def test_no_node_grants_the_same_stat_twice(effects):
+    """Two rows for one node are for two different stats.
+
+    A NODE MAY HAVE SEVERAL ROWS SINCE ISSUE #953, because several nodes grant
+    two things at once: "+1% increased Maximum Health and +0.5% increased Armor",
+    and the Masochist's starting node, which grants three Fervour rates. What is
+    still a mistake is the SAME stat twice on one node, which is what copying a
+    spreadsheet row and forgetting to change the stat produces. Both would apply
+    and the node would be worth double what it says.
+    """
+    seen: dict[tuple[str, str, str, str], int] = {}
+    for row in effects:
+        # THE CONDITION IS PART OF WHAT MAKES A ROW DISTINCT since issue #959.
+        # A node giving one amount always and more of it below a threshold is a
+        # real shape, and it is two rows on the same node and the same stat.
+        #
+        # AND SO IS THE SCALE, since issue #968, for the same reason: a node
+        # could give a fixed amount and a further amount that grows with a
+        # state. `tools/generate_datatables.py` keys its own check the same way.
+        key = (row["Node"], row["Stat"], row["Condition"],
+               row["ConditionValue"], row["Scale"], row["ScaleStep"])
+        seen[key] = seen.get(key, 0) + 1
+
+    twice = sorted(key for key, count in seen.items() if count > 1)
+    assert not twice, (
+        f"{twice} appear more than once in {EFFECTS_CSV.name} as a node, stat, "
+        "condition and scale. Two rows on one node are for two different stats, "
+        "or for the same stat under different conditions or scales; anything "
+        "else applies both and the node is worth double what it says."
+    )
+
+
+#: The states a bonus may depend on: the words the node must contain, and how
+#: the condition's own value is written in that sentence.
+#:
+#: `tools/generate_datatables.py` holds the same set of names and refuses one it
+#: does not know; this holds what the words have to say.
+#:
+#: THE VALUE'S UNITS ARE PART OF THE ENTRY, since issue #962. A health threshold
+#: is written "20%" and a window is written "2 seconds", so one shared format
+#: would have looked for "2%" in a sentence about seconds and failed on a
+#: perfectly correct row.
+#:
+#: "second" WITHOUT THE PLURAL, so that "1 second" and "2 seconds" both match.
+#:
+#: A VALUE FORM OF `None` MEANS THE CONDITION COMPARES NOTHING, so there is no
+#: number to find and the value is asserted to be zero instead. Issue #962.
+#: `while_bleeding` names a kind of effect rather than a threshold, and looking
+#: for any number in "While you are Bleeding, +2% increased Attack Speed per
+#: point" would find the 2 belonging to the bonus itself and pass for the wrong
+#: reason. `SCALE_WORDS` below already carries the same convention.
+CONDITION_WORDS = {
+    "health_at_or_below": ("at or below", "{value:g}%"),
+
+    # AND THE OTHER SIDE OF THAT BOUNDARY. Issue #1051. The Final Vow's first
+    # option, The Last Drop, reads "While below 20% health your skills cost no
+    # health", and it is the only node in the game that states a health
+    # threshold as a STATE and words it "below". The seven that say "at or
+    # below" take the predicate above.
+    #
+    # "below" ALONE IS A WEAK POSITIVE AND `CONDITION_WORDS_MUST_NOT_SAY` BELOW
+    # IS WHAT MAKES THE PAIR SHARP, because "below 20% health" is a substring of
+    # "at or below 20% health". Requiring only the first would let a node
+    # stating the second carry the strict predicate and be worth nothing to a
+    # character sitting exactly on the threshold, which is the drift this whole
+    # check exists to catch.
+    "health_below": ("below", "{value:g}%"),
+
+    # AND THE ONE THAT POINTS UPWARDS. Issue #1070. The Second Vow's third
+    # option, Ceaseless Penance, reads "Debuffs on you no longer expire while
+    # you are above 50% health", and it is the only node in the game that asks
+    # whether health is still HIGH.
+    #
+    # "you are above" AND NOT "above" ALONE, and the reason is a node that
+    # already exists rather than a hypothetical one. Grand Tithe says "a skill
+    # whose health COST is above 10% of your maximum health", which contains
+    # "above" and is a question about the skill rather than about the character.
+    # Requiring the subject as well as the word is what keeps this row off that
+    # node. It needs no `CONDITION_WORDS_MUST_NOT_SAY` entry for the same
+    # reason: the fragment is already unique.
+    "health_above": ("you are above", "{value:g}%"),
+
+    "seconds_after_health_cost": ("after you pay a health cost",
+                                  "{value:g} second"),
+    "seconds_after_foreign_damage": ("after you take damage of a cataclysm "
+                                     "type",
+                                     "{value:g} second"),
+    # THE WORDS INCLUDE "above", WHICH IS THE POINT. Issue #983. This is the one
+    # threshold in the tree written the other way round from every health
+    # threshold, and a node reworded to "at or below" while the row kept saying
+    # `skill_health_cost_above` would be worth the opposite of what a player
+    # reads. Requiring the word here is what notices.
+    "skill_health_cost_above": ("health cost is above", "{value:g}%"),
+
+    # THE WORDS NAME THE EFFECT, BECAUSE THE NAME IS ALL THAT SAYS WHICH ONE.
+    # Issue #962. A row reading `while_bleeding` on a node that says "While you
+    # are Poisoned" would grant its bonus in a situation the sentence never
+    # promises, and nothing at run time would report it: the character simply
+    # gets the bonus at the wrong times.
+    "while_bleeding": ("while you are bleeding", None),
+
+    # THE WORDS ARE THE STATE WORDING AND NOT THE EVENT ONE, and that is the
+    # whole of what this entry guards. Issue #1026. Seventeen nodes across the
+    # four trees say "at maximum Fervour" and nearly all of them mean an EVENT --
+    # "when you attack at maximum Fervour", "Killing an enemy with an attack made
+    # at maximum Fervour" -- which is a different rule from one that holds for as
+    # long as it is true. Only Communion of Pain says "your Fervour is at
+    # maximum". Requiring that wording is what refuses the other seventeen, in
+    # the same way `health_at_or_below` refuses a node that says "dropping
+    # below".
+    # THE ONE CONDITION HERE THAT COUNTS POINTS RATHER THAN A SHARE. Issue
+    # #1515. Set Against It reads "While you have 50 or more Fervour", so the
+    # fragment carries the pool's NAME as the design writes it -- the sheet's
+    # `class_resource` is called Fervour in every Ravager and Masochist
+    # sentence -- and the value is written plainly, with no percent sign,
+    # because the number is a count.
+    #
+    # NO ENTRY IN `CONDITION_WORDS_MUST_NOT_SAY` FOR IT. That guard exists for a
+    # predicate confusable with a neighbour's words, and the only neighbour
+    # reading this pool as a share, `class_resource_above`, is used by no
+    # passive row at all, so there is nothing yet to be confused with. Give it
+    # one on the day a node uses that condition.
+    "class_resource_points_at_least": ("or more fervour", "{value:g}"),
+
+    "class_resource_at_maximum": ("fervour is at maximum", None),
+
+    # THE FIVE MOVEMENT CONDITIONS. Issue #41, slice 2. No row in
+    # PassiveEffects.csv uses any of them yet, so these entries are not
+    # exercised today; they are here because a name missing from this map is a
+    # name whose row nothing compares against its node's own words.
+    "while_moving": ("while moving", None),
+    # TWO WORDINGS OF ONE PREDICATE. Issue #1515. `Ritual Focus` says
+    # "Skills you cast while standing still cost no mana", and standing
+    # still is what this predicate is. Widening the entry is what this
+    # table's own comment says to do rather than wording the design prose
+    # around the test.
+    "while_stationary": (("while stationary", "while standing still"), None),
+
+    # TWO WORDINGS EXIST FOR THIS ONE IN THE NODES, and the fragment chosen here
+    # matches only the first: "after remaining stationary for 3 seconds" and
+    # "while you have not moved in the last 2 seconds". A node written the
+    # second way will fail this check, and that is the check working: whoever
+    # writes the first such row has to either reword the node or widen this
+    # entry, rather than discovering later that the row and the sentence
+    # disagreed.
+    # WIDENED ON 2026-09-13, WHICH IS WHAT THE PARAGRAPH ABOVE SAID TO DO. The
+    # Ritualist's `Unbroken Focus` is the first row to carry this condition and
+    # it is written the second way: "while you have not moved for 2 seconds".
+    # The prose is good and says exactly what the condition means, so the entry
+    # widened rather than the node being reworded to suit a test.
+    "stationary_for_seconds": (("stationary for", "not moved for"),
+                               "{value:g} second"),
+
+    # "while you have not attacked in the last 3 seconds" is the only wording in
+    # the trees, and "not attacked" is unique to it.
+    "not_attacked_for_seconds": ("not attacked", "{value:g} second"),
+
+    # "your first melee attack after moving 5 metres deals 50% increased
+    # damage". The fragment is the distance half and not the word "first",
+    # because what the condition promises is the distance; "first" is the
+    # reset, which happens because the tally restarts at every attack the
+    # character makes.
+    "metres_moved_before_attack": ("after moving", "{value:g} metre"),
+    # THE FIRST PREDICATE THAT COMPARES A DISTANCE. Standing Apart, the
+    # Ritualist's 100-point capstone third option, reads "You take 25% less
+    # damage from enemies more than 6 metres away from you" and is the only node
+    # in the game that asks how far away the character hitting it stood.
+    #
+    # "more than" IS REQUIRED AND IT IS THE WHOLE GUARD. The predicate is
+    # strictly greater than, so a character at exactly the threshold takes full
+    # damage. A node reworded to "at least" while the row kept this name would be
+    # worth something different at exactly that distance, which is the drift this
+    # check exists to catch -- the same argument `skill_health_cost_above` makes.
+    #
+    # THE VALUE FORM CARRIES NO PERCENT SIGN, unlike every entry above, because
+    # the number is a distance rather than a share of anything.
+    "attacker_beyond_metres": ("more than", "{value:g} metre"),
+
+    # THE FIRST PREDICATE WHOSE VALUE IS A COUNT OF THINGS RATHER THAN A
+    # THRESHOLD ON ONE. Issue #1597. "While an enemy is within 4 metres" is
+    # this with 1 and "while three or more enemies are within 4 metres" is
+    # the same name with 3, because the first is the special case of the
+    # second.
+    #
+    # THE FRAGMENT IS "within" AND NOT THE RADIUS, deliberately. Both nodes
+    # say "within 4 metres", and writing "within 4 metre" here would pass
+    # today and refuse the next row at 3 or 8 metres -- which the data already
+    # uses elsewhere. The radius is checked by the generator's own bound, not
+    # by this sentence match.
+    #
+    # THE VALUE FORM IS A MAPPING, WHICH IS NEW IN THIS FILE. Every entry
+    # above formats the value as digits and looks for them; these two nodes
+    # write their counts as WORDS and contain no such digit. "1" appears in
+    # neither sentence, so a numeric form would fail on a correct row -- and
+    # a form of `None` is worse, because that means "this predicate compares
+    # nothing" and would assert the count must be zero.
+    "enemies_in_reach_at_least": ("within",
+                                 {1.0: "an enemy", 3.0: "three or more"}),
+
+    # AND THE COUNT OF ENEMIES ONE ATTACK STRUCK TOGETHER. Issue #1515.
+    # Sundering reads "when they hit three or more enemies at once". The count
+    # is written as words, so the value form is a mapping, for the reason the
+    # entry above gives.
+    #
+    # THE FRAGMENT IS "enemies at once" AND NOT "hit". "Hit" is in sentences
+    # about every kind of blow; "at once" is what says the enemies were struck
+    # together by one attack rather than counted near the character, which is
+    # the difference between this predicate and the one above.
+    "enemies_hit_at_least": ("enemies at once", {3.0: "three or more"}),
+
+    # THE THREE PREDICATES THAT READ AN AILMENT ON THE OTHER CHARACTER. Issue
+    # #1515. Each names its ailment, so the value form is None: there is no
+    # threshold, and looking for a number would find the 2 belonging to the
+    # bonus itself, which is the trap `while_bleeding` above records.
+    #
+    # THE FRAGMENTS ARE WHOLE PHRASES RATHER THAN THE AILMENT'S NAME, and that
+    # is what keeps each off the other two nodes. All three sentences contain
+    # "crippled" or "weakened", so a one-word fragment would pass on any of
+    # them; "against crippled enemies" appears only in Run Them Ragged, "both
+    # crippled and weakened" only in Nothing Left In Them, and "you have
+    # weakened" only in Wearing Them Down.
+    #
+    # NO `CONDITION_WORDS_MUST_NOT_SAY` ENTRY IS NEEDED, and that was checked
+    # rather than assumed: none of these three fragments is a substring of
+    # either other sentence, which is the condition that map exists for.
+    # TWO WORDINGS OF ONE PREDICATE. Issue #1515. `Ravager_basic_c_a2` says
+    # "against Crippled enemies" and `Never Lets Go` says "damage to
+    # Crippled enemies"; both are the same promise, and widening the entry
+    # is what this table's own comment says to do rather than wording the
+    # design prose around the test.
+    "target_carries_cripple": (("against crippled enemies",
+                                "damage to crippled enemies"), None),
+    "target_carries_cripple_and_weaken": ("both crippled and weakened", None),
+
+    # AND THE ONE THAT ASKS ABOUT THE ATTACKER RATHER THAN THE TARGET. Spreading
+    # Hurt reads "+4% increased Area of Effect per point for attacks that Cripple
+    # or Weaken", which is a question about what this character's blows CAN do,
+    # not about what the thing in front of it is already carrying. The two above
+    # read the target's debuffs; this one reads the attacker's own chances.
+    #
+    # WHICH IS WHY IT WORKS ON A ROW THE OTHERS WOULD NOT REACH. An area of
+    # effect is decided when the skill goes off, before anything has been hit,
+    # so a condition about the target would be false every time for this node.
+    "can_cripple_or_weaken": ("cripple or weaken", None),
+
+    # TWO HANDS, `Ravager_basic_b_b0`: "Two-handed weapons only." Issue #1515.
+    # The equipped weapon's base row takes two hands.
+    "wielding_two_handed_weapon": ("two-handed weapons only", None),
+
+    # SET UPON, `Ritualist_basic_a_b0`, and SET THE PACK ON, the first option of
+    # `Ritualist_capstone_100`: "enemies you have damaged in the last 2
+    # seconds". Issue #1515. The singular matches the plural, as elsewhere.
+    "target_damaged_by_you_within_seconds": ("damaged in the last", "{value:g} second"),
+
+    # NO ROW CARRIES THIS ONE YET. Wearing Them Down grants increased DAMAGE
+    # REDUCTION, and which stat that row should use is with the project owner
+    # on issue #1748. The entry is here because a name missing from this map is
+    # a name whose row nothing compares against its node's own words -- the
+    # reason the five movement conditions above were added before their rows.
+    "opponent_carries_weaken": ("you have weakened", None),
+
+    # THE FIRST PREDICATE THAT READS SOMEBODY ELSE'S HEALTH. Issue #1515.
+    # `Cornered Quarry` says "against enemies below 35% health" and `Broken
+    # Will` says "against enemies below half health".
+    #
+    # THE FRAGMENT NAMES THE SUBJECT AND NOT JUST THE COMPARISON, which is what
+    # keeps this predicate and `health_below` apart. "below" alone appears in
+    # both a sentence about the character's own health and one about an enemy's,
+    # and the two are different rules on different characters. `health_above`
+    # above solves the same problem the same way, by requiring "you are above"
+    # rather than "above".
+    #
+    # NOT UNIQUE TO THESE TWO NODES, AND THAT IS CORRECT. `Berserker_twoh_007`
+    # and `Berserker_dw_013` also say "against enemies below", at 25% and 20%.
+    # Neither is authored yet and both would want exactly this predicate, so the
+    # fragment identifying a family rather than one node is the right breadth.
+    #
+    # THE VALUE FORM IS A MAPPING, for the reason `enemies_in_reach_at_least`
+    # below needs one: `Broken Will` writes its threshold as the word "half" and
+    # contains no "50" anywhere, so a numeric form would fail a correct row.
+    "target_health_below": ("against enemies below",
+                            {35.0: "35%", 50.0: "half health"}),
+
+    # THE SECOND POOL ASKED WHETHER IT IS FULL, AND THE FRAGMENT HAS TO KEEP IT
+    # OFF THE OTHER TWELVE. Issue #1515. Thirteen nodes mention an energy shield
+    # and only `Ritualist_basic_c_a2` Cold Reading says it is FULL: the rest
+    # raise "Maximum Energy Shield", raise "Energy Shield Regeneration", or
+    # describe what the shield absorbs. "energy shield is full" appears in that
+    # one node alone, measured across all 441 nodes, so no MUST_NOT_SAY entry is
+    # needed the way `health_below` needed one.
+    #
+    # THE VALUE FORM IS None BECAUSE "FULL" NAMES THE TOP OF THE BAR. Looking
+    # for a number would find the 2 belonging to the bonus itself, which is the
+    # trap `while_bleeding` records above.
+    "energy_shield_at_maximum": ("energy shield is full", None),
+}
+
+#: Words a node must NOT say, for a condition whose required words are a
+#: substring of a different condition's. Issue #1051.
+#:
+#: ONE ENTRY, AND IT IS THE ONLY PAIR IN THE MAP ABOVE THAT NEEDS ONE. Every
+#: other required fragment is unique to its predicate: no node saying "at or
+#: below" also says "health cost is above", and none saying "while you are
+#: bleeding" also says "fervour is at maximum". "below" is the exception,
+#: because "at or below 20% health" contains it.
+#:
+#: THE DIRECTION MATTERS AND ONLY ONE DIRECTION NEEDS GUARDING.
+#: `health_at_or_below` already refuses a node that says only "below", because
+#: "at or below" is not in it. This is the other way round.
+#: A VALUE MAY BE ONE PHRASE OR SEVERAL, and several means "none of these may
+#: appear". Widened for issue #1515, which added the second phrase below.
+CONDITION_WORDS_MUST_NOT_SAY = {
+    # "at or below" -- the inclusive twin, as the paragraphs above explain.
+    #
+    # AND "against enemies below", WHICH IS A DIFFERENT CHARACTER'S HEALTH.
+    # Issue #1515. `health_below` reads the character's OWN health, and its
+    # required fragment is the bare word "below". `Cornered Quarry` says
+    # "against enemies below 35% health" -- which contains "below", does not
+    # contain "at or below", and states 35 -- so a row carrying `health_below`
+    # on that node passed both halves of this check before this entry existed.
+    #
+    # **That row would have read the attacking character's own health instead of
+    # its target's**, granting the bonus when the player was wounded rather than
+    # when the enemy was. Nothing at run time reports it: the arithmetic runs and
+    # the bonus simply arrives against the wrong characters.
+    #
+    # THE NEW PREDICATE CREATED THIS HOLE, so guarding it belongs to the change
+    # that added it rather than to whoever trips it later.
+    "health_below": ("at or below", "against enemies below"),
+}
+
+
+def test_a_condition_matches_the_words_of_the_node_it_is_on(effects, nodes):
+    """A threshold in the workbook is the threshold the node's own words state.
+
+    THE SAME DRIFT THE VALUE CHECK ABOVE EXISTS FOR, one column across. A row
+    reading `health_at_or_below 35` on a node that says "at or below 20% health"
+    is a bonus that arrives at the wrong time, and nothing at run time reports
+    it: the arithmetic runs and the character simply gets it earlier or later
+    than the sentence promises.
+
+    Both halves are checked: that the words the condition implies are in the
+    description at all, and that the number is.
+    """
+    for row in effects:
+        condition = row["Condition"].strip()
+        if not condition:
+            continue
+
+        assert condition in CONDITION_WORDS, (
+            f"{row['Node']} names the condition {condition!r}, which this test "
+            f"does not know. Known: {sorted(CONDITION_WORDS)}. Add it here and "
+            "to CONDITIONS in tools/generate_datatables.py together."
+        )
+
+        expected_words, value_form = CONDITION_WORDS[condition]
+
+        described = words_of(row, nodes)
+        words = described.lower()
+
+        # ONE FRAGMENT OR SEVERAL, AND SEVERAL MEANS "ANY OF THESE WILL DO".
+        # A condition can be stated in more than one natural way -- "remaining
+        # stationary for 2 seconds" and "you have not moved for 2 seconds" are
+        # the same promise -- and a single fragment forces the design prose to
+        # be worded around this test. Widening the entry is what the comment on
+        # `stationary_for_seconds` says to do in that case; this is what makes
+        # widening possible.
+        #
+        # IT DOES NOT WEAKEN THE CHECK. Every alternative still has to appear in
+        # the sentence, so a row whose description says none of them fails
+        # exactly as before. What it stops is a row failing because the designer
+        # chose the other true wording.
+        allowed = ((expected_words,) if isinstance(expected_words, str)
+                   else tuple(expected_words))
+        assert any(fragment in words for fragment in allowed), (
+            f"{row['Node']} carries the condition {condition!r} and its "
+            f"description says none of {list(allowed)!r}:\n"
+            f"    {described}"
+        )
+
+        # AND THE WORDS OF THE PREDICATE NEXT DOOR, WHERE ONE CONTAINS THE
+        # OTHER. Issue #1051. See CONDITION_WORDS_MUST_NOT_SAY above.
+        # ONE PHRASE OR SEVERAL, AND SEVERAL MEANS "NONE OF THESE". Issue #1515.
+        # The same one-or-many shape `expected_words` above already takes, and
+        # for the same reason: one predicate can be confusable with more than one
+        # other. `health_below` is confusable with its inclusive twin AND with
+        # the predicate that reads a TARGET's health.
+        refused = CONDITION_WORDS_MUST_NOT_SAY.get(condition)
+        if refused is not None:
+            forbidden = ((refused,) if isinstance(refused, str)
+                         else tuple(refused))
+            for phrase in forbidden:
+                assert phrase not in words, (
+                    f"{row['Node']} carries the condition {condition!r}, which "
+                    f"means STRICTLY {expected_words}, and its description says "
+                    f"{phrase!r}:\n"
+                    f"    {described}\n"
+                    f"Those are different rules. Either the row should carry a "
+                    f"different predicate or the node was reworded."
+                )
+
+        value = float(row["ConditionValue"])
+
+        if value_form is None:
+            # THE CONDITION COMPARES NOTHING, SO THE VALUE MUST BE NOTHING.
+            # Issue #962. `tools/generate_datatables.py` refuses to write one on
+            # a row carrying `while_bleeding`, and the engine ignores the column
+            # for that predicate, so a number here would be a number that does
+            # nothing while looking as though it did.
+            assert value == 0.0, (
+                f"{row['Node']} carries the condition {condition!r} with a "
+                f"value of {value:g}. That condition compares nothing, so the "
+                "value is ignored. It has to be empty in the workbook."
+            )
+            continue
+
+        if isinstance(value_form, dict):
+            # A COUNT WRITTEN IN WORDS RATHER THAN DIGITS. Issue #1597.
+            # "While an enemy is within 4 metres" is a value of 1 and
+            # says no "1"; "three or more enemies" is a value of 3 and
+            # says no "3". So the words are listed against the value
+            # rather than formatted from it.
+            #
+            # AN UNLISTED VALUE IS REFUSED RATHER THAN SKIPPED. A row
+            # authored with a count nobody has written words for would
+            # otherwise pass unchecked, which is the one thing this file
+            # exists to stop.
+            printed = value_form.get(value)
+            assert printed is not None, (
+                f"{row['Node']} carries {condition!r} with a value of "
+                f"{value:g}, and this test has no words listed for that "
+                f"count. Known: {sorted(value_form)}. The trees write "
+                "small counts as words, so add the wording here beside "
+                "the others."
+            )
+        else:
+            printed = value_form.format(value=value)
+
+        assert printed.lower() in words, (
+            f"{row['Node']} carries {condition!r} with a value written "
+            f"{printed!r}, and the node says:\n"
+            f"    {nodes[row['Node']]['Description']}\n"
+            "The two have to agree. Either the workbook is stale or the tree "
+            "file changed."
+        )
+
+
+def test_a_condition_is_actually_used(effects):
+    """The two condition columns are exercised rather than merely present.
+
+    Without a row that uses one, the columns, the generator's refusal of an
+    unknown condition, and the code that turns a condition into a modifier would
+    all be untested, and the first node that needed one would find out whether it
+    worked the hard way. The same argument as the required tag check below.
+    """
+    conditioned = [row for row in effects if row["Condition"].strip()]
+    assert conditioned, (
+        "No passive effect carries a condition, so nothing exercises the "
+        "Condition columns or the code that reads them. If the last one was "
+        "deliberately removed, delete these tests with it rather than leaving "
+        "the columns untested."
+    )
+
+
+#: The states a bonus's SIZE may grow with: the words the node must contain, and
+#: how the step is written in that sentence. Issue #968.
+#:
+#: A SEPARATE MAP FROM `CONDITION_WORDS`, because the two answer different
+#: questions and a row may carry both. `tools/generate_datatables.py` holds the
+#: same set of names in `SCALES` and refuses one it does not know.
+#: A STEP FORM OF `None` MEANS THE SENTENCE NAMES NO STEP, so the step can only
+#: be 1 and that is what is asserted instead. Issue #980. Reciprocity says "for
+#: each point of Fervour you currently hold": one point is the step, and there is
+#: no number in the sentence to match it against. Looking for "1" in that
+#: description would find the "1%" of its own value and pass for the wrong
+#: reason, which is worse than not checking.
+#: THE WORDS ARE A TUPLE AND ALL OF THEM MUST APPEAR, since issue #994 added a
+#: second scale about health. "For every 5% of your maximum health that is
+#: MISSING" and "for every 5% of your maximum health you currently OWE" are two
+#: different states of one character -- a character that deferred a cost owes
+#: health it is still standing on -- and they share every word but the last. A
+#: single phrase of "for every" would let either row sit on either node and pass,
+#: which is the drift this whole file exists to catch.
+#:
+#: A THIRD ELEMENT NAMES THE WORDING USED WHEN THE STEP IS ONE, and it exists
+#: because one scale now has two nodes that write their step differently.
+#: Issue #1029. Reciprocity says "for each point of Fervour you currently hold",
+#: which is a step of 1 stated in words, and The Final Vow's second option says
+#: "for every 100 Fervour you hold", which states it in digits. Before this, that
+#: scale's step form was `None` -- "the sentence names no step, so the step must
+#: be 1" -- and the second node could not be authored at all without dropping the
+#: check to nothing.
+#:
+#: `None` FOR THE THIRD ELEMENT MEANS THERE IS NO SUCH WORDING, so a step form of
+#: `None` still means the step can only be 1. That is every stack scale and the
+#: debuff count, whose sentences say "each stack" and "each unique debuff" and
+#: name no number anywhere.
+SCALE_WORDS = {
+    "health_missing": (("for every", "missing"), "{value:g}%", None),
+    "class_resource_held": (("fervour you",), "{value:g} fervour",
+                            "each point of fervour"),
+    "health_owed": (("for every", "owe"), "{value:g}%", None),
+
+    # A READING OF A STAT RATHER THAN OF A STATE. Issue #1045. Glutton reads
+    # "for every 1% of life leech you have", and naming the stat is what stops
+    # this row sitting on a node about health: "for every" alone is shared with
+    # both health scales above.
+    #
+    # A STEP FORM IN PERCENT, because the sentence writes one -- "1% of life
+    # leech" -- unlike the stack counts below, which name no step at all.
+    "life_leech": (("for every", "life leech"), "{value:g}%", None),
+
+    # THREE STACK COUNTS, EACH NAMING ITS OWN STACK. Issues #1002, #1003 and
+    # #1004. The words include the stack's name wherever the node gives it one,
+    # which is what stops a row counting somebody else's stacks: the three are
+    # granted by different events and last 3, 5 and 8 seconds, and nothing at run
+    # time would report a row that named the wrong one.
+    #
+    # SANGUINE MOMENTUM'S SENTENCE NAMES NO STACK, so its words are the phrase
+    # that describes when one is granted instead.
+    #
+    # A STEP FORM OF `None` FOR ALL THREE, because all three say "each stack" and
+    # name no step. The step can only be 1 and that is what is asserted.
+    "momentum_stacks": (("within 3 seconds of the last", "each stack"),
+                        None, None),
+    "bloodlust_stacks": (("stack of bloodlust", "each stack"), None, None),
+    "carnage_stacks": (("stack of carnage", "each stack"), None, None),
+
+    # A COUNT OF WHAT IS BEING DONE TO THE CHARACTER. Issue #962. Every node
+    # reading it says "debuff" and says "on you", and requiring both is what
+    # stops a row sitting on the wrong node: no other scale in this map is about
+    # debuffs at all, so those two fragments already pick this one out.
+    #
+    # TWO FRAGMENTS RATHER THAN THE ONE PHRASE "debuff on you", since issue
+    # #1039. It was that single phrase until The Final Vow's third option was
+    # authored, and that option says "DebuffS on you deal no damage at all" --
+    # plural, because its subject is every debuff at once rather than each one
+    # in turn. The singular phrase is not a substring of the plural, so the
+    # check refused a perfectly correct row. Splitting it accepts both forms and
+    # gives up nothing: a sentence containing "debuff" and "on you" separately
+    # but not about debuffs on the character is not a sentence anyone would
+    # write.
+    #
+    # A STEP FORM OF `None`, because none of the sentences names a step. "For
+    # each", "every" and "each one" all count single debuffs, so the step can
+    # only be 1, and that is asserted instead. Looking for a "1" in "+1%
+    # increased damage" would find the bonus's own number and pass for the wrong
+    # reason.
+    "debuffs_carried": (("debuff", "on you"), None, None),
+
+    # A COUNT OF WHAT THE CHARACTER COMMANDS. Issue #1518. The Ritualist's
+    # generator reads it: "1 per second for each minion you have".
+    #
+    # BOTH FRAGMENTS NAME THE MINIONS RATHER THAN THE COUNTING, because "for
+    # each" alone is shared with several scales above. No other scale in this
+    # map is about minions, so the word itself already picks this one out, and
+    # "you have" holds the row to the character's own army.
+    #
+    # A STEP FORM OF `None`, for the reason the debuff and stack counts give:
+    # the sentence says "each minion" and names no step, so the step can only be
+    # 1 and that is asserted instead. Looking for a "1" would find the rate's own
+    # number -- "1 per second" -- and pass for the wrong reason.
+    "minions_held": (("minion", "you have"), None, None),
+
+    # A COUNT OF THE ENEMIES STANDING NEAR THE CHARACTER. Issue #1597. Two
+    # nodes read it: "You deal 2% more damage for each enemy within 4 metres
+    # of you", and the Wade In capstone option, "Each enemy within 4 metres of
+    # you grants 3% increased Armor and 3% increased Attack Damage".
+    #
+    # BOTH FRAGMENTS ARE NEEDED AND NEITHER IS THE RADIUS. "each" alone is
+    # shared with several scales above, and "enemy within" is what makes this
+    # one. The number of metres is deliberately not here, for the reason the
+    # condition entry gives: the data already uses 3, 4 and 8.
+    #
+    # A STEP FORM OF `None`, as the debuff and minion counts use. Both
+    # sentences say "each enemy" and name no step, so the step can only be 1,
+    # and that is asserted instead. Looking for a "1" would find the bonus's
+    # own number in "2% more damage" territory and pass for the wrong reason.
+    "enemies_in_reach": (("each", "enemy within"), None, None),
+
+    # THE SAME COUNT RESTRICTED TO CRIPPLED ENEMIES. Issue #1515. Grinding Halt
+    # reads "Each Crippled enemy within 4 metres of you grants you 1 Fervour per
+    # second".
+    #
+    # "CRIPPLED ENEMY WITHIN" AND NOT "ENEMY WITHIN", and the difference is the
+    # whole point of this entry. "enemy within" appears in both nodes' sentences,
+    # so a crippled-enemy row sitting on the starting node -- whose sentence says
+    # "every enemy within 4 metres" -- would pass a check for that phrase alone.
+    # Requiring the adjective is what refuses it.
+    #
+    # THE ENTRY ABOVE CANNOT TELL THE TWO APART IN THE OTHER DIRECTION: an
+    # `enemies_in_reach` row on Grinding Halt would find "each" and "enemy
+    # within" and pass. That is a limit of the entry above rather than of this
+    # one, and fixing it would change a check other nodes rely on, so it is
+    # recorded here rather than done here.
+    #
+    # A STEP FORM OF `None`, for the reason the entry above gives: the sentence
+    # says "each" and names no step.
+    "crippled_enemies_in_reach": (("each", "crippled enemy within"), None, None),
+
+    # PER ENEMY ONE ATTACK STRUCK BEYOND THE FIRST. Issue #1515. Cleaving Arc
+    # reads "+1% increased Attack Damage per point for each enemy your attack
+    # hits beyond the first".
+    #
+    # "BEYOND THE FIRST" IS REQUIRED, not only "each enemy", because it is the
+    # arithmetic: without it the row could sit on a sentence counting every
+    # enemy hit and grant one step too many. A step form of `None`, because
+    # the sentence says "each" and names no step.
+    "enemies_hit_beyond_the_first": (("each enemy", "beyond the first"), None, None),
+
+    # A READING OF THE CHARACTER'S DAMAGE REDUCTION. Issue #1515. Weight Against
+    # Them reads "+1% increased Attack Damage for every 2% of Damage Reduction
+    # you have". The step is written as a percentage, the shape `life_leech`
+    # uses, and "damage reduction" is the only scale here about it.
+    "damage_reduction": (("for every", "damage reduction"), "{value:g}%", None),
+
+    # AND OF ITS MAXIMUM MANA. Issue #1515. Drawn Deep reads "for every full 200
+    # maximum mana you have". The step form carries the words after the
+    # number, because a bare "200" is a digit a sentence could hold for
+    # another reason; "full" is required because it is what makes the steps
+    # whole.
+    # WIDENED FROM "for every full" ON 2026-09-18. Two nodes now scale by this
+    # pool and they word it differently: Drawn Deep says "for every full 200
+    # maximum mana you have" and Vessel says "for every 20 maximum mana you
+    # have". Every fragment here must appear, so the narrower phrase would have
+    # failed a correct row. "for every" and the pool's name still hold the check
+    # together, and the step form below still requires the number beside the
+    # pool, so nothing is given up but the word "full".
+    "max_mana": (("for every", "maximum mana"), "{value:g} maximum mana", None),
+
+    # THE MAXIMUM ITSELF, WHICH IS NOT ANY OF THE THREE HEALTH SCALES ABOVE.
+    # Issue #1515. Weight Bearing reads "1 Armor for every 10 maximum health you
+    # have": the others read how FULL the bar is, and this reads how BIG it is,
+    # so naming the pool is what keeps this row off a node about missing health.
+    "max_health": (("for every", "maximum health"), "{value:g} maximum health",
+                   None),
+}
+
+
+def test_a_scale_matches_the_words_of_the_node_it_is_on(effects, nodes):
+    """A scaling step in the workbook is the step the node's own words state.
+
+    THE SAME DRIFT THE CONDITION CHECK ABOVE EXISTS FOR, one column further
+    across. A row reading `health_missing` with a step of 10 on a node that says
+    "for every 5% of your maximum health that is missing" gives a character half
+    the bonus the sentence promises, and nothing at run time reports it: the
+    arithmetic runs and the number is simply smaller.
+
+    IT ALSO CHECKS THE STAT IS ONE THE GAME ASKS FOR AT THE RIGHT MOMENT is NOT
+    something this can check, and that is worth saying. A scaling bonus written
+    onto a stat that is read off a gameplay attribute would be dropped, because
+    a scaled value is never folded into an attribute. The engine-side tests are
+    where that is caught.
+    """
+    for row in effects:
+        scale = row["Scale"].strip()
+        if not scale:
+            continue
+
+        assert scale in SCALE_WORDS, (
+            f"{row['Node']} names the scale {scale!r}, which this test does not "
+            f"know. Known: {sorted(SCALE_WORDS)}. Add it here and to SCALES in "
+            "tools/generate_datatables.py together."
+        )
+
+        expected_words, value_form, step_of_one_words = SCALE_WORDS[scale]
+
+        described = words_of(row, nodes)
+        words = described.lower()
+        for phrase in expected_words:
+            assert phrase in words, (
+                f"{row['Node']} carries the scale {scale!r} and its description "
+                f"does not say {phrase!r}:\n"
+                f"    {described}\n"
+                f"All of {list(expected_words)} have to be in it."
+            )
+
+        step = float(row["ScaleStep"])
+        assert step > 0.0, (
+            f"{row['Node']} carries the scale {scale!r} with a step of {step:g}. "
+            "A step of nothing makes the bonus worth nothing at every state."
+        )
+
+        if value_form is None:
+            # THE SENTENCE NAMES NO STEP, SO THE STEP CAN ONLY BE ONE. Issue
+            # #980. "Each stack gives +1% increased attack speed" counts single
+            # stacks; a step of 5 on such a node would give a fifth of what the
+            # sentence promises, and no number in the description could catch it.
+            assert step == 1.0, (
+                f"{row['Node']} carries the scale {scale!r} with a step of "
+                f"{step:g}, and its description names no step:\n"
+                f"    {described}\n"
+                "A sentence saying \"each\" counts single units, so the step "
+                "has to be 1. If the design now states a step, give this scale a "
+                "step form in SCALE_WORDS instead."
+            )
+            continue
+
+        if step == 1.0 and step_of_one_words is not None:
+            # A STEP OF ONE STATED IN WORDS RATHER THAN DIGITS. Issue #1029.
+            # Reciprocity says "for each point of Fervour you currently hold",
+            # which is a step of 1 and contains no "1" that means the step -- the
+            # only 1 in the sentence is the bonus's own value. Looking for the
+            # digit would pass for the wrong reason.
+            assert step_of_one_words in words, (
+                f"{row['Node']} carries the scale {scale!r} with a step of 1 "
+                f"and its description does not say {step_of_one_words!r}:\n"
+                f"    {described}\n"
+                "A step of 1 on this scale is written in words. If the node "
+                "now states the number, it is no longer this case."
+            )
+            continue
+
+        printed = value_form.format(value=step)
+        assert printed.lower() in words, (
+            f"{row['Node']} scales in steps of {printed!r} and the node says:\n"
+            f"    {described}\n"
+            "The two have to agree. Either the workbook is stale or the tree "
+            "file changed."
+        )
+
+
+def test_a_scale_is_actually_used(effects):
+    """The two scale columns are exercised rather than merely present.
+
+    The same argument as the condition check above. Without a row that uses one,
+    the columns, the generator's refusal of an unknown scale, and the code that
+    turns a scale into a modifier would all be untested.
+    """
+    scaled = [row for row in effects if row["Scale"].strip()]
+    assert scaled, (
+        "No passive effect scales with a state, so nothing exercises the Scale "
+        "columns or the code that reads them. If the last one was deliberately "
+        "removed, delete these tests with it rather than leaving the columns "
+        "untested."
+    )
+
+
+#: Stats whose value a node writes in units other than a percentage.
+#:
+#: EVERY OTHER VALUE IN THE SHEET IS A PERCENTAGE and was until issue #995, so
+#: the check appended a percent sign to every number it looked for. Rolling Debt
+#: is the first row that is not: "extends the delay on what is owed by 0.5
+#: SECONDS per point". Looking for "0.5%" in that sentence fails on a perfectly
+#: correct row, which is the same shape `CONDITION_WORDS` already carries units
+#: for. Issue #990 is the general form of this and is not closed by it: a value
+#: that is a plain count, like Low Life's "10 Fervour per second", still has
+#: nowhere to say so.
+VALUE_FORMS = {
+    # THE TWO DEBUFF CHANCES, WHICH ARE THE FIRST TWO FLAT ROWS ON ONE NODE.
+    # The Ravager's `Wearing Blows` reads "+2% chance to Cripple and +2% chance
+    # to Weaken on melee hit per point", so both its rows carry the same number
+    # and without these entries each is checked against the same "2%" -- and a
+    # workbook that swapped them would pass. Issue #990. The words that follow
+    # each number are what tell them apart.
+    "cripple_chance": "{value:g}% chance to Cripple",
+    "weaken_chance": "{value:g}% chance to Weaken",
+
+    "health_debt_delay_extension": "{value:g} second",
+
+    # HOW FAR BEHIND THE VEIL DRAWS ENEMIES, IN METRES. Issue #1515. The node
+    # reads "Enemies within 10 metres attack your minions rather than you", so
+    # the number is followed by a unit of distance and not by a percent sign.
+    #
+    # THE NODE'S OTHER ROW IS NOT HERE, and that is the difference between the
+    # two mappings: this one says how a number is WRITTEN, and the count of
+    # minions is not written as a number at all -- the same sentence says
+    # "three or more minions" -- so it is exempted in `VALUE_IN_WORDS` instead.
+    "minions_draw_nearby_enemies_metres": "{value:g} metres",
+
+    # "Your melee attacks reach 2 metres further than the skill states": a flat
+    # distance, written with its unit. Overreach, issue #1515.
+    "melee_reach_metres": "{value:g} metres",
+
+    # "no more than once every 10 seconds" and "once every 5 seconds": the
+    # interval between replacements, in seconds. Press-Ganged and Rekindled,
+    # issue #1515. The singular matches the plural, as the entry above does.
+    "minion_death_replaced_every_seconds": "{value:g} second",
+    "minion_explosion_replaced_every_seconds": "{value:g} second",
+
+    # A PLAIN COUNT OF FERVOUR, which is the last form issue #990 named and had
+    # no entry for. Low Life reads "you gain 10 Fervour per second", so the
+    # number is followed by the resource's name rather than by a percent sign or
+    # a unit of time. Issue #1008.
+    "fervour_per_second": "{value:g} Fervour",
+
+    # AND THE SAME COUNT GRANTED PER CAST RATHER THAN PER SECOND. Issue #1051.
+    # The Last Drop reads "every skill you cast grants 10 Fervour", so the
+    # number is followed by the resource's name exactly as above. Two entries
+    # rather than one shared form, because they are two stats and a future
+    # reword of either must not be able to satisfy the other's check.
+    "fervour_per_cast": "{value:g} Fervour",
+
+    # AND THE SAME COUNT GRANTED ONCE, WHEN HEALTH FALLS LOW. Issue #1069.
+    # Rock Bottom reads "Dropping below 20% health clears all outstanding debt
+    # and grants 50 Fervour". A third entry rather than a shared one, for the
+    # reason the second gives: these are three stats and a reword of one must
+    # not be able to satisfy another's check.
+    "fervour_on_dropping_low": "{value:g} Fervour",
+
+    # BOTH HALVES OF THE RITUALIST'S GENERATOR, AND NEITHER PUTS THE WORD
+    # "FERVOUR" AFTER ITS NUMBER. Issue #1518. The node names the resource once
+    # at the front and then states two rules against it: "Your minions generate
+    # Fervour: 1 per second for each minion you have, and 5 when one of them
+    # dies." So the three forms above -- "10 Fervour", "50 Fervour" -- would
+    # find nothing here, and the default percent form would look for "1%" and
+    # "5%" and find nothing either.
+    #
+    # EACH FORM CARRIES THE WORDS THAT FOLLOW ITS OWN NUMBER, which is what
+    # keeps the two apart inside one sentence. A bare "{value:g}" would match
+    # either number anywhere in the line, so a workbook that swapped the 1 and
+    # the 5 would still pass. "1 per second" and "5 when one" cannot be
+    # satisfied by each other's rule.
+    "fervour_from_minions": "{value:g} per second",
+    "fervour_on_minion_death": "{value:g} when one",
+
+    # A DISTANCE, WHICH IS THE FOURTH FORM AND THE FIRST ONE MEASURED IN SPACE.
+    # Issue #1047. Reprisal Wave reads "strikes every enemy within 4 METRES", so
+    # the number is followed by a unit of distance. The three entries above are a
+    # percentage, a unit of time and a count of a resource.
+    #
+    # THE NUMBER IS HERE RATHER THAN IN THE ENGINE ON PURPOSE, and this entry is
+    # what makes that worth doing: a workbook changed to 6 metres while the node
+    # still says 4 fails this check, where a constant in C++ could disagree with
+    # the sentence for ever and nothing would notice.
+    "retaliation_radius_metres": "{value:g} metre",
+
+    # A PLAIN COUNT OF MAXIMUM FERVOUR. Issue #1515. `class_resource` is the
+    # size of the class's resource pool, and until 2026-09-11 every row on it
+    # was an `increased` row, which is read as a percentage whatever the stat.
+    # Room for One More is the first `flat` one: "+30 maximum Fervour, which is
+    # 30 more for your minions to reserve". A flat maximum on a resource with
+    # another name would need its own form, and should get one.
+    # TWO WORDINGS FOR ONE STAT, WHICH IS WHY THIS ENTRY IS A PAIR. Issue
+    # #1515. Ritualist_keystone_spine_001 says "+30 maximum Fervour" and Vessel
+    # says "1 Fervour for every 20 maximum mana you have" -- the same stat,
+    # granted flat, written two ways. A single form fails one of them whichever
+    # is chosen, and the sentences are the design's rather than this file's to
+    # arrange.
+    #
+    # ANY ONE OF THEM MAY MATCH, the shape `CONDITION_WORDS` already uses for
+    # the same reason. It does not weaken the check: each alternative still has
+    # to appear in the sentence with the row's own number in it.
+    "class_resource": ("{value:g} maximum Fervour", "{value:g} Fervour"),
+
+    # A FLAT AMOUNT OF ARMOUR, WHICH ONLY ONE NODE GRANTS. Issue #1515. Weight
+    # Bearing reads "1 Armor for every 10 maximum health you have", so the
+    # number is followed by the stat's name as a player sees it. Every other
+    # armour row is an INCREASE and is read as a percentage, which this entry
+    # does not touch: a form here is consulted for `flat` rows only.
+    "armor": "{value:g} Armor",
+
+    # THE THREE RATES ON THE MASOCHIST'S FIRST SPINE NODE, which are the rows
+    # issue #990 was opened about. Each is a COUNT OF FERVOUR PER ONE PER CENT OF
+    # HEALTH, and each was worth 1, so the default percent form looked for "1%"
+    # and found it -- in the share of health, which is a different quantity in
+    # the same sentence. All three passed, none of them for its own reason.
+    #
+    # THE NODE READS: "Health you lose generates Fervour: 1 per 1% of maximum
+    # health lost to damage, and 1 per 1% of maximum health spent as an ability
+    # cost. While you have this, healing removes Fervour at the same rate, 1 per
+    # 1% of maximum health restored ..."
+    #
+    # EACH FORM CARRIES THE WORDS THAT FOLLOW ITS OWN NUMBER, for the reason the
+    # Ritualist's two entries above give: without them the three rows all look
+    # for the same text, so a workbook that swapped two of them would still
+    # pass. "lost", "spent" and "restored" are what keep the three apart, and
+    # they are the words the sentence already uses.
+    #
+    # THAT THE FORMS CLOSE THE SWAP IS MEASURED, NOT ARGUED. It was put to this
+    # file as a doubt -- that typing the three as counts fixes the units and
+    # leaves the swap open, because all three still appear in one sentence.
+    # Three cases were run on 2026-09-12, each as a break in a `git archive`
+    # copy:
+    #
+    #   A. Exchange the Stat of two rows while both values stay 1.0.
+    #      NOT CAUGHT, and correctly so: that produces an identical set of
+    #      node, stat and value, so there is nothing for any check to notice.
+    #   B. Give the three rates 2, 3 and 4 and leave the node saying 1.
+    #      Caught by `test_every_value_appears_in_the_nodes_own_description`.
+    #   C. THE REAL SWAP. Reword the node to say 2 lost, 3 spent and 4
+    #      restored, then exchange the first two in the sheet, so every number
+    #      in the sentence still appears somewhere in the sheet and only the
+    #      pairing is wrong.
+    #      CAUGHT, by the same test.
+    #
+    # C is the one that decides it. Before these three entries existed, all
+    # three rows looked for a bare percentage and C would have passed.
+    #
+    # THE "1%" INSIDE EACH FORM IS THE DENOMINATOR AND NOT THIS ROW'S VALUE. It
+    # is the share of health that earns one Fervour, and it is part of the rate
+    # the design states. A node reworded to grant per 2% of health fails here,
+    # which is the right outcome for a check that ties the sheet to the words.
+    #
+    # WHAT WAS MEASURED BEFORE WRITING THESE. All 40 flat rows across 35 stats,
+    # checked one at a time against their node's text on 2026-09-12. Every other
+    # unclassified stat is a real percentage and was already correct; these three
+    # were the only rows matching a number that belongs to something else.
+    "fervour_from_damage": "{value:g} per 1% of maximum health lost",
+    "fervour_from_cost": "{value:g} per 1% of maximum health spent",
+    "fervour_lost_to_healing": "{value:g} per 1% of maximum health restored",
+
+    # AND ALL THREE OF THE RAVAGER'S, WHOSE NODE HAS THE SAME SHAPE AS THE
+    # RITUALIST'S ABOVE. Issue #1515. It names the resource once at the front
+    # and then states three rules against it: "Enemies in reach generate
+    # Fervour: 1 for each enemy your attacks hit, and 1 per second for every
+    # enemy within 4 metres of you. While you have this, Fervour decays at 5
+    # per second after 3 seconds with no enemy within 4 metres".
+    #
+    # EACH FORM CARRIES THE WORDS THAT FOLLOW ITS OWN NUMBER, for the reason
+    # the Ritualist's two give. Here it matters more, not less: that sentence
+    # holds two separate numbers followed by "per second", so a form of
+    # "{value:g} per second" would be satisfied by either and a workbook that
+    # swapped the rate and the decay would pass.
+    "fervour_per_enemy_in_reach": "{value:g} per second for every enemy",
+    "fervour_decay_per_second": "decays at {value:g} per second",
+
+    # AND THE RADIUS, WHICH IS A DISTANCE RATHER THAN A COUNT OR A RATE. "with
+    # no enemy within 4 metres". The keystone that widens it states its value
+    # in words instead and is exempted in `VALUE_IN_WORDS` below.
+    "fervour_decay_grace_metres": "{value:g} metres",
+
+    # AND THE STARTING NODE'S FIRST CLAUSE, the same node's fourth row. Issue
+    # #1515: "1 for each enemy your attacks hit". The whole phrase, for the
+    # reason the two forms above give: the sentence holds a second "1" for the
+    # rate per enemy in reach, and a bare "{value:g}" would be satisfied by
+    # either.
+    "fervour_per_enemy_hit": "{value:g} for each enemy your attacks hit",
+
+    # THE TWO DEATH RULES THAT COST NOTHING. Issue #1515. Long Hold reads
+    # "Killing an enemy restores 5% of your maximum health", so the form carries
+    # the words that say what the percentage is of. Fed by the Fallen reads "You
+    # gain 10 Fervour whenever an enemy dies within 10 metres of you": the
+    # sentence holds a second "10" for the radius, and a bare "{value:g}"
+    # would be satisfied by either.
+    "health_restored_on_kill_at_no_cost": "{value:g}% of your maximum health",
+    "fervour_on_enemy_death_nearby": "{value:g} Fervour whenever",
+
+    # THE RITUALIST'S TWO KEYSTONES THAT ADJUST A FIGURE A SKILL ROW STATES.
+    # Issue #1718. Until the owner reworded both on 2026-09-16, each sentence
+    # stated the RESULT -- "reserves 25 Fervour rather than 30", "5 imps active
+    # rather than 3" -- and `VALUE_IS_A_DIFFERENCE` below checked the row
+    # against the skill's own figure. Both now state the CHANGE, because each
+    # now reaches every minion rather than one skill's, so the row's own value
+    # is in the sentence and these are ordinary forms.
+    #
+    # EACH CARRIES THE WORDS AROUND ITS NUMBER, because "5" and "2" alone
+    # are digits a sentence could hold for another reason: Crowned's also
+    # says "never less than 1".
+    "minion_reserve_reduction": "{value:g} less Fervour",
+    "minion_cap_bonus": "allows {value:g} more",
+
+    # THE DEMONIC OPTIONS BUILT ENGINE FIRST, 2026-09-24. Issue #1515. Each is a
+    # distance or a time written with its unit. "Everything within 4 metres"
+    # (Shared Ruin), "within 4 metres of you" (Ground Down, No Second Wind),
+    # "no damage for 2 seconds, no more than once every 20 seconds" (Nothing
+    # Stops It), "for 6 seconds" (Rendering Blows) and "once every 3 seconds"
+    # (Sacrificial Ward). The singular matches the plural, as above.
+    "minion_death_blast_radius_metres": "{value:g} metres",
+    "enemies_near_slowed_within_metres": "{value:g} metres",
+    "applied_cripple_and_weaken_held_within_metres": "{value:g} metres",
+    "lethal_hit_survived_every_seconds": "{value:g} second",
+    "damage_immunity_after_lethal_hit_seconds": "{value:g} second",
+    "third_melee_hit_armour_removed_seconds": "{value:g} second",
+    "shield_break_destroys_minion_every_seconds": "{value:g} second",
+
+    # AND THE LAST TWO DEMONIC OPTIONS WHOSE FIGURE IS A NUMBER, 2026-09-25.
+    # Issue #1515. "Enemies within 8 metres of you cannot move away from you"
+    # (Nowhere to Run) and "no more than once every 3 seconds" (Follow
+    # Through).
+    "enemies_cannot_move_away_within_metres": "{value:g} metres",
+    "melee_kill_repeats_attack_every_seconds": "{value:g} second",
+}
+
+#: Rows whose value the node states in WORDS instead of digits.
+#:
+#: THE ONLY WAY TO WRITE "NEVER" AS A NUMBER IS TO WRITE THE NUMBER. The
+#: Reckoning reads "Health costs are never taken", which is a deferred share of
+#: 100, and "the debt is cleared only by killing an enemy", which is a flag of 1.
+#: Neither figure is in the sentence, so no search of the description can find
+#: it, and refusing the row would leave the tree's last Blood Tithe keystone
+#: unauthorable.
+#:
+#: THE EXEMPTION STILL CHECKS SOMETHING, AND THAT IS THE POINT OF ITS SHAPE. It
+#: names the words that state the value AND the value those words mean, so a
+#: workbook changed to defer half a cost, or a node reworded to take costs after
+#: all, still fails. What it gives up is only the arithmetic tie between a digit
+#: in the sheet and a digit in the sentence, because there is no digit.
+#:
+#: KEYED BY NODE AND STAT, so it exempts one row rather than a stat everywhere.
+VALUE_IN_WORDS = {
+    # AND THE COUNT OF MINIONS BEHIND THE VEIL ASKS FOR. Issue #1515. The node
+    # reads "while you have three or more minions", so the sheet's 3 has no
+    # digit to match in the sentence. Its OTHER row needs no entry: the same
+    # sentence says "within 10 metres", and 10 is written as a number there.
+    ("Ritualist_keystone_spine_002", "minions_draw_nearby_enemies_minimum"):
+        ("three or more", 3.0),
+
+    ("Masochist_keystone_bt_kA", "deferred_health_cost_share"):
+        ("never taken", 100.0),
+    # THE PHRASE LOST THE WORD "ONLY" ON 2026-09-01, ISSUE #1122, and the
+    # exemption had to move with it. The Reckoning claimed a kill was the
+    # sole way out while Rock Bottom clears the same debt another way, so a
+    # player holding both could not predict what happened. The stat is still
+    # a flag of 1 and still stated in words; only the words changed.
+    ("Masochist_keystone_bt_kA", "health_debt_cleared_only_by_a_kill"):
+        ("cleared by killing an enemy and never by time", 1.0),
+
+    # AND THE TWO NODES THAT STOP HEALING REMOVING FERVOUR. Issues #1006 and
+    # #1007. Both are flags of 1 and neither sentence has a digit: one says
+    # "does not remove Fervour" and the other "no longer removes Fervour". A
+    # More multiplier cannot take a stat to zero -- the pipeline clamps a Less
+    # one at -99 on purpose -- so a rule that says "does not" has to say so as a
+    # flag rather than as a 99% reduction. A removal can, since issue #1791, and
+    # these two flags predate it.
+    ("Masochist_keystone_fc_kB", "fervour_loss_suppressed"):
+        ("does not remove fervour", 1.0),
+
+    # AND THE RAVAGER'S `No Ground Given`, WHOSE SENTENCE STATES TWO DISTANCES
+    # AND ITS ROW'S VALUE IS NEITHER OF THEM. Issue #1515. It reads "Your
+    # Fervour does not decay while an enemy is within 8 metres of you, rather
+    # than 4" -- so the 8 is the total a character holding it ends up with and
+    # the 4 is what the starting node already grants. The row grants 4 MORE,
+    # because two flat rows on one stat sum, and that increment appears in the
+    # sentence as neither digit.
+    #
+    # WHAT THIS EXEMPTION STILL CHECKS is the pair of distances in the words, so
+    # a reword that changed either one fails here. WHAT IT DOES NOT CHECK is the
+    # arithmetic tying the row's 4 to the sentence's 8, and that is checked
+    # instead by `Cataclysm.Passives.NoGroundGivenWidensTheRadiusToEight`, which
+    # reads the total off a real Ravager holding both nodes. Neither check alone
+    # is enough and the pair is why the increment is authorable at all.
+    ("Ravager_keystone_d_kC", "fervour_decay_grace_metres"):
+        ("within 8 metres of you, rather than 4", 4.0),
+
+    # AND GRINDING HALT, WHICH IS NOT STRICTLY A VALUE IN WORDS AND IS HERE
+    # ANYWAY. Issue #1515. Its sentence has the digit -- "grants you 1 Fervour
+    # per second" -- but `VALUE_FORMS` is keyed by STAT, and
+    # `fervour_per_enemy_in_reach` is shared with the starting node, whose form
+    # is "{value:g} per second for every enemy". Grinding Halt says it the other
+    # way round, so that form cannot find its number.
+    #
+    # THE EXEMPTION STILL CHECKS BOTH HALVES: the phrase must appear, and the
+    # row's value must be the 1 it states. A reword dropping the clause fails, and
+    # so does a workbook changed away from 1. What it gives up is only that the
+    # match is done by a per-node phrase rather than by the per-stat form.
+    ("Ravager_keystone_c_kC", "fervour_per_enemy_in_reach"):
+        ("grants you 1 fervour per second", 1.0),
+    ("Masochist_keystone_spine_002", "fervour_loss_suppressed"):
+        ("no longer removes fervour", 1.0),
+
+    # AND THE NODE THAT TURNS DAMAGE TAKEN INTO BLEEDING. Issue #985. Another
+    # flag of 1 whose sentence states a rule rather than a magnitude: "Dropping
+    # below 50% health converts all damage you take into Bleeding over 5
+    # seconds."
+    #
+    # THE DIGITS IN THAT SENTENCE BELONG TO OTHER THINGS, which is why none of
+    # them can stand in for this row. 50 is the health threshold, 5 is how long
+    # the Bleeding lasts, and the node's own magnitude -- "increased by 5% per
+    # point" -- is a SECOND row on `damage_to_bleeding_window`, which the
+    # ordinary check below matches against that 5 with no exemption at all.
+    ("Masochist_basic_ll_b1", "damage_to_bleeding_on_low_health"):
+        ("converts all damage you take into bleeding", 1.0),
+
+    # AND WATER TO BLOOD, which trades the mana pool away. Issue #1067.
+    # "You no longer have a mana pool" is a rule, not a magnitude, and the
+    # only digit in that whole option description is the 1 nobody wrote --
+    # a flag, like the four above.
+    ("Masochist_capstone_25", "mana_pool_becomes_health"):
+        ("no longer have a mana pool", 1.0),
+
+    # THE EDGE'S SECOND CLAUSE, which is a rule and not a magnitude. Issue #1026.
+    # "While at or below 20% health you take 25% less damage and your Fervour
+    # does not decrease." The flag row is a 1 meaning "on", and both digits in
+    # that sentence belong to the other clause: 20 is the health threshold and 25
+    # is the damage the first row removes.
+    ("Masochist_keystone_ll_kA", "fervour_loss_suppressed"):
+        ("your fervour does not decrease", 1.0),
+
+    # THE FINAL VOW'S THIRD OPTION, VESSEL UNBROKEN. Issue #1039. "Debuffs on
+    # you deal no damage at all, and each one grants 5% more damage and 5
+    # Fervour per second." A flag of 1, and a rule rather than a magnitude: the
+    # only way to write "no damage at all" as a multiplier would be -100, and
+    # `UCataclysmStatPipeline::LessMultiplierFloor` clamps a Less multiplier to
+    # -99 on purpose, so the sentence cannot be delivered that way at all.
+    #
+    # BOTH DIGITS IN THAT SENTENCE BELONG TO THE OTHER TWO CLAUSES, which is why
+    # none of them can stand in for this row: the two 5s are the damage each
+    # debuff multiplies by and the Fervour each grants a second, and the
+    # ordinary check below matches those three rows against them with no
+    # exemption at all.
+    ("Masochist_capstone_200", "debuff_damage_suppressed"):
+        ("deal no damage at all", 1.0),
+
+    # THE SECOND VOW'S SECOND OPTION, FEEDING WOUND. Issue #1048. "Your life
+    # leech applies to your retaliation damage as well as to your attacks." A
+    # flag of 1, and the sentence carries NO DIGIT ANYWHERE, which is what
+    # separates it from every entry above: those each hold digits belonging to
+    # their node's other clauses, and this one has none to be confused with.
+    #
+    # A RULE AND NOT A MAGNITUDE, so it is exempted rather than reworded. How
+    # much is leeched is already stated elsewhere -- it is whatever life leech
+    # the character has -- and this sentence says only WHERE that figure now
+    # applies. There is no number it could be given without inventing one.
+    ("Masochist_capstone_50", "retaliation_leeches"):
+        ("life leech applies to your retaliation damage", 1.0),
+
+    # THE FINAL VOW'S FIRST OPTION, THE LAST DROP. Issue #1051. "While below 20%
+    # health your skills cost no health, and every skill you cast grants 10
+    # Fervour." A flag of 1, and a rule rather than a magnitude: "cost no
+    # health" as a multiplier would be -100, which
+    # `UCataclysmStatPipeline::LessMultiplierFloor` clamps to -99 on purpose.
+    #
+    # BOTH DIGITS IN THAT SENTENCE BELONG ELSEWHERE, which is why neither can
+    # stand in for this row: 20 is the health threshold, which the CONDITION
+    # value check above matches against, and 10 is the Fervour the option's
+    # other row grants, which the ordinary value check matches with no exemption
+    # at all.
+    ("Masochist_capstone_200", "health_cost_suppressed"):
+        ("your skills cost no health", 1.0),
+
+    # THE SECOND VOW'S FIRST OPTION, ROCK BOTTOM. Issue #1069. "A health cost
+    # can never reduce you below 1 health; anything you cannot pay becomes
+    # health debt instead. Dropping below 20% health clears all outstanding
+    # debt and grants 50 Fervour, no more than once every 30 seconds." Two
+    # flags of 1, one per rule, and the sentence has four digits of which none
+    # belongs to either: 1 is the health a cost may not take you past, 20 is
+    # the threshold the drop is measured at, 50 is the Fervour the third row
+    # grants and matches with no exemption, and 30 is how often it may happen.
+    #
+    # THE FIRST ENTRY COVERS BOTH HALVES OF ONE RULE, deliberately. A floor at
+    # 1 health with no debt behind it is a discount rather than a Masochist
+    # mechanic, and a debt with no floor in front of it has nothing to collect,
+    # so the two are not separable into rows that mean anything apart.
+    ("Masochist_capstone_50", "unpayable_health_cost_becomes_debt"):
+        ("anything you cannot pay becomes health debt", 1.0),
+    ("Masochist_capstone_50", "debt_cleared_on_dropping_low"):
+        ("clears all outstanding debt", 1.0),
+
+    # THE SECOND VOW'S THIRD OPTION, CEASELESS PENANCE. Issue #1070. "Debuffs
+    # on you no longer expire while you are above 50% health." A flag of 1, and
+    # the only digit in the sentence is the 50 belonging to the CONDITION on
+    # this same row, which the condition check matches with no exemption.
+    #
+    # A RULE AND NOT A MAGNITUDE. "No longer expire" is a duration multiplied
+    # by nothing, and `debuff_duration_taken` beside it cannot express that: it
+    # is a percentage where 100 is normal, so "never" would be an infinity
+    # rather than a number.
+    ("Masochist_capstone_50", "debuffs_do_not_expire"):
+        ("no longer expire", 1.0),
+
+    # THE FINAL VOW'S SECOND OPTION, CARNIVORE. Issue #1071. "Every hit you
+    # take grants a stack of Carnage. Carnage has no maximum, and each stack
+    # grants 2% more damage." Two flags of 1, one per rule, and the only digit
+    # in the sentence is the 2 belonging to the option's other two rows, which
+    # the ordinary check matches against with no exemption at all.
+    #
+    # BOTH ARE CHANGES TO AN EXISTING MECHANIC RATHER THAN NEW ONES, which is
+    # what makes them flags. `UCataclysmStacks` already grants Carnage and
+    # already caps it at 10; these say that this character earns it from being
+    # hit and holds it without limit.
+    ("Masochist_capstone_200", "carnage_from_damage_taken"):
+        ("every hit you take grants a stack of carnage", 1.0),
+    ("Masochist_capstone_200", "carnage_has_no_maximum"):
+        ("carnage has no maximum", 1.0),
+
+    # SANGUINE LEDGER'S COST WAS A FOURTH ENTRY HERE AND IS NOT ANY MORE. Issue
+    # #1009. Its sentence said "your Health Regeneration is halved", so the -50
+    # on that row was a magnitude no digit in the sentence could be matched
+    # against, and it was the only such magnitude in any of the four trees. The
+    # project owner reworded the node on 2026-08-26 to "reduced by 50%
+    # (multiplicative)", which states the number, so the ordinary check below
+    # covers it and no exemption is needed.
+    #
+    # THE DIFFERENCE FROM THE THREE ABOVE IS WHAT DECIDES WHICH WAY TO GO. "Never
+    # taken", "cleared only by killing an enemy" and "does not remove Fervour"
+    # are RULES, and a rule has no number to state. A halving is a MAGNITUDE, and
+    # a magnitude can always be written as one. Exempt a rule; reword a
+    # magnitude.
+    # THE NINE KEYSTONE ROWS OF 2026-09-14, ISSUE #1515. Every one of them
+    # states its value in words because every one of them is a THRESHOLD rather
+    # than an amount: a flag that is on, an immunity, or a half. A keystone
+    # sentence says what becomes true, not by how much, so there is no digit in
+    # it for the ordinary check to find.
+    #
+    # THE PHRASE IS THE CLAUSE THAT CARRIES THE RULE, not the whole sentence.
+    # Ironhide's sentence goes on to name armour penetration and piercing
+    # weapons; the rule is "cannot be ignored" and that is what a reword would
+    # have to keep for the row to still be right.
+    ("Ritualist_keystone_c_kA", "shield_absorbs_damage_over_time"):
+        ("absorbs damage over time as well as hits", 1.0),
+
+    # ATTRITION, "Your melee attacks always Cripple and always Weaken, with no
+    # chance roll." Issue #1515, written 2026-09-23. A hundred on each chance is
+    # the whole of the roll's range, which is what "always" and "no chance
+    # roll" say; the sentence states no number because the rule has none. One
+    # phrase per row, each naming its own ailment, so the two rows cannot be
+    # satisfied by the same words.
+    ("Ravager_keystone_c_kA", "cripple_chance"): ("always cripple", 100.0),
+    ("Ravager_keystone_c_kA", "weaken_chance"): ("always weaken", 100.0),
+    ("Ritualist_keystone_c_kB", "shield_recharges_while_damaged"):
+        ("recharges while you are taking damage", 1.0),
+    ("Ritualist_keystone_d_kA", "mana_regen_restores_shield"):
+        ("also restores your energy shield", 1.0),
+    ("Ravager_keystone_spine_001", "armor_penetration_suppressed"):
+        ("cannot be ignored", 1.0),
+    # AND EVERY SWING LANDS' SECOND CLAUSE, the arc, a flag of one. Issue
+    # #1515. `UCataclysmStrikeSkill::ArcDegrees` asks whether it stands above
+    # zero; the sentence says what the arc becomes, not by how much.
+    ("Ravager_keystone_spine_002", "melee_arc_full_circle"):
+        ("full circle rather than a cone", 1.0),
+    ("Ravager_keystone_spine_002", "melee_evasion_suppressed"):
+        ("cannot be evaded", 1.0),
+
+    # UNSTOPPABLE IS ONE SENTENCE AND TWO ROWS, so it appears twice with two
+    # different phrases from it. The stun, the shove and the knockdown are one
+    # stat at a hundred -- the knockdown since issue #1815 on 2026-09-17, which
+    # is why the sentence now names it -- and that is what "cannot" means for a
+    # stat that scales an amount;
+    # the slow is a separate flag because movement speed is not crowd control
+    # resistance and is resolved somewhere else entirely.
+    ("Ravager_keystone_spine_003", "crowd_control_resistance"):
+        ("cannot be stunned", 100.0),
+
+    # AND THE FIRST ONSLAUGHT'S SECOND OPTION, NEVER LETS GO. Issue #1515.
+    # "Enemies you hit are Crippled for 4 seconds, and your attacks deal 20%
+    # increased damage to Crippled enemies." A hundred per cent chance is what
+    # "are Crippled" means for a stat that is rolled, and the sentence states
+    # no chance in digits. The 4 is Cripple's own duration in
+    # game/Data/StatusEffects.csv and belongs to no row; the 20 belongs to the
+    # attack damage row, which the digit check matches with no exemption.
+    ("Ravager_capstone_25", "cripple_chance"):
+        ("enemies you hit are crippled", 100.0),
+
+    # AND THE TWO RITUALIST FLAGS OF 2026-09-17, neither of whose sentences
+    # holds a digit at all. Issue #1515.
+    #
+    # `Every One Bursts` is a flag of one: the death path asks whether the
+    # stat is above zero, and the sentence says every minion explodes rather
+    # than how often or how much.
+    #
+    # `Ritual Focus` is a REMOVAL of one, which is how a removal states
+    # itself in both effect sheets, and "cost no mana" is the phrase that
+    # says so. Neither sentence holds a digit anywhere, so neither entry
+    # can match a number that belongs to something else.
+    ("Ritualist_keystone_b_kB", "minion_explodes_on_death"):
+        ("every minion explodes when it dies", 1.0),
+    ("Ritualist_keystone_d_kB", "mana_cost"):
+        ("cost no mana", 1.0),
+
+    # AND THE THIRD RITUALIST FLAG, `Conduit`, whose sentence holds no digit
+    # either. Issue #1515. The row grants one of `minion_hits_count_as_yours`
+    # and the engine asks only whether it stands above zero: with the keystone
+    # taken, a minion's hit and kill are credited to its summoner, and without
+    # it they are the minion's own. The phrase is the clause that says so, and
+    # it names no number because the rule is not a quantity.
+    ("Ritualist_keystone_spine_003", "minion_hits_count_as_yours"):
+        ("counts as damage you dealt", 1.0),
+
+    # AND THE RITUALIST'S RISEN IMPS, a flag of one. Issue #1479. The death path
+    # asks whether the stat stands above zero. The sentence's digits belong to
+    # other things -- the 1 and the 5 to the two Fervour rows on this node, the
+    # 20 to Summon Imp's lifetime -- so the ordinary check would find the 1 of
+    # "1 per second" and pass for the wrong reason. The phrase is the clause
+    # that carries the rule.
+    ("Ritualist_basic_spine_000", "curse_death_raises_imp"):
+        ("rises as a lesser imp that fights for you", 1.0),
+    ("Ravager_keystone_spine_003", "movement_speed_reduction_suppressed"):
+        ("slowed", 1.0),
+
+    # FIFTY IS "HALF", by the arithmetic the resistance already uses:
+    # Amount x (1 - Resisted / 100). Its second clause, about an effect ending
+    # when its applier dies, is not this row: it is the node's second row,
+    # `crowd_control_ends_when_its_applier_dies`, read by the player's death
+    # handling. This comment said "not built yet" after that row was built.
+    ("Ravager_keystone_a_kB", "crowd_control_resistance"):
+        ("last half as long", 50.0),
+
+    # AND THE SAME NODE'S SECOND CLAUSE, WHICH IS A FLAG. Issue #1515. This
+    # is the first node in this list with TWO entries, because its one
+    # sentence carries two rules and they are two stats. The phrase here is
+    # the second clause and the one above is the first, so a reword that drops
+    # either still fails for that one alone.
+    ("Ravager_keystone_a_kB", "crowd_control_ends_when_its_applier_dies"):
+        ("ends entirely when you kill the enemy that applied it", 1.0),
+
+    ("Ravager_keystone_d_kA", "movement_speed_reduction_suppressed"):
+        ("cannot be reduced by any effect", 1.0),
+
+    # AND SUNDERING, WHOSE "ENTIRELY" IS A HUNDRED. Issue #1515. It reads
+    # "Your melee attacks ignore enemy Armor entirely when they hit three or
+    # more enemies at once". Armour penetration is the share of armour a blow
+    # ignores, which the damage calculation clamps at 100, and the sentence
+    # has no digit for it.
+    ("Ravager_keystone_b_kA", "armor_penetration"):
+        ("ignore enemy armor entirely", 100.0),
+
+    # AND CAST FROM WARD, A FLAG OF 1. Issue #1515. The Ritualist's 50-point
+    # capstone's third option reads "A skill may be paid for with Energy Shield
+    # when your mana is not enough", and the sentence has no digit.
+    ("Ritualist_capstone_50", "skill_cost_paid_from_energy_shield"):
+        ("may be paid for with energy shield", 1.0),
+
+    # AND FOUR MORE DEMONIC FLAGS OF 1, 2026-09-25. Issue #1515. None of the
+    # four sentences states its option as a number. Chorus's does hold one --
+    # "dealing 30% of its damage" -- and that 30% is the engine's
+    # `UCataclysmChorus::SharePercent`, not a row, so its row is the flag and
+    # is checked against the words that say what the option does.
+    ("Ravager_capstone_200", "two_handed_weapon_in_each_hand"):
+        ("a two-handed weapon in each hand", 1.0),
+    ("Ravager_capstone_100", "moving_into_enemy_pushes_aside"):
+        ("moving into an enemy pushes it aside", 1.0),
+    ("Ritualist_capstone_200", "minion_held_longest_becomes_your_equal"):
+        ("the minion you have held longest becomes your equal", 1.0),
+    ("Ritualist_capstone_200", "minions_repeat_your_skills"):
+        ("your minions repeat each skill you cast", 1.0),
+}
+
+
+#: Rows whose value is the DIFFERENCE between the figure the node states and the
+#: figure a skill's own row already states.
+#:
+#: A THIRD SHAPE, AND NOT AN EXEMPTION. The two above are about a value the
+#: sentence gives in words. This one gives it in digits -- but the digit in the
+#: sentence is the RESULT, not the change. Dominion says "below 65% health" while
+#: Subjugate's row says `HealthThresholdPercent=50`, so the workbook holds 15.
+#:
+#: THERE WERE THREE UNTIL 2026-09-16. Crowned said "reserves 25 Fervour" against
+#: `FervourReserve=30` and The Swarm "5 imps" against `MaxActive=3`. The owner
+#: reworded both to state the change itself -- "5 less Fervour", "allows 2
+#: more" -- so `VALUE_FORMS` above checks them like any other row.
+#:
+#: THE STAT IS A BONUS ON A DESIGNED FIGURE PRECISELY SO THE ROW STAYS THE ONLY
+#: PLACE THAT FIGURE IS WRITTEN. A stat holding 65 outright would state the
+#: skill's number a second time and win, so re-tuning the skill row would
+#: silently do nothing. `docs/DECISIONS.md` carries the argument.
+#:
+#: SO THIS CHECKS MORE THAN THE ORDINARY BRANCH DOES, RATHER THAN LESS. It reads
+#: the skill's own row out of `game/Data/WeaponSkills.csv` and requires the
+#: workbook's value to equal the gap between the two figures. Re-tune the skill,
+#: reword the node, or change the workbook alone, and it fails.
+#:
+#: KEYED BY NODE AND STAT, naming the skill, the parameter in its `ShapeParams`,
+#: and the figure the node's own sentence states.
+VALUE_IS_A_DIFFERENCE = {
+    ("Ritualist_keystone_a_kA", "possession_threshold_bonus"):
+        ("Subjugate", "HealthThresholdPercent", 65.0),
+}
+
+
+def test_every_value_appears_in_the_nodes_own_description(
+        effects, nodes, skill_shape_params):
+    """The number in the workbook is the number the design document states.
+
+    THE ONE CHECK THAT TIES THE TWO FILES TOGETHER. Everything else here is
+    about the sheet being well formed; this is about it being true.
+    """
+    for row in effects:
+        # THE OPTION'S OWN SENTENCE FOR A CAPSTONE ROW, and the node's for every
+        # other. Issue #1029. See `words_of` for why: a capstone's description
+        # says only "Choose one. The choice is permanent."
+        described = words_of(row, nodes)
+        value = float(row["ValuePerPoint"])
+
+        # A VALUE THE SENTENCE STATES IN WORDS IS CHECKED AGAINST THOSE WORDS.
+        # See `VALUE_IN_WORDS` for why two rows are written that way and what
+        # this still catches.
+        stated = VALUE_IN_WORDS.get((row["Node"], row["Stat"]))
+        if stated is not None:
+            phrase, means = stated
+            assert phrase in described.lower(), (
+                f"{row['Node']}: the workbook states {row['Stat']} in words "
+                f"rather than digits, as {phrase!r}, and the node says:\n"
+                f"    {described}\n"
+                "Either the node was reworded or the exemption is stale."
+            )
+            assert value == pytest.approx(means), (
+                f"{row['Node']}: {phrase!r} means {means:g} of {row['Stat']} "
+                f"and the workbook grants {value:g}."
+            )
+            continue
+
+        # A VALUE THAT IS A DIFFERENCE IS CHECKED AGAINST BOTH FIGURES, the
+        # node's sentence and the skill row it adjusts. See
+        # `VALUE_IS_A_DIFFERENCE` for why a row is written that way.
+        gap = VALUE_IS_A_DIFFERENCE.get((row["Node"], row["Stat"]))
+        if gap is not None:
+            skill_name, parameter, states = gap
+            params = skill_shape_params.get(skill_name)
+            assert params is not None, (
+                f"{row['Node']}: {row['Stat']} is a difference from "
+                f"{skill_name}'s {parameter}, and no skill is called "
+                f"{skill_name!r}. Either the skill was renamed or this entry "
+                "is stale."
+            )
+            assert parameter in params, (
+                f"{row['Node']}: {row['Stat']} is a difference from "
+                f"{skill_name}'s {parameter}, and that skill's ShapeParams "
+                f"does not state one. Either the row dropped the parameter or "
+                "this entry is stale."
+            )
+            base = params[parameter]
+            assert f"{states:g}" in described, (
+                f"{row['Node']}: {row['Stat']} is the gap up to {states:g}, "
+                f"and the node says:\n    {described}\n"
+                "Either the node was reworded or this entry is stale."
+            )
+            assert value == pytest.approx(abs(states - base)), (
+                f"{row['Node']}: the node states {states:g} and "
+                f"{skill_name}'s {parameter} is {base:g}, so {row['Stat']} "
+                f"should be {abs(states - base):g} and the workbook grants "
+                f"{value:g}."
+            )
+            continue
+
+        # "3" and not "3.0", because a description writes 3% and 1.5%. `%g`
+        # drops a trailing zero and keeps a real fraction.
+        #
+        # WITHOUT THE SIGN, because a description never writes one. A node that
+        # takes something away says "reduced by 5% per point" while the sheet
+        # writes -5: the pipeline sums increases, so a reduction is a negative
+        # increase. The sign is checked by the test below instead.
+        #
+        # AND IN THE STAT'S OWN UNITS. Nearly every value is a percentage, and
+        # `VALUE_FORMS` names the ones that are not.
+        #
+        # ONLY A `flat` ROW IS READ IN THE STAT'S OWN UNITS. Issue #1518. A
+        # flat row states a quantity of the thing -- "10 Fervour", "4 metres" --
+        # but an `increased` or `more` row is a PERCENTAGE of it whatever the
+        # thing is, and its node writes one: "+2% increased Fervour gained from
+        # your minions per point". Reading that row in the stat's own units
+        # looked for "2 per second" in a sentence that says "+2%".
+        #
+        # IT CHANGES NOTHING ALREADY IN THE SHEET. Measured 2026-09-09: every
+        # stat named in `VALUE_FORMS` before this issue is granted by `flat`
+        # rows only, so this is the branch all of them already took. The
+        # Ritualist's two are the first stats carrying a flat row and an
+        # increase together, which is what uncovered it.
+        form = (VALUE_FORMS.get(row["Stat"], "{value:g}%")
+                if row["ValueKind"] == "flat" else "{value:g}%")
+
+        # ONE FORM OR SEVERAL, AND SEVERAL MEANS "ANY OF THESE WILL DO". Issue
+        # #1515. One stat can be granted flat by two nodes that word the grant
+        # differently -- "+30 maximum Fervour" against "1 Fervour for every 20
+        # maximum mana" -- and a single form fails one of them whichever is
+        # chosen. The sentences belong to the design and not to this file.
+        #
+        # IT DOES NOT WEAKEN THE CHECK. Every alternative still has to appear in
+        # the sentence carrying the row's own number, so a row whose description
+        # writes none of them fails exactly as before. This is the same shape
+        # `CONDITION_WORDS` takes for its fragments, and for the same reason.
+        allowed = (form,) if isinstance(form, str) else tuple(form)
+        printed = [one.format(value=abs(value)) for one in allowed]
+        assert any(one in described for one in printed), (
+            f"{row['Node']}: the workbook grants {' or '.join(printed)} of "
+            f"{row['Stat']} per point, and the node says:\n"
+            f"    {described}\n"
+            "The two have to agree. Either the workbook is stale or the tree "
+            "file changed."
+        )
+
+
+def text_the_check_looks_for(row: dict) -> tuple[str, ...]:
+    """Every string `test_every_value_appears_in_the_nodes_own_description`
+    would accept. Shared so the test below cannot drift from the one above it.
+
+    A TUPLE AND NOT A STRING SINCE 2026-09-18, because a stat granted flat by
+    two nodes that word it differently carries several forms and any one of them
+    may match. Issue #1515. The test below reads every form rather than one, so
+    two rows collide when they share ANY of the strings either could be
+    satisfied by -- which is stricter than comparing one form each, and is the
+    right way round for a check that exists to catch two rows satisfied by the
+    same words.
+    """
+    form = (VALUE_FORMS.get(row["Stat"], "{value:g}%")
+            if row["ValueKind"] == "flat" else "{value:g}%")
+    allowed = (form,) if isinstance(form, str) else tuple(form)
+    return tuple(one.format(value=abs(float(row["ValuePerPoint"])))
+                 for one in allowed)
+
+
+def test_no_two_flat_rows_on_one_node_look_for_the_same_text(effects):
+    """Two rows satisfied by the same words are one check, not two.
+
+    WHAT THIS CATCHES, and it is the fault issue #990 was opened about. The
+    Masochist's first spine node grants three separate rates -- Fervour per one
+    per cent of health lost, per one per cent spent, and Fervour removed per one
+    per cent restored -- each worth 1. The default form appended a percent sign
+    to every value, so all three looked for "1%", and all three found it in the
+    SHARE OF HEALTH written in the same sentence. Three rows passed, none for its
+    own reason, and a workbook that swapped two of them would have passed too.
+
+    FLAT ROWS ONLY, AND THAT RESTRICTION IS THE WHOLE DESIGN OF THIS CHECK. An
+    `increased` or a `more` row is a percentage of its stat whatever the stat is,
+    and one sentence routinely states one percentage covering several: "+2%
+    increased attack and spell damage per point" is two rows correctly satisfied
+    by one "2%". Measured 2026-09-12: applied to every row this fires on 21
+    nodes, all of them correct; applied to flat rows only it fires on none.
+
+    A FLAT ROW IS DIFFERENT because it states a quantity of the thing -- "10
+    Fervour", "4 metres", "1 per 1% of maximum health lost" -- so two flat rows
+    on one node describe two different quantities and the sentence has to say
+    both. `VALUE_FORMS` is how a stat says which words follow its number.
+
+    ROWS STATED IN WORDS ARE LEFT OUT, because `VALUE_IN_WORDS` already checks
+    each against its own distinct phrase and its own expected value.
+
+    WHAT THIS DOES NOT CATCH, MEASURED RATHER THAN ASSUMED. It needs TWO rows
+    looking for the same text. Removing one of the three Fervour entries from
+    `VALUE_FORMS` leaves one row on the percent default and two on their own
+    forms, so nothing collides and this stays quiet -- measured 2026-09-12, 19
+    passed. Removing two of the three does collide and this fires. So a single
+    unclassified count on a node whose other rows are classified still slips
+    through here; what this catches is the shape the original fault had, where
+    several rows fell back together.
+    """
+    from collections import Counter, defaultdict
+
+    by_node = defaultdict(list)
+    for row in effects:
+        if row["ValueKind"] != "flat":
+            continue
+        if (row["Node"], row["Stat"]) in VALUE_IN_WORDS:
+            continue
+        for printed in text_the_check_looks_for(row):
+            by_node[row["Node"]].append((printed, row["Stat"]))
+
+    assert by_node, (
+        "no flat row reaches this check at all, so it compares nothing. Either "
+        "the sheet has no flat rows left or the exemptions now cover all of "
+        "them.")
+
+    for node, entries in sorted(by_node.items()):
+        for printed, count in Counter(text for text, _ in entries).items():
+            if count == 1:
+                continue
+            stats = sorted(stat for text, stat in entries if text == printed)
+            raise AssertionError(
+                f"{node}: {count} flat rows are all checked against the same "
+                f"text {printed!r} -- {', '.join(stats)}. Each row needs an "
+                "entry in VALUE_FORMS carrying the words that follow its own "
+                "number, or the rows can satisfy each other and a workbook "
+                "that swapped two of them would still pass. Issue #990.")
+
+
+#: Words a node uses when its own effect takes something away.
+#:
+#: "halved" WAS ADDED FOR ISSUE #1007 AND REMOVED AGAIN FOR ISSUE #1009. It was
+#: added because Sanguine Ledger read "your Health Regeneration is halved" and
+#: the row carrying it is a `more` of -50, and the word plainly does take
+#: something away. It came out because the project owner reworded that node on
+#: 2026-08-26 to "reduced by 50% (multiplicative)", and "reduce" was already in
+#: this list. No node in any of the four trees says "halved" now.
+TAKES_AWAY = ("reduce", "less", "fewer", "lower", "removed by")
+
+
+def test_a_negative_value_is_on_a_node_that_says_it_takes_something_away(
+        effects, nodes):
+    """The number is matched without its sign, so the sign needs its own check.
+
+    THE FAILURE THIS CATCHES. A row written -5 on a node that says "increased"
+    would pass the number check above and make the node worth the opposite of
+    what a player reads. Nothing at run time reports it: the arithmetic runs and
+    the character is simply worse.
+
+    ONLY ONE DIRECTION CAN BE CHECKED, and saying why matters more than the
+    check. A POSITIVE value on a node that says "reduced" is often correct,
+    because whether a bigger number is better belongs to the STAT rather than to
+    the words: `damage_reduction` is a node saying "damage taken is reduced by
+    1.5% per point" carrying a positive 1.5, and that is right. So a negative
+    value must be on a node whose words take something away, and nothing is
+    asserted the other way round.
+    """
+    for row in effects:
+        value = float(row["ValuePerPoint"])
+        if value >= 0:
+            continue
+
+        described = words_of(row, nodes)
+        words = described.lower()
+        assert any(term in words for term in TAKES_AWAY), (
+            f"{row['Node']} grants {value:g} of {row['Stat']} per point, which "
+            f"takes something away, and its description does not say so:\n"
+            f"    {nodes[row['Node']]['Description']}\n"
+            f"A description that takes something away uses one of {TAKES_AWAY}."
+        )
+
+
+def test_a_node_that_takes_something_away_is_actually_tested(effects):
+    """The check above is worth nothing without a row that exercises it.
+
+    ONE ROW HAS A NEGATIVE VALUE TODAY: the Masochist's Staunch node, which
+    reduces the Fervour its own health regeneration removes by 5% per point.
+    Without a negative row the test above passes over every row without
+    asserting anything, which reads as a guard that holds.
+    """
+    negative = [row for row in effects if float(row["ValuePerPoint"]) < 0]
+    assert negative, (
+        "No passive effect has a negative value, so nothing exercises the check "
+        "that a reduction is on a node whose words reduce something. If the "
+        "last one was deliberately removed, delete that test with it rather "
+        "than leaving it passing over nothing."
+    )
+
+
+def test_the_bucket_matches_the_nodes_own_wording(effects, nodes):
+    """A description that says its number multiplies is the more bucket, and
+    one that does not is not.
+
+    WHY IT MATTERS RATHER THAN BEING TIDY. The three buckets are
+    `(base + flat) x (1 + increases) x more1 x more2`. Putting a value in the
+    wrong one changes what it is worth by a large factor on an invested
+    character, and by nothing at all on a fresh one -- so it would look right
+    in exactly the situation somebody is most likely to check it in.
+
+    IT USED TO ASK FOR THE LITERAL WORD "multiplicative" AND THAT REFUSED HALF
+    THE TREES. Issue #977. See `MULTIPLIES` for the two wordings and for the
+    two entries in `docs/DECISIONS.md` that say they mean the same thing.
+
+    THE SECOND DIRECTION GAVE WAY ON 2026-08-26, EXACTLY AS PREDICTED HERE.
+    Issue #986. Exsanguinate reads "Every skill costs an additional 15% of your
+    current health, and every skill deals 40% more damage": one sentence, one
+    `flat` row for the cost and two `more` rows for the damage. The `flat` row
+    sits on a node whose description says "40% more", so the strict form
+    refused it.
+
+    SO THE SECOND DIRECTION NOW ASKS ONLY OF A NODE WITH NO `more` ROW AT ALL.
+    A node that has one has a description that legitimately says "more" about
+    a different clause, and there is no way to tell from the sentence which
+    clause a given row belongs to. A node with none is the case the check was
+    really for: a description saying its number multiplies while every row on
+    it lands in the additive sum.
+    """
+    #: Which nodes have at least one row in the more bucket.
+    #:
+    #: KEYED BY THE OPTION AS WELL AS THE NODE, since issue #1029. A capstone's
+    #: three options are three separate sentences and each is judged against its
+    #: own: one option may multiply where another adds, and keying by the node
+    #: alone would let one option's "more" excuse a second option's sentence from
+    #: the check below.
+    multiplying_nodes = {(row["Node"], int(row.get("Option", 0) or 0))
+                         for row in effects
+                         if row["ValueKind"].strip().lower() == "more"}
+
+    for row in effects:
+        kind = row["ValueKind"].strip().lower()
+        assert kind in KINDS, (
+            f"{row['Name']}: {kind!r} is not one of {sorted(KINDS)}"
+        )
+
+        described = words_of(row, nodes)
+        multiplies = MULTIPLIES.search(described)
+        if kind == "more":
+            assert multiplies, (
+                f"{row['Node']} is in the more bucket and its description does "
+                f"not say so. It has to say \"multiplicative\", or write the "
+                f"number as \"30% more\" or \"50% less\":\n    "
+                f"{described}"
+            )
+        elif (row["Node"], int(row.get("Option", 0) or 0)) not in multiplying_nodes:
+            assert not multiplies, (
+                f"{row['Node']} says {multiplies.group(0)!r}, which multiplies, "
+                f"and its only rows are in the {kind} bucket. A multiplicative "
+                "value in the increased bucket is added to a sum instead of "
+                "multiplying, which is a different number."
+            )
+
+
+def test_every_stat_is_one_the_game_supplies(effects, stats):
+    """An increase multiplies a base, so a stat nothing supplies is worth zero.
+
+    That failure is silent: the modifier is applied, the arithmetic runs, and
+    the result is the same as not having the node. Issue #120 is the same
+    mistake on attack speed, which was worth nothing for some time and which
+    nothing reported.
+
+    A FLAT ROW IN THIS FILE COUNTS AS A SUPPLIER, since issue #954. The
+    complaint above is about an INCREASE with no base under it; a flat row is
+    the base. The three Fervour rates are the case: they are zero for every
+    class deliberately, so no class stat line names them and none should -- a
+    class stat row that is zero in both columns says nothing, and
+    `test_class_sheets_match_the_model.py` refuses one. What supplies them is
+    the Masochist's starting node, with a flat row here.
+
+    A FLAT IMPLICIT ON AN ITEM BASE COUNTS TOO, since issue #958, and the case
+    is `attack_damage`. No class stat line names it and none should: a
+    character's damage comes from the weapon in its hands, which carries an
+    `attack_damage` flat implicit, so the class base is correctly zero.
+    `UCataclysmPlayerClassStats` states that rule in its own header. The node
+    Living on the Edge grants increased damage and has a real base under it the
+    moment a weapon is held.
+
+    A ROLLED AFFIX DOES NOT COUNT, and the difference decides whether this check
+    is worth anything. An implicit is on EVERY item of that base type, so a
+    Sword always carries attack damage; an affix may never roll. A stat whose
+    only supplier is an optional affix really is zero for most characters and an
+    increase on it really is worth nothing, which is the complaint this test
+    exists to make. Counting affixes would admit twelve more stats and blunt it.
+
+    WHAT THIS CANNOT CATCH, AND WHAT DOES. A name misspelt the same way in both
+    a flat row and an increased row would pass here. The engine-side test
+    `Cataclysm.Passives.EveryStatAPassiveNodeGrantsHasAnAttributeBehindIt` reads
+    the same file and fails when a stat has no gameplay attribute behind it,
+    which is where a misspelling really stops working.
+
+    A REMOVAL IS NOT ASKED, since issue #1791, for the reason
+    `validate_passive_effects` gives: it multiplies nothing, so there is no base
+    for it to lack. No node removes a stat yet.
+    """
+    for row in effects:
+        if row["ValueKind"].strip().lower() == "removed":
+            continue
+        assert row["Stat"] in stats, (
+            f"{row['Name']} grants {row['Stat']!r}, which is not a stat any "
+            f"class stat line or attribute names, and no flat row here supplies "
+            f"it either. The nearest are: "
+            f"{sorted(s for s in stats if s[:4] == row['Stat'][:4]) or sorted(stats)[:6]}"
+        )
+
+
+def test_no_node_is_worth_nothing_to_its_own_class(effects):
+    """A node whose every row increases a stat its own class has no base for.
+
+    WHY THE CHECK ABOVE MISSES THIS, WHICH IS THE WHOLE POINT OF THIS ONE. Issue
+    #1106. `test_every_stat_is_one_the_game_supplies` builds one set out of EVERY
+    class stat line at once and asks whether the stat is in it. `life_leech` is,
+    because the RAVAGER has a base life leech. The two nodes that needed catching
+    are in the MASOCHIST tree, and the Masochist has none, so they passed a check
+    written to catch exactly them.
+
+    WHAT IT COST. Issue #1105. The project owner spent 14 points on Brutal
+    Determination and Undying Hunger, plus the keystone Wounds That Feed, and
+    reported from play on 2026-08-31: "I should be getting life leech or
+    something I thought, but it seems like I have no healing." All three were
+    worth nothing, and had been for the life of the tree.
+
+    ONLY A NODE WHOSE **EVERY** ROW IS DEAD, which is the difference between a
+    check worth having and one nobody can keep green. Asking the per-class
+    question of every row finds 21 of them, and most are legitimate: a node
+    granting "increased damage" is authored as two rows, one on `attack_damage`
+    and one on `spell_damage`, and a Masochist has attack damage from the weapon
+    in its hands even though its spell damage is zero. Half of that node works,
+    which is `docs/Cataclysm_GDD_v2.md`'s rule that "a zero in this table is a
+    starting value, not a gate". A node with no working half is a different
+    thing: it is a node that cannot do anything for the only class that can take
+    it.
+
+    A CLASS WITH NO STAT LINE AT ALL IS SKIPPED AND THAT IS NOT A HOLE. The
+    Bulwark, Saboteur and Berserker are outside the vertical slice and name no
+    stats, so every one of their nodes would be reported and the check would say
+    nothing about the trees that are built. Issue #950 covers the classes.
+
+    A FLAT ROW IN THE SAME TREE COUNTS AS THE BASE, which is what makes the fix
+    for #1105 land here: Brutal Determination became a `flat` row, so it supplies
+    life leech to its own tree and Undying Hunger now has something to increase.
+    """
+    class_stats = rows_of(CLASS_STATS_CSV)
+
+    #: What each class names on its own line, and the shared line all fall back
+    #: to. `UCataclysmClassStats::BaseFor` reads the class row and then the
+    #: `Default` row, and answers zero when neither names the stat.
+    per_class: dict[str, set[str]] = {}
+    for row in class_stats:
+        per_class.setdefault(row["ClassName"], set()).add(row["Stat"])
+    shared = per_class.get("Default", set())
+
+    #: Everything that supplies a stat whatever class is holding it: the eight
+    #: attributes, an item base's flat implicits and its columns, and the bases
+    #: the engine states in C++. Same sources as the fixture above, minus the
+    #: class lines, which are the ones that differ per class.
+    for_everyone = (
+        {row["Stat"] for row in rows_of(ATTRIBUTES_CSV)}
+        | gen.item_base_flat_stats(rows_of(ITEM_BASES_CSV))
+        | gen.item_base_column_stats(rows_of(ITEM_BASES_CSV))
+        | set(gen.ENGINE_SUPPLIED_BASES)
+        # AND THE STATS THAT NEED NO BASE AT ALL, since issue #1733.
+        #
+        # THE TWO LINES ABOVE AND BELOW MEAN OPPOSITE THINGS AND SIT IN ONE SET,
+        # which is how the next reader misreads it, so: `ENGINE_SUPPLIED_BASES`
+        # promises a base EXISTS and names the code that puts it on the
+        # character. This one says NO BASE IS NEEDED, because nothing multiplies
+        # one. The engine reads the summoner's summed increases -- times any
+        # "more" multiplier, for the stats read through
+        # `MultiplierForStatAgainst` -- and applies that to the minion's own
+        # figure from `game/Data/
+        # MinionTypes.csv`, whose columns are BaseHealth, BaseDamage and
+        # AttackIntervalSeconds. The base is on the minion and cannot be on the
+        # character.
+        #
+        # SO "THIS CLASS HAS NO BASE FOR IT" IS TRUE HERE AND WILL STAY TRUE,
+        # and it still does not mean the node does nothing -- which is the
+        # premise this test rests on and the reason it fires on all thirteen.
+        #
+        # IT DOES NOT WEAKEN WHAT THIS CATCHES. A node granting any OTHER stat
+        # its class has no base for still fails, which is what caught #1105.
+        # `test_the_dead_node_check_still_catches_a_stat_with_no_base` holds
+        # that, because a test that was just widened cannot prove itself by
+        # passing.
+        | gen.stats_with_no_attribute()
+    )
+
+    #: A flat row supplies its stat to the tree it is in, and only to that tree.
+    flat_in_tree: dict[str, set[str]] = {}
+    for row in effects:
+        if row["ValueKind"].strip().lower() == "flat":
+            tree = row["Node"].split("_", 1)[0]
+            flat_in_tree.setdefault(tree, set()).add(row["Stat"])
+
+    #: Rows grouped by the node and the capstone option they belong to, because
+    #: a capstone's three options are three separate things to take and one
+    #: option being worth nothing is not excused by another option working.
+    by_node: dict[tuple[str, int], list[dict]] = {}
+    for row in effects:
+        by_node.setdefault(
+            (row["Node"], int(row.get("Option", 0) or 0)), []).append(row)
+
+    worthless: list[str] = []
+    for (node, option), node_rows in sorted(by_node.items()):
+        tree = node.split("_", 1)[0]
+        if tree not in per_class:
+            continue
+        supplied = (per_class[tree] | shared | for_everyone
+                    | flat_in_tree.get(tree, set()))
+        dead = [row for row in node_rows
+                if row["ValueKind"].strip().lower() in ("increased", "more")
+                and row["Stat"] not in supplied]
+        if dead and len(dead) == len(node_rows):
+            named = ", ".join(sorted({row["Stat"] for row in dead}))
+            where = f"{node} option {option}" if option else node
+            worthless.append(f"{where} increases only {named}")
+
+    assert not worthless, (
+        "These nodes are worth nothing to the class whose tree they are in. "
+        "Every row on them increases a stat that class has no base for, so the "
+        "modifier is applied, the arithmetic runs, and the result is the same "
+        "as not having the node. A player spends points and no number moves.\n    "
+        + "\n    ".join(worthless)
+        + "\n\nEither give the class a base -- a flat row on a node in the same "
+          "tree is how issue #1105 was fixed -- or take the node's rows off a "
+          "stat it cannot have.")
+
+
+def test_the_exempt_stats_are_read_from_the_engine():
+    """The stats exempt from needing an attribute come out of the C++, not a copy.
+
+    WHAT THIS GUARDS, AND IT IS THE PARSE RATHER THAN THE NAMES. `gen.
+    stats_with_no_attribute()` reads
+    `UCataclysmPlayerClassStats::StatsWithNoAttribute()` out of the engine source.
+    If that accessor is renamed or reshaped, the regex stops matching. A parse
+    that returned an empty set on failure would silently refuse every passive row
+    that needs the exemption, and the error would name a data row rather than the
+    parse -- which is the wrong place to look and the expensive kind of wrong.
+
+    SO THE FUNCTION RAISES AND THIS CHECKS IT RETURNS SOMETHING, rather than
+    checking for particular names. Naming them here would put back the second
+    copy the whole change exists to remove: the point is that Python holds no
+    list, so a name added or removed in the C++ needs no edit here.
+
+    IT DOES ASSERT THE SHAPE, because a parse that matched the wrong construct
+    could return real-looking rubbish. Every name is a lower-case stat identifier,
+    which is what every stat name in this project is.
+
+    WHAT IT CANNOT CHECK: that anything READS these stats. That is an exemption's
+    promise, it is held in the engine by
+    `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, and issue
+    #1025 is what an unkept one costs.
+    """
+    names = gen.stats_with_no_attribute()
+
+    assert names, (
+        "the exempt-stat list parsed to nothing. gen.stats_with_no_attribute() "
+        "raises rather than returning empty, so reaching this means the "
+        "contract changed.")
+
+    for name in names:
+        assert re.fullmatch(r"[a-z][a-z0-9_]*", name), (
+            f"{name!r} came out of the exempt-stat parse and is not shaped like "
+            f"a stat name, so the regex is matching the wrong construct in "
+            f"CataclysmPlayerClassStats.cpp.")
+
+
+def test_every_engine_supplied_base_names_code_that_exists():
+    """An exemption from the check above is a promise, and it can go unkept.
+
+    WHAT WENT WRONG. Issue #1025. `ENGINE_SUPPLIED_BASES` exempted
+    `damage_to_bleeding_window` from `test_every_stat_is_one_the_game_supplies`
+    and said the base was "UCataclysmDamageConversion::BaseWindowSeconds, passed
+    to StatForSkill". No code passed it. `BaseWindowSeconds` was referenced only
+    by two test files, so the stat's base really was zero, The Breaking Point
+    opened a conversion window of zero seconds, and the node converted nothing
+    for as long as it existed. The exemption silenced the check and nothing kept
+    the other side of the bargain.
+
+    WHAT THIS CHECKS AND WHAT IT CANNOT. Every `Namespace::Symbol` an entry names
+    has to appear somewhere in `game/Source/`, so an entry cannot point at code
+    that is not there. It CANNOT check that the code is ever called, which is
+    exactly what went wrong -- `BaseWindowSeconds` existed the whole time. That
+    half is held in the engine by
+    `Cataclysm.PlayerStats.EveryEngineSuppliedBaseReachesACharacter`, which spawns
+    a character and reads the value back off its attribute.
+
+    IT ALSO REFUSES AN ENTRY THAT NAMES NO SYMBOL AT ALL. The old value's second
+    half, "passed to StatForSkill", named a function rather than the code doing
+    the passing, which is how it read as an explanation while explaining nothing.
+    """
+    source = REPO_ROOT / "game" / "Source"
+    assert source.is_dir(), f"{source} is missing"
+
+    text = "\n".join(
+        path.read_text(encoding="utf-8", errors="replace")
+        for path in source.rglob("*")
+        if path.suffix in {".h", ".cpp"}
+    )
+
+    assert gen.ENGINE_SUPPLIED_BASES, (
+        "ENGINE_SUPPLIED_BASES is empty, so this check has nothing to check. "
+        "A guard over an empty list cannot fail."
+    )
+
+    for stat, supplier in gen.ENGINE_SUPPLIED_BASES.items():
+        symbols = re.findall(r"\b(U?[A-Za-z]\w*::\w+)", supplier)
+        assert symbols, (
+            f"the ENGINE_SUPPLIED_BASES entry for {stat!r} says {supplier!r}, "
+            "which names no Namespace::Symbol. An entry has to say which code "
+            "supplies the base so a reader can go and look at it."
+        )
+        for symbol in symbols:
+            assert symbol in text, (
+                f"the ENGINE_SUPPLIED_BASES entry for {stat!r} names "
+                f"{symbol!r}, which does not appear anywhere in game/Source/. "
+                "Either the code was renamed or the entry was never true."
+            )
+
+
+def test_every_required_tag_is_declared(effects, declared_tags):
+    """An undeclared tag matches nothing, so the modifier applies to nothing."""
+    for row in effects:
+        for tag in (part.strip() for part in row["RequiredTags"].split(",")):
+            if not tag:
+                continue
+            assert tag in declared_tags, (
+                f"{row['Name']} requires the tag {tag!r}, which the workbook's "
+                "Tags sheet does not declare. A required tag nothing carries "
+                "means the modifier applies to nothing at all."
+            )
+
+
+def test_the_coverage_is_what_it_was_measured_to_be(effects, nodes):
+    """How much of the passive tree actually grants anything.
+
+    THIS IS THE NUMBER THE WHOLE FEATURE SHOULD BE JUDGED ON, so it is pinned
+    rather than left to drift. Issue #939 measures why the rest are not here:
+    most nodes are not stat modifiers under any authoring scheme. They change a
+    rule, generate a class resource, or apply only in a condition the three
+    buckets cannot express.
+
+    Raise both numbers deliberately when more are authored.
+    """
+    assert len(effects) == AUTHORED_ROWS, (
+        f"{EFFECTS_CSV.name} holds {len(effects)} rows and this test expects "
+        f"{AUTHORED_ROWS}. If that is deliberate, raise AUTHORED_ROWS here and "
+        "say what changed in the pull request."
+    )
+
+    with_an_effect = {row["Node"] for row in effects}
+    assert len(with_an_effect) == AUTHORED_NODES, (
+        f"{len(with_an_effect)} of the {len(nodes)} passive nodes have an "
+        f"authored effect and this test expects {AUTHORED_NODES}. This is the "
+        "number the whole feature is judged on, so raise AUTHORED_NODES "
+        "deliberately and say what changed in the pull request."
+    )
+    assert len(nodes) == TOTAL_NODES, (
+        f"there are now {len(nodes)} passive nodes, not {TOTAL_NODES}. Raise "
+        "TOTAL_NODES here; the share that does anything is what this file is "
+        "about and it cannot be read without both numbers."
+    )
+
+
+def test_the_option_coverage_is_what_it_was_measured_to_be(effects, nodes):
+    """How many capstone options actually grant something.
+
+    THE NUMBER `AUTHORED_NODES` CANNOT SEE. That one counts nodes, and a capstone
+    counts once if any of its three options has a row, so a capstone with one
+    authored option reads as done. Issue #1066: the Masochist tree was reported
+    as 74 of 74 nodes granting something while four of its twelve options granted
+    nothing, and the project owner found out by taking Water to Blood in play and
+    getting no health, no conversion and a mana pool that was still there.
+
+    A CAPSTONE OPTION IS A SEPARATE PROMISE. Each is a permanent choice with its
+    own sentence, so an unauthored one is a whole decision that does nothing --
+    not a rough edge on a node that mostly works.
+
+    Raise both numbers deliberately when more are authored.
+    """
+    named = set()
+    for row in nodes.values():
+        if row["Kind"] != "capstone":
+            continue
+        for index in (1, 2, 3):
+            if row[f"Option{index}Name"].strip():
+                named.add((row["Name"], index))
+
+    granting = set()
+    for row in effects:
+        option = row["Option"].strip()
+        if option and option != "0":
+            granting.add((row["Node"], int(float(option))))
+
+    # AN EFFECT ROW ON AN OPTION NOBODY NAMED IS ITS OWN FAULT, and it is checked
+    # here rather than left to the count: the row would apply to a choice a
+    # player can never be offered, and `AwaitsAnOptionChoice` refuses a capstone
+    # that names nothing, so it would be dead data nothing reports.
+    orphans = sorted(granting - named)
+    assert not orphans, (
+        f"these effect rows are on capstone options that have no name: {orphans}. "
+        "Either name the option in the Passive Nodes sheet or remove the row."
+    )
+
+    assert len(named) == NAMED_OPTIONS, (
+        f"{len(named)} capstone options are named and this test expects "
+        f"{NAMED_OPTIONS}. Raise NAMED_OPTIONS here; the share that does "
+        "something cannot be read without both numbers."
+    )
+
+    assert len(granting) == AUTHORED_OPTIONS, (
+        f"{len(granting)} of the {len(named)} named capstone options grant "
+        f"something and this test expects {AUTHORED_OPTIONS}. This is a number "
+        "the whole feature is judged on, so raise AUTHORED_OPTIONS deliberately "
+        "and say what changed in the pull request."
+    )
+
+
+def test_at_least_one_effect_is_scoped_by_a_tag(effects):
+    """The Required Tags column is exercised rather than merely present.
+
+    ONE ROW USES IT: the Saboteur's Bigger Traps, whose description scopes its
+    area of effect "for traps". Without a row that uses it, the column and the
+    code that reads it would both be untested, and the first node that needed
+    scoping would find out whether it worked the hard way.
+    """
+    scoped = [row for row in effects if row["RequiredTags"].strip()]
+    assert scoped, (
+        "No passive effect requires a tag, so nothing exercises the Required "
+        "Tags column or the code that turns it into a modifier's required "
+        "tags. If the last scoped node was deliberately removed, delete this "
+        "test with it rather than leaving the column untested."
+    )
+
+
+#: A NODE SENTENCE'S THRESHOLD CLAUSE, "At 4 points: ...". Issue #1755.
+AT_N_POINTS = re.compile(r"\bAt (\d+) points:")
+
+
+def test_a_row_from_n_points_is_on_a_node_whose_sentence_says_at_n_points(
+        effects, nodes):
+    """A row with `MinPoints` belongs to a node that says "At N points:", with
+    that N. Issue #1755.
+
+    THE THRESHOLD IS A NUMBER NOTHING ELSE CHECKS. The value check looks for the
+    row's figure in the sentence, and "At 4 points: +5%" holds the 5 whether the
+    row applies from 4 points, from 3, or per point from the first. So a
+    threshold written as 3, or left out, passes every other check here and
+    grants the clause at the wrong point, or eight times over.
+    """
+    wrong = []
+    for row in effects:
+        min_points = int(float(row.get("MinPoints", 0) or 0))
+        if not min_points:
+            continue
+        said = [int(n) for n in AT_N_POINTS.findall(
+            nodes.get(row["Node"], {}).get("Description", ""))]
+        if min_points not in said:
+            wrong.append(f"{row['Name']} applies from {min_points} points and "
+                         f"its node's sentence says {said or 'no threshold'}")
+    assert not wrong, wrong
+
+
+def test_every_demonic_at_n_points_clause_has_a_row_from_n_points(effects, nodes):
+    """The other direction, for the three Demonic trees. Issue #1755.
+
+    A clause with no threshold row is either unauthored or authored per point,
+    and both grant it wrongly. The other trees are not held to it: their
+    clauses are unauthored and the War trees are not being built.
+    """
+    demonic = {"Masochist", "Ravager", "Ritualist"}
+    missing = []
+    for name, node in nodes.items():
+        if node.get("Tree") not in demonic:
+            continue
+        for n in {int(x) for x in AT_N_POINTS.findall(node.get("Description", ""))}:
+            if not any(row["Node"] == name
+                       and int(float(row.get("MinPoints", 0) or 0)) == n
+                       for row in effects):
+                missing.append(f"{name} says 'At {n} points:' and no row applies "
+                               f"from {n} points")
+    assert not missing, missing
+
+#: The chances that roll on a hit and are asked WITH THE SKILL'S TAGS, through
+#: `UCataclysmAilments::ChancesFor`. A row granting one of them reaches only the
+#: skills its `RequiredTags` names, so that column is what scopes it. Issue #944.
+#:
+#: NOT EVERY ROW WHOSE NODE SAYS "MELEE". `bleed_on_crit_chance` is read off the
+#: attribute and the code itself asks whether the blow was melee, and the
+#: Onslaught and Every Swing Lands stats are melee by what reads them. Those
+#: carry no tag and need none, so they are outside this list.
+TAG_SCOPED_CHANCE_STATS = {"cripple_chance", "weaken_chance"}
+
+
+def test_a_chance_on_melee_hit_is_scoped_to_melee(effects, nodes):
+    """Issue #944. Six Ravager rows said "on melee hit" and required no tag, so
+    their Cripple and Weaken chances rolled on spells and projectiles too.
+    Attrition's two rows already carried `Type.Melee`; now every such row must.
+    """
+    checked = []
+    wrong = []
+    for row in effects:
+        if row["Stat"] not in TAG_SCOPED_CHANCE_STATS:
+            continue
+        node = nodes[row["Node"]]
+        option = row.get("Option") or "0"
+        text = (node["Description"] if option in ("", "0")
+                else node[f"Option{option}Description"])
+        if not re.search(r"\bmelee\b", text, re.IGNORECASE):
+            continue
+        checked.append(row["Name"])
+        if row["RequiredTags"] != "Type.Melee":
+            wrong.append(f"{row['Name']} ({row['Stat']}) requires {row['RequiredTags']!r}")
+    assert len(checked) == 8, (
+        f"expected the six on-melee-hit rows and Attrition's two, found {checked}")
+    assert not wrong, "a chance on a melee hit is not scoped to melee:\n" + "\n".join(wrong)

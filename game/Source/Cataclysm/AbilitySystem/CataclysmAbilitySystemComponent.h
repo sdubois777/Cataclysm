@@ -1,0 +1,6042 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "AbilitySystemComponent.h"
+#include "Engine/TimerHandle.h"
+#include "AbilitySystem/CataclysmGameplayAbility.h"
+// For what a blow resolved to, which this component records for the caller that
+// applied it. Issue #1156.
+#include "AbilitySystem/CataclysmDamageCalculation.h"
+// For the last blow this character took, which a death reads to say who
+// dealt it. Issue #41, slice 4.
+#include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmLeech.h"
+// For the kinds of stack this component keeps a count of. Issue #1002. The
+// header carries the enumerator and forward-declares this class, so including
+// it here does not make a circle.
+#include "AbilitySystem/CataclysmStacks.h"
+// For the potion heal this component carries. Issue #806. Its header
+// forward-declares this class, so including it here does not make a circle.
+#include "AbilitySystem/CataclysmPotions.h"
+#include "AbilitySystem/CataclysmStatPipeline.h"
+// For the row a summoner's gadgets copy, kept as it was used. Ruled 2026-10-14.
+#include "AbilitySystem/CataclysmWeaponSkills.h"
+#include "CataclysmAbilitySystemComponent.generated.h"
+
+struct FGameplayTag;
+struct FCataclysmEnchantmentEffectRow;
+
+/**
+ * What `UCataclysmAbilitySystemComponent::ClearWhatDeathEnds` took away when a
+ * player stood back up after dying. Issue #1535.
+ *
+ * READ FOR ONE LOG LINE, which is what lets somebody reading a play session see
+ * what a death cleared without having to reproduce it.
+ */
+struct FCataclysmWhatDeathEnded
+{
+	/** Timed gameplay effects removed, a skill's cooldown among them. */
+	int32 TimedEffects = 0;
+
+	/** How many of those were a skill's cooldown. */
+	int32 Cooldowns = 0;
+
+	/** Stacks that were standing, every kind added together. */
+	int32 Stacks = 0;
+
+	/** Health that was owed and is not any more. */
+	float HealthOwed = 0.0f;
+
+	/**
+	 * Delayed damage that was still to be drained and is not any more. Ruled 2026-10-12, for "25%-50% of damage
+	 * taken is dealt over 4-8 seconds": a death clears the store. Not on the log line; a test reads it.
+	 */
+	float DelayedDamageOwed = 0.0f;
+
+	/** Self buffs that were still running and were ended. */
+	int32 BuffsEnded = 0;
+
+	/**
+	 * Auras that were still running and were ended, which happens only for a
+	 * character holding `auras_end_at_death`. Issue #1833: "When you die all
+	 * your buffs are removed", kept by the owner on 2026-09-25.
+	 */
+	int32 AurasEnded = 0;
+};
+
+/**
+ * One copy of a buff this character has given an ally, held so it can be taken
+ * back. Issue #1833 group E part 4a: `UCataclysmSharedBuffs::Step` keeps the
+ * list on the giver's component.
+ *
+ * KEYED BY A WEAK POINTER TO THE ALLY, so an ally that has gone leaves an entry
+ * the next step drops rather than a pointer to freed memory.
+ */
+struct FCataclysmSharedBuffCopy
+{
+	/** Who carries it. */
+	TWeakObjectPtr<AActor> Ally;
+
+	/** The running self buff it copies, or none for the nearby-allies row. */
+	TWeakObjectPtr<const UObject> Buff;
+
+	/** True for "Nearby allies gain 10-20% more damage", which copies no buff. */
+	bool bNearbyRow = false;
+
+	/** The buff's scope, or an invalid tag for a copy that reaches everything. */
+	FGameplayTag Scope;
+
+	/** The handle the ally's `AddStatModifier` returned. */
+	int32 Handle = 0;
+
+	/** The More damage it grants, so a moved value is noticed. */
+	float Value = 0.0f;
+};
+
+/**
+ * One crowd-control immunity another character's skill has granted this one.
+ * Issue #1833 group E part 4c: an aura that makes its caster immune gives the
+ * same immunities to the allies inside it. `UCataclysmSkillTemplate::IsImmuneTo`
+ * reads the list, so every question about immunity sees it.
+ */
+struct FCataclysmGrantedImmunity
+{
+	/** The effect's name as a skill row writes it: `Stun`, `Slow`, `Displacement`. */
+	FName Kind;
+
+	/** What granted it, so that one giver can take back exactly its own. */
+	TWeakObjectPtr<const UObject> From;
+
+	/** World time it lapses at when nothing takes it back or renews it. */
+	float UntilSeconds = 0.0f;
+};
+
+/**
+ * Raised by `UCataclysmAbilitySystemComponent::ActOnEvent` for every event, with
+ * the event's name. Issue #1821.
+ */
+DECLARE_MULTICAST_DELEGATE_OneParam(FCataclysmOnActionEvent, FName);
+
+/**
+ * Raised by `UCataclysmAbilitySystemComponent` when its character begins
+ * channelling and when it stops, with whether it is channelling now. Ruled
+ * 2026-10-08.
+ */
+DECLARE_MULTICAST_DELEGATE_OneParam(FCataclysmOnChannellingChanged, bool);
+
+/**
+ * The project's ability system component.
+ *
+ * Exists as a subclass from the start so that behaviour common to every actor
+ * with abilities has somewhere to live without a later refactor touching every
+ * character class.
+ *
+ * It also owns the input side of the ability system. A key press does not name
+ * an ability; it names a SLOT, as a Slot.* gameplay tag. Whichever granted
+ * ability carries that tag is the one that runs. See CataclysmAbilitySlots in
+ * CataclysmGameplayAbility.h for where the slot list and the tag list meet.
+ */
+UCLASS()
+class CATACLYSM_API UCataclysmAbilitySystemComponent : public UAbilitySystemComponent
+{
+	GENERATED_BODY()
+
+public:
+	UCataclysmAbilitySystemComponent();
+
+	/**
+	 * The share of a stated knockback distance the NEXT displacement of this
+	 * target actually moves it, recording that displacement as happening now.
+	 *
+	 * THE RULE, from "Stun and the Anti-Stun-Lock Rule" in
+	 * docs/Cataclysm_GDD_v2.md and decided on issue #302: each displacement
+	 * applied to a target already displaced within the last 5 seconds moves it
+	 * HALF AS FAR as the one before -- the full distance, then half, then a
+	 * quarter. The count resets once 5 seconds pass in which that target is not
+	 * displaced at all.
+	 *
+	 * SO REPEATED SHOVES CANNOT HOLD A TARGET AT THE FAR END OF A ROOM. Four
+	 * metres, then two, then one is seven metres in total and nothing worth
+	 * measuring after that. That is the failure the rule was written for.
+	 *
+	 * WHY THE COUNT LIVES ON THIS COMPONENT. It belongs to the TARGET and has to
+	 * outlive the skill that caused it, because the second shove is usually a
+	 * different skill and often a different actor. This component is what every
+	 * hittable thing has: being hit goes through
+	 * UCataclysmSkillEffects::ApplyHit, which requires one. So it covers the
+	 * player, every enemy and every minion in both directions, which issue #310
+	 * settled the design needs. The shared character base was the first choice
+	 * and was wrong, because a thing can be hit without being one.
+	 *
+	 * NO DAMAGE THRESHOLD, NO IMMUNITY FLAG AND NO BOSS EXEMPTION, unlike the
+	 * stun rule. A boss is pushed under the same halving as anything else,
+	 * because a boss pushed four metres is still fighting while a boss held still
+	 * is not a fight.
+	 *
+	 * @return 1.0 for the first displacement in a window, then 0.5, 0.25, and so
+	 *         on. Never zero, so a shove always visibly shoves. Issue #628.
+	 */
+	float TakeNextDisplacementShare();
+
+	/**
+	 * How many times this has been displaced inside the current window, without
+	 * counting a new one or resetting anything. Read by tests.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Abilities")
+	int32 DisplacementsInWindow() const;
+
+	/** Records that the key for this slot went down. Does not activate anything yet. */
+	void AbilityInputTagPressed(const FGameplayTag& InputTag);
+
+	/** Records that the key for this slot came up. */
+	void AbilityInputTagReleased(const FGameplayTag& InputTag);
+
+	/**
+	 * Activates whatever the presses recorded this frame asked for, then clears
+	 * the record. Called once per frame from the player controller.
+	 *
+	 * WHY THIS IS DEFERRED RATHER THAN ACTIVATING ON THE KEY PRESS ITSELF.
+	 * Enhanced Input fires its delegates part-way through the frame, and more
+	 * than one can fire before the frame's input is complete. Doing the work at
+	 * one known point means every ability activated in a frame sees the same
+	 * state, rather than a result that depends on the order the engine happened
+	 * to deliver two key presses in.
+	 */
+	void ProcessAbilityInput();
+
+	/**
+	 * Forgets every press and release not yet processed, and tells every running
+	 * ability its input was released.
+	 *
+	 * Needed when input stops arriving for a reason the ability cannot see: the
+	 * pawn is unpossessed, the player opens a menu, the game pauses. Without it
+	 * an ability waiting on a key release waits for one that will never come.
+	 */
+	void ClearAbilityInput();
+
+	/**
+	 * Grants an ability into a slot the CALLER names, rather than the slot the
+	 * ability class declares.
+	 *
+	 * WHY THIS EXISTS ALONGSIDE UCataclysmAbilitySet. An ability set reads each
+	 * ability's own declared slot, which is right for a starting kit where every
+	 * ability knows where it belongs. It cannot express what a weapon does: the
+	 * equipped weapon decides which skill sits in each of the six slots, so the
+	 * slot is a property of the pairing and not of the ability. It is also what
+	 * lets one placeholder class stand in for six different slots while the real
+	 * skills are undesigned.
+	 *
+	 * @return the granted spec's handle, or an invalid handle if nothing was
+	 *         granted, which happens on a client, with no ability class, or with
+	 *         a slot of None.
+	 */
+	FGameplayAbilitySpecHandle GiveAbilityInSlot(
+		TSubclassOf<UGameplayAbility> AbilityClass,
+		ECataclysmAbilitySlot Slot,
+		int32 Level = 1,
+		UObject* SourceObject = nullptr);
+
+	// -- The three-bucket stat pipeline's modifiers -------------------------
+	//
+	// WHY THESE LIVE HERE AND NOT AS ATTRIBUTES. UCataclysmStatPipeline scopes
+	// every modifier by the tags of the SKILL IN HAND, so a character's
+	// increased fire damage has no single value: it is one number for a skill
+	// tagged Element.Demonic and another for one that is not. A gameplay
+	// attribute is one number per character, so it cannot express that. This
+	// list is what an aggregated attribute would be if the engine could scope by
+	// the ability being used.
+	//
+	// WHAT PUTS THINGS IN IT. Two kinds of skill, and each takes back what it put
+	// in: a self buff adds to its own caster while it runs, and an aura adds to
+	// the allies standing inside it. Issue #166 is the first thing that needed a
+	// route into it at all. Gear and spent passive points do not use it; they
+	// reach a character through the stat line, which is `StatInputs` below.
+
+	/**
+	 * Add a modifier and get a handle that takes it away again.
+	 *
+	 * @return a handle, always positive, or 0 if the modifier was refused.
+	 *         UCataclysmStatPipeline::ValidateModifier decides; a More
+	 *         multiplier from a source that may not grant one is refused here
+	 *         rather than silently ignored at evaluation time.
+	 */
+	int32 AddStatModifier(const FCataclysmStatModifier& Modifier);
+
+	/** Take a modifier away. False when the handle is unknown or already gone. */
+	bool RemoveStatModifier(int32 Handle);
+
+	/** Change a live modifier's magnitude. False when the handle is unknown. */
+	bool SetStatModifierValue(int32 Handle, float NewValue);
+
+	/** A live modifier's magnitude, or zero when the handle is unknown. */
+	float GetStatModifierValue(int32 Handle) const;
+
+	/**
+	 * Every modifier this character currently carries, for the pipeline.
+	 *
+	 * Returned by reference and not by value because a hit evaluates this on
+	 * every target it touches.
+	 */
+	const TArray<FCataclysmStatModifier>& GetStatModifiers() const
+	{
+		return StatModifiers;
+	}
+
+	/**
+	 * Leech this character has been promised and not yet been paid. Issue #895.
+	 *
+	 * A LIST RATHER THAN A RUNNING TOTAL, because the design gives every hit its
+	 * own payout, 3 seconds by default and longer under `leech_payout_rate`
+	 * (`UCataclysmLeech::PayoutSecondsFor`, #1618), and says they run alongside
+	 * one another: "A character hitting continuously therefore reaches a steady
+	 * state of roughly three hits' worth of leech in flight." One total could
+	 * not express three payments with three different deadlines.
+	 *
+	 * IT EMPTIES ITSELF. UCataclysmLeech::PayOutStep drops a payment as soon as
+	 * its balance or its time is gone, so a character that stops fighting stops
+	 * carrying anything within the time its last payment was made with: three
+	 * seconds by default, six under "Your leech pays out 50% more slowly".
+	 */
+	const TArray<FCataclysmLeechPayment>& GetLeechPayments() const
+	{
+		return LeechPayments;
+	}
+
+	/**
+	 * The charges in one of the four potion slots. Issue #806.
+	 *
+	 * STORED HERE AND RULED IN `UCataclysmPotions`, as the stacks are: this
+	 * component keeps the numbers and that library decides what changes them.
+	 * Every character has the four counts; only a player character is ever
+	 * credited a kill or given a drink.
+	 *
+	 * @return 0 for a slot outside the four
+	 */
+	float GetPotionCharges(int32 Slot) const
+	{
+		return Slot >= 0 && Slot < UCataclysmPotions::SlotCount ? PotionCharges[Slot] : 0.0f;
+	}
+
+	/** Set one slot's charges, held between 0 and the maximum. */
+	void SetPotionCharges(int32 Slot, float Charges)
+	{
+		if (Slot >= 0 && Slot < UCataclysmPotions::SlotCount)
+		{
+			PotionCharges[Slot] = FMath::Clamp(Charges, 0.0f, UCataclysmPotions::MaxCharges);
+		}
+	}
+
+	/** The potion heal being paid out, if any. */
+	const FCataclysmPotionHeal& GetPotionHeal() const { return PotionHeal; }
+
+	/** Replace the potion heal: a drink starts one, a step pays it down. */
+	void SetPotionHeal(const FCataclysmPotionHeal& Heal) { PotionHeal = Heal; }
+
+	/**
+	 * Potions drunk since entering this dungeon, which Diminishing Returns
+	 * counts. Back to 0 when `UCataclysmPotions::RefillAll` fills the slots.
+	 */
+	int32 GetPotionsDrunk() const { return PotionsDrunk; }
+	void SetPotionsDrunk(int32 Drunk) { PotionsDrunk = FMath::Max(0, Drunk); }
+
+	/**
+	 * The sum of increases that produced this character's attack damage.
+	 *
+	 * WHY A FINISHED ATTRIBUTE IS NOT ENOUGH. `AttackDamage` is
+	 * `(base + flat) x (1 + increases)` with the increases already applied and
+	 * no longer visible. A CONDITIONAL increase -- increased damage against
+	 * Demonic enemies -- has to join that same bracket rather than becoming a
+	 * second multiplier, and the design says so outright: "a conditional
+	 * increase joins the increases bracket rather than becoming a third
+	 * multiplier. That is what Diablo 4 and Last Epoch both do." Knowing the
+	 * bracket is what lets a hit reopen it.
+	 *
+	 * THE DIFFERENCE IS LARGE. A character at +125% increased damage striking a
+	 * matching enemy with a top-tier +400% affix deals 6.25 times its base if the
+	 * two add and 11.25 times if they multiply.
+	 *
+	 * A FRACTION, NOT A PERCENTAGE. 1.25 for +125%.
+	 *
+	 * AND THE PIPELINE DOES NOT REPORT IT THAT WAY, which is what issue #963
+	 * was: `FCataclysmStatBreakdown::SumOfIncreases` is in percentage points,
+	 * this field is a fraction, and the one writer passed the first straight
+	 * into the second. Every reader here treats it as a fraction, so the
+	 * conversion belongs at the writer and `SetAttackDamageIncreases` says so.
+	 * The error cancelled whenever the conditional part was zero, which is why
+	 * it went unnoticed: the damage is
+	 * `weapon x percent x (1 + I + C) / (1 + I)`, and with C at zero that
+	 * last factor is one for any I at all, right or wrong.
+	 */
+	float GetAttackDamageIncreases() const
+	{
+		return AttackDamageIncreases;
+	}
+
+	/**
+	 * Written by UCataclysmPlayerClassStats::ApplyTo when it writes the stat.
+	 *
+	 * A FRACTION. `Breakdown.SumOfIncreases` is in percentage points, so the
+	 * caller divides by 100. Issue #963.
+	 */
+	void SetAttackDamageIncreases(float Increases)
+	{
+		AttackDamageIncreases = Increases;
+	}
+
+	/**
+	 * The same sum, worked out again for one skill and this character's state.
+	 *
+	 * A FRACTION, like `GetAttackDamageIncreases`, and it differs from that one
+	 * by exactly the modifiers that could not be judged when the attribute was
+	 * written: those scoped to a skill's tags and those carrying a condition.
+	 * A hit needs both -- the stored one to take the attribute apart, this one
+	 * to put it back together -- because otherwise a bonus that depends on the
+	 * character's health would be divided straight back out again. Issue #958.
+	 *
+	 * ASKED FRESH EVERY TIME, for the reason `CurrentConditions` gives: the
+	 * answer is true at this instant and may be false at the next.
+	 *
+	 * IT ANSWERS THE STORED FIGURE when nothing was recorded for attack damage,
+	 * which is the ordinary case for an enemy and for a player before its first
+	 * stat refresh.
+	 */
+	float AttackDamageIncreasesForSkill(
+		const FGameplayTagContainer& SkillTags,
+		float SkillHealthCostPercent = -1.0f,
+		float MetresMovedBeforeBlow = -1.0f,
+		float TargetDistanceMetres = -1.0f,
+		bool bTargetIsStaggered = false,
+		const AActor* Target = nullptr,
+		int32 EnemiesStruckTogether = -1,
+		float MetresCharged = -1.0f,
+		float ChargeRangeMetres = -1.0f) const;
+
+	/**
+	 * The increases this character carries for a named stat, as a fraction.
+	 * 0.25 means twenty-five per cent. Issue #898.
+	 *
+	 * THE INCREASES AND NOT THE VALUE, AND THAT IS THE WHOLE REASON IT EXISTS.
+	 * `StatForSkill` returns `(base + flat) * (1 + increases)`, so a stat with
+	 * no base returns ZERO however large its increases are. The three minion
+	 * stats have no base and can have none: no class line names them, and a
+	 * minion's damage, health and attack interval come from its own type row
+	 * rather than from its summoner's character sheet.
+	 *
+	 * So the caller supplies the figure. A minion asks what its summoner's gear
+	 * adds and applies it to its own number.
+	 * `test_every_stat_is_one_the_game_supplies` in
+	 * `tools/tests/test_passive_effects_match_the_node_text.py` records the same
+	 * trap for authored rows: "an increase multiplies a base, so a stat nothing
+	 * supplies is worth zero. That failure is silent."
+	 *
+	 * `SumOfIncreases` IS SAFE WHERE THE VALUE IS NOT, because it is accumulated
+	 * from the modifiers alone and never multiplied by the base.
+	 *
+	 * NOTHING RECORDED MEANS NOTHING ADDED, which is ordinary rather than a
+	 * fault: an enemy is never given a character stat line, and a player has
+	 * none until its first refresh.
+	 *
+	 * @param Stat  the stat name, as the data file spells it
+	 * @param Tags  what to test a scoped modifier against. A minion passes its
+	 *              own tags, so a modifier naming minions applies and one naming
+	 *              a skill does not
+	 */
+	float IncreasesForStat(FName Stat, const FGameplayTagContainer& Tags) const;
+
+	/**
+	 * A stat's whole multiplier, `(1 + increases) * more`, judged against the
+	 * character being struck. Issue #1515, for minion damage.
+	 *
+	 * `IncreasesForStat` ABOVE, WITH A TARGET AND WITH THE "MORE" BUCKET. Set
+	 * Upon asks for an increase and Set the Pack On for a "more", both "against
+	 * enemies you have damaged in the last 2 seconds", which is a question about
+	 * the enemy a minion is swinging at. `IncreasesForStat` builds its state
+	 * with no target, so a row asking about one refuses there.
+	 *
+	 * THE SAME STATE OTHERWISE, built by `CurrentConditions` on THIS component.
+	 * Called on the summoner's, a row such as `seconds_after_summon` reads the
+	 * summoner's clock here exactly as it does through `IncreasesForStat`.
+	 *
+	 * NOTHING RECORDED MEANS ONE. The increases' half is floored at zero, as
+	 * the minion's multiplier always was, so a reduction past -100% deals
+	 * nothing rather than negative damage.
+	 */
+	float MultiplierForStatAgainst(FName Stat, const FGameplayTagContainer& Tags,
+								   const AActor* Target) const;
+
+	/**
+	 * A figure with only this character's modifiers on `Stat` that NAME
+	 * `Named` among their required tags applied to it, asked with `Tags` and
+	 * against `Target`. Issue #1833, deployable Part 1: a deployable's blow reads
+	 * its summoner's `attack_damage` rows scoped to `Type.Deployable`, and only
+	 * those, because a minion takes nothing else of its summoner's
+	 * ("everything else is blocked unless a modifier names minions", and the
+	 * coordinating session's ruling of 2026-09-25 that a modifier naming gadgets
+	 * reaches a gadget's blow).
+	 *
+	 * The figure is the base: the answer is (figure + flat) x (1 + increases) x
+	 * more, over the naming modifiers alone, floored at nothing. With none, the
+	 * figure comes back unchanged.
+	 */
+	float StatNamingTagAppliedTo(FName Stat, const FGameplayTag& Named, float Figure,
+								 const FGameplayTagContainer& Tags,
+								 const AActor* Target,
+								 float MinionSecondsActive = -1.0f) const;
+
+	/**
+	 * Whether a removal reaches this stat, for these tags, right now. Issue #1791.
+	 *
+	 * FOR A CONSUMER THAT DOES NOT GET THE STAT'S VALUE FROM THE PIPELINE. A
+	 * reader that asks `StatForSkill`, or reads an attribute
+	 * `UCataclysmPlayerClassStats::ApplyTo` wrote, already gets nothing for a
+	 * removed stat, because `UCataclysmStatPipeline::Evaluate` multiplies the
+	 * finished figure by nothing. Two things are not read that way. The basic
+	 * attack's mana on hit is its slot's own figure rather than a stat, and the
+	 * mana a character is standing on is a current value that nothing lowers
+	 * when its maximum goes. `UCataclysmSkillTemplate::ApplyManaOnHit` and
+	 * `ApplyTo` ask here for those two.
+	 *
+	 * JUDGED WITH THE CONDITIONS `IncreasesForStat` USES, so a removal that holds
+	 * only in some state is honoured here as it is in the value.
+	 *
+	 * THE COUNT AND NOT THE FIGURE. A stat can resolve to zero without being
+	 * removed -- a base of nothing does it -- and a consumer asking this is
+	 * asking which of the two it is.
+	 *
+	 * FALSE WHEN NOTHING WAS RECORDED, for the reason `StatForSkill` returns its
+	 * fallback: an enemy is never given a character stat line, and a player has
+	 * none until its first refresh.
+	 *
+	 * @param Stat  the stat name, as the data file spells it
+	 * @param Tags  what to test a scoped removal against
+	 */
+	bool IsStatRemoved(FName Stat, const FGameplayTagContainer& Tags) const;
+
+	/**
+	 * How much larger one skill's hit should be than the attack-damage
+	 * attribute already makes it, from "more" multipliers alone.
+	 *
+	 * A MULTIPLIER, AND 1 MEANS NO CHANGE. It is the product of every "more"
+	 * modifier on attack damage worked out for this skill and this character's
+	 * state, divided by the same product worked out the way the attribute was:
+	 * with no skill in hand and nothing known about the character. The two
+	 * differ by exactly the "more" modifiers that carry a condition, a scale or
+	 * a required tag.
+	 *
+	 * THE HALF `AttackDamageIncreasesForSkill` NEVER HAD. That one lets a hit
+	 * count an increase the attribute could not carry, and nothing did the same
+	 * for a "more" multiplier, so an attack-damage "more" that depended on the
+	 * skill or the character's state reached no hit at all. Seven Masochist
+	 * nodes and capstone options carry one: Communion of Pain, Doctrine of Pain,
+	 * The Reckoning, Carnage, Carnivore, Vessel Unbroken and Doctrine Made
+	 * Flesh. Their spell-damage rows were never affected, because spell damage
+	 * is asked for in full.
+	 *
+	 * BOTH PRODUCTS COME FROM ONE RECORDED LIST, so a character whose "more"
+	 * modifiers are all unconditional gets exactly 1 and hits for what it did
+	 * before this existed.
+	 *
+	 * 1 WHEN NOTHING WAS RECORDED for attack damage, which is every enemy and a
+	 * player before its first stat refresh.
+	 */
+	float AttackDamageMoreForSkill(
+		const FGameplayTagContainer& SkillTags,
+		float SkillHealthCostPercent = -1.0f,
+		float MetresMovedBeforeBlow = -1.0f,
+		float TargetDistanceMetres = -1.0f,
+		bool bTargetIsStaggered = false,
+		const AActor* Target = nullptr,
+		int32 EnemiesStruckTogether = -1,
+		float MetresCharged = -1.0f,
+		float ChargeRangeMetres = -1.0f) const;
+
+	/**
+	 * What one stat was worked out from, or null for a stat nothing recorded.
+	 *
+	 * FOR A CALLER THAT WANTS THE WHOLE BREAKDOWN. Most callers want a number
+	 * and should use `StatForSkill` below instead.
+	 */
+	const FCataclysmStatInputs* GetStatInputs(FName Stat) const
+	{
+		return StatInputs.Find(Stat);
+	}
+
+	/** Written by UCataclysmPlayerClassStats::ApplyTo, once for every refresh. */
+	void SetStatInputs(TMap<FName, FCataclysmStatInputs>&& Inputs)
+	{
+		StatInputs = MoveTemp(Inputs);
+	}
+
+	/**
+	 * What the worn items DO when an event happens, as opposed to what they
+	 * change. Issue #1815.
+	 *
+	 * WRITTEN WHOLESALE, for the reason `SetStatInputs` is: a row that came off
+	 * with the gear must stop firing rather than go on firing.
+	 *
+	 * AND A RESISTANCE A ROW WAS HOLDING AT NOUGHT IS RELEASED WHEN THAT ROW IS
+	 * NOT AMONG THE NEW ACTIONS. Ruled 2026-10-12. The row is what would have
+	 * moved the hold at its next firing, so without it the hold would never end.
+	 *
+	 * AND A KEPT STACK IS FORGOTTEN WHEN NO NEW ACTION CARRIES ITS KEY. Ruled
+	 * 2026-10-12. See `GainKeptStack`.
+	 */
+	void SetPoolActions(TArray<FCataclysmPoolAction>&& Actions)
+	{
+		PoolActions = MoveTemp(Actions);
+		ReleaseHeldResistanceUnlessARowHoldsIt();
+		ForgetKeptStacksNoWornActionCarries();
+	}
+
+	/** What this character would do on an event. For a test or a character sheet. */
+	const TArray<FCataclysmPoolAction>& GetPoolActions() const
+	{
+		return PoolActions;
+	}
+
+	/**
+	 * Fire every worn action hung on this event, now.
+	 *
+	 * CALLED BY EACH `NoteX()` FOR THE EVENTS THAT HAVE A CLOCK, because those
+	 * are already called at the event's own site on the right character. The five
+	 * events with no clock are things the character DID rather than had done to
+	 * it, so they arrive from the combat announcements instead and the player
+	 * character calls this from those.
+	 *
+	 * @param EventTags  the tags of whatever caused the event, usually a skill's,
+	 *                   or null when the event has none. A row scoped to tags
+	 *                   cannot fire on an event that carries none, which is the
+	 *                   right answer rather than a missing one.
+	 * @param EventAmount what the event carried, for a row taking a fraction of
+	 *                   that rather than of a pool. Zero when it carried nothing.
+	 * @param EventTarget whoever the event was done to, for a row counting hits
+	 *                   in a row on one enemy. Issue #1833, phase 2. Null when
+	 *                   the event names nobody, and such a row then counts
+	 *                   nothing.
+	 */
+	void ActOnEvent(FName Event, const FGameplayTagContainer* EventTags = nullptr,
+					float EventAmount = 0.0f, bool bLanded = true,
+					const AActor* EventTarget = nullptr);
+
+	/** Whether this character's worn rows are acting on an event now. See `PoolActionDepth`. Issue #2482. */
+	bool IsActingOnAnEvent() const { return PoolActionDepth > 0; }
+
+	/**
+	 * The `skill_use` event, with the skill it is about. Mechanism B2.
+	 *
+	 * `ActOnEvent` IS HANDED AN EVENT AND TAGS AND NOTHING ELSE, and a row that repeats the skill just used has to
+	 * know which skill that was and where it was aimed. This holds both for the length of the call, so a repeat row
+	 * can read them, and lets go of them after it. Any repeat a row asked for is left as the pending repeat.
+	 *
+	 * ONE REPEAT FOR ONE USE, ruled 2026-10-05: every row that passes its roll is counted, and one repeat is kept, at
+	 * the highest share among them. The caller makes it on the next tick
+	 * (`UCataclysmTriggeredSkill::MakePendingRepeat`), because this is called from inside the used skill's activation.
+	 *
+	 * AND THE `attack_use` EVENT, RAISED AFTER IT FOR THE SAME USE. Ruled 2026-10-06, for "Your melee attacks have a
+	 * 12%-15% chance to trigger twice": `skill_use` leaves the basic attack out (ruled 2026-09-14) and stays as it
+	 * is, so `attack_use` is the event for EVERY paid use, the basic attack included. With `bBasicAttack` only
+	 * `attack_use` is raised. Both events of one use share the one pending repeat, so one use still gives one repeat.
+	 *
+	 * AND THE `healing_skill_use` EVENT, RAISED BETWEEN THE TWO, only when `SkillTags` holds a tag under
+	 * `Stat.Recovery`. Ruled 2026-10-10, for "Using a healing skill grants 10%-20% increased damage for 5 seconds".
+	 * It follows `skill_use`: not raised for the basic attack, and not raised when `SkillTags` is null.
+	 *
+	 * AND THE `melee_attack_use` EVENT, RAISED AFTER `attack_use`, only when `SkillTags` holds `Type.Melee`, THE BASIC
+	 * ATTACK INCLUDED: an attack event, as `attack_use` is, and not a skill event. Ruled 2026-10-17 for Spellblade's
+	 * Will's six-piece bonus, "When you use a melee attack, you gain a stack of Spellslinger". Not raised when
+	 * `SkillTags` is null.
+	 */
+	void ActOnSkillUse(FName SkillName, const FGameplayTagContainer* SkillTags, const FVector& Aim,
+					   bool bBasicAttack = false, bool bHasCooldown = false);
+
+	/**
+	 * What the rows rolled for the use in hand, taken by that use as it is paid for. Ruled 2026-10-06.
+	 *
+	 * `ActOnSkillUse` IS REACHED FROM INSIDE `UCataclysmSkillTemplate::CommitAndBegin`, through the skill-used
+	 * notice, a few lines before that function writes what the use's damage reads. So a row rolls there, the answer
+	 * is kept here, and the same call of `CommitAndBegin` takes it. Each is read once and cleared. A new use
+	 * begins with neither.
+	 *
+	 * NO DAMAGE WINS OVER AN INCREASE. Several increase rows that pass on one use add, as increases do.
+	 */
+	bool TakePendingUseNoDamage()
+	{
+		const bool bWas = bPendingUseNoDamage;
+		bPendingUseNoDamage = false;
+		return bWas;
+	}
+	float TakePendingUseIncreasePercent()
+	{
+		const float Was = PendingUseIncreasePercent;
+		PendingUseIncreasePercent = 0.0f;
+		return Was;
+	}
+	/** How far the use in hand hits every enemy, in centimetres, when a row rolled that; nought otherwise. */
+	float TakePendingUseHitsAllCm()
+	{
+		const float Was = PendingUseHitsAllCm;
+		PendingUseHitsAllCm = 0.0f;
+		return Was;
+	}
+	float PendingUseHitsAll() const { return PendingUseHitsAllCm; }
+
+	/**
+	 * The share of its priced hit the use in hand deals ITS OWN USER, in per cent, when a row rolled that; nought
+	 * otherwise. The largest of the rows that passed. Taken by the use as the others are.
+	 */
+	float TakePendingUseSelfHitSharePercent()
+	{
+		const float Was = PendingUseSelfHitSharePercent;
+		PendingUseSelfHitSharePercent = 0.0f;
+		return Was;
+	}
+	float PendingUseSelfHitShare() const { return PendingUseSelfHitSharePercent; }
+	bool PendingUseNoDamage() const { return bPendingUseNoDamage; }
+	float PendingUseIncrease() const { return PendingUseIncreasePercent; }
+
+	/**
+	 * The share of its overkill the enemy just killed explodes for, in per cent, when a worn row says so; nought
+	 * otherwise. Read once and cleared. Ruled 2026-10-07, for "Enemies killed by you explode for the overkill
+	 * amount". See `FCataclysmPoolAction::bExplodeVictimForOverkill`.
+	 *
+	 * WHY THE ROW DOES NOT EXPLODE ANYTHING ITSELF. `ActOnEvent` runs its rows one level deep and no deeper, so a
+	 * kill made from inside it reaches no row. An enemy the explosion kills is a kill of its own and must explode
+	 * in turn, so the explosion is made AFTER the loop has returned. The loop keeps the share here, the largest
+	 * of the rows that asked, and the caller takes it.
+	 *
+	 * WHAT THE SECOND PART MUST DO, at the one place the wearer raises `kill`. NOT BUILT YET.
+	 *   1. Raise the event as now: `ActOnEvent(FName(TEXT("kill")), ...)`.
+	 *   2. When that has returned, call this.
+	 *   3. If the answer is above nought, call `UCataclysmSkillEffects::ExplodeForOverkill` with the wearer as
+	 *      the killer, the death notice's victim and location, the overkill of the blow that killed, and this
+	 *      share. That overkill is `FCataclysmDamageResult::Overkill` of the lethal blow, which the death notice
+	 *      does not carry yet: it has to be kept on the last blow on record and copied to the notice.
+	 * Taken before the explosion and not after, so an enemy the explosion kills finds nothing left over from the
+	 * kill before it and records its own.
+	 *
+	 * NOUGHT, AND NOTHING CLEARED, WHILE THE EVENT LOOP IS RUNNING. A judgement by the writing session. A row
+	 * that acts inside the loop can kill, and that death reaches the kill site while the rows of the first kill
+	 * are still being read. Its `kill` event reaches no row, as the one level rules, so it explodes nothing; and
+	 * what the first kill recorded stays here for the first kill to take.
+	 */
+	float TakePendingOverkillExplosionSharePercent()
+	{
+		if (PoolActionDepth > 0)
+		{
+			return 0.0f;
+		}
+		const float Was = PendingOverkillExplosionSharePercent;
+		PendingOverkillExplosionSharePercent = 0.0f;
+		return Was;
+	}
+	float PendingOverkillExplosionShare() const { return PendingOverkillExplosionSharePercent; }
+
+	/**
+	 * A request, left on THE CHARACTER STRUCK, that it be executed if the hit now resolving leaves it below a share
+	 * of its maximum health. Ruled 2026-10-12 under the owner's delegation, for "Strike skills have a 10%-20% chance
+	 * to execute enemies below 15% HP". See `FCataclysmPoolAction::bExecuteTarget`.
+	 */
+	struct FExecuteAsked
+	{
+		/** The character whose worn row asked, and whose kill it is. None means nothing is asked. */
+		TWeakObjectPtr<AActor> By;
+
+		/** The share of maximum health the hit must leave this character below, in per cent. */
+		float BelowPercent = 0.0f;
+
+		/** The asking row's trigger key and its trigger cooldown, started on `By` when the execute kills. */
+		FName TriggerKey;
+		float TriggerCooldownSeconds = 0.0f;
+
+		bool IsAsked() const { return By.IsValid() && BelowPercent > 0.0f; }
+	};
+
+	/**
+	 * Leave a request on this character, the one a hit has struck. Called by the striking character's row loop on
+	 * `hit_dealt`, for a row whose roll came up.
+	 *
+	 * WHY THE ROW DOES NOT KILL ANYTHING ITSELF. `hit_dealt` is raised from `UCataclysmCombatEvents::NoteBlow`, which
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` calls BEFORE it writes the hit's damage to health. So
+	 * while the row loop runs, this character still holds the health it held before the hit, and "below 15%" is to
+	 * be judged on the health the hit leaves. The row therefore leaves the request here, and the attribute set takes
+	 * it when `NoteBlow` has returned and acts on it once the damage is written: see `ExecuteIfLeftBelow`. By then
+	 * the striking character's row loop has returned, so the kill reaches its `kill` rows.
+	 *
+	 * THE LARGEST SHARE OF THE ROWS THAT ASKED IS KEPT, with that row's trigger. A character below the largest share
+	 * is below at least one row's share, and a character at or above it is below none.
+	 */
+	void AskToBeExecuted(AActor* By, float BelowPercent, FName TriggerKey, float TriggerCooldownSeconds);
+
+	/** What was asked of this character, read once and cleared. Nothing asked when none was. */
+	FExecuteAsked TakeExecuteAsked()
+	{
+		const FExecuteAsked Was = ExecuteAsked;
+		ExecuteAsked = FExecuteAsked();
+		return Was;
+	}
+
+	/** What is asked of this character now, without clearing it. For tests. */
+	const FExecuteAsked& ExecuteAskedNow() const { return ExecuteAsked; }
+
+	/**
+	 * Put back a request taken with `TakeExecuteAsked`. The attribute set takes what was asked before it announces
+	 * a hit and puts it back afterwards, so that it acts only on what THAT hit's announcement asked: a hit dealt to
+	 * this character from inside another hit's announcement does not take the outer hit's request.
+	 */
+	void PutBackExecuteAsked(const FExecuteAsked& Earlier) { ExecuteAsked = Earlier; }
+
+	/**
+	 * Whether a character may be executed at all: it is alive, it is not a Boss or a Cataclysm Boss, and damage
+	 * reaches it. Ruled 2026-10-12, and by the ruling of 2026-09-11 that an execute never kills a Boss or a Cataclysm
+	 * Boss. HERE AND NOT A CONDITION ON THE ROW, because an action carries one condition and the row's is the share
+	 * of health. A character that is not an enemy character is not a boss and is not refused by this.
+	 */
+	static bool CanBeExecuted(const AActor* Target);
+
+	/**
+	 * Act on a request taken from this character: if it may be executed, the last blow on its record is `Asked.By`'s
+	 * and its health is above nought and STRICTLY below the asked share of its maximum, take the health it has left
+	 * with `UCataclysmSkillEffects::ReduceHealthDirectly`, sent by `Asked.By`. Called by the attribute set after it
+	 * has written a hit's damage to health.
+	 *
+	 * A DIRECT LOSS OF THE HEALTH LEFT AND NOT A HIT. No damage formula, no evasion, block, armour or resistance, no
+	 * critical strike, no leech and no retaliation, and no `hit_dealt` of its own: nothing is announced as a blow.
+	 *
+	 * CREDITED BY THE RECORD THE HIT LEFT. The death is announced by `UCataclysmCombatEvents::NoteDeath`, which names
+	 * as the killer the attacker of the last blow on this character's record. That is the hit that asked, so the
+	 * death notice is the one a death by that hit would have carried, with two differences: its killing tags are
+	 * empty and its overkill is nought, because the hit itself was not lethal and a direct loss records no blow.
+	 * WHEN THE LAST BLOW ON RECORD IS NOT `Asked.By`'s, NOTHING IS DONE, so no execute is ever credited to another.
+	 *
+	 * AN ENEMY IN A FRIENDLY UNHOLY SIGIL IS HELD AT ONE HEALTH, as it is against every loss of health; it is not
+	 * killed and no cooldown starts.
+	 *
+	 * @return whether this character died of it. The asking row's trigger cooldown is started then, on `Asked.By`.
+	 */
+	bool ExecuteIfLeftBelow(const FExecuteAsked& Asked);
+
+	/**
+	 * Start a row's trigger cooldown on this character, the wearer, because an execute its row asked for killed.
+	 * As `NoteTriggerFired` starts any row's, and only for a row that has one.
+	 */
+	void NoteExecuteMade(FName TriggerKey, float TriggerCooldownSeconds);
+
+	/**
+	 * THE EXECUTION BOTH AN EXECUTE AND A CULL MAKE, factored out of `ExecuteIfLeftBelow` for Reaper's Embrace's
+	 * ten-piece, ruled 2026-10-19 (C1): if this character may be executed (`CanBeExecuted`), the last blow on its
+	 * record is `By`'s and its health is above nought and STRICTLY below `BelowPercent` of its maximum, take the health
+	 * it has left with `UCataclysmSkillEffects::ReduceHealthDirectly`, sent by `By`. Everything `ExecuteIfLeftBelow`
+	 * says of the kill (a direct loss and not a hit, credited by the record the hit left, held by a friendly Unholy
+	 * Sigil) is said of this. It starts no trigger cooldown: `ExecuteIfLeftBelow` does that for an execute row.
+	 *
+	 * @return whether this character died of it
+	 */
+	bool KillIfLeftBelow(AActor* By, float BelowPercent);
+
+	/**
+	 * Reaper's Embrace's ten-piece, "For each stack of Soul Strike you gain 5% cull on hit". The owner's ruling #9 of
+	 * 2026-10-17 and the coordinating session's rulings C1-C8 of 2026-10-19: a THRESHOLD of the row's figure times the
+	 * Soul Strike stacks held, of maximum health, capped by the struck character's rarity, never a boss. Read off the
+	 * wearer with no tags; a flat 5. No gameplay attribute. `tools/generate_datatables.py` holds the same name in
+	 * `REAPER_CULL_STAT`.
+	 */
+	static const TCHAR* CullPercentPerSoulStrikeStackStat;
+
+	/** The event a Soul taken raises, which Soul Strike's own-stack rows grant on. See `ACataclysmReaperSoul`. */
+	static const TCHAR* SoulPickedUpEvent;
+
+	/**
+	 * The stacks of Soul Strike this character holds now: the most own stacks held, by `OwnStacksHeld`, under the key of
+	 * any worn row that grants its own stacks on `SoulPickedUpEvent`. Ruled 2026-10-19 (C1): the six-piece's rows' own
+	 * stack keys, found by the event that grants them and not by the six-piece's name, so a row of another name on the
+	 * same event counts too. Nought for none worn, and once the window has passed.
+	 */
+	int32 SoulStrikeStacksHeld() const;
+
+	/**
+	 * The largest share of maximum health a cull may leave `Struck` below, by its rarity, in per cent. The owner's
+	 * ruling #9 of 2026-10-17 and C3 of 2026-10-19: Common 50, Elite 25, Legendary 25, Herald 10, a Boss and a
+	 * Cataclysm Boss nought. A CHARACTER WITH NO RARITY, one that is not an enemy character, IS COMMON (C3).
+	 */
+	static float CullCapPercentFor(const AActor* Struck);
+
+	/** The ruled caps: the owner's numbers (#9). */
+	static constexpr float CommonCullCapPercent = 50.0f;
+	static constexpr float EliteCullCapPercent = 25.0f;
+	static constexpr float LegendaryCullCapPercent = 25.0f;
+	static constexpr float HeraldCullCapPercent = 10.0f;
+
+	/**
+	 * The share of its maximum health `Struck` is culled below by a hit of this character's now: the row's figure
+	 * times `SoulStrikeStacksHeld`, no more than `CullCapPercentFor`, and nought for a character `CanBeExecuted`
+	 * refuses or for this character itself. C1 and C3 of 2026-10-19.
+	 */
+	float CullSharePercentAgainst(const AActor* Struck) const;
+
+	/**
+	 * Leave a cull's request on `Struck` for the hit now resolving, when `CullSharePercentAgainst` is above nought.
+	 * Called by `ACataclysmPlayerCharacter::OnSomethingWasHit` for exactly the hits that raise this character's own
+	 * `hit_dealt`, and not for a minion's own blow (C2). THE REQUEST AND NOT A KILL, for the reason
+	 * `AskToBeExecuted` gives: the hit's damage is not yet written, and the cull is judged on the health the hit
+	 * leaves (C4). The struck character's attribute set acts on it with `CullIfLeftBelow` once the damage is written.
+	 *
+	 * @return the share asked, or nought for none
+	 */
+	float AskToCullOnHit(AActor* Struck);
+
+	/**
+	 * Keep a cull's request on this character, the one a hit has struck. A REQUEST OF ITS OWN, BESIDE AN EXECUTE'S
+	 * AND NOT MERGED WITH IT, so every execute row acts exactly as before (C1): an execute asked for the same hit is
+	 * acted on first and starts its own row's trigger cooldown, and the cull then finds a dead character and does
+	 * nothing. Of two culls asked for one hit, the larger share is kept.
+	 */
+	void AskToBeCulled(AActor* By, float BelowPercent);
+
+	/** What a cull asked of this character, read once and cleared; and put back, as `PutBackExecuteAsked` does. */
+	FExecuteAsked TakeCullAsked()
+	{
+		const FExecuteAsked Was = CullAsked;
+		CullAsked = FExecuteAsked();
+		return Was;
+	}
+	void PutBackCullAsked(const FExecuteAsked& Earlier) { CullAsked = Earlier; }
+
+	/** What a cull asks of this character now, without clearing it. For tests. */
+	const FExecuteAsked& CullAskedNow() const { return CullAsked; }
+
+	/**
+	 * Act on a cull's request taken from this character: `KillIfLeftBelow` with the request's asker and share. Called
+	 * by the attribute set after it has written a hit's damage to health, after any execute that hit asked for.
+	 *
+	 * @return whether this character died of it
+	 */
+	bool CullIfLeftBelow(const FExecuteAsked& Asked);
+
+	/** The skill a row asked to repeat and that has not been made yet, or none. */
+	FName PendingRepeatSkill() const { return PendingRepeatName; }
+	FVector PendingRepeatAim() const { return PendingRepeatAimPoint; }
+
+	/** The share of its damage the pending repeat deals: 1 is all of it. */
+	float PendingRepeatShare() const { return PendingRepeatDamageShare; }
+	void ClearPendingRepeat()
+	{
+		PendingRepeatName = NAME_None;
+		PendingRepeatDamageShare = 0.0f;
+	}
+
+	/**
+	 * The trigger of a different held skill that a row asked for on the use in hand and nobody has made yet.
+	 * Ruled 2026-10-06. `UsedSkill` is the skill that was used, which is never the one triggered; none means
+	 * nothing is pending. ONE TRIGGER FOR ONE USE: every row that passes its roll is counted, as a spell row or as
+	 * a cooldown row, and `UCataclysmTriggeredSkill::MakePendingHeldTrigger` makes one.
+	 */
+	FName PendingHeldTriggerUsedSkill() const { return PendingHeldTriggerUsedName; }
+	FVector PendingHeldTriggerAim() const { return PendingHeldTriggerAimPoint; }
+	bool PendingHeldTriggerWantsASpell() const { return bPendingHeldTriggerSpell; }
+	bool PendingHeldTriggerWantsACooldownSkill() const { return bPendingHeldTriggerCooldownSkill; }
+	void ClearPendingHeldTrigger()
+	{
+		PendingHeldTriggerUsedName = NAME_None;
+		bPendingHeldTriggerSpell = false;
+		bPendingHeldTriggerCooldownSkill = false;
+	}
+
+	/** One worn row that asked, on the use in hand, to spend its kept stacks and cast the used skill again. */
+	struct FPendingKeptStackCast
+	{
+		/** The row's `FCataclysmPoolAction::KeptStackKey`. */
+		FName Key;
+
+		/** The share of its damage each extra cast deals: 1 is all of it. */
+		float DamageShare = 1.0f;
+	};
+
+	/**
+	 * The casts a row asked for on the use in hand by spending its kept stacks, which nobody has made yet. Ruled
+	 * 2026-10-12 under the owner's delegation, for "Shard of Anarchy (10-Piece Bonus): Every 30 seconds, you gain a
+	 * stack of 'Temporal Flux.' When you use a skill, you consume all stacks of 'Temporal Flux' and your skill is cast
+	 * a random number of times. The bonus is permanent for the rest of the dungeon".
+	 *
+	 * `ActOnEvent` ONLY RECORDS THE REQUEST: the skill used, where it was aimed, and each row that asked while it
+	 * held a stack. NOTHING IS SPENT AND NOTHING IS DRAWN THERE. `UCataclysmTriggeredSkill::MakePendingKeptStackCasts`
+	 * takes the request on the tick after the use, for the reason `MakePendingRepeat` waits a tick, and is where the
+	 * stacks are spent, the number is drawn and the casts are started.
+	 *
+	 * KEPT APART FROM THE PENDING REPEAT ABOVE. A `repeat_skill` row's one repeat and these casts are counted
+	 * separately and both are made: see `MakePendingKeptStackCasts`.
+	 *
+	 * A NEW USE BEGINS WITH NONE, as it begins with no pending repeat. The stacks of a request nobody made are still
+	 * held, because nothing was spent when it was recorded.
+	 */
+	FName PendingKeptStackCastSkill() const { return PendingKeptStackCastName; }
+	FVector PendingKeptStackCastAim() const { return PendingKeptStackCastAimPoint; }
+	const TArray<FPendingKeptStackCast>& PendingKeptStackCasts() const { return PendingKeptStackCastRows; }
+	void ClearPendingKeptStackCasts()
+	{
+		PendingKeptStackCastName = NAME_None;
+		PendingKeptStackCastRows.Reset();
+	}
+
+	/**
+	 * How many kept stacks this character holds under one row's key now. Ruled 2026-10-12.
+	 *
+	 * NOUGHT FOR STACKS GAINED IN ANOTHER DUNGEON, or gained in a dungeon when none is being walked now, or gained
+	 * outside one when one is being walked now: each stack remembers `DungeonBeingWalked` as it was gained, and
+	 * this compares it with the answer now. That comparison is what "cleared when the dungeon is left" is. See
+	 * `GainKeptStack`.
+	 */
+	int32 KeptStacksHeld(FName Key) const;
+
+	/**
+	 * Gain one kept stack under a row's key, to at most `Cap`. Ruled 2026-10-12 under the owner's delegation. A key
+	 * of none or a cap of nought or less gains nothing.
+	 *
+	 * WHEN ONE IS GAINED. `StepKeptStackClocks` counts the seconds the wearer spends in combat, for each row, and
+	 * calls this once for each whole period counted. THE SECONDS ARE CARRIED FROM ONE FIGHT TO THE NEXT, ruled
+	 * 2026-10-12: two fights of 20 seconds give a row of 30 one stack, with 10 seconds kept towards the next.
+	 * Every other timed row counts whole periods of one combat and starts again with each combat; that is not
+	 * changed. The seconds are cleared by the last three of the four things below, and not by a use that spends.
+	 * OR ON AN EVENT, with no clock, for a row of `KeptStacksFreeNextAbilityAction`: `ActOnEvent` calls this once for
+	 * each landed event the row is allowed. Ruled 2026-10-17.
+	 *
+	 * A KEPT STACK HAS NO LIFETIME. It is not ended by time, by leaving combat or by a new floor of the same
+	 * dungeon. FOUR THINGS END IT:
+	 *   - A use that spends it (`SpendKeptStacks`).
+	 *   - THE DUNGEON BEING LEFT, OR ANOTHER ENTERED. Nothing calls this component when that happens, and
+	 *     `ACataclysmDungeonGameMode::LeaveEmpireDungeon` was not edited for it. Instead each stack remembers
+	 *     `DungeonBeingWalked` as it was gained, `KeptStacksHeld` answers nought for a stack whose dungeon is not the
+	 *     one walked now, and `StepTimedGrants` removes such a stack at the character's next step.
+	 *   - A DEATH. `ClearWhatDeathEnds` empties them, as it empties every row's own stacks.
+	 *   - THE GEAR COMING OFF. `SetPoolActions` forgets every kept stack whose key no worn action carries.
+	 *
+	 * A STACK GAINED WHILE THE ONES HELD BELONG TO ANOTHER DUNGEON STARTS AGAIN AT ONE, because those read as nought.
+	 */
+	void GainKeptStack(FName Key, int32 Cap);
+
+	/** Spend every kept stack held under a row's key. @return how many were held, by `KeptStacksHeld`. */
+	int32 SpendKeptStacks(FName Key);
+
+	/**
+	 * Which dungeon of the empire this character's world is walking, or `INDEX_NONE`:
+	 * `ACataclysmDungeonGameMode::EmpireDungeonId` of the dungeon game mode found by
+	 * `ACataclysmDungeonGameMode::InWorld`, and `INDEX_NONE` in a world with no dungeon game mode.
+	 */
+	int32 DungeonBeingWalked() const;
+
+	/**
+	 * The seconds of combat counted towards a row's next kept stack, from nought to under its period. Nought for a
+	 * key with no clock and for a clock of another dungeon, as `KeptStacksHeld` is.
+	 */
+	float KeptStackSecondsTowardsNext(FName Key) const;
+
+	/** One worn row's kept stacks, for an interface to show. `UCataclysmCombatOverlay::KeptStacksTextFor` reads it. */
+	struct FHeldKeptStacks
+	{
+		FName Key;
+
+		/** What the row calls its stacks, `FCataclysmPoolAction::StatusName`, or empty when it states no name. */
+		FString Name;
+		int32 Held = 0;
+		int32 Cap = 0;
+
+		/** Whether at their cap they make the next ability free: `FCataclysmPoolAction::bKeptStacksFreeNextAbility`. */
+		bool bFreeNextAbility = false;
+
+		/** What that ability deals more, in per cent, the row's value: 100 is twice. Nought for any other row. */
+		float MorePercent = 0.0f;
+	};
+
+	/** Every worn action that gains kept stacks, one entry a key, in the order worn, with what it holds now. */
+	TArray<FHeldKeptStacks> KeptStacksForDisplay() const;
+
+	/**
+	 * Whether the next ability but the basic attack is free: some worn row of `KeptStacksFreeNextAbilityAction` holds
+	 * its cap of kept stacks now. Ruled 2026-10-17 (O7 c, O8), for "At 10 stacks, your next ability costs no mana".
+	 * Asked by `UCataclysmGameplayAbility::ManaCostFor`, which the cost check and the payment both read.
+	 *
+	 * READ FROM THE COUNT AND FROM NOTHING ELSE, so it cannot outlast the count: the stacks of a dungeon left, of a
+	 * death and of gear taken off read as nought, and so the next ability is not free. See `GainKeptStack`.
+	 */
+	bool NextAbilityIsFree() const;
+
+	/**
+	 * Spend every such row's kept stacks that hold their cap, and answer what the use spending them multiplies its
+	 * damage by: one and the largest row's value over a hundred, so 2 for "100% more"; 1 when none was at its cap.
+	 * Ruled 2026-10-17 (O7 c, O8): the next ability spends all of them. Called by
+	 * `UCataclysmSkillTemplate::CommitAndBegin` once a use that is not the basic attack has been paid for, and by
+	 * nothing else.
+	 */
+	float SpendFreeNextAbility();
+
+	/**
+	 * The most kept stacks any worn row that calls them `Name` holds now, by `KeptStacksHeld`, or nought. Ruled
+	 * 2026-10-17, for the Null Emperor's ten-piece bonus, which asks "while you have at least 10 stacks of Void" of
+	 * stacks another row gains: it knows them by their name and not by that row's key. Case does not matter.
+	 */
+	int32 KeptStacksHeldNamed(const FString& Name) const;
+
+	/**
+	 * The row of the last skill this character used that its gadgets may copy, AS IT WAS WHEN USED, or null. Ruled
+	 * 2026-10-14 by the coordinating session, for "Gadgets copy the last skill you used and fire it at their target
+	 * once every 2 seconds". Written by `NoteSkillGadgetsCopy` and read by `ACataclysmMinion::CopySummonersLastSkill`.
+	 *
+	 * THE ROW AND NOT A NAME TO FIND AGAIN, the coordinating session's ruling of 2026-10-14 (option B), so a skill
+	 * used with one weapon is still copied after the character has changed to another. A copy casts the row with the
+	 * character's numbers AT THE COPY: the weapon held then, its damage and stats.
+	 *
+	 * A LASTING RECORD, kept whether or not the character holds the row, so a row put on later finds the skill used
+	 * before it. THE LAST SKILL WHOSE USE SENT THE SKILL-USED NOTICE AND THAT
+	 * `UCataclysmTriggeredSkill::RepeatsFromARow` ACCEPTS: `ACataclysmPlayerCharacter::OnSkillWasUsed` decides,
+	 * and a use of a skill it does not accept leaves the record as it was. A free cast sends no notice, so a repeat,
+	 * a trigger, Wild Magic, Echo Chamber, Follow Through, a kept-stack cast and a gadget's copy never change it.
+	 *
+	 * WHAT ENDS IT. A DEATH: `ClearWhatDeathEnds` empties it, and a gadget copies nothing for a summoner that is
+	 * dead. THE DUNGEON BEING LEFT, OR ANOTHER ENTERED, as a kept stack's: the record remembers `DungeonBeingWalked`
+	 * as it was written, and this answers none for a record of another. A NEW FLOOR of the same dungeon changes
+	 * nothing. NOT REPLICATED: only the authority's gadgets read it.
+	 */
+	const FCataclysmWeaponSkill* SkillGadgetsCopy() const;
+
+	/** Write the record `SkillGadgetsCopy` reads: this row, in the dungeon being walked now. */
+	void NoteSkillGadgetsCopy(const FCataclysmWeaponSkill& Skill);
+
+	/**
+	 * How many times the mana cost of this character's Ultimate is doubled now: the paid uses of a skill in the
+	 * Ultimate slot counted while Mana Weaver's ten-piece bonus was held, in the dungeon being walked. Ruled
+	 * 2026-10-14 by the coordinating session, for "Instead, its mana cost is doubled every time you use it. This cost
+	 * resets at the beginning of every dungeon". Read by `UCataclysmGameplayAbility::UltimateCostDoublingFactor`.
+	 *
+	 * NOUGHT FOR A COUNT OF ANOTHER DUNGEON, the comparison a kept stack and the gadgets' record make: the count
+	 * remembers `DungeonBeingWalked` as it was advanced. That comparison is what "resets at the beginning of every
+	 * dungeon" is, and nothing in the dungeon game mode calls this component for it. A NEW FLOOR of the same dungeon
+	 * changes nothing. A DEATH clears it: `ClearWhatDeathEnds`. NOT REPLICATED: the authority pays every cost.
+	 */
+	int32 UltimateCostDoublingsHeld() const;
+
+	/**
+	 * Count one paid use of the Ultimate, to at most `MostUltimateCostDoublings`, in the dungeon being walked now. A
+	 * count of another dungeon starts again at one. Called by `UCataclysmSkillTemplate::CommitAndBegin` after the
+	 * use was paid for, and only for a use that was not a free start.
+	 */
+	void NoteUltimateCostDoubled();
+
+	/** The most times the Ultimate's cost is doubled: 30, a cost of about a thousand million times its own. Ruled. */
+	static constexpr int32 MostUltimateCostDoublings = 30;
+
+	/**
+	 * How many stacks of one row's own this character holds now: nought once
+	 * the row's window has passed since the last grant. Issue #1833.
+	 */
+	int32 OwnStacksHeld(FName StackKey) const;
+
+	/**
+	 * How many hits in a row one row has counted on this target: nought for
+	 * any other target, out of combat, and for a count begun before the
+	 * current combat. Issue #1833, phase 2.
+	 */
+	int32 ConsecutiveHitsOn(FName StackKey, const AActor* Target) const;
+
+	/**
+	 * Count one landed hit on this target for one row, up to its cap. A hit on
+	 * a different target, or the first in a new combat, starts the count again
+	 * at one. Issue #1833, phase 2, ruled 2026-09-24.
+	 */
+	void GrantConsecutiveHit(FName StackKey, const AActor* Target, int32 Cap);
+
+	/**
+	 * Receive one stack another character's row places on this one, up to its
+	 * cap (0 is none), restarting its window. Issue #1833, phase 2. Keyed by
+	 * the row; each stack is worth `PercentPerStack`.
+	 */
+	void ReceivePlacedStack(FName Key, float PercentPerStack, float WindowSeconds,
+							int32 Cap, bool bCutsDamage);
+
+	/**
+	 * The share of this character's damage the stacks placed on it take away
+	 * now, 0 to 100. Issue #1833, phase 2. Read by `ApplyHit` on the attacker.
+	 */
+	float DamageCutPercentNow() const;
+
+	/**
+	 * What the hit about to be resolved takes on top, as a percentage, when it
+	 * is the Nth of a worn "every Nth hit you take" row, or 0. Issue #1833,
+	 * phase 2. Asked BEFORE the hit is resolved, because the event that counts
+	 * it fires after.
+	 */
+	float NthHitTakenBonusPercent() const;
+
+	/**
+	 * The share of the mana held that the spell about to be paid for adds to
+	 * its cost, as a percentage, when it is the Nth of a worn "every Nth spell"
+	 * row, or 0. Issue #1833, phase 2: its normal cost PLUS this, ruled
+	 * 2026-09-24.
+	 */
+	float NthSpellExtraManaPercent() const;
+
+	/** Whether the attack about to be paid for is the Nth of a worn row. */
+	bool NextAttackIsNth() const;
+
+	/**
+	 * Count one event of this kind for every worn "every Nth" row of it. The
+	 * Nth starts the count again. Issue #1833, phase 2. A count ends at death,
+	 * and when the character leaves a combat it was counted in.
+	 */
+	void NoteNthEvent(ECataclysmEveryNth Kind);
+
+	/** One worn "every Nth" row's count, as the line above the skill bar shows it. */
+	struct FHeldNthCount
+	{
+		ECataclysmEveryNth Kind = ECataclysmEveryNth::None;
+		int32 Count = 0;
+		int32 EveryNth = 0;
+	};
+
+	/** Every worn "every Nth" row with a count above nought, in the order worn. */
+	TArray<FHeldNthCount> NthCountsForDisplay() const;
+
+	/**
+	 * Grant one stack of a row's own, up to its cap, and restart its window.
+	 * Issue #1833. A cap or window of nothing grants nothing.
+	 */
+	void GrantOwnStack(FName StackKey, float WindowSeconds, int32 Cap);
+
+	/**
+	 * The two action names a row uses to grant a charge the next use spends.
+	 * Issue #1833, phase 2. `tools/generate_datatables.py` holds the same two in
+	 * `NEXT_USE_ACTIONS`.
+	 */
+	static const TCHAR* NextSkillDamageAction;
+	static const TCHAR* NextAttackDamageAction;
+
+	/**
+	 * "Every 30 seconds your next skill is cast at 300%-500% effectiveness".
+	 * Issue #1833, timed grants: a skill charge that multiplies the spending
+	 * use's damage. In `NEXT_USE_ACTIONS` too.
+	 */
+	static const TCHAR* NextSkillEffectivenessAction;
+
+	/**
+	 * The two action names a row uses to place stacks on the other character of
+	 * its event. Issue #1833, phase 2. `tools/generate_datatables.py` holds the
+	 * same two in `PLACED_ACTIONS`. The first takes a share of the enemy
+	 * struck's armour, the second a share of the attacker's damage.
+	 */
+	static const TCHAR* EnemyArmorRemovedAction;
+	static const TCHAR* AttackerDamageRemovedAction;
+
+	/**
+	 * The three "every Nth" action names. Issue #1833, phase 2.
+	 * `tools/generate_datatables.py` holds the same three in `NTH_ACTIONS`.
+	 */
+	static const TCHAR* NthHitTakenDamageAction;
+	static const TCHAR* NthSpellManaCostAction;
+	static const TCHAR* NthAttackNoDamageAction;
+
+	/**
+	 * The six cooldown reset action names. Issue #1833, the cooldown reset
+	 * action. `tools/generate_datatables.py` holds the same six in
+	 * `COOLDOWN_RESET_ACTIONS`.
+	 */
+	static const TCHAR* CooldownResetAllAction;
+	static const TCHAR* CooldownResetOthersAction;
+	static const TCHAR* CooldownResetHeavyAction;
+	static const TCHAR* CooldownResetSpecialAction;
+	static const TCHAR* CooldownResetMovementAction;
+	static const TCHAR* CooldownResetEventSkillAction;
+
+	/**
+	 * Roll a cooldown reset action's chance and, on a success, clear the
+	 * cooldowns it names. Issue #1833, the cooldown reset action.
+	 *
+	 * THE ROLL IS 0 TO 100 AND A ROLL BELOW THE CHANCE SUCCEEDS, the rule the
+	 * cooldown skip already follows. A CHANCE OF 100 ALWAYS SUCCEEDS BECAUSE IT
+	 * IS COMPARED AND NOT ROLLED, since issue #2201: the roll can be 100 itself,
+	 * and a roll equal to the chance fails. The console variable
+	 * `Cataclysm.CooldownResetRoll` pins it for tests.
+	 *
+	 * A cooldown is a duration effect granting its slot's `Cooldown.*` tag
+	 * (`UCataclysmGameplayAbility::ApplyCooldown`), so clearing one is removing
+	 * every effect granting that tag, which is what `RefundCooldown` does too.
+	 *
+	 * @param EventTags  the event's skill tags, whose `Slot.*` tag says which
+	 *                   slot fired. Read only by `Others` and `EventSkill`; with
+	 *                   no slot named, those clear nothing
+	 * @return how many cooldown effects were cleared
+	 */
+	int32 RollAndResetCooldowns(const FCataclysmPoolAction& Action,
+								const FGameplayTagContainer* EventTags,
+								bool* bOutRollSucceeded = nullptr);
+
+	/**
+	 * The two cooldown reduction action names and the next-spell cooldown
+	 * charge. Issue #1833, the cooldown reduction action.
+	 * `tools/generate_datatables.py` holds the first two in
+	 * `COOLDOWN_REDUCE_ACTIONS` and the third in `NEXT_USE_ACTIONS`.
+	 */
+	static const TCHAR* CooldownReduceAllAction;
+	static const TCHAR* CooldownReduceHeavyAction;
+	static const TCHAR* NextSpellCooldownReducedAction;
+
+	/**
+	 * The cleanse action name: a row whose Action is this cleanses its wearer, `UCataclysmDebuffs::Cleanse`. Ruled
+	 * 2026-09-26, for "You are cleansed every 5 seconds". The enchantment row and the name in
+	 * `tools/generate_datatables.py`'s action vocabulary, `CLEANSE_ACTION`, were written on 2026-10-05, issue #1833.
+	 */
+	static const TCHAR* CleanseAction;
+
+	/**
+	 * The action that applies a random damage over time to the other character
+	 * of its event. Issue #1833 group D, ruled 2026-09-30. `tools/generate_datatables.py`
+	 * holds the same name in `RANDOM_DOT_ACTION`. See
+	 * `FCataclysmPoolAction::bRandomDamageOverTime`.
+	 */
+	static const TCHAR* ApplyRandomDotAction;
+
+	/**
+	 * Whether the action row kept under this key is waiting out its trigger
+	 * cooldown now. Issue #1833 group D. False for a key that has never fired.
+	 */
+	bool TriggerCoolingDown(FName TriggerKey) const;
+
+	/**
+	 * The action that lowers health to a share of its maximum and never raises
+	 * it. Issue #1833 group D part 2, ruled 2026-09-30.
+	 * `tools/generate_datatables.py` holds the same name in `HEALTH_CAP_ACTION`.
+	 * See `FCataclysmPoolAction::bHealthCap`.
+	 */
+	static const TCHAR* HealthCappedAtAction;
+
+	/**
+	 * The two actions on the characters near the wearer. Issue #1833 group D
+	 * part 3, ruled 2026-10-01. `tools/generate_datatables.py` holds the same
+	 * names in `NEARBY_ACTIONS`. See `ECataclysmNearbyAction`.
+	 */
+	static const TCHAR* SmiteNearbyAction;
+	static const TCHAR* HealNearbyEnemiesAction;
+
+	/**
+	 * The two actions that deal the remaining damage of the wearer's own damage
+	 * over time effects. Issue #1833 group D part 4, ruled 2026-10-01.
+	 * `tools/generate_datatables.py` holds the same names in
+	 * `REMAINING_DAMAGE_ACTIONS`. See `ECataclysmRemainingDamage`.
+	 */
+	static const TCHAR* RemainingDamageNearbyAction;
+	static const TCHAR* RemainingDamageTargetAction;
+
+	/**
+	 * The two actions that apply a status to the other character of their event.
+	 * Issue #1833 group E part 1, ruled 2026-10-01. `tools/generate_datatables.py`
+	 * holds the same names in `APPLY_STATUS_ACTIONS`. See `ECataclysmApplyStatus`.
+	 */
+	static const TCHAR* ApplyStatusAction;
+	static const TCHAR* ApplyStatusSecondsAction;
+
+	/**
+	 * The two statuses a status action may name that are not ailments: a
+	 * stagger, through `UCataclysmSkillEffects::ApplyStagger`, and one debuff
+	 * from `UCataclysmAilments::RandomDebuffPool`. `tools/generate_datatables.py`
+	 * holds the same names in `APPLY_STATUSES`.
+	 */
+	static const TCHAR* StaggerStatus;
+	static const TCHAR* RandomDebuffStatus;
+
+	/**
+	 * A third status name that is not one ailment: EACH OF THE FIVE DAMAGE OVER
+	 * TIME AILMENTS, Bleed, Poison, Disease, Necrosis and Burn, applied in turn.
+	 * The owner, 2026-10-08, for "Your first hit against each enemy applies all
+	 * your active DoTs instantly". Not Void Splinter. The five are
+	 * `UCataclysmAilments::RandomDamageOverTimePool`, the one list of them the
+	 * engine holds. `ApplyStatusAction` alone may name it; the generator holds
+	 * the same name in `ALL_DOTS_STATUS` and refuses it on every other action.
+	 */
+	static const TCHAR* AllDotsStatus;
+
+	/**
+	 * A fourth status name that is not an ailment: A SILENCE, through `UCataclysmSilence::ApplySilence`, for
+	 * `UCataclysmSilence::SilenceSeconds`. Ruled 2026-10-17, for "Null Emperor (2-Piece Bonus): Your attacks have a
+	 * 25% chance to silence an enemy for 1 second". `ApplyStatusAction` alone may name it; the generator holds the
+	 * same name in `SILENCE_STATUS` and refuses it on every other action.
+	 */
+	static const TCHAR* SilenceStatus;
+
+	/**
+	 * The three actions that lay a status on THE WEARER. Ruled 2026-10-06. The first two are `ApplyStatusAction`
+	 * and `ApplyStatusSecondsAction` with the wearer as the character the status is laid on; the third applies it
+	 * once at the value's multiple of its ordinary size. `tools/generate_datatables.py` holds the same names in
+	 * `APPLY_STATUS_TO_SELF_ACTIONS`.
+	 */
+	static const TCHAR* ApplyStatusToSelfAction;
+	static const TCHAR* ApplyStatusToSelfSecondsAction;
+	static const TCHAR* ApplyStatusToSelfSizedAction;
+
+	/**
+	 * Two more statuses, which only an action that lays a status on the wearer may name. `StunStatus` is a stun for
+	 * the row's seconds. `AppliedDotStatus` is the ailment the wearer has just applied to another character, which
+	 * `NoteDotApplied` records before the `dot_applied` event is raised.
+	 */
+	static const TCHAR* StunStatus;
+	static const TCHAR* AppliedDotStatus;
+
+	/**
+	 * One more status, which only `ApplyStatusToSelfAction` may name: ONE OF THE WEARER'S PER-TYPE RESISTANCES, DRAWN
+	 * AND HELD AT NOUGHT until the row fires again. Ruled 2026-10-12 under the owner's delegation, for "Every 5
+	 * seconds, one of your resistances is reduced to 0 until this triggers again". `tools/generate_datatables.py`
+	 * holds the same name in `RANDOM_RESISTANCE_AT_NOUGHT_STATUS`. See `HoldARandomResistanceAtNought`.
+	 */
+	static const TCHAR* RandomResistanceAtNoughtStatus;
+
+	/**
+	 * Draw one of this character's per-type resistances and hold it at nought, in place of the one held before.
+	 * Ruled 2026-10-12 under the owner's delegation.
+	 *
+	 * THE DRAW IS OVER EVERY PER-TYPE RESISTANCE THE CHARACTER HOLDS, the eight of
+	 * `UCataclysmItemModifiers::DamageTypeNames` for a player, each equally likely, whatever each one reads. A PLAIN
+	 * DRAW: the one held before may be drawn again. `Cataclysm.RandomResistancePick` pins the draw for tests, by the
+	 * resistance's place in that list.
+	 *
+	 * NOTHING IS WRITTEN TO AN ATTRIBUTE. The damage type drawn is kept on this component, and
+	 * `UCataclysmDamageCalculation::TypedResistanceOf` reads it wherever a per-type resistance is read. So a gear
+	 * refresh, which writes the whole stat line again, neither erases the hold nor has to know about it; and the
+	 * figure the gear gives is still there when the hold moves to another resistance.
+	 *
+	 * A CHARACTER WITH NO PER-TYPE RESISTANCE DRAWS NOTHING. An enemy holds one all-resistance figure and none of the
+	 * eight, so this holds nothing on it and returns false.
+	 *
+	 * @return whether a resistance is now held
+	 */
+	bool HoldARandomResistanceAtNought();
+
+	/**
+	 * The damage type whose resistance this character is holding at nought, or none.
+	 *
+	 * RELEASED WHEN NO WORN ACTION NAMES `RandomResistanceAtNoughtStatus` ANY MORE (`SetPoolActions`), and by
+	 * `ClearWhatDeathEnds`. Not released by time, by leaving combat or by a new dungeon floor: the sentence holds it
+	 * "until this triggers again".
+	 */
+	FName ResistanceHeldAtNought() const { return ResistanceHeldAtNoughtType; }
+
+	/**
+	 * And one more status only `ApplyStatusToSelfAction` may name: A RANDOM BUFF OR DEBUFF, laid on the wearer.
+	 * Ruled 2026-10-12 under the owner's delegation, for "Shard of Anarchy (2-Piece Bonus): Every 30 seconds, a
+	 * random buff or debuff is applied to you". `tools/generate_datatables.py` holds the same name in
+	 * `RANDOM_BUFF_OR_DEBUFF_STATUS`. See `ApplyRandomBuffOrDebuff`.
+	 */
+	static const TCHAR* RandomBuffOrDebuffStatus;
+
+	/**
+	 * And one more status only `ApplyStatusToSelfAction` may name: A RANDOM BUFF, NEVER CHAOTIC BARRIER, laid on the
+	 * wearer in place of the buff held. Ruled 2026-10-26 for the random buff Chaotic Barrier (issue #2538, batch 4):
+	 * "when hit, at most once per 10 s, draw another random buff other than itself, which replaces it". ONLY THE ROW
+	 * WRITTEN IN CODE FOR THAT BUFF NAMES IT, so `tools/generate_datatables.py` holds no twin and refuses it in a sheet.
+	 * See `HoldARandomBuff`.
+	 */
+	static const TCHAR* RandomBuffStatus;
+
+	/** How long a buff drawn from `RandomBuffTable` is held, in seconds. Ruled 2026-10-12. Not the row's period. */
+	static constexpr float RandomBuffSeconds = 30.0f;
+
+	/**
+	 * One buff a row may draw: the name of its row in `game/Data/StatusEffects.csv`, and the stat lines it lays on
+	 * its holder, each a stat's name and a modifier on it.
+	 *
+	 * AND, SINCE BATCH 2 OF ISSUE #2538 (2026-10-26), EFFECT ROWS IT WEARS WHILE IT IS HELD, and kept stacks it lays
+	 * when it is drawn. See `HeldRandomBuffEffectRows` and `HoldARandomBuff`.
+	 */
+	struct FRandomBuff
+	{
+		const TCHAR* Name = nullptr;
+		TArray<TPair<FName, FCataclysmStatModifier>> Lines;
+
+		/** Rows of `game/Data/EnchantmentEffects.csv`, by row name, worn while the buff is held. */
+		TArray<FName> WornRows;
+
+		/** How many kept stacks each worn row that keeps them gains at the draw, to its own cap. Nought for none. */
+		int32 KeptStacksAtDraw = 0;
+	};
+
+	/**
+	 * The enchantment name a buff's worn rows are renamed under, "RandomBuff:" and the buff's name. Every key a row
+	 * keeps begins with its enchantment name, so the buff's stacks, windows and trigger cooldowns are its own: a
+	 * wearer of the set the row belongs to keeps the set's apart from the buff's. Issue #2538, batch 2.
+	 */
+	static FString RandomBuffEnchantmentName(const TCHAR* BuffName);
+
+	/**
+	 * The buffs a random buff is drawn from, in the order `Cataclysm.RandomBuffPick` counts in. Ruled 2026-10-12.
+	 *
+	 * A TABLE, SO THAT THE OWNER'S ANSWER CHANGES THE TABLE AND NOT THE MECHANISM. The owner answered on 2026-10-26,
+	 * "Add everything": every Buff row of the status table joins the pool once it is built as a standalone buff
+	 * (issue #2538), appended at the end so that the places before it keep their buffs. It holds seventeen, every Buff
+	 * row: Mana Surge, Tactical Advantage, Famished, Commander, Divine Aegis and Spellslinger, each the stat line its own
+	 * description states; Dervish and Warhound (2026-10-26, batch 1), each the stat lines of the set row that builds
+	 * it; Sanctified Power, Demonic Rage, Temporal Flux and Void (2026-10-26, batch 2), each wearing the set rows that
+	 * build it, by name (`FRandomBuff::WornRows`); and Death, Feasting and The Ascended (2026-10-26, batch 3), and
+	 * Plague and Chaotic Barrier (2026-10-26, batch 4), each wearing rows of its own written in code, in the `.cpp`, so
+	 * this header need not know the row.
+	 *
+	 * NONE IS LEFT OUT, since batch 4.
+	 *
+	 * `tools/tests/test_the_random_buff_table_names_buff_rows.py` reads the names out of this function's body and
+	 * holds the list. Keep each entry's name on a line of the shape `Buff.Name = TEXT("...");`, which is what that
+	 * test reads.
+	 */
+	static const TArray<FRandomBuff>& RandomBuffTable();
+
+	/**
+	 * Lay a random buff or a random debuff on this character, at even odds. Ruled 2026-10-12.
+	 *
+	 * A DEBUFF IS THE MERGED DRAW: `UCataclysmAilments::ApplyRandomDebuff`, called as `RandomDebuffStatus` calls it
+	 * for a wearer. It lasts what that debuff lasts. A BUFF IS `HoldARandomBuff`. Neither ends the other.
+	 * `Cataclysm.RandomBuffOrDebuffPick` pins which for tests: 0 a buff, 1 a debuff.
+	 *
+	 * @return whether anything was laid
+	 */
+	bool ApplyRandomBuffOrDebuff();
+
+	/**
+	 * Draw one buff from `RandomBuffTable` and hold it for `RandomBuffSeconds`, in place of the one held before.
+	 * Ruled 2026-10-12. Each entry equally likely; `Cataclysm.RandomBuffPick` pins the draw for tests, by the
+	 * entry's place in the table.
+	 *
+	 * THE NAME AND THE TIME IT ENDS ARE KEPT HERE, AND THE GEAR REFRESH READS THE LINES. A gear refresh writes the
+	 * character's whole stat line from its sources, so a line that is not from gear has to be one of the sources it
+	 * gathers. `UCataclysmEquipmentComponent::RefreshAttributes` asks `HeldRandomBuffStatModifiers` beside the
+	 * dungeon floor's modifiers, and this function runs that refresh once the buff is held.
+	 *
+	 * A CHARACTER WITH NO EQUIPMENT COMPONENT HOLDS THE NAME AND GETS NO LINE, because nothing writes it a stat
+	 * line. That is every enemy.
+	 *
+	 * AND THE ROWS IT WEARS ARE BUILT BY THE SAME REFRESH, and then each worn row that keeps stacks gains
+	 * `FRandomBuff::KeptStacksAtDraw` of them, to its own cap. Issue #2538, batch 2. A character with no equipment
+	 * component wears no row and so gains none.
+	 *
+	 * AND A BUFF MAY BE LEFT OUT OF THE DRAW, by name, since batch 4 (2026-10-26): Chaotic Barrier's draw leaves out
+	 * Chaotic Barrier. The others are drawn as before, each equally likely; a pin naming the one left out draws among
+	 * the others.
+	 *
+	 * @return whether a buff is now held
+	 */
+	bool HoldARandomBuff(FName Excluded = NAME_None);
+
+	/** The name of the buff held, or none: none once its seconds have passed, whether or not anything has noticed. */
+	FName HeldRandomBuff() const;
+
+	/** How many seconds the held buff has left, or nought when none is held. */
+	float HeldRandomBuffSecondsLeft() const;
+
+	/** The held buff's lines, keyed by stat as every modifier map is. Empty when none is held. */
+	TMap<FName, TArray<FCataclysmStatModifier>> HeldRandomBuffStatModifiers() const;
+
+	/**
+	 * Copies of the effect rows the held buff wears, each renamed under `RandomBuffEnchantmentName`. Empty when none
+	 * is held. Issue #2538, batch 2. `UCataclysmEquipmentComponent::RefreshAttributes` builds them with the worn
+	 * rows' builder, so their actions reach `PoolActions` and their lines the stat line.
+	 *
+	 * THEY END WITH THE BUFF: once it is replaced or its seconds pass, the refresh that follows builds none of them,
+	 * and `SetPoolActions` forgets every kept stack no action carries. A named row the loaded table does not hold is
+	 * left out, with the table's own warning.
+	 *
+	 * AND, SINCE BATCH 3 (2026-10-26), THE ROWS OF ITS OWN that the `.cpp` writes for Death, Feasting and The
+	 * Ascended, and since batch 4 for Plague and Chaotic Barrier, after the worn rows and renamed the same way.
+	 */
+	TArray<FCataclysmEnchantmentEffectRow> HeldRandomBuffEffectRows() const;
+
+	/** The event raised when a skill's ability ends without being cancelled, with the skill's tags. */
+	static const TCHAR* SkillEndEvent;
+
+	/**
+	 * Record which ailment this character has just applied to another, by its name, for a row that lays "the
+	 * same" on the wearer. Called by `UCataclysmSkillEffects::ApplyDamageOverTime` before it raises `dot_applied`.
+	 */
+	void NoteDotApplied(const FString& Ailment) { LastAppliedDotAilment = Ailment; }
+
+	/**
+	 * Lay a status action's status on the wearer, by the wearer. Ruled 2026-10-06.
+	 *
+	 * THE RULE OF A TENTH IS NOT ASKED. The owner's rule of 2026-09-02 (issue #917) is about what a BLOW may lay on
+	 * its target. These rows state their status without condition and most have no blow at all. THE STUN'S
+	 * IMMUNITY WINDOW IS KEPT, so a wearer is not stunned back to back.
+	 *
+	 * @return whether anything was applied
+	 */
+	bool ApplyStatusToTheWearer(const FCataclysmPoolAction& Action);
+
+	/**
+	 * The action that opens the wearer's no-damage window for its value in
+	 * seconds. Issue #1833 group E part 2, ruled 2026-10-02.
+	 * `tools/generate_datatables.py` holds the same name in
+	 * `DAMAGE_IMMUNITY_ACTION`. See `FCataclysmPoolAction::bDamageImmunity`.
+	 */
+	static const TCHAR* DamageImmunityAction;
+
+	/**
+	 * The action that MOVES ITS WEARER TO A RANDOM REACHABLE POINT within its value in metres. Ruled 2026-10-12 by
+	 * the coordinating session under the owner's delegation, for "Teleport to a random location within 4 meters when
+	 * hit". `tools/generate_datatables.py` holds the same name in `TELEPORT_RANDOMLY_ACTION`. See
+	 * `FCataclysmPoolAction::bTeleportRandomly` and `TeleportTheWearerRandomly`.
+	 */
+	static const TCHAR* TeleportRandomlyAction;
+
+	/**
+	 * How many points `TeleportTheWearerRandomly` asks the navigation system for before it gives up and leaves the
+	 * wearer where it stands. A JUDGEMENT OF THE WRITING SESSION and not a ruled number.
+	 *
+	 * MORE THAN ONE BECAUSE THE NAVIGATION SYSTEM'S ANSWER IS NOT HELD TO THE RADIUS ASKED. It picks a point in a
+	 * navigation polygon the circle reaches, and that point can lie outside the circle. A point further than the
+	 * row's metres is thrown away and another is asked for.
+	 */
+	static constexpr int32 TeleportRandomlyDraws = 8;
+
+	/**
+	 * Whether the blow `NoteHitTaken` is announcing with the event `hit_taken` is a TICK of damage over time and not
+	 * a hit. Set by `NoteHitTaken` for the length of its call to `ActOnEvent` and false at every other time.
+	 *
+	 * HERE BECAUSE THE EVENT CARRIES NO SUCH FACT. `hit_taken` is raised for every blow, ticks included, with no
+	 * tags, no amount and no character, and every row on it before 2026-10-12 acts on a tick as on a hit. The action
+	 * `TeleportRandomlyAction` is ruled to act on a hit only, so the row loop reads this for that action and for no
+	 * other.
+	 *
+	 * WRITTEN BY `NoteHitTaken` ONLY. A test that raises `hit_taken` by calling `ActOnEvent` itself leaves it false,
+	 * which says "not a tick".
+	 */
+	bool bHitBeingAnnouncedIsATick = false;
+
+	/**
+	 * Move this character to a random reachable point within this many metres of where it stands, or leave it where
+	 * it stands. Ruled 2026-10-12, for "Teleport to a random location within 4 meters when hit".
+	 *
+	 * WHERE IT MAY LAND. A point the navigation system says a path exists to from where the character stands
+	 * (`UNavigationSystemV1::GetRandomReachablePointInRadius`, the call an enemy's roaming makes), no further along
+	 * the ground than the metres given, and where `UWorld::FindTeleportSpot` says the character's collision fits
+	 * without overlapping anything that blocks it. A point that fails either is not used. So the character is never
+	 * put inside a wall, inside another character or off the navigation mesh. THE METRES ARE HELD TO WITHIN 0.01
+	 * CENTIMETRES, a tenth of a millimetre, after the fit: the function's comment at that comparison says why.
+	 *
+	 * IT STAYS PUT, and this returns false, when: the character is dead; the metres are nought or less; a movement
+	 * skill of the character's is running (a lasting charge or a Flicker between arrivals), because that skill
+	 * measures its own walk from where the character was; the world has no navigation system; the navigation system
+	 * finds no reachable point within the metres in `TeleportRandomlyDraws` draws; the point does not fit; or the
+	 * point is within one centimetre of where the character already stands.
+	 *
+	 * IT IS NOT MOVEMENT. No distance is added to `MetresMovedSinceOwnAttack` or `MetresWalkedTotal`, the character
+	 * is not marked as moving, and the clock `SecondsSinceMoved` reads is not touched. The place the movement
+	 * sampler last saw the character is moved by exactly what the character was moved by, so the sampler's next step
+	 * measures only what the character walked.
+	 *
+	 * NOTHING ELSE IS MOVED OR ENDED. Followers and minions stay where they are. No skill is cancelled.
+	 *
+	 * FOR TESTS, `Cataclysm.TeleportRandomlyDegrees` at nought or above pins the direction, in degrees from the
+	 * world's X axis towards its Y axis, and `Cataclysm.TeleportRandomlyShare` then gives the distance as a share of
+	 * the metres, from 0 to 1. A PINNED POINT IS TAKEN AS REACHABLE and the navigation system is not asked, because
+	 * a world made for an automation test has none. The fit is still asked.
+	 *
+	 * @param Metres  the furthest the character may be moved, along the ground
+	 * @return whether the character was moved
+	 */
+	bool TeleportTheWearerRandomly(float Metres);
+
+	/**
+	 * The action that FIRES EVERY GADGET THE WEARER COMMANDS, ONCE, AT ONCE, on `player_death`. Ruled 2026-10-19 by
+	 * the coordinating session (C1), for "When you die, all your active traps and gadgets immediately trigger
+	 * simultaneously": the sentence's gadget half; its trap half joins when traps are built. SINCE TRAPS LAYER 5
+	 * (2026-10-22) THE TRAP HALF IS BUILT, as `trigger_traps_nearby` on `player_death` (`TriggerTrapsNearbyAction`).
+	 * `tools/generate_datatables.py` holds the same name in `GADGETS_CAST_NOW_ACTION`. See
+	 * `FCataclysmPoolAction::bGadgetsCastNow` and `ACataclysmMinion::FireEveryGadgetAtTheDeathOf`.
+	 */
+	static const TCHAR* GadgetsCastNowAction;
+
+	/**
+	 * The action that reflects a share of the damage a block removed, and the
+	 * nearby action scaled by armour. Issue #1833 group E part 3, ruled
+	 * 2026-10-02. `tools/generate_datatables.py` holds the same names in
+	 * `REFLECT_BLOCKED_ACTION` and `NEARBY_ACTIONS`.
+	 */
+	static const TCHAR* ReflectBlockedAction;
+
+	/**
+	 * The action that blasts and afflicts every enemy near an enemy that died.
+	 * Ruled 2026-10-07. `tools/generate_datatables.py` holds the same name in
+	 * `BLAST_FROM_THE_DYING_ACTION`.
+	 */
+	static const TCHAR* BlastFromTheDyingAction;
+
+	/**
+	 * The action that stuns every enemy near an enemy that died carrying the
+	 * wearer's damage over time ailment. Ruled 2026-10-08, for "Chronomancer's
+	 * Time-Lock (6-Piece Bonus)". The row's value is the chance, rolled once
+	 * for the death, and its Stack Seconds is how long the stun lasts.
+	 * `tools/generate_datatables.py` holds the same name in
+	 * `STUN_NEAR_THE_DYING_ACTION`. See `UCataclysmContagion::StunNearTheDying`.
+	 */
+	static const TCHAR* StunNearTheDyingAction;
+
+	/**
+	 * The six ailment rider action names, one per `ECataclysmAilmentRider` but
+	 * None. Issue #1833, ruled 2026-10-06. `AILMENT_RIDER_ACTIONS` in
+	 * `tools/generate_datatables.py` holds the same six.
+	 */
+	static const TCHAR* AilmentDamageTakenAction;
+	static const TCHAR* AilmentArmorRiderAction;
+	static const TCHAR* AilmentDamageDealtAction;
+	static const TCHAR* AilmentHealingReceivedAction;
+	static const TCHAR* AilmentSpeedAction;
+	static const TCHAR* AilmentMovementSpeedAction;
+	static const TCHAR* AilmentSpreadOnDeathAction;
+	static const TCHAR* AilmentDetonatesWhenReappliedAction;
+	static const TCHAR* AilmentSpreadOnApplicationAction;
+
+	/**
+	 * `ailment_max_health_removed`, the rider that lowers its carrier's maximum
+	 * health while it carries the ailment. Ruled 2026-10-08: "Enemies with
+	 * Necrosis have 1%-2% less maximum health". `AILMENT_MAX_HEALTH_ACTION` in
+	 * `tools/generate_datatables.py` holds the same name. See
+	 * `RewriteMaximumHealthForAilments`.
+	 */
+	static const TCHAR* AilmentMaxHealthRiderAction;
+
+	/**
+	 * The most of its maximum health a carrier may have removed by its
+	 * ailments' riders, in percent, however many ailments carry one.
+	 * `MAX_AILMENT_MAX_HEALTH_REMOVED` in `tools/generate_datatables.py` refuses
+	 * a row above it. Half, so a lowered maximum is never nought and nothing
+	 * dies of it. A sanity bound, a judgement of the writing session.
+	 */
+	static constexpr float MaxAilmentMaxHealthRemovedPercent = 50.0f;
+
+	/**
+	 * The share of this character's maximum health its ailments' riders hold
+	 * off it at this moment, in percent, or 0 when none does. What
+	 * `RewriteMaximumHealthForAilments` last wrote, not a fresh sum.
+	 */
+	float AilmentMaxHealthRemovedPercentInForce() const
+	{
+		return AilmentMaxHealthRemovedInForce;
+	}
+
+	/** Which rider an action name is, or None. */
+	static ECataclysmAilmentRider AilmentRiderNamed(const FString& Action);
+	static const TCHAR* SmiteNearbyByArmourAction;
+
+	/**
+	 * The action that repeats the skill just used, free, with its value as the chance. Mechanism B2, ruled
+	 * 2026-10-05. `tools/generate_datatables.py` holds the same name in `REPEAT_SKILL_ACTION`. See
+	 * `FCataclysmPoolAction::bRepeatSkill`.
+	 */
+	static const TCHAR* RepeatSkillAction;
+
+	/**
+	 * The action that gains a kept stack on a clock and, on a use of a skill, spends them all to cast that skill
+	 * again a drawn number of times, with its value as the share of its damage each extra cast deals, in per cent.
+	 * Ruled 2026-10-12 under the owner's delegation, for Shard of Anarchy's ten-piece bonus.
+	 * `tools/generate_datatables.py` holds the same name in `KEPT_STACKS_REPEAT_SKILL_ACTION`. See
+	 * `FCataclysmPoolAction::KeptStackKey` and `FCataclysmPoolAction::bKeptStacksRepeatSkill`.
+	 */
+	static const TCHAR* KeptStacksRepeatSkillAction;
+
+	/**
+	 * The action that gains a kept stack on its event and, while the stacks are at their cap, makes the wearer's next
+	 * ability but the basic attack cost no mana and deal more damage, spending them all; its value is that "more", in
+	 * per cent. Ruled 2026-10-17 (O7, O8), for the Null Emperor 6-piece. `tools/generate_datatables.py` holds the same
+	 * name in `KEPT_STACKS_FREE_NEXT_ABILITY_ACTION`. See `FCataclysmPoolAction::bKeptStacksFreeNextAbility`.
+	 */
+	static const TCHAR* KeptStacksFreeNextAbilityAction;
+
+	/**
+	 * The action that gains a kept stack on its event and, while the stacks are at their cap, makes the wearer's next
+	 * damage over time application spread every damage over time of the wearer's on its target to the enemies near it,
+	 * spending them all. Ruled 2026-10-26 for the random buff Plague (issue #2538, batch 4). ONLY THE ROW WRITTEN IN
+	 * CODE FOR THAT BUFF NAMES IT, so `tools/generate_datatables.py` holds no twin and refuses it in a sheet. See
+	 * `FCataclysmPoolAction::bKeptStacksSpreadDots`.
+	 */
+	static const TCHAR* KeptStacksSpreadDotsAction;
+
+	/**
+	 * The two actions that trigger a different held skill, with the value as the chance: one with a cooldown, free;
+	 * and one spell, which pays its cost. Ruled 2026-10-06. `tools/generate_datatables.py` holds the same names in
+	 * `TRIGGER_HELD_SKILL_ACTION` and `TRIGGER_HELD_SPELL_ACTION`. See `FCataclysmPoolAction::bTriggerHeldSkill`.
+	 */
+	static const TCHAR* TriggerHeldSkillAction;
+	static const TCHAR* TriggerHeldSpellAction;
+
+	/**
+	 * The four actions that roll for the use in hand, with the value as the chance: the use deals no damage, or
+	 * deals increased damage; each for every skill the row's tags allow, or for a skill with a cooldown only. Ruled
+	 * 2026-10-06. `tools/generate_datatables.py` holds the same names. See
+	 * `FCataclysmPoolAction::bUseDealsNoDamage`.
+	 */
+	static const TCHAR* UseNoDamageAction;
+	static const TCHAR* CooldownUseNoDamageAction;
+	static const TCHAR* UseIncreasedDamageAction;
+	static const TCHAR* CooldownUseIncreasedDamageAction;
+
+	/** The action that rolls for a strike to hit every enemy nearby. Ruled 2026-10-06. See `bUseHitsAllNearby`. */
+	static const TCHAR* UseHitsAllNearbyAction;
+
+	/**
+	 * The two actions that roll for a use to hit its own user: the whole of its hit, and half of it. The owner's
+	 * decision of 2026-10-06 allows it where a row's sentence says so. See `FCataclysmPoolAction::bUseHitsItsUser`.
+	 */
+	static const TCHAR* UseHitsItsUserAction;
+	static const TCHAR* UseBackfiresAction;
+
+	/**
+	 * The action that makes an enemy the wearer kills explode for its overkill, with the value as the share in
+	 * per cent. Ruled 2026-10-07. `tools/generate_datatables.py` holds the same name as
+	 * `OVERKILL_EXPLOSION_ACTION`. See `FCataclysmPoolAction::bExplodeVictimForOverkill`.
+	 */
+	static const TCHAR* ExplodeVictimForOverkillAction;
+
+	/**
+	 * The action that deals a direct hit to the other character of its event, with the value as a percentage of
+	 * the wearer's attack damage. Ruled 2026-10-07. `tools/generate_datatables.py` holds the same name as
+	 * `STRIKE_TARGET_ACTION`. See `FCataclysmPoolAction::bStrikeTarget`.
+	 */
+	static const TCHAR* StrikeTargetAction;
+
+	/**
+	 * The action that executes the enemy a hit leaves below a share of its maximum health, with the value as the
+	 * chance and the row's Condition Value as the share. Ruled 2026-10-12. `tools/generate_datatables.py` holds the
+	 * same name as `EXECUTE_TARGET_ACTION`. See `FCataclysmPoolAction::bExecuteTarget`.
+	 */
+	static const TCHAR* ExecuteTargetAction;
+
+	/**
+	 * The action that grants its wearer a temporary absorb, with the value as a percentage of the wearer's maximum
+	 * health. The project owner, 2026-10-07: it is separate from the energy shield. `tools/generate_datatables.py`
+	 * holds the same name as `TEMPORARY_ABSORB_ACTION`. See `FCataclysmPoolAction::bTemporaryAbsorb`.
+	 */
+	static const TCHAR* TemporaryAbsorbAction;
+
+	/** The share a backfire deals its user, in per cent: "dealing half damage to you". */
+	static constexpr float BackfireSharePercent = 50.0f;
+
+	/**
+	 * How far "nearby" reaches for those two actions, five metres. A judgement
+	 * of 2026-09-11 under the owner's delegation, recorded in
+	 * `docs/DECISIONS.md`: "nearby" or "close range" with no number is 5 m. Ruled
+	 * again for these two on 2026-10-01: one radius, shared by both kinds.
+	 */
+	static constexpr float NearbyActionRadiusCm = 500.0f;
+
+	/**
+	 * Raise `energy_shield_broken`: a blow has just taken the energy shield from
+	 * something to nothing. Issue #1833 group D part 3. Called from the damage
+	 * branch of `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` and
+	 * nowhere else, so only a blow breaks a shield; a drain or a reservation
+	 * that empties it does not.
+	 */
+	void NoteEnergyShieldBroken();
+
+	/**
+	 * Raise `energy_shield_recharged`: regeneration has just taken the energy
+	 * shield from below its maximum to its maximum. Issue #1833 group E part 2:
+	 * "When your energy shield fully recharges, release a nova". Called from
+	 * `UCataclysmRegeneration::ApplyStep` and nowhere else, so leech, a potion
+	 * or a heal that fills the shield is no recharge.
+	 */
+	void NoteEnergyShieldRecharged();
+
+	/**
+	 * Raise `player_death`. Issue #1833 group D part 3. Called once per death
+	 * from `ACataclysmPlayerCharacter::HandleDeath`, after the death is marked
+	 * and before the respawn clears what death ends.
+	 */
+	void NotePlayerDeath();
+
+	/**
+	 * Raise `gadget_destroyed` on this, the summoner's, component, naming the
+	 * gadget and carrying its type tags. Issue #1833 group D part 5, ruled
+	 * 2026-10-01: "destroyed" means killed. Called from
+	 * `ACataclysmMinion::HandleDeath` for a minion that `IsDeployable`, traps
+	 * included; a gadget whose lifespan runs out, or one the summon cap removes to
+	 * make room, never reaches that function and raises nothing.
+	 */
+	void NoteGadgetDestroyed(const AActor* Gadget, const FGameplayTagContainer& GadgetTags);
+
+	/**
+	 * Raise `resource_consumed` `Times` times. Issue #1833 group D part 5, ruled
+	 * 2026-10-01: a class-resource cost paid, once per payment, or a next-use
+	 * charge spent, once per charge. MANA IS NOT A RESOURCE HERE, and the Fervour
+	 * mechanics' own spends, `RemoveForHealing` among them, never call this: the
+	 * row that heals on this event removes a Masochist's Fervour through `TopUp`,
+	 * and if that removal raised it the heal would raise it again.
+	 */
+	void NoteResourceConsumed(float Amount, const FGameplayTagContainer* Tags = nullptr,
+							  int32 Times = 1);
+
+	/**
+	 * Note this character's health now, and raise `health_falls_below` when it
+	 * has dropped, carrying the share of maximum health it held before, in
+	 * percent. A row on that event fires only when that share was at or above
+	 * its `EventValue` and the share now is below it. Issue #1833 group D part 2.
+	 * `UCataclysmVitalAttributeSet::NotifyHealthChanged` calls it on every
+	 * health write, the way it calls the two hard-coded crossers.
+	 */
+	void NoteHealthForCrossing();
+
+	/**
+	 * Whether a blow that would empty health is cut to leave one point instead,
+	 * because a row on `health_falls_below` would heal this character as health
+	 * crosses its threshold. Ruled 2026-09-30 for Archon's Aegis, "When your
+	 * health falls below 10%, you are instantly healed to 100%": 0 is below 10%.
+	 *
+	 * TWO LABELLED JUDGEMENTS. Only a row that HEALS saves a blow, so the Demon
+	 * King's Regalia, which grants damage and immunity below 25%, does not cheat
+	 * death. And only a blow that CROSSES the threshold from at or above it is
+	 * saved: a wearer already below it has nothing left to fall below. The row
+	 * must also be off its trigger cooldown.
+	 *
+	 * @param HealthPercentBefore the share of maximum health held before the blow
+	 */
+	bool SavesLethalBlowByCrossing(float HealthPercentBefore) const;
+
+	/**
+	 * Take a reduction action's seconds off every running cooldown it names.
+	 * Issue #1833, the cooldown reduction action.
+	 *
+	 * BY MOVING EACH COOLDOWN'S START EARLIER, which shortens what is left by
+	 * exactly that much (`ModifyActiveEffectStartTime`). A cooldown with no
+	 * more than that left is removed: an overflow ends it and nothing carries
+	 * over, ruled 2026-09-25. A slot not cooling down is untouched.
+	 *
+	 * @return how many cooldowns were shortened or ended
+	 */
+	int32 ReduceCooldowns(const FCataclysmPoolAction& Action);
+
+	/**
+	 * Spend every held next-spell cooldown charge and answer the seconds they
+	 * take off, for `UCataclysmGameplayAbility::ApplyCooldown` on a spell.
+	 * Issue #1833, the cooldown reduction action.
+	 */
+	float SpendNextSpellCooldownSeconds();
+
+	/** What the held next-spell cooldown charges are worth, in seconds, for the line above the skill bar. */
+	float NextSpellCooldownSecondsHeld() const;
+
+	/**
+	 * The stat that adds uses to a skill with a cooldown. Issue #1833, skill
+	 * charges: "Ultimate has 1-3 additional charges" and five more. Flat, and
+	 * scoped by the skill's own tags, so a row naming `Slot.Heavy` adds uses to
+	 * the heavy attack alone. It has no gameplay attribute: this class reads it.
+	 */
+	static const TCHAR* SkillChargesBonusStat;
+
+	/**
+	 * The most uses a skill with these tags holds: one, plus the stat above
+	 * rounded to a whole use, and never fewer than one.
+	 */
+	int32 SkillChargesMaximum(const FGameplayTagContainer& SkillTags) const;
+
+	/**
+	 * The uses a slot's skill holds now, out of `SkillChargesMaximum`. What
+	 * `UCataclysmGameplayAbility::CheckCooldown` refuses on, at nought.
+	 *
+	 * A MAXIMUM THAT FELL CLAMPS WHAT IS HELD: a row whose condition lapsed
+	 * takes its uses with it. A running cooldown with no charge recorded, which
+	 * something other than a cast applied, counts as one use spent.
+	 */
+	int32 SkillChargesHeld(ECataclysmAbilitySlot Slot,
+						   const FGameplayTagContainer& SkillTags) const;
+
+	/**
+	 * Spend one use of a slot's skill, and start its recharge of `Seconds` if
+	 * none is running. Called by `UCataclysmGameplayAbility::ApplyCooldown`.
+	 *
+	 * CHARGES RECOVER ONE AT A TIME, ruled 2026-09-25 under the owner's
+	 * delegation: each recharge that ends returns one use and, while any are
+	 * still spent, starts the next at the length the last use worked out. So
+	 * anything that shortens or ends the running cooldown -- a reduction, a
+	 * refund -- acts on the charge recharging now.
+	 */
+	void SpendSkillCharge(ECataclysmAbilitySlot Slot,
+						  const FGameplayTagContainer& SkillTags, float Seconds);
+
+	/**
+	 * Return every spent use of the slots whose cooldown tags are named, so
+	 * that removing their cooldown effects next starts no further recharge. A
+	 * reset and a death refill; a reduction and a refund return one use.
+	 */
+	void RefillSkillCharges(const FGameplayTagContainer& CooldownTags);
+
+	/**
+	 * Forget the cooldown kept for every skill a choice took off the keys (`CooldownsOffTheKeys`), so a reset or a
+	 * death that ends every running cooldown ends theirs too. Issue #2528. NOT CALLED FROM `RefillSkillCharges`, which
+	 * `CarryCooldownsToNewKeys` calls just after it writes a record.
+	 */
+	void ForgetCooldownsOffTheKeys();
+
+	/**
+	 * Take `Seconds` off the cooldown kept for every skill off the keys, as a reduction of every cooldown takes them
+	 * off the running ones. Issue #2528.
+	 */
+	void ShortenCooldownsOffTheKeys(float Seconds);
+
+	/**
+	 * The cooldown tags of the skills MADE for `Designed`, whichever keys they sit on. Issue #837 layer 3.
+	 *
+	 * A COOLDOWN IS KEPT BY THE KEY A SKILL SITS ON, its length by the slot it was made for: the owner, 2026-10-25,
+	 * "Each skill its own cooldown", and a key holds one skill. So a row that names a slot's cooldown -- "reset your
+	 * heavy attack's cooldown", Follow Through's Movement refund -- reaches that slot's skills through this, as every
+	 * other rule follows the designed slot (O1). Each granted ability made for `Designed` gives its key's tag; and the
+	 * slot's own tag is added unless an ability made for another slot sits on that key, so a character nothing moved,
+	 * or a cooldown applied with no ability behind it, reads exactly `CooldownTag(Designed)` as before.
+	 */
+	FGameplayTagContainer CooldownTagsOfSkillsDesignedFor(ECataclysmAbilitySlot Designed) const;
+
+	/**
+	 * A skill that moved to another key takes its running cooldown and its spent charges with it. Issue #837 layer 4,
+	 * ruled Q3a 2026-10-25: "carry the running cooldown and charges with the skill", because the owner ruled "Each
+	 * skill its own cooldown". Called by `ACataclysmPlayerCharacter::RefillAbilitySlots`, the refill a choice makes.
+	 *
+	 * `KeysBefore` and `KeysAfter` give the row on each key before and after the refill. EVERY KEY WHOSE ROW CHANGED
+	 * ENDS WHAT RAN UNDER ITS TAG; then the key a skill landed on starts the time that was left on the key it came
+	 * from. A key left empty takes nothing. A skill a choice takes OFF the keys keeps the time it had left, and a skill
+	 * that returns from off the keys waits whatever of it remains (issue #2524, `CooldownsOffTheKeys`).
+	 */
+	void CarryCooldownsToNewKeys(const TMap<ECataclysmAbilitySlot, FName>& KeysBefore,
+								 const TMap<ECataclysmAbilitySlot, FName>& KeysAfter);
+
+	/**
+	 * The event a row grants on when it grants on a clock. Issue #1833, timed
+	 * grants. `TIMED_EVENT` in `tools/generate_datatables.py`. Never raised
+	 * through `ActOnEvent`: `StepTimedGrants` fires each such action itself.
+	 */
+	static const TCHAR* TimedEvent;
+
+	/**
+	 * Grant every action on `TimedEvent` that is due. Issue #1833, timed
+	 * grants. Called from `ACataclysmCharacterBase::RegenerationStep`.
+	 *
+	 * ONLY WHILE IN COMBAT, ruled 2026-09-24: an action with a period of N is
+	 * granted once for every whole N seconds of the current combat, N seconds
+	 * in first. Out of combat, or in a new combat, the count starts again. It
+	 * counts periods of the combat rather than steps, so it does not depend on
+	 * how often the step runs.
+	 *
+	 * A PERIOD THAT ENDS WHILE THE ROW'S CONDITION REFUSES IS NOT OWED LATER.
+	 * Ruled 2026-10-07 with the first timed row to carry a condition, "After 10
+	 * seconds in combat you begin losing 2%-4% of your maximum HP per second":
+	 * the ten periods of its first ten seconds are passed over, not paid
+	 * together in the eleventh.
+	 */
+	void StepTimedGrants();
+
+	/**
+	 * Grant one charge of a row's next-use bonus, up to its cap. Issue #1833,
+	 * phase 2. A cap of one is "your next skill deals ...": a second trigger
+	 * while one is unspent changes nothing. No duration, ruled 2026-09-24: an
+	 * unspent charge waits until a use spends it, and death clears it.
+	 *
+	 * @param bAttack  true for "your next attack", which a spell does not spend
+	 * @param Percent  what one charge is worth, as increased damage
+	 */
+	void GrantNextUseCharge(FName Key, bool bAttack, float Percent, int32 Cap,
+							bool bEffectiveness = false,
+							bool bSpellCooldown = false);
+
+	/**
+	 * Spend every charge this use takes, and answer what they were worth in
+	 * total, as increased damage. Issue #1833, phase 2.
+	 *
+	 * EVERY "NEXT SKILL" CHARGE, AND EVERY "NEXT ATTACK" CHARGE UNLESS THE USE IS
+	 * A SPELL. Ruled 2026-09-24: attack against spell is the genre's split.
+	 * Called by `UCataclysmSkillTemplate::SpendHeldNextUseCharges` for a use that
+	 * delivers damage itself, and by nothing else.
+	 */
+	//
+	// @param OutMoreMultiplier  if given, what the effectiveness charges spent
+	//                           multiply the use's damage by; 1 for none.
+	float SpendNextUseCharges(bool bUseIsSpell, float* OutMoreMultiplier = nullptr);
+
+	/**
+	 * Nothing Wasted, the Ravager's `Ravager_capstone_50` option 2. Issue #1515:
+	 * "Damage your Armor and Damage Reduction remove is added to your next melee
+	 * attack, up to 100% of that attack's damage." The row will carry the 100
+	 * on this stat; above zero means the option is held.
+	 */
+	static const TCHAR* MitigatedAddedCapStat;
+
+	/**
+	 * Add what armour and damage reduction removed from a blow on THIS
+	 * character to its store, if it holds Nothing Wasted. Ticks count (ruled
+	 * 2026-09-24). No time limit and no ceiling on the store: the spend's cap
+	 * is the only bound. Death clears it.
+	 */
+	void NoteMitigatedDamage(float Removed);
+
+	/**
+	 * Spend the store on a melee blow about to be sent for `HitDamage`, and
+	 * answer what is added to it: the store, up to the stat's share of
+	 * `HitDamage`. The store is emptied either way, so anything above the cap is
+	 * lost and the next target of the same use gets nothing (ruled 2026-09-24).
+	 *
+	 * SPENT WHEN SENT, before the target's evasion is known, so an evaded first
+	 * blow uses it up, as a next-use charge is spent per use. Ruled 2026-09-24.
+	 */
+	float SpendStoredMitigatedDamage(float HitDamage);
+
+	/** What Nothing Wasted holds now, for the line above the skill bar. */
+	float StoredMitigatedDamageNow() const { return StoredMitigatedDamage; }
+
+	/**
+	 * Two more stores of the same shape as Nothing Wasted's, each under its own
+	 * cap stat with no attribute. Ruled 2026-10-07 under the owner's delegation.
+	 *
+	 * "Damage absorbed by your energy shield is converted to bonus damage on
+	 * your next attack" is the first, and "Absorbed spell damage is converted to
+	 * bonus damage on your next attack" the second. A row states the stat flat
+	 * 100; above nought means the row is worn, and the value is the most the
+	 * store may add as a share of the hit it is added to.
+	 *
+	 * SEPARATE FROM EACH OTHER AND FROM NOTHING WASTED'S. The shield was left
+	 * out of that store on 2026-09-24 and still is: it fills this one instead.
+	 */
+	static const TCHAR* ShieldAbsorbedAddedCapStat;
+	static const TCHAR* SpellAbsorbedAddedCapStat;
+
+	/**
+	 * Add what the energy shield absorbed from a blow on THIS character to its
+	 * store, if it wears the first row. Every blow the shield absorbs from,
+	 * ticks included. No time limit and no ceiling on the store: the spend's
+	 * cap is the only bound. Death clears it.
+	 */
+	void NoteShieldAbsorbedDamage(float Absorbed);
+
+	/**
+	 * Add what an absorbed spell would have dealt to THIS character, after its
+	 * own defences, to its store, if it wears the second row. Called only for
+	 * a spell `spell_absorb_chance` turned aside; not for immunity and not for
+	 * a reflected hit.
+	 */
+	void NoteSpellAbsorbedDamage(float WouldHaveDealt);
+
+	/**
+	 * Spend both stores on a blow about to be sent for `HitDamage`, and answer
+	 * what is added to it: each store, up to its own stat's share of
+	 * `HitDamage`. Each cap is measured against `HitDamage` itself, never
+	 * against a figure another store has already been added to. A store whose
+	 * row is worn is emptied either way, so anything above its cap is lost and
+	 * the next target of the same use gets nothing.
+	 *
+	 * THE CALLER DECIDES WHICH BLOW: any hit that is not a spell and not a
+	 * tick, the basic attack included. SPENT WHEN SENT, as Nothing Wasted's is.
+	 */
+	float SpendStoredAbsorbedDamage(float HitDamage);
+
+	/** What each store holds now, for the line above the skill bar. */
+	float StoredShieldAbsorbedDamageNow() const { return StoredShieldAbsorbedDamage; }
+	float StoredSpellAbsorbedDamageNow() const { return StoredSpellAbsorbedDamage; }
+
+	/**
+	 * Give this character a TEMPORARY ABSORB of `Amount`: damage it takes before the mana, the energy shield and
+	 * health. The project owner, 2026-10-07: it is separate from the energy shield and is not the energy shield.
+	 *
+	 * A GRANT REFRESHES AND NEVER ADDS, ruled 2026-10-07: holding less than `Amount`, the character then holds
+	 * `Amount`. HOLDING AS MUCH OR MORE, NOTHING CHANGES, a judgement by the writing session: a grant never lowers
+	 * what is held.
+	 *
+	 * NO DURATION, ruled the same day. It lasts until damage removes it. `ClearWhatDeathEnds` empties it at the
+	 * respawn. Nothing regenerates it, nothing leeches into it, and it has no maximum of its own.
+	 *
+	 * A PLAIN NUMBER HERE AND NOT AN ATTRIBUTE, as the two stores of absorbed damage above are. It is not replicated.
+	 */
+	void GrantTemporaryAbsorb(float Amount);
+
+	/**
+	 * Add `Amount` to the temporary absorb, to no more than `Cap` in all, and never lowering what is held. Called by
+	 * `NoteOverheal` below, and by nothing else outside a test.
+	 */
+	void AddTemporaryAbsorbUpTo(float Amount, float Cap);
+
+	/**
+	 * `overheal_absorb_percent_of_maximum_health`: the MOST the temporary absorb can hold from overheal, as a
+	 * percentage of maximum health. Ruled 2026-10-07 for "Overheal converts to a temporary shield absorbing up to
+	 * 10%-20% of your max HP", which is a `flat` line of 10 to 20 on it.
+	 *
+	 * NO GAMEPLAY ATTRIBUTE AND NO BASE. `NoteOverheal` asks it with no tags, at each heal of health that did not
+	 * all fit. At nought, which is every character with no such row, nothing happens.
+	 */
+	static const TCHAR* OverhealAbsorbCapStat;
+
+	/**
+	 * A heal of this character's HEALTH offered `Overheal` points more than fitted. Adds them to the temporary
+	 * absorb through `AddTemporaryAbsorbUpTo`, to no more than `OverhealAbsorbCapStat` per cent of maximum health.
+	 *
+	 * CALLED FROM ONE PLACE: `UCataclysmRegeneration::TopUp`, for the health pool only, with what was offered after
+	 * everything that changes a heal's size, less what fitted under the heal's ceiling. So every heal that goes
+	 * through the top-up counts: regeneration, leech, a potion and a row's restore alike. Ruled 2026-10-07. A heal
+	 * that does not go through the top-up does not reach here, and a respawn's refill is one of those.
+	 *
+	 * ONE AMOUNT WITH THE CLOCK'S GRANT, ruled the same day. Each source raises the absorb to its own cap and never
+	 * lowers it, so a character already holding this cap or more, from either source, gains nothing here.
+	 *
+	 * NO DURATION, ruled the same day. What is added lasts until damage removes it or a respawn clears it.
+	 */
+	void NoteOverheal(float Overheal);
+
+	/** Take `Taken` from the temporary absorb, to no less than nothing. Called where a resolved blow is written. */
+	void SpendTemporaryAbsorb(float Taken);
+
+	/** What the temporary absorb holds now. */
+	float TemporaryAbsorbHeld() const { return TemporaryAbsorb; }
+
+	/** The shield rate this character's last regeneration step gave it, per
+	 *  second, which Shared Blood's minions share. Issue #1515. */
+	void NoteShieldRechargeRate(float PerSecond) { LastShieldRate = PerSecond; }
+	float LastShieldRechargeRate() const { return LastShieldRate; }
+
+	/** How many charges one row holds now. Issue #1833, phase 2. */
+	int32 NextUseChargesHeld(FName Key) const;
+
+	/**
+	 * What the held charges are worth, by kind, for the line above the skill
+	 * bar. Issue #1833, phase 2.
+	 */
+	void NextUseChargesByKind(float& OutSkillPercent, int32& OutSkillCount,
+							  float& OutAttackPercent, int32& OutAttackCount) const;
+
+	/**
+	 * What held effectiveness charges multiply the next use by, as a
+	 * percentage (300 for three times), or 0 when none is held. Issue #1833.
+	 */
+	float NextUseEffectivenessHeld() const;
+
+	/** One enchantment's own stacks, as the line above the skill bar shows them. */
+	struct FHeldOwnStacks
+	{
+		TArray<FName> Stats;
+		int32 Held = 0;
+		int32 Cap = 0;
+		/** A count of hits in a row on one enemy, rather than stacks. */
+		bool bConsecutiveHits = false;
+	};
+
+	/**
+	 * Every enchantment holding own stacks now, ONE ENTRY PER ENCHANTMENT, with
+	 * the stats its stacks raise, how many are held and the cap. Issue #1833:
+	 * "Every 10 seconds gain a stack of momentum" is two rows, on attack and
+	 * spell damage, granted together, so it is one entry. The cap is the grant
+	 * action's. Ruled 2026-09-24: the owner's rule that every system has a
+	 * basic interface, which the own stacks of #2083 shipped without.
+	 */
+	TArray<FHeldOwnStacks> OwnStacksByEnchantment() const;
+
+	/**
+	 * Raised at the top of every `ActOnEvent`, whether or not any worn action
+	 * is hung on the event. Issue #1821.
+	 *
+	 * WHAT IT IS FOR. Every clock a `seconds_after_*` condition reads is stamped
+	 * by a `NoteX()` that calls `ActOnEvent` straight after the stamp, so this
+	 * is the moment a window opens, in one place. `ACataclysmPlayerCharacter`
+	 * binds it to ask for its movement speed again, so a speed row under such a
+	 * window takes effect on the frame of its event rather than at the next
+	 * quarter-second step.
+	 *
+	 * RAISED BEFORE THE EARLY RETURN FOR A CHARACTER WITH NO ACTIONS, which is
+	 * nearly every character; raising it after would mean it never fired.
+	 */
+	FCataclysmOnActionEvent OnActionEvent;
+
+	/**
+	 * What the dungeon floor this character is standing on does to its stat
+	 * line. Issue #41.
+	 *
+	 * HELD HERE AND NOT ON THE DUNGEON, because
+	 * `UCataclysmEquipmentComponent::RefreshAttributes` is the one place every
+	 * source of a character's stats is gathered, and it is run from several
+	 * places -- a helmet changed, a level gained, a point spent -- none of which
+	 * knows a dungeon exists. Holding the floor's modifiers where that function
+	 * already looks is what stops each of those refreshes quietly dropping them.
+	 *
+	 * WRITTEN BY `UCataclysmDungeonModifierEffects::ApplyToCharacter` when a
+	 * floor begins, and emptied when the player leaves the dungeon. Keyed by the
+	 * character-sheet stat name, like every other modifier map.
+	 */
+	void SetDungeonStatModifiers(TMap<FName, TArray<FCataclysmStatModifier>>&& Modifiers)
+	{
+		DungeonStatModifiers = MoveTemp(Modifiers);
+	}
+
+	/** What `SetDungeonStatModifiers` last wrote. Empty outside a dungeon. */
+	const TMap<FName, TArray<FCataclysmStatModifier>>& GetDungeonStatModifiers() const
+	{
+		return DungeonStatModifiers;
+	}
+
+	/**
+	 * What one stat is worth to a skill carrying these tags. Issue #943.
+	 *
+	 * WHY A SKILL HAS TO ASK RATHER THAN READ THE ATTRIBUTE. The gameplay
+	 * attribute holds the value with no skill in hand, so every modifier naming
+	 * a required tag is missing from it. `UCataclysmStatPipeline` says why in its
+	 * own header: "a character's area of effect has no single value -- it is one
+	 * number for an area skill and another for a single-target one".
+	 *
+	 * `Fallback` IS RETURNED WHEN NOTHING WAS RECORDED FOR THE STAT, and that is
+	 * the ordinary case rather than a fault: an enemy's ability system is never
+	 * given a character stat line, and a player's has none until the first
+	 * refresh. Pass the attribute's own value, so the answer is unchanged from
+	 * what it was before this existed.
+	 *
+	 * IT ALSO JUDGES A CONDITIONAL BONUS, since issue #959. A modifier that
+	 * applies only "while at or below 20% health" is tested against this
+	 * character's health at the moment of the call, which is why the answer can
+	 * differ between two calls with the same arguments and why such a bonus is
+	 * never written onto the gameplay attribute.
+	 *
+	 * IT ALSO JUDGES A CONDITION ABOUT THE SKILL'S COST, since issue #983, and
+	 * that one cannot be built from the character at all. `SkillHealthCostPercent`
+	 * is what the skill in hand cost, as a share of maximum health; -1 means
+	 * there is no skill in hand, which is the right answer for the character
+	 * sheet and for any caller that does not have one, and it refuses the
+	 * condition. Every caller that existed before that issue passes nothing and
+	 * gets exactly what it got before.
+	 *
+	 * AND A CONDITION ABOUT THE BLOW BEING TAKEN, since issue #666. `Blow` says
+	 * whether the hit is melee, ranged or a spell and whether the attacker is a
+	 * boss. Only the damage taken lookup in `UCataclysmDamageCalculation::Resolve`
+	 * has a hit in hand and passes one. Every other caller passes nothing, every
+	 * fact is false, and it gets exactly what it got before.
+	 */
+	float StatForSkill(FName Stat, const FGameplayTagContainer& SkillTags,
+					   float Fallback,
+					   float SkillHealthCostPercent = -1.0f,
+					   const FCataclysmBlowContext& Blow =
+						   FCataclysmBlowContext(),
+					   float MetresMovedBeforeBlow = -1.0f,
+					   float TargetDistanceMetres = -1.0f,
+					   bool bTargetIsStaggered = false,
+					   const AActor* Target = nullptr,
+					   int32 EnemiesStruckTogether = -1,
+					   float MetresCharged = -1.0f,
+					   float ChargeRangeMetres = -1.0f) const;
+
+	/**
+	 * The same pipeline pass as `StatForSkill` with no state handed over, but
+	 * every bucket rather than only the result. False, and `Out` untouched,
+	 * when nothing was recorded for the stat, which is where `StatForSkill`
+	 * answers its fallback. Issue #2057: a reader that must treat the
+	 * increases differently from the rest of the formula needs the parts.
+	 *
+	 * NO STATE IS HANDED OVER, as in a three-argument `StatForSkill` call: no
+	 * skill cost, no blow, no target. A caller that needs a conditioned row
+	 * judged against any of those must not use this.
+	 */
+	bool StatBreakdownForSkill(FName Stat, const FGameplayTagContainer& SkillTags,
+							   FCataclysmStatBreakdown& Out) const;
+
+	/**
+	 * This stat's modifiers applied to a figure THE CALLER SUPPLIES, with the
+	 * character's current conditions in hand. Issue #1815.
+	 *
+	 * WHY IT EXISTS BESIDE `StatForSkill`, AND THE TRAP IT REPLACES. That one
+	 * answers a stat the CHARACTER has: the pipeline runs on the recorded line's
+	 * own base, and `Fallback` is used only when nothing was recorded for the
+	 * stat at all. A skill's mana cost is not a figure the character has --
+	 * every skill states its own -- so
+	 * `StatForSkill("mana_cost", tags, the skill's cost)` reads like "apply this
+	 * stat to this cost" and is not. The moment one row is recorded the pipeline
+	 * runs on the RECORDED base, which for a stat with no gameplay attribute is
+	 * zero, so every cost comes out zero. Measured 2026-09-17: it failed four
+	 * tests and a probe at once, and the one test it did not fail passed for the
+	 * wrong reason, because its row was a removal and zero was the right answer
+	 * either way.
+	 *
+	 * THE RECORDED BASE IS IGNORED ON PURPOSE: the figure handed in IS the base.
+	 * A flat row still adds to it, increases still sum and multiply once, and a
+	 * removal still takes the result to nothing.
+	 *
+	 * @param Figure  what the stat applies to, such as the cost this skill
+	 *                states at this level. Handed straight back when the
+	 *                character has no row for the stat.
+	 */
+	float StatAppliedTo(FName Stat, const FGameplayTagContainer& SkillTags,
+						float Figure) const;
+
+	/**
+	 * This character's maximum energy shield, asked for rather than read.
+	 *
+	 * WHY THIS EXISTS. Issue #1973. `Ritualist_capstone_200#3`, the third row of
+	 * Hollow Crown -- "Each minion you have grants you 4% more damage and 4%
+	 * increased Maximum Energy Shield" -- scales `max_energy_shield` by
+	 * `minions_held`, and a SCALED row is deliberately not folded into its
+	 * gameplay attribute: it is worked out when something asks for it.
+	 * `UCataclysmPlayerClassStats` says so in its own words. Nothing asked, so
+	 * the attribute held the unscaled figure and a Ritualist taking that capstone
+	 * got no shield from it however many minions it held. Its two sibling rows,
+	 * on attack damage and spell damage, work because their stats have per-skill
+	 * lookups.
+	 *
+	 * THE ATTRIBUTE IS THE FIGURE THE STAT IS APPLIED TO, which is the difference
+	 * between this and `StatForSkill`. That one takes a FALLBACK used only when
+	 * the character has no line for the stat, so a Ritualist -- which does have a
+	 * `max_energy_shield` class line -- would get the line's own base and lose
+	 * everything written straight to the attribute: a restored save, an enemy
+	 * archetype's shield, a dungeon modifier that lessens it. This starts from
+	 * what the attribute holds, so nothing is dropped.
+	 *
+	 * AND IT ADDS ONLY WHAT THE ATTRIBUTE LACKS. Until 2026-09-23 it ran every
+	 * row on the stat over the attribute through `StatAppliedTo`, and the
+	 * attribute already held every unconditioned row, so a flat shield row or an
+	 * increase counted twice. `AttributePlusWhatWasNotFolded` says how it is
+	 * done now. Issue #1515, which found it.
+	 *
+	 * WHO ASKS: the three places `UCataclysmVitalAttributeSet` clamps the held
+	 * shield against its maximum, and the overlay that draws the bar. They have
+	 * to agree, or a bar longer than the clamp allows could never be filled.
+	 *
+	 * WHO DELIBERATELY DOES NOT: `CurrentConditions` below, which reads the
+	 * attribute. It cannot call this, because this calls
+	 * `AttributePlusWhatWasNotFolded`, which calls `CurrentConditions` -- that
+	 * is recursion rather than a slow path.
+	 * What it costs is that a row conditioned on the shield being full compares
+	 * against the unscaled maximum. One shipped row does: `Ritualist_basic_c_a2`
+	 * Cold Reading, "+2% increased Spell Damage per point while your Energy
+	 * Shield is full", which under Hollow Crown with minions out reads full a
+	 * little before the bar is.
+	 *
+	 * ZERO WHEN THERE IS NO SHIELD ATTRIBUTE AT ALL, which is every ability
+	 * system built without a vital attribute set.
+	 */
+	float MaximumEnergyShield() const;
+
+	/**
+	 * The stats a row reserves health through. Issue #1833, ruled 2026-09-30
+	 * under the owner's delegation. `health_reserved` is a number of points,
+	 * "Each minion reserves 100-500 hp" scaled by the minions held;
+	 * `health_reserved_percent` is a share of maximum health, "80%-99% of your
+	 * health is reserved". Neither has an attribute: both are asked by name.
+	 */
+	static const TCHAR* HealthReservedStat;
+	static const TCHAR* HealthReservedPercentStat;
+
+	/**
+	 * How much of maximum health is reserved: the points plus the share, held
+	 * so that at least 1 point stays unreserved. Issue #1833.
+	 *
+	 * RESERVATION AS THE GENRE HAS IT, not a lower maximum. Path of Exile's
+	 * reserved life stays part of maximum life and cannot be filled, and
+	 * reserving half of it counts as low life (poedb.tw, Pain Attunement). So
+	 * the maximum attribute is untouched, every condition reading health against
+	 * the maximum keeps reading the whole of it, and only how far health may be
+	 * filled changes. See `UnreservedMaximumHealth`.
+	 *
+	 * ZERO WHEN THERE IS NO HEALTH ATTRIBUTE, and for every character with no
+	 * row naming either stat.
+	 */
+	float HealthReserved() const;
+
+	/**
+	 * The most health this character may hold: maximum health less what is
+	 * reserved. Issue #1833. Every heal stops here -- `UCataclysmRegeneration::TopUp`
+	 * holds its ceiling to it -- and `HoldHealthToUnreserved` brings health
+	 * down to it when the reservation grows or something writes health to full.
+	 */
+	float UnreservedMaximumHealth() const;
+
+	/**
+	 * Bring current health down to the unreserved maximum when it stands above
+	 * it, and do nothing otherwise. Issue #1833. Called by the regeneration step
+	 * each second, so a minion summoned takes its reserve within one, and after
+	 * each write of health to full: arriving in the world, a respawn, a save
+	 * loaded, and the health a blow taken returns.
+	 *
+	 * NOT A CLAMP IN `PreAttributeChange`, ruled 2026-09-30: a clamp there cannot
+	 * be guard-proved from an automation test (issue #1623), and one here can.
+	 */
+	void HoldHealthToUnreserved();
+
+	/**
+	 * The character's maximum class resource, with any row that scales it.
+	 *
+	 * THE SAME SHAPE AS `MaximumEnergyShield` ABOVE AND FOR THE SAME REASON.
+	 * Issue #1515. `Ritualist_keystone_d_kC` Vessel reads "Your Maximum Mana also
+	 * grants maximum Fervour: 1 Fervour for every 20 maximum mana you have", and
+	 * a scaled row is never folded into a gameplay attribute -- so until this
+	 * existed nothing asked for `class_resource` through the pipeline and the row
+	 * would have been accepted, built, imported and dead.
+	 *
+	 * EVERY READER OF THE MAXIMUM SHOULD ASK THIS RATHER THAN THE ATTRIBUTE,
+	 * WITH ONE EXCEPTION. `UCataclysmAbilitySystemComponent::CurrentConditions`
+	 * fills `ClassResourceMaximum` and may NOT call this: the lookup asks
+	 * `AttributePlusWhatWasNotFolded`, which asks `CurrentConditions` for the
+	 * readings a conditional row needs, so the call would not return. The
+	 * comment on that line says so and says what it costs.
+	 *
+	 * ZERO WHEN THERE IS NO CLASS RESOURCE ATTRIBUTE SET, which is every enemy in
+	 * the game. Reading an attribute whose set the component does not hold raises
+	 * an engine ensure rather than answering zero.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Stats")
+	float MaximumClassResource() const;
+
+	/**
+	 * An attribute's figure plus what the stat refresh could not fold into it,
+	 * for a reader outside this class. Ruled 2026-10-18: the public wrapper of
+	 * the protected `AttributePlusWhatWasNotFolded`, which says how it is worked
+	 * out, and nothing more.
+	 *
+	 * A WRAPPER AND NOT THE HELPER MADE PUBLIC, as ruled. The helper stays where
+	 * `MaximumEnergyShield` and `MaximumClassResource` reach it, and this is the
+	 * one door other classes come through, so a later reader is found by
+	 * searching for this name.
+	 *
+	 * WHO ASKS: `UCataclysmDamageCalculation::TypedResistanceOf`, for a damage
+	 * type's resistance (`UCataclysmItemModifiers::ResistanceStatFor`), so a
+	 * resistance row under a condition reaches a blow, a minion's share, the
+	 * character sheet and `Cataclysm.ShowResistances`. And, since issue #2183,
+	 * the character sheet's every other attribute-backed line, through its
+	 * `ReadStat`, so a row scaled by the character's state reaches the sheet.
+	 *
+	 * NOT FROM `CurrentConditions`, for the reason the two maxima give: the
+	 * helper asks it for the character's readings.
+	 */
+	float AttributeWithWhatWasNotFolded(FName Stat, float Attribute) const;
+
+	/**
+	 * What is true of this character right now, for a conditional bonus.
+	 *
+	 * PUBLIC SO A CALLER THAT RUNS THE PIPELINE ITSELF CAN ASK, rather than
+	 * building its own and getting a different answer. `StatForSkill` above uses
+	 * it and most callers should use that instead.
+	 *
+	 * @param SkillHealthCostPercent  what the skill in hand cost, as a share of
+	 *        maximum health, or -1 for no skill in hand. Like `Blow`, it is not
+	 *        a property of the character, which is why it is passed in rather
+	 *        than read. Issue #983.
+	 * @param Blow  what the blow being taken is, for the four conditions that
+	 *        ask about it. Only the damage taken lookup has one. Issue #666.
+	 * @param MetresMovedBeforeBlow  how far the character moved since its own
+	 *        last attack, measured when the skill in hand was paid for, or -1
+	 *        for no blow in hand. Not a property of the character either, for
+	 *        the reason the two above are not. Issue #41, slice 2.
+	 * @param TargetDistanceMetres  how far away the character being HIT stood,
+	 *        or -1 for no target in hand. The mirror of `Blow`'s own distance,
+	 *        read from the other end of the same blow, and passed in for the same
+	 *        reason. Issue #1596.
+	 * @param EnemiesStruckTogether  how many enemies the attack the blow in
+	 *        hand belongs to struck together, counted before any of its blows
+	 *        resolved, or -1 for no group of blows in hand. Passed in for the
+	 *        reason `MetresMovedBeforeBlow` is. Issue #1515.
+	 * @param MetresCharged  how far the charge dealing the blow in hand had
+	 *        gone when that blow landed, or -1 for a blow that is not a
+	 *        charge's own. NOT `MetresMovedBeforeBlow`, which is the walk before
+	 *        the press. Ruled 2026-10-08.
+	 * @param ChargeRangeMetres  the range that charge used, or -1. The scale
+	 *        `share_of_range_moved` divides the one above by this.
+	 */
+	FCataclysmStatConditions CurrentConditions(
+		float SkillHealthCostPercent = -1.0f,
+		const FCataclysmBlowContext& Blow = FCataclysmBlowContext(),
+		float MetresMovedBeforeBlow = -1.0f,
+		float TargetDistanceMetres = -1.0f,
+		bool bTargetIsStaggered = false,
+		int32 EnemiesStruckTogether = -1,
+		float MetresCharged = -1.0f,
+		float ChargeRangeMetres = -1.0f) const;
+
+	/**
+	 * The same conditions with the nearby enemies' distances filled in, when a
+	 * row in the list actually asks for them. Issue #1597.
+	 *
+	 * BESIDE `CurrentConditions` ABOVE RATHER THAN INSIDE IT, because the
+	 * answer depends on the rows being evaluated and not only on the character.
+	 * Two lookups on the same character in the same instant ask for different
+	 * radii, or one asks and the other does not, so there is no one answer for
+	 * a character to carry.
+	 *
+	 * NOTHING IS WALKED UNLESS A ROW ASKS. A lookup whose rows carry no
+	 * enemies-in-reach condition and no per-enemy scale leaves the list empty
+	 * and touches no character. That is almost every lookup in the game, and
+	 * some of them run on every hit, so the cost of the ones that ask must not
+	 * be paid by the ones that do not.
+	 *
+	 * ONE WALK, FOR THE WIDEST REACH ASKED FOR.
+	 * `UCataclysmTargetCandidates::HostileDistancesWithinMetres` returns
+	 * distances rather than a count for this reason: a character whose rows ask
+	 * about 3, 4 and 8 metres is walked once at 8 metres, and each row counts
+	 * the entries inside its own reach.
+	 *
+	 * @param Modifiers  the rows about to be evaluated, read only to find
+	 *        whether any of them asks and how far the widest one reaches
+	 * @param State  the conditions to fill in, taken by value and returned, so
+	 *        that a caller can write `WithEnemiesInReach(Rows,
+	 *        CurrentConditions(...))` in one expression
+	 */
+	FCataclysmStatConditions WithEnemiesInReach(
+		const TArray<FCataclysmStatModifier>& Modifiers,
+		FCataclysmStatConditions State) const;
+
+	/**
+	 * Fill in what is true of the character being HIT -- which debuffs it is
+	 * carrying and how much health it has left -- but only what the rows about
+	 * to be evaluated actually ask for. Issue #1515.
+	 *
+	 * IT WAS `WithTargetAilments` AND ANSWERED ONE QUESTION. The health reading
+	 * was added here rather than in a second wrapper beside it because **one
+	 * pass over the modifier list answers both**, and a second wrapper would
+	 * walk the same list again for every lookup in the game. The name follows
+	 * `FCataclysmHitDelivery::bCarriesNoTargetState`, the flag that already
+	 * withholds all of this from a minion's blow.
+	 *
+	 * EACH FACT IS GATED SEPARATELY. A row asking only about health does not
+	 * make anything walk the target's tags, and a row asking only about ailments
+	 * does not make anything read its health.
+	 *
+	 * THE SAME SHAPE AS `WithEnemiesInReach` ABOVE AND FOR THE SAME REASON. The
+	 * answer depends on the rows being evaluated as well as on the target, and
+	 * the walk must not be paid for by the lookups that do not ask.
+	 * `UCataclysmDebuffs::DamageAgainstSharedDebuff` names that cost in its own
+	 * words -- "asking the other way round would walk two tag containers on every
+	 * blow anybody strikes" -- and this would be a third walk on every blow.
+	 *
+	 * STATIC, UNLIKE `WithEnemiesInReach`, because it reads nothing about this
+	 * component. That one measures from the avatar and needs the world's target
+	 * lists; this one asks the target actor about itself.
+	 *
+	 * IT ANSWERS ONLY THE ATTACKER'S SIDE. `OpponentCarriesWeaken` reads
+	 * `FCataclysmBlowContext::OpponentDebuffs`, which describes whoever struck
+	 * this character and is filled where the incoming hit is built. Filling it
+	 * here would answer a question about one character with facts about another.
+	 *
+	 * THE HEALTH READING USES `FCataclysmStatConditions::FromHealth`, the same
+	 * arithmetic the character's own share is computed with, so the two ends of a
+	 * blow cannot disagree about what a share of maximum health means. A target
+	 * with no ability system leaves it negative, which the condition refuses on.
+	 *
+	 * @param Modifiers  the rows about to be evaluated, read only to find which
+	 *        of the two facts, if either, is asked for
+	 * @param Target  the character being hit, or null for a lookup with no target
+	 *        in hand -- a character sheet, or any of the four callers that price
+	 *        a blow with no single target
+	 * @param State  the conditions to fill in, taken by value and returned, so a
+	 *        caller can nest it inside `WithEnemiesInReach(...)` in one
+	 *        expression
+	 */
+	static FCataclysmStatConditions WithTargetState(
+		const TArray<FCataclysmStatModifier>& Modifiers, const AActor* Target,
+		FCataclysmStatConditions State);
+
+	/**
+	 * Record that this character has just paid a health cost. Issue #962.
+	 *
+	 * WHAT IT IS FOR. A passive node can grant a bonus "for 2 seconds after you
+	 * pay a health cost", and nothing on the character remembered that anything
+	 * had happened. `CurrentConditions` turns this timestamp into the seconds
+	 * since, and the pipeline compares that against the node's window.
+	 *
+	 * CALLED FROM `UCataclysmSkillTemplate::PayHealthCost` AND NOWHERE ELSE,
+	 * because that is the one place a health cost is taken. If a second place
+	 * ever charges health it has to call this too, and a bonus that silently
+	 * never opened its window is what would otherwise happen.
+	 *
+	 * A COST OF NOTHING IS NOT A PAYMENT. The caller only reaches this when it
+	 * actually took health, so a skill with no health cost does not open a
+	 * window every time it is used.
+	 */
+	/**
+	 * @param HealthSpent how much the cost took, which a row restoring "that
+	 *                    amount" as something else reads. Zero is allowed and
+	 *                    means such a row moves nothing.
+	 */
+	void NoteHealthCostPaid(float HealthSpent = 0.0f);
+
+	/**
+	 * How long ago that was, in seconds, or -1 if it has never happened.
+	 *
+	 * -1 ALSO ANSWERS "THERE IS NO WORLD TO ASK", which a component built in a
+	 * test without one can be. Both mean the window is shut.
+	 */
+	float SecondsSinceHealthCostPaid() const;
+
+	/**
+	 * Record that this character moved, and how far. Issue #41, slice 2.
+	 *
+	 * CALLED BY THE 0.25-SECOND STEP ON `ACataclysmCharacterBase` AND NOWHERE
+	 * ELSE. That step measures the distance since its own last sample, so the
+	 * caller says how far rather than this working it out.
+	 *
+	 * IT DOES THREE THINGS: stamps the clock the stationary conditions read, adds
+	 * the distance to the tally since this character's own last attack, and marks
+	 * the character as moving until a sample says otherwise.
+	 */
+	void NoteMovedMetres(float Metres);
+
+	/**
+	 * Record that the last sample saw this character in the same place.
+	 * Issue #41, slice 2.
+	 *
+	 * THE OTHER HALF OF THE SAMPLE, and it exists because "moving" has to stop
+	 * being true without anything else happening.
+	 *
+	 * IT STARTS THE CLOCK IF NOTHING HAS YET, which is how a character that has
+	 * never moved comes to read a real number of seconds rather than "never". A
+	 * character is watched from its first sample, so that is when standing still
+	 * begins to be measured.
+	 */
+	void NoteDidNotMove();
+
+	/**
+	 * Record that this character was put somewhere else at once, by `Displacement`. Issues #41 and #2388.
+	 *
+	 * A BLINK, A RECALL, A POSITION SWAP, A FLICKER, A RANDOM TELEPORT WHEN HIT, THE PHASEWALKER MODIFIER, A
+	 * REALITY RIFT, A RESPAWN, A SAVE'S PLACEMENT, A SKILL GADGET MOVED, OR THE PLACEMENT OF A CHARACTER AT A
+	 * FLOOR'S START. `UCataclysmMovement::NoteRelocatedInstantly` is how each of them calls this.
+	 *
+	 * NOT GROUND WALKED: the place the sampler last saw the character moves by `Displacement` with it, so the
+	 * sampler's next step measures only what was walked since its last, adds none of the relocation to the distance
+	 * walked or to the metres since the character's own attack, and does not mark the character as moving for it.
+	 *
+	 * AND THE STANDING-STILL CLOCK STARTS AGAIN, ruled by the coordinating session on 2026-10-24 for issue #2388:
+	 * a bonus that builds while standing still does not survive a relocation. `docs/DECISIONS.md` has the entry.
+	 *
+	 * CALLED AT EACH PLACE THAT RELOCATES A CHARACTER RATHER THAN INFERRED. The sampler cannot tell a blink from a
+	 * very fast walk, so a new instant move that forgets to call this is counted as walking.
+	 *
+	 * @param Displacement where the character now stands, less where it stood before the relocation
+	 */
+	void NoteRelocatedInstantly(const FVector& Displacement);
+
+	/**
+	 * Record that this character attacked. Issue #41, slice 2.
+	 *
+	 * ITS OWN ATTACK: a skill being paid for, a creature's ability, a creature's
+	 * or a minion's swing. Every attack a character makes resets its own clocks,
+	 * creatures and minions included, so a condition means the same thing on both
+	 * sides of a fight. That is a judgement recorded in `docs/DECISIONS.md`.
+	 *
+	 * IT RESETS THE DISTANCE TALLY TO NOTHING, which is what makes "your first
+	 * melee attack after moving 5 metres" the first one: the next attack reads
+	 * whatever has been walked since this one.
+	 */
+	void NoteOwnAttack();
+
+	/**
+	 * How long ago this character moved, in seconds, or -1 if it has never been
+	 * sampled. Issue #41, slice 2.
+	 *
+	 * -1 ALSO ANSWERS "THERE IS NO WORLD TO ASK", the way
+	 * `SecondsSinceHealthCostPaid` does, and the stationary conditions refuse on
+	 * it rather than treating an unknown as a long wait.
+	 */
+	float SecondsSinceMoved() const;
+
+	/**
+	 * How long ago this character attacked, in seconds, or -1 if it has not
+	 * attacked since it spawned. Issue #41, slice 2.
+	 */
+	float SecondsSinceOwnAttack() const;
+
+	/** Whether the last sample saw this character moving. Issue #41, slice 2. */
+	bool IsMoving() const { return bMovedInLastSample; }
+
+	/**
+	 * The seconds of movement the bleed this character carries has ticked through. Issue #918, ruled 2026-10-31: a
+	 * bleed ticks only while its target moves and stops after `UCataclysmDebuffs::BleedMovingSecondsCap` seconds of
+	 * movement, counted as moving ticks times the tick's period, so the tick-frequency stat still works. Added to by
+	 * `UCataclysmVitalAttributeSet` at each moving tick; restarted by `UCataclysmSkillEffects::ApplyDamageOverTime`
+	 * whenever a bleed lands, a refresh of the running one included, since a character carries one bleed at a time.
+	 * Not added to by a tick of converted damage, which the gate exempts, and not restarted when a blow is converted:
+	 * converted damage runs beside that one bleed and holds no slot (issue #2275).
+	 */
+	float BleedMovingSeconds = 0.0f;
+
+	/**
+	 * The health the Necrosis this character carries has denied it so far, owed as damage. Issue #920, ruled by the
+	 * coordinating session 2026-10-31: a carrier of Necrosis is healed by nothing, and the total denied while the
+	 * Necrosis held is dealt over the 5 seconds after it ends, for any reason it ends. Added to by
+	 * `UCataclysmRegeneration::TopUp` in place of each heal of health it refuses; emptied by
+	 * `UCataclysmSkillEffects`' listener on the Necrosis's removal, which lays the total as damage over time unless the
+	 * carrier is dead. A Necrosis only replaced by a stronger one has not ended, and the total stays. One Necrosis at a
+	 * time, so the total belongs to the carrier, as `BleedMovingSeconds` does. Not written to a save.
+	 */
+	float NecrosisDeniedHealing = 0.0f;
+
+	/**
+	 * Whether a movement sample has looked at this character yet.
+	 * Issue #41, slice 2.
+	 */
+	bool HasSampledLocation() const { return bHasSampledLocation; }
+
+	/** Where the last movement sample saw this character. Issue #41, slice 2. */
+	FVector SampledLocation() const { return LastSampledLocation; }
+
+	/**
+	 * Record where a movement sample has just seen this character.
+	 * Issue #41, slice 2.
+	 *
+	 * HERE RATHER THAN ON THE CHARACTER, so that every reading the movement
+	 * conditions use sits in one place. The clocks this position is compared
+	 * against are on this component, and splitting the two would make two places
+	 * that can disagree.
+	 */
+	void NoteSampledAt(const FVector& Where);
+
+	/**
+	 * How far this character has moved since its own last attack, in metres.
+	 * Issue #41, slice 2.
+	 *
+	 * ZERO IS A REAL READING and means it has not moved since then, which is why
+	 * this is not -1 for a character that has never moved.
+	 */
+	float MetresMovedSinceOwnAttack() const
+	{
+		return MetresMovedSinceOwnAttackSoFar;
+	}
+
+	/**
+	 * How far this character has walked in total, in metres. Issue #41, slice 2.
+	 *
+	 * NEVER RESET, which is what the tally above cannot be: that one goes back to
+	 * nothing at every attack, because "the first attack after moving 5 metres"
+	 * asks about the walk since the last one. A floor rule that takes something
+	 * away until a kill gives it back needs a number no attack disturbs, and
+	 * remembers for itself where the count stood when it last gave it back.
+	 *
+	 * AN INSTANT RELOCATION ADDS NOTHING HERE EITHER, for the reason it adds
+	 * nothing to the tally: a teleport is not walking.
+	 */
+	float MetresWalkedTotal() const { return MetresWalkedTotalSoFar; }
+
+	/**
+	 * Record that health owed falls due this many seconds from now.
+	 * Issue #991.
+	 *
+	 * NO WORLD MEANS NO CLOCK, so nothing is recorded and the debt never
+	 * falls due. That is the safe direction: a debt whose due time cannot be
+	 * timed must not be taken at an arbitrary moment.
+	 */
+	void NoteHealthDebtDueIn(float Seconds);
+
+	/** Whether health owed has fallen due. False when nothing is owed. */
+	bool IsHealthDebtDue() const;
+
+	/**
+	 * When the debt falls due, in world seconds, or negative when nothing is
+	 * owed. Issue #1120.
+	 *
+	 * READ RATHER THAN ONLY TESTED, because a debt is no longer taken in one
+	 * write the moment it falls due. `UCataclysmHealthDebt::DrainIfDue` takes it
+	 * out over several seconds and needs to know how far through that it is,
+	 * which is the time now less this. Keeping the answer here rather than
+	 * storing a second countdown means there is one record of when the debt came
+	 * due and no way for two to disagree.
+	 *
+	 * THE SAME SHAPE AS `LowHealthReliefAllowedAt` BELOW, which exists for the
+	 * same reason: a rule outside this class needs the timestamp itself and not
+	 * only the yes or no that `IsHealthDebtDue` gives.
+	 */
+	float HealthDebtDueAt() const
+	{
+		return HealthDebtDueAtSeconds;
+	}
+
+	/** Forget when the debt falls due, for a debt that has been settled. */
+	void ClearHealthDebtDue();
+
+	/**
+	 * Push the debt's due time later by `Seconds`, but never further than
+	 * `MostAltogether` seconds past where it started. Issue #995.
+	 *
+	 * THE RUNNING TOTAL IS WHY THIS IS A METHOD RATHER THAN A SECOND CALL TO
+	 * `NoteHealthDebtDueIn`. The Masochist's Rolling Debt node extends a debt
+	 * once per payment, and the design caps how far one debt may be pushed
+	 * ALTOGETHER rather than how far one payment may push it; without a total
+	 * kept here, a character paying health costs continuously could hold a debt
+	 * off for ever. `ClearHealthDebtDue` resets the total, so the next debt
+	 * starts with its whole allowance.
+	 *
+	 * NOTHING HAPPENS WITH NO DEBT OUTSTANDING, with no world, or once the
+	 * allowance is used up. Each is a case where there is nothing to move.
+	 *
+	 * @return how many seconds the due time really moved, which is zero in
+	 *         every case above
+	 */
+	float ExtendHealthDebtDueBy(float Seconds, float MostAltogether);
+
+	/** How far the current debt has already been pushed out. For tests. */
+	float HealthDebtExtensionApplied() const
+	{
+		return HealthDebtExtensionAppliedSeconds;
+	}
+
+	/**
+	 * Whether damage this character takes is being turned into Bleeding right
+	 * now. Issue #985, the Masochist's The Breaking Point.
+	 *
+	 * A WINDOW READ WHEN IT IS ASKED FOR, not a timer that fires. The same shape
+	 * the stack count beside it uses, and for the same reason: asking is cheap,
+	 * a timer per character is one more thing to cancel when one dies, and a
+	 * window that has quietly expired answers correctly with no bookkeeping.
+	 */
+	bool IsConvertingDamageToBleeding() const;
+
+	/**
+	 * Whether a new turn of that conversion is allowed to start.
+	 *
+	 * SEPARATE FROM THE WINDOW ABOVE BECAUSE THE COOLDOWN OUTLASTS IT. The node
+	 * says the conversion "cannot happen more than once every 10 seconds" while
+	 * one turn of it lasts 3 to 4.2 seconds, so there is a stretch where the
+	 * conversion is over and another may not yet begin.
+	 */
+	bool MayStartDamageConversion() const;
+
+	/**
+	 * Begin a turn of the conversion: it runs for `WindowSeconds` and no other
+	 * may begin for `CooldownSeconds` from now.
+	 *
+	 * THE COOLDOWN IS MEASURED FROM THE START AND NOT FROM THE END, which is a
+	 * reading of "cannot happen more than once every 10 seconds" rather than
+	 * something the sentence settles outright. One occurrence per ten second
+	 * period is what that phrase says in ordinary English. At eight points the
+	 * window is 4.2 seconds, so it leaves a gap of 5.8.
+	 *
+	 * NO WORLD MEANS NO CLOCK, so nothing is recorded and no conversion begins.
+	 * That is the safe direction, and the same refusal `NoteHealthDebtDueIn`
+	 * makes: a window that cannot be timed must not be opened for ever.
+	 */
+	void NoteDamageConversionStarted(float WindowSeconds, float CooldownSeconds);
+
+	/** When the current conversion ends, in world seconds. For tests. */
+	float DamageConversionEndsAt() const
+	{
+		return DamageToBleedingUntilSeconds;
+	}
+
+	/**
+	 * Whether this character's health was above half the last time it moved.
+	 *
+	 * WHAT MAKES A CROSSING TELLABLE FROM A STATE. The Breaking Point triggers on
+	 * "dropping below 50% health", which happens once; without a memory of where
+	 * health was, every hit taken at 40% would look like the same drop.
+	 *
+	 * TRUE TO BEGIN WITH, because a character is created at full health and has
+	 * therefore not dropped anywhere yet.
+	 */
+	bool WasAboveHalfHealth() const
+	{
+		return bWasAboveHalfHealth;
+	}
+
+	/** Record where health is now, for the next comparison. */
+	void NoteAboveHalfHealth(bool bAbove)
+	{
+		bWasAboveHalfHealth = bAbove;
+	}
+
+	/**
+	 * Whether this character's health was above the low threshold the last time
+	 * it moved. Issue #1069.
+	 *
+	 * A SECOND MEMORY AND NOT A REUSE OF THE ONE ABOVE, because the two nodes
+	 * watch different lines. The Breaking Point watches half health and Rock
+	 * Bottom watches a fifth of it, so a character holding both crosses them at
+	 * different moments; one shared record would report the second crossing at
+	 * the wrong time or not at all. `UCataclysmLowHealthRelief::HealthShare`
+	 * says where this line is.
+	 *
+	 * TRUE TO BEGIN WITH, for the reason the memory above is: a character is
+	 * created at full health and has not dropped anywhere yet.
+	 */
+	bool WasAboveLowHealth() const
+	{
+		return bWasAboveLowHealth;
+	}
+
+	/** Record where health is now, for the next comparison. */
+	void NoteAboveLowHealth(bool bAbove)
+	{
+		bWasAboveLowHealth = bAbove;
+	}
+
+	/**
+	 * Whether this character may be given the low health relief now.
+	 * Issue #1069.
+	 *
+	 * ROCK BOTTOM'S "no more than once every 30 seconds", and this is the whole
+	 * of what enforces it. The shape is `MayReleaseNova`'s beside it: a
+	 * timestamp read when it is asked about rather than a timer that fires.
+	 *
+	 * NEVER TAKEN IS ALLOWED, so the first crossing of a fight is honoured.
+	 * NO WORLD MEANS NO CLOCK AND SO NO RELIEF, which is the safe direction and
+	 * the same refusal every other window in this file makes.
+	 */
+	bool MayTakeLowHealthRelief() const;
+
+	/** Record that it was taken, so the next waits `CooldownSeconds`. */
+	void NoteLowHealthReliefTaken(float CooldownSeconds);
+
+	/** When the next one may come, in world seconds. For tests. */
+	float LowHealthReliefAllowedAt() const
+	{
+		return LowHealthReliefNextAllowedSeconds;
+	}
+
+	/**
+	 * Whether this character may release a nova now. Issue #1050.
+	 *
+	 * THE MASOCHIST'S Unstable Aura RELEASES ONE "every 5 seconds", and this
+	 * is the whole of what enforces the interval. Whether the character is
+	 * hurt enough is a condition on the node's own row and is judged by the
+	 * stat pipeline instead.
+	 *
+	 * NEVER RELEASED ONE IS ALLOWED, so the first nova comes as soon as the
+	 * character is hurt enough. NO WORLD MEANS NO CLOCK AND SO NO NOVA, which
+	 * is the safe direction and the same refusal `MayStartDamageConversion`
+	 * makes.
+	 */
+	bool MayReleaseNova() const;
+
+	/** Record that one was released, so the next waits `IntervalSeconds`. */
+	void NoteNovaReleased(float IntervalSeconds);
+
+	/** When the next nova may come, in world seconds. For tests. */
+	float NovaAllowedAt() const
+	{
+		return NovaNextAllowedSeconds;
+	}
+
+	/**
+	 * Whether a lost minion may be replaced now, for Press-Ganged (a death) or
+	 * Rekindled (an explosion). Issue #1515.
+	 *
+	 * TWO CLOCKS, ONE PER KEYSTONE, because the sentences give two intervals --
+	 * "no more than once every 10 seconds" and "every 5 seconds" -- and a
+	 * character holding both must not have one keystone's wait decide the
+	 * other's. The shape is `MayReleaseNova`'s: never replaced is allowed, and no
+	 * world means no clock and so no replacement.
+	 */
+	bool MayReplaceMinion(bool bForExplosion) const;
+
+	/**
+	 * Record that a lost minion was replaced, so the next waits
+	 * `IntervalSeconds`. Only a replacement actually made is recorded: one the
+	 * summon cap refused leaves the clock as it was.
+	 */
+	void NoteMinionReplaced(bool bForExplosion, float IntervalSeconds);
+
+	/**
+	 * The waits running for minions this character lost and will summon again.
+	 * Issue #1833 group E part 4b. Written by
+	 * `UCataclysmSummonSkill::ScheduleResummon`, and public so tests can count
+	 * them. A handle whose wait has ended is dropped the next time one is added.
+	 */
+	TArray<FTimerHandle> PendingResummons;
+
+	/**
+	 * The stat saying this character's aura gives the allies inside it the
+	 * immunities it gives its caster. Issue #1833 group E part 4c: "Your aura
+	 * also applies its effect to all allies within range". A flag: above zero or
+	 * not. No gameplay attribute.
+	 */
+	static const TCHAR* AuraSharesImmunitiesStat;
+
+	/**
+	 * `ally_buffs_refused`, a flag held by the character that RECEIVES: above
+	 * nought, no buff another character's code gives it reaches it. Ruled
+	 * 2026-10-19 (Q3 option a, A1 to A5), for "You cannot benefit from buffs
+	 * applied by allies". No gameplay attribute and no base.
+	 */
+	static const TCHAR* AllyBuffsRefusedStat;
+
+	/**
+	 * Whether `Receiver` refuses buffs from allies: it holds
+	 * `AllyBuffsRefusedStat` above nought. False for no actor and for one whose
+	 * ability system is not this project's.
+	 *
+	 * THE ONE QUESTION, ASKED OF EACH ALLY BEFORE IT IS GIVEN A BUFF, by every
+	 * route that gives another character one: `UCataclysmSharedBuffs::Step`'s
+	 * copies, `UCataclysmAuraSkill::HelpAlliesInside` and
+	 * `UCataclysmAuraSkill::ShareImmunitiesWithAlliesInside`. Each leaves a
+	 * refusing ally out of who should carry the buff, so its own take-back
+	 * removes one already held at its next pass. A FUTURE ROUTE GIVING AN ALLY
+	 * A BUFF -- A MINION'S, A THRALL'S OR ANY OTHER -- ASKS THIS TOO, ruled
+	 * 2026-10-19. A character's own buffs never ask it.
+	 */
+	static bool RefusesBuffsFromAllies(const AActor* Receiver);
+
+	/**
+	 * The immunities other characters' skills have granted this one. Public so
+	 * tests can count them. A character with no abilities of its own -- a minion
+	 * -- can be immune only through this list.
+	 */
+	TArray<FCataclysmGrantedImmunity> GrantedImmunities;
+
+	/**
+	 * Grant `Kind` from `From` for `Seconds`, or renew it when `From` already
+	 * granted it. Lapsed entries are dropped here.
+	 */
+	void GrantImmunity(FName Kind, const UObject* From, float Seconds);
+
+	/** Take back everything `From` granted. @return how many were taken back. */
+	int32 RevokeImmunitiesFrom(const UObject* From);
+
+	/**
+	 * Whether a granted immunity that has not lapsed covers `Effect`. An entry
+	 * naming `CrowdControl` covers every effect, as it does in a skill's row.
+	 */
+	bool HasGrantedImmunityTo(const FString& Effect) const;
+
+	/**
+	 * End every wait above without summoning anything. This character's death
+	 * calls it: ruled 2026-10-02, a death clears the waits, so a summoner that
+	 * stands back up gets nothing back from before it fell.
+	 *
+	 * @return how many waits were still running
+	 */
+	int32 ClearPendingResummons();
+
+	/**
+	 * The two figures of Nothing Stops It, the Final Onslaught's third option.
+	 * Issue #1515: "You cannot be brought below 1 health by a single hit. When
+	 * a hit would have done so you take no damage for 2 seconds, no more than
+	 * once every 20 seconds." The first is the 20, and above zero means the
+	 * option is held; the second is the 2.
+	 */
+	static const TCHAR* LethalHitSurvivedEverySecondsStat;
+	static const TCHAR* ImmuneAfterLethalHitSecondsStat;
+
+	/**
+	 * Whether a hit that would kill this character may be survived now. The
+	 * shape is `MayReleaseNova`'s: never survived one is allowed, and no world
+	 * means no clock and so no survival.
+	 */
+	bool MaySurviveLethalHit() const;
+
+	/**
+	 * Record that a lethal hit was survived: the next waits `IntervalSeconds`,
+	 * and no damage is taken for `ImmuneSeconds` from now.
+	 */
+	void NoteLethalHitSurvived(float IntervalSeconds, float ImmuneSeconds);
+
+	/**
+	 * Whether this character's no-damage window is open: all damage, ticks
+	 * included, emptied in `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`.
+	 * Opened by a survived lethal hit and, since issue #1833 group E part 2, by
+	 * `GrantDamageImmunity`. Named `IsImmuneAfterLethalHit` until then.
+	 */
+	bool IsDamageImmune() const;
+
+	/**
+	 * Open the no-damage window for `Seconds` from now, or keep it open to its
+	 * later end if it already runs longer. Issue #1833 group E part 2, ruled
+	 * 2026-10-02: "Archon's Aegis (6-Piece Bonus): When you block an attack, you
+	 * become immune to all damage for 3 seconds. (10s cd)". The same window a
+	 * survived lethal hit opens, because the two mean the same thing: all
+	 * damage, until a time.
+	 */
+	void GrantDamageImmunity(float Seconds);
+
+	/**
+	 * The three figures of A REPRIEVE FROM A LETHAL BLOW THAT ENDS IN DEATH UNLESS A KILL IS MADE. Ruled 2026-10-17
+	 * and 2026-10-18 by the coordinating session, for "Demon King's Regalia (10-Piece Bonus): If you would be killed
+	 * during Demonic Rage, instead gain 100% crit chance and crit multiplier and become immune to all damage for 3
+	 * seconds. Killing a Rare or higher enemy instanly heals you to full, failing to results in your death".
+	 *
+	 * - `LethalHitReprieveEverySecondsStat`: above nought, a lethal blow may be reprieved, and the next reprieve waits
+	 *   this long. Its row is scaled by its own stacks on the Demonic Rage's event and length, so it is held only while
+	 *   the Rage is, and at the Rage's length it reprieves at most once a Rage (Q2).
+	 * - `LethalHitReprieveSecondsStat`: the seconds of the no-damage window a reprieve opens, which are also the
+	 *   seconds the wearer has to make the kill.
+	 * - `LethalHitReprieveKillRarityStat`: at one or more, the reprieve ends in death at those seconds' end unless the
+	 *   wearer has killed an enemy whose rarity rung (`game/Data/EnemyRarities.csv`, Elite is 1) is at least this.
+	 *   Rounded to a whole rung. At nought there is no sentence, so a wearer without the row is never sentenced.
+	 *
+	 * A SEPARATE PAIR FROM NOTHING STOPS IT'S, ruled 2026-10-18 (Q6): rows on Nothing Stops It's two stats would add to
+	 * its figures and share its clock. Asked by `PostGameplayEffectExecute` after Nothing Stops It, so that save, which
+	 * costs nothing, is spent first. All three flat, with no gameplay attribute and no base, on
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. `tools/generate_datatables.py` holds the same names in
+	 * `LETHAL_HIT_REPRIEVE_STATS`.
+	 */
+	static const TCHAR* LethalHitReprieveEverySecondsStat;
+	static const TCHAR* LethalHitReprieveSecondsStat;
+	static const TCHAR* LethalHitReprieveKillRarityStat;
+
+	/** One of the three figures above, asked with no tags and the character's state now. Nought when none is held. */
+	float LethalHitReprieveFigure(const TCHAR* Stat) const;
+
+	/**
+	 * Whether a blow that would kill this character may be reprieved now: the interval above is held, and its clock
+	 * allows. The shape of `MaySurviveLethalHit`, with a clock of its own. No world means no reprieve.
+	 */
+	bool MayReprieveLethalHit() const;
+
+	/**
+	 * Record a reprieve just given: the clock waits the interval, the no-damage window opens for the seconds (or
+	 * stays open to a later end), the death sentence begins when the rarity figure asks for one, and
+	 * `lethal_hit_reprieved` is raised, the event rows granting the critical strike for those seconds hang on.
+	 *
+	 * THE EVENT IS AN ORDINARY `ActOnEvent`, SO IT IS DROPPED WHEN THIS CHARACTER IS ALREADY INSIDE ONE: a blow its
+	 * own row deals it while that row acts is reprieved with no critical strike rows granted.
+	 */
+	void NoteLethalHitReprieved();
+
+	/** Whether a death sentence is running: a reprieve's seconds have not ended and no qualifying kill has lifted it. */
+	bool IsUnderDeathSentence() const;
+
+	/** The rung a kill must reach to lift the running sentence, or nought when none runs. For tests. */
+	int32 DeathSentenceLiftedByRarity() const;
+
+	/**
+	 * A kill credited to this character, heard while a sentence runs. When `Slain` is an enemy creature whose rarity
+	 * rung is at least the sentence's, the sentence is lifted and health is healed to full through
+	 * `UCataclysmRegeneration::TopUp`, the ordinary heal, so a healing ceiling still holds. The no-damage window and
+	 * any critical strike stacks run on to their own end (Q4). Called by `ACataclysmPlayerCharacter::OnSomethingDied`
+	 * for exactly the kills that raise `kill`.
+	 *
+	 * @return whether this kill lifted a sentence
+	 */
+	bool NoteKillUnderDeathSentence(const AActor* Slain);
+
+	/**
+	 * Carry out a sentence whose seconds have ended: health written to nought, a write whose own death notice
+	 * (`UCataclysmVitalAttributeSet::PostAttributeBaseChange`) runs the avatar's `HandleDeath`, once. No blow is dealt, so no save in
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` is asked (Q3, "the death is final"). Called from
+	 * `ACataclysmCharacterBase::RegenerationStep`, so the death lands up to a quarter of a second after the window
+	 * ends. A test moves the world's clock and calls this directly.
+	 *
+	 * @return whether a sentence fell due and the death was made
+	 */
+	bool CarryOutDueDeathSentence();
+
+	/**
+	 * The two figures of a worn row by which A HIT MAY MAKE ITS WEARER IMMUNE TO THAT HIT'S DAMAGE TYPE FOR A TIME.
+	 * Ruled 2026-10-12 under the owner's delegation, for "Shard of Anarchy (6-Piece Bonus): When you take damage,
+	 * you have a 10% chance to become immune to the damage type that hit you for 5 seconds". The first is the
+	 * chance in percent, the 10; the second is the seconds, the 5. Both flat, neither with a gameplay attribute or
+	 * a base, and both on `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. A character holding only one of the
+	 * two opens nothing. `tools/generate_datatables.py` holds the same names in
+	 * `DAMAGE_TYPE_IMMUNITY_ON_HIT_STATS`. See `RollDamageTypeImmunityOnHit`.
+	 */
+	static const TCHAR* DamageTypeImmunityOnHitChanceStat;
+	static const TCHAR* DamageTypeImmunityOnHitSecondsStat;
+
+	/**
+	 * Roll this character's chance to become immune to `DamageType`, and open that type's window when the roll
+	 * succeeds. Ruled 2026-10-12. Asks the two stats above with no tags; a chance or a time of nought or less opens
+	 * nothing, and so does no type.
+	 *
+	 * CALLED FOR A HIT THAT HAS ALREADY BEEN TAKEN, by `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` once
+	 * the blow's health is written: a hit and not a damage over time tick, not evaded, of a type, that dealt
+	 * something to health or to a pool that absorbs, and left its wearer alive. So the hit that rolls is taken in
+	 * full, and the window covers what comes after it.
+	 *
+	 * A CHANCE OF 100 OR MORE IS NOT ROLLED, so a stated 100 never fails. Issue #2201: the roll is drawn from 0 to
+	 * 100 and can be exactly 100. A chance below 100 succeeds on a roll strictly below it.
+	 * `Cataclysm.DamageTypeImmunityRoll` pins the roll for tests.
+	 *
+	 * @return whether a window was opened or kept open
+	 */
+	bool RollDamageTypeImmunityOnHit(FName DamageType);
+
+	/**
+	 * Open the window against `DamageType` for `Seconds` from now, or keep it open to its later end if it already
+	 * runs longer. Ruled 2026-10-12: one window a type, never shortened, and windows for different types run side
+	 * by side. No type, or no seconds, opens nothing. Lapsed windows are dropped here.
+	 */
+	void GrantDamageTypeImmunity(FName DamageType, float Seconds);
+
+	/**
+	 * Whether this character's window against `DamageType` is open. Read by
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` at the three places `IsDamageImmune` is read, so a
+	 * blow or a tick of that type is emptied exactly as the no-damage window empties one. False for no type: a blow
+	 * with no type is never refused by this.
+	 *
+	 * ENDED BY TIME AND BY `ClearWhatDeathEnds`, as the no-damage window is. Not ended by the gear coming off, by
+	 * leaving combat or by a new dungeon floor.
+	 */
+	bool IsImmuneToDamageType(FName DamageType) const;
+
+	/** The seconds left of the window against `DamageType`, or nought. For an interface and for tests. */
+	float DamageTypeImmunitySecondsLeft(FName DamageType) const;
+
+	/**
+	 * The damage types whose window is open now. For `UCataclysmCombatOverlay::DamageTypeImmunityTextFor`, which
+	 * names each above the player's bars, and for tests. Ruled 2026-10-12.
+	 *
+	 * IN THE ORDER OF `UCataclysmItemModifiers::DamageTypeNames`, War first and Void last, which is the order the
+	 * character sheet lists the resistances in. A map's own order is the order its entries were added in, so a text
+	 * built from it would change places as windows opened and ended. A type that is not one of those eight comes
+	 * after them, in the order of its name; no blow carries such a type today.
+	 */
+	TArray<FName> DamageTypesImmuneTo() const;
+
+	/** When a lethal hit may next be survived, in world seconds. For tests. */
+	float LethalHitSurvivalAllowedAt() const
+	{
+		return LethalHitSurvivalNextAllowedSeconds;
+	}
+
+	/**
+	 * Follow Through's clock, and the one repeat it is waiting to make. Issue
+	 * #1515, `Ravager_keystone_b_kB`: "Killing an enemy with a melee attack
+	 * immediately repeats that attack at no cost, no more than once every 3
+	 * seconds." `UCataclysmFollowThrough` is what reads and writes these.
+	 *
+	 * The clock's shape is `MaySurviveLethalHit`'s: never repeated is allowed,
+	 * and no world means no clock and so no repeat.
+	 */
+	bool MayFollowThrough() const;
+
+	/** Record a repeat about to be made, so the next waits `IntervalSeconds`.
+	 *  Answers what the clock held before, so a repeat that then fails to start
+	 *  can put it back: the clock is spent only by a repeat that happens. */
+	float NoteFollowedThrough(float IntervalSeconds);
+
+	/** Put the clock back to a value `NoteFollowedThrough` answered. */
+	void RestoreFollowThroughClock(float NextAllowedSeconds)
+	{
+		FollowThroughNextAllowedSeconds = NextAllowedSeconds;
+	}
+
+	/** Seconds until another repeat is allowed; 0 when one is allowed now. */
+	float FollowThroughSecondsLeft() const;
+
+	/** The killing skill a repeat waits to make, and the world time it gives up
+	 *  at. Set by a melee kill, taken when the killing use has ended. */
+	void NotePendingFollowThrough(FGameplayAbilitySpecHandle Handle, float UntilSeconds)
+	{
+		PendingFollowThroughHandle = Handle;
+		PendingFollowThroughUntilSeconds = UntilSeconds;
+	}
+	FGameplayAbilitySpecHandle PendingFollowThrough() const
+	{
+		return PendingFollowThroughHandle;
+	}
+	float PendingFollowThroughUntil() const { return PendingFollowThroughUntilSeconds; }
+	void ClearPendingFollowThrough()
+	{
+		PendingFollowThroughHandle = FGameplayAbilitySpecHandle();
+		PendingFollowThroughUntilSeconds = -1.0f;
+	}
+
+	/**
+	 * Shoulder Through's once-a-second-per-enemy limit. Issue #1515, ruled
+	 * 2026-09-25: walking into a crowd must not push and strike on every frame.
+	 * Each enemy is kept by a weak pointer, so one that died leaves nothing
+	 * behind, and entries for enemies that are gone are dropped when a new one
+	 * is noted.
+	 */
+	bool MayShoulderThrough(const AActor* Enemy) const;
+	void NoteShoulderedThrough(const AActor* Enemy, float UntilSeconds);
+
+	/**
+	 * Sacrificial Ward's figure: the seconds between wards, above zero meaning
+	 * the keystone is held. Issue #1515, `Ritualist_keystone_c_kC`: "Damage that
+	 * would break your Energy Shield instead destroys the minion with the least
+	 * health remaining, no more than once every 3 seconds."
+	 */
+	static const TCHAR* ShieldBreakDestroysMinionEverySecondsStat;
+
+	/**
+	 * Whether a minion may be spent for the shield now. The shape is
+	 * `MayReleaseNova`'s: never spent one is allowed, and no world means no
+	 * clock and so no ward.
+	 */
+	bool MaySpendMinionForShield() const;
+
+	/** Record that one was spent, so the next waits `IntervalSeconds`. */
+	void NoteMinionSpentForShield(float IntervalSeconds);
+
+	/** When a minion may next be spent for the shield, in world seconds. For tests. */
+	float ShieldWardAllowedAt() const
+	{
+		return ShieldWardNextAllowedSeconds;
+	}
+
+	/**
+	 * Record that an enemy is standing inside this character's Fervour decay
+	 * radius right now. Issue #1515.
+	 *
+	 * THE OTHER TIMESTAMPS IN THIS FILE ANSWER "MAY I ACT AGAIN YET"; THIS ONE
+	 * ANSWERS "WHEN WAS I LAST IN CONTACT". `Ravager_basic_spine_000` reads
+	 * "Fervour decays at 5 per second after 3 seconds with no enemy within 4
+	 * metres, so losing contact is what empties it rather than a timer" -- so
+	 * what has to be remembered is the last moment contact HELD, not the last
+	 * moment something fired.
+	 *
+	 * RECORDED EVERY STEP CONTACT HOLDS, so the three seconds are counted from
+	 * the last such moment and an enemy re-entering the radius resets them
+	 * rather than shortening them. A character that keeps stepping in and out
+	 * of reach never decays, which is what "losing contact is what empties it"
+	 * means.
+	 */
+	void NoteEnemyInReach();
+
+	/**
+	 * Whether this character has been out of contact for at least that long.
+	 * Issue #1515.
+	 *
+	 * NEVER IN CONTACT COUNTS AS OUT OF CONTACT, which is the opposite choice
+	 * from `MayReleaseNova` above and is deliberate. That one asks whether an
+	 * interval has elapsed since an event, so never having had the event means
+	 * nothing to wait for. This asks whether contact has lapsed, and a
+	 * character that never had contact has no contact now. The node's sentence
+	 * is about holding contact rather than about an event recurring.
+	 *
+	 * NO WORLD MEANS NO CLOCK AND SO NO DECAY, the safe direction and the same
+	 * refusal every other window in this file makes.
+	 */
+	bool OutOfContactFor(float Seconds) const;
+
+	/** When contact last held, in world seconds; negative if never. For tests. */
+	float EnemyLastInReachAt() const
+	{
+		return EnemyLastInReachSeconds;
+	}
+
+	/**
+	 * Whether this character's aura may apply again now. Issue #1057.
+	 *
+	 * THE MASOCHIST'S Beacon of Despair APPLIES A DEBUFF "every 3 seconds", and
+	 * this is the whole of what enforces the interval. Whether the character
+	 * holds the node at all is decided by its stat being above zero, which
+	 * `UCataclysmContagion::AuraStep` asks first.
+	 *
+	 * SEPARATE FROM THE NOVA'S CLOCK, because the two intervals differ and one
+	 * character may hold both nodes. Everything else about it is the same,
+	 * including that never having pulsed is allowed and that no world means no
+	 * clock and so no pulse.
+	 */
+	bool MayApplyAura() const;
+
+	/** Record that it applied, so the next waits `IntervalSeconds`. */
+	void NoteAuraApplied(float IntervalSeconds);
+
+	/** When the next aura pulse may come, in world seconds. For tests. */
+	float AuraAllowedAt() const
+	{
+		return AuraNextAllowedSeconds;
+	}
+
+	/**
+	 * How many stacks of a kind this character is holding. Issue #1002.
+	 *
+	 * THE WINDOW IS APPLIED WHEN THE COUNT IS ASKED FOR rather than when it
+	 * would expire, which is why a stack needs no timer at all. The same shape
+	 * `DisplacementsInWindow` above uses and for the same reason: asking does
+	 * not reset anything, and nothing has to be cancelled when a character dies.
+	 *
+	 * `UCataclysmStacks::Held` IS WHAT CALLERS SHOULD USE. It knows each kind's
+	 * own window; this takes the window as an argument so that the component
+	 * does not have to.
+	 */
+	int32 StacksHeld(ECataclysmStackKind Kind, float WindowSeconds) const;
+
+	/**
+	 * Grant one stack of a kind, capped, and refresh the whole lot's expiry.
+	 *
+	 * ONE EXPIRY FOR ALL STACKS OF A KIND, NOT ONE PER STACK. Path of Exile's
+	 * charges work this way -- gaining one resets the duration of all of them --
+	 * and the design states no rule, so it is read off the genre. It is also far
+	 * easier for a player to reason about than a queue.
+	 *
+	 * A LAPSED COUNT RESTARTS AT ONE rather than continuing. A character that
+	 * let its stacks run out and then earned another has one, not six.
+	 *
+	 * A CAP OF ZERO OR LESS GRANTS NOTHING, REMOVES NOTHING, AND LOGS A WARNING.
+	 * Issue #1534. Infernal Brand once passed a cap of zero meaning "clear the
+	 * count"; this function read it as "grant nothing", as it always had, and
+	 * returned without a word. The count stayed at five and the brand exploded
+	 * on every hit after the fifth. The warning is what stops the two readings
+	 * disagreeing in silence again. To remove stacks, call `ClearStacks`.
+	 */
+	void GrantStack(ECataclysmStackKind Kind, float WindowSeconds, int32 Cap);
+
+	/**
+	 * Remove every stack of a kind, as if none had ever been granted.
+	 * Issue #1534.
+	 *
+	 * REMOVES EVERY STACK, AND `SpendStack` BELOW REMOVES ONE. Those two are
+	 * the whole of removal: `GrantStack` never removes anything, whatever it
+	 * is passed, and otherwise a stack leaves only when its window runs out.
+	 *
+	 * THIS COMMENT READ "THE ONLY WAY TO REMOVE STACKS" UNTIL ISSUE #1720,
+	 * and it was true when written. It is recorded rather than deleted because
+	 * the sentence is quoted in the pull request that added the other one.
+	 *
+	 * A FUNCTION OF ITS OWN RATHER THAN A CAP OF ZERO MEANING "CLEAR". That
+	 * would have made the one wrong call right, but every grant passes
+	 * `UCataclysmStacks::CapFor` or `CapForOn`, and `CapFor` answers zero for a
+	 * kind it does not know, on purpose, so that such a kind "grants nothing
+	 * rather than growing without bound". Under that reading every grant of such
+	 * a kind would silently empty it instead: the same disagreement between a
+	 * caller and this component, moved somewhere else.
+	 *
+	 * NEEDS NO CLOCK, unlike a grant. The count and its timestamp go back to the
+	 * zeros every character starts with.
+	 */
+	void ClearStacks(ECataclysmStackKind Kind);
+
+	/**
+	 * Remove ONE stack of a kind, leaving the rest and their expiry alone.
+	 *
+	 * THE SECOND WAY TO REMOVE STACKS, AND THE FIRST THAT LEAVES ANY. Issue
+	 * #1720. `ClearStacks` above is all or nothing, and its own comment calls
+	 * itself "THE ONLY WAY TO REMOVE STACKS" because until now it was. A row in
+	 * `game/Data/StatusEffects.csv` wants the other half: Touch of Nothing says
+	 * "When a player gains a buff, a stack of this debuff is consumed to negate
+	 * that buff completely", which spends one and keeps the others.
+	 *
+	 * IT DOES NOT MOVE THE EXPIRY, AND THAT IS THE DECISION IN IT. `GrantStack`
+	 * refreshes the whole lot because gaining one does; spending one is not
+	 * gaining one, so the stacks that remain go on expiring when they always
+	 * would have. Read off the genre for the same reason the refresh rule was:
+	 * Path of Exile refreshes a charge's duration when a charge is GAINED and
+	 * not when one is spent, so spending cannot be used to hold a count open for
+	 * ever. `docs/DECISIONS.md` carries the source for the refresh half.
+	 *
+	 * IT TAKES THE WINDOW FOR THE REASON `StacksHeld` DOES: this component does
+	 * not know any kind's window, and spending from a count that has already
+	 * lapsed must take nothing rather than take one off a number nobody can
+	 * still see. `UCataclysmStacks::Spend` is what callers should use; it knows
+	 * the kind's own window.
+	 *
+	 * SPENDING FROM NOTHING IS AN ORDINARY ANSWER AND NOT A MISTAKE, so it is
+	 * reported and not warned about. A cap of zero makes `GrantStack` log a
+	 * warning because only a caller error produces one; a debuff whose stacks
+	 * ran out before the player gained a buff is the mechanic working. A warning
+	 * there would fire on ordinary play.
+	 *
+	 * @param WindowSeconds  how long this kind's stacks last, so that a lapsed
+	 *                       count is spent from rather than a stale field
+	 * @return whether a stack was actually taken. False when the character held
+	 *         none, when the count had already lapsed, and when there is no
+	 *         world to time it against. **A caller that ignores this will treat
+	 *         a debuff that has run out as though it had just absorbed
+	 *         something**, which is exactly the silent disagreement between a
+	 *         caller and this component that issue #1534 was.
+	 */
+	bool SpendStack(ECataclysmStackKind Kind, float WindowSeconds);
+
+	/** Notes that Touch of Nothing refused a buff just now, for the "Negated" line. Issue #1722. */
+	void NoteBuffNegated();
+
+	/**
+	 * Whether Touch of Nothing refuses this worn or set row's timed grant: never for a drawback's
+	 * (`FCataclysmPoolAction::bFromADrawback`), and otherwise when a stack is held, which is then spent.
+	 * Asked just before each grant the project owner's "Buffs + gear procs" names. Issue #1722.
+	 */
+	bool RefusedByTouchOfNothing(const FCataclysmPoolAction& Action);
+
+	/** Seconds since Touch of Nothing last refused a buff here, or negative if it never has. Issue #1722. */
+	float SecondsSinceBuffNegated() const;
+
+
+	/**
+	 * Clear everything temporary on this character, because it died and is
+	 * standing back up. Issues #1535 and #1013.
+	 *
+	 * THE PROJECT OWNER'S RULING OF 2026-09-10, which `docs/DECISIONS.md`
+	 * records: the passive tree, equipment, and anything that says it is
+	 * permanent keep working, and every temporary buff, debuff and stack is
+	 * cleared. Stacks earned through a passive node go with the rest -- the node
+	 * stays and they build again from zero -- and so does the health debt, for
+	 * every character, The Reckoning included.
+	 *
+	 * ALL OF IT IS HELD ON THIS COMPONENT, which for a player is on the player
+	 * state and so survives the death. That is why none of it went away before.
+	 *
+	 * WHAT IT CLEARS:
+	 *
+	 *   running self buffs    ended through their own `EndAbility`, which takes
+	 *                         the bonus back and stops their repeating timers
+	 *   timed effects         every gameplay effect with a duration: damage over
+	 *                         time, curses, a stun and the stun immunity after
+	 *                         it, a pin, a resistance cut, the untargetable
+	 *                         window, and a skill's cooldown
+	 *   stacks                every kind, through `ClearStacks`, so a kind added
+	 *                         later is cleared with no change here
+	 *   the health debt       what is owed and when it falls due
+	 *   recent-event windows  the seconds after a health cost and after foreign
+	 *                         damage, The Breaking Point's conversion, and the
+	 *                         count that halves a second knockback
+	 *   a node's own wait     The Breaking Point's and Rock Bottom's cooldowns
+	 *                         and the intervals of the Unstable Aura's nova and
+	 *                         Beacon of Despair
+	 *   leech not yet paid    it would otherwise pay out after the respawn
+	 *
+	 * BOTH KINDS OF COOLDOWN ARE THE PROJECT OWNER'S ANSWER OF 2026-09-10, which
+	 * `docs/DECISIONS.md` records beside the ruling above.
+	 *
+	 * WHAT IT KEEPS, AND WHY:
+	 *
+	 *   the stat line         class, gear, and spent passive and attribute
+	 *                         points. None of it is a gameplay effect: it is
+	 *                         written as attribute values and `StatInputs`,
+	 *                         which nothing here touches
+	 *   running auras         the owner's answer of the same day. An aura's
+	 *                         damage bonus goes to allies and never to the one
+	 *                         casting it; an aura whose row states
+	 *                         `HealthFromHitTaken` also gives its caster health
+	 *                         when the caster is hit, and is kept like the rest
+	 *   every other skill     one that is not a self buff leaves nothing on its
+	 *                         caster for a respawn to clear. A sword Buried Fire
+	 *                         left in the ground is not handled here: it comes
+	 *                         back at the moment of death, in
+	 *                         `UCataclysmSkillEffects::MarkDead`, and its burning
+	 *                         ground stays
+	 *
+	 * NOTHING THAT LASTS ONLY FOR A DUNGEON IS CLEARED HERE, AND THE REASON HAS
+	 * CHANGED. This said "BECAUSE NONE OF IT IS BUILT ... all five exist only as
+	 * rows in `game/Data/`", which was true when it was written and is not now.
+	 * The ruling of 2026-09-10 ends five such effects at a death -- Blood Price,
+	 * Wasting Sickness, The Nihil's Embrace and two 10-piece set bonuses -- and
+	 * two of the five have since been built.
+	 *
+	 * NEITHER IS BUILT AS A TIMED EFFECT, WHICH IS WHY NEITHER IS CLEARED HERE.
+	 * The rule this function states still holds: one built as a timed effect is
+	 * cleared here with no change, and one built any other way has to be added.
+	 * Both of these are the second kind. Their reductions are recorded stat
+	 * modifiers held by `ACataclysmDungeonGameMode` and written through
+	 * `SetDungeonStatModifiers`, which this function does not touch.
+	 *
+	 * BOTH CLEAR AT THE PLAYER'S DEATH, EACH IN ITS OWN DEATH LISTENER ON
+	 * `ACataclysmDungeonGameMode`, at the moment of death rather than here.
+	 * `NoteDeathForWastingSickness` empties that row's stacks, and
+	 * `NoteDeathForNihilsEmbrace` gives back every point of resistance the walk
+	 * has cost and ends a boss kill's timed reward, since issue #1795. Both apply
+	 * at once rather than on the next beat, because
+	 * `ACataclysmPlayerCharacter::Revive` refills the vitals by reading the
+	 * maximums, and so nothing of either is still on the player when this runs.
+	 *
+	 * THE ROW NAMED "WITHERING TOUCH" HERE UNTIL 2026-09-13 IS NOW WASTING
+	 * SICKNESS, on the dungeon side only. `game/Data/EnemyModifiers.csv` still
+	 * holds an enemy modifier called Withering Touch, describing a different
+	 * effect, so the old name now points at the wrong table.
+	 *
+	 * `ACataclysmPlayerCharacter::Revive` IS THE ONE CALLER, and it calls this
+	 * before it refills the vitals, so an effect that lowered a maximum is gone
+	 * before the maximum is read.
+	 */
+	FCataclysmWhatDeathEnded ClearWhatDeathEnds();
+
+	/**
+	 * The stat saying a death also ends this character's running auras. Issue
+	 * #1833: "When you die all your buffs are removed", kept by the owner on
+	 * 2026-09-25. A flag, like the three energy-shield keystones: above zero or
+	 * not. Death ends self buffs for everybody and auras for nobody else.
+	 */
+	static const TCHAR* AurasEndAtDeathStat;
+
+	/**
+	 * `class_resource_generation`: how fast this character's class resource is GAINED, as a percent of normal,
+	 * based at 100. Ruled 2026-10-07 for two sentences: "Your class resource generates 20%-40% faster" and "Your
+	 * class resource generates 30%-50% slower", each an `increased` line on it.
+	 *
+	 * NO GAMEPLAY ATTRIBUTE. It is asked at the moment of each gain, by `ClassResourceGainScaled`, with no tags:
+	 * a generation rate is the character's and not a skill's. Its base is put on a player by
+	 * `UCataclysmPlayerClassStats::EngineSuppliedBases`; both rows are `increased`, so with no base under them the
+	 * stat would resolve to nought and nothing would ever be gained.
+	 */
+	static const TCHAR* ClassResourceGenerationStat;
+
+	/** `ClassResourceGenerationStat`'s base: a class resource is gained at its stated rate. */
+	static constexpr float NormalClassResourceGeneration = 100.0f;
+
+	/**
+	 * A change to the class resource pool, scaled by `ClassResourceGenerationStat` WHEN IT IS A GAIN.
+	 *
+	 * A positive change answers change x stat / 100, never below nought. A change of nought or less is answered
+	 * as it came: a loss, a spend and a decay are not generation, and neither sentence speaks of them.
+	 *
+	 * BEFORE THE CALLER'S CLAMP TO THE MAXIMUM, never after it, so a faster gain still stops at the maximum.
+	 *
+	 * CALLED WHERE THE POOL IS FILLED: the seven writes in `UCataclysmFervour` that gain, and `ApplyPoolAction`
+	 * for a row that grants class resource. It lives here, and not on `UCataclysmFervour`, because this
+	 * component's own .cpp calls it and does not include that header, while `CataclysmFervour.cpp` already
+	 * includes this one.
+	 *
+	 * A null component, or one that is not this project's subclass, answers the change as it came.
+	 */
+	static float ClassResourceGainScaled(const UAbilitySystemComponent* AbilitySystem, float Change);
+
+	/**
+	 * The three stats that give allies this character's damage buffs. Issue
+	 * #1833 group E part 4a, ruled 2026-10-02. Read by
+	 * `UCataclysmSharedBuffs::Step`; none has a gameplay attribute. Two are a
+	 * reach in metres, the third a More damage in points.
+	 */
+	static const TCHAR* SelfBuffSharedWithinMetresStat;
+	static const TCHAR* SupportBuffSharedWithinMetresStat;
+	static const TCHAR* NearbyAlliesMoreDamageStat;
+
+	/**
+	 * The copies of this character's buffs its allies carry now. Written only by
+	 * `UCataclysmSharedBuffs`, and public so tests can count them.
+	 */
+	TArray<FCataclysmSharedBuffCopy> SharedBuffCopies;
+
+	/**
+	 * Record that this character has just taken damage of a Cataclysm type
+	 * other than its own. Issue #975.
+	 *
+	 * CALLED FROM THE DAMAGE BRANCH OF
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` AND NOWHERE
+	 * ELSE, which is the one place a resolved hit and its type are both in
+	 * hand. Whether the type is foreign is decided there, because that is where
+	 * the character's own type can be read.
+	 *
+	 * A HIT THAT LANDED FOR NOTHING IS NOT DAMAGE TAKEN. The caller only
+	 * reaches this when the hit actually removed health or energy shield, so an
+	 * evaded or wholly mitigated blow opens no window.
+	 */
+	void NoteForeignDamageTaken();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceForeignDamageTaken() const;
+
+	/**
+	 * Record that this character has just used a skill carrying
+	 * `Keyword.Charge`. Issue #1826.
+	 *
+	 * CALLED FROM `UCataclysmSkillTemplate::CommitAndBegin` AND NOWHERE ELSE,
+	 * which is where every one of the eight skill shapes and the basic attack
+	 * pass through, and where the skill's own tags are in hand. Whether the
+	 * tag is present is decided there, for the same reason the foreign-damage
+	 * stamp decides its own question at its call site.
+	 *
+	 * AFTER THE COST AND THE COOLDOWN HAVE BEEN PAID, because that is where
+	 * the caller sits. A press the cost refused opens no window, which is what
+	 * "after using a charge skill" means.
+	 */
+	void NoteChargeSkillUsed();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceChargeSkillUsed() const;
+
+	/**
+	 * Record that this character has just used its basic attack. Issue #1826.
+	 *
+	 * CALLED FROM THE SAME PLACE AS THE STAMP ABOVE, and the slot rather than
+	 * a tag is what decides: the basic attack is built from the weapon base by
+	 * `UCataclysmWeaponSkills::BasicAttackFor` rather than authored as a row,
+	 * so it carries no designed tag to read.
+	 */
+	void NoteBasicAttackUsed();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceBasicAttackUsed() const;
+
+	/**
+	 * Record that this character has just blocked a blow. Issue #1826.
+	 *
+	 * CALLED FROM THE SAME BRANCH OF
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` AS THE
+	 * FOREIGN-DAMAGE STAMP, which is where a resolved hit's outcome is in hand.
+	 *
+	 * A BLOCK THAT LEFT NOTHING TO TAKE STILL COUNTS, which is the one way
+	 * this differs from its neighbour. The foreign-damage stamp is reached only
+	 * when the hit removed health or energy shield; a block that reduced the
+	 * blow to nothing opens this window and not that one, because the row says
+	 * "blocking an attack" and says nothing about what got through.
+	 *
+	 * This form carries nobody and nothing; the one below is what a resolved blow
+	 * calls.
+	 */
+	void NoteBlocked();
+
+	/**
+	 * The same, naming the attacker whose blow was blocked and what the block
+	 * removed from it, which `block` then carries as its other character and its
+	 * amount. Issue #1833 group E part 3: "Reflect 20%-100% of damage blocked
+	 * back at attackers".
+	 */
+	void NoteBlocked(const AActor* Attacker, float DamageBlocked);
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceBlocked() const;
+
+	/**
+	 * Record that this character has just used a skill carrying `Type.Summon`.
+	 * Issue #1815.
+	 *
+	 * CALLED FROM `UCataclysmSkillTemplate::CommitAndBegin`, beside the
+	 * charge-skill stamp and for the same reasons: it is where every skill
+	 * shape passes and where the skill's own tags are in hand, and it is past
+	 * the commit, so a press the cost refused records nothing.
+	 *
+	 * `Type.Summon` RATHER THAN `Keyword.Summon`, which is the ruling issue
+	 * #1824 records: three of the five skills carrying the keyword command
+	 * creatures that already exist rather than creating one.
+	 */
+	void NoteSummonUsed();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceSummonUsed() const;
+
+	/**
+	 * Record that this character has just evaded a blow. Issue #1815.
+	 *
+	 * CALLED FROM THE SAME BRANCH AS THE BLOCK STAMP, which is where a
+	 * resolved hit's outcome is in hand.
+	 *
+	 * AN EVADED BLOW DEALS NOTHING, so this is one of the two windows that
+	 * open on a blow the foreign-damage window cannot see: that one is reached
+	 * only when health or energy shield actually lost something.
+	 *
+	 * This form carries nobody and no tags, so a `dodge` row with Required Tags
+	 * does not act on it; the one below is what a resolved blow calls.
+	 */
+	void NoteEvaded();
+
+	/**
+	 * The same, naming the attacker whose blow was evaded and saying whether
+	 * that blow was melee. Ruled 2026-10-07 for "When you evade a ranged attack,
+	 * throw an attack dealing 20-70% of your attack damage at that enemy".
+	 *
+	 * `dodge` THEN CARRIES THE ATTACKER AS ITS OTHER CHARACTER AND ONE TAG:
+	 * `Type.Melee` when the blow was melee and `Type.Ranged` when it was not.
+	 * The ruling is that "ranged" is any attack that is not melee, spells
+	 * included, so there is no third answer and a blow never carries both. A
+	 * row says which it wants with Required Tags; a row that states none acts on
+	 * every evaded blow, as it did before the event carried tags.
+	 *
+	 * @param Attacker  whoever `UCataclysmCombatEvents::AttackerOf` names for
+	 *                  the blow: its instigator, or for a minion's blow the
+	 *                  minion, or the summoner when it holds Conduit. May be
+	 *                  null, and the event then carries no character.
+	 * @param bMelee    whether the evaded blow carried `Type.Melee`
+	 */
+	void NoteEvaded(const AActor* Attacker, bool bMelee);
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceEvaded() const;
+
+	/**
+	 * Record that this character has just been hit, whatever became of the
+	 * blow. Issue #1815.
+	 *
+	 * THE ONE WINDOW HERE THAT DELIBERATELY OVERLAPS ITS NEIGHBOURS. A blocked
+	 * hit is still a hit; an evaded hit is still a hit. So this opens together
+	 * with those and must not be described, or tested, as exclusive.
+	 */
+	void NoteHitTaken(bool bLanded);
+
+	/**
+	 * `hit_taken_cancels_skills`: a hit landing on this character cuts short the
+	 * skills it is using. Ruled 2026-10-08 for two sentences: "Taking a hit
+	 * interrupts any skill currently being used", a row with no Required Tags,
+	 * and "Taking damage while channeling interrupts the channel immediately",
+	 * a row requiring `Type.Channel`.
+	 *
+	 * A FLAG: a row writes 1 and above nought is yes. No gameplay attribute; it
+	 * is in `UCataclysmPlayerClassStats::StatsWithNoAttribute()`.
+	 *
+	 * ASKED ONCE FOR EACH RUNNING SKILL, WITH THAT SKILL'S OWN TAGS, which is how
+	 * one stat serves both sentences: the row with no tags answers for every
+	 * skill and the row requiring `Type.Channel` only for a channelled one.
+	 * Asked in one place, the form of `NoteHitTaken` below.
+	 */
+	static const TCHAR* HitTakenCancelsSkillsStat;
+
+	/**
+	 * The same, saying who threw the blow and whether it was a tick of damage
+	 * over time. Ruled 2026-10-08. This is the form a resolved blow calls, and
+	 * the one that does the work; the two beside it hand it nobody and no tick.
+	 *
+	 * IT CUTS SHORT THE SKILLS THIS CHARACTER IS USING, for a character holding
+	 * `HitTakenCancelsSkillsStat`, when the blow LANDED, was NOT A TICK, and was
+	 * NOT THE CHARACTER'S OWN. An evaded blow is not a hit. A burn's tick is not
+	 * a hit, though it reaches here as every blow does. A blocked blow landed,
+	 * and so did one the energy shield or the temporary absorb took whole.
+	 * Each skill is asked `UCataclysmSkillTemplate::CanBeInterruptedByAHit`
+	 * first, so a self buff, an aura and a planted weapon are left alone.
+	 *
+	 * A CANCEL GIVES NOTHING BACK. The cost was paid and the cooldown started
+	 * when the skill was used, and neither is touched here.
+	 *
+	 * BEFORE THE `hit_taken` EVENT'S ROWS ACT, a judgement of the enchantment
+	 * session: a row that answers a hit by starting something must not have it
+	 * cut short by the hit that started it. The skills running when the hit
+	 * landed are collected and cancelled first, and only then is the event
+	 * raised.
+	 *
+	 * @param bLanded          false for an evaded blow
+	 * @param Attacker         whoever `UCataclysmCombatEvents::AttackerOf` names
+	 *                         for the blow. Null when nobody is named, and such
+	 *                         a blow interrupts: only this character's own does
+	 *                         not.
+	 * @param bDamageOverTime  whether the blow was a tick and not a hit
+	 */
+	void NoteHitTaken(bool bLanded, const AActor* Attacker, bool bDamageOverTime);
+
+	/**
+	 * The same, for a blow that landed. Kept as a form of its own rather than
+	 * a default argument, because a default does not change a function's type:
+	 * `CataclysmDeathTests.cpp` stores this one's address as a pointer to a
+	 * member taking no arguments, in its table of event windows. Issue #1833.
+	 */
+	void NoteHitTaken() { NoteHitTaken(true); }
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceHitTaken() const;
+
+	/**
+	 * Record that this character's class resource has just BECOME full.
+	 * Issue #1815.
+	 *
+	 * CALLED ON A CROSSING, NOT ON A STATE, from
+	 * `ACataclysmPlayerCharacter::OnClassResourceChanged`. A pool sitting at
+	 * its maximum must not re-stamp, or the window never ages.
+	 *
+	 * AND THE MAXIMUM FALLING TO MEET A STATIC POOL COUNTS, because
+	 * `ClassResourceAtMaximum` compares the two readings rather than watching
+	 * one of them.
+	 */
+	void NoteClassResourceFull();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceClassResourceFull() const;
+
+	/**
+	 * Record that this character's class resource has just REACHED zero.
+	 * Issue #1815. A crossing, as above, and only ever the pool: a maximum of
+	 * zero is a character with no pool rather than an empty one.
+	 */
+	void NoteClassResourceEmptied();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceClassResourceEmptied() const;
+
+	/**
+	 * Record that this character has just landed a blow on a Boss enemy.
+	 *
+	 * CALLED FROM `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, in
+	 * the branch that runs when a blow got through -- health, energy shield or
+	 * mana -- so a blow that was evaded, or that armour and resistance stopped
+	 * completely, opens nothing. That is the same line the energy shield's
+	 * refill wait draws a few lines above it.
+	 *
+	 * ON THE CHARACTER THE BLOW BELONGS TO, WHICH IS NOT ALWAYS THE INSTIGATOR.
+	 * The caller asks `UCataclysmCombatEvents::AttackerOf`, so a minion's blow
+	 * opens the minion's own window and opens its summoner's only while the
+	 * summoner holds the Ritualist keystone Conduit. Asking a second time here
+	 * is how those two would come to disagree.
+	 *
+	 * WHAT THE WINDOW IS FOR. "Your cooldowns reset 50%-100% faster when
+	 * fighting Boss enemies, for 4 seconds after you strike one" -- a cooldown
+	 * counts down with nobody being struck, so the per-blow condition
+	 * `target_is_boss` cannot reach it and a clock can. The project owner chose
+	 * the clock over a proximity check on 2026-09-18.
+	 */
+	void NoteStruckABoss();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceStruckABoss() const;
+
+	/**
+	 * Record that a blow of `Striker`'s got through to THIS character, and
+	 * whether it was a critical strike. Issue #1815, "your first hit against
+	 * each enemy".
+	 *
+	 * KEPT ON THE CHARACTER STRUCK, so each enemy holds its own answer and an
+	 * enemy that dies takes it with it. KEYED ON THE STRIKER'S ABILITY SYSTEM,
+	 * not its actor: a player's ability system lives on its player state, and
+	 * the lookup that asks later knows itself by its ability system.
+	 *
+	 * CALLED FROM `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`
+	 * beside the Boss clock, where a blow has got through, on
+	 * `UCataclysmCombatEvents::AttackerOf`.
+	 *
+	 * @return whether this was the first blow of `Striker`'s to get through to
+	 *         this character, which the hit's announcement carries as
+	 *         `FCataclysmHitNotice::bFirstFromAttacker`. Issue #1833 group E
+	 *         part 1: the record is written before the blow is announced, so
+	 *         by `hit_dealt` it already holds this blow.
+	 */
+	bool NoteStruckBy(const UAbilitySystemComponent* Striker, bool bCritical);
+
+	/** Whether a blow of `Striker`'s has got through to this character. */
+	bool WasStruckBy(const UAbilitySystemComponent* Striker) const;
+
+	/**
+	 * Rendering Blows, the Ravager's `Ravager_capstone_50` option 1. Issue
+	 * #1515: "Every third melee attack against the same enemy removes 20% of its
+	 * Armor for 6 seconds." The row will carry the 20 and the 6 on these two
+	 * stats; the third is `RendEveryHits`.
+	 */
+	static const TCHAR* RendPercentStat;
+	static const TCHAR* RendSecondsStat;
+	static constexpr int32 RendEveryHits = 3;
+
+	/**
+	 * Count a landed melee hit of `Striker`'s on THIS character, and on every
+	 * third one remove the striker's share of this character's armour for the
+	 * striker's seconds.
+	 *
+	 * KEPT ON THE CHARACTER STRUCK and keyed by the striker, like `StruckBy`, so
+	 * each enemy counts each attacker apart and a sweep counts once on every
+	 * enemy it hits: a sweep is one blow per enemy. Only a striker holding the
+	 * stat is counted. The count has no time limit and outlives the removal.
+	 *
+	 * THE THIRD HIT IS NOT ITSELF REDUCED. This is called after the blow is
+	 * resolved, so the removal meets the fourth.
+	 *
+	 * IT REFRESHES AND DOES NOT STACK: a new removal starts the seconds again,
+	 * and the share is the larger of the running one and the new one, never the
+	 * two combined. Ruled 2026-09-24.
+	 *
+	 * CALLED FROM `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` for a
+	 * melee blow that is not damage over time and was not evaded.
+	 */
+	void NoteLandedMeleeHitFrom(const UCataclysmAbilitySystemComponent* Striker);
+
+	/**
+	 * The share of this character's armour removed right now, 0 to 100, or 0
+	 * when none is. Read where armour reduces a blow, and by the heads-up
+	 * display. NOT A DEBUFF: no tag, so nothing that counts or copies debuffs
+	 * sees it.
+	 *
+	 * RENDING BLOWS AND THE STACKS PLACED ON IT SUM, clamped at 100. Issue
+	 * #1833, phase 2, ruled 2026-09-24. Rending Blows keeps its own rule
+	 * against itself: a new removal takes the larger share, never the sum.
+	 */
+	float ArmourRemovedPercentNow() const;
+
+	/**
+	 * `Applier` has just applied `Ailment` to this character, as a new effect or
+	 * as a refresh of one already running: take what `Applier`'s worn rows hang
+	 * on that ailment. Issue #1833, ruled 2026-10-06.
+	 *
+	 * THE RIDERS ARE THE CARRIER'S RECORD OF ONE APPLIER, PER AILMENT, and they
+	 * count only while the carrier holds the ailment's tag, which is asked when
+	 * they are read. So they end when the ailment ends, by time, by a cleanse or
+	 * by death, with nothing here to take them back.
+	 *
+	 * AN APPLIER WITH NOTHING TO HANG TAKES DOWN ONLY ITS OWN. Its application
+	 * leaves another character's riders standing, and removes its own: an item
+	 * taken off stops paying at the wearer's next application, and until then
+	 * the riders last the rest of the ailment, as ruled.
+	 *
+	 * NOT ON THE AILMENT'S OWN EFFECT, which is where a pin carries its
+	 * increase. A damage over time effect is periodic, and a periodic effect
+	 * EXECUTES its modifiers every tick rather than holding them, so a modifier
+	 * beside the damage would be added again each tick and never taken back.
+	 */
+	void ReceiveAilmentRiders(const FGameplayTag& Ailment,
+							  const UCataclysmAbilitySystemComponent* Applier);
+
+	/**
+	 * What the riders this character carries move one of its numbers by now, in
+	 * percent, summed over the ailments it holds at this moment.
+	 */
+	float AilmentRiderPercentNow(ECataclysmAilmentRider Kind) const;
+
+	/** The same for any ability system: nought for one that is not this class. */
+	static float AilmentRiderPercentOn(const UAbilitySystemComponent* Carrier,
+									   ECataclysmAilmentRider Kind);
+
+	/**
+	 * What rides on ONE ailment this character carries, for one kind: nought
+	 * when it does not hold that ailment now. The carrier's side of a rider,
+	 * for a reader that asks about one ailment, as the spread at a death does.
+	 */
+	float AilmentRiderPercentCarriedOn(const FGameplayTag& Ailment,
+									   ECataclysmAilmentRider Kind) const;
+
+	/** What this character's worn rows hang on `Ailment`, for one kind, summed. */
+	float AilmentRiderPercentFor(const FGameplayTag& Ailment,
+								 ECataclysmAilmentRider Kind) const;
+
+	/**
+	 * `Applier` is applying `Debuff` to this character, as a new effect or as a
+	 * refresh of one already running, and its row states `Percent` less damage
+	 * dealt by an enemy carrying a debuff of its. Ruled 2026-10-13. Called by
+	 * `UCataclysmDebuffs::NoteLaid`, BEFORE the debuff's tag is put on.
+	 *
+	 * THE CARRIER'S RECORD OF ONE APPLIER, PER DEBUFF, as `ReceiveAilmentRiders`
+	 * keeps one for an ailment, and it counts only while the carrier holds the
+	 * debuff's tag, which is asked when it is read. So it ends when the debuff
+	 * ends, by time, by a cleanse or by death, and a refresh keeps it.
+	 *
+	 * A FRESH APPLICATION STARTS WITH NOTHING: the record of a debuff that has
+	 * ended is still here, and is removed before anything else.
+	 *
+	 * AN APPLIER WITH NOTHING TO HANG TAKES DOWN ONLY ITS OWN, and nobody
+	 * (`Applier` null: a spread's copy, a minion's or a zone's without Conduit)
+	 * takes down nothing. Another character's application leaves the record
+	 * standing for as long as the debuff is carried.
+	 */
+	void ReceiveDebuffDamageCut(const FGameplayTag& Debuff,
+								const UCataclysmAbilitySystemComponent* Applier, float Percent);
+
+	/**
+	 * The percent less this character deals now for the debuffs it carries, 0
+	 * to 100. ONE CUT HOWEVER MANY DEBUFFS: the largest of the records whose
+	 * debuff it holds at this moment, and never their sum.
+	 */
+	float DebuffDamageCutPercentNow() const;
+
+	/** Whether a critical strike of `Striker`'s has got through to it. */
+	bool WasCriticallyStruckBy(const UAbilitySystemComponent* Striker) const;
+
+	/**
+	 * How long after its last hit, dealt or taken, a character stays in combat.
+	 * Issue #1815.
+	 *
+	 * ONE MEANING OF "IN COMBAT" FOR THE WHOLE GAME. The design document
+	 * already says "after 3 seconds out of combat" for the Berserker's Fervour,
+	 * and the genre's windows run from 3 to 5 seconds (Path of Exile's
+	 * "recently" is 4, Diablo IV's Fortify decays "after five seconds out of
+	 * combat"). Ruled under the owner's delegation on 2026-09-23.
+	 *
+	 * THE BERSERKER'S FERVOUR DECAY SHOULD READ THIS when the Berserker is
+	 * built, rather than a 3 of its own.
+	 */
+	static constexpr float CombatLapseSeconds = 3.0f;
+
+	/**
+	 * Record that a blow of this character's has just reached another, whatever
+	 * became of it. Issue #1815. Stamped beside the struck character's
+	 * `NoteHitTaken`, on `AttackerOf`, so both sides of one blow enter combat
+	 * together, evaded and blocked blows included.
+	 */
+	void NoteHitDealt();
+
+	/**
+	 * How long the current combat has lasted, in seconds, or -1 when the
+	 * character is out of combat or there is no world. Issue #1815.
+	 */
+	float SecondsInCombat() const;
+
+	/**
+	 * How long the character has been out of combat, in seconds, or -1 when it
+	 * is in combat or cannot be read. Issue #1815. With no combat event since
+	 * its spawn or revival, it counts from that.
+	 */
+	float SecondsOutOfCombat() const;
+
+	/**
+	 * Write maximum health from its whole stat line with the character's state
+	 * now, plus any health Water to Blood converted. Issue #1815: "Each active
+	 * minion reduces your maximum HP by 3%-6%".
+	 *
+	 * WHY IT EXISTS. `UCataclysmPlayerClassStats::ApplyTo` folds every stat with
+	 * no character state, so a conditioned or scaled `max_health` row is worth
+	 * nothing in the fold. This asks the pipeline with `CurrentConditions`, so
+	 * every bucket and every condition reaches the attribute.
+	 *
+	 * CALLED AT THE END OF `ApplyTo` AND FROM EACH REGENERATION STEP, because no
+	 * event marks a minion arriving or leaving. Nothing is recorded for
+	 * `max_health` on a character with no row for it, and then this does
+	 * nothing, which is every creature and minion in the game.
+	 *
+	 * CURRENT HEALTH IS NOT MOVED, ruled under the owner's delegation on
+	 * 2026-09-23: a lowered maximum does not take health away, as for every
+	 * pool (issue #1757), and a raised one does not refill it.
+	 */
+	void RefreshLiveMaximumHealth();
+
+	/**
+	 * Whether any `max_health` row is conditioned or scaled, which is when the
+	 * regeneration step has to refresh it. Issue #1815.
+	 */
+	bool MaximumHealthMovesWithState() const;
+
+	/** What Water to Blood added to maximum health at the last stat refresh. */
+	void SetConvertedManaToHealth(float Converted) { ConvertedManaToHealth = Converted; }
+
+	/**
+	 * How long ago `Striker`'s most recent blow got through to this character,
+	 * in seconds, or -1 if none has. Issue #1515, Set Upon and Set the Pack On:
+	 * "enemies you have damaged in the last 2 seconds".
+	 *
+	 * THE RECORD `WasStruckBy` READS, WITH THE TIME KEPT, rather than a second
+	 * record beside it, ruled on 2026-09-23 under the owner's delegation: one
+	 * record means "struck by you" and "damaged by you" cannot disagree about
+	 * one blow. Each striker's entry is overwritten by its next blow, and the
+	 * record is cleared on revival, so nothing needs to prune it.
+	 */
+	float SecondsSinceStruckBy(const UAbilitySystemComponent* Striker) const;
+
+	/**
+	 * How long ago `Striker`'s FIRST blow got through to this character, in
+	 * seconds, or -1 if none has. Ruled 2026-10-12 under the owner's delegation,
+	 * for "Enemies that survive more than 5 seconds after first being hit gain
+	 * 20%-40% increased damage".
+	 *
+	 * A SECOND RECORD BESIDE `StruckBy`, WRITTEN ONCE. `StruckBy` holds each
+	 * striker's most recent blow and is overwritten by the next, so the time of
+	 * the first cannot be read from it. `NoteStruckBy` writes this one only on
+	 * the call that returns true, so the two cannot disagree about which blow
+	 * was the first: what does not write `StruckBy` does not write this.
+	 *
+	 * SO A TICK STARTS IT, and a blow that is a row's answer to an event or the
+	 * consequence of a death does not, exactly as for `WasStruckBy`. Cleared
+	 * where `StruckBy` is cleared, on revival, and nowhere else: leaving combat
+	 * does not clear it.
+	 *
+	 * READ BY `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` ON THE
+	 * CHARACTER THAT THREW A BLOW, asked about the character taking it, into
+	 * `FCataclysmIncomingHit::SecondsSinceDefenderFirstStruckAttacker`.
+	 */
+	float SecondsSinceFirstStruckBy(const UAbilitySystemComponent* Striker) const;
+
+	/**
+	 * `enemies_immune_to_you_after_seconds`: how many seconds after this
+	 * character's first hit on an enemy that enemy becomes immune to this
+	 * character's damage. Ruled 2026-10-12 under the owner's delegation, for
+	 * "Enemies that have been alive for more than 15 seconds become immune to
+	 * your damage until you disengage for 3 seconds". The row states the 15,
+	 * flat. Nought or less is no such rule, which is every character without
+	 * the row. No gameplay attribute and no base; on
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute()`.
+	 *
+	 * THE 3 SECONDS ARE NOT A STAT. "Disengage for 3 seconds" is this
+	 * character out of combat, and `CombatLapseSeconds` is how long that takes.
+	 *
+	 * `tools/generate_datatables.py` holds the same name in
+	 * `ENEMIES_IMMUNE_AFTER_SECONDS_STAT`. See `IsImmuneToDamageOf`.
+	 */
+	static const TCHAR* EnemiesImmuneAfterSecondsStat;
+
+	/**
+	 * Whether THIS character has become immune to the damage of `Attacker`.
+	 * Ruled 2026-10-12, for the sentence quoted above.
+	 *
+	 * TRUE WHEN ALL OF THESE HOLD. `Attacker` is another character, and holds
+	 * `EnemiesImmuneAfterSecondsStat` above nought. This character holds an
+	 * engagement time for `Attacker` that still stands (see
+	 * `SecondsSinceEngagedBy`). And that time is at least the stat's seconds
+	 * ago: AT LEAST, the comparison `OpponentFirstStruckByYouSecondsAgo` makes.
+	 *
+	 * SO A CHARACTER `Attacker` HAS NEVER STRUCK IS NEVER IMMUNE TO IT, and the
+	 * moment `Attacker`'s combat lapses every character is open to it again:
+	 * nothing is cleared then, the time simply no longer stands.
+	 *
+	 * READ WHERE A BLOW IS RESOLVED, beside the other immunities in
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, on
+	 * `UCataclysmCombatEvents::AttackerOf`; by
+	 * `UCataclysmSkillEffects::ReduceHealthDirectly`, which is how an execute
+	 * takes health; and by the heads-up display for the word under a
+	 * creature's health bar.
+	 */
+	bool IsImmuneToDamageOf(const UAbilitySystemComponent* Attacker) const;
+
+	/**
+	 * This character has just refused a blow as immune to its attacker: write its maximum health again from the
+	 * ailment riders that still count. Ruled 2026-10-12: "on an enemy that is immune to the wearer, the wearer's
+	 * ailments and their riders take nothing either, the 'maximum health removed' rider included".
+	 *
+	 * `RewriteMaximumHealthForAilments` LEAVES OUT THE RIDER OF AN APPLIER THIS CHARACTER IS IMMUNE TO, so a
+	 * maximum such a rider was holding down returns here. Health is not raised with it: what the lowering took
+	 * before the immunity began stays taken.
+	 *
+	 * WHY HERE. Nothing announces the moment a character becomes immune; it happens by time passing. A refused
+	 * blow is the first thing that shows it, and an ailment's own tick is such a blow.
+	 *
+	 * NOTHING ANNOUNCES THE END OF THE IMMUNITY EITHER, AND NOTHING IS WRITTEN THEN. The rider counts again from
+	 * the next time the maximum is written: its applier's next application or refresh of that ailment
+	 * (`ReceiveAilmentRiders`), that ailment's tag arriving or leaving, or the next blow this character refuses
+	 * from anyone. `docs/DECISIONS.md`, 2026-10-12, states the option not taken.
+	 */
+	void NoteBlowRefusedAsImmune();
+
+	/**
+	 * How long ago `Striker`'s first blow of ITS CURRENT COMBAT got through to
+	 * this character, in seconds, or -1 when no such time stands. Ruled
+	 * 2026-10-12.
+	 *
+	 * A THIRD RECORD BESIDE `StruckBy` AND `FirstStruckBy`, because neither is
+	 * this: the first is overwritten by every blow, and the second is never
+	 * written again, so it cannot give an enemy "a fresh 15 seconds" after the
+	 * striker has disengaged.
+	 *
+	 * A TIME STANDS WHILE THE STRIKER HAS BEEN IN COMBAT WITHOUT A BREAK SINCE
+	 * IT WAS WRITTEN: the striker is in combat now, and the time is not older
+	 * than the start of that combat. `NoteStruckBy` writes the time when none
+	 * stands, and leaves a standing one alone. So it is written by the blows
+	 * that write the other two records: a tick writes it, and a row's answer to
+	 * an event and the consequence of a death do not.
+	 *
+	 * NOTHING IS CLEARED WHEN THE STRIKER'S COMBAT LAPSES. The time stops
+	 * standing at that moment and is overwritten by the striker's next blow to
+	 * get through. The whole record is cleared with `StruckBy`, on this
+	 * character's revival.
+	 */
+	float SecondsSinceEngagedBy(const UAbilitySystemComponent* Striker) const;
+
+	/**
+	 * Hold a parcel of delayed damage: `Amount` of health this character is to lose evenly over `Seconds`, counted
+	 * from now. Ruled 2026-10-12, for "25%-50% of damage taken is dealt over 4-8 seconds". Called by
+	 * `UCataclysmDelayedDamage::DelayShare` with the share it took off a blow.
+	 *
+	 * EACH PARCEL KEEPS ITS OWN AMOUNT, ITS OWN SECONDS AND THE TIME IT WAS TAKEN. So parcels add up and overlap,
+	 * a later blow changes nothing of what an earlier one owes, and a parcel keeps the seconds it was taken with
+	 * when the row's figure changes or the gear comes off.
+	 *
+	 * AND `DungeonBeingWalked` AS IT WAS TAKEN, as a kept stack does. That comparison is what "leaving the dungeon
+	 * clears it" is: nothing calls this component when a dungeon is left, and
+	 * `ACataclysmDungeonGameMode::LeaveEmpireDungeon` was not edited for it. `DelayedDamageOwed` answers nought
+	 * for a parcel of another dungeon and `TakeDelayedDamageDue` removes it. A new floor of the same dungeon
+	 * changes nothing.
+	 *
+	 * NOT AN AILMENT AND NOT A GAMEPLAY EFFECT, so nothing that counts, cleanses, shortens or lengthens debuffs
+	 * sees it.
+	 *
+	 * @return false, holding nothing, for an amount or seconds of nought or less and for a component with no world
+	 */
+	bool HoldDelayedDamage(float Amount, float Seconds);
+
+	/**
+	 * What this character still owes of its delayed damage, as of the last time it was drained: every parcel's
+	 * amount less what has been taken of it. Parcels taken in a dungeon that is not the one walked now count for
+	 * nothing. `UCataclysmCombatOverlay::OwedTextFor` shows it.
+	 */
+	float DelayedDamageOwed() const;
+
+	/**
+	 * Work out what every parcel owes for the time since it was last drained, mark it taken, and answer the sum.
+	 * `UCataclysmDelayedDamage::DrainStep` writes the answer to health. Parcels of a dungeon that is not the one
+	 * walked now are removed and owe nothing, and a parcel is removed when its last part is taken.
+	 *
+	 * BY THE WORLD'S CLOCK AND NOT BY THE LENGTH OF A STEP, through `DelayedDamageOwedBy`. So a step that arrives
+	 * late takes what the late time owes, and a parcel is empty at the first step at or after its seconds.
+	 */
+	float TakeDelayedDamageDue();
+
+	/** Empty the store. A death does this. @return what was still owed, every dungeon's parcels counted */
+	float ClearDelayedDamage();
+
+	/**
+	 * How much of a parcel of `Amount` over `Seconds` has fallen due `SecondsSinceTaken` after it was taken.
+	 *
+	 * PURE ARITHMETIC. Evenly: `Amount` times the share of the seconds that has passed. Nought at or before the
+	 * moment it was taken, and the whole amount at its seconds and after, and for seconds of nought or less.
+	 */
+	static float DelayedDamageOwedBy(float Amount, float SecondsSinceTaken, float Seconds);
+
+	/**
+	 * Record that this character has just used the skill in its Support slot. Issue #1815, for the
+	 * movement rows issue #1821 unblocked.
+	 *
+	 * THE ROW IS "Using your support ability grants you 10%-20% increased movement speed for 3 seconds". Raises the action event `support_skill`, which
+	 * `action_events()` in `tools/generate_datatables.py` derives from the
+	 * condition `seconds_after_support_skill`, and which asks the player's movement speed again on
+	 * the frame of the event.
+	 */
+	void NoteSupportSkillUsed();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceSupportSkillUsed() const;
+
+	/**
+	 * Record that this character has just used the skill in its Movement slot. Issue #1815, for the
+	 * movement rows issue #1821 unblocked.
+	 *
+	 * THE ROW IS "After you use a movement ability you lose 50% movespeed for 3 seconds". Raises the action event `movement_skill`, which
+	 * `action_events()` in `tools/generate_datatables.py` derives from the
+	 * condition `seconds_after_movement_skill`, and which asks the player's movement speed again on
+	 * the frame of the event.
+	 */
+	void NoteMovementSkillUsed();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceMovementSkillUsed() const;
+
+	/**
+	 * Record that this character has just used a skill carrying `Type.Spell`. Issue #1815, for the
+	 * movement rows issue #1821 unblocked.
+	 *
+	 * THE ROW IS "Casting a spell grants 5%-10% increased movement speed for 3 seconds". Raises the action event `spell`, which
+	 * `action_events()` in `tools/generate_datatables.py` derives from the
+	 * condition `seconds_after_spell`, and which asks the player's movement speed again on
+	 * the frame of the event.
+	 */
+	void NoteSpellCast();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceSpellCast() const;
+
+	/**
+	 * Record that this character has just was hit by a melee attack. Issue #1815, for the
+	 * movement rows issue #1821 unblocked.
+	 *
+	 * THE ROW IS "After being hit by a melee attack you gain 10%-20% increased movement speed for 2 seconds". Raises the action event `melee_hit_taken`, which
+	 * `action_events()` in `tools/generate_datatables.py` derives from the
+	 * condition `seconds_after_melee_hit_taken`, and which asks the player's movement speed again on
+	 * the frame of the event.
+	 */
+	void NoteMeleeHitTaken(bool bLanded);
+
+	/**
+	 * The same, for a blow that landed. Kept as a form of its own rather than
+	 * a default argument, because a default does not change a function's type:
+	 * `CataclysmDeathTests.cpp` stores this one's address as a pointer to a
+	 * member taking no arguments, in its table of event windows. Issue #1833.
+	 */
+	void NoteMeleeHitTaken() { NoteMeleeHitTaken(true); }
+
+	/**
+	 * The same, naming the attacker, for a row placing stacks on it. Issue
+	 * #1833, phase 2: "Each melee hit you take reduces the attacker's damage by
+	 * 3%-5% for 3 seconds". Null for a blow that is damage over time, which is
+	 * not a hit (ruled 2026-09-24), so a tick places nothing.
+	 */
+	void NoteMeleeHitTaken(bool bLanded, const AActor* Attacker);
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceMeleeHitTaken() const;
+
+	/**
+	 * Record that this character has just stunned, knocked down or displaced a character. Issue #1815, for the
+	 * movement rows issue #1821 unblocked.
+	 *
+	 * THE ROW IS "Applying a CC effect grants 10%-20% increased movement speed for 3 seconds". Raises the action event `crowd_control`, which
+	 * `action_events()` in `tools/generate_datatables.py` derives from the
+	 * condition `seconds_after_crowd_control`, and which asks the player's movement speed again on
+	 * the frame of the event.
+	 */
+	void NoteCrowdControlApplied();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceCrowdControlApplied() const;
+
+	/** Promise this character one hit's worth of leech. */
+	void AddLeechPayment(const FCataclysmLeechPayment& Payment)
+	{
+		LeechPayments.Add(Payment);
+		NoteLeechPaymentsChanged();
+	}
+
+	/** Replace the list with what is still owed after a step. */
+	void SetLeechPayments(TArray<FCataclysmLeechPayment>&& Payments)
+	{
+		LeechPayments = MoveTemp(Payments);
+		NoteLeechPaymentsChanged();
+	}
+
+	/**
+	 * How long this character has been leeching without a break, in seconds, or
+	 * nought when it is not leeching or there is no world. Ruled 2026-10-07.
+	 *
+	 * "LEECHING" IS A PAYMENT STILL OWED INTO A POOL THE CHARACTER HAS, health,
+	 * mana or energy shield alike, which is what the count of pools being
+	 * leeched into already means. The clock starts when the list of payments
+	 * first holds one and is cleared when it holds none, so the next payment
+	 * starts from nought. A hit landing while a payment is still owed does not
+	 * restart it.
+	 */
+	float SecondsLeeching() const;
+
+	/**
+	 * Record that a skill of this character's tagged `Type.Channel` has begun.
+	 * Ruled 2026-10-08. CALLED FROM ONE PLACE,
+	 * `UCataclysmSkillTemplate::CommitAndBegin`, once the use has been paid for,
+	 * and answered by exactly one `NoteChannelEnded` from
+	 * `UCataclysmSkillTemplate::EndAbility`.
+	 *
+	 * A COUNT AND NOT A FLAG, because two channelled skills can run together: a
+	 * skill a worn row starts is its own ability beside the one the player
+	 * pressed. The first to begin stamps the clock and raises
+	 * `OnChannellingChanged`; a second begun while the first runs does neither.
+	 */
+	void NoteChannelBegan();
+
+	/**
+	 * Record that a channelled skill counted by `NoteChannelBegan` has ended,
+	 * however it ended. Ruled 2026-10-08. The last to end clears the clock and
+	 * raises `OnChannellingChanged`.
+	 *
+	 * A CALL WITH NOTHING COUNTED DOES NOTHING, so the count cannot go below
+	 * nought. The skill template keeps its own flag and calls this once for
+	 * each use it counted; this guard is for a caller that did not.
+	 */
+	void NoteChannelEnded();
+
+	/**
+	 * Whether a skill of this character's tagged `Type.Channel` is running.
+	 * Ruled 2026-10-08. READ BY `CurrentConditions`, which is where every
+	 * condition gets it; a test may ask directly.
+	 */
+	bool IsChannelling() const;
+
+	/**
+	 * How long this character has been channelling, in seconds, or -1 when it
+	 * is not channelling or there is no world to read the time from. Ruled
+	 * 2026-10-08. Counted from the first channelled skill to begin while none
+	 * was running.
+	 */
+	float SecondsChannelling() const;
+
+	/**
+	 * Raised when this character begins channelling and when it stops: on the
+	 * count going from nought to one, and on its return to nought. Ruled
+	 * 2026-10-08.
+	 *
+	 * WHAT IT IS FOR. A stat that is asked for when it matters reads the state
+	 * as it is. Walking speed is not asked for then: it is written onto the
+	 * movement component and kept, so `ACataclysmPlayerCharacter` binds this to
+	 * work its speed out again, as it binds the cripple tag. A speed row under
+	 * `while_channelling` would otherwise hold a stale speed. No row of that
+	 * day's is one: "You cannot move while channeling any skill" is the flag
+	 * `cannot_walk` and moves no speed.
+	 *
+	 * RAISED AFTER THE STATE HAS CHANGED, so a listener asking
+	 * `CurrentConditions` inside it reads the new answer.
+	 */
+	FCataclysmOnChannellingChanged OnChannellingChanged;
+
+	/**
+	 * What the last blow aimed at this character resolved to.
+	 *
+	 * WHY THIS HAS TO BE RECORDED AT ALL. Issue #1156. The damage a caller hands
+	 * to `UCataclysmSkillEffects::ApplyDirectDamage` is written into the Damage
+	 * meta attribute, and evasion, block, armour, resistance and flat reduction
+	 * are all applied afterwards, inside this character's own
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`. So the caller
+	 * knows what it SENT and had no way at all to learn what happened to it --
+	 * `ApplyHit` returned the figure it computed for any blow it managed to
+	 * apply, including one evaded outright.
+	 *
+	 * WHY ON THIS COMPONENT, which is the same argument the displacement count
+	 * above makes: it belongs to the TARGET, it is written by the target's own
+	 * attribute set, and every hittable thing has one of these because being hit
+	 * goes through `ApplyHit`, which requires one.
+	 *
+	 * THE STAMP IS WHAT MAKES IT SAFE TO READ. An instant gameplay effect
+	 * executes inside `ApplyGameplayEffectToSelf`, so a caller reading this
+	 * immediately afterwards sees its own blow -- but only if the blow reached
+	 * the attribute set at all. A caller compares the stamp before and after: if
+	 * it did not move, nothing was resolved and the record below belongs to some
+	 * earlier blow. Reading it without that comparison is how this would report
+	 * the previous hit's evasion as this one's.
+	 */
+	void RecordResolvedHit(const FCataclysmDamageResult& Outcome)
+	{
+		LastResolvedHit = Outcome;
+		++ResolvedHitStamp;
+	}
+
+	/** What the last resolved blow did. Meaningless unless the stamp moved. */
+	const FCataclysmDamageResult& GetLastResolvedHit() const
+	{
+		return LastResolvedHit;
+	}
+
+	/** How many blows this character has resolved. See `RecordResolvedHit`. */
+	uint32 GetResolvedHitStamp() const
+	{
+		return ResolvedHitStamp;
+	}
+
+	/**
+	 * Keeps the blow that just landed as this character's last. Issue #41, slice
+	 * 4. Written by `UCataclysmCombatEvents::NoteBlow` for every blow that
+	 * reached health, and read by `UCataclysmCombatEvents::NoteDeath`, which is
+	 * how a death says who dealt it. See `FCataclysmLastBlow`.
+	 */
+	void RecordLastBlow(FCataclysmLastBlow&& Blow)
+	{
+		LastBlow = MoveTemp(Blow);
+	}
+
+	/** The last blow that reached this character's health. */
+	const FCataclysmLastBlow& GetLastBlow() const
+	{
+		return LastBlow;
+	}
+
+	/**
+	 * Runs one tick, now, of every running effect that grants this tag. FOR
+	 * TESTS. Issue #41, slice 4.
+	 *
+	 * WHY IT EXISTS. A damage-over-time effect ticks on the world's timers,
+	 * which an automation test world never runs, and the engine's
+	 * `ExecutePeriodicEffect` is protected. Without this, no test could watch a
+	 * bleed tick land, so none could check what a death from one says.
+	 *
+	 * @return how many effects ran a tick
+	 */
+	int32 ExecutePeriodicEffectsGrantingForTests(const FGameplayTag& GrantedTag);
+
+	/**
+	 * SKILL GADGETS. Ruled 2026-10-16 by the coordinating session (S1-S14), for the rows "Your heavy attack / special
+	 * ability / support ability / ultimate ability is converted into a deployable gadget ...". The owner: pressing a
+	 * converted slot's key PLACES its gadget where the player stands; one gadget per converted slot; a new press moves
+	 * it; the player no longer casts that skill. The gadget is `ACataclysmMinion`'s; this is the press and the record.
+	 *
+	 * THE FLAG, `skill_slot_is_a_gadget` (S12): a flat 1 whose Required Tags is the slot's tag, asked with the slot's
+	 * skill tags the way `UCataclysmSkillSlots::LockedStat` is, and read as above nought. No gameplay attribute and no
+	 * base.
+	 */
+	static const TCHAR* SkillSlotIsAGadgetStat;
+
+	/** Whether `Slot` is converted into a skill gadget now: the flag above, asked with `SkillGadgetSlotTags`. */
+	bool SlotIsASkillGadget(ECataclysmAbilitySlot Slot) const;
+
+	/**
+	 * The tags the flag is asked with for `Slot`: the tags of the skill the character holds in that slot, and the
+	 * slot's own tag, so a slot holding no skill still answers for its row.
+	 */
+	FGameplayTagContainer SkillGadgetSlotTags(ECataclysmAbilitySlot Slot) const;
+
+	/**
+	 * A press of a slot key, before anything is queued (S7). FALSE, AND NOTHING DONE, for a slot that is not
+	 * converted. TRUE for one that is: on the first frame of the press its gadget is placed at the character's feet,
+	 * or moved there if it stands (S6), and every later frame of the same press does nothing, because the binding
+	 * fires every frame the key is held. Placing is free: no mana, no cooldown, no skill-used notice, and no lock,
+	 * stun or cooldown refuses it. Called by `AbilityInputTagPressed`, and by the player controller BEFORE its stun
+	 * check, so a stunned player still places.
+	 *
+	 * ON THE AUTHORITY ONLY: a gadget is a spawned actor, and in a client and server game the press would need a
+	 * call to the server, which nothing makes yet. In standalone play the two are one machine.
+	 */
+	bool PressOfASkillGadgetSlot(const FGameplayTag& SlotTag);
+
+	/** The key of a slot is up: its next press may place or move its gadget again. Called by `AbilityInputTagReleased`. */
+	void ReleaseOfASkillGadgetSlot(const FGameplayTag& SlotTag);
+
+	/** The skill gadget standing for `Slot`, or null when none stands or the one placed has died. */
+	class ACataclysmMinion* SkillGadgetIn(ECataclysmAbilitySlot Slot) const;
+
+	/**
+	 * While alive, `System`'s conditions are judged for `Gadget`'s blow: its age and its stillness (S5 b, c). Made by
+	 * `UCataclysmSkillEffects::ApplyHit` around the pricing of a skill gadget's blow and ended before the blow is
+	 * dealt, so a defence of the character's against what the blow provokes is judged on the character. Restores what
+	 * was there before, so a pricing inside another leaves the outer one as it was.
+	 */
+	struct FPricingASkillGadgetsBlow
+	{
+		FPricingASkillGadgetsBlow(UCataclysmAbilitySystemComponent* InSystem, const class ACataclysmMinion* Gadget);
+		~FPricingASkillGadgetsBlow();
+		/** End it now rather than at the end of the scope. Ending twice does nothing. */
+		void End();
+
+		UCataclysmAbilitySystemComponent* System = nullptr;
+		TWeakObjectPtr<const class ACataclysmMinion> Before;
+		bool bActive = false;
+	};
+
+	/**
+	 * The flat rows of `Stat` that name `Named`, worked out with the character's conditions now and with `Tags`: the
+	 * figure the Flat bucket holds over those rows alone, floored at nothing. For "Gadgets deal bonus damage equal to
+	 * 3%-6% of your maximum HP per hit" on a skill gadget's cast (S5 d), which `StatNamingTagAppliedTo` cannot give,
+	 * because that applies the naming rows' increases too and the cast already takes them.
+	 */
+	float FlatOfStatNamingTag(FName Stat, const FGameplayTag& Named, const FGameplayTagContainer& Tags,
+							  const AActor* Target) const;
+
+	/**
+	 * The flat rows of `Stat` that the attribute cannot carry, worked out with `Tags`, `Target` and the character's
+	 * conditions now: the Flat bucket over those rows alone, floored at nothing. Issue #2499, ruled 2026-10-25: "Your
+	 * skills deal 10%-30% of your current mana as more damage" is a flat `attack_damage` row scaled by the mana held,
+	 * which folds to nothing in the attribute (worked out with no skill and an empty state) and reached no hit.
+	 *
+	 * A ROW THE ATTRIBUTE CANNOT CARRY is a Flat row that requires a tag other than the global scope, states a
+	 * condition (either of two) or carries a scale other than `Fixed`. A plain flat row is left out: the attribute
+	 * holds it. AND WHAT THOSE ROWS GAVE THE ATTRIBUTE IS TAKEN BACK OFF, their Flat bucket worked out as the attribute
+	 * was, with no tags and an empty state, so no row is counted twice even if one holds with nothing known. Every row
+	 * requiring `LeavingOut` exactly is left out too (Q-F3, `Type.Deployable`): `FlatOfStatNamingTag` prices those.
+	 */
+	float FlatTheAttributeCannotCarry(FName Stat, const FGameplayTag& LeavingOut, const FGameplayTagContainer& Tags,
+									  const AActor* Target) const;
+
+	/** The gadget standing for each converted slot, by slot. Weak: a destroyed gadget is no gadget. */
+	TMap<ECataclysmAbilitySlot, TWeakObjectPtr<class ACataclysmMinion>> SkillGadgets;
+
+	/** The converted slots whose key is down and has already placed or moved its gadget in this press. */
+	TSet<ECataclysmAbilitySlot> SkillGadgetSlotsHeldDown;
+
+	/** The skill gadget whose blow is being priced now, or null. See `FPricingASkillGadgetsBlow`. */
+	TWeakObjectPtr<const class ACataclysmMinion> SkillGadgetBeingPriced;
+
+	/**
+	 * SKILL TRAPS. Ruled 2026-10-19 by the coordinating session (T1-T19), for the rows "Your heavy attack / special
+	 * ability / ultimate ability is converted into a placeable trap ...". The trap is `ACataclysmMinion`'s; this is the
+	 * flag, the press and the pricing read.
+	 *
+	 * THE FLAG, `skill_slot_is_a_trap`: a flat 1 whose Required Tags is the slot's tag, asked with
+	 * `SkillGadgetSlotTags` as `SlotIsASkillGadget` asks its own, and read as above nought. No gameplay attribute and no
+	 * base. A SLOT CONVERTED TO BOTH A GADGET AND A TRAP MAKES A TRAP (T17): `PressOfASkillGadgetSlot` leaves such a
+	 * slot alone.
+	 */
+	static const TCHAR* SkillSlotIsATrapStat;
+
+	/** Whether `Slot` is converted into a skill trap now: the flag above, asked with `SkillGadgetSlotTags`. */
+	bool SlotIsASkillTrap(ECataclysmAbilitySlot Slot) const;
+
+	/**
+	 * A press of a slot key, before anything is queued. FALSE, AND NOTHING DONE, for a slot that is not converted into a
+	 * trap. TRUE for one that is, and on the first frame of the press: THE PRESS IS THE SKILL USE (T5, T19). When the
+	 * slot's cooldown is ready, the skill's cost can be paid and no lock holds the skill, a trap is placed at the
+	 * character's feet (T3), the cost is paid, the cooldown is started and the skill-used notice is sent, so the press
+	 * raises `skill_use` as a use does; otherwise nothing is placed and nothing paid. Every later frame of the same press
+	 * does nothing. Called by `AbilityInputTagPressed`, so a stunned player, whose press the player controller drops
+	 * before it reaches the ability system, places nothing, as a stunned player uses no skill.
+	 *
+	 * ON THE AUTHORITY ONLY, as the skill gadget's press.
+	 */
+	bool PressOfASkillTrapSlot(const FGameplayTag& SlotTag);
+
+	/** The key of a slot is up: its next press may place a trap again. Called by `AbilityInputTagReleased`. */
+	void ReleaseOfASkillTrapSlot(const FGameplayTag& SlotTag);
+
+	/** The converted slots whose key is down and has already been answered in this press. */
+	TSet<ECataclysmAbilitySlot> SkillTrapSlotsHeldDown;
+
+	/**
+	 * "Scales off trap damage" (T10): the increases and the "more" of this character's `minion_damage` rows that NAME
+	 * `Type.Trap`, asked with `Tags` and against `Target`, worked out with the character's conditions now. The one read
+	 * `UCataclysmSkillEffects::ApplyHit` adds for a skill trap's cast: the increases join the blow's increases bucket and
+	 * the "more" multiplies it, so the built rows "Traps deal 20%-40% increased damage", the two per trap and per gadget
+	 * and "doubles" reach it as written. A FRACTION, 0.3 for 30%, and a multiplier of 1 with no such row.
+	 */
+	void TrapDamageNamingTrap(const FGameplayTagContainer& Tags, const AActor* Target, float& OutIncreases,
+							  float& OutMore) const;
+
+	/**
+	 * TRAPS LAYER 2, THE BASIC ATTACK'S TRAP. Ruled 2026-10-21 by the coordinating session (L1, L2), for "Your basic
+	 * attack is converted into a placeable trap. When triggered, it fires your basic attack at the nearest enemy. Scales
+	 * off trap damage. Shares your basic attack cooldown across all placed copies." Its press is the click on an enemy,
+	 * `ACataclysmPlayerController::PressOnAnEnemy`, which asks `PressOfASkillTrapSlot` for `Slot.Basic` (L1, the skill
+	 * gadget's S15 path).
+	 *
+	 * ONE CLOCK FOR EVERY BASIC TRAP (L2): a basic trap is placed at most once per swing interval,
+	 * `UCataclysmBasicAttack::SecondsBetweenSwingsFor`, so attack speed shortens it, read as the skill gadget's S2 read
+	 * "basic attack cooldown". AND ONLY WHILE THE PLAYER COULD SWING, `UCataclysmBasicAttack::MaySwing`: not dead,
+	 * stunned, knocked down or feared. An interval of nought, a player who never swings, places none.
+	 */
+	bool BasicSkillTrapMayBePlacedNow() const;
+
+	/** Seconds until the next basic trap may be placed, or nought; nought too for an interval of nought. For the bar. */
+	float BasicSkillTrapSecondsLeft() const;
+
+	/** The world's time at which the last basic trap was placed: long ago until the first, as a first swing is. */
+	float BasicSkillTrapPlacedAtSeconds = -1000.0f;
+
+	/**
+	 * TRAPS LAYER 3. Ruled 2026-10-21 by the coordinating session (M3, M4), for three trap rows the actions that existed
+	 * could not state. `APPLY_STATUS_SIZED_ACTION`, `SLOW_FOR_SECONDS_ACTION` and `OWN_STACKS_LAPSING_ALONE_EVENTS` in
+	 * `tools/generate_datatables.py` hold the same names.
+	 *
+	 * `ApplyStatusSizedAction` LAYS A DAMAGE OVER TIME ON THE OTHER CHARACTER OF ITS EVENT AT THE VALUE'S MULTIPLE OF ITS
+	 * ORDINARY SIZE, always: "Traps cause a bleed of 1-2 times normal strength in every enemy caught in their blast", on `deployable_hit`
+	 * with `Type.Trap` (ruling 8 of 2026-10-07: "1-2 bleed stacks" is one bleed at 1 to 2 times its size). The
+	 * `ECataclysmApplyStatus::Sized` form, which until now only `ApplyStatusToSelfSizedAction` took. The owner's rule of
+	 * a tenth (#917) is asked of it as of every status a blow lays on another.
+	 */
+	static const TCHAR* ApplyStatusSizedAction;
+
+	/**
+	 * `SlowForSecondsAction` SLOWS THE OTHER CHARACTER OF ITS EVENT BY THE VALUE IN PER CENT FOR `StackSeconds`: "Traps
+	 * apply a 20%-35% slow to triggered enemies for 2-4 seconds", on `trap_triggered`, whose other character is the enemy
+	 * that set the trap off and no other (M3 (b)). Cripple's tag at the stated strength, capped at Cripple's own cap, for
+	 * the stated seconds lengthened as a stated Cripple's are. THE RULE OF A TENTH IS ASKED (the owner, 2026-10-21: "Follow
+	 * the tenth rule") against the event's amount, the largest blow the trap's cast dealt that enemy
+	 * (`ACataclysmMinion::SkillTrapTookFromItsEnemy`). WHEN NO BLOW HAS YET QUALIFIED, the slow waits for a later blow of
+	 * the same cast (`LateSkillTrapSlows`, ruled 2026-10-21, brief 60c). See `UCataclysmAilments::ApplySlowOfStrength`.
+	 */
+	static const TCHAR* SlowForSecondsAction;
+
+	/**
+	 * Grant one own stack under `StackKey` THAT LAPSES ALONE, `WindowSeconds` after it was granted, with NO CAP: "Each trap
+	 * triggered in the last 10 seconds increases your damage by 8%-15%" (M4 (a)). An own-stack row with no cap
+	 * (`FCataclysmPoolAction::bOwnStacksLapseAlone`) grants through this and not `GrantOwnStack`, whose stacks lapse
+	 * together and whose cap of nothing grants nothing. `OwnStacksHeld` counts the stacks still inside their windows. A
+	 * window of nothing grants nothing.
+	 */
+	void GrantOwnStackLastingAlone(FName StackKey, float WindowSeconds);
+
+	/** When each stack of a row whose stacks lapse alone was granted, by stack key. Emptied where `OwnStacks` is. */
+	TMap<FName, TArray<float>> OwnStacksLastingAlone;
+
+	/**
+	 * THE SLOW DECIDED AT A LATE BLOW. Ruled 2026-10-21 by the coordinating session (brief 60c): "when a blow from a trap's
+	 * cast lands on the enemy that set that trap off and takes at least a tenth of its maximum health, it lays the slow
+	 * there and then at the slow row's figures, once per trap". A blow already landed when the trap triggers is judged at
+	 * `trap_triggered` (`ACataclysmMinion::SkillTrapTookFromItsEnemy`). When none qualified, the slow action leaves one of
+	 * these, and a later blow of that cast (a shot in flight, a rack's throw, since traps layer 3b a buried weapon's
+	 * leap) that names THAT TRAP, compared by identity although the trap is gone, lays it, once, if it takes a tenth. Each waits at most
+	 * `SkillTrapLateSlowSeconds`. Emptied at death.
+	 */
+	struct FLateSkillTrapSlow
+	{
+		TWeakObjectPtr<AActor> Trap;
+		TWeakObjectPtr<AActor> Enemy;
+		float StrengthPercent = 0.0f;
+		float Seconds = 0.0f;
+		float UntilSeconds = 0.0f;
+	};
+	TArray<FLateSkillTrapSlow> LateSkillTrapSlows;
+
+	/** How long a slow waits for a late blow of its trap's cast: a number under the owner's delegation of unstated numbers. */
+	static constexpr float SkillTrapLateSlowSeconds = 5.0f;
+
+	/** The skill trap whose `trap_triggered` is being raised now, set by `ACataclysmMinion::TriggerSkillTrap` around it. */
+	TWeakObjectPtr<AActor> SkillTrapRaisingItsTrigger;
+
+	/**
+	 * A blow of the trap `CastBy` names has landed on `Struck`, taking `DealtToHealth`: if a slow waits for it and the blow
+	 * takes a tenth (the owner's rule, #917), lay the slow and stop waiting. Whether a slow was laid. Asked by
+	 * `UCataclysmSkillEffects::ApplyHit` for every blow of a used-up trap's cast, with the identity `SpentSkillTrapNamed`
+	 * found it by (traps layer 3b), so a blow no slow waits for lays nothing.
+	 */
+	bool LayALateSkillTrapSlow(const TWeakObjectPtr<AActor>& CastBy, AActor* Struck, float DealtToHealth);
+
+	/**
+	 * TRAPS LAYER 3B, A TRAP'S LATE BLOWS. Ruled 2026-10-21 by the coordinating session (#2462): "a trap's late shot, a
+	 * buried weapon's leap and a zone are priced and announced as the trap's (Type.Trap minion_damage and
+	 * deployable_hit), carried by the record built here." A SKILL TRAP ALREADY USED UP, kept on its player: the trap,
+	 * compared by identity although it is gone as `FLateSkillTrapSlow::Trap` is, and its type tags. Written by
+	 * `ACataclysmMinion::TriggerSkillTrap` as the trap is used up; read by `UCataclysmSkillEffects::ApplyHit` for a blow
+	 * no living gadget or trap prices, and by `UCataclysmSkillTemplate::LeaveZoneAlong` for a zone laid after the trap
+	 * is gone. NO CLOCK, so a buried weapon's leap is the trap's however late it comes; at most `SpentSkillTrapsKept`
+	 * are kept, the oldest let go first. Emptied at death. A skill gadget is never written here, so its late blows stay
+	 * the player's (P5, 2026-10-16).
+	 */
+	struct FSpentSkillTrap
+	{
+		TWeakObjectPtr<AActor> Trap;
+		FGameplayTagContainer TypeTags;
+		/**
+		 * SINCE TRAPS LAYER 4 (F4, F6): the enemy that set off the trigger it was used up by, and whether that trigger's
+		 * share of the enemy's maximum health was already added, so a late blow of its cast on that enemy takes the
+		 * increase and the share as an instant one does. Read off the trap by `NoteSkillTrapSpent`.
+		 */
+		TWeakObjectPtr<AActor> TriggeringEnemy;
+		bool bGaveItsEnemysHealthShare = false;
+	};
+	TArray<FSpentSkillTrap> SpentSkillTraps;
+
+	/** How many used-up traps a player keeps for their late blows: a number under the owner's delegation of unstated numbers. */
+	static constexpr int32 SpentSkillTrapsKept = 64;
+
+	/** `Trap` is being used up: keep it, with `TrapTypeTags`, for its cast's late blows. Nothing for a null trap. */
+	void NoteSkillTrapSpent(AActor* Trap, const FGameplayTagContainer& TrapTypeTags);
+
+	/**
+	 * Whether `CastBy` names a skill trap of this player's already used up, and if so the kept record in `OutSpent`. By
+	 * identity, so a weak pointer to a trap that is gone still finds it; an explicitly empty one finds nothing.
+	 */
+	bool SpentSkillTrapNamed(const TWeakObjectPtr<AActor>& CastBy, FSpentSkillTrap& OutSpent) const;
+
+	/**
+	 * TRAPS LAYER 4 (F6): the used-up trap `CastBy` names has added its trigger's share of its enemy's maximum health, by
+	 * a late blow of its cast, so no later blow of the same trigger adds it again. Nothing for a trap not kept.
+	 */
+	void NoteSpentSkillTrapGaveItsEnemysHealthShare(const TWeakObjectPtr<AActor>& CastBy);
+
+	/**
+	 * TRAPS LAYER 4, "Enemies killed by traps explode, dealing 50%-100% of the trap's damage to all enemies within 4
+	 * meters". Ruled 2026-10-21 by the coordinating session (F10 to F12). The action that makes an enemy the wearer kills
+	 * EXPLODE FOR A SHARE OF THE BLOW THAT KILLED IT, the value the share in per cent: on `kill` and no other event,
+	 * requiring `Type.Trap`, which the kill carries as the killing skill's tags for a blow of a trap's cast, instant or a
+	 * late shot (F12). `tools/generate_datatables.py` holds the same name as `KILLING_BLOW_EXPLOSION_ACTION`. See
+	 * `FCataclysmPoolAction::bExplodeVictimForKillingBlow`.
+	 *
+	 * THE EVENT LOOP ONLY RECORDS THE SHARE, as the overkill explosion's row does and for its reason: the kill site takes
+	 * it once the loop has returned (`ACataclysmPlayerCharacter::OnSomethingDied`) and makes the explosion there, the
+	 * killing blow's own figure before the victim's mitigation at the share (F10), through the overkill explosion's blast,
+	 * `UCataclysmSkillEffects::ExplodeForOverkill`, at `UCataclysmSkillEffects::KillingBlowExplosionRadiusCm` (F11). NOT
+	 * FOR A KILL BY A TICK (F12): a zone's sweep and the trap's own damage over time are no hit.
+	 */
+	static const TCHAR* ExplodeVictimForKillingBlowAction;
+
+	/** The share the rows recorded for the kill in hand, read once and cleared; nought while the event loop runs. */
+	float TakePendingKillingBlowExplosionSharePercent()
+	{
+		if (PoolActionDepth > 0)
+		{
+			return 0.0f;
+		}
+		const float Was = PendingKillingBlowExplosionSharePercent;
+		PendingKillingBlowExplosionSharePercent = 0.0f;
+		return Was;
+	}
+
+	/** What the rows recorded for the kill in hand. See `TakePendingKillingBlowExplosionSharePercent`. */
+	float PendingKillingBlowExplosionSharePercent = 0.0f;
+
+	/**
+	 * TRAPS LAYER 5, the player's other traps. Ruled 2026-10-22 by the coordinating session (H1 to H11), and H5 (b) by the
+	 * owner: "Chain the group (Recommended)" — "Every trap in a connected group within range goes off, each at most once.
+	 * Each counts as triggered, so it slows its own enemy and adds a damage stack. Needs a small queue in the code."
+	 *
+	 * TWO ACTIONS, each with its value the radius in metres from the trap that triggered (`trap_triggered`) or the gadget
+	 * destroyed (`gadget_destroyed`), and Scale Max Steps 1 for the nearest trap alone, empty for every one:
+	 * `ArmTrapsNearbyAction` arms the player's standing unarmed traps there (`ACataclysmMinion::ArmSkillTrapsNear`), for
+	 * "When a trap is triggered, the nearest unarmed trap within 10 meters arms instantly", "When a trap triggers it
+	 * releases a shockwave that arms all traps within 15 meters instantly" and "When a gadget is destroyed it arms all
+	 * traps within 12 meters instantly"; `TriggerTrapsNearbyAction` sets them off (`ACataclysmMinion::SetOffSkillTrapsNear`),
+	 * for "Traps trigger simultaneously when any one of them is triggered, if within 8-12 meters of each other", "When a
+	 * gadget is destroyed, the nearest active trap within 10 meters is triggered immediately" and, on `player_death` with a
+	 * radius of nought for every trap, the trap half of "When you die, all your active traps and gadgets immediately
+	 * trigger simultaneously". `tools/generate_datatables.py` holds the same names. No trigger cooldown (H9).
+	 */
+	static const TCHAR* ArmTrapsNearbyAction;
+	static const TCHAR* TriggerTrapsNearbyAction;
+
+	/**
+	 * THE QUEUE (H5 (b), and G-1 (a) of 2026-10-22: a trap set off by a row is a whole trigger): the traps a row's action has
+	 * chosen to set off, recorded by `ACataclysmMinion::SetOffSkillTrapsNear` while that row acts, and set off by
+	 * `DrainQueuedSkillTrapSetOffs` once the outermost call is at depth nought again, each by its ordinary
+	 * `TriggerSkillTrap`. So its own `trap_triggered` and every event its instant blows raise are answered as a trap's an
+	 * enemy set off are. Each trap compared by identity; `bEvenForADeadPlayer` for the traps the player's death sets off.
+	 */
+	struct FQueuedSkillTrapSetOff
+	{
+		TWeakObjectPtr<AActor> Trap;
+		bool bEvenForADeadPlayer = false;
+	};
+	TArray<FQueuedSkillTrapSetOff> QueuedSkillTrapSetOffs;
+
+	/**
+	 * THE CHAIN GUARD (H5 (b)): every skill trap set off in the chain in hand, the trap that began it included, each added
+	 * WHEN IT IS RECORDED, before it goes off, so no trap is recorded twice; a trap here is never chosen again until the chain
+	 * ends. ONE CHAIN IS ONE EVENT ACTED ON AT DEPTH NOUGHT AND EVERYTHING IT RECORDED: emptied when the outermost drain
+	 * ends. So each trap goes off at most once a chain, a rearmed one included, and the queue holds at most one record for
+	 * each trap standing when the chain began.
+	 */
+	TArray<TWeakObjectPtr<AActor>> SkillTrapsSetOffThisChain;
+
+	/** Whether the queue is being drained now, so a drain reached from inside it returns at once. */
+	bool bDrainingQueuedSkillTrapSetOffs = false;
+
+	/** Record `Trap` to be set off once the row acting now has finished. */
+	void QueueSkillTrapSetOff(AActor* Trap, bool bEvenForADeadPlayer);
+
+	/** Set off each recorded trap in the order recorded, at depth nought, then end the chain. Only the outermost call acts. */
+	void DrainQueuedSkillTrapSetOffs();
+
+	/** Arm or set off the player's traps as `Action` states for `Event`, naming `EventTarget`. How many. */
+	int32 ActOnSkillTrapsNearby(const FCataclysmPoolAction& Action, FName Event, const AActor* EventTarget);
+
+	/**
+	 * TRAPS LAYER 6, a nearby gadget fires at a trap's enemy. Ruled 2026-10-22 by the coordinating session (J1 to J10), J2
+	 * CHANGED: "SKILL GADGETS ONLY. "Every kind of gadget the player can have" without War is the skill gadget; a branch for
+	 * a machine gadget's ordinary blow would be code for War's Bolt Turret and Ballista alone". So War's gadgets do not
+	 * fire.
+	 *
+	 * ONE ACTION on `trap_triggered` (J10), for "When a trap is triggered near an active gadget, the gadget fires an
+	 * immediate bonus shot at the triggering enemy" (value 100, Event Value 10: the nearest skill gadget within 10 m of
+	 * the trap, J1) and "For every 3 traps triggered, your nearest gadget fires a massive overcharged shot dealing
+	 * 200%-400% of its normal damage" (value 200 to 400, a "more" on that one shot, J6; Event Value nought, any distance,
+	 * J5; Every Nth 3 with no window, one count per player, forced triggers included, emptied at death, J4). AT THE
+	 * TRIGGER'S TRIGGERING ENEMY (J3): none, dead or gone, no shot. NO TRIGGER COOLDOWN (J9).
+	 * `tools/generate_datatables.py` holds the same name as `GADGET_FIRES_AT_TRAP_ENEMY_ACTION`.
+	 */
+	static const TCHAR* GadgetFiresAtTrapEnemyAction;
+
+	/**
+	 * THE QUEUE OF SHOTS, as traps layer 5's queue of set-off traps (G-1 (a)): the row CHOOSES the gadget and records the
+	 * shot while it acts, at depth one, where every event the shot's blows raised would be dropped; the outermost call
+	 * fires it once it is at depth nought again (`DrainQueuedGadgetShotsAtTrapEnemies`), so the gadget's `deployable_hit`,
+	 * `hit_dealt`, `first_hit_dealt`, `kill` and `dot_applied` are answered as its clock's cast's are (J2: "priced and
+	 * announced as its clock's cast"). Each gadget and enemy compared by identity; the "more" as a multiplier.
+	 */
+	struct FQueuedGadgetShotAtTrapEnemy
+	{
+		TWeakObjectPtr<AActor> Gadget;
+		TWeakObjectPtr<AActor> Enemy;
+		float DamageMultiplier = 1.0f;
+	};
+	TArray<FQueuedGadgetShotAtTrapEnemy> QueuedGadgetShotsAtTrapEnemies;
+
+	/** Whether the queue of shots is being drained now, so a drain reached from inside a shot returns at once. */
+	bool bDrainingQueuedGadgetShotsAtTrapEnemies = false;
+
+	/**
+	 * Choose the gadget `Action` names for the trap whose `trap_triggered` is being raised (`SkillTrapRaisingItsTrigger`) and
+	 * record its shot at `EventTarget`. Whether one was recorded: not for no enemy, no gadget, or no trap raising its event.
+	 */
+	bool QueueGadgetShotAtTrapEnemy(const FCataclysmPoolAction& Action, const AActor* EventTarget);
+
+	/** Fire each recorded shot in the order recorded, at depth nought. Only the outermost call acts. */
+	void DrainQueuedGadgetShotsAtTrapEnemies();
+
+	/**
+	 * #2472, A PLAYER'S DEATH INSIDE ONE OF ITS OWN ABILITY ACTIVATIONS. Ruled 2026-10-22 by the coordinating session: the
+	 * two death drains (the gadget half's death casts, #15, and traps layer 5's set-offs) also wait while the ability list
+	 * is locked, and run again when the player's own activation ends. The engine holds `ABILITYLIST_SCOPE_LOCK` across an
+	 * activation (`UAbilitySystemComponent::InternalTryActivateAbility`), a grant made under it is only deferred, and
+	 * `UCataclysmTriggeredSkill::Trigger` refuses a deferred grant: so a skill gadget's area cast that killed its own player
+	 * ("Your deployables and traps deal full damage to you if you are within their blast radius") used to lose every
+	 * death cast and every trap trigger of "When you die, all your active traps and gadgets immediately trigger
+	 * simultaneously". The lock count is the engine's own, protected member.
+	 */
+	bool AbilityListIsLocked() const;
+
+	/** Whether the player's death has gadget death casts kept for the end of the activation that locked the list. */
+	bool bGadgetDeathCastsWaiting = false;
+
+	/**
+	 * Asked by `ACataclysmMinion::FireEveryGadgetAtTheDeathOf` before it fires anything: while the list is locked, keep the
+	 * death casts for later and answer true, so nothing fires now; otherwise false.
+	 */
+	bool KeepGadgetDeathCastsWhileLocked();
+
+	/**
+	 * Fire the kept death casts once, at depth one as #15's are fired inside the death's row action, so their blows'
+	 * events are dropped as those are. Nothing while the list is locked or with nothing kept.
+	 */
+	void DrainWaitingGadgetDeathCasts();
+
+	/**
+	 * Called after each `TryActivateAbility` this project makes, when an activation has ended: at depth nought and with
+	 * the list unlocked, drain what waited, in the order the death's own event drains it: the kept death casts, the
+	 * queued deaths, the set-off traps, the gadgets' shots.
+	 */
+	void ActOnWhatWaitedForTheAbilityList();
+
+protected:
+	/** Slots pressed since the last ProcessAbilityInput. Not replicated; local input only. */
+	TArray<FGameplayAbilitySpecHandle> InputPressedSpecHandles;
+
+	/** Slots released since the last ProcessAbilityInput. */
+	TArray<FGameplayAbilitySpecHandle> InputReleasedSpecHandles;
+
+	/**
+	 * The modifiers themselves, and the handle of each, at the same index.
+	 *
+	 * TWO ARRAYS RATHER THAN ONE ARRAY OF PAIRS so that GetStatModifiers can
+	 * hand the pipeline exactly what it takes without building a copy on every
+	 * hit. The two are always the same length; every function that changes one
+	 * changes the other in the same statement.
+	 */
+	TArray<FCataclysmStatModifier> StatModifiers;
+
+	/**
+	 * What each character-sheet stat was worked out from. Issue #943.
+	 *
+	 * SEPARATE FROM `StatModifiers` ABOVE, WHICH IS A DIFFERENT LIST FOR A
+	 * DIFFERENT PURPOSE. That one holds modifiers a live skill buff granted and
+	 * will take away again, each with a handle so it can be revoked. This one is
+	 * the character's standing stat line -- what its class, its gear and its
+	 * spent passive points come to -- rewritten wholesale by every refresh and
+	 * never revoked piecemeal.
+	 *
+	 * NOT REPLICATED, for the reason the leech list is not: what a remote client
+	 * needs is the resulting numbers, and every one of them is already a
+	 * replicated attribute. A hit is resolved on the authority.
+	 */
+	TMap<FName, FCataclysmStatInputs> StatInputs;
+
+	/**
+	 * A maximum's attribute, plus what the refresh could not fold into it.
+	 * Issue #1515.
+	 *
+	 * WHAT `MaximumEnergyShield` AND `MaximumClassResource` BOTH ASK. The
+	 * refresh writes each maximum's attribute from every row on the stat, judged
+	 * with no skill in hand and nothing known about the character, so an
+	 * unconditioned flat row or increase is ALREADY INSIDE the attribute. What is
+	 * missing is only what that judgement could not see: a scaled row, whose
+	 * reading was unknown, and a conditioned one.
+	 *
+	 * SO THIS ADDS THE DIFFERENCE, NOT THE ROWS. It works the stat out twice from
+	 * the recorded line -- once with the character's readings, once exactly as
+	 * the refresh did -- and adds what separates them to the attribute. The rule
+	 * `AttackDamageMoreForSkill` follows for the "more" bucket, applied to the
+	 * whole figure. Running every row over the attribute instead, which both
+	 * lookups did until 2026-09-23, counted each unconditioned row twice.
+	 *
+	 * THE ATTRIBUTE STAYS THE STARTING POINT, so anything written straight to it
+	 * -- a restored save, a dungeon floor, a test -- is kept.
+	 *
+	 * THE ATTRIBUTE ITSELF WHEN NOTHING IS RECORDED for the stat, which is every
+	 * enemy and a player before its first refresh.
+	 */
+	float AttributePlusWhatWasNotFolded(FName Stat, float Attribute) const;
+
+	/** What the worn items do when an event happens. See `SetPoolActions`. */
+	TArray<FCataclysmPoolAction> PoolActions;
+
+	/** The ailment this character last applied to another, by name. See `NoteDotApplied`. */
+	FString LastAppliedDotAilment;
+
+	/** One row's own stacks: how many, and when the last was granted. */
+	struct FOwnStack
+	{
+		int32 Count = 0;
+		float GrantedAtSeconds = 0.0f;
+		float WindowSeconds = 0.0f;
+	};
+
+	/**
+	 * Every row's own stacks, by `FCataclysmStatModifier::StackKey`. Issue
+	 * #1833. THE SAME SHAPE AS `StackCounts`: one count and one timestamp, a
+	 * grant restarts the window, and the whole count lapses together.
+	 */
+	TMap<FName, FOwnStack> OwnStacks;
+
+	/**
+	 * When each action row with a trigger cooldown may fire again, in world
+	 * seconds, by `FCataclysmPoolAction::TriggerKey`. Issue #1833 group D.
+	 *
+	 * NOT CLEARED AT DEATH, a judgement: a cooldown is the row's own clock, and
+	 * dying is not a reason for a once-a-while effect to be ready again.
+	 */
+	TMap<FName, float> TriggerReadyAtSeconds;
+
+	/** Whether this action may fire now, as far as its trigger cooldown goes. */
+	bool TriggerReady(const FCataclysmPoolAction& Action) const;
+
+	/** The share of maximum health held now, in percent, or -1 for none. */
+	float HealthPercentNow() const;
+
+	/**
+	 * Whether `health_falls_below` crossed this row's threshold: the share
+	 * before, carried as the event's amount, at or above it, and the share now
+	 * below it. True for every other event.
+	 */
+	bool EventThresholdCrossed(const FCataclysmPoolAction& Action, float EventAmount) const;
+
+	/** The share of maximum health last noted, in percent, or -1 before any. */
+	float LastHealthPercentNoted = -1.0f;
+
+	/** Start this action's trigger cooldown, if it has one. Called when it fires. */
+	void NoteTriggerFired(const FCataclysmPoolAction& Action);
+
+	/** One row's hits in a row: on whom, how many, and when the last landed. */
+	struct FConsecutiveHits
+	{
+		TWeakObjectPtr<const AActor> Target;
+		int32 Count = 0;
+		float LastAtSeconds = 0.0f;
+	};
+
+	/**
+	 * Every row's hits in a row, by `FCataclysmStatModifier::StackKey`. Issue
+	 * #1833, phase 2. Kept apart from `OwnStacks` because a count belongs to
+	 * one enemy and has no window.
+	 */
+	TMap<FName, FConsecutiveHits> ConsecutiveHits;
+
+	/** One row's stacks placed on this character by another. */
+	struct FPlacedStack
+	{
+		int32 Count = 0;
+		float GrantedAtSeconds = 0.0f;
+		float WindowSeconds = 0.0f;
+		float PercentPerStack = 0.0f;
+		bool bCutsDamage = false;
+	};
+
+	/**
+	 * Every row's stacks placed on this character, by the row. Issue #1833,
+	 * phase 2. The own-stack shape: a grant restarts the window and the whole
+	 * count lapses together.
+	 */
+	TMap<FName, FPlacedStack> PlacedStacks;
+
+	/** What the placed stacks of one kind take away now, summed, unclamped. */
+	float PlacedPercentNow(bool bCutsDamage) const;
+
+	/** What one applier's worn rows hung on one ailment this character carries. */
+	struct FCarriedRiders
+	{
+		TWeakObjectPtr<const UCataclysmAbilitySystemComponent> Applier;
+		TMap<ECataclysmAilmentRider, float> Percent;
+	};
+
+	/** The riders this character carries, by the ailment's tag. See `ReceiveAilmentRiders`. */
+	TMap<FGameplayTag, FCarriedRiders> AilmentRiders;
+
+	/** What one applier's row cuts from what this character deals while it carries one debuff. */
+	struct FDebuffDamageCut
+	{
+		TWeakObjectPtr<const UCataclysmAbilitySystemComponent> Applier;
+		float Percent = 0.0f;
+	};
+
+	/** The cuts this character carries, by the debuff's tag. See `ReceiveDebuffDamageCut`. */
+	TMap<FGameplayTag, FDebuffDamageCut> DebuffDamageCuts;
+
+	/**
+	 * Write this character's maximum health as its ailments' riders leave it:
+	 * its unlowered maximum times (100 - the percentage) / 100, the percentage
+	 * being `ECataclysmAilmentRider::MaxHealthRemoved` summed over the ailments
+	 * it carries now and held to `MaxAilmentMaxHealthRemovedPercent`. Ruled
+	 * 2026-10-08: "Enemies with Necrosis have 1%-2% less maximum health".
+	 *
+	 * CALLED AT THREE MOMENTS AND READ NOWHERE ELSE. When the number is
+	 * RECEIVED: the ailment's tag arriving with the number on record, or
+	 * `ReceiveAilmentRiders` for an ailment already carried. When it is
+	 * REPLACED: `ReceiveAilmentRiders`, for another applier's number or for an
+	 * applier that no longer has one. When the ailment ENDS: its tag leaving,
+	 * by time, by removal or by a cleanse. A call that finds the percentage
+	 * unchanged writes nothing, which is what a refresh is.
+	 *
+	 * THE UNLOWERED MAXIMUM IS REMEMBERED, so the return writes that figure
+	 * back and not one worked out by dividing. If something else has written
+	 * the maximum while it was lowered, the difference it made is kept: the
+	 * unlowered figure becomes the remembered one plus that difference.
+	 *
+	 * HEALTH IS BROUGHT DOWN BY `UCataclysmVitalAttributeSet::PostAttributeChange`
+	 * and by nothing here, and that hook never raises it. Nothing is announced
+	 * as damage.
+	 *
+	 * @param Changed       the ailment whose tag has just come or gone, or none
+	 * @param ChangedCount  how many of it the character holds now. Handed over
+	 *                      and not asked, so the answer does not depend on
+	 *                      whether the engine has finished its own count
+	 */
+	void RewriteMaximumHealthForAilments(const FGameplayTag& Changed = FGameplayTag(),
+										 int32 ChangedCount = 0);
+
+	/** An ailment that carries a maximum health rider came or went. */
+	void OnMaxHealthRiderAilmentTagChanged(const FGameplayTag Tag, int32 NewCount);
+
+	/** The ailments whose tag is watched for the above, each registered once. */
+	TSet<FGameplayTag> MaxHealthRiderAilmentsWatched;
+
+	/** The percentage `RewriteMaximumHealthForAilments` holds off the maximum now. */
+	float AilmentMaxHealthRemovedInForce = 0.0f;
+
+	/** The maximum health base before it was lowered. Meaningless when nothing is in force. */
+	float UnloweredMaximumHealth = 0.0f;
+
+	/** The lowered base as the engine stored it, to tell whether something else has written it since. */
+	float LoweredMaximumHealthWritten = 0.0f;
+
+	/** One "every Nth" row's count, and the combat it was counted in, if any. */
+	struct FNthCount
+	{
+		int32 Count = 0;
+		bool bInCombat = false;
+		float CombatStartedAtSeconds = -1.0f;
+	};
+
+	/** Every worn "every Nth" row's count, by `FCataclysmPoolAction::NthKey`. */
+	TMap<FName, FNthCount> NthCounts;
+
+	/** A row's count now: nought once the combat it was counted in has ended. */
+	int32 StandingNthCount(FName Key) const;
+
+	/** The Percent of every worn row of this kind whose next event is its Nth. */
+	float NthPercentDue(ECataclysmEveryNth Kind) const;
+
+	/** Whether a count is still standing: in combat, and begun in this one. */
+	bool ConsecutiveHitsStanding(const FConsecutiveHits& Held) const;
+
+	/** One row's held next-use charges. Issue #1833, phase 2. */
+	struct FNextUseCharge
+	{
+		int32 Count = 0;
+		int32 Cap = 1;
+		float Percent = 0.0f;
+		bool bAttack = false;
+		bool bEffectiveness = false;
+		bool bSpellCooldown = false;
+	};
+
+	/**
+	 * How many times each timed action has been granted in the current combat,
+	 * and which combat that was. Issue #1833.
+	 *
+	 * KEPT FOR EACH ROW, by `TimedGrantKeyOf`. Until 2026-10-08 a pool row with
+	 * neither a next-use nor a stack key was counted under its pool and period,
+	 * so two such rows on one character shared one count.
+	 */
+	TMap<FName, int32> TimedGrantsGiven;
+	float TimedGrantsCombatStartedAt = -1.0f;
+
+	/**
+	 * What one timed action's count of periods is kept under. Ruled 2026-10-08.
+	 *
+	 * ITS NEXT-USE KEY, ELSE ITS STACK KEY, AS BEFORE; THEN ITS TRIGGER KEY,
+	 * which is new. `FCataclysmPoolAction::TriggerKey` is the enchantment, the
+	 * action and the event, "a triple no two rows share", set on every action
+	 * read from a row, and built from the row's own cells, so it is the same
+	 * after an equipment refresh inside one combat. Two rows that both drain
+	 * health every second ("After 10 seconds in combat you begin losing 2%-4%
+	 * of your maximum HP per second" and a drain while channelling) therefore
+	 * keep a count each.
+	 *
+	 * LAST, THE POOL AND THE PERIOD, for an action built by hand with none of
+	 * the three. That is what every pool row was counted under until this
+	 * ruling, and it is why two of them shared one count.
+	 */
+	static FName TimedGrantKeyOf(const FCataclysmPoolAction& Action);
+
+	/**
+	 * Every row's held next-use charges, by `FCataclysmPoolAction::NextUseKey`.
+	 * No timestamp, because a charge has no duration.
+	 */
+	TMap<FName, FNextUseCharge> NextUseCharges;
+
+	/**
+	 * A slot's spent uses and what its next recharge needs. Issue #1833,
+	 * skill charges. See `SpendSkillCharge`.
+	 */
+	struct FSkillCharges
+	{
+		/** Uses spent and not yet recharged, the one recharging included. */
+		int32 Spent = 0;
+
+		/** The length the last use worked out, which the next recharge runs. */
+		float RechargeSeconds = 0.0f;
+
+		/** The skill's tags, which say its maximum when a recharge ends. */
+		FGameplayTagContainer SkillTags;
+
+		/** Whether the cooldown tag's removal is being listened for. */
+		bool bWatching = false;
+	};
+	TMap<ECataclysmAbilitySlot, FSkillCharges> SkillCharges;
+
+	/**
+	 * The skills a choice took off the keys while their cooldown ran, by row: the world clock's time the cooldown
+	 * ends, and the charges the key held. `CarryCooldownsToNewKeys` writes one and spends it when the skill returns, so
+	 * two choices do not reset a cooldown (issue #2524). An entry whose time has passed starts nothing.
+	 */
+	TMap<FName, TPair<float, FSkillCharges>> CooldownsOffTheKeys;
+
+	/** Spent uses, at least one while the cooldown runs, at most `Maximum`. */
+	int32 SkillChargesSpent(ECataclysmAbilitySlot Slot, int32 Maximum) const;
+
+	/**
+	 * A slot's cooldown tag came or went. When it went, one use has recharged,
+	 * and the next recharge starts if any use is still spent.
+	 */
+	void OnSkillRechargeTagChanged(const FGameplayTag Tag, int32 NewCount,
+								   ECataclysmAbilitySlot Slot);
+
+	/** Nothing Wasted's store. Issue #1515. */
+	float StoredMitigatedDamage = 0.0f;
+
+	/** What the energy shield absorbed, kept for the next attack. See `ShieldAbsorbedAddedCapStat`. */
+	float StoredShieldAbsorbedDamage = 0.0f;
+
+	/** What absorbed spells would have dealt, kept for the next attack. See `SpellAbsorbedAddedCapStat`. */
+	float StoredSpellAbsorbedDamage = 0.0f;
+
+	/** The temporary absorb, separate from the energy shield. See `GrantTemporaryAbsorb`. */
+	float TemporaryAbsorb = 0.0f;
+
+	/** See `LastShieldRechargeRate`. */
+	float LastShieldRate = 0.0f;
+
+	/**
+	 * How deep inside `ActOnEvent` this character currently is, which is never
+	 * more than one.
+	 *
+	 * AN ACTION CAN CAUSE THE EVENT THAT FIRES IT. A pool write raises an
+	 * attribute change, an attribute change can stamp a clock, and a clock stamp
+	 * fires actions -- so two rows could feed each other. Today the chain happens
+	 * to stop because `UCataclysmFervour::Move` refuses to write a change of
+	 * nothing, and a rule that holds only because of an early return in another
+	 * class is a rule nothing states. This states it.
+	 *
+	 * ONE EVENT IS KEPT RATHER THAN DROPPED AT DEPTH ONE: `afflicted_death`,
+	 * for the blast of an enemy that a blast killed. It is not acted on at
+	 * depth two. It waits in `QueuedAfflictedDeaths` and is acted on after the
+	 * outer call has returned, at depth one again. Ruled 2026-10-07.
+	 *
+	 * KEPT FOR THE BLAST AND FOR NOTHING ELSE. Ruled 2026-10-08: the stun of
+	 * `StunNearTheDyingAction` hangs on the same event and is NOT kept, so an
+	 * afflicted enemy that dies to a row's own action stuns nobody.
+	 */
+	int32 PoolActionDepth = 0;
+
+	/**
+	 * Deaths heard while this character was already acting on an event, each
+	 * with what its blast needs, read at the death. Defined in the .cpp.
+	 */
+	TArray<TSharedPtr<struct FCataclysmQueuedAfflictedDeath>> QueuedAfflictedDeaths;
+
+	/**
+	 * Keep an `afflicted_death` heard at depth one, if a worn row blasts on it.
+	 * Everything is read now: where the body is, the wearer's ailments on it,
+	 * and which rows are allowed to fire.
+	 */
+	void QueueAfflictedDeath(FName Event, const FGameplayTagContainer* EventTags,
+							 float EventAmount, const AActor* EventTarget);
+
+	/**
+	 * Act on each queued death in the order heard, one at a time at depth one.
+	 * A death one of them causes joins the end. It ends because each enemy dies
+	 * once. Dropped whole if this character has no avatar by then.
+	 */
+	void DrainQueuedAfflictedDeaths();
+
+	/**
+	 * Smite or heal every enemy within `NearbyActionRadiusCm` of the avatar.
+	 * Issue #1833 group D part 3. See `ECataclysmNearbyAction`.
+	 */
+	void ActOnNearby(const FCataclysmPoolAction& Action);
+
+	/**
+	 * Count one event for an action with an "every Nth" count in a window, and
+	 * answer whether it is the Nth inside that window; if it is, the count starts
+	 * again. True at once for an action with no count. Issue #1833 group E part 3.
+	 */
+	bool CountedToNth(const FCataclysmPoolAction& Action);
+
+	/** The times of the events each windowed count holds, by trigger key. */
+	TMap<FName, TArray<float>> EventCountTimes;
+
+	/**
+	 * Apply a status action's status to `Other`, the other character of its
+	 * event, by `Applier`. Issue #1833 group E part 1. `EventAmount` is what
+	 * reached `Other`'s health, which an ailment's rule of #917 reads.
+	 *
+	 * @return whether the status was applied
+	 */
+	static bool ApplyStatusOf(const FCataclysmPoolAction& Action, AActor* Applier,
+							  AActor* Other, float EventAmount);
+
+	/** Move one pool, by the rules the project owner's delegate ruled on 2026-09-14. */
+	void ApplyPoolAction(const FCataclysmPoolAction& Action,
+						 const FGameplayTagContainer* EventTags, float EventAmount);
+
+	/** Whether this row's tags and condition allow it to fire on this event. */
+	bool PoolActionAllowed(const FCataclysmPoolAction& Action,
+						   const FGameplayTagContainer* EventTags,
+						   const AActor* EventTarget = nullptr) const;
+
+	/**
+	 * The two attributes a pool name means: what is held, and the most that can
+	 * be held. False for a name this build has none for, which is the one place
+	 * that can be reported rather than granting nothing in silence.
+	 */
+	static bool PoolAttributesFor(FName Pool, FGameplayAttribute& Held,
+								  FGameplayAttribute& Maximum);
+
+	/**
+	 * What the dungeon floor being stood on adds to the stat line. Issue #41.
+	 *
+	 * A THIRD LIST, NEITHER OF THE TWO ABOVE. Unlike `StatModifiers` it is not a
+	 * skill's buff and is never revoked piecemeal; unlike `StatInputs` it is not
+	 * the finished line but one of the sources that line is built from, beside
+	 * gear and the passive tree. `SetDungeonStatModifiers` says why it is kept
+	 * here rather than on the dungeon.
+	 *
+	 * NOT REPLICATED, for the reason `StatInputs` is not: the numbers it changes
+	 * are replicated attributes already.
+	 */
+	TMap<FName, TArray<FCataclysmStatModifier>> DungeonStatModifiers;
+
+	/**
+	 * The damage type whose per-type resistance a worn row is holding at nought, or none. Ruled 2026-10-12. Written
+	 * by `HoldARandomResistanceAtNought`, read through `ResistanceHeldAtNought`.
+	 *
+	 * NOT A STAT MODIFIER AND NOT IN ANY OF THE THREE LISTS ABOVE, so the gear refresh never writes or erases it.
+	 * NOT REPLICATED, as those lists are not.
+	 */
+	FName ResistanceHeldAtNoughtType;
+
+	/** Lets go of `ResistanceHeldAtNoughtType` when no action in `PoolActions` names the status that holds it. */
+	void ReleaseHeldResistanceUnlessARowHoldsIt();
+
+	/**
+	 * The buff `HoldARandomBuff` drew, by its name in `RandomBuffTable`, and the world time it ends at. None and -1
+	 * when no buff is held. Ruled 2026-10-12. NOT REPLICATED, as the lists above are not: the figures the buff
+	 * changes are replicated attributes already.
+	 */
+	FName HeldRandomBuffName;
+	float HeldRandomBuffUntilSeconds = -1.0f;
+
+	/**
+	 * Ends the held buff and writes the stat line without it. Nothing for a character holding none.
+	 * `ClearWhatDeathEnds` calls it.
+	 */
+	void EndHeldRandomBuff();
+
+	/** `EndHeldRandomBuff` once the held buff's seconds have passed. Run each time `StepTimedGrants` returns. */
+	void EndHeldRandomBuffIfItsTimeHasPassed();
+
+	/**
+	 * Runs the gear refresh of the character wearing this component, when it wears equipment at all, so that a
+	 * source of stat lines kept on this component and changed just now reaches the stat line.
+	 */
+	void RefreshWornStatLine();
+
+	/**
+	 * Leech promised and not yet paid, one entry per hit. Issue #895.
+	 *
+	 * NOT REPLICATED. What a remote client needs is the health, mana and
+	 * energy shield the payout produces, and all three of those are
+	 * replicated attributes already. The schedule behind them is server
+	 * bookkeeping.
+	 */
+	TArray<FCataclysmLeechPayment> LeechPayments;
+
+	/**
+	 * When the unbroken leeching began, in world seconds, or -1 while no
+	 * payment is owed into a pool the character has. Ruled 2026-10-07. Written
+	 * only by `NoteLeechPaymentsChanged`. Not replicated, as the list is not.
+	 */
+	float LeechingSinceSeconds = -1.0f;
+
+	/**
+	 * How many of this character's skills tagged `Type.Channel` are running.
+	 * Ruled 2026-10-08. Written only by `NoteChannelBegan` and
+	 * `NoteChannelEnded`. Not replicated, as the leech clock above is not: the
+	 * conditions that read it are judged where damage and pools are, on the
+	 * server.
+	 */
+	int32 ChannelsRunning = 0;
+
+	/**
+	 * When the current channelling began, in world seconds, or -1 while the
+	 * count above is nought. Ruled 2026-10-08. Stamped when the count goes from
+	 * nought to one and cleared when it returns to nought.
+	 */
+	float ChannellingSinceSeconds = -1.0f;
+
+	/** Whether this character has the pool: a maximum above nought. */
+	bool HasLeechPool(ECataclysmLeechPool LeechPool) const;
+
+	/**
+	 * Start or clear `LeechingSinceSeconds` after the list of payments changed.
+	 * Called by every writer of the list: a payment added, the list replaced
+	 * after a payout step, and the list emptied on a respawn.
+	 */
+	void NoteLeechPaymentsChanged();
+
+	/**
+	 * The four potion slots' charges, full at the start. Issue #806. NOT
+	 * REPLICATED, for the reason the leech schedule gives: this is server
+	 * bookkeeping, and the health a drink restores is replicated already.
+	 */
+	float PotionCharges[UCataclysmPotions::SlotCount] = {
+		UCataclysmPotions::MaxCharges, UCataclysmPotions::MaxCharges,
+		UCataclysmPotions::MaxCharges, UCataclysmPotions::MaxCharges};
+
+	/** The potion heal being paid out. Empty when none is running. */
+	FCataclysmPotionHeal PotionHeal;
+
+	/** Potions drunk since entering this dungeon. */
+	int32 PotionsDrunk = 0;
+
+	/**
+	 * The sum of increases behind the current attack damage. Issue #895.
+	 *
+	 * NOT REPLICATED, for the reason the leech list is not: what a remote
+	 * client needs is the damage numbers the arithmetic produces, and a hit
+	 * is resolved on the authority.
+	 */
+	float AttackDamageIncreases = 0.0f;
+	TArray<int32> StatModifierHandles;
+
+	/** Never reused, so a stale handle cannot remove somebody else's modifier. */
+	int32 NextStatModifierHandle = 1;
+
+	/**
+	 * How many times this has been displaced since the window last reset, and
+	 * when the last one happened in world seconds.
+	 *
+	 * A NEGATIVE TIME MEANS NEVER DISPLACED, told apart from "displaced at world
+	 * time zero" deliberately: without it, the first shove in a fresh world would
+	 * be counted as a second one and moved half as far as it should.
+	 */
+	int32 DisplacementCount = 0;
+	float LastDisplacedAtSeconds = -1.0f;
+
+	/**
+	 * When this character last paid a health cost, in world seconds. Issue #962.
+	 *
+	 * A NEGATIVE TIME MEANS NEVER, told apart from "paid at world time zero" for
+	 * the same reason the displacement timestamp above is: without it, a fresh
+	 * character would start every match already inside the window.
+	 *
+	 * NOT REPLICATED AND NOT SAVED. It is worth at most a couple of seconds and
+	 * is rebuilt by the next cast, so carrying it across a save or a respawn
+	 * would only let a character keep a window it did not earn.
+	 */
+	float LastHealthCostAtSeconds = -1.0f;
+
+	/**
+	 * When this character last took damage of a Cataclysm type other than
+	 * its own, in world seconds. Issue #975.
+	 *
+	 * NEGATIVE MEANS NEVER, told apart from world time zero for the reason
+	 * the two timestamps above it are. Not replicated and not saved: it is
+	 * worth a few seconds and the next hit rebuilds it.
+	 */
+	float LastForeignDamageAtSeconds = -1.0f;
+
+	/**
+	 * When this character last used a skill carrying `Keyword.Charge`, in world
+	 * seconds. Issue #1826.
+	 *
+	 * NEGATIVE MEANS NEVER, told apart from world time zero for the reason the
+	 * timestamps above it are. Not replicated and not saved: it is worth a few
+	 * seconds and the next use rebuilds it.
+	 */
+	float LastChargeSkillAtSeconds = -1.0f;
+
+	/**
+	 * When this character last used its basic attack, in world seconds.
+	 * Issue #1826. Negative means never, as above.
+	 */
+	float LastBasicAttackAtSeconds = -1.0f;
+
+	/**
+	 * When this character last blocked a blow, in world seconds. Issue #1826.
+	 * Negative means never, as above.
+	 */
+	float LastBlockAtSeconds = -1.0f;
+
+	/**
+	 * When this character last used a skill carrying `Type.Summon`, in world
+	 * seconds. Issue #1815. Negative means never, as above.
+	 */
+	float LastSummonAtSeconds = -1.0f;
+
+	/**
+	 * When this character last landed a blow on a Boss enemy, in world seconds.
+	 * Negative means never, as above.
+	 */
+	float LastStruckABossAtSeconds = -1.0f;
+
+	/**
+	 * The combat clock, in world seconds. Issue #1815. Negative means none since
+	 * spawn or revival. `CombatStartedAtSeconds` is the first event of the
+	 * current combat, restarted when an event comes more than
+	 * `CombatLapseSeconds` after the one before.
+	 */
+	float LastCombatEventAtSeconds = -1.0f;
+	float CombatStartedAtSeconds = -1.0f;
+
+	/** When the character was last revived, in world seconds, or -1. */
+	float RevivedAtSeconds = -1.0f;
+
+	/**
+	 * The maximum mana Water to Blood turned into maximum health at the last
+	 * stat refresh, or 0. Issue #1815. Added back by `RefreshLiveMaximumHealth`,
+	 * which would otherwise write the stat line's answer over it.
+	 */
+	float ConvertedManaToHealth = 0.0f;
+
+	/** Both combat notes pass through here. */
+	void NoteCombatEvent();
+
+	/**
+	 * Who has got a blow through to this character, with when their most
+	 * recent one did, in world seconds; and who has got a critical strike
+	 * through. The time was added for Set Upon, issue #1515.
+	 */
+	TMap<TWeakObjectPtr<const UAbilitySystemComponent>, float> StruckBy;
+	TSet<TWeakObjectPtr<const UAbilitySystemComponent>> CriticallyStruckBy;
+
+	/**
+	 * When each striker's FIRST blow got through to this character, in world
+	 * seconds. Ruled 2026-10-12. Written once a striker by `NoteStruckBy`, never
+	 * overwritten, and cleared with `StruckBy`. See `SecondsSinceFirstStruckBy`.
+	 */
+	TMap<TWeakObjectPtr<const UAbilitySystemComponent>, float> FirstStruckBy;
+
+	/**
+	 * When each striker's first blow of its current combat got through to this
+	 * character, in world seconds. Ruled 2026-10-12. Written by `NoteStruckBy`
+	 * when no time stands for that striker, and cleared with `StruckBy`. See
+	 * `SecondsSinceEngagedBy` for when a time stands.
+	 */
+	TMap<TWeakObjectPtr<const UAbilitySystemComponent>, float> EngagedBy;
+
+	/**
+	 * Whether the engagement time `At` still stands for `Striker` at `Now`:
+	 * `Striker` is in combat at `Now`, by the comparison `NoteCombatEvent`
+	 * makes, and `At` is not before that combat began. False for a striker that
+	 * is not this project's ability system, which has no combat clock.
+	 */
+	static bool EngagementStands(float At, const UAbilitySystemComponent* Striker, float Now);
+
+	/** Rendering Blows: landed melee hits per striker, and the removal running. */
+	TMap<TWeakObjectPtr<const UAbilitySystemComponent>, int32> LandedMeleeHitsFrom;
+	float ArmourRemovedPercent = 0.0f;
+	float ArmourRemovedUntil = -1.0f;
+
+	/** When this character last used the skill in its Support slot, in world seconds; negative means never. */
+	float LastSupportSkillAtSeconds = -1.0f;
+
+	/** When this character last used the skill in its Movement slot, in world seconds; negative means never. */
+	float LastMovementSkillAtSeconds = -1.0f;
+
+	/** When this character last used a skill carrying `Type.Spell`, in world seconds; negative means never. */
+	float LastSpellAtSeconds = -1.0f;
+
+	/** When this character last was hit by a melee attack, in world seconds; negative means never. */
+	float LastMeleeHitTakenAtSeconds = -1.0f;
+
+	/** When this character last stunned, knocked down or displaced a character, in world seconds; negative means never. */
+	float LastCrowdControlAtSeconds = -1.0f;
+
+	/**
+	 * When this character last evaded a blow, in world seconds. Issue #1815.
+	 * Negative means never, as above.
+	 */
+	float LastEvadeAtSeconds = -1.0f;
+
+	/**
+	 * When this character was last hit, in world seconds. Issue #1815.
+	 * Negative means never, as above.
+	 */
+	float LastHitTakenAtSeconds = -1.0f;
+
+	/**
+	 * When this character's class resource last became full, in world
+	 * seconds. Issue #1815. Negative means never, as above.
+	 */
+	float LastClassResourceFullAtSeconds = -1.0f;
+
+	/**
+	 * When this character's class resource last reached zero, in world
+	 * seconds. Issue #1815. Negative means never, as above.
+	 */
+	float LastClassResourceEmptyAtSeconds = -1.0f;
+
+	/**
+	 * When this character last moved, in world seconds. Issue #41, slice 2.
+	 *
+	 * NEGATIVE MEANS IT HAS NOT BEEN SAMPLED YET, told apart from "moved at world
+	 * time zero" for the reason the three timestamps above it are. The first
+	 * sample stamps it whether the character moved or not, so a character that
+	 * never moves still reads a real number of seconds.
+	 *
+	 * STAMPED BY AN INSTANT RELOCATION TOO, which adds no distance.
+	 *
+	 * NOT REPLICATED AND NOT SAVED. It is worth a few seconds and the next sample
+	 * rebuilds it.
+	 */
+	float LastMovedAtSeconds = -1.0f;
+
+	/**
+	 * When this character last attacked, in world seconds. Issue #41, slice 2.
+	 *
+	 * ITS OWN ATTACK, not a blow it took, which `LastForeignDamageAtSeconds`
+	 * above covers. Negative means it has not attacked since it spawned.
+	 */
+	float LastOwnAttackAtSeconds = -1.0f;
+
+	/**
+	 * How far this character has moved since its own last attack, in metres.
+	 * Issue #41, slice 2.
+	 *
+	 * ZERO RATHER THAN NEGATIVE, because it is a distance a sampler adds to
+	 * rather than a measurement that can be unknown, and zero is the true reading
+	 * for a character that has not moved. An instant relocation adds nothing.
+	 */
+	float MetresMovedSinceOwnAttackSoFar = 0.0f;
+
+	/**
+	 * How far this character has walked in total, in metres. Issue #41, slice 2.
+	 *
+	 * ZERO RATHER THAN NEGATIVE, like the tally above it and for the same reason:
+	 * it is a distance added to rather than a measurement that can be unknown.
+	 */
+	float MetresWalkedTotalSoFar = 0.0f;
+
+	/**
+	 * Whether the last sample saw this character in a different place.
+	 * Issue #41, slice 2.
+	 *
+	 * FALSE UNTIL A SAMPLE SAYS OTHERWISE, which is what "not moving" means for a
+	 * character that has just spawned.
+	 */
+	bool bMovedInLastSample = false;
+
+	/**
+	 * Where the last movement sample saw this character. Issue #41, slice 2.
+	 *
+	 * MEANINGLESS UNTIL THE FLAG BELOW IS TRUE, which is why there are two fields
+	 * rather than a position with a sentinel: every position in the world is a
+	 * position a character could really be at, including the origin.
+	 *
+	 * NOT REPLICATED AND NOT SAVED, like the clocks above it: the next sample
+	 * rebuilds it a quarter of a second later.
+	 */
+	FVector LastSampledLocation = FVector::ZeroVector;
+
+	/** Whether a movement sample has looked at this character yet. Issue #41. */
+	bool bHasSampledLocation = false;
+
+	/**
+	 * When the health this character owes falls due, in world seconds.
+	 * Issue #991.
+	 *
+	 * NEGATIVE MEANS NOTHING IS OWED, told apart from world time zero for the
+	 * reason the three timestamps above it are.
+	 *
+	 * A TIMESTAMP AND NOT A QUANTITY, which is why it is here and the amount
+	 * owed is a gameplay attribute. Nobody reads this; a player reads how much
+	 * they owe.
+	 *
+	 * ONE DUE TIME FOR THE WHOLE DEBT, not one per cast. The design says so:
+	 * the Rolling Debt node "extends the delay on what is owed", singular.
+	 */
+	float HealthDebtDueAtSeconds = -1.0f;
+
+	/**
+	 * World time at which the current turn of damage-into-Bleeding ends, and the
+	 * earliest world time another may begin. Issue #985.
+	 *
+	 * NEGATIVE MEANS NEVER, for both. A character that has never dropped below
+	 * half health with The Breaking Point has no window and no cooldown, and a
+	 * comparison against a negative time answers correctly without a separate
+	 * "has this ever happened" flag.
+	 *
+	 * TWO NUMBERS AND NOT ONE, because the cooldown outlasts the window. See
+	 * `IsConvertingDamageToBleeding` and `MayStartDamageConversion` above.
+	 */
+	float DamageToBleedingUntilSeconds = -1.0f;
+	float DamageToBleedingNextAllowedSeconds = -1.0f;
+
+	/**
+	 * The earliest world time this character may release another nova.
+	 * Issue #1050.
+	 *
+	 * NEGATIVE MEANS NEVER, the same convention as every timestamp above.
+	 * A character that has never released one has nothing to wait for, so
+	 * its first nova comes as soon as it is hurt enough rather than five
+	 * seconds later.
+	 *
+	 * ONE NUMBER AND NOT TWO, unlike the conversion above. A nova is an
+	 * instant rather than a window, so there is no stretch during which it
+	 * is still happening; the only question is when the next may come.
+	 */
+	float NovaNextAllowedSeconds = -1.0f;
+
+	/** When Press-Ganged may next replace a minion that died. -1 is never yet. */
+	float MinionDeathReplacementNextAllowedSeconds = -1.0f;
+
+	/** When Rekindled may next replace a minion that exploded. -1 is never yet. */
+	float MinionExplosionReplacementNextAllowedSeconds = -1.0f;
+
+	/** When Nothing Stops It may next save this character. -1 is never yet. */
+	float LethalHitSurvivalNextAllowedSeconds = -1.0f;
+
+	/** When Follow Through may next repeat an attack. -1 is never yet. */
+	float FollowThroughNextAllowedSeconds = -1.0f;
+
+	/** The skill a Follow Through repeat waits to make, and until when. */
+	FGameplayAbilitySpecHandle PendingFollowThroughHandle;
+
+	/** The skill the `skill_use` event in hand is about, and where it was aimed. Set only inside `ActOnSkillUse`. */
+	FName SkillInHandName;
+	FVector SkillInHandAim = FVector::ZeroVector;
+
+	/** The repeat a row asked for and nobody has made yet. See `ActOnSkillUse`. */
+	FName PendingRepeatName;
+	FVector PendingRepeatAimPoint = FVector::ZeroVector;
+	float PendingRepeatDamageShare = 0.0f;
+
+	/** The casts rows asked for by spending kept stacks, which nobody has made yet. See `PendingKeptStackCastSkill`. */
+	FName PendingKeptStackCastName;
+	FVector PendingKeptStackCastAimPoint = FVector::ZeroVector;
+	TArray<FPendingKeptStackCast> PendingKeptStackCastRows;
+
+	/** One row's kept stacks: how many, and `DungeonBeingWalked` as the last of them was gained. */
+	struct FKeptStack
+	{
+		int32 Count = 0;
+		int32 DungeonId = INDEX_NONE;
+	};
+
+	/**
+	 * Every row's kept stacks, by `FCataclysmPoolAction::KeptStackKey`. Ruled 2026-10-12. See `GainKeptStack`.
+	 * NOT REPLICATED, as `OwnStacks` is not.
+	 */
+	TMap<FName, FKeptStack> KeptStacks;
+
+	/** Forgets every kept stack whose key no action in `PoolActions` carries. Run by `SetPoolActions`. */
+	void ForgetKeptStacksNoWornActionCarries();
+
+	/** Removes every kept stack gained in a dungeon that is not the one walked now. Run by `StepTimedGrants`. */
+	void ForgetKeptStacksOfAnotherDungeon();
+
+	/** One parcel of delayed damage. See `HoldDelayedDamage`. */
+	struct FDelayedDamageParcel
+	{
+		/** The whole of the share taken off the blow. */
+		float Amount = 0.0f;
+		/** How much of it has been drained out of health. */
+		float Paid = 0.0f;
+		/** The world's seconds when it was taken. A double, as the world's clock is. */
+		double TakenAtSeconds = 0.0;
+		/** The seconds it is drained over, as the row stated them when it was taken. */
+		float Seconds = 0.0f;
+		/** `DungeonBeingWalked` as it was taken. */
+		int32 DungeonId = INDEX_NONE;
+	};
+
+	/**
+	 * Every parcel of delayed damage this character holds, oldest first. Ruled 2026-10-12. NOT REPLICATED, as
+	 * `KeptStacks` is not.
+	 */
+	TArray<FDelayedDamageParcel> DelayedDamageParcels;
+
+	/** One row's count of combat seconds towards its next kept stack. See `GainKeptStack`. */
+	struct FKeptStackClock
+	{
+		/** Seconds of combat counted and not yet turned into a stack. */
+		float Seconds = 0.0f;
+
+		/** The world time of the last step that counted, or -1 after a step out of combat. */
+		float LastCountedAtSeconds = -1.0f;
+
+		/** `DungeonBeingWalked` at the last step. */
+		int32 DungeonId = INDEX_NONE;
+	};
+
+	/** Every row's clock, by `FCataclysmPoolAction::KeptStackKey`. NOT REPLICATED, as `KeptStacks` is not. */
+	TMap<FName, FKeptStackClock> KeptStackClocks;
+
+	/**
+	 * Counts this step's seconds of combat for every worn action that gains kept stacks, and gains a stack for each
+	 * whole period counted. `InCombat` is `SecondsInCombat()`. Run by `StepTimedGrants` on every step.
+	 */
+	void StepKeptStackClocks(float InCombat);
+
+	/** The row this character's gadgets copy, whether one is held, and `DungeonBeingWalked` as it was used. */
+	FCataclysmWeaponSkill SkillGadgetsCopyRow;
+	bool bHoldsSkillGadgetsCopy = false;
+	int32 SkillGadgetsCopyDungeonId = INDEX_NONE;
+
+	/** The doublings of the Ultimate's cost `UltimateCostDoublingsHeld` reads, and `DungeonBeingWalked` as counted. */
+	int32 UltimateCostDoublings = 0;
+	int32 UltimateCostDoublingsDungeonId = INDEX_NONE;
+
+	/** The trigger of a different held skill a row asked for. See `PendingHeldTriggerUsedSkill`. */
+	FName PendingHeldTriggerUsedName;
+	FVector PendingHeldTriggerAimPoint = FVector::ZeroVector;
+	bool bPendingHeldTriggerSpell = false;
+	bool bPendingHeldTriggerCooldownSkill = false;
+
+	/** Whether the skill of the use in hand has a cooldown. Set only inside `ActOnSkillUse`. */
+	bool bSkillInHandHasCooldown = false;
+
+	/** What the rows rolled for the use in hand. See `TakePendingUseNoDamage`. */
+	bool bPendingUseNoDamage = false;
+	float PendingUseIncreasePercent = 0.0f;
+	float PendingUseHitsAllCm = 0.0f;
+	float PendingUseSelfHitSharePercent = 0.0f;
+	float PendingFollowThroughUntilSeconds = -1.0f;
+
+	/** What the rows recorded for the kill in hand. See `TakePendingOverkillExplosionSharePercent`. */
+	float PendingOverkillExplosionSharePercent = 0.0f;
+
+	/** What a striking character's row asked of this character for the hit now resolving. See `AskToBeExecuted`. */
+	FExecuteAsked ExecuteAsked;
+
+	/** What a striking character's cull asked of this character for the hit now resolving. See `AskToBeCulled`. */
+	FExecuteAsked CullAsked;
+
+	/** When Shoulder Through may next push each enemy, in world seconds. */
+	TMap<TWeakObjectPtr<const AActor>, float> ShoulderedThroughUntil;
+
+	/** Until when, in world seconds, this character takes no damage. -1 is not. */
+	float DamageImmuneUntilSeconds = -1.0f;
+
+	/**
+	 * When a lethal blow may next be reprieved, in world seconds, -1 for never reprieved; when the running death
+	 * sentence falls due, -1 for none; and the rung a kill must reach to lift it. Ruled 2026-10-18. See
+	 * `NoteLethalHitReprieved`. Cleared by `ClearWhatDeathEnds`. NOT REPLICATED: the authority deals every blow.
+	 */
+	float LethalHitReprieveNextAllowedSeconds = -1.0f;
+	float DeathSentenceDueAtSeconds = -1.0f;
+	int32 DeathSentenceLiftingRarity = 0;
+
+	/**
+	 * Until when, in world seconds, this character takes no damage of each damage type. Ruled 2026-10-12. A type
+	 * with no entry, or one whose time has passed, is not refused. See `GrantDamageTypeImmunity`.
+	 */
+	TMap<FName, float> DamageTypeImmuneUntilSeconds;
+
+	/** When Sacrificial Ward may next spend a minion. -1 is never yet. */
+	float ShieldWardNextAllowedSeconds = -1.0f;
+
+	/** When an enemy was last inside the Fervour decay radius. Issue #1515. */
+	float EnemyLastInReachSeconds = -1.0f;
+
+	/**
+	 * The earliest world time this character's aura may apply again. Issue
+	 * #1057, Beacon of Despair.
+	 *
+	 * A SECOND NUMBER AND NOT THE NOVA'S. The two intervals differ -- three
+	 * seconds against five -- and a character can hold both nodes, so sharing
+	 * one timestamp would make each reset the other and neither run at its own
+	 * rate.
+	 *
+	 * NEGATIVE MEANS NEVER, the same convention as the nova above, so the aura
+	 * pulses the instant the first point is spent rather than three seconds
+	 * later.
+	 */
+	float AuraNextAllowedSeconds = -1.0f;
+
+	/** Where health was the last time it moved. See `WasAboveHalfHealth`. */
+	bool bWasAboveHalfHealth = true;
+
+	/**
+	 * Where health was against the LOW line the last time it moved. Issue
+	 * #1069. See `WasAboveLowHealth` for why this is a second field and not the
+	 * one above read against a different number.
+	 */
+	bool bWasAboveLowHealth = true;
+
+	/**
+	 * The earliest world time this character may be given the low health relief
+	 * again. Issue #1069, Rock Bottom.
+	 *
+	 * A THIRD TIMESTAMP AND NOT ONE OF THE TWO ABOVE, for the reason the aura's
+	 * is not the nova's: the intervals differ, a character can hold every one of
+	 * these nodes at once, and sharing a timestamp would have each reset the
+	 * others.
+	 *
+	 * NEGATIVE MEANS NEVER, the same convention as its neighbours, so the first
+	 * crossing after the option is taken is honoured at once.
+	 */
+	float LowHealthReliefNextAllowedSeconds = -1.0f;
+
+	/**
+	 * How far the CURRENT debt has already been pushed out, in seconds.
+	 * Issue #995.
+	 *
+	 * A RUNNING TOTAL RATHER THAN A COUNT OF PAYMENTS, because the cap the
+	 * Masochist's Rolling Debt node states is measured in seconds and a
+	 * character at one point of the node extends by half a second at a time.
+	 *
+	 * RESET WHEN THE DEBT IS CLEARED, so the allowance belongs to one debt
+	 * rather than to a character's whole life. A debt that settles and a fresh
+	 * one incurred afterwards are different debts.
+	 */
+	float HealthDebtExtensionAppliedSeconds = 0.0f;
+
+	/**
+	 * How many stacks of each kind this character has earned, and when the last
+	 * of that kind was granted. Issue #1002.
+	 *
+	 * PLAIN STATE RATHER THAN GAMEPLAY ATTRIBUTES, which is the same call
+	 * `DisplacementCount` above made and the opposite of the one `HealthOwed`
+	 * made. A pool a player has to watch, and that can kill them, is an
+	 * attribute; a count that only decides how large a bonus is right now is
+	 * not part of any economy, is read by nothing but the stat pipeline, and
+	 * would cost three replicated attributes for nothing. `Cataclysm.ShowStacks`
+	 * is what shows it while playing.
+	 *
+	 * ONE TIMESTAMP PER KIND, NOT ONE PER STACK. See `GrantStack`.
+	 *
+	 * TWO FUNCTIONS WRITE THEM AND NOTHING ELSE DOES: `GrantStack` adds a stack
+	 * and `ClearStacks` empties a kind. Issue #1534.
+	 *
+	 * A COUNT OF NOTHING NEEDS NO SENTINEL TIMESTAMP, which is why both start at
+	 * zero and neither carries the negative "never" the timestamps above use.
+	 * `StacksHeld` answers zero for a count of zero before it looks at the
+	 * clock, so a character that has never earned a stack of a kind never
+	 * reaches the comparison at all.
+	 */
+	int32 StackCounts[UCataclysmStacks::KindCount] = {};
+	float StackGrantedAtSeconds[UCataclysmStacks::KindCount] = {};
+
+	/** When Touch of Nothing last refused a buff, in world seconds; negative for never. Issue #1722. */
+	float BuffNegatedAtSeconds = -1.0f;
+
+	/**
+	 * The last blow resolved against this character, and how many there have
+	 * been. See `RecordResolvedHit` for why both are needed and how to read them.
+	 *
+	 * NOT REPLICATED, because nothing outside the machine resolving the blow
+	 * reads it. It exists so that the caller which just applied a blow can learn
+	 * what became of it, one function call later on the same thread.
+	 */
+	FCataclysmDamageResult LastResolvedHit;
+	uint32 ResolvedHitStamp = 0;
+
+	/** See `RecordLastBlow`. Not replicated, for the reason the record above gives. */
+	FCataclysmLastBlow LastBlow;
+};

@@ -1,0 +1,729 @@
+"""Every Siege figure `sim/cataclysm_sim/policies.py` states in prose is true.
+
+WHY THIS FILE EXISTS. Issue #1364. `siege_urgency` justifies its shape with
+measured numbers -- how long an unattended Siege leaves a city, and how long the
+median walk to one is -- and nothing read those numbers. They went stale twice
+in two days and the fast suite passed both times:
+
+  * The four days-to-empty figures followed the owner's cut of
+    `siege_damage_growth_per_day` from 10 to 2.5 on issue #1349, but only
+    because a human hand carried them across. `test_siege_subtype.py` checks
+    the ENGINE against 25 / 39 / 55 / 70; it has never looked at this
+    docstring, so a constant moving would have failed there and left the
+    sentence here saying the old four.
+  * The median walk said 12 / 20 / 33 from the day it was written. Nobody could
+    reproduce it: issue #1364 measured 14 / 22 / 33 and this file's own
+    re-measurement gives 13 / 22 / 35. **None of the three was wrong by much
+    and none was reproducible**, which is the actual defect -- see below.
+
+WHY A MEDIAN WALK IS ALLOWED A DAY EITHER WAY AND A DAYS-TO-EMPTY IS NOT.
+They are different kinds of number. Days-to-empty is exact arithmetic on
+constants: at 1% of the maximum a day plus 2.5 points for each day already
+stood, an Outpost's thousand points of defence is gone on day 25 and there is
+nothing to average. The median walk is one order statistic over a mixture of
+uniform floor ranges, and the mixture is nearly flat where the median sits.
+Over this file's own 320 campaigns, measured on 2026-10-29 with the policies of
+issue #1388, 40.37% of Outpost dungeons walk in 12 days or fewer, 47.35% in 13
+or fewer and 55.76% in 14 or fewer: the median is 14, the days either side of
+it each hold about seven percent of the walks, and a block of campaigns lands
+on either side of a boundary at random. (This said 45% at 12 days and 50% at 13
+until issue #1389, figures from when the stated median was 13.) A guard demanding an exact median would fail on an unrelated
+change to the random stream and teach the next reader to widen it until it
+stopped complaining. So this measures, allows one day, and separately checks
+that the distribution really is flat enough to deserve that.
+
+WHAT IS EXACT HERE, AND IS ASSERTED EXACTLY. That a Pillar Siege can never be
+answered. A surge cannot target the Pillar, so the only dungeons that spawn
+there are the Cataclysm and the Fallen City the Pillar leaves when it falls;
+the shallower of those two floor ranges starts at 80, one floor is one day
+without a tree, and both Cataclysm openers only add floors. Eighty days against
+the seventy a fresh Siege leaves, at the best roll the model can produce.
+
+HOW THE DAY OF TOLERANCE IS KEPT FROM SWALLOWING A REAL DRIFT. It would, on its
+own: reverting the stated Outpost median from 13 to 12 leaves the
+re-measurement passing, because 13 really is within a day of 12. What catches
+that is the sentence beside it, which states the days a fresh Siege leaves AND
+the difference. Twenty-five minus twelve is thirteen and the docstring says
+twelve, so `test_the_slack_it_quotes_is_the_subtraction_it_claims` fails on a
+one-day edit that the parametrised re-measurement waves through. Proved by
+breaking exactly that on 2026-09-06; the whole set of breaks is in the pull
+request that added this file.
+
+WHAT STILL SLIPS THROUGH, STATED SO THAT NOBODY DISCOVERS IT AS A SURPRISE: a
+consistent one-day error, where the walks and the slack are BOTH moved by a day
+in the same direction. Nothing here can separate that from sampling noise,
+because nothing can -- see the paragraph above on what a median over a flat
+distribution is worth. The docstring in `policies.py` says so in the prose
+rather than pretending otherwise.
+
+THAT IS MEASURED AND NOT ASSUMED. Putting the Cow Level weight back to the 7.6
+this file was first written against -- the very change whose reverse failed in
+continuous integration -- leaves all fourteen of these passing. It should. The
+share of Outpost dungeons walking in 13 days or fewer moves from 50.5% to 50.2%
+between the two weights, which is a third of a percentage point: the
+distribution barely moves and the reported integer flips because the median sat
+on a boundary. **A guard that failed on that would be reporting the boundary and
+not the game.** What broke in continuous integration was the asymmetry, not the
+tolerance -- the figure then stated, 35, sat on the far side of the boundary
+from what a 200-campaign block gives, so the gap was two days in one direction
+and none in the other. Quoting what the large sample gives puts the block within
+a day either way, which is what the tolerance is for.
+"""
+
+from __future__ import annotations
+
+import inspect
+import pathlib
+import re
+import statistics
+from collections import Counter
+from dataclasses import replace
+
+import pytest
+
+from cataclysm_sim import policies
+from cataclysm_sim.config import (
+    TREE_NONE, CityTier, DungeonType, SurgeMode, TuningConfig,
+)
+from cataclysm_sim.engine import Simulation
+
+TIERS = [CityTier.OUTPOST, CityTier.BULWARK, CityTier.SANCTUARY,
+         CityTier.PILLAR]
+
+#: The settings the measured figures in `policies.py` carry, and the ones this
+#: file re-measures at. Issue #1286 names the block and `analyse_siege_dose.py`
+#: prints it above its own tables.
+#:
+#: FIVE DUNGEONS A SURGE IS THE BALANCE REPORT'S SETTING AND NOT
+#: `TuningConfig.surge_dungeon_count`, which was 4 until 2026-10-13 and is 5
+#: since. THE INTERVAL BELOW IS 120 DAYS AND THE DEFAULT IS 90 SINCE THAT
+#: DATE, so this block is still not the default. This comment said that at
+#: four the Sanctuary median is 37 rather than 34, measured over 1,000
+#: campaigns at each. Measured on 2026-10-12 over 10,000 campaigns at each
+#: (seeds 0 to 9999), the four medians are 14 / 22 / 34 / 123 at four and at
+#: five; the samples are 720,044 and 754,158 dungeons. The surge size is still
+#: part of the settings a figure is quoted with.
+#:
+#: WHETHER AN ORDINARY DUNGEON STAYS AFTER IT HITS ITS CITY IS NOT SET HERE,
+#: SO THIS FILE MEASURES THE RULE `TuningConfig` SHIPS. Since 2026-10-12 that
+#: is `dungeon_persists_after_resolve` False: the dungeon leaves. For a few
+#: hours on that day this block set it True, because the prose in
+#: `policies.py` had been measured with the dungeon staying and two of its
+#: figures were not true with it leaving. The prose was re-measured the same
+#: day and the setting was taken back out.
+REPORT_SETTINGS = dict(
+    tier=1,
+    surge_mode=SurgeMode.STATIC,
+    surge_interval_days=120.0,
+    surge_dungeon_count=5,
+    resolve_floor_ratio=2.0,
+    dungeon_power_escalation_per_100_days=0.10,
+    craft_days=12,
+    craft_power_gain_frac=0.04,
+)
+
+#: Campaigns the re-measurement runs. Chosen from evidence rather than taste:
+#: over ten disjoint blocks of this size the median never strayed more than one
+#: day from the 10,000-campaign answer on an Outpost, a Bulwark or a Sanctuary.
+#: It was 200 until issue #1432: with a city's fall no longer firing a surge
+#: inside the minimum gap, 200 campaigns made 17,509 dungeons, under the
+#: 20,000 the `made` fixture demands. Ten blocks of 250 on 2026-09-16 made
+#: 21,217 to 23,601 dungeons each, with medians of 14 in every block for the
+#: Outpost, 23 to 24 for the Bulwark and 36 to 38 for the Sanctuary against a
+#: 10,000-campaign answer of 14 / 24 / 37, and 122 to 127 for the Pillar
+#: against 123, which is inside `PILLAR_TOLERANCE_DAYS` and touches it once.
+#: (Before #1432, ten blocks of 120 put a Sanctuary two days out.)
+#:
+#: It was 250 until 2026-10-12. With an ordinary dungeon leaving after it hits
+#: its city, ten disjoint blocks of 250 made 17,996 to 19,664 dungeons each,
+#: all under the 20,000. Ten disjoint blocks of 320 (seeds 0 to 3199) made
+#: 23,152 to 25,213 each, with medians of 13 to 14 for the Outpost, 22 to 23
+#: for the Bulwark, 34 to 35 for the Sanctuary and 121 to 126 for the Pillar,
+#: against a 10,000-campaign answer of 14 / 22 / 34 / 123. None is outside
+#: its tolerance. This file reads seeds 0 to 319: 24,140 dungeons.
+CAMPAIGNS = 320
+
+#: How far a measured median may sit from the stated one. See the module
+#: docstring: the walk distribution is flat where the median falls.
+WALK_TOLERANCE_DAYS = 1
+
+#: The Pillar's own median is noisier -- this file's 320 campaigns produce 345
+#: dungeons there against 22,633 on an Outpost, measured on 2026-10-29 with the
+#: policies of issue #1388 (this said about 230 against 16,000, from when the
+#: file ran 200; issue #1389) -- and it is not the figure the
+#: Pillar claim rests on. `TestAPillarSiegeCanNeverBeAnswered` carries that,
+#: exactly and without campaigns. Ten blocks of 200 spread it over 120 to
+#: 126.5 against a 10,000-campaign answer of 123, so four is what was measured
+#: rather than what was convenient.
+PILLAR_TOLERANCE_DAYS = 4
+
+
+def report_config() -> TuningConfig:
+    return replace(TuningConfig(), **REPORT_SETTINGS).with_tree(TREE_NONE)
+
+
+def flat(doc: str) -> str:
+    """A docstring with its hard line wrapping collapsed.
+
+    Every phrase this file looks for is longer than one wrapped line, so
+    searching the raw text would report a clean tree that is not clean.
+    """
+    return re.sub(r"\s+", " ", doc).strip()
+
+
+DOC_URGENCY = flat(policies.siege_urgency.__doc__)
+DOC_DAILY = flat(policies.siege_daily_damage.__doc__)
+
+
+def says(doc: str, sentence: str, what: str) -> None:
+    """Assert the docstring contains `sentence`, or say what to do about it."""
+    assert sentence in doc, (
+        f"the docstring should say {sentence!r}, and does not. {what}\n\n"
+        "If the constants moved, the docstring is what is stale -- fix the\n"
+        "prose. If the sentence was reworded, follow it here rather than\n"
+        "deleting the check. Issue #1364.")
+
+
+def days_to_empty(tier: CityTier, growth: float | None = None) -> int:
+    """Days an unattended Siege takes to empty a city of that size.
+
+    DRIVEN THROUGH THE DAY LOOP AND NOT RE-DERIVED. A second closed form here
+    would pass while both copies were wrong, which is the failure mode this
+    whole file exists to catch. `test_siege_subtype.py` takes the same route.
+    """
+    cfg = report_config()
+    if growth is not None:
+        cfg = replace(cfg, siege_damage_growth_per_day=growth)
+    sim = Simulation(cfg, seed=0)
+    city = next(c for c in sim.empire.cities.values() if c.tier is tier)
+    d = sim._make_dungeon(DungeonType.BASIC, city)
+    d.subtype = "Siege"
+    d.spawned_day = sim.day
+
+    n = 0
+    while city.defense > 0 and n < 10_000:
+        sim._apply_siege_damage()
+        sim.day += 1
+        n += 1
+    assert n < 10_000, f"a Siege never empties a {tier.value}"
+    return n
+
+
+class _Recording(Simulation):
+    """A campaign that records every dungeon at the moment it is created.
+
+    AT CREATION AND NEVER FROM WHAT IS LEFT STANDING, for the reason
+    `analyse_siege_dose.py` gives at length: a census of survivors under-counts
+    whatever destroys its own host, and a Siege destroys its host.
+
+    A Cataclysm dungeon is deepened after `_make_dungeon` returns -- by the
+    ordinary dungeons cleared, and by the Last Stand's own bonuses -- and every
+    one of those constants is positive. So the walk recorded here is a LOWER
+    bound on the walk the player actually faces at the Pillar, which is the
+    direction that makes the claim below safe.
+    """
+
+    def __init__(self, cfg: TuningConfig, seed: int = 0, log=None):
+        self._log = [] if log is None else log
+        super().__init__(cfg, seed=seed)
+
+    def _make_dungeon(self, dtype, city, floors_mult: float = 1.0):
+        d = super()._make_dungeon(dtype, city, floors_mult=floors_mult)
+        self._log.append((city.tier, dtype, d.subtype, d.run_days))
+        return d
+
+
+@pytest.fixture(scope="module")
+def made():
+    """Every dungeon `CAMPAIGNS` campaigns created, at the report settings.
+
+    Module scoped because it costs about ten seconds and every measurement in
+    this file reads the same list.
+    """
+    cfg = report_config()
+    log: list[tuple] = []
+    for seed in range(CAMPAIGNS):
+        _Recording(cfg, seed=seed, log=log).run(policies.triage)
+    assert len(log) > 20_000, (
+        f"only {len(log)} dungeons over {CAMPAIGNS} campaigns; the sample is "
+        "too small for anything below to mean what it says")
+    return log
+
+
+def walks(made, tier: CityTier) -> list[int]:
+    return [days for t, _, _, days in made if t is tier]
+
+
+#: How many times what the day either side holds the median day may hold before
+#: the walk distribution stops counting as flat there. Issue #1389.
+#:
+#: A JUDGEMENT AND NOT A DERIVATION. Twice is where one day holds as many walks
+#: as its two neighbours together. Measured on 2026-10-29 over this file's own
+#: 320 campaigns, the Outpost median day 14 holds 8.40% of walks, day 13 6.97%
+#: and day 15 6.76%: a ratio of 1.22.
+MEDIAN_DAY_SPIKE_LIMIT = 2.0
+
+
+def median_day_spike(walk_days: list[int], day: int) -> float:
+    """The share of walks lasting exactly `day` days, over the mean share of
+    walks lasting `day - 1` and `day + 1` days."""
+    counts = Counter(walk_days)
+    neighbours = (counts[day - 1] + counts[day + 1]) / 2.0
+    return counts[day] / neighbours if neighbours else float("inf")
+
+
+# ---------------------------------------------------------------------------
+# What an unattended Siege costs -- exact, and asserted exactly
+# ---------------------------------------------------------------------------
+
+class TestTheDaysAnUnattendedSiegeLeaves:
+    """`siege_urgency` opens by saying how long each city size survives one.
+
+    Those four numbers are the premise of everything the function does: the
+    decision it makes is "can the player still get there", and the answer is
+    the walk against these. `test_siege_subtype.py` already drives the engine
+    against 25 / 39 / 55 / 70 and against the C++ that states them. What it
+    does not do is look at this docstring, so the two could disagree and only
+    the docstring would be wrong. That is what happened on issue #1349.
+    """
+
+    def test_the_four_stated_days_are_what_the_day_loop_produces(self):
+        d = {t: days_to_empty(t) for t in TIERS}
+        says(
+            DOC_URGENCY,
+            f"{d[CityTier.OUTPOST]} days for an Outpost, "
+            f"{d[CityTier.BULWARK]} for a Bulwark, "
+            f"{d[CityTier.SANCTUARY]} for a Sanctuary, "
+            f"{d[CityTier.PILLAR]} for the Pillar",
+            "That is what the day loop empties each city size in today.")
+
+    def test_the_growth_the_prose_names_is_the_constant(self):
+        """`siege_daily_damage` calls itself a mirror of the engine and then
+        names the growth in words. It said ten for two days after the owner cut
+        it to 2.5, which is a mirror describing the wrong thing."""
+        growth = report_config().siege_damage_growth_per_day
+        says(DOC_DAILY, f"the growth of {growth:g} points a day",
+             "That is `TuningConfig.siege_damage_growth_per_day`.")
+
+    def test_the_old_four_are_a_control_and_the_derivation_reproduces_them(self):
+        """THE CONTROL FOR THE TEST ABOVE. A guard whose expected value was
+        tuned until it passed proves nothing, so the same day loop is run at
+        the growth the owner cut FROM and has to return the four figures the
+        docstring records as history. If it does not, the arithmetic changed
+        underneath both sets and neither is evidence of anything."""
+        old = {t: days_to_empty(t, growth=10.0) for t in TIERS}
+        assert list(old.values()) == [14, 23, 34, 47], (
+            f"at a growth of 10 points a day the day loop now returns "
+            f"{list(old.values())} and not the 14 / 23 / 34 / 47 that held "
+            "until issue #1349. Something other than that constant moved.")
+        says(
+            DOC_URGENCY,
+            f"THOSE FOUR WERE {old[CityTier.OUTPOST]} / "
+            f"{old[CityTier.BULWARK]} / {old[CityTier.SANCTUARY]} / "
+            f"{old[CityTier.PILLAR]} until",
+            "Those are what the same arithmetic gives at the old growth.")
+
+
+# ---------------------------------------------------------------------------
+# The median walk -- measured, and allowed a day
+# ---------------------------------------------------------------------------
+
+STATED_WALK = re.compile(
+    r"the median walk is (\d+) days to an Outpost, (\d+) to a Bulwark, "
+    r"(\d+) to a Sanctuary and (\d+) to the Pillar")
+
+STATED_SLACK = re.compile(
+    r"Against the (\d+) / (\d+) / (\d+) days a fresh Siege leaves those three "
+    r"sizes, the slack is (\d+) / (\d+) / (\d+) days")
+
+
+def stated_walks() -> dict[CityTier, int]:
+    m = STATED_WALK.search(DOC_URGENCY)
+    assert m is not None, (
+        "`siege_urgency` no longer states the median walk in the sentence this "
+        "guard reads. If it was reworded, follow it here rather than deleting "
+        "the check. Issue #1364.")
+    return dict(zip(TIERS, (int(g) for g in m.groups()), strict=True))
+
+
+class TestTheMedianWalkTheProseStates:
+    """The figure that sent issue #1364 up: 12 / 20 / 33, from nowhere anyone
+    could reproduce, in a sentence whose whole point was the size of the gap
+    between the walk and the Siege."""
+
+    @pytest.mark.parametrize("tier", TIERS)
+    def test_it_is_within_a_day_of_a_fresh_measurement(self, made, tier):
+        stated = stated_walks()[tier]
+        measured = statistics.median(walks(made, tier))
+        allowed = (PILLAR_TOLERANCE_DAYS if tier is CityTier.PILLAR
+                   else WALK_TOLERANCE_DAYS)
+        assert abs(measured - stated) <= allowed, (
+            f"`siege_urgency` says the median walk to a {tier.value} is "
+            f"{stated} days; {CAMPAIGNS} campaigns at the settings it names "
+            f"give {measured}. Re-measure and rewrite the sentence -- do not "
+            f"widen this tolerance, which is already {allowed} day(s). "
+            "Issue #1364.")
+
+    def test_the_slack_it_quotes_is_the_subtraction_it_claims(self, made):
+        """The sentence states the walks, the days a Siege leaves, and the
+        difference. A hand edit that moves one and not the others reads
+        perfectly and is wrong, which is exactly how it went stale before."""
+        m = STATED_SLACK.search(DOC_URGENCY)
+        assert m is not None, (
+            "`siege_urgency` no longer states the slack in the sentence this "
+            "guard reads. If it was reworded, follow it here.")
+        answerable = [CityTier.OUTPOST, CityTier.BULWARK, CityTier.SANCTUARY]
+        siege_days = [int(g) for g in m.groups()[:3]]
+        slack = [int(g) for g in m.groups()[3:]]
+        walk = stated_walks()
+
+        assert siege_days == [days_to_empty(t) for t in answerable], (
+            f"the slack sentence quotes {siege_days} days for a fresh Siege "
+            f"and the day loop gives {[days_to_empty(t) for t in answerable]}")
+        assert slack == [d - walk[t] for d, t in zip(siege_days, answerable, strict=True)], (
+            f"the sentence states a slack of {slack} against walks of "
+            f"{[walk[t] for t in answerable]} and Sieges of {siege_days}, "
+            f"which subtracts to {[d - walk[t] for d, t in zip(siege_days, answerable, strict=True)]}")
+
+    def test_the_distribution_really_is_flat_where_the_median_sits(self, made):
+        """WHY THE TOLERANCE ABOVE IS A DAY RATHER THAN NOTHING, held in place
+        so that it stays a measured property rather than a habit. If the walk
+        lengths ever stopped being nearly uniform around the median, the median
+        would become a stable number and this file should tighten.
+
+        WHAT IS MEASURED: THE MEDIAN DAY AGAINST THE DAY EITHER SIDE, since
+        issue #1389. This asserted that the share walking in the stated median
+        or fewer days was between 44% and 58%. When the stated median is the
+        true one, that share is at least 50% by definition and at most 50% plus
+        what the median day itself holds, so the check read WHERE THE 50% LINE
+        FELL INSIDE ONE DAY, not how flat the distribution is. A change to
+        campaign length anywhere moves that line by part of a day and the share
+        by up to a whole day's worth: issue #1357 moved it from 50.5% to 56.2%
+        with the shape unchanged, leaving under two points to the ceiling. The
+        ratio below is what "flat where the median falls" means, and a shift of
+        part of a day barely moves it.
+        """
+        v = walks(made, CityTier.OUTPOST)
+        stated = stated_walks()[CityTier.OUTPOST]
+        ratio = median_day_spike(v, stated)
+        assert ratio < MEDIAN_DAY_SPIKE_LIMIT, (
+            f"{ratio:.2f} times as many Outpost dungeons walk exactly {stated} "
+            f"days as walk {stated - 1} or {stated + 1}. The docstring's claim "
+            "that the median is a coin flip between two adjacent days rests on "
+            "the median day holding about what its neighbours hold; a spike "
+            "there makes the median a stable number, and the one-day tolerance "
+            "should then tighten rather than this limit widen. Issue #1389.")
+        says(DOC_URGENCY,
+             "48.17% of Outpost dungeons walk in 13 days or fewer and 56.35% in "
+             "14 or fewer",
+             "Those are the shares from the 10,000-campaign measurement.")
+
+    def test_a_spike_on_the_median_day_is_what_the_check_rejects(self):
+        """THE CONTROL. The same helper over walk lists built by hand: a flat
+        one gives exactly 1, and one with 30% of walks on a single day and 5%
+        on each of its neighbours gives 6, over the limit."""
+        flat = [day for day in range(10, 20) for _ in range(10)]
+        assert median_day_spike(flat, 14) == pytest.approx(1.0)
+        spiked = [14] * 30 + [13] * 5 + [15] * 5 + list(range(20, 80))
+        assert median_day_spike(spiked, 14) == pytest.approx(6.0)
+        assert median_day_spike(spiked, 14) >= MEDIAN_DAY_SPIKE_LIMIT
+        assert median_day_spike(flat, 14) < MEDIAN_DAY_SPIKE_LIMIT
+
+
+# ---------------------------------------------------------------------------
+# The Pillar -- exact, and without campaigns
+# ---------------------------------------------------------------------------
+
+class TestAPillarSiegeCanNeverBeAnswered:
+    """The one claim in the docstring that is absolute rather than typical, so
+    the one that must not rest on a median. It rests on which dungeon kinds can
+    exist at the Pillar at all."""
+
+    def test_a_surge_cannot_target_the_pillar(self):
+        """The premise. `trigger_surge` drops the Pillar from the pool it draws
+        a target from, and its surge weight is zero besides."""
+        cfg = report_config()
+        assert cfg.SURGE_TARGET_WEIGHT[CityTier.PILLAR] == 0.0
+        source = inspect.getsource(Simulation.trigger_surge)
+        assert "c.cid != self.empire.pillar_id" in source, (
+            "`Simulation.trigger_surge` no longer removes the Pillar from the "
+            "pool it draws a surge target from. If a surge can now put a Basic "
+            "dungeon on the Pillar -- 40 floors, so 40 days -- then a Pillar "
+            "Siege CAN be answered and the docstring is wrong.")
+
+    def test_only_two_dungeon_kinds_ever_spawn_there(self, made):
+        """At most the Cataclysm and the Pillar's own Fallen City, and the
+        Cataclysm always.
+
+        A SUBSET SINCE 2026-11-02, NOT AN EQUALITY. Until then a Siege boss
+        dungeon stood on the Pillar and bit it, and the Pillar fell in 246 of
+        6,000 campaigns at `analyse_siege_dose.py`'s settings -- which is where
+        Pillar Fallen Cities came from. Issue #1324 slice 6b put the earned boss on no city and barred
+        a Cataclysm from the Siege, and in these 320 campaigns the Pillar no
+        longer falls. The earned boss is still RECORDED at the Pillar here,
+        because it is rolled from the Pillar's row through `_make_dungeon`; it
+        then stands on no city.
+        """
+        kinds = {dtype for tier, dtype, _, _ in made
+                 if tier is CityTier.PILLAR}
+        assert DungeonType.CATACLYSM in kinds, (
+            f"{CAMPAIGNS} campaigns rolled no Cataclysm dungeon from the "
+            "Pillar's row, so the claim below is about nothing")
+        assert kinds <= {DungeonType.CATACLYSM, DungeonType.FALLEN_CITY}, (
+            f"{CAMPAIGNS} campaigns put {sorted(k.value for k in kinds)} on "
+            "the Pillar. The docstring says the Cataclysm and the Fallen City "
+            "and nothing else.")
+
+    def test_the_shortest_possible_walk_outlasts_the_siege(self):
+        """DERIVED FROM THE FLOOR RANGES AND NOT FROM A CAMPAIGN. The shallowest
+        dungeon either kind can roll at the Pillar, walked with no tree."""
+        cfg = report_config()
+        sim = Simulation(cfg, seed=0)
+        shortest = min(
+            sim.run_days_for(cfg.spec(dtype, CityTier.PILLAR).floors[0])
+            for dtype in (DungeonType.CATACLYSM, DungeonType.FALLEN_CITY))
+        leaves = days_to_empty(CityTier.PILLAR)
+
+        assert shortest > leaves, (
+            f"the shallowest dungeon that can spawn at the Pillar walks in "
+            f"{shortest} days and a fresh Siege leaves {leaves}. The "
+            "docstring's 'can never be answered' has stopped being true.")
+        says(DOC_URGENCY,
+             f"is therefore {shortest} days against the {leaves} a fresh Siege "
+             "leaves",
+             "Those are the shallowest Pillar walk and the Pillar's "
+             "days-to-empty.")
+
+        cat = cfg.spec(DungeonType.CATACLYSM, CityTier.PILLAR).floors
+        fallen = cfg.spec(DungeonType.FALLEN_CITY, CityTier.PILLAR).floors
+        says(DOC_URGENCY,
+             f"the Cataclysm at {cat[0]} to {cat[1]} floors",
+             "That is the Cataclysm's floor range at the Pillar.")
+        says(DOC_URGENCY,
+             f"Fallen City at {fallen[0]} to {fallen[1]}",
+             "That is the Fallen City's floor range at the Pillar.")
+
+    def test_no_campaign_ever_produced_a_shorter_one(self, made):
+        """The measured half of the same claim, which would catch a path into
+        `_make_dungeon` that the floor ranges above do not describe."""
+        shortest = min(walks(made, CityTier.PILLAR))
+        leaves = days_to_empty(CityTier.PILLAR)
+        assert shortest > leaves, (
+            f"a Pillar dungeon walked in {shortest} days over {CAMPAIGNS} "
+            f"campaigns, against the {leaves} a fresh Siege leaves")
+
+
+# ---------------------------------------------------------------------------
+# Which dungeon kinds carry a Siege
+# ---------------------------------------------------------------------------
+
+STATED_MIX = re.compile(
+    r"the ([\d,]+) Sieges that reached the map were (\d+)% Basic, (\d+)% "
+    r"Quest, (\d+)% Fallen City and (\d+)% Cataclysm, about ([\d.]+) a campaign")
+
+
+#: How far a share measured over `CAMPAIGNS` campaigns may sit from the one the
+#: docstring states, in percentage points. IT WAS 3 UNTIL 2026-10-18. War's Quest
+#: dungeons are all Sieges since 2026-10-16, up to two a wave, so a campaign
+#: facing War brings several at once and the shares vary more between samples:
+#: measured on 2026-10-18, 31 disjoint blocks of 320 campaigns (seeds 0 to
+#: 9919) gave the Basic share from 63.8% to 76.5%, median 70.3%, against 69.86%
+#: over all 10,000. Seeds 0 to 319, which this file reads, give 66.2%. Widened
+#: to 7 by a ruling of the coordinating session, 2026-10-18, which declined
+#: more campaigns.
+SHARE_TOLERANCE_POINTS = 7.0
+
+
+class TestWhichKindsOfDungeonCarryASiege:
+    """`siege_daily_damage` explains why the sub-type is applied in all three
+    scoring branches by saying how often each dungeon kind carries one. The
+    counts it used to give were taken before the owner halved the spawn weight
+    and before a surge began rolling Quest dungeons, and had Fallen City at
+    more than twice Quest when the two are level."""
+
+    def test_the_shares_and_the_rate_are_what_a_campaign_produces(self, made):
+        m = STATED_MIX.search(DOC_DAILY)
+        assert m is not None, (
+            "`siege_daily_damage` no longer states the Siege mix in the "
+            "sentence this guard reads. If it was reworded, follow it here.")
+        stated_total = int(m.group(1).replace(",", ""))
+        stated = {DungeonType.BASIC: int(m.group(2)),
+                  DungeonType.QUEST: int(m.group(3)),
+                  DungeonType.FALLEN_CITY: int(m.group(4)),
+                  DungeonType.CATACLYSM: int(m.group(5))}
+        stated_rate = float(m.group(6))
+
+        sieges = Counter(dtype for _, dtype, subtype, _ in made
+                         if subtype == "Siege")
+        total = sum(sieges.values())
+        for dtype, share in stated.items():
+            measured = 100.0 * sieges[dtype] / total
+            assert abs(measured - share) <= SHARE_TOLERANCE_POINTS, (
+                f"the docstring says {share}% of Sieges sit on a "
+                f"{dtype.value} dungeon; {CAMPAIGNS} campaigns give "
+                f"{measured:.1f}%")
+
+        rate = total / CAMPAIGNS
+        assert abs(rate - stated_rate) <= 1.5, (
+            f"the docstring says about {stated_rate} Sieges reach the map per "
+            f"campaign; {CAMPAIGNS} campaigns give {rate:.2f}")
+        assert abs(stated_total / 10_000 - stated_rate) <= 0.5, (
+            f"the docstring's own two numbers disagree: {stated_total} Sieges "
+            f"over 10,000 campaigns is {stated_total / 10_000:.2f} a campaign, "
+            f"not {stated_rate}")
+
+
+# ---------------------------------------------------------------------------
+# The two places that copy the median walk. Issue #1376.
+# ---------------------------------------------------------------------------
+#
+# WHY THIS SECTION EXISTS. The figures above are re-measured against real
+# campaigns, so `policies.py` cannot go stale without this file failing. Two
+# other files quote the same medians and neither was read by anything, so both
+# went stale and stayed stale through several re-measurements:
+#
+#   * `docs/DECISIONS.md`, in the entry headed "An unattended Siege now takes
+#     25 / 39 / 55 / 70 days". It quoted 12 / 20 / 33 and 14 / 22 / 33 side by
+#     side, because it was written while `policies.py` and issue #1364
+#     disagreed, and it stated a slack of eleven, seventeen and twenty-two days.
+#   * `sim/cataclysm_sim/config.py`, on `siege_damage_growth_per_day`. It quoted
+#     14 / 22 / 33.
+#
+# WHAT THESE CHECK, AND WHAT THEY DELIBERATELY DO NOT. They tie the copies to
+# `policies.py` and run no campaigns. The expensive re-measurement above already
+# holds `policies.py` to reality, so one measurement now protects three files and
+# these cost nothing. A copy that disagrees with `policies.py` is wrong whether
+# or not `policies.py` is right, and if `policies.py` is wrong the tests above
+# are what say so.
+
+#: This checkout's root. Two directories up from `sim/tests/`.
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+DECISIONS = REPO_ROOT / "docs" / "DECISIONS.md"
+CONFIG = REPO_ROOT / "sim" / "cataclysm_sim" / "config.py"
+
+#: The three sizes a Siege can be answered at. The Pillar is quoted separately
+#: in both copies, as a walk of 123 days against the 70 a Siege leaves, and
+#: cannot be answered at all.
+ANSWERABLE = [CityTier.OUTPOST, CityTier.BULWARK, CityTier.SANCTUARY]
+
+
+#: A line's indent and whatever it opens with: a Python comment's `#`, a
+#: Markdown blockquote's `>`, or nothing. Stripped before the wrapping is taken
+#: out, or the marker ends up inside the sentence.
+LEADER = re.compile(r"^[ \t]*(?:#+|>+)?[ \t]*")
+
+
+def flattened(path) -> str:
+    """A file's text with its line wrapping and comment markers taken out.
+
+    Both copies are hard-wrapped prose, so a figure can be split across two
+    lines -- "against a median walk of" on one and "14 / 23 / 37" on the next.
+    A search against the raw text finds nothing and reads as a clean file that
+    is not clean.
+
+    THE MARKERS HAVE TO GO WITH THE WRAPPING, and this check found that out by
+    failing on its own first draft. Joining the lines of a Python comment block
+    without stripping the `#` gives "against a median walk of # 14 / 23 / 37",
+    which matches nothing either. The same is true of a Markdown blockquote's
+    `>`.
+    """
+    if not path.is_file():
+        pytest.skip(f"{path.name} is not present")
+    lines = path.read_text(encoding="utf-8").splitlines()
+    return " ".join(" ".join(LEADER.sub("", line) for line in lines).split())
+
+
+def walk_figures() -> str:
+    """The three answerable medians as both copies write them: "14 / 23 / 37"."""
+    walks = stated_walks()
+    return " / ".join(str(walks[tier]) for tier in ANSWERABLE)
+
+
+def file_states(path, phrase: str) -> bool:
+    """Whether a file states `phrase`, once its wrapping is taken out.
+
+    THE ANSWER IS COMPUTED HERE AND NOT INSIDE AN `assert`, AND THAT IS NOT A
+    STYLE CHOICE. `docs/DECISIONS.md` flattens to about 2,100,000 characters, and
+    pytest rewrites an assertion so it can explain what failed. For a FAILING
+    `x not in <2,100,000 characters>` that explanation does not finish: measured
+    2026-09-12, it ran past a 300 second timeout, while the same failure with the
+    answer computed first reported in 0.11 seconds. A failing `x in ...` is not
+    affected -- that one reports in 0.01 seconds -- so only one of the two
+    directions is dangerous, and writing both this way is what stops the next
+    person having to remember which.
+
+    The first version of the checks below had the string in the expression. It
+    did not look like a fault, because it only appears when the guard fires, so
+    it would have shipped and then hung continuous integration the first time
+    one of these copies went stale -- which is the exact thing the guard exists
+    to catch.
+    """
+    return phrase in flattened(path)
+
+
+class TestTheCopiesOfTheMedianWalk:
+    """Issue #1376. Neither copy was read by anything until this class."""
+
+    def test_the_decisions_log_quotes_the_medians_policies_states(self):
+        wanted = f"Against a median walk of {walk_figures()} days"
+        assert file_states(DECISIONS, wanted), (
+            f"docs/DECISIONS.md no longer says {wanted!r}. "
+            f"`sim/cataclysm_sim/policies.py` states a median walk of "
+            f"{walk_figures()} days, re-measured by the tests above. Follow it "
+            "there rather than deleting this check. Issue #1376.")
+
+    def test_the_decisions_log_quotes_the_slack_that_subtraction_gives(self):
+        """The subtraction and not only the walks, for the reason the
+        days-to-empty checks above give: a hand edit that moves one number and
+        not the other reads perfectly and is wrong."""
+        walks = stated_walks()
+        slack = [days_to_empty(tier) - walks[tier] for tier in ANSWERABLE]
+        words = {11: "eleven", 12: "twelve", 13: "thirteen", 14: "fourteen",
+                 15: "fifteen", 16: "sixteen", 17: "seventeen",
+                 18: "eighteen", 19: "nineteen", 20: "twenty",
+                 21: "twenty-one", 22: "twenty-two"}
+        missing = [day for day in slack if day not in words]
+        assert not missing, (
+            f"the slack is now {slack} days and this check can only spell "
+            f"{sorted(words)}. Add the missing word rather than dropping the "
+            "check.")
+
+        spelled = ", ".join(words[day] for day in slack[:-1])
+        wanted = f"{spelled} and {words[slack[-1]]} days"
+        assert file_states(DECISIONS, wanted), (
+            f"docs/DECISIONS.md no longer states the slack as {wanted!r}. "
+            f"A fresh Siege leaves {[days_to_empty(t) for t in ANSWERABLE]} "
+            f"days and the median walk is {[walks[t] for t in ANSWERABLE]}, "
+            f"which subtracts to {slack}. Issue #1376.")
+
+    def test_the_tuning_constants_comment_quotes_the_same_medians(self):
+        wanted = f"against a median walk of {walk_figures()}"
+        assert file_states(CONFIG, wanted), (
+            f"sim/cataclysm_sim/config.py no longer says {wanted!r} in the "
+            "comment on `siege_damage_growth_per_day`. The median walk does not "
+            "depend on that constant, so the comment is quoting a current "
+            "figure and has to follow `policies.py`. Issue #1376.")
+
+    def test_neither_copy_still_carries_a_superseded_figure(self):
+        """The three medians this entry has stated over its life. Two are gone
+        and must not come back by a copy being restored from an old draft."""
+        superseded = ("12 / 20 / 33", "14 / 22 / 33")
+        live = walk_figures()
+        for path in (DECISIONS, CONFIG):
+            for figure in superseded:
+                if figure == live:
+                    continue
+                # `docs/DECISIONS.md` records the superseded pair on purpose,
+                # inside the note that says they are superseded. That note is
+                # the record of the correction and must survive; what must not
+                # come back is the sentence stating one as current.
+                #
+                # THE ANSWER IS COMPUTED BEFORE THE `assert` AND MUST STAY THAT
+                # WAY. This is the failing `not in` the note on `says` measures:
+                # with the text inside the expression it does not finish.
+                still_there = file_states(path, f"median walk of {figure}")
+                assert not still_there, (
+                    f"{path.name} states a median walk of {figure}, which was "
+                    f"superseded. `sim/cataclysm_sim/policies.py` states "
+                    f"{live}. Issue #1376.")

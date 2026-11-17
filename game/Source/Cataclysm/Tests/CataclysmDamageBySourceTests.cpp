@@ -1,0 +1,1214 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "Misc/AutomationTest.h"
+
+#if WITH_AUTOMATION_TESTS
+
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
+#include "AbilitySystem/CataclysmStatPipeline.h"
+#include "AbilitySystem/CataclysmTeams.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "Character/CataclysmEnemyCharacter.h"
+#include "Engine/World.h"
+#include "GameFramework/Actor.h"
+#include "GameplayTagsManager.h"
+#include "Misc/ScopeExit.h"
+#include "Tests/CataclysmTestWorld.h"
+
+/**
+ * Damage taken from one source: melee attacks, ranged attacks, spells and
+ * bosses. Issue #666.
+ *
+ * THE PROJECT OWNER'S RULING, 2026-09-11: "Each is its own 'more' or 'less'
+ * multiplier on damage taken, used only for hits from that source. The 75% cap
+ * on flat damage reduction does not limit it, and like every 'less' it can
+ * remove at most 99% of the damage. Hits will need to record whether they are
+ * ranged or a spell; today they record only melee."
+ *
+ * TWO LEVELS ARE TESTED. `Resolve` given a hand-built hit checks the arithmetic
+ * and the four conditions. `ApplyHit` from a real attacker checks that the facts
+ * travel: from a skill's tags onto the damage effect, and from the effect onto
+ * the defender's hit. A build that forgot one of those steps would pass the
+ * first level and do nothing in play.
+ *
+ * EVERY ROW TAKES 50% LESS, so a hit that meets its row is exactly half of one
+ * that does not. The end-to-end tests compare two hits from the same attacker
+ * rather than naming a number, so armour, resistance and the attacker's own
+ * damage cancel out and only the row is measured.
+ */
+namespace CataclysmDamageBySourceTest
+{
+	using Combat = UCataclysmCombatAttributeSet;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	/** A bare actor holding every attribute set, usable as either side. */
+	struct FScopedFighter
+	{
+		explicit FScopedFighter(UWorld* World)
+		{
+			Actor = World->SpawnActor<AActor>();
+			check(Actor);
+
+			AbilitySystem = NewObject<UCataclysmAbilitySystemComponent>(Actor);
+			AbilitySystem->RegisterComponent();
+
+			// Raw pointers on purpose: AddAttributeSetSubobject is a template
+			// and a TObjectPtr deduces the wrapper rather than the set.
+			UCataclysmVitalAttributeSet* NewVitals =
+				NewObject<UCataclysmVitalAttributeSet>(Actor);
+			UCataclysmCombatAttributeSet* NewCombat =
+				NewObject<UCataclysmCombatAttributeSet>(Actor);
+			UCataclysmResistanceAttributeSet* NewResist =
+				NewObject<UCataclysmResistanceAttributeSet>(Actor);
+			UCataclysmAllResistanceAttributeSet* NewAll =
+				NewObject<UCataclysmAllResistanceAttributeSet>(Actor);
+			AbilitySystem->AddAttributeSetSubobject(NewVitals);
+			AbilitySystem->AddAttributeSetSubobject(NewCombat);
+			AbilitySystem->AddAttributeSetSubobject(NewResist);
+			AbilitySystem->AddAttributeSetSubobject(NewAll);
+			AbilitySystem->InitAbilityActorInfo(Actor, Actor);
+
+			// LARGE ENOUGH THAT NOTHING HERE APPROACHES DEATH, so the floor
+			// `Resolve` puts on the health step never reports the health left
+			// instead of the hit.
+			//
+			// A FLOAT NEAR 1,000,000 STEPS IN UNITS OF 0.0625, so a blow measured as the
+			// difference of two readings of this pool is quantised to that: an expected
+			// figure that is not a multiple of 0.0625 (a -40% blow of 220.5 is 132.3, read
+			// as 132.3125) misses a 0.01 tolerance however correct the engine is. Pick
+			// figures that land on the grid, or use a smaller pool the way
+			// CataclysmMinionGearTests.cpp does. Issue #1728.
+			AbilitySystem->SetNumericAttributeBase(
+				Vital::GetMaxHealthAttribute(), 1'000'000.0f);
+			AbilitySystem->SetNumericAttributeBase(
+				Vital::GetHealthAttribute(), 1'000'000.0f);
+
+			// Enough weapon damage that `ApplyHit` has something to deal.
+			AbilitySystem->SetNumericAttributeBase(
+				Combat::GetAttackDamageAttribute(), 100.0f);
+		}
+
+		~FScopedFighter()
+		{
+			if (Actor)
+			{
+				Actor->Destroy();
+			}
+		}
+
+		/** The whole of a hand-built hit, with evasion and block pinned off. */
+		float Taken(const FCataclysmIncomingHit& Hit) const
+		{
+			return UCataclysmDamageCalculation::Resolve(
+				Hit, AbilitySystem, /*Tier=*/1, /*EvasionRoll=*/100.0f,
+				/*BlockRoll=*/100.0f).DealtToHealth;
+		}
+
+		TObjectPtr<AActor> Actor = nullptr;
+		TObjectPtr<UCataclysmAbilitySystemComponent> AbilitySystem = nullptr;
+	};
+
+	/**
+	 * The same, for a condition that compares a number. -25 at 6 metres is
+	 * Standing Apart: "You take 25% less damage from enemies more than 6 metres
+	 * away from you".
+	 */
+	FCataclysmStatModifier RowAtThreshold(ECataclysmStatCondition Condition,
+										  float Value, float Threshold)
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::More;
+		Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+		Modifier.Value = Value;
+		Modifier.Condition = Condition;
+		Modifier.ConditionValue = Threshold;
+		return Modifier;
+	}
+
+	/** One "more" row on damage taken, with a condition. -50 is 50% less. */
+	FCataclysmStatModifier Row(ECataclysmStatCondition Condition, float Value)
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::More;
+		Modifier.Source = ECataclysmModifierSource::Enchantment;
+		Modifier.Value = Value;
+		Modifier.Condition = Condition;
+		return Modifier;
+	}
+
+	/**
+	 * Record a damage taken stat line holding these rows, the way
+	 * `UCataclysmPlayerClassStats::ApplyTo` records one for a real player, and
+	 * which the damage taken step asks for on every hit.
+	 */
+	void TakeDamageThrough(UCataclysmAbilitySystemComponent* AbilitySystem,
+						   const TArray<FCataclysmStatModifier>& Rows)
+	{
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Taken =
+			Inputs.FindOrAdd(FName(UCataclysmDamageCalculation::DamageTakenStat));
+		Taken.Base = UCataclysmDamageCalculation::NormalDamageTaken;
+		Taken.Modifiers = Rows;
+		AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	}
+
+	/** A 400 point hit carrying these facts and nothing else. */
+	FCataclysmIncomingHit HitOf(bool bMelee, bool bRanged, bool bSpell,
+								bool bFromBoss = false,
+								bool bFromStaggered = false,
+								bool bFromCrowdControlled = false)
+	{
+		FCataclysmIncomingHit Hit;
+		Hit.Damage = 400.0f;
+		Hit.bIsMelee = bMelee;
+		Hit.bIsRanged = bRanged;
+		Hit.bIsSpell = bSpell;
+		Hit.bFromBoss = bFromBoss;
+		Hit.bFromStaggered = bFromStaggered;
+		Hit.bFromCrowdControlled = bFromCrowdControlled;
+		return Hit;
+	}
+
+	/** A blow that may not critically strike, so two hits can be compared. */
+	FCataclysmHitDelivery NoCritical()
+	{
+		FCataclysmHitDelivery Delivery;
+		Delivery.bCannotCriticallyStrike = true;
+		return Delivery;
+	}
+}
+
+// EVERY TEST OPENS THE NAMESPACE INSIDE ITS OWN BODY, because this module is
+// built as a unity blob and a `using namespace` at file scope reaches the other
+// files concatenated with this one. See CataclysmForcedMovementTests.cpp.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageBySourceEachRowTest,
+	"Cataclysm.DamageBySource.EachSourceRowMeetsOnlyHitsFromItsSource",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FCataclysmDamageBySourceEachRowTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDamageBySourceTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// ONE DEFENDER PER ROW, AND EVERY KIND OF HIT AGAINST EACH. A build that
+	// read one fact for another fails on the line naming both; a build that
+	// granted a row to every hit fails on the hit that says nothing.
+	struct FSource
+	{
+		const TCHAR* What;
+		ECataclysmStatCondition Condition;
+	};
+	const FSource Sources[] = {
+		{ TEXT("melee attacks"), ECataclysmStatCondition::HitIsMeleeAttack },
+		{ TEXT("ranged attacks"), ECataclysmStatCondition::HitIsRangedAttack },
+		{ TEXT("spells"), ECataclysmStatCondition::HitIsSpell },
+		{ TEXT("bosses"), ECataclysmStatCondition::OpponentIsBoss },
+		{ TEXT("staggered attackers"),
+		  ECataclysmStatCondition::OpponentIsStaggered },
+		// ISSUE #1686. Beside the staggered pair on purpose: each hit meets only
+		// its own row, so reading the one field for the other fails here.
+		{ TEXT("crowd controlled attackers"),
+		  ECataclysmStatCondition::OpponentIsCrowdControlled },
+	};
+
+	struct FKind
+	{
+		const TCHAR* What;
+		FCataclysmIncomingHit Hit;
+		ECataclysmStatCondition Meets;
+	};
+	const FKind Kinds[] = {
+		{ TEXT("a melee hit"), HitOf(true, false, false),
+		  ECataclysmStatCondition::HitIsMeleeAttack },
+		{ TEXT("a ranged hit"), HitOf(false, true, false),
+		  ECataclysmStatCondition::HitIsRangedAttack },
+		{ TEXT("a spell"), HitOf(false, false, true),
+		  ECataclysmStatCondition::HitIsSpell },
+		{ TEXT("a boss's hit"), HitOf(false, false, false, true),
+		  ECataclysmStatCondition::OpponentIsBoss },
+		{ TEXT("a staggered attacker's hit"),
+		  HitOf(false, false, false, false, true),
+		  ECataclysmStatCondition::OpponentIsStaggered },
+		{ TEXT("a crowd controlled attacker's hit"),
+		  HitOf(false, false, false, false, false, true),
+		  ECataclysmStatCondition::OpponentIsCrowdControlled },
+		// `Always` is no row's condition, so this hit meets none of them.
+		{ TEXT("a hit that says nothing"), HitOf(false, false, false),
+		  ECataclysmStatCondition::Always },
+	};
+
+	for (const FSource& Source : Sources)
+	{
+		const FScopedFighter Defender(World);
+		TakeDamageThrough(Defender.AbilitySystem, { Row(Source.Condition, -50.0f) });
+
+		for (const FKind& Kind : Kinds)
+		{
+			const float Expected = Kind.Meets == Source.Condition ? 200.0f : 400.0f;
+			TestEqual(FString::Printf(TEXT("50%% less from %s, against %s"),
+									  Source.What, Kind.What),
+				Defender.Taken(Kind.Hit), Expected, 0.01f);
+		}
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageBySourceSpellIsNotAnAttackTest,
+	"Cataclysm.DamageBySource.ASpellIsNotAMeleeOrRangedAttack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FCataclysmDamageBySourceSpellIsNotAnAttackTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDamageBySourceTest;
+
+	// A LABELLED JUDGEMENT, RECORDED IN docs/DECISIONS.md. The rows say "melee
+	// attacks", "ranged attacks" and "spells", and Path of Exile draws the line
+	// the same way: a skill is an attack or a spell, and projectile is a tag
+	// either can carry. So a spell that fires a projectile is a spell, and not a
+	// ranged attack. Two Demonic weapon skills, the heavy Wand and Staff, are
+	// that shape.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	{
+		const FScopedFighter Defender(World);
+		TakeDamageThrough(Defender.AbilitySystem,
+			{ Row(ECataclysmStatCondition::HitIsRangedAttack, -50.0f) });
+		TestEqual(TEXT("a ranged attack meets the ranged row"),
+			Defender.Taken(HitOf(false, true, false)), 200.0f, 0.01f);
+		TestEqual(TEXT("a spell that fires a projectile does not"),
+			Defender.Taken(HitOf(false, true, true)), 400.0f, 0.01f);
+	}
+	{
+		const FScopedFighter Defender(World);
+		TakeDamageThrough(Defender.AbilitySystem,
+			{ Row(ECataclysmStatCondition::HitIsMeleeAttack, -50.0f) });
+		TestEqual(TEXT("a melee attack meets the melee row"),
+			Defender.Taken(HitOf(true, false, false)), 200.0f, 0.01f);
+		TestEqual(TEXT("a spell struck in melee does not"),
+			Defender.Taken(HitOf(true, false, true)), 400.0f, 0.01f);
+	}
+	{
+		const FScopedFighter Defender(World);
+		TakeDamageThrough(Defender.AbilitySystem,
+			{ Row(ECataclysmStatCondition::HitIsSpell, -50.0f) });
+		TestEqual(TEXT("and a spell that fires a projectile meets the spell row"),
+			Defender.Taken(HitOf(false, true, true)), 200.0f, 0.01f);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageBySourceSheetTest,
+	"Cataclysm.DamageBySource.TheCharacterSheetShowsNoRowThatNeedsAHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FCataclysmDamageBySourceSheetTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDamageBySourceTest;
+
+	// THE CHARACTER SHEET ASKS WITH NO HIT IN HAND, which is every caller of
+	// `StatForSkill` but the damage taken step. Every fact of an absent blow is
+	// false, so a row that asks about the hit is left out of the sheet's figure,
+	// the same way a low-health bonus is left out at full health.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FScopedFighter Defender(World);
+	TakeDamageThrough(Defender.AbilitySystem,
+		{ Row(ECataclysmStatCondition::HitIsSpell, -50.0f) });
+	const FName Taken(UCataclysmDamageCalculation::DamageTakenStat);
+
+	TestEqual(TEXT("with no hit in hand, damage taken is the normal hundred"),
+		Defender.AbilitySystem->StatForSkill(Taken, FGameplayTagContainer(), 0.0f),
+		UCataclysmDamageCalculation::NormalDamageTaken, 0.01f);
+
+	FCataclysmBlowContext Spell;
+	Spell.bIsSpell = true;
+	TestEqual(TEXT("and with a spell's hit in hand it is fifty"),
+		Defender.AbilitySystem->StatForSkill(Taken, FGameplayTagContainer(), 0.0f,
+											 /*SkillHealthCostPercent=*/-1.0f, Spell),
+		50.0f, 0.01f);
+
+	TestFalse(TEXT("the conditions built with no hit in hand know no source"),
+		Defender.AbilitySystem->CurrentConditions().Blow.bIsSpell);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageBySourceCapTest,
+	"Cataclysm.DamageBySource.ASourceRowIsOutsideTheDamageReductionCap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FCataclysmDamageBySourceCapTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDamageBySourceTest;
+
+	// THE OWNER'S WORDS: "The 75% cap on flat damage reduction does not limit
+	// it." A defender at the cap who takes 50% less from spells takes an eighth
+	// of a spell. Had the row been added into damage reduction instead, the cap
+	// would have held the spell at a quarter, the same as any other hit.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FScopedFighter Defender(World);
+	Defender.AbilitySystem->SetNumericAttributeBase(
+		Combat::GetDamageReductionAttribute(), 75.0f);
+	TakeDamageThrough(Defender.AbilitySystem,
+		{ Row(ECataclysmStatCondition::HitIsSpell, -50.0f) });
+
+	TestEqual(TEXT("75% damage reduction leaves a quarter of a melee hit"),
+		Defender.Taken(HitOf(true, false, false)), 100.0f, 0.01f);
+	TestEqual(TEXT("and a spell loses half of what is left"),
+		Defender.Taken(HitOf(false, false, true)), 50.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageBySourceMultiplyTest,
+	"Cataclysm.DamageBySource.TwoSourceRowsMultiply",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FCataclysmDamageBySourceMultiplyTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDamageBySourceTest;
+
+	// "EACH IS ITS OWN MULTIPLIER." A boss's spell meets both rows, and the two
+	// multiply: 0.5 x 1.2 = 0.6 of the hit, not 1 - 0.5 + 0.2 = 0.7.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FScopedFighter Defender(World);
+	TakeDamageThrough(Defender.AbilitySystem,
+		{ Row(ECataclysmStatCondition::HitIsSpell, -50.0f),
+		  Row(ECataclysmStatCondition::OpponentIsBoss, 20.0f) });
+
+	TestEqual(TEXT("a boss's spell is 400 x 0.5 x 1.2"),
+		Defender.Taken(HitOf(false, false, true, true)), 240.0f, 0.01f);
+	TestEqual(TEXT("a boss's melee hit is 400 x 1.2"),
+		Defender.Taken(HitOf(true, false, false, true)), 480.0f, 0.01f);
+	TestEqual(TEXT("anything else's spell is 400 x 0.5"),
+		Defender.Taken(HitOf(false, false, true)), 200.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageBySourceTickTest,
+	"Cataclysm.DamageBySource.ADamageOverTimeTickIsNotAHitFromItsSource",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FCataclysmDamageBySourceTickTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDamageBySourceTest;
+
+	// "USED ONLY FOR HITS FROM THAT SOURCE." A damage over time tick is not a
+	// hit, which is also why it can neither be evaded nor critically strike, so
+	// a burn a spell left behind is not shrunk by less damage from spells.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FScopedFighter Defender(World);
+	TakeDamageThrough(Defender.AbilitySystem,
+		{ Row(ECataclysmStatCondition::HitIsSpell, -50.0f) });
+
+	FCataclysmIncomingHit Tick = HitOf(false, false, true);
+	Tick.bIsDamageOverTime = true;
+
+	TestEqual(TEXT("a spell's hit is halved"),
+		Defender.Taken(HitOf(false, false, true)), 200.0f, 0.01f);
+	TestEqual(TEXT("and a tick carrying the same fact is not"),
+		Defender.Taken(Tick), 400.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageBySourceSkillTagsTest,
+	"Cataclysm.DamageBySource.ASkillsTagsReachTheDefenderAsItsSource",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FCataclysmDamageBySourceSkillTagsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDamageBySourceTest;
+
+	// THE WHOLE JOURNEY, which is what the tests above cannot see. A skill's tags
+	// are used where the blow is built and stop there; only what `ApplyTypedSpec`
+	// puts on the damage effect reaches the defender. Until issue #666 that was
+	// area, damage over time and melee, so a spell and a projectile both arrived
+	// as nothing in particular.
+	//
+	// EACH CASE COMPARES TWO HITS FROM ONE ATTACKER: one on a defender carrying
+	// the row and one on a defender carrying nothing.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FScopedFighter Attacker(World);
+	const FScopedFighter Control(World);
+
+	const auto Struck = [&Attacker](const FScopedFighter& Target, const TCHAR* Cell)
+	{
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Target.Actor, 100.0f,
+			UCataclysmSkillShapes::TagsFromCell(Cell), NoCritical(), &Resolved);
+		return Resolved.DealtToHealth;
+	};
+
+	struct FCase
+	{
+		const TCHAR* What;
+		ECataclysmStatCondition Row;
+		const TCHAR* Cell;
+		bool bMeets;
+	};
+	const FCase Cases[] = {
+		{ TEXT("a spell reaches the defender as a spell"),
+		  ECataclysmStatCondition::HitIsSpell, TEXT("Type.Spell"), true },
+		{ TEXT("and so does a spell that fires a projectile"),
+		  ECataclysmStatCondition::HitIsSpell, TEXT("Type.Spell, Type.Projectile"), true },
+		{ TEXT("a projectile reaches it as a ranged attack"),
+		  ECataclysmStatCondition::HitIsRangedAttack, TEXT("Type.Projectile"), true },
+		{ TEXT("and so does a skill tagged ranged"),
+		  ECataclysmStatCondition::HitIsRangedAttack, TEXT("Type.Ranged"), true },
+		{ TEXT("but a spell that fires a projectile is not a ranged attack"),
+		  ECataclysmStatCondition::HitIsRangedAttack, TEXT("Type.Spell, Type.Projectile"), false },
+		{ TEXT("a melee strike reaches it as a melee attack"),
+		  ECataclysmStatCondition::HitIsMeleeAttack, TEXT("Type.Strike, Type.Melee"), true },
+		{ TEXT("and a projectile is not one"),
+		  ECataclysmStatCondition::HitIsMeleeAttack, TEXT("Type.Projectile"), false },
+	};
+
+	for (const FCase& Case : Cases)
+	{
+		const FScopedFighter Defender(World);
+		TakeDamageThrough(Defender.AbilitySystem, { Row(Case.Row, -50.0f) });
+
+		const float Plain = Struck(Control, Case.Cell);
+		if (!TestTrue(FString::Printf(TEXT("%s: the hit lands for something"),
+									  Case.What), Plain > 0.0f))
+		{
+			continue;
+		}
+		TestEqual(FString::Printf(TEXT("%s (%s)"), Case.What, Case.Cell),
+			Struck(Defender, Case.Cell), Case.bMeets ? Plain * 0.5f : Plain, 0.01f);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageBySourceBossTest,
+	"Cataclysm.DamageBySource.AHitFromABossSaysSoAndAHeraldsDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FCataclysmDamageBySourceBossTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDamageBySourceTest;
+
+	// A BOSS IS WHAT `ACataclysmEnemyCharacter::IsBoss` SAYS: the Boss and
+	// Cataclysm Boss rarities. A Herald, one rung below, is not, which is the
+	// line the stun rule already uses. The fact is read off the damage effect's
+	// causer when the hit lands, so this drives a real hit from each.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const auto Spawn = [World](const FVector& Where)
+	{
+		return World->SpawnActor<ACataclysmEnemyCharacter>(Where, FRotator::ZeroRotator);
+	};
+	ACataclysmEnemyCharacter* Boss = Spawn(FVector(0.0f, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Herald = Spawn(FVector(1000.0f, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Control = Spawn(FVector(0.0f, 1000.0f, 0.0f));
+	ACataclysmEnemyCharacter* Defender = Spawn(FVector(1000.0f, 1000.0f, 0.0f));
+	if (!TestNotNull(TEXT("a boss"), Boss) || !TestNotNull(TEXT("a Herald"), Herald)
+		|| !TestNotNull(TEXT("a control"), Control)
+		|| !TestNotNull(TEXT("a defender"), Defender))
+	{
+		return false;
+	}
+
+	Boss->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+	Herald->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep - 1);
+	TestTrue(TEXT("the first boss rung is a boss"), Boss->IsBoss());
+	TestFalse(TEXT("and the rung below it is not"), Herald->IsBoss());
+	Boss->SetAttackDamage(100.0f);
+	Herald->SetAttackDamage(100.0f);
+
+	// ON THE PLAYER'S SIDE, AS A PLAYER WOULD BE, with health enough for every
+	// hit here.
+	for (ACataclysmEnemyCharacter* Target : { Control, Defender })
+	{
+		Target->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+		Target->SetHealth(1'000'000.0f);
+	}
+	UCataclysmAbilitySystemComponent* Guarded =
+		Cast<UCataclysmAbilitySystemComponent>(Defender->GetAbilitySystemComponent());
+	if (!TestNotNull(TEXT("the defender's ability system"), Guarded))
+	{
+		return false;
+	}
+	TakeDamageThrough(Guarded, { Row(ECataclysmStatCondition::OpponentIsBoss, -50.0f) });
+
+	const auto Struck = [](ACataclysmEnemyCharacter* From, ACataclysmEnemyCharacter* Target)
+	{
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyHit(From, Target, 100.0f, FGameplayTagContainer(),
+										 NoCritical(), &Resolved);
+		return Resolved.DealtToHealth;
+	};
+
+	const float BossPlain = Struck(Boss, Control);
+	const float HeraldPlain = Struck(Herald, Control);
+	if (!TestTrue(TEXT("both hits land for something"),
+				  BossPlain > 0.0f && HeraldPlain > 0.0f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a boss's hit meets the row"),
+		Struck(Boss, Defender), BossPlain * 0.5f, 0.01f);
+	TestEqual(TEXT("a Herald's hit does not"),
+		Struck(Herald, Defender), HeraldPlain, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageBySourceStaggeredTest,
+	"Cataclysm.DamageBySource.AHitFromAStaggeredAttackerSaysSoAndAnUnstaggeredOneDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FCataclysmDamageBySourceStaggeredTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDamageBySourceTest;
+
+	// WHY THIS EXISTS BESIDE THE TABLE-DRIVEN TEST ABOVE. That one fills the
+	// hit in by hand, so it would pass unchanged even if nothing ever read the
+	// Staggered state off the attacker. This drives real hits, so it is the only
+	// test here that can fail on the line that reads it. Issue #45, for
+	// "Staggered enemies deal 15%-30% increased damage to you".
+	//
+	// THREE ATTACKERS, AND THE THIRD IS NOT A CREATURE. A staggered creature and
+	// an unstaggered one show the condition is read at all. The third, a bare
+	// actor, is what shows it is read in the right PLACE: see the comment beside
+	// it further down.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const auto Spawn = [World](const FVector& Where)
+	{
+		return World->SpawnActor<ACataclysmEnemyCharacter>(Where, FRotator::ZeroRotator);
+	};
+	ACataclysmEnemyCharacter* Staggered = Spawn(FVector(0.0f, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Steady = Spawn(FVector(1000.0f, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Control = Spawn(FVector(0.0f, 1000.0f, 0.0f));
+	ACataclysmEnemyCharacter* Defender = Spawn(FVector(1000.0f, 1000.0f, 0.0f));
+	if (!TestNotNull(TEXT("an attacker to stagger"), Staggered)
+		|| !TestNotNull(TEXT("one to leave alone"), Steady)
+		|| !TestNotNull(TEXT("a control"), Control)
+		|| !TestNotNull(TEXT("a defender"), Defender))
+	{
+		return false;
+	}
+
+	Staggered->SetAttackDamage(100.0f);
+	Steady->SetAttackDamage(100.0f);
+
+	// ON THE PLAYER'S SIDE, AS A PLAYER WOULD BE, with health enough for every
+	// hit here. The same arrangement the boss test above uses.
+	for (ACataclysmEnemyCharacter* Target : { Control, Defender })
+	{
+		Target->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+		Target->SetHealth(1'000'000.0f);
+	}
+	UCataclysmAbilitySystemComponent* Guarded =
+		Cast<UCataclysmAbilitySystemComponent>(Defender->GetAbilitySystemComponent());
+	if (!TestNotNull(TEXT("the defender's ability system"), Guarded))
+	{
+		return false;
+	}
+	TakeDamageThrough(Guarded,
+		{ Row(ECataclysmStatCondition::OpponentIsStaggered, -50.0f) });
+
+	// STAGGER ONE OF THE TWO, AND CHECK IT TOOK. A stagger that never landed
+	// would make both attackers alike and every assertion below pass for the
+	// wrong reason.
+	//
+	// BOTH WHAT THE CALL REPORTS AND WHAT THE CHARACTER CARRIES, because the
+	// two can disagree: a call that refused would return false while a tag left
+	// by something else was still present, and checking only the tag would read
+	// that as a stagger this test applied.
+	const bool bApplied =
+		UCataclysmSkillEffects::ApplyStagger(Staggered, Staggered);
+	if (!TestTrue(TEXT("the stagger was applied"), bApplied)
+		|| !TestTrue(TEXT("and the attacker carries it"),
+					 UCataclysmSkillEffects::IsStaggered(Staggered))
+		|| !TestFalse(TEXT("and the other one does not"),
+					  UCataclysmSkillEffects::IsStaggered(Steady)))
+	{
+		return false;
+	}
+
+	// PLAIN ACTORS, not enemy creatures, because one attacker below is neither.
+	// `ApplyHit` takes actors anyway; the boss test above narrows its own copy
+	// to creatures only because both of its attackers are.
+	const auto Struck = [](AActor* From, AActor* Target)
+	{
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyHit(From, Target, 100.0f, FGameplayTagContainer(),
+										 NoCritical(), &Resolved);
+		return Resolved.DealtToHealth;
+	};
+
+	const float StaggeredPlain = Struck(Staggered, Control);
+	const float SteadyPlain = Struck(Steady, Control);
+	if (!TestTrue(TEXT("both hits land for something"),
+				  StaggeredPlain > 0.0f && SteadyPlain > 0.0f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a staggered attacker's hit meets the row"),
+		Struck(Staggered, Defender), StaggeredPlain * 0.5f, 0.01f);
+	TestEqual(TEXT("an unstaggered attacker's hit does not"),
+		Struck(Steady, Defender), SteadyPlain, 0.01f);
+
+	// AND AN ATTACKER THAT IS NOT AN ENEMY CREATURE AT ALL, which is the case
+	// this test exists for as much as the two above.
+	//
+	// WITHOUT IT THE HEADER'S CLAIM IS UNTESTED. `bFromStaggered` is read off
+	// the causer as a plain actor rather than inside the cast to the enemy
+	// creature class, and the comment there says putting it inside that cast
+	// would leave it false for every blow a player throws. Both attackers above
+	// ARE enemy creatures, so that mistake would still answer correctly for
+	// them and nothing would fail. A bare actor is what makes the claim
+	// checkable, and `FScopedFighter` is one: it spawns an AActor and fits it
+	// with the attribute sets and weapon damage a blow needs.
+	const FScopedFighter Outsider(World);
+	if (!TestTrue(TEXT("the bare attacker is staggered"),
+				  UCataclysmSkillEffects::ApplyStagger(Outsider.Actor,
+													   Outsider.Actor)))
+	{
+		return false;
+	}
+
+	const float OutsiderPlain = Struck(Outsider.Actor, Control);
+	if (!TestTrue(TEXT("its plain hit lands for something"), OutsiderPlain > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a staggered attacker that is no creature also meets the row"),
+		Struck(Outsider.Actor, Defender), OutsiderPlain * 0.5f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageBySourceCrowdControlledTest,
+	"Cataclysm.DamageBySource.AHitFromACrowdControlledAttackerSaysSoAndAFreeOneDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FCataclysmDamageBySourceCrowdControlledTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDamageBySourceTest;
+
+	// REAL HITS, FOR THE REASON THE STAGGERED TEST ABOVE GIVES. Issue #1686,
+	// for "You take 15%-25% more damage from enemies that are currently CC'd".
+	// The table-driven test fills the hit by hand and would pass if nothing
+	// read the attacker at all.
+	//
+	// FOUR ATTACKERS. A pinned one, by the real pin, and a maddened one meet the
+	// row: two of the three crowd control states an attacker can still strike
+	// under. A free one does not. A staggered one does not either, because a
+	// stagger is not crowd control, and it is the line that fails if the new
+	// field were filled from the stagger beside it.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const auto Spawn = [World](const FVector& Where)
+	{
+		return World->SpawnActor<ACataclysmEnemyCharacter>(Where, FRotator::ZeroRotator);
+	};
+	ACataclysmEnemyCharacter* Pinned = Spawn(FVector(0.0f, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Maddened = Spawn(FVector(1000.0f, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Staggered = Spawn(FVector(2000.0f, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Free = Spawn(FVector(3000.0f, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Control = Spawn(FVector(0.0f, 1000.0f, 0.0f));
+	ACataclysmEnemyCharacter* Defender = Spawn(FVector(1000.0f, 1000.0f, 0.0f));
+	if (!TestNotNull(TEXT("an attacker to pin"), Pinned)
+		|| !TestNotNull(TEXT("one to madden"), Maddened)
+		|| !TestNotNull(TEXT("one to stagger"), Staggered)
+		|| !TestNotNull(TEXT("one to leave alone"), Free)
+		|| !TestNotNull(TEXT("a control"), Control)
+		|| !TestNotNull(TEXT("a defender"), Defender))
+	{
+		return false;
+	}
+
+	for (ACataclysmEnemyCharacter* Attacker : { Pinned, Maddened, Staggered, Free })
+	{
+		Attacker->SetAttackDamage(100.0f);
+	}
+	for (ACataclysmEnemyCharacter* Target : { Control, Defender })
+	{
+		Target->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+		Target->SetHealth(1'000'000.0f);
+	}
+	UCataclysmAbilitySystemComponent* Guarded =
+		Cast<UCataclysmAbilitySystemComponent>(Defender->GetAbilitySystemComponent());
+	if (!TestNotNull(TEXT("the defender's ability system"), Guarded))
+	{
+		return false;
+	}
+	TakeDamageThrough(Guarded,
+		{ Row(ECataclysmStatCondition::OpponentIsCrowdControlled, -50.0f) });
+
+	// EACH STATE APPLIED, AND CHECKED TO HAVE TAKEN, so no line below passes
+	// because two attackers were alike by accident.
+	if (!TestTrue(TEXT("the pin was applied"),
+				  UCataclysmSkillEffects::ApplyPin(Pinned, Pinned, 30.0f))
+		|| !TestTrue(TEXT("and the attacker is pinned"),
+					 UCataclysmSkillEffects::IsPinned(Pinned)))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyTagForDuration(
+		Maddened, Maddened, UCataclysmTeams::MadnessTag(), 30.0f);
+	if (!TestTrue(TEXT("the second attacker is maddened"),
+				  UCataclysmTeams::IsMaddened(Maddened))
+		|| !TestTrue(TEXT("the stagger was applied"),
+					 UCataclysmSkillEffects::ApplyStagger(Staggered, Staggered))
+		|| !TestFalse(TEXT("and a stagger is not crowd control"),
+					  UCataclysmSkillEffects::IsCrowdControlled(Staggered))
+		|| !TestFalse(TEXT("and the free attacker is under none of it"),
+					  UCataclysmSkillEffects::IsCrowdControlled(Free)))
+	{
+		return false;
+	}
+
+	const auto Struck = [](AActor* From, AActor* Target)
+	{
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyHit(From, Target, 100.0f, FGameplayTagContainer(),
+										 NoCritical(), &Resolved);
+		return Resolved.DealtToHealth;
+	};
+
+	for (ACataclysmEnemyCharacter* Attacker : { Pinned, Maddened, Staggered, Free })
+	{
+		const float Plain = Struck(Attacker, Control);
+		if (!TestTrue(TEXT("every attacker's plain hit lands for something"), Plain > 0.0f))
+		{
+			return false;
+		}
+		const bool bHeld = Attacker == Pinned || Attacker == Maddened;
+		TestEqual(bHeld
+				? TEXT("a pinned or maddened attacker's hit meets the row")
+				: TEXT("a staggered or free attacker's hit does not"),
+			Struck(Attacker, Defender), bHeld ? Plain * 0.5f : Plain, 0.01f);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCrowdControlIsTheSixEffectsTest,
+	"Cataclysm.DamageBySource.CrowdControlIsTheSixEffectsOfSectionVIAndNotAStagger",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FCataclysmCrowdControlIsTheSixEffectsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDamageBySourceTest;
+
+	// EVERY READABLE STATE OF THE SIX, ONE CHARACTER EACH. Issue #1686. The
+	// sixth, displacement, leaves no state to read. A stagger is the control:
+	// it is what a displacement leaves behind, and it is not a hold.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	struct FState
+	{
+		const TCHAR* Tag;
+		bool bIsCrowdControl;
+	};
+	const FState States[] = {
+		{ TEXT("State.Stunned"), true },
+		{ TEXT("State.KnockedDown"), true },
+		{ TEXT("State.Pinned"), true },
+		{ TEXT("Status.Debuff.Cripple"), true },
+		{ TEXT("Status.Debuff.Madness"), true },
+		{ TEXT("State.Staggered"), false },
+	};
+
+	for (const FState& State : States)
+	{
+		const FGameplayTag Tag = UGameplayTagsManager::Get().RequestGameplayTag(
+			FName(State.Tag), /*ErrorIfNotFound=*/false);
+		if (!TestTrue(FString::Printf(TEXT("%s is in the vocabulary"), State.Tag),
+					  Tag.IsValid()))
+		{
+			continue;
+		}
+
+		const FScopedFighter Held(World);
+		TestFalse(FString::Printf(TEXT("before %s nothing holds it"), State.Tag),
+				  UCataclysmSkillEffects::IsCrowdControlled(Held.Actor));
+		UCataclysmSkillEffects::ApplyTagForDuration(Held.Actor, Held.Actor, Tag, 30.0f);
+		if (!TestTrue(FString::Printf(TEXT("%s took"), State.Tag),
+					  UCataclysmSkillEffects::HasTag(Held.Actor, Tag)))
+		{
+			continue;
+		}
+		TestEqual(FString::Printf(TEXT("%s is crowd control: %s"), State.Tag,
+								  State.bIsCrowdControl ? TEXT("yes") : TEXT("no")),
+				  UCataclysmSkillEffects::IsCrowdControlled(Held.Actor),
+				  State.bIsCrowdControl);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageBySourceTagsExistTest,
+	"Cataclysm.DamageBySource.TheSourceTagsExistInTheVocabulary",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FCataclysmDamageBySourceTagsExistTest::RunTest(const FString& Parameters)
+{
+	// REQUESTED BY NAME, SO A LOST TAG WOULD FAIL IN SILENCE. Each is asked for
+	// with ErrorIfNotFound false, so a vocabulary that had lost one would return
+	// an invalid tag, nothing would be put on the damage effect, and the fact
+	// would stop reaching the defender with no error anywhere.
+	// `Cataclysm.DamageType.TheTwoDeliveryTagsExistInTheVocabulary` guards area
+	// and damage over time the same way.
+	TestTrue(TEXT("Type.Melee is a known tag"),
+		UCataclysmDamageCalculation::MeleeTag().IsValid());
+	TestTrue(TEXT("Type.Ranged is a known tag"),
+		UCataclysmDamageCalculation::RangedTag().IsValid());
+	TestTrue(TEXT("Type.Projectile is a known tag"),
+		UCataclysmDamageCalculation::ProjectileTag().IsValid());
+	TestTrue(TEXT("Type.Spell is a known tag"),
+		UCataclysmSkillEffects::SpellTag().IsValid());
+	TestNotEqual(TEXT("and ranged and projectile are two tags"),
+		UCataclysmDamageCalculation::RangedTag(),
+		UCataclysmDamageCalculation::ProjectileTag());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageBySourceDistanceTest,
+	"Cataclysm.DamageBySource.ADistantAttackerTakesLessThroughTheWholePipeline",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Standing Apart, through the real damage pipeline rather than through a
+ * predicate on its own.
+ *
+ * WHY THIS EXISTS BESIDE THE TWO TESTS THAT ALREADY COVER THE CONDITION. Those
+ * ask `ConditionHolds` directly, and one asks what a row's modifier carries.
+ * Both would still pass if the distance never reached a hit at all. This is the
+ * only test that resolves a real hit and reads what arrived, so it is the one
+ * that fails if the reading is dropped anywhere between the hit being built and
+ * the damage taken step asking for it.
+ *
+ * FOUR READINGS, AND THE THREE THAT CHANGE NOTHING ARE THE POINT. A test that
+ * only showed the distant case would pass against a build that reduced every
+ * hit.
+ */
+bool FCataclysmDamageBySourceDistanceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDamageBySourceTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FScopedFighter Defender(World);
+
+	// THE NODE'S OWN NUMBERS: 25% less damage, beyond 6 metres.
+	TakeDamageThrough(Defender.AbilitySystem,
+		{ RowAtThreshold(ECataclysmStatCondition::OpponentBeyondMetres,
+						 -25.0f, 6.0f) });
+
+	// A HIT OF 400 WITH NO DISTANCE ON IT AT ALL, which is what every hit in the
+	// game carried before this reading existed. It must take the whole 400.
+	FCataclysmIncomingHit Unknown = HitOf(true, false, false);
+	const float Full = Defender.Taken(Unknown);
+	TestEqual(TEXT("a hit with no distance on it takes the whole four hundred"),
+		Full, 400.0f, 0.01f);
+
+	// FROM BEYOND SIX METRES, A QUARTER LESS. This is the only reading here that
+	// changes, and it is the sentence the node writes.
+	FCataclysmIncomingHit FromAfar = Unknown;
+	FromAfar.OpponentDistanceMetres = 10.0f;
+	TestEqual(TEXT("and one from ten metres takes three hundred"),
+		Defender.Taken(FromAfar), 300.0f, 0.01f);
+
+	// FROM INSIDE SIX METRES, NOTHING CHANGES.
+	FCataclysmIncomingHit FromClose = Unknown;
+	FromClose.OpponentDistanceMetres = 2.0f;
+	TestEqual(TEXT("and one from two metres takes the whole four hundred"),
+		Defender.Taken(FromClose), 400.0f, 0.01f);
+
+	// AND EXACTLY ON THE THRESHOLD, NOTHING CHANGES, because the node writes
+	// "more than". A character standing at precisely six metres is not beyond
+	// six. `Cataclysm.StatPipeline.ADistanceThresholdIsStrictAndAnUnknownDistanceRefuses`
+	// checks the same boundary on the predicate alone; this checks a player
+	// standing there really does take the full hit.
+	FCataclysmIncomingHit OnTheLine = Unknown;
+	OnTheLine.OpponentDistanceMetres = 6.0f;
+	TestEqual(TEXT("and one from exactly six metres takes the whole four hundred"),
+		Defender.Taken(OnTheLine), 400.0f, 0.01f);
+
+	// AND A TICK FROM TEN METRES TAKES THE WHOLE FOUR HUNDRED, which is the
+	// judgement `docs/DECISIONS.md` records rather than a limitation: a tick
+	// hands a row no distance, so the row grants nothing for it.
+	FCataclysmIncomingHit Tick = FromAfar;
+	Tick.bIsDamageOverTime = true;
+	TestEqual(TEXT("a tick from ten metres is not reduced at all"),
+		Defender.Taken(Tick), 400.0f, 0.01f);
+
+	return true;
+}
+
+namespace CataclysmFirstStruckOpponentTest
+{
+	/**
+	 * "Enemies that survive more than 5 seconds after first being hit gain
+	 * 20%-40% increased damage", at its top roll: the wearer's own damage
+	 * taken, 40% increased, from an opponent it first struck at least 5
+	 * seconds ago. Ruled 2026-10-12.
+	 */
+	FCataclysmStatModifier FortyMoreAfterFive()
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Increased;
+		Modifier.Source = ECataclysmModifierSource::Enchantment;
+		Modifier.Value = 40.0f;
+		Modifier.Condition = ECataclysmStatCondition::OpponentFirstStruckByYouSecondsAgo;
+		Modifier.ConditionValue = 5.0f;
+		return Modifier;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageBySourceFirstStruckHandBuiltTest,
+	"Cataclysm.DamageBySource.AHandBuiltHitFromAnOpponentFirstStruckFiveSecondsAgoMeetsTheRowAndATickDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FCataclysmDamageBySourceFirstStruckHandBuiltTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDamageBySourceTest;
+
+	// THE ARITHMETIC AND THE BOUNDARY, on a hit filled by hand. The test below
+	// this one checks that a real blow fills the same field.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// THE NAME A DATA SHEET WRITES REACHES THIS CONDITION, AND IT KEEPS ITS VALUE.
+	ECataclysmStatCondition Named = ECataclysmStatCondition::Always;
+	TestTrue(TEXT("opponent_first_struck_by_you_seconds_ago is a name this build knows"),
+		UCataclysmStatPipeline::ConditionNamed(
+			TEXT("opponent_first_struck_by_you_seconds_ago"), Named));
+	TestEqual(TEXT("and it names this condition"), static_cast<int32>(Named),
+		static_cast<int32>(ECataclysmStatCondition::OpponentFirstStruckByYouSecondsAgo));
+	TestTrue(TEXT("and the condition compares its value"),
+		UCataclysmStatPipeline::ConditionTakesAValue(
+			ECataclysmStatCondition::OpponentFirstStruckByYouSecondsAgo));
+
+	const FScopedFighter Defender(World);
+	TakeDamageThrough(Defender.AbilitySystem,
+		{ CataclysmFirstStruckOpponentTest::FortyMoreAfterFive() });
+
+	const auto From = [](float SecondsAgo)
+	{
+		FCataclysmIncomingHit Hit = HitOf(true, false, false);
+		Hit.SecondsSinceDefenderFirstStruckAttacker = SecondsAgo;
+		return Hit;
+	};
+
+	TestEqual(TEXT("control: an opponent never struck deals the whole four hundred"),
+		Defender.Taken(From(-1.0f)), 400.0f, 0.01f);
+	TestEqual(TEXT("one first struck this instant deals the whole four hundred"),
+		Defender.Taken(From(0.0f)), 400.0f, 0.01f);
+	TestEqual(TEXT("one first struck 4.99 seconds ago deals the whole four hundred"),
+		Defender.Taken(From(4.99f)), 400.0f, 0.01f);
+	TestEqual(TEXT("one first struck exactly 5 seconds ago deals 40% more: at least, not more than"),
+		Defender.Taken(From(5.0f)), 560.0f, 0.01f);
+	TestEqual(TEXT("and one first struck 30 seconds ago deals 40% more"),
+		Defender.Taken(From(30.0f)), 560.0f, 0.01f);
+
+	// AND A TICK CARRYING THE SAME FACT IS NOT RAISED: `BlowContextFor` hands a
+	// tick an empty blow record, so the condition reads -1.
+	FCataclysmIncomingHit Tick = From(30.0f);
+	Tick.bIsDamageOverTime = true;
+	TestEqual(TEXT("a tick from an opponent first struck 30 seconds ago is not raised"),
+		Defender.Taken(Tick), 400.0f, 0.01f);
+	TestEqual(TEXT("and the blow record built for that tick holds no time"),
+		UCataclysmDamageCalculation::BlowContextFor(Tick).SecondsSinceYouFirstStruckOpponent,
+		-1.0f, 0.001f);
+	TestEqual(TEXT("control: the record built for the hit holds the 30 seconds"),
+		UCataclysmDamageCalculation::BlowContextFor(From(30.0f)).SecondsSinceYouFirstStruckOpponent,
+		30.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageBySourceFirstStruckRealBlowTest,
+	"Cataclysm.DamageBySource.ARealBlowFromAnOpponentTheWearerFirstStruckFiveSecondsAgoIsRaisedAndBeforeThatIsNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FCataclysmDamageBySourceFirstStruckRealBlowTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDamageBySourceTest;
+
+	// REAL BLOWS BOTH WAYS, for the reason the staggered test above gives: the
+	// hand-built test would pass if nothing filled the field from the two
+	// characters. The wearer's blow writes the opponent's record; the
+	// opponent's blow reads it back where the hit is built.
+	//
+	// EVERY FIGURE IS A RATIO TO THE SAME OPPONENT'S BLOW ON THE SAME WEARER
+	// BEFORE THE FIRST HIT, so armour, resistance and the opponent's own damage
+	// cancel and only the row is measured.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// THE BOUNDARY BELOW IS READ AT EXACTLY FIVE SECONDS, which needs the time
+	// of the first hit to be a number a float holds exactly: the record keeps
+	// it as a float and the world's clock is a double.
+	if (!TestEqual(TEXT("set-up: the world's clock starts at a time a float holds exactly"),
+				   static_cast<double>(static_cast<float>(World->GetTimeSeconds())),
+				   World->GetTimeSeconds()))
+	{
+		return false;
+	}
+
+	const FScopedFighter Wearer(World);
+	const FScopedFighter Other(World);
+	const FScopedFighter Opponent(World);
+	const FScopedFighter Unstruck(World);
+	TakeDamageThrough(Wearer.AbilitySystem,
+		{ CataclysmFirstStruckOpponentTest::FortyMoreAfterFive() });
+	TakeDamageThrough(Other.AbilitySystem,
+		{ CataclysmFirstStruckOpponentTest::FortyMoreAfterFive() });
+
+	const auto Struck = [](const FScopedFighter& From, const FScopedFighter& Target)
+	{
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyHit(From.Actor, Target.Actor, 100.0f,
+										 FGameplayTagContainer(), NoCritical(), &Resolved);
+		return Resolved.DealtToHealth;
+	};
+
+	// BEFORE THE FIRST HIT. These are the figures every ratio below divides by.
+	const float OnWearer = Struck(Opponent, Wearer);
+	const float OnOther = Struck(Opponent, Other);
+	const float UnstruckOnWearer = Struck(Unstruck, Wearer);
+	if (!TestTrue(TEXT("set-up: each blow lands for something before any first hit"),
+				  OnWearer > 0.0f && OnOther > 0.0f && UnstruckOnWearer > 0.0f))
+	{
+		return false;
+	}
+
+	// THE WEARER'S FIRST HIT ON THE OPPONENT.
+	UCataclysmSkillEffects::ApplyDirectDamage(Wearer.Actor, Opponent.Actor, 1.0f);
+	if (!TestEqual(TEXT("set-up: the opponent's record holds the wearer's first hit as this instant"),
+				   Opponent.AbilitySystem->SecondsSinceFirstStruckBy(Wearer.AbilitySystem),
+				   0.0f, 0.001f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("in the instant of the first hit the opponent's blow is not raised"),
+		Struck(Opponent, Wearer) / OnWearer, 1.0f, 0.001f);
+
+	World->TimeSeconds += 4.5f;
+	TestEqual(TEXT("4.5 seconds after it the opponent's blow is not raised"),
+		Struck(Opponent, Wearer) / OnWearer, 1.0f, 0.001f);
+
+	World->TimeSeconds += 0.5f;
+	TestEqual(TEXT("exactly 5 seconds after it the opponent's blow is 40% increased"),
+		Struck(Opponent, Wearer) / OnWearer, 1.4f, 0.001f);
+
+	// A SECOND WEARER OF THE ROW STRIKES THE SAME OPPONENT NOW. Its clock is its
+	// own: the opponent's blow on it is not raised while the first wearer's is.
+	UCataclysmSkillEffects::ApplyDirectDamage(Other.Actor, Opponent.Actor, 1.0f);
+	World->TimeSeconds += 3.0f;
+	TestEqual(TEXT("8 seconds after the wearer's first hit the opponent's blow on it is 40% increased"),
+		Struck(Opponent, Wearer) / OnWearer, 1.4f, 0.001f);
+	TestEqual(TEXT("and on the second wearer, 3 seconds after its own first hit, it is not"),
+		Struck(Opponent, Other) / OnOther, 1.0f, 0.001f);
+	TestEqual(TEXT("and an opponent the wearer has never struck is not raised either"),
+		Struck(Unstruck, Wearer) / UnstruckOnWearer, 1.0f, 0.001f);
+
+	World->TimeSeconds += 2.5f;
+	TestEqual(TEXT("5.5 seconds after the second wearer's own first hit the blow on it is 40% increased"),
+		Struck(Opponent, Other) / OnOther, 1.4f, 0.001f);
+
+	// AND A TICK OF THE OPPONENT'S ON THE WEARER IS NOT RAISED, at a moment when
+	// its hit is. A tick is handed no blow record.
+	FCataclysmHitDelivery Tick = NoCritical();
+	Tick.bIsDamageOverTime = true;
+	const auto Ticked = [&Tick](const FScopedFighter& From, const FScopedFighter& Target)
+	{
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyDirectDamage(From.Actor, Target.Actor, 100.0f, Tick, &Resolved);
+		return Resolved.DealtToHealth;
+	};
+	const float UnstruckTick = Ticked(Unstruck, Wearer);
+	if (!TestTrue(TEXT("set-up: a tick from the opponent never struck lands for something"),
+				  UnstruckTick > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a tick of the opponent's is what a tick of the unstruck opponent's is"),
+		Ticked(Opponent, Wearer) / UnstruckTick, 1.0f, 0.001f);
+	TestEqual(TEXT("control: at that same moment the opponent's hit is 40% increased"),
+		Struck(Opponent, Wearer) / OnWearer, 1.4f, 0.001f);
+
+	return true;
+}
+
+#endif // WITH_AUTOMATION_TESTS

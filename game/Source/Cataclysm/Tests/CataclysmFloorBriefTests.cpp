@@ -1,0 +1,2748 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "Misc/AutomationTest.h"
+
+#if WITH_AUTOMATION_TESTS
+
+#include "Character/CataclysmEnemyCharacter.h"
+#include "Dungeon/CataclysmDungeonGameMode.h"
+#include "Dungeon/CataclysmDungeonModifierEffects.h"
+#include "Dungeon/CataclysmDungeonModifierTable.h"
+#include "Dungeon/CataclysmFloorBrief.h"
+#include "Dungeon/CataclysmFloorGenerator.h"
+#include "Dungeon/CataclysmFloorPlan.h"
+#include "Dungeon/CataclysmFloorPopulation.h"
+#include "Empire/CataclysmDungeonModifier.h"
+#include "Empire/CataclysmEmpireRun.h"
+#include "Empire/CataclysmRoster.h"
+#include "Misc/ScopeExit.h"
+#include "Tests/CataclysmTestWorld.h"
+
+/**
+ * A dungeon deciding what its floors hold. Issue #41.
+ *
+ * WHAT WAS MISSING. Nothing that generated a floor could name the dungeon it
+ * belonged to, so no rule that depends on the dungeon could be written anywhere
+ * in the floor pipeline. Every dungeon a surge lands carries one of seven
+ * sub-types -- the project owner ruled on 2026-09-05 that none is plain -- and
+ * not one of them changed a floor. Three of them are more than half of every
+ * dungeon in the game: Horde at 19.7 in 100, Elite and Volatile at 16.4 each.
+ *
+ * WHAT THESE TESTS COVER. `FCataclysmDungeonFloorRules` is the seam and the
+ * first half of this file is the rules themselves, swept over floors of dungeons
+ * built by hand. The second half is the two places the answer is spent: the
+ * population pass, which stands a boss on a floor's exit and gathers a wave, and
+ * the game mode, which is where a floor's modifiers reach the enemy score model.
+ *
+ * ONE PREFIX FOR THE WHOLE FEATURE, so that
+ * `python tools/unreal_build.py tests --prefix Cataclysm.FloorBrief` runs all of
+ * it. `Cataclysm.DungeonModifiers` is the same arrangement across two files and
+ * says so.
+ *
+ * WHY A DUNGEON BUILT BY HAND AND NOT ONE OFF THE MAP. Every rule here is a
+ * function over a plain struct, so a test can ask "what does a Volatile dungeon
+ * of eight floors at tier 4 do on floor 5" without a surge, a city or a clock.
+ * The two tests that do build a run are the ones checking that the answer is
+ * actually spent, which a rule test cannot see.
+ */
+
+namespace CataclysmFloorBriefTest
+{
+	/** How many floors each sweep walks. Deeper than any Basic dungeon. */
+	constexpr int32 SweepFloors = 20;
+
+	/** How many dungeon seeds each sweep tries. */
+	constexpr int32 SweepSeeds = 40;
+
+	/**
+	 * Every dungeon sub-type there is.
+	 *
+	 * READ OFF THE REFLECTED ENUM RATHER THAN LISTED, so a sub-type added later
+	 * is covered by the tests that sweep all of them without anybody
+	 * remembering to come here. `ECataclysmDungeonSubType` carries no `Count`
+	 * member, unlike `ECataclysmFloorLayout` next door, and adding one to a
+	 * `UENUM` that a DataTable column is parsed against is not worth the risk.
+	 *
+	 * THE LAST ENTRY IS SKIPPED. Unreal appends a hidden `_MAX` to every `UENUM`
+	 * and `NumEnums` counts it; treating it as a sub-type would ask the rules
+	 * about a value no dungeon can carry.
+	 */
+	TArray<ECataclysmDungeonSubType> EverySubType()
+	{
+		TArray<ECataclysmDungeonSubType> Out;
+
+		const UEnum* Reflected = StaticEnum<ECataclysmDungeonSubType>();
+		if (!Reflected)
+		{
+			return Out;
+		}
+
+		for (int32 Index = 0; Index + 1 < Reflected->NumEnums(); ++Index)
+		{
+			Out.Add(static_cast<ECataclysmDungeonSubType>(
+				Reflected->GetValueByIndex(Index)));
+		}
+		return Out;
+	}
+
+	/** One modifier, built by hand, with a distinguishable danger score. */
+	FCataclysmDungeonModifier Make(const TCHAR* Key, ECataclysmType Cataclysm,
+								   float Danger)
+	{
+		FCataclysmDungeonModifier Modifier;
+		Modifier.RowKey = FName(Key);
+		Modifier.ModifierName = FName(Key);
+		Modifier.Cataclysm = Cataclysm;
+		Modifier.Danger = Danger;
+		return Modifier;
+	}
+
+	/**
+	 * A pool of twenty modifiers, all of one Cataclysm, with distinct dangers.
+	 *
+	 * TWENTY, so a tier 4 dungeon drawing four of them has enough room that two
+	 * floors drawing the same four would be a real coincidence rather than the
+	 * only thing the pool could produce. Distinct dangers, so that two different
+	 * draws are two different scores and a test can tell them apart by the
+	 * number alone.
+	 */
+	TArray<FCataclysmDungeonModifier> Pool(int32 HowMany = 20)
+	{
+		TArray<FCataclysmDungeonModifier> Out;
+		for (int32 Index = 0; Index < HowMany; ++Index)
+		{
+			Out.Add(Make(*FString::Printf(TEXT("War_Modifier_%02d"), Index),
+						 ECataclysmType::War,
+						 static_cast<float>(Index + 1)));
+		}
+		return Out;
+	}
+
+	/** A dungeon of this sub-type, at tier 4, with a pool and four modifiers. */
+	FCataclysmDungeonIdentity Dungeon(ECataclysmDungeonSubType SubType,
+									  int32 DungeonSeed = 7,
+									  int32 TotalFloors = SweepFloors)
+	{
+		FCataclysmDungeonIdentity Out;
+		Out.DungeonSeed = DungeonSeed;
+		Out.TotalFloors = TotalFloors;
+		Out.SubType = SubType;
+		Out.DifficultyTier = 4;
+		Out.ModifierPool = Pool();
+
+		// WHAT THE DUNGEON ITSELF DREW, which is what an ordinary dungeon's
+		// floors all carry. Four of the twenty, because tier 4 draws four.
+		for (int32 Index = 0; Index < 4; ++Index)
+		{
+			Out.Modifiers.Add(Out.ModifierPool[Index].RowKey);
+			Out.ModifierScore += Out.ModifierPool[Index].Danger;
+		}
+		return Out;
+	}
+
+	/** One floor plan, so a population can be asked for without a game mode. */
+	FCataclysmFloorPlan Floor(int32 DungeonSeed, int32 FloorNumber,
+							  ECataclysmFloorLayout Layout)
+	{
+		FCataclysmFloorRequest Request;
+		Request.DungeonSeed = DungeonSeed;
+		Request.FloorNumber = FloorNumber;
+		Request.Layout = Layout;
+		return FCataclysmFloorGenerator::Generate(Request);
+	}
+
+	/** A list of row keys, sorted into one string, so two lists can be compared. */
+	FString SortedKeys(const TArray<FName>& Modifiers)
+	{
+		TArray<FString> Keys;
+		for (const FName Key : Modifiers)
+		{
+			Keys.Add(Key.ToString());
+		}
+		Keys.Sort();
+		return FString::Join(Keys, TEXT(","));
+	}
+
+	/** The modifier row keys of a floor, sorted, so two floors can be compared. */
+	FString KeysOf(const FCataclysmFloorBrief& Brief)
+	{
+		return SortedKeys(Brief.Modifiers);
+	}
+
+	/** How far apart two cells are in a straight line, in cells. */
+	float StraightLineCells(FIntPoint A, FIntPoint B)
+	{
+		return FVector2D(static_cast<float>(A.X - B.X),
+						 static_cast<float>(A.Y - B.Y)).Size();
+	}
+
+	/** The mean straight-line distance of every creature from a cell. */
+	float MeanDistanceFrom(const FCataclysmFloorPopulation& Population,
+						   FIntPoint From)
+	{
+		if (Population.Enemies.Num() == 0)
+		{
+			return 0.0f;
+		}
+		float Total = 0.0f;
+		for (const FCataclysmEnemyPlacement& Placement : Population.Enemies)
+		{
+			Total += StraightLineCells(Placement.Cell, From);
+		}
+		return Total / static_cast<float>(Population.Enemies.Num());
+	}
+
+	/**
+	 * The mean distance of every creature from the floor's rim, in cells walked.
+	 *
+	 * WALKED AND NOT IN A STRAIGHT LINE, because that is what
+	 * `CataclysmFloorRimDistances` answers and what the placement rule reads. A
+	 * creature at 0 is standing against a wall.
+	 */
+	float MeanRimDistance(const FCataclysmFloorPlan& Plan,
+						  const FCataclysmFloorPopulation& Population)
+	{
+		if (Population.Enemies.Num() == 0)
+		{
+			return 0.0f;
+		}
+
+		const TArray<int32> FromRim = CataclysmFloorRimDistances(Plan);
+
+		float Total = 0.0f;
+		int32 Counted = 0;
+		for (const FCataclysmEnemyPlacement& Placement : Population.Enemies)
+		{
+			const int32 Index = Plan.IndexOf(Placement.Cell);
+			if (Index == INDEX_NONE || FromRim[Index] == INDEX_NONE)
+			{
+				continue;
+			}
+			Total += static_cast<float>(FromRim[Index]);
+			++Counted;
+		}
+
+		return Counted > 0 ? Total / static_cast<float>(Counted) : 0.0f;
+	}
+
+	/** The mean cell of every creature: where the crowd's weight sits. */
+	FVector2D CentreOfMass(const FCataclysmFloorPopulation& Population)
+	{
+		if (Population.Enemies.Num() == 0)
+		{
+			return FVector2D::ZeroVector;
+		}
+
+		FVector2D Total = FVector2D::ZeroVector;
+		for (const FCataclysmEnemyPlacement& Placement : Population.Enemies)
+		{
+			Total += FVector2D(static_cast<float>(Placement.Cell.X),
+							   static_cast<float>(Placement.Cell.Y));
+		}
+		return Total / static_cast<float>(Population.Enemies.Num());
+	}
+
+	/** The mean cell of every walkable cell: the middle of the floor itself. */
+	FVector2D MiddleOfTheFloor(const FCataclysmFloorPlan& Plan)
+	{
+		FVector2D Total = FVector2D::ZeroVector;
+		int32 Counted = 0;
+		for (int32 Index = 0; Index < Plan.Cells.Num(); ++Index)
+		{
+			if (Plan.Cells[Index] != ECataclysmFloorCell::Floor)
+			{
+				continue;
+			}
+			const FIntPoint Cell = Plan.CellAt(Index);
+			Total += FVector2D(static_cast<float>(Cell.X),
+							   static_cast<float>(Cell.Y));
+			++Counted;
+		}
+		return Counted > 0 ? Total / static_cast<float>(Counted) : Total;
+	}
+
+	/**
+	 * The closest two group middles stand, in cells WALKED, or -1 for fewer than
+	 * two groups.
+	 *
+	 * **WALKED AND NOT IN A STRAIGHT LINE, WHICH IS NOT THE SAME CLAIM.**
+	 * `LeastCellsBetweenPacks` is a rule about walking distance, and two cells
+	 * either side of a wall are a metre apart and a long way to walk. Measuring
+	 * this in a straight line would report an ordinary floor as breaking its own
+	 * rule whenever two groups stood across a wall from each other.
+	 *
+	 * A BREADTH-FIRST SEARCH PER GROUP, which is why the test that uses it
+	 * sweeps fewer floors than the rest of this file.
+	 */
+	int32 ClosestTwoPackSitesWalked(const FCataclysmFloorPlan& Plan,
+									const FCataclysmFloorPopulation& Population)
+	{
+		int32 Closest = -1;
+		for (int32 A = 0; A < Population.PackSites.Num(); ++A)
+		{
+			const TArray<int32> FromA =
+				CataclysmFloorDistancesFrom(Plan, Population.PackSites[A]);
+
+			for (int32 B = 0; B < Population.PackSites.Num(); ++B)
+			{
+				if (A == B)
+				{
+					continue;
+				}
+				const int32 Index = Plan.IndexOf(Population.PackSites[B]);
+				if (Index == INDEX_NONE || FromA[Index] == INDEX_NONE)
+				{
+					continue;
+				}
+				if (Closest < 0 || FromA[Index] < Closest)
+				{
+					Closest = FromA[Index];
+				}
+			}
+		}
+		return Closest;
+	}
+}
+
+// ---------------------------------------------------------------------------
+// The seam itself: an ordinary dungeon is unchanged, and every answer is
+// reproducible from the dungeon's seed and the floor number
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefOrdinaryTest,
+	"Cataclysm.FloorBrief.AnOrdinaryDungeonsFloorsAreAllTheSame",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefOrdinaryTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// **THE CONTROL FOR EVERY OTHER TEST IN THIS FILE.** Each rule below is a
+	// claim that something differs from an ordinary dungeon, and a claim like
+	// that is worth nothing unless an ordinary dungeon really is unchanged.
+	// Four of the seven sub-types have no rule in this seam at all and must come
+	// out identical.
+	const TArray<ECataclysmDungeonSubType> Unchanged = {
+		ECataclysmDungeonSubType::None,
+		ECataclysmDungeonSubType::Timed,
+		ECataclysmDungeonSubType::Siege,
+		ECataclysmDungeonSubType::CowLevel,
+		ECataclysmDungeonSubType::Sacrificial };
+
+	for (const ECataclysmDungeonSubType SubType : Unchanged)
+	{
+		FCataclysmDungeonIdentity Ordinary = Dungeon(SubType);
+		Ordinary.Layout = ECataclysmFloorLayout::Caverns;
+
+		const FString Expected = SortedKeys(Ordinary.Modifiers);
+
+		for (int32 Floor = 1; Floor <= SweepFloors; ++Floor)
+		{
+			const FCataclysmFloorBrief Brief =
+				FCataclysmDungeonFloorRules::BriefFor(Ordinary, Floor);
+
+			TestEqual(TEXT("an ordinary dungeon's floor is carved the way the "
+						   "dungeon says"),
+					  static_cast<int32>(Brief.Layout),
+					  static_cast<int32>(ECataclysmFloorLayout::Caverns));
+
+			TestEqual(TEXT("and carries the dungeon's own modifiers"),
+					  KeysOf(Brief), Expected);
+
+			TestEqual(TEXT("and their score"),
+					  Brief.ModifierScore, Ordinary.ModifierScore);
+
+			TestFalse(TEXT("and its creatures are not one wave"), Brief.bOneWave);
+
+			// A BOSS ON THE LAST FLOOR AND NOWHERE ELSE. The design's universal
+			// rule, `docs/Cataclysm_GDD_v2.md` section VIII: "Every dungeon has
+			// a boss on the final floor."
+			TestEqual(FString::Printf(
+						  TEXT("floor %d of %d ends with a boss only if it is "
+							   "the last one"), Floor, SweepFloors),
+					  Brief.bBossAtTheExit, Floor == SweepFloors);
+		}
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefRepeatableTest,
+	"Cataclysm.FloorBrief.TheSameFloorOfTheSameDungeonIsAlwaysTheSame",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefRepeatableTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// ISSUE #40 REQUIRES THIS OF EVERYTHING ABOUT A FLOOR, twice over: a dungeon
+	// must look the same when the player leaves and returns, and a fault must be
+	// reproducible from the seed. A per-floor modifier draw is a new thing that
+	// could break it, because it is the first draw in the floor pipeline that is
+	// not taken from the floor's own carve seed.
+	for (int32 Seed = 1; Seed <= SweepSeeds; ++Seed)
+	{
+		const FCataclysmDungeonIdentity Volatile =
+			Dungeon(ECataclysmDungeonSubType::Volatile, Seed);
+
+		for (int32 Floor = 1; Floor <= SweepFloors; ++Floor)
+		{
+			const FCataclysmFloorBrief First =
+				FCataclysmDungeonFloorRules::BriefFor(Volatile, Floor);
+			const FCataclysmFloorBrief Second =
+				FCataclysmDungeonFloorRules::BriefFor(Volatile, Floor);
+
+			if (KeysOf(First) != KeysOf(Second)
+				|| First.ModifierScore != Second.ModifierScore)
+			{
+				AddError(FString::Printf(
+					TEXT("floor %d of Volatile dungeon %d came out differently "
+						 "the second time it was asked for: %s then %s"),
+					Floor, Seed, *KeysOf(First), *KeysOf(Second)));
+				return false;
+			}
+		}
+	}
+
+	// AND A FLOOR NUMBER BELOW ONE IS FLOOR ONE, which is what
+	// `ACataclysmDungeonGameMode::GoToFloor` clamps to and what a save holding a
+	// zero would produce.
+	const FCataclysmDungeonIdentity Any =
+		Dungeon(ECataclysmDungeonSubType::Volatile);
+	TestEqual(TEXT("floor 0 is floor 1"),
+			  KeysOf(FCataclysmDungeonFloorRules::BriefFor(Any, 0)),
+			  KeysOf(FCataclysmDungeonFloorRules::BriefFor(Any, 1)));
+	TestEqual(TEXT("and so is floor -3"),
+			  KeysOf(FCataclysmDungeonFloorRules::BriefFor(Any, -3)),
+			  KeysOf(FCataclysmDungeonFloorRules::BriefFor(Any, 1)));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Volatile: "Dungeon modifiers change every floor."
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefVolatileTest,
+	"Cataclysm.FloorBrief.AVolatileDungeonsModifiersChangeEveryFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefVolatileTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// `docs/Cataclysm_GDD_v2.md`, the Dungeon Sub-Types table: "Volatile |
+	// Dungeon modifiers change every floor."
+	//
+	// **MEASURED AS HOW MANY DISTINCT SETS TWENTY FLOORS PRODUCE**, not as
+	// "floor 2 differs from floor 1". Two consecutive floors could differ by
+	// chance under a rule that only re-drew once, and a rule that re-drew every
+	// floor from a stream that did not advance would give one set for all
+	// twenty. Counting the distinct sets separates those.
+	int32 WorstDistinct = SweepFloors + 1;
+
+	for (int32 Seed = 1; Seed <= SweepSeeds; ++Seed)
+	{
+		const FCataclysmDungeonIdentity Changing =
+			Dungeon(ECataclysmDungeonSubType::Volatile, Seed);
+		const FCataclysmDungeonIdentity Steady =
+			Dungeon(ECataclysmDungeonSubType::None, Seed);
+
+		TSet<FString> ChangingSets;
+		TSet<FString> SteadySets;
+
+		for (int32 Floor = 1; Floor <= SweepFloors; ++Floor)
+		{
+			ChangingSets.Add(
+				KeysOf(FCataclysmDungeonFloorRules::BriefFor(Changing, Floor)));
+			SteadySets.Add(
+				KeysOf(FCataclysmDungeonFloorRules::BriefFor(Steady, Floor)));
+		}
+
+		WorstDistinct = FMath::Min(WorstDistinct, ChangingSets.Num());
+
+		// THE CONTROL, IN THE SAME LOOP AND ON THE SAME SEED. An ordinary
+		// dungeon of the same depth with the same pool must give exactly one
+		// set, or "changes every floor" is measuring something the seam does to
+		// every dungeon rather than something Volatile does.
+		if (SteadySets.Num() != 1)
+		{
+			AddError(FString::Printf(
+				TEXT("dungeon %d has no sub-type and still carried %d different "
+					 "modifier sets over %d floors"),
+				Seed, SteadySets.Num(), SweepFloors));
+			return false;
+		}
+	}
+
+	// **THE LIMIT IS WELL BELOW WHAT A CORRECT DRAW GIVES AND WELL ABOVE ONE.**
+	// Four modifiers out of twenty is 4,845 possible sets, so twenty floors
+	// repeating a set at all is unlikely and repeating enough to fall below ten
+	// is not something a working re-draw does. One would be a re-draw that never
+	// advanced its stream, which is the failure worth catching.
+	TestTrue(FString::Printf(
+				 TEXT("the tightest of %d Volatile dungeons still carried %d "
+					  "different modifier sets over %d floors, which is more "
+					  "than 10"),
+				 SweepSeeds, WorstDistinct, SweepFloors),
+			 WorstDistinct > 10);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefVolatileCountTest,
+	"Cataclysm.FloorBrief.AVolatileFloorCarriesTheModifiersItsTierIsWorth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefVolatileCountTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// **CHANGING IS NOT THE SAME AS CARRYING MORE.** A Volatile dungeon draws a
+	// different set on every floor and the set is the same size a plain dungeon
+	// of that tier carries -- `UCataclysmDungeonModifierRules::CountFor` is the
+	// one rule for how many, and this seam does not get a second opinion.
+	for (int32 Tier = 1; Tier <= 8; ++Tier)
+	{
+		FCataclysmDungeonIdentity Changing =
+			Dungeon(ECataclysmDungeonSubType::Volatile);
+		Changing.DifficultyTier = Tier;
+
+		const int32 Expected = UCataclysmDungeonModifierRules::CountFor(
+			Tier, ECataclysmDungeonSubType::Volatile);
+
+		for (int32 Floor = 1; Floor <= SweepFloors; ++Floor)
+		{
+			const FCataclysmFloorBrief Brief =
+				FCataclysmDungeonFloorRules::BriefFor(Changing, Floor);
+
+			TestEqual(FString::Printf(
+						  TEXT("tier %d floor %d carries %d modifiers"),
+						  Tier, Floor, Expected),
+					  Brief.Modifiers.Num(), Expected);
+
+			// AND THE SCORE IS THE DANGER OF THE ONES IT ACTUALLY CARRIES, not
+			// the dungeon's. This is the number the enemy score model adds to
+			// every creature on the floor, so getting it from the wrong list is
+			// the failure that would make the whole rule cosmetic.
+			float Danger = 0.0f;
+			for (const FName Key : Brief.Modifiers)
+			{
+				for (const FCataclysmDungeonModifier& Modifier : Changing.ModifierPool)
+				{
+					if (Modifier.RowKey == Key)
+					{
+						Danger += Modifier.Danger;
+					}
+				}
+			}
+			TestEqual(FString::Printf(
+						  TEXT("tier %d floor %d is worth the danger of its own "
+							   "modifiers"), Tier, Floor),
+					  Brief.ModifierScore, Danger);
+		}
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefVolatileNoPoolTest,
+	"Cataclysm.FloorBrief.AVolatileDungeonWithNothingToDrawFromKeepsItsOwn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefVolatileNoPoolTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// A RUN WHOSE MODIFIER POOL WAS NEVER FILLED IS EVERY HEADLESS TEST, because
+	// filling it needs the modifier DataTable. A Volatile dungeon there must
+	// keep the modifiers the dungeon carries rather than losing them: an empty
+	// floor is a worse answer than an unchanged one, and it would quietly make
+	// every Volatile dungeon easier than a plain one.
+	FCataclysmDungeonIdentity NoPool =
+		Dungeon(ECataclysmDungeonSubType::Volatile);
+	NoPool.ModifierPool.Reset();
+
+	for (int32 Floor = 1; Floor <= SweepFloors; ++Floor)
+	{
+		const FCataclysmFloorBrief Brief =
+			FCataclysmDungeonFloorRules::BriefFor(NoPool, Floor);
+
+		TestEqual(TEXT("with nothing to draw from it keeps the dungeon's "
+					   "modifiers"),
+				  Brief.Modifiers.Num(), NoPool.Modifiers.Num());
+		TestEqual(TEXT("and their score"),
+				  Brief.ModifierScore, NoPool.ModifierScore);
+	}
+
+	// AND A POOL SMALLER THAN THE COUNT GIVES FEWER RATHER THAN REPEATS, which
+	// is what `UCataclysmDungeonModifierRules::Draw` promises and this seam must
+	// not undo.
+	FCataclysmDungeonIdentity Short =
+		Dungeon(ECataclysmDungeonSubType::Volatile);
+	Short.DifficultyTier = 8;
+	Short.ModifierPool = Pool(3);
+
+	const FCataclysmFloorBrief Brief =
+		FCataclysmDungeonFloorRules::BriefFor(Short, 1);
+	TestEqual(TEXT("a tier 8 dungeon with three modifiers to draw from carries "
+				   "three"),
+			  Brief.Modifiers.Num(), 3);
+
+	TSet<FName> Distinct(Brief.Modifiers);
+	TestEqual(TEXT("and none of them twice"),
+			  Distinct.Num(), Brief.Modifiers.Num());
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Elite: "Every floor ends with a boss fight."
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefEliteTest,
+	"Cataclysm.FloorBrief.EveryFloorOfAnEliteDungeonEndsWithABossFight",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefEliteTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// `docs/Cataclysm_GDD_v2.md`, the Dungeon Sub-Types table: "Elite | Every
+	// floor ends with a boss fight."
+	const FCataclysmDungeonIdentity Elite =
+		Dungeon(ECataclysmDungeonSubType::Elite);
+	const FCataclysmDungeonIdentity Plain =
+		Dungeon(ECataclysmDungeonSubType::None);
+
+	int32 EliteBosses = 0;
+	int32 PlainBosses = 0;
+
+	for (int32 Floor = 1; Floor <= SweepFloors; ++Floor)
+	{
+		if (FCataclysmDungeonFloorRules::BriefFor(Elite, Floor).bBossAtTheExit)
+		{
+			++EliteBosses;
+		}
+		if (FCataclysmDungeonFloorRules::BriefFor(Plain, Floor).bBossAtTheExit)
+		{
+			++PlainBosses;
+		}
+	}
+
+	TestEqual(TEXT("an Elite dungeon of 20 floors holds 20 boss fights"),
+			  EliteBosses, SweepFloors);
+
+	// THE CONTROL, AND IT IS WHAT MAKES THE LINE ABOVE MEAN ANYTHING. An
+	// ordinary dungeon of the same depth holds one, on its last floor.
+	TestEqual(TEXT("and an ordinary one of the same depth holds one"),
+			  PlainBosses, 1);
+
+	// **THE LAST FLOOR OF AN ELITE DUNGEON IS NOT AN EXCEPTION.** "Every floor"
+	// includes the bottom, and the universal rule puts one there anyway, so the
+	// two rules agree rather than cancelling.
+	TestTrue(TEXT("an Elite dungeon's last floor has one too"),
+			 FCataclysmDungeonFloorRules::BriefFor(Elite, SweepFloors)
+				 .bBossAtTheExit);
+
+	// A DUNGEON WITH NO BOTTOM HAS NO LAST FLOOR. Pressing Play in `L_Dungeon`
+	// descends for ever, which `IsOnTheLastFloor` says the same thing about, so
+	// there is nowhere for the universal rule to put a boss.
+	FCataclysmDungeonIdentity Endless = Dungeon(ECataclysmDungeonSubType::None);
+	Endless.TotalFloors = 1;
+	for (int32 Floor = 1; Floor <= SweepFloors; ++Floor)
+	{
+		TestFalse(TEXT("a dungeon with no bottom has no boss floor"),
+				  FCataclysmDungeonFloorRules::BriefFor(Endless, Floor)
+					  .bBossAtTheExit);
+	}
+
+	// AND AN ELITE DUNGEON STILL DOES, because its rule does not ask where the
+	// bottom is.
+	FCataclysmDungeonIdentity EndlessElite =
+		Dungeon(ECataclysmDungeonSubType::Elite);
+	EndlessElite.TotalFloors = 1;
+	TestTrue(TEXT("an Elite dungeon with no bottom still ends every floor with "
+				  "a boss"),
+			 FCataclysmDungeonFloorRules::BriefFor(EndlessElite, 5)
+				 .bBossAtTheExit);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefBossStandsTest,
+	"Cataclysm.FloorBrief.TheBossStandsOnTheWayDownAndIsNotOneOfTheCrowd",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefBossStandsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// **THE RULE REACHING THE FLOOR.** `bBossAtTheExit` being true is a claim
+	// about a boolean; this is the claim that a Gatekeeper really is standing
+	// there, and standing on the way down rather than somewhere on the floor.
+	for (int32 Seed = 1; Seed <= SweepSeeds; ++Seed)
+	{
+		const FCataclysmFloorPlan Plan =
+			Floor(Seed, 3, ECataclysmFloorLayout::Halls);
+
+		FCataclysmFloorBrief Boss;
+		Boss.bBossAtTheExit = true;
+
+		const FCataclysmFloorPopulation WithBoss =
+			FCataclysmFloorPopulator::Populate(Plan, 1.0f, Boss);
+		const FCataclysmFloorPopulation Without =
+			FCataclysmFloorPopulator::Populate(Plan, 1.0f);
+
+		const int32 Bosses =
+			WithBoss.HowMany(ECataclysmDungeonCreature::Gatekeeper);
+		if (Bosses != 1)
+		{
+			AddError(FString::Printf(
+				TEXT("floor %d of dungeon %d was asked for a boss and holds %d"),
+				3, Seed, Bosses));
+			return false;
+		}
+
+		// THE CONTROL. A floor that was not asked for one must not have one, or
+		// the line above is measuring the populator rather than the rule.
+		if (Without.HowMany(ECataclysmDungeonCreature::Gatekeeper) != 0)
+		{
+			AddError(FString::Printf(
+				TEXT("floor %d of dungeon %d was not asked for a boss and has "
+					 "one anyway"), 3, Seed));
+			return false;
+		}
+
+		for (const FCataclysmEnemyPlacement& Placement : WithBoss.Enemies)
+		{
+			if (Placement.Creature != ECataclysmDungeonCreature::Gatekeeper)
+			{
+				continue;
+			}
+
+			if (Placement.Cell != Plan.Exit)
+			{
+				AddError(FString::Printf(
+					TEXT("the boss on floor 3 of dungeon %d stands at (%d, %d) "
+						 "and the way down is at (%d, %d)"),
+					Seed, Placement.Cell.X, Placement.Cell.Y,
+					Plan.Exit.X, Plan.Exit.Y));
+				return false;
+			}
+
+			// **IT IS IN NO GROUP.** A boss is not one of the encounters the
+			// floor is made of, so it carries no pack and `PackCount` does not
+			// count it. Without this a floor's group count would rise by one on
+			// every boss floor and the density measurements would drift.
+			if (Placement.Pack != INDEX_NONE)
+			{
+				AddError(FString::Printf(
+					TEXT("the boss on floor 3 of dungeon %d was put in group %d"),
+					Seed, Placement.Pack));
+				return false;
+			}
+		}
+
+		// AND IT IS ONE CREATURE BEYOND WHAT THE DENSITY ASKED FOR, not one of
+		// them. The density is a property of the floor's size and a boss does
+		// not change it.
+		if (WithBoss.Wanted != Without.Wanted)
+		{
+			AddError(FString::Printf(
+				TEXT("a boss changed what the density asked for on floor 3 of "
+					 "dungeon %d, from %d to %d"),
+				Seed, Without.Wanted, WithBoss.Wanted));
+			return false;
+		}
+
+		if (WithBoss.PackCount != Without.PackCount)
+		{
+			// NOT AN ERROR BY ITSELF -- the boss takes the exit cell, so a group
+			// that would have stood there stands elsewhere and the count can
+			// move by a little. A large move would mean the boss is being
+			// counted as a group.
+			if (FMath::Abs(WithBoss.PackCount - Without.PackCount) > 3)
+			{
+				AddError(FString::Printf(
+					TEXT("a boss moved the group count on floor 3 of dungeon %d "
+						 "from %d to %d, which is more than taking one cell can "
+						 "explain"),
+					Seed, Without.PackCount, WithBoss.PackCount));
+				return false;
+			}
+		}
+	}
+
+	// AND A FLOOR THE DENSITY EMPTIED STILL HAS ITS BOSS. `Cataclysm.Dungeon
+	// EnemyScale 0` is what somebody walking a floor to look at its shape uses,
+	// and a boss floor with nothing on it but the boss is the right answer.
+	const FCataclysmFloorPlan Empty =
+		Floor(1, 3, ECataclysmFloorLayout::Halls);
+	FCataclysmFloorBrief Boss;
+	Boss.bBossAtTheExit = true;
+	const FCataclysmFloorPopulation Bare =
+		FCataclysmFloorPopulator::Populate(Empty, 0.0f, Boss);
+
+	TestEqual(TEXT("an emptied boss floor holds exactly the boss"),
+			  Bare.Enemies.Num(), 1);
+	TestEqual(TEXT("and it is the Gatekeeper"),
+			  Bare.HowMany(ECataclysmDungeonCreature::Gatekeeper), 1);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Horde: "Number of floors equals number of enemy waves."
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefHordeLayoutTest,
+	"Cataclysm.FloorBrief.EveryFloorOfAHordeDungeonIsOneOpenSpace",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefHordeLayoutTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// `ECataclysmFloorLayout::Arena`'s own comment has said "One open space.
+	// What a Horde floor is, and what a boss floor wants" since the layout
+	// families were built, and nothing made it true until now.
+	for (uint8 Which = 0;
+		 Which < static_cast<uint8>(ECataclysmFloorLayout::Count); ++Which)
+	{
+		FCataclysmDungeonIdentity Waves =
+			Dungeon(ECataclysmDungeonSubType::Horde);
+		Waves.Layout = static_cast<ECataclysmFloorLayout>(Which);
+
+		FCataclysmDungeonIdentity Plain =
+			Dungeon(ECataclysmDungeonSubType::None);
+		Plain.Layout = static_cast<ECataclysmFloorLayout>(Which);
+
+		for (int32 Floor = 1; Floor <= SweepFloors; ++Floor)
+		{
+			TestEqual(FString::Printf(
+						  TEXT("floor %d of a Horde dungeon set to layout %d is "
+							   "an Arena anyway"), Floor, Which),
+					  static_cast<int32>(
+						  FCataclysmDungeonFloorRules::BriefFor(Waves, Floor).Layout),
+					  static_cast<int32>(ECataclysmFloorLayout::Arena));
+
+			// THE CONTROL. An ordinary dungeon keeps the layout it was given,
+			// including Arena -- so the line above is not passing because every
+			// dungeon is now an Arena.
+			TestEqual(FString::Printf(
+						  TEXT("and an ordinary dungeon set to layout %d keeps "
+							   "it on floor %d"), Which, Floor),
+					  static_cast<int32>(
+						  FCataclysmDungeonFloorRules::BriefFor(Plain, Floor).Layout),
+					  Which);
+		}
+	}
+
+	// AND ITS FLOOR COUNT IS UNTOUCHED, which is the trap in the design
+	// sentence. "Number of floors equals number of enemy waves" reads as though
+	// a Horde dungeon could be one arena with twenty waves in it -- and
+	// `CLAUDE.md` says depth and reward are the same axis, so collapsing twenty
+	// floors into one would make the dungeon nineteen twentieths poorer and
+	// nineteen twentieths cheaper to walk. Nothing in this seam touches the
+	// count; every floor is a wave.
+	const FCataclysmDungeonIdentity Waves =
+		Dungeon(ECataclysmDungeonSubType::Horde);
+	int32 WaveFloors = 0;
+	for (int32 Floor = 1; Floor <= Waves.TotalFloors; ++Floor)
+	{
+		if (FCataclysmDungeonFloorRules::BriefFor(Waves, Floor).bOneWave)
+		{
+			++WaveFloors;
+		}
+	}
+	TestEqual(TEXT("a Horde dungeon of 20 floors is 20 waves"),
+			  WaveFloors, Waves.TotalFloors);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefHordeCrowdTest,
+	"Cataclysm.FloorBrief.AHordeFloorsCreaturesAreOneCrowdAndNotSeveralEncounters",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefHordeCrowdTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// **WHAT A WAVE IS, MEASURED.** `LeastCellsBetweenPacks` exists so "a floor
+	// reads as a series of encounters rather than as one crowd that arrives
+	// together" -- its own words. A wave is that crowd. So the two things that
+	// separate a wave floor from an ordinary one are that its groups stand
+	// closer than that rule allows, and that its creatures are gathered around
+	// one point instead of spread over the floor.
+	//
+	// **BOTH WERE PROVED BY BREAKING THEM, AND THE FIRST ATTEMPT WAS A NO-OP.**
+	// Swapping the wave's `Occupied` check in `FCataclysmFloorPopulator::Populate`
+	// for the ordinary floor's `Claimed` check changes nothing, because
+	// `Claimed` is only FILLED on an ordinary floor -- so the break consults a
+	// set that is always empty and every test still passes. It reads exactly
+	// like a test that cannot fail. Turning the spacing rule back on for a wave
+	// needs the fill AND the check, and done that way this test fails. The
+	// other break, reversing the sort that orders candidate cells by distance
+	// from the wave site, also fails it.
+	int32 Measured = 0;
+	float WorstWaveSpread = 0.0f;
+	float BestOrdinarySpread = 1000.0f;
+
+	// FEWER SEEDS THAN THE REST OF THIS FILE, because the closeness measurement
+	// runs a breadth-first search from every group on the floor and an Arena
+	// floor holds up to a hundred of them. Twelve floors of each kind is enough
+	// to show a difference that is present on every one of them.
+	constexpr int32 CrowdSeeds = 12;
+
+	for (int32 Seed = 1; Seed <= CrowdSeeds; ++Seed)
+	{
+		const FCataclysmFloorPlan Plan =
+			Floor(Seed, 2, ECataclysmFloorLayout::Arena);
+
+		FCataclysmFloorBrief Wave;
+		Wave.bOneWave = true;
+
+		const FCataclysmFloorPopulation Crowd =
+			FCataclysmFloorPopulator::Populate(Plan, 1.0f, Wave);
+		const FCataclysmFloorPopulation Spread =
+			FCataclysmFloorPopulator::Populate(Plan, 1.0f);
+
+		if (Crowd.WaveSite == FIntPoint(-1, -1))
+		{
+			AddError(FString::Printf(
+				TEXT("floor 2 of dungeon %d was asked for a wave and has no "
+					 "wave site"), Seed));
+			return false;
+		}
+
+		// THE ORDINARY FLOOR HAS NONE, which is what says the field is not being
+		// filled in for every floor.
+		if (Spread.WaveSite != FIntPoint(-1, -1))
+		{
+			AddError(FString::Printf(
+				TEXT("floor 2 of dungeon %d was not asked for a wave and has a "
+					 "wave site anyway"), Seed));
+			return false;
+		}
+
+		// **THE GROUPS OF A WAVE STAND CLOSER THAN THE SPACING RULE ALLOWS.**
+		// On an ordinary floor no two group middles are within
+		// `LeastCellsBetweenPacks` cells walked, so none can be closer than that
+		// in a straight line either.
+		const int32 ClosestCrowd = ClosestTwoPackSitesWalked(Plan, Crowd);
+		const int32 ClosestSpread = ClosestTwoPackSitesWalked(Plan, Spread);
+
+		if (ClosestCrowd >= FCataclysmFloorPopulator::LeastCellsBetweenPacks)
+		{
+			AddError(FString::Printf(
+				TEXT("the wave on floor 2 of dungeon %d has its two closest "
+					 "groups %d cells apart, which is not closer than the %d an "
+					 "ordinary floor keeps them"),
+				Seed, ClosestCrowd,
+				FCataclysmFloorPopulator::LeastCellsBetweenPacks));
+			return false;
+		}
+
+		// THE CONTROL, ON THE SAME FLOOR PLAN. Without it the line above only
+		// says a number is small; with it, it says the wave broke a rule the
+		// same floor keeps when it is not a wave.
+		if (ClosestSpread < FCataclysmFloorPopulator::LeastCellsBetweenPacks)
+		{
+			AddError(FString::Printf(
+				TEXT("an ordinary floor 2 of dungeon %d put two groups %d cells "
+					 "apart, inside its own %d cell rule"),
+				Seed, ClosestSpread,
+				FCataclysmFloorPopulator::LeastCellsBetweenPacks));
+			return false;
+		}
+
+		++Measured;
+
+		// **AND THE CROWD IS GATHERED AROUND ONE POINT.** Measured as the mean
+		// distance of every creature from the wave site, against the same
+		// measurement on the same floor populated the ordinary way. A wave that
+		// merely dropped the spacing rule would still be scattered, because the
+		// candidate cells are drawn from the whole floor; ordering them by
+		// distance from the wave site is what gathers them.
+		const float CrowdSpread = MeanDistanceFrom(Crowd, Crowd.WaveSite);
+		const float SpreadSpread = MeanDistanceFrom(Spread, Crowd.WaveSite);
+
+		WorstWaveSpread = FMath::Max(WorstWaveSpread, CrowdSpread);
+		BestOrdinarySpread = FMath::Min(BestOrdinarySpread, SpreadSpread);
+
+		if (CrowdSpread >= SpreadSpread)
+		{
+			AddError(FString::Printf(
+				TEXT("floor 2 of dungeon %d: the wave's creatures average %.1f "
+					 "cells from the wave site and the ordinary floor's average "
+					 "%.1f, so the wave is not gathered"),
+				Seed, CrowdSpread, SpreadSpread));
+			return false;
+		}
+	}
+
+	TestEqual(TEXT("every floor in the sweep was measured"),
+			  Measured, CrowdSeeds);
+
+	// THE TWO NUMBERS, SO THE MARGIN IS ON RECORD rather than only the
+	// comparison. The check above is per floor and this says how far apart the
+	// two populations are across the sweep.
+	TestTrue(FString::Printf(
+				 TEXT("the loosest wave averages %.1f cells from its site and "
+					  "the tightest ordinary floor %.1f"),
+				 WorstWaveSpread, BestOrdinarySpread),
+			 WorstWaveSpread < BestOrdinarySpread);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The project owner's four rules for a Horde dungeon, 2026-09-07. Issue #1467
+//
+// "They should walk in, and the next wave should spawn when there is only 10% or
+// less of the previous wave remaining. In horde dungeons, enemies should also
+// get a much larger aggro range, so they all always run towards the player.
+// Horde dungeons are basically arenas, they should be one big open space with
+// all of the enemies spawning around the outside and rushing you."
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefHordeOneArenaTest,
+	"Cataclysm.FloorBrief.AHordeDungeonIsOneArenaAndEveryFloorAfterTheFirstIsAWaveIntoIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefHordeOneArenaTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// **THE RULE THAT MAKES BOTH SENTENCES TRUE AT ONCE.** The design says
+	// "Number of floors equals number of enemy waves" and the owner says a Horde
+	// dungeon is "one big open space". A dungeon whose floors are waves into one
+	// arena satisfies both: the floor count is untouched, so the dungeon is
+	// worth what its depth is worth, and there is only ever one space.
+	const FCataclysmDungeonIdentity Waves =
+		Dungeon(ECataclysmDungeonSubType::Horde);
+
+	TestFalse(TEXT("floor 1 of a Horde dungeon carves the arena rather than "
+				   "reusing one"),
+			  FCataclysmDungeonFloorRules::BriefFor(Waves, 1).bSameArenaAsLastFloor);
+
+	int32 SameArena = 0;
+	int32 WalkIn = 0;
+	int32 WaveFloors = 0;
+	for (int32 Floor = 1; Floor <= Waves.TotalFloors; ++Floor)
+	{
+		const FCataclysmFloorBrief Brief =
+			FCataclysmDungeonFloorRules::BriefFor(Waves, Floor);
+
+		SameArena += Brief.bSameArenaAsLastFloor ? 1 : 0;
+		WalkIn += Brief.bWaveWalksIn ? 1 : 0;
+		WaveFloors += Brief.bOneWave ? 1 : 0;
+	}
+
+	// NINETEEN OF THE TWENTY, because floor 1 is the one that carves it.
+	TestEqual(TEXT("every floor of a 20-floor Horde dungeon but the first is "
+				   "the same arena as the one before"),
+			  SameArena, Waves.TotalFloors - 1);
+
+	// AND ALL TWENTY WALK IN, THE FIRST INCLUDED. A first wave that stood
+	// waiting while every later one arrived would read as two dungeons.
+	TestEqual(TEXT("and every one of the twenty walks in"),
+			  WalkIn, Waves.TotalFloors);
+
+	TestEqual(TEXT("and a Horde dungeon of 20 floors is still 20 waves"),
+			  WaveFloors, Waves.TotalFloors);
+
+	// **THE CONTROL, AND IT IS THE HALF THAT MATTERS.** Rule 4 must not leak:
+	// no other sub-type reuses a space, walks a wave in, or is one wave at all.
+	const TArray<ECataclysmDungeonSubType> All = EverySubType();
+	TestTrue(TEXT("the reflected sub-type list found the seven, the Hollow, the Ascendant and None"),
+			 All.Num() == 10);
+
+	for (const ECataclysmDungeonSubType SubType : All)
+	{
+		if (SubType == ECataclysmDungeonSubType::Horde)
+		{
+			continue;
+		}
+
+		const FCataclysmDungeonIdentity Other = Dungeon(SubType);
+		for (int32 Floor = 1; Floor <= SweepFloors; ++Floor)
+		{
+			const FCataclysmFloorBrief Brief =
+				FCataclysmDungeonFloorRules::BriefFor(Other, Floor);
+
+			if (Brief.bSameArenaAsLastFloor || Brief.bWaveWalksIn || Brief.bOneWave)
+			{
+				AddError(FString::Printf(
+					TEXT("sub-type %d got a wave on floor %d: same arena %d, "
+						 "walks in %d, one wave %d"),
+					static_cast<int32>(SubType), Floor,
+					Brief.bSameArenaAsLastFloor ? 1 : 0,
+					Brief.bWaveWalksIn ? 1 : 0, Brief.bOneWave ? 1 : 0));
+				return false;
+			}
+		}
+	}
+
+	// AND A DUNGEON OF ONE FLOOR NEVER REUSES A SPACE, because there is no floor
+	// before the first one for it to be the same as.
+	const FCataclysmDungeonIdentity Shallow =
+		Dungeon(ECataclysmDungeonSubType::Horde, /*DungeonSeed=*/7,
+				/*TotalFloors=*/1);
+	TestFalse(TEXT("a one-floor Horde dungeon carves its arena and reuses "
+				   "nothing"),
+			  FCataclysmDungeonFloorRules::BriefFor(Shallow, 1).bSameArenaAsLastFloor);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefHordeRimTest,
+	"Cataclysm.FloorBrief.AHordeWaveFormsAroundTheOutsideAndAnOrdinaryFloorDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefHordeRimTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// **RULE 4, MEASURED.** "All of the enemies spawning around the outside and
+	// rushing you." The measurement is the mean distance of the wave's creatures
+	// from the rim of the floor, against the same measurement on the same floor
+	// populated the ordinary way and on the same floor populated as a GATHERED
+	// wave. Two controls rather than one, because a wave that merely dropped the
+	// spacing rule would also come out clustered -- it would just be clustered
+	// at the far end instead of around the edge.
+	constexpr int32 RimSeeds = 12;
+
+	int32 Measured = 0;
+	float WorstWalkIn = -1.0f;
+	float BestOrdinary = MAX_flt;
+	float BestGathered = MAX_flt;
+	float WorstOffCentre = -1.0f;
+	float BestGatheredOffCentre = MAX_flt;
+
+	for (int32 Seed = 1; Seed <= RimSeeds; ++Seed)
+	{
+		const FCataclysmFloorPlan Plan =
+			Floor(Seed, 2, ECataclysmFloorLayout::Arena);
+
+		// **THE BRIEF COMES FROM THE RULES AND IS NOT BUILT BY HAND.** A test
+		// that set `bWaveWalksIn` itself would prove the population pass honours
+		// a flag and prove nothing about a Horde dungeon carrying it.
+		const FCataclysmFloorBrief WalkIn = FCataclysmDungeonFloorRules::BriefFor(
+			Dungeon(ECataclysmDungeonSubType::Horde), 2);
+		if (!WalkIn.bWaveWalksIn)
+		{
+			AddError(TEXT("a Horde dungeon's floor 2 does not walk its wave in"));
+			return false;
+		}
+
+		FCataclysmFloorBrief Gathered;
+		Gathered.bOneWave = true;
+
+		const FCataclysmFloorPopulation Rim =
+			FCataclysmFloorPopulator::Populate(Plan, 1.0f, WalkIn);
+		const FCataclysmFloorPopulation Crowd =
+			FCataclysmFloorPopulator::Populate(Plan, 1.0f, Gathered);
+		const FCataclysmFloorPopulation Spread =
+			FCataclysmFloorPopulator::Populate(Plan, 1.0f);
+
+		const float RimMean = MeanRimDistance(Plan, Rim);
+		const float CrowdMean = MeanRimDistance(Plan, Crowd);
+		const float SpreadMean = MeanRimDistance(Plan, Spread);
+
+		if (RimMean >= SpreadMean)
+		{
+			AddError(FString::Printf(
+				TEXT("dungeon %d: the walk-in wave averages %.2f cells from the "
+					 "rim and an ordinary floor %.2f, so it is not around the "
+					 "outside"), Seed, RimMean, SpreadMean));
+			return false;
+		}
+
+		if (RimMean >= CrowdMean)
+		{
+			AddError(FString::Printf(
+				TEXT("dungeon %d: the walk-in wave averages %.2f cells from the "
+					 "rim and a GATHERED wave on the same floor %.2f, so it is "
+					 "clustered rather than around the outside"),
+				Seed, RimMean, CrowdMean));
+			return false;
+		}
+
+		// **AND IT HAS NO GATHERING POINT**, which is what says the two kinds of
+		// wave are two placements and not one with a different sort order.
+		if (Rim.WaveSite != FIntPoint(-1, -1))
+		{
+			AddError(FString::Printf(
+				TEXT("dungeon %d: a wave that rings the outside was given a "
+					 "single wave site at (%d, %d)"),
+				Seed, Rim.WaveSite.X, Rim.WaveSite.Y));
+			return false;
+		}
+
+		// AND IT IS STILL ONE CROWD RATHER THAN SEPARATED ENCOUNTERS, which is
+		// the promise `bOneWave` makes and which a walk-in wave must keep too.
+		// Reading `WaveSite` to decide that was the bug this guards.
+		const int32 ClosestRim = ClosestTwoPackSitesWalked(Plan, Rim);
+		if (ClosestRim >= FCataclysmFloorPopulator::LeastCellsBetweenPacks)
+		{
+			AddError(FString::Printf(
+				TEXT("dungeon %d: the walk-in wave's two closest groups are %d "
+					 "cells apart, which is not closer than the %d an ordinary "
+					 "floor keeps them, so the spacing rule was left on"),
+				Seed, ClosestRim,
+				FCataclysmFloorPopulator::LeastCellsBetweenPacks));
+			return false;
+		}
+
+		// **AND IT RINGS THE ARENA RATHER THAN BUNCHING ALONG ONE EDGE, WHICH
+		// THE MEASUREMENT ABOVE CANNOT SEE.** A wave placed entirely along the
+		// top edge is on the rim too, and would pass every check so far. It was
+		// the first version of this rule: every cell on the rim is at distance
+		// zero, so breaking the tie by cell index took them in row-major order.
+		//
+		// A CROWD THAT RINGS THE FLOOR HAS ITS WEIGHT AT THE MIDDLE OF IT, and
+		// one bunched on one side does not.
+		//
+		// **AN EIGHTH OF THE FLOOR'S WIDTH, AND IT IS NOT ZERO ON PURPOSE.** A
+		// ring is not perfectly even, because `LeastCellsFromEntrance` keeps
+		// every creature eight cells clear of where the player arrives, so the
+		// arc of the rim nearest the entrance is empty and the weight is pulled
+		// away from it. Measured over this sweep the worst is a few cells; a
+		// wave bunched along one edge of a 45-cell floor is about twenty. The
+		// bound sits between the two and is written as a fraction of the floor
+		// so it does not need revisiting when floors change size. The tightest
+		// bound this could take was tried first and it was 2.0 cells, which one
+		// seed of twelve failed at 2.6 for exactly the keep-out reason above.
+		const FVector2D Weight = CentreOfMass(Rim);
+		const FVector2D Middle = MiddleOfTheFloor(Plan);
+		const float OffCentre = FVector2D::Distance(Weight, Middle);
+
+		const float MostOffCentre = static_cast<float>(Plan.Width) / 8.0f;
+
+		if (OffCentre > MostOffCentre)
+		{
+			AddError(FString::Printf(
+				TEXT("dungeon %d: the walk-in wave's weight is at (%.1f, %.1f) "
+					 "and the middle of the floor is (%.1f, %.1f), %.1f cells "
+					 "away and the most allowed is %.1f, so it is bunched on "
+					 "one side rather than ringing the arena"),
+				Seed, Weight.X, Weight.Y, Middle.X, Middle.Y, OffCentre,
+				MostOffCentre));
+			return false;
+		}
+
+		// THE CONTROL FOR THAT ONE. A gathered wave stands at the far end, so
+		// ITS weight is a long way off centre -- which is what says the check
+		// above is measuring something a crowd can fail.
+		const float GatheredOffCentre =
+			FVector2D::Distance(CentreOfMass(Crowd), Middle);
+
+		if (GatheredOffCentre <= OffCentre)
+		{
+			AddError(FString::Printf(
+				TEXT("dungeon %d: a gathered wave's weight is %.1f cells off "
+					 "centre and the walk-in wave's is %.1f, so the off-centre "
+					 "check cannot tell them apart"),
+				Seed, GatheredOffCentre, OffCentre));
+			return false;
+		}
+
+		WorstWalkIn = FMath::Max(WorstWalkIn, RimMean);
+		BestOrdinary = FMath::Min(BestOrdinary, SpreadMean);
+		BestGathered = FMath::Min(BestGathered, CrowdMean);
+		WorstOffCentre = FMath::Max(WorstOffCentre, OffCentre);
+		BestGatheredOffCentre =
+			FMath::Min(BestGatheredOffCentre, GatheredOffCentre);
+		++Measured;
+	}
+
+	TestEqual(TEXT("every floor in the sweep was measured"), Measured, RimSeeds);
+
+	// THE THREE NUMBERS, SO THE MARGIN IS ON RECORD rather than only the
+	// comparisons, which are per floor.
+	TestTrue(FString::Printf(
+				 TEXT("the loosest walk-in wave averages %.2f cells from the "
+					  "rim, the tightest ordinary floor %.2f and the tightest "
+					  "gathered wave %.2f"),
+				 WorstWalkIn, BestOrdinary, BestGathered),
+			 WorstWalkIn < BestOrdinary && WorstWalkIn < BestGathered);
+
+	// AND THE SAME FOR THE OFF-CENTRE MEASUREMENT, so the margin between a wave
+	// that rings the arena and one gathered at its far end is on record rather
+	// than only the per-floor comparison.
+	TestTrue(FString::Printf(
+				 TEXT("the most off-centre walk-in wave's weight is %.2f cells "
+					  "from the middle of its floor and the least off-centre "
+					  "gathered wave's is %.2f"),
+				 WorstOffCentre, BestGatheredOffCentre),
+			 WorstOffCentre < BestGatheredOffCentre);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefNextWaveThresholdTest,
+	"Cataclysm.FloorBrief.TheNextWaveArrivesWhenATenthOrLessOfTheLastIsStanding",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefNextWaveThresholdTest::RunTest(const FString& Parameters)
+{
+	// **RULE 2, AND THE ROUNDING IS THE WHOLE OF IT.** "The next wave should
+	// spawn when there is only 10% or less of the previous wave remaining."
+	// The two worked examples first.
+	TestEqual(TEXT("a wave of 40 lets the next in at 4 still standing, which is "
+				   "exactly a tenth"),
+			  FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(40), 4);
+
+	TestEqual(TEXT("a wave of 7 has to be finished off, because one survivor of "
+				   "seven is 14.3% and that is not '10% or less'"),
+			  FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(7), 0);
+
+	TestEqual(TEXT("a wave of 10 lets the next in at 1"),
+			  FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(10), 1);
+	TestEqual(TEXT("and a wave of 9 does not"),
+			  FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(9), 0);
+
+	// A WAVE THAT PUT NOTHING ON THE FLOOR IS FINISHED, and a negative count is
+	// not a count. Both answer zero rather than something a comparison would
+	// read as a threshold.
+	TestEqual(TEXT("a wave of nothing is already finished"),
+			  FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(0), 0);
+	TestEqual(TEXT("and a negative count is not a threshold"),
+			  FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(-5), 0);
+
+	// **AND THE PROPERTY THE EXAMPLES ARE INSTANCES OF, over every wave size an
+	// arena floor can produce and well beyond it.** Three things have to hold
+	// for every one of them, and each is a different way to get this wrong.
+	int32 Checked = 0;
+	for (int32 Spawned = 1; Spawned <= 1000; ++Spawned)
+	{
+		const int32 Threshold =
+			FCataclysmDungeonFloorRules::NextWaveArrivesAtOrBelow(Spawned);
+
+		// ONE. The threshold really is "10% or less". A threshold above a tenth
+		// would let the next wave in while more than a tenth was standing.
+		if (static_cast<float>(Threshold)
+			> static_cast<float>(Spawned)
+				* FCataclysmDungeonFloorRules::NextWaveAtFractionRemaining)
+		{
+			AddError(FString::Printf(
+				TEXT("a wave of %d lets the next in at %d standing, which is "
+					 "more than a tenth of it"), Spawned, Threshold));
+			return false;
+		}
+
+		// TWO. It is the LARGEST such number, so the rule is not simply "kill
+		// them all" wearing a fraction. One more would be over a tenth.
+		if (static_cast<float>(Threshold + 1)
+			<= static_cast<float>(Spawned)
+				* FCataclysmDungeonFloorRules::NextWaveAtFractionRemaining)
+		{
+			AddError(FString::Printf(
+				TEXT("a wave of %d lets the next in at %d standing, but %d "
+					 "would still be a tenth or less, so the threshold is too "
+					 "low"), Spawned, Threshold, Threshold + 1));
+			return false;
+		}
+
+		// THREE. **IT CANNOT SOFT LOCK AND IT CANNOT CASCADE.** Never below
+		// zero, which is always reachable because every creature the population
+		// pass places stands somewhere the player can walk to; and never as much
+		// as the wave itself, which would finish every wave the instant it
+		// arrived and spend the whole dungeon's days in one tick.
+		if (Threshold < 0 || Threshold >= Spawned)
+		{
+			AddError(FString::Printf(
+				TEXT("a wave of %d has a threshold of %d, which is outside "
+					 "[0, %d)"), Spawned, Threshold, Spawned));
+			return false;
+		}
+
+		++Checked;
+	}
+
+	TestEqual(TEXT("every wave size from 1 to 1000 was checked"), Checked, 1000);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefHordeAggroTest,
+	"Cataclysm.FloorBrief.OnlyAHordeDungeonWidensWhatItsCreaturesNotice",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefHordeAggroTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// **RULE 3, AND THE HALF THAT MATTERS IS THAT IT DOES NOT LEAK.** "In horde
+	// dungeons, enemies should also get a much larger aggro range." A creature's
+	// own notice radius is untouched; the floor it is standing on carries a
+	// multiplier, and every floor of every other dungeon carries one.
+	for (const ECataclysmDungeonSubType SubType : EverySubType())
+	{
+		const FCataclysmDungeonIdentity Any = Dungeon(SubType);
+
+		const float Expected =
+			(SubType == ECataclysmDungeonSubType::Horde)
+				? FCataclysmDungeonFloorRules::HordeSightRadiusMultiplier
+				: 1.0f;
+
+		for (int32 Floor = 1; Floor <= SweepFloors; ++Floor)
+		{
+			const float Got = FCataclysmDungeonFloorRules::BriefFor(
+				Any, Floor).SightRadiusMultiplier;
+
+			if (!FMath::IsNearlyEqual(Got, Expected))
+			{
+				AddError(FString::Printf(
+					TEXT("floor %d of sub-type %d multiplies what its creatures "
+						 "notice by %.2f, and it should be %.2f"),
+					Floor, static_cast<int32>(SubType), Got, Expected));
+				return false;
+			}
+		}
+	}
+
+	// AND A DEFAULT-CONSTRUCTED BRIEF -- what every caller that names no dungeon
+	// gets -- leaves it alone. A zero here would be a creature that notices
+	// nothing at all.
+	TestEqual(TEXT("an ordinary floor multiplies what its creatures notice by 1"),
+			  FCataclysmFloorBrief().SightRadiusMultiplier, 1.0f);
+
+	// **AND THE MULTIPLIER IS BIG ENOUGH TO DO WHAT THE RULE SAYS.** "They all
+	// always run towards the player" is only true if the creature that notices
+	// from closest still reaches the far corner of the largest arena that can be
+	// carved. The `static_assert` in the header holds this at compile time; this
+	// states the two numbers so a failure says which one moved.
+	const float Reaches =
+		FCataclysmDungeonFloorRules::SmallestCreatureNoticeRadiusCm
+			* FCataclysmDungeonFloorRules::HordeSightRadiusMultiplier;
+
+	TestTrue(FString::Printf(
+				 TEXT("the creature that notices from closest reaches %.0f cm "
+					  "in a Horde dungeon and the biggest arena is %.0f cm "
+					  "corner to corner"),
+				 Reaches, FCataclysmDungeonFloorRules::LargestFloorDiagonalCm),
+			 Reaches >= FCataclysmDungeonFloorRules::LargestFloorDiagonalCm);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefNoticeFloorTest,
+	"Cataclysm.FloorBrief.NoCreatureNoticesFromCloserThanTheHordeRuleAssumes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefNoticeFloorTest::RunTest(const FString& Parameters)
+{
+	// **THE GUARD ON A COPIED NUMBER.**
+	// `FCataclysmDungeonFloorRules::SmallestCreatureNoticeRadiusCm` is written
+	// down beside the multiplier so the multiplier can be checked against it,
+	// and it is a copy of figures that live on the creatures. A creature given a
+	// shorter notice radius than this would silently stop reaching across the
+	// arena, and the `static_assert` in the header could not see it because it
+	// checks the copy rather than the creatures.
+	//
+	// EVERY CREATURE THE POPULATOR CAN NAME, so a creature added to the roster
+	// is covered without anyone remembering to come here.
+	int32 Checked = 0;
+	float Closest = MAX_flt;
+	const TCHAR* ClosestName = TEXT("none");
+
+	for (uint8 Which = 0;
+		 Which < static_cast<uint8>(ECataclysmDungeonCreature::Count); ++Which)
+	{
+		const ECataclysmDungeonCreature Creature =
+			static_cast<ECataclysmDungeonCreature>(Which);
+
+		const TSubclassOf<ACataclysmEnemyCharacter> Class =
+			ACataclysmDungeonGameMode::ClassFor(Creature);
+		if (!Class)
+		{
+			AddError(FString::Printf(TEXT("%s has no character class"),
+									 CataclysmDungeonCreatureName(Creature)));
+			return false;
+		}
+
+		// THE CLASS DEFAULT OBJECT AND NOT A SPAWNED ONE. `SightRadiusCm` is
+		// what each creature overrides with its own constant, and reading it off
+		// the default costs no world and no actor.
+		const ACataclysmEnemyCharacter* Default =
+			Class->GetDefaultObject<ACataclysmEnemyCharacter>();
+		if (!Default)
+		{
+			AddError(FString::Printf(TEXT("%s has no default object"),
+									 CataclysmDungeonCreatureName(Creature)));
+			return false;
+		}
+
+		const float Notices = Default->SightRadiusCm();
+		if (Notices < Closest)
+		{
+			Closest = Notices;
+			ClosestName = CataclysmDungeonCreatureName(Creature);
+		}
+
+		if (Notices < FCataclysmDungeonFloorRules::SmallestCreatureNoticeRadiusCm)
+		{
+			AddError(FString::Printf(
+				TEXT("%s notices from %.0f cm, which is closer than the %.0f cm "
+					 "FCataclysmDungeonFloorRules::SmallestCreatureNoticeRadiusCm "
+					 "claims is the shortest. Lower that constant and raise "
+					 "HordeSightRadiusMultiplier to match, or this creature will "
+					 "not reach across a Horde arena."),
+				CataclysmDungeonCreatureName(Creature), Notices,
+				FCataclysmDungeonFloorRules::SmallestCreatureNoticeRadiusCm));
+			return false;
+		}
+
+		++Checked;
+	}
+
+	TestEqual(TEXT("every designed creature was checked"),
+			  Checked, static_cast<int32>(ECataclysmDungeonCreature::Count));
+
+	// AND THE CONSTANT IS NOT MERELY SAFE, IT IS THE RIGHT NUMBER. A constant
+	// far below every creature would pass the check above and would make the
+	// multiplier bigger than it needs to be for no reason.
+	TestEqual(FString::Printf(
+				  TEXT("the creature that notices from closest is the %s at "
+					   "%.0f cm, which is what the constant says"),
+				  ClosestName, Closest),
+			  Closest,
+			  FCataclysmDungeonFloorRules::SmallestCreatureNoticeRadiusCm);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefWaveKeepsPromisesTest,
+	"Cataclysm.FloorBrief.AWaveKeepsEveryPromiseAnOrdinaryFloorMakes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefWaveKeepsPromisesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// **TURNING A RULE OFF IS WHERE THE OTHER RULES GET BROKEN.** The wave drops
+	// the spacing between groups and nothing else, and these are the four things
+	// `Cataclysm.DungeonEnemies.*` holds true of every ordinary floor. A wave
+	// floor has to keep all four, and the boss on top of them.
+	for (int32 Seed = 1; Seed <= SweepSeeds; ++Seed)
+	{
+		const FCataclysmFloorPlan Plan =
+			Floor(Seed, 4, ECataclysmFloorLayout::Arena);
+
+		FCataclysmFloorBrief Wave;
+		Wave.bOneWave = true;
+		Wave.bBossAtTheExit = true;
+
+		const FCataclysmFloorPopulation Crowd =
+			FCataclysmFloorPopulator::Populate(Plan, 1.0f, Wave);
+
+		const TArray<int32> FromEntrance =
+			CataclysmFloorDistancesFrom(Plan, Plan.Entrance);
+
+		TSet<FIntPoint> Seen;
+		for (const FCataclysmEnemyPlacement& Placement : Crowd.Enemies)
+		{
+			if (!Plan.IsFloor(Placement.Cell))
+			{
+				AddError(FString::Printf(
+					TEXT("a %s on floor 4 of dungeon %d stands inside rock at "
+						 "(%d, %d)"),
+					CataclysmDungeonCreatureName(Placement.Creature), Seed,
+					Placement.Cell.X, Placement.Cell.Y));
+				return false;
+			}
+
+			const int32 Index = Plan.IndexOf(Placement.Cell);
+			if (FromEntrance[Index] == INDEX_NONE)
+			{
+				AddError(FString::Printf(
+					TEXT("a %s on floor 4 of dungeon %d stands where the player "
+						 "cannot walk to"),
+					CataclysmDungeonCreatureName(Placement.Creature), Seed));
+				return false;
+			}
+
+			// THE BOSS IS THE ONE EXCEPTION AND IT IS NOT AN EXCEPTION TO THIS.
+			// It stands on the way down, which the floor generator puts a long
+			// way from the entrance, so it clears the keep-out too. The check
+			// below covers it rather than skipping it.
+			if (FromEntrance[Index]
+				< FCataclysmFloorPopulator::LeastCellsFromEntrance)
+			{
+				AddError(FString::Printf(
+					TEXT("a %s on floor 4 of dungeon %d waits %d cells from "
+						 "where the player arrives, inside the %d cell keep-out"),
+					CataclysmDungeonCreatureName(Placement.Creature), Seed,
+					FromEntrance[Index],
+					FCataclysmFloorPopulator::LeastCellsFromEntrance));
+				return false;
+			}
+
+			if (Seen.Contains(Placement.Cell))
+			{
+				AddError(FString::Printf(
+					TEXT("two creatures stand on (%d, %d) on floor 4 of dungeon "
+						 "%d"),
+					Placement.Cell.X, Placement.Cell.Y, Seed));
+				return false;
+			}
+			Seen.Add(Placement.Cell);
+		}
+
+		// AND THE WAVE IS ACTUALLY A FLOOR'S WORTH OF CREATURES. A gathering
+		// rule that ran out of cells early would pass every check above by
+		// placing almost nothing.
+		const int32 Crowded =
+			Crowd.Enemies.Num()
+			- Crowd.HowMany(ECataclysmDungeonCreature::Gatekeeper);
+		if (Crowded < Crowd.Wanted * 4 / 5)
+		{
+			AddError(FString::Printf(
+				TEXT("the wave on floor 4 of dungeon %d holds %d creatures "
+					 "where the density asked for %d"),
+				Seed, Crowded, Crowd.Wanted));
+			return false;
+		}
+	}
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// One of the 123 dungeon modifiers through the same seam
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefUnstableTest,
+	"Cataclysm.FloorBrief.UnstableDimensionsGivesEveryLaterFloorOneGenericEnemyModifier",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefUnstableTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// `Chaos_Unstable_Dimensions` in `game/Data/DungeonModifiers.csv`: "Every time you clear a floor, the very fabric
+	// of the dungeon warps. A new 'reality' is imposed, granting a new, random modifier to all enemies on the next
+	// floor." CORRECTED 2026-10-01, as ruled: the reality is a GENERIC ENEMY modifier for every creature of the floor,
+	// in `EveryCreatureModifier`, and none on floor 1. Until then this test asserted one more DUNGEON row on every
+	// floor, which was the rule this replaced.
+	FCataclysmDungeonIdentity Warping = Dungeon(ECataclysmDungeonSubType::None);
+	Warping.ModifierPool.Add(Make(FCataclysmDungeonFloorRules::UnstableDimensionsKey, ECataclysmType::Chaos, 10.0f));
+	Warping.Modifiers.Add(FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey));
+	Warping.ModifierScore += 10.0f;
+
+	// THE CONTROL IS THE SAME DUNGEON WITHOUT THAT ONE ROW.
+	const FCataclysmDungeonIdentity Steady = Dungeon(ECataclysmDungeonSubType::None);
+
+	TSet<FName> Realities;
+	for (int32 Floor = 1; Floor <= SweepFloors; ++Floor)
+	{
+		const FCataclysmFloorBrief Warped = FCataclysmDungeonFloorRules::BriefFor(Warping, Floor);
+		const FCataclysmFloorBrief Plain = FCataclysmDungeonFloorRules::BriefFor(Steady, Floor);
+
+		// NO DUNGEON ROW IS ADDED, AND THE SCORE IS THE DUNGEON'S: a stronger creature, not more of them.
+		TestEqual(FString::Printf(TEXT("floor %d carries exactly the dungeon's rows"), Floor), Warped.Modifiers.Num(),
+				  Warping.Modifiers.Num());
+		TestEqual(FString::Printf(TEXT("floor %d is worth the dungeon's danger"), Floor), Warped.ModifierScore,
+				  Warping.ModifierScore, 0.001f);
+		TestTrue(FString::Printf(TEXT("the control has no reality on floor %d"), Floor),
+				 Plain.EveryCreatureModifier.IsNone());
+
+		if (Floor == 1)
+		{
+			TestTrue(TEXT("floor 1 has no reality: no floor has been cleared"), Warped.EveryCreatureModifier.IsNone());
+			continue;
+		}
+		if (!TestFalse(FString::Printf(TEXT("floor %d has a reality"), Floor), Warped.EveryCreatureModifier.IsNone()))
+		{
+			continue;
+		}
+		TestTrue(FString::Printf(TEXT("floor %d's reality is a Generic enemy modifier (%s)"), Floor,
+								 *Warped.EveryCreatureModifier.ToString()),
+				 Warped.EveryCreatureModifier.ToString().StartsWith(TEXT("Generic_")));
+		TestFalse(FString::Printf(TEXT("and not a dungeon row on floor %d"), Floor),
+				  Warped.Modifiers.Contains(Warped.EveryCreatureModifier));
+		TestEqual(FString::Printf(TEXT("floor %d draws the same reality again"), Floor),
+				  FCataclysmDungeonFloorRules::BriefFor(Warping, Floor).EveryCreatureModifier,
+				  Warped.EveryCreatureModifier);
+		Realities.Add(Warped.EveryCreatureModifier);
+	}
+
+	// "A NEW, RANDOM MODIFIER" MEANS IT CHANGES: nineteen floors draw more than three of the ten Generic rows.
+	TestTrue(FString::Printf(TEXT("nineteen floors drew %d different realities"), Realities.Num()), Realities.Num() > 3);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefUnstableComposesTest,
+	"Cataclysm.FloorBrief.AVolatileDungeonImposesARealityOnTheFloorsThatDrewIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefUnstableComposesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// **TWO RULES ON ONE FIELD, AND NEITHER IS WRITTEN IN TERMS OF THE OTHER.**
+	// A Volatile dungeon re-draws its modifiers for every floor, so whether it
+	// is carrying Unstable Dimensions is a per-floor fact. Its reality has to
+	// follow the re-draw rather than the dungeon. Until 2026-10-01 the rule
+	// added a dungeon row and this test counted Drawn + 1; it now adds no row,
+	// and a floor after the first that drew it imposes a reality.
+	FCataclysmDungeonIdentity Changing =
+		Dungeon(ECataclysmDungeonSubType::Volatile);
+	Changing.ModifierPool.Add(
+		Make(FCataclysmDungeonFloorRules::UnstableDimensionsKey,
+			 ECataclysmType::Chaos, 10.0f));
+
+	const FName Warp(FCataclysmDungeonFloorRules::UnstableDimensionsKey);
+	const int32 Drawn = UCataclysmDungeonModifierRules::CountFor(
+		Changing.DifficultyTier, ECataclysmDungeonSubType::Volatile);
+
+	int32 FloorsWithTheWarp = 0;
+	int32 FloorsWithout = 0;
+
+	// A LONG SWEEP, because whether a re-draw lands one particular modifier out
+	// of twenty-one is a coin that has to be flipped enough times for both
+	// outcomes to appear.
+	for (int32 Floor = 1; Floor <= 200; ++Floor)
+	{
+		const FCataclysmFloorBrief Brief =
+			FCataclysmDungeonFloorRules::BriefFor(Changing, Floor);
+
+		// NEITHER BRANCH ADDS A ROW: the re-draw is the whole list either way.
+		if (Brief.Modifiers.Num() != Drawn)
+		{
+			AddError(FString::Printf(
+				TEXT("floor %d carries %d modifiers, not the %d the re-draw "
+					 "asked for"),
+				Floor, Brief.Modifiers.Num(), Drawn));
+			return false;
+		}
+		if (Brief.Modifiers.Contains(Warp))
+		{
+			++FloorsWithTheWarp;
+			if (Brief.EveryCreatureModifier.IsNone() != (Floor == 1))
+			{
+				AddError(FString::Printf(
+					TEXT("floor %d re-drew Unstable Dimensions and its reality "
+						 "is %s, where a floor after the first has one and "
+						 "floor 1 none"),
+					Floor, *Brief.EveryCreatureModifier.ToString()));
+				return false;
+			}
+		}
+		else
+		{
+			++FloorsWithout;
+			if (!Brief.EveryCreatureModifier.IsNone())
+			{
+				AddError(FString::Printf(
+					TEXT("floor %d did not re-draw Unstable Dimensions and "
+						 "still imposes %s"),
+					Floor, *Brief.EveryCreatureModifier.ToString()));
+				return false;
+			}
+		}
+	}
+
+	// **BOTH OUTCOMES HAVE TO HAPPEN OR THE CHECK ABOVE CHECKED ONE BRANCH.**
+	// A sweep in which no floor ever drew it would pass every assertion while
+	// proving only that the extra never fires.
+	TestTrue(FString::Printf(
+				 TEXT("%d of 200 floors re-drew Unstable Dimensions"),
+				 FloorsWithTheWarp),
+			 FloorsWithTheWarp > 0);
+	TestTrue(FString::Printf(TEXT("and %d did not"), FloorsWithout),
+			 FloorsWithout > 0);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The answer being spent: a floor's modifiers reaching the enemy score model
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefReachesTheScoreTest,
+	"Cataclysm.FloorBrief.WalkingDownAVolatileDungeonChangesWhatItsCreaturesAreWorth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefReachesTheScoreTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// **THE WHOLE ROUTE, AND THE ONLY TEST THAT WALKS IT.** The rules decide a
+	// floor's modifiers; `BuildFloor` has to ask them; `RunModifierScore` has to
+	// answer with the floor's rather than the dungeon's; and the enemy score
+	// model reads that. Each has its own test and all four would pass while the
+	// wiring between them did not exist, which is how the modifier score stayed
+	// hard-zeroed for four months.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	// SET ON THE GAME MODE DIRECTLY RATHER THAN THROUGH A RUN. `EnterEmpireDungeon`
+	// filling these in from a real dungeon is the next test; this one is about
+	// what the game mode does with them once they are there, and building a
+	// surge to get a Volatile dungeon would be a sweep over seeds rather than a
+	// test.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Volatile;
+	Mode->TotalFloors = SweepFloors;
+	Mode->DungeonModifierPool = Pool();
+	Mode->DungeonModifiers.Add(Mode->DungeonModifierPool[0].RowKey);
+	Mode->DungeonModifierScore = Mode->DungeonModifierPool[0].Danger;
+
+	TSet<float> Scores;
+	for (int32 Floor = 1; Floor <= 8; ++Floor)
+	{
+		if (!TestTrue(FString::Printf(TEXT("floor %d was built"), Floor),
+					  Mode->GoToFloor(Floor)))
+		{
+			return false;
+		}
+
+		TestEqual(FString::Printf(
+					  TEXT("the game mode answers with floor %d's modifiers"),
+					  Floor),
+				  Mode->RunModifierScore(), Mode->FloorBrief.ModifierScore);
+
+		TestEqual(TEXT("and the brief is for the floor being stood on"),
+				  Mode->FloorBrief.FloorNumber, Floor);
+
+		Scores.Add(Mode->RunModifierScore());
+	}
+
+	// **EIGHT FLOORS OF A VOLATILE DUNGEON ARE NOT ALL WORTH THE SAME.** This is
+	// the player-visible consequence of the whole change: a creature on floor 3
+	// of a Volatile dungeon is not worth what the same creature on floor 2 is.
+	TestTrue(FString::Printf(
+				 TEXT("eight floors of a Volatile dungeon carried %d different "
+					  "modifier scores"), Scores.Num()),
+			 Scores.Num() > 1);
+
+	// AND THE DUNGEON'S OWN NUMBER WAS NOT OVERWRITTEN BY ANY OF THEM. The
+	// per-floor rules re-draw from what the dungeon is, so a floor that wrote
+	// its answer back would make floor 4 a re-draw of floor 3 rather than of the
+	// dungeon.
+	TestEqual(TEXT("the dungeon's own modifier score is untouched"),
+			  Mode->DungeonModifierScore, Mode->DungeonModifierPool[0].Danger);
+
+	// AND AN ORDINARY DUNGEON'S FLOORS ARE ALL WORTH THE SAME, which is the
+	// control and is also the behaviour every dungeon had before this change.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::None;
+	TSet<float> Steady;
+	for (int32 Floor = 1; Floor <= 8; ++Floor)
+	{
+		Mode->GoToFloor(Floor);
+		Steady.Add(Mode->RunModifierScore());
+	}
+	TestEqual(TEXT("eight floors of an ordinary dungeon are all worth the same"),
+			  Steady.Num(), 1);
+	TestEqual(TEXT("and that is what the dungeon drew"),
+			  Steady.Array()[0], Mode->DungeonModifierScore);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefEnteringCarriesThePoolTest,
+	"Cataclysm.FloorBrief.EnteringADungeonCarriesTheModifiersItsFloorsMayDraw",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefEnteringCarriesThePoolTest::RunTest(const FString& Parameters)
+{
+	// **THE HALF THE TEST ABOVE CANNOT SEE.** A Volatile dungeon on the empire
+	// map can only re-draw if the pool crossed the module line with it, and
+	// nothing else in the project carries a pool onto the game mode.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	// THE REAL TABLE, so this is the pool the game would really have.
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	Run->ModifierPool = UCataclysmDungeonModifierTable::LoadPool();
+	if (!TestTrue(TEXT("the modifier table loaded"), Run->ModifierPool.Num() > 0))
+	{
+		return false;
+	}
+
+	Run->Begin(/* Seed */ 1, ECataclysmSurgeMode::Static,
+			   /* LethalityRung */ 0, /* DifficultyTier */ 4);
+	Run->AdvanceDay();
+
+	if (!TestTrue(TEXT("the first surge put a dungeon on the map"),
+				  Run->Dungeons.Num() > 0))
+	{
+		return false;
+	}
+
+	Mode->SetEmpireRunForTests(Run);
+	const FCataclysmDungeon Dungeon = Run->Dungeons[0];
+
+	TestEqual(TEXT("before entering the game mode knows of no modifiers"),
+			  Mode->DungeonModifiers.Num(), 0);
+	TestEqual(TEXT("and of nothing its floors could draw"),
+			  Mode->DungeonModifierPool.Num(), 0);
+
+	if (!TestTrue(TEXT("the dungeon is entered"),
+				  Mode->EnterEmpireDungeon(Dungeon.DungeonId)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("entering carries which modifiers the dungeon drew"),
+			  CataclysmFloorBriefTest::SortedKeys(Mode->DungeonModifiers),
+			  CataclysmFloorBriefTest::SortedKeys(Dungeon.Modifiers));
+
+	// **NARROWED TO THE CATACLYSMS THE RUN IS FACING, NOT THE WHOLE TABLE.** A
+	// floor that could re-draw from all 123 rows would put a Celestial modifier
+	// in a run that is not facing the Celestial Cataclysm.
+	const TArray<FCataclysmDungeonModifier> Expected =
+		UCataclysmDungeonModifierRules::PoolFor(Run->ModifierPool,
+												Run->ActiveCataclysms);
+	TestEqual(TEXT("and the modifiers its floors may draw from"),
+			  Mode->DungeonModifierPool.Num(), Expected.Num());
+	TestTrue(TEXT("which is fewer than the whole table"),
+			 Expected.Num() < Run->ModifierPool.Num());
+	TestTrue(TEXT("and is not empty"), Expected.Num() > 0);
+
+	// AND LEAVING PUTS ALL OF IT BACK. A player who leaves the empire and walks
+	// a plain floor must not still be fighting the last dungeon's modifiers, and
+	// the next dungeon must not draw from the Cataclysms this one faced.
+	Mode->LeaveEmpireDungeon();
+	TestEqual(TEXT("leaving leaves the dungeon's modifiers behind"),
+			  Mode->DungeonModifiers.Num(), 0);
+	TestEqual(TEXT("and what its floors could have drawn"),
+			  Mode->DungeonModifierPool.Num(), 0);
+	TestEqual(TEXT("and the floor's own score"),
+			  Mode->RunModifierScore(), 0.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefRealDungeonTest,
+	"Cataclysm.FloorBrief.ADungeonOffTheMapReallyGetsItsSubTypesRule",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefRealDungeonTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// **EVERY OTHER TEST IN THIS FILE BUILDS ITS DUNGEON BY HAND.** All of them
+	// would pass while a dungeon that a surge actually landed on a city never
+	// reached the rules at all, because the sub-type has to cross from
+	// `FCataclysmDungeon` in the empire layer onto the game mode and then into
+	// `DungeonIdentity`. This is the only test that walks a dungeon off the map.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	Run->ModifierPool = UCataclysmDungeonModifierTable::LoadPool();
+	if (!TestTrue(TEXT("the modifier table loaded"), Run->ModifierPool.Num() > 0))
+	{
+		return false;
+	}
+
+	Run->Begin(/* Seed */ 3, ECataclysmSurgeMode::Static,
+			   /* LethalityRung */ 0, /* DifficultyTier */ 4);
+	Run->AdvanceDay();
+
+	if (!TestTrue(TEXT("the first surge put a dungeon on the map"),
+				  Run->Dungeons.Num() > 0))
+	{
+		return false;
+	}
+
+	Mode->SetEmpireRunForTests(Run);
+
+	// **THE SUB-TYPE IS SET ON THE DUNGEON RATHER THAN SEARCHED FOR.** Waiting
+	// for a surge to roll each of the three would be a sweep over seeds, and
+	// what is being checked is the route from a dungeon on the map to the rules,
+	// which is the same route whatever the roll gave.
+	const int32 DungeonId = Run->Dungeons[0].DungeonId;
+
+	// FOUR FLOORS AND AN EMPTY DENSITY. This test is about what the brief says,
+	// not about what stands on the floor, and it builds sixteen floors -- four
+	// of each of four dungeons. At the designed density that is several thousand
+	// spawned characters for nothing, and the crowd itself is measured by
+	// `AHordeFloorsCreaturesAreOneCrowdAndNotSeveralEncounters` from a plan,
+	// with no world at all.
+	//
+	// THE BOSS IS STILL PLACED AT A DENSITY OF ZERO, which is deliberate and is
+	// asserted by `TheBossStandsOnTheWayDownAndIsNotOneOfTheCrowd`, so the boss
+	// half of this test is not weakened by emptying the floor.
+	const int32 Floors = 4;
+	Run->Dungeons[0].Floors = Floors;
+	Mode->EnemyScale = 0.0f;
+
+	struct FCase
+	{
+		ECataclysmDungeonSubType SubType;
+		const TCHAR* Name;
+	};
+	const TArray<FCase> Cases = {
+		{ ECataclysmDungeonSubType::Horde, TEXT("Horde") },
+		{ ECataclysmDungeonSubType::Elite, TEXT("Elite") },
+		{ ECataclysmDungeonSubType::Volatile, TEXT("Volatile") },
+		{ ECataclysmDungeonSubType::None, TEXT("no sub-type") } };
+
+	for (const FCase& Case : Cases)
+	{
+		Run->Dungeons[0].SubType = Case.SubType;
+
+		if (!TestTrue(FString::Printf(TEXT("a %s dungeon is entered"), Case.Name),
+					  Mode->EnterEmpireDungeon(DungeonId)))
+		{
+			return false;
+		}
+
+		// THE SUB-TYPE CROSSED. Without this the three checks below could all
+		// pass on a game mode that was still carrying the last case's sub-type.
+		TestEqual(FString::Printf(TEXT("the %s dungeon's sub-type reached the "
+									   "rules"), Case.Name),
+				  static_cast<int32>(Mode->DungeonIdentity().SubType),
+				  static_cast<int32>(Case.SubType));
+
+		// AND THE FLOOR BEING STOOD ON IS THE ONE THE RULES DESCRIBE.
+		TestEqual(FString::Printf(TEXT("and the %s dungeon's floor 1 brief is "
+									   "the one the rules give"), Case.Name),
+				  KeysOf(Mode->FloorBrief),
+				  KeysOf(FCataclysmDungeonFloorRules::BriefFor(
+							 Mode->DungeonIdentity(), 1)));
+
+		TArray<FString> PerFloor;
+		TArray<bool> Bosses;
+		TArray<int32> Layouts;
+		for (int32 Floor = 1; Floor <= Floors; ++Floor)
+		{
+			Mode->GoToFloor(Floor);
+			PerFloor.Add(KeysOf(Mode->FloorBrief));
+			Bosses.Add(Mode->FloorBrief.bBossAtTheExit);
+			Layouts.Add(static_cast<int32>(Mode->FloorBrief.Layout));
+		}
+
+		int32 BossFloors = 0;
+		for (const bool bBoss : Bosses)
+		{
+			BossFloors += bBoss ? 1 : 0;
+		}
+
+		int32 ArenaFloors = 0;
+		for (const int32 Layout : Layouts)
+		{
+			ArenaFloors +=
+				(Layout == static_cast<int32>(ECataclysmFloorLayout::Arena))
+					? 1 : 0;
+		}
+
+		const int32 DistinctSets = TSet<FString>(PerFloor).Num();
+
+		AddInfo(FString::Printf(
+			TEXT("a %s dungeon of %d floors off the map: %d boss floors, %d "
+				 "Arena floors, %d different modifier sets"),
+			Case.Name, Floors, BossFloors, ArenaFloors, DistinctSets));
+
+		switch (Case.SubType)
+		{
+		case ECataclysmDungeonSubType::Horde:
+			TestEqual(TEXT("every floor of a Horde dungeon off the map is an "
+						   "Arena"), ArenaFloors, Floors);
+			TestEqual(TEXT("and it still has one boss, on its last floor"),
+					  BossFloors, 1);
+			break;
+
+		case ECataclysmDungeonSubType::Elite:
+			TestEqual(TEXT("every floor of an Elite dungeon off the map ends "
+						   "with a boss"), BossFloors, Floors);
+			break;
+
+		case ECataclysmDungeonSubType::Volatile:
+			TestTrue(FString::Printf(
+						 TEXT("a Volatile dungeon off the map carried %d "
+							  "different modifier sets over %d floors"),
+						 DistinctSets, Floors),
+					 DistinctSets > 1);
+			break;
+
+		default:
+			// **THE CONTROL, AND IT IS THE SAME DUNGEON ON THE SAME MAP.** One
+			// boss on the last floor, no Arena unless the setting says so, and
+			// one modifier set for the whole dungeon.
+			TestEqual(TEXT("a dungeon with no sub-type has one boss floor"),
+					  BossFloors, 1);
+			TestEqual(TEXT("and no floor is forced to an Arena"), ArenaFloors, 0);
+			TestEqual(TEXT("and every floor carries the same modifiers"),
+					  DistinctSets, 1);
+			break;
+		}
+
+		Mode->LeaveEmpireDungeon();
+	}
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The modifier this seam names is a real row of the real table
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefUnstableIsARowTest,
+	"Cataclysm.FloorBrief.TheModifierThatChangesAFloorIsARealRowOfTheTable",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefUnstableIsARowTest::RunTest(const FString& Parameters)
+{
+	// **A ROW KEY WRITTEN IN C++ IS A STRING UNTIL SOMETHING CHECKS IT.** If the
+	// design workbook is re-exported with this modifier renamed, every test in
+	// this file still passes -- they build their own pool -- and the rule
+	// quietly stops firing in the real game. This is what notices.
+	const TArray<FCataclysmDungeonModifier> Pool =
+		UCataclysmDungeonModifierTable::LoadPool();
+
+	if (!TestTrue(TEXT("the modifier table loaded"), Pool.Num() > 0))
+	{
+		return false;
+	}
+
+	bool bFound = false;
+	for (const FCataclysmDungeonModifier& Modifier : Pool)
+	{
+		if (Modifier.RowKey
+			== FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey))
+		{
+			bFound = true;
+
+			// AND IT IS A CHAOS MODIFIER, so a run not facing Chaos never sees
+			// it. That is what stops it being a rule on every dungeon.
+			TestEqual(TEXT("Unstable Dimensions belongs to Chaos"),
+					  static_cast<int32>(Modifier.Cataclysm),
+					  static_cast<int32>(ECataclysmType::Chaos));
+		}
+	}
+
+	TestTrue(FString::Printf(
+				 TEXT("%s is a row of the dungeon modifier table"),
+				 FCataclysmDungeonFloorRules::UnstableDimensionsKey),
+			 bFound);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Chaos_Reality_Twister. Issues #1820 and #41. Decided by the owner on 2026-09-26: "Each floor, one random dungeon
+// modifier from any Cataclysm is added, even one this dungeon could not otherwise draw. It is replaced on the next
+// floor."
+// ---------------------------------------------------------------------------
+
+namespace CataclysmFloorBriefTest
+{
+	/** The Reality Twister row, as a pool holds it. */
+	FCataclysmDungeonModifier TwisterRow()
+	{
+		return Make(FCataclysmDungeonFloorRules::RealityTwisterKey, ECataclysmType::Chaos, 20.0f);
+	}
+
+	/**
+	 * A tier 4 War dungeon carrying Reality Twister beside its own four, whose every built row is its own twenty War
+	 * rows, ten Chaos rows it could not otherwise draw, and the Reality Twister row itself.
+	 */
+	FCataclysmDungeonIdentity TwistedDungeon()
+	{
+		FCataclysmDungeonIdentity Out = Dungeon(ECataclysmDungeonSubType::None);
+		Out.Modifiers.Add(TwisterRow().RowKey);
+		Out.ModifierScore += TwisterRow().Danger;
+		Out.EveryBuiltModifier = Out.ModifierPool;
+		for (int32 Index = 0; Index < 10; ++Index)
+		{
+			Out.EveryBuiltModifier.Add(Make(*FString::Printf(TEXT("Chaos_Modifier_%02d"), Index),
+											ECataclysmType::Chaos, 100.0f + Index));
+		}
+		Out.EveryBuiltModifier.Add(TwisterRow());
+		return Out;
+	}
+
+	/** The row of this key among every built row, or null. */
+	const FCataclysmDungeonModifier* BuiltRowOf(const FCataclysmDungeonIdentity& Of, FName Key)
+	{
+		return Of.EveryBuiltModifier.FindByPredicate(
+			[Key](const FCataclysmDungeonModifier& Row) { return Row.RowKey == Key; });
+	}
+}
+
+// EVERY FLOOR GAINS ONE ROW, NEVER REALITY TWISTER AND NEVER ONE IN FORCE, SOMETIMES OF ANOTHER CATACLYSM, THE SAME ON
+// THE SAME FLOOR, DIFFERENT ACROSS FLOORS, AND ITS DANGER COUNTED.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefTwisterTest,
+	"Cataclysm.FloorBrief.RealityTwisterAddsOneRowOfAnyCataclysmToEachFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefTwisterTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	const FCataclysmDungeonIdentity Twisted = TwistedDungeon();
+	FCataclysmDungeonIdentity Plain = Dungeon(ECataclysmDungeonSubType::None);
+	Plain.EveryBuiltModifier = Twisted.EveryBuiltModifier;
+
+	TSet<FName> Drawn;
+	int32 FromAnotherCataclysm = 0;
+	for (int32 Floor = 1; Floor <= SweepFloors; ++Floor)
+	{
+		const FCataclysmFloorBrief Brief = FCataclysmDungeonFloorRules::BriefFor(Twisted, Floor);
+		if (!TestFalse(FString::Printf(TEXT("floor %d gained a row"), Floor), Brief.TwistedIn.IsNone()))
+		{
+			continue;
+		}
+		TestEqual(FString::Printf(TEXT("floor %d carries one more than the dungeon"), Floor),
+				  Brief.Modifiers.Num(), Twisted.Modifiers.Num() + 1);
+		TestTrue(FString::Printf(TEXT("floor %d carries the row"), Floor), Brief.Modifiers.Contains(Brief.TwistedIn));
+		TestNotEqual(FString::Printf(TEXT("floor %d did not draw Reality Twister"), Floor),
+					 Brief.TwistedIn, TwisterRow().RowKey);
+		TestFalse(FString::Printf(TEXT("floor %d drew no row the dungeon carries"), Floor),
+				  Twisted.Modifiers.Contains(Brief.TwistedIn));
+		const FCataclysmDungeonModifier* Row = BuiltRowOf(Twisted, Brief.TwistedIn);
+		if (TestNotNull(FString::Printf(TEXT("floor %d's row is a built row"), Floor), Row))
+		{
+			TestEqual(FString::Printf(TEXT("floor %d counts its danger"), Floor), Brief.ModifierScore,
+					  Twisted.ModifierScore + Row->Danger, 0.001f);
+			FromAnotherCataclysm += Row->Cataclysm != ECataclysmType::War ? 1 : 0;
+		}
+		TestEqual(FString::Printf(TEXT("floor %d draws the same row again"), Floor),
+				  FCataclysmDungeonFloorRules::BriefFor(Twisted, Floor).TwistedIn, Brief.TwistedIn);
+		Drawn.Add(Brief.TwistedIn);
+
+		// THE CONTROL: THE SAME DUNGEON WITHOUT THE ROW GAINS NOTHING.
+		const FCataclysmFloorBrief Untwisted = FCataclysmDungeonFloorRules::BriefFor(Plain, Floor);
+		TestTrue(FString::Printf(TEXT("without the row floor %d gains nothing"), Floor), Untwisted.TwistedIn.IsNone());
+		TestEqual(FString::Printf(TEXT("and carries what the dungeon drew on floor %d"), Floor),
+				  Untwisted.Modifiers.Num(), Plain.Modifiers.Num());
+	}
+	TestTrue(FString::Printf(TEXT("%d of %d floors drew a Chaos row, which this War dungeon could not otherwise draw"),
+							 FromAnotherCataclysm, SweepFloors),
+			 FromAnotherCataclysm > 0);
+	TestTrue(FString::Printf(TEXT("%d different rows over %d floors: replaced on the next floor"), Drawn.Num(), SweepFloors),
+			 Drawn.Num() > 1);
+	return true;
+}
+
+// ONLY WHAT IS NOT IN FORCE: WITH ONE ROW LEFT EVERY FLOOR DRAWS IT; WITH NONE LEFT A FLOOR GAINS NOTHING.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefTwisterLeftTest,
+	"Cataclysm.FloorBrief.RealityTwisterDrawsOnlyARowNotAlreadyInForce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefTwisterLeftTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// EVERY BUILT ROW IS ONE THE FLOOR CARRIES, BUT ONE.
+	FCataclysmDungeonIdentity OneLeft = TwistedDungeon();
+	OneLeft.EveryBuiltModifier.Reset();
+	for (const FName Key : OneLeft.Modifiers)
+	{
+		OneLeft.EveryBuiltModifier.Add(Make(*Key.ToString(), ECataclysmType::War, 1.0f));
+	}
+	const FCataclysmDungeonModifier Other = Make(TEXT("Void_The_Only_Other"), ECataclysmType::Void, 7.0f);
+	OneLeft.EveryBuiltModifier.Add(Other);
+
+	// AND EVERY BUILT ROW IS ONE THE FLOOR CARRIES.
+	FCataclysmDungeonIdentity NoneLeft = OneLeft;
+	NoneLeft.EveryBuiltModifier.Pop();
+
+	for (int32 Floor = 1; Floor <= SweepFloors; ++Floor)
+	{
+		TestEqual(FString::Printf(TEXT("floor %d draws the one row not in force"), Floor),
+				  FCataclysmDungeonFloorRules::BriefFor(OneLeft, Floor).TwistedIn, Other.RowKey);
+		const FCataclysmFloorBrief Brief = FCataclysmDungeonFloorRules::BriefFor(NoneLeft, Floor);
+		TestTrue(FString::Printf(TEXT("with none left floor %d gains nothing"), Floor), Brief.TwistedIn.IsNone());
+		TestEqual(FString::Printf(TEXT("and carries only the dungeon's own on floor %d"), Floor),
+				  Brief.Modifiers.Num(), NoneLeft.Modifiers.Num());
+	}
+	return true;
+}
+
+// ON A REAL FLOOR THE ROW IS IN FORCE, COUNTED, AND NAMED ON THE PANEL BY ITS NAME.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefTwisterPanelTest,
+	"Cataclysm.FloorBrief.AFloorCarryingRealityTwisterNamesTheRowItAdded",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefTwisterPanelTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	// SET ON THE GAME MODE DIRECTLY, as the Volatile test above does. The rows' names differ from their keys, so the
+	// panel is seen to use the name.
+	Mode->TotalFloors = 8;
+	Mode->DungeonModifiers = {TwisterRow().RowKey};
+	Mode->DungeonModifierScore = TwisterRow().Danger;
+	for (int32 Index = 0; Index < 3; ++Index)
+	{
+		FCataclysmDungeonModifier Row = Make(*FString::Printf(TEXT("Chaos_Test_Row_%d"), Index), ECataclysmType::Chaos,
+											 10.0f * (Index + 1));
+		Row.ModifierName = FName(*FString::Printf(TEXT("Test Row %d"), Index));
+		Mode->DungeonEveryBuiltModifier.Add(Row);
+	}
+
+	for (int32 Floor = 1; Floor <= 4; ++Floor)
+	{
+		if (!TestTrue(FString::Printf(TEXT("floor %d was built"), Floor), Mode->GoToFloor(Floor)))
+		{
+			return false;
+		}
+		const FName Added = Mode->FloorBrief.TwistedIn;
+		const FCataclysmDungeonModifier* Row = Mode->DungeonEveryBuiltModifier.FindByPredicate(
+			[Added](const FCataclysmDungeonModifier& One) { return One.RowKey == Added; });
+		if (!TestNotNull(FString::Printf(TEXT("floor %d added one of the rows"), Floor), Row))
+		{
+			continue;
+		}
+		TestTrue(FString::Printf(TEXT("floor %d has it in force"), Floor), Mode->FloorBrief.Modifiers.Contains(Added));
+		TestEqual(FString::Printf(TEXT("floor %d's creatures are worth its danger too"), Floor),
+				  Mode->RunModifierScore(), TwisterRow().Danger + Row->Danger, 0.001f);
+		TestEqual(FString::Printf(TEXT("floor %d's panel names it"), Floor),
+				  Mode->LiveCountsForTheFloor().FindRef(FName(FCataclysmDungeonFloorRules::RealityTwisterKey)),
+				  FString::Printf(TEXT("reality twister: %s added on this floor"), *Row->ModifierName.ToString()));
+	}
+	return true;
+}
+
+// ENTERING A DUNGEON CARRIES EVERY ROW THAT DOES SOMETHING, OF EVERY CATACLYSM, AND LEAVING EMPTIES IT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefTwisterPoolTest,
+	"Cataclysm.FloorBrief.EnteringADungeonCarriesEveryBuiltRowForRealityTwister",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefTwisterPoolTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	// THE REAL TABLE, as the test of the narrowed pool above uses.
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	Run->ModifierPool = UCataclysmDungeonModifierTable::LoadPool();
+	if (!TestTrue(TEXT("the modifier table loaded"), Run->ModifierPool.Num() > 0))
+	{
+		return false;
+	}
+	Run->Begin(/* Seed */ 1, ECataclysmSurgeMode::Static, /* LethalityRung */ 0, /* DifficultyTier */ 4);
+	Run->AdvanceDay();
+	if (!TestTrue(TEXT("the first surge put a dungeon on the map"), Run->Dungeons.Num() > 0))
+	{
+		return false;
+	}
+	Mode->SetEmpireRunForTests(Run);
+	if (!TestTrue(TEXT("the dungeon is entered"), Mode->EnterEmpireDungeon(Run->Dungeons[0].DungeonId)))
+	{
+		return false;
+	}
+
+	int32 Doing = 0;
+	for (const FCataclysmDungeonModifier& Row : Run->ModifierPool)
+	{
+		Doing += UCataclysmDungeonModifierEffects::BuiltStateOf(Row.RowKey) != ECataclysmModifierBuilt::NotBuilt ? 1 : 0;
+	}
+	// SET-UP, NOT THE CHECK: the table must still hold a row that does nothing, or "no row that does nothing" below
+	// could not fail whatever the filter did. The day every row is built, this says so instead of passing for no reason.
+	if (!TestTrue(FString::Printf(TEXT("the table holds a row that does nothing (%d of %d do something)"), Doing,
+									 Run->ModifierPool.Num()),
+				  Doing < Run->ModifierPool.Num()))
+	{
+		return false;
+	}
+	int32 DoingNothing = 0;
+	int32 NotFaced = 0;
+	for (const FCataclysmDungeonModifier& Row : Mode->DungeonEveryBuiltModifier)
+	{
+		DoingNothing += UCataclysmDungeonModifierEffects::BuiltStateOf(Row.RowKey) == ECataclysmModifierBuilt::NotBuilt ? 1 : 0;
+		NotFaced += Run->ActiveCataclysms.Contains(Row.Cataclysm) ? 0 : 1;
+	}
+	TestEqual(TEXT("every row that does something is carried"), Mode->DungeonEveryBuiltModifier.Num(), Doing);
+	TestEqual(TEXT("and no row that does nothing"), DoingNothing, 0);
+	TestTrue(FString::Printf(TEXT("%d of them are of a Cataclysm this run is not facing"), NotFaced), NotFaced > 0);
+
+	Mode->LeaveEmpireDungeon();
+	TestEqual(TEXT("leaving empties it"), Mode->DungeonEveryBuiltModifier.Num(), 0);
+	return true;
+}
+
+// THE REALITY IS DRAWN AFTER REALITY TWISTER. Corrected 2026-10-01; below the Reality Twister helpers it uses.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefUnstableTwistedTest,
+	"Cataclysm.FloorBrief.UnstableDimensionsAddedByRealityTwisterStillImposesAReality",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefUnstableTwistedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// REALITY TWISTER CAN DRAW ONLY UNSTABLE DIMENSIONS HERE: every other built row is already in force. Ruled
+	// 2026-10-01: the reality is drawn after Reality Twister, from the floor's final list, so this one works -- the
+	// reverse of the earlier judgement that an Unstable Dimensions Reality Twister draws "adds nothing on that floor",
+	// which held only while Unstable Dimensions added a dungeon row before Reality Twister drew.
+	FCataclysmDungeonIdentity Twisted = Dungeon(ECataclysmDungeonSubType::None);
+	Twisted.Modifiers.Add(TwisterRow().RowKey);
+	Twisted.ModifierScore += TwisterRow().Danger;
+	for (int32 Index = 0; Index < 4; ++Index)
+	{
+		Twisted.EveryBuiltModifier.Add(Twisted.ModifierPool[Index]);
+	}
+	Twisted.EveryBuiltModifier.Add(Make(FCataclysmDungeonFloorRules::UnstableDimensionsKey, ECataclysmType::Chaos, 10.0f));
+	Twisted.EveryBuiltModifier.Add(TwisterRow());
+
+	const FCataclysmFloorBrief First = FCataclysmDungeonFloorRules::BriefFor(Twisted, 1);
+	TestEqual(TEXT("floor 1 is twisted to Unstable Dimensions"), First.TwistedIn,
+			  FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey));
+	TestTrue(TEXT("but floor 1 has no reality"), First.EveryCreatureModifier.IsNone());
+
+	const FCataclysmFloorBrief Second = FCataclysmDungeonFloorRules::BriefFor(Twisted, 2);
+	TestEqual(TEXT("floor 2 is twisted to Unstable Dimensions"), Second.TwistedIn,
+			  FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey));
+	TestTrue(FString::Printf(TEXT("and it imposes a Generic reality (%s)"), *Second.EveryCreatureModifier.ToString()),
+			 Second.EveryCreatureModifier.ToString().StartsWith(TEXT("Generic_")));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The Ascendant's Edicts on its floors -- 2026-10-22
+// ---------------------------------------------------------------------------
+
+namespace CataclysmFloorBriefTest
+{
+	/** An Ascendant built by hand, its pool holding every Edict that is a row, at their table dangers. */
+	FCataclysmDungeonIdentity AnAscendant(int32 DungeonSeed = 7)
+	{
+		FCataclysmDungeonIdentity Out = Dungeon(ECataclysmDungeonSubType::Ascendant, DungeonSeed);
+		Out.ModifierPool.Add(Make(TEXT("Celestial_Edict_of_Silence"), ECataclysmType::Celestial, 20.0f));
+		Out.ModifierPool.Add(Make(TEXT("Celestial_Edict_of_Temperance"), ECataclysmType::Celestial, 20.0f));
+		Out.ModifierPool.Add(Make(TEXT("Celestial_Edict_of_Patience"), ECataclysmType::Celestial, 15.0f));
+		Out.ModifierPool.Add(Make(TEXT("Celestial_Edict_of_Stillness"), ECataclysmType::Celestial, 10.0f));
+		Out.ModifierPool.Add(Make(TEXT("Celestial_Edict_of_Abstinence"), ECataclysmType::Celestial, 15.0f));
+		Out.ModifierPool.Add(Make(TEXT("Celestial_Edict_of_Vigil"), ECataclysmType::Celestial, 15.0f));
+		Out.ModifierPool.Add(Make(TEXT("Celestial_Edict_of_Humility"), ECataclysmType::Celestial, 15.0f));
+		Out.ModifierPool.Add(Make(TEXT("Celestial_Forced_Tithes"), ECataclysmType::Celestial, 15.0f));
+		return Out;
+	}
+
+	/** What a list of Edicts adds to a floor's score at those dangers. */
+	float EdictDanger(const TArray<FName>& Edicts)
+	{
+		float Total = 0.0f;
+		for (const FName& Edict : Edicts)
+		{
+			const bool bTwenty = Edict == FName(TEXT("Celestial_Edict_of_Silence"))
+				|| Edict == FName(TEXT("Celestial_Edict_of_Temperance"));
+			Total += bTwenty ? 20.0f : Edict == FName(TEXT("Celestial_Edict_of_Stillness")) ? 10.0f : 15.0f;
+		}
+		return Total;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefAscendantEdictsTest,
+	"Cataclysm.FloorBrief.AnAscendantsFloorsCarryOneMoreEdictAFloorBeyondItsOwnModifiers",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefAscendantEdictsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	for (int32 Seed = 1; Seed <= 20; ++Seed)
+	{
+		const FCataclysmDungeonIdentity Ascendant = AnAscendant(Seed);
+		FCataclysmDungeonIdentity Plain = Ascendant;
+		Plain.SubType = ECataclysmDungeonSubType::None;
+
+		TArray<FName> Previous = Ascendant.Modifiers;
+		for (int32 Floor = 1; Floor <= 5; ++Floor)
+		{
+			const FCataclysmFloorBrief Brief = FCataclysmDungeonFloorRules::BriefFor(Ascendant, Floor);
+			const TArray<FName> Edicts =
+				UCataclysmDungeonModifierRules::EdictsOnFloor(Seed, Ascendant.Modifiers, Floor);
+
+			TArray<FName> Expected = Ascendant.Modifiers;
+			Expected.Append(Edicts);
+			TestTrue(FString::Printf(TEXT("seed %d floor %d carries its own and then its Edicts"), Seed, Floor),
+					 Brief.Modifiers == Expected);
+			TestEqual(FString::Printf(TEXT("seed %d floor %d: one Edict a floor, up to four"), Seed, Floor),
+					  Brief.Modifiers.Num(),
+					  Ascendant.Modifiers.Num()
+						  + FMath::Min3(Floor, UCataclysmDungeonModifierRules::AscendantMostEdicts,
+									   UCataclysmDungeonModifierRules::EdictKeys().Num()));
+			TestEqual(FString::Printf(TEXT("seed %d floor %d: their danger is added to the floor's score"), Seed,
+									  Floor),
+					  Brief.ModifierScore, Ascendant.ModifierScore + EdictDanger(Edicts), 0.001f);
+
+			bool bHoldsTheLast = Brief.Modifiers.Num() >= Previous.Num();
+			for (int32 Index = 0; bHoldsTheLast && Index < Previous.Num(); ++Index)
+			{
+				bHoldsTheLast = Brief.Modifiers[Index] == Previous[Index];
+			}
+			TestTrue(FString::Printf(TEXT("seed %d floor %d holds floor %d's"), Seed, Floor, Floor - 1),
+					 bHoldsTheLast);
+			Previous = Brief.Modifiers;
+
+			// THE CONTROL: THE SAME DUNGEON THAT IS NOT AN ASCENDANT CARRIES ITS OWN AND NOTHING MORE.
+			const FCataclysmFloorBrief PlainBrief = FCataclysmDungeonFloorRules::BriefFor(Plain, Floor);
+			TestTrue(FString::Printf(TEXT("CONTROL: seed %d floor %d of a plain dungeon carries its own"), Seed,
+									 Floor),
+					 PlainBrief.Modifiers == Plain.Modifiers);
+			TestEqual(FString::Printf(TEXT("CONTROL: seed %d floor %d of a plain dungeon scores its own"), Seed,
+									  Floor),
+					  PlainBrief.ModifierScore, Plain.ModifierScore, 0.001f);
+		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefAscendantAlreadyTest,
+	"Cataclysm.FloorBrief.AnAscendantPassesOverAnEdictAlreadyAmongItsModifiers",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefAscendantAlreadyTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	const FName Silence(TEXT("Celestial_Edict_of_Silence"));
+
+	FCataclysmDungeonIdentity Ascendant = AnAscendant(11);
+	Ascendant.Modifiers.Add(Silence);
+	Ascendant.ModifierScore += 20.0f;
+
+	for (int32 Floor = 1; Floor <= 5; ++Floor)
+	{
+		const FCataclysmFloorBrief Brief = FCataclysmDungeonFloorRules::BriefFor(Ascendant, Floor);
+		int32 Silences = 0;
+		for (const FName& Key : Brief.Modifiers)
+		{
+			Silences += Key == Silence ? 1 : 0;
+		}
+		const TArray<FName> Added = UCataclysmDungeonModifierRules::EdictsOnFloor(11, Ascendant.Modifiers, Floor);
+		TArray<FName> Expected = Ascendant.Modifiers;
+		Expected.Append(Added);
+		TestEqual(FString::Printf(TEXT("floor %d carries the Edict of Silence once"), Floor), Silences, 1);
+		TestTrue(FString::Printf(TEXT("floor %d adds the others, one a floor up to four"), Floor),
+				 Brief.Modifiers == Expected
+					 && Added.Num() == FMath::Min3(Floor, UCataclysmDungeonModifierRules::AscendantMostEdicts,
+												   UCataclysmDungeonModifierRules::EdictKeys().Num() - 1));
+		TestEqual(FString::Printf(TEXT("floor %d adds only their danger"), Floor), Brief.ModifierScore,
+				  Ascendant.ModifierScore + EdictDanger(Added), 0.001f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefAscendantSeedTest,
+	"Cataclysm.FloorBrief.AnAscendantsEdictsAreTheOnesTheEmpireDrawsForItsWalkEvenOnTheDarkFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefAscendantSeedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// THE DUNGEON ON THE MAP, AND THE SEED A WALK OF IT IS GIVEN.
+	int32 Differs = 0;
+	for (int32 DungeonId = 0; DungeonId < 40; ++DungeonId)
+	{
+		FCataclysmDungeon OnTheMap;
+		OnTheMap.DungeonId = DungeonId;
+		OnTheMap.Type = ECataclysmDungeonType::Quest;
+		OnTheMap.SubType = ECataclysmDungeonSubType::Ascendant;
+
+		FCataclysmDungeonIdentity Walked = AnAscendant(OnTheMap.WalkSeed());
+		OnTheMap.Modifiers = Walked.Modifiers;
+		const TArray<FName> TheEmpiresFour = UCataclysmDungeonModifierRules::EdictsOnFloor(
+			OnTheMap.WalkSeed(), OnTheMap.Modifiers, UCataclysmDungeonModifierRules::AscendantMostEdicts);
+
+		TArray<FName> Expected = Walked.Modifiers;
+		Expected.Append(TheEmpiresFour);
+		TestTrue(FString::Printf(TEXT("dungeon %d's fourth floor carries the Edicts the empire draws for it"),
+								 DungeonId),
+				 FCataclysmDungeonFloorRules::BriefFor(Walked, 4).Modifiers == Expected);
+
+		// ON THE DARK FLOOR THE FLOOR'S SEED IS ANOTHER; THE EDICTS' IS STILL THE DUNGEON'S.
+		FCataclysmDungeonIdentity Dark = Walked;
+		Dark.DungeonSeed = FCataclysmDungeonFloorRules::SeedOnTheDarkFloor(OnTheMap.WalkSeed());
+		Dark.EdictSeed = OnTheMap.WalkSeed();
+		Dark.bTheDarkFloor = true;
+		TestTrue(FString::Printf(TEXT("dungeon %d's dark floor carries the same Edicts"), DungeonId),
+				 FCataclysmDungeonFloorRules::BriefFor(Dark, 4).Modifiers == Expected);
+
+		// THE CONTROL: DRAWN ON THE DARK FLOOR'S SEED, THEY ARE SOMETIMES OTHERS.
+		Dark.EdictSeed = 0;
+		const TArray<FName> FirstOnTheFloorsSeed = FCataclysmDungeonFloorRules::BriefFor(Dark, 1).Modifiers;
+		const TArray<FName> FirstOnTheDungeons = FCataclysmDungeonFloorRules::BriefFor(Walked, 1).Modifiers;
+		Differs += FirstOnTheFloorsSeed != FirstOnTheDungeons ? 1 : 0;
+	}
+	TestTrue(TEXT("CONTROL: on the floor's own seed some first Edicts differ, so the seed is what decides"),
+			 Differs > 0);
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// Fallen City: "multiple boss fights", spread evenly. Issue #1466.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefFallenCityBossesTest,
+	"Cataclysm.FloorBrief.AFallenCitySpreadsItsBossesEvenlyDownItsFloors",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefFallenCityBossesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmFloorBriefTest;
+
+	// ISSUE #1466, THE OWNER'S ANSWER OF 2026-10-29: "Spread evenly". Boss i of B
+	// stands at the exit of floor ceil(i x floors / B), at most one on a floor.
+	const auto BossFloors = [](const FCataclysmDungeonIdentity& Dungeon)
+	{
+		FString Floors;
+		for (int32 Floor = 1; Floor <= Dungeon.TotalFloors; ++Floor)
+		{
+			if (FCataclysmDungeonFloorRules::BriefFor(Dungeon, Floor).bBossAtTheExit)
+			{
+				Floors += Floors.IsEmpty() ? FString::FromInt(Floor) : FString::Printf(TEXT(",%d"), Floor);
+			}
+		}
+		return Floors;
+	};
+	const auto WithBosses = [](ECataclysmDungeonSubType SubType, int32 Bosses)
+	{
+		FCataclysmDungeonIdentity Out = Dungeon(SubType);
+		Out.Bosses = Bosses;
+		return Out;
+	};
+
+	const FString Five = BossFloors(WithBosses(ECataclysmDungeonSubType::None, 5));
+	const FString Three = BossFloors(WithBosses(ECataclysmDungeonSubType::None, 3));
+	const FString Twenty = BossFloors(WithBosses(ECataclysmDungeonSubType::None, 20));
+	const FString Thirty = BossFloors(WithBosses(ECataclysmDungeonSubType::None, 30));
+	const FString One = BossFloors(WithBosses(ECataclysmDungeonSubType::None, 1));
+	const FString EliteOne = BossFloors(WithBosses(ECataclysmDungeonSubType::Elite, 1));
+	const FString EliteFive = BossFloors(WithBosses(ECataclysmDungeonSubType::Elite, 5));
+	FString EveryFloor;
+	for (int32 Floor = 1; Floor <= SweepFloors; ++Floor)
+	{
+		EveryFloor += EveryFloor.IsEmpty() ? FString::FromInt(Floor) : FString::Printf(TEXT(",%d"), Floor);
+	}
+	AddInfo(FString::Printf(TEXT("FALLEN CITY BOSSES: of 20 floors, 5 bosses on %s; 3 on %s; 1 on %s; Elite with 1 on %s"),
+							*Five, *Three, *One, *EliteOne));
+
+	TestEqual(TEXT("five bosses of twenty floors stand on floors 4, 8, 12, 16 and 20"), Five, FString(TEXT("4,8,12,16,20")));
+	TestEqual(TEXT("three stand on floors 7, 14 and 20"), Three, FString(TEXT("7,14,20")));
+	TestEqual(TEXT("twenty stand one on every floor"), Twenty, EveryFloor);
+	TestEqual(TEXT("and thirty are held to one on every floor"), Thirty, EveryFloor);
+
+	// THE CONTROL: A DUNGEON WITH ONE BOSS, WHICH IS EVERY DUNGEON BUT A FALLEN CITY, IS UNCHANGED. A Basic dungeon
+	// has its boss on its last floor alone, and an Elite one on every floor, whatever the count.
+	TestEqual(TEXT("CONTROL: a dungeon with one boss has it on its last floor alone"), One, FString(TEXT("20")));
+	TestEqual(TEXT("CONTROL: an Elite dungeon has one on every floor"), EliteOne, EveryFloor);
+	TestEqual(TEXT("CONTROL: and an Elite Fallen City still one on every floor, no more"), EliteFive, EveryFloor);
+
+	// AND NONE ON THE DARK FLOOR, whatever floor's number it carries.
+	FCataclysmDungeonIdentity Dark = WithBosses(ECataclysmDungeonSubType::None, 5);
+	Dark.bTheDarkFloor = true;
+	TestFalse(TEXT("the dark floor carrying floor 4's number has no boss"),
+			  FCataclysmDungeonFloorRules::BriefFor(Dark, 4).bBossAtTheExit);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorBriefEnteringCarriesTheBossesTest,
+	"Cataclysm.FloorBrief.EnteringADungeonCarriesHowManyBossesItHolds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorBriefEnteringCarriesTheBossesTest::RunTest(const FString& Parameters)
+{
+	// ISSUE #1466. The count lived on the empire's dungeon and nothing carried it onto the game mode, so the rule
+	// above could never see it. Entering a dungeon holding four bosses carries four; leaving puts it back to one.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	Run->ModifierPool = UCataclysmDungeonModifierTable::LoadPool();
+	Run->Begin(/* Seed */ 1, ECataclysmSurgeMode::Static, /* LethalityRung */ 0, /* DifficultyTier */ 4);
+	Run->AdvanceDay();
+	if (!TestTrue(TEXT("set-up: the first surge put a dungeon on the map"), Run->Dungeons.Num() > 0))
+	{
+		return false;
+	}
+
+	// FOUR BOSSES, AS A FALLEN CITY THAT FELL HOLDING FOUR DUNGEONS WOULD HAVE, on a dungeon deep enough for them.
+	Run->Dungeons[0].Bosses = 4;
+	Run->Dungeons[0].Floors = FMath::Max(Run->Dungeons[0].Floors, 8);
+	Mode->SetEmpireRunForTests(Run);
+
+	const int32 Before = Mode->DungeonIdentity().Bosses;
+	if (!TestTrue(TEXT("set-up: the dungeon is entered"), Mode->EnterEmpireDungeon(Run->Dungeons[0].DungeonId)))
+	{
+		return false;
+	}
+	const int32 Inside = Mode->DungeonIdentity().Bosses;
+	Mode->LeaveEmpireDungeon();
+	const int32 After = Mode->DungeonIdentity().Bosses;
+
+	AddInfo(FString::Printf(TEXT("ENTERED BOSSES: %d before entering, %d inside, %d after leaving"), Before, Inside, After));
+	TestEqual(TEXT("CONTROL: before entering the game mode holds one boss"), Before, 1);
+	TestEqual(TEXT("entering a dungeon holding four bosses carries four"), Inside, 4);
+	TestEqual(TEXT("and leaving puts it back to one"), After, 1);
+	return true;
+}
+
+#endif // WITH_AUTOMATION_TESTS

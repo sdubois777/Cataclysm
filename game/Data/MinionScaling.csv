@@ -1,0 +1,3 @@
+Name,Attribute,RequiresTag,Stat,PercentPerPoint
+spirit_Minion_Creature_damage,spirit,Minion.Creature,damage,1.0
+agility_Minion_Machine_damage,agility,Minion.Machine,damage,1.0

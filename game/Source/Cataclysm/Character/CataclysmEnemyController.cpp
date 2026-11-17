@@ -1,0 +1,1925 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "Character/CataclysmEnemyController.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+// For announcing a creature's ability as a skill used. Issue #41, slice 4.
+#include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmCommand.h"
+#include "AbilitySystem/CataclysmFear.h"
+#include "AbilitySystem/CataclysmSilence.h"
+// For the target a gadget takes when its summoner's row says the most health. Ruled 2026-10-13.
+#include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmTargeting.h"
+// For the creature a taunt sends this one at. Warlord's Will's six-piece, ruled 2026-10-17 and 2026-10-18.
+#include "AbilitySystem/CataclysmTaunt.h"
+#include "AbilitySystem/CataclysmTeams.h"
+#include "AbilitySystem/CataclysmTelegraphMarker.h"
+#include "Character/CataclysmCharacterBase.h"
+// The charge lives on the enemy subclass rather than the shared base, so the
+// brain has to know about it to ask whether one is running. Issue #499.
+#include "Character/CataclysmEnemyCharacter.h"
+// The player's body, which every melee reach is designed against. Issue #2706.
+#include "Character/CataclysmPlayerCharacter.h"
+#include "Character/CataclysmTargetCandidates.h"
+#include "Dungeon/CataclysmDungeonModifierEffects.h"
+#include "Items/CataclysmDroppedItem.h"
+#include "Components/CapsuleComponent.h"
+#include "Engine/World.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "NavigationSystem.h"
+// The crowd every creature walks in, and the manager that simulates it. Issue #761.
+#include "Navigation/CrowdFollowingComponent.h"
+#include "Navigation/CrowdManager.h"
+#include "Navigation/PathFollowingComponent.h"
+#include "Cataclysm.h"
+#include "TimerManager.h"
+#include "Save/CataclysmSaveWriter.h"
+#include "ProfilingDebugging/CsvProfiler.h"
+
+// WHAT A CSV PROFILE CAPTURE RECORDS OF THE THINKING. Issue #1543. The capture of
+// the project owner's Horde session showed a wave's thinking landing in one
+// frame, and could not show what inside a pass cost the time, because nothing
+// here was named to the profiler. Four figures are now:
+// `CataclysmAI/ThinkPasses`, how many passes the timer ran in a frame;
+// `CataclysmAI/Think`, how long all the passes in that frame took together,
+// which a capture writes as `CataclysmAI/GameThread/Think`;
+// `Exclusive/GameThread/EnemyTargetSearch`, how much of that was the search for
+// the nearest target; and `CataclysmAI/TargetListRebuilds`, how many times that
+// search's lists were rebuilt in the frame, recorded in
+// CataclysmTargetCandidates.cpp for issue #1547. Nothing is recorded unless a
+// capture is running, and a build without the profiler compiles them out.
+CSV_DEFINE_CATEGORY(CataclysmAI, true);
+
+namespace
+{
+	/**
+	 * How many times any enemy controller has taken over a pawn in this process.
+	 * Each possession takes the next count, and the count is what spreads first
+	 * thinking passes across the interval. See `FirstThinkDelaySeconds` in the
+	 * header.
+	 *
+	 * NAMED FOR THIS FILE, because Unreal compiles a module's `.cpp` files
+	 * together and two file-scope names that match would collide.
+	 *
+	 * WRAPPING IS HARMLESS. It is unsigned, so after 4294967295 it goes back to
+	 * 0, and the spread holds from any count.
+	 */
+	uint32 GCataclysmEnemyControllerPossessions = 0;
+}
+
+// A DETOUR CROWD AGENT RATHER THAN A PLAIN PATH FOLLOWER. Issue #761; see the
+// header for the design's sentence and for the subobject's name.
+ACataclysmEnemyController::ACataclysmEnemyController(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer.SetDefaultSubobjectClass<UCrowdFollowingComponent>(
+		TEXT("PathFollowingComponent")))
+{
+	// Nothing to do per frame. Think() runs on a timer; see the class comment.
+	PrimaryActorTick.bCanEverTick = false;
+
+	// A monster turns to face where it is walking, like the player character
+	// does. Without this the pawn slides sideways while facing its old
+	// direction, which reads as the movement not working.
+	bSetControlRotationFromPawnOrientation = false;
+}
+
+ACataclysmCharacterBase* ACataclysmEnemyController::Body() const
+{
+	return Cast<ACataclysmCharacterBase>(GetPawn());
+}
+
+void ACataclysmEnemyController::OnPossess(APawn* InPawn)
+{
+	Super::OnPossess(InPawn);
+
+	// WHERE IT STARTED, RECORDED ONCE. Roaming is a circle around this, so a
+	// character left alone wanders around where it was put rather than
+	// random-walking across the level. Taken here rather than at the first roam
+	// because by then it may have chased something a long way, and "where it
+	// started" would silently come to mean "where it gave up".
+	if (InPawn)
+	{
+		RoamAnchor = InPawn->GetActorLocation();
+		bHasRoamAnchor = true;
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		// STAGGERED RATHER THAN ONE INTERVAL FOR EVERYONE. Issue #1543. See
+		// `FirstThinkDelaySeconds` in the header for what the old delay did to a
+		// Horde wave, and why the spread is a golden-ratio sequence rather than a
+		// random draw.
+		World->GetTimerManager().SetTimer(
+			ThinkTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
+			{
+				// COUNTED IN A CSV PROFILE CAPTURE as `CataclysmAI/ThinkPasses`,
+				// the number of passes the timer ran in each frame. It is what
+				// shows whether a wave still thinks all in one frame. Nothing
+				// is recorded unless a capture is running.
+				CSV_CUSTOM_STAT(CataclysmAI, ThinkPasses, 1,
+								ECsvCustomStatOp::Accumulate);
+				Think();
+			}),
+			ThinkIntervalSeconds, /*bLoop=*/true,
+			/*InFirstDelay=*/FirstThinkDelaySeconds(
+				GCataclysmEnemyControllerPossessions++));
+	}
+
+	// AFTER `Super::OnPossess`, WHICH IS WHERE THE CROWD IS JOINED:
+	// `AAIController::OnPossess` calls `PathFollowingComponent->Initialize()`.
+	LeaveTheCrowdIfItWasNotTakenIn();
+}
+
+void ACataclysmEnemyController::LeaveTheCrowdIfItWasNotTakenIn()
+{
+	UCrowdFollowingComponent* Crowd = Cast<UCrowdFollowingComponent>(GetPathFollowingComponent());
+	if (!Crowd || !Crowd->IsCrowdSimulationEnabled())
+	{
+		return;
+	}
+
+	// NO MANAGER, NOTHING TO DO. A world without a navigation system has none, and
+	// the component has already set itself to `Disabled` there.
+	UCrowdManager* Manager = UCrowdManager::GetCurrent(GetWorld());
+	if (!Manager)
+	{
+		return;
+	}
+
+	// TAKEN IN MEANS GIVEN A SLOT IN THE DETOUR CROWD, which is what
+	// `UCrowdManager::IsAgentValid` answers. A registered agent without one is
+	// never moved: the manager applies the crowd's velocity only to agents it
+	// holds, and a crowd-mode component asks nothing else to move it.
+	if (Manager->IsAgentValid(Crowd))
+	{
+		return;
+	}
+
+	// SAID IN THE LOG, because a creature that walks without avoiding the others
+	// looks exactly like one whose crowd is working badly.
+	UE_LOG(LogCataclysm, Warning,
+		TEXT("%s was not taken into the crowd (%s), so it walks without crowd "
+			 "avoidance. Issue #761."),
+		*GetNameSafe(GetPawn()),
+		Manager->GetNavData()
+			? TEXT("the crowd is full: see MaxAgents in game/Config/DefaultEngine.ini")
+			: TEXT("there is no navigation mesh for the crowd to walk on"));
+
+	// `SetCrowdSimulationState` REFUSES UNLESS PATH FOLLOWING IS IDLE, which it
+	// is on possession: no walk has been ordered yet, because `Think` first runs
+	// from the timer set above. Taking it out of crowd mode also unregisters it.
+	Crowd->SetCrowdSimulationState(ECrowdSimulationState::Disabled);
+}
+
+void ACataclysmEnemyController::LeaveTheCrowdAtDeath()
+{
+	// NOT IN CROWD MODE, NOTHING TO LEAVE: a world with no crowd manager, where
+	// the component switched itself off, or a body the crowd never took in,
+	// which `LeaveTheCrowdIfItWasNotTakenIn` already took out.
+	UCrowdFollowingComponent* Crowd = Cast<UCrowdFollowingComponent>(GetPathFollowingComponent());
+	if (!Crowd || Crowd->GetCrowdSimulationState() == ECrowdSimulationState::Disabled)
+	{
+		return;
+	}
+
+	// THE WALK FIRST, because `SetCrowdSimulationState` refuses while path
+	// following is anything but idle, and a creature can die mid-stride.
+	// `AbortMove` resets the component to idle before it returns.
+	StopMovement();
+
+	// AND OUT OF THE CROWD, the same call `LeaveTheCrowdIfItWasNotTakenIn` makes:
+	// it unregisters the agent from the manager and frees its Detour slot.
+	Crowd->SetCrowdSimulationState(ECrowdSimulationState::Disabled);
+}
+
+bool ACataclysmEnemyController::IsDrivenByACrowdAgent(const AActor* Actor)
+{
+	// NAMED SO AS TO HIDE NOTHING: `Body` is a member function of this class, and
+	// a local that hides a member draws the compiler's shadow-variable warning.
+	const APawn* ItsPawn = Cast<APawn>(Actor);
+	const AAIController* ItsDriver = ItsPawn ? Cast<AAIController>(ItsPawn->GetController()) : nullptr;
+	return ItsDriver && Cast<UCrowdFollowingComponent>(ItsDriver->GetPathFollowingComponent()) != nullptr;
+}
+
+FPathFollowingRequestResult ACataclysmEnemyController::MoveTo(const FAIMoveRequest& MoveRequest,
+															  FNavPathSharedPtr* OutPath)
+{
+	// STEERING OFF FOR A WALK AT ANOTHER CROWD MEMBER, ON FOR EVERY OTHER WALK.
+	// Issue #761; the header says why. `GetGoalActor` answers null for a walk to
+	// a point, so a point is steered for.
+	if (UCrowdFollowingComponent* Crowd = Cast<UCrowdFollowingComponent>(GetPathFollowingComponent()))
+	{
+		Crowd->SuspendCrowdSteering(IsDrivenByACrowdAgent(MoveRequest.GetGoalActor()));
+	}
+
+	return Super::MoveTo(MoveRequest, OutPath);
+}
+
+float ACataclysmEnemyController::FirstThinkDelaySeconds(uint32 PossessionsBefore)
+{
+	// FIBONACCI HASHING. 2654435769 is 2 to the 32nd divided by the golden
+	// ratio. The multiplication wraps at 2 to the 32nd, so the product divided
+	// by 2 to the 32nd is the fractional part of PossessionsBefore times
+	// 0.6180339887..., worked out exactly in whole numbers.
+	const uint32 Spread = PossessionsBefore * 2654435769u;
+	const double Fraction = static_cast<double>(Spread) / 4294967296.0;
+
+	// ONE MINUS IT, so the delay is never zero and a count of zero gets the
+	// whole interval, which is the delay every creature had before issue #1543.
+	return ThinkIntervalSeconds * static_cast<float>(1.0 - Fraction);
+}
+
+float ACataclysmEnemyController::SecondsUntilNextThink() const
+{
+	const UWorld* World = GetWorld();
+	return World ? World->GetTimerManager().GetTimerRemaining(ThinkTimer) : -1.0f;
+}
+
+float ACataclysmEnemyController::SecondsBetweenThinks() const
+{
+	const UWorld* World = GetWorld();
+	return World ? World->GetTimerManager().GetTimerRate(ThinkTimer) : -1.0f;
+}
+
+void ACataclysmEnemyController::OnUnPossess()
+{
+	// The pawn is going away. Without clearing this the timer keeps firing on a
+	// controller with nothing to drive, and Think() does its sphere overlap for
+	// a pawn that no longer exists.
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(ThinkTimer);
+	}
+
+	CurrentTarget = nullptr;
+	LastAction = ECataclysmBrainAction::Idle;
+
+	// The anchor and the roam target belong to the pawn that is leaving. A
+	// controller that possesses a second pawn without clearing them would walk
+	// it to a point chosen for the first one, from an anchor somewhere else
+	// entirely.
+	bHasRoamAnchor = false;
+	bHasRoamTarget = false;
+	RoamPauseUntil = 0.0f;
+
+	// A wind-up belongs to the pawn that started it. Left set, a controller
+	// that possessed a second pawn would land the first one's attack.
+	WindingUpAbility = INDEX_NONE;
+	WindUpPassesLeft = 0;
+	AbilityLastUsedAt.Reset();
+
+	// AND SO DOES ITS MARKER. A creature killed part way through a stomp is the
+	// ordinary case here, and its circle has to go with it rather than stay on
+	// the floor warning about an attack that will never arrive.
+	DismissWindUpMarker();
+
+	Super::OnUnPossess();
+}
+
+void ACataclysmEnemyController::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(ThinkTimer);
+	}
+
+	DismissWindUpMarker();
+
+	Super::EndPlay(EndPlayReason);
+}
+
+AActor* ACataclysmEnemyController::ChooseTarget() const
+{
+	const ACataclysmCharacterBase* Driven = Body();
+	if (!Driven)
+	{
+		return nullptr;
+	}
+
+	// A TAUNTED CREATURE TARGETS ONLY ITS TAUNTER, FOR THE TAUNT'S SECONDS, AND IT IS ASKED FIRST FOR THAT REASON.
+	// Ruled 2026-10-17 by the project owner (#6) for Warlord's Will's six-piece, and 2026-10-18 (Q1): "the taunted
+	// enemy targets only its taunter for the taunt's seconds, and the taunt ends at once if the taunter dies or goes".
+	// WHEREVER THE TAUNTER STANDS, as an order is obeyed below, and before the order, the gadget's choice and the draw
+	// of Behind the Veil, each of which a taunt outranks. `UCataclysmTaunt::TaunterOf` answers null for every creature
+	// nothing taunts, and for one whose taunt has ended, and the lines below then run exactly as before.
+	if (AActor* Taunter = UCataclysmTaunt::TaunterOf(Driven))
+	{
+		return Taunter;
+	}
+
+	// AN ORDER OUTRANKS WHATEVER IS NEAREST, AND IT IS ASKED FIRST FOR THAT
+	// REASON. The Staff's Quarry: "mark an enemy as your quarry for 12 seconds.
+	// Everything you command breaks off and attacks it." "Breaks off" is the
+	// whole value of the skill -- it is how a Ritualist aims an army that
+	// otherwise fights whatever wandered closest -- so it has to beat the search
+	// below rather than be considered alongside it.
+	//
+	// IT IGNORES SIGHT DELIBERATELY. A creature is told what to attack by its
+	// commander, not by what it can see, and Compel beside it is explicit that
+	// distance is not the player's problem: "wherever it happens to be standing".
+	// A mark that only worked on what a minion had already noticed would order
+	// nothing that was not already being fought.
+	//
+	// NOTHING HERE IS SPECIFIC TO A MINION. A subjugated enemy is driven by this
+	// same controller and takes the same orders, which is what makes a thrall
+	// part of the army rather than a creature that happens to be friendly.
+	if (AActor* Ordered = UCataclysmCommand::OrderedTargetFor(Driven))
+	{
+		return Ordered;
+	}
+
+	// AND A GADGET WHOSE SUMMONER'S ROW SAYS SO TAKES THE ENEMY WITH THE MOST HEALTH WITHIN ITS REACH. Ruled
+	// 2026-10-13 by the coordinating session under the owner's delegation, for "Your gadgets prioritize the highest
+	// HP enemy within their range instead of the nearest".
+	//
+	// AFTER THE ORDER ABOVE AND BEFORE THE SEARCH BELOW, as ruled: a Quarry mark still comes first, and with
+	// nothing within its reach the gadget does what it did before.
+	//
+	// NOTHING ELSE THIS CONTROLLER DRIVES IS CHANGED. A monster is not a minion, so the cast answers null. An imp,
+	// a mote, a Spike Trap and a gadget whose summoner holds no such row are answered null by
+	// `ACataclysmMinion::MostHealthWithinReach`, and each falls through to the lines below exactly as before.
+	//
+	// IT RETURNS HERE, AS THE ORDER DOES, and so does not pass through the draw below. That draw sends a creature
+	// to a minion of the character it would attack, where that character holds Behind the Veil; an enemy holds no
+	// passive tree, so for a player's gadget it answers null.
+	if (const ACataclysmMinion* Gadget = Cast<ACataclysmMinion>(Driven))
+	{
+		if (AActor* Healthiest = Gadget->MostHealthWithinReach())
+		{
+			return Healthiest;
+		}
+
+		// AND THEN A MINION WHOSE TYPE ROW SAYS `Furthest` TAKES THE FURTHEST ENEMY WITHIN ITS REACH: the Ballista,
+		// which "fires massive bolts at the furthest enemy within 15 meters". Issues #2397 and #1712, ruled 2026-10-26
+		// and 2026-10-27 by the coordinating session: after the taunt, the order and the row above, before the search
+		// below. MEASURED ON `HostilesWithinReach` AND NOT ON THE SEARCH'S CANDIDATES, which admit a body whose capsule
+		// only reaches in; `ACataclysmMinion::FurthestWithinReach` says why. Every other minion is answered null, and
+		// so is a Ballista with nothing within its reach; each falls through to the search exactly as before. It
+		// returns here, as the row above does.
+		if (AActor* FurthestInReach = Gadget->FurthestWithinReach())
+		{
+			return FurthestInReach;
+		}
+	}
+
+	// `NoticesFromCm` AND NOT `SightRadiusCm`, so the floor the creature is
+	// standing on can widen what it notices. A Horde dungeon's arena is up to
+	// 271 metres corner to corner and the creatures in it notice from 10, so
+	// without this the wave that is meant to rush the player would stand where
+	// it spawned until the player walked up to it.
+	const float Sight = Driven->NoticesFromCm();
+	if (Sight <= 0.0f)
+	{
+		return nullptr;
+	}
+
+	// NEAREST FIRST, ONE RESULT, FROM LISTS OF THE CHARACTERS IT COULD ATTACK.
+	// Issue #1547. This used to ask `FindEnemiesInSphere`, a physics sphere that
+	// in a Horde arena covers the whole arena and returned every creature in it,
+	// and the owner's capture of 2026-09-10 measured that at 94% of the time
+	// spent thinking. `UCataclysmTargetCandidates` says what it does instead, and
+	// the few cases in which its answer can differ from the sphere's.
+	//
+	// TIMED ON ITS OWN IN A CSV PROFILE CAPTURE, as
+	// `Exclusive/GameThread/EnemyTargetSearch`, the figure the sphere was measured
+	// by, so captures from before and after the change compare directly.
+	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(EnemyTargetSearch);
+	AActor* Nearest = nullptr;
+	if (UCataclysmTargetCandidates* Candidates = UCataclysmTargetCandidates::In(GetWorld()))
+	{
+		Nearest = Candidates->NearestHostile(Driven, Driven->GetActorLocation(), Sight);
+	}
+	else
+	{
+		// A WORLD WITH NO SUBSYSTEMS -- a preview, never the game or a test's world --
+		// asks the sphere, which answers nearly the same question more slowly.
+		//
+		// NEARLY: IT DOES NOT PASS OVER A MINION WHOSE ROW STATES A THREAT OF NOUGHT,
+		// which `NearestHostile` does since the owner's decision of 2026-11-01 (issue
+		// #2553). Left so deliberately: no test's world reaches this route, so a
+		// filter here could not be shown to work, and a preview is not play.
+		const TArray<AActor*> Nearby = UCataclysmTargeting::FindEnemiesInSphere(
+			GetWorld(), Driven, Driven->GetActorLocation(), Sight, /*MaxTargets=*/1);
+
+		Nearest = Nearby.IsEmpty() ? nullptr : Nearby[0];
+	}
+
+	// AND A MINION MAY DRAW THIS CREATURE OFF WHAT IT FOUND. Behind the Veil:
+	// "Enemies within 10 metres attack your minions rather than you, while you
+	// have three or more minions." Issue #1515.
+	//
+	// AFTER THE SEARCH AND NOT INSTEAD OF IT, because the keystone redirects a
+	// creature that would attack the character; one that found nobody, or found
+	// somebody else, is left alone. `MinionDrawingEnemyFrom` answers null for
+	// every character without the node, which is all of them but a Ritualist's.
+	//
+	// ON BOTH ROUTES ABOVE, so a world with no subsystems behaves the same way.
+	if (AActor* Drawn = UCataclysmCommand::MinionDrawingEnemyFrom(Nearest, Driven))
+	{
+		return Drawn;
+	}
+
+	return Nearest;
+}
+
+ECataclysmBrainAction ACataclysmEnemyController::Think()
+{
+	// EVERY PASS IN A FRAME, TOGETHER, in a CSV profile capture, as
+	// `CataclysmAI/Think`. See the category at the top of this file.
+	CSV_SCOPED_TIMING_STAT(CataclysmAI, Think);
+
+	ACataclysmCharacterBase* Driven = Body();
+	if (!Driven)
+	{
+		LastAction = ECataclysmBrainAction::Idle;
+		CurrentTarget = nullptr;
+		return LastAction;
+	}
+
+	// DEATH OUTRANKS EVERYTHING, INCLUDING A STUN. A dead creature does nothing
+	// at all: it does not chase, does not swing, and does not finish a wind-up it
+	// had committed to. Checked before the stun below, because being stunned is a
+	// state a creature comes back from and being dead is not, and because
+	// ACataclysmEnemyCharacter::HandleDeath has already stopped its movement -- a
+	// pass that then asked it to chase would be arguing with that.
+	//
+	// IT IS ONLY BRIEFLY TRUE. The creature is destroyed on the next tick, so
+	// this catches the passes between the killing blow and its removal. Before
+	// issue #517 there were no such passes, because nothing ever died.
+	if (UCataclysmSkillEffects::IsDead(Driven))
+	{
+		WindingUpAbility = INDEX_NONE;
+		WindUpPassesLeft = 0;
+		CurrentTarget = nullptr;
+		LastAction = ECataclysmBrainAction::Idle;
+		return LastAction;
+	}
+
+	// A STUN OUTRANKS EVEN A COMMITTED WIND-UP, and it is the only thing that
+	// does. The design says a stunned target cannot act at all, and the wind-up
+	// rules say interrupting one cancels it -- the rule ECataclysmBrainAction
+	// records as the one nothing could satisfy, because nothing could interrupt.
+	//
+	// THE WIND-UP IS ABANDONED RATHER THAN PAUSED. Left set, WindUpLandsAt would
+	// still hold a deadline in the past by the time the stun wore off, so the
+	// first pass afterwards would land a stomp the player had already survived
+	// the telegraph of. Clearing it means an interrupted attack simply did not
+	// happen.
+	//
+	// IT IS NOT PUT ON COOLDOWN EITHER. AbilityLastUsedAt is stamped when an
+	// ability LANDS, in ContinueWindUp, so an attack that was interrupted before
+	// it landed was never spent and is available again. That is what makes
+	// interrupting worth doing to the enemy rather than to the player.
+	//
+	// A KNOCKDOWN IS THE SAME HARD STOP AND TAKES THE SAME BRANCH, which is why
+	// this asks `CannotAct` rather than `IsStunned`. Section VI of the design
+	// document puts the two in one row of its table -- a knocked-down target
+	// "cannot act at all; it is simply on the floor while it happens" -- so
+	// everything below applies to it word for word: the wind-up is abandoned,
+	// the charge stops, the marker goes and the creature does not move.
+	//
+	// THE BRAIN STILL RECORDS IT AS `Stunned`, because ECataclysmBrainAction
+	// names what the creature is doing and the answer for both is "not acting at
+	// all until it wears off". A second enum value would be two names for one
+	// behaviour, and every test and log line reading the first would have to
+	// learn about the second.
+	if (UCataclysmSkillEffects::CannotAct(Driven))
+	{
+		WindingUpAbility = INDEX_NONE;
+		WindUpPassesLeft = 0;
+
+		// AND A CHARGE ALREADY IN FLIGHT STOPS TOO. Issue #499. A stunned
+		// creature "cannot act at all" by the design's own words, and one that
+		// kept travelling would be acting.
+		//
+		// THE COMMITMENT RULE DOES NOT PROTECT IT, which is worth saying because
+		// it reads as though it might. That rule says a charge runs its full
+		// distance whether or not the TARGET is still there -- it is what stops
+		// the attack tracking the player -- and it says nothing about crowd
+		// control. Reading it the other way would make a charge the one attack
+		// in the game that interrupting cannot answer.
+		if (ACataclysmEnemyCharacter* Charger =
+				Cast<ACataclysmEnemyCharacter>(Driven))
+		{
+			Charger->CancelCharge();
+		}
+
+		// THE MARKER GOES WITH THE ATTACK IT WARNED OF. An interrupted wind-up
+		// did not happen, so leaving its circle on the floor would be telling
+		// the player to walk out of ground where nothing is now going to land.
+		// Do that a few times and they stop reading the next one.
+		DismissWindUpMarker();
+
+		// Every pass, not once. Think runs four times a second and StopMovement
+		// is not sticky -- the comment below on the roaming path records this
+		// same trap biting there.
+		StopMovement();
+
+		LastAction = ECataclysmBrainAction::Stunned;
+		return LastAction;
+	}
+
+	// A FLOOR RULE'S GUIDE WALKS WHERE THE RULE SENDS IT AND DOES NOTHING ELSE. Issues #1820 and #41, Demonic
+	// Guide. After death and a stun, which still stop it; before the charge, the wind-up and the choice of a target,
+	// so it notices nobody and starts no ability. The walk is the roam's request: the same acceptance radius and the
+	// same straight-line fallback when there is no navigation mesh.
+	if (const ACataclysmEnemyCharacter* Guide = Cast<ACataclysmEnemyCharacter>(Driven);
+		Guide && Guide->bGuidesThePlayerForTheFloorRule)
+	{
+		CurrentTarget = nullptr;
+		bHasRoamTarget = false;
+		if (Guide->bGuideWaits
+			|| FVector::Dist2D(Guide->GetActorLocation(), Guide->GuideDestination) <= RoamAcceptanceRadiusCm)
+		{
+			StopMovement();
+			LastAction = ECataclysmBrainAction::Idle;
+			return LastAction;
+		}
+
+		FaceTravelDirection(Driven);
+		FAIMoveRequest Request(Guide->GuideDestination);
+		Request.SetAcceptanceRadius(RoamAcceptanceRadiusCm);
+		Request.SetUsePathfinding(true);
+		if (MoveTo(Request) == EPathFollowingRequestResult::Failed)
+		{
+			Request.SetUsePathfinding(false);
+			MoveTo(Request);
+		}
+		LastAction = ECataclysmBrainAction::Guiding;
+		return LastAction;
+	}
+
+	// FLEEING OUTRANKS EVERYTHING BUT A HARD STOP. A feared creature, or one a
+	// rule told to flee, drops what it was winding up and moves away from the
+	// point, as the stun above drops it, and makes no attack. BELOW THE STUN
+	// because a stunned creature cannot act at all, flight included.
+	FVector FleeSource;
+	if (UCataclysmFear::FleeSourceOf(Driven, FleeSource))
+	{
+		WindingUpAbility = INDEX_NONE;
+		WindUpPassesLeft = 0;
+		ACataclysmEnemyCharacter* Fleer = Cast<ACataclysmEnemyCharacter>(Driven);
+		if (Fleer)
+		{
+			Fleer->CancelCharge();
+		}
+		DismissWindUpMarker();
+
+		// NOWHERE TO RUN WINS. Ruled 2026-09-25: a held creature cannot move
+		// away from its holder, so a feared one it holds stands still.
+		bLastFleeHeld = false;
+		if (Fleer && Fleer->IsHeld())
+		{
+			StopMovement();
+			bLastFleeHeld = true;
+			LastFleeGoal = FVector::ZeroVector;
+			LastAction = ECataclysmBrainAction::Fleeing;
+			return LastAction;
+		}
+
+		LastFleeGoal = UCataclysmFear::FleeGoalFor(Driven, FleeSource);
+		FAIMoveRequest Request(LastFleeGoal);
+		Request.SetAcceptanceRadius(50.0f);
+
+		// A STRAIGHT LINE WITHOUT A NAVIGATION MESH, as the chase does; AND
+		// STANDING STILL WHEN EVEN THAT FAILS, which is a cornered creature.
+		if (MoveTo(Request) == EPathFollowingRequestResult::Failed)
+		{
+			Request.SetUsePathfinding(false);
+			if (MoveTo(Request) == EPathFollowingRequestResult::Failed)
+			{
+				StopMovement();
+				LastFleeGoal = FVector::ZeroVector;
+			}
+		}
+		FaceTravelDirection(Driven);
+
+		LastAction = ECataclysmBrainAction::Fleeing;
+		return LastAction;
+	}
+
+	// A FLOOR RULE'S PLAGUEBEARER, WHEN IT IS NOT FLEEING, STANDS: it attacks nobody and does not come to the player,
+	// or it would walk in and flee out again. Issues #1820 and #41, The Plaguebearer. BELOW THE FLIGHT ABOVE, which is
+	// what moves it.
+	if (const ACataclysmEnemyCharacter* Bearer = Cast<ACataclysmEnemyCharacter>(Driven);
+		Bearer && Bearer->bIsPlaguebearer)
+	{
+		CurrentTarget = nullptr;
+		bHasRoamTarget = false;
+		StopMovement();
+		LastAction = ECataclysmBrainAction::Idle;
+		return LastAction;
+	}
+
+	// A CHARGE ALREADY IN FLIGHT OUTRANKS EVERYTHING BELOW, and the brain does
+	// NOTHING while it runs. Issue #499.
+	//
+	// WHY IT IS NEEDED. ContinueWindUp returns true only while the creature is
+	// winding UP; it clears the wind-up and returns on the pass that LANDS the
+	// ability, and for a charge that is the pass the travel STARTS on. Without
+	// this test every pass afterwards ran the ordinary logic four times a second
+	// on a creature in flight: it turned to face its target, ordered a walk
+	// toward it, and stopped movement when it came within reach. The project
+	// owner saw the first of those -- "he turns around mid charge to face you as
+	// he's flying past".
+	//
+	// DOING NOTHING IS THE WHOLE POINT, so there is deliberately no FaceTarget
+	// here. The control rotation was pointed down the lane by UseAbilitiesOn
+	// before the wind-up began and nothing has moved it since, so leaving it
+	// alone is what keeps the creature facing the way it is travelling. Setting
+	// it again from the target's CURRENT position is exactly the defect.
+	//
+	// THE TRAVEL ITSELF IS NOT DRIVEN FROM HERE. AdvanceCharge runs from the
+	// character's Tick, per frame, because a charge covers metres inside one
+	// quarter-second thinking pass.
+	//
+	// AFTER THE STUN TEST, NOT BEFORE, so a stun still cancels it.
+	if (const ACataclysmEnemyCharacter* Charger =
+			Cast<ACataclysmEnemyCharacter>(Driven))
+	{
+		if (Charger->IsCharging())
+		{
+			// STOPPED ONCE A PASS, for the same reason the stun branch does it:
+			// StopMovement is not sticky, and a charge moves the creature with
+			// SetActorLocation, so any velocity the movement component still
+			// carries would fight it.
+			StopMovement();
+
+			LastAction = ECataclysmBrainAction::Charging;
+			return LastAction;
+		}
+
+		// AND THE CHANNEL BEFORE AN INFERNO CHARGE, WHICH STANDS. Issue #1560.
+		// The row: "Channel for 2 seconds, then dash". The creature neither
+		// walks nor attacks while its lane is drawn, the same commitment a
+		// wind-up makes; `UCataclysmEnemyModifiers::TimedStep` runs the count
+		// and sets the charge off.
+		if (Charger->IsChannellingInfernoCharge())
+		{
+			StopMovement();
+
+			LastAction = ECataclysmBrainAction::WindingUp;
+			return LastAction;
+		}
+	}
+
+	// A WIND-UP ALREADY RUNNING OUTRANKS EVERYTHING, including looking for a
+	// target at all. See ContinueWindUp for why a committed attack finishes
+	// whether or not what it was aimed at is still there.
+	if (ContinueWindUp(Driven))
+	{
+		return LastAction;
+	}
+
+	AActor* Target = ChooseTarget();
+
+	// A FLOOR RULE'S HUNGRY CREATURE WALKS TO THE NEAREST DROP WITHIN REACH AND EATS IT BEFORE IT CHASES THE PLAYER,
+	// unless what it would fight is already within its attack reach, where it fights. Issues #1820 and #41, Famished
+	// Beasts. The game mode's beat does the eating. The walk is the guide's: the roam's acceptance radius and the same
+	// straight-line fallback when there is no navigation mesh. BELOW THE CHARGE AND THE WIND-UP, which it does not cut.
+	// "WITHIN ITS ATTACK REACH" IS THE SWING'S OWN TEST, `IsInReach`, the contact tolerance and the target's width
+	// included; until issue #2706 this compared the bare reach, so a Brute pressed against the player went to eat.
+	if (const ACataclysmEnemyCharacter* Hungry = Cast<ACataclysmEnemyCharacter>(Driven);
+		Hungry && Hungry->bSeeksDropsForTheFloorRule && !IsInReach(Driven, Target))
+	{
+		if (const AActor* Drop = UCataclysmDungeonModifierEffects::FamishedBeastsNearestDrop(
+				GetWorld(), Driven->GetActorLocation(), UCataclysmDungeonModifierEffects::FamishedBeastsSeekWithinCm))
+		{
+			bHasRoamTarget = false;
+			FaceTravelDirection(Driven);
+			FAIMoveRequest Request(Drop->GetActorLocation());
+			Request.SetAcceptanceRadius(RoamAcceptanceRadiusCm);
+			Request.SetUsePathfinding(true);
+			if (MoveTo(Request) == EPathFollowingRequestResult::Failed)
+			{
+				Request.SetUsePathfinding(false);
+				MoveTo(Request);
+			}
+			LastAction = ECataclysmBrainAction::SeekingADrop;
+			return LastAction;
+		}
+	}
+
+	// A FIGHT STARTS WHEN A CREATURE NOTICES SOMEBODY IT COULD NOT SEE BEFORE.
+	// That is the first of the five events section 6 writes on, and this is
+	// the only moment in the game that answers to the description. Losing a
+	// target and finding it again counts as a second fight starting, which is
+	// right: the player walked away and came back.
+	const bool bJustNoticedSomebody = Target != nullptr && CurrentTarget == nullptr;
+
+	CurrentTarget = Target;
+
+	if (bJustNoticedSomebody)
+	{
+		UCataclysmSaveWriter::NoteTriggerIn(GetWorld(),
+											ECataclysmSaveTrigger::FightStarted);
+	}
+
+	if (!Target)
+	{
+		// WHAT USED TO BE HERE WAS AN UNCONDITIONAL StopMovement(). It was
+		// right when standing still was the only thing to do with nothing in
+		// sight, and it is a trap now: Think runs four times a second, so a
+		// StopMovement on this path cancels every roam leg a quarter second
+		// after it is ordered and the character never takes a step. Stopping is
+		// now Roam's business, which does it once on arrival rather than every
+		// pass.
+		//
+		// AND FOLLOWING COMES FIRST, WHICH IS NEW IN ISSUE #1517. A creature
+		// with a commander walks back to it; only one that has nobody to follow
+		// falls through to roaming. Returns Idle when there is no commander or
+		// when this body is a deployed gadget, and the line below then runs
+		// unchanged -- which is every monster in the game.
+		const ECataclysmBrainAction Followed = FollowCommander(Driven);
+		if (Followed != ECataclysmBrainAction::Idle)
+		{
+			return Followed;
+		}
+
+		return Roam();
+	}
+
+	// IT HAS SOMETHING TO CHASE, SO WHATEVER IT WAS WALKING TO IS STALE. Left
+	// set, the roam target it had before it noticed the player would be resumed
+	// the moment the player left again, sending it back to a point it chose for
+	// reasons that no longer exist.
+	//
+	// WHAT IT PICKS INSTEAD IS NEAR THE ANCHOR, NOT NEAR WHERE THE CHASE ENDED,
+	// because ChooseRoamTarget always draws around RoamAnchor and the anchor is
+	// set once at possession. So a character that chased the player across the
+	// level and lost them walks back toward where it started. That is a soft
+	// leash-return and it is a good thing, but it arrived as a consequence of
+	// anchoring rather than as a designed rule -- there is still no leash while
+	// the target is in sight, which is the part issue #383 asks for.
+	bHasRoamTarget = false;
+	RoamPauseUntil = 0.0f;
+
+	// THE REACH AGAINST THIS TARGET, which is the designed reach against the player and longer against a wider body.
+	// Issue #2706; see `ReachAgainstCm`. The chase below aims short of it, and `IsInReach` decides with it.
+	const float Reach = ReachAgainstCm(Driven, Target);
+
+	// HORIZONTAL DISTANCE, NOT 3D DISTANCE. Reach is a floor-plane question --
+	// how close is it standing -- and capsule centres sit at different heights,
+	// so a 3D distance charges melee reach for a height difference nobody chose.
+	//
+	// This matters because contact reach is exact. The model derives it as
+	// PLAYER_BODY_RADIUS + body_radius (ring_distance in
+	// sim/cataclysm_sim/enemy_abilities.py), which for the Brute is
+	// 0.42 + 0.48 = 0.90 m, and the engine's capsules are the same 42 and 48 cm.
+	// The player's capsule half-height is 96 and an enemy's is 80, so two of them
+	// touching are 16 cm apart vertically. In 3D that is
+	// sqrt(90^2 + 16^2) = 91.4 cm, which is greater than the 90 cm reach, so a
+	// Brute pressed against the player would read as out of reach and chase for
+	// ever without landing a hit.
+	//
+	// Nothing that existed before this changes behaviour: the training dummy's
+	// reach is 200 cm and the imp's is well clear of contact, so both were
+	// already far outside the margin this affects. Issue #373.
+	const float Distance = FVector::Dist2D(
+		Driven->GetActorLocation(), Target->GetActorLocation());
+
+	// ABILITIES BEFORE EVERYTHING ELSE, INCLUDING BEFORE THE CHASE. An ability
+	// that reaches beyond the melee reach is the only reason a creature would
+	// stop walking at something it cannot touch yet, so asking here rather than
+	// after the reach test is what lets a Brute throw a rock while closing.
+	// Returns Idle when it has nothing to use, and the ordinary logic below
+	// then runs unchanged.
+	const ECataclysmBrainAction Used = UseAbilitiesOn(Driven, Target, Distance);
+	if (Used != ECataclysmBrainAction::Idle)
+	{
+		return Used;
+	}
+
+	// PLUS A TOLERANCE, because the Brute's reach IS its contact distance and a
+	// collision solver never leaves two touching capsules at exactly the
+	// distance where they touch. See ContactToleranceCm for the measurement
+	// this comes from and why no other enemy needs it.
+	//
+	// ASKED OF `IsInReach`, the one test the swing's landing and Famished Beasts
+	// ask too, so the three cannot disagree. Issue #2706.
+	if (!IsInReach(Driven, Target))
+	{
+		// A PINNED CREATURE DOES NOT CHASE, AND STILL FACES WHAT IT IS FIGHTING.
+		// `ForcedMovement=Pin` holds a target where it stands and leaves
+		// everything else working -- it turns, it uses abilities and it swings at
+		// whatever comes within reach. That is the whole difference between a pin
+		// and the hard stop above, which returns before any of this.
+		//
+		// AFTER `UseAbilitiesOn` RATHER THAN BEFORE IT, so a pinned creature can
+		// still throw a rock at a player standing out of its reach. Four Spear
+		// skills pin, and one that made a creature harmless as well as immobile
+		// would be a stun by another name.
+		//
+		// EVERY PASS, NOT ONCE. Think runs four times a second and StopMovement is
+		// not sticky, which is the same trap the stun branch above records.
+		if (UCataclysmSkillEffects::IsPinned(Driven))
+		{
+			StopMovement();
+			FaceTarget(Driven, Target);
+			LastAction = ECataclysmBrainAction::Pinned;
+			return LastAction;
+		}
+
+		// BACK TO FACING WHERE IT WALKS. An ability that made it turn on the
+		// spot left the movement component pointed at the controller's
+		// rotation, and a creature that then chases would walk forward while
+		// still facing wherever it last aimed. Issue #457.
+		FaceTravelDirection(Driven);
+
+		FAIMoveRequest Request = MakeChaseMoveRequest(Target, Reach);
+
+		// A STRAIGHT LINE WHEN THERE IS NO NAVIGATION MESH. Pathfinding needs a
+		// NavMeshBoundsVolume in the level; without one the request fails and,
+		// with no fallback, the pawn stands still and nothing says why -- the
+		// same failure the player's click-to-move has, recorded on
+		// UCataclysmLevelAuthoring::BuildNavigation. Walking straight at the
+		// target ignores walls, which is wrong in a real level, but a level with
+		// no navigation mesh is already broken and a monster that visibly walks
+		// at you is a far easier fault to notice than one that does nothing.
+		if (MoveTo(Request) == EPathFollowingRequestResult::Failed)
+		{
+			Request.SetUsePathfinding(false);
+			MoveTo(Request);
+		}
+
+		LastAction = ECataclysmBrainAction::Chasing;
+		return LastAction;
+	}
+
+	// In reach. Stop walking before hitting, so that a pawn does not push its
+	// target along in front of it while attacking.
+	StopMovement();
+
+	// TURNS TO FACE, BUT DOES NOT WAIT TO BE FACING. Issue #457 asked for
+	// directional ABILITIES to wait, and an ordinary swing is deliberately not
+	// held to that: the Brute turns at 180 degrees per second and a player
+	// circling at its reach sweeps 223, so a swing that waited for facing would
+	// make a Brute unable to land any melee hit at all on a player who keeps
+	// circling. That is a balance change nobody asked for, and it should be a
+	// decision rather than a side effect of this one. Turning without waiting
+	// fixes the thing that was actually wrong -- a creature visibly swinging at
+	// nothing while its target stands behind it.
+	FaceTarget(Driven, Target);
+
+	// AND A CREATURE THAT STARTS NOTHING HOSTILE STOPS HERE. Issue #1680.
+	//
+	// AFTER `StopMovement` AND `FaceTarget`, WHICH IS THE WHOLE SHAPE OF THIS.
+	// It still walks to its target and still turns to it; it simply never
+	// strikes. Refusing earlier -- by declining to pick a target at all --
+	// would stop the walking too, and a creature whose roam radius is zero
+	// would then stand where it spawned for the whole floor. The row wants
+	// the player to have to deal with the medic, which they need not do if it
+	// never comes to them.
+	//
+	// BEFORE THE STATE IS RECORDED, not after. `Attacking` is set below ahead
+	// of the interval check, so setting it and skipping the blow would report
+	// a creature attacking for a whole floor while it never does.
+	if (Driven->TakesNoHostileAction())
+	{
+		LastAction = ECataclysmBrainAction::NotAttacking;
+		return LastAction;
+	}
+
+	LastAction = ECataclysmBrainAction::Attacking;
+
+	const UWorld* World = GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+	// AND THE MARK MAKES THE ARMY SWING FASTER AT IT. Quarry grants "30%
+	// attack speed while the mark holds", and attacking faster is a shorter
+	// interval. `AttackIntervalScaleFor` answers 1 for everything that is not
+	// a commanded creature hitting its commander's quarry, which is every
+	// creature in the game but a Ritualist's army.
+	//
+	// HERE RATHER THAN INSIDE `SecondsBetweenAttacks`, because that is a
+	// property of the creature and this is a property of what it is hitting.
+	// It is also the one place a minion and a subjugated enemy share: they are
+	// different classes with different overrides and one controller.
+	const float Interval = Driven->SecondsBetweenAttacks()
+		* UCataclysmCommand::AttackIntervalScaleFor(Driven, Target);
+	if (!bHasAttacked || Now - LastAttackTime >= Interval)
+	{
+		LastAttackTime = Now;
+		bHasAttacked = true;
+		Driven->AttackTarget(Target);
+		// RECORDED FOR ECHOES OF THE PAST: its last attack was the ordinary one.
+		if (ACataclysmEnemyCharacter* Recorded = Cast<ACataclysmEnemyCharacter>(Driven))
+		{
+			Recorded->LastAttackUsed = ACataclysmEnemyCharacter::OrdinaryAttackUsed;
+		}
+		++AttacksOrdered;
+	}
+
+	return LastAction;
+}
+
+bool ACataclysmEnemyController::AbilityNeedsFacing(
+	const FCataclysmEnemyAbility& Ability)
+{
+	// A PROJECTILE AND A CHARGE ARE THE DIRECTIONAL SHAPES. See the header for
+	// why a Strike must not require facing: the Brute's Stomp is a full ring
+	// precisely so that standing behind it is not the answer to it.
+	//
+	// A CHARGE MUST WAIT TO BE FACING, AND MORE SO THAN A SHOT. The lane is
+	// fixed when the wind-up starts and the creature travels down it, so a
+	// charge begun while turned away does not merely miss -- it carries the
+	// creature further from its target than it started. Issue #491.
+	return Ability.Shape == ECataclysmSkillShape::Projectile
+		|| Ability.Shape == ECataclysmSkillShape::Movement;
+}
+
+float ACataclysmEnemyController::DegreesOffTarget(const AActor* Driven,
+												  const AActor* Target)
+{
+	if (!Driven || !Target)
+	{
+		// Reads as "facing". A missing actor must not leave a creature turning
+		// on the spot for ever waiting for an angle that can never be measured.
+		return 0.0f;
+	}
+
+	FVector ToTarget = Target->GetActorLocation() - Driven->GetActorLocation();
+	ToTarget.Z = 0.0f;
+	if (ToTarget.IsNearlyZero())
+	{
+		// Standing on the same spot. There is no direction to face, so any
+		// facing is as correct as any other.
+		return 0.0f;
+	}
+
+	FVector Forward = Driven->GetActorForwardVector();
+	Forward.Z = 0.0f;
+	if (Forward.IsNearlyZero())
+	{
+		return 0.0f;
+	}
+
+	const float Cosine = FVector::DotProduct(ToTarget.GetSafeNormal(),
+											 Forward.GetSafeNormal());
+	return FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(Cosine, -1.0f, 1.0f)));
+}
+
+void ACataclysmEnemyController::FaceTarget(ACataclysmCharacterBase* Driven,
+										   const AActor* Target)
+{
+	if (!Driven || !Target)
+	{
+		return;
+	}
+
+	UCharacterMovementComponent* Movement = Driven->GetCharacterMovement();
+	if (!Movement)
+	{
+		return;
+	}
+
+	// THE ORDER MATTERS. PhysicsRotation checks bOrientRotationToMovement first
+	// and only falls through to the controller's rotation when it is off, so
+	// leaving it on would make every line below do nothing.
+	Movement->bOrientRotationToMovement = false;
+	Movement->bUseControllerDesiredRotation = true;
+
+	FVector ToTarget = Target->GetActorLocation() - Driven->GetActorLocation();
+	ToTarget.Z = 0.0f;
+	if (ToTarget.IsNearlyZero())
+	{
+		return;
+	}
+
+	// YAW ONLY. The creature stands upright whatever height its target is at,
+	// and RotationRate carries zero for pitch and roll in any case, so a pitch
+	// here would be a value nothing could ever turn toward.
+	FRotator Facing = ToTarget.Rotation();
+	Facing.Pitch = 0.0f;
+	Facing.Roll = 0.0f;
+	SetControlRotation(Facing);
+}
+
+void ACataclysmEnemyController::FaceTravelDirection(
+	ACataclysmCharacterBase* Driven)
+{
+	if (!Driven)
+	{
+		return;
+	}
+
+	if (UCharacterMovementComponent* Movement = Driven->GetCharacterMovement())
+	{
+		Movement->bUseControllerDesiredRotation = false;
+		Movement->bOrientRotationToMovement = true;
+	}
+}
+
+FVector ACataclysmEnemyController::FloorUnder(
+	const ACataclysmCharacterBase* Driven, const FVector& Point)
+{
+	// AN ACTOR'S LOCATION IS ITS CAPSULE CENTRE, so dropping by the capsule's
+	// half height is what turns a point about a character into a point on the
+	// ground it is standing on.
+	//
+	// FROM THE CREATURE'S OWN CAPSULE, not the target's, because everything that
+	// uses this has to agree with everything else that uses it and the creature
+	// is the one constant. On a floor that is not level this is the creature's
+	// floor rather than the target's, which is the same assumption the markers
+	// have always made.
+	float HalfHeightCm = 0.0f;
+	if (Driven)
+	{
+		if (const UCapsuleComponent* Capsule = Driven->GetCapsuleComponent())
+		{
+			HalfHeightCm = Capsule->GetScaledCapsuleHalfHeight();
+		}
+	}
+
+	const float FloorZ = Driven
+		? Driven->GetActorLocation().Z - HalfHeightCm
+		: Point.Z;
+	return FVector(Point.X, Point.Y, FloorZ);
+}
+
+FVector ACataclysmEnemyController::AimPointFor(
+	const ACataclysmCharacterBase* Driven, const AActor* Target,
+	const FCataclysmEnemyAbility& Ability)
+{
+	if (!Driven)
+	{
+		return FVector::ZeroVector;
+	}
+
+	// A CHARGE AIMS AT THE END OF ITS OWN LANE, NOT AT ITS TARGET, and that is
+	// the whole difference between this shape and the other two. Issue #491.
+	//
+	// The design says the creature is committed and runs the full distance
+	// whether or not anything is still there -- "it ends up ten metres past the
+	// player, facing away, and covering that ground again ... is the window the
+	// telegraph buys". So the point that both the marker and the travel are
+	// built from has to be the far end of the range, not wherever the target
+	// happened to be standing.
+	//
+	// ALONG THE CREATURE'S FACING, WHICH IS WHY IT WAITED TO BE FACING.
+	// AbilityNeedsFacing returns true for this shape, so UseAbilitiesOn has
+	// already turned the creature at its target and returned Turning until it
+	// was pointed there. Read here, that forward vector IS the aim.
+	if (Ability.Shape == ECataclysmSkillShape::Movement)
+	{
+		FVector Forward = Driven->GetActorForwardVector();
+		Forward.Z = 0.0f;
+		Forward = Forward.GetSafeNormal();
+
+		return FloorUnder(Driven,
+						  Driven->GetActorLocation()
+							  + Forward * Ability.MaxRangeCm);
+	}
+
+	// ON THE FLOOR, NOT AT THE TARGET'S MIDDLE. Issue #471. A character's actor
+	// location is its capsule centre, which for the player is 96 cm up, and this
+	// value is BOTH what the marker is drawn at and what the shot is aimed at.
+	// Left unflattened, every marker flattened it for itself and the shot did
+	// not, so the Brute's lobbed rock ended its flight a metre above the circle
+	// it had drawn. `docs/DECISIONS.md` records the rule it broke: a telegraphed
+	// attack that marks a place must arrive at that place.
+	return FloorUnder(Driven, Target ? Target->GetActorLocation()
+									 : Driven->GetActorLocation());
+}
+
+void ACataclysmEnemyController::ShowWindUpMarker(
+	ACataclysmCharacterBase* Driven, const FCataclysmEnemyAbility& Ability)
+{
+	// Whatever is still up from a previous wind-up goes first. Nothing should
+	// reach here with one still drawn, and if something ever does, one marker
+	// on the floor is a bug and two is a bug that is also confusing.
+	DismissWindUpMarker();
+
+	if (!Driven)
+	{
+		return;
+	}
+
+	// ON THE GROUND, NOT AT THE CREATURE'S MIDDLE. An actor's location is its
+	// capsule centre, which for a Brute is 130 cm up. A marker drawn there
+	// floats at chest height and reads as a wall rather than as a patch of
+	// floor.
+	const FVector Feet = FloorUnder(Driven, Driven->GetActorLocation());
+
+	// THE MARKER LASTS AS LONG AS THE WIND-UP REALLY DOES, NOT AS LONG AS IT
+	// IS DESIGNED TO. An ability lands on a whole thinking pass, so a
+	// telegraph that is not a whole number of passes really runs to the pass
+	// after it -- the Brute's stomp is designed at 1.4 seconds and lands at
+	// 1.5. Drawn for the designed figure, the marker's own lifespan took it
+	// off the floor a tenth of a second before the ring it warned about went
+	// off. Found while counting passes for issue #413, in code added the
+	// same day for issue #396.
+	const float ShownForSeconds =
+		PassesForWindUp(Ability.WindUpSeconds) * ThinkIntervalSeconds;
+
+	switch (Ability.Shape)
+	{
+	case ECataclysmSkillShape::Strike:
+		// CENTRED ON THE CREATURE, because that is where a Strike hits from.
+		// The Brute's stomp sweeps from its own location, so the circle drawn
+		// here is the circle that sweep will use.
+		WindUpMarker = ACataclysmTelegraphMarker::ShowCircle(
+			Driven, Feet, Ability.MarkerRadiusCm, ShownForSeconds);
+		return;
+
+	case ECataclysmSkillShape::Projectile:
+		if (Ability.bArcsOntoItsTarget)
+		{
+			// WHERE IT COMES DOWN, because a lobbed shot passes over everything
+			// between here and there. Marking the lane would tell the player to
+			// leave ground on which nothing is going to happen, and a marker
+			// that is wrong once is a marker they stop reading. Issue #459.
+			//
+			// DRAWN AT THE AIM POINT ITSELF, NOT AT A FLATTENED COPY OF IT.
+			// Issue #471. This used to read the X and Y and substitute the
+			// creature's floor height, which was right for the marker and left
+			// the SHOT still aimed at the target's capsule centre, 96 cm up.
+			// The rock therefore finished its flight a metre above the circle
+			// this drew. WindUpAimedAt is now on the floor when it is captured,
+			// so there is one point rather than two that have to agree.
+			WindUpMarker = ACataclysmTelegraphMarker::ShowCircle(
+				Driven, WindUpAimedAt, Ability.MarkerRadiusCm, ShownForSeconds);
+			return;
+		}
+
+		// FROM THE CREATURE TO WHERE IT AIMED. Both ends lie on the ground at
+		// the creature's feet, so the lane lies on the floor rather than tilting
+		// toward wherever the target's capsule centre happened to be. The far
+		// end needs no flattening here since issue #471, because WindUpAimedAt
+		// is captured on the floor.
+		WindUpMarker = ACataclysmTelegraphMarker::ShowLine(
+			Driven, Feet, WindUpAimedAt, Ability.MarkerRadiusCm, ShownForSeconds);
+		return;
+
+	case ECataclysmSkillShape::Movement:
+		// THE GROUND THE CREATURE WILL RUN OVER. The design's telegraph table
+		// gives the Movement shape "the path the enemy will travel, of width
+		// 2 x Radius", which is the same lane a flat projectile draws and is
+		// drawn by the same call.
+		//
+		// TO THE END OF THE LANE, NOT TO THE TARGET. WindUpAimedAt holds the far
+		// end of the charge for a Movement ability rather than the target's
+		// feet -- see UseAbilitiesOn -- because a charge runs its full range and
+		// ends PAST whatever it was aimed at. A lane drawn only as far as the
+		// player would stop short of where the creature finishes, so the marker
+		// would be telling the truth about the beginning of the charge and not
+		// about the end of it.
+		//
+		// AND IT IS THE SAME POINT THE CHARGE ITSELF RUNS TO, which is the
+		// discipline issue #471 established after the Brute's rock landed a
+		// metre above the circle it had drawn: one point, read twice, rather
+		// than two that have to agree.
+		WindUpMarker = ACataclysmTelegraphMarker::ShowLine(
+			Driven, Feet, WindUpAimedAt, Ability.MarkerRadiusCm, ShownForSeconds);
+		return;
+
+	default:
+		// SelfBuff, Summon, Debuff, Aura and None. The first three have no
+		// marker in the design at all and are answered by interrupting rather
+		// than by walking out of. Aura does have one in
+		// sim/cataclysm_sim/enemy_abilities.py and no enemy in the project has
+		// one yet, so it is not built; when one is, it lands here.
+		return;
+	}
+}
+
+void ACataclysmEnemyController::DismissWindUpMarker()
+{
+	if (ACataclysmTelegraphMarker* Marker = WindUpMarker.Get())
+	{
+		Marker->Dismiss();
+	}
+	WindUpMarker = nullptr;
+}
+
+int32 ACataclysmEnemyController::PassesForWindUp(float WindUpSeconds)
+{
+	if (WindUpSeconds <= 0.0f)
+	{
+		// No telegraph at all. The caller lands the ability at once and never
+		// reaches the count, but a zero here would mean "already over" rather
+		// than "one pass", so it is answered explicitly.
+		return 0;
+	}
+
+	// CEILING, NOT ROUNDING. Rounding a 1.4 second telegraph to five passes
+	// would land the stomp at 1.25 -- a tenth of a second sooner than the
+	// player was told they had. See the header.
+	return FMath::Max(1,
+		FMath::CeilToInt(WindUpSeconds / ThinkIntervalSeconds));
+}
+
+bool ACataclysmEnemyController::ContinueWindUp(ACataclysmCharacterBase* Driven)
+{
+	if (WindingUpAbility == INDEX_NONE || !Driven)
+	{
+		return false;
+	}
+
+	// COMMITTED MEANS COMMITTED, INCLUDING WHEN THE TARGET IS GONE. This runs
+	// before the target search rather than after it, and that is a behaviour
+	// decision rather than an ordering detail: an enemy that has begun a stomp
+	// finishes it even if what it was aiming at died or walked out of sight.
+	// The attack was already aimed at a fixed point, so there is nothing left
+	// for a target to contribute.
+	//
+	// It also closes a hole. Written the other way round, losing the target
+	// mid-wind-up left WindingUpAbility set and never cleared, so the next
+	// thing the creature noticed was hit by an attack it started long ago and
+	// aimed somewhere else.
+	StopMovement();
+
+	const UWorld* World = GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+
+	// COUNTED DOWN, NOT COMPARED. See WindUpPassesLeft in the header for why
+	// comparing clocks alone decided a whole quarter of a second by coin toss.
+	if (WindUpPassesLeft > 0)
+	{
+		--WindUpPassesLeft;
+	}
+
+	// EITHER CONDITION LANDS IT, AND THE COUNT IS THE ONE THAT NORMALLY DOES.
+	//
+	// The count is what makes this deterministic. A wind-up begun on one pass
+	// lands exactly so many passes later whatever the frame rate is doing,
+	// because nothing in that sentence involves a clock.
+	//
+	// THE CLOCK IS A SAFETY NET FOR TWO CASES. A hitch long enough to skip
+	// several thinking passes would otherwise hold an attack open past its own
+	// telegraph while the count worked through. And every automation test in
+	// this project moves the world clock by hand and calls Think directly
+	// rather than letting the timer run -- see AdvanceWorldClock in
+	// CataclysmEnemyBehaviourTests.cpp -- so without it no test could land an
+	// ability at all.
+	//
+	// NEITHER CAN LAND ONE EARLY. The count reaches zero on the pass whose
+	// nominal time is the deadline, and the clock condition is the deadline
+	// itself, so the earlier of the two is before it by at most the length of
+	// the frame that pass ran on. Issue #413.
+	if (WindUpPassesLeft > 0 && Now < WindUpLandsAt)
+	{
+		LastAction = ECataclysmBrainAction::WindingUp;
+		return true;
+	}
+
+	// IT LANDS WHERE IT WAS MARKED, not where the target is now. That is the
+	// whole of why walking out of a telegraph works.
+	const int32 Landing = WindingUpAbility;
+	WindingUpAbility = INDEX_NONE;
+	WindUpPassesLeft = 0;
+
+	// TAKEN AWAY BEFORE THE ATTACK RESOLVES, NOT AFTER. The marker's job is
+	// finished the moment there is nothing left to walk out of, and removing it
+	// first means the frame the blow lands on is the frame the warning goes,
+	// rather than the two overlapping.
+	DismissWindUpMarker();
+
+	if (AbilityLastUsedAt.IsValidIndex(Landing))
+	{
+		AbilityLastUsedAt[Landing] = Now;
+	}
+	Driven->UseEnemyAbility(Landing, CurrentTarget.Get(), WindUpAimedAt);
+	++AbilitiesUsed;
+
+	// AND ANNOUNCED AS A SKILL USED, which nothing else does for a creature: no
+	// creature ability goes through the skill template's `CommitAndBegin`.
+	// Issue #41, slice 4. Here and in `UseAbilitiesOn`, the two places a
+	// creature's ability begins.
+	UCataclysmCombatEvents::NoteCreatureAbility(Driven, Landing);
+	// RECORDED FOR ECHOES OF THE PAST: its last attack was this ability.
+	if (ACataclysmEnemyCharacter* Recorded = Cast<ACataclysmEnemyCharacter>(Driven))
+	{
+		Recorded->LastAttackUsed = Landing;
+	}
+
+	// AN ABILITY THAT LANDS COUNTS AS AN ATTACK FOR THE ATTACK INTERVAL.
+	//
+	// WHAT THIS FIXED, reported from a play session on 2026-08-08 as the slam
+	// ending part way through. Without it, the ordinary swing was free to start
+	// on the very next thinking pass -- a quarter of a second later -- and the
+	// swing animation replaced the stomp's release clip after 0.25 of its 0.70
+	// seconds. The attack visibly stopped a third of the way in.
+	//
+	// IT IS ALSO RIGHT ON ITS OWN TERMS, animation aside. A Brute that stomps
+	// and then swings a quarter of a second later has attacked twice in the
+	// time its designed interval allows one attack, so the interval was not
+	// doing what it says.
+	LastAttackTime = Now;
+	bHasAttacked = true;
+
+	LastAction = ECataclysmBrainAction::Attacking;
+	return true;
+}
+
+bool ACataclysmEnemyController::IsAbilityReady(int32 Index) const
+{
+	const ACataclysmCharacterBase* Driven = Body();
+	if (!Driven)
+	{
+		return false;
+	}
+
+	const TArray<FCataclysmEnemyAbility> Abilities = Driven->EnemyAbilities();
+	if (!Abilities.IsValidIndex(Index))
+	{
+		return false;
+	}
+
+	if (Abilities[Index].CooldownSeconds <= 0.0f)
+	{
+		return true;
+	}
+
+	const UWorld* World = GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+	const float LastUsed = AbilityLastUsedAt.IsValidIndex(Index)
+		? AbilityLastUsedAt[Index] : NeverUsed;
+
+	return Now - LastUsed >= Abilities[Index].CooldownSeconds;
+}
+
+int32 ACataclysmEnemyController::ChooseAbility(float DistanceCm) const
+{
+	const ACataclysmCharacterBase* Driven = Body();
+	if (!Driven)
+	{
+		return INDEX_NONE;
+	}
+
+	// FIRST IN RANGE AND OFF COOLDOWN WINS. The order of EnemyAbilities is the
+	// priority order, which is the pawn's business rather than the brain's:
+	// only the creature knows which of its attacks it would rather land.
+	const TArray<FCataclysmEnemyAbility> Abilities = Driven->EnemyAbilities();
+	const int32 Phase = Driven->CurrentPhase();
+	const bool bSilenced = UCataclysmSilence::IsSilenced(Driven);
+	for (int32 Index = 0; Index < Abilities.Num(); ++Index)
+	{
+		const FCataclysmEnemyAbility& Ability = Abilities[Index];
+
+		// A SILENCED CREATURE STARTS NOTHING BUT ITS BASIC ATTACK. The owner, 2026-10-17 (O1). HERE AND NOT AT THE TOP
+		// OF `UseAbilitiesOn`, so the three creatures whose basic attack is an entry here can still choose it. Nothing
+		// else is stopped: a wind-up already running is finished by `ContinueWindUp`, which does not ask this (O3); the
+		// swing, the chase and every timed behaviour do not pass through here.
+		if (bSilenced && !Ability.bIsBasicAttack)
+		{
+			continue;
+		}
+
+		// A PHASE THE FIGHT HAS NOT REACHED YET. **At most, not equal to**:
+		// phases ADD and never take away, so an ability from phase 2 is still
+		// there in phase 3. The research this rests on is recorded with issue
+		// #354 in docs/DECISIONS.md.
+		//
+		// EVERY CREATURE BUT THE BOSS IS IN PHASE 1 FOR EVER and every ability
+		// defaults to phase 1, so this skips nothing for six of the seven and
+		// needs no special case for them.
+		if (Ability.Phase > Phase)
+		{
+			continue;
+		}
+		if (DistanceCm < Ability.MinRangeCm || DistanceCm > Ability.MaxRangeCm)
+		{
+			continue;
+		}
+		if (!IsAbilityReady(Index))
+		{
+			continue;
+		}
+		return Index;
+	}
+
+	return INDEX_NONE;
+}
+
+ECataclysmBrainAction ACataclysmEnemyController::UseAbilitiesOn(
+	ACataclysmCharacterBase* Driven, AActor* Target, float DistanceCm)
+{
+	// A CREATURE THAT STARTS NOTHING HOSTILE CHOOSES NO ABILITY. Issue #1680.
+	//
+	// BEFORE `ChooseAbility` RATHER THAN AFTER, so no wind-up can begin: this
+	// is the only place one ever starts, which is why `ContinueWindUp` needs
+	// no guard of its own.
+	//
+	// `Idle` MEANS "NO ABILITY" HERE, not "do nothing" -- the comment further
+	// down says so. The caller falls through to the swing, which refuses
+	// separately and reports `NotAttacking`.
+	if (Driven->TakesNoHostileAction())
+	{
+		return ECataclysmBrainAction::Idle;
+	}
+
+	const UWorld* World = GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+
+	const int32 Chosen = ChooseAbility(DistanceCm);
+	if (Chosen == INDEX_NONE)
+	{
+		return ECataclysmBrainAction::Idle;
+	}
+
+	// THE ATTACK INTERVAL GATES ABILITIES TOO, NOT ONLY THE ORDINARY SWING.
+	//
+	// Until 2026-08-08 an ability was held back by its own cooldown and by
+	// nothing else, so a creature could land one attack and begin another on
+	// the very next thinking pass a quarter of a second later. The Brute did
+	// exactly that: it stomped and then immediately began a rock throw, whose
+	// wind-up animation replaced the stomp's release clip part way through.
+	// Reported from a play session as the slam ending half way.
+	//
+	// WHAT THE INTERVAL MEANS, WHICH IS THE REAL ARGUMENT. It is how often this
+	// creature attacks. A Brute that stomps and throws a rock inside one
+	// interval has attacked twice in the time the design allows one attack, and
+	// the interval was not describing the creature. Cooldowns say how often a
+	// PARTICULAR ability may be used; the interval says how often ANY attack
+	// may start. Both have to hold.
+	//
+	// RETURNING Idle MEANS "NO ABILITY", not "do nothing" -- see ChooseAbility.
+	// The caller falls through to chasing or to the ordinary swing, and the
+	// ordinary swing has always been gated by this same interval.
+	// THE SAME SCALE THE ORDINARY SWING TAKES, so a hurried creature is not
+	// hurried for its swing and held back for its abilities.
+	const float AbilityInterval = Driven->SecondsBetweenAttacks()
+		* UCataclysmCommand::AttackIntervalScaleFor(Driven, CurrentTarget.Get());
+	if (bHasAttacked && AbilityInterval > 0.0f
+		&& Now - LastAttackTime < AbilityInterval)
+	{
+		return ECataclysmBrainAction::Idle;
+	}
+
+	const TArray<FCataclysmEnemyAbility> Abilities = Driven->EnemyAbilities();
+	if (AbilityLastUsedAt.Num() < Abilities.Num())
+	{
+		AbilityLastUsedAt.SetNum(Abilities.Num());
+		for (int32 Index = 0; Index < AbilityLastUsedAt.Num(); ++Index)
+		{
+			if (AbilityLastUsedAt[Index] == 0.0f)
+			{
+				AbilityLastUsedAt[Index] = NeverUsed;
+			}
+		}
+	}
+
+	StopMovement();
+
+	// TURN FIRST, THEN WIND UP. Issue #457, and the project owner chose this
+	// shape over turning during the wind-up on 2026-08-08.
+	//
+	// WHAT IT COSTS THE CREATURE, WHICH IS THE POINT. The Brute turns at 180
+	// degrees per second, so a player who gets directly behind it costs it up
+	// to a full second of turning BEFORE a wind-up that is itself a second.
+	// That is two seconds of free hits for outmanoeuvring it, and it is the
+	// design's "can be outmaneuvered" being worth something rather than being a
+	// number in a file.
+	//
+	// WHAT IT BUYS THE PLAYER. The ground marker is drawn below, after this,
+	// so a marker is only ever drawn by a creature already pointed at what it
+	// is about to hit. A telegraph that appears while the creature faces
+	// elsewhere is a telegraph that has lied once, and once is enough for a
+	// player to stop reading the next one.
+	//
+	// ONLY A DIRECTIONAL ABILITY WAITS. A Strike is a ring around the creature
+	// and requiring facing for one would hand back exactly the answer its full
+	// circle exists to remove. See AbilityNeedsFacing.
+	if (AbilityNeedsFacing(Abilities[Chosen])
+		&& DegreesOffTarget(Driven, Target) > FacingToleranceDegrees)
+	{
+		FaceTarget(Driven, Target);
+		LastAction = ECataclysmBrainAction::Turning;
+		return LastAction;
+	}
+
+	// STILL FACED EVEN WHEN IT DID NOT HAVE TO WAIT, so that a creature which
+	// was already pointed the right way holds that facing through the wind-up
+	// instead of drifting, and so that a Strike faces its target while it
+	// stomps even though it does not wait to.
+	FaceTarget(Driven, Target);
+
+	if (Abilities[Chosen].WindUpSeconds > 0.0f)
+	{
+		WindingUpAbility = Chosen;
+		WindUpLandsAt = Now + Abilities[Chosen].WindUpSeconds;
+		WindUpPassesLeft = PassesForWindUp(Abilities[Chosen].WindUpSeconds);
+		// ON THE FLOOR, NOT AT THE TARGET'S MIDDLE. Issue #471. A character's
+		// actor location is its capsule centre, which for the player is 96 cm
+		// up, and this value is BOTH what the marker is drawn at and what the
+		// shot is aimed at. Left unflattened, every marker flattened it for
+		// itself and the shot did not, so the Brute's lobbed rock ended its
+		// flight a metre above the circle it had drawn. `docs/DECISIONS.md`
+		// records the rule it broke: a telegraphed attack that marks a place
+		// must arrive at that place.
+		WindUpAimedAt = AimPointFor(Driven, Target, Abilities[Chosen]);
+
+		// DRAWN BEFORE THE ANIMATION STARTS, AND AFTER WindUpAimedAt IS FIXED.
+		// After, because a lane marker runs to the point the shot was aimed at
+		// and would otherwise be drawn to last pass's aim. Before the character
+		// hook, because that hook is where a subclass does its own thing and
+		// this must not depend on what it does. Issue #396.
+		ShowWindUpMarker(Driven, Abilities[Chosen]);
+
+		Driven->BeginEnemyAbilityWindUp(Chosen, Target);
+
+		LastAction = ECataclysmBrainAction::WindingUp;
+		return LastAction;
+	}
+
+	// No wind-up, so it lands at once. Aimed through the same helper as the
+	// telegraphed path for the reason issue #471 records: an ability that reads
+	// the aim point must not get a different answer depending on whether it was
+	// telegraphed.
+	AbilityLastUsedAt[Chosen] = Now;
+	Driven->UseEnemyAbility(Chosen, Target,
+							AimPointFor(Driven, Target, Abilities[Chosen]));
+	++AbilitiesUsed;
+	// Announced as a skill used. See `ContinueWindUp`. Issue #41, slice 4.
+	UCataclysmCombatEvents::NoteCreatureAbility(Driven, Chosen);
+	// RECORDED FOR ECHOES OF THE PAST, as after a wind-up above.
+	if (ACataclysmEnemyCharacter* Recorded = Cast<ACataclysmEnemyCharacter>(Driven))
+	{
+		Recorded->LastAttackUsed = Chosen;
+	}
+
+	LastAction = ECataclysmBrainAction::Attacking;
+	return LastAction;
+}
+
+float ACataclysmEnemyController::ReachAgainstCm(const ACataclysmCharacterBase* Attacker,
+												const AActor* Target)
+{
+	if (!Attacker)
+	{
+		return 0.0f;
+	}
+	const float Designed = Attacker->AttackReachCm();
+
+	// A MINION'S OR A GADGET'S REACH IS LEFT AS IT IS: a range set against enemies, and the measure its own
+	// `HostilesWithinReach` chooses by. See the header.
+	const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Attacker);
+	if (!Creature)
+	{
+		return Designed;
+	}
+
+	// A RANGE IS LEFT AS IT IS TOO: the Gatekeeper's sweep, the Succubus's and the Sentinel's bolt, a Stalker's
+	// weapon. Each is chosen by `ChooseAbility` against its own centre-to-centre `MaxRangeCm` or started from its
+	// centre, so lengthening it would stand the creature where it may not attack. See
+	// `ACataclysmEnemyCharacter::AttackReachIsAContactReach`.
+	if (!Creature->AttackReachIsAContactReach())
+	{
+		return Designed;
+	}
+
+	float Reach = Designed;
+
+	// ITS OWN BODY AS IT STANDS, AGAINST ITS BODY AS DESIGNED: a rarer creature is scaled bigger by `SetRarityStep`,
+	// and its blow starts that much further out. Asked of `BodyGrowthCm`, the one measure of it, which a lobbed
+	// attack's minimum range asks too (issue #2716). Never shortened.
+	Reach += Creature->BodyGrowthCm();
+
+	// THE TARGET'S BODY AS IT STANDS, scaled with it, so a rarer creature's wider body counts. A character's root is
+	// its capsule; anything without one has no width to read and adds nothing.
+	const UCapsuleComponent* TargetCapsule =
+		Target ? Cast<UCapsuleComponent>(Target->GetRootComponent()) : nullptr;
+	if (!TargetCapsule)
+	{
+		return Reach;
+	}
+
+	// WIDER THAN THE PLAYER LENGTHENS IT BY THE DIFFERENCE; NARROWER LEAVES IT. See the header for why it is never
+	// shortened.
+	return Reach
+		+ FMath::Max(0.0f, TargetCapsule->GetScaledCapsuleRadius() - ACataclysmPlayerCharacter::CapsuleRadiusCm());
+}
+
+bool ACataclysmEnemyController::IsInReach(const ACataclysmCharacterBase* Attacker, const AActor* Target)
+{
+	// ON THE FLOOR PLANE, for the reason `Think` records at its own distance: capsule centres sit at different
+	// heights, and a designed reach is a floor-plane quantity.
+	return Attacker && Target
+		&& FVector::Dist2D(Attacker->GetActorLocation(), Target->GetActorLocation())
+			<= ReachAgainstCm(Attacker, Target) + ContactToleranceCm;
+}
+
+FAIMoveRequest ACataclysmEnemyController::MakeChaseMoveRequest(
+	AActor* Target, float ReachCm) const
+{
+	// MOVETOACTOR RATHER THAN MOVETOLOCATION, because the target moves. A
+	// location is where the target was when the order was given; an actor is
+	// re-followed as it walks.
+	FAIMoveRequest Request(Target);
+	Request.SetAcceptanceRadius(ReachCm * ApproachFractionOfReach);
+	Request.SetUsePathfinding(true);
+
+	// BOTH OFF, AND THIS IS THE WHOLE POINT OF THE FUNCTION. They default to
+	// true, which quietly adds both capsule radii to the acceptance radius and
+	// stops the Brute 162 cm from a target it can only hit at 90. See the
+	// header for the measurement.
+	Request.SetReachTestIncludesAgentRadius(false);
+	Request.SetReachTestIncludesGoalRadius(false);
+
+	return Request;
+}
+
+bool ACataclysmEnemyController::ChooseRoamTarget(FVector& OutTarget) const
+{
+	const ACataclysmCharacterBase* Driven = Body();
+	if (!Driven || !bHasRoamAnchor)
+	{
+		return false;
+	}
+
+	const float RoamRadius = Driven->RoamRadiusCm();
+	if (RoamRadius <= 0.0f)
+	{
+		return false;
+	}
+
+	// THE NAVIGATION SYSTEM'S ANSWER WHEN THERE IS ONE. It returns a point on
+	// the navigation mesh that a path exists to, so it respects walls and it
+	// never picks somewhere the character would walk into a corner trying to
+	// reach. FNavigationSystem::GetCurrent is the accessor the rest of this
+	// project uses; see UCataclysmLevelAuthoring.
+	// NOT A const UWorld*, and the compiler is right to insist. FNavigationSystem
+	// ::GetCurrent returns a const navigation system for a const world, and
+	// GetRandomReachablePointInRadius is not a const member -- it can build
+	// missing data as a side effect of being asked.
+	if (UWorld* World = GetWorld())
+	{
+		if (UNavigationSystemV1* Navigation =
+				FNavigationSystem::GetCurrent<UNavigationSystemV1>(World))
+		{
+			FNavLocation Reachable;
+			if (Navigation->GetRandomReachablePointInRadius(
+					RoamAnchor, RoamRadius, Reachable))
+			{
+				OutTarget = Reachable.Location;
+				return true;
+			}
+		}
+	}
+
+	// A CIRCLE AROUND THE ANCHOR WHEN THERE IS NOT, and this branch is not only
+	// for broken levels: every automation test world is built by
+	// UWorld::CreateWorld, which has no navigation system at all, so without
+	// this there would be no way to check any of the roaming behaviour headless.
+	//
+	// SAFE IN A WAY THE CHASE'S EQUIVALENT IS NOT. The chase falls back to
+	// walking straight at a target that could be anywhere. This point is always
+	// within RoamRadiusCm of the anchor, so the character cannot end up further
+	// from where it started than the radius its own class asked for. That is
+	// what makes the fallback acceptable rather than merely convenient.
+	//
+	// SQUARE ROOT ON THE RADIUS, which is not decoration. Drawing the distance
+	// uniformly puts half the points inside the half-radius circle, which is a
+	// quarter of the area, so the character would spend most of its time near
+	// the anchor and the roam would read as fidgeting. The square root spreads
+	// them evenly over the disc.
+	const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+	const float Distance = RoamRadius * FMath::Sqrt(FMath::FRand());
+
+	OutTarget = RoamAnchor
+		+ FVector(FMath::Cos(Angle) * Distance, FMath::Sin(Angle) * Distance, 0.0f);
+	return true;
+}
+
+ECataclysmBrainAction ACataclysmEnemyController::FollowCommander(
+	ACataclysmCharacterBase* Driven)
+{
+	// A DEPLOYED GADGET IS REFUSED BEFORE ANYTHING ELSE IS ASKED. See the
+	// header for why this tests the flag rather than the walk speed.
+	if (!Driven || Driven->StaysWhereItIsPut())
+	{
+		return ECataclysmBrainAction::Idle;
+	}
+
+	// NULL FOR EVERY ORDINARY MONSTER, which is what leaves roaming and
+	// standing still exactly as they were.
+	AActor* Commander = UCataclysmCommand::CommanderOf(Driven);
+	if (!IsValid(Commander))
+	{
+		return ECataclysmBrainAction::Idle;
+	}
+
+	// HORIZONTAL DISTANCE, for the reason the chase in Think records: capsule
+	// centres sit at different heights and a 3D distance charges the follow
+	// for a height difference nobody chose.
+	const float Distance = FVector::Dist2D(
+		Driven->GetActorLocation(), Commander->GetActorLocation());
+
+	if (Distance <= FollowDistanceCm)
+	{
+		// CLOSE ENOUGH, SO IT STOPS. Every pass rather than once, for the reason
+		// the stun and pin branches record: StopMovement is not sticky.
+		StopMovement();
+		LastAction = ECataclysmBrainAction::Following;
+		return LastAction;
+	}
+
+	// BACK TO FACING WHERE IT WALKS, the same restoration the chase makes for
+	// the same reason: an ability that turned it on the spot left the movement
+	// component pointed at the controller's rotation. Issue #457.
+	FaceTravelDirection(Driven);
+
+	// MOVETOACTOR RATHER THAN MOVETOLOCATION, because the commander moves --
+	// which in a Horde dungeon is the whole of the problem being fixed.
+	FAIMoveRequest Request(Commander);
+	Request.SetAcceptanceRadius(FollowDistanceCm);
+	Request.SetUsePathfinding(true);
+
+	// BOTH OFF, so the acceptance radius means the distance stated above
+	// rather than that distance plus two capsule radii. MakeChaseMoveRequest
+	// records the measurement that made this matter.
+	Request.SetReachTestIncludesAgentRadius(false);
+	Request.SetReachTestIncludesGoalRadius(false);
+
+	// A STRAIGHT LINE WHEN THERE IS NO NAVIGATION MESH, the same fallback the
+	// chase uses and for the same reason.
+	if (MoveTo(Request) == EPathFollowingRequestResult::Failed)
+	{
+		Request.SetUsePathfinding(false);
+		MoveTo(Request);
+	}
+
+	LastAction = ECataclysmBrainAction::Following;
+	return LastAction;
+}
+
+ECataclysmBrainAction ACataclysmEnemyController::Roam()
+{
+	ACataclysmCharacterBase* Driven = Body();
+
+	// NOT A ROAMER, SO THE OLD BEHAVIOUR EXACTLY. Standing still with nothing in
+	// sight is what every character in this project did before roaming existed,
+	// and it is still what a monster that has not asked to roam does.
+	//
+	// IT NO LONGER COVERS A SUMMONED IMP, AND THIS COMMENT USED TO SAY IT DID.
+	// Until issue #1517 the sentence above ended "and it is still what a
+	// summoned imp and a stationary enemy should do". That was the defect the
+	// project owner reported on 2026-09-09 rather than the behaviour: an imp
+	// with nothing to fight stood where it was summoned for the rest of its
+	// twenty seconds. `docs/Cataclysm_GDD_v2.md` is the authority against it --
+	// "a summon spawns at the caster and walks" -- and Think now sends a
+	// commanded creature to FollowCommander before this is ever reached.
+	//
+	// WHAT STILL REACHES HERE is a character with nobody to follow, which is
+	// every ordinary monster in the game, and a deployed bolt turret, ballista
+	// or spike trap, which FollowCommander refuses.
+	if (!Driven || Driven->RoamRadiusCm() <= 0.0f)
+	{
+		StopMovement();
+		bHasRoamTarget = false;
+		LastAction = ECataclysmBrainAction::Idle;
+		return LastAction;
+	}
+
+	// A PINNED CREATURE DOES NOT WANDER EITHER. This is the second of the two
+	// places the brain orders a walk, and a pin that stopped only the chase would
+	// leave a creature with nothing in sight strolling out of the thicket it was
+	// nailed into.
+	//
+	// THE ROAM TARGET IS ABANDONED RATHER THAN KEPT, so the creature picks a
+	// fresh point when the pin ends. Keeping it would send it walking to a place
+	// it chose several seconds earlier, from a position it can no longer reach it
+	// from.
+	if (UCataclysmSkillEffects::IsPinned(Driven))
+	{
+		StopMovement();
+		bHasRoamTarget = false;
+		LastAction = ECataclysmBrainAction::Pinned;
+		return LastAction;
+	}
+
+	const UWorld* World = GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+
+	// Standing at the point it reached, waiting out the pause.
+	if (Now < RoamPauseUntil)
+	{
+		LastAction = ECataclysmBrainAction::Roaming;
+		return LastAction;
+	}
+
+	if (bHasRoamTarget)
+	{
+		// ARRIVED? Measured in the horizontal plane, for the same reason the
+		// reach comparison is: the character's capsule centre and a point on
+		// the floor are at different heights, and charging the arrival test for
+		// that difference would mean it never fires. Issue #373 records the
+		// same mistake made against the attack reach.
+		const float Remaining = FVector::Dist2D(Driven->GetActorLocation(), RoamTarget);
+
+		// OR IT HAS TAKEN LONGER THAN THE WALK COULD POSSIBLY TAKE, which is
+		// what stops a character freezing for good. A roam move is ordered once
+		// and never re-issued, so anything that ends the walk short of the
+		// target -- blocked by geometry, the path invalidated, the request
+		// aborted, or simply stopping just outside the acceptance radius --
+		// otherwise leaves it standing still holding a target it will never
+		// reach and nothing to notice.
+		//
+		// A DEADLINE RATHER THAN THE PATH FOLLOWING STATUS, and that is measured
+		// rather than preferred. The obvious test is GetMoveStatus() == Idle,
+		// and it is wrong here: on 2026-08-07 a world built by UWorld::CreateWorld
+		// -- every automation test world, and the case with no navigation mesh
+		// that the circle fallback exists to serve -- was found to accept the
+		// move request and report Idle immediately. Using the status would make
+		// the character "arrive" on the pass after setting off without having
+		// moved at all, so the fallback would never walk anywhere. A test caught
+		// it by failing.
+		const bool bTakenTooLong = Now >= RoamLegDeadline;
+
+		if (Remaining <= RoamAcceptanceRadiusCm || bTakenTooLong)
+		{
+			StopMovement();
+			bHasRoamTarget = false;
+			RoamPauseUntil = Now + RoamPauseSeconds;
+			LastAction = ECataclysmBrainAction::Roaming;
+			return LastAction;
+		}
+
+		// Still walking. Deliberately no second MoveTo: the path following
+		// component is already carrying out the first one, and re-issuing it
+		// four times a second restarts the path and makes the character stutter.
+		LastAction = ECataclysmBrainAction::Roaming;
+		return LastAction;
+	}
+
+	// Nothing chosen and nothing to wait for, so pick somewhere and set off.
+	//
+	// SOMEWHERE WORTH WALKING TO, not merely somewhere. A random reachable
+	// point can land where the character is already standing, and one that does
+	// counts as arrived on the very next pass without a step being taken, then
+	// holds the full pause before drawing again. Several of those in a row is a
+	// character that stands still and twitches, which is what a play session on
+	// 2026-08-07 reported. Re-drawing a handful of times costs nothing and
+	// removes it.
+	const float Speed = Driven->GetCharacterMovement()
+		? Driven->GetCharacterMovement()->GetMaxSpeed() : 0.0f;
+	const float ShortestWorthwhileLegCm =
+		Speed * ShortestWorthwhileRoamLegSeconds;
+
+	FVector Chosen = FVector::ZeroVector;
+	bool bChose = false;
+	for (int32 Attempt = 0; Attempt < RoamTargetDrawAttempts; ++Attempt)
+	{
+		if (!ChooseRoamTarget(Chosen))
+		{
+			break;
+		}
+		bChose = true;
+
+		// GOOD ENOUGH, SO STOP DRAWING. The last draw is kept even when every
+		// attempt was too close, because a character with nowhere far to go
+		// should still shuffle rather than freeze.
+		if (FVector::Dist2D(Driven->GetActorLocation(), Chosen)
+				>= ShortestWorthwhileLegCm)
+		{
+			break;
+		}
+	}
+
+	if (!bChose)
+	{
+		StopMovement();
+		LastAction = ECataclysmBrainAction::Idle;
+		return LastAction;
+	}
+
+	RoamTarget = Chosen;
+	bHasRoamTarget = true;
+
+	// BACK TO FACING WHERE IT WALKS, for the same reason the chase does it. A
+	// creature that aimed an ability, lost its target and then wandered off
+	// would otherwise walk sideways for ever, still pointed at where the player
+	// used to be. Issue #457.
+	FaceTravelDirection(Driven);
+
+	FAIMoveRequest Request(RoamTarget);
+	Request.SetAcceptanceRadius(RoamAcceptanceRadiusCm);
+	Request.SetUsePathfinding(true);
+
+	// The same fallback the chase makes, for the same reason. A roam target
+	// chosen by the circle rather than by the navigation system has no path to
+	// follow, so without this the request fails and the character stands still
+	// holding a target it never walks to.
+	if (MoveTo(Request) == EPathFollowingRequestResult::Failed)
+	{
+		Request.SetUsePathfinding(false);
+		MoveTo(Request);
+	}
+
+	// HOW LONG THIS LEG IS ALLOWED TO TAKE. The straight-line time at the
+	// character's own walking speed, times a generous factor because a path
+	// around obstacles is longer than the straight line, plus a floor so that a
+	// very short leg still gets a sensible allowance. This is a safety net for
+	// a walk that ends early, not a pacing mechanism: a leg that finishes
+	// normally is detected by arriving, long before this.
+	//
+	// Speed is the one read above, when the shortest worthwhile leg was worked
+	// out; both want the same number.
+	const float StraightLineSeconds = Speed > 0.0f
+		? FVector::Dist2D(Driven->GetActorLocation(), RoamTarget) / Speed
+		: 0.0f;
+	RoamLegDeadline = Now + FMath::Max(
+		RoamLegMinimumSeconds, StraightLineSeconds * RoamLegGenerosity);
+
+	LastAction = ECataclysmBrainAction::Roaming;
+	return LastAction;
+}

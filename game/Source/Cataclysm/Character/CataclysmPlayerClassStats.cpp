@@ -1,0 +1,2374 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "Character/CataclysmPlayerClassStats.h"
+#include "Cataclysm.h"
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+// For the two damage-taken stat names and their base of 100. Issue #1026.
+#include "AbilitySystem/CataclysmDamageCalculation.h"
+// For the name of the stat Dominion grants, shared with the comparison that
+// reads it rather than spelled a second time here. Issue #1718.
+#include "AbilitySystem/CataclysmCommand.h"
+// For the base of The Breaking Point's conversion window. Issue #1025.
+#include "AbilitySystem/CataclysmDamageConversion.h"
+// For the per-cast Fervour stat name. Issue #1051.
+#include "AbilitySystem/CataclysmFervour.h"
+// For the base of the leech pay-out rate. Ruled 2026-10-07.
+#include "AbilitySystem/CataclysmLeech.h"
+#include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
+// For the names of the three regeneration rates, shared with the code that asks
+// for them rather than spelled a second time here. Issue #1038.
+#include "AbilitySystem/CataclysmRegeneration.h"
+// For the stat name the skill lock is recorded under. Issue #41,
+// slice 3: the map below uses the constant rather than a second
+// spelling of the name.
+#include "AbilitySystem/CataclysmSkillSlots.h"
+// For the two stagger stat names and the 100 that is a normal stagger's
+// length, shared with `ApplyStagger` which reads them rather than spelled a
+// second time here. Issue #45.
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmResistanceAttributeSet.h"
+// For the three retaliation stat names, shared with the code that reads them
+// rather than spelled a second time here. Issues #1047 and #1048.
+#include "AbilitySystem/CataclysmRetaliation.h"
+// For the stat naming how long a lasting effect on the character runs.
+// Issue #1033.
+#include "AbilitySystem/CataclysmDebuffs.h"
+// For the ailment table, which holds the name of each magnitude stat, and for
+// the 100 that is a normal magnitude. The bases below are derived from that
+// table rather than spelled a second time here. Issue #1767.
+#include "AbilitySystem/CataclysmAilments.h"
+// For the two stat names behind a debuff spreading. Issues #1057 and #1058.
+#include "AbilitySystem/CataclysmContagion.h"
+// For the nova stat name. Issue #1050.
+#include "AbilitySystem/CataclysmNova.h"
+// For the flag saying a character's skills cost no health. Issue #1051.
+#include "AbilitySystem/CataclysmSkillTemplate.h"
+// For the two flags Rock Bottom grants, and the two Carnivore grants.
+// Issues #1069 and #1071.
+#include "AbilitySystem/CataclysmHealthDebt.h"
+#include "AbilitySystem/CataclysmStacks.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystemComponent.h"
+#include "Character/CataclysmClassStats.h"
+// For the stat name saying nothing may lower a character's movement speed,
+// which lives on the class that reads it. Issue #1515.
+#include "Character/CataclysmPlayerCharacter.h"
+#include "Player/CataclysmPlayerState.h"
+#include "Items/CataclysmItem.h"
+#include "Engine/DataTable.h"
+#include "Engine/Engine.h"
+#include "HAL/IConsoleManager.h"
+
+const TCHAR* UCataclysmPlayerClassStats::ClassStatsAssetPath =
+	TEXT("/Game/Data/DT_ClassStats.DT_ClassStats");
+
+const TCHAR* UCataclysmPlayerClassStats::AttributesAssetPath =
+	TEXT("/Game/Data/DT_Attributes.DT_Attributes");
+
+const TCHAR* UCataclysmPlayerClassStats::MinionScalingAssetPath =
+	TEXT("/Game/Data/DT_MinionScaling.DT_MinionScaling");
+
+const FString UCataclysmPlayerClassStats::StartingClassName = TEXT("Ravager");
+
+namespace
+{
+	/**
+	 * Which class stat line the player starts on.
+	 *
+	 * A STRING RATHER THAN AN INDEX, because the row names in
+	 * game/Data/ClassStats.csv are what UCataclysmClassStats::BaseFor takes and
+	 * an index would be a second ordering that could disagree with the table.
+	 *
+	 * IT WAS `Default` UNTIL 2026-08-24 AND THAT MADE THE GAME UNPLAYABLE.
+	 * `Default` is the shared line every class inherits from, and it carries no
+	 * defensive layer at all -- no armour, no resistance, no block, no flat
+	 * damage reduction and no leech. There is no class selection screen, so
+	 * every character anybody has ever pressed Play on sat on it.
+	 *
+	 * Measured for issue #806: against the pack of ten Imps the sandbox places,
+	 * at the level below, a character on the shared line dies with four Imps
+	 * still standing even while using every skill on cooldown. All three real
+	 * classes survive the same fight. That is the whole of the difference
+	 * between the game being playable and not.
+	 *
+	 * THE RAVAGER RATHER THAN ONE OF THE OTHER TWO, because a character starts
+	 * holding a two-handed Greataxe and the design calls the Ravager "a
+	 * frontline aggressor... the most armor of the three, flat damage
+	 * reduction, enough leech to hold a line". The starting weapon and the
+	 * starting class should not disagree about what the character is.
+	 *
+	 * `tools/tests/test_the_starting_character_survives_a_pack.py` measures the
+	 * fight and fails if this name is changed to a line that cannot win it.
+	 */
+	// StartingClassName IS DEFINED ABOVE THIS BLOCK ON PURPOSE. Non-local
+	// statics in one translation unit are initialised in definition order, so
+	// naming it here rather than repeating the string cannot read an empty
+	// FString, and the console variable's default and ChosenClass's fallback
+	// cannot drift apart.
+	TAutoConsoleVariable<FString> CVarPlayerClass(
+		TEXT("Cataclysm.PlayerClass"),
+		UCataclysmPlayerClassStats::StartingClassName,
+		TEXT("Which row of game/Data/ClassStats.csv the player starts on: "
+			 "Default, Ravager, Ritualist or Masochist. Default is the shared "
+			 "line every class inherits and has no defences of its own. Read "
+			 "when the pawn is possessed, so press Play again after changing "
+			 "it."),
+		ECVF_Default);
+
+	/**
+	 * The starting level of the player's character.
+	 *
+	 * IT WAS THE ONLY LEVEL BEFORE LEVELLING EXISTED, and it is now the level a
+	 * character has until it gains one or loads a save:
+	 * `ACataclysmPlayerState::GetCharacterLevel` reads it until then.
+	 *
+	 * A CHANGE DURING PLAY APPLIES OR SAYS WHY NOT. Issue #1540, ruled
+	 * 2026-10-29, a judgement: see `ACataclysmPlayerState::StartingLevelChanged`.
+	 */
+	TAutoConsoleVariable<int32> CVarPlayerLevel(
+		TEXT("Cataclysm.PlayerLevel"),
+		UCataclysmPlayerClassStats::DefaultLevel,
+		TEXT("The starting level of the player's character, 1 to 100. A "
+			 "character that has not yet gained a level or loaded a save takes a "
+			 "change at once: its stat line is resolved again at the new level "
+			 "and the log says so. A character whose level is settled keeps it, "
+			 "and the log warns that nothing changed."),
+		ECVF_Default);
+
+	/** What a change to `Cataclysm.PlayerLevel` does to the characters in play. Issue #1540. */
+	void CataclysmPlayerLevelChanged(IConsoleVariable* /*Variable*/)
+	{
+		// NOTHING BEFORE THE OBJECT SYSTEM IS UP: a value set from a
+		// configuration file at start-up arrives before there is anything to
+		// look for.
+		if (!UObjectInitialized() || !GEngine)
+		{
+			return;
+		}
+		ACataclysmPlayerState::StartingLevelChanged();
+	}
+
+	/**
+	 * Binds the callback once, when this file's statics are made.
+	 *
+	 * DEFINED AFTER `CVarPlayerLevel` ON PURPOSE, for the reason
+	 * `StartingClassName` is defined before `CVarPlayerClass`: statics in one
+	 * file are made in the order they are written.
+	 */
+	const struct FCataclysmPlayerLevelChangeHook
+	{
+		FCataclysmPlayerLevelChangeHook()
+		{
+			CVarPlayerLevel.AsVariable()->SetOnChangedCallback(
+				FConsoleVariableDelegate::CreateStatic(&CataclysmPlayerLevelChanged));
+		}
+	} CataclysmPlayerLevelChangeHook;
+
+	/**
+	 * Kept alive deliberately, the same way the damage type colour table is.
+	 * Nothing else references the asset, so garbage collection would otherwise
+	 * be free to take it back and the next possession would pay the load again.
+	 */
+	TWeakObjectPtr<const UDataTable> CachedClassStats;
+
+	/** The same, for the table saying what one attribute point is worth. */
+	TWeakObjectPtr<const UDataTable> CachedAttributes;
+
+	/** And for the one saying what an attribute point is worth to a minion. */
+	TWeakObjectPtr<const UDataTable> CachedMinionScaling;
+}
+
+const UDataTable* UCataclysmPlayerClassStats::LoadTable()
+{
+	if (CachedClassStats.IsValid())
+	{
+		return CachedClassStats.Get();
+	}
+
+	const UDataTable* Table = LoadObject<UDataTable>(nullptr, ClassStatsAssetPath);
+	if (Table)
+	{
+		const_cast<UDataTable*>(Table)->AddToRoot();
+		CachedClassStats = Table;
+	}
+	return Table;
+}
+
+void UCataclysmPlayerClassStats::MergeAttributeBases(
+	const FCataclysmAttributePoints& Points, TMap<FName, float>& Bases)
+{
+	for (const FString& Name : FCataclysmAttributePoints::Names())
+	{
+		Bases.Add(FName(*Name), static_cast<float>(Points.PointsIn(Name)));
+	}
+}
+
+const UDataTable* UCataclysmPlayerClassStats::LoadAttributeTable()
+{
+	if (CachedAttributes.IsValid())
+	{
+		return CachedAttributes.Get();
+	}
+
+	const UDataTable* Table = LoadObject<UDataTable>(nullptr, AttributesAssetPath);
+	if (!Table)
+	{
+		// LOUD, BECAUSE THE SYMPTOM IS SILENT. Without this table every one of
+		// the eight attributes still resolves and still gets written, and every
+		// stat they scale simply comes out at its base -- a character that
+		// spent a hundred points and shows nothing for them. Issue #897 is what
+		// that looked like when the wiring was missing instead of the asset.
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("%s could not be loaded, so attribute points will contribute "
+				 "nothing to any stat. It is generated from the Attributes "
+				 "sheet into game/Data/Attributes.csv."), AttributesAssetPath);
+		return nullptr;
+	}
+
+	const_cast<UDataTable*>(Table)->AddToRoot();
+	CachedAttributes = Table;
+	return Table;
+}
+
+const UDataTable* UCataclysmPlayerClassStats::LoadMinionScalingTable()
+{
+	if (CachedMinionScaling.IsValid())
+	{
+		return CachedMinionScaling.Get();
+	}
+
+	const UDataTable* Table = LoadObject<UDataTable>(nullptr, MinionScalingAssetPath);
+	if (!Table)
+	{
+		// LOUD, FOR THE REASON `LoadAttributeTable` GIVES. Without this table a
+		// summoner's Spirit and Agility reach no minion, and nothing else would
+		// say so: every minion simply deals its own figure. Issue #340.
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("%s could not be loaded, so a summoner's attributes will raise "
+				 "no minion's damage. It is generated from the Minion Scaling "
+				 "sheet into game/Data/MinionScaling.csv."), MinionScalingAssetPath);
+		return nullptr;
+	}
+
+	const_cast<UDataTable*>(Table)->AddToRoot();
+	CachedMinionScaling = Table;
+	return Table;
+}
+
+const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
+{
+	// A PLAIN FILE-SCOPE-LIFETIME STATIC IS SAFE HERE, unlike `StatToAttribute`
+	// below, because these are strings rather than reflected properties. There
+	// is nothing to look up and nothing that has to be ready first.
+	//
+	// THE ORDER IS THE ORDER A READER MEETS THEM: damage, then health, then
+	// attack speed, then the two an exploding minion needs, then the one that
+	// says whose a minion's hits are, then mana on hit, which is not a minion's
+	// and arrived with issue #1791, and last what a skill costs. Nothing depends
+	// on the order; it is stated so that a diff adding a name is obviously an
+	// addition rather than a reshuffle.
+	//
+	// EACH LINE SAYS WHAT READS IT AND WHAT IT READS, because they are not all
+	// read for the same thing. This comment named a count of them until
+	// 2026-09-17, by which time the count was three short: a list that grows is
+	// not a list to count in prose.
+	static const TArray<FString> Stats = {
+		// Increases, read by ACataclysmMinion::AttackTarget at the blow.
+		TEXT("minion_damage"),
+		// Increases, read by ACataclysmMinion::Spawn at the summoning.
+		TEXT("minion_health"),
+		// Increases, read by ACataclysmMinion::Spawn at the summoning, on the
+		// lifetime the summoning skill states. Issue #1515, the Kept Longer node:
+		// "+3% increased duration of what you summon per point".
+		TEXT("minion_duration"),
+		// Flat metres of reach on a melee strike, read by
+		// UCataclysmSkillTemplate::MeleeReachBonusCm for the swing and for the
+		// basic attack's walk into reach. Issue #1515, the Overreach keystone.
+		TEXT("melee_reach_metres"),
+		// The seconds between replacements, read by
+		// UCataclysmSummonSkill::ReplaceLost after a commanded death: above zero
+		// means the keystone is held. Press-Ganged replaces a minion or thrall
+		// that died, Rekindled one that exploded. Issue #1515.
+		TEXT("minion_death_replaced_every_seconds"),
+		TEXT("minion_explosion_replaced_every_seconds"),
+		// Shared Ruin's two figures, read by ACataclysmMinion::DeathBlast off
+		// the commander when a minion or thrall dies: the share of that
+		// creature's maximum health dealt, and the radius in metres. Issue #1515.
+		TEXT("minion_death_blast_percent_of_maximum_health"),
+		TEXT("minion_death_blast_radius_metres"),
+		// Nothing Stops It's two figures, read in
+		// UCataclysmVitalAttributeSet::PostGameplayEffectExecute when a hit
+		// would kill: the seconds between saves, above zero meaning the option
+		// is held, and the seconds of no damage after one. Issue #1515.
+		TEXT("lethal_hit_survived_every_seconds"),
+		TEXT("damage_immunity_after_lethal_hit_seconds"),
+		// Sacrificial Ward's seconds between wards, read in
+		// UCataclysmVitalAttributeSet::PostGameplayEffectExecute when a blow
+		// would break the energy shield: above zero means the keystone is held.
+		// Issue #1515.
+		TEXT("shield_break_destroys_minion_every_seconds"),
+		// Cast from Ward's flag, read by UCataclysmGameplayAbility::PoolPaying:
+		// above zero, a skill cost the mana cannot cover is paid from the energy
+		// shield. Issue #1515.
+		TEXT("skill_cost_paid_from_energy_shield"),
+		// The flag that moves a skill's cost onto health and leaves the mana
+		// pool alone, read by UCataclysmGameplayAbility::CostPool. Issue #2228.
+		TEXT("skill_cost_paid_from_health"),
+		// The health paid for each point of mana when mana cannot cover a
+		// skill's cost, read by UCataclysmGameplayAbility::PoolPaying. Ruled
+		// 2026-10-06: "Skills can spend HP instead of mana at a 3:1 ratio".
+		TEXT("skill_cost_paid_from_health_when_short"),
+		// What a row does to the health every heal restores, up or down, read
+		// by UCataclysmRegeneration::TopUp as its own multiplier. Ruled
+		// 2026-10-06: Reaper's Embrace's first bonus.
+		TEXT("healing_received"),
+		// What a row does to the health a healing skill restores, and the
+		// percentage of that health also given as energy shield. Read by
+		// UCataclysmRegeneration::HealingSkillAmount and GiveHealingSkillShield,
+		// which UCataclysmAuraSkill::NoteBlowTaken calls for Living Pyre and
+		// UCataclysmRegeneration::ApplyStep calls for Blood Pyre. Ruled
+		// 2026-10-09. Neither has a gameplay attribute or a base.
+		TEXT("healing_skill_health_restored"),
+		TEXT("healing_skill_health_as_energy_shield"),
+		// Above nought, applying a damage over time effect refreshes the
+		// applier's others on that target, read by UCataclysmSkillEffects where
+		// one is applied. Ruled 2026-10-06: Plague Doctor's six-piece bonus.
+		TEXT("dot_application_refreshes_others"),
+		// No Second Wind's radius in metres, read by
+		// UCataclysmDebuffs::HoldAppliedNearbyStep: above zero, a Cripple or
+		// Weaken the holder applied does not run down on an enemy that near.
+		// Issue #1515.
+		TEXT("applied_cripple_and_weaken_held_within_metres"),
+		// Ground Down's radius and share of both speeds, read by
+		// UCataclysmDebuffs::GroundDownStep for the creatures near the holder.
+		// Issue #1515.
+		TEXT("enemies_near_slowed_within_metres"),
+		TEXT("enemies_near_slowed_percent"),
+		// Nothing Wasted's cap, as a share of the melee hit the store is added
+		// to, read by UCataclysmAbilitySystemComponent::NoteMitigatedDamage and
+		// SpendStoredMitigatedDamage. Issue #1515.
+		TEXT("mitigated_damage_added_to_next_melee_cap_percent"),
+		// The caps of the two stores of absorbed damage, each a share of the
+		// hit its store is added to, read by
+		// UCataclysmAbilitySystemComponent::NoteShieldAbsorbedDamage,
+		// NoteSpellAbsorbedDamage and SpendStoredAbsorbedDamage. Ruled
+		// 2026-10-07.
+		TEXT("shield_absorbed_damage_added_to_next_attack_cap_percent"),
+		TEXT("spell_absorbed_damage_added_to_next_attack_cap_percent"),
+		// The most the temporary absorb can hold from overheal, as a percentage
+		// of maximum health, read by
+		// UCataclysmAbilitySystemComponent::NoteOverheal where
+		// UCataclysmRegeneration::TopUp finds a heal of health did not all fit.
+		// Ruled 2026-10-07. No gameplay attribute and no base.
+		TEXT("overheal_absorb_percent_of_maximum_health"),
+		// Percentage points off the health above which this character cannot
+		// apply crowd control to an enemy, read by
+		// UCataclysmSkillEffects::CrowdControlRefusedByHealthCeiling where a
+		// stun, a knockdown, a fear or a displacement is applied. Ruled
+		// 2026-10-07: "You cannot apply CC effects to enemies above 50% HP". A
+		// reduction, so nought refuses nothing. No gameplay attribute and no base.
+		TEXT("crowd_control_health_ceiling_reduction"),
+		// Whether a worn row forbids this character to walk, read by
+		// UCataclysmSkillEffects::CannotWalkByARow for the player controller's
+		// refusal of a step. Ruled 2026-10-08: "You cannot move while channeling
+		// any skill". A flag. No gameplay attribute and no base.
+		TEXT("cannot_walk"),
+		// Whether a landed hit cuts short the skills this character is using,
+		// read by UCataclysmAbilitySystemComponent::NoteHitTaken once for each
+		// running skill with that skill's tags. Ruled 2026-10-08: "Taking a hit
+		// interrupts any skill currently being used" and "Taking damage while
+		// channeling interrupts the channel immediately". A flag. No gameplay
+		// attribute and no base.
+		TEXT("hit_taken_cancels_skills"),
+		// Whether the dungeon rule Suffering Aura takes no mana from this
+		// character, read by
+		// UCataclysmSkillEffects::ImmuneToSufferingAuraManaDrainByARow for the
+		// one condition on the mana loss in
+		// ACataclysmDungeonGameMode::StepSufferingAura. Ruled 2026-10-09, for
+		// the first half of Mana Weaver's six-piece bonus: "You gain an aura
+		// that makes you and nearby allies immune to all mana-draining
+		// effects". That one rule's drain only, and the holder's only. A flag.
+		// No gameplay attribute and no base.
+		TEXT("suffering_aura_mana_drain_immunity"),
+		// The chance in percent that a hit this character has taken makes it
+		// immune to that hit's damage type, and the seconds the immunity lasts.
+		// Read by UCataclysmAbilitySystemComponent::RollDamageTypeImmunityOnHit,
+		// which UCataclysmVitalAttributeSet::PostGameplayEffectExecute calls
+		// once a typed hit's health is written. Ruled 2026-10-12, for Shard of
+		// Anarchy's six-piece bonus: "When you take damage, you have a 10%
+		// chance to become immune to the damage type that hit you for 5
+		// seconds". Either at nought opens nothing. No gameplay attribute and
+		// no base.
+		TEXT("damage_type_immunity_on_hit_chance"),
+		TEXT("damage_type_immunity_on_hit_seconds"),
+		// The seconds a worn row adds to a skill's wind-up, read by
+		// UCataclysmSkillTemplate::SecondsUntilTheSwingConnects with the skill's
+		// tags. Ruled 2026-10-08: "Point blank AOE skills have a 0.75-1.5 second
+		// cast delay before firing". Seconds, not a flag; a figure below nought
+		// adds nothing. No gameplay attribute and no base.
+		TEXT("blow_delay_seconds"),
+		// The share of this character's armour and resistances each of its
+		// minions takes, in percent, read from the summoner by
+		// UCataclysmDamageCalculation::Resolve at each blow a minion takes, with
+		// the minion's own type tags. Ruled 2026-10-08: "Summoned minions
+		// inherit 10%-25% of your armor and resistances". A percentage of two
+		// figures the summoner already has. No gameplay attribute and no base.
+		TEXT("minion_defences_percent_of_yours"),
+		// Shared Blood's share of the summoner's maximum energy shield that each
+		// minion has, read from the summoner by
+		// UCataclysmRegeneration::SharedBloodStep. Issue #1515.
+		TEXT("minion_energy_shield_percent_of_yours"),
+		// Both Hands Full: a second two-handed weapon may go in the other hand,
+		// read by UCataclysmEquipmentComponent::MayHoldTwoTwoHanded. Issue #1515.
+		TEXT("two_handed_weapon_in_each_hand"),
+		// Follow Through's seconds between repeats, read by
+		// UCataclysmFollowThrough::NoteMeleeKill. Issue #1515.
+		TEXT("melee_kill_repeats_attack_every_seconds"),
+		// Nowhere to Run's radius, read by UCataclysmDebuffs::NowhereToRunStep and,
+		// as a no-decay radius, by UCataclysmFervour::DecayStep. Issue #1515.
+		TEXT("enemies_cannot_move_away_within_metres"),
+		// Shoulder Through, above zero meaning held, read by
+		// UCataclysmShoulderThrough::Step. Issue #1515.
+		TEXT("moving_into_enemy_pushes_aside"),
+		// Chorus, above zero meaning held, read by UCataclysmChorus::Repeat.
+		// Issue #1515.
+		TEXT("minions_repeat_your_skills"),
+		// A Second Self, above zero meaning held, read by
+		// UCataclysmSecondSelf::Step. Issue #1515.
+		TEXT("minion_held_longest_becomes_your_equal"),
+		// Set Stance's "cannot be knocked back", above zero meaning held, read
+		// by UCataclysmSkillEffects::ApplyKnockback. Issue #1755.
+		TEXT("knockback_suppressed"),
+		// The block's two figures, read in UCataclysmDamageCalculation::Resolve
+		// at the block step: the share a block removes, on a base of 50 that
+		// `EngineSuppliedBases` states, and the chance it removes all of the hit.
+		// Issue #1833 group E part 2.
+		TEXT("block_damage_reduction"),
+		TEXT("block_negation_chance"),
+		// The two chances a defender rolls against an incoming blow, in
+		// UCataclysmVitalAttributeSet beside the no-damage window: a spell
+		// absorbed, and a melee hit reflected whole as retaliation. Ruled
+		// 2026-10-06.
+		TEXT("spell_absorb_chance"),
+		TEXT("melee_reflect_chance"),
+		// The three Famine rows on potions, written by the dungeon floor rules and
+		// read by UCataclysmPotions: Hard Mode's flag, Recession's share off
+		// every kill, and Diminishing Returns' share off each drink. Issue #806.
+		TEXT("potions_forbidden"),
+		TEXT("potion_kill_charges_less_percent"),
+		TEXT("potion_heal_less_percent_per_drink"),
+		// Rendering Blows' share of the struck enemy's armour and its seconds,
+		// read by UCataclysmAbilitySystemComponent::NoteLandedMeleeHitFrom on
+		// every third landed melee hit on one enemy. Issue #1515.
+		TEXT("third_melee_hit_armour_removed_percent"),
+		TEXT("third_melee_hit_armour_removed_seconds"),
+		// Increases, read by UCataclysmAilments::Apply where a Cripple or a
+		// Weaken is created, and not where a spread copies one. Issue #1515,
+		// the Deeper Hurt node: "+3% increased duration of Cripple and Weaken
+		// you apply per point".
+		TEXT("cripple_and_weaken_duration"),
+		// Increases, read by UCataclysmCommand::AttackIntervalScaleFor.
+		TEXT("minion_attack_speed"),
+		// Whether a minion explodes when it dies, read by
+		// ACataclysmMinion::HandleDeath. A flag: a row sets it to one.
+		TEXT("minion_explodes_on_death"),
+		// Increases, read by ACataclysmMinion::Explode, for both the summon
+		// cap destroying the oldest and a death under the flag above.
+		TEXT("minion_explosion_damage"),
+		// Whether a minion's hits and kills are credited to its summoner, read
+		// by ACataclysmMinion::HitsCountAsTheSummoners for
+		// UCataclysmCombatEvents::NoteBlow. A flag: the Conduit keystone sets
+		// it to one, and without it a minion's blow is the minion's own.
+		TEXT("minion_hits_count_as_yours"),
+		// Whether a creature that dies carrying a curse this character laid
+		// rises as an imp for it, read by UCataclysmRisenImps::CurserOf. A flag:
+		// the Ritualist's starting node sets it to one. Issue #1479.
+		TEXT("curse_death_raises_imp"),
+		// Whether this character's melee swings pick their targets across a
+		// full circle, read by UCataclysmStrikeSkill::ArcDegrees. A flag: Every
+		// Swing Lands' second row sets it to one. Issue #1515.
+		TEXT("melee_arc_full_circle"),
+		// The three rows that give allies this character's damage buffs, read by
+		// UCataclysmSharedBuffs::Step on the regeneration step: how far a running
+		// self buff's More damage reaches, how far a Support skill's reaches, and
+		// the More damage every ally within 5 m gains. Issue #1833 group E part 4a.
+		TEXT("self_buff_shared_within_metres"),
+		TEXT("support_buff_shared_within_metres"),
+		TEXT("nearby_allies_more_damage"),
+		// How many seconds an imp raised where this character's necrosis killed
+		// an enemy lasts, read by UCataclysmRisenImps::RiseOnNecrosisKill, and
+		// how many seconds after a summoned minion dies it is summoned again,
+		// read by UCataclysmSummonSkill::ScheduleResummon. Above zero is each
+		// rule being held. Issue #1833 group E part 4b.
+		TEXT("necrosis_kill_raises_imp_seconds"),
+		TEXT("minion_resummoned_after_seconds"),
+		// Whether this character's aura gives the allies inside it the
+		// immunities it gives its caster, read by
+		// UCataclysmAuraSkill::ShareImmunitiesWithAlliesInside on every pulse. A
+		// flag. Issue #1833 group E part 4c.
+		TEXT("aura_shares_immunities_with_allies"),
+		// The class points a worn row grants, read by
+		// UCataclysmPassivePoints::GrantedByWornRows in
+		// UCataclysmEquipmentComponent::RefreshAttributes off the worn rows
+		// themselves, each row's value rounded down by itself. Ruled 2026-10-09:
+		// "Gain 5-10 class points". A count. No gameplay attribute and no base,
+		// and nothing asks for it through the stat pipeline.
+		TEXT("class_points_granted"),
+		// How far a Ritualist's minions draw nearby enemies off their summoner,
+		// and how many minions that takes. Both read by
+		// UCataclysmCommand::MinionDrawingEnemyFrom for the Behind the Veil
+		// keystone. A reach above zero IS the keystone being present, so there is
+		// no third stat holding a flag.
+		TEXT("minions_draw_nearby_enemies_metres"),
+		TEXT("minions_draw_nearby_enemies_minimum"),
+		// Whether it is removed, read by UCataclysmSkillTemplate::ApplyManaOnHit.
+		TEXT("mana_on_hit"),
+		// What a skill costs, read by UCataclysmGameplayAbility::ManaCostFor,
+		// which hands it the SKILL'S OWN cost as the base. Issue #1815. There is
+		// nothing for an attribute to hold: every skill has a different cost, so
+		// one number on the character would be the wrong number for all but one
+		// of them.
+		TEXT("mana_cost"),
+		// How much longer a cooldown is, read by
+		// UCataclysmGameplayAbility::CooldownAfterReduction. Issue #1994. It has
+		// no gameplay attribute: its rows are asked with the skill's tags, the
+		// route that honours a row scoped to a slot (issue #1981), and three of
+		// the five sentences it serves are scoped.
+		TEXT("cooldown_lengthening"),
+		// How much faster a cooldown recovers, as a divisor of its own beside the
+		// reduction, read by UCataclysmGameplayAbility::CooldownAfterReduction.
+		// Issues #1820 and #41, for the dungeon rule Fragmented Reality. No
+		// gameplay attribute and no base: its rows are asked with the skill's
+		// tags, as the lengthening's are.
+		TEXT("cooldown_recovery"),
+		// How far a character's resistance cap moves from 70, read by
+		// UCataclysmDamageCalculation::ResistanceCapOf. Issue #1833, the kill
+		// counter.
+		TEXT("resistance_cap"),
+		// Flat uses added to a skill with a cooldown, read by
+		// UCataclysmAbilitySystemComponent::SkillChargesMaximum. Issue #1833,
+		// skill charges: "Ultimate has 1-3 additional charges" and five more.
+		TEXT("skill_charges_bonus"),
+		// What share of current health a cast pays INSTEAD of its mana, read by
+		// UCataclysmGameplayAbility::ManaCostPaidAsHealthPercent. Issues #1820
+		// and #41. Written by the dungeon floor rule `Famine_Desperate_Measures`
+		// under the condition `mana_below`. No gameplay attribute, for the
+		// reason `mana_cost` gives: it is asked per cast, with the skill's tags
+		// and the character's conditions at that moment.
+		TEXT("mana_cost_as_current_health_percent"),
+		// What share of the mana a cast takes is also taken from health, read
+		// by UCataclysmGameplayAbility::ApplyCost. 2026-10-23, G7c. Written by
+		// the dungeon floor rule `Celestial_Edict_of_Abstinence`. No gameplay
+		// attribute, for the reason `mana_cost` gives: it is asked per cast.
+		TEXT("mana_cost_also_taken_from_health_percent"),
+		// A flag: an attacker's critical strike deals no extra damage, read by
+		// CataclysmVitalAttributeSet.cpp beside the critical multiplier.
+		// 2026-10-23, G7c. Written by the dungeon floor rule
+		// `Celestial_Edict_of_Humility`. No gameplay attribute: asked per blow.
+		TEXT("critical_strikes_deal_no_extra_damage"),
+		// What share a hit keeps when its critical roll fails, read by
+		// CataclysmVitalAttributeSet.cpp beside the critical multiplier and
+		// applied by UCataclysmDamageCalculation::Resolve. Issue #1686. No
+		// gameplay attribute: it is asked per blow, with the skill's tags, and
+		// its base of 100 comes from `EngineSuppliedBases`.
+		TEXT("non_critical_damage"),
+		// What share a projectile's landed contacts after its first keep, read
+		// by ACataclysmProjectile::HitOne. Issue #1686. No gameplay attribute:
+		// asked per contact with the firing skill's tags, based at 100 by
+		// `EngineSuppliedBases`.
+		TEXT("projectile_later_hit_damage"),
+		// What share a skill's zone deals on its first sweep, read by
+		// UCataclysmSkillTemplate::LeaveGroundAlong. Issue #1686. No gameplay
+		// attribute: asked once per zone with the skill's tags, based at 100 by
+		// `EngineSuppliedBases`.
+		TEXT("zone_first_sweep_damage"),
+		// Four more a persistent area reads where a skill leaves it, in
+		// UCataclysmSkillTemplate::LeaveGroundAlong and LeaveTerrainAlong, each
+		// with the skill's tags. Ruled 2026-10-06. The first is based at 100 by
+		// `EngineSuppliedBases`; the other three have no base.
+		TEXT("persistent_area_duration"),
+		TEXT("zone_damage_per_enemy_inside"),
+		TEXT("zone_slow_percent"),
+		TEXT("only_one_persistent_area"),
+		// How fast the class resource is gained, read by
+		// UCataclysmAbilitySystemComponent::ClassResourceGainScaled at each
+		// gain. Ruled 2026-10-07. No gameplay attribute: asked per gain with no
+		// tags, based at 100 by `EngineSuppliedBases`.
+		TEXT("class_resource_generation"),
+		// And two flags a ground zone reads there too: a stagger for whoever
+		// enters, and the ailment of the zone's own damage type each sweep.
+		// Ruled 2026-10-06.
+		TEXT("zone_staggers_on_entry"),
+		TEXT("zone_applies_own_ailment"),
+		// And two by which a row gives a zone to a skill that states no
+		// ground, each a number of seconds, read by
+		// UCataclysmSkillTemplate::LeaveRowZoneAt. Ruled 2026-10-06.
+		TEXT("zone_at_start_and_end_seconds"),
+		TEXT("zone_at_impact_seconds"),
+		// And four a worn row states that only a Movement skill reads, with
+		// its own tags: a pull where it arrived, a hit along a charge's
+		// path, a random direction, and an explosion at both ends. Read by
+		// UCataclysmMovementSkill::WornRowStat. Ruled 2026-10-07.
+		TEXT("movement_pulls_nearby_on_arrival"),
+		TEXT("movement_path_damage_percent"),
+		TEXT("movement_random_direction"),
+		TEXT("movement_explodes_at_both_ends"),
+		// And two flags by which a zone reaches the character who left it:
+		// its damage, and its effects. Read where the zone is left. The
+		// owner's decision of 2026-10-06.
+		TEXT("zone_damages_its_owner"),
+		TEXT("zone_applies_effects_to_owner"),
+		// And the percent of its owner's walking speed at which a zone
+		// follows them. Read where the zone is left. Ruled 2026-10-06.
+		TEXT("zone_follows_owner_percent"),
+		// And a flag on a commander: a minion of theirs that is killed
+		// leaves a chaos pool. Read by ACataclysmMinion::HandleDeath. Ruled
+		// 2026-10-06.
+		TEXT("minions_leave_chaos_pools"),
+		// And three about damage over time on the character who carries
+		// them. Ruled 2026-10-06. A flag that refuses an ailment, asked with
+		// the ailment's tag by UCataclysmSkillEffects::ApplyDamageOverTime;
+		// the percent of a bleed tick the energy shield takes; and a flag
+		// that puts every tick to the mana first. The last two are read by
+		// UCataclysmDamageCalculation::Resolve.
+		TEXT("ailment_immunity"),
+		TEXT("bleed_damage_taken_from_energy_shield"),
+		TEXT("damage_over_time_taken_from_mana_first"),
+		// And four read at one site each. Ruled 2026-10-07. None has a
+		// gameplay attribute. The percent more an energy shield loses for
+		// each point it stops, read by UCataclysmDamageCalculation::Resolve;
+		// how fast a payment of leech arrives, read by
+		// UCataclysmLeech::PayoutSecondsFor and based at 100 by
+		// `EngineSuppliedBases`; the least width of a strike's arc, read by
+		// UCataclysmStrikeSkill::ArcAtLeastDegrees with the skill's tags;
+		// and the seconds a staggered enemy is rooted, read by
+		// UCataclysmSkillEffects::ApplyStagger.
+		TEXT("energy_shield_damage_taken"),
+		TEXT("leech_payout_rate"),
+		TEXT("strike_arc_at_least_degrees"),
+		TEXT("stagger_root_seconds"),
+		// Points of maximum health reserved, read by
+		// UCataclysmAbilitySystemComponent::HealthReserved, which every heal's
+		// ceiling and the regeneration step's hold read. Issue #1833, health
+		// reservation: "Each minion reserves 100-500 hp", scaled by the minions
+		// held. No gameplay attribute: asked by name with the character's state.
+		TEXT("health_reserved"),
+		// The share of maximum health reserved, read by the same function.
+		// Issue #1833: "80%-99% of your health is reserved". No gameplay
+		// attribute, for the same reason.
+		TEXT("health_reserved_percent"),
+		// Increases to every duration a skill sets -- its buff, its effect, a
+		// mark, a terrain -- read by UCataclysmSkillTemplate::OwnDurationMultiplier
+		// with the skill's tags. Issue #1833: "Your support ability duration is
+		// increased by 50%-100%".
+		TEXT("skill_duration"),
+		// Increases to a self-buff skill's buff alone, read by the same
+		// function. Issue #1833: "Buff effects you apply last 30%-60% longer".
+		TEXT("buff_duration"),
+		// Increases to every debuff this character places on an enemy, read by
+		// UCataclysmSkillEffects::DebuffDurationMultiplierOf in
+		// ApplyTagForDuration and DamageOverTimeNumbers. Issue #1833: "Debuff
+		// effects you apply last 30%-60% longer".
+		TEXT("debuff_duration"),
+		// Increases to the range a skill states, read by
+		// UCataclysmSkillTemplate::ScaledRangeCm with the skill's tags. Issue
+		// #1833: "Your ranged skills have 20%-40% increased range".
+		TEXT("skill_range"),
+		// Increases to a skill's projectile speed, read by
+		// UCataclysmSkillTemplate::ScaledProjectileSpeed with the skill's tags.
+		// Issue #1833: "Ranged skills have 30%-60% increased projectile speed".
+		TEXT("projectile_speed"),
+		// Two more a projectile skill reads where it fires, each with the
+		// skill's tags, in UCataclysmProjectileSkill::BouncesWithRows and
+		// PierceWithRows. Ruled 2026-10-07. A whole number added to the bounces
+		// the skill states: "Projectiles ricochet 1-4 times". And a flag by
+		// which the skill pierces all: "Spells pierce through all enemies in
+		// their path". Neither has a base.
+		TEXT("projectile_bounces"),
+		TEXT("projectile_pierce_all"),
+		// Increases, read by ACataclysmMinion::Spawn at the summoning, on the
+		// reach and notice radius the minion's type states. Issue #1833:
+		// "Gadgets have 20%-40% increased attack range".
+		TEXT("minion_range"),
+		// The share of armour a critical strike ignores on top of the rest,
+		// asked in UCataclysmVitalAttributeSet where armour penetration is and
+		// added in UCataclysmDamageCalculation::Resolve after the roll. Issue
+		// #1833: "Your critical strikes ignore 20%-40% of enemy armor".
+		TEXT("critical_armor_penetration"),
+		// The critical strike ceiling, read over the MaxCritChance attribute in
+		// UCataclysmVitalAttributeSet where a blow takes its chance. Issue
+		// #1833: "Your critical strike chance cannot exceed 30%-50%".
+		TEXT("max_crit_chance"),
+		// The share of its maximum the energy shield may not regenerate into,
+		// read in UCataclysmRegeneration::ApplyStep. Issue #1833: "Your energy
+		// shield cannot recharge above 50% of its maximum".
+		TEXT("energy_shield_recharge_ceiling_reduction"),
+		// The share of a kill's experience granted, read by
+		// ACataclysmPlayerState::ExperienceAfterGain. Issue #1833: "Kills no
+		// longer generate any experience".
+		TEXT("experience_gain"),
+		// A share of the maximum mana added to a skill's cost, read in
+		// UCataclysmGameplayAbility::ManaCostFor with the skill's tags. Issue
+		// #1833: "Movement abilities cost 20%-50% of your maximum mana".
+		TEXT("mana_cost_as_maximum_mana_percent"),
+		// Whether what this character's retaliation strikes cannot reduce or
+		// mitigate it, read by UCataclysmRetaliation::CannotBeMitigatedFor where
+		// UCataclysmRetaliation::Pay builds the blow. Ruled 2026-10-12:
+		// "Retaliation damage cannot be reduced or mitigated by the attacker". A
+		// flag. No gameplay attribute and no base.
+		TEXT("retaliation_cannot_be_mitigated"),
+		// How many seconds after this character's first hit on an enemy that
+		// enemy becomes immune to this character's damage, read by
+		// UCataclysmAbilitySystemComponent::IsImmuneToDamageOf where a blow on
+		// that enemy is resolved. Ruled 2026-10-12: "Enemies that have been
+		// alive for more than 15 seconds become immune to your damage until you
+		// disengage for 3 seconds". The 15, flat; nought is no such rule. No
+		// gameplay attribute and no base.
+		TEXT("enemies_immune_to_you_after_seconds"),
+		// How many projectiles are added to the one a projectile skill fires,
+		// read by UCataclysmProjectileSkill::ExtraProjectilesWithRows where the
+		// skill fires, with the skill's tags. Ruled 2026-10-12: "Skills get +1-4
+		// to projectile count". A whole number, rounded where it is read. No
+		// gameplay attribute and no base.
+		TEXT("projectile_count"),
+		// The share of what would reach this character's health that is taken
+		// later instead, as a percent, and the seconds it is drained over. Both
+		// read by UCataclysmDelayedDamage::DelayShare where a blow's damage
+		// reaches health. Ruled 2026-10-12: "25%-50% of damage taken is dealt
+		// over 4-8 seconds". Flat; either at nought delays nothing. No gameplay
+		// attribute and no base.
+		TEXT("damage_taken_delayed_percent"),
+		TEXT("damage_taken_delayed_seconds"),
+		// How much more effective an aura skill's five figures are, read by
+		// UCataclysmAuraSkill::MoreEffective with the aura's tags: where a pulse
+		// deals its damage, lays its named debuff and helps its allies, and
+		// where a blow its holder takes returns health. Ruled 2026-10-13: "Your
+		// auras are 20%-50% more effective". A more row. No gameplay attribute
+		// and no base.
+		TEXT("aura_effect"),
+		// How much more potent a buff a skill of the character's lays is, read
+		// by UCataclysmSelfBuffSkill::MorePotent with that skill's tags: where a
+		// self buff grants its More damage, and where an aura gives its allies
+		// their damage bonus. Ruled 2026-10-13: "Buff effects you apply are
+		// 20%-40% more potent". A more row. No gameplay attribute and no base.
+		TEXT("buff_potency"),
+		// The percent less that a character deals while it carries at least one
+		// debuff the holder of this stat applied. Read by
+		// UCataclysmDebuffs::NoteLaid where a debuff is put on another character,
+		// and kept on that character for UCataclysmSkillEffects::WeaponDamageOf.
+		// Ruled 2026-10-13: "Applying a debuff to an enemy reduces their damage
+		// output by 10%-20%". Flat; nought cuts nothing. No gameplay attribute
+		// and no base.
+		TEXT("debuffed_enemies_deal_less_percent"),
+		// Whether this character is given no debuff and lays none, read by
+		// UCataclysmDebuffs::HoldsImmuneAndAppliesNone for the refusal the four
+		// functions that put a debuff on a character make, and for the step that
+		// removes what a holder already carries. Ruled 2026-10-13: "You are
+		// immune to debuffs but also cannot apply them". A flag. No gameplay
+		// attribute and no base.
+		TEXT("immune_to_debuffs_and_applies_none"),
+		// The chance, in percent, that a damage over time ailment this character
+		// applied explodes when it ends by time, read where such an effect is
+		// removed, in UCataclysmSkillEffects, with the tags the ended effect
+		// granted. Ruled 2026-10-13: "Your burn effects have a 20%-40% chance to
+		// explode for double their remaining damage when they expire". Flat;
+		// nought is no chance. No gameplay attribute and no base.
+		TEXT("dot_explodes_at_expiry_chance"),
+		// The flag by which a summoner's gadgets choose the enemy with the most
+		// health within their reach, read by
+		// ACataclysmMinion::MostHealthWithinReach where the shared brain chooses
+		// a target, with the gadget's type tags. Ruled 2026-10-13: "Your gadgets
+		// prioritize the highest HP enemy within their range instead of the
+		// nearest". A flag. No gameplay attribute and no base.
+		TEXT("gadgets_target_most_health"),
+		// How many seconds apart a summoner's gadgets fire at every enemy
+		// within their reach, read by ACataclysmMinion::VolleyEverySeconds on
+		// the gadget's step: the shortest of the summoner's flat rows that
+		// match the gadget's type tags, and not their sum. Ruled 2026-10-13:
+		// "Gadgets fire at all enemies within range simultaneously once every
+		// 5-8 seconds". Nought is no such rule. No gameplay attribute and no
+		// base.
+		TEXT("gadget_volley_every_seconds"),
+		// The flag by which a summoner's gadget that kills an enemy with a blow
+		// of its own strikes once more, at the nearest enemy within its reach,
+		// read at the end of ACataclysmMinion::AttackTarget with the gadget's
+		// type tags. Ruled 2026-10-13: "When a gadget kills an enemy, it fires
+		// an additional burst at the nearest enemy within its range". A flag.
+		// No gameplay attribute and no base.
+		TEXT("gadgets_burst_on_kill"),
+		// The flag by which a summoner's gadgets take no damage from any blow,
+		// and the percent of a gadget's maximum health as placed that it loses
+		// each second. Both read by ACataclysmMinion::StepNoDamageAndDrain on
+		// the gadget's step, with the gadget's type tags. Ruled 2026-10-13:
+		// "Your gadgets are invincible but lose 5% of their maximum HP per
+		// second passively". Flat; each at nought does nothing. No gameplay
+		// attribute and no base.
+		TEXT("gadgets_take_no_damage"),
+		TEXT("gadget_health_lost_percent_per_second"),
+		// The flag by which a summoner's gadgets cast a copy of the last skill
+		// the summoner used, at their own target, every 2 seconds, read by
+		// ACataclysmMinion::StepSkillCopy on the gadget's step with the
+		// gadget's type tags. Ruled 2026-10-14: "Gadgets copy the last skill
+		// you used and fire it at their target once every 2 seconds". A flag.
+		// No gameplay attribute and no base.
+		TEXT("gadgets_copy_your_last_skill"),
+		// The flag by which a skill in the Ultimate slot has no cooldown and
+		// its mana cost doubles with each paid use of it in the dungeon, read by
+		// UCataclysmGameplayAbility::UltimateCostDoublesByARow with no tags,
+		// from GetBaseCooldown, ManaCostFor and CommitAndBegin. Ruled
+		// 2026-10-14, for Mana Weaver's ten-piece bonus: "Your ultimate ability
+		// no longer has a cooldown. Instead, its mana cost is doubled every time
+		// you use it". A flag. No gameplay attribute and no base.
+		TEXT("ultimate_cost_doubles_instead_of_cooldown"),
+		// The percent of what reaches a nearby ally's health that its wearer
+		// takes as a blow of its own, read by
+		// UCataclysmAllyDamageShare::PercentHeldBy with no tags, from the damage
+		// branch of UCataclysmVitalAttributeSet. Ruled 2026-10-15, for "You take
+		// 5%-15% damage done to nearby allies". No gameplay attribute and no
+		// base.
+		TEXT("damage_done_to_nearby_allies_taken_percent"),
+		// The percent of a point-blank skill's own blow, priced for an ally,
+		// that each ally inside its area is struck for, read by
+		// UCataclysmAreaShareOnAllies::PercentHeldFor with the skill's tags.
+		// Ruled 2026-10-15, for "Your AOE skills deal 50%-75% of their damage
+		// to nearby allies as well as enemies". No gameplay attribute and no
+		// base.
+		TEXT("aoe_skill_damage_to_nearby_allies_percent"),
+		// The flag by which a slot's key places a skill gadget instead of
+		// casting the slot's skill, read by
+		// UCataclysmAbilitySystemComponent::SlotIsASkillGadget with the slot's
+		// skill tags, the way skill_locked is asked. Ruled 2026-10-16, for the
+		// four "Your heavy attack / special ability / support ability /
+		// ultimate ability is converted into a deployable gadget" rows: a flat
+		// 1 whose Required Tags is the slot's tag. A flag. No gameplay
+		// attribute and no base.
+		TEXT("skill_slot_is_a_gadget"),
+		// The per cent chance the Null Emperor ten-piece's aura consumes an
+		// enemy's shot in flight, read by UCataclysmVoidAura::ConsumeChanceOf
+		// with no tags while the wearer holds ten Void, from
+		// ACataclysmProjectile::Step. Ruled 2026-10-17 (O9), for "While you
+		// have at least 10 stacks of Void, you gain an aura of void energy that
+		// has a 50% chance to consume enemy projectiles". Flat. No gameplay
+		// attribute and no base.
+		TEXT("void_aura_projectile_consume_chance"),
+		// The flag by which a commander's death blast (Shared Ruin's two stats,
+		// above) deals Death damage, and the seconds a Tyrant's Minion lasts,
+		// both read off the commander by ACataclysmMinion when a minion or
+		// thrall of its dies: the flag in DeathBlast, the seconds in
+		// SummonTyrantsMinion from UCataclysmVitalAttributeSet::
+		// NotifyIfHealthReachedZero. Ruled 2026-10-18, for Tyrant's Chains'
+		// six-piece. Flat; each at nought does nothing. No gameplay attribute
+		// and no base.
+		TEXT("minion_death_blast_deals_death"),
+		TEXT("minion_death_summons_tyrants_minion_seconds"),
+		// The three figures of a reprieve from a lethal blow that ends in
+		// death unless a kill is made: the seconds between reprieves, above
+		// zero meaning one may be given, the seconds of no damage and of the
+		// window to make the kill, and the rarity rung that kill must reach,
+		// at nought no sentence. Read by UCataclysmAbilitySystemComponent::
+		// LethalHitReprieveFigure from UCataclysmVitalAttributeSet::
+		// PostGameplayEffectExecute when a blow or a tick would kill. Ruled
+		// 2026-10-18, for the Demon King's Regalia's ten-piece. Flat. No
+		// gameplay attribute and no base.
+		TEXT("lethal_hit_reprieve_every_seconds"),
+		TEXT("lethal_hit_reprieve_seconds"),
+		TEXT("lethal_hit_reprieve_kill_rarity_at_least"),
+		// Brute's Heart's Ground Pound: the seconds from one pound to the next,
+		// the per cent of the wearer's armour each enemy struck takes, the
+		// radius, the stun and the seconds a kill takes off the time left. Each
+		// read with no tags by UCataclysmGroundPound::StatOf, from its Step on
+		// the regeneration step and, for the last, from NoteKill. Ruled
+		// 2026-10-17 (#5) and 2026-10-18 (Q1-Q5), for the ten-piece bonus.
+		// Flat; the seconds at nought arm nothing. No gameplay attribute and no
+		// base.
+		TEXT("ground_pound_every_seconds"),
+		TEXT("ground_pound_percent_of_armor"),
+		TEXT("ground_pound_radius_metres"),
+		TEXT("ground_pound_stun_seconds"),
+		TEXT("ground_pound_seconds_off_per_kill"),
+		// Warlord's Will's Warhound: the per cent chance a landed blow taken
+		// summons one, the seconds it lasts, the per cent of the wearer's armour
+		// each of its hits deals, and the seconds each hit taunts the enemy
+		// struck. Each read with no tags off the wearer by ACataclysmMinion: the
+		// chance in RollForWarhoundOnHitTaken from UCataclysmAbilitySystemComponent::
+		// NoteHitTaken, the seconds in SummonWarhound, the armour in WarhoundBlow
+		// and the taunt in AttackTarget. Ruled 2026-10-17 (#6) and 2026-10-18
+		// (Q1-Q5), for the six-piece bonus. Flat; the chance or the seconds at
+		// nought summon nothing. No gameplay attribute and no base.
+		TEXT("warhound_summon_chance"),
+		TEXT("warhound_seconds"),
+		TEXT("warhound_percent_of_armor"),
+		TEXT("warhound_taunt_seconds"),
+		// Brute's Heart's taunt aura: the share of maximum health the wearer must
+		// be strictly below, the seconds from one beat to the next, how far an
+		// enemy is taunted from, and the seconds each beat taunts it for. Each read
+		// with no tags off the wearer by UCataclysmTauntAura::Step, on the
+		// regeneration step. Ruled 2026-10-17 (#6) and 2026-10-18 (Q1-Q4), for the
+		// six-piece bonus. Flat; any at nought arms nothing. No gameplay attribute
+		// and no base.
+		TEXT("taunt_aura_below_health_percent"),
+		TEXT("taunt_aura_every_seconds"),
+		TEXT("taunt_aura_radius_metres"),
+		TEXT("taunt_aura_taunt_seconds"),
+		// The seconds between a Tyrant's Minion's casts of its commander's
+		// Ultimate, read off the commander with no tags by ACataclysmMinion::
+		// TyrantsUltimateSecondsBetweenCasts, from TyrantsMinionStep on the
+		// regeneration step. Ruled 2026-10-17 (#7) and 2026-10-18 (T1-T7), for
+		// Tyrant's Chains' ten-piece. Flat; at nought nothing is cast. No
+		// gameplay attribute and no base.
+		TEXT("tyrants_minion_casts_ultimate_every_seconds"),
+		// The flag by which a minion's or thrall's death leaves a Soul, read off
+		// the commander with no tags by ACataclysmReaperSoul::LeaveFor, from the
+		// commander's death hook. Ruled 2026-10-17 (#8) and 2026-10-18 (R1-R8),
+		// for Reaper's Embrace's six-piece. Flat 1; at nought no Soul is left. No
+		// gameplay attribute and no base.
+		TEXT("minion_death_leaves_soul"),
+		// The cull per stack of Soul Strike, read off the wearer with no tags by
+		// UCataclysmAbilitySystemComponent::CullSharePercentAgainst when its hit
+		// lands; and the flag by which a kill spawns one minion of the first
+		// summon skill held, read off the killer with no tags by
+		// UCataclysmSummonSkill::SpawnOneAtAKill. Ruled 2026-10-17 (#9) and
+		// 2026-10-19 (C1-C8), for Reaper's Embrace's ten-piece. A flat 5 and a
+		// flat 1; at nought nothing is culled and nothing spawned. No gameplay
+		// attribute and no base.
+		TEXT("cull_percent_per_soul_strike_stack"),
+		TEXT("minion_kill_spawns_minion"),
+		// Chronomancer's Time-Lock's temporal rift: the seconds from one rift to
+		// the next, its radius, its base length, the seconds each enemy caught
+		// adds, the most its whole length may be, the stun on each enemy caught,
+		// and how much more damage a frozen enemy takes. Each read with no tags
+		// off the wearer by UCataclysmTimeLockRift::StatOf, from its Step on the
+		// regeneration step. Ruled 2026-10-08, 2026-10-17 (#10) and 2026-10-19
+		// (K1-K9), for the ten-piece bonus. Flat; the seconds between rifts at
+		// nought arm nothing. No gameplay attribute and no base.
+		TEXT("time_lock_rift_every_seconds"),
+		TEXT("time_lock_rift_radius_metres"),
+		TEXT("time_lock_rift_seconds"),
+		TEXT("time_lock_rift_seconds_per_enemy"),
+		TEXT("time_lock_rift_most_seconds"),
+		TEXT("time_lock_rift_stun_seconds"),
+		TEXT("time_lock_rift_damage_taken_more_percent"),
+		// The flag by which a character refuses the buffs other characters give
+		// it, read off the RECEIVER with no tags by
+		// UCataclysmAbilitySystemComponent::RefusesBuffsFromAllies, which the
+		// shared buffs' step and an aura's two passes over its allies ask of each
+		// ally. Ruled 2026-10-19, for "You cannot benefit from buffs applied by
+		// allies". Flat 1. No gameplay attribute and no base.
+		TEXT("ally_buffs_refused"),
+		// The flag by which a wearer's own deployable's blast strikes the wearer
+		// standing inside it, read off the wearer with no tags by
+		// UCataclysmDeployableSelfBlast::HeldBy, at the five places a
+		// deployable's blast is struck. Ruled 2026-10-19 (B1-B6), for "Your
+		// deployables and traps deal full damage to you if you are within their
+		// blast radius", the deployable half. Flat 1; at nought nobody is
+		// struck. No gameplay attribute and no base.
+		TEXT("deployable_blasts_strike_self"),
+		// The skill trap, ruled 2026-10-19 (T1-T19), for "Your heavy attack /
+		// special ability / ultimate ability is converted into a placeable trap".
+		// The flag by which a slot's press places a trap, read with the slot's
+		// skill tags by UCataclysmAbilitySystemComponent::SlotIsASkillTrap, flat
+		// 1 requiring the slot's tag; and the two increases a trap's arming and
+		// its trigger radius are read by, with the trap's type tags, by
+		// ACataclysmMinion::SkillTrapArmingSecondsFor and
+		// SkillTrapTriggerRadiusCmFor. No gameplay attribute and no base.
+		TEXT("skill_slot_is_a_trap"),
+		TEXT("trap_arming_speed"),
+		TEXT("trap_trigger_radius"),
+		// Traps layer 3, ruled 2026-10-21 (M1, M2), for "Your trap skills get +1-6
+		// to max trap count" and "Traps do not expire, they remain armed until
+		// triggered": the flat bonus added to the cap of five, and the flag under
+		// which a trap is placed with no life span, both read off the player with
+		// `Type.Trap` by ACataclysmMinion::SkillTrapsMostFor and
+		// SkillTrapsDoNotExpireFor. No gameplay attribute and no base.
+		TEXT("trap_cap_bonus"),
+		TEXT("traps_do_not_expire"),
+		// Traps layer 4, ruled 2026-10-21 (F1 to F9), for "Triggered traps have a
+		// 25%-50% chance to reset and rearm instead of being consumed", "Traps deal
+		// 100%-200% increased damage to the first enemy that triggers them",
+		// "Traps deal bonus damage equal to 5%-10% of the triggering enemy's
+		// maximum HP" and "Traps deal 30%-50% of their damage as a DoT over 3
+		// seconds to triggered enemies": the rearm chance, the increase on the
+		// triggering enemy, the share of its maximum health and the share laid
+		// over time, all read off the player with `Type.Trap` by
+		// ACataclysmMinion::SkillTrapRearmChanceFor, SkillTrapIncreaseOnItsEnemyFor,
+		// SkillTrapShareOfItsEnemysHealthFor and SkillTrapShareAsDamageOverTimeFor.
+		// No gameplay attribute and no base.
+		TEXT("trap_rearm_chance"),
+		TEXT("trap_damage_to_triggering_enemy"),
+		TEXT("trap_triggering_enemy_max_health_damage"),
+		TEXT("trap_damage_over_time_share"),
+		// Traps layer 6, ruled 2026-10-22 (J7, J8), for "When a trap triggers, all
+		// enemies within 4-6 meters are pulled toward the blast center": the radius
+		// in metres every living enemy within is pulled to 1 m of the trap before its
+		// cast, read off the player with `Type.Trap` by
+		// ACataclysmMinion::SkillTrapPullRadiusCmFor. No gameplay attribute and no
+		// base.
+		TEXT("trap_pull_radius"),
+		// "This weapon has 2-4 damage types", ruled 2026-10-25 (Q-D5): how many
+		// damage types the weapon its enchantment is drawn on holds, read off the
+		// ITEM's drawn enchantments by UCataclysmDropRoll::DamageTypesCarriedBy
+		// when it drops, and not off any character. Flat, a whole number. Here
+		// only so its row is not refused; nothing reads it on the wearer. No
+		// gameplay attribute and no base.
+		TEXT("damage_types_carried"),
+	};
+	return Stats;
+}
+
+const TMap<FString, FGameplayAttribute>&
+UCataclysmPlayerClassStats::StatToAttribute()
+{
+	// BUILT ONCE ON FIRST USE RATHER THAN AS A FILE-SCOPE STATIC. An
+	// FGameplayAttribute wraps an FProperty found by reflection, and the
+	// reflection data for these attribute sets is not ready during static
+	// initialisation.
+	static const TMap<FString, FGameplayAttribute> Map = []
+	{
+		using Vital = UCataclysmVitalAttributeSet;
+		using Combat = UCataclysmCombatAttributeSet;
+		using Resource = UCataclysmClassResourceAttributeSet;
+		using Resistance = UCataclysmResistanceAttributeSet;
+		using Primary = UCataclysmPrimaryAttributeSet;
+
+		return TMap<FString, FGameplayAttribute>{
+			// THE EIGHT PRIMARY ATTRIBUTES, ADDED FOR ISSUES #50 AND #897.
+			// The attribute set existed and every player carried it, the table
+			// saying what a point is worth existed, and the arithmetic existed
+			// -- and nothing wrote any of the eight, so the eight affixes that
+			// increase them printed a number on a tool tip and changed nothing.
+			//
+			// THEY ARE RESOLVED BEFORE EVERY OTHER STAT, and ApplyTo does that
+			// deliberately rather than relying on this map's order, which is a
+			// hash order and says nothing. An attribute has to be finished
+			// before the sixteen stats it scales can be started.
+			{TEXT("agility"), Primary::GetAgilityAttribute()},
+			{TEXT("ferocity"), Primary::GetFerocityAttribute()},
+			{TEXT("constitution"), Primary::GetConstitutionAttribute()},
+			{TEXT("vitality"), Primary::GetVitalityAttribute()},
+			{TEXT("mind"), Primary::GetMindAttribute()},
+			{TEXT("spirit"), Primary::GetSpiritAttribute()},
+			{TEXT("efficacy"), Primary::GetEfficacyAttribute()},
+			{TEXT("luck"), Primary::GetLuckAttribute()},
+
+			// The pools and what refills them.
+			{TEXT("max_health"), Vital::GetMaxHealthAttribute()},
+			{TEXT("max_mana"), Vital::GetMaxManaAttribute()},
+			{TEXT("max_energy_shield"), Vital::GetMaxEnergyShieldAttribute()},
+			// THE THREE RATES, UNDER THE NAMES THEIR READER USES. Issue #1038.
+			// `UCataclysmRegeneration::ApplyStep` asks for each of these by name
+			// rather than reading the attribute, so that a bonus carrying a
+			// condition or a scale reaches it; a name written twice and spelled
+			// differently would fall back to the attribute in silence, which is
+			// the argument `UCataclysmItemModifiers::AttackDamageStat` makes.
+			{FString(UCataclysmRegeneration::HealthRegenStat),
+			 Vital::GetHealthRegenAttribute()},
+			{FString(UCataclysmRegeneration::ManaRegenStat),
+			 Vital::GetManaRegenAttribute()},
+			{FString(UCataclysmRegeneration::EnergyShieldRegenStat),
+			 Vital::GetEnergyShieldRegenAttribute()},
+			{TEXT("life_leech"), Vital::GetLifeLeechAttribute()},
+
+			// HOW FAR HEALING MAY TAKE THIS CHARACTER, as a reduction of the
+			// ceiling. Issue #988. Zero for every class, and the Masochist's
+			// Point of No Return keystone is its only source. Here for the
+			// same reason every other node-supplied stat is: a passive node
+			// granting a stat this map does not name grants nothing and
+			// reports nothing.
+			{TEXT("healing_ceiling_reduction"),
+			 Vital::GetHealingCeilingReductionAttribute()},
+
+			// AND HOW MUCH OF EACH AMOUNT ARRIVES, as a reduction. Issue #41,
+			// slice 5. Zero for every class; its sources are dungeon modifiers
+			// and enchantments rather than a class line. Here for the reason
+			// the ceiling above is here: a stat this map does not name is
+			// granted in silence and reaches no attribute.
+			{TEXT("healing_received_reduction"),
+			 Vital::GetHealingReceivedReductionAttribute()},
+
+			// THE OTHER TWO LEECHES JOINED IT IN ISSUE #895. Life leech had an
+			// entry here and the other two did not, so two of the three affixes
+			// were dropped before they reached an attribute. All three then
+			// reached one nothing read, which is what that issue was about.
+			//
+			// NO CLASS LINE NAMES EITHER. game/Data/ClassStats.csv gives the
+			// Ravager 3% life leech and no class any mana or energy shield
+			// leech, so gear is the only source of those two.
+			{TEXT("mana_leech"), Vital::GetManaLeechAttribute()},
+			{TEXT("energy_shield_leech"),
+			 Vital::GetEnergyShieldLeechAttribute()},
+
+			// The class's own resource. Its maximum only -- see the header.
+			{TEXT("class_resource"), Resource::GetMaxClassResourceAttribute()},
+
+			// THE THREE RATES THAT MOVE FERVOUR. Issue #954, and they are here
+			// for the reason every other entry is: a passive node granting a
+			// stat with no attribute behind it grants nothing and reports
+			// nothing. `ApplyTo` loops over THIS map, so a stat missing from it
+			// is dropped before it reaches a character.
+			//
+			// A BASE OF ZERO FOR EVERY CLASS, from `game/Data/ClassStats.csv`,
+			// and that is the design rather than a gap. A character gains no
+			// Fervour and loses none until it spends a point on a tree's
+			// generator node -- the Masochist's grants 1 to each of the three --
+			// which is what makes that node worth a point.
+			{TEXT("fervour_from_damage"),
+			 Resource::GetFervourFromDamageAttribute()},
+			{TEXT("fervour_from_cost"),
+			 Resource::GetFervourFromCostAttribute()},
+			{TEXT("fervour_lost_to_healing"),
+			 Resource::GetFervourLostToHealingAttribute()},
+
+			// WHAT EVERY SKILL COSTS IN HEALTH BEYOND ITS OWN COST. Issue #970,
+			// and here for the same reason as the three rates above: a passive
+			// node granting a stat this map does not name grants nothing and
+			// reports nothing. The Masochist's Deeper Cuts node is its only
+			// source, and it is zero for every class until a point is spent
+			// there.
+			{TEXT("added_health_cost"),
+			 Resource::GetAddedHealthCostAttribute()},
+
+			// AND THE SAME THING MEASURED AGAINST CURRENT HEALTH INSTEAD.
+			// Issue #986. Two stats and not one, because a share of current
+			// health cannot kill and a share of maximum health can; the
+			// project owner drew that line and `docs/DECISIONS.md` records
+			// it. The Masochist's Exsanguinate keystone is its only source.
+			{TEXT("added_health_cost_of_current"),
+			 Resource::GetAddedHealthCostOfCurrentAttribute()},
+
+			// AND WHAT SHARE OF A COST IS TAKEN LATER RATHER THAN NOW.
+			// Issue #991. Zero for every class, and the Masochist's Deferred
+			// Payment node is its only source. Here for the same reason every
+			// other node-supplied stat is: a passive node granting a stat this
+			// map does not name grants nothing and reports nothing.
+			{TEXT("deferred_health_cost_share"),
+			 Resource::GetDeferredHealthCostShareAttribute()},
+
+			// AND HOW FAR ONE FURTHER PAYMENT PUSHES A DEBT OUT, in seconds.
+			// Issue #995. Zero for every class, and the Masochist's Rolling
+			// Debt node is its only source.
+			{TEXT("health_debt_delay_extension"),
+			 Resource::GetHealthDebtDelayExtensionAttribute()},
+
+			// AND WHETHER A DEBT IS NEVER TAKEN ON A TIMER AT ALL. Issue #997.
+			// Zero for every class, and the Masochist's The Reckoning keystone
+			// is its only source.
+			{TEXT("health_debt_cleared_only_by_a_kill"),
+			 Resource::GetHealthDebtClearedOnlyByAKillAttribute()},
+
+			// AND WHETHER HEALING STOPS REMOVING FERVOUR AT ALL. Issue #1006.
+			// Zero for every class. Two Masochist keystones set it, for two
+			// different kinds of healing, and the row's required tags are what
+			// tell those apart.
+			{TEXT("fervour_loss_suppressed"),
+			 Resource::GetFervourLossSuppressedAttribute()},
+
+			// AND HOW MUCH FERVOUR ARRIVES EVERY SECOND FROM NOTHING HAPPENING.
+			// Issue #1008. Zero for every class, and the Masochist's Low Life
+			// keystone is its only source.
+			{TEXT("fervour_per_second"),
+			 Resource::GetFervourPerSecondAttribute()},
+
+			// AND BOTH HALVES OF THE RITUALIST'S GENERATOR. Issue #1518. Zero
+			// for every class, and the Ritualist tree's starting node is the
+			// only source of either: "1 per second for each minion you have,
+			// and 5 when one of them dies".
+			//
+			// THE RATE IS A SEPARATE STAT FROM `fervour_per_second` ABOVE, so
+			// that tree's `Binding Sigils` node -- "+2% increased Fervour
+			// gained from your minions" -- cannot also increase the Masochist's
+			// Low Life keystone, which grants Fervour for being hurt. One
+			// character can reach all 24 class trees, so holding both is
+			// ordinary.
+			//
+			// THE RATE'S ATTRIBUTE STAYS AT ZERO even for a Ritualist holding
+			// the node, because its row carries the scale `minions_held` and a
+			// scaled bonus is worked out when it is asked for rather than
+			// folded in. The entry is still needed for the reason the two
+			// below give: `ApplyTo` loops over THIS map, and a stat missing
+			// from it is dropped before `StatForSkill` could be asked.
+			{FString(UCataclysmFervour::FromMinionsStat),
+			 Resource::GetFervourFromMinionsAttribute()},
+
+			// AND ALL THREE OF THE RAVAGER'S. Issue #1515. Zero for every
+			// class, and `Ravager_basic_spine_000` is the only source of any
+			// of them: "Enemies in reach generate Fervour ... Fervour decays
+			// at 5 per second after 3 seconds with no enemy within 4 metres."
+			//
+			// THE RATE IS A SEPARATE STAT FROM BOTH ABOVE, for the reason the
+			// minion rate gives for being separate from the flat one. `Held
+			// Ground` reads "+2% increased Fervour gained from enemies near
+			// you", and a shared stat would hand that increase to Low Life and
+			// to the Ritualist's minions as well.
+			//
+			// THE RATE'S ATTRIBUTE STAYS AT ZERO even for a Ravager holding the
+			// node, because its row carries the scale `enemies_in_reach` and a
+			// scaled bonus is worked out when it is asked for rather than
+			// folded in. The entry is needed anyway: `ApplyTo` loops over THIS
+			// map, and a stat missing from it is dropped before `StatForSkill`
+			// could be asked.
+			//
+			// THE RADIUS IS A STAT AND THE DELAY IS NOT. Two nodes grant the
+			// radius and their flat values sum to the 8 that `No Ground Given`
+			// names; no node anywhere changes the three seconds, so that is a
+			// constant in `UCataclysmFervour`.
+			{FString(UCataclysmFervour::PerEnemyInReachStat),
+			 Resource::GetFervourPerEnemyInReachAttribute()},
+			{FString(UCataclysmFervour::DecayPerSecondStat),
+			 Resource::GetFervourDecayPerSecondAttribute()},
+			{FString(UCataclysmFervour::DecayGraceMetresStat),
+			 Resource::GetFervourDecayGraceMetresAttribute()},
+
+			// AND THE RAVAGER'S FIRST FERVOUR SPENDER. Issue #1515. Zero for
+			// every class, and `Ravager_basic_d_c1` Wrung Out is its only
+			// source. Without this entry the row would be dropped by `ApplyTo`
+			// before `StatForSkill` could be asked, and a kill would restore
+			// nothing while the node looked built.
+			{FString(UCataclysmFervour::HealthRestoredOnKillStat),
+			 Resource::GetHealthRestoredOnKillAttribute()},
+
+			// AND THE RAVAGER'S SECOND. Issue #1515. Zero for every class, and
+			// `Ravager_basic_b_b2` Bought With Ruin is its only source. Without
+			// this entry the row would be dropped by `ApplyTo` before
+			// `StatForSkill` could be asked, and an attack would buy nothing
+			// while the node looked built.
+			{FString(UCataclysmFervour::IncreasedDamageBoughtPerExtraEnemyHitStat),
+			 Resource::GetIncreasedDamageBoughtPerExtraEnemyHitAttribute()},
+
+			// AND THE LAST CLAUSE OF THE RAVAGER'S GENERATOR. Issue #1515. Zero for
+			// every class, and `Ravager_basic_spine_000` is its only source.
+			// Without this entry the row would be dropped by `ApplyTo` before
+			// `StatForSkill` could be asked, and an attack would earn nothing while
+			// the node looked built.
+			{FString(UCataclysmFervour::PerEnemyHitStat),
+			 Resource::GetFervourPerEnemyHitAttribute()},
+
+			// AND THE TWO DEATH RULES THAT COST NOTHING. Issue #1515. Zero for every
+			// class; the Ravager's Long Hold and the Ritualist's Fed by the Fallen
+			// are their only sources. Without these entries the rows would be
+			// dropped by `ApplyTo` before `StatForSkill` could be asked, and a kill
+			// or a death nearby would pay nothing while the options looked built.
+			{FString(UCataclysmFervour::HealthRestoredOnKillAtNoCostStat),
+			 Resource::GetHealthRestoredOnKillAtNoCostAttribute()},
+			{FString(UCataclysmFervour::OnEnemyDeathNearbyStat),
+			 Resource::GetFervourOnEnemyDeathNearbyAttribute()},
+			{FString(UCataclysmFervour::OnMinionDeathStat),
+			 Resource::GetFervourOnMinionDeathAttribute()},
+
+			// AND BOTH HALVES OF THE LAST DROP. Issue #1051. Zero for every class,
+			// and the first option of the Masochist's The Final Vow is the only
+			// source of either. Both rows carry a health condition, so both
+			// attributes stay at zero even for a character holding the option and
+			// both are asked for through the stat pipeline rather than read. The
+			// entries are still needed, because `ApplyTo` loops over THIS map and a
+			// stat missing from it is dropped before `StatForSkill` could be asked.
+			{FString(UCataclysmFervour::PerCastStat),
+			 Resource::GetFervourPerCastAttribute()},
+			{FString(UCataclysmSkillTemplate::HealthCostSuppressedStat),
+			 Resource::GetHealthCostSuppressedAttribute()},
+
+			// AND THE FLAG SAYING A CHARACTER HAS TRADED ITS MANA POOL FOR
+			// HEALTH. Issue #1067. Zero for every class, and the first option
+			// of the Masochist's first capstone is its only source.
+			{FString(UCataclysmSkillTemplate::ManaPoolBecomesHealthStat),
+			 Resource::GetManaPoolBecomesHealthAttribute()},
+
+			// AND WHETHER DROPPING BELOW HALF HEALTH TURNS DAMAGE INTO BLEEDING,
+			// with how long one turn of that lasts beside it. Issue #985. The
+			// Masochist's The Breaking Point is the flag's only source; the
+			// window has a base of 3 seconds on the Masochist's own class stat
+			// line, because "lasts 3 seconds, increased by 5% per point" is a
+			// base plus an increase and an increase needs something under it.
+			{TEXT("damage_to_bleeding_on_low_health"),
+			 Resource::GetDamageToBleedingOnLowHealthAttribute()},
+			{TEXT("damage_to_bleeding_window"),
+			 Resource::GetDamageToBleedingWindowAttribute()},
+
+			// AND ALL THREE OF ROCK BOTTOM'S. Issue #1069. Zero for every
+			// class, and the first option of the Masochist's third capstone is
+			// the only source of any of them. Neither of the two flags is asked
+			// for through the pipeline by a route that would work without an
+			// entry here: `ApplyTo` loops over THIS map, and a stat missing
+			// from it is dropped before `StatForSkill` could ever be asked.
+			{FString(UCataclysmHealthDebt::UnpayableBecomesDebtStat),
+			 Resource::GetUnpayableHealthCostBecomesDebtAttribute()},
+			{FString(UCataclysmHealthDebt::ClearedOnDroppingLowStat),
+			 Resource::GetDebtClearedOnDroppingLowAttribute()},
+			{FString(UCataclysmFervour::OnDroppingLowStat),
+			 Resource::GetFervourOnDroppingLowAttribute()},
+
+			// AND BOTH OF CARNIVORE'S. Issue #1071. Zero for every class, and
+			// the second option of the Masochist's fourth capstone is the only
+			// source of either. One says a hit taken grants a stack of Carnage
+			// and the other says Carnage has no maximum.
+			{FString(UCataclysmStacks::CarnageFromDamageTakenStat),
+			 Resource::GetCarnageFromDamageTakenAttribute()},
+			{FString(UCataclysmStacks::CarnageHasNoMaximumStat),
+			 Resource::GetCarnageHasNoMaximumAttribute()},
+
+			// What keeps a hit from landing in full.
+			{TEXT("armor"), Combat::GetArmorAttribute()},
+
+			// EVASION AND BLOCK, WHICH NO CLASS LINE NAMES AND GEAR SUPPLIES
+			// ENTIRELY. UCataclysmDamageCalculation rolls both -- evasion at
+			// line 278 and a block at line 323 -- and until issue #894 neither
+			// attribute could ever hold anything but the zero it starts at,
+			// because the four affixes granting them were dropped here.
+			//
+			// A ZERO BASE IS THE DESIGN AND NOT A GAP. The design document says
+			// a class "does not need a base above zero for every stat" and that
+			// a class with no base evasion is "how a class declines to care
+			// about a stat". An INCREASED evasion affix on a character with no
+			// flat evasion therefore still grants nothing, which is the
+			// pipeline working rather than this entry failing.
+			{TEXT("evasion"), Combat::GetEvasionAttribute()},
+			{TEXT("block_chance"), Combat::GetBlockChanceAttribute()},
+			{TEXT("damage_reduction"), Combat::GetDamageReductionAttribute()},
+			{TEXT("crowd_control_resistance"),
+			 Combat::GetCrowdControlResistanceAttribute()},
+			{FString(UCataclysmRetaliation::AmountStat),
+			 Combat::GetRetaliationAttribute()},
+
+			// AND HOW FAR THAT REACHES, AND WHETHER IT LEECHES. Issues #1047 and
+			// #1048. Zero for every class, and one capstone option is the only
+			// source of each: The First Vow's Reprisal Wave and The Second Vow's
+			// Feeding Wound. Here for the reason every other node-supplied stat
+			// is: `ApplyTo` loops over this map, so a stat missing from it is
+			// dropped before it reaches a character.
+			//
+			// A RADIUS IN METRES AND A FLAG. Both rows carry no condition and no
+			// scale, so both ARE folded into their attributes, and
+			// `UCataclysmRetaliation` asking for the stat and reading the
+			// attribute give the same answer today. It asks anyway, so that a
+			// future row carrying a condition works.
+			{FString(UCataclysmRetaliation::RadiusMetresStat),
+			 Combat::GetRetaliationRadiusMetresAttribute()},
+			{FString(UCataclysmRetaliation::LeechesStat),
+			 Combat::GetRetaliationLeechesAttribute()},
+
+			// AND WHAT SHARE OF ITS MISSING HEALTH ONE NOVA DEALS. Issue #1050.
+			// Zero for every class, and the Masochist's Unstable Aura is its only
+			// source. Its row carries a health condition, so the attribute stays at
+			// zero even for a character holding the node and `UCataclysmNova` asks
+			// for the stat rather than reading it.
+			{FString(UCataclysmNova::DamageStat),
+			 Combat::GetNovaDamageOfMissingHealthAttribute()},
+
+			// AND THE TWO STATS BEHIND A DEBUFF SPREADING FROM THE CHARACTER TO
+			// AN ENEMY. Issues #1057 and #1058. Zero for every class; Beacon of
+			// Despair and Contagious Torment are the only sources of either.
+			//
+			// HERE FOR THE REASON EVERY OTHER NODE-SUPPLIED STAT IS: `ApplyTo`
+			// loops over THIS map, so a stat missing from it is never resolved,
+			// is never recorded in the character's stat inputs, and answers its
+			// fallback for ever. Both are read through `StatForSkill`, which
+			// falls back to the attribute, so a missing entry here would leave
+			// both nodes granting nothing and reporting nothing.
+			{FString(UCataclysmContagion::AuraDurationStat),
+			 Combat::GetAuraDebuffDurationAttribute()},
+			{FString(UCataclysmContagion::TormentChanceStat),
+			 Combat::GetDebuffSpreadChanceAttribute()},
+
+			// AND THE TWO THAT FINISH THE MASOCHIST TREE. Issues #1060 and
+			// #1061. The chance a dying creature's debuffs pass to whatever
+			// stands by its body, and the increased damage a character deals
+			// to an enemy carrying a debuff it also carries. Zero for every
+			// class, and one node of one tree supplies each.
+			{FString(UCataclysmContagion::DeathChanceStat),
+			 Combat::GetDeathSpreadChanceAttribute()},
+			{FString(UCataclysmDebuffs::SharedDebuffDamageStat),
+			 Combat::GetDamageVsSharedDebuffAttribute()},
+
+			// AND HOW LONG A LASTING HARMFUL EFFECT ON THE CHARACTER RUNS. Issue
+			// #1033. A hundred for every class, from `EngineSuppliedBases` below,
+			// and two Masochist nodes raise it. Here for the reason every other
+			// node-supplied stat is: `ApplyTo` loops over this map, so a stat
+			// missing from it is dropped before it reaches a character.
+			{FString(UCataclysmDebuffs::DurationStat),
+			 Combat::GetDebuffDurationTakenAttribute()},
+
+			// AND WHETHER THEY STOP COUNTING DOWN AT ALL. Issue #1070. Zero for
+			// every class, and the third option of the Masochist's third
+			// capstone is its only source. The attribute stays zero even for a
+			// character holding that option, because its row carries a health
+			// condition; the entry is still needed, because `ApplyTo` loops
+			// over this map and a stat missing from it never reaches the
+			// character's recorded stat line for `StatForSkill` to find.
+			{FString(UCataclysmDebuffs::DoNotExpireStat),
+			 Combat::GetDebuffsDoNotExpireAttribute()},
+
+			// AND WHETHER THIS CHARACTER'S SKILLS MAY BE USED AT ALL. Issue
+			// #41, slice 3. Zero for every class; its sources are an
+			// enchantment scoped to the Movement slot, one scoped to the
+			// Ultimate slot, and the dungeon modifier
+			// Edict of Silence unscoped.
+			//
+			// THE CONSTANT AND NOT THE SPELLED-OUT NAME, as the entry above
+			// does. One spelling of a stat name is the point: a second one is
+			// how the refusal that reads it and the map that records it drift
+			// apart, and nothing would report the disagreement.
+			//
+			// WITHOUT THIS ENTRY THE LOCK CANNOT WORK AT ALL, which is worth
+			// saying because it looks like bookkeeping. `ApplyTo` resolves only
+			// the stats this map names, so a stat missing from it never has its
+			// inputs recorded and `StatForSkill` answers its fallback for ever.
+			{FString(UCataclysmSkillSlots::LockedStat),
+			 Combat::GetSkillLockedAttribute()},
+
+			// THE EIGHT RESISTANCES, AND GEAR IS THE ONLY SOURCE OF ANY OF
+			// THEM. The three resistance families in game/Data/Affixes.csv are
+			// the only thing in the game that grants resistance and no class
+			// line names one, so before issue #894 every hit a player took was
+			// resolved against a resistance of zero however much resistance
+			// gear they were wearing.
+			//
+			// THE KEYS MATCH UCataclysmItemModifiers::ResistanceStatFor, which
+			// builds "resistance_<type>" in lower case out of the damage type
+			// name. A key that stopped matching would go back to dropping the
+			// affix in silence, which is what
+			// Cataclysm.Equipment.EveryStatAnAffixGrantsHasAnAttributeBehindIt
+			// fails on.
+			//
+			// A PLAYER CARRIES THE PER-TYPE SET AND AN ENEMY CARRIES ONE
+			// FIGURE. UCataclysmDamageCalculation reads both and adds them, so
+			// writing these eight changes nothing about an enemy, which holds
+			// UCataclysmAllResistanceAttributeSet instead and is skipped by the
+			// HasAttributeSetForAttribute check below.
+			{TEXT("resistance_war"), Resistance::GetWarResistanceAttribute()},
+			{TEXT("resistance_demonic"),
+			 Resistance::GetDemonicResistanceAttribute()},
+			{TEXT("resistance_death"), Resistance::GetDeathResistanceAttribute()},
+			{TEXT("resistance_pestilence"),
+			 Resistance::GetPestilenceResistanceAttribute()},
+			{TEXT("resistance_famine"),
+			 Resistance::GetFamineResistanceAttribute()},
+			{TEXT("resistance_celestial"),
+			 Resistance::GetCelestialResistanceAttribute()},
+			{TEXT("resistance_chaos"), Resistance::GetChaosResistanceAttribute()},
+			{TEXT("resistance_void"), Resistance::GetVoidResistanceAttribute()},
+
+			// What a hit is worth.
+			//
+			// THE TWO WEAPON STATS ARE HERE AND NO CLASS LINE NAMES THEM, which
+			// is why they were absent until issue #845. game/Data/ClassStats.csv
+			// has no attack damage or attack speed column, so BaseFor answers
+			// zero for both, and that is the right base rather than a gap:
+			//
+			//   attack_damage  is entirely supplied by what is worn. A weapon's
+			//     damage is an `attack_damage` implicit on its base, so
+			//     GatherModifiers already hands it over as a flat modifier. Two
+			//     worn weapons therefore SUM without anything here summing them,
+			//     a two-handed weapon doubles because ImplicitValue doubles it,
+			//     and a Shield contributes nothing because it carries no such
+			//     implicit. The design's blend rule falls out of the pipeline.
+			//
+			//   attack_speed  cannot work that way. A weapon's swing rate is its
+			//     own column rather than an implicit, and rates AVERAGE rather
+			//     than summing, so a base has to be supplied. That is what the
+			//     BaseOverrides argument is for and it is the only stat using it.
+			//
+			// BEFORE THIS THEY REACHED NOTHING. Flat damage, increased damage and
+			// increased attack speed all roll on Gloves, Necklace, Relic, Ring and
+			// Weapon, so a player could wear five of each and none of them did
+			// anything at all. UCataclysmEquipmentComponent::GatherModifiers
+			// gathered them and this loop, being over the attribute map rather
+			// than over the modifiers, silently dropped them.
+			{TEXT("attack_damage"), Combat::GetAttackDamageAttribute()},
+			{TEXT("attack_speed"), Combat::GetAttackSpeedAttribute()},
+
+			// CRITICAL STRIKE CHANCE IS THE SKILL'S BASE SCALED BY GEAR, which
+			// is what the design says in as many words: "Critical strike chance
+			// belongs to the skill, not the character. Each skill carries its
+			// own base chance, and the character's gear and attributes scale
+			// it." So the base arrives through BaseOverrides exactly as attack
+			// speed does, from UCataclysmEquipmentComponent::
+			// StatBasesFromWeapons, and the four affixes that name it are
+			// ordinary modifiers on top.
+			//
+			// UNTIL ISSUE #894 UCataclysmWeaponSlotsComponent WROTE IT INSTEAD,
+			// with SetNumericAttributeBase, so a gear affix could not have
+			// scaled it even had it arrived: the write replaced the whole value
+			// every time a weapon was equipped. That write is gone and this is
+			// the only writer, which is the same resolution issue #845 reached
+			// for attack damage when two places were writing one attribute.
+			{TEXT("crit_chance"), Combat::GetCritChanceAttribute()},
+			{TEXT("crit_multiplier"), Combat::GetCritMultiplierAttribute()},
+
+			// Penetration cuts into a defender's resistance, and is read at
+			// CataclysmVitalAttributeSet.cpp where the hit is resolved.
+			{TEXT("penetration"), Combat::GetPenetrationAttribute()},
+
+			// AND ARMOUR PENETRATION CUTS INTO ITS ARMOUR, which is a second
+			// stat and not the same one. Added on 2026-09-05 while building the
+			// character sheet, which is what noticed it was missing: the sheet
+			// looks every one of its 46 stats up in this map, and this was the
+			// only one with no entry.
+			//
+			// THE ATTRIBUTE WAS READ AND NEVER WRITTEN. Issue #520 added
+			// `UCataclysmCombatAttributeSet::ArmorPenetration` so that
+			// `FCataclysmIncomingHit::ArmorPenetration` would have a source, and
+			// `CataclysmVitalAttributeSet.cpp` does read it into the hit -- but
+			// `ApplyTo` loops over THIS map, so a stat missing from it is
+			// dropped before it can reach the attribute. Nothing in
+			// `game/Data/` names the stat yet, so no behaviour changes today and
+			// what changes is that it now can. Issue #1252 carries the rest:
+			// enchantments grant stats since issue #45, and the three meant to
+			// grant this one state ranges. Since 2026-09-11 an item keeps where
+			// inside a range it rolled, but no effect row is written for those
+			// three yet.
+			{TEXT("armor_penetration"), Combat::GetArmorPenetrationAttribute()},
+
+			{TEXT("spell_damage"), Combat::GetSpellDamageAttribute()},
+
+			// THE EIGHT CONDITIONAL DAMAGE STATS, one per damage type. Issue
+			// #895. Each applies only when the target IS that type: "They read
+			// the target, not the weapon. An enemy has a damage type of its
+			// own, which is its Cataclysm's." No class line names any of the
+			// eight, so gear is their only source.
+			{TEXT("damage_vs_war"), Combat::GetDamageVsWarAttribute()},
+			{TEXT("damage_vs_demonic"), Combat::GetDamageVsDemonicAttribute()},
+			{TEXT("damage_vs_death"), Combat::GetDamageVsDeathAttribute()},
+			{TEXT("damage_vs_pestilence"),
+			 Combat::GetDamageVsPestilenceAttribute()},
+			{TEXT("damage_vs_famine"), Combat::GetDamageVsFamineAttribute()},
+			{TEXT("damage_vs_celestial"),
+			 Combat::GetDamageVsCelestialAttribute()},
+			{TEXT("damage_vs_chaos"), Combat::GetDamageVsChaosAttribute()},
+			{TEXT("damage_vs_void"), Combat::GetDamageVsVoidAttribute()},
+			{TEXT("area_of_effect"), Combat::GetAreaOfEffectAttribute()},
+			{TEXT("dot_damage"), Combat::GetDotDamageAttribute()},
+			{TEXT("dot_frequency"), Combat::GetDotFrequencyAttribute()},
+			{TEXT("dot_duration"), Combat::GetDotDurationAttribute()},
+
+			// THE TWO SIDES OF A STAGGER THIS CHARACTER APPLIES. Issue #45.
+			// `stagger_duration` is a percentage of normal like the three above
+			// it; `stagger_health_ceiling_reduction` is percentage points taken
+			// off the health above which a target cannot be staggered, and is a
+			// REDUCTION so that zero changes nothing.
+			//
+			// NEITHER IS `debuff_duration_taken`, which is the TARGET's and
+			// lengthens every timed effect put on it. Both reach one stagger.
+			//
+			// THE CONSTANTS AND NOT THE SPELLED-OUT NAMES, for the reason the
+			// skill lock entry above gives: `ApplyStagger` reads these stats by
+			// the same constants, and a second spelling is how the code that
+			// reads a stat and the map that records it drift apart with nothing
+			// reporting the disagreement.
+			//
+			// `stagger_duration` ALSO NEEDS AN ENTRY IN `EngineSuppliedBases`
+			// below, and that is not bookkeeping. Its base of 100 lives in the
+			// attribute set's constructor, which `ApplyTo` overwrites: `BaseFor`
+			// answers zero for a stat no class line names, and the recorded stat
+			// line would then hold zero. Every stagger a player applied would be
+			// scaled to nothing and refused.
+			{FString(UCataclysmSkillEffects::StaggerDurationStat),
+			 Combat::GetStaggerDurationAttribute()},
+			{FString(UCataclysmSkillEffects::StaggerHealthCeilingStat),
+			 Combat::GetStaggerHealthCeilingReductionAttribute()},
+
+			// AND HOW LONG A SKILL THIS CHARACTER LANDS KNOCKS ITS TARGET DOWN
+			// FOR. Issue #45, for "Charge skills knock down enemies they hit for
+			// 1-2 seconds". Zero for every class; one enchantment is its only
+			// source, and it scopes itself to charge skills with its own
+			// `RequiredTags` rather than through this name.
+			//
+			// NO ENGINE-SUPPLIED BASE, UNLIKE `stagger_duration` ABOVE IT. That
+			// one is written `increased` over a base of 100, so a base of zero
+			// would make it worth nothing. This is written `flat`, and a flat row
+			// supplies its own stat, so zero is the right answer for a character
+			// without the row.
+			{FString(UCataclysmSkillEffects::KnockdownSecondsStat),
+			 Combat::GetKnockdownSecondsAttribute()},
+
+			// Everything else the class table names.
+			{TEXT("movement_speed"), Combat::GetMovementSpeedAttribute()},
+
+			// COOLDOWN REDUCTION JOINED THEM IN ISSUE #895. No class line names
+			// it, so gear and the Efficacy attribute are its only sources, and
+			// without an entry here the affix granting it was dropped before it
+			// reached the attribute UCataclysmGameplayAbility::ApplyCooldown
+			// now reads.
+			{TEXT("cooldown_reduction"),
+			 Combat::GetCooldownReductionAttribute()},
+
+			// THE CHANCE A SKILL DOES NOT GO ON COOLDOWN AT ALL. Issue #973.
+			// The Masochist's The Catalyst node is its only source and it is
+			// zero for every class. The attribute it writes here stays at zero
+			// too, because that node's bonus carries a health condition and a
+			// conditional bonus is never folded into an attribute -- but the
+			// entry is still needed, because `ApplyTo` loops over this map and
+			// a stat missing from it is dropped before `StatForSkill` could
+			// ever be asked for it.
+			{TEXT("cooldown_skip_chance"),
+			 Combat::GetCooldownSkipChanceAttribute()},
+
+			{TEXT("loot_quantity"), Combat::GetLootQuantityAttribute()},
+
+			// MAGIC FIND JOINED LOOT QUANTITY IN ISSUE #896. No class line
+			// names it -- the design gives it a baseline of zero, since it is
+			// "an added percentage rather than a percentage of something" --
+			// so gear is its only source, and without an entry here the two
+			// affixes granting it were dropped before they reached anything.
+			{TEXT("magic_find"), Combat::GetMagicFindAttribute()},
+
+			// HOW MUCH DAMAGE THE CHARACTER TAKES, at 100 for normal, and the
+			// same again for a hit that is damage over time. Issue #1026. No
+			// class line names either and none should: no affix grants them, no
+			// class differs on them, and passive nodes are their only source,
+			// which is the rule `Cataclysm.Attributes.CharacterSheetIsComplete`
+			// uses to decide a stat is off the character sheet. Their base of
+			// 100 comes from `EngineSuppliedBases` below.
+			//
+			// BOTH ATTRIBUTES STAY AT 100 FOR EVERY CHARACTER TODAY, because all
+			// three nodes that move them carry a condition and a conditional
+			// bonus is never folded into an attribute.
+			// `UCataclysmDamageCalculation::Resolve` asks for the stat rather
+			// than reading the attribute. The entries are still needed, because
+			// `ApplyTo` loops over THIS map and a stat missing from it is dropped
+			// before `StatForSkill` could ever be asked for it.
+			{TEXT("damage_taken"), Combat::GetDamageTakenAttribute()},
+			{TEXT("damage_over_time_taken"),
+			 Combat::GetDamageOverTimeTakenAttribute()},
+
+			// AND WHETHER DAMAGE OVER TIME DEALS THIS CHARACTER NOTHING AT ALL.
+			// Issue #1039. Zero for every class, and the Masochist's Vessel
+			// Unbroken capstone option is its only source. Here for the reason
+			// every other node-supplied stat is: `ApplyTo` loops over this map,
+			// so a stat missing from it is dropped before it reaches a
+			// character.
+			{FString(UCataclysmDamageCalculation::DebuffDamageSuppressedStat),
+			 Combat::GetDebuffDamageSuppressedAttribute()},
+
+			// THE CHANCE A MELEE CRITICAL STRIKE APPLIES BLEEDING. Issue #1032.
+			// Zero for every class, and the Masochist's Mutilation Mastery is
+			// its only source. Here for the reason every other node-supplied
+			// stat is: `ApplyTo` loops over this map, so a stat missing from it
+			// is dropped before it reaches a character.
+			{TEXT("bleed_on_crit_chance"),
+			 Combat::GetBleedOnCritChanceAttribute()},
+
+			// THE CHANCE TO APPLY EACH AILMENT ON A HIT, eleven of them. Issue
+			// #899. Zero for every class. The eleven Ailment affixes of
+			// `game/Data/Affixes.csv` grant them as flat modifiers, and a passive
+			// node or an enchantment row naming one adds to the same stat. Here
+			// for the reason every other stat supplied by gear or by a node is:
+			// `ApplyTo` loops over this map, so a stat missing from it is dropped
+			// before it reaches a character. `UCataclysmAilments::Kinds` pairs
+			// the same names with the same attributes, and
+			// `Cataclysm.Ailments.EveryAilmentIsJoinedUpAcrossTheGame` checks that
+			// the two agree.
+			{TEXT("bleed_chance"), Combat::GetBleedChanceAttribute()},
+			{TEXT("poison_chance"), Combat::GetPoisonChanceAttribute()},
+			{TEXT("disease_chance"), Combat::GetDiseaseChanceAttribute()},
+			{TEXT("void_splinter_chance"), Combat::GetVoidSplinterChanceAttribute()},
+			{TEXT("necrosis_chance"), Combat::GetNecrosisChanceAttribute()},
+			{TEXT("burn_chance"), Combat::GetBurnChanceAttribute()},
+			{TEXT("madness_chance"), Combat::GetMadnessChanceAttribute()},
+			{TEXT("cripple_chance"), Combat::GetCrippleChanceAttribute()},
+			{TEXT("weaken_chance"), Combat::GetWeakenChanceAttribute()},
+			{TEXT("shred_chance"), Combat::GetShredChanceAttribute()},
+			{TEXT("stun_chance"), Combat::GetStunChanceAttribute()},
+
+			// HOW LARGE A CRIPPLE OR A WEAKEN THIS CHARACTER APPLIES, in per
+			// cent of the effect's own figure, where 100 is unchanged. Issue
+			// #1767. They are here rather than in `StatsWithNoAttribute`
+			// because they HAVE an attribute and need its base of 100: an
+			// exempt stat is one bespoke code reads by name, and these are
+			// read through this map like every other modifier.
+			{TEXT("cripple_magnitude"), Combat::GetCrippleMagnitudeAttribute()},
+			{TEXT("weaken_magnitude"), Combat::GetWeakenMagnitudeAttribute()},
+			// AND THE PERCENTAGE POINTS ADDED TO THE HEALTH THRESHOLD A BLOW
+			// MUST LEAVE A TARGET UNDER TO TAKE IT AS A THRALL. Issue #1718.
+			{UCataclysmCommand::PossessionThresholdBonusStat,
+			 Combat::GetPossessionThresholdBonusAttribute()},
+			// AND WHAT ONE MINION RESERVES, AND HOW MANY MINIONS MAY BE ACTIVE.
+			// Issue #1718. Both are applied to a figure the skill's own row
+			// states.
+			{UCataclysmCommand::MinionReserveReductionStat,
+			 Combat::GetMinionReserveReductionAttribute()},
+			{UCataclysmCommand::MinionCapBonusStat,
+			 Combat::GetMinionCapBonusAttribute()},
+			// AND THE THREE ENERGY-SHIELD KEYSTONES, WHICH ARE FLAGS. Issue
+			// #1515. Each is zero or above zero and nothing in between means
+			// anything, because each node states a RULE rather than a magnitude.
+			// The halved rates two of them name are constants at their read sites,
+			// since the design rows state them and nothing else grants them.
+			{UCataclysmDamageCalculation::ShieldAbsorbsDamageOverTimeStat,
+			 Combat::GetShieldAbsorbsDamageOverTimeAttribute()},
+			{UCataclysmRegeneration::ShieldRechargesWhileDamagedStat,
+			 Combat::GetShieldRechargesWhileDamagedAttribute()},
+			// AND ONE ENCHANTMENT'S FLAG BESIDE THEM, issue #1833: the shield
+			// recharges at its full rate inside the wait.
+			{UCataclysmRegeneration::ShieldRechargeHasNoDelayStat,
+			 Combat::GetShieldRechargeHasNoDelayAttribute()},
+			// AND ONE DRAWBACK'S FLAG, issue #1833: death ends running auras too.
+			{UCataclysmAbilitySystemComponent::AurasEndAtDeathStat,
+			 Combat::GetAurasEndAtDeathAttribute()},
+			{UCataclysmRegeneration::ManaRegenRestoresShieldStat,
+			 Combat::GetManaRegenRestoresShieldAttribute()},
+			// AND THE TWO RAVAGER KEYSTONES THAT FORBID A DEFENCE. Issue #1515.
+			// Both are flags. One is read on the DEFENDER, protecting its own
+			// armour; the other on the ATTACKER, refusing the defender's evasion.
+			{UCataclysmDamageCalculation::ArmorPenetrationSuppressedStat,
+			 Combat::GetArmorPenetrationSuppressedAttribute()},
+			{UCataclysmDamageCalculation::MeleeEvasionSuppressedStat,
+			 Combat::GetMeleeEvasionSuppressedAttribute()},
+			// AND THE ONE STAT THAT SERVES TWO MORE OF THEM. Issue #1515.
+			// `Ravager_keystone_d_kA` Relentless grants it always;
+			// `Ravager_keystone_spine_003` Unstoppable grants the same stat
+			// while an enemy is within four metres. The two differ only in
+			// their row's condition, so one entry here serves both.
+			{ACataclysmPlayerCharacter::MovementSpeedReductionSuppressedStat,
+			 Combat::GetMovementSpeedReductionSuppressedAttribute()},
+			// AND THE SECOND CLAUSE OF NOTHING MOVES YOU. Issue #1515.
+			// `Ravager_keystone_a_kB#2` grants it: a stun ends outright when the
+			// character kills the enemy that applied it. A flag, like the five
+			// above -- zero or above zero, and nothing in between means anything.
+			//
+			// WITHOUT THIS ENTRY THE ROW WOULD BE DROPPED IN SILENCE. `ApplyTo`
+			// loops over THIS MAP rather than over the modifiers, so a node
+			// granting a stat missing from it applies nothing, reports nothing,
+			// and leaves the character exactly as if the node had never been
+			// bought. That is what `attack_speed` did for some time, issue #120.
+			{ACataclysmPlayerCharacter::CrowdControlEndsWhenItsApplierDiesStat,
+			 Combat::GetCrowdControlEndsWhenItsApplierDiesAttribute()},
+		};
+	}();
+
+	return Map;
+}
+
+const TMap<FName, float>& UCataclysmPlayerClassStats::EngineSuppliedBases()
+{
+	// A PLAIN FILE-SCOPE STATIC WOULD DO, unlike StatToAttribute above, because
+	// these are floats rather than reflected properties. It is built inside a
+	// lambda rather than from a plain braced list because the last group is
+	// derived from another table rather than typed out; everything above that
+	// group still reads as the same list of pairs it always was.
+	static const TMap<FName, float> Map = []
+	{
+		TMap<FName, float> Built = {
+			// HOW LONG ONE TURN OF THE BREAKING POINT'S CONVERSION LASTS, before any
+			// points are spent. Issue #1025. The node reads "The conversion lasts 3
+			// seconds, increased by 5% per point", so the 3 is a base and the 5 is
+			// the per-point value on the passive effects sheet. Eight points make it
+			// 4.2 seconds.
+			//
+			// UNTIL THIS EXISTED THE BASE WAS ZERO AND THE NODE DID NOTHING. The
+			// increase multiplied nothing, the attribute was written as zero, and
+			// `UCataclysmAbilitySystemComponent::NoteDamageConversionStarted` refuses
+			// a window of zero, so no turn of the conversion ever began.
+			{FName(UCataclysmDamageConversion::WindowStat),
+			 UCataclysmDamageConversion::BaseWindowSeconds},
+
+			// AND WHAT SHARE OF A HIT A CHARACTER TAKES, at 100 for normal, plus the
+			// same again for a hit that is damage over time. Issue #1026.
+			//
+			// A HUNDRED BECAUSE IT IS THE IDENTITY FOR A MULTIPLIER. Three Masochist
+			// nodes move these, and every one of them is written as a percentage of
+			// what would otherwise arrive: "reduced by 1% per point", "take 20% more
+			// damage", "take 25% less damage". A base of zero would make an increase
+			// worth nothing and a `more` worth nothing, which is what
+			// `test_every_stat_is_one_the_game_supplies` exists to refuse.
+			//
+			// HERE RATHER THAN ON THE `Default` CLASS LINE, though five stats of
+			// exactly this shape sit there. `Cataclysm.Attributes.CharacterSheetIsComplete`
+			// gives the rule: a stat is off the character sheet when no affix grants
+			// it, nothing scales it, it has no baseline of its own and one passive
+			// node is its only source. The five on that line all fail that rule --
+			// affixes grant them and the Ritualist starts at 110 area of effect --
+			// and these two meet it. `docs/DECISIONS.md` records that promoting them
+			// to a class line is right the day an affix grants one.
+			{FName(UCataclysmDamageCalculation::DamageTakenStat),
+			 UCataclysmDamageCalculation::NormalDamageTaken},
+			{FName(UCataclysmDamageCalculation::DamageOverTimeTakenStat),
+			 UCataclysmDamageCalculation::NormalDamageTaken},
+
+			// AND WHAT SHARE A HIT KEEPS WHEN ITS CRITICAL ROLL FAILS, at 100.
+			// Issue #1686. The same shape and the same reason: its one row is a
+			// `more` of -20 to -35, so with no base every non-critical hit a
+			// player lands would be multiplied by zero.
+			{FName(UCataclysmDamageCalculation::NonCriticalDamageStat),
+			 UCataclysmDamageCalculation::NormalNonCriticalDamage},
+
+			// AND THE SHARE A BLOCK REMOVES, at the 50 a block has always
+			// removed. Issue #1833 group E part 2, ruled 2026-10-02: "You block
+			// for 65%-75% of damage instead of the normal 50%" adds its points to
+			// this base. Capped where it is read, in `BlockShareOf`.
+			{FName(UCataclysmDamageCalculation::BlockDamageReductionStat),
+			 UCataclysmDamageCalculation::BlockDamageReduction},
+
+			// AND WHAT SHARE A PROJECTILE'S LATER CONTACT KEEPS, at 100. Issue
+			// #1686, for the same reason as the entry above: its one row is a
+			// `more` of -20 to -35.
+			{FName(UCataclysmDamageCalculation::ProjectileLaterHitDamageStat),
+			 UCataclysmDamageCalculation::NormalProjectileLaterHitDamage},
+
+			// AND WHAT SHARE A ZONE'S FIRST SWEEP DEALS, at 100. Issue #1686, for
+			// the same reason: its one row is a `more` of -20 to -35.
+			{FName(UCataclysmDamageCalculation::ZoneFirstSweepDamageStat),
+			 UCataclysmDamageCalculation::NormalZoneFirstSweepDamage},
+
+			// AND WHAT SHARE OF ITS STATED TIME A PERSISTENT AREA LASTS, at 100.
+			// Ruled 2026-10-06: its one row is a `more` of -40 to -60.
+			{FName(UCataclysmDamageCalculation::PersistentAreaDurationStat),
+			 UCataclysmDamageCalculation::NormalPersistentAreaDuration},
+
+			// AND HOW FAST THE CLASS RESOURCE IS GAINED, at 100. Ruled
+			// 2026-10-07: its two rows are `increased`, +20 to +40 and -30 to
+			// -50, so with no base every gain a player made would be scaled by
+			// nought.
+			{FName(UCataclysmAbilitySystemComponent::ClassResourceGenerationStat),
+			 UCataclysmAbilitySystemComponent::NormalClassResourceGeneration},
+
+			// AND HOW FAST A PAYMENT OF LEECH ARRIVES, at 100. Ruled 2026-10-07:
+			// its one row is a `more` of -50, so with no base the rate would be
+			// nought and every payment would be made at the slowest rate.
+			{FName(UCataclysmLeech::PayoutRateStat),
+			 UCataclysmLeech::NormalPayoutRate},
+
+			// AND HOW LONG A LASTING HARMFUL EFFECT ON THE CHARACTER RUNS, at 100
+			// for normal. Issue #1033. The THIRD stat of this shape and it meets the
+			// same rule the two above do: no affix grants it, nothing scales it, no
+			// class differs on it, and two passive nodes of one tree are its only
+			// sources.
+			//
+			// A BASE IS LOAD-BEARING HERE IN A WAY IT IS NOT FOR A BONUS. Both rows
+			// that move it are `increased`, so with no base under them the stat
+			// would resolve to zero and every stun and every burn in the game would
+			// end the instant it landed. Issue #1025 records exactly that failure
+			// happening to the conversion window.
+			{FName(UCataclysmDebuffs::DurationStat),
+			 UCataclysmDebuffs::NormalDuration},
+
+			// AND HOW LONG A STAGGER THIS CHARACTER APPLIES RUNS, at 100 for normal.
+			// Issue #45. The FOURTH stat of this shape, and it meets the same rule:
+			// no affix grants it, nothing scales it, no class differs on it, and one
+			// enchantment is its only source.
+			//
+			// THE ENTRY ABOVE IS ITS MIRROR AND NOT ITS DUPLICATE. That one is how
+			// long a harmful effect put ON this character runs; this one is how long
+			// a stagger this character applies to SOMEONE ELSE runs. Both scale one
+			// stagger's duration, from opposite ends, and they multiply.
+			//
+			// WITHOUT THIS THE STAT IS ZERO FOR EVERY PLAYER AND NO PLAYER STAGGERS
+			// ANYTHING. The attribute set's constructor states 100, and that is not
+			// enough: `ApplyTo` resolves every stat this class's map names, `BaseFor`
+			// answers zero for a stat no class line names, and the resolved zero is
+			// written over the constructor's 100. `ApplyStagger` then scales by
+			// zero and refuses. The enemy-side tests cannot see this, because a
+			// spawned creature's attributes are never put through `ApplyTo`.
+			{FName(UCataclysmSkillEffects::StaggerDurationStat),
+			 UCataclysmSkillEffects::NormalStaggerDuration},
+		};
+
+		// AND HOW LARGE THE CRIPPLE AND WEAKEN THIS CHARACTER APPLIES ARE, at
+		// 100 for normal. Issue #1767. The FIFTH and SIXTH stats of this shape,
+		// meeting the same rule as the four above: no affix grants them, nothing
+		// scales them, no class differs on them, and one passive node each is
+		// their only source.
+		//
+		// WITHOUT THIS EVERY PLAYER APPLIES CRIPPLE AND WEAKEN AT ZERO, which is
+		// worse than the stat not existing. `ApplyTo` resolves every stat
+		// `StatToAttribute` names, `BaseFor` answers zero for a stat no class
+		// line names, the resolved zero is written over the 100 the attribute
+		// set's constructor states, and `UCataclysmAilments::Application`
+		// multiplies the magnitude by zero. The entry above this one records the
+		// same failure for `stagger_duration` and the two before it for
+		// `damage_taken`; this is the fourth time that chain has caught someone.
+		//
+		// DERIVED FROM THE AILMENT TABLE RATHER THAN TYPED OUT, which is what
+		// every include comment at the top of this file asks for. The names
+		// already exist on the kind rows as `MagnitudeStat`, so naming them here
+		// would be a third spelling. It also makes the rule structural: a third
+		// ailment given a magnitude stat gets its base without anyone
+		// remembering to come here, which is the step that was missed.
+		for (const FCataclysmAilmentKind& Kind : UCataclysmAilments::Kinds())
+		{
+			if (Kind.MagnitudeStat)
+			{
+				Built.Add(FName(Kind.MagnitudeStat),
+						  UCataclysmAilments::NormalMagnitude);
+			}
+		}
+
+		return Built;
+	}();
+
+	return Map;
+}
+
+FString UCataclysmPlayerClassStats::ChosenClass()
+{
+	const FString Asked = CVarPlayerClass.GetValueOnGameThread();
+
+	// FALLING BACK TO StartingClassName AND NOT TO DefaultClassName. Someone
+	// typing `Cataclysm.PlayerClass ""` should get the class a character starts
+	// on, not the shared line every class inherits stats from -- that line has
+	// no armour, no resistance, no block, no flat damage reduction and no leech,
+	// and a character sitting on it loses the fight the sandbox puts in front of
+	// them. Issue #806. Naming `Default` outright still works and is still a
+	// legitimate thing to ask for.
+	return Asked.IsEmpty() ? StartingClassName : Asked;
+}
+
+int32 UCataclysmPlayerClassStats::ChosenLevel()
+{
+	// CLAMPED RATHER THAN REFUSED, because this is a console variable a person
+	// types at and a nonsensical one should still leave a playable character.
+	// Level 0 would resolve every per-level term to minus one level's worth.
+	return FMath::Clamp(CVarPlayerLevel.GetValueOnGameThread(), 1,
+						UCataclysmClassStats::MaxLevel);
+}
+
+int32 UCataclysmPlayerClassStats::ApplyTo(
+	UAbilitySystemComponent* AbilitySystem,
+	const UDataTable* ClassTable,
+	const FString& ClassName, int32 Level,
+	const TMap<FName, TArray<FCataclysmStatModifier>>* Modifiers,
+	ECataclysmPoolFill PoolFill,
+	const TMap<FName, float>* BaseOverrides)
+{
+	if (!AbilitySystem || !ClassTable)
+	{
+		return 0;
+	}
+
+	int32 Written = 0;
+
+	// WHAT EVERY STAT WAS WORKED OUT FROM, KEPT FOR THE SKILLS. Issue #943.
+	//
+	// A modifier naming a required tag cannot be judged here, because a
+	// character sheet has no skill in hand, so it contributes nothing below.
+	// Keeping the base and the modifier list is what lets a skill work the stat
+	// out again with its own tags, through
+	// `UCataclysmAbilitySystemComponent::StatForSkill`. Before this both were
+	// local variables that went out of scope, and every scoped modifier in the
+	// game was discarded and never seen again.
+	TMap<FName, FCataclysmStatInputs> Inputs;
+
+	// RESOLVING ONE STAT, USED BY ALL THREE PASSES BELOW. `Extras` are modifiers
+	// the caller wants applied on top of whatever `Modifiers` holds for the
+	// stat, and are only ever what the character's attributes contribute: one
+	// summed increase for a stat `game/Data/Attributes.csv` scales, or one
+	// tag-scoped increase per row of `game/Data/MinionScaling.csv` for a minion
+	// stat (issue #340), whose rows require different tags and cannot be summed.
+	const auto Resolve = [&](const FString& Stat,
+							 TConstArrayView<FCataclysmStatModifier> Extras,
+							 FCataclysmStatBreakdown& OutBreakdown) -> float
+	{
+		// BaseFor falls back to the shared Default line when the class does not
+		// name the stat, and to zero when neither does. Zero is the right answer
+		// there and not a failure: most classes leave most stats alone, and a
+		// Ritualist really does have no armour.
+		float Base = UCataclysmClassStats::BaseFor(
+			ClassTable, ClassName, Stat, Level);
+
+		// AND A BASE THE ENGINE STATES IN C++, for a stat no class line should
+		// name. Issue #1025. See `EngineSuppliedBases` in the header for why
+		// there is a third place a base can come from at all.
+		//
+		// UNCONDITIONAL RATHER THAN ONLY WHEN THE CLASS TABLE IS SILENT, because
+		// BaseFor cannot tell "no row names it" from "a row names it as zero",
+		// and because no class line may name any of these anyway:
+		// `Cataclysm.PlayerStats.EveryClassStatDrivesAnAttribute` fails if one
+		// does. Making it conditional would need a reading BaseFor cannot give,
+		// to guard against a case that test already forbids.
+		if (const float* Stated = EngineSuppliedBases().Find(FName(*Stat)))
+		{
+			Base = *Stated;
+		}
+
+		// A SUPPLIED BASE REPLACES THE CLASS LINE RATHER THAN ADDING TO IT, for
+		// a stat no class line can state. Attack speed was the first: a
+		// character's swing rate comes from the weapons it holds, and two
+		// weapons average their rates, which neither the class table nor the
+		// modifier pipeline can express. The eight primary attributes are the
+		// others, and for the same reason -- a class line cannot state how many
+		// points a particular character has spent. See the header for why attack
+		// damage deliberately does not use this.
+		if (BaseOverrides)
+		{
+			if (const float* Supplied = BaseOverrides->Find(FName(*Stat)))
+			{
+				Base = *Supplied;
+			}
+		}
+
+		OutBreakdown = FCataclysmStatBreakdown();
+		OutBreakdown.Base = Base;
+		OutBreakdown.Final = Base;
+
+		TArray<FCataclysmStatModifier> ForStat;
+		if (Modifiers)
+		{
+			if (const TArray<FCataclysmStatModifier>* Found =
+					Modifiers->Find(FName(*Stat)))
+			{
+				ForStat = *Found;
+			}
+		}
+		ForStat.Append(Extras.GetData(), Extras.Num());
+		if (ForStat.IsEmpty())
+		{
+			return Base;
+		}
+
+		// KEPT SO A SKILL CAN WORK THIS OUT AGAIN WITH ITS OWN TAGS. Issue #943.
+		//
+		// ONLY A STAT THAT HAS MODIFIERS IS RECORDED. With none the pipeline
+		// returns the base, which is exactly what the attribute below ends up
+		// holding, so `StatForSkill` falling back to the attribute gives the
+		// same answer and the map stays small.
+		//
+		// THE WHOLE LIST, INCLUDING THE MODIFIERS THE LINE BELOW IS ABOUT TO
+		// DISCARD. Those are the scoped ones, and they are the only reason this
+		// exists.
+		FCataclysmStatInputs& Recorded = Inputs.FindOrAdd(FName(*Stat));
+		Recorded.Base = Base;
+		Recorded.Modifiers = ForStat;
+
+		// THE THREE-BUCKET PIPELINE, NOT ADDITION. A gear affix can be flat or
+		// increased, and the design's whole damage model is
+		// (base + flat) x (1 + increases) x more, so adding the numbers up here
+		// would give a different answer from the one every skill already uses.
+		//
+		// AN EMPTY TAG CONTAINER, AND THAT IS THE POINT OF PASSING ONE. A stat
+		// on the character sheet has no skill in hand, so a modifier scoped to
+		// something -- "increased damage against Demons" -- must not apply.
+		// UCataclysmStatPipeline::ModifierApplies is what enforces that; only
+		// globally scoped modifiers survive an empty container.
+		OutBreakdown = UCataclysmStatPipeline::Evaluate(
+			Base, ForStat, FGameplayTagContainer());
+		return OutBreakdown.Final;
+	};
+
+	// PASS ONE: THE EIGHT PRIMARY ATTRIBUTES, BEFORE ANYTHING THEY SCALE.
+	//
+	// THE ORDER IS THE WHOLE REASON THIS IS TWO PASSES. Every one of the eight
+	// scales other stats through game/Data/Attributes.csv, so an attribute
+	// resolved after the stat it scales contributes nothing at all -- and
+	// nothing would report an error, because the stat would simply come out at
+	// its base. StatToAttribute is a TMap and its order is a hash order, so
+	// relying on it would make the answer depend on where a name happens to
+	// land. Issues #50 and #897.
+	//
+	// GEAR REACHES THEM HERE, and that is what makes the eight attribute
+	// affixes work: `docs/Cataclysm_GDD_v2.md` says "Gear does not grant
+	// attribute points. It increases the attribute the character already has",
+	// so the spent points arrive as the base through BaseOverrides and the
+	// affixes arrive as increases through Modifiers, exactly like any other stat.
+	FCataclysmAttributeValues Attributes;
+	const TArray<FString> AttributeNames = FCataclysmAttributePoints::Names();
+	for (const FString& Name : AttributeNames)
+	{
+		const FGameplayAttribute* Attribute = StatToAttribute().Find(Name);
+		if (!Attribute || !AbilitySystem->HasAttributeSetForAttribute(*Attribute))
+		{
+			continue;
+		}
+
+		FCataclysmStatBreakdown Breakdown;
+		const float Value = Resolve(Name, {}, Breakdown);
+		Attributes.SetIn(Name, Value);
+		AbilitySystem->SetNumericAttributeBase(*Attribute, Value);
+		++Written;
+	}
+
+	// PASS TWO: EVERY OTHER STAT, WITH WHAT THE ATTRIBUTES CONTRIBUTE.
+	const UDataTable* AttributeTable = LoadAttributeTable();
+
+	for (const TPair<FString, FGameplayAttribute>& Pair : StatToAttribute())
+	{
+		if (AttributeNames.Contains(Pair.Key))
+		{
+			continue;   // already written by pass one
+		}
+
+		// THE CHECK IS NOT OPTIONAL. Writing to an attribute whose set the
+		// component does not hold raises an engine ensure rather than failing
+		// quietly. The player's component holds all five of these sets, but a
+		// test may build one that does not.
+		if (!AbilitySystem->HasAttributeSetForAttribute(Pair.Value))
+		{
+			continue;
+		}
+
+		// WHAT THE CHARACTER'S ATTRIBUTES ARE WORTH TO THIS STAT, in the
+		// increased bucket alongside every gear increase. Returns false when no
+		// attribute touches the stat at all, which is most of them.
+		FCataclysmStatModifier FromAttributes;
+		const bool bAttributesApply =
+			UCataclysmClassStats::AttributeModifierForValues(
+				AttributeTable, Attributes, Pair.Key, FromAttributes);
+
+		FCataclysmStatBreakdown Breakdown;
+		const float Value = Resolve(
+			Pair.Key,
+			bAttributesApply
+				? TConstArrayView<FCataclysmStatModifier>(&FromAttributes, 1)
+				: TConstArrayView<FCataclysmStatModifier>(),
+			Breakdown);
+
+		// THE ATTACK DAMAGE BRACKET IS REMEMBERED, and only that one. Issue
+		// #895. A finished attribute has its increases already applied and no
+		// longer visible, and the eight conditional damage stats have to join
+		// that same bracket rather than becoming a second multiplier. A hit
+		// cannot reopen a bracket it cannot see.
+		//
+		// DIVIDED BY 100 BECAUSE THE TWO SIDES USE DIFFERENT UNITS, and passing
+		// the figure across unchanged was issue #963. `SumOfIncreases` is in
+		// percentage points -- 125 for +125% -- and every reader of
+		// `GetAttackDamageIncreases` treats the answer as a fraction. Without
+		// this the stored figure was a hundred times too large, and the eight
+		// increased-damage-against-a-type affixes were worth a few percent of
+		// what they say.
+		if (Pair.Key == FString(UCataclysmItemModifiers::AttackDamageStat))
+		{
+			if (UCataclysmAbilitySystemComponent* Cataclysm =
+					Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+			{
+				Cataclysm->SetAttackDamageIncreases(
+					Breakdown.SumOfIncreases / 100.0f);
+			}
+		}
+
+		AbilitySystem->SetNumericAttributeBase(Pair.Value, Value);
+		++Written;
+	}
+
+	// PASS THREE: THE STATS NO ATTRIBUTE EXISTS FOR. Issue #898.
+	//
+	// WHY THERE ARE ANY. `game/Data/Affixes.csv` grants `minion_damage`,
+	// `minion_health` and `minion_attack_speed`, and no gameplay attribute for
+	// any minion stat exists anywhere in the project. Both passes above are
+	// driven by `StatToAttribute()`, so these three were resolved by nothing and
+	// reached nothing: four authored affixes that did exactly nothing, and a
+	// player who found them got no benefit and no message.
+	//
+	// RECORDED RATHER THAN WRITTEN, because there is no attribute to write to.
+	// `Resolve` puts the stat's modifiers into `Inputs`, and a minion asks for
+	// them through `UCataclysmAbilitySystemComponent::IncreasesForStat`. Only a
+	// stat that actually has modifiers is recorded, which the lambda already
+	// ensures, so a character with no minion gear gains no entries.
+	//
+	// THE INCREASES ARE WHAT IS WANTED, NOT THE VALUE, AND THAT IS WHY NO BASE
+	// IS MISSING HERE. These three stats have no base and can have none: a
+	// minion's damage, health and attack interval come from its own row in
+	// `game/Data/MinionTypes.csv`, raised by its summoner's level. The summoner's
+	// gear adds increases to that figure rather than supplying one.
+	//
+	// AND THE SUMMONER'S ATTRIBUTES ADD THEIRS, SINCE ISSUE #340: the third of
+	// the three channels the decision of 2026-08-06 (issue #209) allows. Each
+	// row of `game/Data/MinionScaling.csv` naming the stat becomes one increase
+	// requiring the row's tag -- Spirit for a `Minion.Creature`, Agility for a
+	// `Minion.Machine`, one percent a point -- worked out from the RESOLVED
+	// attributes pass one wrote, so gear that increases Spirit raises a minion
+	// too. Ruled 2026-11-02 by the coordinating session under the owner's
+	// delegation: the resolved value and not the spent points, in the increased
+	// bucket beside gear's increased minion damage, adding to it rather than
+	// multiplying it. A minion asks with its own type tags, which is what keeps
+	// Agility off an imp; `UCataclysmStatPipeline::ModifierApplies` decides.
+	//
+	// AND `mana_on_hit` SINCE ISSUE #1791, which is not a minion's and is read
+	// for something else. The basic attack's mana on hit is its slot's own
+	// figure, so this stat has no value to hold either. What is recorded for it
+	// is a removal, and `UCataclysmSkillTemplate::ApplyManaOnHit` asks for that
+	// through `UCataclysmAbilitySystemComponent::IsStatRemoved`.
+	//
+	// A NAMED LIST RATHER THAN "EVERY STAT WITH NO ATTRIBUTE". Nothing validates
+	// the `Stat` column of an affix row against a vocabulary, so deriving this
+	// from whatever the character happens to carry would turn a misspelling into
+	// a stat, silently. Adding a name is a decision somebody makes rather than a
+	// side effect of a typo.
+	//
+	// THE LIST MOVED OUT OF THIS FUNCTION FOR ISSUE #1733, because three other
+	// places need the same three names and were each keeping their own copy. It
+	// is `StatsWithNoAttribute()` now, and its header says what the exemption
+	// promises and what keeps the promise.
+	const UDataTable* MinionScalingTable = LoadMinionScalingTable();
+	for (const FString& Stat : StatsWithNoAttribute())
+	{
+		TArray<FCataclysmStatModifier> FromMinionScaling;
+		UCataclysmClassStats::MinionScalingModifiersForValues(
+			MinionScalingTable, Attributes, Stat, FromMinionScaling);
+
+		FCataclysmStatBreakdown Breakdown;
+		Resolve(Stat, FromMinionScaling, Breakdown);
+	}
+
+	// AND THE INPUTS GO ACROSS, SO A SKILL CAN ASK AGAIN. Issue #943.
+	//
+	// HERE RATHER THAN AFTER THE POOLS, because the pools are skipped entirely
+	// for a character already in play -- the early return just below -- and a
+	// character that swapped a helmet needs its scoped modifiers refreshed just
+	// as much as one arriving in the world does.
+	//
+	// WHOLESALE, NOT MERGED. This is the character's whole standing stat line;
+	// a stat that no longer has any modifier must lose its entry rather than
+	// keep the one from before the gear came off.
+	if (UCataclysmAbilitySystemComponent* Cataclysm =
+			Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		Cataclysm->SetStatInputs(MoveTemp(Inputs));
+	}
+
+	// AND A PLAYER'S WALKING SPEED IS WORKED OUT AGAIN, FROM THE LINE JUST STORED. Issue #2359.
+	//
+	// THE PASSES ABOVE WRITE THE MOVEMENT SPEED ATTRIBUTE BEFORE THE LINE IS STORED. That write tells the pawn
+	// (`ACataclysmPlayerCharacter::OnMovementSpeedChanged`), which asks the stat pipeline, and the component then
+	// still holds the line of the refresh before. So the walking speed was one refresh late: a player who put on
+	// boots, spent a point or walked into a rule's slow kept the old speed until health or something else moved.
+	// Asking once more here, after `SetStatInputs`, is the same answer the Water to Blood flag below was given.
+	//
+	// NOTHING FOR ANYTHING THAT IS NOT A PLAYER'S PAWN. The avatar is read directly, so a component whose actor
+	// information was never set -- many tests build one -- answers null and not a failed check; a bare actor, a
+	// creature or a minion fails the cast.
+	if (ACataclysmPlayerCharacter* Walker =
+			Cast<ACataclysmPlayerCharacter>(AbilitySystem->GetAvatarActor_Direct()))
+	{
+		Walker->RefreshMovementSpeed();
+	}
+
+	// AND A CHARACTER THAT TRADED ITS MANA POOL FOR HEALTH HAS THE TWO SWAPPED
+	// OVER. Issue #1067. The Masochist's Water to Blood: "You no longer have a
+	// mana pool. All maximum mana is converted into added maximum health."
+	//
+	// AFTER BOTH STATS ARE RESOLVED AND BEFORE THE POOLS ARE FILLED, and both
+	// halves of that are load-bearing. Doing it earlier would move a figure that
+	// the increases and More multipliers had not finished with; doing it later
+	// would fill health to the unconverted maximum and then clamp it back down,
+	// which is the same ordering trap the pools already carry a comment about.
+	//
+	// AFTER `SetStatInputs`, so the flag is asked of a component that already
+	// holds this character's finished stat line. Asking before it would read
+	// whatever the previous refresh left behind.
+	//
+	// THE MANA MAXIMUM GOES TO ZERO RATHER THAN BEING REDUCED, because a More
+	// multiplier cannot reach zero -- the pipeline floors a Less one at -99 --
+	// and "no longer have a mana pool" is not ninety-nine per cent less. A
+	// removal can reach zero since issue #1791, and is not used here: the
+	// conversion needs the resolved maximum in hand before it is zeroed.
+	float ConvertedToHealth = 0.0f;
+	if (UCataclysmSkillTemplate::ManaPoolBecomesHealth(AbilitySystem))
+	{
+		const FGameplayAttribute MaxHealth =
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+		const FGameplayAttribute MaxMana =
+			UCataclysmVitalAttributeSet::GetMaxManaAttribute();
+
+		if (AbilitySystem->HasAttributeSetForAttribute(MaxHealth)
+			&& AbilitySystem->HasAttributeSetForAttribute(MaxMana))
+		{
+			const float Converted = AbilitySystem->GetNumericAttribute(MaxMana);
+			if (Converted > 0.0f)
+			{
+				AbilitySystem->SetNumericAttributeBase(
+					MaxHealth,
+					AbilitySystem->GetNumericAttribute(MaxHealth) + Converted);
+				AbilitySystem->SetNumericAttributeBase(MaxMana, 0.0f);
+				ConvertedToHealth = Converted;
+
+				// AND THE MANA THE CHARACTER WAS STANDING ON GOES WITH IT,
+				// whether or not the pools are about to be filled. A character
+				// that took this option mid-fight would otherwise keep whatever
+				// mana it had in a pool whose maximum is now zero, and nothing
+				// clamps current mana down until something else writes it.
+				AbilitySystem->SetNumericAttributeBase(
+					UCataclysmVitalAttributeSet::GetManaAttribute(), 0.0f);
+			}
+		}
+	}
+
+	// AND A CHARACTER WHOSE MAXIMUM MANA IS REMOVED HAS NO MANA TO STAND ON.
+	// Issue #1791. "Your maximum mana is reduced to zero" takes the maximum to
+	// nothing through the pipeline, like any removal, in pass two above. The
+	// mana the character already holds is another matter: nothing lowers a
+	// current pool when its maximum falls, and issue #1757 ruled that deliberate
+	// -- a pool already filled is not taken away by a lowered ceiling. So a
+	// character putting this on mid-fight would keep, and could spend, the mana
+	// it had.
+	//
+	// THE ONE EXCEPTION TO THAT RULING, AND KEYED ON THE REMOVAL RATHER THAN ON
+	// THE MAXIMUM READING ZERO, so a gear swap that only lowers the maximum still
+	// leaves the pool as #1757 says. A sentence saying the pool is gone is not a
+	// lowered ceiling, which is the reason Water to Blood empties mana above.
+	//
+	// BEFORE THE EARLY RETURN BELOW, because a character already in play is the
+	// case this exists for; one arriving in the world is filled to a maximum of
+	// nothing anyway. AFTER `SetStatInputs`, for the reason the block above gives.
+	if (const UCataclysmAbilitySystemComponent* Cataclysm =
+			Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		const FGameplayAttribute Mana =
+			UCataclysmVitalAttributeSet::GetManaAttribute();
+		if (AbilitySystem->HasAttributeSetForAttribute(Mana)
+			&& Cataclysm->IsStatRemoved(FName(TEXT("max_mana")),
+										FGameplayTagContainer()))
+		{
+			AbilitySystem->SetNumericAttributeBase(Mana, 0.0f);
+		}
+	}
+
+	// AND MAXIMUM HEALTH IS WORKED OUT AGAIN WITH THE CHARACTER'S STATE. Issue
+	// #1815: "Each active minion reduces your maximum HP by 3%-6%". The fold in
+	// pass two had no state, so a row sized by the minions held was worth
+	// nothing there. `RefreshLiveMaximumHealth` asks the whole line again and
+	// adds back what Water to Blood converted, which is why that amount is
+	// handed over first.
+	//
+	// BEFORE THE EARLY RETURN, so a helmet swapped with minions out never shows
+	// the unreduced maximum, and before the pools fill, so a character arriving
+	// fills to the live one.
+	if (UCataclysmAbilitySystemComponent* Live =
+			Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		Live->SetConvertedManaToHealth(ConvertedToHealth);
+		Live->RefreshLiveMaximumHealth();
+	}
+
+	// A CHARACTER ALREADY IN PLAY KEEPS ITS POOLS WHERE THEY ARE. Filling
+	// them below is right for a character arriving in the world and is a free
+	// heal for one that only changed a helmet. See ECataclysmPoolFill.
+	if (PoolFill == ECataclysmPoolFill::LeaveAsTheyAre)
+	{
+		return Written;
+	}
+
+	// THE POOLS COME LAST, AND THAT IS THE WHOLE REASON THIS IS TWO STEPS.
+	// UCataclysmVitalAttributeSet clamps current health to maximum health, so a
+	// character whose current health was filled before its maximum was raised
+	// would be clamped straight back to the placeholder 100 and none of the
+	// above would show on screen.
+	const TPair<FGameplayAttribute, FGameplayAttribute> Pools[] = {
+		{UCataclysmVitalAttributeSet::GetHealthAttribute(),
+		 UCataclysmVitalAttributeSet::GetMaxHealthAttribute()},
+		{UCataclysmVitalAttributeSet::GetManaAttribute(),
+		 UCataclysmVitalAttributeSet::GetMaxManaAttribute()},
+		{UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(),
+		 UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute()},
+	};
+
+	for (const TPair<FGameplayAttribute, FGameplayAttribute>& Pool : Pools)
+	{
+		if (!AbilitySystem->HasAttributeSetForAttribute(Pool.Key))
+		{
+			continue;
+		}
+
+		AbilitySystem->SetNumericAttributeBase(
+			Pool.Key, AbilitySystem->GetNumericAttribute(Pool.Value));
+	}
+
+	// AND HEALTH ONLY TO WHAT IS NOT RESERVED. Issue #1833, ruled 2026-09-30. A
+	// character arriving with "80%-99% of your health is reserved" arrives at
+	// the unreserved maximum, not full.
+	if (UCataclysmAbilitySystemComponent* Holding =
+			Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		Holding->HoldHealthToUnreserved();
+	}
+
+	return Written;
+}

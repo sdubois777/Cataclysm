@@ -1,0 +1,291 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "Misc/AutomationTest.h"
+
+#if WITH_AUTOMATION_TESTS
+
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestSkip.h"
+#include "AbilitySystem/CataclysmTeams.h"
+#include "Character/CataclysmBruteCharacter.h"
+#include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmEnemyController.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/World.h"
+#include "Misc/ScopeExit.h"
+
+/**
+ * Tests for the rock the Brute carries before it throws it.
+ *
+ * WHAT THESE GUARD. Issue #421. The rock throw played `Ability_RipNToss_Rip` --
+ * an animation whose whole content is tearing a rock out of the ground -- with
+ * nothing in the creature's hands, and the rock then appeared in mid-air and
+ * flew off.
+ *
+ * THE PART THAT IS EASY TO GET WRONG IS NOT SHOWING IT. It is hiding it again. A
+ * wind-up ends three ways: the attack lands, a stun cancels it, or the pawn is
+ * unpossessed. A rock left in the creature's hand after any of them is a worse
+ * fault than the one this fixes, because it is permanent rather than momentary.
+ * The visibility is therefore asked of the brain every frame rather than
+ * remembered, and the tests below cover the endings that can be reached from a
+ * synthetic world.
+ */
+
+namespace CataclysmCarriedRockTest
+{
+	static UWorld* MakeWorldThatHasBegunPlay()
+	{
+		return CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	}
+
+	/** Metres, so these read the way the design document does. */
+	constexpr float M = 100.0f;
+
+	/** Something on the player's side for a Brute to attack. */
+	static ACataclysmEnemyCharacter* SpawnTarget(UWorld* World, const FVector& Where)
+	{
+		ACataclysmEnemyCharacter* Target = World->SpawnActor<ACataclysmEnemyCharacter>(
+			Where, FRotator::ZeroRotator);
+		if (Target)
+		{
+			Target->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+			Target->SetHealth(1000.0f);
+			Target->SetAttackDamage(0.0f);
+		}
+		return Target;
+	}
+
+	/**
+	 * A Brute out of reach of its stomp and inside its throw range, with the art
+	 * resolved, plus the thing it is aiming at.
+	 */
+	struct FThrowingBrute
+	{
+		explicit FThrowingBrute(UWorld* World)
+		{
+			Brute = World->SpawnActor<ACataclysmBruteCharacter>(
+				FVector::ZeroVector, FRotator::ZeroRotator);
+			Target = SpawnTarget(World, FVector(7.0f * M, 0.0f, 0.0f));
+			if (Brute)
+			{
+				// CALLED DIRECTLY. Whether BeginPlay fires depends on how the
+				// world under test was built; CataclysmBruteTests says so on its
+				// own mesh test, and this file learned it the same way.
+				Brute->ResolveBody(/*bIncludeAnimation=*/false);
+				Brain = Cast<ACataclysmEnemyController>(Brute->GetController());
+			}
+		}
+
+		ACataclysmBruteCharacter* Brute = nullptr;
+		ACataclysmEnemyCharacter* Target = nullptr;
+		ACataclysmEnemyController* Brain = nullptr;
+	};
+
+	/** Whether the rock is currently being shown. */
+	static bool RockIsVisible(const ACataclysmBruteCharacter* Brute)
+	{
+		return Brute && Brute->CarriedRock && !Brute->CarriedRock->bHiddenInGame;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmTheRockHangsFromTheHandBone,
+	"Cataclysm.Brute.TheCarriedRockHangsFromTheHandBone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTheRockHangsFromTheHandBone::RunTest(const FString&)
+{
+	using namespace CataclysmCarriedRockTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmBruteCharacter* Brute = World->SpawnActor<ACataclysmBruteCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("brute"), Brute))
+	{
+		return false;
+	}
+
+	if (!TestNotNull(TEXT("it has somewhere to put a rock"),
+		Brute->CarriedRock.Get()))
+	{
+		return false;
+	}
+
+	// ON THE SKELETAL MESH, NOT ON THE CAPSULE. A rock attached to the actor
+	// root would hang in the air beside the creature and never move with the
+	// hand that is supposed to be holding it.
+	TestEqual(TEXT("the rock hangs from the animated mesh"),
+		Brute->CarriedRock->GetAttachParent(),
+		static_cast<USceneComponent*>(Brute->GetMesh()));
+
+	// A BONE, NOT A SOCKET. The Rampage mesh has no sockets at all.
+	//
+	// THE LITERAL, NOT THE CONSTANT, AND THE DIFFERENCE IS THE WHOLE TEST.
+	// Comparing the component's attachment against RockHoldBoneName asks
+	// whether the class agrees with itself, which it always does: changing
+	// the constant changes both sides and the test passes. The measured
+	// answer is written here as its own copy.
+	//
+	// THE MEASURED ANSWER CHANGED FROM `weapon_r` TO `hand_r` IN ISSUE #470,
+	// AND THIS TEST IS WHY IT HAD TO BE CHANGED DELIBERATELY. `weapon_r` is
+	// the rig's PROP bone, and the animator drives it as the ROCK rather than
+	// as the hand: through `Ability_RipNToss_Toss` it is flung up to 1253 cm
+	// from the creature, against 255 cm for `hand_r`. At the release, 0.539
+	// seconds into that clip, `weapon_r` is 6.68 m in front of the Brute and
+	// `hand_r` is 0.89 m in front. The thrown rock left from the same bone, so
+	// it was spawned nearly seven metres away and flew backwards to its target.
+	// Measured by `tools/measure_rock_launch_point.py`.
+	//
+	// A NOTE FOR WHOEVER READS THIS NEXT. The comment here used to say the
+	// author had proved this assertion works by changing the constant to
+	// `hand_r` and watching it fail. That was true, and it did not help,
+	// because what it guards is that somebody changes the bone DELIBERATELY --
+	// not that the bone is right. Nothing measured the bone in motion until
+	// #470.
+	TestEqual(TEXT("the rock hangs from the hand bone, not the prop bone"),
+		ACataclysmBruteCharacter::RockHoldBoneName, FName(TEXT("hand_r")));
+	TestEqual(TEXT("and the rock hangs from it"),
+		Brute->CarriedRock->GetAttachSocketName(),
+		ACataclysmBruteCharacter::RockHoldBoneName);
+
+	TestTrue(TEXT("and it is hidden before anything asks for it"),
+		Brute->CarriedRock->bHiddenInGame);
+
+	// NO COLLISION. What gets thrown is a projectile with its own sweep; a
+	// colliding rock in the hand would be a second way to hit somebody.
+	TestEqual(TEXT("and it cannot hit anything while held"),
+		static_cast<int32>(Brute->CarriedRock->GetCollisionEnabled()),
+		static_cast<int32>(ECollisionEnabled::NoCollision));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmTheRockIsHeldOnlyWhileWindingUpTheThrow,
+	"Cataclysm.Brute.TheRockIsHeldOnlyWhileTheThrowIsWoundUp",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTheRockIsHeldOnlyWhileWindingUpTheThrow::RunTest(const FString&)
+{
+	using namespace CataclysmCarriedRockTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FThrowingBrute Fixture(World);
+	if (!TestNotNull(TEXT("brute"), Fixture.Brute)
+		|| !TestNotNull(TEXT("target"), Fixture.Target)
+		|| !TestNotNull(TEXT("brain"), Fixture.Brain))
+	{
+		return false;
+	}
+
+	const bool bHasArt = Fixture.Brute->RockMesh != nullptr;
+	if (!bHasArt)
+	{
+		CataclysmTestSkip::ReportSkippedHalf(*this, TEXT("The Paragon Rampage pack is not installed, so there is no "
+					 "rock to hold. Only the hidden-throughout path is checked."));
+	}
+
+	Fixture.Brute->UpdateCarriedRock();
+	TestFalse(TEXT("nothing is held before the creature does anything"),
+		RockIsVisible(Fixture.Brute));
+
+	if (!TestEqual(TEXT("it begins a rock throw"),
+		static_cast<int32>(Fixture.Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::WindingUp)))
+	{
+		return false;
+	}
+
+	Fixture.Brute->UpdateCarriedRock();
+
+	if (bHasArt)
+	{
+		TestTrue(TEXT("the rock is in its hand while it winds up"),
+			RockIsVisible(Fixture.Brute));
+	}
+	else
+	{
+		TestFalse(TEXT("without the pack nothing is shown, which is not a fault"),
+			RockIsVisible(Fixture.Brute));
+	}
+
+	// THE ENDING THAT MATTERS MOST. A rock left in the hand after the throw is
+	// permanent, where the fault this replaces was momentary.
+	World->TimeSeconds += ACataclysmBruteCharacter::RockThrowWindUpSeconds + 0.1;
+	Fixture.Brain->Think();
+	Fixture.Brute->UpdateCarriedRock();
+
+	TestEqual(TEXT("the throw landed"), Fixture.Brain->AbilitiesUsed, 1);
+	TestFalse(TEXT("and the rock left its hand with it"),
+		RockIsVisible(Fixture.Brute));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmAStunTakesTheRockOutOfItsHand,
+	"Cataclysm.Brute.AStunTakesTheRockOutOfItsHand",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAStunTakesTheRockOutOfItsHand::RunTest(const FString&)
+{
+	using namespace CataclysmCarriedRockTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FThrowingBrute Fixture(World);
+	if (!TestNotNull(TEXT("brute"), Fixture.Brute)
+		|| !TestNotNull(TEXT("target"), Fixture.Target)
+		|| !TestNotNull(TEXT("brain"), Fixture.Brain))
+	{
+		return false;
+	}
+
+	if (!Fixture.Brute->RockMesh)
+	{
+		CataclysmTestSkip::ReportSkippedHalf(*this, TEXT("The Paragon Rampage pack is not installed, so the rock is "
+					 "hidden throughout and this test can only check that."));
+	}
+
+	Fixture.Brain->Think();
+	Fixture.Brute->UpdateCarriedRock();
+
+	// A STUN ABANDONS A COMMITTED WIND-UP, which is the one thing that does. The
+	// attack did not happen, so the rock must not stay in the hand.
+	UCataclysmSkillEffects::ApplyStun(Fixture.Target, Fixture.Brute,
+									  /*DurationSeconds=*/1.0f,
+									  /*DamageDealt=*/0.0f,
+									  /*bStunIsDesigned=*/true);
+
+	Fixture.Brain->Think();
+	Fixture.Brute->UpdateCarriedRock();
+
+	TestEqual(TEXT("the wind-up was abandoned"),
+		Fixture.Brain->WindingUpAbility, -1);
+	TestEqual(TEXT("and no throw happened"), Fixture.Brain->AbilitiesUsed, 0);
+	TestFalse(TEXT("so the rock is not still being held"),
+		RockIsVisible(Fixture.Brute));
+
+	return true;
+}
+
+#endif // WITH_AUTOMATION_TESTS

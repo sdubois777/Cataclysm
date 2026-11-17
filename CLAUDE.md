@@ -1,29 +1,105 @@
 # Cataclysm
 
 An ARPG dungeon crawler with real-time empire management and roguelike
-meta-progression, targeting Unreal Engine 5. The Unreal project does not exist
-yet. What is here today is `sim/`, a headless Python model of the empire layer
-used to derive the numbers the design documents leave open.
+meta-progression. The game is `game/`, an Unreal Engine 5.8 C++ project.
+`sim/` is a separate headless Python model of the empire layer, used to derive
+the numbers the design documents leave open; it does not build with the game and
+should be kept alive after systems are ported, because re-tuning there is much
+cheaper than re-tuning in the editor.
 
 ## Layout
 
 | Path | What it is |
 |---|---|
-| `sim/cataclysm_sim/` | The simulation package. `config.py` holds every tunable number, `world.py` the empire graph, `engine.py` the day loop, `policies.py` seven ways to play, `scoring.py` the power model. |
+| `game/` | The Unreal project. See `game/README.md` for engine version and build commands. |
+| `game/Source/Cataclysm/` | Primary game module: player, combat, abilities, items, dungeons, interface. |
+| `game/Source/CataclysmEmpire/` | Empire and strategy layer: day clock, cities, surges, dungeon timers. Must not depend on the `Cataclysm` module. |
+| `game/Source/CataclysmEditor/` | Editor-only tooling: data import and validation. Never in a packaged build. |
+| `sim/cataclysm_sim/` | The simulation package. `config.py` holds every tunable number, `world.py` the empire graph, `engine.py` the day loop, `policies.py` nine ways to play, `scoring.py` the power model. |
 | `sim/experiments.py` | The tuning sweeps and the report. Slow. See below. |
-| `sim/tests/` | Fast tests. This is what continuous integration runs. |
+| `sim/tests/` | Fast tests for the simulation. |
 | `sim/verify_scoring_port.py` | Proves `scoring.py` still matches its source. |
 | `sim/analyse_*.py` | One-off analysis scripts. |
-| `docs/` | Snapshots of the design documents. See the warning below. |
+| `tools/` | Python scripts that generate what the engine reads, check that it is current, and drive the Unreal build and its automation tests. `tools/requirements.txt` is what they need. |
+| `tools/tests/` | Fast tests for those scripts, and for the designed numbers the documents, the simulation and the game have to agree on. **More of the fast suite lives here than in `sim/tests/`.** |
+| `docs/` | The design documents. Authoritative; edit them directly. |
 
 ## Commands
 
 Run from the repository root unless stated otherwise.
 
 ```bash
-python -m pytest                          # fast test suite, about 7 seconds
+python -m pytest                          # fast test suite, about 6 minutes
 python -m ruff check .                    # lint
 ```
+
+**"About 65 seconds" is what this line said until 2026-09-07, and it had not been
+true for a long time.** Measured that day: **4,745 tests in 349.8 seconds**, five
+minutes fifty, on a developer machine with two other sessions working on it. In
+continuous integration the same suite takes longer still -- nine runs measured
+between 7m30s and 10m10s, which is why the job's cap was raised from ten minutes
+to thirty in [#1452](https://github.com/sdubois777/Cataclysm/pull/1452).
+
+**That job runs on GitHub's hosted `ubuntu-24.04` machine, not on this desktop**
+(`runs-on: ubuntu-latest` in `.github/workflows/ci.yml`); only the Unreal workflow
+uses the runner installed here. Measured on the same commit, `603f2efee`, on
+2026-10-29: **7035 passed, 8 skipped in 337.08 s on this desktop, and 7021
+passed, 22 skipped in 486.98 s on the hosted machine**, which skips 14 more
+because it has no Unreal install. `pytest --durations=40` here showed the 40
+slowest tests taking 62.9% of the per-test time, and
+`sim/tests/test_sweep_tier.py` the largest single file (issue #2602). The hosted
+job prints no per-test times. **This said "nobody knows why the runner is slower"
+and that nobody had run `pytest --durations`, until that measurement; issue
+#1451.** One trap recorded there: the suite's run-to-run variation is larger than
+what a whole pull request contributes, so two total times cannot attribute growth
+to any change.
+
+Those two are what continuous integration runs. `pytest` from the repository root
+collects `sim/tests/` and `tools/tests/` together. Running `sim/tests/` on its
+own, as the narrowed example further down this file does, misses more than half
+the suite; narrow deliberately, not by habit.
+
+**Never add `-q` to `python -m pytest`.** `pyproject.toml` already sets
+`addopts = "-q"`, so a second one gives pytest `-qq` -- and at `-qq` **no count
+line is printed at all**. The run still reaches 100%, still exits 0, and writes
+nothing to standard error, so the log looks healthy and the one figure every pull
+request quotes is simply absent. It is not the shell: the same suite lost it
+through PowerShell and through Git Bash, and both got it back when the flag was
+dropped. `tools/prove_guard.py` line 118 records the sibling, where a collection
+error under that same configured `-q` prints neither "collected" nor the session
+banner. Measured 2026-09-12; it cost two full suite runs and two sessions hit it
+independently. Issue #1612.
+
+**For any run you intend to quote, take a second count that no flag can
+silence:** `python -u -m pytest --junit-xml=<a path outside the repository>`. Its
+`testsuite` element carries `tests`, `failures`, `errors` and `skipped` as
+attributes, so passes are `tests` minus the other three. Two sources agreeing is
+what makes a figure worth publishing.
+
+```bash
+# Unreal, run from game/. The engine bundles its own .NET 10; invoking
+# UnrealBuildTool.exe directly fails without a system-wide .NET 10 install.
+# Use the engine batch files. game/README.md has the full commands.
+"C:/Program Files/Epic Games/UE_5.8/Engine/Build/BatchFiles/Build.bat" CataclysmEditor Win64 Development -Project="$PWD/Cataclysm.uproject" -WaitMutex
+```
+
+```bash
+python tools/unreal_build.py build            # compile the editor target
+python tools/unreal_build.py tests            # compile, then run the automation tests
+python tools/unreal_build.py tests --prefix Cataclysm.Brute   # one group only
+```
+
+That wrapper exits non-zero when the build fails, when a test fails, and when no
+test results could be read at all. Until issue #436 it had no entry point, so
+every invocation of it exited 0 having done nothing.
+
+**`tests` also exits non-zero when the tests left save slots behind**, a narrow
+`--prefix` run included: the run's `Test saves: N written and deleted, M left
+behind: <names>` line, printed after the `Tests:` line, has M above 0, and the
+message names the slots. **A run that performed tests and logged no such line
+fails as well**, because it has not shown its tests' saves were deleted. Until
+issue #2673 that line was reported only. Guard proofs (`prove_cpp_guard`) read
+test results only and are not affected.
 
 ```bash
 cd sim && python -m cataclysm_sim.scoring     # power model self-test
@@ -31,12 +107,22 @@ cd sim && python verify_scoring_port.py       # compare against the real source
 cd sim && python experiments.py               # full sweeps -- SLOW, see below
 ```
 
-`experiments.py` runs about 25,000 simulated campaigns and takes roughly 18
-minutes. Do not run it to check whether a change works; run `pytest`. Run it
-when you have deliberately changed the power model, the day loop, or a tuning
-constant, and you need to see what moved. Run it in the background and keep
-working. Python block-buffers when redirected, so use `python -u` if you want
-to watch progress.
+`experiments.py` runs 31,820 or 33,920 simulated campaigns -- 33,920 when its
+calibration picks five or six dungeons per surge, 31,820 when it picks seven,
+because the preset comparison then runs at one surge size rather than two; the
+report's last line prints the count -- and takes 20 minutes or
+more — longer on a machine you are also working on, where it has been seen to
+take 40. Both figures are being revisited in issue #693, which proposes fewer
+campaigns.
+
+Do not run it to check whether a change works; run `pytest`, which is several
+times shorter -- about six minutes against twenty or more. **This line said "more
+than ten times shorter" while the line above claimed the suite took 65 seconds;
+correcting the one made the other false.** Run it when you have deliberately
+changed the power model, the
+day loop, or a tuning constant, and you need to see what moved. Run it in the
+background and keep working. Python block-buffers when redirected, so use
+`python -u` if you want to watch progress.
 
 ## Rules that are easy to get wrong
 
@@ -47,18 +133,44 @@ hand-edit the constants in `scoring.py` to change balance. To update it: copy
 the values from the reference, then run `verify_scoring_port.py` and confirm it
 reports every value matching. This copy has silently drifted twice before.
 
-**`docs/` is a snapshot, not the source.** Those files are exports from a Google
-Drive folder. Editing them changes nothing about the design. Real design changes
-happen in Drive; re-export afterwards.
+The reference is found by locating this checkout's repository root the way git
+does and looking for a `DungeonSimulator` directory beside it, so it resolves
+from a linked git worktree as well as from an ordinary checkout. Set
+`CATACLYSM_SCORING_REFERENCE` to point at a specific file instead. When it is
+not found the checks report a skip that names the path they tried; a skip means
+the drift check did not run, not that it passed.
 
-**One dungeon floor costs exactly one day.** Depth and time are the same axis, so
-a dungeon cannot be made cheaper without also being made poorer. Resolve timers
-scale with depth for the same reason. `sim/README.md` lists the rules that are
-fixed by design rather than swept.
+**`docs/` is the design, and it is authoritative.** Edit those files directly when
+the design changes. They began as exports from a Google Drive folder, but as of
+2026-08-02 the repository copies are the source of truth and are **not** synced
+back to Drive. Treat the Drive originals as historical. A design decision is not
+real until it is in `docs/`.
+
+**One dungeon floor costs one day to begin with, and investment lowers that
+rate.** The starting relationship is one floor, one day, which is why a floor is
+a substantial space rather than a single room. **It is a starting rate and not an
+invariant.** City upgrades and the empire upgrade tree lower the days a dungeon
+takes to walk *while its floor count stays where it is*. That is the point of
+those upgrades rather than a loophole in them: an invested player can run a fifty
+floor dungeon in a couple of days, and it is still fifty floors deep, still worth
+what that is worth, and still biting on the same schedule.
+
+**Depth and reward are the same axis. Depth and time are not, once a player has
+invested in separating them.** A dungeon made shallower is made poorer; a dungeon
+made quicker to walk is not. Resolve timers scale with depth and never with the
+walk time, for that reason. `FCataclysmDungeon::Floors` is the depth and
+`FCataclysmDungeon::WalkDays` is the walk cost, and they are separate fields on
+purpose. `sim/README.md` lists the rules that are fixed by design rather than
+swept.
 
 **The simulation has no runtime dependencies and should keep none.** It is pure
 standard library Python. `sim/requirements-dev.txt` is for testing and linting
 only.
+
+That rule is about `sim/` and not about the repository. The scripts in `tools/`
+do have a dependency, `openpyxl`, because they read the design workbook, and it
+is listed in `tools/requirements.txt`. The two files are kept apart on purpose:
+nothing `tools/` needs may become something the simulation relies on.
 
 ## How to work
 
@@ -68,6 +180,29 @@ add already exists. Look at git history when something looks odd rather than
 guessing why it is the way it is. State what you found before proposing a change.
 Use plan mode or subagents for anything that spans more than a couple of files,
 so the reading does not crowd out the work.
+
+**Research the genre before proposing any formula, affix or mechanic.** When the
+question is how something *should* work — how attack speed combines, what an
+affix is worth, how dual wielding resolves — look up how shipped games in the
+genre do it before answering. Path of Exile, Last Epoch, Torchlight Infinite and
+Diablo have all solved these problems in public, and a shape that survived
+contact with real players is evidence in a way an invented one is not. Name the
+sources in the proposal and record them in `docs/DECISIONS.md` alongside the
+decision, so the next person can see why the shape was chosen and not only what
+was chosen.
+
+Do not invent a formula on the fly. The best structural decision in this project
+came from exactly this route: the three-bucket damage pipeline
+`(base + flat) x (1 + increases) x more1 x more2` was adopted after research
+showed all three of those games use the same skeleton under different names.
+
+Say plainly which parts the research settles and which are genuinely specific to
+this game and cannot be read off another. Those still need a judgement, and it
+should be labelled as one rather than presented as derived. **Always state the
+single recommendation you landed on**, not only the options.
+
+This governs structure and formula shape. The constants inside them are still
+tuned against real play rather than argued to death first.
 
 **After the work, test it thoroughly.** Not only that the change runs, but that
 it does what it was supposed to do, and that neighbouring behaviour still holds.
@@ -79,9 +214,381 @@ printed. "Tests pass" is not evidence; the test output is. A check that cannot
 fail is worthless, so when you add a guard, confirm it actually fails when the
 condition it guards against is present.
 
+**Use `tools/prove_guard.py` to do that, rather than a script written on the
+spot.** Breaking a file, running the tests and writing the original bytes back is
+the right procedure and it has a trap in it: Python decides whether a compiled
+copy in `__pycache__` is current from the source's modification time and size,
+and a break-and-restore usually changes neither, because `0.0` is the same length
+as `5.0` and both writes land inside the filesystem's timestamp granularity. The
+run then reads compiled code that does not match the file on disk. It goes wrong
+in both directions and both produce *misleading evidence* rather than an obvious
+error: a failure attributed to the wrong break, or a break the run never saw at
+all, which reads as a guard that does not fire.
+
+```python
+import sys
+sys.path.insert(0, "tools")
+from prove_guard import break_and_run
+
+result = break_and_run(
+    {"sim/cataclysm_sim/character.py":
+        lambda t: t.replace("DEFAULT_SKILL_CRIT_CHANCE = 5.0",
+                            "DEFAULT_SKILL_CRIT_CHANCE = 0.0")},
+    ["python", "-m", "pytest", "sim/tests"],
+)
+print(result.summary)            # says PROVED, or which half is missing
+assert result.proved             # failed with the break in, passed with it out
+```
+
+**`assert result.proved`, because one half is not a proof.** A guard proof is two
+claims -- the test fails without the fix and passes with it -- and until issue
+#1735 this helper ran the command once, with the break in place, and returned
+only that. A test that fails for the wrong reason, or that was already failing,
+gives a byte-identical failing half. `break_and_run` now runs the command again
+after restoring the files, and `proved` is true only when a named test failed
+with the break in and nothing failed with it out.
+
+**No `-q` in that command.** `pyproject.toml` already sets `addopts = "-q"`, so
+adding one gives pytest `-qq`, which is the rule stated in bold near the top of
+this file. It mattered here: at `-qq` the count line is not printed at all.
+
+**If you assert on one field rather than on `proved`, assert on `named_failures`
+and never on `failed`.** `failed` says only that the command exited non-zero, and
+a break that stops a module importing does that without running a single test --
+so a worthless guard reported as proven. Issue #1314. `named_failures` is the
+tests that reached their assertions and failed, which is what the failing half of
+a guard proof means, and it is what `proved` requires before it looks at the
+restored half at all. `result.crashed` tells the two apart if you want the fuller
+story, and `result.summary` says "NO MEASUREMENT" rather than leaving a bare
+False to be read as a guard that did not fire.
+
+`named_failures` gives every test that noticed. Run verbatim, that break trips
+five:
+
+```
+sim/tests/test_character.py::test_the_default_critical_strike_chance_is_a_default_not_a_floor
+sim/tests/test_dot_levers.py::test_efficacy_is_worth_more_to_damage_over_time_than_ferocity_is_to_a_hit
+sim/tests/test_player_damage.py::test_criticals_raise_the_average_above_the_non_critical_hit
+sim/tests/test_player_damage.py::test_the_reference_character_gains_about_a_sixth_from_criticals
+sim/tests/test_player_damage.py::test_the_target_comparison_deliberately_uses_the_non_critical_hit
+```
+
+**`summary` is one line and shows the LAST of them**, so quoting it alone names a
+test that may have little to do with the guard you meant to prove. This block
+used to show a single `FAILED` line and call it "the name of the test that
+noticed"; the break trips five and `summary` prints a different one from the one
+shown. Print `named_failures` when you report a proof.
+
+Make the edit surgical. A blanket `text.replace("5.0", "0.0")` changes every
+occurrence, and a module that then fails to import gives a collection error
+instead of the failing test name. That is now caught rather than misread --
+`result.crashed` is True and `summary` says "NO MEASUREMENT" -- but the break
+still proves nothing, so make it narrow enough that the module still imports.
+
+It clears every `__pycache__` first, runs with bytecode writing off so the run
+cannot poison the next case, and restores every file in a `finally` so a crash
+does not leave the repository broken. Issue #159 has the incident that produced
+it.
+
+**It breaks the real files, so run it in a copy when anything else in the
+worktree imports them.** Its `disturbed` check catches another process *writing*
+over the broken file and cannot catch one *reading* it, so a worker that imported
+the break measures a different model and nothing anywhere says so. `REPO_ROOT`
+comes from the module's own file location, so `git archive HEAD | tar -x -C <an
+empty directory>` and running the proof there is enough. Issue #1429.
+
+**The same hazard runs the other way: a C++ guard proof must not run while
+the Python suite runs.** `prove_cpp_guard` breaks a C++ source file on
+purpose, and 110 Python test files read C++ source as text (398 references,
+measured 2026-09-12). A suite that reads the broken file reports a failure
+that looks real, is not reproducible afterwards, and points at the wrong
+thing. Finish one before starting the other. Issue #1630.
+
+**For a C++ guard, use `tools/unreal_build.py` instead.** The same class of
+problem exists for compiled C++ and it is worse, because the build tells you it
+succeeded. Restoring a source file with a tool that preserves its modification
+time — `shutil.copy2`, `cp -p` — leaves it looking older than the object built
+from the broken version, so UnrealBuildTool prints `Result: Succeeded`, compiles
+nothing, and the test runs against the broken binary. Reading the source and
+reading the build output both say everything is fine. Issue #139 has the incident.
+
+```python
+import sys
+sys.path.insert(0, "tools")
+from unreal_build import prove_cpp_guard
+
+result = prove_cpp_guard(
+    {"game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.cpp":
+        lambda t: t.replace("GetWorld(), Firer, Previous, Current, BodyRadiusCm);",
+                            "GetWorld(), Firer, Current, Current, BodyRadiusCm);")},
+    test_prefix="Cataclysm.Skills.",
+)
+print(result.summary)            # says PROVED, or which half is missing
+assert result.proved             # failed with the break in, passed with it out
+```
+
+**Note the trailing dot on the prefix.** The engine's filter is a
+case-insensitive **string** prefix, not a group name, so `Cataclysm.Skills` also
+selects the group `Cataclysm.SkillShape` -- lowercased, one is a prefix of the
+other. Measured on `development`: `Cataclysm.Skills` performs **218** tests and
+`Cataclysm.Skills.` performs **208**. Four builds are spent either way, so the
+ten extra are ten tests' worth of run time for nothing, and a count registered
+before the run will not match.
+
+**No static count of the Unreal suite is exact, so take the absolute total from
+a run and the delta from a diff.** Counting the registration macro is short
+(file-local wrapper macros hide tests from it) and counting name literals is
+long (some are not registered); three static methods gave 1,411, 1,564 and
+1,726 against a measured 1,664. When a run has to be predicted, register
+"the base's last measured total plus the tests this branch adds by name", and
+quote only what the run prints. Issues #1629 and #1665.
+
+**`assert result.proved`, for the same reason as the Python example above.**
+`prove_cpp_guard` has run both halves since the change for issue #1663, and
+`proved` is true only when a named test failed with the break in and nothing
+failed with it out.
+
+**A clamp in `PreAttributeChange` cannot be guard-proven from an automation
+test, and it clamps only the CURRENT value.** The usual attempt is
+`SetNumericAttributeBase` with an out-of-range value, on the understanding
+that it sets the base while the clamp guards the current value. In Unreal
+Engine 5.8 the current value is clamped before anything reads it:
+`SetAttributeBaseValue` goes through `SetNumericAttribute_Internal` to
+`PreAttributeChange`, with or without an aggregator. **But the stored base is
+kept as written unless the set clamps it**: `SetAttributeBaseValue` calls
+`PreAttributeBaseChange` and stores the base before clamping the current value
+(GameplayEffect.cpp about 4001-4013). `UCataclysmVitalAttributeSet` overrides
+it since issue #1096 and holds health, mana, energy shield, their maxima and
+its rates to the same plain bounds as the current value; no other set in this
+project overrides it, and in those the base is kept as written.
+`ApplyModToAttribute` then adds to that base (4155-4161), so in a set without
+the override a gain at a full pool raises a hidden base. Breaking such a clamp
+fails nothing that reads the current value once; a spend after a gain is what
+reads the base. Issues #1623, #1036 and #1096.
+
+**The same rule, for the opposite reason.** A crashed Unreal run reports no
+failures at all, so `failed` used to read as a guard that did not notice --
+issue #1313, the mirror of the Python one. `result.crashed` is True when the run
+never said how many tests it performed, and `summary` says so rather than
+printing a count of zero that reads like a verdict.
+
+**`named_failures` holds SHORT names here and full ones in the Python helper.**
+The Unreal one is read from the engine's log, which prints
+`ItLobsTheRockFromItsHandRatherThanItsWaist` without the `Cataclysm.Brute.`
+group in front; `prove_guard` returns a whole pytest node id, path and all. A
+membership check written with the group prefix matches nothing and reads as a
+guard that never fired. `result.tests.failed` is the same tuple under its other
+name, and `result.failed` is a bool rather than a list -- iterating it raises
+`TypeError` after the four builds have already been spent.
+
+**That line in the block above used to raise `AttributeError`.** `CppGuardResult`
+had no `named_failures` until issue #1455; both examples were rewritten together
+when issue #1314 added it to the Python side and only one of the two classes
+gained the property. Two sessions lost time to it before anyone read the class.
+
+**`proved` is spelled the same in both, and the restored half is not.** It is
+`tests_restored` on `CppGuardResult` and `restored` on `GuardResult`, and the
+difference is deliberate: the Unreal one holds a `TestOutcome`, which is test
+results, while the Python one holds a whole `GuardResult` carrying an exit code,
+output and any files disturbed underneath the run. Naming that `tests_restored`
+would name it after the minority of its contents. Issue #1741.
+
+It breaks the files, builds, refuses to go on unless the build actually compiled
+them, runs the automation tests, restores the files with a modification time
+forced past the break, rebuilds, and **runs the tests a second time against the
+restored binaries**. That last run is the passing half, and it is why `proved`
+can say anything at all. Four builds' worth of time, so narrow `test_prefix` to
+the tests that matter -- with a trailing dot, as above.
+
+Three facts about the Unreal build and test commands that will otherwise cost a
+cycle each:
+
+- **A C++ digit separator (`1'200.0f`) in a HEADER stops the build with
+  "Unterminated character constant".** Unreal Header Tool tokenises headers
+  before the compiler and reads the apostrophe as an unclosed character
+  literal; the error names neither the number nor the separator. It is
+  harmless in a `.cpp`, which the header tool does not parse, and the test
+  files use it freely. Issue #1703.
+- **`Build.bat` refuses to run while the editor is open.** Live Coding holds the
+  binaries. Close the editor, build, run the tests, reopen it. Closing it also
+  removes the `mcp__unreal__*` tools until it is back.
+- **`Result: Succeeded` is not evidence that anything was built**, and grepping
+  for `Result:` alone hides the reason a build failed. Read the whole tail of the
+  output. **`python tools/unreal_build.py build` says what it did**, since issue
+  #1599:
+
+  ```
+  Build: Succeeded - 3 actions, 2 files compiled: CataclysmStatPipeline.cpp, CataclysmPassiveTree.cpp
+  Build: Succeeded - target already up to date, 0 actions, nothing compiled
+  ```
+
+  Read that line rather than the result word. Until #1599 the command printed
+  `Build: Succeeded` and nothing else whenever the build had work to do, so this
+  entry sent readers to `unreal_build.build()` and a session had to call it from
+  a Python prompt to answer the question. The function still returns the same
+  three things -- the compiled file list, the action count and
+  `BuildOutcome.up_to_date` -- for a caller that wants them as data.
+- **The automation test command writes nothing useful to standard output.**
+  Redirecting it captures only the software development kit validation banner.
+  The results are in `game/Saved/Logs/Cataclysm.log`.
+  `unreal_build.run_automation_tests()` reads that file, and
+  `python tools/unreal_build.py tests` prints what it found.
+- **A command that exits 0 and prints nothing has usually not run.** That is not
+  hypothetical: `python tools/unreal_build.py --tests` did exactly that until
+  issue #436, because the file was a library with no entry point, and it was run
+  three times before anyone noticed. Check the exit code and check that the
+  output says how many tests were performed.
+- **A passing test may have checked half of what it is named for, and the run
+  says so.** Many tests take a shorter path when the Paragon art packs are
+  absent. They report it with `CataclysmTestSkip::ReportSkippedHalf`, and
+  `python tools/unreal_build.py tests` names them after the pass count.
+
+  **Do not trust a count written here.** This file said fifteen tests; on
+  2026-09-07 there were 54 calls to that helper across 21 test files, and the
+  number grows with every creature added. The line the run prints is the only
+  figure worth quoting:
+
+  ```
+  22 tests performed, 22 succeeded, 0 failed. 1 skipped part of what they
+  check: Cataclysm.Brute.ItLobsTheRockFromItsHandRatherThanItsWaist
+  ```
+
+  Read that line before quoting a run as evidence. **Use the helper rather than
+  `AddInfo` for a new skip**, or the run will not mention it. Issue #467.
+
 **Say what did not work.** If a test fails, or you skipped part of the task, or
 the evidence for a result was compromised, say so plainly and first. Do not
 report partial work as finished.
+
+## Running several sessions at once
+
+Several Claude sessions can work on this repository at the same time, each in its
+own git worktree. Almost everything parallelises. Unreal does not.
+
+**One Unreal build runs at a time on this machine, and the engine already
+enforces it.** `UnrealBuildTool.cs` line 446 builds its lock name from the
+location of the UnrealBuildTool assembly -- the engine install path, not the
+project path -- and `BuildMode.cs` line 51 asks for that lock. Every worktree
+uses the same engine, so every build takes the same lock. `tools/unreal_build.py`
+passes `-WaitMutex`, which makes a second build wait rather than fail **when the
+other build is another session on this desktop**. **A build that appears to hang
+for minutes is usually waiting for another session's build. Do not kill it.**
+
+**A BUILD CAN ALSO FAIL FOR TWO OTHER REASONS, AND ALL THREE LOOK DIFFERENT.**
+Four sessions spent an afternoon on 2026-09-09 conflating them, partly because
+the paragraph above said contention waits and stopped there.
+
+| What you see | What it is | What to do |
+|---|---|---|
+| It waits, for minutes | Another session on this desktop. `-WaitMutex` working | **Do not kill it** |
+| Fails in about **0.25 seconds** with `UnauthorizedAccessException` on opening `Global\UnrealBuildTool_Mutex_<hash>` | The continuous integration runner is compiling. It is a Windows **service**, so its lock object belongs to another Windows session and this one cannot even open it | **Wait about a minute and retry.** That worked both times it was seen |
+| Fails in about **4.5 seconds** with `Unable to build while Live Coding is active` | The Unreal editor is open and holding the binaries | Close the editor. **If it is the project owner's, ask them** rather than closing it |
+
+**`-WaitMutex` cannot absorb the second one.** The process fails while *opening*
+the named object, before it has anything to wait on. So "real contention waits,
+this failed instantly, therefore it is not contention" is **wrong**, and it was
+stated as a rule three times that day before being disproven.
+
+**THE RUNNER TAKES THE BUILD LOCK AND NOT THE EDITOR LOCK.** So
+`tools/unreal_lock.py status` saying the editor is free does **not** mean the
+machine is free to build, and holding that lock protects nobody from it. The
+runner compiles on every pull request touching `game/`, which means **merging is
+what triggers it** -- the collision is likeliest exactly when somebody has just
+landed work and is trying to move on. Issue #1514 carries that gap.
+
+**NEVER PUT A TIMEOUT ON AN UNREAL BUILD.** Killing the wrapper does not kill the
+compile workers, which Unreal Build Accelerator runs detached; they go on holding
+the mutex after the command has returned. One session did this and was left with
+one of three module libraries built and an hour of diagnosis.
+
+**One session at a time may drive the editor, and nothing enforces that for
+you.** Opening the interactive editor, running `python tools/unreal_build.py
+tests`, and regenerating the DataTable assets all drive one editor on one
+machine. Claim it before you start and release it the moment you finish, not at
+the end of your session:
+
+```bash
+python tools/unreal_lock.py status
+python tools/unreal_lock.py acquire <a name for your session>
+python tools/unreal_lock.py release <a name for your session>
+```
+
+The lock file lives in the shared git directory, so every worktree sees the same
+one. `acquire` fails while somebody holds it. `steal` exists for a session that
+died and makes you name the holder you are displacing, so you cannot take it from
+someone still working by accident.
+
+**Rules that keep parallel sessions from breaking each other.**
+
+- **One branch, one writer.** Never push to, rebase, or update a branch another
+  session owns, even if invited to. Reading from another worktree is fine.
+- **Check a hand-resolved C++ conflict before building.** Run
+  `python tools/check_resolved_cpp.py --changed` after resolving a C++ merge
+  conflict by hand, and before building. It catches a `/**` comment left with no
+  opening and a conflict boundary inside a function body, which the compiler
+  alone reports late; four branches broke that way on 2026-09-12 (#1610).
+- **Another session's report is a claim; git is the evidence.** Before believing
+  "that landed", check for the content itself, not the branch or pull request
+  state: `git ls-tree -r origin/development --name-only | grep <name>`. Work that
+  looks unmerged on a branch is often superseded by work that landed another way.
+- **Harvest before you close.** Unpushed commits, untracked files worth keeping,
+  findings not yet written into an issue. A session's knowledge dies with it.
+- **Delete your worktree when your branch merges.** Seventy-five abandoned
+  worktrees holding 18 GB is what skipping this looks like after a few weeks.
+- **Nothing may be recorded before the run that proves it.** No issue, document
+  or comment may assert an outcome ahead of its evidence.
+
+**What a worktree does not have.** `game/Content/Paragon*/` is gitignored
+(`.gitignore` line 83) and no Paragon file is in git, so the art exists only in
+the main checkout at `C:\Projects\Cataclysm`. A worktree never has it, which is
+why the tests described above report themselves as skipped there. **This said
+"the fifteen tests" until issue #1284**, after the sentence it refers to had
+stopped naming a number.
+
+**No working directory is authoritative, the main checkout included. Read a rule
+you are about to quote out of git.**
+
+```bash
+git fetch origin
+git show origin/development:CLAUDE.md
+git show origin/development:docs/DECISIONS.md
+```
+
+A worktree is a snapshot from when it was made, and the main checkout is only as
+current as the last time somebody pulled it. On 2026-09-07 it was **73 commits
+behind, and its copy of this file was missing 41 lines** -- including the whole
+guard-proof section above. It bit in both directions the same afternoon: two
+greps run there reported a documented attribute absent from `tools/prove_guard.py`
+when the committed file has it twice, so a correct piece of documentation briefly
+looked wrong. Issue #1456.
+
+This matters most for the rules that changed. A session quoting the pre-2026-08-02
+rule that `docs/` is a snapshot rather than the source has read a stale copy, and
+has twice filed work asking the project owner to hand-edit Google Drive documents
+that were already correct in the repository.
+
+**The `master-kit` plugin.** `.claude/settings.json` enables it for this project.
+That file is tracked in git and was added in commit `c13ab93` (2026-09-04), so
+a worktree checked out at any older commit has no `.claude/settings.json`, the
+plugin is not enabled there, and none of the four names below resolves -- which
+reads as the plugin being uninstalled while `claude plugin list` in the ordinary
+checkout says it is fine. Rebase the worktree before debugging the plugin.
+Issue #1277.
+**Its skills and commands are namespaced, and the prefix is part of the name.** A
+bare `master-session` or `/master-check` does not resolve; a session that tries
+one reports the skill is not installed, which is wrong. The four names are:
+
+| Name | What it does |
+|---|---|
+| `master-kit:master-session` | The doctrine a session coordinating several others runs under |
+| `master-kit:consolidate` | Writes the handoff document a fresh session reads to pick work up |
+| `/master-kit:master-check` | Sweeps every running session and lists what needs a decision from the owner |
+| `/master-kit:master-handoff` | Writes a seed prompt for a replacement coordinating session |
+
+The plugin also ships a rules file that forbids the `Co-Authored-By: Claude`
+commit trailer. **This project keeps the trailer**, which roughly half the
+existing history carries; this line is the project's decision and overrides the
+plugin's.
 
 ## Tracking work with GitHub issues
 
@@ -113,6 +620,66 @@ gh issue close 12 --comment "Fixed in #34"
 - Name branches `fix/`, `feat/`, `docs/`, `setup/`, or `chore/` followed by a
   short description.
 - Never commit directly to `development` or `main`. Open a pull request.
+- **Closing an issue needs a manual `gh issue close`.** GitHub only honours
+  `Closes #N` in a pull request body when it merges into the repository's
+  *default* branch. This project merges into `development`, so it does not fire.
+- **Delete the branch as part of merging, locally and on GitHub.** Not later, not
+  in a cleanup pass. Use `git branch -D` rather than `-d`: a squash merge leaves
+  the branch commit outside `development`'s history, so `-d` refuses.
+
+  ```bash
+  gh pr merge <N> --squash
+  git checkout development && git pull --ff-only
+  git branch -D <branch> && git push origin --delete <branch>
+  ```
+
+  Skipping this is how the repository reached 107 local branches, 77 of them
+  already merged, by 2026-08-14.
+- **Run each `gh` command on its own. Do not chain another command onto it with
+  `;` or `&&`, and do not pipe its output.** A chained or piped `gh` command is
+  refused by the permission system, and the refusal names no reason, so it reads
+  like the action itself is forbidden when it is not. Measured on 2026-08-17,
+  four commands in one session:
+
+  | Command | Result |
+  |---|---|
+  | `cd <repo>; gh pr merge 677 --repo … --squash; git fetch …; git log …` | refused |
+  | `cd <repo>; gh pr view 677 --repo … --json … \| ConvertTo-Json` | refused |
+  | `cd <repo>; gh issue create … --body-file …` | allowed |
+  | `cd <repo>; gh pr list --repo … --state open` | allowed |
+
+  `gh pr view` only reads and was refused when piped, while `gh pr list` was
+  allowed unpiped, so it is the extra command rather than the action. A `cd`
+  prefix is fine. Chaining `git` commands together is fine; the rule is about
+  `gh`. Run the merge, then verify, then delete the branch as three separate
+  invocations.
+- **Keep the `cd` prefix on `gh pr create`.** `--repo` says which repository, not
+  which branch, and `gh pr create` reads the branch to open the pull request from
+  out of the working directory. Run from anywhere else it fails with "you must
+  first push the current branch to a remote", which is misleading when the branch
+  is already pushed. `gh pr merge`, `gh pr view` and `gh issue close` take a
+  number and do not need the `cd`.
+
+  **A successful `gh pr merge` prints nothing at all.** Empty output with exit 0
+  usually means a command did not run, so it is not evidence either way here.
+  Confirm with git:
+
+  ```bash
+  git fetch origin --prune && git log origin/development --oneline -1
+  ```
+
+  **To find stale branches later, ask GitHub which pull requests merged.** Do not
+  decide by comparing trees: `git diff --quiet <branch> development` only means
+  "identical right now", so it answers no for every branch once `development`
+  moves on, and it reported 0 of 105 as safe when 77 were.
+
+  ```bash
+  gh pr list --state merged --limit 500 --json headRefName --jq '.[].headRefName'
+  ```
+
+  Never delete a branch whose pull request is open, or was closed without
+  merging. A branch checked out in a git worktree cannot be deleted anyway; git
+  refuses, which is the safe outcome.
 - Continuous integration runs lint and the fast tests on every pull request into
   either branch. Do not open one you know is failing; run `pytest` and
   `ruff check .` first.

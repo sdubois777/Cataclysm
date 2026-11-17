@@ -1,0 +1,5719 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "AbilitySystem/CataclysmSkillTemplates.h"
+#include "AbilitySystem/CataclysmRegeneration.h"
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmStacks.h"
+#include "AbilitySystem/CataclysmMovement.h"
+// For the allies inside a point-blank skill's area, struck for a share of its blow. Ruled 2026-10-15.
+#include "AbilitySystem/CataclysmAreaShareOnAllies.h"
+#include "AbilitySystem/CataclysmDeployableSelfBlast.h"
+// For the axe a Harrower leaves in what it hits, which tears free when
+// that creature dies and buries itself in the next. Issue #37.
+#include "AbilitySystem/CataclysmBuriedWeapon.h"
+#include "AbilitySystem/CataclysmChorus.h"
+#include "AbilitySystem/CataclysmGroundZone.h"
+// For handing a lasting charge's movement to UCharacterMovementComponent, so
+// the character has a real velocity and the camera follows it every frame
+// rather than ten times a second. Issue #1169.
+#include "Abilities/Tasks/AbilityTask_ApplyRootMotionConstantForce.h"
+#include "AbilitySystem/CataclysmMinion.h"
+// For the greatsword Buried Fire leaves standing in the ground. Issue #1141.
+#include "AbilitySystem/CataclysmPlantedWeapon.h"
+#include "AbilitySystem/CataclysmProjectile.h"
+// For the attack speed a rack of axes is thrown at. Issue #37.
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmCommand.h"
+// For what a rack's spawn-less throw resolved to, and the Fervour it earns.
+// Issue #1515. `CataclysmSkillEffects.h` only declares the result.
+#include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmFervour.h"
+// For the flee step Compel's order asks. Issue #2560.
+#include "AbilitySystem/CataclysmFear.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+// For telling a player character's throw from any other, where Cripple is read. Issue #2273.
+#include "Character/CataclysmPlayerCharacter.h"
+// For a thrall's Compel strike, ordered as a rule's. Issue #783.
+#include "Character/CataclysmEnemyCharacter.h"
+// For deciding whether a row's Terrain cell names a wall, whose two ends
+// differ, or a round kind, whose two ends are the same point.
+#include "AbilitySystem/CataclysmTerrain.h"
+#include "AbilitySystem/CataclysmTether.h"
+#include "AbilitySystem/CataclysmStrikeEffect.h"
+#include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystemComponent.h"
+#include "Cataclysm.h"
+#include "Engine/World.h"
+#include "GameFramework/Actor.h"
+#include "GameplayTagsManager.h"
+#include "HAL/IConsoleManager.h"
+// For which weapon type a planted sword records as being in the ground.
+// Issue #1141.
+#include "Items/CataclysmWeaponSlotsComponent.h"
+#include "TimerManager.h"
+
+namespace
+{
+	/**
+	 * What one of this character's passive stats reads, for use against a figure
+	 * the skill's own row states. Issue #1718.
+	 *
+	 * TWO KEYSTONES ADJUST A FIGURE THIS WAY -- Crowned lowers what a minion
+	 * reserves and The Swarm raises how many minions a skill may keep active --
+	 * and the shape is the one `possession_threshold_bonus` established: the
+	 * stat starts at zero and is applied to whatever the row says, so re-tuning
+	 * the row follows through. A stat holding the figure itself would state the
+	 * same number twice and win silently.
+	 *
+	 * THE VALUE IS ALWAYS ZERO OR ABOVE, AND THE CALLER DECIDES THE DIRECTION.
+	 * Every attribute in the combat set is floored at zero -- see
+	 * `FervourReserveFor` below for the measurement -- so a stat that lowers a
+	 * figure names the size of the reduction and is subtracted by its caller.
+	 * This function is deliberately not called `...BonusFor`: one of its two
+	 * callers subtracts what it returns.
+	 *
+	 * READ WITH THE SKILL'S OWN TAGS, so a future row scoped to a keyword counts
+	 * only for the skills it names. `StatForSkill` falls back to the attribute
+	 * when nothing was recorded, which is the right answer for an enemy and for
+	 * a character before its first stat refresh.
+	 *
+	 * THE ATTRIBUTE-SET CHECK IS NOT OPTIONAL. Reading an attribute whose set
+	 * the component does not hold raises an engine ensure rather than answering
+	 * zero, and a test may build a component without the combat set.
+	 */
+	float PassiveStatFor(const AActor* Self, const TCHAR* StatName,
+						  const FGameplayAttribute& Stat,
+						  const FGameplayTagContainer& SkillTags)
+	{
+		const UCataclysmAbilitySystemComponent* Mine =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Self));
+		if (!Mine || !Mine->HasAttributeSetForAttribute(Stat))
+		{
+			return 0.0f;
+		}
+		return Mine->StatForSkill(FName(StatName), SkillTags,
+								  Mine->GetNumericAttribute(Stat));
+	}
+
+	/**
+	 * What one minion of this skill reserves for this character, in Fervour.
+	 * Issue #1718.
+	 *
+	 * `Ritualist_keystone_a_kC` Crowned is the node: "Each minion reserves 5
+	 * less Fervour, never less than 1."
+	 *
+	 * THE REDUCTION REACHES EVERY SKILL THAT STATES A RESERVE, because the node
+	 * says "each minion" since the owner's decision of 2026-09-16. Until then it
+	 * said "Each thrall reserves 25 Fervour rather than 30", and this reached
+	 * only a row carrying `Possess`. Five skills state a reserve -- Subjugate
+	 * at 30, Summon Imp at 10, and three deployables at 5 -- so the keystone
+	 * takes a thrall's to 25, an imp's to 5, and a deployable's to the floor.
+	 *
+	 * A THRALL'S AND AN IMP'S RESERVES ARE READ TODAY, A DEPLOYABLE'S IS NOT.
+	 * Subjugate's check for room and Summon Imp's -- the imp's since issue
+	 * #2172 -- are the callers. Nothing reads what a deployable reserves, which
+	 * is issue #1934's remaining half, so for those the reduction changes
+	 * nothing until something does, and no test can show it.
+	 *
+	 * AND ONLY WHERE THE ROW STATES A RESERVE ABOVE ZERO. A stat that adjusts a
+	 * designed figure must not bring the figure into existence: zero means "this
+	 * skill reserves nothing", and adding to it would invent a claim the design
+	 * never made.
+	 *
+	 * A POSITIVE NUMBER THAT IS SUBTRACTED, AND IT HAS TO BE. Measured
+	 * 2026-09-14: `UCataclysmCombatAttributeSet::PreAttributeChange` ends with
+	 * `NewValue = FMath::Max(NewValue, 0.0f)`, so every attribute in that set
+	 * that is not named in one of the clauses above it is floored at zero. This
+	 * stat was first written as a bonus holding -5, and the floor stored it as
+	 * 0: the reserve stayed at 30 and the keystone did nothing. The stat
+	 * therefore names the size of the reduction rather than a signed adjustment.
+	 * `CataclysmFervourTests.cpp:379` is the existing proof that a direct write
+	 * below zero is held at zero.
+	 *
+	 * FLOORED AT ONE, WHICH THE NODE NOW STATES AND WHICH IS NOT TIDINESS.
+	 * `HasRoomForAnotherThrall` reads a reserve of zero or less as "capped by
+	 * nothing" and returns true for every thrall, so a reduction reaching the
+	 * whole reserve would remove the army limit rather than lower it. Crowned
+	 * alone takes a deployable's 5 to zero before the floor.
+	 */
+	float FervourReserveFor(const AActor* Self,
+							const FCataclysmSkillShapeParams& Params,
+							const FGameplayTagContainer& SkillTags)
+	{
+		if (Params.FervourReserve <= 0.0f)
+		{
+			return Params.FervourReserve;
+		}
+
+		const float Reduction = PassiveStatFor(
+			Self, UCataclysmCommand::MinionReserveReductionStat,
+			UCataclysmCombatAttributeSet::GetMinionReserveReductionAttribute(),
+			SkillTags);
+
+		return FMath::Max(UCataclysmCommand::SmallestMinionReserve,
+						  Params.FervourReserve - Reduction);
+	}
+
+	/**
+	 * How many minions this skill may keep active at once. Issue #1718.
+	 *
+	 * `Ritualist_keystone_b_kA` The Swarm is the node: "Each skill that limits
+	 * how many of its minions may be active allows 2 more."
+	 *
+	 * THE BONUS REACHES EVERY SKILL THAT STATES A CAP, WHATEVER IT SUMMONS OR
+	 * DEPLOYS, because the node says "each skill" since the owner's decision of
+	 * 2026-09-16. Until then it said "You may have 5 imps active rather than
+	 * 3", and this reached only a row whose `Minions` parameter named an imp.
+	 * Three places read a cap through this: a summon destroying its oldest, a
+	 * deployable refusing to place another, and a summon that spawns over time.
+	 *
+	 * AND ONLY WHERE THE ROW STATES A CAP ABOVE ZERO. Every read site takes zero
+	 * to mean "no cap at all", so a bonus added whether or not the row states a
+	 * cap would give a skill designed to have none a cap of two -- and would
+	 * cap thralls, fighting Crowned on the same character. Measured 2026-09-16:
+	 * of the 403 rows in `game/Data/WeaponSkills.csv`, only Summon Imp's states
+	 * a cap.
+	 */
+	int32 MinionCapFor(const AActor* Self,
+					   const FCataclysmSkillShapeParams& Params,
+					   const FGameplayTagContainer& SkillTags)
+	{
+		if (Params.MaxActive <= 0)
+		{
+			return Params.MaxActive;
+		}
+
+		const float Bonus = PassiveStatFor(
+			Self, UCataclysmCommand::MinionCapBonusStat,
+			UCataclysmCombatAttributeSet::GetMinionCapBonusAttribute(),
+			SkillTags);
+
+		// AT LEAST ONE, AND SOMETHING NOW SUBTRACTS. "Minus 2-4 to your max
+		// minion count" is a negative flat on this stat, issue #1833, and
+		// `StatForSkill` answers the pipeline's figure, which is not floored the
+		// way the combat attribute set floors the attribute -- `FervourReserveFor`
+		// above carries that measurement. So the sum can fall below the row's
+		// figure. A cap of zero is read as NO CAP at all by every read site, so
+		// without this floor a large enough subtraction would be an unlimited
+		// army rather than a smaller one.
+		return FMath::Max(1, Params.MaxActive + FMath::RoundToInt(Bonus));
+	}
+}
+
+// ==========================================================================
+// Strike -- Molten Cleave, Searing Hook, Pyroclasm
+// ==========================================================================
+
+void UCataclysmStrikeSkill::ActivateAbility(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	const FGameplayEventData* TriggerEventData)
+{
+	if (!CommitAndBegin(Handle, ActorInfo, ActivationInfo))
+	{
+		return;
+	}
+
+	// EVERYTHING BELOW WAITS FOR THE WEAPON TO ARRIVE. Issue #1133. Until this,
+	// the whole of it ran in the frame the ability activated while the swing
+	// animation played for a second or more beside it, so an enemy took damage
+	// and the arc was drawn while the weapon was still going backwards.
+	//
+	// THE END OF THE ABILITY IS INSIDE HERE FOR THE SAME REASON. Ending it on
+	// the line after this call would cancel the wait and no blow would land at
+	// all. `WhenTheSwingConnects` says so; this is the shape its comment points
+	// at.
+	//
+	// THE HANDLE AND THE ACTOR INFORMATION ARE ASKED FOR AGAIN RATHER THAN
+	// CAPTURED. `ActorInfo` is a raw pointer owned by the ability system and
+	// holding it across a wait is not safe. `Finish` below already takes this
+	// route, and it is the same three accessors.
+	//
+	// ARMED HERE RATHER THAN WHEN THE SWORD GOES IN, because the key is already
+	// down at this moment and has to be let go before the second press counts.
+	// See `InputPressed`.
+	bKeyReleasedSincePlanting = false;
+
+	// A ROW WITH A `ChargeTime` DRAWS THE SWING BACK INSTEAD OF SWINGING, AND
+	// DOES NOT WAIT FOR THE ANIMATION FIRST. Backswing: "draw the greatsword
+	// back and hold." Two rows in the sheet state one and both are Greatsword
+	// Demonic. Issue #1141.
+	//
+	// BEFORE `WhenTheSwingConnects` RATHER THAN INSIDE IT, and that ordering is
+	// the point. Every other Strike waits for the moment its clip connects and
+	// then hits; a hold has no such moment yet, because when the blow lands is
+	// the player's decision. Putting the hold inside the wait would delay the
+	// start of the wind-up by the length of an attack animation the player never
+	// asked to play.
+	//
+	// **THE WIND-UP HAS NO ANIMATION OF ITS OWN AND THIS DOES NOT GIVE IT ONE.**
+	// `CommitAndBegin` has already played whatever attack clip the character
+	// cycles, so a held swing currently looks like an ordinary swing followed by
+	// standing still. There is no draw-back clip in the project to play instead;
+	// issue #1126 is that every weapon swings the same three unarmed clips.
+	if (Params.ChargeTime > 0.0f)
+	{
+		BeginTheHold();
+		return;
+	}
+
+	WhenTheSwingConnects([this]()
+	{
+		// A ROW THAT LEAVES ITS WEAPON IN THE GROUND NEVER SWINGS. The
+		// Greatsword's Buried Fire: "drive the greatsword into the ground and
+		// leave it there." Everything below this assumes a blow that lands now
+		// -- a cone of targets, an arc drawn, an ability that ends -- and a
+		// plant is none of those things.
+		if (Params.bDisarmsUntilRecalled)
+		{
+			if (!PlantTheWeapon())
+			{
+				EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+						   GetCurrentActivationInfo(), true, true);
+			}
+
+			// DELIBERATELY NOT ENDED WHEN THE PLANT SUCCEEDED. The skill stays
+			// active for as long as the sword stands, so that the second press
+			// reaches `InputPressed` rather than the Special slot's cooldown.
+			return;
+		}
+
+		SwingsMade = 0;
+		SwingOnce();
+
+		AActor* Self = Avatar();
+		if (Self)
+		{
+			// Under the caster's own feet. Molten Cleave drags its slag from
+			// where the swing started; Pyroclasm leaves "the ground within 5
+			// meters".
+			//
+			// "THE CASTER'S FEET" ARE WHERE THE USE IS CAST FROM, here and for the
+			// zone and the terrain below: a gadget's copy leaves them at the
+			// gadget. Ruled 2026-10-14; see `CastOrigin`.
+			LeaveGroundAt(CastOrigin());
+
+			// AND THE ZONE A ROW GIVES A STRIKE THAT STATES NO GROUND, in the same place: "your spells leave a
+			// persistent AOE zone at the impact point". Ruled 2026-10-06. Nothing for a character with no row.
+			LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtImpactSecondsStat, CastOrigin());
+
+			// AND THE TERRAIN, WHICH IS A DIFFERENT THING FROM THE GROUND ABOVE.
+			// Three Strike rows leave some: the Spear's Thicket raises spears
+			// within 12 metres, the Warhammer's Break the World collapses the
+			// floor within 12, and its Upthrust drives a ridge along a 10 metre
+			// line.
+			//
+			// THE TWO ENDS DIFFER FOR A WALL AND ONLY FOR A WALL. A pit and a
+			// thicket are circles centred on the caster, so both ends are its
+			// feet. A ridge runs away from the caster along the way it is facing,
+			// for the length its row states -- which is what "along a 10 meter
+			// line" means, and is the only reading under which `TerrainSize` is a
+			// length rather than a radius.
+			//
+			// THE SWING'S OWN FACING, taken at the moment the weapon connects
+			// rather than when the ability began, so a player who turned during
+			// the wind-up raises the ridge where they are pointing now.
+			//
+			// A USE CAST FROM ANOTHER PLACE RUNS ITS RIDGE ALONG ITS AIM, because
+			// it turned nobody to face it. Ruled 2026-10-14.
+			const FVector Feet = CastOrigin();
+			const FVector Ahead = bFreeRepeatHasOrigin ? AimDirection() : Self->GetActorForwardVector();
+			const bool bIsWall = ACataclysmTerrain::KindFromCell(Params.Terrain)
+				== ECataclysmTerrainKind::Wall;
+			LeaveTerrainAlong(
+				Feet,
+				bIsWall
+					? Feet + Ahead * Params.TerrainSizeCm
+					: Feet);
+		}
+
+		// A single swing with no duration is over. Pyroclasm's spin is the
+		// other case: it repeats for Duration and then lands its final hit.
+		const bool bRepeats = Params.Duration > 0.0f && Params.Interval > 0.0f;
+		UWorld* World = Self ? Self->GetWorld() : nullptr;
+		if (!bRepeats || !World)
+		{
+			EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+					   GetCurrentActivationInfo(), true, false);
+			return;
+		}
+
+		// A SPIN ENDED BY ITS OWN FIRST SWING DOES NOT GO ON SPINNING. Ruled
+		// 2026-10-08. `SwingOnce` above lands blows, and a blow can come back
+		// on the caster before it returns -- a retaliation, a reflected share --
+		// which under `hit_taken_cancels_skills` cancels this skill there and
+		// then: the engine ends an ability at once, even from inside its own
+		// call. Whatever ends a skill clears the timers it HOLDS, and these two
+		// are not set yet, so setting them now would start a spin on a skill
+		// that is over: nothing would clear them, and it would swing for its
+		// whole length and land its final hit.
+		//
+		// WHAT THIS CALL HAD ALREADY DONE STAYS DONE: the first swing, the
+		// ground and the terrain above. Only what was still to come is lost.
+		const bool bEndedByItsOwnFirstSwing = !IsActive();
+		if (bEndedByItsOwnFirstSwing)
+		{
+			return;
+		}
+
+		World->GetTimerManager().SetTimer(
+			RepeatTimer, this, &UCataclysmStrikeSkill::Repeat,
+			Params.Interval, /*bLoop=*/true, /*InFirstDelay=*/Params.Interval);
+		World->GetTimerManager().SetTimer(
+			FinishTimer, this, &UCataclysmStrikeSkill::Finish,
+			Params.Duration, /*bLoop=*/false);
+	});
+}
+
+const TCHAR* UCataclysmStrikeSkill::MeleeArcFullCircleStat = TEXT("melee_arc_full_circle");
+
+const TCHAR* UCataclysmStrikeSkill::StrikeArcAtLeastDegreesStat = TEXT("strike_arc_at_least_degrees");
+
+float UCataclysmStrikeSkill::ArcAtLeastDegrees() const
+{
+	// ASKED WITH THE SKILL'S OWN TAGS, which carry its slot: a weapon skill's
+	// row states `Slot.Heavy` among its tags and `UCataclysmWeaponSkills::StampOnto`
+	// copies them here. So a row requiring `Slot.Heavy` reaches the heavy attack
+	// and no other skill.
+	const UCataclysmAbilitySystemComponent* Mine =
+		Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo());
+	return Mine
+		? FMath::Clamp(Mine->StatForSkill(FName(StrikeArcAtLeastDegreesStat), SkillTags, 0.0f), 0.0f, 360.0f)
+		: 0.0f;
+}
+
+float UCataclysmStrikeSkill::ArcDegrees() const
+{
+	// NEVER NARROWER THAN A ROW SAYS THIS STRIKE IS. Ruled 2026-10-07. The
+	// larger of the two, so a strike already wider than the row is not narrowed.
+	// FOR A STRIKE OF ANY KIND, a judgement by the writing session: the sentence
+	// says "your heavy attack" and does not say melee.
+	const float Stated = FMath::Max(Params.AngleDegrees, ArcAtLeastDegrees());
+
+	// A SPELL'S CONE IS NEVER WIDENED BY EVERY SWING LANDS. The sentence says
+	// "your melee arc", and a strike carries `Type.Melee` exactly when it is
+	// made with a melee weapon, which the generator has enforced since issue
+	// #944.
+	static const FGameplayTag Melee = FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Type.Melee")), /*ErrorIfNotFound=*/false);
+	if (!Melee.IsValid() || !SkillTags.HasTag(Melee))
+	{
+		return Stated;
+	}
+
+	const UCataclysmAbilitySystemComponent* Mine =
+		Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo());
+	if (Mine && Mine->StatForSkill(FName(MeleeArcFullCircleStat), SkillTags, 0.0f) > 0.0f)
+	{
+		return 360.0f;
+	}
+	return Stated;
+}
+
+int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
+{
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		return 0;
+	}
+
+	// Aimed at the cursor rather than at wherever the character happens to be
+	// facing. A top-down game gives the player no other way to point a cone.
+	//
+	// AND AS WIDE AS `ArcDegrees` SAYS, which is the row's angle unless a melee
+	// swing's caster holds Every Swing Lands. The nearest are still taken first
+	// and the target limit still holds, so a one-target basic attack takes the
+	// nearest enemy in any direction rather than only in front.
+	//
+	// UNLESS A ROW ROLLED THAT THIS USE HITS EVERY ENEMY NEARBY. Ruled 2026-10-06. Then it is every enemy within
+	// that distance of the user, or within the skill's own reach when that is further, in every direction and with
+	// no limit on how many.
+	//
+	// AND A STRIKE A ROW GIVES A LEAST ARC HAS NO TARGET LIMIT. Ruled
+	// 2026-10-07: "hits ALL enemies in a 180 degree arc". Nought is how
+	// `FindEnemiesInCone` is told there is no limit.
+	//
+	// THE APEX IS WHERE THE USE IS CAST FROM, the caster's own place unless a free start was given another: a
+	// gadget's copy swings from the gadget. Ruled 2026-10-14; see `CastOrigin`.
+	const int32 MostTargets = ArcAtLeastDegrees() > 0.0f ? 0 : Params.MaxTargets;
+	const FVector Apex = CastOrigin();
+	const TArray<AActor*> Targets = ThisUseHitsAllWithinCm > 0.0f
+		? UCataclysmTargeting::FindEnemiesInSphere(
+			GetWorld(), Self, Apex, FMath::Max(ThisUseHitsAllWithinCm, ScaledRadiusCm()))
+		: UCataclysmTargeting::FindEnemiesInCone(
+			GetWorld(), Self, Apex, AimDirection(),
+			ScaledRadiusCm(), ArcDegrees(), MostTargets);
+
+	// AND EVERY ALLY INSIDE THE SAME AREA, WHEN A ROW STRIKES ALLIES WITH THIS SKILL. Ruled 2026-10-15, for "Your AOE
+	// skills deal 50%-75% of their damage to nearby allies as well as enemies" (R2, R3): the same sphere or cone, on the
+	// friendly side, the user left out, and with no limit on how many, a judgement of the writing session. Nobody is
+	// searched for by a user without the row.
+	const TArray<AActor*> Allies = AreaShareOnAlliesPercent() <= 0.0f
+		? TArray<AActor*>()
+		: ThisUseHitsAllWithinCm > 0.0f
+		? UCataclysmAreaShareOnAllies::AlliesInSphere(
+			GetWorld(), Self, Apex, FMath::Max(ThisUseHitsAllWithinCm, ScaledRadiusCm()))
+		: UCataclysmAreaShareOnAllies::AlliesInCone(
+			GetWorld(), Self, Apex, AimDirection(), ScaledRadiusCm(), ArcDegrees());
+
+	// AND THE USER ITSELF, WHEN ITS DEPLOYABLE CAST THIS SWING AS AN AREA STRIKE AND IT STANDS INSIDE. Ruled 2026-10-19
+	// (B2, B5), for "Your deployables and traps deal full damage to you if you are within their blast radius": the same
+	// sphere or cone, measured from the deployable's place. A STRIKE LIMITED TO ONE TARGET IS A SINGLE-TARGET BLOW AND
+	// STRIKES NOBODY HERE, a judgement of the writing session: the basic attack's swing is one. Null for a user without
+	// the row and for every use no deployable cast. AND A SKILL TRAP ALREADY USED UP IS FOUND BY THE USE'S IDENTITY OF
+	// IT (traps layer 7, L-1, ruled 2026-10-22), for a swing a row's cast delay holds back until the trap is gone.
+	AActor* const StruckWearer = ThisUseHitsAllWithinCm <= 0.0f && MostTargets == 1
+		? nullptr
+		: ThisUseHitsAllWithinCm > 0.0f
+		? UCataclysmDeployableSelfBlast::WearerInSphere(
+			GetWorld(), Self, FreeRepeatCastBy.Get(), Apex, FMath::Max(ThisUseHitsAllWithinCm, ScaledRadiusCm()),
+			FreeRepeatCastBy)
+		: UCataclysmDeployableSelfBlast::WearerInCone(
+			GetWorld(), Self, FreeRepeatCastBy.Get(), Apex, AimDirection(), ScaledRadiusCm(), ArcDegrees(),
+			FreeRepeatCastBy);
+
+	// THE FIRES GO OUT BEFORE THE BLOW LANDS, and that order is required rather
+	// than tidy. Quench gives an enemy whose fire was just put out 50% more
+	// damage and Extinction's damage rises with how many went out at once, so
+	// the blow cannot be sized until this has run. Inert for every skill that
+	// does not state `ConsumeBurn`, which is 51 of the 56 Demonic rows.
+	const TArray<AActor*> Consumed = ConsumeBurnFrom(Targets);
+
+	// The knockback goes with it. It used to be applied here, for Strikes only;
+	// issue #626 moved it into HitTargets so that every shape can shove, which
+	// is what making it a rider means.
+	//
+	// AND THE BLOW IS SIZED BY WHAT THIS SKILL SCALES WITH. `HitScaled` is
+	// `HitTargets` for a skill that scales with nothing, which is most of them.
+	// A caller passing its own figure -- Pyroclasm's closing hit -- overrides
+	// both, because that figure is already the skill's own final word.
+	//
+	// THE ARC IS SET ALIGHT AFTER BEING CONSUMED, WHICH IS WHAT THE ROWS SAY.
+	// Quench: "the whole arc is set alight anew behind the blade". Extinction:
+	// "anything still standing is set alight again". `HitTargets` applies the
+	// burn, so consuming first and hitting second delivers both sentences in
+	// the order they are written.
+	//
+	// AND THE ALLIES FOUND ABOVE ARE STRUCK FOR THEIR SHARE IN THE SAME ATTACK, after the enemies. Ruled 2026-10-15.
+	// With none, these are `HitTargets` and `HitScaled` as they were.
+	//
+	// AND THE USER FOUND ABOVE IS STRUCK IN THE SAME ATTACK TOO, after them, for the percent an enemy that was not
+	// consumed is struck for (B3). Ruled 2026-10-19. The attack is begun here only when the user is struck, so the
+	// two calls below find it in progress and the user's blow is priced with the swing's count and what it bought.
+	const float UsersPercent = DamagePercent >= 0.0f ? DamagePercent : PercentHitScaledGivesAnAlly(Consumed);
+	const bool bBeganForTheUser = StruckWearer && BeginAttackOn(Targets);
+	if (DamagePercent >= 0.0f)
+	{
+		HitTargetsSharingWithAllies(Targets, DamagePercent, Allies);
+	}
+	else
+	{
+		HitScaledSharingWithAllies(Targets, Consumed, Allies);
+	}
+	if (StruckWearer)
+	{
+		StrikeTheWearerInItsDeployablesBlast(StruckWearer, UsersPercent);
+	}
+	if (bBeganForTheUser)
+	{
+		EndAttack();
+	}
+
+	// AND THE FIRE SPREADS FROM WHERE EACH ONE WENT OUT. Touch Off states three
+	// metres of its own; Ashen Edge grants four to whatever the caster consumes
+	// with while it runs. Nothing happens for a skill with neither.
+	IgniteAroundConsumed(Consumed);
+
+	// AND THE CURSE GOES ON WHATEVER THE SWING TOUCHED. The Wand's Anathema:
+	// "laying every curse you know on it for 10 seconds: Demonic resistance cut
+	// by 40%, and madness on all of them". Until 2026-09-01 only the Debuff
+	// shape applied a named effect, so a Strike stating one applied nothing.
+	//
+	// AFTER THE BLOW RATHER THAN BEFORE IT, so a Shred cutting resistance does
+	// not also reduce the damage of the hit that applied it. The row reads
+	// "damn everything ... for 350% weapon damage, setting it alight and laying
+	// every curse", in that order.
+	//
+	// AND ONLY ON WHAT THE SWING TOUCHED. Issue #1156. The project owner's rule
+	// of 2026-09-05: an evaded attack applies nothing it carries, because the hit
+	// was unsuccessful. A named curse is the clearest case of it -- Shred,
+	// Madness, Cripple and Weaken are what the sentence promises rather than a
+	// side effect -- and until this they were laid on every target in reach
+	// whether the swing connected or not.
+	//
+	// `BlowLandedOn` RATHER THAN A DAMAGE FIGURE, because the two differ in both
+	// directions: a Support skill deals nothing by design and must still curse,
+	// and an evaded blow reports a positive figure. That function answers true
+	// for a target this skill never struck, which is what keeps the first of
+	// those working.
+	for (AActor* Target : Targets)
+	{
+		if (BlowLandedOn(Target))
+		{
+			ApplyNamedEffectsTo(Target);
+		}
+	}
+
+	// AND THE SWING IS DRAWN, WHICH UNTIL ISSUE #811 IT WAS NOT. This is the one
+	// place a Strike swings, so it is the one place the arc has to be spawned
+	// from; every repeating strike reaches here through Repeat and Finish as
+	// well, so a spin draws an arc per interval rather than one at the start.
+	//
+	// DRAWN WHETHER OR NOT ANYTHING WAS HIT, and that is deliberate and the
+	// opposite of what the impact burst does. UCataclysmImpactEffect::ShouldDrawFor
+	// refuses to draw for a blow that connected with nothing, because that effect
+	// means "that landed". This one means "you swung", and a swing that misses
+	// still happened -- a player who saw nothing when they hit thin air would
+	// read it as the button not working.
+	// COLOURED FROM THE SKILL AND NOT ONLY FROM THE CASTER. A player's damage
+	// carries no type by design, so asking the caster alone would draw every
+	// player swing white -- which is what every other effect in the project
+	// still does. Issue #803. `ElementTag` is the skill's own `Element.*` tag
+	// out of the Weapon Skills sheet.
+	// DRAWN WHERE THE SWING WAS MADE, the apex above. Ruled 2026-10-14.
+	UCataclysmStrikeEffect::PlayAt(Self, Apex, AimDirection(),
+								   UCataclysmStrikeEffect::DamageTypeFor(
+									   Self, ElementTag()),
+								   ScaledRadiusCm());
+
+	++SwingsMade;
+	return Targets.Num();
+}
+
+void UCataclysmStrikeSkill::Repeat()
+{
+	SwingOnce();
+}
+
+void UCataclysmStrikeSkill::Finish()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(RepeatTimer);
+	}
+
+	// Pyroclasm: "the final hit at the end of the spin deals 300% weapon damage
+	// to all affected enemies". Its own figure, so it overrides the slot's 400%.
+	if (Params.FinalHitPercent > 0.0f)
+	{
+		SwingOnce(Params.FinalHitPercent);
+	}
+
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+			   GetCurrentActivationInfo(), true, false);
+}
+
+// --------------------------------------------------------------------------
+// Backswing and The Whole Weight -- the two Strikes that are held
+// --------------------------------------------------------------------------
+
+UCataclysmStrikeSkill* UCataclysmStrikeSkill::HeldSwingOn(const AActor* Who)
+{
+	const UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Who);
+	if (!AbilitySystem)
+	{
+		return nullptr;
+	}
+
+	for (const FGameplayAbilitySpec& Spec : AbilitySystem->GetActivatableAbilities())
+	{
+		if (!Spec.IsActive())
+		{
+			continue;
+		}
+
+		UCataclysmStrikeSkill* Running =
+			Cast<UCataclysmStrikeSkill>(Spec.GetPrimaryInstance());
+
+		// A HELD SWING AND NOTHING ELSE. Two other kinds of Strike can be found
+		// running here -- a spin part way through its duration, and Buried Fire
+		// with its sword in the ground -- and neither is drawn back. The flag is
+		// what says which, rather than the row's parameters, because it is also
+		// false again the moment the swing goes.
+		if (Running && Running->bHolding)
+		{
+			return Running;
+		}
+	}
+
+	return nullptr;
+}
+
+bool UCataclysmStrikeSkill::IsHoldingASwing(const AActor* Who)
+{
+	return HeldSwingOn(Who) != nullptr;
+}
+
+bool UCataclysmStrikeSkill::HoldBreaksOn(const TCHAR* What) const
+{
+	if (Params.ChargeBreaksOn.IsEmpty() || !What)
+	{
+		return false;
+	}
+
+	// COMMA SEPARATED, the same way `Requires` and `Immune` are read. No row
+	// names two today; Backswing names `Stagger`, The Whole Weight `Death` and
+	// Inexorable `None`.
+	TArray<FString> Named;
+	Params.ChargeBreaksOn.ParseIntoArray(Named, TEXT(","), /*InCullEmpty=*/true);
+	for (const FString& One : Named)
+	{
+		if (One.TrimStartAndEnd().Equals(What, ESearchCase::IgnoreCase))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+bool UCataclysmStrikeSkill::HoldForbids(const TCHAR* What) const
+{
+	if (Params.HoldForbids.IsEmpty() || !What)
+	{
+		return false;
+	}
+
+	// COMMA SEPARATED, the same way `Immune` and `ChargeBreaksOn` are read. The
+	// Whole Weight names two: `Acting, Healing`.
+	TArray<FString> Named;
+	Params.HoldForbids.ParseIntoArray(Named, TEXT(","), /*InCullEmpty=*/true);
+	for (const FString& One : Named)
+	{
+		if (One.TrimStartAndEnd().Equals(What, ESearchCase::IgnoreCase))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+bool UCataclysmStrikeSkill::AHeldSwingForbids(const AActor* Who,
+											  const TCHAR* What)
+{
+	const UCataclysmStrikeSkill* Held = HeldSwingOn(Who);
+	return Held && Held->HoldForbids(What);
+}
+
+void UCataclysmStrikeSkill::BeginTheHold()
+{
+	UWorld* World = GetWorld();
+
+	bHolding = true;
+	BlowsTakenWhileHolding = 0;
+	ReleasedAtPercent = 0.0f;
+	SwingsMade = 0;
+	HoldBeganAtSeconds = World ? World->GetTimeSeconds() : 0.0f;
+
+	// THE HOLD LETS GO BY ITSELF AT `ChargeTime`. Neither row offers anything
+	// for holding longer, and a hold that waited for the key would leave a
+	// player who kept it down rooted until something killed them.
+	//
+	// NO WORLD MEANS NO TIMER AND THE HOLD STAYS UP, which is the state every
+	// automation test runs in: a world made by `UWorld::CreateWorld` is never
+	// ticked, so no timer set in one ever fires. `LetTheHoldFinish` and
+	// `ReleaseTheSwing` are public for exactly that reason.
+	if (World && Params.ChargeTime > 0.0f)
+	{
+		World->GetTimerManager().SetTimer(
+			HoldTimer, this, &UCataclysmStrikeSkill::LetTheHoldFinish,
+			Params.ChargeTime, /*bLoop=*/false);
+	}
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("'%s' is drawn back. It goes in %.1f seconds, or sooner if let "
+			 "go, for between %.0f%% and %.0f%%."),
+		*SkillName, Params.ChargeTime, ChargedDamagePercent(0.0f),
+		ChargedDamagePercent(Params.ChargeTime));
+}
+
+float UCataclysmStrikeSkill::SecondsOfHoldSoFar() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || !bHolding)
+	{
+		return 0.0f;
+	}
+
+	// CLAMPED TO THE ROW'S OWN LENGTH, because the ceiling is the ceiling. The
+	// timer normally gets there first; this is what holds if a frame ran long.
+	return FMath::Clamp(World->GetTimeSeconds() - HoldBeganAtSeconds,
+						0.0f, Params.ChargeTime);
+}
+
+float UCataclysmStrikeSkill::ChargedDamagePercent(float SecondsOfHold) const
+{
+	// A ROW STATING NO FLOOR DOES NOT RAMP WITH TIME. The Whole Weight: what
+	// raises its blow is `MoreDamagePer=8` with `ScalingSource=HitTaken`, which
+	// `ScaledDamagePercent` already applies and `MaxDamagePercent` already caps.
+	// Handing it a time ramp as well would charge one sentence twice.
+	if (Params.MinDamagePercent <= 0.0f)
+	{
+		return ScaledDamagePercent(ScalingUnits(/*ConsumedCount=*/0,
+												/*bThisTargetConsumed=*/false));
+	}
+
+	// A CEILING IS NOT REQUIRED. A row stating a floor and no ceiling holds
+	// still at its floor rather than rising to zero.
+	const float Floor = Params.MinDamagePercent;
+	const float Ceiling = Params.MaxDamagePercent > 0.0f
+		? FMath::Max(Params.MaxDamagePercent, Floor)
+		: Floor;
+
+	// AND A ROW WITH NO `ChargeTime` NEVER REACHES HERE THROUGH THE SKILL, but
+	// a test or a mis-generated row could, and dividing by it is the one thing
+	// in this function that could go wrong.
+	if (Params.ChargeTime <= 0.0f)
+	{
+		return Ceiling;
+	}
+
+	const float Share = FMath::Clamp(SecondsOfHold / Params.ChargeTime, 0.0f, 1.0f);
+	return FMath::Lerp(Floor, Ceiling, Share);
+}
+
+int32 UCataclysmStrikeSkill::ReleaseTheSwing()
+{
+	if (!bHolding)
+	{
+		return 0;
+	}
+
+	const float Held = SecondsOfHoldSoFar();
+	ReleasedAtPercent = ChargedDamagePercent(Held);
+
+	// THE FLAG GOES DOWN BEFORE THE BLOW, not after it. `SwingOnce` reaches
+	// `ApplyHit`, which can kill what it touches, and a death reaches
+	// `UCataclysmSkillEffects::MarkDead` -- so a swing that is still marked as
+	// held could be broken by the consequences of its own blow.
+	bHolding = false;
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(HoldTimer);
+	}
+
+	const int32 Caught = SwingOnce(ReleasedAtPercent);
+
+	// AND THE BURNING GROUND, THE SAME WAY AN ORDINARY STRIKE LEAVES IT. Neither
+	// held row states any today, so this is inert for both; leaving it out would
+	// make a third charged row silently drop the rider every other Strike has.
+	if (const AActor* Self = Avatar())
+	{
+		LeaveGroundAt(Self->GetActorLocation());
+		// AND A ROW'S ZONE, as the ordinary strike leaves it. Ruled 2026-10-06.
+		LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtImpactSecondsStat, Self->GetActorLocation());
+	}
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("'%s' was let go after %.2f of %.1f seconds, landing for %.0f%% "
+			 "on %d enemies after %d blows taken."),
+		*SkillName, Held, Params.ChargeTime, ReleasedAtPercent, Caught,
+		BlowsTakenWhileHolding);
+
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+			   GetCurrentActivationInfo(), true, false);
+	return Caught;
+}
+
+void UCataclysmStrikeSkill::LetTheHoldFinish()
+{
+	if (!bHolding)
+	{
+		return;
+	}
+
+	// THE CEILING, TAKEN FROM THE ROW RATHER THAN FROM THE CLOCK. The timer
+	// fired at exactly `ChargeTime`, so asking the world what time it is could
+	// only introduce a disagreement with the thing that just woke this up.
+	ReleasedAtPercent = ChargedDamagePercent(Params.ChargeTime);
+
+	bHolding = false;
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(HoldTimer);
+	}
+
+	const int32 Caught = SwingOnce(ReleasedAtPercent);
+
+	if (const AActor* Self = Avatar())
+	{
+		LeaveGroundAt(Self->GetActorLocation());
+		// AND A ROW'S ZONE, as the ordinary strike leaves it. Ruled 2026-10-06.
+		LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtImpactSecondsStat, Self->GetActorLocation());
+	}
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("'%s' was held its full %.1f seconds, landing for %.0f%% on %d "
+			 "enemies after %d blows taken."),
+		*SkillName, Params.ChargeTime, ReleasedAtPercent, Caught,
+		BlowsTakenWhileHolding);
+
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+			   GetCurrentActivationInfo(), true, false);
+}
+
+void UCataclysmStrikeSkill::BreakTheHold(const FString& What)
+{
+	if (!bHolding)
+	{
+		return;
+	}
+
+	bHolding = false;
+	ReleasedAtPercent = 0.0f;
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(HoldTimer);
+	}
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("'%s' was broken by %s after %.1f seconds. Nothing lands."),
+		*SkillName, *What, Params.ChargeTime);
+
+	// CANCELLED RATHER THAN ENDED, so anything else watching for an interrupted
+	// skill agrees with what happened. `UCataclysmSkillTemplate::EndAbility`
+	// clears its swing timer only on a cancel, for the same reason.
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+			   GetCurrentActivationInfo(), /*bReplicateEndAbility=*/true,
+			   /*bWasCancelled=*/true);
+}
+
+void UCataclysmStrikeSkill::NoteBlowTakenWhileHolding()
+{
+	if (bHolding)
+	{
+		++BlowsTakenWhileHolding;
+	}
+}
+
+// --------------------------------------------------------------------------
+// Buried Fire -- the one Strike that leaves its weapon behind
+// --------------------------------------------------------------------------
+
+ACataclysmPlantedWeapon* UCataclysmStrikeSkill::PlantTheWeapon()
+{
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		return nullptr;
+	}
+
+	// A PLANT WITH NO WINDOW IS REFUSED OUTRIGHT, AND THIS IS THE ONE GUARD HERE
+	// THAT IS NOT TIDINESS. `GroundDuration` is how long the sword may be left,
+	// so a row stating none would leave it standing until something else ended
+	// the skill -- which is fighting unarmed for ever on a mistimed press, the
+	// exact outcome the window's own reading was chosen to avoid. The generator
+	// writes GroundDuration on every row that leaves ground, so reaching here
+	// means the imported table is older than the sheet.
+	//
+	// BEFORE THE GROUND IS LEFT, so a refusal does not leave a patch burning with
+	// no sword in it. The same reason the check for a sword already planted is
+	// here rather than left to `Plant`.
+	if (Params.GroundDuration <= 0.0f)
+	{
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("'%s' leaves its weapon in the ground and states no "
+				 "GroundDuration, so there would be no window to pull it free "
+				 "in. Nothing was planted. Run "
+				 "tools/generate_datatable_assets.py."),
+			*SkillName);
+		return nullptr;
+	}
+
+	if (ACataclysmPlantedWeapon::HeldBy(Self))
+	{
+		// `Plant` refuses this too and says so. Refused here as well so that no
+		// patch of burning ground is left by a plant that then does not happen.
+		return nullptr;
+	}
+
+	const FVector Where = Self->GetActorLocation();
+
+	// THE BURNING GROUND IS LEFT FIRST, SO THE SWORD CAN BE HANDED THE PATCH IT
+	// IS STANDING IN. "It burns everything within 4 meters and grows hotter every
+	// second it stands": the burning is an ordinary `LeaveGroundAt` and the
+	// growing hotter is the sword raising that patch's figure once a second.
+	// Every other row that leaves ground leaves it and forgets it.
+	ACataclysmGroundZone* Patch = LeaveGroundAt(Where);
+
+	// WHAT IS IN THE GROUND, ASKED OF THE CHARACTER RATHER THAN ASSUMED. A test
+	// caster has no weapon slots component and answers empty, which costs
+	// nothing: the name is what the log and anything asking what a character left
+	// behind reads, and no behaviour turns on it.
+	FString WeaponType;
+	if (const UCataclysmWeaponSlotsComponent* Slots =
+			Self->FindComponentByClass<UCataclysmWeaponSlotsComponent>())
+	{
+		WeaponType = Slots->GetEquippedWeaponType();
+	}
+
+	ACataclysmPlantedWeapon* Sword = ACataclysmPlantedWeapon::Plant(
+		Self, Where, WeaponType, Patch, Params.MoreDamagePer);
+	if (!Sword)
+	{
+		return nullptr;
+	}
+
+	// AND THE WINDOW STARTS. `GroundDuration` is the row's only ten and it is
+	// both how long the fire burns and how long the sword may be left; see the
+	// header. A row stating none was refused above.
+	if (UWorld* World = Self->GetWorld())
+	{
+		World->GetTimerManager().SetTimer(
+			WindowTimer, this, &UCataclysmStrikeSkill::LetTheWindowClose,
+			Params.GroundDuration, /*bLoop=*/false);
+	}
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("'%s' planted a weapon; it may be pulled free for %.1f seconds."),
+		*SkillName, Params.GroundDuration);
+
+	return Sword;
+}
+
+int32 UCataclysmStrikeSkill::PullTheWeaponFree()
+{
+	AActor* Self = Avatar();
+	ACataclysmPlantedWeapon* Sword = ACataclysmPlantedWeapon::HeldBy(Self);
+	if (!Self || !Sword)
+	{
+		return 0;
+	}
+
+	// WHERE THE SWORD IS, NOT WHERE THE PLAYER IS. "Pull it free within 10
+	// seconds to erupt": the eruption belongs to the sword, and walking away
+	// before pressing again is a use of the skill rather than a mistake.
+	const FVector Where = Sword->GetActorLocation();
+
+	// THE SAME CONE EVERY OTHER STRIKE USES, CENTRED ON THE SWORD. The row states
+	// `Angle=360`, so the direction decides nothing and the shape is a ring --
+	// but reading the angle rather than assuming a sphere is what lets a later
+	// row plant something that erupts in a wedge.
+	const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInCone(
+		GetWorld(), Self, Where, AimDirection(), ScaledRadiusCm(),
+		Params.AngleDegrees, Params.MaxTargets);
+
+	// AND EVERY ALLY INSIDE THE SAME CONE ROUND THE SWORD, WHEN A ROW STRIKES ALLIES WITH THIS SKILL. Ruled 2026-10-15
+	// (R2, R3), as `SwingOnce` finds them.
+	const TArray<AActor*> CaughtAllies = AreaShareOnAlliesPercent() <= 0.0f
+		? TArray<AActor*>()
+		: UCataclysmAreaShareOnAllies::AlliesInCone(
+			GetWorld(), Self, Where, AimDirection(), ScaledRadiusCm(), Params.AngleDegrees);
+
+	// `HitScaled` READS `ScalingSource=Second`, WHICH `ScalingUnits` ANSWERS BY
+	// ASKING THE SWORD HOW LONG IT HAS STOOD. Done that way round rather than
+	// passing the figure in, so that the eruption is sized by the same route
+	// every other scaled blow in the project is sized by.
+	//
+	// BEFORE THE SWORD IS DESTROYED, WHICH `EndAbility` BELOW DOES. Asking
+	// afterwards would find no sword and scale by nothing.
+	//
+	// AND AFTER THE WEAPON'S STATS ARE HANDED BACK. Issue #1166: while the sword stands the character's attack damage
+	// is the unarmed base, and the eruption is the weapon's own blow. Without this line it would be priced as a punch.
+	Sword->HandBack();
+	// AND THE ALLIES IN THE SAME ATTACK, after the enemies, for their share. Ruled 2026-10-15.
+	Erupted = HitScaledSharingWithAllies(Caught, TArray<AActor*>(), CaughtAllies);
+
+	UCataclysmStrikeEffect::PlayAt(Self, Where, AimDirection(),
+								   UCataclysmStrikeEffect::DamageTypeFor(
+									   Self, ElementTag()),
+								   ScaledRadiusCm());
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("'%s' was pulled free after %.0f seconds and erupted on %d for "
+			 "%.1f."),
+		*SkillName, Sword->SecondsPlanted(), Caught.Num(), Erupted);
+
+	// THE SWORD IS TAKEN OUT OF THE GROUND BY `EndAbility`, WHICH IS THE ONE
+	// PLACE THAT DOES IT. See the header: every way this skill can stop has to
+	// leave the character holding something, and there are four of them.
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+			   GetCurrentActivationInfo(), true, false);
+
+	return Caught.Num();
+}
+
+void UCataclysmStrikeSkill::LetTheWindowClose()
+{
+	// NOTHING ERUPTS. See the header: this is the reading recorded on
+	// 2026-09-02, and the sword coming back is the whole of what happens.
+	if (const ACataclysmPlantedWeapon* Sword =
+			ACataclysmPlantedWeapon::HeldBy(Avatar()))
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' was left for its whole %.0f seconds, so the weapon came "
+				 "back and nothing erupted."),
+			*SkillName, Sword->SecondsPlanted());
+	}
+
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+			   GetCurrentActivationInfo(), true, false);
+}
+
+UCataclysmStrikeSkill* UCataclysmStrikeSkill::PlantingSkillOn(const AActor* Who)
+{
+	// NOT ONLY WHILE THE SWORD STANDS. The skill runs from the moment it is used,
+	// and for the first part of that its swing has not connected: nothing is in
+	// the ground yet, and a timer is waiting to plant it. Asking first whether a
+	// sword is in the ground would miss exactly that part, and a player who died
+	// in it would have the sword planted after the death. Issue #1535.
+	const UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Who);
+	if (!AbilitySystem)
+	{
+		return nullptr;
+	}
+
+	for (const FGameplayAbilitySpec& Spec : AbilitySystem->GetActivatableAbilities())
+	{
+		if (!Spec.IsActive())
+		{
+			continue;
+		}
+
+		// THE ROW THAT PLANTS, WHILE IT RUNS. `DisarmsUntilRecalled` is what
+		// makes a Strike leave its weapon behind, and the skill stays active from
+		// the moment it is used until the weapon comes back.
+		UCataclysmStrikeSkill* Running =
+			Cast<UCataclysmStrikeSkill>(Spec.GetPrimaryInstance());
+		if (Running && Running->Params.bDisarmsUntilRecalled)
+		{
+			return Running;
+		}
+	}
+
+	return nullptr;
+}
+
+void UCataclysmStrikeSkill::ReturnTheWeapon(const FString& Why)
+{
+	if (const ACataclysmPlantedWeapon* Sword =
+			ACataclysmPlantedWeapon::HeldBy(Avatar()))
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' was ended by %s after %.0f seconds, so the weapon came "
+				 "back and nothing erupted. Its burning ground stays."),
+			*SkillName, *Why, Sword->SecondsPlanted());
+	}
+	else
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' was ended by %s before its swing connected, so nothing "
+				 "was planted."),
+			*SkillName, *Why);
+	}
+
+	// CANCELLED RATHER THAN ENDED, as `BreakTheHold` does, so anything watching
+	// for an interrupted skill agrees with what happened.
+	//
+	// ENDING IT AT ALL IS WHAT STOPS A SWING THAT HAS NOT CONNECTED YET.
+	// `UGameplayAbility::EndAbility` clears every timer bound to the ability
+	// while the console variable `AbilitySystem.ClearAbilityTimers` is on, which
+	// it is by default, and the swing's timer is bound to it.
+	// `UCataclysmSkillTemplate::EndAbility` clears that one again for a cancel.
+	// A guard proof that ended the skill without cancelling it found the timer
+	// cleared all the same. `EndAbility` takes a sword already in the ground out
+	// of it either way.
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+			   GetCurrentActivationInfo(), /*bReplicateEndAbility=*/true,
+			   /*bWasCancelled=*/true);
+}
+
+void UCataclysmStrikeSkill::InputPressed(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo)
+{
+	Super::InputPressed(Handle, ActorInfo, ActivationInfo);
+
+	// A SWING BEING HELD IGNORES EVERY PRESS, AND THAT IS THE SAME FACT AS THE
+	// GUARD BELOW READ THE OTHER WAY ROUND. The input is bound to
+	// `ETriggerEvent::Triggered`, so every frame the key stays down arrives
+	// here; a hold is exactly the state of the key still being down. What ends
+	// it is the release, the timer, or a break. Issue #1141.
+	if (bHolding)
+	{
+		return;
+	}
+
+	// A PRESS ARRIVING WHILE THE KEY WAS NEVER LET GO is another frame of the
+	// press that planted the sword, not a second press. Issue #1114 is the
+	// incident that established this: the input is bound to
+	// `ETriggerEvent::Triggered` and fires every frame the key is held.
+	if (!bKeyReleasedSincePlanting)
+	{
+		return;
+	}
+
+	// AND A STRIKE THAT PLANTS NOTHING IGNORES THIS ENTIRELY. Every other Strike
+	// in the game ends in the frame it swings, so it is never running when a key
+	// press arrives; reaching here without a sword means one of them has a
+	// duration and an interval and is still spinning, and a press during a spin
+	// is not a second half of anything.
+	if (!ACataclysmPlantedWeapon::HeldBy(ActorInfo ? ActorInfo->AvatarActor.Get()
+												  : Avatar()))
+	{
+		return;
+	}
+
+	PullTheWeaponFree();
+}
+
+void UCataclysmStrikeSkill::InputReleased(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo)
+{
+	Super::InputReleased(Handle, ActorInfo, ActivationInfo);
+
+	// A SWING THAT IS BEING HELD GOES NOW, AND ONLY FOR A ROW THAT STATES A
+	// FLOOR. Backswing: "release at any time: the swing lands for 175% weapon
+	// damage at once." `MinDamagePercent` IS that floor, so a row without one
+	// has no answer for being let go early -- The Whole Weight says "hold it for
+	// 3 seconds" and names being killed as the only escape. Issue #1141.
+	//
+	// THE KEY COMING UP IS NOT AN INTERRUPTION FOR SUCH A ROW. It goes on
+	// holding and `HoldTimer` finishes it, which is what its own text describes.
+	if (bHolding)
+	{
+		if (Params.MinDamagePercent > 0.0f)
+		{
+			ReleaseTheSwing();
+		}
+		return;
+	}
+
+	// THE RELEASE PULLS NOTHING FREE. Buried Fire is not a hold-and-release
+	// skill: the sword stays in the ground when the key comes up, which is what
+	// "leave it there" means. What the release changes is that the next press is
+	// a new press.
+	bKeyReleasedSincePlanting = true;
+}
+
+void UCataclysmStrikeSkill::EndAbility(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	bool bReplicateEndAbility, bool bWasCancelled)
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(WindowTimer);
+
+		// AND A HELD SWING LETS GO OF ITS TIMER TOO, WHICH IS WHAT MAKES "IF YOU
+		// ARE KILLED DURING THE WIND-UP, NOTHING LANDS AT ALL" TRUE FOR EVERY
+		// WAY OF DYING. `BreakTheHold` clears it on the paths that name
+		// themselves; this covers the ones that do not -- an ability cancelled
+		// from outside, the avatar being destroyed, the player being unpossessed
+		// -- so no route out of a hold can leave a timer behind to swing on
+		// behalf of somebody who is no longer there.
+		World->GetTimerManager().ClearTimer(HoldTimer);
+
+		// AND A SPIN STOPS SPINNING, BY NAME. Ruled 2026-10-08. `RepeatTimer`
+		// makes the next swing of a spin and `FinishTimer` its last and heaviest
+		// one, Pyroclasm's 300%; a spin cut short by a hit makes neither.
+		//
+		// THE ENGINE CLEARS THEM AS WELL, AND THIS DOES NOT LEAN ON THAT.
+		// `UGameplayAbility::EndAbility` clears every timer bound to the ability
+		// while the console variable `AbilitySystem.ClearAbilityTimers` is on,
+		// which it is by default; `ReturnTheWeapon` above records a guard proof
+		// that found as much. These two lines are what holds with it off.
+		//
+		// ON EVERY END AND NOT ONLY A CANCEL, as the two above are. An ordinary
+		// end is `Finish`, called by `FinishTimer` itself after it has cleared
+		// `RepeatTimer`, so there is nothing left for these to stop.
+		World->GetTimerManager().ClearTimer(RepeatTimer);
+		World->GetTimerManager().ClearTimer(FinishTimer);
+	}
+	bHolding = false;
+
+	// THE ONE PLACE THE SWORD LEAVES THE GROUND. Four things end this skill --
+	// the second press, the window closing, a cancel, and the character dying --
+	// and all four have to leave the character holding something. Destroying the
+	// actor is the whole of it: `ACataclysmPlantedWeapon::EndPlay` fills the
+	// hands again and `HeldBy` stops finding it, which is what the refused skills
+	// ask.
+	//
+	// THE DEATH IS `UCataclysmSkillEffects::MarkDead` CALLING `ReturnTheWeapon`,
+	// AND UNTIL ISSUE #1535 NOTHING DID. This comment named a death that no code
+	// handled: `MarkDead` broke only a swing being held, and the sword stayed in
+	// the ground until its window closed. The project owner answered on
+	// 2026-09-10 that the sword returns when its owner dies.
+	//
+	// THE BURNING GROUND IS NOT TOUCHED HERE. It is a separate actor with its own
+	// lifespan, and the owner's same answer keeps it burning, which is the
+	// design's rule that "a player's burning ground is not removed when the
+	// player who left it dies".
+	//
+	// BEHIND THE ROW'S OWN FLAG, so that the other 21 Strike rows in the sheet do
+	// not search the level for a sword every time they finish a swing. `HeldBy`
+	// walks the world's actors, which is nothing at the rate a player presses a
+	// key and is not nothing once per blow.
+	if (Params.bDisarmsUntilRecalled)
+	{
+		if (ACataclysmPlantedWeapon* Sword = ACataclysmPlantedWeapon::HeldBy(
+				ActorInfo ? ActorInfo->AvatarActor.Get() : Avatar()))
+		{
+			Sword->Destroy();
+		}
+	}
+
+	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility,
+					  bWasCancelled);
+}
+
+bool UCataclysmStrikeSkill::CanBeInterruptedByAHit() const
+{
+	// A SWORD STANDING IN THE GROUND IS NOT A SKILL BEING USED. See the header.
+	// Behind the row's own flag, for the reason `EndAbility` gives: `HeldBy`
+	// walks the level's actors, and only one row in the sheet plants anything.
+	if (Params.bDisarmsUntilRecalled && ACataclysmPlantedWeapon::HeldBy(Avatar()))
+	{
+		return false;
+	}
+
+	return Super::CanBeInterruptedByAHit();
+}
+
+// ==========================================================================
+// Projectile -- Emberhurl, Blood Pyre, Infernal Lance
+// ==========================================================================
+
+ACataclysmTether* UCataclysmProjectileSkill::BindTether(AActor* Caster)
+{
+	Tethered = nullptr;
+
+	if (Params.TetherTargets < 2 || Params.TetherLengthCm <= 0.0f
+		|| Params.TetherDuration <= 0.0f || !IsValid(Caster))
+	{
+		// Every projectile in the game but Tether. It costs three comparisons.
+		return nullptr;
+	}
+
+	// THE NEAREST ONES WITHIN THE SKILL'S RANGE. `FindEnemiesInSphere` answers
+	// nearest first, and "two enemies within 12 meters" does not say which two.
+	//
+	// `RangeCm` AND NOT `ScaledRadiusCm`. The radius of this skill is how wide
+	// its bolt is -- and, now, how close something must come to the line to be
+	// burned by it -- while the range is how far the whip is thrown. Asking the
+	// wrong one would look for two enemies inside a metre and a half.
+	//
+	// WITHIN THAT RANGE OF WHERE THE USE IS CAST, which is the caster's own place unless a free start was given
+	// another. Ruled 2026-10-14; see `CastOrigin`.
+	TArray<AActor*> Found = UCataclysmTargeting::FindEnemiesInSphere(
+		GetWorld(), Caster, CastOrigin(), ScaledRangeCm(),
+		Params.TetherTargets);
+
+	if (Found.Num() < Params.TetherTargets)
+	{
+		// A Tether thrown at a lone enemy has nothing to tie it to. Not a
+		// failure: the bolt still flies and still sets alight what it touches.
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' needed %d enemies to bind and found %d, so it bound "
+				 "nothing."),
+			*SkillName, Params.TetherTargets, Found.Num());
+		return nullptr;
+	}
+
+	// AND THIS SKILL, which every burn the line lays names and is priced with. Issue #1585, ruled 2026-11-01.
+	Tethered = ACataclysmTether::Bind(Caster, Found, Params.TetherLengthCm,
+									  Params.TetherDuration, ScaledRadiusCm(),
+									  /*BoundBy=*/this);
+	return Tethered;
+}
+
+const TCHAR* UCataclysmProjectileSkill::ProjectileBouncesStat = TEXT("projectile_bounces");
+const TCHAR* UCataclysmProjectileSkill::ProjectilePierceAllStat = TEXT("projectile_pierce_all");
+
+int32 UCataclysmProjectileSkill::BouncesWithRows() const
+{
+	// `GetCurrentActorInfo`, which does not ensure on a skill no character holds, as `ScaledRangeCm` asks.
+	const FGameplayAbilityActorInfo* Info = GetCurrentActorInfo();
+	const UCataclysmAbilitySystemComponent* Mine = Info
+		? Cast<UCataclysmAbilitySystemComponent>(Info->AbilitySystemComponent.Get())
+		: nullptr;
+
+	// ASKED WITH THE SKILL'S TAGS, so a row restricted to projectile skills reaches only those. ROUNDED, as
+	// `SkillChargesMaximum` rounds its bonus: the row states whole ricochets and a roll lands on one. NEVER
+	// BELOW NOUGHT, so no row can take away a bounce the skill states.
+	const float Added = Mine
+		? Mine->StatForSkill(FName(ProjectileBouncesStat), SkillTags, 0.0f)
+		: 0.0f;
+	return Params.Bounces + FMath::Max(0, FMath::RoundToInt(Added));
+}
+
+int32 UCataclysmProjectileSkill::PierceWithRows() const
+{
+	const FGameplayAbilityActorInfo* Info = GetCurrentActorInfo();
+	const UCataclysmAbilitySystemComponent* Mine = Info
+		? Cast<UCataclysmAbilitySystemComponent>(Info->AbilitySystemComponent.Get())
+		: nullptr;
+
+	// A FLAG, ASKED WITH THE SKILL'S TAGS, so a row restricted to spells reaches spells and nothing else. Above
+	// nought, the skill pierces all: the count the designed piercing skills state, unless it states more.
+	const float All = Mine
+		? Mine->StatForSkill(FName(ProjectilePierceAllStat), SkillTags, 0.0f)
+		: 0.0f;
+	return All > 0.0f ? FMath::Max(Params.Pierce, PierceAllCount) : Params.Pierce;
+}
+
+const TCHAR* UCataclysmProjectileSkill::ProjectileCountStat = TEXT("projectile_count");
+
+int32 UCataclysmProjectileSkill::ExtraProjectilesWithRows() const
+{
+	// `GetCurrentActorInfo`, for the reason `BouncesWithRows` gives.
+	const FGameplayAbilityActorInfo* Info = GetCurrentActorInfo();
+	const UCataclysmAbilitySystemComponent* Mine = Info
+		? Cast<UCataclysmAbilitySystemComponent>(Info->AbilitySystemComponent.Get())
+		: nullptr;
+
+	// ASKED WITH THE SKILL'S TAGS AND ROUNDED, as `BouncesWithRows` asks and rounds: the row states whole
+	// projectiles and a roll lands on one. NEVER BELOW NOUGHT, so no row can take away the one the skill fires.
+	const float Added = Mine
+		? Mine->StatForSkill(FName(ProjectileCountStat), SkillTags, 0.0f)
+		: 0.0f;
+	return FMath::Max(0, FMath::RoundToInt(Added));
+}
+
+int32 UCataclysmProjectileSkill::ProjectilesOfOneUse() const
+{
+	// A RACK'S COUNT IS ITS OWN, AND A BEAM PUTS NOTHING IN THE AIR. Ruled 2026-10-12. Butcher's Bill throws its
+	// thirty one at a time on a timer. A skill that states no speed is resolved at once by `Land`, with no actor.
+	if (ThrowsRepeatedly() || ScaledProjectileSpeed() <= 0.0f)
+	{
+		return 1;
+	}
+	return 1 + ExtraProjectilesWithRows();
+}
+
+float UCataclysmProjectileSkill::FanDegreesFor(int32 Index, int32 Total)
+{
+	// CENTRED: the first is half the whole spread to one side, and each next one is one step further round.
+	return (static_cast<float>(Index) - static_cast<float>(Total - 1) * 0.5f) * FanDegreesBetweenProjectiles;
+}
+
+FVector UCataclysmProjectileSkill::FanAim(const FVector& From, const FVector& To, float Degrees)
+{
+	if (Degrees == 0.0f)
+	{
+		// The aim itself, bit for bit, so a use of one projectile is aimed exactly where it was before this.
+		return To;
+	}
+
+	// ON THE GROUND PLANE, AS A PROJECTILE'S FLIGHT IS: `ACataclysmProjectile::Fire` flattens the same difference.
+	const FVector Flat(To.X - From.X, To.Y - From.Y, 0.0);
+	const FVector Turned = Flat.RotateAngleAxis(Degrees, FVector::UpVector);
+	return FVector(From.X + Turned.X, From.Y + Turned.Y, To.Z);
+}
+
+void UCataclysmProjectileSkill::LetItGlance(ACataclysmProjectile* Shot)
+{
+	const int32 Glances = BouncesWithRows();
+	if (!Shot || Glances <= 0)
+	{
+		return;
+	}
+
+	const bool bScalesOnBounce = Params.ScalingSource.Equals(
+		TEXT("Bounce"), ESearchCase::IgnoreCase);
+	const float PerGlance = bScalesOnBounce
+		? GetDamagePercent() * Params.IncreasedDamagePer / 100.0f
+		: 0.0f;
+	// A SKILL THAT STATES NO BOUNCE KEEPS ITS BLAST. Ruled 2026-10-07: its bounces all come from a row, and the
+	// row only adds, so the shot strikes each enemy it glances from and goes off in its radius where it finally
+	// stops. A skill that states its own bounces, Carom, keeps its own rule and does not go off.
+	Shot->GlancesOnward(
+		Glances,
+		Params.RangeCm > 0.0f ? ScaledRangeCm() : ScaledRadiusCm(),
+		PerGlance,
+		/*bInKeepsItsBlast=*/Params.Bounces <= 0);
+}
+
+void UCataclysmProjectileSkill::ActivateAbility(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	const FGameplayEventData* TriggerEventData)
+{
+	if (!CommitAndBegin(Handle, ActorInfo, ActivationInfo))
+	{
+		return;
+	}
+
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
+
+	Landings = 0;
+
+	// Both ends fixed here and not re-read later. A projectile that followed the
+	// cursor after it was thrown would be a homing missile, which none of these
+	// are.
+	//
+	// WHERE IT IS AIMED IS FIXED WHEN THE PLAYER ASKS, NOT WHEN IT LEAVES.
+	// Issue #1133 put a wait between the two, and reading the cursor at the far
+	// end of that wait would let a shot curve toward a cursor moved during the
+	// wind-up. It would also disagree with the body, which turned to face this
+	// point in CommitAndBegin before the wait began.
+	Destination = AimedPointWithin(ScaledRangeCm());
+
+	// AND IT LEAVES WHEN THE THROW REACHES ITS RELEASE. Issue #1133. Until then
+	// the shot appeared in the frame the ability activated, before the arm had
+	// moved.
+	//
+	// THE ORIGIN IS TAKEN AT THAT MOMENT AND NOT BEFORE IT, unlike the
+	// destination, because it is where the projectile physically comes from and
+	// the character may have walked during the wind-up. A shot leaving from
+	// where the character used to stand would be visibly wrong.
+	WhenTheSwingConnects([this]()
+	{
+		AActor* Caster = Avatar();
+		if (!Caster)
+		{
+			EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+					   GetCurrentActivationInfo(), true, true);
+			return;
+		}
+
+		// FROM WHERE THE USE IS CAST: the caster's own place, or the gadget's for a gadget's copy. Ruled 2026-10-14;
+		// see `CastOrigin`. Everything below that reads `Origin` -- the throw, the lob, a beam's line, a return's
+		// way back, the ground along the flight -- reads it from there.
+		Origin = CastOrigin();
+
+		// A LINE BOUND BETWEEN TWO ENEMIES, IF THE ROW ASKS FOR ONE. The Whip's
+		// Tether: "bind two enemies within 12 meters together with a burning
+		// line." Its `TetherTargets`, `TetherLength` and `TetherDuration` were
+		// parsed and read by nothing at all until 2026-09-02.
+		//
+		// AT THE MOMENT OF RELEASE AND NOT WHEN THE BOLT ARRIVES. The row binds
+		// "two enemies within 12 meters", which is a statement about the fight
+		// when the whip is thrown; waiting for the bolt would bind whichever two
+		// happened to be nearest a fifth of a second later, and a Tether thrown
+		// at a group that then scattered would bind nobody.
+		//
+		// THE BOLT IS NOT WHAT BINDS THEM, WHICH IS WHY THIS IS NOT IN
+		// `ACataclysmProjectile`. The row does not say the line is drawn between
+		// what the whip hit; it says two enemies within range are bound. The
+		// projectile still flies and still sets alight what it touches.
+		BindTether(Caster);
+
+		// A RACK OF THIRTY RATHER THAN ONE THROW. The Axe's Butcher's Bill is
+		// the only row that states a Count beside an Interval, and it needs the
+		// ability to stay alive across all of them rather than ending when the
+		// first axe lands.
+		if (ThrowsRepeatedly())
+		{
+			BeginEmptyingTheRack();
+			return;
+		}
+
+		// A REAL ACTOR WHEN IT HAS A SPEED. It moves in steps and sweeps each
+		// one, so who it hits is decided by where they stood as it went past
+		// rather than by where they stand when it arrives, and a wall stops it.
+		// Issue #164.
+		// THIS SKILL'S OWN CRITICAL STRIKE CHANCE GOES WITH IT. A projectile
+		// lands after this ability has ended, so it has to carry the chance
+		// rather than read it off the character on arrival. Named explicitly
+		// because the two arguments before it are defaulted. Issue #657.
+		//
+		// AND WHAT THIS SKILL JUST COST, for the same reason and with more at
+		// stake. Blood Pyre is the one skill in the game with a health cost of
+		// its own and it is a projectile, so this is the route that matters most
+		// for the Masochist's Grand Tithe node. Reading the cost when the shot
+		// landed would credit the blow with whatever the character last paid.
+		// Issue #983.
+		// AND IT LOBS IF THE ROW SAYS SO. Issue #1140. `Arc=0.25` in a Shape
+		// Params cell says the shot peaks a quarter of the way up its own
+		// length, which is a 45 degree throw and is what both lobbing enemies
+		// state. Until this it was parsed, stored, and read by nothing: a
+		// designer could write it, watch it validate, and get a flat shot with no
+		// error anywhere.
+		//
+		// A FRACTION RATHER THAN A TIME, and `LobFlightSecondsFor` carries the
+		// reason: a stated time makes every short lob a near-vertical mortar,
+		// which is issue #474 on the Brute. The two enemies each did this
+		// conversion in their own copy and now share this one.
+		//
+		// MEASURED ACROSS THE GROUND, so a target on a ledge does not change how
+		// high the throw goes.
+		//
+		// ZERO FOR EVERY ROW THAT STATES NO ARC, which is all 403 of them today,
+		// and `Fire` reads zero as a flat shot. So nothing behaves differently
+		// until a row states one.
+		const float FlightSeconds = ACataclysmProjectile::LobFlightSecondsFor(
+			Params.ArcHeightFraction,
+			static_cast<float>(FVector::Dist2D(Origin, Destination)));
+
+		// HOW MANY THIS USE PUTS IN THE AIR, AND WHERE THE FIRST IS AIMED. Ruled 2026-10-12, for "Skills get +1-4 to
+		// projectile count". One for a user with no row, and then `FanAim` answers `Destination` itself, so that
+		// use is what it was before. The rest of the use's projectiles are fired below, after the first.
+		const int32 ProjectilesThisUse = ProjectilesOfOneUse();
+		FiredThisUse.Reset();
+		AlsoInFlight.Reset();
+
+		InFlight = ACataclysmProjectile::Fire(
+			Caster, Origin, FanAim(Origin, Destination, FanDegreesFor(0, ProjectilesThisUse)), ScaledRadiusCm(),
+			ScaledProjectileSpeed(), PierceWithRows(), Params.bReturns,
+			GetDamagePercent(), SkillTags, Params.bBurns,
+			/*InBodyMesh=*/nullptr, FlightSeconds,
+			CritChancePercent, LastHealthCostPercentOfMaximum, /*InFiringSkill=*/this);
+
+		if (!InFlight)
+		{
+			// No speed, or nowhere to fly. A beam: Infernal Lance drives a lance
+			// forward and its description says it arrives at once.
+			LandThenFinish();
+			return;
+		}
+
+		// AND IT IS TOLD WHERE ITS USE WAS CAST FROM, for whether a contact is from behind. Ruled 2026-10-14.
+		InFlight->bStrikesFromAPoint = bFreeRepeatHasOrigin;
+		InFlight->StrikesFromPoint = Origin;
+		// AND WHO IT WAS CAST BY, which outlives the use: a skill gadget's shot is its own when it lands. Stack 2.
+		InFlight->CastBy = FreeRepeatCastBy;
+
+		// AND IT GLANCES ONWARD IF THE ROW SAYS SO. The Axe's Carom: "it glances
+		// from them to the next nearest and onward through three more ... every
+		// enemy it touches after the first adds 20% to its damage."
+		//
+		// THE SKILL'S OWN RANGE IS HOW FAR A GLANCE LOOKS. The row states no
+		// separate reach for it, and a glance that could find an enemy the throw
+		// itself could never have reached is not what "the next nearest" means
+		// for an eleven metre throw.
+		//
+		// THE INCREASE APPLIES ONLY WHEN THE ROW COUNTS BOUNCES. Carom writes
+		// `ScalingSource=Bounce`; a projectile that bounced and scaled off
+		// something else would be taking its number from the wrong thing.
+		//
+		// TWENTY PER CENT OF WHAT THE SKILL DEALS, NOT TWENTY PERCENTAGE POINTS
+		// ADDED TO IT, which is the same reading `ScaledDamagePercent` uses for
+		// every other skill: `IncreasedDamagePer` moves the skill's own damage
+		// percent, so 20 on a 250% Heavy is 50 points a glance and the throw
+		// runs 250, 300, 350, 400. Adding a flat 20 instead would make the row's
+		// "adds 20% to its damage" false on every slot but a 100% one.
+		//
+		// AND A ROW OF THE USER'S ADDS TO THE NUMBER. Ruled 2026-10-07: "Projectiles ricochet 1-4 times" is
+		// `projectile_bounces`, added to the bounces the row states. A skill that states none glances that many
+		// times, by the rule above: it strikes what it touches and no longer goes off in its radius. A
+		// projectile that pierces never glances, whatever is added: `ACataclysmProjectile::HitAlongStep` reads a
+		// glance only for one that does not pierce.
+		LetItGlance(InFlight);
+
+		InFlight->OnFinished.AddUObject(
+			this, &UCataclysmProjectileSkill::OnProjectileFinished);
+		FiredThisUse.Add(InFlight);
+
+		// AND THE REST OF THIS USE'S PROJECTILES, when a row of the user's adds any. Ruled 2026-10-12. Nothing below
+		// runs for a use of one projectile.
+		//
+		// EACH IS FIRED AS THE FIRST WAS, with the same figures, from the same place, and is told to glance as the
+		// first was. Only where it is aimed differs: `FanDegreesBetweenProjectiles` further round for each.
+		//
+		// THEY SHARE ONE RECORD OF WHICH OF THEM FIRST LANDED ON EACH ENEMY, so one enemy is landed on by at most
+		// one projectile of this use. Made here, for this use alone: the next use makes its own, so it may strike
+		// the same enemy again. See `ACataclysmProjectile::JoinsAUse`.
+		//
+		// NO PROJECTILE CAN FINISH BEFORE THIS LOOP DOES. `Fire` moves nothing; a projectile first moves on its own
+		// next tick. So every one of them is listed before `OnProjectileFinished` is first called.
+		if (ProjectilesThisUse > 1)
+		{
+			const TSharedPtr<TMap<TWeakObjectPtr<AActor>, int32>> LandedOn =
+				MakeShared<TMap<TWeakObjectPtr<AActor>, int32>>();
+			InFlight->JoinsAUse(LandedOn, 0);
+
+			for (int32 Index = 1; Index < ProjectilesThisUse; ++Index)
+			{
+				ACataclysmProjectile* Shot = ACataclysmProjectile::Fire(
+					Caster, Origin, FanAim(Origin, Destination, FanDegreesFor(Index, ProjectilesThisUse)),
+					ScaledRadiusCm(), ScaledProjectileSpeed(), PierceWithRows(), Params.bReturns,
+					GetDamagePercent(), SkillTags, Params.bBurns,
+					/*InBodyMesh=*/nullptr, FlightSeconds,
+					CritChancePercent, LastHealthCostPercentOfMaximum, /*InFiringSkill=*/this);
+				if (!Shot)
+				{
+					// The world refused to spawn it. The first of the use is in the air, so the use goes on with
+					// the ones it has.
+					continue;
+				}
+				Shot->bStrikesFromAPoint = bFreeRepeatHasOrigin;
+				Shot->StrikesFromPoint = Origin;
+				Shot->CastBy = FreeRepeatCastBy;
+				Shot->JoinsAUse(LandedOn, Index);
+				LetItGlance(Shot);
+				Shot->OnFinished.AddUObject(
+					this, &UCataclysmProjectileSkill::OnProjectileFinished);
+				FiredThisUse.Add(Shot);
+				AlsoInFlight.Add(Shot);
+			}
+		}
+	});
+}
+
+void UCataclysmProjectileSkill::OnProjectileFinished(
+	ACataclysmProjectile* Projectile)
+{
+	// ONE OF THIS USE'S PROJECTILES HAS FINISHED. Ruled 2026-10-12. For a use of one projectile `AlsoInFlight` is
+	// empty and this is `InFlight = nullptr`, as it was. For a use of several, the next still in the air takes the
+	// place of the one that finished, so `InFlight` is null only when the last has.
+	//
+	// A PROJECTILE THAT IS NEITHER is one an earlier use fired, finishing after that use was cut short and the skill
+	// used again. It changes neither, so it cannot end this use; what it leaves below, it leaves as before.
+	if (!Projectile || Projectile == InFlight)
+	{
+		InFlight = nullptr;
+		if (!AlsoInFlight.IsEmpty())
+		{
+			InFlight = AlsoInFlight[0];
+			AlsoInFlight.RemoveAt(0);
+		}
+	}
+	else
+	{
+		AlsoInFlight.Remove(Projectile);
+	}
+
+	if (Projectile)
+	{
+		// One per leg, so a throw that came back reports two the way a beam
+		// that hits twice does.
+		Landings += Projectile->LegsFlown();
+
+		// FROM WHERE IT STARTED TO THE FURTHEST IT GOT, which is not
+		// necessarily where it was aimed and not where it ended up. A throw
+		// stopped by a wall half way burns half the path; one that returns
+		// finishes back at the caster and still burns the whole flight.
+		LeaveGroundForFlight(Projectile->StartedAt, Projectile->FurthestReached);
+
+		// AND THE CURSES ON WHAT IT STRUCK ARE COPIED OUTWARD. The Wand's
+		// Malefice: "copying every curse it already carries onto the two nearest
+		// enemies". Nothing read `SpreadCurses` before 2026-09-01.
+		const TArray<AActor*> Struck = Projectile->StruckEnemies();
+		CursesSpread += SpreadCursesFrom(Struck);
+
+		// AND THE AXE STAYS IN WHAT IT HIT, if the row says so. The Axe's
+		// Harrower: "the axe stays where it lands. When that enemy dies it tears
+		// free and buries itself in the nearest living enemy within 10 meters."
+		//
+		// BURIED IN WHAT IT STRUCK, not where it stopped. A throw that hit
+		// nothing leaves no axe, which is what "buries itself in an enemy"
+		// means.
+		//
+		// ONE AXE, IN THE LAST ENEMY IT TOUCHED, when a row gave the throw its bounces. Ruled 2026-10-07:
+		// "the axe stays where it lands" is where it finally stops, once, and not at each glance.
+		if (Projectile->bKeepsItsBlast)
+		{
+			TArray<AActor*> LastOnly;
+			if (AActor* Last = Projectile->LastEnemyTouched())
+			{
+				LastOnly.Add(Last);
+			}
+			BuryInStruck(LastOnly);
+		}
+		else
+		{
+			BuryInStruck(Struck);
+		}
+	}
+	else
+	{
+		++Landings;
+	}
+
+	// THE USE ENDS WHEN THE LAST OF ITS PROJECTILES HAS FINISHED, AND NOT BEFORE. Ruled 2026-10-12. Each leaves its
+	// own ground, buried weapon and spread curses above, through this skill, as it finishes. A skill that throws
+	// once has always stayed active until its shot finished, and a use of several keeps that: until the last has
+	// finished the skill reads as running, and `CanBeInterruptedByAHit` answers as it does for one shot in the air.
+	if (InFlight)
+	{
+		return;
+	}
+
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+			   GetCurrentActivationInfo(), true, false);
+}
+
+int32 UCataclysmProjectileSkill::SpreadCursesFrom(const TArray<AActor*>& Struck)
+{
+	if (Params.SpreadCurses <= 0 || Struck.IsEmpty())
+	{
+		return 0;
+	}
+
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		return 0;
+	}
+
+	const float ReachCm = Params.RangeCm > 0.0f ? ScaledRangeCm() : ScaledRadiusCm();
+	const FName Type = DamageTypeName();
+
+	int32 Applied = 0;
+	for (AActor* Cursed : Struck)
+	{
+		if (!IsValid(Cursed))
+		{
+			continue;
+		}
+
+		// NEAREST TO THE CURSED ENEMY, which `FindEnemiesInSphere` answers in
+		// order. Searched around that enemy rather than around the caster,
+		// because the curse spreads outward from the creature carrying it.
+		TArray<AActor*> Nearby = UCataclysmTargeting::FindEnemiesInSphere(
+			GetWorld(), Self, Cursed->GetActorLocation(), ReachCm);
+
+		// NOT BACK ONTO THE ONE IT CAME FROM, and not onto anything the bolt
+		// already struck: those carry the curse already, and re-applying would
+		// refresh a duration the row says nothing about.
+		Nearby.RemoveAll([&Struck](AActor* One)
+		{
+			return Struck.Contains(One);
+		});
+
+		if (Nearby.Num() > Params.SpreadCurses)
+		{
+			Nearby.SetNum(Params.SpreadCurses);
+		}
+
+		Applied += UCataclysmSkillEffects::CopyDebuffsTo(Self, Cursed, Nearby, Type);
+	}
+
+	return Applied;
+}
+
+bool UCataclysmProjectileSkill::ThrowsRepeatedly() const
+{
+	return Params.Count > 1 && Params.Interval > 0.0f;
+}
+
+float UCataclysmProjectileSkill::SecondsBetweenThrows() const
+{
+	const float Stated = FMath::Max(Params.Interval, 0.0f);
+	if (!Params.bScalesWithAttackSpeed || Stated <= 0.0f)
+	{
+		return Stated;
+	}
+
+	const UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Avatar());
+	if (!AbilitySystem)
+	{
+		return Stated;
+	}
+
+	// ASKED OF THE STAT LINE WITH THIS SKILL'S TAGS, THE ATTRIBUTE THE FALLBACK. Issue #2233, ruled 2026-10-23: the
+	// rule every other skill-stat lookup follows, and the one the basic attack's `SecondsBetweenSwingsFor` follows
+	// with no tags. The attribute is worked out with no state, so a row raising attack speed under a condition or by
+	// a scale never reached a rack until this asked. With nothing recorded for the stat -- every enemy, every test
+	// fighter, a player before its first refresh -- the answer is the attribute, as before.
+	//
+	// ONCE PER RACK, ALSO RULED: `BeginEmptyingTheRack` is the one caller, and the interval and the rack's ceiling
+	// are set from it when the rack starts. A condition that stops partway leaves the pace where it started.
+	const float Attribute = AbilitySystem->GetNumericAttribute(
+		UCataclysmCombatAttributeSet::GetAttackSpeedAttribute());
+	const UCataclysmAbilitySystemComponent* Asking = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	const float PerSecond = Asking
+		? Asking->StatForSkill(FName(TEXT("attack_speed")), SkillTags, Attribute)
+		: Attribute;
+	if (PerSecond <= 0.0f)
+	{
+		// A character with no weapon equipped has no attack speed at all. The
+		// stated interval is the right answer rather than an infinite one.
+		//
+		// THE ANSWER IS WHAT IS JUDGED, NOT THE ATTRIBUTE, because the answer is what is divided by. A weapon's
+		// rate is the stat line's base, so with no weapon the base is nought and an increase or a More of it is
+		// nought too.
+		return Stated;
+	}
+
+	// AND WHAT CRIPPLE LEAVES OF THE RATE, FOR A PLAYER CHARACTER, as a swing's is. Issue #2273.
+	const AActor* Thrower = Avatar();
+	// AND WHAT WITHER LEAVES, multiplied with it as a separate slow. Issue #1722.
+	const float Crippled = Cast<const ACataclysmPlayerCharacter>(Thrower)
+		? UCataclysmSkillEffects::CrippleMultiplierOn(Thrower) * UCataclysmSkillEffects::WitherMultiplierOn(Thrower)
+		: 1.0f;
+
+	return Stated / (PerSecond * Crippled);
+}
+
+AActor* UCataclysmProjectileSkill::NextThrowTarget()
+{
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		return nullptr;
+	}
+
+	// ASKED AFRESH FOR EVERY THROW. A rack empties over ten seconds and the
+	// enemies move and die during it, so a list gathered once would go on
+	// throwing at corpses and at places nobody is standing any more.
+	//
+	// WITHIN RANGE OF WHERE THE USE IS CAST, ruled 2026-10-14: a gadget's copy throws from the gadget.
+	const TArray<AActor*> InRange = UCataclysmTargeting::FindEnemiesInSphere(
+		GetWorld(), Self, CastOrigin(), ScaledRangeCm());
+	if (InRange.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	// `Furthest` is the reverse of the nearest-first order the search answers in.
+	if (Params.TargetMode.Equals(TEXT("Furthest"), ESearchCase::IgnoreCase))
+	{
+		return InRange.Last();
+	}
+
+	// `Nearest`, and anything the row does not name, takes the first.
+	if (!Params.TargetMode.Equals(TEXT("All"), ESearchCase::IgnoreCase))
+	{
+		return InRange[0];
+	}
+
+	// `All` MEANS SPREAD ACROSS THEM RATHER THAN HIT THEM ALL AT ONCE. Butcher's
+	// Bill throws "at every enemy within 10 meters" over ten seconds, one axe at
+	// a time, so each throw takes the next in turn and the rack covers the group.
+	// The index is kept rather than recomputed because the list changes as
+	// enemies die, and a modulo over a shrinking list still walks all of it.
+	const int32 Pick = NextTargetIndex % InRange.Num();
+	++NextTargetIndex;
+	return InRange[Pick];
+}
+
+bool UCataclysmProjectileSkill::ThrowOne()
+{
+	// THE COUNT IS A LIMIT AND NOT A TARGET. Stopping the timer is not
+	// enough on its own: `ThrowOne` is public so a test can drive a rack
+	// without waiting, and a caller asking for one more after the rack is
+	// empty must get nothing. A test caught it, at five throws from a row
+	// stating four.
+	if (Params.Count > 0 && ThrowsMade >= Params.Count)
+	{
+		return false;
+	}
+
+	AActor* Self = Avatar();
+	AActor* Target = NextThrowTarget();
+	if (!Self || !Target)
+	{
+		// Nothing left in reach. The rack keeps its remaining axes rather than
+		// throwing them at the floor, and the timer below brings it back when
+		// something walks into range.
+		return false;
+	}
+
+	// FROM WHERE THE CHARACTER IS NOW, not from where the rack started. Ten
+	// seconds is long enough to walk across a room.
+	//
+	// OR FROM WHERE THE USE IS CAST, when a free start was given another place: a gadget's copy throws its rack
+	// from the gadget, which does not move. Ruled 2026-10-14.
+	const FVector From = CastOrigin();
+
+	ACataclysmProjectile* Axe = ACataclysmProjectile::Fire(
+		Self, From, Target->GetActorLocation(), ScaledRadiusCm(),
+		ScaledProjectileSpeed(), PierceWithRows(), Params.bReturns,
+		GetDamagePercent(), SkillTags, Params.bBurns,
+		/*InBodyMesh=*/nullptr, /*InFlightSeconds=*/0.0f,
+		CritChancePercent, LastHealthCostPercentOfMaximum, /*InFiringSkill=*/this);
+	if (Axe)
+	{
+		Axe->bStrikesFromAPoint = bFreeRepeatHasOrigin;
+		Axe->StrikesFromPoint = From;
+		// AND WHO IT WAS CAST BY: A RACK'S LAST AXES LAND AFTER THE USE HAS ENDED, and are still a skill gadget's.
+		// Ruled 2026-10-16, stack 2.
+		Axe->CastBy = FreeRepeatCastBy;
+	}
+
+	// AND EACH AXE OF A RACK GLANCES AS A SINGLE THROW DOES, when the row states bounces or a row of the
+	// user's adds them: "Projectiles ricochet 1-4 times" names no kind of projectile. Ruled 2026-10-07.
+	// Nothing for a null axe. No designed rack states bounces, so nothing changes for a user with no row.
+	LetItGlance(Axe);
+
+	// NOTHING IS HOOKED TO ITS FINISH, unlike a single throw. Thirty axes are in
+	// the air at once and the ability must not end when the first of them lands;
+	// what ends it is the count or the rack's own time, below.
+	++ThrowsMade;
+	++Landings;
+
+	if (!Axe)
+	{
+		// No speed stated, so it arrives at once. Butcher's Bill states 2000 and
+		// nothing else empties a rack, so this is a guard rather than a case.
+		//
+		// AND IT ASKS WHAT THE BLOW RESOLVED TO, for the Fervour it earns. Issue
+		// #1515: the Ravager's starting node pays for each enemy a blow lands on,
+		// and `Dealt` is what was sent, so only the result says whether it landed.
+		// WHICH SIDE, ASKED BEFORE THE HIT as a fired contact asks it. Issue #1938.
+		// FROM WHERE THE AXE WAS THROWN when that was another place than the caster's, ruled 2026-10-14.
+		const bool bFromBehind = bFreeRepeatHasOrigin
+			? UCataclysmSkillEffects::IsBehindFrom(From, Target)
+			: UCataclysmSkillEffects::IsBehind(Self, Target);
+
+		// AND WHAT THIS USE SPENT FROM NEXT-USE CHARGES, as a fired axe carries
+		// it. Issue #1833, phase 2.
+		FCataclysmHitDelivery Delivery;
+		Delivery.IncreasedDamageSpentPercent = LastNextUseIncreasePercent;
+		Delivery.DamageMultiplierSpent = LastNextUseMoreMultiplier;
+		// AND WHERE IT WAS THROWN FROM, for the distance to the target. Ruled 2026-10-14: a gadget's copy.
+		Delivery.bStruckFromAPoint = bFreeRepeatHasOrigin;
+		Delivery.StruckFromPoint = From;
+		// AND THE SKILL AND WHO IT WAS CAST BY, which a fired axe carries and this set neither of, so a skill gadget's
+		// rack never priced it as the gadget's. Ruled 2026-10-16, stack 2.
+		Delivery.Skill = this;
+		Delivery.CastBy = FreeRepeatCastBy;
+
+		FCataclysmDamageResult Resolved;
+		const float Dealt = UCataclysmSkillEffects::ApplyHit(
+			Self, Target, GetDamagePercent(), SkillTags, Delivery, &Resolved);
+		if (Dealt > 0.0f && !Resolved.bEvaded)
+		{
+			UCataclysmFervour::GainForEnemiesHit(
+				GetAbilitySystemComponentFromActorInfo(), SkillTags,
+				/*EnemiesHit=*/1);
+
+			// AND THE RUNNING BUFFS ARE TOLD, as a fired axe's contact tells them
+			// in `ACataclysmProjectile::HitOne`. Issue #1938, ruled 2026-09-24:
+			// this fallback does what a fired projectile does.
+			NoteBlowLanded(Self, Target, Target->GetActorLocation(), bFromBehind);
+
+			// AND THE CASTER'S MINIONS REPEAT IT, when it holds Chorus, as a
+			// fired axe's contact does. Issue #1515.
+			UCataclysmChorus::Repeat(Self, Target, Dealt, this);
+		}
+	}
+
+	if (ThrowsMade >= Params.Count)
+	{
+		StopThrowing();
+	}
+	return true;
+}
+
+void UCataclysmProjectileSkill::ThrowTick()
+{
+	ThrowOne();
+}
+
+void UCataclysmProjectileSkill::BeginEmptyingTheRack()
+{
+	ThrowsMade = 0;
+	NextTargetIndex = 0;
+
+	// THE FIRST GOES AT ONCE, so a skill with a long interval is not silent for
+	// a third of a second after the button was pressed.
+	ThrowOne();
+	if (ThrowsMade >= Params.Count)
+	{
+		return;
+	}
+
+	// A RACK ENDED BY ITS OWN FIRST THROW IS NOT EMPTIED. Ruled 2026-10-08, and
+	// the same guard `UCataclysmStrikeSkill` makes before it starts a spin: a
+	// throw with no speed lands at once, a blow can come back on the caster
+	// before it returns, and under `hit_taken_cancels_skills` that ends this
+	// skill there and then. The timers below would then be set on a skill that
+	// is over.
+	if (!IsActive())
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		StopThrowing();
+		return;
+	}
+
+	const float Interval = SecondsBetweenThrows();
+	World->GetTimerManager().SetTimer(
+		ThrowTimer, this, &UCataclysmProjectileSkill::ThrowTick,
+		Interval, /*bLoop=*/true, /*InFirstDelay=*/Interval);
+
+	// AND A CEILING ON HOW LONG THE RACK MAY TAKE. At one attack a second the
+	// count and this land together -- thirty axes at 0.333 seconds is exactly
+	// the ten the row states -- so this only bites when there was nothing to
+	// throw at for part of it. Scaled the same way the interval is, or a faster
+	// character would be cut off early.
+	if (Params.Duration > 0.0f)
+	{
+		const float Ceiling = Params.bScalesWithAttackSpeed && Params.Interval > 0.0f
+			? Params.Duration * Interval / Params.Interval
+			: Params.Duration;
+		World->GetTimerManager().SetTimer(
+			RackTimer, this, &UCataclysmProjectileSkill::StopThrowing,
+			Ceiling, /*bLoop=*/false);
+	}
+}
+
+void UCataclysmProjectileSkill::StopThrowing()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(ThrowTimer);
+		World->GetTimerManager().ClearTimer(RackTimer);
+	}
+
+	UE_LOG(LogCataclysm, Verbose, TEXT("'%s' emptied its rack: %d thrown."),
+		*SkillName, ThrowsMade);
+
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+			   GetCurrentActivationInfo(), true, false);
+}
+
+void UCataclysmProjectileSkill::EndAbility(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	bool bReplicateEndAbility, bool bWasCancelled)
+{
+	// A RACK CUT SHORT THROWS NOTHING MORE, BY NAME. Ruled 2026-10-08.
+	// `ThrowTimer` throws the next axe of a rack and `RackTimer` closes it when
+	// its time is up; Butcher's Bill is the one row that has either.
+	//
+	// THE ENGINE CLEARS THEM AS WELL, as `UCataclysmStrikeSkill::EndAbility`
+	// says of its own, and this does not lean on that. An ordinary end is
+	// `StopThrowing`, which has cleared both already.
+	//
+	// THE AXES ALREADY THROWN FLY ON. Each is an actor of its own and nothing
+	// here reaches it. `FlightTimer` is declared and never set, so there is
+	// nothing of it to clear.
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(ThrowTimer);
+		World->GetTimerManager().ClearTimer(RackTimer);
+	}
+
+	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility,
+					  bWasCancelled);
+}
+
+bool UCataclysmProjectileSkill::CanBeInterruptedByAHit() const
+{
+	// ONE SHOT, ALREADY IN THE AIR. See the header. `InFlight` is set only by a
+	// skill that throws once, and is cleared when that shot finishes; a rack
+	// never sets it, so a rack answers as every running skill does.
+	//
+	// SEVERAL SHOTS OF ONE USE ANSWER AS ONE DOES. Ruled 2026-10-12: `InFlight` is null only when the last of them
+	// has finished. See `OnProjectileFinished`.
+	if (InFlight)
+	{
+		return false;
+	}
+
+	return Super::CanBeInterruptedByAHit();
+}
+
+int32 UCataclysmProjectileSkill::BuryInStruck(const TArray<AActor*>& Struck)
+{
+	if (Struck.IsEmpty() || Params.OnDeathRangeCm <= 0.0f
+		|| !Params.OnDeath.Equals(TEXT("Leap"), ESearchCase::IgnoreCase))
+	{
+		return 0;
+	}
+
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		return 0;
+	}
+
+	int32 Buried = 0;
+	for (AActor* Target : Struck)
+	{
+		// THE SKILL'S OWN DAMAGE AND ITS OWN TAGS GO WITH IT, because the axe
+		// keeps striking long after the skill that threw it has ended. Reading
+		// either off the character at the moment it leaps would credit the blow
+		// to whatever the player used last.
+		// AND WHO THE USE WAS CAST BY, so a skill gadget's axe leaping long after is still the gadget's while the
+		// gadget stands. Ruled 2026-10-16, stack 2 (P5). THE WEAK POINTER ITSELF, NOT `Get`: a shot is buried when it
+		// finishes, after a skill trap that cast it is used up, and only the identity still names that trap (ruled
+		// 2026-10-21, #2462).
+		if (UCataclysmBuriedWeapon::BuryIn(Target, Self, Params.OnDeathRangeCm,
+										   GetDamagePercent(), SkillTags,
+										   Params.bBurns, FreeRepeatCastBy))
+		{
+			++Buried;
+		}
+	}
+
+	if (Buried > 0)
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' left its weapon in %d enemies, reaching %.0fcm for the "
+				 "next."),
+			*SkillName, Buried, Params.OnDeathRangeCm);
+	}
+
+	return Buried;
+}
+
+void UCataclysmProjectileSkill::LeaveGroundForFlight(const FVector& From,
+													 const FVector& To)
+{
+	if (!Params.LeavesGround())
+	{
+		// AND THE ZONE A ROW GIVES A PROJECTILE THAT STATES NO GROUND, where its flight ended: "at the impact
+		// point". Ruled 2026-10-06. A point and never the path, whatever the projectile pierces: the row's
+		// sentence names a point. Nothing for a character with no row.
+		LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtImpactSecondsStat, To);
+		return;
+	}
+
+	// PIERCE TELLS THE TWO KINDS APART. One that pierces travelled a line and
+	// its text says the line burns: Emberhurl leaves "its flight path burning",
+	// and Chain of Coals and Hellbrand are written the same way. One that does
+	// not pierce stopped somewhere, and Blood Pyre's pyre and Magma Quake's
+	// crater belong at that point and nowhere else.
+	//
+	// THE PIERCE A ROW GIVES COUNTS HERE TOO. Ruled 2026-10-07: a spell made to pierce by
+	// `projectile_pierce_all` travelled a line, so ground it states is left along that line.
+	if (PierceWithRows() > 0)
+	{
+		LeaveGroundAlong(From, To);
+	}
+	else
+	{
+		LeaveGroundAt(To);
+	}
+}
+
+int32 UCataclysmProjectileSkill::Land()
+{
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		return 0;
+	}
+
+	// PIERCE IS WHAT TELLS THE TWO KINDS APART. One that pierces is a line and
+	// hits what it passes; one that does not lands and hits in a radius. See the
+	// class comment.
+	TArray<AActor*> Targets;
+	//
+	// THE PIERCE A ROW GIVES COUNTS AS THE SKILL'S OWN. Ruled 2026-10-07: "Spells pierce through all enemies in
+	// their path" makes a spell's beam hit along its line and not in a radius where it was aimed.
+	const int32 Pierces = PierceWithRows();
+	if (Pierces > 0)
+	{
+		// Pierce is how many it passes THROUGH, so it hits one more than that.
+		Targets = UCataclysmTargeting::FindEnemiesInLine(
+			GetWorld(), Self, Origin, Destination, ScaledRadiusCm(),
+			Pierces + 1);
+	}
+	else
+	{
+		Targets = UCataclysmTargeting::FindEnemiesInSphere(
+			GetWorld(), Self, Destination, ScaledRadiusCm(), Params.MaxTargets);
+	}
+
+	// AND THE USER ITSELF, WHEN ITS DEPLOYABLE CAST THIS AND IT STANDS INSIDE THE RADIUS IT LANDS IN. Ruled 2026-10-19
+	// (B2, B5), for "Your deployables and traps deal full damage to you if you are within their blast radius". NOT A
+	// BEAM THAT PIERCES, whose line is a path and not a blast, and NOT A LANDING LIMITED TO ONE TARGET, which is a
+	// single-target blow: both judgements of the writing session. In the same attack as the enemies, after them, as
+	// `UCataclysmStrikeSkill::SwingOnce` strikes it. AND A SKILL TRAP ALREADY USED UP IS FOUND BY THE USE'S IDENTITY OF
+	// IT (traps layer 7, K1, ruled 2026-10-22), for a landing a row's cast delay holds back until the trap is gone.
+	AActor* const StruckWearer = Pierces > 0 || Params.MaxTargets == 1
+		? nullptr
+		: UCataclysmDeployableSelfBlast::WearerInSphere(
+			GetWorld(), Self, FreeRepeatCastBy.Get(), Destination, ScaledRadiusCm(), FreeRepeatCastBy);
+	const bool bBeganForTheUser = StruckWearer && BeginAttackOn(Targets);
+	HitTargets(Targets);
+	if (StruckWearer)
+	{
+		StrikeTheWearerInItsDeployablesBlast(StruckWearer, GetDamagePercent());
+	}
+	if (bBeganForTheUser)
+	{
+		EndAttack();
+	}
+
+	// AND EVERYTHING THE CASTER COMMANDS STRIKES THE SAME ENEMY, IF THE ROW SAYS
+	// SO. The Staff's Compel: "everything you command strikes that same enemy at
+	// once, wherever it happens to be standing." Its `CommandStrike=1` was parsed
+	// and read by nothing until 2026-09-02.
+	//
+	// "WHEREVER IT HAPPENS TO BE STANDING" IS THE HALF THAT NEEDED SAYING, and it
+	// is why nothing here checks a distance. A creature ordered onto an enemy
+	// across the room strikes it from where it is; the row is explicit that
+	// reaching it is not the player's problem. That is what makes Compel worth a
+	// Heavy slot rather than being a slower Quarry.
+	//
+	// THE ENEMY THE BOLT ITSELF HIT, AND ONLY ONE. Compel states `MaxTargets=1`
+	// and `Pierce=0`, so the search above answers at most one creature and "that
+	// same enemy" is it. Taking the first is the only reading a singular sentence
+	// allows.
+	if (Params.bCommandStrike && !Targets.IsEmpty())
+	{
+		CommandedStrikes = 0;
+		for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Self))
+		{
+			if (ACataclysmCharacterBase* Body =
+					Cast<ACataclysmCharacterBase>(Follower))
+			{
+				// A STUNNED, KNOCKED-DOWN OR FEARED CREATURE IS NOT ORDERED, ruled
+				// 2026-10-27 (#2560), as the echo strike asks since #2558:
+				// `CannotAct`, then the flee step, in the brain's order. Skipped
+				// before the order, so it is neither ordered nor counted, and
+				// `CommandedStrikes` still means "ordered".
+				const AActor* Striker = Body;
+				FVector FleeSource;
+				if (UCataclysmSkillEffects::CannotAct(Striker)
+					|| UCataclysmFear::FleeSourceOf(Striker, FleeSource))
+				{
+					continue;
+				}
+				// `AttackTarget` IS WHAT A BRAIN CALLS WHEN IT DECIDES TO SWING,
+				// so ordering one is the same act the creature would have taken
+				// itself. A minion swings; a subjugated enemy uses its own
+				// attack, which is what "keeps its own abilities" means for a
+				// thrall; the base class does nothing at all.
+				//
+				// A THRALL STRIKES AS A RULE ORDERS IT, issue #783: its blow waits
+				// for its swing and is not measured against reach when it lands,
+				// which is "wherever it happens to be standing" kept true.
+				if (ACataclysmEnemyCharacter* Thrall = Cast<ACataclysmEnemyCharacter>(Body))
+				{
+					Thrall->StrikeAsARuleOrders(Targets[0]);
+				}
+				else
+				{
+					Body->AttackTarget(Targets[0]);
+				}
+				++CommandedStrikes;
+			}
+		}
+
+		if (CommandedStrikes > 0)
+		{
+			UE_LOG(LogCataclysm, Verbose,
+				TEXT("'%s' ordered %d commanded creatures onto '%s'."),
+				*SkillName, CommandedStrikes, *Targets[0]->GetName());
+		}
+	}
+
+	++Landings;
+	return Targets.Num();
+}
+
+void UCataclysmProjectileSkill::LandThenFinish()
+{
+	Land();
+	LeaveGroundForFlight(Origin, Destination);
+
+	// Emberhurl hits "once going out and once returning to your hand". A beam
+	// that returns has no flight time either way, so the second hit is
+	// immediate. A real projectile turns round by itself and never reaches here.
+	if (Params.bReturns && Landings < 2)
+	{
+		Return();
+		return;
+	}
+
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+			   GetCurrentActivationInfo(), true, false);
+}
+
+void UCataclysmProjectileSkill::Return()
+{
+	// The same line walked backwards, so the same enemies are struck a second
+	// time, which is what "hitting each enemy twice" means.
+	Swap(Origin, Destination);
+	Land();
+	Swap(Origin, Destination);
+
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+			   GetCurrentActivationInfo(), true, false);
+}
+
+// ==========================================================================
+// SelfBuff -- Burning Wrath, Martyr's Ember
+// ==========================================================================
+
+void UCataclysmSelfBuffSkill::ActivateAbility(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	const FGameplayEventData* TriggerEventData)
+{
+	if (!CommitAndBegin(Handle, ActorInfo, ActivationInfo))
+	{
+		return;
+	}
+
+	AActor* Self = Avatar();
+	if (!Self || Params.Duration <= 0.0f)
+	{
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
+
+	// TOUCH OF NOTHING REFUSES THE BUFF, AFTER THE CAST IS PAID FOR. Issue #1722: the project owner ruled that a
+	// negated self-buff cast still spends its mana and its cooldown, which `CommitAndBegin` above has done.
+	if (UCataclysmStacks::NegatesTheNextBuff(
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self))))
+	{
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+		return;
+	}
+
+	// Burning Wrath is "4% more damage for every enemy currently
+	// burning within 15 meters", so the count is taken once, when it goes up,
+	// not continuously. An enemy that dies or stops burning during the ten
+	// seconds does not lower it, and one that catches fire does not raise it.
+	// RESET ON EVERY CAST. An ability is instanced per actor, so one instance
+	// stands for one character's Butcher's Heat across every use of it: a tally
+	// left from the last use would start the next one already hot.
+	KillsCounted = 0;
+	// LENGTHENED BY `skill_duration` AND `buff_duration`, in one bucket. Issue
+	// #1833: "Buff effects you apply last 30%-60% longer" and "Your support
+	// ability duration is increased by 50%-100%", ruled 2026-09-30. The same
+	// figure is the buff's tag, its timer and its total below, so the three
+	// cannot disagree.
+	const float Lasts = Params.Duration * OwnDurationMultiplier(/*bIsBuff=*/true);
+	TotalDuration = Lasts;
+
+	// RESET ON EVERY CAST, for the reason the kill tally above is: an ability is
+	// instanced per actor, so one instance stands for this character's Held Fast
+	// across every use of it, and a count left from the last use would start the
+	// next one part way through.
+	Repeats = 0;
+	LastRepeatLit = 0;
+	LastRepeatShoved = 0;
+	TerrainLeft = 0;
+	CooldownsReturned = 0;
+	AttackersLit = 0;
+	SecondsHeld = 0;
+
+	// AND THE STORE STARTS EMPTY, for the same reason. Martyr's Ember holds "40%
+	// of all damage you take WHILE IT LASTS", so what was held during the last
+	// ten seconds is not carried into the next ten. Issue #1162.
+	Stored = 0.0f;
+	StoreSpent = 0.0f;
+
+	// AND THE PINNED COUNT IS TAKEN IN THE SAME SWEEP, for the same reason and at
+	// the same moment. The Spear's Held Fast: "you deal 10% more damage for every
+	// enemy you currently have pinned". One search of the radius answers both
+	// questions, where asking separately would walk the same enemies twice for a
+	// skill that states only one of the two sources.
+	BurningEnemiesAtCast = 0;
+	PinnedEnemiesAtCast = 0;
+	// MEASURED FROM WHERE THE USE IS CAST, which is the caster's own place unless a free start was given another: a
+	// support skill gadget's, ruled 2026-10-16 (S13), so Burning Wrath and Held Fast count around the gadget.
+	if (ScaledRadiusCm() > 0.0f)
+	{
+		const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+		for (AActor* Nearby : UCataclysmTargeting::FindEnemiesInSphere(
+				GetWorld(), Self, CastOrigin(), ScaledRadiusCm()))
+		{
+			if (UCataclysmSkillEffects::HasTag(Nearby, Burn))
+			{
+				++BurningEnemiesAtCast;
+			}
+
+			if (UCataclysmSkillEffects::IsPinned(Nearby))
+			{
+				++PinnedEnemiesAtCast;
+			}
+		}
+	}
+
+	GrantIncrease();
+
+	// GRANTED ONLY IF THE SKILL NAMES AN EFFECT, and neither designed self buff
+	// does: the design gives Burning Wrath and Martyr's Ember a duration and a
+	// magnitude but never names the buff, so there is no status in the Buffs
+	// sheet for either and no tag to grant. The magnitude no longer depends on
+	// this: it is a stat modifier on the caster, not a tag anything reads.
+	UCataclysmSkillEffects::ApplyTagForDuration(
+		Self, Self, UCataclysmSkillShapes::StatusTagFor(Params.Effect),
+		Lasts);
+
+	if (UWorld* World = Self->GetWorld())
+	{
+		World->GetTimerManager().SetTimer(
+			FinishTimer, this, &UCataclysmSelfBuffSkill::Finish,
+			Lasts, /*bLoop=*/false);
+
+		// AND A ROW THAT STATES AN `Interval` REPEATS WHILE IT RUNS. The Spear's
+		// Held Fast: "any pinned enemy within 12 meters is set alight again each
+		// second it is held." Idle for every other self buff, none of which
+		// states one.
+		//
+		// FIRST FIRING A FULL INTERVAL IN RATHER THAN AT ONCE, which is what the
+		// burning ground and the aura both do and for the same reason: "again
+		// each second it is held" describes what happens while it runs, not a
+		// tick in the instant it goes up.
+		if (Params.Interval > 0.0f)
+		{
+			World->GetTimerManager().SetTimer(
+				RepeatTimer, this, &UCataclysmSelfBuffSkill::RepeatTick,
+				Params.Interval, /*bLoop=*/true,
+				/*InFirstDelay=*/Params.Interval);
+		}
+
+		// AND A ROW WHOSE BONUS GROWS WITH TIME COUNTS ITS OWN SECONDS. The
+		// Greatsword's Unbroken: "you gain 5% more damage every second".
+		//
+		// A SEPARATE TIMER FROM THE REPEAT ABOVE, AND ONE SECOND RATHER THAN
+		// `Interval`. The row says "every second", and `Interval` already
+		// means something else on this shape, so a buff may state both and
+		// they do not interfere.
+		//
+		// FIRST FIRING A SECOND IN, because no time has passed at the moment
+		// the buff goes up and the row pays for seconds held rather than for
+		// casting it.
+		if (Params.ScalingSource.Equals(TEXT("Second"),
+										ESearchCase::IgnoreCase))
+		{
+			World->GetTimerManager().SetTimer(
+				SecondTimer, this, &UCataclysmSelfBuffSkill::SecondPassed,
+				1.0f, /*bLoop=*/true, /*InFirstDelay=*/1.0f);
+		}
+	}
+	else
+	{
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+	}
+}
+
+void UCataclysmSelfBuffSkill::EndAbility(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	bool bReplicateEndAbility, bool bWasCancelled)
+{
+	// HERE AND NOT IN Finish, because Finish is only the timer's route out. A
+	// buff can also end because the ability was cancelled, because the avatar
+	// died, or because the ability system was cleared, and an increase left
+	// behind by any of those would last until the character was destroyed.
+	RevokeIncrease();
+
+	// AND THE REPEAT STOPS FOR THE SAME REASON. A looping timer left running
+	// would go on setting things alight after the buff was cancelled, the
+	// character died, or the ten seconds ran out -- for ever, because nothing
+	// else clears it. The finish timer needs no such line: it does not loop and
+	// firing it again is what ends the ability anyway.
+	if (const UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(RepeatTimer);
+
+		// AND THE PER-SECOND TALLY STOPS FOR THE SAME REASON. A looping timer
+		// left running would go on raising a bonus after the buff was
+		// cancelled, the character died, or its duration ran out.
+		World->GetTimerManager().ClearTimer(SecondTimer);
+	}
+
+	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility,
+					  bWasCancelled);
+}
+
+void UCataclysmSelfBuffSkill::Finish()
+{
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+			   GetCurrentActivationInfo(), true, false);
+}
+
+const TCHAR* UCataclysmSelfBuffSkill::BuffPotencyStat = TEXT("buff_potency");
+
+float UCataclysmSelfBuffSkill::MorePotent(const AActor* Caster, const FGameplayTagContainer& Tags, float Figure)
+{
+	if (Figure <= 0.0f)
+	{
+		return Figure;
+	}
+
+	// THE FIGURE IS WHAT THE ROWS APPLY TO, as `UCataclysmAuraSkill::
+	// MoreEffective` hands its stat a figure of the aura's. So the stat needs no
+	// base, and a caster with no row is handed its figure back.
+	const UCataclysmAbilitySystemComponent* Asking =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Caster));
+	if (!Asking)
+	{
+		return Figure;
+	}
+	return FMath::Max(0.0f, Asking->StatAppliedTo(FName(BuffPotencyStat), Tags, Figure));
+}
+
+void UCataclysmSelfBuffSkill::GrantIncrease()
+{
+	GrantedIncrease = 0.0f;
+	GrantedScope = FGameplayTag();
+
+	// TWO SOURCES ARE COUNTED AND THEY ARE COUNTED DIFFERENTLY. `Burning` is a
+	// number taken once, when the buff goes up, because Burning Wrath's sentence
+	// says "currently burning" at that moment. `Kill` is a running tally,
+	// because Butcher's Heat says "every enemy you kill while it lasts". Every
+	// other source answers zero and grants nothing, rather than silently
+	// counting the wrong thing; see the note on ScalingSource in
+	// CataclysmSkillShape.h.
+	const int32 Units = ScalingCount();
+	if (Params.MoreDamagePer <= 0.0f || Units <= 0)
+	{
+		// No increase to grant. Burning Wrath with nothing alight nearby is the
+		// ordinary case, not a fault: the skill is written to be worth using
+		// only after something has been set on fire. Butcher's Heat before its
+		// first kill is the same case.
+		return;
+	}
+
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Avatar()));
+	if (!AbilitySystem)
+	{
+		return;
+	}
+
+	// THE MULTIPLICATIVE BUCKET, CHANGED 2026-09-01. Burning Wrath reads "4%
+	// more damage for every enemy currently burning", and "more" is this
+	// project's word -- section VI's -- for a multiplier that applies separately
+	// rather than joining the additive sum. In the additive bucket the buff
+	// competed with every gear affix the character wore, which is what made a
+	// kill-fed or count-fed ramp feel like nothing.
+	//
+	// AND MORE OF IT WHEN A ROW MAKES THE CASTER'S BUFFS MORE POTENT. Ruled
+	// 2026-10-13: "Buff effects you apply are 20%-40% more potent". Settled each
+	// time the bonus is granted: at the cast, and again at each kill or second
+	// that moves it. A buff already running when the row goes on or comes off
+	// keeps its figure until then. `GrantedIncrease` below is the raised figure,
+	// so the copy `UCataclysmSharedBuffs::Step` gives allies is the caster's
+	// raised figure, and that step asks the ally nothing.
+	FCataclysmStatModifier Modifier;
+	Modifier.Bucket = ECataclysmStatBucket::More;
+	Modifier.Source = ECataclysmModifierSource::SkillBuff;
+	Modifier.Value = MorePotent(Avatar(), SkillTags, Params.MoreDamagePer * Units);
+
+	// SCOPED TO NOTHING, SO IT RAISES ALL DAMAGE. Ruled 2026-10-25 (Q-P2, Q-B1)
+	// on the owner's "Make them generic": Burning Wrath carries Element.Demonic
+	// and its More reaches a skill of every element, as Butcher's Heat's,
+	// Unbroken's and Held Fast's do. Until then the modifier required the
+	// skill's own element. `GrantedScope` stays empty, so the copy
+	// `UCataclysmSharedBuffs::Step` gives allies is unscoped too.
+	IncreaseHandle = AbilitySystem->AddStatModifier(Modifier);
+	if (IncreaseHandle == 0)
+	{
+		GrantedScope = FGameplayTag();
+		return;
+	}
+
+	GrantedIncrease = Modifier.Value;
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("'%s' granted %.0f%% more damage scoped to %s, from %d of '%s', "
+			 "for %.1fs."),
+		*SkillName, GrantedIncrease,
+		GrantedScope.IsValid() ? *GrantedScope.ToString() : TEXT("everything"),
+		Units, *Params.ScalingSource, TotalDuration);
+}
+
+int32 UCataclysmSelfBuffSkill::ScalingCount() const
+{
+	if (Params.ScalingSource.Equals(TEXT("Burning"), ESearchCase::IgnoreCase))
+	{
+		return BurningEnemiesAtCast;
+	}
+	if (Params.ScalingSource.Equals(TEXT("Kill"), ESearchCase::IgnoreCase))
+	{
+		return KillsCounted;
+	}
+
+	if (Params.ScalingSource.Equals(TEXT("Pinned"), ESearchCase::IgnoreCase))
+	{
+		return PinnedEnemiesAtCast;
+	}
+
+	// AND `Second` IS A TALLY THAT CLIMBS ON ITS OWN. The Greatsword's Unbroken:
+	// "while you do not move you gain 5% more damage every second". It is the
+	// first source counting something the world does rather than something the
+	// player did, which is why it needs a timer of its own: `Burning` is read
+	// once at the cast, `Kill` and `Pinned` are told when they change, and
+	// nothing tells anybody that a second has gone by.
+	if (Params.ScalingSource.Equals(TEXT("Second"), ESearchCase::IgnoreCase))
+	{
+		return SecondsHeld;
+	}
+
+	// One of the sources nothing counts. A buff naming one grants nothing, which
+	// is the safe answer: the alternative is a number taken from whatever
+	// happened to be to hand.
+	return 0;
+}
+
+void UCataclysmSelfBuffSkill::SecondPassed()
+{
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		return;
+	}
+
+	// "THE WHOLE BONUS IS LOST THE INSTANT YOU TAKE A STEP", AND THE BONUS IS
+	// WHAT IS LOST RATHER THAN THE SKILL. Unbroken lasts ten seconds and its own
+	// sentence keeps them: what a step costs is the tally, so standing still
+	// again builds it back from nothing. Ending the whole skill on one accidental
+	// step is a harsher reading than the row asks for, and the Greatsword's other
+	// rows show it has words for that when it means it -- Backswing says "loses
+	// the swing entirely".
+	//
+	// `Requires=Stationary` IS WHAT ASKS. The same key is judged once before the
+	// cast, in `RequirementsAreMet`, whose comment has said since it was written
+	// that only the casting half is judged there. This is the other half.
+	if (RequiresCondition(TEXT("Stationary"))
+		&& !Self->GetVelocity().IsNearlyZero())
+	{
+		if (SecondsHeld > 0)
+		{
+			UE_LOG(LogCataclysm, Verbose,
+				TEXT("'%s' lost %d seconds of bonus to a step."),
+				*SkillName, SecondsHeld);
+		}
+
+		SecondsHeld = 0;
+	}
+	else
+	{
+		++SecondsHeld;
+	}
+
+	// PUT BACK RATHER THAN ADJUSTED, which is what `NoteKill` below does and for
+	// the reason it records: a stat modifier is held by a handle and has no route
+	// to change its value in place, so moving the bonus means taking the old one
+	// off and putting the new one on. `GrantIncrease` reads the tally through
+	// `ScalingCount` and grants nothing at all when it is zero.
+	RevokeIncrease();
+	GrantIncrease();
+}
+
+void UCataclysmSelfBuffSkill::NoteKill()
+{
+	if (!Params.ScalingSource.Equals(TEXT("Kill"), ESearchCase::IgnoreCase))
+	{
+		return;
+	}
+
+	++KillsCounted;
+
+	// PUT BACK RATHER THAN ADJUSTED. A stat modifier is held by a handle and has
+	// no route to change its value in place, so raising the bonus means taking
+	// the old one off and putting a bigger one on. `GrantIncrease` reads the new
+	// tally through `ScalingCount`.
+	RevokeIncrease();
+	GrantIncrease();
+
+	// AND THE HEAT LASTS LONGER. "Adds another second to the heat", said by
+	// `DurationPer`, which no other row states.
+	//
+	// THE TIMER IS RESET TO WHAT IS LEFT PLUS THE EXTENSION, not simply extended,
+	// because a timer manager has no way to add to a running timer. Reading what
+	// remains and setting that plus the extra is the same thing done in the one
+	// step the interface offers.
+	if (Params.DurationPer <= 0.0f)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	const float Remaining = World->GetTimerManager().GetTimerRemaining(FinishTimer);
+	if (Remaining <= 0.0f)
+	{
+		// Already finishing. Lengthening a buff that has run out would bring it
+		// back, which is not what "adds another second" means.
+		return;
+	}
+
+	TotalDuration += Params.DurationPer;
+	World->GetTimerManager().SetTimer(
+		FinishTimer, this, &UCataclysmSelfBuffSkill::Finish,
+		Remaining + Params.DurationPer, /*bLoop=*/false);
+}
+
+void UCataclysmSelfBuffSkill::RepeatTick()
+{
+	++Repeats;
+	LastRepeatLit = 0;
+	LastRepeatShoved = 0;
+
+	AActor* Self = Avatar();
+	const bool bDoesSomething = Params.bBurns || Params.KnockbackCm > 0.0f;
+	if (!Self || !bDoesSomething || ScaledRadiusCm() <= 0.0f)
+	{
+		// A buff that states an interval and nothing to do on it ticks and
+		// changes nothing. That is the honest answer for a row that asked to
+		// repeat without saying what repeats, and it costs one test.
+		return;
+	}
+
+	// WHICH ENEMIES, AND THE ROW ALREADY HAS A WORD FOR IT. Held Fast says "any
+	// PINNED enemy within 12 meters", and its `ScalingSource=Pinned` is that
+	// word. Reusing it means the count that feeds the damage bonus and the set
+	// that gets relit cannot disagree; a second parameter meaning the same thing
+	// could.
+	const bool bOnlyPinned =
+		Params.ScalingSource.Equals(TEXT("Pinned"), ESearchCase::IgnoreCase);
+
+	// AROUND WHERE THE USE WAS CAST, the caster's own place unless a free start was given another: a support skill
+	// gadget's, ruled 2026-10-16 (S13), so Coil of Embers and Held Fast pulse around the gadget.
+	for (AActor* Nearby : UCataclysmTargeting::FindEnemiesInSphere(
+			GetWorld(), Self, CastOrigin(), ScaledRadiusCm()))
+	{
+		if (bOnlyPinned && !UCataclysmSkillEffects::IsPinned(Nearby))
+		{
+			continue;
+		}
+
+		// A DESIGNED BURN, because the row states `Burn` and this is its own
+		// sentence rather than a chance on hit. Issue #917: without that
+		// decision a Support-slot buff could not set anything alight at all,
+		// because its damage is zero by design and this passes zero.
+		//
+		// ZERO IS PASSED AS THE HIT, AND IT IS THE TRUTH. Nothing was struck --
+		// the fire is the buff's, not a blow's -- and burn has been a flat 25 a
+		// second since 2026-08-24, so the figure changes nothing about what the
+		// burn deals.
+		if (Params.bBurns
+			&& UCataclysmSkillEffects::ApplyBurn(Self, Nearby, /*HitDamage=*/0.0f,
+												 /*bScalesWithInstigator=*/true,
+												 /*bBurnIsDesigned=*/true,
+												 /*DealtBy=*/nullptr, /*Skill=*/this))
+		{
+			++LastRepeatLit;
+		}
+
+		// AND A ROW MAY SHOVE ON THE SAME REPEAT. The Whip's Coil of Embers:
+		// "any enemy that comes within 3 meters is hauled off their feet and
+		// dragged back out to the edge of your reach."
+		//
+		// THE SWEEP IS WHAT MAKES IT "ANY ENEMY THAT COMES WITHIN". There is no
+		// blow to hang it on: the coil is a Support-slot buff that never strikes
+		// anything, so the knockback rider in `HitTargets` -- which is where
+		// every other shove in the game happens -- can never fire for it. A
+		// repeat that looks at the radius is the only shape that expresses a
+		// condition about approaching rather than about being hit.
+		//
+		// "OFF THEIR FEET" IS NOT A KNOCKDOWN AND THE ROW SAYS SO BY OMISSION.
+		// The Whip's own Gathering states `ForcedMovement=Pull, Knockdown` when
+		// it means a creature cannot rise; this row states `Knockback` and
+		// nothing else, so what it describes is the shove.
+		//
+		// AWAY FROM THE PLACE IT WAS CAST, when a free start was given one: a support skill gadget's (S13).
+		if (Params.KnockbackCm > 0.0f
+			&& (bFreeRepeatHasOrigin
+					? UCataclysmSkillEffects::ApplyKnockbackFrom(Self, Nearby, FreeRepeatOrigin,
+																 Params.KnockbackCm)
+					: UCataclysmSkillEffects::ApplyKnockback(Self, Nearby,
+															 Params.KnockbackCm)))
+		{
+			++LastRepeatShoved;
+		}
+	}
+
+	if (LastRepeatLit > 0 || LastRepeatShoved > 0)
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' set %d %senemies alight and shoved %d on repeat %d."),
+			*SkillName, LastRepeatLit, bOnlyPinned ? TEXT("pinned ") : TEXT(""),
+			LastRepeatShoved, Repeats);
+	}
+}
+
+void UCataclysmSelfBuffSkill::NoteBlowTaken(AActor* Striker, bool bWasMelee,
+											bool bWasDamageOverTime,
+											float DealtToHealth)
+{
+	// THE STORE FILLS FIRST AND IS A SEPARATE SENTENCE FROM SETTING ATTACKERS
+	// ALIGHT. Martyr's Ember: "40% of all damage you take while it lasts is
+	// stored." Two rows react to a blow taken and they react to different halves
+	// of it, so neither may return early past the other. Issue #1162.
+	//
+	// EVERY BLOW, INCLUDING ONE OVER TIME AND ONE FROM A DISTANCE. The row says
+	// "all damage you take" with no qualification, unlike Burning Wrath's
+	// "strikes you in MELEE" below, which is why the two arguments are read
+	// there and not here.
+	//
+	// OF WHAT REACHED HEALTH, which is the figure the dispatcher carries and the
+	// same one the design defines leech against. A share of what was SENT would
+	// fill the store from a blow that armour stopped completely.
+	if (Params.StoresFromHitTaken > 0.0f && DealtToHealth > 0.0f)
+	{
+		const float Ceiling = StoreCeiling();
+		if (Ceiling > 0.0f)
+		{
+			const float Added = DealtToHealth * Params.StoresFromHitTaken / 100.0f;
+			Stored = FMath::Min(Stored + Added, Ceiling);
+		}
+		else
+		{
+			// A STORE WITH NO CEILING IS REFUSED RATHER THAN LEFT UNBOUNDED. The
+			// row states "capped at 200% weapon damage", and a store that grew
+			// for as long as its holder could survive being hit is the one
+			// outcome the cap exists to prevent. The generator writes the cap on
+			// every row that states a store, so reaching here means the imported
+			// table is older than the sheet.
+			UE_LOG(LogCataclysm, Warning,
+				TEXT("'%s' stores a share of the damage its holder takes and "
+					 "states no StoreCapPercent, so nothing was stored. Run "
+					 "tools/generate_datatable_assets.py."),
+				*SkillName);
+		}
+	}
+
+	if (!Params.bBurnsAttackers)
+	{
+		// Every self buff in the game but Burning Wrath. It costs one test.
+		return;
+	}
+
+	// "ANY ENEMY THAT STRIKES YOU IN MELEE", AND BOTH HALVES OF THAT ARE
+	// REFUSALS. An arrow or a spell is a blow taken and is not a strike in melee;
+	// a burn already on the holder is not a strike at all. The dispatcher is told
+	// about all of them and this is where the row's own wording narrows it.
+	if (!bWasMelee || bWasDamageOverTime || !IsValid(Striker))
+	{
+		return;
+	}
+
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		return;
+	}
+
+	// A DESIGNED BURN, because the row states it and this is its own sentence
+	// rather than a chance on hit. Issue #917: without that decision a
+	// Support-slot buff could not set anything alight, because its damage is zero
+	// by design and this passes zero.
+	//
+	// ZERO IS PASSED AS THE HIT, AND IT IS THE TRUTH. The holder struck nobody --
+	// it was struck -- and burn has been a flat 25 a second since 2026-08-24, so
+	// the figure changes nothing about what the burn deals.
+	//
+	// THE HOLDER IS CREDITED WITH IT rather than the striker, so the burn is the
+	// player's damage, scales with the player's three damage over time stats, and
+	// is what a Masochist's own nodes can read.
+	if (UCataclysmSkillEffects::ApplyBurn(Self, Striker, /*HitDamage=*/0.0f,
+										  /*bScalesWithInstigator=*/true,
+										  /*bBurnIsDesigned=*/true,
+										  /*DealtBy=*/nullptr, /*Skill=*/this))
+	{
+		++AttackersLit;
+
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' set '%s' alight for striking its holder."),
+			*SkillName, *Striker->GetName());
+	}
+}
+
+float UCataclysmSelfBuffSkill::StoreCeiling() const
+{
+	if (Params.StoreCapPercent <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const float WeaponDamage = UCataclysmSkillEffects::WeaponDamageOf(
+		UCataclysmTargeting::AbilitySystemOf(Avatar()));
+	return WeaponDamage * Params.StoreCapPercent / 100.0f;
+}
+
+float UCataclysmSelfBuffSkill::StoreSpendPerBlow() const
+{
+	if (Params.StoreSpentPerHit <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const float WeaponDamage = UCataclysmSkillEffects::WeaponDamageOf(
+		UCataclysmTargeting::AbilitySystemOf(Avatar()));
+	return WeaponDamage * Params.StoreSpentPerHit / 100.0f;
+}
+
+void UCataclysmSelfBuffSkill::NoteBlowLanded(AActor* Target,
+											const FVector& Where,
+											bool bFromBehind)
+{
+	// THE STORE PAYS OUT FIRST, AND IT IS A SEPARATE SENTENCE FROM THE TWO
+	// BELOW. Martyr's Ember: "each hit you land spends part of the store as
+	// bonus fire damage until it is empty." Issue #1162.
+	//
+	// ONCE PER ENEMY HIT, BECAUSE THIS FUNCTION IS CALLED ONCE PER ENEMY HIT.
+	// `UCataclysmSkillTemplate::HitTargets` walks its targets and calls the
+	// dispatcher inside that loop, so a blow catching four enemies lands four
+	// hits and gives every one of them the bonus. That follows from the row's own
+	// words -- "each hit you land" -- and it means a wide skill empties the store
+	// faster than a single-target one. The parameter's own header says so, since
+	// it is the largest thing to know before tuning the number.
+	//
+	// AS AN ABSOLUTE AMOUNT RATHER THAN AS A PERCENT OF WEAPON DAMAGE, so the
+	// caster's own increases are not applied to it a second time. The store was
+	// filled from damage that had already been through the pipeline once, and
+	// `StoreSpentPerHit` has already been turned into damage by
+	// `StoreSpendPerBlow`.
+	//
+	// IT CANNOT SET OFF ANOTHER ROUND OF THIS. `ApplyDirectDamage` is not the
+	// path that calls the dispatcher -- `HitTargets` and the three routes issue
+	// #1938 added are -- so a bonus landing on
+	// a target cannot spend the store again.
+	if (Stored > 0.0f && IsValid(Target))
+	{
+		const float Spend = FMath::Min(StoreSpendPerBlow(), Stored);
+		if (Spend > 0.0f)
+		{
+			AActor* Self = Avatar();
+			FCataclysmHitDelivery Delivery;
+			Delivery.Skill = this;
+			if (Self && UCataclysmSkillEffects::ApplyDirectDamage(
+					Self, Target, Spend, Delivery))
+			{
+				Stored -= Spend;
+				StoreSpent += Spend;
+
+				UE_LOG(LogCataclysm, Verbose,
+					TEXT("'%s' spent %.1f of its store on '%s', leaving %.1f."),
+					*SkillName, Spend, *Target->GetName(), Stored);
+			}
+		}
+	}
+
+	// THE DAGGER'S SLIPSTREAM: "every enemy you strike from behind returns your
+	// movement skill to you at once. Blows landed from the front do nothing for
+	// it." The second sentence is why this is a test and not an unconditional
+	// refund, and it is the only reason the side travels this far.
+	//
+	// `Requires=RearHit` IS WHAT ASKS. Every other condition that key may name is
+	// judged before the cast in `RequirementsAreMet`, which deliberately leaves
+	// this one out; this is the other end of that decision finally being read.
+	//
+	// AT ONCE AND EVERY TIME, WITH NO LIMIT, which is what the row says. What
+	// bounds it is that returning a cooldown already returned does nothing:
+	// `RefundCooldown` answers false when there was no cooldown effect to take
+	// off, so a second rear blow while the movement skill is already ready is
+	// counted as nothing rather than banked.
+	if (bFromBehind && RequiresCondition(TEXT("RearHit"))
+		&& RefundCooldown())
+	{
+		++CooldownsReturned;
+	}
+
+	if (Params.Terrain.IsEmpty())
+	{
+		// Every self buff in the game but Groundbreaker. It costs a string test.
+		return;
+	}
+
+	// BENEATH WHAT THE BLOW HIT, WHICH IS WHY THE POSITION IS PASSED IN.
+	// Groundbreaker says "cracks the ground beneath what it hits", so a fissure
+	// opens where the target stood and not under the character that swung. The
+	// two are a weapon's reach apart, which for a Warhammer is three and a half
+	// metres and is more than a fissure's own two metre radius.
+	//
+	// A CIRCLE, SO BOTH ENDS ARE THAT POINT. A wall is the only kind whose ends
+	// differ and no self buff leaves one.
+	if (LeaveTerrainAlong(Where, Where))
+	{
+		++TerrainLeft;
+	}
+}
+
+void UCataclysmSelfBuffSkill::RevokeIncrease()
+{
+	if (IncreaseHandle == 0)
+	{
+		return;
+	}
+
+	if (UCataclysmAbilitySystemComponent* AbilitySystem =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Avatar())))
+	{
+		AbilitySystem->RemoveStatModifier(IncreaseHandle);
+	}
+
+	IncreaseHandle = 0;
+	GrantedIncrease = 0.0f;
+	GrantedScope = FGameplayTag();
+}
+
+// ==========================================================================
+// Movement -- Infernal Plunge, Cinder Rush, Emberstep
+// ==========================================================================
+
+const TCHAR* UCataclysmMovementSkill::PullsNearbyOnArrivalStat = TEXT("movement_pulls_nearby_on_arrival");
+const TCHAR* UCataclysmMovementSkill::PathDamagePercentStat = TEXT("movement_path_damage_percent");
+const TCHAR* UCataclysmMovementSkill::RandomDirectionStat = TEXT("movement_random_direction");
+const TCHAR* UCataclysmMovementSkill::ExplodesAtBothEndsStat = TEXT("movement_explodes_at_both_ends");
+
+/**
+ * Pins the direction a movement skill is sent under `movement_random_direction`, in degrees from the world's X axis
+ * toward its Y axis, for tests. Negative, the default, rolls for real. The same shape as `Cataclysm.CritRoll`.
+ */
+static TAutoConsoleVariable<float> CVarMovementDirectionRoll(
+	TEXT("Cataclysm.MovementDirectionRoll"), -1.0f,
+	TEXT("Pins the direction, 0-360 degrees, a random-direction enchantment sends a movement skill. Negative rolls for real."),
+	ECVF_Default);
+
+float UCataclysmMovementSkill::WornRowStat(const TCHAR* RiderStat) const
+{
+	const AActor* Self = Avatar();
+	const UCataclysmAbilitySystemComponent* Asking =
+		Self ? Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self)) : nullptr;
+	// WITH THE SKILL'S TAGS, so a row restricted to `Slot.Movement` reaches a skill that carries the tag and no
+	// other. The test `LeaveRowZoneAt` makes for the two zone stats.
+	return Asking ? Asking->StatForSkill(FName(RiderStat), SkillTags, 0.0f) : 0.0f;
+}
+
+bool UCataclysmMovementSkill::RolledDirection(FVector& OutDirection) const
+{
+	if (WornRowStat(RandomDirectionStat) <= 0.0f)
+	{
+		return false;
+	}
+
+	// ANY DIRECTION ALONG THE GROUND, EACH AS LIKELY AS ANY OTHER. Measured from the world's axes and not from
+	// where the player pointed: the sentence says the direction is random, so where the player pointed decides
+	// nothing about it.
+	const float Pinned = CVarMovementDirectionRoll.GetValueOnAnyThread();
+	const float Degrees = Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 360.0f);
+	const float Radians = FMath::DegreesToRadians(Degrees);
+	OutDirection = FVector(FMath::Cos(Radians), FMath::Sin(Radians), 0.0f);
+	return true;
+}
+
+void UCataclysmMovementSkill::HitWhatThePathCrossed(const TArray<AActor*>& Crossed)
+{
+	AActor* Self = Avatar();
+	const float Percent = (Self && !Crossed.IsEmpty()) ? WornRowStat(PathDamagePercentStat) : 0.0f;
+	if (Percent <= 0.0f)
+	{
+		return;
+	}
+
+	// AN ORDINARY HIT OF THE WEARER'S WITH THE SKILL'S TAGS, at the row's per cent of weapon damage. Ruled
+	// 2026-10-07. It is dealt by `ApplyHit` and not by `HitTargets`, so it carries none of what the skill's own
+	// row states: no burn, no shove, no stun, no forced movement. It names the skill, and takes the skill's own
+	// critical strike chance where the skill states one.
+	FCataclysmHitDelivery PathDelivery;
+	PathDelivery.CritChancePercent = CritChancePercent;
+	PathDelivery.Skill = this;
+	for (AActor* OnThePath : Crossed)
+	{
+		// The skill's own blow came first and may have killed it.
+		if (IsValid(OnThePath) && !UCataclysmSkillEffects::IsDead(OnThePath))
+		{
+			UCataclysmSkillEffects::ApplyHit(Self, OnThePath, Percent, SkillTags, PathDelivery);
+		}
+	}
+}
+
+void UCataclysmMovementSkill::HitScaledAsACharge(const TArray<AActor*>& Targets,
+												 const TArray<AActor*>& Consumed,
+												 float ChargedCm,
+												 const TArray<AActor*>& Allies)
+{
+	// WHAT THEY HELD IS PUT BACK RATHER THAN -1 WRITTEN, so a blow of this
+	// skill that began inside another of its own blows cannot leave the outer
+	// one telling its later targets nothing.
+	const float MetresHeld = BlowMetresCharged;
+	const float RangeHeld = BlowChargeRangeMetres;
+
+	// METRES, because the delivery and the conditions hold metres and the
+	// engine keeps centimetres.
+	BlowMetresCharged = FMath::Max(0.0f, ChargedCm) / 100.0f;
+	BlowChargeRangeMetres = ScaledRangeCm() / 100.0f;
+
+	// AND THE ALLIES ON THE LINE, told the same metres, for their share. Ruled 2026-10-15. None from a walked charge.
+	HitScaledSharingWithAllies(Targets, Consumed, Allies);
+
+	BlowMetresCharged = MetresHeld;
+	BlowChargeRangeMetres = RangeHeld;
+}
+
+void UCataclysmMovementSkill::HitAlongThePath(const FVector& From, const FVector& To)
+{
+	// ONLY A CHARGE HAS A PATH. "A run along the ground, hitting everything on the way" is the charge; a leap
+	// touches nothing under its arc and a blink, a return and a trade nothing between their ends.
+	if (Params.MovementMode != ECataclysmMovementMode::Charge || WornRowStat(PathDamagePercentStat) <= 0.0f)
+	{
+		return;
+	}
+
+	// THE HALF-WIDTH THE CHARGE'S OWN BLOW USES, and every enemy on the line: the sentence says "all enemies", so
+	// the row's hit is not held to the skill's `MaxTargets`. From where it began to where it actually stopped.
+	HitWhatThePathCrossed(UCataclysmTargeting::FindEnemiesInLine(GetWorld(), Avatar(), From, To, ScaledRadiusCm()));
+}
+
+void UCataclysmMovementSkill::ExplodeAtBothEnds(const FVector& Began, const FVector& Ended)
+{
+	AActor* Self = Avatar();
+	if (!Self || WornRowStat(ExplodesAtBothEndsStat) <= 0.0f)
+	{
+		return;
+	}
+
+	// A TENTH OF THE SKILL'S OWN HIT, the share a row's zone deals a sweep. Ruled 2026-10-07. The skill's own per
+	// cent is read as `LeaveZoneAlong` reads it, so a skill in a slot whose damage is nought explodes for nothing:
+	// `ApplyHit` deals no blow at a per cent of nought.
+	const float Percent = GetDamagePercent() * EndExplosionPercentOfTheHit / 100.0f;
+
+	// AREA DAMAGE, because each explosion sweeps a circle and strikes whatever is inside: it cannot be evaded and
+	// can be blocked. It can critically strike, as any hit of the skill can. It carries what the use spent from
+	// next-use charges, as the skill's own hit and a row's zone do, so it stays a tenth of that hit.
+	FCataclysmHitDelivery BlastDelivery = FCataclysmHitDelivery::Area();
+	BlastDelivery.CritChancePercent = CritChancePercent;
+	BlastDelivery.Skill = this;
+	BlastDelivery.IncreasedDamageSpentPercent = LastNextUseIncreasePercent;
+	BlastDelivery.DamageMultiplierSpent = LastNextUseMoreMultiplier;
+
+	// TWO EXPLOSIONS AND NOT ONE MERGED SEARCH: an enemy within reach of both ends of a short move is struck by
+	// each. Widened by area of effect, as a row's zone is.
+	const float BlastRadiusCm = EndExplosionRadiusCm * AreaOfEffectMultiplier();
+	const FVector BothEnds[] = {Began, Ended};
+	for (const FVector& BlastAt : BothEnds)
+	{
+		for (AActor* InTheBlast : UCataclysmTargeting::FindEnemiesInSphere(GetWorld(), Self, BlastAt, BlastRadiusCm))
+		{
+			UCataclysmSkillEffects::ApplyHit(Self, InTheBlast, Percent, SkillTags, BlastDelivery);
+		}
+	}
+}
+
+void UCataclysmMovementSkill::PullNearbyToWhereItArrived()
+{
+	AActor* Self = Avatar();
+	if (!Self || WornRowStat(PullsNearbyOnArrivalStat) <= 0.0f)
+	{
+		return;
+	}
+
+	const FVector Here = Self->GetActorLocation();
+	for (AActor* Near : UCataclysmTargeting::FindEnemiesInSphere(GetWorld(), Self, Here, PullReachCm))
+	{
+		// TO 1.5 METRES FROM THE USER AND NOT ONTO IT. `ApplyPull` hauls a target a stated distance toward its
+		// instigator, so the distance asked for is the gap less 1.5 metres.
+		//
+		// ONE ALREADY NEARER THAN THAT IS NOT MOVED. It must not reach `ApplyPull` at all: a distance of nought
+		// or less means the whole way there.
+		const float GapCm = static_cast<float>(FVector::Dist2D(Near->GetActorLocation(), Here));
+		if (GapCm <= PullStandsAtCm)
+		{
+			continue;
+		}
+
+		// EVERYTHING A PULL IN THIS GAME DOES, AND NO DAMAGE. A target immune to displacement is not moved; its
+		// crowd control resistance shortens the haul; a second displacement inside five seconds moves it half
+		// as far; and a pull that landed leaves it staggered for a second.
+		UCataclysmSkillEffects::ApplyPull(Self, Near, GapCm - PullStandsAtCm);
+	}
+}
+
+FVector UCataclysmMovementSkill::ConditionalDestination(const FVector& Start) const
+{
+	const bool bToBurning = RequiresCondition(TEXT("Burning"));
+	const bool bToAnything = RequiresCondition(TEXT("Target"));
+	if (!bToBurning && !bToAnything)
+	{
+		// Every other movement skill goes where the player pointed. Eight of the
+		// ten Demonic movement rows take this line.
+		return AimedPointWithin(ScaledRangeCm());
+	}
+
+	const AActor* Self = Avatar();
+	if (!Self)
+	{
+		return AimedPointWithin(ScaledRangeCm());
+	}
+
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	for (AActor* Candidate : UCataclysmTargeting::FindEnemiesInSphere(
+			GetWorld(), Self, Start, RequirementReachCm()))
+	{
+		if (bToBurning && Burn.IsValid()
+			&& !UCataclysmSkillEffects::HasTag(Candidate, Burn))
+		{
+			continue;
+		}
+
+		// AT THE ENEMY'S FEET AND NOT INSIDE IT. `SetActorLocation` sweeps, so
+		// aiming at the creature itself stops the caster against its collision
+		// short of where the row says it arrives. This is the same point the
+		// creature is standing on, which is what "haul yourself to it" means.
+		return FVector(Candidate->GetActorLocation().X,
+					   Candidate->GetActorLocation().Y, Start.Z);
+	}
+
+	return AimedPointWithin(ScaledRangeCm());
+}
+
+void UCataclysmMovementSkill::ActivateAbility(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	const FGameplayEventData* TriggerEventData)
+{
+	// THE FIRST PRESS OF A RECALL LEAVES A MARK AND COSTS NOTHING, WHICH IS THE
+	// ONE PLACE THIS SHAPE COMMITS LATE. The Dagger's Echo: "leave a burning
+	// after-image where you stand. For 8 seconds you may return to it from
+	// anywhere within 14 meters; the image bursts as you arrive."
+	//
+	// THE SKILL IS TWO PRESSES AND ONLY THE SECOND ONE DOES ANYTHING. Leaving a
+	// mark moves nobody, damages nobody and burns nothing; the return is the
+	// whole of what the row describes. So the mana and the cooldown are charged
+	// then, and this branch runs before `CommitAndBegin`.
+	//
+	// IT HAD TO BE THIS WAY ROUND RATHER THAN THE OBVIOUS ONE. Charging on the
+	// first press starts the Special slot's five second cooldown, and the mark
+	// lasts eight, so the row's "for 8 seconds you may return to it" would have
+	// been three -- and the player would have paid for a skill that had not
+	// happened yet.
+	//
+	// A SECOND FIRST-PRESS SIMPLY MOVES THE MARK, because a mark is not an object
+	// and holding two of them would need a rule about which one a return takes.
+	// Nothing is spent, so nothing is lost by moving it.
+	if (Params.MovementMode == ECataclysmMovementMode::Recall)
+	{
+		AActor* Marker = Avatar();
+		const UWorld* World = GetWorld();
+		if (!Marker || !World || Params.EffectDuration <= 0.0f)
+		{
+			// A Recall row stating no window cannot be returned to, so refusing
+			// here is better than leaving a mark that never expires.
+			EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+			return;
+		}
+
+		if (!HasMark())
+		{
+			MarkedAt = Marker->GetActorLocation();
+			// LENGTHENED BY `skill_duration`, issue #1833, as every duration a
+			// skill sets is.
+			const float Window = Params.EffectDuration * OwnDurationMultiplier(/*bIsBuff=*/false);
+			MarkExpiresAt = World->GetTimeSeconds() + Window;
+
+			UE_LOG(LogCataclysm, Verbose,
+				TEXT("'%s' left a mark, good for %.1f seconds."),
+				*SkillName, Window);
+
+			EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+			return;
+		}
+
+		// AND THE RETURN HAS A RANGE, WHICH THE ROW STATES AND WHICH IS EASY TO
+		// MISS BECAUSE THE FIRST PRESS DOES NOT USE IT. Echo reads "for 8 seconds
+		// you may return to it FROM ANYWHERE WITHIN 14 METERS", so the fourteen
+		// is a limit on the return and on nothing else. Without this the mark
+		// could be reached from the far side of the level.
+		//
+		// REFUSED RATHER THAN CLAMPED, and the mark is kept. Walking too far and
+		// pressing again is the player getting the distance wrong, not asking to
+		// throw the mark away; a clamp would drop them somewhere they did not
+		// mark, which is worse than not moving.
+		//
+		// BEFORE `CommitAndBegin`, SO A REFUSED RETURN COSTS NOTHING. That is the
+		// same order `CanActivateAbility` uses for the conditions in the
+		// `Requires` column: a skill whose condition fails spends no mana and
+		// starts no cooldown.
+		//
+		// ALONG THE GROUND, so standing on a ledge above the mark does not put it
+		// out of reach.
+		FVector Apart = MarkedAt - Marker->GetActorLocation();
+		Apart.Z = 0.0f;
+		if (Params.RangeCm > 0.0f && Apart.Size() > ScaledRangeCm())
+		{
+			UE_LOG(LogCataclysm, Verbose,
+				TEXT("'%s' is %.0fcm from its mark and may return from %.0fcm, "
+					 "so the mark was kept and nothing was spent."),
+				*SkillName, Apart.Size(), ScaledRangeCm());
+
+			EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+			return;
+		}
+	}
+
+	if (!CommitAndBegin(Handle, ActorInfo, ActivationInfo))
+	{
+		return;
+	}
+
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
+
+	const FVector Start = Self->GetActorLocation();
+
+	// A FLICKER DOES NOT ARRIVE ONCE, SO IT LEAVES THIS FUNCTION EARLY. The
+	// Dagger's Everywhere at Once: "for 4 seconds you are nowhere long enough to
+	// be hit. You flicker between every enemy within 10 meters, striking each
+	// from behind as you arrive."
+	//
+	// EVERYTHING BELOW THIS ASSUMES ONE DEPARTURE AND ONE ARRIVAL -- one search,
+	// one `SetActorLocation`, one patch of ground -- and a repeat is none of
+	// those things. Threading it through the same body would mean a condition on
+	// every one of them.
+	if (Params.MovementMode == ECataclysmMovementMode::Flicker)
+	{
+		// THE CIRCUIT IS FIXED HERE AND NEVER RE-SEARCHED. "Every enemy within
+		// 10 meters" is read at the moment of casting. It also stops the skill
+		// walking across the level: each arrival moves the caster, so a fresh
+		// search would be centred somewhere new every time and could wander from
+		// one group to the next for as long as the skill ran.
+		FlickerCircuit.Reset();
+		for (AActor* Enemy : UCataclysmTargeting::FindEnemiesInSphere(
+				GetWorld(), Self, Start, ScaledRangeCm(), Params.MaxTargets))
+		{
+			FlickerCircuit.Add(Enemy);
+		}
+
+		NextInCircuit = 0;
+		Arrivals = 0;
+		EnemiesHit = FlickerCircuit.Num();
+		ArrivedAt = Start;
+
+		// "NOTHING CAN TOUCH YOU BETWEEN ARRIVALS", FOR THE WHOLE DURATION. It
+		// is applied whether or not anything was found: the row pays for the
+		// four seconds of safety as much as for the blows, and a flicker cast
+		// into an empty room should not also strip the escape it was.
+		if (Params.bUntargetable)
+		{
+			UCataclysmSkillEffects::ApplyUntargetable(Self, Self,
+													  Params.Duration);
+		}
+
+		// THE FIRST ARRIVAL IS AT ONCE AND NOT AN INTERVAL IN, which is the
+		// opposite of what burning ground and the aura do and the difference is
+		// what the sentence describes. Those two say what happens WHILE they
+		// run; this one IS its arrivals, and a third of a second of standing
+		// still at the start would be a third of a second the row does not
+		// mention.
+		FlickerOnce();
+
+		// A FLICKER ENDED BY ITS OWN FIRST ARRIVAL MAKES NO MORE. Ruled
+		// 2026-10-08, and the same guard `UCataclysmStrikeSkill` makes before it
+		// starts a spin: the arrival above lands a blow, and a blow that came
+		// back on the caster may have ended this skill before it returned. The
+		// timers below would then be set on a skill that is over.
+		if (!IsActive())
+		{
+			return;
+		}
+
+		if (UWorld* World = GetWorld();
+			World && Params.Interval > 0.0f && Params.Duration > 0.0f)
+		{
+			World->GetTimerManager().SetTimer(
+				FlickerTimer, this, &UCataclysmMovementSkill::FlickerOnce,
+				Params.Interval, /*bLoop=*/true,
+				/*InFirstDelay=*/Params.Interval);
+
+			// IN A MEMBER, so `EndAbility` can clear it by name. See `StopTimer`.
+			World->GetTimerManager().SetTimer(
+				StopTimer, this, &UCataclysmMovementSkill::FinishFlicker,
+				Params.Duration, /*bLoop=*/false);
+			return;
+		}
+
+		// A row stating no interval or no duration flickers once and stops,
+		// rather than running for ever.
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+		return;
+	}
+
+	// A CHARGE THAT STATES A DURATION IS A WALK RATHER THAN AN ARRIVAL, AND ALSO
+	// LEAVES THIS FUNCTION EARLY. The Greatsword's Inexorable: "begin an advance
+	// that cannot be turned aside. You walk forward for 3 seconds ... throwing
+	// aside and setting alight everything you pass through."
+	//
+	// A CHARGE WITHOUT A DURATION IS UNCHANGED. The Whip's Reel states
+	// `Mode=Charge` and no duration, and is one move to a point that hits what
+	// the line crosses. Everything below assumes that shape -- one search, one
+	// `SetActorLocation`, one patch of ground -- and a walk is none of those.
+	//
+	// THE FIST'S CINDER RUSH USED TO BE THE SECOND SUCH ROW AND IS NOT ANY MORE,
+	// AND WHY IT CHANGED IS WORTH KNOWING BEFORE WRITING ANOTHER CHARGE. Its own
+	// sentence is "you are immune to crowd control DURING THE RUSH", and
+	// `UCataclysmSkillTemplate::IsImmuneTo` asks the RUNNING abilities -- so with
+	// no duration the ability ended in the frame it activated and the window was
+	// of no length. The immunity was stated in the row and could never fire. The
+	// row now states `Duration=1.1`, which is a 10 metre charge at the 9.33
+	// metres a second the Greatsword's Inexorable was set to. Issue #1162.
+	//
+	// THE DIRECTION IS TAKEN ONCE, HERE, AND NEVER RE-READ. That is what "cannot
+	// be turned aside" says, and it is also why the aimed point is read before
+	// the first step rather than on each one: reading it every step would make
+	// the advance follow the cursor, which is the opposite of the row.
+	if (Params.MovementMode == ECataclysmMovementMode::Charge
+		&& Params.Duration > 0.0f)
+	{
+		BeginAdvance(Start);
+		return;
+	}
+
+	// WHERE IT ARRIVES IS THE ENEMY, NOT THE CURSOR, WHEN THE ROW SAYS SO. The
+	// Sword's Flashpoint reads "dart to a burning enemy up to 14 meters away"
+	// and closes with "only something already alight can be reached", so the
+	// destination is decided by the condition rather than by where the player is
+	// pointing. `CanActivateAbility` has already refused the cast if there is no
+	// such enemy, so failing to find one here means it died in between; falling
+	// back to the aimed point is then better than not moving at all.
+	//
+	// THE AXE'S EMBERHAUL WORKS THE SAME WAY through `Requires=Target`: "bury
+	// your axe in the FIRST enemy within 12 meters and haul yourself to it".
+	FVector End = ConditionalDestination(Start);
+
+	// AND A ROW MAY SEND IT IN A RANDOM DIRECTION INSTEAD: "Your movement abilities now move you in a random
+	// direction". Ruled 2026-10-07. ONLY A MOVE THAT GOES WHERE THE PLAYER POINTED. One that travels to a creature
+	// its `Requires` names takes a target and not a direction, and a return and a trade replace the end point
+	// just below. THE DISTANCE IS THE ONE THE PLAYER AIMED, so only the direction is taken from them. The move
+	// below still sweeps, so it stops at a wall as any other does.
+	FVector RolledWay;
+	if (Params.MovementMode != ECataclysmMovementMode::Recall
+		&& Params.MovementMode != ECataclysmMovementMode::Swap
+		&& !RequiresCondition(TEXT("Burning")) && !RequiresCondition(TEXT("Target"))
+		&& RolledDirection(RolledWay))
+	{
+		End = Start + RolledWay * FVector::Dist2D(Start, End);
+	}
+
+	// AND A RETURN GOES WHERE THE MARK IS, WHICH IS THE WHOLE OF WHAT SEPARATES
+	// `Recall` FROM `Blink`. Both arrive somewhere and burst; a blink picks the
+	// destination now, and a recall picked it on the press that left the mark.
+	// Echo: "for 8 seconds you may return to it."
+	//
+	// THE MARK IS SPENT AS IT IS READ, so the next press of the skill leaves a
+	// fresh one rather than returning to a place the character is already
+	// standing in.
+	if (Params.MovementMode == ECataclysmMovementMode::Recall)
+	{
+		End = MarkedAt;
+		MarkExpiresAt = 0.0;
+	}
+
+	// AND A TRADE GOES WHERE ONE OF THE CASTER'S OWN CREATURES IS STANDING, AND
+	// SENDS IT BACK. The Staff's Vesselstep: "trade places with a creature you
+	// command up to 14 meters away."
+	//
+	// THE NEAREST ONE, because `ThingsCommandedBy` answers nearest first and the
+	// row does not say which creature. "Up to 14 meters" is the range, so
+	// anything further away is not a candidate at all.
+	//
+	// THE CREATURE IS MOVED HERE AND THE CASTER IS MOVED BELOW, which is the one
+	// place these two lines could disagree: `Start` is read before this and the
+	// caster's own move happens after, so the creature goes to where the caster
+	// WAS rather than to where it ends up. Doing both here would put them in the
+	// same place.
+	//
+	// AT THE CASTER'S OWN HEIGHT, the arrangement every other arrival in this
+	// file uses: taking the other body's height drops one of them through the
+	// floor when the two stand at different levels.
+	if (Params.MovementMode == ECataclysmMovementMode::Swap)
+	{
+		const TArray<AActor*> Commanded =
+			UCataclysmCommand::ThingsCommandedBy(Self, ScaledRangeCm());
+		if (Commanded.IsEmpty())
+		{
+			// A TRADE WITH NOBODY IS NOT A MOVE. Every other movement mode has
+			// somewhere to go when it finds nothing -- the aimed point -- and
+			// this one does not: "trade places with a creature you command" says
+			// the destination IS the creature, so with none there is no
+			// destination. Refused rather than blinking to the cursor, which
+			// would be a different skill.
+			UE_LOG(LogCataclysm, Verbose,
+				TEXT("'%s' commands nothing within %.0fcm, so there was nothing "
+					 "to trade places with."),
+				*SkillName, ScaledRangeCm());
+
+			EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+			return;
+		}
+
+		AActor* Partner = Commanded[0];
+		End = FVector(Partner->GetActorLocation().X,
+					  Partner->GetActorLocation().Y, Start.Z);
+
+		const FVector PartnerWas = Partner->GetActorLocation();
+		UCataclysmMovement::MoveWithoutSticking(
+			Partner, FVector(Start.X, Start.Y, Partner->GetActorLocation().Z) - Partner->GetActorLocation());
+
+		// A TRADE IS AN INSTANT RELOCATION FOR BOTH OF THEM, so neither's walked ground counts it. Issue #2388.
+		UCataclysmMovement::NoteRelocatedInstantly(Partner, PartnerWas);
+
+		SwappedWith = Partner;
+	}
+
+	TArray<AActor*> Targets;
+	switch (Params.MovementMode)
+	{
+	case ECataclysmMovementMode::Charge:
+		// "Barrelling through any enemies in your path": everything on the line.
+		Targets = UCataclysmTargeting::FindEnemiesInLine(
+			GetWorld(), Self, Start, End, ScaledRadiusCm(), Params.MaxTargets);
+		break;
+
+	case ECataclysmMovementMode::Swap:
+		// "HELLFIRE ERUPTS AT BOTH ENDS OF THE TRADE, SETTING ALIGHT
+		// EVERYTHING NEAR EITHER POINT." Word for word the same search a blink
+		// makes, so it shares the branch rather than copying it: two circles,
+		// merged, and nothing in between.
+	case ECataclysmMovementMode::Blink:
+		// "Enemies at the point you left and the point you arrive": both ends,
+		// nothing between. Gathered from both and merged, because an enemy
+		// standing between the two circles is hit by neither and one standing in
+		// both must still only be hit once.
+		Targets = UCataclysmTargeting::FindEnemiesInSphere(
+			GetWorld(), Self, Start, ScaledRadiusCm());
+		for (AActor* Far : UCataclysmTargeting::FindEnemiesInSphere(
+				GetWorld(), Self, End, ScaledRadiusCm()))
+		{
+			Targets.AddUnique(Far);
+		}
+		break;
+
+	case ECataclysmMovementMode::Recall:
+		// "THE IMAGE BURSTS AS YOU ARRIVE, SETTING ALIGHT EVERYTHING WITHIN 3
+		// METERS": the arrival only, which is the same search the Leap below
+		// makes. Named here rather than left to fall through, because a mode
+		// reaching `default` by accident is exactly what issue #1139 was about
+		// -- Recall, Flicker and Swap all silently ran the Leap code, and two of
+		// those were wrong.
+	case ECataclysmMovementMode::Leap:
+	default:
+		// "Slam down, dealing damage in a 5 meter radius on impact": where it
+		// lands only. Nothing under the arc is touched.
+		Targets = UCataclysmTargeting::FindEnemiesInSphere(
+			GetWorld(), Self, End, ScaledRadiusCm(), Params.MaxTargets);
+		break;
+	}
+
+	// AND EVERY ALLY INSIDE THE SAME LINE OR SPHERE, WHEN A ROW STRIKES ALLIES WITH THIS SKILL. Ruled 2026-10-15, for
+	// "Your AOE skills deal 50%-75% of their damage to nearby allies as well as enemies" (R2, R3): the Charge's line
+	// and the Leap's and the Recall's sphere where they land, and NO OTHER MODE, because the ruling names those two
+	// sites and no point-blank skill is a blink or a trade. Found before the move, as the enemies are.
+	TArray<AActor*> Allies;
+	if (AreaShareOnAlliesPercent() > 0.0f)
+	{
+		if (Params.MovementMode == ECataclysmMovementMode::Charge)
+		{
+			Allies = UCataclysmAreaShareOnAllies::AlliesInLine(GetWorld(), Self, Start, End, ScaledRadiusCm());
+		}
+		else if (Params.MovementMode == ECataclysmMovementMode::Leap
+				 || Params.MovementMode == ECataclysmMovementMode::Recall)
+		{
+			Allies = UCataclysmAreaShareOnAllies::AlliesInSphere(GetWorld(), Self, End, ScaledRadiusCm());
+		}
+	}
+
+	// The ground is left BEFORE the move for a blink, because Emberstep burns
+	// "both points", and the point left behind stops being the caster's position
+	// the moment they arrive.
+	// AND A SWAP LEAVES ONE TOO, for the reason the blink does and with the same
+	// wording behind it. Vesselstep: "leaving both burning for 4 seconds". The
+	// point left behind stops being the caster's position the moment it arrives.
+	if (Params.MovementMode == ECataclysmMovementMode::Blink
+		|| Params.MovementMode == ECataclysmMovementMode::Swap)
+	{
+		LeaveGroundAt(Start);
+	}
+
+	// AND THE ZONE A ROW GIVES A MOVEMENT SKILL THAT STATES NO GROUND, AT THE POINT LEFT, for every mode that
+	// reaches here: "your movement ability leaves a persistent AOE zone at both start and end locations". Ruled
+	// 2026-10-06. Nothing for a character with no row.
+	LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtStartAndEndSecondsStat, Start);
+
+	// Swept, so a leap into a wall stops at the wall rather than putting the
+	// character inside it, AND NOT REFUSED FOR STARTING ON THE FLOOR, issues #2203
+	// and #2505: a blink in the frame the player is placed moved 0 cm.
+	const FVector SelfWas = Self->GetActorLocation();
+	UCataclysmMovement::MoveWithoutSticking(Self, End - Self->GetActorLocation());
+	ArrivedAt = Self->GetActorLocation();
+
+	// A BLINK, A TRADE AND A RETURN ARE INSTANT RELOCATIONS; A LEAP AND A CHARGE TRAVEL, and stay counted as
+	// ground moved, which is the 2026-09-12 judgement that a movement skill that travels is movement. Issue #2388.
+	if (Params.MovementMode == ECataclysmMovementMode::Blink
+		|| Params.MovementMode == ECataclysmMovementMode::Swap
+		|| Params.MovementMode == ECataclysmMovementMode::Recall)
+	{
+		UCataclysmMovement::NoteRelocatedInstantly(Self, SelfWas);
+	}
+
+	EnemiesHit = Targets.Num();
+
+	// THE FIRE IS PUT OUT ON ARRIVAL, BEFORE THE BLOW. Flashpoint: "consuming
+	// their fire on arrival to burst for damage in a 3 meter radius and set
+	// alight everything the burst catches". The blow that follows re-lights what
+	// it damages, so consuming and then hitting delivers both halves in order.
+	// Inert for a movement skill that does not state `ConsumeBurn`.
+	const TArray<AActor*> Consumed = ConsumeBurnFrom(Targets);
+
+	// A CHARGE'S BLOW IS TOLD HOW FAR THE CHARGE WENT: from where it began to
+	// where it arrived, along the ground, as a walked charge's tally is
+	// measured. Ruled 2026-10-08. BY MODE AND NOT FOR EVERY MOVEMENT SKILL: a
+	// leap, a blink, a return and a trade are not charges, and their blows
+	// carry nothing. Where it ARRIVED and not where it aimed, so a charge
+	// stopped short by a wall is paid for the ground it covered.
+	//
+	// AND THE ALLIES FOUND ABOVE IN THE SAME ATTACK, after the enemies, for their share. Ruled 2026-10-15.
+	if (Params.MovementMode == ECataclysmMovementMode::Charge)
+	{
+		HitScaledAsACharge(Targets, Consumed,
+						   static_cast<float>(FVector::Dist2D(Start, ArrivedAt)), Allies);
+	}
+	else
+	{
+		HitScaledSharingWithAllies(Targets, Consumed, Allies);
+	}
+	IgniteAroundConsumed(Consumed);
+
+	// AND THE COOLDOWN COMES BACK IF THE ARRIVAL KILLED. The Axe's Emberhaul:
+	// "if the arrival kills them, the axe comes back ready to throw again."
+	//
+	// ASKED OF THE TARGETS THIS MOVE HIT, and not of any kill anywhere. The row
+	// says the ARRIVAL has to kill, so a creature that happened to die of a burn
+	// somewhere else does not return the axe.
+	//
+	// AFTER THE BLOW, because a target is not dead until it has been struck. The
+	// death is recorded by whatever the damage killed, which runs inside
+	// `HitScaled` above.
+	if (!Params.RefundsCooldown.IsEmpty())
+	{
+		for (AActor* Target : Targets)
+		{
+			// EITHER THE DEATH HAS BEEN RECORDED OR THE HEALTH HAS RUN OUT.
+			// Asking only whether it is marked dead ties this to the order in
+			// which the damage and the death path run, and a creature at no
+			// health has been killed by the arrival whichever of the two got
+			// there first.
+			if (UCataclysmSkillEffects::IsDead(Target) || AtNoHealth(Target))
+			{
+				RefundCooldown();
+				break;
+			}
+		}
+	}
+
+	// Cinder Rush's charge "leaves a trail of fire behind you", so the ground
+	// burns along the whole run. Infernal Plunge's leap leaves "a pool of lava"
+	// where it landed and Emberstep's blink burns "both points", so for those two
+	// the far end is a point and the ground there is a patch. The blink's other
+	// patch was already left at the start, above.
+	if (Params.MovementMode == ECataclysmMovementMode::Charge)
+	{
+		LeaveGroundAlong(Start, ArrivedAt);
+	}
+	else
+	{
+		LeaveGroundAt(ArrivedAt);
+	}
+
+	// AND A ROW'S ZONES WHERE IT ARRIVED: the end of "both start and end", and "charge skills leave a persistent
+	// AOE zone at the impact point". EACH ROW DOES WHAT ITS SENTENCE SAYS, so a charge skill under both leaves two
+	// zones here. Ruled 2026-10-06.
+	LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtStartAndEndSecondsStat, ArrivedAt);
+	LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtImpactSecondsStat, ArrivedAt);
+
+	// AND THREE MORE THINGS A ROW MAKES A MOVEMENT SKILL DO, each nothing for a character with no such row. Ruled
+	// 2026-10-07. AFTER THE SKILL'S OWN BLOW AND WHAT FOLLOWS FROM IT, so a kill one of these makes is not counted
+	// as the arrival's. THE PULL IS LAST, so who the two hits reach does not depend on whether the pull is worn.
+	HitAlongThePath(Start, ArrivedAt);
+	ExplodeAtBothEnds(Start, ArrivedAt);
+	PullNearbyToWhereItArrived();
+
+	// AND THE TERRAIN, WHERE IT LANDED. The Warhammer's Crater is the only
+	// Movement row that leaves any: "Rise and fall on a point up to 9 meters
+	// away, breaking the ground open into a pit 5 meters across."
+	//
+	// AT THE ARRIVAL AND NOT ALONG THE RUN, for every mode. A pit is a hole
+	// where the hammer came down, and no movement row leaves a wall -- which is
+	// the only kind whose two ends differ. Passing the arrival twice makes it the
+	// circle it is.
+	LeaveTerrainAlong(ArrivedAt, ArrivedAt);
+
+	EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+}
+
+bool UCataclysmMovementSkill::HasMark() const
+{
+	const UWorld* World = GetWorld();
+	return World && MarkExpiresAt > World->GetTimeSeconds();
+}
+
+void UCataclysmMovementSkill::FlickerOnce()
+{
+	AActor* Self = Avatar();
+	if (!Self || FlickerCircuit.Num() == 0)
+	{
+		return;
+	}
+
+	// THE NEXT ONE STILL STANDING, AND THE SEARCH GIVES UP AFTER A FULL LAP. A
+	// flicker that has killed everything it found keeps its four seconds of
+	// safety and simply stops moving, which is why this returns quietly rather
+	// than ending the ability: the untargetability is half of what the row paid
+	// for.
+	const int32 Count = FlickerCircuit.Num();
+	for (int32 Tried = 0; Tried < Count; ++Tried)
+	{
+		AActor* Next = FlickerCircuit[NextInCircuit].Get();
+		NextInCircuit = (NextInCircuit + 1) % Count;
+
+		if (!IsValid(Next) || UCataclysmSkillEffects::IsDead(Next))
+		{
+			continue;
+		}
+
+		// AT THE CREATURE'S FEET AND AT THE CASTER'S OWN HEIGHT, which is the
+		// arrangement `ConditionalDestination` uses and for the same two
+		// reasons: `SetActorLocation` sweeps, so aiming inside the creature's
+		// collision stops the caster short of it; and taking the creature's
+		// height would drop a character through the floor when it arrived at
+		// something standing lower.
+		const FVector Feet(Next->GetActorLocation().X,
+						   Next->GetActorLocation().Y,
+						   Self->GetActorLocation().Z);
+		const FVector SelfWas = Self->GetActorLocation();
+		UCataclysmMovement::MoveWithoutSticking(Self, Feet - Self->GetActorLocation());
+		ArrivedAt = Self->GetActorLocation();
+
+		// EACH ARRIVAL OF A FLICKER IS AN INSTANT RELOCATION. Issue #2388.
+		UCataclysmMovement::NoteRelocatedInstantly(Self, SelfWas);
+		++Arrivals;
+
+		// ONE CREATURE PER ARRIVAL. "Striking each from behind as you arrive" is
+		// one blow at the one it arrived at, not a sweep of whatever is nearby.
+		//
+		// AND IT COUNTS AS A REAR HIT WITHOUT THIS FUNCTION SAYING SO. The row's
+		// `RearHits=1` is read in `HitTargets`, which is also where the burn
+		// rider fires, so both halves of "striking each from behind ... and
+		// setting them alight" are handled by the blow rather than here.
+		TArray<AActor*> One;
+		One.Add(Next);
+		HitScaled(One, TArray<AActor*>());
+
+		return;
+	}
+}
+
+const UCataclysmMovementSkill* UCataclysmMovementSkill::RunningAdvanceOn(
+	const AActor* Who)
+{
+	const UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Who);
+	if (!AbilitySystem)
+	{
+		return nullptr;
+	}
+
+	for (const FGameplayAbilitySpec& Spec : AbilitySystem->GetActivatableAbilities())
+	{
+		if (!Spec.IsActive())
+		{
+			continue;
+		}
+
+		const UCataclysmMovementSkill* Running =
+			Cast<UCataclysmMovementSkill>(Spec.GetPrimaryInstance());
+
+		// A LASTING CHARGE AND NOTHING ELSE. Every other movement mode ends in
+		// the frame it activates, so it could never be found here anyway; the
+		// two tests are what say this asks about a charge rather than about
+		// having a Movement skill at all.
+		if (Running
+			&& Running->Params.MovementMode == ECataclysmMovementMode::Charge
+			&& Running->Params.Duration > 0.0f)
+		{
+			return Running;
+		}
+	}
+
+	return nullptr;
+}
+
+bool UCataclysmMovementSkill::IsBeingWalkedByASkill(const AActor* Who)
+{
+	return RunningAdvanceOn(Who) != nullptr;
+}
+
+FVector UCataclysmMovementSkill::AdvanceDirectionFor(const AActor* Who)
+{
+	const UCataclysmMovementSkill* Running = RunningAdvanceOn(Who);
+	return Running ? Running->Advance : FVector::ZeroVector;
+}
+
+void UCataclysmMovementSkill::BeginAdvance(const FVector& Start)
+{
+	AActor* Self = Avatar();
+	UWorld* World = GetWorld();
+	if (!Self || !World)
+	{
+		EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+				   GetCurrentActivationInfo(), true, true);
+		return;
+	}
+
+	StepsTaken = 0;
+	WalkedCm = 0.0f;
+	EnemiesHit = 0;
+	StruckAlready.Reset();
+	ArrivedAt = Start;
+
+	// THE DIRECTION, TAKEN ONCE. `AimedPointWithin` is what every other movement
+	// mode uses to find where the player pointed, and taking it here rather than
+	// on each step is the whole of "cannot be turned aside".
+	//
+	// FLATTENED, so an advance does not walk into the floor or the sky when the
+	// cursor lands on ground above or below the caster.
+	FVector Facing = AimedPointWithin(ScaledRangeCm()) - Start;
+	Facing.Z = 0.0f;
+	Advance = Facing.GetSafeNormal();
+
+	if (Advance.IsNearlyZero())
+	{
+		// Nowhere to walk. With no player controller there is no cursor, so
+		// `AimedPointWithin` falls back to the caster's own facing, which is why
+		// this is rare rather than ordinary -- but a caster with no facing at all
+		// would otherwise walk on the spot for three seconds.
+		Advance = Self->GetActorForwardVector();
+		Advance.Z = 0.0f;
+		Advance = Advance.GetSafeNormal();
+	}
+
+	// AND A ROW MAY SEND THE WALK IN A RANDOM DIRECTION, as it does a move that arrives at once. Ruled 2026-10-07.
+	// Rolled once, here, and never again: the walk still cannot be turned aside.
+	FVector RolledWay;
+	if (RolledDirection(RolledWay))
+	{
+		Advance = RolledWay;
+	}
+
+	// HOW FAR EACH STEP GOES. `Range` is how far the advance travels in total and
+	// `Duration` is how long it takes, so the two together are its speed, and the
+	// row states both. Inexorable's fourteen metres in one and a half seconds is
+	// 9.3 metres a second, a little over twice a Ravager's 4.6 metre walk.
+	SpeedCmPerSecond = ScaledRangeCm() / Params.Duration;
+	LastSearchedFrom = Start;
+
+	// THE ENGINE MOVES THE CHARACTER, AND THIS SKILL USED TO DO IT ITSELF. Until
+	// 2026-09-02 `AdvanceOneStep` teleported the character 46.7cm at a time with
+	// `SetActorLocation`, ten times a second. The project owner played it and
+	// reported "a jerky set of steps, and the character is just sliding". Both
+	// halves of that follow from the same cause: the camera follows a position
+	// that only changed ten times a second against sixty rendered frames, and the
+	// walk animation is driven by the movement component's velocity, which a
+	// teleport never writes. Issue #1169.
+	//
+	// A ROOT MOTION SOURCE IN `Override` MODE, WHICH IS WHAT "CANNOT BE TURNED
+	// ASIDE" MEANS TO A MOVEMENT COMPONENT. It replaces the character's velocity
+	// rather than adding to it, so the player's own input decides nothing while
+	// it runs -- the same sentence the player controller's `PawnCannotWalk`
+	// enforces on the input side, now true of the movement itself as well.
+	//
+	// THE STRENGTH IS A SPEED. `FRootMotionSource_ConstantForce` multiplies the
+	// direction by it and the accumulate mode is Override, so the character
+	// travels at exactly this many centimetres a second for exactly this long:
+	// `Range` over `Duration`, and then `Range` again.
+	//
+	// IT STOPS DEAD AT THE END rather than sliding on, because the row's own
+	// sentence is about being unable to stop until it is over.
+	//
+	// NOTHING HAPPENS FOR AN ACTOR WITH NO CHARACTER MOVEMENT COMPONENT, and the
+	// engine's own task checks for one. That is every caster an automation test
+	// builds, which is why the tests move their fighters by hand.
+	if (UAbilityTask_ApplyRootMotionConstantForce* Push =
+			UAbilityTask_ApplyRootMotionConstantForce::ApplyRootMotionConstantForce(
+				this, FName(TEXT("CataclysmAdvance")), Advance,
+				SpeedCmPerSecond, Params.Duration, /*bIsAdditive=*/false,
+				/*StrengthOverTime=*/nullptr,
+				ERootMotionFinishVelocityMode::SetVelocity,
+				/*SetVelocityOnFinish=*/FVector::ZeroVector,
+				/*ClampVelocityOnFinish=*/0.0f, /*bEnableGravity=*/false))
+	{
+		// REQUIRED FROM C++ AND NOT FROM A BLUEPRINT. `NewAbilityTask` builds the
+		// task; nothing registers it or starts it ticking until this is called,
+		// and the Blueprint node does it for you.
+		Push->ReadyForActivation();
+	}
+
+	World->GetTimerManager().SetTimer(
+		AdvanceTimer, this, &UCataclysmMovementSkill::AdvanceOneStep,
+		SecondsPerAdvanceStep, /*bLoop=*/true,
+		/*InFirstDelay=*/SecondsPerAdvanceStep);
+
+	// IN A MEMBER, so `EndAbility` can clear it by name. See `StopTimer`.
+	World->GetTimerManager().SetTimer(
+		StopTimer, this, &UCataclysmMovementSkill::FinishAdvance,
+		Params.Duration, /*bLoop=*/false);
+}
+
+void UCataclysmMovementSkill::EndAbility(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	bool bReplicateEndAbility, bool bWasCancelled)
+{
+	// A MOVE CUT SHORT STOPS WHERE IT IS, BY NAME. Ruled 2026-10-08.
+	// `AdvanceTimer` strikes what a walk has passed through, ten times a
+	// second; `FlickerTimer` makes a flicker's next arrival; `StopTimer` ends
+	// either at its `Duration`, and for a walk that end is `FinishAdvance`: the
+	// ground along the walk, a row's zones, its explosions and its pull. A move
+	// a hit interrupts does none of them.
+	//
+	// THE ENGINE CLEARS THEM AS WELL, as `UCataclysmStrikeSkill::EndAbility`
+	// says of its own, and this does not lean on that. An ordinary end is
+	// `FinishAdvance` or `FinishFlicker`, called by `StopTimer` itself after it
+	// has cleared the repeating one, so there is nothing left for these to stop.
+	//
+	// THE WALK ITSELF IS STOPPED BY THE ENGINE AND NOT HERE.
+	// `UGameplayAbility::EndAbility` tells every task of the ability that its
+	// owner has ended, and `UAbilityTask_ApplyRootMotionConstantForce::OnDestroy`
+	// then removes its root motion source from the movement component. The
+	// source was made with `ERootMotionFinishVelocityMode::SetVelocity` and a
+	// velocity of nought, which the movement component applies when it removes
+	// a source, so the character is left standing where the push had carried it
+	// rather than sliding on.
+	//
+	// EVERY OTHER MODE ARRIVES IN THE CALL THAT USED IT and is never found
+	// running between two calls, so there is nothing of theirs to stop.
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(AdvanceTimer);
+		World->GetTimerManager().ClearTimer(FlickerTimer);
+		World->GetTimerManager().ClearTimer(StopTimer);
+	}
+
+	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility,
+					  bWasCancelled);
+}
+
+void UCataclysmMovementSkill::AdvanceOneStep()
+{
+	AActor* Self = Avatar();
+	if (!Self || SpeedCmPerSecond <= 0.0f)
+	{
+		return;
+	}
+
+	// WHERE THE CHARACTER WAS WHEN THIS LAST RAN, AND WHERE IT IS NOW. The
+	// movement component has been moving it every frame in between; this asks how
+	// far it got rather than deciding it. See the header.
+	//
+	// THE DISTANCE IS THE GROUND ACTUALLY COVERED, which is what keeps it honest:
+	// a charge held against a wall covers none, so it adds nothing to the tally
+	// and grows no stronger. That was true before and it is true for a better
+	// reason now, because the movement component is what stopped against the
+	// wall.
+	const FVector Before = LastSearchedFrom;
+	const FVector After = Self->GetActorLocation();
+	LastSearchedFrom = After;
+
+	WalkedCm += static_cast<float>(FVector::Dist2D(Before, After));
+	ArrivedAt = After;
+	++StepsTaken;
+
+	// "THROWING ASIDE AND SETTING ALIGHT EVERYTHING YOU PASS THROUGH." The line
+	// from where the last search ended to where the character is now, at the
+	// skill's own radius, so nothing between two searches is missed however far
+	// the character travelled in between.
+	TArray<AActor*> Caught;
+	for (AActor* One : UCataclysmTargeting::FindEnemiesInLine(
+			GetWorld(), Self, Before, After, ScaledRadiusCm()))
+	{
+		// NOTHING IS STRUCK TWICE, WHICH IS THE ONE THING A CHARGE NEEDS AND AN
+		// ARRIVAL DOES NOT. A creature standing beside the path would otherwise
+		// be hit on every one of a charge's searches.
+		if (StruckAlready.Contains(One))
+		{
+			continue;
+		}
+
+		StruckAlready.Add(One);
+		Caught.Add(One);
+	}
+
+	if (Caught.IsEmpty())
+	{
+		return;
+	}
+
+	EnemiesHit += Caught.Num();
+
+	// AND THE BLOW GROWS WITH THE DISTANCE ALREADY WALKED. "The further you
+	// walked, the harder it hits", written as `MoreDamagePer=3;
+	// ScalingSource=Meter`. `HitScaled` reads the skill's own damage percent, so
+	// the multiplier is applied to that rather than to the character.
+	//
+	// AND THE BLOW IS TOLD THE WALK SO FAR, which is `WalkedCm` with this
+	// step's ground already added above. Ruled 2026-10-08: not the whole walk,
+	// and no blow is held back until the walk ends. An enemy met early is
+	// struck with a small share of the range behind the blow and one met at
+	// the end with nearly all of it.
+	HitScaledAsACharge(Caught, TArray<AActor*>(), WalkedCm);
+
+	// AND THE HIT A ROW GIVES EVERYTHING ON THE PATH, once each: `Caught` holds only what no earlier step struck.
+	// Ruled 2026-10-07.
+	HitWhatThePathCrossed(Caught);
+}
+
+void UCataclysmMovementSkill::FinishAdvance()
+{
+	// THE STEP TIMER IS STOPPED BEFORE THE ABILITY ENDS, not left to
+	// `EndAbility`. A looping timer on an object the engine keeps alive would go
+	// on walking the character after the skill was over, for ever, because
+	// nothing else clears it.
+	if (const UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(AdvanceTimer);
+	}
+
+	// THE GROUND IS LEFT ALONG THE WHOLE WALK RATHER THAN AT EITHER END, which is
+	// what a charge already does and what "leave a trail of fire behind you"
+	// means for the rows that state one. Inexorable states none, so this is idle
+	// for it and correct for whatever states one next.
+	LeaveGroundAlong(ArrivedAt - Advance * WalkedCm, ArrivedAt);
+
+	// AND A ROW'S ZONES, WHERE THE WALK BEGAN AND WHERE IT ENDED, as the arrival of an instant move leaves them.
+	// Ruled 2026-10-06.
+	LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtStartAndEndSecondsStat, ArrivedAt - Advance * WalkedCm);
+	LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtStartAndEndSecondsStat, ArrivedAt);
+	LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtImpactSecondsStat, ArrivedAt);
+
+	// AND A ROW'S EXPLOSIONS AND ITS PULL, where the walk began and where it ended, as an instant move makes them.
+	// Ruled 2026-10-07.
+	ExplodeAtBothEnds(ArrivedAt - Advance * WalkedCm, ArrivedAt);
+	PullNearbyToWhereItArrived();
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("'%s' advanced %.0fcm over %d steps and struck %d."),
+		*SkillName, WalkedCm, StepsTaken, EnemiesHit);
+
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+			   GetCurrentActivationInfo(), true, false);
+}
+
+void UCataclysmMovementSkill::FinishFlicker()
+{
+	// THE REPEAT IS STOPPED BEFORE THE ABILITY ENDS, not left to `EndAbility`.
+	// A looping timer on an object the engine keeps alive would go on arriving
+	// after the skill was over, for ever, because nothing else clears it.
+	if (const UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(FlickerTimer);
+	}
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("'%s' made %d arrivals among %d enemies."),
+		*SkillName, Arrivals, FlickerCircuit.Num());
+
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+			   GetCurrentActivationInfo(), true, false);
+}
+
+// ==========================================================================
+// Deployable -- Bolt Turret, Ballista, Iron Fortress
+// ==========================================================================
+
+int32 UCataclysmDeployableSkill::LivingDeployedCount()
+{
+	// DESTROYED OR DEAD, as `LivingMinionCount` below has counted since issue
+	// #1957. Found while making issue #1528 and fixed under the ruling of
+	// 2026-09-30: this dropped only destroyed gadgets, so a dead one held its
+	// place under the cap until its body was removed.
+	Deployed.RemoveAll([](const TObjectPtr<ACataclysmMinion>& Machine)
+	{
+		return !IsValid(Machine) || UCataclysmSkillEffects::IsDead(Machine);
+	});
+	return Deployed.Num();
+}
+
+ACataclysmMinion* UCataclysmDeployableSkill::DeployOne(const FString& InTypeName)
+{
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		return nullptr;
+	}
+
+	// THE CAP STOPS PLACING RATHER THAN REPLACING. Summon Imp destroys its
+	// oldest to make room and says so in its description; none of the three
+	// deployable skills says anything of the kind, so reaching the cap here
+	// simply means nothing more goes down.
+	const int32 DeployCap = MinionCapFor(Avatar(), Params, SkillTags);
+	if (DeployCap > 0 && LivingDeployedCount() >= DeployCap)
+	{
+		return nullptr;
+	}
+
+	// A deployable with no Duration is not permanent, it is undesigned. Twenty
+	// seconds matches what the summon template uses for the same case, so an
+	// undesigned row behaves the same way whichever shape it names.
+	const float Lifetime = Params.Duration > 0.0f ? Params.Duration : 20.0f;
+
+	ACataclysmMinion* Machine = ACataclysmMinion::Spawn(
+		Self, DeployLocation, Lifetime, Params.bBurns, InTypeName,
+		Params.MinionHealthPercent);
+
+	if (Machine)
+	{
+		Deployed.Add(Machine);
+
+		// A GADGET RESERVES NOTHING IN THIS BUILD, ruled 2026-09-30: gadgets are
+		// War skills and the owner's mandate is no War work yet, so #1934 stays
+		// open for them. Their rows already state `FervourReserve`, so building
+		// it is this one line, with a fit check before the spawn like Summon
+		// Imp's:  Machine->ReservedFervour = FervourReserveFor(Self, Params, SkillTags);
+	}
+	return Machine;
+}
+
+void UCataclysmDeployableSkill::ActivateAbility(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	const FGameplayEventData* TriggerEventData)
+{
+	if (!CommitAndBegin(Handle, ActorInfo, ActivationInfo))
+	{
+		return;
+	}
+
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
+
+	// PUT DOWN WHERE IT WAS AIMED, WHICH IS THE POINT OF THE SHAPE. A deployable
+	// with no Range goes at the caster's feet, which is what a spike trap laid
+	// underfoot would be.
+	DeployLocation = Params.RangeCm > 0.0f
+		? AimedPointWithin(ScaledRangeCm())
+		: Self->GetActorLocation();
+
+	// EVERY KIND THE ROW NAMES, NOT JUST THE FIRST. Iron Fortress writes
+	// `Ballista:2, SpikeTrap:3`, and placing only ballistae would be a fortress
+	// missing three fifths of itself with nothing to report it.
+	//
+	// COUNT IS NOT MULTIPLIED IN. The Minions parameter already says how many of
+	// each kind. Bolt Turret writes `Count=1` and `Minions=BoltTurret:1`, which
+	// is the same number said twice; multiplying them would deploy one turret
+	// per turret and quietly double anything that stated both.
+	int32 Placed = 0;
+	for (const FCataclysmMinionSpawn& Kind : Params.Minions)
+	{
+		for (int32 Index = 0; Index < Kind.Count; ++Index)
+		{
+			if (DeployOne(Kind.Type))
+			{
+				++Placed;
+			}
+		}
+	}
+
+	if (Placed == 0)
+	{
+		// Names nothing, or the cap was already full. Verbose rather than a
+		// warning: a player pressing a deployable key with its cap full is an
+		// ordinary event, and a row that names nothing is refused by the
+		// generator before it reaches here.
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' deployed nothing."), *SkillName);
+	}
+
+	// DELIBERATELY NOT ENDED WITH bWasCancelled. The ability instance holds the
+	// list of what is out, and the cap only works if the same instance is used
+	// next time, which InstancedPerActor guarantees.
+	EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+}
+
+// ==========================================================================
+// Summon -- Summon Imp, Open the Rift
+// ==========================================================================
+
+int32 UCataclysmSummonSkill::LivingMinionCount()
+{
+	// DESTROYED OR DEAD. Issue #1957: a dead minion's body stays in the level
+	// until its lifespan ends, and while it did it held a slot, so a summon at
+	// the cap could explode a LIVING minion while a corpse went on counting. A
+	// corpse leaves the list the moment it dies; the body itself is removed half
+	// a second later since issue #1528, by `ACataclysmMinion::HandleDeath`.
+	Minions.RemoveAll([](const TObjectPtr<ACataclysmMinion>& Minion)
+	{
+		return !IsValid(Minion) || UCataclysmSkillEffects::IsDead(Minion);
+	});
+	return Minions.Num();
+}
+
+TArray<ACataclysmMinion*> UCataclysmSummonSkill::MinionsSharingTheCap()
+{
+	LivingMinionCount();
+	const FString SummonedType =
+		Params.Minions.IsEmpty() ? FString() : Params.Minions[0].Type;
+	TArray<ACataclysmMinion*> Sharing =
+		UCataclysmCommand::MinionsOfTypeCommandedBy(Avatar(), SummonedType);
+	for (const TObjectPtr<ACataclysmMinion>& Own : Minions)
+	{
+		Sharing.AddUnique(Own.Get());
+	}
+	Sharing.Sort([](const ACataclysmMinion& A, const ACataclysmMinion& B)
+	{
+		return A.SpawnOrder < B.SpawnOrder;
+	});
+	return Sharing;
+}
+
+int32 UCataclysmSummonSkill::CapFor(const AActor* Summoner,
+									const FCataclysmSkillShapeParams& SkillParams,
+									const FGameplayTagContainer& SummonTags)
+{
+	return MinionCapFor(Summoner, SkillParams, SummonTags);
+}
+
+const TCHAR* UCataclysmSummonSkill::ReplacedOnDeathStat =
+	TEXT("minion_death_replaced_every_seconds");
+const TCHAR* UCataclysmSummonSkill::ReplacedOnExplosionStat =
+	TEXT("minion_explosion_replaced_every_seconds");
+const TCHAR* UCataclysmSummonSkill::ResummonedAfterSecondsStat =
+	TEXT("minion_resummoned_after_seconds");
+
+bool UCataclysmSummonSkill::ScheduleResummon(AActor* Commander, UCataclysmSummonSkill* Skill)
+{
+	UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Commander));
+	UWorld* World = Commander ? Commander->GetWorld() : nullptr;
+	if (!Theirs || !World || !Skill || Skill->Params.bPossess
+		|| UCataclysmSkillEffects::IsDead(Commander))
+	{
+		return false;
+	}
+	const float After = Theirs->StatForSkill(
+		FName(ResummonedAfterSecondsStat), FGameplayTagContainer(), 0.0f);
+	if (After <= 0.0f)
+	{
+		return false;
+	}
+
+	FTimerManager& Timers = World->GetTimerManager();
+	Theirs->PendingResummons.RemoveAll(
+		[&Timers](const FTimerHandle& Handle) { return !Timers.IsTimerActive(Handle); });
+
+	// WEAK TO BOTH, so a summoner or a skill gone by the end of the wait leaves
+	// a wait that does nothing rather than one that reaches for freed memory.
+	const TWeakObjectPtr<AActor> WeakCommander(Commander);
+	const TWeakObjectPtr<UCataclysmSummonSkill> WeakSkill(Skill);
+	FTimerHandle Handle;
+	Timers.SetTimer(Handle, FTimerDelegate::CreateLambda([WeakCommander, WeakSkill]()
+	{
+		ResummonNow(WeakCommander.Get(), WeakSkill.Get());
+	}), After, /*bLoop=*/false);
+	Theirs->PendingResummons.Add(Handle);
+	return true;
+}
+
+ACataclysmMinion* UCataclysmSummonSkill::ResummonNow(AActor* Commander,
+													 UCataclysmSummonSkill* Skill)
+{
+	if (!IsValid(Commander) || !IsValid(Skill) || UCataclysmSkillEffects::IsDead(Commander))
+	{
+		return nullptr;
+	}
+	// `SummonReplacementAt` REFUSES AT THE CAP AND WHEN THE RESERVE HAS NO ROOM,
+	// which is the ruling: no room when the wait ends means no minion.
+	return Skill->SummonReplacementAt(
+		Commander->GetActorLocation() + Commander->GetActorForwardVector() * ResummonDistanceCm);
+}
+
+ACataclysmMinion* UCataclysmSummonSkill::SummonReplacementAt(const FVector& Location)
+{
+	AActor* Self = Avatar();
+	if (!Self || Params.bPossess)
+	{
+		return nullptr;
+	}
+
+	// THE SHARED COUNT, issue #1479: a risen imp holds a place here too.
+	const int32 SummonCap = MinionCapFor(Self, Params, SkillTags);
+	if (SummonCap > 0 && MinionsSharingTheCap().Num() >= SummonCap)
+	{
+		return nullptr;
+	}
+
+	// A REPLACEMENT RESERVES WHAT ITS SKILL STATES, ruled 2026-09-30: "at no
+	// cost" is the cast, and the row's reserve is held while the minion is out.
+	// The lost one has already left the total, so this normally fits; when the
+	// maximum fell meanwhile, nothing is summoned.
+	const float Reserve = FervourReserveFor(Self, Params, SkillTags);
+	if (!UCataclysmCommand::HasRoomToReserve(Self, Reserve))
+	{
+		return nullptr;
+	}
+
+	const float Lifetime = Params.Duration > 0.0f ? Params.Duration : 20.0f;
+	const FString SummonedType =
+		Params.Minions.IsEmpty() ? FString() : Params.Minions[0].Type;
+
+	ACataclysmMinion* Minion = ACataclysmMinion::Spawn(
+		Self, Location, Lifetime, Params.bBurns, SummonedType);
+	if (Minion)
+	{
+		Minion->RecordExplosionRadius(Params.RadiusCm);
+		Minion->SummonedBy = this;
+		Minions.Add(Minion);
+		Minion->ReservedFervour = Reserve;
+		UCataclysmCommand::ClampFervourToSpendable(Self);
+	}
+	return Minion;
+}
+
+ACataclysmMinion* UCataclysmSummonSkill::ReplaceLost(AActor* Commander,
+													 AActor* Lost,
+													 const FVector& Where,
+													 bool bExploded)
+{
+	UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Commander));
+	if (!Theirs)
+	{
+		return nullptr;
+	}
+
+	// WHICH SUMMON SKILL'S KIND. The one that made the lost minion; failing
+	// that -- a thrall, or a skill since taken away -- the first the commander
+	// holds that summons anything.
+	UCataclysmSummonSkill* Skill = nullptr;
+	if (const ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Lost))
+	{
+		Skill = Minion->SummonedBy.Get();
+	}
+	if (!Skill)
+	{
+		Skill = FirstHeldSummonSkill(Commander);
+	}
+	if (!Skill)
+	{
+		return nullptr;
+	}
+
+	// PRESS-GANGED FIRST, THEN REKINDLED FOR AN EXPLOSION, AND ONE AT MOST.
+	const auto Try = [&](bool bForExplosion) -> ACataclysmMinion*
+	{
+		const float Every = Theirs->StatForSkill(
+			FName(bForExplosion ? ReplacedOnExplosionStat : ReplacedOnDeathStat),
+			FGameplayTagContainer(), 0.0f);
+		if (Every <= 0.0f || !Theirs->MayReplaceMinion(bForExplosion))
+		{
+			return nullptr;
+		}
+		ACataclysmMinion* Made = Skill->SummonReplacementAt(Where);
+		if (Made)
+		{
+			Theirs->NoteMinionReplaced(bForExplosion, Every);
+		}
+		return Made;
+	};
+
+	if (ACataclysmMinion* Made = Try(/*bForExplosion=*/false))
+	{
+		return Made;
+	}
+	return bExploded ? Try(/*bForExplosion=*/true) : nullptr;
+}
+
+UCataclysmSummonSkill* UCataclysmSummonSkill::FirstHeldSummonSkill(AActor* Commander)
+{
+	UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Commander);
+	if (!Theirs)
+	{
+		return nullptr;
+	}
+	for (const FGameplayAbilitySpec& Spec : Theirs->GetActivatableAbilities())
+	{
+		UCataclysmSummonSkill* Held = Cast<UCataclysmSummonSkill>(Spec.GetPrimaryInstance());
+		if (Held && !Held->Params.bPossess)
+		{
+			return Held;
+		}
+	}
+	return nullptr;
+}
+
+const TCHAR* UCataclysmSummonSkill::KillSpawnsMinionStat = TEXT("minion_kill_spawns_minion");
+
+ACataclysmMinion* UCataclysmSummonSkill::SpawnOneAtAKill(AActor* Killer, const FVector& Where)
+{
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Killer));
+	// NOTHING FOR A DEAD KILLER, as `ResummonNow` makes nothing for a dead summoner: a damage over time tick can kill
+	// after its applier has died.
+	if (!Theirs || !IsValid(Killer) || UCataclysmSkillEffects::IsDead(Killer)
+		|| Theirs->StatForSkill(FName(KillSpawnsMinionStat), FGameplayTagContainer(), 0.0f) <= 0.0f)
+	{
+		return nullptr;
+	}
+	UCataclysmSummonSkill* Skill = FirstHeldSummonSkill(Killer);
+	return Skill ? Skill->SummonReplacementAt(Where) : nullptr;
+}
+
+bool UCataclysmSummonSkill::Possess()
+{
+	bTookIt = false;
+	bRefusedForRoom = false;
+
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		// EVERY REFUSAL IN THIS FUNCTION SAYS WHY, INCLUDING THE ONES THAT SHOULD
+		// NOT HAPPEN. Issue #1519: three of the five exits returned false in
+		// silence, so a verbose run and a console command together still could not
+		// say which of them a failing cast took. The two that did log were the two
+		// that were ruled out, which left the real cause unnamed.
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' ran with no avatar, so it searched for nothing."),
+			*SkillName);
+		return false;
+	}
+
+	// ONE ENEMY, WITHIN THE ROW'S RANGE OF THE CASTER, THE ONE NEAREST WHERE THE
+	// PLAYER IS POINTING. Issue #1529. Subjugate states `MaxTargets=1` and "an
+	// enemy up to 15 meters away".
+	//
+	// THE DEBUFF TEMPLATE'S RULE, COPIED. `UCataclysmDebuffSkill::ActivateAbility`
+	// gives the reasons: a small circle at the aim point took nobody when the
+	// cursor was a metre off an enemy, and with no cursor at all the aim ran out
+	// to the full range and found empty ground. Range bounds who can be reached
+	// and the cursor only decides which of those is taken. This searched a
+	// three metre circle at the aim point until 2026-10-02, so a cast at ground
+	// beside an enemy took nobody.
+	//
+	// THE GENRE AGREES ON WHAT, NOT ON HOW. Diablo 2's Conversion and Path of
+	// Exile's Dominating Blow both act on the enemy the player's own attack
+	// hits; this game aims at the ground under the cursor, so "the enemy
+	// pointed at" is turned into "the enemy nearest the cursor". A judgement,
+	// ruled by the coordinating session; `docs/DECISIONS.md` has the sources.
+	TArray<AActor*> Targets = UCataclysmTargeting::FindEnemiesInSphere(
+		GetWorld(), Self, Self->GetActorLocation(), ScaledRangeCm());
+
+	const FVector Aim = AimPoint();
+	Targets.Sort([&Aim](const AActor& A, const AActor& B)
+	{
+		return FVector::DistSquared(A.GetActorLocation(), Aim)
+			 < FVector::DistSquared(B.GetActorLocation(), Aim);
+	});
+
+	const int32 Cap = FMath::Max(1, Params.MaxTargets);
+	if (Targets.Num() > Cap)
+	{
+		Targets.SetNum(Cap);
+	}
+
+	if (Targets.IsEmpty())
+	{
+		// Nobody within range. The skill was spent, which is the same answer
+		// every other aimed skill gives for a miss.
+		//
+		// IT NAMES THE SIZE OF WHAT IT SEARCHED, WHICH IS THE WHOLE POINT OF THE
+		// LINE. Issue #1519 was a search that ran at a size of zero and could
+		// take nobody, and a miss and a search of no size are the same silence
+		// without the number. Since issue #1529 the size is the range.
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' found no enemy within %.0fcm of the caster, so it took "
+				 "nobody."),
+			*SkillName, ScaledRangeCm());
+		return false;
+	}
+
+	AActor* Target = Targets[0];
+
+	// THE BLOW FIRST, AND EVERYTHING ABOUT WHETHER IT CAN BE TAKEN IS JUDGED
+	// AFTER IT. "If the BLOW LEAVES IT below half health you take it
+	// permanently": the health that matters is what is left when the damage has
+	// landed, not what it had when the skill was pressed. `HitTargets` also
+	// carries the row's `Burn=1`, so "setting it alight" comes with it.
+	HitTargets(Targets);
+
+	// THE THRESHOLD IS A SHARE OF MAXIMUM HEALTH, the same reading the stun's
+	// threshold takes and for the same reason: what matters is whether the blow
+	// was a real blow for that creature, and a Common enemy and a Rare one do not
+	// have the same numbers.
+	const UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Target);
+	if (!AbilitySystem)
+	{
+		// THE BLOW HAS ALREADY LANDED BY HERE, so this is not a miss: it is a
+		// creature whose health cannot be read at all. Worth naming, because it
+		// looks exactly like the health threshold refusing from outside.
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' hit '%s', which has no ability system, so its health could "
+				 "not be read and it could not be taken."),
+			*SkillName, *Target->GetName());
+		return false;
+	}
+
+	const float Health = AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetHealthAttribute());
+	const float MaxHealth = AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+
+	// AND WHAT THIS CHARACTER'S OWN PASSIVES ADD TO THAT THRESHOLD. Issue #1718.
+	// `Ritualist_keystone_a_kA` Dominion is the node: "A blow that leaves a
+	// target below 65% health can take it, rather than below half."
+	//
+	// ADDED TO THE ROW'S FIGURE RATHER THAN REPLACING IT, which is the whole
+	// reason the stat is a bonus starting at zero. The row above states 50 and is
+	// the only place that number appears; a stat holding 50 of its own would
+	// state it twice and win, so re-tuning the row would silently do nothing.
+	//
+	// READ WITH THIS SKILL'S OWN TAGS, so a future row scoped to a keyword counts
+	// only for the skills it names. This is the same shape
+	// `UCataclysmAilments::ChancesFor` uses for its eleven chances: ask the
+	// component, pass the attribute's value as the fallback, and let
+	// `StatForSkill` answer with that whenever nothing was recorded -- which is
+	// the right answer for an enemy and for a character before its first refresh.
+	//
+	// THE THRESHOLD IS NOT CAPPED HERE. Nothing else grants this stat and one
+	// keystone taken once reads 65; a ceiling invented now would be a number the
+	// design states nowhere. `docs/DECISIONS.md` records that, so a second source
+	// arriving is a decision somebody makes rather than a surprise.
+	float ThresholdBonus = 0.0f;
+	if (const UCataclysmAbilitySystemComponent* Mine =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Self)))
+	{
+		const FGameplayAttribute Stat =
+			UCataclysmCombatAttributeSet::GetPossessionThresholdBonusAttribute();
+
+		// THE CHECK IS NOT OPTIONAL. Reading an attribute whose set the component
+		// does not hold raises an engine ensure rather than answering zero, and a
+		// test may build a component without the combat set.
+		if (Mine->HasAttributeSetForAttribute(Stat))
+		{
+			ThresholdBonus = Mine->StatForSkill(
+				FName(UCataclysmCommand::PossessionThresholdBonusStat),
+				SkillTags, Mine->GetNumericAttribute(Stat));
+		}
+	}
+
+	const float ThresholdPercent = Params.HealthThresholdPercent + ThresholdBonus;
+
+	if (MaxHealth <= 0.0f
+		|| Health > MaxHealth * ThresholdPercent / 100.0f)
+	{
+		// IT SURVIVED TOO WELL. The row makes this the ordinary outcome against
+		// anything healthy, which is what stops Subjugate being a button that
+		// takes whatever it is pointed at.
+		//
+		// THE COMBINED THRESHOLD AND NOT THE ROW'S OWN FIGURE. This line reported
+		// `Params.HealthThresholdPercent` while the comparison above used it too,
+		// and the two parted company when the passive bonus was added. A
+		// diagnostic naming a number the code did not use is worse than none,
+		// because it is read as the reason for the refusal.
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' left '%s' at %.0f of %.0f health, above the %.0f%% it "
+				 "must be under to be taken (%.0f%% from the row and %.0f%% from "
+				 "this character)."),
+			*SkillName, *Target->GetName(), Health, MaxHealth, ThresholdPercent,
+			Params.HealthThresholdPercent, ThresholdBonus);
+		return false;
+	}
+
+	// AND THE POOL HAS TO HAVE ROOM. "Holding a thrall reserves 30 Fervour, so
+	// your army is only as large as your pool." Asked before the taking rather
+	// than after, so a refusal leaves the creature exactly as the blow left it
+	// rather than taking it and giving it back.
+	if (!UCataclysmCommand::HasRoomForAnotherThrall(
+			Self, FervourReserveFor(Self, Params, SkillTags)))
+	{
+		bRefusedForRoom = true;
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' has no room for another thrall at %.0f reserved each, so "
+				 "'%s' was left where it was."),
+			*SkillName, FervourReserveFor(Self, Params, SkillTags),
+			*Target->GetName());
+		return false;
+	}
+
+	bTookIt = UCataclysmCommand::Subjugate(Self, Target);
+	if (bTookIt)
+	{
+		// THE THRALL NOW HOLDS ITS SHARE OF THE POOL BACK, and the spendable
+		// Fervour drops at once. Issue #1160.
+		if (ACataclysmCharacterBase* Thrall = Cast<ACataclysmCharacterBase>(Target))
+		{
+			Thrall->ReservedFervour = FervourReserveFor(Self, Params, SkillTags);
+		}
+		UCataclysmCommand::ClampFervourToSpendable(Self);
+	}
+	return bTookIt;
+}
+
+ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
+{
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		return nullptr;
+	}
+
+	// THE CAP IS ENFORCED BEFORE THE SPAWN, NOT AFTER, so the number alive never
+	// exceeds it even for an instant. Summon Imp: "up to 3 imps may be active at
+	// once. Summoning a fourth destroys the oldest, which explodes for damage in
+	// a 3 meter radius."
+	//
+	// THE OLDEST OF EVERY IMP THE SUMMONER HOLDS, NOT ONLY OF THIS SKILL'S.
+	// Issue #1479, ruled 2026-09-27 under the owner's delegation: the
+	// Ritualist's risen imps share this cap, so the oldest may be one that
+	// rose from a cursed enemy and is in no skill's list.
+	const int32 SummonCap = MinionCapFor(Avatar(), Params, SkillTags);
+	const TArray<ACataclysmMinion*> Sharing =
+		SummonCap > 0 ? MinionsSharingTheCap() : TArray<ACataclysmMinion*>();
+	const bool bEvicts = SummonCap > 0 && Sharing.Num() >= SummonCap;
+
+	// AND THE POOL MUST HOLD THE NEW ONE'S RESERVE. Issue #1934, ruling R1:
+	// both the count cap and the Fervour limit apply. At the cap the oldest is
+	// about to go, so its reserve is counted as freed first, ruled 2026-09-30;
+	// a press is refused only when the pool cannot hold the new imp, and then
+	// nothing is destroyed either.
+	const float Reserve = FervourReserveFor(Self, Params, SkillTags);
+	const float Freed = bEvicts && IsValid(Sharing[0]) ? Sharing[0]->ReservedFervour : 0.0f;
+	if (!UCataclysmCommand::HasRoomToReserve(Self, Reserve, Freed))
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' has no room in its pool for another reserving %.0f Fervour."),
+			*SkillName, Reserve);
+		return nullptr;
+	}
+
+	if (bEvicts)
+	{
+		ACataclysmMinion* Oldest = Sharing[0];
+		Minions.Remove(Oldest);
+		if (UCataclysmSummonSkill* Maker = Oldest->SummonedBy.Get())
+		{
+			Maker->Minions.Remove(Oldest);
+		}
+		if (IsValid(Oldest))
+		{
+			// A MINION'S EXPLOSION TAKES NONE OF THE SUMMONER'S AREA OF EFFECT, so
+			// this reads the stated radius rather than the scaled one. The
+			// design names area of effect among what a minion does not take
+			// from its summoner, and the only way in is a stat that says
+			// "minion".
+			//
+			// ONE EXCEPTION, A PASSIVE THAT SAYS "MINION": A Second Self's
+			// chosen minion explodes over its summoner's area of effect, which
+			// `Explode` asks `UCataclysmSecondSelf::AreaMultiplierFor`. Issue
+			// #1515, under the ruling that such a passive may pass a summoner
+			// stat to a minion.
+			//
+			// THAT STAT DOES NOT EXIST YET. The project owner asked for one on
+			// 2026-08-24 and it is #910. The attribute channel #340 built does
+			// not supply it: MinionScaling.csv scales a minion's damage and
+			// nothing else, so no attribute widens an explosion either. So this
+			// is a recorded gap rather than an oversight, and the line below is
+			// deliberate. Issue #895.
+			Oldest->Explode();
+		}
+	}
+
+	const float Lifetime = Params.Duration > 0.0f ? Params.Duration : 20.0f;
+
+	// WHAT IT SUMMONS, WHICH THIS COULD NOT SAY BEFORE ISSUE #622. The row's
+	// Minions parameter names it -- Summon Imp writes `Imp:1` and Cinder Swarm
+	// writes `Mote:2` -- and until that parameter could be parsed at all, every
+	// summon in the game spawned the same creature carrying the same
+	// compile-time constants.
+	//
+	// THE FIRST TYPE, BECAUSE A SUMMON NAMES EXACTLY ONE. All three summoning
+	// skills in game/Data/WeaponSkills.csv name a single kind. Producing more
+	// than one kind at once is what Iron Fortress does, and that is the
+	// Deployable shape with its own template.
+	const FString SummonedType =
+		Params.Minions.IsEmpty() ? FString() : Params.Minions[0].Type;
+
+	ACataclysmMinion* Minion = ACataclysmMinion::Spawn(
+		Self, RiftLocation, Lifetime, Params.bBurns, SummonedType);
+	if (Minion)
+	{
+		// WHAT ITS DEATH WOULD EXPLODE FOR, TOLD NOW WHILE THE ROW IS IN HAND.
+		// Issue #1515. These are the same two figures the cap uses above when
+		// it destroys the oldest, and a dead minion cannot reach this ability
+		// to ask for them. `minion_explodes_on_death` on the summoner is what
+		// decides whether they are ever used.
+		Minion->RecordExplosionRadius(Params.RadiusCm);
+		Minion->SummonedBy = this;
+		Minions.Add(Minion);
+
+		// "EACH IMP RESERVES 10 FERVOUR WHILE IT IS OUT." Issue #1934.
+		Minion->ReservedFervour = Reserve;
+		UCataclysmCommand::ClampFervourToSpendable(Self);
+	}
+	return Minion;
+}
+
+void UCataclysmSummonSkill::ActivateAbility(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	const FGameplayEventData* TriggerEventData)
+{
+	if (!CommitAndBegin(Handle, ActorInfo, ActivationInfo))
+	{
+		return;
+	}
+
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
+
+	// A SUMMON ROW THAT TAKES RATHER THAN MAKES LEAVES HERE. The Staff's
+	// Subjugate: "drive your will into an enemy up to 15 meters away for 300%
+	// weapon damage, setting it alight. If the blow leaves it below half health
+	// you take it permanently."
+	//
+	// IT IS A SUMMON SHAPE AND SUMMONS NOTHING, WHICH IS THE RIGHT SHAPE ANYWAY.
+	// What the row produces is a creature fighting for the caster, and that is
+	// what this shape is for; where it comes from -- torn out of a rift or taken
+	// off the other side -- is the difference, and it is one branch rather than a
+	// ninth template. Everything below this assumes a rift and a spawn, and a
+	// possession has neither.
+	if (Params.bPossess)
+	{
+		Possess();
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+		return;
+	}
+
+	// A rift is torn at a place and stays there. Summon Imp has no Range, so its
+	// imps appear at the caster.
+	RiftLocation = Params.RangeCm > 0.0f
+		? AimedPointWithin(ScaledRangeCm())
+		: Self->GetActorLocation();
+
+	UWorld* World = Self->GetWorld();
+
+	// Open the Rift spawns over time; Summon Imp spawns Count at once.
+	const bool bSpawnsOverTime =
+		Params.Interval > 0.0f && Params.Duration > 0.0f && World;
+
+	if (bSpawnsOverTime)
+	{
+		// "Lasts 10 seconds, burns every enemy within 6 meters."
+		LeaveGroundAt(RiftLocation);
+
+		World->GetTimerManager().SetTimer(
+			SpawnTimer, this, &UCataclysmSummonSkill::SpawnTick,
+			Params.Interval, /*bLoop=*/true, /*InFirstDelay=*/Params.Interval);
+		World->GetTimerManager().SetTimer(
+			CollapseTimer, this, &UCataclysmSummonSkill::Collapse,
+			Params.Duration, /*bLoop=*/false);
+		return;
+	}
+
+	for (int32 Index = 0; Index < FMath::Max(1, Params.Count); ++Index)
+	{
+		SummonOne();
+	}
+
+	// DELIBERATELY NOT ENDED. The ability instance is what holds the minion
+	// list, and ending it is fine -- the list lives on the instance, which is
+	// per actor and outlives the activation -- but the cap only works if the
+	// same instance is used next time, which InstancedPerActor guarantees.
+	EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+}
+
+void UCataclysmSummonSkill::EndAbility(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	bool bReplicateEndAbility, bool bWasCancelled)
+{
+	// A RIFT CUT SHORT SPAWNS NOTHING MORE AND DOES NOT COLLAPSE, BY NAME. Ruled
+	// 2026-10-08. `SpawnTimer` tears the next imp out of an open rift and
+	// `CollapseTimer` closes it: the collapse's blow, and the destroying of the
+	// imps it made. Open the Rift is the one row that has either.
+	//
+	// SO THE IMPS AN INTERRUPTED RIFT ALREADY MADE ARE NOT DESTROYED, and its
+	// burning ground stays for its own length. Both are already in the world,
+	// which the ruling keeps; each imp still has the lifetime it was made with.
+	//
+	// THE ENGINE CLEARS THEM AS WELL, as `UCataclysmStrikeSkill::EndAbility`
+	// says of its own, and this does not lean on that. An ordinary end is
+	// `Collapse`, called by `CollapseTimer` itself after it has cleared
+	// `SpawnTimer`.
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(SpawnTimer);
+		World->GetTimerManager().ClearTimer(CollapseTimer);
+	}
+
+	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility,
+					  bWasCancelled);
+}
+
+void UCataclysmSummonSkill::SpawnTick()
+{
+	// "Spawns a lesser imp every 2 seconds to a maximum of 5." The maximum is a
+	// total for this rift rather than a rolling cap, so once it has made five it
+	// stops rather than replacing them.
+	const int32 TickCap = MinionCapFor(Avatar(), Params, SkillTags);
+	if (TickCap > 0 && Minions.Num() >= TickCap)
+	{
+		if (UWorld* World = GetWorld())
+		{
+			World->GetTimerManager().ClearTimer(SpawnTimer);
+		}
+		return;
+	}
+	SummonOne();
+}
+
+void UCataclysmSummonSkill::Collapse()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(SpawnTimer);
+	}
+
+	AActor* Self = Avatar();
+
+	// "When the rift closes it collapses, dealing 400% weapon damage in its
+	// radius and destroying the imps it spawned."
+	if (Self && Params.FinalHitPercent > 0.0f && ScaledRadiusCm() > 0.0f)
+	{
+		const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
+			GetWorld(), Self, RiftLocation, ScaledRadiusCm());
+
+		// THE COLLAPSE COMES AFTER THE CAST, so Chorus does not repeat it.
+		TGuardValue<bool> AfterTheCast(bHitsAfterTheCast, true);
+		HitTargets(Caught, Params.FinalHitPercent);
+	}
+
+	for (const TObjectPtr<ACataclysmMinion>& Minion : Minions)
+	{
+		if (IsValid(Minion))
+		{
+			Minion->Destroy();
+		}
+	}
+	Minions.Reset();
+
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+			   GetCurrentActivationInfo(), true, false);
+}
+
+// ==========================================================================
+// Aura -- Conflagration, Living Pyre
+// ==========================================================================
+
+UCataclysmAuraSkill::UCataclysmAuraSkill()
+{
+	// LEFT FALSE DELIBERATELY. Allowing a retrigger makes the engine end the
+	// running instance and start it again, which for a toggle means a second
+	// press restarts the aura instead of stopping it. The stop belongs in
+	// InputPressed; see the comment on it.
+	bRetriggerInstancedAbility = false;
+}
+
+void UCataclysmAuraSkill::InputPressed(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo)
+{
+	Super::InputPressed(Handle, ActorInfo, ActivationInfo);
+
+	// Issue #36 requires the aura to toggle. The aura slot has no cooldown --
+	// there is nothing to wait for on a toggle -- so this is the only thing
+	// stopping the key from being pressed to no effect while it runs.
+	//
+	// AND IT NEEDS A RELEASE FIRST, WHICH IS THE WHOLE OF ISSUE #1114. The press
+	// this reacts to arrives EVERY FRAME the key is held, because
+	// `ACataclysmPlayerController::Input_AbilitySlotPressed` is bound to
+	// `ETriggerEvent::Triggered`. Without waiting for a release, holding the key
+	// switched the aura off on one frame and
+	// `UCataclysmAbilitySystemComponent::ProcessAbilityInput` started it again
+	// on the next, and every start paid a full health cost. One press by the
+	// project owner on 2026-08-31 charged five costs of about 253 health inside
+	// 117 milliseconds and killed them.
+	//
+	// EVERY OTHER SLOT WAS SAFE FROM THIS BECAUSE IT HAS A COOLDOWN. Holding a
+	// key on those repeats the cast, which issue #1016's comment says is wanted,
+	// and the cooldown decides how often. The aura is the only slot with none.
+	if (bHeld && bKeyReleasedSinceActivation)
+	{
+		EndAbility(Handle, ActorInfo, ActivationInfo,
+				   /*bReplicateEndAbility=*/true, /*bWasCancelled=*/false);
+	}
+}
+
+void UCataclysmAuraSkill::InputReleased(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo)
+{
+	Super::InputReleased(Handle, ActorInfo, ActivationInfo);
+
+	// THE RELEASE ENDS NOTHING, AND ARMS THE SWITCH-OFF. A toggle stays on when
+	// the key comes up; that is what makes it a toggle rather than a hold. What
+	// the release changes is that the NEXT press is a new press rather than
+	// another frame of the one that started the aura.
+	bKeyReleasedSinceActivation = true;
+}
+
+void UCataclysmAuraSkill::ActivateAbility(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	const FGameplayEventData* TriggerEventData)
+{
+	if (!CommitAndBegin(Handle, ActorInfo, ActivationInfo))
+	{
+		return;
+	}
+
+	AActor* Self = Avatar();
+	UWorld* World = Self ? Self->GetWorld() : nullptr;
+	if (!World)
+	{
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
+
+	bHeld = true;
+	bEndedForLackOfMana = false;
+	Pulses = 0;
+
+	// THE PYRE STARTS COLD EVERY TIME IT IS LIT. Living Pyre's "every hit you
+	// take raises the pyre's fire damage" is a count for this use of the skill,
+	// not a tally the character carries between casts, and the ability instance
+	// is per actor and outlives the activation -- so a second cast would
+	// otherwise begin at whatever the first one ended at. Issue #1162.
+	BlowsTaken = 0;
+	HealthReturned = 0.0f;
+
+	// AND THE KEY COUNTS AS STILL DOWN UNTIL A RELEASE ARRIVES. Issue #1114.
+	// Cleared here rather than in `EndAbility`, because the aura also ends for
+	// reasons that are not a key press -- running out of mana, or a duration
+	// expiring -- and a fresh activation is the only moment at which "the key
+	// has not been let go yet" is true again.
+	bKeyReleasedSinceActivation = false;
+
+	const float Period = Params.Interval > 0.0f ? Params.Interval : 1.0f;
+	World->GetTimerManager().SetTimer(
+		PulseTimer, this, &UCataclysmAuraSkill::PulseTick,
+		Period, /*bLoop=*/true, /*InFirstDelay=*/Period);
+
+	// Living Pyre is an Ultimate lasting 6 seconds. Conflagration has no
+	// duration and is held until it is switched off or paid out.
+	if (Params.Duration > 0.0f)
+	{
+		World->GetTimerManager().SetTimer(
+			FinishTimer, this, &UCataclysmAuraSkill::Finish,
+			Params.Duration, /*bLoop=*/false);
+	}
+}
+
+const TCHAR* UCataclysmAuraSkill::AuraEffectStat = TEXT("aura_effect");
+
+float UCataclysmAuraSkill::MoreEffective(float Figure) const
+{
+	if (Figure <= 0.0f)
+	{
+		return Figure;
+	}
+
+	// THE FIGURE IS WHAT THE ROWS APPLY TO, as
+	// `UCataclysmRegeneration::HealingSkillAmount` hands its stat the amount it
+	// was offered. So the stat needs no base, and a holder with no row is handed
+	// its figure back.
+	//
+	// WITH THIS SKILL'S TAGS, so a row scoped to a tag would reach only the
+	// auras that carry it. The ruled row carries none and reaches every aura.
+	const UCataclysmAbilitySystemComponent* Asking =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Avatar()));
+	if (!Asking)
+	{
+		return Figure;
+	}
+	return FMath::Max(0.0f, Asking->StatAppliedTo(FName(AuraEffectStat), SkillTags, Figure));
+}
+
+int32 UCataclysmAuraSkill::Pulse()
+{
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		Finish();
+		return 0;
+	}
+
+	UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Self);
+
+	// PAID BEFORE IT WORKS, AND SWITCHING OFF WHEN IT CANNOT BE PAID IS THE
+	// REQUIREMENT. Issue #36: the aura must turn off when the resource is
+	// exhausted. The aura slot costs 20 mana a second, which empties a Ravager
+	// standing still in 48 seconds and never empties a Ritualist.
+	//
+	// A toggle has no duration to pay for, so the cost is per pulse rather than
+	// per activation, and it is the only cost that is not taken by CommitAbility.
+	if (AbilitySystem && Params.Duration <= 0.0f)
+	{
+		const float Period = Params.Interval > 0.0f ? Params.Interval : 1.0f;
+
+		// WHAT IT COSTS THIS CHARACTER, ASKED THE WAY THE ACTIVATION ASKS. Issue
+		// #1815. "Your aura costs 30%-50% less mana per second" is a row on this
+		// same stat, and an upkeep left on `GetManaCost` would drain the slot's
+		// figure while the cast that switched the aura on paid the reduced one.
+		// NOT AS A USE, ruled 2026-10-17: an upkeep is never the free next ability a row's kept stacks buy.
+		const float Cost = ManaCostFor(AbilitySystem, /*bForAUse=*/false) * Period;
+
+		// OUT OF THE SAME POOL THE ACTIVATION PAID FROM, ASKED THE SAME WAY.
+		// Issue #1901. This read mana directly, and a Masochist holding Water to
+		// Blood has none: the option empties the pool and pays every cost from
+		// health. So the activation was paid in health, and the first pulse found
+		// no mana and switched the aura off.
+		//
+		// THE UPKEEP COPIES THE ACTIVATION'S MANA COST, WHICH IS TAKEN WHOLE AND AT
+		// ONCE by `ApplyCost`. The Masochist's deferral and debt rules belong to the
+		// added health costs `PayHealthCost` charges, and do not apply to that cost
+		// or to this one.
+		//
+		// AND THE ENERGY SHIELD WHEN CAST FROM WARD IS HELD, ruled on 2026-09-24:
+		// an upkeep is a skill's cost, so it may be paid from the shield too.
+		// Issue #1515. `PoolPaying` is what the activation asked.
+		//
+		// AND WHAT IS TAKEN IS WHAT `PoolPaying` SAYS, as the activation takes it.
+		float Charged = Cost;
+		const FGameplayAttribute Pool =
+			Cost > 0.0f ? PoolPaying(AbilitySystem, Cost, &Charged) : CostPool(AbilitySystem);
+
+		if (Cost > 0.0f && !Pool.IsValid())
+		{
+			// SAID ONCE, AT `Log` AND NOT `Verbose`, because the aura ends here and
+			// nothing in the game read the flag below, so a playtest log could not
+			// show why an aura went out. Issue #1901.
+			UE_LOG(LogCataclysm, Log,
+				   TEXT("%s in %s switched off: a pulse's upkeep of %.1f %s could "
+						"not be paid from %.1f."),
+				   *SkillName, *CataclysmAbilitySlots::Tag(Slot).ToString(), Cost,
+				   *CostPool(AbilitySystem).GetName(),
+				   AbilitySystem->GetNumericAttribute(CostPool(AbilitySystem)));
+			bEndedForLackOfMana = true;
+			Finish();
+			return 0;
+		}
+		if (Cost > 0.0f)
+		{
+			AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Charged);
+		}
+	}
+
+	// A ring around the caster, following them. The Aura slot's damage is 25%
+	// of weapon damage PER SECOND, which the Skill Slots sheet says explicitly,
+	// so a pulse is worth that much of a second.
+	const TArray<AActor*> Inside = UCataclysmTargeting::FindEnemiesInSphere(
+		GetWorld(), Self, Self->GetActorLocation(), ScaledRadiusCm());
+
+	// SCALED BY WHATEVER THE ROW SAYS RAISES IT, WHICH IS ONE ROW. The Fist's
+	// Living Pyre: "every hit you take raises the pyre's fire damage by 8% with
+	// no cap", written as `MoreDamagePer=8; ScalingSource=HitTaken`. Issue
+	// #1162.
+	//
+	// `ScaledDamagePercent(0)` IS `GetDamagePercent()`, so an aura naming no
+	// scaling source deals exactly what it dealt before this line changed, which
+	// is every other aura in the sheet.
+	//
+	// NO CEILING BINDS UNLESS THE ROW STATES ONE, and Living Pyre states none
+	// because its own sentence says "with no cap".
+	//
+	// AND A ROW MAY MAKE THE AURA MORE EFFECTIVE. Ruled 2026-10-13: "Your auras
+	// are 20%-50% more effective". TWO OF ITS FIVE FIGURES ARE HERE.
+	//
+	// THE GROWTH FOR A HIT TAKEN. The hits counted are multiplied before the
+	// growth is worked out, so 8% a hit with 50% more is 12% a hit. `HitTaken`
+	// ONLY: growth a row counts by anything else is not one of the five.
+	//
+	// AND THE PULSE'S DAMAGE, multiplied last, AFTER any ceiling the row states.
+	// The ceiling is on what the row's own growth may reach, and this is a More
+	// line of the holder's, which multiplies what the skill is worth as every
+	// other More line of its does.
+	const float Period = Params.Interval > 0.0f ? Params.Interval : 1.0f;
+	const float Units =
+		ScalingUnits(/*ConsumedCount=*/0, /*bThisTargetConsumed=*/false);
+	const bool bGrowsByHitsTaken =
+		Params.ScalingSource.Equals(TEXT("HitTaken"), ESearchCase::IgnoreCase);
+	const float Percent = MoreEffective(
+		ScaledDamagePercent(bGrowsByHitsTaken ? MoreEffective(Units) : Units));
+	{
+		// A PULSE COMES AFTER THE CAST, so Chorus does not repeat it.
+		TGuardValue<bool> AfterTheCast(bHitsAfterTheCast, true);
+		HitTargets(Inside, Percent * Period);
+	}
+
+	// AND THE EFFECT THE ROW NAMES GOES ON WHAT IS STANDING IN THE RING.
+	// Conflagration: "enemies within it are continuously set alight AND have
+	// their Demonic resistance reduced by 15%." The second half of that sentence
+	// had no parameter until 2026-09-02 and the aura applied no named effect at
+	// all. Issue #1182.
+	//
+	// EVERY PULSE, WHICH IS WHAT "CONTINUOUSLY" MEANS.
+	// `UCataclysmSkillEffects::ApplyNamedEffect` refreshes rather than stacks, so
+	// an enemy standing in the ring carries one Shred whose clock restarts every
+	// second, and an enemy that walks out keeps it for the rest of its own
+	// duration and then loses it. That is the same shape
+	// `ACataclysmGroundZone::Sweep` uses for the curse it lays, and it says so
+	// there for the same reason.
+	//
+	// AFTER THE BLOW RATHER THAN BEFORE IT, matching
+	// `UCataclysmStrikeSkill::SwingOnce`: a Shred cutting resistance must not
+	// also reduce the damage of the pulse that applied it.
+	//
+	// INERT FOR AN AURA NAMING NO EFFECT, which is every other aura in the
+	// sheet: `NamedEffectTags` answers an empty list.
+	//
+	// AT THE MAGNITUDE A ROW MAKING THE AURA MORE EFFECTIVE RAISES IT TO. Ruled
+	// 2026-10-13. `ApplyNamedEffectsTo` reads `Params.EffectMagnitude`, so the
+	// raised figure stands in that field for this loop and no longer; the
+	// pulse's blow above, which reads the same field for a pin, has been dealt.
+	// The effect's own rule then takes the raised figure as it would any other:
+	// Shred cuts no resistance below nought, and states the whole figure.
+	//
+	// A ROW NAMING AN EFFECT AND NO MAGNITUDE is laid at the Status Effects
+	// sheet's figure, which is not raised. No aura is such a row.
+	{
+		TGuardValue<float> Raised(Params.EffectMagnitude,
+								  MoreEffective(Params.EffectMagnitude));
+		for (AActor* Target : Inside)
+		{
+			ApplyNamedEffectsTo(Target);
+		}
+	}
+
+	// AND THE ALLIES INSIDE ARE HELPED. Conflagration: "allies within it deal 8%
+	// increased fire damage." The aura never looked for an ally at all before
+	// this, though `UCataclysmTargeting::FindAlliesInSphere` had existed for it
+	// and said so in its own header.
+	HelpAlliesInside();
+
+	// AND GIVEN ITS CASTER'S IMMUNITIES, when the caster wears the row for it.
+	ShareImmunitiesWithAlliesInside();
+
+	++Pulses;
+	return Inside.Num();
+}
+
+float UCataclysmAuraSkill::NoteBlowTaken(float DealtToHealth)
+{
+	// A BLOW TAKEN WHILE THE AURA IS NOT UP IS NOT THIS AURA'S BUSINESS. The
+	// ability instance is per actor and outlives its activation, so it can be
+	// found by the dispatcher's walk over the running abilities only while it is
+	// running -- but a pulse that ended the aura for lack of mana can still be
+	// on the stack when a blow arrives.
+	if (!bHeld)
+	{
+		return 0.0f;
+	}
+
+	// COUNTED EVEN FOR AN AURA THAT READS NEITHER PARAMETER, which is
+	// Conflagration. The count is one integer and a row that does not name
+	// `HitTaken` never reads it, so gating the count on the row would only make
+	// the number wrong for anything that later wanted to look at it. The same
+	// reasoning `UCataclysmStrikeSkill::NoteBlowTakenWhileHolding` gives.
+	++BlowsTaken;
+
+	if (Params.HealthFromHitTaken <= 0.0f || DealtToHealth <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	UAbilitySystemComponent* AbilitySystem =
+		UCataclysmTargeting::AbilitySystemOf(Avatar());
+	if (!AbilitySystem)
+	{
+		return 0.0f;
+	}
+
+	// "RETURNS HEALTH EQUAL TO 25% OF THE DAMAGE THAT HIT DEALT."
+	//
+	// OF WHAT REACHED HEALTH, NOT OF WHAT WAS SENT. `NoteBlowTaken`'s header
+	// says which figure travels and why: it is the same one the design defines
+	// leech against -- "the damage the target really took, after its
+	// resistances, armour and block, not the damage that was sent". A share of
+	// what was sent would pay out on a blow that was entirely stopped.
+	//
+	// AT ONCE RATHER THAN OVER THREE SECONDS. Leech in this project pays out
+	// over time and this is not leech: leech is what a hit gives back to whoever
+	// LANDED it, and this is what a hit gives back to whoever TOOK it. The row
+	// says "returns health", with no duration, against the design's leech
+	// section which states one.
+	//
+	// THROUGH `UCataclysmRegeneration::TopUp`, LIKE EVERY OTHER HEAL OF HEALTH.
+	// Issues #1607 and #1608, ruled 2026-09-30. So this heal obeys:
+	// - the healing ceiling, then what is reserved: Point of No Return's "You
+	//   cannot be healed above 50% of your maximum health" did not hold here
+	//   until then;
+	// - the received-healing reduction, which the dungeon modifier Death's
+	//   Embrace writes, and which the project owner ruled on 2026-09-12 covers
+	//   this route;
+	// - and the design's "Healing removes Fervour at the same rate", which names
+	//   no source. Until this change the health returned here removed no Fervour.
+	// The held-swing forbid comes with it and never refuses this: only the
+	// Greatsword's The Whole Weight sets it, and a character holds one weapon.
+	//
+	// NO HEALING TAGS, as leech passes none, so no passive node is scoped to
+	// this heal.
+	//
+	// WHAT ARRIVED IS READ OFF HEALTH, because `TopUp` does not return it.
+	//
+	// THE PYRE'S DAMAGE STILL RISES. `BlowsTaken` is counted above this, and the
+	// row ties its 8% per hit to the hits taken rather than to the health
+	// returned, so a reduction that cuts the healing does not cut the damage.
+	//
+	// AND A ROW MAY MAKE A HEALING SKILL RESTORE MORE. Ruled 2026-10-09:
+	// "Healing skills restore 30%-60% more HP", and Living Pyre is a healing
+	// skill. The amount offered is multiplied before `TopUp` has it, so every
+	// rule above still applies to the larger amount: 25% of a blow with 60%
+	// more is 40% of it. Asked of this aura's holder.
+	//
+	// AND A ROW MAY MAKE THE AURA MORE EFFECTIVE. Ruled 2026-10-13: "Your auras
+	// are 20%-50% more effective". The share returned is one of the five figures
+	// that row multiplies: 25% with 50% more is 37.5% of the blow. It is settled
+	// before the healing row above multiplies the amount, so a holder of both
+	// rows has both: 37.5% with 60% more is 60% of the blow.
+	using Vitals = UCataclysmVitalAttributeSet;
+	const float Before = AbilitySystem->GetNumericAttribute(Vitals::GetHealthAttribute());
+	const float Returned = DealtToHealth * MoreEffective(Params.HealthFromHitTaken) / 100.0f;
+	const float Offered = UCataclysmRegeneration::HealingSkillAmount(*AbilitySystem, Returned);
+	UCataclysmRegeneration::TopUp(*AbilitySystem, Vitals::GetHealthAttribute(),
+								  Vitals::GetMaxHealthAttribute(), Offered);
+	const float Given = AbilitySystem->GetNumericAttribute(Vitals::GetHealthAttribute()) - Before;
+
+	if (Given <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	HealthReturned += Given;
+
+	// AND A SHARE OF THE HEALTH RETURNED ARRIVES AS ENERGY SHIELD. Ruled
+	// 2026-10-09: "Healing skills also restore 10%-20% of the healed amount as
+	// energy shield". OF `Given`, THE HEALTH THAT ARRIVED, and not of `Offered`:
+	// a return cut by the healing ceiling or by a reduction gives a smaller
+	// shield, and the return above this line has already left when nothing
+	// arrived. The shield is not part of what this function answers, which
+	// stays the health returned.
+	UCataclysmRegeneration::GiveHealingSkillShield(*AbilitySystem, Given);
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("'%s' returned %.1f health from a blow that dealt %.1f, and is now "
+			 "%d hits hotter."),
+		*SkillName, Given, DealtToHealth, BlowsTaken);
+
+	return Given;
+}
+
+bool UCataclysmAuraSkill::IsHelping(const AActor* Ally) const
+{
+	// A raw const pointer cannot key a TMap of weak pointers directly, so the
+	// comparison is done the long way round rather than casting the constness
+	// away.
+	for (const TPair<TWeakObjectPtr<AActor>, int32>& Helped : HelpedAllies)
+	{
+		if (Helped.Key.Get() == Ally)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+void UCataclysmAuraSkill::HelpAlliesInside()
+{
+	AActor* Self = Avatar();
+	if (Params.AllyIncreasedDamage <= 0.0f || !Self)
+	{
+		return;
+	}
+
+	const TArray<AActor*> Allies = UCataclysmTargeting::FindAlliesInSphere(
+		GetWorld(), Self, Self->GetActorLocation(), ScaledRadiusCm());
+
+	// WHO SHOULD BE CARRYING IT AFTER THIS PULSE. Built first so the two passes
+	// below -- give to the new ones, take back from the ones who left -- are
+	// decided against one answer rather than two searches a moment apart.
+	//
+	// AN ALLY THAT REFUSES BUFFS FROM ALLIES SHOULD NOT. Ruled 2026-10-19, "You
+	// cannot benefit from buffs applied by allies": one already helped is in
+	// `Leaving` below and loses the bonus at this pulse, as one that walked out
+	// does.
+	TSet<AActor*> ShouldCarry;
+	ShouldCarry.Reserve(Allies.Num());
+	for (AActor* Ally : Allies)
+	{
+		if (IsValid(Ally) && !UCataclysmAbilitySystemComponent::RefusesBuffsFromAllies(Ally))
+		{
+			ShouldCarry.Add(Ally);
+		}
+	}
+
+	// TAKE IT BACK FROM WHOEVER WALKED OUT, and drop any key whose actor has
+	// gone. A dead ally is removed with its owner rather than reached for.
+	TArray<TWeakObjectPtr<AActor>> Leaving;
+	for (const TPair<TWeakObjectPtr<AActor>, int32>& Helped : HelpedAllies)
+	{
+		AActor* Ally = Helped.Key.Get();
+		if (!IsValid(Ally) || !ShouldCarry.Contains(Ally))
+		{
+			Leaving.Add(Helped.Key);
+		}
+	}
+	for (const TWeakObjectPtr<AActor>& Gone : Leaving)
+	{
+		if (AActor* Ally = Gone.Get())
+		{
+			if (UCataclysmAbilitySystemComponent* Abilities =
+					Cast<UCataclysmAbilitySystemComponent>(
+						UCataclysmTargeting::AbilitySystemOf(Ally)))
+			{
+				Abilities->RemoveStatModifier(HelpedAllies[Gone]);
+			}
+		}
+		HelpedAllies.Remove(Gone);
+	}
+
+	// AND GIVE IT TO WHOEVER ARRIVED. An ally already carrying it is skipped
+	// rather than given a second modifier, which is the one way this could
+	// silently stack a bonus without limit.
+	for (AActor* Ally : ShouldCarry)
+	{
+		if (IsHelping(Ally))
+		{
+			continue;
+		}
+
+		UCataclysmAbilitySystemComponent* Abilities =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Ally));
+		if (!Abilities)
+		{
+			continue;
+		}
+
+		// THE ADDITIVE BUCKET, BECAUSE THE ROW SAYS `increased`. See the
+		// parameter's own header: that word is reserved in this project for the
+		// sum every gear affix and passive node joins.
+		//
+		// `SkillBuff` AS THE SOURCE, matching `UCataclysmSelfBuffSkill::
+		// GrantIncrease`. The source decides whether a modifier is allowed into
+		// the `More` bucket at all, and this one is not asking for that bucket.
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Increased;
+		Modifier.Source = ECataclysmModifierSource::SkillBuff;
+		// MORE OF IT WHEN A ROW MAKES THE CASTER'S AURAS MORE EFFECTIVE. Ruled
+		// 2026-10-13. Settled when the ally is given the bonus: an ally already
+		// carrying it keeps the figure it was given until it leaves the ring or
+		// the aura ends.
+		//
+		// AND MORE AGAIN WHEN A ROW MAKES THE CASTER'S BUFFS MORE POTENT. Ruled
+		// 2026-10-13: this bonus is a buff a skill of the caster's lays on its
+		// allies, so both rows apply to it and multiply. 8 with 50% more
+		// effective and 40% more potent is 16.8.
+		const float Effective = MoreEffective(Params.AllyIncreasedDamage);
+		Modifier.Value = UCataclysmSelfBuffSkill::MorePotent(Self, SkillTags, Effective);
+
+		// SCOPED TO NOTHING, SO IT RAISES ALL DAMAGE. Ruled 2026-10-25 (Q-P2) on
+		// the owner's "Make them generic": Conflagration carries
+		// `Element.Demonic` and an ally inside it is raised on a blow of every
+		// element. Until then the modifier required the aura's own element.
+		const int32 Handle = Abilities->AddStatModifier(Modifier);
+		if (Handle != 0)
+		{
+			HelpedAllies.Add(Ally, Handle);
+		}
+	}
+}
+
+void UCataclysmAuraSkill::ShareImmunitiesWithAlliesInside()
+{
+	AActor* Self = Avatar();
+	const UCataclysmAbilitySystemComponent* Mine =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self));
+	if (!Self || !Mine || Params.Immune.IsEmpty()
+		|| Mine->StatForSkill(FName(UCataclysmAbilitySystemComponent::AuraSharesImmunitiesStat),
+							  FGameplayTagContainer(), 0.0f) <= 0.0f)
+	{
+		StopSharingImmunities();
+		return;
+	}
+
+	TArray<FString> Kinds;
+	Params.Immune.ParseIntoArray(Kinds, TEXT(","));
+	const float Seconds = 2.0f * (Params.Interval > 0.0f ? Params.Interval : 1.0f);
+
+	TArray<TWeakObjectPtr<AActor>> Inside;
+	for (AActor* Ally : UCataclysmTargeting::FindAlliesInSphere(
+			 GetWorld(), Self, Self->GetActorLocation(), ScaledRadiusCm()))
+	{
+		UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Ally));
+		// AND AN ALLY THAT REFUSES BUFFS FROM ALLIES IS GRANTED NOTHING. Ruled
+		// 2026-10-19: left out of `Inside`, so what it already holds of this aura
+		// is taken back below at this pulse, as from an ally that walked out.
+		if (!IsValid(Ally) || !Theirs || UCataclysmSkillEffects::IsDead(Ally)
+			|| UCataclysmAbilitySystemComponent::RefusesBuffsFromAllies(Ally))
+		{
+			continue;
+		}
+		for (FString Kind : Kinds)
+		{
+			Kind.TrimStartAndEndInline();
+			Theirs->GrantImmunity(FName(*Kind), this, Seconds);
+		}
+		Inside.Add(Ally);
+	}
+
+	// TAKEN BACK FROM WHOEVER WALKED OUT, at this pulse and not when it lapses.
+	for (const TWeakObjectPtr<AActor>& Was : ImmuneAllies)
+	{
+		if (!Inside.Contains(Was))
+		{
+			if (UCataclysmAbilitySystemComponent* Theirs = Cast<UCataclysmAbilitySystemComponent>(
+					UCataclysmTargeting::AbilitySystemOf(Was.Get())))
+			{
+				Theirs->RevokeImmunitiesFrom(this);
+			}
+		}
+	}
+	ImmuneAllies = MoveTemp(Inside);
+}
+
+void UCataclysmAuraSkill::StopSharingImmunities()
+{
+	for (const TWeakObjectPtr<AActor>& Was : ImmuneAllies)
+	{
+		if (UCataclysmAbilitySystemComponent* Theirs = Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Was.Get())))
+		{
+			Theirs->RevokeImmunitiesFrom(this);
+		}
+	}
+	ImmuneAllies.Reset();
+}
+
+void UCataclysmAuraSkill::StopHelpingEveryone()
+{
+	for (const TPair<TWeakObjectPtr<AActor>, int32>& Helped : HelpedAllies)
+	{
+		AActor* Ally = Helped.Key.Get();
+		if (!IsValid(Ally))
+		{
+			continue;
+		}
+
+		if (UCataclysmAbilitySystemComponent* Abilities =
+				Cast<UCataclysmAbilitySystemComponent>(
+					UCataclysmTargeting::AbilitySystemOf(Ally)))
+		{
+			Abilities->RemoveStatModifier(Helped.Value);
+		}
+	}
+	HelpedAllies.Reset();
+}
+
+void UCataclysmAuraSkill::PulseTick()
+{
+	Pulse();
+}
+
+void UCataclysmAuraSkill::Finish()
+{
+	EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+			   GetCurrentActivationInfo(), true, false);
+}
+
+void UCataclysmAuraSkill::EndAbility(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	bool bReplicateEndAbility, bool bWasCancelled)
+{
+	bHeld = false;
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(PulseTimer);
+		World->GetTimerManager().ClearTimer(FinishTimer);
+	}
+
+	// AND EVERY ALLY GIVES THE BONUS BACK. Conflagration's is granted for as
+	// long as the aura runs, so every way it can stop -- the second press, the
+	// mana running out, a duration expiring, a cancel, the caster dying -- has to
+	// end with nobody still carrying it. This is the one place all five meet,
+	// which is the same argument `UCataclysmStrikeSkill::EndAbility` makes for
+	// taking the sword out of the ground here. Issue #1182.
+	StopHelpingEveryone();
+	StopSharingImmunities();
+
+	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility,
+					  bWasCancelled);
+}
+
+// ==========================================================================
+// Debuff -- Subjugate
+// ==========================================================================
+
+void UCataclysmDebuffSkill::ActivateAbility(
+	const FGameplayAbilitySpecHandle Handle,
+	const FGameplayAbilityActorInfo* ActorInfo,
+	const FGameplayAbilityActivationInfo ActivationInfo,
+	const FGameplayEventData* TriggerEventData)
+{
+	if (!CommitAndBegin(Handle, ActorInfo, ActivationInfo))
+	{
+		return;
+	}
+
+	AActor* Self = Avatar();
+	if (!Self)
+	{
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
+
+	EnemiesAffected = 0;
+	LastDurationApplied = 0.0f;
+	SpreadsLit = 0;
+
+	// THE CURSE LANDS WHEN THE GESTURE REACHES ITS POINT. Issue #1133. Until
+	// then it was applied in the frame the ability activated, with the body
+	// still winding up.
+	//
+	// WHO IT TAKES IS DECIDED AT THAT MOMENT AND NOT BEFORE IT. The search below
+	// is deliberately inside the wait: enemies move, and a curse that picked its
+	// victim at the start of a wind-up and applied it at the end would curse
+	// whoever used to be nearest.
+	WhenTheSwingConnects([this]()
+	{
+		AActor* Caster = Avatar();
+		if (!Caster)
+		{
+			EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+					   GetCurrentActivationInfo(), true, true);
+			return;
+		}
+
+		// IN RANGE OF THE CASTER, ORDERED BY WHERE THE PLAYER IS POINTING. The
+		// first attempt searched a small circle at the aim point, and it was
+		// wrong twice over: a cursor a metre off the enemy took nobody, and with
+		// no cursor at all -- an enemy casting, or a test -- the aim ran out to
+		// the full 15 metres and found empty ground.
+		//
+		// Range bounds who can be reached, which is what Subjugate's "up to 15
+		// meters" means; the cursor only decides which of those is picked. So a
+		// player pointing roughly at an enemy takes that enemy, and pointing at
+		// nothing takes the nearest, which is what a single-target curse should
+		// do.
+		//
+		// IN RANGE OF WHERE THE USE IS CAST, the caster's own place unless a free start was given another: a
+		// gadget's copy curses within its range of the gadget. Ruled 2026-10-14; see `CastOrigin`.
+		TArray<AActor*> InRange = UCataclysmTargeting::FindEnemiesInSphere(
+			GetWorld(), Caster, CastOrigin(), ScaledRangeCm());
+
+		const FVector Aim = AimPoint();
+		InRange.Sort([&Aim](const AActor& A, const AActor& B)
+		{
+			return FVector::DistSquared(A.GetActorLocation(), Aim)
+				 < FVector::DistSquared(B.GetActorLocation(), Aim);
+		});
+
+		const int32 Cap = Params.MaxTargets > 0 ? Params.MaxTargets : 1;
+		if (InRange.Num() > Cap)
+		{
+			InRange.SetNum(Cap);
+		}
+		const TArray<AActor*>& Targets = InRange;
+
+		// THE DURATION COMES FROM `EffectDuration` AND USED TO COME FROM
+		// `Duration`, which is a different number and one that no Debuff row in
+		// the game states. The sheet split the two on 2026-09-01 -- a skill's own
+		// length against the length of what it leaves behind -- and this was not
+		// changed with it, so all three Debuff-shaped skills asked for a curse
+		// lasting zero seconds and `ApplyTagForDuration` refused every one.
+		// `AppliedEffectSeconds` reads the right key and falls back to the
+		// effect's own designed duration.
+		//
+		// AND MORE THAN ONE EFFECT MAY BE NAMED. Anathema writes
+		// `Effect=Shred, Madness`; the Wand's verb is inflicting, so a curse
+		// arriving with company is the ordinary case rather than an oddity.
+		const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+
+		for (AActor* Target : Targets)
+		{
+			// "The whisper lasts twice as long in a mind that is already
+			// burning." Read off the target's own tags, so any source of burn
+			// counts and not only this character's.
+			const bool bAlreadyBurning =
+				UCataclysmSkillEffects::HasTag(Target, Burn);
+			const float Scale = bAlreadyBurning ? 2.0f : 1.0f;
+
+			if (ApplyNamedEffectsTo(Target, Scale) > 0)
+			{
+				// The first named effect's length, which is every skill's whole
+				// answer today: no row names two effects of different durations.
+				const TArray<FGameplayTag> Named = NamedEffectTags();
+				LastDurationApplied =
+					Named.IsEmpty() ? 0.0f
+									: AppliedEffectSeconds(Named[0]) * Scale;
+				++EnemiesAffected;
+			}
+
+			// AND THE FIRE SPREADS FROM A TARGET THAT ALREADY MET THE CONDITION.
+			// Hex of Cinders: "hexing an enemy that is already burning also sets
+			// alight everything within 4 meters of them."
+			//
+			// THE CONDITION IS ON THE TARGET AND NOT ON THE CAST. A hex laid on
+			// an enemy that is not burning is a working cast that spreads
+			// nothing, which is why the row states `SpreadWhen` rather than
+			// `Requires`: the latter would refuse the whole skill.
+			//
+			// THE TARGET KEEPS ITS OWN FIRE, which is the difference between
+			// this and `ConsumeRadius`. Consuming takes the burn out and spends
+			// it; this leaves it burning and lights the neighbours as well.
+			// Issue #1146 records the choice between the two.
+			SpreadsLit += SpreadFireAround(Target);
+		}
+
+		// A Support slot deals no damage by design, so this only lands a hit for
+		// a debuff whose slot has one.
+		HitTargets(Targets);
+
+		// AND THE ZONE A ROW GIVES A CURSE THAT STATES NO GROUND, UNDER EACH TARGET IT WAS LAID ON: "your spells
+		// leave a persistent AOE zone at the impact point". Ruled 2026-10-06. Every Debuff row states
+		// `MaxTargets=1` today, so this is one zone. Nothing for a character with no row.
+		for (const AActor* Target : Targets)
+		{
+			if (Target)
+			{
+				LeaveRowZoneAt(UCataclysmDamageCalculation::ZoneAtImpactSecondsStat, Target->GetActorLocation());
+			}
+		}
+
+		EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+				   GetCurrentActivationInfo(), true, false);
+	});
+}

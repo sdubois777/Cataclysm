@@ -7,9 +7,19 @@ evasion builds the same way it lands on a resistance stacker:
     gap       = max(0, enemyScore - playerScore)
     overwhelm = min(CAP, RATE * gap / tierWidth)
 
-Rated against TIER WIDTH rather than a flat point step, because a flat step is
-worth 17% of a T1 tier but only 6% of a T8 one -- which made a maxed T1 player
-eat 13% penetration at their own final boss while a maxed T8 player ate 47%.
+Rated against TIER WIDTH rather than a flat point step. The rejected alternative
+was 2% penetration per 50 points of shortfall, and a flat 50-point step is worth
+13% of a T1 tier but only 4% of a T8 one -- which would have made a maxed T1
+player eat 16% penetration at their own final boss while a maxed T8 player ate
+56%, for exactly the same situation.
+
+Those four percentages are measurements of `scoring.py`, so they go stale when
+its anchors move, and they did: this paragraph read 17%, 6%, 13% and 47% for the
+five months that file carried the pre-#2 anchors, which is the whole of the time
+this rule was being decided, and the T8 figure moved again when issue #7 reset the
+tier 2 to 7 anchors. `sim/tests/test_analysis_scripts.py` recomputes them
+and fails if the paragraph disagrees. Issue #6. `sim/analyse_penetration.py` is
+the measurement itself.
 """
 
 from __future__ import annotations
@@ -53,16 +63,29 @@ def floor_threat(tier: int, dtype: str, subtype: str, total_floors: int,
     return sum(s[r] * w for r, w in scoring.DUNGEON_SCORE_MIX)
 
 
+def floor_modifier_score(modifier_score: float, floor: int,
+                         extra_per_floor: float = 0.0, extra_cap: int = 0) -> float:
+    """The modifier score on one floor: the dungeon's own, plus
+    `extra_per_floor` for each floor down to `extra_cap`. Only the Ascendant
+    has an extra (`Simulation.death_chance`)."""
+    return modifier_score + extra_per_floor * min(max(0, floor), max(0, extra_cap))
+
+
 def death_chance(player_power: float, tier: int, dtype: str, subtype: str,
                  total_floors: int, modifier_score: float,
                  per_floor_risk: float, boss_risk_multiplier: float,
                  boss_rarity: str = "Boss",
                  rate: float = OVERWHELM_RATE,
-                 cap: float = OVERWHELM_CAP) -> float:
+                 cap: float = OVERWHELM_CAP,
+                 extra_per_floor: float = 0.0,
+                 extra_cap: int = 0) -> float:
     """Probability of dying at least once on the way through.
 
     Risk on a floor is proportional to how much harder Overwhelm makes you get
     hit. A player who out-powers every floor takes no risk at all.
+
+    `extra_per_floor` and `extra_cap` raise the modifier score floor by floor
+    (`floor_modifier_score`), the boss's floor included. Both 0 by default.
     """
     tw = scoring.tier_width(tier)
     survive = 1.0
@@ -72,7 +95,8 @@ def death_chance(player_power: float, tier: int, dtype: str, subtype: str,
     for frac in _SAMPLE_FRACS:
         floor = max(1, min(total_floors, round(total_floors * frac)))
         threat = floor_threat(tier, dtype, subtype, total_floors, floor,
-                              modifier_score)
+                              floor_modifier_score(modifier_score, floor,
+                                                   extra_per_floor, extra_cap))
         ow = overwhelm(player_power, threat, tw, rate, cap)
         risk = per_floor_risk * (damage_multiplier(ow) - 1.0)
         if risk > 0:
@@ -80,10 +104,83 @@ def death_chance(player_power: float, tier: int, dtype: str, subtype: str,
 
     # The thing on the last floor.
     boss = scoring.enemy_scores(tier, dtype, subtype, total_floors,
-                                total_floors, modifier_score)[boss_rarity]
+                                total_floors,
+                                floor_modifier_score(modifier_score, total_floors,
+                                                     extra_per_floor, extra_cap))[boss_rarity]
     ow = overwhelm(player_power, boss, tw, rate, cap)
     boss_risk = min(0.95, per_floor_risk * boss_risk_multiplier
                     * (damage_multiplier(ow) - 1.0))
     survive *= max(0.05, 1.0 - boss_risk)
 
     return 1.0 - survive
+
+
+# --------------------------------------------------------------------------
+# What power a dungeon actually asks for
+# --------------------------------------------------------------------------
+#
+# Issue #8. The report in `experiments.py` invited the reader to compare every
+# power figure against a hard-coded range that had been derived against the
+# player power anchors issue #2 replaced, and never re-derived.
+#
+# THERE IS NO SINGLE NUMBER, and that is the first thing to say. Death chance
+# falls smoothly with power and never reaches zero at any power the tier allows,
+# because the thing on the last floor of a Cataclysm dungeon outscores the
+# maximum player power of its own tier: 2.0 times at tier 1, falling to 1.2
+# times at tier 8. So the question "what power clears it" only has an answer
+# once a death chance is named.
+
+#: The death chance the reported threshold is quoted at. A run that dies in the
+#: Cataclysm dungeon is over -- see `Engine._resolve_dungeon` -- so this is a
+#: run-ending risk rather than a setback, and one in ten is a reasonable reading
+#: of "can attempt it". It is a reporting choice, not a design rule.
+REPORTED_DEATH_CHANCE = 0.10
+
+
+def power_for_death_chance(target: float, tier: int, dtype: str, subtype: str,
+                           total_floors: int, modifier_score: float,
+                           per_floor_risk: float, boss_risk_multiplier: float,
+                           boss_rarity: str = "Boss",
+                           rate: float = OVERWHELM_RATE,
+                           cap: float = OVERWHELM_CAP) -> float:
+    """The player Power Score at which this dungeon kills you `target` of the time.
+
+    Found by bisection, because `death_chance` compounds seven sampled floors
+    and a boss and has no closed form. It is monotonically decreasing in power,
+    which is what makes bisection valid: more power never raises the risk.
+
+    Returns 0.0 if the dungeon is already safer than `target` at no power at all.
+    The upper bound is open-ended rather than the tier ceiling, because the
+    answer is routinely ABOVE that ceiling and clamping it would hide exactly
+    the fact this exists to report.
+    """
+    if not 0.0 < target < 1.0:
+        raise ValueError(f"target death chance must be between 0 and 1, "
+                         f"got {target}")
+
+    def risk(power: float) -> float:
+        return death_chance(power, tier, dtype, subtype, total_floors,
+                            modifier_score, per_floor_risk,
+                            boss_risk_multiplier, boss_rarity, rate, cap)
+
+    if risk(0.0) <= target:
+        return 0.0
+
+    low = 0.0
+    high = max(1.0, scoring.tier_bounds(tier)[1])
+    # Walk the ceiling up until the dungeon is safe enough, rather than assuming
+    # the tier's own range contains the answer. It usually does not.
+    for _ in range(40):
+        if risk(high) <= target:
+            break
+        high *= 2.0
+    else:
+        return float("inf")
+
+    for _ in range(60):
+        mid = (low + high) / 2.0
+        if risk(mid) > target:
+            low = mid
+        else:
+            high = mid
+    return high

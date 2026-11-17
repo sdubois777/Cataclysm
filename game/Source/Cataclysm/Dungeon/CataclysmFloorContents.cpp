@@ -1,0 +1,199 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "Dungeon/CataclysmFloorContents.h"
+#include "AbilitySystem/CataclysmCommand.h"
+#include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmReaperSoul.h"
+#include "Character/CataclysmPlayerCharacter.h"
+
+#include "AbilitySystem/CataclysmGroundZone.h"
+#include "AbilitySystem/CataclysmProjectile.h"
+#include "AbilitySystem/CataclysmTelegraphMarker.h"
+#include "AbilitySystem/CataclysmTerrain.h"
+#include "Character/CataclysmEnemyCharacter.h"
+#include "Dungeon/CataclysmFloorHazardSource.h"
+#include "Dungeon/CataclysmHarvestedSoul.h"
+#include "Dungeon/CataclysmFloorObstacle.h"
+#include "Engine/World.h"
+#include "EngineUtils.h"
+#include "Items/CataclysmDroppedItem.h"
+
+namespace
+{
+	/**
+	 * Destroy every actor of one class in a world. Returns how many.
+	 *
+	 * NAMED FOR THIS FILE. Unreal merges a module's `.cpp` files into one
+	 * translation unit, so two files defining the same helper in an anonymous
+	 * namespace collide -- and only once both are committed.
+	 * `tools/tests/test_no_two_files_share_an_anonymous_helper.py` holds it.
+	 */
+	template <typename TActor>
+	int32 FloorContentsDestroyEvery(UWorld& World)
+	{
+		TArray<TActor*> Doomed;
+		for (TActorIterator<TActor> It(&World); It; ++It)
+		{
+			if (IsValid(*It))
+			{
+				Doomed.Add(*It);
+			}
+		}
+
+		// GATHERED FIRST, THEN DESTROYED. Destroying from inside TActorIterator
+		// modifies the level's actor array while it is being walked.
+		int32 Destroyed = 0;
+		for (TActor* Actor : Doomed)
+		{
+			if (IsValid(Actor))
+			{
+				Actor->Destroy();
+				++Destroyed;
+			}
+		}
+		return Destroyed;
+	}
+}
+
+int32 UCataclysmFloorContents::ClearTheFloor(UWorld& World, bool bCarryFollowers, bool bKeepTheRulesCreatures)
+{
+	int32 Destroyed = 0;
+
+	if (bCarryFollowers)
+	{
+		// A PLAYER'S THRALLS STAY AND A PLAYER'S GADGETS GO. Issue #1202, ruled
+		// 2026-09-30; the header says why each. Gathered first, destroyed after,
+		// for the reason `FloorContentsDestroyEvery` gives.
+		TArray<AActor*> Doomed;
+		for (TActorIterator<ACataclysmEnemyCharacter> It(&World); It; ++It)
+		{
+			if (IsValid(*It)
+				&& !Cast<ACataclysmPlayerCharacter>(UCataclysmCommand::CommanderOf(*It)))
+			{
+				Doomed.Add(*It);
+			}
+		}
+		for (TActorIterator<ACataclysmMinion> It(&World); It; ++It)
+		{
+			if (IsValid(*It) && It->IsDeployable())
+			{
+				Doomed.Add(*It);
+			}
+		}
+		for (AActor* Actor : Doomed)
+		{
+			if (IsValid(Actor))
+			{
+				Actor->Destroy();
+				++Destroyed;
+			}
+		}
+	}
+	else if (bKeepTheRulesCreatures)
+	{
+		// EVERY CREATURE NOT RAISED BY A RULE, gathered first and destroyed after for the reason
+		// `FloorContentsDestroyEvery` gives. Issue #753, the dungeon step.
+		TArray<AActor*> Doomed;
+		for (TActorIterator<ACataclysmEnemyCharacter> It(&World); It; ++It)
+		{
+			if (IsValid(*It) && !It->bRaisedByARule)
+			{
+				Doomed.Add(*It);
+			}
+		}
+		// AND EACH GROUND ZONE ONE OF THOSE CREATURES LEFT, and no other: the rebuilt floor's rules drew the rest, and a
+		// rule may draw its zones only while its list of them is empty (Wings of the Host's marks do), so a destroyed one
+		// would not come back.
+		// Gathered before any creature goes, while its zones still name it as their owner. Issue #753, Group 3a.
+		TSet<AActor*> Creatures;
+		Creatures.Append(Doomed);
+		for (TActorIterator<ACataclysmGroundZone> It(&World); It; ++It)
+		{
+			if (IsValid(*It) && Creatures.Contains(It->GetOwner()))
+			{
+				Doomed.Add(*It);
+			}
+		}
+		for (AActor* Actor : Doomed)
+		{
+			if (IsValid(Actor))
+			{
+				Actor->Destroy();
+				++Destroyed;
+			}
+		}
+	}
+	else
+	{
+		Destroyed += FloorContentsDestroyEvery<ACataclysmEnemyCharacter>(World);
+	}
+	Destroyed += FloorContentsDestroyEvery<ACataclysmDroppedItem>(World);
+	// AND EVERY SOUL, WHICH LASTS THE FLOOR AND NO LONGER: Reaper's Embrace's six-piece, ruled 2026-10-17 (#8) and
+	// 2026-10-18 (R7). Beside the drops, the other thing lying on a floor to be picked up, and in both branches: a Soul
+	// follows nobody down the stairs.
+	Destroyed += FloorContentsDestroyEvery<ACataclysmReaperSoul>(World);
+	// AND EVERY SOUL SOUL HARVEST RELEASED THAT IS STILL FLOATING, giving nothing, in both branches: its demon was the
+	// floor's, and a save already counted it as arrived (`ACataclysmDungeonGameMode::SoulHarvestHeldBy`), so a load that
+	// rebuilds the floor gives it back through the creature's record. Ruled 2026-11-17, issue #1671.
+	Destroyed += FloorContentsDestroyEvery<ACataclysmHarvestedSoul>(World);
+
+	// AND THE THREE THINGS SECTION 6 OF THE SAVE DESIGN SAYS ARE NOT RESTORED. A
+	// projectile still flying across a floor that has just been rebuilt, a
+	// burning patch of ground under a creature that was never there, or a marker
+	// telegraphing a wind-up that is not happening are each worse than a floor
+	// that simply starts still. "Every creature resumes from a still moment."
+	//
+	// THE SAME THREE ARE WRONG ON A NEW FLOOR, for the same reason and without
+	// needing a second argument: the player has walked down a flight of stairs
+	// and the last floor's fight is over.
+	Destroyed += FloorContentsDestroyEvery<ACataclysmProjectile>(World);
+	// NOT ON A SAVE'S RESTORE INSIDE A DUNGEON, which runs after the floor was rebuilt: what is lying there is the
+	// rebuilt floor's, and the zones its creatures left were taken above with them. Issue #753, Group 3a.
+	if (!bKeepTheRulesCreatures || bCarryFollowers)
+	{
+		Destroyed += FloorContentsDestroyEvery<ACataclysmGroundZone>(World);
+	}
+
+	// AND THE TERRAIN A SKILL RAISED, WHICH WAS MISSED WHEN THE LINE ABOVE WAS
+	// WRITTEN. Issue #1647. `ACataclysmTerrain` was in neither list -- not
+	// swept, and not named in the header's list of what is deliberately kept --
+	// which is what made it an omission rather than a decision.
+	//
+	// A WALL IS THE WORST OF THE FOUR KINDS TO LEAVE BEHIND. The other three are
+	// swept zones that pin or floor whoever stands in them, and a wall is solid
+	// geometry built with `SetCanEverAffectNavigation(true)`. One surviving a
+	// floor change is an obstacle in the new floor's pathfinding that nothing in
+	// that floor's generation knows about.
+	//
+	// BESIDE THE BURNING GROUND RATHER THAN AT THE END, because the two are the
+	// pair a skill leaves on the floor and a reader comparing them should find
+	// them together. Comparing them is what found this gap.
+	Destroyed += FloorContentsDestroyEvery<ACataclysmTerrain>(World);
+
+	Destroyed += FloorContentsDestroyEvery<ACataclysmTelegraphMarker>(World);
+
+	// AND WHOSE NAME THE FLOOR'S HAZARDS WERE DEALT IN, LAST OF ALL. A floor
+	// hazard is owned by an ACataclysmFloorHazardSource rather than by a
+	// creature or by the game mode, because every route that applies anything
+	// in UCataclysmSkillEffects refuses unless the source resolves to an
+	// ability system component. That actor's whole life is one floor, so it
+	// goes when the floor does and the next floor makes its own.
+	//
+	// AFTER THE HAZARDS RATHER THAN BEFORE, so the order reads the way the
+	// ownership does. Nothing depends on it -- both are destroyed in the same
+	// call and a zone whose owner has gone simply sweeps nothing.
+	//
+	// THE HAZARD SOURCE, THE PILLARS AND THE PITS ARE KEPT ON A SAVE'S RESTORE INSIDE A DUNGEON, which runs after the
+	// floor was rebuilt: the gates', the section barriers' and the statues' pillars are the rebuilt floor's own, and
+	// destroying them opened every gate and barrier and left every statue's cell walkable after a load. Issue #753,
+	// Group 3a. The hazard source would be made again on demand; it is kept because it is the rebuilt floor's too.
+	if (!bKeepTheRulesCreatures || bCarryFollowers)
+	{
+		Destroyed += FloorContentsDestroyEvery<ACataclysmFloorHazardSource>(World);
+		// AND A RULE'S PILLARS AND PITS, which close cells of the floor they stood on. Issues #1820 and #41. At a floor
+		// change the game mode removes them first, giving their cells back.
+		Destroyed += FloorContentsDestroyEvery<ACataclysmFloorObstacle>(World);
+	}
+
+	return Destroyed;
+}

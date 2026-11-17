@@ -1,0 +1,711 @@
+# Cataclysm — Unreal project
+
+The game. `sim/` at the repository root is a separate Python model of the empire
+layer, used to derive tuning numbers; it is not part of this project and does not
+build with it.
+
+## Requirements
+
+| | |
+|---|---|
+| Engine | **Unreal Engine 5.8.1** (`++UE5+Release-5.8`, changelist 56057345) |
+| Compiler | Visual Studio 2022 with the **Desktop development with C++** workload |
+| Windows SDK | 10.0.22621 or later |
+| Git LFS | Required. Assets are stored through it; see `.gitattributes`. |
+
+The engine bundles its own .NET 10 runtime. A system-wide .NET 10 install is not
+needed, and running `UnrealBuildTool.exe` directly will fail without one — use the
+batch files below, which set up the bundled runtime.
+
+## Build
+
+Generate Visual Studio project files. They are not committed, because
+UnrealBuildTool regenerates them from the `.uproject` and the `Source` tree:
+
+```
+"C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\ThirdParty\DotNet\10.0\win-x64\dotnet.exe" ^
+  "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\DotNET\UnrealBuildTool\UnrealBuildTool.dll" ^
+  -projectfiles -project="%CD%\Cataclysm.uproject" -game -rocket -progress
+```
+
+Build the editor:
+
+```
+"C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" ^
+  CataclysmEditor Win64 Development -Project="%CD%\Cataclysm.uproject" -WaitMutex
+```
+
+Build the packaged game:
+
+```
+"C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" ^
+  Cataclysm Win64 Development -Project="%CD%\Cataclysm.uproject" -WaitMutex
+```
+
+A clean build of both targets takes about 90 seconds on the reference machine
+(Ryzen 7 9800X3D, 32 GB, RTX 3070). That will grow substantially as real code
+lands.
+
+## Module layout
+
+Three modules, split so that the strategy layer stays testable on its own and
+editor tooling can never reach a packaged build.
+
+| Module | Type | What belongs in it |
+|---|---|---|
+| `Cataclysm` | Runtime | The primary game module. Player, combat, abilities, items, dungeons, user interface. |
+| `CataclysmEmpire` | Runtime | The empire and strategy layer: the day clock, cities, surges, dungeon timers and resolution, the empire upgrade tree. |
+| `CataclysmEditor` | Editor | Editor-only tooling: data import and validation, asset actions, the spreadsheet-to-DataTable pipeline. |
+
+Two targets:
+
+- `Source/Cataclysm.Target.cs` — the packaged game. Ships `Cataclysm` and
+  `CataclysmEmpire` only.
+- `Source/CataclysmEditor.Target.cs` — the editor. Adds `CataclysmEditor` on top.
+
+### Why the empire layer is its own module
+
+It is a port of the Python rig in `sim/`, whose rules are deliberately plain
+arithmetic on plain structs so they transliterate directly. Keeping it separate
+means it can be tested without combat, rendering or input, and it makes the
+dependency direction explicit.
+
+**`CataclysmEmpire` must not depend on `Cataclysm`.** The dependency runs one way:
+the game module may use the empire layer, never the reverse. `CataclysmEditor`
+depends on both.
+
+## What is here
+
+The Gameplay Ability System is wired up.
+`Source/Cataclysm/Cataclysm.Build.cs` takes `GameplayAbilities`, `GameplayTags`
+and `GameplayTasks` as public dependencies, and `Source/Cataclysm/AbilitySystem/`
+holds an ability system component, five attribute sets (primary attributes,
+vitals, combat, resistances, class resource), the damage calculation, seven
+shared skill templates that the designed skills are configured from, and the
+two-team friend-or-foe model. `game/docs/ability-system.md` explains where the
+component lives and why.
+
+`Content/` holds generated assets, third-party asset packs, and a place for
+authored work. [`docs/content-layout.md`](docs/content-layout.md) is the full
+convention: where things go, what they are called, and the three rules that are
+easy to get wrong.
+
+**Generated. A generator owns these and overwrites them wholesale.** Do not edit
+them by hand.
+
+| Path | What it is |
+|---|---|
+| `Content/Maps/L_Sandbox.umap` | A flat test level: a floor, a directional light and sky, a player start and a navigation bounds volume. Built by `tools/generate_input_assets.py`, which owns it. No enemy is in the map — `ACataclysmGameMode` spawns them at play time. |
+| `Content/Maps/L_FrontEnd.umap` | The level the game opens on: a player start and nothing else, its world settings naming `ACataclysmFrontEndGameMode`, which shows the character select screen. Built by `tools/generate_interface_assets.py`, which owns it. The editor still opens on `L_Sandbox`. Issue #753. |
+| `Content/Data/` | Twenty-nine DataTable assets: twenty-five imported from the design workbook, two from the simulation package's enemy model, and two from the class passive tree files. See below. |
+| `Content/Input/` | The Enhanced Input mapping contexts, ten input actions and the input config data asset. Built by `tools/generate_input_assets.py`. |
+
+**Not in git.**
+
+| Path | What it is |
+|---|---|
+| `Content/Paragon*/` | Six free Fab character packs, 17.31 GB, supplying the art for the vertical slice enemies. Re-acquired from Fab rather than committed. [`docs/enemy-source-assets.md`](docs/enemy-source-assets.md) says which pack plays which enemy. |
+| `Content/Developers/` | Unreal's per-user sandbox. Not project content. |
+
+**Authored, and committed.**
+
+| Path | What it is |
+|---|---|
+| `Content/Enemies/<Cataclysm>/<Enemy>/` | Blueprints, animation Blueprints, retargeted animations and material instances for one enemy. Only `Enemies/Demonic/Brute/` exists so far and it is still empty, because the Brute is entirely C++. |
+
+**Work derived from a third-party pack must not be saved inside that pack's
+folder.** Those folders are excluded from git, so an asset saved there is dropped
+by `git add` with no error and no warning. Guarded by
+`tools/tests/test_third_party_packs_are_not_committed.py`.
+
+## What is not here yet
+
+- **Seven characters have art. Everything else is an engine primitive.** The
+  Brute wears the Paragon Rampage model, the Abyssal Warden wears GruxMolten
+  from the Paragon Grux pack, the Hellhound wears IggyScorch, the Succubus
+  wears SM_Countess from the Paragon Countess pack, the Gatekeeper wears
+  Sevarog, and the Imp and
+  the Corrupted Sentinel wear the melee and siege lane minions from the Paragon
+  Minions pack; the player,
+  the summoned imp and the training dummies are still primitive meshes from
+  `/Engine/BasicShapes/`. **The Hellhound's mesh is two creatures**, a goblin
+  riding a fire-breathing mount, because the pack holds one skeletal mesh for
+  the pair and there is no separate mount to load; whether the rider should be
+  hidden is issue
+  [#756](https://github.com/sdubois777/Cataclysm/issues/756). **The Imp is worn
+  at the size it was authored, which makes it 1.76 metres tall**, because its
+  shoulders measure 63.5 cm apart against the 60 cm its designed body radius
+  gives it — so the mesh already is the width the design asks for, and scaling
+  it down to look small would need a walk played faster than the engine allows.
+  Whether a pack of ten person-sized imps reads as a swarm is issue
+  [#760](https://github.com/sdubois777/Cataclysm/issues/760). The six free
+  Paragon packs that will play the seven vertical slice enemies are downloaded
+  into `Content/` but are excluded from git, so on a fresh clone both fall back
+  to a primitive and say so in the log. **Only the Brute has an animation
+  Blueprint.** The other three play single clips instead, so their attacks are
+  visible but their walks do not blend and are rate-scaled to the speed each
+  creature is designed to move at. Which pack plays which enemy, and
+  the animation durations measured from them, are in
+  [`docs/enemy-source-assets.md`](docs/enemy-source-assets.md). There are still
+  no authored materials, particle systems or sounds, and the asset and animation
+  pipelines for everything Paragon does not cover are still being chosen (issues
+  [#17](https://github.com/sdubois777/Cataclysm/issues/17),
+  [#18](https://github.com/sdubois777/Cataclysm/issues/18) and
+  [#19](https://github.com/sdubois777/Cataclysm/issues/19)).
+- **A dungeon generates, can be walked down, and has a bottom.** `L_Dungeon`
+  builds one floor from a seed when play begins
+  and stands the player on it. The floor is a grid of four-metre cells carved
+  by one of three layout families, drawn as untextured blocks, with a
+  navigation mesh over it that a character can path across. Creatures stand on
+  it, the stairs down build the next floor — except in a Horde dungeon, which
+  has none and reaches its next floor by the player beating the wave standing in
+  the arena — and the last floor of a dungeon ends with a Gatekeeper. **What `L_Dungeon` still does not have on its own is an
+  empire behind it** — no city, no timer, no resolution — so pressing Play
+  gives a dungeon ten floors deep with no consequences off it. `L_Sandbox` is
+  still where creatures are fought without a floor (issues
+  [#40](https://github.com/sdubois777/Cataclysm/issues/40) and
+  [#41](https://github.com/sdubois777/Cataclysm/issues/41)).
+- **No interface screens, and only combat is visible on screen.** Nothing in the
+  project uses UMG. `ACataclysmHUD` draws three things on the canvas — a bar over
+  creatures that have been hurt, a floating number where each blow lands, and the
+  player's own health in the bottom left corner (issue
+  [#518](https://github.com/sdubois777/Cataclysm/issues/518)). Skill slots,
+  cooldowns, the empire status bar, the minimap and every screen are still absent
+  (issue [#49](https://github.com/sdubois777/Cataclysm/issues/49)), and the port
+  of the combat overlay to UMG is issue
+  [#650](https://github.com/sdubois777/Cataclysm/issues/650).
+- **The game saves itself and cannot load what it saved.** Three `USaveGame`
+  records in `Source/Cataclysm/Save/` are written as JSON, with a schema
+  version and a migration chain (issue
+  [#529](https://github.com/sdubois777/Cataclysm/issues/529)); `UCataclysmSaveWriter` writes them on a 15 second
+  clock and immediately when a fight starts, a creature dies, health falls
+  through half, or an item moves, and **a death is written before the frame
+  ends** (issue [#750](https://github.com/sdubois777/Cataclysm/issues/750)); and a live floor can be read into a
+  record and put back with every creature's damage kept (issue [#751](https://github.com/sdubois777/Cataclysm/issues/751)).
+  **Nothing reads a save back at start-up**, because nothing chooses between
+  starting a run and continuing one, so `ACataclysmGameMode` begins a fresh
+  run each session and its files are never read.
+- **An empire that only moves when a console command says so.**
+  `CataclysmEmpire` holds four things. `UCataclysmDayClock` advances the day,
+  counts every dungeon's resolve timer down and pauses the one the player is
+  standing in (issue
+  [#41](https://github.com/sdubois777/Cataclysm/issues/41)).
+  `UCataclysmEmpireMap` lays out the 25 cities, opens a lane into the empire
+  when one falls, seals it again when one is retaken, and answers how many more
+  cities must fall before the Cataclysm reaches the Pillar (issue
+  [#1081](https://github.com/sdubois777/Cataclysm/issues/1081)).
+  `UCataclysmSurgeScheduler` decides when the next wave comes, how many dungeons
+  it brings, which cities they land on and how deep each one is (issue
+  [#1083](https://github.com/sdubois777/Cataclysm/issues/1083)).
+  `UCataclysmEmpireRun` owns those three and advances a day: a wave lands, timers
+  move, every Siege takes its daily share, an ordinary dungeon that runs out
+  takes points off its host city and leaves the map, a Quest dungeon that runs
+  out takes an ordinary dungeon's hit off its host and then refreshes and may
+  move, a city whose defence reaches zero falls, and its fall opens
+  the lane behind it (issue
+  [#1084](https://github.com/sdubois777/Cataclysm/issues/1084)). The module also
+  holds `Empire/CataclysmDungeonKind.h`, the two enumerations naming what kind a
+  dungeon is and what it does differently, which moved down from the `Cataclysm`
+  module so that both modules can name the same kind, and city upgrades
+  (`Empire/CataclysmCityUpgrade.h`).
+
+  **The layer knows which Cataclysms a campaign faces, and which one sent each
+  dungeon.** `UCataclysmRoster` names the eight, draws the order a character adds
+  them in from its seed, and answers how many quest dungeons each of them asks
+  for. `UCataclysmEmpireRun` faces as many of them as the difficulty tier says,
+  stamps every dungeon a surge lands with the Cataclysm that sent it, counts
+  cleared quest dungeons per Cataclysm rather than only per run, and answers
+  whether the Cataclysm dungeon has been unlocked: **half of the active
+  Cataclysms, rounded up, with each of them having met its own objective count**,
+  which the project owner ruled on 2026-09-06. Until issue
+  [#1357](https://github.com/sdubois777/Cataclysm/issues/1357) none of that
+  existed and neither rule the owner had given could be built. **What is still
+  generic is how the eight differ in attack** — the simulation gives each its own
+  shape of wave and this draws uniformly, issue
+  [#53](https://github.com/sdubois777/Cataclysm/issues/53). **The unlock opens
+  the Cataclysm boss dungeon**, since 2026-11-02: the quest clear that meets it
+  puts the boss on the board on no city (the owner, verbatim, "On no city
+  (Recommended)"), where it never bites a city and no timer runs out on it, as
+  deep as its roll plus every ordinary dungeon defeated in the run, before it
+  opened and after. **Beating it wins the run**, since slice 6e of issue
+  [#1324](https://github.com/sdubois777/Cataclysm/issues/1324) (2026-11-03): the
+  character is paid the first-kill 10 passive points for its draw's Cataclysm at
+  that tier, its tier rises by one (held at 8) before its record is written, the
+  walk's owed days are not run, and its next run begins at once against the won
+  run's Cataclysms and one more, with a line on the map saying the last run was
+  won. This said no run was won yet. The empire map shows the boss, since
+  2026-11-03 (slice 6c; below). This said the enemy capital and the loss
+  condition were missing until then; the owner had answered both on 2026-09-06.
+
+  **Every dungeon a surge creates has a sub-type, and six of the seven do
+  something.** The dungeon the player walks carries it into the creature-scoring
+  model. A Cow Level costs twice the days to walk and the walk-shortening city
+  upgrade does not apply to it; a Siege takes 1% of its host city's maximum
+  defence and maximum population every day it stands, and a city may hold only
+  one; a Sacrificial dungeon carries twice as many dungeon modifiers, which is
+  the paragraph below.
+
+  **And three of them change the floors the dungeon generates.**
+  `FCataclysmDungeonFloorRules` in
+  `game/Source/Cataclysm/Dungeon/CataclysmFloorBrief.h` turns what a dungeon is
+  into what one of its floors is, and three sub-types read it. A **Volatile**
+  dungeon re-draws its dungeon modifiers on every floor, so its creatures are
+  worth a different amount on floor 3 than on floor 2. An **Elite** dungeon
+  stands a Gatekeeper on every floor's exit rather than only on its last. A
+  **Horde** dungeon is one arena and its floor count is its wave count: it
+  carves one open space and fights every one of its floors as a wave into that
+  same space, so a 20-floor Horde dungeon is 20 waves. Each wave spawns around
+  the outside of the arena and runs at the player, every creature in it notices
+  from thirty times its ordinary distance so all of them come, the next wave
+  arrives when a tenth or less of the last is still standing, and there are no
+  stairs — the way to the next floor is beating the wave. Its floor count, its
+  day cost and what it is worth are all unchanged. The project owner's four
+  rules for it are `docs/Cataclysm_GDD_v2.md`'s **Horde Dungeons** section.
+  Every other dungeon keeps a boss on its last floor and nothing else changes.
+
+  **Timed alone is still rolled and named and changes nothing**, because it is a
+  clock on the run and a reward multiplier rather than anything about a floor.
+  One further part of the Siege — what "pauses city
+  upgrades" means — is undecided rather than unbuilt. What "increases in power
+  by N points per day" means was settled by the owner on 2026-09-05 as the
+  damage it does to the city and population, and the N was cut from 10 to 2.5 on
+  [#1349](https://github.com/sdubois777/Cataclysm/issues/1349) on 2026-09-06.
+  Issues
+  [#41](https://github.com/sdubois777/Cataclysm/issues/41) and
+  [#1293](https://github.com/sdubois777/Cataclysm/issues/1293).
+
+  **Every dungeon carries dungeon modifiers, and as of 2026-10-23 119 of the 123
+  do what their rows say.** `UCataclysmDungeonModifierRules` gives a dungeon one modifier per
+  difficulty tier, doubled for a Sacrificial one, drawn without repeats from the
+  modifiers of every Cataclysm the run is facing. The sum of their danger scores
+  is the dungeon's Modifier Score, which
+  `ACataclysmDungeonGameMode::EnterEmpireDungeon` carries over when the player
+  walks in, and which makes every creature on every floor worth more experience
+  — and nothing else yet. The design says it should make them harder too, and
+  on 2026-09-11 the project owner kept that: creature health and damage are to
+  follow the enemy score on every floor, which is issue
+  [#1569](https://github.com/sdubois777/Cataclysm/issues/1569).
+  Before this, `game/Data/DungeonModifiers.csv` had held 117 rows that nothing in
+  the game had ever read, and the Modifier Score was a hard-coded zero.
+
+  **As of 2026-10-25, 119 of the 123 modifiers do what their rows say, two do
+  part of it, and two are a name and a number.** Counted from
+  `UCataclysmDungeonModifierEffects::BuiltStateOf` against every row of
+  `game/Data/DungeonModifiers.csv`: every Celestial, Chaos, Death, Demonic,
+  Famine and Pestilence row is built; Void's Insanity Bursts is partly built,
+  because its "attack allies" waits on co-op; the Generic Corrupted Stalker is
+  partly built, because it arrives, follows and swings its weapon wearing one
+  authored player build, and its skills, potions, drops and six more entries are
+  still to come (issue [#1308](https://github.com/sdubois777/Cataclysm/issues/1308));
+  and War's Supply Lines and Battlefield Tactics are not built. The rules
+  live in `UCataclysmDungeonModifierEffects` and `FCataclysmDungeonFloorRules` in
+  `game/Source/Cataclysm/Dungeon/`: some change the player's own numbers once a
+  floor, some change while the player plays on the dungeon game mode's
+  quarter-second beat, and some place things on the floor. `docs/DECISIONS.md`
+  records each rule and every number in it that is a judgement rather than its
+  row's. **Nothing on screen yet shows the player a stack or a lost point**,
+  which is issue
+  [#1591](https://github.com/sdubois777/Cataclysm/issues/1591). A panel in the
+  top right corner of the screen lists the modifiers in force on a floor and
+  marks the ones that do nothing yet, and `Cataclysm.DungeonModifiers` puts
+  chosen modifiers on the dungeon being played, by row key or by name. The one
+  Generic modifier, the Corrupted Stalker, is never drawn into a slot: the project
+  owner ruled it is granted separately, and since 2026-10-25 every dungeon has an
+  independent 5% chance of carrying it (`UCataclysmEmpireRun::GiveModifiers`,
+  issue [#1308](https://github.com/sdubois777/Cataclysm/issues/1308)). What it does
+  on a floor is not built. Two further gaps are open. A
+  Sacrificial dungeon's doubled modifiers cannot be shed by sacrificing
+  materials, because there is nothing to sacrifice to. And **no modifier is
+  rarer than any other**: which ones a dungeon gets is an equal chance across the
+  pool, which the project owner ruled on 2026-09-07 because no design document
+  states a selection rule. That is the absence of a designed rarity rather than
+  one, and `docs/DECISIONS.md` records what was rejected alongside it. Issue
+  [#41](https://github.com/sdubois777/Cataclysm/issues/41).
+
+  **A dungeon modifier can now react to a hit, a death or a skill used, and
+  none does yet.** `UCataclysmCombatEvents`, a world subsystem in
+  `game/Source/Cataclysm/AbilitySystem/`, sends `OnHit` once a blow's damage is
+  worked out on the character it landed on, `OnDeath` when a death is recorded,
+  and `OnSkillUsed` when a skill is paid for or a creature starts an ability. A
+  hit or a death names the skill that dealt it, and whether the blow was melee,
+  ranged or a spell and whether a boss dealt it. A death names the character
+  credited with it and, for a minion's kill, the minion that dealt it. Nothing
+  is built when nothing listens. `docs/DECISIONS.md` records what each notice
+  carries. Issue
+  [#41](https://github.com/sdubois777/Cataclysm/issues/41).
+
+  **A dungeon can still have no sub-type; nothing a surge creates has one.** One
+  entered outside the empire has none. A Siege rolled for a city that already
+  holds one is spread across the other six sub-types in proportion to their
+  weights, rather than being rolled again or left plain: measured at none at all
+  over twenty campaigns and 10,914 simulated days.
+
+  **A Cataclysm dungeon may not be a Cow Level or a Siege, and those are the only
+  pairs of the twenty-eight that are barred.** The owner ruled the first on
+  2026-09-06 because a Cow Level Last Stand was losing the doubled walk it is
+  supposed to keep; the situation was removed rather than the symptom repaired.
+  The coordinating session barred the Siege on 2026-11-02, because the boss
+  dungeon stands on no city and a Siege's whole effect is a daily bite on one.
+  `BarredSubTypeOn` and `AlsoBarredSubTypeOn` are the rule and `RollSubType`
+  takes both off the line before its single draw, so the weight is spread over
+  the other five and no second draw is taken. **Nothing may be inferred from them
+  about any other pair** — the other 26 stay legal. Issue
+  [#1333](https://github.com/sdubois777/Cataclysm/issues/1333). The rule fires
+  on the boss dungeon a run earns, since 2026-11-02; until then nothing built a
+  Cataclysm dungeon and it only answered.
+
+  `Empire/CataclysmCityUpgrade.h` names what a city upgrade does, how many slots
+  a city has — three, or two on Heretic — and which effects are built.
+  A city holds what it bought, `UCataclysmEmpireRun::BuyCityUpgrade` spends a
+  slot, and **fourteen of the 24 upgrades in `game/Data/CityUpgrades.csv` do
+  something**: the ten Architect ones, which raise a city's maxima, restore its
+  defence and population, resist what a dungeon takes, repair it on a schedule,
+  and disperse the dungeons standing on it; and all four Explorer ones that shape
+  the dungeons a city receives. Those four are applied by
+  `UCataclysmSurgeScheduler` as a dungeon is rolled: two move its floor count,
+  one lowers the days walking it costs, and the fourth stops a city being a
+  target once it holds its cap of dungeons, so the wave lands elsewhere rather
+  than the dungeon vanishing.
+
+  **Depth and reward are the same axis; depth and time are not, once a player has
+  invested.** A floor costs one day to begin with, so the two floor upgrades move
+  the resolve timer with the floor count — a deeper dungeon is slower to walk,
+  worth more, and slower to bite. Neither changes what the dungeon takes from
+  its city: `FCataclysmDungeon::BiteScale` sizes the hit by the floors the
+  dungeon was rolled with, and `UpgradeFloors` holds what the upgrades moved.
+  The upgrade that lowers the days a dungeon takes
+  to walk moves **only** that: `FCataclysmDungeon::WalkDays` is separate from
+  `Floors`, so a fifty floor dungeon can be made to cost two days while staying
+  fifty floors deep, worth what that is worth, and biting on the same schedule.
+  `UCataclysmDayClock::PartialDay` holds time spent that has not yet added up to
+  a whole day, and `UCataclysmEmpireRun::SpendFloorTime` spends whole days
+  through the ordinary day loop as they accumulate.
+
+  The other ten are refused at purchase rather than sold, because each waits on a
+  system that does not exist — a dungeon sub-type roll, a dungeon that grants
+  rewards, gold, or an upgrade tier above one.
+  `Cataclysm.CityUpgrades` lists what a city can buy and marks
+  the ones that do nothing yet; `Cataclysm.BuyCityUpgrade` spends the slot. It is
+  free and immediate, because no cost and no build time is designed (issue
+  [#1264](https://github.com/sdubois777/Cataclysm/issues/1264)).
+
+  A run lives on `UCataclysmGameInstance`, which survives travelling between
+  levels, and `UCataclysmEmpireMapWidget` draws it: the 25 cities in their
+  diamond, each reading as sealed, exposed or fallen, with the day, the surge
+  countdown and how far the Cataclysm is from the Pillar (issue
+  [#1087](https://github.com/sdubois777/Cataclysm/issues/1087)).
+  `Cataclysm.EmpireMap` opens it.
+
+  **The Cataclysm boss dungeon has a box of its own on the map**, since
+  2026-11-03, because it stands on no city: once the run has opened it, the
+  map panel's top left corner, where the diamond has no city, says "Cataclysm
+  boss: 137 floors", and the cursor on it says who sent it, how many of its
+  floors the ordinary dungeons defeated added, and that it never resolves. The
+  status line counts the Cataclysms finished against the number that opens it,
+  "1 of 5 Cataclysms finished; the boss dungeon opens when 3 are finished", and
+  the opening is the screen's latest event until something later happens.
+  Pressing the box says what it is (issue
+  [#1324](https://github.com/sdubois777/Cataclysm/issues/1324) slice 6c); the
+  **Walk** box under it enters it, since 2026-11-03 (issue
+  [#2715](https://github.com/sdubois777/Cataclysm/issues/2715)), and so does a
+  **Walk** button under each dungeon line on a city's screen. A press calls
+  `ACataclysmDungeonGameMode::EnterEmpireDungeon` and closes the empire
+  screens. It works only in a dungeon level, because there is no travel from
+  the map (below); anywhere else the press is refused and the screen says why.
+  `Cataclysm.EnterDungeon <id>` still walks any of them from the console.
+
+  **Clicking a city opens its screen.** `UCataclysmCityScreenWidget` shows what
+  the city is worth, the dungeons standing on it soonest to bite first, what it
+  has already built, and one button per upgrade it can still buy; pressing one
+  spends a slot. The ten upgrades whose effect is not built are shown in a
+  section of their own with the reason beside each, rather than hidden, so the
+  game does not look as though it has fourteen city upgrades rather than
+  twenty-four.
+  `UCataclysmCityScreenLayout` decides every word, for the reason
+  `UCataclysmEmpireMapLayout` exists. `Cataclysm.CityScreen <cityId>` opens the
+  same screen without the map (issue
+  [#42](https://github.com/sdubois777/Cataclysm/issues/42)).
+
+  Walking a dungeon spends the empire's days. `Cataclysm.EnterDungeon` starts
+  one of the dungeons standing on the map, and each floor descended costs one
+  day, and reaching the bottom takes it off the map so its host city stops being
+  bitten by it (issue
+  [#1092](https://github.com/sdubois777/Cataclysm/issues/1092)). **Nothing
+  happens in the empire while the player is inside**, by the owner's decision of
+  2026-10-24: the days a walk spends are counted, `UCataclysmEmpireRun::DaysOwed`,
+  and run in order when the player leaves -- after a clear is credited, or after
+  a death's resolve and before the death's own days. In those days the walked
+  dungeon's own timer stays stopped and every other one counts, so a city can
+  fall in them; the empire map's status line says how many days will pass.
+  `Cataclysm.EmpireAdvance` refuses while a dungeon is being walked.
+
+  **Nothing takes the player from the map into a dungeon level, or back.** There
+  is no capital to stand in between runs (issue
+  [#48](https://github.com/sdubois777/Cataclysm/issues/48)) and no travel between
+  the empire and a dungeon level, so entering one is a Walk button pressed, or a
+  console command typed, while already standing in `L_Dungeon`, and clearing one leaves the player
+  standing on the floor they beat. **Only walking a dungeon, dying in one and the
+  console commands move the day**: a death inside a dungeon of the empire costs
+  5, 10 or 15 days by lethality mode, resolves an ordinary dungeon at once so
+  that it hits its city and leaves the map, and
+  leaves the player on the floor they died on with no dungeon bound (issue
+  [#41](https://github.com/sdubois777/Cataclysm/issues/41)). The equipment a
+  death costs in Hardcore and Heretic is not built, and there is no forge to
+  spend the twelve days a craft takes. A fallen city does not
+  become a retakeable Dungeon City (issue
+  [#41](https://github.com/sdubois777/Cataclysm/issues/41)), the Last Stand does
+  not fire when the path to the Pillar opens (issue
+  [#43](https://github.com/sdubois777/Cataclysm/issues/43)), and the empire
+  upgrade tree is still only the Python model in `sim/` (issue
+  [#52](https://github.com/sdubois777/Cataclysm/issues/52)). **10 of the 24 city
+  upgrades are refused** because their effect is not built (issue
+  [#42](https://github.com/sdubois777/Cataclysm/issues/42)). The simulation in
+  `sim/` still has no city upgrade system at all, so Heretic's two slots instead
+  of three cannot be measured in a sweep (issue
+  [#318](https://github.com/sdubois777/Cataclysm/issues/318)). **The empire is
+  written to a save record now and still cannot be read back.** `UCataclysmRunSave`
+  carries the day and the part of a day, the 25 cities with their upgrades, the
+  dungeons standing on the map with their resolve timers, and the surge schedule
+  with the position the run's random stream reached (issue
+  [#1307](https://github.com/sdubois777/Cataclysm/issues/1307)). Nothing loads any
+  of it, so quitting the game still loses the empire until issue
+  [#753](https://github.com/sdubois777/Cataclysm/issues/753) lands.
+
+## Running the tests
+
+The C++ tests are Unreal automation tests, under
+`Source/Cataclysm/Tests/`. They need no play session and no rendering. Run them
+all from this folder:
+
+```bash
+"/c/Program Files/Epic Games/UE_5.8/Engine/Binaries/Win64/UnrealEditor-Cmd.exe" \
+  "$PWD/Cataclysm.uproject" \
+  -ExecCmds="Automation RunTests Cataclysm" \
+  -unattended -nopause -nosplash -nullrhi \
+  -testexit="Automation Test Queue Empty" -log
+```
+
+Narrow it by replacing `Cataclysm` with any prefix of a test name, for example
+`Cataclysm.AbilitySystem` or `Cataclysm.Skills`.
+
+**The results are not on standard output.** Redirecting the command captures only
+the SDK validation banner. The run writes to `Saved/Logs/Cataclysm.log`; read the
+counts from there:
+
+```bash
+grep -cE "Test Completed. Result=\{Success\}" Saved/Logs/Cataclysm.log
+grep -E "Test Completed. Result=\{Fail" Saved/Logs/Cataclysm.log
+grep -E "Automation Test Queue Empty" Saved/Logs/Cataclysm.log
+```
+
+**The editor cannot be open while `Build.bat` runs.** Live Coding holds the
+binaries and the build refuses to start. Close the editor, build, run the tests,
+reopen it.
+
+## Regenerating the content the workbook produces
+
+Two kinds of asset in `Content/` are generated rather than authored, and both
+need the editor, because they run inside its Python interpreter. Run them from
+this folder.
+
+**The data tables.** `docs/All_Things_Cataclysm.xlsx` is turned into CSV files
+under `Data/` by `tools/generate_datatables.py`, which needs no editor. Those
+CSV files are the reviewable form: they are text, a pull request shows a diff of
+them, and `--check` compares them. They are **not content**. Nothing in the
+engine can reference one, `Data/` is not cooked, and a packaged build does not
+contain them. So they are then imported as DataTable assets under `/Game/Data/`:
+
+Four of the twenty-nine do not come from the workbook. `EnemyArchetypes.csv` and
+`EnemyRarities.csv` are built from `sim/cataclysm_sim/enemy_stats.py`, which is
+where the enemy stat block is designed and where its self-checks live.
+`PassiveNodes.csv` and `PassiveEdges.csv` are built from the four class passive
+tree files in `docs/`, which are exported from `C:\Projects\PassiveTreeCreator`
+and which the game cannot read directly, because `docs/` is not packaged. The
+same generator writes all four and the same `--check` compares them, so editing
+any of those CSVs by hand achieves nothing.
+
+```bash
+python ../tools/generate_datatables.py
+python ../tools/run_editor_python.py tools/generate_datatable_assets.py
+```
+
+**`tools/run_editor_python.py` starts the editor for you and checks the run.** It
+refuses to start when the project's compiled C++ modules are missing, and it
+fails afterwards unless the editor's own log says the script both started and
+finished without errors. Run the editor by hand and neither is checked. It works
+with the editor open.
+
+**It also lists every file the run left changed.** Running the editor dirties the
+working tree in ways the script did not ask for: it re-saves assets it merely
+happened to load. A re-saved `.uasset` is a new git LFS object rather than a
+readable diff, so one committed by accident inside a pull request about something
+else cannot be reviewed by anybody. The list is printed after the run, flags the
+binary entries, and gives the command that discards each kind. It reports and
+does not revert: the script's own output is a change to the working tree too, and
+only the person who ran it knows which is which. Issue #414.
+
+The editor also rewrites `Config/DefaultEditor.ini` with about 57 kilobytes of
+asset-viewer preview scene profiles. That file is gitignored, so it does not
+reach the report or a commit. Its only committed content used to be
+`bAllowMultiplePIEInstances=True`, which issue
+[#427](https://github.com/sdubois777/Cataclysm/issues/427) established did
+nothing: the name appears nowhere in Unreal 5.8's source, and `UEditorEngine` is
+declared `config=Engine` so it would not read the Editor ini anyway.
+
+**It does not work from a checkout whose C++ modules are not built, and it says
+so instead of doing nothing.** The editor cannot load such a project.
+`game/Binaries/` is gitignored, so a **fresh** worktree has none. Before this
+check existed the editor started, ran for about twenty seconds, wrote nothing and
+exited normally, and the only sign was
+`tools/tests/test_datatable_assets_are_current.py` failing later about stale
+assets. That was issue
+[#279](https://github.com/sdubois777/Cataclysm/issues/279).
+
+**BUILDING THE EDITOR TARGET IN THE WORKTREE IS THE FIX, and it is the one to
+reach for.** Measured on 2026-09-07 in
+`.claude/worktrees/friendly-dirac-2b1368`: after
+`python tools/unreal_build.py build`, `game/Binaries/Win64/` held the three
+module libraries the runner checks for, and
+`python tools/run_editor_python.py tools/generate_datatable_assets.py` ran the
+editor there and reported `rebuilt 0 DataTable assets and left 28 already
+current, 2304 rows in total across /Game/Data`. **This paragraph previously said
+building the worktree its own binaries was not the fix. That was wrong.** The
+reasoning it gave — that the binaries would not match the source beside them —
+applies to sharing another checkout's binaries through a junction, which is still
+true and still a bad idea. A worktree's own build is compiled from its own
+`Source/`, so it matches by construction.
+
+Note that the run rewrites `game/Data/datatable_asset_sources.json` with LF line
+endings even when it rebuilds nothing, which shows up as a modified file with an
+empty diff. `git checkout -- game/Data/datatable_asset_sources.json` puts it back.
+
+**The old way round, which is now the fallback and not the first choice.** If for
+some reason you cannot build in the worktree: make the same CSV change in the
+ordinary checkout, run the generator there, copy the changed asset out of
+`Content/Data/` and the whole of `Data/datatable_asset_sources.json` back into the
+worktree, then `git restore game/` in the ordinary checkout to leave it clean.
+
+**THAT LAST STEP DESTROYS OTHER SESSIONS' WORK, AND NOTHING WARNS YOU.**
+`git restore game/` discards every uncommitted change under `game/` in that
+checkout — not only the ones this procedure made. Several Claude sessions work on
+this repository at once and they all share the ordinary checkout at
+`C:\Projects\Cataclysm`, so anything another session has in progress there is
+gone, with no prompt and nothing to recover it from. **Before starting this
+procedure, check that nothing else is live in that checkout**: `git status` there,
+and `python tools/unreal_lock.py status` for whether somebody is driving the
+editor. If another session is working, wait or ask it to land first. The
+procedure is safe only when you are the only writer.
+
+**Sharing the ordinary checkout's binaries through a junction is not the fix.**
+Those binaries are compiled from that checkout's `Source/`, and a worktree exists
+to hold a different version of that tree, so the editor would load C++ that does
+not match the source beside it and report nothing. Build in the worktree instead,
+as above.
+
+**If you do run the editor by hand, `-script=` must be an absolute path.** A
+relative one resolves from the engine's own binaries directory rather than from
+this folder, and fails with `Could not load Python file 'C:/Program Files/Epic
+Games/UE_5.8/Engine/Binaries/tools/...'`.
+
+**It rebuilds only the tables whose CSV changed**, as of issue
+[#444](https://github.com/sdubois777/Cataclysm/issues/444). It used to rewrite
+every asset on every run, which left a reviewer one modified binary file per
+table and no way to tell which one carried the change. There is nothing to
+restore afterwards, because the tables it skipped were never touched. Set
+`CATACLYSM_REBUILD_ALL_DATATABLES` to any non-empty value to rebuild every asset
+regardless, which is what an asset hand-edited in the editor needs.
+
+**Close the interactive editor before running it.** An open editor holds the
+`.uasset` files, and Windows then refuses the rename Unreal performs when it
+saves a package, with error code 32. This is the same class of problem as
+`Build.bat` refusing to run while the editor is open, but it used to be silent:
+the failure reached the log only as a warning, the run reported a rebuild it had
+not performed, and the record then said the asset was current when it was not.
+As of issue [#587](https://github.com/sdubois777/Cataclysm/issues/587) the run
+exits non-zero and names each asset it could not write. Whether it happens
+depends on which assets the editor has loaded, so a run that worked yesterday
+with the editor open is not evidence that it will work today.
+
+**Check `git status --short Content/Data/` afterwards** and confirm the asset you
+expected to change is in the list, not only `Data/datatable_asset_sources.json`.
+
+Run the second whenever the first changes anything. Neither script can compare
+bytes to tell you it is needed, because a `.uasset` carries generated
+identifiers that differ between runs. The automation test
+`Cataclysm.Data.EveryGeneratedTableHasAnAssetThatMatchesIt` compares each asset
+against the CSV it came from instead, and names the script to run when they
+disagree.
+
+**Two checks tell you the second script was skipped, and they are not the same.**
+
+| Check | Runs where | Proves |
+|---|---|---|
+| `Cataclysm.Data.EveryGeneratedTableHasAnAssetThatMatchesIt` | Unreal automation tests, needs the editor | The asset's rows match the CSV |
+| `tools/tests/test_datatable_assets_are_current.py` | `python -m pytest`, needs nothing | The generator was run since the CSV last changed |
+
+The second exists because nothing on a pull request runs the first: continuous
+integration runs the Python tests only. It reads
+`Data/datatable_asset_sources.json`, which the asset generator writes at the end
+of a successful run, holding the SHA-256 of each CSV at the moment its asset was
+built. That file is generated; do not edit it by hand. Issue #226 has the two
+pull requests that merged with stale assets and prompted it.
+
+**The input assets and the sandbox level.**
+
+```bash
+python ../tools/run_editor_python.py tools/generate_input_assets.py
+```
+
+Both scripts overwrite every property of every asset they own, so an asset
+edited by hand in the editor loses that edit on the next run.
+## Regenerating after changing modules
+
+Editing any `.Build.cs` or `.Target.cs`, or adding a module to the `.uproject`,
+requires regenerating project files before building. UnrealBuildTool compiles
+those files into a rules assembly, and a stale assembly produces confusing errors
+that look like missing symbols.
+
+## Toolset plugins, and why `AllToolsets` is not all of them
+
+Unreal 5.8 ships toolset plugins in
+`Engine/Plugins/Experimental/Toolsets`. Each one exposes a slice of the editor to
+an agent through Epic's Model Context Protocol server. The project enables
+`ModelContextProtocol` and `AllToolsets` in `Cataclysm.uproject`.
+
+**`AllToolsets` does not enable all of them, despite the name.** It is an
+aggregator whose own `.uplugin` lists 21 toolsets. The directory holds 26 besides
+the aggregator itself, so **five are outside it** and have to be named in
+`Cataclysm.uproject` one at a time:
+
+| Toolset plugin | What it exposes | Enabled here |
+|---|---|---|
+| `MetaHumanGenerator` | Creating and editing MetaHuman characters | **Yes.** Issue #267 |
+| `ChaosClothAssetToolset` | Cloth simulation assets | No. Nothing uses cloth yet |
+| `LiveCodingToolset` | Recompiling C++ from inside the editor | No. `tools/unreal_build.py` already builds, and Live Coding cannot add or remove a class |
+| `MVVMToolset` | Model-View-ViewModel bindings for the interface | No. Interface work has not started; issues #49 and #136 |
+| `SequencerAnimMixerToolset` | Animation mixing in Sequencer | No. The animation pipeline is undecided; issue #18 |
+
+Each enabled plugin costs editor startup time and adds to the surface an agent
+has to reason about, so they are enabled when something needs them rather than
+in advance.
+
+### What `MetaHumanGenerator` actually does
+
+Its whole surface is nine functions: `create`, `begin_edit`, `end_edit`, and a
+getter and setter each for body shape, skin tone and eye colour. It creates a
+character and adjusts three things about it. It does not sculpt faces, and it does
+not do hair or clothing.
+
+It matters anyway because **a MetaHuman arrives rigged**. The asset pipeline
+research on issue #17 found that the hard part of generating a character is not
+the mesh but that a generated mesh has no skeleton and no skin weights. It
+produces humans only, so it does nothing for the non-humanoid half of the
+bestiary.
+
+**Enabling it also enables `MetaHumanCharacter`, `MetaHumanCoreTech` and
+`MetaHumanSDK`**, which are its declared dependencies and were all disabled
+before. All three ship with the engine.
+
+**A plugin change only takes effect on the next editor restart.** The plugin was
+added to `Cataclysm.uproject` by editing the file; `PluginToolset.SetPluginEnabled`
+does the same thing through the running editor and also needs a restart.

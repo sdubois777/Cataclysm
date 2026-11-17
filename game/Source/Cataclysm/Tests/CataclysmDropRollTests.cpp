@@ -1,0 +1,2032 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "Misc/AutomationTest.h"
+
+#if WITH_AUTOMATION_TESTS
+
+#include "Items/CataclysmDropRoll.h"
+#include "Items/CataclysmItem.h"
+#include "Data/CataclysmDataRows.h"
+#include "Engine/DataTable.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+
+/**
+ * Tests for what a drop rolls: its rarity, its sockets, its affix tiers and its
+ * name.
+ *
+ * THE NUMBERS ARE QUOTED FROM `sim/cataclysm_sim/loot.py`, printed by
+ * `loot.rarity_distribution` and `affixes.affix_tier_distribution` rather than
+ * recomputed here. A figure recomputed by the same reasoning that produced the
+ * code would not test anything; a figure taken from the model tests that the
+ * port agrees with it.
+ *
+ * EVERY DRAW IS SEEDED, so these are deterministic. A sampling test with an
+ * unseeded stream is a test that fails once a month and is then ignored.
+ */
+
+namespace CataclysmDropRollTest
+{
+	using FDrop = UCataclysmDropRoll;
+
+	/** Loads a generated table so tests read the real data, not a fixture. */
+	template <typename RowType>
+	UDataTable* LoadTable(const TCHAR* FileName)
+	{
+		FString Contents;
+		const FString Path = FPaths::ProjectDir() / TEXT("Data") / FileName;
+		if (!FFileHelper::LoadFileToString(Contents, *Path))
+		{
+			return nullptr;
+		}
+
+		UDataTable* Table = NewObject<UDataTable>();
+		Table->RowStruct = RowType::StaticStruct();
+		if (Table->CreateTableFromCSVString(Contents).Num() > 0)
+		{
+			return nullptr;
+		}
+		return Table;
+	}
+
+	/** The eight rarities, weakest first. */
+	const TArray<ECataclysmRarity>& Ladder()
+	{
+		static const TArray<ECataclysmRarity> Rarities = {
+			ECataclysmRarity::Everyday,	   ECataclysmRarity::Quality,
+			ECataclysmRarity::Superb,	   ECataclysmRarity::Masterful,
+			ECataclysmRarity::Legendary,   ECataclysmRarity::Mythical,
+			ECataclysmRarity::Ascendant,   ECataclysmRarity::Cataclysmic,
+		};
+		return Rarities;
+	}
+
+	FCataclysmRolledAffix Rolled(const TCHAR* Affix, int32 Tier, float Roll)
+	{
+		FCataclysmRolledAffix Out;
+		Out.Affix = FName(Affix);
+		Out.Tier = Tier;
+		Out.Roll = Roll;
+		return Out;
+	}
+
+	/** A base row by its key, or null. */
+	const FCataclysmItemBaseRow* Base(const UDataTable* Table, const TCHAR* Key)
+	{
+		return Table ? Table->FindRow<FCataclysmItemBaseRow>(
+			FName(Key), TEXT("test"), /*bWarnIfMissing=*/false) : nullptr;
+	}
+}
+
+// ---------------------------------------------------------------------------
+// The ladder, and the join between the table and the enum
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDropLadderTest,
+	"Cataclysm.Drop.EveryRarityHasARowTheEngineCanFind",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDropLadderTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	UDataTable* Rarities = LoadTable<FCataclysmGearRarityRow>(TEXT("GearRarity.csv"));
+	if (!TestNotNull(TEXT("GearRarity.csv loads"), Rarities))
+	{
+		return false;
+	}
+
+	// THE JOIN THIS WHOLE TABLE DEPENDS ON. FCataclysmGearRarityRow carries no
+	// ladder column, unlike FCataclysmEnemyRarityRow, because ECataclysmRarity
+	// already states the order and each row is keyed on the enum entry's name.
+	// A rarity renamed on one side would look up nothing, and a DataTable
+	// returning no row is not an error Unreal reports.
+	for (ECataclysmRarity Rarity : Ladder())
+	{
+		const FCataclysmGearRarityRow* Row = FDrop::RarityRow(Rarities, Rarity);
+		if (!TestNotNull(*FString::Printf(TEXT("a row for %s"),
+										  *FDrop::RowNameFor(Rarity).ToString()),
+						 Row))
+		{
+			continue;
+		}
+		TestEqual(TEXT("and the row names itself the same way"),
+				  Row->Rarity, FDrop::RowNameFor(Rarity).ToString());
+	}
+
+	// The gates the design document states, and the only four that are not 0.
+	TestEqual(TEXT("Legendary needs +4"),
+		FDrop::GearLevelGateFor(Rarities, ECataclysmRarity::Legendary), 4);
+	TestEqual(TEXT("Mythical needs +6"),
+		FDrop::GearLevelGateFor(Rarities, ECataclysmRarity::Mythical), 6);
+	TestEqual(TEXT("Ascendant needs +8"),
+		FDrop::GearLevelGateFor(Rarities, ECataclysmRarity::Ascendant), 8);
+	TestEqual(TEXT("Cataclysmic needs +10"),
+		FDrop::GearLevelGateFor(Rarities, ECataclysmRarity::Cataclysmic), 10);
+	TestEqual(TEXT("and Masterful needs nothing"),
+		FDrop::GearLevelGateFor(Rarities, ECataclysmRarity::Masterful), 0);
+
+	// How far each tier reaches without a penalty, quoted from
+	// loot.highest_unpenalised_rarity for tiers 1 to 8. It is not a cap:
+	// every rarity drops at every tier, and above this a rarity is divided
+	// down rather than forbidden.
+	const ECataclysmRarity Expected[] = {
+		ECataclysmRarity::Quality,	   ECataclysmRarity::Superb,
+		ECataclysmRarity::Masterful,   ECataclysmRarity::Legendary,
+		ECataclysmRarity::Mythical,	   ECataclysmRarity::Ascendant,
+		ECataclysmRarity::Cataclysmic, ECataclysmRarity::Cataclysmic,
+	};
+	for (int32 Tier = 1; Tier <= FDrop::DifficultyTiers; ++Tier)
+	{
+		TestTrue(*FString::Printf(TEXT("tier %d reaches %s"), Tier,
+			*FDrop::RowNameFor(Expected[Tier - 1]).ToString()),
+			FDrop::HighestUnpenalisedRarity(Tier) == Expected[Tier - 1]);
+	}
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The cascade
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDropCascadeTest,
+	"Cataclysm.Drop.TheRarityCascadeMatchesTheModel",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDropCascadeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	UDataTable* Rarities = LoadTable<FCataclysmGearRarityRow>(TEXT("GearRarity.csv"));
+	if (!TestNotNull(TEXT("GearRarity.csv loads"), Rarities))
+	{
+		return false;
+	}
+
+	// Printed by loot.rarity_distribution(8, 0.0). Relative rather than
+	// absolute, because the shares run from 0.34 down to 0.0000392 and one
+	// tolerance cannot serve both ends.
+	//
+	// THE ORDINARY FOUR ARE NEARLY LEVEL HERE AND THEY USED TO BE 0.61 DOWN TO
+	// 0.039. Issue #886: the ordinary segment flattens as the difficulty tier
+	// rises, so a tier 8 player mostly finds Masterful and Superb. The enchanted
+	// four are unchanged, which is the half of that decision this array proves.
+	const float RarityShareAtTier8[] = {
+		0.1723819674f, 0.2154774593f, 0.2693468241f, 0.3366835302f,
+		0.0048960088f, 0.0009792018f, 0.0001958404f, 0.0000391681f,
+	};
+
+	TArray<float> Shares;
+	FDrop::RarityDistribution(Rarities, 8, 0.0f, Shares);
+	if (!TestEqual(TEXT("eight shares"), Shares.Num(), 8))
+	{
+		return false;
+	}
+	for (int32 Index = 0; Index < 8; ++Index)
+	{
+		TestTrue(*FString::Printf(
+			TEXT("%s is %.8f of drops at tier 8 (%.8f)"),
+			*FDrop::RowNameFor(Ladder()[Index]).ToString(),
+			RarityShareAtTier8[Index], Shares[Index]),
+			FMath::Abs(Shares[Index] - RarityShareAtTier8[Index])
+				< RarityShareAtTier8[Index] * 1e-4f);
+	}
+
+	// THE HEADLINE FIGURE THE DECISION WAS MADE ON: one Cataclysmic in 25,531.
+	TestTrue(*FString::Printf(TEXT("a Cataclysmic drop is one in 25,531 (%.0f)"),
+							  1.0f / Shares[7]),
+		FMath::Abs(1.0f / Shares[7] - 25531.0f) < 5.0f);
+
+	// AND MASTERFUL STAYS COMMON, which is the point the whole weighting rests
+	// on: the design fits its affix values against a full set of it, and
+	// crafting promotes a piece upward from there. At difficulty tier 8 it is
+	// now the commonest thing that drops rather than one in 26, which is what
+	// issue #886 changed and why this figure moved.
+	TestTrue(*FString::Printf(TEXT("and a Masterful drop is one in 3 (%.1f)"),
+							  1.0f / Shares[3]),
+		FMath::Abs(1.0f / Shares[3] - 2.97f) < 0.05f);
+
+	// THE TWO SEGMENTS MOVED DIFFERENTLY, AND THAT IS THE DECISION. Stated as a
+	// comparison rather than left to the array above, because a reader looking
+	// at eight literals cannot see which of them were meant to move. Only the
+	// ordinary four did.
+	TestTrue(TEXT("Masterful is the commonest thing at difficulty tier 8"),
+		Shares[3] > Shares[0] && Shares[3] > Shares[1] && Shares[3] > Shares[2]);
+
+	// THE DIFFICULTY TIER MOVES THE ORDINARY SEGMENT AND NOTHING ELSE. Issue
+	// #886. Two properties rather than a second array of literals, because what
+	// was decided is the direction and the pinning, not eight more numbers.
+	//
+	// ONE: GOING DEEPER DROPS LESS OF THE WEAKEST THING. From tier 2 up; tier 1
+	// reaches two rungs and tier 2 three, so at the very bottom the cap moves
+	// the shares around rather than the weights.
+	float PreviousEveryday = 1.0f;
+	for (int32 Tier = 2; Tier <= FDrop::DifficultyTiers; ++Tier)
+	{
+		FDrop::RarityDistribution(Rarities, Tier, 0.0f, Shares);
+		TestTrue(*FString::Printf(
+			TEXT("Everyday is %.4f of drops at tier %d, no more than the "
+				 "%.4f at the tier above it"), Shares[0], Tier,
+			PreviousEveryday),
+			Shares[0] <= PreviousEveryday + 1e-6f);
+		PreviousEveryday = Shares[0];
+	}
+
+	// TWO: THE ENCHANTED FOUR KEEP THE SHARE THE TABLE'S OWN WEIGHTS GIVE THEM,
+	// AT THE TIERS WHERE NOTHING IS PENALISED. That is 7 and 8. Below them the
+	// above-the-tier penalty divides these rungs down deliberately, so comparing
+	// them against the table there would be checking that the penalty had been
+	// skipped.
+	//
+	// TWO SEPARATE SCALINGS ACT ON THESE FOUR AND THEY MUST NOT BE CONFUSED: the
+	// pinning, which undoes the per-tier flattening and is meant to leave their
+	// share alone, and the penalty, which is meant to move it. If the pinning
+	// ever started reading penalised weights it would cancel the penalty, and
+	// every tier below 7 would quietly return to the table's own figures.
+	float WholeLadder = 0.0f;
+	for (int32 Rung = 0; Rung < FDrop::RarityCount; ++Rung)
+	{
+		if (const FCataclysmGearRarityRow* Row =
+				FDrop::RarityRow(Rarities, Ladder()[Rung]))
+		{
+			WholeLadder += Row->DropWeight;
+		}
+	}
+	TestTrue(TEXT("the gear rarity table weighs something"), WholeLadder > 0.0f);
+
+	for (int32 Tier = FDrop::DifficultyTiers - 1;
+		 Tier <= FDrop::DifficultyTiers; ++Tier)
+	{
+		FDrop::RarityDistribution(Rarities, Tier, 0.0f, Shares);
+
+		for (int32 Rung = FDrop::OrdinaryRarities;
+			 Rung < FDrop::RarityCount; ++Rung)
+		{
+			const FCataclysmGearRarityRow* Row =
+				FDrop::RarityRow(Rarities, Ladder()[Rung]);
+			if (!Row || WholeLadder <= 0.0f)
+			{
+				continue;
+			}
+
+			const float Expected = Row->DropWeight / WholeLadder;
+			TestTrue(*FString::Printf(
+				TEXT("%s is %.8f of drops at tier %d, where nothing is "
+					 "penalised, the %.8f its weight in GearRarity.csv gives it"),
+				*FDrop::RowNameFor(Ladder()[Rung]).ToString(), Shares[Rung],
+				Tier, Expected),
+				FMath::Abs(Shares[Rung] - Expected) < Expected * 1e-4f);
+		}
+	}
+
+	// THREE: DIFFICULTY TIER 1 IS THE TABLE UNTOUCHED, once the above-the-tier
+	// penalty is multiplied back out. The per-tier shape starts at the figure
+	// GearRarity.csv already holds, so the file still describes a real tier
+	// rather than describing none of them.
+	//
+	// MULTIPLYING THE PENALTY BACK OUT IS NOT A DODGE. Since the cap became a
+	// penalty, DropWeightAt also divides by how far a rarity sits above the
+	// tier, and at tier 1 that is real: Superb is two rungs up, so its finished
+	// weight is a quarter of the table's on purpose.
+	for (int32 Rung = 0; Rung < FDrop::RarityCount; ++Rung)
+	{
+		const FCataclysmGearRarityRow* Row =
+			FDrop::RarityRow(Rarities, Ladder()[Rung]);
+		if (!Row)
+		{
+			continue;
+		}
+		const float Shaped = FDrop::DropWeightAt(Rarities, Ladder()[Rung], 1)
+			* FDrop::PenaltyAboveTheTier(Ladder()[Rung], 1);
+		TestTrue(*FString::Printf(
+			TEXT("%s is shaped to %.4f at tier 1, as the table says"),
+			*FDrop::RowNameFor(Ladder()[Rung]).ToString(), Row->DropWeight),
+			FMath::IsNearlyEqual(Shaped, Row->DropWeight,
+								 Row->DropWeight * 1e-5f));
+	}
+
+	// A LOW TIER REACHES EVERY RUNG, AND THIS USED TO ASSERT THE OPPOSITE.
+	// Until 2026-08-23 difficulty tier 1 was five sevenths Everyday, two
+	// sevenths Quality and exactly zero of everything else. The project owner
+	// played that and said it was too strict, so a rarity above the tier's own
+	// reach is divided by RarityPenaltyAboveTheTier per rung instead of
+	// forbidden. Superb is two rungs above tier 1 and arrives about one drop in
+	// 19; Cataclysmic is six rungs above and arrives about one in 1.5 million.
+	//
+	// Printed by loot.rarity_distribution(1, 0.0).
+	const float ShareAtTierOne[] = {
+		0.6679531444f, 0.2671812578f, 0.0534362516f, 0.0106872503f,
+		0.0006679531f, 0.0000667953f, 0.0000066795f, 0.0000006680f,
+	};
+
+	FDrop::RarityDistribution(Rarities, 1, 0.0f, Shares);
+	for (int32 Index = 0; Index < 8; ++Index)
+	{
+		TestTrue(*FString::Printf(
+			TEXT("%s is %.10f of drops at tier 1 (%.10f)"),
+			*FDrop::RowNameFor(Ladder()[Index]).ToString(),
+			ShareAtTierOne[Index], Shares[Index]),
+			FMath::Abs(Shares[Index] - ShareAtTierOne[Index])
+				< ShareAtTierOne[Index] * 1e-3f);
+
+		// AND NONE OF THEM IS ZERO, which is the whole of the change and is
+		// stated separately because a reader looking at eight literals cannot
+		// see which of them used to be forbidden.
+		TestTrue(*FString::Printf(TEXT("%s can drop at tier 1 at all"),
+			*FDrop::RowNameFor(Ladder()[Index]).ToString()),
+			Shares[Index] > 0.0f);
+	}
+
+	// EVERY DISTRIBUTION SUMS TO ONE, at every tier and with magic find on. It
+	// is a cascade, so the floor takes whatever fell through; a sum below one
+	// would mean drops that rolled nothing at all.
+	for (int32 Tier = 1; Tier <= FDrop::DifficultyTiers; ++Tier)
+	{
+		for (float MagicFind : { 0.0f, 50.0f, 400.0f })
+		{
+			FDrop::RarityDistribution(Rarities, Tier, MagicFind, Shares);
+			float Total = 0.0f;
+			for (float Share : Shares)
+			{
+				Total += Share;
+			}
+			TestTrue(*FString::Printf(
+				TEXT("tier %d at %.0f%% magic find sums to 1 (%.6f)"),
+				Tier, MagicFind, Total), FMath::Abs(Total - 1.0f) < 1e-4f);
+		}
+	}
+
+	// MAGIC FIND MULTIPLIES EACH RARITY'S WEIGHT, and the rarer the rarity the
+	// more of the multiplier it gets. Issue #890. It used to multiply each STEP
+	// of the cascade, which let a step reach 1 and wipe out every rarity below
+	// it: a Boss dropped Masterful 97.6% of the time at difficulty tier 8 and
+	// Quality 100% of the time at tier 1.
+	//
+	// Printed by loot.rarity_distribution(8, 100.0).
+	const float ShareAtTier8WithMagicFind[] = {
+		0.0884339540f, 0.1546674976f, 0.2705073532f, 0.4731066918f,
+		0.0096260787f, 0.0026937011f, 0.0007537883f, 0.0002109354f,
+	};
+
+	FDrop::RarityDistribution(Rarities, 8, 100.0f, Shares);
+	for (int32 Index = 0; Index < 8; ++Index)
+	{
+		TestTrue(*FString::Printf(
+			TEXT("%s is %.8f of drops at tier 8 with +100%% magic find (%.8f)"),
+			*FDrop::RowNameFor(Ladder()[Index]).ToString(),
+			ShareAtTier8WithMagicFind[Index], Shares[Index]),
+			FMath::Abs(Shares[Index] - ShareAtTier8WithMagicFind[Index])
+				< ShareAtTier8WithMagicFind[Index] * 1e-4f);
+	}
+
+	// THE ORDERING IS THE DECISION AND THE ARRAY IS ONLY ITS OUTPUT. Stated
+	// separately so a reader can see which way magic find is meant to push:
+	// the floor loses share, everything above it gains, and each rarity gains
+	// more than the one below it. Getting the exponent's ends the wrong way
+	// round would hand out junk and still pass every other check here.
+	TArray<float> Plain;
+	FDrop::RarityDistribution(Rarities, 8, 0.0f, Plain);
+
+	float PreviousGain = 0.0f;
+	for (int32 Index = 0; Index < 8; ++Index)
+	{
+		const float Gain = Shares[Index] / Plain[Index];
+		TestTrue(*FString::Printf(
+			TEXT("%s gains %.3fx from magic find, at least as much as the "
+				 "rarity below it (%.3fx)"),
+			*FDrop::RowNameFor(Ladder()[Index]).ToString(), Gain,
+			PreviousGain),
+			Gain >= PreviousGain);
+		PreviousGain = Gain;
+	}
+	TestTrue(TEXT("the weakest rarity loses share to magic find"),
+		Shares[0] < Plain[0]);
+	TestTrue(TEXT("and the rarest gains"), Shares[7] > Plain[7]);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDropRollDrawsFromItTest,
+	"Cataclysm.Drop.RollingDrawsFromTheStatedDistribution",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDropRollDrawsFromItTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	UDataTable* Rarities = LoadTable<FCataclysmGearRarityRow>(TEXT("GearRarity.csv"));
+	if (!TestNotNull(TEXT("GearRarity.csv loads"), Rarities))
+	{
+		return false;
+	}
+
+	// WHY THIS EXISTS SEPARATELY FROM THE TEST ABOVE. RollRarity walks the rungs
+	// itself rather than looking up RarityDistribution, so the exact figures
+	// checked above describe what really happens only if the two agree. That is
+	// deliberate in the model too, and this is the test that ties them together.
+	TArray<float> Shares;
+	FDrop::RarityDistribution(Rarities, 8, 0.0f, Shares);
+
+	constexpr int32 Draws = 20000;
+	FRandomStream Stream(/*InSeed=*/20260818);
+	TArray<int32> Counts;
+	Counts.Init(0, 8);
+	for (int32 Draw = 0; Draw < Draws; ++Draw)
+	{
+		++Counts[static_cast<int32>(FDrop::RollRarity(Rarities, 8, 0.0f, Stream))];
+	}
+
+	// ONLY THE RUNGS WITH ENOUGH MASS TO MEASURE. Legendary is one drop in 204,
+	// so twenty thousand draws give about ninety-eight of them and the noise is
+	// larger than any defect worth catching. The rare end is checked by
+	// saturating it instead, below.
+	for (int32 Index = 0; Index <= 3; ++Index)
+	{
+		const float Seen = static_cast<float>(Counts[Index]) / Draws;
+		TestTrue(*FString::Printf(
+			TEXT("%s came up %.4f of the time against a stated %.4f"),
+			*FDrop::RowNameFor(Ladder()[Index]).ToString(), Seen, Shares[Index]),
+			FMath::Abs(Seen - Shares[Index]) < Shares[Index] * 0.1f);
+	}
+
+	// A LOW TIER CAN ROLL FAR ABOVE ITSELF, AND THIS USED TO ASSERT THE
+	// OPPOSITE. Until 2026-08-23 nothing above the tier plus one could drop at
+	// all, and this counted any drop over that as a defect. The project owner
+	// played it and said it was too strict; a rarity far above the tier is now
+	// divided down rather than forbidden.
+	//
+	// ROLLED RATHER THAN READ OFF THE DISTRIBUTION, because RollRarity walks
+	// the cascade itself: a cascade still stopping at the old cap would pass
+	// every arithmetic check above and fail here. With a large magic find, so
+	// the draw does not need the millions of rolls the plain odds would.
+	FRandomStream Low(/*InSeed=*/7);
+	bool RolledAboveTheReach = false;
+	for (int32 Draw = 0; Draw < 20000 && !RolledAboveTheReach; ++Draw)
+	{
+		const ECataclysmRarity Rolled =
+			FDrop::RollRarity(Rarities, 2, 100000.0f, Low);
+		RolledAboveTheReach = static_cast<int32>(Rolled)
+			> static_cast<int32>(FDrop::HighestUnpenalisedRarity(2));
+	}
+	TestTrue(TEXT("a tier 2 drop can roll above Superb"),
+		RolledAboveTheReach);
+
+	// MAGIC FIND CAN NO LONGER FORCE A RARITY, AND THAT IS ISSUE #890's FIX.
+	// This used to assert the opposite: that a magic find no character could
+	// have saturated the top rung to a step chance of exactly 1 and always
+	// dropped Cataclysmic. That saturation is what made a Boss drop one rarity
+	// of item, so it is gone deliberately.
+	TestTrue(TEXT("no magic find saturates a rung to certainty any more"),
+		FDrop::RarityStepChance(Rarities, ECataclysmRarity::Cataclysmic, 8,
+								5000000.0f) < 1.0f);
+
+	// AND IT CANNOT REMOVE A RARITY EITHER, which is the property the whole
+	// change exists for. Checked at a magic find nobody could carry, because a
+	// shape that removes a rarity does it at some finite value and this has to
+	// notice wherever that value is.
+	FDrop::RarityDistribution(Rarities, 8, 5000000.0f, Shares);
+	for (int32 Index = 0; Index < 8; ++Index)
+	{
+		TestTrue(*FString::Printf(
+			TEXT("%s still drops at tier 8 with absurd magic find (%.9f)"),
+			*FDrop::RowNameFor(Ladder()[Index]).ToString(), Shares[Index]),
+			Shares[Index] > 0.0f);
+	}
+
+	// AND IT SETTLES RATHER THAN CLIMBING WITHOUT LIMIT. Putting magic find on
+	// the weights stops it wiping out a rarity; on its own it then ran away
+	// instead, because the multiplier is raised to MagicFindReach. The
+	// diminishing returns are what bound it.
+	TestTrue(*FString::Printf(
+		TEXT("even unlimited magic find leaves a Cataclysmic drop rare "
+			 "(one in %.0f)"), 1.0f / Shares[7]),
+		1.0f / Shares[7] > 300.0f);
+	TestTrue(TEXT("and no magic find is ever worth more than its ceiling"),
+		FDrop::EffectiveMagicFind(5000000.0f) < FDrop::MagicFindCeiling);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Residue
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDropResidueTest,
+	"Cataclysm.Drop.EveryDropCarriesResidueInsideItsBand",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDropResidueTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	UDataTable* Rarities = LoadTable<FCataclysmGearRarityRow>(TEXT("GearRarity.csv"));
+	if (!TestNotNull(TEXT("GearRarity.csv loads"), Rarities))
+	{
+		return false;
+	}
+
+	// The band the project owner set on 2026-08-18, after rejecting two lighter
+	// proposals topping out at 50 and at 100 as too safe.
+	float Lowest = 0.0f;
+	float Highest = 0.0f;
+	TestTrue(TEXT("Cataclysmic has a band"),
+		FDrop::ResidueBandFor(Rarities, ECataclysmRarity::Cataclysmic,
+							  Lowest, Highest));
+	TestEqual(TEXT("and it runs 300 to 500"), Lowest, 300.0f);
+	TestEqual(TEXT("and it runs 300 to 500"), Highest, 500.0f);
+
+	FRandomStream Stream(/*InSeed=*/99);
+	for (ECataclysmRarity Rarity : Ladder())
+	{
+		FDrop::ResidueBandFor(Rarities, Rarity, Lowest, Highest);
+		for (int32 Draw = 0; Draw < 200; ++Draw)
+		{
+			const float Residue = FDrop::RollResidue(Rarities, Rarity, Stream);
+			if (Residue < Lowest || Residue > Highest)
+			{
+				AddError(FString::Printf(
+					TEXT("a %s drop carried %.0f residue, outside %.0f to %.0f"),
+					*FDrop::RowNameFor(Rarity).ToString(), Residue,
+					Lowest, Highest));
+				break;
+			}
+			// A WHOLE NUMBER OF POINTS, because residue is counted in points
+			// everywhere else: the craft day penalty is CR / 100 rounded down.
+			if (Residue != FMath::FloorToFloat(Residue))
+			{
+				AddError(FString::Printf(TEXT("residue %.4f is not whole"),
+										 Residue));
+				break;
+			}
+		}
+	}
+
+	// EVERY RARITY ABOVE QUALITY CAN ARRIVE PAST THE CRITICAL RESIDUE OF 100,
+	// which is what makes a good item expensive to improve. Treating that
+	// threshold as a ceiling was wrong twice before the project owner corrected
+	// it, so it is asserted here rather than assumed.
+	FDrop::ResidueBandFor(Rarities, ECataclysmRarity::Superb, Lowest, Highest);
+	TestTrue(TEXT("a Superb drop can arrive past the 100 critical residue"),
+		Highest > 100.0f);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Sockets
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDropSocketsTest,
+	"Cataclysm.Drop.SocketsRollFromNoneUpToTheBaseMaximum",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDropSocketsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	UDataTable* Sockets = LoadTable<FCataclysmItemSocketRow>(TEXT("ItemSockets.csv"));
+	UDataTable* Bases = LoadTable<FCataclysmItemBaseRow>(TEXT("ItemBases.csv"));
+	if (!TestNotNull(TEXT("ItemSockets.csv loads"), Sockets)
+		|| !TestNotNull(TEXT("ItemBases.csv loads"), Bases))
+	{
+		return false;
+	}
+
+	const FCataclysmItemBaseRow* Cuirass = Base(Bases, TEXT("Chest_Cuirass"));
+	const FCataclysmItemBaseRow* Greataxe = Base(Bases, TEXT("Weapon_Greataxe"));
+	const FCataclysmItemBaseRow* Helm = Base(Bases, TEXT("Head_Helm"));
+	if (!TestNotNull(TEXT("the Cuirass base"), Cuirass)
+		|| !TestNotNull(TEXT("the Greataxe base"), Greataxe)
+		|| !TestNotNull(TEXT("the Helm base"), Helm))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a Chest holds six, the most of any armour piece"),
+		FDrop::MaxSocketsFor(Sockets, *Cuirass), 6);
+	TestEqual(TEXT("a Head holds two"), FDrop::MaxSocketsFor(Sockets, *Helm), 2);
+
+	// A WEAPON IS MATCHED ON ITS HAND COUNT, not on its slot alone, which is
+	// the whole reason the sheet has two Weapon rows. A Greataxe is two-handed.
+	TestEqual(TEXT("a two-handed weapon holds six"),
+		FDrop::MaxSocketsFor(Sockets, *Greataxe), 6);
+
+	// EVERY COUNT FROM NONE TO THE MAXIMUM IS REACHABLE, which is the shape the
+	// project owner asked for: a socket count carries no progression, so a tier
+	// 1 Chest can drop with all six. Weighting the roll toward fewer, and
+	// capping it by the difficulty tier the way Diablo 2 does, were both put to
+	// them and declined.
+	FRandomStream Stream(/*InSeed=*/4242);
+	TArray<int32> Seen;
+	Seen.Init(0, 7);
+	for (int32 Draw = 0; Draw < 4000; ++Draw)
+	{
+		const int32 Count = FDrop::RollSockets(Sockets, *Cuirass, Stream);
+		if (Count < 0 || Count > 6)
+		{
+			AddError(FString::Printf(TEXT("a Cuirass rolled %d sockets"), Count));
+			return false;
+		}
+		++Seen[Count];
+	}
+	for (int32 Count = 0; Count <= 6; ++Count)
+	{
+		TestTrue(*FString::Printf(TEXT("a Cuirass can drop with %d sockets "
+									   "(seen %d times in 4000)"),
+								  Count, Seen[Count]), Seen[Count] > 0);
+	}
+
+	// AND A DROP WITH NONE IS NOT A RUINED ITEM. The Add Socket craft only has
+	// something to do because drops arrive below their maximum, so a roll of
+	// zero has to be reachable rather than merely not crashing.
+	TestTrue(TEXT("and a Cuirass really can drop with none"), Seen[0] > 0);
+
+	// EVERY GEAR SLOT HAS A MAXIMUM. A base whose slot is missing from the
+	// sheet would drop with no sockets and nothing would say why.
+	Bases->ForeachRow<FCataclysmItemBaseRow>(TEXT("every base has a maximum"),
+		[&](const FName& Key, const FCataclysmItemBaseRow& Row)
+		{
+			if (FDrop::MaxSocketsFor(Sockets, Row) < 1)
+			{
+				AddError(FString::Printf(
+					TEXT("%s is in slot '%s' with %d hand(s) and has no socket "
+						 "maximum"), *Key.ToString(), *Row.Slot, Row.Hands));
+			}
+		});
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Affix tiers
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDropAffixTierTest,
+	"Cataclysm.Drop.AffixTiersHalveAndAreCappedByTheDifficultyTier",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDropAffixTierTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	UDataTable* Tiers = LoadTable<FCataclysmAffixTierRow>(TEXT("AffixTiers.csv"));
+	if (!TestNotNull(TEXT("AffixTiers.csv loads"), Tiers))
+	{
+		return false;
+	}
+
+	// Printed by affixes.max_affix_tier_on_a_drop for tiers 1 to 8. The cap
+	// reaches T7 at difficulty tier 6 and stays there.
+	const int32 Caps[] = { 2, 3, 4, 5, 6, 7, 7, 7 };
+	for (int32 Tier = 1; Tier <= FDrop::DifficultyTiers; ++Tier)
+	{
+		TestEqual(*FString::Printf(TEXT("tier %d reaches T%d"),
+								   Tier, Caps[Tier - 1]),
+			FDrop::MaxAffixTierOnADrop(Tier), Caps[Tier - 1]);
+	}
+
+	// Printed by affixes.affix_tier_distribution(8). Half of every affix that
+	// drops is a T1, and a T7 is one in 127.
+	const float AffixTierShareAtTier8[] = {
+		0.5039370079f, 0.2519685039f, 0.1259842520f, 0.0629921260f,
+		0.0314960630f, 0.0157480315f, 0.0078740157f,
+	};
+
+	constexpr int32 Draws = 40000;
+	FRandomStream Stream(/*InSeed=*/818);
+	TArray<int32> Counts;
+	Counts.Init(0, UCataclysmItemValues::MaxAffixTier + 1);
+	for (int32 Draw = 0; Draw < Draws; ++Draw)
+	{
+		const int32 Tier = FDrop::RollAffixTier(Tiers, 8, Stream);
+		if (Tier < 1 || Tier > UCataclysmItemValues::MaxAffixTier)
+		{
+			AddError(FString::Printf(TEXT("an affix rolled tier %d"), Tier));
+			return false;
+		}
+		++Counts[Tier];
+	}
+	for (int32 Tier = 1; Tier <= 5; ++Tier)
+	{
+		const float Seen = static_cast<float>(Counts[Tier]) / Draws;
+		TestTrue(*FString::Printf(
+			TEXT("T%d came up %.4f of the time against a stated %.4f"),
+			Tier, Seen, AffixTierShareAtTier8[Tier - 1]),
+			FMath::Abs(Seen - AffixTierShareAtTier8[Tier - 1])
+				< AffixTierShareAtTier8[Tier - 1] * 0.12f);
+	}
+	TestTrue(TEXT("and the two rarest tiers still turn up"),
+		Counts[6] > 0 && Counts[7] > 0);
+
+	// NOTHING ABOVE THE CAP. At difficulty tier 2 the cap is T3, and a drop
+	// reaching T4 there would hand a low-tier player something the forge should
+	// have been the only route to.
+	FRandomStream Shallow(/*InSeed=*/3);
+	for (int32 Draw = 0; Draw < 4000; ++Draw)
+	{
+		const int32 Tier = FDrop::RollAffixTier(Tiers, 2, Shallow);
+		if (Tier > 3)
+		{
+			AddError(FString::Printf(
+				TEXT("a tier 2 drop rolled a T%d affix, above the T3 cap"), Tier));
+			break;
+		}
+	}
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// What a kill drops
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKillDropRatesTest,
+	"Cataclysm.Drop.AKillDropsAtTheRateItsRarityStates",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmKillDropRatesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	UDataTable* Drops = LoadTable<FCataclysmEnemyDropRow>(TEXT("EnemyDrops.csv"));
+	UDataTable* Rarities =
+		LoadTable<FCataclysmEnemyRarityRow>(TEXT("EnemyRarities.csv"));
+	if (!TestNotNull(TEXT("EnemyDrops.csv loads"), Drops)
+		|| !TestNotNull(TEXT("EnemyRarities.csv loads"), Rarities))
+	{
+		return false;
+	}
+
+	// THE TWO TABLES JOIN ON THE ROW KEY. EnemyRarities is generated from the
+	// simulation's enemy model and EnemyDrops is typed into the workbook, so a
+	// rarity in one and not the other would be a creature that drops nothing,
+	// or a drop rate for a creature that cannot exist.
+	const TArray<FName> Known = Rarities->GetRowNames();
+	for (const FName& Key : Known)
+	{
+		TestNotNull(*FString::Printf(TEXT("a drop row for %s"), *Key.ToString()),
+			FDrop::EnemyDropRow(Drops, Key));
+	}
+	TestEqual(TEXT("and no drop rows for creatures that do not exist"),
+		Drops->GetRowNames().Num(), Known.Num());
+
+	// The figures the workbook states, quoted rather than recomputed.
+	//
+	// THE MATERIAL COLUMN WAS HALVED ON 2026-08-23, issue #850, after a play
+	// test found the floor cluttered with them. It used to be twice the gear
+	// figure and is now the same. Quoting both columns rather than expressing
+	// one as a multiple of the other is what makes that change visible here
+	// instead of passing silently.
+	struct FExpected { const TCHAR* Key; float Gear; float Materials; float Find; };
+	const FExpected Rows[] = {
+		{ TEXT("Common"),         0.16f,  0.16f,   0.0f },
+		{ TEXT("Elite"),          0.5f,   0.5f,   50.0f },
+		{ TEXT("Legendary"),      1.0f,   1.0f,  100.0f },
+		{ TEXT("Herald"),         2.0f,   2.0f,  150.0f },
+		{ TEXT("Boss"),           5.0f,   5.0f,  300.0f },
+		{ TEXT("Cataclysm_Boss"), 12.0f, 12.0f,  500.0f },
+	};
+
+	for (const FExpected& Row : Rows)
+	{
+		const FName Key(Row.Key);
+		TestEqual(*FString::Printf(TEXT("%s drops %.2f gear"), Row.Key, Row.Gear),
+			FDrop::ExpectedGearDrops(Drops, Key, FDrop::BaselineLootQuantity),
+			Row.Gear);
+		TestEqual(*FString::Printf(TEXT("%s drops %.2f materials"), Row.Key,
+								   Row.Materials),
+			FDrop::ExpectedMaterialDrops(Drops, Key,
+										 FDrop::BaselineLootQuantity),
+			Row.Materials);
+		TestEqual(*FString::Printf(TEXT("%s adds %.0f percent magic find"),
+								   Row.Key, Row.Find),
+			FDrop::MagicFindFrom(Drops, Key), Row.Find);
+	}
+
+	// LOOT QUANTITY IS A PERCENTAGE OF WHAT WOULD OTHERWISE DROP, so 100 leaves
+	// it unchanged. An increase applied to a baseline of zero would be worth
+	// nothing, which is why the baseline is 100.
+	TestEqual(TEXT("400 percent loot quantity quadruples a Boss's gear"),
+		FDrop::ExpectedGearDrops(Drops, TEXT("Boss"), 400.0f), 20.0f);
+	TestEqual(TEXT("and its materials"),
+		FDrop::ExpectedMaterialDrops(Drops, TEXT("Boss"), 400.0f), 20.0f);
+
+	// AN UNKNOWN RARITY DROPS NOTHING rather than crashing. "Rare" is the one
+	// that would be typed by mistake: the design document's older enemy list
+	// had it and this ladder does not.
+	TestEqual(TEXT("an unknown enemy rarity drops nothing"),
+		FDrop::ExpectedGearDrops(Drops, TEXT("Rare"),
+								 FDrop::BaselineLootQuantity), 0.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDropCountTest,
+	"Cataclysm.Drop.AFractionalRateIsRolledRatherThanRounded",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDropCountTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	// ROUNDING WOULD MAKE A COMMON ENEMY DROP NOTHING, EVER. 0.16 to the
+	// nearest whole number is zero, so the fraction has to be a probability.
+	FRandomStream Stream(/*InSeed=*/20260818);
+	constexpr int32 Draws = 20000;
+
+	int32 Total = 0;
+	int32 MostAtOnce = 0;
+	for (int32 Draw = 0; Draw < Draws; ++Draw)
+	{
+		const int32 Count = FDrop::RollDropCount(0.16f, Stream);
+		Total += Count;
+		MostAtOnce = FMath::Max(MostAtOnce, Count);
+	}
+	const float Mean = static_cast<float>(Total) / Draws;
+	TestTrue(*FString::Printf(TEXT("0.16 averages 0.16 over %d draws (%.4f)"),
+							  Draws, Mean),
+		FMath::Abs(Mean - 0.16f) < 0.16f * 0.1f);
+
+	// AND TWO AT ONCE IS POSSIBLE, at about one kill in eighty. This test used
+	// to assert the opposite -- "never gives two at once" -- which was true
+	// while the count was the whole part plus a fractional chance, because that
+	// method cannot produce two from a rate below one. Issue #725.
+	TestTrue(TEXT("and a Common enemy can drop two at once"), MostAtOnce >= 2);
+
+	// A WHOLE NUMBER VARIES TOO, WHICH IS THE WHOLE OF ISSUE #725. This test
+	// used to assert "a rate of exactly 5 always gives 5", and it was right
+	// about the old code: all the randomness lived in the fractional part, so
+	// four of the six enemy rarities dropped a fixed number. The project owner
+	// decided on 2026-08-19 that the count should vary for every enemy.
+	constexpr int32 BossDraws = 4000;
+	constexpr float BossRate = 5.0f;
+
+	int32 BossTotal = 0;
+	int32 Fewest = MAX_int32;
+	int32 Most = 0;
+	int32 Empty = 0;
+	for (int32 Draw = 0; Draw < BossDraws; ++Draw)
+	{
+		const int32 Count = FDrop::RollDropCount(BossRate, Stream);
+		BossTotal += Count;
+		Fewest = FMath::Min(Fewest, Count);
+		Most = FMath::Max(Most, Count);
+		Empty += (Count == 0) ? 1 : 0;
+	}
+
+	// THE MEAN IS THE PART THAT MUST NOT MOVE, because every figure in
+	// game/Data/EnemyDrops.csv is an average and changing how the count is drawn
+	// was only acceptable while that stayed true.
+	const float BossMean = static_cast<float>(BossTotal) / BossDraws;
+	TestTrue(*FString::Printf(
+			TEXT("a rate of 5 still averages 5 over %d draws (%.3f)"),
+			BossDraws, BossMean),
+		FMath::Abs(BossMean - BossRate) < BossRate * 0.1f);
+
+	TestTrue(*FString::Printf(TEXT("and it varies (%d to %d)"), Fewest, Most),
+		Most > Fewest);
+	TestTrue(TEXT("a Boss sometimes drops fewer than five"), Fewest < 5);
+	TestTrue(TEXT("and sometimes more"), Most > 5);
+
+	// ZERO IS REACHABLE EVEN AT FIVE, about 0.7% of the time. Asserted because
+	// it is a consequence the design has not decided about -- whether a boss
+	// should be guaranteed one item is left open on issue #725 -- and a silent
+	// floor appearing later should fail here rather than pass unnoticed.
+	TestTrue(*FString::Printf(
+			TEXT("a Boss can drop nothing at all (%d of %d)"), Empty, BossDraws),
+		Empty > 0);
+
+	TestEqual(TEXT("and a rate of nothing gives nothing"),
+		FDrop::RollDropCount(0.0f, Stream), 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMaterialTierTest,
+	"Cataclysm.Drop.MaterialTiersMatchTheModelAndMagicFindRaisesThem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMaterialTierTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	UDataTable* Tiers =
+		LoadTable<FCataclysmMaterialTierRow>(TEXT("MaterialTiers.csv"));
+	if (!TestNotNull(TEXT("MaterialTiers.csv loads"), Tiers))
+	{
+		return false;
+	}
+
+	// Printed by loot.material_tier_distribution(0.0). Common down to
+	// Extremely Rare, each tier four times rarer than the one below.
+	const float MaterialShareAtNoMagicFind[] = {
+		0.7507331378f, 0.1876832845f, 0.0469208211f, 0.0117302053f,
+		0.0029325513f,
+	};
+
+	TArray<float> Shares;
+	FDrop::MaterialTierDistribution(Tiers, 0.0f, Shares);
+	if (!TestEqual(TEXT("five tiers"), Shares.Num(), 5))
+	{
+		return false;
+	}
+	for (int32 Index = 0; Index < 5; ++Index)
+	{
+		TestTrue(*FString::Printf(
+			TEXT("tier %d is %.7f of material drops (%.7f)"), Index + 1,
+			MaterialShareAtNoMagicFind[Index], Shares[Index]),
+			FMath::Abs(Shares[Index] - MaterialShareAtNoMagicFind[Index])
+				< MaterialShareAtNoMagicFind[Index] * 1e-4f);
+	}
+
+	// THE FIGURE THE WEIGHTS WERE CHOSEN AGAINST. Purified Essence is the only
+	// thing that clears the Consumption Threshold, so how often it turns up is
+	// what mattered.
+	//
+	// THE TIER ITSELF IS UNCHANGED AT ONE DROP IN 341. What moved on 2026-08-23
+	// is how many materials share it: five rather than three, because the +9 and
+	// +10 upgrade stones joined it. Issue #852.
+	TestTrue(*FString::Printf(
+		TEXT("an Extremely Rare material is one drop in 341 (%.0f)"),
+		1.0f / Shares[4]), FMath::Abs(1.0f / Shares[4] - 341.0f) < 1.0f);
+
+	int32 InTopTier = 0;
+	Tiers->ForeachRow<FCataclysmMaterialTierRow>(TEXT("top tier count"),
+		[&](const FName&, const FCataclysmMaterialTierRow& Row)
+		{
+			if (Row.Tier == 5)
+			{
+				InTopTier = Row.Materials;
+			}
+		});
+	// FIVE SINCE 2026-08-23, AND IT WAS THREE. A named top-tier material is now
+	// two thirds as likely to turn up, and the tier's own weight was not
+	// adjusted to compensate. That is a real dilution rather than an accounting
+	// change, and if Purified Essence turns out too scarce the weight is the
+	// lever. `sim/tests/test_loot.py` states the same pair of figures.
+	TestEqual(TEXT("five materials share the top tier"), InTopTier, 5);
+	TestTrue(*FString::Printf(
+		TEXT("so a named one is one drop in 1,705 (%.0f)"),
+		1.0f / Shares[4] * InTopTier),
+		FMath::Abs(1.0f / Shares[4] * InTopTier - 1705.0f) < 6.0f);
+
+	// EVERY DISTRIBUTION SUMS TO ONE. It is a cascade, so the commonest tier
+	// takes whatever fell through; a sum below one would be material drops that
+	// rolled no tier at all.
+	for (float MagicFind : { 0.0f, 100.0f, 300.0f, 500.0f, 5000.0f })
+	{
+		FDrop::MaterialTierDistribution(Tiers, MagicFind, Shares);
+		float Total = 0.0f;
+		for (float Share : Shares)
+		{
+			Total += Share;
+		}
+		TestTrue(*FString::Printf(
+			TEXT("%.0f percent magic find sums to 1 (%.6f)"), MagicFind, Total),
+			FMath::Abs(Total - 1.0f) < 1e-4f);
+	}
+
+	// WHAT MAGIC FIND DOES TO THE TIERS IS PINNED IN
+	// Cataclysm.Drop.MaterialMagicFindMovesTheWeightsAndNeverSaturates below,
+	// since issue #891. This test used to pin "300 percent quadruples the top
+	// tier" and "500 percent drops no Common materials", which were the
+	// saturating cascade's figures.
+
+	// AND THE ROLL DRAWS FROM THAT DISTRIBUTION.
+	FRandomStream Stream(/*InSeed=*/818);
+	FDrop::MaterialTierDistribution(Tiers, 0.0f, Shares);
+	TArray<int32> Counts;
+	Counts.Init(0, 6);
+	constexpr int32 Draws = 40000;
+	for (int32 Draw = 0; Draw < Draws; ++Draw)
+	{
+		const int32 Tier = FDrop::RollMaterialTier(Tiers, 0.0f, Stream);
+		if (Tier < 1 || Tier > 5)
+		{
+			AddError(FString::Printf(TEXT("a material rolled tier %d"), Tier));
+			return false;
+		}
+		++Counts[Tier];
+	}
+	for (int32 Tier = 1; Tier <= 3; ++Tier)
+	{
+		const float Seen = static_cast<float>(Counts[Tier]) / Draws;
+		TestTrue(*FString::Printf(
+			TEXT("tier %d came up %.4f against a stated %.4f"), Tier, Seen,
+			Shares[Tier - 1]),
+			FMath::Abs(Seen - Shares[Tier - 1]) < Shares[Tier - 1] * 0.1f);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMaterialMagicFindTest,
+	"Cataclysm.Drop.MaterialMagicFindMovesTheWeightsAndNeverSaturates",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #891. Magic find used to multiply each step of the material cascade and
+ * cap it at certainty, so at +500% the Uncommon rung reached 1 and a Cataclysm
+ * Boss dropped no Common materials at all. It now multiplies the weights, with
+ * MaterialMagicFindReach 3 and the gear MagicFindCeiling of 400.
+ */
+bool FCataclysmMaterialMagicFindTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	UDataTable* Tiers =
+		LoadTable<FCataclysmMaterialTierRow>(TEXT("MaterialTiers.csv"));
+	if (!TestNotNull(TEXT("MaterialTiers.csv loads"), Tiers))
+	{
+		return false;
+	}
+
+	// Printed by loot.material_tier_distribution(300.0) and (500.0): a Boss and
+	// a Cataclysm Boss, Common down to Extremely Rare.
+	// `tools/tests/test_unreal_drop_figures_match_the_model.py` fails when these
+	// literals stop matching the model.
+	const float MaterialShareAtBoss[] = {
+		0.4916362667f, 0.2599115574f, 0.1374064979f, 0.0726421936f,
+		0.0384034843f,
+	};
+	const float MaterialShareAtCataclysmBoss[] = {
+		0.4327512006f, 0.2601925794f, 0.1564413415f, 0.0940606892f,
+		0.0565541893f,
+	};
+
+	TArray<float> Shares;
+	const auto Matches = [&](const TCHAR* Who, float MagicFind,
+							 const float (&Expected)[5])
+	{
+		FDrop::MaterialTierDistribution(Tiers, MagicFind, Shares);
+		if (!TestEqual(*FString::Printf(TEXT("%s: five tiers"), Who),
+				Shares.Num(), 5))
+		{
+			return;
+		}
+		for (int32 Index = 0; Index < 5; ++Index)
+		{
+			TestTrue(*FString::Printf(
+				TEXT("%s: tier %d is %.7f of material drops (%.7f)"), Who,
+				Index + 1, Expected[Index], Shares[Index]),
+				FMath::Abs(Shares[Index] - Expected[Index])
+					< Expected[Index] * 1e-3f);
+		}
+	};
+	Matches(TEXT("a Boss, 300 percent"), 300.0f, MaterialShareAtBoss);
+	Matches(TEXT("a Cataclysm Boss, 500 percent"), 500.0f,
+		MaterialShareAtCataclysmBoss);
+
+	// THE FAULT ITSELF, stated on its own so a failure names it. The saturating
+	// cascade gave a Cataclysm Boss exactly zero Common materials.
+	FDrop::MaterialTierDistribution(Tiers, 500.0f, Shares);
+	if (Shares.Num() == 5)
+	{
+		TestTrue(*FString::Printf(
+			TEXT("a Cataclysm Boss drops Common materials (%.4f)"), Shares[0]),
+			Shares[0] > 0.0f);
+	}
+
+	// NO TIER IS EVER COMMONER THAN THE ONE BELOW IT, however much magic find is
+	// carried. That is the upper bound the reach was ruled under; gear's 4
+	// breaks it on this ladder.
+	for (float MagicFind : { 0.0f, 500.0f, 10000.0f, 1.0e12f })
+	{
+		FDrop::MaterialTierDistribution(Tiers, MagicFind, Shares);
+		for (int32 Index = 1; Index < Shares.Num(); ++Index)
+		{
+			TestTrue(*FString::Printf(
+				TEXT("at %.0f percent magic find tier %d (%.4f) stays rarer than "
+					 "tier %d (%.4f)"), MagicFind, Index + 1, Shares[Index],
+				Index, Shares[Index - 1]),
+				Shares[Index] < Shares[Index - 1]);
+		}
+	}
+
+	// THE MULTIPLIER: one for the commonest tier, and the top tier's approaches
+	// 5 cubed, which is the ceiling's 1 + 400 / 100 raised to the reach. The
+	// small allowance above the bound is float rounding at 1e12, where the
+	// effective magic find comes out as 400 to within a float's precision.
+	TestEqual(TEXT("the commonest tier's weight is never multiplied"),
+		FDrop::MaterialMagicFindMultiplier(1, 5, 1.0e12f), 1.0f);
+	TestEqual(TEXT("no magic find multiplies nothing"),
+		FDrop::MaterialMagicFindMultiplier(5, 5, 0.0f), 1.0f);
+	const float Bound = FMath::Pow(1.0f + FDrop::MagicFindCeiling / 100.0f,
+		FDrop::MaterialMagicFindReach);
+	const float Top = FDrop::MaterialMagicFindMultiplier(5, 5, 1.0e12f);
+	TestTrue(*FString::Printf(
+		TEXT("the top tier's multiplier approaches %.3f (%.3f)"), Bound, Top),
+		Top <= Bound * 1.0001f && Top > Bound * 0.999f);
+
+	// AND THE ROLL DRAWS FROM THE CATACLYSM BOSS DISTRIBUTION, the case the
+	// saturation lived in.
+	FDrop::MaterialTierDistribution(Tiers, 500.0f, Shares);
+	FRandomStream Stream(/*InSeed=*/891);
+	TArray<int32> Counts;
+	Counts.Init(0, 6);
+	constexpr int32 Draws = 40000;
+	for (int32 Draw = 0; Draw < Draws; ++Draw)
+	{
+		const int32 Tier = FDrop::RollMaterialTier(Tiers, 500.0f, Stream);
+		if (Tier < 1 || Tier > 5)
+		{
+			AddError(FString::Printf(TEXT("a material rolled tier %d"), Tier));
+			return false;
+		}
+		++Counts[Tier];
+	}
+	for (int32 Tier = 1; Tier <= 4; ++Tier)
+	{
+		const float Seen = static_cast<float>(Counts[Tier]) / Draws;
+		TestTrue(*FString::Printf(
+			TEXT("at 500 percent tier %d came up %.4f against a stated %.4f"),
+			Tier, Seen, Shares[Tier - 1]),
+			FMath::Abs(Seen - Shares[Tier - 1]) < Shares[Tier - 1] * 0.1f);
+	}
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Rolling a whole item
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDropRollTest
+{
+	/** Every table the whole-item roll needs, loaded from the CSVs. */
+	struct FTables
+	{
+		UDataTable* Bases = nullptr;
+		UDataTable* Affixes = nullptr;
+		UDataTable* Rarities = nullptr;
+		UDataTable* Sockets = nullptr;
+		UDataTable* AffixTiers = nullptr;
+		UDataTable* WeaponSkills = nullptr;
+		UDataTable* PositiveEnchantments = nullptr;
+		UDataTable* NegativeEnchantments = nullptr;
+
+		bool AllPresent() const
+		{
+			return Bases && Affixes && Rarities && Sockets && AffixTiers
+				&& WeaponSkills && PositiveEnchantments && NegativeEnchantments;
+		}
+	};
+
+	FTables LoadEverything()
+	{
+		FTables Out;
+		Out.Bases = LoadTable<FCataclysmItemBaseRow>(TEXT("ItemBases.csv"));
+		Out.Affixes = LoadTable<FCataclysmAffixRow>(TEXT("Affixes.csv"));
+		Out.Rarities = LoadTable<FCataclysmGearRarityRow>(TEXT("GearRarity.csv"));
+		Out.Sockets = LoadTable<FCataclysmItemSocketRow>(TEXT("ItemSockets.csv"));
+		Out.AffixTiers = LoadTable<FCataclysmAffixTierRow>(TEXT("AffixTiers.csv"));
+		// FROM THE CSV, NOT THE GENERATED ASSET, like every table above it. The
+		// asset is produced from this same file, so reading the file keeps a
+		// test failing for a data reason rather than an import reason.
+		Out.WeaponSkills =
+			LoadTable<FCataclysmWeaponSkillRow>(TEXT("WeaponSkills.csv"));
+		Out.PositiveEnchantments = LoadTable<FCataclysmEnchantmentRow>(
+			TEXT("EnchantmentsPositive.csv"));
+		Out.NegativeEnchantments = LoadTable<FCataclysmEnchantmentRow>(
+			TEXT("EnchantmentsNegative.csv"));
+		return Out;
+	}
+
+	/** Roll one item, or leave OutItem untouched and return false. */
+	bool Roll(const FTables& Tables, const FString& Slot, int32 Tier,
+			  float MagicFind, FRandomStream& Stream, FCataclysmItem& OutItem)
+	{
+		return FDrop::RollItem(Tables.Bases, Tables.Affixes, Tables.Rarities,
+							   Tables.Sockets, Tables.AffixTiers,
+							   Tables.WeaponSkills, Tables.PositiveEnchantments,
+							   Tables.NegativeEnchantments, Slot, Tier, MagicFind,
+							   Stream, OutItem);
+	}
+
+	/** The base row a rolled item came from, or null. */
+	const FCataclysmItemBaseRow* BaseOf(const FTables& Tables,
+										const FCataclysmItem& Item)
+	{
+		return Tables.Bases->FindRow<FCataclysmItemBaseRow>(
+			Item.Base, TEXT("BaseOf"), /*bWarnIfMissing=*/false);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWholeItemRollTest,
+	"Cataclysm.Drop.AWholeItemRollsToSomethingValid",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWholeItemRollTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	const FTables Tables = LoadEverything();
+	if (!TestTrue(TEXT("every table loads"), Tables.AllPresent()))
+	{
+		return false;
+	}
+
+	FRandomStream Stream(/*InSeed=*/20260818);
+	constexpr int32 Rolls = 3000;
+	int32 Rolled = 0;
+
+	for (int32 Attempt = 0; Attempt < Rolls; ++Attempt)
+	{
+		const FString Slot = FDrop::RollSlot(Tables.Bases, Stream);
+		FCataclysmItem Item;
+		if (!TestTrue(*FString::Printf(TEXT("a %s rolls"), *Slot),
+					  Roll(Tables, Slot, 8, 0.0f, Stream, Item)))
+		{
+			return false;
+		}
+		++Rolled;
+
+		// THE CONTENTS HAVE TO BE A RARITY. RarityOf accepts eight combinations
+		// of enchantment and affix count and rejects every other, so an item
+		// that is not any rarity is malformed rather than merely thin -- and
+		// nothing downstream could name it or price it.
+		ECataclysmRarity Rarity = ECataclysmRarity::Everyday;
+		if (!TestTrue(TEXT("the contents are a rarity"),
+			UCataclysmItemValues::RarityOf(Item.EnchantmentCount,
+										   Item.Affixes.Num(), Rarity)))
+		{
+			AddError(FString::Printf(
+				TEXT("a %s rolled %d enchantments and %d affixes, which is no "
+					 "rarity"), *Slot, Item.EnchantmentCount,
+				Item.Affixes.Num()));
+			return false;
+		}
+
+		// AND THE PIECES AGREE WITH THAT RARITY.
+		if (Item.GearLevel != FDrop::GearLevelGateFor(Tables.Rarities, Rarity))
+		{
+			AddError(FString::Printf(
+				TEXT("a %s arrived at +%d and its rarity needs +%d"), *Slot,
+				Item.GearLevel,
+				FDrop::GearLevelGateFor(Tables.Rarities, Rarity)));
+			return false;
+		}
+
+		float Lowest = 0.0f;
+		float Highest = 0.0f;
+		FDrop::ResidueBandFor(Tables.Rarities, Rarity, Lowest, Highest);
+		if (Item.Residue < Lowest || Item.Residue > Highest)
+		{
+			AddError(FString::Printf(
+				TEXT("a %s carries %.0f residue, outside its rarity's %.0f to "
+					 "%.0f"), *Slot, Item.Residue, Lowest, Highest));
+			return false;
+		}
+
+		const FCataclysmItemBaseRow* BaseRow =
+			Tables.Bases->FindRow<FCataclysmItemBaseRow>(
+				Item.Base, TEXT("test"), /*bWarnIfMissing=*/false);
+		if (!BaseRow || !BaseRow->Slot.Equals(Slot))
+		{
+			AddError(FString::Printf(
+				TEXT("a %s roll produced the base %s"), *Slot,
+				*Item.Base.ToString()));
+			return false;
+		}
+		const int32 Maximum = FDrop::MaxSocketsFor(Tables.Sockets, *BaseRow);
+		if (Item.Sockets < 0 || Item.Sockets > Maximum)
+		{
+			AddError(FString::Printf(
+				TEXT("a %s has %d sockets and its base allows %d"), *Slot,
+				Item.Sockets, Maximum));
+			return false;
+		}
+
+		// NO TWO AFFIXES SHARE A STAT GROUP. This is the rule the whole draw
+		// exists to enforce, and it is the one that would fail silently: an
+		// item with two ways to grant maximum health looks perfectly ordinary.
+		TSet<FString> Taken;
+		TSet<FString> Groups;
+		for (const FCataclysmRolledAffix& Affix : Item.Affixes)
+		{
+			const FCataclysmAffixRow* Row =
+				Tables.Affixes->FindRow<FCataclysmAffixRow>(
+					Affix.Affix, TEXT("test"), /*bWarnIfMissing=*/false);
+			if (!Row)
+			{
+				AddError(FString::Printf(TEXT("rolled an unknown affix %s"),
+										 *Affix.Affix.ToString()));
+				return false;
+			}
+
+			// AND EVERY AFFIX IS ALLOWED ON THIS SLOT.
+			if (!Row->AllowedSlots.Contains(Slot))
+			{
+				AddError(FString::Printf(
+					TEXT("a %s rolled %s, which allows only %s"), *Slot,
+					*Row->AffixName, *Row->AllowedSlots));
+				return false;
+			}
+
+			if (Affix.Tier < 1 || Affix.Tier > UCataclysmItemValues::MaxAffixTier)
+			{
+				AddError(FString::Printf(TEXT("%s rolled at tier %d"),
+										 *Row->AffixName, Affix.Tier));
+				return false;
+			}
+
+			FDrop::GroupsOf(Tables.Affixes, *Row, Affix.DamageTypes, Groups);
+			if (Groups.Intersect(Taken).Num() > 0)
+			{
+				AddError(FString::Printf(
+					TEXT("a %s carries two affixes in one stat group; %s "
+						 "repeats one"), *Slot, *Row->AffixName));
+				return false;
+			}
+			Taken.Append(Groups);
+		}
+	}
+
+	TestEqual(TEXT("every attempt produced an item"), Rolled, Rolls);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAffixGroupsTest,
+	"Cataclysm.Drop.AnAffixOccupiesTheStatGroupsItGrants",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAffixGroupsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	UDataTable* Affixes = LoadTable<FCataclysmAffixRow>(TEXT("Affixes.csv"));
+	if (!TestNotNull(TEXT("Affixes.csv loads"), Affixes))
+	{
+		return false;
+	}
+
+	const auto GroupsFor = [&](const TCHAR* Key, const TArray<FName>& Types)
+	{
+		TSet<FString> Groups;
+		const FCataclysmAffixRow* Row = Affixes->FindRow<FCataclysmAffixRow>(
+			FName(Key), TEXT("test"), /*bWarnIfMissing=*/false);
+		if (Row)
+		{
+			FDrop::GroupsOf(Affixes, *Row, Types, Groups);
+		}
+		return Groups;
+	};
+
+	// A STAT AFFIX IS ONE GROUP, its stat and its kind together. Flat and
+	// increased maximum health are different groups on purpose: one adds and
+	// one multiplies, so a piece may carry both.
+	TSet<FString> Flat = GroupsFor(TEXT("Stat_Flat_maximum_health"), {});
+	TestEqual(TEXT("a stat affix is one group"), Flat.Num(), 1);
+	TestTrue(TEXT("and it names the stat and the kind"),
+		Flat.Contains(TEXT("max_health.flat")));
+
+	TSet<FString> Increased =
+		GroupsFor(TEXT("Stat_Increased_maximum_health"), {});
+	TestTrue(TEXT("flat and increased are different groups"),
+		Increased.Intersect(Flat).Num() == 0);
+
+	// AN AILMENT AFFIX GRANTS NO STAT, so its group is the effect it applies.
+	TSet<FString> Bleed = GroupsFor(TEXT("Ailment_Chance_to_bleed"), {});
+	TestEqual(TEXT("an ailment affix is one group"), Bleed.Num(), 1);
+	TestTrue(TEXT("named for the effect rather than a stat"),
+		Bleed.Contains(TEXT("ailment.Bleed")));
+
+	// A HYBRID OCCUPIES BOTH ITS PARTS' GROUPS, which is what stops it landing
+	// beside either half on its own.
+	TSet<FString> Hybrid =
+		GroupsFor(TEXT("Hybrid_Magic_find_and_loot_quantity"), {});
+	TestEqual(TEXT("a hybrid is two groups"), Hybrid.Num(), 2);
+	TestTrue(TEXT("and one of them is its first part's"),
+		Hybrid.Intersect(GroupsFor(TEXT("Stat_Flat_magic_find"), {})).Num() == 1);
+
+	// A RESISTANCE FAMILY IS ONE GROUP PER DAMAGE TYPE IT LANDED ON.
+	TSet<FString> One = GroupsFor(TEXT("Resistance_Single_resistance"),
+								  { TEXT("War") });
+	TestEqual(TEXT("a single resistance is one group"), One.Num(), 1);
+	TestTrue(TEXT("named for the damage type"),
+		One.Contains(TEXT("resistance_war.flat")));
+
+	TSet<FString> Two = GroupsFor(TEXT("Resistance_Two_resistances"),
+								  { TEXT("War"), TEXT("Void") });
+	TestEqual(TEXT("two resistances are two groups"), Two.Num(), 2);
+
+	// AND AN EMPTY LIST MEANS ALL EIGHT, which is the convention the rolled
+	// affix already uses for a family that has no choice to make.
+	TSet<FString> All = GroupsFor(TEXT("Resistance_All_resistances"), {});
+	TestEqual(TEXT("all resistances is eight groups"), All.Num(),
+		UCataclysmItemModifiers::DamageTypeNames().Num());
+
+	// SO TWO FAMILIES THAT BOTH LANDED ON WAR CLASH, and two that did not do
+	// not. That is the whole reason the damage types are drawn before the affix
+	// draw rather than after it.
+	TestTrue(TEXT("two families on the same damage type clash"),
+		One.Intersect(GroupsFor(TEXT("Resistance_Two_resistances"),
+							  { TEXT("War"), TEXT("Chaos") })).Num() > 0);
+	TestTrue(TEXT("and two on different ones do not"),
+		One.Intersect(GroupsFor(TEXT("Resistance_Two_resistances"),
+							  { TEXT("Void"), TEXT("Chaos") })).Num() == 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPrefixSuffixSplitTest,
+	"Cataclysm.Drop.AnOddAffixCountGoesBothWays",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPrefixSuffixSplitTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	// WITHOUT THIS EVERY THREE-AFFIX ITEM IN THE GAME WOULD CARRY TWO PREFIXES
+	// AND ONE SUFFIX, a bias nobody chose, and the affix pool is not built
+	// around it: there are 31 prefixes and 54 suffixes.
+	FRandomStream Stream(/*InSeed=*/3);
+	int32 TwoPrefixes = 0;
+	int32 TwoSuffixes = 0;
+	constexpr int32 Draws = 4000;
+
+	for (int32 Draw = 0; Draw < Draws; ++Draw)
+	{
+		int32 Prefixes = 0;
+		int32 Suffixes = 0;
+		FDrop::SplitForADrop(3, Stream, Prefixes, Suffixes);
+		TestEqual(TEXT("three affixes stay three"), Prefixes + Suffixes, 3);
+		if (Prefixes == 2) { ++TwoPrefixes; }
+		if (Suffixes == 2) { ++TwoSuffixes; }
+	}
+
+	TestTrue(*FString::Printf(
+		TEXT("two prefixes came up %d times in %d"), TwoPrefixes, Draws),
+		FMath::Abs(TwoPrefixes - Draws / 2) < Draws / 10);
+	TestTrue(*FString::Printf(
+		TEXT("and two suffixes %d times in %d"), TwoSuffixes, Draws),
+		FMath::Abs(TwoSuffixes - Draws / 2) < Draws / 10);
+
+	// AN EVEN COUNT HAS NO SIDE TO PICK, so it cannot vary.
+	for (int32 Draw = 0; Draw < 200; ++Draw)
+	{
+		int32 Prefixes = 0;
+		int32 Suffixes = 0;
+		FDrop::SplitForADrop(4, Stream, Prefixes, Suffixes);
+		if (Prefixes != 2 || Suffixes != 2)
+		{
+			AddError(FString::Printf(TEXT("four affixes split %d and %d"),
+									 Prefixes, Suffixes));
+			return false;
+		}
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRolledItemHasAReadableNameTest,
+	"Cataclysm.Item.EveryRolledItemHasAReadableName",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRolledItemHasAReadableNameTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	const FTables Tables = LoadEverything();
+	if (!TestTrue(TEXT("every table loads"), Tables.AllPresent()))
+	{
+		return false;
+	}
+
+	// THIS IS WHAT A PLAYER SEES ON THE GROUND. A drop is shown as its own name
+	// rather than as a model, so an item that rolls to an empty name is a drop
+	// nobody can identify or click.
+	FRandomStream Stream(/*InSeed=*/707);
+	for (int32 Attempt = 0; Attempt < 500; ++Attempt)
+	{
+		const FString Slot = FDrop::RollSlot(Tables.Bases, Stream);
+		FCataclysmItem Item;
+		if (!Roll(Tables, Slot, 8, 0.0f, Stream, Item))
+		{
+			AddError(TEXT("a roll produced no item"));
+			return false;
+		}
+
+		const FString Name =
+			UCataclysmItemName::NameOf(Item, Tables.Bases, Tables.Affixes);
+		if (Name.IsEmpty())
+		{
+			AddError(FString::Printf(
+				TEXT("a %s with %d affixes and %d enchantments has no name"),
+				*Slot, Item.Affixes.Num(), Item.EnchantmentCount));
+			return false;
+		}
+
+		// AND IT STARTS WITH THE RARITY, which is the first word of the format.
+		ECataclysmRarity Rarity = ECataclysmRarity::Everyday;
+		UCataclysmItemValues::RarityOf(Item.EnchantmentCount,
+									   Item.Affixes.Num(), Rarity);
+		if (!Name.StartsWith(UCataclysmItemName::RarityWord(Rarity)))
+		{
+			AddError(FString::Printf(TEXT("'%s' does not begin with its rarity"),
+									 *Name));
+			return false;
+		}
+	}
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The name
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmItemNameTest,
+	"Cataclysm.Item.ADropIsNamedAfterItsStrongestSuffix",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmItemNameTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	UDataTable* Bases = LoadTable<FCataclysmItemBaseRow>(TEXT("ItemBases.csv"));
+	UDataTable* Affixes = LoadTable<FCataclysmAffixRow>(TEXT("Affixes.csv"));
+	if (!TestNotNull(TEXT("ItemBases.csv loads"), Bases)
+		|| !TestNotNull(TEXT("Affixes.csv loads"), Affixes))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a suffix gives its word"),
+		UCataclysmItemName::WordFor(Affixes, TEXT("Stat_Flat_life_leech")),
+		FString(TEXT("the Leech")));
+	TestEqual(TEXT("and a prefix gives none"),
+		UCataclysmItemName::WordFor(Affixes, TEXT("Stat_Flat_maximum_health")),
+		FString());
+
+	// TWO SUFFIXES, AND THE HIGHER TIER NAMES THE ITEM. Two affixes and no
+	// enchantment is a Quality piece.
+	FCataclysmItem Item;
+	Item.Base = TEXT("Weapon_Greataxe");
+	Item.Affixes = {
+		Rolled(TEXT("Resistance_Single_resistance"), 3, 0.9f),
+		Rolled(TEXT("Stat_Flat_life_leech"), 6, 0.1f),
+	};
+	TestEqual(TEXT("the higher tier names it, not the better roll"),
+		UCataclysmItemName::NameOf(Item, Bases, Affixes),
+		FString(TEXT("Quality Greataxe of the Leech")));
+
+	// TIER BEFORE ROLL, checked the other way round so the assertion above is
+	// not passing by accident of the order they were listed in.
+	Item.Affixes = {
+		Rolled(TEXT("Stat_Flat_life_leech"), 6, 0.1f),
+		Rolled(TEXT("Resistance_Single_resistance"), 3, 0.9f),
+	};
+	TestEqual(TEXT("and the order they were drawn in does not decide it"),
+		UCataclysmItemName::NameOf(Item, Bases, Affixes),
+		FString(TEXT("Quality Greataxe of the Leech")));
+
+	// A TIE ON TIER IS BROKEN BY THE ROLL.
+	Item.Affixes = {
+		Rolled(TEXT("Resistance_Single_resistance"), 5, 0.2f),
+		Rolled(TEXT("Stat_Flat_life_leech"), 5, 0.8f),
+	};
+	TestEqual(TEXT("a tie on tier goes to the better roll"),
+		UCataclysmItemName::NameOf(Item, Bases, Affixes),
+		FString(TEXT("Quality Greataxe of the Leech")));
+
+	// AND A TIE ON BOTH GOES TO THE FIRST, so the same item is called the same
+	// thing on every run. Without this the name would depend on nothing.
+	Item.Affixes = {
+		Rolled(TEXT("Resistance_Single_resistance"), 5, 0.5f),
+		Rolled(TEXT("Stat_Flat_life_leech"), 5, 0.5f),
+	};
+	TestEqual(TEXT("and a tie on both goes to the first on the item"),
+		UCataclysmItemName::NameOf(Item, Bases, Affixes),
+		FString(TEXT("Quality Greataxe of Warding")));
+
+	// A PREFIX ONLY, SO THE NAME STOPS AFTER THE BASE. One affix and no
+	// enchantment is an Everyday piece, and the missing words are themselves a
+	// signal that the item is thin.
+	FCataclysmItem Thin;
+	Thin.Base = TEXT("Chest_Cuirass");
+	Thin.Affixes = { Rolled(TEXT("Stat_Flat_maximum_health"), 2, 0.4f) };
+	TestEqual(TEXT("a piece with only a prefix stops after the base"),
+		UCataclysmItemName::NameOf(Thin, Bases, Affixes),
+		FString(TEXT("Everyday Cuirass")));
+
+	// A CATACLYSMIC PIECE CARRIES FOUR ENCHANTMENTS AND NO REGULAR AFFIX, so it
+	// has no suffix to be named after either. The rarity still leads.
+	FCataclysmItem Top;
+	Top.Base = TEXT("Chest_Cuirass");
+	Top.EnchantmentCount = 4;
+	TestEqual(TEXT("and a Cataclysmic piece has no suffix to take a word from"),
+		UCataclysmItemName::NameOf(Top, Bases, Affixes),
+		FString(TEXT("Cataclysmic Cuirass")));
+
+	// AN ITEM WHOSE CONTENTS ARE NOT ANY RARITY HAS NO NAME. Five affixes is
+	// not a thin item, it is a malformed one, and calling it Everyday would
+	// hide that.
+	FCataclysmItem Broken;
+	Broken.Base = TEXT("Chest_Cuirass");
+	Broken.Affixes = {
+		Rolled(TEXT("Stat_Flat_maximum_health"), 1, 0.0f),
+		Rolled(TEXT("Stat_Flat_life_leech"), 1, 0.0f),
+		Rolled(TEXT("Resistance_Single_resistance"), 1, 0.0f),
+		Rolled(TEXT("Stat_Flat_maximum_health"), 1, 0.0f),
+		Rolled(TEXT("Stat_Flat_life_leech"), 1, 0.0f),
+	};
+	TestEqual(TEXT("an item that is not any rarity is not named"),
+		UCataclysmItemName::NameOf(Broken, Bases, Affixes), FString());
+
+	// AND EVERY SUFFIX IN THE TABLE HAS A WORD, so no drop can roll one and
+	// have nothing to be called after. The generator refuses to write the CSV
+	// otherwise; this is the same claim read back out of the imported table.
+	Affixes->ForeachRow<FCataclysmAffixRow>(TEXT("every suffix has a word"),
+		[&](const FName& Key, const FCataclysmAffixRow& Row)
+		{
+			const bool bSuffix =
+				Row.Position.Equals(TEXT("suffix"), ESearchCase::IgnoreCase);
+			if (bSuffix && Row.NameWord.IsEmpty())
+			{
+				AddError(FString::Printf(
+					TEXT("the suffix %s has no name word"), *Key.ToString()));
+			}
+			if (!bSuffix && !Row.NameWord.IsEmpty())
+			{
+				AddError(FString::Printf(
+					TEXT("the prefix %s carries the name word '%s', which the "
+						 "first word of a name being the rarity makes "
+						 "unreachable"), *Key.ToString(), *Row.NameWord));
+			}
+		});
+
+	return true;
+}
+
+/**
+ * The best upgrade stone a drop may produce is capped by the difficulty tier.
+ *
+ * ISSUE #863. The design document names this as one of the difficulty tier's
+ * own gates -- "The best upgrade stone that can drop is capped by the current
+ * difficulty tier" -- and nothing enforced it. Every stone up to +10 dropped at
+ * every tier, so a character on tier 1 could be handed the stone that takes a
+ * piece to +10 before owning anything worth putting it on.
+ *
+ * THE LADDER IS STATED RATHER THAN COMPUTED. Asking MaxUpgradeStoneOnADrop what
+ * it expects would agree with the code by construction; earlier in this project
+ * a test written that way passed while thirteen affixes granted nothing. These
+ * eight rows are the design document's table copied out by hand, so changing
+ * the rule fails here and has to be a decision rather than an accident.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmUpgradeStoneCapTest,
+	"Cataclysm.Drop.TheBestUpgradeStoneIsCappedByTheDifficultyTier",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmUpgradeStoneCapTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	// The "What else that tier brings" column of the difficulty tier table in
+	// section VI of docs/Cataclysm_GDD_v2.md, which reads "+3 upgrade level"
+	// at tier 1 through to "+10" at tier 8.
+	const int32 Documented[8] = { 3, 4, 5, 6, 7, 8, 9, 10 };
+	for (int32 Tier = 1; Tier <= 8; ++Tier)
+	{
+		TestEqual(*FString::Printf(
+			TEXT("difficulty tier %d drops upgrade stones up to +%d"),
+			Tier, Documented[Tier - 1]),
+			FDrop::MaxUpgradeStoneOnADrop(Tier), Documented[Tier - 1]);
+	}
+
+	// A TIER OUTSIDE 1 TO 8 IS CLAMPED RATHER THAN TRUSTED, the same as the
+	// affix gate. A zero from an unset console variable must not mean "+2".
+	TestEqual(TEXT("tier 0 is treated as tier 1"),
+		FDrop::MaxUpgradeStoneOnADrop(0), Documented[0]);
+	TestEqual(TEXT("tier 99 is treated as tier 8"),
+		FDrop::MaxUpgradeStoneOnADrop(99), Documented[7]);
+
+	UDataTable* Materials =
+		LoadTable<FCataclysmCraftingMaterialRow>(TEXT("CraftingMaterials.csv"));
+	if (!TestNotNull(TEXT("the crafting material table"), Materials))
+	{
+		return false;
+	}
+
+	// THE TEN STONES ARE IN THE DATA AND CARRY THEIR LEVEL. The level is derived
+	// by tools/generate_datatables.py from the name, so a rename in the workbook
+	// turns it into a zero, and a zero reads as "not a stone" and would drop
+	// everywhere. This is what notices.
+	TSet<int32> Levels;
+	Materials->ForeachRow<FCataclysmCraftingMaterialRow>(
+		TEXT("the upgrade stone ladder"),
+		[&](const FName& Key, const FCataclysmCraftingMaterialRow& Row)
+		{
+			const bool bNamedAsAStone =
+				Row.MaterialName.StartsWith(TEXT("Upgrade Stone +"));
+			if (bNamedAsAStone != (Row.UpgradeLevel > 0))
+			{
+				AddError(FString::Printf(
+					TEXT("'%s' is named as an upgrade stone but carries level "
+						 "%d, or the other way round. The level is read off the "
+						 "name by tools/generate_datatables.py."),
+					*Row.MaterialName, Row.UpgradeLevel));
+			}
+			if (Row.UpgradeLevel > 0)
+			{
+				Levels.Add(Row.UpgradeLevel);
+			}
+		});
+
+	for (int32 Level = 1; Level <= UCataclysmItemValues::MaxGearLevel; ++Level)
+	{
+		if (!Levels.Contains(Level))
+		{
+			AddError(FString::Printf(
+				TEXT("no crafting material upgrades gear to +%d"), Level));
+		}
+	}
+
+	// WHAT THE CAP ACTUALLY DOES TO A ROLL, drawn rather than reasoned about.
+	// Tier 5 materials are where the +9 and +10 stones live, so a tier 1
+	// character rolling that band must never see either.
+	const auto BestStoneDrawn = [&](int32 MaterialTier, int32 DifficultyTier)
+	{
+		FRandomStream Stream(/*InSeed=*/863 * DifficultyTier + MaterialTier);
+		int32 Best = 0;
+		for (int32 Draw = 0; Draw < 400; ++Draw)
+		{
+			const FName Rolled = FDrop::RollMaterial(
+				Materials, MaterialTier, DifficultyTier, Stream);
+			const FCataclysmCraftingMaterialRow* Row =
+				Materials->FindRow<FCataclysmCraftingMaterialRow>(
+					Rolled, TEXT("BestStoneDrawn"), /*bWarnIfMissing=*/false);
+			if (Row)
+			{
+				Best = FMath::Max(Best, Row->UpgradeLevel);
+			}
+		}
+		return Best;
+	};
+
+	TestEqual(TEXT("a tier 1 character drawing tier 5 materials sees no stone"),
+		BestStoneDrawn(/*MaterialTier=*/5, /*DifficultyTier=*/1), 0);
+	TestEqual(TEXT("a tier 8 character drawing tier 5 materials reaches +10"),
+		BestStoneDrawn(/*MaterialTier=*/5, /*DifficultyTier=*/8), 10);
+
+	// AND THE BAND STILL PRODUCES SOMETHING when its stones are excluded. Every
+	// band keeps at least three materials that are not stones, so no cap can
+	// empty one -- but that is a property of the data, not of the code, so it
+	// is checked rather than assumed.
+	for (int32 MaterialTier = 1; MaterialTier <= 5; ++MaterialTier)
+	{
+		FRandomStream Stream(/*InSeed=*/MaterialTier);
+		const FName Rolled = FDrop::RollMaterial(
+			Materials, MaterialTier, /*DifficultyTier=*/1, Stream);
+		if (Rolled.IsNone())
+		{
+			AddError(FString::Printf(
+				TEXT("material tier %d rolls nothing at difficulty tier 1, so "
+					 "the upgrade stone cap emptied a band. A band needs a "
+					 "material that is not an upgrade stone."), MaterialTier));
+		}
+	}
+
+	// THE TWO TIERS ARE NOT INTERCHANGEABLE. They are adjacent int32 parameters,
+	// so a call site that swaps them compiles. Band 1 at difficulty 5 and band 5
+	// at difficulty 1 are the swap of each other, and they must differ.
+	FRandomStream OneWay(/*InSeed=*/863);
+	FRandomStream TheOther(/*InSeed=*/863);
+	const int32 BandOne = FDrop::MaterialTierOf(Materials,
+		FDrop::RollMaterial(Materials, 1, 5, OneWay));
+	const int32 BandFive = FDrop::MaterialTierOf(Materials,
+		FDrop::RollMaterial(Materials, 5, 1, TheOther));
+	TestEqual(TEXT("the first argument is the material band, not the tier"),
+		BandOne, 1);
+	TestEqual(TEXT("and it still is when the two are swapped"), BandFive, 5);
+
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// The damage types a weapon carries. Issue #857.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAvailableDamageTypesTest,
+	"Cataclysm.Drop.AWeaponTypeCarriesOnlyTheDamageTypesDesignedForIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAvailableDamageTypesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	const FTables Tables = LoadEverything();
+	if (!TestTrue(TEXT("every table loads"), Tables.AllPresent()))
+	{
+		return false;
+	}
+
+	// THE DESIGN DOCUMENT'S OWN TABLE, spot-checked at both ends of it. The
+	// Damage Types and Skill Availability table in docs/Cataclysm_GDD_v2.md
+	// gives a Shield three types and excludes Wand and Staff from War, which it
+	// says has no caster build.
+	const TArray<FName> Shield =
+		FDrop::DamageTypesAvailableTo(Tables.WeaponSkills, TEXT("Shield"));
+	TestEqual(TEXT("a Shield carries three damage types"), Shield.Num(), 3);
+	TestTrue(TEXT("a Shield can carry War"), Shield.Contains(TEXT("War")));
+	TestTrue(TEXT("a Shield can carry Celestial"),
+		Shield.Contains(TEXT("Celestial")));
+	TestTrue(TEXT("a Shield can carry Chaos"), Shield.Contains(TEXT("Chaos")));
+
+	const TArray<FName> Wand =
+		FDrop::DamageTypesAvailableTo(Tables.WeaponSkills, TEXT("Wand"));
+	TestFalse(TEXT("a Wand cannot carry War"), Wand.Contains(TEXT("War")));
+
+	// THE AURAS DO NOT COUNT. Their weapon type is "All" because they apply
+	// whatever is held, and counting them would give every weapon all eight and
+	// erase the table. A Shield would read 8 rather than 3 if that went wrong.
+	TestTrue(TEXT("no weapon reads as carrying every damage type"),
+		Shield.Num() < 8 && Wand.Num() < 8);
+
+	// AND THE ORDER IS THE CANONICAL ONE, so one seed rolls one weapon whatever
+	// order the rows happen to sit in.
+	const TArray<FName>& Canonical = UCataclysmItemModifiers::DamageTypeNames();
+	int32 Previous = -1;
+	for (const FName& Each : Shield)
+	{
+		const int32 Where = Canonical.IndexOfByKey(Each);
+		TestTrue(TEXT("the available types are in canonical order"),
+			Where > Previous);
+		Previous = Where;
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRolledDamageTypesTest,
+	"Cataclysm.Drop.ADroppedWeaponCarriesDamageTypesItIsAllowedToHold",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRolledDamageTypesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	const FTables Tables = LoadEverything();
+	if (!TestTrue(TEXT("every table loads"), Tables.AllPresent()))
+	{
+		return false;
+	}
+
+	// EVERY TIER, because the tier was one of the limits until the project
+	// owner removed it on 2026-10-25, and a drop at any tier must now reach the
+	// same two limits.
+	int32 Weapons = 0;
+	int32 NonWeapons = 0;
+	int32 AboveTheTier = 0;
+	for (int32 Tier = 1; Tier <= FDrop::DifficultyTiers; ++Tier)
+	{
+		FRandomStream Stream(/*InSeed=*/8570 + Tier);
+		for (int32 Attempt = 0; Attempt < 400; ++Attempt)
+		{
+			const FString Slot = FDrop::RollSlot(Tables.Bases, Stream);
+			FCataclysmItem Item;
+			if (!Roll(Tables, Slot, Tier, 0.0f, Stream, Item))
+			{
+				AddError(FString::Printf(TEXT("a %s failed to roll at tier %d"),
+					*Slot, Tier));
+				return false;
+			}
+
+			const FCataclysmItemBaseRow* Row = BaseOf(Tables, Item);
+			if (!Row)
+			{
+				AddError(FString::Printf(TEXT("%s has no base row"),
+					*Item.Base.ToString()));
+				return false;
+			}
+
+			if (Row->MaxDamageTypes <= 0)
+			{
+				++NonWeapons;
+				if (Item.DamageTypes.Num() != 0)
+				{
+					AddError(FString::Printf(
+						TEXT("a %s carries %d damage types and holds at most 0"),
+						*Row->BaseName, Item.DamageTypes.Num()));
+					return false;
+				}
+				continue;
+			}
+
+			++Weapons;
+			const TArray<FName> Allowed =
+				FDrop::DamageTypesAvailableTo(Tables.WeaponSkills, Row->WeaponType);
+			const int32 Most = FDrop::MaxDamageTypesFor(*Row, Allowed.Num());
+
+			// FROM ONE, not from zero: the design says a weapon rolls "from one
+			// damage type up to" its cap, so a weapon with none is not a drop.
+			if (Item.DamageTypes.Num() < 1 || Item.DamageTypes.Num() > Most)
+			{
+				AddError(FString::Printf(
+					TEXT("a %s at tier %d carries %d damage types; it may carry 1 to "
+						 "%d (base limit %d, %d designed for a %s, no tier cap)"),
+					*Row->BaseName, Tier, Item.DamageTypes.Num(), Most,
+					Row->MaxDamageTypes, Allowed.Num(), *Row->WeaponType));
+				return false;
+			}
+
+			TSet<FName> Seen;
+			for (const FName& Each : Item.DamageTypes)
+			{
+				if (!Allowed.Contains(Each))
+				{
+					AddError(FString::Printf(
+						TEXT("a %s carries %s and no %s skill is designed for that "
+							 "damage type"), *Row->BaseName, *Each.ToString(),
+						*Row->WeaponType));
+					return false;
+				}
+				if (Seen.Contains(Each))
+				{
+					AddError(FString::Printf(
+						TEXT("a %s carries %s twice"), *Row->BaseName,
+						*Each.ToString()));
+					return false;
+				}
+				Seen.Add(Each);
+			}
+
+			// AND MORE THAN THE TIER, which the tier cap forbade until 2026-10-25.
+			if (Item.DamageTypes.Num() > Tier)
+			{
+				++AboveTheTier;
+			}
+		}
+	}
+
+	// THE OWNER'S RULING, SEEN IN A ROLL: some weapon carries more damage types
+	// than the tier it dropped on. Under the old cap this was 0.
+	TestTrue(FString::Printf(TEXT("some weapon carries more damage types than its tier (%d did)"),
+			AboveTheTier),
+		AboveTheTier > 0);
+
+	// THE RUN HAS TO HAVE SEEN BOTH KINDS, or the checks above passed by never
+	// running. Ten of the eleven slots are not weapons, so a run that rolled no
+	// weapon at all would report success having checked nothing.
+	TestTrue(TEXT("the run rolled some weapons"), Weapons > 0);
+	TestTrue(TEXT("the run rolled some non-weapons"), NonWeapons > 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageTypeCapTest,
+	"Cataclysm.Drop.TheDamageTypeCapIsTheLowerOfTheTwoLimitsAtAnyTier",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDamageTypeCapTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	const FTables Tables = LoadEverything();
+	if (!TestTrue(TEXT("every table loads"), Tables.AllPresent()))
+	{
+		return false;
+	}
+
+	FCataclysmItemBaseRow OneHanded;
+	OneHanded.Hands = 1;
+	OneHanded.MaxDamageTypes = 4;
+	OneHanded.WeaponType = TEXT("Sword");
+
+	FCataclysmItemBaseRow TwoHanded;
+	TwoHanded.Hands = 2;
+	TwoHanded.MaxDamageTypes = 8;
+	TwoHanded.WeaponType = TEXT("Greatsword");
+
+	// NO TIER CAPS IT, by the project owner's ruling of 2026-10-25: the base's
+	// own limit binds when enough types are designed. Until then a one-hander
+	// at tier 2 was held to 2 and a two-hander at tier 5 to 5. Mirrors
+	// max_damage_types() in sim/cataclysm_sim/affixes.py.
+	TestEqual(TEXT("a one-hander is held to its own 4, at any tier"),
+		FDrop::MaxDamageTypesFor(OneHanded, 8), 4);
+	TestEqual(TEXT("a two-hander is held to its own 8, at any tier"),
+		FDrop::MaxDamageTypesFor(TwoHanded, 8), 8);
+
+	// AND HOW MANY TYPES EXIST FOR THE WEAPON IS THE SECOND LIMIT. A Greatsword
+	// has six designed, so a base limit of eight still cannot exceed six.
+	const TArray<FName> ForAGreatsword =
+		FDrop::DamageTypesAvailableTo(Tables.WeaponSkills, TEXT("Greatsword"));
+	TestEqual(TEXT("a Greatsword is held to what is designed for it"),
+		FDrop::MaxDamageTypesFor(TwoHanded, ForAGreatsword.Num()),
+		ForAGreatsword.Num());
+	TestTrue(TEXT("and that is fewer than its base limit of eight"),
+		ForAGreatsword.Num() < TwoHanded.MaxDamageTypes);
+
+	// A NON-WEAPON IS ZERO AND NEVER NEGATIVE.
+	FCataclysmItemBaseRow Boots;
+	Boots.MaxDamageTypes = 0;
+	Boots.WeaponType = FString();
+	TestEqual(TEXT("a non-weapon rolls no damage types"),
+		FDrop::MaxDamageTypesFor(Boots, 0), 0);
+
+	return true;
+}
+
+#endif // WITH_AUTOMATION_TESTS

@@ -1,0 +1,1844 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "DayClock/CataclysmDayClock.h"
+#include "Empire/CataclysmDungeonModifier.h"
+#include "Empire/CataclysmEmpireMap.h"
+#include "Empire/CataclysmSurge.h"
+#include "Math/RandomStream.h"
+#include "UObject/Object.h"
+#include "CataclysmEmpireRun.generated.h"
+
+/**
+ * What one day did to the empire.
+ *
+ * WHY A REPORT AND NOT A SET OF DELEGATES. Everything that reads this is above
+ * the empire layer -- a screen, a save, a console command -- and this module
+ * must not know about any of them. A caller that advances several days at once
+ * gets one of these per day, in order, so nothing is collapsed into a summary
+ * that loses which day a city was lost on.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSMEMPIRE_API FCataclysmDayReport
+{
+	GENERATED_BODY()
+
+	/** Which day this is a report about. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 Day = 0;
+
+	/** Whether a surge fired today, from the clock or from a city falling. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bSurged = false;
+
+	/**
+	 * Whether a surge fired today because the board was empty.
+	 *
+	 * `bSurged` IS TRUE AS WELL. This says which of the three causes it was for
+	 * the one cause a caller cannot work out from the rest of the report: a
+	 * city falling is in `Fallen`, and the clock is what is left.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bSurgedOnEmptyBoard = false;
+
+	/** The dungeons that arrived today. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> Spawned;
+
+	/**
+	 * The dungeons whose timers ran out today.
+	 *
+	 * AN ORDINARY DUNGEON IN THIS LIST IS USUALLY GONE BY THE TIME THE REPORT IS
+	 * READ. Since 2026-10-13 it hits its city once and leaves the map, or is
+	 * absorbed when its hit fells the city. `HitAndLeft` and `Absorbed` below
+	 * say which. Until then it stayed with its timer full and bit the same city
+	 * again.
+	 *
+	 * **A DUNGEON IN THIS LIST DID NOT NECESSARILY BITE ANYTHING.** It is the
+	 * list of timers that ran out. An ordinary dungeon on a city already fallen
+	 * takes nothing, and a Fallen City stands on a city whose damage is already
+	 * done. (The Cataclysm boss dungeon is never here: it stands on no city and
+	 * its timer never runs out, since 2026-11-02.) A caller counting how often the empire was hurt
+	 * reads `UCataclysmEmpireRun::DungeonsDetonated` and
+	 * `UCataclysmEmpireRun::QuestHits` rather than the length of this list.
+	 *
+	 * A QUEST DUNGEON'S TIMER APPEARS HERE TOO. It hits its host city, which is
+	 * in `QuestHits` below, and then refreshes and may move; `Relocated` is
+	 * which ones actually moved.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> Resolved;
+
+	/**
+	 * The dungeons that moved to another city today, for either of the two
+	 * reasons a dungeon moves.
+	 *
+	 * ONLY A QUEST DUNGEON MOVES, AND IT MOVES FOR TWO REASONS:
+	 *
+	 *   - **ITS TIMER RAN OUT**, and it is in `Resolved` too.
+	 *     `docs/Cataclysm_GDD_v2.md` section VIII says its timer "refreshes
+	 *     and it may move to an adjacent city". Issue #1324 slice 4.
+	 *   - **ITS CITY FELL UNDER IT**, since 2026-10-21, and it is in
+	 *     `MovedByAFall` too. A fall does not absorb a Quest dungeon; it moves
+	 *     at once to the city `UCataclysmSurgeScheduler::PickRefuge` answers.
+	 *     Such a dungeon need not be in `Resolved` at all.
+	 *
+	 * **SO IT IS NO LONGER A SUBSET OF `Resolved`**, which this comment said
+	 * until 2026-10-21. A timer's moves are this list less `MovedByAFall`.
+	 *
+	 * A DUNGEON CAN BE HERE TWICE. A Quest dungeon a fall moved can have its
+	 * own timer run out later the same day and move again; the coordinating
+	 * session ruled on 2026-10-21 that both moves stand. A dungeon moved by
+	 * two falls in one day is here twice as well.
+	 *
+	 * **OF THE TIMER'S MOVES, THERE ARE FEWER THAN QUEST DUNGEONS IN
+	 * `Resolved`, AND THAT IS THE RULE RATHER THAN A LOSS.** The design's "MAY
+	 * move" has two halves and a
+	 * dungeon that stays may be either. It had nowhere adjacent to go -- every
+	 * neighbour sealed, fallen, the Pillar, or already besieged if it carries a
+	 * Siege itself -- which is about one quest timer in four; or it had
+	 * somewhere and the coin said no. The project owner ruled the coin on
+	 * 2026-09-06, verbatim "A chance each time", and chose 0.5. Together they
+	 * leave a Quest dungeon actually moving on roughly 38% of its timers. See
+	 * `UCataclysmSurgeScheduler::PickRelocation` and
+	 * `UCataclysmSurgeScheduler::QuestMoveChance`.
+	 *
+	 * NOTHING HERE SAYS WHICH OF THE TWO IT WAS, deliberately. A dungeon that
+	 * stayed is simply absent from this list either way.
+	 *
+	 * WHERE A TIMER'S MOVE WENT IS READ OFF THE DUNGEON.
+	 * `FCataclysmDungeon::CityId` is already the new city by the time this
+	 * report is returned. A FALL'S MOVE IS RECORDED WITH ITS CITIES, in
+	 * `MovedByAFallFrom` and `MovedByAFallTo`, because a dungeon that moves
+	 * twice in a day is no longer where the first move put it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> Relocated;
+
+	/**
+	 * The Quest dungeons that moved today because the city they stood on fell,
+	 * one entry a move. Each is in `Relocated` as well.
+	 *
+	 * The owner, 2026-10-16, verbatim: "Quest dungeons don't go away when a
+	 * city falls. They just move to an adjacent city. So eventually they
+	 * should be hitting something." Built in the game on 2026-10-21; see
+	 * `UCataclysmEmpireRun::CityFell` and
+	 * `UCataclysmSurgeScheduler::PickRefuge`.
+	 *
+	 * A QUEST DUNGEON THAT FOUND NOWHERE TO GO IS NOT HERE. It stays on the
+	 * fallen city, which happens only once no exposed city but the Pillar is
+	 * left; it is not in `Absorbed` either, since nothing absorbed it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> MovedByAFall;
+
+	/** The city each move in `MovedByAFall` left, index for index: the city
+	 *  that fell. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> MovedByAFallFrom;
+
+	/** The city each move in `MovedByAFall` went to, index for index. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> MovedByAFallTo;
+
+	/**
+	 * The cities an ordinary dungeon hit today and then left, one entry a hit.
+	 *
+	 * A CITY NUMBER AND NOT A DUNGEON NUMBER, because the dungeon is off the
+	 * map by the time anybody reads this and what a player is told is which
+	 * city was hit. A city hit by two dungeons on one day is here twice.
+	 *
+	 * THE DUNGEON WHOSE HIT FELLED ITS CITY IS NOT HERE. The fall absorbed it;
+	 * it is in `Absorbed` and its city is in `Fallen`.
+	 *
+	 * Since 2026-10-13. The owner's rule of 2026-10-08, verbatim: "Ordinary
+	 * dungeons will do their city/population damage, and then despawn."
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> HitAndLeft;
+
+	/**
+	 * The cities a Quest dungeon's timer hit today, one entry a hit.
+	 *
+	 * THE HIT IS AN ORDINARY DUNGEON'S FOR THAT CITY'S TIER, whatever the Quest
+	 * dungeon's depth. A city this hit felled is here and in `Fallen` both.
+	 * The Quest dungeon itself is in `Resolved`, and in `Relocated` when it
+	 * then moved. Since 2026-10-13.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> QuestHits;
+
+	/**
+	 * The cities a Siege took its daily share of today.
+	 *
+	 * A SIEGE BITES EVERY DAY AND NOT ONLY WHEN ITS TIMER RUNS OUT, which is
+	 * what makes it different from every other dungeon. A city appears here once
+	 * per Siege standing on it, and the design allows only one, so at most once.
+	 *
+	 * IT IS NOT THE SAME LIST AS `Resolved`. A Siege that also ran out of time
+	 * today bites twice: once here for the day, and once there for the timer.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> Besieged;
+
+	/** The cities that fell today. Usually empty. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> Fallen;
+
+	/**
+	 * The dungeons that were on a city that fell today and are gone with it.
+	 *
+	 * THEY ARE ABSORBED RATHER THAN CLEARED. In the design they become part of
+	 * the Dungeon City the fallen city turns into, and its floor count is how
+	 * many were absorbed when it fell. `CityFell` builds that dungeon through
+	 * `AddFallenCityDungeon`, since issue #1324 slice 2, so these are removed
+	 * from the map and counted into the one that replaces them. This comment
+	 * said nothing built it and that stopped being true at `c7e11f7`.
+	 *
+	 * **NO QUEST DUNGEON IS HERE**, since 2026-10-21. A Quest dungeon on a
+	 * falling city moves, and is in `MovedByAFall`, or finds nowhere to go and
+	 * stays; either way it is not absorbed and not counted into the Dungeon
+	 * City. Until then every dungeon on the city was here, Quest dungeons
+	 * included.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> Absorbed;
+
+	/**
+	 * Whether the Cataclysm can now reach the Pillar.
+	 *
+	 * TRUE ON EVERY DAY AFTER IT HAPPENS, not only the day it happened, because
+	 * it is a state and not an event. The day it began is the first report with
+	 * both this and a Sanctuary in `Fallen`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bPillarExposed = false;
+};
+
+/**
+ * The empire's day loop: the map, the clock and the surge schedule, joined.
+ *
+ * WHY THIS EXISTS. The three pieces below were each built with a note saying
+ * that joining them was somebody else's work, and until this nothing did. The
+ * clock reported a dungeon resolving to a caller that did not exist; the map's
+ * cities could be bitten by a caller that did not exist; the surge scheduler
+ * could roll a wave that nobody put anywhere. Issue #1084.
+ *
+ * WHAT IT OWNS:
+ *
+ *   - `UCataclysmEmpireMap` -- 25 cities, the lanes between them, and the loss
+ *     condition.
+ *   - `UCataclysmDayClock` -- what a day costs and which timers it moves.
+ *   - `UCataclysmSurgeScheduler` -- when the next wave comes and where it lands.
+ *   - The dungeons standing on the map, which nothing else holds.
+ *
+ * WHAT ONE DAY DOES, in this order, which is `Simulation.step`'s order in
+ * `sim/cataclysm_sim/engine.py`:
+ *
+ *   1. The day advances.
+ *   2. If a surge is due, a wave lands: dungeons are rolled onto exposed cities
+ *      and their timers start.
+ *   3. Every city repairs whatever its upgrades repair on a schedule. Before
+ *      the day's assaults, not after -- see `AdvanceDay` for why.
+ *   4. Every timer moves down one day. A dungeon that arrived today loses a day
+ *      immediately, which is what the model does.
+ *   5. Every Siege takes its daily share of the city it stands on, whether or
+ *      not anything resolved. It is the one dungeon that costs something every
+ *      day rather than only when its timer runs out.
+ *   6. Any timer that reached zero resolves. An ordinary dungeon takes points
+ *      of its host city's defence and population and then leaves the map. A
+ *      Quest dungeon takes an ordinary dungeon's hit for its host's tier, and
+ *      then its timer is full again and it may move to an adjacent city.
+ *   7. A city whose defence reached zero falls. Every ordinary dungeon
+ *      standing on it is absorbed; a Quest dungeon moves to the nearest city
+ *      that will take it, an adjacent one first, since 2026-10-21. Its fall
+ *      fires a surge of its own when the last surge is at least 25 days
+ *      behind. A fall sooner than that fires none.
+ *   8. If a Sanctuary has fallen, the Cataclysm can reach the Pillar.
+ *   9. If nothing at all stands on the map, the Pillar cannot be reached and
+ *      the last surge is at least 25 days behind, the next wave lands now.
+ *      Its dungeons do not lose a day today, because the timers have already
+ *      moved. Issue #1414.
+ *
+ * STEPS 3 AND 5 ARE NOT IN `Simulation.step`. The model has neither city
+ * upgrades nor sub-type behaviour, so its order is the order of what both have
+ * in common rather than of everything here.
+ *
+ * THE RUN IS DETERMINISTIC FROM ITS SEED. Everything random goes through one
+ * `FRandomStream`, so the same seed gives the same run: the same waves on the
+ * same cities with the same depths, and therefore the same cities lost on the
+ * same days.
+ *
+ * WHAT IT DELIBERATELY DOES NOT DO, named so the scope is not argued later:
+ *
+ *   - **Choosing for the player.** The model's day loop also asks a policy which
+ *     dungeon to walk into, spends days at the forge, and kills the player. None
+ *     of that belongs here: in the game the player is a character in a world,
+ *     and what this owns is the empire's side of the clock.
+ *   - **Winning, though no longer the dungeon a win is earned in.** Since
+ *     issue #1357 this answers whether the player has earned the right to face
+ *     the Cataclysm -- `IsCataclysmDungeonUnlocked`, half the active Cataclysms
+ *     finished, rounded up -- and since issue #1324 slice 6b (2026-11-02) it
+ *     ACTS on the answer: the quest clear that meets it opens the Cataclysm boss
+ *     dungeon, on no city (`OpenCataclysmDungeonIfEarned`), and since slice 6e
+ *     clearing it sets a won state (`bWon`). What it does not do is the
+ *     character's half of a win -- the passive points, the tier, the next run --
+ *     which `UCataclysmGameInstance::BeginTheRunAfterAWin` does in the
+ *     `Cataclysm` module. **Until slice 6e this said it did not set a won
+ *     state when that dungeon was defeated.**
+ *     **This paragraph used to say the enemy capital did not exist and neither
+ *     did the loss condition, as two open design gaps.** The project owner
+ *     answered both on 2026-09-06 (issue #1324): the enemy capital "is just the
+ *     boss dungeon becoming enterable", which is what this opens, and "Losing
+ *     the Pillar ends the run", with a path opening starting the Last Stand
+ *     rather than losing it.
+ *   - **The Last Stand.** `bPillarExposed` is the condition; the Cataclysm boss
+ *     dungeon moving to the Pillar and absorbing everything still standing is
+ *     issue #43.
+ *   - **Saving any of it.** `UCataclysmRunSave` carries an `int32 Day` that
+ *     nothing computes. Joining that record to this is separate work.
+ *
+ * THREE THINGS THIS LIST CLAIMED WERE MISSING WERE ALREADY BUILT, and each had
+ * been for at least a slice before anybody re-read the list. They are recorded
+ * here rather than quietly deleted, because a comment that says a feature is
+ * absent is read as evidence that it is:
+ *
+ *   - It said nothing called `EnterDungeon` or `LeaveDungeon` on the clock.
+ *     `ACataclysmDungeonGameMode` calls both.
+ *   - It said no dungeon run reaches `ClearDungeon`. Walking to the bottom floor
+ *     of an empire dungeon calls it, through
+ *     `ACataclysmDungeonGameMode::ClearEmpireDungeon`, and that is the live path
+ *     the counters below are raised on.
+ *   - It said a fallen city becoming a retakeable dungeon was still issue #41.
+ *     `AddFallenCityDungeon`, in this class, has done it since `c7e11f7`.
+ */
+UCLASS(BlueprintType)
+class CATACLYSMEMPIRE_API UCataclysmEmpireRun : public UObject
+{
+	GENERATED_BODY()
+
+public:
+	// ----------------------------------------------------------------------
+	// What a Siege costs its host, every day
+	// ----------------------------------------------------------------------
+
+	/**
+	 * The share of a city's maximum defence a Siege takes each day it stands.
+	 *
+	 * ONE PER CENT, WHICH THE DESIGN DOCUMENT STATES: "Deals 1% damage to city
+	 * defenses and population per day while active." A hundred days would empty
+	 * an untouched city on its own, and a Siege's timer runs out several times
+	 * inside that, so the two together are what make it the dungeon a player
+	 * cannot postpone.
+	 *
+	 * THIS WAS WRITTEN FIRST AND THE MODEL FOLLOWED IT, which is the reverse of
+	 * this project's usual direction. The design document was the only source for
+	 * the number when this was built, because the simulation gave a sub-type no
+	 * behaviour at all. That changed on 2026-09-06: the project owner ruled that
+	 * the Siege be added to the model, and `sim/cataclysm_sim/engine.py` now
+	 * carries `_apply_siege_damage` with `TuningConfig.siege_defence_bite_per_day`
+	 * beside it. Issue #1329. The two must now be kept in step like every other
+	 * ported number.
+	 *
+	 * IT IS THE LAST SHARE-OF-THE-MAXIMUM IN THE GAME AND THAT IS ON PURPOSE.
+	 * Issue #1331 turned every dungeon resolve into flat points; the owner ruled
+	 * on 2026-09-05, verbatim, "Keep it as a deliberate exception
+	 * (Recommended)". See `ApplySiegeDamage`.
+	 */
+	static constexpr float SiegeDefenceBitePerDay = 0.01f;
+
+	/** The same share of the city's maximum population. See above. */
+	static constexpr float SiegePopulationBitePerDay = 0.01f;
+
+	/**
+	 * How much more damage a Siege deals for each day it has stood.
+	 *
+	 * THE DESIGN DOCUMENT SAYS "Increases in power by 2.5 points per day", and
+	 * the project owner settled on 2026-09-05 what its power is: "That's in
+	 * regards to the damage it does to the city/population". So this is 2.5
+	 * points of city defence and 2.5 points of city population, added to the
+	 * day's damage for every day the Siege has already stood.
+	 *
+	 * IT WAS 10 UNTIL 2026-09-06, AND THE OWNER CUT IT ON ISSUE #1349, verbatim
+	 * "Halve the rate and cut the growth". The dose-response curves in
+	 * `sim/analyse_siege_dose.py` showed a Siege at the old numbers taking the
+	 * earned Cataclysm dungeon -- the route the design treats as the ordinary
+	 * way to win -- from 84% of campaigns to 8%. `SpawnWeightSiege` in
+	 * `CataclysmSurge.h` carries the other half of the ruling, 15 down to 7.5.
+	 * The 1% share above was left exactly where the owner put it.
+	 *
+	 * POINTS AND NOT A SHARE, WHICH IS WHY SMALL CITIES SUFFER MOST. Two and a
+	 * half points is a quarter of a per cent of an Outpost's thousand defence
+	 * and an eightieth of that of a Pillar's twenty thousand, so the growth
+	 * bites hardest where the empire is thinnest. An unattended Siege empties an
+	 * Outpost's defence in 25 days, a Bulwark's in 39, a Sanctuary's in 55 and
+	 * the Pillar's in 70. Without the growth every city would take exactly 100
+	 * days whatever its size, because the flat part is a share of that city's
+	 * own maximum.
+	 *
+	 * THOSE FOUR DAY-COUNTS ARE DERIVED AND NOT CHOSEN. A city falls on the
+	 * first day D where `D * 0.01 * MaxDefence + 2.5 * D * (D - 1) / 2` reaches
+	 * its maximum defence, which for an Outpost is `1.25*D*D + 8.75*D >= 1000`.
+	 * `sim/tests/test_siege_subtype.py::TestItMatchesTheGamesOwnStatedFigures`
+	 * runs the model's day loop against all four and fails by name if this
+	 * constant and this comment part company.
+	 *
+	 * IT COUNTS FROM THE DAY THE SIEGE ARRIVED, so its first day deals the flat
+	 * share alone and each later day adds another 2.5 points.
+	 * `FCataclysmDungeon::SpawnedDay` is the day it arrived.
+	 *
+	 * IT IS ADDED TO BOTH THE DEFENCE AND THE POPULATION DAMAGE, which is the
+	 * plain reading of a sentence whose subject is the damage it does and whose
+	 * previous sentence names both. That reading is recorded in
+	 * `docs/DECISIONS.md` as a reading rather than a ruling, because the owner's
+	 * answer settled what "power" means and not which of the two it grows.
+	 */
+	static constexpr float SiegeDamageGrowthPerDay = 2.5f;
+
+	/**
+	 * Whether a list of dungeons and a list of timers describe the same board.
+	 *
+	 * THE ONE DEFINITION OF "THESE AGREE", AND IT IS STATIC ON PURPOSE. The two
+	 * lists are kept in step by this class and by nothing else, so a save that
+	 * wrote them and a load that read them back would each be a second writer of
+	 * that relationship. Both sides call this rather than each deciding for
+	 * itself what agreement means, because two definitions drift.
+	 *
+	 * WHAT DISAGREEMENT COSTS, WHICH IS WHY IT IS WORTH A CHECK AT ALL. A
+	 * dungeon with no timer never resolves and sits on its city for ever. A
+	 * timer with no dungeon runs out and bites a city on behalf of a dungeon
+	 * that is not there. Neither announces itself.
+	 *
+	 * IT IS CALLED ON THE WAY OUT, BY THE SAVE. Refusing to write a pair that
+	 * disagrees means a corrupt pair cannot reach a file at all, so whoever
+	 * builds the restore inherits a guarantee rather than a hope, and the
+	 * load-side check becomes a second line rather than the only one. It also
+	 * names the run that produced the fault, where a check on the way in could
+	 * only say the file was bad.
+	 *
+	 * @param OutWhy  set to what is wrong, for a log or a test message. Untouched
+	 *                when they agree.
+	 * @return whether every dungeon has exactly one timer and every timer has a
+	 *         dungeon
+	 */
+	static bool DungeonsAgreeWithTimers(
+		const TArray<FCataclysmDungeon>& Dungeons,
+		const TArray<FCataclysmDungeonTimer>& Timers,
+		FString& OutWhy);
+
+	/**
+	 * Whether a Siege stands on that city.
+	 *
+	 * WHAT IT IS FOR. A besieged city cannot buy an upgrade. See
+	 * `ECataclysmCityUpgradeResult::CityIsBesieged`.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	bool IsBesieged(int32 CityId) const;
+
+	/** The 25 cities and their lanes. Null until `Begin` runs. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TObjectPtr<UCataclysmEmpireMap> Map;
+
+	/** What a day costs, and every dungeon's timer. Null until `Begin` runs. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TObjectPtr<UCataclysmDayClock> Clock;
+
+	/** When the next wave comes. Null until `Begin` runs. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TObjectPtr<UCataclysmSurgeScheduler> Surges;
+
+	/**
+	 * Every dungeon standing on the map, in the order they arrived.
+	 *
+	 * THE CLOCK HOLDS A TIMER FOR EACH OF THESE AND NOTHING ELSE ABOUT IT. The
+	 * two lists are kept in step by this object and by nothing else; see
+	 * `FCataclysmDungeon` for why the split exists.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<FCataclysmDungeon> Dungeons;
+
+	/**
+	 * The source of chance for everything the run does.
+	 *
+	 * IT IS NO LONGER THE ONLY ONE. `CataclysmStream` below draws which
+	 * Cataclysm sends each dungeon, deliberately away from this one; its comment
+	 * says why.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	FRandomStream Stream;
+
+	/**
+	 * The chance that decides which Cataclysm sends a dungeon, and nothing else.
+	 *
+	 * **SEPARATE FROM `Stream` SO THAT ADDING CATACLYSM IDENTITY DID NOT RE-ROLL
+	 * EVERY RUN IN THE PROJECT.** Drawing this from `Stream` would consume one
+	 * number per dungeon and shift every later draw, so the same seed would land
+	 * different waves on different cities at different depths than it did before
+	 * issue #1357 -- and every fixed-seed test measuring something else would
+	 * have started failing for a reason that had nothing to do with what it
+	 * measures. `cataclysm_order_for` in `sim/cataclysm_sim/engine.py` keeps its
+	 * own generator for exactly this reason and states it.
+	 *
+	 * **IT WILL HAVE TO MOVE INTO `Stream` WHEN THE ATTACK PATTERNS ARE
+	 * PORTED**, and this is where that is recorded. Today the draw is uniform
+	 * and independent of everything else a wave rolls, so where it comes from
+	 * cannot affect anything but itself. Issue #53 gives each Cataclysm its own
+	 * pattern, at which point which one sends a dungeon decides where the
+	 * dungeon lands and how deep it is -- and then it is part of the wave's own
+	 * chance and belongs in the same stream. `Simulation.trigger_surge` already
+	 * draws it from the main stream for that reason.
+	 *
+	 * STILL DETERMINISTIC FROM THE RUN'S SEED, so the same seed still gives the
+	 * same run in every respect. `Begin` initialises both.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	FRandomStream CataclysmStream;
+
+	/**
+	 * Which Cataclysms this run faces.
+	 *
+	 * HOW MANY comes from the difficulty tier and WHICH ONES from the
+	 * character's Cataclysm order seed. The design says a character faces one
+	 * Cataclysm at first and gains one per boss defeated until it faces all
+	 * eight; the project owner ruled on 2026-09-06 that the ORDER they are added
+	 * in belongs to the character, so replaying meets the same ones.
+	 * `UCataclysmRoster::ActiveFor` draws it and its comment carries the
+	 * argument. **THE SEED IS THE CHARACTER'S AND NOT THE RUN'S** since issue
+	 * #1324 slice 6a: `BeginForCharacter` takes it from the character record,
+	 * and `Begin`, which names no character, uses the run's own seed.
+	 *
+	 * IT IS THE DENOMINATOR OF THE UNLOCK RULE. `CataclysmDungeonRequirement`
+	 * is half of this list's length, rounded up.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<ECataclysmType> ActiveCataclysms;
+
+	/** What the next dungeon will be numbered. Only ever counts up. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 NextDungeonId = 0;
+
+	// ----------------------------------------------------------------------
+	// Dungeon modifiers -- issue #41
+	// ----------------------------------------------------------------------
+
+	/**
+	 * Which difficulty tier this run is played at, 1 to 8.
+	 *
+	 * TWO THINGS READ IT AND BOTH ARE COUNTS. `Begin` asks
+	 * `UCataclysmRoster::ActiveCountFor` how many Cataclysms are active, and
+	 * `GiveModifiers` asks `UCataclysmDungeonModifierRules::CountFor` how many
+	 * modifiers a dungeon carries. It was a parameter of `Begin` and nothing
+	 * else until issue #41's modifier slice needed it after the run had started.
+	 *
+	 * WHERE IT COMES FROM, IN THE GAME. `UCataclysmGameInstance::BeginEmpireRun`
+	 * reads `ACataclysmGameMode::DifficultyTierIn` when its caller does not name
+	 * a tier, and every path that starts a run goes through it. **Nothing passed
+	 * a real one until issue
+	 * [#1444](https://github.com/sdubois777/Cataclysm/issues/1444)**: every run
+	 * the game started was tier 1 -- one active Cataclysm and one modifier a
+	 * dungeon -- whatever tier the player was fighting at. That was a gap in the
+	 * join between the game and the empire layer rather than in either of them,
+	 * and it predated this field: it already decided how many Cataclysms a run
+	 * faced.
+	 *
+	 * IT IS SET ONCE, BY `Begin`, AND NOTHING RAISES IT.
+	 * `docs/Cataclysm_GDD_v2.md` section XII: "A run is played at a fixed tier,
+	 * so a player does not move up the tiers inside a run; they finish a
+	 * campaign and start the next one higher." The design has the tier rising
+	 * BETWEEN runs, on defeating the Cataclysm boss dungeon, and a failed run
+	 * replaying the same tier. Neither half can be built here yet: nothing in
+	 * the game sets a won state -- see the class comment above -- and a
+	 * character has no tier of its own to carry between runs. Issue
+	 * [#1472](https://github.com/sdubois777/Cataclysm/issues/1472).
+	 *
+	 * **SAVED, WITH `ActiveCataclysms`**, by `FCataclysmSaveGather::IdentityFrom`,
+	 * since issue [#1471](https://github.com/sdubois777/Cataclysm/issues/1471).
+	 * `FCataclysmSaveApply::RunInto` puts it back; nothing in the game calls it yet
+	 * ([#753](https://github.com/sdubois777/Cataclysm/issues/753)).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 DifficultyTier = 1;
+
+	/**
+	 * Every dungeon modifier the table holds, or empty.
+	 *
+	 * **HANDED IN RATHER THAN LOADED, BECAUSE THIS MODULE MAY NOT READ THE
+	 * TABLE.** `DT_DungeonModifiers` has a row type declared in the `Cataclysm`
+	 * module and `CataclysmEmpire` must not depend on it.
+	 * `UCataclysmDungeonModifierTable::PoolFromTable` over there builds this list
+	 * and `UCataclysmGameInstance::BeginEmpireRun` hands it over. It is the same
+	 * arrangement `Begin` already uses for the lethality rung, and the reason
+	 * given there is the reason here: the caller that has both modules is the one
+	 * that joins them.
+	 *
+	 * EMPTY IS A REAL STATE AND EVERY HEADLESS TEST IS IN IT. A run whose pool
+	 * was never filled gives every dungeon no modifiers and a modifier score of
+	 * zero, which is exactly what the game did before this existed. Nothing
+	 * refuses to run without it.
+	 *
+	 * IT IS NOT FILTERED. `GiveModifiers` narrows it to the run's active
+	 * Cataclysms on every draw rather than storing a narrowed copy, so a run
+	 * whose active set changes -- which nothing does today -- cannot be left
+	 * drawing from a stale pool.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<FCataclysmDungeonModifier> ModifierPool;
+
+	/**
+	 * The chance that decides which modifiers a dungeon carries, and nothing
+	 * else.
+	 *
+	 * SEPARATE FROM `Stream` FOR THE REASON `CataclysmStream` IS, and separate
+	 * from `CataclysmStream` so that a dungeon's Cataclysm and its modifiers are
+	 * not one sequence read twice. `UCataclysmRoster::ModifierSalt` is what
+	 * keeps the three apart.
+	 *
+	 * IT IS DRAWN ON ONCE PER MODIFIER AND NOT ONCE PER DUNGEON, so a tier 8
+	 * Sacrificial dungeon consumes sixteen numbers where a tier 1 plain one
+	 * consumes one. Nothing else reads this stream, so that costs nothing.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	FRandomStream ModifierStream;
+
+	/**
+	 * The run's seed for the Corrupted Stalker's roll, mixed with each dungeon's walk seed by
+	 * `UCataclysmDungeonModifierRules::CarriesTheCorruptedStalker`.
+	 *
+	 * NOT A DRAW ON `ModifierStream`, ruled by the coordinating session on 2026-10-25: a roll there would move every
+	 * later modifier draw of the campaign. Issue #1308.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 CorruptedStalkerSeed = 0;
+
+	/**
+	 * Gives one dungeon its modifiers and its modifier score.
+	 *
+	 * DOES NOTHING WHEN THE POOL IS EMPTY, which leaves the dungeon exactly as it
+	 * was rather than clearing what it had. A dungeon built by hand in a test
+	 * keeps whatever the test put on it.
+	 *
+	 * CALLED WHERE `Cataclysm` IS STAMPED AND FOR THE SAME REASON: the scheduler
+	 * does not know which Cataclysms this campaign faces or what tier it is
+	 * played at, and it must stay able to roll a wave against a bare map in a
+	 * test. The run knows both.
+	 */
+	void GiveModifiers(FCataclysmDungeon& Dungeon);
+
+	// ----------------------------------------------------------------------
+	// What the run has come to -- issue #1324 slice 5
+	// ----------------------------------------------------------------------
+
+	/**
+	 * How many dungeons of any kind the player has beaten this run.
+	 *
+	 * A PORT OF `Simulation.cleared` in `sim/cataclysm_sim/engine.py`, which
+	 * counts every kind the same way. `ClearDungeon` is the only thing that
+	 * raises it, so a dungeon a falling city absorbed is not counted: nobody
+	 * walked it. `RemoveDungeon` is that path and it deliberately counts
+	 * nothing.
+	 *
+	 * IT IS NOT THE NUMBER THE BOSS DUNGEON GROWS BY. That is
+	 * `BasicDungeonsCleared` below, and reading this one instead would let
+	 * clearing quest dungeons deepen the fight they exist to unlock. The design
+	 * document is explicit about the difference; see there.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 DungeonsCleared = 0;
+
+	/**
+	 * How many ORDINARY dungeons the player has beaten this run.
+	 *
+	 * "ORDINARY" IS THE DESIGN'S WORD FOR `ECataclysmDungeonType::Basic`.
+	 * `docs/Cataclysm_GDD_v2.md` section VIII: "Every **ordinary** dungeon
+	 * defeated adds one floor to the Cataclysm boss dungeon. Quest dungeons and
+	 * retaken Dungeon Cities do not: a Quest dungeon is the win condition itself,
+	 * and retaking your own city is recovery rather than progress." Settled with
+	 * the project owner on 2026-09-06.
+	 *
+	 * SO THIS IS A SEPARATE COUNTER AND NOT A CONVENIENCE. `DungeonsCleared`
+	 * above is the wrong number for the boss's depth, and the model says so in
+	 * as many words beside `Simulation.basic_cleared`, which this ports.
+	 *
+	 * THE CATACLYSM BOSS DUNGEON'S DEPTH READS IT, since issue #1324 slice 6b
+	 * (2026-11-02): `CataclysmDungeonFloorsNow` is its rolled floors plus this,
+	 * so the ordinary dungeons defeated before it opened and after it opened
+	 * both count -- the rule of
+	 * [#1315](https://github.com/sdubois777/Cataclysm/issues/1315). This said
+	 * nothing read it until then. It is counted from the day the player starts
+	 * rather than reconstructed afterwards from a board that no longer holds
+	 * what was cleared.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 BasicDungeonsCleared = 0;
+
+	/**
+	 * How many quest objectives the player has earned this run.
+	 *
+	 * ONE CLEARED QUEST DUNGEON IS ONE OBJECTIVE, which the project owner ruled
+	 * on 2026-09-06, verbatim "Yes -- one dungeon, one objective".
+	 * `docs/Cataclysm_GDD_v2.md` section XI states it: the seals, seeds,
+	 * essences, cores and rituals the eight Cataclysms name are flavour for one
+	 * mechanic. A port of `Simulation.objectives`.
+	 *
+	 * **IT IS THE RUN'S TOTAL AND IT IS NOT WHAT THE UNLOCK RULE READS.** That
+	 * is `QuestObjectivesByCataclysm` below, and the two are kept apart on
+	 * purpose. A total cannot express the owner's rule: a player facing four
+	 * Cataclysms who clears eight quest dungeons all belonging to one of them
+	 * has eight objectives and has finished at most one Cataclysm, where the
+	 * rule asks for two. This is what the empire screen shows and what a
+	 * player's sense of progress reads; the map below is what the gate reads.
+	 *
+	 * IT IS STILL THE SUM OF THE MAP, and the two are raised together in
+	 * `ClearDungeon`. A dungeon that names no Cataclysm -- one built by hand in
+	 * a test -- raises this and nothing in the map, which is the one case where
+	 * they come apart and is why the sum is not simply computed.
+	 *
+	 * Issue #1324 slice 5, and issue #1357 for the split.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 QuestObjectives = 0;
+
+	/**
+	 * Quest objectives earned FOR EACH CATACLYSM, which is what the unlock rule
+	 * reads.
+	 *
+	 * A PORT OF `Simulation.objectives_by_type`. Every active Cataclysm is a key
+	 * from the moment `Begin` runs, so one that has never sent a quest dungeon
+	 * reads as 0 rather than as absent, and a caller iterating this sees the
+	 * whole campaign rather than only the parts of it that have happened.
+	 *
+	 * SAVED, with `QuestObjectives`, by `FCataclysmSaveGather::ProgressFrom`,
+	 * since issue [#1374](https://github.com/sdubois777/Cataclysm/issues/1374).
+	 * `FCataclysmSaveApply::RunInto` puts it back; nothing in the game calls it yet (#753).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TMap<ECataclysmType, int32> QuestObjectivesByCataclysm;
+
+	/**
+	 * How many times a dungeon's timer ran out and the empire actually paid.
+	 *
+	 * WHAT `FCataclysmDayReport::Resolved` CANNOT ANSWER, which is why this
+	 * exists. That list is every timer that ran out, and not every timer
+	 * running out costs a city anything: a Fallen City stands on a city whose
+	 * damage is already done, and the Cataclysm boss dungeon on none, with a
+	 * timer that never runs out. A caller counting how often the
+	 * empire was hurt had no number to read and the report's own comment said
+	 * so.
+	 *
+	 * ORDINARY DUNGEONS ONLY. A Quest dungeon's timer has hit its host since
+	 * 2026-10-13, and that hit is counted in `QuestHits` below and not here.
+	 *
+	 * **IT IS DELIBERATELY NOT A PORT OF `Simulation.resolved` AS THAT STOOD,
+	 * AND THE MODEL HAS SINCE BEEN CORRECTED TO MATCH.** The model used to
+	 * raise its tally before asking whether the dungeon detonates, so a Fallen
+	 * City dungeon's timer running out counted there and not here --
+	 * `RunResult.dungeons_resolved` is documented in the model as "times a
+	 * dungeon detonated undefeated", which stopped being true of it when slice
+	 * 2 gave the model a kind that does not detonate. Copying that arithmetic
+	 * would have carried the defect across rather than the meaning, so this
+	 * counted the bite;
+	 * [#1373](https://github.com/sdubois777/Cataclysm/issues/1373) then moved
+	 * the model's line below its own guard and **the two are now one number**.
+	 * `docs/DECISIONS.md` records both halves, and
+	 * `test_both_halves_count_a_detonation_where_the_city_pays` in
+	 * `tools/tests/test_surge_port.py` fails if either drifts back.
+	 *
+	 * A CITY THAT HAS ALREADY FALLEN IS NOT A BITE EITHER. `ResolveDungeon`
+	 * returns before touching anything when its host is gone, and this is raised
+	 * where the damage is dealt rather than at the top of that function, so the
+	 * two cannot part company.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 DungeonsDetonated = 0;
+
+	/**
+	 * How many times a Quest dungeon's timer ran out and hit its host city.
+	 *
+	 * A PORT OF `Simulation.quest_hits`, AND COUNTED APART FROM
+	 * `DungeonsDetonated` AS THE MODEL COUNTS IT APART FROM `resolved`. Raised
+	 * where the hit lands in `ResolveDungeon`, so a Quest timer that ran out on
+	 * a city already fallen is not counted. Since 2026-10-13.
+	 *
+	 * SAVED, like the tallies above it, since issue
+	 * [#1374](https://github.com/sdubois777/Cataclysm/issues/1374).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 QuestHits = 0;
+
+	/**
+	 * The day of the last hit the empire screen has a line for, or 0 when
+	 * there has been none this run.
+	 *
+	 * TWO KINDS OF HIT SET IT: an ordinary dungeon that hit its city and left,
+	 * and a Quest dungeon's timer hitting its host. An ordinary dungeon whose
+	 * hit felled its city does not: the screen already shows a city lost.
+	 * `UCataclysmEmpireMapLayout::LastHitLine` turns the three fields into the
+	 * line, and turns `LastMoveDay` and the two beside it into a line about a
+	 * fall's move instead when that is as recent. ALL SIX ARE SAVED since issue
+	 * #1374, and `FCataclysmSaveApply::RunInto` puts them back, so a restored run
+	 * shows its line; nothing in the game calls it yet (#753).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LastHitDay = 0;
+
+	/** The city that hit landed on. `INDEX_NONE` when there has been none. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LastHitCityId = INDEX_NONE;
+
+	/** Whether that hit was a Quest dungeon's timer. False: an ordinary
+	 *  dungeon that hit and left. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bLastHitWasAQuestTimer = false;
+
+	/**
+	 * The day a city's fall last moved a Quest dungeon, or 0 when none has
+	 * this run. Since 2026-10-21.
+	 *
+	 * FOR THE EMPIRE SCREEN'S ONE LINE, like `LastHitDay`, and set by
+	 * `CityFell` where the move is made. A move made by a Quest dungeon's own
+	 * timer does not set it: that one is in the day's report and the console's
+	 * account, and the screen's line is for the move a player would otherwise
+	 * not see coming, a dungeon leaving a city that has just been lost.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LastMoveDay = 0;
+
+	/** The city that move left, which is the city that fell. `INDEX_NONE`
+	 *  when there has been none. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LastMoveFromCityId = INDEX_NONE;
+
+	/** The city that move went to. `INDEX_NONE` when there has been none. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LastMoveToCityId = INDEX_NONE;
+
+	/**
+	 * The day of the player's last death in a dungeon of the empire, or 0 when there has been none this run. Issue
+	 * #41, ruled by the coordinating session on 2026-11-02.
+	 *
+	 * KEPT THE WAY THE LAST HIT IS KEPT, and for the same reason: until this nothing on screen said what a death
+	 * cost, and `ACataclysmDungeonGameMode::EndTheDungeonForADeath` worked out every figure and only logged it.
+	 * `NoteDeath` writes all five fields at once, with what that function computed and nothing else.
+	 * `UCataclysmEmpireMapLayout::LastDeathLine` turns them into a line, which the empire screen shows while the
+	 * death is the most recent thing it has a line for and the heads-up display shows when the player stands up.
+	 *
+	 * THE DAY IS THE DAY THE WALK HAD REACHED: the run's day and the days the walk owed, since the run's own day does
+	 * not move while the player is inside (2026-10-24).
+	 *
+	 * SAVED, all five, since run record version 3, because the last hit is saved.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LastDeathDay = 0;
+
+	/**
+	 * What the dungeon the player died in was called when it was died in, from `NameOfDungeon`, or empty when the
+	 * death was in a dungeon number with no dungeon behind it.
+	 *
+	 * A NAME AND NOT A NUMBER, because an ordinary dungeon leaves the map at the death it resolves on, so by the time
+	 * the line is read there is nothing left to look its number up in.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	FString LastDeathDungeonName;
+
+	/** The whole days the walk had spent, which ran when the death ended it. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LastDeathWalkDays = 0;
+
+	/** The days the death itself cost on top of them: `DeathDayCost` when it happened. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LastDeathDaysCost = 0;
+
+	/**
+	 * The cities the death's resolve felled, in the order the resolve reported them: `FCataclysmDayReport::Fallen`
+	 * of `ResolveDungeonOnDeath`. Empty when none fell, which is every death in a Quest dungeon or a Dungeon City.
+	 *
+	 * NOT A CITY THE DAYS AFTERWARDS FELLED. Those are each day's own report's, and the last hit's line if a hit
+	 * felled nothing; the ruling counts the cities that fell as a result of the death.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> LastDeathFallenCityIds;
+
+	/**
+	 * Of `UCataclysmSurgeScheduler::SurgesFired`, how many fired because the
+	 * board was empty rather than because the clock or a city's fall sent them.
+	 *
+	 * A PORT OF `RunResult.surges_from_empty_board`. Under this rule the number
+	 * of surges in a run is no longer set by the clock alone, and this is how a
+	 * caller tells an early wave from a scheduled one. Issue #1414.
+	 *
+	 * SAVED, like the four tallies above it, since issue
+	 * [#1374](https://github.com/sdubois777/Cataclysm/issues/1374).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 SurgesFromEmptyBoard = 0;
+
+	/**
+	 * The whole days the walk under way has spent and the empire has not yet run. Read it through `DaysOwed`.
+	 *
+	 * NOTHING RESOLVES WHILE THE PLAYER IS INSIDE A DUNGEON, by the owner's decision of 2026-10-24, verbatim: "all
+	 * of the resolutions and day/timer updates happen once a player leaves a dungeon". A floor still costs its
+	 * days, one a floor to begin with; `SpendFloorTime` adds them here rather than running them, and
+	 * `SettleDaysOwed` runs them in order when the player leaves. The part of a day stays on
+	 * `UCataclysmDayClock::PartialDay`, as before; only whole days are owed.
+	 *
+	 * SAVED with the run's clock, `UCataclysmRunSave::DaysOwed`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 OwedDays = 0;
+
+	/**
+	 * Starts a run: an intact empire, a clock at day 0, and a surge due
+	 * immediately.
+	 *
+	 * A SECOND CALL IS A FRESH RUN rather than a continuation, so a caller that
+	 * wants to keep a run has to keep this object.
+	 *
+	 * A RUN THAT NAMES NO CHARACTER DRAWS ITS CATACLYSMS FROM ITS OWN SEED: this is
+	 * `BeginForCharacter` with the run's seed as the order seed, which is what
+	 * every run did before issue #1324 slice 6a. A console command and a test name
+	 * no character; a character's run goes through `BeginForCharacter`.
+	 *
+	 * @param InSeed         what to seed the run's chance with. The same seed
+	 *                       gives the same run, AND the same set of Cataclysms:
+	 *                       see `ActiveCataclysms`.
+	 * @param Mode           how surges escalate. An open tuning question; see
+	 *                       `ECataclysmSurgeMode`.
+	 * @param LethalityRung  0 Standard, 1 Hardcore, 2 Heretic.
+	 * @param InDifficultyTier which tier this run is played at, 1 to 8. It
+	 *                       decides HOW MANY CATACLYSMS ARE ACTIVE and, since
+	 *                       issue #41's modifier slice, HOW MANY MODIFIERS a
+	 *                       dungeon carries. It is kept, in `DifficultyTier`,
+	 *                       because the second of those is asked long after this
+	 *                       returns. It is passed in rather than read off the
+	 *                       game mode because `ACataclysmGameMode` is in the
+	 *                       `Cataclysm` module and this one must not depend on
+	 *                       it; the caller that has both is the one that joins
+	 *                       them.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
+	void Begin(int32 InSeed = 0,
+			   ECataclysmSurgeMode Mode = ECataclysmSurgeMode::Static,
+			   int32 LethalityRung = 0,
+			   int32 InDifficultyTier = 1);
+
+	/**
+	 * Starts a character's run: as `Begin`, except that WHICH CATACLYSMS IT FACES
+	 * COMES FROM THE CHARACTER and not from the run's seed. Issue #1324 slice 6a.
+	 *
+	 * `docs/Cataclysm_GDD_v2.md`, section II, Ending a Run: "The same tier means
+	 * the same Cataclysms, by name and not only by count." and "Only defeating the
+	 * boss dungeon adds a Cataclysm to the next run." So the list is the first
+	 * `UCataclysmRoster::ActiveCountFor(InDifficultyTier)` of
+	 * `UCataclysmRoster::OrderFor(InCataclysmOrderSeed)`: two runs of one
+	 * character at one tier face the same list in the same order, and a run one
+	 * tier higher faces that list with one more at its end -- whatever each run's
+	 * own seed is. Ruled by the coordinating session on 2026-11-02 from that
+	 * sentence.
+	 *
+	 * THE TWO SEEDS ARE SEPARATE ON PURPOSE. `InSeed` is the run's chance -- its
+	 * waves, its depths, its cities lost -- and a replay is a new run, so it is
+	 * drawn afresh. `InCataclysmOrderSeed` is the character's and never changes:
+	 * the character record keeps it (`UCataclysmCharacterSave::CataclysmOrderSeed`).
+	 *
+	 * @param InCataclysmOrderSeed the character's Cataclysm order seed.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
+	void BeginForCharacter(int32 InSeed, int32 InCataclysmOrderSeed,
+						   ECataclysmSurgeMode Mode = ECataclysmSurgeMode::Static,
+						   int32 LethalityRung = 0,
+						   int32 InDifficultyTier = 1);
+
+	/** Which day the run is on. Counted from 0, before any day has passed. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	int32 Day() const;
+
+	/** Whether the Cataclysm can reach the Pillar. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	bool IsLost() const;
+
+	// ----------------------------------------------------------------------
+	// The Cataclysm dungeon's unlock -- issue #1357
+	// ----------------------------------------------------------------------
+
+	/**
+	 * How many quest objectives this Cataclysm has earned so far.
+	 *
+	 * ZERO FOR ONE THAT IS NOT ACTIVE, and zero for `None`. Reading a Cataclysm
+	 * the run does not face is a caller's mistake and the honest answer is that
+	 * the player has done nothing towards it.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	int32 QuestObjectivesFor(ECataclysmType Cataclysm) const;
+
+	/**
+	 * Whether this Cataclysm's own objective count has been met.
+	 *
+	 * THE COUNTS DIFFER: Death asks for 5 quest dungeons and Demonic for 10. See
+	 * `UCataclysmRoster::QuestObjectivesFor`.
+	 *
+	 * FALSE FOR A CATACLYSM THE RUN DOES NOT FACE. `None` asks for 0, which
+	 * would otherwise read as complete the moment the run began; the active list
+	 * is what this is asked about and `None` is never in it, but a caller can
+	 * ask anything, so this refuses rather than relying on that.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	bool IsCataclysmComplete(ECataclysmType Cataclysm) const;
+
+	/** How many of the active Cataclysms have had their own count met. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	int32 CataclysmsComplete() const;
+
+	/**
+	 * How many have to be, for the Cataclysm dungeon to unlock.
+	 *
+	 * HALF OF `ActiveCataclysms`, ROUNDED UP. The project owner's ruling of
+	 * 2026-09-06; `UCataclysmRoster::CataclysmsRequiredFor` carries the verbatim
+	 * words, the worked table and the reason the odd counts are the only ones
+	 * that prove which rounding was built.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	int32 CataclysmDungeonRequirement() const;
+
+	/**
+	 * Whether the player has earned the right to face the Cataclysm.
+	 *
+	 * **IT ANSWERS AND `OpenCataclysmDungeonIfEarned` ACTS.** The quest clear
+	 * that makes this true opens the Cataclysm boss dungeon, since issue
+	 * [#1324](https://github.com/sdubois777/Cataclysm/issues/1324) slice 6b
+	 * (2026-11-02). **This said nothing created that dungeon and that two
+	 * blockers were left -- the enemy capital did not exist, and neither did
+	 * the loss condition.** The project owner answered both on 2026-09-06: the
+	 * enemy capital "is just the boss dungeon becoming enterable", and "Losing
+	 * the Pillar ends the run". What issue #1357 removed was the third: the
+	 * module could not tell which Cataclysm a quest dungeon belonged to, so
+	 * the requirement could not be checked at all.
+	 *
+	 * IT CAN GO FROM TRUE BACK TO FALSE ONLY IF THE ACTIVE COUNT RISES, and it
+	 * cannot: `ActiveCataclysms` is set once, by `Begin`, from a difficulty tier
+	 * a run is played at from beginning to end. The owner's ruling did not say
+	 * whether an unlocked Cataclysm dungeon should re-lock if a ninth Cataclysm
+	 * could arrive mid-run, and it does not have to, because it cannot.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	bool IsCataclysmDungeonUnlocked() const;
+
+	// ----------------------------------------------------------------------
+	// The Cataclysm boss dungeon, once earned -- issue #1324 slice 6b
+	// ----------------------------------------------------------------------
+
+	/**
+	 * Whether this run has opened its Cataclysm boss dungeon.
+	 *
+	 * ONCE A RUN, AND IT STAYS TRUE after the dungeon leaves the board, which is
+	 * what stops a later quest clear opening a second one. `Begin` clears it.
+	 * The model's equivalent is `Simulation.cataclysm` not being None.
+	 *
+	 * SAVED, with the two below, since run record version 4.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bCataclysmDungeonOpened = false;
+
+	/**
+	 * The day it opened: the run's day when the quest clear that met the
+	 * requirement was credited, `Day()`, which does not include the days the
+	 * walk that cleared it still owes (they run after the clear, by the owner's
+	 * decision of 2026-10-24). 0 until it opens. It is also the dungeon's
+	 * `SpawnedDay`, and the model's `spawned_day` is the same day.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 CataclysmDungeonOpenedDay = 0;
+
+	/**
+	 * The floors it rolled when it opened, 100 to 150, before any ordinary
+	 * dungeon's floor was added; 0 until it opens.
+	 *
+	 * KEPT AND NOT THE DEPTH, so the depth is worked out from the count rather
+	 * than added to: see `CataclysmDungeonFloorsNow`. The model's field is
+	 * `Simulation.cataclysm_base_floors`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 CataclysmDungeonBaseFloors = 0;
+
+	// ----------------------------------------------------------------------
+	// Winning the run -- issue #1324 slice 6e
+	// ----------------------------------------------------------------------
+
+	/**
+	 * Whether the player has won this run: a dungeon of the Cataclysm kind was cleared through `ClearDungeon`, the
+	 * one way every dungeon is cleared. Issue #1324 slice 6e, ruled by the coordinating session on 2026-11-02.
+	 *
+	 * `docs/Cataclysm_GDD_v2.md`, Game Start: "The run ends when the player defeats the Cataclysm boss dungeon or
+	 * loses the capital." A port of `Simulation.won`, which `_finish_current` sets on the same clear and for every
+	 * dungeon of the kind, so a Last Stand cleared (issue #43) will win here as it does there.
+	 *
+	 * WHAT A WIN DOES TO THE CHARACTER IS NOT THIS MODULE'S. The first-kill passive points, the tier raised and the
+	 * next run begun belong to the character, which this module may not reach:
+	 * `UCataclysmGameInstance::BeginTheRunAfterAWin` reads this flag and does them, called by
+	 * `ACataclysmDungeonGameMode::ClearEmpireDungeon` after the walk is left. This module does the one part that is
+	 * the run's: the walk's owed days are dropped, not run (`ClearDungeon`).
+	 *
+	 * NOT SAVED, a judgement of the session that built it: in play the won run is replaced by the next one before
+	 * anything is written, so no record of a won run is ever written. `Begin` clears it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bWon = false;
+
+	/**
+	 * The day the run was won: the day the walk that won it had reached, the run's day and the days that walk owed,
+	 * counted the way `LastDeathDay` counts a death's day. 0 until it is won. Not saved, with `bWon`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 WonDay = 0;
+
+	/**
+	 * The run before this one, when it was won: the day it was won, the tier it was played at, the Cataclysm whose
+	 * boss the win was paid for, and the passive points that paid -- 10, or 0 when the character had defeated that
+	 * boss before. All four are 0 or `None` when the run before this one was not won, or there was none: `Begin`
+	 * clears them and only `NoteLastRunWon` sets them.
+	 *
+	 * WHY THE NEW RUN CARRIES THEM. The coordinating session ruled on 2026-11-02 (R7) that the next run begins at once,
+	 * one tier higher, "with a win line", and the won run is gone by then. `UCataclysmEmpireMapLayout::LastRunWonLine`
+	 * turns them into that line on the new run's map.
+	 *
+	 * SAVED, all four, since run record version 5, so a player who quits after the win still reads the line.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LastRunWonDay = 0;
+
+	/** The tier the won run was played at, 1 to 8; 0 when the run before this one was not won. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LastRunWonTier = 0;
+
+	/** The Cataclysm whose boss the win was paid for: the character's draw at that tier. `None` when not won. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	ECataclysmType LastRunWonCataclysm = ECataclysmType::None;
+
+	/** The passive points the win paid: 10 for that boss's first defeat, 0 for a boss defeated before. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LastRunWonPassivePoints = 0;
+
+	/**
+	 * Keeps the four figures above, all at once, replacing whatever they held. `UCataclysmGameInstance::
+	 * BeginTheRunAfterAWin` is the caller, on the run it has just begun, with what it worked out; nothing here works
+	 * any of them out again. Issue #1324 slice 6e.
+	 */
+	void NoteLastRunWon(int32 Day, int32 Tier, ECataclysmType Cataclysm, int32 PassivePoints);
+
+	/**
+	 * How deep the Cataclysm boss dungeon is: its rolled floors plus one for
+	 * every ordinary dungeon defeated this run, those before it opened and those
+	 * after, with no cap. 0 while it has not opened.
+	 *
+	 * THE DESIGN, `docs/Cataclysm_GDD_v2.md` section VIII, Dungeon Basics:
+	 * "Every **ordinary** dungeon defeated adds one floor to the Cataclysm boss
+	 * dungeon. Quest dungeons and retaken Dungeon Cities do not", and the
+	 * Dungeon Types row, "Grows by one floor for every ordinary dungeon the
+	 * player defeats". Before and after it opens and with no cap, ruled by the
+	 * coordinating session on 2026-11-02.
+	 *
+	 * COMPUTED FROM `BasicDungeonsCleared` AND NOT INCREMENTED, a judgement of
+	 * the session that built it: one counter is the only record of the growth,
+	 * so the depth cannot drift from it -- a restored run that puts the count
+	 * and the base back has its depth back, and a clear reaching the count by a
+	 * path nobody thought to deepen from still deepens it. The standing
+	 * dungeon's `Floors` is set to this whenever the count moves
+	 * (`DeepenCataclysmDungeon`), because every reader of a dungeon's depth --
+	 * the dungeon game mode, the enemy score, the clock, the save -- reads
+	 * `FCataclysmDungeon::Floors` and none should need to know it grows.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	int32 CataclysmDungeonFloorsNow() const;
+
+	/**
+	 * The Cataclysm boss dungeon standing on the board, or null: before it
+	 * opens, and after it leaves the board.
+	 *
+	 * BY ITS KIND, because it is the only Cataclysm dungeon the game builds. A
+	 * Last Stand is issue #43's and will be the same kind, and this is where the
+	 * two will have to be told apart.
+	 */
+	const FCataclysmDungeon* FindCataclysmDungeon() const;
+
+	/**
+	 * One day passes.
+	 *
+	 * IT KEEPS GOING AFTER THE RUN IS LOST, and that is deliberate rather than
+	 * an oversight: losing the path to the Pillar opens the Last Stand rather
+	 * than ending the run, and until that exists the honest behaviour is to let
+	 * the empire keep crumbling and let the caller decide what to do about it.
+	 * `IsLost` and `FCataclysmDayReport::bPillarExposed` are how a caller
+	 * notices.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
+	FCataclysmDayReport AdvanceDay();
+
+	/**
+	 * Several days pass, one at a time.
+	 *
+	 * @param Days how many. Zero or fewer passes no time at all.
+	 * @return one report per day, oldest first.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
+	TArray<FCataclysmDayReport> AdvanceDays(int32 Days);
+
+	/**
+	 * One floor's worth of time passes, which is usually less than a day.
+	 *
+	 * WHY A FLOOR IS NOT ALWAYS A DAY. One floor costs one day to begin with,
+	 * and a city upgrade lowers that rate for the dungeons that city receives
+	 * **without lowering their floor count**. A fifty floor dungeon can be made
+	 * to cost two days rather than fifty: still fifty floors deep, still worth
+	 * what that is worth, still biting on the same schedule, and a quarter of a
+	 * month quicker to walk. `FCataclysmDungeon::WalkDaysPerFloor` is the rate.
+	 *
+	 * IT SPENDS WHOLE DAYS THROUGH `AdvanceDay` AND NOTHING ELSE, so a day that
+	 * accumulates out of twenty-five floors fires its surge, repairs its cities
+	 * and resolves its dungeons exactly as a day spent in one go would. The part
+	 * of a day left over is kept on `UCataclysmDayClock::PartialDay`.
+	 *
+	 * WHILE THE PLAYER IS INSIDE A DUNGEON IT RUNS NONE OF THEM. Each whole day is added to `OwedDays` instead, and
+	 * `SettleDaysOwed` runs them when the player leaves; inside means `UCataclysmDayClock::CurrentDungeonId` names
+	 * a dungeon. The owner's decision of 2026-10-24, `docs/DECISIONS.md`.
+	 *
+	 * @param Days the floor's cost. Zero or less passes no time.
+	 * @return one report per whole day that passed, in order. **Usually empty**,
+	 *         which is the difference between this and `AdvanceDay`, and
+	 *         **always empty while the player is inside a dungeon**.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
+	TArray<FCataclysmDayReport> SpendFloorTime(float Days);
+
+	/** The whole days the walk under way has spent and not yet run; see `OwedDays`. 0 outside a walk. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	int32 DaysOwed() const;
+
+	/**
+	 * Runs the days the walk owes, one at a time and in order, and owes none afterwards.
+	 *
+	 * CALLED WHEN THE PLAYER LEAVES, by `ACataclysmDungeonGameMode::LeaveEmpireDungeon`, which every way out of a
+	 * dungeon goes through. That call comes AFTER a clear has been credited, so the clear counts first and the
+	 * days run second, as the owner ruled on 2026-10-24: "Clear counts, city still falls". On a death it comes
+	 * after the death's resolve and before the death's own days.
+	 *
+	 * A WIN OWES NONE. Clearing a dungeon of the Cataclysm kind drops the days its walk owed (`ClearDungeon`), so
+	 * this runs nothing after a win: the walk's owed days are not run, the coordinating session's ruling R6 of
+	 * 2026-11-02 (issue #1324 slice 6e).
+	 *
+	 * CALLED BEFORE THE CLOCK IS TOLD THE PLAYER HAS LEFT, so the dungeon walked keeps its timer paused and a Hollow
+	 * walked keeps its floors through these days, which were spent inside it. A cleared dungeon is off the clock
+	 * already.
+	 *
+	 * @return one report per day run, oldest first. Empty when nothing was owed.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
+	TArray<FCataclysmDayReport> SettleDaysOwed();
+
+	/**
+	 * Whether the player is inside a dungeon of this run: the clock names one.
+	 *
+	 * `Cataclysm.EmpireAdvance` refuses while this is true, since days passed by hand in the middle of a walk would
+	 * resolve what the owner ruled waits for the player to leave.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	bool IsAWalkUnderWay() const;
+
+	// ----------------------------------------------------------------------
+	// The dungeons standing on the map
+	// ----------------------------------------------------------------------
+
+	/** One dungeon by its identifier, or null. */
+	const FCataclysmDungeon* FindDungeon(int32 DungeonId) const;
+
+	/**
+	 * Every dungeon standing on one city.
+	 *
+	 * THE CATACLYSM BOSS DUNGEON IS ON NO CITY, so it is never among them for a
+	 * city's number; asked for `INDEX_NONE`, this answers the dungeons on no
+	 * city, which is that one. Since 2026-11-02.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	TArray<int32> DungeonsOn(int32 CityId) const;
+
+	/**
+	 * The Divine Edict this dungeon carries today because an Ascendant left it
+	 * on the dungeon's city, or none.
+	 *
+	 * EVERY DUNGEON ON THAT CITY, STANDING OR ARRIVING, while the 30 days run,
+	 * the design's rule since 2026-10-22: what is asked is the city the
+	 * dungeon stands on now and the run's day now, so a dungeon that arrives
+	 * after the hit carries it and one that moves away stops. The day is
+	 * `Day()`, the clock's; `ACataclysmDungeonGameMode::EnterEmpireDungeon`
+	 * asks on entry, so a walk carries what its city held the day it began.
+	 */
+	FName LeftEdictCarriedBy(int32 DungeonId) const;
+
+	/**
+	 * The modifiers a walk of this dungeon carries: its own, and then, beyond
+	 * its count, the Edict left on its city while it carries one. One already
+	 * among its own is not added twice. Ruled 2026-10-22.
+	 */
+	TArray<FName> ModifiersCarriedBy(int32 DungeonId) const;
+
+	/**
+	 * Its modifier score as a walk carries it: its own `ModifierScore`, plus
+	 * the left Edict's danger score when `ModifiersCarriedBy` added it. The
+	 * danger is read from `ModifierPool`; a run whose pool was never filled
+	 * adds nought, as it gives every dungeon nought. Ruled 2026-10-22: the
+	 * left Edict adds to the modifier score of every dungeon on its city.
+	 */
+	float ModifierScoreCarriedBy(int32 DungeonId) const;
+
+	/** How many dungeons are on the map. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	int32 DungeonCount() const { return Dungeons.Num(); }
+
+	/**
+	 * The PLAYER cleared a dungeon, and it leaves the map.
+	 *
+	 * A DUNGEON RUN DOES CALL THIS. `ACataclysmDungeonGameMode::GoDownOneFloor`
+	 * reaches the bottom floor of an empire dungeon and calls
+	 * `ClearEmpireDungeon`, which calls this. It is also here because the
+	 * alternative -- a caller reaching into `Dungeons` and the clock's `Timers`
+	 * separately -- is how the two lists come apart.
+	 *
+	 * IT IS NOT WHAT A CITY FALLING USES. A city that falls absorbs the dungeons
+	 * standing on it, and that goes through `RemoveDungeon` below instead. The
+	 * two are separate because clearing a dungeon can now restore a city's
+	 * defence, and a city that has just fallen must not be healed by the
+	 * dungeons that killed it.
+	 *
+	 * **AND IT IS THE ONLY THING THAT COUNTS PROGRESS**, which is the second
+	 * reason that split matters. `DungeonsCleared`, `BasicDungeonsCleared` and
+	 * `QuestObjectives` are all raised here and nowhere else, so a dungeon a
+	 * falling city swallowed earns the player nothing -- nobody walked it. Issue
+	 * #1324 slice 5.
+	 *
+	 * NOTHING IS COUNTED FOR A DUNGEON THAT WAS NOT THERE. The counters are
+	 * raised after the removal succeeds, so clearing the same identifier twice,
+	 * or one that never existed, adds nothing.
+	 *
+	 * **AND SINCE 2026-11-02 IT IS WHERE THE CATACLYSM BOSS DUNGEON OPENS AND
+	 * GROWS.** A Quest clear that meets the requirement opens it
+	 * (`OpenCataclysmDungeonIfEarned`, last in the Quest branch), and an
+	 * ordinary clear deepens a boss already standing by a floor
+	 * (`DeepenCataclysmDungeon`). Issue #1324 slice 6b.
+	 *
+	 * **AND CLEARING A DUNGEON OF THE CATACLYSM KIND WINS THE RUN**, since slice
+	 * 6e (2026-11-03): last, after everything above, as `Simulation._finish_current`
+	 * sets `won` last, it sets `bWon` and `WonDay` and drops the days the walk
+	 * owed, which a win does not run (the coordinating session's ruling R6).
+	 * **This said clearing the boss counted as a dungeon cleared and nothing
+	 * else, and that winning by it was slice 6e.** It still counts as a dungeon
+	 * cleared, and nothing else here changes for it.
+	 *
+	 * @return whether it was there to clear.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
+	bool ClearDungeon(int32 DungeonId);
+
+	// ----------------------------------------------------------------------
+	// Empire upgrade points a defeat earns -- issue #52, the first slice
+	// ----------------------------------------------------------------------
+
+	/**
+	 * The base empire upgrade points each kind of dungeon is worth when defeated, before the population scales them.
+	 *
+	 * THE SIMULATION'S TUNED VALUES, `TuningConfig.empire_points_per_dungeon` in `sim/cataclysm_sim/config.py`: an
+	 * ordinary dungeon 1, a Quest dungeon 3, a Fallen City 5 and the Cataclysm boss dungeon 25. The design leaves them
+	 * open -- `docs/Cataclysm_GDD_v2.md`, Empire-Wide Upgrades: "The base points per dungeon type are tuning values and
+	 * are not fixed here" -- and the coordinating session ruled on 2026-11-03, under the owner's delegation of unstated
+	 * numbers, that the game takes the model's. `tools/tests/test_empire_points_port.py` holds the two copies equal.
+	 *
+	 * DOUBLES, because the award they make is a fraction and the bank it goes into keeps the fraction.
+	 */
+	static constexpr double BasicDungeonEmpirePoints = 1.0;
+	static constexpr double QuestDungeonEmpirePoints = 3.0;
+	static constexpr double FallenCityEmpirePoints = 5.0;
+	static constexpr double CataclysmDungeonEmpirePoints = 25.0;
+
+	/** The base points of one kind of dungeon: one of the four constants above. */
+	static double EmpirePointsBaseFor(ECataclysmDungeonType Type);
+
+	/**
+	 * What defeating a dungeon of this kind is worth with this much of the empire's population living.
+	 *
+	 * THE OWNER'S RULING OF 2026-09-06, `docs/Cataclysm_GDD_v2.md`, Empire-Wide Upgrades: "points awarded = base points
+	 * for the dungeon type x (living population / total maximum population)". Linear, no floor and no cap, every kind
+	 * of dungeon, the Cataclysm boss included. A port of `Simulation._finish_current`'s
+	 * `base * self.empire.population_frac()`.
+	 *
+	 * THE DENOMINATOR IS AT LEAST ONE, as `World.population_frac` holds it (`max(1.0, max_population())`), so an empire
+	 * with no population at all is worth nothing rather than a division by zero.
+	 *
+	 * @param LivingPopulation the people in every city still standing, `UCataclysmEmpireMap::TotalPopulation`
+	 * @param MaxPopulation    what every city would hold intact, fallen or not, `UCataclysmEmpireMap::TotalMaxPopulation`
+	 */
+	static double EmpirePointsFor(ECataclysmDungeonType Type, double LivingPopulation, double MaxPopulation);
+
+	/**
+	 * The share of the empire's population living now: every standing city's people over what every city, fallen or
+	 * not, would hold intact. 0 with no map.
+	 *
+	 * THE DENOMINATOR COUNTS EVERY CITY, FALLEN OR NOT, so losing a city moves the share down instead of quietly
+	 * rebasing it -- the design's words, and `UCataclysmEmpireMap::TotalMaxPopulation`'s.
+	 */
+	double LivingPopulationShare() const;
+
+	/**
+	 * What the last call to `ClearDungeon` awarded in empire upgrade points: 0 when that call cleared nothing, and 0
+	 * before any.
+	 *
+	 * MEASURED AT THE DEFEAT, in `ClearDungeon`, after the dungeon leaves the map and before a Fallen City retaken by
+	 * it gives its city back half its people -- the order `Simulation._finish_current` awards in, and the design's:
+	 * "The multiplier is measured at the instant each dungeon is defeated". A dungeon that RESOLVES -- hits its city --
+	 * never reaches `ClearDungeon`, so it awards nothing and leaves this as it was.
+	 *
+	 * THE RUN DOES NOT BANK IT. The points belong to the account, across runs, and this module may not reach the save
+	 * records; `ACataclysmDungeonGameMode::ClearEmpireDungeon` reads this straight after the clear and banks it into
+	 * the account record (`UCataclysmGameInstance::BankEmpirePoints`). NOT SAVED with the run: a loaded run reads 0
+	 * here until its next clear, and the empire screen then shows the bank without the last award.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	double LastEmpirePointsAwarded = 0.0;
+
+	// ----------------------------------------------------------------------
+	// A death inside a dungeon -- issue #41
+	// ----------------------------------------------------------------------
+
+	/**
+	 * The player died inside this dungeon: if it is the kind that resolves, it
+	 * resolves now, and then it leaves the map as any ordinary dungeon that hit
+	 * its city does.
+	 *
+	 * THE PROJECT OWNER RULED IT ON 2026-09-10, verbatim: "Yes, dying in a
+	 * dungeon causes it to resolve, regardless of the remaining time you would
+	 * have had. The logic is, the forces arrayed against you in that dungeon are
+	 * inspired from your death and surge forth, attacking this city while you're
+	 * busy reviving." `docs/Cataclysm_GDD_v2.md`, Dungeon Basics, states it.
+	 *
+	 * **THE ONE PLACE A DEATH RESOLVES A DUNGEON**, and public for that reason.
+	 * `ACataclysmDungeonGameMode::EndTheDungeonForADeath` is the caller: this
+	 * module must not depend on the `Cataclysm` module, so the call comes from
+	 * the game mode into here. The owner has also decided that an ordinary
+	 * dungeon is removed after it hits its city -- on 2026-10-08, verbatim
+	 * "Ordinary dungeons will do their city/population damage, and then
+	 * despawn." THAT IS BUILT IN `ResolveDungeon` SINCE 2026-10-13, which both
+	 * resolve paths reach, this one and the timer's.
+	 *
+	 * WHAT IT DOES FOR AN ORDINARY DUNGEON, the only kind whose
+	 * `FCataclysmDungeon::Resolves` answers true:
+	 *
+	 *   1. Its consequence lands on its city through `ResolveDungeon`, the same
+	 *      function a timer running out reaches, so the points, the count in
+	 *      `DungeonsDetonated`, and a city falling are all exactly what they are
+	 *      there.
+	 *   2. It leaves the map and the clock, inside `ResolveDungeon`. So the
+	 *      days a death costs find no timer of its to run out.
+	 *   3. ONLY WHEN ITS CITY HAD ALREADY FALLEN, nothing is taken, it stays,
+	 *      and its timer is set back to full with its count of resolves raised
+	 *      by one, which is what `UCataclysmDayClock::AdvanceDay` does to a
+	 *      timer that ran out. Without that the days a death costs would be
+	 *      counted against whatever the timer had left.
+	 *
+	 * IT DOES NOT STAY ON THE MAP, except in case 3.
+	 *
+	 * WHAT IT DOES FOR EVERY OTHER KIND: NOTHING AT ALL. A Quest dungeon, a
+	 * Dungeon City and the Cataclysm's own dungeon do not resolve, so no city is
+	 * touched, no timer is moved and nothing is drawn from the run's chance.
+	 * **IT DOES NOT CALL `ResolveDungeon` FOR THEM, AND THAT IS DELIBERATE**:
+	 * for a Quest dungeon that function runs the relocation, which belongs to
+	 * its timer running out and not to a death.
+	 *
+	 * NO DAY PASSES. The days a death costs are charged by the caller, after it
+	 * has left the dungeon, through `AdvanceDays` and `DeathDayCost` below.
+	 *
+	 * THE CLOCK NO LONGER HOLDS THE PLAYER INSIDE WHEN THIS RETURNS, for an
+	 * ordinary dungeon on a standing city. The dungeon is removed, by leaving
+	 * or by its city's fall absorbing it, and `RemoveDungeon` clears the
+	 * clock's record of which dungeon is being stood in. The caller still
+	 * leaves the dungeon itself; for every other case that call is the one
+	 * that tells the clock.
+	 *
+	 * @return what happened, in the shape a day's report has. `Day` is the
+	 *         clock's day, which did not move. `Resolved` holds this dungeon when
+	 *         it resolved and is empty otherwise. `Fallen`, `Absorbed` and
+	 *         `Spawned` are filled when the resolve felled the city, and
+	 *         `bSurged` is true when that fall also fired its surge. Empty
+	 *         when the run has not begun or no dungeon has that number.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
+	FCataclysmDayReport ResolveDungeonOnDeath(int32 DungeonId);
+
+	/**
+	 * How many days a death costs in this run: 5 Standard, 10 Hardcore, 15
+	 * Heretic.
+	 *
+	 * `UCataclysmDayClock::DeathDayCostFor` OF THE RUNG `Begin` WAS GIVEN, which
+	 * is kept on `UCataclysmSurgeScheduler::LethalityRung`. A run that has not
+	 * begun answers Standard's 5, for the reason that function gives for a rung
+	 * nobody chose.
+	 *
+	 * IT ANSWERS AND DOES NOT CHARGE. `AdvanceDays` is what spends them.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	int32 DeathDayCost() const;
+
+	/**
+	 * What to call a dungeon standing on the map when a person reads it: "the Hollow dungeon on Outpost (-3,0)",
+	 * "the dungeon on Bulwark (1,2)", "the Horde Quest dungeon on ...". Empty when no dungeon has that number.
+	 *
+	 * A DUNGEON HAS NO NAME OF ITS OWN IN THIS BUILD -- `ACataclysmDungeonGameMode::DungeonName` is a placeholder
+	 * that reads "Dungeon" -- so it is named the way the empire screen and `Describe` tell one dungeon from another:
+	 * its sub-type, its kind, and the city it stands on. The words are `UCataclysmSurgeScheduler::SubTypeName` and
+	 * `KindName`, which answer nothing for `None` and `Basic`, and the city's own name. A judgement of the session
+	 * that built the death's line, 2026-11-02.
+	 */
+	FString NameOfDungeon(int32 DungeonId) const;
+
+	/**
+	 * Keeps what a death cost, for the line that says so: the five `LastDeath` fields, all of them, replacing the last
+	 * death's. Issue #41, 2026-11-02. `ACataclysmDungeonGameMode::EndTheDungeonForADeath` is the caller, with the
+	 * figures it has just computed; nothing here works any of them out again.
+	 */
+	void NoteDeath(int32 Day, const FString& DungeonName, int32 WalkDays, int32 DaysCost,
+				   const TArray<int32>& FallenCityIds);
+
+	// ----------------------------------------------------------------------
+	// City upgrades
+	// ----------------------------------------------------------------------
+
+	/**
+	 * Spends one of a city's upgrade slots.
+	 *
+	 * WHY BUYING IS HERE AND THE STATE IS ON THE MAP. Three of the ten built
+	 * effects need something the map does not own: the dungeons standing on a
+	 * city, and the current day. This has both.
+	 *
+	 * WHAT IT REFUSES, each with its own reason so a screen can say which:
+	 * a run that has not begun, no such city, a fallen city, no slots left, an
+	 * upgrade the city already has, and an upgrade whose effect is not built.
+	 * See `ECataclysmCityUpgradeResult`.
+	 *
+	 * IT IS FREE AND IMMEDIATE. The design says a city upgrade costs gold and
+	 * takes days to build and neither number is written anywhere, so both are
+	 * zero. `UCataclysmCityUpgradeRules::GoldCost` and `BuildDays` are where
+	 * they will go, and this refuses outright if either is raised without the
+	 * payment and the timer being built. Issue #1264.
+	 *
+	 * @param Upgrade what to buy. `UCataclysmCityUpgradeMapping::Make` in the
+	 *                `Cataclysm` module builds one from a row of
+	 *                `game/Data/CityUpgrades.csv`.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
+	ECataclysmCityUpgradeResult BuyCityUpgrade(
+		int32 CityId, const FCataclysmCityUpgrade& Upgrade);
+
+	/**
+	 * What `BuyCityUpgrade` would answer, without buying anything.
+	 *
+	 * WHY IT IS SEPARATE. A screen has to grey out the upgrades a city cannot
+	 * buy and say why, and the only way for it to be right is to ask the same
+	 * question the purchase asks. A screen that decided for itself would be a
+	 * second opinion about a question already answered here, and the two would
+	 * drift the first time a rule changed.
+	 *
+	 * `BuyCityUpgrade` CALLS THIS AND REFUSES ON ANYTHING BUT `Bought`, so there
+	 * is one list of checks rather than two.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	ECataclysmCityUpgradeResult WouldBuyCityUpgrade(
+		int32 CityId, const FCataclysmCityUpgrade& Upgrade) const;
+
+	// ----------------------------------------------------------------------
+	// Seeing it
+	// ----------------------------------------------------------------------
+
+	/**
+	 * The state of the run in a few lines: the day, the map, how far the
+	 * Cataclysm has to go, and what is standing where.
+	 *
+	 * WHAT IT IS FOR IS EVIDENCE AND A CONSOLE COMMAND, not the interface.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	FString Describe() const;
+
+private:
+	/**
+	 * Rolls a wave onto the map and starts its timers.
+	 *
+	 * @param Today         the day it lands on
+	 * @param bFromCityFall whether a city falling caused it
+	 * @param OutReport     the day's report, to record what arrived
+	 */
+	void FireSurge(int32 Today, bool bFromCityFall, FCataclysmDayReport& OutReport);
+
+	/**
+	 * Which active Cataclysm sent one dungeon of a wave.
+	 *
+	 * UNIFORM OVER THE ACTIVE SET, which is a statement about what is NOT built
+	 * rather than a design decision. `Simulation.trigger_surge` weights the draw
+	 * by each Cataclysm's `count_mult`, so a Death wave really is a swarm and a
+	 * Celestial one really is a handful -- and this module has no patterns at
+	 * all. Weighting by something that does not exist would be inventing it.
+	 * Issue #53 ports them, and then this is where the weights go.
+	 *
+	 * PER DUNGEON AND NOT PER WAVE, which is also the model's shape: a single
+	 * surge is a wave from every active Cataclysm at once rather than from one
+	 * of them in turn, which is what makes three active Cataclysms three
+	 * different problems instead of one problem three times over.
+	 *
+	 * `None` WHEN NOTHING IS ACTIVE, which `Begin` makes impossible -- the
+	 * active count is clamped to at least one -- but a run whose `Begin` never
+	 * ran has an empty list and reaches nothing else here anyway.
+	 */
+	ECataclysmType RollCataclysm();
+
+	/**
+	 * A dungeon's timer ran out: an ordinary dungeon takes a NUMBER OF POINTS
+	 * off its host city and leaves the map, a Quest dungeon takes an ordinary
+	 * dungeon's points for its host's tier and stays on the map, and either
+	 * city may fall.
+	 *
+	 * POINTS AND NOT A SHARE. Issue #1331 and `UCataclysmEmpireMap::Damage`.
+	 *
+	 * AN ORDINARY DUNGEON HITS ONCE AND IS GONE, since 2026-10-13. When its hit
+	 * fells the city the fall absorbs it; otherwise this removes it and names
+	 * the city in `FCataclysmDayReport::HitAndLeft`. One standing on a city
+	 * already fallen takes nothing and stays.
+	 *
+	 * AN ORDINARY DUNGEON THE VOID SENT ADDS VOID STACKS INSTEAD OF POINTS, since
+	 * 2026-10-22: `FCataclysmDungeon::VoidStacksItAdds` of them, through
+	 * `UCataclysmEmpireMap::AddVoidStacks`, and the tenth erases the city.
+	 * Everything else is the same -- it is counted in `DungeonsDetonated`, it
+	 * leaves and is named in `HitAndLeft`, or its city's fall absorbs it.
+	 *
+	 * `FCataclysmDungeon::Resolves` STILL ANSWERS TRUE FOR AN ORDINARY DUNGEON
+	 * AND NOTHING ELSE. A Quest dungeon answers false and is handled in the
+	 * block that asks: its host takes the ordinary row of the host's tier, the
+	 * hit is counted in `QuestHits`, and unless the city fell the move follows
+	 * in `RelocateQuestDungeon` below. When its hit fells the city, `CityFell`
+	 * moves it -- or, with nowhere to go, leaves it -- and it does not take the
+	 * timer's move as well that day, which is the model's rule; until
+	 * 2026-10-21 the fall absorbed it. The clock has already put its timer back
+	 * to full by the time this is called. A Fallen City takes nothing, and the
+	 * Cataclysm boss dungeon never gets here: its timer never runs out
+	 * (`UCataclysmSurgeScheduler::NeverResolveDays`), and were it to, it would
+	 * take nothing either.
+	 *
+	 * IT HAS TWO CALLERS SINCE ISSUE #41. `AdvanceDay`, for every timer that ran
+	 * out, which is what the paragraphs above describe. And
+	 * `ResolveDungeonOnDeath`, for an ordinary dungeon the player died in. It
+	 * never calls this for a kind whose `Resolves` answers false, so a death
+	 * neither hits a Quest dungeon's city nor relocates the dungeon.
+	 */
+	void ResolveDungeon(int32 DungeonId, FCataclysmDayReport& OutReport);
+
+	/**
+	 * A Quest dungeon whose timer ran out picks up and may move to an adjacent
+	 * city.
+	 *
+	 * `docs/Cataclysm_GDD_v2.md` section VIII, as it read until 2026-10-13: a
+	 * Quest dungeon "does not resolve -- refreshes and **may move to adjacent
+	 * city**". It now reads that the timer hits the host city first; the
+	 * refresh and the move are as they were, and a Quest dungeon whose hit
+	 * felled its host does not reach this function that day: the fall has
+	 * already moved it, or found it nowhere to go. The project owner ruled on
+	 * 2026-09-06, verbatim "Adjacent, and fix the simulation". Issue #1324
+	 * slice 4.
+	 *
+	 * **THE "MAY" IS A COIN AS WELL AS A MAP, AND THIS IS WHERE THE COIN IS
+	 * FLIPPED.** The owner ruled on 2026-09-06, verbatim "A chance each time",
+	 * and chose 0.5; `UCataclysmSurgeScheduler::QuestMoveChance` carries the
+	 * number. The target is asked for FIRST and the coin flipped SECOND, which
+	 * is the order `Simulation._resolve` uses and is what keeps the two streams
+	 * in step: both draws happen whenever there is somewhere to go, neither when
+	 * there is not.
+	 *
+	 * **AND A DUNGEON CARRYING A SIEGE REFUSES A BESIEGED DESTINATION.** "Max 1
+	 * per city" was a spawn rule only until the owner ruled on 2026-09-06,
+	 * verbatim "Check the limit on arrival too". This counts the standing Sieges
+	 * and hands them to `PickRelocation`, the way `FireSurge` hands them to
+	 * `RollWave`. Issue #1371.
+	 *
+	 * `UCataclysmSurgeScheduler::PickRelocation` DECIDES AND THIS ACTS, which
+	 * is the division every other rule in this module keeps: the scheduler owns
+	 * what a dungeon is and where it may be, this owns the dungeons actually
+	 * standing on the map.
+	 *
+	 * **IT IS ONE OF THE TWO THINGS IN THIS CLASS THAT MOVE A DUNGEON**, and it
+	 * is separate from `ResolveDungeon` for that reason rather than for length.
+	 * `ResolveDungeon` holds its dungeon by const pointer, so a reader can see
+	 * at a glance that the biting path cannot move anything. The other is
+	 * `CityFell`, since 2026-10-21, which moves a Quest dungeon off a city that
+	 * has just fallen; until then this comment said it was the only one.
+	 *
+	 * **A QUEST DUNGEON ON A CITY THAT HAS ALREADY FALLEN STILL MOVES BY ITS
+	 * TIMER**, since 2026-10-21. One whose fall found it nowhere to go stays
+	 * on the ruin, and when its timer next runs out it hits nothing and then
+	 * tries this move from there, as `Simulation._resolve` does. Until then
+	 * this returned at once for a fallen city, which could not happen while
+	 * a fall absorbed every dungeon on it. Ruled by the coordinating session,
+	 * 2026-10-21.
+	 *
+	 * IT MOVES ONLY A QUEST DUNGEON. A Fallen City also refuses to resolve and
+	 * also reaches here, and *is* its city and cannot leave it. The Cataclysm
+	 * boss dungeon would refuse as well, and since 2026-11-02 does not reach
+	 * here: it stands on no city with a timer that never runs out, and its one
+	 * move is the Last Stand, issue #43.
+	 */
+	void RelocateQuestDungeon(int32 DungeonId, FCataclysmDayReport& OutReport);
+
+	/**
+	 * Every Siege takes its daily share of the city it stands on.
+	 *
+	 * THE ONE DUNGEON THAT COSTS SOMETHING EVERY DAY. The design document:
+	 * "Deals 1% damage to city defenses and population per day while active."
+	 * Every other dungeon is free until its timer runs out, which is what makes
+	 * a Siege the one you cannot leave for later.
+	 *
+	 * A FRACTION OF THE CITY'S MAXIMUM, not of what it has left, and that is
+	 * what the sentence has to mean. A percentage of the remainder never reaches
+	 * zero, so a city could be besieged for ever and never fall; a percentage of
+	 * the maximum takes a hundred days to empty an untouched city, which is a
+	 * real threat on the empire's timescale.
+	 *
+	 * AND IT IS NOW THE ONLY CITY DAMAGE IN THIS LAYER THAT IS A SHARE. It used
+	 * to be one of many. Issue #1331 turned every dungeon resolve into points,
+	 * because a share of the maximum divided out of how long a city survived and
+	 * made every city-health upgrade worthless; the project owner ruled on
+	 * 2026-09-05, verbatim, "Keep it as a deliberate exception (Recommended)"
+	 * for the Siege, on the grounds that a siege does not care how thick your
+	 * walls are. So this is the one threat city-health investment does not
+	 * protect against, and the percentage in the implementation is the ruling
+	 * rather than an oversight.
+	 *
+	 * IT GOES THROUGH `UCataclysmEmpireMap::Damage`, so a city that bought
+	 * damage resistance resists this too. The upgrade says it resists damage and
+	 * does not name a source. A siege ignores how much a city can ABSORB and is
+	 * still blunted by what REDUCES damage; the owner confirmed that separately
+	 * on 2026-09-06, verbatim: "Yes -- damage reduction still applies
+	 * (Recommended)".
+	 */
+	void ApplySiegeDamage(FCataclysmDayReport& OutReport);
+
+	/**
+	 * Every Hollow made before today loses a floor, down to its minimum.
+	 *
+	 * A PORT OF `Simulation._hollow_shrink`, since 2026-10-22, called where
+	 * `Simulation.step` calls it: after the day's Siege bites and before any
+	 * timer is acted on. `UCataclysmSurgeScheduler::HollowFloorsLostPerDay` a
+	 * day, never past `FCataclysmDungeon::HollowFloorsLeftToLose`.
+	 *
+	 * ITS WALK SHRINKS WITH IT AND ITS TIMER DOES NOT. `WalkDays` comes down by
+	 * what the lost floors cost, never below one day, ruled by the
+	 * coordinating session that day. The clock's copy of its floors follows,
+	 * `UCataclysmDayClock::SetFloors`; its timer is left alone, so a Hollow
+	 * bites on the schedule its first depth gave it. Depth and reward are one
+	 * axis and shrink together.
+	 *
+	 * NOT ON THE DAY IT WAS MADE, and NOT WHILE THE PLAYER IS INSIDE IT
+	 * (`UCataclysmDayClock::CurrentDungeonId`): the walk was fixed when the
+	 * player went in, a judgement the model makes and the game copies. It
+	 * resumes the day after the player leaves. A Hollow that has moved, or
+	 * stands on a fallen city, goes on shrinking.
+	 */
+	void ShrinkHollows(int32 Today);
+
+	/**
+	 * A city fell: its ordinary dungeons are absorbed into the one it becomes,
+	 * its Quest dungeons move, and its fall fires a surge when
+	 * `UCataclysmSurgeScheduler::IsDueOnCityFall` says one is due. A fall
+	 * inside the least interval fires none and is not asked about again. Issue
+	 * #2380.
+	 *
+	 * **A QUEST DUNGEON IS NOT ABSORBED**, since 2026-10-21, following the
+	 * simulation's rule of 2026-10-16. Each one standing on the city moves at
+	 * once, with no coin, to the city `UCataclysmSurgeScheduler::PickRefuge`
+	 * answers, keeping its floors, its remaining timer and its sub-type, and
+	 * is named in `FCataclysmDayReport::Relocated` and `MovedByAFall`. With
+	 * nowhere to go it stays on the fallen city.
+	 *
+	 * **NO CITY FALLS WHILE THE PLAYER IS INSIDE A DUNGEON**, since 2026-10-24: the days a walk spends are run when
+	 * the player leaves, `SettleDaysOwed`. So this never meets a dungeon the player is still walking in play. A
+	 * Quest dungeon whose death left it on the map moves like any other in the days settled after the death.
+	 *
+	 * THE MOVES' DRAWS COME BEFORE THE DUNGEON CITY AND THE FALL'S SURGE, the
+	 * order `Simulation._fall` takes them in.
+	 */
+	void CityFell(int32 CityId, FCataclysmDayReport& OutReport);
+
+	/**
+	 * The city that just fell becomes a dungeon standing on itself.
+	 *
+	 * IT IS THE ONLY DUNGEON NOT PUT THERE BY A SURGE, and the only one whose
+	 * depth is decided rather than rolled. See
+	 * `UCataclysmSurgeScheduler::MakeFallenCityDungeon`.
+	 *
+	 * AN ERASED CITY GETS NONE. The Void erases rather than takes, and an erased
+	 * city cannot be retaken, so a dungeon on one would be a reward the map
+	 * refuses to pay.
+	 *
+	 * @param DungeonsAbsorbed how many it absorbed when it fell. A Quest
+	 *        dungeon that stood on it moved away and is not counted, since
+	 *        2026-10-21, so this can be nought.
+	 */
+	void AddFallenCityDungeon(int32 CityId, int32 DungeonsAbsorbed,
+							  FCataclysmDayReport& OutReport);
+
+	/**
+	 * The quest clear that meets the requirement opens the Cataclysm boss
+	 * dungeon: built by `UCataclysmSurgeScheduler::MakeCataclysmDungeon`, given
+	 * its modifiers, put on the board and on the clock with a timer that never
+	 * runs out, and made as deep as `CataclysmDungeonFloorsNow` says.
+	 *
+	 * CALLED AT THE END OF `ClearDungeon`'S QUEST BRANCH, which is where
+	 * `Simulation._finish_current` calls `_maybe_open_cataclysm`, and nowhere
+	 * else. Nothing when `IsCataclysmDungeonUnlocked` answers false, when it
+	 * has opened before this run (`bCataclysmDungeonOpened`), or when the run
+	 * has not begun.
+	 *
+	 * ON NO CITY: the project owner, 2026-11-02, verbatim "On no city
+	 * (Recommended)". ITS CATACLYSM IS THE NEWEST ACTIVE ONE, the last of
+	 * `ActiveCataclysms`, ruled by the coordinating session for the slice.
+	 *
+	 * IT DRAWS TWO NUMBERS FROM `Stream` -- the depth and the sub-type -- and
+	 * its modifiers from `ModifierStream`, so every later wave in the run is
+	 * rolled from a different place than it would have been. The model's open
+	 * draws from its stream too.
+	 */
+	void OpenCataclysmDungeonIfEarned();
+
+	/**
+	 * Sets the standing Cataclysm boss dungeon's floors to
+	 * `CataclysmDungeonFloorsNow`, its walk to one day a floor, and the clock's
+	 * copy of its floors; its timer is not touched. Nothing when none stands.
+	 *
+	 * CALLED WHERE THE COUNT MOVES: by `ClearDungeon` for an ordinary dungeon,
+	 * after `BasicDungeonsCleared` is raised, and by
+	 * `OpenCataclysmDungeonIfEarned` for the ones defeated before it opened.
+	 * The model's `_deepen_cataclysm` is called from the same two places.
+	 */
+	void DeepenCataclysmDungeon();
+
+	/**
+	 * Takes a dungeon off the map and off the clock, and nothing else.
+	 *
+	 * THE HALF OF `ClearDungeon` THAT IS ONLY BOOKKEEPING. A city absorbing its
+	 * dungeons as it falls uses this, and so does an ordinary dungeon leaving
+	 * after it hit its city, so neither triggers what a player clearing a
+	 * dungeon triggers.
+	 */
+	bool RemoveDungeon(int32 DungeonId);
+
+	/**
+	 * Fires the two "every N days" city upgrades that are due today.
+	 *
+	 * EACH UPGRADE CARRIES ITS OWN NEXT TRIGGER DAY rather than the day being
+	 * divided by the interval, because an upgrade bought on day 37 should first
+	 * fire a full interval later and not on whichever day happens to divide
+	 * evenly.
+	 */
+	void RunCityUpgradeIntervals(int32 Today);
+};

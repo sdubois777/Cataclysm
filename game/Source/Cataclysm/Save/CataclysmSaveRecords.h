@@ -1,0 +1,2048 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "AbilitySystem/CataclysmWeaponSkills.h"
+#include "Character/CataclysmClassStats.h"
+#include "Character/CataclysmLethality.h"
+#include "Character/CataclysmPassiveTree.h"
+#include "DayClock/CataclysmDayClock.h"
+#include "Empire/CataclysmEmpireMap.h"
+#include "Empire/CataclysmRoster.h"
+#include "Empire/CataclysmSurge.h"
+#include "Items/CataclysmEquipmentComponent.h"
+#include "Items/CataclysmItem.h"
+#include "Items/CataclysmInventoryComponent.h"
+#include "Save/CataclysmSavePartition.h"
+#include "Save/CataclysmSaveRecord.h"
+#include "Templates/SubclassOf.h"
+#include "CataclysmSaveRecords.generated.h"
+
+/**
+ * WHAT THESE THREE CLASSES ARE, AND WHAT THEY ARE NOT YET.
+ *
+ * They are the SHAPE of the three records `docs/Save_System_Design.md` section 2
+ * describes, so that the storage layer, the migration chain and the fixture
+ * tests have something real to write, read and migrate.
+ *
+ * MOST OF THE FIELDS THE DESIGN LISTS HAD NO RUNTIME SOURCE when these classes
+ * were written. Nothing in the game then produced a character level, an
+ * attribute allocation, a passive tree allocation, the 19 equipped slots, a
+ * stash, an empire graph or a dungeon timer. Those are issues #50, #38, #42 and
+ * others, and each field below says whether it has a source now. The fields below that have no
+ * source are still declared, because a field added later with a sensible default
+ * is NOT a schema version bump -- section 5, "What a version bump means in
+ * practice" -- so declaring them early costs nothing and leaves the file shape
+ * settled. Each one says what fills it.
+ *
+ * WHAT IS DELIBERATELY ABSENT is listed on each class rather than left to be
+ * noticed, because a reader comparing this against the design document should be
+ * able to tell an omission from an oversight.
+ */
+
+/**
+ * One burning patch a floor rule left, where it lies and the burn it was charged at: Quarantine Breach's (Issue #753,
+ * Group 3c-1) and a Plague Harbinger's trail (3d-2). Here, before the creature record, which holds a Harbinger's trail.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSavedPatch
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FVector Location = FVector::ZeroVector;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float Burn = 0.0f;
+};
+
+/**
+ * One creature on the floor, as it stood when the game last wrote itself.
+ *
+ * THIS IS THE LEFT-HAND COLUMN OF THE TABLE IN SECTION 6 and nothing else. The
+ * project owner set the rule on 2026-08-20: the game saves itself constantly so
+ * that a Hardcore character cannot leave a losing boss fight by closing the
+ * game, and a fight resumes as "a neutral restart with the damage kept". A boss
+ * keeps every point taken off it.
+ *
+ * WHAT IS NOT HERE IS NOT AN OVERSIGHT. How far through a wind-up the creature
+ * was, where it was in its attack cycle, what it had in flight, and how long its
+ * buffs had left are all excluded on purpose. Section 6: that is the data whose
+ * shape changes with every patch, and section 5 requires a migration for any
+ * persisted field whose shape changes, so persisting combat choreography would
+ * mean writing a migration every patch for state nobody wants preserved. It can
+ * be tightened later, one field at a time, each as its own version bump.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSavedCreature
+{
+	GENERATED_BODY()
+
+	/** Which row of `game/Data/EnemyArchetypes.csv` this creature is. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FName ArchetypeRow;
+
+	/** Its rung on the rarity ladder, as `ACataclysmEnemyCharacter::RarityStep`
+	 *  holds it: 0 is Common and 4 and above is a boss. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 RarityStep = 0;
+
+	/** Rows of `game/Data/EnemyModifiers.csv`, as `ModifierRows` holds them. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<FName> ModifierRows;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FVector Location = FVector::ZeroVector;
+
+	/** Which way it faces. Yaw alone, because a creature does not pitch or roll. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float Yaw = 0.0f;
+
+	/** The health it had. THE WHOLE POINT OF THE RECORD: a boss that was down to
+	 *  a tenth comes back down to a tenth. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float Health = 0.0f;
+
+	/**
+	 * The health it would have at full.
+	 *
+	 * KEPT AS WELL AS THE HEALTH LEFT, AND IT IS NOT REDUNDANT. A creature's
+	 * maximum health is a property of the ENCOUNTER rather than of the species:
+	 * the same Brute is tougher deeper in a dungeon, and `ACataclysmGameMode`
+	 * already sets it per spawn. Without this, a restored creature would fall
+	 * back to whatever its class defaults to -- and the vital attribute set
+	 * clamps health to the maximum, so a boss with 137 health left and a
+	 * default maximum of 100 would come back with 100. **That was a real
+	 * failure and a test caught it**, which is why the field exists.
+	 *
+	 * ZERO MEANS THE CREATURE KEEPS WHATEVER ITS CLASS GIVES IT, which is what
+	 * a record written before this field existed reads back as.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float MaxHealth = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float EnergyShield = 0.0f;
+
+	/** The energy shield it would have at full. Zero for the same reason.
+	 *  Most creatures have none at all. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float MaxEnergyShield = 0.0f;
+
+	/**
+	 * Whether a floor rule had raised it from the dead, as
+	 * `ACataclysmEnemyCharacter::bRisenFromTheDead` holds it, so that it still pays nothing when it
+	 * dies again. The owner's decision of 2026-09-17: a revived creature pays nothing twice. Dead
+	 * Rising, Divine Resurgence and Vengeful Wraiths raise such creatures.
+	 *
+	 * THE ONE RULE MARK THIS RECORD CARRIES. A risen creature is one of the floor's own enemies and
+	 * comes back; a creature a rule MADE is not written at all (see
+	 * `FCataclysmSaveGather::FloorFrom`), and every other rule mark -- a bond, a Harbinger's mark --
+	 * is rule state, which is not saved.
+	 *
+	 * ADDED WITHOUT A VERSION BUMP, as `UCataclysmRunSave::PartialDay` was: a `SaveGame` field
+	 * missing from a file keeps its default, and false is what every creature in an older file was.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bRisenFromTheDead = false;
+
+	/**
+	 * WHAT THIS CREATURE WAS TO THE WALK, carried by its own record so that the creature spawned from it can be
+	 * linked back with no saved identifier. Issue #753, Group 2, ruled 2026-10-30. Each defaults to "nothing", which
+	 * is what every creature in an older file was; not a version bump.
+	 *
+	 * A THRALL: commanded by the player (`UCataclysmCommand::Subjugate`), whether it is the Second Self, the Fervour
+	 * it holds back (`ReservedFervour`) and the health multiplier its commander gave it. The load re-links it with
+	 * these and does NOT call `Subjugate`, which would rescale it and heal it to full.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bCommandedByThePlayer = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bSecondSelf = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float ReservedFervour = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float CommanderHealthMultiplier = 1.0f;
+
+	/**
+	 * SOUL HARVEST: the souls this creature holds, and the maximum health they added, which `MaxHealth` above already
+	 * includes. Its attack damage and resistance additions are worked out again from the souls on a load.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 SoulHarvestSouls = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float SoulHarvestHealthAdded = 0.0f;
+
+	/** NOTHING IS FORGOTTEN: the boss the void fed. Its maximum health above already holds what the void gave. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bFedByNothingIsForgotten = false;
+
+	/**
+	 * The creature's own attack damage, what `ACataclysmEnemyCharacter::SetAttackDamage` was given: before its
+	 * rarity's scale, which `RarityStep` brings back, the floor rules' multipliers, which their beats re-apply, and
+	 * any rule's addition, which the roles above bring back. Issue #753, Group 2, ruled 2026-10-30.
+	 *
+	 * A FAULT SINCE #751, NOT A NEW FIGURE: nothing saved it and `FCataclysmSaveApply::CreatureInto` never set it, so
+	 * every creature a load put back had its class's starting damage, which read 0. ZERO MEANS NOT SAVED, which is
+	 * what an older file reads as, and the restore then leaves the damage as before.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float AttackDamage = 0.0f;
+
+	/**
+	 * THE REST OF WHAT PLACEMENT SETS, found by the sweep of 2026-10-30 (#753, Group 2), each a fault since #751 like
+	 * the damage: the starting maximum health (`SetHealth`), which a later `ApplyStartingAttributes` rebuilds the
+	 * maximum from; the armour (`SetArmour`); and the placed damage multiplier (`SetPlacedDamageMultiplier`), which
+	 * Grave Tide sets once on the creatures its wave raises. Zero health, armour below zero and a multiplier of 1 mean
+	 * not saved, which is what an older file reads as, and leave the creature as before.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float StartingHealth = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float Armour = -1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float PlacedDamageMultiplier = 1.0f;
+
+	/**
+	 * HOW FAR THE CREATURE SEES, AS A MULTIPLE OF ITS CLASS'S RADIUS (`ACataclysmCharacterBase::SightRadiusMultiplier`),
+	 * and THE ONE ROW OF ITS MODIFIERS THE FLOOR GAVE (`ACataclysmEnemyCharacter::FloorRealityRow`, Unstable
+	 * Dimensions'). Placement sets both and nothing sets either again on a restored creature: a Horde creature saw at
+	 * its class's radius after a load instead of thirty times it, and a creature raised a rung later counted the floor's
+	 * row as its own and drew one modifier too few. One and none mean not saved, which is what an older file reads as,
+	 * and are each field's own default. Issue #753, Group 3a.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float SightRadiusMultiplier = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FName FloorRealityRow = NAME_None;
+
+	/**
+	 * THE SOUL CHAINS GATE THIS CREATURE BEARS THE CHAIN OF, by the gate's index, or -1 for none: a closed gate's
+	 * bearer. A load destroys the floor's fresh creatures, the rebuilt floor's bearers among them, and without this a
+	 * closed gate counted its bearers dead on the next beat and opened and paid its drops. Put back by
+	 * `ACataclysmDungeonGameMode::RestoreCreatureRoles`. Issue #753, Group 3c-1, ruled 2026-10-30.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 SoulChainsGate = -1;
+
+	/**
+	 * THE ROLES THE FLOOR'S RULES GAVE THIS CREATURE, put back by `ACataclysmDungeonGameMode::RestoreCreatureRoles`.
+	 * Issue #753, Group 3d-1, ruled 2026-10-30. Without them a load gave the rebuilt floor's fresh creatures each role,
+	 * destroyed them, and the rule read its role-holder dead on the next beat:
+	 * - the section Lightforged Walls placed it in, or -1: every barrier opened on the first beat, sections full or not;
+	 * - the Plaguebearer: its stacks cleared on the first beat, as at its death, and it came back hostile;
+	 * - one of Quarantine Breach's released creatures: its death spread no patch;
+	 * - the drops it ate under Famished Beasts and the health that rule added: its damage bonus was lost, and a drop
+	 *   eaten after the load put a share on top of the share already in the saved maximum.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 FloorSection = -1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bIsPlaguebearer = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bQuarantineReleased = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 FamishedDropsEaten = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float FamishedHealthAdded = 0.0f;
+
+	/**
+	 * AND THE REST OF THE ROLES, since Group 3d-2, ruled 2026-10-31:
+	 * - Morale Break: the group it was placed in and that group's middle cell (-1 for none), and whether it leads the
+	 *   group or is panicking. Without them every leader read dead on the first beat and nobody panicked;
+	 * - a Plague Harbinger, and its trail: the patches it laid, at the burn charged (QA), where it laid the last, and
+	 *   whether it has laid one. Without them no trail was laid and its death neither cleansed nor weakened;
+	 * - Grim Totems' cleanse: its damage multiplier, 1.0 for none, which lasts as long as it lives.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 PackGroup = -1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FIntPoint PackMiddleCell = FIntPoint(-1, -1);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bIsMoraleLeader = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bIsPanicked = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bPlagueHarbinger = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<FCataclysmSavedPatch> HarbingerPatches;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FVector HarbingerLastPatchAt = FVector::ZeroVector;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bHarbingerHasLaidAPatch = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float GrimTotemsDamageMultiplier = 1.0f;
+
+	/**
+	 * THE RULE THAT RAISED THIS CREATURE IN PLAY, by a plain tag, and its group in that rule (for Pandora's spawn, the
+	 * place of its box's waves in the floor record), or none and -1 for a creature no rule raised. Since Group 3d-3a,
+	 * ruled 2026-10-31 (Q5 of 3d): a creature a rule raised and that stands at the save is saved as a record, its health
+	 * and place kept, and put back into its rule's list; one with no tag is still not saved. See
+	 * `ACataclysmDungeonGameMode::RaisedByOf`.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FName RaisedBy = NAME_None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 RaisedGroup = -1;
+
+	/** A Carrion Feast feeder's own maximum health, before the carcasses eaten strengthened it. Issue #753, 3d-3b. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float CarrionFeederOwnMaxHealth = 0.0f;
+};
+
+/**
+ * One drop lying on the floor that nobody picked up. Section 6 keeps these.
+ *
+ * A DROP IS EITHER GEAR OR A STACK OF CRAFTING MATERIALS, never both, and
+ * `ACataclysmDroppedItem` is one actor class for the two because everything
+ * about lying on a floor is the same for them: a position, a name, a colour and
+ * a click. This mirrors that, and the pair of material fields is the pair
+ * `FCataclysmCarriedSlot` already uses for the same distinction.
+ *
+ * WHAT IS NOT HERE: the drop's printed name, the colour it is drawn in, its
+ * rarity and the material's tier. All four are worked out from the two fields
+ * above plus the game's data tables, so persisting them would store a second
+ * copy of something derived -- and a copy written by an older build would be
+ * the OLD name after an item was renamed in the design workbook.
+ * `ACataclysmDroppedItem::DescribeItself` is what fills them in again.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSavedGroundItem
+{
+	GENERATED_BODY()
+
+	/** The gear item. Its Base is None when the drop is crafting materials. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FCataclysmItem Item;
+
+	/** Which crafting material this is, as a row key in
+	 *  `game/Data/CraftingMaterials.csv`. None when the drop is gear. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FName Material;
+
+	/** How many of that material lie here. Zero when the drop is gear. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 MaterialQuantity = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FVector Location = FVector::ZeroVector;
+
+	/**
+	 * A creature a dungeon rule raised mid-floor dropped this, so Trick or Treat rolls nothing for it. Without it a load
+	 * gave such a drop a roll it never had. Issue #753, Group 3d-4a, ruled 2026-10-31 (Q3 b).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bDroppedByARaisedCreature = false;
+
+	/** Whether this drop is crafting materials rather than a piece of gear. */
+	bool IsMaterial() const { return !Material.IsNone() && MaterialQuantity > 0; }
+};
+
+/**
+ * Where one character was standing and what it had left.
+ *
+ * KEYED BY THE CHARACTER'S IDENTIFIER because the run record is shared by the
+ * party. In solo play there is one of these; in co-operative play there are up
+ * to four, and each names which character record it belongs to.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSavedCharacterPlacement
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FGuid CharacterId;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FVector Location = FVector::ZeroVector;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float Yaw = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float Health = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float Mana = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float EnergyShield = 0.0f;
+
+	/**
+	 * The charges in each potion slot, `UCataclysmPotions::SlotCount` of them. Issue #753, the dungeon step, ruled
+	 * 2026-10-30: a load that handed back full potions mid-dungeon would be the most direct reset a player could use.
+	 *
+	 * AN EMPTY LIST MEANS NOT SAVED, which is what a file written before the field reads as, and
+	 * `FCataclysmSaveApply::PlacementInto` then leaves the slots as they are. NOT A SCHEMA VERSION BUMP, for the run
+	 * record's `PartialDay` reason.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<float> PotionCharges;
+
+	/** The drinks taken this walk, which `Famine_Diminishing_Returns` weakens each drink by. Saved with the charges. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 PotionsDrunk = 0;
+
+	/**
+	 * The player's class resource (Fervour), as it stood. Issue #753, Group 2, ruled 2026-10-30. Written back after
+	 * the thralls are re-linked, so the clamp every write meets (`UCataclysmClassResourceAttributeSet::PreAttributeChange`,
+	 * to the maximum less the Fervour the thralls hold back) meets the same reserve it met when saved.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float ClassResource = 0.0f;
+};
+
+/** One death Echoes of the Past will bring back: the creature's kind by name, its rung, its attack. Issue #753. */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSavedEcho
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FName Kind;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 Rung = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 Attack = -2;
+};
+
+/**
+ * What the rules of the dungeon being walked have built up across its floors. Issue #753, Group 1, ruled 2026-10-30.
+ *
+ * WHY. `docs/Cataclysm_GDD_v2.md`: quitting buys "a breather and not a reset", so a cost or a reward a dungeon's rules
+ * have added up over the floors walked must come back with the run. Each field is the game mode's own counter of the
+ * same name, read by `ACataclysmDungeonGameMode::WalkStateNow` and written back by `RestoreWalkState`.
+ *
+ * WHAT IS NOT HERE, ON PURPOSE. The timers (section 6 of `docs/Save_System_Design.md`: remaining durations are not
+ * restored); a Wild Magic or Echo Chamber draw not yet fired (the ability being cast is not restored); the "applied"
+ * mirrors, which the rules' steps rebuild; `MetresWalkedAtLastCleanse`, which is compared with a figure no record holds;
+ * and every rule's state that lasts one floor or belongs to a creature, which #753's later groups save.
+ *
+ * ALL ZERO, WITH NO PACT BUFF, WHILE NO DUNGEON IS BEING WALKED, and that is what a file written before the struct
+ * reads as. NOT A SCHEMA VERSION BUMP, for the `PartialDay` reason.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSavedWalk
+{
+	GENERATED_BODY()
+
+	/** March of Progress: commanders killed this walk. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 MarchOfProgressCommandersKilled = 0;
+
+	/** Pact of Temptation: the buff held now and the one offered next, or -1; the curses taken of each kind; pacts. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 PactBuffNow = INDEX_NONE;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 PactBuffNext = INDEX_NONE;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<int32> PactCurseCounts;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 PactsTaken = 0;
+
+	/** Blood Debt: what has been paid. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 BloodDebtPaid = 0;
+
+	/** Blood Price: the stacks bought. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 BloodPriceStacks = 0;
+
+	/** Infernal Beacons: the stacks the creatures carry. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 InfernalBeaconStacks = 0;
+
+	/** Abyssal Rifts: rifts closed. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 AbyssalRiftSuccesses = 0;
+
+	/** Raw Sewage: the stacks on the player. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 RawSewageStacks = 0;
+
+	/** Pestilent Empowerment: beacons left standing on the floors left. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 PestilentBeaconsLeftStanding = 0;
+
+	/** Wasting Sickness: the stacks on the player. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 WastingSicknessStacks = 0;
+
+	/** Starvation Curse: the stacks of each kind. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 StarvationCurseMovementStacks = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 StarvationCurseHealthStacks = 0;
+
+	/** Chaos Touched: the stacks of each kind. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<int32> ChaosTouchedStacks;
+
+	/** Nothing Is Forgotten: what the void holds, and what it has given. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float NothingIsForgottenHealth = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float NothingIsForgottenDamage = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float NothingIsForgottenHealthGiven = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float NothingIsForgottenDamageGiven = 0.0f;
+
+	/** Trick or Treat: pickups taken and creatures raised. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 TrickOrTreatPickups = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 TrickOrTreatRaised = 0;
+
+	/** Echo Chamber: copies made, and hits they landed on the player. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 EchoChamberCopiesMade = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 EchoChamberHitsOnThePlayer = 0;
+
+	/** Wild Magic: how many times it triggered, and the last skill it drew. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 WildMagicTriggered = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FName WildMagicLast;
+
+	/** Soul Harvest: souls given. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 SoulHarvestGiven = 0;
+
+	/**
+	 * Group 2, ruled 2026-10-30: the walk's state held for creatures, which needs no creature identity. The
+	 * Corrupted Stalker's hunt (whether it has hunted, whether it was slain, the share of its health left, its
+	 * potions); Echoes of the Past's two lists; and Nihil's Embrace's metres walked since the last cleanse, one figure
+	 * rather than the player's whole walked total. The Stalker itself is raised by its rule again, after the floor's
+	 * wait, which is a timer and restarts.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bCorruptedStalkerHasHunted = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bCorruptedStalkerSlain = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float CorruptedStalkerHealthShare = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<float> CorruptedStalkerPotionCharges;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<FCataclysmSavedEcho> EchoesThisFloor;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<FCataclysmSavedEcho> EchoesFromLastFloor;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float MetresWalkedSinceCleanse = 0.0f;
+
+	/**
+	 * The corrupted double's hunt, the dungeon's half: whether it has hunted an earlier floor (so it follows thirty
+	 * seconds in, at the entrance), the share of its health it carries, and its four potion slots' charges. Issue #2688.
+	 * Without them a player could quit and load to raise a wounded double again at full health, a minute in, at the far
+	 * end of the floor (ruled 2026-11-02). RUN RECORD VERSION 2: `Migrate_1_to_2` writes these defaults.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bConsumptionDoubleHasHunted = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float ConsumptionDoubleHealthShare = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<float> ConsumptionDoublePotionCharges;
+};
+
+/**
+ * ONE FLOOR OBJECT THE PLAYER USED: the rule that placed it (`ACataclysmFloorObject::RuleKey`), the order that rule
+ * placed it in (`ACataclysmFloorObject::PlacementIndex`, counted when it was placed, so not moved by an earlier one
+ * being taken out of its rule's list), and the choice made. A load rebuilds the floor, which places every object again
+ * in the same order, and then marks each of these used without its reward or its cost again. Issue #753, Group 3b.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSavedUsedObject
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FName Rule;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 Index = -1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FName Choice;
+};
+
+/**
+ * WHAT A FLOOR'S CHOICES LEFT THAT THE LIST OF USED OBJECTS DOES NOT SAY. Issue #753, Group 3b, ruled 2026-10-30:
+ * - the angels Forced Tithes owes for the last floor's unpaid altar, before the beat that brings them;
+ * - the Pact of Temptation's offer on this floor, which the next floor's draw avoids;
+ * - whether the Divine Gate's channel finished (the gate gone) rather than only began, which restarts from nought;
+ * - the War Banner's hold: whether it was held, and the seconds held toward it, progress and not a duration (Q1);
+ * - Reality Rifts' gift taken and the hidden chamber's reward paid, with its three counts, the gift being a cell the
+ *   player steps on and the chamber's drops being seeded, so either would pay again.
+ * Every default means not saved, which is what an older file reads as.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSavedFloorChoices
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bTitheAngelsDue = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<int32> PactOffer;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bDivineGateOpened = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bWarBannerHeld = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float WarBannerHeldSeconds = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bRealityGiftTaken = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bRealityChamberRewardGiven = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 RealityChamberRewardRolls = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 RealityChamberRewardDrops = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 RealityChamberRewardExtraDrops = 0;
+
+	/**
+	 * The Reality chamber's rift is not armed: the player was carried and has not yet stepped off both ends, so standing
+	 * on an end carries nobody. False, armed, is what an older file reads as, which is today's. Issue #753, 3d-2, Q4.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bRealityChamberRiftDisarmed = false;
+};
+
+/** One coffin of Obsidian Sarcophagi, by its place in the rule's list: the paid deaths beside it and the lord. */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSavedCoffin
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 Deaths = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bLordCame = false;
+};
+
+/** One opened Pandora's Box's waves under way: where they come from and how many have come. Issue #753, 3d-3a. */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSavedPandoraWaves
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FVector At = FVector::ZeroVector;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 Came = 0;
+};
+
+/** One creature Morale Break counts as escaped from a group: its kind and its rung. Issue #753, Group 3d-2. */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSavedEscapee
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FName Kind = NAME_None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 Rung = 0;
+};
+
+/**
+ * One group Morale Break gave a leader, and what has happened to it. Its leader and its panicked creatures are found
+ * again by their records' group and flags. The seconds since the leader fell and the seconds away are timers and are
+ * not saved: the flight and the absence restart (3d-2, QB and Q3, D1). Issue #753, Group 3d-2.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSavedMoraleGroup
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 Group = -1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FIntPoint Middle = FIntPoint(-1, -1);
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bLeaderRallies = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bFallen = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bFlightOver = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bReturned = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<FCataclysmSavedEscapee> Escaped;
+};
+
+/**
+ * WHAT THE FLOOR'S RULE CREATURES LEFT. Issue #753, Group 3c-1, ruled 2026-10-30. Each list is by the creature's place
+ * in its rule's list, which the rule fills in the floor's seeded order and never shrinks, so a rebuilt floor puts the
+ * same creature at the same place. A load rebuilds the floor, and then puts each of these back without the death's
+ * reward or cost: a creature recorded destroyed is destroyed with `Destroy`, which raises no death notice.
+ * - the Heavenly Core destroyed, which unseals the stairs;
+ * - Quarantine Breach's containment broken, and each burning patch its released creatures left, at the burn charged;
+ * - the Infection Bloom destroyed (its spread is rebuilt fresh, U5);
+ * - the Abyssal Rift's state: 0 waiting, 1 open, 2 closed; an open or closed rift loads closed and failed (U2), its
+ *   successes being the walk's;
+ * - the Infested Veins destroyed, by place, with the floor's count and whether the guardians came;
+ * - the Pestilent beacons destroyed and counted, by place (U1);
+ * - each Obsidian Sarcophagus's paid deaths and its lord;
+ * - the Angelic statues woken, by place;
+ * - the Soul Chains gates open, by the gate's index, so an opened gate does not open and pay again;
+ * - Warzone Control Points' seconds held at each point and the points captured, by the point's index; a captured
+ *   point's shortcut is open, which is the only way one opens (3c-2, Q1). The wave clock is a timer and is not saved:
+ *   it restarts as a floor start sets it (D1);
+ * - The Labrynth's gates open, by the gate's index, and the stream its swaps are drawn on, as it stands, so the swaps
+ *   after a load come in the order they would have without it (3c-2, Q2). The seconds to the next swap are a timer and
+ *   are not saved (D1). Read only when `bLabrynthSaved`, so an older file keeps the rebuild's gates and stream (Q3);
+ * - the voidlings the Void Parasite has attached to the player.
+ * Every default means not saved, which is what an older file reads as.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSavedFloorRuleState
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bHeavenlyCoreDestroyed = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bQuarantineBroken = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<FCataclysmSavedPatch> QuarantinePatches;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bInfectionBloomDestroyed = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 AbyssalRiftState = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<int32> VeinsDestroyed;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 InfestedVeinsDestroyed = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bInfestedVeinsGuardiansCame = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<int32> BeaconsDestroyed;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<int32> BeaconsCounted;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<FCataclysmSavedCoffin> Coffins;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<int32> StatuesWoken;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<int32> SoulChainsGatesOpen;
+
+	/** Warzone Control Points: the seconds stood in each point, by its index, and the points captured. 3c-2. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<float> WarzoneSecondsHeld;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<int32> WarzoneCaptured;
+
+	/** The Labrynth: whether the three below were saved; its gates open, by index; its stream's current seed. 3c-2. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bLabrynthSaved = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<int32> LabrynthGatesOpen;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 GatedShortcutStreamSeed = 0;
+
+	/** Void Parasite: the voidlings attached to the player. 3c-2. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 VoidParasiteStacks = 0;
+
+	/**
+	 * Echoes of the Past: the echoes have struck on this floor (their stage 2, struck, or 3, gone), so a load raises none
+	 * again (3d-1, Q1). A stage before the strike is not saved: the echoes rise again 5 s after the load and strike, the
+	 * pending strike kept and its clock restarted (D1).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bEchoesStruck = false;
+
+	/**
+	 * The Plaguebearer: its stacks, a cost built up (3d-1, Q2), whether one was chosen, and whether it has fallen. The
+	 * seconds since the last stack are a timer and restart (D1). The bearer itself is marked on its creature record.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 PlaguebearerStacks = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bPlaguebearerChosen = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bPlaguebearerFallen = false;
+
+	/** Famished Beasts: the drops eaten on this floor, for the panel. Each eater's own is on its record. 3d-1. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 FamishedBeastsDropsEaten = 0;
+
+	/**
+	 * Morale Break: whether the three below were saved, so an older file keeps the rebuild's groups (QD); the groups
+	 * placed so far, so a later wave never reuses a number; and each group with a leader. Issue #753, Group 3d-2.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bMoraleBreakSaved = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 PackGroupsPlaced = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<FCataclysmSavedMoraleGroup> MoraleGroups;
+
+	/** Carrion Feast: the carcasses eaten on this floor, which strengthen its feeders. Issue #753, Group 3d-2. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 CarrionFeastStacks = 0;
+
+	/**
+	 * Pandora's Box: each opened box's waves under way, in the rule's order. A chaos spawn standing is a record with
+	 * this index as its group; the waves not yet come are kept by how many have come, as ruled. Issue #753, 3d-3a.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<FCataclysmSavedPandoraWaves> PandoraWaves;
+
+	/**
+	 * Carrion Feast: where each carcass not yet burned lies. A carcass is no creature of the floor's kinds, so no record
+	 * can spawn it; it is laid again where it lay, its seconds lain starting again (QA of 3d-3, D1). Issue #753, 3d-3b.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<FVector> CarrionCarcasses;
+
+	/**
+	 * Plague Convergence: whether it has begun, which is progress, so its waves come again on their cadence after a load
+	 * rather than after the floor's wait; and the disease stacks, a cost built up. The seconds to the next wave are a
+	 * timer and restart (D1). Issue #753, Group 3d-4a, ruled 2026-10-31 (Q1).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bPlagueConvergenceBegun = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 PlagueConvergenceStacks = 0;
+
+	/**
+	 * A standing Infection Bloom's spread, the points its patches lie on, and the health it has left, or -1 when no
+	 * bloom stood. The rebuilt bloom stands at full health with one point. Issue #753, Group 3d-4a (Q3 a).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<FVector> InfectionBloomPatchPoints;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float InfectionBloomHealthLeft = -1.0f;
+
+	/**
+	 * Whether the Corrupted Stalker stood at the save, and where. A load raises it again at once, there, with the build
+	 * the floor's seed gives it and the health and potions the walk carries; its mana and cooldowns restart (D1). Issue
+	 * #753, Group 3d-4b, ruled 2026-10-31 (Q2).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bCorruptedStalkerStanding = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FVector CorruptedStalkerLocation = FVector::ZeroVector;
+
+	/**
+	 * The corrupted double's hunt, the floor's half: whether it hunts this floor (decided as the floor was entered, R2),
+	 * whether it stood at the save, and where. A load puts the flag back after the floor is entered, so a crossing made
+	 * on the saved floor still brings the double on the next one, and raises a standing double again at once where it
+	 * stood, with the health and potions the walk carries. Issue #2688. RUN RECORD VERSION 2.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bConsumptionDoubleHuntsThisFloor = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bConsumptionDoubleStanding = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FVector ConsumptionDoubleLocation = FVector::ZeroVector;
+};
+
+/**
+ * The floor being fought on, as it stands.
+ *
+ * `Floor` IS ZERO WHEN NOBODY IS IN A DUNGEON, which is the ordinary case: a
+ * party standing in a city has no floor. Floors are counted from 1, so zero
+ * cannot be mistaken for the first one, and a record whose floor is zero should
+ * have no creatures in it.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSavedFloor
+{
+	GENERATED_BODY()
+
+	/** Which dungeon the floor belongs to, or None when nobody is in one. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FName Dungeon;
+
+	/** Which floor of it, counted from 1. Zero means nobody is in a dungeon. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 Floor = 0;
+
+	/**
+	 * Whether the floor is the dark floor a fall into a chasm leads to (`Void_Those_in_the_Dark`). Issues #1820
+	 * and #41, 2026-10-09.
+	 *
+	 * WHY `Floor` ALONE CANNOT SAY. The dark floor carries the number of the floor its stairs lead to, ten
+	 * deeper than the floor fallen from or the dungeon's final floor. So `Floor` on the dark floor and `Floor`
+	 * on the floor it leads to are one number, and without this a record made on the dark floor would read back
+	 * as the ordinary floor of that number: the ten floors gained and the dark floor skipped.
+	 *
+	 * NOTHING READS IT BACK YET. Loading a save is not built (issue #753). Whoever builds it must put this and
+	 * `DarkFloorFellFrom` back on the dungeon game mode BEFORE the floor is built, because the dark floor is
+	 * built from the dungeon's seed mixed with a salt only while the game mode's flag is set.
+	 *
+	 * FALSE IS THE DEFAULT AND WHAT A FILE WITHOUT THE FIELD READS BACK AS, which is what it meant when that
+	 * file was written. A field added with a sensible default is not a schema version bump:
+	 * `docs/Save_System_Design.md` section 5.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bOnTheDarkFloor = false;
+
+	/** The number of the floor the player fell from to reach the dark floor. Nought when not on it. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 DarkFloorFellFrom = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<FCataclysmSavedCreature> Creatures;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<FCataclysmSavedGroundItem> GroundItems;
+
+	/** The floor objects the player used, and what else the floor's choices left. Issue #753, Group 3b. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<FCataclysmSavedUsedObject> UsedObjects;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FCataclysmSavedFloorChoices Choices;
+
+	/** What the floor's rule creatures left. Issue #753, Group 3c-1. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FCataclysmSavedFloorRuleState RuleState;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<FCataclysmSavedCharacterPlacement> Characters;
+
+	/** Whether anybody is on a floor at all. */
+	bool IsOccupied() const { return Floor > 0; }
+};
+
+/**
+ * The account record: what every character in one partition shares.
+ *
+ * ONE PER PARTITION, AND THERE ARE SIX. Population times lethality mode, from
+ * `docs/Save_System_Design.md` section 3 and `UCataclysmSavePartition`. A Solo
+ * Self-Found character has no account record at all; its empire upgrade points
+ * and its private stash live in its own character record.
+ *
+ * IT CARRIES THE PARTITION IT BELONGS TO. The slot name already says it, but a
+ * file can be copied into the wrong slot by hand, and a record that names its
+ * own partition can be checked against the slot it was read from. Without that,
+ * a Hardcore account record dropped into the Standard slot would quietly become
+ * the Standard tree.
+ *
+ * WHAT IS DELIBERATELY ABSENT: the empire upgrade TREE ALLOCATION -- which nodes
+ * are filled and to what depth. The tree's node graph exists as
+ * `docs/Empire_Development_Tree_Final.json` but nothing in the game reads it
+ * yet, and guessing at the allocation's shape now would cost a migration later
+ * for a field that had never held anything. The banked points are here because
+ * the game banks them: a defeated dungeon's award, since issue #52's first slice.
+ *
+ * VERSION 2 SINCE 2026-11-03. `EmpireUpgradePoints` was a whole number and is a
+ * double, because an award is a fraction -- an ordinary dungeon is worth 1 point
+ * times the share of the population living -- and the coordinating session ruled
+ * that fractions are banked rather than rounded away. `Migrate_1_to_2` writes a
+ * version 1 file's whole number back as the same number. Issue #52.
+ */
+UCLASS(BlueprintType)
+class CATACLYSM_API UCataclysmAccountSave : public UCataclysmSaveRecord
+{
+	GENERATED_BODY()
+
+public:
+	static const FName TypeName;
+	static constexpr int32 SchemaVersionNow = 2;
+
+	virtual FName RecordType() const override { return TypeName; }
+	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
+	virtual TArrayView<const FCataclysmSaveMigrationStep> MigrationSteps() const override;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	ECataclysmLethality Lethality = ECataclysmLethality::Standard;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	ECataclysmPopulation Population = ECataclysmPopulation::Offline;
+
+	/**
+	 * Empire upgrade points banked and not yet spent.
+	 *
+	 * EARNED INTO A PARTITION AND NOT INTO A CHARACTER. `docs/Cataclysm_GDD_v2.md`,
+	 * "Difficulty Options": a point earned by a character is earned into that
+	 * character's lethality mode, and is shared with every other character in the
+	 * same mode and population.
+	 *
+	 * A FRACTION IS KEPT, NOT ROUNDED AWAY: ruled by the coordinating session on
+	 * 2026-11-03 under the owner's delegation of unstated numbers. Rounding each
+	 * award down would erase most ordinary dungeons' awards, which are 1 point
+	 * times a population share below one. The empire screen shows it rounded down
+	 * to a tenth (`UCataclysmEmpireMapLayout::EmpirePointsText`). Spending it is the
+	 * empire upgrade tree's, which is not built. RECORD VERSION 2; it was an
+	 * `int32` at version 1. Issue #52.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	double EmpireUpgradePoints = 0.0;
+
+	/**
+	 * The characters belonging to this partition, by identifier.
+	 *
+	 * AN ACCOUNT'S 24 CHARACTER SLOTS ARE ONE POOL ACROSS ALL SIX PARTITIONS, so
+	 * this list is not capped at 24 on its own. Issue #577 and
+	 * `tools/tests/test_character_slots.py` carry that rule.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<FGuid> Characters;
+
+	/**
+	 * The shared stash: 600 slots in six tabs, held once per partition.
+	 *
+	 * THE LARGEST THING IN THE FORMAT, which section 3 warns implementers about.
+	 * Nothing fills it yet -- there is no stash in the game -- but the slot type
+	 * is the one the carried inventory already uses, because the design gives the
+	 * stash the same rule: one item to one slot, materials stacking by name.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<FCataclysmCarriedSlot> Stash;
+};
+
+/**
+ * One worn item and the slot it is worn in.
+ *
+ * THE SLOT IS STORED BY NAME, NOT BY POSITION, which is the one way this differs
+ * from the carried bag. The bag's position is what a player arranged, so it is
+ * saved as the whole array. A worn item's position in the equipment's array is
+ * only `ECataclysmGearSlot`'s order, and a slot added to the enum or moved in it
+ * would put every saved item in the wrong slot on load with no error. The JSON
+ * writes an enum by its name -- "Weapon1" -- so a named slot survives both.
+ * Ruled 2026-09-24.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmWornItem
+{
+	GENERATED_BODY()
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FCataclysmItem Item;
+};
+
+class ACataclysmPlayerCharacter;
+class ACataclysmPlayerState;
+
+/**
+ * A player character's build, as values: what it wears and every number of its own that its stat line is made from.
+ * Issue #2688, slice 2a, for the corrupted double that hunts a character past the Consumption Threshold.
+ *
+ * THE PLAYER'S OWN NUMBERS, ruled by the coordinating session on 2026-11-02 (R3): the worn items exactly as they are,
+ * with their rolled values and gear levels, and the character's own level, class, attribute points, passive points
+ * and skill choices. Nothing is rescaled to a tier and nothing is rolled again.
+ *
+ * SAVED WITH THE CHARACTER, the owner's decision of 2026-11-02 (O4): the double is the character as it was at the
+ * crossing, so `ACataclysmPlayerCharacter::WearPastTheThreshold` captures one after the crossing equip, the player
+ * state holds it beside the mark, and the character record keeps it (`UCataclysmCharacterSave::ConsumptionBuild`,
+ * schema version 6, slices 2b and 2c). Every field is `SaveGame`, the items as the record already writes them
+ * (`FCataclysmWornItem`), the rest plain values. DEFINED HERE AND NOT IN `Character/CataclysmPlayerBuild.h` because the
+ * character record holds one; its functions are in `CataclysmPlayerBuild.cpp`.
+ *
+ * THE WHOLE PASSIVE ALLOCATION, NOT A REDUCED COPY, with the points earned apart from gear beside it. What counts of the
+ * allocation is decided by `UCataclysmEquipmentComponent::RefreshAttributesAs`, the one place that gathers every stat
+ * source (issue #1054), from the class points the worn rows grant there; the player's own refresh decides it the same
+ * way from the same figures.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmPlayerBuild
+{
+	GENERATED_BODY()
+
+	/** Every worn item with the slot it is worn in. A two-handed weapon is one entry, in the first weapon slot. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Build")
+	TArray<FCataclysmWornItem> Worn;
+
+	/** The character's level. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Build")
+	int32 Level = 1;
+
+	/** A `ClassStats` class line: `UCataclysmPlayerClassStats::ChosenClass`, which is what a player's refresh applies. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Build")
+	FString ClassName;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Build")
+	FCataclysmAttributePoints SpentAttributePoints;
+
+	/** The damage type chosen at creation: what a weapon with no damage types counts as carrying, and the fill order's first. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Build")
+	FName CreationDamageType;
+
+	/** The player's chosen skills, as `ACataclysmPlayerState::GetSkillAssignment` holds them. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Build")
+	TArray<FCataclysmSkillChoice> SkillAssignment;
+
+	/** Every point spent in the passive trees, as the player state holds it. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Build")
+	FCataclysmPassiveAllocation PassiveAllocation;
+
+	/**
+	 * The passive points earned apart from gear: `ACataclysmPlayerState::PassivePointsEarnedWith(0)`, the level's, the
+	 * bosses' and those an allocation was handed with. The class points the worn rows grant are added where the build
+	 * is applied.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Build")
+	int32 PassivePointsBesidesGear = 0;
+
+	/**
+	 * A live player character's build: its worn items, its state's numbers and its skill choices. What the capture at
+	 * the crossing calls. With no player state, the worn items alone, at
+	 * `UCataclysmPlayerClassStats::ChosenLevel` and `ChosenClass`, as a refresh without a state applies them.
+	 */
+	static FCataclysmPlayerBuild Of(const ACataclysmPlayerCharacter& Player);
+
+	/**
+	 * The numbers a player state holds, and no items and no skill choices: what
+	 * `UCataclysmEquipmentComponent::RefreshAttributes` reads of the player before it gathers. One function, so the
+	 * player's refresh and a build taken from the player read the state in the same place.
+	 */
+	static FCataclysmPlayerBuild NumbersOf(const ACataclysmPlayerState& State);
+
+	/** `Worn` in the shape `UCataclysmEquipmentComponent::RestoreWornGear` takes. */
+	TArray<TPair<ECataclysmGearSlot, FCataclysmItem>> WornPairs() const;
+};
+
+
+/**
+ * The character record: what belongs to one character and travels with it.
+ *
+ * IT SURVIVES A FAILED RUN. Issue #315 settled that nothing in the design
+ * destroys a character, so this record is never deleted as a consequence of
+ * play. Losing the capital, dying in the Last Stand and being killed by the
+ * corrupted double all cost the run and not the character.
+ *
+ * WHAT IS DELIBERATELY ABSENT: a Solo Self-Found character's private empire
+ * tree allocation. It needs a shape that does not exist in the game yet, and
+ * section 5 says adding a field later with a sensible default is not a version
+ * bump, so waiting costs nothing and guessing costs a migration.
+ *
+ * THE 19 EQUIPPED SLOTS LEFT THAT LIST ON 2026-09-24, as `WornGear`, once
+ * `UCataclysmEquipmentComponent` was a source for them. The list said 18; the
+ * enum has 19. Recorded on issue #753 as a precondition for loading.
+ *
+ * THREE THINGS LEFT THAT LIST IN TWO DAYS, each on the day the running game
+ * first produced it: the attribute allocation on 2026-08-24, the two character
+ * creation choices on 2026-08-25, and the passive tree allocation the same day.
+ * All three are issue #50.
+ */
+UCLASS(BlueprintType)
+class CATACLYSM_API UCataclysmCharacterSave : public UCataclysmSaveRecord
+{
+	GENERATED_BODY()
+
+public:
+	static const FName TypeName;
+
+	/**
+	 * 7 SINCE 2026-11-02. The character carries its Cataclysm order seed (`CataclysmOrderSeed`, issue #1324 slice 6a), and
+	 * `Migrate_6_to_7` writes into a character written at 6 the seed its identifier gives (`CataclysmOrderSeedFor`): no
+	 * character had one before the field existed, and that keeps an existing character to one fixed draw from then on.
+	 *
+	 * 6 SINCE 2026-11-02. The character carries the build its corrupted double is made from, captured at the crossing
+	 * (`ConsumptionBuild`, issue #2688, the owner's decision O4), and `Migrate_5_to_6` writes an empty build into a
+	 * character written at 5: nothing captured one before the field existed.
+	 *
+	 * 5 SINCE 2026-11-02. The character carries its Consumption mark, issue #2688, and `Migrate_4_to_5` writes "not
+	 * marked" into a character written at 4: nothing could mark a character before the field existed.
+	 *
+	 * 4 SINCE 2026-11-01. The character carries its difficulty tier, issue #1472,
+	 * and `Migrate_3_to_4` writes tier 1 into a character written at 3, the tier
+	 * the design starts every character at. A VERSION AND NOT A DEFAULT, ruled
+	 * 2026-11-01: `game/Tests/SaveFixtures/README.md` lets a fixture gain a field
+	 * without one only while nothing can load a save, and #753 made saves load.
+	 *
+	 * 3 SINCE 2026-09-24. A character may spend in only one class tree for each
+	 * damage type, issue #2064, and a character written at 2 may hold points in
+	 * two or three trees of one; `Migrate_2_to_3` keeps one of them.
+	 *
+	 * 2 SINCE 2026-08-24, AND IT WAS 1. `SpentAttributePoints` below arrived
+	 * when attribute allocation became something the running game produces, so
+	 * a character written before that has no such field at all. Issue #50.
+	 */
+	static constexpr int32 SchemaVersionNow = 7;
+
+	/**
+	 * The Cataclysm order seed a character's identifier gives: what `Migrate_6_to_7` writes into a character written
+	 * before the field, and what the save writes for a character that never drew one. Issue #1324 slice 6a, ruled
+	 * 2026-11-02.
+	 *
+	 * 32-BIT FNV-1a OVER THE IDENTIFIER'S SIXTEEN BYTES, IN THE ORDER ITS DIGITS ARE WRITTEN (`A`, `B`, `C`, `D`, each
+	 * most significant byte first), THEN THE SIGN BIT CLEARED, so the seed is positive like every clock-drawn seed in the
+	 * game. Written out here with its two constants (offset basis 2166136261, prime 16777619) and NOT `GetTypeHash`:
+	 *
+	 *   - STABLE ACROSS BUILDS. An engine upgrade may change `GetTypeHash(FGuid)`; this changes only if this function is
+	 *     edited, and editing it would move every migrated character's draw, which is why
+	 *     `Cataclysm.CataclysmDraw.TheSeedAnIdentifierGivesIsFixed` pins three of its answers as numbers.
+	 *   - STABLE ACROSS PLATFORMS. It reads the identifier's four whole numbers by shifting, never its bytes in memory,
+	 *     so byte order cannot reach it; it is unsigned 32-bit arithmetic, which every compiler does alike.
+	 *   - A CONSTANT FROZEN INTO THE MIGRATION, which section 5 rule 4 of `docs/Save_System_Design.md` allows: it reads
+	 *     nothing but the record.
+	 *
+	 * `tools/tests/test_a_character_keeps_its_cataclysm_draw.py` computes the same hash in Python for the committed
+	 * fixtures' identifier and checks the figure the tests compare with.
+	 */
+	static int32 CataclysmOrderSeedFor(const FGuid& Identifier);
+
+	virtual FName RecordType() const override { return TypeName; }
+	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
+	virtual TArrayView<const FCataclysmSaveMigrationStep> MigrationSteps() const override;
+
+	/** What names this character's own slot. Generated, never the player's
+	 *  chosen name, so renaming is free and two characters may share a name. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FGuid CharacterId;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FString CharacterName;
+
+	/**
+	 * Lethality mode, population and the Solo Self-Found flag.
+	 *
+	 * ALL THREE ARE SET AT CREATION AND NONE EVER CHANGES, which is what lets
+	 * them decide a storage layout. `UCataclysmSavePartition` turns this into the
+	 * account record the character reads and writes, or into no account record at
+	 * all when the character is Solo Self-Found.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FCataclysmCharacterPartition Partition;
+
+	/**
+	 * The character's difficulty tier, 1 to 8. Issue #1472. `ACataclysmPlayerState::GetDifficultyTier`.
+	 *
+	 * VERSION 4 (ruled 2026-11-01, overriding the first ruling that it needed none): a record written before the field
+	 * is at version 3 and `Migrate_3_to_4` writes tier 1 into it, the tier the design starts every character at. The
+	 * default here is the same 1, so a version 4 record somehow missing the key reads the same.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 DifficultyTier = 1;
+
+	/**
+	 * Whether the character is marked by crossing its tier's Consumption Threshold. Issue #2688.
+	 * `ACataclysmPlayerState::IsMarkedByConsumption`. VERSION 5: a record written before the field is at version 4, and
+	 * `Migrate_4_to_5` writes false into it.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	bool bMarkedByConsumption = false;
+
+	/**
+	 * The build the character had when it crossed the Consumption Threshold, which its corrupted double wears: the
+	 * owner's decision of 2026-11-02 (O4), "the double is the character as it was at the crossing". Issue #2688.
+	 * `ACataclysmPlayerState::ConsumptionBuild`. EMPTY (no worn items) for an unmarked character, and for a character
+	 * marked before the field existed, whose double is then built from the gear worn when it arrives.
+	 *
+	 * VERSION 6: a record written before the field is at version 5, and `Migrate_5_to_6` writes an empty build into it.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FCataclysmPlayerBuild ConsumptionBuild;
+
+	/**
+	 * The character's Cataclysm order seed: every run of this character faces the first N of
+	 * `UCataclysmRoster::OrderFor(CataclysmOrderSeed)`, N its tier. Issue #1324 slice 6a.
+	 * `ACataclysmPlayerState::GetCataclysmOrderSeed`. `docs/Cataclysm_GDD_v2.md`, Ending a Run: "The same tier means the
+	 * same Cataclysms, by name and not only by count."
+	 *
+	 * VERSION 7: a record written before the field is at version 6, and `Migrate_6_to_7` writes into it the seed its
+	 * `CharacterId` gives (`CataclysmOrderSeedFor`). The default 0 is a seed like any other and not "none": a version 7
+	 * record somehow missing the key reads as seed 0.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 CataclysmOrderSeed = 0;
+
+	/**
+	 * When the save writer last wrote this record, in UTC, as ISO 8601 text; empty in a record written before the
+	 * character select screen's second step. THE LAST WRITE OF THE CHARACTER RECORD, NEAR THE LAST PLAY BUT NOT EQUAL TO
+	 * IT: the record is written on an inventory change and on a death, not on every moment of play. The select screen
+	 * lists the newest first. Text and not a number of ticks, because JSON carries a number as a double, which cannot
+	 * hold every tick. Issue #753, select-screen step 2, ruled 2026-10-31.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FString LastWrittenUtc;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 Level = 1;
+
+	/**
+	 * Experience toward the next level.
+	 *
+	 * 64 BITS RATHER THAN 32. This genre's later levels cost totals well past two
+	 * billion, and a field that silently wraps is worse than one that is too
+	 * wide. JSON carries it exactly: a number is a double, which holds every
+	 * integer up to 2^53.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int64 Experience = 0;
+
+	/**
+	 * Every kill the character has made, in every run. Issue #1833, the kill
+	 * counter. Written with the level, when this record is written: on an
+	 * inventory change or a death, not on every kill.
+	 *
+	 * NOT A SCHEMA VERSION BUMP, for `UCataclysmRunSave::PartialDay`'s reason:
+	 * a field with a sensible default. A record written before it reads nought.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LifetimeKills = 0;
+
+	/**
+	 * How the character's attribute points are spread across the eight.
+	 *
+	 * A CHARACTER HAS ONE POINT FOR EVERY LEVEL, so the total here can never
+	 * exceed `Level` above. `ACataclysmPlayerState::SpendAttributePoints` is
+	 * what enforces that; nothing revalidates it on load, which is the same
+	 * trust every other field here is given.
+	 *
+	 * WHAT IS SAVED IS THE POINTS AND NOT WHAT THEY ARE WORTH. The eight gear
+	 * affixes that increase an attribute are already saved as part of the gear
+	 * that carries them, and `game/Data/Attributes.csv` says what a point does,
+	 * so storing the resolved value would be storing the same thing twice and
+	 * inviting the two to disagree. Issue #50.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FCataclysmAttributePoints SpentAttributePoints;
+
+	/**
+	 * The weapon type the player chose when the character was created.
+	 *
+	 * A WeaponType in `game/Data/ItemBases.csv`, such as `Greataxe`.
+	 * `docs/Cataclysm_GDD_v2.md` section IV: it decides the character's initial
+	 * skill set together with the damage type below. Issue #50.
+	 *
+	 * NOT A VERSION BUMP. `docs/Save_System_Design.md` section 5 says a field
+	 * added later with a sensible default is not one, and the default here is
+	 * `NAME_None`, which is what a record written before the creator existed
+	 * reads back as and means "nobody chose".
+	 *
+	 * WHAT NOBODY CHOSE READS AS. `ACataclysmPlayerState::GetChosenWeaponType`
+	 * answers `UCataclysmCharacterCreation::DefaultWeaponType` for an empty
+	 * one, so an old save loads the character it always was.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FName StartingWeaponType;
+
+	/**
+	 * The damage type the player chose when the character was created.
+	 *
+	 * One of the eight. It decides which of the weapon's skills the character
+	 * has, and which three class passive trees it can spend points in.
+	 *
+	 * IT IS NOT DERIVABLE FROM THE WEAPON WORN, which is why it is stored. A
+	 * Greataxe can carry War, Demonic, Death or Chaos, and which of the four
+	 * this character is has nothing to do with the axe.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FName StartingDamageType;
+
+	/**
+	 * Where this character's passive points are spent.
+	 *
+	 * ONE ENTRY PER NODE THAT HOLDS SOMETHING, keyed by the node's row name in
+	 * `game/Data/PassiveNodes.csv` -- the tree and the node identifier together,
+	 * because a node identifier is unique only within its tree.
+	 *
+	 * EVERY FIELD OF IT CARRIES `SaveGame` and that is not optional: the save
+	 * writer walks only properties with that marker, so without it this
+	 * serialises as an empty object and a character's whole tree is lost on
+	 * every save with nothing reporting it. `FCataclysmAttributePoints` carries
+	 * the same warning for the same reason.
+	 *
+	 * WHAT IS SAVED IS WHERE THE POINTS WENT, NOT WHAT THEY GRANT. Since
+	 * 2026-08-25 a node can carry an authored effect, so there is now something
+	 * resolved that could be stored -- and storing it would still be wrong, for
+	 * the reason `SpentAttributePoints` gives above: `game/Data/PassiveEffects.csv`
+	 * already says what a point in a node is worth, so saving the resolved value
+	 * would store the same thing twice and invite the two to disagree.
+	 * `UCataclysmPassiveTree::AccumulateInto` works it out again on load.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FCataclysmPassiveAllocation PassiveAllocation;
+
+	/**
+	 * The unique Cataclysm bosses this character has defeated at least once.
+	 *
+	 * TEN PASSIVE POINTS EACH, ONCE. `docs/Cataclysm_GDD_v2.md` section XII
+	 * says "Defeating a unique Cataclysm boss for the first time: 10 bonus
+	 * passive points", and eight bosses at ten points is the 80 that takes the
+	 * budget from 150 to 230.
+	 *
+	 * NAMES RATHER THAN A COUNT, because "first time" is a fact about which
+	 * boss. A count could be raised eight times by beating one boss eight times.
+	 *
+	 * NOTHING FILLS IT YET. No unique Cataclysm boss exists in the game.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<FName> DefeatedCataclysmBosses;
+
+	/**
+	 * `ACataclysmPlayerState::PassivePointsAnAllocationWasHandedWith`: the points of the allocation that the level
+	 * and the bosses did not pay for when it was handed over. Issue #753, the character step.
+	 *
+	 * SAVED BECAUSE IT CANNOT BE WORKED OUT AGAIN. `SetPassiveAllocation` computes it from the level at the moment of
+	 * the call, so a restore through that function would compute a different figure for a character that levelled up
+	 * after its allocation was handed over. The 2026-10-09 "order a save loader must keep" entry in
+	 * `docs/DECISIONS.md` says the loader has to add both this field and a way to restore it.
+	 * `FCataclysmSaveApply::CharacterInto` puts it back through `ACataclysmPlayerState::RestorePassiveAllocation`.
+	 * NOT A SCHEMA VERSION BUMP, for the reason the run record's `PartialDay` comment gives: a file written before
+	 * this field existed reads it as 0, which is what such a character held unless it was handed an allocation.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 PassivePointsAnAllocationWasHandedWith = 0;
+
+	/**
+	 * The run this character is in the middle of: the `RunId` of the run record written beside it. Issue #753, the
+	 * start-up step, ruled 2026-10-29: "Add the current run's identifier to the character record."
+	 *
+	 * WRITTEN BY `UCataclysmSaveWriter::WriteTheCharacterRecord` on every character write, from the run the writer is
+	 * writing. READ BY `FCataclysmSaveLoad::CharacterAndRun`, which finds the run's slot through it. ALL ZEROS MEANS NO
+	 * RUN, and a load then begins a new one. NOT A SCHEMA VERSION BUMP, for the reason the field above gives: a file
+	 * written before it reads as all zeros, which is what such a character is treated as.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FGuid CurrentRunId;
+
+	/**
+	 * Cataclysmic Residue the character is carrying. A cost, never a benefit.
+	 *
+	 * NOTHING WRITES THIS FIELD, AND NOTHING NEEDS TO. Worn Residue is derived from the equipped items, each of which
+	 * saves its own `FCataclysmItem::Residue` (`UCataclysmEquipmentComponent::WornResidue`, issue #1251). Kept rather than
+	 * removed, ruled 2026-11-01: removing a saved field now needs a character record version, by the rule in
+	 * `game/Tests/SaveFixtures/README.md`.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	float CataclysmicResidue = 0.0f;
+
+	/**
+	 * The 48 carried slots.
+	 *
+	 * THE ONE FIELD HERE THAT HAS A RUNTIME SOURCE TODAY:
+	 * `UCataclysmInventoryComponent` holds exactly this array, and nothing
+	 * resizes it.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<FCataclysmCarriedSlot> CarriedSlots;
+
+	/**
+	 * What the character is wearing: one entry per occupied slot, each naming
+	 * its slot. See `FCataclysmWornItem` for why by name. Since 2026-09-24.
+	 *
+	 * AN EMPTY LIST IS THE DEFAULT, AND IT IS NOT A VERSION BUMP: a file written
+	 * before this field existed reads as a character wearing nothing, which is
+	 * section 5's "field added with a sensible default".
+	 *
+	 * `FCataclysmSaveApply::CharacterInto` restores it, through
+	 * `UCataclysmEquipmentComponent::RestoreWornGear` (#753).
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<FCataclysmWornItem> WornGear;
+
+	/**
+	 * A Solo Self-Found character's own empire upgrade points.
+	 *
+	 * SEPARATE FROM THE ACCOUNT RECORD'S, and not a copy of it. A Solo Self-Found
+	 * character shares an empire tree with no other character at all, not even
+	 * another Solo Self-Found one, so its points cannot live in a record that
+	 * anybody else reads. Left at zero and unused for every other character.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 PrivateEmpireUpgradePoints = 0;
+
+	/**
+	 * A Solo Self-Found character's own 600-slot stash, for the same reason.
+	 *
+	 * THIS IS WHY A SOLO SELF-FOUND RECORD IS ABOUT TEN TIMES THE SIZE of an
+	 * ordinary one, which section 3 tells implementers to expect. Empty for every
+	 * other character.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<FCataclysmCarriedSlot> PrivateStash;
+
+	/**
+	 * Which pool skill the player chose for which key: `ACataclysmPlayerState::GetSkillAssignment`. Issue #837 layer 3.
+	 *
+	 * BY ROW AND BY SLOT NAME, so neither the table's order nor the enum's moves a choice; a choice whose weapon is off
+	 * is kept here as it is kept in play (Q5).
+	 *
+	 * ONE FIELD AND NO VERSION BUMP, ruled 2026-10-25 (Q6): an empty list is the default and means no choice, the
+	 * default fill, so a file written before it reads as the character it always was (section 5 of
+	 * `docs/Save_System_Design.md`). `FCataclysmSaveApply::CharacterInto` puts it back through `AssignSkill` (#753).
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<FCataclysmSkillChoice> SkillAssignment;
+};
+
+/**
+ * The run record: the state of one run, discarded when the run ends.
+ *
+ * SHARED BY THE PARTY. Section 1: the death penalty "is paid once for the party,
+ * not once per player" and is charged against the shared empire clock, so the
+ * day count, the empire and the dungeon timers belong to the run rather than to
+ * any one character.
+ *
+ * IT IS THE RECORD THAT CHANGES CONSTANTLY, and that is why the format has three
+ * records rather than one. Section 6: the run is written on the frequent
+ * cadence, the account record only when it actually changes, and it is that
+ * split which makes a constant save affordable.
+ *
+ * THIS COMMENT USED TO LIST FOUR THINGS AS DELIBERATELY ABSENT and by
+ * 2026-09-06 it was wrong about all four. It said the empire graph, the active
+ * dungeons with their resolve timers, the surge schedule and Cataclysm quest
+ * progress all lived in the `CataclysmEmpire` module's design and that "none of
+ * them has a runtime shape yet". The first three are FIELDS OF THIS CLASS --
+ * `Cities`, `Dungeons` with `DungeonTimers`, and the five surge fields -- put
+ * there by the slices of issue #1307. The fourth gained a runtime shape on
+ * 2026-09-06: `UCataclysmEmpireRun::QuestObjectives`, issue #1324 slice 5.
+ *
+ * A DUNGEON'S MODIFIERS ARE HERE NOW and used not to be. This list said "the
+ * 117 rows of `game/Data/DungeonModifiers.csv` are not on `FCataclysmDungeon`
+ * at all yet, so there is nothing to write" until issue #41's modifier slice put
+ * `Modifiers` and `ModifierScore` on that struct. Both are `SaveGame`, so both
+ * are written by `Dungeons` below without a field of their own here.
+ *
+ * WHAT IS STILL ABSENT, and this is the corrected list:
+ *
+ *   - **What the player has achieved this run IS HERE NOW**, since issue
+ *     [#1374](https://github.com/sdubois777/Cataclysm/issues/1374): the
+ *     fourteen fields under "Progress" below, since version 3 the five
+ *     last-death fields after them, and since version 4 the three Cataclysm
+ *     boss dungeon fields after those.
+ *     `FCataclysmSaveApply::RunInto` puts them back into a run, and nothing in the game calls it yet ([#753](https://github.com/sdubois777/Cataclysm/issues/753)).
+ *   - **What tier the run is played at, and which Cataclysms it faces, ARE
+ *     HERE NOW**, since issue
+ *     [#1471](https://github.com/sdubois777/Cataclysm/issues/1471): the two
+ *     fields under "Identity" below. `FCataclysmSaveApply::RunInto` puts them back into a run, and nothing in the game calls it yet (#753).
+ *   - **The last surge's day, two stream positions and the Corrupted Stalker's
+ *     seed ARE HERE NOW**, since #753's first step: the four "Restore" fields.
+ *
+ * `FCataclysmSavedFloor` IS here, in full, because section 6 specifies its
+ * contents exactly and it is the requirement the whole feature exists for.
+ */
+UCLASS(BlueprintType)
+class CATACLYSM_API UCataclysmRunSave : public UCataclysmSaveRecord
+{
+	GENERATED_BODY()
+
+public:
+	static const FName TypeName;
+
+	/**
+	 * 2 SINCE 2026-11-02. The run carries the corrupted double's hunt (issue #2688): three fields on `Walk` and three on
+	 * `Floor.RuleState`, and `Migrate_1_to_2` writes their defaults into a run written at 1, where no double could
+	 * hunt. A VERSION AND NOT A DEFAULT, by `game/Tests/SaveFixtures/README.md`: saves load since #753, so a field added
+	 * to a record takes a version (ruled 2026-11-02). Until then it was 1, and the comments below that say a field
+	 * needed no bump were written while nothing loaded a save.
+	 *
+	 * 3 SINCE 2026-11-02 AS WELL. The run keeps what the player's last death cost (issue #41): five fields beside the
+	 * last hit's, `LastDeathDay` to `LastDeathFallenCityIds`, and `Migrate_2_to_3` writes an empty death into a run
+	 * written at 2.
+	 *
+	 * 4 SINCE 2026-11-02. The run keeps its Cataclysm boss dungeon (issue #1324 slice 6b): whether it has opened, the
+	 * day it opened and the floors it rolled, `bCataclysmDungeonOpened` to `CataclysmDungeonBaseFloors`, and
+	 * `Migrate_3_to_4` writes a boss not yet opened into a run written at 3.
+	 *
+	 * 5 SINCE 2026-11-03. The run carries the win of the run before it (issue #1324 slice 6e): the day, the tier, the
+	 * Cataclysm and the passive points, `LastRunWonDay` to `LastRunWonPassivePoints`, and `Migrate_4_to_5` writes "the
+	 * run before this one was not won" into a run written at 4.
+	 */
+	static constexpr int32 SchemaVersionNow = 5;
+
+	virtual FName RecordType() const override { return TypeName; }
+	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
+	virtual TArrayView<const FCataclysmSaveMigrationStep> MigrationSteps() const override;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FGuid RunId;
+
+	/**
+	 * The current day of the run.
+	 *
+	 * A WHOLE NUMBER, AND NOT THE WHOLE CLOCK. It used to say it was, on the
+	 * grounds that one floor cost exactly one day so the day count and the
+	 * progress count were the same number. That is no longer true: a floor costs
+	 * one day only as a starting rate, and once a city upgrade or the empire
+	 * tree has shortened a walk, `UCataclysmDayClock::PartialDay` holds time
+	 * that has been spent and has not yet added up to a day.
+	 *
+	 * WRITTEN FROM `UCataclysmEmpireRun::Day` by
+	 * `UCataclysmSaveWriter::WriteTheRunRecord`, and only when there is a run to
+	 * read. A save written with no empire run going leaves whatever was here
+	 * alone rather than writing a zero, so a record loaded from disk and then
+	 * refreshed does not lose the day it already held.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 Day = 0;
+
+	/**
+	 * Time spent that has not yet added up to a whole day, from
+	 * `UCataclysmDayClock::PartialDay`. Always at least 0 and below 1.
+	 *
+	 * WHY THE DAY ALONE IS NOT ENOUGH. A city upgrade can lower the days a
+	 * dungeon takes to walk while its floor count stays where it is, so a fifty
+	 * floor dungeon may cost two days and each of its floors a twenty-fifth of a
+	 * day. The carry is then almost never zero at the moment a save is written,
+	 * and dropping it loses up to just under a whole day of empire progress on
+	 * every save -- or grants one, depending on which way a later rounding
+	 * falls. That is drift nobody would attribute to the save system.
+	 *
+	 * IT WOULD HAVE BEEN WORTH NOTHING BEFORE ISSUE #1266. While a floor always
+	 * cost exactly one day the carry was zero at every floor boundary, so a save
+	 * could not catch it holding anything. Separating a dungeon's walk time from
+	 * its floor count is what made it real.
+	 *
+	 * ZERO IS THE HONEST DEFAULT, and it is what a save written before this
+	 * field existed reads back as -- which is also what it meant at the time, for
+	 * the reason above. **Adding a field with a sensible default is not a schema
+	 * version bump**: `docs/Save_System_Design.md` section 5 says so, because a
+	 * `UPROPERTY(SaveGame)` field missing from a file simply keeps its default.
+	 * So `SchemaVersionNow` stays at 1 and no migration step is needed, and
+	 * `Run_v1.json` still loads.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	float PartialDay = 0.0f;
+
+	/**
+	 * The whole days a walk under way has spent and the empire has not yet run, `UCataclysmEmpireRun::OwedDays`.
+	 * Since 2026-10-24 a walk's days run when the player leaves the dungeon, so a run saved mid-walk carries them
+	 * here. Zero outside a walk, and what a file written before this field existed reads back as.
+	 *
+	 * NOT A SCHEMA VERSION BUMP, for `PartialDay`'s reason above.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 DaysOwed = 0;
+
+	/**
+	 * The empire's 25 cities, as they stood.
+	 *
+	 * ONLY THE MUTABLE HALF OF EACH ONE IS IN HERE, because only fields marked
+	 * `SaveGame` are written and `FCataclysmCity` marks exactly the ones a run
+	 * can change. Its name, tier, position and its three adjacency lists are not
+	 * saved: `UCataclysmEmpireMap::Build` recomputes all of them identically, so
+	 * restoring is a rebuild and then an overlay. See that struct for the split.
+	 *
+	 * EMPTY MEANS NO EMPIRE WAS SAVED, not an empire of no cities. A save
+	 * written with no campaign running leaves this alone rather than emptying
+	 * it, the same rule `Day` follows.
+	 *
+	 * WHAT ELSE A RESTORED EMPIRE NEEDS IS HERE TOO, in the fields below: the
+	 * dungeons standing on the map with their resolve timers, and the surge
+	 * schedule with the position the run's random stream had reached. All three
+	 * were separate slices of issue
+	 * [#1307](https://github.com/sdubois777/Cataclysm/issues/1307) because each
+	 * carried a different trap.
+	 *
+	 * AND NOTHING READS ANY OF IT BACK YET. Nothing in the running game loads a
+	 * save at all -- issue #753 -- so this is what a restore will need rather
+	 * than something a player can already feel.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<FCataclysmCity> Cities;
+
+	/**
+	 * How many upgrade slots each city has. Three, or two on Heretic.
+	 *
+	 * SAVED BESIDE THE CITIES BECAUSE IT GOVERNS THEM, and because the thing it
+	 * is derived from -- the run's lethality mode -- lives on the surge
+	 * scheduler, which is a later slice. Restoring the cities without it would
+	 * let a Heretic empire buy a third upgrade.
+	 *
+	 * ZERO MEANS NOTHING WROTE IT, which is what a save from before this field
+	 * existed reads back as, and a restore should take the ordinary three rather
+	 * than none.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 CityUpgradeSlots = 0;
+
+	/**
+	 * The dungeons standing on the map.
+	 *
+	 * THE ONE THING IN A SAVED EMPIRE WITH NO HARD CEILING. Everything else has
+	 * one: 25 cities, at most three upgrades each. This list shrinks when the
+	 * player clears a dungeon, when a city falls and absorbs what stood on it,
+	 * and, since 2026-10-13, when an ordinary dungeon hits its city and leaves.
+	 *
+	 * THE FIGURES BELOW WERE MEASURED BEFORE 2026-10-13, with a resolved
+	 * dungeon staying on the map and surges of 4 every 120 days. They were not
+	 * measured again. With ordinary dungeons leaving, fewer should stand at
+	 * once; that is a reading and not a measurement.
+	 *
+	 * WHAT IT ACTUALLY REACHES, measured over 200 campaigns each in the model
+	 * this layer is a port of: about 13 standing at once in ordinary play,
+	 * 45 at the worst; about 117 under the harshest settings the design allows,
+	 * 140 at the worst. At 12 fields a dungeon and 5 a timer that is a few
+	 * thousand numbers, which is not a size worth designing around.
+	 *
+	 * IT IS WRITTEN WITH `DungeonTimers` OR NOT AT ALL. See there.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<FCataclysmDungeon> Dungeons;
+
+	/**
+	 * One resolve timer for each of those dungeons.
+	 *
+	 * A SEPARATE LIST BECAUSE THE GAME KEEPS IT SEPARATE. The day clock holds a
+	 * timer for each standing dungeon and nothing else about it, and the two are
+	 * kept in step by `UCataclysmEmpireRun` and by nothing else.
+	 *
+	 * NEITHER LIST IS EVER WRITTEN WITHOUT THE OTHER AGREEING WITH IT. A save
+	 * refuses rather than writing a pair that disagrees, so a file can never
+	 * hold a dungeon with no timer -- which would sit on its city for ever --
+	 * or a timer with no dungeon, which would bite a city on behalf of nothing.
+	 * `UCataclysmEmpireRun::DungeonsAgreeWithTimers` is the one definition of
+	 * agreement, and the restore will call the same one.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<FCataclysmDungeonTimer> DungeonTimers;
+
+	/**
+	 * Which dungeon the player was standing in, or -1.
+	 *
+	 * ITS TIMER IS THE ONE THAT DOES NOT MOVE, so a restore that forgot this
+	 * would start counting down the dungeon the player is inside.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 CurrentDungeonId = -1;
+
+	/**
+	 * When the next wave of dungeons is due, and how the schedule has escalated.
+	 *
+	 * FIVE PLAIN NUMBERS, WRITTEN OUT RATHER THAN COPIED FROM THE SCHEDULER. The
+	 * surge scheduler is an object rather than a struct, so there is nothing to
+	 * embed; and writing the fields out means the record says what it holds
+	 * instead of inheriting whatever that class gains later.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	ECataclysmSurgeMode SurgeMode = ECataclysmSurgeMode::Static;
+
+	/** 0 Standard, 1 Hardcore, 2 Heretic. It changes how many dungeons a wave
+	 *  brings and how many upgrade slots a city has. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 SurgeLethalityRung = 0;
+
+	/** How many surges have already fired, which is what escalation counts. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 SurgeIndex = 0;
+
+	/** How many have fired in total, including those a city falling caused. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 SurgesFired = 0;
+
+	/** Which day the next wave is due on. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	float NextSurgeDay = 0.0f;
+
+	/**
+	 * Where the run's main source of chance, `UCataclysmEmpireRun::Stream`, had got to.
+	 *
+	 * NOT ITS ONLY ONE. The run draws from two more streams and one more seed, all made from the seed it began with,
+	 * which nothing keeps: the four "Restore" fields at the end of this class hold them, since issue #753.
+	 *
+	 * **THIS FIELD EXISTS BECAUSE `FRandomStream` IS HALF SAVABLE, WHICH IS
+	 * WORSE THAN NOT SAVABLE AT ALL.** The engine's reflected declaration in
+	 * `NoExportTypes.h` marks its `InitialSeed` with `SaveGame` and its `Seed` --
+	 * the position reached in the sequence -- without it. So embedding the
+	 * stream would write the seed the run STARTED from, restore to the beginning
+	 * of the sequence, and replay every surge already generated, while looking
+	 * like it had worked.
+	 *
+	 * SO THE POSITION IS WRITTEN EXPLICITLY, from `GetCurrentSeed`, and a
+	 * restore calls `Initialize` with it. That continues the sequence exactly.
+	 * It does not restore `InitialSeed`, which nothing in this project reads --
+	 * `GetInitialSeed` appears nowhere in `game/Source/` -- and which there is no
+	 * public way to set independently.
+	 *
+	 * **DO NOT "SIMPLIFY" THIS BY MARKING `UCataclysmEmpireRun::Stream` AS
+	 * `SaveGame`.** It would compile, write a plausible-looking number, and
+	 * silently give a restored run a different future from the one it was saved
+	 * with. `Cataclysm.SaveWriter.ASavedScheduleRollsTheSameNextWave` compares
+	 * the next WAVE rather than the seed, and is what would notice.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 RandomStreamSeed = 0;
+
+	/**
+	 * The kills made this run by the character playing it. Issue #1833, the
+	 * kill counter. One count: solo play. Co-operative play would need one per
+	 * character, beside `Characters`.
+	 *
+	 * NOT A SCHEMA VERSION BUMP, for `PartialDay`'s reason above.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 RunKills = 0;
+
+	/** The character records taking part: one in solo play, up to four in
+	 *  co-operative play. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<FGuid> Characters;
+
+	/** The floor being fought on, as it stands. Empty when nobody is in a
+	 *  dungeon. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FCataclysmSavedFloor Floor;
+
+	/** What the dungeon being walked has built up across its floors; see `FCataclysmSavedWalk`. Issue #753. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FCataclysmSavedWalk Walk;
+
+	// ---- PROGRESS: what the player has achieved this run. Issue #1374. ----
+	//
+	// EACH IS `UCataclysmEmpireRun`'s FIELD OF THE SAME NAME, copied by
+	// `FCataclysmSaveGather::ProgressFrom`; read the meaning there. NOT A SCHEMA
+	// VERSION BUMP, for `PartialDay`'s reason above: a file written before these
+	// existed keeps each default, which is what such a file meant.
+	// `FCataclysmSaveApply::RunInto` puts them back; nothing in the game calls it yet (#753).
+
+	/** Quest objectives earned: the win condition's counter. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 QuestObjectives = 0;
+
+	/** The same, for each active Cataclysm, which is what the unlock rule reads. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TMap<ECataclysmType, int32> QuestObjectivesByCataclysm;
+
+	/** Ordinary dungeons cleared: the Cataclysm boss dungeon's earned depth. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 BasicDungeonsCleared = 0;
+
+	/** Every dungeon cleared. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 DungeonsCleared = 0;
+
+	/** How many times a dungeon's timer ran out and the empire paid. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 DungeonsDetonated = 0;
+
+	/** How many times a Quest dungeon's timer hit its host city. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 QuestHits = 0;
+
+	/** Of the surges fired, how many fired because the board was empty. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 SurgesFromEmptyBoard = 0;
+
+	/**
+	 * The next dungeon number the run will hand out. It only counts up, and a
+	 * restore that began it again at nought would give new dungeons the numbers
+	 * of the ones it had just put back.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 NextDungeonId = 0;
+
+	/** The empire screen's last-hit line: its day, its city, and whether a Quest timer made it. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LastHitDay = 0;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LastHitCityId = INDEX_NONE;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	bool bLastHitWasAQuestTimer = false;
+
+	/** The empire screen's last-move line: its day, and the cities a fall moved a Quest dungeon from and to. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LastMoveDay = 0;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LastMoveFromCityId = INDEX_NONE;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LastMoveToCityId = INDEX_NONE;
+
+	/**
+	 * The empire screen's last-death line: the day, the dungeon's name, the walk's days, the death's own days, and
+	 * the cities its resolve felled. `UCataclysmEmpireRun::LastDeathDay` and the four beside it; issue #41, ruled
+	 * 2026-11-02. SAVED BECAUSE THE LAST HIT IS, and so A SCHEMA VERSION, 3: `Migrate_2_to_3` writes an empty death
+	 * into a run written at 2, where none was kept.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LastDeathDay = 0;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FString LastDeathDungeonName;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LastDeathWalkDays = 0;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LastDeathDaysCost = 0;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<int32> LastDeathFallenCityIds;
+
+	/**
+	 * The run's Cataclysm boss dungeon: whether it has opened, the day it opened, and the floors it rolled before any
+	 * ordinary dungeon's floor was added. `UCataclysmEmpireRun::bCataclysmDungeonOpened` and the two beside it; issue
+	 * #1324 slice 6b, 2026-11-02. A SCHEMA VERSION, 4: `Migrate_3_to_4` writes a boss not yet opened -- false, 0 and 0
+	 * -- into a run written at 3, which is what such a run was, since nothing opened one before.
+	 *
+	 * THE DEPTH IS NOT SAVED HERE, because it is worked out: the floors rolled plus `BasicDungeonsCleared`, which is
+	 * saved above. The dungeon itself, while it stands, is in `Dungeons` with its floors like any other, on no city.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	bool bCataclysmDungeonOpened = false;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 CataclysmDungeonOpenedDay = 0;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 CataclysmDungeonBaseFloors = 0;
+
+	/**
+	 * The run before this one, when it was won: the day it was won, the tier it was played at, the Cataclysm whose boss
+	 * the win was paid for, and the passive points that paid. `UCataclysmEmpireRun::LastRunWonDay` and the three beside
+	 * it; issue #1324 slice 6e, 2026-11-03. A SCHEMA VERSION, 5: `Migrate_4_to_5` writes "not won" -- 0, 0, `None` and
+	 * 0 -- into a run written at 4, which is what such a run carried, since no run could be won before.
+	 *
+	 * WHY A RUN RECORD CARRIES THE RUN BEFORE IT. A won run is replaced by the next one at once, in the same slot, and
+	 * the next one shows the win line on its map; without these a player who quit after the win would lose the line.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LastRunWonDay = 0;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LastRunWonTier = 0;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	ECataclysmType LastRunWonCataclysm = ECataclysmType::None;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LastRunWonPassivePoints = 0;
+
+	// ---- IDENTITY: what the run IS, not what the player has done in it. Issue #1471. ----
+	//
+	// COPIED BY `FCataclysmSaveGather::IdentityFrom`, and NOT A SCHEMA VERSION
+	// BUMP, for `PartialDay`'s reason above: tier 1 and an empty list are what a
+	// file written before these existed meant. `FCataclysmSaveApply::RunInto` puts them back; nothing in the game
+	// calls it yet (#753).
+
+	/** The difficulty tier the run is played at, 1 to 8. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 DifficultyTier = 1;
+
+	/**
+	 * The Cataclysms the run faces, in the order the run holds them.
+	 *
+	 * THE LIST ITSELF AND NOT THE SEED IT WAS DRAWN FROM, ruled 2026-10-29 as a
+	 * judgement, for issue #1471's reasons: `UCataclysmRoster::ActiveFor` draws
+	 * it from the seed the run BEGAN with, which this record does not keep --
+	 * `RandomStreamSeed` is where the stream has got to -- and a second seed beside
+	 * that one is a pair easily swapped. The list cannot drift.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<ECataclysmType> ActiveCataclysms;
+
+	// ---- RESTORE: what `FCataclysmSaveApply::RunInto` needs that no field above holds. Issue #753, first step. ----
+	//
+	// GATHERED BY `FCataclysmSaveGather::SurgeScheduleFrom`, beside `RandomStreamSeed`. NOT A SCHEMA VERSION BUMP,
+	// for `PartialDay`'s reason: a file written before these existed reads each as 0. A run restored from such a file
+	// measures its next surge from day 0 and draws its two streams from 0, so it is not the run that was saved, and
+	// nothing can make it so: what these hold was never written.
+
+	/** `UCataclysmSurgeScheduler::LastSurgeDay`: the day the empty-board and city-fall surges measure from. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LastSurgeDay = 0;
+
+	/** Where `UCataclysmEmpireRun::CataclysmStream` had got to, from `GetCurrentSeed`, for `RandomStreamSeed`'s reason. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 CataclysmStreamSeed = 0;
+
+	/** Where `UCataclysmEmpireRun::ModifierStream` had got to, the same way. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 ModifierStreamSeed = 0;
+
+	/** `UCataclysmEmpireRun::CorruptedStalkerSeed`, drawn from the seed the run began with like the two streams. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 CorruptedStalkerSeed = 0;
+};
+
+/**
+ * The three records the design defines, for anything that has to treat all of
+ * them alike.
+ *
+ * WHAT USES IT IS THE TESTS, and that is the point. A check that every record
+ * type's migration chain reaches its own version, or that every record writes
+ * its version first, is only worth anything if it cannot miss one. A list here
+ * that a reviewer can compare against `docs/Save_System_Design.md` section 1 is
+ * harder to leave a record out of than three separate tests are.
+ */
+CATACLYSM_API TArray<TSubclassOf<UCataclysmSaveRecord>> CataclysmSaveRecordClasses();

@@ -21,16 +21,24 @@ are a property of the geometry, not a separate design decision.
                       V   C   V
                           V
 
-LANES. Adjacency is orthogonal in lattice space: (r+-1, c) and (r, c+-1). Every
-orthogonal step changes the ring by one, so the neighbours of a cell are
-strictly the cells one step further out and one step further in. That is what
-makes the frontier rule exact: a cell is attackable once ANY of the cells
-shielding it from outside has fallen, and retaking that cell seals the lane
-again.
+LANES. A lane is orthogonal in lattice space: (r+-1, c) and (r, c+-1). Every
+orthogonal step changes the ring by one, so a cell's lanes run strictly to the
+cells one step further out and one step further in. That is what makes the
+frontier rule exact: a cell is attackable once ANY of the cells shielding it
+from outside has fallen, and retaking that cell seals the lane again.
 
 Outposts on the rim are also linked to their neighbours along the perimeter
 (the curved edges in the design sketch). Those are same-ring links, so they
 carry no lanes inward -- they exist for adjacency effects, not for exposure.
+
+A LANE IS NOT THE WHOLE OF ADJACENCY, AND THIS DOCSTRING USED TO SAY IT WAS. It
+read "Adjacency is orthogonal in lattice space ... the neighbours of a cell are
+strictly the cells one step further out and one step further in", which is the
+sentence the perimeter paragraph above contradicts and which `neighbours` does
+not implement. `UCataclysmEmpireMap`'s class comment was corrected on 2026-09-06
+and this copy was missed; `docs/Cataclysm_GDD_v2.md` section IX said the same
+thing and now defines adjacency to include the perimeter, which is what the
+project owner ruled, verbatim "Include the perimeter links". Issue #1324.
 """
 
 from __future__ import annotations
@@ -75,9 +83,15 @@ class City:
     population: float = 0.0
 
     fallen: bool = False
-    # Marked by the Void: if this city falls it is erased, not merely lost, and
-    # the lane it was sealing can never be closed again.
-    doomed: bool = False
+    # VOID STACKS, since 2026-10-18: each ordinary Void dungeon whose timer runs
+    # out on this city adds 1 to 3 (`Simulation._void_stacks_for`), and at
+    # `TuningConfig.void_stacks_to_erase` the city is erased. A city that falls
+    # with fewer can be retaken, and retaking it clears them. Until that day a
+    # city was "doomed" the moment any Void dungeon landed on it, and erased by
+    # whatever then felled it.
+    void_stacks: int = 0
+    # Erased: fallen and never coming back, and the lane it was sealing can never
+    # be closed again.
     erased: bool = False
     upgrades: int = 0
 
@@ -128,6 +142,28 @@ class Empire:
     def max_population(self) -> float:
         return sum(c.max_population for c in self.cities.values())
 
+    def population_frac(self) -> float:
+        """Living population over what the empire would hold intact.
+
+        THE DENOMINATOR COUNTS EVERY CITY, FALLEN OR NOT, and that is the whole
+        point of it: a fallen city drops out of `total_population` and stays in
+        `max_population`, so losing one moves the fraction down instead of
+        quietly rebasing it. A denominator that shrank with the empire would
+        report a wiped-out empire as 100% intact.
+
+        The game module made the same choice explicitly and left a comment
+        saying why -- `UCataclysmEmpireMap::TotalMaxPopulation` in
+        `game/Source/CataclysmEmpire/Empire/CataclysmEmpireMap.cpp`: "EVERY
+        CITY, FALLEN OR NOT. This is what the empire would hold intact, so it
+        is the denominator the fraction lost is measured against and it must
+        not shrink as cities are lost."
+
+        An erased city -- one the Void took -- is still counted. `erased` is a
+        flag and the city stays in `self.cities`, so the denominator never
+        shrinks even then. Issue #1348.
+        """
+        return self.total_population() / max(1.0, self.max_population())
+
     # -- lanes -----------------------------------------------------------
 
     def is_exposed(self, c: City) -> bool:
@@ -147,6 +183,43 @@ class Empire:
         return [c for c in self.cities.values()
                 if self.is_exposed(c)
                 and not (exclude_pillar and c.cid == self.pillar_id)]
+
+    def neighbours(self, c: City) -> list[int]:
+        """Every city the map links this one to, whichever way the link runs.
+
+        THREE KINDS OF LINK AND ALL THREE COUNT. `outward` and `inward` are the
+        orthogonal lanes, and `perimeter` joins rim Outposts along the edge of
+        the diamond. The perimeter links carry no lane and take no part in
+        exposure, which is why `is_exposed` reads only `outward`; they exist
+        for adjacency effects, and this is one.
+
+        THAT IS A READING AND IT IS RECORDED IN `docs/DECISIONS.md`. The design
+        never defines adjacency. Taking the orthogonal links alone would leave a
+        Quest dungeon somewhere to go 69.1% of the time against 79.5% with the
+        perimeter, measured over 926 quest timers in 30 campaigns, and would
+        make the curved edges of the design's own sketch mean nothing.
+        """
+        return list(c.outward) + list(c.inward) + list(c.perimeter)
+
+    def adjacent_exposed_cities(self, c: City,
+                                exclude_pillar: bool = True) -> list[City]:
+        """Where a dungeon standing on `c` could move to.
+
+        THE SAME FILTER AS `exposed_cities`, NARROWED TO NEIGHBOURS. A dungeon
+        may only stand where a surge could have put one, so a sealed city is no
+        more a relocation target than it is a spawn target, and the Pillar is
+        left out for the same reason it is left out there.
+
+        WHY THIS EXISTS. `Simulation._resolve` moved a quest dungeon to a
+        uniformly random exposed city ANYWHERE, which the design contradicts:
+        `docs/Cataclysm_GDD_v2.md` section VIII says a Quest dungeon "does not
+        resolve -- refreshes and may move to adjacent city". Asked which was
+        intended the project owner answered on 2026-09-06, verbatim "Adjacent,
+        and fix the simulation". Issue #1324 slice 4.
+        """
+        return [self.cities[k] for k in self.neighbours(c)
+                if self.is_exposed(self.cities[k])
+                and not (exclude_pillar and k == self.pillar_id)]
 
     def pillar_exposed(self) -> bool:
         """A Sanctuary has fallen -- the Cataclysm can reach the Pillar."""
@@ -251,9 +324,14 @@ def build_empire(cfg: TuningConfig) -> Empire:
                 continue
             tier = RING_TIER[ring]
             stats = cfg.TIER_STATS[tier]
+            # The empire tree's city-health nodes raise how much damage a
+            # city can absorb. Applied here rather than at the bite, because
+            # `_retake` restores a fraction of `max_defense` too and a larger
+            # pool has to mean a larger restore. Issue #1319. Population is
+            # deliberately not scaled -- see `EmpireTree.city_health_mult`.
             city = City(cid=nid, name=f"{TIER_LABEL[tier]} ({r},{c})",
                         tier=tier, r=r, c=c,
-                        max_defense=stats.max_defense,
+                        max_defense=stats.max_defense * cfg.tree.city_health_mult,
                         max_population=stats.max_population)
             city.reset()
             cities[nid] = city

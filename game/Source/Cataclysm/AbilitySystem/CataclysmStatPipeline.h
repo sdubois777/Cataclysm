@@ -1,0 +1,5071 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "GameplayTagContainer.h"
+#include "CataclysmStatPipeline.generated.h"
+
+class AActor;
+class UAbilitySystemComponent;
+
+/**
+ * Which of the three buckets a modifier enters, or whether it removes the stat.
+ *
+ * Which bucket a modifier lands in is what decides whether it has diminishing
+ * returns, and that is the whole point of having three.
+ *
+ * `Removed` IS NOT A FOURTH BUCKET IN THAT SENSE. It carries no amount and has
+ * no returns to diminish; it says the stat is gone. Issue #1791.
+ */
+UENUM(BlueprintType)
+enum class ECataclysmStatBucket : uint8
+{
+	/** Added to the base before anything multiplies. In the stat's own units. */
+	Flat		UMETA(DisplayName = "Flat"),
+
+	/** Summed with every other increase reaching this stat, then applied once. */
+	Increased	UMETA(DisplayName = "Increased"),
+
+	/** Multiplies on its own, outside that sum. */
+	More		UMETA(DisplayName = "More"),
+
+	/**
+	 * Takes the stat to nothing, whatever else reaches it. Issue #1791.
+	 *
+	 * THE PROJECT OWNER'S MECHANIC, 2026-09-16: "Just multiply the final number
+	 * of the original formula by 0." So the three buckets above still work the
+	 * figure out, and `UCataclysmStatPipeline::Evaluate` multiplies what they
+	 * make by nothing when one of these reached the stat. "You have no armor"
+	 * is not a 99% reduction, which is the most a Less multiplier can be; see
+	 * `UCataclysmStatPipeline::LessMultiplierFloor`.
+	 *
+	 * ITS VALUE IS NOT READ. A data row states 1 for it.
+	 *
+	 * THE SAME SOURCES THAT MAY GRANT A MORE MULTIPLIER MAY REMOVE A STAT, and
+	 * no others: `UCataclysmStatPipeline::CanGrantMore` decides both.
+	 *
+	 * ON COOLDOWN REDUCTION IT REMOVES THE REDUCTION, NOT THE INTERVAL. The
+	 * reduction is taken to nothing, and a reduction of nothing leaves every
+	 * cooldown at its base length: "you have no cooldown reduction", not a
+	 * cooldown of no length.
+	 */
+	Removed		UMETA(DisplayName = "Removed"),
+};
+
+/**
+ * Where a modifier came from. This is not decoration: it decides whether the
+ * modifier is allowed into the More bucket, and whether it may remove a stat.
+ */
+UENUM(BlueprintType)
+enum class ECataclysmModifierSource : uint8
+{
+	/** A rolled affix on a piece of gear. Flat or Increased, never More. */
+	GearAffix		UMETA(DisplayName = "Gear Affix"),
+
+	/** The inherent stat on an item base. Flat or Increased, never More. */
+	GearImplicit	UMETA(DisplayName = "Gear Implicit"),
+
+	/** An attribute point. Only ever adds to the sum of increases. */
+	Attribute		UMETA(DisplayName = "Attribute"),
+
+	/** A socketed gem. May grant More. */
+	Gem				UMETA(DisplayName = "Gem"),
+
+	/** A passive tree keystone. May grant More. */
+	PassiveKeystone	UMETA(DisplayName = "Passive Keystone"),
+
+	/** An enchantment on a Legendary or better item. May grant More. */
+	Enchantment		UMETA(DisplayName = "Enchantment"),
+
+	/**
+	 * A buff a skill put on its own caster, lasting only as long as the skill.
+	 *
+	 * Burning Wrath's "4% more fire damage for every enemy currently
+	 * burning within 15 meters" is one. Unlike every source above it, this one
+	 * is added and removed at runtime rather than being a property of what the
+	 * character is wearing, which is why UCataclysmAbilitySystemComponent holds
+	 * these in a list a skill can add to and take from.
+	 *
+	 * MAY GRANT MORE. The rule that ordinary gear may not is about a ROLLED
+	 * modifier staying readable on a drop. A skill buff is authored, in the same
+	 * way a gem, a keystone and an enchantment are authored, so it sits with
+	 * those three rather than with the affix pool.
+	 */
+	SkillBuff		UMETA(DisplayName = "Skill Buff"),
+
+	/**
+	 * A rule of the dungeon floor the character is standing on. Issue #41.
+	 *
+	 * Starvation's "each floor the players's maximum hp and energy shield are
+	 * reduced by 1%" is one: `UCataclysmDungeonModifierEffects` turns it into a
+	 * Less multiplier on the finished maximum, and it is held and dropped at
+	 * runtime as the player moves between floors.
+	 *
+	 * MAY GRANT MORE, AND IN PRACTICE GRANTS LESS. Every row of the dungeon
+	 * modifier table is authored rather than rolled, so it sits with the
+	 * authored sources above rather than with the affix pool, whose readability
+	 * rule is what forbids More.
+	 */
+	DungeonRule		UMETA(DisplayName = "Dungeon Rule"),
+};
+
+/**
+ * A state of the character a modifier can be made to depend on. Issue #959.
+ *
+ * NOT THE SAME QUESTION AS `RequiredTags`, which asks about the SKILL in hand:
+ * "increased area of effect, for traps". This asks about the CHARACTER: "while
+ * at or below 20% health". A modifier can carry both and both must hold.
+ *
+ * A CONDITION IS NOT A SECOND MULTIPLIER. `docs/DECISIONS.md` states the rule
+ * outright -- "a conditional increase joins the increases bracket rather than
+ * becoming a third multiplier. That is what Diablo 4 and Last Epoch both do" --
+ * so a condition decides only whether the modifier is in the sum at all.
+ */
+UENUM(BlueprintType)
+enum class ECataclysmStatCondition : uint8
+{
+	/** No condition. Every modifier in the game before issue #959. */
+	Always					UMETA(DisplayName = "Always"),
+
+	/**
+	 * The character's health is at or below `ConditionValue` percent of its
+	 * maximum.
+	 *
+	 * AT OR BELOW, NOT BELOW, because the seven nodes that take this predicate
+	 * are all written "at or below": a character sitting exactly on 20% health
+	 * gets the bonus. `HealthBelowPercent` below is the other side of that
+	 * boundary, and until issue #1051 this comment said EVERY node stating a
+	 * health threshold was worded this way. That stopped being true when The
+	 * Last Drop was written.
+	 */
+	HealthAtOrBelowPercent	UMETA(DisplayName = "Health At Or Below Percent"),
+
+	/**
+	 * The character's health is STRICTLY below `ConditionValue` percent of its
+	 * maximum. Issue #1051.
+	 *
+	 * A SECOND HEALTH THRESHOLD BECAUSE THE TWO DIFFER AT EXACTLY THE
+	 * THRESHOLD, and one node needs this side of it: The Final Vow's first
+	 * option, The Last Drop, reads "While below 20% health your skills cost no
+	 * health, and every skill you cast grants 10 Fervour." It is the only node
+	 * in the game that states a health threshold as a STATE and words it
+	 * "below".
+	 *
+	 * NOT DELIVERABLE AS THE PREDICATE ABOVE. A character sitting on exactly 20%
+	 * health gets nothing from this node and does get the bonus from every "at
+	 * or below 20%" node, which is what the two sentences say.
+	 * `SkillHealthCostAbovePercent` exists for the same reason on the other
+	 * boundary.
+	 *
+	 * NOT THE SAME THING AS "DROPPING BELOW". That is an EVENT, which The
+	 * Breaking Point and Rock Bottom both state, and an event is not a condition
+	 * on a modifier at all: it happens once at a crossing rather than holding
+	 * for as long as it is true. `UCataclysmDamageConversion` keeps its own
+	 * threshold as a constant and says why.
+	 */
+	HealthBelowPercent		UMETA(DisplayName = "Health Below Percent"),
+
+	/**
+	 * The character's health is STRICTLY above `ConditionValue` percent of its
+	 * maximum. Issue #1070.
+	 *
+	 * THE FIRST HEALTH PREDICATE THAT POINTS UPWARDS. The two above both ask
+	 * whether health has fallen far enough. The Second Vow's third option,
+	 * Ceaseless Penance, asks the other question: "Debuffs on you no longer
+	 * expire while you are above 50% health."
+	 *
+	 * NOT `HealthAtOrBelowPercent` NEGATED. The two really are complements --
+	 * strictly above 50 and at or below 50 cover every character between them --
+	 * but a modifier carries one predicate and there is no "not", so a node
+	 * wanting the upper side needs an enumerator that says so.
+	 *
+	 * AN UNKNOWN READING REFUSES, exactly as it does for the two above, and the
+	 * guard cannot be folded into the comparison here either: an unknown health
+	 * reads -1, which is not above any threshold, so this one would refuse by
+	 * accident rather than on purpose. Saying it outright is what keeps the
+	 * three predicates reading alike.
+	 */
+	HealthAbovePercent		UMETA(DisplayName = "Health Above Percent"),
+
+	/**
+	 * The character's health is AT OR ABOVE `ConditionValue` percent of its
+	 * maximum. Issues #1653 and #41.
+	 *
+	 * THE FOURTH HEALTH PREDICATE AND THE SECOND THAT POINTS UPWARDS. It differs
+	 * from `HealthAbovePercent` above at exactly the threshold and nowhere else,
+	 * which is the same single reading that makes `HealthAtOrBelowPercent` and
+	 * `HealthBelowPercent` two predicates rather than one.
+	 *
+	 * WHAT ASKS FOR IT, and it is a row rather than a hypothetical. The
+	 * enchantment "Your ultimate ability cannot be used unless you are below 50%
+	 * HP" locks the skill when health is at or above 50. Written with
+	 * `HealthAbovePercent` instead, a character sitting on exactly half health
+	 * could use a skill the sentence forbids -- so the row would be delivered
+	 * differently from how it reads, for one value of health.
+	 *
+	 * A CHARACTER CAN SIT ON THIS BOUNDARY AND STAY THERE, which is why the
+	 * distinction is worth an enumerator. That is not true of every threshold:
+	 * `StationaryForSeconds` compares at least against rows that say "more
+	 * than", and those differ only at an instant an accumulating clock passes
+	 * through. Health is a state a character can hold, so the boundary is
+	 * reachable and the two readings really are different rules.
+	 *
+	 * NOT `HealthBelowPercent` NEGATED, for the reason `HealthAbovePercent`
+	 * gives: strictly below 50 and at or above 50 are complements, but a
+	 * modifier carries one predicate and there is no "not".
+	 *
+	 * AN UNKNOWN READING REFUSES, and the guard is written out rather than left
+	 * to the comparison -- the same reason `HealthAbovePercent` gives. An unknown
+	 * health reads -1, which is not at or above any threshold the validator
+	 * allows, so the comparison alone would already answer no. By accident,
+	 * though: it depends on that 0-to-100 bound holding. A negative threshold
+	 * would make `HealthPercent >= Value` pass for a character sheet with no
+	 * character.
+	 *
+	 * SO THE FOUR SPLIT TWO AND TWO ON THIS, which is worth stating because the
+	 * first draft of this comment claimed the opposite. The guard changes an
+	 * answer for `HealthAtOrBelowPercent` and `HealthBelowPercent`, where -1 is
+	 * below and at-or-below every allowed threshold; it changes no answer for the
+	 * two that point upwards. All four write it out anyway, so that none of them
+	 * relies on a bound enforced somewhere else.
+	 */
+	HealthAtOrAbovePercent	UMETA(DisplayName = "Health At Or Above Percent"),
+
+	/**
+	 * The character paid a health cost within the last `ConditionValue` seconds.
+	 *
+	 * A WINDOW THAT OPENS ON AN EVENT AND SHUTS BY ITSELF, which is the second
+	 * shape the design uses and the first that depends on WHEN something
+	 * happened rather than on what is true now. Blood Rush is the node: "+2%
+	 * increased damage per point for 2 seconds after you pay a health cost".
+	 * Issue #962.
+	 *
+	 * NAMED FOR ITS EVENT RATHER THAN BEING A GENERAL TIMER, and deliberately.
+	 * The design's other window -- "for 5 seconds after you take damage of a
+	 * Cataclysm type other than Demonic" -- opens on a different event that
+	 * nothing records yet, and a general timer would have to carry which event
+	 * it means anyway. One enumerator per event says plainly what is being
+	 * remembered, and the character remembers exactly the events something asks
+	 * about.
+	 *
+	 * A CHARACTER THAT HAS NEVER PAID ONE REFUSES IT, which is not the same as
+	 * an expired window and does not need to be: both answer no.
+	 */
+	WithinSecondsOfHealthCost
+		UMETA(DisplayName = "Within Seconds Of A Health Cost"),
+
+	/**
+	 * The character took damage of a Cataclysm type other than its own
+	 * within the last `ConditionValue` seconds.
+	 *
+	 * THE SECOND WINDOW THE DESIGN USES, and the reason there is one
+	 * enumerator per event rather than a general timer: this one opens on
+	 * something entirely different from a health cost. Cataclysmic Resonance
+	 * is the node: "+1% increased damage per point for 5 seconds after you
+	 * take damage of a Cataclysm type other than Demonic". Issue #975.
+	 *
+	 * OTHER THAN ITS OWN, NOT LITERALLY OTHER THAN DEMONIC. The two cannot
+	 * differ for any character that can take the node -- the Masochist tree
+	 * needs a Demonic weapon to grant anything -- and hard-coding one of the
+	 * eight type names into an enumerator would be unreusable.
+	 * `docs/DECISIONS.md` carries the reading.
+	 *
+	 * A HIT THE CHARACTER DEALS NEVER OPENS IT. A player's own hit is
+	 * untyped in the field this reads, by the design decision of 2026-08-12
+	 * that a player's damage arrives untyped because an enemy holds one
+	 * generic resistance.
+	 */
+	WithinSecondsOfForeignDamage
+		UMETA(DisplayName = "Within Seconds Of Foreign Damage"),
+
+	/**
+	 * The character used a skill carrying `Keyword.Charge` within the last
+	 * `ConditionValue` seconds. Issue #1826.
+	 *
+	 * THE FIRST WINDOW AN ENCHANTMENT OPENS RATHER THAN A PASSIVE NODE, and
+	 * the first of three added together for that reason. "After using a charge
+	 * skill gain 20%-40% increased attack speed for 4 seconds" is the row.
+	 *
+	 * ONE ENUMERATOR PER EVENT, which is the rule the two windows above state
+	 * and the reason these are three names and not one parameterised one. A
+	 * general timer would have to carry which event it means, and the row has
+	 * nowhere to put that: `ConditionValue` is already the window's length.
+	 *
+	 * THE SKILL'S OWN TAGS DECIDE, NOT THE SLOT. Six weapon skills carry
+	 * `Keyword.Charge` and all six happen to sit in the movement slot today,
+	 * so slot and tag agree by coincidence and would stop agreeing the moment
+	 * a charge skill is authored anywhere else. The sentence says "a charge
+	 * skill", so the tag is what is read.
+	 */
+	WithinSecondsOfChargeSkill
+		UMETA(DisplayName = "Within Seconds Of A Charge Skill"),
+
+	/**
+	 * The character used its basic attack within the last `ConditionValue`
+	 * seconds. Issue #1826. "Gain 5%-10% attack speed on basic attack for 4
+	 * seconds" is the row.
+	 *
+	 * THE SLOT DECIDES, NOT A TAG, and it is the one window here that reads
+	 * the slot. The basic attack is not a row of `game/Data/WeaponSkills.csv`
+	 * at all -- `UCataclysmWeaponSkills::BasicAttackFor` builds it from the
+	 * weapon base and sets `ECataclysmAbilitySlot::BasicAttack` on it -- so
+	 * there is no authored tag to read and the slot is the only thing that
+	 * identifies it.
+	 *
+	 * IT RE-OPENS ITS OWN WINDOW, WHICH IS THE INTENDED READING. Each swing
+	 * stamps the clock afresh, so at any swing rate faster than one per
+	 * `ConditionValue` seconds the bonus is continuous while the character
+	 * keeps attacking, and it lapses once the character stops. The bonus never
+	 * compounds: the row grants what it says once, however often the window is
+	 * re-opened. `docs/DECISIONS.md` carries the ruling.
+	 */
+	WithinSecondsOfBasicAttack
+		UMETA(DisplayName = "Within Seconds Of A Basic Attack"),
+
+	/**
+	 * The character blocked a blow within the last `ConditionValue` seconds.
+	 * Issue #1826. "Blocking an attack grants 10%-20% increased damage for 3
+	 * seconds" is the row.
+	 *
+	 * A BLOW IT TOOK, NOT ONE IT DEALT, which is the same side as
+	 * `WithinSecondsOfForeignDamage` and a different question. That one opens
+	 * on damage of a Cataclysm type the character does not share, whatever
+	 * became of it; this one opens on a block, whatever type it was. A blocked
+	 * hit of a foreign type opens both, an unblocked one of a foreign type
+	 * opens only that one, and a blocked hit of the character's own type opens
+	 * only this one. The three cases are why both exist.
+	 *
+	 * A BLOCK THAT REDUCED THE BLOW TO NOTHING STILL COUNTS. The sentence says
+	 * "blocking an attack" and says nothing about what got through, so the
+	 * stamp sits on the block decision rather than on the damage that survived
+	 * it.
+	 */
+	WithinSecondsOfBlock
+		UMETA(DisplayName = "Within Seconds Of A Block"),
+
+	/**
+	 * The character used a skill carrying `Type.Summon` within the last
+	 * `ConditionValue` seconds. Issue #1815.
+	 *
+	 * `Type.Summon` AND NOT `Keyword.Summon`, which is the ruling #1824
+	 * records. Five weapon skills carry the keyword and only two of them
+	 * create a creature: Quarry, Compel and Vesselstep command creatures that
+	 * already exist. "Summoning a minion" is the two, so the narrower tag is
+	 * the right one and the wider one would fire on three skills that summon
+	 * nothing.
+	 *
+	 * A TAG, LIKE THE CHARGE WINDOW AND UNLIKE THE BASIC-ATTACK ONE, and
+	 * stamped in the same place.
+	 */
+	WithinSecondsOfSummon
+		UMETA(DisplayName = "Within Seconds Of A Summon"),
+
+	/**
+	 * The character evaded a blow within the last `ConditionValue` seconds.
+	 * Issue #1815. "When you dodge an attack gain 15%-30% increased damage for
+	 * 3 seconds" is the row.
+	 *
+	 * THE THIRD QUESTION ASKED OF ONE RESOLVED BLOW, beside
+	 * `WithinSecondsOfBlock` and `WithinSecondsOfForeignDamage`, and the three
+	 * are deliberately independent. A blow is evaded or it is not; blocked or
+	 * not; of a foreign Cataclysm type or not. **An evaded blow deals nothing,
+	 * so it opens this window and NOT the foreign-damage one**, which is gated
+	 * on health or shield actually losing something. That is the case which
+	 * separates them.
+	 */
+	WithinSecondsOfEvade
+		UMETA(DisplayName = "Within Seconds Of An Evade"),
+
+	/**
+	 * The character was hit within the last `ConditionValue` seconds, whatever
+	 * became of the blow. Issue #1815. "Taking a hit reduces your damage by
+	 * 5%-10% for 3 seconds" is the row.
+	 *
+	 * THIS ONE DELIBERATELY OVERLAPS ITS NEIGHBOURS, and it is the only window
+	 * here that does. A blocked hit is still a hit and opens both; an evaded
+	 * hit is still a hit and opens both; a hit of a foreign type opens this and
+	 * the foreign-damage window. So "opens on its own event and nothing else"
+	 * is false of it, and a test written to that rule would assert something
+	 * untrue. The three-way table in the tests is what states it instead.
+	 *
+	 * ANY BLOW THAT REACHED THE CHARACTER, INCLUDING ONE THAT DEALT NOTHING.
+	 * The sentence says "taking a hit" and says nothing about damage, so this
+	 * is stamped beside the block window rather than inside the branch that
+	 * asks what got through.
+	 */
+	WithinSecondsOfHitTaken
+		UMETA(DisplayName = "Within Seconds Of A Hit Taken"),
+
+	/**
+	 * The character's class resource BECAME full within the last
+	 * `ConditionValue` seconds. Issue #1815.
+	 *
+	 * AN EVENT, AND `ClassResourceAtMaximum` IS THE STATE. The two read the
+	 * same pool and answer different questions: that one holds for as long as
+	 * the bar is full, this one opens at the moment it fills and then ages
+	 * while the bar sits there. A row saying "when your class resource is
+	 * full, gain X for 3 seconds" wants this; a row saying "while your class
+	 * resource is full" wants that.
+	 *
+	 * THE STAMP APPLIES `ClassResourceAtMaximum`'S OWN RULE, including its
+	 * refusal of a maximum of zero. If it did not, a character with no pool
+	 * at all would open this window and the two would disagree about the same
+	 * bar.
+	 */
+	WithinSecondsOfClassResourceFull
+		UMETA(DisplayName = "Within Seconds Of The Class Resource Filling"),
+
+	/**
+	 * The character's class resource REACHED zero within the last
+	 * `ConditionValue` seconds. Issue #1815.
+	 *
+	 * A CROSSING, AS ABOVE, and only ever the pool: a maximum of zero is a
+	 * character with no class resource rather than one that has spent it.
+	 */
+	WithinSecondsOfClassResourceEmpty
+		UMETA(DisplayName = "Within Seconds Of The Class Resource Emptying"),
+
+	/**
+	 * The character landed a blow on a Boss enemy within the last
+	 * `ConditionValue` seconds.
+	 *
+	 * "Your cooldowns reset 50%-100% faster when fighting Boss enemies, for 4
+	 * seconds after you strike one" is the row, at 4 seconds. THE PER-BLOW
+	 * CONDITION `TargetIsBoss` CANNOT SERVE IT: a cooldown counts down with
+	 * nobody being struck, so nothing fills a target for it to read. The
+	 * project owner chose a clock over a proximity check on 2026-09-18, with
+	 * the proximity shape that Path of Exile ships put to them and declined;
+	 * `docs/DECISIONS.md` carries the research and the cost of the other shape.
+	 *
+	 * AT OR WITHIN, BECAUSE "WITHIN" IS INCLUSIVE, the reading every clock
+	 * above takes of the same word.
+	 *
+	 * A NEGATIVE READING IS "NEITHER KNOWN NOR EVER" AND REFUSES. A character
+	 * that has never struck a Boss reads -1, which is at or within every
+	 * threshold a sheet may write, so the guard cannot be folded into the
+	 * comparison.
+	 */
+	WithinSecondsOfStrikingABoss
+		UMETA(DisplayName = "Within Seconds Of Striking A Boss"),
+
+	/**
+	 * The skill dealing this blow cost more than `ConditionValue` percent of
+	 * the character's maximum health. Issue #983.
+	 *
+	 * THE FIRST CONDITION THAT ASKS ABOUT THE SKILL RATHER THAN THE CHARACTER,
+	 * and that is what makes it different from the three above. Grand Tithe is
+	 * the node: "A skill whose health cost is above 10% of your maximum health
+	 * deals 4% increased damage per point." Two skills used one after the other
+	 * by the same character at the same instant can answer this differently,
+	 * which is true of `RequiredTags` and of nothing else here.
+	 *
+	 * SO THE READING TRAVELS WITH THE BLOW rather than being built from the
+	 * character. `FCataclysmHitDelivery` carries it, the way it already carries
+	 * the skill's own critical strike chance and for the same reason.
+	 *
+	 * STRICTLY ABOVE, NOT AT OR BELOW. The design writes "above 10%", which is
+	 * the opposite boundary from every health threshold in the tree, and the
+	 * difference is reachable rather than theoretical: Deeper Cuts at its full
+	 * ten points adds exactly 10% of maximum health to every skill, so a
+	 * character with that and nothing else sits precisely on the number and
+	 * correctly gets nothing.
+	 *
+	 * A SHARE OF MAXIMUM HEALTH, whatever the cost was measured against. A
+	 * skill's own cost is a share of CURRENT health and the character's added
+	 * cost is a share of MAXIMUM health; `UCataclysmSkillTemplate::PayHealthCost`
+	 * sums them and records the total against maximum health, because that is
+	 * what the node asks about.
+	 */
+	SkillHealthCostAbovePercent
+		UMETA(DisplayName = "Skill Health Cost Above Percent"),
+
+	/**
+	 * The character is Bleeding. Issue #962.
+	 *
+	 * THE FIRST PREDICATE THAT ASKS WHAT THE CHARACTER IS CARRYING rather than
+	 * where a number of its own stands. Thirst for Pain is the node: "While you
+	 * are Bleeding, +2% increased Attack Speed per point."
+	 *
+	 * `ConditionValue` IS UNUSED, AND IT IS THE ONLY PREDICATE HERE THAT NEEDS
+	 * NO NUMBER. The other four compare a reading against a threshold; this one
+	 * names a kind of effect, and the kind is in the enumerator rather than in a
+	 * float. `tools/generate_datatables.py` refuses to write a value on a row
+	 * carrying it, so a number typed into that column is caught when the file is
+	 * written rather than being quietly ignored here.
+	 *
+	 * ONE ENUMERATOR PER NAMED EFFECT, rather than one enumerator and a column
+	 * saying which. That is what the three stack scales below already do, and
+	 * the argument is the same: a further column on the effects sheet is a row
+	 * struct change, which means a build before the DataTable asset can be
+	 * regenerated. This one could not use a column anyway -- `ConditionValue` is
+	 * a float and a tag name is not a number. The design's other sentences of
+	 * this shape name Poison, Chill and being Stunned, and each would be its own
+	 * enumerator here.
+	 *
+	 * BLEEDING RATHER THAN "ANY DEBUFF", BECAUSE THE NODE SAYS BLEEDING. A
+	 * character that is stunned and not bleeding must not get this bonus.
+	 * `ECataclysmStatScale::PerDebuffCarried` below is the separate question of
+	 * how many harmful effects of any kind the character is under, and four
+	 * other nodes ask that one.
+	 */
+	WhileBleeding
+		UMETA(DisplayName = "While Bleeding"),
+
+	/**
+	 * The character's class resource is full. Issue #1026.
+	 *
+	 * Communion of Pain is the node: "While your Fervour is at maximum you deal
+	 * 20% more damage and take 20% more damage."
+	 *
+	 * `ConditionValue` IS UNUSED, the second predicate here needing no number and
+	 * for the reason `WhileBleeding` above needs none: the sentence names a state
+	 * rather than a threshold. "At maximum" is the top of whatever pool the class
+	 * has, not a figure a designer types. `tools/generate_datatables.py` refuses a
+	 * value on a row carrying it, so a number typed into that column is caught
+	 * when the file is written rather than being quietly ignored here.
+	 *
+	 * NOT A THRESHOLD WITH THE VALUE SET TO A HUNDRED, and the difference is
+	 * reachable rather than pedantic. A threshold has to be either points or a
+	 * percentage of the maximum, and the two disagree: the Ritualist's
+	 * `class_resource` is 150 where every other class's is 100. A future node
+	 * reading "while above 75 Fervour" is a POINTS threshold and wants its own
+	 * enumerator; this one is neither, because it asks about the top of the bar.
+	 *
+	 * NO CLASS RESOURCE MEANS NO, which is every enemy in the game. A bonus that
+	 * asks about a bar the character does not have is correctly worth nothing to
+	 * it, and that is the right answer rather than a fault.
+	 */
+	ClassResourceAtMaximum
+		UMETA(DisplayName = "Class Resource At Maximum"),
+
+	/**
+	 * The blow being taken is a melee attack: struck in melee, and not a spell.
+	 * Issue #666. "You take 15%-30% less damage from melee attacks" is a row.
+	 *
+	 * THE FIRST FOUR PREDICATES THAT ASK ABOUT THE BLOW rather than the
+	 * character. They read `FCataclysmStatConditions::Blow`, which only the
+	 * damage taken lookup in `UCataclysmDamageCalculation::Resolve` fills in.
+	 * Every other caller, the character sheet included, has no blow in hand and
+	 * is refused, the same as a character that is not Bleeding is refused
+	 * `WhileBleeding`.
+	 *
+	 * AN ATTACK IS A HIT THAT IS NOT A SPELL, which is where Path of Exile draws
+	 * the line: a skill is an attack or a spell, and melee and projectile are
+	 * further tags either can carry. No skill in the game is both melee and a
+	 * spell today; the rule is here so the three predicates agree on what an
+	 * attack is.
+	 *
+	 * `ConditionValue` IS UNUSED by all four, as it is by `WhileBleeding`, and
+	 * `tools/generate_datatables.py` refuses a value on a row carrying one.
+	 */
+	HitIsMeleeAttack
+		UMETA(DisplayName = "Hit Is Melee Attack"),
+
+	/**
+	 * The blow being taken is a ranged attack: from range, and not a spell.
+	 * Issue #666. "You take 10%-30% more damage from ranged attacks" is a row.
+	 *
+	 * A PROJECTILE COUNTS AS RANGED. The vocabulary says `Type.Projectile` is
+	 * "Skills that fire a traveling entity" and `Type.Ranged` is "Any ranged
+	 * skill regardless of delivery method"; `UCataclysmSkillEffects::IsRanged`
+	 * accepts either.
+	 *
+	 * A SPELL THAT FIRES A PROJECTILE IS NOT A RANGED ATTACK, because the row
+	 * says "attacks". It meets `HitIsSpell` instead. Two Demonic weapon skills,
+	 * the heavy Wand and Staff, are that shape.
+	 */
+	HitIsRangedAttack
+		UMETA(DisplayName = "Hit Is Ranged Attack"),
+
+	/**
+	 * The blow being taken is a spell: `Type.Spell` on the skill that threw it.
+	 * Issue #666. "You take 20%-40% less damage from spells" is a row.
+	 */
+	HitIsSpell
+		UMETA(DisplayName = "Hit Is Spell"),
+
+	/**
+	 * Whoever is on the other side of the blow is a boss. Issue #666.
+	 *
+	 * "You take 20%-40% less damage from Boss enemies" is a row, so for the
+	 * damage taken lookup the other side is the attacker. A boss is what
+	 * `ACataclysmEnemyCharacter::IsBoss` says: the Boss and Cataclysm Boss
+	 * rarities. A Herald is below that line, the same line the stun rule uses.
+	 */
+	OpponentIsBoss
+		UMETA(DisplayName = "Opponent Is Boss"),
+
+	/**
+	 * The character moved in the last sample. Issue #41, slice 2.
+	 *
+	 * "While moving you deal 15%-30% increased damage" is a row. MOVING MEANS A
+	 * CHANGE OF POSITION, whatever caused it: walking, a movement skill that
+	 * travels, a charge, a shove or a pull. An instant relocation -- a blink, a
+	 * recall, a position swap, a Flicker, the Phasewalker modifier, the placement
+	 * of the player at a floor's start -- is not moving and adds no distance.
+	 *
+	 * `ConditionValue` IS UNUSED, as it is by `WhileBleeding`.
+	 */
+	WhileMoving
+		UMETA(DisplayName = "While Moving"),
+
+	/**
+	 * The character did not move in the last sample. Issue #41, slice 2.
+	 *
+	 * "While stationary you take 15%-30% less damage" is a row.
+	 *
+	 * NOT THE NEGATION OF `WhileMoving`, because a caller with no character must
+	 * be refused by both. The predicate asks for a character first.
+	 *
+	 * NOT A DELAY EITHER. A row wanting the character to have stood still for a
+	 * while wants `StationaryForSeconds` below.
+	 *
+	 * `ConditionValue` IS UNUSED.
+	 */
+	WhileStationary
+		UMETA(DisplayName = "While Stationary"),
+
+	/**
+	 * The character has not moved for AT LEAST THAT LONG. Issue #41, slice 2.
+	 *
+	 * "After remaining stationary for 3 seconds" and "while you have not moved in
+	 * the last 2 seconds" are rows.
+	 *
+	 * `ConditionValue` IS SECONDS AND THE COMPARISON IS AT LEAST: three seconds
+	 * of standing still meets a threshold of three.
+	 *
+	 * AN INSTANT RELOCATION RESETS THIS CLOCK though it adds no distance. That is
+	 * a judgement recorded in `docs/DECISIONS.md`: a teleport is not movement, but
+	 * a bonus that builds up while standing still should not survive one.
+	 */
+	StationaryForSeconds
+		UMETA(DisplayName = "Stationary For Seconds"),
+
+	/**
+	 * The blow in hand was dealt after the character moved AT LEAST THAT FAR since
+	 * its own last attack. Issue #41, slice 2.
+	 *
+	 * "Your first melee attack after moving 5 metres deals 50% increased damage"
+	 * is a row. `ConditionValue` IS METRES and the comparison is at least.
+	 *
+	 * "FIRST" IS THE RESET RATHER THAN A FLAG, which is why this is a condition
+	 * and not an event. The distance is counted since the character's own last
+	 * attack and copied onto the blow when the skill is paid for, so the first
+	 * attack after moving five metres reads five or more and the next reads about
+	 * nothing.
+	 *
+	 * NEGATIVE MEANS NO BLOW IS IN HAND, the way `SkillHealthCostPercent` does.
+	 */
+	MetresMovedBeforeAttack
+		UMETA(DisplayName = "Metres Moved Before Attack"),
+
+	/**
+	 * The character has not attacked for AT LEAST THAT LONG. Issue #41, slice 2.
+	 *
+	 * "While you have not attacked in the last 3 seconds" is a row.
+	 * `ConditionValue` IS SECONDS and the comparison is at least.
+	 *
+	 * ITS OWN ATTACK, NOT A BLOW IT TOOK, which `WithinSecondsOfForeignDamage`
+	 * already covers. Every attack a character makes resets it, creatures and
+	 * minions included, so the reading means the same thing on both sides of a
+	 * fight. That is a judgement recorded in `docs/DECISIONS.md`.
+	 */
+	NotAttackedForSeconds
+		UMETA(DisplayName = "Not Attacked For Seconds"),
+
+	/**
+	 * Whoever is on the other side of the blow stood MORE than `ConditionValue`
+	 * metres away when it landed.
+	 *
+	 * THE FIRST PREDICATE HERE THAT COMPARES A DISTANCE. Standing Apart is the
+	 * node: "You take 25% less damage from enemies more than 6 metres away from
+	 * you", which is the Ritualist's 100-point capstone third option.
+	 *
+	 * FOR THE DAMAGE TAKEN LOOKUP, SO THE OTHER SIDE IS THE ATTACKER, exactly as
+	 * `OpponentIsBoss` above. A row wanting the reverse -- the ATTACKER asking
+	 * how far away its target is -- must use `TargetWithinMetres` below, which
+	 * reads a different number carried by a different route. The blow context
+	 * reaches only the defender's damage taken lookup, which was established by
+	 * counting every call of `StatForSkill`: 33 outside tests, and exactly one
+	 * passes a blow. THIS COMMENT SAID THE REVERSE READING DID NOT EXIST AND WAS
+	 * ONLY AN ISSUE NUMBER; it was built by
+	 * https://github.com/sdubois777/Cataclysm/issues/1596.
+	 *
+	 * STRICTLY MORE THAN, BECAUSE THE NODE WRITES "more than". A character
+	 * standing at exactly 6 metres is not more than 6 metres away, so it takes
+	 * full damage. That is the same boundary `SkillHealthCostAbovePercent` and
+	 * `HealthAbovePercent` draw and for the same reason.
+	 *
+	 * AN UNKNOWN DISTANCE REFUSES, which is what -1 means. A damage over time
+	 * tick reports -1 deliberately, so this predicate grants nothing for a tick.
+	 * `docs/DECISIONS.md` carries that judgement and what it costs the player.
+	 */
+	OpponentBeyondMetres
+		UMETA(DisplayName = "Opponent Beyond Metres"),
+
+	/**
+	 * The character being HIT stood at most `ConditionValue` metres away when the
+	 * blow was worked out. Issue #1596.
+	 *
+	 * THE MIRROR OF `OpponentBeyondMetres` ABOVE AND NOT A SPECIAL CASE OF IT.
+	 * That one serves the damage taken lookup, where the other side of the blow
+	 * is the attacker. This one serves the ATTACKER's own lookups, where the
+	 * other side is the target. They read different fields filled by different
+	 * routes, so a row cannot quietly get the wrong one: whichever number is not
+	 * on the path in hand is -1, and -1 refuses.
+	 *
+	 * AT OR WITHIN, BECAUSE BOTH ROWS WRITE "within 5 meters". A target standing
+	 * at exactly 5 metres IS within 5 metres and earns the bonus. That is the
+	 * opposite boundary from `OpponentBeyondMetres`, whose node writes "more
+	 * than", and the project keeps `HealthAtOrBelowPercent` and
+	 * `HealthBelowPercent` apart for this same reason.
+	 *
+	 * THE TWO ROWS, AND WHY THIS IS A CONDITION RATHER THAN A TERM ADDED IN CODE.
+	 * Brute's Heart's 2-piece bonus is "You gain 25% INCREASED damage against
+	 * enemies that are within 5 meters of you" and Demon King's Regalia's is "You
+	 * deal 25% MORE damage to enemies that are within 5 meters of you". One is an
+	 * increase and the other a multiplier. A value added into the increases sum
+	 * could express the first and would silently mis-build the second, which
+	 * looks right on a fresh character and wrong on an invested one.
+	 *
+	 * THE MELEE TAG ON BOTH ROWS IS NOT HONOURED, RULED BY THE PROJECT OWNER ON
+	 * 2026-09-12. Any attack type earns the bonus when the target is within 5
+	 * metres, so a ranged or spell build has to close the distance. Honouring it
+	 * would have made the condition nearly always true: the longest melee weapon
+	 * shape reaches 3.3 metres and enemies default to 2. See
+	 * https://github.com/sdubois777/Cataclysm/issues/1620 for the scope tags in
+	 * general, which nothing enforces.
+	 *
+	 * AN UNKNOWN DISTANCE REFUSES, which is what -1 means, and zero is a real
+	 * distance because two characters can stand on one spot. A MINION'S BLOW
+	 * REPORTS -1 DELIBERATELY: a player's conditional damage bonus does not reach
+	 * a minion's blow, which is how the genre works and what `docs/DECISIONS.md`
+	 * records with its sources.
+	 */
+	TargetWithinMetres
+		UMETA(DisplayName = "Target Within Metres"),
+
+	/**
+	 * Whoever is on the other side of the blow is staggered. Issue #45.
+	 *
+	 * "Staggered enemies deal 15%-30% increased damage to you" is a row, so for
+	 * the damage taken lookup the other side is the attacker. Staggered is the
+	 * `State.Staggered` tag that a landed knockback, pull or knockdown leaves
+	 * for a second, and `UCataclysmSkillEffects::IsStaggered` is what answers.
+	 *
+	 * NOT LIMITED TO ENEMY CREATURES, unlike `OpponentIsBoss` above, and that is
+	 * why the two facts are read in different places. A boss is a creature
+	 * rarity, so that one can only come from an enemy creature and is read
+	 * inside a cast to that class. The Staggered state lands on anything a
+	 * displacement moves, the player included, so reading this one inside that
+	 * cast would leave it false for every blow a player throws.
+	 */
+	OpponentIsStaggered
+		UMETA(DisplayName = "Opponent Is Staggered"),
+
+	/**
+	 * Whoever is on the other side of the blow is under crowd control. Issue
+	 * #1686: "You take 15%-25% more damage from enemies that are currently
+	 * CC'd", so for the damage taken lookup the other side is the attacker.
+	 * `UCataclysmSkillEffects::IsCrowdControlled` is what answers.
+	 *
+	 * CROWD CONTROL IS THE SIX EFFECTS OF DESIGN SECTION VI, ruled under the
+	 * owner's delegation on 2026-09-23: stun, knockdown, slow, displacement,
+	 * pin and madness, the list `UCataclysmSkillTemplate::IsImmuneTo` names
+	 * "crowd control". Not the three `crowd_control_resistance` shortens,
+	 * which answers a different question. `docs/DECISIONS.md` has both.
+	 *
+	 * AN ATTACKER THAT CANNOT STRIKE RARELY MEETS THIS. A stunned or
+	 * knocked-down creature does not attack, and a displacement leaves no
+	 * state that lasts, so in play the row answers for a slowed (Crippled),
+	 * pinned or maddened attacker -- or for a blow already travelling when
+	 * the stun began.
+	 *
+	 * NOT LIMITED TO ENEMY CREATURES, for the reason `OpponentIsStaggered`
+	 * above gives, and read beside it.
+	 */
+	OpponentIsCrowdControlled
+		UMETA(DisplayName = "Opponent Is Crowd Controlled"),
+
+	/**
+	 * The blow arriving is a melee attack AND the character is moving. Issue
+	 * #1686: "You take 15%-25% more damage from melee attacks while moving".
+	 *
+	 * ONE NAME FOR A PAIR, ruled on #1697 under the owner's delegation on
+	 * 2026-09-23, after `TargetCarriesCrippleAndWeaken`'s precedent. A row
+	 * carries one condition; two rows would ADD, so either half alone would
+	 * pay; and `RequiredTags` scopes the defender's own skill, so it cannot
+	 * say what hit them. Exactly `HitIsMeleeAttack` and `WhileMoving` read
+	 * together, so each refuses when it would.
+	 */
+	MeleeHitWhileMoving
+		UMETA(DisplayName = "Melee Hit While Moving"),
+
+	/**
+	 * The character being HIT is staggered. Issue #45.
+	 *
+	 * "Staggered enemies take 20%-35% increased damage from all sources" is a
+	 * row, and it is the mirror of `OpponentIsStaggered` directly above: the
+	 * same question about the same state, asked from the other end of the blow.
+	 *
+	 * THE TWO ARE DELIBERATELY SEPARATE NAMES READING SEPARATE FIELDS, for the
+	 * reason `TargetWithinMetres` and `OpponentBeyondMetres` are. The blow record
+	 * is filled only on the defender's damage taken lookup and
+	 * `bTargetIsStaggered` only on the attacker's own lookups, so a row that used
+	 * the wrong one of this pair reads a field nothing filled and grants nothing,
+	 * rather than reading the staggered state of the character at the wrong end.
+	 *
+	 * "FROM ALL SOURCES" IS THE WEARER'S OWN DAMAGE, ACROSS ITS TYPES, and that
+	 * is the workbook's reading rather than a choice made in this file. The row
+	 * carries `Stat.Offense.Global`, the wearer's offence, as do both other rows
+	 * whose words use that phrase about enemies; the rows using it about damage
+	 * the wearer takes carry `Stat.Defense.*` instead. A debuff on the enemy that
+	 * every attacker's pipeline read would be a different mechanism and is not
+	 * this one. `docs/DECISIONS.md` carries the evidence and the rejection.
+	 */
+	TargetIsStaggered
+		UMETA(DisplayName = "Target Is Staggered"),
+
+	/**
+	 * The character being HIT is a boss. Issue #1815.
+	 *
+	 * THE MISSING HALF OF A PAIR RATHER THAN A NEW IDEA. `OpponentIsBoss` has
+	 * existed since issue #666 and answers "the blow came FROM a boss", because
+	 * it reads `Blow.bOpponentIsBoss`, which `BlowContextFor` fills from
+	 * `Hit.bFromBoss` on the defender's damage taken lookup. Nothing answered
+	 * the other question -- "the character I am striking is a boss" -- so the
+	 * three enchantment sentences about damage to bosses had nowhere to go.
+	 *
+	 * A ROW CARRYING THE WRONG HALF OF THE PAIR READS A FIELD NOTHING FILLED AND
+	 * GRANTS NOTHING. That is the sentence `TargetIsStaggered` above gives for
+	 * its own pair, and it is why this one exists rather than callers being told
+	 * to use `OpponentIsBoss` from the attacking end. `opponent_is_boss` on an
+	 * attacker's row passes every check in the project and does nothing at all.
+	 *
+	 * FALSE MEANS NOT A BOSS OR NOT READ, and the two are deliberately not
+	 * distinguished. `CurrentConditions` reads the target only when some
+	 * modifier in that lookup asks about it, so a lookup with no such row leaves
+	 * this false -- and false is the safe direction, granting nothing rather
+	 * than granting a bonus against every character in the game.
+	 */
+	TargetIsBoss
+		UMETA(DisplayName = "Target Is Boss"),
+
+	/**
+	 * The character being HIT is NOT a boss. Issue #1815.
+	 *
+	 * "You deal 20%-35% less damage to non-Boss enemies" is the row, and it is
+	 * the reason this exists rather than a negation flag on the column: a
+	 * modifier carries exactly ONE condition, so the penalty cannot be written
+	 * as "not `TargetIsBoss`" anywhere. The project owner chose a second
+	 * condition over a negation flag on 2026-09-18.
+	 *
+	 * IT IS NOT THE PLAIN OPPOSITE OF `TargetIsBoss`, AND THAT IS THE WHOLE
+	 * CARE IN IT. Both halves refuse when nothing read the target --
+	 * `bTargetIsBossKnown` is what they ask first. A plain negation would answer
+	 * TRUE for a character sheet with no target in hand and for every lookup
+	 * that asked about something else, so a penalty meant for ordinary enemies
+	 * would apply to everything including bosses' own screens.
+	 */
+	TargetIsNotBoss
+		UMETA(DisplayName = "Target Is Not Boss"),
+
+	/**
+	 * At least `ConditionValue` enemies stand within the row's own `ReachMetres`.
+	 * Issue #1597.
+	 *
+	 * ONE NAME FOR BOTH SHAPES THE ROWS USE, because "while an enemy is within 4
+	 * metres" is "at least one". Two names would have been two things to hold
+	 * equal for no gain. `Ravager_keystone_a_kA` is the row that needs a number
+	 * other than one: "You take 15% less damage while THREE OR MORE enemies are
+	 * within 4 metres of you."
+	 *
+	 * THE RADIUS IS ON THE ROW AND NOT HERE, which is why this reads a count and
+	 * `ReachMetres` carries the distance. A condition holds one number and this
+	 * question asks two. Three radii appear in the authored rows -- 3, 4 and 8
+	 * metres -- so a fixed radius would have been convenient now and wrong later.
+	 * Path of Exile's developers say the same of their own "nearby": it is
+	 * deliberately not one measurement, and four different distances are used.
+	 *
+	 * COUNTED CENTRE TO CENTRE, the same arithmetic as
+	 * `UCataclysmTargeting::MetresBetween`, so a node saying "within 4 metres"
+	 * agrees with every other distance the game reports for that pair.
+	 * `UCataclysmTargetCandidates::HostileDistancesWithinMetres` records why that
+	 * is deliberately NOT the capsule test a creature's target search uses.
+	 *
+	 * AN EMPTY READING REFUSES. A lookup with no character in hand carries no
+	 * distances at all, and a row asking for at least one enemy correctly gets
+	 * nothing rather than holding by accident.
+	 */
+	EnemiesInReachAtLeast
+		UMETA(DisplayName = "Enemies In Reach At Least"),
+
+	/**
+	 * The character being HIT is carrying Cripple. Issue #1515.
+	 *
+	 * `Ravager_basic_c_a2` Run Them Ragged is the node: "+2% increased Attack
+	 * Damage per point against Crippled enemies."
+	 *
+	 * THE FIRST CONDITION THAT READS AN AILMENT ON THE OTHER CHARACTER, and it
+	 * is built as the staggered pair above is: a fact about the target read
+	 * where the blow is struck and carried into the lookup, not a search done
+	 * inside `ConditionHolds`. The pipeline is handed facts and judges them; it
+	 * has no actor to ask.
+	 *
+	 * WHAT "CARRYING" MEANS IS THE EXPLICIT TAG AND NOT AN IMPLIED PARENT.
+	 * `UCataclysmDebuffs::TagsOnActor` returns what was really applied, one
+	 * entry per effect, and `HasTagExact` compares those. Asking `HasTag` would
+	 * match a child tag nobody applied the day the branch grew one.
+	 *
+	 * A CHARACTER SHEET WITH NO TARGET GETS NOTHING, the refusal every blow
+	 * predicate makes. `TargetDebuffs` is empty for a caller with no target, so
+	 * this answers false rather than holding by accident.
+	 */
+	TargetCarriesCripple
+		UMETA(DisplayName = "Target Carries Cripple"),
+
+	/**
+	 * The character being HIT is carrying Cripple AND Weaken at once. Issue
+	 * #1515.
+	 *
+	 * `Ravager_basic_c_c1` Nothing Left In Them is the node: "+2% increased
+	 * Attack Damage per point against enemies that are both Crippled and
+	 * Weakened."
+	 *
+	 * ONE NAME AND NOT TWO ROWS, AND THAT IS ARITHMETIC RATHER THAN TASTE.
+	 * `UCataclysmStatPipeline::Accumulate` sums increases, so a row for each
+	 * ailment would pay when EITHER is present and pay TWICE when both are. The
+	 * node's sentence says it pays when both are present and not otherwise, and
+	 * only one condition can say that: a modifier carries one condition.
+	 *
+	 * IT DOES NOT SCALE AND THAT IS DELIBERATE. Twenty-eight debuffs, two ends
+	 * of the blow and every combination is not a vocabulary. A name is added
+	 * when a node's own sentence names the ailment, never speculatively, and at
+	 * a fourth and fifth the right answer is a column naming the ailment on the
+	 * row instead. `docs/DECISIONS.md` carries that rule so the person adding
+	 * the sixth reads it before this comment.
+	 */
+	TargetCarriesCrippleAndWeaken
+		UMETA(DisplayName = "Target Carries Cripple And Weaken"),
+
+	/**
+	 * The character being HIT is carrying a void splinter. Issue #1642.
+	 *
+	 * The enchantment "Enemies carrying a void splinter take 9%-15% increased
+	 * damage from you" is what asks. It is the FOURTH name of this shape, and
+	 * the rule above says a fourth is where the decision is revisited rather
+	 * than extended. It was: `docs/DECISIONS.md` records the revisit, and the
+	 * short reason is that one row asks, the parameterised column's cost now
+	 * falls on a different row struct than the analysis assumed, and
+	 * `ConditionValue` is a float that cannot carry an ailment's identity.
+	 *
+	 * THREE NAMES WERE ASKED FOR AND ONE WAS BUILT. The other two, for bleeding
+	 * and poisoned targets, were dropped because the two rows that looked like
+	 * they needed them turned out to move a number on the ENEMY -- "take
+	 * increased damage from all sources", "are slowed" -- rather than on the
+	 * attacker, so they need an enemy-side modifier and not a condition on this
+	 * character's lookup. Adding them anyway would have been the speculative
+	 * addition the rule forbids.
+	 *
+	 * UNDER `Keyword.DoT` AND NOT `Status.Debuff`, which is the one difference
+	 * from the three names above it. A void splinter deals damage over time, so
+	 * its tag hangs off the damage over time branch; `DebuffRootNames` names
+	 * that branch as a root, so it reaches `TargetDebuffs` exactly as Cripple
+	 * does. `UCataclysmDebuffs::VoidSplinterTag` is where the string is written,
+	 * once.
+	 *
+	 * A CHARACTER SHEET WITH NO TARGET GETS NOTHING, the refusal every blow
+	 * predicate makes, for the reason `TargetCarriesCripple` gives above.
+	 */
+	TargetCarriesVoidSplinter
+		UMETA(DisplayName = "Target Carries Void Splinter"),
+
+	/**
+	 * THIS character's attacks can apply Cripple or Weaken. Issue #1718.
+	 *
+	 * `Ravager_basic_c_c0` Spreading Hurt is the node: "+4% increased Area of
+	 * Effect per point for attacks that Cripple or Weaken."
+	 *
+	 * ABOUT THE ATTACKER, NOT THE TARGET, unlike the four names above it. It is
+	 * grouped with them because it names the same two ailments, and it is read
+	 * from a different place for the reason the node's own wording forces: an
+	 * area of effect shapes an attack BEFORE it lands, so "an attack that
+	 * applied a Cripple" is not knowable when the bonus is worked out. The
+	 * question that is knowable is whether this character's attacks are ones
+	 * that cripple or weaken, and `cripple_chance` and `weaken_chance` say so.
+	 *
+	 * THE NODE SITS DIRECTLY BELOW THE CHANCE NODES ON THE TREE, which is what
+	 * makes this reading the designed one rather than a convenient one. A
+	 * Ravager reaches Spreading Hurt through `Hamstring` and `Take the Edge
+	 * Off`, so the condition is a statement about a build that has invested in
+	 * those, and it is false for one that has not.
+	 *
+	 * EITHER CHANCE, NOT BOTH, because the node says "Cripple or Weaken". The
+	 * conjunction that pays only on both is a different question and
+	 * `TargetCarriesCrippleAndWeaken` above is what asks it.
+	 *
+	 * ZERO IS NOT A CHANCE. A character with neither chance gets nothing, which
+	 * is the ordinary answer for every class but an invested Ravager and for
+	 * every enemy in the game.
+	 */
+	CanCrippleOrWeaken
+		UMETA(DisplayName = "Can Cripple Or Weaken"),
+
+	/**
+	 * Whoever threw the blow is carrying Weaken. Issue #1515.
+	 *
+	 * THE MIRROR OF `TargetCarriesCripple` ABOVE, READING A DIFFERENT FIELD, and
+	 * that is the whole safeguard -- the same one `OpponentIsStaggered` and
+	 * `TargetIsStaggered` rely on. The blow record is filled only on the
+	 * defender's damage taken lookup and `TargetDebuffs` only on the attacker's
+	 * own lookups, so a row carrying the wrong one of this pair reads a field
+	 * nothing filled and grants nothing, rather than reading the ailments of the
+	 * character at the other end of the blow.
+	 *
+	 * "AGAINST ENEMIES YOU HAVE WEAKENED" IS READ AS "AN ENEMY CARRYING WEAKEN".
+	 * `Ravager_basic_c_b2` Wearing Them Down words it the first way, and nothing
+	 * in the game records who applied a debuff: a tag has no applier, and
+	 * `UCataclysmAilments` reads the instigator at the moment of application and
+	 * passes it on rather than storing it. The bonus already shipped for this
+	 * idea does not ask either -- `UCataclysmDebuffs::DamageAgainstSharedDebuff`,
+	 * "enemies carrying a debuff you also carry", compares two tag lists.
+	 * `docs/DECISIONS.md` carries the ruling and says the stricter reading
+	 * remains available and would need its own mechanism.
+	 *
+	 * NO ROW USES THIS YET, AND THAT IS DELIBERATE RATHER THAN AN OVERSIGHT.
+	 * Wearing Them Down grants increased DAMAGE REDUCTION, and
+	 * `UCataclysmDamageCalculation::Resolve` does not hand the blow to its
+	 * damage reduction lookup -- only to the damage taken one. Which of the two
+	 * stats that row should use is with the project owner on issue #1748, and
+	 * the answer decides whether a line in `Resolve` changes. The condition is
+	 * correct for either answer, which is why it is here now.
+	 */
+	OpponentCarriesWeaken
+		UMETA(DisplayName = "Opponent Carries Weaken"),
+
+	/**
+	 * The character being HIT is below `ConditionValue` per cent of its maximum
+	 * health. Issue #1515.
+	 *
+	 * Two nodes:
+	 *
+	 *   Ravager_basic_d_a2     Cornered Quarry   below 35% health
+	 *   Ritualist_basic_a_stem1 Broken Will      below half health
+	 *
+	 * STRICTLY BELOW, AND THERE IS NO INCLUSIVE TWIN. Both node sentences say
+	 * "below" and neither says "at or below", so one name is what the data
+	 * needs. The character's own pair -- `HealthBelowPercent` and
+	 * `HealthAtOrBelowPercent` -- exists because real nodes differ, and the
+	 * second name here should be added when a node's sentence asks for it and
+	 * not before.
+	 *
+	 * A SHARE OF MAXIMUM HEALTH, which is this project's reading in two other
+	 * places. `UCataclysmSkillEffects::ApplyStagger` compares
+	 * `Health / MaxHealth * 100` against the ceiling that "You cannot stagger
+	 * enemies above 50% HP" sets, and the Staff's Subjugate says why a share and
+	 * not an amount: "what matters is whether the blow was a real blow for that
+	 * creature, and a Common enemy and a Rare one do not have the same numbers."
+	 * `FCataclysmStatConditions::FromHealth` is the arithmetic, shared with the
+	 * character's own reading so the two ends of a blow cannot compute a share
+	 * differently.
+	 *
+	 * MEASURED BEFORE THE BLOW LANDS, AND SUBJUGATE MEASURES AFTER. That
+	 * difference is deliberate and is written here because nothing in the code
+	 * enforces it. Subjugate takes an enemy "if the blow leaves it below half
+	 * health", and `CataclysmSkillTemplates.cpp` states the rule for it: "the
+	 * health that matters is what is left when the damage has landed, not what
+	 * it had when the skill was pressed." **This condition must read the other
+	 * one**, because it increases the damage of the blow being priced and
+	 * reading the result of that blow would be circular. It comes out right
+	 * today purely because the stat lookup runs before the damage is applied --
+	 * so it is true by an ordering that carries meaning and says nothing about
+	 * itself, which is what a later tidy-up breaks without noticing.
+	 *
+	 * AN UNREADABLE TARGET EARNS NOTHING, AND THE STAGGER CEILING DOES THE
+	 * OPPOSITE ON PURPOSE. That code leaves a target whose health cannot be read
+	 * staggerable, "because refusing on an unknown would make the row stronger
+	 * than it says." **Same rule, opposite direction, decided by which way the
+	 * row points**: that one is a drawback, so refusing would widen it; these are
+	 * bonuses, so granting would widen them. `TargetHealthPercent` is negative
+	 * when nothing was read, and this refuses on it.
+	 */
+	TargetHealthBelowPercent
+		UMETA(DisplayName = "Target Health Below Percent"),
+
+	/**
+	 * The character's energy shield is at the top of its bar. Issue #1515.
+	 * Cold Reading is the node: "+2% increased Spell Damage per point while your
+	 * Energy Shield is full."
+	 *
+	 * THE SECOND POOL TO ASK THIS, AND IT COPIES `ClassResourceAtMaximum`'S
+	 * SHAPE DELIBERATELY. Three clauses, in the same order, for the same three
+	 * reasons: an unknown reading refuses, a maximum of nothing refuses, and
+	 * anything at or above the top holds.
+	 *
+	 * NO THRESHOLD, SO `Value` IS NOT READ. "Full" names the top of the bar
+	 * rather than a number, and `tools/generate_datatables.py` refuses a value
+	 * on a row carrying it.
+	 *
+	 * THE REASON IS NOT THE ONE THE CLASS RESOURCE GIVES, and copying that one
+	 * would have been wrong. Its argument is that classes disagree with each
+	 * other -- the Ritualist's `class_resource` is 150 where every other
+	 * class's is 100 -- but the Ritualist is the ONLY class with an energy
+	 * shield, so there is no disagreement between classes to point at. The
+	 * conclusion survives on a different fact: `max_energy_shield` is 40 with 8
+	 * added per level, so the top of the bar moves as a character grows. A
+	 * points threshold of 40 would be exactly full at level one and about 36%
+	 * of the bar at level ten. Points and percentage still disagree; they
+	 * disagree over one character's lifetime rather than between two classes.
+	 *
+	 * THOSE FIGURES SAID 48 AND 40% AND WERE WRONG, BECAUSE THEY USED THE
+	 * MINION FORMULA FOR A CLASS STAT. `UCataclysmClassStats::BaseFor` computes
+	 * `Base + PerLevel * (Level - 1)` and says so -- "the per-level gain applies
+	 * to levels ABOVE the first, so a level 1 character has exactly the base" --
+	 * while `RaisedByLevel` in `CataclysmMinion.cpp` computes
+	 * `Base + PerLevel * Level` and carries its own comment warning that the two
+	 * readings differ. So the bar is 40 at level one and 112 at level ten, not
+	 * 48 and 120. **48 is the level TWO maximum**, which is why the wrong figure
+	 * looked reasonable.
+	 * A future "while your Energy Shield is above 75%" is a threshold and wants
+	 * its own enumerator, exactly as a future "while above 75 Fervour" does.
+	 *
+	 * A MAXIMUM OF NOTHING REFUSES, the same judgement and for the same stated
+	 * reason as the class resource: a bar that cannot hold anything is not at
+	 * its maximum in any sense a node means. It is not a hypothetical case
+	 * here. `game/Data/ClassStats.csv` gives `max_energy_shield` to the
+	 * Ritualist alone, so every other class, every enemy and every test
+	 * character built without one sits at a maximum of zero, and each of them
+	 * would otherwise satisfy a node written for a full shield.
+	 *
+	 * AN UNKNOWN READING REFUSES BECAUSE THIS IS A BONUS. An unknown reading
+	 * must never make a row stronger than its own sentence; a drawback may
+	 * hold on unknown and this may not. See `TargetHealthBelowPercent` for the
+	 * same rule stated against the stagger ceiling, which points the other way.
+	 */
+	EnergyShieldAtMaximum
+		UMETA(DisplayName = "Energy Shield At Maximum"),
+
+	/**
+	 * The attack this blow belongs to struck AT LEAST THAT MANY enemies
+	 * together. Issue #1515.
+	 *
+	 * `Ravager_keystone_b_kA` Sundering is the node: "Your melee attacks
+	 * ignore enemy Armor entirely when they hit three or more enemies at
+	 * once." `ConditionValue` IS A NUMBER OF ENEMIES and the comparison is at
+	 * least.
+	 *
+	 * ONE ATTACK IS ONE GROUP OF BLOWS DEALT TOGETHER BY ONE USE, ruled on
+	 * 2026-09-16: a Strike's swing, a Charge's landing, each repeat of a
+	 * spinning Strike, each Flicker arrival and each Advance step. The count
+	 * is taken where the group is gathered, after the skill's own target cap
+	 * and before any blow resolves. See
+	 * `FCataclysmStatConditions::EnemiesStruckTogether`.
+	 *
+	 * NEGATIVE MEANS NO GROUP IS IN HAND, and refuses: a creature's attack, a
+	 * minion's blow, a damage over time tick and every lookup made with no
+	 * blow at all carry no count. A value below one refuses as well, for the
+	 * reason `EnemiesInReachAtLeast` gives.
+	 */
+	EnemiesStruckTogetherAtLeast
+		UMETA(DisplayName = "Enemies Struck Together At Least"),
+
+	/**
+	 * The attack this blow belongs to struck AT MOST THAT MANY enemies
+	 * together. Issue #1686: "Point blank AOE skills deal 15%-25% less damage
+	 * to a single target" is this with one, scoped `Type.AOE.PointBlank`.
+	 *
+	 * A SECOND NAME AND NOT A NEGATION, because the pipeline has none: the
+	 * reason `TargetIsNotBoss` is its own name. The same count
+	 * `EnemiesStruckTogetherAtLeast` above reads, under the same ruling on
+	 * what one attack is.
+	 *
+	 * "A SINGLE TARGET" IS EXACTLY ONE ENEMY STRUCK, ruled under the owner's
+	 * delegation on 2026-09-23. At most one is exactly one here, because an
+	 * attack that struck nobody deals no blow to ask on.
+	 *
+	 * NEGATIVE MEANS NO GROUP IS IN HAND, and refuses, exactly as above: a
+	 * creature's attack, a minion's blow, a tick and a character sheet carry
+	 * no count, and "at most one" must not hold for them. A value below one
+	 * refuses as well, since no blow is dealt by an attack that struck none.
+	 */
+	EnemiesStruckTogetherAtMost
+		UMETA(DisplayName = "Enemies Struck Together At Most"),
+
+	/**
+	 * The blow being taken came from AT OR WITHIN that many metres. Issue #1981.
+	 *
+	 * "Nearby enemies deal 10%-30% less damage to you" is the row, at 5 metres.
+	 * `ConditionValue` IS METRES and the comparison is at or within.
+	 *
+	 * FIVE IS THE FIGURE EVERY NEAR ROW IN THE GAME ALREADY USES, which is why
+	 * the sentence's "nearby" was settled there rather than invented: the six
+	 * rows on `TargetWithinMetres` are all 5.0 and no other value appears.
+	 * Measured 2026-09-18 across every table carrying a Condition column.
+	 *
+	 * THE MIRROR OF `OpponentBeyondMetres`, READING THE SAME FIELD. That one is
+	 * the far case and writes "more than"; this is the near case and writes
+	 * "within", so the boundaries are opposite on purpose -- the same pairing
+	 * `TargetWithinMetres` and `OpponentBeyondMetres` already carry, and the
+	 * same reason `health_at_or_below` and `health_below` are kept apart.
+	 *
+	 * IT READS THE BLOW AND NOT THE ATTACKER-SIDE DISTANCE, which is the whole
+	 * difference from `TargetWithinMetres`. `FCataclysmBlowContext` is filled
+	 * only on the defender's damage taken lookup and `TargetDistanceMetres` only
+	 * on the attacker's own, so a row using the wrong one of the two reads -1
+	 * and grants nothing rather than reading a plausible number from the wrong
+	 * end of the blow. THIS IS THE FIRST DEFENDER-SIDE DISTANCE CONDITION THAT
+	 * ASKS THE NEAR QUESTION; `OpponentBeyondMetres` had the field to itself.
+	 *
+	 * A NEGATIVE READING IS "NOT KNOWN" AND REFUSES, and zero is a real distance
+	 * because two characters can stand on one spot. The guard cannot be folded
+	 * into the comparison, for the reason `TargetWithinMetres` gives: -1 is at
+	 * or within every threshold a sheet may write, so folding it would let every
+	 * blow that knew nothing satisfy the row.
+	 */
+	OpponentWithinMetres
+		UMETA(DisplayName = "Opponent Within Metres"),
+
+	/**
+	 * The character moved WITHIN the last that many seconds. Issue #1981.
+	 *
+	 * "Strike skills deal 25%-40% less damage if you have moved in the last 2
+	 * seconds" is the row. `ConditionValue` IS SECONDS and the comparison is at
+	 * or within, because "within" is inclusive -- the reading
+	 * `TargetWithinMetres` takes of the same word.
+	 *
+	 * THE SAME FIELD `StationaryForSeconds` READS, COMPARED THE OTHER WAY.
+	 * That one holds at AT LEAST the threshold and this at AT MOST it, so at
+	 * exactly the threshold BOTH HOLD. That is stated rather than left to be
+	 * found: a character whose last movement was exactly two seconds ago has
+	 * been stationary for two seconds and has moved within the last two, and
+	 * both readings of the English are right. The overlap is one instant wide
+	 * and no row pair in the game today writes the same number on both.
+	 *
+	 * A NEGATIVE READING MEANS NO MOVEMENT SAMPLE HAS LOOKED AT THIS CHARACTER,
+	 * and refuses. A character nothing has sampled has not moved recently in any
+	 * sense a row means, and the guard is stated separately rather than folded
+	 * in, because -1 is at or within every threshold a sheet may write.
+	 */
+	MovedWithinSeconds
+		UMETA(DisplayName = "Moved Within Seconds"),
+
+	/**
+	 * The class resource is STRICTLY ABOVE that share of its maximum. Issue
+	 * #1981.
+	 *
+	 * "When your class resource is above 75%, all skills cost 20%-40% less mana"
+	 * is the row. `ConditionValue` IS A PERCENTAGE of the maximum and the
+	 * comparison is strictly above, the boundary `HealthAbovePercent` draws for
+	 * the same word.
+	 *
+	 * THE SAME THREE CLAUSES AS `ClassResourceAtMaximum`, IN THE SAME ORDER, and
+	 * for its reasons: the reading has to be known, the bar has to be able to
+	 * hold something, and only then is the share worth working out. An unknown
+	 * pair would otherwise compare -1 against -1 and hand every enemy in the game
+	 * a bonus written for a Masochist.
+	 *
+	 * A PERCENTAGE AND NOT A COUNT OF POINTS, unlike `PerPointOfClassResourceHeld`
+	 * which scales by the points themselves. Classes do not share a maximum, so a
+	 * row written in points would mean a different fraction of the bar for each.
+	 */
+	ClassResourceAbovePercent
+		UMETA(DisplayName = "Class Resource Above Percent"),
+
+	/**
+	 * The class resource is AT OR ABOVE that many POINTS. Issue #1515.
+	 *
+	 * "While you have 50 or more Fervour, you gain +2% increased Damage
+	 * Reduction and +3% increased Attack Damage per point" is the row, the
+	 * Ravager's Set Against It. `ConditionValue` IS A COUNT OF POINTS, and the
+	 * comparison is at or above, the boundary `HealthAtOrAbovePercent` draws for
+	 * "or more".
+	 *
+	 * POINTS AND NOT A PERCENTAGE, WHICH IS THE OPPOSITE CHOICE FROM ITS
+	 * NEIGHBOUR ABOVE, so the reason has to be better than that one's and it is
+	 * measured rather than argued. `ClassResourceAbovePercent` says classes do
+	 * not share a maximum. That is true and it is NOT the reason here: this node
+	 * is in the Ravager tree and only a Ravager will ever take it, so there is no
+	 * disagreement between classes to point at.
+	 *
+	 * THE REASON IS THAT ONE CHARACTER'S OWN BAR MOVES. Measured 2026-09-18:
+	 * `class_resource` gains nothing per level -- `game/Data/ClassStats.csv`
+	 * states 100 for every class and 150 for the Ritualist, both with a
+	 * per-level gain of zero -- but it is raised by an affix ("Flat maximum
+	 * class resource", up to 7, on four slots), by enchantments (+20% to +40%
+	 * increased, and a negative one), and by FOURTEEN passive effect rows. So a
+	 * Ravager who invests in maximum Fervour carries a bar above 100, and a
+	 * threshold written as a percentage would demand more Fervour the more of it
+	 * they could hold. The owner's sentence says fifty Fervour. Points keep it
+	 * saying that.
+	 *
+	 * IT IS THE SAME SHAPE OF ARGUMENT `EnergyShieldAtMaximum` MAKES, and it
+	 * lands in a different place: that one's bar moves over a character's
+	 * LIFETIME, because the shield gains per level; this one's moves over a
+	 * character's BUILD, because the pool does not gain per level and is raised
+	 * by what the player chooses instead.
+	 *
+	 * SO A ROW USING THIS IS UNAMBIGUOUS ONLY ON A NODE IN ONE CLASS'S TREE,
+	 * because fifty points is a third of a Ritualist's bar and half of everyone
+	 * else's. Every row using it today is.
+	 *
+	 * TWO CLAUSES AND NOT THREE. The reading has to be known, and then the count
+	 * is worth comparing. The maximum is not read at all, which is the whole
+	 * difference from its neighbour, so there is no bar-of-nothing to guard
+	 * against and nothing to divide by.
+	 */
+	ClassResourcePointsAtLeast
+		UMETA(DisplayName = "Class Resource Points At Least"),
+
+	/**
+	 * The character is holding some energy shield. Issue #1981.
+	 *
+	 * "You take 10%-20% increased damage from all sources while your shield is
+	 * active" is the row. NO THRESHOLD, SO `ConditionValue` IS NOT READ: "active"
+	 * names a state rather than a number, and the tool refuses a value on a row
+	 * carrying this.
+	 *
+	 * "ACTIVE" IS READ AS HELD ABOVE ZERO, a judgement made under the project
+	 * owner's delegation of 2026-09-14 and recorded in `docs/DECISIONS.md`. A
+	 * shield at nothing absorbs nothing, so it is not active in any sense the
+	 * sentence means.
+	 *
+	 * THE GUARD IS FOLDED INTO THE COMPARISON HERE, AND ONLY HERE, BECAUSE THE
+	 * THRESHOLD IS FIXED. Every other reading keeps its "is this known" clause
+	 * separate, because a threshold a sheet writes could be negative and -1 would
+	 * then satisfy it by accident. This one compares against zero and nothing
+	 * else ever, so an unknown reading of -1 refuses by the same comparison, on
+	 * purpose rather than by luck. Saying which of the two cases a condition is
+	 * in is what keeps the next one correct.
+	 */
+	EnergyShieldAboveZero
+		UMETA(DisplayName = "Energy Shield Above Zero"),
+
+	/**
+	 * The character used the skill in its Support slot within the last `ConditionValue` seconds.
+	 * Issue #1815, for the movement rows issue #1821 unblocked.
+	 *
+	 * "Using your support ability grants you 10%-20% increased movement speed for 3 seconds" is the row. At or within, and a negative reading refuses, as for
+	 * every clock above.
+	 */
+	WithinSecondsOfSupportSkill
+		UMETA(DisplayName = "Within Seconds Of Support Skill"),
+
+	/**
+	 * The character used the skill in its Movement slot within the last `ConditionValue` seconds.
+	 * Issue #1815, for the movement rows issue #1821 unblocked.
+	 *
+	 * "After you use a movement ability you lose 50% movespeed for 3 seconds" is the row. At or within, and a negative reading refuses, as for
+	 * every clock above.
+	 */
+	WithinSecondsOfMovementSkill
+		UMETA(DisplayName = "Within Seconds Of Movement Skill"),
+
+	/**
+	 * The character used a skill carrying `Type.Spell` within the last `ConditionValue` seconds.
+	 * Issue #1815, for the movement rows issue #1821 unblocked.
+	 *
+	 * "Casting a spell grants 5%-10% increased movement speed for 3 seconds" is the row. At or within, and a negative reading refuses, as for
+	 * every clock above.
+	 */
+	WithinSecondsOfSpell
+		UMETA(DisplayName = "Within Seconds Of Spell"),
+
+	/**
+	 * The character was hit by a melee attack within the last `ConditionValue` seconds.
+	 * Issue #1815, for the movement rows issue #1821 unblocked.
+	 *
+	 * "After being hit by a melee attack you gain 10%-20% increased movement speed for 2 seconds" is the row. At or within, and a negative reading refuses, as for
+	 * every clock above.
+	 */
+	WithinSecondsOfMeleeHitTaken
+		UMETA(DisplayName = "Within Seconds Of Melee Hit Taken"),
+
+	/**
+	 * The character stunned, knocked down or displaced a character within the last `ConditionValue` seconds.
+	 * Issue #1815, for the movement rows issue #1821 unblocked.
+	 *
+	 * "Applying a CC effect grants 10%-20% increased movement speed for 3 seconds" is the row. At or within, and a negative reading refuses, as for
+	 * every clock above.
+	 */
+	WithinSecondsOfCrowdControl
+		UMETA(DisplayName = "Within Seconds Of Crowd Control"),
+
+	/**
+	 * The character's mana is STRICTLY below `ConditionValue` percent of its
+	 * maximum. Issues #1820 and #41.
+	 *
+	 * THE FIRST MANA PREDICATE, AND WRITTEN AS A GENERAL THRESHOLD ON PURPOSE.
+	 * The dungeon floor rule `Famine_Desperate_Measures` asks it at 10: "When your
+	 * Mana falls below 10%, your skills cost 5% of your current Health to cast
+	 * instead of Mana." The enchantment "Take 10%-40% more damage when on low
+	 * mana" is to reuse it with whatever share "low" is ruled to be, so nothing
+	 * here is specific to the floor rule.
+	 *
+	 * STRICTLY BELOW, BECAUSE THE ROW SAYS "BELOW". A character on exactly 10% of
+	 * their mana is not below it. `HealthBelowPercent` is the same reading on the
+	 * other pool, and `HealthAtOrBelowPercent` the one this deliberately is not.
+	 *
+	 * AN UNKNOWN READING REFUSES, and so does a character with no maximum mana.
+	 * `ManaPercent` reads -1 for both, which is below every threshold a sheet may
+	 * write, so the guard is written out rather than left to the comparison --
+	 * the reason `HealthBelowPercent` gives. A character whose every cost is
+	 * paid from health has its maximum mana set to zero, so this never holds for
+	 * it: it has no mana to run low on.
+	 */
+	ManaBelowPercent
+		UMETA(DisplayName = "Mana Below Percent"),
+
+	/**
+	 * No blow of the asking character's has yet got through to the target.
+	 * Issue #1815: "Your first hit against each enemy deals 100%-300% bonus
+	 * damage" and "Your first hit against each enemy ignores all armor".
+	 *
+	 * NO THRESHOLD, SO `ConditionValue` IS NOT READ.
+	 *
+	 * "A HIT" IS A BLOW THAT GOT THROUGH, ruled under the owner's delegation on
+	 * 2026-09-23: health, shield or mana absorbed it. An evaded blow is not a
+	 * hit and does not use up the first one; a blow a shield absorbed whole is.
+	 * The record is written where the Boss clock is stamped, so both read "got
+	 * through" at the same site.
+	 *
+	 * READ WHILE THE BLOW RESOLVES AND WRITTEN AFTER IT LANDS, so the first blow
+	 * is judged against a record that does not yet hold it.
+	 *
+	 * AN UNREAD TARGET REFUSES, as every target condition does:
+	 * `bTargetStrikeHistoryKnown` is asked first.
+	 */
+	TargetNotYetStruckByYou
+		UMETA(DisplayName = "Target Not Yet Struck By You"),
+
+	/**
+	 * No critical strike of the asking character's has yet got through to the
+	 * target. Issue #1815: "Your first critical strike against each enemy deals
+	 * an additional 50%-100% bonus damage". The same record and the same rules
+	 * as the condition above, counting only critical strikes.
+	 */
+	TargetNotYetCritByYou
+		UMETA(DisplayName = "Target Not Yet Crit By You"),
+
+	/**
+	 * The character is in combat: it dealt a hit, or took one, within the last
+	 * `UCataclysmAbilitySystemComponent::CombatLapseSeconds`. Issue #1815:
+	 * "HP regeneration is disabled during combat".
+	 *
+	 * NO THRESHOLD, SO `ConditionValue` IS NOT READ. One meaning of "in combat"
+	 * for the whole game, rather than a window each row chooses, ruled under
+	 * the owner's delegation on 2026-09-23.
+	 *
+	 * A HIT IS WHAT `NoteHitTaken` COUNTS, evaded and blocked blows included,
+	 * and both sides of one blow enter combat together. A damage over time tick
+	 * is not a hit.
+	 *
+	 * AN UNREAD CHARACTER REFUSES: `SecondsInCombat` is negative for it and for
+	 * a character out of combat alike.
+	 */
+	InCombat
+		UMETA(DisplayName = "In Combat"),
+
+	/**
+	 * The character is out of combat: the negation of `InCombat`, for a
+	 * character that can be read. Issue #1815: "HP regeneration is doubled while
+	 * out of combat". A character that has had no combat event since it spawned
+	 * is out of combat.
+	 */
+	OutOfCombat
+		UMETA(DisplayName = "Out Of Combat"),
+
+	/**
+	 * The target carries at least one debuff. Issue #1815: "Debuffed enemies
+	 * take 10%-20% increased damage from all sources".
+	 *
+	 * NO THRESHOLD, SO `ConditionValue` IS NOT READ. A debuff is what
+	 * `UCataclysmDebuffs` counts: every damage over time, and a stun.
+	 *
+	 * AN UNREAD TARGET CARRIES NOTHING AND REFUSES, as every target ailment
+	 * condition does: `TargetDebuffs` is filled only when a row asks.
+	 */
+	TargetCarriesAnyDebuff
+		UMETA(DisplayName = "Target Carries Any Debuff"),
+
+	/**
+	 * The target carries a damage over time: a tag under `Keyword.DoT`. Issue
+	 * #1815: "Strike skills deal 20%-40% increased damage against enemies
+	 * affected by a DoT". A stun is a debuff and not a damage over time.
+	 */
+	TargetCarriesADot
+		UMETA(DisplayName = "Target Carries A Dot"),
+
+	/**
+	 * The weapon this character has equipped takes two hands. Issue #1515.
+	 *
+	 * `Ravager_basic_b_b0` Two Hands is the row: "Two-handed weapons only. +3%
+	 * increased Attack Damage per point."
+	 *
+	 * TWO-HANDED IS THE DATA'S OWN COLUMN: `game/Data/ItemBases.csv` gives the
+	 * weapon's base row a `Hands` of 2. Greatsword, Greataxe, Spear, Staff,
+	 * Warhammer and the Two-Handed Crossbow do, measured 2026-09-23.
+	 *
+	 * AN UNKNOWN READING REFUSES: no weapon, no weapon-slot component (every
+	 * enemy), no item base table, or a weapon type with no base row. The
+	 * reading is -1 for all of them, so a missing row is never guessed to be
+	 * one-handed or two.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 *
+	 * ONE WEAPON IS HELD TODAY. What "two-handed weapons only" means with two in
+	 * hand waits for the capstone option that allows that, Both Hands Full.
+	 */
+	WieldingTwoHandedWeapon
+		UMETA(DisplayName = "Wielding Two Handed Weapon"),
+
+	/**
+	 * A blow of the asking character's got through to the target no more than
+	 * `ConditionValue` seconds ago. Issue #1515: Set Upon, "+2% increased
+	 * Minion Damage per point against enemies you have damaged in the last 2
+	 * seconds", and Set the Pack On, "Enemies you have damaged in the last 2
+	 * seconds take 25% more damage from your minions".
+	 *
+	 * THE RECORD `TargetNotYetStruckByYou` READS, WITH THE TIME KEPT, so
+	 * "damaged" means what "a hit" means there, ruled under the owner's
+	 * delegation on 2026-09-23: health, shield or mana absorbed it, and an
+	 * evaded blow does not count. A damage over time tick counts, because it
+	 * reaches the same site.
+	 *
+	 * "YOU" IS WHOEVER `UCataclysmCombatEvents::AttackerOf` NAMES, which is who
+	 * the record was written for: a minion's blow counts for its summoner only
+	 * while the summoner holds Conduit.
+	 *
+	 * INCLUSIVE, AS EVERY CLOCK HERE IS: a blow exactly 2 seconds ago counts.
+	 * Never struck reads -1 and refuses, and so does an unread target.
+	 */
+	TargetDamagedByYouWithinSeconds
+		UMETA(DisplayName = "Target Damaged By You Within Seconds"),
+
+	/**
+	 * The target stands in a ground zone the asking character's skill left. Ruled 2026-10-06: "You deal 15%-30%
+	 * increased damage to enemies standing in your persistent AOE zones".
+	 *
+	 * "YOUR" ZONES ARE THE ONES WHOSE OWNER IS THE ASKER, which is the character whose skill left them. A floor
+	 * rule's zone and a creature's are another owner's.
+	 *
+	 * READ ONLY WHEN A ROW ASKS, by `WithTargetState`, which walks the world's zones for that. False is "not in
+	 * one", "no target in hand" and "nothing asked", and all three refuse.
+	 *
+	 * IT DOES NOT REACH THE ZONE'S OWN DAMAGE. A zone is priced once, when it is left, with no target, so no
+	 * target-side condition reaches it; this one raises the blows its owner lands on whoever stands in it.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	TargetStandsInYourZone
+		UMETA(DisplayName = "Target Stands In Your Zone"),
+
+	/**
+	 * The character is carrying a damage over time effect, of any kind and laid
+	 * by anybody, itself included. Ruled 2026-10-07 for "Gain 50%-100% increased
+	 * damage while under the effect of a DoT".
+	 *
+	 * WHAT MAKES IT TRUE IS A TAG UNDER `Keyword.DoT` ON THE CHARACTER, the
+	 * question `WhileBleeding` asks of one child of that parent, asked of the
+	 * parent. `UCataclysmSkillEffects::ApplyDamageOverTime` grants its effect's
+	 * tag to the target for as long as the effect runs, so a bleed, a burn, a
+	 * poison, a disease, a necrosis and a void splinter all answer yes, and so
+	 * does the bleed the Masochist's conversion lays on its own character.
+	 *
+	 * WHAT DOES NOT MAKE IT TRUE: damage that only ARRIVES marked as damage over
+	 * time. A ground zone's sweep and most floor hazards deal a blow on a clock
+	 * with `FCataclysmHitDelivery::bIsDamageOverTime` set, and leave no effect
+	 * and no tag on whoever stands in them. `docs/DECISIONS.md`, 2026-10-07,
+	 * lists that for the owner.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 * Read from `FCataclysmStatConditions::bIsUnderDamageOverTime`.
+	 */
+	WhileUnderDamageOverTime
+		UMETA(DisplayName = "While Under Damage Over Time"),
+
+	/**
+	 * The character's current combat has lasted at least `ConditionValue`
+	 * seconds. Ruled 2026-10-07 for "After 10 seconds in combat you begin losing
+	 * 2%-4% of your maximum HP per second", which is a value of 10.
+	 *
+	 * THE READING `InCombat` TESTS, COMPARED WITH A NUMBER, as
+	 * `StationaryForSeconds` compares the reading `WhileStationary` tests. AT
+	 * LEAST: ten seconds of combat meets a value of ten. Out of combat the
+	 * reading is negative and refuses, and a new combat starts it from nought.
+	 */
+	InCombatForSeconds
+		UMETA(DisplayName = "In Combat For Seconds"),
+
+	/**
+	 * The character is channelling: a skill of its own tagged `Type.Channel` is
+	 * running. Ruled 2026-10-08 for "Channel skills drain 8%-15% of your maximum
+	 * HP per second while active" and "You cannot move while channeling any
+	 * skill".
+	 *
+	 * FROM THE SKILL'S START TO ITS END, WHATEVER ENDED IT. The start is the
+	 * moment the skill is paid for, in `UCataclysmSkillTemplate::CommitAndBegin`,
+	 * and the end is `UCataclysmSkillTemplate::EndAbility`: its own finish, a
+	 * cancel from outside, or its character being destroyed. No held-button
+	 * skill is built, so a channel here is a skill that runs for a stated time.
+	 * `docs/DECISIONS.md`, 2026-10-08, lists what that reaches today.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 * Read from `FCataclysmStatConditions::bIsChannelling`.
+	 */
+	WhileChannelling
+		UMETA(DisplayName = "While Channelling"),
+
+	/**
+	 * The character is channelling and has been for LESS THAN `ConditionValue`
+	 * seconds. Ruled 2026-10-08 for "Channel skills deal 30%-50% less damage
+	 * during the first 2 seconds of channeling", which is a value of 2.
+	 *
+	 * STRICTLY LESS THAN, the one seconds condition that is: 1.999 seconds of
+	 * channelling holds a value of 2 and exactly 2 does not, so a blow landing
+	 * on the two second mark is whole. Not channelling refuses whatever the
+	 * value. The clock starts with the first channelled skill to begin and is
+	 * not restarted by a second begun while the first runs.
+	 *
+	 * Read from `FCataclysmStatConditions::SecondsChannelling`, which is
+	 * negative while the character is not channelling.
+	 */
+	ChannellingForUnderSeconds
+		UMETA(DisplayName = "Channelling For Under Seconds"),
+
+	/**
+	 * The character on the other side of a blow being TAKEN was first struck by
+	 * this character at least `ConditionValue` seconds ago. Ruled 2026-10-12
+	 * under the owner's delegation, for "Enemies that survive more than 5
+	 * seconds after first being hit gain 20%-40% increased damage", which is a
+	 * value of 5 on a `damage_taken` row.
+	 *
+	 * "FIRST STRUCK" IS THE FIRST BLOW OF THIS CHARACTER'S TO GET THROUGH TO IT,
+	 * the blow `UCataclysmAbilitySystemComponent::NoteStruckBy` answers true
+	 * for: a damage over time tick counts, and a blow that is a row's answer to
+	 * an event or the consequence of a death does not. An opponent this
+	 * character has never struck refuses whatever the value.
+	 *
+	 * AT LEAST, the comparison `InCombatForSeconds`, `StationaryForSeconds` and
+	 * `NotAttackedForSeconds` make: exactly 5 seconds after the first blow
+	 * holds a value of 5. The sentence writes "more than", and the option not
+	 * taken is the strict comparison `OpponentBeyondMetres` makes for its own
+	 * "more than"; the two differ only at the one instant. `docs/DECISIONS.md`,
+	 * 2026-10-12, states it as a judgement.
+	 *
+	 * A CONDITION OF A BLOW TAKEN. Read from
+	 * `FCataclysmBlowContext::SecondsSinceYouFirstStruckOpponent`, which only
+	 * the defender's lookups at a defence step are handed, and which a damage
+	 * over time tick leaves at -1: the row grants nothing against a tick.
+	 */
+	OpponentFirstStruckByYouSecondsAgo
+		UMETA(DisplayName = "Opponent First Struck By You Seconds Ago"),
+
+	/**
+	 * The hit an ACTION row fires on is not a spell: the event's skill tags hold no `Type.Spell`, or the event carries
+	 * no skill tags at all. Ruled 2026-10-17 (O6), for "Null Emperor (2-Piece Bonus): Your attacks have a 25% chance
+	 * to silence an enemy for 1 second": "your attacks" is every hit that is not a spell, the line between an attack
+	 * and a spell that `HitIsMeleeAttack` draws.
+	 *
+	 * AN ACTION ROW'S CONDITION ONLY. It is judged from the event's own tags in
+	 * `UCataclysmAbilitySystemComponent::PoolActionAllowed`; `ConditionHolds` refuses it, and
+	 * `tools/generate_datatables.py` refuses it on every stat row and on an action row whose event does not carry the
+	 * tags of a hit dealt.
+	 *
+	 * A HIT WITH NO SKILL IS NOT A SPELL: a basic attack carrying no `Type.Spell` meets it, and so does a blow no skill
+	 * dealt. `ConditionValue` is unused.
+	 */
+	HitDealtIsNotSpell
+		UMETA(DisplayName = "Hit Dealt Is Not Spell"),
+
+	/**
+	 * The target is silenced: `UCataclysmSilence::IsSilenced`. Ruled 2026-10-17 (O7), for "Null Emperor (6-Piece
+	 * Bonus): Every time you hit a silenced enemy, you gain a stack of 'Void.'", whose row is an action on `hit_dealt`
+	 * under this condition, judged against the enemy struck.
+	 *
+	 * READ ONLY WHEN A ROW ASKS, by `WithTargetState`, as `TargetIsBoss` is, so it reaches an action row through
+	 * `UCataclysmAbilitySystemComponent::PoolActionAllowed` and a stat row on the attacker's own lookups. False is "not
+	 * silenced", "no target in hand" and "nothing asked", and all three refuse.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	TargetIsSilenced
+		UMETA(DisplayName = "Target Is Silenced"),
+
+	/**
+	 * The target is moving: its ability system's `UCataclysmAbilitySystemComponent::IsMoving`, which the movement
+	 * sampler sets. Ruled 2026-10-23 (#2235, Q1), for "While the enemy is moving, your DoTs on them deal 20%-40% more
+	 * damage", whose row is `dot_damage` more under this condition, judged on each tick against the character the
+	 * tick lands on.
+	 *
+	 * NOT `WhileMoving`, which reads the ASKER's own movement: on the attacker's `dot_damage` it would read the
+	 * attacker.
+	 *
+	 * READ ONLY WHEN A ROW ASKS, by `WithTargetState`, as `TargetIsSilenced` is. False is "standing", "no target in
+	 * hand", "a target with no ability system of this project's" and "nothing asked", and all four refuse. So the
+	 * application-time `dot_damage` in `UCataclysmSkillEffects::DamageOverTimeNumbers`, asked with no target, never
+	 * counts it; the tick asks for it in `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	TargetIsMoving
+		UMETA(DisplayName = "Target Is Moving"),
+};
+
+/**
+ * What a condition's answer depends on. Issue #1821.
+ *
+ * FOR A READER THAT CACHES A STAT AND HAS TO KNOW WHEN TO ASK AGAIN. Most stats
+ * are asked for at the moment they matter, so a condition that changed a
+ * second ago is simply read as it is now. Movement speed is not: it is written
+ * onto the movement component and kept, and `ACataclysmPlayerCharacter` asks
+ * again only when something tells it to. A condition whose answer can change
+ * with nothing telling it -- a timer running out, an enemy walking closer --
+ * then goes unread. This says which conditions those are.
+ *
+ * `UCataclysmStatPipeline::WhatConditionDependsOn` ANSWERS IT FOR EVERY
+ * CONDITION, with no default, and
+ * `tools/tests/test_every_condition_says_what_it_depends_on.py` fails when a
+ * condition is missing from it. So a new condition cannot reach a cached stat
+ * without somebody saying what it reads.
+ */
+enum class ECataclysmConditionDependsOn : uint8
+{
+	/** Nothing: `Always`. */
+	Nothing,
+
+	/** The character's health, which is written to an attribute. */
+	Health,
+
+	/** The character's class resource or its maximum, both attributes. */
+	ClassResource,
+
+	/**
+	 * Another attribute of the character: its energy shield, or the chances
+	 * that decide whether it can cripple or weaken.
+	 */
+	OtherAttributes,
+
+	/**
+	 * Time passing: a window after an event, how long the character has stood
+	 * still or gone unattacked, or an ailment that wears off.
+	 */
+	Time,
+
+	/** Whether the character is moving. */
+	Motion,
+
+	/** Where other bodies are: how many enemies are within reach. */
+	Surroundings,
+
+	/**
+	 * The blow or skill being asked about: the attack's kind, the opponent, the
+	 * target, the distance, the health a skill costs. Such a condition has no
+	 * answer outside a blow or a skill, so it cannot change under a stat read
+	 * with neither in hand.
+	 */
+	TheBlowOrSkill,
+
+	/**
+	 * Whether the character is channelling. Ruled 2026-10-08. It changes only
+	 * when a channelled skill begins or ends, and
+	 * `UCataclysmAbilitySystemComponent::OnChannellingChanged` announces both,
+	 * so a reader that listens for that has nothing to ask again on a clock.
+	 * `ChannellingForUnderSeconds` is NOT here: its window also closes with
+	 * nothing announced, so it is classed under `Time`.
+	 */
+	Channelling,
+};
+
+/**
+ * A state of the character a modifier's SIZE can be made to grow with. #968.
+ *
+ * NOT THE SAME QUESTION AS `ECataclysmStatCondition`, and they are two axes
+ * rather than two spellings of one. A condition decides IF a modifier applies;
+ * this decides HOW MUCH it is worth. A modifier may carry both, and nothing
+ * about one implies anything about the other.
+ *
+ * WHOLE STEPS, ROUNDED DOWN. "For every 5% of your maximum health that is
+ * missing" grants the bonus once per completed 5%, so a character 12% down has
+ * two steps rather than two and two fifths. The design states no rounding rule,
+ * so it is read off the words -- "for every" is a count of completed blocks --
+ * and off the genre: Path of Exile pays a "per 10 Strength" bonus once at 15
+ * Strength, not one and a half times. `docs/DECISIONS.md` carries the sources.
+ *
+ * ONE SCALE'S COUNT IS A FRACTION, AND EVERY OTHER ONE'S IS WHOLE.
+ * `ShareOfRangeMoved`, the last enumerator, is worth its value times a share
+ * from 0 to 1 and rounds nothing: "proportional to distance traveled" is not a
+ * count of completed blocks. Ruled 2026-10-08. Everything said of steps above
+ * and below is said of the others.
+ *
+ * AN UNKNOWN STATE SCALES TO NOTHING, for the reason an unknown state refuses a
+ * condition. The character sheet has no character in hand, and a bonus whose
+ * size depends on where health is must not be written onto a gameplay attribute
+ * where it would be stale the moment the next blow landed.
+ */
+UENUM(BlueprintType)
+enum class ECataclysmStatScale : uint8
+{
+	/** The value is what it says. Every modifier in the game before #968. */
+	Fixed	UMETA(DisplayName = "Fixed"),
+
+	/**
+	 * Multiplied by how many whole `ScaleStep` percent of maximum health are
+	 * missing.
+	 *
+	 * MISSING, NOT REMAINING. A character at full health has no steps and gets
+	 * nothing, which is what makes the node a reward for being hurt.
+	 */
+	PerPercentOfMaximumHealthMissing
+		UMETA(DisplayName = "Per Percent Of Maximum Health Missing"),
+
+	/**
+	 * Multiplied by how many whole `ScaleStep` points of the class resource the
+	 * character is currently holding. Issue #980.
+	 *
+	 * Reciprocity is the node: "Your Retaliation damage is increased by 1% for
+	 * each point of Fervour you currently hold." A step of 1, so the count is
+	 * the Fervour itself.
+	 *
+	 * THE CLASS RESOURCE RATHER THAN FERVOUR BY NAME. There is one pool and
+	 * every class shares it -- `UCataclysmFervour` records the project owner's
+	 * decision of 2026-08-25 and why -- so the attribute is called
+	 * `ClassResource` and only the Masochist's name for it is Fervour. An
+	 * enumerator naming one class's word for the shared pool would have to be
+	 * renamed the first time another tree used it.
+	 *
+	 * A POINT OF THE RESOURCE IS ALREADY AN ABSOLUTE NUMBER, not a percentage
+	 * of the maximum. The pool runs 0 to 100 for every class today, so the two
+	 * readings happen to agree, and they would stop agreeing the moment a class
+	 * had a different maximum. The design writes "for each point", so the count
+	 * is of points.
+	 */
+	PerPointOfClassResourceHeld
+		UMETA(DisplayName = "Per Point Of Class Resource Held"),
+
+	/**
+	 * Multiplied by how many whole `ScaleStep` percent of maximum health the
+	 * character currently OWES and has not yet paid. Issue #994.
+	 *
+	 * Compound Interest is the node: "+1% increased damage per point for every
+	 * 5% of your maximum health you currently owe." The Reckoning reads the same
+	 * state with a step of 2 and a `more` multiplier instead of an increase.
+	 *
+	 * OWED IS NOT MISSING, and the two are independent readings. A character
+	 * that deferred a cost owes health it is still standing on, so at that
+	 * instant it is at full health and owes a fifth of it; a character that paid
+	 * the same cost outright is a fifth down and owes nothing. Answering either
+	 * through the other would hand the bonus to the wrong node.
+	 *
+	 * THE ATTRIBUTE HOLDS POINTS AND THIS READS PERCENT. `HealthOwed` is stored
+	 * in points of health, because that is what is addable when a second cast
+	 * defers more; the design asks about it as a share of maximum health, so the
+	 * division happens where it is read, exactly as
+	 * `PerPercentOfMaximumHealthMissing` divides health by its maximum.
+	 */
+	PerPercentOfMaximumHealthOwed
+		UMETA(DisplayName = "Per Percent Of Maximum Health Owed"),
+
+	/**
+	 * Multiplied by how much life leech the character has, in percent.
+	 * Issue #1045.
+	 *
+	 * The Masochist's Glutton capstone option is its only source: "Your
+	 * retaliation damage is increased by 1% for every 1% of life leech you
+	 * have."
+	 *
+	 * A READING OF A STAT RATHER THAN OF A STATE, which is what makes it unlike
+	 * every scale above it. Those read where the character's health is, what it
+	 * owes, how full its pool is, or how many things are on it -- all of which
+	 * change from moment to moment. Life leech changes when the character's gear
+	 * or passive points change and not otherwise, so this is a bonus that grows
+	 * with an investment rather than with a situation.
+	 *
+	 * IT IS STILL NOT FOLDED INTO AN ATTRIBUTE, and that is the point of it
+	 * being a scale at all. `UCataclysmPlayerClassStats::ApplyTo` resolves every
+	 * stat with a default `FCataclysmStatConditions`, in which this reading is
+	 * unknown, so the bonus is worth nothing there and is worked out wherever
+	 * retaliation is asked for.
+	 */
+	PerPercentOfLifeLeech
+		UMETA(DisplayName = "Per Percent Of Life Leech"),
+
+	//~ THREE STACK COUNTS, ONE PER KIND, RATHER THAN ONE ENUMERATOR AND A
+	//~ COLUMN NAMING THE KIND. Issues #1002, #1003 and #1004. A fourth column on
+	//~ the effects sheet would be a row struct change, which is a build and an
+	//~ asset regeneration and a column list to move; three names cost nothing
+	//~ but three lines each and follow what the three scales above already do.
+	//~ The count of them is expected to stay small: a stack is a mechanic a
+	//~ designer writes deliberately, not a stat anyone can add.
+
+	/**
+	 * Multiplied by how many Sanguine Momentum stacks the character holds.
+	 * Issue #1002.
+	 *
+	 * "Each health cost paid within 3 seconds of the last grants a stack, up to
+	 * 5 stacks. Each stack gives +1% increased attack and cast speed per point."
+	 * A step of 1, so the count is the stacks themselves.
+	 */
+	PerStackOfSanguineMomentum
+		UMETA(DisplayName = "Per Stack Of Sanguine Momentum"),
+
+	/**
+	 * Multiplied by how many Bloodlust stacks the character holds. Issue #1003.
+	 *
+	 * "Taking damage grants a stack of Bloodlust for 5 seconds, up to 5 stacks.
+	 * Each stack gives +1% increased melee damage per point."
+	 */
+	PerStackOfBloodlust
+		UMETA(DisplayName = "Per Stack Of Bloodlust"),
+
+	/**
+	 * Multiplied by how many Carnage stacks the character holds. Issue #1004.
+	 *
+	 * "Killing an enemy while above 75 Fervour grants a stack of Carnage for 8
+	 * seconds, up to 10 stacks. Each stack gives 3% more melee damage." The one
+	 * stack scale used in the `more` bucket, so ten stacks is a 1.30x
+	 * multiplier rather than thirty points added to the increased sum.
+	 */
+	PerStackOfCarnage
+		UMETA(DisplayName = "Per Stack Of Carnage"),
+
+	/**
+	 * Multiplied by how many distinct debuffs the character is carrying.
+	 * Issue #962.
+	 *
+	 * Seven Masochist nodes grow with it and they write it the same way: "for
+	 * each unique debuff on you", and once "Every debuff on you". A step of 1,
+	 * so the count is the debuffs themselves. Counted from
+	 * `game/Data/PassiveEffects.csv` on 2026-09-04, where seven distinct nodes
+	 * carry `debuffs_carried` in their Scale column. This said four and issue
+	 * #1145 said eleven; neither matched the sheet.
+	 *
+	 * NOT A FOURTH STACK COUNT, THOUGH IT IS COUNTED THE SAME WAY. A stack is
+	 * granted by an event this project chose to remember and expires on a timer
+	 * this project chose; a debuff is a gameplay effect somebody applied, and the
+	 * ability system is already holding the list for its own reasons.
+	 * `UCataclysmDebuffs::CountOn` reads that list and says what counts as one.
+	 *
+	 * UNIQUE MEANS DISTINCT KINDS. Bleeding and burning at once is two; bleeding
+	 * from two sources is one, because every lasting effect this project applies
+	 * is aggregated by target and limited to a single stack.
+	 */
+	PerDebuffCarried
+		UMETA(DisplayName = "Per Debuff Carried"),
+
+	/**
+	 * Multiplied by how many minions the character is commanding. Issue #1518.
+	 *
+	 * THE RITUALIST'S GENERATOR IS THE FIRST USE: "1 per second for each minion
+	 * you have". A step of 1, so the count is the minions themselves.
+	 *
+	 * IMPS AND THRALLS TOGETHER, WHICH IS WHAT "MINION" MEANS HERE. The
+	 * decision of 2026-09-08 settled the word: an imp is summoned and temporary,
+	 * a thrall is possessed and permanent, and the tree says "minion" wherever
+	 * it means both. `UCataclysmCommand::ThingsCommandedBy` is that list, and it
+	 * is deliberately NOT `ThrallCountOf`, which counts only the taken ones.
+	 *
+	 * COUNTED THE SAME WAY AS A DEBUFF AND A STACK, because a minion is a whole
+	 * thing: there is nothing to divide and nothing to round.
+	 *
+	 * IT READS ZERO WHEN THE CHARACTER COMMANDS NOTHING, which is what makes a
+	 * Ritualist holding no minions gain nothing rather than gain the row's bare
+	 * value. That is the case a build that forgets the count gets wrong.
+	 */
+	PerMinionHeld
+		UMETA(DisplayName = "Per Minion Held"),
+
+	/**
+	 * Per enemy standing within the row's own `ReachMetres`. Issue #1597.
+	 *
+	 * THE THIRD SCALE THAT IS A COUNT OF THINGS, after `PerDebuffCarried` and
+	 * `PerMinionHeld`, and built the same way for the same reason. The entry of
+	 * 2026-09-09 in `docs/DECISIONS.md` records that the Ritualist's generator
+	 * "needed no new mechanism, only a new count"; this is that sentence again
+	 * with a different count.
+	 *
+	 * NOT CAPPED, AND THE PROJECT OWNER RULED SO ON 2026-09-12 having been asked.
+	 * `Ravager_keystone_d_kB` is "You deal 2% more damage for each enemy within 4
+	 * metres of you", and a Horde wave has been measured at 125 to 174 creatures
+	 * at once, so the count is unbounded in the mode the owner plays. It is not a
+	 * new exception: `docs/Cataclysm_GDD_v2.md` already says "Multiplicative
+	 * sources are not capped because they cannot reach immunity... there is no
+	 * bound on how many may combine." The decisions entry carries the ruling, the
+	 * quotation, and that a cap was considered and declined.
+	 *
+	 * IT READS ZERO WITH NOBODY IN REACH, which is what makes a character alone
+	 * gain nothing rather than the row's bare value -- the case a build that
+	 * forgets the count gets wrong, exactly as `PerMinionHeld` records.
+	 */
+	PerEnemyInReach
+		UMETA(DisplayName = "Per Enemy In Reach"),
+
+	/**
+	 * Per CRIPPLED enemy standing within the row's own `ReachMetres`. Issue
+	 * #1515.
+	 *
+	 * `PerEnemyInReach` ABOVE WITH ONE FILTER. `Ravager_keystone_c_kC` Grinding
+	 * Halt reads "Each Crippled enemy within 4 metres of you grants you 1
+	 * Fervour per second", so the count is the same count restricted to the
+	 * bodies carrying the Cripple debuff.
+	 *
+	 * ITS OWN LIST, NOT A FILTER APPLIED AT COUNTING TIME. The condition state
+	 * carries distances, and a distance cannot be tested for a gameplay tag;
+	 * whether a body is crippled has to be asked while the body is in hand,
+	 * which is when the list is filled. See
+	 * `FCataclysmStatConditions::CrippledHostileDistancesMetres`.
+	 *
+	 * NOT CAPPED, FOR THE REASON `PerEnemyInReach` GIVES AND UNDER THE SAME
+	 * RULING. It cannot exceed that count, which is itself uncapped.
+	 */
+	PerCrippledEnemyInReach
+		UMETA(DisplayName = "Per Crippled Enemy In Reach"),
+
+	/**
+	 * Per enemy the attack this blow belongs to struck BEYOND THE FIRST.
+	 * Issue #1515.
+	 *
+	 * `Ravager_basic_b_a2` Cleaving Arc: "+1% increased Attack Damage per
+	 * point for each enemy your attack hits beyond the first." One enemy
+	 * struck is worth nothing and three are worth two, the arithmetic
+	 * Extinction's `ScalingSource=Consumed` already uses for "every OTHER
+	 * enemy consumed in the same instant".
+	 *
+	 * THE SAME COUNT `EnemiesStruckTogetherAtLeast` READS, under the same
+	 * ruling on what one attack is and what counts. An unknown count is
+	 * worth nothing, by the multiplication by zero `StackedValue` already
+	 * makes.
+	 */
+	PerEnemyStruckTogetherBeyondTheFirst
+		UMETA(DisplayName = "Per Enemy Struck Together Beyond The First"),
+
+	/**
+	 * Multiplied by how many whole `ScaleStep` percent of damage reduction the
+	 * character has. Issue #1515.
+	 *
+	 * `Ravager_capstone_100`'s second option, Weight Against Them: "+1% increased
+	 * Attack Damage for every 2% of Damage Reduction you have."
+	 *
+	 * A READING OF A STAT, AS `PerPercentOfLifeLeech` IS, AND READ THE SAME WAY:
+	 * off the attribute, so it holds what gear and unconditional rows put there.
+	 * A damage reduction row that holds only in a situation -- Banked Ruin's per
+	 * Fervour held, Wearing Them Down's against an enemy you Weakened -- changes
+	 * what a hit takes and not what this bonus is worth. Neither does the
+	 * separate multiplicative damage reduction.
+	 *
+	 * NEVER MORE THAN `UCataclysmDamageCalculation::DamageReductionCap`. "The
+	 * Damage Reduction you have" is the figure that reduces damage, and nothing
+	 * past the cap reduces any. A judgement ruled on 2026-09-17;
+	 * docs/DECISIONS.md records it beside the uncapped reading it was chosen
+	 * over.
+	 */
+	PerPercentOfDamageReduction
+		UMETA(DisplayName = "Per Percent Of Damage Reduction"),
+
+	/**
+	 * Multiplied by how many whole `ScaleStep` points of maximum mana the
+	 * character has. Issue #1515.
+	 *
+	 * `Ritualist_basic_d_a2` Drawn Deep: "+1% increased Spell Damage per point
+	 * for every full 200 maximum mana you have."
+	 *
+	 * THE MAXIMUM AND NOT THE MANA IN HAND. A spell that spends mana does not
+	 * shrink the bonus of the spell after it. Path of Exile 2's Archmage reads
+	 * maximum mana the same way; Path of Exile 1's reads unreserved maximum
+	 * mana, because that game reserves mana and this one does not.
+	 */
+	PerPointOfMaximumMana
+		UMETA(DisplayName = "Per Point Of Maximum Mana"),
+
+	/**
+	 * Per whole step of the character's MAXIMUM health. Issue #1515.
+	 *
+	 * `Ravager_keystone_a_kC` Weight Bearing is the row: "Your Maximum Health
+	 * also grants Armor: 1 Armor for every 10 maximum health you have." The step
+	 * is the ten; the value is the one.
+	 *
+	 * THE MAXIMUM AND NOT THE HEALTH IN HAND, which is the whole point of it. A
+	 * character at half health has the same maximum and the same armour from
+	 * this; taking damage does not take the armour away. The three health scales
+	 * beside it all read how FULL the bar is and this one reads how BIG it is.
+	 *
+	 * IT TRACKS THE MAXIMUM AS IT MOVES, ruled under the project owner's
+	 * delegation on 2026-09-18 and recorded in `docs/DECISIONS.md` as a balance
+	 * statement: a scaled row is worked out when something asks, so gear and
+	 * passives that raise maximum health raise the armour this grants, and one
+	 * that lowers it lowers the armour.
+	 *
+	 * WHOLE STEPS, ROUNDED DOWN, the rule every per-point scale in this file
+	 * already follows.
+	 */
+	PerPointOfMaximumHealth
+		UMETA(DisplayName = "Per Point Of Maximum Health"),
+
+	/**
+	 * Multiplied by how many whole `ScaleStep` metres lie between the character
+	 * and what it is striking. Issue #1981.
+	 *
+	 * "Ranged skills deal 10%-20% bonus damage for each meter of distance to the
+	 * target" is the row, with a step of 1.
+	 *
+	 * THE SAME FIELD `TargetWithinMetres` READS, AND THE SAME SIDE OF THE BLOW.
+	 * It is filled only on the attacker's own lookups, which is where a ranged
+	 * skill's damage is worked out, and six shipped rows already prove the field
+	 * arrives there. A lookup with no target in hand reads -1.
+	 *
+	 * A NEGATIVE READING GRANTS NOTHING, the way every count does: a damage over
+	 * time tick, a minion's blow and every lookup made with no target carry no
+	 * distance, and a bonus for being far away must not be handed to them.
+	 */
+	PerMetreToTarget
+		UMETA(DisplayName = "Per Metre To Target"),
+
+	/**
+	 * Multiplied by how many whole `ScaleStep` seconds the character has stood
+	 * still. Issue #1981.
+	 *
+	 * "All damage dealt is reduced by 15%-25% for each second you stand still"
+	 * is the row, with a step of 1.
+	 *
+	 * THE SAME FIELD `StationaryForSeconds` AND `MovedWithinSeconds` READ. Those
+	 * two ask whether a threshold is met; this one asks how large the reading is,
+	 * which is the difference between a condition and a scale.
+	 *
+	 * THE SENTENCE STATES NO CAP AND NONE IS INVENTED. Its row is written as a
+	 * MULTIPLYING reduction on purpose, because `LessMultiplierFloor` stops one
+	 * at -99% and so keeps one per cent of the hit however long the character
+	 * stands there. An increased row would have had no such floor: the caller
+	 * clamps a sum of increases at zero, so it would have reached no damage at
+	 * all. Measured and ruled on 2026-09-18; `docs/DECISIONS.md` carries both.
+	 *
+	 * A NEGATIVE READING GRANTS NOTHING. No movement sample has looked at the
+	 * character, which is not the same as its having stood still for ever.
+	 */
+	PerSecondStationary
+		UMETA(DisplayName = "Per Second Stationary"),
+
+	/**
+	 * Multiplied by how many whole `ScaleStep` seconds the current combat has
+	 * lasted. Issue #1815: "You take 10%-20% increased damage for each second
+	 * you have been in combat, up to 10 stacks".
+	 *
+	 * GRANTS NOTHING OUT OF COMBAT, so its rows need no `InCombat` condition.
+	 * The count restarts when a combat lapses and another begins.
+	 *
+	 * ITS SENTENCES STATE A CAP, AND `ScaleMaxSteps` CARRIES IT.
+	 */
+	PerSecondInCombat
+		UMETA(DisplayName = "Per Second In Combat"),
+
+	/**
+	 * Multiplied by how many whole `ScaleStep` seconds the character has been
+	 * out of combat. Issue #1815: "Your damage is reduced by 3%-5% for every
+	 * second you spend out of combat, up to 10 stacks".
+	 *
+	 * COUNTED FROM THE MOMENT COMBAT LAPSED, which is the last combat event plus
+	 * `CombatLapseSeconds`, or from the character's spawn or revival when it has
+	 * had none. Grants nothing in combat.
+	 */
+	PerSecondOutOfCombat
+		UMETA(DisplayName = "Per Second Out Of Combat"),
+
+	/**
+	 * Multiplied by how many distinct debuffs the target carries. Issue #1815:
+	 * "Each unique debuff on an enemy increases your crit chance against them
+	 * by 5%-10%".
+	 *
+	 * THE LENGTH OF `TargetDebuffs`, which is `UCataclysmDebuffs::CountOn` for
+	 * the target by construction, the same count `PerDebuffCarried` makes of
+	 * the character itself.
+	 *
+	 * "YOU APPLY" IS READ AS "ON THE ENEMY", ruled under the owner's delegation
+	 * on 2026-09-23. No record says who applied a debuff, so a minion's debuffs
+	 * count too, unlike a minion's hit, which is its own. An applier record is
+	 * what would narrow it.
+	 */
+	PerTargetDebuff
+		UMETA(DisplayName = "Per Target Debuff"),
+
+	/**
+	 * Multiplied by how many self-buff skills are running on the character.
+	 * Issue #1815: "Each active buff on you increases your damage by 5%-10%".
+	 *
+	 * A RUNNING SELF-BUFF SKILL IS WHAT AN ACTIVE BUFF MEANS, ruled under the
+	 * owner's delegation on 2026-09-23: the player sees skills as buffs, and
+	 * nothing shows an enchantment's few-second window as one today. To be
+	 * revisited if a buff bar is built.
+	 */
+	PerBuffHeld
+		UMETA(DisplayName = "Per Buff Held"),
+
+	/**
+	 * Multiplied by how many stacks of ITS OWN ROW the character holds. Issue
+	 * #1833, ruled 2026-09-23 under the owner's delegation: each enchantment
+	 * row is its own stack. The row's `ActionEvent` grants a stack, its Stack
+	 * Seconds is the window and `ScaleMaxSteps` the cap.
+	 *
+	 * READ BY `StackKey` through the asking ability system. A row with no key,
+	 * or a lookup with no ability system in hand, counts none.
+	 */
+	PerOwnStack
+		UMETA(DisplayName = "Per Own Stack"),
+
+	/**
+	 * Multiplied by how many hits in a row the character has landed ON THE
+	 * TARGET OF THIS LOOKUP, counted by ITS OWN ROW. Issue #1833, phase 2:
+	 * "Each consecutive melee hit on the same enemy increases damage by 5%-10%
+	 * up to 8 stacks". Ruled 2026-09-24 under the owner's delegation: a landed
+	 * hit within the row's scope counts, one on a different enemy starts the
+	 * count again, and death and leaving combat end it.
+	 *
+	 * NOUGHT ON ANY OTHER TARGET, so the first hit on a new enemy is plain: a
+	 * hit's damage is fixed before the hit is counted, so hit N reads N-1.
+	 * READ BY `StackKey` through the asking ability system, like `PerOwnStack`.
+	 */
+	PerConsecutiveHit
+		UMETA(DisplayName = "Per Consecutive Hit"),
+
+	/**
+	 * Multiplied by how many aura skills are running on the character. Issue
+	 * #1686: "Take 5%-15% more damage per active aura".
+	 *
+	 * EVERY RUNNING AURA, HOWEVER MANY THE GAME ALLOWS AT ONCE, ruled under the
+	 * owner's delegation on 2026-09-23. Two can run today: the skill in the
+	 * Aura slot, and Living Pyre, the Fist's Ultimate, which is an aura skill
+	 * too. An aura counts from its activation to its `EndAbility`.
+	 *
+	 * NOT `PerBuffHeld`, because an aura is not a self buff:
+	 * `UCataclysmAuraSkill` and `UCataclysmSelfBuffSkill` are separate classes,
+	 * and neither count sees the other's skills.
+	 */
+	PerAuraHeld
+		UMETA(DisplayName = "Per Aura Held"),
+
+	/**
+	 * Multiplied by the whole `ScaleStep` passive points the character has
+	 * spent, past `ScaleOffset`. Issue #1686: "Your skills deal 1.5%-2.5% less
+	 * damage for every 10 class points spent above 100" is a step of 10 and an
+	 * offset of 100.
+	 *
+	 * A CLASS POINT IS A PASSIVE POINT SPENT, ruled under the owner's
+	 * delegation on 2026-09-23: `FCataclysmPassiveAllocation::Total` on the
+	 * player state. The design sizes these sentences at the 230 point budget
+	 * spent (`docs/DECISIONS.md`, 2026-09-09), and points earned but not spent
+	 * are not "spent".
+	 *
+	 * A CHARACTER WITH NO PLAYER STATE READS -1 AND GETS NOTHING: every
+	 * creature and minion.
+	 */
+	PerClassPointSpent
+		UMETA(DisplayName = "Per Class Point Spent"),
+
+	/**
+	 * `Value` PER CENT of the whole `ScaleStep` points of mana the character
+	 * holds now. Issue #1815: "Your skills deal 10%-30% of your current mana as
+	 * more damage" is a flat row of 10 to 30 with a step of 1.
+	 *
+	 * THE FIRST SCALE WHOSE VALUE IS A PERCENTAGE OF ITS READING rather than an
+	 * amount per step. Every other scale answers `Value` times the steps; this
+	 * one answers `Value` / 100 times them. It exists because the game shows an
+	 * enchantment's rolled number in place of the range in its sentence (the
+	 * owner's ruling of 2026-09-11), so the row must carry the sentence's own
+	 * 10 to 30; a row of 0.1 to 0.3 a point would read "0.2% of your current
+	 * mana". Ruled 2026-09-23 under the owner's delegation, replacing a ruling
+	 * of the same day that had not checked that display rule.
+	 *
+	 * THE MANA IN HAND, NOT THE MAXIMUM, which `PerPointOfMaximumMana` reads. A
+	 * spell that spends mana lowers the next one's bonus, as the sentence says.
+	 */
+	PercentOfManaHeld
+		UMETA(DisplayName = "Percent Of Mana Held"),
+
+	/**
+	 * `Value` per whole `ScaleStep` enemies the character has killed this run.
+	 * Issue #1833, the kill counter: "Your damage is increased by 0.01%-0.05%
+	 * permanently for every 1000 enemies killed this run" is a step of 1000.
+	 *
+	 * A KILL IS THE CHARACTER'S OWN "kill" EVENT, and "this run" is since the
+	 * session began; see `ACataclysmPlayerState::NoteKill`. A CHARACTER WITH
+	 * NO PLAYER STATE READS -1 AND GETS NOTHING: every creature and minion.
+	 */
+	PerKillThisRun
+		UMETA(DisplayName = "Per Kill This Run"),
+
+	/**
+	 * `Value` per whole `ScaleStep` enemies the character has killed in every
+	 * run it has played. Issue #1833: "You lose 1-4% max resistances for every
+	 * 100,000 - 500,000 kills". Its row waits for the column that rolls the
+	 * step with the value; until then no row names this scale.
+	 */
+	PerKillOfTheCharacter
+		UMETA(DisplayName = "Per Kill Of The Character"),
+
+	/**
+	 * `Value` per whole `ScaleStep` kills made with the item the row is on.
+	 * Issue #1833: "This weapon has 5-20% more damage for every
+	 * 100,000-500,000 kills". NEVER EVALUATED HERE: the item's count is folded
+	 * into a fixed value when the item's modifiers are built
+	 * (`UCataclysmItemModifiers::AccumulateEnchantmentsInto`), because no
+	 * scale can see an item. One that reaches the pipeline counts nothing.
+	 */
+	PerKillOfThisWeapon
+		UMETA(DisplayName = "Per Kill Of This Weapon"),
+
+	/**
+	 * `Value` per whole `ScaleStep` seconds the minion striking has been
+	 * active. Issue #1833, deployable Part 2: "Gadgets deal 5%-10% increased
+	 * damage for each second they have been active, up to 30 seconds" is a step
+	 * of 1 with a cap of 30, and "Gadgets that survive for 15 seconds gain a
+	 * permanent 20%-40% damage bonus" a step of 15 with a cap of 1.
+	 *
+	 * READ ONLY ON A DEPLOYABLE'S BLOW, which is the one place that hands the
+	 * age over (`StatNamingTagAppliedTo`). Everywhere else it reads -1 and
+	 * grants nothing.
+	 */
+	PerSecondTheMinionHasBeenActive
+		UMETA(DisplayName = "Per Second The Minion Has Been Active"),
+
+	/**
+	 * `Value` per whole `ScaleStep` deployable machines the character commands
+	 * now. Issue #1833, deployable Part 3: "Each active gadget increases your
+	 * evasion chance by 5%-10%" is a step of 1. A machine is a minion tagged
+	 * `Type.Deployable` (`ACataclysmMinion::IsDeployable`).
+	 */
+	PerDeployableActive
+		UMETA(DisplayName = "Per Deployable Active"),
+
+	/**
+	 * `Value` per whole `ScaleStep` seconds the character has spent on the
+	 * dungeon floor it stands on. Issue #1833: "Enemies deal 5%-8% increased
+	 * damage for every 15 seconds spent on the same dungeon floor" is a step of
+	 * 15. A new floor starts the count again; outside a dungeon it reads -1 and
+	 * grants nothing. See `ACataclysmPlayerState::NoteFloorBegan`.
+	 */
+	PerSecondOnThisFloor
+		UMETA(DisplayName = "Per Second On This Floor"),
+
+	/**
+	 * `Value` per whole `ScaleStep` dungeon floors cleared this run. Issue
+	 * #1833: "Your armor is increased by 1%-2% for every dungeon floor cleared
+	 * this run". See `ACataclysmPlayerState::NoteFloorCleared`.
+	 */
+	PerFloorClearedThisRun
+		UMETA(DisplayName = "Per Floor Cleared This Run"),
+
+	/**
+	 * `Value` per whole `ScaleStep` points of the character's Armor attribute.
+	 * Issue #1833: "Your retaliation damage is increased by 2%-4% for every 100
+	 * points of armor you have" is a step of 100. The ATTRIBUTE, as the maximum
+	 * health scale reads its attribute, so a row cannot scale armour by itself.
+	 */
+	PerPointOfArmor
+		UMETA(DisplayName = "Per Point Of Armor"),
+
+	/**
+	 * `Value` per whole `ScaleStep` unique Cataclysm bosses the character has
+	 * ever defeated. Issue #1833: "For every unique Cataclysm boss defeated,
+	 * gain 5%-10% more damage permanently". It reaches nothing in play until
+	 * a unique Cataclysm boss exists; see
+	 * `ACataclysmPlayerState::RecordCataclysmBossDefeat`.
+	 */
+	PerUniqueCataclysmBossDefeated
+		UMETA(DisplayName = "Per Unique Cataclysm Boss Defeated"),
+
+	/**
+	 * Multiplied by how many POOLS the character is leeching into now. Issue
+	 * #1833, ruled 2026-10-07, for "Starvation (6-Piece Bonus): You gain 5%
+	 * damage reduction for each active unique instance of leech".
+	 *
+	 * ONE FOR EACH POOL WITH A PAYMENT STILL OWED, NOT ONE FOR EACH PAYMENT:
+	 * health, mana and energy shield, so nought to three. Every hit starts a
+	 * payment, so a count of payments would have no bound. ONLY A POOL THE
+	 * CHARACTER HAS, a maximum above nought. Read from
+	 * `FCataclysmStatConditions::LeechPoolsInFlight`.
+	 */
+	PerLeechPoolInFlight
+		UMETA(DisplayName = "Per Leech Pool In Flight"),
+
+	/**
+	 * `Value` per whole `ScaleStep` traps the character commands now, past
+	 * `ScaleOffset`. Ruled 2026-10-07. A trap is a deployable machine whose
+	 * type also carries `Type.Trap` (`ACataclysmMinion::IsTrap`).
+	 *
+	 * "Traps deal 15%-30% increased damage for each other trap currently
+	 * active on the battlefield" is a step of 1 and an offset of 1. The row is
+	 * read on a trap's blow, the trap striking is one of the count, and it is
+	 * not another trap. One trap alone is worth nothing.
+	 *
+	 * ONLY THE TAG MAKES A TRAP. The owner decided on 2026-10-07 that of the
+	 * trap feature only the tag is added now. Nothing arms, triggers, re-arms
+	 * or expires differently, so "active" here means alive and commanded, as
+	 * it does for `PerDeployableActive`.
+	 */
+	PerTrapActive
+		UMETA(DisplayName = "Per Trap Active"),
+
+	/**
+	 * `Value` per whole `ScaleStep` gadgets the character commands now: its
+	 * deployable machines that are NOT traps. Ruled 2026-10-07: a trap is not
+	 * a gadget for this scale. "Each active gadget increases trap damage by
+	 * 10%-20%" is a step of 1.
+	 *
+	 * `PerDeployableActive` IS UNCHANGED AND STILL COUNTS BOTH. Its one row,
+	 * "Each active gadget increases your evasion chance by 5%-10%", therefore
+	 * still counts a trap. `docs/DECISIONS.md`, 2026-10-07, lists that for the
+	 * owner to settle.
+	 */
+	PerGadgetActive
+		UMETA(DisplayName = "Per Gadget Active"),
+
+	/**
+	 * `Value` per whole `ScaleStep` seconds the character has been leeching
+	 * without a break. Ruled 2026-10-07 for "While leeching, reduce your max
+	 * resistances by 1%-3% per second", a step of 1.
+	 *
+	 * "LEECHING" IS WHAT `PerLeechPoolInFlight` COUNTS, ASKED AS YES OR NO: a
+	 * payment still owed into a pool the character has, health, mana or energy
+	 * shield alike. The clock starts when the first such payment is owed and
+	 * returns to nought when none is; the next payment starts it from nought.
+	 *
+	 * THE SCALE HOLDS NO CAP OF ITS OWN. The ruling caps the sentence at 10
+	 * seconds, and its row states that in `ScaleMaxSteps`, the way every capped
+	 * scale does. Read from `FCataclysmStatConditions::SecondsLeeching`.
+	 */
+	PerSecondLeeching
+		UMETA(DisplayName = "Per Second Leeching"),
+
+	/**
+	 * `Value` times the SHARE of its range a charge had moved when the blow in
+	 * hand landed. Ruled 2026-10-08 for "Charge skills deal 30%-60% bonus damage
+	 * proportional to distance traveled".
+	 *
+	 * THE ONE SCALE WHOSE COUNT IS A FRACTION. Every other scale counts whole
+	 * steps and rounds down; this one multiplies `Value` by the metres charged
+	 * over the range the skill used, from 0 to 1. `Value` is therefore the bonus
+	 * AT THE SKILL'S FULL RANGE, and there is no distance per step: a 14 metre
+	 * charge that has moved 7 metres gets half.
+	 *
+	 * CAPPED AT THE WHOLE VALUE. A charge that goes further than its range, by a
+	 * step of a walk landing past the end, gets the full figure and no more.
+	 *
+	 * NOUGHT WHEN EITHER FIGURE IS UNKNOWN, AND NOUGHT FOR A BLOW THAT IS NOT A
+	 * CHARGE'S OWN, which are the same thing: only a charge's own blow carries
+	 * the two figures. Read from `FCataclysmStatConditions::MetresCharged` and
+	 * `ChargeRangeMetres`, which say who fills them.
+	 *
+	 * `ScaleStep` IS THE SHARE OF THE RANGE THAT ONE `Value` IS WORTH, and the
+	 * data states 1: the whole range. `ScaleMaxSteps` and `ScaleOffset` mean
+	 * nothing here and `ValidateModifier` refuses both: there are no whole steps
+	 * to cap, the scale holds its own cap, and no sentence leaves part of a
+	 * charge uncounted.
+	 *
+	 * NOT `FCataclysmStatConditions::MetresMovedBeforeBlow`. That is how far the
+	 * character walked BEFORE it pressed the skill, and a scale on it would pay
+	 * a charge for walking up to the press and nothing for charging.
+	 */
+	ShareOfRangeMoved
+		UMETA(DisplayName = "Share Of Range Moved"),
+
+	/**
+	 * `Value` per whole `ScaleStep` enemies standing within `ReachMetres`, but
+	 * ONLY WHILE THE ASKING CHARACTER HOLDS AT LEAST ONE STACK UNDER `StackKey`.
+	 * Ruled by the project owner on 2026-10-17 for Warlord's Will's ten-piece
+	 * bonus, "This bonus scales with the number of enemies in the area": +10%
+	 * more damage per enemy within 8 m, capped at 5 enemies, for the 5 s the
+	 * bonus lasts. The cap is the row's `ScaleMaxSteps`, as for every capped
+	 * scale.
+	 *
+	 * THE STACK IS ANOTHER ROW'S, AND THIS ROW GRANTS NONE. The key is the
+	 * enchantment and the stat, the key an `own_stacks` row of the same
+	 * enchantment on the same stat counts, so this row reads the window that row
+	 * opens and closes. The generator refuses this scale on a row with no such
+	 * sibling. A lookup with no character in hand counts nothing, as
+	 * `PerOwnStack` does.
+	 *
+	 * THE REACH IS STATED BY THE LOADER. The Enchantment Effects sheet has no
+	 * reach column, so `UCataclysmItemModifiers` writes
+	 * `OwnStackWindowReachMetres` onto the modifier; a modifier made by hand
+	 * states its own.
+	 */
+	PerEnemyInReachWhileOwnStackHeld
+		UMETA(DisplayName = "Per Enemy In Reach While Own Stack Held"),
+};
+
+/**
+ * What one blow is, for a condition that asks about the blow being taken rather
+ * than the character taking it. Issue #666.
+ *
+ * PASSED IN RATHER THAN READ. Everything else in `FCataclysmStatConditions` is a
+ * property of the character and is read off it; this is a property of the one
+ * hit landing, so two hits an instant apart answer it differently.
+ * `UCataclysmDamageCalculation::Resolve` builds one from the hit it is resolving
+ * and hands it to the damage taken lookup, the only caller with a hit in hand.
+ *
+ * FALSE IS THE ONLY "NOTHING" THESE NEED, the argument `bIsBleeding` makes. A
+ * caller with no blow and a blow from no such source both answer no, and a
+ * bonus for being hit by a spell is correctly withheld from both.
+ *
+ * THREE FACTS RATHER THAN ONE KIND OF DELIVERY, because a hit can be two of them
+ * at once: a spell that fires a projectile is a spell and is ranged. The
+ * predicates, not this struct, decide what "an attack" is.
+ *
+ * AND ONE READING THAT IS A NUMBER RATHER THAN A FACT, added when the passive
+ * trees needed it: how far apart the two characters stood. It uses -1 for
+ * unknown, the way `SkillHealthCostPercent` does and for the same reason -- zero
+ * is a real reading, because two characters can stand on the same spot.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmBlowContext
+{
+	GENERATED_BODY()
+
+	/** Struck in melee: `Type.Melee` on the damage effect. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bIsMelee = false;
+
+	/** From range: `Type.Ranged` on the damage effect, which a projectile sets. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bIsRanged = false;
+
+	/** A spell: `Type.Spell` on the damage effect. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bIsSpell = false;
+
+	/** The character on the other side of the blow is a boss. See `IsBoss`. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bOpponentIsBoss = false;
+
+	/**
+	 * Metres from the character that dealt this blow to the one taking it, or
+	 * -1 when it is not known.
+	 *
+	 * THE ONE FIELD HERE THAT A PREDICATE COMPARES A NUMBER AGAINST. The four
+	 * above are facts and answer no when unknown; this answers "refuse" when
+	 * unknown, which is the same direction by a different route.
+	 *
+	 * A DAMAGE OVER TIME TICK REPORTS -1 AND IT IS A CHOICE, not a limitation.
+	 * `docs/DECISIONS.md` carries the judgement and its consequence. The short
+	 * version: the creature that applied the effect usually still has a position
+	 * when the tick fires, and `UCataclysmCombatEvents` reports a real distance
+	 * for ticks today, but that creature may have walked away or died, so the
+	 * number would describe something that is not striking.
+	 *
+	 * MEASURED BY `UCataclysmTargeting::MetresBetween`, which is also what the
+	 * blow announcement uses. One definition, so a passive row and the combat
+	 * log cannot disagree about one strike.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float OpponentDistanceMetres = -1.0f;
+
+	/**
+	 * The character on the other side of the blow is staggered. Issue #45.
+	 * See `UCataclysmSkillEffects::IsStaggered`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bOpponentIsStaggered = false;
+
+	/**
+	 * The character on the other side of the blow is under crowd control.
+	 * Issue #1686. See `UCataclysmSkillEffects::IsCrowdControlled`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bOpponentIsCrowdControlled = false;
+
+	/**
+	 * The debuffs the character on the other side of the blow is carrying, as
+	 * the explicit tags `UCataclysmDebuffs::TagsOnActor` returns. Issue #1515.
+	 *
+	 * A CONTAINER RATHER THAN A BOOLEAN PER AILMENT, and the reason is the
+	 * signature chain rather than this struct. A fact about the target has to be
+	 * read where the blow is struck and threaded through every lookup between
+	 * there and `ConditionHolds`; `bOpponentIsStaggered` above costs one
+	 * parameter on each of seven of them. Twenty-eight debuffs cannot each cost
+	 * that, so the tags travel once and a condition names the one it wants.
+	 *
+	 * EMPTY IS "NO BLOW, OR NOTHING CARRIED", AND BOTH CORRECTLY REFUSE. A
+	 * character sheet built with no blow leaves it empty, so a bonus against a
+	 * Weakened attacker is withheld from it, which is the argument every other
+	 * field here makes.
+	 *
+	 * A DAMAGE OVER TIME TICK CARRIES NONE OF THEM. `BlowContextFor` returns a
+	 * default-constructed context for a tick before reading any field, so this
+	 * is empty there with no special case, the same as every fact beside it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FGameplayTagContainer OpponentDebuffs;
+
+	/**
+	 * How long ago, in seconds, the character taking this blow first got a blow
+	 * through to the character on the other side of it, or -1 when it never
+	 * has, when there is no blow, and for a damage over time tick. Ruled
+	 * 2026-10-12. See `ECataclysmStatCondition::OpponentFirstStruckByYouSecondsAgo`.
+	 *
+	 * -1 AND NOT NOUGHT FOR "NOTHING", as `OpponentDistanceMetres` above uses
+	 * it: nought is a real reading, the instant of the first blow.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceYouFirstStruckOpponent = -1.0f;
+};
+
+/**
+ * What is true of the character at the moment a stat is being worked out.
+ *
+ * SEPARATE FROM THE SKILL'S TAGS BECAUSE IT CHANGES WITHOUT ANYTHING BEING
+ * APPLIED OR REMOVED. A character's health moves several times a second and no
+ * gear changed, so a conditional bonus cannot be folded into a gameplay
+ * attribute the way an unconditional one is: it would be stale the moment the
+ * next blow landed. `UCataclysmAbilitySystemComponent::StatForSkill` builds one
+ * of these from the character's own vitals and hands it to the pipeline, so no
+ * caller has to know that a stat has a condition on it.
+ *
+ * UNKNOWN IS THE DEFAULT AND IT REFUSES EVERY CONDITION. A caller with no
+ * character in hand -- the character sheet, a test passing plain numbers -- gets
+ * the unconditional answer, which is what it was getting before conditions
+ * existed. Answering "the condition holds" for an unknown state would give a
+ * character sheet the low-health bonus while the character stood at full health.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmStatConditions
+{
+	GENERATED_BODY()
+
+	/** Current health as a percentage of maximum, 0 to 100. Negative is unknown. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float HealthPercent = -1.0f;
+
+	/**
+	 * Seconds since the character last paid a health cost. Issue #962.
+	 *
+	 * NEGATIVE MEANS NEITHER KNOWN NOR EVER, and the two do not have to be told
+	 * apart because both answer no. A caller with no character in hand and a
+	 * character that has never cast a skill charging health are the same
+	 * question as far as a window is concerned.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceHealthCost = -1.0f;
+
+	/**
+	 * Seconds since the character took damage of a Cataclysm type other than
+	 * its own. Issue #975.
+	 *
+	 * NEGATIVE MEANS NEITHER KNOWN NOR EVER, the same as the reading above and
+	 * for the same reason: both answer no.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceForeignDamage = -1.0f;
+
+	/**
+	 * Seconds since the character last used a skill carrying `Keyword.Charge`.
+	 * Issue #1826.
+	 *
+	 * NEGATIVE MEANS NEITHER KNOWN NOR EVER, the same convention as the two
+	 * readings above and for the same reason: both answer no.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceChargeSkill = -1.0f;
+
+	/**
+	 * Seconds since the character last used its basic attack. Issue #1826.
+	 *
+	 * NEGATIVE MEANS NEITHER KNOWN NOR EVER, as above.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceBasicAttack = -1.0f;
+
+	/**
+	 * Seconds since the character last blocked a blow. Issue #1826.
+	 *
+	 * NEGATIVE MEANS NEITHER KNOWN NOR EVER, as above.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceBlock = -1.0f;
+
+	/**
+	 * Seconds since the character last used a skill carrying `Type.Summon`.
+	 * Issue #1815. Negative means neither known nor ever, as above.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceSummon = -1.0f;
+
+	/**
+	 * Seconds since the character last evaded a blow. Issue #1815. Negative
+	 * means neither known nor ever, as above.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceEvade = -1.0f;
+
+	/**
+	 * Seconds since the character was last hit, whatever became of the blow.
+	 * Issue #1815. Negative means neither known nor ever, as above.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceHitTaken = -1.0f;
+
+	/**
+	 * Seconds since the character's class resource became full. Issue #1815.
+	 * Negative means neither known nor ever, as above.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceClassResourceFull = -1.0f;
+
+	/**
+	 * Seconds since the character's class resource reached zero. Issue #1815.
+	 * Negative means neither known nor ever, as above.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceClassResourceEmpty = -1.0f;
+
+	/**
+	 * Seconds since the character last landed a blow on a Boss enemy. Negative
+	 * means neither known nor ever, as above.
+	 *
+	 * THE ONLY ONE OF THESE CLOCKS THAT DEPENDS ON WHAT WAS STRUCK rather than
+	 * on what the character itself did. It is stamped only when a blow got
+	 * through to a Boss -- health, energy shield or mana -- and it is stamped
+	 * on whoever the blow belongs to, which for a minion's blow is the minion
+	 * unless its summoner holds the Ritualist keystone Conduit.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceStruckABoss = -1.0f;
+
+	/**
+	 * Seconds since the character last used the skill in its Support slot. Negative means neither known
+	 * nor ever, as above.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceSupportSkill = -1.0f;
+
+	/**
+	 * Seconds since the character last used the skill in its Movement slot. Negative means neither known
+	 * nor ever, as above.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceMovementSkill = -1.0f;
+
+	/**
+	 * Seconds since the character last used a skill carrying `Type.Spell`. Negative means neither known
+	 * nor ever, as above.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceSpell = -1.0f;
+
+	/**
+	 * Seconds since the character last was hit by a melee attack. Negative means neither known
+	 * nor ever, as above.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceMeleeHitTaken = -1.0f;
+
+	/**
+	 * Seconds since the character last stunned, knocked down or displaced a character. Negative means neither known
+	 * nor ever, as above.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceCrowdControl = -1.0f;
+
+	/**
+	 * How much of the class resource the character is holding. Issue #980.
+	 *
+	 * NEGATIVE MEANS UNKNOWN, the same convention as the three readings above.
+	 * An ability system with no class resource attribute set -- every enemy in
+	 * the game -- leaves it there, and a bonus that grows with the pool is worth
+	 * nothing to it. That is the right answer rather than a fault.
+	 *
+	 * ZERO IS A REAL READING AND IS NOT UNKNOWN. An empty bar is a character
+	 * that has generated nothing yet, and a bonus counting points of it is
+	 * correctly worth nothing. That is a different statement from "there is no
+	 * bar to read", and only the second one has to refuse.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float ClassResourceHeld = -1.0f;
+
+	/**
+	 * The largest that pool can be for this character. Issue #1026.
+	 *
+	 * A SECOND READING RATHER THAN A PERCENTAGE ON THE FIRST, so the two
+	 * questions the design asks stay separable. `PerPointOfClassResourceHeld`
+	 * counts POINTS -- "for each point of Fervour you currently hold" -- and
+	 * `ClassResourceAtMaximum` asks about the TOP OF THE BAR. Storing a
+	 * percentage instead would make the scale divide it back out, and storing
+	 * only points would leave the condition with nothing to compare against.
+	 *
+	 * NEGATIVE MEANS UNKNOWN, the same convention as the reading above and set by
+	 * the same thing: an ability system with no class resource attribute set,
+	 * which is every enemy in the game. `ClassResourceAtMaximum` refuses an
+	 * unknown maximum, so an enemy never satisfies it.
+	 *
+	 * A MAXIMUM OF ZERO REFUSES THE CONDITION TOO, and deliberately. A character
+	 * whose pool cannot hold anything is not "at maximum" in any sense a node
+	 * means, and answering yes would hand Communion of Pain's bonus to every
+	 * class that never generates a point.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float ClassResourceMaximum = -1.0f;
+
+	/**
+	 * How much health the character owes, as a percentage of its maximum.
+	 * Issue #994.
+	 *
+	 * NEGATIVE MEANS UNKNOWN, the same convention as the readings above. Three
+	 * things leave it there and all three are ordinary rather than faults: an
+	 * ability system with no class resource attribute set, which is every enemy;
+	 * one with no vital attribute set, so there is no maximum to compare
+	 * against; and a maximum health of zero, which would otherwise be a division
+	 * by nothing.
+	 *
+	 * ZERO IS A REAL READING AND IS NOT UNKNOWN, the same distinction the
+	 * class resource above draws. A character that owes nothing is correctly
+	 * worth nothing to a bonus counting what it owes; that is not the same
+	 * statement as "there is nothing to read".
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float HealthOwedPercent = -1.0f;
+
+	/**
+	 * How much life leech the character has, in percent. Issue #1045.
+	 *
+	 * NEGATIVE MEANS UNKNOWN, the same convention as the readings above. One
+	 * thing leaves it there and it is ordinary rather than a fault: an ability
+	 * system with no vital attribute set, which is where life leech lives.
+	 *
+	 * READ OFF THE ATTRIBUTE RATHER THAN ASKED FOR, which is what every reading
+	 * in this struct does and is the reason to say so here. It means a future
+	 * node granting life leech under a CONDITION would not be seen by a bonus
+	 * scaling with it, because a conditional bonus is never folded into an
+	 * attribute. Nothing grants conditional life leech today. Asking for the
+	 * stat here instead would run the pipeline inside the function that builds
+	 * the input to the pipeline, which is why no reading in this struct does it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float LifeLeechPercent = -1.0f;
+
+	/**
+	 * How much damage reduction the character has, in percent, never more than
+	 * `UCataclysmDamageCalculation::DamageReductionCap`. Issue #1515.
+	 *
+	 * NEGATIVE MEANS UNKNOWN: an ability system with no combat attribute set,
+	 * which is where damage reduction lives.
+	 *
+	 * READ OFF THE ATTRIBUTE, FOR THE REASON `LifeLeechPercent` GIVES, and passed
+	 * through `UCataclysmDamageCalculation::EffectiveDamageReduction`, the
+	 * function a hit uses, so the reading stops at the cap the protection stops
+	 * at.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float DamageReductionPercent = -1.0f;
+
+	/**
+	 * How much maximum mana the character has. Issue #1515.
+	 *
+	 * NEGATIVE MEANS UNKNOWN: an ability system with no vital attribute set.
+	 *
+	 * READ OFF THE ATTRIBUTE, FOR THE REASON `LifeLeechPercent` GIVES. The
+	 * maximum and not the mana in hand; `PerPointOfMaximumMana` says why.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float MaximumMana = -1.0f;
+
+	/**
+	 * The mana in hand as a percentage of the maximum, from 0 to 100. Issues
+	 * #1820 and #41. Read by `ManaBelowPercent`.
+	 *
+	 * NEGATIVE MEANS UNKNOWN OR NO POOL AT ALL: an ability system with no vital
+	 * attribute set, or a character whose maximum mana is zero. A share of
+	 * nothing is not zero percent full, so it is not read as low.
+	 *
+	 * THE MANA IN HAND AND NOT THE MAXIMUM, which is the opposite of
+	 * `MaximumMana` above and is why they are two fields.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float ManaPercent = -1.0f;
+
+	/**
+	 * How many hands the equipped weapon takes, from its base row's `Hands`
+	 * column. Issue #1515. Read by `WieldingTwoHandedWeapon`.
+	 *
+	 * NEGATIVE MEANS UNKNOWN: no weapon, no weapon-slot component, no item base
+	 * table, or a weapon type the table has no row for. See
+	 * `UCataclysmWeaponSlotsComponent::GetEquippedWeaponHands`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 WeaponHands = -1;
+
+	/**
+	 * How much maximum health the character has. Issue #1515.
+	 *
+	 * NEGATIVE MEANS UNKNOWN: an ability system with no vital attribute set.
+	 *
+	 * THE MAXIMUM ITSELF, WHICH `HealthPercent` THROWS AWAY.
+	 * `FCataclysmStatConditions::FromHealth` divides the health in hand by this
+	 * and keeps only the share, so every existing health reading answers "how
+	 * full" and none of them answers "how big". Weight Bearing asks the second
+	 * question -- "1 Armor for every 10 maximum health you have" -- and no
+	 * arithmetic on a percentage can recover it.
+	 *
+	 * READ OFF THE ATTRIBUTE, FOR THE REASON `MaximumMana` GIVES beside it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float MaximumHealth = -1.0f;
+
+	/**
+	 * How many stacks of each kind the character is holding. Issues #1002,
+	 * #1003 and #1004.
+	 *
+	 * ZERO IS THE ONLY "NOTHING" THESE NEED, unlike every reading above them.
+	 * The others carry a negative "unknown" because a caller with no character
+	 * in hand must be told apart from a character whose reading really is zero:
+	 * a health percentage of zero is a corpse and an unknown one is the
+	 * character sheet, and those must not be treated alike. A stack count has no
+	 * such pair. A caller with no character holds no stacks, a character that
+	 * has earned none holds no stacks, and a bonus counting them is worth
+	 * nothing for both. Nothing can act differently on the two, so there is
+	 * nothing to distinguish.
+	 *
+	 * INTEGERS, BECAUSE A STACK IS A WHOLE THING. The other scales count whole
+	 * steps of a continuous reading and round down to get there; these are
+	 * already whole and there is nothing to round.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 SanguineMomentumStacks = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 BloodlustStacks = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 CarnageStacks = 0;
+
+	/**
+	 * Whether the character is Bleeding, and how many distinct debuffs of any
+	 * kind it is carrying. Issue #962.
+	 *
+	 * FALSE AND ZERO ARE THE ONLY "NOTHING" THESE NEED, exactly as the three
+	 * stack counts above. A caller with no character in hand carries no debuffs,
+	 * a character nothing has hurt carries no debuffs, and every bonus that
+	 * counts them is worth nothing for both. Nothing can act differently on the
+	 * two, so there is nothing to distinguish, and the negative "unknown" the
+	 * readings further up carry would buy nothing here.
+	 *
+	 * TWO READINGS RATHER THAN ONE, because they answer different questions and
+	 * neither implies the other. A character that is stunned and not bleeding
+	 * has one debuff and is not Bleeding; one that is bleeding has one debuff and
+	 * is Bleeding. Deriving either from the other would give a node somebody
+	 * else's answer.
+	 *
+	 * AN INTEGER, BECAUSE A DEBUFF IS A WHOLE THING, the same as a stack. The
+	 * continuous readings above count whole steps of something and round down to
+	 * get there; this is already whole.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bIsBleeding = false;
+
+	/**
+	 * Whether the character carries any tag under `Keyword.DoT`, the parent of
+	 * the bleed tag the reading above asks for. Ruled 2026-10-07. False is the
+	 * only "nothing" it needs, for the reason `bIsBleeding` gives. See
+	 * `ECataclysmStatCondition::WhileUnderDamageOverTime` for what does and does
+	 * not set it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bIsUnderDamageOverTime = false;
+
+	/**
+	 * Whether a skill of the character's own tagged `Type.Channel` is running.
+	 * Ruled 2026-10-08. False is the only "nothing" it needs, for the reason
+	 * `bIsBleeding` gives: a caller with no character in hand is not
+	 * channelling. See `ECataclysmStatCondition::WhileChannelling`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bIsChannelling = false;
+
+	/**
+	 * How long the character has been channelling, in seconds, or negative
+	 * while it is not. Ruled 2026-10-08. Counted from the first channelled
+	 * skill to begin while none was running. `ChannellingForUnderSeconds`
+	 * reads it, and asks `bIsChannelling` first, so a figure left here by hand
+	 * holds nothing for a character that is not channelling.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsChannelling = -1.0f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 DebuffsCarried = 0;
+
+	/**
+	 * Whether this character's attacks can apply Cripple or Weaken at all, which
+	 * is to say whether either chance is above zero. Issue #1718.
+	 *
+	 * `Ravager_basic_c_c0` Spreading Hurt is the node: "+4% increased Area of
+	 * Effect per point for attacks that Cripple or Weaken."
+	 *
+	 * A FACT ABOUT THE ATTACKER AND NOT ABOUT THE BLOW, which is what the node's
+	 * wording forces. An area of effect is used to SHAPE an attack before it
+	 * lands, so "attacks that applied one" cannot be known when this is read.
+	 * What can be known is whether this character's attacks are ones that
+	 * cripple or weaken, and the two chance stats are what say so.
+	 *
+	 * FALSE IS THE ONLY "NOTHING" THIS NEEDS, the argument `bIsBleeding` above
+	 * makes. A character with no combat attribute set and one whose chances are
+	 * both zero are alike here: neither can apply either ailment, and a bonus
+	 * for attacks that do is correctly worth nothing to both.
+	 *
+	 * READ OFF THE ATTRIBUTES RATHER THAN RESOLVED AGAIN, and that is a real
+	 * limit worth stating. This is built while the pipeline is being run, so
+	 * asking the pipeline for the two chances here would re-enter it. The
+	 * attribute holds the chance worked out with no skill in hand, so a chance
+	 * that exists only on a row scoped by a required tag is not in it. Every
+	 * authored chance row today is unscoped -- the four Ravager nodes granting
+	 * one carry no required tags -- so the reading is complete for the rows that
+	 * exist, and a future scoped row would narrow it rather than break it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bCanCrippleOrWeaken = false;
+
+	/**
+	 * How many minions the character is commanding right now. Issue #1518.
+	 *
+	 * IMPS AND THRALLS TOGETHER. `UCataclysmCommand::ThingsCommandedBy` is the
+	 * list and it holds both, which is what the Ritualist tree means by the
+	 * word: the decision of 2026-09-08 kept "imp" and "thrall" only where a node
+	 * means one of the two and says "minion" everywhere it means both.
+	 *
+	 * ZERO IS THE ANSWER FOR EVERY CHARACTER THAT COMMANDS NOTHING, which is
+	 * every character in the game but a Ritualist that has summoned or
+	 * subjugated something. It is a count rather than a measurement, so its
+	 * default is 0 and not the -1 the readings above use to mean "not asked".
+	 */
+	int32 MinionsHeld = 0;
+
+	/**
+	 * How many of those are deployable machines. Issue #1833, deployable Part 3.
+	 * See `PerDeployableActive`.
+	 */
+	int32 DeployablesActive = 0;
+
+	/**
+	 * How many of those machines are traps, and how many are not. Ruled
+	 * 2026-10-07. The two add up to `DeployablesActive`. See `PerTrapActive`
+	 * and `PerGadgetActive`.
+	 */
+	int32 TrapsActive = 0;
+	int32 GadgetsActive = 0;
+
+	/** Seconds on the floor this character stands on, or -1. Issue #1833. */
+	float SecondsOnFloor = -1.0f;
+
+	/** Dungeon floors cleared this run, or -1 for a character with no player state. */
+	int32 FloorsCleared = -1;
+
+	/** The Armor attribute, or -1 when there is no combat set. Issue #1833. */
+	float Armor = -1.0f;
+
+	/** Unique Cataclysm bosses ever defeated, or -1 with no player state. */
+	int32 CataclysmBossesDefeated = -1;
+
+	/**
+	 * What the skill dealing this blow cost, as a percentage of the character's
+	 * maximum health. Issue #983.
+	 *
+	 * NOT A STATE OF THE CHARACTER AT ALL, unlike everything above it, and it
+	 * sits here because this is what the pipeline is handed besides the skill's
+	 * tags. It is a property of the skill in hand, so two blows an instant apart
+	 * from one character can carry different values.
+	 *
+	 * NEGATIVE MEANS THE SKILL IS NOT KNOWN, which is every caller that has no
+	 * blow in hand -- the character sheet, an enemy's plain attack, a burning
+	 * patch of ground. Zero is a real reading and means the skill cost nothing,
+	 * which is every skill in the game except Blood Pyre for a character without
+	 * the Deeper Cuts node. Both answer no to a threshold above zero, so the two
+	 * do not have to be told apart by any caller; they are kept distinct because
+	 * the distinction is real.
+	 *
+	 * THREADED ON PURPOSE, AND NOT THE SAME VALUE AS THE BLOW CONTEXT'S. Issue
+	 * #1602, ruled 2026-09-14. The cost is passed from the caller that knows it
+	 * down to the lookup that needs it, through eight signatures and two stored
+	 * members, because it exists BEFORE any blow does: a projectile carries it
+	 * from firing to landing, and the structure describing a blow is built only
+	 * when one lands. There is no second copy that can disagree, so this is not
+	 * the duplication issue #1581 was about. Do not merge it onto the blow
+	 * context; the same note sits at each of the three declarations.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SkillHealthCostPercent = -1.0f;
+
+	/**
+	 * What the blow being taken is. Issue #666.
+	 *
+	 * THE SECOND READING HERE THAT IS NOT A STATE OF THE CHARACTER, after the
+	 * skill's cost above, and passed in for the same reason. Only the damage
+	 * taken lookup in `UCataclysmDamageCalculation::Resolve` has a hit in hand;
+	 * every other caller leaves every fact false, and the four predicates that
+	 * read it refuse. See `FCataclysmBlowContext`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FCataclysmBlowContext Blow;
+
+	/**
+	 * Whether the character moved in the last sample. Issue #41, slice 2.
+	 *
+	 * FALSE IS THE ONLY "NOTHING" THIS NEEDS, the argument `bIsBleeding` makes: a
+	 * caller with no character and a character standing still both answer no, and
+	 * a bonus for moving is correctly withheld from both. `WhileStationary` cannot
+	 * be this field negated, for that reason, and asks the clock below for a
+	 * character first.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bIsMoving = false;
+
+	/**
+	 * Seconds since the character last moved, or zero while it is moving.
+	 * Issue #41, slice 2.
+	 *
+	 * NEGATIVE MEANS THERE IS NO CHARACTER TO READ, which is the character sheet
+	 * and a test passing plain numbers. A character's clock starts when it spawns,
+	 * so one that has never moved reads the seconds since it spawned rather than
+	 * -1, and "stationary for 3 seconds" is true of it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceMoved = -1.0f;
+
+	/**
+	 * Seconds since the character last attacked. Issue #41, slice 2.
+	 *
+	 * ITS OWN ATTACK, not a blow it took. Negative means there is no character to
+	 * read, and a character that has not attacked since it spawned reads the
+	 * seconds since then.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceOwnAttack = -1.0f;
+
+	/**
+	 * How far the character moved before the blow in hand, in metres.
+	 * Issue #41, slice 2.
+	 *
+	 * THE THIRD READING HERE THAT IS NOT A STATE OF THE CHARACTER, after the
+	 * skill's cost and the blow's facts, and passed in for the same reason: it is
+	 * measured when the skill is paid for and carried on the blow, so two blows an
+	 * instant apart from one character can hold different values.
+	 *
+	 * NEGATIVE MEANS NO BLOW IS IN HAND. Zero is a real reading and means the
+	 * character had not moved since its own last attack.
+	 *
+	 * NOT EITHER DISTANCE BETWEEN THE TWO CHARACTERS. There are now three
+	 * distance-shaped readings in this struct and they are easy to confuse, so:
+	 *
+	 *   MetresMovedBeforeBlow       how far the ATTACKER travelled, this field
+	 *   Blow.OpponentDistanceMetres how far away the ATTACKER stood, filled only
+	 *                               on the defender's damage taken lookup
+	 *   TargetDistanceMetres        how far away the TARGET stood, filled only on
+	 *                               the attacker's own lookups
+	 *
+	 * The second and third are the same measurement read from opposite ends, and
+	 * whichever one is not on the path in hand is -1, which refuses.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float MetresMovedBeforeBlow = -1.0f;
+
+	/**
+	 * How many enemies the attack this blow belongs to struck together. Issue
+	 * #1515.
+	 *
+	 * A PROPERTY OF THE BLOW BEING DEALT, like `MetresMovedBeforeBlow` above,
+	 * and carried the same way: set on `FCataclysmHitDelivery` where the group
+	 * of blows is gathered, and passed into the lookup rather than read off
+	 * the character.
+	 *
+	 * COUNTED BEFORE ANY BLOW RESOLVES, so an enemy that evades still counts.
+	 * Each blow is priced before the next target is resolved, so the number
+	 * that LANDED is not known until all but the last have been priced; and
+	 * Extinction counts the enemies it consumes the same way. A judgement,
+	 * ruled on 2026-09-16 and recorded in `docs/DECISIONS.md`.
+	 *
+	 * NEGATIVE MEANS NO GROUP IS IN HAND, which refuses the condition and gives
+	 * the scale nothing.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 EnemiesStruckTogether = -1;
+
+	/**
+	 * How far the charge dealing the blow in hand had gone when that blow
+	 * landed, in metres. Ruled 2026-10-08. See
+	 * `ECataclysmStatScale::ShareOfRangeMoved`, its one reader.
+	 *
+	 * A PROPERTY OF THE BLOW BEING DEALT, carried as `MetresMovedBeforeBlow` is:
+	 * set on `FCataclysmHitDelivery::MetresCharged` by the one skill shape that
+	 * charges, and passed into the lookup rather than read off the character.
+	 *
+	 * A FOURTH DISTANCE-SHAPED READING, AND NOT ANY OF THE THREE LISTED ABOVE.
+	 * `MetresMovedBeforeBlow` is the walk BEFORE the skill was pressed. This is
+	 * the ground the skill itself covered AFTER the press.
+	 *
+	 * NEGATIVE MEANS THE BLOW IN HAND IS NOT A CHARGE'S OWN, or no blow is in
+	 * hand. Zero is a real reading: a charge that struck before it had moved.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float MetresCharged = -1.0f;
+
+	/**
+	 * The range the charge dealing the blow in hand used, in metres: its stated
+	 * range after the character's own increases to skill range. Ruled
+	 * 2026-10-08. Carried with `MetresCharged` above, and negative when that is.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float ChargeRangeMetres = -1.0f;
+
+	/**
+	 * How far away the character being HIT stood, in metres, when the blow was
+	 * worked out. Issue #1596.
+	 *
+	 * FILLED ONLY ON THE ATTACKER'S OWN LOOKUPS -- its attack damage, both
+	 * buckets, and its spell damage -- because those are the ones with a target
+	 * in hand. `UCataclysmSkillEffects::ApplyHit` measures it once with
+	 * `UCataclysmTargeting::MetresBetween`, which is the one definition of the
+	 * distance between two actors in the tree, and passes it to all three.
+	 *
+	 * NEGATIVE MEANS NOT KNOWN, and zero is a real distance, because two
+	 * characters can stand on one spot. So the guard cannot be folded into the
+	 * comparison: `>= 0` first, then the threshold.
+	 *
+	 * A MINION'S BLOW REPORTS -1 DELIBERATELY. `ACataclysmMinion` strikes with the
+	 * summoner as the attacker, so a number measured here would be the summoner's
+	 * distance to the minion's target. That number is defensible by the row's own
+	 * sentence, and it is refused anyway: a player's conditional damage bonus does
+	 * not reach a minion's blow. `FCataclysmHitDelivery::bCarriesNoTargetDistance`
+	 * says so at the call site, beside the five exclusions already there.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float TargetDistanceMetres = -1.0f;
+
+	/**
+	 * Whether the character being HIT is staggered. Issue #45.
+	 *
+	 * THE SECOND READING OF THE TARGET FILLED ONLY ON THE ATTACKER'S OWN LOOKUPS,
+	 * beside `TargetDistanceMetres` above and for the same reasons. It is the
+	 * mirror of `Blow.bOpponentIsStaggered`, which is the same state read from the
+	 * other end and filled only on the defender's damage taken lookup.
+	 *
+	 * FALSE IS BOTH "NOT STAGGERED" AND "NO TARGET IN HAND", and unlike the
+	 * distance beside it there is no third value to tell those apart. That costs
+	 * nothing, because both answers refuse: a lookup with no target must not grant
+	 * a bonus conditioned on one. The distance needs its -1 only because zero is a
+	 * real distance, and a bool has no such collision.
+	 *
+	 * A MINION'S BLOW REPORTS FALSE DELIBERATELY, exactly as the distance reports
+	 * -1. `ACataclysmMinion` strikes with the summoner as the attacker, so every
+	 * attacker-side reading reaches it unless it is stopped, and a player's
+	 * conditional damage bonus should not reach a minion's blow at all.
+	 * `FCataclysmHitDelivery::bCarriesNoTargetState` says so at the call site.
+	 * Note that the ground is different from the distance's: the staggered state
+	 * of the minion's target is the RIGHT reading, not a wrong one, and it is
+	 * refused anyway because of whose bonus it is.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetIsStaggered = false;
+
+	/**
+	 * Whether the character being hit stands in a ground zone the asker's skill left. Ruled 2026-10-06. Filled by
+	 * `WithTargetState` only when some modifier in the lookup asks; false otherwise, which refuses. See
+	 * `ECataclysmStatCondition::TargetStandsInYourZone`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetStandsInYourZone = false;
+
+	/**
+	 * Whether the character being hit is silenced. Ruled 2026-10-17. Filled by `WithTargetState` only when some
+	 * modifier in the lookup asks; false otherwise, which refuses. See `ECataclysmStatCondition::TargetIsSilenced`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetIsSilenced = false;
+
+	/**
+	 * Whether the character being hit is moving. Ruled 2026-10-23 (#2235). Filled by `WithTargetState` only when some
+	 * modifier in the lookup asks; false otherwise, which refuses. See `ECataclysmStatCondition::TargetIsMoving`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetIsMoving = false;
+
+	/**
+	 * Whether the character being hit is a boss. Issue #1815.
+	 *
+	 * FALSE MEANS NOT A BOSS OR NOT READ, and nothing distinguishes the two.
+	 * `CurrentConditions` inspects the target only when some modifier in that
+	 * lookup asks about its boss-ness, so an ordinary lookup leaves this false
+	 * without ever looking. False is the safe direction: a bonus meant for
+	 * bosses that fails to read grants nothing, where the other default would
+	 * grant it against every character in the game.
+	 *
+	 * NOT `Blow.bOpponentIsBoss`, WHICH IS THE OTHER END OF THE BLOW. That one
+	 * is filled from `Hit.bFromBoss` on the defender's damage taken lookup and
+	 * answers "a boss hit me". A row carrying the wrong half of the pair reads a
+	 * field nothing filled and grants nothing.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetIsBoss = false;
+
+	/**
+	 * Whether the boss-ness above was actually read. Issue #1815.
+	 *
+	 * THE NEGATION IS WHY THIS EXISTS, AND IT IS NOT DECORATION. With one flag,
+	 * `TargetIsBoss` refuses when nothing was read, which is right -- but its
+	 * mirror `TargetIsNotBoss` would ANSWER TRUE for a lookup that never looked,
+	 * so a penalty meant for ordinary enemies would apply to a character sheet
+	 * with no target in hand, and to every lookup that asked about something
+	 * else entirely.
+	 *
+	 * SO BOTH HALVES ASK THIS FIRST and both refuse together when it is false.
+	 * That is the same rule the health reading states in its own words: unread
+	 * is what the conditions refuse on. A single flag cannot express three
+	 * states, and there are three: a boss, not a boss, and nothing looked at.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetIsBossKnown = false;
+
+	/**
+	 * Whose question this is: the ability system asking for the stat. Issue
+	 * #1815. Filled by `UCataclysmAbilitySystemComponent::CurrentConditions`,
+	 * which every lookup builds its state through, so the target-side record
+	 * of who has struck it can be asked about "you" without each caller passing
+	 * itself. Not a property: it is a pointer to the asker for the length of
+	 * one lookup, and nothing keeps it.
+	 */
+	const UAbilitySystemComponent* AskingAbilitySystem = nullptr;
+
+	/**
+	 * The character or thing this lookup is about, or null for a lookup with
+	 * none. Issue #1833, phase 2: `PerConsecutiveHit` counts only the hits
+	 * landed on it. Filled by `WithTargetState`. Not a property, for the reason
+	 * `AskingAbilitySystem` gives.
+	 */
+	const AActor* LookupTarget = nullptr;
+
+	/**
+	 * Whether the target's record of who has struck it was read. Issue #1815.
+	 * The two first-hit conditions ask this first, so a lookup with no target in
+	 * hand refuses rather than calling every enemy unstruck.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetStrikeHistoryKnown = false;
+
+	/** Whether a blow of the asker's has got through to the target. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetStruckByYou = false;
+
+	/** Whether a critical strike of the asker's has got through to the target. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetCritByYou = false;
+
+	/**
+	 * How long the character's current combat has lasted, in seconds. Negative
+	 * means it is not in combat, or cannot be read. Issue #1815.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsInCombat = -1.0f;
+
+	/**
+	 * How long the character has been out of combat, in seconds. Negative means
+	 * it is in combat, or cannot be read. Issue #1815.
+	 *
+	 * NEVER BOTH NON-NEGATIVE, and both negative only for a character that
+	 * cannot be read, which is why `InCombat` and `OutOfCombat` each refuse it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsOutOfCombat = -1.0f;
+
+	/** How many self-buff skills are running on the character. Issue #1815. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 BuffsHeld = 0;
+
+	/** How many aura skills are running on the character. Issue #1686. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 AurasHeld = 0;
+
+	/**
+	 * How many of the three pools (health, mana, energy shield) this character
+	 * has, a maximum above nought, and has a leech payment still owed into.
+	 * Issue #1833, ruled 2026-10-07.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 LeechPoolsInFlight = 0;
+
+	/**
+	 * How long, in seconds, the character has had a leech payment owed into a
+	 * pool it has without a break, or nought when none is owed. Ruled
+	 * 2026-10-07. See `ECataclysmStatScale::PerSecondLeeching`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsLeeching = 0.0f;
+
+	/**
+	 * How many passive points the character has spent, or -1 for one with no
+	 * player state to ask. Issue #1686. See `PerClassPointSpent`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 ClassPointsSpent = -1;
+
+	/**
+	 * Kills this run, or -1 for one with no player state to ask. Issue #1833.
+	 * See `PerKillThisRun`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 RunKills = -1;
+
+	/**
+	 * Kills in every run the character has played, or -1 for one with no
+	 * player state to ask. Issue #1833. See `PerKillOfTheCharacter`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 CharacterKills = -1;
+
+	/**
+	 * How many seconds the minion whose blow is being judged has been active,
+	 * or -1 when no minion's blow is. Issue #1833, deployable Part 2. See
+	 * `PerSecondTheMinionHasBeenActive`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float MinionSecondsActive = -1.0f;
+
+	/**
+	 * How much mana the character holds now. Negative means unknown: no vital
+	 * attribute set. Issue #1815.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float ManaHeld = -1.0f;
+
+	/**
+	 * How long ago the asker's most recent blow got through to the target, in
+	 * seconds; -1 for never, and for a target nobody read. Issue #1515.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceStruckByYou = -1.0f;
+
+	/**
+	 * How far away each hostile character near this one is, in metres. Empty
+	 * means either that nobody is near or that this lookup never asked. Issue
+	 * #1597.
+	 *
+	 * DISTANCES RATHER THAN A COUNT, because the radius belongs to the ROW and
+	 * one state serves every row in a stat's list. A character carrying rows at
+	 * three and at four metres needs one walk, not two, and each row counts the
+	 * entries inside its own `ReachMetres`.
+	 *
+	 * FILLED ONLY WHEN A ROW ACTUALLY ASKS. `UCataclysmAbilitySystemComponent`
+	 * looks at the modifiers first and leaves this empty unless one of them uses
+	 * `EnemiesInReachAtLeast` or `PerEnemyInReach`, so a stat lookup that does not
+	 * count enemies walks nothing. That matters because a stat is worked out many
+	 * times a second: the project owner's Horde capture of 2026-09-10 measured the
+	 * physics sphere query this deliberately avoids at 809 to 855 milliseconds of
+	 * EVERY SECOND of game time, holding the frame rate at 2.5 frames a second.
+	 *
+	 * EMPTY AND "NOBODY IS NEAR" ARE THE SAME ANSWER HERE, and that is safe
+	 * because both mean every row reading it grants nothing. A row asking for at
+	 * least one enemy refuses, and a row scaling per enemy scales by zero.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	TArray<float> HostileDistancesMetres;
+
+	/**
+	 * How far away each hostile character carrying the Cripple debuff is, within
+	 * the widest reach any crippled-enemy row asks about. Issue #1515.
+	 *
+	 * A SECOND LIST RATHER THAN A FLAG PER ENTRY OF THE ONE ABOVE. That list is
+	 * filled by a walk returning distances only, and nothing about a distance
+	 * says whether its body is crippled. This one is filled by the walk that
+	 * also returns the characters, so each can be asked about its debuffs while
+	 * it is in hand.
+	 *
+	 * FILLED ONLY WHEN A ROW ACTUALLY ASKS, exactly as the list above is, so a
+	 * lookup whose rows carry no crippled-enemy scale pays nothing for it.
+	 *
+	 * EMPTY AND "NOBODY CRIPPLED IS NEAR" ARE THE SAME ANSWER, and that is safe
+	 * for the reason the list above gives: every row reading it grants nothing.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	TArray<float> CrippledHostileDistancesMetres;
+
+	/**
+	 * The debuffs the character being HIT is carrying, as the explicit tags
+	 * `UCataclysmDebuffs::TagsOnActor` returns. Issue #1515.
+	 *
+	 * THE MIRROR OF `FCataclysmBlowContext::OpponentDebuffs`, READING THE OTHER
+	 * END OF THE BLOW, and the pair is separate for the reason
+	 * `bTargetIsStaggered` and `bOpponentIsStaggered` are: the blow record is
+	 * filled only on the defender's damage taken lookup and this only on the
+	 * attacker's own lookups, so a row carrying the wrong condition of a pair
+	 * reads a field nothing filled and grants nothing.
+	 *
+	 * FILLED ONLY WHEN A ROW ACTUALLY ASKS, exactly as
+	 * `HostileDistancesMetres` above is, and for a cost this project has already
+	 * named. `UCataclysmDebuffs::DamageAgainstSharedDebuff` reads its stat before
+	 * comparing anything and says why: "asking the other way round would walk two
+	 * tag containers on every blow anybody strikes." A walk here would be a third,
+	 * on every blow every creature throws. `UCataclysmAbilitySystemComponent::
+	 * WithTargetState` is the gate, and its whole cost to a lookup that asks
+	 * about no ailment is one pass over that stat's own modifier list.
+	 *
+	 * EMPTY IS "NO TARGET, NOTHING CARRIED, OR NO ROW ASKED", AND ALL THREE
+	 * CORRECTLY REFUSE. The third is not a hidden failure: a lookup with no row
+	 * asking has no condition to answer, so there is nothing for the empty
+	 * container to be wrong about.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FGameplayTagContainer TargetDebuffs;
+
+	/**
+	 * How much health the character being HIT has left, as a percentage of its
+	 * own maximum. Negative means nothing was read. Issue #1515.
+	 *
+	 * NEGATIVE FOR "NOT READ", the same convention `HealthPercent` above uses and
+	 * for the same reason: zero is a real reading -- a target on no health at all
+	 * -- so "no target" and "dying" would otherwise be the same number.
+	 *
+	 * FILLED BESIDE `TargetDebuffs` AND GATED THE SAME WAY.
+	 * `UCataclysmAbilitySystemComponent::WithTargetState` looks at the rows
+	 * first, and one pass over them answers both questions.
+	 *
+	 * THREE THINGS MAKE IT NEGATIVE AND ALL THREE CORRECTLY REFUSE: no target in
+	 * hand, a target whose health cannot be read, and no row in this lookup
+	 * asking about it. The second is the interesting one -- see
+	 * `ECataclysmStatCondition::TargetHealthBelowPercent` for why an unknown
+	 * refuses here while the stagger ceiling deliberately does not.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float TargetHealthPercent = -1.0f;
+
+	/**
+	 * How much energy shield the character is carrying. Issue #1515.
+	 *
+	 * NEGATIVE MEANS UNKNOWN, the same convention as the class resource pair
+	 * above and set the same way: an ability system with no vital attribute set
+	 * never runs the fill, so the default stands.
+	 *
+	 * ZERO IS A REAL READING AND IS NOT UNKNOWN. A shield that has been broken
+	 * is a character at zero of a real maximum, which is the ordinary case this
+	 * condition has to answer "no" for. "There is no shield" is a different
+	 * statement, carried by the maximum below, and the two are told apart on
+	 * purpose.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float EnergyShieldHeld = -1.0f;
+
+	/**
+	 * The largest that shield can be for this character. Issue #1515.
+	 *
+	 * A SECOND READING RATHER THAN A PERCENTAGE ON THE FIRST, for the reason
+	 * `ClassResourceMaximum` gives: "full" asks about the top of the bar, and a
+	 * percentage would have to be divided back out to answer it.
+	 *
+	 * READ BESIDE THE SHIELD AND NOT DERIVED FROM IT, so the two cannot be a
+	 * frame apart.
+	 *
+	 * A MAXIMUM OF ZERO REFUSES `EnergyShieldAtMaximum`, and it is the common
+	 * case rather than a corner. Only the Ritualist has a `max_energy_shield`
+	 * line in `game/Data/ClassStats.csv`, so every other class and every enemy
+	 * carries a maximum of zero while holding zero -- and without this reading
+	 * the condition would compare nothing against nothing and answer yes for
+	 * all of them.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float EnergyShieldMaximum = -1.0f;
+
+	/** A state built from a character's own numbers. Refuses nothing it knows. */
+	static FCataclysmStatConditions FromHealth(float Health, float MaxHealth)
+	{
+		FCataclysmStatConditions State;
+		if (MaxHealth > 0.0f)
+		{
+			State.HealthPercent =
+				FMath::Clamp(Health / MaxHealth * 100.0f, 0.0f, 100.0f);
+		}
+		return State;
+	}
+};
+
+/**
+ * One modifier the character carries, and what it applies to.
+ *
+ * The character holds its own increases; they are not properties of any one
+ * skill. An item granting increased area of effect applies to every skill
+ * tagged for area of effect, and to no others. `RequiredTags` empty means the
+ * modifier applies to everything.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmStatModifier
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
+	ECataclysmStatBucket Bucket = ECataclysmStatBucket::Flat;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
+	ECataclysmModifierSource Source = ECataclysmModifierSource::GearAffix;
+
+	/**
+	 * PERCENTAGE POINTS for Increased and More. Points of the stat for Flat.
+	 *
+	 * So an Increased of 125 is +125% and a More of 60 is a 1.60x multiplier.
+	 * The Python model in sim/cataclysm_sim/character.py stores these as
+	 * fractions instead -- 1.25 and 0.60 -- because that is what reads naturally
+	 * in the tuning rig. Percentage points are used here because every other
+	 * percentage in this module is already in points: evasion's soft cap is
+	 * 60.0, the resistance cap is 70.0, and the damage calculation divides by
+	 * 100 throughout. Mixing the two conventions inside one module would be
+	 * worse than differing from the model, so the conversion happens at the
+	 * boundary and a test pins a value against the model to prove it.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
+	float Value = 0.0f;
+
+	/**
+	 * Every one of these must be matched by the skill in hand, or the modifier
+	 * does not apply. Empty applies to everything, and so does Scope.Global.
+	 *
+	 * Matching is hierarchical, the way the design's tag names are built: a
+	 * modifier requiring Type.AOE is satisfied by a skill tagged
+	 * Type.AOE.PointBlank. FGameplayTagContainer::HasTag already does this.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
+	FGameplayTagContainer RequiredTags;
+
+	/**
+	 * A state of the CHARACTER this modifier depends on, or Always. Issue #959.
+	 *
+	 * BOTH THIS AND `RequiredTags` MUST HOLD. They ask about different things --
+	 * this about the character, that about the skill in hand -- so a modifier
+	 * carrying both applies only when both are satisfied.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
+	ECataclysmStatCondition Condition = ECataclysmStatCondition::Always;
+
+	/** What the condition compares against. A percentage for the health one. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
+	float ConditionValue = 0.0f;
+
+	/**
+	 * A second state this modifier depends on, or Always. Issue #1833, ruled
+	 * 2026-09-30 under the owner's delegation: "You take 20%-35% increased
+	 * damage from melee attacks while your HP is above 75%" names two.
+	 *
+	 * BOTH CONDITIONS MUST HOLD, the literal reading of every sentence that
+	 * names two. Everything that reads `Condition` to decide what a lookup
+	 * gathers or when a reader asks again reads this too.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
+	ECataclysmStatCondition Condition2 = ECataclysmStatCondition::Always;
+
+	/** What the second condition compares against. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
+	float ConditionValue2 = 0.0f;
+
+	/**
+	 * A state of the CHARACTER this modifier's size grows with, or Fixed. #968.
+	 *
+	 * A SECOND AXIS BESIDE `Condition`, NOT AN ALTERNATIVE TO IT. One decides
+	 * whether the modifier is in the sum, the other how large it is when it is.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
+	ECataclysmStatScale Scale = ECataclysmStatScale::Fixed;
+
+	/**
+	 * How large one step of that state is, in the state's own units.
+	 *
+	 * `Value` IS WHAT ONE WHOLE STEP IS WORTH. Vicious Onslaught at ten points
+	 * is a `Value` of 10 with a `ScaleStep` of 5, so a character 12% below full
+	 * health carries two steps and gets +20%.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
+	float ScaleStep = 0.0f;
+
+	/**
+	 * The most whole steps a scaled value counts. Zero means no cap. Issue
+	 * #1815.
+	 *
+	 * "UP TO 10 STACKS" IS 10, and "for every 10 seconds, up to 60 seconds" is
+	 * a step of 10 and a cap of 6. Counted in steps rather than in the state's
+	 * own units, because "up to N stacks" is how the sentences put it; ruled
+	 * under the owner's delegation on 2026-09-23.
+	 *
+	 * ONE PLACE, `ScaledValue`, applies it to every scale, so a scale written
+	 * later needs nothing of its own. A cap on a modifier that does not scale
+	 * caps nothing and `ValidateModifier` refuses it.
+	 *
+	 * AND IT IS REFUSED ON `ShareOfRangeMoved`, which counts a fraction and not
+	 * whole steps, and holds its own cap at the whole value. Ruled 2026-10-08.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
+	int32 ScaleMaxSteps = 0;
+
+	/**
+	 * Whose stacks `PerOwnStack` counts: the enchantment and the stat of the
+	 * row that made this modifier. Issue #1833.
+	 *
+	 * THE ENCHANTMENT AND THE STAT, NOT THE TABLE ROW'S NAME, because a row
+	 * does not carry its own name, and the generator refuses the same
+	 * enchantment and stat twice. TWO WORN COPIES OF ONE ENCHANTMENT SHARE THE
+	 * KEY, so they share one count and each copy's value is scaled by it: two
+	 * copies give double. Only a drawback is ever granted twice; a benefit on
+	 * several pieces is granted once, at the higher roll.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
+	FName StackKey;
+
+	/**
+	 * How much of the scale's reading is not counted, before the steps are.
+	 * Zero means all of it. Issue #1686.
+	 *
+	 * "FOR EVERY 10 CLASS POINTS SPENT ABOVE 100" IS A STEP OF 10 AND AN OFFSET
+	 * OF 100: 150 points spent are 50 counted, five steps. A reading at or below
+	 * the offset is worth nothing, never a negative number of steps.
+	 *
+	 * `PerClassPointSpent` READS IT, because its sentences state a threshold,
+	 * and `ValidateModifier` refuses an offset on a scale that does not read
+	 * one rather than let it be dropped. Four of the five class point
+	 * sentences count points above a figure (issue #1815's held group).
+	 *
+	 * AND `PerTrapActive` READS IT, SINCE 2026-10-07. "For each other trap" is
+	 * an offset of 1: the trap striking is not counted. No other scale reads
+	 * one.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
+	float ScaleOffset = 0.0f;
+
+	/**
+	 * How far "in reach" is for this row, in metres. Negative means the row is
+	 * not about anything near the character. Issue #1597.
+	 *
+	 * A FOURTH NUMBER, BECAUSE COUNTING ENEMIES NEARBY ASKS TWO QUESTIONS AT
+	 * ONCE: how far away, and how many. `ConditionValue` holds the count for
+	 * `EnemiesInReachAtLeast` and `ScaleStep` holds the size per enemy for
+	 * `PerEnemyInReach`, so neither of them can also hold the distance.
+	 *
+	 * THREE ALTERNATIVES WERE REJECTED. A single project-wide radius: three
+	 * radii appear in the authored rows, and the genre deliberately varies it.
+	 * Encoding the radius in the condition's name: that multiplies names by
+	 * distance. Borrowing `ScaleStep` on a row that has no scale: it reads as a
+	 * scale, and it breaks the first row wanting a count condition and a scale
+	 * together.
+	 *
+	 * NOT TO BE CONFUSED WITH THE CONDITION `TargetWithinMetres`, which is about
+	 * the one character being hit rather than a count of who is nearby, and which
+	 * carries its distance in `ConditionValue` because it asks only one question.
+	 * This field is named for the reach a count uses, and the condition and scale
+	 * that read it are both named "in reach" to match.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
+	float ReachMetres = -1.0f;
+};
+
+/**
+ * Everything one stat needs to be worked out again for a particular skill.
+ *
+ * WHY THIS HAS TO BE KEPT. This class's own reason for existing, stated at the
+ * top of it, is that "a character's area of effect has no single value -- it is
+ * one number for an area skill and another for a single-target one". But
+ * `UCataclysmPlayerClassStats::ApplyTo` worked every stat out once, with no
+ * skill in hand, and wrote a single number onto the gameplay attribute. The base
+ * and the modifier list were local variables that went out of scope, so a skill
+ * had nothing left to ask with, and every modifier naming a required tag was
+ * discarded and never seen again. Issue #943.
+ *
+ * SO THE INPUTS ARE KEPT AND THE ANSWER IS NOT. `ApplyTo` stores one of these
+ * per stat on `UCataclysmAbilitySystemComponent`, and `EvaluateForSkill` runs
+ * the same pipeline over them with the skill's own tags.
+ *
+ * THE WHOLE MODIFIER LIST, NOT ONLY THE SCOPED PART, AND THAT IS THE POINT.
+ * Applying the scoped modifiers on top of an attribute that already had the
+ * unscoped ones folded in would multiply two increase brackets together instead
+ * of summing them into one. A base of 100 with an unscoped +50% and a scoped
+ * +50% is 200 through one pipeline and 225 through two. The design says
+ * increases add: `docs/DECISIONS.md`, "a conditional increase joins the
+ * increases bracket rather than becoming a third multiplier."
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmStatInputs
+{
+	GENERATED_BODY()
+
+	/** Where the stat starts, before anything applies. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float Base = 0.0f;
+
+	/** Every modifier on it, scoped and unscoped alike. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	TArray<FCataclysmStatModifier> Modifiers;
+};
+
+/**
+ * What a pool action's percentage is a percentage OF.
+ *
+ * AN ENUM RATHER THAN TWO BOOLS, because there are three answers and two bools
+ * would carry an unstated invariant that both must not be true at once.
+ */
+/**
+ * What an action does to the characters near its wearer. Issue #1833 group D
+ * part 3, ruled 2026-10-01. `NEARBY_ACTIONS` in `tools/generate_datatables.py`
+ * holds the two action names, one per value below but None. "Nearby" is
+ * `UCataclysmAbilitySystemComponent::NearbyActionRadiusCm`.
+ */
+UENUM(BlueprintType)
+enum class ECataclysmNearbyAction : uint8
+{
+	/** Not a nearby action row. */
+	None UMETA(DisplayName = "None"),
+
+	/**
+	 * A hit of `Percent` of the wearer's weapon damage on every enemy nearby:
+	 * "When your energy shield is broken, you smite all nearby enemies".
+	 */
+	Smite UMETA(DisplayName = "Smite nearby enemies"),
+
+	/**
+	 * Each enemy nearby healed by `Percent` of its own maximum health, and never
+	 * a character on the wearer's side: "On death all nearby enemies are healed
+	 * for 10%-20% of their maximum HP".
+	 */
+	HealEnemies UMETA(DisplayName = "Heal nearby enemies"),
+
+	/**
+	 * A blow of `Percent` of the wearer's armour on every enemy nearby, meeting
+	 * each one's mitigation as a blow does: "Blocking attacks deals 200%-400% of
+	 * your armor as damage to nearby enemies". Issue #1833 group E part 3.
+	 */
+	SmiteByArmour UMETA(DisplayName = "Smite nearby enemies by armour"),
+};
+
+/**
+ * A number a worn row hangs on an ailment the wearer applies: while the character
+ * it was applied to carries that ailment, this of its numbers is moved by the
+ * row's percent. Issue #1833, ruled 2026-10-06. `AILMENT_RIDER_ACTIONS` in
+ * `tools/generate_datatables.py` holds the action names, one per value below but
+ * None. See `UCataclysmAbilitySystemComponent::ReceiveAilmentRiders`.
+ */
+UENUM(BlueprintType)
+enum class ECataclysmAilmentRider : uint8
+{
+	/** Not a rider row. */
+	None UMETA(DisplayName = "None"),
+
+	/**
+	 * Added to the damage the carrier takes from every source, as a pin's
+	 * increase is: "Bleeding enemies take 20%-40% increased damage from all
+	 * sources".
+	 */
+	DamageTaken UMETA(DisplayName = "Damage taken, increased"),
+
+	/**
+	 * Added to the armour the carrier has had removed, with Rending Blows and
+	 * the placed stacks, clamped at 100 together: "Enemies affected by your burn
+	 * effects have 10%-20% reduced armor".
+	 */
+	ArmourRemoved UMETA(DisplayName = "Armour removed"),
+
+	/**
+	 * Taken off what the carrier's attacks are worth, multiplying with Weaken:
+	 * "Poisoned enemies deal 2%-4% less damage".
+	 */
+	DamageDealt UMETA(DisplayName = "Damage dealt, less"),
+
+	/**
+	 * Added to the carrier's healing received reduction, capped at 100 with it:
+	 * "Diseased enemies' healing, regeneration and leech are reduced by 50%-100%".
+	 */
+	HealingReceived UMETA(DisplayName = "Healing received, reduced"),
+
+	/**
+	 * Taken off BOTH the carrier's movement speed and its attack speed, a factor
+	 * of a creature's `SpeedMultiplier`, multiplying with Cripple and Ground
+	 * Down: "Poisoned enemies are slowed by 30%-50%". Ruled 2026-10-06: "slowed"
+	 * is both speeds, as Cripple was read.
+	 */
+	Speed UMETA(DisplayName = "Movement and attack speed, slowed"),
+
+	/**
+	 * Taken off the carrier's movement speed ALONE, and not its attacks:
+	 * "Bleeding enemies move 5%-10% slower". Ruled 2026-10-06: movement only, as
+	 * written.
+	 */
+	MovementSpeed UMETA(DisplayName = "Movement speed alone, slowed"),
+
+	/**
+	 * HOW MANY nearby enemies the ailment passes to when its carrier dies, added
+	 * to what the ailment passes to by itself: "Disease effects you apply spread
+	 * to 1-3 nearby enemies when the afflicted enemy dies", and for a bleed,
+	 * which passes to nobody by itself, "its bleed spreads to the nearest enemy
+	 * within 5 metres". A count and not a percent. Ruled 2026-10-06. See
+	 * `UCataclysmContagion::SpreadFromTheDying`.
+	 */
+	SpreadOnDeath UMETA(DisplayName = "Spread on death, how many more"),
+
+	/**
+	 * THE INCREASE on what an ailment deals AT ONCE when the character whose
+	 * application is running applies it again: "Void splinter stacks detonate
+	 * for 50%-100% increased damage". Ruled 2026-10-06: the row is what makes
+	 * the ailment detonate at all. READ ON THE APPLIER when it applies the
+	 * ailment again, and never carried on the character struck. See
+	 * `UCataclysmSkillEffects::DetonationPercentWhenReapplied`.
+	 */
+	DetonatesWhenReapplied UMETA(DisplayName = "Detonates when reapplied, increased"),
+
+	/**
+	 * HOW MANY enemies near the target the ailment also goes to WHEN IT IS
+	 * APPLIED: "Burn effects you apply spread to 1-2 nearby enemies". A count
+	 * and not a percent. Ruled 2026-10-06. READ ON THE APPLIER when it applies
+	 * the ailment, and a copy it makes spreads no further on application. See
+	 * `UCataclysmSkillEffects::SpreadOnApplication`.
+	 */
+	SpreadOnApplication UMETA(DisplayName = "Spread on application, how many"),
+
+	/**
+	 * Taken off the carrier's MAXIMUM HEALTH while it carries the ailment, and
+	 * given back when the ailment ends: "Enemies with Necrosis have 1%-2% less
+	 * maximum health". Ruled 2026-10-08. Health above the lowered maximum is
+	 * brought down to it and is not given back. NOT READ WHERE A BLOW IS
+	 * WORKED OUT, as the others carried are: the maximum is rewritten when the
+	 * number is received, when another applier's replaces it and when the
+	 * ailment ends. See
+	 * `UCataclysmAbilitySystemComponent::RewriteMaximumHealthForAilments`.
+	 */
+	MaxHealthRemoved UMETA(DisplayName = "Maximum health, removed"),
+};
+
+/**
+ * Where an action deals the remaining damage of the wearer's own damage over time
+ * effects. Issue #1833 group D part 4, ruled 2026-10-01. `REMAINING_DAMAGE_ACTIONS`
+ * in `tools/generate_datatables.py` holds the two action names, one per value below
+ * but None. See `UCataclysmSkillEffects::DealRemainingDamageOverTime`.
+ */
+UENUM(BlueprintType)
+enum class ECataclysmRemainingDamage : uint8
+{
+	/** Not a remaining damage row. */
+	None UMETA(DisplayName = "None"),
+
+	/**
+	 * On every enemy within `UCataclysmAbilitySystemComponent::NearbyActionRadiusCm`,
+	 * and each effect ENDS once dealt: "When you die, all active DoTs on nearby
+	 * enemies instantly deal their remaining damage".
+	 */
+	Nearby UMETA(DisplayName = "Nearby enemies, ending each"),
+
+	/**
+	 * On the event's other character, and each effect is NEITHER ENDED NOR
+	 * REDUCED: "Necrosis effects deal 20%-40% of their remaining damage instantly
+	 * when you land a critical strike".
+	 */
+	Target UMETA(DisplayName = "The event's target, keeping each"),
+};
+
+/**
+ * How an action applies a status to the other character of its event. Issue
+ * #1833 group E part 1, ruled 2026-10-01. `APPLY_STATUS_ACTIONS` in
+ * `tools/generate_datatables.py` holds the two action names, one per value below
+ * but None. The status is the row's `Ailment` cell.
+ */
+UENUM(BlueprintType)
+enum class ECataclysmApplyStatus : uint8
+{
+	/** Not a status row. */
+	None UMETA(DisplayName = "None"),
+
+	/**
+	 * The value is the chance, where 100 is always, at the status's own
+	 * duration: "Retaliation damage has a 20%-40% chance to stagger the attacker".
+	 */
+	Chance UMETA(DisplayName = "A chance, at the status's own duration"),
+
+	/**
+	 * The value is the seconds, and it always applies: "Retaliation damage
+	 * applies a 2-4 second slow to the attacker".
+	 */
+	Seconds UMETA(DisplayName = "Always, for the value in seconds"),
+
+	/**
+	 * The value is the SIZE of the one application, in multiples of the status's ordinary size, and it always
+	 * applies: "When you apply a DOT, 1-4 stacks are applied to you". Ruled 2026-10-06. For a status laid on the
+	 * wearer, and since traps layer 3 (2026-10-21) for a damage over time laid on the other character of the event,
+	 * "Traps cause a bleed of 1-2 times normal strength in every enemy caught in their blast".
+	 *
+	 * NO AILMENT IN THIS GAME STACKS: a character carries one effect for each, and a repeat of the same size only
+	 * refreshes it. So "stacks" is read as size, and a 4 is one application four times as large.
+	 */
+	Sized UMETA(DisplayName = "Always, at the value's multiple of its ordinary size"),
+};
+
+/**
+ * Which skill cooldowns a reset action clears. Issue #1833, the cooldown reset
+ * action. `COOLDOWN_RESET_ACTIONS` in `tools/generate_datatables.py` holds the
+ * six action names, one per value below but None.
+ */
+UENUM(BlueprintType)
+enum class ECataclysmCooldownReset : uint8
+{
+	/** Not a cooldown reset row. */
+	None UMETA(DisplayName = "None"),
+
+	/** Every slot's, the ultimate included: "all your skill cooldowns". */
+	All UMETA(DisplayName = "All"),
+
+	/**
+	 * Every slot's but the one the event's skill is in: "Using your ultimate
+	 * ability resets all other skill cooldowns". The event's tags name the slot.
+	 */
+	Others UMETA(DisplayName = "All but the event's own"),
+
+	/** The heavy attack's. */
+	Heavy UMETA(DisplayName = "Heavy"),
+
+	/** The special ability's. */
+	Special UMETA(DisplayName = "Special"),
+
+	/** The movement ability's. */
+	Movement UMETA(DisplayName = "Movement"),
+
+	/**
+	 * The slot of the skill the event names: "Ranged kills have a 20%-40%
+	 * chance to refund the skill cooldown".
+	 */
+	EventSkill UMETA(DisplayName = "The event's own"),
+};
+
+/**
+ * What an "every Nth" row counts, and so what happens on the Nth. Issue #1833,
+ * phase 2. Each kind implies its event, so the row names no Action Event.
+ */
+UENUM(BlueprintType)
+enum class ECataclysmEveryNth : uint8
+{
+	/** Not an "every Nth" row. */
+	None UMETA(DisplayName = "None"),
+
+	/**
+	 * "Every 5th hit you take deals 50%-100% bonus damage": the Nth landed hit
+	 * taken that is not damage over time takes `Percent` more.
+	 */
+	HitTaken UMETA(DisplayName = "Nth hit taken"),
+
+	/**
+	 * "Every third cast of your spells cost 20%-80% of your current mana": the
+	 * Nth spell cast costs its normal cost plus `Percent` of the mana held.
+	 */
+	SpellCast UMETA(DisplayName = "Nth spell cast"),
+
+	/** "Every 10th attack deals no damage": the Nth attack deals none. */
+	Attack UMETA(DisplayName = "Nth attack"),
+};
+
+UENUM(BlueprintType)
+enum class ECataclysmPoolActionBase : uint8
+{
+	/** The most the pool can hold. What a sentence means when it says nothing. */
+	Maximum UMETA(DisplayName = "The pool's maximum"),
+
+	/**
+	 * What the character holds right now. Different from the maximum on a hurt
+	 * character, and a percentage of it can never empty the pool by itself.
+	 */
+	Current UMETA(DisplayName = "What is currently held"),
+
+	/**
+	 * The amount the event itself carried -- the health a skill's cost took, for
+	 * the row that restores that amount as mana. Only events that carry an
+	 * amount may be named by such a row, and the generator refuses the rest.
+	 */
+	EventAmount UMETA(DisplayName = "The amount the event carried"),
+};
+
+/**
+ * What a worn enchantment DOES when an event happens, rather than what it
+ * changes. Issue #1815.
+ *
+ * A STAT MODIFIER IS PULLED AND THIS IS PUSHED, which is the whole difference.
+ * The pipeline reads a modifier when something asks for the stat; an action
+ * happens at the moment its event does and is then over. Seventeen authored
+ * enchantments say "restore", "generate" or "drain", and not one of them can be
+ * written as a modifier.
+ *
+ * THE POOL IS A NAME RATHER THAN THE TWO ATTRIBUTES IT MEANS, so this header
+ * needs to know about no attribute set.
+ * `UCataclysmAbilitySystemComponent::PoolAttributesFor` is the one place that
+ * turns a name into that pair, which makes it the one place a name nobody
+ * implemented can be reported rather than silently granting nothing.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmPoolAction
+{
+	GENERATED_BODY()
+
+	/**
+	 * The event that fires it, as `game/Data/EnchantmentEffects.csv` spells it:
+	 * `block`, `dodge`, `hit_taken` and the rest. These are the clock condition
+	 * names with `seconds_after_` removed, because a clock asks "within N seconds
+	 * of X" and this happens AT X.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FName Event;
+
+	/** `health`, `mana`, `energy_shield` or `class_resource`. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FName Pool;
+
+	/**
+	 * PERCENTAGE POINTS, SIGNED. Positive restores and negative drains, which is
+	 * the convention the sentence uses and the one `FCataclysmStatModifier::Value`
+	 * already uses.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float Percent = 0.0f;
+
+	/** What the percentage is a percentage OF. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	ECataclysmPoolActionBase Base = ECataclysmPoolActionBase::Maximum;
+
+	/**
+	 * Tags the thing that caused the event must carry, or empty for any.
+	 *
+	 * TWO AUTHORED ROWS ARE SCOPED THIS WAY: "melee kills" and "strike skills
+	 * ... on hit". The tags tested are the SKILL'S, carried by the announcement
+	 * that raised the event -- `Type.Melee` is on 30 of the 403 rows of
+	 * `game/Data/WeaponSkills.csv` and `Type.Strike` on 31, measured 2026-09-14.
+	 *
+	 * AN EVENT THAT CARRIES NO TAGS CANNOT SATISFY A SCOPED ROW, which is the
+	 * right answer rather than a missing one: a row scoped to melee must not
+	 * fire on an event that cannot say whether it was melee.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FGameplayTagContainer RequiredTags;
+
+	/**
+	 * A state of the character this only fires in, judged AT THE MOMENT the
+	 * event happens rather than when a stat is read.
+	 *
+	 * `Always` is the default and means no condition, which is what that
+	 * enumerator has meant since issue #959. One authored row wants a real
+	 * one: "killing an enemy while below 30% HP".
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	ECataclysmStatCondition Condition = ECataclysmStatCondition::Always;
+
+	/** What that condition compares against. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float ConditionValue = 0.0f;
+
+	/**
+	 * Set, this action GRANTS A STACK of the row it names instead of moving a
+	 * pool. Issue #1833: the event, the tag scope and the condition are judged
+	 * exactly as for a pool, and `Pool` is not read.
+	 *
+	 * ONLY AN EVENT THAT LANDED GRANTS ONE, ruled 2026-09-23: an evaded blow is
+	 * not a hit (the ruling of 2026-09-04). See `ActOnEvent`'s `bLanded`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FName StackKey;
+
+	/** How long the row's stacks last after the last one was granted. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float StackSeconds = 0.0f;
+
+	/** The most stacks the row holds. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 StackCap = 0;
+
+	/**
+	 * Set, the stack this action grants is a COUNT OF HITS IN A ROW ON ONE
+	 * ENEMY rather than a stack with a window. Issue #1833, phase 2. The event
+	 * must name the enemy struck; a landed hit on another one starts the count
+	 * again. `StackSeconds` is not read: the count has no timer (ruled
+	 * 2026-09-24). UNLIKE AN OWN STACK, `RequiredTags` SCOPE THE COUNT: "each
+	 * consecutive melee hit" counts melee hits only.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bConsecutiveHits = false;
+
+	/**
+	 * Set, this action PLACES A STACK ON THE OTHER CHARACTER of the event: the
+	 * enemy struck, or the attacker that struck. Issue #1833, phase 2: "Strike
+	 * skills reduce enemy armor by 3%-6% per hit for 5 seconds, up to 6
+	 * stacks". `Percent` is what one stack removes, `StackSeconds` the window
+	 * (a grant refreshes it and the count lapses together, ruled 2026-09-24)
+	 * and `StackCap` the cap, where 0 is none ("stacking indefinitely"). As
+	 * with a count of hits in a row, `RequiredTags` scope the grant.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FName PlacedKey;
+
+	/** Set, the placed stack cuts the other character's damage; clear, its armour. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bPlacedCutsDamage = false;
+
+	/**
+	 * Set, this action COUNTS ITS KIND OF EVENT, and acts on every Nth. Issue
+	 * #1833, phase 2. `EveryNth` is N, `Percent` what the Nth is worth (unused
+	 * for an attack, which deals none) and `NthKey` whose count it is: the
+	 * enchantment and the action. Ruled 2026-09-24: a count ends at death and
+	 * on leaving combat, and has no timer.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	ECataclysmEveryNth NthKind = ECataclysmEveryNth::None;
+
+	/** N, for an "every Nth" action. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 EveryNth = 0;
+
+	/** Whose count an "every Nth" action advances. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FName NthKey;
+
+	/**
+	 * Set, this action CLEARS SKILL COOLDOWNS instead of moving a pool. Issue
+	 * #1833, the cooldown reset action. `Percent` is the chance, 100 for always,
+	 * and `ResetKey` the row's, so two worn copies roll once per event.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	ECataclysmCooldownReset CooldownReset = ECataclysmCooldownReset::None;
+
+	/**
+	 * The row's own key for a cooldown reset or reduction, the enchantment and
+	 * the action, so two worn copies act once per event.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FName ResetKey;
+
+	/**
+	 * Set, this action TAKES SECONDS OFF RUNNING SKILL COOLDOWNS instead of
+	 * moving a pool. Issue #1833, the cooldown reduction action. `Percent` is
+	 * the seconds, and only `All` and `Heavy` are used: the two targets a row
+	 * asks for.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	ECataclysmCooldownReset CooldownReduce = ECataclysmCooldownReset::None;
+
+	/**
+	 * Set, this action CLEANSES ITS WEARER instead of moving a pool: `UCataclysmDebuffs::Cleanse`. For "You are
+	 * cleansed every 5 seconds", ruled 2026-09-26.
+	 *
+	 * READ ONLY ON THE TIMED EVENT, by `UCataclysmAbilitySystemComponent::StepTimedGrants`, because the one row that
+	 * asks for it is on a clock. A row asking for a cleanse on another event needs its own branch in `ActOnEvent`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bCleanse = false;
+
+	/**
+	 * Set, this action GRANTS A CHARGE THE NEXT USE SPENDS instead of moving a
+	 * pool. Issue #1833, phase 2: "When you dodge an attack your next skill deals
+	 * 30%-60% increased damage". `Percent` is what one charge is worth, as
+	 * increased damage, and `Pool` is not read.
+	 *
+	 * ONLY AN EVENT THAT LANDED GRANTS ONE, the rule a row's own stacks follow.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FName NextUseKey;
+
+	/**
+	 * The most charges the row holds. One for a sentence stating no stacking,
+	 * so a second trigger while one is unspent changes nothing (ruled
+	 * 2026-09-24, a judgement with no genre source); five for "stacking up to 5
+	 * times".
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 NextUseCap = 0;
+
+	/**
+	 * True for "your next ATTACK", which a skill tagged `Type.Spell` does not
+	 * spend; false for "your next SKILL", which any use that delivers damage
+	 * spends. Ruled 2026-09-24.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bNextUseIsAttack = false;
+
+	/**
+	 * True for "your next skill is cast at 300%-500% effectiveness": the
+	 * charge multiplies the spending use's damage by `Percent` / 100, as a
+	 * "more", rather than adding increased damage. Issue #1833, ruled
+	 * 2026-09-24. A skill charge: any use that delivers damage spends it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bNextUseIsEffectiveness = false;
+
+	/**
+	 * True for "Each spell cast reduces your next spell cooldown by 0.5-1.5
+	 * seconds": the charge takes `Percent` SECONDS off the next spell's
+	 * cooldown when it is applied, and deals no damage. Issue #1833, the
+	 * cooldown reduction action.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bNextUseIsSpellCooldown = false;
+
+	/**
+	 * The period of an action whose `Event` is `every_seconds`, or 0. Issue
+	 * #1833: the character's own step grants it once for every whole period
+	 * of the current combat, and never out of combat.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float EverySeconds = 0.0f;
+
+	/**
+	 * Set, this action APPLIES A RANDOM DAMAGE OVER TIME TO THE OTHER CHARACTER
+	 * of its event instead of moving a pool: one of Bleed, Poison, Disease,
+	 * Necrosis and Burn, equally likely, at the ailment's normal magnitude.
+	 * Issue #1833 group D, ruled 2026-09-30: "Critical strikes apply a random
+	 * DoT to the target". `Percent` is the chance, where 100 is always.
+	 *
+	 * THE BLOW MUST HAVE TAKEN A TENTH OF THE TARGET'S MAXIMUM HEALTH, the
+	 * owner's rule of 2026-09-02 (#917) for every ailment that does not come
+	 * from the skill's own row, so only an event carrying what reached health
+	 * as its amount may name it. See `UCataclysmAilments::BlowCanCarryAnAilment`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bRandomDamageOverTime = false;
+
+	/**
+	 * The seconds this action waits after it fires before it may fire again,
+	 * or 0 for none. Issue #1833 group D, ruled 2026-09-30, building the
+	 * judgement of 2026-09-11. Copied from the row's `TriggerCooldown`, where the
+	 * generator has already written the 0.25 s default.
+	 *
+	 * IT STARTS WHEN THE ACTION FIRES, NOT WHEN IT IS TRIED, a judgement that
+	 * follows the genre: an event that did not land, a condition that did not
+	 * hold and a chance that did not come up each leave it where it was.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float TriggerCooldownSeconds = 0.0f;
+
+	/**
+	 * What the cooldown above is kept under: the enchantment, the action and the
+	 * event, a triple no two rows share. Set on every action read from a row; a
+	 * random damage over time also keys its once-per-event rule by it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FName TriggerKey;
+
+	/**
+	 * The threshold `health_falls_below` crosses for this row, in percent of
+	 * maximum health, or 0. Issue #1833 group D part 2. Copied from the row's
+	 * `EventValue`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float EventValue = 0.0f;
+
+	/**
+	 * Set, this action LOWERS HEALTH TO A SHARE OF ITS MAXIMUM and never raises
+	 * it: health becomes the lower of what it is and `Percent` of the maximum.
+	 * Issue #1833 group D part 2, ruled 2026-09-30, for "You start every dungeon
+	 * floor at 30%-50% of your maximum HP" on `floor_start`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bHealthCap = false;
+
+	/**
+	 * Set, this action acts on the characters near its wearer instead of
+	 * moving a pool. Issue #1833 group D part 3. See `ECataclysmNearbyAction`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	ECataclysmNearbyAction Nearby = ECataclysmNearbyAction::None;
+
+	/**
+	 * Set, this action deals `Percent` of the remaining damage of the wearer's own
+	 * damage over time effects instead of moving a pool. Issue #1833 group D part 4.
+	 * See `ECataclysmRemainingDamage`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	ECataclysmRemainingDamage RemainingDamage = ECataclysmRemainingDamage::None;
+
+	/**
+	 * The ailment a remaining damage action is limited to, from the row's
+	 * `Ailment`, or no tag for every damage over time. Issue #1833 group D part 4:
+	 * "Necrosis effects deal ..." is `Keyword.DoT.Necrosis`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FGameplayTag Ailment;
+
+	/**
+	 * Set, this action applies the status `StatusName` to the other character of
+	 * its event instead of moving a pool. Issue #1833 group E part 1. See
+	 * `ECataclysmApplyStatus` and `UCataclysmAbilitySystemComponent::ApplyStatusOf`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	ECataclysmApplyStatus ApplyStatus = ECataclysmApplyStatus::None;
+
+	/**
+	 * The status a status action applies, from the row's `Ailment`: an ailment
+	 * `UCataclysmAilments::KindNamed` reads ("Bleed", "Cripple"), or
+	 * `UCataclysmAbilitySystemComponent::StaggerStatus` or `RandomDebuffStatus`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FString StatusName;
+
+	/**
+	 * Set, a status action lays its status on THE WEARER and not on the other character of its event. Ruled
+	 * 2026-10-06, for five drawbacks: "Taking a hit has a 15%-25% chance to trigger a random negative status effect
+	 * on you" and the four beside it. See `UCataclysmAbilitySystemComponent::ApplyStatusToTheWearer`.
+	 *
+	 * SUCH A ROW NEEDS NO OTHER CHARACTER, so it may wait on an event that names none: a hit taken, a timer, a
+	 * skill ending.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bStatusOnTheWearer = false;
+
+	/**
+	 * Set, this action opens the wearer's no-damage window for `Percent` seconds
+	 * instead of moving a pool. Issue #1833 group E part 2, ruled 2026-10-02:
+	 * "When you block an attack, you become immune to all damage for 3 seconds".
+	 * See `UCataclysmAbilitySystemComponent::GrantDamageImmunity`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bDamageImmunity = false;
+
+	/**
+	 * Set when this action was granted by a NEGATIVE enchantment or a set's negative row: a drawback, not a
+	 * benefit. Touch of Nothing refuses a buff the wearer would gain, and a drawback's timed stack is no buff, so
+	 * it asks this before refusing. Without it a held stack would shield the wearer from their own curse.
+	 * Set by `UCataclysmItem`'s grant of each row; issue #1722's Touch of Nothing, ruled 2026-10-30.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bFromADrawback = false;
+
+	/**
+	 * Set, this action MOVES ITS WEARER TO A RANDOM REACHABLE POINT NEARBY instead of moving a pool. `Percent` is the
+	 * furthest the wearer may be moved, IN METRES and not a percentage. Ruled 2026-10-12 by the coordinating session
+	 * under the owner's delegation, for "Teleport to a random location within 4 meters when hit". On the event
+	 * `hit_taken` and no other.
+	 *
+	 * A LANDED HIT ONLY. Not an evaded blow and not a tick of damage over time. A blocked blow landed, and so did one
+	 * the energy shield took whole. The row loop asks `bLanded` for the first and
+	 * `UCataclysmAbilitySystemComponent::bHitBeingAnnouncedIsATick` for the second.
+	 *
+	 * THE ROW'S TRIGGER COOLDOWN STARTS ONLY WHEN THE WEARER WAS MOVED. A hit that finds no point to move to starts
+	 * no wait, so the next hit asks again. See `UCataclysmAbilitySystemComponent::TeleportTheWearerRandomly`.
+	 */
+	bool bTeleportRandomly = false;
+
+	/**
+	 * Set, this action repeats the skill just used, free, with `Percent` as its chance out of 100, instead of moving
+	 * a pool. Mechanism B2, ruled 2026-10-05: "Every skill use has a 5%-15% chance to cast a second time for free".
+	 * Only on an event that names a skill, which is `skill_use` or `attack_use`. See
+	 * `UCataclysmAbilitySystemComponent::ActOnSkillUse` and `UCataclysmTriggeredSkill::MakePendingRepeat`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bRepeatSkill = false;
+
+	/** The share of its damage the repeat deals, in percent: 100 unless the row says less. See `bRepeatSkill`. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float RepeatSharePercent = 100.0f;
+
+	/**
+	 * Set, this action GAINS ONE KEPT STACK EVERY `EverySeconds`, to at most `KeptStackCap`, whatever its `Event` is.
+	 * The stacks are kept under this key on the wearer's ability system. Ruled 2026-10-12 under the owner's
+	 * delegation, for "Shard of Anarchy (10-Piece Bonus): Every 30 seconds, you gain a stack of 'Temporal Flux.' When
+	 * you use a skill, you consume all stacks of 'Temporal Flux' and your skill is cast a random number of times. The
+	 * bonus is permanent for the rest of the dungeon".
+	 *
+	 * A KEPT STACK HAS NO LIFETIME, which is what parts it from a row's own stacks (`StackKey`, `StackSeconds`). See
+	 * `UCataclysmAbilitySystemComponent::GainKeptStack` for what ends one.
+	 *
+	 * THE GAIN IS THIS FIELD'S AND WHAT A USE BUYS WITH THE STACKS IS ANOTHER FIELD'S, so that another sentence can
+	 * gain the same way and buy something else. `bKeptStacksRepeatSkill` was the first thing bought.
+	 *
+	 * AND, SINCE 2026-10-17, ONE GAIN ON AN EVENT INSTEAD OF A CLOCK: an action carrying `bKeptStacksFreeNextAbility`
+	 * states no `EverySeconds`, gains one stack on each landed `Event`, and buys a free, empowered next ability, the
+	 * second thing bought. The
+	 * paragraph below about `Event` and the clock is about `bKeptStacksRepeatSkill`.
+	 *
+	 * `Event` IS THE KIND OF USE THAT SPENDS THEM and not the clock: the clock is `EverySeconds`, read by
+	 * `UCataclysmAbilitySystemComponent::StepKeptStackClocks` for every action carrying this key. That clock
+	 * counts seconds of combat and carries them from one fight to the next.
+	 *
+	 * `StatusName` IS WHAT THE ROW CALLS ITS STACKS, for the text above the player's bars, such as "Temporal Flux".
+	 * On an action carrying this key it is a name to show and nothing applies it as a status.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FName KeptStackKey;
+
+	/** The most kept stacks this action holds. See `KeptStackKey`. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 KeptStackCap = 0;
+
+	/**
+	 * Set, a use on this action's `Event` that names a skill SPENDS EVERY KEPT STACK UNDER `KeptStackKey` AND CASTS
+	 * THAT SKILL AGAIN, free, a number of times drawn from 1 to the stacks spent, each at `Percent` per cent of its
+	 * damage, instead of moving a pool. Ruled 2026-10-12. Only on an event that names a skill. See
+	 * `UCataclysmAbilitySystemComponent::PendingKeptStackCastSkill` and
+	 * `UCataclysmTriggeredSkill::MakePendingKeptStackCasts`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bKeptStacksRepeatSkill = false;
+
+	/**
+	 * Set, this action GAINS ONE KEPT STACK UNDER `KeptStackKey` ON EACH LANDED `Event` IT IS ALLOWED, to at most
+	 * `KeptStackCap`, with no clock; and WHILE THE STACKS HOLD THAT CAP, THE WEARER'S NEXT ABILITY BUT THE BASIC
+	 * ATTACK COSTS NO MANA AND DEALS `Percent` PER CENT MORE DAMAGE, and spends every stack. Ruled 2026-10-17 (O7, O8)
+	 * for "Null Emperor (6-Piece Bonus): Every time you hit a silenced enemy, you gain a stack of 'Void.' At 10 stacks,
+	 * your next ability costs no mana and deals 100% more damage". `StatusName` is what the row calls its stacks.
+	 * See `UCataclysmAbilitySystemComponent::NextAbilityIsFree` and `SpendFreeNextAbility`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bKeptStacksFreeNextAbility = false;
+
+	/**
+	 * Set, this action GAINS ONE KEPT STACK UNDER `KeptStackKey` ON EACH LANDED `Event` IT IS ALLOWED, to at most
+	 * `KeptStackCap`, with no clock, as `bKeptStacksFreeNextAbility` does; and WHILE THE STACKS HOLD THAT CAP, THE
+	 * WEARER'S NEXT DAMAGE OVER TIME APPLICATION SPREADS EVERY DAMAGE OVER TIME OF THE WEARER'S ON ITS TARGET to the
+	 * enemies near it, and spends every stack. Ruled 2026-10-26 for the random buff Plague (issue #2538, batch 4): "At
+	 * 10 stacks, spreads all DoTs to nearby enemies". `StatusName` is what the row calls its stacks. See
+	 * `UCataclysmSkillEffects::ApplyDamageOverTime` and `UCataclysmSkillEffects::PlagueSpreadMetres`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bKeptStacksSpreadDots = false;
+
+	/**
+	 * Set, this action triggers a DIFFERENT skill the character holds that has a cooldown, free, with `Percent` as
+	 * its chance out of 100. Ruled 2026-10-06, for Spellblade's Will: "Your melee attacks have a 25% chance to
+	 * trigger an ability with a cooldown". The triggered skill's cooldown is not waited for and none is started.
+	 * Only on an event that names a skill. See `UCataclysmTriggeredSkill::MakePendingHeldTrigger`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTriggerHeldSkill = false;
+
+	/**
+	 * Set, this action triggers a held skill that is a spell, which PAYS ITS COST and starts no cooldown. Ruled
+	 * 2026-10-06, for Spellblade's Will: "Your melee attacks have a 25% of triggering one of your spells. This does
+	 * not put the spell on cooldown but does use it's mana cost". With too little to pay, nothing is triggered.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTriggerHeldSpell = false;
+
+	/**
+	 * Set, this action rolls `Percent` as a chance out of 100, once for the use in hand, that THE USE DEALS NO
+	 * DAMAGE. Ruled 2026-10-06, for "Your cooldown abilities have a 25% chance to deal no damage", "Strike skills
+	 * have a 10%-20% chance to miss entirely regardless of other stats" and "Projectiles have a 20%-35% chance to
+	 * explode prematurely dealing no damage". Only on an event that names a skill. See
+	 * `UCataclysmAbilitySystemComponent::TakePendingUseNoDamage`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bUseDealsNoDamage = false;
+
+	/**
+	 * Set, this action rolls `Percent` as a chance that the use in hand deals `UseIncreasePercent` increased damage.
+	 * Ruled 2026-10-06, for "Your cooldown abilities have a 5%-20% chance to deal 50%-200% increased damage".
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bUseDealsIncreasedDamage = false;
+
+	/**
+	 * The increase a passing `bUseDealsIncreasedDamage` roll gives, in percent. THE SECOND NUMBER OF THE SENTENCE,
+	 * and its own field because the row's value is the chance.
+	 *
+	 * FILLED FROM THE ROW'S `ScaleStep` AND `ScaleStepHigh`, rolled with the item's one roll for that half, by
+	 * `UCataclysmItemModifiers::AccumulateEnchantmentsInto`. ON THE TWO INCREASE ACTIONS THAT PAIR IS THE SIZE OF
+	 * THE INCREASE AND NOT A STEP: such a row states no scale, and nothing steps. Ruled 2026-10-06, so that the
+	 * effect table gained no column for one sentence.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float UseIncreasePercent = 0.0f;
+
+	/**
+	 * Set, either roll above is made only for A SKILL WITH A COOLDOWN: one whose own cooldown is above nought, so
+	 * not the basic attack and not an aura. Ruled 2026-10-06: a flag on the action and not a row condition, because
+	 * it is a fact about the skill used and is known only at the event.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bOnlyASkillWithACooldown = false;
+
+	/**
+	 * Set, this action rolls `Percent` as a chance that the use in hand, when it is a strike, HITS EVERY ENEMY
+	 * WITHIN `UseHitsAllMetres` of its user, in every direction and with no limit on how many. Ruled 2026-10-06, for
+	 * "Melee skills have a 10%-20% chance to hit all enemies within 3 meters".
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bUseHitsAllNearby = false;
+
+	/** How far "all enemies within" reaches, in metres. 3 is the one sentence's figure; no column carries another. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float UseHitsAllMetres = 3.0f;
+
+	/**
+	 * Set, this action rolls `Percent` as a chance that the use in hand HITS ITS OWN USER and no enemy: the use
+	 * deals nothing to anyone else, and its user takes `UseSelfHitSharePercent` of what the use would have dealt one
+	 * enemy. The owner decided on 2026-10-06 that a character's own skills may hurt them where a row's sentence says
+	 * so. "Melee skills have a 10%-20% chance to hit you instead of the enemy" and "Spells have a 15%-25% chance to
+	 * backfire dealing half damage to you".
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bUseHitsItsUser = false;
+
+	/** The share of the use's priced hit its user takes, in per cent: 100 for "hit you instead", 50 for "backfire". */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float UseSelfHitSharePercent = 100.0f;
+
+	/**
+	 * Set, this action makes an enemy its wearer kills EXPLODE FOR THE OVERKILL: `Percent` is the share of the
+	 * overkill each enemy near the body takes, in per cent. Ruled 2026-10-07, for "Enemies killed by you explode
+	 * for the overkill amount". On the event `kill` and no other.
+	 *
+	 * THE EVENT LOOP ONLY RECORDS THE SHARE. The explosion can kill, and that kill must reach the rows again, so
+	 * it cannot be made inside the loop's one level. See
+	 * `UCataclysmAbilitySystemComponent::TakePendingOverkillExplosionSharePercent`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bExplodeVictimForOverkill = false;
+
+	/**
+	 * Set, this action pays `Percent` of the damage its block removed back to the
+	 * attacker, as retaliation pays: through the attacker's armour and
+	 * resistance, never retaliated against, and scaled by nothing. Issue #1833
+	 * group E part 3, ruled 2026-10-02.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bReflectBlocked = false;
+
+	/**
+	 * Set, this action DEALS A DIRECT HIT TO THE OTHER CHARACTER OF ITS EVENT: `Percent` is the hit's size as a
+	 * percentage of the wearer's attack damage. Ruled 2026-10-07 for "When you evade a ranged attack, throw an
+	 * attack dealing 20-70% of your attack damage at that enemy". For any event that names a living character
+	 * other than the wearer; `STRIKE_TARGET_EVENTS` in `tools/generate_datatables.py` lists them.
+	 *
+	 * THE HIT CANNOT BE EVADED and is otherwise an ordinary hit of the wearer's. See the row loop of
+	 * `UCataclysmAbilitySystemComponent::ActOnEvent`.
+	 */
+	bool bStrikeTarget = false;
+
+	/**
+	 * Set, this action EXECUTES THE ENEMY A HIT OF ITS WEARER'S LEAVES BELOW A SHARE OF ITS HEALTH. `Percent` is the
+	 * chance, where 100 is always, and `ConditionValue` is the share, in per cent of the enemy's maximum health: the
+	 * row's Condition is `target_health_below`. Ruled 2026-10-12 under the owner's delegation, for "Strike skills
+	 * have a 10%-20% chance to execute enemies below 15% HP". On the event `hit_dealt` and no other.
+	 *
+	 * THE SHARE IS JUDGED AFTER THE HIT'S DAMAGE IS TAKEN, and so not by `PoolActionAllowed`, which runs while the
+	 * enemy still holds what it held before the hit. The row loop rolls the chance and leaves a request on the enemy;
+	 * the enemy's own attribute set acts on it once the hit's damage is written. See
+	 * `UCataclysmAbilitySystemComponent::AskToBeExecuted` and `ExecuteIfLeftBelow`.
+	 */
+	bool bExecuteTarget = false;
+
+	/**
+	 * Set, this action GRANTS ITS WEARER A TEMPORARY ABSORB of `Percent` of the wearer's maximum health. The project
+	 * owner, 2026-10-07: it is separate from the energy shield. For "Every 12 seconds gain a shield absorbing 15%-25%
+	 * of your maximum HP in damage". A grant refreshes what is held to its own amount and never adds. See
+	 * `UCataclysmAbilitySystemComponent::GrantTemporaryAbsorb`; `TEMPORARY_ABSORB_ACTION` in
+	 * `tools/generate_datatables.py` holds the name and allows it on the timed event only.
+	 */
+	bool bTemporaryAbsorb = false;
+
+	/**
+	 * Whether this action BLASTS EVERY ENEMY NEAR AN ENEMY THAT DIED, for
+	 * `Percent` of the amount its event carried, and then puts the wearer's
+	 * ailments that were on the body on them. Ruled 2026-10-07 for "Plague
+	 * Doctor (10-Piece Bonus): When an enemy dies while affected by a DoT from
+	 * you, it explodes and applies all of your DoTs to all nearby enemies". On
+	 * `afflicted_death`, whose amount is the dead enemy's maximum health. See
+	 * `UCataclysmContagion::BlastFromTheDying`.
+	 */
+	bool bBlastFromTheDying = false;
+
+	/**
+	 * Whether this row stuns every enemy near an enemy that died carrying the
+	 * wearer's damage over time ailment. Ruled 2026-10-08, for "Chronomancer's
+	 * Time-Lock (6-Piece Bonus)". `Percent` is the chance, rolled once for the
+	 * death, and `StackSeconds` is how long the stun lasts: on this row that
+	 * field holds no stack's time. See `UCataclysmContagion::StunNearTheDying`.
+	 */
+	bool bStunNearTheDying = false;
+
+	/**
+	 * The window an "every Nth event" count runs in, in seconds, for an action
+	 * that is not one of the every-Nth kinds: it acts on the Nth of its events
+	 * inside the window, and the count starts again. Issue #1833 group E part 3,
+	 * ruled 2026-10-02: "Every 3 blocks in quick succession" is 3 within 3
+	 * seconds. Zero, with `EveryNth` of 0, is every event.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float CountWindowSeconds = 0.0f;
+
+	/**
+	 * Set, this is no action at all: it names no event and nothing fires it. It
+	 * is a rider on `Ailment`, read when the wearer applies that ailment, and
+	 * `Percent` is how far it moves the carrier's number. Issue #1833, ruled
+	 * 2026-10-06.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	ECataclysmAilmentRider Rider = ECataclysmAilmentRider::None;
+
+	/**
+	 * Set, this action FIRES EVERY GADGET ITS WEARER COMMANDS, ONCE, AT ONCE, instead of moving a pool: each skill
+	 * gadget casts its skill once at the target its own clock would choose, at the whole of its damage, ignoring its
+	 * clock and leaving it as it was. Ruled 2026-10-19 by the coordinating session (C1-C4), for "When you die, all
+	 * your active traps and gadgets immediately trigger simultaneously". On `player_death` and no other. `Percent` is
+	 * 100 and is not read. See `ACataclysmMinion::FireEveryGadgetAtTheDeathOf`.
+	 */
+	bool bGadgetsCastNow = false;
+
+	/**
+	 * Set, this action SLOWS THE OTHER CHARACTER OF ITS EVENT by `Percent` per cent for `StackSeconds` instead of moving a
+	 * pool: on this action that field holds no stack's time, as on `bStunNearTheDying`. Ruled 2026-10-21 (traps layer 3,
+	 * M3 (b)), for "Traps apply a 20%-35% slow to triggered enemies for 2-4 seconds", on `trap_triggered`. See
+	 * `UCataclysmAbilitySystemComponent::SlowForSecondsAction`.
+	 */
+	bool bSlowForSeconds = false;
+
+	/**
+	 * Set, the own stacks this action grants LAPSE ALONE, each `StackSeconds` after it was granted, and have NO CAP: the
+	 * row states none (`StackCap` 0). Ruled 2026-10-21 (traps layer 3, M4 (a)), for "Each trap triggered in the last 10
+	 * seconds increases your damage by 8%-15%". Clear, a grant restarts the window and the count lapses together, as
+	 * every own stack did before. See `UCataclysmAbilitySystemComponent::GrantOwnStackLastingAlone`.
+	 */
+	bool bOwnStacksLapseAlone = false;
+
+	/**
+	 * Set, this action makes an enemy its wearer kills EXPLODE FOR A SHARE OF THE BLOW THAT KILLED IT: `Percent` is the
+	 * share in per cent of that blow's figure before the victim's mitigation each enemy within 4 m of the body takes.
+	 * Ruled 2026-10-21 (traps layer 4, F10 to F12), for "Enemies killed by traps explode, dealing 50%-100% of the trap's
+	 * damage to all enemies within 4 meters", requiring `Type.Trap`. On the event `kill` and no other. THE EVENT LOOP
+	 * ONLY RECORDS THE SHARE, as for `bExplodeVictimForOverkill`. See
+	 * `UCataclysmAbilitySystemComponent::ExplodeVictimForKillingBlowAction`.
+	 */
+	bool bExplodeVictimForKillingBlow = false;
+
+	/**
+	 * Set, this action ARMS, or SETS OFF, ITS WEARER'S STANDING SKILL TRAPS within `Percent` metres of the trap that
+	 * triggered (`trap_triggered`) or the gadget destroyed (`gadget_destroyed`), or every one at the wearer's death
+	 * (`player_death`, `Percent` nought), instead of moving a pool; `bNearestTrapOnly` for the nearest one alone, the
+	 * row's Scale Max Steps of 1. Ruled 2026-10-22 (traps layer 5, H1 to H11; H5 (b) by the owner). See
+	 * `UCataclysmAbilitySystemComponent::ArmTrapsNearbyAction` and `TriggerTrapsNearbyAction`.
+	 */
+	bool bArmTrapsNearby = false;
+	bool bSetOffTrapsNearby = false;
+	bool bNearestTrapOnly = false;
+
+	/**
+	 * Set, this action MAKES THE WEARER'S NEAREST STANDING SKILL GADGET FIRE ONCE AT THE ENEMY THAT SET A TRAP OFF instead of
+	 * moving a pool: on `trap_triggered` and no other, the gadget casting its skill once, free, at that enemy, priced and
+	 * announced as its clock's cast, its clock unchanged. `Percent` is a "more" in per cent on that one shot, 100 for none;
+	 * `EventValue` the metres from the trap the gadget must stand within, nought for any distance; `EveryNth`, when above
+	 * one, the count of the wearer's triggered traps it fires on, with no window (`CountWindowSeconds` nought). Ruled
+	 * 2026-10-22 (traps layer 6, J1 to J10), for "When a trap is triggered near an active gadget, the gadget fires an
+	 * immediate bonus shot at the triggering enemy" and "For every 3 traps triggered, your nearest gadget fires a massive
+	 * overcharged shot dealing 200%-400% of its normal damage". SKILL GADGETS ONLY (J2). See
+	 * `UCataclysmAbilitySystemComponent::GadgetFiresAtTrapEnemyAction`.
+	 */
+	bool bGadgetFiresAtTrapEnemy = false;
+};
+
+/**
+ * What the pipeline decided, step by step, so it can be inspected and shown.
+ *
+ * The counts at the end exist so a test can prove a rule fired without reading
+ * the log, and so a character sheet can show a player that something on their
+ * gear is being ignored.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmStatBreakdown
+{
+	GENERATED_BODY()
+
+	/** Before anything applies: class, weapon or skill, per the design. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float Base = 0.0f;
+
+	/** Everything in the Flat bucket that reached this stat, added up. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float Flat = 0.0f;
+
+	/** Percentage points. 825 means +825%, applied as one multiplication. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SumOfIncreases = 0.0f;
+
+	/** Every More multiplier that reached this stat, multiplied together. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float MoreMultiplier = 1.0f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float Final = 0.0f;
+
+	/** How many More multipliers applied. Two of them is not one big one. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 MoreSourceCount = 0;
+
+	/** More multipliers refused because their source may not grant one. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 RejectedMoreCount = 0;
+
+	/** Less multipliers that were clamped away from -100%. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 ClampedLessCount = 0;
+
+	/**
+	 * Removals that reached this stat. Issue #1791.
+	 *
+	 * ONE IS ENOUGH, and `Evaluate` takes the stat to nothing when this is above
+	 * zero. The count exists for the reason the ones above do, and so that
+	 * `UCataclysmAbilitySystemComponent::IsStatRemoved` can answer for a
+	 * consumer that reads no stat through the pipeline.
+	 *
+	 * A REMOVAL FROM A SOURCE THAT MAY NOT GRANT ONE IS NOT COUNTED. It is
+	 * ignored and logged, the way a refused More multiplier is.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 RemovedCount = 0;
+};
+
+/**
+ * The three-bucket stat pipeline, ported from `sim/cataclysm_sim/character.py`.
+ *
+ *     Final = (base + flat) x (1 + sum of increases) x more1 x more2 x ...
+ *
+ * and that figure times nothing when a removal reaches the stat. Issue #1791;
+ * the simulation has no removal.
+ *
+ * WHY THIS EXISTS WHEN THE ABILITY SYSTEM ALREADY AGGREGATES. Unreal's own
+ * aggregator computes
+ *
+ *     ((Base + AddBase) * MultiplyAdditive / DivideAdditive * MultiplyCompound)
+ *         + AddFinal
+ *
+ * and MultiplyAdditive sums with a bias of 1.0 while MultiplyCompound
+ * multiplies each modifier separately. So AddBase is Flat, MultiplyAdditive is
+ * Increased, and MultiplyCompound is More: the engine's arithmetic and the
+ * design's are the same arithmetic. A test builds an FAggregator and asserts
+ * they agree, so gear applied as ordinary Gameplay Effects cannot drift from
+ * what is computed here.
+ *
+ * What the engine does NOT do, and what this class is for:
+ *
+ *   TAG SCOPING BY THE SKILL IN HAND. An aggregator mod can be filtered by the
+ *   source and target actors' tags, but the design scopes an increase by the
+ *   tags of the ability being used. A character's area of effect has no single
+ *   value -- it is one number for an area skill and another for a single-target
+ *   one -- so a plain attribute read cannot express it. Evaluate takes the
+ *   skill's tags for exactly this reason.
+ *
+ *   THE RULE THAT ONLY SOME SOURCES MAY GRANT A MORE MULTIPLIER. Gems, passive
+ *   keystones and enchantments may. Ordinary gear affixes may not, which is
+ *   what keeps a rare drop readable and gives the designed enchantments a job
+ *   affixes cannot do. The engine has no opinion on this.
+ *
+ *   THE FLOOR UNDER A LESS MULTIPLIER. Nothing in the engine stops a More
+ *   modifier of -100% or worse, which would zero a stat outright or invert it.
+ *   A stat meant to be zero is removed instead, which is a kind of its own and
+ *   cannot invert anything. Issue #1791.
+ *
+ * WHY IT IS A SEPARATE CLASS of static functions, like
+ * UCataclysmDamageCalculation: every step is arithmetic on numbers, so pulling
+ * it out means the whole pipeline can be tested by passing values in, without
+ * constructing an ability system component and an effect spec for each case.
+ */
+UCLASS()
+class CATACLYSM_API UCataclysmStatPipeline : public UObject
+{
+	GENERATED_BODY()
+
+public:
+	/**
+	 * A Less multiplier is clamped to this, in percentage points.
+	 *
+	 * The model refuses anything at or below -100% outright, because one source
+	 * could otherwise zero a stat or turn it negative. Refusing is not available
+	 * at runtime, so the value is clamped here and counted in the breakdown. -99
+	 * keeps the invariant -- a Less multiplier can make the stat very small and
+	 * can never take it to zero or invert it -- while still honouring what a
+	 * -150% was reaching for. Data import should reject the modifier outright
+	 * instead; see ValidateModifier.
+	 *
+	 * THE INVARIANT IS ABOUT MORE MULTIPLIERS AND NOT ABOUT EVERY MODIFIER, since
+	 * issue #1791. A removal takes a stat to zero on purpose, because a sentence
+	 * saying "You have no armor" means none rather than one per cent. It does so
+	 * by multiplying the finished figure by nothing, so it cannot invert a stat
+	 * either, and this floor stays where it is.
+	 */
+	static constexpr float LessMultiplierFloor = -99.0f;
+
+	/** A required tag of this name is satisfied by any skill at all. */
+	static FGameplayTag GlobalScopeTag();
+
+	/**
+	 * Whether a modifier from this source is allowed into the More bucket.
+	 *
+	 * AND WHETHER IT MAY REMOVE A STAT, which is the same answer. Issue #1791.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Stats")
+	static bool CanGrantMore(ECataclysmModifierSource Source);
+
+	/**
+	 * Whether this modifier applies right now.
+	 *
+	 * TWO QUESTIONS AND BOTH MUST BE YES: the skill in hand carries every tag
+	 * the modifier requires, and the character is in the state it requires.
+	 *
+	 * @param State  what is true of the character. The default knows nothing, so
+	 *               a modifier with a condition is refused -- which is right for
+	 *               a caller with no character in hand, such as the character
+	 *               sheet or a test passing plain numbers. Issue #959.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Stats")
+	static bool ModifierApplies(const FCataclysmStatModifier& Modifier,
+								const FGameplayTagContainer& SkillTags,
+								const FCataclysmStatConditions& State =
+									FCataclysmStatConditions());
+
+	/** Whether the character is in the state this condition names. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Stats")
+	static bool ConditionHolds(ECataclysmStatCondition Condition, float Value,
+							   const FCataclysmStatConditions& State,
+							   float ReachMetres = -1.0f);
+
+	/**
+	 * What this modifier is worth right now, after any scaling. Issue #968.
+	 *
+	 * `Modifier.Value` FOR A FIXED ONE, which is every modifier in the game
+	 * before that issue, so nothing that does not scale changes at all.
+	 *
+	 * ZERO WHEN THE STATE IS UNKNOWN OR THE STEP IS NOT A REAL SIZE. Both are
+	 * answers rather than errors: the character sheet has no character in hand,
+	 * and a step of zero would be a division by nothing. `ValidateModifier`
+	 * refuses the second when data is imported.
+	 *
+	 * PUBLIC SO A TEST CAN ASK IT DIRECTLY, and because a character sheet
+	 * showing a player what a node is worth right now needs the same answer.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Stats")
+	static float ScaledValue(const FCataclysmStatModifier& Modifier,
+							 const FCataclysmStatConditions& State);
+
+	/**
+	 * Why a modifier is illegal, or an empty string if it is fine.
+	 *
+	 * For data import and editor validation, which can refuse a row. Evaluate
+	 * cannot refuse anything at runtime, so it ignores or clamps instead and
+	 * records that it did.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Stats")
+	static FString ValidateModifier(const FCataclysmStatModifier& Modifier);
+
+	/**
+	 * Run a stat through all three buckets for the skill in hand.
+	 *
+	 * `Base` comes from whichever source the design names for that stat: the
+	 * class for most, the equipped weapon for attack speed, the skill itself
+	 * for critical strike chance.
+	 *
+	 * AND NOTHING AT ALL WHEN A REMOVAL APPLIES. Issue #1791. The three buckets
+	 * still work out their figure, and the breakdown keeps every step of it, so a
+	 * character sheet can show what the stat would have been.
+	 *
+	 * @param State  what is true of the character, for a modifier that carries a
+	 *               condition. The default knows nothing and refuses every
+	 *               condition, which is what every caller got before issue #959.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Stats")
+	static FCataclysmStatBreakdown Evaluate(float Base,
+											const TArray<FCataclysmStatModifier>& Modifiers,
+											const FGameplayTagContainer& SkillTags,
+											const FCataclysmStatConditions& State =
+												FCataclysmStatConditions());
+
+	/*
+	 * NO RATE EVALUATION IS HERE, AND THAT IS DELIBERATE. Issue #2004. An
+	 * `EvaluateRate` once worked a cooldown out in one go, dividing the base by
+	 * the INCREASES bucket, with `DisplayedRateReduction` beside it. Issue #1981
+	 * wired it into the game and issue #2000 found the result wrong: the game's
+	 * data puts cooldown reduction in the FLAT bucket, and an attribute point
+	 * only scales it. The game asks `Evaluate` for the reduction, through
+	 * `UCataclysmAbilitySystemComponent::StatForSkill`, and divides with
+	 * `UCataclysmCombatAttributeSet::FinalCooldown`, which floors a negative.
+	 * Nothing called either function after that, so both were deleted rather
+	 * than left for the next reader to wire up. Git keeps them.
+	 */
+
+	/**
+	 * The condition a data sheet names, or false for a name this build does not
+	 * know. Issue #45.
+	 *
+	 * THE NAMES ARE `CONDITIONS` IN `tools/generate_datatables.py`, which refuses
+	 * any other when a sheet is written, and
+	 * `tools/tests/test_stat_condition_names_match_the_engine.py` fails if this
+	 * file's list and that one ever differ. So a condition added there and not
+	 * here is caught when the tests run, rather than a row granting nothing with
+	 * only a log line to say so.
+	 *
+	 * BOTH AUTHORED SOURCES READ THROUGH THIS SINCE ISSUE #1581. Enchantment
+	 * effects always did, through `UCataclysmItemModifiers`;
+	 * `UCataclysmPassiveTree::AccumulateInto` carried its own chain of eight of
+	 * these names until then, and a name in this table but not in that chain was
+	 * applied by the passive tree with NO condition at all -- a bonus that held
+	 * all the time. Nothing compared the two lists, because the test above reads
+	 * this file and the generator and did not read that chain.
+	 */
+	static bool ConditionNamed(const FString& Name,
+							   ECataclysmStatCondition& OutCondition);
+
+	/**
+	 * Every condition name a data sheet may write, in this file's own order.
+	 * Issue #1581.
+	 *
+	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
+	 * TWICE. A test naming the conditions by hand passes for ever after somebody
+	 * adds a seventy-fourth, which is the drift that put the passive tree eight
+	 * names behind this table in the first place.
+	 */
+	static void AllConditionNames(TArray<FString>& OutNames);
+
+	/**
+	 * Whether a condition compares `ConditionValue` against anything.
+	 * Issue #1581.
+	 *
+	 * THIRTY-FOUR OF THE SEVENTY-THREE COMPARE NOTHING. They are the case labels
+	 * before the first `return false;` in `ConditionTakesAValue`, and this
+	 * sentence no longer lists them by hand: the hand list rotted with the
+	 * count. Both numbers are read out of the code by
+	 * `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
+	 * (issue #1640), which fails the moment either moves, so this sentence
+	 * must be corrected in the change that adds a condition.
+	 * Each says so in its own comment above, and
+	 * `tools/generate_datatables.py` refuses to write a value on a row carrying
+	 * one, so there is no number to carry across.
+	 *
+	 * THIS SENTENCE SAID "TEN OF THE TWENTY-ONE" AND WAS WRONG IN BOTH NUMBERS
+	 * AND IN ITS LIST. Issue #1750 added the three ailment conditions, corrected
+	 * the matching count in `ConditionTakesAValue` from ten to thirteen, wrote a
+	 * comment there explaining that a list nobody counts is a list somebody
+	 * extends without reading -- and did not touch this one, which is the list
+	 * that comment points at. The same change added 131 lines to this file.
+	 *
+	 * SO THE TWO COUNTS HAVE TO MOVE TOGETHER, and nothing enforces it. Neither
+	 * is reachable by a test: both are prose. `ConditionTakesAValue` in
+	 * `CataclysmStatPipeline.cpp` holds the other one.
+	 *
+	 * A READER COPYING THE VALUE ANYWAY IS WRONG EVEN THOUGH IT LOOKS HARMLESS,
+	 * because the column is only empty while the generator is the only writer.
+	 * A hand-edited sheet, or a future condition that does compare something,
+	 * would make a predicate judge a number it was never meant to have.
+	 */
+	static bool ConditionTakesAValue(ECataclysmStatCondition Condition);
+
+	/**
+	 * What a condition's answer depends on. Issue #1821. See
+	 * `ECataclysmConditionDependsOn` for why a reader needs to know.
+	 *
+	 * EVERY CONDITION IS LISTED, AND THERE IS NO DEFAULT. A condition missing
+	 * here falls to the end, which logs an error and answers `Time`, the answer
+	 * that makes a caching reader ask more often rather than never; and the
+	 * Python check named on the enum fails before that can happen in play.
+	 */
+	static ECataclysmConditionDependsOn WhatConditionDependsOn(
+		ECataclysmStatCondition Condition);
+
+	/**
+	 * The scale a data sheet names, or false for a name this build does not
+	 * know. Issue #45. The names are `SCALES` in `tools/generate_datatables.py`,
+	 * held to this file's list by the same test as `ConditionNamed`.
+	 */
+	static bool ScaleNamed(const FString& Name, ECataclysmStatScale& OutScale);
+
+private:
+	/**
+	 * What `ScaledValue` answers before `ScaleMaxSteps` is applied. Issue
+	 * #1815. Private, so nothing can ask for a value the cap has not seen.
+	 */
+	static float UncappedScaledValue(const FCataclysmStatModifier& Modifier,
+									 const FCataclysmStatConditions& State);
+
+	/** The three buckets, before `Evaluate` combines them. */
+	static FCataclysmStatBreakdown Accumulate(float Base,
+											  const TArray<FCataclysmStatModifier>& Modifiers,
+											  const FGameplayTagContainer& SkillTags,
+											  const FCataclysmStatConditions& State);
+};

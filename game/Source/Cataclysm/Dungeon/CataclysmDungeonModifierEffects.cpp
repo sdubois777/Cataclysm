@@ -1,0 +1,3685 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "Dungeon/CataclysmDungeonModifierEffects.h"
+
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "Dungeon/CataclysmFloorBrief.h"
+#include "Dungeon/CataclysmFloorGenerator.h"
+#include "Items/CataclysmEquipmentComponent.h"
+#include "AbilitySystem/CataclysmGameplayAbility.h"
+#include "AbilitySystem/CataclysmPotions.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillSlots.h"
+#include "AbilitySystem/CataclysmWeaponSkills.h"
+#include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "Items/CataclysmItem.h"
+#include "Items/CataclysmDroppedItem.h"
+#include "EngineUtils.h"
+
+const TCHAR* UCataclysmDungeonModifierEffects::StarvationKey = TEXT("Famine_Starvation");
+const TCHAR* UCataclysmDungeonModifierEffects::DehydrationKey = TEXT("Famine_Dehydration");
+const TCHAR* UCataclysmDungeonModifierEffects::DeathsEmbraceKey =
+	TEXT("Death_Death_s_Embrace");
+const TCHAR* UCataclysmDungeonModifierEffects::ForcedMarchKey =
+	TEXT("War_Forced_March");
+const TCHAR* UCataclysmDungeonModifierEffects::InfernalRainKey =
+	TEXT("Demonic_Infernal_Rain");
+const TCHAR* UCataclysmDungeonModifierEffects::NihilsEmbraceKey =
+	TEXT("Void_The_Nihil_s_Embrace");
+const TCHAR* UCataclysmDungeonModifierEffects::FieldMedicKey =
+	TEXT("War_Field_Medic");
+const TCHAR* UCataclysmDungeonModifierEffects::MortalDecayKey =
+	TEXT("Death_Mortal_Decay");
+const TCHAR* UCataclysmDungeonModifierEffects::WastingSicknessKey =
+	TEXT("Famine_Wasting_Sickness");
+const TCHAR* UCataclysmDungeonModifierEffects::GraspingTentaclesKey =
+	TEXT("Void_Grasping_Tentacles");
+const TCHAR* UCataclysmDungeonModifierEffects::EdictOfSilenceKey =
+	TEXT("Celestial_Edict_of_Silence");
+const TCHAR* UCataclysmDungeonModifierEffects::EdictOfTemperanceKey =
+	TEXT("Celestial_Edict_of_Temperance");
+const TCHAR* UCataclysmDungeonModifierEffects::EdictOfPatienceKey =
+	TEXT("Celestial_Edict_of_Patience");
+const TCHAR* UCataclysmDungeonModifierEffects::EdictOfStillnessKey =
+	TEXT("Celestial_Edict_of_Stillness");
+const TCHAR* UCataclysmDungeonModifierEffects::EdictOfAbstinenceKey =
+	TEXT("Celestial_Edict_of_Abstinence");
+const TCHAR* UCataclysmDungeonModifierEffects::EdictOfVigilKey =
+	TEXT("Celestial_Edict_of_Vigil");
+const TCHAR* UCataclysmDungeonModifierEffects::EdictOfHumilityKey =
+	TEXT("Celestial_Edict_of_Humility");
+const TCHAR* UCataclysmDungeonModifierEffects::ArtilleryStrikeKey =
+	TEXT("War_Artillery_Strike");
+const TCHAR* UCataclysmDungeonModifierEffects::HallowedGroundfallKey =
+	TEXT("Celestial_Hallowed_Groundfall");
+const TCHAR* UCataclysmDungeonModifierEffects::SporeCloudsKey =
+	TEXT("Pestilence_Spore_Clouds");
+const TCHAR* UCataclysmDungeonModifierEffects::HellfireKey =
+	TEXT("Demonic_Hellfire");
+const TCHAR* UCataclysmDungeonModifierEffects::BrandOfTheAggressorKey =
+	TEXT("Demonic_Brand_of_the_Aggressor");
+const TCHAR* UCataclysmDungeonModifierEffects::FungalOvergrowthKey =
+	TEXT("Pestilence_Fungal_Overgrowth");
+const TCHAR* UCataclysmDungeonModifierEffects::IllusoryEnemiesKey =
+	TEXT("Chaos_Illusory_Enemies");
+const TCHAR* UCataclysmDungeonModifierEffects::HolyRepercussionsKey =
+	TEXT("Celestial_Holy_Repercussions");
+const TCHAR* UCataclysmDungeonModifierEffects::LeechSporesKey =
+	TEXT("Pestilence_Leech_Spores");
+const TCHAR* UCataclysmDungeonModifierEffects::BloodAltarKey =
+	TEXT("Demonic_Blood_Altar");
+const TCHAR* UCataclysmDungeonModifierEffects::NecroticGroundKey =
+	TEXT("Death_Necrotic_Ground");
+const TCHAR* UCataclysmDungeonModifierEffects::RavenousHoardKey =
+	TEXT("Famine_Ravenous_Hoard");
+const TCHAR* UCataclysmDungeonModifierEffects::GraveTideKey =
+	TEXT("Death_Grave_Tide");
+const TCHAR* UCataclysmDungeonModifierEffects::VolatileEvolutionKey =
+	TEXT("Chaos_Volatile_Evolution");
+const TCHAR* UCataclysmDungeonModifierEffects::RoyalGuardKey =
+	TEXT("War_Royal_Guard");
+const TCHAR* UCataclysmDungeonModifierEffects::DemonPrinceKey =
+	TEXT("Demonic_Demon_Prince");
+const TCHAR* UCataclysmDungeonModifierEffects::EpidemicKey =
+	TEXT("Pestilence_Epidemic");
+
+const TCHAR* UCataclysmDungeonModifierEffects::BloodForgedChampionsKey =
+	TEXT("War_Blood_Forged_Champions");
+
+// THE ROW'S OWN SPELLING, WITHOUT THE SECOND `e` IN "Vengeful". The design data spells it
+// this way and the key must match the row exactly.
+const TCHAR* UCataclysmDungeonModifierEffects::VengefulWraithsKey =
+	TEXT("Death_Vengful_Wraiths");
+
+const TCHAR* UCataclysmDungeonModifierEffects::JudgmentZonesKey =
+	TEXT("Celestial_Judgment_Zones");
+
+const TCHAR* UCataclysmDungeonModifierEffects::MarchOfProgressKey =
+	TEXT("War_March_of_Progress");
+
+const TCHAR* UCataclysmDungeonModifierEffects::CommandersAuraKey =
+	TEXT("War_Commander_s_Aura");
+
+const TCHAR* UCataclysmDungeonModifierEffects::AntiMagicZonesKey =
+	TEXT("Void_Anti_Magic_Zones");
+
+const TCHAR* UCataclysmDungeonModifierEffects::DesperateMeasuresKey =
+	TEXT("Famine_Desperate_Measures");
+
+const TCHAR* UCataclysmDungeonModifierEffects::HardModeKey = TEXT("Famine_Hard_Mode");
+
+const TCHAR* UCataclysmDungeonModifierEffects::RecessionKey = TEXT("Famine_Recession");
+
+const TCHAR* UCataclysmDungeonModifierEffects::DiminishingReturnsKey =
+	TEXT("Famine_Diminishing_Returns");
+
+const TCHAR* UCataclysmDungeonModifierEffects::DivineResurgenceKey =
+	TEXT("Celestial_Divine_Resurgence");
+
+const TCHAR* UCataclysmDungeonModifierEffects::DeadRisingKey =
+	TEXT("Death_Dead_Rising");
+
+const TCHAR* UCataclysmDungeonModifierEffects::SufferingAuraKey =
+	TEXT("Famine_Suffering_Aura");
+
+const TCHAR* UCataclysmDungeonModifierEffects::BloodGatesKey =
+	TEXT("Demonic_Blood_Gates");
+
+const TCHAR* UCataclysmDungeonModifierEffects::InfernalSealsKey = TEXT("Demonic_Infernal_Seals");
+const TCHAR* UCataclysmDungeonModifierEffects::SanctionedPassageKey = TEXT("Celestial_Sanctioned_Passage");
+const TCHAR* UCataclysmDungeonModifierEffects::LightforgedWallsKey = TEXT("Celestial_Lightforged_Walls");
+const TCHAR* UCataclysmDungeonModifierEffects::AngelicWardensKey = TEXT("Celestial_Angelic_Wardens");
+const TCHAR* UCataclysmDungeonModifierEffects::ThoseInTheDarkKey = TEXT("Void_Those_in_the_Dark");
+const TCHAR* UCataclysmDungeonModifierEffects::FragmentedRealityKey = TEXT("Chaos_Fragmented_Reality");
+const TCHAR* UCataclysmDungeonModifierEffects::HeavensQuakeKey = TEXT("Celestial_Heaven_s_Quake");
+const TCHAR* UCataclysmDungeonModifierEffects::CryptquakeKey = TEXT("Death_Cryptquake");
+const TCHAR* UCataclysmDungeonModifierEffects::SoulChainsKey = TEXT("Death_Soul_Chains");
+const TCHAR* UCataclysmDungeonModifierEffects::LabrynthKey = TEXT("Chaos_The_Labrynth");
+const TCHAR* UCataclysmDungeonModifierEffects::WildMagicKey = TEXT("Chaos_Wild_Magic");
+const TCHAR* UCataclysmDungeonModifierEffects::EchoChamberKey = TEXT("Chaos_Echo_Chamber");
+
+const TCHAR* UCataclysmDungeonModifierEffects::DirgeResonanceKey =
+	TEXT("Death_Dirge_Resonance");
+
+const TCHAR* UCataclysmDungeonModifierEffects::ScarcityKey =
+	TEXT("Famine_Scarcity");
+
+const TCHAR* UCataclysmDungeonModifierEffects::ChaoticLootKey =
+	TEXT("Chaos_Chaotic_Loot");
+
+const TCHAR* UCataclysmDungeonModifierEffects::UnstablePortalKey =
+	TEXT("Chaos_Unstable_Portal");
+
+const TCHAR* UCataclysmDungeonModifierEffects::NothingIsForgottenKey =
+	TEXT("Void_Nothing_Is_Forgotten");
+
+const TCHAR* UCataclysmDungeonModifierEffects::StarvationCurseKey =
+	TEXT("Famine_Starvation_Curse");
+
+const TCHAR* UCataclysmDungeonModifierEffects::TrickOrTreatKey =
+	TEXT("Chaos_Trick_or_Treat");
+
+const TCHAR* UCataclysmDungeonModifierEffects::SoulHarvestKey =
+	TEXT("Demonic_Soul_Harvest");
+
+const TCHAR* UCataclysmDungeonModifierEffects::ChaosTouchedKey =
+	TEXT("Chaos_Chaos_Touched");
+
+const TCHAR* UCataclysmDungeonModifierEffects::TheReaperKey =
+	TEXT("Death_The_Reaper");
+
+const TCHAR* UCataclysmDungeonModifierEffects::CorruptedStalkerKey =
+	TEXT("Generic_Corrupted_Stalker");
+
+const TCHAR* UCataclysmDungeonModifierEffects::BloodBondKey =
+	TEXT("Demonic_Blood_Bond");
+
+const TCHAR* UCataclysmDungeonModifierEffects::PlagueConvergenceKey =
+	TEXT("Pestilence_Plague_Convergence");
+
+const TCHAR* UCataclysmDungeonModifierEffects::DivineWrathKey =
+	TEXT("Celestial_Divine_Wrath");
+
+const TCHAR* UCataclysmDungeonModifierEffects::EchoesOfThePastKey =
+	TEXT("Death_Echoes_of_the_Past");
+
+const TCHAR* UCataclysmDungeonModifierEffects::PlagueHarbingersKey =
+	TEXT("Pestilence_Plague_Harbingers");
+
+const TCHAR* UCataclysmDungeonModifierEffects::WingsOfTheHostKey =
+	TEXT("Celestial_Wings_of_the_Host");
+
+const TCHAR* UCataclysmDungeonModifierEffects::EternalChorusKey =
+	TEXT("Celestial_Eternal_Chorus");
+
+const TCHAR* UCataclysmDungeonModifierEffects::NecroticBloomKey =
+	TEXT("Death_Necrotic_Bloom");
+
+const TCHAR* UCataclysmDungeonModifierEffects::GoldenSpiresKey =
+	TEXT("Celestial_Golden_Spires");
+
+const TCHAR* UCataclysmDungeonModifierEffects::PestilentEmpowermentKey =
+	TEXT("Pestilence_Pestilent_Empowerment");
+
+const TCHAR* UCataclysmDungeonModifierEffects::PortalUnleashingKey =
+	TEXT("Void_Portal_Unleashing");
+
+const TCHAR* UCataclysmDungeonModifierEffects::MindShatteringIllusionsKey =
+	TEXT("Void_Mind_Shattering_Illusions");
+
+const TCHAR* UCataclysmDungeonModifierEffects::RealityRiftsKey =
+	TEXT("Chaos_Reality_Rifts");
+
+const TCHAR* UCataclysmDungeonModifierEffects::LuxuryHoardersKey =
+	TEXT("Famine_Luxury_Hoarders");
+
+const TCHAR* UCataclysmDungeonModifierEffects::InsanityBurstsKey =
+	TEXT("Void_Insanity_Bursts");
+
+const TCHAR* UCataclysmDungeonModifierEffects::FunerealProcessionKey =
+	TEXT("Death_Funereal_Procession");
+
+const TCHAR* UCataclysmDungeonModifierEffects::BloodDebtKey =
+	TEXT("War_Blood_Debt");
+
+const TCHAR* UCataclysmDungeonModifierEffects::QuarantineBreachKey =
+	TEXT("Pestilence_Quarantine_Breach");
+
+const TCHAR* UCataclysmDungeonModifierEffects::InfectionBloomKey =
+	TEXT("Pestilence_Infection_Bloom");
+
+const TCHAR* UCataclysmDungeonModifierEffects::InfestedHoardKey =
+	TEXT("Pestilence_The_Infested_Hoard");
+
+const TCHAR* UCataclysmDungeonModifierEffects::AbyssalRiftsKey =
+	TEXT("Demonic_Abyssal_Rifts");
+
+const TCHAR* UCataclysmDungeonModifierEffects::SwarmOfLocustsKey =
+	TEXT("Famine_Swarm_of_Locusts");
+
+const TCHAR* UCataclysmDungeonModifierEffects::WarzoneControlPointsKey =
+	TEXT("War_Warzone_Control_Points");
+
+const TCHAR* UCataclysmDungeonModifierEffects::RawSewageKey =
+	TEXT("Pestilence_Raw_Sewage");
+
+const TCHAR* UCataclysmDungeonModifierEffects::DemonicGuideKey =
+	TEXT("Demonic_Demonic_Guide");
+
+const TCHAR* UCataclysmDungeonModifierEffects::CarrionFeastKey =
+	TEXT("Pestilence_Carrion_Feast");
+
+const TCHAR* UCataclysmDungeonModifierEffects::PlaguebearerKey =
+	TEXT("Pestilence_The_Plaguebearer");
+
+const TCHAR* UCataclysmDungeonModifierEffects::MoraleBreakKey =
+	TEXT("War_Morale_Break");
+
+const TCHAR* UCataclysmDungeonModifierEffects::ContagiousTouchKey =
+	TEXT("Pestilence_Contagious_Touch");
+
+const TCHAR* UCataclysmDungeonModifierEffects::FamishedBeastsKey =
+	TEXT("Famine_Famished_Beasts");
+
+bool UCataclysmDungeonModifierEffects::FamishedBeastsEats(const ACataclysmDroppedItem* Drop)
+{
+	return IsValid(Drop) && !Drop->bInfested;
+}
+
+ACataclysmDroppedItem* UCataclysmDungeonModifierEffects::FamishedBeastsNearestDrop(
+	const UWorld* World, const FVector& From, float WithinCm)
+{
+	ACataclysmDroppedItem* Nearest = nullptr;
+	float NearestCm = WithinCm;
+	if (!World)
+	{
+		return Nearest;
+	}
+	for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+	{
+		const float Cm = FVector::Dist2D(From, It->GetActorLocation());
+		if (FamishedBeastsEats(*It) && Cm <= NearestCm)
+		{
+			Nearest = *It;
+			NearestCm = Cm;
+		}
+	}
+	return Nearest;
+}
+
+const TCHAR* UCataclysmDungeonModifierEffects::BattlefieldRelicsKey =
+	TEXT("War_Battlefield_Relics");
+
+const TCHAR* UCataclysmDungeonModifierEffects::PandorasBoxKey =
+	TEXT("Chaos_Pandora_s_Box");
+
+const TCHAR* UCataclysmDungeonModifierEffects::InfernalBeaconsKey =
+	TEXT("Demonic_Infernal_Beacons");
+
+const TCHAR* UCataclysmDungeonModifierEffects::WarBannerKey =
+	TEXT("War_War_Banner");
+
+const TCHAR* UCataclysmDungeonModifierEffects::ForcedTithesKey =
+	TEXT("Celestial_Forced_Tithes");
+
+const TCHAR* UCataclysmDungeonModifierEffects::PactOfTemptationKey =
+	TEXT("Demonic_Pact_of_Temptation");
+
+const TCHAR* UCataclysmDungeonModifierEffects::BloodPriceKey =
+	TEXT("Demonic_Blood_Price");
+
+const TCHAR* UCataclysmDungeonModifierEffects::PactName(int32 Pact)
+{
+	switch (Pact)
+	{
+	case PactWrath: return TEXT("Wrath");
+	case PactHaste: return TEXT("Haste");
+	case PactBulwark: return TEXT("Bulwark");
+	case PactGreed: return TEXT("Greed");
+	case PactBlood: return TEXT("Blood");
+	default: return TEXT("");
+	}
+}
+
+int32 UCataclysmDungeonModifierEffects::PactOfChoice(FName ChoiceKey)
+{
+	for (int32 Pact = 0; Pact < PactKinds; ++Pact)
+	{
+		if (ChoiceKey == FName(PactName(Pact)))
+		{
+			return Pact;
+		}
+	}
+	return INDEX_NONE;
+}
+
+FString UCataclysmDungeonModifierEffects::PactButtonLabel(int32 Pact)
+{
+	switch (Pact)
+	{
+	case PactWrath:
+		return FString::Printf(TEXT("Pact of Wrath: %d%% more damage next floor; %d%% less maximum health for the dungeon"),
+							   FMath::RoundToInt(PactWrathDamageMorePercent), FMath::RoundToInt(PactWrathMaxHealthLessPercent));
+	case PactHaste:
+		return FString::Printf(TEXT("Pact of Haste: %d%% more attack and movement speed next floor; %d less to every "
+									"resistance for the dungeon"),
+							   FMath::RoundToInt(PactHasteSpeedMorePercent), FMath::RoundToInt(PactHasteCurseResistance));
+	case PactBulwark:
+		return FString::Printf(TEXT("Pact of the Bulwark: +%d to every resistance next floor; %d%% less movement speed "
+									"for the dungeon"),
+							   FMath::RoundToInt(PactBulwarkResistance), FMath::RoundToInt(PactBulwarkSpeedLessPercent));
+	case PactGreed:
+		return FString::Printf(TEXT("Pact of Greed: +%d magic find next floor; creatures deal %d%% more damage for the "
+									"dungeon"),
+							   FMath::RoundToInt(PactGreedMagicFind), FMath::RoundToInt(PactGreedCreatureDamagePercent));
+	case PactBlood:
+		return FString::Printf(TEXT("Pact of Blood: %d%% more damage next floor; %d%% less healing received for the "
+									"dungeon"),
+							   FMath::RoundToInt(PactBloodDamageMorePercent), FMath::RoundToInt(PactBloodHealingLessPercent));
+	default:
+		return FString();
+	}
+}
+
+FString UCataclysmDungeonModifierEffects::PactCurseText(int32 Pact, int32 Taken)
+{
+	switch (Pact)
+	{
+	case PactWrath: return FString::Printf(TEXT("-%d%% health"), FMath::RoundToInt(Taken * PactWrathMaxHealthLessPercent));
+	case PactHaste: return FString::Printf(TEXT("-%d resistances"), FMath::RoundToInt(Taken * PactHasteCurseResistance));
+	case PactBulwark:
+		return FString::Printf(TEXT("-%d%% movement speed"), FMath::RoundToInt(Taken * PactBulwarkSpeedLessPercent));
+	case PactGreed:
+		return FString::Printf(TEXT("creatures +%d%% damage"), FMath::RoundToInt(Taken * PactGreedCreatureDamagePercent));
+	case PactBlood: return FString::Printf(TEXT("-%d%% healing"), FMath::RoundToInt(Taken * PactBloodHealingLessPercent));
+	default: return FString();
+	}
+}
+
+void UCataclysmDungeonModifierEffects::WritePactEffects(FCataclysmPlayerFloorEffects& Into, int32 BuffPact,
+														const TArray<int32>& CursesTaken)
+{
+	const auto Taken = [&CursesTaken](int32 Pact) { return CursesTaken.IsValidIndex(Pact) ? CursesTaken[Pact] : 0; };
+
+	// THE BUFF, THIS FLOOR'S ONLY.
+	Into.PactDamageMorePercent = BuffPact == PactWrath ? PactWrathDamageMorePercent
+		: BuffPact == PactBlood ? PactBloodDamageMorePercent : 0.0f;
+	Into.PactAttackSpeedMorePercent = BuffPact == PactHaste ? PactHasteSpeedMorePercent : 0.0f;
+	Into.PactSpeedMorePercent = BuffPact == PactHaste ? PactHasteSpeedMorePercent : 0.0f;
+	Into.PactResistancePercent = BuffPact == PactBulwark ? PactBulwarkResistance : 0.0f;
+	Into.PactMagicFindAdded = BuffPact == PactGreed ? PactGreedMagicFind : 0.0f;
+
+	// THE CURSES, ADDED: each pact taken adds its own again, the same pact twice included.
+	Into.PactMaxHealthLessPercent = Taken(PactWrath) * PactWrathMaxHealthLessPercent;
+	Into.PactCurseResistancePercent = Taken(PactHaste) * PactHasteCurseResistance;
+	Into.PactCurseSpeedLessPercent = Taken(PactBulwark) * PactBulwarkSpeedLessPercent;
+	Into.PactHealingLessPercent = Taken(PactBlood) * PactBloodHealingLessPercent;
+}
+
+const TCHAR* UCataclysmDungeonModifierEffects::InfestedVeinsKey =
+	TEXT("Pestilence_Infested_Veins");
+
+const TCHAR* UCataclysmDungeonModifierEffects::BlackestShadowKey =
+	TEXT("Void_The_Blackest_Shadow");
+
+const TCHAR* UCataclysmDungeonModifierEffects::ShadowyEnemiesKey =
+	TEXT("Void_Shadowy_Enemies");
+
+const TCHAR* UCataclysmDungeonModifierEffects::FogOfWarKey =
+	TEXT("War_Fog_of_War");
+
+float UCataclysmDungeonModifierEffects::SightRadiusFor(const TArray<FName>& Modifiers)
+{
+	// THE SMALLEST ASKED FOR, so two rows that limit sight give the shorter sight and neither lengthens it.
+	float Radius = 0.0f;
+	const auto Ask = [&Radius](float Asked)
+	{
+		Radius = Radius <= 0.0f ? Asked : FMath::Min(Radius, Asked);
+	};
+	if (Modifiers.Contains(FName(FogOfWarKey)))
+	{
+		Ask(FogOfWarSightCm);
+	}
+	// THE BLACKEST SHADOW'S LIGHT IS THE PLAYER'S SIGHT: what is outside it is not seen.
+	if (Modifiers.Contains(FName(BlackestShadowKey)))
+	{
+		Ask(BlackestShadowLightCm);
+	}
+	return Radius;
+}
+
+const TCHAR* UCataclysmDungeonModifierEffects::TrialOfEnduranceKey =
+	TEXT("Celestial_Trial_of_Endurance");
+
+const TCHAR* UCataclysmDungeonModifierEffects::GrimTotemsKey =
+	TEXT("Death_Grim_Totems");
+
+const TCHAR* UCataclysmDungeonModifierEffects::VoidParasiteKey =
+	TEXT("Void_Void_Parasite");
+
+const TCHAR* UCataclysmDungeonModifierEffects::ObsidianSarcophagiKey =
+	TEXT("Death_Obsidian_Sarcophagi");
+
+// THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
+// game/Data/ElementVisuals.csv and a member of the shipping damage type list.
+// The header says why it is a type rather than the stat name it becomes.
+const TCHAR* UCataclysmDungeonModifierEffects::HolyRepercussionsResistance =
+	TEXT("Celestial");
+
+// THE COLOURS EACH KIND OF MUSHROOM IS DRAWN IN, which are row keys of
+// `game/Data/ElementVisuals.csv` and not damage types this rule deals. The
+// header says at length why the pair is these two and why neither name reaches
+// anything but the drawing.
+const TCHAR* UCataclysmDungeonModifierEffects::FungalOvergrowthBoostDrawnAs =
+	TEXT("Celestial");
+const TCHAR* UCataclysmDungeonModifierEffects::FungalOvergrowthSlowDrawnAs =
+	TEXT("Void");
+
+const TCHAR* UCataclysmDungeonModifierEffects::SingularityWellsKey =
+	TEXT("Void_Singularity_Wells");
+const TCHAR* UCataclysmDungeonModifierEffects::WitheredGroundKey =
+	TEXT("Famine_Withered_Ground");
+
+namespace
+{
+	/**
+	 * The character-sheet stat names the three maximums are written under.
+	 *
+	 * THE SAME SPELLINGS `UCataclysmPlayerClassStats::StatToAttribute` USES, and
+	 * they have to be: a modifier keyed by a name that map does not hold is not
+	 * written anywhere, silently. `Cataclysm.DungeonModifierEffects.Starvation
+	 * LowersThePlayersMaximumsAndLeavingGivesThemBack` is what fails if either
+	 * side is renamed.
+	 *
+	 * NAMED FOR THIS FILE, because Unreal merges a module's `.cpp` files into one
+	 * translation unit and `tools/tests/test_no_two_files_share_an_anonymous_helper.py`
+	 * fails when two files declare the same helper.
+	 */
+	const TCHAR* const DungeonModifierEffectsMaxHealthStat = TEXT("max_health");
+	const TCHAR* const DungeonModifierEffectsMaxEnergyShieldStat = TEXT("max_energy_shield");
+	const TCHAR* const DungeonModifierEffectsMaxManaStat = TEXT("max_mana");
+	const TCHAR* const DungeonModifierEffectsHealingReceivedStat =
+		TEXT("healing_received_reduction");
+	const TCHAR* const DungeonModifierEffectsMovementSpeedStat =
+		TEXT("movement_speed");
+
+	/**
+	 * The stat armour is written under, for March of Progress.
+	 *
+	 * `armor` AND NOT `armour`, WHICH IS THE DATA'S SPELLING AND NOT THIS PROJECT'S
+	 * PROSE. `UCataclysmPlayerClassStats::StatToAttribute` holds it spelled this way,
+	 * `game/Data/ClassStats.csv` and `game/Data/Affixes.csv` both spell it this way, and
+	 * a modifier keyed by a name that map does not hold is written nowhere, silently.
+	 */
+	const TCHAR* const DungeonModifierEffectsArmourStat = TEXT("armor");
+
+	/** Attack speed, which Trick or Treat's haste raises. Issues #1820 and #41. */
+	const TCHAR* const DungeonModifierEffectsAttackSpeedStat = TEXT("attack_speed");
+
+	/**
+	 * The two stats a hit's damage is read from, for Void Parasite. Issues #1820 and #41. The spellings
+	 * the enchantment "You deal 20%-35% less damage" writes in game/Data/EnchantmentEffects.csv, which are
+	 * keys of `UCataclysmPlayerClassStats::StatToAttribute`.
+	 */
+	const TCHAR* const DungeonModifierEffectsAttackDamageStat = TEXT("attack_damage");
+	const TCHAR* const DungeonModifierEffectsSpellDamageStat = TEXT("spell_damage");
+
+	/**
+	 * Magic find, which Abyssal Rifts pays. Issues #1820 and #41. The spelling
+	 * `UCataclysmPlayerClassStats::StatToAttribute` holds and the character sheet shows.
+	 */
+	const TCHAR* const DungeonModifierEffectsMagicFindStat = TEXT("magic_find");
+
+	/**
+	 * The four stats Withered Ground's row calls "Health and Mana recovery
+	 * (regen/leech)".
+	 *
+	 * THE SPELLINGS ARE THE ONES THE REST OF THE GAME USES, not new ones.
+	 * `UCataclysmRegeneration::HealthRegenStat` and `ManaRegenStat` are the
+	 * same two strings, and the leech pair are keys of
+	 * `UCataclysmPlayerClassStats::StatToAttribute`. They are repeated here
+	 * rather than included because this file already keeps its other five stat
+	 * names this way, and the Python test on the row's wording is what holds
+	 * them honest.
+	 */
+	const TCHAR* const DungeonModifierEffectsHealthRegenStat = TEXT("health_regen");
+	const TCHAR* const DungeonModifierEffectsManaRegenStat = TEXT("mana_regen");
+	const TCHAR* const DungeonModifierEffectsLifeLeechStat = TEXT("life_leech");
+	const TCHAR* const DungeonModifierEffectsManaLeechStat = TEXT("mana_leech");
+
+	// Eternal Chorus's three. Issues #1820 and #41.
+	const TCHAR* const DungeonModifierEffectsCooldownLengtheningStat = TEXT("cooldown_lengthening");
+	const TCHAR* const DungeonModifierEffectsFervourPerSecondStat = TEXT("fervour_per_second");
+
+	/**
+	 * One multiplier from a dungeon rule, or nothing for a value of nothing.
+	 *
+	 * SIGNED, AND THE SIGN IS WHAT MAKES A LESS. The pipeline multiplies by
+	 * (1 + Value / 100), so -10 is x0.9 and +10 is x1.1, and it floors a Less at
+	 * -99 so no rule can take a number to nothing. The most any rule here takes
+	 * is 60, well inside that.
+	 *
+	 * ONE PLACE BUILDS THE MODIFIER, which is why the two callers below pass a
+	 * sign rather than each building their own.
+	 */
+	void DungeonModifierEffectsAddMultiplier(
+		TMap<FName, TArray<FCataclysmStatModifier>>& Into, FName Stat, float Value)
+	{
+		if (FMath::IsNearlyZero(Value))
+		{
+			return;
+		}
+
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::More;
+		Modifier.Source = ECataclysmModifierSource::DungeonRule;
+		Modifier.Value = Value;
+
+		Into.FindOrAdd(Stat).Add(Modifier);
+	}
+
+	/** One Less multiplier from a dungeon rule, or nothing for a share of zero. */
+	void DungeonModifierEffectsAddLess(
+		TMap<FName, TArray<FCataclysmStatModifier>>& Into, const TCHAR* Stat,
+		float LessPercent)
+	{
+		if (LessPercent <= 0.0f)
+		{
+			return;
+		}
+
+		DungeonModifierEffectsAddMultiplier(Into, FName(Stat), -LessPercent);
+	}
+
+	/**
+	 * One flat SUBTRACTION from a dungeon rule, or nothing for a value of nothing: the value held positive, as
+	 * `DungeonModifierEffectsAddLess` holds its share, and written negative. Issues #1820 and #41. The first rule to take
+	 * points off a stat rather than a share: a Pact of Haste's curse takes 10 off every resistance.
+	 */
+	void DungeonModifierEffectsTakeFlat(
+		TMap<FName, TArray<FCataclysmStatModifier>>& Into, const TCHAR* Stat,
+		float Value)
+	{
+		if (Value <= 0.0f)
+		{
+			return;
+		}
+
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Flat;
+		Modifier.Source = ECataclysmModifierSource::DungeonRule;
+		Modifier.Value = -Value;
+
+		Into.FindOrAdd(FName(Stat)).Add(Modifier);
+	}
+
+	/**
+	 * One flat addition from a dungeon rule, or nothing for a value of nothing.
+	 *
+	 * FLAT AND NOT A MULTIPLIER, WHICH IS THE WHOLE REASON THIS EXISTS. The two
+	 * above scale a stat that already has a value: maximum health, a resistance.
+	 * A stat that is zero for every class cannot be moved by scaling it, and
+	 * `healing_received_reduction` is exactly that -- a reduction nobody carries
+	 * until something applies one. The flat bucket adds to the base before
+	 * anything multiplies, in the stat's own units, which here are percentage
+	 * points.
+	 *
+	 * A DUNGEON RULE MAY USE ANY BUCKET. The pipeline refuses gear the More
+	 * bucket and this is not gear; `ECataclysmModifierSource::DungeonRule` is
+	 * the same source the two above declare.
+	 */
+	void DungeonModifierEffectsAddFlat(
+		TMap<FName, TArray<FCataclysmStatModifier>>& Into, const TCHAR* Stat,
+		float Value)
+	{
+		if (Value <= 0.0f)
+		{
+			return;
+		}
+
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Flat;
+		Modifier.Source = ECataclysmModifierSource::DungeonRule;
+		Modifier.Value = Value;
+
+		Into.FindOrAdd(FName(Stat)).Add(Modifier);
+	}
+
+	/**
+	 * A dungeon rule TAKING A STAT TO NOTHING, whatever else reaches it: `ECataclysmStatBucket::Removed`. The Edict of
+	 * Temperance's "life leech does nothing". 2026-10-22, G7b.
+	 *
+	 * A REMOVAL AND NOT A LESS OF A HUNDRED, which the pipeline would floor at 99. A dungeon rule may remove a stat:
+	 * `UCataclysmStatPipeline::CanGrantMore` decides both, and `DungeonRule` is among the sources it allows. The value is
+	 * not read, and is written as 1, as a data row states it.
+	 */
+	void DungeonModifierEffectsRemoveStat(TMap<FName, TArray<FCataclysmStatModifier>>& Into, const TCHAR* Stat,
+										  bool bRemoved)
+	{
+		if (!bRemoved)
+		{
+			return;
+		}
+
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Removed;
+		Modifier.Source = ECataclysmModifierSource::DungeonRule;
+		Modifier.Value = 1.0f;
+
+		Into.FindOrAdd(FName(Stat)).Add(Modifier);
+	}
+
+	/**
+	 * The same flat addition, reaching only the skills that carry every one of `Tags`.
+	 * Anti-Magic Zones. Issues #1820 and #41.
+	 *
+	 * BESIDE THE ONE ABOVE AND NOT A CHANGE TO IT. Every rule that calls that one means
+	 * "every skill", and a default argument added there would be one more thing each of
+	 * those calls could get wrong.
+	 *
+	 * THE SCOPE IS `RequiredTags` AND NOTHING ELSE HERE KNOWS ABOUT SKILLS. The stat
+	 * pipeline judges a modifier's required tags against the skill being asked about,
+	 * with `HasTag`, so a parent tag reaches its children. The character's stat line
+	 * keeps the modifier whole: `UCataclysmEquipmentComponent` appends this map's entries
+	 * to the character's own without copying fields out of them, which
+	 * `test_a_dungeon_rule_modifiers_required_tags_reach_the_stat_line` holds.
+	 *
+	 * AN EMPTY SCOPE WRITES NOTHING, AND THAT IS THE WHOLE POINT OF THE CHECK. A modifier
+	 * with no required tags reaches EVERY skill, so a scoped rule whose tag failed to
+	 * resolve -- a tag renamed in the design workbook, which `RequestGameplayTag` answers
+	 * with an invalid tag rather than an error -- would silently become the Edict of
+	 * Silence. Locking nothing is the smaller fault of the two.
+	 */
+	void DungeonModifierEffectsAddFlatForTags(
+		TMap<FName, TArray<FCataclysmStatModifier>>& Into, const TCHAR* Stat,
+		float Value, const FGameplayTagContainer& Tags)
+	{
+		if (Value <= 0.0f || Tags.IsEmpty())
+		{
+			return;
+		}
+
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Flat;
+		Modifier.Source = ECataclysmModifierSource::DungeonRule;
+		Modifier.Value = Value;
+		Modifier.RequiredTags = Tags;
+
+		Into.FindOrAdd(FName(Stat)).Add(Modifier);
+	}
+
+	/**
+	 * The same flat addition, holding only while `Condition` does. Desperate
+	 * Measures. Issues #1820 and #41.
+	 *
+	 * BESIDE THE TWO ABOVE AND NOT A CHANGE TO EITHER, for the reason the scoped
+	 * one gives. The condition is judged by the stat pipeline each time the stat
+	 * is asked for, with the character's state at that moment, which is what lets
+	 * a rule written once a floor turn on and off as the player's mana moves.
+	 */
+	void DungeonModifierEffectsAddFlatWhile(
+		TMap<FName, TArray<FCataclysmStatModifier>>& Into, const TCHAR* Stat,
+		float Value, ECataclysmStatCondition Condition, float ConditionValue)
+	{
+		if (Value <= 0.0f)
+		{
+			return;
+		}
+
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Flat;
+		Modifier.Source = ECataclysmModifierSource::DungeonRule;
+		Modifier.Value = Value;
+		Modifier.Condition = Condition;
+		Modifier.ConditionValue = ConditionValue;
+
+		Into.FindOrAdd(FName(Stat)).Add(Modifier);
+	}
+}
+
+ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName RowKey)
+{
+	// THE ROWS BELOW ARE FULLY BUILT: each does everything its row describes --
+	// The Nihil's Embrace including its cleanse on a high tier enemy's defeat,
+	// Death's Embrace including the reset on a new floor, the Field Medic
+	// including "it does not attack", and Mortal Decay including the slowing a
+	// kill buys -- so none of them is "partly". Count the arms rather than
+	// reading a number here.
+	//
+	// THIS COMMENT USED TO WRITE THE COUNT OUT AND IT WENT STALE TWICE: it said
+	// SIX until Withered Ground made it seven, then SEVEN until Mortal Decay
+	// made it eight. Issue #1786. Correcting the number restores it for exactly
+	// one commit, which is why the number is gone rather than updated -- the
+	// same reasoning the struct comment in the header now carries, and the same
+	// as `FCataclysmPlayerFloorEffects`'s "THE FIELDS BELOW THE FIRST THREE".
+	//
+	// THE FIELD MEDIC WAS `Partly` UNTIL ISSUE #1680, and it was marked so
+	// deliberately: the healing worked and nothing in the game could stop a
+	// creature attacking, so calling it built would have been a wrong answer
+	// in the one place the project asks what is finished. #1680 built the
+	// missing half, so the answer changes.
+	if (RowKey == FName(StarvationKey) || RowKey == FName(DehydrationKey)
+		|| RowKey == FName(ForcedMarchKey) || RowKey == FName(NihilsEmbraceKey)
+		|| RowKey == FName(DeathsEmbraceKey) || RowKey == FName(FieldMedicKey)
+		|| RowKey == FName(WitheredGroundKey) || RowKey == FName(MortalDecayKey)
+		|| RowKey == FName(WastingSicknessKey)
+		|| RowKey == FName(GraspingTentaclesKey)
+		|| RowKey == FName(EdictOfSilenceKey)
+		// THE EDICTS OF TEMPERANCE, PATIENCE AND STILLNESS, BUILT WITH THEIR ROWS, 2026-10-22 (G7b).
+		|| RowKey == FName(EdictOfTemperanceKey)
+		|| RowKey == FName(EdictOfPatienceKey)
+		|| RowKey == FName(EdictOfStillnessKey)
+		// THE EDICTS OF ABSTINENCE, VIGIL AND HUMILITY, BUILT WITH THEIR ROWS, 2026-10-23 (G7c).
+		|| RowKey == FName(EdictOfAbstinenceKey)
+		|| RowKey == FName(EdictOfVigilKey)
+		|| RowKey == FName(EdictOfHumilityKey)
+		|| RowKey == FName(ArtilleryStrikeKey)
+		|| RowKey == FName(HallowedGroundfallKey)
+		|| RowKey == FName(SporeCloudsKey)
+		|| RowKey == FName(HellfireKey)
+		|| RowKey == FName(BrandOfTheAggressorKey)
+		|| RowKey == FName(FungalOvergrowthKey)
+		|| RowKey == FName(IllusoryEnemiesKey)
+		|| RowKey == FName(HolyRepercussionsKey)
+		|| RowKey == FName(LeechSporesKey)
+		|| RowKey == FName(BloodAltarKey)
+		|| RowKey == FName(NecroticGroundKey)
+		|| RowKey == FName(RavenousHoardKey)
+		|| RowKey == FName(GraveTideKey)
+		|| RowKey == FName(VolatileEvolutionKey)
+		|| RowKey == FName(RoyalGuardKey)
+		|| RowKey == FName(DemonPrinceKey)
+		|| RowKey == FName(EpidemicKey)
+		|| RowKey == FName(BloodForgedChampionsKey)
+		|| RowKey == FName(VengefulWraithsKey)
+		|| RowKey == FName(JudgmentZonesKey)
+		|| RowKey == FName(MarchOfProgressKey)
+		|| RowKey == FName(CommandersAuraKey)
+		|| RowKey == FName(AntiMagicZonesKey)
+		|| RowKey == FName(DesperateMeasuresKey)
+		|| RowKey == FName(HardModeKey)
+		|| RowKey == FName(RecessionKey)
+		|| RowKey == FName(DiminishingReturnsKey)
+		|| RowKey == FName(DivineResurgenceKey)
+		|| RowKey == FName(DeadRisingKey)
+		|| RowKey == FName(SufferingAuraKey)
+		|| RowKey == FName(BloodGatesKey)
+		|| RowKey == FName(InfernalSealsKey)
+		|| RowKey == FName(SanctionedPassageKey)
+		|| RowKey == FName(DirgeResonanceKey)
+		|| RowKey == FName(ScarcityKey)
+		|| RowKey == FName(ChaoticLootKey)
+		|| RowKey == FName(UnstablePortalKey)
+		|| RowKey == FName(NothingIsForgottenKey)
+		|| RowKey == FName(StarvationCurseKey)
+		|| RowKey == FName(TrickOrTreatKey)
+		// SOUL HARVEST, BUILT WHOLE SINCE ITS SOULS FLOAT, issue #1671, 2026-11-17. From 2026-09-24 it answered Built
+		// in a reduced form, its soul given at once to the nearest creature; the row's "souls float toward the nearest
+		// demon" is now what happens.
+		|| RowKey == FName(SoulHarvestKey)
+		|| RowKey == FName(ChaosTouchedKey)
+		|| RowKey == FName(TheReaperKey)
+		|| RowKey == FName(BloodBondKey)
+		|| RowKey == FName(PlagueConvergenceKey)
+		|| RowKey == FName(DivineWrathKey)
+		|| RowKey == FName(EchoesOfThePastKey)
+		|| RowKey == FName(PlagueHarbingersKey)
+		|| RowKey == FName(WingsOfTheHostKey)
+		|| RowKey == FName(EternalChorusKey)
+		|| RowKey == FName(NecroticBloomKey)
+		|| RowKey == FName(GoldenSpiresKey)
+		|| RowKey == FName(PestilentEmpowermentKey)
+		|| RowKey == FName(PortalUnleashingKey)
+		|| RowKey == FName(MindShatteringIllusionsKey)
+		|| RowKey == FName(LuxuryHoardersKey)
+		|| RowKey == FName(FunerealProcessionKey)
+		|| RowKey == FName(BloodDebtKey)
+		|| RowKey == FName(QuarantineBreachKey)
+		|| RowKey == FName(InfectionBloomKey)
+		|| RowKey == FName(InfestedHoardKey)
+		|| RowKey == FName(AbyssalRiftsKey)
+		// GRIM TOTEMS, BUILT SINCE A DISPELLED TOTEM ALSO CLEANSES THE PLAYER, the row's "removing harmful effects".
+		// Issues #1820 and #41.
+		|| RowKey == FName(GrimTotemsKey)
+		// SWARM OF LOCUSTS, BUILT SINCE ITS SWARM OBSCURES VISION through the vision system. Issues #1820 and #41.
+		|| RowKey == FName(SwarmOfLocustsKey)
+		|| RowKey == FName(RawSewageKey)
+		|| RowKey == FName(DemonicGuideKey)
+		|| RowKey == FName(PlaguebearerKey)
+		|| RowKey == FName(MoraleBreakKey)
+		|| RowKey == FName(ContagiousTouchKey)
+		|| RowKey == FName(FamishedBeastsKey)
+		|| RowKey == FName(BattlefieldRelicsKey)
+		|| RowKey == FName(PandorasBoxKey)
+		|| RowKey == FName(InfernalBeaconsKey)
+		|| RowKey == FName(WarBannerKey)
+		|| RowKey == FName(ForcedTithesKey)
+		|| RowKey == FName(PactOfTemptationKey)
+		|| RowKey == FName(BloodPriceKey)
+		// CARRION FEAST, BUILT SINCE ITS PURIFICATION ALTARS, 2026-09-30; partly built until then. Issues #1820, #41.
+		|| RowKey == FName(CarrionFeastKey)
+		|| RowKey == FName(InfestedVeinsKey)
+		|| RowKey == FName(TrialOfEnduranceKey)
+		|| RowKey == FName(FogOfWarKey)
+		|| RowKey == FName(BlackestShadowKey)
+		|| RowKey == FName(ShadowyEnemiesKey)
+		|| RowKey == FName(VoidParasiteKey)
+		|| RowKey == FName(ObsidianSarcophagiKey)
+		// REALITY TWISTER. Its row is drawn onto each floor by `FCataclysmDungeonFloorRules::ModifiersFor`, rule 4.
+		// Issues #1820 and #41.
+		|| RowKey == FName(FCataclysmDungeonFloorRules::RealityTwisterKey)
+		// INFERNAL RAIN, BUILT SINCE ITS FIREBALL FALLS, 2026-10-01. Issue #1699.
+		|| RowKey == FName(InfernalRainKey)
+		// SINGULARITY WELLS, BUILT SINCE ITS WELLS PULL THE PLAYER AND TURN PROJECTILES, 2026-10-01. Issue #1605.
+		|| RowKey == FName(SingularityWellsKey)
+		// HEAVEN'S QUAKE AND CRYPTQUAKE, BUILT 2026-10-02 ON THE RUNTIME FLOOR OBSTACLE: pillars and pits that close
+		// cells during play. Issues #1820 and #41.
+		|| RowKey == FName(HeavensQuakeKey)
+		|| RowKey == FName(CryptquakeKey)
+		// WARZONE CONTROL POINTS AND SOUL CHAINS, BUILT 2026-10-04 ON THE GATED SHORTCUT, on Halls floors: a point
+		// captured opens its shortcut, and a gate whose two bearers die opens and pays. Issues #1820 and #41.
+		|| RowKey == FName(WarzoneControlPointsKey)
+		|| RowKey == FName(SoulChainsKey)
+		// WILD MAGIC, BUILT 2026-10-04: a skill use rolls to trigger a random different skill of the player's damage
+		// type. "Your class tree" is read as the damage type; see the key. Issues #1820 and #41.
+		|| RowKey == FName(WildMagicKey)
+		// ECHO CHAMBER, BUILT 2026-10-05: every skill use fires a free copy of that skill in a random direction, and
+		// the copy hits the player for a tenth when they stand inside its area. Issues #1820 and #41.
+		|| RowKey == FName(EchoChamberKey)
+		// LIGHTFORGED WALLS, BUILT 2026-10-08 ON THE FLOOR'S SECTIONS: on a Halls floor a barrier of pillars seals each
+		// section but the last until the creatures the floor placed in it are slain, and the stairs seal the last.
+		// Elsewhere it is the sealed stairs alone; see the key. Issues #1820 and #41.
+		|| RowKey == FName(LightforgedWallsKey)
+		// ANGELIC WARDENS, BUILT 2026-10-08 ON THE OWNER'S READING OF WHAT WAKES A STATUE: the player coming near, or
+		// using a skill near it. "Trigger certain traps" is not built, the game having no trap a player triggers; see
+		// the key. Issues #1820 and #41.
+		|| RowKey == FName(AngelicWardensKey)
+		// RULE OF CHAOS, BUILT 2026-10-08 AS THREE NAMED RULE CHANGES, ONE DRAWN A FLOOR, approved by the owner "for
+		// now". The row's sentence is wider than that; see `FCataclysmDungeonFloorRules::RuleOfChaosKey`. Issues
+		// #1820 and #41.
+		|| RowKey == FName(FCataclysmDungeonFloorRules::RuleOfChaosKey)
+		// THOSE IN THE DARK, BUILT 2026-10-09 IN TWO LAYERS: chasms a player falls into, and the dark floor a fall leads
+		// to, ten floors deeper or the final floor. See the key and `ThoseInTheDarkFloorsDeeper`. Issues #1820, #41.
+		|| RowKey == FName(ThoseInTheDarkKey)
+		// FRAGMENTED REALITY, BUILT 2026-10-09 ON THE FLOOR'S SECTIONS: on a Halls floor in sections one section that
+		// does not hold the entrance is Fragmented, and entering it draws one of four pairs of stat changes that
+		// holds until the player leaves. On a floor with no sections the row does nothing; see the key. Issues #1820
+		// and #41.
+		|| RowKey == FName(FragmentedRealityKey)
+		// REALITY RIFTS, BUILT 2026-10-10 ON THE HIDDEN CHAMBER: one floor in three carrying the row has a chamber of
+		// three by three cells off the floor's plan, entered and left only by a rift of its own, holding one drop roll
+		// as an Elite kill's. The pairs and the gift were built on 2026-09-26; see the key. Issues #1820 and #41.
+		|| RowKey == FName(RealityRiftsKey)
+		// THE LABRYNTH, BUILT SINCE 2026-10-12 WITH NO CHANGE TO WHAT IT DOES. THE ROOMS DO NOT MOVE and the floor is
+		// not carved again. Gated shortcuts opening and closing in turn ARE the row: a path walked a moment ago is
+		// blocked and another has opened, which is the row's "blocked or redirected". Until that day the row answered
+		// Partly, for "rooms rearrange". WHY IT MOVED: the coordinating session recommended that The Labrynth be
+		// accepted as blocked and redirected paths and marked Built, and the owner answered on 2026-10-12 "your rec on
+		// all three, continue". See the key. Issues #1820 and #41.
+		|| RowKey == FName(LabrynthKey)
+		// UNSTABLE DIMENSIONS, BUILT SINCE ITS REALITY IS AN ENEMY MODIFIER ON EVERY CREATURE, 2026-10-01. Its rule is
+		// `FCataclysmDungeonFloorRules::ModifiersFor`'s rule 3, given out by `SpawnPlacedCreature`.
+		|| RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey))
+	{
+		return ECataclysmModifierBuilt::Built;
+	}
+
+	// THE ROWS BELOW ARE PARTLY BUILT, EACH FOR ITS OWN REASON. Issue #1760:
+	// this line used to write the count out and said "two" while listing
+	// three, because a comment counting the thing under it goes wrong without
+	// being touched. Count the arms rather than reading a number here.
+	//
+	// UNSTABLE DIMENSIONS WAS HERE UNTIL 2026-10-01, when its reality became an enemy modifier on every creature and
+	// none on floor 1; it is built and answers above.
+	//
+	// INFERNAL RAIN AND SINGULARITY WELLS WERE HERE UNTIL 2026-10-01, for the fireball and the pull; both are built
+	// now and answer above. Issue #1699 and issue #1605.
+	if (
+		// INSANITY BURSTS. The skill lock, the stun and "attack allies" against the player's own minions work (a
+		// burst that maddens the player, since 2026-09-26); "attack allies" against other players waits on co-op.
+		// Issues #1820 and #41.
+		RowKey == FName(InsanityBurstsKey)
+		// THE CORRUPTED STALKER, since 2026-10-25 (issue #1308, part B). It arrives, hunts and follows from floor to
+		// floor wearing a player's build (layer 1), chooses its skills and drinks its potions (layer 2), and its death
+		// pays as a Boss and drops what it wore (layer 3). Missing: six of the seven entries the owner asked for, one
+		// per damage type except War, whose weapon skills are undesigned placeholders (layer 4). Ruled to stay partly
+		// built until all seven exist.
+		|| RowKey == FName(CorruptedStalkerKey)
+		// REALITY RIFTS WAS HERE UNTIL 2026-10-10, for "access hidden areas"; it is built and answers above.
+		// WARZONE CONTROL POINTS WAS HERE UNTIL 2026-10-04, for "opening shortcuts"; it is built and answers above.
+		// THE LABRYNTH WAS HERE UNTIL 2026-10-12, for "rooms rearrange". The rooms still do not move; the row was
+		// accepted as blocked and redirected paths, and it answers above.
+		// LIGHTFORGED WALLS WAS HERE UNTIL 2026-10-08, for "sections"; it is built and answers above.
+		)
+	{
+		return ECataclysmModifierBuilt::Partly;
+	}
+
+	return ECataclysmModifierBuilt::NotBuilt;
+}
+
+bool UCataclysmDungeonModifierEffects::InfernalRainPatchIsDue(
+	float SecondsSinceLastPatch, int32 PatchesAlive)
+{
+	// THE CAP IS CHECKED FIRST, so a floor already carrying its limit does no
+	// arithmetic and, more importantly, does not swallow the clock: the caller
+	// keeps counting and drops one the instant a patch expires, rather than
+	// waiting a further whole cadence.
+	if (PatchesAlive >= InfernalRainMostPatches)
+	{
+		return false;
+	}
+
+	// AT OR PAST, NOT PAST. The beat is a quarter of a second and the cadence is
+	// five, so twenty beats in twenty-one answer no; insisting on strictly past
+	// would put every patch one beat later than the figure says for no reason
+	// anybody could observe.
+	return SecondsSinceLastPatch >= InfernalRainSecondsBetweenPatches;
+}
+
+bool UCataclysmDungeonModifierEffects::SingularityWellIsDue(
+	float SecondsSinceLastWell, int32 WellsAlive)
+{
+	// THE CAP FIRST, so a floor already carrying its limit does no arithmetic and
+	// does not swallow the clock: the caller keeps counting, so the beat a well is
+	// destroyed on places the next one at once.
+	if (WellsAlive >= SingularityWellsMostWells)
+	{
+		return false;
+	}
+
+	// AT OR PAST, NOT PAST. The beat is a quarter of a second and the cadence is
+	// eight, so insisting on strictly past would put every well one beat later
+	// than the figure says for no reason anybody could observe.
+	return SecondsSinceLastWell >= SingularityWellsSecondsBetweenWells;
+}
+
+float UCataclysmDungeonModifierEffects::SingularityWellDamagePerSecond(
+	float MaximumHealth)
+{
+	// A CHARACTER WITH NO MAXIMUM HEALTH TAKES NOTHING, rather than a negative
+	// figure reaching the well. A zero here would place a well that does nothing,
+	// and the rule that places them refuses that rather than relying on the
+	// ground zone to notice -- `ACataclysmGroundZone::Sweep` skips a patch only
+	// when it neither damages nor applies an effect, which is a rule about other
+	// patches.
+	if (MaximumHealth <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	return MaximumHealth * SingularityWellsPercentPerSecond / 100.0f;
+}
+
+float UCataclysmDungeonModifierEffects::InfernalRainDamagePerSecond(
+	float MaximumHealth)
+{
+	// A CHARACTER WITH NO MAXIMUM HEALTH TAKES NOTHING, rather than a negative
+	// figure reaching the patch. A zero here would produce a patch that does
+	// nothing at all, which is the right answer for a reading nobody can have.
+	//
+	// WHY "DOES NOTHING AT ALL" AND NOT "IS REFUSED". `ACataclysmGroundZone::Sweep`
+	// skips a patch only when it neither damages nor applies an effect. An earlier
+	// version of this comment said the sweep refuses a non-positive damage
+	// outright, which WAS true and stopped being true with issue #1701: a patch
+	// carrying an effect and no damage now does sweep, because Singularity Wells
+	// needs a well that slows without damaging. Infernal Rain's patches carry no
+	// effect, so for them a zero damage still means a patch that does nothing.
+	if (MaximumHealth <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	return MaximumHealth * InfernalRainPercentPerSecond / 100.0f;
+}
+
+TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
+{
+	// TWO KEYS WERE MISSING FROM HERE BEFORE ISSUE #1677. This list and
+	// `BuiltStateOf` above are two statements of the same fact, and nothing
+	// made them agree: `DeathsEmbraceKey` was returned as Built and was absent
+	// from here. The test that reads these walks THIS list and asks
+	// `BuiltStateOf` about each entry, so a key missing from here never enters
+	// the loop and the gap could not be seen from either end. Since #1677 a
+	// second test walks the table instead, which is the direction that catches
+	// an absence.
+	//
+	// THIS COMMENT USED TO OPEN WITH THE COUNT AND WARN THAT COUNTS GO STALE,
+	// AND IT WENT STALE ANYWAY -- it said EIGHT while the list below held ten.
+	// A warning attached to a number does not maintain the number, so the
+	// number is gone rather than corrected. Issue #1786. What holds this list
+	// honest is the pair of automation tests named above, one walking each
+	// direction, and not a word here.
+	return {
+		FName(StarvationKey),
+		FName(DehydrationKey),
+		FName(ForcedMarchKey),
+		FName(NihilsEmbraceKey),
+		FName(DeathsEmbraceKey),
+		FName(FieldMedicKey),
+		FName(InfernalRainKey),
+		FName(SingularityWellsKey),
+		FName(WitheredGroundKey),
+		FName(MortalDecayKey),
+		FName(WastingSicknessKey),
+		FName(GraspingTentaclesKey),
+		FName(EdictOfSilenceKey),
+		FName(EdictOfTemperanceKey),
+		FName(EdictOfPatienceKey),
+		FName(EdictOfStillnessKey),
+		FName(EdictOfAbstinenceKey),
+		FName(EdictOfVigilKey),
+		FName(EdictOfHumilityKey),
+		FName(ArtilleryStrikeKey),
+		FName(HallowedGroundfallKey),
+		FName(SporeCloudsKey),
+		FName(HellfireKey),
+		FName(BrandOfTheAggressorKey),
+		FName(FungalOvergrowthKey),
+		FName(IllusoryEnemiesKey),
+		FName(HolyRepercussionsKey),
+		FName(LeechSporesKey),
+		FName(BloodAltarKey),
+		FName(NecroticGroundKey),
+		FName(RavenousHoardKey),
+		FName(GraveTideKey),
+		FName(VolatileEvolutionKey),
+		FName(RoyalGuardKey),
+		FName(DemonPrinceKey),
+		FName(EpidemicKey),
+		FName(BloodForgedChampionsKey),
+		FName(VengefulWraithsKey),
+		FName(JudgmentZonesKey),
+		FName(MarchOfProgressKey),
+		FName(CommandersAuraKey),
+		FName(AntiMagicZonesKey),
+		FName(DesperateMeasuresKey),
+		FName(HardModeKey),
+		FName(RecessionKey),
+		FName(DiminishingReturnsKey),
+		FName(DivineResurgenceKey),
+		FName(DeadRisingKey),
+		FName(SufferingAuraKey),
+		FName(BloodGatesKey),
+		FName(InfernalSealsKey),
+		FName(SanctionedPassageKey),
+		FName(LightforgedWallsKey),
+		FName(AngelicWardensKey),
+		FName(HeavensQuakeKey),
+		FName(CryptquakeKey),
+		FName(SoulChainsKey),
+		FName(LabrynthKey),
+		FName(WildMagicKey),
+		FName(EchoChamberKey),
+		FName(DirgeResonanceKey),
+		FName(ScarcityKey),
+		FName(ChaoticLootKey),
+		FName(UnstablePortalKey),
+		FName(NothingIsForgottenKey),
+		FName(StarvationCurseKey),
+		FName(TrickOrTreatKey),
+		FName(SoulHarvestKey),
+		FName(ChaosTouchedKey),
+		FName(TheReaperKey),
+		FName(CorruptedStalkerKey),
+		FName(BloodBondKey),
+		FName(PlagueConvergenceKey),
+		FName(DivineWrathKey),
+		FName(EchoesOfThePastKey),
+		FName(PlagueHarbingersKey),
+		FName(WingsOfTheHostKey),
+		FName(EternalChorusKey),
+		FName(NecroticBloomKey),
+		FName(GoldenSpiresKey),
+		FName(PestilentEmpowermentKey),
+		FName(PortalUnleashingKey),
+		FName(MindShatteringIllusionsKey),
+		FName(RealityRiftsKey),
+		FName(LuxuryHoardersKey),
+		FName(InsanityBurstsKey),
+		FName(FunerealProcessionKey),
+		FName(BloodDebtKey),
+		FName(QuarantineBreachKey),
+		FName(InfectionBloomKey),
+		FName(InfestedHoardKey),
+		FName(AbyssalRiftsKey),
+		FName(SwarmOfLocustsKey),
+		FName(WarzoneControlPointsKey),
+		FName(RawSewageKey),
+		FName(DemonicGuideKey),
+		FName(InfestedVeinsKey),
+		FName(CarrionFeastKey),
+		FName(PlaguebearerKey),
+		FName(MoraleBreakKey),
+		FName(ContagiousTouchKey),
+		FName(FamishedBeastsKey),
+		FName(BattlefieldRelicsKey),
+		FName(PandorasBoxKey),
+		FName(InfernalBeaconsKey),
+		FName(WarBannerKey),
+		FName(ForcedTithesKey),
+		FName(PactOfTemptationKey),
+		FName(BloodPriceKey),
+		FName(TrialOfEnduranceKey),
+		FName(FogOfWarKey),
+		FName(BlackestShadowKey),
+		FName(ShadowyEnemiesKey),
+		FName(VoidParasiteKey),
+		FName(GrimTotemsKey),
+		FName(ObsidianSarcophagiKey),
+		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
+		FName(FCataclysmDungeonFloorRules::RealityTwisterKey),
+		FName(FCataclysmDungeonFloorRules::RuleOfChaosKey),
+		FName(ThoseInTheDarkKey),
+		FName(FragmentedRealityKey),
+	};
+}
+
+float UCataclysmDungeonModifierEffects::ShareTakenOnFloor(float PercentPerFloor,
+														  float MostPercent,
+														  int32 FloorNumber)
+{
+	if (FloorNumber <= 0 || PercentPerFloor <= 0.0f || MostPercent <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	return FMath::Min(PercentPerFloor * static_cast<float>(FloorNumber), MostPercent);
+}
+
+int32 UCataclysmDungeonModifierEffects::ForcedMarchStacksAfter(
+	float SecondsStoodStill)
+{
+	// NOTHING UNTIL THE ROW'S THRESHOLD, and nothing at all for a character that
+	// cannot be asked: a negative wait means "no character to read", which is the
+	// same reading the movement conditions refuse on. Both fail this comparison.
+	if (SecondsStoodStill < ForcedMarchSecondsBeforeDamage)
+	{
+		return 0;
+	}
+
+	// ONE A SECOND PAST THE THRESHOLD, in whole seconds, so three seconds exactly
+	// is the first stack and four seconds is the second.
+	const int32 Stacks =
+		1 + FMath::FloorToInt(SecondsStoodStill - ForcedMarchSecondsBeforeDamage);
+	return FMath::Min(Stacks, ForcedMarchMostStacks);
+}
+
+float UCataclysmDungeonModifierEffects::ForcedMarchSharePerSecond(int32 Stacks)
+{
+	return FMath::Max(0, Stacks) * ForcedMarchPercentPerStackPerSecond;
+}
+
+float UCataclysmDungeonModifierEffects::NihilsEmbraceResistanceLost(
+	float MetresWalked)
+{
+	if (MetresWalked <= 0.0f || NihilsEmbraceMetresPerResistancePercent <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const float Points = FMath::FloorToFloat(
+		MetresWalked / NihilsEmbraceMetresPerResistancePercent);
+	return FMath::Min(Points, NihilsEmbraceMostResistancePercent);
+}
+
+int32 UCataclysmDungeonModifierEffects::DeathsEmbraceStacksAfter(
+	float SecondsOnFloor)
+{
+	// A SIGN TEST AND NOT A THRESHOLD, AND IT WAS WRITTEN AS A THRESHOLD UNTIL A
+	// GUARD PROOF SHOWED THE THRESHOLD DECIDED NOTHING. Issue #41, slice 5. It
+	// read `SecondsOnFloor < DeathsEmbraceSecondsPerStack`, which looks like the
+	// rule -- no stack before ten seconds -- and is already answered by the
+	// floor division below: FloorToInt(9.9 / 10) is 0. The only input the two
+	// disagree about is a NEGATIVE one, where the division gives
+	// FloorToInt(-0.5) == -1 and a caller would be handed a negative stack
+	// count. So the condition does the work of a sign test and now says so.
+	//
+	// THE SECOND HALF GUARDS A DIVISION, not a rule. The interval is a
+	// compile-time 10.0f and can never be zero today; taking the test out would
+	// leave a division by a constant somebody could later set to zero, and
+	// FloorToInt of an infinity is undefined.
+	if (SecondsOnFloor <= 0.0f || DeathsEmbraceSecondsPerStack <= 0.0f)
+	{
+		return 0;
+	}
+
+	// WHOLE STACKS, COUNTED DOWN. A player eleven seconds into a floor carries
+	// one and not one and a tenth: the row calls them stacks of a debuff, and a
+	// fractional stack is not a thing a player could be shown.
+	const int32 Stacks = FMath::FloorToInt(
+		SecondsOnFloor / DeathsEmbraceSecondsPerStack);
+	return FMath::Min(Stacks, DeathsEmbraceMostStacks);
+}
+
+float UCataclysmDungeonModifierEffects::DeathsEmbraceHealingLessPercent(
+	int32 Stacks)
+{
+	// CLAMPED HERE AS WELL AS IN THE COUNT ABOVE, because this is public and a
+	// caller holding a stack count from somewhere else must not be able to ask
+	// for more than the cap. The attribute clamps at a hundred too, so three
+	// things would have to be wrong at once for a player to be unhealable.
+	return FMath::Clamp(Stacks, 0, DeathsEmbraceMostStacks)
+		* DeathsEmbracePercentPerStack;
+}
+
+bool UCataclysmDungeonModifierEffects::EdictOfSilenceIsDue(float SecondsSinceLast)
+{
+	// A NEGATIVE WAIT BRINGS NOTHING, which is the reading every counting rule in
+	// this file takes of a figure it cannot have been given honestly. It also
+	// keeps a caller that has never started its clock from being silenced on its
+	// first beat.
+	if (SecondsSinceLast < 0.0f)
+	{
+		return false;
+	}
+
+	// AT OR PAST, NOT PAST. The beat is a quarter of a second and the cadence is
+	// ninety, so insisting on strictly past would put every silence one beat
+	// later than the row says for no reason anybody could observe.
+	return SecondsSinceLast >= EdictOfSilenceEverySeconds;
+}
+
+float UCataclysmDungeonModifierEffects::EdictOfSilenceLastsSecondsAt(float Strength)
+{
+	// SCALED, AND THEN HELD INSIDE THE CYCLE. See the header for why the cap.
+	return FMath::Min(EdictOfSilenceLastsSeconds * FMath::Max(0.0f, Strength),
+					  EdictOfSilenceMostLastsSeconds);
+}
+
+float UCataclysmDungeonModifierEffects::EdictOfTemperanceHealingLessPercentAt(float Strength)
+{
+	// SCALED, AND THEN HELD AT ITS CAP. See the header for why the cap.
+	return FMath::Min(EdictOfTemperanceHealingLessPercent * FMath::Max(0.0f, Strength),
+					  EdictOfTemperanceMostHealingLessPercent);
+}
+
+float UCataclysmDungeonModifierEffects::EdictOfPatienceCooldownLongerPercentAt(float Strength)
+{
+	// SCALED AND NEVER HELD: "the Edict of Patience has no cap".
+	return EdictOfPatienceCooldownLongerPercent * FMath::Max(0.0f, Strength);
+}
+
+float UCataclysmDungeonModifierEffects::EdictOfStillnessSlowPercentAt(float Strength,
+																	  float SecondsSinceMovementSkill)
+{
+	// NOTHING BEFORE ANY MOVEMENT SKILL, AND NOTHING ONCE ITS SECONDS HAVE RUN. The seconds do not scale.
+	if (SecondsSinceMovementSkill < 0.0f || SecondsSinceMovementSkill >= EdictOfStillnessSeconds)
+	{
+		return 0.0f;
+	}
+	return FMath::Min(EdictOfStillnessSlowPercent * FMath::Max(0.0f, Strength), EdictOfStillnessMostSlowPercent);
+}
+
+float UCataclysmDungeonModifierEffects::EdictOfAbstinenceManaAlsoAsHealthPercentAt(float Strength)
+{
+	// SCALED, AND THEN HELD AT ITS CAP: at most the whole of the mana taken.
+	return FMath::Min(EdictOfAbstinenceManaAlsoAsHealthPercent * FMath::Max(0.0f, Strength),
+					  EdictOfAbstinenceMostManaAlsoAsHealthPercent);
+}
+
+float UCataclysmDungeonModifierEffects::EdictOfVigilSmitePercentAt(float Strength)
+{
+	// SCALED, AND THEN HELD AT ITS CAP. The 3 seconds are not scaled here or anywhere.
+	return FMath::Min(EdictOfVigilMaxHealthPercent * FMath::Max(0.0f, Strength), EdictOfVigilMostMaxHealthPercent);
+}
+
+bool UCataclysmDungeonModifierEffects::EdictOfVigilIsDue(float SecondsStill)
+{
+	// AT OR PAST THE 3 SECONDS. A negative answer, "never sampled", is below them and calls nothing.
+	return SecondsStill >= EdictOfVigilStillSeconds;
+}
+
+bool UCataclysmDungeonModifierEffects::EdictOfVigilHasLanded(float WarningSoFar)
+{
+	return WarningSoFar >= EdictOfVigilWarningSeconds;
+}
+
+float UCataclysmDungeonModifierEffects::SkillsLockedWhile(bool bSilenced)
+{
+	// EVERY SILENCE IS THE SAME. The row describes one that prevents all skill
+	// usage, not one that prevents more of it at depth or after a while, so there
+	// is nothing here to scale with.
+	return bSilenced ? EdictOfSilenceLockValue : 0.0f;
+}
+
+bool UCataclysmDungeonModifierEffects::GraspingTentacleIsDue(
+	float SecondsSinceLast, int32 Alive)
+{
+	// THE CAP FIRST, so a floor already carrying its limit does no arithmetic and
+	// does not swallow the clock: the caller keeps counting, so the beat one is
+	// destroyed on places the next at once rather than waiting a further cadence.
+	if (Alive >= GraspingTentaclesMostOnAFloor)
+	{
+		return false;
+	}
+
+	// AT OR PAST THE CADENCE, NOT PAST IT. The beat is a quarter of a second, so
+	// insisting on strictly past would put every tentacle one beat later than the
+	// figure says for no reason anybody could observe.
+	return SecondsSinceLast >= GraspingTentaclesSecondsBetween;
+}
+
+float UCataclysmDungeonModifierEffects::GraspMovementLessPercentWhile(
+	bool bGrabbed)
+{
+	// EVERY GRAB IS WORTH THE SAME. The row describes being grabbed, not being
+	// grabbed harder, so there is nothing here to scale with.
+	return bGrabbed ? GraspingTentaclesGrabMovementLessPercent : 0.0f;
+}
+
+int32 UCataclysmDungeonModifierEffects::WastingSicknessStacksAfterHit(
+	int32 Stacks, bool bInflicts)
+{
+	// A COUNT BELOW NOTHING IS NOTHING, which is the reading every other counting
+	// rule in this file takes of a figure it cannot have been given honestly.
+	const int32 Held = FMath::Max(0, Stacks);
+	if (!bInflicts)
+	{
+		return FMath::Min(Held, WastingSicknessMostStacks);
+	}
+
+	// THE CAP IS APPLIED TO THE RESULT AND NOT CHECKED BEFORE THE ADD, so a
+	// caller that somehow holds more than the cap is brought back to it rather
+	// than being allowed to keep what it has.
+	return FMath::Min(Held + 1, WastingSicknessMostStacks);
+}
+
+float UCataclysmDungeonModifierEffects::WastingSicknessMaximumsLessPercent(
+	int32 Stacks)
+{
+	return FMath::Clamp(Stacks, 0, WastingSicknessMostStacks)
+		* WastingSicknessPercentPerStack;
+}
+
+float UCataclysmDungeonModifierEffects::MortalDecayPercentPerSecond(
+	int32 FloorNumber, bool bSlowedByAKill)
+{
+	// THE DEPTH AND NOT THE WALK, AND THE SHARED PER-FLOOR ARITHMETIC RATHER
+	// THAN A SECOND COPY OF IT. `ShareTakenOnFloor` already answers "N floors at
+	// this rate, capped", refuses a floor of zero or below, and carries the
+	// judgement that floor 1 counts. Repeating the multiply here would be a
+	// second place for those to be decided.
+	const float Rate = ShareTakenOnFloor(MortalDecayPercentPerSecondPerFloor,
+										 MortalDecayMostPercentPerSecond,
+										 FloorNumber);
+	if (!bSlowedByAKill)
+	{
+		return Rate;
+	}
+
+	// THE SLOW IS TAKEN OFF THE CAPPED RATE, WHICH IS THE ONLY ORDER THAT KEEPS
+	// THE ROW'S SECOND SENTENCE TRUE. Slowing the uncapped rate and capping
+	// afterwards would leave any floor past 20 at the ceiling either way -- 0.1
+	// times 20 halved is exactly the cap -- so reaping would buy nothing at
+	// precisely the depths where the row asks it to buy the most.
+	return Rate * (1.0f - MortalDecaySlowPercent / 100.0f);
+}
+
+FCataclysmPlayerFloorEffects UCataclysmDungeonModifierEffects::PlayerEffectsFor(
+	const TArray<FName>& FloorModifiers, int32 FloorNumber, int32 RuleOfChaosChange, float EdictStrength)
+{
+	FCataclysmPlayerFloorEffects Effects;
+
+	// STARVATION: HEALTH AND SHIELD TOGETHER, by the same share. The row names
+	// both in one sentence and gives them one number.
+	if (FloorModifiers.Contains(FName(StarvationKey)))
+	{
+		const float Share = ShareTakenOnFloor(
+			StarvationPercentPerFloor, StarvationMostPercent, FloorNumber);
+		Effects.MaxHealthLessPercent = Share;
+		Effects.MaxEnergyShieldLessPercent = Share;
+	}
+
+	// DEHYDRATION: "MAXIMUM RESOURCE", READ AS MAXIMUM MANA. Mana is what every
+	// class's skills are paid from (`UCataclysmGameplayAbility::CheckCost`); a
+	// class resource such as Fervour is built up in a fight and starts empty, so
+	// taking a share of its maximum would take nothing a player had. A judgement,
+	// recorded in `docs/DECISIONS.md`.
+	if (FloorModifiers.Contains(FName(DehydrationKey)))
+	{
+		Effects.MaxManaLessPercent = ShareTakenOnFloor(
+			DehydrationPercentPerFloor, DehydrationMostPercent, FloorNumber);
+	}
+
+	// AND DESPERATE MEASURES, THE SAME ON EVERY FLOOR. Issues #1820 and #41. The
+	// row states no deepening, so the floor number is not read; whether the
+	// player's mana is low is judged at each cast, not here.
+	if (FloorModifiers.Contains(FName(DesperateMeasuresKey)))
+	{
+		Effects.ManaCostAsCurrentHealthPercent = DesperateMeasuresHealthPercent;
+	}
+
+	// AND RULE OF CHAOS' DRAWN CHANGE, WHEN IT IS ONE OF THE TWO THAT MOVE A STAT. Issues #1820 and #41. The third,
+	// the stairs that open by time, moves no stat and is the game mode's.
+	//
+	// SKILLS PAID IN HEALTH SETS DESPERATE MEASURES' LEVER, ONCE. The same field and the same figure, assigned and
+	// not added, so a floor carrying both rows holds one share; the flag beside it is what makes the share hold at
+	// any mana.
+	//
+	// LONGER COOLDOWNS IS WRITTEN ON ETERNAL CHORUS' FIELD, which the beat adds its own share to.
+	if (RuleOfChaosChange == FCataclysmDungeonFloorRules::RuleOfChaosSkillsPaidInHealth)
+	{
+		Effects.ManaCostAsCurrentHealthPercent = DesperateMeasuresHealthPercent;
+		Effects.ManaCostAsHealthAtAnyManaValue = 1.0f;
+	}
+	else if (RuleOfChaosChange == FCataclysmDungeonFloorRules::RuleOfChaosKillsClearCooldowns)
+	{
+		Effects.ChorusCooldownLongerPercent = RuleOfChaosCooldownLongerPercent;
+	}
+
+	// AND THE EDICTS OF TEMPERANCE AND PATIENCE, THE SAME ON EVERY FLOOR BUT AN ASCENDANT'S, where `EdictStrength`
+	// makes them stronger floor by floor up to Temperance's cap. 2026-10-22, G7b. Each on its own field, which the beat
+	// never writes. The Edict of Stillness is not here: it changes while the player plays, and the beat writes it.
+	if (FloorModifiers.Contains(FName(EdictOfTemperanceKey)))
+	{
+		Effects.TemperanceHealingLessPercent = EdictOfTemperanceHealingLessPercentAt(EdictStrength);
+	}
+	if (FloorModifiers.Contains(FName(EdictOfPatienceKey)))
+	{
+		Effects.PatienceCooldownLongerPercent = EdictOfPatienceCooldownLongerPercentAt(EdictStrength);
+	}
+
+	// AND THE EDICTS OF ABSTINENCE AND HUMILITY, THE SAME WAY AND FOR THE SAME REASON. 2026-10-23, G7c. Abstinence's share
+	// scales up to its cap; Humility's flag does not scale. The Edict of Vigil is not here: the beat calls its smite.
+	if (FloorModifiers.Contains(FName(EdictOfAbstinenceKey)))
+	{
+		Effects.AbstinenceManaAlsoAsHealthPercent = EdictOfAbstinenceManaAlsoAsHealthPercentAt(EdictStrength);
+	}
+	if (FloorModifiers.Contains(FName(EdictOfHumilityKey)))
+	{
+		Effects.HumilityNoExtraCriticalDamageValue = EdictOfHumilityValue;
+	}
+
+	// AND THE THREE ROWS ON POTIONS, THE SAME ON EVERY FLOOR. Issue #806. None
+	// states a deepening. Diminishing Returns counts drinks, and the count is the
+	// character's, kept by `UCataclysmPotions`; the floor only says how much each
+	// drink costs.
+	if (FloorModifiers.Contains(FName(HardModeKey)))
+	{
+		Effects.PotionsForbiddenValue = 1.0f;
+	}
+	if (FloorModifiers.Contains(FName(RecessionKey)))
+	{
+		Effects.PotionKillChargesLessPercent = RecessionKillChargesLessPercent;
+	}
+	if (FloorModifiers.Contains(FName(DiminishingReturnsKey)))
+	{
+		Effects.PotionHealLessPerDrinkPercent = DiminishingReturnsLessPercentPerDrink;
+	}
+
+	return Effects;
+}
+
+TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::StatModifiersFor(
+	const FCataclysmPlayerFloorEffects& Effects)
+{
+	TMap<FName, TArray<FCataclysmStatModifier>> Modifiers;
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMaxHealthStat,
+								  Effects.MaxHealthLessPercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMaxEnergyShieldStat,
+								  Effects.MaxEnergyShieldLessPercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMaxManaStat,
+								  Effects.MaxManaLessPercent);
+
+	// AND WASTING SICKNESS, ON THE SAME TWO STATS AS STARVATION AND DEHYDRATION
+	// AND FROM ITS OWN TWO FIELDS. Issues #1786 and #41.
+	//
+	// TWO MORE MULTIPLIERS RATHER THAN LARGER VERSIONS OF THE TWO ABOVE, WHICH IS
+	// WHAT THE SEPARATE FIELDS BUY. `DungeonModifierEffectsAddMultiplier` appends
+	// to the same stat's list, so a floor carrying Starvation and Wasting
+	// Sickness gives `max_health` two entries, and `UCataclysmStatPipeline`
+	// multiplies each source on its own -- its own comment says they are "NOT
+	// summed first". Ten per cent and fifteen per cent leave 0.9 x 0.85 of the
+	// maximum rather than 0.75 of it.
+	//
+	// NOTHING AT ALL FOR A PLAYER CARRYING NO STACKS, because the helper refuses
+	// a share of zero, so a floor without this row adds no entry.
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMaxHealthStat,
+								  Effects.SicknessMaxHealthLessPercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMaxManaStat,
+								  Effects.SicknessMaxManaLessPercent);
+
+	// AND THE STARVATION CURSE'S HEALTH STACKS, ON THE SAME STAT FROM ITS OWN FIELD, so a
+	// floor carrying Starvation, Wasting Sickness and this row multiplies all three.
+	// Issues #1820 and #41.
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMaxHealthStat,
+								  Effects.CurseMaxHealthLessPercent);
+
+	// AND THE NIHIL'S EMBRACE, ON ALL EIGHT RESISTANCES. Issue #41, slice 2. The
+	// row says "your resistances", and this game holds one resistance per
+	// Cataclysm damage type rather than a single number, so that is eight
+	// modifiers rather than one.
+	//
+	// BUILT FROM THE SHIPPING LIST OF DAMAGE TYPES rather than eight names typed
+	// here, so a type renamed in the design workbook moves this with it.
+	//
+	// THE LOSS AND THE REWARD SHARE EVERY STAT AND THE SAME BUCKET, so the
+	// pipeline adds them: a cleanse puts the loss back to nothing and starts the
+	// reward, and a character that walks again while the reward runs carries both
+	// at once.
+	for (const FName DamageType : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		const FName Stat = UCataclysmItemModifiers::ResistanceStatFor(DamageType);
+		DungeonModifierEffectsAddMultiplier(Modifiers, Stat,
+											-Effects.ResistanceLessPercent);
+		DungeonModifierEffectsAddMultiplier(Modifiers, Stat,
+											Effects.ResistanceMorePercent);
+	}
+
+	// AND CHAOS TOUCHED'S STACKS, A MORE AND A LESS ON EACH OF FOUR STATS, from their own fields,
+	// the resistances on all eight as the loop above does. Issues #1820 and #41.
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsMaxHealthStat),
+										Effects.TouchedMaxHealthMorePercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMaxHealthStat,
+								  Effects.TouchedMaxHealthLessPercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsMovementSpeedStat),
+										Effects.TouchedSpeedMorePercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMovementSpeedStat,
+								  Effects.TouchedSpeedLessPercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsAttackSpeedStat),
+										Effects.TouchedAttackSpeedMorePercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsAttackSpeedStat,
+								  Effects.TouchedAttackSpeedLessPercent);
+	for (const FName DamageType : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		const FName Stat = UCataclysmItemModifiers::ResistanceStatFor(DamageType);
+		DungeonModifierEffectsAddMultiplier(Modifiers, Stat, Effects.TouchedResistanceMorePercent);
+		DungeonModifierEffectsAddMultiplier(Modifiers, Stat, -Effects.TouchedResistanceLessPercent);
+	}
+
+	// AND A PLAYER BEYOND DEMONIC GUIDE'S CHAIN, A MORE ON THE STAT THAT SAYS HOW MUCH OF A HIT ARRIVES. Issues #1820
+	// and #41.
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(UCataclysmDamageCalculation::DamageTakenStat),
+										Effects.GuideDamageTakenMorePercent);
+
+	// AND THE VOIDLINGS ATTACHED TO THE PLAYER, ONE FIGURE ON FOUR KINDS OF STAT. Issues #1820 and #41.
+	// Damage as the enchantment "You deal 20%-35% less damage" takes it, a Less on attack damage and on
+	// spell damage; the eight resistances as the two loops above take them, a multiplier of the
+	// resistance and not points off it; and movement speed.
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsAttackDamageStat, Effects.ParasiteLessPercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsSpellDamageStat, Effects.ParasiteLessPercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMovementSpeedStat, Effects.ParasiteLessPercent);
+	for (const FName DamageType : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		const FName Stat = UCataclysmItemModifiers::ResistanceStatFor(DamageType);
+		DungeonModifierEffectsAddMultiplier(Modifiers, Stat, -Effects.ParasiteLessPercent);
+	}
+
+	// AND A PHANTASM'S HIT, A LESS ON MOVEMENT SPEED FOR A MOMENT. Issues #1820 and #41.
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMovementSpeedStat, Effects.IllusionSlowLessPercent);
+
+	// AND A GIFT RIFT'S DAMAGE, A MORE ON ATTACK AND SPELL DAMAGE, as Void Parasite's is taken. Issues #1820 and #41.
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsAttackDamageStat),
+										Effects.RealityGiftDamageMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsSpellDamageStat),
+										Effects.RealityGiftDamageMorePercent);
+
+	// AND THE HELD WARZONE CONTROL POINTS: a More on attack and spell damage, and points on each of the eight
+	// resistances, a Flat as an item's resistance is. Issues #1820 and #41.
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsAttackDamageStat),
+										Effects.WarzoneDamageMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsSpellDamageStat),
+										Effects.WarzoneDamageMorePercent);
+	for (const FName DamageType : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		const FString Stat = UCataclysmItemModifiers::ResistanceStatFor(DamageType).ToString();
+		DungeonModifierEffectsAddFlat(Modifiers, *Stat, Effects.WarzoneResistancePercent);
+	}
+
+	// AND THE BLOOD DEBT'S BLESSING AND ITS CURSE, ON DAMAGE AS VOID PARASITE'S IS TAKEN: a More and a Less on
+	// attack damage and on spell damage. Issues #1820 and #41.
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsAttackDamageStat),
+										Effects.BloodDebtDamageMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsSpellDamageStat),
+										Effects.BloodDebtDamageMorePercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsAttackDamageStat, Effects.BloodDebtDamageLessPercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsSpellDamageStat, Effects.BloodDebtDamageLessPercent);
+
+	// AND THE MAGIC FIND THE RIFTS CLOSED IN TIME HAVE EARNED, FLAT: it is a figure added, as the row's "rewards
+	// increase" reads, and flat is what `DungeonModifierEffectsAddFlat` gives a stat. Issues #1820 and #41.
+	DungeonModifierEffectsAddFlat(Modifiers, DungeonModifierEffectsMagicFindStat, Effects.RiftMagicFindAdded);
+	// AND THE INFERNAL BEACONS ACTIVATED IN THIS DUNGEON, added flat as the rifts' is. Issues #1820 and #41.
+	DungeonModifierEffectsAddFlat(Modifiers, DungeonModifierEffectsMagicFindStat, Effects.BeaconMagicFindAdded);
+
+	// AND JUDGMENT, ON ONE RESISTANCE RATHER THAN ON ALL EIGHT. Issues #1820 and
+	// #41. This is the first entry in this function to write a single resistance,
+	// and it is written OUTSIDE the loop above rather than inside it with a
+	// condition -- see `JudgmentResistanceLessPercent` in the header for why the
+	// two fields the loop reads could not carry a damage type without changing
+	// how The Nihil's Embrace's own values are applied.
+	//
+	// THE SAME `ResistanceStatFor` CALL THE LOOP MAKES, so a damage type renamed
+	// in the design workbook moves this with it instead of leaving a stat name
+	// nothing writes.
+	//
+	// NEGATED HERE AND HELD POSITIVE IN THE FIELD, which is the shape
+	// `ResistanceLessPercent` above uses: the field says how much is taken and
+	// the helper is signed.
+	DungeonModifierEffectsAddMultiplier(
+		Modifiers,
+		UCataclysmItemModifiers::ResistanceStatFor(
+			FName(HolyRepercussionsResistance)),
+		-Effects.JudgmentResistanceLessPercent);
+
+	// AND DEATH'S EMBRACE, ON THE STAT THAT SAYS HOW MUCH HEALING ARRIVES. Issue
+	// #41, slice 5. One stat rather than eight, because the reduction is read at
+	// each site that restores health rather than being spread over pools.
+	//
+	// FLAT, AND SEE `DungeonModifierEffectsAddFlat` FOR WHY: this stat is zero
+	// for every class, so there is nothing for a multiplier to scale.
+	DungeonModifierEffectsAddFlat(Modifiers,
+								  DungeonModifierEffectsHealingReceivedStat,
+								  Effects.HealingReceivedLessPercent);
+
+	// AND THE EDICT OF SILENCE, ON THE STAT THAT SAYS WHETHER SKILLS MAY BE USED.
+	// Issues #1786 and #41.
+	//
+	// FLAT AND NOT A MULTIPLIER, for the reason Death's Embrace gives above:
+	// `skill_locked` is zero for every class, and a multiplier on zero is zero
+	// however large it is.
+	//
+	// UNSCOPED, WHICH IS THE WHOLE DIFFERENCE FROM THE TWO ENCHANTMENTS THAT
+	// WRITE THIS STAT. `UCataclysmAbilitySystemComponent::StatForSkill` reads it
+	// with the skill's own tags, so a value carrying `RequiredTags` reaches only
+	// skills that match. A dungeon rule's modifier carries no tags, so it reaches
+	// every skill -- which is what "preventing all skill usage" asks for, and
+	// what the two slot-scoped enchantment rows deliberately do not do.
+	//
+	// AND BASIC ATTACKS NEED NOTHING HERE. `UCataclysmSkillTemplate::
+	// CanActivateAbility` skips the lock check for that slot unconditionally, so
+	// the row's "Only basic attacks function during this period" is already true
+	// of an unscoped lock without this file knowing about the slot at all.
+	//
+	// THE STAT'S CANONICAL NAME RATHER THAN A SIXTH SPELLING IN THIS FILE. The
+	// five stat names above are repeated here as local constants, which the
+	// comment on them defends; this one is taken from
+	// `UCataclysmSkillSlots::LockedStat`, the same constant the code that ENFORCES
+	// the lock reads, so the writer and the reader of this stat cannot drift apart
+	// by a typo.
+	DungeonModifierEffectsAddFlat(Modifiers, UCataclysmSkillSlots::LockedStat,
+								  Effects.SkillsLockedValue);
+
+	// AND ANTI-MAGIC ZONES, ON THE SAME STAT AND SCOPED TO SPELLS. Issues #1820 and #41.
+	//
+	// SCOPED, WHICH IS THE WHOLE DIFFERENCE FROM THE LINE ABOVE. The row nullifies
+	// "magical abilities" and leaves the player "their physical skills", so the lock
+	// carries `Type.Spell` as a required tag and reaches only skills tagged with it.
+	// The helper writes nothing if the tag does not resolve, rather than a lock on
+	// everything; its comment says why.
+	//
+	// A SECOND ENTRY ON `skill_locked` WHEN BOTH ROWS ARE ON ONE FLOOR, not a larger
+	// version of the first. The Edict's reaches every skill and this reaches spells, and
+	// a skill asks whether what reaches IT sums above zero.
+	FGameplayTagContainer Spells;
+	const FGameplayTag Spell = UCataclysmSkillEffects::SpellTag();
+	if (Spell.IsValid())
+	{
+		Spells.AddTag(Spell);
+	}
+	DungeonModifierEffectsAddFlatForTags(Modifiers, UCataclysmSkillSlots::LockedStat,
+										 Effects.SpellsLockedValue, Spells);
+
+	// AND DESPERATE MEASURES, ON THE STAT THAT MOVES A CAST'S COST ONTO HEALTH,
+	// HOLDING ONLY WHILE MANA IS LOW. Issues #1820 and #41. FLAT, for the reason
+	// the lines above give: the stat is zero for every character until something
+	// writes it. `UCataclysmGameplayAbility::ManaCostPaidAsHealthPercent` reads it
+	// and decides which casts it reaches.
+	//
+	// AND AT ANY MANA UNDER RULE OF CHAOS' CHANGE, WHICH WRITES THE SAME SHARE WITH NO CONDITION. One modifier
+	// either way, never both, so a floor carrying both rows is not charged twice.
+	if (Effects.ManaCostAsHealthAtAnyManaValue > 0.0f)
+	{
+		DungeonModifierEffectsAddFlat(
+			Modifiers, UCataclysmGameplayAbility::ManaCostAsCurrentHealthPercentStat,
+			Effects.ManaCostAsCurrentHealthPercent);
+	}
+	else
+	{
+		DungeonModifierEffectsAddFlatWhile(
+			Modifiers, UCataclysmGameplayAbility::ManaCostAsCurrentHealthPercentStat,
+			Effects.ManaCostAsCurrentHealthPercent, ECataclysmStatCondition::ManaBelowPercent,
+			DesperateMeasuresManaBelowPercent);
+	}
+
+	// AND THE THREE ROWS ON POTIONS, EACH A FLAT FIGURE ON A STAT WITH NO
+	// ATTRIBUTE. Issue #806. `UCataclysmPotions` asks each one when a potion is
+	// drunk or a kill is credited.
+	DungeonModifierEffectsAddFlat(Modifiers, UCataclysmPotions::ForbiddenStat,
+								  Effects.PotionsForbiddenValue);
+	DungeonModifierEffectsAddFlat(Modifiers, UCataclysmPotions::KillChargesLessStat,
+								  Effects.PotionKillChargesLessPercent);
+	DungeonModifierEffectsAddFlat(Modifiers, UCataclysmPotions::HealLessPerDrinkStat,
+								  Effects.PotionHealLessPerDrinkPercent);
+
+	// AND AN EMBRACED GRIM TOTEM'S STRENGTH, A MORE ON ATTACK AND SPELL DAMAGE. Issues #1820 and #41.
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsAttackDamageStat),
+										Effects.GrimEmbraceDamageMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsSpellDamageStat),
+										Effects.GrimEmbraceDamageMorePercent);
+
+	// AND THE ACTIVATED BATTLEFIELD RELICS: Fury a More on attack and spell damage, Haste a More on attack and movement
+	// speed, the Bulwark points on each of the eight resistances, a Flat as Warzone's are. Issues #1820 and #41.
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsAttackDamageStat),
+										Effects.RelicDamageMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsSpellDamageStat),
+										Effects.RelicDamageMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsAttackSpeedStat),
+										Effects.RelicAttackSpeedMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsMovementSpeedStat),
+										Effects.RelicSpeedMorePercent);
+	for (const FName DamageType : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		const FString Stat = UCataclysmItemModifiers::ResistanceStatFor(DamageType).ToString();
+		DungeonModifierEffectsAddFlat(Modifiers, *Stat, Effects.RelicResistancePercent);
+	}
+
+	// AND A PLANTED WAR BANNER'S AURA, while the player stands inside: a More on attack and spell damage, and points on
+	// each resistance, a Flat as Warzone's are. Issues #1820 and #41.
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsAttackDamageStat),
+										Effects.BannerDamageMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsSpellDamageStat),
+										Effects.BannerDamageMorePercent);
+	for (const FName DamageType : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		const FString Stat = UCataclysmItemModifiers::ResistanceStatFor(DamageType).ToString();
+		DungeonModifierEffectsAddFlat(Modifiers, *Stat, Effects.BannerResistancePercent);
+	}
+
+	// AND PACT OF TEMPTATION: this floor's buff, a More on damage and speeds and points on each resistance and on
+	// magic find, as the relics' are; and the curses of every pact taken, a Less on maximum health and movement speed,
+	// points off each resistance, and healing received less on Death's Embrace's stat. Issues #1820 and #41.
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsAttackDamageStat),
+										Effects.PactDamageMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsSpellDamageStat),
+										Effects.PactDamageMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsAttackSpeedStat),
+										Effects.PactAttackSpeedMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsMovementSpeedStat),
+										Effects.PactSpeedMorePercent);
+	DungeonModifierEffectsAddFlat(Modifiers, DungeonModifierEffectsMagicFindStat, Effects.PactMagicFindAdded);
+	for (const FName DamageType : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		const FString Stat = UCataclysmItemModifiers::ResistanceStatFor(DamageType).ToString();
+		DungeonModifierEffectsAddFlat(Modifiers, *Stat, Effects.PactResistancePercent);
+		DungeonModifierEffectsTakeFlat(Modifiers, *Stat, Effects.PactCurseResistancePercent);
+	}
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMaxHealthStat, Effects.PactMaxHealthLessPercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMovementSpeedStat,
+								  Effects.PactCurseSpeedLessPercent);
+	DungeonModifierEffectsAddFlat(Modifiers, DungeonModifierEffectsHealingReceivedStat, Effects.PactHealingLessPercent);
+
+	// AND SINGULARITY WELLS, ON THE SPEED THE CHARACTER WALKS AT. Issues #1605
+	// and #41.
+	//
+	// A MULTIPLIER RATHER THAN A FLAT TAKE, because `movement_speed` is a real
+	// number for every class -- 4.0 by default, 4.6 for the Ravager, 3.5 for the
+	// Ritualist -- so a share of it means the same thing to each of them, and the
+	// row says "by 40%" rather than by an amount.
+	//
+	// NOTHING ELSE IS NEEDED TO REACH THE CHARACTER, which is worth saying because
+	// it looks too easy. `movement_speed` is in
+	// `UCataclysmPlayerClassStats::StatToAttribute`, so it is recorded; writing
+	// the attribute fires the delegate
+	// `ACataclysmPlayerCharacter::OnMovementSpeedChanged` bound in
+	// `InitAbilityActorInfo`; that re-reads the attribute through
+	// `RefreshMovementSpeed` and writes `MaxWalkSpeed`. The whole chain existed
+	// before this rule.
+	DungeonModifierEffectsAddLess(Modifiers,
+								  DungeonModifierEffectsMovementSpeedStat,
+								  Effects.MovementSpeedLessPercent);
+
+	// AND GRASPING TENTACLES, ON THE SAME STAT AND FROM ITS OWN FIELD. Issues
+	// #1786 and #41.
+	//
+	// A SECOND MULTIPLIER RATHER THAN A LARGER VERSION OF THE ONE ABOVE, WHICH IS
+	// WHY THE FIELD IS SEPARATE. Both rows are Void, so a floor can carry a
+	// Singularity Well and a tentacle at once; sharing the field would mean
+	// whichever rule wrote second erased the first, which is issue #1765. As two
+	// entries the pipeline multiplies each on its own, and a player slowed 40% by
+	// a well and grabbed at 99% moves at 0.6 x 0.01 of their speed rather than at
+	// some single figure neither rule chose.
+	DungeonModifierEffectsAddLess(Modifiers,
+								  DungeonModifierEffectsMovementSpeedStat,
+								  Effects.GraspMovementLessPercent);
+
+	// AND THE STARVATION CURSE'S MOVEMENT STACKS, FROM ITS OWN FIELD for the same reason.
+	// Issues #1820 and #41.
+	DungeonModifierEffectsAddLess(Modifiers,
+								  DungeonModifierEffectsMovementSpeedStat,
+								  Effects.CurseMovementLessPercent);
+
+	// AND FUNGAL OVERGROWTH, ON THE SAME STAT AGAIN AND FROM ITS OWN TWO FIELDS.
+	// Issues #1820 and #41. Three rows now move `movement_speed` and each holds
+	// its own field, for the reason the paragraph above gives.
+	//
+	// ONE OF THEM IS A `More` AND NOT A `Less`, WHICH MAKES THIS THE FIRST
+	// DUNGEON RULE TO RAISE THE SPEED A PLAYER WALKS AT. The helper is signed
+	// and `DungeonModifierEffectsAddLess` is a wrapper that negates, so raising
+	// a stat needs no new machinery -- `ResistanceMorePercent` has called the
+	// signed helper directly since issue #41's second slice and this copies it.
+	//
+	// THE TWO COMPOSE RATHER THAN CANCEL, which is the pipeline's doing and not
+	// this rule's. A player standing where both kinds overlap gets 1.5 x 0.5,
+	// which is three quarters of their speed; adding the fields first would give
+	// them all of it, and neither figure in the row says the two undo each other.
+	DungeonModifierEffectsAddMultiplier(Modifiers,
+										DungeonModifierEffectsMovementSpeedStat,
+										Effects.MushroomSpeedMorePercent);
+	DungeonModifierEffectsAddLess(Modifiers,
+								  DungeonModifierEffectsMovementSpeedStat,
+								  Effects.MushroomSpeedLessPercent);
+
+	// AND A TREAT'S HASTE, A `More` ON MOVEMENT SPEED FROM ITS OWN FIELD and a `More` on
+	// attack speed, through the signed helper as the mushroom's is. Issues #1820 and #41.
+	DungeonModifierEffectsAddMultiplier(Modifiers,
+										DungeonModifierEffectsMovementSpeedStat,
+										Effects.TreatSpeedMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers,
+										DungeonModifierEffectsAttackSpeedStat,
+										Effects.TreatAttackSpeedMorePercent);
+
+	// AND WITHERED GROUND, WHICH IS ONE FIELD AND FOUR STATS. The row states
+	// one figure for all of them: "your Health and Mana recovery (regen/leech)
+	// is reduced by 80%".
+	//
+	// THE REGENERATION PAIR REACH THE CHARACTER AND THE LEECH PAIR MOSTLY DO
+	// NOT, and that is a property of the class data rather than of this code.
+	// A Less multiplies, so a multiplier on a base of zero is zero.
+	// `game/Data/ClassStats.csv` gives `health_regen` and `mana_regen` a
+	// Default row, so every class carries both; it gives `life_leech` to the
+	// Ravager alone and gives no class any `mana_leech`. All four are written
+	// because the row names leech, because the reduction is right for whoever
+	// does carry it, and because it becomes right for everyone the day a class
+	// line or an affix grants leech -- with no change here.
+	//
+	// `UCataclysmRegeneration::ApplyStep` IS WHAT PICKS THE FIRST TWO UP. It
+	// reads each rate by stat name through `StatForSkill` with an empty tag
+	// container -- its own comment says "NO TAGS, because nothing is
+	// happening" -- so an unscoped rule like this one applies to both. Leech
+	// reads its attribute directly, which the recorded modifiers reach the
+	// same way every other dungeon rule's do.
+	DungeonModifierEffectsAddLess(Modifiers,
+								  DungeonModifierEffectsHealthRegenStat,
+								  Effects.RecoveryLessPercent);
+	DungeonModifierEffectsAddLess(Modifiers,
+								  DungeonModifierEffectsManaRegenStat,
+								  Effects.RecoveryLessPercent);
+	DungeonModifierEffectsAddLess(Modifiers,
+								  DungeonModifierEffectsLifeLeechStat,
+								  Effects.RecoveryLessPercent);
+	DungeonModifierEffectsAddLess(Modifiers,
+								  DungeonModifierEffectsManaLeechStat,
+								  Effects.RecoveryLessPercent);
+
+	// AND ETERNAL CHORUS, WITHIN EARSHOT. Issues #1820 and #41. A flat addition to
+	// `cooldown_lengthening`, whose unit is percent longer and which every skill asks with its own
+	// tags, so an unscoped addition lengthens them all; and a Less on the two resource
+	// regenerations, read unscoped as `mana_regen` and `fervour_per_second` both are.
+	DungeonModifierEffectsAddFlat(Modifiers, DungeonModifierEffectsCooldownLengtheningStat,
+								  Effects.ChorusCooldownLongerPercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsManaRegenStat,
+								  Effects.ChorusRegenLessPercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsFervourPerSecondStat,
+								  Effects.ChorusRegenLessPercent);
+
+	// AND THREE OF THE CELESTIAL EDICTS, EACH FROM ITS OWN FIELD. 2026-10-22, G7b.
+	//
+	// TEMPERANCE: a flat addition to `healing_received_reduction`, beside Death's Embrace's and a pact's, which add;
+	// and life leech removed while it is in force, at any strength. The healing share reaches leech that is already
+	// paying out; the removal stops any new leech.
+	DungeonModifierEffectsAddFlat(Modifiers, DungeonModifierEffectsHealingReceivedStat,
+								  Effects.TemperanceHealingLessPercent);
+	DungeonModifierEffectsRemoveStat(Modifiers, DungeonModifierEffectsLifeLeechStat,
+									 Effects.TemperanceHealingLessPercent > 0.0f);
+	// PATIENCE: a flat addition to `cooldown_lengthening`, beside Eternal Chorus's, which add.
+	DungeonModifierEffectsAddFlat(Modifiers, DungeonModifierEffectsCooldownLengtheningStat,
+								  Effects.PatienceCooldownLongerPercent);
+	// STILLNESS: a Less on `movement_speed`, its own, beside Singularity Wells' and the rest, which multiply.
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMovementSpeedStat,
+								  Effects.StillnessMovementLessPercent);
+
+	// AND THE EDICTS OF ABSTINENCE AND HUMILITY, EACH FROM ITS OWN FIELD. 2026-10-23, G7c.
+	//
+	// ABSTINENCE: flat on the share of the mana a cast takes that is also taken from health, a stat no other rule
+	// writes; `UCataclysmGameplayAbility::ApplyCost` reads it with the skill's tags.
+	DungeonModifierEffectsAddFlat(Modifiers, UCataclysmGameplayAbility::ManaCostAlsoTakenFromHealthPercentStat,
+								  Effects.AbstinenceManaAlsoAsHealthPercent);
+	// HUMILITY: the flag, flat, read as above nought where the critical multiplier is asked for.
+	DungeonModifierEffectsAddFlat(Modifiers, UCataclysmDamageCalculation::CriticalStrikesDealNoExtraDamageStat,
+								  Effects.HumilityNoExtraCriticalDamageValue);
+
+	// AND FRAGMENTED REALITY'S PAIR, WHILE THE PLAYER STANDS IN THE FRAGMENTED SECTION, each from its own field. Issues
+	// #1820 and #41. Damage as Void Parasite's is taken, a More and a Less on attack damage and on spell damage;
+	// armour and each of the eight resistances a Less, a multiplier of the figure and not points off it, so nought
+	// stays nought and a negative resistance loses half its penalty; maximum health a More and a Less; movement
+	// speed a More; and a flat addition to `cooldown_recovery`, which is nought for every character until something
+	// writes it, taken from `UCataclysmSkillSlots::CooldownRecoveryStat`, the constant the one reader asks by.
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsAttackDamageStat),
+										Effects.FragmentedDamageMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsSpellDamageStat),
+										Effects.FragmentedDamageMorePercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsAttackDamageStat, Effects.FragmentedDamageLessPercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsSpellDamageStat, Effects.FragmentedDamageLessPercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsArmourStat, Effects.FragmentedDefencesLessPercent);
+	for (const FName DamageType : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		const FName Stat = UCataclysmItemModifiers::ResistanceStatFor(DamageType);
+		DungeonModifierEffectsAddMultiplier(Modifiers, Stat, -Effects.FragmentedDefencesLessPercent);
+	}
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsMaxHealthStat),
+										Effects.FragmentedMaxHealthMorePercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMaxHealthStat, Effects.FragmentedMaxHealthLessPercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsMovementSpeedStat),
+										Effects.FragmentedSpeedMorePercent);
+	DungeonModifierEffectsAddFlat(Modifiers, UCataclysmSkillSlots::CooldownRecoveryStat,
+								  Effects.FragmentedCooldownRecoveryMorePercent);
+
+	// AND MARCH OF PROGRESS, WHICH IS THE ONLY ENTRY IN THIS FUNCTION THAT RAISES A STAT
+	// THE PLAYER EARNED RATHER THAN LOWERING ONE THE FLOOR TOOK. Issues #1820 and #41.
+	// The Nihil's Embrace's reward is the nearest thing to it and is still a floor giving
+	// back what the same floor took.
+	//
+	// ONE MODIFIER CARRYING THE WHOLE FIGURE, AND THAT IS WHAT MAKES IT ADDITIVE.
+	// `UCataclysmStatPipeline` multiplies each source on its own rather than summing them
+	// first -- the Wasting Sickness comment above says so -- so three commanders written
+	// as three 10% modifiers would be x1.331. Written as one 30% modifier they are x1.3,
+	// which is what "10% per commander" means.
+	DungeonModifierEffectsAddMultiplier(Modifiers,
+									   FName(DungeonModifierEffectsArmourStat),
+									   Effects.ArmourMorePercent);
+
+	return Modifiers;
+}
+
+bool UCataclysmDungeonModifierEffects::ApplyToCharacter(
+	const FCataclysmPlayerFloorEffects& Effects,
+	UCataclysmAbilitySystemComponent* AbilitySystem,
+	UCataclysmEquipmentComponent* Equipment)
+{
+	if (!AbilitySystem)
+	{
+		return false;
+	}
+
+	// HELD FIRST, AND HELD EVEN WHEN THERE IS NO EQUIPMENT TO REFRESH WITH, so
+	// the next refresh made for any reason picks them up.
+	AbilitySystem->SetDungeonStatModifiers(StatModifiersFor(Effects));
+
+	if (!Equipment)
+	{
+		return false;
+	}
+
+	Equipment->RefreshAttributes(AbilitySystem);
+	return true;
+}
+
+FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEffects& Effects)
+{
+	TArray<FString> Clauses;
+	if (Effects.MaxHealthLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("maximum health %.0f%% less"),
+									Effects.MaxHealthLessPercent));
+	}
+	if (Effects.MaxEnergyShieldLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("maximum energy shield %.0f%% less"),
+									Effects.MaxEnergyShieldLessPercent));
+	}
+	if (Effects.MaxManaLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("maximum mana %.0f%% less"),
+									Effects.MaxManaLessPercent));
+	}
+
+	// THE NIHIL'S EMBRACE, IN BOTH DIRECTIONS. Issue #41, slice 2. The per-floor
+	// log and the floor panel both read this, and a rule taking a player's
+	// resistances with nothing saying so would read as a fault in the game.
+	if (Effects.ResistanceLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("all resistances %.0f%% less"),
+									Effects.ResistanceLessPercent));
+	}
+	if (Effects.ResistanceMorePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("all resistances %.0f%% more"),
+									Effects.ResistanceMorePercent));
+	}
+
+	// AND JUDGMENT, WHICH NAMES ITS RESISTANCE WHERE THE TWO ABOVE SAY "all".
+	// Issues #1820 and #41. A player reading "all resistances 25% less" when only
+	// one has moved would plan a floor around a loss they do not have.
+	if (Effects.JudgmentResistanceLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(
+			TEXT("%s resistance %.0f%% less from judgment"),
+			HolyRepercussionsResistance,
+			Effects.JudgmentResistanceLessPercent));
+	}
+
+	// AND DEATH'S EMBRACE. Issue #41, slice 5. Said as what the player loses
+	// rather than as a stack count, because the floor panel is read by someone
+	// deciding whether to go on and "healing 30% less" answers that where "3
+	// stacks of Embrace of Death" does not.
+	if (Effects.HealingReceivedLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("healing %.0f%% less"),
+									Effects.HealingReceivedLessPercent));
+	}
+
+	// AND THE SLOW A PLAYER IS UNDER RIGHT NOW. Added for Singularity Wells
+	// in #1719 and left out of here, while being present in `IsEmpty` and in
+	// `StatModifiersFor`. Issue #41.
+	//
+	// NOTHING OBSERVABLE WAS WRONG, AND SAYING SO IS THE POINT. This function
+	// has exactly one caller -- the floor's log line in
+	// `ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer` -- and that caller
+	// passes the output of `PlayerEffectsFor`, which fills the three per-floor
+	// fields and leaves the four beat-driven ones at zero. So the clause that
+	// was missing could not have fired through the only route that reaches it.
+	//
+	// THE GAP IS REAL ANYWAY, and it is the shape rather than the symptom. The
+	// function takes a whole `FCataclysmPlayerFloorEffects` and is named for
+	// describing one; `ApplyChangingFloorEffects` builds a complete one four
+	// times a second. The first caller that passes a full struct -- a floor
+	// panel showing what is on the player right now is the obvious one -- gets
+	// a sentence with one effect silently absent from it, and nothing would
+	// report that. The Python test named after this pair of readers,
+	// `test_every_floor_effect_field_is_read_by_both_readers.py` under
+	// `tools/tests/`, now fails when a field is missing from here.
+	//
+	// WORTH KNOWING IF YOU ADD A CALLER: this is the only field that reports
+	// where the player is STANDING rather than what the floor is. It turns on
+	// and off as they walk in and out of a well, where every other clause holds
+	// for a floor or changes slowly.
+	if (Effects.MovementSpeedLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("movement speed %.0f%% less"),
+									Effects.MovementSpeedLessPercent));
+	}
+
+	// AND WITHERED GROUND, SAID AS ONE CLAUSE FOR FOUR STATS. The field is one
+	// figure covering health regeneration, mana regeneration and both leeches,
+	// and "recovery 80% less" is what the row itself calls them together.
+	// Naming all four would be longer and would tell a player about two stats
+	// most characters do not have.
+	if (Effects.RecoveryLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("health and mana recovery %.0f%% less"),
+									Effects.RecoveryLessPercent));
+	}
+
+	// AND ETERNAL CHORUS, WITHIN EARSHOT. Issues #1820 and #41.
+	if (Effects.ChorusCooldownLongerPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("cooldowns %.0f%% longer"), Effects.ChorusCooldownLongerPercent));
+	}
+	if (Effects.ChorusRegenLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("mana and fervour regeneration %.0f%% less"),
+									Effects.ChorusRegenLessPercent));
+	}
+
+	// AND WASTING SICKNESS, AS ONE CLAUSE FOR ITS TWO FIELDS. Issues #1786 and
+	// #41. The row states one figure for both maximums, so saying it twice would
+	// tell a player two things where the row told them one.
+	//
+	// SAID SEPARATELY FROM STARVATION'S AND DEHYDRATION'S CLAUSES ABOVE, THOUGH
+	// IT MOVES THE SAME TWO STATS. A player on a floor carrying both is under two
+	// rules with two different cures -- one ends with the floor and one ends with
+	// a boss -- so one combined figure would hide which of them to act on.
+	//
+	// THE TWO FIELDS CANNOT DISAGREE, so the first is printed. They are written
+	// from one stack count through one function; if a later change gives them
+	// separate sources this clause has to be split, and
+	// `tools/tests/test_every_floor_effect_field_is_read_by_both_readers.py`
+	// is what fails if either field stops being named here at all.
+	// AND A GRAB, SAID AS WHAT IT IS RATHER THAN AS A PERCENTAGE. Issues #1786
+	// and #41. "held by a tentacle" tells a player why they cannot move and that
+	// it will pass; "movement speed 99% less" tells them a number and leaves them
+	// to work out that they are not stunned.
+	//
+	// SAID SEPARATELY FROM THE SLOW ABOVE, THOUGH IT MOVES THE SAME STAT, because
+	// a floor can carry both rows and their cures differ: a well is walked out
+	// of, a grab ends on its own.
+	if (Effects.GraspMovementLessPercent > 0.0f)
+	{
+		Clauses.Add(TEXT("held by a tentacle"));
+	}
+
+	// AND THE STARVATION CURSE, EACH KIND SAID ON ITS OWN, because a floor boss cleanses
+	// both and a player needs to know what they are carrying. Issues #1820 and #41.
+	if (Effects.CurseMovementLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("movement speed %.0f%% less from the starvation curse"),
+									Effects.CurseMovementLessPercent));
+	}
+	// AND CHAOS TOUCHED, EACH STAT'S MORE AND LESS SAID ON THEIR OWN. Issues #1820 and #41.
+	{
+		// THE FORMAT IS A LITERAL AT THE CALL and the words vary as arguments: UE 5.8 checks a
+		// Printf format at compile time, so one read out of a table does not compile.
+		struct FTouchedClause
+		{
+			float Percent;
+			const TCHAR* Stat;
+			const TCHAR* Direction;
+		};
+		const FTouchedClause Touched[] = {
+			{Effects.TouchedMaxHealthMorePercent, TEXT("maximum health"), TEXT("more")},
+			{Effects.TouchedSpeedMorePercent, TEXT("movement speed"), TEXT("more")},
+			{Effects.TouchedAttackSpeedMorePercent, TEXT("attack speed"), TEXT("more")},
+			{Effects.TouchedResistanceMorePercent, TEXT("resistances"), TEXT("more")},
+			{Effects.TouchedMaxHealthLessPercent, TEXT("maximum health"), TEXT("less")},
+			{Effects.TouchedSpeedLessPercent, TEXT("movement speed"), TEXT("less")},
+			{Effects.TouchedAttackSpeedLessPercent, TEXT("attack speed"), TEXT("less")},
+			{Effects.TouchedResistanceLessPercent, TEXT("resistances"), TEXT("less")},
+		};
+		for (const FTouchedClause& Each : Touched)
+		{
+			if (Each.Percent > 0.0f)
+			{
+				Clauses.Add(FString::Printf(TEXT("%s %.0f%% %s from chaos touched"), Each.Stat,
+											Each.Percent, Each.Direction));
+			}
+		}
+	}
+	if (Effects.WarzoneDamageMorePercent > 0.0f || Effects.WarzoneResistancePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("damage %.0f%% more and all resistances +%.0f%% from held control points"),
+									Effects.WarzoneDamageMorePercent, Effects.WarzoneResistancePercent));
+	}
+	if (Effects.ParasiteLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(
+			TEXT("damage, resistances and movement speed %.0f%% less from attached voidlings"),
+			Effects.ParasiteLessPercent));
+	}
+	if (Effects.IllusionSlowLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("movement speed %.0f%% less from a phantasm's hit"),
+									Effects.IllusionSlowLessPercent));
+	}
+	if (Effects.RealityGiftDamageMorePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("damage %.0f%% more from a gift rift"), Effects.RealityGiftDamageMorePercent));
+	}
+	if (Effects.BloodDebtDamageMorePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("damage %.0f%% more from the blood debt paid"),
+									Effects.BloodDebtDamageMorePercent));
+	}
+	if (Effects.BloodDebtDamageLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("damage %.0f%% less from the unpaid blood debt"),
+									Effects.BloodDebtDamageLessPercent));
+	}
+	if (Effects.RiftMagicFindAdded > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("magic find +%.0f from abyssal rifts closed in time"),
+									Effects.RiftMagicFindAdded));
+	}
+	if (Effects.BeaconMagicFindAdded > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("magic find +%.0f from infernal beacons activated"),
+									Effects.BeaconMagicFindAdded));
+	}
+	if (Effects.TreatSpeedMorePercent > 0.0f || Effects.TreatAttackSpeedMorePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(
+			TEXT("movement speed %.0f%% more and attack speed %.0f%% more from a treat"),
+			Effects.TreatSpeedMorePercent, Effects.TreatAttackSpeedMorePercent));
+	}
+	if (Effects.CurseMaxHealthLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("maximum health %.0f%% less from the starvation curse"),
+									Effects.CurseMaxHealthLessPercent));
+	}
+
+	// AND WHAT A MUSHROOM UNDERFOOT IS DOING, IN WHICHEVER DIRECTION. Issues
+	// #1820 and #41. Said separately from the two slows above, though all three
+	// move the same stat, because a floor can carry all three rows and their
+	// cures differ: a well is walked out of, a grab ends on its own, and a
+	// mushroom is stepped off.
+	//
+	// TWO CLAUSES AND NOT ONE, because a player standing where both kinds
+	// overlap is under both and one clause would have to print a figure neither
+	// mushroom has.
+	if (Effects.MushroomSpeedMorePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("movement speed %.0f%% more"),
+									Effects.MushroomSpeedMorePercent));
+	}
+	if (Effects.MushroomSpeedLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("movement speed %.0f%% less from a "
+										 "mushroom"),
+									Effects.MushroomSpeedLessPercent));
+	}
+
+	// AND THE EDICT OF SILENCE, SAID AS WHAT THE PLAYER CAN STILL DO. Issues
+	// #1786 and #41. "skills silenced, basic attacks only" answers the question a
+	// silenced player is actually asking, which is what to press; "skill_locked
+	// 1" would answer a question nobody has.
+	//
+	// THIS SENTENCE IS NOT WHAT FIXES THE SILENCE PROBLEM, and saying so here
+	// stops it being mistaken for the fix. `Describe` has one caller today -- the
+	// per-floor log line -- so this reaches a log rather than a player mid-fight.
+	// What the player sees is the skill bar: since issue #1810 (closed by #1819) it
+	// marks each slot whose own skill is locked, and the heads-up display names a lock
+	// on every skill. This comment said nothing in the interface read the lock, which
+	// stopped being true when #1819 merged; corrected while building
+	// `Void_Anti_Magic_Zones`.
+	if (Effects.SkillsLockedValue > 0.0f)
+	{
+		Clauses.Add(TEXT("skills silenced, basic attacks only"));
+	}
+
+	// AND ANTI-MAGIC ZONES, SAID THE SAME WAY: what is refused, in the player's words.
+	// Issues #1820 and #41. Like the clause above, this reaches the per-floor log; the
+	// skill bar is what marks each refused spell for the player mid-fight.
+	if (Effects.SpellsLockedValue > 0.0f)
+	{
+		Clauses.Add(TEXT("spells refused inside an anti-magic zone"));
+	}
+
+	// AND DESPERATE MEASURES, SAID AS WHEN IT APPLIES AND WHAT IT COSTS. Issues
+	// #1820 and #41. The floor panel shows the row's own sentence; this reaches
+	// the per-floor log.
+	if (Effects.GrimEmbraceDamageMorePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("damage %.0f%% more from an embraced grim totem"),
+									Effects.GrimEmbraceDamageMorePercent));
+	}
+	if (Effects.RelicDamageMorePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("damage %.0f%% more from a relic of fury"), Effects.RelicDamageMorePercent));
+	}
+	if (Effects.RelicAttackSpeedMorePercent > 0.0f || Effects.RelicSpeedMorePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("attack speed %.0f%% and movement speed %.0f%% more from a relic of haste"),
+									Effects.RelicAttackSpeedMorePercent, Effects.RelicSpeedMorePercent));
+	}
+	if (Effects.RelicResistancePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("%.0f more to every resistance from a relic of the bulwark"),
+									Effects.RelicResistancePercent));
+	}
+	if (Effects.BannerDamageMorePercent > 0.0f || Effects.BannerResistancePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("damage %.0f%% more and %.0f more to every resistance inside a war banner's aura"),
+									Effects.BannerDamageMorePercent, Effects.BannerResistancePercent));
+	}
+	if (Effects.PactDamageMorePercent > 0.0f || Effects.PactAttackSpeedMorePercent > 0.0f
+		|| Effects.PactSpeedMorePercent > 0.0f || Effects.PactResistancePercent > 0.0f || Effects.PactMagicFindAdded > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("from a pact taken: damage %.0f%% more, attack speed %.0f%% more, movement speed "
+										 "%.0f%% more, %.0f more to every resistance, %.0f more magic find"),
+									Effects.PactDamageMorePercent, Effects.PactAttackSpeedMorePercent,
+									Effects.PactSpeedMorePercent, Effects.PactResistancePercent,
+									Effects.PactMagicFindAdded));
+	}
+	if (Effects.PactMaxHealthLessPercent > 0.0f || Effects.PactCurseResistancePercent > 0.0f
+		|| Effects.PactCurseSpeedLessPercent > 0.0f || Effects.PactHealingLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("cursed by the pacts taken: maximum health %.0f%% less, %.0f less to every "
+										 "resistance, movement speed %.0f%% less, healing received %.0f%% less"),
+									Effects.PactMaxHealthLessPercent, Effects.PactCurseResistancePercent,
+									Effects.PactCurseSpeedLessPercent, Effects.PactHealingLessPercent));
+	}
+	if (Effects.ManaCostAsCurrentHealthPercent > 0.0f && Effects.ManaCostAsHealthAtAnyManaValue > 0.0f)
+	{
+		// RULE OF CHAOS' CHANGE: THE SAME SHARE, AT ANY MANA. Issues #1820 and #41.
+		Clauses.Add(FString::Printf(TEXT("skills cost %.0f%% of current health instead of mana"),
+									Effects.ManaCostAsCurrentHealthPercent));
+	}
+	else if (Effects.ManaCostAsCurrentHealthPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(
+			TEXT("below %.0f%% mana, skills cost %.0f%% of current health instead"),
+			DesperateMeasuresManaBelowPercent,
+			Effects.ManaCostAsCurrentHealthPercent));
+	}
+
+	if (Effects.PotionsForbiddenValue > 0.0f)
+	{
+		Clauses.Add(TEXT("potions cannot be drunk"));
+	}
+
+	if (Effects.PotionKillChargesLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("kills fill potions %.0f%% less"),
+									Effects.PotionKillChargesLessPercent));
+	}
+
+	if (Effects.PotionHealLessPerDrinkPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(
+			TEXT("each potion already drunk in this dungeon takes %.0f%% of a full heal "
+				 "off the next, down to %.0f%% of it"),
+			Effects.PotionHealLessPerDrinkPercent, UCataclysmPotions::LeastHealShare * 100.0f));
+	}
+
+	if (Effects.SicknessMaxHealthLessPercent > 0.0f
+		|| Effects.SicknessMaxManaLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(
+			TEXT("maximum health and mana %.0f%% less from wasting sickness"),
+			FMath::Max(Effects.SicknessMaxHealthLessPercent,
+					   Effects.SicknessMaxManaLessPercent)));
+	}
+
+	// AND THE ARMOUR MARCH OF PROGRESS PAID FOR, SAID AS MORE AND NOT AS LESS. Issues
+	// #1820 and #41. Every other clause here reports something taken off the player, so a
+	// reward printed in the same list has to say which way it goes.
+	if (Effects.GuideDamageTakenMorePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("damage taken %.0f%% more, beyond the demonic guide's chain"),
+									Effects.GuideDamageTakenMorePercent));
+	}
+	// AND FRAGMENTED REALITY'S PAIR IN FORCE, one clause for each pair. The second pair's lock is said by the clause on
+	// `SkillsLockedValue` above. Issues #1820 and #41.
+	if (Effects.FragmentedDamageMorePercent > 0.0f || Effects.FragmentedDefencesLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("damage %.0f%% more and armour and every resistance %.0f%% less in a fragmented "
+										 "section"),
+									Effects.FragmentedDamageMorePercent, Effects.FragmentedDefencesLessPercent));
+	}
+	if (Effects.FragmentedMaxHealthMorePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("maximum health %.0f%% more in a fragmented section"),
+									Effects.FragmentedMaxHealthMorePercent));
+	}
+	if (Effects.FragmentedSpeedMorePercent > 0.0f || Effects.FragmentedDamageLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("movement speed %.0f%% more and damage %.0f%% less in a fragmented section"),
+									Effects.FragmentedSpeedMorePercent, Effects.FragmentedDamageLessPercent));
+	}
+	if (Effects.FragmentedCooldownRecoveryMorePercent > 0.0f || Effects.FragmentedMaxHealthLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("cooldowns recover %.0f%% faster and maximum health %.0f%% less in a fragmented "
+										 "section"),
+									Effects.FragmentedCooldownRecoveryMorePercent,
+									Effects.FragmentedMaxHealthLessPercent));
+	}
+	// AND THREE OF THE CELESTIAL EDICTS, each named, because "healing 50% less" alone would read as Death's Embrace.
+	// 2026-10-22, G7b.
+	if (Effects.TemperanceHealingLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("healing %.0f%% less and no life leech, by the Edict of Temperance"),
+									Effects.TemperanceHealingLessPercent));
+	}
+	if (Effects.PatienceCooldownLongerPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("cooldowns %.0f%% longer, by the Edict of Patience"),
+									Effects.PatienceCooldownLongerPercent));
+	}
+	if (Effects.StillnessMovementLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("movement speed %.0f%% less after a movement skill, by the Edict of Stillness"),
+									Effects.StillnessMovementLessPercent));
+	}
+	// AND TWO MORE, NAMED FOR THE SAME REASON. 2026-10-23, G7c. The Edict of Vigil writes no figure here: its smite is
+	// marked on the floor.
+	if (Effects.AbstinenceManaAlsoAsHealthPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("%.0f%% of a skill's mana cost also taken from health, by the Edict of Abstinence"),
+									Effects.AbstinenceManaAlsoAsHealthPercent));
+	}
+	if (Effects.HumilityNoExtraCriticalDamageValue > 0.0f)
+	{
+		Clauses.Add(TEXT("critical strikes deal no extra damage, by the Edict of Humility"));
+	}
+	if (Effects.ArmourMorePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("armour %.0f%% more from commanders slain"),
+									Effects.ArmourMorePercent));
+	}
+	return FString::Join(Clauses, TEXT(", "));
+}
+
+bool UCataclysmDungeonModifierEffects::ArtilleryStrikeIsDue(
+	float SecondsSinceLast, bool bOneInTheAir)
+{
+	// ONE AT A TIME, ASKED BEFORE THE CLOCK. The shape `GraspingTentacleIsDue`
+	// uses, for its reason: while a circle is on the ground no arithmetic is
+	// done and the caller goes on counting, so the beat it lands on can place
+	// the next rather than waiting a further thirty seconds.
+	//
+	// ONE AT A TIME IS NOT A NUMBER SOMEBODY CHOSE. The row says "a massive red
+	// circle", singular, and a second circle drawn while the first is still on
+	// the ground would make the warning ambiguous -- the player could not tell
+	// which one was about to land.
+	if (bOneInTheAir)
+	{
+		return false;
+	}
+
+	return SecondsSinceLast >= ArtilleryStrikeSecondsBetween;
+}
+
+bool UCataclysmDungeonModifierEffects::ArtilleryStrikeHasLanded(
+	float SecondsSinceItAppeared)
+{
+	return SecondsSinceItAppeared >= ArtilleryStrikeWarningSeconds;
+}
+
+float UCataclysmDungeonModifierEffects::ArtilleryStrikeDamage(float MaximumHealth)
+{
+	// NOTHING FROM A TARGET WHOSE MAXIMUM HEALTH IS UNKNOWN. A creature whose
+	// attributes have not been set yet answers zero, and a strike that dealt
+	// zero damage would still count as a hit -- it would announce itself, feed
+	// anything listening for a blow, and read in a log as a strike that landed
+	// for nothing. The caller checks this and skips instead.
+	if (MaximumHealth <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	return MaximumHealth * ArtilleryStrikeMaxHealthPercent / 100.0f;
+}
+
+bool UCataclysmDungeonModifierEffects::HallowedGroundfallIsDue(float SecondsSinceLast)
+{
+	// NO CAP ON CRATERS, AND THAT IS ARITHMETIC RATHER THAN AN OVERSIGHT. A
+	// bombardment leaves its craters every thirty seconds and each burns for
+	// fifteen, so the last are gone before the next arrive and the floor can
+	// never carry more than one bombardment's worth. The static assertion that
+	// a crater outlasts neither the gap nor the empowerment is what keeps that
+	// true if either figure moves.
+	//
+	// NO ALIVE COUNT IS ASKED FOR EITHER, which is the difference from
+	// `InfernalRainPatchIsDue` and `GraspingTentacleIsDue`. Both of those place
+	// ONE thing on a short clock and need a cap to stop a floor filling up. This
+	// places a fixed number on a long one.
+	return SecondsSinceLast >= HallowedGroundfallSecondsBetween;
+}
+
+float UCataclysmDungeonModifierEffects::HallowedGroundfallBurnPerSecond(
+	float MaximumHealth)
+{
+	if (MaximumHealth <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	return MaximumHealth * HallowedGroundfallPercentPerSecond / 100.0f;
+}
+
+bool UCataclysmDungeonModifierEffects::SporeCloudsRelease(float Roll)
+{
+	return Roll < SporeCloudsChancePercentOnDeath;
+}
+
+bool UCataclysmDungeonModifierEffects::SporeCloudsReach(float DistanceCm)
+{
+	// AT OR WITHIN, UNLIKE THE CHANCE ABOVE. A distance exactly equal to the
+	// reach is inside it, which is the reading every sweep in the game already
+	// makes: `ACataclysmGroundZone::Covers` asks `UCataclysmTargeting::IsInLine`,
+	// and that compares `<=` against the half width squared. The two comparisons
+	// differ because one is a random draw and the other is a place.
+	return DistanceCm >= 0.0f && DistanceCm <= SporeCloudsReachCm;
+}
+
+bool UCataclysmDungeonModifierEffects::HellfireExplodes(float Roll)
+{
+	return Roll < HellfireChancePercentOnDeath;
+}
+
+float UCataclysmDungeonModifierEffects::HellfireDamage(float CreatureAttackDamage)
+{
+	if (CreatureAttackDamage <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	return CreatureAttackDamage * HellfireExplosionHits;
+}
+
+int32 UCataclysmDungeonModifierEffects::BrandStacksAfterHit(int32 Stacks,
+														   bool bBrands)
+{
+	if (!bBrands)
+	{
+		return Stacks;
+	}
+
+	const int32 Raised = Stacks + 1;
+
+	// THE COUNT THAT ERUPTS IS THE COUNT THAT CLEARS. See the header: left at the
+	// threshold, every later blow would erupt again.
+	return Raised >= BrandStacksToErupt ? 0 : Raised;
+}
+
+bool UCataclysmDungeonModifierEffects::BrandErupts(int32 StacksBeforeThisBlow)
+{
+	// ASKED OF THE COUNT BEFORE THE BLOW, because the count after it has already
+	// been cleared by the line above and cannot answer this. The caller raises
+	// and asks in either order only if the two read the same field, which is the
+	// bug this signature prevents.
+	return StacksBeforeThisBlow + 1 >= BrandStacksToErupt;
+}
+
+bool UCataclysmDungeonModifierEffects::FungalOvergrowthBoosts(float Roll)
+{
+	return Roll < FungalOvergrowthBoostChancePercent;
+}
+
+bool UCataclysmDungeonModifierEffects::HolyRepercussionsRetaliates(float Roll)
+{
+	// BELOW AND NOT AT OR BELOW, the comparison every roll in this file makes,
+	// so a pinned 0 always retaliates and a pinned 100 never does.
+	return Roll < HolyRepercussionsChancePercentOnHit;
+}
+
+int32 UCataclysmDungeonModifierEffects::HolyRepercussionsStacksAfterBurst(
+	int32 Stacks)
+{
+	// CLAMPED AT BOTH ENDS. A negative count reaching here is a fault somewhere
+	// else, and answering one rather than the cap would hide it behind a
+	// plausible number.
+	return FMath::Clamp(Stacks + 1, 0, HolyRepercussionsJudgmentMostStacks);
+}
+
+float UCataclysmDungeonModifierEffects::LeechSporesDrain(float MaximumHealth)
+{
+	if (MaximumHealth <= 0.0f)
+	{
+		return 0.0f;
+	}
+	return MaximumHealth * LeechSporesDrainPercentOfMaximumHealth / 100.0f;
+}
+
+float UCataclysmDungeonModifierEffects::LeechSporesHealEach(float Drained,
+															int32 Creatures)
+{
+	if (Drained <= 0.0f || Creatures <= 0)
+	{
+		return 0.0f;
+	}
+	return Drained / static_cast<float>(Creatures);
+}
+
+float UCataclysmDungeonModifierEffects::BloodAltarPulseDamage(float MaximumHealth,
+															  int32 Deaths)
+{
+	if (MaximumHealth <= 0.0f || Deaths <= 0)
+	{
+		return 0.0f;
+	}
+	const int32 Counted = FMath::Min(Deaths, BloodAltarDeathsToCeiling);
+	return MaximumHealth * BloodAltarMaxHealthPercentPerDeath
+		* static_cast<float>(Counted) / 100.0f;
+}
+
+int32 UCataclysmDungeonModifierEffects::BloodAltarDeathsAfterOne(int32 Deaths)
+{
+	// CLAMPED BEFORE ADDING, so a count already at the ceiling cannot overflow and a
+	// count below zero, which nothing writes, still starts from nothing.
+	return FMath::Clamp(Deaths, 0, BloodAltarDeathsToCeiling - 1) + 1;
+}
+
+bool UCataclysmDungeonModifierEffects::BloodAltarPulseIsDue(float SecondsSinceLastPulse)
+{
+	return SecondsSinceLastPulse >= BloodAltarSecondsBetweenPulses;
+}
+
+bool UCataclysmDungeonModifierEffects::NecroticGroundPatchIsDue(
+	float SecondsSinceLastPatch, int32 PatchesAlive)
+{
+	if (PatchesAlive >= NecroticGroundMostPatches)
+	{
+		return false;
+	}
+	return SecondsSinceLastPatch >= NecroticGroundSecondsBetweenPatches;
+}
+
+float UCataclysmDungeonModifierEffects::NecroticGroundBurn(float MaximumHealth)
+{
+	if (MaximumHealth <= 0.0f)
+	{
+		return 0.0f;
+	}
+	return MaximumHealth * NecroticGroundPercentPerSecond / 100.0f
+		* NecroticGroundSecondsBetweenBurns;
+}
+
+float UCataclysmDungeonModifierEffects::NecroticGroundRegenPerBeat(float MaximumHealth,
+																  float BeatSeconds)
+{
+	if (MaximumHealth <= 0.0f || BeatSeconds <= 0.0f)
+	{
+		return 0.0f;
+	}
+	return MaximumHealth * NecroticGroundCreatureRegenPercentPerSecond / 100.0f
+		* BeatSeconds;
+}
+
+int32 UCataclysmDungeonModifierEffects::RavenousHoardStacksAfter(float SecondsAlive)
+{
+	if (SecondsAlive <= 0.0f)
+	{
+		return 0;
+	}
+	return FMath::Clamp(FMath::FloorToInt(SecondsAlive / RavenousHoardSecondsPerStack),
+						0, RavenousHoardMostStacks);
+}
+
+float UCataclysmDungeonModifierEffects::RavenousHoardDamageMultiplier(int32 Stacks)
+{
+	return 1.0f
+		+ static_cast<float>(FMath::Max(0, Stacks)) * RavenousHoardDamagePercentPerStack
+			/ 100.0f;
+}
+
+bool UCataclysmDungeonModifierEffects::GraveTideWaveIsDue(float SecondsSinceLastWave,
+														 int32 WavesSoFar)
+{
+	if (WavesSoFar >= GraveTideMostWaves)
+	{
+		return false;
+	}
+	return SecondsSinceLastWave >= GraveTideSecondsBetweenWaves;
+}
+
+bool UCataclysmDungeonModifierEffects::NecroticBloomWaveIsDue(float SecondsSinceLastWave,
+															int32 WavesSoFar)
+{
+	if (WavesSoFar >= NecroticBloomMostWaves)
+	{
+		return false;
+	}
+	return SecondsSinceLastWave >= NecroticBloomSecondsBetween;
+}
+
+int32 UCataclysmDungeonModifierEffects::RawSewageStacksAfterAdding(int32 Stacks)
+{
+	return FMath::Clamp(Stacks + 1, 0, RawSewageMostStacks);
+}
+
+float UCataclysmDungeonModifierEffects::RawSewagePercentPerSecond(int32 Stacks)
+{
+	return FMath::Clamp(Stacks, 0, RawSewageMostStacks) * RawSewagePercentPerStack;
+}
+
+bool UCataclysmDungeonModifierEffects::SwarmOfLocustsIsDue(float SecondsSinceLast)
+{
+	return SecondsSinceLast >= SwarmOfLocustsSecondsBetween;
+}
+
+float UCataclysmDungeonModifierEffects::SwarmOfLocustsLastsSeconds()
+{
+	return SwarmOfLocustsWarningSeconds + SwarmOfLocustsTravelsCm / SwarmOfLocustsSpeedCmPerSecond;
+}
+
+float UCataclysmDungeonModifierEffects::SwarmOfLocustsBurn(float MaximumHealth)
+{
+	return MaximumHealth > 0.0f ? MaximumHealth * SwarmOfLocustsPercentPerSecond / 100.0f : 0.0f;
+}
+
+bool UCataclysmDungeonModifierEffects::AbyssalRiftsWaveIsDue(float SecondsOpen, int32 WavesSent)
+{
+	return WavesSent < AbyssalRiftsWaves && SecondsOpen >= WavesSent * AbyssalRiftsSecondsBetweenWaves;
+}
+
+bool UCataclysmDungeonModifierEffects::AbyssalRiftsHasRunOut(float SecondsOpen)
+{
+	return SecondsOpen >= AbyssalRiftsSecondsToClose;
+}
+
+int32 UCataclysmDungeonModifierEffects::AbyssalRiftsRungFor(int32 Successes)
+{
+	return FMath::Clamp(Successes, 0, AbyssalRiftsHighestRung);
+}
+
+float UCataclysmDungeonModifierEffects::AbyssalRiftsMagicFindFor(int32 Successes)
+{
+	return FMath::Max(0, Successes) * AbyssalRiftsMagicFindPerSuccess;
+}
+
+float UCataclysmDungeonModifierEffects::InfestedHoardChancePercentFor(int32 Stacks)
+{
+	return FMath::Min(InfestedHoardChancePercent + FMath::Max(0, Stacks) * InfestedHoardChancePercentPerStack,
+					  InfestedHoardMostChancePercent);
+}
+
+bool UCataclysmDungeonModifierEffects::InfestedHoardDrops(float Roll, int32 Stacks)
+{
+	return Roll < InfestedHoardChancePercentFor(Stacks);
+}
+
+int32 UCataclysmDungeonModifierEffects::InfestedHoardStacksAfterAdding(int32 Stacks)
+{
+	return FMath::Clamp(Stacks + 1, 0, InfestedHoardMostStacks);
+}
+
+float UCataclysmDungeonModifierEffects::InfestedHoardPercentPerSecond(int32 Stacks)
+{
+	return FMath::Clamp(Stacks, 0, InfestedHoardMostStacks) * InfestedHoardPercentPerStack;
+}
+
+bool UCataclysmDungeonModifierEffects::InfectionBloomPatchIsDue(float SecondsSinceLastPatch, int32 Patches)
+{
+	return Patches < InfectionBloomMostPatches && SecondsSinceLastPatch >= InfectionBloomSecondsBetweenPatches;
+}
+
+bool UCataclysmDungeonModifierEffects::InfectionBloomWaveIsDue(float SecondsSinceLastWave)
+{
+	return SecondsSinceLastWave >= InfectionBloomSecondsBetweenWaves;
+}
+
+float UCataclysmDungeonModifierEffects::InfectionBloomDamageMultiplier(bool bOnAPatch)
+{
+	return bOnAPatch ? 1.0f + InfectionBloomDamageMorePercent / 100.0f : 1.0f;
+}
+
+float UCataclysmDungeonModifierEffects::QuarantineBreachPatchBurn(float MaximumHealth)
+{
+	return FMath::Max(0.0f, MaximumHealth) * QuarantineBreachPatchPercentPerSecond / 100.0f;
+}
+
+int32 UCataclysmDungeonModifierEffects::BloodDebtOwedFor(int32 Floors)
+{
+	return FMath::Clamp(FMath::Max(1, Floors) * BloodDebtKillsPerFloor, 0, BloodDebtMostKills);
+}
+
+int32 UCataclysmDungeonModifierEffects::BloodDebtBlessingsFor(int32 Paid, int32 Owed)
+{
+	if (Owed <= 0)
+	{
+		return 0;
+	}
+	// WHOLE QUARTERS: the paid share in percent, divided by the share each blessing needs, rounded down.
+	const int32 Percent = FMath::Clamp(Paid, 0, Owed) * 100 / Owed;
+	return FMath::Clamp(Percent / BloodDebtPercentPerBlessing, 0, 100 / BloodDebtPercentPerBlessing);
+}
+
+float UCataclysmDungeonModifierEffects::BloodDebtDamageMorePercentFor(int32 Blessings)
+{
+	return FMath::Max(0, Blessings) * BloodDebtDamageMorePerBlessing;
+}
+
+float UCataclysmDungeonModifierEffects::BloodDebtCurseLessPercentFor(int32 Paid, int32 Owed, bool bOnTheFinalBossFloor)
+{
+	return bOnTheFinalBossFloor && Paid < Owed ? BloodDebtCurseLessPercent : 0.0f;
+}
+
+bool UCataclysmDungeonModifierEffects::FunerealProcessionIsDue(float SecondsSinceLast)
+{
+	return SecondsSinceLast >= FunerealProcessionSecondsBetween;
+}
+
+float UCataclysmDungeonModifierEffects::FunerealProcessionLastsSeconds()
+{
+	return FunerealProcessionTravelsCm / FunerealProcessionSpeedCmPerSecond;
+}
+
+float UCataclysmDungeonModifierEffects::FunerealProcessionBurn(float MaximumHealth)
+{
+	return FMath::Max(0.0f, MaximumHealth) * FunerealProcessionPercentPerSecond / 100.0f;
+}
+
+bool UCataclysmDungeonModifierEffects::InsanityBurstsIsDue(float SecondsSinceLast)
+{
+	return SecondsSinceLast >= InsanityBurstsSecondsBetween;
+}
+
+bool UCataclysmDungeonModifierEffects::InsanityBurstsLocksSkills(float Roll)
+{
+	return Roll < InsanityBurstsLockChancePercent;
+}
+
+int32 UCataclysmDungeonModifierEffects::InsanityBurstsKindFor(float Roll, bool bAMinionStands)
+{
+	if (!bAMinionStands)
+	{
+		return InsanityBurstsLocksSkills(Roll) ? InsanityBurstLocks : InsanityBurstStuns;
+	}
+	const float Third = 100.0f / 3.0f;
+	return Roll < Third ? InsanityBurstLocks : Roll < 2.0f * Third ? InsanityBurstStuns : InsanityBurstMaddens;
+}
+
+int32 UCataclysmDungeonModifierEffects::IllusionPhantasmsToSend(int32 Standing)
+{
+	return FMath::Clamp(IllusionMostStanding - Standing, 0, IllusionPhantasms);
+}
+
+bool UCataclysmDungeonModifierEffects::IllusionPhantasmsAreDue(float SecondsSinceLast, int32 Standing)
+{
+	return SecondsSinceLast >= IllusionSecondsBetween && Standing < IllusionMostStanding;
+}
+
+bool UCataclysmDungeonModifierEffects::PortalUnleashingSendsNow(float SecondsSinceLastSent, int32 OwnStanding)
+{
+	return SecondsSinceLastSent >= PortalUnleashingSecondsBetween && OwnStanding < PortalUnleashingMostAlivePerPortal;
+}
+
+float UCataclysmDungeonModifierEffects::PestilentEmpowermentDamageMultiplier(int32 BeaconsLeftStanding)
+{
+	const float Summed =
+		static_cast<float>(FMath::Max(0, BeaconsLeftStanding)) * PestilentEmpowermentPercentPerBeacon;
+	const float Percent = FMath::Min(Summed, PestilentEmpowermentMostPercent);
+	return 1.0f + Percent / 100.0f;
+}
+
+float UCataclysmDungeonModifierEffects::InfestedVeinsBurn(float MaximumHealth)
+{
+	return MaximumHealth > 0.0f ? MaximumHealth * InfestedVeinsPercentPerSecond / 100.0f : 0.0f;
+}
+
+bool UCataclysmDungeonModifierEffects::InfestedVeinRegrowIsDue(float SecondsSinceDestroyed)
+{
+	return SecondsSinceDestroyed >= InfestedVeinsRegrowSeconds;
+}
+
+bool UCataclysmDungeonModifierEffects::InfestedVeinsGuardiansAreDue(int32 VeinsDestroyed, bool bGuardiansCame)
+{
+	return VeinsDestroyed >= InfestedVeinsDestroyedBeforeGuardians && !bGuardiansCame;
+}
+
+bool UCataclysmDungeonModifierEffects::TrialOfEnduranceHasRunOut(float SecondsSincePlaced)
+{
+	return SecondsSincePlaced >= TrialOfEnduranceSeconds;
+}
+
+bool UCataclysmDungeonModifierEffects::VoidlingRises(float Roll)
+{
+	return Roll < VoidParasiteChancePercent;
+}
+
+int32 UCataclysmDungeonModifierEffects::VoidParasiteStacksAfterAttaching(int32 Stacks)
+{
+	return FMath::Clamp(Stacks + 1, 0, VoidParasiteMostStacks);
+}
+
+float UCataclysmDungeonModifierEffects::VoidParasiteLessPercent(int32 Stacks)
+{
+	return FMath::Clamp(Stacks, 0, VoidParasiteMostStacks) * VoidParasitePercentPerStack;
+}
+
+bool UCataclysmDungeonModifierEffects::ObsidianSarcophagiLordIsDue(int32 DeathsNearby, bool bLordCame)
+{
+	return DeathsNearby >= ObsidianSarcophagiDeathsForTheLord && !bLordCame;
+}
+
+int32 UCataclysmDungeonModifierEffects::GraveTideCreaturesInWave(int32 WavesSoFar)
+{
+	return GraveTideFirstWaveCreatures
+		+ FMath::Max(0, WavesSoFar) * GraveTideMoreCreaturesPerWave;
+}
+
+float UCataclysmDungeonModifierEffects::GraveTideDamageMultiplier(int32 WavesSoFar)
+{
+	const float Wanted =
+		static_cast<float>(FMath::Max(0, WavesSoFar)) * GraveTideDamagePercentPerWave;
+	return 1.0f + FMath::Min(Wanted, GraveTideMostDamagePercent) / 100.0f;
+}
+
+bool UCataclysmDungeonModifierEffects::VolatileEvolutionIsWounded(float Health,
+																 float MaxHealth)
+{
+	// A MAXIMUM OF ZERO OR LESS IS A CREATURE WHOSE ATTRIBUTES ARE NOT WRITTEN YET,
+	// and dividing by it would make every such creature look mortally wounded on the
+	// first beat that found it.
+	if (MaxHealth <= 0.0f)
+	{
+		return false;
+	}
+	return Health < MaxHealth * VolatileEvolutionHealthPercentToMutate / 100.0f;
+}
+
+int32 UCataclysmDungeonModifierEffects::VolatileEvolutionRungAfter(int32 RarityStep)
+{
+	const int32 From = FMath::Max(0, RarityStep);
+	return FMath::Min(From + VolatileEvolutionRungsGained,
+					  VolatileEvolutionHighestRung);
+}
+
+int32 UCataclysmDungeonModifierEffects::ThoseInTheDarkDestinationFloor(int32 FellFromFloor, int32 FinalFloor)
+{
+	const int32 From = FMath::Max(1, FellFromFloor);
+	const int32 Deeper = From + ThoseInTheDarkFloorsDeeper;
+
+	// THE FINAL FLOOR WHEN IT IS NEARER, and only when it is deeper than the floor fallen from: nought means no
+	// dungeon with a bottom is bound, and a fall never leads up.
+	return FinalFloor > From ? FMath::Min(Deeper, FinalFloor) : Deeper;
+}
+
+int32 UCataclysmDungeonModifierEffects::ThoseInTheDarkRungOnTheDarkFloor(int32 DrawnRung)
+{
+	// RAISED, HELD TO THE CEILING, AND NEVER LOWERED: a creature drawn at the ceiling or above keeps its rung.
+	const int32 Drawn = FMath::Max(0, DrawnRung);
+	return FMath::Max(Drawn, FMath::Min(Drawn + ThoseInTheDarkRungsRaised, ThoseInTheDarkHighestRung));
+}
+
+bool UCataclysmDungeonModifierEffects::RoyalGuardIsWounded(float Health,
+														  float MaxHealth)
+{
+	// A MAXIMUM OF ZERO OR LESS IS A CREATURE WHOSE ATTRIBUTES ARE NOT WRITTEN YET, the
+	// reason `VolatileEvolutionIsWounded` above gives.
+	if (MaxHealth <= 0.0f)
+	{
+		return false;
+	}
+	return Health < MaxHealth * RoyalGuardHealthPercentToSummon / 100.0f;
+}
+
+bool UCataclysmDungeonModifierEffects::RoyalGuardMaySummon(int32 RarityStep)
+{
+	return RarityStep >= RoyalGuardLowestRungThatSummons;
+}
+
+int32 UCataclysmDungeonModifierEffects::RoyalGuardRungForGuards(int32 RarityStep)
+{
+	const int32 From = FMath::Max(0, RarityStep);
+	return FMath::Min(From + 1, RoyalGuardHighestRung);
+}
+
+bool UCataclysmDungeonModifierEffects::DemonPrinceRises(float Roll)
+{
+	return Roll < DemonPrinceChancePercent;
+}
+
+bool UCataclysmDungeonModifierEffects::DemonPrinceMayRise(int32 RisenSoFar)
+{
+	return RisenSoFar < DemonPrincesPerFloor;
+}
+
+bool UCataclysmDungeonModifierEffects::EpidemicSpreads(float Roll)
+{
+	return Roll < EpidemicSpreadChancePercent;
+}
+
+bool UCataclysmDungeonModifierEffects::EpidemicChainIsComplete(int32 Spreads)
+{
+	return Spreads >= EpidemicSpreadsToKill;
+}
+
+float UCataclysmDungeonModifierEffects::EpidemicRadiusCm()
+{
+	return EpidemicRadiusMetres * UCataclysmContagion::CentimetresPerMetre;
+}
+
+bool UCataclysmDungeonModifierEffects::BloodForgedChampionsAbsorbs(int32 RarityStep)
+{
+	return RarityStep >= BloodForgedChampionsLowestRung
+		&& RarityStep < BloodForgedChampionsHighestRung;
+}
+
+bool UCataclysmDungeonModifierEffects::BloodForgedChampionsRungIsEarned(
+	int32 DeathsSinceItsLastRung)
+{
+	return DeathsSinceItsLastRung >= BloodForgedChampionsDeathsPerRung;
+}
+
+int32 UCataclysmDungeonModifierEffects::BloodForgedChampionsRungAfter(int32 RarityStep)
+{
+	return FMath::Min(RarityStep + 1, BloodForgedChampionsHighestRung);
+}
+
+float UCataclysmDungeonModifierEffects::BloodForgedChampionsRadiusCm()
+{
+	return BloodForgedChampionsRadiusMetres * UCataclysmContagion::CentimetresPerMetre;
+}
+
+bool UCataclysmDungeonModifierEffects::VengefulWraithRises(float Roll)
+{
+	return Roll < VengefulWraithsChancePercent;
+}
+
+float UCataclysmDungeonModifierEffects::VengefulWraithsIncreased(float Base)
+{
+	return Base * (1.0f + VengefulWraithsIncreasePercent / 100.0f);
+}
+
+bool UCataclysmDungeonModifierEffects::JudgmentZoneIsDue(float SecondsSinceLastZone,
+																 int32 StandingNow)
+{
+	return StandingNow < JudgmentZonesMostZones
+		&& SecondsSinceLastZone >= JudgmentZonesSecondsBetweenZones;
+}
+
+float UCataclysmDungeonModifierEffects::JudgmentZonesPercentAfter(int32 SecondsStoodIn)
+{
+	// THE FIRST SECOND COSTS ONE STEP, so a player who steps in and out once pays the
+	// smallest figure rather than nothing. `SecondsStoodIn` is what this rule has ALREADY
+	// dealt them in the zone they are standing in.
+	const float Climbed =
+		JudgmentZonesPercentPerSecond * static_cast<float>(FMath::Max(0, SecondsStoodIn) + 1);
+
+	return FMath::Min(Climbed, JudgmentZonesMostPercentPerSecond);
+}
+
+float UCataclysmDungeonModifierEffects::JudgmentZonesDamageFor(float MaxHealth,
+																	   int32 SecondsStoodIn)
+{
+	// A CHARACTER WITH NO MAXIMUM TAKES NOTHING, rather than a share of nothing which is
+	// also nothing but reads as an answer. `StepInfernalRain` refuses to lay a patch at all
+	// on that reading, for the reason its comment gives.
+	if (MaxHealth <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	return MaxHealth * JudgmentZonesPercentAfter(SecondsStoodIn) / 100.0f;
+}
+
+bool UCataclysmDungeonModifierEffects::JudgmentZonesBonusIsEarned(int32 Triggers)
+{
+	return Triggers >= JudgmentZonesTriggersForTheBonus;
+}
+
+float UCataclysmDungeonModifierEffects::JudgmentZonesMagicFindFor(float PlayersMagicFind,
+																		  bool bVictimIsBoss,
+																		  float FloorBonus)
+{
+	if (!bVictimIsBoss || FloorBonus <= 0.0f)
+	{
+		return PlayersMagicFind;
+	}
+
+	// ADDED AND NOT MULTIPLIED, which is how the drop roll already treats the creature's
+	// own magic find: its comment says a rarer creature's "is added to the player's rather
+	// than multiplied by it".
+	return PlayersMagicFind + FloorBonus;
+}
+
+float UCataclysmDungeonModifierEffects::MarchOfProgressDamageMultiplierOnFloor(
+	int32 FloorNumber)
+{
+	// FLOOR 1 IS THE FLOOR OF RECORD FOR A NUMBER BELOW 1, rather than a multiplier of
+	// 1.0. `ACataclysmDungeonGameMode::FloorNumber` counts from 1 and `GoToFloor` clamps
+	// below 1 away, so a smaller number here is a caller asking wrongly rather than a
+	// floor that exists, and answering "the rule is off" would hide it.
+	const int32 Floor = FMath::Max(1, FloorNumber);
+
+	return 1.0f
+		+ MarchOfProgressEnemyDamagePercentPerFloor * static_cast<float>(Floor) / 100.0f;
+}
+
+float UCataclysmDungeonModifierEffects::MarchOfProgressArmourMorePercentFor(
+	int32 CommandersKilled)
+{
+	return MarchOfProgressArmourPercentPerCommander
+		* static_cast<float>(FMath::Max(0, CommandersKilled));
+}
+
+bool UCataclysmDungeonModifierEffects::CommandersAuraCommandsAtRung(int32 RarityStep)
+{
+	// EVERY CREATURE AT ELITE OR ABOVE, WITH NO CEILING. The row says "certain elite
+	// enemies" and names no upper rung, so a Legendary, a Herald and a boss all command
+	// too -- refusing them would be a figure this row does not state.
+	return RarityStep >= CommandersAuraLowestRung;
+}
+
+bool UCataclysmDungeonModifierEffects::AntiMagicZoneIsDue(float SecondsSinceLastZone,
+														   int32 StandingNow)
+{
+	// THE CAP IS ASKED BEFORE THE CLOCK, so a floor at its limit does not swallow the
+	// count: the clock keeps running and the next zone comes as soon as one goes, which
+	// is `JudgmentZoneIsDue`'s shape.
+	return StandingNow < AntiMagicZonesMostZones
+		&& SecondsSinceLastZone >= AntiMagicZonesSecondsBetweenZones;
+}
+
+float UCataclysmDungeonModifierEffects::SpellsLockedWhile(bool bInsideAZone)
+{
+	return bInsideAZone ? AntiMagicZonesLockValue : 0.0f;
+}
+
+int32 UCataclysmDungeonModifierEffects::FragmentedRealitySectionFor(int32 SectionCount, int32 FloorSeed)
+{
+	// A FLOOR WITH NO SECTIONS HAS NO FRAGMENTED SECTION, and the row does nothing there.
+	if (SectionCount < 2)
+	{
+		return INDEX_NONE;
+	}
+
+	// NEVER SECTION 0, WHICH HOLDS THE ENTRANCE. With two sections that leaves section 1, the stairs'. With three it
+	// is section 1 or 2 by the floor's seed, mixed with a salt of its own so the answer is not the first figure of
+	// any other draw made from that seed. `SeedForFloor` never answers below nought, so the remainder does not.
+	const int32 NotTheEntrances = SectionCount - 1;
+	return 1 + FCataclysmFloorGenerator::SeedForFloor(FloorSeed, FragmentedRealitySectionSalt) % NotTheEntrances;
+}
+
+int32 UCataclysmDungeonModifierEffects::FragmentedRealityPairFor(int32 FloorSeed, int32 Entry)
+{
+	// THE FLOOR'S SEED, THE PAIR'S SALT, AND THEN THE ENTRY, so each entry on a floor has a figure of its own and the
+	// same dungeon seed, floor and entry always give the same pair.
+	const int32 OfTheFloor = FCataclysmFloorGenerator::SeedForFloor(FloorSeed, FragmentedRealityPairSalt);
+	return FCataclysmFloorGenerator::SeedForFloor(OfTheFloor, FMath::Max(Entry, 0)) % FragmentedRealityPairs;
+}
+
+bool UCataclysmDungeonModifierEffects::RealityChamberOnFloor(int32 FloorSeed)
+{
+	// THE FLOOR'S SEED MIXED WITH THE CHAMBER'S OWN SALT, so the answer is not the first figure of any other draw made
+	// from that seed, and the same dungeon seed and floor always answer the same. `SeedForFloor` never answers below
+	// nought, so the remainder does not.
+	return FCataclysmFloorGenerator::SeedForFloor(FloorSeed, RealityChamberSalt) % RealityChamberOneFloorIn == 0;
+}
+
+int32 UCataclysmDungeonModifierEffects::RealityChamberRewardSeed(int32 FloorSeed)
+{
+	return FCataclysmFloorGenerator::SeedForFloor(FloorSeed, RealityChamberRewardSalt);
+}
+
+FIntPoint UCataclysmDungeonModifierEffects::RealityChamberOriginFor(int32 PlanWidth, int32 PlanHeight)
+{
+	// BEYOND THE PLAN'S LAST COLUMN, so every cell of the chamber and every cell touching one is off the grid whatever
+	// the plan's height; half way down, so it stands beside the floor's middle.
+	return FIntPoint(PlanWidth + RealityChamberGapCells, FMath::Max(0, (PlanHeight - RealityChamberSide) / 2));
+}
+
+FString UCataclysmDungeonModifierEffects::RealityChamberPanelClause(bool bStands, bool bRewardGiven,
+																   bool bAnythingLanded)
+{
+	if (!bStands)
+	{
+		return FString();
+	}
+	if (bRewardGiven && !bAnythingLanded)
+	{
+		return FString(TEXT("; the hidden chamber held nothing"));
+	}
+	return bRewardGiven ? FString(TEXT("; the hidden chamber's reward is given"))
+						: FString(TEXT("; a hidden chamber waits"));
+}
+
+void UCataclysmDungeonModifierEffects::WriteFragmentedRealityEffects(FCataclysmPlayerFloorEffects& Into, int32 Pair)
+{
+	// EVERY FIELD IS WRITTEN EVERY TIME, nought for each the pair does not name, so a pair that ended leaves nothing.
+	Into.FragmentedDamageMorePercent =
+		Pair == FragmentedRealityPowerForDefences ? FragmentedRealityDamageMorePercent : 0.0f;
+	Into.FragmentedDefencesLessPercent =
+		Pair == FragmentedRealityPowerForDefences ? FragmentedRealityDefencesLessPercent : 0.0f;
+	Into.FragmentedMaxHealthMorePercent =
+		Pair == FragmentedRealityHealthForSkills ? FragmentedRealityMaxHealthMorePercent : 0.0f;
+	Into.FragmentedSpeedMorePercent = Pair == FragmentedRealitySpeedForDamage ? FragmentedRealitySpeedMorePercent : 0.0f;
+	Into.FragmentedDamageLessPercent =
+		Pair == FragmentedRealitySpeedForDamage ? FragmentedRealityDamageLessPercent : 0.0f;
+	Into.FragmentedCooldownRecoveryMorePercent =
+		Pair == FragmentedRealityCooldownsForHealth ? FragmentedRealityCooldownRecoveryMorePercent : 0.0f;
+	Into.FragmentedMaxHealthLessPercent =
+		Pair == FragmentedRealityCooldownsForHealth ? FragmentedRealityMaxHealthLessPercent : 0.0f;
+}
+
+float UCataclysmDungeonModifierEffects::FragmentedRealitySkillsLockedFor(int32 Pair)
+{
+	return Pair == FragmentedRealityHealthForSkills ? FragmentedRealityLockValue : 0.0f;
+}
+
+FString UCataclysmDungeonModifierEffects::FragmentedRealityPanelLine(int32 FragmentedSection, int32 Pair)
+{
+	if (FragmentedSection == INDEX_NONE)
+	{
+		return FString(TEXT("fragmented reality: this floor has no fragmented section"));
+	}
+	switch (Pair)
+	{
+	case FragmentedRealityPowerForDefences:
+		return FString::Printf(TEXT("fragmented reality: inside, %.0f%% more damage, armour and every resistance %.0f%% less"),
+							   FragmentedRealityDamageMorePercent, FragmentedRealityDefencesLessPercent);
+	case FragmentedRealityHealthForSkills:
+		return FString::Printf(TEXT("fragmented reality: inside, maximum health %.0f%% more, skills locked, basic attack only"),
+							   FragmentedRealityMaxHealthMorePercent);
+	case FragmentedRealitySpeedForDamage:
+		return FString::Printf(TEXT("fragmented reality: inside, %.0f%% more movement speed, %.0f%% less damage"),
+							   FragmentedRealitySpeedMorePercent, FragmentedRealityDamageLessPercent);
+	case FragmentedRealityCooldownsForHealth:
+		return FString::Printf(TEXT("fragmented reality: inside, cooldowns recover %.0f%% faster, %.0f%% less maximum health"),
+							   FragmentedRealityCooldownRecoveryMorePercent, FragmentedRealityMaxHealthLessPercent);
+	default:
+		return FString(TEXT("fragmented reality: outside the fragmented section, nothing in force"));
+	}
+}
+
+bool UCataclysmDungeonModifierEffects::DivineResurgenceIsDue(int32 Fallen, int32 Placed)
+{
+	// FALLEN x 100 AGAINST PLACED x THE SHARE, which is "at least the share, rounded
+	// up" in whole numbers: of five placed at half, 3 x 100 = 300 >= 250 and
+	// 2 x 100 = 200 < 250. Nothing placed means nothing is due.
+	return Placed > 0 && Fallen > 0
+		&& static_cast<int64>(Fallen) * 100
+			   >= static_cast<int64>(Placed) * DivineResurgenceFallenPercent;
+}
+
+float UCataclysmDungeonModifierEffects::DivineResurgenceHealthFor(float MaxHealth)
+{
+	return FMath::Max(0.0f, MaxHealth) * DivineResurgenceHealthPercent / 100.0f;
+}
+
+bool UCataclysmDungeonModifierEffects::DeadRisingRevives(float Roll)
+{
+	return Roll < DeadRisingChancePercent;
+}
+
+int32 UCataclysmDungeonModifierEffects::BloodGatesOpenAt(int32 Placed)
+{
+	// PLACED x THE SHARE, ROUNDED UP, in 64 bits so no floor size overflows it: of five
+	// at half, (250 + 99) / 100 = 3; of four, (200 + 99) / 100 = 2.
+	if (Placed <= 0)
+	{
+		return 0;
+	}
+	return static_cast<int32>(
+		(static_cast<int64>(Placed) * BloodGatesSlainPercent + 99) / 100);
+}
+
+int32 UCataclysmDungeonModifierEffects::InfernalSealsPiecesNeeded(int32 BearersChosen)
+{
+	// NEVER MORE PIECES THAN BEARERS, as ruled: asking for more than exist would leave stairs that never open.
+	return FMath::Clamp(BearersChosen, 0, InfernalSealsPieces);
+}
+
+bool UCataclysmDungeonModifierEffects::BloodGatesAreOpen(int32 Slain, int32 Placed)
+{
+	return Slain >= BloodGatesOpenAt(Placed);
+}
+
+float UCataclysmDungeonModifierEffects::NothingIsForgottenPortionOf(float Figure)
+{
+	return FMath::Max(0.0f, Figure) * NothingIsForgottenPortionPercent / 100.0f;
+}
+
+float UCataclysmDungeonModifierEffects::NothingIsForgottenDamageAdded(float Held,
+																	  float BossOwnDamage)
+{
+	return FMath::Min(FMath::Max(0.0f, Held),
+					  FMath::Max(0.0f, BossOwnDamage) * NothingIsForgottenMostDamagePercent / 100.0f);
+}
+
+int32 UCataclysmDungeonModifierEffects::StarvationCurseKindFor(float Roll)
+{
+	return Roll < StarvationCurseMovementBelow ? StarvationCurseSlowsMovement
+											   : StarvationCurseLowersHealth;
+}
+
+int32 UCataclysmDungeonModifierEffects::StarvationCurseKindToAdd(int32 Drawn,
+															  int32 MovementStacks,
+															  int32 HealthStacks)
+{
+	const bool bMovementFull = MovementStacks >= StarvationCurseMostStacks;
+	const bool bHealthFull = HealthStacks >= StarvationCurseMostStacks;
+	if (bMovementFull && bHealthFull)
+	{
+		return StarvationCurseAddsNothing;
+	}
+	if (Drawn == StarvationCurseSlowsMovement)
+	{
+		return bMovementFull ? StarvationCurseLowersHealth : StarvationCurseSlowsMovement;
+	}
+	return bHealthFull ? StarvationCurseSlowsMovement : StarvationCurseLowersHealth;
+}
+
+float UCataclysmDungeonModifierEffects::StarvationCurseLessPercent(int32 Stacks)
+{
+	return static_cast<float>(FMath::Max(0, Stacks)) * StarvationCursePercentPerStack;
+}
+
+bool UCataclysmDungeonModifierEffects::TheReaperIsDue(float SecondsOnFloor)
+{
+	// AT AND NOT PAST, so the fortieth quarter-second beat raises it and the thirty-ninth
+	// does not.
+	return SecondsOnFloor >= TheReaperDelaySeconds;
+}
+
+bool UCataclysmDungeonModifierEffects::CorruptedStalkerIsDue(float SecondsOnFloor, bool bHuntedAnEarlierFloor)
+{
+	return SecondsOnFloor >= (bHuntedAnEarlierFloor ? CorruptedStalkerFollowSeconds : CorruptedStalkerFirstFloorSeconds);
+}
+
+namespace
+{
+	// TIERS 1 TO 8, RULED 2026-10-26 AND RE-FITTED 2026-10-30. `sim/cataclysm_sim/fight.py` holds the same two tables and
+	// its test reads these back, so the two cannot drift apart in silence. The principle is unchanged -- the Stalker is as
+	// dangerous as a Boss on the same floor -- and the numbers follow the Boss the game now builds from the enemy score,
+	// eased by the tier relief and with damage scaled by the tier (issue #1569).
+	constexpr float CorruptedStalkerHealthMultipliers[8] = {0.49f, 0.77f, 0.87f, 1.01f, 1.06f, 1.04f, 1.19f, 1.15f};
+	constexpr float CorruptedStalkerDamageMultipliers[8] = {0.22f, 0.58f, 1.01f, 1.39f, 1.68f, 1.86f, 2.40f, 2.97f};
+}
+
+float UCataclysmDungeonModifierEffects::CorruptedStalkerHealthMultiplier(int32 DifficultyTier)
+{
+	return CorruptedStalkerHealthMultipliers[FMath::Clamp(DifficultyTier, 1, 8) - 1];
+}
+
+float UCataclysmDungeonModifierEffects::CorruptedStalkerDamageMultiplier(int32 DifficultyTier)
+{
+	return CorruptedStalkerDamageMultipliers[FMath::Clamp(DifficultyTier, 1, 8) - 1];
+}
+
+bool UCataclysmDungeonModifierEffects::WingsOfTheHostIsDue(float SecondsSinceLast)
+{
+	return SecondsSinceLast >= WingsOfTheHostSecondsBetween;
+}
+
+bool UCataclysmDungeonModifierEffects::WingsOfTheHostHasLanded(float WarningSoFar)
+{
+	return WarningSoFar >= WingsOfTheHostWarningSeconds;
+}
+
+float UCataclysmDungeonModifierEffects::WingsOfTheHostDamage(float MaximumHealth)
+{
+	return FMath::Max(0.0f, MaximumHealth) * WingsOfTheHostMaxHealthPercent / 100.0f;
+}
+
+int32 UCataclysmDungeonModifierEffects::PlagueHarbingersFor(int32 Placed)
+{
+	return Placed <= 0 ? 0 : (Placed + PlagueHarbingersCreaturesEach - 1) / PlagueHarbingersCreaturesEach;
+}
+
+float UCataclysmDungeonModifierEffects::PlagueHarbingersBurn(float MaximumHealth)
+{
+	return FMath::Max(0.0f, MaximumHealth) * PlagueHarbingersMaxHealthPercentPerSecond / 100.0f;
+}
+
+bool UCataclysmDungeonModifierEffects::PlagueHarbingersPatchIsDue(float MovedCm)
+{
+	return MovedCm >= PlagueHarbingersPatchEveryCm;
+}
+
+float UCataclysmDungeonModifierEffects::EchoesDistanceCm(float AttackReachCm)
+{
+	return FMath::Clamp(AttackReachCm, 0.0f, EchoesMostAwayCm);
+}
+
+FVector UCataclysmDungeonModifierEffects::EchoesOffset(int32 Which, int32 Count, float DistanceCm)
+{
+	if (Count <= 0)
+	{
+		return FVector::ZeroVector;
+	}
+	const float Angle = 2.0f * PI * static_cast<float>(Which) / static_cast<float>(Count);
+	return FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f) * DistanceCm;
+}
+
+bool UCataclysmDungeonModifierEffects::DivineWrathIsDue(float SecondsSinceLast)
+{
+	return SecondsSinceLast >= DivineWrathSecondsBetween;
+}
+
+FVector UCataclysmDungeonModifierEffects::DivineWrathVelocity(const FVector& From,
+															  const FVector& Toward)
+{
+	// LEVEL, so a beam follows the floor rather than climbing towards a head.
+	FVector Away = Toward - From;
+	Away.Z = 0.0f;
+	if (Away.SizeSquared() < 1.0f)
+	{
+		return FVector::ZeroVector;
+	}
+	return Away.GetSafeNormal() * DivineWrathSpeedCmPerSecond;
+}
+
+float UCataclysmDungeonModifierEffects::DivineWrathBurn(float MaximumHealth)
+{
+	return FMath::Max(0.0f, MaximumHealth) * DivineWrathMaxHealthPercent / 100.0f;
+}
+
+bool UCataclysmDungeonModifierEffects::PlagueConvergenceHasBegun(float SecondsOnFloor)
+{
+	return SecondsOnFloor >= PlagueConvergenceBeginsAfterSeconds;
+}
+
+int32 UCataclysmDungeonModifierEffects::PlagueConvergenceWaveSize(int32 Alive)
+{
+	return FMath::Clamp(PlagueConvergenceMostAlive - FMath::Max(0, Alive), 0,
+						PlagueConvergenceCreaturesPerWave);
+}
+
+int32 UCataclysmDungeonModifierEffects::PlagueConvergenceStacksAfterHit(int32 Held)
+{
+	return FMath::Min(FMath::Max(0, Held) + 1, PlagueConvergenceMostStacks);
+}
+
+float UCataclysmDungeonModifierEffects::PlagueConvergenceDiseasePercentPerSecond(int32 Stacks)
+{
+	if (Stacks <= 0)
+	{
+		return 0.0f;
+	}
+	// DOUBLING, which is the row's "exponentially": 0.5, 1, 2, 4, 8, 16 at the cap.
+	const int32 Held = FMath::Min(Stacks, PlagueConvergenceMostStacks);
+	return PlagueConvergenceDiseaseBasePercent * FMath::Pow(2.0f, static_cast<float>(Held - 1));
+}
+
+bool UCataclysmDungeonModifierEffects::BloodBondMayBond(int32 Rung, bool bIsAFloorsBoss,
+														 float DistanceCm, float NoticesFromCm)
+{
+	// EXACTLY THE ELITE RUNG: the rungs above it have names of their own. AND NEVER A
+	// FLOOR'S BOSS, whose death is what ends the floor: a Gatekeeper at the Elite rung that
+	// could not die would leave the floor with no end.
+	return Rung == BloodBondRung && !bIsAFloorsBoss && NoticesFromCm > 0.0f
+		&& DistanceCm <= NoticesFromCm;
+}
+
+int32 UCataclysmDungeonModifierEffects::ChaosTouchedKindFor(float Roll)
+{
+	return FMath::Clamp(FMath::FloorToInt(Roll * ChaosTouchedKinds / 100.0f), 0,
+						ChaosTouchedKinds - 1);
+}
+
+int32 UCataclysmDungeonModifierEffects::ChaosTouchedKindToAdd(int32 Drawn,
+															   const TArray<int32>& Stacks)
+{
+	for (int32 Step = 0; Step < ChaosTouchedKinds; ++Step)
+	{
+		const int32 Kind = (Drawn + Step) % ChaosTouchedKinds;
+		const int32 Held = Stacks.IsValidIndex(Kind) ? Stacks[Kind] : 0;
+		if (Held < ChaosTouchedMostStacks)
+		{
+			return Kind;
+		}
+	}
+	return ChaosTouchedAddsNothing;
+}
+
+float UCataclysmDungeonModifierEffects::ChaosTouchedPercentFor(int32 Stacks)
+{
+	return static_cast<float>(FMath::Max(0, Stacks)) * ChaosTouchedPercentPerStack;
+}
+
+bool UCataclysmDungeonModifierEffects::ChaosTouchedIsDebuff(int32 Kind)
+{
+	return Kind >= ChaosTouchedFirstDebuff && Kind < ChaosTouchedKinds;
+}
+
+float UCataclysmDungeonModifierEffects::SoulHarvestRadiusCm()
+{
+	return SoulHarvestRadiusMetres * UCataclysmContagion::CentimetresPerMetre;
+}
+
+int32 UCataclysmDungeonModifierEffects::SoulHarvestSoulsAfterFeeding(int32 Held)
+{
+	return FMath::Min(FMath::Max(0, Held) + 1, SoulHarvestMostSouls);
+}
+
+float UCataclysmDungeonModifierEffects::SoulHarvestHealthAdded(float Base, int32 Souls)
+{
+	return FMath::Max(0.0f, Base) * SoulHarvestHealthPercentPerSoul
+		* static_cast<float>(FMath::Max(0, Souls)) / 100.0f;
+}
+
+float UCataclysmDungeonModifierEffects::SoulHarvestDamageAdded(float Base, int32 Souls)
+{
+	return FMath::Max(0.0f, Base) * SoulHarvestDamagePercentPerSoul
+		* static_cast<float>(FMath::Max(0, Souls)) / 100.0f;
+}
+
+float UCataclysmDungeonModifierEffects::SoulHarvestResistanceAdded(int32 Souls)
+{
+	return SoulHarvestResistancePerSoul * static_cast<float>(FMath::Max(0, Souls));
+}
+
+bool UCataclysmDungeonModifierEffects::SoulHarvestTakesAsADemon(FName CreatureDamageType)
+{
+	// THE CREATURE'S CATACLYSM, read as the damage type it deals: the design gives each Cataclysm one, and its
+	// creatures deal it. Issue #1671.
+	return CreatureDamageType == FName(TEXT("Demonic"));
+}
+
+bool UCataclysmDungeonModifierEffects::SoulHarvestSoulArrivesAfter(const FVector& From, const FVector& To,
+																	float Seconds, FVector& OutAt)
+{
+	const float Reach = SoulHarvestSoulSpeedMetresPerSecond * UCataclysmContagion::CentimetresPerMetre
+		* FMath::Max(0.0f, Seconds);
+	const FVector Gap = To - From;
+	const float Away = Gap.Size();
+
+	// ARRIVED: within the arrival distance once this step's reach is spent. A soul already that close arrives on the
+	// step it is asked about, and never in the instant it was released: the release does not step it.
+	if (Away - Reach <= SoulHarvestSoulArrivalCm)
+	{
+		OutAt = To;
+		return true;
+	}
+	OutAt = From + Gap / Away * Reach;
+	return false;
+}
+
+bool UCataclysmDungeonModifierEffects::TrickOrTreatRaisesEnemies(float Roll)
+{
+	return Roll < TrickOrTreatEnemiesBelow;
+}
+
+bool UCataclysmDungeonModifierEffects::WildMagicTriggers(float Roll)
+{
+	return Roll < WildMagicChancePercent;
+}
+
+ECataclysmWildMagicLeftOut UCataclysmDungeonModifierEffects::WildMagicLeavesOut(const FCataclysmWeaponSkill& Skill)
+{
+	// ASKED OF THE ROW AND NOTHING ELSE, in the order the enum states. Each reason is a row that showed the problem;
+	// docs/DECISIONS.md, 2026-10-04, names them.
+	if (!UCataclysmWeaponSkills::TemplateFor(Skill.Shape))
+	{
+		return ECataclysmWildMagicLeftOut::NoShape;
+	}
+	switch (Skill.Shape)
+	{
+	case ECataclysmSkillShape::Movement:
+		return ECataclysmWildMagicLeftOut::Movement;
+	case ECataclysmSkillShape::Aura:
+		return ECataclysmWildMagicLeftOut::Aura;
+	case ECataclysmSkillShape::Summon:
+	case ECataclysmSkillShape::Deployable:
+		return ECataclysmWildMagicLeftOut::SummonOrDeployable;
+	default:
+		break;
+	}
+
+	// ErrorIfNotFound IS FALSE, as `CommitAndBegin` asks for its tags: a test may run before the tag table loads.
+	const FGameplayTag Channel = FGameplayTag::RequestGameplayTag(TEXT("Type.Channel"), /*ErrorIfNotFound=*/false);
+	if ((Channel.IsValid() && Skill.Tags.HasTag(Channel)) || Skill.Params.ChargeTime > 0.0f)
+	{
+		return ECataclysmWildMagicLeftOut::ChannelledOrHeld;
+	}
+	if (Skill.Params.bDisarmsUntilRecalled)
+	{
+		return ECataclysmWildMagicLeftOut::DisarmsTheCaster;
+	}
+	if (!Skill.Params.Requires.IsEmpty())
+	{
+		return ECataclysmWildMagicLeftOut::Requires;
+	}
+	if (Skill.Params.HealthCostPercent > 0.0f)
+	{
+		return ECataclysmWildMagicLeftOut::HealthCost;
+	}
+	return ECataclysmWildMagicLeftOut::InThePool;
+}
+
+const TCHAR* UCataclysmDungeonModifierEffects::WildMagicLeftOutName(ECataclysmWildMagicLeftOut Why)
+{
+	switch (Why)
+	{
+	case ECataclysmWildMagicLeftOut::InThePool:
+		return TEXT("in the pool");
+	case ECataclysmWildMagicLeftOut::NoShape:
+		return TEXT("no shape");
+	case ECataclysmWildMagicLeftOut::Movement:
+		return TEXT("movement");
+	case ECataclysmWildMagicLeftOut::Aura:
+		return TEXT("aura");
+	case ECataclysmWildMagicLeftOut::SummonOrDeployable:
+		return TEXT("summon or deployable");
+	case ECataclysmWildMagicLeftOut::ChannelledOrHeld:
+		return TEXT("channelled or held");
+	case ECataclysmWildMagicLeftOut::DisarmsTheCaster:
+		return TEXT("disarms the caster");
+	case ECataclysmWildMagicLeftOut::Requires:
+		return TEXT("requires a condition");
+	case ECataclysmWildMagicLeftOut::HealthCost:
+		return TEXT("costs health");
+	default:
+		return TEXT("unknown");
+	}
+}
+
+bool UCataclysmDungeonModifierEffects::EchoChamberCopies(const FCataclysmWeaponSkill& Skill)
+{
+	return WildMagicLeavesOut(Skill) == ECataclysmWildMagicLeftOut::InThePool
+		&& (Skill.Shape == ECataclysmSkillShape::Strike || Skill.Shape == ECataclysmSkillShape::Projectile
+			|| Skill.Shape == ECataclysmSkillShape::Debuff);
+}
+
+bool UCataclysmDungeonModifierEffects::EchoChamberHitsTheCaster(float AimDistanceCm, float RadiusCm)
+{
+	return RadiusCm > 0.0f && AimDistanceCm <= RadiusCm;
+}
+
+TArray<FCataclysmWeaponSkill> UCataclysmDungeonModifierEffects::WildMagicPool(const UDataTable* Table,
+																			   const FString& DamageType)
+{
+	TArray<FCataclysmWeaponSkill> Pool;
+	for (FCataclysmWeaponSkill& Skill : UCataclysmWeaponSkills::SkillsOfDamageType(Table, DamageType))
+	{
+		if (WildMagicLeavesOut(Skill) == ECataclysmWildMagicLeftOut::InThePool)
+		{
+			Pool.Add(MoveTemp(Skill));
+		}
+	}
+	return Pool;
+}
+
+int32 UCataclysmDungeonModifierEffects::UnstablePortalOutcomeFor(float Roll)
+{
+	if (Roll < UnstablePortalDescendPercent)
+	{
+		return UnstablePortalDescends;
+	}
+	return Roll < UnstablePortalReturnBelow ? UnstablePortalReturns
+											: UnstablePortalRaisesAMiniBoss;
+}
+
+int32 UCataclysmDungeonModifierEffects::ScarcityPick(int32 Candidates, int32 DungeonSeed,
+													int32 FloorNumber)
+{
+	if (Candidates <= 0)
+	{
+		return INDEX_NONE;
+	}
+	FRandomStream Stream(FCataclysmFloorGenerator::SeedForFloor(
+		FCataclysmFloorGenerator::SeedForFloor(DungeonSeed, FloorNumber), ScarcitySalt));
+	return Stream.RandRange(0, Candidates - 1);
+}
+
+bool UCataclysmDungeonModifierEffects::DirgeResonanceIsDue(float SecondsSinceLast)
+{
+	return SecondsSinceLast >= 0.0f && SecondsSinceLast >= DirgeResonanceEverySeconds;
+}
+
+float UCataclysmDungeonModifierEffects::SufferingAuraLossFor(float Maximum,
+															  float PercentPerSecond,
+															  float Seconds)
+{
+	return FMath::Max(0.0f, Maximum) * FMath::Max(0.0f, PercentPerSecond) / 100.0f
+		* FMath::Max(0.0f, Seconds);
+}
+
+float UCataclysmDungeonModifierEffects::HolyRepercussionsJudgmentLessPercent(
+	int32 Stacks)
+{
+	const int32 Held =
+		FMath::Clamp(Stacks, 0, HolyRepercussionsJudgmentMostStacks);
+	return static_cast<float>(Held) * HolyRepercussionsJudgmentLessPerStackPercent;
+}
+
+bool UCataclysmDungeonModifierEffects::IllusoryEnemiesIsAnIllusion(float Roll)
+{
+	// BELOW AND NOT AT OR BELOW, the comparison every roll in this file makes,
+	// so a roll of exactly the share falls on the real side and a pinned 0
+	// always gives an illusion.
+	return Roll < IllusoryEnemiesSharePercent;
+}
+
+float UCataclysmDungeonModifierEffects::BrandNovaDamage(float MaximumHealth)
+{
+	if (MaximumHealth <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	return MaximumHealth * BrandNovaMaxHealthPercent / 100.0f;
+}

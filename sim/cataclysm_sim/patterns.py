@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-from .config import CityTier
+from .config import CityTier, TuningConfig
 from .world import City, Empire
 
 
@@ -28,6 +28,9 @@ class Pattern:
     # Rifts open behind the front line -- the frontier rule does not apply.
     ignores_frontier: bool = False
     # Cities lost to this Cataclysm can never be reclaimed.
+    #: Its ordinary dungeons add void stacks instead of damage, and ten erase a
+    #: city (`Simulation._adds_void_stacks`). Until 2026-10-18 this marked every
+    #: city the Cataclysm's dungeons landed on to be erased by its fall.
     erases_cities: bool = False
     # Weighting function over candidate cities.
     weight: Callable[[Empire, City], float] = lambda e, c: 1.0
@@ -102,8 +105,22 @@ def _chaos(e: Empire, c: City) -> float:
 # "When stacks reach a threshold, the city is permanently erased and cannot be
 # reclaimed." Fixates: keeps hammering whatever it has already damaged, and
 # what it takes never comes back.
+#
+# ITS HURT IS STACKS, since 2026-10-18: its ordinary dungeons add void stacks
+# and take no defence, so it returns to the cities it has stacked. Until that
+# day this read lost defence, `1 + 4 x (1 - defence share)`, which other
+# Cataclysms, Sieges and Quest hits take. Ruled by the coordinating session,
+# 2026-10-18. THE PULL IS AT MOST 2 TIMES, at ten stacks: the owner chose it
+# the same day ("Stacks, up to 2x") among 2, 3 and 5 times and lost defence,
+# measured; `docs/DECISIONS.md` has the table. The share is of
+# `TuningConfig.void_stacks_to_erase` as the class
+# declares it, read once here: a campaign that sets another threshold still
+# weighs by ten.
+_VOID_STACKS_FULL = TuningConfig.__dataclass_fields__["void_stacks_to_erase"].default
+
+
 def _void(e: Empire, c: City) -> float:
-    return _tier_weight(c) * (1.0 + 4.0 * (1.0 - c.defense_frac))
+    return _tier_weight(c) * (1.0 + 1.0 * min(1.0, c.void_stacks / _VOID_STACKS_FULL))
 
 
 PATTERNS: dict[str, Pattern] = {

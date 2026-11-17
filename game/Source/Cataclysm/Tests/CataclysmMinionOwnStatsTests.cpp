@@ -1,0 +1,597 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "Misc/AutomationTest.h"
+
+#if WITH_AUTOMATION_TESTS
+
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmStatPipeline.h"
+#include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmTeams.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmPlayerClassStats.h"
+#include "Engine/World.h"
+#include "Misc/ScopeExit.h"
+#include "Tests/CataclysmTestWorld.h"
+
+/**
+ * A minion's own health and damage, from its type row. Issue #340.
+ *
+ * WHAT THESE ARE FOR. The decision of 2026-08-06, issue #209, reversed the rule
+ * this code carried: "a minion reaches its summoner through three channels and
+ * nothing else: its side, its base health and damage raised by the summoner's
+ * level, and increased damage from one primary attribute declared per minion
+ * type." The engine went on dealing 30% of the summoner's weapon damage and
+ * setting no health at all, while `game/Data/MinionTypes.csv` carried a base and
+ * a per-level figure for both, read by nothing.
+ *
+ * WHY THIS FILE EXISTS RATHER THAN CHANGES TO THE TESTS THAT WERE THERE. Three
+ * tests assert the old share, and all three summon a minion with NO TYPE NAME --
+ * which still takes it, deliberately, because they predate the type table and
+ * exist to check other things. **So the new behaviour had no coverage at all**,
+ * and a build where a minion's damage was zero, its health unset and the level
+ * read as one would have passed the whole suite.
+ *
+ * EVERY FIGURE BELOW IS COMPUTED HERE RATHER THAN ASKED OF THE CODE. The engine
+ * has a helper for "a base raised by a level" and these tests deliberately do
+ * not use it: a test that asks the thing under test to compute the expected
+ * answer agrees with it however wrong it is.
+ *
+ * THE PRECONDITION IS ASSERTED FIRST IN EVERY CASE THAT NEEDS A TYPE. A minion
+ * whose row could not be found spawns carrying the defaults and falls back to
+ * the old share, so a stale imported asset would turn "it deals its own damage"
+ * into a confusing failure rather than a clear one.
+ * `Cataclysm.AI.ADeployedBallistaStaysPutRatherThanFollowingItsDeployer`
+ * reads the same precondition the same way, at
+ * `CataclysmEnemyBehaviourTests.cpp:730`.
+ */
+namespace CataclysmMinionOwnStatsTest
+{
+	using Vital = UCataclysmVitalAttributeSet;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	/** Centimetres in a metre, so a case can place a character in metres. */
+	constexpr float M = 100.0f;
+
+	//~ The authored figures, from `game/Data/MinionTypes.csv`. Written out rather
+	//~ than read back through the engine, for the reason the file comment gives.
+	//~ `Cataclysm.DataTable` pins the table itself, so a row changed underneath
+	//~ these is caught there and named, rather than making these fail obscurely.
+	constexpr float ImpBaseDamage = 10.5f;
+	constexpr float ImpDamagePerLevel = 10.5f;
+	constexpr float ImpBaseHealth = 200.0f;
+	constexpr float ImpHealthPerLevel = 90.0f;
+
+	constexpr float BallistaBaseDamage = 63.0f;
+	constexpr float BallistaDamagePerLevel = 63.0f;
+
+	/**
+	 * A base figure raised by a level, worked out here.
+	 *
+	 * THE ARITHMETIC IS DUPLICATED ON PURPOSE. The engine's own helper is in an
+	 * unnamed namespace and could not be called from here even if it should be,
+	 * which is the right shape: these tests have to state the answer
+	 * independently or they cannot disagree with the code.
+	 */
+	float RaisedByLevel(float Base, float PerLevel, int32 Level)
+	{
+		return Base + PerLevel * static_cast<float>(Level);
+	}
+
+	/**
+	 * The level these tests will see.
+	 *
+	 * NOT A GUESS AND NOT A CONSTANT. A summoner built here is an ordinary actor
+	 * with no player state, so the minion falls back to the level the class stats
+	 * are being previewed at. Since issue #1702 that is the path only a summoner
+	 * that is neither a player, an enemy nor a minion takes, which today is test
+	 * scaffolding like this.
+	 */
+	int32 LevelTheseTestsSee()
+	{
+		return UCataclysmPlayerClassStats::ChosenLevel();
+	}
+
+	/**
+	 * A bare actor carrying the attributes a blow needs at both ends.
+	 *
+	 * THE FOUR SETS ARE COPIED FROM A FIXTURE THAT IS KNOWN TO WORK.
+	 * `CataclysmDamageTypeTests.cpp` builds `FScopedCombatant` with exactly these
+	 * and drives `AttackTarget` at it, reading the whole figure that was swung, so
+	 * nothing here mitigates a blow by default. Two earlier drafts of this file
+	 * carried only the vital and combat sets; the resistance sets are here to keep
+	 * the difference from that fixture at zero rather than because a reading
+	 * needed them.
+	 *
+	 * NO CRITICAL STRIKE PIN, AND THAT IS DELIBERATE. `FScopedCombatant`'s tests
+	 * need `FScopedNoCriticalStrikes` because they make the SUMMONER swing as
+	 * well, and that blow can roll one. A minion's cannot: `MinionDelivery` sets
+	 * `bCannotCriticallyStrike`, on both the flat and the percentage path, and
+	 * `Cataclysm.AI.ASummonedImpNeverCriticallyStrikesEvenWhenItsSummonerWould`
+	 * is what holds that. Nothing below makes the summoner swing, so there is no
+	 * roll here to pin.
+	 */
+	struct FScopedFighter
+	{
+		FScopedFighter(UWorld* World, float AttackDamage)
+		{
+			Actor = World->SpawnActor<AActor>();
+			check(Actor);
+
+			AbilitySystem = NewObject<UCataclysmAbilitySystemComponent>(Actor);
+			AbilitySystem->RegisterComponent();
+
+			// Raw pointers on purpose: AddAttributeSetSubobject is a template and
+			// a TObjectPtr deduces the wrapper rather than the set.
+			UCataclysmVitalAttributeSet* NewVitals =
+				NewObject<UCataclysmVitalAttributeSet>(Actor);
+			UCataclysmCombatAttributeSet* NewCombat =
+				NewObject<UCataclysmCombatAttributeSet>(Actor);
+			UCataclysmResistanceAttributeSet* NewResist =
+				NewObject<UCataclysmResistanceAttributeSet>(Actor);
+			UCataclysmAllResistanceAttributeSet* NewAllResist =
+				NewObject<UCataclysmAllResistanceAttributeSet>(Actor);
+			AbilitySystem->AddAttributeSetSubobject(NewVitals);
+			AbilitySystem->AddAttributeSetSubobject(NewCombat);
+			AbilitySystem->AddAttributeSetSubobject(NewResist);
+			AbilitySystem->AddAttributeSetSubobject(NewAllResist);
+			AbilitySystem->InitAbilityActorInfo(Actor, Actor);
+
+			// LARGE ENOUGH THAT NOTHING HERE APPROACHES DEATH, so a reading is
+			// the blow rather than the health that was left.
+			//
+			// A FLOAT NEAR 1,000,000 STEPS IN UNITS OF 0.0625, so a blow measured as the
+			// difference of two readings of this pool is quantised to that: an expected
+			// figure that is not a multiple of 0.0625 (a -40% blow of 220.5 is 132.3, read
+			// as 132.3125) misses a 0.01 tolerance however correct the engine is. Pick
+			// figures that land on the grid, or use a smaller pool the way
+			// CataclysmMinionGearTests.cpp does. Issue #1728.
+			AbilitySystem->SetNumericAttributeBase(
+				Vital::GetMaxHealthAttribute(), 1'000'000.0f);
+			AbilitySystem->SetNumericAttributeBase(
+				Vital::GetHealthAttribute(), 1'000'000.0f);
+			AbilitySystem->SetNumericAttributeBase(
+				Combat::GetAttackDamageAttribute(), AttackDamage);
+		}
+
+		~FScopedFighter()
+		{
+			if (Actor)
+			{
+				Actor->Destroy();
+			}
+		}
+
+		float Health() const
+		{
+			const UAbilitySystemComponent* System =
+				UCataclysmTargeting::AbilitySystemOf(Actor);
+			return System
+				? System->GetNumericAttribute(Vital::GetHealthAttribute())
+				: 0.0f;
+		}
+
+		AActor* Actor = nullptr;
+		UCataclysmAbilitySystemComponent* AbilitySystem = nullptr;
+	};
+
+	/** A minion's current health, read the way anything else reads a character's. */
+	float HealthOf(const ACataclysmMinion* Minion)
+	{
+		const UAbilitySystemComponent* System =
+			UCataclysmTargeting::AbilitySystemOf(Minion);
+		return System
+			? System->GetNumericAttribute(Vital::GetHealthAttribute())
+			: -1.0f;
+	}
+}
+
+// EVERY TEST OPENS THE NAMESPACE INSIDE ITS OWN BODY, because this module is
+// built as a unity blob and a `using namespace` at file scope reaches the other
+// files concatenated with this one.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionOwnDamageTest,
+	"Cataclysm.MinionStats.AMinionDealsItsOwnDamageAndTheSummonersGeneralIncreasesDoNotReachIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The blow is the minion's own figure, and it stays that figure when the
+ * summoner is made much stronger.
+ *
+ * ONE TEST WITH TWO MEASUREMENTS RATHER THAN TWO TESTS, and the reason is the
+ * whole point. "The summoner's increases do not reach it" passes on its own if
+ * the minion deals NOTHING AT ALL -- it cannot tell a bonus correctly excluded
+ * from a feature that never fired. Another session lost a cycle tonight to
+ * exactly that: three "does not happen" tests all passed because the thing under
+ * test was doing nothing whatever.
+ *
+ * So the first measurement is a specific number, not "more than zero", and the
+ * second is the SAME blow with one change. A build where a minion deals nothing
+ * fails the first half and never reaches the second.
+ *
+ * THE SUMMONER'S WEAPON IS 1000, WHICH IS CHOSEN BY WHAT IT CAN DISTINGUISH.
+ * The old rule gave 30% of it, so a share would read 300. An imp's own damage at
+ * the levels these tests run at is nowhere near that, so the two answers cannot
+ * be confused by an arithmetic coincidence.
+ */
+bool FCataclysmMinionOwnDamageTest::RunTest(const FString&)
+{
+	using namespace CataclysmMinionOwnStatsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedFighter Summoner(World, /*AttackDamage=*/1000.0f);
+	FScopedFighter Target(World, /*AttackDamage=*/0.0f);
+
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Summoner.Actor, FVector(1 * M, 0, 0), /*Lifetime=*/20.0f,
+		/*bBurns=*/false, TEXT("Imp"));
+	if (!TestNotNull(TEXT("an imp"), Imp))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	// THE PRECONDITION, FIRST, BECAUSE THE TEST SAYS NOTHING WITHOUT IT. A minion
+	// whose row could not be found keeps the defaults AND falls back to the old
+	// share, so a stale imported asset would make the readings below fail for a
+	// reason that has nothing to do with this rule.
+	if (!TestEqual(TEXT("the imp was made from the Imp row"),
+				   Imp->TypeName, FString(TEXT("Imp"))))
+	{
+		AddError(TEXT("DT_MinionTypes could not supply the Imp row, so this test "
+					  "cannot tell its own damage from the old share. Run "
+					  "tools/generate_datatable_assets.py."));
+		return false;
+	}
+
+	const int32 Level = LevelTheseTestsSee();
+	const float ItsOwn = RaisedByLevel(ImpBaseDamage, ImpDamagePerLevel, Level);
+
+	const float Before = Target.Health();
+	Imp->AttackTarget(Target.Actor);
+	const float Plain = Before - Target.Health();
+
+	TestEqual(TEXT("it deals its own damage from its type row"), Plain, ItsOwn,
+			  0.01f);
+
+	// AND NOT A SHARE OF THE SUMMONER'S WEAPON, which is what it dealt until the
+	// design of 2026-08-06 was implemented. Stated as its own reading so the
+	// failure names the rule rather than a number.
+	TestNotEqual(TEXT("and not thirty per cent of the summoner's weapon"),
+				 FMath::RoundToInt(Plain), FMath::RoundToInt(1000.0f * 0.3f));
+
+	// NOW MAKE THE SUMMONER MUCH STRONGER AND MEASURE THE SAME BLOW. This is the
+	// half that the flat damage path exists for: `ApplyHit` would run the
+	// summoner's own stat modifiers over the figure, and this one takes it as
+	// given. A doubling that reached the minion would be visible at once.
+	//
+	// `attack_damage` AND NOT `minion_damage`, AND THE DIFFERENCE IS THE WHOLE
+	// RULE. A stat that NAMES minions is meant to reach one -- the decision of
+	// 2026-08-06 says "Everything else is blocked unless a modifier names
+	// minions" -- and since issue #898 one does. This test is about the general
+	// increases a summoner carries, which stay blocked. The name of this test
+	// said "the summoner's increases" until then, which had become a wider claim
+	// than it measures; `Cataclysm.MinionGear` holds the other half.
+	{
+		FCataclysmStatModifier Doubling;
+		Doubling.Bucket = ECataclysmStatBucket::Increased;
+		Doubling.Source = ECataclysmModifierSource::PassiveKeystone;
+		Doubling.Value = 100.0f;
+
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line =
+			Inputs.FindOrAdd(FName(TEXT("attack_damage")));
+		Line.Base = 1000.0f;
+		Line.Modifiers = {Doubling};
+		Summoner.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	}
+
+	const float BeforeBoosted = Target.Health();
+	Imp->AttackTarget(Target.Actor);
+	const float Boosted = BeforeBoosted - Target.Health();
+
+	TestEqual(TEXT("and doubling the summoner's attack damage changes nothing"),
+			  Boosted, Plain, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionOwnHealthTest,
+	"Cataclysm.MinionStats.AMinionHasItsOwnHealthFromItsTypeRow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A minion has health, which nothing in this game has ever asserted.
+ *
+ * IT HAD NONE AT ALL UNTIL THIS CHANGE. `DeployedHealthPercent` was recorded at
+ * spawn and read by nothing anywhere in the module, and the comment beside it
+ * said health was "deliberately not set from the type" because applying it
+ * needed the summoner's level, "which nothing in this module can read yet".
+ * Something in the same module reads it: `UCataclysmEquipmentComponent` does,
+ * with the fallback a minion needs for a summoner that is not a player.
+ *
+ * THE FIGURE IS SPECIFIC, NOT "MORE THAN ZERO". A minion left at whatever the
+ * attribute set defaults to would pass a positive check and fail this one.
+ */
+bool FCataclysmMinionOwnHealthTest::RunTest(const FString&)
+{
+	using namespace CataclysmMinionOwnStatsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedFighter Summoner(World, /*AttackDamage=*/100.0f);
+
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Summoner.Actor, FVector(1 * M, 0, 0), /*Lifetime=*/20.0f,
+		/*bBurns=*/false, TEXT("Imp"));
+	if (!TestNotNull(TEXT("an imp"), Imp))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	if (!TestEqual(TEXT("the imp was made from the Imp row"),
+				   Imp->TypeName, FString(TEXT("Imp"))))
+	{
+		AddError(TEXT("DT_MinionTypes could not supply the Imp row. Run "
+					  "tools/generate_datatable_assets.py."));
+		return false;
+	}
+
+	const float Expected =
+		RaisedByLevel(ImpBaseHealth, ImpHealthPerLevel, LevelTheseTestsSee());
+
+	TestEqual(TEXT("an imp has its type's own health"), HealthOf(Imp), Expected,
+			  0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionTypesDifferTest,
+	"Cataclysm.MinionStats.TwoMinionTypesDoNotShareOneSetOfNumbers",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A ballista and an imp hit for different amounts, and each for its own row's.
+ *
+ * A SINGLE-TYPE TEST CANNOT SEE THIS. A build that read one row and gave it to
+ * every minion would pass every case above, because every case above summons an
+ * imp. The ballista is the control on the lookup itself.
+ *
+ * THE TWO ROWS DIFFER BY SIX TIMES, which is chosen by what it can distinguish:
+ * a wrong row cannot be mistaken for rounding.
+ */
+bool FCataclysmMinionTypesDifferTest::RunTest(const FString&)
+{
+	using namespace CataclysmMinionOwnStatsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedFighter Summoner(World, /*AttackDamage=*/1000.0f);
+	FScopedFighter First(World, /*AttackDamage=*/0.0f);
+	FScopedFighter Second(World, /*AttackDamage=*/0.0f);
+
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Summoner.Actor, FVector(1 * M, 0, 0), /*Lifetime=*/20.0f,
+		/*bBurns=*/false, TEXT("Imp"));
+	ACataclysmMinion* Ballista = ACataclysmMinion::Spawn(
+		Summoner.Actor, FVector(0, 1 * M, 0), /*Lifetime=*/20.0f,
+		/*bBurns=*/false, TEXT("Ballista"));
+	if (!TestNotNull(TEXT("an imp"), Imp)
+		|| !TestNotNull(TEXT("a ballista"), Ballista))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+	ON_SCOPE_EXIT { if (IsValid(Ballista)) { Ballista->Destroy(); } };
+
+	if (!TestEqual(TEXT("the imp came from the Imp row"),
+				   Imp->TypeName, FString(TEXT("Imp")))
+		|| !TestEqual(TEXT("and the ballista from the Ballista row"),
+					  Ballista->TypeName, FString(TEXT("Ballista"))))
+	{
+		AddError(TEXT("DT_MinionTypes could not supply both rows, so this test "
+					  "cannot tell one type's numbers from another's. Run "
+					  "tools/generate_datatable_assets.py."));
+		return false;
+	}
+
+	const int32 Level = LevelTheseTestsSee();
+
+	const float BeforeImp = First.Health();
+	Imp->AttackTarget(First.Actor);
+	const float ImpDealt = BeforeImp - First.Health();
+
+	const float BeforeBallista = Second.Health();
+	Ballista->AttackTarget(Second.Actor);
+	const float BallistaDealt = BeforeBallista - Second.Health();
+
+	TestEqual(TEXT("the imp deals the Imp row's figure"), ImpDealt,
+			  RaisedByLevel(ImpBaseDamage, ImpDamagePerLevel, Level), 0.01f);
+	TestEqual(TEXT("and the ballista the Ballista row's"), BallistaDealt,
+			  RaisedByLevel(BallistaBaseDamage, BallistaDamagePerLevel, Level),
+			  0.01f);
+	TestTrue(*FString::Printf(
+				 TEXT("which are different figures: %.1f against %.1f"),
+				 BallistaDealt, ImpDealt),
+			 BallistaDealt > ImpDealt);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTypelessMinionTest,
+	"Cataclysm.MinionStats.AMinionWithNoTypeHasNoFiguresAndDealsNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A minion with no type row has no figures of its own and hurts nothing.
+ *
+ * THIS CASE USED TO PIN THE OPPOSITE. Until 2026-09-17 a minion with no type
+ * dealt 30% of its SUMMONER'S weapon damage, and this test existed so that
+ * nobody removed that fallback by accident. The owner ruled the fallback a
+ * bug -- a minion's blow carries the minion's own numbers -- so the rule it
+ * guarded is gone and the case now guards what replaced it.
+ *
+ * THE BLOW STILL HAPPENS, which is what makes "nothing" a measurement rather
+ * than an absence: `AttackTarget` runs, `AttacksMade` rises, and the target
+ * simply loses no health, because `ApplyDirectDamage` refuses a figure of
+ * zero or less.
+ *
+ * SHIPPED DATA CANNOT REACH IT. `tools/generate_datatables.py` refuses a
+ * summoning row that names no minion type, which
+ * `test_a_summon_that_names_no_minion_type_is_refused` holds.
+ */
+bool FCataclysmTypelessMinionTest::RunTest(const FString&)
+{
+	using namespace CataclysmMinionOwnStatsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedFighter Summoner(World, /*AttackDamage=*/100.0f);
+	FScopedFighter Target(World, /*AttackDamage=*/0.0f);
+
+	ACataclysmMinion* Nameless = ACataclysmMinion::Spawn(
+		Summoner.Actor, FVector(1 * M, 0, 0), /*Lifetime=*/20.0f,
+		/*bBurns=*/false);
+	if (!TestNotNull(TEXT("a minion with no type"), Nameless))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Nameless)) { Nameless->Destroy(); } };
+
+	TestEqual(TEXT("it carries no type name"), Nameless->TypeName, FString());
+
+	const float Before = Target.Health();
+	Nameless->AttackTarget(Target.Actor);
+	const float Dealt = Before - Target.Health();
+
+	TestEqual(TEXT("it swung"), Nameless->AttacksMade, 1);
+	TestEqual(TEXT("and the target lost nothing, because the minion has no "
+				   "damage of its own and takes none of its summoner's"),
+			  Dealt, 0.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionOwnBuffsTest,
+	"Cataclysm.MinionStats.AMinionsBlowReadsTheBuffsOnItsOwnAbilitySystem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1771, ruled 2026-09-30. A minion's hits are its own (the owner's
+ * ruling of 2026-09-17), so a buff written onto the minion's own ability
+ * system -- an aura's ally bonus is the one writer today -- reaches its blow.
+ * Until then the blow went straight to `ApplyDirectDamage` and never through
+ * `ModifiedDamage`, the only reader of that list.
+ *
+ * AND A FIRE-SCOPED BUFF STILL DOES NOTHING: a modifier requiring a fire blow
+ * needs one, and no minion type deals fire damage. That half is the control
+ * here. It was the Conflagration aura's own case until 2026-10-25, when its
+ * ally bonus became unscoped (Q-P2); the modifier is built by hand below.
+ */
+bool FCataclysmMinionOwnBuffsTest::RunTest(const FString&)
+{
+	using namespace CataclysmMinionOwnStatsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedFighter Summoner(World, /*AttackDamage=*/1000.0f);
+	FScopedFighter Target(World, /*AttackDamage=*/0.0f);
+
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Summoner.Actor, FVector(1 * M, 0, 0), /*Lifetime=*/20.0f,
+		/*bBurns=*/false, TEXT("Imp"));
+	if (!TestNotNull(TEXT("an imp"), Imp))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	UCataclysmAbilitySystemComponent* Its = Cast<UCataclysmAbilitySystemComponent>(
+		UCataclysmTargeting::AbilitySystemOf(Imp));
+	if (!TestNotNull(TEXT("the imp has this project's ability system"), Its))
+	{
+		return false;
+	}
+
+	const float Before = Target.Health();
+	Imp->AttackTarget(Target.Actor);
+	const float Plain = Before - Target.Health();
+	if (!TestTrue(TEXT("an unbuffed blow lands"), Plain > 0.0f))
+	{
+		return false;
+	}
+
+	// AN UNSCOPED BUFF, AS AN ALLY BUFF WITH NO ELEMENT WOULD WRITE IT.
+	FCataclysmStatModifier Buff;
+	Buff.Bucket = ECataclysmStatBucket::Increased;
+	Buff.Source = ECataclysmModifierSource::SkillBuff;
+	Buff.Value = 50.0f;
+	const int32 Handle = Its->AddStatModifier(Buff);
+	if (!TestTrue(TEXT("the buff was accepted"), Handle != 0))
+	{
+		return false;
+	}
+
+	const float BeforeBuffed = Target.Health();
+	Imp->AttackTarget(Target.Actor);
+	const float Buffed = BeforeBuffed - Target.Health();
+	TestEqual(TEXT("50% increased on the imp's own ability system makes its blow half again"),
+			  Buffed, Plain * 1.5f, 0.01f);
+
+	// THE CONTROL: THE SAME BUFF SCOPED TO FIRE, as Conflagration wrote it
+	// until 2026-10-25.
+	Its->RemoveStatModifier(Handle);
+	// FIRE IS Element.Demonic -- Conflagration's "hellfire" is the Demonic
+	// element; there is no Element.Fire.
+	const FGameplayTag Fire = UCataclysmDamageCalculation::ElementTagFor(FName(TEXT("Demonic")));
+	if (!TestTrue(TEXT("the Demonic element tag exists"), Fire.IsValid()))
+	{
+		return false;
+	}
+	FCataclysmStatModifier FireOnly = Buff;
+	FireOnly.RequiredTags.AddTag(Fire);
+	Its->AddStatModifier(FireOnly);
+
+	const float BeforeFire = Target.Health();
+	Imp->AttackTarget(Target.Actor);
+	const float WithFireBuff = BeforeFire - Target.Health();
+	TestEqual(TEXT("and a Demonic-only buff leaves an imp's blow, which carries no element, as it was"),
+			  WithFireBuff, Plain, 0.01f);
+	return true;
+}
+
+#endif  // WITH_AUTOMATION_TESTS

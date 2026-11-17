@@ -1,0 +1,5462 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#if WITH_AUTOMATION_TESTS
+
+#include "Misc/AutomationTest.h"
+
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmCommand.h"
+#include "AbilitySystem/CataclysmFervour.h"
+// For fear, put on a commanded creature in the Compel tests. Issue #2560.
+#include "AbilitySystem/CataclysmFear.h"
+// For Chorus and the hit notices its repeats raise, in the ChorusHeld tests. Issue #2563.
+#include "AbilitySystem/CataclysmChorus.h"
+#include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmStatPipeline.h"
+#include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
+#include "AbilitySystem/CataclysmWeaponSkills.h"
+#include "AbilitySystem/CataclysmSkillSlots.h"
+#include "AbilitySystem/CataclysmSkillTemplates.h"
+#include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmTeams.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystemComponent.h"
+#include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmEnemyController.h"
+// For the keystone's own rows, read out of the imported effect table by
+// the test that grants nothing by hand. Issue #1515.
+#include "Character/CataclysmPassiveTree.h"
+#include "Data/CataclysmDataRows.h"
+#include "Character/CataclysmPlayerClassStats.h"
+#include "Interface/CataclysmCombatOverlay.h"
+#include "Components/SphereComponent.h"
+#include "Engine/World.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "Misc/ScopeExit.h"
+#include "Tests/CataclysmTestWorld.h"
+
+/**
+ * What a character commands, and the four Staff skills built on it.
+ *
+ * WHY THIS IS ITS OWN FILE RATHER THAN MORE OF `CataclysmSkillTemplateTests.cpp`.
+ * That file's test fighter is a bare `AActor` with an ability system bolted on,
+ * which is enough for almost everything and is not enough here. Three of these
+ * tests need a real `ACataclysmEnemyCharacter`: subjugation changes which side a
+ * creature is on and keeps its body, a boss refusal reads the rarity only that
+ * class carries, and an order is obeyed by the controller that only a real
+ * character has.
+ *
+ * SO BOTH KINDS APPEAR BELOW, AND THE DIFFERENCE IS DELIBERATE. The commander is
+ * a bare actor, because it needs a class resource pool and skills granted into
+ * slots and never needs to be found by a search. Everything it commands, and
+ * everything it takes, is a real character, because those are what get walked,
+ * driven and counted.
+ */
+namespace CataclysmCommandTest
+{
+	/** Metres, so the tests read the way the design document does. */
+	constexpr float M = 100.0f;
+
+	/** What the Ritualist's row in `game/Data/ClassStats.csv` gives it. */
+	constexpr float RitualistPool = 150.0f;
+
+	static UWorld* MakeWorldThatHasBegunPlay()
+	{
+		return CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	}
+
+	/**
+	 * The commander: an actor that can hold skills and a resource pool.
+	 *
+	 * A BARE ACTOR, MATCHING `CataclysmSkillTemplateTests.cpp`. It is never
+	 * searched for, only searched from, so it does not have to be a character.
+	 */
+	struct FScopedCaster
+	{
+		FScopedCaster(UWorld* World, const FVector& Where,
+					  float Pool = RitualistPool)
+		{
+			Actor = World->SpawnActor<AActor>(Where, FRotator::ZeroRotator);
+			check(Actor);
+
+			USphereComponent* Sphere = NewObject<USphereComponent>(Actor);
+			Sphere->InitSphereRadius(34.0f);
+			Sphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+			Sphere->SetCollisionObjectType(ECC_Pawn);
+			Sphere->SetCollisionResponseToAllChannels(ECR_Overlap);
+			Actor->SetRootComponent(Sphere);
+			Sphere->RegisterComponent();
+			Actor->SetActorLocation(Where);
+
+			AbilitySystem = NewObject<UCataclysmAbilitySystemComponent>(Actor);
+			AbilitySystem->RegisterComponent();
+
+			AbilitySystem->AddAttributeSetSubobject(
+				NewObject<UCataclysmVitalAttributeSet>(Actor));
+			AbilitySystem->AddAttributeSetSubobject(
+				NewObject<UCataclysmCombatAttributeSet>(Actor));
+			AbilitySystem->AddAttributeSetSubobject(
+				NewObject<UCataclysmClassResourceAttributeSet>(Actor));
+
+			AbilitySystem->InitAbilityActorInfo(Actor, Actor);
+
+			Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 100000.0f);
+			Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 100000.0f);
+			Set(UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 1000.0f);
+			Set(UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
+			Set(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+
+			// THE RITUALIST'S OWN POOL BY DEFAULT, so the thrall cap the tests
+			// check is the number the design states rather than one invented
+			// here. A test that wants a smaller army asks for a smaller pool.
+			Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(),
+				Pool);
+			Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(),
+				Pool);
+		}
+
+		~FScopedCaster()
+		{
+			if (IsValid(Actor))
+			{
+				Actor->Destroy();
+			}
+		}
+
+		void Set(const FGameplayAttribute& Attribute, float Value)
+		{
+			AbilitySystem->SetNumericAttributeBase(Attribute, Value);
+		}
+
+		AActor* Actor = nullptr;
+		UCataclysmAbilitySystemComponent* AbilitySystem = nullptr;
+	};
+
+	/** A real creature: something that can be taken, driven and counted. */
+	struct FScopedCreature
+	{
+		FScopedCreature(UWorld* World, const FVector& Where,
+						ECataclysmTeam Team = ECataclysmTeam::Monsters,
+						float Health = 1000.0f)
+		{
+			Actor = World->SpawnActor<ACataclysmEnemyCharacter>(
+				Where, FRotator::ZeroRotator);
+			check(Actor);
+			Actor->SetGenericTeamId(UCataclysmTeams::IdFor(Team));
+
+			// `SetHealth` sets the MAXIMUM, which is what a health threshold is
+			// a share of. A thousand makes half of it a round five hundred.
+			Actor->SetHealth(Health);
+			Actor->SetAttackDamage(50.0f);
+		}
+
+		~FScopedCreature()
+		{
+			if (IsValid(Actor))
+			{
+				Actor->Destroy();
+			}
+		}
+
+		float Health() const
+		{
+			const UAbilitySystemComponent* AbilitySystem =
+				UCataclysmTargeting::AbilitySystemOf(Actor);
+			return AbilitySystem
+				? AbilitySystem->GetNumericAttribute(
+					  UCataclysmVitalAttributeSet::GetHealthAttribute())
+				: 0.0f;
+		}
+
+		void SetHealthTo(float Value)
+		{
+			if (UAbilitySystemComponent* AbilitySystem =
+					UCataclysmTargeting::AbilitySystemOf(Actor))
+			{
+				AbilitySystem->SetNumericAttributeBase(
+					UCataclysmVitalAttributeSet::GetHealthAttribute(), Value);
+			}
+		}
+
+		ACataclysmEnemyCharacter* Actor = nullptr;
+	};
+
+	template <typename T>
+	T* GrantSkill(FScopedCaster& Caster, ECataclysmAbilitySlot Slot,
+				  const FString& ParamText, const FString& Name,
+				  const FString& TagCell = FString())
+	{
+		const FGameplayAbilitySpecHandle Handle =
+			Caster.AbilitySystem->GiveAbilityInSlot(
+				T::StaticClass(), Slot, /*Level=*/100, Caster.Actor);
+		if (!Handle.IsValid())
+		{
+			return nullptr;
+		}
+
+		FGameplayAbilitySpec* Spec =
+			Caster.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+		T* Instance = Spec ? Cast<T>(Spec->GetPrimaryInstance()) : nullptr;
+		if (Instance)
+		{
+			Instance->SkillName = Name;
+			Instance->Params = UCataclysmSkillShapes::ParseParams(ParamText);
+			Instance->SkillTags = UCataclysmSkillShapes::TagsFromCell(TagCell);
+		}
+		return Instance;
+	}
+
+	static bool Activate(FScopedCaster& Caster, UGameplayAbility* Ability)
+	{
+		return Ability && Caster.AbilitySystem->TryActivateAbility(
+			Ability->GetCurrentAbilitySpecHandle(),
+			/*bAllowRemoteActivation=*/false);
+	}
+}
+
+// ==========================================================================
+// What a character commands
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCommandFindsBothKindsTest,
+	"Cataclysm.Command.WhatACharacterCommandsCoversMinionsAndThralls",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCommandFindsBothKindsTest::RunTest(const FString&)
+{
+	// THE QUESTION THREE STAFF ROWS ASK AND NOTHING COULD ANSWER. Each summon
+	// skill kept its own private list of minions, and a subjugated enemy is not a
+	// minion at all, so no list could ever have held both.
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Commander(World, FVector::ZeroVector);
+
+	// A CREATURE NOBODY COMMANDS, standing in the middle of everything, so a
+	// search that answered "every character nearby" would be caught.
+	FScopedCreature Stranger(World, FVector(2 * M, 0, 0));
+
+	TestEqual(TEXT("a character that commands nothing commands nothing"),
+		UCataclysmCommand::ThingsCommandedBy(Commander.Actor).Num(), 0);
+
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Commander.Actor, FVector(3 * M, 0, 0), /*Lifetime=*/20.0f,
+		/*bBurns=*/true);
+	if (!Imp)
+	{
+		AddError(TEXT("Could not spawn the minion."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	TestEqual(TEXT("a summoned minion is commanded"),
+		UCataclysmCommand::ThingsCommandedBy(Commander.Actor).Num(), 1);
+
+	FScopedCreature Taken(World, FVector(4 * M, 0, 0));
+	TestTrue(TEXT("an enemy can be taken"),
+		UCataclysmCommand::Subjugate(Commander.Actor, Taken.Actor));
+
+	TestEqual(TEXT("and a thrall is commanded alongside the minion"),
+		UCataclysmCommand::ThingsCommandedBy(Commander.Actor).Num(), 2);
+
+	// AND ONLY ONE OF THE TWO COUNTS AGAINST THE POOL. A minion was made and a
+	// thrall was taken, and the reserve is stated per thrall.
+	TestEqual(TEXT("one of the two is a thrall"),
+		UCataclysmCommand::ThrallCountOf(Commander.Actor), 1);
+
+	// THE RANGE IS READ. Vesselstep states "up to 14 meters".
+	TestEqual(TEXT("a two metre search finds neither"),
+		UCataclysmCommand::ThingsCommandedBy(Commander.Actor, 2 * M).Num(), 0);
+	TestEqual(TEXT("and a five metre search finds both"),
+		UCataclysmCommand::ThingsCommandedBy(Commander.Actor, 5 * M).Num(), 2);
+
+	// AND NOBODY ELSE'S CREATURES ARE ANYBODY'S. The stranger has been standing
+	// nearer than either of them throughout.
+	FScopedCaster Other(World, FVector(0, 30 * M, 0));
+	TestEqual(TEXT("another character commands none of them"),
+		UCataclysmCommand::ThingsCommandedBy(Other.Actor).Num(), 0);
+
+	return true;
+}
+
+// ==========================================================================
+// Subjugate
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSubjugateTakesTheWeakTest,
+	"Cataclysm.Command.SubjugateTakesAnEnemyTheBlowLeftBelowHalfHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSubjugateTakesTheWeakTest::RunTest(const FString&)
+{
+	// THE STAFF'S SUBJUGATE: "if the blow leaves it below half health you take it
+	// permanently." Its `Possess`, `FervourReserve` and `HealthThresholdPercent`
+	// were parsed and read by nothing until 2026-09-02.
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// THIS ROW IS WRITTEN HERE AND IS NOT THE SHIPPED ONE. What this test is
+	// for is the mechanism -- the blow, the threshold, the taking -- and
+	// pinning the shipped figures here would make it fail every time one of
+	// them was tuned.
+	//
+	// IT STATES NO RADIUS, BECAUSE NOTHING READS ONE. Since issue #1529
+	// `Possess` searches its `Range` around the caster and takes the enemy
+	// nearest the cursor; a headless run has no cursor, so that is the enemy
+	// nearest the caster. Until then this row carried `Radius=15`, a figure in
+	// no shipped row, so the old sphere fifteen metres ahead could reach back
+	// to a creature standing at three -- which is also why this test passed
+	// throughout issue #1519. Which enemy is taken is checked by
+	// `Cataclysm.Command.SubjugateTakesTheEnemyNearestTheCursorWithinItsRange`.
+	const TCHAR* const Row =
+		TEXT("Range=15; MaxTargets=1; Burn=1; Possess=1; "
+			 "FervourReserve=30; HealthThresholdPercent=50");
+
+	// THE CONTROL FIRST, ON A HEALTHY CREATURE, AND ON ITS OWN CASTER. A skill
+	// commits its cooldown when it fires, so a second cast of one instance would
+	// be refused by that rather than by the threshold under test.
+	FScopedCaster First(World, FVector::ZeroVector);
+	FScopedCreature Healthy(World, FVector(3 * M, 0, 0));
+
+	UCataclysmSummonSkill* Try = GrantSkill<UCataclysmSummonSkill>(
+		First, ECataclysmAbilitySlot::Ultimate, Row, TEXT("Subjugate"));
+	if (!Try)
+	{
+		AddError(TEXT("Could not grant Subjugate."));
+		return false;
+	}
+
+	TestTrue(TEXT("it activates against a healthy enemy"), Activate(First, Try));
+	TestFalse(TEXT("and takes nothing"), Try->bTookIt);
+	TestEqual(TEXT("so nothing is commanded"),
+		UCataclysmCommand::ThingsCommandedBy(First.Actor).Num(), 0);
+
+	// THE BLOW STILL LANDED, which is what "IF THE BLOW LEAVES IT" says: the
+	// damage is not conditional on the taking.
+	TestTrue(TEXT("but the blow still landed"), Healthy.Health() < 1000.0f);
+	TestTrue(TEXT("and still set it alight"),
+		UCataclysmSkillEffects::HasTag(Healthy.Actor,
+									   UCataclysmSkillEffects::BurnTag()));
+
+	// AND NOW A CREATURE THE BLOW WILL LEAVE UNDER HALF. Hurt to just above the
+	// threshold first, so the skill's own damage is what carries it under and the
+	// test is not simply handing it a weak target.
+	FScopedCaster Second(World, FVector(0, 30 * M, 0));
+	FScopedCreature Wounded(World, FVector(3 * M, 30 * M, 0));
+	Wounded.SetHealthTo(520.0f);
+
+	UCataclysmSummonSkill* Take = GrantSkill<UCataclysmSummonSkill>(
+		Second, ECataclysmAbilitySlot::Ultimate, Row, TEXT("Subjugate"));
+	if (!Take)
+	{
+		AddError(TEXT("Could not grant the second Subjugate."));
+		return false;
+	}
+
+	TestTrue(TEXT("it activates against a wounded enemy"),
+		Activate(Second, Take));
+	TestTrue(TEXT("and takes it"), Take->bTookIt);
+
+	TestEqual(TEXT("so the caster now commands it"),
+		UCataclysmCommand::ThingsCommandedBy(Second.Actor).Num(), 1);
+	TestEqual(TEXT("and it counts as a thrall rather than a minion"),
+		UCataclysmCommand::ThrallCountOf(Second.Actor), 1);
+
+	// IT KEPT ITS BODY, which is what "keeps its own abilities" rests on. A
+	// thrall that had been destroyed and replaced with a minion would fail this.
+	TestTrue(TEXT("the thrall is still the creature it was"),
+		IsValid(Wounded.Actor));
+	TestFalse(TEXT("and is no longer an enemy of its new commander"),
+		UCataclysmTargeting::IsHostileTo(Wounded.Actor, Second.Actor));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSubjugatePicksByCursorTest,
+	"Cataclysm.Command.SubjugateTakesTheEnemyNearestTheCursorWithinItsRange",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Subjugate takes the enemy nearest where the player points, from those within
+ * its range of the caster. Issue #1529.
+ *
+ * THE SHIPPED ROW'S SHAPE, which states no radius since this change. A
+ * headless run has no cursor, so the aim is the caster itself and the nearest
+ * enemy to it is the one pointed at. The old rule searched a three metre
+ * sphere fifteen metres out along the caster's facing instead.
+ *
+ * TWO CREATURES ON THAT LINE, AND ONLY AN AIM FIFTEEN METRES OUT PICKS THE FAR
+ * ONE. The near one, at three metres, is wounded and the blow takes it. The
+ * far one, at thirteen, is healthy: picked instead, it is hit and nobody is
+ * taken.
+ */
+bool FCataclysmSubjugatePicksByCursorTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const TCHAR* const Row =
+		TEXT("Range=15; MaxTargets=1; Burn=1; Possess=1; "
+			 "FervourReserve=30; HealthThresholdPercent=50");
+
+	FScopedCaster Caster(World, FVector::ZeroVector);
+	FScopedCreature Near(World, FVector(3 * M, 0, 0));
+	FScopedCreature Far(World, FVector(13 * M, 0, 0));
+	Near.SetHealthTo(520.0f);
+
+	UCataclysmSummonSkill* Skill = GrantSkill<UCataclysmSummonSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate, Row, TEXT("Subjugate"));
+	if (!Skill)
+	{
+		AddError(TEXT("Could not grant Subjugate."));
+		return false;
+	}
+
+	TestTrue(TEXT("it activates"), Activate(Caster, Skill));
+	TestTrue(TEXT("and takes an enemy"), Skill->bTookIt);
+	TestTrue(TEXT("the one nearest where it was pointed"),
+		UCataclysmCommand::ThingsCommandedBy(Caster.Actor).Contains(Near.Actor));
+	TestEqual(TEXT("and the one further along is not hit at all"),
+		Far.Health(), 1000.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDominionRaisesTheThresholdTest,
+	"Cataclysm.Command.DominionTakesAnEnemyTheOrdinaryThresholdWouldRefuse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_keystone_a_kA` Dominion: "A blow that leaves a target below 65%
+ * health can take it, rather than below half." Issue #1718.
+ *
+ * ONE CREATURE LEFT BETWEEN THE TWO THRESHOLDS, WHICH IS THE ONLY BAND THAT
+ * PROVES ANYTHING. Below 50% both casters take it and above 65% neither does,
+ * so a test at either end would pass against a build that ignored the stat
+ * entirely.
+ *
+ * THE CASTERS DEAL NO DAMAGE, WHICH IS THE ONLY WAY TO PLACE A CREATURE
+ * PRECISELY BETWEEN TWO THRESHOLDS. The threshold is judged on the health left
+ * when the blow has landed, so a blow of unknown size makes the band unknown
+ * too. Setting attack damage to zero leaves the health at the figure this test
+ * wrote, and the comparison -- which is the whole subject -- is reached exactly
+ * as it would be after a real blow.
+ *
+ * THE FIRST VERSION OF THIS TEST ASSUMED THE BLOW DEALT 300 against a creature
+ * of 1000 and started it at 900. The blow deals more than that: it carried the
+ * creature under half, the plain caster took it, and `Subjugate` heals a thrall
+ * to full the moment it takes one -- so the health read back as 1000 of 1000 and
+ * the band assertion caught it. THAT THE BLOW LANDS AND HURTS IS ALREADY COVERED
+ * by `Cataclysm.Command.SubjugateTakesAnEnemyTheBlowLeftBelowHalfHealth`; what
+ * is new here is the threshold, and it is the only thing this test varies.
+ *
+ * THE BAND IS STILL ASSERTED AND NOT ASSUMED, because a future change that made
+ * the blow deal damage regardless of the stat, or that clamped the health write,
+ * would otherwise leave this passing for a reason unrelated to the threshold.
+ *
+ * THE STAT IS WRITTEN ONTO THE ATTRIBUTE RATHER THAN RESOLVED FROM A PASSIVE
+ * ROW, because what is under test is the comparison reading it. That the row
+ * reaches the attribute is `Cataclysm.PlayerStats.EveryClassStatDrivesAnAttribute`
+ * and the passive tree's own tests.
+ */
+bool FCataclysmDominionRaisesTheThresholdTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// THE SHIPPED THRESHOLD, IN A ROW WRITTEN HERE FOR THE REASON THE TEST
+	// ABOVE GIVES.
+	const TCHAR* const Row =
+		TEXT("Range=15; MaxTargets=1; Burn=1; Possess=1; "
+			 "FervourReserve=30; HealthThresholdPercent=50");
+
+	// SIXTY PER CENT OF A CREATURE'S THOUSAND: above the ordinary half and
+	// below Dominion's 65%, and away from both edges so neither threshold is
+	// being tested at a boundary where a strict and an inclusive comparison
+	// would agree.
+	constexpr float HealthInTheBand = 600.0f;
+	constexpr float OrdinaryThreshold = 500.0f;   // half of a creature's 1000
+	constexpr float DominionThreshold = 650.0f;   // 65% of the same
+
+	// --- THE CONTROL: NO BONUS, SO THE ORDINARY THRESHOLD REFUSES -----------
+	FScopedCaster Plain(World, FVector::ZeroVector);
+	FScopedCreature Hurt(World, FVector(3 * M, 0, 0));
+	Hurt.SetHealthTo(HealthInTheBand);
+
+	// NO DAMAGE, SO THE HEALTH AT THE MOMENT OF THE CHECK IS THE FIGURE
+	// WRITTEN ABOVE. See the comment on this test for why.
+	Plain.Set(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 0.0f);
+
+	UCataclysmSummonSkill* PlainTry = GrantSkill<UCataclysmSummonSkill>(
+		Plain, ECataclysmAbilitySlot::Ultimate, Row, TEXT("Subjugate"));
+	if (!PlainTry)
+	{
+		AddError(TEXT("Could not grant Subjugate to the plain caster."));
+		return false;
+	}
+
+	TestTrue(TEXT("it activates"), Activate(Plain, PlainTry));
+
+	// THE STATE THIS TEST BUILT, READ BACK BEFORE ANY VERDICT IS DRAWN FROM IT.
+	const float LeftAt = Hurt.Health();
+	if (!TestTrue(*FString::Printf(
+			TEXT("the blow left the creature between the two thresholds, at "
+				 "%.0f of 1000, which is what this test needs"), LeftAt),
+			LeftAt > OrdinaryThreshold && LeftAt < DominionThreshold))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("a caster without Dominion does not take it"),
+			  PlainTry->bTookIt);
+	TestEqual(TEXT("so it commands nothing"),
+			  UCataclysmCommand::ThingsCommandedBy(Plain.Actor).Num(), 0);
+
+	// --- AND WITH THE BONUS, THE SAME BLOW TAKES IT -------------------------
+	//
+	// A SEPARATE CASTER AND CREATURE, because a skill commits its cooldown when
+	// it fires and the first creature has already been hit.
+	FScopedCaster Dominant(World, FVector(0, 30 * M, 0));
+	FScopedCreature AlsoHurt(World, FVector(3 * M, 30 * M, 0));
+	AlsoHurt.SetHealthTo(HealthInTheBand);
+
+	Dominant.Set(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(),
+				 0.0f);
+	Dominant.Set(
+		UCataclysmCombatAttributeSet::GetPossessionThresholdBonusAttribute(),
+		15.0f);
+
+	UCataclysmSummonSkill* DominantTry = GrantSkill<UCataclysmSummonSkill>(
+		Dominant, ECataclysmAbilitySlot::Ultimate, Row, TEXT("Subjugate"));
+	if (!DominantTry)
+	{
+		AddError(TEXT("Could not grant Subjugate to the caster with Dominion."));
+		return false;
+	}
+
+	TestTrue(TEXT("it activates"), Activate(Dominant, DominantTry));
+	TestTrue(TEXT("and a caster with Dominion takes the same creature"),
+			 DominantTry->bTookIt);
+	TestEqual(TEXT("so it commands one thrall"),
+			  UCataclysmCommand::ThingsCommandedBy(Dominant.Actor).Num(), 1);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSwarmRaisesTheImpCapTest,
+	"Cataclysm.Command.TheSwarmKeepsMoreImpsAliveAndLeavesAnUncappedSummonAlone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_keystone_b_kA` The Swarm: "Each skill that limits how many of its
+ * minions may be active allows 2 more." Issue #1718. Summon Imp states a cap of
+ * 3, so with the keystone it allows 5.
+ *
+ * COUNTED BY WHAT IS ALIVE AFTER MORE CASTS THAN THE CAP ALLOWS. At its cap
+ * `SummonOne` destroys the oldest rather than refusing, so five casts leave
+ * three imps at the ordinary cap and five with the keystone. That is the whole
+ * observable behaviour of a cap.
+ *
+ * AND THE HALF THAT MATTERS MORE: A SUMMON THAT STATES NO CAP MUST STAY
+ * UNCAPPED. Of the 403 rows in `game/Data/WeaponSkills.csv`, only Summon Imp's
+ * states a cap (measured 2026-09-16), and every read site treats a cap of zero
+ * as "no limit". A bonus added whether or not the row states a cap would give
+ * every other summon and deployable a cap of two -- and would cap thralls,
+ * fighting Crowned on the same character. The second half of this test is that
+ * failure, written down.
+ */
+bool FCataclysmSwarmRaisesTheImpCapTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// THE SHIPPED ROW'S OWN FIGURES. Summon Imp states a cap of three and names
+	// what it summons, which is how the bonus knows this skill is its subject.
+	const TCHAR* const ImpRow =
+		TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Minions=Imp:1; "
+			 "FervourReserve=10");
+
+	// AND A SUMMON THAT STATES NO CAP, which is the ordinary case.
+	const TCHAR* const UncappedRow =
+		TEXT("Count=1; Duration=20; Radius=3; Minions=Imp:1");
+
+	constexpr int32 Casts = 5;
+
+	// FERVOUR FOR EVERY CAST, AND THE POOL IS NOTHING ELSE HERE. Issue #1478: the
+	// Ultimate slot costs 50 Fervour, and this caster's pool is also its
+	// Fervour, so five casts need 250. Each imp here reserves 10 (issue #1934),
+	// and four imps' 40 fits in 250 with room left, so the pool's size decides
+	// only what can be paid.
+	constexpr float PoolForEveryCast = 50.0f * Casts;
+
+	const auto SummonRepeatedly = [&](FScopedCaster& Caster, const TCHAR* Row)
+	{
+		UCataclysmSummonSkill* Skill = GrantSkill<UCataclysmSummonSkill>(
+			Caster, ECataclysmAbilitySlot::Ultimate, Row, TEXT("Summon Imp"));
+		if (!Skill)
+		{
+			AddError(TEXT("Could not grant Summon Imp."));
+			return -1;
+		}
+
+		// THE SLOT'S COOLDOWN IS TURNED OFF, AND WITHOUT THIS THE TEST MEASURES
+		// NOTHING. A cap is only visible across several casts, and the cooldown
+		// is not the row's -- `GetBaseCooldown` reads the ULTIMATE SLOT's own
+		// number from the generated table, so a row stating no cooldown still
+		// gets one. Measured 2026-09-14: five casts committed once and left one
+		// imp, and this test read that as a cap of one.
+		// `CataclysmSkillNumbersTests.cpp:135` is the existing use of this field.
+		Skill->CooldownOverride = 0.0f;
+
+		for (int32 Cast = 0; Cast < Casts; ++Cast)
+		{
+			// EVERY CAST IS ASSERTED RATHER THAN ATTEMPTED. A refused activation
+			// leaves a smaller number of minions alive, which is indistinguishable
+			// from a smaller cap -- which is exactly what this test is reading.
+			if (!TestTrue(*FString::Printf(
+					TEXT("cast %d of %d fires"), Cast + 1, Casts),
+					Activate(Caster, Skill)))
+			{
+				return -1;
+			}
+		}
+		return UCataclysmCommand::ThingsCommandedBy(Caster.Actor).Num();
+	};
+
+	// --- THE CONTROL: THE ROW'S OWN CAP OF THREE ----------------------------
+	FScopedCaster Plain(World, FVector::ZeroVector, PoolForEveryCast);
+	const int32 PlainAlive = SummonRepeatedly(Plain, ImpRow);
+
+	// THE STATE THIS TEST BUILT, ASSERTED BEFORE ANY VERDICT. If the casts did
+	// not summon at all -- a cooldown, a cost, a refusal -- the counts below
+	// would agree for a reason that has nothing to do with the cap.
+	if (!TestEqual(TEXT("five casts leave three imps at the row's own cap"),
+				   PlainAlive, 3))
+	{
+		return false;
+	}
+
+	// --- WITH THE KEYSTONE: FIVE -------------------------------------------
+	FScopedCaster Swarming(World, FVector(0, 30 * M, 0), PoolForEveryCast);
+	Swarming.Set(UCataclysmCombatAttributeSet::GetMinionCapBonusAttribute(),
+				 2.0f);
+	TestEqual(TEXT("and five with The Swarm"),
+			  SummonRepeatedly(Swarming, ImpRow), 5);
+
+	// --- AND A SUMMON STATING NO CAP IS STILL UNCAPPED ----------------------
+	//
+	// THE HALF A BUILD ADDING THE BONUS TO THE FIGURE WOULD FAIL. It would read
+	// two here rather than five.
+	FScopedCaster Uncapped(World, FVector(0, 60 * M, 0), PoolForEveryCast);
+	Uncapped.Set(UCataclysmCombatAttributeSet::GetMinionCapBonusAttribute(),
+				 2.0f);
+	TestEqual(TEXT("a summon stating no cap keeps every one it made"),
+			  SummonRepeatedly(Uncapped, UncappedRow), Casts);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSwarmRaisesADeployableCapTest,
+	"Cataclysm.Command.TheSwarmLetsADeployableThatStatesACapPlaceTwoMore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_keystone_b_kA` The Swarm: "Each skill that limits how many of its
+ * minions may be active allows 2 more." Issue #1718, as the owner reworded the
+ * node on 2026-09-16.
+ *
+ * THE HALF OF THAT DECISION THE TEST ABOVE CANNOT SEE. Until it, the bonus
+ * reached only a row whose `Minions` parameter named an imp. The test above
+ * summons imps, so it passes either way. This one deploys bolt turrets, which
+ * are not imps, through the deployable skill's own cap.
+ *
+ * A ROW WRITTEN HERE, BECAUSE NO SHIPPED ROW WOULD DO. Summon Imp's is the only
+ * row in `game/Data/WeaponSkills.csv` that states a cap. This one is Bolt
+ * Turret's own parameters without its bleed, with a cap of one added, and each
+ * activation places one turret. A deployable at its cap places nothing more
+ * rather than replacing
+ * its oldest, so three activations leave one turret at the row's own cap and
+ * three with the keystone.
+ */
+bool FCataclysmSwarmRaisesADeployableCapTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const TCHAR* const TurretRow =
+		TEXT("Count=1; MaxActive=1; Duration=5; Minions=BoltTurret:1; "
+			 "FervourReserve=5");
+
+	constexpr int32 Activations = 3;
+
+	// HOW MANY TURRETS THE CASTER COMMANDS AFTER THREE ACTIVATIONS, or -1 when
+	// an activation did not fire or something other than a turret went down.
+	const auto DeployRepeatedly = [&](FScopedCaster& Caster) -> int32
+	{
+		UCataclysmDeployableSkill* Skill = GrantSkill<UCataclysmDeployableSkill>(
+			Caster, ECataclysmAbilitySlot::Ultimate, TurretRow,
+			TEXT("Bolt Turret"));
+		if (!Skill)
+		{
+			AddError(TEXT("Could not grant Bolt Turret."));
+			return -1;
+		}
+
+		// THE SLOT'S COOLDOWN IS TURNED OFF, for the reason the test above gives:
+		// without it only the first activation fires, and one turret would read
+		// as a cap of one whatever the bonus did.
+		Skill->CooldownOverride = 0.0f;
+
+		for (int32 Attempt = 0; Attempt < Activations; ++Attempt)
+		{
+			if (!TestTrue(*FString::Printf(
+					TEXT("activation %d of %d fires"), Attempt + 1, Activations),
+					Activate(Caster, Skill)))
+			{
+				return -1;
+			}
+		}
+
+		// WHAT WENT DOWN IS ASSERTED RATHER THAN ASSUMED. A count of imps here
+		// would make this a second copy of the test above.
+		const TArray<AActor*> Commanded =
+			UCataclysmCommand::ThingsCommandedBy(Caster.Actor);
+		for (const AActor* Thing : Commanded)
+		{
+			const ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Thing);
+			if (!TestTrue(TEXT("everything commanded is a bolt turret"),
+						  Minion && Minion->TypeName == TEXT("BoltTurret")))
+			{
+				return -1;
+			}
+		}
+		return Commanded.Num();
+	};
+
+	// --- THE CONTROL: THE ROW'S OWN CAP OF ONE -----------------------------
+	FScopedCaster Plain(World, FVector::ZeroVector);
+
+	// THE STATE THIS TEST BUILT, ASSERTED BEFORE ANY VERDICT, as in the test
+	// above: activations that placed nothing would agree with any cap.
+	if (!TestEqual(TEXT("three activations leave one turret at the row's own "
+						"cap"),
+				   DeployRepeatedly(Plain), 1))
+	{
+		return false;
+	}
+
+	// --- WITH THE KEYSTONE: THREE -------------------------------------------
+	FScopedCaster Swarming(World, FVector(0, 30 * M, 0));
+	Swarming.Set(UCataclysmCombatAttributeSet::GetMinionCapBonusAttribute(),
+				 2.0f);
+	TestEqual(TEXT("and three with The Swarm, although none of them is an imp"),
+			  DeployRepeatedly(Swarming), 3);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCrownedLowersTheReserveTest,
+	"Cataclysm.Command.CrownedTakesAThrallThePoolWouldOtherwiseRefuse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_keystone_a_kC` Crowned: "Each minion reserves 5 less Fervour, never
+ * less than 1." Issue #1718. Subjugate states a reserve of 30 for a thrall, so
+ * with the keystone a thrall reserves 25.
+ *
+ * A POOL OF EXACTLY 25, WHICH IS THE ONLY SIZE THAT PROVES ANYTHING.
+ * `HasRoomForAnotherThrall` asks whether what is already reserved plus this
+ * reserve fits in the maximum pool. At 25 the ordinary reserve of 30 does not fit and the reduced 25
+ * fits exactly. A larger pool would take the thrall either way and a smaller one
+ * would refuse it either way, so a test at any other size would pass against a
+ * build that ignored the stat.
+ *
+ * THE TARGET IS LEFT WHERE THE THRESHOLD ACCEPTS IT AND THE CASTER DEALS NO
+ * DAMAGE, the same arrangement the Dominion test uses and for the same reason:
+ * what is under test is the reserve, so nothing else may decide the outcome.
+ *
+ * AN IMP'S RESERVE IS LOWERED THE SAME WAY. Since issue #1160 an imp reserves
+ * its skill's figure, after this keystone, and the `Cataclysm.FervourReserve.`
+ * tests check that. A deployable still reserves nothing; `docs/DECISIONS.md`
+ * says why.
+ */
+bool FCataclysmCrownedLowersTheReserveTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const TCHAR* const Row =
+		TEXT("Range=15; MaxTargets=1; Burn=1; Possess=1; "
+			 "FervourReserve=30; HealthThresholdPercent=50");
+
+	constexpr float PoolThatFitsOnlyTheReducedReserve = 25.0f;
+
+	// SUBJUGATE IS GRANTED INTO THE SPECIAL SLOT HERE, NOT ITS OWN ULTIMATE.
+	// Issue #1478: the Ultimate slot costs 50 Fervour, and this test needs a
+	// pool of 25, which can never hold 50. The test is about the reserve, not
+	// the slot, so the slot is moved and the pool is kept. Ruled 2026-09-27
+	// under the owner's delegation.
+	constexpr float HealthUnderTheThreshold = 400.0f;   // 40% of a creature's 1000
+
+	// --- WITHOUT THE KEYSTONE: 30 DOES NOT FIT IN 25 ------------------------
+	FScopedCaster Plain(World, FVector::ZeroVector,
+						PoolThatFitsOnlyTheReducedReserve);
+	FScopedCreature Hurt(World, FVector(3 * M, 0, 0));
+	Hurt.SetHealthTo(HealthUnderTheThreshold);
+	Plain.Set(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 0.0f);
+
+	UCataclysmSummonSkill* PlainTry = GrantSkill<UCataclysmSummonSkill>(
+		Plain, ECataclysmAbilitySlot::Special, Row, TEXT("Subjugate"));
+	if (!PlainTry)
+	{
+		AddError(TEXT("Could not grant Subjugate to the plain caster."));
+		return false;
+	}
+
+	TestTrue(TEXT("it activates"), Activate(Plain, PlainTry));
+	TestFalse(TEXT("a caster whose pool is 25 cannot hold a thrall reserving 30"),
+			  PlainTry->bTookIt);
+
+	// AND REFUSED FOR THE REASON THIS TEST IS ABOUT, WHICH `bTookIt` ALONE DOES
+	// NOT SAY. Its own header lists four causes for a false `bTookIt` -- nothing
+	// in range among them -- so a control asserting only that it took nothing
+	// would pass just as well if the skill never found the creature at all. This
+	// flag is set by the pool check and by nothing else.
+	TestTrue(TEXT("and refused because the pool had no room, not for some other "
+				  "reason"),
+			 PlainTry->bRefusedForRoom);
+
+	TestEqual(TEXT("so it commands nothing"),
+			  UCataclysmCommand::ThingsCommandedBy(Plain.Actor).Num(), 0);
+
+	// --- WITH THE KEYSTONE: 25 FITS EXACTLY ---------------------------------
+	FScopedCaster Crowned(World, FVector(0, 30 * M, 0),
+						  PoolThatFitsOnlyTheReducedReserve);
+	FScopedCreature AlsoHurt(World, FVector(3 * M, 30 * M, 0));
+	AlsoHurt.SetHealthTo(HealthUnderTheThreshold);
+	Crowned.Set(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 0.0f);
+	// FIVE, POSITIVE, BECAUSE THE STAT NAMES THE SIZE OF THE REDUCTION. It was
+	// first written as a bonus of -5 and this test failed: every attribute in
+	// the combat set is floored at zero by
+	// `UCataclysmCombatAttributeSet::PreAttributeChange`, so -5 was stored as 0,
+	// the reserve stayed at 30 and the keystone did nothing. A negative value
+	// cannot be held here at all.
+	Crowned.Set(UCataclysmCombatAttributeSet::GetMinionReserveReductionAttribute(),
+				5.0f);
+
+	UCataclysmSummonSkill* CrownedTry = GrantSkill<UCataclysmSummonSkill>(
+		Crowned, ECataclysmAbilitySlot::Special, Row, TEXT("Subjugate"));
+	if (!CrownedTry)
+	{
+		AddError(TEXT("Could not grant Subjugate to the crowned caster."));
+		return false;
+	}
+
+	TestTrue(TEXT("it activates"), Activate(Crowned, CrownedTry));
+	TestTrue(TEXT("and a caster with Crowned holds the same thrall"),
+			 CrownedTry->bTookIt);
+	TestEqual(TEXT("so it commands one"),
+			  UCataclysmCommand::ThingsCommandedBy(Crowned.Actor).Num(), 1);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSubjugateRefusesABossTest,
+	"Cataclysm.Command.ABossCannotBeTaken",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSubjugateRefusesABossTest::RunTest(const FString&)
+{
+	// "BOSSES CANNOT BE TAKEN", which the row states outright.
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Commander(World, FVector::ZeroVector);
+
+	// THE CONTROL IS A CREATURE ONE RARITY STEP BELOW A BOSS, so the refusal
+	// below is about being a boss rather than about being rare.
+	FScopedCreature NearlyABoss(World, FVector(3 * M, 0, 0));
+	NearlyABoss.Actor->SetRarityStep(
+		ACataclysmEnemyCharacter::FirstBossRarityStep - 1);
+	NearlyABoss.SetHealthTo(100.0f);
+
+	TestTrue(TEXT("a creature one step below a boss can be taken"),
+		UCataclysmCommand::Subjugate(Commander.Actor, NearlyABoss.Actor));
+
+	FScopedCreature Boss(World, FVector(5 * M, 0, 0));
+	Boss.Actor->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+	Boss.SetHealthTo(100.0f);
+
+	TestFalse(TEXT("and a boss cannot, however hurt it is"),
+		UCataclysmCommand::Subjugate(Commander.Actor, Boss.Actor));
+
+	TestEqual(TEXT("so only the first is commanded"),
+		UCataclysmCommand::ThrallCountOf(Commander.Actor), 1);
+	TestTrue(TEXT("and the boss is still hostile"),
+		UCataclysmTargeting::IsHostileTo(Boss.Actor, Commander.Actor));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThrallCapIsThePoolTest,
+	"Cataclysm.Command.TheArmyIsOnlyAsLargeAsTheResourcePool",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmThrallCapIsThePoolTest::RunTest(const FString&)
+{
+	// "HOLDING A THRALL RESERVES 30 FERVOUR, SO YOUR ARMY IS ONLY AS LARGE AS
+	// YOUR POOL." The Ritualist's pool is 150 in `game/Data/ClassStats.csv`, so
+	// five, and this checks the arithmetic rather than the number: a pool of 90
+	// holds three.
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// A NINETY POINT POOL, so the cap arrives after three rather than after five
+	// and the test spawns three creatures instead of six.
+	FScopedCaster Commander(World, FVector::ZeroVector, /*Pool=*/90.0f);
+
+	TestTrue(TEXT("an empty pool holder has room for one"),
+		UCataclysmCommand::HasRoomForAnotherThrall(Commander.Actor, 30.0f));
+
+	TArray<FScopedCreature*> Held;
+	ON_SCOPE_EXIT { for (FScopedCreature* One : Held) { delete One; } };
+
+	for (int32 Index = 0; Index < 3; ++Index)
+	{
+		FScopedCreature* Creature =
+			new FScopedCreature(World, FVector((3 + Index) * M, 0, 0));
+		Held.Add(Creature);
+
+		TestTrue(FString::Printf(TEXT("thrall %d fits"), Index + 1),
+			UCataclysmCommand::HasRoomForAnotherThrall(Commander.Actor, 30.0f));
+		TestTrue(FString::Printf(TEXT("and thrall %d is taken"), Index + 1),
+			UCataclysmCommand::Subjugate(Commander.Actor, Creature->Actor));
+		// THE THRALL CARRIES ITS OWN RESERVE. Issue #1160: the Possess skill
+		// records it on the thrall when it takes one, and a direct `Subjugate`
+		// records nothing, so this test records it the way the skill would.
+		Creature->Actor->ReservedFervour = 30.0f;
+	}
+
+	TestEqual(TEXT("three thralls are held"),
+		UCataclysmCommand::ThrallCountOf(Commander.Actor), 3);
+
+	// NINETY DIVIDED BY THIRTY IS THREE, so there is no room for a fourth.
+	TestFalse(TEXT("and a fourth does not fit in a ninety point pool"),
+		UCataclysmCommand::HasRoomForAnotherThrall(Commander.Actor, 30.0f));
+
+	// THE CAP IS THE POOL AND NOT A NUMBER IN CODE. Raising the pool raises the
+	// army, which is the sentence's whole point: every point of maximum resource
+	// a passive tree grants is progress toward another thrall.
+	Commander.Set(
+		UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(),
+		120.0f);
+	TestTrue(TEXT("a larger pool makes room for a fourth"),
+		UCataclysmCommand::HasRoomForAnotherThrall(Commander.Actor, 30.0f));
+
+	return true;
+}
+
+// ==========================================================================
+// Quarry
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmQuarryOrdersTheArmyTest,
+	"Cataclysm.Command.AQuarryOrdersCommandedCreaturesOntoIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmQuarryOrdersTheArmyTest::RunTest(const FString&)
+{
+	// THE STAFF'S QUARRY: "mark an enemy as your quarry for 12 seconds.
+	// Everything you command breaks off and attacks it." The mark landed and
+	// lasted, and `Status.Debuff.Quarry` was read by nothing at all, so it ordered
+	// nobody anywhere.
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Commander(World, FVector::ZeroVector);
+
+	// THE MARKED ENEMY IS THE FURTHER OF THE TWO, which is what makes this a
+	// test of the order rather than of the search. Without the mark the minion
+	// attacks whatever is nearest, and that is the other one.
+	FScopedCreature Nearer(World, FVector(3 * M, 0, 0));
+	FScopedCreature Marked(World, FVector(9 * M, 0, 0));
+
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Commander.Actor, FVector(2 * M, 0, 0), /*Lifetime=*/20.0f,
+		/*bBurns=*/false);
+	if (!Imp)
+	{
+		AddError(TEXT("Could not spawn the minion."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	ACataclysmEnemyController* Brain =
+		Cast<ACataclysmEnemyController>(Imp->GetController());
+	if (!Brain)
+	{
+		AddError(TEXT("The minion has no brain to drive."));
+		return false;
+	}
+
+	// THE CONTROL: with no mark, the minion goes for whatever is nearest.
+	TestTrue(TEXT("with no mark it chooses the nearest enemy"),
+		Brain->ChooseTarget() == Nearer.Actor);
+	TestNull(TEXT("and its commander has marked nothing"),
+		UCataclysmCommand::QuarryOf(Commander.Actor));
+
+	// NOW THE MARK, APPLIED THE WAY THE DEBUFF SHAPE APPLIES IT.
+	TestTrue(TEXT("the mark lands"),
+		UCataclysmSkillEffects::ApplyNamedEffect(
+			Commander.Actor, Marked.Actor, UCataclysmCommand::QuarryTag(),
+			/*DurationSeconds=*/12.0f, /*Magnitude=*/0.0f, NAME_None));
+
+	TestTrue(TEXT("the commander's quarry is the marked enemy"),
+		UCataclysmCommand::QuarryOf(Commander.Actor) == Marked.Actor);
+	TestTrue(TEXT("and the minion is ordered onto it"),
+		UCataclysmCommand::OrderedTargetFor(Imp) == Marked.Actor);
+
+	// "BREAKS OFF" IS THE WORD THE ROW USES, so the order has to beat the
+	// nearer enemy rather than be weighed against it.
+	TestTrue(TEXT("so it breaks off the nearer one and takes the mark"),
+		Brain->ChooseTarget() == Marked.Actor);
+
+	// AND NOBODY ELSE'S CREATURES ARE ORDERED. A mark belongs to whoever applied
+	// it.
+	FScopedCaster Other(World, FVector(0, 30 * M, 0));
+	ACataclysmMinion* NotTheirs = ACataclysmMinion::Spawn(
+		Other.Actor, FVector(2 * M, 30 * M, 0), /*Lifetime=*/20.0f,
+		/*bBurns=*/false);
+	if (NotTheirs)
+	{
+		ON_SCOPE_EXIT { if (IsValid(NotTheirs)) { NotTheirs->Destroy(); } };
+		TestNull(TEXT("another character's minion takes no order from it"),
+			UCataclysmCommand::OrderedTargetFor(NotTheirs));
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmQuarryHurriesTheArmyTest,
+	"Cataclysm.Command.AQuarryMakesCommandedCreaturesSwingFasterAtIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmQuarryHurriesTheArmyTest::RunTest(const FString&)
+{
+	// "GAINING 30% ATTACK SPEED WHILE THE MARK HOLDS." The figure lives in the
+	// Debuffs sheet of `docs/All_Things_Cataclysm.xlsx`, where Shred's ten
+	// already does, so moving the balance number needs no build.
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Commander(World, FVector::ZeroVector);
+	FScopedCreature Marked(World, FVector(5 * M, 0, 0));
+	FScopedCreature Unmarked(World, FVector(7 * M, 0, 0));
+
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Commander.Actor, FVector(2 * M, 0, 0), /*Lifetime=*/20.0f,
+		/*bBurns=*/false);
+	if (!Imp)
+	{
+		AddError(TEXT("Could not spawn the minion."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	// THE CONTROL: no mark anywhere, so nothing is hurried.
+	TestEqual(TEXT("with no mark the interval is unchanged"),
+		UCataclysmCommand::AttackIntervalScaleFor(Imp, Marked.Actor), 1.0f,
+		0.001f);
+
+	TestTrue(TEXT("the mark lands"),
+		UCataclysmSkillEffects::ApplyNamedEffect(
+			Commander.Actor, Marked.Actor, UCataclysmCommand::QuarryTag(),
+			/*DurationSeconds=*/12.0f, /*Magnitude=*/0.0f, NAME_None));
+
+	// A SHORTER INTERVAL, AND NOT SMALLER BY THE SAME PERCENTAGE. "30% attack
+	// speed" is 30% more swings in the same time, which is an interval of
+	// 1 / 1.30 -- about 0.769 -- rather than 0.70. The two differ by enough that
+	// this cannot pass under the wrong arithmetic.
+	TestEqual(TEXT("swinging at the mark takes 1 / 1.30 of the interval"),
+		UCataclysmCommand::AttackIntervalScaleFor(Imp, Marked.Actor),
+		1.0f / 1.30f, 0.001f);
+
+	// AND THE BONUS IS FOR HITTING THE MARK, NOT FOR THE MARK EXISTING.
+	TestEqual(TEXT("swinging at something else is unchanged"),
+		UCataclysmCommand::AttackIntervalScaleFor(Imp, Unmarked.Actor), 1.0f,
+		0.001f);
+
+	return true;
+}
+
+// ==========================================================================
+// Compel and Vesselstep
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCompelOrdersAStrikeTest,
+	"Cataclysm.Command.CompelOrdersEverythingCommandedOntoOneEnemy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCompelOrdersAStrikeTest::RunTest(const FString&)
+{
+	// THE STAFF'S COMPEL: "everything you command strikes that same enemy at
+	// once, wherever it happens to be standing." Its `CommandStrike=1` was
+	// parsed and read by nothing until 2026-09-02.
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Commander(World, FVector::ZeroVector);
+
+	// FOURTEEN METRES AWAY, WHICH IS WHERE THE BOLT ACTUALLY GOES. With no
+	// player controller there is no cursor to aim at, so
+	// `UCataclysmSkillTemplate::AimedPointWithin` sends the shot the full range
+	// in the caster's facing direction. A target placed near the caster is not
+	// hit at all, which is what the first run of this test found.
+	FScopedCreature Struck(World, FVector(14 * M, 0, 0));
+
+	// TWENTY METRES AWAY, WHICH IS THE POINT OF THE TEST. "Wherever it happens
+	// to be standing" says reaching the target is not the player's problem, so a
+	// minion far out of its own reach still has to be ordered.
+	ACataclysmMinion* Distant = ACataclysmMinion::Spawn(
+		Commander.Actor, FVector(0, 20 * M, 0), /*Lifetime=*/20.0f,
+		/*bBurns=*/false);
+	if (!Distant)
+	{
+		AddError(TEXT("Could not spawn the minion."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Distant)) { Distant->Destroy(); } };
+
+	UCataclysmProjectileSkill* Compel = GrantSkill<UCataclysmProjectileSkill>(
+		Commander, ECataclysmAbilitySlot::Heavy,
+		TEXT("Range=14; Radius=5; Pierce=0; Speed=0; Burn=1; CommandStrike=1"),
+		TEXT("Compel"));
+	if (!Compel)
+	{
+		AddError(TEXT("Could not grant Compel."));
+		return false;
+	}
+
+	const int32 Before = Distant->AttacksMade;
+
+	TestTrue(TEXT("it activates"), Activate(Commander, Compel));
+
+	TestEqual(TEXT("one commanded creature was ordered"),
+		Compel->CommandedStrikes, 1);
+	TestEqual(TEXT("and it swung once more than before"),
+		Distant->AttacksMade, Before + 1);
+
+	// AND IT SWUNG AT THE ENEMY THE BOLT HIT, twenty-odd metres from where it
+	// was standing.
+	TestTrue(TEXT("the enemy the bolt hit lost health to both"),
+		Struck.Health() < 1000.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVesselstepTradesPlacesTest,
+	"Cataclysm.Command.AVesselstepTradesPlacesWithACommandedCreature",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVesselstepTradesPlacesTest::RunTest(const FString&)
+{
+	// THE STAFF'S VESSELSTEP: "trade places with a creature you command up to 14
+	// meters away." Until 2026-09-02 `Mode=Swap` had no branch and silently ran
+	// the leap code, so the caster moved to the aimed point and the creature
+	// stayed where it was. Issue #1139.
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// THE CONTROL FIRST, AND ON ITS OWN CASTER: commanding nothing, the skill is
+	// refused outright rather than blinking to the cursor.
+	FScopedCaster Alone(World, FVector::ZeroVector);
+
+	UCataclysmMovementSkill* NoPartner = GrantSkill<UCataclysmMovementSkill>(
+		Alone, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Swap; Range=14; Radius=3; Burn=1"), TEXT("Vesselstep"));
+	if (!NoPartner)
+	{
+		AddError(TEXT("Could not grant Vesselstep."));
+		return false;
+	}
+
+	TestFalse(TEXT("commanding nothing, the trade is refused"),
+		Activate(Alone, NoPartner));
+	const float StayedAt =
+		static_cast<float>(Alone.Actor->GetActorLocation().X);
+	TestEqual(TEXT("and the caster did not move"), StayedAt, 0.0f, 1.0f);
+
+	// AND NOW WITH A CREATURE TO TRADE WITH, on its own caster so no cooldown
+	// from the refusal above can be what decides the next activation.
+	FScopedCaster Commander(World, FVector(0, 30 * M, 0));
+
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Commander.Actor, FVector(8 * M, 30 * M, 0), /*Lifetime=*/20.0f,
+		/*bBurns=*/false);
+	if (!Imp)
+	{
+		AddError(TEXT("Could not spawn the minion."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	UCataclysmMovementSkill* Vesselstep = GrantSkill<UCataclysmMovementSkill>(
+		Commander, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Swap; Range=14; Radius=3; Burn=1"), TEXT("Vesselstep"));
+	if (!Vesselstep)
+	{
+		AddError(TEXT("Could not grant the second Vesselstep."));
+		return false;
+	}
+
+	const float CasterWas =
+		static_cast<float>(Commander.Actor->GetActorLocation().X);
+	const float ImpWas = static_cast<float>(Imp->GetActorLocation().X);
+
+	TestTrue(TEXT("with a creature to trade with, it fires"),
+		Activate(Commander, Vesselstep));
+
+	TestTrue(TEXT("it traded with the minion"),
+		Vesselstep->SwappedWith == Imp);
+
+	// BOTH MOVED, AND EACH TO WHERE THE OTHER WAS. A skill that moved only the
+	// caster would be a blink, which is what this row silently was.
+	TestEqual(TEXT("the caster is where the creature was"),
+		static_cast<float>(Commander.Actor->GetActorLocation().X), ImpWas, 1.0f);
+	TestEqual(TEXT("and the creature is where the caster was"),
+		static_cast<float>(Imp->GetActorLocation().X), CasterWas, 1.0f);
+
+	return true;
+}
+
+// ==========================================================================
+// The Ritualist's Fervour generator
+//
+// WHY THESE ARE HERE AND NOT IN `CataclysmFervourTests.cpp`, which is where
+// every other Fervour rule is checked. Both halves of this generator ask how
+// many minions a character commands, and `UCataclysmCommand::ThingsCommandedBy`
+// answers by walking the real `ACataclysmCharacterBase` actors in the level.
+// That file's test fighter is a bare `AActor` with an ability system bolted on
+// and cannot be commanded or counted. The helpers above build exactly what is
+// needed -- a commander with a Fervour pool, real creatures, and a real minion
+// -- so the tests live beside them.
+//
+// THEY ARE STILL NAMED `Cataclysm.Fervour.*`, so a run narrowed to that group
+// picks them up with the rest of the resource's rules.
+// ==========================================================================
+
+namespace CataclysmCommandTest
+{
+	/**
+	 * Give a commander the Ritualist's starting node: a rate per minion held
+	 * and a lump when one dies.
+	 *
+	 * THE RATE CARRIES THE SCALE AND THE DEATH BONUS DOES NOT, which is the
+	 * whole difference between the two halves. `game/Data/PassiveEffects.csv`
+	 * writes the first with `minions_held` in its Scale column and the second
+	 * with nothing, and this builds the same two modifiers by hand.
+	 */
+	void GiveRitualistGenerator(FScopedCaster& Commander, float PerMinion,
+								float OnDeath, float IncreasePercent = 0.0f)
+	{
+		FCataclysmStatModifier Rate;
+		Rate.Bucket = ECataclysmStatBucket::Flat;
+		Rate.Source = ECataclysmModifierSource::PassiveKeystone;
+		Rate.Value = PerMinion;
+		Rate.Scale = ECataclysmStatScale::PerMinionHeld;
+		Rate.ScaleStep = 1.0f;
+
+		FCataclysmStatModifier Death;
+		Death.Bucket = ECataclysmStatBucket::Flat;
+		Death.Source = ECataclysmModifierSource::PassiveKeystone;
+		Death.Value = OnDeath;
+
+		FCataclysmStatInputs RateInputs;
+		RateInputs.Base = 0.0f;
+		RateInputs.Modifiers.Add(Rate);
+
+		FCataclysmStatInputs DeathInputs;
+		DeathInputs.Base = 0.0f;
+		DeathInputs.Modifiers.Add(Death);
+
+		// AND `Binding Sigils` ON TOP WHEN A TEST ASKS FOR IT: "+2% increased
+		// Fervour gained from your minions per point", which is an increase on
+		// BOTH halves because both are Fervour gained from minions.
+		if (IncreasePercent != 0.0f)
+		{
+			FCataclysmStatModifier Sigils;
+			Sigils.Bucket = ECataclysmStatBucket::Increased;
+			Sigils.Source = ECataclysmModifierSource::PassiveKeystone;
+			Sigils.Value = IncreasePercent;
+			RateInputs.Modifiers.Add(Sigils);
+			DeathInputs.Modifiers.Add(Sigils);
+		}
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(FName(UCataclysmFervour::FromMinionsStat), RateInputs);
+		Stats.Add(FName(UCataclysmFervour::OnMinionDeathStat), DeathInputs);
+		Commander.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	/**
+	 * Give a commander BOTH generators at once: the Masochist's Low Life
+	 * keystone and the Ritualist's minion rate, with `Binding Sigils` on top.
+	 *
+	 * A CHARACTER IN TWO CLASS TREES, which the 2026-08-25 ruling that every
+	 * class shares one Fervour bar makes ordinary rather than a corner: one
+	 * character can reach all 24 trees. This is what the leak test needs and
+	 * `GiveRitualistGenerator` above cannot build, because `SetStatInputs`
+	 * replaces the whole map rather than adding to it.
+	 */
+	void GiveBothGenerators(FScopedCaster& Commander, float LowLifePerSecond,
+							float PerMinion, float SigilsPercent)
+	{
+		// THE MASOCHIST'S, ON `fervour_per_second`, WITH ITS HEALTH CONDITION.
+		// "While at or below 35% health you gain 10 Fervour per second."
+		FCataclysmStatModifier LowLife;
+		LowLife.Bucket = ECataclysmStatBucket::Flat;
+		LowLife.Source = ECataclysmModifierSource::PassiveKeystone;
+		LowLife.Value = LowLifePerSecond;
+		LowLife.Condition = ECataclysmStatCondition::HealthAtOrBelowPercent;
+		LowLife.ConditionValue = 35.0f;
+
+		FCataclysmStatInputs LowLifeInputs;
+		LowLifeInputs.Base = 0.0f;
+		LowLifeInputs.Modifiers.Add(LowLife);
+
+		// AND THE RITUALIST'S, ON ITS OWN STAT, WITH ITS MINION COUNT.
+		FCataclysmStatModifier Rate;
+		Rate.Bucket = ECataclysmStatBucket::Flat;
+		Rate.Source = ECataclysmModifierSource::PassiveKeystone;
+		Rate.Value = PerMinion;
+		Rate.Scale = ECataclysmStatScale::PerMinionHeld;
+		Rate.ScaleStep = 1.0f;
+
+		FCataclysmStatInputs RateInputs;
+		RateInputs.Base = 0.0f;
+		RateInputs.Modifiers.Add(Rate);
+
+		// `Binding Sigils` GOES ON THE RITUALIST'S STAT AND ONLY ON IT, which
+		// is exactly what the node says and exactly what the leak test checks.
+		if (SigilsPercent != 0.0f)
+		{
+			FCataclysmStatModifier Sigils;
+			Sigils.Bucket = ECataclysmStatBucket::Increased;
+			Sigils.Source = ECataclysmModifierSource::PassiveKeystone;
+			Sigils.Value = SigilsPercent;
+			RateInputs.Modifiers.Add(Sigils);
+		}
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(FName(UCataclysmFervour::PerSecondStat), LowLifeInputs);
+		Stats.Add(FName(UCataclysmFervour::FromMinionsStat), RateInputs);
+		Commander.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	float FervourOf(const FScopedCaster& Commander)
+	{
+		return Commander.AbilitySystem->GetNumericAttribute(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute());
+	}
+
+	void SetFervour(const FScopedCaster& Commander, float Value)
+	{
+		Commander.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(),
+			Value);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRitualistRateTest,
+	"Cataclysm.Fervour.MinionsHeldGenerateFervourEverySecond",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRitualistRateTest::RunTest(const FString&)
+{
+	// THE RITUALIST'S GENERATOR, FIRST HALF. Issue #1518: "1 per second for
+	// each minion you have".
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Commander(World, FVector::ZeroVector);
+	SetFervour(Commander, 0.0f);
+
+	// A CHARACTER WITHOUT THE NODE GAINS NOTHING, whatever it commands. Without
+	// this the checks below would pass just as well if every character in the
+	// game gained Fervour for its minions.
+	ACataclysmMinion* First = ACataclysmMinion::Spawn(
+		Commander.Actor, FVector(3 * M, 0, 0), /*Lifetime=*/60.0f,
+		/*bBurns=*/false);
+	if (!First)
+	{
+		AddError(TEXT("Could not spawn the first minion."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(First)) { First->Destroy(); } };
+
+	TestEqual(TEXT("a character without the node gains nothing"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		0.0f, 0.001f);
+
+	GiveRitualistGenerator(Commander, /*PerMinion=*/1.0f, /*OnDeath=*/5.0f);
+
+	// ONE MINION IS ONE A SECOND.
+	TestEqual(TEXT("one minion grants one a second"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		1.0f, 0.001f);
+	TestEqual(TEXT("and the bar holds one"), FervourOf(Commander), 1.0f, 0.001f);
+
+	// AND THREE MINIONS ARE THREE A SECOND, WHICH IS THE WHOLE POINT. A build
+	// that read the row without its scale would still grant 1 here, so this is
+	// the check that separates "per minion" from "while you have minions".
+	ACataclysmMinion* Second = ACataclysmMinion::Spawn(
+		Commander.Actor, FVector(4 * M, 0, 0), 60.0f, false);
+	ACataclysmMinion* Third = ACataclysmMinion::Spawn(
+		Commander.Actor, FVector(5 * M, 0, 0), 60.0f, false);
+	if (!Second || !Third)
+	{
+		AddError(TEXT("Could not spawn the other minions."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Second)) { Second->Destroy(); } };
+	ON_SCOPE_EXIT { if (IsValid(Third)) { Third->Destroy(); } };
+
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("three minions grant three a second"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		3.0f, 0.001f);
+
+	// A THRALL COUNTS ALONGSIDE THEM, because the node says "minion" and the
+	// decision of 2026-09-08 settled that word as covering both an imp and a
+	// thrall. A count that used `ThrallCountOf` would answer 1 here and a count
+	// that only saw summoned things would answer 3.
+	FScopedCreature Taken(World, FVector(6 * M, 0, 0));
+	TestTrue(TEXT("an enemy can be taken"),
+		UCataclysmCommand::Subjugate(Commander.Actor, Taken.Actor));
+
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("three imps and a thrall grant four a second"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		4.0f, 0.001f);
+
+	// AND A QUARTER OF A SECOND IS A QUARTER OF IT, which is the step the
+	// character's own job list really runs at.
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("a quarter second is a quarter of it"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 0.25f),
+		1.0f, 0.001f);
+
+	// A FULL BAR TAKES NO MORE.
+	SetFervour(Commander, RitualistPool);
+	TestEqual(TEXT("a full bar takes no more"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		0.0f, 0.001f);
+	TestEqual(TEXT("and stays full"), FervourOf(Commander), RitualistPool,
+		0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRitualistNoMinionsTest,
+	"Cataclysm.Fervour.ARitualistCommandingNothingGainsNoFervour",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRitualistNoMinionsTest::RunTest(const FString&)
+{
+	// THE CASE A BUILD THAT FORGETS THE COUNT GETS WRONG. Issue #1518. The row
+	// grants 1, and a build that read that 1 without multiplying it by the
+	// minions held would hand a Ritualist standing alone 1 Fervour a second for
+	// ever -- a bar that fills itself from nothing.
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Commander(World, FVector::ZeroVector);
+	SetFervour(Commander, 0.0f);
+	GiveRitualistGenerator(Commander, /*PerMinion=*/1.0f, /*OnDeath=*/5.0f);
+
+	// A CREATURE NOBODY COMMANDS, STANDING RIGHT NEXT TO IT, so a count that
+	// answered "every character nearby" would be caught here rather than
+	// passing for the wrong reason.
+	FScopedCreature Stranger(World, FVector(2 * M, 0, 0));
+
+	TestEqual(TEXT("it commands nothing"),
+		UCataclysmCommand::ThingsCommandedBy(Commander.Actor).Num(), 0);
+
+	TestEqual(TEXT("so a whole second grants nothing"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		0.0f, 0.001f);
+	TestEqual(TEXT("and the bar is still empty"), FervourOf(Commander), 0.0f,
+		0.001f);
+
+	// AND STILL NOTHING AFTER A LONG WHILE, so a rate that arrived once rather
+	// than never would be caught.
+	for (int32 Step = 0; Step < 40; ++Step)
+	{
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 0.25f);
+	}
+	TestEqual(TEXT("and nothing after ten seconds of steps"),
+		FervourOf(Commander), 0.0f, 0.001f);
+
+	// AND A MINION THAT HAS DIED STOPS COUNTING. Its body is still in the level
+	// -- a minion is removed on its own lifespan rather than the moment it dies
+	// -- so a count that asked only whether the actor was valid would still
+	// answer 1 and go on paying for a corpse.
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Commander.Actor, FVector(3 * M, 0, 0), /*Lifetime=*/60.0f,
+		/*bBurns=*/false);
+	if (!Imp)
+	{
+		AddError(TEXT("Could not spawn the minion."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("a living minion grants one a second"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		1.0f, 0.001f);
+
+	Imp->HandleDeath();
+	TestTrue(TEXT("and the dead minion is recorded as dead"),
+		UCataclysmSkillEffects::IsDead(Imp));
+
+	// THE BODY IS STILL HERE, FOR HALF A SECOND. Issue #1528, ruled
+	// 2026-09-30: a minion that dies quietly stops at once and is removed
+	// `ACataclysmMinion::DeadBodySeconds` later, so at the moment of death its
+	// actor is still valid.
+	//
+	// IT IS ASSERTED BECAUSE THE GENERATOR HAS TO BE RIGHT WHILE IT HOLDS. The
+	// check below is only meaningful if the dead body is still present to be
+	// counted; without this line a run where the body had been removed would
+	// pass it for the wrong reason.
+	TestTrue(TEXT("its body is still in the level"), IsValid(Imp));
+
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("but a dead minion grants nothing"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		0.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRitualistDeathTest,
+	"Cataclysm.Fervour.AMinionDyingGrantsFervour",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRitualistDeathTest::RunTest(const FString&)
+{
+	// THE RITUALIST'S GENERATOR, SECOND HALF. Issue #1518: "and 5 when one of
+	// them dies".
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Commander(World, FVector::ZeroVector);
+	SetFervour(Commander, 0.0f);
+
+	// A CHARACTER WITHOUT THE NODE GAINS NOTHING WHEN ITS MINION DIES.
+	TestEqual(TEXT("a character without the node gains nothing"),
+		UCataclysmFervour::GainOnMinionDeath(Commander.AbilitySystem), 0.0f,
+		0.001f);
+
+	GiveRitualistGenerator(Commander, /*PerMinion=*/1.0f, /*OnDeath=*/5.0f);
+
+	TestEqual(TEXT("a death is worth five"),
+		UCataclysmFervour::GainOnMinionDeath(Commander.AbilitySystem), 5.0f,
+		0.001f);
+	TestEqual(TEXT("and the bar holds five"), FervourOf(Commander), 5.0f,
+		0.001f);
+
+	// AND A SECOND DEATH IS ANOTHER FIVE, so a grant that fired once and then
+	// latched would be caught.
+	TestEqual(TEXT("a second death is another five"),
+		UCataclysmFervour::GainOnMinionDeath(Commander.AbilitySystem), 5.0f,
+		0.001f);
+	TestEqual(TEXT("and the bar holds ten"), FervourOf(Commander), 10.0f,
+		0.001f);
+
+	// A FULL BAR TAKES NO MORE.
+	SetFervour(Commander, RitualistPool);
+	TestEqual(TEXT("a full bar takes no more"),
+		UCataclysmFervour::GainOnMinionDeath(Commander.AbilitySystem), 0.0f,
+		0.001f);
+
+	// AND A MINION'S OWN ABILITY SYSTEM IS NOT WHERE THE FERVOUR GOES. A minion
+	// has no class resource attribute set, so passing its own answers zero --
+	// which is what makes the call site's job asking WHO commanded the dying
+	// thing rather than granting to it.
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Commander.Actor, FVector(3 * M, 0, 0), /*Lifetime=*/60.0f,
+		/*bBurns=*/false);
+	if (!Imp)
+	{
+		AddError(TEXT("Could not spawn the minion."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	TestEqual(TEXT("a minion's own ability system gains nothing"),
+		UCataclysmFervour::GainOnMinionDeath(
+			UCataclysmTargeting::AbilitySystemOf(Imp)), 0.0f, 0.001f);
+
+	// AND THE WHOLE ROUTE WORKS: killing the minion by taking its health to
+	// zero pays its COMMANDER, through
+	// `UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero`. This is the
+	// half that proves the call site rather than the arithmetic.
+	SetFervour(Commander, 0.0f);
+	UAbilitySystemComponent* ImpSystem =
+		UCataclysmTargeting::AbilitySystemOf(Imp);
+	if (!ImpSystem)
+	{
+		AddError(TEXT("The minion has no ability system."));
+		return false;
+	}
+	ImpSystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+
+	TestTrue(TEXT("the minion is recorded as dead"),
+		UCataclysmSkillEffects::IsDead(Imp));
+	TestEqual(TEXT("and its commander was paid five for it"),
+		FervourOf(Commander), 5.0f, 0.001f);
+
+	// AND A THRALL DYING PAYS TOO, WHICH IS A DIFFERENT CODE PATH FROM THE IMP
+	// ABOVE AND NOT THE SAME CASE TWICE. `UCataclysmCommand::CommanderOf` finds
+	// a summoned minion's commander through `ACataclysmMinion::Summoner`, and
+	// everything else through `GetOwner()`. A thrall is a subjugated
+	// `ACataclysmEnemyCharacter` rather than a minion, so it takes the second
+	// branch, and only the first was covered until this.
+	//
+	// IT WORKS BECAUSE `Subjugate` OVERWRITES THE OWNER. Unreal's own
+	// `APawn::PossessedBy` sets a pawn's owner to the controller that possessed
+	// it, so a creature's owner is its AI controller until something replaces
+	// it; `Subjugate` calls `SetOwner(Commander)` and does. Without that this
+	// would pay the creature's own controller, which holds no Fervour, and the
+	// bar would not move -- a failure that looks like the generator being
+	// broken rather than like a lookup taking the wrong branch.
+	FScopedCreature Thrall(World, FVector(5 * M, 0, 0));
+	TestTrue(TEXT("an enemy can be taken as a thrall"),
+		UCataclysmCommand::Subjugate(Commander.Actor, Thrall.Actor));
+
+	SetFervour(Commander, 0.0f);
+	UAbilitySystemComponent* ThrallSystem =
+		UCataclysmTargeting::AbilitySystemOf(Thrall.Actor);
+	if (!ThrallSystem)
+	{
+		AddError(TEXT("The thrall has no ability system."));
+		return false;
+	}
+	ThrallSystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+
+	TestTrue(TEXT("the thrall is recorded as dead"),
+		UCataclysmSkillEffects::IsDead(Thrall.Actor));
+	TestEqual(TEXT("and its commander was paid five for it as well"),
+		FervourOf(Commander), 5.0f, 0.001f);
+
+	// AND HURTING THE BODY AGAIN PAYS NOTHING FURTHER. A burn ticking on a
+	// corpse would otherwise pay the commander on every tick, which is what the
+	// Dead tag prevents -- and which `ACataclysmMinion::HandleDeath` had to be
+	// written for, because before it a minion never took that tag.
+	//
+	// A DIFFERENT VALUE RATHER THAN ZERO AGAIN, DELIBERATELY. Writing 0 over 0
+	// may change nothing, and a write that changes nothing may never reach
+	// `PostAttributeBaseChange` at all -- so the check would pass without
+	// having exercised the guard it is named for. Minus ten is a real change to
+	// the base value and the set's own clamp still leaves the current value at
+	// zero, so the death path is entered and refused rather than never entered.
+	ImpSystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), -10.0f);
+	TestEqual(TEXT("hurting the body again pays nothing more"),
+		FervourOf(Commander), 5.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBindingSigilsTest,
+	"Cataclysm.Fervour.BindingSigilsScalesWhatMinionsGenerate",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBindingSigilsTest::RunTest(const FString&)
+{
+	// THE RITUALIST'S `Binding Sigils` NODE. Issue #1518: "+2% increased
+	// Fervour gained from your minions per point", over 12 points, so +24% at
+	// full investment.
+	//
+	// BEFORE THIS ISSUE IT INCREASED A RATE THAT DID NOT EXIST, and a player
+	// spending points in it saw nothing and had no way to know why. That is
+	// what this test is for.
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Commander(World, FVector::ZeroVector);
+
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Commander.Actor, FVector(3 * M, 0, 0), /*Lifetime=*/60.0f,
+		/*bBurns=*/false);
+	if (!Imp)
+	{
+		AddError(TEXT("Could not spawn the minion."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	// WITHOUT THE NODE, ONE MINION IS ONE A SECOND AND A DEATH IS FIVE. This is
+	// the control the two below are measured against.
+	GiveRitualistGenerator(Commander, 1.0f, 5.0f, /*IncreasePercent=*/0.0f);
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("without the node a minion grants one a second"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		1.0f, 0.001f);
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("and a death grants five"),
+		UCataclysmFervour::GainOnMinionDeath(Commander.AbilitySystem), 5.0f,
+		0.001f);
+
+	// TWELVE POINTS IS +24%, AND IT SCALES THE RATE.
+	GiveRitualistGenerator(Commander, 1.0f, 5.0f, /*IncreasePercent=*/24.0f);
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("twelve points make the rate 1.24 a second"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		1.24f, 0.001f);
+
+	// AND IT SCALES THE DEATH BONUS TOO, because both halves are Fervour gained
+	// from minions and the node names neither one specifically.
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("and make a death worth 6.2"),
+		UCataclysmFervour::GainOnMinionDeath(Commander.AbilitySystem), 6.2f,
+		0.001f);
+
+	// AND IT SCALES WITH THE ARMY RATHER THAN REPLACING IT: three minions at
+	// +24% is three times 1.24 and not 1.24.
+	ACataclysmMinion* Second = ACataclysmMinion::Spawn(
+		Commander.Actor, FVector(4 * M, 0, 0), 60.0f, false);
+	ACataclysmMinion* Third = ACataclysmMinion::Spawn(
+		Commander.Actor, FVector(5 * M, 0, 0), 60.0f, false);
+	if (!Second || !Third)
+	{
+		AddError(TEXT("Could not spawn the other minions."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Second)) { Second->Destroy(); } };
+	ON_SCOPE_EXIT { if (IsValid(Third)) { Third->Destroy(); } };
+
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("three minions at twelve points are 3.72 a second"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		3.72f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBindingSigilsLeakTest,
+	"Cataclysm.Fervour.BindingSigilsDoesNotTouchTheMasochistsOwnRate",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBindingSigilsLeakTest::RunTest(const FString&)
+{
+	// WHY THE RITUALIST'S RATE IS A STAT OF ITS OWN. Issue #1518.
+	//
+	// The obvious build gives the Ritualist's "1 per second for each minion you
+	// have" to the Masochist's existing `fervour_per_second`, which already
+	// carries a per-second rate multiplied by a count. It is fewer moving parts
+	// and it is wrong, because an increase is applied to a STAT: `Binding
+	// Sigils` says "+2% increased Fervour gained from your minions per point",
+	// and on a shared stat its 24% would also raise the Masochist's Low Life
+	// keystone -- 10 Fervour a second for being below 35% health, which has
+	// nothing to do with minions.
+	//
+	// A CHARACTER IN BOTH TREES IS ORDINARY RATHER THAN A CORNER. The 2026-08-25
+	// ruling that every class shares one Fervour bar rests on one character
+	// being able to reach all 24 class trees.
+	//
+	// NOTHING ELSE WOULD CATCH THIS. A test that `Binding Sigils` scales minion
+	// Fervour passes either way, because on a shared stat it scales that too --
+	// along with something it should not touch. This test is the one that fails
+	// if the two rates are ever merged into one stat.
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Commander(World, FVector::ZeroVector);
+
+	// AT 10% HEALTH, WELL INSIDE LOW LIFE'S 35% THRESHOLD, so the Masochist's
+	// keystone is actually paying out and a leak onto it would show.
+	Commander.Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+	Commander.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 100.0f);
+
+	// LOW LIFE ALONE, AND NO MINIONS. Ten a second is what the keystone states.
+	GiveBothGenerators(Commander, /*LowLifePerSecond=*/10.0f,
+					   /*PerMinion=*/1.0f, /*SigilsPercent=*/0.0f);
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("Low Life alone grants ten a second"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		10.0f, 0.001f);
+
+	// AND WITH TWELVE POINTS IN `Binding Sigils`, STILL TEN. This is the whole
+	// test. On one shared stat it would read 12.4.
+	GiveBothGenerators(Commander, 10.0f, 1.0f, /*SigilsPercent=*/24.0f);
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("and twelve points of Binding Sigils leave it at ten"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		10.0f, 0.001f);
+
+	// AND THE TWO ADD UP RATHER THAN ONE REPLACING THE OTHER once a minion is
+	// out: ten from being hurt, and 1.24 from one minion at +24%.
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Commander.Actor, FVector(3 * M, 0, 0), /*Lifetime=*/60.0f,
+		/*bBurns=*/false);
+	if (!Imp)
+	{
+		AddError(TEXT("Could not spawn the minion."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("a hurt Ritualist-Masochist with one minion gains 11.24"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		11.24f, 0.001f);
+
+	// AND HEALING PAST THE THRESHOLD LEAVES ONLY THE MINION'S SHARE, which
+	// shows the two rates are still answering their own questions.
+	Commander.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 900.0f);
+	SetFervour(Commander, 0.0f);
+	TestEqual(TEXT("and above 35% health only the minion's 1.24 remains"),
+		UCataclysmFervour::GainPerSecondStep(Commander.AbilitySystem, 1.0f),
+		1.24f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSubjugateHealsTest,
+	"Cataclysm.Command.SubjugateHealsWhatItTakesToFull",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A taken enemy arrives at full health. The project owner's ruling of 2026-09-13:
+ * "it should heal to full".
+ *
+ * WHY IT MATTERS RATHER THAN BEING A COURTESY. Subjugate only works on a target
+ * the blow left below half health, so without this every thrall arrives damaged
+ * and one taken at a sliver dies to the next blow after joining -- a creature the
+ * player spent an ultimate and 30 reserved Fervour on.
+ *
+ * THE SECOND HALF IS A CONTROL ON THE FIRST. A take that is REFUSED must not
+ * heal, or the skill would be a free heal for any enemy it cannot take. Without
+ * it, an implementation that healed before deciding would pass the first
+ * assertion and be wrong.
+ */
+bool FCataclysmSubjugateHealsTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCreature Commander(World, FVector::ZeroVector, ECataclysmTeam::Players);
+	FScopedCreature Wounded(World, FVector(3 * M, 0, 0), ECataclysmTeam::Monsters);
+
+	// BELOW THE HALF THE SKILL NEEDS, and far enough below that a partial heal
+	// could not be mistaken for a full one.
+	Wounded.SetHealthTo(200.0f);
+	if (!TestEqual(TEXT("the creature starts wounded"), Wounded.Health(), 200.0f,
+				   0.01f))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("it can be taken"),
+			 UCataclysmCommand::Subjugate(Commander.Actor, Wounded.Actor));
+
+	TestEqual(TEXT("and taking it heals it to full"), Wounded.Health(), 1000.0f,
+			  0.01f);
+
+	// THE CONTROL: A REFUSED TAKE HEALS NOTHING. This one is already on the
+	// commander's side, which `Subjugate` refuses so that one creature cannot
+	// reserve a second 30 Fervour.
+	FScopedCreature Ours(World, FVector(4 * M, 0, 0), ECataclysmTeam::Players);
+	Ours.SetHealthTo(300.0f);
+
+	TestFalse(TEXT("something already ours cannot be taken"),
+			  UCataclysmCommand::Subjugate(Commander.Actor, Ours.Actor));
+
+	TestEqual(TEXT("and a refused take leaves its health alone"), Ours.Health(),
+			  300.0f, 0.01f);
+
+	return true;
+}
+
+// ---- A minion's death explodes it, when its summoner says so --------------
+
+/**
+ * What the five cases below share. Issue #1515.
+ *
+ * `Ritualist_keystone_b_kB` Every One Bursts: "Every minion explodes when it
+ * dies, as one destroyed to make room for another does, with the radius and
+ * damage of the skill that brought it."
+ * `Ritualist_basic_b_a2` Volatile: "+3% increased damage of the explosion a
+ * minion leaves per point."
+ *
+ * EVERY EXPECTED FIGURE IS WORKED OUT HERE rather than asked of the engine. A
+ * summoner swinging 1,000 and an explosion stated at 50% is 500 to each enemy
+ * inside the radius; +50% increased explosion damage makes it 750. A pool of
+ * 100,000 steps in units of 0.0078125, so both land exactly on it.
+ */
+namespace CataclysmMinionDeathTest
+{
+	using Vital = UCataclysmVitalAttributeSet;
+	using Combat = UCataclysmCombatAttributeSet;
+	using Resource = UCataclysmClassResourceAttributeSet;
+
+	/** The radius a summoning skill states, as Summon Imp's sentence does. */
+	constexpr float ExplosionRadiusCm = 300.0f;
+
+	//~ THE IMP'S AUTHORED FIGURES, from `game/Data/MinionTypes.csv`, written
+	//~ out rather than read back so these cases state their own arithmetic.
+	//~ `Cataclysm.DataTable` pins the table, so a row changed underneath them
+	//~ is caught there and named rather than failing obscurely here.
+	constexpr float ImpBaseDamage = 10.5f;
+	constexpr float ImpDamagePerLevel = 10.5f;
+	constexpr float ImpExplosionPercentOfOwnDamage = 300.0f;
+
+	/**
+	 * What one imp's explosion deals here.
+	 *
+	 * ITS OWN BLOW TIMES ITS OWN SHARE, SINCE ISSUE #1515. Until then an
+	 * explosion was the summoning skill's percentage of the SUMMONER'S weapon
+	 * damage, which the owner ruled a bug: nothing on a minion's blow reads
+	 * the summoner's weapon.
+	 *
+	 * THE LEVEL IS ASKED OF THE ENGINE AND THE REST IS NOT. A summoner built
+	 * here is a bare actor with no player state, so a minion takes the level
+	 * the class stats are previewed at -- the path a summoner that is neither a
+	 * player, an enemy nor a minion takes (issue #1702) -- and it is not a
+	 * figure this file can state.
+	 */
+	float ImpExplosionDamage()
+	{
+		const float Blow = ImpBaseDamage + ImpDamagePerLevel
+			* static_cast<float>(UCataclysmPlayerClassStats::ChosenLevel());
+		return Blow * ImpExplosionPercentOfOwnDamage / 100.0f;
+	}
+
+	/** A stat a summoner carries, and the bucket it arrives in. */
+	struct FStatLine
+	{
+		const TCHAR* Name;
+		ECataclysmStatBucket Bucket;
+		float Value;
+	};
+
+	/**
+	 * Give a summoner its whole stat line at once.
+	 *
+	 * WHOLESALE, BECAUSE `SetStatInputs` REPLACES. `GiveRitualistGenerator`
+	 * above says the same thing about itself, which is why a case needing both
+	 * the minion-death Fervour and the explosion flag states them together
+	 * rather than calling that helper and then this one.
+	 *
+	 * THROUGH THE RECORDED STAT LINE AND NOT AN ATTRIBUTE, which is the only
+	 * place the two explosion stats exist: both are named in
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute`, and two cases below
+	 * assert that rather than trusting it.
+	 */
+	void GiveStats(CataclysmCommandTest::FScopedCaster& Who,
+				   const TArray<FStatLine>& Lines)
+	{
+		TMap<FName, FCataclysmStatInputs> Stats;
+		for (const FStatLine& Line : Lines)
+		{
+			FCataclysmStatModifier Modifier;
+			Modifier.Bucket = Line.Bucket;
+			Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+			Modifier.Value = Line.Value;
+
+			FCataclysmStatInputs Inputs;
+			Inputs.Base = 0.0f;
+			Inputs.Modifiers.Add(Modifier);
+			Stats.Add(FName(Line.Name), Inputs);
+		}
+		Who.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	/** A summoner or a target that swings for a stated figure. */
+	void SwingsFor(CataclysmCommandTest::FScopedCaster& Who, float Damage)
+	{
+		Who.Set(Combat::GetAttackDamageAttribute(), Damage);
+	}
+
+	/** What a placed actor has left, read the way anything else reads it. */
+	float HealthOf(const CataclysmCommandTest::FScopedCaster& Who)
+	{
+		return Who.AbilitySystem->GetNumericAttribute(
+			Vital::GetHealthAttribute());
+	}
+
+	/** Write a minion's health to nothing, which is how anything else dies. */
+	void Kill(ACataclysmMinion* Minion)
+	{
+		if (UAbilitySystemComponent* System =
+				UCataclysmTargeting::AbilitySystemOf(Minion))
+		{
+			System->SetNumericAttributeBase(Vital::GetHealthAttribute(), 0.0f);
+		}
+	}
+
+	/**
+	 * How far apart two actors stand, in metres, as a float.
+	 *
+	 * `FVector::Dist` ANSWERS IN DOUBLE, and `TestEqual` takes a float triple
+	 * or a double triple. Handing it a double distance and a float expectation
+	 * is ambiguous and the build refuses it, which is how this arrived.
+	 */
+	float MetresBetween(const AActor* A, const AActor* B)
+	{
+		// QUALIFIED, BECAUSE `M` BELONGS TO THE OTHER NAMESPACE IN THIS FILE.
+		// The cases below open both namespaces inside their own bodies, so they
+		// may write `M` plainly; nothing here is inside one of those bodies.
+		return static_cast<float>(
+			FVector::Dist(A->GetActorLocation(), B->GetActorLocation()))
+			/ CataclysmCommandTest::M;
+	}
+
+	/**
+	 * An imp told the radius its summoning skill states.
+	 *
+	 * THE RADIUS IS ALL THE SKILL TELLS IT NOW. What the explosion is worth
+	 * comes from the Imp row of `game/Data/MinionTypes.csv` at the summoning,
+	 * so a case that wanted a different figure would change the type rather
+	 * than the call.
+	 */
+	ACataclysmMinion* SummonTold(CataclysmCommandTest::FScopedCaster& Summoner,
+								 const FVector& Where)
+	{
+		ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+			Summoner.Actor, Where, /*Lifetime=*/60.0f, /*bBurns=*/false,
+			TEXT("Imp"));
+		if (Imp)
+		{
+			Imp->RecordExplosionRadius(ExplosionRadiusCm);
+		}
+		return Imp;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionDeathExplodesTest,
+	"Cataclysm.MinionDeath.AFlaggedMinionsDeathExplodesAndHurtsOnlyWhatIsInsideTheRadius",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A minion whose summoner carries `minion_explodes_on_death` blows up when it
+ * dies, hurting what stands inside the radius its summoning skill stated.
+ *
+ * TWO ENEMIES, ONE IN AND ONE OUT, because "it explodes" passes on its own if
+ * the explosion has no edge: a sphere of any size at all would hurt the near one
+ * and read as success. The far one is what makes the radius mean something.
+ *
+ * A REAL DEATH RATHER THAN A CALL TO `Explode`. The change is that a death
+ * reaches the explosion, so this writes the minion's health to nothing and lets
+ * the engine take it from there.
+ */
+bool FCataclysmMinionDeathExplodesTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	SwingsFor(Summoner, 1000.0f);
+	GiveStats(Summoner, {{TEXT("minion_explodes_on_death"),
+						  ECataclysmStatBucket::Flat, 1.0f}});
+
+	FScopedCreature Near(World, FVector(11 * M, 0, 0));
+	FScopedCreature Far(World, FVector(20 * M, 0, 0));
+
+	ACataclysmMinion* Imp = SummonTold(Summoner, FVector(10 * M, 0, 0));
+	if (!TestNotNull(TEXT("an imp"), Imp))
+	{
+		return false;
+	}
+
+	// THE FLAG IS A STAT THE ENGINE RECORDS, asserted rather than assumed: a
+	// name missing from that list is recorded nowhere, the flag would read as
+	// nothing, and this whole case would pass while doing nothing at all.
+	TestTrue(TEXT("the flag is a stat the engine records"),
+			 UCataclysmPlayerClassStats::StatsWithNoAttribute().Contains(
+				 FString(TEXT("minion_explodes_on_death"))));
+
+	// THE GEOMETRY, STATED BEFORE THE DEATH: one metre in, ten metres out, and
+	// the explosion is three.
+	TestEqual(TEXT("one enemy stands a metre away"),
+			  MetresBetween(Imp, Near.Actor), 1.0f, 0.001f);
+	TestEqual(TEXT("and one stands ten metres away"),
+			  MetresBetween(Imp, Far.Actor), 10.0f, 0.001f);
+	TestTrue(TEXT("both are enemies of the imp"),
+			 UCataclysmTargeting::IsHostileTo(Near.Actor, Imp)
+				 && UCataclysmTargeting::IsHostileTo(Far.Actor, Imp));
+
+	const float NearBefore = Near.Health();
+	const float FarBefore = Far.Health();
+
+	Kill(Imp);
+
+	TestFalse(TEXT("the explosion took the body with it"), IsValid(Imp));
+	TestTrue(TEXT("the enemy inside the radius was hurt"),
+			 Near.Health() < NearBefore);
+	TestEqual(TEXT("and the one outside took nothing"),
+			  FarBefore - Far.Health(), 0.0f, 0.1f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionDeathQuietBodyTest,
+	"Cataclysm.MinionDeath.AKilledMinionStopsAtOnceAndIsRemovedWithinHalfASecond",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A minion that dies without exploding stops at once and is removed half a
+ * second later. Issue #1528, ruled 2026-09-30. Until then it stood where it
+ * died, colliding and ticking, until the lifespan `Spawn` gave it ran out.
+ *
+ * READ AT THE MOMENT OF DEATH, NOT AFTER HALF A SECOND OF WORLD TIME. What is
+ * asserted is that the body can no longer collide or move, and that the
+ * lifespan left is at most half a second: this helper summons with 60, so a
+ * build that forgot the new lifespan reads 60 here.
+ */
+bool FCataclysmMinionDeathQuietBodyTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	ACataclysmMinion* Imp = SummonTold(Summoner, FVector(10 * M, 0, 0));
+	if (!TestNotNull(TEXT("an imp"), Imp))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	// THE STATE BEFORE, so the readings after are changes and not defaults.
+	TestTrue(TEXT("a living imp collides"), Imp->GetActorEnableCollision());
+	TestTrue(TEXT("and has more than half a second left"), Imp->GetLifeSpan() > 1.0f);
+
+	// A SPEED TO LOSE, as `CataclysmDeathTests.cpp` gives the dying enemy: a
+	// body standing still would read zero whether or not anything stopped it.
+	UCharacterMovementComponent* Movement = Imp->GetCharacterMovement();
+	if (!TestNotNull(TEXT("it has a movement component"), Movement))
+	{
+		return false;
+	}
+	Movement->Velocity = FVector(800.0f, 0.0f, 0.0f);
+
+	Kill(Imp);
+
+	TestTrue(TEXT("the imp is dead"), UCataclysmSkillEffects::IsDead(Imp));
+	if (!TestTrue(TEXT("and did not explode, so its body is still here for now"),
+				  IsValid(Imp)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("its body no longer collides"), Imp->GetActorEnableCollision());
+	TestEqual(TEXT("the speed it had is gone"), Movement->Velocity.Size(), 0.0, 0.01);
+	TestEqual(TEXT("and it is not allowed to move again"),
+			  static_cast<int32>(Movement->MovementMode), static_cast<int32>(MOVE_None));
+	const float Left = Imp->GetLifeSpan();
+	TestTrue(FString::Printf(TEXT("it is removed within half a second: %.3f s left"), Left),
+			 Left > 0.0f && Left <= 0.5f + 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionDeathOnceTest,
+	"Cataclysm.MinionDeath.ASecondDeathDoesNotRunTheDeathAgain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A second death does nothing. Issue #1528, found while changing
+ * `ACataclysmMinion::HandleDeath` and fixed in the same change, ruled
+ * 2026-09-30: the function ignored what `MarkDead` answered, so a second call
+ * ran the death again -- and an exploding minion exploded twice.
+ *
+ * WHY THE FLAG IS GIVEN BETWEEN THE TWO DEATHS rather than a flagged minion
+ * dying twice. A minion that exploded has been destroyed, and whether a
+ * destroyed actor's second blast lands depends on its ability system after
+ * destruction, which this test should not rest on. Here the first death is
+ * quiet and leaves the body; the summoner then holds the flag, so a second
+ * death that ran again would explode and destroy the body. The body still
+ * standing is the reading.
+ */
+bool FCataclysmMinionDeathOnceTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	SwingsFor(Summoner, 1000.0f);
+	ACataclysmMinion* Imp = SummonTold(Summoner, FVector(10 * M, 0, 0));
+	if (!TestNotNull(TEXT("an imp"), Imp))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	Kill(Imp);
+	if (!TestTrue(TEXT("the first death is quiet and leaves the body"), IsValid(Imp)))
+	{
+		return false;
+	}
+
+	GiveStats(Summoner, {{TEXT("minion_explodes_on_death"),
+						  ECataclysmStatBucket::Flat, 1.0f}});
+	if (!TestTrue(TEXT("its summoner now holds the flag, so a death would explode it"),
+				  Imp->ExplodesOnDeath()))
+	{
+		return false;
+	}
+
+	Imp->HandleDeath();
+	TestTrue(TEXT("a second death does not run again, so the body was not blown up"),
+			 IsValid(Imp));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeadGadgetFreesItsPlaceTest,
+	"Cataclysm.MinionDeath.AGadgetKilledThroughItsHealthFreesItsPlaceAtOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A dead gadget stops counting toward its skill's cap the moment it dies.
+ * Issue #1528, found while making that change and ruled the same day:
+ * `UCataclysmDeployableSkill::LivingDeployedCount` dropped only destroyed
+ * gadgets, so a dead one held its place until its body was removed -- the
+ * gadget version of issue #1957, which fixed the same thing for minions.
+ *
+ * A CAP OF ONE, so the second placement is refused while the first gadget
+ * lives and allowed once it has died, with its body still in the level for
+ * half a second.
+ */
+bool FCataclysmDeadGadgetFreesItsPlaceTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedCaster Caster(World, FVector::ZeroVector);
+	UCataclysmDeployableSkill* Skill = GrantSkill<UCataclysmDeployableSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Count=1; MaxActive=1; Duration=20; Minions=BoltTurret:1"), TEXT("Bolt Turret"));
+	if (!TestNotNull(TEXT("a deployable skill"), Skill))
+	{
+		return false;
+	}
+	Skill->CooldownOverride = 0.0f;
+
+	Activate(Caster, Skill);
+	const TArray<AActor*> Placed = UCataclysmCommand::ThingsCommandedBy(Caster.Actor);
+	if (!TestEqual(TEXT("one turret is placed"), Placed.Num(), 1))
+	{
+		return false;
+	}
+	ACataclysmMinion* First = Cast<ACataclysmMinion>(Placed[0]);
+	if (!TestNotNull(TEXT("and it is a minion"), First))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(First)) { First->Destroy(); } };
+
+	Activate(Caster, Skill);
+	TestEqual(TEXT("a second is refused while it lives: the cap is one"),
+			  UCataclysmCommand::ThingsCommandedBy(Caster.Actor).Num(), 1);
+
+	Kill(First);
+	if (!TestTrue(TEXT("the turret is dead and its body is still here for now"),
+				  UCataclysmSkillEffects::IsDead(First) && IsValid(First)))
+	{
+		return false;
+	}
+
+	Activate(Caster, Skill);
+	const TArray<AActor*> After = UCataclysmCommand::ThingsCommandedBy(Caster.Actor);
+	TestEqual(TEXT("its place is free at once, so a new turret is placed"), After.Num(), 1);
+	TestTrue(TEXT("and it is a new one, not the dead one"),
+			 After.Num() == 1 && After[0] != First);
+	for (AActor* Other : After)
+	{
+		if (IsValid(Other) && Other != First)
+		{
+			Other->Destroy();
+		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionBlastsReadItsBuffsTest,
+	"Cataclysm.MinionDeath.AMinionsExplosionAndSharedRuinReadTheBuffsOnItsOwnAbilitySystem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1771, ruled 2026-09-30: a minion's explosion and its Shared Ruin
+ * blast are hits it deals, and a minion's hits are its own, so each reads the
+ * buffs on the minion's own ability system as its swing does.
+ *
+ * TWO IMPS FOR EACH, one plain and one carrying 50% increased, thirty metres
+ * apart so each reaches only its own target. The explosion destroys its imp,
+ * which is why the two cannot be one imp measured twice.
+ */
+bool FCataclysmMinionBlastsReadItsBuffsTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	GiveStats(Summoner, {
+		{ACataclysmMinion::DeathBlastPercentOfMaximumHealthStat, ECataclysmStatBucket::Flat, 20.0f},
+		{ACataclysmMinion::DeathBlastRadiusMetresStat, ECataclysmStatBucket::Flat, 4.0f}});
+
+	const auto Buff = [](ACataclysmMinion* Imp)
+	{
+		UCataclysmAbilitySystemComponent* Its = Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Imp));
+		FCataclysmStatModifier Increased;
+		Increased.Bucket = ECataclysmStatBucket::Increased;
+		Increased.Source = ECataclysmModifierSource::SkillBuff;
+		Increased.Value = 50.0f;
+		return Its && Its->AddStatModifier(Increased) != 0;
+	};
+
+	// Each measure: an imp at Along metres, a creature a metre from it, and
+	// what the creature lost to Blow.
+	const auto Measure = [&](float Along, bool bBuffed, TFunctionRef<void(ACataclysmMinion*)> Blow)
+	{
+		FScopedCreature Near(World, FVector(11 * M, Along * M, 0));
+		ACataclysmMinion* Imp = SummonTold(Summoner, FVector(10 * M, Along * M, 0));
+		if (!Imp || (bBuffed && !Buff(Imp)))
+		{
+			return -1.0f;
+		}
+		const float Before = Near.Health();
+		Blow(Imp);
+		if (IsValid(Imp))
+		{
+			Imp->Destroy();
+		}
+		return Before - Near.Health();
+	};
+
+	const auto Explode = [](ACataclysmMinion* Imp) { Imp->Explode(); };
+	const float PlainBurst = Measure(0.0f, false, Explode);
+	const float BuffedBurst = Measure(30.0f, true, Explode);
+	if (TestTrue(FString::Printf(TEXT("a plain explosion lands: %.2f"), PlainBurst), PlainBurst > 0.0f))
+	{
+		TestEqual(TEXT("an explosion from an imp with 50% increased is half again as large"),
+				  BuffedBurst, PlainBurst * 1.5f, 0.01f);
+	}
+
+	const auto Ruin = [&](ACataclysmMinion* Imp) { ACataclysmMinion::DeathBlast(Imp, Summoner.Actor); };
+	const float PlainRuin = Measure(60.0f, false, Ruin);
+	const float BuffedRuin = Measure(90.0f, true, Ruin);
+	if (TestTrue(FString::Printf(TEXT("a plain Shared Ruin blast lands: %.2f"), PlainRuin), PlainRuin > 0.0f))
+	{
+		TestEqual(TEXT("and a Shared Ruin blast from it is half again as large too"),
+				  BuffedRuin, PlainRuin * 1.5f, 0.01f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionDeathWithoutTheStatTest,
+	"Cataclysm.MinionDeath.AMinionWhoseSummonerHasNotTakenItLeavesABodyAndHurtsNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The same death with no flag on the summoner: nothing is hurt and the body
+ * stays, which is what every minion in the game did before this change.
+ *
+ * THE BODY IS HALF OF WHAT THIS HOLDS. `Explode` destroys the actor, so a death
+ * that exploded when it should not would show twice over: an enemy that lost
+ * health, and a corpse no longer there for the summon cap to count.
+ *
+ * THE MINION IS STILL TOLD WHAT ITS EXPLOSION WOULD BE, because the summoning
+ * skill always tells it. What is missing here is the keystone, which is the only
+ * thing that should decide.
+ */
+bool FCataclysmMinionDeathWithoutTheStatTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	SwingsFor(Summoner, 1000.0f);
+
+	FScopedCreature Near(World, FVector(11 * M, 0, 0));
+
+	ACataclysmMinion* Imp = SummonTold(Summoner, FVector(10 * M, 0, 0));
+	if (!TestNotNull(TEXT("an imp"), Imp))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	const float NearBefore = Near.Health();
+
+	Kill(Imp);
+
+	// THE DAMAGE FIRST, THEN THE BODY, AND NOTHING IS ASKED OF A BODY THAT IS
+	// GONE. A build that exploded this minion would have destroyed the actor,
+	// and `IsDead` would then be reading a destroyed one. A quiet death leaves
+	// the body for half a second (issue #1528), so it is still valid here.
+	TestEqual(TEXT("the enemy a metre away took nothing"),
+			  NearBefore - Near.Health(), 0.0f, 0.1f);
+	if (!TestTrue(TEXT("its body is still there"), IsValid(Imp)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the minion is dead"), UCataclysmSkillEffects::IsDead(Imp));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionDeathExplosionDamageTest,
+	"Cataclysm.MinionDeath.TheDeathExplosionsDamageRisesWithTheSummonersStat",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `minion_explosion_damage` raises what a death explosion deals. Volatile's six
+ * points are +18%; this uses +50%, a figure no other arithmetic here produces.
+ *
+ * TWO SUMMONERS FIFTY METRES APART RATHER THAN ONE MEASURED TWICE. A minion that
+ * explodes is destroyed, so the same one cannot be killed again, and two
+ * explosions in one place would catch each other's enemies.
+ *
+ * BOTH FIGURES ARE ABSOLUTE RATHER THAN A RATIO. A ratio of 1.5 holds when both
+ * explosions deal nothing, which is the shape of mistake that passes while the
+ * feature is dead.
+ */
+bool FCataclysmMinionDeathExplosionDamageTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// THE CONTROL: the flag and nothing else.
+	FScopedCaster Plain(World, FVector::ZeroVector);
+	SwingsFor(Plain, 1000.0f);
+	GiveStats(Plain, {{TEXT("minion_explodes_on_death"),
+					   ECataclysmStatBucket::Flat, 1.0f}});
+	FScopedCaster PlainTarget(World, FVector(11 * M, 0, 0));
+
+	// AND THE SAME AGAIN WITH THE STAT, fifty metres away.
+	FScopedCaster Raised(World, FVector(0, 50 * M, 0));
+	SwingsFor(Raised, 1000.0f);
+	GiveStats(Raised, {{TEXT("minion_explodes_on_death"),
+						ECataclysmStatBucket::Flat, 1.0f},
+					   {TEXT("minion_explosion_damage"),
+						ECataclysmStatBucket::Increased, 50.0f}});
+	FScopedCaster RaisedTarget(World, FVector(11 * M, 50 * M, 0));
+
+	ACataclysmMinion* PlainImp = SummonTold(Plain, FVector(10 * M, 0, 0));
+	ACataclysmMinion* RaisedImp =
+		SummonTold(Raised, FVector(10 * M, 50 * M, 0));
+	if (!TestNotNull(TEXT("an imp for the control"), PlainImp)
+		|| !TestNotNull(TEXT("and one for the stat"), RaisedImp))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the damage stat is one the engine records"),
+			 UCataclysmPlayerClassStats::StatsWithNoAttribute().Contains(
+				 FString(TEXT("minion_explosion_damage"))));
+
+	const float PlainBefore = HealthOf(PlainTarget);
+	const float RaisedBefore = HealthOf(RaisedTarget);
+
+	Kill(PlainImp);
+	Kill(RaisedImp);
+
+	// THE IMP'S OWN BLOW TIMES ITS OWN SHARE, and half as much again under the
+	// stat. Neither figure is the summoner's weapon any more.
+	TestEqual(TEXT("the control explosion deals the imp's own figure"),
+			  PlainBefore - HealthOf(PlainTarget), ImpExplosionDamage(), 0.1f);
+	TestEqual(TEXT("and +50% explosion damage deals half as much again"),
+			  RaisedBefore - HealthOf(RaisedTarget),
+			  ImpExplosionDamage() * 1.5f, 0.1f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionCapExplosionDamageTest,
+	"Cataclysm.MinionDeath.TheExplosionTheSummonCapSetsOffTakesTheSameStat",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The stat is on the explosion rather than on the death, so the explosion the
+ * summon cap sets off takes it too. Volatile's sentence names "the explosion a
+ * minion leaves" and not what caused it.
+ *
+ * NO FLAG ON EITHER SUMMONER, DELIBERATELY. That is what separates the two
+ * places the multiplier could have been put: a build that scaled the damage in
+ * the death path would pass the case above and fail this one.
+ *
+ * `Explode` IS CALLED THE WAY THE CAP CALLS IT, at
+ * `CataclysmSkillTemplates.cpp:3455`, with the skill's stated radius and damage.
+ * What this does not drive is the cap's own counting: that needs a granted row
+ * and four casts against one cooldown, and `Cataclysm.Command.` holds the cap's
+ * behaviour. So this case is about the arithmetic of the explosion.
+ */
+bool FCataclysmMinionCapExplosionDamageTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedCaster Plain(World, FVector::ZeroVector);
+	SwingsFor(Plain, 1000.0f);
+	FScopedCaster PlainTarget(World, FVector(11 * M, 0, 0));
+
+	FScopedCaster Raised(World, FVector(0, 50 * M, 0));
+	SwingsFor(Raised, 1000.0f);
+	GiveStats(Raised, {{TEXT("minion_explosion_damage"),
+						ECataclysmStatBucket::Increased, 50.0f}});
+	FScopedCaster RaisedTarget(World, FVector(11 * M, 50 * M, 0));
+
+	ACataclysmMinion* PlainImp = SummonTold(Plain, FVector(10 * M, 0, 0));
+	ACataclysmMinion* RaisedImp =
+		SummonTold(Raised, FVector(10 * M, 50 * M, 0));
+	if (!TestNotNull(TEXT("an imp for the control"), PlainImp)
+		|| !TestNotNull(TEXT("and one for the stat"), RaisedImp))
+	{
+		return false;
+	}
+
+	const float PlainBefore = HealthOf(PlainTarget);
+	const float RaisedBefore = HealthOf(RaisedTarget);
+
+	PlainImp->Explode();
+	RaisedImp->Explode();
+
+	TestEqual(TEXT("the control explosion deals the imp's own figure"),
+			  PlainBefore - HealthOf(PlainTarget), ImpExplosionDamage(), 0.1f);
+	TestEqual(TEXT("and +50% explosion damage deals half as much again"),
+			  RaisedBefore - HealthOf(RaisedTarget),
+			  ImpExplosionDamage() * 1.5f, 0.1f);
+	TestFalse(TEXT("an explosion destroys the minion whatever set it off"),
+			  IsValid(PlainImp));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionDeathStillPaysFervourTest,
+	"Cataclysm.MinionDeath.AnExplodingMinionLeavesNoBodyAndStillPaysItsSummoner",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A minion that explodes on its death still pays its summoner the Fervour a
+ * minion's death grants, and leaves no body behind.
+ *
+ * NEIGHBOURING BEHAVIOUR RATHER THAN NEW CODE, and it is not obvious: the
+ * explosion destroys the actor inside `HandleDeath`, and the Fervour is granted
+ * by whoever noticed the health reach zero. It survives because that grant runs
+ * BEFORE the death handler, which `CataclysmVitalAttributeSet.cpp` says it does
+ * deliberately. This case is what would fail if that order ever changed.
+ *
+ * FIVE IS THE RITUALIST'S OWN FIGURE, the same one
+ * `Cataclysm.Fervour.AMinionDyingGrantsFervour` uses, and it is stated on the
+ * summoner here together with the explosion flag, because `SetStatInputs`
+ * replaces rather than adds.
+ */
+bool FCataclysmMinionDeathStillPaysFervourTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedCaster Commander(World, FVector::ZeroVector);
+	SwingsFor(Commander, 1000.0f);
+	GiveStats(Commander, {{UCataclysmFervour::OnMinionDeathStat,
+						   ECataclysmStatBucket::Flat, 5.0f},
+						  {TEXT("minion_explodes_on_death"),
+						   ECataclysmStatBucket::Flat, 1.0f}});
+	SetFervour(Commander, 0.0f);
+
+	// FIVE METRES OUT, CLEAR OF THE THREE-METRE EXPLOSION, so nothing here
+	// depends on whether a summoner standing on its own minion's blast is
+	// caught by it.
+	ACataclysmMinion* Imp = SummonTold(Commander, FVector(5 * M, 0, 0));
+	if (!TestNotNull(TEXT("an imp"), Imp))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the bar starts empty"),
+			  Commander.AbilitySystem->GetNumericAttribute(
+				  Resource::GetClassResourceAttribute()),
+			  0.0f, 0.001f);
+
+	Kill(Imp);
+
+	TestFalse(TEXT("the explosion left no body"), IsValid(Imp));
+	TestEqual(TEXT("and the summoner still gained the five a death grants"),
+			  Commander.AbilitySystem->GetNumericAttribute(
+				  Resource::GetClassResourceAttribute()),
+			  5.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSummonTellsItsMinionTest,
+	"Cataclysm.MinionDeath.ASummoningSkillTellsTheMinionWhatItsExplosionWouldBe",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A real summon, activated, and the minion it made carries the skill's radius
+ * and damage.
+ *
+ * THIS IS THE CASE THE OTHER FIVE CANNOT MAKE. Each of them tells the minion
+ * itself, the way `UCataclysmSummonSkill::SummonOne` does, because a test that
+ * summoned through the ability for every measurement would be measuring the
+ * ability. So a build where the skill never told the minion anything would pass
+ * all five of them while no minion in the game ever exploded. Issue #1515.
+ *
+ * THE FIGURES ARE STATED HERE, NOT READ BACK. `Radius=3` is three metres, which
+ * is 300 centimetres, and the damage is stated on the skill as 50 rather than
+ * taken from a slot, so neither expected figure comes from the code under test.
+ * Summon Imp's own row states `Radius=3` and leaves its damage to its slot,
+ * which is why this states one.
+ */
+bool FCataclysmSummonTellsItsMinionTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedCaster Caster(World, FVector::ZeroVector);
+	SwingsFor(Caster, 1000.0f);
+
+	// SUMMON IMP'S OWN SHAPE, less the Fervour it reserves: the reserve is not
+	// what this case is about, and a reservation refused would stop the summon
+	// for a reason that has nothing to do with the explosion.
+	UCataclysmSummonSkill* Skill = GrantSkill<UCataclysmSummonSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Burn=1; Minions=Imp:1"),
+		TEXT("Summon Imp"));
+	if (!Skill)
+	{
+		AddError(TEXT("Could not grant Summon Imp."));
+		return false;
+	}
+	Skill->DamagePercentOverride = 50.0f;
+
+	if (!TestTrue(TEXT("the summon activates"), Activate(Caster, Skill)))
+	{
+		return false;
+	}
+
+	const TArray<AActor*> Made =
+		UCataclysmCommand::ThingsCommandedBy(Caster.Actor);
+	if (!TestEqual(TEXT("one imp was summoned"), Made.Num(), 1))
+	{
+		return false;
+	}
+	ACataclysmMinion* Imp = Cast<ACataclysmMinion>(Made[0]);
+	if (!TestNotNull(TEXT("and it is a minion"), Imp))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("it was told the skill's three metre radius"),
+			  Imp->ExplosionRadiusCm, 300.0f, 0.001f);
+
+	// AND THE SHARE CAME FROM THE TYPE ROW RATHER THAN THE SKILL, which is the
+	// half of this that moved for issue #1515: the skill states how wide the
+	// explosion is, and the minion states what it is worth.
+	TestEqual(TEXT("and its own row said what an explosion of its is worth"),
+			  Imp->ExplosionPercentOfOwnDamage,
+			  ImpExplosionPercentOfOwnDamage, 0.001f);
+	return true;
+}
+
+// ==========================================================================
+// Behind the Veil
+// ==========================================================================
+
+namespace CataclysmBehindTheVeilTest
+{
+	using namespace CataclysmCommandTest;
+
+	/** Every threat figure below is `game/Data/MinionTypes.csv`'s own. */
+	const TCHAR* const DrawsMost = TEXT("Imp");          // ThreatPercent 100
+	const TCHAR* const DrawsSome = TEXT("Mote");         // ThreatPercent 40
+	const TCHAR* const DrawsLittle = TEXT("Ballista");   // ThreatPercent 5
+	const TCHAR* const DrawsAsLittle = TEXT("BoltTurret");  // ThreatPercent 5
+	const TCHAR* const DrawsNobody = TEXT("SpikeTrap");  // ThreatPercent 0
+
+	/**
+	 * Give a character the keystone's two numbers by hand.
+	 *
+	 * BY HAND BECAUSE THE ROWS ARE NOT WRITTEN YET. The design workbook is held
+	 * by another session, so `Ritualist_keystone_spine_002` still carries no
+	 * effect row and nothing in the data grants these stats. **These tests
+	 * therefore pass with no row at all**, which is exactly the hole the sibling
+	 * keystone fell into: Conduit's flag was read by the engine a day before any
+	 * row granted it, and every test passed throughout. The test that closes it
+	 * reads the ROW, and it lands with the rows.
+	 */
+	void GiveBehindTheVeil(AActor* Who, float Metres, float Minimum)
+	{
+		UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Who));
+		if (!Theirs)
+		{
+			return;
+		}
+
+		auto FlatRow = [](float Value)
+		{
+			FCataclysmStatModifier Row;
+			Row.Bucket = ECataclysmStatBucket::Flat;
+			Row.Source = ECataclysmModifierSource::PassiveKeystone;
+			Row.Value = Value;
+
+			FCataclysmStatInputs Inputs;
+			Inputs.Base = 0.0f;
+			Inputs.Modifiers.Add(Row);
+			return Inputs;
+		};
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(FName(TEXT("minions_draw_nearby_enemies_metres")),
+				  FlatRow(Metres));
+		Stats.Add(FName(TEXT("minions_draw_nearby_enemies_minimum")),
+				  FlatRow(Minimum));
+		Theirs->SetStatInputs(MoveTemp(Stats));
+	}
+
+	/** One minion of a named type, or null with the reason already reported. */
+	ACataclysmMinion* SummonOfType(FAutomationTestBase& Test, AActor* Summoner,
+								   const FVector& Where, const TCHAR* Type)
+	{
+		ACataclysmMinion* Made = ACataclysmMinion::Spawn(
+			Summoner, Where, /*Lifetime=*/60.0f, /*bBurns=*/false,
+			FString(Type));
+		if (!Made)
+		{
+			Test.AddError(FString::Printf(TEXT("Could not summon a %s."), Type));
+		}
+		return Made;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVeilDrawsAnEnemyOffTest,
+	"Cataclysm.Command.AMinionDrawsANearbyEnemyOffItsSummoner",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Behind the Veil: "Enemies within 10 metres attack your minions rather than
+ * you, while you have three or more minions." Issue #1515.
+ *
+ * THE SUMMONER IS THE NEAREST THING TO THE CREATURE THROUGHOUT, which is what
+ * makes this a test of the keystone rather than of the search. Without the node
+ * the creature attacks whoever is nearest, and that is the summoner; with it,
+ * the creature walks past the summoner to a minion standing further away.
+ *
+ * AND THE MINION IT PICKS IS NOT THE NEAREST ONE. The trap draws nobody and
+ * stands closest; the imp draws most and stands furthest. A rule that ranked by
+ * distance, or that treated a threat of zero as merely the lowest rank, would
+ * send the creature to the trap and fail here.
+ */
+bool FCataclysmVeilDrawsAnEnemyOffTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehindTheVeilTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCreature Summoner(World, FVector::ZeroVector,
+							 ECataclysmTeam::Players);
+	FScopedCreature Hunting(World, FVector(4 * M, 0, 0));
+
+	ACataclysmEnemyController* Brain =
+		Cast<ACataclysmEnemyController>(Hunting.Actor->GetController());
+	if (!Brain)
+	{
+		AddError(TEXT("The hunting creature has no brain to drive."));
+		return false;
+	}
+
+	// THE CONTROL, BEFORE ANY MINION EXISTS: it goes for the summoner.
+	TestTrue(TEXT("with no keystone it attacks the summoner"),
+		Brain->ChooseTarget() == Summoner.Actor);
+
+	// ACROSS THE SUMMONER AND NOT BEHIND IT. The creature stands four metres
+	// away along one axis; putting the minions along the OTHER one leaves every
+	// one of them further from the creature than the summoner is -- the trap at
+	// about 6.4 metres, the mote at 8.1, the imp at 9.9, against the summoner's
+	// 4. Placing them beyond the creature on its own axis put the trap two
+	// metres away, nearer than the summoner, so the search answered the trap and
+	// the keystone never applied: it redirects a creature that would attack the
+	// CHARACTER. Three assertions failed and the run found it.
+	//
+	// THAT ACCOUNT IS OF THE GAME BEFORE ISSUE #2553. Since the owner's decision
+	// of 2026-11-01, "Nearest; threat 0 untargeted", the search passes over a
+	// minion whose row states a threat of nought, so a trap placed nearer than
+	// the summoner would no longer be answered. The placement stays as it is
+	// for the reason still standing: a mote or an imp nearer than the summoner
+	// IS answered by the search, and the keystone would then never apply.
+	ACataclysmMinion* Trap =
+		SummonOfType(*this, Summoner.Actor, FVector(0, 5 * M, 0), DrawsNobody);
+	ACataclysmMinion* Some =
+		SummonOfType(*this, Summoner.Actor, FVector(0, 7 * M, 0), DrawsSome);
+	ACataclysmMinion* Most =
+		SummonOfType(*this, Summoner.Actor, FVector(0, 9 * M, 0), DrawsMost);
+	ON_SCOPE_EXIT { if (IsValid(Trap)) { Trap->Destroy(); } };
+	ON_SCOPE_EXIT { if (IsValid(Some)) { Some->Destroy(); } };
+	ON_SCOPE_EXIT { if (IsValid(Most)) { Most->Destroy(); } };
+	if (!Trap || !Some || !Most)
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the summoner commands three things"),
+		UCataclysmCommand::ThingsCommandedBy(Summoner.Actor).Num(), 3);
+
+	// THE SECOND CONTROL: three minions and still no keystone. Every minion is
+	// hostile to this creature and further away than the summoner, so the
+	// search alone still answers the summoner.
+	TestTrue(TEXT("three minions alone change nothing"),
+		Brain->ChooseTarget() == Summoner.Actor);
+
+	GiveBehindTheVeil(Summoner.Actor, /*Metres=*/10.0f, /*Minimum=*/3.0f);
+
+	TestTrue(TEXT("with the keystone the creature is drawn to the imp"),
+		Brain->ChooseTarget() == Most);
+	TestFalse(TEXT("and not to the trap, which stands nearest and draws nobody"),
+		Brain->ChooseTarget() == Trap);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVeilSparesABossTest,
+	"Cataclysm.Command.ABossIgnoresTheMinionsThatDrawOtherEnemies",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A boss chooses for itself. Ruled by the project owner on 2026-09-18.
+ *
+ * THE RUNG BELOW IT IS THE CONTROL, so this measures the boss rung rather than
+ * something both creatures share. It is the same pair
+ * `Cataclysm.CombatEvents` uses for the same reason.
+ */
+bool FCataclysmVeilSparesABossTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehindTheVeilTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCreature Summoner(World, FVector::ZeroVector,
+							 ECataclysmTeam::Players);
+	FScopedCreature Boss(World, FVector(4 * M, 0, 0));
+	FScopedCreature Herald(World, FVector(-4 * M, 0, 0));
+	Boss.Actor->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+	Herald.Actor->SetRarityStep(
+		ACataclysmEnemyCharacter::FirstBossRarityStep - 1);
+	TestTrue(TEXT("the one is a boss"), Boss.Actor->IsBoss());
+	TestFalse(TEXT("and the other is the rung below"), Herald.Actor->IsBoss());
+
+	ACataclysmMinion* One =
+		SummonOfType(*this, Summoner.Actor, FVector(0, 6 * M, 0), DrawsMost);
+	ACataclysmMinion* Two =
+		SummonOfType(*this, Summoner.Actor, FVector(0, 7 * M, 0), DrawsSome);
+	ACataclysmMinion* Three =
+		SummonOfType(*this, Summoner.Actor, FVector(0, 8 * M, 0), DrawsLittle);
+	ON_SCOPE_EXIT { if (IsValid(One)) { One->Destroy(); } };
+	ON_SCOPE_EXIT { if (IsValid(Two)) { Two->Destroy(); } };
+	ON_SCOPE_EXIT { if (IsValid(Three)) { Three->Destroy(); } };
+	if (!One || !Two || !Three)
+	{
+		return false;
+	}
+
+	GiveBehindTheVeil(Summoner.Actor, /*Metres=*/10.0f, /*Minimum=*/3.0f);
+
+	TestTrue(TEXT("the boss keeps coming for the summoner"),
+		UCataclysmCommand::MinionDrawingEnemyFrom(
+			Summoner.Actor, Boss.Actor) == nullptr);
+
+	ACataclysmEnemyController* HeraldBrain =
+		Cast<ACataclysmEnemyController>(Herald.Actor->GetController());
+	if (!HeraldBrain)
+	{
+		AddError(TEXT("The herald has no brain to drive."));
+		return false;
+	}
+
+	TestTrue(TEXT("and the rung below it is drawn off"),
+		HeraldBrain->ChooseTarget() == One);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVeilReadsItsNumbersTest,
+	"Cataclysm.Command.TheReachAndTheMinionCountComeFromTheRows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Both numbers are read from the character's own rows, not assumed here.
+ *
+ * EACH IS MOVED ON ITS OWN AND THE OTHER LEFT ALONE, so a rule that read one
+ * and hard-coded the other passes half of this and fails the other half.
+ */
+bool FCataclysmVeilReadsItsNumbersTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehindTheVeilTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCreature Summoner(World, FVector::ZeroVector,
+							 ECataclysmTeam::Players);
+	FScopedCreature Hunting(World, FVector(8 * M, 0, 0));
+
+	ACataclysmMinion* One =
+		SummonOfType(*this, Summoner.Actor, FVector(0, 6 * M, 0), DrawsMost);
+	ACataclysmMinion* Two =
+		SummonOfType(*this, Summoner.Actor, FVector(0, 7 * M, 0), DrawsSome);
+	ACataclysmMinion* Three =
+		SummonOfType(*this, Summoner.Actor, FVector(0, 8 * M, 0), DrawsLittle);
+	ON_SCOPE_EXIT { if (IsValid(One)) { One->Destroy(); } };
+	ON_SCOPE_EXIT { if (IsValid(Two)) { Two->Destroy(); } };
+	ON_SCOPE_EXIT { if (IsValid(Three)) { Three->Destroy(); } };
+	if (!One || !Two || !Three)
+	{
+		return false;
+	}
+
+	// THE CREATURE STANDS EIGHT METRES AWAY THROUGHOUT. Only the row moves.
+	GiveBehindTheVeil(Summoner.Actor, /*Metres=*/6.0f, /*Minimum=*/3.0f);
+	TestNull(TEXT("a reach of six does not reach a creature eight away"),
+		UCataclysmCommand::MinionDrawingEnemyFrom(
+			Summoner.Actor, Hunting.Actor));
+
+	GiveBehindTheVeil(Summoner.Actor, /*Metres=*/10.0f, /*Minimum=*/3.0f);
+	TestTrue(TEXT("and a reach of ten does"),
+		UCataclysmCommand::MinionDrawingEnemyFrom(
+			Summoner.Actor, Hunting.Actor) == One);
+
+	// AND THE COUNT, WITH THE SAME THREE MINIONS STANDING THERE.
+	GiveBehindTheVeil(Summoner.Actor, /*Metres=*/10.0f, /*Minimum=*/4.0f);
+	TestNull(TEXT("a row asking for four is not satisfied by three"),
+		UCataclysmCommand::MinionDrawingEnemyFrom(
+			Summoner.Actor, Hunting.Actor));
+
+	// AND A CHARACTER WITH NO ROWS AT ALL IS ANSWERED NOTHING, which is what
+	// makes a reach above zero the keystone's presence rather than a flag.
+	FScopedCreature Plain(World, FVector(0, 30 * M, 0), ECataclysmTeam::Players);
+	TestNull(TEXT("a character without the node draws nobody"),
+		UCataclysmCommand::MinionDrawingEnemyFrom(
+			Plain.Actor, Hunting.Actor));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVeilBreaksATieByDistanceTest,
+	"Cataclysm.Command.TwoMinionsDrawingAlikeSendTheEnemyToTheNearer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Two minions drawing the same attention are separated by distance.
+ *
+ * THE TWO TYPES STATE THE SAME THREAT IN THE SHIPPED DATA, five percent each,
+ * so this measures the tie-break rather than a difference the rows already
+ * carry. The trap beside them draws nobody and stands nearest of the three.
+ */
+bool FCataclysmVeilBreaksATieByDistanceTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehindTheVeilTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCreature Summoner(World, FVector::ZeroVector,
+							 ECataclysmTeam::Players);
+	FScopedCreature Hunting(World, FVector(4 * M, 0, 0));
+
+	ACataclysmMinion* Trap =
+		SummonOfType(*this, Summoner.Actor, FVector(5 * M, 0, 0), DrawsNobody);
+	ACataclysmMinion* Nearer =
+		SummonOfType(*this, Summoner.Actor, FVector(9 * M, 0, 0), DrawsLittle);
+	ACataclysmMinion* Further =
+		SummonOfType(*this, Summoner.Actor, FVector(14 * M, 0, 0),
+					 DrawsAsLittle);
+	ON_SCOPE_EXIT { if (IsValid(Trap)) { Trap->Destroy(); } };
+	ON_SCOPE_EXIT { if (IsValid(Nearer)) { Nearer->Destroy(); } };
+	ON_SCOPE_EXIT { if (IsValid(Further)) { Further->Destroy(); } };
+	if (!Trap || !Nearer || !Further)
+	{
+		return false;
+	}
+
+	GiveBehindTheVeil(Summoner.Actor, /*Metres=*/10.0f, /*Minimum=*/3.0f);
+
+	TestTrue(TEXT("the nearer of the two that draw alike takes it"),
+		UCataclysmCommand::MinionDrawingEnemyFrom(
+			Summoner.Actor, Hunting.Actor) == Nearer);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVeilSkipsAMinionDrawingNobodyTest,
+	"Cataclysm.Command.AMinionDrawingNobodyIsNotEligibleAtAll",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A minion whose type draws nobody is not eligible, rather than ranked last.
+ *
+ * WHY THIS IS ITS OWN TEST AND NOT AN ASSERTION IN THE ONES ABOVE. It was
+ * written because choosing a guard proof's break found the hole: attention is
+ * compared before distance, so in every case above a minion drawing nothing
+ * loses to one drawing something WHETHER OR NOT the rule excludes it. Breaking
+ * the exclusion failed nothing. The only case that separates the two readings is
+ * one where nothing else is eligible at all -- and then the answer is either
+ * "nobody" or "the one drawing nothing".
+ *
+ * THE CONTROL IS THE SAME SETUP WITH A MINION THAT DRAWS. Without it a test
+ * that answered "nobody" for some unrelated reason -- a count not met, a reach
+ * too short, no keystone -- would read as the exclusion working.
+ */
+bool FCataclysmVeilSkipsAMinionDrawingNobodyTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehindTheVeilTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCreature Summoner(World, FVector::ZeroVector,
+							 ECataclysmTeam::Players);
+	FScopedCreature Hunting(World, FVector(4 * M, 0, 0));
+
+	// ONE MINION AND A ROW ASKING FOR ONE, so the count is met and the only
+	// thing left to decide the answer is whether that minion draws anybody.
+	ACataclysmMinion* Trap =
+		SummonOfType(*this, Summoner.Actor, FVector(5 * M, 0, 0), DrawsNobody);
+	ON_SCOPE_EXIT { if (IsValid(Trap)) { Trap->Destroy(); } };
+	if (!Trap)
+	{
+		return false;
+	}
+
+	GiveBehindTheVeil(Summoner.Actor, /*Metres=*/10.0f, /*Minimum=*/1.0f);
+
+	TestEqual(TEXT("the count the row asks for is met"),
+		UCataclysmCommand::ThingsCommandedBy(Summoner.Actor).Num(), 1);
+	TestNull(TEXT("and a minion that draws nobody draws nobody"),
+		UCataclysmCommand::MinionDrawingEnemyFrom(
+			Summoner.Actor, Hunting.Actor));
+
+	// THE CONTROL: the same character, the same row, the same distance, and a
+	// minion whose type states a threat above zero.
+	Trap->Destroy();
+	ACataclysmMinion* Imp =
+		SummonOfType(*this, Summoner.Actor, FVector(5 * M, 0, 0), DrawsMost);
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+	if (!Imp)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("while one that draws is taken, so the difference is the "
+				  "threat its type states and nothing else"),
+		UCataclysmCommand::MinionDrawingEnemyFrom(
+			Summoner.Actor, Hunting.Actor) == Imp);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVeilReadsItsOwnRowsTest,
+	"Cataclysm.Command.TheKeystonesOwnRowsDrawANearbyEnemy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The keystone works from the rows the game loads, with nothing granted by hand.
+ *
+ * WHY THIS TEST EXISTS AND THE FOUR BESIDE IT ARE NOT ENOUGH. Every other test
+ * of this keystone calls `GiveBehindTheVeil`, which writes the two stats onto
+ * the character directly. **All of them pass with no row in the data at all**,
+ * so between them they cannot tell a working keystone from one the engine reads
+ * and nothing supplies. That is not hypothetical: the sibling keystone Conduit
+ * was read by the engine for a day before any row granted it, with every test
+ * passing throughout, and `Ritualist_capstone_200#3` granted nothing from the
+ * day it was written. This test is the one that notices.
+ *
+ * SO IT TAKES THE NUMBERS FROM THE ROWS AND STATES NONE OF ITS OWN. The reach
+ * and the count are read out of `game/Data/PassiveEffects.csv` through the
+ * imported asset, and the creature and the minions are placed using those
+ * figures. A workbook that moved either number would move this test with it
+ * rather than break it -- the node's sentence is what pins the numbers
+ * themselves, and `tools/tests/test_passive_effects_match_the_node_text.py`
+ * holds that.
+ *
+ * IT FAILS WHEN THE ROWS ARE ABSENT, which is the half of a guard proof that
+ * this whole change turns on, and which is measured across the asset rebuild.
+ */
+bool FCataclysmVeilReadsItsOwnRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehindTheVeilTest;
+
+	const UDataTable* Effects = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the passive effect table loads"),
+					 const_cast<UDataTable*>(Effects)))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	// THE KEYSTONE'S OWN ROWS, BY NODE KEY. Two of them, one per number.
+	const TArray<const FCataclysmPassiveEffectRow*> Rows =
+		UCataclysmPassiveTree::EffectsFor(
+			Effects, FName(TEXT("Ritualist_keystone_spine_002")));
+	if (!TestEqual(TEXT("Behind the Veil carries two rows"), Rows.Num(), 2))
+	{
+		AddError(TEXT("The keystone's rows are missing from the data, so it "
+					  "grants nothing in play however the engine reads it. "
+					  "Author them in the Passive Effects sheet of "
+					  "docs/All_Things_Cataclysm.xlsx and regenerate."));
+		return false;
+	}
+
+	float Metres = 0.0f;
+	float Minimum = 0.0f;
+	TMap<FName, FCataclysmStatInputs> FromTheRows;
+	for (const FCataclysmPassiveEffectRow* Row : Rows)
+	{
+		FCataclysmStatModifier Flat;
+		Flat.Bucket = ECataclysmStatBucket::Flat;
+		Flat.Source = ECataclysmModifierSource::PassiveKeystone;
+		Flat.Value = Row->ValuePerPoint;
+
+		FCataclysmStatInputs Line;
+		Line.Base = 0.0f;
+		Line.Modifiers.Add(Flat);
+		FromTheRows.Add(FName(*Row->Stat), Line);
+
+		if (Row->Stat == FString(TEXT("minions_draw_nearby_enemies_metres")))
+		{
+			Metres = Row->ValuePerPoint;
+		}
+		else if (Row->Stat
+				 == FString(TEXT("minions_draw_nearby_enemies_minimum")))
+		{
+			Minimum = Row->ValuePerPoint;
+		}
+	}
+
+	if (!TestTrue(FString::Printf(TEXT("the rows state a reach: %.1f"), Metres),
+				  Metres > 0.0f)
+		|| !TestTrue(FString::Printf(TEXT("and a count: %.1f"), Minimum),
+					 Minimum > 0.0f))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCreature Summoner(World, FVector::ZeroVector,
+							 ECataclysmTeam::Players);
+
+	// PLACED BY THE ROWS' OWN FIGURES. Inside the reach, and nearer the creature
+	// than any minion is, so the search alone would answer the summoner.
+	FScopedCreature Hunting(World, FVector((Metres - 2.0f) * M, 0, 0));
+
+	// THE MINIONS GO ACROSS THE SUMMONER, on the other axis, for the reason the
+	// behaviour test above gives: along this one they would stand nearer the
+	// creature than the summoner does and the search would answer a minion
+	// before the keystone was ever consulted.
+
+	UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Summoner.Actor));
+	if (!TestNotNull(TEXT("the summoner has an ability system"), Theirs))
+	{
+		return false;
+	}
+	Theirs->SetStatInputs(MoveTemp(FromTheRows));
+
+	// AS MANY MINIONS AS THE ROW ASKS FOR, the last of them the one that draws
+	// most, and every one of them further from the creature than the summoner.
+	const int32 Wanted = FMath::RoundToInt(Minimum);
+	TArray<ACataclysmMinion*> Made;
+	for (int32 Index = 0; Index < Wanted; ++Index)
+	{
+		const bool bLast = Index == Wanted - 1;
+		ACataclysmMinion* One = SummonOfType(
+			*this, Summoner.Actor,
+			FVector(0, (Metres + 2.0f + Index) * M, 0),
+			bLast ? DrawsMost : DrawsLittle);
+		if (!One)
+		{
+			break;
+		}
+		Made.Add(One);
+	}
+	ON_SCOPE_EXIT
+	{
+		for (ACataclysmMinion* One : Made)
+		{
+			if (IsValid(One)) { One->Destroy(); }
+		}
+	};
+	if (!TestEqual(TEXT("the row's count of minions stands there"),
+				   Made.Num(), Wanted))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyController* Brain =
+		Cast<ACataclysmEnemyController>(Hunting.Actor->GetController());
+	if (!Brain)
+	{
+		AddError(TEXT("The hunting creature has no brain to drive."));
+		return false;
+	}
+
+	TestTrue(TEXT("the creature is drawn to the minion drawing most, from the "
+				  "keystone's own rows and nothing granted by hand"),
+		Brain->ChooseTarget() == Made.Last());
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A lost minion replaced: Press-Ganged and Rekindled. Issue #1515. And a dead
+// minion no longer holding a place under the summon cap. Issue #1957.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmReplacementTest
+{
+	/** Summon Imp's own figures: three at once, twenty seconds, three metres. */
+	UCataclysmSummonSkill* GrantSummon(CataclysmCommandTest::FScopedCaster& Who)
+	{
+		const FGameplayAbilitySpecHandle Handle = Who.AbilitySystem->GiveAbilityInSlot(
+			UCataclysmSummonSkill::StaticClass(), ECataclysmAbilitySlot::Special,
+			/*Level=*/100, Who.Actor);
+		FGameplayAbilitySpec* Spec =
+			Who.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+		UCataclysmSummonSkill* Skill =
+			Spec ? Cast<UCataclysmSummonSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (Skill)
+		{
+			Skill->SkillName = TEXT("Summon Imp");
+			Skill->Params = UCataclysmSkillShapes::ParseParams(
+				TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Minions=Imp:1"));
+		}
+		return Skill;
+	}
+
+	/** One minion from the skill, standing where the test says. */
+	ACataclysmMinion* SummonAt(UCataclysmSummonSkill* Skill, const FVector& Where)
+	{
+		ACataclysmMinion* Minion = Skill ? Skill->SummonOne() : nullptr;
+		if (Minion)
+		{
+			Minion->SetActorLocation(Where);
+		}
+		return Minion;
+	}
+
+	/** The newest minion the skill holds, or null. */
+	ACataclysmMinion* Newest(UCataclysmSummonSkill* Skill)
+	{
+		return Skill && Skill->LivingMinionCount() > 0 ? Skill->Minions.Last().Get()
+													   : nullptr;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPressGangedTest,
+	"Cataclysm.MinionDeath.PressGangedReplacesAMinionWhereItDiedOnceInTenSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_keystone_a_kB` Press-Ganged, its stat granted by hand. Issue #1515.
+ *
+ * "When one of your minions dies, a new minion is summoned where it died at no
+ * cost, no more than once every 10 seconds."
+ *
+ * FOUR DEATHS: the first replaced where it fell, by the skill's own kind; the
+ * second, inside the ten seconds, not replaced; the third, after them, replaced
+ * again; and a death under a summoner without the keystone, not replaced.
+ */
+bool FCataclysmPressGangedTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+	using namespace CataclysmReplacementTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Skill = GrantSummon(Summoner);
+	if (!TestNotNull(TEXT("a summon skill"), Skill))
+	{
+		return false;
+	}
+	GiveStats(Summoner, {{UCataclysmSummonSkill::ReplacedOnDeathStat,
+						  ECataclysmStatBucket::Flat, 10.0f}});
+	TestTrue(TEXT("the stat is one the engine records"),
+			 UCataclysmPlayerClassStats::StatsWithNoAttribute().Contains(
+				 FString(UCataclysmSummonSkill::ReplacedOnDeathStat)));
+
+	const FVector Where(5 * M, 2 * M, 0);
+	ACataclysmMinion* First = SummonAt(Skill, Where);
+	if (!TestNotNull(TEXT("an imp"), First))
+	{
+		return false;
+	}
+	Kill(First);
+
+	ACataclysmMinion* Replacement = Newest(Skill);
+	if (!TestNotNull(TEXT("the dead imp was replaced"), Replacement))
+	{
+		return false;
+	}
+	TestTrue(TEXT("by a new minion, not the body"), Replacement != First);
+	TestEqual(TEXT("which the skill counts as its one living minion"),
+			  Skill->LivingMinionCount(), 1);
+	TestTrue(TEXT("standing where the dead one fell"),
+			 FVector::Dist(Replacement->GetActorLocation(), Where) < 1.0f);
+	TestTrue(TEXT("made by the same summon skill"),
+			 Replacement->SummonedBy.Get() == Skill);
+	TestEqual(TEXT("of the skill's own kind"), Replacement->TypeName,
+			  FString(TEXT("Imp")));
+
+	// INSIDE THE TEN SECONDS: not replaced.
+	Kill(Replacement);
+	TestEqual(TEXT("a second death inside ten seconds is not replaced"),
+			  Skill->LivingMinionCount(), 0);
+
+	// AFTER THEM: replaced again.
+	CataclysmTestWorld::RunClock(World, 10.1f);
+	ACataclysmMinion* Third = SummonAt(Skill, Where);
+	if (!TestNotNull(TEXT("another imp"), Third))
+	{
+		return false;
+	}
+	Kill(Third);
+	TestEqual(TEXT("after ten seconds a death is replaced again"),
+			  Skill->LivingMinionCount(), 1);
+
+	// AND A SUMMONER WITHOUT THE KEYSTONE: nothing.
+	FScopedCaster Plain(World, FVector(0, 10 * M, 0));
+	UCataclysmSummonSkill* PlainSkill = GrantSummon(Plain);
+	ACataclysmMinion* PlainImp = SummonAt(PlainSkill, FVector(0, 12 * M, 0));
+	if (!TestNotNull(TEXT("a plain summoner's imp"), PlainImp))
+	{
+		return false;
+	}
+	Kill(PlainImp);
+	TestEqual(TEXT("without the keystone a death is not replaced"),
+			  PlainSkill->LivingMinionCount(), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRekindledTest,
+	"Cataclysm.MinionDeath.RekindledReplacesAnExplodedMinionButNotACapEviction",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_keystone_b_kC` Rekindled, its stat granted by hand. Issue #1515.
+ *
+ * "When a minion explodes a new minion is summoned where it stood, no more than
+ * once every 5 seconds."
+ *
+ * THE CAP'S EVICTION FIRST, while the clock is ready, so a replacement there
+ * could not be hidden by the wait: ruled 2026-09-23, an eviction is the summon's
+ * own price for a slot and is not replaced. THEN AN EXPLOSION ON DEATH, which
+ * is, and which spends the clock.
+ */
+bool FCataclysmRekindledTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+	using namespace CataclysmReplacementTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Skill = GrantSummon(Summoner);
+	if (!TestNotNull(TEXT("a summon skill"), Skill))
+	{
+		return false;
+	}
+	GiveStats(Summoner, {{TEXT("minion_explodes_on_death"),
+						  ECataclysmStatBucket::Flat, 1.0f},
+						 {UCataclysmSummonSkill::ReplacedOnExplosionStat,
+						  ECataclysmStatBucket::Flat, 5.0f}});
+
+	// THE CAP'S EVICTION: three, then a fourth that explodes the oldest.
+	ACataclysmMinion* Oldest = SummonAt(Skill, FVector(3 * M, 0, 0));
+	SummonAt(Skill, FVector(3 * M, 1 * M, 0));
+	SummonAt(Skill, FVector(3 * M, 2 * M, 0));
+	SummonAt(Skill, FVector(3 * M, 3 * M, 0));
+	TestFalse(TEXT("the fourth summon exploded the oldest"), IsValid(Oldest));
+	TestEqual(TEXT("and no replacement took the count above three"),
+			  Skill->LivingMinionCount(), 3);
+	TestTrue(TEXT("nor spent Rekindled's clock"),
+			 Summoner.AbilitySystem->MayReplaceMinion(/*bForExplosion=*/true));
+
+	// AN EXPLOSION ON DEATH: replaced where it stood.
+	const FVector Where(8 * M, 0, 0);
+	ACataclysmMinion* Bursting = Newest(Skill);
+	if (!TestNotNull(TEXT("an imp to lose"), Bursting))
+	{
+		return false;
+	}
+	Bursting->SetActorLocation(Where);
+	Kill(Bursting);
+	TestFalse(TEXT("the imp exploded on its death"), IsValid(Bursting));
+	TestEqual(TEXT("and was replaced, keeping three"), Skill->LivingMinionCount(),
+			  3);
+	ACataclysmMinion* Replacement = Newest(Skill);
+	TestTrue(TEXT("where it stood"),
+			 Replacement
+				 && FVector::Dist(Replacement->GetActorLocation(), Where) < 1.0f);
+	TestFalse(TEXT("which spent Rekindled's clock"),
+			  Summoner.AbilitySystem->MayReplaceMinion(/*bForExplosion=*/true));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOneLossOneReplacementTest,
+	"Cataclysm.MinionDeath.ALossIsReplacedOnceAndAThrallAtTheCapIsNotReplaced",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Both keystones held, and a thrall. Issue #1515.
+ *
+ * ONE LOSS, ONE REPLACEMENT, ruled 2026-09-23: a minion that dies and explodes
+ * in one event is replaced once, Press-Ganged first, and only Press-Ganged's
+ * clock is spent.
+ *
+ * A THRALL IS A MINION FOR PRESS-GANGED, and is replaced by the summon skill's
+ * kind where it fell. AT THE CAP a replacement is not made and its clock is
+ * not spent, ruled the same day.
+ */
+bool FCataclysmOneLossOneReplacementTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+	using namespace CataclysmReplacementTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Skill = GrantSummon(Summoner);
+	if (!TestNotNull(TEXT("a summon skill"), Skill))
+	{
+		return false;
+	}
+	GiveStats(Summoner, {{TEXT("minion_explodes_on_death"),
+						  ECataclysmStatBucket::Flat, 1.0f},
+						 {UCataclysmSummonSkill::ReplacedOnDeathStat,
+						  ECataclysmStatBucket::Flat, 10.0f},
+						 {UCataclysmSummonSkill::ReplacedOnExplosionStat,
+						  ECataclysmStatBucket::Flat, 5.0f}});
+
+	// ONE IMP THAT DIES AND EXPLODES: one replacement.
+	ACataclysmMinion* Imp = SummonAt(Skill, FVector(4 * M, 0, 0));
+	if (!TestNotNull(TEXT("an imp"), Imp))
+	{
+		return false;
+	}
+	Kill(Imp);
+	TestFalse(TEXT("it exploded on its death"), IsValid(Imp));
+	TestEqual(TEXT("and was replaced once, not twice"), Skill->LivingMinionCount(),
+			  1);
+	TestFalse(TEXT("by Press-Ganged, whose clock is spent"),
+			  Summoner.AbilitySystem->MayReplaceMinion(/*bForExplosion=*/false));
+	TestTrue(TEXT("while Rekindled's is not"),
+			 Summoner.AbilitySystem->MayReplaceMinion(/*bForExplosion=*/true));
+
+	// A THRALL WITH ROOM: replaced by an imp where it fell.
+	CataclysmTestWorld::RunClock(World, 10.1f);
+	const FVector Where(9 * M, 0, 0);
+	FScopedCreature Thrall(World, Where);
+	if (!TestTrue(TEXT("an enemy is taken as a thrall"),
+			UCataclysmCommand::Subjugate(Summoner.Actor, Thrall.Actor)))
+	{
+		return false;
+	}
+	const int32 BeforeThrall = Skill->LivingMinionCount();
+	Thrall.SetHealthTo(0.0f);
+	TestEqual(TEXT("the dead thrall is replaced by one more imp"),
+			  Skill->LivingMinionCount(), BeforeThrall + 1);
+	ACataclysmMinion* ForTheThrall = Newest(Skill);
+	TestTrue(TEXT("standing where the thrall fell"),
+			 ForTheThrall
+				 && FVector::Dist(ForTheThrall->GetActorLocation(), Where) < 1.0f);
+
+	// A THRALL AT THE CAP: not replaced, and the clock not spent.
+	CataclysmTestWorld::RunClock(World, 10.1f);
+	while (Skill->LivingMinionCount() < 3)
+	{
+		SummonAt(Skill, FVector(6 * M, Skill->LivingMinionCount() * M, 0));
+	}
+	FScopedCreature Second(World, FVector(12 * M, 0, 0));
+	if (!TestTrue(TEXT("a second thrall is taken"),
+			UCataclysmCommand::Subjugate(Summoner.Actor, Second.Actor)))
+	{
+		return false;
+	}
+	Second.SetHealthTo(0.0f);
+	TestEqual(TEXT("at the cap a dead thrall is not replaced"),
+			  Skill->LivingMinionCount(), 3);
+	TestTrue(TEXT("and Press-Ganged's clock is not spent"),
+			 Summoner.AbilitySystem->MayReplaceMinion(/*bForExplosion=*/false));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeadMinionFreesItsPlaceTest,
+	"Cataclysm.MinionDeath.ADeadMinionNoLongerHoldsAPlaceUnderTheSummonCap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1957. A dead minion's body stays in the level until its lifespan ends,
+ * and until this change it went on counting toward the cap: a summon at the cap
+ * then exploded the oldest minion, alive, while the corpse kept its place.
+ *
+ * THREE IMPS, THE YOUNGEST KILLED, with no keystone and no explosion, so its
+ * body stays. The skill counts two, and a summon takes the free place without
+ * touching the oldest.
+ */
+bool FCataclysmDeadMinionFreesItsPlaceTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+	using namespace CataclysmReplacementTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Skill = GrantSummon(Summoner);
+	if (!TestNotNull(TEXT("a summon skill"), Skill))
+	{
+		return false;
+	}
+
+	ACataclysmMinion* Oldest = SummonAt(Skill, FVector(3 * M, 0, 0));
+	SummonAt(Skill, FVector(3 * M, 1 * M, 0));
+	ACataclysmMinion* Youngest = SummonAt(Skill, FVector(3 * M, 2 * M, 0));
+	if (!TestNotNull(TEXT("three imps"), Youngest))
+	{
+		return false;
+	}
+	Kill(Youngest);
+	// FOR HALF A SECOND, since issue #1528, which is long enough for this to
+	// read a dead body the cap must not count.
+	TestTrue(TEXT("the youngest's body stays in the level"), IsValid(Youngest));
+	TestEqual(TEXT("but the skill counts two living"), Skill->LivingMinionCount(),
+			  2);
+
+	SummonAt(Skill, FVector(3 * M, 3 * M, 0));
+	TestTrue(TEXT("a summon takes the free place and the oldest lives"),
+			 IsValid(Oldest) && !UCataclysmSkillEffects::IsDead(Oldest));
+	TestEqual(TEXT("with three living"), Skill->LivingMinionCount(), 3);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Shared Ruin, the Third Pact's option 2. Issue #1515.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmSharedRuinTest
+{
+	/** Give a summoner Shared Ruin's two figures, as its rows will. */
+	void HoldSharedRuin(CataclysmCommandTest::FScopedCaster& Who, bool bAndBursts)
+	{
+		using namespace CataclysmMinionDeathTest;
+		TArray<FStatLine> Lines = {
+			{ACataclysmMinion::DeathBlastPercentOfMaximumHealthStat,
+			 ECataclysmStatBucket::Flat, 20.0f},
+			{ACataclysmMinion::DeathBlastRadiusMetresStat, ECataclysmStatBucket::Flat, 4.0f}};
+		if (bAndBursts)
+		{
+			Lines.Add({TEXT("minion_explodes_on_death"), ECataclysmStatBucket::Flat, 1.0f});
+		}
+		GiveStats(Who, Lines);
+	}
+
+	/** What a creature's maximum health stands at. */
+	float MaximumHealthOf(const AActor* Who)
+	{
+		const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Who);
+		return System
+			? System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute())
+			: 0.0f;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSharedRuinBlastTest,
+	"Cataclysm.MinionDeath.SharedRuinDealsAFifthOfTheDyingImpsMaximumHealthWithinFourMetres",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "When a minion of yours dies, everything within 4 metres takes damage equal
+ * to 20% of that minion's maximum health." A target three metres from the imp
+ * loses exactly that; one five metres away loses nothing; and the imp, which
+ * does not explode, leaves its body, so what hurt the first is not an explosion.
+ */
+bool FCataclysmSharedRuinBlastTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+	using namespace CataclysmSharedRuinTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	HoldSharedRuin(Summoner, /*bAndBursts=*/false);
+	FScopedCaster Inside(World, FVector(13 * M, 0, 0));
+	FScopedCaster Outside(World, FVector(15 * M, 0, 0));
+
+	ACataclysmMinion* Imp = SummonTold(Summoner, FVector(10 * M, 0, 0));
+	if (!TestNotNull(TEXT("an imp"), Imp))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	const float Maximum = MaximumHealthOf(Imp);
+	if (!TestTrue(FString::Printf(TEXT("the imp has a maximum health: %.2f"), Maximum),
+				  Maximum > 0.0f))
+	{
+		return false;
+	}
+	const float InsideBefore = HealthOf(Inside);
+	const float OutsideBefore = HealthOf(Outside);
+
+	Kill(Imp);
+
+	TestEqual(TEXT("a target three metres away loses a fifth of the imp's maximum health"),
+			  InsideBefore - HealthOf(Inside), Maximum * 0.2f, 0.01f);
+	TestEqual(TEXT("one five metres away loses nothing"),
+			  OutsideBefore - HealthOf(Outside), 0.0f, 0.01f);
+	// A QUIET DEATH LEAVES THE BODY FOR HALF A SECOND (issue #1528) and an
+	// explosion destroys it at once, so this still tells the two apart.
+	TestTrue(TEXT("and the imp left its body, so that was not an explosion"),
+			 IsValid(Imp));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSharedRuinBesideBurstsTest,
+	"Cataclysm.MinionDeath.SharedRuinIsASecondBlastBesideEveryOneBursts",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruled 2026-09-23 under the owner's delegation: with Every One Bursts held a
+ * death is both the explosion and Shared Ruin, each at its own figures. Two
+ * summoners fifty metres apart both hold the explosion flag and only the second
+ * holds Shared Ruin; a target one metre from each imp is inside both radii. The
+ * second loses exactly a fifth of the imp's maximum health more than the first.
+ */
+bool FCataclysmSharedRuinBesideBurstsTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+	using namespace CataclysmSharedRuinTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedCaster BurstsOnly(World, FVector::ZeroVector);
+	GiveStats(BurstsOnly,
+		{{TEXT("minion_explodes_on_death"), ECataclysmStatBucket::Flat, 1.0f}});
+	FScopedCaster Both(World, FVector(0, 50 * M, 0));
+	HoldSharedRuin(Both, /*bAndBursts=*/true);
+	FScopedCaster BurstsOnlyTarget(World, FVector(11 * M, 0, 0));
+	FScopedCaster BothTarget(World, FVector(11 * M, 50 * M, 0));
+
+	ACataclysmMinion* BurstsOnlyImp = SummonTold(BurstsOnly, FVector(10 * M, 0, 0));
+	ACataclysmMinion* BothImp = SummonTold(Both, FVector(10 * M, 50 * M, 0));
+	if (!TestNotNull(TEXT("an imp"), BurstsOnlyImp)
+		|| !TestNotNull(TEXT("and another"), BothImp))
+	{
+		return false;
+	}
+	const float Maximum = MaximumHealthOf(BothImp);
+	const float BurstsOnlyBefore = HealthOf(BurstsOnlyTarget);
+	const float BothBefore = HealthOf(BothTarget);
+
+	Kill(BurstsOnlyImp);
+	Kill(BothImp);
+
+	const float BurstsOnlyLost = BurstsOnlyBefore - HealthOf(BurstsOnlyTarget);
+	const float BothLost = BothBefore - HealthOf(BothTarget);
+	if (!TestTrue(FString::Printf(TEXT("the explosion alone hurt: %.2f"), BurstsOnlyLost),
+				  BurstsOnlyLost > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and with Shared Ruin as well, a fifth of the imp's maximum more"),
+			  BothLost - BurstsOnlyLost, Maximum * 0.2f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSharedRuinThrallTest,
+	"Cataclysm.MinionDeath.ADyingThrallsSharedRuinIsDealtAtItsOwnMaximumHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A thrall is a minion for Shared Ruin: its death passes through the same site
+ * as an imp's. A monster two metres from a dying thrall of 1,000 health loses
+ * something and no more than 200 -- its own defences may take part, which is
+ * why this is a bound and the imp case above is the exact one -- and a monster
+ * five metres away loses nothing.
+ */
+bool FCataclysmSharedRuinThrallTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmSharedRuinTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	HoldSharedRuin(Summoner, /*bAndBursts=*/false);
+	FScopedCreature Thrall(World, FVector(10 * M, 0, 0));
+	if (!TestTrue(TEXT("an enemy is taken as a thrall"),
+			UCataclysmCommand::Subjugate(Summoner.Actor, Thrall.Actor)))
+	{
+		return false;
+	}
+	FScopedCreature Near(World, FVector(12 * M, 0, 0));
+	FScopedCreature Far(World, FVector(15 * M, 0, 0));
+	const float Maximum = MaximumHealthOf(Thrall.Actor);
+	TestEqual(TEXT("the thrall's maximum health is the 1,000 it was made with"),
+			  Maximum, 1000.0f, 0.01f);
+	const float NearBefore = Near.Health();
+	const float FarBefore = Far.Health();
+
+	Thrall.SetHealthTo(0.0f);
+
+	const float NearLost = NearBefore - Near.Health();
+	TestTrue(FString::Printf(TEXT("a monster two metres away loses something: %.2f"),
+							 NearLost),
+			 NearLost > 0.0f);
+	TestTrue(FString::Printf(TEXT("and no more than a fifth of 1,000: %.2f"), NearLost),
+			 NearLost <= Maximum * 0.2f + 0.01f);
+	TestEqual(TEXT("one five metres away loses nothing"), FarBefore - Far.Health(), 0.0f,
+			  0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShippedDeployableCapsTest,
+	"Cataclysm.Command.TheShippedDeployablesStateCapsAndABonusRaisesTheBoltTurrets",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1833, the deployable cap, ruled 2026-09-25 under the owner's
+ * delegation: each deployable skill holds what its timing already allows, so
+ * nothing changes at base. Read from the SHIPPED rows in `DT_WeaponSkills`:
+ * Bolt Turret states 1, Ballista 2 and Iron Fortress 5, one set.
+ *
+ * Then the Bolt Turret row as shipped, with its cooldown turned off so every
+ * activation fires: three activations leave one turret at its cap, and three
+ * with a cap bonus of 3 -- what "Add +1-3 to your max deployable count" grants
+ * at the top of its range, which the test beside the enchantment rows shows
+ * reaching a deployable's tags.
+ */
+bool FCataclysmShippedDeployableCapsTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	const UDataTable* Skills = UCataclysmWeaponSkills::LoadGeneratedTable();
+	if (!TestNotNull(TEXT("the weapon skill table"), Skills))
+	{
+		return false;
+	}
+	const auto ParamsOf = [Skills](const TCHAR* Row)
+	{
+		const FCataclysmWeaponSkillRow* Found =
+			Skills->FindRow<FCataclysmWeaponSkillRow>(FName(Row), TEXT("caps"), false);
+		return Found ? Found->ShapeParams : FString();
+	};
+	const FString Turret = ParamsOf(TEXT("War_Crossbow_Special"));
+	const TCHAR* const Stale =
+		TEXT("If not, DT_WeaponSkills may be older than the rows: run "
+			 "tools/generate_datatable_assets.py");
+	TestEqual(FString::Printf(TEXT("Bolt Turret states a cap of 1. %s"), Stale),
+		UCataclysmSkillShapes::ParseParams(Turret).MaxActive, 1);
+	TestEqual(TEXT("Ballista states 2"),
+		UCataclysmSkillShapes::ParseParams(ParamsOf(TEXT("War_Spear_Special"))).MaxActive, 2);
+	TestEqual(TEXT("Iron Fortress states 5, one set of two ballistas and three spike traps"),
+		UCataclysmSkillShapes::ParseParams(ParamsOf(TEXT("War_Spear_Ultimate"))).MaxActive, 5);
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const auto TurretsAfterThree = [&](FScopedCaster& Caster) -> int32
+	{
+		UCataclysmDeployableSkill* Skill = GrantSkill<UCataclysmDeployableSkill>(
+			Caster, ECataclysmAbilitySlot::Special, Turret, TEXT("Bolt Turret"),
+			TEXT("Type.Deployable, Type.Minion"));
+		if (!Skill)
+		{
+			return -1;
+		}
+		Skill->CooldownOverride = 0.0f;
+		for (int32 Attempt = 0; Attempt < 3; ++Attempt)
+		{
+			if (!Activate(Caster, Skill))
+			{
+				return -1;
+			}
+		}
+		return UCataclysmCommand::ThingsCommandedBy(Caster.Actor).Num();
+	};
+	FScopedCaster Plain(World, FVector::ZeroVector);
+	TestEqual(TEXT("three activations leave one turret at the shipped cap"),
+		TurretsAfterThree(Plain), 1);
+	FScopedCaster Raised(World, FVector(0, 30 * M, 0));
+	Raised.Set(UCataclysmCombatAttributeSet::GetMinionCapBonusAttribute(), 3.0f);
+	TestEqual(TEXT("and three with a cap bonus of 3"), TurretsAfterThree(Raised), 3);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVeilSparesItsOwnTest,
+	"Cataclysm.Command.AMinionTurningOnItsMaddenedSummonerIsNotDrawnToAFellowMinion",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A minion deciding against its own summoner is drawn to nobody: not to itself, not to a fellow minion. Until Madness
+ * could fall on a summoner, its own minions never chose it; a maddened one is their nearest hostile. Found for Insanity
+ * Bursts' "attack allies", 2026-09-26.
+ *
+ * THE CREATURE HUNTING THE SUMMONER IS THE CONTROL, before and after: it is still drawn to the minion drawing most.
+ */
+bool FCataclysmVeilSparesItsOwnTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehindTheVeilTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCreature Summoner(World, FVector::ZeroVector, ECataclysmTeam::Players);
+	FScopedCreature Hunting(World, FVector(8 * M, 0, 0));
+
+	ACataclysmMinion* One =
+		SummonOfType(*this, Summoner.Actor, FVector(0, 6 * M, 0), DrawsMost);
+	ACataclysmMinion* Two =
+		SummonOfType(*this, Summoner.Actor, FVector(0, 7 * M, 0), DrawsSome);
+	ACataclysmMinion* Three =
+		SummonOfType(*this, Summoner.Actor, FVector(0, 8 * M, 0), DrawsLittle);
+	ON_SCOPE_EXIT { if (IsValid(One)) { One->Destroy(); } };
+	ON_SCOPE_EXIT { if (IsValid(Two)) { Two->Destroy(); } };
+	ON_SCOPE_EXIT { if (IsValid(Three)) { Three->Destroy(); } };
+	if (!One || !Two || !Three)
+	{
+		return false;
+	}
+	GiveBehindTheVeil(Summoner.Actor, /*Metres=*/10.0f, /*Minimum=*/3.0f);
+	if (!TestTrue(TEXT("set-up: a creature hunting the summoner is drawn to the minion drawing most"),
+			UCataclysmCommand::MinionDrawingEnemyFrom(Summoner.Actor, Hunting.Actor) == One))
+	{
+		return false;
+	}
+
+	// THE SUMMONER MADDENED, so its own minions are hostile to it.
+	UCataclysmSkillEffects::ApplyTagForDuration(Summoner.Actor, Summoner.Actor, UCataclysmTeams::MadnessTag(), 10.0f);
+	if (!TestTrue(TEXT("set-up: the summoner is maddened"), UCataclysmTeams::IsMaddened(Summoner.Actor)))
+	{
+		return false;
+	}
+	TestNull(TEXT("a minion turning on its summoner is drawn to no fellow minion"),
+		UCataclysmCommand::MinionDrawingEnemyFrom(Summoner.Actor, Two));
+	TestNull(TEXT("nor to itself"),
+		UCataclysmCommand::MinionDrawingEnemyFrom(Summoner.Actor, One));
+	TestTrue(TEXT("and the creature hunting it still is"),
+		UCataclysmCommand::MinionDrawingEnemyFrom(Summoner.Actor, Hunting.Actor) == One);
+	return true;
+}
+
+// ==========================================================================
+// The Fervour a commanded thing holds back. Issues #1160 and #1934.
+// ==========================================================================
+
+namespace CataclysmFervourReserveTest
+{
+	using namespace CataclysmCommandTest;
+
+	/** Summon Imp's shape, with the reserve the shipped row states. */
+	const TCHAR* const ImpRow =
+		TEXT("Count=1; Duration=20; Radius=3; Minions=Imp:1; FervourReserve=10");
+
+	/**
+	 * Summon Imp in the Special slot, which costs no Fervour, with its cooldown
+	 * off, so every cast is decided by the reserve and nothing else.
+	 */
+	static UCataclysmSummonSkill* GrantImps(FScopedCaster& Caster,
+											const TCHAR* Row = ImpRow)
+	{
+		UCataclysmSummonSkill* Skill = GrantSkill<UCataclysmSummonSkill>(
+			Caster, ECataclysmAbilitySlot::Special, Row, TEXT("Summon Imp"));
+		if (Skill)
+		{
+			Skill->CooldownOverride = 0.0f;
+		}
+		return Skill;
+	}
+
+	static float SpendableOf(const FScopedCaster& Caster)
+	{
+		const UCataclysmClassResourceAttributeSet* Resource =
+			Caster.AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>();
+		return Resource ? Resource->MaximumClassResourceAsked() : -1.0f;
+	}
+
+	static float FervourIn(const FScopedCaster& Caster)
+	{
+		return Caster.AbilitySystem->GetNumericAttribute(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute());
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAnImpReservesItsRowsFervourTest,
+	"Cataclysm.FervourReserve.AnImpReservesTenAndTheSpendableFervourDropsAtOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Each imp reserves 10 Fervour while it is out." Issue #1934. The reserve is
+ * taken off what can be spent the moment the imp appears, and Fervour above
+ * the new limit is lost rather than held for later, ruled 2026-09-30.
+ */
+bool FCataclysmAnImpReservesItsRowsFervourTest::RunTest(const FString&)
+{
+	using namespace CataclysmFervourReserveTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Caster(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Skill = GrantImps(Caster);
+	if (!Skill)
+	{
+		AddError(TEXT("Could not grant Summon Imp."));
+		return false;
+	}
+
+	TestEqual(TEXT("nothing out reserves nothing"),
+		UCataclysmCommand::ReservedFervourOf(Caster.Actor), 0.0f, 0.001f);
+	TestEqual(TEXT("so the whole pool can be spent"), SpendableOf(Caster),
+		RitualistPool, 0.001f);
+
+	TestTrue(TEXT("the summon fires"), Activate(Caster, Skill));
+	if (!TestEqual(TEXT("and one imp is out"),
+			UCataclysmCommand::ThingsCommandedBy(Caster.Actor).Num(), 1))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the imp reserves 10"),
+		UCataclysmCommand::ReservedFervourOf(Caster.Actor), 10.0f, 0.001f);
+	TestEqual(TEXT("so 140 of 150 can be spent"), SpendableOf(Caster),
+		RitualistPool - 10.0f, 0.001f);
+	TestEqual(TEXT("and a full pool is cut to 140 at once"), FervourIn(Caster),
+		RitualistPool - 10.0f, 0.001f);
+	TestEqual(TEXT("the maximum itself is unchanged"),
+		Caster.AbilitySystem->MaximumClassResource(), RitualistPool, 0.001f);
+
+	// THE BAR READS THE SAME TOTAL. What the overlay draws as the reserved
+	// section is this figure, and the words beside it say how much.
+	TestEqual(TEXT("the bar's reserved section is 10"),
+		UCataclysmCombatOverlay::ReservedFervourOf(Caster.Actor), 10.0f, 0.001f);
+	TestEqual(TEXT("and it is labelled"),
+		UCataclysmCombatOverlay::ReservedTextFor(10.0f), FString(TEXT("10 reserved")));
+	TestEqual(TEXT("and an empty reserve has no label"),
+		UCataclysmCombatOverlay::ReservedTextFor(0.0f), FString());
+
+	// THE EXCESS IS LOST, NOT RETURNED. When the imp goes, the limit rises
+	// back to 150 and the Fervour stays where the clamp left it.
+	for (AActor* Out : UCataclysmCommand::ThingsCommandedBy(Caster.Actor))
+	{
+		Out->Destroy();
+	}
+	TestEqual(TEXT("with the imp gone the reserve is freed"), SpendableOf(Caster),
+		RitualistPool, 0.001f);
+	TestEqual(TEXT("and the 10 cut off is not given back"), FervourIn(Caster),
+		RitualistPool - 10.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAFullPoolRefusesAnImpTest,
+	"Cataclysm.FervourReserve.APoolThatCannotHoldAnotherImpRefusesIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Both limits apply, ruled for issue #1934: a summon that states no cap is
+ * still refused once the pool cannot hold another reserve. A pool of 25 holds
+ * two imps at 10 and not a third.
+ */
+bool FCataclysmAFullPoolRefusesAnImpTest::RunTest(const FString&)
+{
+	using namespace CataclysmFervourReserveTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Caster(World, FVector::ZeroVector, /*Pool=*/25.0f);
+	UCataclysmSummonSkill* Skill = GrantImps(Caster);
+	if (!Skill)
+	{
+		AddError(TEXT("Could not grant Summon Imp."));
+		return false;
+	}
+
+	for (int32 Cast = 0; Cast < 3; ++Cast)
+	{
+		Activate(Caster, Skill);
+	}
+	TestEqual(TEXT("three presses in a pool of 25 leave two imps"),
+		UCataclysmCommand::ThingsCommandedBy(Caster.Actor).Num(), 2);
+	TestEqual(TEXT("holding 20"),
+		UCataclysmCommand::ReservedFervourOf(Caster.Actor), 20.0f, 0.001f);
+
+	// THE CONTROL: THE SAME PRESSES WITH ROOM FOR A THIRD. Without it, two
+	// imps would also be the answer if the third press never fired.
+	FScopedCaster Roomy(World, FVector(0, 30 * M, 0), /*Pool=*/30.0f);
+	UCataclysmSummonSkill* RoomySkill = GrantImps(Roomy);
+	for (int32 Cast = 0; RoomySkill && Cast < 3; ++Cast)
+	{
+		Activate(Roomy, RoomySkill);
+	}
+	TestEqual(TEXT("and a pool of 30 takes the third"),
+		UCataclysmCommand::ThingsCommandedBy(Roomy.Actor).Num(), 3);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAnEvictedImpFreesItsReserveTest,
+	"Cataclysm.FervourReserve.AtTheCapTheOldestImpsReserveIsFreedBeforeTheCheck",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * At its own cap, Summon Imp removes the oldest imp, and that imp's reserve is
+ * counted as freed before the new one is checked, ruled 2026-09-30. A pool of
+ * 30 with three imps out is full; the fourth press still replaces the oldest.
+ */
+bool FCataclysmAnEvictedImpFreesItsReserveTest::RunTest(const FString&)
+{
+	using namespace CataclysmFervourReserveTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Caster(World, FVector::ZeroVector, /*Pool=*/30.0f);
+	UCataclysmSummonSkill* Skill = GrantImps(Caster,
+		TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Minions=Imp:1; "
+			 "FervourReserve=10"));
+	if (!Skill)
+	{
+		AddError(TEXT("Could not grant Summon Imp."));
+		return false;
+	}
+
+	Activate(Caster, Skill);
+	const TArray<AActor*> First = UCataclysmCommand::ThingsCommandedBy(Caster.Actor);
+	if (!TestEqual(TEXT("the first press makes one imp"), First.Num(), 1))
+	{
+		return false;
+	}
+	const TWeakObjectPtr<AActor> Oldest = First[0];
+
+	Activate(Caster, Skill);
+	Activate(Caster, Skill);
+	TestEqual(TEXT("three imps fill the pool of 30"),
+		UCataclysmCommand::ReservedFervourOf(Caster.Actor), 30.0f, 0.001f);
+
+	Activate(Caster, Skill);
+	TestFalse(TEXT("the fourth press removes the oldest imp"),
+		Oldest.IsValid() && !Oldest->IsActorBeingDestroyed());
+	TestEqual(TEXT("and three imps are still out"),
+		UCataclysmCommand::ThingsCommandedBy(Caster.Actor).Num(), 3);
+	TestEqual(TEXT("reserving the same 30"),
+		UCataclysmCommand::ReservedFervourOf(Caster.Actor), 30.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmImpsCountTowardTheThrallCapTest,
+	"Cataclysm.FervourReserve.ImpsAndThrallsShareOnePool",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * One total decides both, ruled for issue #1160: an imp out leaves less room
+ * for a thrall. A pool of 40 holds a thrall reserving 30 beside one imp and not
+ * beside two.
+ */
+bool FCataclysmImpsCountTowardTheThrallCapTest::RunTest(const FString&)
+{
+	using namespace CataclysmFervourReserveTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Caster(World, FVector::ZeroVector, /*Pool=*/40.0f);
+	UCataclysmSummonSkill* Skill = GrantImps(Caster);
+	if (!Skill)
+	{
+		AddError(TEXT("Could not grant Summon Imp."));
+		return false;
+	}
+
+	Activate(Caster, Skill);
+	TestTrue(TEXT("beside one imp a thrall fits"),
+		UCataclysmCommand::HasRoomForAnotherThrall(Caster.Actor, 30.0f));
+
+	Activate(Caster, Skill);
+	TestEqual(TEXT("two imps are out"),
+		UCataclysmCommand::ThingsCommandedBy(Caster.Actor).Num(), 2);
+	TestFalse(TEXT("and beside two a thrall no longer fits"),
+		UCataclysmCommand::HasRoomForAnotherThrall(Caster.Actor, 30.0f));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmADirectMinionReservesNothingTest,
+	"Cataclysm.FervourReserve.AMinionMadeWithoutASkillReservesNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Risen imps and minions spawned directly by other systems reserve nothing,
+ * ruled 2026-09-30: no skill stated a reserve for them.
+ */
+bool FCataclysmADirectMinionReservesNothingTest::RunTest(const FString&)
+{
+	using namespace CataclysmFervourReserveTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Caster(World, FVector::ZeroVector);
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Caster.Actor, FVector(3 * M, 0, 0), /*Lifetime=*/20.0f, /*bBurns=*/true);
+	if (!Imp)
+	{
+		AddError(TEXT("Could not spawn the minion."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	TestEqual(TEXT("it is commanded"),
+		UCataclysmCommand::ThingsCommandedBy(Caster.Actor).Num(), 1);
+	TestEqual(TEXT("and reserves nothing"),
+		UCataclysmCommand::ReservedFervourOf(Caster.Actor), 0.0f, 0.001f);
+	TestEqual(TEXT("so the whole pool can be spent"), SpendableOf(Caster),
+		RitualistPool, 0.001f);
+	return true;
+}
+
+namespace CataclysmResummonTest
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+	using namespace CataclysmReplacementTest;
+
+	/** The waits `Who` has running now. */
+	int32 WaitsRunning(const FScopedCaster& Who)
+	{
+		int32 Running = 0;
+		const FTimerManager& Timers = Who.Actor->GetWorld()->GetTimerManager();
+		for (const FTimerHandle& Handle : Who.AbilitySystem->PendingResummons)
+		{
+			Running += Timers.IsTimerActive(Handle) ? 1 : 0;
+		}
+		return Running;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmResummonTest,
+	"Cataclysm.Resummon.ALostMinionIsSummonedAgainBesideItsSummonerAfterTheStatedSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "When a minion dies it automatically re-summons after 3-6 seconds". Issue
+ * #1833 group E part 4b. With 4 seconds of it: nothing at once, nothing at 3.9 s,
+ * and at 4.1 s one imp of the skill's kind beside the summoner, not where the
+ * lost one died.
+ */
+bool FCataclysmResummonTest::RunTest(const FString&)
+{
+	using namespace CataclysmResummonTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Skill = GrantSummon(Summoner);
+	if (!TestNotNull(TEXT("a summon skill"), Skill))
+	{
+		return false;
+	}
+	GiveStats(Summoner, {{UCataclysmSummonSkill::ResummonedAfterSecondsStat,
+						  ECataclysmStatBucket::Flat, 4.0f}});
+	TestTrue(TEXT("the stat is one the engine records"),
+		UCataclysmPlayerClassStats::StatsWithNoAttribute().Contains(
+			FString(UCataclysmSummonSkill::ResummonedAfterSecondsStat)));
+
+	const FVector Where(8 * M, 6 * M, 0);
+	ACataclysmMinion* First = SummonAt(Skill, Where);
+	if (!TestNotNull(TEXT("an imp"), First))
+	{
+		return false;
+	}
+	Kill(First);
+	TestEqual(TEXT("nothing replaces it at once"), Skill->LivingMinionCount(), 0);
+	TestEqual(TEXT("and one wait is running"), WaitsRunning(Summoner), 1);
+
+	CataclysmTestWorld::RunClock(World, 3.9f);
+	TestEqual(TEXT("at 3.9 seconds nothing has come back"), Skill->LivingMinionCount(), 0);
+
+	CataclysmTestWorld::RunClock(World, 0.2f);
+	ACataclysmMinion* Back = Newest(Skill);
+	if (!TestNotNull(TEXT("at 4.1 seconds a minion has come back"), Back))
+	{
+		return false;
+	}
+	TestEqual(TEXT("one, counted by its skill"), Skill->LivingMinionCount(), 1);
+	TestEqual(TEXT("of the skill's own kind"), Back->TypeName, FString(TEXT("Imp")));
+	TestTrue(TEXT("made by the same summon skill"), Back->SummonedBy.Get() == Skill);
+	TestTrue(TEXT("beside the summoner"),
+		FVector::Dist2D(Back->GetActorLocation(), Summoner.Actor->GetActorLocation())
+			< 2.0 * UCataclysmSummonSkill::ResummonDistanceCm);
+	TestTrue(TEXT("and not where the lost one died"),
+		FVector::Dist2D(Back->GetActorLocation(), Where) > 5 * M);
+	TestEqual(TEXT("and no wait is left running"), WaitsRunning(Summoner), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmResummonNeedsTheRowTest,
+	"Cataclysm.Resummon.WithoutTheRowALostMinionDoesNotComeBack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmResummonNeedsTheRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmResummonTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Skill = GrantSummon(Summoner);
+	ACataclysmMinion* First = SummonAt(Skill, FVector(5 * M, 0, 0));
+	if (!TestNotNull(TEXT("an imp"), First))
+	{
+		return false;
+	}
+	Kill(First);
+	TestEqual(TEXT("no wait is started"), Summoner.AbilitySystem->PendingResummons.Num(), 0);
+	CataclysmTestWorld::RunClock(World, 7.0f);
+	TestEqual(TEXT("and nothing has come back after 7 seconds"), Skill->LivingMinionCount(), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmResummonCapTest,
+	"Cataclysm.Resummon.NoRoomUnderTheCapWhenTheWaitEndsMeansNoMinionThenOrLater",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The cap of three is filled again during the wait: when the wait ends nothing
+ * comes back, and nothing does later when room opens. Cancelled, not put off.
+ */
+bool FCataclysmResummonCapTest::RunTest(const FString&)
+{
+	using namespace CataclysmResummonTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Skill = GrantSummon(Summoner);
+	if (!TestNotNull(TEXT("a summon skill"), Skill))
+	{
+		return false;
+	}
+	GiveStats(Summoner, {{UCataclysmSummonSkill::ResummonedAfterSecondsStat,
+						  ECataclysmStatBucket::Flat, 4.0f}});
+	ACataclysmMinion* Lost = SummonAt(Skill, FVector(5 * M, 0, 0));
+	SummonAt(Skill, FVector(5 * M, 2 * M, 0));
+	SummonAt(Skill, FVector(5 * M, 4 * M, 0));
+	if (!TestNotNull(TEXT("an imp to lose"), Lost)
+		|| !TestEqual(TEXT("set-up: three are held"), Skill->LivingMinionCount(), 3))
+	{
+		return false;
+	}
+	Kill(Lost);
+	TestEqual(TEXT("set-up: one wait is running"), WaitsRunning(Summoner), 1);
+	ACataclysmMinion* Filler = SummonAt(Skill, FVector(5 * M, 6 * M, 0));
+	if (!TestNotNull(TEXT("a summon fills the cap again"), Filler)
+		|| !TestEqual(TEXT("set-up: three are held again"), Skill->LivingMinionCount(), 3))
+	{
+		return false;
+	}
+
+	CataclysmTestWorld::RunClock(World, 4.1f);
+	TestEqual(TEXT("the wait ended with the cap full, so three are held, not four"),
+		Skill->LivingMinionCount(), 3);
+
+	// ROOM OPENS WITHOUT A DEATH, so no new wait begins: the filler is removed.
+	Filler->Destroy();
+	TestEqual(TEXT("set-up: room has opened and no wait is running"), WaitsRunning(Summoner), 0);
+	CataclysmTestWorld::RunClock(World, 6.0f);
+	TestEqual(TEXT("and the first loss does not come back later when room opens"),
+		Skill->LivingMinionCount(), 2);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmResummonOnlySummonedTest,
+	"Cataclysm.Resummon.OnlyASummonSkillsMinionComesBack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A minion no summon skill made -- which is what a risen imp and a deployable
+ * are -- starts no wait when it dies.
+ */
+bool FCataclysmResummonOnlySummonedTest::RunTest(const FString&)
+{
+	using namespace CataclysmResummonTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Skill = GrantSummon(Summoner);
+	GiveStats(Summoner, {{UCataclysmSummonSkill::ResummonedAfterSecondsStat,
+						  ECataclysmStatBucket::Flat, 4.0f}});
+	ACataclysmMinion* Raised = ACataclysmMinion::Spawn(
+		Summoner.Actor, FVector(5 * M, 0, 0), 20.0f, /*bBurns=*/false, TEXT("Imp"));
+	if (!TestNotNull(TEXT("a summon skill"), Skill) || !TestNotNull(TEXT("a minion no skill made"), Raised))
+	{
+		return false;
+	}
+	Kill(Raised);
+	TestEqual(TEXT("its death starts no wait"), Summoner.AbilitySystem->PendingResummons.Num(), 0);
+	CataclysmTestWorld::RunClock(World, 4.1f);
+	TestEqual(TEXT("and nothing is summoned"), Skill->LivingMinionCount(), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmResummonNotTwiceTest,
+	"Cataclysm.Resummon.AMinionReplacedAtOnceByPressGangedStartsNoWait",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** One loss gives one minion: Press-Ganged replaces at once, so no wait begins. */
+bool FCataclysmResummonNotTwiceTest::RunTest(const FString&)
+{
+	using namespace CataclysmResummonTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Skill = GrantSummon(Summoner);
+	if (!TestNotNull(TEXT("a summon skill"), Skill))
+	{
+		return false;
+	}
+	GiveStats(Summoner, {{UCataclysmSummonSkill::ReplacedOnDeathStat, ECataclysmStatBucket::Flat, 10.0f},
+						 {UCataclysmSummonSkill::ResummonedAfterSecondsStat, ECataclysmStatBucket::Flat, 4.0f}});
+	ACataclysmMinion* First = SummonAt(Skill, FVector(5 * M, 0, 0));
+	if (!TestNotNull(TEXT("an imp"), First))
+	{
+		return false;
+	}
+	Kill(First);
+	TestEqual(TEXT("Press-Ganged replaced it at once"), Skill->LivingMinionCount(), 1);
+	TestEqual(TEXT("so no wait is started"), Summoner.AbilitySystem->PendingResummons.Num(), 0);
+	CataclysmTestWorld::RunClock(World, 4.1f);
+	TestEqual(TEXT("and one minion is held after the wait would have ended, not two"),
+		Skill->LivingMinionCount(), 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmResummonDeathClearsTest,
+	"Cataclysm.Resummon.ASummonersDeathEndsItsWaits",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A summoner that dies during the wait gets nothing back. A CREATURE AS THE
+ * SUMMONER, because a death is handled for a character and the bare caster the
+ * other cases use is not one.
+ */
+bool FCataclysmResummonDeathClearsTest::RunTest(const FString&)
+{
+	using namespace CataclysmResummonTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmEnemyCharacter* Summoner = World->SpawnActor<ACataclysmEnemyCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	UCataclysmAbilitySystemComponent* Theirs = Summoner
+		? Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Summoner)) : nullptr;
+	if (!TestNotNull(TEXT("a summoner"), Theirs))
+	{
+		return false;
+	}
+	Summoner->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+	Summoner->SetHealth(100000.0f);
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.FindOrAdd(FName(UCataclysmSummonSkill::ResummonedAfterSecondsStat)).Base = 4.0f;
+	Theirs->SetStatInputs(MoveTemp(Stats));
+
+	const FGameplayAbilitySpecHandle Handle = Theirs->GiveAbilityInSlot(
+		UCataclysmSummonSkill::StaticClass(), ECataclysmAbilitySlot::Special, /*Level=*/100, Summoner);
+	FGameplayAbilitySpec* Spec = Theirs->FindAbilitySpecFromHandle(Handle);
+	UCataclysmSummonSkill* Skill = Spec ? Cast<UCataclysmSummonSkill>(Spec->GetPrimaryInstance()) : nullptr;
+	if (!TestNotNull(TEXT("a summon skill"), Skill))
+	{
+		return false;
+	}
+	Skill->SkillName = TEXT("Summon Imp");
+	Skill->Params = UCataclysmSkillShapes::ParseParams(
+		TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Minions=Imp:1"));
+
+	ACataclysmMinion* First = SummonAt(Skill, FVector(5 * M, 0, 0));
+	if (!TestNotNull(TEXT("an imp"), First))
+	{
+		return false;
+	}
+	Kill(First);
+	if (!TestEqual(TEXT("set-up: one wait is started"), Theirs->PendingResummons.Num(), 1))
+	{
+		return false;
+	}
+
+	Theirs->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+	TestTrue(TEXT("set-up: the summoner died"), UCataclysmSkillEffects::IsDead(Summoner));
+	TestEqual(TEXT("its death ended the wait"), Theirs->PendingResummons.Num(), 0);
+	TestNull(TEXT("and a dead summoner is given nothing even when asked"),
+		UCataclysmSummonSkill::ResummonNow(Summoner, Skill));
+	return true;
+}
+
+// ==========================================================================
+// Compel orders no stunned, knocked-down or feared creature. Issue #2560.
+// ==========================================================================
+
+namespace CataclysmCompelHeldTest
+{
+	/** What is put on the creature called the held one. */
+	enum class ECompelHeldBy : uint8
+	{
+		Nothing,
+		Stun,
+		Knockdown,
+		Fear,
+	};
+
+	/** What the commander commands: two Imps it summoned, or two creatures it took. */
+	enum class ECompelHeldKind : uint8
+	{
+		Minions,
+		Thralls,
+	};
+
+	/** What one scene measured. */
+	struct FCompelHeldRead
+	{
+		bool bSetUp = false;
+		/** What each follower's blow took off the target's health, struck by hand before the cast. */
+		float BlowOfTheHeld = 0.0f;
+		float BlowOfTheFree = 0.0f;
+		/** What the cast took off the target's health, and the health it left. */
+		float Lost = 0.0f;
+		float HealthAfter = 0.0f;
+		/** `CommandedStrikes` after the cast. */
+		int32 Ordered = -1;
+		/** Each minion's `AttacksMade` either side of the cast; nought for a thrall, which counts none. */
+		int32 HeldAttacksBefore = 0;
+		int32 HeldAttacksAfter = 0;
+		int32 FreeAttacksBefore = 0;
+		int32 FreeAttacksAfter = 0;
+	};
+
+	/** Ten thousand, so no blow here reaches the tenth of it a stun's damage threshold asks. */
+	constexpr float StruckHealth = 10000.0f;
+
+	/** Whether what `By` puts on a creature is on it now; with nothing, that nothing is: it may act and not flee. */
+	bool IsHeldBy(const AActor* Creature, ECompelHeldBy By)
+	{
+		FVector From;
+		switch (By)
+		{
+		case ECompelHeldBy::Stun:
+			return UCataclysmSkillEffects::IsStunned(Creature);
+		case ECompelHeldBy::Knockdown:
+			return UCataclysmSkillEffects::IsKnockedDown(Creature);
+		case ECompelHeldBy::Fear:
+			return UCataclysmFear::IsFeared(Creature);
+		default:
+			return !UCataclysmSkillEffects::CannotAct(Creature)
+				&& !UCataclysmFear::FleeSourceOf(Creature, From);
+		}
+	}
+
+	/**
+	 * One scene in a world of its own, rigged as
+	 * `Cataclysm.Command.CompelOrdersEverythingCommandedOntoOneEnemy` is: the
+	 * commander at the origin, the enemy the bolt hits fourteen metres along
+	 * its facing, and two followers twenty metres to either side of it. Each
+	 * follower's blow is struck at the enemy by hand first, its health put back
+	 * after each. Then `By` is put on the held follower, by a creature standing
+	 * behind the commander, and the cast is read as what it took off the enemy.
+	 *
+	 * THE BOLT DEALS DAMAGE OF ITS OWN, AND NOTHING HERE SAYS HOW MUCH. So a
+	 * held scene is read against a control scene with nothing on either
+	 * follower, which loses the enemy the bolt and both blows.
+	 *
+	 * TWO IMPS, OR TWO TAKEN CREATURES OF WHICH THE HELD ONE HITS THREE TIMES AS
+	 * HARD. A thrall counts no attacks, so for thralls the enemy's loss is what
+	 * says which struck.
+	 */
+	FCompelHeldRead CompelWithOneHeld(FAutomationTestBase& Test, const TCHAR* Who,
+									  ECompelHeldKind Kind, ECompelHeldBy By)
+	{
+		using namespace CataclysmCommandTest;
+		FCompelHeldRead Read;
+		const auto Named = [Who](const TCHAR* What)
+		{
+			return FString::Printf(TEXT("%s: %s"), Who, What);
+		};
+
+		UWorld* World = MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(*Named(TEXT("set-up: a world")), World))
+		{
+			return Read;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+		FScopedCaster Commander(World, FVector::ZeroVector);
+		FScopedCreature Struck(World, FVector(14 * M, 0, 0),
+							   ECataclysmTeam::Monsters, StruckHealth);
+		FScopedCreature Holder(World, FVector(-10 * M, 0, 0));
+
+		ACataclysmCharacterBase* Held = nullptr;
+		ACataclysmCharacterBase* Free = nullptr;
+		ACataclysmMinion* HeldMinion = nullptr;
+		ACataclysmMinion* FreeMinion = nullptr;
+		TUniquePtr<FScopedCreature> HeldThrall;
+		TUniquePtr<FScopedCreature> FreeThrall;
+		ON_SCOPE_EXIT
+		{
+			if (IsValid(HeldMinion)) { HeldMinion->Destroy(); }
+			if (IsValid(FreeMinion)) { FreeMinion->Destroy(); }
+		};
+		if (Kind == ECompelHeldKind::Minions)
+		{
+			HeldMinion = ACataclysmMinion::Spawn(
+				Commander.Actor, FVector(0, 20 * M, 0), /*Lifetime=*/20.0f,
+				/*bBurns=*/false, TEXT("Imp"));
+			FreeMinion = ACataclysmMinion::Spawn(
+				Commander.Actor, FVector(0, -20 * M, 0), /*Lifetime=*/20.0f,
+				/*bBurns=*/false, TEXT("Imp"));
+			if (!Test.TestNotNull(*Named(TEXT("set-up: the held imp")), HeldMinion)
+				|| !Test.TestNotNull(*Named(TEXT("set-up: the free imp")), FreeMinion))
+			{
+				return Read;
+			}
+			Held = HeldMinion;
+			Free = FreeMinion;
+		}
+		else
+		{
+			HeldThrall = MakeUnique<FScopedCreature>(World, FVector(0, 20 * M, 0));
+			FreeThrall = MakeUnique<FScopedCreature>(World, FVector(0, -20 * M, 0));
+			HeldThrall->Actor->SetAttackDamage(150.0f);
+			FreeThrall->Actor->SetAttackDamage(50.0f);
+			if (!Test.TestTrue(*Named(TEXT("set-up: the held creature is taken")),
+					UCataclysmCommand::Subjugate(Commander.Actor, HeldThrall->Actor))
+				|| !Test.TestTrue(*Named(TEXT("set-up: the free creature is taken")),
+					UCataclysmCommand::Subjugate(Commander.Actor, FreeThrall->Actor)))
+			{
+				return Read;
+			}
+			Held = HeldThrall->Actor;
+			Free = FreeThrall->Actor;
+		}
+		if (!Test.TestEqual(*Named(TEXT("set-up: the commander commands both")),
+				UCataclysmCommand::ThingsCommandedBy(Commander.Actor).Num(), 2))
+		{
+			return Read;
+		}
+
+		UCataclysmProjectileSkill* Compel = GrantSkill<UCataclysmProjectileSkill>(
+			Commander, ECataclysmAbilitySlot::Heavy,
+			TEXT("Range=14; Radius=5; Pierce=0; Speed=0; Burn=1; CommandStrike=1"),
+			TEXT("Compel"));
+		if (!Test.TestNotNull(*Named(TEXT("set-up: Compel is granted")), Compel))
+		{
+			return Read;
+		}
+
+		// EACH BLOW MEASURED BY HAND, and the enemy put back to full after each.
+		const float Full = Struck.Health();
+		Free->AttackTarget(Struck.Actor);
+		Read.BlowOfTheFree = Full - Struck.Health();
+		Struck.SetHealthTo(Full);
+		Held->AttackTarget(Struck.Actor);
+		Read.BlowOfTheHeld = Full - Struck.Health();
+		Struck.SetHealthTo(Full);
+		if (!Test.TestTrue(*Named(TEXT("set-up: the free follower's blow, struck by hand, takes health")),
+				Read.BlowOfTheFree > 1.0f)
+			|| !Test.TestTrue(*Named(TEXT("set-up: the held follower's blow, struck by hand, takes health")),
+				Read.BlowOfTheHeld > 1.0f))
+		{
+			return Read;
+		}
+
+		// WHAT IS PUT ON THE HELD FOLLOWER, designed and for ten seconds, by a
+		// creature behind the commander. No clock moves, so none of it runs out.
+		bool bLanded = true;
+		switch (By)
+		{
+		case ECompelHeldBy::Stun:
+			bLanded = UCataclysmSkillEffects::ApplyStun(Holder.Actor, Held,
+				/*DurationSeconds=*/10.0f, /*DamageDealt=*/0.0f, /*bStunIsDesigned=*/true);
+			break;
+		case ECompelHeldBy::Knockdown:
+			bLanded = UCataclysmSkillEffects::ApplyKnockdown(Holder.Actor, Held,
+				/*DurationSeconds=*/10.0f, /*DamageDealt=*/0.0f, /*bKnockdownIsDesigned=*/true);
+			break;
+		case ECompelHeldBy::Fear:
+			bLanded = UCataclysmFear::ApplyFear(Holder.Actor, Held, /*Seconds=*/10.0f,
+				Holder.Actor->GetActorLocation());
+			break;
+		default:
+			break;
+		}
+		if (!Test.TestTrue(*Named(TEXT("set-up: what is put on the held follower landed")), bLanded)
+			|| !Test.TestTrue(*Named(TEXT("set-up: and is on it")), IsHeldBy(Held, By))
+			|| !Test.TestTrue(*Named(TEXT("set-up: the free follower may act and is not fleeing")),
+				IsHeldBy(Free, ECompelHeldBy::Nothing)))
+		{
+			return Read;
+		}
+		// A FEARED FOLLOWER MAY STILL ACT, so only the flee step can refuse it.
+		if (By == ECompelHeldBy::Fear
+			&& !Test.TestFalse(*Named(TEXT("set-up: the feared follower is not under a hard stop")),
+				UCataclysmSkillEffects::CannotAct(Held)))
+		{
+			return Read;
+		}
+
+		Read.HeldAttacksBefore = HeldMinion ? HeldMinion->AttacksMade : 0;
+		Read.FreeAttacksBefore = FreeMinion ? FreeMinion->AttacksMade : 0;
+		const float Before = Struck.Health();
+		if (!Test.TestTrue(*Named(TEXT("set-up: Compel activates")), Activate(Commander, Compel))
+			|| !Test.TestTrue(*Named(TEXT("set-up: and what was put on the held follower is still on it")),
+				IsHeldBy(Held, By)))
+		{
+			return Read;
+		}
+		Read.HealthAfter = Struck.Health();
+		Read.Lost = Before - Read.HealthAfter;
+		Read.Ordered = Compel->CommandedStrikes;
+		Read.HeldAttacksAfter = HeldMinion ? HeldMinion->AttacksMade : 0;
+		Read.FreeAttacksAfter = FreeMinion ? FreeMinion->AttacksMade : 0;
+		Read.bSetUp = true;
+		return Read;
+	}
+
+	/**
+	 * The control, nothing on either follower, orders both and loses the enemy
+	 * both blows; the scene with one held orders the other only, and loses the
+	 * enemy everything the control did but the held one's blow.
+	 *
+	 * HALF THE SMALLER BLOW IS THE ALLOWANCE, so a blow struck by hand that
+	 * differs a little from the same blow struck at the cast moves no verdict,
+	 * and a whole blow too many or too few still does.
+	 */
+	void ExpectTheHeldFollowerIsNotOrdered(FAutomationTestBase& Test, const FCompelHeldRead& Control,
+										   const FCompelHeldRead& Held, const TCHAR* Hold, bool bMinions)
+	{
+		const float Margin = FMath::Min(Held.BlowOfTheHeld, Held.BlowOfTheFree) / 2.0f;
+
+		Test.TestEqual(TEXT("control: with nothing on them, both followers are ordered"), Control.Ordered, 2);
+		Test.TestTrue(*FString::Printf(TEXT("control: and the enemy loses at least both blows "
+											"(%.1f lost, the blows %.1f and %.1f)"),
+									   Control.Lost, Control.BlowOfTheHeld, Control.BlowOfTheFree),
+					  Control.Lost >= Control.BlowOfTheHeld + Control.BlowOfTheFree - Margin);
+		if (bMinions)
+		{
+			Test.TestEqual(TEXT("control: the imp later held swings once"),
+						   Control.HeldAttacksAfter, Control.HeldAttacksBefore + 1);
+			Test.TestEqual(TEXT("control: the other imp swings once"),
+						   Control.FreeAttacksAfter, Control.FreeAttacksBefore + 1);
+			Test.TestEqual(*FString::Printf(TEXT("%s: the imp beside it swings once"), Hold),
+						   Held.FreeAttacksAfter, Held.FreeAttacksBefore + 1);
+		}
+		Test.TestTrue(*FString::Printf(TEXT("%s: the enemy loses everything the control lost but the held one's blow, "
+											"at least (%.1f lost, health %.1f after; the control lost %.1f; "
+											"the held one's blow %.1f)"),
+									   Hold, Held.Lost, Held.HealthAfter, Control.Lost, Held.BlowOfTheHeld),
+					  Held.Lost >= Control.Lost - Held.BlowOfTheHeld - Margin);
+		Test.TestTrue(*FString::Printf(TEXT("%s: the held one does not strike: the enemy loses no more than that "
+											"(%.1f lost, health %.1f after; the control lost %.1f; "
+											"the held one's blow %.1f)"),
+									   Hold, Held.Lost, Held.HealthAfter, Control.Lost, Held.BlowOfTheHeld),
+					  Held.Lost <= Control.Lost - Held.BlowOfTheHeld + Margin);
+		if (bMinions)
+		{
+			Test.TestEqual(*FString::Printf(TEXT("%s: the held imp does not swing (%d attacks before the cast, "
+												 "%d after)"),
+											Hold, Held.HeldAttacksBefore, Held.HeldAttacksAfter),
+						   Held.HeldAttacksAfter, Held.HeldAttacksBefore);
+		}
+		Test.TestEqual(*FString::Printf(TEXT("%s: only the follower beside it is ordered: the held one does not "
+											 "raise CommandedStrikes"),
+										Hold),
+					   Held.Ordered, 1);
+	}
+}
+
+// A STUNNED MINION IS NOT ORDERED, AND THE MINION BESIDE IT STRIKES.
+// `CannotAct`, the brain's hard stop.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCompelHeldStunnedMinionTest,
+	"Cataclysm.CompelHeld.AStunnedMinionIsNotOrderedAndTheMinionBesideItStrikes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCompelHeldStunnedMinionTest::RunTest(const FString&)
+{
+	using namespace CataclysmCompelHeldTest;
+	const FCompelHeldRead Control = CompelWithOneHeld(
+		*this, TEXT("control"), ECompelHeldKind::Minions, ECompelHeldBy::Nothing);
+	const FCompelHeldRead Stunned = CompelWithOneHeld(
+		*this, TEXT("one stunned"), ECompelHeldKind::Minions, ECompelHeldBy::Stun);
+	if (!Control.bSetUp || !Stunned.bSetUp)
+	{
+		return false;
+	}
+	ExpectTheHeldFollowerIsNotOrdered(*this, Control, Stunned, TEXT("one stunned"), /*bMinions=*/true);
+	return true;
+}
+
+// A KNOCKED-DOWN MINION IS NOT ORDERED, AND THE MINION BESIDE IT STRIKES.
+// The same hard stop as a stun.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCompelHeldKnockedDownMinionTest,
+	"Cataclysm.CompelHeld.AKnockedDownMinionIsNotOrderedAndTheMinionBesideItStrikes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCompelHeldKnockedDownMinionTest::RunTest(const FString&)
+{
+	using namespace CataclysmCompelHeldTest;
+	const FCompelHeldRead Control = CompelWithOneHeld(
+		*this, TEXT("control"), ECompelHeldKind::Minions, ECompelHeldBy::Nothing);
+	const FCompelHeldRead KnockedDown = CompelWithOneHeld(
+		*this, TEXT("one knocked down"), ECompelHeldKind::Minions, ECompelHeldBy::Knockdown);
+	if (!Control.bSetUp || !KnockedDown.bSetUp)
+	{
+		return false;
+	}
+	ExpectTheHeldFollowerIsNotOrdered(*this, Control, KnockedDown, TEXT("one knocked down"), /*bMinions=*/true);
+	return true;
+}
+
+// A FEARED MINION IS NOT ORDERED, AND THE MINION BESIDE IT STRIKES. The
+// brain's flee step: it is not under a hard stop, so only that step refuses
+// it. Fear and not `FleeFrom`, which is a member of the enemy character and
+// cannot be told to a minion.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCompelHeldFearedMinionTest,
+	"Cataclysm.CompelHeld.AFearedMinionIsNotOrderedAndTheMinionBesideItStrikes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCompelHeldFearedMinionTest::RunTest(const FString&)
+{
+	using namespace CataclysmCompelHeldTest;
+	const FCompelHeldRead Control = CompelWithOneHeld(
+		*this, TEXT("control"), ECompelHeldKind::Minions, ECompelHeldBy::Nothing);
+	const FCompelHeldRead Feared = CompelWithOneHeld(
+		*this, TEXT("one feared"), ECompelHeldKind::Minions, ECompelHeldBy::Fear);
+	if (!Control.bSetUp || !Feared.bSetUp)
+	{
+		return false;
+	}
+	ExpectTheHeldFollowerIsNotOrdered(*this, Control, Feared, TEXT("one feared"), /*bMinions=*/true);
+	return true;
+}
+
+// A STUNNED THRALL IS NOT ORDERED, AND THE THRALL BESIDE IT STRIKES. A thrall
+// keeps its brain and its own attack, and counts no attacks, so the enemy's
+// loss is what is read.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCompelHeldStunnedThrallTest,
+	"Cataclysm.CompelHeld.AStunnedThrallIsNotOrderedAndTheThrallBesideItStrikes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCompelHeldStunnedThrallTest::RunTest(const FString&)
+{
+	using namespace CataclysmCompelHeldTest;
+	const FCompelHeldRead Control = CompelWithOneHeld(
+		*this, TEXT("control"), ECompelHeldKind::Thralls, ECompelHeldBy::Nothing);
+	const FCompelHeldRead Stunned = CompelWithOneHeld(
+		*this, TEXT("one stunned"), ECompelHeldKind::Thralls, ECompelHeldBy::Stun);
+	if (!Control.bSetUp || !Stunned.bSetUp)
+	{
+		return false;
+	}
+	TestTrue(TEXT("the held thrall hits harder than the other, so the enemy's loss says which struck"),
+			 Control.BlowOfTheHeld > Control.BlowOfTheFree + 1.0f);
+	ExpectTheHeldFollowerIsNotOrdered(*this, Control, Stunned, TEXT("one stunned"), /*bMinions=*/false);
+	return true;
+}
+
+// ==========================================================================
+// Chorus makes no repeat by a stunned, knocked-down or feared creature. Issue #2563.
+// ==========================================================================
+
+namespace CataclysmChorusHeldTest
+{
+	using CataclysmCompelHeldTest::ECompelHeldBy;
+	using CataclysmCompelHeldTest::ECompelHeldKind;
+
+	/** What one scene measured. */
+	struct FChorusHeldRead
+	{
+		bool bSetUp = false;
+		/** What `UCataclysmChorus::Repeat` returned. */
+		int32 Repeats = -1;
+		/** What the repeats took off the target's health, and the health they left. */
+		float Lost = 0.0f;
+		float HealthAfter = 0.0f;
+		/** The hits on the target each follower dealt while `Repeat` ran. */
+		int32 HitsByTheHeld = 0;
+		int32 HitsByTheFree = 0;
+	};
+
+	/** What the caster's hit sent, so each repeat sends 30% of it, 300. */
+	constexpr float SentByTheHit = 1000.0f;
+
+	/**
+	 * One scene in a world of its own, rigged as the Compel tests' scenes are:
+	 * the commander at the origin, the target fourteen metres along its facing,
+	 * two followers twenty metres to either side, and a creature behind the
+	 * commander that puts `By` on the held one. The commander holds Chorus, given
+	 * by hand as its row will give it, and a Heavy strike, which is not the
+	 * basic attack. Then `UCataclysmChorus::Repeat` is called once, for a hit on
+	 * the target that sent 1000, and its count, the target's loss and the hits
+	 * each follower dealt are read.
+	 *
+	 * BOTH FOLLOWERS' REPEATS ARE THE SAME 300 ON THE SAME TARGET, so the loss
+	 * says how many repeated and the hit notices say which.
+	 */
+	FChorusHeldRead ChorusWithOneHeld(FAutomationTestBase& Test, const TCHAR* Who,
+									  ECompelHeldKind Kind, ECompelHeldBy By)
+	{
+		using namespace CataclysmCommandTest;
+		FChorusHeldRead Read;
+		const auto Named = [Who](const TCHAR* What)
+		{
+			return FString::Printf(TEXT("%s: %s"), Who, What);
+		};
+
+		UWorld* World = MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(*Named(TEXT("set-up: a world")), World))
+		{
+			return Read;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+		FScopedCaster Commander(World, FVector::ZeroVector);
+		FScopedCreature Struck(World, FVector(14 * M, 0, 0),
+							   ECataclysmTeam::Monsters, CataclysmCompelHeldTest::StruckHealth);
+		FScopedCreature Holder(World, FVector(-10 * M, 0, 0));
+
+		ACataclysmCharacterBase* Held = nullptr;
+		ACataclysmCharacterBase* Free = nullptr;
+		ACataclysmMinion* HeldMinion = nullptr;
+		ACataclysmMinion* FreeMinion = nullptr;
+		TUniquePtr<FScopedCreature> HeldThrall;
+		TUniquePtr<FScopedCreature> FreeThrall;
+		ON_SCOPE_EXIT
+		{
+			if (IsValid(HeldMinion)) { HeldMinion->Destroy(); }
+			if (IsValid(FreeMinion)) { FreeMinion->Destroy(); }
+		};
+		if (Kind == ECompelHeldKind::Minions)
+		{
+			HeldMinion = ACataclysmMinion::Spawn(
+				Commander.Actor, FVector(0, 20 * M, 0), /*Lifetime=*/20.0f,
+				/*bBurns=*/false, TEXT("Imp"));
+			FreeMinion = ACataclysmMinion::Spawn(
+				Commander.Actor, FVector(0, -20 * M, 0), /*Lifetime=*/20.0f,
+				/*bBurns=*/false, TEXT("Imp"));
+			if (!Test.TestNotNull(*Named(TEXT("set-up: the held imp")), HeldMinion)
+				|| !Test.TestNotNull(*Named(TEXT("set-up: the free imp")), FreeMinion))
+			{
+				return Read;
+			}
+			Held = HeldMinion;
+			Free = FreeMinion;
+		}
+		else
+		{
+			HeldThrall = MakeUnique<FScopedCreature>(World, FVector(0, 20 * M, 0));
+			FreeThrall = MakeUnique<FScopedCreature>(World, FVector(0, -20 * M, 0));
+			if (!Test.TestTrue(*Named(TEXT("set-up: the held creature is taken")),
+					UCataclysmCommand::Subjugate(Commander.Actor, HeldThrall->Actor))
+				|| !Test.TestTrue(*Named(TEXT("set-up: the free creature is taken")),
+					UCataclysmCommand::Subjugate(Commander.Actor, FreeThrall->Actor)))
+			{
+				return Read;
+			}
+			Held = HeldThrall->Actor;
+			Free = FreeThrall->Actor;
+		}
+		if (!Test.TestEqual(*Named(TEXT("set-up: the commander commands both")),
+				UCataclysmCommand::ThingsCommandedBy(Commander.Actor).Num(), 2))
+		{
+			return Read;
+		}
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.FindOrAdd(FName(UCataclysmChorus::Stat)).Base = 1.0f;
+		Commander.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+		UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+			Commander, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=120"),
+			TEXT("Chorus Held Test Skill"));
+		if (!Test.TestNotNull(*Named(TEXT("set-up: a Heavy strike is granted")), Strike))
+		{
+			return Read;
+		}
+
+		// WHAT IS PUT ON THE HELD FOLLOWER, designed and for ten seconds, by a
+		// creature behind the commander. No clock moves, so none of it runs out.
+		bool bLanded = true;
+		switch (By)
+		{
+		case ECompelHeldBy::Stun:
+			bLanded = UCataclysmSkillEffects::ApplyStun(Holder.Actor, Held,
+				/*DurationSeconds=*/10.0f, /*DamageDealt=*/0.0f, /*bStunIsDesigned=*/true);
+			break;
+		case ECompelHeldBy::Knockdown:
+			bLanded = UCataclysmSkillEffects::ApplyKnockdown(Holder.Actor, Held,
+				/*DurationSeconds=*/10.0f, /*DamageDealt=*/0.0f, /*bKnockdownIsDesigned=*/true);
+			break;
+		case ECompelHeldBy::Fear:
+			bLanded = UCataclysmFear::ApplyFear(Holder.Actor, Held, /*Seconds=*/10.0f,
+				Holder.Actor->GetActorLocation());
+			break;
+		default:
+			break;
+		}
+		if (!Test.TestTrue(*Named(TEXT("set-up: what is put on the held follower landed")), bLanded)
+			|| !Test.TestTrue(*Named(TEXT("set-up: and is on it")), CataclysmCompelHeldTest::IsHeldBy(Held, By))
+			|| !Test.TestTrue(*Named(TEXT("set-up: the free follower may act and is not fleeing")),
+				CataclysmCompelHeldTest::IsHeldBy(Free, ECompelHeldBy::Nothing)))
+		{
+			return Read;
+		}
+		// A FEARED FOLLOWER MAY STILL ACT, so only the flee step can refuse it.
+		if (By == ECompelHeldBy::Fear
+			&& !Test.TestFalse(*Named(TEXT("set-up: the feared follower is not under a hard stop")),
+				UCataclysmSkillEffects::CannotAct(Held)))
+		{
+			return Read;
+		}
+
+		// EVERY HIT ON THE TARGET WHILE `Repeat` RUNS, counted by which follower dealt it.
+		UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+		if (!Test.TestNotNull(*Named(TEXT("set-up: the world's hit notices")), Events))
+		{
+			return Read;
+		}
+		AActor* const Target = Struck.Actor;
+		const FDelegateHandle Heard = Events->OnHit.AddLambda(
+			[&Read, Held, Free, Target](const FCataclysmHitNotice& Notice)
+			{
+				if (Notice.Target == Target && Notice.DealtBy == Held)
+				{
+					++Read.HitsByTheHeld;
+				}
+				if (Notice.Target == Target && Notice.DealtBy == Free)
+				{
+					++Read.HitsByTheFree;
+				}
+			});
+		const float Before = Struck.Health();
+		Read.Repeats = UCataclysmChorus::Repeat(Commander.Actor, Target, SentByTheHit, Strike);
+		Events->OnHit.Remove(Heard);
+		Read.HealthAfter = Struck.Health();
+		Read.Lost = Before - Read.HealthAfter;
+		if (!Test.TestTrue(*Named(TEXT("set-up: and what was put on the held follower is still on it")),
+				CataclysmCompelHeldTest::IsHeldBy(Held, By)))
+		{
+			return Read;
+		}
+		Read.bSetUp = true;
+		return Read;
+	}
+
+	/** The control, with nothing on either follower: both repeat, once each, and the target loses health. */
+	void ExpectBothRepeat(FAutomationTestBase& Test, const FChorusHeldRead& Control)
+	{
+		Test.TestEqual(*FString::Printf(TEXT("control: with nothing on them, both followers repeat the hit "
+											 "(Repeat returned %d; %.1f lost, health %.1f after)"),
+										Control.Repeats, Control.Lost, Control.HealthAfter),
+					   Control.Repeats, 2);
+		Test.TestEqual(TEXT("control: the follower held in the other scene repeats once"), Control.HitsByTheHeld, 1);
+		Test.TestEqual(TEXT("control: the other follower repeats once"), Control.HitsByTheFree, 1);
+		Test.TestTrue(*FString::Printf(TEXT("control: and the target loses health (%.1f lost, health %.1f after)"),
+									   Control.Lost, Control.HealthAfter),
+					  Control.Lost > 1.0f);
+	}
+
+	/**
+	 * The scene with one held: the follower beside it repeats, the held one does
+	 * not, so `Repeat` returns 1 and the target loses half what the control lost.
+	 *
+	 * A QUARTER OF THE CONTROL'S LOSS IS THE ALLOWANCE, half of one repeat, so a
+	 * small difference in how the target mitigates moves no verdict and a whole
+	 * repeat too many or too few still does.
+	 */
+	void ExpectTheHeldFollowerMakesNoRepeat(FAutomationTestBase& Test, const FChorusHeldRead& Control,
+											const FChorusHeldRead& Held, const TCHAR* Hold)
+	{
+		ExpectBothRepeat(Test, Control);
+		Test.TestEqual(*FString::Printf(TEXT("%s: the follower beside it repeats once"), Hold),
+					   Held.HitsByTheFree, 1);
+		Test.TestEqual(*FString::Printf(TEXT("%s: only the follower beside it repeats: Repeat returns 1 "
+											 "(it returned %d; %.1f lost, health %.1f after; the control lost %.1f)"),
+										Hold, Held.Repeats, Held.Lost, Held.HealthAfter, Control.Lost),
+					   Held.Repeats, 1);
+		Test.TestEqual(*FString::Printf(TEXT("%s: the held one deals the target nothing (%d hits by it)"),
+										Hold, Held.HitsByTheHeld),
+					   Held.HitsByTheHeld, 0);
+		Test.TestEqual(*FString::Printf(TEXT("%s: the target loses one repeat's worth, not two (%.1f lost, "
+											 "health %.1f after; the control lost %.1f for two; Repeat returned %d)"),
+										Hold, Held.Lost, Held.HealthAfter, Control.Lost, Held.Repeats),
+					   Held.Lost, Control.Lost / 2.0f, Control.Lost / 4.0f);
+	}
+}
+
+// WITH NOTHING ON EITHER FOLLOWER, BOTH REPEAT. The control the four tests
+// below each run beside their held scene, on its own.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChorusHeldControlTest,
+	"Cataclysm.ChorusHeld.WithNothingOnThemBothMinionsRepeatTheHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChorusHeldControlTest::RunTest(const FString&)
+{
+	using namespace CataclysmChorusHeldTest;
+	const FChorusHeldRead Control = ChorusWithOneHeld(
+		*this, TEXT("control"), ECompelHeldKind::Minions, ECompelHeldBy::Nothing);
+	if (!Control.bSetUp)
+	{
+		return false;
+	}
+	ExpectBothRepeat(*this, Control);
+	return true;
+}
+
+// A STUNNED MINION MAKES NO REPEAT, AND THE MINION BESIDE IT DOES. `CannotAct`,
+// the brain's hard stop.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChorusHeldStunnedMinionTest,
+	"Cataclysm.ChorusHeld.AStunnedMinionMakesNoRepeatAndTheMinionBesideItDoes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChorusHeldStunnedMinionTest::RunTest(const FString&)
+{
+	using namespace CataclysmChorusHeldTest;
+	const FChorusHeldRead Control = ChorusWithOneHeld(
+		*this, TEXT("control"), ECompelHeldKind::Minions, ECompelHeldBy::Nothing);
+	const FChorusHeldRead Stunned = ChorusWithOneHeld(
+		*this, TEXT("one stunned"), ECompelHeldKind::Minions, ECompelHeldBy::Stun);
+	if (!Control.bSetUp || !Stunned.bSetUp)
+	{
+		return false;
+	}
+	ExpectTheHeldFollowerMakesNoRepeat(*this, Control, Stunned, TEXT("one stunned"));
+	return true;
+}
+
+// A KNOCKED-DOWN MINION MAKES NO REPEAT, AND THE MINION BESIDE IT DOES. The
+// same hard stop as a stun.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChorusHeldKnockedDownMinionTest,
+	"Cataclysm.ChorusHeld.AKnockedDownMinionMakesNoRepeatAndTheMinionBesideItDoes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChorusHeldKnockedDownMinionTest::RunTest(const FString&)
+{
+	using namespace CataclysmChorusHeldTest;
+	const FChorusHeldRead Control = ChorusWithOneHeld(
+		*this, TEXT("control"), ECompelHeldKind::Minions, ECompelHeldBy::Nothing);
+	const FChorusHeldRead KnockedDown = ChorusWithOneHeld(
+		*this, TEXT("one knocked down"), ECompelHeldKind::Minions, ECompelHeldBy::Knockdown);
+	if (!Control.bSetUp || !KnockedDown.bSetUp)
+	{
+		return false;
+	}
+	ExpectTheHeldFollowerMakesNoRepeat(*this, Control, KnockedDown, TEXT("one knocked down"));
+	return true;
+}
+
+// A FEARED MINION MAKES NO REPEAT, AND THE MINION BESIDE IT DOES. The brain's
+// flee step: it is not under a hard stop, so only that step refuses it.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChorusHeldFearedMinionTest,
+	"Cataclysm.ChorusHeld.AFearedMinionMakesNoRepeatAndTheMinionBesideItDoes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChorusHeldFearedMinionTest::RunTest(const FString&)
+{
+	using namespace CataclysmChorusHeldTest;
+	const FChorusHeldRead Control = ChorusWithOneHeld(
+		*this, TEXT("control"), ECompelHeldKind::Minions, ECompelHeldBy::Nothing);
+	const FChorusHeldRead Feared = ChorusWithOneHeld(
+		*this, TEXT("one feared"), ECompelHeldKind::Minions, ECompelHeldBy::Fear);
+	if (!Control.bSetUp || !Feared.bSetUp)
+	{
+		return false;
+	}
+	ExpectTheHeldFollowerMakesNoRepeat(*this, Control, Feared, TEXT("one feared"));
+	return true;
+}
+
+// A STUNNED THRALL MAKES NO REPEAT, AND THE THRALL BESIDE IT DOES. A thrall is
+// commanded as a minion is, and `ThingsCommandedBy` lists it for Chorus.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChorusHeldStunnedThrallTest,
+	"Cataclysm.ChorusHeld.AStunnedThrallMakesNoRepeatAndTheThrallBesideItDoes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChorusHeldStunnedThrallTest::RunTest(const FString&)
+{
+	using namespace CataclysmChorusHeldTest;
+	const FChorusHeldRead Control = ChorusWithOneHeld(
+		*this, TEXT("control"), ECompelHeldKind::Thralls, ECompelHeldBy::Nothing);
+	const FChorusHeldRead Stunned = ChorusWithOneHeld(
+		*this, TEXT("one stunned"), ECompelHeldKind::Thralls, ECompelHeldBy::Stun);
+	if (!Control.bSetUp || !Stunned.bSetUp)
+	{
+		return false;
+	}
+	ExpectTheHeldFollowerMakesNoRepeat(*this, Control, Stunned, TEXT("one stunned"));
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// A thrall explodes under Every One Bursts. Issue #2540, ruled 2026-10-28: 3 m, not enlarged by area of effect, worth
+// three of its own blows, raised by Volatile.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThrallBurstsTest,
+	"Cataclysm.MinionDeath.UnderEveryOneBurstsADyingThrallExplodesWithinThreeMetresForThreeOfItsBlows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A thrall of 50 attack damage dies with one monster 2 m from it and one 4 m from it. Under the flag the near one
+ * loses something and no more than the 150 the explosion is worth -- its own defences may take part, as Shared Ruin's
+ * thrall test says -- and the far one loses nothing, with the commander's area of effect doubled. CONTROL: without the
+ * flag neither loses anything, and the figure is nought. And the figure: 150, 195 with 30% increased explosion damage
+ * (Volatile at ten points).
+ */
+bool FCataclysmThrallBurstsTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// ONE THRALL'S DEATH, with or without the flag, each in its own row of the world, and what the two monsters lost.
+	const auto DieWith = [&](bool bBursts, float VolatilePercent, float& NearLost, float& FarLost, float& Figure) -> bool
+	{
+		const float Y = (bBursts ? 20.0f : 60.0f) + VolatilePercent;
+		FScopedCaster Commander(World, FVector(0, Y * M, 0));
+		TArray<FStatLine> Lines = {{TEXT("area_of_effect"), ECataclysmStatBucket::Increased, 100.0f}};
+		if (bBursts)
+		{
+			Lines.Add({TEXT("minion_explodes_on_death"), ECataclysmStatBucket::Flat, 1.0f});
+		}
+		if (VolatilePercent > 0.0f)
+		{
+			Lines.Add({TEXT("minion_explosion_damage"), ECataclysmStatBucket::Increased, VolatilePercent});
+		}
+		GiveStats(Commander, Lines);
+		FScopedCreature Thrall(World, FVector(10 * M, Y * M, 0));
+		if (!TestTrue(TEXT("set-up: an enemy is taken as a thrall"),
+					  UCataclysmCommand::Subjugate(Commander.Actor, Thrall.Actor)))
+		{
+			return false;
+		}
+		FScopedCreature Near(World, FVector(12 * M, Y * M, 0));
+		FScopedCreature Far(World, FVector(14 * M, Y * M, 0));
+		Figure = ACataclysmMinion::ThrallExplosionDamage(Thrall.Actor, Commander.Actor);
+		const float NearBefore = Near.Health();
+		const float FarBefore = Far.Health();
+		Thrall.SetHealthTo(0.0f);
+		NearLost = NearBefore - Near.Health();
+		FarLost = FarBefore - Far.Health();
+		AddInfo(FString::Printf(TEXT("THRALL BURST: %s, Volatile %.0f%%: worth %.2f; 2 m lost %.2f, 4 m lost %.2f"),
+								bBursts ? TEXT("flagged") : TEXT("not flagged"), VolatilePercent, Figure, NearLost,
+								FarLost));
+		return true;
+	};
+
+	float NearLost = 0.0f;
+	float FarLost = 0.0f;
+	float Figure = 0.0f;
+	if (!DieWith(/*bBursts=*/false, 0.0f, NearLost, FarLost, Figure))
+	{
+		return false;
+	}
+	TestEqual(TEXT("CONTROL: without the flag the figure is nought"), Figure, 0.0f, 0.001f);
+	TestEqual(TEXT("CONTROL: and a monster 2 m away loses nothing"), NearLost, 0.0f, 0.01f);
+
+	if (!DieWith(/*bBursts=*/true, 0.0f, NearLost, FarLost, Figure))
+	{
+		return false;
+	}
+	TestEqual(TEXT("flagged, the explosion is worth three blows of 50"), Figure, 150.0f, 0.01f);
+	TestTrue(FString::Printf(TEXT("a monster 2 m away loses something: %.2f"), NearLost), NearLost > 0.0f);
+	TestTrue(FString::Printf(TEXT("and no more than 150: %.2f"), NearLost), NearLost <= 150.01f);
+	TestEqual(TEXT("one 4 m away loses nothing, with area of effect doubled"), FarLost, 0.0f, 0.01f);
+
+	// VOLATILE, ruled 2026-10-28: "+3% increased damage of the explosion a minion leaves per point", ten points.
+	if (!DieWith(/*bBursts=*/true, 30.0f, NearLost, FarLost, Figure))
+	{
+		return false;
+	}
+	TestEqual(TEXT("Volatile's 30% raises it to 195"), Figure, 195.0f, 0.01f);
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRekindledThrallTest,
+	"Cataclysm.MinionDeath.RekindledReplacesAnExplodedThrallWithAnImpWhereItStood",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_keystone_b_kC` Rekindled for a thrall. Issue #2570, ruled 2026-10-28: "When a minion explodes a new
+ * minion is summoned where it stood, no more than once every 5 seconds", and a thrall explodes under Every One Bursts
+ * since #2540. Replaced as Press-Ganged replaces one: by the commander's summon skill's kind.
+ *
+ * WITHOUT PRESS-GANGED, so the replacement can only be Rekindled's. Three thralls: the first replaced where it stood;
+ * the second, inside the five seconds, not; the third, after them, replaced again. CONTROL: a commander without
+ * Rekindled, whose thrall explodes and is not replaced.
+ */
+bool FCataclysmRekindledThrallTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+	using namespace CataclysmReplacementTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Skill = GrantSummon(Summoner);
+	if (!TestNotNull(TEXT("a summon skill"), Skill))
+	{
+		return false;
+	}
+	GiveStats(Summoner, {{TEXT("minion_explodes_on_death"), ECataclysmStatBucket::Flat, 1.0f},
+						 {UCataclysmSummonSkill::ReplacedOnExplosionStat, ECataclysmStatBucket::Flat, 5.0f}});
+
+	// ONE THRALL'S DEATH FOR A COMMANDER, at a place, answering whether it exploded.
+	const auto ThrallDiesAt = [&](FScopedCaster& Commander, const FVector& Where) -> bool
+	{
+		FScopedCreature Thrall(World, Where);
+		if (!TestTrue(TEXT("set-up: an enemy is taken as a thrall"),
+					  UCataclysmCommand::Subjugate(Commander.Actor, Thrall.Actor)))
+		{
+			return false;
+		}
+		const bool bWillExplode = ACataclysmMinion::ThrallExplosionDamage(Thrall.Actor, Commander.Actor) > 0.0f;
+		Thrall.SetHealthTo(0.0f);
+		return bWillExplode;
+	};
+
+	// THE FIRST: replaced by an imp where it stood, and Rekindled's clock spent.
+	const FVector Where(9 * M, 0, 0);
+	TestTrue(TEXT("set-up: the first thrall explodes"), ThrallDiesAt(Summoner, Where));
+	TestEqual(TEXT("the exploded thrall is replaced by one imp"), Skill->LivingMinionCount(), 1);
+	ACataclysmMinion* Replacement = Newest(Skill);
+	TestTrue(TEXT("standing where the thrall stood"),
+			 Replacement && FVector::Dist(Replacement->GetActorLocation(), Where) < 1.0f);
+	TestTrue(TEXT("of Summon Imp's kind"), Replacement && Replacement->TypeName == TEXT("Imp"));
+	TestFalse(TEXT("which spent Rekindled's clock"),
+			  Summoner.AbilitySystem->MayReplaceMinion(/*bForExplosion=*/true));
+
+	// INSIDE THE FIVE SECONDS: not replaced.
+	TestTrue(TEXT("set-up: the second thrall explodes"), ThrallDiesAt(Summoner, FVector(9 * M, 4 * M, 0)));
+	TestEqual(TEXT("a second exploded thrall inside five seconds is not replaced"), Skill->LivingMinionCount(), 1);
+
+	// AFTER THEM: replaced again.
+	CataclysmTestWorld::RunClock(World, 5.1f);
+	const int32 Before = Skill->LivingMinionCount();
+	TestTrue(TEXT("set-up: the third thrall explodes"), ThrallDiesAt(Summoner, FVector(9 * M, 8 * M, 0)));
+	TestEqual(TEXT("after five seconds an exploded thrall is replaced again"), Skill->LivingMinionCount(),
+			  Before + 1);
+
+	// CONTROL: WITHOUT REKINDLED, the thrall explodes and nothing replaces it.
+	FScopedCaster Plain(World, FVector(0, 30 * M, 0));
+	UCataclysmSummonSkill* PlainSkill = GrantSummon(Plain);
+	if (!TestNotNull(TEXT("a plain summoner's skill"), PlainSkill))
+	{
+		return false;
+	}
+	GiveStats(Plain, {{TEXT("minion_explodes_on_death"), ECataclysmStatBucket::Flat, 1.0f}});
+	TestTrue(TEXT("CONTROL: set-up: its thrall explodes"), ThrallDiesAt(Plain, FVector(9 * M, 30 * M, 0)));
+	TestEqual(TEXT("CONTROL: without Rekindled it is not replaced"), PlainSkill->LivingMinionCount(), 0);
+	return true;
+}
+
+#endif // WITH_AUTOMATION_TESTS

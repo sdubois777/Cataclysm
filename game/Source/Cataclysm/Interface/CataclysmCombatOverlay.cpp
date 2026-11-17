@@ -1,0 +1,1255 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "Interface/CataclysmCombatOverlay.h"
+#include "Interface/CataclysmHUD.h"
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmStacks.h"
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmCommand.h"
+#include "AbilitySystem/CataclysmDamageCalculation.h"
+// For asking whether this character can move Fervour at all. Issue #954.
+#include "AbilitySystem/CataclysmFear.h"
+#include "AbilitySystem/CataclysmFervour.h"
+#include "AbilitySystem/CataclysmRisenImps.h"
+#include "AbilitySystem/CataclysmSecondSelf.h"
+#include "AbilitySystem/CataclysmSilence.h"
+#include "AbilitySystem/CataclysmVoidAura.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmTargeting.h"
+#include "Dungeon/CataclysmDungeonModifierEffects.h"
+#include "AbilitySystem/CataclysmTeams.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "Character/CataclysmBeaconCharacter.h"
+#include "Character/CataclysmBloomCharacter.h"
+#include "Character/CataclysmChorusSourceCharacter.h"
+#include "Character/CataclysmSpireCharacter.h"
+#include "Character/CataclysmVeinCharacter.h"
+#include "Character/CataclysmSarcophagusCharacter.h"
+#include "Character/CataclysmPortalCharacter.h"
+#include "Character/CataclysmCarcassCharacter.h"
+#include "Character/CataclysmQuarantineCharacter.h"
+#include "Character/CataclysmInfectionBloomCharacter.h"
+#include "Character/CataclysmRiftCharacter.h"
+#include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmPlayerCharacter.h"
+#include "AbilitySystemComponent.h"
+#include "AbilitySystemGlobals.h"
+#include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
+
+namespace
+{
+	/**
+	 * Whether a player commands this creature: a thrall. A rule's label names what that rule made the creature, and a
+	 * thrall the player took has left the rule. Issue #1202, ruled 2026-09-30; the question
+	 * `DungeonGameModeIsAPlayersFollower` asks in the game mode.
+	 */
+	bool OverlayIsAPlayersFollower(const AActor* Actor)
+	{
+		return Cast<ACataclysmPlayerCharacter>(UCataclysmCommand::CommanderOf(Actor)) != nullptr;
+	}
+}
+
+// ---------------------------------------------------------------------------
+// The colours, as six-digit sRGB hex so they can be read straight against
+// section XIII of docs/Cataclysm_GDD_v2.md, which lists every colour in the
+// game the same way. The leading hash is dropped because FColor::FromHex is
+// what parses these, matching ACataclysmTelegraphMarker::DesignedRingHex and
+// the rest of that class's constants. The reasoning for each colour is on its
+// declaration in the header.
+// ---------------------------------------------------------------------------
+
+const TCHAR* UCataclysmCombatOverlay::BarBackingHex = TEXT("0A0F12");
+const TCHAR* UCataclysmCombatOverlay::HealthFillHex = TEXT("C0392B");
+const TCHAR* UCataclysmCombatOverlay::FollowerHealthFillHex = TEXT("3FA34D");
+const TCHAR* UCataclysmCombatOverlay::HealthReservedHex = TEXT("4A1712");
+const TCHAR* UCataclysmCombatOverlay::ShieldFillHex = TEXT("4FA3E3");
+const TCHAR* UCataclysmCombatOverlay::TemporaryAbsorbFillHex = TEXT("E8D9A0");
+const TCHAR* UCataclysmCombatOverlay::ManaFillHex = TEXT("2E4FC0");
+const TCHAR* UCataclysmCombatOverlay::FervourFillHex = TEXT("C7398D");
+const TCHAR* UCataclysmCombatOverlay::ReservedFervourHex = TEXT("5E1C43");
+const TCHAR* UCataclysmCombatOverlay::ReachedHealthHex = TEXT("F5F0EA");
+const TCHAR* UCataclysmCombatOverlay::AbsorbedHex = TEXT("4FA3E3");
+const TCHAR* UCataclysmCombatOverlay::NothingThroughHex = TEXT("8C9196");
+const TCHAR* UCataclysmCombatOverlay::CriticalStrikeHex = TEXT("FFA31F");
+const TCHAR* UCataclysmCombatOverlay::RarityNameHex = TEXT("F5F0EA");
+
+namespace
+{
+	/**
+	 * Whether floating damage numbers are drawn.
+	 *
+	 * ON BY DEFAULT, which is a decision rather than a convenience. Diablo 4 and
+	 * Last Epoch both ship damage numbers with a switch; Path of Exile 1 and 2
+	 * have never had them at all. This project follows the majority and keeps
+	 * the switch, because the whole reason the feature exists is to settle
+	 * combat figures by playing them, and that is easier when they are there
+	 * without being asked for.
+	 */
+	TAutoConsoleVariable<int32> CVarShowDamageNumbers(
+		TEXT("Cataclysm.Overlay.DamageNumbers"),
+		1,
+		TEXT("Whether a floating number is drawn where a blow lands. 1 draws "
+			 "them, 0 does not. A number appears for an evaded hit and for one "
+			 "armour and resistance took to nothing, which the impact particle "
+			 "deliberately does not."),
+		ECVF_Default);
+
+	/**
+	 * Whether a bar is drawn over a damaged creature.
+	 *
+	 * IT ONLY EVER DRAWS OVER SOMETHING ALREADY HURT, whatever this is set to.
+	 * See UCataclysmCombatOverlay::ShouldShowBarFor.
+	 */
+	TAutoConsoleVariable<int32> CVarShowOverheadBars(
+		TEXT("Cataclysm.Overlay.OverheadBars"),
+		1,
+		TEXT("Whether a health bar is drawn over creatures. 1 draws them, 0 "
+			 "does not. Nothing is ever drawn over an undamaged creature or a "
+			 "dead one, whatever this is set to."),
+		ECVF_Default);
+
+	/**
+	 * Whether an enemy's rarity is said over its head.
+	 *
+	 * SEPARATE FROM THE BAR'S TOGGLE, because the two answer different
+	 * questions. A bar says how a fight is going; a rarity says whether to
+	 * start one, which is why it appears before anything has been hit.
+	 */
+	TAutoConsoleVariable<int32> CVarShowRarityNames(
+		TEXT("Cataclysm.Overlay.RarityNames"),
+		1,
+		TEXT("Whether an enemy's rarity is drawn over it. 1 draws it, 0 does "
+			 "not. Nothing is ever drawn over a Common enemy or a dead one, "
+			 "whatever this is set to."),
+		ECVF_Default);
+
+	/** Whether the player's own health is drawn on the frame. */
+	TAutoConsoleVariable<int32> CVarShowPlayerVitals(
+		TEXT("Cataclysm.Overlay.PlayerVitals"),
+		1,
+		TEXT("Whether the player's own health, and its energy shield when it "
+			 "has one, are drawn in the corner of the screen. 1 draws them, 0 "
+			 "does not."),
+		ECVF_Default);
+
+	/** The vital attribute set on any actor that has one. Null when it has not. */
+	const UCataclysmVitalAttributeSet* VitalsSetOf(const AActor* Actor)
+	{
+		// THROUGH THE INTERFACE RATHER THAN THROUGH A CAST, so this works for a
+		// player, whose ability system lives on its player state, and for an
+		// enemy, whose lives on its pawn, without knowing which it is holding.
+		const UAbilitySystemComponent* AbilitySystem =
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor);
+		return AbilitySystem
+			? AbilitySystem->GetSet<UCataclysmVitalAttributeSet>()
+			: nullptr;
+	}
+}
+
+const TCHAR* UCataclysmCombatOverlay::HealthFillHexFor(const AActor* Creature,
+														const AActor* LocalPlayerPawn)
+{
+	// THE LOCAL PLAYER'S AND NOBODY ELSE'S. With no local pawn, nothing is anybody's here.
+	return Creature && LocalPlayerPawn
+			&& UCataclysmCommand::CommanderOf(Creature) == LocalPlayerPawn
+		? FollowerHealthFillHex
+		: HealthFillHex;
+}
+
+FLinearColor UCataclysmCombatOverlay::ColourFromHex(const TCHAR* Hex)
+{
+	// FColor::FromHex DOES NOT REPORT BAD INPUT, it returns something, so these
+	// are compile-time constants in this file rather than anything a person can
+	// type. The telegraph's live colour overrides are the place that has to
+	// defend against a typo, and it does; nothing here reads a console variable.
+	return FLinearColor(FColor::FromHex(FString(Hex)));
+}
+
+bool UCataclysmCombatOverlay::DamageNumbersEnabled()
+{
+	return CVarShowDamageNumbers.GetValueOnAnyThread() != 0;
+}
+
+bool UCataclysmCombatOverlay::OverheadBarsEnabled()
+{
+	return CVarShowOverheadBars.GetValueOnAnyThread() != 0;
+}
+
+bool UCataclysmCombatOverlay::PlayerVitalsEnabled()
+{
+	return CVarShowPlayerVitals.GetValueOnAnyThread() != 0;
+}
+
+bool UCataclysmCombatOverlay::ShouldShowNumberFor(
+	const FCataclysmIncomingHit& Hit, const FCataclysmDamageResult& Outcome,
+	float HealthRemaining)
+{
+	// A KILLING BLOW LEAVES HEALTH AT ZERO AND MUST STILL BE DRAWN, which is
+	// why this asks both questions rather than only the first. What is refused
+	// is a hit that arrived at something already dead and therefore did
+	// nothing: a burn still ticking on a corpse, or a second blow landing in
+	// the same second as the one that killed it.
+	const bool bTargetWasAlreadyDown = HealthRemaining <= 0.0f
+		&& Outcome.DealtToHealth <= 0.0f;
+
+	return !bTargetWasAlreadyDown;
+}
+
+int32 UCataclysmCombatOverlay::FigureFor(float Amount)
+{
+	if (Amount <= 0.0f)
+	{
+		return 0;
+	}
+
+	// FMath::RoundToInt IS FloorToInt(F + 0.5f), so it answers 0 for anything
+	// below half a point of damage. The floor of 1 is what stops that reading as
+	// "the defence stopped everything" when the truth is the opposite.
+	return FMath::Max(1, FMath::RoundToInt(Amount));
+}
+
+FString UCataclysmCombatOverlay::TextFor(const FCataclysmDamageResult& Outcome)
+{
+	if (Outcome.bEvaded)
+	{
+		return TEXT("Evaded");
+	}
+
+	// A BLOW THE STRUCK CHARACTER REFUSED AS IMMUNE TO ITS ATTACKER SAYS SO, in the words the status line under
+	// that character uses. Ruled 2026-10-12. Until then it printed "0", which means the defences stopped the blow.
+	// After "Evaded", because a blow that missed did not reach the refusal as a hit.
+	if (Outcome.bRefusedByImmunityToAttacker)
+	{
+		return TEXT("Immune to you");
+	}
+
+	// ROUNDED, BUT NEVER ROUNDED AWAY. See FigureFor: any damage at all prints
+	// at least 1, because "0" already means the defence stopped the whole blow.
+	const int32 ToHealth = FigureFor(Outcome.DealtToHealth);
+	// THE TEMPORARY ABSORB IS COUNTED WITH THE SHIELD'S FIGURE HERE AND NOWHERE
+	// ELSE. A judgement by the writing session: a damage number has one bracket
+	// for what was absorbed, and a blow the absorb took whole would otherwise
+	// print "0", which means the defences stopped it.
+	const int32 ToShield =
+		FigureFor(Outcome.AbsorbedByShield + Outcome.AbsorbedByTemporary);
+	const int32 ToMana = FigureFor(Outcome.AbsorbedByMana);
+
+	if (ToHealth > 0)
+	{
+		// BOTH FIGURES WHEN A SHIELD TOOK SOME OF IT, health first, because
+		// health is the one that matters and a shield stripping is secondary.
+		//
+		// THIS PAIR IS ALSO WHAT PAYS FOR THE CRITICAL STRIKE COLOUR. Colour no
+		// longer separates a hit that reached health from one a shield absorbed
+		// when the hit was a critical strike, because the colour says it was
+		// one. These two figures still separate them.
+		return ToShield > 0
+			? FString::Printf(TEXT("%d (+%d)"), ToHealth, ToShield)
+			: FString::Printf(TEXT("%d"), ToHealth);
+	}
+
+	if (ToShield > 0)
+	{
+		return FString::Printf(TEXT("%d"), ToShield);
+	}
+
+	if (ToMana > 0)
+	{
+		return FString::Printf(TEXT("%d"), ToMana);
+	}
+
+	// A BLOCK THAT LEFT NOTHING SAYS SO IN A WORD. A block removes half the
+	// hit, so a blocked blow usually still lands something and takes the branch
+	// above; this is the case where half of a small hit was already nothing.
+	if (Outcome.bBlocked)
+	{
+		return TEXT("Blocked");
+	}
+
+	// NOTHING GOT THROUGH AND IT WAS NOT DODGED OR BLOCKED, so armour,
+	// resistance and flat reduction between them took the whole hit. That is
+	// exactly the case issues #483 and #644 are about, and a zero on screen is
+	// the only way to see it happening while playing.
+	return TEXT("0");
+}
+
+FLinearColor UCataclysmCombatOverlay::ColourFor(
+	const FCataclysmDamageResult& Outcome)
+{
+	// A CRITICAL STRIKE FIRST, AHEAD OF WHERE THE DAMAGE WENT. Colour said only
+	// where the damage went until issue #668, and a critical strike was marked
+	// by size and an exclamation mark instead. The project owner played that and
+	// could not tell one from an ordinary hit, so colour took the job.
+	//
+	// IT ASKS ShowsCriticalStrike RATHER THAN Outcome.bWasCritical, which is what
+	// keeps this branch from swallowing the grey. A critical strike is rolled
+	// before block, armour and resistance, so a well-defended target can stop one
+	// dead -- and an orange "0" would say the opposite of what happened. The size
+	// asks the same question, so the two cannot disagree.
+	if (ShowsCriticalStrike(Outcome))
+	{
+		return ColourFromHex(CriticalStrikeHex);
+	}
+
+	if (Outcome.DealtToHealth > 0.0f)
+	{
+		return ColourFromHex(ReachedHealthHex);
+	}
+
+	if (Outcome.AbsorbedByShield > 0.0f || Outcome.AbsorbedByMana > 0.0f
+		|| Outcome.AbsorbedByTemporary > 0.0f)
+	{
+		return ColourFromHex(AbsorbedHex);
+	}
+
+	// Evaded, blocked to nothing, or wholly mitigated. The text says which.
+	return ColourFromHex(NothingThroughHex);
+}
+
+bool UCataclysmCombatOverlay::ShowsCriticalStrike(
+	const FCataclysmDamageResult& Outcome)
+{
+	// THE SAME THREE FIGURES ColourFor ASKS ABOUT, in the same form, so a number
+	// cannot be drawn large and marked while its colour says nothing arrived.
+	return Outcome.bWasCritical
+		&& (Outcome.DealtToHealth > 0.0f || Outcome.AbsorbedByShield > 0.0f
+			|| Outcome.AbsorbedByMana > 0.0f || Outcome.AbsorbedByTemporary > 0.0f);
+}
+
+float UCataclysmCombatOverlay::ScaleFor(const FCataclysmIncomingHit& Hit,
+										const FCataclysmDamageResult& Outcome)
+{
+	// A TICK IS NOT A BLOW, and the size is what says so. The impact particle
+	// solves the same problem by refusing to draw for a tick at all -- issue
+	// #563 measured one attack producing seven bursts in five seconds, five of
+	// them burn ticks. A number is cheap enough to draw for every tick, which is
+	// what the genre does, but it should not shout as loudly as the strike that
+	// started the burn.
+	float Scale = Hit.bIsDamageOverTime ? DamageOverTimeScale : 1.0f;
+
+	// AND A CRITICAL STRIKE IS LOUDER THAN A BLOW, which is the whole point of
+	// marking one. MULTIPLIED RATHER THAN ASSIGNED, so the tick rule above still
+	// holds if the two ever meet. They cannot today: a damage over time tick can
+	// never critically strike.
+	if (ShowsCriticalStrike(Outcome))
+	{
+		Scale *= CriticalStrikeScale;
+	}
+
+	return Scale;
+}
+
+bool UCataclysmCombatOverlay::ShouldShowBarFor(float Health, float MaxHealth,
+											   float Shield, float MaxShield)
+{
+	if (MaxHealth <= 0.0f || Health <= 0.0f)
+	{
+		return false;
+	}
+	return Health < MaxHealth || (MaxShield > 0.0f && Shield < MaxShield);
+}
+
+bool UCataclysmCombatOverlay::ShouldShowBarFor(float Health, float MaxHealth)
+{
+	if (MaxHealth <= 0.0f)
+	{
+		return false;
+	}
+
+	// A CORPSE GETS NOTHING. An enemy destroys itself on the tick AFTER it
+	// dies, because ACataclysmEnemyCharacter::HandleDeath runs inside the
+	// gameplay effect callback that dealt the killing blow, so without this an
+	// empty bar flashes for one frame at the end of every fight.
+	if (Health <= 0.0f)
+	{
+		return false;
+	}
+
+	// AND NOTHING OVER SOMETHING UNHURT. The project owner's decision, and what
+	// Path of Exile does even with its own enemy life bar setting enabled.
+	return Health < MaxHealth;
+}
+
+bool UCataclysmCombatOverlay::RarityNamesEnabled()
+{
+	return CVarShowRarityNames.GetValueOnAnyThread() != 0;
+}
+
+bool UCataclysmCombatOverlay::ShouldShowRarityNameFor(int32 RarityStep,
+													  float Health,
+													  float MaxHealth)
+{
+	// A COMMON CREATURE IS NOT MARKED. See the header: marking every creature
+	// would mark none of them.
+	if (RarityStep < LowestMarkedRarityStep)
+	{
+		return false;
+	}
+
+	if (MaxHealth <= 0.0f)
+	{
+		return false;
+	}
+
+	// A CORPSE GETS NOTHING, the same rule and the same reason ShouldShowBarFor
+	// gives: an enemy destroys itself on the tick AFTER it dies.
+	if (Health <= 0.0f)
+	{
+		return false;
+	}
+
+	// AND NOTHING ELSE IS ASKED. Unlike a health bar, this does NOT wait for the
+	// creature to be hurt. A rarity that only appeared once the fight had
+	// started would tell the player what they had already found out.
+	return true;
+}
+
+FString UCataclysmCombatOverlay::PoolTextFor(float Current, float Maximum)
+{
+	if (Maximum <= 0.0f)
+	{
+		return FString();
+	}
+
+	// A POOL THAT IS NOT EMPTY NEVER READS ZERO. See the header: a character
+	// on 0.3 health is alive, and rounding alone would print "0" for them.
+	const int32 Left = Current > 0.0f
+		? FMath::Max(1, FMath::RoundToInt(Current))
+		: 0;
+
+	return FString::Printf(TEXT("%d / %d"), Left,
+						   FMath::RoundToInt(Maximum));
+}
+
+float UCataclysmCombatOverlay::BarFractionFor(float Current, float Maximum)
+{
+	if (Maximum <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	return FMath::Clamp(Current / Maximum, 0.0f, 1.0f);
+}
+
+bool UCataclysmCombatOverlay::IsOverheadBarCandidate(
+	const AActor* Actor, const AActor* LocalPlayerPawn)
+{
+	if (!Actor)
+	{
+		return false;
+	}
+
+	// THE PLAYER'S OWN PAWN IS EXCLUDED BY IDENTITY, not by class, so this stays
+	// right if a second pawn class is ever playable and wrong for nobody if one
+	// never is. The player's health is on the frame instead, where it can be
+	// read without looking away from what is attacking.
+	if (Actor == LocalPlayerPawn)
+	{
+		return false;
+	}
+
+	// AND NOTHING HIDDEN, which is how the vision system hides a creature beyond the player's sight: its bar, its
+	// rarity name and its status line would otherwise show where it stands. Issues #1820 and #41.
+	if (Actor->IsHidden())
+	{
+		return false;
+	}
+
+	return !UCataclysmSkillEffects::IsDead(Actor);
+}
+
+float UCataclysmCombatOverlay::AnchorHeightFor(const AActor* Actor)
+{
+	if (!Actor)
+	{
+		return AnchorMarginCm;
+	}
+
+	// bOnlyCollidingComponents IS FALSE ON PURPOSE. The placeholder body every
+	// character carries is a /Engine/BasicShapes mesh attached to the root, and
+	// asking only for colliding components answers with the capsule, which is
+	// not always the tallest thing on the actor.
+	FVector Origin = FVector::ZeroVector;
+	FVector Extent = FVector::ZeroVector;
+	Actor->GetActorBounds(/*bOnlyCollidingComponents=*/false, Origin, Extent);
+
+	// MEASURED FROM THE ACTOR'S OWN LOCATION rather than from the bounds
+	// centre, because the caller adds this to GetActorLocation. An actor with no
+	// components has no bounds at all and gets the margin alone, which is the
+	// honest answer for something with no body rather than a guess at one.
+	const float TopOfBody = (Origin.Z + Extent.Z) - Actor->GetActorLocation().Z;
+	return FMath::Max(TopOfBody, 0.0f) + AnchorMarginCm;
+}
+
+float UCataclysmCombatOverlay::RisePixelsFor(float Age)
+{
+	const float Fraction =
+		FMath::Clamp(Age / NumberLifetimeSeconds, 0.0f, 1.0f);
+	return NumberRisePixels * Fraction;
+}
+
+float UCataclysmCombatOverlay::FadeFor(float Age)
+{
+	if (Age <= 0.0f)
+	{
+		return 1.0f;
+	}
+
+	if (Age >= NumberLifetimeSeconds)
+	{
+		return 0.0f;
+	}
+
+	// FULLY OPAQUE FIRST, THEN FADING. A number that starts fading immediately
+	// is hardest to read at the moment it is most wanted, which is the instant
+	// the blow lands.
+	const float OpaqueUntil = NumberLifetimeSeconds * NumberOpaqueShare;
+	if (Age <= OpaqueUntil)
+	{
+		return 1.0f;
+	}
+
+	const float FadingOver = NumberLifetimeSeconds - OpaqueUntil;
+	return FMath::Clamp(1.0f - (Age - OpaqueUntil) / FadingOver, 0.0f, 1.0f);
+}
+
+FString UCataclysmCombatOverlay::ArmourRemovedTextFor(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	const float Removed = AbilitySystem ? AbilitySystem->ArmourRemovedPercentNow() : 0.0f;
+	if (Removed <= 0.0f)
+	{
+		return FString();
+	}
+	return FString::Printf(TEXT("Armor -%d%%"), FMath::RoundToInt(Removed));
+}
+
+FString UCataclysmCombatOverlay::SlowedTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Actor);
+	const float Slowed = Creature ? Creature->GroundDownPercentNow() : 0.0f;
+	if (Slowed <= 0.0f)
+	{
+		return FString();
+	}
+	return FString::Printf(TEXT("Slowed -%d%%"), FMath::RoundToInt(Slowed));
+}
+
+FString UCataclysmCombatOverlay::HeldTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Actor);
+	return Creature && Creature->IsHeld() ? FString(TEXT("Held")) : FString();
+}
+
+FString UCataclysmCombatOverlay::FearedTextFor(const AActor* Actor)
+{
+	return UCataclysmFear::IsFeared(Actor) ? FString(TEXT("Feared")) : FString();
+}
+
+FString UCataclysmCombatOverlay::MaddenedTextFor(const AActor* Actor)
+{
+	return UCataclysmTeams::IsMaddened(Actor) && !UCataclysmSkillEffects::IsDead(Actor) ? FString(TEXT("Maddened"))
+																						  : FString();
+}
+
+FString UCataclysmCombatOverlay::SilencedTextFor(const AActor* Actor)
+{
+	return UCataclysmSilence::IsSilenced(Actor) ? FString(TEXT("Silenced")) : FString();
+}
+
+namespace
+{
+	/** `Word` while a living actor holds the tag named `TagName`, else empty. Issue #2379. */
+	FString WordWhileHeld(const AActor* Actor, const TCHAR* TagName, const TCHAR* Word)
+	{
+		const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName(TagName), /*ErrorIfNotFound=*/false);
+		return Tag.IsValid() && UCataclysmSkillEffects::HasTag(Actor, Tag) && !UCataclysmSkillEffects::IsDead(Actor)
+			? FString(Word)
+			: FString();
+	}
+}
+
+FString UCataclysmCombatOverlay::CrippledTextFor(const AActor* Actor)
+{
+	return WordWhileHeld(Actor, TEXT("Status.Debuff.Cripple"), TEXT("Crippled"));
+}
+
+FString UCataclysmCombatOverlay::WeakenedTextFor(const AActor* Actor)
+{
+	return WordWhileHeld(Actor, TEXT("Status.Debuff.Weaken"), TEXT("Weakened"));
+}
+
+FString UCataclysmCombatOverlay::ShreddedTextFor(const AActor* Actor)
+{
+	return WordWhileHeld(Actor, TEXT("Status.Debuff.Shred"), TEXT("Shredded"));
+}
+
+FString UCataclysmCombatOverlay::StunnedTextFor(const AActor* Actor)
+{
+	return WordWhileHeld(Actor, TEXT("State.Stunned"), TEXT("Stunned"));
+}
+
+FString UCataclysmCombatOverlay::WitheringTextFor(const AActor* Actor)
+{
+	// THE STATUS AND THE COUNT, BOTH. The status lasts exactly as long as the count does, but a count with no
+	// status (cleared some other way) or a status with no count shows nothing rather than a misleading figure.
+	if (WordWhileHeld(Actor, TEXT("Status.Debuff.Withering"), TEXT("Withering")).IsEmpty())
+	{
+		return FString();
+	}
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	const int32 Held = AbilitySystem
+		? UCataclysmStacks::Held(AbilitySystem, ECataclysmStackKind::Withering) : 0;
+	return Held > 0
+		? FString::Printf(TEXT("Withering %d/%d"), Held, UCataclysmStacks::CapFor(ECataclysmStackKind::Withering))
+		: FString();
+}
+
+FString UCataclysmCombatOverlay::WitheredTextFor(const AActor* Actor)
+{
+	return WordWhileHeld(Actor, TEXT("Status.Debuff.Wither"), TEXT("Withered"));
+}
+
+FString UCataclysmCombatOverlay::TouchOfNothingTextFor(const AActor* Actor)
+{
+	// THE STATUS AND THE COUNT, BOTH, as Withering's text asks.
+	if (WordWhileHeld(Actor, TEXT("Status.Debuff.TouchofNothing"), TEXT("Touch of Nothing")).IsEmpty())
+	{
+		return FString();
+	}
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	const int32 Held = AbilitySystem
+		? UCataclysmStacks::Held(AbilitySystem, ECataclysmStackKind::TouchOfNothing) : 0;
+	return Held > 0 ? FString::Printf(TEXT("Touch of Nothing %d"), Held) : FString();
+}
+
+FString UCataclysmCombatOverlay::NegatedTextFor(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	if (!AbilitySystem || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+	const float Since = AbilitySystem->SecondsSinceBuffNegated();
+	return Since >= 0.0f && Since <= NegatedShownSeconds ? FString(TEXT("Negated")) : FString();
+}
+
+FString UCataclysmCombatOverlay::HeldBuffTextFor(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	const FName Held = AbilitySystem ? AbilitySystem->HeldRandomBuff() : FName();
+	if (Held.IsNone() || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+	// ROUNDED UP, so the last second reads "1s" and a buff still held never reads "0s".
+	return FString::Printf(TEXT("%s %ds"), *Held.ToString(),
+		FMath::CeilToInt(AbilitySystem->HeldRandomBuffSecondsLeft()));
+}
+
+FString UCataclysmCombatOverlay::DamageTypeImmunityTextFor(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	if (!AbilitySystem || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+	// ONE PART FOR EACH OPEN WINDOW, in the order the component answers them in. ROUNDED UP, as the held buff's
+	// seconds are, so the last second reads "1s".
+	TArray<FString> Parts;
+	for (const FName& DamageType : AbilitySystem->DamageTypesImmuneTo())
+	{
+		Parts.Add(FString::Printf(TEXT("Immune %s %ds"), *DamageType.ToString(),
+			FMath::CeilToInt(AbilitySystem->DamageTypeImmunitySecondsLeft(DamageType))));
+	}
+	return FString::Join(Parts, TEXT("  "));
+}
+
+FString UCataclysmCombatOverlay::KeptStacksTextFor(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	if (!AbilitySystem || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+	TArray<FString> Parts;
+	for (const UCataclysmAbilitySystemComponent::FHeldKeptStacks& Each : AbilitySystem->KeptStacksForDisplay())
+	{
+		// AND WHETHER THE VOID THESE STACKS ARE HOLDS THE TEN-PIECE'S AURA UP NOW. Ruled 2026-10-17 (O9).
+		const bool bVoidAuraUp = Each.Name.Equals(UCataclysmVoidAura::StacksName, ESearchCase::IgnoreCase)
+			&& UCataclysmVoidAura::IsUp(AbilitySystem);
+		Parts.Add(KeptStacksEntry(Each.Name, Each.Held, Each.Cap, Each.bFreeNextAbility, Each.MorePercent,
+								  bVoidAuraUp));
+	}
+	return FString::Join(Parts, TEXT("  "));
+}
+
+FString UCataclysmCombatOverlay::KeptStacksEntry(const FString& Name, int32 Held, int32 Cap, bool bFreeNextAbility,
+												 float MorePercent, bool bVoidAuraUp)
+{
+	FString Entry = FString::Printf(TEXT("%s %d/%d"), Name.IsEmpty() ? TEXT("Stacks") : *Name, Held, Cap);
+	// AT THE CAP OF A ROW WHOSE STACKS BUY THE NEXT ABILITY, WHAT THAT PRESS WILL BE. Ruled 2026-10-17.
+	if (bFreeNextAbility && Cap > 0 && Held >= Cap)
+	{
+		Entry += FString::Printf(TEXT(": next ability free, %d%% more damage"), FMath::RoundToInt(MorePercent));
+	}
+	// AND THE TEN-PIECE'S AURA WHILE IT IS UP. Ruled 2026-10-17 (O9).
+	if (bVoidAuraUp)
+	{
+		Entry += TEXT(", void aura");
+	}
+	return Entry;
+}
+
+FString UCataclysmCombatOverlay::OwedTextFor(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	if (!AbilitySystem || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+	// ROUNDED UP, so the last point still owed reads "Owed 1".
+	const float Owed = AbilitySystem->DelayedDamageOwed();
+	return Owed > 0.0f ? FString::Printf(TEXT("Owed %d"), FMath::CeilToInt(Owed)) : FString();
+}
+
+FString UCataclysmCombatOverlay::SecondSelfTextFor(const AActor* Actor)
+{
+	return UCataclysmSecondSelf::IsSecondSelf(Actor) ? FString(TEXT("Second Self")) : FString();
+}
+
+FString UCataclysmCombatOverlay::SealBearerTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Actor);
+	return Creature && Creature->bIsASealBearer && !UCataclysmSkillEffects::IsDead(Creature)
+			&& !OverlayIsAPlayersFollower(Creature)
+		? FString(TEXT("Seal Bearer"))
+		: FString();
+}
+
+FString UCataclysmCombatOverlay::HarbingerTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Actor);
+	return Creature && Creature->bPlagueHarbinger && !UCataclysmSkillEffects::IsDead(Creature)
+		? FString(TEXT("Harbinger"))
+		: FString();
+}
+
+FString UCataclysmCombatOverlay::RisenTextFor(const AActor* Actor)
+{
+	return UCataclysmRisenImps::ShowsRisen(Actor) ? FString(TEXT("Risen")) : FString();
+}
+
+FString UCataclysmCombatOverlay::DamageCutTextFor(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	const float Cut = AbilitySystem ? AbilitySystem->DamageCutPercentNow() : 0.0f;
+	if (Cut <= 0.0f)
+	{
+		return FString();
+	}
+	return FString::Printf(TEXT("Damage -%d%%"), FMath::RoundToInt(Cut));
+}
+
+FString UCataclysmCombatOverlay::ChorusTextFor(const AActor* Actor)
+{
+	return Actor && Actor->IsA<ACataclysmChorusSourceCharacter>() && !UCataclysmSkillEffects::IsDead(Actor)
+		? FString(TEXT("Chorus"))
+		: FString();
+}
+
+FString UCataclysmCombatOverlay::BloomTextFor(const AActor* Actor)
+{
+	return Actor && Actor->IsA<ACataclysmBloomCharacter>() && !UCataclysmSkillEffects::IsDead(Actor)
+		? FString(TEXT("Bloom"))
+		: FString();
+}
+
+FString UCataclysmCombatOverlay::GuideTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Actor);
+	return Creature && Creature->bGuidesThePlayerForTheFloorRule && !UCataclysmSkillEffects::IsDead(Creature)
+		? FString(TEXT("Guide"))
+		: FString();
+}
+
+FString UCataclysmCombatOverlay::SpireTextFor(const AActor* Actor)
+{
+	return Actor && Actor->IsA<ACataclysmSpireCharacter>() && !UCataclysmSkillEffects::IsDead(Actor)
+		? FString(TEXT("Spire"))
+		: FString();
+}
+
+FString UCataclysmCombatOverlay::BeaconTextFor(const AActor* Actor)
+{
+	return Actor && Actor->IsA<ACataclysmBeaconCharacter>() && !UCataclysmSkillEffects::IsDead(Actor)
+		? FString(TEXT("Beacon"))
+		: FString();
+}
+
+FString UCataclysmCombatOverlay::VeinTextFor(const AActor* Actor)
+{
+	return Actor && Actor->IsA<ACataclysmVeinCharacter>() && !UCataclysmSkillEffects::IsDead(Actor)
+		? FString(TEXT("Vein"))
+		: FString();
+}
+
+FString UCataclysmCombatOverlay::VoidlingTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	return Enemy && Enemy->bIsAVoidling && !UCataclysmSkillEffects::IsDead(Actor)
+		? FString(TEXT("Voidling"))
+		: FString();
+}
+
+FString UCataclysmCombatOverlay::SarcophagusTextFor(const AActor* Actor)
+{
+	if (!Actor || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+	if (Actor->IsA<ACataclysmSarcophagusCharacter>())
+	{
+		return TEXT("Sarcophagus");
+	}
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	return Enemy && Enemy->bIsAVampireLord ? FString(TEXT("Vampire Lord")) : FString();
+}
+
+FString UCataclysmCombatOverlay::PortalTextFor(const AActor* Actor)
+{
+	if (!Actor || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+	if (Actor->IsA<ACataclysmPortalCharacter>())
+	{
+		return TEXT("Portal");
+	}
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	return Enemy && Enemy->bIsAnAbomination ? FString(TEXT("Abomination")) : FString();
+}
+
+FString UCataclysmCombatOverlay::RiftTextFor(const AActor* Actor)
+{
+	return Actor && Actor->IsA<ACataclysmRiftCharacter>() && !UCataclysmSkillEffects::IsDead(Actor)
+		? FString(TEXT("Rift"))
+		: FString();
+}
+
+FString UCataclysmCombatOverlay::InfectionBloomTextFor(const AActor* Actor)
+{
+	return Actor && Actor->IsA<ACataclysmInfectionBloomCharacter>() && !UCataclysmSkillEffects::IsDead(Actor)
+		? FString(TEXT("Infection Bloom"))
+		: FString();
+}
+
+FString UCataclysmCombatOverlay::QuarantineTextFor(const AActor* Actor)
+{
+	const ACataclysmQuarantineCharacter* Containment = Cast<ACataclysmQuarantineCharacter>(Actor);
+	return Containment && !UCataclysmSkillEffects::IsDead(Containment)
+		? FString::Printf(TEXT("Quarantine: %s"), *Containment->Holds)
+		: FString();
+}
+
+FString UCataclysmCombatOverlay::MoraleBreakTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	if (!Enemy || UCataclysmSkillEffects::IsDead(Enemy))
+	{
+		return FString();
+	}
+	return Enemy->bIsMoraleLeader ? FString(TEXT("Leader"))
+		: Enemy->bIsPanicked ? FString(TEXT("Panicked"))
+		: FString();
+}
+
+FString UCataclysmCombatOverlay::ContagiousTouchTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	return Enemy && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->ContagionStacksApplied > 0
+		? FString::Printf(TEXT("Infecting %d"), Enemy->ContagionStacksApplied)
+		: FString();
+}
+
+FString UCataclysmCombatOverlay::FamishedBeastsTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	return Enemy && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->DropsEaten > 0
+		? FString::Printf(TEXT("Gorged %d"), Enemy->DropsEaten)
+		: FString();
+}
+
+FString UCataclysmCombatOverlay::BannerAssailantTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	// NOT ONE THE PLAYER TOOK. Issue #1202, ruled 2026-09-30.
+	return Enemy && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->bIsABannerAssailant && !OverlayIsAPlayersFollower(Enemy)
+		? FString(TEXT("Assailant"))
+		: FString();
+}
+
+FString UCataclysmCombatOverlay::TitheAngelTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	// NOT ONE THE PLAYER TOOK. Issue #1202, ruled 2026-09-30.
+	return Enemy && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->bIsATitheAngel && !OverlayIsAPlayersFollower(Enemy)
+		? FString(TEXT("Angel"))
+		: FString();
+}
+
+FString UCataclysmCombatOverlay::ChaosSpawnTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	// NOT ONE THE PLAYER TOOK. Issue #1202, ruled 2026-09-30.
+	return Enemy && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->bIsAChaosSpawn && !OverlayIsAPlayersFollower(Enemy)
+		? FString(TEXT("Chaos Spawn"))
+		: FString();
+}
+
+FString UCataclysmCombatOverlay::RelicSpiritTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	// NOT ONE THE PLAYER TOOK. Issue #1202, ruled 2026-09-30.
+	return Enemy && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->bIsARelicSpirit && !OverlayIsAPlayersFollower(Enemy)
+		? FString(TEXT("Spirit"))
+		: FString();
+}
+
+FString UCataclysmCombatOverlay::CarcassTextFor(const AActor* Actor)
+{
+	if (!Actor || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+	if (Actor->IsA<ACataclysmCarcassCharacter>())
+	{
+		return TEXT("Carcass");
+	}
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	return Enemy && Enemy->bIsACarrionFeeder ? FString(TEXT("Feeder")) : FString();
+}
+
+FString UCataclysmCombatOverlay::ShroudedTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	return Enemy && Enemy->bShrouded && !UCataclysmSkillEffects::IsDead(Actor)
+		? FString(TEXT("Shrouded"))
+		: FString();
+}
+
+FString UCataclysmCombatOverlay::PlaguebearerTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	if (!Enemy || UCataclysmSkillEffects::IsDead(Enemy))
+	{
+		return FString();
+	}
+	if (Enemy->bIsPlaguebearer)
+	{
+		return TEXT("Plaguebearer");
+	}
+	// THE STACKS READ BACK FROM THE CREATURE'S OWN MULTIPLIER, so the word cannot disagree with the damage it deals.
+	const float Multiplier = Enemy->DamageMultiplierFrom(ACataclysmEnemyCharacter::PlaguebearerDamageSource);
+	const int32 Stacks = FMath::RoundToInt(
+		(Multiplier - 1.0f) * 100.0f / UCataclysmDungeonModifierEffects::PlaguebearerDamagePercentPerStack);
+	return Stacks > 0 ? FString::Printf(TEXT("Diseased %d"), Stacks) : FString();
+}
+
+FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
+{
+	TArray<FString> Parts;
+	for (const FString& Part :
+		 {SecondSelfTextFor(Actor), HarbingerTextFor(Actor), SealBearerTextFor(Actor), RisenTextFor(Actor), GuideTextFor(Actor),
+		  ChorusTextFor(Actor), BloomTextFor(Actor),
+		  SpireTextFor(Actor), BeaconTextFor(Actor), VeinTextFor(Actor), VoidlingTextFor(Actor),
+		  SarcophagusTextFor(Actor), PortalTextFor(Actor), CarcassTextFor(Actor), RiftTextFor(Actor),
+		  InfectionBloomTextFor(Actor), PlaguebearerTextFor(Actor), MoraleBreakTextFor(Actor),
+		  ContagiousTouchTextFor(Actor), FamishedBeastsTextFor(Actor), RelicSpiritTextFor(Actor),
+		  ChaosSpawnTextFor(Actor), BannerAssailantTextFor(Actor), TitheAngelTextFor(Actor),
+		  QuarantineTextFor(Actor), ShroudedTextFor(Actor),
+		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), FearedTextFor(Actor),
+		  MaddenedTextFor(Actor),
+		  // THE FOUR TAGGED DEBUFFS, by name only, beside Madness. Issue #2379.
+		  CrippledTextFor(Actor), WeakenedTextFor(Actor), ShreddedTextFor(Actor), StunnedTextFor(Actor),
+		  // AND FAMINE'S WITHERING COUNT AND ITS SLOW. Issue #1722. Empty for every creature: only a player is hit
+		  // by Withering Blows.
+		  WitheringTextFor(Actor), WitheredTextFor(Actor),
+		  // AND VOID'S TOUCH OF NOTHING AND ITS REFUSALS. Issue #1722. Empty for every creature, for the same reason.
+		  TouchOfNothingTextFor(Actor), NegatedTextFor(Actor),
+		  SilencedTextFor(Actor),
+		  DamageCutTextFor(Actor),
+		  // THE BUFF A WORN ROW DREW, LAST. Ruled 2026-10-12. Empty for every creature today: none wears a row.
+		  HeldBuffTextFor(Actor),
+		  // AND THE DAMAGE TYPES IT IS IMMUNE TO FOR A TIME, after the buff's. Ruled 2026-10-12. Empty for every
+		  // creature today, for the same reason.
+		  DamageTypeImmunityTextFor(Actor),
+		  KeptStacksTextFor(Actor),
+		  // AND THE DELAYED DAMAGE IT STILL OWES, last. Ruled 2026-10-12. Empty for every creature today, for the
+		  // same reason.
+		  OwedTextFor(Actor)})
+	{
+		if (!Part.IsEmpty())
+		{
+			Parts.Add(Part);
+		}
+	}
+	return FString::Join(Parts, TEXT("  "));
+}
+
+FString UCataclysmCombatOverlay::ImmuneToPlayerTextFor(const AActor* Actor, const AActor* LocalPlayerPawn)
+{
+	if (!Actor || !LocalPlayerPawn || Actor == LocalPlayerPawn || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+	const UCataclysmAbilitySystemComponent* Its =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	const UAbilitySystemComponent* ThePlayers =
+		UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(LocalPlayerPawn);
+	// THE FUNCTION THAT REFUSES THE BLOW ANSWERS, so the word is shown exactly while the player's damage is refused.
+	return Its && ThePlayers && Its->IsImmuneToDamageOf(ThePlayers) ? FString(TEXT("Immune to you")) : FString();
+}
+
+FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor, const AActor* LocalPlayerPawn)
+{
+	// AFTER EVERYTHING ELSE ON THE LINE: what the creature is comes first, and this is being done to the player's
+	// blows on it. Ruled 2026-10-12.
+	const FString Line = StatusLineFor(Actor);
+	const FString Immune = ImmuneToPlayerTextFor(Actor, LocalPlayerPawn);
+	if (Immune.IsEmpty())
+	{
+		return Line;
+	}
+	return Line.IsEmpty() ? Immune : Line + TEXT("  ") + Immune;
+}
+
+bool UCataclysmCombatOverlay::VitalsOf(const AActor* Actor, float& OutHealth,
+									   float& OutMaxHealth)
+{
+	const UCataclysmVitalAttributeSet* Vitals = VitalsSetOf(Actor);
+	if (!Vitals)
+	{
+		return false;
+	}
+
+	OutHealth = Vitals->GetHealth();
+	OutMaxHealth = Vitals->GetMaxHealth();
+	return true;
+}
+
+float UCataclysmCombatOverlay::HealthReservedOf(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* Reserving =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Actor));
+	return Reserving ? Reserving->HealthReserved() : 0.0f;
+}
+
+float UCataclysmCombatOverlay::TemporaryAbsorbOf(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* Absorbing =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Actor));
+	return Absorbing ? FMath::Max(0.0f, Absorbing->TemporaryAbsorbHeld()) : 0.0f;
+}
+
+float UCataclysmCombatOverlay::AbsorbSegmentFractionFor(float Absorb, float MaxShield)
+{
+	if (Absorb <= 0.0f)
+	{
+		return 0.0f;
+	}
+	return Absorb / (FMath::Max(0.0f, MaxShield) + Absorb);
+}
+
+FString UCataclysmCombatOverlay::ShieldBarTextFor(float Shield, float MaxShield, float Absorb)
+{
+	if (Absorb <= 0.0f)
+	{
+		return PoolTextFor(Shield, MaxShield);
+	}
+
+	// NEVER ROUNDED AWAY, the rule `FigureFor` follows for a damage number.
+	const int32 AbsorbFigure = FigureFor(Absorb);
+	return MaxShield > 0.0f
+		? FString::Printf(TEXT("%s  +%d absorb"), *PoolTextFor(Shield, MaxShield), AbsorbFigure)
+		: FString::Printf(TEXT("%d absorb"), AbsorbFigure);
+}
+
+bool UCataclysmCombatOverlay::ShieldOf(const AActor* Actor, float& OutShield,
+									   float& OutMaxShield)
+{
+	const UCataclysmVitalAttributeSet* Vitals = VitalsSetOf(Actor);
+	if (!Vitals)
+	{
+		return false;
+	}
+
+	OutShield = Vitals->GetEnergyShield();
+
+	// THE MAXIMUM IS ASKED FOR RATHER THAN READ, since issue #1973. A row that
+	// SCALES max_energy_shield -- Hollow Crown grants 4% more for each minion
+	// held -- is never folded into the attribute, so a bar drawn from the
+	// attribute would be shorter than the shield the character can actually
+	// hold. The same one function answers the clamp in
+	// UCataclysmVitalAttributeSet, so the bar and the clamp cannot disagree.
+	OutMaxShield = Vitals->MaximumEnergyShieldAsked();
+	return true;
+}
+
+bool UCataclysmCombatOverlay::ManaOf(const AActor* Actor, float& OutMana,
+									 float& OutMaxMana)
+{
+	const UCataclysmVitalAttributeSet* Vitals = VitalsSetOf(Actor);
+	if (!Vitals)
+	{
+		return false;
+	}
+
+	OutMana = Vitals->GetMana();
+	OutMaxMana = Vitals->GetMaxMana();
+	return true;
+}
+
+float UCataclysmCombatOverlay::ReservedFervourOf(const AActor* Actor)
+{
+	return FMath::Max(0.0f, UCataclysmCommand::ReservedFervourOf(Actor));
+}
+
+FString UCataclysmCombatOverlay::ReservedTextFor(float Reserved)
+{
+	return Reserved > 0.0f
+		? FString::Printf(TEXT("%d reserved"), FMath::CeilToInt(Reserved))
+		: FString();
+}
+
+bool UCataclysmCombatOverlay::FervourOf(const AActor* Actor, float& OutFervour,
+										float& OutMaxFervour)
+{
+	// THROUGH THE INTERFACE, the same way `VitalsSetOf` above reaches the vital
+	// set, so this works for a player whose ability system lives on its player
+	// state without knowing that it does.
+	const UAbilitySystemComponent* AbilitySystem =
+		UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor);
+	const UCataclysmClassResourceAttributeSet* Resource =
+		AbilitySystem
+			? AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>()
+			: nullptr;
+	if (!Resource)
+	{
+		return false;
+	}
+
+	// A GENERATOR AND NOT MERELY A POOL. Every class has a maximum of 100, so
+	// asking about the maximum would answer true for every character in the game
+	// and draw a bar that could only ever read zero. Asking whether anything can
+	// move it makes the bar's appearance mean "the generator node you spent on
+	// is working", which is what the project owner needs to see. Issue #954.
+	if (!UCataclysmFervour::HasAGenerator(AbilitySystem))
+	{
+		return false;
+	}
+
+	OutFervour = Resource->GetClassResource();
+	OutMaxFervour = Resource->MaximumClassResourceAsked();
+	return true;
+}
+
+void UCataclysmCombatOverlay::Record(const AActor* Struck,
+									 const FCataclysmIncomingHit& Hit,
+									 const FCataclysmDamageResult& Outcome)
+{
+	if (!Struck || !DamageNumbersEnabled())
+	{
+		return;
+	}
+
+	const UWorld* World = Struck->GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	// ASKED OF THE STRUCK ACTOR'S OWN WORLD, so a hit landing in a world with no
+	// local player -- a dedicated server, and every automation test -- takes the
+	// null path and draws nothing rather than reaching for whatever world
+	// happens to be current.
+	//
+	// THIS RUNS ON THE AUTHORITY, WHICH IS WHY A REMOTE CLIENT WOULD SEE NO
+	// NUMBERS. A gameplay effect only executes on the authority, so in a session
+	// with a remote player every number is made in the server's process. Nothing
+	// is broken today, because the sandbox runs standalone and authority and the
+	// local player are the same process. Issue #651 records what a gameplay cue
+	// would take. The BARS are not affected: they read replicated Health and
+	// MaxHealth every frame rather than reacting to an event.
+	const APlayerController* Controller = World->GetFirstPlayerController();
+	ACataclysmHUD* HeadsUpDisplay =
+		Controller ? Cast<ACataclysmHUD>(Controller->GetHUD()) : nullptr;
+	if (!HeadsUpDisplay)
+	{
+		return;
+	}
+
+	float HealthRemaining = 0.0f;
+	float MaxHealth = 0.0f;
+	VitalsOf(Struck, HealthRemaining, MaxHealth);
+
+	if (!ShouldShowNumberFor(Hit, Outcome, HealthRemaining))
+	{
+		return;
+	}
+
+	FCataclysmDamageNumber Number;
+	Number.Text = TextFor(Outcome);
+	Number.Colour = ColourFor(Outcome);
+	Number.Scale = ScaleFor(Hit, Outcome);
+	Number.StartedAt = World->GetTimeSeconds();
+	Number.WorldAnchor = Struck->GetActorLocation()
+		+ FVector(0.0f, 0.0f, AnchorHeightFor(Struck));
+
+	HeadsUpDisplay->AddDamageNumber(Number);
+}
+
+const TCHAR* UCataclysmCombatOverlay::ProjectileConsumedWord = TEXT("Consumed");
+
+void UCataclysmCombatOverlay::RecordProjectileConsumed(const AActor* Shot, const FVector& Where)
+{
+	// THE PATH `Record` TAKES, with a word and no hit: the shot's own world, its first player controller, its heads-up
+	// display. Ruled 2026-10-17 (O9). A world with no local player draws nothing.
+	const UWorld* World = Shot ? Shot->GetWorld() : nullptr;
+	if (!World || !DamageNumbersEnabled())
+	{
+		return;
+	}
+	const APlayerController* Controller = World->GetFirstPlayerController();
+	ACataclysmHUD* HeadsUpDisplay = Controller ? Cast<ACataclysmHUD>(Controller->GetHUD()) : nullptr;
+	if (!HeadsUpDisplay)
+	{
+		return;
+	}
+	FCataclysmDamageNumber Number;
+	Number.Text = ProjectileConsumedWord;
+	Number.Colour = ColourFromHex(NothingThroughHex);
+	Number.StartedAt = World->GetTimeSeconds();
+	Number.WorldAnchor = Where;
+	HeadsUpDisplay->AddDamageNumber(Number);
+}

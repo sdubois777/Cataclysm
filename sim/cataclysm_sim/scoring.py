@@ -8,10 +8,15 @@ empire rig was using, and it changes one thing fundamentally:
 Because the baseline term is driven by `currentFloor / totalFloors`, a 150-floor
 dungeon and a 20-floor dungeon at the same tier are nearly equally hard per
 floor -- the deep one just takes 7x longer. At T1 the middle-floor Dungeon Score
-runs 151 (20 floors) -> 159 (50) -> 171 (100) -> 184 (150): a 22% spread across
+runs 194 (20 floors) -> 201 (50) -> 214 (100) -> 226 (150): a 16% spread across
 a 7.5x depth range.
 
 The rig previously assumed deeper meant proportionally harder, which was wrong.
+
+Those four scores are measurements of the model below, so they go stale whenever
+the anchors move. They did: they were 151/159/171/184 for the five months this
+file carried the pre-#2 anchors. `sim/tests/test_analysis_scripts.py` now
+recomputes them and fails if this paragraph disagrees. Issue #6.
 """
 
 from __future__ import annotations
@@ -30,8 +35,12 @@ import re
 # ran for five months on a power curve 21-44% below the real one. The self-test
 # below now parses the reference file and fails on any drift, so a future edit
 # there cannot pass unnoticed.
+#
+# Tiers 2 to 7 were reset upstream on 2026-08-05, in DungeonSimulator commit
+# 6c9be8b, because tier 6 was narrower than tier 5. Issue #7. Tiers 1 and 8 are
+# unchanged: `player_power.py` pins its curve through those two and nothing else.
 PLAYER_MAX_SCORES: dict[int, float] = {
-    0: 0, 1: 385, 2: 871, 3: 1457, 4: 2144, 5: 3251, 6: 4166, 7: 5209, 8: 6327,
+    0: 0, 1: 385, 2: 883, 3: 1508, 4: 2225, 5: 3078, 6: 4057, 7: 5120, 8: 6327,
 }
 
 BASE_TYPE_SCORES = {"Basic": 30, "Quest": 60, "Fallen City": 90, "Cataclysm": 120}
@@ -47,6 +56,18 @@ RARITY_WEIGHTS = {
     "Common": 0, "Elite": 0.05, "Legendary": 0.1,
     "Herald": 0.15, "Boss": 0.3, "Cataclysm Boss": 0.5,
 }
+
+# The parts of the formula that are bare numbers in the reference rather than
+# entries in one of its six tables. Named here only so a reader -- and the
+# analysis scripts alongside this package -- can refer to them instead of
+# retyping the formula in a second file, which is how issue #6 happened. The
+# values are unchanged. `check_against_reference` cannot see them because they
+# are not tables; `verify_scoring_port.py`, which executes the real TypeScript
+# and compares outputs, is what proves they are still right.
+BASELINE_WEIGHT = 0.9           # baseline = tierMin + width * this * floorRatio
+PROCEDURAL_DIVISOR = 20.0       # scalingFactor = floorScalingBase / this
+PROCEDURAL_PER_FLOOR = 0.5      # procedural += currentFloor * this
+DEPTH_TENSION_PER_TIER = 1.2    # (currentFloor - middleFloor) * tier * this
 
 # Weights used to collapse a floor's rarity spread into one Dungeon Score.
 DUNGEON_SCORE_MIX = (
@@ -87,13 +108,15 @@ def enemy_scores(tier: int, dungeon_type: str, subtype: str,
     middle_floor = math.ceil(total_floors / 2)
     floor_ratio = current_floor / total_floors
 
-    baseline = p_min + width * 0.9 * floor_ratio
+    baseline = p_min + width * BASELINE_WEIGHT * floor_ratio
     type_bonus = width * TYPE_WEIGHTS.get(dungeon_type, 0.0)
     sub_bonus = width * SUBTYPE_WEIGHTS.get(subtype, 0.0)
 
-    scaling_factor = FLOOR_SCALING_BASES[dungeon_type] / 20.0
-    procedural = (scaling_factor * floor_ratio) + (current_floor * 0.5)
-    depth_tension = (current_floor - middle_floor) * (tier * 1.2)
+    scaling_factor = FLOOR_SCALING_BASES[dungeon_type] / PROCEDURAL_DIVISOR
+    procedural = ((scaling_factor * floor_ratio)
+                  + (current_floor * PROCEDURAL_PER_FLOOR))
+    depth_tension = ((current_floor - middle_floor)
+                     * (tier * DEPTH_TENSION_PER_TIER))
 
     out = {}
     for rarity, w in RARITY_WEIGHTS.items():
@@ -125,15 +148,76 @@ def final_boss_score(tier: int, dungeon_type: str, subtype: str,
 REFERENCE_ENV_VAR = "CATACLYSM_SCORING_REFERENCE"
 
 
-def reference_path() -> pathlib.Path | None:
-    """Locate DungeonSimulator's calculateScores.tsx, the authoritative model."""
+def _git_common_dir(start: pathlib.Path) -> pathlib.Path | None:
+    """The `.git` directory shared by a checkout and every worktree made from it.
+
+    Returns None when nothing above `start` is a git checkout at all.
+
+    An ordinary checkout has a `.git` DIRECTORY and this returns it. A linked
+    worktree has a `.git` FILE holding one `gitdir: <path>` line, and that path
+    holds a `commondir` file pointing back at the original `.git`. Following
+    both is how git itself gets from a worktree to the checkout it was made
+    from, and it is the reason this cannot be done by counting directory levels:
+    a worktree under `.claude/worktrees/<name>` sits three levels deeper than
+    the checkout it belongs to. Issue #275.
+    """
+    for parent in start.parents:
+        dot_git = parent / ".git"
+        if dot_git.is_dir():
+            return dot_git
+        if not dot_git.is_file():
+            continue
+        line = dot_git.read_text(encoding="utf-8").strip()
+        if not line.startswith("gitdir:"):
+            return None
+        worktree_git = pathlib.Path(line[len("gitdir:"):].strip())
+        if not worktree_git.is_absolute():
+            worktree_git = (parent / worktree_git).resolve()
+        commondir = worktree_git / "commondir"
+        if not commondir.is_file():
+            # A `.git` file with no `commondir` beside its target is a submodule
+            # rather than a worktree. Its target IS the git directory.
+            return worktree_git
+        common = pathlib.Path(commondir.read_text(encoding="utf-8").strip())
+        if not common.is_absolute():
+            common = (worktree_git / common).resolve()
+        return common
+    return None
+
+
+def repository_root() -> pathlib.Path:
+    """The top of the Cataclysm checkout, found the way git finds it.
+
+    Returns the ORIGINAL checkout even when this code is running from a linked
+    worktree, because that is where the sibling DungeonSimulator checkout is.
+    """
+    here = pathlib.Path(__file__).resolve()
+    common = _git_common_dir(here)
+    if common is not None:
+        return common.parent
+    # Not a git checkout at all: fall back to this file's own layout,
+    # sim/cataclysm_sim/scoring.py -> the repository root two levels up.
+    return here.parents[2]
+
+
+def reference_search_path() -> pathlib.Path:
+    """Where reference_path() looks, whether or not anything is there.
+
+    Separate from reference_path() so a skip can name the path it tried. A skip
+    that says only "not present" reads as "nothing is wrong" when the real cause
+    is that the search looked in the wrong place.
+    """
     override = os.environ.get(REFERENCE_ENV_VAR)
     if override:
-        p = pathlib.Path(override)
-        return p if p.is_file() else None
-    # sim/cataclysm_sim/scoring.py -> <workspace>/DungeonSimulator/src/utils/...
-    guess = (pathlib.Path(__file__).resolve().parents[3]
-             / "DungeonSimulator" / "src" / "utils" / "calculateScores.tsx")
+        return pathlib.Path(override)
+    # <workspace>/Cataclysm -> <workspace>/DungeonSimulator/src/utils/...
+    return (repository_root().parent
+            / "DungeonSimulator" / "src" / "utils" / "calculateScores.tsx")
+
+
+def reference_path() -> pathlib.Path | None:
+    """Locate DungeonSimulator's calculateScores.tsx, the authoritative model."""
+    guess = reference_search_path()
     return guess if guess.is_file() else None
 
 
@@ -163,6 +247,7 @@ def check_against_reference(verbose: bool = True) -> bool:
     if ref is None:
         if verbose:
             print("SKIPPED constant check: calculateScores.tsx not found.\n"
+                  f"  Looked for: {reference_search_path()}\n"
                   f"  Set {REFERENCE_ENV_VAR} to its path to enable drift detection.")
         return False
 

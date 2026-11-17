@@ -1,0 +1,429 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "AbilitySystem/CataclysmStacks.h"
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
+#include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystemComponent.h"
+#include "Cataclysm.h"
+
+float UCataclysmStacks::WindowSecondsFor(ECataclysmStackKind Kind)
+{
+	switch (Kind)
+	{
+	// "Each health cost paid within 3 SECONDS of the last grants a stack."
+	case ECataclysmStackKind::SanguineMomentum:	return 3.0f;
+
+	// "Taking damage grants a stack of Bloodlust for 5 SECONDS."
+	case ECataclysmStackKind::Bloodlust:		return 5.0f;
+
+	// "Killing an enemy ... grants a stack of Carnage for 8 SECONDS."
+	case ECataclysmStackKind::Carnage:			return 8.0f;
+
+	// EIGHT, WHICH IS A JUDGEMENT. The Infernal Brand row states no window at
+	// all -- only that it explodes at five stacks. Eight seconds means a
+	// creature that keeps hitting reaches the explosion and one the player
+	// disengages from loses it, which is what makes the modifier a reason to
+	// break off rather than a timer that always runs out.
+	case ECataclysmStackKind::InfernalBrand:	return 8.0f;
+
+	// FIVE, AND THE ROW SAYS SO: "A stack lasts 5 seconds." It is the same
+	// five Bloodlust runs for, which is not a coincidence -- both are granted
+	// by taking a hit, so both need a window that outlasts the gap between
+	// blows without letting a count survive a creature being left alone.
+	case ECataclysmStackKind::Feast:			return 5.0f;
+
+	// EIGHT, INFERNAL BRAND'S, FOR ITS STATED REASON, chosen by the project
+	// owner on 2026-10-30 (#1722). The row states no window. Every grant moves
+	// the whole count's expiry, so this is the longest gap between two landed
+	// hits before the count is lost: a player who avoids every Withering Blows
+	// carrier's hits for eight seconds starts again from nought. Every creature
+	// attacks more often than that, so any carrier that keeps landing hits
+	// reaches ten on its own. (The owner first approved twelve, on a
+	// description of this window as a time within which all ten must land,
+	// which is not what it does.)
+	case ECataclysmStackKind::Withering:			return 8.0f;
+
+	// EIGHT, WITHERING'S AND INFERNAL BRAND'S, approved by the project owner on 2026-10-30 (#1722) so the three
+	// stacking debuffs a creature's hits lay are lost the same way: eight seconds with no such hit.
+	case ECataclysmStackKind::TouchOfNothing:	return 8.0f;
+
+	default:									break;
+	}
+
+	// A KIND THIS BUILD DOES NOT KNOW HOLDS NOTHING. A window of nothing makes
+	// `Held` answer zero for it at every instant, which is the safe direction:
+	// the alternative would be a stack that never expires.
+	return 0.0f;
+}
+
+int32 UCataclysmStacks::CapFor(ECataclysmStackKind Kind)
+{
+	switch (Kind)
+	{
+	case ECataclysmStackKind::SanguineMomentum:	return 5;	// "up to 5 stacks"
+	case ECataclysmStackKind::Bloodlust:		return 5;	// "up to 5 stacks"
+	case ECataclysmStackKind::Carnage:			return 10;	// "up to 10 stacks"
+
+	// FIVE, WHICH THE ROW DOES STATE: "When the brand reaches 5 stacks, it
+	// explodes". The cap and the trigger are the same number here, unlike
+	// every kind above, where the cap is where counting stops.
+	case ECataclysmStackKind::InfernalBrand:	return 5;
+
+	// FIVE, AND THE ROW SAYS SO: "up to 5 stacks". Five stacks of the row's
+	// 4% is 20%, which is exactly what Commander gives a creature -- so a
+	// fully fed creature attacks as fast as an inspired one and no faster.
+	case ECataclysmStackKind::Feast:			return 5;
+
+	// TEN, WHICH THE ROW STATES: "at 10 stacks". The cap and the trigger are the
+	// same number, as Infernal Brand's are.
+	case ECataclysmStackKind::Withering:			return 10;
+
+	// FIVE, approved by the project owner on 2026-10-30 (#1722): Infernal Brand's cap. The row states none.
+	case ECataclysmStackKind::TouchOfNothing:	return 5;
+	default:									break;
+	}
+
+	// The same safe direction as the window above: an unknown kind holds nothing
+	// rather than growing without bound.
+	return 0;
+}
+
+const TCHAR* UCataclysmStacks::CarnageFromDamageTakenStat =
+	TEXT("carnage_from_damage_taken");
+
+const TCHAR* UCataclysmStacks::CarnageHasNoMaximumStat =
+	TEXT("carnage_has_no_maximum");
+
+bool UCataclysmStacks::CarnageFromDamageTaken(
+	const UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	if (!AbilitySystem)
+	{
+		return false;
+	}
+
+	const FGameplayAttribute Flag = UCataclysmClassResourceAttributeSet
+		::GetCarnageFromDamageTakenAttribute();
+	if (!AbilitySystem->HasAttributeSetForAttribute(Flag))
+	{
+		// NO CLASS RESOURCE SET MEANS NO CAPSTONE OPTION, which is every enemy
+		// in the game, and every enemy goes through the same damage path.
+		return false;
+	}
+
+	// ASKED FOR RATHER THAN READ, the standing rule for anything a later node
+	// might put a condition on. Carnivore's row carries none today, so the
+	// attribute is the right fallback and both routes agree.
+	return AbilitySystem->StatForSkill(FName(CarnageFromDamageTakenStat),
+									   FGameplayTagContainer(),
+									   AbilitySystem->GetNumericAttribute(Flag))
+		> 0.0f;
+}
+
+int32 UCataclysmStacks::CapForOn(
+	const UCataclysmAbilitySystemComponent* AbilitySystem,
+	ECataclysmStackKind Kind)
+{
+	// EVERY KIND BUT CARNAGE, AND EVERY CHARACTER BUT ONE, TAKES THE DESIGN'S
+	// NUMBER. Issue #1071. Carnivore is the only thing in the game that lifts a
+	// cap at all, and it lifts only Carnage's.
+	if (Kind != ECataclysmStackKind::Carnage || !AbilitySystem)
+	{
+		return CapFor(Kind);
+	}
+
+	const FGameplayAttribute Flag = UCataclysmClassResourceAttributeSet
+		::GetCarnageHasNoMaximumAttribute();
+	if (!AbilitySystem->HasAttributeSetForAttribute(Flag))
+	{
+		return CapFor(Kind);
+	}
+
+	// ASKED FOR RATHER THAN READ, for the reason the flag above gives.
+	const bool bNoMaximum =
+		AbilitySystem->StatForSkill(FName(CarnageHasNoMaximumStat),
+									FGameplayTagContainer(),
+									AbilitySystem->GetNumericAttribute(Flag))
+		> 0.0f;
+	return bNoMaximum ? NoMaximum : CapFor(Kind);
+}
+
+const TCHAR* UCataclysmStacks::NameOf(ECataclysmStackKind Kind)
+{
+	switch (Kind)
+	{
+	case ECataclysmStackKind::SanguineMomentum:	return TEXT("Sanguine Momentum");
+	case ECataclysmStackKind::Bloodlust:		return TEXT("Bloodlust");
+	case ECataclysmStackKind::Carnage:			return TEXT("Carnage");
+	case ECataclysmStackKind::InfernalBrand:	return TEXT("Infernal Brand");
+	case ECataclysmStackKind::Feast:			return TEXT("Feasting");
+	case ECataclysmStackKind::Withering:			return TEXT("Withering");
+	case ECataclysmStackKind::TouchOfNothing:	return TEXT("Touch of Nothing");
+	default:									return TEXT("(unknown)");
+	}
+}
+
+int32 UCataclysmStacks::Held(
+	const UCataclysmAbilitySystemComponent* AbilitySystem,
+	ECataclysmStackKind Kind)
+{
+	if (!AbilitySystem)
+	{
+		return 0;
+	}
+	return AbilitySystem->StacksHeld(Kind, WindowSecondsFor(Kind));
+}
+
+bool UCataclysmStacks::Spend(UCataclysmAbilitySystemComponent* AbilitySystem,
+							 ECataclysmStackKind Kind)
+{
+	if (!AbilitySystem)
+	{
+		return false;
+	}
+
+	// THE KIND'S OWN WINDOW, PASSED IN, exactly as `Held` above passes it. A
+	// kind this build does not know answers a window of nothing, so its count
+	// has already lapsed at every instant and nothing is ever spent from it --
+	// the same safe direction `WindowSecondsFor` argues for at the top of this
+	// file.
+	return AbilitySystem->SpendStack(Kind, WindowSecondsFor(Kind));
+}
+
+bool UCataclysmStacks::NoteHealthCostPaid(
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	if (!AbilitySystem)
+	{
+		return false;
+	}
+
+	// "WITHIN 3 SECONDS OF THE LAST" NEEDS THERE TO BE A LAST. A negative
+	// reading is "never paid one", which is where every character starts a
+	// fight, and the first cost of a fight is not within three seconds of
+	// anything. Issue #1002, and it is the half of the sentence that is easiest
+	// to drop: a version granting a stack on every payment would give a
+	// character one from its opening cast.
+	const float Since = AbilitySystem->SecondsSinceHealthCostPaid();
+	if (Since < 0.0f
+		|| Since > WindowSecondsFor(ECataclysmStackKind::SanguineMomentum))
+	{
+		return false;
+	}
+
+	AbilitySystem->GrantStack(
+		ECataclysmStackKind::SanguineMomentum,
+		WindowSecondsFor(ECataclysmStackKind::SanguineMomentum),
+		CapFor(ECataclysmStackKind::SanguineMomentum));
+	return true;
+}
+
+bool UCataclysmStacks::NoteInfernalBrand(
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	if (!AbilitySystem)
+	{
+		return false;
+	}
+
+	const ECataclysmStackKind Kind = ECataclysmStackKind::InfernalBrand;
+
+	AbilitySystem->GrantStack(Kind, WindowSecondsFor(Kind), CapFor(Kind));
+
+	if (Held(AbilitySystem, Kind) < CapFor(Kind))
+	{
+		return false;
+	}
+
+	// SPENT HERE RATHER THAN BY THE CALLER, which is what the header promises
+	// and what stops the explosion firing on every hit once the fifth stack
+	// has landed. The row says the explosion consumes all stacks.
+	//
+	// SPENT BEFORE `true` IS RETURNED, AND THAT ORDER MATTERS. The caller deals
+	// the explosion's damage next, and it reaches the target as a blow of its
+	// own, which comes back through `UCataclysmEnemyModifiers::BrandOnHit`. A
+	// count still at five when it arrived would explode again from inside the
+	// first explosion. `BrandOnHit` also refuses to let the explosion brand at
+	// all; either one alone is enough to stop that chain.
+	//
+	// BY `ClearStacks`, NOT BY A GRANT. Issue #1534. This line used to be
+	// `GrantStack(Kind, 0.0f, 0)`, on the reasoning, written here, that a
+	// stack with no window left reads as nothing. `GrantStack` refuses a cap of
+	// zero before it looks at anything else, so the call did nothing and the
+	// count stayed at five. On 2026-09-10 that killed the project owner's
+	// character ten times in 57 seconds.
+	AbilitySystem->ClearStacks(Kind);
+
+	return true;
+}
+
+bool UCataclysmStacks::NoteWithering(UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	if (!AbilitySystem)
+	{
+		return false;
+	}
+
+	const ECataclysmStackKind Kind = ECataclysmStackKind::Withering;
+
+	AbilitySystem->GrantStack(Kind, WindowSecondsFor(Kind), CapFor(Kind));
+
+	if (Held(AbilitySystem, Kind) < CapFor(Kind))
+	{
+		return false;
+	}
+
+	// SPENT HERE AND BY `ClearStacks`, for the reasons `NoteInfernalBrand` above
+	// gives: the row says every stack is spent at ten, and a grant cannot clear.
+	AbilitySystem->ClearStacks(Kind);
+
+	return true;
+}
+
+void UCataclysmStacks::NoteTouchOfNothing(UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	if (AbilitySystem)
+	{
+		const ECataclysmStackKind Kind = ECataclysmStackKind::TouchOfNothing;
+		AbilitySystem->GrantStack(Kind, WindowSecondsFor(Kind), CapFor(Kind));
+	}
+}
+
+bool UCataclysmStacks::NegatesTheNextBuff(UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	// ONE STACK, ONE BUFF. `Spend` answers false for no character, for none held and for a count that has
+	// lapsed, and each of those lets the buff through.
+	if (!AbilitySystem || !Spend(AbilitySystem, ECataclysmStackKind::TouchOfNothing))
+	{
+		return false;
+	}
+
+	AbilitySystem->NoteBuffNegated();
+
+	// AND THE STATUS GOES WITH THE LAST STACK, so a player holding none is not shown as touched.
+	if (Held(AbilitySystem, ECataclysmStackKind::TouchOfNothing) <= 0)
+	{
+		UCataclysmSkillEffects::RemoveEffectsGranting(
+			AbilitySystem->GetAvatarActor(), UCataclysmSkillShapes::StatusTagFor(TEXT("Touch of Nothing")));
+	}
+
+	UE_LOG(LogCataclysm, Log, TEXT("%s's Touch of Nothing negated a buff; %d left."),
+		   *GetNameSafe(AbilitySystem->GetAvatarActor()),
+		   Held(AbilitySystem, ECataclysmStackKind::TouchOfNothing));
+	return true;
+}
+
+bool UCataclysmStacks::NoteDamageTaken(
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	if (!AbilitySystem)
+	{
+		return false;
+	}
+
+	// NO CONDITION AT ALL BEYOND HAVING BEEN HIT. The caller decides what counts
+	// as a hit that landed; this is only the count. Issue #1003.
+	AbilitySystem->GrantStack(
+		ECataclysmStackKind::Bloodlust,
+		WindowSecondsFor(ECataclysmStackKind::Bloodlust),
+		CapFor(ECataclysmStackKind::Bloodlust));
+
+	// AND A STACK OF CARNAGE TOO, FOR A CHARACTER HOLDING CARNIVORE. Issue
+	// #1071: "Every hit you take grants a stack of Carnage." Nothing happens
+	// here for anybody else, which is every character in the game.
+	//
+	// A SECOND KIND FROM ONE EVENT AND NOT A REPLACEMENT FOR THE FIRST. The two
+	// stay separate because they are separate: Bloodlust lasts 5 seconds and
+	// Carnage 8, and different nodes read each. A character holding Carnivore
+	// and Blood Offering earns both from the same blow.
+	//
+	// THROUGH `CapForOn` AND NOT `CapFor`, which is the option's second clause
+	// doing its work: Carnage has no maximum for this character.
+	if (CarnageFromDamageTaken(AbilitySystem))
+	{
+		AbilitySystem->GrantStack(
+			ECataclysmStackKind::Carnage,
+			WindowSecondsFor(ECataclysmStackKind::Carnage),
+			CapForOn(AbilitySystem, ECataclysmStackKind::Carnage));
+
+		UE_LOG(LogCataclysm, Verbose,
+			   TEXT("A hit taken granted a Carnage stack, now %d."),
+			   Held(AbilitySystem, ECataclysmStackKind::Carnage));
+	}
+
+	// AND A FEAST STACK FOR A CREATURE CARRYING THE FEASTING BUFF. The
+	// `Buff_Feasting` row of `game/Data/StatusEffects.csv`: "This enemy
+	// gains a stack of "Feasting" every time it is hit".
+	//
+	// GATED ON THE TAG RATHER THAN GRANTED TO EVERY CHARACTER, WHICH IS THE
+	// OPPOSITE OF BLOODLUST ABOVE. Bloodlust is granted to whoever was hit
+	// and costs nothing to hold, because only a Masochist node reads it. A
+	// Feast count is read by the creature's own attack interval, so a
+	// creature that gains the buff part way through a fight must start at
+	// nothing rather than inherit a count from the blows it took before it
+	// was feasting. Refusing the grant while the buff is off is the only
+	// place that can be arranged: `Held` cannot tell when a stack arrived.
+	const FGameplayTag Feasting =
+		UCataclysmSkillShapes::StatusTagFor(TEXT("Feasting"));
+	if (Feasting.IsValid() && AbilitySystem->HasMatchingGameplayTag(Feasting))
+	{
+		AbilitySystem->GrantStack(
+			ECataclysmStackKind::Feast,
+			WindowSecondsFor(ECataclysmStackKind::Feast),
+			CapFor(ECataclysmStackKind::Feast));
+	}
+
+	return true;
+}
+
+bool UCataclysmStacks::NoteEnemyKilled(AActor* Killer)
+{
+	if (!Killer)
+	{
+		return false;
+	}
+
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Killer));
+	if (!AbilitySystem)
+	{
+		return false;
+	}
+
+	const FGameplayAttribute Resource =
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	if (!AbilitySystem->HasAttributeSetForAttribute(Resource))
+	{
+		// NO CLASS RESOURCE SET MEANS NO FERVOUR TO BE ABOVE, which is every
+		// enemy in the game. An enemy killing something gains nothing here.
+		return false;
+	}
+
+	// STRICTLY ABOVE 75, BECAUSE THE DESIGN WRITES "above 75 Fervour". Issue
+	// #1004. A character sitting exactly on 75 gains nothing, which is the same
+	// boundary Grand Tithe draws for a health cost.
+	if (AbilitySystem->GetNumericAttribute(Resource)
+		<= CarnageClassResourceAbove)
+	{
+		return false;
+	}
+
+	// THROUGH `CapForOn` AND NOT `CapFor`, since issue #1071. Carnivore says
+	// Carnage has no maximum, and it says so about the stack rather than about
+	// one way of earning it, so a kill-granted stack has to obey the same
+	// answer a hit-granted one does.
+	AbilitySystem->GrantStack(
+		ECataclysmStackKind::Carnage,
+		WindowSecondsFor(ECataclysmStackKind::Carnage),
+		CapForOn(AbilitySystem, ECataclysmStackKind::Carnage));
+
+	UE_LOG(LogCataclysm, Verbose,
+		   TEXT("%s gained a Carnage stack for a kill, now %d."),
+		   *Killer->GetName(),
+		   Held(AbilitySystem, ECataclysmStackKind::Carnage));
+	return true;
+}

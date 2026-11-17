@@ -1,0 +1,661 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "Save/CataclysmSaveLoad.h"
+
+#include "Cataclysm.h"
+#include "Data/CataclysmDataRows.h"
+#include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmPlayerCharacter.h"
+#include "Dungeon/CataclysmDungeonGameMode.h"
+#include "Empire/CataclysmEmpireRun.h"
+#include "Empire/CataclysmSurge.h"
+#include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
+#include "HAL/IConsoleManager.h"
+#include "Items/CataclysmEquipmentComponent.h"
+#include "Items/CataclysmItem.h"
+#include "Kismet/GameplayStatics.h"
+#include "Misc/DateTime.h"
+#include "Misc/FileHelper.h"
+#include "PlatformFeatures.h"
+#include "SaveGameSystem.h"
+#include "Player/CataclysmGameInstance.h"
+#include "Player/CataclysmPlayerState.h"
+#include "Save/CataclysmSaveApply.h"
+#include "Save/CataclysmSavePartition.h"
+#include "Save/CataclysmSaveRecords.h"
+#include "Save/CataclysmSaveStorage.h"
+#include "Save/CataclysmSaveWriter.h"
+#include "UObject/Package.h"
+
+namespace CataclysmSaveLoad
+{
+	/**
+	 * Whether the slot holds a record written by a newer build than this one, and its version.
+	 *
+	 * READ FROM THE FILE'S OWN VERSION FIELD rather than from the read's result, because the result for a newer file
+	 * is the one the migration chain gives every refusal. Section 5 rule 1 puts the version first so that it can be
+	 * read without the rest.
+	 */
+	bool IsNewerThanThisBuild(const FString& SlotName, int32 ThisBuildReads, int32& OutVersion)
+	{
+		// ASKED WHETHER IT EXISTS FIRST. Reading a file that is not there logs a warning from the engine, and a warning
+		// fails whichever automation test is running.
+		TArray<uint8> Bytes;
+		if (SlotName.IsEmpty()
+			|| !UGameplayStatics::DoesSaveGameExist(SlotName, UCataclysmSaveWriter::UserIndex)
+			|| !UGameplayStatics::LoadDataFromSlot(Bytes, SlotName, UCataclysmSaveWriter::UserIndex)
+			|| Bytes.Num() == 0)
+		{
+			return false;
+		}
+
+		FString Json;
+		FFileHelper::BufferToString(Json, Bytes.GetData(), Bytes.Num());
+		return FCataclysmSaveStorage::ReadSchemaVersion(Json, OutVersion) && OutVersion > ThisBuildReads;
+	}
+
+	/**
+	 * Each creature put back that its record says was something to the walk: a thrall re-linked to the player (not
+	 * taken again), and in a dungeon Soul Harvest's souls and Nothing Is Forgotten's boss. Issue #753, Group 2. BEFORE
+	 * THE PLACEMENT, so the player's Fervour is written back against the reserve its thralls hold.
+	 */
+	void RelinkTheCreatures(const FCataclysmFloorRestored& Floor, const FCataclysmSavedFloor& Saved,
+							ACataclysmPlayerCharacter& Player, ACataclysmDungeonGameMode* Dungeon)
+	{
+		// THE REBUILT FLOOR'S SOUL CHAINS BEARERS FORGOTTEN FIRST: the load has destroyed them, and the saved bearers
+		// are given back below. Never chosen again after a load. Issue #753, Group 3c-1, ruled 2026-10-30.
+		if (Dungeon)
+		{
+			Dungeon->ForgetTheSoulChainBearersForALoad();
+		}
+		for (const TPair<ACataclysmEnemyCharacter*, int32>& One : Floor.Spawned)
+		{
+			if (!IsValid(One.Key) || !Saved.Creatures.IsValidIndex(One.Value))
+			{
+				continue;
+			}
+			const FCataclysmSavedCreature& Record = Saved.Creatures[One.Value];
+			FCataclysmSaveApply::ThrallInto(*One.Key, Record, Player);
+			if (Dungeon)
+			{
+				Dungeon->RestoreCreatureRoles(*One.Key, Record);
+			}
+		}
+	}
+
+	FCataclysmLoadReport Refused(const FString& Why)
+	{
+		FCataclysmLoadReport Report;
+		Report.Outcome = ECataclysmLoadOutcome::Refused;
+		Report.Why = Why;
+		return Report;
+	}
+}
+
+FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACataclysmPlayerCharacter& Character,
+														 const FGuid& CharacterId)
+{
+	using namespace CataclysmSaveLoad;
+
+	UCataclysmSaveWriter* Writer = UCataclysmSaveWriter::In(&World);
+	if (!Writer || !Writer->IsWriting())
+	{
+		return Refused(TEXT("this world is not saving a run, so nothing names the floor to load onto"));
+	}
+
+	UCataclysmGameInstance* Instance = Cast<UCataclysmGameInstance>(World.GetGameInstance());
+	if (!Instance)
+	{
+		return Refused(TEXT("there is no game instance of this game's class to hold the run"));
+	}
+
+	if (!CharacterId.IsValid())
+	{
+		return Refused(TEXT("no character was named"));
+	}
+
+	// 1. THE CHARACTER.
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::SlotIsEmpty;
+	FString Message;
+	const FString CharacterSlot = UCataclysmSavePartition::CharacterSlotName(CharacterId);
+	UCataclysmCharacterSave* SavedCharacter = Cast<UCataclysmCharacterSave>(FCataclysmSaveStorage::ReadFromSlot(
+		CharacterSlot, UCataclysmSaveWriter::UserIndex, UCataclysmCharacterSave::StaticClass(),
+		GetTransientPackage(), Result, Message));
+	if (!SavedCharacter || !FCataclysmSaveStorage::Succeeded(Result))
+	{
+		int32 Version = 0;
+		if (IsNewerThanThisBuild(CharacterSlot, UCataclysmCharacterSave::SchemaVersionNow, Version))
+		{
+			return Refused(FString::Printf(
+				TEXT("the character record in '%s' was written by a newer build, at version %d where this build reads "
+					 "version %d, and is refused rather than guessed at"),
+				*CharacterSlot, Version, UCataclysmCharacterSave::SchemaVersionNow));
+		}
+		return Refused(FString::Printf(TEXT("the character record in '%s' could not be read: %s%s%s"),
+									   *CharacterSlot, FCataclysmSaveStorage::Describe(Result),
+									   Message.IsEmpty() ? TEXT("") : TEXT(", "), *Message));
+	}
+	if (SavedCharacter->CharacterId != CharacterId)
+	{
+		return Refused(FString::Printf(TEXT("the character record in '%s' names another character, %s"),
+									   *CharacterSlot, *SavedCharacter->CharacterId.ToString(EGuidFormats::Digits)));
+	}
+
+	// 2. THE RUN IT NAMES.
+	UCataclysmRunSave* SavedRun = nullptr;
+	FString WhyNoRun;
+	const FString RunSlot = UCataclysmSavePartition::RunSlotName(SavedCharacter->CurrentRunId);
+	if (!SavedCharacter->CurrentRunId.IsValid())
+	{
+		WhyNoRun = TEXT("the character record names no run");
+	}
+	else
+	{
+		SavedRun = Cast<UCataclysmRunSave>(FCataclysmSaveStorage::ReadFromSlot(
+			RunSlot, UCataclysmSaveWriter::UserIndex, UCataclysmRunSave::StaticClass(), GetTransientPackage(),
+			Result, Message));
+		if (!SavedRun || !FCataclysmSaveStorage::Succeeded(Result))
+		{
+			SavedRun = nullptr;
+
+			// A NEWER RUN REFUSES EVERYTHING, ruled 2026-10-30. A new run begun here would be written over the
+			// character's `CurrentRunId` at its next write, and the newer run would be lost to it.
+			int32 Version = 0;
+			if (IsNewerThanThisBuild(RunSlot, UCataclysmRunSave::SchemaVersionNow, Version))
+			{
+				return Refused(FString::Printf(
+					TEXT("the run record in '%s' was written by a newer build, at version %d where this build reads "
+						 "version %d; it is refused, and so is the character, because beginning a new run would "
+						 "replace the character's run and lose the newer one"),
+					*RunSlot, Version, UCataclysmRunSave::SchemaVersionNow));
+			}
+			WhyNoRun = Result == ECataclysmSaveLoadResult::SlotIsEmpty
+				? FString::Printf(TEXT("there is no run record in '%s'"), *RunSlot)
+				: FString::Printf(TEXT("the run record in '%s' could not be read: %s%s%s"), *RunSlot,
+								  FCataclysmSaveStorage::Describe(Result), Message.IsEmpty() ? TEXT("") : TEXT(", "),
+								  *Message);
+		}
+		else if (SavedRun->RunId != SavedCharacter->CurrentRunId)
+		{
+			WhyNoRun = FString::Printf(TEXT("the run record in '%s' names another run, %s"), *RunSlot,
+									   *SavedRun->RunId.ToString(EGuidFormats::Digits));
+			SavedRun = nullptr;
+		}
+	}
+
+	// 3. WHERE THE RUN WAS SAVED.
+	ACataclysmDungeonGameMode* DungeonMode = nullptr;
+	if (SavedRun && SavedRun->CurrentDungeonId != INDEX_NONE)
+	{
+		// INSIDE AN EMPIRE DUNGEON, WHICH IS ENTERED AGAIN AT ITS FLOOR. Issue #753, the dungeon step, ruled
+		// 2026-10-30. Entering is what makes a death there pay its days (`EndTheDungeonForADeath` charges nothing
+		// without `EmpireDungeonId`), so a run that cannot be entered again here is refused whole rather than loaded
+		// beside the dungeon.
+		const int32 SavedDungeon = SavedRun->CurrentDungeonId;
+		DungeonMode = ACataclysmDungeonGameMode::InWorld(&World);
+		if (!DungeonMode)
+		{
+			return Refused(FString::Printf(
+				TEXT("the run was saved inside empire dungeon %d, and this level has no dungeon to enter it in: load "
+					 "it in a dungeon level, where Cataclysm.EnterDungeon works"), SavedDungeon));
+		}
+		if (DungeonMode->EmpireDungeonId != INDEX_NONE)
+		{
+			return Refused(FString::Printf(
+				TEXT("the run was saved inside empire dungeon %d, and this level is walking dungeon %d: leave it "
+					 "first"), SavedDungeon, DungeonMode->EmpireDungeonId));
+		}
+		const FCataclysmDungeon* Saved = SavedRun->Dungeons.FindByPredicate(
+			[SavedDungeon](const FCataclysmDungeon& Each) { return Each.DungeonId == SavedDungeon; });
+		if (!Saved || SavedRun->Cities.Num() == 0)
+		{
+			return Refused(FString::Printf(
+				TEXT("the run was saved inside empire dungeon %d, and the record holds no such dungeon on its map"),
+				SavedDungeon));
+		}
+		if (SavedRun->Floor.Dungeon != DungeonMode->DungeonName || SavedRun->Floor.Floor < 1
+			|| SavedRun->Floor.Floor > FMath::Max(1, Saved->Floors))
+		{
+			return Refused(FString::Printf(
+				TEXT("the run was saved inside empire dungeon %d on floor %d of '%s', and this level's dungeon is "
+					 "'%s' and that dungeon has %d floors"),
+				SavedDungeon, SavedRun->Floor.Floor, *SavedRun->Floor.Dungeon.ToString(),
+				*DungeonMode->DungeonName.ToString(), Saved->Floors));
+		}
+	}
+	else if (SavedRun && SavedRun->Floor.IsOccupied()
+			 && (SavedRun->Floor.Dungeon != Writer->HoldsTheDungeon()
+				 || SavedRun->Floor.Floor != Writer->HoldsTheFloor()))
+	{
+		return Refused(FString::Printf(
+			TEXT("the run was saved on floor %d of '%s', and this level is floor %d of '%s'"),
+			SavedRun->Floor.Floor, *SavedRun->Floor.Dungeon.ToString(), Writer->HoldsTheFloor(),
+			*Writer->HoldsTheDungeon().ToString()));
+	}
+
+	// 4. THE EMPIRE, INTO AN OBJECT NOTHING HOLDS YET. A record saved with no empire run going holds no cities, and
+	// it is loaded as that: no empire, which the game starts when something asks for one.
+	UCataclysmEmpireRun* RestoredEmpire = nullptr;
+	if (SavedRun && SavedRun->Cities.Num() > 0)
+	{
+		RestoredEmpire = NewObject<UCataclysmEmpireRun>(Instance);
+		FString Why;
+		if (!FCataclysmSaveApply::RunInto(*SavedRun, *RestoredEmpire, Why))
+		{
+			WhyNoRun = FString::Printf(TEXT("the run record in '%s' would not go back: %s"), *RunSlot, *Why);
+			SavedRun = nullptr;
+			RestoredEmpire = nullptr;
+		}
+	}
+
+	// 5. THE CHARACTER, WHICH REFUSES BEFORE IT CHANGES ANYTHING.
+	FCataclysmLoadReport Report;
+	{
+		FString Why;
+		if (!FCataclysmSaveApply::CharacterInto(*SavedCharacter, Character, Report.SkillsRefused, Why))
+		{
+			return Refused(FString::Printf(TEXT("the character record would not go back: %s"), *Why));
+		}
+	}
+
+	// NOTHING BELOW REFUSES. The run becomes the game's, a new one when it could not be read.
+	FGuid RunId;
+	if (SavedRun)
+	{
+		RunId = SavedRun->RunId;
+		Instance->EmpireRun = RestoredEmpire;
+		if (ACataclysmPlayerState* State = Character.GetPlayerState<ACataclysmPlayerState>())
+		{
+			State->RestoreRunKills(SavedRun->RunKills);
+		}
+
+		// THE FLOOR WITHOUT ITS CHARACTERS: the placement goes back once, last, below. `FloorInto` places the
+		// record's characters too, and until 2026-10-30 this passed it the whole floor, so the character was placed
+		// here, before the writer was told the loaded run, and placed again below. A character saved dead then died
+		// here, and its death's write went to the slots the world began with rather than the loaded ones.
+		FCataclysmSavedFloor OnlyTheFloor = SavedRun->Floor;
+		OnlyTheFloor.Characters.Reset();
+
+		if (DungeonMode && RestoredEmpire)
+		{
+			// THE DUNGEON ENTERED AGAIN AT THE SAVED FLOOR, then the floor's creatures and drops put back onto what
+			// it built. Asked of nothing that can refuse: every refusal of `ResumeEmpireDungeon` is asked above.
+			if (!DungeonMode->ResumeEmpireDungeon(SavedRun->CurrentDungeonId, SavedRun->Floor.Floor,
+												  SavedRun->Floor.bOnTheDarkFloor, SavedRun->Floor.DarkFloorFellFrom,
+												  &SavedRun->Walk))
+			{
+				UE_LOG(LogCataclysm, Error, TEXT("Cataclysm.LoadCharacter: dungeon %d could not be entered again at "
+												 "floor %d after every check for it had passed."),
+					   SavedRun->CurrentDungeonId, SavedRun->Floor.Floor);
+			}
+			const FCataclysmFloorRestored Floor = FCataclysmSaveApply::DungeonFloorInto(*DungeonMode, OnlyTheFloor);
+			Report.CreaturesRestored = Floor.Creatures;
+			RelinkTheCreatures(Floor, OnlyTheFloor, Character, DungeonMode);
+
+			// AND THE FLOOR OBJECTS THE PLAYER USED, MARKED USED WITHOUT THEIR REWARD OR COST, once the floor is rebuilt
+			// and the walk is back. Issue #753, Group 3b.
+			DungeonMode->RestoreFloorChoices(OnlyTheFloor.Choices, OnlyTheFloor.UsedObjects);
+
+			// AND WHAT THE FLOOR'S RULE CREATURES LEFT, without any death's reward or cost again. Issue #753, 3c-1.
+			DungeonMode->RestoreFloorRuleState(OnlyTheFloor.RuleState);
+		}
+		else if (SavedRun->Floor.IsOccupied())
+		{
+			const FCataclysmFloorRestored Floor = FCataclysmSaveApply::FloorInto(World, OnlyTheFloor);
+			Report.CreaturesRestored = Floor.Creatures;
+			RelinkTheCreatures(Floor, OnlyTheFloor, Character, nullptr);
+		}
+	}
+	else
+	{
+		RunId = FGuid::NewGuid();
+		// THE RUN'S CHANCE FROM THE CLOCK, A NEW RUN'S; ITS CATACLYSMS FROM THE CHARACTER, the same ones its last run at
+		// this tier faced. Issue #1324 slice 6a.
+		const int32 Seed = static_cast<int32>(FDateTime::Now().GetTicks() & 0x7FFFFFFF);
+		Instance->BeginACharactersEmpireRun(Seed, SavedCharacter->CataclysmOrderSeed, ECataclysmSurgeMode::Static,
+											static_cast<int32>(SavedCharacter->Partition.Lethality),
+											SavedCharacter->DifficultyTier); // A load's new run: at the character's tier.
+	}
+
+	// THE WRITER GOES ON INTO THE LOADED SLOTS, FROM THE LOADED RECORDS, on the saved floor when there is one.
+	const bool bSavedFloor = SavedRun && SavedRun->Floor.IsOccupied();
+	Writer->BeginRun(RunId, CharacterId,
+					 bSavedFloor ? SavedRun->Floor.Dungeon : Writer->HoldsTheDungeon(),
+					 bSavedFloor ? SavedRun->Floor.Floor : Writer->HoldsTheFloor(),
+					 bSavedFloor && SavedRun->Floor.bOnTheDarkFloor,
+					 bSavedFloor ? SavedRun->Floor.DarkFloorFellFrom : 0);
+	Writer->AdoptLoaded(SavedRun, SavedCharacter);
+
+	// THE PLACEMENT LAST, AND ONCE: a character saved at no health dies here, after the writer was told the loaded
+	// run, so its death's write goes to the loaded slots.
+	bool bPlaced = false;
+	if (SavedRun)
+	{
+		for (const FCataclysmSavedCharacterPlacement& Placement : SavedRun->Floor.Characters)
+		{
+			if (Placement.CharacterId == CharacterId)
+			{
+				bPlaced = FCataclysmSaveApply::PlacementInto(Character, Placement);
+				break;
+			}
+		}
+	}
+
+	if (SavedRun)
+	{
+		Report.Outcome = ECataclysmLoadOutcome::Loaded;
+		Report.Why = FString::Printf(
+			TEXT("character %s and run %s were put back: %s, %d creatures, %s"),
+			*CharacterId.ToString(EGuidFormats::Digits), *RunId.ToString(EGuidFormats::Digits),
+			RestoredEmpire ? *FString::Printf(TEXT("day %d"), SavedRun->Day) : TEXT("no empire run"),
+			Report.CreaturesRestored, bPlaced ? TEXT("placed where it was saved") : TEXT("with no placement saved"));
+	}
+	else
+	{
+		Report.Outcome = ECataclysmLoadOutcome::LoadedWithANewRun;
+		Report.Why = FString::Printf(TEXT("character %s was put back and a new run, %s, was begun, because %s"),
+									 *CharacterId.ToString(EGuidFormats::Digits),
+									 *RunId.ToString(EGuidFormats::Digits), *WhyNoRun);
+	}
+	return Report;
+}
+
+namespace
+{
+	/** A record read out of a slot's text, migrated in memory only; null with `OutWhy` when it cannot be read. */
+	template <typename TRecord>
+	TRecord* ReadForAList(const FString& SlotName, int32 UserIndex, FString& OutWhy)
+	{
+		TArray<uint8> Bytes;
+		if (!UGameplayStatics::DoesSaveGameExist(SlotName, UserIndex)
+			|| !UGameplayStatics::LoadDataFromSlot(Bytes, SlotName, UserIndex) || Bytes.Num() == 0)
+		{
+			OutWhy = TEXT("the slot could not be read");
+			return nullptr;
+		}
+		FString Json;
+		FFileHelper::BufferToString(Json, Bytes.GetData(), Bytes.Num());
+		ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::SlotIsEmpty;
+		FString Message;
+		TRecord* Record = Cast<TRecord>(FCataclysmSaveStorage::FromJson(Json, TRecord::StaticClass(),
+																		GetTransientPackage(), Result, Message));
+		if (!Record)
+		{
+			OutWhy = FString::Printf(TEXT("%s%s%s"), FCataclysmSaveStorage::Describe(Result),
+									 Message.IsEmpty() ? TEXT("") : TEXT(": "), *Message);
+		}
+		return Record;
+	}
+
+	/** The first worn weapon's type, in the weapon slots' order, as `EquippedWeaponType` reads it, else empty. */
+	FString WornWeaponTypeOf(const UCataclysmCharacterSave& Record)
+	{
+		const UDataTable* BaseTable = UCataclysmItemModifiers::LoadBaseTable();
+		if (!BaseTable)
+		{
+			return FString();
+		}
+		for (const ECataclysmGearSlot Slot : UCataclysmGearSlots::WeaponSlots())
+		{
+			for (const FCataclysmWornItem& Worn : Record.WornGear)
+			{
+				if (Worn.Slot != Slot)
+				{
+					continue;
+				}
+				const FCataclysmItemBaseRow* Base = BaseTable->FindRow<FCataclysmItemBaseRow>(
+					Worn.Item.Base, TEXT("SavedCharacters"), /*bWarnIfMissing=*/false);
+				if (Base && !Base->WeaponType.IsEmpty())
+				{
+					return Base->WeaponType;
+				}
+			}
+		}
+		return FString();
+	}
+}
+
+TArray<FCataclysmCharacterSummary> FCataclysmSaveLoad::SavedCharacters(int32 UserIndex)
+{
+	TArray<FCataclysmCharacterSummary> Out;
+	ISaveGameSystem* System = IPlatformFeaturesModule::Get().GetSaveGameSystem();
+	TArray<FString> Names;
+	if (!System || !System->GetSaveGameNames(Names, UserIndex))
+	{
+		return Out;
+	}
+
+	const FString Prefix = TEXT("Character_");
+	for (const FString& SlotName : Names)
+	{
+		// ONLY A CHARACTER'S OWN SLOT: its name is the prefix and the 32 digits of its identifier, so a migration's
+		// backup, which has more after them, is left out.
+		FGuid Id;
+		if (!SlotName.StartsWith(Prefix, ESearchCase::CaseSensitive)
+			|| !FGuid::ParseExact(SlotName.RightChop(Prefix.Len()), EGuidFormats::Digits, Id)
+			|| UCataclysmSavePartition::CharacterSlotName(Id) != SlotName)
+		{
+			continue;
+		}
+
+		FCataclysmCharacterSummary& Row = Out.AddDefaulted_GetRef();
+		Row.SlotName = SlotName;
+		Row.CharacterId = Id;
+		const UCataclysmCharacterSave* Record = ReadForAList<UCataclysmCharacterSave>(SlotName, UserIndex, Row.Why);
+		if (!Record)
+		{
+			continue;
+		}
+		Row.bReadable = true;
+		Row.Name = Record->CharacterName;
+		Row.Level = Record->Level;
+		Row.Partition = Record->Partition;
+		Row.DifficultyTier = Record->DifficultyTier;
+		Row.WeaponType = WornWeaponTypeOf(*Record);
+		if (Row.WeaponType.IsEmpty() && !Record->StartingWeaponType.IsNone())
+		{
+			Row.WeaponType = Record->StartingWeaponType.ToString();
+		}
+		Row.bTimed = !Record->LastWrittenUtc.IsEmpty() && FDateTime::ParseIso8601(*Record->LastWrittenUtc, Row.LastWrittenUtc);
+
+		// AND THE RUN IT IS IN, for its day and, when saved inside a dungeon, its floor (ruling 2).
+		if (Record->CurrentRunId.IsValid())
+		{
+			Row.bInARun = true;
+			Row.RunId = Record->CurrentRunId;
+			FString RunWhy;
+			if (const UCataclysmRunSave* Run = ReadForAList<UCataclysmRunSave>(
+					UCataclysmSavePartition::RunSlotName(Record->CurrentRunId), UserIndex, RunWhy))
+			{
+				Row.bRunReadable = true;
+				Row.Day = Run->Day;
+				if (Run->Floor.IsOccupied())
+				{
+					Row.Dungeon = Run->Floor.Dungeon;
+					Row.Floor = Run->Floor.Floor;
+				}
+			}
+		}
+	}
+
+	// NEWEST FIRST; THEN THE UNTIMED BY NAME; THEN BY SLOT, so the order is the same every time.
+	Out.Sort([](const FCataclysmCharacterSummary& A, const FCataclysmCharacterSummary& B)
+	{
+		if (A.bTimed != B.bTimed)
+		{
+			return A.bTimed;
+		}
+		if (A.bTimed && A.LastWrittenUtc != B.LastWrittenUtc)
+		{
+			return A.LastWrittenUtc > B.LastWrittenUtc;
+		}
+		if (A.Name != B.Name)
+		{
+			return A.Name < B.Name;
+		}
+		return A.SlotName < B.SlotName;
+	});
+	return Out;
+}
+
+TArray<FString> FCataclysmSaveLoad::SlotsToDelete(const FCataclysmCharacterSummary& Row,
+												  const TArray<FString>& AllSlotNames,
+												  const TArray<FCataclysmCharacterSummary>& OtherRows)
+{
+	TArray<FString> Out;
+	const FString CharacterSlot = UCataclysmSavePartition::CharacterSlotName(Row.CharacterId);
+	if (!Row.CharacterId.IsValid() || !AllSlotNames.Contains(CharacterSlot))
+	{
+		return Out;
+	}
+	Out.Add(CharacterSlot); // A delete's: the character's own slot, by its exact name.
+
+	// AN UNREADABLE RECORD: ITS SLOT ONLY (Q2). Its run cannot be known, and its backups are how it is recovered.
+	if (!Row.bReadable)
+	{
+		return Out;
+	}
+
+	TArray<FString> Records = {CharacterSlot};
+	if (Row.RunId.IsValid())
+	{
+		bool bNamedByAnother = false;
+		for (const FCataclysmCharacterSummary& Other : OtherRows)
+		{
+			if (Other.SlotName != Row.SlotName && Other.RunId == Row.RunId) // A delete's: a run another character names stays.
+			{
+				bNamedByAnother = true;
+			}
+		}
+		const FString RunSlot = UCataclysmSavePartition::RunSlotName(Row.RunId);
+		if (!bNamedByAnother && AllSlotNames.Contains(RunSlot))
+		{
+			Out.Add(RunSlot);
+			Records.Add(RunSlot);
+		}
+	}
+
+	// THE BACKUPS OF THOSE SLOTS, `<slot>_BackupOfVersion<N>` exactly: the slot's whole name, the infix, then digits only.
+	for (const FString& Record : Records)
+	{
+		const FString Prefix = Record + FCataclysmSaveStorage::BackupInfix;
+		for (const FString& Name : AllSlotNames)
+		{
+			if (!Name.StartsWith(Prefix, ESearchCase::CaseSensitive))
+			{
+				continue;
+			}
+			const FString Version = Name.RightChop(Prefix.Len());
+			bool bDigitsOnly = !Version.IsEmpty();
+			for (const TCHAR Character : Version)
+			{
+				bDigitsOnly = bDigitsOnly && FChar::IsDigit(Character);
+			}
+			if (bDigitsOnly) // A delete's: a backup's version, digits only.
+			{
+				Out.Add(Name);
+			}
+		}
+	}
+	return Out;
+}
+
+bool FCataclysmSaveLoad::DeleteCharacter(const FCataclysmCharacterSummary& Row,
+										 const TArray<FCataclysmCharacterSummary>& OtherRows, int32 UserIndex,
+										 const UWorld* World, TArray<FString>& OutDeleted, FString& OutWhy)
+{
+	OutDeleted.Reset();
+	const UCataclysmSaveWriter* Writer = UCataclysmSaveWriter::In(World);
+	if (Writer && Writer->IsWriting()) // A delete's: never while a run is being saved.
+	{
+		OutWhy = TEXT("a run is being saved here; a character is deleted only from the character select screen");
+		return false;
+	}
+
+	ISaveGameSystem* System = IPlatformFeaturesModule::Get().GetSaveGameSystem();
+	TArray<FString> Names;
+	if (!System || !System->GetSaveGameNames(Names, UserIndex))
+	{
+		OutWhy = TEXT("the saves could not be listed");
+		return false;
+	}
+	const TArray<FString> Slots = SlotsToDelete(Row, Names, OtherRows);
+	if (Slots.IsEmpty())
+	{
+		OutWhy = FString::Printf(TEXT("there is no save named %s to delete"), *Row.SlotName);
+		return false;
+	}
+
+	// WRITES IN FLIGHT FINISH FIRST, as every test's `Delete` waits for them.
+	const double GiveUpAt = FPlatformTime::Seconds() + 2.0;
+	for (const FString& Slot : Slots)
+	{
+		while (FCataclysmSaveStorage::HasAWriteInFlight(Slot))
+		{
+			if (FPlatformTime::Seconds() > GiveUpAt)
+			{
+				OutWhy = FString::Printf(TEXT("%s is still being written; nothing was deleted"), *Slot);
+				return false;
+			}
+			FPlatformProcess::Sleep(0.01f);
+		}
+	}
+
+	// THE CHARACTER SLOT LAST, so a delete that stops part way leaves the character listed and deletable again.
+	for (int32 Index = Slots.Num() - 1; Index >= 0; --Index)
+	{
+		if (!UGameplayStatics::DeleteGameInSlot(Slots[Index], UserIndex))
+		{
+			OutWhy = FString::Printf(TEXT("%s could not be deleted; %d of %d were"), *Slots[Index], OutDeleted.Num(),
+									 Slots.Num());
+			return false;
+		}
+		OutDeleted.Add(Slots[Index]);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("A character was deleted: %s"), *FString::Join(OutDeleted, TEXT(", ")));
+	return true;
+}
+
+const TCHAR* FCataclysmSaveLoad::Describe(ECataclysmLoadOutcome Outcome)
+{
+	switch (Outcome)
+	{
+		case ECataclysmLoadOutcome::Loaded:            return TEXT("Loaded");
+		case ECataclysmLoadOutcome::LoadedWithANewRun: return TEXT("Loaded with a new run");
+		case ECataclysmLoadOutcome::Refused:           return TEXT("Refused, and nothing was changed");
+	}
+	return TEXT("An unnamed outcome");
+}
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmLoadCharacter(
+	TEXT("Cataclysm.LoadCharacter"),
+	TEXT("Load a saved character and the run it is in, by the character's id: the 32 hex digits after "
+		 "'Character_' in its save file's name. Issue #753."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+			ACataclysmPlayerCharacter* Character =
+				Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+			if (!Character)
+			{
+				Ar.Log(TEXT("There is no player character. Press Play first."));
+				return;
+			}
+
+			FGuid CharacterId;
+			if (Args.Num() < 1 || !FGuid::Parse(Args[0], CharacterId))
+			{
+				Ar.Log(TEXT("Cataclysm.LoadCharacter <character id>. The id is the 32 hex digits after 'Character_' "
+							"in the save file's name, in the game's SaveGames folder."));
+				return;
+			}
+
+			const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*World, *Character, CharacterId);
+			const FString Line = FString::Printf(TEXT("%s: %s. %d saved skill choices refused."),
+												 FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why,
+												 Report.SkillsRefused);
+			Ar.Log(*Line);
+			UE_LOG(LogCataclysm, Log, TEXT("Cataclysm.LoadCharacter: %s"), *Line);
+		}));

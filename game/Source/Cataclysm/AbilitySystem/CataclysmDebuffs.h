@@ -1,0 +1,639 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "GameplayTagContainer.h"
+#include "Kismet/BlueprintFunctionLibrary.h"
+#include "CataclysmDebuffs.generated.h"
+
+class UAbilitySystemComponent;
+
+/**
+ * How many distinct debuffs a character is carrying, and whether one of them is
+ * a particular kind.
+ *
+ * WHAT IT IS FOR. Five Masochist nodes ask about the harmful effects the
+ * character itself is under, and none of them could be built without this:
+ *
+ *   Thirst for Pain         "While you are Bleeding, +2% increased Attack
+ *                           Speed per point"
+ *   Battle-Scarred          "+2% increased Armor per point for each unique
+ *                           debuff on you"
+ *   Endurance in Suffering  "For each unique debuff on you, +1% increased
+ *                           damage and +0.5% increased Damage Reduction per
+ *                           point"
+ *   Doctrine of Pain        "You deal 4% more damage for each unique debuff on
+ *                           you"
+ *   Flagellant              "Every debuff on you grants 5 Fervour per second
+ *                           for as long as it lasts"
+ *
+ * Issue #962. Four of the five want a COUNT and the fifth wants a NAMED KIND,
+ * and both are the same question asked of the same place, which is why they are
+ * one file rather than two.
+ *
+ * NOTHING COUNTED THEM BEFORE. `game/Data/StatusEffects.csv` describes what 52
+ * effects ARE, and the ability system holds the effects that are running, but
+ * nothing asked how many distinct harmful ones a character was under.
+ *
+ * IT NEEDS NO STATE AND NO TIMER, WHICH IS THE WHOLE SHAPE. A lasting effect
+ * already grants its target a gameplay tag for exactly as long as it runs --
+ * `TagAndReplaceAnyExisting` in `CataclysmSkillEffects.cpp` attaches one
+ * through a `UTargetTagsGameplayEffectComponent` -- so the ability system is
+ * already keeping this list up to date and the count is a read of it. An effect
+ * that expired a moment ago has already taken its tag off, so the answer is
+ * right with nothing having run in the meantime. That is the same argument
+ * `UCataclysmStacks` makes for its own count.
+ *
+ * WHAT COUNTS AS A DEBUFF IS AN EXPLICIT LIST AND NOT A JUDGEMENT. See
+ * `DebuffRootNames` below. All three games in the genre settled this the same
+ * way and none of them infers it: Path of Exile marks a debuff with a red border
+ * and shows debuffs in a separate row from buffs, Last Epoch declares an
+ * enumerated set of ailments, and Diablo 4 names exactly eleven crowd control
+ * effects. `docs/DECISIONS.md` carries the sources.
+ */
+UCLASS()
+class CATACLYSM_API UCataclysmDebuffs : public UBlueprintFunctionLibrary
+{
+	GENERATED_BODY()
+
+public:
+	/**
+	 * The tag branches whose members are debuffs on whoever carries them.
+	 *
+	 * A NAMED LIST OF BRANCHES RATHER THAN A LIST OF EFFECTS, and since issue
+	 * #1145 the vocabulary supports that. `Status.` used to be one flat branch
+	 * holding the buffs, the debuffs and the damage over times together, so the
+	 * tags for Divine Aegis and Cripple differed only in their last segment while
+	 * one is a blessing and the other a curse. Anything asking "is this a debuff?"
+	 * had to keep a list of names by hand, and a list kept by hand falls behind
+	 * the sheet that fills it.
+	 *
+	 * THE SHEET AN EFFECT COMES FROM IS NOW A SEGMENT OF ITS TAG.
+	 * `tools/generate_gameplay_tags.py` emits `Status.Buff.DivineAegis` from the
+	 * Buffs sheet and `Status.Debuff.Cripple` from the Debuffs sheet, so naming
+	 * `Status.Debuff` here takes all 27 named curses and cannot take a buff. The
+	 * project owner chose this over an exclusion list on 2026-09-04; see
+	 * `docs/DECISIONS.md`.
+	 *
+	 * THAT FIGURE SAID 27 AND WAS ONE SHORT. Measured 2026-09-13 from
+	 * `game/Data/StatusEffects.csv`: 28 rows whose `EffectKind` is `Debuff`. The
+	 * count went stale the way every hand-written count does, by the sheet
+	 * growing, and nothing compares it against anything. **It is worth knowing
+	 * that this sentence is the reason the branch quoting it got the number
+	 * wrong too** -- a count copied out of a comment is not a measurement, and
+	 * this one was copied into three other files before anybody counted the
+	 * rows.
+	 *
+	 * `State.StunImmune` IS THE CASE THAT PROVES A BRANCH IS NOT ENOUGH BY
+	 * ITSELF. It is granted to the target at the same instant as `State.Stunned`,
+	 * by the same call in `UCataclysmSkillEffects::ApplyStun`, and it is a
+	 * PROTECTION -- it is what stops the character being stunned again
+	 * immediately. A rule that counted everything a hit left behind would report
+	 * one stun as two debuffs and hand every one of the seven nodes paid per
+	 * debuff carried double what it promises. It is excluded by not being under
+	 * a listed root.
+	 *
+	 * A ROOT COUNTS ITSELF AND ITS CHILDREN. `Keyword.DoT` names the whole
+	 * damage over time branch, so `Keyword.DoT.Bleed` and `Keyword.DoT.Burn` are
+	 * both in without being listed, and the branch cannot grow a member this
+	 * list forgets. The same is now true of `Status.Debuff`: a curse added to the
+	 * Debuffs sheet counts from the moment its tag is generated.
+	 *
+	 * `Status.DoT` IS DELIBERATELY NOT HERE, and it is the one branch that would
+	 * double-count. The eight damage over time effects have a tag under both
+	 * `Status.DoT` and `Keyword.DoT` -- the branch says which vocabulary the tag
+	 * came from rather than which effect it is -- and everything that applies one
+	 * to a character grants the `Keyword.DoT` tag, which is already a root.
+	 * Listing both would count a single burn twice the day anything granted both.
+	 */
+	static const TCHAR* const DebuffRootNames[];
+
+	/** How many entries `DebuffRootNames` has. */
+	static const int32 DebuffRootCount;
+
+	/** The debuff roots, as tags. Any the vocabulary has lost are left out. */
+	static FGameplayTagContainer DebuffRoots();
+
+	/**
+	 * How many distinct debuffs this character is carrying.
+	 *
+	 * DISTINCT TAGS, WHICH IS WHAT "UNIQUE" MEANS IN ALL FOUR SENTENCES. A
+	 * character bleeding and burning carries two; one bleeding from two sources
+	 * carries one, because every lasting effect this project applies is
+	 * aggregated by target and limited to a single stack, so a second
+	 * application refreshes the first rather than adding to it.
+	 *
+	 * THE EXPLICIT TAGS AND NOT THE IMPLIED PARENTS. An ability system holding
+	 * `Keyword.DoT.Bleed` answers yes to `Keyword.DoT` as well, because the
+	 * engine counts a tag against its parents too. Counting what it answers yes
+	 * to would report one bleed as two debuffs and then as three the moment the
+	 * branch grew a level. `GetOwnedGameplayTags` returns only what was really
+	 * applied, which is one entry per effect.
+	 *
+	 * NO ABILITY SYSTEM MEANS NO DEBUFFS, which is zero rather than unknown.
+	 * There is nothing an unknown reading would let a caller do differently: a
+	 * bonus counting debuffs is worth nothing both to a character carrying none
+	 * and to a caller with no character in hand. `UCataclysmStacks` draws the
+	 * same distinction, and for the same reason.
+	 */
+	static int32 CountOn(const UAbilitySystemComponent* AbilitySystem);
+
+	/** How many distinct debuffs this actor is carrying. */
+	static int32 CountOnActor(const AActor* Actor);
+
+	/**
+	 * Cleanse a character: every timed effect on it that grants a tag under `DebuffRoots` and that somebody else put
+	 * there is removed, and the cleanse is announced on `UCataclysmCombatEvents::OnCleansed` so the dungeon game mode
+	 * can clear the stacks whose rows say they are cleansed. Ruled by the coordinating session under the owner's
+	 * delegation, 2026-09-26.
+	 *
+	 * WHAT IT REMOVES: a damage over time, a `Status.Debuff` curse and a stun, whatever put them there.
+	 *
+	 * WHAT IT LEAVES:
+	 * - buffs, and `State.StunImmune`, which protects rather than harms;
+	 * - knockdown, pin and stagger, which are not debuff roots;
+	 * - CONVERTED DAMAGE NOT YET TAKEN. The Masochist's damage conversion puts a bleed on its own character
+	 *   (`UCataclysmDamageConversion`) and stamps it; removing it would delete damage converted and not yet taken.
+	 *   UNTIL 2026-10-06 THIS LEFT EVERY EFFECT THE CHARACTER ITSELF INSTIGATED. It was narrowed to the stamped
+	 *   bleed: anything else a character lays on themselves is removed, a drawback a row lays on its own wearer
+	 *   and what a zone lays on its own owner included.
+	 * - THE HEALING A NECROSIS DENIED, BEING DEALT (`UCataclysmSkillEffects::DeniedHealingDataName`). Issue #920,
+	 *   ruled 2026-10-31: the denial has already happened.
+	 *
+	 * NO IMMUNITY AFTERWARDS, as ruled: a cleanse every few seconds with even a short immunity would make its wearer
+	 * immune for much of a fight.
+	 *
+	 * @return how many effects were removed
+	 */
+	static int32 Cleanse(AActor* Character);
+
+	/**
+	 * WHICH debuffs this character is carrying, rather than how many.
+	 *
+	 * `CountOn` IS THIS COUNTED, and was written first because counting was all
+	 * the seven nodes that pay per debuff needed. Issues #1057 and #1058 need
+	 * the list: "a random debuff you carry" cannot be chosen from a number. The
+	 * two answers must never disagree, so there is one walk of the tags and
+	 * `CountOn` reads its length.
+	 *
+	 * EVERY RULE `CountOn` DOCUMENTS APPLIES UNCHANGED, because it is the same
+	 * walk: the explicit tags and not the implied parents, one entry per effect,
+	 * and an empty container for no ability system.
+	 *
+	 * THE ORDER IS THE ABILITY SYSTEM'S AND IS NOT PROMISED. A caller wanting one
+	 * at random must choose one; a caller taking the first would get whichever
+	 * the engine's tag container happens to hold first, which is stable enough to
+	 * look deliberate and is not.
+	 */
+	static FGameplayTagContainer TagsOn(
+		const UAbilitySystemComponent* AbilitySystem);
+
+	/** Which debuffs this actor is carrying. */
+	static FGameplayTagContainer TagsOnActor(const AActor* Actor);
+
+	/**
+	 * Whether these two are suffering from any of the same thing.
+	 *
+	 * WHAT IT IS FOR. The Masochist's Wound Channeling, issue #1061: "you deal
+	 * 1% increased damage per point to enemies carrying a debuff you also
+	 * carry."
+	 *
+	 * THE EXPLICIT TAGS ON BOTH SIDES, WHICH IS THE WHOLE CARE THIS NEEDS. A
+	 * Masochist that is burning and an enemy that is bleeding both answer yes to
+	 * `Keyword.DoT`, because the engine counts a tag against its parents. Asking
+	 * that question would pay the node for any two harmful effects at all, which
+	 * is not what "a debuff you also carry" says. `TagsOn` returns what was
+	 * really applied, one entry per effect, and this compares those exactly.
+	 *
+	 * NEITHER CARRYING ANYTHING IS FALSE rather than vacuously true. Two
+	 * characters sharing nothing share nothing.
+	 */
+	static bool ShareADebuff(const UAbilitySystemComponent* AbilitySystem,
+							 const AActor* Other);
+
+	/**
+	 * The stat naming the attacker's increased damage against a target carrying
+	 * a debuff it also carries, as a percentage. As
+	 * `game/Data/PassiveEffects.csv` spells it.
+	 */
+	static const TCHAR* SharedDebuffDamageStat;
+
+	/**
+	 * That increase as a FRACTION, or zero when the two share nothing.
+	 *
+	 * A FRACTION AND NOT A PERCENTAGE, because the one caller adds it into the
+	 * increases bracket, which is a sum of fractions.
+	 * `UCataclysmSkillEffects::DamageAgainstTypeOf` is the existing bonus of
+	 * exactly this shape -- read at the moment of a hit, decided by the target --
+	 * and it answers in the same units for the same reason.
+	 *
+	 * IT MUST JOIN THAT BRACKET RATHER THAN BECOMING A SECOND MULTIPLIER.
+	 * `UCataclysmSkillEffects::ApplyHit` says why: a finished attack damage
+	 * attribute has its increases already applied and no longer visible, and a
+	 * hit cannot reopen a bracket it cannot see.
+	 *
+	 * ASKED FOR RATHER THAN READ OFF THE ATTRIBUTE where the component is one
+	 * this project made, so a later row carrying a condition or a scale is not
+	 * dropped in silence. Issue #1022. The attribute is the fallback, so an
+	 * ability system that recorded nothing answers what it holds.
+	 */
+	static float DamageAgainstSharedDebuff(
+		const UAbilitySystemComponent* Source, const AActor* Target);
+
+	/**
+	 * `Keyword.DoT.Bleed`, or an invalid tag if the vocabulary has lost it.
+	 *
+	 * Requested by name rather than declared as a native tag, for the reason
+	 * `UCataclysmSkillEffects::BurnTag` gives: a native declaration would create
+	 * the tag whether or not the workbook still lists it, hiding exactly the
+	 * disagreement that matters.
+	 */
+	static FGameplayTag BleedTag();
+
+	/**
+	 * How many seconds of movement one bleed ticks through before it stops: "ticks only while the affected target is
+	 * moving, stopping after 4 seconds of movement" (the DoTs sheet, `DoT_Bleed`). Issue #918, ruled 2026-10-31.
+	 */
+	static constexpr float BleedMovingSecondsCap = 4.0f;
+
+	/**
+	 * `Keyword.DoT.Necrosis`, or an invalid tag if the vocabulary has lost it. Requested by name, as `BleedTag` is.
+	 * Issue #920: a character carrying it is healed by nothing, see `UCataclysmRegeneration::TopUp`.
+	 */
+	static FGameplayTag NecrosisTag();
+
+	/**
+	 * Over how many seconds a Necrosis deals the healing it denied, once it ends: "denies the affected target all
+	 * healing for that time, dealing the denied amount as damage over the following 5 seconds" (the DoTs sheet,
+	 * `DoT_Necrosis`). Issue #920, ruled by the coordinating session 2026-10-31.
+	 */
+	static constexpr float NecrosisDeniedHealingSeconds = 5.0f;
+
+	/**
+	 * The parent of every damage over time, `Keyword.DoT`. Issue #1815, for
+	 * "enemies affected by a DoT". The same branch `DebuffRootNames` counts.
+	 */
+	static FGameplayTag DamageOverTimeTag();
+
+	/**
+	 * `Status.Debuff.Cripple`, or an invalid tag if the vocabulary has lost it.
+	 * Issue #1515.
+	 *
+	 * HERE RATHER THAN WHERE IT IS READ, so the tag name is written once. The
+	 * stat pipeline judges two conditions that name Cripple and one that names
+	 * Weaken; `UCataclysmAilments` already names both in its own table, and a
+	 * third and fourth copy of the string is how a renamed effect leaves a
+	 * condition matching nothing while every test still passes.
+	 *
+	 * REQUESTED BY NAME RATHER THAN DECLARED AS A NATIVE TAG, for the reason
+	 * `BleedTag` above gives: a native declaration would create the tag whether
+	 * or not the workbook still lists it, hiding exactly the disagreement that
+	 * matters.
+	 */
+	static FGameplayTag CrippleTag();
+
+	/** `Status.Debuff.Weaken`, or an invalid tag if the vocabulary has lost it.
+	 *  The sibling of `CrippleTag` above and requested the same way. */
+	static FGameplayTag WeakenTag();
+
+	/**
+	 * `Keyword.DoT.VoidSplinter`, or an invalid tag if the vocabulary has lost
+	 * it. Requested the same way as the three above.
+	 *
+	 * UNDER THE DAMAGE OVER TIME BRANCH AND NOT UNDER `Status.Debuff`, unlike
+	 * Cripple and Weaken, because a void splinter deals damage over time rather
+	 * than changing a number on the character. `DebuffRootNames` names
+	 * `Keyword.DoT` as a root, so it still reaches `TagsOn` and a condition can
+	 * read it there. `BleedTag` above is the same shape for the same reason.
+	 */
+	static FGameplayTag VoidSplinterTag();
+
+	/**
+	 * Whether this character is Bleeding, which Thirst for Pain asks.
+	 *
+	 * A CHILD OF THE DAMAGE OVER TIME BRANCH, so a character that is Bleeding is
+	 * also carrying damage over time and answers yes to both questions. That is
+	 * the engine's own parent rule and it is the right reading: Bleeding IS
+	 * damage over time.
+	 */
+	static bool IsBleeding(const UAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * The stat for how long a lasting harmful effect on this character runs,
+	 * as a percentage where 100 is normal. As
+	 * `game/Data/PassiveEffects.csv` spells it. Issue #1033.
+	 */
+	static const TCHAR* DurationStat;
+
+	/** What `DurationStat` holds for a character that has none of it. */
+	static constexpr float NormalDuration = 100.0f;
+
+	/**
+	 * How long an effect of this length really lasts on this character.
+	 *
+	 * THE DEFENDER'S STAT AND NOT THE ATTACKER'S, which is the whole point of
+	 * this function existing. Every other number about a lasting effect is the
+	 * attacker's -- how much it deals, how often it ticks, how long the
+	 * ATTACKER makes it last -- and this is the one thing the thing being hurt
+	 * decides. `dot_duration` is the attacker's side of the same question and
+	 * is a different stat.
+	 *
+	 * TWO NODES ASK FOR IT, both in the Masochist tree and both lengthening
+	 * rather than shortening: Symphony of Pain by 2% a point and Vessel of
+	 * Plagues by 50%. A Masochist WANTS harmful effects on itself, because
+	 * seven nodes in that tree pay it for each one it carries.
+	 *
+	 * ASKED FOR RATHER THAN READ, so a future row carrying a condition works.
+	 * Neither row today carries one.
+	 *
+	 * BOTH PATHS THAT APPLY A LASTING EFFECT CALL IT, which is what issue
+	 * #1033 asked for: a build honouring one and not the other would lengthen
+	 * a burn and not a stun, or the reverse, and nothing would report it.
+	 *
+	 * ASKED WITH THE TAGS OF WHAT IS BEING APPLIED, since 2026-10-06, so a row
+	 * may require one: "Bleeding on you lasts 50%-100% longer" requires the
+	 * bleed tag and "DoTs on you have 100%-300% more duration" the `Keyword.DoT` parent.
+	 * A damage over time passes its own tag and that parent; any other effect
+	 * passes its own tag. A row with no required tags reads as it did.
+	 *
+	 * @param AppliedTags  the tags of the effect being applied; empty for a
+	 *                     caller with none, which is how this read before
+	 * @return the duration unchanged for every character in the game without
+	 *         one of those two nodes, and for any ability system with no
+	 *         combat attribute set
+	 */
+	static float DurationOn(const UAbilitySystemComponent* Defender,
+							float DurationSeconds,
+							const FGameplayTagContainer& AppliedTags =
+								FGameplayTagContainer());
+
+	/**
+	 * The stat saying the debuffs on this character stop counting down at all,
+	 * as `game/Data/PassiveEffects.csv` spells it. Zero for no. Issue #1070.
+	 */
+	static const TCHAR* DoNotExpireStat;
+
+	/**
+	 * Whether the debuffs on this character are being held right now.
+	 * Issue #1070.
+	 *
+	 * ASKED THROUGH THE STAT PIPELINE AND NEVER READ OFF THE ATTRIBUTE, and
+	 * here that is load-bearing rather than a precaution. Ceaseless Penance's
+	 * row carries `health_above 50`, and a conditional bonus is never folded
+	 * into a gameplay attribute, so a plain read would answer zero for ever and
+	 * the option would do nothing with nothing at run time reporting it.
+	 *
+	 * NOTHING HERE READS HEALTH. The health threshold is the CONDITION on the
+	 * row, which the pipeline judges against the character's state when it is
+	 * asked. That is why "above 50%" appears in this file nowhere: it is data.
+	 *
+	 * False for every character without that capstone option, false for one
+	 * holding it that is at or below half health, and false for any ability
+	 * system this project did not make.
+	 */
+	static bool DoNotExpireOn(const UAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * Hold the debuffs on this character still for one step of the clock.
+	 * Issue #1070, the Masochist's Ceaseless Penance: "Debuffs on you no longer
+	 * expire while you are above 50% health."
+	 *
+	 * WHAT IT DOES TO AN EFFECT. Each debuff's start time is pushed forward by
+	 * exactly the time that just passed, so the time left on it does not move. A
+	 * 20 second bleed applied at 60% health still has 20 seconds left a minute
+	 * later, and dropping below half resumes it from 20.
+	 *
+	 * PUSHED RATHER THAN RE-APPLIED, which the project owner chose on
+	 * 2026-08-28 and which `docs/DECISIONS.md` records. Re-applying resets a
+	 * damage over time effect's TICK clock as well as its duration, so with a
+	 * quarter second step and a one second tick every burn and bleed on the
+	 * character would deal no damage at all while it was being held. It would
+	 * also hand the character a full fresh duration of everything it carries at
+	 * the instant it fell below half, rather than what was left.
+	 *
+	 * THE ENGINE CALL IS `ModifyActiveEffectStartTime`, and this is the only
+	 * place in the project that changes an active effect's remaining time. It
+	 * moves the start, re-arms the expiry, and leaves the tick period alone,
+	 * which is why a held burn keeps hurting at its normal rate.
+	 *
+	 * ONLY WHAT `DebuffRoots` NAMES. A buff on the character counts down as
+	 * usual, because the option says debuffs. The query matches a root against
+	 * its children, so `Keyword.DoT.Bleed` is held by naming `Keyword.DoT`, the
+	 * same parent rule `TagsOn` deliberately avoids and this one wants.
+	 *
+	 * BUT NOT CONVERTED DAMAGE NOT YET TAKEN, whose total is fixed when it is
+	 * converted (ruled 2026-11-01). Held, it would keep ticking for as long as
+	 * its carrier stayed above half health, with no bound.
+	 *
+	 * A CORPSE IS SKIPPED, the same guard every job on the per-character step
+	 * opens with: a creature is destroyed on the step after it dies, so there is
+	 * a real window in which a dead one still has an ability system.
+	 *
+	 * @param StepSeconds how long the step that just passed was
+	 * @return how many effects were held, which is zero for every character in
+	 *         the game without the option and for one carrying no debuffs
+	 */
+	static int32 HoldStep(AActor* Character, float StepSeconds);
+
+	/**
+	 * No Second Wind's figure: the radius, in metres, within which a Cripple or
+	 * a Weaken this character applied does not run down. Issue #1515,
+	 * `Ravager_keystone_c_kB`: "Cripple and Weaken you applied do not expire
+	 * while that enemy is within 4 metres of you." Above zero means the
+	 * keystone is held.
+	 */
+	static const TCHAR* AppliedHeldWithinMetresStat;
+
+	/**
+	 * Hold still, for one step, every Cripple and Weaken `Character` applied to
+	 * an enemy within the keystone's radius. Issue #1515.
+	 *
+	 * THE SAME HOLD `HoldStep` MAKES, on the ENEMY'S effects rather than the
+	 * character's own: each effect's start is moved by the step, so the time
+	 * left on it does not change while the enemy stays near.
+	 *
+	 * ONLY WHAT THIS CHARACTER APPLIED. A Cripple is one tag per enemy, so an
+	 * effect is matched by the ability system that applied it, and a Cripple
+	 * from anyone else runs down as it would.
+	 *
+	 * @return how many effects were held, zero for every character without the
+	 *         keystone
+	 */
+	static int32 HoldAppliedNearbyStep(AActor* Character, float StepSeconds);
+
+	/**
+	 * Ground Down's radius in metres and its share of both speeds, the
+	 * `Ravager_capstone_100` option 1 stats its row will carry. Issue #1515:
+	 * "Enemies within 4 metres of you have 15% reduced Movement Speed and 15%
+	 * reduced Attack Speed." Both above zero means the option is held.
+	 */
+	static const TCHAR* GroundDownMetresStat;
+	static const TCHAR* GroundDownPercentStat;
+
+	/** How many steps a creature stays slowed after it was last within the
+	 *  radius: three, so one missed step cannot make it flicker, which is the
+	 *  Succubus's Dominion rule. 0.75 s at the regeneration step. */
+	static constexpr int32 GroundDownHeldSteps = 3;
+
+	/**
+	 * Slow, for `GroundDownHeldSteps` steps, every creature within `Character`'s
+	 * Ground Down radius. Issue #1515.
+	 *
+	 * CREATURES ONLY. The search returns hostile actors, which excludes the
+	 * player's minions, thralls and a second player unless something has
+	 * Maddened them, and a hostile actor that is not a creature has no speed
+	 * multiplier, so each is cast.
+	 *
+	 * @return how many creatures were slowed, zero for every character without
+	 *         the option
+	 */
+	static int32 GroundDownStep(AActor* Character, float StepSeconds);
+
+	/**
+	 * Nowhere to Run, `Ravager_capstone_200` option 1. Issue #1515: "Enemies
+	 * within 8 metres of you cannot move away from you." The radius in metres;
+	 * above zero means the option is held. Its row will carry the 8.
+	 *
+	 * THE SAME STAT GIVES THE FERVOUR CLAUSE, "Your Fervour does not decay while
+	 * any enemy is held this way": every hostile within the radius is held, so
+	 * `UCataclysmFervour::DecayStep` reads this as a no-decay radius at least
+	 * this wide. Ruled 2026-09-25.
+	 */
+	static const TCHAR* NowhereToRunMetresStat;
+
+	/**
+	 * Hold every creature within `Character`'s Nowhere to Run radius for
+	 * `GroundDownHeldSteps` steps, as Ground Down slows them. The creature keeps
+	 * its own movement from carrying it farther away; see
+	 * `ACataclysmEnemyCharacter::NoteHeldBy`.
+	 *
+	 * @return how many creatures it held this step
+	 */
+	static int32 NowhereToRunStep(AActor* Character, float StepSeconds);
+
+	/**
+	 * Whether this tag is a debuff: one of `DebuffRootNames` or anything under
+	 * one. The question `TagsOn` asks of each tag a character owns, for a caller
+	 * holding one tag that is about to be applied.
+	 */
+	static bool IsADebuff(const FGameplayTag& Tag);
+
+	/**
+	 * `debuffed_enemies_deal_less_percent`: the percent less that a character
+	 * deals while it carries at least one debuff the holder of this stat
+	 * applied. Ruled 2026-10-13: "Applying a debuff to an enemy reduces their
+	 * damage output by 10%-20%". A flat figure with no gameplay attribute and no
+	 * base; nought or less cuts nothing.
+	 */
+	static const TCHAR* DebuffedEnemiesDealLessPercentStat;
+
+	/**
+	 * The Conduit keystone's flag, `minion_hits_count_as_yours`, as
+	 * `ACataclysmMinion::HitsCountAsTheSummoners` spells it. Asked here of a
+	 * ground zone's owner: a zone's debuff counts as its owner's for the stat
+	 * above only while the owner holds it, as ruled 2026-10-13.
+	 */
+	static const TCHAR* ZoneDebuffsCountUnderStat;
+
+	/**
+	 * `Instigator` is about to put `Debuff` on `Target`, as a new effect or as
+	 * a refresh of one already running: record on the target what the
+	 * applier's `DebuffedEnemiesDealLessPercentStat` states. Called by the four
+	 * functions of `UCataclysmSkillEffects` that put a debuff on a character:
+	 * `ApplyDamageOverTime`, `ApplyShareOfHealthOverTime`, `ApplyTagForDuration`
+	 * and `ApplyNamedEffectOnly`. A tag that is not a debuff, and one a
+	 * character puts on itself, record nothing.
+	 *
+	 * WHO THE APPLIER IS. `UCataclysmCombatEvents::AttackerOf(Instigator)`: the
+	 * instigator, and for a minion its summoner only while the summoner holds
+	 * Conduit. A ground zone lays its effects in its owner's name, so a zone
+	 * says it is laying them with `FCataclysmZoneLaying` below, and what it lays
+	 * counts only while that owner holds `ZoneDebuffsCountUnderStat`. A copy a
+	 * spread makes has no applier: nobody applied it.
+	 *
+	 * THE RECORD IS THE CARRIER'S, as an ailment's riders are; see
+	 * `UCataclysmAbilitySystemComponent::ReceiveDebuffDamageCut`.
+	 *
+	 * @param bIsASpreadCopy  set while `UCataclysmSkillEffects::ApplySpreadCopy`
+	 *                        runs
+	 */
+	static void NoteLaid(AActor* Instigator, AActor* Target, const FGameplayTag& Debuff,
+						 bool bIsASpreadCopy);
+
+	/**
+	 * The percent less this character deals now for the debuffs it carries, 0
+	 * to 100: nought for an ability system that is not this project's. Read by
+	 * `UCataclysmSkillEffects::WeaponDamageOf`.
+	 */
+	static float DealLessPercentOn(const UAbilitySystemComponent* Carrier);
+
+	/**
+	 * `immune_to_debuffs_and_applies_none`, a flag: above nought, its holder is
+	 * given no debuff by anybody and lays none on anybody. Ruled 2026-10-13,
+	 * reading A: "You are immune to debuffs but also cannot apply them". No
+	 * gameplay attribute and no base.
+	 */
+	static const TCHAR* ImmuneAndAppliesNoneStat;
+
+	/** Whether this actor holds `ImmuneAndAppliesNoneStat`. False for none and for one with no stat line. */
+	static bool HoldsImmuneAndAppliesNone(const AActor* Actor);
+
+	/**
+	 * Whether a row refuses `Instigator` putting `Debuff` on `Target`. Asked by
+	 * the four functions of `UCataclysmSkillEffects` that put a debuff on a
+	 * character, before anything else is done for the application, so a refused
+	 * one raises no event, hands over no rider, refreshes nothing and deals
+	 * nothing: THE DAMAGE OF A REFUSED DAMAGE OVER TIME IS LOST, as ruled.
+	 *
+	 * ONLY A DEBUFF: a tag `IsADebuff` does not hold is never refused here, so a
+	 * stagger, a pin, a knockdown, a fear and every buff pass.
+	 *
+	 * REFUSED FOR A TARGET THAT HOLDS THE FLAG, whoever the instigator is, itself
+	 * included: a drawback its own row lays on it, and the Masochist's converted
+	 * bleed, are debuffs.
+	 *
+	 * AND FOR AN INSTIGATOR THAT HOLDS IT, OR THAT FOLLOWS A CHARACTER THAT
+	 * DOES. A minion and a thrall are found by `UCataclysmCommand::CommanderOf`,
+	 * with or without Conduit. A ground zone names its owner as instigator, so a
+	 * holder's zone is refused as the holder is.
+	 */
+	static bool RefusedByARow(const AActor* Instigator, const AActor* Target, const FGameplayTag& Debuff);
+
+	/**
+	 * Remove what a holder of `ImmuneAndAppliesNoneStat` already carries: every
+	 * running effect that grants a tag under `DebuffRoots`, whoever laid it. A
+	 * judgement of 2026-10-13: the ruling does not say what becomes of a debuff
+	 * carried when the row is put on.
+	 *
+	 * WHAT IT LEAVES, as `Cleanse` leaves it: converted damage not yet taken,
+	 * the stamped bleed of `UCataclysmDamageConversion`. And a loose tag, which
+	 * is no effect: the dungeon game mode's two.
+	 *
+	 * NOT A CLEANSE: nothing is announced, so the dungeon's stacks that a
+	 * cleanse clears are not cleared by this.
+	 *
+	 * @return how many effects were removed, which is zero for every character
+	 *         without the flag and for a corpse
+	 */
+	static int32 ImmunityStep(AActor* Character);
+};
+
+/**
+ * Held by a ground zone while a sweep lays its effects on one character, so
+ * `UCataclysmDebuffs::NoteLaid` can tell a zone's debuff from one its owner
+ * applied by a skill: both name the owner as instigator. Ruled 2026-10-13.
+ *
+ * A COUNT AND NOT A FLAG, so one held inside another leaves the outer one
+ * standing when it ends.
+ */
+struct CATACLYSM_API FCataclysmZoneLaying
+{
+	FCataclysmZoneLaying();
+	~FCataclysmZoneLaying();
+	FCataclysmZoneLaying(const FCataclysmZoneLaying&) = delete;
+	FCataclysmZoneLaying& operator=(const FCataclysmZoneLaying&) = delete;
+
+	/** Whether any zone is laying its effects at this moment. */
+	static bool IsLaying();
+};

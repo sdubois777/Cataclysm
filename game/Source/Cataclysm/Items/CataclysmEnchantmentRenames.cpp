@@ -1,0 +1,229 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "Items/CataclysmEnchantmentRenames.h"
+
+#include "Items/CataclysmItem.h"
+#include "UObject/UnrealType.h"
+
+const TMap<FName, FName>& FCataclysmEnchantmentRenames::Aliases()
+{
+	// OLD NAME, THEN THE ROW IT MEANS NOW. One line per renamed row.
+	//
+	// THE FIFTEEN OF b628582e, the pass that made "critical hits" read "critical
+	// strikes" (#660). Then the three of 10243aa6 (#1512): a number inside the
+	// first 48 characters of the retaliation row, and the two class-point rows
+	// reworded. Rebuilt on 2026-09-30 by walking both enchantment tables'
+	// history and pairing rows by position.
+	//
+	// NOT HERE, AND ON PURPOSE: the two rows deleted with no successor, in
+	// b620c049 (block against area damage) and 261a4b2a (the two minion-count
+	// rows merged). There is no row for their names to mean.
+	//
+	// AND ONE ON 2026-10-06, the owner's approved reword: "Nearby enemies gain
+	// 20%-40% resistances" became "Enemies within 5 metres gain 20%-40%
+	// resistances", so that its row could state the distance it acts on.
+	//
+	// AND ONE ON 2026-10-07, the owner's approved reword: "DoTs last 2x-4x as
+	// long on you" became "DoTs on you have 100%-300% more duration", so that
+	// its sentence states the range its row holds in the form every reader of
+	// a range already reads.
+	//
+	// AND ONE ON 2026-10-08, the owner's approved reword of Divine
+	// Retribution's ten-piece bonus, so that its sentence states the five
+	// seconds its row waits. The old sentence opened "Every 10 seconds".
+	//
+	// AND ONE ON 2026-10-24, the owner's reword of 2026-10-23 (#2235): "While moving,
+	// your DoTs deal 20%-40% increased damage" became "While the enemy is moving, your
+	// DoTs on them deal 20%-40% more damage", the owner's words being "Pretty sure this
+	// was originally meant to be while the enemy is moving your dots on them deal
+	// 20-40% MORE damage." The same roll now means 20-40 more on each tick the target moves.
+	//
+	// AND ONE ON 2026-10-28, the owner's reword of 2026-09-12 (#1618): "50% less tick
+	// rate for your leech effects" became "Your leech pays out 50% more slowly", the
+	// owner's proposed wording, which they said "must land in the same change as the
+	// build, not before it". Leech has no ticks; the row's -50 has meant a pay-out of
+	// 6 seconds where it was 3 since the build of 2026-10-08, and the words now say so.
+	static const TMap<FName, FName> Table = {
+		{TEXT("Positive_Divine_Retribution_10_Piece_Bonus_Every_10_se"),
+		 TEXT("Positive_Divine_Retribution_10_Piece_Bonus_Every_5_sec")},
+		{TEXT("Negative_DoTs_last_2x_4x_as_long_on_you"),
+		 TEXT("Negative_DoTs_on_you_have_100_300_more_duration")},
+		{TEXT("Negative_Nearby_enemies_gain_20_40_resistances"),
+		 TEXT("Negative_Enemies_within_5_metres_gain_20_40_resistances")},
+		{TEXT("Positive_Critical_hits_grant_a_stack_of_power_increasing"),
+		 TEXT("Positive_Critical_strikes_grant_a_stack_of_power_increasi")},
+		{TEXT("Positive_Your_first_critical_hit_against_each_enemy_deals"),
+		 TEXT("Positive_Your_first_critical_strike_against_each_enemy_de")},
+		{TEXT("Positive_When_your_class_resource_is_full_critical_hit_c"),
+		 TEXT("Positive_When_your_class_resource_is_full_critical_strik")},
+		{TEXT("Positive_Spell_critical_hits_deal_50_100_increased_dama"),
+		 TEXT("Positive_Spell_critical_strikes_deal_50_100_increased_d")},
+		{TEXT("Positive_Critical_hit_chance_is_increased_by_20_40_agai"),
+		 TEXT("Positive_Critical_strike_chance_is_increased_by_20_40_a")},
+		{TEXT("Positive_Critical_hits_apply_2_4_additional_bleed_stacks"),
+		 TEXT("Positive_Your_critical_strikes_always_cause_bleeding")},
+		{TEXT("Positive_Your_critical_hits_ignore_20_40_of_enemy_armor"),
+		 TEXT("Positive_Your_critical_strikes_ignore_20_40_of_enemy_ar")},
+		{TEXT("Positive_Critical_hits_restore_2_4_of_your_maximum_HP"),
+		 TEXT("Positive_Critical_strikes_restore_2_4_of_your_maximum_H")},
+		{TEXT("Positive_Critical_hits_apply_a_random_DoT_to_the_target"),
+		 TEXT("Positive_Critical_strikes_apply_a_random_DoT_to_the_targe")},
+		{TEXT("Positive_Critical_hits_have_a_15_30_chance_to_reset_you"),
+		 TEXT("Positive_Critical_strikes_have_a_15_30_chance_to_reset")},
+		{TEXT("Negative_Critical_hits_trigger_a_0_5_1_second_global_cool"),
+		 TEXT("Negative_Critical_strikes_trigger_a_0_5_1_second_global_c")},
+		{TEXT("Negative_Non_critical_hits_deal_20_35_less_damage"),
+		 TEXT("Negative_Non_critical_strikes_deal_20_35_less_damage")},
+		{TEXT("Negative_Your_critical_hit_chance_cannot_exceed_30_50"),
+		 TEXT("Negative_Your_critical_strike_chance_cannot_exceed_30_50")},
+		{TEXT("Negative_Critical_hits_drain_3_6_of_your_current_HP"),
+		 TEXT("Negative_Critical_strikes_drain_3_6_of_your_current_HP")},
+		{TEXT("Negative_Critical_hits_have_a_20_35_chance_to_trigger_a"),
+		 TEXT("Negative_Critical_strikes_have_a_20_35_chance_to_trigge")},
+		{TEXT("Positive_Your_retaliation_damage_is_increased_by_5_10_f"),
+		 TEXT("Positive_Your_retaliation_damage_is_increased_by_2_4_fo")},
+		{TEXT("Negative_Your_skills_deal_5_10_less_damage_for_every_cl"),
+		 TEXT("Negative_Your_skills_deal_1_5_2_5_less_damage_for_every")},
+		{TEXT("Negative_Each_class_point_above_50_reduces_your_maximum_H"),
+		 TEXT("Negative_Your_maximum_HP_is_reduced_by_1_5_2_5_for_ever")},
+		// THE THIRTEEN REWORDS the owner approved on 2026-09-30, from the #1833
+		// survey: sentences that counted stacks the one-stack rule does not allow,
+		// or that said something the engine already does. One of them renames a
+		// row the "critical strikes" pass had renamed already; its earlier line
+		// above now points at the new name too, so nothing chains.
+		{TEXT("Positive_Poison_stacks_on_an_enemy_reduce_their_damage_ou"),
+		 TEXT("Positive_Poisoned_enemies_deal_2_4_less_damage")},
+		{TEXT("Positive_Enemies_with_5_or_more_bleed_stacks_take_20_40"),
+		 TEXT("Positive_Bleeding_enemies_take_20_40_increased_damage_f")},
+		{TEXT("Positive_Critical_strikes_apply_2_4_additional_bleed_stac"),
+		 TEXT("Positive_Your_critical_strikes_always_cause_bleeding")},
+		{TEXT("Positive_When_an_enemy_dies_with_bleed_stacks_the_stacks"),
+		 TEXT("Positive_When_a_bleeding_enemy_dies_its_bleed_spreads_to")},
+		{TEXT("Positive_Enemies_with_5_or_more_poison_stacks_are_slowed"),
+		 TEXT("Positive_Poisoned_enemies_are_slowed_by_30_50")},
+		{TEXT("Positive_Your_bleed_stacks_also_reduce_enemy_movement_spe"),
+		 TEXT("Positive_Bleeding_enemies_move_5_10_slower")},
+		{TEXT("Positive_Every_time_you_apply_a_DOT_instead_add_2_4_stac"),
+		 TEXT("Positive_Your_damage_over_time_effects_deal_50_100_more")},
+		{TEXT("Positive_Necrosis_stacks_reduce_enemy_maximum_HP_by_1_2"),
+		 TEXT("Positive_Enemies_with_Necrosis_have_1_2_less_maximum_he")},
+		{TEXT("Positive_Each_void_splinter_stack_on_an_enemy_increases_y"),
+		 TEXT("Positive_You_deal_3_5_more_damage_to_an_enemy_carrying")},
+		{TEXT("Positive_Your_energy_shield_absorbs_10_20_of_HP_damage"),
+		 TEXT("Positive_10_20_of_bleed_damage_you_take_is_taken_from_y")},
+		{TEXT("Positive_Your_movement_abilities_no_longer_share_a_cooldo"),
+		 TEXT("Positive_Your_movement_ability_has_2_charges")},
+		{TEXT("Positive_Your_melee_skills_have_20_40_increased_reach"),
+		 TEXT("Positive_Your_melee_skills_have_0_5_1_metre_reach")},
+		{TEXT("Negative_You_cannot_cure_or_reduce_bleed_stacks_on_yourse"),
+		 TEXT("Negative_Bleeding_on_you_lasts_50_100_longer")},
+		{TEXT("Positive_While_moving_your_DoTs_deal_20_40_increased_d"),
+		 TEXT("Positive_While_the_enemy_is_moving_your_DoTs_on_them_dea")},
+		{TEXT("Negative_50_less_tick_rate_for_your_leech_effects"),
+		 TEXT("Negative_Your_leech_pays_out_50_more_slowly")},
+		//
+		// AND SEVEN ON 2026-11-17, the owner's review of the drafted wording (#913,
+		// #1609). Three healing drawbacks and benefits now name regeneration and
+		// leech, which they always reduced; four sentences drop "stacks", which the
+		// one-stack rule does not allow on an ailment. N027's words were put in a new
+		// order and P215 keeps its 1-2 roll, both ruled the same day, so that every
+		// name is unique and every number the row holds is in its words. No row's
+		// numbers changed.
+		{TEXT("Negative_Healing_effects_on_you_are_reduced_by_30_50"),
+		 TEXT("Negative_Healing_regeneration_and_leech_on_you_are_reduc")},
+		{TEXT("Negative_Healing_effects_are_reduced_by_50_75"),
+		 TEXT("Negative_All_healing_regeneration_and_leech_on_you_is_re")},
+		{TEXT("Positive_Disease_effects_reduce_enemy_healing_by_50_100"),
+		 TEXT("Positive_Diseased_enemies_healing_regeneration_and_leec")},
+		{TEXT("Positive_Bleed_stacks_you_apply_deal_30_60_increased_da"),
+		 TEXT("Positive_Bleed_you_apply_deals_30_60_increased_damage")},
+		{TEXT("Positive_Poison_stacks_you_apply_have_30_60_increased_d"),
+		 TEXT("Positive_Poison_you_apply_lasts_30_60_longer")},
+		{TEXT("Positive_Bleed_stacks_you_apply_have_50_100_increased_d"),
+		 TEXT("Positive_Bleed_you_apply_lasts_50_100_longer")},
+		{TEXT("Positive_Traps_apply_1_2_bleed_stacks_to_all_enemies_caug"),
+		 TEXT("Positive_Traps_cause_a_bleed_of_1_2_times_normal_strength")},
+		//
+		// AND SIX ON 2026-11-17 LATER THE SAME DAY, the owner's ruling on #1498: the six light set drawbacks are doubled,
+		// each to what it would have cost at two pieces had it been paid per piece. The number sits in each sentence's
+		// first 48 characters, so each row is renamed. Archon's Aegis and Warlord's Will share one sentence, told apart
+		// by the generator's `_1`.
+		{TEXT("Negative_Your_movement_speed_is_reduced_by_10"),
+		 TEXT("Negative_Your_movement_speed_is_reduced_by_20")},
+		{TEXT("Negative_Your_movement_speed_is_reduced_by_10_1"),
+		 TEXT("Negative_Your_movement_speed_is_reduced_by_20_1")},
+		{TEXT("Negative_Your_health_is_reduced_by_10"),
+		 TEXT("Negative_Your_health_is_reduced_by_20")},
+		{TEXT("Negative_You_take_10_more_damage_from_all_sources"),
+		 TEXT("Negative_You_take_20_more_damage_from_all_sources")},
+		{TEXT("Negative_Ranged_attacks_deal_20_more_damage_to_you"),
+		 TEXT("Negative_Ranged_attacks_deal_40_more_damage_to_you")},
+		{TEXT("Negative_All_buffs_you_apply_to_yourself_now_last_25_les"),
+		 TEXT("Negative_All_buffs_you_apply_to_yourself_now_last_50_les")},
+	};
+	return Table;
+}
+
+FName FCataclysmEnchantmentRenames::Current(FName Stored)
+{
+	const FName* Now = Aliases().Find(Stored);
+	return Now ? *Now : Stored;
+}
+
+int32 FCataclysmEnchantmentRenames::RenameInStruct(const UStruct* Struct, void* Memory)
+{
+	if (!Struct || !Memory)
+	{
+		return 0;
+	}
+
+	// A ROLLED ENCHANTMENT ITSELF: its two names, and nothing below them.
+	if (Struct == FCataclysmRolledEnchantment::StaticStruct())
+	{
+		FCataclysmRolledEnchantment& Rolled = *static_cast<FCataclysmRolledEnchantment*>(Memory);
+		int32 Changed = 0;
+		for (FName* Name : {&Rolled.Positive, &Rolled.Negative})
+		{
+			const FName Now = Current(*Name);
+			if (Now != *Name)
+			{
+				*Name = Now;
+				++Changed;
+			}
+		}
+		return Changed;
+	}
+
+	// ANY OTHER STRUCT: every struct field, and every array of structs.
+	int32 Changed = 0;
+	for (TFieldIterator<FProperty> It(Struct); It; ++It)
+	{
+		if (const FStructProperty* Inner = CastField<FStructProperty>(*It))
+		{
+			for (int32 Index = 0; Index < Inner->ArrayDim; ++Index)
+			{
+				Changed += RenameInStruct(Inner->Struct,
+										  Inner->ContainerPtrToValuePtr<void>(Memory, Index));
+			}
+		}
+		else if (const FArrayProperty* Array = CastField<FArrayProperty>(*It))
+		{
+			const FStructProperty* Element = CastField<FStructProperty>(Array->Inner);
+			if (!Element)
+			{
+				continue;
+			}
+			FScriptArrayHelper Helper(Array, Array->ContainerPtrToValuePtr<void>(Memory));
+			for (int32 Index = 0; Index < Helper.Num(); ++Index)
+			{
+				Changed += RenameInStruct(Element->Struct, Helper.GetRawPtr(Index));
+			}
+		}
+	}
+	return Changed;
+}
+
+int32 FCataclysmEnchantmentRenames::RenameIn(UObject* Object)
+{
+	return Object ? RenameInStruct(Object->GetClass(), Object) : 0;
+}

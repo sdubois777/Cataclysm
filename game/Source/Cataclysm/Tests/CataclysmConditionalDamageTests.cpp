@@ -1,0 +1,2393 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "Misc/AutomationTest.h"
+
+#if WITH_AUTOMATION_TESTS
+
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+// For the melee tag, which scopes one of the "more" modifiers below.
+#include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+// For the Bloodlust stack that taking damage builds. Issue #1003.
+#include "AbilitySystem/CataclysmStacks.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "CataclysmTestWorld.h"
+#include "Character/CataclysmEnemyCharacter.h"
+// For giving a defender a Cataclysm type of its own, so a hit of another one
+// can be told from a hit of its own. Issue #975.
+#include "Items/CataclysmWeaponSlotsComponent.h"
+#include "Engine/World.h"
+#include "GameFramework/Actor.h"
+#include "GameplayTagsManager.h"
+#include "Misc/ScopeExit.h"
+
+/**
+ * Spell damage, and increased damage against a target's own damage type. #895.
+ *
+ * NINE AFFIXES, AND NONE OF THEM DID ANYTHING. `SpellDamage` and the eight
+ * `DamageVs...` attributes all existed, were clamped, were replicated, and no
+ * code in the project read any of them.
+ *
+ * THE EIGHT WERE BROKEN TWICE OVER. Each was recorded in the design workbook as
+ * an `increased` modifier, which multiplies whatever its stat already holds, and
+ * the stat it names IS the bucket of conditional increases: nothing else puts
+ * anything in it, so every one of the eight multiplied zero. They are `flat`
+ * contributions into that bucket now, which is what the design meant by "they
+ * add into the same bracket as Increased Damage". The same correction was made
+ * to cooldown reduction the same day; docs/DECISIONS.md carries both.
+ *
+ * THE ADDITIVE RULE IS THE POINT, AND THE DIFFERENCE IS LARGE. A character at
+ * +125% increased damage striking a matching enemy with a top-tier +400% affix
+ * deals 6.25 times its base if the two add and 11.25 times if they multiply. The
+ * design says they add, and cites Diablo 4 and Last Epoch for it.
+ */
+namespace CataclysmConditionalDamageTest
+{
+	/** An attacker whose damage stats can be set. */
+	struct FCaster
+	{
+		explicit FCaster(UWorld* World)
+		{
+			Actor = World->SpawnActor<AActor>();
+			check(Actor);
+
+			AbilitySystem = NewObject<UCataclysmAbilitySystemComponent>(Actor);
+			AbilitySystem->RegisterComponent();
+
+			// Raw pointers on purpose: AddAttributeSetSubobject is a template
+			// and a TObjectPtr deduces the wrapper rather than the set.
+			UCataclysmCombatAttributeSet* NewCombat =
+				NewObject<UCataclysmCombatAttributeSet>(Actor);
+			UCataclysmVitalAttributeSet* NewVitals =
+				NewObject<UCataclysmVitalAttributeSet>(Actor);
+			AbilitySystem->AddAttributeSetSubobject(NewCombat);
+			AbilitySystem->AddAttributeSetSubobject(NewVitals);
+
+			Combat = NewCombat;
+
+			// KEPT SINCE ISSUE #958, so a test can move the attacker's own
+			// health. A bonus that applies only below a health threshold is
+			// judged against this set by
+			// `UCataclysmAbilitySystemComponent::CurrentConditions`, so a test
+			// that cannot write to it cannot make such a bonus apply.
+			Vitals = NewVitals;
+
+			AbilitySystem->InitAbilityActorInfo(Actor, Actor);
+
+			Combat->SetAttackDamage(1'000.0f);
+			Combat->SetSpellDamage(0.0f);
+		}
+
+		~FCaster()
+		{
+			if (Actor)
+			{
+				Actor->Destroy();
+			}
+		}
+
+		TObjectPtr<AActor> Actor = nullptr;
+		TObjectPtr<UCataclysmAbilitySystemComponent> AbilitySystem = nullptr;
+		TObjectPtr<UCataclysmCombatAttributeSet> Combat = nullptr;
+		TObjectPtr<UCataclysmVitalAttributeSet> Vitals = nullptr;
+	};
+
+	/**
+	 * A creature of a named damage type, with nothing that would mitigate.
+	 *
+	 * ITS DEFENCES ARE STRIPPED AFTER IT BEGINS PLAY, because an enemy applies
+	 * its archetype's armour, resistance and energy shield there, and this
+	 * measures what the attacker sent rather than what the target stopped.
+	 */
+	ACataclysmEnemyCharacter* SpawnTarget(UWorld* World, const TCHAR* DamageType)
+	{
+		ACataclysmEnemyCharacter* Enemy =
+			World->SpawnActor<ACataclysmEnemyCharacter>(
+				FVector(500.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+		if (!Enemy)
+		{
+			return nullptr;
+		}
+
+		Enemy->DamageType = FName(DamageType);
+
+		if (UAbilitySystemComponent* AbilitySystem =
+				Enemy->GetAbilitySystemComponent())
+		{
+			AbilitySystem->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetArmorAttribute(), 0.0f);
+			AbilitySystem->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetDamageReductionAttribute(), 0.0f);
+			AbilitySystem->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+			AbilitySystem->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+			AbilitySystem->SetNumericAttributeBase(
+				UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(),
+				0.0f);
+			AbilitySystem->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), 0.0f);
+			AbilitySystem->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 0.0f);
+
+			// Deep enough that nothing here kills it, so every hit is measured
+			// in full rather than being cut short at zero health.
+			//
+			// A FLOAT NEAR 1,000,000 STEPS IN UNITS OF 0.0625, so a blow measured as the
+			// difference of two readings of this pool is quantised to that: an expected
+			// figure that is not a multiple of 0.0625 (a -40% blow of 220.5 is 132.3, read
+			// as 132.3125) misses a 0.01 tolerance however correct the engine is. Pick
+			// figures that land on the grid, or use a smaller pool the way
+			// CataclysmMinionGearTests.cpp does. Issue #1728.
+			AbilitySystem->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1'000'000.0f);
+			AbilitySystem->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetHealthAttribute(), 1'000'000.0f);
+		}
+
+		return Enemy;
+	}
+
+	/** How much health one hit took off it. */
+	float HealthLostTo(FCaster& Attacker, ACataclysmEnemyCharacter* Target,
+					   const FGameplayTagContainer& SkillTags,
+					   const FCataclysmHitDelivery& Delivery =
+						   FCataclysmHitDelivery())
+	{
+		UAbilitySystemComponent* AbilitySystem =
+			Target->GetAbilitySystemComponent();
+		const FGameplayAttribute Health =
+			UCataclysmVitalAttributeSet::GetHealthAttribute();
+
+		const float Before = AbilitySystem->GetNumericAttribute(Health);
+		UCataclysmSkillEffects::ApplyHit(
+			Attacker.Actor, Target, /*DamagePercent=*/100.0f, SkillTags,
+			Delivery);
+		return Before - AbilitySystem->GetNumericAttribute(Health);
+	}
+
+	/** A blow from a skill that cost this share of maximum health. #983. */
+	FCataclysmHitDelivery FromSkillCosting(float Percent)
+	{
+		FCataclysmHitDelivery Delivery;
+		Delivery.SkillHealthCostPercent = Percent;
+		return Delivery;
+	}
+
+	/** The tag list of a skill that is a spell. */
+	FGameplayTagContainer SpellTags()
+	{
+		FGameplayTagContainer Tags;
+		Tags.AddTag(UGameplayTagsManager::Get().RequestGameplayTag(
+			FName(UCataclysmSkillEffects::SpellTagName),
+			/*ErrorIfNotFound=*/false));
+		return Tags;
+	}
+}
+
+#define CATACLYSM_CONDITIONAL_TEST(TestClass, TestName) \
+	IMPLEMENT_SIMPLE_AUTOMATION_TEST(TestClass, TestName, \
+		EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter) \
+	bool TestClass::RunTest(const FString& Parameters)
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmDamageAgainstTypeReadsTheTargetTest,
+	"Cataclysm.ConditionalDamage.ItReadsTheTargetsTypeAndNotTheAttackers")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Attacker(World);
+	ACataclysmEnemyCharacter* Demon = SpawnTarget(World, TEXT("Demonic"));
+	ACataclysmEnemyCharacter* Deathly = SpawnTarget(World, TEXT("Death"));
+	if (!TestNotNull(TEXT("a Demonic target"), Demon)
+		|| !TestNotNull(TEXT("a Death target"), Deathly))
+	{
+		return false;
+	}
+
+	// WHAT AN ORDINARY HIT TAKES, measured before anything is granted, so the
+	// figures below are evidence of the affix rather than of the hit.
+	const float Plain = HealthLostTo(Attacker, Demon, FGameplayTagContainer());
+	if (!TestTrue(FString::Printf(TEXT("an ordinary hit lands (%.1f)"), Plain),
+				  Plain > 0.0f))
+	{
+		return false;
+	}
+
+	Attacker.Combat->SetDamageVsDemonic(400.0f);
+
+	// AGAINST THE TYPE IT NAMES, five times as much: 1 + 4.00.
+	TestEqual(TEXT("400% against Demonic makes a hit on a Demon five times"),
+		HealthLostTo(Attacker, Demon, FGameplayTagContainer()),
+		Plain * 5.0f, Plain * 0.02f);
+
+	// AND AGAINST ANY OTHER TYPE, NOTHING. "They read the target, not the
+	// weapon... This affix applies when that type matches and does nothing
+	// otherwise."
+	TestEqual(TEXT("and changes nothing about a hit on a Death creature"),
+		HealthLostTo(Attacker, Deathly, FGameplayTagContainer()),
+		Plain, Plain * 0.02f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmConditionalDamageAddsTest,
+	"Cataclysm.ConditionalDamage.ItAddsIntoTheSameBracketRatherThanMultiplying")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Attacker(World);
+	ACataclysmEnemyCharacter* Demon = SpawnTarget(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a Demonic target"), Demon))
+	{
+		return false;
+	}
+
+	// A CHARACTER ALREADY CARRYING GENERIC INCREASED DAMAGE. Its attack damage
+	// attribute is the finished figure with those increases already inside it,
+	// which is why the character has to remember the bracket separately.
+	constexpr float Generic = 1.25f;
+	constexpr float Conditional = 4.00f;
+
+	Attacker.Combat->SetAttackDamage(1'000.0f * (1.0f + Generic));
+	Attacker.AbilitySystem->SetAttackDamageIncreases(Generic);
+
+	const float WithoutTheAffix =
+		HealthLostTo(Attacker, Demon, FGameplayTagContainer());
+	if (!TestTrue(TEXT("the hit lands at all"), WithoutTheAffix > 0.0f))
+	{
+		return false;
+	}
+
+	Attacker.Combat->SetDamageVsDemonic(Conditional * 100.0f);
+	const float WithTheAffix =
+		HealthLostTo(Attacker, Demon, FGameplayTagContainer());
+
+	// THE TWO ANSWERS ARE FAR APART AND ONLY ONE IS THE DESIGN'S.
+	//
+	//   adding      (1 + 1.25 + 4.00) / (1 + 1.25) = 2.778 times
+	//   multiplying (1 + 1.25) x (1 + 4.00) / (1 + 1.25) = 5.000 times
+	const float Adding =
+		(1.0f + Generic + Conditional) / (1.0f + Generic);
+	const float Multiplying = 1.0f + Conditional;
+
+	TestEqual(FString::Printf(
+		TEXT("the conditional increase adds into the same bracket: %.3f times"),
+		WithTheAffix / WithoutTheAffix),
+		WithTheAffix / WithoutTheAffix, Adding, 0.02f);
+
+	TestTrue(FString::Printf(
+		TEXT("and is not a second multiplier, which would be %.3f times"),
+		Multiplying),
+		!FMath::IsNearlyEqual(WithTheAffix / WithoutTheAffix, Multiplying, 0.02f));
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmSpellDamageTest,
+	"Cataclysm.ConditionalDamage.SpellDamageIsAddedToASpellAndToNothingElse")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Attacker(World);
+	ACataclysmEnemyCharacter* Target = SpawnTarget(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a target"), Target))
+	{
+		return false;
+	}
+
+	const FGameplayTagContainer Spell = SpellTags();
+	if (!TestTrue(TEXT("the Type.Spell tag exists in the vocabulary"),
+				  UCataclysmSkillEffects::IsSpell(Spell)))
+	{
+		return false;
+	}
+
+	// WITH NO SPELL DAMAGE, A SPELL AND A STRIKE DEAL THE SAME. That is the
+	// project owner's choice: a spell keeps the weapon's damage as its base
+	// rather than ignoring it as Path of Exile does, so a Wand's own flat damage
+	// is worth something to the caster holding it.
+	const float PlainStrike =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+	const float PlainSpell = HealthLostTo(Attacker, Target, Spell);
+
+	if (!TestTrue(TEXT("a hit lands at all"), PlainStrike > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with no spell damage a spell deals what a strike deals"),
+		PlainSpell, PlainStrike, PlainStrike * 0.02f);
+
+	// AND SPELL DAMAGE RAISES THE SPELL AND NOT THE STRIKE.
+	Attacker.Combat->SetSpellDamage(500.0f);
+
+	const float ArmedSpell = HealthLostTo(Attacker, Target, Spell);
+	const float ArmedStrike =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	TestTrue(FString::Printf(
+		TEXT("spell damage raises a spell, %.1f to %.1f"),
+		PlainSpell, ArmedSpell),
+		ArmedSpell > PlainSpell + 1.0f);
+
+	TestEqual(TEXT("and leaves a skill that is not a spell alone"),
+		ArmedStrike, PlainStrike, PlainStrike * 0.02f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmConditionalDamageReadsTest,
+	"Cataclysm.ConditionalDamage.NothingToReadMeansNoChange")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Attacker(World);
+	AActor* NotACreature = World->SpawnActor<AActor>();
+
+	// ONLY AN ENEMY CARRIES A DAMAGE TYPE, so a hit on anything else finds no
+	// type to match and the affix correctly does nothing.
+	Attacker.Combat->SetDamageVsDemonic(400.0f);
+	TestEqual(TEXT("an actor that is not a creature has no type to match"),
+		UCataclysmSkillEffects::DamageAgainstTypeOf(
+			Attacker.AbilitySystem, NotACreature), 0.0f, 0.001f);
+	TestEqual(TEXT("and neither does nothing at all"),
+		UCataclysmSkillEffects::DamageAgainstTypeOf(
+			Attacker.AbilitySystem, nullptr), 0.0f, 0.001f);
+
+	// AN ABILITY SYSTEM THIS PROJECT DID NOT MAKE REMEMBERS NO BRACKET, and zero
+	// is the right answer: with no increases the arithmetic is what it was
+	// before any of this existed.
+	TestEqual(TEXT("nothing at all remembers no increases"),
+		UCataclysmSkillEffects::IncreasesBehindAttackDamage(nullptr),
+		0.0f, 0.001f);
+
+	// AND NEITHER DOES THE PER-SKILL FORM OF THE SAME QUESTION. Issue #958.
+	TestEqual(TEXT("nor does the per-skill form of it"),
+		UCataclysmSkillEffects::IncreasesForSkill(nullptr,
+												  FGameplayTagContainer()),
+		0.0f, 0.001f);
+
+	// AND A CHARACTER WITH NO SPELL DAMAGE ADDS NONE.
+	TestEqual(TEXT("a character with no spell damage adds none"),
+		UCataclysmSkillEffects::SpellDamageOf(Attacker.AbilitySystem,
+											  FGameplayTagContainer()),
+		0.0f, 0.001f);
+	TestEqual(TEXT("and nothing at all adds none either"),
+		UCataclysmSkillEffects::SpellDamageOf(nullptr, FGameplayTagContainer()),
+		0.0f, 0.001f);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// Increased damage that depends on the character's own state. Issue #958.
+//
+// THE NODE THESE TWO ARE ABOUT is the Masochist's Living on the Edge: "While at
+// or below 35% health, +2% increased damage per point", held at its full ten
+// points, so 20 percentage points of increase.
+//
+// "INCREASED DAMAGE" IS TWO STATS AND SO IT IS TWO TESTS. The project owner
+// settled on 2026-08-25 that the words mean every kind of damage the character
+// DEALS -- attack damage and spell damage -- and not damage over time, which the
+// design's own affix solve depends on being a direct-hit stat. The workbook
+// carries the node as two rows and each has to arrive by its own route: attack
+// damage through the increases bracket a hit reopens, spell damage as a flat
+// addition worked out per skill.
+//
+// WHY EACH HAS TO BE A REAL HIT RATHER THAN A PIPELINE CALL. Both figures were
+// read straight off a gameplay attribute, and an attribute by design carries no
+// bonus that depends on the character's state. Every test in
+// CataclysmStatPipelineTests.cpp would go on passing with those reads put back,
+// and a wounded Masochist would simply never get the damage.
+// --------------------------------------------------------------------------
+
+namespace CataclysmConditionalDamageTest
+{
+	/** Twenty percentage points of increase, below 35% of maximum health. */
+	FCataclysmStatModifier LivingOnTheEdge()
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Increased;
+		Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+		Modifier.Value = 20.0f;
+		Modifier.Condition = ECataclysmStatCondition::HealthAtOrBelowPercent;
+		Modifier.ConditionValue = 35.0f;
+		return Modifier;
+	}
+
+	/** A gear implicit of this size, which is where a base damage comes from. */
+	FCataclysmStatModifier FlatFromGear(float Value)
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Flat;
+		Modifier.Source = ECataclysmModifierSource::GearImplicit;
+		Modifier.Value = Value;
+		return Modifier;
+	}
+
+	/**
+	 * Blood Rush at its full eight points: "+2% increased damage per point for
+	 * 2 seconds after you pay a health cost", so 16 points for two seconds.
+	 * Issue #962.
+	 */
+	FCataclysmStatModifier BloodRush()
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Increased;
+		Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+		Modifier.Value = 16.0f;
+		Modifier.Condition =
+			ECataclysmStatCondition::WithinSecondsOfHealthCost;
+		Modifier.ConditionValue = 2.0f;
+		return Modifier;
+	}
+
+	/**
+	 * Grand Tithe at its full six points: "A skill whose health cost is
+	 * above 10% of your maximum health deals 4% increased damage per
+	 * point", so 24 points for such a skill. Issue #983.
+	 */
+	FCataclysmStatModifier GrandTithe()
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Increased;
+		Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+		Modifier.Value = 24.0f;
+		Modifier.Condition =
+			ECataclysmStatCondition::SkillHealthCostAbovePercent;
+		Modifier.ConditionValue = 10.0f;
+		return Modifier;
+	}
+
+	/**
+	 * Vicious Onslaught at its full ten points: "+1% increased Attack Damage per
+	 * point for every 5% of your maximum health that is missing", so ten
+	 * percentage points per whole 5% missing. Issue #968.
+	 */
+	FCataclysmStatModifier ViciousOnslaught()
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Increased;
+		Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+		Modifier.Value = 10.0f;
+		Modifier.Scale =
+			ECataclysmStatScale::PerPercentOfMaximumHealthMissing;
+		Modifier.ScaleStep = 5.0f;
+		return Modifier;
+	}
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmIncreasedDamageBelowAThresholdTest,
+	"Cataclysm.ConditionalDamage.IncreasedDamageThatDependsOnHealthReachesARealHit")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Attacker(World);
+	ACataclysmEnemyCharacter* Target = SpawnTarget(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a target"), Target))
+	{
+		return false;
+	}
+
+	// THE CHARACTER SHEET AS `UCataclysmPlayerClassStats::ApplyTo` WOULD LEAVE
+	// IT. A weapon carrying 1000 flat attack damage, nothing that increases it
+	// all the time, and the node's 20 points which apply only when wounded. The
+	// attribute therefore holds a plain 1000 and the remembered bracket is
+	// nothing, which is exactly what ApplyTo writes for this character: it
+	// judges every condition as unknown and so refuses it.
+	Attacker.Combat->SetAttackDamage(1'000.0f);
+	Attacker.AbilitySystem->SetAttackDamageIncreases(0.0f);
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 0.0f;
+	Inputs.Modifiers.Add(FlatFromGear(1'000.0f));
+	Inputs.Modifiers.Add(LivingOnTheEdge());
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("attack_damage")), Inputs);
+	Attacker.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	// A HUNDRED HEALTH OUT OF A HUNDRED, so the share is the figure itself.
+	Attacker.Vitals->SetMaxHealth(100.0f);
+	Attacker.Vitals->SetHealth(100.0f);
+
+	const float AtFullHealth =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	// WOUNDED, AND NOTHING ELSE CHANGED. Not a point spent, not a stat written,
+	// not the gameplay attribute touched. The health moved and that is all.
+	Attacker.Vitals->SetHealth(30.0f);
+
+	const float AtLowHealth =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	if (!TestTrue(FString::Printf(TEXT("both hits landed (%.0f, %.0f)"),
+								  AtFullHealth, AtLowHealth),
+				  AtFullHealth > 0.0f && AtLowHealth > 0.0f))
+	{
+		return false;
+	}
+
+	TestEqual(FString::Printf(
+		TEXT("the wounded attacker deals 20%% more, and dealt %.3f times"),
+		AtLowHealth / AtFullHealth),
+		AtLowHealth / AtFullHealth, 1.20f, 0.01f);
+
+	// AND BACK AGAIN, which is what "resolved when the stat is used and never
+	// stored" means. A bonus folded into the attribute would stay after the
+	// character healed, and no test above would notice.
+	Attacker.Vitals->SetHealth(100.0f);
+	const float Healed = HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	TestEqual(TEXT("and loses it again on healing past the threshold"),
+		Healed, AtFullHealth, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmSpellDamageBelowAThresholdTest,
+	"Cataclysm.ConditionalDamage.SpellDamageFollowsABonusThatDependsOnHealth")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Attacker(World);
+	ACataclysmEnemyCharacter* Target = SpawnTarget(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a target"), Target))
+	{
+		return false;
+	}
+
+	// NO WEAPON DAMAGE AT ALL, so the whole hit is the spell damage and the
+	// ratio measures that stat and nothing else. The other half of the node is
+	// covered by the test above.
+	Attacker.Combat->SetAttackDamage(0.0f);
+	Attacker.Combat->SetSpellDamage(500.0f);
+	Attacker.AbilitySystem->SetAttackDamageIncreases(0.0f);
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 0.0f;
+	Inputs.Modifiers.Add(FlatFromGear(500.0f));
+	Inputs.Modifiers.Add(LivingOnTheEdge());
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("spell_damage")), Inputs);
+	Attacker.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	Attacker.Vitals->SetMaxHealth(100.0f);
+	Attacker.Vitals->SetHealth(100.0f);
+
+	const float AtFullHealth = HealthLostTo(Attacker, Target, SpellTags());
+
+	Attacker.Vitals->SetHealth(30.0f);
+	const float AtLowHealth = HealthLostTo(Attacker, Target, SpellTags());
+
+	if (!TestTrue(FString::Printf(TEXT("both spells landed (%.0f, %.0f)"),
+								  AtFullHealth, AtLowHealth),
+				  AtFullHealth > 0.0f && AtLowHealth > 0.0f))
+	{
+		return false;
+	}
+
+	TestEqual(FString::Printf(
+		TEXT("the wounded caster deals 20%% more, and dealt %.3f times"),
+		AtLowHealth / AtFullHealth),
+		AtLowHealth / AtFullHealth, 1.20f, 0.01f);
+
+	// AND A SKILL THAT IS NOT A SPELL TAKES NONE OF IT, wounded or not, which is
+	// the rule the node must not break: spell damage is added to a spell and to
+	// nothing else.
+	TestEqual(TEXT("and a skill that is not a spell takes none of it"),
+		HealthLostTo(Attacker, Target, FGameplayTagContainer()), 0.0f, 0.01f);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// "More" damage that depends on the skill in hand or the character's state.
+//
+// THE INCREASES BRACKET WAS REOPENED FOR A HIT BY ISSUE #958, AND THE "MORE"
+// MULTIPLIERS WERE NOT. `ApplyHit` took the stored increases out of the
+// attack-damage attribute and put the per-skill ones back in, and did nothing of
+// the kind for a "more" multiplier. So an attack-damage "more" carrying a
+// condition, a scale or a required tag reached no hit at all, and seven
+// Masochist nodes and capstone options carry one.
+//
+// ONE TEST FOR EACH OF THE THREE THINGS THE ATTRIBUTE CANNOT CARRY: a
+// condition, a required tag and a scale. The first also carries an
+// unconditional "more", which the attribute DOES carry, to show it is not
+// counted a second time.
+// --------------------------------------------------------------------------
+
+namespace CataclysmConditionalDamageTest
+{
+	/** Twenty per cent more, at or below 35% of maximum health. */
+	FCataclysmStatModifier MoreWhenWounded()
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::More;
+		Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+		Modifier.Value = 20.0f;
+		Modifier.Condition = ECataclysmStatCondition::HealthAtOrBelowPercent;
+		Modifier.ConditionValue = 35.0f;
+		return Modifier;
+	}
+
+	/** Forty per cent more all the time, the size of Exsanguinate's. */
+	FCataclysmStatModifier MoreAllTheTime()
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::More;
+		Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+		Modifier.Value = 40.0f;
+		return Modifier;
+	}
+
+	/** Fifty per cent increased from gear, all the time. */
+	FCataclysmStatModifier IncreasedFromGear()
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Increased;
+		Modifier.Source = ECataclysmModifierSource::GearAffix;
+		Modifier.Value = 50.0f;
+		return Modifier;
+	}
+
+	/** Thirty per cent more for a melee skill only, the shape of Carnage's. */
+	FCataclysmStatModifier MoreForMelee()
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::More;
+		Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+		Modifier.Value = 30.0f;
+		Modifier.RequiredTags.AddTag(UCataclysmDamageCalculation::MeleeTag());
+		return Modifier;
+	}
+
+	/** Two per cent more for every whole 5% of maximum health missing. */
+	FCataclysmStatModifier MorePerHealthMissing()
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::More;
+		Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+		Modifier.Value = 2.0f;
+		Modifier.Scale = ECataclysmStatScale::PerPercentOfMaximumHealthMissing;
+		Modifier.ScaleStep = 5.0f;
+		return Modifier;
+	}
+
+	/** Records these modifiers as the attacker's attack-damage stat line. */
+	void RecordAttackDamage(FCaster& Attacker,
+							const TArray<FCataclysmStatModifier>& Modifiers)
+	{
+		FCataclysmStatInputs Inputs;
+		Inputs.Base = 0.0f;
+		Inputs.Modifiers = Modifiers;
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(FName(TEXT("attack_damage")), Inputs);
+		Attacker.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmMoreDamageBelowAThresholdTest,
+	"Cataclysm.ConditionalDamage.MoreDamageThatDependsOnHealthReachesARealHit")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Attacker(World);
+	ACataclysmEnemyCharacter* Target = SpawnTarget(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a target"), Target))
+	{
+		return false;
+	}
+
+	// THE ATTRIBUTE AS `UCataclysmPlayerClassStats::ApplyTo` WOULD WRITE IT for a
+	// weapon of 1000, fifty per cent increased from gear and forty per cent more
+	// all the time: 1000 x 1.5 x 1.4 = 2100, with the remembered increases at
+	// 0.5. The twenty per cent that applies only when wounded is not in it,
+	// because ApplyTo judges every condition as unknown and so refuses it.
+	Attacker.Combat->SetAttackDamage(2'100.0f);
+	Attacker.AbilitySystem->SetAttackDamageIncreases(0.5f);
+	Attacker.Vitals->SetMaxHealth(100.0f);
+	Attacker.Vitals->SetHealth(100.0f);
+
+	// WITH NOTHING RECORDED THE HIT IS THE ATTRIBUTE'S, which is what every
+	// attack dealt before "more" multipliers were worked out again at the hit.
+	const float FromTheAttribute =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	RecordAttackDamage(Attacker, {FlatFromGear(1'000.0f), IncreasedFromGear(),
+								  MoreAllTheTime(), MoreWhenWounded()});
+	const float AtFullHealth =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	// THE UNCONDITIONAL "MORE" IS NOT COUNTED TWICE. It is already inside the
+	// 2100, so recording it must leave an unwounded attacker's hit exactly
+	// where the attribute put it.
+	TestEqual(FString::Printf(
+		TEXT("unwounded, the hit is still the attribute's %.1f, and was %.1f"),
+		FromTheAttribute, AtFullHealth),
+		AtFullHealth, FromTheAttribute, FromTheAttribute * 0.001f);
+
+	// WOUNDED, AND NOTHING ELSE CHANGED.
+	Attacker.Vitals->SetHealth(30.0f);
+	const float AtLowHealth =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	if (!TestTrue(FString::Printf(TEXT("the hits landed (%.0f, %.0f, %.0f)"),
+								  FromTheAttribute, AtFullHealth, AtLowHealth),
+				  FromTheAttribute > 0.0f && AtFullHealth > 0.0f
+				  && AtLowHealth > 0.0f))
+	{
+		return false;
+	}
+
+	TestEqual(FString::Printf(
+		TEXT("the wounded attacker deals 20%% more, and dealt %.3f times"),
+		AtLowHealth / AtFullHealth),
+		AtLowHealth / AtFullHealth, 1.20f, 0.001f);
+
+	// AND BACK AGAIN, which is what "worked out at the hit and never stored"
+	// means.
+	Attacker.Vitals->SetHealth(100.0f);
+	TestEqual(TEXT("and loses it again on healing past the threshold"),
+		HealthLostTo(Attacker, Target, FGameplayTagContainer()),
+		AtFullHealth, AtFullHealth * 0.001f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmMoreDamageForATaggedSkillTest,
+	"Cataclysm.ConditionalDamage.MoreDamageScopedToATagReachesOnlyTheSkillsCarryingIt")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	// A MISSING TAG WOULD LEAVE THE MODIFIER UNSCOPED, which reaches every skill,
+	// and the comparison below would then read as the scoping failing.
+	const FGameplayTag Melee = UCataclysmDamageCalculation::MeleeTag();
+	if (!TestTrue(TEXT("the melee tag is declared"), Melee.IsValid()))
+	{
+		return false;
+	}
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Attacker(World);
+	ACataclysmEnemyCharacter* Target = SpawnTarget(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a target"), Target))
+	{
+		return false;
+	}
+
+	// A WEAPON OF 1000 AND NOTHING ELSE THE ATTRIBUTE CARRIES. The melee "more"
+	// is not in it, because ApplyTo has no skill in hand.
+	Attacker.Combat->SetAttackDamage(1'000.0f);
+	Attacker.AbilitySystem->SetAttackDamageIncreases(0.0f);
+
+	const float WithNothingRecorded =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	RecordAttackDamage(Attacker, {FlatFromGear(1'000.0f), MoreForMelee()});
+
+	FGameplayTagContainer MeleeSkill;
+	MeleeSkill.AddTag(Melee);
+
+	const float NotMelee =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+	const float FromMelee = HealthLostTo(Attacker, Target, MeleeSkill);
+
+	if (!TestTrue(FString::Printf(TEXT("the hits landed (%.0f, %.0f, %.0f)"),
+								  WithNothingRecorded, NotMelee, FromMelee),
+				  WithNothingRecorded > 0.0f && NotMelee > 0.0f
+				  && FromMelee > 0.0f))
+	{
+		return false;
+	}
+
+	TestEqual(FString::Printf(
+		TEXT("a melee skill deals 30%% more, and dealt %.3f times"),
+		FromMelee / NotMelee),
+		FromMelee / NotMelee, 1.30f, 0.001f);
+
+	// AND A SKILL WITHOUT THE TAG IS UNTOUCHED, which is the half a modifier that
+	// lost its tag on the way would fail.
+	TestEqual(TEXT("a skill without the tag deals what it did with nothing recorded"),
+		NotMelee, WithNothingRecorded, WithNothingRecorded * 0.001f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmMoreDamageGrowsWithMissingHealthTest,
+	"Cataclysm.ConditionalDamage.MoreDamageThatGrowsWithMissingHealthReachesARealHit")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Attacker(World);
+	ACataclysmEnemyCharacter* Target = SpawnTarget(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a target"), Target))
+	{
+		return false;
+	}
+
+	// A WEAPON OF 1000 AND NOTHING ELSE THE ATTRIBUTE CARRIES. A scaled "more"
+	// is not in it: with nothing known about the character it is worth nothing.
+	Attacker.Combat->SetAttackDamage(1'000.0f);
+	Attacker.AbilitySystem->SetAttackDamageIncreases(0.0f);
+	RecordAttackDamage(Attacker,
+					   {FlatFromGear(1'000.0f), MorePerHealthMissing()});
+
+	Attacker.Vitals->SetMaxHealth(100.0f);
+	Attacker.Vitals->SetHealth(100.0f);
+	const float Unhurt = HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	// HALF THE HEALTH GONE IS TEN WHOLE STEPS OF 5%, so twenty per cent more.
+	Attacker.Vitals->SetHealth(50.0f);
+	const float HalfGone = HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	// TWELVE PER CENT GONE IS TWO WHOLE STEPS, not two and two fifths, so four
+	// per cent more. Steps are counted whole and rounded down.
+	Attacker.Vitals->SetHealth(88.0f);
+	const float TwelveGone =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	if (!TestTrue(FString::Printf(TEXT("the hits landed (%.0f, %.0f, %.0f)"),
+								  Unhurt, HalfGone, TwelveGone),
+				  Unhurt > 0.0f && HalfGone > 0.0f && TwelveGone > 0.0f))
+	{
+		return false;
+	}
+
+	TestEqual(FString::Printf(
+		TEXT("half the health gone deals 20%% more, and dealt %.3f times"),
+		HalfGone / Unhurt),
+		HalfGone / Unhurt, 1.20f, 0.001f);
+	TestEqual(FString::Printf(
+		TEXT("twelve per cent gone deals 4%% more, and dealt %.3f times"),
+		TwelveGone / Unhurt),
+		TwelveGone / Unhurt, 1.04f, 0.001f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmIncreasedDamageInAWindowTest,
+	"Cataclysm.ConditionalDamage.IncreasedDamageFollowsAWindowAfterAHealthCost")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	// THE MASOCHIST'S BLOOD RUSH NODE reaching a real hit. Issue #962.
+	//
+	// WHAT THIS PROVES THAT THE PIPELINE TEST DOES NOT. The pipeline test hands
+	// the arithmetic a number of seconds. This one moves the world's clock and
+	// lands three real hits, so it also covers the two joins between them:
+	// `CurrentConditions` reading the timestamp, and the attack damage bracket
+	// being worked out again at the moment of the hit rather than read off the
+	// gameplay attribute.
+	//
+	// IT SHOWS A BONUS GOING AWAY WITH NOTHING HAPPENING, which no earlier test
+	// could. A health threshold changes when the character is hit; a window
+	// shuts while the character stands still.
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Attacker(World);
+	ACataclysmEnemyCharacter* Target = SpawnTarget(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a target"), Target))
+	{
+		return false;
+	}
+
+	// THE CHARACTER SHEET AS `UCataclysmPlayerClassStats::ApplyTo` WOULD LEAVE
+	// IT: a weapon's 1000 flat attack damage, nothing that increases it all the
+	// time, and the node's 16 points which apply only inside the window.
+	Attacker.Combat->SetAttackDamage(1'000.0f);
+	Attacker.AbilitySystem->SetAttackDamageIncreases(0.0f);
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 0.0f;
+	Inputs.Modifiers.Add(FlatFromGear(1'000.0f));
+	Inputs.Modifiers.Add(BloodRush());
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("attack_damage")), Inputs);
+	Attacker.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	// A CHARACTER THAT HAS PAID NOTHING, MEASURED FIRST. Without this the
+	// comparison below would pass just as well if the window were open from
+	// birth, which would make the node worth its bonus all the time.
+	const float NeverPaid =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+	if (!TestTrue(FString::Printf(TEXT("the first hit lands (%.0f)"), NeverPaid),
+				  NeverPaid > 0.0f))
+	{
+		return false;
+	}
+
+	// PAYING A HEALTH COST, BY THE SAME CALL THE SKILL PATH MAKES. That the
+	// skill path really makes it is a separate test, in
+	// CataclysmSkillTemplateTests.cpp, because this one cannot cast twice.
+	Attacker.AbilitySystem->NoteHealthCostPaid();
+	const float InsideTheWindow =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	TestEqual(FString::Printf(
+		TEXT("inside the window the hit is 16%% larger, and was %.3f times"),
+		InsideTheWindow / NeverPaid),
+		InsideTheWindow / NeverPaid, 1.16f, 0.01f);
+
+	// AND THREE SECONDS LATER, WITH NOTHING ELSE CHANGED, it is back to what it
+	// was. Not a point unspent, not a stat rewritten, not a hit taken. The clock
+	// moved and that is all.
+	World->TimeSeconds += 3.0f;
+	const float AfterItShuts =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	TestEqual(TEXT("and once the window shuts it is back to what it was"),
+		AfterItShuts, NeverPaid, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmDamageFollowsTheSkillsHealthCostTest,
+	"Cataclysm.ConditionalDamage.IncreasedDamageFollowsWhatTheSkillInHandCost")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	// THE MASOCHIST'S GRAND TITHE NODE reaching a real hit. Issue #983.
+	//
+	// WHAT THIS PROVES THAT THE PIPELINE TEST DOES NOT. The pipeline test hands
+	// the arithmetic a cost. This one puts the cost on the blow and lands real
+	// hits, so it also covers the join between them: `ApplyHit` taking the
+	// figure off `FCataclysmHitDelivery` and passing it into both stat lookups.
+	// Without that join the node would be authored, the modifier built, and
+	// every hit unchanged.
+	//
+	// IT IS THE FIRST BONUS THAT DIFFERS BETWEEN TWO BLOWS AT THE SAME INSTANT.
+	// Every earlier condition asks about the character, so one character has one
+	// answer; two hits landed here without a single attribute changing between
+	// them get different damage, because the two skills cost different amounts.
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Attacker(World);
+	ACataclysmEnemyCharacter* Target = SpawnTarget(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a target"), Target))
+	{
+		return false;
+	}
+
+	// THE CHARACTER SHEET AS `UCataclysmPlayerClassStats::ApplyTo` WOULD LEAVE
+	// IT: a weapon's 1000 flat attack damage, nothing that increases it all the
+	// time, and the node's 24 points which apply only to an expensive skill.
+	Attacker.Combat->SetAttackDamage(1'000.0f);
+	Attacker.AbilitySystem->SetAttackDamageIncreases(0.0f);
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 0.0f;
+	Inputs.Modifiers.Add(FlatFromGear(1'000.0f));
+	Inputs.Modifiers.Add(GrandTithe());
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("attack_damage")), Inputs);
+	Attacker.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	// A BLOW WITH NO SKILL BEHIND IT, MEASURED FIRST. Without this the
+	// comparison below would pass just as well if the bonus applied always,
+	// which would make the node worth its damage on every hit in the game.
+	const float NoSkill =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+	if (!TestTrue(FString::Printf(TEXT("the first hit lands (%.0f)"), NoSkill),
+				  NoSkill > 0.0f))
+	{
+		return false;
+	}
+
+	// A SKILL THAT COST NOTHING IS THE SAME, which is every skill in the game
+	// for a character with no point in the Deeper Cuts node.
+	TestEqual(TEXT("a skill that cost nothing hits for the same"),
+		HealthLostTo(Attacker, Target, FGameplayTagContainer(),
+					 FromSkillCosting(0.0f)),
+		NoSkill, 0.01f);
+
+	// AND SO IS ONE SITTING EXACTLY ON THE THRESHOLD. The design says "above
+	// 10%", so a character paying exactly ten gets nothing.
+	//
+	// WHAT PUTS A CHARACTER EXACTLY THERE HAS CHANGED. It was the Deeper Cuts
+	// node at its full ten points, which added exactly 10% of maximum health,
+	// until issue #1107 lowered that node to 0.25% a point. Exsanguinate's 15%
+	// of CURRENT health lands on the same line by a different route: a character
+	// at exactly two thirds of its pool is paying 10% of its maximum.
+	TestEqual(TEXT("a skill costing exactly ten per cent hits for the same"),
+		HealthLostTo(Attacker, Target, FGameplayTagContainer(),
+					 FromSkillCosting(10.0f)),
+		NoSkill, 0.01f);
+
+	// A SKILL COSTING MORE THAN THE THRESHOLD HITS HARDER. Exsanguinate's 15% of
+	// current health plus Blood Pyre's own 8% of current, at full health, is 23%
+	// and passes it comfortably; 18% is a figure between the two.
+	const float Expensive =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer(),
+					 FromSkillCosting(18.0f));
+
+	TestEqual(FString::Printf(
+		TEXT("an expensive skill hits 24%% harder, and was %.3f times"),
+		Expensive / NoSkill),
+		Expensive / NoSkill, 1.24f, 0.01f);
+
+	// AND THE NEXT BLOW, WITH NOT ONE ATTRIBUTE CHANGED, is back to what it was.
+	// No point unspent, no stat rewritten, no health lost, no clock moved. A
+	// different skill dealt it and that is the whole difference.
+	TestEqual(TEXT("and a cheap skill immediately after is unchanged"),
+		HealthLostTo(Attacker, Target, FGameplayTagContainer(),
+					 FromSkillCosting(0.0f)),
+		NoSkill, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmDamageGrowsWithMissingHealthTest,
+	"Cataclysm.ConditionalDamage.IncreasedDamageGrowsWithHowMuchHealthIsMissing")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	// THE MASOCHIST'S VICIOUS ONSLAUGHT NODE reaching a real hit. Issue #968.
+	//
+	// WHAT THIS PROVES THAT THE PIPELINE TEST DOES NOT. The pipeline test hands
+	// the arithmetic a health share. This one moves the attacker's real health
+	// and lands three real hits, so it also covers the join between them: the
+	// attack damage bracket being worked out again at the moment of the hit,
+	// with the character's own health in hand.
+	//
+	// A SCALING BONUS COULD NOT REACH A HIT ANY OTHER WAY. It is never written
+	// onto the gameplay attribute, because its size is different at every health
+	// figure and the attribute is written once when gear changes.
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Attacker(World);
+	ACataclysmEnemyCharacter* Target = SpawnTarget(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a target"), Target))
+	{
+		return false;
+	}
+
+	Attacker.Combat->SetAttackDamage(1'000.0f);
+	Attacker.AbilitySystem->SetAttackDamageIncreases(0.0f);
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 0.0f;
+	Inputs.Modifiers.Add(FlatFromGear(1'000.0f));
+	Inputs.Modifiers.Add(ViciousOnslaught());
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("attack_damage")), Inputs);
+	Attacker.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	// A HUNDRED HEALTH OUT OF A HUNDRED, so the share is the figure itself.
+	Attacker.Vitals->SetMaxHealth(100.0f);
+	Attacker.Vitals->SetHealth(100.0f);
+
+	const float AtFullHealth =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+	if (!TestTrue(FString::Printf(TEXT("the first hit lands (%.0f)"),
+								  AtFullHealth),
+				  AtFullHealth > 0.0f))
+	{
+		return false;
+	}
+
+	// HALF HEALTH IS TEN WHOLE STEPS OF 5%, so +100% and twice the damage.
+	Attacker.Vitals->SetHealth(50.0f);
+	const float AtHalfHealth =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	TestEqual(FString::Printf(
+		TEXT("at half health the hit is twice as large, and was %.3f times"),
+		AtHalfHealth / AtFullHealth),
+		AtHalfHealth / AtFullHealth, 2.0f, 0.01f);
+
+	// AND IT GROWS FURTHER AS THE CHARACTER IS HURT MORE, which is what
+	// separates a scaling bonus from a conditional one. A condition would give
+	// the same answer at 50% and at 25%.
+	Attacker.Vitals->SetHealth(25.0f);
+	const float AtQuarterHealth =
+		HealthLostTo(Attacker, Target, FGameplayTagContainer());
+
+	TestEqual(FString::Printf(
+		TEXT("at a quarter health it is 2.5 times, and was %.3f times"),
+		AtQuarterHealth / AtFullHealth),
+		AtQuarterHealth / AtFullHealth, 2.5f, 0.01f);
+
+	TestTrue(TEXT("so it is strictly larger at a quarter than at a half"),
+		AtQuarterHealth > AtHalfHealth);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// Taking damage of a Cataclysm type the character does not share. Issue #975.
+//
+// WHY THESE GO THROUGH A REAL HIT. The window is opened from the damage branch
+// of `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, which is the one
+// place a resolved hit and its type are both in hand. A test that set the
+// timestamp by hand would go on passing with that call deleted, at which point
+// the node would never fire in a real fight.
+// --------------------------------------------------------------------------
+
+namespace CataclysmConditionalDamageTest
+{
+	/** An enemy of a named type, able to deal damage rather than only take it. */
+	ACataclysmEnemyCharacter* SpawnAttacker(UWorld* World, const TCHAR* DamageType)
+	{
+		ACataclysmEnemyCharacter* Enemy = SpawnTarget(World, DamageType);
+		if (Enemy)
+		{
+			if (UAbilitySystemComponent* AbilitySystem =
+					Enemy->GetAbilitySystemComponent())
+			{
+				AbilitySystem->SetNumericAttributeBase(
+					UCataclysmCombatAttributeSet::GetAttackDamageAttribute(),
+					1'000.0f);
+			}
+		}
+		return Enemy;
+	}
+
+	/** A defender that nothing about its own defences will stop a hit reaching. */
+	void MakeReachable(FCaster& Defender)
+	{
+		Defender.Combat->SetArmor(0.0f);
+		Defender.Combat->SetEvasion(0.0f);
+		Defender.Combat->SetBlockChance(0.0f);
+		Defender.Combat->SetDamageReduction(0.0f);
+		Defender.Vitals->SetMaxHealth(1'000'000.0f);
+		Defender.Vitals->SetHealth(1'000'000.0f);
+	}
+
+	/** Give a defender a Cataclysm type of its own, the way a weapon does. */
+	void GiveOwnDamageType(FCaster& Defender, const TCHAR* DamageType)
+	{
+		UCataclysmWeaponSlotsComponent* Slots =
+			NewObject<UCataclysmWeaponSlotsComponent>(Defender.Actor);
+		Slots->RegisterComponent();
+		Slots->SetDamageType(DamageType);
+	}
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmForeignDamageOpensAWindowTest,
+	"Cataclysm.ConditionalDamage.DamageOfAnotherCataclysmTypeOpensAWindow")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Defender(World);
+	MakeReachable(Defender);
+	GiveOwnDamageType(Defender, TEXT("Demonic"));
+
+	ACataclysmEnemyCharacter* Attacker = SpawnAttacker(World, TEXT("War"));
+	if (!TestNotNull(TEXT("a War attacker"), Attacker))
+	{
+		return false;
+	}
+
+	// NOTHING HAS HAPPENED YET, asserted before the hit. Without this the check
+	// afterwards would pass just as well if the window were open from birth.
+	TestEqual(TEXT("a character that has taken nothing has no window"),
+		Defender.AbilitySystem->SecondsSinceForeignDamageTaken(), -1.0f, 0.001f);
+
+	const float Before = Defender.Vitals->GetHealth();
+	UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor,
+									 /*DamagePercent=*/100.0f);
+	if (!TestTrue(TEXT("the hit reached the defender"),
+				  Defender.Vitals->GetHealth() < Before))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a War hit on a Demonic character opens the window, now"),
+		Defender.AbilitySystem->SecondsSinceForeignDamageTaken(), 0.0f, 0.001f);
+
+	// AND IT AGES BY ITSELF, with nothing else happening.
+	World->TimeSeconds += 6.0f;
+	TestEqual(TEXT("and six seconds later it has been open that long"),
+		Defender.AbilitySystem->SecondsSinceForeignDamageTaken(), 6.0f, 0.01f);
+
+	// AND THE STATE THE PIPELINE IS HANDED CARRIES IT, which is the join
+	// between this timestamp and the bonus that reads it.
+	TestEqual(TEXT("and the state handed to the pipeline says the same"),
+		Defender.AbilitySystem->CurrentConditions().SecondsSinceForeignDamage,
+		6.0f, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmOwnTypeDoesNotOpenAWindowTest,
+	"Cataclysm.ConditionalDamage.DamageOfTheCharactersOwnTypeOpensNoWindow")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	// THE SAME HIT, THE SAME DEFENDER, AND ONLY THE TYPE DIFFERENT. This is
+	// what says the node is about a FOREIGN Cataclysm rather than about being
+	// hit at all. Without it the test above would pass just as well for a
+	// window that opened on any damage whatsoever.
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Defender(World);
+	MakeReachable(Defender);
+	GiveOwnDamageType(Defender, TEXT("Demonic"));
+
+	ACataclysmEnemyCharacter* Attacker = SpawnAttacker(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a Demonic attacker"), Attacker))
+	{
+		return false;
+	}
+
+	const float Before = Defender.Vitals->GetHealth();
+	UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor,
+									 /*DamagePercent=*/100.0f);
+	if (!TestTrue(TEXT("the hit reached the defender"),
+				  Defender.Vitals->GetHealth() < Before))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a Demonic hit on a Demonic character opens no window"),
+		Defender.AbilitySystem->SecondsSinceForeignDamageTaken(), -1.0f, 0.001f);
+
+	// AND YET IT STILL BUILDS A BLOODLUST STACK. Issue #1003. The two rules sit
+	// side by side in the same branch of the vital attribute set and ask
+	// different questions: the window wants a Cataclysm type the character does
+	// NOT share, and the stack wants damage of any kind from anything. A hit of
+	// the character's own type is the case that separates them, which is why
+	// this assertion is here rather than in a test of its own.
+	TestEqual(TEXT("but it does build a Bloodlust stack"),
+		UCataclysmStacks::Held(Defender.AbilitySystem,
+							   ECataclysmStackKind::Bloodlust), 1);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmDamageTakenBuildsAStackTest,
+	"Cataclysm.ConditionalDamage.TakingDamageBuildsABloodlustStack")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	// THE MASOCHIST'S BLOOD OFFERING NODE'S TRIGGER, END TO END. Issue #1003:
+	// "Taking damage grants a stack of Bloodlust for 5 seconds, up to 5 stacks."
+	//
+	// WHAT THIS PROVES THAT A LIBRARY TEST DOES NOT. That the grant is really
+	// wired into `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, which
+	// is the one place a resolved hit is known about, and that a real hit
+	// reaches it.
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Defender(World);
+	MakeReachable(Defender);
+
+	ACataclysmEnemyCharacter* Attacker = SpawnAttacker(World, TEXT("War"));
+	if (!TestNotNull(TEXT("an attacker"), Attacker))
+	{
+		return false;
+	}
+
+	// NOTHING HAS HAPPENED YET, asserted before the hit. Without this the checks
+	// afterwards would pass just as well if a character were born with stacks.
+	TestEqual(TEXT("a character that has taken nothing holds no stacks"),
+		UCataclysmStacks::Held(Defender.AbilitySystem,
+							   ECataclysmStackKind::Bloodlust), 0);
+
+	const float Before = Defender.Vitals->GetHealth();
+	UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor,
+									 /*DamagePercent=*/100.0f);
+	if (!TestTrue(TEXT("the hit reached the defender"),
+				  Defender.Vitals->GetHealth() < Before))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("one hit is one stack"),
+		UCataclysmStacks::Held(Defender.AbilitySystem,
+							   ECataclysmStackKind::Bloodlust), 1);
+
+	// AND A SECOND HIT IS A SECOND STACK.
+	UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor,
+									 /*DamagePercent=*/100.0f);
+	TestEqual(TEXT("two hits are two stacks"),
+		UCataclysmStacks::Held(Defender.AbilitySystem,
+							   ECataclysmStackKind::Bloodlust), 2);
+
+	// AND THEY STOP COUNTING FIVE SECONDS AFTER THE LAST ONE, with nothing else
+	// happening. The clock moves and that is all.
+	World->TimeSeconds +=
+		UCataclysmStacks::WindowSecondsFor(ECataclysmStackKind::Bloodlust)
+		+ 0.1f;
+	TestEqual(TEXT("and five seconds later they are gone"),
+		UCataclysmStacks::Held(Defender.AbilitySystem,
+							   ECataclysmStackKind::Bloodlust), 0);
+
+	// AND THE STATE THE PIPELINE IS HANDED CARRIES THE COUNT, which is the join
+	// between the hit that happened and the bonus that reads it.
+	UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor,
+									 /*DamagePercent=*/100.0f);
+	TestEqual(TEXT("a fresh hit starts the count again at one"),
+		Defender.AbilitySystem->CurrentConditions().BloodlustStacks, 1);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// The event windows an enchantment opens. Issue #1826.
+//
+// FOUR TESTS AND FOUR DIFFERENT BREAKS. The first two are one collision test
+// written as a pair: each is the positive case for its own clock and the
+// negative case for the other's, because the cheapest wrong implementation --
+// stamp every clock on every hit -- passes either one of them alone.
+// --------------------------------------------------------------------------
+
+namespace CataclysmConditionalDamageTest
+{
+	/** Twenty points of increase, held only inside a window a block opened. */
+	FCataclysmStatModifier AfterABlock(float WindowSeconds)
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Increased;
+		Modifier.Source = ECataclysmModifierSource::GearAffix;
+		Modifier.Value = 20.0f;
+		Modifier.Condition = ECataclysmStatCondition::WithinSecondsOfBlock;
+		Modifier.ConditionValue = WindowSeconds;
+		return Modifier;
+	}
+
+	/** The same size of increase, held always, as a control. */
+	FCataclysmStatModifier AlwaysHeld()
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Increased;
+		Modifier.Source = ECataclysmModifierSource::GearAffix;
+		Modifier.Value = 20.0f;
+		return Modifier;
+	}
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmBlockOpensAWindowTest,
+	"Cataclysm.ConditionalDamage.ABlockedBlowOpensTheBlockWindowAndNotTheForeignOne")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Defender(World);
+	MakeReachable(Defender);
+	GiveOwnDamageType(Defender, TEXT("Demonic"));
+
+	// EVERY BLOW IS BLOCKED. A block removes half a hit rather than preventing
+	// it, so the defender still loses health and the hit still resolves.
+	Defender.Combat->SetBlockChance(100.0f);
+
+	// AND THE ATTACKER SHARES THE DEFENDER'S TYPE, which is what makes this the
+	// negative half of the collision test. A Demonic blow on a Demonic
+	// character opens no foreign-damage window, so anything that stamps that
+	// clock here is stamping clocks it was not asked to.
+	ACataclysmEnemyCharacter* Attacker = SpawnAttacker(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a Demonic attacker"), Attacker))
+	{
+		return false;
+	}
+
+	// NOTHING HAS HAPPENED YET, asserted before the hit. Without this the check
+	// afterwards would pass just as well if the window were open from birth.
+	TestEqual(TEXT("a character that has blocked nothing has no window"),
+		Defender.AbilitySystem->SecondsSinceBlocked(), -1.0f, 0.001f);
+
+	const float Before = Defender.Vitals->GetHealth();
+	UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor,
+									 /*DamagePercent=*/100.0f);
+	if (!TestTrue(TEXT("the hit reached the defender"),
+				  Defender.Vitals->GetHealth() < Before))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a blocked blow opens the block window, now"),
+		Defender.AbilitySystem->SecondsSinceBlocked(), 0.0f, 0.001f);
+
+	// AND THE STATE THE PIPELINE IS HANDED CARRIES IT, which is the join
+	// between this timestamp and the bonus that reads it.
+	TestEqual(TEXT("and the state handed to the pipeline says the same"),
+		Defender.AbilitySystem->CurrentConditions().SecondsSinceBlock,
+		0.0f, 0.001f);
+
+	// AND IT OPENED NOTHING ELSE. Half of the collision test.
+	TestEqual(TEXT("and a blow of the character's own type opens no "
+				   "foreign-damage window"),
+		Defender.AbilitySystem->SecondsSinceForeignDamageTaken(), -1.0f, 0.001f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmUnblockedOpensNoBlockWindowTest,
+	"Cataclysm.ConditionalDamage.AnUnblockedBlowOpensTheForeignWindowAndNotTheBlockOne")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	// THE OTHER HALF OF THE COLLISION TEST, and the two together are what say
+	// the two clocks ask different questions. This one takes a blow that is
+	// NOT blocked and IS of a foreign type: the exact mirror of the test above.
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Defender(World);
+	MakeReachable(Defender);
+	GiveOwnDamageType(Defender, TEXT("Demonic"));
+
+	// MakeReachable already sets block chance to zero; saying so here is what
+	// keeps this test honest if that helper ever changes.
+	Defender.Combat->SetBlockChance(0.0f);
+
+	ACataclysmEnemyCharacter* Attacker = SpawnAttacker(World, TEXT("War"));
+	if (!TestNotNull(TEXT("a War attacker"), Attacker))
+	{
+		return false;
+	}
+
+	const float Before = Defender.Vitals->GetHealth();
+	UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor,
+									 /*DamagePercent=*/100.0f);
+	if (!TestTrue(TEXT("the hit reached the defender"),
+				  Defender.Vitals->GetHealth() < Before))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("an unblocked blow opens no block window"),
+		Defender.AbilitySystem->SecondsSinceBlocked(), -1.0f, 0.001f);
+	TestEqual(TEXT("and the state handed to the pipeline says the same"),
+		Defender.AbilitySystem->CurrentConditions().SecondsSinceBlock,
+		-1.0f, 0.001f);
+
+	// AND THE NEIGHBOURING WINDOW DID OPEN, which is the positive control. A
+	// change that simply stopped stamping anything would pass the assertions
+	// above and fail this one.
+	TestEqual(TEXT("and a foreign blow still opens the foreign window"),
+		Defender.AbilitySystem->SecondsSinceForeignDamageTaken(), 0.0f, 0.001f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmBlockWindowShutsTest,
+	"Cataclysm.ConditionalDamage.TheBlockWindowShutsOnceItsSecondsHavePassed")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Defender(World);
+	MakeReachable(Defender);
+	GiveOwnDamageType(Defender, TEXT("Demonic"));
+	Defender.Combat->SetBlockChance(100.0f);
+
+	// A THOUSAND FLAT AND TWENTY POINTS OF INCREASE INSIDE A THREE SECOND
+	// WINDOW, so the stat reads 1000 with the window shut and 1200 with it
+	// open. The two answers are far apart enough that no tolerance question
+	// arises, and neither is a round number the other could reach by accident.
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 0.0f;
+	Inputs.Modifiers.Add(FlatFromGear(1000.0f));
+	Inputs.Modifiers.Add(AfterABlock(3.0f));
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("attack_damage")), Inputs);
+	Defender.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	const FName Stat(TEXT("attack_damage"));
+	const FGameplayTagContainer NoSkill;
+
+	TestEqual(TEXT("with nothing blocked the increase is refused"),
+		Defender.AbilitySystem->StatForSkill(Stat, NoSkill, 0.0f),
+		1000.0f, 0.01f);
+
+	ACataclysmEnemyCharacter* Attacker = SpawnAttacker(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a Demonic attacker"), Attacker))
+	{
+		return false;
+	}
+
+	const float Before = Defender.Vitals->GetHealth();
+	UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor,
+									 /*DamagePercent=*/100.0f);
+	if (!TestTrue(TEXT("the hit reached the defender"),
+				  Defender.Vitals->GetHealth() < Before))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the instant it is blocked the increase applies"),
+		Defender.AbilitySystem->StatForSkill(Stat, NoSkill, 0.0f),
+		1200.0f, 0.01f);
+
+	// THE LAST INSTANT OF THE WINDOW IS INSIDE IT, which is the boundary every
+	// other predicate in this pipeline draws the same way.
+	World->TimeSeconds += 3.0f;
+	TestEqual(TEXT("and exactly three seconds later it still applies"),
+		Defender.AbilitySystem->StatForSkill(Stat, NoSkill, 0.0f),
+		1200.0f, 0.01f);
+
+	// AND PAST IT THE WINDOW IS SHUT, with nothing else having happened.
+	World->TimeSeconds += 0.5f;
+	TestEqual(TEXT("and half a second past the window it is refused again"),
+		Defender.AbilitySystem->StatForSkill(Stat, NoSkill, 0.0f),
+		1000.0f, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmUnopenedWindowRefusesTest,
+	"Cataclysm.ConditionalDamage.AWindowNeverOpenedRefusesWhileAnUnconditionedRowApplies")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	// THE GUARD ON THE OTHER SIDE OF THE WINDOW. A clock that has never been
+	// stamped reads -1, and -1 must mean "never" rather than "always". Getting
+	// that backwards would grant every event-window row to every character from
+	// birth, which is silent and in the player's favour.
+	//
+	// AND THE UNCONDITIONED MODIFIER BESIDE IT IS THE REGRESSION GUARD, because
+	// most enchantment effect rows carry no condition at all -- 93 of 161,
+	// measured 2026-09-14. A change that made an unstamped clock refuse
+	// everything would pass the first assertion and fail the second.
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Defender(World);
+	MakeReachable(Defender);
+
+	if (!TestEqual(TEXT("nothing has been blocked"),
+				   Defender.AbilitySystem->SecondsSinceBlocked(), -1.0f, 0.001f))
+	{
+		return false;
+	}
+
+	FCataclysmStatInputs Conditioned;
+	Conditioned.Base = 0.0f;
+	Conditioned.Modifiers.Add(FlatFromGear(1000.0f));
+	Conditioned.Modifiers.Add(AfterABlock(3.0f));
+
+	FCataclysmStatInputs Unconditioned;
+	Unconditioned.Base = 0.0f;
+	Unconditioned.Modifiers.Add(FlatFromGear(1000.0f));
+	Unconditioned.Modifiers.Add(AlwaysHeld());
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("attack_damage")), Conditioned);
+	Stats.Add(FName(TEXT("spell_damage")), Unconditioned);
+	Defender.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	const FGameplayTagContainer NoSkill;
+
+	TestEqual(TEXT("a window never opened refuses its modifier"),
+		Defender.AbilitySystem->StatForSkill(
+			FName(TEXT("attack_damage")), NoSkill, 0.0f),
+		1000.0f, 0.01f);
+
+	TestEqual(TEXT("and a row carrying no condition applies regardless"),
+		Defender.AbilitySystem->StatForSkill(
+			FName(TEXT("spell_damage")), NoSkill, 0.0f),
+		1200.0f, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmOneBlowOpensExactlyTheRightWindowsByTableTest,
+	"Cataclysm.ConditionalDamage.OneBlowOpensExactlyTheWindowsItShouldAndNoOthers")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	// THE COLLISION TEST FOR EVERY WINDOW A RESOLVED BLOW CAN OPEN, written as
+	// a table rather than as a rule. Issue #1815.
+	//
+	// WHY A TABLE. The first three event windows are each opened by one thing
+	// and nothing else, so each could be stated as "opens on its own event and
+	// not on a neighbour's". `seconds_after_hit_taken` breaks that: a blocked
+	// blow is still a hit and an evaded blow is still a hit, so it opens
+	// TOGETHER with its neighbours rather than instead of them. A test written
+	// to the old rule would assert something untrue about it, so the shape of
+	// the assertion has to change with the thing it asserts.
+	//
+	// AND THE FOREIGN-DAMAGE WINDOW IS IN THE TABLE THOUGH THIS CHANGE DOES NOT
+	// TOUCH IT, because it is the one that comes apart from the others most
+	// sharply: it is reached only when health or energy shield actually lost
+	// something, so an evaded blow -- which deals nothing by definition --
+	// opens every other window on this list and not that one. Leaving it out
+	// would leave the most interesting column unwritten.
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	struct FCase
+	{
+		const TCHAR* What;
+		float Evasion;
+		float BlockChance;
+		const TCHAR* AttackerType;
+		bool bBlockWindow;
+		bool bDodgeWindow;
+		bool bHitTakenWindow;
+		bool bForeignWindow;
+	};
+
+	// A FRESH DEFENDER PER ROW, because the clocks live on the character and a
+	// second blow against the same one could not tell "opened by this blow"
+	// from "still open from the last".
+	const FCase Cases[] = {
+		{TEXT("an evaded blow"), /*Evasion=*/100.0f, /*Block=*/0.0f, TEXT("War"),
+		 /*block=*/false, /*dodge=*/true, /*hit=*/true, /*foreign=*/false},
+
+		{TEXT("a blocked blow of a foreign type"), 0.0f, 100.0f, TEXT("War"),
+		 true, false, true, true},
+
+		{TEXT("a plain blow of a foreign type"), 0.0f, 0.0f, TEXT("War"),
+		 false, false, true, true},
+
+		{TEXT("a plain blow of the character's own type"), 0.0f, 0.0f, TEXT("Demonic"),
+		 false, false, true, false},
+	};
+
+	for (const FCase& Case : Cases)
+	{
+		FCaster Defender(World);
+		MakeReachable(Defender);
+		GiveOwnDamageType(Defender, TEXT("Demonic"));
+		Defender.Combat->SetEvasion(Case.Evasion);
+		Defender.Combat->SetBlockChance(Case.BlockChance);
+
+		ACataclysmEnemyCharacter* Attacker =
+			SpawnAttacker(World, Case.AttackerType);
+		if (!TestNotNull(FString::Printf(TEXT("%s: an attacker"), Case.What),
+						 Attacker))
+		{
+			continue;
+		}
+
+		// NOTHING IS OPEN BEFORE THE BLOW. Without this every "false" below
+		// would pass for a character whose clocks were never touched at all.
+		if (!TestEqual(FString::Printf(TEXT("%s: no window open yet"), Case.What),
+					   Defender.AbilitySystem->SecondsSinceHitTaken(), -1.0f,
+					   0.001f))
+		{
+			continue;
+		}
+
+		UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor,
+										 /*DamagePercent=*/100.0f);
+
+		const float Block = Defender.AbilitySystem->SecondsSinceBlocked();
+		const float Dodge = Defender.AbilitySystem->SecondsSinceEvaded();
+		const float Hit = Defender.AbilitySystem->SecondsSinceHitTaken();
+		const float Foreign =
+			Defender.AbilitySystem->SecondsSinceForeignDamageTaken();
+
+		TestEqual(FString::Printf(TEXT("%s and the block window"), Case.What),
+				  Block, Case.bBlockWindow ? 0.0f : -1.0f, 0.001f);
+		TestEqual(FString::Printf(TEXT("%s and the dodge window"), Case.What),
+				  Dodge, Case.bDodgeWindow ? 0.0f : -1.0f, 0.001f);
+		TestEqual(FString::Printf(TEXT("%s and the hit-taken window"), Case.What),
+				  Hit, Case.bHitTakenWindow ? 0.0f : -1.0f, 0.001f);
+		TestEqual(FString::Printf(TEXT("%s and the foreign-damage window"),
+								  Case.What),
+				  Foreign, Case.bForeignWindow ? 0.0f : -1.0f, 0.001f);
+
+		// AND THE STATE THE PIPELINE IS HANDED AGREES WITH THE READERS, which
+		// is the join between a timestamp and the row that reads it.
+		const FCataclysmStatConditions State =
+			Defender.AbilitySystem->CurrentConditions();
+		TestEqual(FString::Printf(TEXT("%s: the pipeline is told the dodge "
+									   "reading"), Case.What),
+				  State.SecondsSinceEvade, Dodge, 0.001f);
+		TestEqual(FString::Printf(TEXT("%s: the pipeline is told the hit-taken "
+									   "reading"), Case.What),
+				  State.SecondsSinceHitTaken, Hit, 0.001f);
+	}
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// A bonus sized by another stat the character has. Issue #1515.
+//
+// WHY THESE GO THROUGH A REAL HIT. The reading is taken in
+// `UCataclysmAbilitySystemComponent::CurrentConditions` from the attacker's own
+// attribute sets, and nothing here states it: a test that handed the pipeline a
+// reading would go on passing with the line that takes it deleted.
+// --------------------------------------------------------------------------
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmAttackDamageGrowsWithDamageReductionTest,
+	"Cataclysm.ConditionalDamage.AttackDamageGrowsWithTheDamageReductionTheCharacterHasUpToItsCap")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	// WEIGHT AGAINST THEM, the Ravager's 100-point capstone's second option:
+	// "+1% increased Attack Damage for every 2% of Damage Reduction you have."
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Attacker(World);
+	ACataclysmEnemyCharacter* Target = SpawnTarget(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a target"), Target))
+	{
+		return false;
+	}
+
+	Attacker.Combat->SetAttackDamage(1'000.0f);
+	Attacker.AbilitySystem->SetAttackDamageIncreases(0.0f);
+
+	FCataclysmStatModifier WeightAgainstThem;
+	WeightAgainstThem.Bucket = ECataclysmStatBucket::Increased;
+	WeightAgainstThem.Source = ECataclysmModifierSource::PassiveKeystone;
+	WeightAgainstThem.Value = 1.0f;
+	WeightAgainstThem.Scale = ECataclysmStatScale::PerPercentOfDamageReduction;
+	WeightAgainstThem.ScaleStep = 2.0f;
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 0.0f;
+	Inputs.Modifiers.Add(FlatFromGear(1'000.0f));
+	Inputs.Modifiers.Add(WeightAgainstThem);
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("attack_damage")), Inputs);
+	Attacker.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	// THE ATTACKER'S OWN DAMAGE REDUCTION, which protects the attacker and does
+	// nothing to the target. None is the figure every other hit is compared with.
+	Attacker.Combat->SetDamageReduction(0.0f);
+	const float WithNone = HealthLostTo(Attacker, Target, FGameplayTagContainer());
+	if (!TestTrue(FString::Printf(TEXT("the first hit lands (%.0f)"), WithNone),
+				  WithNone > 0.0f))
+	{
+		return false;
+	}
+
+	Attacker.Combat->SetDamageReduction(10.0f);
+	const float AtTen = HealthLostTo(Attacker, Target, FGameplayTagContainer());
+	TestEqual(FString::Printf(
+		TEXT("10%% damage reduction is five steps, +5%%, and was %.4f times"),
+		AtTen / WithNone),
+		AtTen / WithNone, 1.05f, 0.001f);
+
+	// WHOLE STEPS, ROUNDED DOWN.
+	Attacker.Combat->SetDamageReduction(9.0f);
+	const float AtNine = HealthLostTo(Attacker, Target, FGameplayTagContainer());
+	TestEqual(FString::Printf(
+		TEXT("9%% is still four steps, +4%%, and was %.4f times"),
+		AtNine / WithNone),
+		AtNine / WithNone, 1.04f, 0.001f);
+
+	// AND NO MORE THAN THE CAP. 90% stored is 75% that reduces anything, which
+	// is 37 whole steps of two, not 45.
+	Attacker.Combat->SetDamageReduction(90.0f);
+	const float AtNinety = HealthLostTo(Attacker, Target, FGameplayTagContainer());
+	TestEqual(FString::Printf(
+		TEXT("90%% counts as the 75%% cap, 37 steps, +37%%, and was %.4f times"),
+		AtNinety / WithNone),
+		AtNinety / WithNone, 1.37f, 0.001f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmSpellDamageGrowsWithMaximumManaTest,
+	"Cataclysm.ConditionalDamage.SpellDamageGrowsWithTheMaximumManaAndNotTheManaInHand")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	// DRAWN DEEP at its full six points: "+1% increased Spell Damage per point
+	// for every full 200 maximum mana you have", so six percentage points for
+	// each full 200.
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Attacker(World);
+	ACataclysmEnemyCharacter* Target = SpawnTarget(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a target"), Target))
+	{
+		return false;
+	}
+
+	// NO WEAPON DAMAGE AT ALL, so the whole hit is the spell damage.
+	Attacker.Combat->SetAttackDamage(0.0f);
+	Attacker.Combat->SetSpellDamage(500.0f);
+	Attacker.AbilitySystem->SetAttackDamageIncreases(0.0f);
+
+	FCataclysmStatModifier DrawnDeep;
+	DrawnDeep.Bucket = ECataclysmStatBucket::Increased;
+	DrawnDeep.Source = ECataclysmModifierSource::PassiveKeystone;
+	DrawnDeep.Value = 6.0f;
+	DrawnDeep.Scale = ECataclysmStatScale::PerPointOfMaximumMana;
+	DrawnDeep.ScaleStep = 200.0f;
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 0.0f;
+	Inputs.Modifiers.Add(FlatFromGear(500.0f));
+	Inputs.Modifiers.Add(DrawnDeep);
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("spell_damage")), Inputs);
+	Attacker.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	// NO MAXIMUM MANA, the figure every other hit is compared with.
+	Attacker.Vitals->SetMaxMana(0.0f);
+	Attacker.Vitals->SetMana(0.0f);
+	const float WithNone = HealthLostTo(Attacker, Target, SpellTags());
+	if (!TestTrue(FString::Printf(TEXT("the first spell lands (%.0f)"), WithNone),
+				  WithNone > 0.0f))
+	{
+		return false;
+	}
+
+	// WHOLE STEPS: 399 is one full 200. The pool is full here and below, so
+	// only the last case tells the maximum from the mana in hand.
+	Attacker.Vitals->SetMaxMana(399.0f);
+	Attacker.Vitals->SetMana(399.0f);
+	const float AtOneStep = HealthLostTo(Attacker, Target, SpellTags());
+	TestEqual(FString::Printf(
+		TEXT("399 maximum mana is one full 200, +6%%, and was %.4f times"),
+		AtOneStep / WithNone),
+		AtOneStep / WithNone, 1.06f, 0.001f);
+
+	Attacker.Vitals->SetMaxMana(450.0f);
+	Attacker.Vitals->SetMana(450.0f);
+	const float AtTwoSteps = HealthLostTo(Attacker, Target, SpellTags());
+	TestEqual(FString::Printf(
+		TEXT("450 is two full 200s, +12%%, and was %.4f times"),
+		AtTwoSteps / WithNone),
+		AtTwoSteps / WithNone, 1.12f, 0.001f);
+
+	// AND SPENDING THE POOL CHANGES NOTHING, because the sentence counts the
+	// maximum mana you have and not the mana in hand.
+	Attacker.Vitals->SetMana(0.0f);
+	const float Spent = HealthLostTo(Attacker, Target, SpellTags());
+	TestEqual(FString::Printf(
+		TEXT("with the pool spent it is still +12%%, and was %.4f times"),
+		Spent / WithNone),
+		Spent / WithNone, 1.12f, 0.001f);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// The combat state. Issue #1815.
+//
+// WHY THESE GO THROUGH A REAL HIT. Both halves of "in combat" are stamped in
+// `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, the hit taken on the
+// character struck and the hit dealt on `AttackerOf`. A test that set the
+// clock by hand would go on passing with either stamp deleted.
+// --------------------------------------------------------------------------
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmOneBlowPutsBothSidesInCombatTest,
+	"Cataclysm.ConditionalDamage.OneBlowPutsBothSidesInCombatEvadedOrNot")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// AN EVADED BLOW AND ONE THAT LANDS, because the ruling is that both sides
+	// enter combat on a blow whatever became of it.
+	const float Evasions[] = {100.0f, 0.0f};
+	for (const float Evasion : Evasions)
+	{
+		const FString What = Evasion > 0.0f ? TEXT("an evaded blow") : TEXT("a blow that lands");
+
+		FCaster Defender(World);
+		MakeReachable(Defender);
+		Defender.Combat->SetEvasion(Evasion);
+
+		ACataclysmEnemyCharacter* Attacker = SpawnAttacker(World, TEXT("War"));
+		UCataclysmAbilitySystemComponent* AttackerSystem = Attacker
+			? Cast<UCataclysmAbilitySystemComponent>(Attacker->GetAbilitySystemComponent())
+			: nullptr;
+		if (!TestNotNull(FString::Printf(TEXT("%s: an attacker with an ability "
+											   "system"), *What), AttackerSystem))
+		{
+			continue;
+		}
+
+		// NEITHER IS IN COMBAT BEFORE THE BLOW, AND BOTH CAN BE READ. Without
+		// this every assertion below would pass for clocks that start in combat.
+		if (!TestEqual(FString::Printf(TEXT("%s: the defender starts out of combat"), *What),
+					   Defender.AbilitySystem->SecondsInCombat(), -1.0f, 0.001f)
+			|| !TestTrue(FString::Printf(TEXT("%s: and its time out of combat can be read"), *What),
+						 Defender.AbilitySystem->SecondsOutOfCombat() >= 0.0f)
+			|| !TestEqual(FString::Printf(TEXT("%s: the attacker starts out of combat"), *What),
+						  AttackerSystem->SecondsInCombat(), -1.0f, 0.001f))
+		{
+			continue;
+		}
+
+		UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor,
+										 /*DamagePercent=*/100.0f);
+
+		TestEqual(FString::Printf(TEXT("%s puts the defender in combat"), *What),
+				  Defender.AbilitySystem->SecondsInCombat(), 0.0f, 0.001f);
+		TestEqual(FString::Printf(TEXT("%s puts the attacker in combat"), *What),
+				  AttackerSystem->SecondsInCombat(), 0.0f, 0.001f);
+		TestEqual(FString::Printf(TEXT("%s: the defender is no longer out of combat"), *What),
+				  Defender.AbilitySystem->SecondsOutOfCombat(), -1.0f, 0.001f);
+		TestEqual(FString::Printf(TEXT("%s: nor is the attacker"), *What),
+				  AttackerSystem->SecondsOutOfCombat(), -1.0f, 0.001f);
+
+		// AND THE PIPELINE IS TOLD, which is the join between the clock and the
+		// rows that read it.
+		const FCataclysmStatConditions State =
+			Defender.AbilitySystem->CurrentConditions();
+		TestEqual(FString::Printf(TEXT("%s: the pipeline is told the defender is "
+									   "in combat"), *What),
+				  State.SecondsInCombat, 0.0f, 0.001f);
+		TestEqual(FString::Printf(TEXT("%s: and not out of it"), *What),
+				  State.SecondsOutOfCombat, -1.0f, 0.001f);
+	}
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmCombatRestartsAfterALapseTest,
+	"Cataclysm.ConditionalDamage.ACombatRestartsAfterItLapsesAndOutOfCombatCountsFromTheLapse")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Defender(World);
+	MakeReachable(Defender);
+	ACataclysmEnemyCharacter* Attacker = SpawnAttacker(World, TEXT("War"));
+	if (!TestNotNull(TEXT("an attacker"), Attacker))
+	{
+		return false;
+	}
+	UCataclysmAbilitySystemComponent* Clock = Defender.AbilitySystem;
+	const float Lapse = UCataclysmAbilitySystemComponent::CombatLapseSeconds;
+	const auto Strike = [&]()
+	{
+		UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor, 100.0f);
+	};
+
+	Strike();
+	World->TimeSeconds += 2.0f;
+	Strike();
+	TestEqual(TEXT("a second blow inside the lapse continues the same combat"),
+			  Clock->SecondsInCombat(), 2.0f, 0.001f);
+
+	// EXACTLY THE LAPSE AFTER THE LAST BLOW IS STILL IN COMBAT, the boundary
+	// the constant's own sentence draws: "within the last 3 seconds".
+	World->TimeSeconds += Lapse;
+	TestEqual(TEXT("exactly the lapse after the last blow is still in combat"),
+			  Clock->SecondsInCombat(), 2.0f + Lapse, 0.001f);
+
+	World->TimeSeconds += 0.5f;
+	TestEqual(TEXT("half a second past the lapse is out of combat"),
+			  Clock->SecondsInCombat(), -1.0f, 0.001f);
+	TestEqual(TEXT("counted from the lapse, not from the last blow"),
+			  Clock->SecondsOutOfCombat(), 0.5f, 0.001f);
+
+	World->TimeSeconds += 1.5f;
+	TestEqual(TEXT("and it goes on counting"),
+			  Clock->SecondsOutOfCombat(), 2.0f, 0.001f);
+
+	// THE CASE A CLOCK THAT NEVER RESTARTS GETS WRONG: it would answer the
+	// whole 9 seconds since the first blow.
+	Strike();
+	TestEqual(TEXT("a blow after the lapse starts a new combat from nothing"),
+			  Clock->SecondsInCombat(), 0.0f, 0.001f);
+	World->TimeSeconds += 1.0f;
+	TestEqual(TEXT("and the new combat is counted from that blow"),
+			  Clock->SecondsInCombat(), 1.0f, 0.001f);
+
+	// A REVIVED CHARACTER STARTS OUT OF COMBAT, counted from its revival.
+	Clock->ClearWhatDeathEnds();
+	TestEqual(TEXT("a revived character is not in combat"),
+			  Clock->SecondsInCombat(), -1.0f, 0.001f);
+	TestEqual(TEXT("and has been out of it since the revival"),
+			  Clock->SecondsOutOfCombat(), 0.0f, 0.001f);
+	World->TimeSeconds += 1.0f;
+	TestEqual(TEXT("which it counts from"),
+			  Clock->SecondsOutOfCombat(), 1.0f, 0.001f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmSpellDamageHearsTheCountTest,
+	"Cataclysm.ConditionalDamage.SpellDamageIsToldHowManyEnemiesTheAttackStruck")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	// ISSUE #1686. `SpellDamageOf` was handed no enemy count, so a spell damage
+	// row asking `enemies_hit_at_most` refused on every blow: the spell half of
+	// "Point blank AOE skills deal 15%-25% less damage to a single target" did
+	// nothing on the one point blank spell. Recorded by hand, 20% less on a
+	// spell damage of 100, so the count is the only thing that differs.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Caster(World);
+
+	FGameplayTagContainer PointBlank;
+	PointBlank.AddTag(UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Type.AOE.PointBlank")), /*ErrorIfNotFound=*/false));
+	if (!TestEqual(TEXT("Type.AOE.PointBlank is in the vocabulary"), PointBlank.Num(), 1))
+	{
+		return false;
+	}
+
+	FCataclysmStatModifier Single;
+	Single.Bucket = ECataclysmStatBucket::More;
+	Single.Source = ECataclysmModifierSource::Enchantment;
+	Single.Value = -20.0f;
+	Single.RequiredTags = PointBlank;
+	Single.Condition = ECataclysmStatCondition::EnemiesStruckTogetherAtMost;
+	Single.ConditionValue = 1.0f;
+
+	FCataclysmStatInputs Spell;
+	Spell.Base = 100.0f;
+	Spell.Modifiers.Add(Single);
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("spell_damage")), Spell);
+	Caster.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	const auto SpellOn = [&](int32 Enemies)
+	{
+		return UCataclysmSkillEffects::SpellDamageOf(Caster.AbilitySystem, PointBlank,
+			-1.0f, -1.0f, false, nullptr, Enemies);
+	};
+
+	TestEqual(TEXT("one enemy struck: the spell damage takes the drawback"),
+		SpellOn(1), 80.0f, 0.01f);
+	TestEqual(TEXT("two struck: it does not"), SpellOn(2), 100.0f, 0.01f);
+	TestEqual(TEXT("and no count given refuses, as before"),
+		UCataclysmSkillEffects::SpellDamageOf(Caster.AbilitySystem, PointBlank),
+		100.0f, 0.01f);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// ISSUE #2234: the attack damage a blow with no enemy reads. Ruled 2026-10-23:
+// a self hit reads the full attack damage line; rows about the wearer and the
+// skill's tags reach it and rows about the enemy struck do not.
+// `UCataclysmSkillEffects::AttackDamageWithNoTarget` is that reading, and the
+// self hit in `UCataclysmSkillTemplate::CommitAndBegin` is its first caller.
+// --------------------------------------------------------------------------
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmNoTargetAttackDamageWithNoLineTest,
+	"Cataclysm.ConditionalDamage.AttackDamageWithNoTargetIsTheAttributeForACharacterWithNoLine")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	// THE CONTROL OF THE PAIR: no attack damage line recorded, the ordinary case
+	// for an enemy and for a player before its first refresh. The self hit read
+	// the attribute before #2234, and must read the same figure now.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Caster(World);
+	if (!TestNull(TEXT("set-up: no attack damage line is recorded"),
+			Caster.AbilitySystem->GetStatInputs(FName(TEXT("attack_damage")))))
+	{
+		return false;
+	}
+
+	Caster.AbilitySystem->SetAttackDamageIncreases(0.0f);
+	const float Attribute = UCataclysmSkillEffects::WeaponDamageOf(Caster.AbilitySystem);
+	TestEqual(TEXT("control: the attribute is the caster's 1000"), Attribute, 1000.0f, 0.01f);
+	TestEqual(TEXT("with no line and no folded increases it is the attribute"),
+		UCataclysmSkillEffects::AttackDamageWithNoTarget(Caster.AbilitySystem, FGameplayTagContainer()),
+		Attribute, 0.01f);
+
+	// AND WITH A FOLDED BRACKET REMEMBERED, which is taken out and put back by the
+	// same figure, so the attribute is still the answer.
+	Caster.AbilitySystem->SetAttackDamageIncreases(0.25f);
+	TestEqual(TEXT("with 25% folded increases and no line it is still the attribute"),
+		UCataclysmSkillEffects::AttackDamageWithNoTarget(Caster.AbilitySystem, SpellTags(),
+			/*SkillHealthCostPercent=*/20.0f, /*MetresMovedBeforeBlow=*/6.0f),
+		Attribute, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmNoTargetAttackDamageReadsTheLineTest,
+	"Cataclysm.ConditionalDamage.AttackDamageWithNoTargetTakesTheWearersAndTheSkillsRowsAndNoEnemysRow")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Caster(World);
+
+	// THE LINE AS `UCataclysmPlayerClassStats::ApplyTo` WOULD LEAVE IT: 1000 flat
+	// from the weapon and nothing unconditional, so the attribute holds 1000 and
+	// the folded bracket is nothing. Then four rows ApplyTo cannot fold:
+	//   "While stationary your damage is increased by 20%" (the wearer's state);
+	//   30% increased scoped to Type.Melee, "Melee skills deal 20%-40% increased";
+	//   50% increased against a boss (the enemy struck);
+	//   Grand Tithe's 24% for a skill costing above 10% of maximum health (a use fact).
+	Caster.Combat->SetAttackDamage(1000.0f);
+	Caster.AbilitySystem->SetAttackDamageIncreases(0.0f);
+
+	FCataclysmStatModifier Stationary;
+	Stationary.Bucket = ECataclysmStatBucket::Increased;
+	Stationary.Source = ECataclysmModifierSource::Enchantment;
+	Stationary.Value = 20.0f;
+	Stationary.Condition = ECataclysmStatCondition::WhileStationary;
+
+	FCataclysmStatModifier Melee;
+	Melee.Bucket = ECataclysmStatBucket::Increased;
+	Melee.Source = ECataclysmModifierSource::Enchantment;
+	Melee.Value = 30.0f;
+	Melee.RequiredTags.AddTag(UCataclysmDamageCalculation::MeleeTag());
+
+	FCataclysmStatModifier Boss;
+	Boss.Bucket = ECataclysmStatBucket::Increased;
+	Boss.Source = ECataclysmModifierSource::Enchantment;
+	Boss.Value = 50.0f;
+	Boss.Condition = ECataclysmStatCondition::TargetIsBoss;
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 0.0f;
+	Inputs.Modifiers.Add(FlatFromGear(1000.0f));
+	Inputs.Modifiers.Add(Stationary);
+	Inputs.Modifiers.Add(Melee);
+	Inputs.Modifiers.Add(Boss);
+	Inputs.Modifiers.Add(GrandTithe());
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("attack_damage")), Inputs);
+	Caster.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	FGameplayTagContainer MeleeTags;
+	MeleeTags.AddTag(UCataclysmDamageCalculation::MeleeTag());
+	if (!TestEqual(TEXT("set-up: Type.Melee is in the vocabulary"), MeleeTags.Num(), 1))
+	{
+		return false;
+	}
+	const auto Read = [&Caster](const FGameplayTagContainer& Tags, float CostPercent = -1.0f, float Extra = 0.0f)
+	{
+		return UCataclysmSkillEffects::AttackDamageWithNoTarget(Caster.AbilitySystem, Tags,
+			/*SkillHealthCostPercent=*/CostPercent, /*MetresMovedBeforeBlow=*/-1.0f, /*ExtraIncreases=*/Extra);
+	};
+
+	// THE CONTROL, READ FIRST: just moved, no tag, no cost. None of the four holds.
+	Caster.AbilitySystem->NoteMovedMetres(1.0f);
+	const float Plain = Read(FGameplayTagContainer());
+	TestEqual(TEXT("control: having just moved, an untagged use reads the plain 1000"), Plain, 1000.0f, 0.01f);
+
+	// A WEARER-STATE ROW THAT DOES NOT HOLD, ON A TAGGED SKILL: only the tag row reaches.
+	TestEqual(TEXT("moved, a melee use reads 30% more than the control: the tag row, not the stationary one"),
+		Read(MeleeTags) - Plain, 300.0f, 0.01f);
+	TestEqual(TEXT("moved, a spell reads the control: the melee row keeps to melee"),
+		Read(SpellTags()) - Plain, 0.0f, 0.01f);
+
+	// STANDING STILL: the wearer-state row holds, judged now.
+	Caster.AbilitySystem->NoteDidNotMove();
+	TestEqual(TEXT("still, an untagged use reads 20% more than the control"),
+		Read(FGameplayTagContainer()) - Plain, 200.0f, 0.01f);
+	TestEqual(TEXT("still, a melee use reads both, 50% more, added into one bracket"),
+		Read(MeleeTags) - Plain, 500.0f, 0.01f);
+
+	// THE ENEMY ROW NEVER: the boss row's 50% is in no figure above, and none below.
+	// A USE FACT IS JUDGED: a cost above 10% adds Grand Tithe's 24%; one below it and
+	// "not known" do not.
+	Caster.AbilitySystem->NoteMovedMetres(1.0f);
+	TestEqual(TEXT("moved, untagged, costing 20%: Grand Tithe's 24% and no boss row"),
+		Read(FGameplayTagContainer(), 20.0f) - Plain, 240.0f, 0.01f);
+	TestEqual(TEXT("costing 5%: nothing"), Read(FGameplayTagContainer(), 5.0f) - Plain, 0.0f, 0.01f);
+
+	// AND AN EXTRA INCREASE JOINS THE SAME BRACKET RATHER THAN MULTIPLYING.
+	TestEqual(TEXT("an extra 10% with Grand Tithe's 24% is 34% more, not 1.1 x 1.24"),
+		Read(FGameplayTagContainer(), 20.0f, 0.1f) - Plain, 340.0f, 0.01f);
+
+	return true;
+}
+
+#endif // WITH_AUTOMATION_TESTS

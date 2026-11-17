@@ -1,0 +1,598 @@
+"""Anything that applies a stun says how long it lasts.
+
+WHY THIS EXISTS. Issue #271. `game/Data/WeaponSkills.csv`, the generated table of
+designed skills, had four skills that stun. Three stated a duration and Whip
+Swing said only "briefly stuns them on your arrival".
+
+WHY "BRIEFLY" STOPPED BEING HARMLESS. The anti-stun-lock rule was settled under
+issue #216 and written into `docs/Cataclysm_GDD_v2.md`, the main design document,
+under "Stun and the Anti-Stun-Lock Rule". One of its three rules is that a stunned
+target cannot be stunned again for 5 seconds. A stun's duration is now a number
+that interacts with another number, so there was no way to tell whether Whip
+Swing's stun was shorter than Lunge's 0.75 seconds, longer, or the same. It was
+also the only one of the four that no test could say anything about.
+
+WHAT WAS DECIDED. 0.75 seconds, the same as Lunge. Both are Movement-slot skills
+that stun a single target on arrival, and it is the shortest duration any designed
+skill uses. That last part is not a preference: `INCIDENTAL_STUN_SECONDS` in
+`sim/cataclysm_sim/damage.py` is set to 0.75 and its comment says it is
+"deliberately the shortest duration any designed skill uses, matching the Lunge
+skill's 0.75 seconds". Giving Whip Swing anything shorter would have made that
+comment false without anything noticing, so this file checks the relationship
+rather than leaving it as a comment.
+
+IMMUNITY IS NOT APPLICATION. Two Ultimate skills say "you cannot be stunned,
+slowed or knocked back". They mention stun and correctly state no duration,
+because they do not apply one. The classifier below is what separates the two,
+and it is the part most likely to need extending when new wording appears.
+
+WHAT IS ASSERTED HERE.
+
+    every row in every generated table that applies a stun states a duration
+    the four stunning weapon skills have the exact durations they were designed
+      with, Whip Swing among them
+    the design document's list of stunning skills matches the data
+    the shortest designed stun equals the simulation constant that claims to
+      match it
+    a row that only grants immunity to stun is not required to state one
+"""
+
+from __future__ import annotations
+
+import csv
+import pathlib
+import re
+import sys
+
+import pytest
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+DATA = REPO_ROOT / "game" / "Data"
+GDD = REPO_ROOT / "docs" / "Cataclysm_GDD_v2.md"
+
+sys.path.insert(0, str(REPO_ROOT / "sim"))
+
+#: What each stunning weapon skill stuns for, in seconds. Whip Swing was the one
+#: with no number; the other three are what the design already carried.
+SKILL_STUN_SECONDS = {
+    "War_Shield_Heavy": 1.5,        # Shield Bash
+    "War_Warhammer_Movement": 1.0,  # Shockwave Leap
+    "War_Sword_Movement": 0.75,     # Lunge
+    "War_Whip_Movement": 0.75,      # Whip Swing. Issue #271.
+}
+
+#: Wording that mentions stun in order to say it does NOT happen. A row matching
+#: one of these is not required to state a duration.
+IMMUNITY = (
+    r"cannot be stunned",
+    r"immune to stun",
+    r"immunity to stun",
+    # ADDED WHEN THE PASSIVE TREES ARRIVED, issue #50. Two nodes grant immunity
+    # in wording the three patterns above do not reach, and both are plainly
+    # immunity rather than application:
+    #
+    #   Berserker/Juggernaut    "You cannot be staggered, stunned, or knocked
+    #                            back while above 50% Fury."
+    #   Masochist/The First Vow "You can no longer be stunned or frozen, but
+    #                            your Mana and Energy Shield no longer
+    #                            regenerate naturally."
+    #
+    # The first fails `cannot be stunned` because two other words sit between
+    # "be" and "stunned"; the second says "can no longer be" instead of
+    # "cannot be". This is the extension the docstring above says to expect.
+    r"cannot be [\w,\s]{0,40}?stunned",
+    r"can no longer be [\w,\s]{0,40}?stunned",
+)
+
+#: A stated duration: "for 1.5 seconds", "for 0.5-1 second", "for 1 second".
+DURATION = re.compile(r"stun\w*[^.]{0,60}?for\s+([\d.]+)(?:\s*-\s*[\d.]+)?\s*seconds?",
+                      re.IGNORECASE)
+
+#: Rows that DEFINE a hard stop rather than apply one, as (table, row key).
+#:
+#: WHY THEY NEED AN EXEMPTION. Issue #363 added Stun and Knockdown to the status
+#: effect table, so that `Effect=Stun` is writable and so the anti-stun-lock
+#: rules live somewhere the data can reference. Those two rows state the rules,
+#: and stating a rule mentions stun without applying one. Requiring them to
+#: carry a duration would ask the definition of stun to fix a number that every
+#: source sets for itself: designed skills run 0.75 to 1.5 seconds and the two
+#: knockdown Ultimates run 2 and 3.
+#:
+#: THE STUN ROW WOULD OTHERWISE HAVE PASSED FOR THE WRONG REASON. Its text
+#: contains "cannot be stunned again for 5 seconds", which is the immunity
+#: window rather than a duration, and the pattern above would have read it as
+#: one. Naming the row here makes the exemption deliberate instead of accidental.
+#:
+#: THIS IS NOT A HOLE. `test_a_definition_row_says_where_its_duration_comes_from`
+#: below requires each of these to say so in words, so an exempted row cannot
+#: simply say nothing.
+DEFINITIONS = {
+    ("StatusEffects", "Debuff_Stun"),
+    ("StatusEffects", "Debuff_Knockdown"),
+}
+
+#: Rows that grant a CHANCE to apply a hard stop rather than applying one of a
+#: stated length, as (table, row key).
+#:
+#: WHY THEY NEED AN EXEMPTION TOO, and it is a different reason from the two
+#: above. The chance to stun added for issue #298 on 2026-08-16 does not choose a
+#: duration: how long its stun lasts is a rule, because chance past 100%
+#: multiplies the duration. So there is no number for the row to carry, and the
+#: number it would carry would be wrong as soon as a second source of chance was
+#: equipped.
+#:
+#: THIS IS NOT A HOLE EITHER.
+#: `test_a_chance_row_names_an_effect_whose_definition_states_the_rule` below
+#: requires each of these to name an effect that IS a definition row, so a row
+#: cannot claim the exemption while pointing at nothing.
+CHANCE_TO_APPLY = {
+    ("Affixes", "Ailment_Chance_to_stun"),
+}
+
+#: What a definition row has to say in place of a duration.
+FROM_THE_SOURCE = re.compile(
+    r"stated by whatever applies it|a stated number of seconds",
+    re.IGNORECASE)
+
+
+#: The two tables that hold an enchantment's sentence, which its rows in
+#: `EnchantmentEffects.csv` build.
+ENCHANTMENT_TABLES = ("EnchantmentsNegative", "EnchantmentsPositive")
+
+
+def stated_by_its_enchantment(effect_row: dict[str, str], sentences: dict[str, str]) -> bool:
+    """Whether the enchantment an effect row builds states the stun's duration.
+
+    AN EFFECT ROW HOLDS NO SENTENCE. It names its enchantment, and the
+    enchantment's own row holds the words. Since 2026-10-07 an effect row can
+    name Stun in its Ailment column, for "After using a charge skill you are
+    briefly stunned for 0.5-1 second", so it mentions stun and can state no
+    duration in words itself. Its duration is read where it is written.
+
+    THIS IS NOT A HOLE: the enchantment's sentence is a row every check in this
+    file reads, and an effect row whose enchantment is unknown, or whose
+    sentence states no duration, is still reported."""
+    sentence = sentences.get(effect_row.get("Enchantment", ""))
+    return sentence is not None and DURATION.search(sentence) is not None
+
+
+#: The one action whose row applies a stun under a sentence that does not say
+#: "stun". Ruled 2026-10-08, issue #1833: "Chronomancer's Time-Lock (6-Piece
+#: Bonus): ... This freezes all nearby enemies for 2 seconds", and the owner
+#: the same day, "Yes it acts like a stun". The sentence says "freezes", so
+#: `DURATION` finds no length in it; the row holds the length itself, in
+#: `StackSeconds`, which is where the engine reads it.
+STUN_NEAR_THE_DYING = "stun_near_the_dying"
+
+#: Every "for N seconds" a sentence states, whatever the verb before it.
+FOR_SECONDS = re.compile(r"\bfor\s+([\d.]+)\s*seconds?\b", re.IGNORECASE)
+
+
+def its_own_seconds_agree_with_its_sentence(effect_row: dict[str, str],
+                                            sentences: dict[str, str]) -> bool:
+    """Whether a `stun_near_the_dying` row states a length its sentence states too.
+
+    NARROWER THAN `stated_by_its_enchantment`, WHICH READS THE SENTENCE ALONE.
+    Both must hold: the row's own `StackSeconds` is above nought, and the
+    enchantment's sentence states that same number as "for N seconds". So the
+    excuse cannot be claimed by a row with no length, by a sentence that says
+    only "briefly", or by a row and a sentence that state different lengths.
+    No other action is excused this way."""
+    if effect_row.get("Action") != STUN_NEAR_THE_DYING:
+        return False
+    try:
+        seconds = float(effect_row.get("StackSeconds") or 0.0)
+    except ValueError:
+        return False
+    sentence = sentences.get(effect_row.get("Enchantment", ""))
+    if seconds <= 0.0 or sentence is None:
+        return False
+    return any(float(stated) == seconds for stated in FOR_SECONDS.findall(sentence))
+
+
+#: The one stat whose row applies a stun under a sentence that does not say
+#: "stun", in the shape of `STUN_NEAR_THE_DYING` above. Chronomancer's
+#: Time-Lock's ten-piece: "All enemies that enter the rift are frozen in time for
+#: 5 seconds", and the owner's ruling of 2026-10-08, "Yes it acts like a stun".
+#: The row holds the length itself, as its value, which is where the engine
+#: reads it (`UCataclysmTimeLockRift::StunSecondsStat`). Ruled 2026-10-19.
+TIME_LOCK_RIFT_STUN = "time_lock_rift_stun_seconds"
+
+
+def its_stated_stun_agrees_with_its_sentence(effect_row: dict[str, str],
+                                             sentences: dict[str, str]) -> bool:
+    """Whether a `time_lock_rift_stun_seconds` row states a length its sentence
+    states too: the row's single value is above nought, and the enchantment's
+    sentence states that same number as "for N seconds". The sibling of
+    `its_own_seconds_agree_with_its_sentence`, as narrow: no other stat is
+    excused this way."""
+    if effect_row.get("Stat") != TIME_LOCK_RIFT_STUN:
+        return False
+    try:
+        low = float(effect_row.get("ValueLow") or 0.0)
+        high = float(effect_row.get("ValueHigh") or 0.0)
+    except ValueError:
+        return False
+    sentence = sentences.get(effect_row.get("Enchantment", ""))
+    if low <= 0.0 or low != high or sentence is None:
+        return False
+    return any(float(stated) == low for stated in FOR_SECONDS.findall(sentence))
+
+
+def enchantment_sentences() -> dict[str, str]:
+    return {row["Name"]: row["Effect"] for table in ENCHANTMENT_TABLES for row in rows_of(table)}
+
+
+def rows_of(name: str) -> list[dict[str, str]]:
+    path = DATA / f"{name}.csv"
+    if not path.is_file():
+        pytest.skip(f"{path} is not present")
+    with path.open(encoding="utf-8-sig", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def every_generated_row() -> list[tuple[str, str, str]]:
+    """(table, row key, all of the row's text) for every generated CSV."""
+    out = []
+    for path in sorted(DATA.glob("*.csv")):
+        with path.open(encoding="utf-8-sig", newline="") as handle:
+            for row in csv.DictReader(handle):
+                values = [str(v) for v in row.values() if v]
+                if not values:
+                    continue
+                key = row.get("Name") or values[0]
+                out.append((path.stem, key, " ".join(values)))
+    return out
+
+
+def mentions_stun(text: str) -> bool:
+    """AFTER A WORD BOUNDARY OR AN UNDERSCORE, since 2026-10-19: a stat named
+    `..._stun_seconds` applies a stun as surely as a sentence saying "stun" does,
+    and a word boundary does not fall between a letter and an underscore, so
+    `ground_pound_stun_seconds` and `time_lock_rift_stun_seconds` went unseen.
+    Ruled by the coordinating session when Chronomancer's Time-Lock's ten-piece
+    rows were read, as a fault found in the thing being built."""
+    return re.search(r"(?:\b|_)stun", text, re.IGNORECASE) is not None
+
+
+def only_grants_immunity(text: str) -> bool:
+    return any(re.search(p, text, re.IGNORECASE) for p in IMMUNITY)
+
+
+def stun_rows() -> list[tuple[str, str, str]]:
+    """Rows that apply a stun, as opposed to mentioning one to deny it."""
+    return [r for r in every_generated_row()
+            if mentions_stun(r[2]) and not only_grants_immunity(r[2])]
+
+
+# --------------------------------------------------------------------------
+# The rule
+# --------------------------------------------------------------------------
+
+def test_the_data_still_mentions_stun_somewhere():
+    """Guards the tests below against passing vacuously. If the stun mechanic is
+    ever removed from the data this fails loudly rather than every other check
+    here quietly succeeding over an empty list."""
+    assert stun_rows(), (
+        "no row in any generated table under game/Data/ applies a stun. Either "
+        "the stun mechanic was removed, in which case this whole file and the "
+        "anti-stun-lock section of the design document should go with it, or "
+        "the wording changed enough that nothing matches any more.")
+
+
+def test_everything_that_applies_a_stun_states_how_long():
+    """The whole of issue #271, as a rule rather than as one fixed row.
+
+    DEFINITION ROWS ARE EXEMPT, and only the two named in DEFINITIONS. See the
+    comment there for why, and for the test that stops the exemption being a
+    hole."""
+    exempt = DEFINITIONS | CHANCE_TO_APPLY
+    sentences = enchantment_sentences()
+    built = {row["Name"]: row for row in rows_of("EnchantmentEffects")}
+    missing = [(table, key) for table, key, text in stun_rows()
+               if (table, key) not in exempt and not DURATION.search(text)
+               and not (table == "EnchantmentEffects"
+                        and (stated_by_its_enchantment(built.get(key, {}), sentences)
+                             or its_own_seconds_agree_with_its_sentence(
+                                 built.get(key, {}), sentences)
+                             or its_stated_stun_agrees_with_its_sentence(
+                                 built.get(key, {}), sentences)))]
+    assert not missing, (
+        f"{missing} apply a stun without saying how long it lasts. Since the "
+        "anti-stun-lock rule gave stun a 5 second immunity window, a duration "
+        "is a number that interacts with another number and 'briefly' is not "
+        "enough. Add the duration to docs/All_Things_Cataclysm.xlsx and "
+        "regenerate. Issue #271.")
+
+
+def test_an_effect_row_is_excused_only_by_a_sentence_that_states_the_duration():
+    """What stops reading the enchantment's sentence being a way to say nothing.
+    Made-up rows: one whose sentence states a duration, one whose sentence says
+    only "briefly", and one that names an enchantment no table holds."""
+    sentences = {"Stated": "After a charge you are stunned for 0.5-1 second",
+                 "Brief": "After a charge you are briefly stunned"}
+    assert stated_by_its_enchantment({"Enchantment": "Stated"}, sentences)
+    assert not stated_by_its_enchantment({"Enchantment": "Brief"}, sentences)
+    assert not stated_by_its_enchantment({"Enchantment": "Nowhere"}, sentences)
+    assert not stated_by_its_enchantment({}, sentences)
+
+
+def test_a_time_lock_rift_stun_is_excused_only_when_its_value_and_its_sentence_agree():
+    """What stops the excuse of 2026-10-19 being a way to say nothing. Made-up
+    rows under made-up sentences: the one that agrees, and the refusals, a
+    sentence that says only "briefly", a sentence that states another length, a
+    row with no length, a range, an unknown enchantment and another stat with the
+    same length and words."""
+    sentences = {"Agrees": "enemies that enter the rift are frozen in time for 5 seconds",
+                 "Brief": "enemies that enter the rift are briefly frozen",
+                 "Another": "enemies that enter the rift are frozen in time for 3 seconds"}
+    def row(enchantment, low, high=None, stat=TIME_LOCK_RIFT_STUN):
+        return {"Enchantment": enchantment, "Stat": stat, "ValueLow": low,
+                "ValueHigh": low if high is None else high}
+    assert its_stated_stun_agrees_with_its_sentence(row("Agrees", "5.0"), sentences)
+    assert not its_stated_stun_agrees_with_its_sentence(row("Brief", "5.0"), sentences)
+    assert not its_stated_stun_agrees_with_its_sentence(row("Another", "5.0"), sentences)
+    assert not its_stated_stun_agrees_with_its_sentence(row("Agrees", "0.0"), sentences)
+    assert not its_stated_stun_agrees_with_its_sentence(row("Agrees", "5.0", "6.0"), sentences)
+    assert not its_stated_stun_agrees_with_its_sentence(row("Nowhere", "5.0"), sentences)
+    assert not its_stated_stun_agrees_with_its_sentence(
+        row("Agrees", "5.0", stat="ground_pound_stun_seconds"), sentences)
+
+
+def test_a_stat_naming_stun_after_an_underscore_is_seen():
+    """The widening of 2026-10-19, measured on words and on the shipped rows: both
+    stun-length stats are seen, and the shipped rift row is among the rows that
+    apply a stun. THE CONTROL is a text with no stun in it."""
+    assert mentions_stun("time_lock_rift_stun_seconds")
+    assert mentions_stun("ground_pound_stun_seconds")
+    assert not mentions_stun("time_lock_rift_seconds")
+    seen = {(table, key) for table, key, _ in stun_rows()}
+    assert ("EnchantmentEffects", "Positive_Chronomancer_s_Time_Lock_10_Piece_Bonus_Every#6") in seen
+
+
+def test_a_stun_near_the_dying_is_excused_only_when_its_seconds_and_its_sentence_agree():
+    """What stops the excuse of 2026-10-08 being a way to say nothing. Made-up
+    rows under made-up sentences: the one that agrees, and the four refusals,
+    a sentence that says only "briefly", a sentence that states another length,
+    a row with no length, and another action with the same length and words."""
+    sentences = {"Agrees": "This freezes all nearby enemies for 2 seconds",
+                 "Brief": "This briefly freezes all nearby enemies",
+                 "Another": "This freezes all nearby enemies for 3 seconds"}
+
+    def row(enchantment, seconds, action=STUN_NEAR_THE_DYING):
+        return {"Enchantment": enchantment, "Action": action, "StackSeconds": seconds}
+
+    assert its_own_seconds_agree_with_its_sentence(row("Agrees", "2.0"), sentences)
+    assert not its_own_seconds_agree_with_its_sentence(row("Brief", "2.0"), sentences)
+    assert not its_own_seconds_agree_with_its_sentence(row("Another", "2.0"), sentences)
+    assert not its_own_seconds_agree_with_its_sentence(row("Agrees", "0.0"), sentences)
+    assert not its_own_seconds_agree_with_its_sentence(row("Agrees", ""), sentences)
+    assert not its_own_seconds_agree_with_its_sentence(row("Nowhere", "2.0"), sentences)
+    assert not its_own_seconds_agree_with_its_sentence(
+        row("Agrees", "2.0", action="apply_status"), sentences)
+    # AND THE SENTENCE-ONLY EXCUSE STILL DOES NOT REACH IT: "freezes" is not "stun".
+    assert not stated_by_its_enchantment(row("Agrees", "2.0"), sentences)
+
+
+@pytest.mark.parametrize(("table", "key"), sorted(DEFINITIONS))
+def test_a_definition_row_says_where_its_duration_comes_from(table, key):
+    """What stops DEFINITIONS being a way to say nothing.
+
+    A row exempted from stating a duration has to state that the duration is set
+    by whatever applies the effect. Otherwise "Stun: a hard stop" would satisfy
+    the exemption and a reader would be no better off than before issue #363,
+    which is the state that made the Brute's stomp express its stun as a
+    standalone rider instead of as this effect.
+    """
+    row = next((r for r in rows_of(table) if r["Name"] == key), None)
+    assert row is not None, (
+        f"game/Data/{table}.csv has no row {key}. It is exempted from stating a "
+        f"stun duration on the grounds that it defines the effect, so if it is "
+        f"gone the exemption in DEFINITIONS should go with it. Issue #363.")
+    assert FROM_THE_SOURCE.search(row["Description"]), (
+        f"{key} is exempt from stating a stun duration because it defines the "
+        f"effect rather than applying one, and it does not say where the "
+        f"duration comes from either. It has to say that the duration is set by "
+        f"whatever applies it. Issue #363.")
+
+
+def test_the_definition_rows_carry_the_three_anti_stun_lock_rules():
+    """The reason for putting these effects in the data at all. `Effect=Stun`
+    is only useful if a reader arriving at the row learns what a stun does, and
+    the three rules are what a stun does beyond stopping the target."""
+    rows = {r["Name"]: r["Description"] for r in rows_of("StatusEffects")}
+    stun = rows.get("Debuff_Stun")
+    assert stun, (
+        "game/Data/StatusEffects.csv has no Debuff_Stun row. Issue #363 added "
+        "it so that Effect=Stun is writable and the rules are findable.")
+    for rule in ("10% of the target maximum health",
+                 "cannot be stunned again for 5 seconds",
+                 "boss cannot be stunned at all"):
+        assert rule in stun, (
+            f"the Stun status effect row does not state {rule!r}. All three "
+            f"anti-stun-lock rules belong on it, because it is the row anything "
+            f"applying a stun points at. Issues #216 and #363.")
+
+
+def test_stun_and_knockdown_say_they_share_one_immunity_window():
+    """The rule most easily lost, and the design document argues for it
+    explicitly: two 3-second holds taken in turn is exactly the failure the
+    window exists to stop, so one window rather than one each."""
+    rows = {r["Name"]: r["Description"] for r in rows_of("StatusEffects")}
+    for key in ("Debuff_Stun", "Debuff_Knockdown"):
+        assert "share one" in rows.get(key, "") and "window" in rows.get(key, ""), (
+            f"{key} does not say that Stun and Knockdown share one immunity "
+            f"window rather than one each. Both rows have to, because a reader "
+            f"arriving at either must not conclude they have separate windows. "
+            f"Issue #363.")
+
+
+@pytest.mark.parametrize(("key", "seconds"), sorted(SKILL_STUN_SECONDS.items()))
+def test_each_stunning_skill_states_its_designed_duration(key, seconds):
+    row = next((r for r in rows_of("WeaponSkills") if r["Name"] == key), None)
+    assert row is not None, f"game/Data/WeaponSkills.csv has no row {key}"
+    found = DURATION.search(row["SkillDescription"])
+    assert found, (
+        f"{key} ({row['SkillName']}) no longer states a stun duration. It "
+        f"should stun for {seconds} seconds. Issue #271.")
+    assert float(found.group(1)) == seconds, (
+        f"{key} ({row['SkillName']}) stuns for {found.group(1)} seconds, not "
+        f"the designed {seconds}. If that is intended, change it in "
+        f"docs/All_Things_Cataclysm.xlsx and update this table.")
+
+
+@pytest.mark.parametrize(("key", "seconds"), sorted(SKILL_STUN_SECONDS.items()))
+def test_each_stunning_skill_states_its_duration_as_data_too(key, seconds):
+    """The number the prose states and the number the game reads are the same one.
+
+    WHY THIS IS SEPARATE FROM THE TEST ABOVE. That one reads the prose, which is
+    what a human reads. This one reads the `StunSeconds` shape parameter, which
+    is what the game reads. Until issue #588 there was no second number to
+    compare against: all four of these rows had an empty Shape cell, and
+    `tools/generate_datatables.py` refuses shape parameters on a row with no
+    shape, so a duration could not be written as data at all. Four durations
+    lived in prose that nothing but a person could read.
+
+    THE TWO CAN DRIFT AND ONLY THIS NOTICES. Editing one cell of the Weapon
+    Skills sheet and not the other leaves a skill whose description promises 1.5
+    seconds and whose behaviour delivers something else, which no amount of
+    reading either cell on its own would reveal.
+    """
+    row = next((r for r in rows_of("WeaponSkills") if r["Name"] == key), None)
+    assert row is not None, f"game/Data/WeaponSkills.csv has no row {key}"
+
+    assert row["Shape"], (
+        f"{key} ({row['SkillName']}) has no Shape, so it cannot carry a stun "
+        f"duration as data and is granted the placeholder ability instead of a "
+        f"real one. Issue #588.")
+
+    stated = dict(
+        piece.strip().split("=", 1)
+        for piece in row["ShapeParams"].split(";")
+        if "=" in piece)
+
+    assert "StunSeconds" in stated, (
+        f"{key} ({row['SkillName']}) stuns for {seconds} seconds in its "
+        f"description and states no StunSeconds, so the game cannot read it. "
+        f"Issue #588.")
+    assert float(stated["StunSeconds"]) == seconds, (
+        f"{key} ({row['SkillName']}) states StunSeconds={stated['StunSeconds']} "
+        f"and its description says {seconds} seconds. They have to be the same "
+        f"number.")
+
+    # NAMING THE EFFECT IS WHAT MAKES THE THRESHOLD NOT APPLY. The anti-stun-lock
+    # rule says a hit must take at least 10% of the target's maximum health to
+    # stun, UNLESS the skill states stunning as its effect. All four of these are
+    # designed to stun rather than stunning by being big, so each has to say so.
+    assert stated.get("Effect") == "Stun", (
+        f"{key} ({row['SkillName']}) does not state Effect=Stun, so its stun "
+        f"would be subject to the 10% of maximum health threshold that a "
+        f"designed stun is exempt from. See the anti-stun-lock rules in "
+        f"game/Data/StatusEffects.csv.")
+
+
+def test_the_stunning_weapon_skills_are_exactly_the_four_that_are_designed():
+    """A fifth stunning skill is fine, but it has to be added here and to the
+    design document sentence that lists them by name, or both go stale."""
+    found = {key for table, key, _ in stun_rows() if table == "WeaponSkills"}
+    assert found == set(SKILL_STUN_SECONDS), (
+        f"the set of weapon skills that stun has changed to {sorted(found)}. "
+        f"Add or remove it in SKILL_STUN_SECONDS above, and update the sentence "
+        f"in docs/Cataclysm_GDD_v2.md that names them.")
+
+
+def test_the_design_document_names_the_same_stunning_skills():
+    """The anti-stun-lock section says which skills ignore the damage threshold,
+    and it names them one by one. If a skill is added to the data and not to
+    that sentence, the rule silently stops covering it."""
+    if not GDD.is_file():
+        pytest.skip("the design document is not present")
+    document = " ".join(GDD.read_text(encoding="utf-8").split())
+    sentence = next((s for s in document.split(". ")
+                     if "whose stated effect is to stun" in s), None)
+    assert sentence, (
+        "docs/Cataclysm_GDD_v2.md no longer says that a skill whose stated "
+        "effect is to stun ignores the damage threshold. Issue #216.")
+    by_key = {r["Name"]: r["SkillName"] for r in rows_of("WeaponSkills")}
+    for key in SKILL_STUN_SECONDS:
+        assert by_key[key] in document, (
+            f"the design document does not name {by_key[key]}, which stuns. "
+            f"The anti-stun-lock section lists the stunning skills by name.")
+
+
+# --------------------------------------------------------------------------
+# The tie to the simulation
+# --------------------------------------------------------------------------
+
+def test_the_blunt_stun_constant_still_matches_the_shortest_designed_stun():
+    """`INCIDENTAL_STUN_SECONDS` in sim/cataclysm_sim/damage.py is the stun a Blunt
+    weapon applies on an ordinary hit. Its comment says it is deliberately the
+    shortest duration any designed skill uses, so that a weapon sub-type
+    stunning on every hit cannot outclass the skills built to stun. That claim
+    was written when Whip Swing had no number at all. Now it does, and this is
+    what keeps the two in step."""
+    from cataclysm_sim import damage
+
+    shortest = min(SKILL_STUN_SECONDS.values())
+    assert damage.INCIDENTAL_STUN_SECONDS == shortest, (
+        f"INCIDENTAL_STUN_SECONDS is {damage.INCIDENTAL_STUN_SECONDS} but the shortest "
+        f"designed skill stun is now {shortest}. Its comment claims the two "
+        f"match. Either change the constant, or change the comment and say why "
+        f"a Blunt weapon's incidental stun differs from the shortest skill.")
+
+
+# --------------------------------------------------------------------------
+# What the rule does not cover
+# --------------------------------------------------------------------------
+
+def test_a_skill_that_only_grants_immunity_needs_no_duration():
+    """Two Ultimate skills say "you cannot be stunned, slowed or knocked back".
+    They mention stun and state no duration, which is correct, and this records
+    that the exclusion is deliberate rather than an oversight in the rule."""
+    immune = [key for _, key, text in every_generated_row()
+              if mentions_stun(text) and only_grants_immunity(text)]
+    assert immune, (
+        "no row grants immunity to stun any more. If that is intended, this "
+        "test and the IMMUNITY patterns above can go; until then its absence "
+        "means the wording changed and the classifier no longer recognises it, "
+        "which would make those rows fail the duration rule for no reason.")
+
+
+@pytest.mark.parametrize(("table", "key"), sorted(CHANCE_TO_APPLY))
+def test_a_chance_row_names_an_effect_whose_definition_states_the_rule(table, key):
+    """What stops CHANCE_TO_APPLY being a way to say nothing.
+
+    A row exempted on the grounds that its duration is a rule has to name the
+    effect whose definition carries that rule. Without this, any row mentioning
+    stun could be added to the exemption and the guard would stop asking the
+    question it exists to ask.
+    """
+    row = next((r for r in rows_of(table) if r["Name"] == key), None)
+    assert row is not None, (
+        f"game/Data/{table}.csv has no row {key}. It is exempted from stating a "
+        f"stun duration on the grounds that it grants a chance rather than a "
+        f"stun of a stated length, so if it is gone the exemption should go too.")
+
+    named = row.get("Ailment", "")
+    assert named, (
+        f"{key} claims the chance-to-apply exemption and names no effect at "
+        f"all, so there is nothing to look the duration up in.")
+
+    effects = {r["EffectName"]: r for r in rows_of("StatusEffects")}
+    assert named in effects, (
+        f"{key} names the effect {named!r}, which is not in "
+        f"game/Data/StatusEffects.csv. The exemption relies on that row "
+        f"carrying the duration rule.")
+
+    definition_keys = {k for _, k in DEFINITIONS}
+    assert effects[named]["Name"] in definition_keys, (
+        f"{key} names {named!r}, whose row is not one of the definitions that "
+        f"state how a duration is arrived at. Either it should state its own "
+        f"duration, or {named!r} needs to become a definition row.")
+
+    # AND THE DEFINITION REALLY DOES CARRY A NUMBER, so the chain ends somewhere
+    # rather than pointing at another deferral.
+    assert DURATION.search(effects[named]["Description"]), (
+        f"the {named!r} row in game/Data/StatusEffects.csv no longer states how "
+        f"long a stun applied by a chance lasts, so {key} points at nothing. "
+        f"That rule was added on 2026-08-16 with issue #298.")

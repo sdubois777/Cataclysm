@@ -1,0 +1,971 @@
+"""Builds the Widget Blueprints the interface C++ classes need, first time only.
+
+    python tools/run_editor_python.py tools/generate_interface_assets.py
+
+WHAT IT MAKES, under `/Game/Interface`:
+
+    WBP_ChoiceButton        one option in a list: a weapon type, a damage type,
+                            a passive node
+    WBP_CharacterCreation   the character creator, issue #50
+    WBP_PassiveTree         the passive class tree, issue #50
+    WBP_EmpireMap           the empire overview, issue #1087
+    WBP_CharacterSheet      the character sheet, issues #1233 and #50
+    WBP_CityScreen          one city: what it is worth, what is standing on it,
+                            and what it can build, issue #42
+    WBP_ChoicePanel         what a floor object offers when it is clicked:
+                            its name, a line, a button per choice and
+                            Leave, issues #1820 and #41
+    WBP_FloorModifiers      the dungeon modifiers in force on the floor being
+                            walked, and which of them do nothing yet, issue #41
+    WBP_SkillAssignment     which skill from the pool goes on which of the six
+                            keys, issue #837 layer 4
+    WBP_CharacterSelect     the character select screen: the saved characters,
+                            Continue, New and Delete, issue #753; the one
+                            asset this script remakes, once, see
+                            remake_character_select_without_delete
+    WBP_NewCharacter        the new-character screen New opens: a name, the
+                            lethality, Solo Self-Found, the population, the
+                            weapon type and damage type, issue #753
+
+AND ONE LEVEL, under `/Game/Maps`:
+
+    L_FrontEnd              the level the game opens on, which shows the
+                            character select screen, issue #753
+
+WHY A GENERATOR AND NOT A HAND-DRAWN ASSET. `docs/DECISIONS.md`, 2026-08-24,
+puts a screen's layout in a Widget Blueprint and its logic in a C++ base class,
+joined by `UPROPERTY(meta = (BindWidget))`. The Blueprint compiler refuses to
+compile a tree that is missing one of those, so the FIRST version of a screen has
+to contain a widget of the right name and type for each -- and getting that right
+by clicking is a chore that produces the same tree every time. This writes it.
+
+IT REFUSES TO TOUCH AN ASSET THAT ALREADY EXISTS, and that is the whole point of
+the split rather than a safety catch. Layout belongs to whoever opens the
+designer. Delete the asset if you want a fresh one.
+
+WHY THE TREE IS BUILT THROUGH C++ AND NOT HERE. `UWidgetBlueprint::WidgetTree` is
+a plain `UPROPERTY()` with no `EditAnywhere`, so the editor scripting layer
+refuses to read it and every widget in the tree is behind it. Measured on
+2026-08-25 by `tools/probe_widget_blueprint.py`, which reported:
+
+    Exception: WidgetBlueprint: Failed to find property 'widget_tree' for
+    attribute 'widget_tree' on 'WidgetBlueprint'
+
+`UCataclysmWidgetAuthoring` in the `CataclysmEditor` module exists for that, in
+the same way and for the same reason as `UCataclysmLevelAuthoring`.
+
+WHAT THE FIRST VERSION LOOKS LIKE, stated plainly: a dark panel, a column of
+headings and lists, nothing else. It is legible and it is not designed. Making it
+look like something is the designer's job and this script must not be extended to
+do it -- every property it sets is one a person opening the Blueprint would have
+to fight.
+"""
+
+import unreal
+
+INTERFACE_DIR = "/Game/Interface"
+
+# The C++ classes the Blueprints derive from. Named as the editor sees them,
+# without the leading U.
+CHOICE_BUTTON_PARENT = "CataclysmChoiceButton"
+CREATION_PARENT = "CataclysmCharacterCreationWidget"
+
+CHOICE_BUTTON_ASSET = "WBP_ChoiceButton"
+CREATION_ASSET = "WBP_CharacterCreation"
+PASSIVE_PARENT = "CataclysmPassiveTreeWidget"
+PASSIVE_ASSET = "WBP_PassiveTree"
+EMPIRE_PARENT = "CataclysmEmpireMapWidget"
+EMPIRE_ASSET = "WBP_EmpireMap"
+SHEET_PARENT = "CataclysmCharacterSheetWidget"
+SHEET_ASSET = "WBP_CharacterSheet"
+CITY_PARENT = "CataclysmCityScreenWidget"
+CITY_ASSET = "WBP_CityScreen"
+
+# --- the little colour there is ----------------------------------------------
+# THE SAME NEARLY-BLACK PANEL THE INVENTORY SCREEN USES, from
+# UCataclysmInventoryScreen::PanelHex, so the two screens do not read as parts of
+# different games. Everything else is left at the widget's own default.
+PANEL = unreal.LinearColor(0.039, 0.059, 0.071, 0.94)
+INK = unreal.LinearColor(0.961, 0.941, 0.918, 1.0)
+
+log = unreal.log
+editor_assets = unreal.get_editor_subsystem(unreal.EditorAssetSubsystem)
+
+authoring = unreal.CataclysmWidgetAuthoring
+
+
+def parent_class(name):
+    """The C++ UUserWidget subclass of that name, or raise saying so."""
+    found = getattr(unreal, name, None)
+    if found is None:
+        raise SystemExit(
+            "unreal.{} does not exist. The C++ has to be compiled before this "
+            "runs: python tools/unreal_build.py build".format(name))
+    return found
+
+
+def add(blueprint, widget_class, name, parent=""):
+    """One widget into the tree, complaining by name when it does not go in."""
+    widget = authoring.add_widget(blueprint, widget_class, name, parent)
+    if widget is None:
+        raise SystemExit(
+            "Could not add {} ({}) under {!r}. The editor log says why."
+            .format(name, widget_class.get_name(), parent or "the root"))
+    return widget
+
+
+def set_text(widget, text, size=None, colour=INK):
+    """A text block's words, size and colour, all optional except the words."""
+    widget.set_text(unreal.Text(text) if not isinstance(text, unreal.Text) else text)
+    widget.set_color_and_opacity(unreal.SlateColor(colour))
+    if size is not None:
+        font = widget.get_editor_property("font")
+        font.set_editor_property("size", size)
+        widget.set_editor_property("font", font)
+
+
+def fill_the_screen(widget):
+    """Anchor a canvas child to all four edges, with no inset.
+
+    THE ONE PIECE OF GEOMETRY THIS SCRIPT SETS. A canvas child defaults to a
+    100 by 100 box in the top left corner, so without this the whole screen is
+    a small square in the corner, which reads as a broken asset rather than as
+    an undesigned one.
+
+    THROUGH `layout_data` AND NOT THROUGH `anchors` DIRECTLY. A
+    `UCanvasPanelSlot` keeps its anchors, offsets and alignment inside one
+    `FAnchorData` struct called `LayoutData`, and that struct is the
+    `EditAnywhere` property. Setting `anchors` on the slot fails with
+
+        Exception: CanvasPanelSlot: Failed to find property 'anchors' for
+        attribute 'anchors' on 'CanvasPanelSlot'
+    """
+    slot = widget.get_editor_property("slot")
+    layout = slot.get_editor_property("layout_data")
+    layout.set_editor_property(
+        "anchors", unreal.Anchors(unreal.Vector2D(0.0, 0.0),
+                                  unreal.Vector2D(1.0, 1.0)))
+    layout.set_editor_property("offsets", unreal.Margin(0.0, 0.0, 0.0, 0.0))
+    slot.set_editor_property("layout_data", layout)
+
+
+def check_every_bound_widget(blueprint, parent):
+    """Every BindWidget the base class declares has a widget in the tree.
+
+    ASKED HERE AS WELL AS BY THE COMPILE, because the compile reports one
+    missing widget at a time and this reports all of them at once. A generator
+    that added nine of twelve is a script to fix, not a Blueprint to open.
+    """
+    required = set(authoring.required_widget_names(parent))
+    present = set(authoring.widget_names(blueprint))
+    missing = sorted(required - present)
+    if missing:
+        raise SystemExit(
+            "{} does not satisfy {}: no widget named {}. Present: {}".format(
+                blueprint.get_name(), parent.get_name(),
+                ", ".join(missing), ", ".join(sorted(present))))
+    log("  satisfies {} BindWidget properties: {}".format(
+        len(required), ", ".join(sorted(required))))
+
+
+def make_choice_button():
+    parent = parent_class(CHOICE_BUTTON_PARENT)
+    if authoring.widget_blueprint_exists(INTERFACE_DIR, CHOICE_BUTTON_ASSET):
+        log("{}/{} already exists; left alone.".format(
+            INTERFACE_DIR, CHOICE_BUTTON_ASSET))
+        return
+
+    blueprint = authoring.create_or_load_widget_blueprint(
+        INTERFACE_DIR, CHOICE_BUTTON_ASSET, parent)
+    if blueprint is None:
+        raise SystemExit("Could not create {}.".format(CHOICE_BUTTON_ASSET))
+
+    # A BUTTON HOLDS EXACTLY ONE CHILD, so the label goes inside it and nothing
+    # else can. That is the whole widget.
+    add(blueprint, unreal.Button, "ChoiceButton")
+    label = add(blueprint, unreal.TextBlock, "ChoiceLabel", "ChoiceButton")
+    set_text(label, "Option", size=16)
+
+    check_every_bound_widget(blueprint, parent)
+    if not authoring.compile_and_save(blueprint):
+        raise SystemExit("{} did not compile or could not be saved.".format(
+            CHOICE_BUTTON_ASSET))
+    log("created {}/{}".format(INTERFACE_DIR, CHOICE_BUTTON_ASSET))
+
+
+def make_character_creation():
+    parent = parent_class(CREATION_PARENT)
+    if authoring.widget_blueprint_exists(INTERFACE_DIR, CREATION_ASSET):
+        log("{}/{} already exists; left alone.".format(
+            INTERFACE_DIR, CREATION_ASSET))
+        return
+
+    blueprint = authoring.create_or_load_widget_blueprint(
+        INTERFACE_DIR, CREATION_ASSET, parent)
+    if blueprint is None:
+        raise SystemExit("Could not create {}.".format(CREATION_ASSET))
+
+    add(blueprint, unreal.CanvasPanel, "RootCanvas")
+
+    backdrop = add(blueprint, unreal.Border, "Backdrop", "RootCanvas")
+    backdrop.set_editor_property("brush_color", PANEL)
+    fill_the_screen(backdrop)
+    backdrop.set_editor_property("padding", unreal.Margin(48.0, 36.0, 48.0, 36.0))
+
+    add(blueprint, unreal.VerticalBox, "Body", "Backdrop")
+
+    title = add(blueprint, unreal.TextBlock, "TitleLabel", "Body")
+    set_text(title, "Create a character", size=30)
+
+    weapon_heading = add(blueprint, unreal.TextBlock, "WeaponHeading", "Body")
+    set_text(weapon_heading, "Weapon", size=18)
+
+    # A WRAP BOX RATHER THAN A HORIZONTAL ONE. Fourteen weapon types do not fit
+    # across a window in one line, and a horizontal box would squeeze them to
+    # nothing rather than starting a second row.
+    add(blueprint, unreal.WrapBox, "WeaponTypeBox", "Body")
+
+    damage_heading = add(blueprint, unreal.TextBlock, "DamageHeading", "Body")
+    set_text(damage_heading, "Damage type", size=18)
+
+    add(blueprint, unreal.WrapBox, "DamageTypeBox", "Body")
+
+    summary = add(blueprint, unreal.TextBlock, "SummaryLabel", "Body")
+    set_text(summary, "", size=18)
+
+    unlocked = add(blueprint, unreal.TextBlock, "UnlockedLabel", "Body")
+    set_text(unlocked, "", size=16)
+
+    refusal = add(blueprint, unreal.TextBlock, "RefusalLabel", "Body")
+    set_text(refusal, "", size=16)
+
+    add(blueprint, unreal.Button, "ConfirmButton", "Body")
+    confirm = add(blueprint, unreal.TextBlock, "ConfirmLabel", "ConfirmButton")
+    set_text(confirm, "Begin", size=20)
+
+    check_every_bound_widget(blueprint, parent)
+    if not authoring.compile_and_save(blueprint):
+        raise SystemExit("{} did not compile or could not be saved.".format(
+            CREATION_ASSET))
+    log("created {}/{}".format(INTERFACE_DIR, CREATION_ASSET))
+
+
+
+def fill_remaining_height(widget):
+    """Let a child of a vertical box take whatever height is left.
+
+    A VERTICAL BOX SIZES EACH CHILD TO ITS CONTENTS BY DEFAULT, so a scroll box
+    holding 74 rows would be 74 rows tall and run off the bottom of the screen
+    rather than scrolling. `Fill` is what makes it stop at the space available
+    and scroll inside it.
+    """
+    slot = widget.get_editor_property("slot")
+    slot.set_editor_property(
+        "size", unreal.SlateChildSize(value=1.0,
+                                      size_rule=unreal.SlateSizeRule.FILL))
+
+
+def make_passive_tree():
+    parent = parent_class(PASSIVE_PARENT)
+    if authoring.widget_blueprint_exists(INTERFACE_DIR, PASSIVE_ASSET):
+        log("{}/{} already exists; left alone.".format(
+            INTERFACE_DIR, PASSIVE_ASSET))
+        return
+
+    blueprint = authoring.create_or_load_widget_blueprint(
+        INTERFACE_DIR, PASSIVE_ASSET, parent)
+    if blueprint is None:
+        raise SystemExit("Could not create {}.".format(PASSIVE_ASSET))
+
+    add(blueprint, unreal.CanvasPanel, "RootCanvas")
+
+    backdrop = add(blueprint, unreal.Border, "Backdrop", "RootCanvas")
+    backdrop.set_editor_property("brush_color", PANEL)
+    fill_the_screen(backdrop)
+    backdrop.set_editor_property("padding", unreal.Margin(48.0, 36.0, 48.0, 36.0))
+
+    add(blueprint, unreal.VerticalBox, "Body", "Backdrop")
+
+    title = add(blueprint, unreal.TextBlock, "TitleLabel", "Body")
+    set_text(title, "Passive tree", size=30)
+
+    points = add(blueprint, unreal.TextBlock, "PointsLabel", "Body")
+    set_text(points, "", size=18)
+
+    # THE FOUR TREES. A wrap box rather than a horizontal one, for the reason
+    # the creator's weapon list is one: the other twenty trees arrive in issue
+    # #24 and a horizontal box would squeeze them all onto one line.
+    add(blueprint, unreal.WrapBox, "TreeBox", "Body")
+
+    tree = add(blueprint, unreal.TextBlock, "TreeLabel", "Body")
+    set_text(tree, "", size=18)
+
+    # WHERE THE TREE IS DRAWN. A canvas panel, because every node goes at its
+    # own authored position rather than in a list: which limb a node is on and
+    # how far it is from the trunk are decisions made in the tree authoring tool
+    # and a list threw all of them away. Issue #937.
+    #
+    # THE PANEL IS EMPTY HERE AND FILLED AT RUN TIME.
+    # UCataclysmPassiveTreeWidget places one button per node and one line per
+    # edge on it, scaled and panned. No designer could place 74 of each by hand,
+    # and the arithmetic that does it is in UCataclysmPassiveTreeLayout.
+    canvas = add(blueprint, unreal.CanvasPanel, "GraphCanvas", "Body")
+    fill_remaining_height(canvas)
+    canvas.set_editor_property("clipping", unreal.WidgetClipping.CLIP_TO_BOUNDS)
+
+    description = add(blueprint, unreal.TextBlock, "DescriptionLabel", "Body")
+    set_text(description, "", size=16)
+    description.set_editor_property("auto_wrap_text", True)
+
+    refusal = add(blueprint, unreal.TextBlock, "RefusalLabel", "Body")
+    set_text(refusal, "", size=16)
+    refusal.set_editor_property("auto_wrap_text", True)
+
+    check_every_bound_widget(blueprint, parent)
+    if not authoring.compile_and_save(blueprint):
+        raise SystemExit("{} did not compile or could not be saved.".format(
+            PASSIVE_ASSET))
+    log("created {}/{}".format(INTERFACE_DIR, PASSIVE_ASSET))
+
+
+def make_empire_map():
+    parent = parent_class(EMPIRE_PARENT)
+    if authoring.widget_blueprint_exists(INTERFACE_DIR, EMPIRE_ASSET):
+        log("{}/{} already exists; left alone.".format(
+            INTERFACE_DIR, EMPIRE_ASSET))
+        return
+
+    blueprint = authoring.create_or_load_widget_blueprint(
+        INTERFACE_DIR, EMPIRE_ASSET, parent)
+    if blueprint is None:
+        raise SystemExit("Could not create {}.".format(EMPIRE_ASSET))
+
+    add(blueprint, unreal.CanvasPanel, "RootCanvas")
+
+    backdrop = add(blueprint, unreal.Border, "Backdrop", "RootCanvas")
+    backdrop.set_editor_property("brush_color", PANEL)
+    fill_the_screen(backdrop)
+    backdrop.set_editor_property("padding", unreal.Margin(48.0, 36.0, 48.0, 36.0))
+
+    add(blueprint, unreal.VerticalBox, "Body", "Backdrop")
+
+    title = add(blueprint, unreal.TextBlock, "TitleLabel", "Body")
+    set_text(title, "The empire", size=30)
+
+    status = add(blueprint, unreal.TextBlock, "StatusLabel", "Body")
+    set_text(status, "", size=18)
+
+    surge = add(blueprint, unreal.TextBlock, "SurgeLabel", "Body")
+    set_text(surge, "", size=18)
+
+    # WHERE THE 25 CITIES ARE DRAWN. A canvas panel, because only 25 of a 7 by 7
+    # grid's 49 cells exist: a grid would need 24 empty widgets to hold the
+    # diamond's shape, and the diamond would be locked to whatever spacing the
+    # grid was given rather than fitted to the panel.
+    #
+    # THE PANEL IS EMPTY HERE AND FILLED AT RUN TIME.
+    # UCataclysmEmpireMapWidget places one box per city on it, and
+    # UCataclysmEmpireMapLayout is the arithmetic that decides where.
+    canvas = add(blueprint, unreal.CanvasPanel, "MapCanvas", "Body")
+    fill_remaining_height(canvas)
+    canvas.set_editor_property("clipping", unreal.WidgetClipping.CLIP_TO_BOUNDS)
+
+    detail = add(blueprint, unreal.TextBlock, "DetailLabel", "Body")
+    set_text(detail, "", size=16)
+    detail.set_editor_property("auto_wrap_text", True)
+
+    check_every_bound_widget(blueprint, parent)
+    if not authoring.compile_and_save(blueprint):
+        raise SystemExit("{} did not compile or could not be saved.".format(
+            EMPIRE_ASSET))
+    log("created {}/{}".format(INTERFACE_DIR, EMPIRE_ASSET))
+
+
+def make_character_sheet():
+    parent = parent_class(SHEET_PARENT)
+    if authoring.widget_blueprint_exists(INTERFACE_DIR, SHEET_ASSET):
+        log("{}/{} already exists; left alone.".format(
+            INTERFACE_DIR, SHEET_ASSET))
+        return
+
+    blueprint = authoring.create_or_load_widget_blueprint(
+        INTERFACE_DIR, SHEET_ASSET, parent)
+    if blueprint is None:
+        raise SystemExit("Could not create {}.".format(SHEET_ASSET))
+
+    add(blueprint, unreal.CanvasPanel, "RootCanvas")
+
+    backdrop = add(blueprint, unreal.Border, "Backdrop", "RootCanvas")
+    backdrop.set_editor_property("brush_color", PANEL)
+    fill_the_screen(backdrop)
+    backdrop.set_editor_property("padding", unreal.Margin(48.0, 36.0, 48.0, 36.0))
+
+    add(blueprint, unreal.VerticalBox, "Body", "Backdrop")
+
+    title = add(blueprint, unreal.TextBlock, "TitleLabel", "Body")
+    set_text(title, "Character", size=30)
+
+    status = add(blueprint, unreal.TextBlock, "StatusLabel", "Body")
+    set_text(status, "", size=18)
+
+    points = add(blueprint, unreal.TextBlock, "PointsLabel", "Body")
+    set_text(points, "", size=18)
+
+    # THE EIGHT ATTRIBUTES. A wrap box rather than a horizontal one, for the
+    # reason the character creator's weapon list is one: eight buttons carrying
+    # a name and a count do not reliably fit one line, and a horizontal box
+    # would squeeze them rather than starting a second row.
+    #
+    # THE BOX IS EMPTY HERE AND FILLED AT RUN TIME.
+    # UCataclysmCharacterSheetWidget puts one copy of WBP_ChoiceButton in it per
+    # attribute, because the eight names come from
+    # FCataclysmAttributePoints::Names rather than from this layout.
+    add(blueprint, unreal.WrapBox, "AttributeBox", "Body")
+
+    # WHERE THE 46 STATS AND THEIR FIVE HEADINGS GO. A scroll box, because 51
+    # lines do not fit a window at a readable size, and `fill_remaining_height`
+    # is what makes it stop at the space available rather than being 51 rows
+    # tall.
+    #
+    # THE BOX IS EMPTY HERE AND FILLED AT RUN TIME, one text block per row. The
+    # C++ decides the words; UCataclysmCharacterSheetLayout decides which stats
+    # and in which order.
+    stats = add(blueprint, unreal.ScrollBox, "StatBox", "Body")
+    fill_remaining_height(stats)
+
+    refusal = add(blueprint, unreal.TextBlock, "RefusalLabel", "Body")
+    set_text(refusal, "", size=16)
+    refusal.set_editor_property("auto_wrap_text", True)
+
+    check_every_bound_widget(blueprint, parent)
+    if not authoring.compile_and_save(blueprint):
+        raise SystemExit("{} did not compile or could not be saved.".format(
+            SHEET_ASSET))
+    log("created {}/{}".format(INTERFACE_DIR, SHEET_ASSET))
+
+
+def make_city_screen():
+    parent = parent_class(CITY_PARENT)
+    if authoring.widget_blueprint_exists(INTERFACE_DIR, CITY_ASSET):
+        log("{}/{} already exists; left alone.".format(
+            INTERFACE_DIR, CITY_ASSET))
+        return
+
+    blueprint = authoring.create_or_load_widget_blueprint(
+        INTERFACE_DIR, CITY_ASSET, parent)
+    if blueprint is None:
+        raise SystemExit("Could not create {}.".format(CITY_ASSET))
+
+    add(blueprint, unreal.CanvasPanel, "RootCanvas")
+
+    backdrop = add(blueprint, unreal.Border, "Backdrop", "RootCanvas")
+    backdrop.set_editor_property("brush_color", PANEL)
+    fill_the_screen(backdrop)
+    backdrop.set_editor_property("padding", unreal.Margin(48.0, 36.0, 48.0, 36.0))
+
+    add(blueprint, unreal.VerticalBox, "Body", "Backdrop")
+
+    title = add(blueprint, unreal.TextBlock, "TitleLabel", "Body")
+    set_text(title, "City", size=30)
+
+    status = add(blueprint, unreal.TextBlock, "StatusLabel", "Body")
+    set_text(status, "", size=18)
+
+    slots = add(blueprint, unreal.TextBlock, "SlotsLabel", "Body")
+    set_text(slots, "", size=18)
+
+    # ONE BUTTON PER UPGRADE THE CITY CAN BUY. A wrap box rather than a
+    # horizontal one, for the reason the character sheet's attribute list is
+    # one: how many buttons there are changes with what the city already has,
+    # and a horizontal box would squeeze them rather than starting a second row.
+    #
+    # THE BOX IS EMPTY HERE AND FILLED AT RUN TIME. UCataclysmCityScreenWidget
+    # puts one copy of WBP_ChoiceButton in it per buyable upgrade, because which
+    # upgrades those are comes from game/Data/CityUpgrades.csv and from what the
+    # city has already spent rather than from this layout.
+    add(blueprint, unreal.WrapBox, "OfferBox", "Body")
+
+    # THE DUNGEONS STANDING ON THE CITY, WHAT IT HAS BOUGHT, AND THE FOURTEEN
+    # UPGRADES THAT DO NOTHING YET. A scroll box, because those three lists
+    # together do not fit a window at a readable size, and `fill_remaining_height`
+    # is what makes it stop at the space available.
+    detail = add(blueprint, unreal.ScrollBox, "DetailBox", "Body")
+    fill_remaining_height(detail)
+
+    refusal = add(blueprint, unreal.TextBlock, "RefusalLabel", "Body")
+    set_text(refusal, "", size=16)
+    refusal.set_editor_property("auto_wrap_text", True)
+
+    check_every_bound_widget(blueprint, parent)
+    if not authoring.compile_and_save(blueprint):
+        raise SystemExit("{} did not compile or could not be saved.".format(
+            CITY_ASSET))
+    log("created {}/{}".format(INTERFACE_DIR, CITY_ASSET))
+
+
+FLOOR_PANEL_PARENT = "CataclysmFloorModifierPanel"
+FLOOR_PANEL_ASSET = "WBP_FloorModifiers"
+
+
+def pin_to_the_top_right(widget, width, height, inset=24.0):
+    """Anchor a canvas child to the top right corner, at a fixed size.
+
+    THE SECOND PIECE OF GEOMETRY THIS SCRIPT SETS, AND THE REASON IS THE SAME
+    AS THE FIRST'S. `fill_the_screen` exists because a canvas child defaults to
+    a 100 by 100 box in the top left corner. A panel that is drawn over the game
+    while it is played must not fill the screen either, or it covers the floor
+    the player is walking, so this one is pinned to a corner instead.
+
+    THROUGH `layout_data`, for the reason `fill_the_screen` gives. `offsets`
+    holds the position and then the size when the anchors are a single point,
+    and an alignment of (1, 0) makes that position the panel's own top right
+    corner, so the inset is measured from the screen's edge.
+    """
+    slot = widget.get_editor_property("slot")
+    layout = slot.get_editor_property("layout_data")
+    layout.set_editor_property(
+        "anchors", unreal.Anchors(unreal.Vector2D(1.0, 0.0),
+                                  unreal.Vector2D(1.0, 0.0)))
+    layout.set_editor_property(
+        "offsets", unreal.Margin(-inset, inset, width, height))
+    layout.set_editor_property("alignment", unreal.Vector2D(1.0, 0.0))
+    slot.set_editor_property("layout_data", layout)
+
+
+def make_floor_modifier_panel():
+    """The dungeon modifiers in force on the floor being walked, issue #41."""
+    parent = parent_class(FLOOR_PANEL_PARENT)
+    if authoring.widget_blueprint_exists(INTERFACE_DIR, FLOOR_PANEL_ASSET):
+        log("{}/{} already exists; left alone.".format(
+            INTERFACE_DIR, FLOOR_PANEL_ASSET))
+        return
+
+    blueprint = authoring.create_or_load_widget_blueprint(
+        INTERFACE_DIR, FLOOR_PANEL_ASSET, parent)
+    if blueprint is None:
+        raise SystemExit("Could not create {}.".format(FLOOR_PANEL_ASSET))
+
+    add(blueprint, unreal.CanvasPanel, "RootCanvas")
+
+    backdrop = add(blueprint, unreal.Border, "Backdrop", "RootCanvas")
+    backdrop.set_editor_property("brush_color", PANEL)
+    pin_to_the_top_right(backdrop, width=440.0, height=360.0)
+    backdrop.set_editor_property("padding", unreal.Margin(16.0, 12.0, 16.0, 12.0))
+
+    add(blueprint, unreal.VerticalBox, "Body", "Backdrop")
+
+    heading = add(blueprint, unreal.TextBlock, "HeadingLabel", "Body")
+    set_text(heading, "Dungeon modifiers", size=18)
+
+    # ONE NAME LINE AND ONE DESCRIPTION LINE PER MODIFIER, made at run time by
+    # UCataclysmFloorModifierPanel. A scroll box, because a Sacrificial dungeon
+    # at difficulty tier 8 carries sixteen modifiers and their descriptions do
+    # not fit a corner of the screen.
+    rows = add(blueprint, unreal.ScrollBox, "ModifierBox", "Body")
+    fill_remaining_height(rows)
+
+    check_every_bound_widget(blueprint, parent)
+    if not authoring.compile_and_save(blueprint):
+        raise SystemExit("{} did not compile or could not be saved.".format(
+            FLOOR_PANEL_ASSET))
+    log("created {}/{}".format(INTERFACE_DIR, FLOOR_PANEL_ASSET))
+
+
+CHOICE_PANEL_PARENT = "CataclysmChoicePanelWidget"
+CHOICE_PANEL_ASSET = "WBP_ChoicePanel"
+
+
+def make_choice_panel():
+    """What a floor object offers when it is clicked, issues #1820 and #41.
+
+    PINNED TO THE TOP RIGHT, as the floor's modifier panel is, and for its
+    reason: it is open while the floor is played, and a panel filling the
+    screen would cover the creatures coming for the player. Below the modifier
+    panel, so the two do not sit on each other.
+    """
+    parent = parent_class(CHOICE_PANEL_PARENT)
+    if authoring.widget_blueprint_exists(INTERFACE_DIR, CHOICE_PANEL_ASSET):
+        log("{}/{} already exists; left alone.".format(
+            INTERFACE_DIR, CHOICE_PANEL_ASSET))
+        return
+
+    blueprint = authoring.create_or_load_widget_blueprint(
+        INTERFACE_DIR, CHOICE_PANEL_ASSET, parent)
+    if blueprint is None:
+        raise SystemExit("Could not create {}.".format(CHOICE_PANEL_ASSET))
+
+    add(blueprint, unreal.CanvasPanel, "RootCanvas")
+
+    backdrop = add(blueprint, unreal.Border, "Backdrop", "RootCanvas")
+    backdrop.set_editor_property("brush_color", PANEL)
+    pin_to_the_top_right(backdrop, width=440.0, height=320.0)
+    # BELOW THE MODIFIER PANEL, which is 360 high at a 24 inset: the same right
+    # edge, and a top 24 below that panel's bottom.
+    slot = backdrop.get_editor_property("slot")
+    layout = slot.get_editor_property("layout_data")
+    layout.set_editor_property(
+        "offsets", unreal.Margin(-24.0, 24.0 + 360.0 + 24.0, 440.0, 320.0))
+    slot.set_editor_property("layout_data", layout)
+    backdrop.set_editor_property("padding", unreal.Margin(16.0, 12.0, 16.0, 12.0))
+
+    add(blueprint, unreal.VerticalBox, "Body", "Backdrop")
+
+    title = add(blueprint, unreal.TextBlock, "TitleLabel", "Body")
+    set_text(title, "", size=20)
+
+    prompt = add(blueprint, unreal.TextBlock, "PromptLabel", "Body")
+    set_text(prompt, "", size=16)
+    prompt.set_editor_property("auto_wrap_text", True)
+
+    # ONE BUTTON PER CHOICE AND ONE FOR LEAVE, made at run time by
+    # UCataclysmChoicePanelWidget from the object's own choices.
+    add(blueprint, unreal.VerticalBox, "ChoiceBox", "Body")
+
+    check_every_bound_widget(blueprint, parent)
+    if not authoring.compile_and_save(blueprint):
+        raise SystemExit("{} did not compile or could not be saved.".format(
+            CHOICE_PANEL_ASSET))
+    log("created {}/{}".format(INTERFACE_DIR, CHOICE_PANEL_ASSET))
+
+
+SKILL_ASSIGNMENT_PARENT = "CataclysmSkillAssignmentWidget"
+SKILL_ASSIGNMENT_ASSET = "WBP_SkillAssignment"
+
+
+def make_skill_assignment():
+    """Which skill from the pool goes on which of the six keys, issue #837 layer 4.
+
+    THE WHOLE SCREEN, as the character sheet is, because it is opened to choose
+    and closed again: K or Cataclysm.ChooseSkills. It does not pause the game.
+    """
+    parent = parent_class(SKILL_ASSIGNMENT_PARENT)
+    if authoring.widget_blueprint_exists(INTERFACE_DIR, SKILL_ASSIGNMENT_ASSET):
+        log("{}/{} already exists; left alone.".format(
+            INTERFACE_DIR, SKILL_ASSIGNMENT_ASSET))
+        return
+
+    blueprint = authoring.create_or_load_widget_blueprint(
+        INTERFACE_DIR, SKILL_ASSIGNMENT_ASSET, parent)
+    if blueprint is None:
+        raise SystemExit("Could not create {}.".format(SKILL_ASSIGNMENT_ASSET))
+
+    add(blueprint, unreal.CanvasPanel, "RootCanvas")
+
+    backdrop = add(blueprint, unreal.Border, "Backdrop", "RootCanvas")
+    backdrop.set_editor_property("brush_color", PANEL)
+    fill_the_screen(backdrop)
+    backdrop.set_editor_property("padding", unreal.Margin(48.0, 36.0, 48.0, 36.0))
+
+    add(blueprint, unreal.VerticalBox, "Body", "Backdrop")
+
+    title = add(blueprint, unreal.TextBlock, "TitleLabel", "Body")
+    set_text(title, "Skills", size=30)
+
+    status = add(blueprint, unreal.TextBlock, "StatusLabel", "Body")
+    set_text(status, "", size=18)
+
+    # THE BASIC ATTACK'S LINE AND THE SIX KEYS, one copy of WBP_ChoiceButton
+    # each, and a kept choice's line under its key. A vertical box, because six
+    # keys and a line or two fit a window. EMPTY HERE AND FILLED AT RUN TIME by
+    # UCataclysmSkillAssignmentWidget, in the skill bar's order.
+    add(blueprint, unreal.VerticalBox, "SlotBox", "Body")
+
+    # "CLEAR THE SLOT", the owner's words. A button holds one child, its label.
+    add(blueprint, unreal.Button, "ClearButton", "Body")
+    clear = add(blueprint, unreal.TextBlock, "ClearLabel", "ClearButton")
+    set_text(clear, "Clear the slot", size=16)
+
+    # THE POOL, one button per skill. A scroll box holding a wrap box, because
+    # two weapons carrying two damage types make a pool far longer than a line,
+    # and `fill_remaining_height` stops the scroll box at the space available.
+    pool_scroll = add(blueprint, unreal.ScrollBox, "PoolScroll", "Body")
+    fill_remaining_height(pool_scroll)
+    add(blueprint, unreal.WrapBox, "PoolBox", "PoolScroll")
+
+    description = add(blueprint, unreal.TextBlock, "DescriptionLabel", "Body")
+    set_text(description, "", size=16)
+    description.set_editor_property("auto_wrap_text", True)
+
+    refusal = add(blueprint, unreal.TextBlock, "RefusalLabel", "Body")
+    set_text(refusal, "", size=16)
+    refusal.set_editor_property("auto_wrap_text", True)
+
+    check_every_bound_widget(blueprint, parent)
+    if not authoring.compile_and_save(blueprint):
+        raise SystemExit("{} did not compile or could not be saved.".format(
+            SKILL_ASSIGNMENT_ASSET))
+    log("created {}/{}".format(INTERFACE_DIR, SKILL_ASSIGNMENT_ASSET))
+
+
+CHARACTER_SELECT_PARENT = "CataclysmCharacterSelectWidget"
+CHARACTER_SELECT_ASSET = "WBP_CharacterSelect"
+
+# THE WIDGET STEP 5 ADDED, which a WBP_CharacterSelect made before it lacks.
+CHARACTER_SELECT_DELETE_WIDGET = "ConfirmNameBox"
+
+
+def remake_character_select_without_delete(parent):
+    """Deletes WBP_CharacterSelect when it was made before deleting a character
+    existed, so make_character_select makes it again. Issue #753, select-screen
+    step 5, ruled 2026-11-01.
+
+    THE ONE EXCEPTION TO "LEFT ALONE WHEN IT EXISTS", AND ONLY FOR THIS ASSET.
+    Step 5 binds six new widgets, so the screen made in step 3b cannot compile
+    against the new C++, and nobody has laid it out by hand since. An asset that
+    already holds CHARACTER_SELECT_DELETE_WIDGET is left alone, so a second run,
+    or a screen a designer has since changed, is never remade. Nothing else in
+    this file deletes an asset.
+    """
+    if not authoring.widget_blueprint_exists(INTERFACE_DIR, CHARACTER_SELECT_ASSET):
+        return
+    blueprint = authoring.create_or_load_widget_blueprint(
+        INTERFACE_DIR, CHARACTER_SELECT_ASSET, parent)
+    if blueprint is not None and CHARACTER_SELECT_DELETE_WIDGET in authoring.widget_names(blueprint):
+        return
+    path = "{}/{}".format(INTERFACE_DIR, CHARACTER_SELECT_ASSET)
+    log("{} has no {}: made before deleting a character existed; deleted, to be "
+        "made again.".format(path, CHARACTER_SELECT_DELETE_WIDGET))
+    blueprint = None
+    if not editor_assets.delete_asset(path):
+        raise SystemExit("Could not delete {} to make it again.".format(path))
+    unreal.SystemLibrary.collect_garbage()
+
+
+def make_character_select():
+    """The character select screen, issue #753 select-screen steps 3b and 5.
+
+    THE WHOLE SCREEN, in the front end's level, which shows nothing else: the
+    saved characters, newest first, one WBP_ChoiceButton each, filled at run
+    time by UCataclysmCharacterSelectWidget; why the last load was refused; a
+    button for a new character; and, from step 5, Delete and the confirmation
+    a delete needs, the character's name typed.
+    """
+    parent = parent_class(CHARACTER_SELECT_PARENT)
+    remake_character_select_without_delete(parent)
+    if authoring.widget_blueprint_exists(INTERFACE_DIR, CHARACTER_SELECT_ASSET):
+        log("{}/{} already exists; left alone.".format(
+            INTERFACE_DIR, CHARACTER_SELECT_ASSET))
+        return
+
+    blueprint = authoring.create_or_load_widget_blueprint(
+        INTERFACE_DIR, CHARACTER_SELECT_ASSET, parent)
+    if blueprint is None:
+        raise SystemExit("Could not create {}.".format(CHARACTER_SELECT_ASSET))
+
+    add(blueprint, unreal.CanvasPanel, "RootCanvas")
+
+    backdrop = add(blueprint, unreal.Border, "Backdrop", "RootCanvas")
+    backdrop.set_editor_property("brush_color", PANEL)
+    fill_the_screen(backdrop)
+    backdrop.set_editor_property("padding", unreal.Margin(48.0, 36.0, 48.0, 36.0))
+
+    add(blueprint, unreal.VerticalBox, "Body", "Backdrop")
+
+    title = add(blueprint, unreal.TextBlock, "TitleLabel", "Body")
+    set_text(title, "Choose a character", size=30)
+
+    refusal = add(blueprint, unreal.TextBlock, "RefusalLabel", "Body")
+    set_text(refusal, "", size=16)
+    refusal.set_editor_property("auto_wrap_text", True)
+
+    # THE ROWS, a scroll box, because an account holds up to 24 characters and
+    # `fill_remaining_height` stops it at the space left. The scroll box IS the
+    # bound panel the rows are added to.
+    rows = add(blueprint, unreal.ScrollBox, "CharacterList", "Body")
+    fill_remaining_height(rows)
+
+    # A button holds one child, its label.
+    add(blueprint, unreal.Button, "NewButton", "Body")
+    new_label = add(blueprint, unreal.TextBlock, "NewLabel", "NewButton")
+    set_text(new_label, "New character", size=18)
+
+    # DELETE, AND ITS CONFIRMATION (step 5): hidden by the C++ until a row asks.
+    add(blueprint, unreal.Button, "DeleteButton", "Body")
+    delete_label = add(blueprint, unreal.TextBlock, "DeleteLabel", "DeleteButton")
+    set_text(delete_label, "Delete a character", size=18)
+
+    add(blueprint, unreal.VerticalBox, "ConfirmPanel", "Body")
+    confirm_text = add(blueprint, unreal.TextBlock, "ConfirmText", "ConfirmPanel")
+    set_text(confirm_text, "", size=16)
+    confirm_text.set_editor_property("auto_wrap_text", True)
+    add(blueprint, unreal.EditableTextBox, "ConfirmNameBox", "ConfirmPanel")
+    add(blueprint, unreal.HorizontalBox, "ConfirmRow", "ConfirmPanel")
+    add(blueprint, unreal.Button, "ConfirmDeleteButton", "ConfirmRow")
+    confirm_delete = add(blueprint, unreal.TextBlock, "ConfirmDeleteLabel", "ConfirmDeleteButton")
+    set_text(confirm_delete, "Delete", size=18)
+    add(blueprint, unreal.Button, "CancelButton", "ConfirmRow")
+    cancel = add(blueprint, unreal.TextBlock, "CancelLabel", "CancelButton")
+    set_text(cancel, "Cancel", size=18)
+
+    check_every_bound_widget(blueprint, parent)
+    if not authoring.compile_and_save(blueprint):
+        raise SystemExit("{} did not compile or could not be saved.".format(
+            CHARACTER_SELECT_ASSET))
+    log("created {}/{}".format(INTERFACE_DIR, CHARACTER_SELECT_ASSET))
+
+
+NEW_CHARACTER_PARENT = "CataclysmNewCharacterWidget"
+NEW_CHARACTER_ASSET = "WBP_NewCharacter"
+
+
+def make_new_character():
+    """The new-character screen, issue #753 select-screen step 4b.
+
+    THE CREATOR'S TREE AND FOUR MORE CHOICES, in one plain column, ruled
+    2026-11-01: a name, the lethality, Solo Self-Found and the population above
+    the creator's weapon and damage types, then Begin and Back. The lethality and
+    population lists are filled at run time with WBP_ChoiceButton copies by
+    UCataclysmNewCharacterWidget, as the weapon types are.
+    """
+    parent = parent_class(NEW_CHARACTER_PARENT)
+    if authoring.widget_blueprint_exists(INTERFACE_DIR, NEW_CHARACTER_ASSET):
+        log("{}/{} already exists; left alone.".format(
+            INTERFACE_DIR, NEW_CHARACTER_ASSET))
+        return
+
+    blueprint = authoring.create_or_load_widget_blueprint(
+        INTERFACE_DIR, NEW_CHARACTER_ASSET, parent)
+    if blueprint is None:
+        raise SystemExit("Could not create {}.".format(NEW_CHARACTER_ASSET))
+
+    add(blueprint, unreal.CanvasPanel, "RootCanvas")
+
+    backdrop = add(blueprint, unreal.Border, "Backdrop", "RootCanvas")
+    backdrop.set_editor_property("brush_color", PANEL)
+    fill_the_screen(backdrop)
+    backdrop.set_editor_property("padding", unreal.Margin(48.0, 36.0, 48.0, 36.0))
+
+    add(blueprint, unreal.VerticalBox, "Body", "Backdrop")
+
+    title = add(blueprint, unreal.TextBlock, "TitleLabel", "Body")
+    set_text(title, "Create a character", size=30)
+
+    name_heading = add(blueprint, unreal.TextBlock, "NameHeading", "Body")
+    set_text(name_heading, "Name", size=18)
+    add(blueprint, unreal.EditableTextBox, "NameBox", "Body")
+
+    lethality_heading = add(blueprint, unreal.TextBlock, "LethalityHeading", "Body")
+    set_text(lethality_heading, "Lethality", size=18)
+    add(blueprint, unreal.WrapBox, "LethalityBox", "Body")
+
+    # A CHECK BOX HOLDS ONE CHILD, and the C++ binds the box itself, so its
+    # words are a text block beside it in a row of their own (ruled).
+    add(blueprint, unreal.HorizontalBox, "SoloSelfFoundRow", "Body")
+    add(blueprint, unreal.CheckBox, "SoloSelfFoundBox", "SoloSelfFoundRow")
+    solo = add(blueprint, unreal.TextBlock, "SoloSelfFoundLabel", "SoloSelfFoundRow")
+    set_text(solo, "Solo Self-Found", size=18)
+
+    population_heading = add(blueprint, unreal.TextBlock, "PopulationHeading", "Body")
+    set_text(population_heading, "Population", size=18)
+    add(blueprint, unreal.WrapBox, "PopulationBox", "Body")
+
+    weapon_heading = add(blueprint, unreal.TextBlock, "WeaponHeading", "Body")
+    set_text(weapon_heading, "Weapon", size=18)
+    add(blueprint, unreal.WrapBox, "WeaponTypeBox", "Body")
+
+    damage_heading = add(blueprint, unreal.TextBlock, "DamageHeading", "Body")
+    set_text(damage_heading, "Damage type", size=18)
+    add(blueprint, unreal.WrapBox, "DamageTypeBox", "Body")
+
+    summary = add(blueprint, unreal.TextBlock, "SummaryLabel", "Body")
+    set_text(summary, "", size=18)
+
+    unlocked = add(blueprint, unreal.TextBlock, "UnlockedLabel", "Body")
+    set_text(unlocked, "", size=16)
+
+    refusal = add(blueprint, unreal.TextBlock, "RefusalLabel", "Body")
+    set_text(refusal, "", size=16)
+    refusal.set_editor_property("auto_wrap_text", True)
+
+    creation_refusal = add(blueprint, unreal.TextBlock, "CreationRefusalLabel", "Body")
+    set_text(creation_refusal, "", size=16)
+    creation_refusal.set_editor_property("auto_wrap_text", True)
+
+    add(blueprint, unreal.Button, "ConfirmButton", "Body")
+    confirm = add(blueprint, unreal.TextBlock, "ConfirmLabel", "ConfirmButton")
+    set_text(confirm, "Begin", size=20)
+
+    add(blueprint, unreal.Button, "BackButton", "Body")
+    back = add(blueprint, unreal.TextBlock, "BackLabel", "BackButton")
+    set_text(back, "Back", size=18)
+
+    check_every_bound_widget(blueprint, parent)
+    if not authoring.compile_and_save(blueprint):
+        raise SystemExit("{} did not compile or could not be saved.".format(
+            NEW_CHARACTER_ASSET))
+    log("created {}/{}".format(INTERFACE_DIR, NEW_CHARACTER_ASSET))
+
+
+MAPS_DIR = "/Game/Maps"
+FRONT_END_LEVEL = "L_FrontEnd"
+FRONT_END_GAME_MODE = "/Script/Cataclysm.CataclysmFrontEndGameMode"
+
+
+def make_front_end_map():
+    """L_FrontEnd, the level the game opens on, issue #753 select-screen step 3b.
+
+    MADE AS tools/generate_dungeon_map.py MAKES L_Dungeon, which is what shows
+    this works through the pythonscript commandlet: a new level, its world
+    settings naming its own game mode, saved. LEFT ALONE WHEN IT EXISTS, this
+    file's rule for every asset it makes.
+
+    A PLAYER START AND NOTHING ELSE. The front end's game mode starts the player
+    as a spectator and its controller shows the screen; the start gives the
+    spectator a place to be. NO LIGHT: nothing is drawn but the screen, and a
+    level with no static light writes no _BuiltData beside it, which
+    tools/tests/test_map_built_data_is_not_committed.py forbids.
+    """
+    path = "{}/{}".format(MAPS_DIR, FRONT_END_LEVEL)
+    if editor_assets.does_asset_exist(path):
+        log("{} already exists; left alone.".format(path))
+        return
+
+    game_mode = unreal.load_class(None, FRONT_END_GAME_MODE)
+    if game_mode is None:
+        raise SystemExit("Could not load {}. The C++ has to be compiled before "
+                         "this runs.".format(FRONT_END_GAME_MODE))
+
+    level_subsystem = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
+    actor_subsystem = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+    if not level_subsystem.new_level(path):
+        raise SystemExit("Could not create the level at {}".format(path))
+
+    start = actor_subsystem.spawn_actor_from_class(
+        unreal.PlayerStart, unreal.Vector(0.0, 0.0, 200.0))
+    start.set_actor_label("PlayerStart")
+
+    world = unreal.get_editor_subsystem(
+        unreal.UnrealEditorSubsystem).get_editor_world()
+    settings = unreal.GameplayStatics.get_all_actors_of_class(
+        world, unreal.WorldSettings)
+    if not settings:
+        raise SystemExit("The level has no WorldSettings actor to set a game "
+                         "mode on")
+    settings[0].set_editor_property("default_game_mode", game_mode)
+
+    if not level_subsystem.save_current_level():
+        raise SystemExit("Could not save the level at {}".format(path))
+    log("created {} with the game mode {}".format(path, FRONT_END_GAME_MODE))
+
+
+def main():
+    # THE BUTTON FIRST. The screen's ChoiceButtonClass points at it by path, so
+    # a screen made before it exists would load nothing on its first press.
+    make_choice_button()
+    make_character_creation()
+    make_passive_tree()
+    make_empire_map()
+    make_character_sheet()
+    make_city_screen()
+    make_floor_modifier_panel()
+    make_choice_panel()
+    make_skill_assignment()
+    make_character_select()
+    make_new_character()
+    editor_assets.save_directory(INTERFACE_DIR, recursive=True)
+    # THE LEVEL LAST, AFTER THE SCREENS ARE SAVED, so its save is its own.
+    make_front_end_map()
+    log("done")
+
+
+main()

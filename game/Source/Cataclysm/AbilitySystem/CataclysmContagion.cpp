@@ -1,0 +1,634 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "AbilitySystem/CataclysmContagion.h"
+
+// For asking a character what a stat is worth with its own state in hand,
+// rather than reading the attribute, and for the aura's interval.
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+// For the list of debuffs a character is carrying.
+#include "AbilitySystem/CataclysmDebuffs.h"
+// For the effect table lookup and the two functions that apply a lasting effect.
+#include "AbilitySystem/CataclysmSkillEffects.h"
+// For finding the enemies standing in the radius, and for the ability system of
+// an actor.
+#include "AbilitySystem/CataclysmTargeting.h"
+// For the dying enemy's maximum health, which `afflicted_death` carries.
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
+// For the two spread rolls, drawn below 100. Issue #2201.
+#include "AbilitySystem/CataclysmPercentDraw.h"
+#include "AbilitySystemComponent.h"
+#include "Cataclysm.h"
+#include "Engine/World.h"
+
+const TCHAR* UCataclysmContagion::AuraDurationStat =
+	TEXT("aura_debuff_duration");
+
+const TCHAR* UCataclysmContagion::TormentChanceStat =
+	TEXT("debuff_spread_chance");
+
+const TCHAR* UCataclysmContagion::DeathChanceStat =
+	TEXT("debuff_spread_on_death_chance");
+
+bool UCataclysmContagion::SpreadOne(AActor* Instigator, AActor* Target,
+									const FGameplayTag& EffectTag,
+									float ExtraDurationPercent)
+{
+	if (!Instigator || !Target || !EffectTag.IsValid())
+	{
+		return false;
+	}
+
+	// WHAT THIS TAG IS, IN THE DESIGN'S OWN TABLE. A tag naming no row is
+	// skipped rather than guessed at, which is what makes a stun stay put: see
+	// the header.
+	const FName RowName =
+		UCataclysmSkillEffects::StatusEffectRowForTag(EffectTag);
+	if (RowName.IsNone())
+	{
+		return false;
+	}
+
+	const FString RowString = RowName.ToString();
+	const FCataclysmStatusEffectNumbers Numbers =
+		UCataclysmSkillEffects::StatusEffectNumbers(*RowString, *RowString);
+
+	// A ROW WITH NO DURATION IS AN EFFECT NOBODY WROTE. 41 of the 52 rows state
+	// neither a duration nor an amount, and putting one of those on an enemy
+	// would be a debuff that ends the instant it lands.
+	if (Numbers.DurationSeconds <= 0.0f)
+	{
+		return false;
+	}
+
+	// AND THE NODE'S OWN BONUS ON TOP. Beacon of Despair lengthens what its aura
+	// applies by 4% a point; Contagious Torment says nothing about duration and
+	// passes zero. A negative would be a shortening no node asks for, so it is
+	// clamped rather than trusted.
+	const float Multiplier =
+		1.0f + FMath::Max(ExtraDurationPercent, 0.0f) / 100.0f;
+	const float Duration = Numbers.DurationSeconds * Multiplier;
+
+	// WHICH APPLIER, DECIDED BY WHAT THE ROW STATES RATHER THAN BY WHICH TAG
+	// BRANCH IT CAME FROM. See the header: six rows state an amount and are
+	// damage over time; five state a duration and no amount, and are a debuff
+	// whose magnitude this project has no hook for yet.
+	if (Numbers.bUsable)
+	{
+		// bScalesWithInstigator LEFT TRUE, so the spreader's own damage over
+		// time stats decide what each tick deals. This is the Masochist's own
+		// effect and not a blow dealt in somebody else's name.
+		return UCataclysmSkillEffects::ApplyDamageOverTime(
+			Instigator, Target, Numbers.FlatDamagePerTick, Duration, EffectTag);
+	}
+
+	// A SHARE OF THE TARGET'S CURRENT HEALTH IS DAMAGE OVER TIME TOO, with an
+	// applier of its own. Issue #915. Void Splinter's is the one row stating
+	// one. Before it was built this fell through to the tag alone, which would
+	// have spread a Void Splinter that dealt nothing.
+	if (Numbers.PercentOfCurrentHealth > 0.0f)
+	{
+		return UCataclysmSkillEffects::ApplyShareOfHealthOverTime(Instigator, Target,
+			Numbers.PercentOfCurrentHealth / 100.0f, Duration, EffectTag);
+	}
+
+	return UCataclysmSkillEffects::ApplyTagForDuration(Instigator, Target,
+													   EffectTag, Duration);
+}
+
+TArray<FGameplayTag> UCataclysmContagion::EverySpreadable(
+	const UAbilitySystemComponent* Carrier)
+{
+	TArray<FGameplayTag> Candidates;
+
+	// THE ONES THAT COULD ACTUALLY LAND, GATHERED BEFORE ANY ROLL. This filter and its
+	// reason came from `PickSpreadable` below, moved rather than copied: rolling first
+	// and discarding afterwards would make a bleeding and stunned character spread
+	// nothing half the time, which neither sentence says.
+	const FGameplayTagContainer Carried = UCataclysmDebuffs::TagsOn(Carrier);
+	for (const FGameplayTag& Tag : Carried)
+	{
+		if (!UCataclysmSkillEffects::StatusEffectRowForTag(Tag).IsNone())
+		{
+			Candidates.Add(Tag);
+		}
+	}
+
+	return Candidates;
+}
+
+FGameplayTag UCataclysmContagion::PickSpreadable(
+	const UAbilitySystemComponent* Carrier, int32 PinnedIndex)
+{
+	const TArray<FGameplayTag> Candidates = EverySpreadable(Carrier);
+	if (Candidates.IsEmpty())
+	{
+		return FGameplayTag();
+	}
+
+	// PINNED FOR A TEST, ROLLED OTHERWISE. An index outside the list is treated
+	// as unpinned rather than clamped, so a test naming a candidate that is not
+	// there gets a random answer it can notice instead of a neighbour's.
+	const int32 Index = (PinnedIndex >= 0 && PinnedIndex < Candidates.Num())
+		? PinnedIndex
+		: FMath::RandRange(0, Candidates.Num() - 1);
+
+	return Candidates[Index];
+}
+
+int32 UCataclysmContagion::AuraStep(AActor* Character, int32 PinnedIndex)
+{
+	// NOTHING FOR THE DEAD, for the reason `UCataclysmNova::Step` gives: a
+	// creature is destroyed on the step after it dies, so there is a real window
+	// in which a corpse is still standing there with an ability system.
+	if (UCataclysmSkillEffects::IsDead(Character))
+	{
+		return 0;
+	}
+
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Character));
+	if (!AbilitySystem)
+	{
+		return 0;
+	}
+
+	// ASKED BEFORE THE CLOCK IS, for the reason the nova gives: a character with
+	// no point in the node answers zero here and never touches the timestamp,
+	// which is every character in the game.
+	//
+	// NO SKILL TAGS. Nothing is being cast; this happens because time passed.
+	//
+	// A FALLBACK OF ZERO RATHER THAN OF THE ATTRIBUTE, which is also the right
+	// answer for an ability system that has never had a stat line applied.
+	const float ExtraDurationPercent = AbilitySystem->StatForSkill(
+		FName(AuraDurationStat), FGameplayTagContainer(), 0.0f);
+	if (ExtraDurationPercent <= 0.0f)
+	{
+		return 0;
+	}
+
+	if (!AbilitySystem->MayApplyAura())
+	{
+		// APPLIED LESS THAN THREE SECONDS AGO. This step runs several times a
+		// second, so this is the usual answer for a character holding the node.
+		return 0;
+	}
+
+	// ONE DEBUFF FOR THE WHOLE PULSE. See the header: "applies a random debuff to
+	// enemies within 6 metres" makes the debuff a property of the pulse.
+	const FGameplayTag Spreading = PickSpreadable(AbilitySystem, PinnedIndex);
+
+	int32 Applied = 0;
+	if (Spreading.IsValid())
+	{
+		// THE CHARACTER'S OWN LOCATION AND ITS OWN SIDE.
+		// `FindEnemiesInSphere` decides who counts as an enemy from the actor
+		// passed to it, refuses scenery and the dead, and never returns that
+		// actor itself.
+		for (AActor* Enemy : UCataclysmTargeting::FindEnemiesInSphere(
+				 Character->GetWorld(), Character, Character->GetActorLocation(),
+				 RadiusMetres * CentimetresPerMetre))
+		{
+			if (SpreadOne(Character, Enemy, Spreading, ExtraDurationPercent))
+			{
+				++Applied;
+			}
+		}
+	}
+
+	// AND THE INTERVAL RESTARTS WHETHER OR NOT ANYTHING CAUGHT ANYTHING, which
+	// is the same rule the nova keeps: "every 3 seconds" does not make the pulse
+	// depend on there being a target, and it must not depend on the character
+	// happening to be carrying something either. A character that pulsed while
+	// carrying nothing and then caught fire a moment later would otherwise
+	// spread instantly rather than on the next beat.
+	AbilitySystem->NoteAuraApplied(AuraIntervalSeconds);
+
+	return Applied;
+}
+
+int32 UCataclysmContagion::SpreadOnDebuffDamage(AActor* Character,
+												float PinnedRoll,
+												int32 PinnedIndex)
+{
+	if (UCataclysmSkillEffects::IsDead(Character))
+	{
+		return 0;
+	}
+
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Character));
+	if (!AbilitySystem)
+	{
+		return 0;
+	}
+
+	// ASKED FIRST AND CHEAPLY. Every damage over time tick in the game reaches
+	// this, on every character, so a character without the node has to cost one
+	// stat read and nothing else -- no search for enemies and no tag walk.
+	const float ChancePercent = AbilitySystem->StatForSkill(
+		FName(TormentChanceStat), FGameplayTagContainer(), 0.0f);
+	if (ChancePercent <= 0.0f)
+	{
+		return 0;
+	}
+
+	int32 Applied = 0;
+	for (AActor* Enemy : UCataclysmTargeting::FindEnemiesInSphere(
+			 Character->GetWorld(), Character, Character->GetActorLocation(),
+			 RadiusMetres * CentimetresPerMetre))
+	{
+		// ONE ROLL PER ENEMY, because the sentence makes the chance a property
+		// of the enemy: "enemies within 6 metres have a 1% chance per point".
+		const float Roll = PinnedRoll >= 0.0f
+			? PinnedRoll
+			: CataclysmPercentDraw::Draw();
+		if (Roll >= ChancePercent)
+		{
+			continue;
+		}
+
+		// AND A FRESH DEBUFF FOR EACH ONE THAT CATCHES, for the same reason. Two
+		// enemies can catch two different things from one tick.
+		//
+		// NO EXTRA DURATION. This node's sentence says nothing about how long
+		// what it spreads lasts, so it spreads the row's own duration. Only
+		// Beacon of Despair lengthens what it applies.
+		const FGameplayTag Spreading = PickSpreadable(AbilitySystem, PinnedIndex);
+		if (Spreading.IsValid()
+			&& SpreadOne(Character, Enemy, Spreading, 0.0f))
+		{
+			++Applied;
+		}
+	}
+
+	return Applied;
+}
+
+int32 UCataclysmContagion::SpreadOnDeath(AActor* Dying, AActor* Killer,
+										float PinnedRoll)
+{
+	if (!Dying || !Killer)
+	{
+		return 0;
+	}
+
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Killer));
+	if (!AbilitySystem)
+	{
+		return 0;
+	}
+
+	// ASKED FIRST AND CHEAPLY. Every creature death in the game reaches this, so
+	// a player without the node has to cost one stat read and nothing else -- no
+	// tag walk on the corpse and no search for anybody near it.
+	const float ChancePercent = AbilitySystem->StatForSkill(
+		FName(DeathChanceStat), FGameplayTagContainer(), 0.0f);
+	if (ChancePercent <= 0.0f)
+	{
+		return 0;
+	}
+
+	// WHAT THE BODY WAS CARRYING. Read once, because the same list is rolled
+	// against several times and the corpse is not changing.
+	const FGameplayTagContainer Carried = UCataclysmDebuffs::TagsOnActor(Dying);
+	if (Carried.IsEmpty())
+	{
+		return 0;
+	}
+
+	// THE OTHER CREATURES STANDING ROUND THE BODY, gathered once for the same
+	// reason. Asked of the KILLER so that sides are judged from the player, with
+	// the body as the centre. See the header.
+	const TArray<AActor*> Nearby = UCataclysmTargeting::FindEnemiesInSphere(
+		Dying->GetWorld(), Killer, Dying->GetActorLocation(),
+		RadiusMetres * CentimetresPerMetre);
+	if (Nearby.IsEmpty())
+	{
+		return 0;
+	}
+
+	int32 Passed = 0;
+	for (const FGameplayTag& Tag : Carried)
+	{
+		// ONE ROLL PER DEBUFF, because the sentence makes the chance a property
+		// of each: "its debuffs have a 2% chance per point to pass".
+		const float Roll = PinnedRoll >= 0.0f
+			? PinnedRoll
+			: CataclysmPercentDraw::Draw();
+		if (Roll >= ChancePercent)
+		{
+			continue;
+		}
+
+		// AND ONE RANDOM RECIPIENT FOR EACH THAT PASSES, rather than all of
+		// them: "to a random enemy within 6 metres" names one.
+		//
+		// CHOSEN AFRESH PER DEBUFF, so a body carrying a bleed and a burn can
+		// hand them to two different creatures. Nothing in the sentence says
+		// they travel together.
+		AActor* Receiving = Nearby[FMath::RandRange(0, Nearby.Num() - 1)];
+
+		// CREDITED TO THE KILLER AND NOT TO THE CORPSE, so the Masochist's own
+		// damage over time stats scale what lands. That is the reading issues
+		// #1057 and #1058 took for the other two nodes of this branch: what is
+		// applied is the designed effect with this character behind it, not a
+		// copy of what the dead creature happened to be suffering.
+		//
+		// NO EXTRA DURATION. This node's sentence says nothing about how long
+		// what it passes lasts; only Beacon of Despair lengthens what it applies.
+		if (SpreadOne(Killer, Receiving, Tag, 0.0f))
+		{
+			++Passed;
+		}
+	}
+
+	return Passed;
+}
+
+int32 UCataclysmContagion::SpreadFromTheDying(AActor* Dying)
+{
+	if (!Dying)
+	{
+		return 0;
+	}
+	const UCataclysmAbilitySystemComponent* Carrier =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Dying));
+
+	// THE FIVE AILMENTS THAT STATE A DAMAGE A TICK. Void Splinter states a share
+	// of health and has its own applier; it is not passed on here.
+	static const TCHAR* const Names[] = {
+		TEXT("Keyword.DoT.Bleed"), TEXT("Keyword.DoT.Poison"), TEXT("Keyword.DoT.Disease"),
+		TEXT("Keyword.DoT.Necrosis"), TEXT("Keyword.DoT.Burn"),
+		// AND THE ONE THAT TAKES A SHARE OF HEALTH. It passes to nobody by itself;
+		// "Void splinter stacks spread to nearby enemies when the afflicted enemy
+		// dies" is the row that gives it a count.
+		TEXT("Keyword.DoT.VoidSplinter")};
+	const FGameplayTag Disease =
+		FGameplayTag::RequestGameplayTag(FName(TEXT("Keyword.DoT.Disease")), /*ErrorIfNotFound=*/false);
+	const FVector Body = Dying->GetActorLocation();
+
+	int32 Copies = 0;
+	for (const TCHAR* Name : Names)
+	{
+		const FGameplayTag Ailment =
+			FGameplayTag::RequestGameplayTag(FName(Name), /*ErrorIfNotFound=*/false);
+		UCataclysmSkillEffects::FRunningAilment Running;
+		if (!Ailment.IsValid() || !UCataclysmSkillEffects::RunningAilmentOn(Dying, Ailment, Running))
+		{
+			continue;
+		}
+		AActor* Applier = Running.Applier.Get();
+		if (!Applier || Applier == Dying)
+		{
+			continue;
+		}
+
+		// WHAT THE AILMENT PASSES TO BY ITSELF, AND WHAT A ROW ADDS. A rolled
+		// range gives a figure between whole numbers, and it is rounded to the
+		// nearest: a count is whole.
+		const int32 ByItself = Ailment == Disease ? DiseaseSpreadsToByItself : 0;
+		const int32 FromRows = Carrier
+			? FMath::RoundToInt(Carrier->AilmentRiderPercentCarriedOn(
+				  Ailment, ECataclysmAilmentRider::SpreadOnDeath))
+			: 0;
+		const int32 Count = ByItself + FromRows;
+		if (Count <= 0)
+		{
+			continue;
+		}
+
+		// THE NEAREST FIRST, measured from the body, AND ONLY THOSE THAT DO NOT
+		// CARRY IT ALREADY. Ruled 2026-10-06: an enemy that already carries the
+		// ailment is passed over and not refreshed, so the count is spent on
+		// enemies the ailment is new to.
+		TArray<AActor*> Nearby = UCataclysmTargeting::FindEnemiesInSphere(
+			Dying->GetWorld(), Applier, Body, SpreadFromTheDyingMetres * CentimetresPerMetre);
+		Nearby.Remove(Dying);
+		Nearby.RemoveAll([&Ailment](const AActor* Candidate)
+		{
+			const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Candidate);
+			return !Its || Its->HasMatchingGameplayTag(Ailment);
+		});
+		Nearby.Sort([&Body](const AActor& A, const AActor& B)
+		{
+			return FVector::DistSquared(A.GetActorLocation(), Body)
+				< FVector::DistSquared(B.GetActorLocation(), Body);
+		});
+		for (int32 Index = 0; Index < Nearby.Num() && Index < Count; ++Index)
+		{
+			if (UCataclysmSkillEffects::ApplySpreadCopy(Applier, Nearby[Index], Running))
+			{
+				++Copies;
+			}
+		}
+	}
+	return Copies;
+}
+
+int32 UCataclysmContagion::AnnounceAfflictedDeath(AActor* Dying)
+{
+	if (!Dying)
+	{
+		return 0;
+	}
+	const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Dying);
+	const float Maximum = Its
+		? Its->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute())
+		: 0.0f;
+
+	// THE SIX AILMENTS THAT DEAL DAMAGE OVER TIME, the ones `SpreadFromTheDying`
+	// reads, kept in step with its list.
+	static const TCHAR* const Names[] = {
+		TEXT("Keyword.DoT.Bleed"), TEXT("Keyword.DoT.Poison"), TEXT("Keyword.DoT.Disease"),
+		TEXT("Keyword.DoT.Necrosis"), TEXT("Keyword.DoT.Burn"), TEXT("Keyword.DoT.VoidSplinter")};
+
+	// WHAT EACH CHARACTER HAS ON THE BODY IS GATHERED FIRST, because what a row
+	// does on hearing the event may change the body's effects.
+	TArray<AActor*> Appliers;
+	TMap<AActor*, FGameplayTagContainer> Theirs;
+	for (const TCHAR* Name : Names)
+	{
+		const FGameplayTag Ailment =
+			FGameplayTag::RequestGameplayTag(FName(Name), /*ErrorIfNotFound=*/false);
+		UCataclysmSkillEffects::FRunningAilment Running;
+		if (!Ailment.IsValid() || !UCataclysmSkillEffects::RunningAilmentOn(Dying, Ailment, Running))
+		{
+			continue;
+		}
+		AActor* Applier = Running.Applier.Get();
+		if (!Applier || Applier == Dying)
+		{
+			continue;
+		}
+		Appliers.AddUnique(Applier);
+		Theirs.FindOrAdd(Applier).AddTag(Ailment);
+	}
+
+	int32 Heard = 0;
+	for (AActor* Applier : Appliers)
+	{
+		UCataclysmAbilitySystemComponent* Hearing =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Applier));
+		if (!Hearing)
+		{
+			continue;
+		}
+		Hearing->ActOnEvent(FName(TEXT("afflicted_death")), &Theirs[Applier], Maximum,
+							/*bLanded=*/true, Dying);
+		++Heard;
+	}
+	return Heard;
+}
+
+int32 UCataclysmContagion::BlastFromTheDying(AActor* Wearer, AActor* Dead, float Damage,
+											 const FGameplayTagContainer* TheirAilments)
+{
+	if (!Wearer || !Dead || Damage <= 0.0f)
+	{
+		return 0;
+	}
+	return BlastAt(Wearer, ReadForABlast(Wearer, Dead, TheirAilments), Damage);
+}
+
+FCataclysmBlastRead UCataclysmContagion::ReadForABlast(AActor* Wearer, AActor* Dead,
+													   const FGameplayTagContainer* TheirAilments)
+{
+	FCataclysmBlastRead Read;
+	if (!Wearer || !Dead)
+	{
+		return Read;
+	}
+	Read.Position = Dead->GetActorLocation();
+	Read.Dead = Dead;
+
+	// WHAT THE WEARER HAD RUNNING ON THE BODY IS READ BEFORE ANY BLAST, because
+	// a blast can kill, and by the time a waiting blast runs the body's effects
+	// may be gone.
+	if (TheirAilments)
+	{
+		for (const FGameplayTag& Ailment : *TheirAilments)
+		{
+			UCataclysmSkillEffects::FRunningAilment Running;
+			if (UCataclysmSkillEffects::RunningAilmentOn(Dead, Ailment, Running)
+				&& Running.Applier.Get() == Wearer)
+			{
+				Read.Carried.Add(Running);
+			}
+		}
+	}
+	return Read;
+}
+
+int32 UCataclysmContagion::BlastAt(AActor* Wearer, const FCataclysmBlastRead& Read, float Damage)
+{
+	if (!Wearer || Damage <= 0.0f)
+	{
+		return 0;
+	}
+
+	TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
+		Wearer->GetWorld(), Wearer, Read.Position,
+		SpreadFromTheDyingMetres * CentimetresPerMetre);
+	// THE POINTER IS COMPARED AND NOT READ.
+	Caught.Remove(Read.Dead.Get(/*bEvenIfPendingKill=*/true));
+
+	FCataclysmHitDelivery Delivery;
+	Delivery.bIsArea = true;
+	Delivery.bCannotBeRetaliatedAgainst = true;
+	Delivery.bCannotCriticallyStrike = true;
+	Delivery.bCarriesNoWeaponSubType = true;
+	Delivery.bCannotLeech = true;
+	// AND IT IS THE CONSEQUENCE OF A DEATH, NOT A BLOW THE WEARER STRUCK. Ruled 2026-10-07 under the project
+	// owner's delegation: it fires none of the wearer's on-hit rows and is not recorded as the wearer's first blow
+	// on what it strikes. In play it fired no on-hit row already, because it is only ever called while the
+	// wearer is acting on an event, which answers nothing to a second event. The mark states the rule where
+	// that only happened to deliver it. See `FCataclysmHitDelivery::bIsConsequenceOfADeath`.
+	Delivery.bIsConsequenceOfADeath = true;
+	for (AActor* Target : Caught)
+	{
+		// ONE THAT IS DEAD BY NOW IS NOT STRUCK. A death this blast causes does
+		// not blast inside it: it waits until the wearer has finished acting, see
+		// `UCataclysmAbilitySystemComponent::QueueAfflictedDeath`. This stays for
+		// a wearer whose blast is called outside an event.
+		if (!IsValid(Target) || UCataclysmSkillEffects::IsDead(Target))
+		{
+			continue;
+		}
+		UCataclysmSkillEffects::ApplyDirectDamage(Wearer, Target, Damage, Delivery);
+	}
+
+	// THEN THE COPIES, TO THOSE THE BLAST LEFT ALIVE, within the same reach.
+	GiveSpreadCopiesNear(Wearer, Read, SpreadFromTheDyingMetres);
+	return Caught.Num();
+}
+
+int32 UCataclysmContagion::GiveSpreadCopiesNear(AActor* Wearer, const FCataclysmBlastRead& Read, float ReachInMetres)
+{
+	if (!Wearer || ReachInMetres <= 0.0f || Read.Carried.IsEmpty())
+	{
+		return 0;
+	}
+
+	// FOUND AGAIN AND NOT HANDED OVER BY THE BLAST: the search refuses the dead, so an enemy the blast killed is not
+	// among them, and the dead are passed over below as well.
+	TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
+		Wearer->GetWorld(), Wearer, Read.Position, ReachInMetres * CentimetresPerMetre);
+	// THE POINTER IS COMPARED AND NOT READ.
+	Caught.Remove(Read.Dead.Get(/*bEvenIfPendingKill=*/true));
+
+	int32 Copies = 0;
+	for (AActor* Target : Caught)
+	{
+		const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Target);
+		if (!IsValid(Target) || !Its || UCataclysmSkillEffects::IsDead(Target))
+		{
+			continue;
+		}
+		for (const UCataclysmSkillEffects::FRunningAilment& Running : Read.Carried)
+		{
+			if (!Its->HasMatchingGameplayTag(Running.Ailment)
+				&& UCataclysmSkillEffects::ApplySpreadCopy(Wearer, Target, Running))
+			{
+				++Copies;
+			}
+		}
+	}
+	return Copies;
+}
+
+int32 UCataclysmContagion::StunNearTheDying(AActor* Wearer, AActor* Dead, float Seconds)
+{
+	if (!Wearer || !Dead || Seconds <= 0.0f)
+	{
+		return 0;
+	}
+
+	// ASKED OF THE WEARER, WITH THE BODY AS THE CENTRE, as the blast is: the
+	// wearer's side decides who is an enemy, and need not stand near.
+	TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
+		Wearer->GetWorld(), Wearer, Dead->GetActorLocation(),
+		SpreadFromTheDyingMetres * CentimetresPerMetre);
+	Caught.Remove(Dead);
+
+	int32 Stunned = 0;
+	for (AActor* Target : Caught)
+	{
+		if (!IsValid(Target) || UCataclysmSkillEffects::IsDead(Target))
+		{
+			continue;
+		}
+		// A DESIGNED STUN: no hit is dealt, so there is no damage to compare with
+		// a tenth of maximum health. Every other rule of the stun is asked.
+		if (UCataclysmSkillEffects::ApplyStun(Wearer, Target, Seconds,
+				/*DamageDealt=*/0.0f, /*bStunIsDesigned=*/true))
+		{
+			++Stunned;
+		}
+	}
+	return Stunned;
+}

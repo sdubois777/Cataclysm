@@ -1,0 +1,945 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "AbilitySystem/CataclysmStatPipeline.h"
+#include "CataclysmItem.generated.h"
+
+struct FCataclysmAffixRow;
+struct FCataclysmEnchantmentEffectRow;
+struct FCataclysmItemBaseRow;
+class UDataTable;
+
+/**
+ * The eight item rarities, weakest first.
+ *
+ * RARITY IS NOT STORED ON AN ITEM. It is a label for what fills the item's four
+ * slots, so it is computed rather than set: an item carrying an enchantment is a
+ * Legendary, and one carrying three regular affixes is a Superb. See
+ * UCataclysmItemValues::RarityOf.
+ */
+UENUM(BlueprintType)
+enum class ECataclysmRarity : uint8
+{
+	Everyday	UMETA(DisplayName = "Everyday"),
+	Quality		UMETA(DisplayName = "Quality"),
+	Superb		UMETA(DisplayName = "Superb"),
+	Masterful	UMETA(DisplayName = "Masterful"),
+	Legendary	UMETA(DisplayName = "Legendary"),
+	Mythical	UMETA(DisplayName = "Mythical"),
+	Ascendant	UMETA(DisplayName = "Ascendant"),
+	Cataclysmic	UMETA(DisplayName = "Cataclysmic"),
+};
+
+/**
+ * One affix as it sits on a particular item.
+ *
+ * The affix itself -- what stat it grants, whether it is flat or increased, its
+ * top value and which slots it may roll on -- lives in game/Data/Affixes.csv.
+ * What belongs to the item is only which affix it got, at what tier, and where
+ * in that tier's band it landed.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmRolledAffix
+{
+	GENERATED_BODY()
+
+	/** Row name in the Affixes table. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	FName Affix;
+
+	/** 1 to 7. Tier N is worth N sevenths of the affix's top value. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	int32 Tier = 1;
+
+	/**
+	 * Where in the tier's band the roll landed. 0 is the floor, 1 is the top.
+	 *
+	 * Stored rather than the resolved number, because the value also depends on
+	 * the piece's upgrade level and on whether the piece is a two-handed weapon,
+	 * both of which change after the item exists.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	float Roll = 1.0f;
+
+	/**
+	 * Which damage types a resistance affix covers. Empty for every other kind.
+	 *
+	 * A resistance family says how MANY types it covers and not which: the
+	 * single-resistance family covers one, and which one is decided when the
+	 * item drops. So the choice belongs to the item rather than to the affix.
+	 * Left empty on a family covering all eight, since there is no choice to
+	 * make.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	TArray<FName> DamageTypes;
+};
+
+/**
+ * One enchantment as it sits on a particular item: a positive and a negative.
+ *
+ * ONE SLOT HOLDS BOTH HALVES, ruled by the project owner on 2026-09-07. The
+ * design document's weight table describes each weight as an effect AND a
+ * consequence together -- "Rare -- very powerful effect, severe consequence" --
+ * and the section beneath it says a player "could theoretically land a weight 1
+ * positive paired with a weight 1 negative". So an enchantment is a bargain
+ * rather than a modifier, and one of an item's four slots buys the whole bargain.
+ *
+ * THE TWO HALVES ARE DRAWN INDEPENDENTLY, which is the rest of that sentence:
+ * "Positives and negatives roll independently -- a strong positive is not
+ * guaranteed to come with a weak negative." The pools are different sizes, 379
+ * and 196, so they could not be paired in the data even if the design wanted it.
+ *
+ * WHY ROW NAMES RATHER THAN THE TEXT. The same reason FCataclysmRolledAffix
+ * stores which affix rather than what it grants: the effect wording lives in
+ * `game/Data/EnchantmentsPositive.csv` and `EnchantmentsNegative.csv` and is one
+ * answer for every item that rolled it. What belongs to the item is which two
+ * rows it drew, and where inside each row's stated range it rolled.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmRolledEnchantment
+{
+	GENERATED_BODY()
+
+	/** Row name in the EnchantmentsPositive table. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	FName Positive;
+
+	/** Row name in the EnchantmentsNegative table. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	FName Negative;
+
+	/**
+	 * Where inside the positive row's stated range this item rolled: 0 is the
+	 * first number the sentence states and 1 the second.
+	 *
+	 * THE PROJECT OWNER'S RULING OF 2026-09-11: "When an enchantment is put on
+	 * an item, it rolls a value evenly inside its range and keeps it, and the
+	 * hover text shows it. Upgrading the item from +0 to +10 does not change
+	 * it." So this is set once, by `UCataclysmDropRoll::RollEnchantments`, and
+	 * nothing afterwards moves it. `UCataclysmItemValues::EnchantmentValue`
+	 * turns it into the number.
+	 *
+	 * STORED RATHER THAN THE NUMBER IT GIVES, as FCataclysmRolledAffix::Roll
+	 * is, so that a range retuned in the workbook moves every item that rolled
+	 * it rather than leaving each one holding a number the sheet no longer
+	 * states.
+	 *
+	 * ONE ROLL FOR THE WHOLE HALF. Five sentences state two ranges, and both
+	 * read this one number, so "a 20%-35% slow for 2-4 seconds" rolls a strong
+	 * slow together with a long one. That keeps a save to one number per half,
+	 * which is the cost the owner was shown when choosing this rule.
+	 *
+	 * 1 BY DEFAULT, THE TOP OF THE RANGE, which is FCataclysmRolledAffix::Roll's
+	 * default too. An item built in code, or loaded from a save written before
+	 * this field existed, therefore states the second number of each range.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	float PositiveRoll = 1.0f;
+
+	/** The same as PositiveRoll, for the negative row. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	float NegativeRoll = 1.0f;
+};
+
+/**
+ * One item: which base it is, how far it has been upgraded, and what it rolled.
+ *
+ * WHAT IS NOT HERE. Rarity, because it is computed from the contents. The affix
+ * values, because they depend on the upgrade level and the base. Which gem sits
+ * in a socket, which is issue #46. What an enchantment DOES, which is
+ * `UCataclysmItemModifiers::AccumulateEnchantmentsInto` reading
+ * `game/Data/EnchantmentEffects.csv` since issue #45: an enchantment with no row
+ * there still changes nothing.
+ *
+ * EVERY FIELD ON THIS STRUCT AND ON FCataclysmRolledAffix IS MARKED `SaveGame`,
+ * and it has to be, one field at a time. An item is persisted inside a character
+ * record, and `FCataclysmSaveStorage` converts only properties carrying that flag
+ * -- a rule it applies all the way down, into structs held by structs. A field
+ * added here without the flag is dropped from every save with no error and no
+ * warning, and the item comes back with that value at its default. Issue #529 and
+ * `docs/Save_System_Design.md` section 4.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmItem
+{
+	GENERATED_BODY()
+
+	/** Row name in the ItemBases table. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	FName Base;
+
+	/** The +0 to +10 upgrade level. It multiplies every affix and implicit on
+	 *  the piece, by about 3.52 at +10. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	int32 GearLevel = 0;
+
+	/**
+	 * The damage types this weapon carries. Empty on anything but a weapon.
+	 *
+	 * THE WEAPON'S OWN, NOT AN AFFIX'S. FCataclysmRolledAffix above also has
+	 * a DamageTypes array and it is a different thing: that one says which
+	 * types a resistance affix covers. This one is what the weapon itself
+	 * grants, and it is what unlocks class trees and skills.
+	 *
+	 * ROLLED WHEN THE ITEM DROPS and never afterwards, from one type up to
+	 * the lower of the base's MaxDamageTypes and how many types that weapon
+	 * type has at all, at any difficulty tier since 2026-10-25.
+	 * UCataclysmDropRoll::RollDamageTypes does it and carries the design
+	 * document's wording for the rule.
+	 *
+	 * THE CLASS TREES READ IT, AND SO DO THE SKILLS. Since issue #857 layer 1
+	 * the worn weapons' lists decide which class trees can be spent in and whose
+	 * effects apply (`UCataclysmEquipmentComponent::CarriedDamageTypesOf`). Since
+	 * issue #837 layer 2 the same list decides the skill pool: every combination
+	 * of a worn weapon type and a carried type, each slot filled by default
+	 * (`UCataclysmWeaponSkills::PoolFor`). The player choosing which skill goes
+	 * in which slot is issue #837's later layers.
+	 *
+	 * AND THE WEAPON CREATION GIVES CARRIES THE CHOSEN TYPE, not a roll. Ruled
+	 * 2026-10-25. A changed creation choice changes it in place
+	 * (`UCataclysmEquipmentComponent::CarryCreationDamageType`), on a weapon
+	 * marked `bMadeAtCreation` and on no other (Q-L1).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	TArray<FName> DamageTypes;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	TArray<FCataclysmRolledAffix> Affixes;
+
+	/**
+	 * How many of the four slots hold an enchantment rather than an affix.
+	 *
+	 * STILL THE RARITY AUTHORITY, and still a separate field from the array
+	 * below on purpose. Rarity is computed from how many slots an enchantment
+	 * fills, and an item assembled by hand in a test sets this without naming
+	 * any enchantment. Collapsing the two would make every such test name two
+	 * rows it does not care about.
+	 *
+	 * WHEN BOTH ARE SET THEY MUST AGREE. A dropped item fills the array and this
+	 * count from the same rarity, so the array's length equals this.
+	 * `Cataclysm.Enchantments.ADroppedItemCarriesAsManyEnchantmentsAsItsRaritySays`
+	 * is what holds them together.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	int32 EnchantmentCount = 0;
+
+	/**
+	 * Which enchantments the piece carries, each a positive and a negative.
+	 *
+	 * EMPTY IS NOT THE SAME AS NONE. An item built by hand may set
+	 * EnchantmentCount above and leave this empty; a dropped item fills both.
+	 * Anything reading this for display has to cope with an item whose count
+	 * says four and whose array is empty, which is what every item that dropped
+	 * before this field existed looks like after being loaded from a save.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	TArray<FCataclysmRolledEnchantment> Enchantments;
+
+	/**
+	 * How many gem sockets the piece has, from none up to its base's maximum.
+	 *
+	 * THE COUNT, NOT WHAT IS IN THEM. Which gem sits in a socket is issue #46.
+	 * A drop rolls this uniformly, so a piece can arrive with none, and the Add
+	 * Socket craft only has something to do because of that.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	int32 Sockets = 0;
+
+	/**
+	 * The Cataclysmic Residue the piece carries.
+	 *
+	 * A COST, NEVER A BENEFIT. It raises what crafting this item charges in gold
+	 * and days, and it counts toward the Worn Residue that can get a character
+	 * hunted by a corrupted copy of itself. An item carries some from the moment
+	 * it drops, in a band set by its rarity.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	float Residue = 0.0f;
+
+	/**
+	 * Kills made while this item was worn in a weapon slot. Issue #1833, the
+	 * kill counter: "This weapon has 5-20% more damage for every
+	 * 100,000-500,000 kills" reads it.
+	 *
+	 * EVERY PLAYER KILL COUNTS ON BOTH WORN WEAPONS, or on the one item when it
+	 * is two-handed, because both weapons' damage is in every blow: the game
+	 * sums their damage into one attack damage and nothing records which hand
+	 * struck. Ruled 2026-09-25 under the owner's delegation.
+	 * `UCataclysmEquipmentComponent::NoteKillOnWornWeapons` raises it.
+	 *
+	 * SAVED WITH THE ITEM, so a weapon keeps its count unequipped, in the stash
+	 * and across a save.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	int32 Kills = 0;
+
+	/**
+	 * Whether this is the weapon character creation gave: the starting weapon, or the weapon a creation choice put
+	 * on. Issue #857 layer 1, ruled 2026-10-25 (Q-L1).
+	 *
+	 * WHY A MARKER AND NOT THE ITEM'S CONTENTS. A change of the creation choice's damage type rewrites the creation
+	 * weapon's `DamageTypes` (`UCataclysmEquipmentComponent::CarryCreationDamageType`). Recognising that weapon by
+	 * what it holds would also rewrite a player's own drop of the same weapon type carrying one type, once saves load
+	 * (#753). Only this flag says which weapon it is.
+	 *
+	 * SET ONLY BY `ACataclysmPlayerCharacter::GiveStartingWeapon` AND `ApplyCreationChoice`. False on every drop and
+	 * every item built elsewhere. SAVED WITH THE ITEM; a field with a default is not a schema version bump, and a file
+	 * without it reads as false. `Cataclysm.LoadCharacter` loads a save since 2026-10-30 (#753).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	bool bMadeAtCreation = false;
+};
+
+/**
+ * What an item is worth, ported from `sim/cataclysm_sim/affixes.py`.
+ *
+ * Static functions over plain numbers, like UCataclysmDamageCalculation and
+ * UCataclysmStatPipeline, so every curve can be tested by passing values in.
+ *
+ * THREE THINGS MULTIPLY AN AFFIX, and they are independent of each other:
+ *
+ *   TIER      seven of them, on a linear curve. Tier N is worth N sevenths of
+ *             the affix's top value. Linear rather than front-loaded, because a
+ *             front-loaded curve hands over most of an affix's value in the
+ *             first few tiers and makes the later ones easy to skip.
+ *
+ *   ROLL      every tier is a range reaching 25% below its top, so that the
+ *             crafting materials which reroll and perfect a value have
+ *             something to do. Bands overlap by exactly one tier: a perfect T6
+ *             roll can beat a poor T7 one, and can never beat a T5.
+ *
+ *   UPGRADE   the piece's +0 to +10 level multiplies everything on it, by about
+ *             3.52 at +10. Every affix value stated in the design document is
+ *             the +10 figure, so a +0 piece gives a fraction of it.
+ *
+ * A two-handed weapon then doubles the result, which is what balances its four
+ * affix slots against the eight a dual wielder holds.
+ */
+UCLASS()
+class CATACLYSM_API UCataclysmItemValues : public UObject
+{
+	GENERATED_BODY()
+
+public:
+	/** Affixes have seven tiers, because the crafting material that raises them
+	 *  levels an affix to the seventh. */
+	static constexpr int32 MaxAffixTier = 7;
+
+	/** A piece upgrades from +0 to +10. */
+	static constexpr int32 MaxGearLevel = 10;
+
+	/** Four slots, holding regular affixes and enchantments between them. */
+	static constexpr int32 SlotsPerPiece = 4;
+
+	/** At most two of the four may be prefixes, and at most two suffixes. */
+	static constexpr int32 PrefixesPerPiece = 2;
+	static constexpr int32 SuffixesPerPiece = 2;
+
+	/**
+	 * How far below its top a tier's band reaches. 0.25 is 25%.
+	 *
+	 * Without a band the crafting materials that reroll and perfect a value are
+	 * dead content, because a tier would have exactly one possible value.
+	 */
+	static constexpr float RollBandFraction = 0.25f;
+
+	/**
+	 * Each upgrade level adds this share, so a +10 piece is 2.5 times a +0 one.
+	 *
+	 * WAS 0.25245807054891267 AND IS NOW 0.15, changed on 2026-09-03 for issue
+	 * #1179. The old figure was the Power Score model's own upgrade weight,
+	 * shared deliberately so gear level could not mean two things in two places.
+	 * It now does mean two things, and that is the point: how much an upgrade is
+	 * WORTH to a rating is one question, and how much it MULTIPLIES the numbers
+	 * printed on an item is another. Easing the second would otherwise have
+	 * moved every Power Score in the game, which has its own anchors and no
+	 * reason to change.
+	 *
+	 * WHY IT WAS EASED. This ladder multiplies the affix tier ladder, and 9.33
+	 * times 3.52 put a tier 1 roll on an un-upgraded drop at 3.04% of the
+	 * endgame value -- against Last Epoch's 16.7% across its own seven tiers.
+	 * Twelve affixes could not show more than three different numbers early in
+	 * the game and three could only ever display 0.0.
+	 *
+	 * BOTH LADDERS WERE EASED AND NEITHER WAS DELETED, which is the project
+	 * owner's decision of 2026-09-03: two levers are the point, and the fault
+	 * was the size of their product. See TierFraction for the other half. 3.0
+	 * times 2.5 is about 10x, against 32.9x before.
+	 *
+	 * `sim/cataclysm_sim/affixes.py` holds the same number as
+	 * `GEAR_LEVEL_FACTOR`, and `POWER_SCORE_UPGRADE_FACTOR` beside it still
+	 * holds the Power Score weight, so a reader sees both and sees they differ.
+	 */
+	static constexpr float GearLevelFactor = 0.15f;
+
+	/**
+	 * How much more a tier 7 affix is worth than a tier 1 one, before the roll.
+	 *
+	 * WAS EFFECTIVELY 7.0, as the ladder `Tier / MaxAffixTier`, AND IS NOW 3.0.
+	 * See TierFraction for the shape and GearLevelFactor above for why.
+	 * Issue #1179.
+	 */
+	static constexpr float TierLadderSpan = 3.0f;
+
+	/**
+	 * What each half of a hybrid affix is worth, against the whole affix.
+	 *
+	 * THE DESIGN STATES IT TWICE. `docs/Cataclysm_GDD_v2.md`, on why a hybrid
+	 * and one of its halves cannot sit on one piece: "A hybrid grants each half
+	 * at 70%". And the Hybrid Affixes section: "A hybrid is worth 1.4 affixes
+	 * spread across two stats, where a single affix is worth 1.0 concentrated in
+	 * one. So it wins a slot when a build needs both and loses when it needs one
+	 * badly."
+	 *
+	 * IT IS DERIVED RATHER THAN CHOSEN, and `sim/cataclysm_sim/affixes.py` says
+	 * why: it is the ratio the project owner already set between the
+	 * two-resistance affix and the single-resistance one, 14 against 20. Both
+	 * rows are in game/Data/Affixes.csv, and
+	 * Cataclysm.Items.TheHybridShareIsTheResistanceRatio reads them and fails if
+	 * this constant stops matching, rather than the two quietly drifting.
+	 */
+	static constexpr float HybridFraction = 0.7f;
+
+	/**
+	 * What a two-handed weapon multiplies its own implicits and affixes by.
+	 *
+	 * DERIVED, NOT CHOSEN. Two one-handed weapons hold eight affix slots against
+	 * a two-hander's four, so 2 is the figure that makes the two loadouts worth
+	 * the same in affixes -- which the design requires, because the Power Score
+	 * model counts two one-handed weapons as one equipped piece so that dual
+	 * wielding is not worth free power.
+	 *
+	 * It reaches the implicits as well as the affixes. Without that the
+	 * two-hander loses outright: two one-handed bases SUM their damage, so an
+	 * Axe and a Sword give 86 against a Greatsword's stated 78.
+	 */
+	static constexpr float TwoHandedMultiplier = 2.0f;
+
+	/** What a piece at this upgrade level does to everything it carries. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
+	static float GearLevelMultiplier(int32 GearLevel);
+
+	/** Tier N is worth N sevenths of an affix's top value. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
+	static float TierFraction(int32 Tier);
+
+	/** The lowest and highest an affix can roll at a tier, at +10. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
+	static void TierBand(float TopValue, int32 Tier, float& OutLow, float& OutHigh);
+
+	/**
+	 * What the three ladders leave of an affix at their very bottom.
+	 *
+	 * Tier 1's share of the top, times the bottom of the roll band, times
+	 * an un-upgraded piece against a fully upgraded one. It comes to 0.1,
+	 * and that product is the whole of issue #1230: the worst roll of every
+	 * affix in the game was exactly a tenth of its stated top.
+	 *
+	 * COMPUTED FROM THE THREE CONSTANTS RATHER THAN WRITTEN OUT, so easing
+	 * any of them moves this with it instead of leaving a fourth number to
+	 * keep in step.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
+	static float WorstMultiplier();
+
+	/**
+	 * One affix's value: its tier band, where in it the roll landed, the
+	 * piece's upgrade level, and whether the piece is a two-handed weapon.
+	 *
+	 * The stated top values are the +10 figures, so this divides by the +10
+	 * multiplier before applying the piece's own.
+	 *
+	 * THE LADDER RUNS FROM THE FLOOR TO THE TOP, since issue #1230. Without
+	 * a floor the three ladders multiply to 10, so the worst roll was always
+	 * a tenth of the top however small that top was.
+	 *
+	 * A FLOOR OF ZERO MEANS NONE WAS STATED and the affix is unchanged. The
+	 * derived floor is `TopValue * WorstMultiplier()`, and the remap below is
+	 * the identity map at exactly that value, so this is not a special case
+	 * that could rot -- it is the same arithmetic reaching the same answer.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
+	static float AffixValue(float TopValue, float Floor, int32 Tier,
+							float Roll, int32 GearLevel,
+							bool bTwoHanded = false);
+
+	/** An implicit's value. It does not roll, so it has no tier and no band. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
+	static float ImplicitValue(float StatedValue, int32 GearLevel,
+							   bool bTwoHanded = false);
+
+	/**
+	 * One enchantment number: where a roll lands inside a stated range.
+	 *
+	 * `From` is the value at a roll of 0 and `To` the value at a roll of 1:
+	 * the first and second numbers of the range the sentence states, each
+	 * carrying the row's sign. So "reduced by 30%-50%" is From -30 and To -50,
+	 * and the top roll is the larger reduction, which is what the hover text
+	 * says.
+	 *
+	 * EVERY WRITTEN VALUE IS EQUALLY LIKELY. This is how the project owner's
+	 * "rolls a value evenly inside its range" is read. The range is cut into
+	 * the values it can be written as, at the precision of its two ends --
+	 * "10%-30%" is the 21 whole numbers 10 to 30, and "0.5-1" the six tenths
+	 * 0.5 to 1 -- and the roll picks one of them, each with an equal share.
+	 * Rounding a continuous draw instead would give each end half the chance
+	 * of every value between them.
+	 *
+	 * NOT SCALED BY THE UPGRADE LEVEL, which is the second half of the same
+	 * ruling, and why this takes no gear level where AffixValue does.
+	 *
+	 * A RANGE OF ONE VALUE, which is every row whose sentence states a single
+	 * number, gives that number whatever the roll.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
+	static float EnchantmentValue(float From, float To, float Roll);
+
+	/**
+	 * An enchantment's sentence with every range in it replaced by the number
+	 * this roll gives, for the hover text. "Your block chance is increased by
+	 * 10%-20%" at a roll of 1 reads "Your block chance is increased by 20%".
+	 *
+	 * THE SAME NUMBER THE STAT RECEIVES. The number comes from EnchantmentValue
+	 * given the two ends as the sentence writes them, and
+	 * `tools/generate_datatables.py` refuses an effect row whose two values are
+	 * not a range that sentence states, so what the player reads and what the
+	 * character gets cannot differ.
+	 *
+	 * A RANGE IS TWO NUMBERS JOINED BY A HYPHEN, each with an optional percent
+	 * sign, with optional spaces around the hyphen. All 390 ranges in the two
+	 * enchantment tables are written that way, measured on 2026-09-11. A
+	 * number may carry thousands commas, as in "100,000 - 500,000", and the
+	 * number that replaces it keeps them. A hyphen that does not sit between
+	 * two numbers, as in "2-Piece", is left alone.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
+	static FString EnchantmentTextAtRoll(const FString& Effect, float Roll);
+
+	/**
+	 * An enchantment row's sentence at this roll, WITH THE RANGES ITS ROW MARKS
+	 * AS ROLLING DOWN rolled from their second number to their first. This is
+	 * what the hover text shows. `EnchantmentTextAtRoll` above is this with no
+	 * range marked.
+	 *
+	 * @param RollsDown  the row's `RollsDown`: places counted from 1, separated
+	 *                   by commas. A place the sentence does not have is ignored
+	 */
+	static FString EnchantmentTextFor(const FString& Effect, const FString& RollsDown,
+									  float Roll);
+
+	/** The places a `RollsDown` cell names, counted from 1. */
+	static TSet<int32> RangesRollingDown(const FString& RollsDown);
+
+	/**
+	 * Every range an enchantment's sentence states, as the first and second
+	 * number of each, in the order the sentence gives them. These are the
+	 * ranges EnchantmentTextAtRoll replaces.
+	 */
+	static TArray<FVector2D> EnchantmentRanges(const FString& Effect);
+
+	/**
+	 * What an item carrying this many enchantments and affixes IS.
+	 *
+	 * The definition of rarity, not a lookup on a stored field. Returns false
+	 * for a combination no item can have -- an enchantment with slots left
+	 * empty, or more than four filled.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
+	static bool RarityOf(int32 EnchantmentCount, int32 AffixCount,
+						 ECataclysmRarity& OutRarity);
+
+	/** How many regular affixes a piece of this rarity carries. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
+	static int32 AffixSlotsFor(ECataclysmRarity Rarity);
+
+	/** How many of the four slots hold an enchantment. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
+	static int32 EnchantmentsFor(ECataclysmRarity Rarity);
+
+	/** A slot count divided into prefixes and suffixes, at its most even. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
+	static void PrefixSuffixSplit(int32 Slots, int32& OutPrefixes,
+								  int32& OutSuffixes);
+};
+
+/**
+ * Turning an item into the modifiers a character's stats are computed from.
+ *
+ * Separated from the value curves above because this one needs the data tables
+ * and those need nothing. Every function here takes the tables as arguments
+ * rather than finding them, so a test can build its own.
+ */
+UCLASS()
+class CATACLYSM_API UCataclysmItemModifiers : public UObject
+{
+	GENERATED_BODY()
+
+public:
+	/**
+	 * Every modifier one item contributes, KEYED BY THE STAT IT AFFECTS.
+	 *
+	 * Keyed rather than returned as one flat list because
+	 * UCataclysmStatPipeline::Evaluate answers "what is this ONE stat worth",
+	 * so it needs the modifiers for that stat and no others. A flat list would
+	 * have to be filtered by something the modifier does not carry.
+	 *
+	 * Stat names are the character sheet's own, matching
+	 * `sim/cataclysm_sim/character.py`: `max_health`, `armor`,
+	 * `resistance_demonic` and so on.
+	 *
+	 * A RESISTANCE FAMILY BECOMES ONE MODIFIER PER DAMAGE TYPE. The affix says
+	 * how many types it covers; the item says which. A family covering all eight
+	 * needs no choice, so an empty list on the item means all of them.
+	 *
+	 * AN ITEM NEVER PRODUCES A "MORE" MULTIPLIER. Affixes and implicits are
+	 * flat or increased; the multiplicative bucket belongs to gems, passive
+	 * keystones and enchantments. The pipeline enforces that too, but producing
+	 * one here would be caught only as a warning at evaluation time.
+	 */
+	static TMap<FName, TArray<FCataclysmStatModifier>> ModifiersFor(
+		const FCataclysmItem& Item,
+		const UDataTable* BaseTable,
+		const UDataTable* AffixTable);
+
+	/** Merge one item's modifiers into a character's running totals. */
+	static void AccumulateInto(TMap<FName, TArray<FCataclysmStatModifier>>& Totals,
+							   const FCataclysmItem& Item,
+							   const UDataTable* BaseTable,
+							   const UDataTable* AffixTable);
+
+	/** The eight damage types, in the order the design document lists them. */
+	static const TArray<FName>& DamageTypeNames();
+
+	/** The character sheet stat holding resistance to a damage type. */
+	static FName ResistanceStatFor(FName DamageType);
+
+	/** The rarity an item is, from what fills its slots. */
+	static bool RarityOfItem(const FCataclysmItem& Item,
+							 ECataclysmRarity& OutRarity);
+
+	/** Whether the base is a two-handed weapon, which doubles its values. */
+	static bool IsTwoHanded(const FCataclysmItem& Item,
+							const UDataTable* BaseTable);
+
+	/**
+	 * The Affixes table row whose AffixName is this, or null.
+	 *
+	 * BY DISPLAY NAME RATHER THAN BY ROW KEY, because a hybrid affix names its
+	 * two halves as the affix names they are ("Flat magic find") and the row key
+	 * is decorated with the kind ("Stat_Flat_magic_find").
+	 *
+	 * SHARED RATHER THAN COPIED, and that is not tidiness. It lived in an
+	 * anonymous namespace in CataclysmDropRoll.cpp, and a second copy in another
+	 * file of this module would compile alone and collide the moment both files
+	 * were clean at once, because Unreal's unity build merges them and excludes
+	 * only the files you have modified. That has broken `development` once
+	 * already.
+	 */
+	static const FCataclysmAffixRow* AffixNamed(const UDataTable* AffixTable,
+												const FString& AffixName);
+
+	/** The stat name a weapon's own damage is carried under, in every sheet. */
+	static const TCHAR* AttackDamageStat;
+
+	/**
+	 * The stat name a swing rate is carried under, in every sheet.
+	 *
+	 * NOT WHERE A WEAPON'S OWN RATE LIVES, unlike the damage above. A base
+	 * states its rate in its own AttackSpeed column; this name is what an
+	 * INCREASE to that rate is carried under, whether it comes from an affix or
+	 * from a base's implicit. A Sword carries `attack_speed increased 5` as its
+	 * second implicit, for example.
+	 */
+	static const TCHAR* AttackSpeedStat;
+
+	/**
+	 * `crit_chance`, the third stat whose base comes from what is held.
+	 *
+	 * IT BEHAVES LIKE ATTACK SPEED AND NOT LIKE ATTACK DAMAGE. The design
+	 * gives critical strike chance to the skill being used rather than to
+	 * the character, so like a swing rate it is a base that no class line
+	 * can state and no implicit supplies, and it arrives through
+	 * UCataclysmPlayerClassStats::ApplyTo's BaseOverrides argument.
+	 */
+	static const TCHAR* CritChanceStat;
+
+	/**
+	 * `area_of_effect`, how wide a skill's shape is drawn.
+	 *
+	 * NAMED HERE WITH THE OTHER THREE because a stat name is the key that ties
+	 * a sheet's row to a gameplay attribute, and a second spelling of one in
+	 * another file is a modifier that silently reaches nothing. This one is read
+	 * by `UCataclysmSkillTemplate::AreaOfEffectMultiplier` rather than by
+	 * anything about an item, which is why it did not need a name until issue
+	 * #943 gave a skill a reason to ask for the stat by name.
+	 */
+	static const TCHAR* AreaOfEffectStat;
+
+	/** Where the imported item base table lives. */
+	static const TCHAR* BaseTableAssetPath;
+
+	/** The item base table, or null with the reason logged. */
+	static const UDataTable* LoadBaseTable();
+
+	/** Where the imported enchantment effect table lives. Issue #45. */
+	static const TCHAR* EnchantmentEffectTableAssetPath;
+
+	/** The enchantment effect table, or null with the reason logged. */
+	static const UDataTable* LoadEnchantmentEffectTable();
+
+	/**
+	 * Every modifier the enchantments on these worn items grant, merged into a
+	 * character's running totals. Issue #45.
+	 *
+	 * WHAT A ROW GRANTS IS IN `game/Data/EnchantmentEffects.csv`, and an
+	 * enchantment with no row there grants nothing. Every modifier here comes
+	 * from the Enchantment source, which the pipeline lets into the "more"
+	 * bucket.
+	 *
+	 * A BENEFIT APPLIES ONCE, HOWEVER MANY WORN PIECES CARRY IT, AT THE HIGHER
+	 * OF THEIR ROLLS. The design: "Each enchantment can only appear once across
+	 * all of a player's equipped gear", to prevent "degenerate stacking of
+	 * powerful effects". `docs/DECISIONS.md` settled on 2026-09-11 that the
+	 * same benefit on a second piece is refused at equip with a message, and
+	 * nothing refuses it yet. Until something does, this keeps the rule's
+	 * purpose true, and takes the higher roll so that the result does not
+	 * depend on which piece was put on first.
+	 *
+	 * A DRAWBACK APPLIES FOR EVERY WORN PIECE CARRYING IT, each at its own
+	 * roll. Nothing here may make a cost smaller than the items say, and two
+	 * pieces that share only a drawback may both be worn.
+	 *
+	 * A SET ROW GRANTS NOTHING PER PIECE. Granting one per piece would hand a
+	 * single piece its set's two-piece bonus, because the row an item records
+	 * for a set is that set's lowest threshold row. The worn pieces of each set
+	 * are counted instead, and then:
+	 *
+	 *   - every bonus row of that set whose threshold the count reaches is
+	 *     granted, so ten pieces hold the 2-piece, 6-piece and 10-piece bonuses
+	 *     together;
+	 *   - the set's drawback is granted once for the whole set, joining at the
+	 *     first bonus's threshold, which is the owner's ruling of 2026-09-08;
+	 *   - a set with no drawback row grants nothing at all, because
+	 *     `UCataclysmDropRoll::EveryEnchantmentSet` leaves it out. Never a
+	 *     bonus without its cost.
+	 *
+	 * AN ITEM IS ONE PIECE OF A SET however many of its enchantment slots carry
+	 * that set, and an item carrying two different sets is a piece of each.
+	 *
+	 * ALL THREE TABLES ARE NEEDED. Without the two enchantment tables a set row
+	 * cannot be told from any other, so a missing one grants nothing at all.
+	 *
+	 * @param Actions where rows that MOVE A POOL go, or null to skip them. A row
+	 *                naming an action is not a stat modifier and cannot be one,
+	 *                so it leaves by this door instead of through `Totals`. It
+	 *                rides this same walk because the rules about which roll
+	 *                applies -- a benefit once at the higher roll, a drawback per
+	 *                piece at its own -- are the same for both kinds of row and
+	 *                must not be written twice.
+	 *
+	 * @param ExtraRows effect rows to grant as they are, after the worn items',
+	 *                at the set rows' roll, or null for none: the rows a held
+	 *                random buff wears, each already renamed under the buff's
+	 *                own enchantment name
+	 *                (`UCataclysmAbilitySystemComponent::HeldRandomBuffEffectRows`).
+	 *                Built by the same lines as a worn row, so no action is
+	 *                built a second way. Issue #2538, batch 2.
+	 *
+	 * @return how many modifiers were added. ACTIONS ARE NOT COUNTED IN IT: the
+	 *         figure has meant modifiers since issue #45 and a caller reading it
+	 *         as "did anything apply" would be told something different from
+	 *         what it was told before.
+	 */
+	static int32 AccumulateEnchantmentsInto(
+		TMap<FName, TArray<FCataclysmStatModifier>>& Totals,
+		const TArray<FCataclysmItem>& Worn,
+		const UDataTable* EffectTable,
+		const UDataTable* PositiveTable,
+		const UDataTable* NegativeTable,
+		TArray<FCataclysmPoolAction>* Actions = nullptr,
+		const TArray<FCataclysmEnchantmentEffectRow>* ExtraRows = nullptr);
+
+	/**
+	 * The key a row's own stacks are counted under: its enchantment and its
+	 * stat, which the generator never lets two rows share. Issue #1833. Two
+	 * worn copies of one enchantment share it, and so share one count.
+	 */
+	static FName OwnStackKeyFor(const FCataclysmEnchantmentEffectRow& Effect);
+
+	/**
+	 * How far a row scaled by `enemies_in_reach_while_own_stack` counts enemies,
+	 * in metres. Ruled by the project owner on 2026-10-17 for Warlord's Will's
+	 * ten-piece bonus: "+10% more damage per enemy within 8 m". A constant and
+	 * not a cell, because the Enchantment Effects sheet has no reach column;
+	 * `EnchantmentModifierFor` writes it onto the modifier, which is where
+	 * `UCataclysmAbilitySystemComponent::WithEnemiesInReach` reads a reach.
+	 */
+	static constexpr float OwnStackWindowReachMetres = 8.0f;
+
+	/**
+	 * The step a row's scale takes at this roll. Issue #1833, the kill counter.
+	 * `ScaleStep` for a row stating one step; for a row stating
+	 * `ScaleStepHigh`, the number between the two at the roll's place, as
+	 * `UCataclysmItemValues::EnchantmentValue` places a value, so one roll
+	 * picks both of a sentence's numbers.
+	 */
+	static float RolledScaleStep(const FCataclysmEnchantmentEffectRow& Effect, float Roll);
+
+	/**
+	 * How long a row's stacks last at this roll. Issue #1833, ruled 2026-09-30.
+	 * `StackSeconds` for a row stating one time; for a row stating
+	 * `StackSecondsHigh`, the number between the two at the roll's place, the
+	 * way `RolledScaleStep` picks a step.
+	 */
+	static float RolledStackSeconds(const FCataclysmEnchantmentEffectRow& Effect, float Roll);
+
+	/**
+	 * A row's first condition's threshold at this roll. Issue #1833, ruled
+	 * 2026-09-30. `ConditionValue` for a row stating one threshold; for a row
+	 * stating `ConditionValueHigh`, the number between the two at the roll's
+	 * place, the way `RolledScaleStep` picks a step.
+	 *
+	 * A HIGHER ROLL IS A HIGHER THRESHOLD, WHICH MAY BE WORSE. "Your abilities
+	 * are free when above 80%-95% hp" is 80 to 95, so the hover text, which
+	 * shows the sentence's number at the roll, and the threshold agree; the top
+	 * roll is the hardest to meet. A labelled judgement of the same ruling.
+	 */
+	static float RolledConditionValue(const FCataclysmEnchantmentEffectRow& Effect, float Roll);
+
+	/**
+	 * Whether one more kill takes this item across a step of a `weapon_kills`
+	 * row one of its enchantments carries, from a count of `KillsBefore`.
+	 * Issue #1833. The equipment refreshes the grant only when it does.
+	 */
+	static bool KillCrossesAStep(const FCataclysmItem& Item, int32 KillsBefore,
+								 const UDataTable* EffectTable);
+
+	/**
+	 * What a weapon of this TYPE supplies as attack damage.
+	 *
+	 * BY TYPE RATHER THAN BY BASE NAME, because that is what the game currently
+	 * has to ask with. UCataclysmWeaponSlotsComponent equips a weapon TYPE --
+	 * "Greataxe" -- rather than a rolled item, since items that carry a rolled
+	 * damage type and a gear level do not exist yet. Every other function on
+	 * this class takes an FCataclysmItem and should be preferred once they do.
+	 *
+	 * THE TWO-HANDED MULTIPLIER IS APPLIED HERE, and leaving it out would be a
+	 * silent halving. The sheets state a Greataxe at 72 and that is the figure
+	 * BEFORE doubling, so a Greataxe supplies 144 at gear level 10 and about 41
+	 * at gear level 0. FCataclysmItemBaseRow says so, and TwoHandedMultiplier
+	 * explains why two-handers double.
+	 *
+	 * @param GearLevel  0 to 10. The stated values are the +10 figures.
+	 * @return 0 when the table is missing, the type is not a weapon, or the
+	 *         base carries no attack damage implicit
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
+	static float WeaponDamageForType(const UDataTable* BaseTable,
+									 const FString& WeaponType,
+									 int32 GearLevel);
+
+	/**
+	 * How many times a second a weapon type swings.
+	 *
+	 * NOT AN IMPLICIT, UNLIKE THE DAMAGE ABOVE, which is why this reads its own
+	 * column rather than searching the two implicit slots. A weapon's rate is an
+	 * intrinsic property of the base, listed apart from its modifiers -- Path of
+	 * Exile and Last Epoch both treat it that way, and FCataclysmItemBaseRow
+	 * says so on the field itself.
+	 *
+	 * NO GEAR LEVEL, ALSO UNLIKE THE DAMAGE. A weapon does not swing faster for
+	 * being a better example of itself. Increased attack speed comes from
+	 * affixes, which multiply this base -- and multiplied nothing until issue
+	 * #647, because nothing ever wrote this onto a character.
+	 *
+	 * @return 0 when the table is missing or the type is not a weapon. Zero
+	 *         means "no rate at all", which the automatic basic attack reads as
+	 *         never swinging rather than as swinging infinitely fast.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Item")
+	static float WeaponAttackSpeedForType(const UDataTable* BaseTable,
+										  const FString& WeaponType);
+
+	// -- what the weapons actually worn are worth. Issue #840 --------------
+	//
+	// PREFER THESE OVER THE TWO BY TYPE ABOVE. Those take a weapon TYPE because
+	// that is all the game could ask with when they were written, and their own
+	// header says every function taking an FCataclysmItem should be preferred
+	// once rolled items exist. They exist, since issues #828 and #830, and a
+	// type cannot answer at what upgrade level the weapon is held, nor which of
+	// two worn weapons is meant.
+
+	/**
+	 * What one worn weapon supplies as attack damage, at its own upgrade level.
+	 *
+	 * THE UPGRADE LEVEL COMES FROM THE ITEM, which is the whole difference from
+	 * WeaponDamageForType. That function is given a level by its caller, and
+	 * UCataclysmWeaponSlotsComponent passed 0 every time because nothing ever
+	 * set it, so a worn +5 whip was computed as a +0 whip. Issue #840.
+	 *
+	 * IMPLICITS ONLY, NOT AFFIXES, matching `weapon_base_damage` in
+	 * `sim/cataclysm_sim/player_damage.py`, which is the model these numbers
+	 * were tuned against. A weapon's attack damage AFFIXES are a separate
+	 * question and are not answered here or anywhere else yet.
+	 *
+	 * @return 0 when the table is missing, the base is not in it, or the base
+	 *         carries no attack damage implicit. A Shield returns 0.
+	 */
+	static float WeaponDamageForItem(const FCataclysmItem& Item,
+									 const UDataTable* BaseTable);
+
+	/**
+	 * Whether a worn weapon supplies any attack damage at all.
+	 *
+	 * A SHIELD DOES NOT, and it is the only weapon today that does not. The rule
+	 * reads the base's own implicits rather than naming the Shield, so another
+	 * weapon of the same kind needs no change here. `armed_weapons_in` in
+	 * `sim/cataclysm_sim/player_damage.py` says the same thing the same way:
+	 * a weapon granting no damage contributes nothing to the basic attack,
+	 * neither damage nor swing rate.
+	 */
+	static bool WeaponIsArmed(const FCataclysmItem& Item,
+							  const UDataTable* BaseTable);
+
+	/**
+	 * The attack damage a character's worn weapons supply between them. SUMMED.
+	 *
+	 * THE DESIGN SAYS SUM, and this is the code that makes it true. From the
+	 * Dual Wielding section of `docs/Cataclysm_GDD_v2.md`: "this game blends two
+	 * weapons into one swing, summing their base damage and averaging their
+	 * attack speed, so there is no first weapon for the swing to belong to."
+	 * Before issue #840 the game answered with one weapon's damage, taken from
+	 * whichever weapon slot happened to be occupied first, so a second weapon
+	 * changed nothing at all.
+	 *
+	 * Weapons supplying no damage are skipped, so a weapon with a Shield is
+	 * worth the weapon.
+	 */
+	static float BlendedWeaponDamage(const TArray<FCataclysmItem>& Weapons,
+									 const UDataTable* BaseTable);
+
+	/**
+	 * The rate a character's worn weapons swing at. AVERAGED.
+	 *
+	 * AVERAGED RATHER THAN SUMMED, AND THAT ASYMMETRY IS THE POINT. It is what
+	 * stops summing damage being a strict advantage: a character holding two
+	 * weapons deals more per swing than either alone but does not also swing at
+	 * the faster weapon's rate. `attack_speed_of` in
+	 * `sim/cataclysm_sim/affixes.py` records that both Path of Exile and Last
+	 * Epoch resolve it the same way, Path of Exile by alternating hands.
+	 *
+	 * AVERAGED OVER THE WEAPONS THAT ARM, so a weapon held with a Shield swings
+	 * at its own rate rather than at the mean of itself and a shield that is
+	 * never swung.
+	 *
+	 * NOT MULTIPLIED BY ANYTHING. The two-handed multiplier applies to a
+	 * weapon's implicits and affixes, and a rate is neither.
+	 *
+	 * @return 0 when nothing armed is worn, which the automatic basic attack
+	 *         reads as never swinging rather than as swinging infinitely fast.
+	 */
+	static float BlendedAttackSpeed(const TArray<FCataclysmItem>& Weapons,
+									const UDataTable* BaseTable);
+};

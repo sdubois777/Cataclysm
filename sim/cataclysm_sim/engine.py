@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 from . import combat, scoring
 from .config import CityTier, DungeonType, SurgeMode, TuningConfig
-from .modifiers import MODIFIERS
+from .modifiers import CORRUPTED_STALKER, pool_for
 from .patterns import DEFAULT as PATTERN_DEFAULT, PATTERNS
 from .world import City, Empire, build_empire
 
@@ -24,6 +24,75 @@ SCORING_TYPE = {
     DungeonType.FALLEN_CITY: "Fallen City",
     DungeonType.CATACLYSM: "Cataclysm",
 }
+
+
+def cataclysm_order_for(cfg: TuningConfig, seed: int) -> tuple[str, ...]:
+    """The order this campaign's character adds Cataclysms in, all eight of them.
+
+    A CAMPAIGN IN THIS MODEL IS ONE RUN BY ONE CHARACTER, and that is what
+    decides how this is seeded. `Simulation` plays a single run at a single
+    `cfg.tier`: it ends the first time a Cataclysm dungeon is cleared or lost
+    in, it never advances a tier, and nothing loops. The character it belongs
+    to is implicit -- it drew this order when it was created, climbed to
+    `cfg.tier`, and so faces the first `cfg.tier` entries.
+
+    THE SEED IS THE CHARACTER. That one line is what makes the model obey the
+    project owner's ruling of 2026-09-06 -- "if they are on t3 with
+    demonic/war/death they restart with those same cataclysms" -- rather than
+    merely not contradicting it:
+
+    - Replaying a failed run is re-running the same seed, and the same seed
+      draws the same order, so the replay meets the same Cataclysms. The design
+      calls that a property of the character; here it is a property of the
+      seed, and they are the same thing.
+    - The same seed at tier N+1 draws the same order, so its active set is the
+      tier N set plus one. That is one character climbing, not two unrelated
+      worlds.
+    - Different seeds are different characters, which is why averaging over
+      campaigns now measures what a population of players meets rather than
+      what one fixed world does.
+
+    IT IS DRAWN FROM ITS OWN GENERATOR, not from `Simulation.rng`. Two reasons,
+    and the second matters more. Taking these draws from the main stream would
+    shift every later draw in the campaign, so a config change that altered the
+    count would silently re-roll the whole run. And sweeps compare cells over a
+    shared block of seeds; a private generator keyed only on the seed means two
+    cells that differ in policy or empire tree still face the same 250
+    characters, so the draw is common to both and cancels in the difference.
+
+    THAT IS WHY THE NOISE FLOOR DOES NOT MOVE, and it was measured rather than
+    argued. Issue #1338's decision expected sweeps to get noisier. Over 16
+    disjoint blocks of 250 campaigns per cell -- 4,000 campaigns per condition
+    -- at difficulty tier 1, the `triage` policy, no tree against the Architect
+    preset, the floor for a difference between two cells sharing a seed block is
+    3.0 points under this draw against 2.9 under the old fixed one at surge size
+    5, the calibrated value the balance report uses, and 2.3 against 2.2 at the
+    raw default of 4. Unpaired -- two cells on different seeds -- it is 1.7
+    against 1.7 at surge 5 and 2.7 against 1.9 at surge 4. So only the unpaired
+    floor moves, only at the surge size `exp_calibrate` rejected.
+    (WRITTEN WHEN THE RAW DEFAULT WAS 4 DUNGEONS EVERY 120 DAYS. Since
+    2026-10-13 it is 5 every 90. These figures were not re-measured.)
+
+    `random.Random` seeds from a string via SHA-512, so this is stable across
+    processes and Python versions in a way `hash()` is not.
+
+    UNIFORM OVER ORDERINGS IS THIS MODEL'S ASSUMPTION AND NOT A DESIGN
+    DECISION. The owner's ruling says the order is drawn per character and no
+    more. Whether every ordering is equally likely, and whether any pairing is
+    constrained, are both explicitly open -- `docs/DECISIONS.md` lists them and
+    issue #1338 carries them. A uniform shuffle is the assumption that adds
+    nothing the owner did not say; it is not evidence about what the game will
+    do, and this docstring is where that is recorded so a later reader does not
+    mistake the shuffle for a decision.
+    """
+    order = list(cfg.CATACLYSM_ROSTER)
+    random.Random(f"cataclysm-order:{seed}").shuffle(order)
+    return tuple(order)
+
+
+def active_cataclysms_for(cfg: TuningConfig, seed: int) -> tuple[str, ...]:
+    """The Cataclysms active in this campaign: the first N of its draw."""
+    return cataclysm_order_for(cfg, seed)[:cfg.active_cataclysm_count()]
 
 
 class _Craft:
@@ -39,14 +108,29 @@ CRAFT = _Craft()
 class Dungeon:
     did: int
     dtype: DungeonType
-    city_id: int
+    #: Which city it stands on. A Quest dungeon's changes when it relocates.
+    #:
+    #: **NONE FOR THE EARNED CATACLYSM BOSS DUNGEON, WHICH STANDS ON NO CITY**,
+    #: since 2026-11-02. The project owner, verbatim: "On no city
+    #: (Recommended)". It never bites a city, no timer runs on it, and the
+    #: Last Stand moving it to the Pillar is issue #43's. Until then
+    #: `_maybe_open_cataclysm` put it on the Pillar. Every reader of this field
+    #: either cannot meet that dungeon or asks `cities.get` and treats None as
+    #: no city; `docs/DECISIONS.md`, 2026-11-02, lists them. Issue #1324.
+    city_id: int | None
+    #: THE TIER ITS DEPTH WAS ROLLED FROM, WHICH IS NOT "THE HOST'S TIER". It
+    #: is set once, at creation, from the city the surge put it on, and it does
+    #: NOT move when a Quest dungeon relocates -- `floors` does not move either,
+    #: and `_resolve` divides one by the other. See `_resolve` for the defect
+    #: that came of assigning the new host's tier here, and the owner's ruling
+    #: of 2026-09-06, "Keeps everything, fix the size". Issue #1324.
     city_tier: CityTier
     floors: int
     run_days: int
     resolve_max: int
     resolve_in: float
-    defense_bite: float
-    population_bite: float
+    defense_damage: float
+    population_damage: float
     spawned_day: int
     subtype: str = "None"
     modifier_names: tuple[str, ...] = ()
@@ -55,11 +139,63 @@ class Dungeon:
     is_last_stand: bool = False
     source: str = ""            # which Cataclysm sent it
     times_resolved: int = 0
+    #: Of `floors`, how many the empire tree added. Negative when the tree
+    #: removed floors. Set once by `Simulation._make_dungeon`; 0 for a
+    #: dungeon built by hand and for a campaign with no tree.
+    tree_floors: int = 0
+    #: A Hollow's natural floors when it was made, which its shrinking is
+    #: measured from; 0 for every other dungeon. Set by `_make_dungeon`.
+    hollow_from: int = 0
+    #: The day this dungeon reached the city it stands on now. None until it
+    #: first moves, and then `spawned_day` is that day.
+    arrived_day: int | None = None
+
+    def days_on_its_city(self, day: int) -> int:
+        """Days this dungeon has stood on the city it stands on now.
+
+        WHAT A SIEGE'S GROWTH COUNTS, since 2026-10-17 (the owner's choice is
+        quoted at `TuningConfig.quest_sieges_per_wave_max`). Only a Quest
+        dungeon moves, so for every other dungeon this is its age. NEVER
+        NEGATIVE: a dungeon built by hand in a test may carry a spawn day later
+        than the clock, and a negative age would heal the city.
+        """
+        since = self.spawned_day if self.arrived_day is None else self.arrived_day
+        return max(0, day - since)
+
+    def siege_bite_share(self, quest_scale: float) -> float:
+        """The share of an ordinary Siege's daily damage this one deals:
+        `quest_scale` for a Quest dungeon, 1.0 for any other."""
+        return quest_scale if self.dtype is DungeonType.QUEST else 1.0
+
+    @property
+    def natural_floors(self) -> int:
+        """The depth this dungeon has without the empire tree.
+
+        WHAT A HIT IS SIZED BY, since 2026-10-13: the depth rolled from the
+        dungeon's row, times its Cataclysm pattern's multiplier, and not
+        the floors the tree added or removed. `floors` is still the depth
+        for the walk, the timer, the power, the death chance and the
+        reward.
+
+        `floors - tree_floors` AND NOT A SECOND STORED DEPTH, so a depth
+        changed after the dungeon was made, as the Last Stand and the
+        earned boss do and as tests do, moves this with it, and only the
+        tree's part is left out.
+        """
+        return self.floors - self.tree_floors
 
     @property
     def resolves(self) -> bool:
-        """Quest dungeons refresh instead of resolving; Fallen City and
-        Cataclysm dungeons have already done their damage."""
+        """Only an ordinary dungeon resolves; Fallen City and Cataclysm
+        dungeons have already done their damage.
+
+        A QUEST DUNGEON ANSWERS False AND STILL HITS ITS CITY, since
+        2026-10-13. Its timer running out takes an ordinary dungeon's hit
+        from its host through `Simulation._quest_hit`, and that path does
+        not ask this property. This one is read by a death, which resolves
+        an ordinary dungeon and no other kind, by `_urgent`, and by the
+        policies, and none of the three changed on that date.
+        """
         return self.dtype is DungeonType.BASIC
 
 
@@ -73,24 +209,54 @@ class RunResult:
     bulwarks_lost: int
     sanctuaries_lost: int
     dungeons_cleared: int
+    #: A DEATH IN AN ORDINARY DUNGEON IS ONE OF THOSE TIMES, since 2026-10-12.
+    #: It detonates the dungeon through `_resolve`, where the tally is raised,
+    #: so the field below counts timers that ran out AND deaths that resolved.
+    #: With `death_resolves_dungeon` False it counts the timers alone.
     dungeons_resolved: int          # times a dungeon detonated undefeated
     objectives: int                 # quest dungeons cleared toward the win
     floors_cleared: int             # loot proxy -- reward scales with depth
     surges: int
+    #: Of `surges`, how many the empty board pulled forward rather than the
+    #: clock delivering. Issue #1406. 0 with `surge_on_empty_board` off, which
+    #: is what every figure measured before 2026-09-07 describes.
+    surges_from_empty_board: int
     final_surge_gap: float
     final_surge_count: int
     empire_points: float
+    # The same awards before the population multiplier, so a run records the
+    # multiplier it actually experienced rather than only its outcome. WITHOUT
+    # THIS THE MEASUREMENT IS AMBIGUOUS: a scaled award over many clears and a
+    # flat award over few are indistinguishable in the output, which is the
+    # failure issue #1327 documents. Accumulated in the same campaign, so the
+    # flat-versus-scaled difference is deterministic per run and needs no
+    # second batch to compare against. Issue #1348.
+    empire_points_flat: float
     power: float                    # final player power
     crafts: int
     craft_days: int
     deaths: int
     min_distance_to_defeat: int   # closest the Cataclysm ever came (3 = untouched)
     last_stand: bool              # did the Cataclysm reach the Pillar?
+    # THE EARNED BOSS ONLY, never the Last Stand: the two are built by different
+    # rules and the owner ruled on 2026-09-06 that the Last Stand takes none of
+    # the earned growth. Whether a Last Stand happened is `last_stand` above.
+    cataclysm_floors: int         # how deep it was, 0 if it never opened
+    cataclysm_floors_earned: int  # of those, how many came from clearing
     final_population_frac: float
     idle_days: int                  # days with nothing worth doing
     decision_days: int              # free days facing 2+ urgent dungeons
     free_days: int                  # days the player was choosing at all
     overcommitted: int              # dungeons entered that could not finish in time
+    #: How many of the active Cataclysms met their own quest count. THIS IS THE
+    #: QUANTITY THE WIN READS, unlike `objectives`, which is a whole-campaign
+    #: total across every active Cataclysm: `_maybe_open_cataclysm` opens the
+    #: capital once `cataclysms_required()` of these are finished. Issue #1436.
+    cataclysms_finished: int
+    #: Times a Quest dungeon's timer ran out and hit a standing city. NOT
+    #: PART OF `dungeons_resolved`. 0 with `quest_timer_hits_city` off,
+    #: which is what every figure measured before 2026-10-13 describes.
+    quest_hits: int = 0
 
     @property
     def triage_pressure(self) -> float:
@@ -102,30 +268,91 @@ class RunResult:
         """
         return 0.0 if self.free_days == 0 else self.decision_days / self.free_days
 
+    @property
+    def empire_points_multiplier(self) -> float:
+        """The population multiplier this run actually experienced, weighted by
+        what each clear was worth.
+
+        VALUE-WEIGHTED ON PURPOSE, not a plain mean of the per-clear fractions.
+        A Cataclysm is worth 25 points against a Basic dungeon's 1 and is
+        cleared last, when the population is lowest, so an unweighted mean
+        would flatter the run by counting the cheap early clears equally.
+
+        1.0 when nothing was cleared: no award was scaled, so no multiplier was
+        experienced. Issue #1348.
+        """
+        if self.empire_points_flat <= 0.0:
+            return 1.0
+        return self.empire_points / self.empire_points_flat
+
 
 class Simulation:
     def __init__(self, cfg: TuningConfig, seed: int = 0):
         self.cfg = cfg
         self.rng = random.Random(seed)
+        # KEPT FOR STREAMS OF ITS OWN, which must not draw on `rng`. See
+        # `_carries_the_corrupted_stalker`.
+        self.seed = seed
         self.empire: Empire = build_empire(cfg)
         self.dungeons: dict[int, Dungeon] = {}
         self._next_did = 0
 
         self.day = 0
         self.last_stand: Dungeon | None = None
+        #: The Cataclysm dungeon opened by meeting the quest objectives, kept
+        #: because clearing it removes it from everywhere else. A run can hold
+        #: this AND a Last Stand: the Cataclysm can still reach the Pillar after
+        #: the objectives were met.
+        self.cataclysm: Dungeon | None = None
         self.next_surge_day = 0.0
         self.surge_index = 0        # how many surges have happened
+        #: Quest dungeons moved off a city as it fell, since 2026-10-16.
+        self.quest_moves_on_a_fall = 0
+        #: Void stacks added to cities, and cities erased by reaching
+        #: `void_stacks_to_erase`, since 2026-10-18.
+        self.void_stacks_added = 0
+        self.void_erasures = 0
+        #: The Cataclysm `trigger_surge` is making a dungeon for, read by
+        #: `_make_dungeon`; empty outside that call.
+        self.making_for = ""
+        #: The natural depth `_fall` gives the Fallen City it is making, read by
+        #: `_make_dungeon`; None outside that call. Issue #1341. An attribute
+        #: rather than a parameter, as `making_for` is, so a subclass that
+        #: overrides `_make_dungeon` with its old parameters still works.
+        self.making_floors: int | None = None
         self.surge_log: list[tuple[int, float, int]] = []  # (day, gap, count)
+        #: Of those, how many were pulled forward by the board being empty
+        #: rather than arriving on the clock. Issue #1406. Counted so that a
+        #: figure stated per campaign can say which kind it is counting -- under
+        #: this rule the number of surges in a campaign stops being a fixed
+        #: budget, so "surges per campaign" changes meaning rather than value.
+        self.surges_from_empty_board = 0
 
         self.current: Dungeon | None = None
         self.crafting = False
         self.dying = False
         self.days_remaining = 0
+        #: The days the walk under way has spent and the empire has not yet
+        #: run, with `days_resolve_on_exit` on. See `_walk_day`.
+        self.owed_days = 0
+        #: The dungeon whose walk's days are running, while `_settle_owed`
+        #: runs them: it still counts as the one the player is inside, so its
+        #: timer and its Hollow shrink stay paused. `None` otherwise.
+        self.settling_inside: int | None = None
 
-        # Active Cataclysms pool their modifiers together.
-        self.active_types = cfg.CATACLYSM_ROSTER[:max(1, cfg.active_cataclysms)]
-        self.modifier_pool = [m for t in self.active_types
-                              for m in MODIFIERS.get(t, [])]
+        # Active Cataclysms pool their modifiers together, plus the Generic
+        # ones, which every Cataclysm can draw. `modifiers.pool_for` owns that
+        # rule so this and `analyse_dungeons.py` cannot disagree about it.
+        #
+        # HOW MANY comes from the difficulty tier and WHICH ONES from this
+        # campaign's character. Both were fixed before issue #1338: the count
+        # was 1 whatever the tier, and the set was always the first N of a
+        # tuple beginning with Demonic -- the one Cataclysm of the eight that
+        # ignores the frontier, so every lane-based figure this model has ever
+        # produced was measured against the one that does not respect lanes.
+        # `cataclysm_order_for` explains why the seed is the character.
+        self.active_types = active_cataclysms_for(cfg, seed)
+        self.modifier_pool = pool_for(self.active_types)
 
         self.tier_min, self.tier_max = scoring.tier_bounds(cfg.tier)
         self.tier_width = self.tier_max - self.tier_min
@@ -138,10 +365,36 @@ class Simulation:
 
         # tallies
         self.objectives = 0
+        #: Objectives earned FOR EACH ACTIVE CATACLYSM, which is what the
+        #: unlock rule reads. `objectives` above is still the run's total and is
+        #: still what `RunResult` reports; the two answer different questions
+        #: and the total cannot answer this one. Every active Cataclysm is a key
+        #: from the start, so a Cataclysm that has never landed a quest dungeon
+        #: reads as 0 rather than as absent. Issues #1324 and #1357.
+        self.objectives_by_type: dict[str, int] = {t: 0 for t in self.active_types}
         self.cleared = 0
+        #: Ordinary dungeons cleared, which is what deepens the earned boss.
+        #: NOT `cleared`, which counts every kind. See
+        #: `cataclysm_floors_per_dungeon_cleared`.
+        self.basic_cleared = 0
+        #: The earned boss's depth before any growth: what it rolled when it
+        #: opened, 0 until then. Its depth is this plus `basic_cleared` times
+        #: `cataclysm_floors_per_dungeon_cleared`, worked out again on every
+        #: ordinary clear by `_deepen_cataclysm`. Issue #1324 slice 6b.
+        self.cataclysm_base_floors = 0
+        #: Floors the earned boss has gained from `basic_cleared`: those
+        #: cleared before it opened AND after, since 2026-11-02.
+        self.cataclysm_floors_earned = 0
         self.resolved = 0
+        #: Times a Quest dungeon's timer ran out and hit a standing city.
+        #: NOT PART OF `resolved`, which counts ordinary dungeons alone.
+        self.quest_hits = 0
         self.floors_cleared = 0     # loot proxy: reward scales with depth
         self.empire_points = 0.0
+        #: The same awards WITHOUT the population multiplier. Carried so a run
+        #: records the multiplier it actually experienced; see
+        #: `RunResult.empire_points_multiplier`. Issue #1348.
+        self.empire_points_flat = 0.0
         self.idle_days = 0
         self.decision_days = 0
         self.free_days = 0
@@ -157,14 +410,49 @@ class Simulation:
         spec = cfg.spec(dtype, city.tier)
         lo, hi = spec.floors
         floors = max(1, int(round(self.rng.randint(lo, hi) * floors_mult)))
+        # A FALLEN CITY IS AS DEEP AS WHAT IT ABSORBED, since issue #1341; `_fall`
+        # says how deep in `making_floors`. THE ROLL ABOVE IS STILL DRAWN AND
+        # THEN DISCARDED, a labelled judgement: it keeps every later draw of the
+        # campaign where it was, so a measurement of this change sees the depth
+        # move and nothing else.
+        if self.making_floors is not None:
+            floors = self.making_floors
 
-        # Floor deltas from the tree change depth, and because one floor costs
-        # one day they change run time and reward at the same time.
-        floors = max(1, int(round(floors + cfg.tree.floor_delta)))
+        # THE NATURAL DEPTH, kept apart from what the tree does next. The
+        # Cataclysm pattern's `floors_mult` is inside it: the pattern is part
+        # of what the dungeon is, which is a labelled judgement of
+        # 2026-10-13. A hit is sized by this; see `_hit_floors`.
+        natural = floors
+
+        # Floor deltas from the tree change depth, and because this model charges
+        # one day a floor they change run time and reward at the same time. The
+        # game can separate the two; this model cannot. Until 2026-10-13 they
+        # changed the size of the dungeon's hit as well.
+        #
+        # NO CATACLYSM-TYPE DUNGEON TAKES THE PER-CATACLYSM FLOORS, since
+        # 2026-10-30. `Infinite Depths` deepens ordinary, Quest and Fallen City
+        # dungeons and not the Cataclysm boss dungeon -- the project owner, "Not
+        # to the boss dungeon" -- and the Last Stand is that dungeon moved to the
+        # Pillar (the design document's "Last Stand", lead sentence), so neither
+        # is deepened. Counting no active Cataclysms leaves the tree's flat
+        # floors (`floor_delta`) on both. `docs/DECISIONS.md`, 2026-10-30.
+        per_type = (0 if dtype is DungeonType.CATACLYSM
+                    else cfg.active_cataclysm_count())
+        floors = max(1, int(round(floors + cfg.tree.floors_added(per_type))))
 
         # Subtype and modifiers. One modifier per tier; Sacrificial starts with
         # double, which is exactly what makes it a gamble worth taking.
-        subtype = self._roll_subtype(dtype)
+        # A QUEST DUNGEON TAKES ITS CATACLYSM'S SUB-TYPE, since 2026-10-16
+        # (`TuningConfig.QUEST_SUBTYPE_BY_CATACLYSM` quotes the owner), and takes
+        # no draw for it. One made without a Cataclysm rolls as before.
+        # THE CATACLYSM COMES IN `self.making_for`, set by `trigger_surge` around
+        # this call rather than as a parameter, so a subclass that overrides this
+        # method with its old parameters (several tests do) still works.
+        source = self.making_for
+        if dtype is DungeonType.QUEST and source in cfg.QUEST_SUBTYPE_BY_CATACLYSM:
+            subtype = cfg.QUEST_SUBTYPE_BY_CATACLYSM[source]
+        else:
+            subtype = self._roll_subtype(dtype, city)
         n_mods = cfg.modifiers_per_tier * cfg.tier
         if subtype == "Sacrificial":
             n_mods *= cfg.sacrificial_modifier_multiplier
@@ -173,18 +461,32 @@ class Simulation:
         if pool and n_mods > 0:
             k = min(n_mods, len(pool))
             picked = self.rng.sample(pool, k)
+        # THE CORRUPTED STALKER, OUTSIDE THE SLOTS AND OFF `rng`. Issue #1308.
+        if self._carries_the_corrupted_stalker(self._next_did):
+            picked.append(CORRUPTED_STALKER)
         mod_score = sum(s for _, s in picked)
 
-        if dtype is DungeonType.BASIC:
+        if dtype in (DungeonType.BASIC, DungeonType.QUEST):
             # Timer scales with depth, so a deep dungeon is a big commitment
             # rather than an automatic loss.
+            #
+            # A QUEST DUNGEON'S TOO, SINCE 2026-10-16. The owner decided its
+            # timer scales with its depth like other dungeons; until then it was
+            # a flat 25 days. The same formula on its own floors, with the same
+            # variation and the tree's resolve bonus: a labelled judgement of
+            # the coordinating session under that decision. Since 2026-10-13
+            # its timer running out hits its host; see `_quest_hit`.
+            #
+            # THE VARIATION IS NOW DRAWN FOR A QUEST DUNGEON AS WELL, so every
+            # campaign's stream differs from its first Quest dungeon on. The
+            # game already draws it for every kind.
             base = cfg.resolve_base_days + floors * cfg.resolve_floor_ratio
             jitter = 1.0 + self.rng.uniform(-cfg.resolve_jitter, cfg.resolve_jitter)
             resolve = base * jitter + cfg.tree.resolve_bonus_days
         else:
-            # Quest dungeons relocate, Fallen Cities and the Cataclysm have
-            # already done their damage. None of them detonate.
-            resolve = spec.resolve_days[0]
+            # Fallen Cities and the Cataclysm have already done their damage
+            # and do not detonate.
+            resolve = cfg.fallen_city_resolve_days
 
         d = Dungeon(
             did=self._next_did,
@@ -192,22 +494,76 @@ class Simulation:
             city_id=city.cid,
             city_tier=city.tier,
             floors=floors,
+            tree_floors=floors - natural,
             # Cow Level: "time to complete is doubled and cannot be reduced".
-            run_days=(self.run_days_for(floors) if subtype != "Cow Level"
-                      else max(1, int(math.ceil(floors * cfg.days_per_floor)) * 2)),
+            run_days=self._walk_days(floors, subtype),
             resolve_max=int(resolve),
             resolve_in=float(resolve),
-            defense_bite=spec.defense_bite,
-            population_bite=spec.population_bite,
+            defense_damage=spec.defense_damage,
+            population_damage=spec.population_damage,
             spawned_day=self.day,
             subtype=subtype,
             modifier_names=tuple(n for n, _ in picked),
             modifier_score=mod_score,
             power_scale=1.0 + cfg.dungeon_power_escalation_per_100_days * (self.day / 100.0),
         )
+        if subtype == "Hollow":
+            d.hollow_from = natural
         self._next_did += 1
         self.dungeons[d.did] = d
         return d
+
+    def _carries_the_corrupted_stalker(self, did: int) -> bool:
+        """Whether the dungeon about to be made with this id carries the
+        Corrupted Stalker.
+
+        ONE ROLL A DUNGEON, ON A STREAM OF ITS OWN, made from the run's seed and
+        the dungeon's id, ruled by the coordinating session on 2026-10-25. A roll
+        on the shared `rng` would shift every later draw of the campaign, so a
+        measurement could not tell the Stalker's own 20 from everything else
+        moving. The game does the same on a stream of its own.
+
+        A FLAT CHANCE ON EVERY DUNGEON, Sacrificial and Cataclysm dungeons
+        included, and once at most: it is outside the slots, so nothing doubles
+        it. `TuningConfig.corrupted_stalker_chance`.
+        """
+        chance = self.cfg.corrupted_stalker_chance
+        if chance <= 0.0:
+            return False
+        return random.Random(f"corrupted-stalker:{self.seed}:{did}").random() < chance
+
+    def _walk_days(self, floors: int, subtype: str) -> int:
+        """How many days walking a dungeon of this depth and sub-type costs.
+
+        WHY THIS IS NOT SIMPLY `run_days_for`. A Cow Level's time "is doubled
+        and cannot be reduced", which is two rules: the doubling, and that the
+        tree's reduction does not apply. `run_days_for` applies the reduction,
+        so a Cow Level must not go through it.
+
+        `_make_dungeon` CALLS IT FOR EVERY DUNGEON, and that is where the branch
+        below actually fires: an ordinary Cow Level really does walk in twice
+        the days.
+
+        THE OTHER CALLERS are the ones that change a dungeon's depth AFTER
+        `_make_dungeon` built it and have to work the days out again.
+        `_deepen_cataclysm` (the earned boss, when it opens and on every
+        ordinary clear after, since 2026-11-02) and `_open_last_stand` both do
+        that.
+
+        **BOTH OF THOSE BUILD A CATACLYSM DUNGEON, AND A CATACLYSM DUNGEON CAN
+        NO LONGER BE A COW LEVEL**, so neither of them can reach the branch
+        below -- which is a statement about those two callers and not about the
+        branch, which `_make_dungeon` keeps reaching. The
+        project owner ruled that on 2026-09-06 -- see `subtypes_allowed_on` --
+        and it is what closes issue [#1333], which was about a Cow Level Last
+        Stand losing its doubling to a bare `run_days_for`. They are called
+        through this helper anyway, so that a later dungeon kind which CAN be a
+        Cow Level and CAN change its depth gets the rule without anyone
+        remembering to add it.
+        """
+        if subtype == "Cow Level":
+            return max(1, int(math.ceil(floors * self.cfg.days_per_floor)) * 2)
+        return self.run_days_for(floors)
 
     def run_days_for(self, floors: int) -> int:
         """UNKNOWN #1, and the single most consequential formula in the game.
@@ -218,7 +574,7 @@ class Simulation:
         """
         cfg = self.cfg
         base = floors * cfg.days_per_floor
-        days = base - cfg.tree.run_days_flat
+        days = base - cfg.tree.days_removed(cfg.active_cataclysm_count())
         days *= cfg.tree.run_days_mult
         days = max(cfg.run_days_min, min(cfg.run_days_max, days))
         return int(math.ceil(days))
@@ -227,11 +583,12 @@ class Simulation:
 
     def dungeon_power(self, d: Dungeon) -> float:
         """The dungeon's headline difficulty -- its middle floor, rarity-mixed,
-        including its modifiers."""
+        including its modifiers, less the content relief at tier 2 and up
+        (`TuningConfig.content_relief`), the same relief `death_chance` gives."""
         cfg = self.cfg
         base = scoring.dungeon_score(cfg.tier, SCORING_TYPE[d.dtype], d.subtype,
                                      d.floors, d.modifier_score)
-        return base * d.power_scale
+        return (base - cfg.content_relief() * self.tier_width) * d.power_scale
 
     def death_chance(self, d: Dungeon) -> float:
         """Overwhelm, evaluated across the dungeon's whole floor range.
@@ -244,6 +601,15 @@ class Simulation:
         # power_scale represents the Cataclysm strengthening over the run; fold
         # it in by treating the player as correspondingly weaker.
         effective_power = self.power / max(1e-9, d.power_scale)
+        # CONTENT RELIEF AT TIER 2 AND UP, issue #1425. Every enemy score lowered
+        # by `content_relief` tier widths, which against the player is the same
+        # as adding that many to the player's power after the scale above:
+        # (score - r x width) x scale compared with power is score compared
+        # with power / scale + r x width. Zero at tier 1, so it is untouched
+        # (tiers 2 and 3 since 2026-10-30). It lives here and not in `scoring.py`, which is a copy of
+        # another repository's file, and it does not reach the experience a
+        # kill grants, which reads the score itself.
+        effective_power += cfg.content_relief() * self.tier_width
         return combat.death_chance(
             player_power=effective_power,
             tier=cfg.tier,
@@ -257,12 +623,92 @@ class Simulation:
                          else "Boss"),
             rate=cfg.overwhelm_rate,
             cap=cfg.overwhelm_cap,
+            extra_per_floor=(self.average_modifier_score()
+                             if d.subtype == "Ascendant" else 0.0),
+            extra_cap=(cfg.ascendant_extra_modifiers_cap
+                       if d.subtype == "Ascendant" else 0),
         )
 
-    def _roll_subtype(self, dtype: DungeonType) -> str:
+    def average_modifier_score(self) -> float:
+        """The mean score of the modifiers this campaign's dungeons draw from;
+        0 with none."""
+        pool = self.modifier_pool
+        return sum(s for _, s in pool) / len(pool) if pool else 0.0
+
+    def sieges_on(self, city_id: int) -> int:
+        """How many Siege dungeons are standing on this city."""
+        return sum(1 for d in self.dungeons.values()
+                   if d.subtype == "Siege" and d.city_id == city_id)
+
+    def subtypes_allowed_on(self, dtype: DungeonType) -> list[str]:
+        """The sub-types this kind of dungeon may roll, in weight order.
+
+        **A CATACLYSM DUNGEON MAY NOT BE A COW LEVEL OR A SIEGE, AND THOSE ARE
+        THE ONLY EXCLUSIONS THERE ARE.** (A Quest dungeon a surge makes does not
+        roll at all since 2026-10-16: it takes its Cataclysm's sub-type,
+        `TuningConfig.QUEST_SUBTYPE_BY_CATACLYSM`.) The project owner ruled on
+        2026-09-06, verbatim:
+        "Last stand is a cataclysm dungeon and should not be allowed to roll as
+        a cow level sub type." Asked how far to take it they answered "Only the
+        one you ruled". The Siege joined it on 2026-11-02, ruled by the
+        coordinating session for issue #1324 slice 6b: the earned boss stands
+        on no city, and a Siege's whole effect is a daily bite on its city. The
+        other 26 pairs stay legal and nothing here may be read as a statement
+        about any of them. Issue #1333; `config.SUBTYPES_FORBIDDEN_ON` carries
+        the rule and the reasoning.
+
+        WHY THE RULING WAS MADE THAT WAY RATHER THAN AS A REPAIR. A Cow Level's
+        time "is doubled and cannot be reduced", and `_open_last_stand` recomputed
+        the walk after adding its floor bonuses, dropping the doubling. Offered
+        the repair, the owner removed the situation instead. The Last Stand's
+        construction is therefore still left alone and the defect can no longer
+        occur, which is why `_open_last_stand` needs no special case.
+        """
+        forbidden = self.cfg.SUBTYPES_FORBIDDEN_ON.get(dtype, ())
+        return [n for n in self.cfg.SUBTYPE_SPAWN_WEIGHTS
+                if n not in forbidden]
+
+    def _roll_subtype(self, dtype: DungeonType, city: City) -> str:
+        """One sub-type, respecting "Max 1 per city" for the Siege and the one
+        dungeon-type exclusion in `subtypes_allowed_on`.
+
+        A REFUSED SIEGE IS REDISTRIBUTED RATHER THAN DROPPED, so the dungeon
+        still gets a sub-type -- every dungeon has one since issue #1293. That
+        is what makes the Siege share of dungeons REACHING THE MAP lower than
+        its share of dungeons ROLLED: 7.5 in 100 rolled, and about 6.8 in 100
+        arriving, measured over twenty campaigns of this model. Issue #1329.
+
+        THOSE WERE 15 AND 12.7 UNTIL 2026-09-06, the second measured over twenty
+        campaigns of the C++ implementation. The owner halved the spawn weight
+        on issue #1349. The gap between rolled and arriving is proportionally
+        narrower now because a rarer Siege meets the one-per-city cap less
+        often, which is the rule working rather than the rule weakening.
+
+        **A SUB-TYPE THE DUNGEON'S KIND FORBIDS IS REDISTRIBUTED THE SAME WAY,
+        AND FOR THE SAME REASON**, but it is done by shortening the list the
+        draw is taken from rather than by refusing afterwards. Both give each
+        remaining sub-type a share in proportion to its weight; taking the
+        shorter list costs no second draw, which the C++ port
+        (`UCataclysmSurgeScheduler::RollSubType`) requires -- the wave rolls
+        every dungeon from one stream, so a roll whose cost varied would make
+        each dungeon depend on what the one before it drew.
+
+        THE SIEGE REFUSAL STILL COSTS A SECOND DRAW HERE and does not in the
+        game; that difference predates this and is issue #1329's territory, not
+        this one's.
+        """
         w = self.cfg.SUBTYPE_SPAWN_WEIGHTS
-        names = list(w)
-        return self.rng.choices(names, weights=[w[n] for n in names], k=1)[0]
+        names = self.subtypes_allowed_on(dtype)
+        picked = self.rng.choices(names, weights=[w[n] for n in names], k=1)[0]
+
+        if picked != "Siege":
+            return picked
+        if self.sieges_on(city.cid) < self.cfg.siege_max_per_city:
+            return picked
+
+        others = [n for n in names if n != "Siege"]
+        return self.rng.choices(
+            others, weights=[w[n] for n in others], k=1)[0]
 
     def can_craft(self) -> bool:
         return self.materials >= self.cfg.craft_material_cost
@@ -274,13 +720,24 @@ class Simulation:
 
         Grows with the surge index under SWELLING/BOTH, and with the number of
         simultaneous Cataclysms in every mode.
+
+        The lethality mode multiplies the result LAST, after the cap. Heretic's
+        rule is stated without qualification -- "Surges spawn 25% more dungeons"
+        -- while `surge_count_max` bounds how far the Cataclysm's own escalation
+        runs, which is a different thing. Applying the multiplier before the cap
+        would make Heretic identical to Standard at every surge that reaches it,
+        which is where the extra dungeons would hurt most. Issue #289.
         """
         cfg = self.cfg
-        n = float(cfg.surge_dungeon_count)
+        # THE OPENING WAVE HAS ITS OWN SIZE, since 2026-10-16: the first
+        # surge of a run is `surge_opening_count`, every later one
+        # `surge_dungeon_count`. See `TuningConfig.surge_opening_count`.
+        n = float(cfg.surge_opening_count if self.surge_index == 0
+                  else cfg.surge_dungeon_count)
         if cfg.surge_mode in (SurgeMode.SWELLING, SurgeMode.BOTH):
             n += cfg.surge_count_growth * self.surge_index
         n = min(n, float(cfg.surge_count_max))
-        return max(1, int(n))
+        return max(1, int(n * cfg.surge_dungeon_multiplier))
 
     def surge_gap(self) -> float:
         """Days until the surge after this one.
@@ -293,6 +750,21 @@ class Simulation:
             gap *= cfg.surge_interval_decay ** self.surge_index
         gap = max(cfg.surge_interval_min, gap)
         return gap + cfg.tree.surge_bonus_days
+
+    def quest_chance(self, volume: float) -> float:
+        """The chance a dungeon in a surge of this `volume` is a Quest dungeon.
+
+        With `quest_chance_per_cataclysm_held`, `quest_dungeon_chance x max(1,
+        N / volume)`, N the active Cataclysms: each of them then sends quest
+        dungeons at its tier-1 rate, where a flat chance spread over a wave that
+        grows as volume (sum of count_mult to the 0.7) gave each fewer as the tier
+        rose. Never below `quest_dungeon_chance` and never above 1. See the field.
+        """
+        cfg = self.cfg
+        if not cfg.quest_chance_per_cataclysm_held or volume <= 0:
+            return cfg.quest_dungeon_chance
+        held = cfg.quest_dungeon_chance * max(1.0, len(self.active_types) / volume)
+        return min(1.0, held)
 
     def trigger_surge(self, from_city_fall: bool = False) -> None:
         cfg = self.cfg
@@ -314,6 +786,8 @@ class Simulation:
         cmults = [p.count_mult for p in pats]
         volume = sum(cmults) ** cfg.cataclysm_volume_exponent
         count = max(1, int(round(self.surge_count() * volume)))
+        quest_chance = self.quest_chance(volume)
+        quest_sieges: dict[str, int] = {}
 
         for _ in range(count):
             idx = self.rng.choices(range(len(self.active_types)),
@@ -332,12 +806,39 @@ class Simulation:
 
             city = self.rng.choices(pool, weights=w, k=1)[0]
             dtype = (DungeonType.QUEST
-                     if self.rng.random() < cfg.quest_dungeon_chance
+                     if self.rng.random() < quest_chance
                      else DungeonType.BASIC)
-            d = self._make_dungeon(dtype, city, floors_mult=pat.floors_mult)
+
+            # AT MOST `quest_sieges_per_wave_max` SIEGE-CARRYING QUEST DUNGEONS
+            # FROM ONE CATACLYSM IN ONE WAVE, since 2026-10-17; a further Quest
+            # roll makes an ordinary dungeon. `TuningConfig` quotes the owner.
+            if (dtype is DungeonType.QUEST
+                    and cfg.QUEST_SUBTYPE_BY_CATACLYSM.get(ctype) == "Siege"):
+                if quest_sieges.get(ctype, 0) >= cfg.quest_sieges_per_wave_max:
+                    dtype = DungeonType.BASIC
+                else:
+                    quest_sieges[ctype] = quest_sieges.get(ctype, 0) + 1
+
+            # A QUEST DUNGEON THAT IS ALWAYS A SIEGE (War's) WILL NOT LAND ON A
+            # CITY THAT ALREADY HOLDS ONE: it re-draws its city among this
+            # wave's targets that hold none, by the same weights; if every one
+            # holds a Siege it lands where it was drawn, the only way a city
+            # holds two. Ruled by the coordinating session, 2026-10-16.
+            if (dtype is DungeonType.QUEST
+                    and cfg.QUEST_SUBTYPE_BY_CATACLYSM.get(ctype) == "Siege"
+                    and self.sieges_on(city.cid) >= cfg.siege_max_per_city):
+                free = [(c, wc) for c, wc in zip(pool, w, strict=True)
+                        if self.sieges_on(c.cid) < cfg.siege_max_per_city and wc > 0]
+                if free:
+                    city = self.rng.choices([c for c, _ in free],
+                                            weights=[wc for _, wc in free], k=1)[0]
+
+            self.making_for = ctype
+            try:
+                d = self._make_dungeon(dtype, city, floors_mult=pat.floors_mult)
+            finally:
+                self.making_for = ""
             d.source = ctype
-            if pat.erases_cities:
-                city.doomed = True
 
         gap = self.surge_gap()
         self.surge_log.append((self.day, gap, count))
@@ -347,6 +848,83 @@ class Simulation:
         if not from_city_fall or cfg.city_fall_advances_escalation:
             self.surge_index += 1
 
+    def board_is_empty(self) -> bool:
+        """Nothing at all stands on the map.
+
+        THE DUNGEON THE PLAYER IS WALKING COUNTS AS STANDING. `self.current`
+        stays in `self.dungeons` until `_finish_current` pops it, so a player
+        inside the last dungeon has not emptied the board and cannot pull the
+        next wave forward by being slow inside it.
+
+        SO DO THE CATACLYSM DUNGEON AND THE LAST STAND. Both are in
+        `self.dungeons` and both are something to do, which is the whole
+        question this asks.
+        """
+        return not self.dungeons
+
+    def days_since_last_surge(self) -> float:
+        """How long since a wave last landed.
+
+        MEASURED FROM THE LAST SURGE THAT ACTUALLY SPAWNED, not from the last
+        attempt. `trigger_surge` returns without logging anything when the
+        frontier has no targets, and it is retried every day when that happens,
+        so counting attempts would make the gap read as zero forever.
+
+        THE START OF THE RUN COUNTS AS DAY 0. Before any surge has landed the
+        log is empty and the whole campaign so far is the gap, so the trigger
+        becomes available `surge_interval_min` days into the run rather than
+        never. It is not "fires immediately": on day 1 the gap is one day, which
+        is inside the brake. In practice this fallback is almost unreachable,
+        because `next_surge_day` starts at 0 and a wave lands on day 1; it is
+        the frontier having no target at all that can leave the log empty, and
+        `trigger_surge` returns without logging when that happens.
+        """
+        if not self.surge_log:
+            return float(self.day)
+        return float(self.day - self.surge_log[-1][0])
+
+    def _maybe_surge_on_empty_board(self) -> None:
+        """Fire a wave when there is nothing left on the map.
+
+        THE OWNER'S RULE OF 2026-09-07, VERBATIM: "Anytime there are no longer
+        dungeons on the board, a surge happens." Issue #1406. Any empty board
+        fires, whatever emptied it -- a clear and a detonation both count. See
+        `TuningConfig.surge_on_empty_board` for why the narrower "only a clear
+        fires" version was overruled.
+
+        THE MINIMUM GAP IS THE ONLY BRAKE. A board can empty the day after a
+        wave is cleared, so without a floor a fast player would face one
+        continuous surge. `surge_interval_min` is that floor and used to be
+        read by the escalating modes alone.
+
+        A BLOCKED TRIGGER IS NOT A LOST ONE. The board is still empty tomorrow,
+        so this is re-asked every day and fires on the first day the gap allows,
+        rather than needing the board to empty a second time.
+
+        AN EMPTY-BOARD SURGE ADVANCES THE ESCALATION COUNTER exactly as a
+        scheduled one does, and takes no flag of its own. It IS the scheduled
+        surge arriving early: `trigger_surge` resets `next_surge_day` from
+        today, so one wave replaces one wave. The worry that produced
+        `city_fall_advances_escalation` -- an event-triggered surge speeding the
+        game up without limit -- does not apply, because the gap this can reach
+        is floored at `surge_interval_min`, which is the same floor
+        `surge_gap` already applies to ACCELERATING. **Only STATIC has ever been
+        measured**, here or anywhere, and under STATIC the counter changes
+        nothing at all.
+        """
+        cfg = self.cfg
+        if not cfg.surge_on_empty_board:
+            return
+        if not self.board_is_empty():
+            return
+        if self.days_since_last_surge() < cfg.surge_interval_min:
+            return
+
+        before = len(self.surge_log)
+        self.trigger_surge()
+        if len(self.surge_log) > before:
+            self.surges_from_empty_board += 1
+
     # -- consequences ----------------------------------------------------
 
     def _resolve(self, d: Dungeon) -> None:
@@ -354,67 +932,565 @@ class Simulation:
         cfg = self.cfg
         city = self.empire.cities[d.city_id]
 
-        # A quest dungeon does not detonate; it picks up and moves.
+        # A QUEST DUNGEON HITS ITS HOST CITY, THEN ITS TIMER IS FULL AGAIN,
+        # THEN IT MAY MOVE. The hit is `_quest_hit`, in the model since
+        # 2026-10-13 and asked by `cfg.quest_timer_hits_city`. Until that
+        # date the timer cost the city nothing and this comment began "A
+        # quest dungeon does not detonate; it picks up and moves". The
+        # paragraphs below are about the refresh and the move, and they
+        # read as they did.
+        #
+        # TO AN ADJACENT CITY, AND ONLY AN ADJACENT ONE. This used to draw from
+        # `exposed_cities()` -- anywhere on the map -- which contradicts the
+        # design: section VIII says a Quest dungeon "does not resolve --
+        # refreshes and may move to ADJACENT city". Asked which was intended the
+        # project owner answered on 2026-09-06, verbatim "Adjacent, and fix the
+        # simulation", so this was the defect rather than the document. Issue
+        # #1324 slice 4, and `UCataclysmSurgeScheduler::PickRelocation` is the
+        # game's half of the same rule.
+        #
+        # IT STAYS PUT WHEN THERE IS NOWHERE ADJACENT TO GO, which is now a real
+        # outcome rather than an unreachable branch: under the old rule some
+        # exposed city always existed, and under this one a dungeon deep in
+        # sealed territory can be hemmed in.
+        #
+        # THAT IS NOT THE WHOLE OF THE DESIGN'S "MAY", AND THIS FILE USED TO SAY
+        # IT WAS. The project owner ruled on 2026-09-06, verbatim "A chance each
+        # time": a Quest dungeon sometimes stays even when it could move. Asked
+        # for the number after the curve was measured they answered, verbatim
+        # "0.5". `cfg.quest_move_chance` carries it and the reasoning.
+        #
+        # THE TARGET IS DRAWN FIRST AND THE COIN SECOND, AND THE ORDER IS PART
+        # OF THE PORT. Both draws happen whenever there is somewhere to go, so a
+        # quest timer costs the stream the same two numbers whether the dungeon
+        # moves or stays. `UCataclysmEmpireRun::RelocateQuestDungeon` takes them
+        # in the same order for the same reason: the halves must consume
+        # identical streams, and it is also the order
+        # `sim/analyse_quest_move_chance.py` measured the curve with, so the
+        # recorded figures describe what is built here.
+        #
+        # AND NEITHER IS DRAWN WHEN THERE IS NOWHERE TO GO, which preserves the
+        # rule that predates the chance: no draw is taken on the empty case, or
+        # the two streams would part company on the first hemmed-in dungeon.
+        #
+        # A DUNGEON CARRYING A SIEGE MAY NOT LAND ON A CITY THAT ALREADY HAS
+        # ONE. "Max 1 per city" was enforced by `_roll_subtype` at spawn and by
+        # nothing on this path, so a Quest dungeon that rolled Siege could walk
+        # onto a besieged city and the city would then take the daily bite
+        # twice. The owner ruled on 2026-09-06, verbatim "Check the limit on
+        # arrival too". Issue #1371.
+        #
+        # IT REFUSES THE DESTINATION RATHER THAN THE MOVE, which is the shape
+        # `_roll_subtype` already uses on the other half of the same rule: a
+        # refused Siege there is redistributed rather than dropped, and a
+        # refused destination here leaves the other neighbours on the table. A
+        # dungeon whose every neighbour is besieged stays, which is the same
+        # outcome as having nowhere to go and costs no draw either.
+        #
+        # ONLY `city_id` MOVES; `city_tier` IS NOT THE HOST'S TIER. It is the
+        # tier the dungeon's DEPTH WAS ROLLED FROM, and `_resolve` reads it
+        # below to find the specification row that says what a typical dungeon
+        # of this kind on that tier is, so that `floors / typical` scales the
+        # bite. This used to assign `new_city.tier` here while leaving `floors`
+        # alone, which made the two halves of that division come from different
+        # rows: a dungeon that drifted inward onto a bigger city read as
+        # shallower than it is and one that drifted outward read as deeper.
+        #
+        # SINCE 2026-10-13 A QUEST DUNGEON'S HIT DOES NOT READ `city_tier`
+        # EITHER. `_quest_hit` reads the ordinary row of the tier of the
+        # city the dungeon STANDS ON when the hit lands, which is the
+        # host's tier and not this field.
+        #
+        # IT COST NOTHING AND NOTHING WOULD HAVE FAILED WHEN IT DID. A Quest
+        # dungeon returns above without ever reaching the scale, so the wrong
+        # row was never read; it would have become a live wrong number the
+        # moment any non-Basic kind was given city damage, silently. The project
+        # owner ruled on 2026-09-06, verbatim "Keeps everything, fix the size".
+        # `FCataclysmDungeon::CityTier` carries the same rule and the same
+        # comment, and `TestWhatARelocatedDungeonKeeps` in
+        # `sim/tests/test_quest_relocation_is_adjacent.py` is what now fails.
+        #
+        # EVERY FIGURE MEASURED BEFORE THIS MOVES. A dungeon's position decides
+        # which cities it threatens, and the draw below now happens on a
+        # different number of days and over a different list, so the whole
+        # stream diverges from the day the first quest timer fires.
         if d.dtype is DungeonType.QUEST:
+            # THE HIT FIRST. A city already fallen is hit by nothing, as for
+            # an ordinary dungeon.
+            if cfg.quest_timer_hits_city and not city.fallen:
+                self._quest_hit(d, city)
+
+                # THE HIT FELLED THE CITY AND THE FALL MOVED THIS DUNGEON, since
+                # 2026-10-16 (owner: "Quest dungeons don't go away when a city
+                # falls. They just move to an adjacent city."). `_fall` moved
+                # it; it has just hit, so its timer refreshes to full, and it
+                # does not take the timer's own move as well that day.
+                if d.did not in self.dungeons:
+                    return
+                if d.city_id != city.cid:
+                    d.resolve_in = float(d.resolve_max)
+                    return
+                # A FALL THAT FOUND NOWHERE TO GO leaves it on the fallen city;
+                # it refreshes and tries the move below, as before.
+
             d.resolve_in = float(d.resolve_max)
             if cfg.quest_relocates:
-                targets = self.empire.exposed_cities()
+                targets = self.empire.adjacent_exposed_cities(city)
+                if d.subtype == "Siege":
+                    targets = [t for t in targets
+                               if self.sieges_on(t.cid)
+                               < cfg.siege_max_per_city]
                 if targets:
-                    new_city = self.rng.choice(targets)
-                    d.city_id = new_city.cid
-                    d.city_tier = new_city.tier
+                    target = self.rng.choice(targets)
+                    if self.rng.random() < cfg.quest_move_chance:
+                        d.city_id = target.cid
+                        d.arrived_day = self.day
             return
 
+        # THIS ONE COUNTS TIMERS AND IS MEANT TO. `times_resolved` is per
+        # dungeon and says how many times this dungeon's clock ran out, which
+        # for a Fallen City dungeon it repeatedly does. `self.resolved` below
+        # counts something else and the two used to sit on adjacent lines,
+        # which is how the confusion issue #1373 records got started.
         d.times_resolved += 1
-        self.resolved += 1
 
         if not d.resolves or city.fallen:
             d.resolve_in = float(d.resolve_max)
             return
 
+        # THE EMPIRE IS ABOUT TO PAY, SO THIS IS WHERE IT IS COUNTED.
+        # `RunResult.dungeons_resolved` documents itself as "times a dungeon
+        # detonated undefeated" and this line used to sit ABOVE the guard, so a
+        # Fallen City dungeon -- whose `resolves` is false by design -- and a
+        # Basic dungeon on a city that had already fallen were both counted as
+        # detonations that took nothing. Measured before the move at 10 of
+        # 3,665 over thirty campaigns at `TuningConfig()` defaults on the
+        # `triage` policy, and 0 of 3,655 after it. Issue #1373.
+        #
+        # `UCataclysmEmpireRun::ResolveDungeon` raises `DungeonsDetonated` in
+        # the same place for the same reason, and the two are now the same
+        # number; they were deliberately different until this moved.
+        self.resolved += 1
+
         # Bigger dungeons hit harder. Scale the bite by how deep this one is
         # relative to a typical dungeon of its type on this tier.
+        #
+        # BY ITS NATURAL DEPTH, since 2026-10-13: `_hit_floors`.
         lo, hi = cfg.spec(d.dtype, d.city_tier).floors
         typical = (lo + hi) / 2.0
-        scale = d.floors / typical
+        scale = self._hit_floors(d) / typical
 
-        city.defense -= city.max_defense * d.defense_bite * scale * cfg.tree.city_damage_mult
-        city.population -= city.max_population * d.population_bite * scale * cfg.tree.city_damage_mult
-        city.population = max(0.0, city.population)
+        # ABSOLUTE POINTS. `city.max_defense` is deliberately absent: while the
+        # damage was a fraction of it, it divided out of how many resolves the
+        # city survived and every city-health upgrade in the design was worth
+        # nothing. Issue #1327.
+        #
+        # A VOID DUNGEON ADDS STACKS INSTEAD, since 2026-10-18
+        # (`TuningConfig.void_dungeons_add_stacks` quotes the owner). It still
+        # counts in `resolved` and still leaves the map below.
+        if self._adds_void_stacks(d):
+            added = self._void_stacks_for(d)
+            city.void_stacks += added
+            self.void_stacks_added += added
+            erased = city.void_stacks >= cfg.void_stacks_to_erase
+            self.void_erasures += int(erased)
+        else:
+            erased = False
+            taken = cfg.tree.damage_taken(cfg.active_cataclysm_count())
+            city.defense -= d.defense_damage * scale * taken
+            city.population -= d.population_damage * scale * taken
+            city.population = max(0.0, city.population)
 
-        if city.defense <= 0:
+        # ONE FALL, by the damage or by the tenth stack; `_fall` erases the
+        # city in the second case.
+        if city.defense <= 0 or erased:
             self._fall(city)
 
+        # IT HIT ITS CITY, SO IT LEAVES THE MAP. The owner's rule of
+        # 2026-10-08, verbatim: "Ordinary dungeons will do their
+        # city/population damage, and then despawn." The setting is False
+        # since 2026-10-12; True is the model as it was, the dungeon staying
+        # with its timer full again.
+        #
+        # ONLY AN ORDINARY DUNGEON ON A CITY THAT WAS STANDING GETS HERE. A
+        # Quest dungeon returned at the top and a Fallen City dungeon, or any
+        # dungeon on a city already fallen, returned at the guard.
+        #
+        # THE FALL COMES FIRST, SO THE DUNGEON THAT FELLS ITS CITY IS ABSORBED
+        # AND NOT REMOVED HERE. `_fall` above has already taken every dungeon
+        # on the city off the map, and the `pop` finds nothing. The one it
+        # spares is the dungeon the player is inside, which reaches this line
+        # by a death, or by its timer when `timer_ticks_while_running` is on,
+        # and then leaves by it.
+        #
+        # NOT A CLEAR. Nothing is added to `cleared`, `basic_cleared`, the
+        # empire points or the materials, so a dungeon that leaves adds no
+        # floor to the Cataclysm boss.
+        #
+        # THE GAME DOES THIS TOO, SINCE ITS LAYER OF 2026-10-13.
+        # `tools/tests/test_an_ordinary_dungeon_leaves_in_the_model_and_in_the_game.py`
+        # reads this function and `UCataclysmEmpireRun::ResolveDungeon`.
         if cfg.dungeon_persists_after_resolve:
             d.resolve_in = float(d.resolve_max)
         else:
             self.dungeons.pop(d.did, None)
 
+    def _adds_void_stacks(self, d: Dungeon) -> bool:
+        """Whether this dungeon's timer adds void stacks instead of damage:
+        an ordinary dungeon of a Cataclysm whose pattern erases cities (the
+        Void's), with `TuningConfig.void_dungeons_add_stacks` on."""
+        return (self.cfg.void_dungeons_add_stacks
+                and d.dtype is DungeonType.BASIC
+                and PATTERNS.get(d.source, PATTERN_DEFAULT).erases_cities)
+
+    def _void_stacks_for(self, d: Dungeon) -> int:
+        """1, 2 or 3: which third of its row's depth the dungeon's natural
+        floors fall in, the row's range scaled by its Cataclysm pattern's
+        `floors_mult` as the roll was. Ruled by the coordinating session,
+        2026-10-16. By the natural floors, so the empire tree's added floors
+        add no stacks, as they add no damage (`_hit_floors`)."""
+        lo, hi = self.cfg.spec(d.dtype, d.city_tier).floors
+        mult = PATTERNS.get(d.source, PATTERN_DEFAULT).floors_mult
+        span = (hi - lo) * mult
+        if span <= 0:
+            return 1
+        third = int(3 * (d.natural_floors - lo * mult) / span)
+        return 1 + min(2, max(0, third))
+
+    def _hit_floors(self, d: Dungeon) -> float:
+        """The depth a dungeon's hit is sized by.
+
+        ITS NATURAL FLOORS, SINCE 2026-10-13. The owner accepted the
+        coordinating session's recommendation that day, in that session's
+        words: a dungeon's hit is sized by its NATURAL floors, not the
+        floors the Explorer tree adds. Until then this was `d.floors`, so
+        the Explorer preset's 40 extra floors at difficulty tier 1 made an
+        ordinary dungeon on an Outpost hit about 4.5 times as hard: 51.5
+        floors over a typical 11.5.
+
+        A TREE THAT REMOVES FLOORS DOES NOT SHRINK THE HIT EITHER, which the
+        ruling's words imply and did not spell out. `Exclusionary Mapping`
+        (-1 floor a point) and a preset with a negative `floor_delta`, such
+        as `TREE_EXPLORER_VIA_FLOORS`, still make a dungeon shorter to walk,
+        poorer and quicker to come due. They no longer make it hit less.
+
+        ONLY THE HIT. The walk, the resolve timer, the power, the death
+        chance and the reward all still read `d.floors`.
+
+        `cfg.hit_scales_with_natural_floors` False is the model as it was.
+        With no tree the two are the same number and nothing changes.
+
+        THE GAME: `FCataclysmDungeon::BiteScale` divides `Floors` less
+        `UpgradeFloors`. It has no empire tree; it has two city upgrades that
+        move `Floors`, and `UpgradeFloors` holds what they moved.
+        `tools/tests/test_what_a_hit_is_scaled_by_in_the_model_and_in_the_game.py`.
+        """
+        cfg = self.cfg
+        return d.natural_floors if cfg.hit_scales_with_natural_floors else d.floors
+
+    def _quest_hit(self, d: Dungeon, city: City) -> None:
+        """A Quest dungeon's timer ran out on a standing city: the city is hit.
+
+        THE OWNER, 2026-10-08, VERBATIM: "Quest dungeons will do their
+        city/population damage, and either refresh their timer and stay on
+        that city, or potentially move to an adjacent city." The model had
+        the opposite until 2026-10-13: the timer cost the city nothing,
+        which a recommendation accepted on 2026-10-09 had kept. The
+        recommendation accepted on 2026-10-13 reverses that one and returns
+        to the sentence above. `docs/DECISIONS.md`, 2026-10-13.
+
+        THE SIZE IS AN ORDINARY DUNGEON'S HIT FOR THE CITY IT STANDS ON.
+        That is the accepted recommendation's wording. In code it is the
+        ordinary (`BASIC`) row of the HOST city's tier at the moment of the
+        hit. It is not the tier the Quest dungeon's depth was rolled from
+        (`d.city_tier`), which a relocation does not move. The Quest rows
+        of `DUNGEON_SPECS` still carry 0.0 and `d.defense_damage` is still
+        0.0: nothing reads them for this, and leaving them keeps the
+        specification table equal to the game's `SpecFor`.
+
+        NO SCALE BY DEPTH, WHICH IS A READING. A Quest dungeon is deeper
+        than an ordinary one of the same city (20 to 30 floors on an
+        Outpost against 8 to 15), so dividing its floors by the ordinary
+        midpoint would make every Quest hit about twice an ordinary one.
+        "An ordinary dungeon's size" is read as the row at a scale of 1.0.
+        `cfg.quest_hit_scales_with_depth` is the other reading, kept so the
+        two can be measured side by side.
+
+        THE TREE'S DAMAGE REDUCTION APPLIES as it does to any hit.
+
+        COUNTED IN `quest_hits` AND NOT IN `resolved`. `resolved` goes on
+        counting ordinary dungeons alone, so `RunResult.dungeons_resolved`
+        means what it meant in every earlier figure and still equals the
+        game's `DungeonsDetonated`. `Dungeon.times_resolved` is not raised
+        for a Quest dungeon either, as it never was.
+
+        A FALL IS A FALL. `_fall` absorbs the ordinary dungeons on the city
+        and, since 2026-10-16, moves every Quest dungeon on it, this one
+        included (`_quest_refuge` says where), exactly as when an ordinary
+        dungeon fells a city that a Quest dungeon stands on.
+
+        NO DRAW IS TAKEN HERE, so with the city left standing the random
+        stream is where it would have been without the hit.
+
+        THE GAME HAS THIS RULE SINCE ITS LAYER OF 2026-10-13.
+        `tools/tests/test_a_quest_dungeons_timer_hits_in_the_model_and_in_the_game.py`
+        reads this and `UCataclysmEmpireRun::ResolveDungeon`.
+        """
+        cfg = self.cfg
+        ordinary = cfg.spec(DungeonType.BASIC, city.tier)
+
+        scale = 1.0
+        if cfg.quest_hit_scales_with_depth:
+            lo, hi = ordinary.floors
+            scale = self._hit_floors(d) / ((lo + hi) / 2.0)
+
+        self.quest_hits += 1
+
+        # A HOLLOW ADDS VOID STACKS INSTEAD, since 2026-10-18
+        # (`TuningConfig.hollow_floors_lost_per_day` says the rule).
+        if self._hollow_adds_stacks(d):
+            added = self.hollow_hit_stacks(d, city)
+            city.void_stacks += added
+            self.void_stacks_added += added
+            erased = city.void_stacks >= cfg.void_stacks_to_erase
+            self.void_erasures += int(erased)
+        else:
+            erased = False
+            taken = cfg.tree.damage_taken(cfg.active_cataclysm_count())
+            city.defense -= ordinary.defense_damage * scale * taken
+            city.population -= ordinary.population_damage * scale * taken
+            city.population = max(0.0, city.population)
+
+        # ONE FALL, by the damage or by the tenth stack; `_fall` erases the city
+        # in the second case and moves this dungeon on in both.
+        if city.defense <= 0 or erased:
+            self._fall(city)
+
+    def _hollow_adds_stacks(self, d: Dungeon) -> bool:
+        """Whether this is a Hollow whose hit adds void stacks."""
+        return (self.cfg.void_dungeons_add_stacks
+                and d.dtype is DungeonType.QUEST and d.subtype == "Hollow")
+
+    def hollow_floor_minimum(self, d: Dungeon) -> int:
+        """The fewest natural floors a Hollow shrinks to: half of what it was
+        made with, rounded up."""
+        return max(1, math.ceil(d.hollow_from * self.cfg.hollow_floor_share_kept))
+
+    def _hollow_stacks_for(self, d: Dungeon) -> int:
+        """1 at the Hollow's full depth, rising evenly to 3 at its smallest:
+        `1 + 2 x lost / (made with - minimum)`, rounded half up. 3 for one that
+        cannot shrink at all."""
+        span = d.hollow_from - self.hollow_floor_minimum(d)
+        if span <= 0:
+            return 3
+        lost = max(0, min(span, d.hollow_from - d.natural_floors))
+        return int(1.0 + 2.0 * lost / span + 0.5)
+
+    def hollow_hit_stacks(self, d: Dungeon, city: City) -> int:
+        """What this Hollow's next hit adds to `city`: `_hollow_stacks_for`,
+        held so that a city below `hollow_hit_cannot_erase_below` stacks ends
+        the hit at most one short of the erase count."""
+        cfg = self.cfg
+        added = self._hollow_stacks_for(d)
+        if city.void_stacks < cfg.hollow_hit_cannot_erase_below:
+            added = min(added, cfg.void_stacks_to_erase - 1 - city.void_stacks)
+        return max(0, added)
+
+    def _hollow_shrink(self) -> None:
+        """Every Hollow made before today loses its floors for the day, down
+        to its minimum. The one the player is inside does not: the walk was
+        fixed when the player went in (a judgement of this layer)."""
+        cfg = self.cfg
+        for d in self.dungeons.values():
+            if d.subtype != "Hollow" or not d.hollow_from or self.day <= d.spawned_day:
+                continue
+            if d.did == self._inside_did():
+                continue
+            # NEVER BELOW ONE FLOOR: a tree that removes floors leaves a Hollow
+            # fewer floors than its natural depth, and a dungeon of none
+            # divides by zero in `scoring.enemy_scores`.
+            lose = min(cfg.hollow_floors_lost_per_day,
+                       d.natural_floors - self.hollow_floor_minimum(d),
+                       d.floors - 1)
+            if lose > 0:
+                d.floors -= lose
+                d.run_days = self._walk_days(d.floors, d.subtype)
+
+    def _apply_siege_damage(self) -> None:
+        """Every standing Siege takes its daily share of the city it sits on.
+
+        A SIEGE BITES EVERY DAY AND NOT ONLY WHEN ITS TIMER RUNS OUT. That is
+        what makes it the dungeon a player cannot postpone, and it is the whole
+        reason the sub-type is worth modelling: it is the one threat the empire
+        tree's city-health nodes do not protect against. See
+        `TuningConfig.siege_defence_bite_per_day` for why a share survives here
+        when issue #1327 turned every other city damage into points.
+
+        THE HOSTS ARE COLLECTED BEFORE ANYTHING IS BITTEN. `_fall` removes
+        dungeons from `self.dungeons`, and walking that dictionary while it is
+        being emptied is how a crash gets written. The C++ beside this takes
+        the same care for the same reason.
+        """
+        cfg = self.cfg
+        hosts: list[tuple[int, int, float]] = []
+        for d in self.dungeons.values():
+            if d.subtype != "Siege":
+                continue
+            # THE GROWTH COUNTS THE DAYS ON THIS CITY, AND A QUEST SIEGE BITES
+            # A QUARTER AS HARD, since 2026-10-17; `TuningConfig.
+            # quest_sieges_per_wave_max` quotes the owner.
+            hosts.append((d.city_id, d.days_on_its_city(self.day),
+                          d.siege_bite_share(cfg.quest_siege_bite_scale)))
+
+        for city_id, days_stood, share in hosts:
+            city = self.empire.cities.get(city_id)
+            # CHECKED AGAIN FOR EACH ONE. A city that fell to an earlier Siege
+            # in this same loop must not be bitten a second time.
+            if city is None or city.fallen:
+                continue
+
+            grown = cfg.siege_damage_growth_per_day * days_stood
+
+            # THE EMPIRE TREE'S DAMAGE REDUCTION STILL APPLIES, AND THAT IS
+            # A RULING RATHER THAN A READING. It was written here as a reading:
+            # the owner's exception is that city HEALTH does not protect
+            # against a siege -- "a siege does not care how thick your walls
+            # are" -- and reducing the damage is a different claim from
+            # thickening the wall. Put to the owner as a confirm-or-overturn
+            # against two alternatives, that a siege ignores both defensive
+            # lines and that reduction applies at a reduced rate. They answered
+            # on 2026-09-06, verbatim: "Yes — damage reduction still applies
+            # (Recommended)".
+            #
+            # SO A SIEGE IGNORES HOW MUCH A CITY CAN ABSORB AND IS STILL
+            # BLUNTED BY WHAT REDUCES DAMAGE. Both defensive lines stay
+            # meaningful, which is also why the combined defensive ceiling
+            # still has two things to multiply. Issue #1329.
+            taken = cfg.tree.damage_taken(cfg.active_cataclysm_count()) * share
+            city.defense -= (city.max_defense * cfg.siege_defence_bite_per_day
+                             + grown) * taken
+            city.population -= (
+                city.max_population * cfg.siege_population_bite_per_day
+                + grown) * taken
+            city.population = max(0.0, city.population)
+
+            if city.defense <= 0:
+                self._fall(city)
+
     def _fall(self, city: City) -> None:
         cfg = self.cfg
         city.defense = 0.0
         city.fallen = True
-        if city.doomed:
+        # ERASED AT TEN VOID STACKS, and only then, since 2026-10-18: a city
+        # that falls with fewer can be retaken (`TuningConfig.void_stacks_to_erase`).
+        if city.void_stacks >= cfg.void_stacks_to_erase:
             city.erased = True     # Void: never coming back
         self.empire._invalidate()
 
         # Every dungeon sitting on the city is absorbed into the Fallen City.
-        absorbed = [d for d in self.dungeons.values() if d.city_id == city.cid]
-        for d in absorbed:
+        standing = [d for d in self.dungeons.values() if d.city_id == city.cid]
+        absorbed = 0
+        for d in standing:
+            # A QUEST DUNGEON IS NOT ABSORBED, since 2026-10-16. The owner,
+            # verbatim: "Quest dungeons don't go away when a city falls. They
+            # just move to an adjacent city. So eventually they should be
+            # hitting something." It moves at once, with no coin, keeping its
+            # floors, remaining timer and sub-type; the walked one moves too and
+            # the walk goes on. When nowhere qualifies it stays on the fallen
+            # city, which happens only once no exposed city but the Pillar is
+            # left. `_quest_refuge` says where.
+            if d.dtype is DungeonType.QUEST:
+                refuge = self._quest_refuge(d, city)
+                if refuge is not None:
+                    d.city_id = refuge.cid
+                    d.arrived_day = self.day
+                    self.quest_moves_on_a_fall += 1
+                continue
             if self.current is not None and d.did == self.current.did:
                 continue
             self.dungeons.pop(d.did, None)
+            absorbed += 1
 
         # An erased city leaves no Fallen City dungeon -- there is nothing left
         # to retake, and the lane stays open for the rest of the run.
+        #
+        # AS DEEP AS THE ORDINARY DUNGEONS IT ABSORBED, since issue #1341. The
+        # design, section VIII: "Floor count equals the number of dungeons that
+        # were in the city when it fell (minimum 20/40/60 for
+        # Outpost/Bulwark/Sanctuary)". The minimum is the spec row's shallow end,
+        # which is those three; THE PILLAR'S 80 IS THE SPEC'S, since the design
+        # gives the Pillar none, a reading the game takes too. The spec's deep
+        # end is the general dungeon range and is not used for a Fallen City.
+        # Quest dungeons moved away and the one being walked stays, so neither
+        # counts, which is what `UCataclysmEmpireRun` counts. At least one, as
+        # the game's `MakeFallenCityDungeon` has it. No dungeon in this model
+        # has bosses, so the game's one boss per absorbed dungeon has no
+        # counterpart here.
         if not city.erased:
-            self._make_dungeon(DungeonType.FALLEN_CITY, city)
+            least = cfg.spec(DungeonType.FALLEN_CITY, city.tier).floors[0]
+            self.making_floors = max(1, absorbed, least)
+            try:
+                self._make_dungeon(DungeonType.FALLEN_CITY, city)
+            finally:
+                self.making_floors = None
 
-        if cfg.surge_on_city_fall:
+        # A FALL RESPECTS THE SAME MINIMUM GAP AS THE OTHER TWO TRIGGERS. Issue
+        # #1432, ruled 2026-09-14. The scheduled wave spaces itself by
+        # `surge_gap()` and the board-empty trigger refuses inside
+        # `surge_interval_min`; this trigger had no spacing at all, so a fall the
+        # day after a surge landed a whole second wave and two cities falling on
+        # one day landed two. At difficulty tier 4 that was 89% of every surge
+        # that fired, 82% of them inside the 25-day floor. The fall itself still
+        # stands -- the Fallen City dungeon, the lane opening -- and the
+        # scheduled clock is untouched; only the extra wave is withheld when the
+        # last one landed less than `surge_interval_min` days ago. A braked
+        # fall is not retried later: the fall is a moment, not a standing state
+        # like an empty board, and the scheduled wave still comes.
+        if (cfg.surge_on_city_fall
+                and self.days_since_last_surge() >= cfg.surge_interval_min):
             self.trigger_surge(from_city_fall=True)
+
+    def _quest_refuge(self, d: Dungeon, fallen: City) -> City | None:
+        """Where a Quest dungeon on a city that has just fallen goes.
+
+        THE RELOCATION'S OWN FILTER, ruled by the coordinating session on
+        2026-10-16: an exposed city that has not fallen and is not the Pillar
+        (`Empire.adjacent_exposed_cities`), and not a city already holding a
+        Siege if this dungeon carries one. A sealed city never receives a
+        dungeon. AN ADJACENT ONE FIRST; when no neighbour qualifies, the
+        nearest qualifying city counted in lanes (the map's links, perimeter
+        included). Ties by `rng.choice`, one draw. None when no city
+        qualifies anywhere, which means the path to the Pillar is open.
+        """
+        cfg = self.cfg
+
+        def allowed(c: City) -> bool:
+            if d.subtype == "Siege" and self.sieges_on(c.cid) >= cfg.siege_max_per_city:
+                return False
+            return True
+
+        targets = [c for c in self.empire.adjacent_exposed_cities(fallen) if allowed(c)]
+        if not targets:
+            seen = {fallen.cid}
+            frontier = [fallen.cid]
+            while frontier and not targets:
+                ring = []
+                for k in frontier:
+                    for j in self.empire.neighbours(self.empire.cities[k]):
+                        if j not in seen:
+                            seen.add(j)
+                            ring.append(j)
+                targets = [self.empire.cities[j] for j in ring
+                           if self.empire.is_exposed(self.empire.cities[j])
+                           and j != self.empire.pillar_id
+                           and allowed(self.empire.cities[j])]
+                frontier = ring
+        return self.rng.choice(targets) if targets else None
 
     def _retake(self, city: City) -> None:
         city.fallen = False
+        # A RETAKEN CITY'S VOID STACKS ARE CLEARED, ruled 2026-10-16.
+        city.void_stacks = 0
         self.empire._invalidate()
         city.defense = city.max_defense * 0.5
         city.population = city.max_population * 0.5
@@ -434,6 +1510,51 @@ class Simulation:
         self.craft_days_spent += cfg.craft_days
         self.crafting = False
 
+    def _resolve_on_death(self, d: Dungeon) -> None:
+        """The player died inside `d`: an ordinary dungeon resolves at once.
+
+        THE GAME'S RULE, COPIED. `UCataclysmEmpireRun::ResolveDungeonOnDeath`
+        is the other half, built for issue #41 on 2026-10-10. The owner's
+        words, 2026-09-10: "dying in a dungeon causes it to resolve, regardless
+        of the remaining time you would have had".
+
+        IT IS `_resolve` AND NOTHING BESIDE IT. The points taken, the tally in
+        `self.resolved`, the count on the dungeon, a city falling, and whether
+        the dungeon then stays (`dungeon_persists_after_resolve`) are whatever
+        a timer running out makes them, because it is the same call. No
+        arithmetic is repeated here.
+
+        THE KIND IS ASKED FIRST, AND THAT IS NOT A SHORT CUT. For a Quest
+        dungeon `_resolve` runs the relocation, which belongs to its timer and
+        draws from the campaign's random stream; for a Fallen City dungeon it
+        refills the timer and counts a resolve. A death does neither: the game
+        returns before its own resolve for every kind but the ordinary one. The
+        Cataclysm dungeon is stopped by the same question.
+
+        A DUNGEON NO LONGER ON THE MAP RESOLVES NOTHING. With
+        `timer_ticks_while_running` on and `dungeon_persists_after_resolve` off,
+        the dungeon being walked can detonate and leave while the player is
+        inside it. The game's words for its own case: "Nothing can resolve
+        then; the walk still ends and the days are still paid."
+
+        A RESOLVE THAT FELLS THE CITY TAKES THIS DUNGEON WITH IT. `_fall`
+        spares the dungeon the player is inside, which is this model's rule for
+        a city that falls while a walk goes on. The game's `CityFell` spares
+        nothing, and a death is not a walk that goes on, so the dungeon is
+        removed here. It is the one line in this function that `_resolve` does
+        not already do.
+        """
+        if not d.resolves or d.did not in self.dungeons:
+            return
+
+        city = self.empire.cities[d.city_id]
+        stood = not city.fallen
+
+        self._resolve(d)
+
+        if stood and city.fallen:
+            self.dungeons.pop(d.did, None)
+
     def _finish_current(self) -> None:
         d = self.current
         assert d is not None
@@ -442,6 +1563,20 @@ class Simulation:
         # The attempt can still kill you if you went in underpowered.
         if self.rng.random() < self.death_chance(d):
             self.deaths += 1
+
+            # RESOLVE, LEAVE, CHARGE THE DAYS, in the order the game uses:
+            # `ACataclysmDungeonGameMode::EndTheDungeonForADeath`, ruled on
+            # 2026-10-09. The dungeon resolves while the player is still
+            # inside it. Since 2026-10-12 it then leaves the map, so nothing
+            # of it is left to hit during the days below. With
+            # `dungeon_persists_after_resolve` on it stays, as in the game
+            # today, and those days run against a full timer that counts down
+            # again because nobody is standing in it.
+            # `tools/tests/test_a_death_resolves_in_the_model_as_in_the_game.py`
+            # holds the order in both files.
+            if cfg.death_resolves_dungeon:
+                self._resolve_on_death(d)
+
             self.current = None
             # Dying to the Cataclysm -- whether you went to it or it came to
             # you in the Last Stand -- ends the run.
@@ -456,14 +1591,64 @@ class Simulation:
         self.floors_cleared += d.floors
         self.power += d.floors * self.tier_width * cfg.power_gain_per_floor_frac
         self.materials += d.floors * cfg.material_per_floor
-        self.empire_points += self.cfg.empire_points_per_dungeon.get(d.dtype, 1.0)
+        # THE POPULATION KEPT ALIVE SCALES THE AWARD. The project owner ruled
+        # it on 2026-09-06:
+        #
+        #     points = base_points[dungeon_type] x (living / total maximum)
+        #
+        # Linear, no floor, no cap, every dungeon type. Issue #1348.
+        #
+        # SAMPLED HERE, AT THE INSTANT THE DUNGEON IS DEFEATED, AND THE ABSENCE
+        # OF A FLOOR DEPENDS ON THAT. The two decisions are one decision.
+        # Population starts at maximum and cities fall late, so a per-defeat
+        # sample is far kinder than an end-of-run one. Measured over 500
+        # campaigns at tier 1 surge 5 with no empire tree and `greedy_loot`, a
+        # policy that abandons cities deliberately: a run keeps 0.447 of the
+        # flat award on average and 0.090 at worst, against 0.241 and 0.000 for
+        # the end-of-run form.
+        #
+        # So MOVING THIS AWARD TO END-OF-RUN SILENTLY REMOVES THE FLOOR that
+        # the per-defeat timing supplies for free. If it ever moves, a floor
+        # has to be argued for in the same change.
+        #
+        # HOW MUCH OF A FLOOR THAT IS, IS AN OPEN QUESTION -- issue #1361. The
+        # owner ruled no floor on a worst case of 0.51, which does not
+        # reproduce: it is 0.090 here and 0.000 at tier 8 surge 8. The shape
+        # below is what was ruled and is deliberately unchanged. The no-floor
+        # choice rests on measurement and not on any published source anyway:
+        # no developer anywhere turns "each run must count" into a numeric
+        # minimum.
+        base = self.cfg.empire_points_per_dungeon.get(d.dtype, 1.0)
+        self.empire_points_flat += base
+        self.empire_points += base * self.empire.population_frac()
 
-        city = self.empire.cities[d.city_id]
-        if d.dtype is DungeonType.FALLEN_CITY and city.fallen:
+        # ONLY ORDINARY DUNGEONS DEEPEN THE BOSS. `cleared` above counts every
+        # kind and is the wrong number for this; see
+        # `cataclysm_floors_per_dungeon_cleared`.
+        if d.dtype is DungeonType.BASIC:
+            self.basic_cleared += 1
+            # AND AN EARNED BOSS ALREADY OPEN GROWS BY IT, since 2026-11-02.
+            # The design's Dungeon Basics bullet counts every ordinary dungeon
+            # defeated, before the boss opens and after.
+            self._deepen_cataclysm()
+
+        # `get` AND NOT AN INDEX: the earned boss stands on no city.
+        city = self.empire.cities.get(d.city_id)
+        if (d.dtype is DungeonType.FALLEN_CITY and city is not None
+                and city.fallen):
             self._retake(city)
 
         if d.dtype is DungeonType.QUEST:
             self.objectives += 1
+
+            # AND IT COUNTS TOWARDS THE CATACLYSM THAT SENT IT. `source` is set
+            # by `trigger_surge` for every dungeon a wave lands, so a quest
+            # dungeon always names one; the guard is for a dungeon built by hand
+            # in a test, which names none and can only be counted in the total.
+            if d.source:
+                self.objectives_by_type[d.source] = (
+                    self.objectives_by_type.get(d.source, 0) + 1)
+
             self._maybe_open_cataclysm()
 
         if d.dtype is DungeonType.CATACLYSM:
@@ -473,7 +1658,191 @@ class Simulation:
         self.current = None
 
     def _open_last_stand(self) -> None:
-        """The Cataclysm assaults the Pillar, absorbing everything still standing."""
+        """The Cataclysm assaults the Pillar, absorbing everything still standing.
+
+        NEAR-FATAL BY DESIGN UNTIL 2026-10-29. Letting the empire collapse was
+        meant to be close to a loss; the project owner settled that on
+        2026-09-05. **The owner superseded it on 2026-10-29**, verbatim "Accept
+        today's balance": a collapse is rare and this fight is cleared about 1
+        in 7 of the times it is reached. See the block headed RE-MEASURED ON
+        2026-10-29 below, and `docs/DECISIONS.md`.
+
+        **THE FIGURE THE RULING WAS MADE ON IS NO LONGER THE FIGURE.** Measured
+        on 2026-09-06 over 10,000 campaigns in two disjoint seed blocks, with
+        every setting held at what issue #1286 names:
+
+          - **About 1 in 84 PER LAST STAND REACHED**, 33 wins in 2,768, against
+            the 1 in 54 #1286 reported. The 95% range is 1 in 63 to 1 in 127, so
+            1 in 54 is outside it.
+          - **About 1 in 70 per Last Stand ENTERED**, 33 wins in 2,322, and on
+            THAT denominator 1 in 54 is not excluded. A quarter of Last Stands
+            are never entered because the day cap arrives first, so the two
+            denominators give different verdicts on the same data. #1286 counted
+            reached, so reached is the comparison its ruling rests on.
+          - **Reached in 27.7% of campaigns**, against 13.5%. The fight is about
+            twice as common as when the ruling was made.
+          - Averaging 438 and 440 floors, which is #1286's "about 440" unchanged.
+          - The earned Cataclysm dungeon is won **40.4%** of the time, against
+            57%.
+
+        WHAT MOVED IT, AND WHAT DID NOT. Of the 12.7 point rise in how often the
+        fight happens, the dungeon sub-type distribution change accounts for
+        about 6.6 points and the boss growing with dungeons cleared for about
+        2.4. **The remaining 4.5 points are not attributable to any known
+        change** -- with both undone the rate is 18.0%, with two blocks agreeing
+        exactly. That is issue #1343. The change in the WIN RATE is not
+        attributed at all.
+
+        **THE RULING STOOD THEN.** The owner had ruled that a collapse should
+        be near-fatal, and both figures moved in the direction that satisfied
+        it, so nothing here reopened the decision -- only the numbers under it.
+        (The owner superseded that ruling on 2026-10-29.)
+
+        **AND THEN #1345 MOVED THEM AGAIN, MUCH FURTHER.** Teaching the model
+        what a Siege does to a city took the Last Stand from 26% of campaigns to
+        **99%**, measured the same way. The figures above are with the three
+        Siege damage settings zeroed, which is the only way to compare with what
+        #1286 recorded; with them on, current behaviour is:
+
+          - Last Stand reached in **99.1%** of campaigns.
+          - Won about **1 in 19** of those reached -- easier, because it is now
+            met with the empire in better shape and at fewer floors, 386 against
+            438.
+          - **The earned Cataclysm dungeon opens in 2.4% of campaigns**, against
+            74.7%. The route the design treats as the ordinary win condition has
+            almost stopped happening.
+
+        THAT IS ATTRIBUTED AND ISOLATED. Zeroing `siege_defence_bite_per_day`,
+        `siege_population_bite_per_day` and `siege_damage_growth_per_day`
+        reproduces 25.8% and 26.0% against the 26.2% measured before #1345, so
+        nothing else in it is responsible. **Whether a Siege should be that
+        decisive was put to the owner as issue #1349 and they ruled that it
+        should not**, verbatim "Halve the rate and cut the growth", on
+        2026-09-06. Every figure in this block predates that ruling and
+        describes the game it moved away from; the block at the end of this
+        docstring is the measurement of what replaced it.
+
+        **RE-MEASURED AGAIN ON 2026-09-06 FOR ISSUE #1333**, which barred a
+        Cataclysm dungeon from rolling Cow Level and so changed the draw this
+        fight is built from. 2,000 campaigns in two disjoint blocks of 1,000
+        seeds, at tier 1, `No tree`, `triage`, STATIC surges every 120 days x5
+        (`surge_dungeon_count=5`, not the default of 4 that the model had
+        until 2026-10-13, and 120 days, not the 90 it has since), resolve
+        ratio 2.0,
+        escalation 0.10 per 100 days, craft 12 days +4%, **with the Siege damage
+        settings live**:
+
+          - Last Stand **reached in 96.3% of campaigns** and entered in 1,836 of
+            them.
+          - Won **1 in 26.4 of those reached** -- 73 wins in 1,926 -- and 1 in
+            25.2 of those entered.
+          - Averaging **407 floors**.
+          - The earned Cataclysm dungeon **opens in 8.1% of campaigns** and is
+            won 41.6% of the time.
+
+        **AND THEN THE OWNER CUT THE SIEGE, WHICH MOVED THEM FURTHEST OF ALL.**
+        (SUPERSEDED ON 2026-10-29: the figures in this block are history. The
+        block headed RE-MEASURED ON 2026-10-29 below is the current record.)
+        Issue #1349, 2026-09-06, verbatim "Halve the rate and cut the growth":
+        the Siege spawn weight went 15 to 7.5 and `siege_damage_growth_per_day`
+        10 to 2.5, with the two 1% shares of a city's maximum left alone.
+        Re-measured on 2026-09-07 for issue #1358, on `a71ee1f`, over 6,000
+        campaigns in six disjoint blocks of 1,000 seeds at the settings named
+        above -- six blocks and not two, because two blocks give one realised
+        difference and no estimate of a spread at all. **All of it with NO
+        empire tree**, which matters because the owner has ruled the game is
+        balanced around a fully invested Explorer player and nothing on record
+        measures that player here:
+
+          - **The earned Cataclysm dungeon opens in 54.9% of campaigns**,
+            3,294 of 6,000, against the 8.1% immediately before the ruling,
+            and is won **40.4%** of the time, 1,332 of 3,294.
+          - Last Stand **reached in 45.9%**, 2,754 of 6,000, against 96.3%.
+          - Cleared, per Last Stand reached, **1 in 24.6** -- 112 of 2,754.
+          - Cities lost, of 25: **13.61**, against 21.0.
+          - A campaign is won at all **24.1%** of the time.
+
+        Block standard deviations across the six: 1.27 on the earned share,
+        2.19 on its win rate, 1.22 on the Last Stand share, 0.16 of a city on
+        cities lost, and 0.34 points on the clear rate. The six blocks run
+        1 in 22 to 1 in 28 there, pooled 95% interval 1 in 21 to 1 in 30, so
+        read it as about one in twenty-five and nothing narrower.
+
+        **AN EARLIER SET TAKEN THE SAME DAY ON `e8b33c2` IS SUPERSEDED, AND IT
+        WAS NOT WRONG.** It read 50.0 / 38.3 / 56.4 / 1 in 34.5 / 16.34. The
+        same instrument run against a checkout of `e8b33c2` reproduces all of
+        it to every digit, so what moved is the model and not the measurement:
+        `035f396` gave the empire layer a Cataclysm identity and unlocked the
+        Cataclysm dungeon at half of the active ones, and `bb20848` gave a
+        Quest dungeon a 0.5 chance of moving. Five of the seven figures moved,
+        the clear rate moved marginally, and the earned win rate did not move
+        at all.
+
+        **DO NOT USE A TWO-BLOCK GAP AS A NOISE FLOOR.** On these six the
+        A-to-B gap ran from 0.67 to 1.81 times the real block-to-block
+        standard deviation depending on which figure was read. Issue #1379.
+
+        **So the ordinary way to win is the ordinary outcome again**, which is
+        what the ruling was for. Every figure above this block describes a game
+        with a Siege twice as common and four times as fast.
+
+        **THE SAME 2,000 SEEDS WITH THE RULE UNDONE give 1 in 28.8 reached, 67
+        wins in 1,926, and the same 96.3% and 407 floors.** So barring one
+        sub-type of seven moved the win rate by 0.31 of a percentage point on a
+        base of 3.5, which is well inside the noise at this sample: six wins
+        against a standard deviation of about eight. **The honest reading is
+        that the ruling did not measurably change this fight**, not that it made
+        it easier. 115 of the 1,926 Last Stands were Cow Levels before the rule
+        and none after, so the comparison is between two different things and
+        the nil result is a result.
+
+        WHY 96.3% RATHER THAN THE 99.1% ABOVE. Both were measured the same way;
+        what changed between them is commit `b196cd9`, which draws the active
+        Cataclysms from the campaign seed and ties their count to the tier. A
+        seeded campaign does not replay a figure measured before it.
+
+        **RE-MEASURED ON 2026-10-29 FOR ISSUE #2615**, on `17366a34d`, with
+        `sim/analyse_siege_dose.py`'s `measure` imported, over six disjoint
+        blocks of 1,000 seeds at the settings above, and with the three rules
+        that instrument held at their September values until issue #2620 set
+        as `TuningConfig` ships them: an ordinary dungeon leaves after it hits
+        its city, a Quest
+        dungeon's timer hits its city, and a hit is sized by all of a dungeon's
+        floors. With NO empire tree:
+
+          - **The earned Cataclysm dungeon opens in 99.0% of campaigns**,
+            5,937 of 6,000, and is won **49.0%** of the time, 2,907 of 5,937.
+          - Last Stand **reached in 1.9%**, 116 of 6,000, against 45.9%.
+          - Cleared, per Last Stand reached, **1 in 6.8** -- 17 of 116.
+          - Cities lost, of 25: **1.87**, against 13.61.
+          - A campaign is won at all **48.7%** of the time.
+
+        Block standard deviations across the six: 0.32 on the earned share,
+        0.62 on its win rate, 0.20 on the Last Stand share, 0.10 of a city on
+        cities lost, and 8.75 points on the clear rate. The six blocks run 1 in
+        3.7 to 1 in 20 there, pooled 95% interval 1 in 4.5 to 1 in 10.7. It
+        rests on 17 clears, so read it as about one in seven and nothing
+        narrower.
+
+        THE FALL FROM 45.9% IS ONLY PARTLY ATTRIBUTED. The same six blocks with
+        those three rules held at their September values give 15.5% reached,
+        so the three account for 13.6 of the 44.0 points. The other 30.4 are
+        not attributed to any change. **THE OWNER ACCEPTED THIS BALANCE ON
+        2026-10-29**, verbatim "Accept today's balance", superseding the ruling
+        of 2026-09-05 that a collapse should be near-fatal.
+
+        WHY IT COMES OUT SO LOPSIDED. Every term below grows with how badly the
+        run has already gone, and a player only ever reaches this by having lost
+        cities: a flat bonus, five floors for each dungeon still standing when
+        the map is swallowed, four more per city already lost, and a power
+        multiplier that also scales with the cities lost.
+
+        THE FOUR CONSTANTS WERE NOT TO BE TUNED TOWARDS A FAIRER FIGHT, because
+        a near-fatal fight was the outcome the design wanted when this was
+        written, at a 2% clear rate. Since 2026-10-29 the owner has accepted
+        today's balance, about 1 in 7, which these constants produce
+        unchanged; the owner did not rule on tuning them either way.
+        """
         cfg = self.cfg
         if self.last_stand is not None:
             return
@@ -488,7 +1857,23 @@ class Simulation:
         d.floors += (cfg.last_stand_floor_bonus
                      + len(absorbed) * cfg.last_stand_floors_per_absorbed
                      + ruin * cfg.last_stand_floors_per_fallen_city)
-        d.run_days = self.run_days_for(d.floors)
+        # AT MOST `last_stand_floor_cap` FLOORS FROM TIER 2, a limit that grows
+        # with the tier: 110 and 120 at tiers 2 and 3, 125 at tier 4 to 250 at
+        # tier 8, none at tier 1. Without it a Last Stand at tiers 6 to 8 was 500
+        # to 1,100 floors and never cleared. The project owner, 2026-10-30:
+        # "Falling wins", then "Wins fall every tier". See the config field.
+        cap = cfg.last_stand_floor_cap()
+        if cap is not None:
+            d.floors = min(d.floors, cap)
+
+        # THROUGH `_walk_days` RATHER THAN `run_days_for`, WHICH CHANGES NOTHING
+        # TODAY AND IS THE POINT. A bare `run_days_for` knows nothing about
+        # sub-types, so it dropped a Cow Level Last Stand's doubled walk -- issue
+        # #1333. The owner removed the situation instead of repairing it: a
+        # Cataclysm dungeon can no longer roll Cow Level, so the two calls give
+        # the same answer for every dungeon that can reach this line. This one
+        # is the one that stays right if that ever changes.
+        d.run_days = self._walk_days(d.floors, d.subtype)
         d.power_scale *= 1.0 + ruin * cfg.last_stand_power_per_fallen_city
         d.is_last_stand = True
 
@@ -497,28 +1882,214 @@ class Simulation:
 
         self.last_stand = d
 
+    def cataclysms_complete(self) -> tuple[str, ...]:
+        """Which active Cataclysms have had their own objective count met.
+
+        A CATACLYSM IS FINISHED WHEN ITS OWN NUMBER IS REACHED, and the numbers
+        differ: Death asks for 5 quest dungeons and Demonic for 10. See
+        `TuningConfig.quest_objectives_for`.
+
+        IN THE ROSTER'S DRAWN ORDER, so the answer is stable rather than
+        whatever order a dictionary happens to hold.
+        """
+        cfg = self.cfg
+        return tuple(t for t in self.active_types
+                     if self.objectives_by_type.get(t, 0)
+                     >= cfg.quest_objectives_for(t))
+
     def _maybe_open_cataclysm(self) -> None:
-        """Once the quest objectives are met, the enemy capital opens."""
-        if self.objectives < self.cfg.quest_objectives_required:
+        """Once HALF the active Cataclysms are finished, the enemy capital opens.
+
+        HALF, ROUNDED UP, of however many are active. The project owner ruled it
+        on 2026-09-06 -- `TuningConfig.cataclysms_required` carries the verbatim
+        words and the worked examples -- and it replaced a flat total of 8 quest
+        dungeons that took no notice of which Cataclysm sent them.
+
+        WHY THE TOTAL COULD NOT EXPRESS IT. Facing four Cataclysms and clearing
+        eight quest dungeons all belonging to one of them satisfies "8
+        objectives" and satisfies none of the ruling: the player has finished at
+        most one Cataclysm and the requirement is two. So this reads
+        `cataclysms_complete`, which counts Cataclysms, and never `objectives`,
+        which counts dungeons.
+
+        THE PLAYER DOES NOT CHOOSE WHICH HALF. Whichever `ceil(N/2)` finish
+        first are the ones that count. The owner's stated reason for the rule is
+        that what a surge lands is random, so the player pursues what the map
+        offers; a chosen set would need a commitment step that does not exist.
+        The ruling did not settle this and `docs/DECISIONS.md` records it as a
+        reading rather than a decision.
+
+        IT IS AS DEEP AS THE WORK THE PLAYER CHOSE TO DO. The design document
+        says "Every **ordinary** dungeon defeated adds one floor to the
+        Cataclysm boss dungeon", and until issue #1315 nothing added any: a
+        campaign that cleared thirty dungeons met the same boss as one that
+        cleared five.
+
+        ONLY ORDINARY DUNGEONS COUNT, so beelining the objectives gives a
+        smaller boss than clearing the map. See
+        `cataclysm_floors_per_dungeon_cleared` for the ruling and the reasons.
+
+        AND THEY COUNT AFTER IT OPENS TOO, since 2026-11-02 (issue #1324 slice
+        6b, ruled by the coordinating session from the design's Dungeon Basics
+        bullet and its Dungeon Types row, "Grows by one floor for every ordinary
+        dungeon the player defeats"). Until then the count was added once, here,
+        and an ordinary dungeon cleared afterwards did not deepen it. The depth
+        is `cataclysm_base_floors` plus the count, worked out again by
+        `_deepen_cataclysm` on every ordinary clear, with no cap.
+
+        IT STANDS ON NO CITY, since 2026-11-02, the project owner's decision,
+        verbatim "On no city (Recommended)". It never bites a city and no timer
+        runs on it (`_empire_day` skips it). Until then it stood on the Pillar.
+        It is still ROLLED from the Pillar's Cataclysm row, 100 to 150 floors,
+        which is the only row a Cataclysm dungeon has; `city_tier` says so and
+        nothing reads it for this kind. Moving it to the Pillar in a Last Stand
+        is issue #43's.
+
+        ITS CATACLYSM IS THE NEWEST ACTIVE ONE, the last of `active_types`,
+        ruled by the coordinating session; the game's
+        `UCataclysmEmpireRun::OpenCataclysmDungeonIfEarned` stamps the same.
+
+        IT OPENS ONCE A RUN. `self.cataclysm` is kept after the boss leaves the
+        board, so a second quest clear cannot open a second one.
+
+        THIS IS NOT WHERE THE LAST STAND IS BUILT. `_open_last_stand` has its
+        own bonuses and takes none of this; the two are deliberately separate.
+        """
+        cfg = self.cfg
+        if self.cataclysm is not None:
+            return
+        if len(self.cataclysms_complete()) < cfg.cataclysms_required():
             return
         if any(x.dtype is DungeonType.CATACLYSM for x in self.dungeons.values()):
             return
-        self._make_dungeon(DungeonType.CATACLYSM, self.empire.cities[self.empire.pillar_id])
+
+        d = self._make_dungeon(DungeonType.CATACLYSM,
+                               self.empire.cities[self.empire.pillar_id])
+        d.city_id = None
+        d.source = self.active_types[-1] if self.active_types else ""
+
+        self.cataclysm_base_floors = d.floors
+        self.cataclysm = d
+        self._deepen_cataclysm()
+
+    def _deepen_cataclysm(self) -> None:
+        """The earned boss's depth: its rolled floors plus one a floor for every
+        ordinary dungeon defeated, and the walk worked out again from it.
+
+        WORKED OUT FROM THE COUNT EACH TIME AND NOT ADDED TO, so the depth can
+        never drift from `basic_cleared`: a clear that reached the count by any
+        path is in the depth. Nothing when no boss is open, or when it has left
+        the board.
+
+        THROUGH `_walk_days`, for the reason `test_the_earned_boss_recomputes_
+        its_walk_through_the_subtype_helper` gives: one day a floor less what
+        the tree takes off, and a Cow Level's doubling kept if a kind that can
+        be one ever grows.
+        """
+        d = self.cataclysm
+        if d is None or d.did not in self.dungeons:
+            return
+        earned = self.basic_cleared * self.cfg.cataclysm_floors_per_dungeon_cleared
+        d.floors = self.cataclysm_base_floors + earned
+        d.run_days = self._walk_days(d.floors, d.subtype)
+        self.cataclysm_floors_earned = earned
 
     # -- main loop -------------------------------------------------------
 
+    def _inside_did(self) -> int | None:
+        """The dungeon the player counts as inside: the one being walked, or,
+        while a finished walk's days run, the one that walk was in."""
+        if self.current is not None:
+            return self.current.did
+        return self.settling_inside
+
+    def _walk_day(self) -> None:
+        """A day of a walk, with `days_resolve_on_exit` on: owed, not run.
+
+        WHEN THE WALK ENDS, the clear is credited or the death resolves first,
+        in `_finish_current`, and then `_settle_owed` runs every day the walk
+        spent, in order. The owner's decision of 2026-10-24; see the config.
+        """
+        walked = self.current
+        assert walked is not None
+        self.owed_days += 1
+        self.days_remaining -= 1
+        if self.days_remaining <= 0:
+            self._finish_current()
+            self._settle_owed(walked.did)
+            return
+
+        # THE CAMPAIGN ENDS INSIDE THE WALK. Its days run now, so a campaign
+        # stopped by `max_days` covers the same days it did when they ran as
+        # the walk went, and `run` stops on the day it always stopped on.
+        if self.day + self.owed_days >= self.cfg.max_days:
+            self._settle_owed(walked.did)
+
+    def _settle_owed(self, walked_did: int) -> None:
+        """Runs the days the walk just ended spent, oldest first.
+
+        THE WALKED DUNGEON STILL COUNTS AS THE ONE THE PLAYER IS INSIDE through
+        them, ruled by the coordinating session on 2026-10-24: they were spent
+        inside it. A cleared one is off the board already.
+
+        A WIN OR A LOSS DOES NOT STOP THEM. Both are set by `_finish_current`
+        at the end of a walk of the Cataclysm dungeon, before this runs, and
+        when the days ran as the walk went they had all run by then; nothing
+        in a day of the empire sets either. So the day a campaign ends on is
+        the day it ended on before 2026-10-24. Only `max_days` stops them,
+        which `_walk_day` reaches exactly.
+        """
+        owed, self.owed_days = self.owed_days, 0
+        self.settling_inside = walked_did
+        try:
+            for _ in range(owed):
+                if self.day >= self.cfg.max_days:
+                    break
+                self._empire_day()
+        finally:
+            self.settling_inside = None
+
     def step(self, policy) -> None:
+        cfg = self.cfg
+
+        # A WALK UNDER WAY, WITH ITS DAYS RUNNING WHEN IT ENDS. Since
+        # 2026-10-24 nothing happens in the empire while the player is inside
+        # a dungeon; see `days_resolve_on_exit`.
+        if cfg.days_resolve_on_exit and self.current is not None:
+            self._walk_day()
+            return
+
+        self._empire_day()
+        self._player_day(policy)
+
+    def _empire_day(self) -> None:
+        """One day in the empire: surges, sieges, Hollows, timers, resolves,
+        the Last Stand and the empty-board surge, in that order."""
         cfg = self.cfg
         self.day += 1
 
         if self.day >= self.next_surge_day:
             self.trigger_surge()
 
+        # A SIEGE TAKES ITS SHARE BEFORE ANY TIMER IS ACTED ON, which is the
+        # order `UCataclysmEmpireRun::AdvanceDay` uses. A Siege that arrived
+        # today deals the flat share alone; each later day adds its growth.
+        self._apply_siege_damage()
+
+        # A HOLLOW LOSES ITS FLOORS FOR THE DAY, before its timer is acted on.
+        self._hollow_shrink()
+
         # Timers tick. Whether the dungeon the player is currently inside also
         # ticks is a rules question with real design weight -- see config.
         for d in list(self.dungeons.values()):
-            inside = self.current is not None and d.did == self.current.did
+            inside = d.did == self._inside_did()
             if inside and not cfg.timer_ticks_while_running:
+                continue
+            # A DUNGEON ON NO CITY HAS NO TIMER RUNNING, since 2026-11-02: the
+            # earned boss, which the owner put on no city ("On no city
+            # (Recommended)"). It never resolves and threatens nothing. Until
+            # then it stood on the Pillar with a 999 day timer that refilled.
+            if d.city_id is None:
                 continue
             d.resolve_in -= 1.0
 
@@ -527,10 +2098,39 @@ class Simulation:
                 self._resolve(d)
 
         # A Sanctuary has fallen: the Cataclysm reaches the Pillar and comes to
-        # the player. Not an instant loss -- a final dungeon that must be beaten.
+        # the player. In practice this is the end of the run. The fight is
+        # winnable in principle and almost never in practice -- measured on
+        # 2026-09-07 at about 1 in 24.6 per Last Stand REACHED, against 40.4%
+        # for a Cataclysm dungeon the player opened by clearing quest
+        # objectives, both with no empire tree.
+        # See `_open_last_stand`, which carries the denominators and what moved
+        # them.
         self.min_d2d = min(self.min_d2d, self.empire.distance_to_defeat())
         if self.empire.pillar_exposed():
             self._open_last_stand()
+
+        # THE BOARD IS EMPTY, SO THE NEXT WAVE COMES NOW.
+        #
+        # BELOW `_open_last_stand` AND NOT ABOVE IT, deliberately. The Last
+        # Stand absorbs everything standing and pays five floors for each one,
+        # so a surge fired into an empty board a moment before it opens would
+        # deepen a fight that is already deep. Below this line
+        # the Last Stand is itself on the board, so the board is not empty and
+        # no wave is added to it.
+        #
+        # AFTER EVERY REMOVAL THIS DAY HAS. `_resolve` above pops a detonated
+        # dungeon and `_fall` absorbs the ones on a lost city. A dungeon the
+        # player CLEARS is popped by `_finish_current`: with
+        # `days_resolve_on_exit` on, before the walk's days run, so the first
+        # of them sees the board without it; with it off, at the bottom of
+        # `_player_day`, so a clear on day N is seen here on day N+1. Either
+        # way it is seen before the player is asked to choose, which is what
+        # matters, and the player is never asked to choose from an empty board.
+        self._maybe_surge_on_empty_board()
+
+    def _player_day(self, policy) -> None:
+        """What the player does with a day the empire has already run."""
+        cfg = self.cfg
 
         # -- player action ------------------------------------------------
 
@@ -548,7 +2148,7 @@ class Simulation:
                 self._finish_craft()
             return
 
-        # Inside a dungeon.
+        # Inside a dungeon, with `days_resolve_on_exit` off: the day ran above.
         if self.current is not None:
             self.days_remaining -= 1
             if self.days_remaining <= 0:
@@ -587,6 +2187,7 @@ class Simulation:
         for c in self.empire.fallen_cities():
             lost_by_tier[c.tier] += 1
 
+
         return RunResult(
             survived_days=self.day,
             won=self.won,
@@ -600,19 +2201,25 @@ class Simulation:
             objectives=self.objectives,
             floors_cleared=self.floors_cleared,
             surges=len(self.surge_log),
+            surges_from_empty_board=self.surges_from_empty_board,
             final_surge_gap=(self.surge_log[-1][1] if self.surge_log else 0.0),
             final_surge_count=(self.surge_log[-1][2] if self.surge_log else 0),
             empire_points=self.empire_points,
+            empire_points_flat=self.empire_points_flat,
             power=self.power,
             crafts=self.crafts_done,
             craft_days=self.craft_days_spent,
             deaths=self.deaths,
             min_distance_to_defeat=self.min_d2d,
             last_stand=self.last_stand is not None,
-            final_population_frac=(self.empire.total_population()
-                                   / max(1.0, self.empire.max_population())),
+            cataclysm_floors=(0 if self.cataclysm is None
+                              else self.cataclysm.floors),
+            cataclysm_floors_earned=self.cataclysm_floors_earned,
+            final_population_frac=self.empire.population_frac(),
             idle_days=self.idle_days,
             decision_days=self.decision_days,
             free_days=self.free_days,
             overcommitted=self.overcommitted,
+            cataclysms_finished=len(self.cataclysms_complete()),
+            quest_hits=self.quest_hits,
         )

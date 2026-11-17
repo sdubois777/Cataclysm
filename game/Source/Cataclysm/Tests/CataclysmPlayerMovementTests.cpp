@@ -1,0 +1,2333 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "Misc/AutomationTest.h"
+
+#if WITH_AUTOMATION_TESTS
+
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "Tests/CataclysmTestWorld.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+// For the announcements a worn row hears, and the counts of what was sent.
+#include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmAilments.h"
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmFervour.h"
+// For a minion of the wearer's own, and for dealing real blows and burns.
+#include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmStatPipeline.h"
+// For the health a bonus can be made to depend on. Issue #959.
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
+// For a hostile body to stand near, which is what the Unstoppable clause
+// counts. Issue #1515.
+#include "AbilitySystem/CataclysmTeams.h"
+#include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmPlayerCharacter.h"
+#include "Character/CataclysmPlayerClassStats.h"
+#include "Engine/World.h"
+// For a character nobody configured, the control for how a path is followed. Issue #1174.
+#include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PlayerController.h"
+#include "Items/CataclysmEquipmentComponent.h"
+#include "Misc/ScopeExit.h"
+#include "HAL/IConsoleManager.h"
+#include "Player/CataclysmPlayerState.h"
+
+/**
+ * Tests for how fast the player walks.
+ *
+ * WHAT THESE GUARD. Issue #391. ACataclysmPlayerCharacter never touched
+ * MaxWalkSpeed, so the player ran at Unreal's engine default of 600 cm/s while
+ * the design gives the three Demonic classes 460, 350 and 400. Nothing noticed
+ * for as long as the project has existed, because a character that moves is a
+ * character that looks like it is working.
+ *
+ * The second failure it guards is subtler and is the reason the pawn reads an
+ * attribute rather than holding a number. Movement speed has a suffix affix,
+ * four boot implicits, an attribute that scales it and several enchantments. A
+ * pawn that took its speed once at spawn would leave every one of those moving
+ * a number that changed nothing.
+ *
+ * WHY THE ATTRIBUTE TEST DOES NOT USE 4.0. That is what the attribute already
+ * starts at AND what the constructor writes, so a pawn that ignored the
+ * attribute entirely would still read 400 and the test would pass. Every
+ * assertion below therefore uses a speed the constructor does not produce.
+ */
+
+namespace CataclysmPlayerMovementTest
+{
+	/** A world that has begun play, so a spawned player state gets its ability
+	 *  system component initialised and its attribute sets registered. */
+	static UWorld* MakeWorldThatHasBegunPlay()
+	{
+		return CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	}
+
+	/**
+	 * UCharacterMovementComponent's own default, in centimetres per second.
+	 *
+	 * Engine/Source/Runtime/Engine/Private/Components/CharacterMovementComponent.cpp
+	 * sets `MaxWalkSpeed = 600.f` in the constructor. Written here as a literal
+	 * because it is the value the fault produced, and a test that compared
+	 * against the engine's live default would stop meaning anything if Epic ever
+	 * changed it.
+	 */
+	constexpr float EngineDefaultWalkSpeedCmPerSecond = 600.0f;
+
+	/** Ravager and Ritualist movement speed from game/Data/ClassStats.csv, in
+	 *  metres per second. Neither is the shared Default line, which is what the
+	 *  constructor writes, so either one distinguishes the attribute path from
+	 *  the constructor. */
+	constexpr float RavagerMetresPerSecond = 4.6f;
+	constexpr float RitualistMetresPerSecond = 3.5f;
+
+	/** Centimetres in a metre, so a case can place a body in metres. */
+	constexpr float M = 100.0f;
+
+	/** The reach the Unstoppable row names. */
+	constexpr float FourMetres = 4.0f;
+
+	/** A hostile body, for a row that counts who is standing near. */
+	static ACataclysmEnemyCharacter* SpawnHostile(UWorld* World,
+												  const FVector& Where)
+	{
+		ACataclysmEnemyCharacter* Made =
+			World->SpawnActor<ACataclysmEnemyCharacter>(Where,
+														FRotator::ZeroRotator);
+		if (Made)
+		{
+			Made->SetGenericTeamId(
+				UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+			Made->SetHealth(1'000'000.0f);
+			Made->SetAttackDamage(0.0f);
+		}
+		return Made;
+	}
+
+	/**
+	 * One modifier, with every field stated.
+	 *
+	 * EVERY FIELD, INCLUDING THE ONES A CASE DOES NOT USE, so a reader of a case
+	 * sees the whole row rather than the difference from a default they have to
+	 * go and look up. `CataclysmEnemiesInReachTests.cpp` says the same and for
+	 * the same reason.
+	 */
+	static FCataclysmStatModifier Row(ECataclysmStatBucket Bucket, float Value,
+									  ECataclysmStatCondition Condition,
+									  float ConditionValue, float ReachMetres)
+	{
+		FCataclysmStatModifier Made;
+		Made.Bucket = Bucket;
+		Made.Source = ECataclysmModifierSource::PassiveKeystone;
+		Made.Value = Value;
+		Made.Condition = Condition;
+		Made.ConditionValue = ConditionValue;
+		Made.Scale = ECataclysmStatScale::Fixed;
+		Made.ScaleStep = 0.0f;
+		Made.ReachMetres = ReachMetres;
+		return Made;
+	}
+
+	/** A row that applies always and is worth its value. */
+	static FCataclysmStatModifier Always(ECataclysmStatBucket Bucket, float Value)
+	{
+		return Row(Bucket, Value, ECataclysmStatCondition::Always, 0.0f,
+				   /*ReachMetres=*/-1.0f);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmPlayerWalksAtADesignedSpeed,
+	"Cataclysm.Player.WalksAtADesignedSpeedRatherThanTheEngineDefault",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlayerWalksAtADesignedSpeed::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerCharacter* Character = World->SpawnActor<ACataclysmPlayerCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("player character spawned"), Character))
+	{
+		return false;
+	}
+
+	const UCharacterMovementComponent* Movement = Character->GetCharacterMovement();
+	if (!TestNotNull(TEXT("movement component"), Movement))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a player with no ability system walks at the designed default"),
+		Movement->MaxWalkSpeed,
+		ACataclysmPlayerCharacter::DefaultWalkSpeedCmPerSecond);
+
+	// SAID SEPARATELY, because this is the fault rather than a restatement of
+	// the line above. A pawn that never assigned MaxWalkSpeed would report 600
+	// and every judgement about closing and escaping made against it would be
+	// wrong; that was the state of the project until issue #391 was fixed.
+	TestNotEqual(TEXT("and not at the engine's own default"),
+		Movement->MaxWalkSpeed, EngineDefaultWalkSpeedCmPerSecond);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmPlayerFollowsTheMovementSpeedAttribute,
+	"Cataclysm.Player.MovementSpeedFollowsTheAttribute",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlayerFollowsTheMovementSpeedAttribute::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	if (!TestNotNull(TEXT("player state spawned"), PlayerState))
+	{
+		return false;
+	}
+
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState->GetCataclysmAbilitySystemComponent();
+	if (!TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute Speed =
+		UCataclysmCombatAttributeSet::GetMovementSpeedAttribute();
+	if (!TestTrue(TEXT("the combat attribute set is registered"),
+		AbilitySystem->HasAttributeSetForAttribute(Speed)))
+	{
+		return false;
+	}
+
+	// SET BEFORE THE PAWN IS WIRED UP, so that what the pawn reads at
+	// initialisation differs from what its constructor wrote. Without this the
+	// attribute already holds 4.0, the constructor already wrote 400, and a pawn
+	// that ignored the attribute completely would pass.
+	AbilitySystem->SetNumericAttributeBase(Speed, RavagerMetresPerSecond);
+
+	ACataclysmPlayerCharacter* Character = World->SpawnActor<ACataclysmPlayerCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("player character spawned"), Character))
+	{
+		return false;
+	}
+
+	const UCharacterMovementComponent* Movement = Character->GetCharacterMovement();
+	if (!TestNotNull(TEXT("movement component"), Movement))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("before the player state arrives it holds the designed default"),
+		Movement->MaxWalkSpeed,
+		ACataclysmPlayerCharacter::DefaultWalkSpeedCmPerSecond);
+
+	// The client path. OnRep_PlayerState is what runs when the player state
+	// replicates, and it calls the same InitAbilityActorInfo the server reaches
+	// from PossessedBy. Driven directly because a test world has no controller
+	// to possess with and no network to replicate over.
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	TestEqual(TEXT("once the ability system is up it takes the attribute's value"),
+		Movement->MaxWalkSpeed,
+		RavagerMetresPerSecond * ACataclysmPlayerCharacter::CentimetresPerMetre);
+
+	// AND KEEPS FOLLOWING IT. This is the assertion that makes gear, passives
+	// and enchantments able to change how fast the player moves. Without the
+	// change delegate the value above would still be right and this would fail.
+	AbilitySystem->SetNumericAttributeBase(Speed, RitualistMetresPerSecond);
+
+	TestEqual(TEXT("and follows it when something changes it afterwards"),
+		Movement->MaxWalkSpeed,
+		RitualistMetresPerSecond * ACataclysmPlayerCharacter::CentimetresPerMetre);
+
+	// A ZERO IS REFUSED RATHER THAN WRITTEN. An ability system holding no combat
+	// attribute set reports zero rather than failing, and a MaxWalkSpeed of zero
+	// is a character who cannot move at all with nothing on screen saying why.
+	AbilitySystem->SetNumericAttributeBase(Speed, 0.0f);
+
+	TestEqual(TEXT("a movement speed of zero leaves the last usable speed alone"),
+		Movement->MaxWalkSpeed,
+		RitualistMetresPerSecond * ACataclysmPlayerCharacter::CentimetresPerMetre);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmPlayerSpeedFollowsAHealthCondition,
+	"Cataclysm.Player.MovementSpeedFollowsABonusThatDependsOnHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlayerSpeedFollowsAHealthCondition::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	// THE MASOCHIST'S DESPERATE MEASURES NODE: "While at or below 50% health,
+	// +1% increased Movement Speed per point", held at its full ten points.
+	// Issue #959.
+	//
+	// WHY THIS TEST EXISTS ALONGSIDE THE PIPELINE ONES. A conditional bonus is
+	// deliberately never written onto the gameplay attribute, so the delegate
+	// that normally re-tells the movement component a speed does not fire when
+	// health crosses the threshold. Something has to notice, and only this test
+	// goes through the thing that does. Every test in
+	// CataclysmStatPipelineTests.cpp would go on passing with that connection
+	// deleted, and the player would simply never speed up.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute Speed =
+		UCataclysmCombatAttributeSet::GetMovementSpeedAttribute();
+	AbilitySystem->SetNumericAttributeBase(Speed, RavagerMetresPerSecond);
+
+	// A HUNDRED HEALTH OUT OF A HUNDRED, so the share is the figure itself.
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 100.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 100.0f);
+
+	// THE STAT'S INPUTS AS `UCataclysmPlayerClassStats::ApplyTo` WOULD LEAVE
+	// THEM. Written directly rather than by spending a passive point, because
+	// this test is about whether the pawn notices a conditional bonus and not
+	// about how one gets onto the character.
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = RavagerMetresPerSecond;
+
+	FCataclysmStatModifier Conditional;
+	Conditional.Bucket = ECataclysmStatBucket::Increased;
+	Conditional.Source = ECataclysmModifierSource::PassiveKeystone;
+	Conditional.Value = 10.0f;
+	Conditional.Condition = ECataclysmStatCondition::HealthAtOrBelowPercent;
+	Conditional.ConditionValue = 50.0f;
+	Inputs.Modifiers.Add(Conditional);
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("movement_speed")), Inputs);
+	AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	ACataclysmPlayerCharacter* Character = World->SpawnActor<ACataclysmPlayerCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	const UCharacterMovementComponent* Movement =
+		Character ? Character->GetCharacterMovement() : nullptr;
+	if (!TestNotNull(TEXT("movement component"), Movement))
+	{
+		return false;
+	}
+
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	const float Plain =
+		RavagerMetresPerSecond * ACataclysmPlayerCharacter::CentimetresPerMetre;
+
+	TestEqual(TEXT("at full health the bonus is not applied"),
+		Movement->MaxWalkSpeed, Plain);
+
+	// HEALTH CROSSES THE THRESHOLD AND NOTHING WRITES THE SPEED ATTRIBUTE.
+	// `HealthChanged` is the only thing that can notice, and this is what says
+	// the pawn is listening to it.
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 40.0f);
+	Character->HealthChanged();
+
+	TestEqual(TEXT("below the threshold it speeds up by a tenth"),
+		Movement->MaxWalkSpeed, Plain * 1.1f, 0.01f);
+
+	// AND BACK OFF AGAIN WHEN THE CHARACTER HEALS. A bonus that came on and
+	// never went off would be a bonus a player keeps by taking one hit.
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 90.0f);
+	Character->HealthChanged();
+
+	TestEqual(TEXT("and back to its plain speed when healed"),
+		Movement->MaxWalkSpeed, Plain, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmPlayerSpeedFollowsAFullClassResource,
+	"Cataclysm.Player.MovementSpeedFollowsABonusThatDependsOnTheClassResource",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlayerSpeedFollowsAFullClassResource::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	// "WHEN YOUR CLASS RESOURCE IS FULL YOUR MOVEMENT SPEED IS INCREASED BY
+	// 15%-30%" -- a shipped enchantment row that never reached the character.
+	// Issue #1825.
+	//
+	// NOTHING IS CALLED BY HAND HERE, AND THAT IS THE WHOLE POINT. The sibling
+	// test above drives `HealthChanged()` itself, because health reaches the
+	// pawn through an explicit call chain that a test world never runs; it
+	// therefore proves the pawn responds WHEN TOLD, and would keep passing with
+	// every binding deleted. The class resource is a gameplay attribute, so
+	// writing it fires the change delegate in a test world exactly as in play.
+	// This test writes the attribute and reads the movement component, with no
+	// call in between, so it fails when nothing is listening -- which is the
+	// defect.
+	//
+	// AND IT IS THE ONLY TEST THAT CAN. `UCataclysmStatPipeline` resolves this
+	// modifier correctly with or without the binding, so every pipeline test
+	// passes either way. What was broken was the delivery of a correct answer
+	// to the thing that moves the character.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetMovementSpeedAttribute(),
+		RavagerMetresPerSecond);
+
+	// A HUNDRED POINT POOL HOLDING FORTY, so the condition is false to begin
+	// with and the first assertion is about a bonus that is genuinely refused
+	// rather than one that is simply absent.
+	const FGameplayAttribute Held =
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const FGameplayAttribute Maximum =
+		UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute();
+	AbilitySystem->SetNumericAttributeBase(Maximum, 100.0f);
+	AbilitySystem->SetNumericAttributeBase(Held, 40.0f);
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = RavagerMetresPerSecond;
+
+	FCataclysmStatModifier Conditional;
+	Conditional.Bucket = ECataclysmStatBucket::Increased;
+	Conditional.Source = ECataclysmModifierSource::GearAffix;
+	Conditional.Value = 20.0f;
+	Conditional.Condition = ECataclysmStatCondition::ClassResourceAtMaximum;
+	Inputs.Modifiers.Add(Conditional);
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("movement_speed")), Inputs);
+	AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	ACataclysmPlayerCharacter* Character = World->SpawnActor<ACataclysmPlayerCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	const UCharacterMovementComponent* Movement =
+		Character ? Character->GetCharacterMovement() : nullptr;
+	if (!TestNotNull(TEXT("movement component"), Movement))
+	{
+		return false;
+	}
+
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	const float Plain =
+		RavagerMetresPerSecond * ACataclysmPlayerCharacter::CentimetresPerMetre;
+
+	TestEqual(TEXT("a pool that is not full leaves the speed alone"),
+		Movement->MaxWalkSpeed, Plain, 0.01f);
+
+	// THE POOL FILLS AND NOTHING WRITES THE SPEED ATTRIBUTE.
+	AbilitySystem->SetNumericAttributeBase(Held, 100.0f);
+
+	TestEqual(TEXT("filling the pool speeds the character up by a fifth"),
+		Movement->MaxWalkSpeed, Plain * 1.2f, 0.01f);
+
+	// AND SPENDING IT TAKES THE BONUS BACK. A bonus that came on and never went
+	// off would be one a player keeps for the rest of a run by filling the bar
+	// once.
+	AbilitySystem->SetNumericAttributeBase(Held, 40.0f);
+
+	TestEqual(TEXT("and spending it returns the character to its plain speed"),
+		Movement->MaxWalkSpeed, Plain, 0.01f);
+
+	// AND THE MAXIMUM COUNTS TOO, WHICH THE HELD VALUE ALONE CANNOT SHOW.
+	// `ClassResourceAtMaximum` compares the two, so a maximum falling to meet a
+	// held value that never moved makes the pool full. Binding only the pool
+	// would pass every assertion above and fail this one. The Crowned thrall
+	// lowering a summoner's Fervour reserve is that case in play.
+	AbilitySystem->SetNumericAttributeBase(Maximum, 40.0f);
+
+	TestEqual(TEXT("and a maximum falling to meet the pool fills it too"),
+		Movement->MaxWalkSpeed, Plain * 1.2f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmPlayerSpeedFollowsTheRealResourcePath,
+	"Cataclysm.Player.MovementSpeedFollowsTheClassResourceMovedTheWayPlayMovesIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlayerSpeedFollowsTheRealResourcePath::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	// THE SAME CLAIM AS THE TEST ABOVE, MADE THROUGH THE PATH PLAY USES.
+	// Issue #1825.
+	//
+	// WHY A SECOND TEST RATHER THAN A SECOND ASSERTION. The test above writes
+	// the pool with `SetNumericAttributeBase`. Nothing in play does: every gain
+	// and every spend goes through `UCataclysmFervour::Move`, which writes with
+	// `ApplyModToAttribute`. Those are different routes into the attribute, and
+	// a change delegate firing for one says nothing about the other. A test
+	// that drives a stat by a route the game never takes is the same fault as
+	// one that calls its own handler by hand -- it passes while the thing it is
+	// named for never happens.
+	//
+	// READING THE ENGINE SAYS THIS SHOULD PASS, AND THE READING IS NOT THE
+	// PROOF. `ApplyModToAttribute` reaches `SetAttributeBaseValue`, whose two
+	// branches -- with an aggregator and without -- both end at
+	// `InternalUpdateNumericalAttribute`, which broadcasts
+	// `AttributeValueChangeDelegates`. That is the delegate
+	// `InitAbilityActorInfo` binds. This test is what holds that true through
+	// an engine upgrade, when nobody will re-read those four functions.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetMovementSpeedAttribute(),
+		RavagerMetresPerSecond);
+
+	// FIVE HUNDRED HEALTH AND A RATE OF ONE, so a point of Fervour arrives for
+	// every one per cent of maximum health lost: losing all five hundred fills
+	// a hundred-point pool exactly. `UCataclysmFervour::Move` refuses a
+	// character with no generator at all, so the rate is what makes this a
+	// character that can fill its bar.
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 500.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 500.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmClassResourceAttributeSet::GetFervourFromDamageAttribute(),
+		1.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmClassResourceAttributeSet::GetFervourLostToHealingAttribute(), 1.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(),
+		100.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 0.0f);
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = RavagerMetresPerSecond;
+
+	FCataclysmStatModifier Conditional;
+	Conditional.Bucket = ECataclysmStatBucket::Increased;
+	Conditional.Source = ECataclysmModifierSource::GearAffix;
+	Conditional.Value = 20.0f;
+	Conditional.Condition = ECataclysmStatCondition::ClassResourceAtMaximum;
+	Inputs.Modifiers.Add(Conditional);
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("movement_speed")), Inputs);
+	AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	ACataclysmPlayerCharacter* Character = World->SpawnActor<ACataclysmPlayerCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	const UCharacterMovementComponent* Movement =
+		Character ? Character->GetCharacterMovement() : nullptr;
+	if (!TestNotNull(TEXT("movement component"), Movement))
+	{
+		return false;
+	}
+
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	const float Plain =
+		RavagerMetresPerSecond * ACataclysmPlayerCharacter::CentimetresPerMetre;
+
+	TestEqual(TEXT("an empty pool leaves the speed alone"),
+		Movement->MaxWalkSpeed, Plain, 0.01f);
+
+	// THE POOL FILLS THE WAY PLAY FILLS IT. Nothing is called on the character.
+	const float Gained = UCataclysmFervour::GainFromDamage(
+		AbilitySystem, /*HealthLost=*/500.0f, FGameplayTagContainer());
+
+	// ASSERT THE STATE THIS TEST BUILT BEFORE ASSERTING WHAT FOLLOWS FROM IT.
+	// A rate that had stopped generating would leave the pool empty, the speed
+	// unchanged, and the assertion below passing for the wrong reason -- it
+	// would read as "the delegate did not fire" when nothing had happened at
+	// all.
+	if (!TestEqual(TEXT("the real path filled the bar"), Gained, 100.0f, 0.01f)
+		|| !TestEqual(TEXT("and the pool is at its maximum"),
+			AbilitySystem->GetNumericAttribute(
+				UCataclysmClassResourceAttributeSet::GetClassResourceAttribute()),
+			100.0f, 0.01f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a pool filled through ApplyModToAttribute speeds the "
+				   "character up by a fifth"),
+		Movement->MaxWalkSpeed, Plain * 1.2f, 0.01f);
+
+	// AND SPENDING IT THE SAME WAY TAKES THE BONUS BACK.
+	const float Lost = UCataclysmFervour::RemoveForHealing(
+		AbilitySystem, /*HealthRestored=*/300.0f, FGameplayTagContainer());
+
+	if (!TestEqual(TEXT("the real path drained the bar"), Lost, -60.0f, 0.01f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("and the character returns to its plain speed"),
+		Movement->MaxWalkSpeed, Plain, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmClassResourceWindowsOpenOnCrossings,
+	"Cataclysm.Player.TheClassResourceWindowsOpenOnACrossingAndNotWhileThePoolSitsThere",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmClassResourceWindowsOpenOnCrossings::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	// THE TWO WINDOWS A THRESHOLD CROSSING OPENS. Issue #1815.
+	//
+	// AN EVENT IS NOT A STATE, AND THAT IS THE WHOLE TEST.
+	// `class_resource_at_maximum` holds for as long as the bar is full.
+	// `seconds_after_resource_full` opens at the moment it fills and then AGES
+	// while the bar sits there. A stamp written on every change rather than on
+	// a crossing would re-open the window on every point gained at maximum, and
+	// it would never age at all -- which no assertion about the window merely
+	// being open could tell apart.
+	//
+	// DRIVEN THROUGH `UCataclysmFervour`, the path play uses, for the reason the
+	// test above it gives: a delegate firing for `SetNumericAttributeBase` says
+	// nothing about `ApplyModToAttribute`.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute Held =
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const FGameplayAttribute Maximum =
+		UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute();
+
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 500.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 500.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmClassResourceAttributeSet::GetFervourFromDamageAttribute(), 1.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmClassResourceAttributeSet::GetFervourLostToHealingAttribute(), 1.0f);
+	AbilitySystem->SetNumericAttributeBase(Maximum, 100.0f);
+	AbilitySystem->SetNumericAttributeBase(Held, 0.0f);
+
+	// THE PAWN IS WHAT CARRIES THE BINDING, so the windows cannot open without
+	// one even though the clocks live on the ability system component.
+	ACataclysmPlayerCharacter* Character = World->SpawnActor<ACataclysmPlayerCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a character"), Character))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	TestEqual(TEXT("an empty pool has opened no full window"),
+		AbilitySystem->SecondsSinceClassResourceFull(), -1.0f, 0.001f);
+	TestEqual(TEXT("and starting empty is not the pool REACHING zero"),
+		AbilitySystem->SecondsSinceClassResourceEmptied(), -1.0f, 0.001f);
+
+	// HALF FULL IS NOT FULL.
+	UCataclysmFervour::GainFromDamage(AbilitySystem, /*HealthLost=*/250.0f,
+									  FGameplayTagContainer());
+	if (!TestEqual(TEXT("the pool holds fifty"),
+				   AbilitySystem->GetNumericAttribute(Held), 50.0f, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a half-full pool opens no window"),
+		AbilitySystem->SecondsSinceClassResourceFull(), -1.0f, 0.001f);
+
+	// AND FILLING IT OPENS ONE.
+	UCataclysmFervour::GainFromDamage(AbilitySystem, /*HealthLost=*/250.0f,
+									  FGameplayTagContainer());
+	if (!TestEqual(TEXT("the pool is now at its maximum"),
+				   AbilitySystem->GetNumericAttribute(Held), 100.0f, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("filling the pool opens the full window, now"),
+		AbilitySystem->SecondsSinceClassResourceFull(), 0.0f, 0.001f);
+
+	// SITTING AT FULL DOES NOT RE-STAMP, WHICH IS THE ASSERTION THE WHOLE
+	// CROSSING RULE EXISTS FOR. Time is advanced, and the pool is then
+	// disturbed twice without ever ceasing to be full.
+	//
+	// THE FIRST DISTURBANCE PROVES NOTHING AND IS KEPT FOR WHAT IT DOCUMENTS.
+	// `UCataclysmFervour::Move` returns early when the change it would write is
+	// nearly zero, so a gain at a pool already at its maximum writes no
+	// attribute and never reaches the handler at all. Measured by guard proof on
+	// 2026-09-14: with the crossing test neutralised, this assertion still
+	// passed, which is why the step below had to be written.
+	World->TimeSeconds += 2.0f;
+	UCataclysmFervour::GainFromDamage(AbilitySystem, /*HealthLost=*/100.0f,
+									  FGameplayTagContainer());
+	TestEqual(TEXT("a gain at maximum is refused and opens nothing"),
+		AbilitySystem->SecondsSinceClassResourceFull(), 2.0f, 0.01f);
+
+	// THE SECOND DISTURBANCE IS THE ONE THAT SEPARATES THEM: the MAXIMUM falls
+	// onto a pool that does not move. That does reach the handler, which is bound
+	// to the maximum attribute as well as to the pool, and the character is full
+	// before it and full after it. A stamp written on every change puts the
+	// reading back to zero here; a crossing leaves it aged.
+	//
+	// AND IT IS A REAL CASE rather than one invented for the test: the Crowned
+	// thrall lowers a summoner's Fervour reserve.
+	AbilitySystem->SetNumericAttributeBase(Maximum, 80.0f);
+	if (!TestEqual(TEXT("the maximum has fallen to eighty"),
+				   AbilitySystem->GetNumericAttribute(Maximum), 80.0f, 0.01f))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("and the pool is still at or above it, so still full"),
+				  AbilitySystem->GetNumericAttribute(Held) >= 80.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a maximum falling onto a full pool does not re-open it"),
+		AbilitySystem->SecondsSinceClassResourceFull(), 2.0f, 0.01f);
+
+	// AND PUT BACK, so the steps below start from the hundred they were written
+	// against.
+	AbilitySystem->SetNumericAttributeBase(Maximum, 100.0f);
+
+	// SPENDING TO ZERO OPENS THE OTHER ONE.
+	UCataclysmFervour::RemoveForHealing(AbilitySystem, /*HealthRestored=*/500.0f,
+										FGameplayTagContainer());
+	if (!TestEqual(TEXT("the pool is empty"),
+				   AbilitySystem->GetNumericAttribute(Held), 0.0f, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("reaching zero opens the empty window, now"),
+		AbilitySystem->SecondsSinceClassResourceEmptied(), 0.0f, 0.001f);
+
+	// AND THE FULL WINDOW IS LEFT ALONE BY IT, still ageing from its own
+	// crossing rather than being cleared or re-stamped by an unrelated one.
+	TestEqual(TEXT("and the full window keeps ageing rather than being cleared"),
+		AbilitySystem->SecondsSinceClassResourceFull(), 2.0f, 0.01f);
+
+	// AND REFILLING STAMPS AGAIN, so the crossing rule has not simply stopped
+	// the window ever opening a second time.
+	World->TimeSeconds += 5.0f;
+	UCataclysmFervour::GainFromDamage(AbilitySystem, /*HealthLost=*/500.0f,
+									  FGameplayTagContainer());
+	TestEqual(TEXT("refilling from empty opens the full window again"),
+		AbilitySystem->SecondsSinceClassResourceFull(), 0.0f, 0.001f);
+
+	// AND THE STATE THE PIPELINE IS HANDED CARRIES BOTH.
+	const FCataclysmStatConditions State = AbilitySystem->CurrentConditions();
+	TestEqual(TEXT("the pipeline is told the full reading"),
+		State.SecondsSinceClassResourceFull, 0.0f, 0.001f);
+	TestEqual(TEXT("and the empty reading"),
+		State.SecondsSinceClassResourceEmpty, 5.0f, 0.01f);
+
+	// AND A RESPAWN AT AN ALREADY-EMPTY POOL OPENS NEITHER WINDOW. A write that
+	// starts at zero and ends at zero is the only shape that separates "the pool
+	// REACHED zero" from "the pool IS at zero", and it is not reachable through
+	// `UCataclysmFervour`, which refuses to write a change of nothing.
+	//
+	// IT IS THE ROUTE A RESPAWN TAKES, in that order.
+	// `ACataclysmPlayerCharacter::Revive` calls `ClearWhatDeathEnds` first, which
+	// forgets every window, and then writes the pool to zero directly. A
+	// character that died with an empty pool is written zero over zero, and
+	// `FActiveGameplayEffectsContainer::InternalUpdateNumericalAttribute`
+	// broadcasts with no equality test in it, so that write does reach the
+	// handler.
+	//
+	// WITHOUT THE "WAS IT ABOVE ZERO BEFORE" TEST, such a character would stand
+	// up with the window that says it has just emptied its class resource open,
+	// which is the thing the forgetting exists to prevent.
+	UCataclysmFervour::RemoveForHealing(AbilitySystem, /*HealthRestored=*/500.0f,
+										FGameplayTagContainer());
+	if (!TestEqual(TEXT("the pool is empty again"),
+				   AbilitySystem->GetNumericAttribute(Held), 0.0f, 0.01f))
+	{
+		return false;
+	}
+	AbilitySystem->ClearWhatDeathEnds();
+	if (!TestEqual(TEXT("a respawn has forgotten the window that emptying opened"),
+				   AbilitySystem->SecondsSinceClassResourceEmptied(), -1.0f, 0.001f))
+	{
+		return false;
+	}
+	AbilitySystem->SetNumericAttributeBase(Held, 0.0f);
+	TestEqual(TEXT("and writing zero over zero does not open the empty window"),
+		AbilitySystem->SecondsSinceClassResourceEmptied(), -1.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmAPoolThatCannotHoldAnythingIsNotFull,
+	"Cataclysm.Player.APoolWithAMaximumOfZeroOpensNoFullWindow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAPoolThatCannotHoldAnythingIsNotFull::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	// THE STAMP MUST APPLY `ClassResourceAtMaximum`'S OWN RULE, NOT A SECOND
+	// OPINION ON IT. Issue #1815. That predicate refuses a maximum of zero, and
+	// says why: every enemy and every character built without a class resource
+	// sits at zero of zero, and each would otherwise satisfy a bonus written for
+	// a full bar.
+	//
+	// IF THE STAMP DID NOT AGREE, the window and the condition would disagree
+	// about the same pool: the window would open and the condition would refuse
+	// it, so the row would do nothing and nothing would say why.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute Held =
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const FGameplayAttribute Maximum =
+		UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute();
+
+	ACataclysmPlayerCharacter* Character = World->SpawnActor<ACataclysmPlayerCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a character"), Character))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	// A BAR THAT CANNOT HOLD ANYTHING. Held and maximum are both zero, so a
+	// stamp comparing only the two readings would call it full.
+	AbilitySystem->SetNumericAttributeBase(Maximum, 100.0f);
+	AbilitySystem->SetNumericAttributeBase(Held, 0.0f);
+	AbilitySystem->SetNumericAttributeBase(Maximum, 0.0f);
+
+	TestEqual(TEXT("a maximum of zero opens no full window"),
+		AbilitySystem->SecondsSinceClassResourceFull(), -1.0f, 0.001f);
+
+	// AND THE CONDITION AGREES, which is the point: the two read the same pool
+	// and must answer alike about it.
+	TestFalse(TEXT("and the condition refuses it too"),
+		UCataclysmStatPipeline::ConditionHolds(
+			ECataclysmStatCondition::ClassResourceAtMaximum,
+			/*Value=*/0.0f, AbilitySystem->CurrentConditions()));
+
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// Nothing may lower this character's speed. Issue #1515.
+//
+// TWO KEYSTONES, ONE STAT, AND THEY DIFFER ONLY IN THEIR ROW'S CONDITION.
+// `Ravager_keystone_d_kA` Relentless says "Your Movement Speed cannot be
+// reduced by any effect". The third clause of `Ravager_keystone_spine_003`
+// Unstoppable says the same while an enemy is within four metres.
+//
+// WHAT IS BEING SLOWED IS A REAL THING RATHER THAN A TEST INVENTION. Two built
+// dungeon rules lower this stat today -- Singularity Wells and Grasping
+// Tentacles -- and both do it as a "less" multiplier through the same pipeline
+// these rows go through.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmPlayerSpeedIgnoresAReduction,
+	"Cataclysm.Player.MovementSpeedReductionIsDroppedWhileTheNodeIsHeld",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Relentless, and the control that says the reduction works without it.
+ *
+ * THE READING WITHOUT THE NODE IS HALF THE TEST. Being slowed is the rule for
+ * every character in the game, so a test that only checked the half with the
+ * node would pass against a build where nothing could slow anybody.
+ */
+bool FCataclysmPlayerSpeedIgnoresAReduction::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetMovementSpeedAttribute(),
+		RavagerMetresPerSecond);
+
+	// HALF SPEED, THE SHAPE A DUNGEON RULE USES. A "less" multiplier reaches the
+	// More bucket as a negative percentage, which is what
+	// DungeonModifierEffectsAddLess writes.
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = RavagerMetresPerSecond;
+	Inputs.Modifiers.Add(Always(ECataclysmStatBucket::More, -50.0f));
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("movement_speed")), Inputs);
+	AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector,
+													 FRotator::ZeroRotator);
+	const UCharacterMovementComponent* Movement =
+		Character ? Character->GetCharacterMovement() : nullptr;
+	if (!TestNotNull(TEXT("movement component"), Movement))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	const float Plain =
+		RavagerMetresPerSecond * ACataclysmPlayerCharacter::CentimetresPerMetre;
+
+	// WITHOUT THE NODE THE REDUCTION WORKS, which is every character in the game.
+	if (!TestEqual(TEXT("without the node a half-speed effect halves the speed"),
+				   Movement->MaxWalkSpeed, Plain * 0.5f, 0.01f))
+	{
+		return false;
+	}
+
+	// WITH IT, THE SAME REDUCTION DOES NOTHING.
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::
+			GetMovementSpeedReductionSuppressedAttribute(), 1.0f);
+	Character->RefreshMovementSpeed();
+
+	TestEqual(TEXT("with the node the same effect leaves the speed alone"),
+			  Movement->MaxWalkSpeed, Plain, 0.01f);
+
+	// AND TAKING IT AWAY PUTS THE REDUCTION BACK, which would catch a build that
+	// dropped the modifier once and left it dropped.
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::
+			GetMovementSpeedReductionSuppressedAttribute(), 0.0f);
+	Character->RefreshMovementSpeed();
+
+	TestEqual(TEXT("and without it again the speed is halved"),
+			  Movement->MaxWalkSpeed, Plain * 0.5f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmPlayerSpeedKeepsItsEarnedIncrease,
+	"Cataclysm.Player.MovementSpeedKeepsAnEarnedIncreaseWhileDroppingAReduction",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The node drops the reduction and keeps the bonus, which a floor would not.
+ *
+ * WHY THIS IS THE TEST THAT MATTERS. The obvious way to build "cannot be
+ * reduced" is to floor the answer at the character's own speed. That passes the
+ * test above and is WRONG: a character carrying a node worth +20% and standing
+ * in a well worth -40% would be put back to their plain speed, losing the bonus
+ * they earned along with the reduction they are meant to ignore. The row says
+ * the reduction does not apply, not that the increase does not either.
+ *
+ * THE FIGURES ARE CHOSEN SO THE TWO ANSWERS CANNOT COINCIDE. A floor gives
+ * exactly the plain speed; dropping the reduction gives plain x 1.2. They
+ * differ by a fifth, which no tolerance here could hide.
+ */
+bool FCataclysmPlayerSpeedKeepsItsEarnedIncrease::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetMovementSpeedAttribute(),
+		RavagerMetresPerSecond);
+
+	// A NODE WORTH A FIFTH MORE, AND A HAZARD WORTH TWO FIFTHS LESS.
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = RavagerMetresPerSecond;
+	Inputs.Modifiers.Add(Always(ECataclysmStatBucket::Increased, 20.0f));
+	Inputs.Modifiers.Add(Always(ECataclysmStatBucket::More, -40.0f));
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("movement_speed")), Inputs);
+	AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector,
+													 FRotator::ZeroRotator);
+	const UCharacterMovementComponent* Movement =
+		Character ? Character->GetCharacterMovement() : nullptr;
+	if (!TestNotNull(TEXT("movement component"), Movement))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	const float Plain =
+		RavagerMetresPerSecond * ACataclysmPlayerCharacter::CentimetresPerMetre;
+
+	// BOTH APPLY WITHOUT THE NODE: a fifth more, then two fifths of that taken.
+	if (!TestEqual(TEXT("without the node both the bonus and the reduction apply"),
+				   Movement->MaxWalkSpeed, Plain * 1.2f * 0.6f, 0.01f))
+	{
+		return false;
+	}
+
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::
+			GetMovementSpeedReductionSuppressedAttribute(), 1.0f);
+	Character->RefreshMovementSpeed();
+
+	// THE BONUS SURVIVES AND THE REDUCTION DOES NOT.
+	TestEqual(TEXT("with the node the earned fifth survives and the reduction "
+				   "is dropped"),
+			  Movement->MaxWalkSpeed, Plain * 1.2f, 0.01f);
+
+	// SAID A SECOND WAY, BECAUSE THIS IS THE CLAIM THE WHOLE TEST EXISTS FOR.
+	TestTrue(TEXT("and the answer is above the plain speed, which a floor at the "
+				  "character's own speed could never be"),
+			 Movement->MaxWalkSpeed > Plain + 1.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmPlayerSpeedIgnoresAReductionOnlyWhileCrowded,
+	"Cataclysm.Player.MovementSpeedReductionIsDroppedOnlyWhileAnEnemyIsNear",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Unstoppable form: the same stat, granted ONLY by a conditioned row.
+ *
+ * NOTHING WRITES THE ATTRIBUTE HERE, DELIBERATELY. A conditioned row is never
+ * folded into a gameplay attribute, so a build that read the flag off the
+ * attribute would find zero, drop nothing, and this clause would silently do
+ * nothing while the two tests above went on passing. This is the only test that
+ * can tell those two builds apart.
+ *
+ * THE BODY IS SPAWNED RATHER THAN THE COUNT STATED. Nothing here tells the
+ * pipeline how many enemies are near or how far away they are; a hostile
+ * character is placed and the game measures. A test that supplies the missing
+ * step proves nothing.
+ */
+bool FCataclysmPlayerSpeedIgnoresAReductionOnlyWhileCrowded::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetMovementSpeedAttribute(),
+		RavagerMetresPerSecond);
+
+	// THE HAZARD, AND THE FLAG GRANTED ONLY WHILE AN ENEMY IS WITHIN FOUR
+	// METRES. Two stat lines, because the flag is its own stat.
+	FCataclysmStatInputs Speed;
+	Speed.Base = RavagerMetresPerSecond;
+	Speed.Modifiers.Add(Always(ECataclysmStatBucket::More, -50.0f));
+
+	FCataclysmStatInputs Flag;
+	Flag.Base = 0.0f;
+	Flag.Modifiers.Add(Row(ECataclysmStatBucket::Flat, 1.0f,
+						   ECataclysmStatCondition::EnemiesInReachAtLeast, 1.0f,
+						   FourMetres));
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("movement_speed")), Speed);
+	Stats.Add(FName(ACataclysmPlayerCharacter::MovementSpeedReductionSuppressedStat),
+			  Flag);
+	AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector,
+													 FRotator::ZeroRotator);
+	const UCharacterMovementComponent* Movement =
+		Character ? Character->GetCharacterMovement() : nullptr;
+	if (!TestNotNull(TEXT("movement component"), Movement))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	const float Plain =
+		RavagerMetresPerSecond * ACataclysmPlayerCharacter::CentimetresPerMetre;
+
+	// ALONE, THE ROW GRANTS NOTHING AND THE REDUCTION STANDS.
+	if (!TestEqual(TEXT("alone, the conditioned row grants nothing and the "
+						"reduction still halves the speed"),
+				   Movement->MaxWalkSpeed, Plain * 0.5f, 0.01f))
+	{
+		return false;
+	}
+
+	// TEN METRES AWAY IS NOT WITHIN FOUR, and this reading is the control. A
+	// build that counted every hostile character whatever the distance would
+	// pass a test that only checked "alone" against "crowded".
+	SpawnHostile(World, FVector(10.0f * M, 0.0f, 0.0f));
+	Character->RefreshMovementSpeed();
+
+	if (!TestEqual(TEXT("a body ten metres away is not within four, so the "
+						"reduction still stands"),
+				   Movement->MaxWalkSpeed, Plain * 0.5f, 0.01f))
+	{
+		return false;
+	}
+
+	// AND TWO METRES AWAY, ON A DIFFERENT AXIS so that a spawn refused for
+	// overlapping another body cannot quietly move a character somewhere else.
+	SpawnHostile(World, FVector(0.0f, 2.0f * M, 0.0f));
+	Character->RefreshMovementSpeed();
+
+	TestEqual(TEXT("one within four metres drops the reduction entirely"),
+			  Movement->MaxWalkSpeed, Plain, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmPlayerSpeedFollowsAnEnemyIntoReachUnprompted,
+	"Cataclysm.Player.AnEnemyWalkingIntoReachDropsTheReductionWithNoHealthChange",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Ravager keystone Unstoppable's movement clause takes effect when an enemy
+ * comes within four metres, without anything else happening. Issue #1821.
+ *
+ * THE TEST ABOVE CALLS `RefreshMovementSpeed` BY HAND after each body is
+ * placed, so it proves the clause is judged correctly and cannot see whether
+ * the game ever asks. Until issue #1821 the game asked only when the
+ * character's health, class resource or speed attribute changed: an enemy
+ * walking into reach changes none of those, so the reduction stayed on until
+ * the player next took damage, and stayed off after the enemy left.
+ *
+ * NOTHING HERE CALLS THE REFRESH. The game clock runs, and the speed has to
+ * follow on its own. The character's health is checked unchanged across both
+ * readings, because a blow landing in between would refresh the speed through
+ * the health route and the test would pass for the wrong reason.
+ */
+bool FCataclysmPlayerSpeedFollowsAnEnemyIntoReachUnprompted::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetMovementSpeedAttribute(),
+		RavagerMetresPerSecond);
+
+	// THE SAME TWO LINES AS THE TEST ABOVE: a hazard halving the speed, and the
+	// flag granted only while an enemy is within four metres.
+	FCataclysmStatInputs Speed;
+	Speed.Base = RavagerMetresPerSecond;
+	Speed.Modifiers.Add(Always(ECataclysmStatBucket::More, -50.0f));
+
+	FCataclysmStatInputs Flag;
+	Flag.Base = 0.0f;
+	Flag.Modifiers.Add(Row(ECataclysmStatBucket::Flat, 1.0f,
+						   ECataclysmStatCondition::EnemiesInReachAtLeast, 1.0f,
+						   FourMetres));
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("movement_speed")), Speed);
+	Stats.Add(FName(ACataclysmPlayerCharacter::MovementSpeedReductionSuppressedStat),
+			  Flag);
+	AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector,
+													 FRotator::ZeroRotator);
+	const UCharacterMovementComponent* Movement =
+		Character ? Character->GetCharacterMovement() : nullptr;
+	if (!TestNotNull(TEXT("movement component"), Movement))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	const float Plain =
+		RavagerMetresPerSecond * ACataclysmPlayerCharacter::CentimetresPerMetre;
+	const auto Health = [AbilitySystem]()
+	{
+		return AbilitySystem->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetHealthAttribute());
+	};
+
+	// ALONE, THE REDUCTION STANDS. This reading comes from the setup's own
+	// refresh, so it is the control for the one below.
+	if (!TestEqual(TEXT("alone, the reduction halves the speed"),
+				   Movement->MaxWalkSpeed, Plain * 0.5f, 0.01f))
+	{
+		return false;
+	}
+
+	// AN ENEMY TWO METRES AWAY, AND HALF A SECOND OF GAME TIME: two steps of
+	// the quarter-second regeneration timer.
+	const float HealthBefore = Health();
+	ACataclysmEnemyCharacter* Enemy =
+		SpawnHostile(World, FVector(0.0f, 2.0f * M, 0.0f));
+	if (!TestNotNull(TEXT("an enemy within four metres"), Enemy))
+	{
+		return false;
+	}
+	CataclysmTestWorld::RunClock(World, 0.5f);
+
+	if (!TestEqual(TEXT("the character's health did not change, so nothing but "
+						"the enemy's arrival can have moved the speed"),
+				   Health(), HealthBefore, 0.001f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with an enemy within four metres and nothing else "
+				   "happening, the reduction is dropped"),
+			  Movement->MaxWalkSpeed, Plain, 0.01f);
+
+	// AND IT COMES BACK WHEN THE ENEMY IS GONE, which is the half a refresh on
+	// arrival alone would never give.
+	Enemy->Destroy();
+	CataclysmTestWorld::RunClock(World, 0.5f);
+
+	TestEqual(TEXT("with the enemy gone and nothing else happening, the "
+				   "reduction is back"),
+			  Movement->MaxWalkSpeed, Plain * 0.5f, 0.01f);
+
+	return true;
+}
+
+namespace CataclysmPlayerMovementTest
+{
+	/**
+	 * A player whose recorded movement speed line is `Speed`, on a Ravager's
+	 * base, spawned and possessed so that its own setup has asked for the speed
+	 * once. For the two tests below. Issue #1821.
+	 */
+	static ACataclysmPlayerCharacter* SpawnPlayerWithSpeedLine(
+		UWorld* World, const FCataclysmStatInputs& Speed,
+		UCataclysmAbilitySystemComponent*& OutAbilitySystem)
+	{
+		OutAbilitySystem = nullptr;
+		ACataclysmPlayerState* PlayerState =
+			World->SpawnActor<ACataclysmPlayerState>();
+		UCataclysmAbilitySystemComponent* AbilitySystem =
+			PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent()
+						: nullptr;
+		if (!AbilitySystem)
+		{
+			return nullptr;
+		}
+
+		AbilitySystem->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetMovementSpeedAttribute(),
+			RavagerMetresPerSecond);
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(FName(TEXT("movement_speed")), Speed);
+		AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+		ACataclysmPlayerCharacter* Character =
+			World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector,
+														 FRotator::ZeroRotator);
+		if (!Character)
+		{
+			return nullptr;
+		}
+		Character->SetPlayerState(PlayerState);
+		Character->OnRep_PlayerState();
+		OutAbilitySystem = AbilitySystem;
+		return Character;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmPlayerTimedSpeedRowOpensAndCloses,
+	"Cataclysm.Player.ATimedSpeedRowOpensOnItsEventAndClosesWithinAStep",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A movement speed row under a window after an event takes effect on the
+ * event's own frame and ends within a quarter of a second of the window
+ * closing. Issue #1821.
+ *
+ * THE SHAPE OF THE SEVEN SENTENCES #1821 WAS HOLDING, "Using your support
+ * ability grants you 10%-20% increased movement speed for 3 seconds" among
+ * them. The window here is the block clock's, because it exists today; the new
+ * clocks those sentences need are the same shape.
+ *
+ * TWO EDGES, TWO MECHANISMS. The opening is read with no game time passing at
+ * all, so only the refresh on the event can produce it. The closing needs time
+ * to pass with no event, so only the refresh on the step can.
+ */
+bool FCataclysmPlayerTimedSpeedRowOpensAndCloses::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// +50% FOR THREE SECONDS AFTER A BLOCK.
+	FCataclysmStatInputs Speed;
+	Speed.Base = RavagerMetresPerSecond;
+	Speed.Modifiers.Add(Row(ECataclysmStatBucket::Increased, 50.0f,
+							ECataclysmStatCondition::WithinSecondsOfBlock, 3.0f,
+							/*ReachMetres=*/-1.0f));
+
+	UCataclysmAbilitySystemComponent* AbilitySystem = nullptr;
+	ACataclysmPlayerCharacter* Character =
+		SpawnPlayerWithSpeedLine(World, Speed, AbilitySystem);
+	const UCharacterMovementComponent* Movement =
+		Character ? Character->GetCharacterMovement() : nullptr;
+	if (!TestNotNull(TEXT("movement component"), Movement)
+		|| !TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	const float Plain =
+		RavagerMetresPerSecond * ACataclysmPlayerCharacter::CentimetresPerMetre;
+
+	if (!TestEqual(TEXT("before any block, the speed is plain"),
+				   Movement->MaxWalkSpeed, Plain, 0.01f))
+	{
+		return false;
+	}
+
+	// THE OPENING EDGE, WITH NO TIME PASSING.
+	AbilitySystem->NoteBlocked();
+	TestEqual(TEXT("on the block's own frame the speed is half as much again"),
+			  Movement->MaxWalkSpeed, Plain * 1.5f, 0.01f);
+
+	// STILL INSIDE THE WINDOW, so the step must not have turned it off.
+	CataclysmTestWorld::RunClock(World, 2.8f);
+	TestEqual(TEXT("2.8 seconds after the block the speed is still raised"),
+			  Movement->MaxWalkSpeed, Plain * 1.5f, 0.01f);
+
+	// AND THE CLOSING EDGE, 0.3 SECONDS AFTER THE WINDOW ENDS: more than the
+	// quarter-second step, so one step has run since it closed.
+	CataclysmTestWorld::RunClock(World, 0.5f);
+	TestEqual(TEXT("3.3 seconds after the block, with nothing else happening, "
+				   "the speed is plain again"),
+			  Movement->MaxWalkSpeed, Plain, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmPlayerSpeedWithNothingToWatchCostsNothing,
+	"Cataclysm.Player.ASpeedLineWithNothingToWatchCostsTheStepNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A character whose speed rows depend only on what it already listens for is
+ * never asked for its speed by the step or by an event. Issue #1821.
+ *
+ * A COUNT, BECAUSE A SPEED CANNOT SHOW IT. Asking again for a speed that has
+ * not moved gives the same speed, so every reading of `MaxWalkSpeed` would pass
+ * whether or not the pipeline ran four times a second.
+ *
+ * THE SECOND HALF IS THE CONTROL. The same character, given one row under a
+ * timed window, is counted: without it, a count that never moved for any reason
+ * would pass the first half.
+ */
+bool FCataclysmPlayerSpeedWithNothingToWatchCostsNothing::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// A ROW THAT ALWAYS HOLDS, AND ONE UNDER A HEALTH THRESHOLD: both answered
+	// by events this character already listens for.
+	FCataclysmStatInputs Speed;
+	Speed.Base = RavagerMetresPerSecond;
+	Speed.Modifiers.Add(Always(ECataclysmStatBucket::More, -20.0f));
+	Speed.Modifiers.Add(Row(ECataclysmStatBucket::Increased, 30.0f,
+							ECataclysmStatCondition::HealthBelowPercent, 35.0f,
+							/*ReachMetres=*/-1.0f));
+
+	UCataclysmAbilitySystemComponent* AbilitySystem = nullptr;
+	ACataclysmPlayerCharacter* Character =
+		SpawnPlayerWithSpeedLine(World, Speed, AbilitySystem);
+	if (!TestNotNull(TEXT("player"), Character)
+		|| !TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	// TWO SECONDS OF STEPS, AND AN EVENT.
+	CataclysmTestWorld::RunClock(World, 2.0f);
+	AbilitySystem->NoteBlocked();
+	TestEqual(TEXT("eight steps and a block later, nothing asked for the speed"),
+			  Character->GetUnannouncedSpeedRefreshCount(), 0);
+
+	// THE CONTROL: one row under a timed window, and the same two seconds.
+	Speed.Modifiers.Add(Row(ECataclysmStatBucket::Increased, 10.0f,
+							ECataclysmStatCondition::WithinSecondsOfBlock, 3.0f,
+							/*ReachMetres=*/-1.0f));
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("movement_speed")), Speed);
+	AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	CataclysmTestWorld::RunClock(World, 2.0f);
+	const int32 Counted = Character->GetUnannouncedSpeedRefreshCount();
+	TestTrue(FString::Printf(TEXT("with a timed row, the steps asked: %d times "
+								  "in two seconds"), Counted),
+			 Counted >= 7);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmMovementSuppressionStatNameIsKnown,
+	"Cataclysm.Player.TheMovementSuppressionStatNameIsTheOneTheMapKnows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The name this code asks for is the name the data is written against.
+ *
+ * WHY A TEST RATHER THAN CARE. The stat name appears in this constant, in the
+ * key of `UCataclysmPlayerClassStats::StatToAttribute`, and in the `Stat` column
+ * of the rows. A character that disagreed by ONE CHARACTER would be granted
+ * both nodes and read neither, and nothing anywhere would say so: the pipeline
+ * would answer the fallback, both nodes would do nothing, and every test above
+ * that writes the attribute directly would still pass.
+ */
+bool FCataclysmMovementSuppressionStatNameIsKnown::RunTest(const FString&)
+{
+	const FString Name(
+		ACataclysmPlayerCharacter::MovementSpeedReductionSuppressedStat);
+	const TMap<FString, FGameplayAttribute>& Map =
+		UCataclysmPlayerClassStats::StatToAttribute();
+
+	const FGameplayAttribute* Found = Map.Find(Name);
+	if (!TestNotNull(*FString::Printf(
+			TEXT("the stat name '%s' is a key in the stat-name map"), *Name),
+					 Found))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("and it names the movement-speed-reduction-suppressed "
+				  "attribute"),
+			 *Found == UCataclysmCombatAttributeSet::
+				 GetMovementSpeedReductionSuppressedAttribute());
+
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmAnActionCannotSetOffAnotherAction,
+	"Cataclysm.Player.OneWornActionCannotSetOffAnother",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAnActionCannotSetOffAnotherAction::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	// TWO WORN ROWS THAT FEED EACH OTHER. Issue #1815.
+	//
+	// ONE FILLS THE CLASS RESOURCE WHEN IT EMPTIES AND THE OTHER EMPTIES IT WHEN
+	// IT FILLS. Filling it crosses the full threshold, which stamps a window,
+	// which is where actions fire from -- so without a limit the two would run
+	// each other for ever.
+	//
+	// THE BREAK THIS IS FOR is raising the limit from one to two, not removing
+	// it. Removing it would recurse until the run died, and a run that dies
+	// reports no failures at all, so it would prove nothing. At two, the second
+	// row fires exactly once and the pool ends empty instead of full, which is
+	// a plain failure of the assertion below.
+	//
+	// A REAL PLAYER CHARACTER, because the handler that stamps these two windows
+	// is bound by the pawn. Without it nothing would set off anything and this
+	// test would pass with no limit in place at all.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute Held =
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const FGameplayAttribute Maximum =
+		UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute();
+
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 500.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 500.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmClassResourceAttributeSet::GetFervourFromDamageAttribute(), 1.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmClassResourceAttributeSet::GetFervourLostToHealingAttribute(),
+		1.0f);
+	AbilitySystem->SetNumericAttributeBase(Maximum, 100.0f);
+	AbilitySystem->SetNumericAttributeBase(Held, 100.0f);
+
+	ACataclysmPlayerCharacter* Character = World->SpawnActor<ACataclysmPlayerCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a character"), Character))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	FCataclysmPoolAction FillOnEmpty;
+	FillOnEmpty.Event = FName(TEXT("resource_empty"));
+	FillOnEmpty.Pool = FName(TEXT("class_resource"));
+	FillOnEmpty.Percent = 100.0f;
+	FillOnEmpty.Base = ECataclysmPoolActionBase::Maximum;
+
+	FCataclysmPoolAction EmptyOnFull;
+	EmptyOnFull.Event = FName(TEXT("resource_full"));
+	EmptyOnFull.Pool = FName(TEXT("class_resource"));
+	EmptyOnFull.Percent = -100.0f;
+	EmptyOnFull.Base = ECataclysmPoolActionBase::Current;
+
+	AbilitySystem->SetPoolActions({FillOnEmpty, EmptyOnFull});
+
+	// THE POOL IS FULL AND NOTHING HAS FIRED YET. Without this the assertion at
+	// the end would pass for a character whose pool was simply never touched.
+	if (!TestEqual(TEXT("the pool starts full"),
+				   AbilitySystem->GetNumericAttribute(Held), 100.0f, 0.01f))
+	{
+		return false;
+	}
+
+	// AND SPENDING IT TO ZERO SETS THE PAIR OFF, through the path play uses.
+	UCataclysmFervour::RemoveForHealing(AbilitySystem, /*HealthRestored=*/500.0f,
+										FGameplayTagContainer());
+
+	// THE FIRST ROW RAN AND THE SECOND DID NOT. Emptying the pool fired the row
+	// that fills it; filling it crossed the full threshold and stamped that
+	// window, which is what the row that empties it hangs on -- and that row was
+	// refused because the first one had not finished.
+	TestEqual(TEXT("the pool was filled by the first row and left alone by the second"),
+			  AbilitySystem->GetNumericAttribute(Held), 100.0f, 0.01f);
+
+	// AND THE WINDOW ITSELF STILL OPENED. The limit refuses the ACTION, not the
+	// stamp: a row asking "within N seconds of the resource filling" must still
+	// work while another row is running.
+	TestEqual(TEXT("and the full window opened all the same"),
+			  AbilitySystem->SecondsSinceClassResourceFull(), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmASkillUseFiresAWornActionAndABasicAttackDoesNot,
+	"Cataclysm.Player.ASkillUseFiresAWornActionAndABasicAttackDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmASkillUseFiresAWornActionAndABasicAttackDoesNot::RunTest(
+	const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	// THE BREAK THIS IS FOR: deleting the binding that hears a skill use. The
+	// five clockless events are the only ones that arrive from an announcement
+	// rather than from a call on the character's own component, so nothing else
+	// in this change would notice the binding missing.
+	//
+	// DRIVEN THROUGH THE ANNOUNCEMENT THE GAME RAISES, not by calling the
+	// handler: a test that called the handler would pass with no binding at all.
+	//
+	// A REAL PLAYER CHARACTER, because the handler is on the pawn.
+	//
+	// AND THE BASIC ATTACK IS THE SECOND HALF. Ruled 2026-09-14: it is the one
+	// slot the design calls automatic and free. Without that case a version
+	// firing on every slot would pass the first half.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 500.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 100.0f);
+
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(
+			FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a character"), Character))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	FCataclysmPoolAction OnSkill;
+	OnSkill.Event = FName(TEXT("skill_use"));
+	OnSkill.Pool = FName(TEXT("health"));
+	OnSkill.Percent = 10.0f;
+	AbilitySystem->SetPoolActions({OnSkill});
+
+	const FGameplayAttribute Health =
+		UCataclysmVitalAttributeSet::GetHealthAttribute();
+	if (!TestEqual(TEXT("health starts where it was put"),
+				   AbilitySystem->GetNumericAttribute(Health), 100.0f, 0.01f))
+	{
+		return false;
+	}
+
+	const FGameplayTagContainer NoTags;
+	UCataclysmCombatEvents::NoteSkillUsed(
+		Character, TEXT("Cleaving Blow"), NoTags,
+		ECataclysmAbilitySlot::BasicAttack);
+	TestEqual(TEXT("a basic attack fires nothing"),
+			  AbilitySystem->GetNumericAttribute(Health), 100.0f, 0.01f);
+
+	UCataclysmCombatEvents::NoteSkillUsed(
+		Character, TEXT("Cleaving Blow"), NoTags,
+		ECataclysmAbilitySlot::Heavy);
+	TestEqual(TEXT("and any other slot restores a tenth of the maximum"),
+			  AbilitySystem->GetNumericAttribute(Health), 150.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmANearbyDeathFiresOnlyForAnEnemy,
+	"Cataclysm.Player.ANearbyDeathFiresAWornActionForAnEnemyAndNotForTheWearersOwnMinion",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmANearbyDeathFiresOnlyForAnEnemy::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	// "WHEN AN ENEMY DIES NEAR YOU", AND THE WEARER'S OWN MINION IS NOT AN ENEMY.
+	// Ruled 2026-09-16, issue #1815. Until the team was asked, any death but the
+	// wearer's own fired the row, and a minion's death is announced exactly as an
+	// enemy's is.
+	//
+	// THE BREAK THIS IS FOR: letting a death through whatever side the victim was
+	// on. The enemy half is there as well so that a version refusing every death
+	// fails too -- which is what `UCataclysmTargeting::IsHostileTo` would have
+	// done, because it answers false for the dead.
+	//
+	// BOTH DIE BY THE ROUTE PLAY USES. Health written to zero reaches
+	// `UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero` and then the
+	// body's own `HandleDeath`, which announces the death.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("the announcements"), Events)
+		|| !TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute Health =
+		UCataclysmVitalAttributeSet::GetHealthAttribute();
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 500.0f);
+	AbilitySystem->SetNumericAttributeBase(Health, 100.0f);
+
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(
+			FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a character"), Character))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	FCataclysmPoolAction OnNearbyDeath;
+	OnNearbyDeath.Event = FName(TEXT("nearby_death"));
+	OnNearbyDeath.Pool = FName(TEXT("health"));
+	OnNearbyDeath.Percent = 10.0f;
+	AbilitySystem->SetPoolActions({OnNearbyDeath});
+
+	// THE WEARER'S OWN MINION, A METRE AND A HALF AWAY.
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Character, FVector(1.5f * M, 0.0f, 0.0f), /*Lifetime=*/60.0f,
+		/*bBurns=*/false);
+	UAbilitySystemComponent* ImpSystem = UCataclysmTargeting::AbilitySystemOf(Imp);
+	if (!TestNotNull(TEXT("a minion"), Imp)
+		|| !TestNotNull(TEXT("with an ability system"), ImpSystem)
+		|| !TestEqual(TEXT("on the wearer's side"),
+					  static_cast<int32>(UCataclysmTeams::AttitudeBetween(Character, Imp)),
+					  static_cast<int32>(ETeamAttitude::Friendly))
+		|| !TestTrue(TEXT("and near enough to count"),
+					 FVector::Dist(Character->GetActorLocation(), Imp->GetActorLocation())
+						 <= ACataclysmPlayerCharacter::NearbyDeathRadiusCm)
+		|| !TestEqual(TEXT("health starts where it was put"),
+					  AbilitySystem->GetNumericAttribute(Health), 100.0f, 0.01f))
+	{
+		return false;
+	}
+
+	const int32 DeathsBefore = static_cast<int32>(Events->DeathsSent());
+	ImpSystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+	if (!TestTrue(TEXT("the minion died"), UCataclysmSkillEffects::IsDead(Imp))
+		|| !TestEqual(TEXT("and its death was announced"),
+					  static_cast<int32>(Events->DeathsSent()),
+					  DeathsBefore + 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the wearer's own minion dying beside it restores nothing"),
+			  AbilitySystem->GetNumericAttribute(Health), 100.0f, 0.01f);
+
+	// AND AN ENEMY, AS NEAR. NOT READ AGAIN AFTER IT DIES: an enemy's own death
+	// takes the body out of the level, so the pointer is finished with first.
+	ACataclysmEnemyCharacter* Enemy = SpawnHostile(World, FVector(0.0f, 1.5f * M, 0.0f));
+	UAbilitySystemComponent* EnemySystem = UCataclysmTargeting::AbilitySystemOf(Enemy);
+	if (!TestNotNull(TEXT("an enemy"), Enemy)
+		|| !TestNotNull(TEXT("with an ability system"), EnemySystem)
+		|| !TestEqual(TEXT("on the other side"),
+					  static_cast<int32>(UCataclysmTeams::AttitudeBetween(Character, Enemy)),
+					  static_cast<int32>(ETeamAttitude::Hostile))
+		|| !TestTrue(TEXT("and near enough to count"),
+					 FVector::Dist(Character->GetActorLocation(), Enemy->GetActorLocation())
+						 <= ACataclysmPlayerCharacter::NearbyDeathRadiusCm))
+	{
+		return false;
+	}
+
+	EnemySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+	if (!TestEqual(TEXT("the enemy's death was announced"),
+				   static_cast<int32>(Events->DeathsSent()),
+				   DeathsBefore + 2))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and an enemy dying as near restores a tenth of the maximum"),
+			  AbilitySystem->GetNumericAttribute(Health), 150.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmOnlyALandedBlowIsAHitDealt,
+	"Cataclysm.Player.OnlyABlowThatLandedFiresAWornHitActionAndNotATickOrAnEvadedBlow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmOnlyALandedBlowIsAHitDealt::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	// "ON HIT" MEANS A BLOW THAT CONNECTED. Ruled 2026-09-16, issue #1815: a
+	// damage over time tick is not a hit, and neither is an evaded blow.
+	//
+	// THE BREAK THIS IS FOR: letting a tick or an evaded blow through. The landed
+	// blow comes first, so that a version refusing every hit fails as well.
+	//
+	// EVERY BLOW IS A REAL ONE, dealt by the wearer through `ApplyHit` and
+	// `ApplyDamageOverTime` and resolved in the creature's own attribute set,
+	// which is where the announcement is raised. Each step asserts that it was
+	// announced, and what it did to the creature, before asserting what the
+	// worn row did, so "nothing fired" cannot mean "nothing happened".
+	//
+	// ONLY THE HIT IS WORN. The same filter refuses a critical strike on a tick
+	// or an evaded blow, and no such blow exists to test it with:
+	// `Cataclysm.Crit.ADamageOverTimeTickNeverCriticallyStrikes` and
+	// `Cataclysm.Crit.AnEvadedHitIsNeverReportedAsACriticalStrike`.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("the announcements"), Events)
+		|| !TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute Health =
+		UCataclysmVitalAttributeSet::GetHealthAttribute();
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 500.0f);
+	AbilitySystem->SetNumericAttributeBase(Health, 100.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(
+			FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a character"), Character))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	FCataclysmPoolAction OnHitDealt;
+	OnHitDealt.Event = FName(TEXT("hit_dealt"));
+	OnHitDealt.Pool = FName(TEXT("health"));
+	OnHitDealt.Percent = 10.0f;
+	AbilitySystem->SetPoolActions({OnHitDealt});
+
+	ACataclysmEnemyCharacter* Target = SpawnHostile(World, FVector(2.0f * M, 0.0f, 0.0f));
+	UCataclysmAbilitySystemComponent* TargetSystem = Cast<UCataclysmAbilitySystemComponent>(
+		UCataclysmTargeting::AbilitySystemOf(Target));
+	if (!TestNotNull(TEXT("a creature to hit"), TargetSystem)
+		|| !TestEqual(TEXT("health starts where it was put"),
+					  AbilitySystem->GetNumericAttribute(Health), 100.0f, 0.01f))
+	{
+		return false;
+	}
+
+	// A BLOW THAT LANDED.
+	float TargetBefore = TargetSystem->GetNumericAttribute(Health);
+	int32 Sent = static_cast<int32>(Events->HitsSent());
+	UCataclysmSkillEffects::ApplyHit(Character, Target, /*DamagePercent=*/100.0f);
+	if (!TestEqual(TEXT("the blow was announced"),
+				   static_cast<int32>(Events->HitsSent()), Sent + 1)
+		|| !TestTrue(TEXT("and hurt the creature"),
+					 TargetSystem->GetNumericAttribute(Health) < TargetBefore))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a blow that landed restores a tenth of the maximum"),
+			  AbilitySystem->GetNumericAttribute(Health), 150.0f, 0.01f);
+
+	// A TICK OF A BURN THE WEARER SET.
+	const FGameplayTag Burn = FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Keyword.DoT.Burn")), /*ErrorIfNotFound=*/false);
+	if (!TestTrue(TEXT("a burn is in the vocabulary"), Burn.IsValid())
+		|| !TestTrue(TEXT("and was set on the creature"),
+					 UCataclysmSkillEffects::ApplyDamageOverTime(
+						 Character, Target, /*DamagePerTick=*/100.0f,
+						 /*DurationSeconds=*/4.0f, Burn,
+						 /*bScalesWithInstigator=*/false)))
+	{
+		return false;
+	}
+	TargetBefore = TargetSystem->GetNumericAttribute(Health);
+	Sent = static_cast<int32>(Events->HitsSent());
+	if (!TestEqual(TEXT("one tick of it ran"),
+				   TargetSystem->ExecutePeriodicEffectsGrantingForTests(Burn), 1)
+		|| !TestEqual(TEXT("and was announced"),
+					  static_cast<int32>(Events->HitsSent()), Sent + 1)
+		|| !TestTrue(TEXT("and hurt the creature"),
+					 TargetSystem->GetNumericAttribute(Health) < TargetBefore))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a tick restores nothing"),
+			  AbilitySystem->GetNumericAttribute(Health), 150.0f, 0.01f);
+
+	// AN EVADED BLOW. Every direct blow is evaded at 100, because the roll it is
+	// compared against is always below it.
+	TargetSystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetEvasionAttribute(), 100.0f);
+	TargetBefore = TargetSystem->GetNumericAttribute(Health);
+	Sent = static_cast<int32>(Events->HitsSent());
+	UCataclysmSkillEffects::ApplyHit(Character, Target, /*DamagePercent=*/100.0f);
+	if (!TestEqual(TEXT("the evaded blow was announced"),
+				   static_cast<int32>(Events->HitsSent()), Sent + 1)
+		|| !TestEqual(TEXT("and took nothing from the creature"),
+					  TargetSystem->GetNumericAttribute(Health), TargetBefore, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("an evaded blow restores nothing"),
+			  AbilitySystem->GetNumericAttribute(Health), 150.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmACriticalStrikeNamesWhoItStruck,
+	"Cataclysm.Player.ACriticalStrikeByThePlayerNamesTheCreatureStruckToAWornRow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmACriticalStrikeNamesWhoItStruck::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	// "Critical strikes apply a random DoT to the target". Issue #1833 group D:
+	// the player's `critical_strike` event now carries the creature struck and
+	// what reached its health, and a worn row acts on that creature. The other
+	// tests of the action raise the event by hand; this one lands a real blow
+	// from a real player character, so it is the one that sees the event's
+	// target and amount leave `OnSomethingWasHit`.
+	//
+	// THE CONTROL: the same blow, not critical, applies nothing.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// EVERY ROLL IS PINNED AT THE CONSOLE'S OWN PRIORITY AND RESTORED THE SAME
+	// WAY. A write from code is discarded once the variable has been set at
+	// console priority, and the first runs of this test met exactly that: the
+	// log said "Setting the console variable 'Cataclysm.CritRoll' with
+	// 'SetByCode' was ignored ... Value remains '100'", and no blow could
+	// critically strike. The critical strike roll uses the shared
+	// `CataclysmTestWorld::FScopedCritRoll` below; the pick has no shared
+	// helper, so it is pinned here the same way.
+	IConsoleVariable* Pick =
+		IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.RandomDotPick"));
+	if (!TestNotNull(TEXT("the pick can be pinned"), Pick))
+	{
+		return false;
+	}
+	const int32 PreviousPick = Pick->GetInt();
+	ON_SCOPE_EXIT { Pick->Set(PreviousPick, ECVF_SetByConsole); };
+	Pick->Set(0, ECVF_SetByConsole);
+
+	UCataclysmCombatEvents::In(World);
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 300.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetCritChanceAttribute(), 50.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetCritMultiplierAttribute(), 150.0f);
+
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(
+			FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a character"), Character))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	// THE STAT LINES A BLOW READS, written after the player is joined to its
+	// state, because joining runs the equipment refresh and that leaves a
+	// crit_chance line of base 0 (no class supplies one), which a blow asks
+	// before the attribute: the trap issue #1833's ceiling row tests met. Attack
+	// damage is written too, since these lines replace the others; this player
+	// wears nothing.
+	{
+		TMap<FName, FCataclysmStatInputs> Lines;
+		Lines.FindOrAdd(FName(TEXT("crit_chance"))).Base = 50.0f;
+		Lines.FindOrAdd(FName(TEXT("crit_multiplier"))).Base = 150.0f;
+		Lines.FindOrAdd(FName(TEXT("attack_damage"))).Base = 300.0f;
+		AbilitySystem->SetStatInputs(MoveTemp(Lines));
+	}
+
+	FCataclysmPoolAction OnCrit;
+	OnCrit.Event = FName(TEXT("critical_strike"));
+	OnCrit.Pool = FName(UCataclysmAbilitySystemComponent::ApplyRandomDotAction);
+	OnCrit.Percent = 100.0f;
+	OnCrit.bRandomDamageOverTime = true;
+	OnCrit.TriggerKey = FName(TEXT("A_row:apply_random_dot:critical_strike"));
+	AbilitySystem->SetPoolActions({OnCrit});
+
+	const FCataclysmAilmentKind* Bleed = UCataclysmAilments::KindNamed(TEXT("Bleed"));
+	const FGameplayTag BleedTag = Bleed
+		? FGameplayTag::RequestGameplayTag(FName(Bleed->TagName), /*ErrorIfNotFound=*/false)
+		: FGameplayTag();
+	if (!TestTrue(TEXT("Bleed and its tag exist"), BleedTag.IsValid()))
+	{
+		return false;
+	}
+	const auto MakeCreature = [World](float AlongMetres) -> UCataclysmAbilitySystemComponent*
+	{
+		ACataclysmEnemyCharacter* Creature =
+			SpawnHostile(World, FVector(AlongMetres * M, 0.0f, 0.0f));
+		UCataclysmAbilitySystemComponent* System = Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Creature));
+		if (System)
+		{
+			System->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+			System->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetHealthAttribute(), 1000.0f);
+		}
+		return System;
+	};
+
+	// NOT CRITICAL: a roll of 100 never critically strikes.
+	UCataclysmAbilitySystemComponent* Plain = MakeCreature(2.0f);
+	if (!TestNotNull(TEXT("a creature to hit plainly"), Plain))
+	{
+		return false;
+	}
+	{
+		const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+		UCataclysmSkillEffects::ApplyHit(Character, Plain->GetAvatarActor(), /*DamagePercent=*/100.0f);
+	}
+	const float PlainTaken = 1000.0f - Plain->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetHealthAttribute());
+	TestTrue(*FString::Printf(TEXT("the plain blow took a tenth or more: %.1f"), PlainTaken),
+		PlainTaken >= 100.0f);
+	TestFalse(TEXT("and applied nothing, because it was not critical"),
+		Plain->HasMatchingGameplayTag(BleedTag));
+
+	// CRITICAL: a roll of 0 always is, against any chance above it.
+	UCataclysmAbilitySystemComponent* Struck = MakeCreature(-2.0f);
+	if (!TestNotNull(TEXT("a creature to strike critically"), Struck))
+	{
+		return false;
+	}
+	{
+		const CataclysmTestWorld::FScopedCritRoll AlwaysCritical(0.0f);
+		UCataclysmSkillEffects::ApplyHit(Character, Struck->GetAvatarActor(), /*DamagePercent=*/100.0f);
+	}
+	TestTrue(TEXT("the critical strike put the pinned Bleed on the creature it struck"),
+		Struck->HasMatchingGameplayTag(BleedTag));
+	return true;
+}
+
+// THE WALKING SPEED IS WORKED OUT FROM THE STAT LINE THE SAME REFRESH STORED. Issue #2359.
+//
+// `UCataclysmPlayerClassStats::ApplyTo` writes each attribute and only afterwards stores the character's stat line.
+// Writing the movement speed attribute tells the pawn to work its walking speed out again, and the pawn asks the
+// stat pipeline, which until this issue still held the line of the refresh before. So the walking speed was one
+// refresh late, and stayed so until something else asked again: a change of health, for one.
+//
+// A REAL PLAYER, POSSESSED, so it carries its class's line and its equipment component; NO DUNGEON RULE AND NO GAME
+// MODE. The row is a More on `movement_speed` put where the ability system keeps a floor's modifiers,
+// `SetDungeonStatModifiers`, which is one of the places `UCataclysmEquipmentComponent::RefreshAttributes` gathers
+// from and the one a test can write with one call. Each figure is read straight after the refresh that stored the
+// row, with nothing in between, and the player's health is read before and after to show nothing moved it.
+//
+// THE CONTROL is the same player after a refresh with no row, measured in this test: the player is a real
+// character with class lines, so no figure is compared with a number written here.
+//
+// WHERE IT STANDS: the player at the world's origin. Nothing else is in the world.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlayerWalkingSpeedFollowsTheLineJustStored,
+	"Cataclysm.Player.WalkingSpeedFollowsAMovementSpeedRowInTheSameRefreshThatStoresIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlayerWalkingSpeedFollowsTheLineJustStored::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	APlayerController* Controller = World->SpawnActor<APlayerController>();
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: a player state"), PlayerState)
+		|| !TestNotNull(TEXT("set-up: a controller"), Controller)
+		|| !TestNotNull(TEXT("set-up: a player character"), Character))
+	{
+		return false;
+	}
+	Controller->SetPlayerState(PlayerState);
+	Controller->Possess(Character);
+
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(Character->GetAbilitySystemComponent());
+	const UCataclysmEquipmentComponent* Worn = Character->GetEquipment();
+	const UCharacterMovementComponent* Movement = Character->GetCharacterMovement();
+	if (!TestNotNull(TEXT("set-up: the player's ability system"), AbilitySystem)
+		|| !TestNotNull(TEXT("set-up: the player's equipment"), Worn)
+		|| !TestNotNull(TEXT("set-up: the player's movement component"), Movement))
+	{
+		return false;
+	}
+
+	const FName SpeedStat(TEXT("movement_speed"));
+	const FGameplayAttribute SpeedAttribute = UCataclysmCombatAttributeSet::GetMovementSpeedAttribute();
+	const FGameplayAttribute HealthAttribute = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const auto AskedSpeed = [AbilitySystem, SpeedStat, SpeedAttribute]()
+	{
+		return AbilitySystem->StatForSkill(SpeedStat, FGameplayTagContainer(),
+										   AbilitySystem->GetNumericAttribute(SpeedAttribute));
+	};
+
+	// The row is the only thing the refresh is given: more or less movement speed, by this many per cent, or none.
+	const auto RefreshWith = [AbilitySystem, Worn, SpeedStat](float MorePercent)
+	{
+		TMap<FName, TArray<FCataclysmStatModifier>> Held;
+		if (!FMath::IsNearlyZero(MorePercent))
+		{
+			FCataclysmStatModifier Speeding;
+			Speeding.Bucket = ECataclysmStatBucket::More;
+			Speeding.Source = ECataclysmModifierSource::DungeonRule;
+			Speeding.Value = MorePercent;
+			Held.FindOrAdd(SpeedStat).Add(Speeding);
+		}
+		AbilitySystem->SetDungeonStatModifiers(MoveTemp(Held));
+		Worn->RefreshAttributes(AbilitySystem);
+	};
+
+	// THE CONTROL: A REFRESH WITH NO ROW.
+	RefreshWith(0.0f);
+	const float StatPlain = AskedSpeed();
+	const float WalkPlain = Movement->MaxWalkSpeed;
+	const float HealthPlain = AbilitySystem->GetNumericAttribute(HealthAttribute);
+	if (!TestTrue(FString::Printf(TEXT("set-up: the player has movement speed to change (%.3f)"), StatPlain),
+				  StatPlain > 0.1f)
+		|| !TestTrue(FString::Printf(TEXT("set-up: and walks at a speed above nought (%.1f cm/s)"), WalkPlain),
+					 WalkPlain > 1.0f))
+	{
+		return false;
+	}
+
+	// A ROW OF 50% MORE, AND THE FIGURES READ STRAIGHT AFTER THE REFRESH THAT STORED IT.
+	RefreshWith(50.0f);
+	const float StatFaster = AskedSpeed();
+	if (!TestEqual(TEXT("with the row the movement speed stat is one and a half times the control"), StatFaster,
+				   1.5f * StatPlain, 0.001f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the walking speed rose by the same ratio in the same refresh"), Movement->MaxWalkSpeed,
+			  WalkPlain * (StatFaster / StatPlain), 0.1f);
+	TestEqual(TEXT("with no change of health in between"), AbilitySystem->GetNumericAttribute(HealthAttribute),
+			  HealthPlain, 0.001f);
+
+	// THE ROW REMOVED.
+	RefreshWith(0.0f);
+	TestEqual(TEXT("with the row removed the stat is the control's"), AskedSpeed(), StatPlain, 0.001f);
+	TestEqual(TEXT("and the walking speed is the control's in the same refresh"), Movement->MaxWalkSpeed, WalkPlain,
+			  0.1f);
+
+	// A ROW OF 40% LESS, WHICH IS A SLOWING RULE'S SHAPE.
+	RefreshWith(-40.0f);
+	const float StatSlower = AskedSpeed();
+	if (!TestEqual(TEXT("with a row of 40% less the stat is six tenths of the control"), StatSlower, 0.6f * StatPlain,
+				   0.001f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the walking speed fell by the same ratio in the same refresh"), Movement->MaxWalkSpeed,
+			  WalkPlain * (StatSlower / StatPlain), 0.1f);
+
+	// AND REMOVED AGAIN.
+	RefreshWith(0.0f);
+	TestEqual(TEXT("with that row removed the stat is the control's again"), AskedSpeed(), StatPlain, 0.001f);
+	TestEqual(TEXT("and the walking speed is the control's again in the same refresh"), Movement->MaxWalkSpeed,
+			  WalkPlain, 0.1f);
+	TestEqual(TEXT("and health never moved"), AbilitySystem->GetNumericAttribute(HealthAttribute), HealthPlain,
+			  0.001f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A clicked walk is driven by acceleration. Issue #1174.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmPlayerFollowsAPathByAcceleration,
+	"Cataclysm.ClickToMove.ThePlayersMovementComponentFollowsAPathByAcceleration",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The setting that makes a clicked walk run, read the way the path follower reads it.
+ *
+ * WHAT IT GUARDS. Every click-to-move order goes through `SimpleMoveToLocation`, and the path following component
+ * asks the movement component `UseAccelerationForPathFollowing` on every frame of the walk. Answered false -- the
+ * engine's default -- it sets a velocity and leaves the acceleration at zero, and `ABP_Unarmed` plays its idle pose
+ * for anything moving with no acceleration: the "slides there" the project owner reported. The walk itself is
+ * stepped on a real navigation mesh in the editor module's
+ * `Cataclysm.ClickToMove.AClickedWalkMovesTheCharacterByAccelerationSoItRunsAndStillTurnsAndArrives`; this is the
+ * plain half, which
+ * needs no navigation mesh.
+ *
+ * THE CONTROL IS A CHARACTER NOBODY CONFIGURED, which has to answer false. Without it, the first assertion could
+ * pass because the engine had started defaulting to true, and the player's own line would be untested.
+ */
+bool FCataclysmPlayerFollowsAPathByAcceleration::RunTest(const FString&)
+{
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	const UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr;
+	if (!TestNotNull(TEXT("the player's movement component"), Movement))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the player's movement component follows a path by acceleration, so a clicked walk runs"),
+			 Movement->UseAccelerationForPathFollowing());
+
+	const ACharacter* Plain = World->SpawnActor<ACharacter>(FVector(500.0, 0.0, 0.0), FRotator::ZeroRotator);
+	const UCharacterMovementComponent* PlainMovement = Plain ? Plain->GetCharacterMovement() : nullptr;
+	if (!TestNotNull(TEXT("an unconfigured character's movement component"), PlainMovement))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("CONTROL: a character nobody configured follows a path by velocity, the engine's default"),
+			  PlainMovement->UseAccelerationForPathFollowing());
+	return true;
+}
+#endif // WITH_AUTOMATION_TESTS

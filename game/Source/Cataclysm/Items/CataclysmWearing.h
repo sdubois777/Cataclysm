@@ -1,0 +1,415 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Items/CataclysmEquipmentComponent.h"
+#include "Kismet/BlueprintFunctionLibrary.h"
+
+#include "CataclysmWearing.generated.h"
+
+class UCataclysmInventoryComponent;
+class UWorld;
+
+/** What taking an item out of the bag and putting it on, or the reverse, did. */
+UENUM(BlueprintType)
+enum class ECataclysmWearResult : uint8
+{
+	/** It went on and nothing came off. */
+	Worn				UMETA(DisplayName = "Worn"),
+
+	/** It went on and what came off is now carried. */
+	Swapped				UMETA(DisplayName = "Worn, and what came off is carried"),
+
+	/** It came off and is now carried. */
+	TakenOff			UMETA(DisplayName = "Taken off"),
+
+	/** That carried slot is empty, or holds a crafting material. */
+	NothingToWear		UMETA(DisplayName = "Nothing there to wear"),
+
+	/** That gear slot is empty. */
+	NothingWorn			UMETA(DisplayName = "Nothing worn there"),
+
+	/** Its base names no slot this character has. */
+	CannotBeWorn		UMETA(DisplayName = "It goes in no slot"),
+
+	/**
+	 * Refused, because carrying out the change would have destroyed an item.
+	 *
+	 * NOT A FAILURE OF THE BAG BEING FULL AS SUCH. A one-for-one swap works with
+	 * a full bag, because the slot the item came out of is free by the time
+	 * anything needs putting back. This is the case where more would come off
+	 * than there is room for -- a two-handed weapon replacing two one-handed
+	 * ones -- and the design's rule that an item which will not fit stays where
+	 * it is rather than vanishing.
+	 */
+	NoRoomInTheBag		UMETA(DisplayName = "No room in the bag"),
+
+	/**
+	 * Refused, because it is the only weapon worn and a character must hold one.
+	 *
+	 * A CHOICE RATHER THAN A STOPGAP, AND THIS COMMENT SAID OTHERWISE UNTIL
+	 * 2026-08-23. It claimed the refusal was waiting on four weapon types to be
+	 * given Demonic skills. THAT WILL NEVER HAPPEN. The design document's table
+	 * of which weapon types each damage type covers gives Demonic exactly ten,
+	 * and 2H Crossbow, Crossbow, Shield and Spear are deliberately not among
+	 * them; it adds that Demonic's ten "are now designed". So the stated
+	 * condition for removing this described something that was never going to
+	 * arrive, which is worse than giving no reason at all, because the next
+	 * person reads it as a plan.
+	 *
+	 * WHAT IS ACTUALLY TRUE. A character holding no weapon has no weapon skills,
+	 * because UCataclysmWeaponSlotsComponent grants the six ability slots from
+	 * the worn weapon's type. That is equally true of a Demonic character
+	 * holding a Spear, and the design accepts THAT deliberately --
+	 * Cataclysm.WeaponSlots.AWeaponItsDamageTypeDoesNotCoverOffersNothing
+	 * asserts it on purpose so that nobody "fixes" it later.
+	 *
+	 * THE QUESTION WAS WHETHER AN UNARMED CHARACTER SHOULD HAVE NO SKILLS, AND
+	 * IT IS ANSWERED: YES. Ruled on 2026-09-14 under the owner's delegation,
+	 * issue #841, closed. Letting the slots empty was recommended when this was
+	 * built and the project owner chose this instead; the ruling keeps it. This
+	 * refusal is the rule, not a scaffold waiting on anything.
+	 *
+	 * SWAPPING IS NOT REFUSED, only taking the last one off. Wearing a different
+	 * weapon over this one goes through WearFromCarried and never reaches here.
+	 */
+	TheLastWeapon		UMETA(DisplayName = "That is your only weapon"),
+
+	/** One of the two components was missing. */
+	NothingToWorkWith	UMETA(DisplayName = "Nothing to work with"),
+
+	// ADDED AT THE END RATHER THAN BESIDE WHAT THEY RESEMBLE, so every value
+	// above keeps the number it had. Issue #853.
+
+	/** It is on the cursor now, and still in its slot. */
+	PickedUp			UMETA(DisplayName = "Picked up"),
+
+	/** It went into the cell, which was empty. */
+	PutDown				UMETA(DisplayName = "Put down"),
+
+	/** It went into the cell and what was there took its place. */
+	Exchanged			UMETA(DisplayName = "Put down, and the two changed places"),
+
+	/** That cell is empty, so there is nothing there to pick up. */
+	NothingToPickUp		UMETA(DisplayName = "Nothing there to pick up"),
+
+	/** Asked to put something down with nothing on the cursor. */
+	NothingHeld			UMETA(DisplayName = "Nothing is being held"),
+
+	/** Asked to pick something up while already holding something. */
+	AlreadyHolding		UMETA(DisplayName = "Something is already held"),
+
+	// ADDED AT THE END AGAIN, for issue #1190, so every value above keeps the
+	// number it had.
+
+	/** It is out of the bag and lying on the floor. */
+	Dropped				UMETA(DisplayName = "Dropped on the floor"),
+
+	/** That carried slot is empty, so there is nothing there to drop. */
+	NothingToDrop		UMETA(DisplayName = "Nothing there to drop"),
+
+	/**
+	 * The floor refused the item, so it is still in the bag.
+	 *
+	 * THE ONLY RESULT HERE THAT MEANS THE WORLD SAID NO rather than the rules
+	 * did. A drop is spawned with AlwaysSpawn, so reaching this needs a world
+	 * that is missing or shutting down. It exists because the alternative is
+	 * emptying the slot first and then finding there is nowhere to put the item,
+	 * which destroys it -- the one thing this whole class exists to prevent.
+	 */
+	TheFloorRefusedIt	UMETA(DisplayName = "It could not be put on the floor"),
+
+	// ADDED AT THE END AGAIN, for issue #2687, so every value above keeps the
+	// number it had.
+
+	/**
+	 * Not put on, and nothing moved: wearing it would take the Worn Residue
+	 * from below this tier's Consumption Threshold to at or past it, and the
+	 * player has not yet said yes. `WearAfterConfirming` is how they do.
+	 */
+	WouldCrossConsumptionThreshold	UMETA(DisplayName = "Past the Consumption Threshold; not yet confirmed"),
+
+	/**
+	 * Not put on, and nothing moved: the carried slot no longer holds the item
+	 * the player was asked about, because the bag changed while the question
+	 * was open.
+	 */
+	NoLongerThere		UMETA(DisplayName = "It is no longer where it was"),
+};
+
+/**
+ * What putting one carried item on would do to the Worn Residue, against this
+ * tier's Consumption Threshold. Issue #2687.
+ */
+struct FCataclysmThresholdCrossing
+{
+	/** The Worn Residue now. */
+	float Now = 0.0f;
+
+	/** The Worn Residue once it is on, counting whatever would come off. */
+	float After = 0.0f;
+
+	/** This tier's Consumption Threshold. */
+	float Threshold = 0.0f;
+
+	/** The difficulty tier the threshold is for. */
+	int32 Tier = 1;
+
+	/**
+	 * Whether the player is asked: below the threshold now, and at or past it
+	 * once it is on. ONLY THE CROSSING ASKS, a reading of the design's "would
+	 * take Worn Residue to or past the threshold" ruled on 2026-11-01: a character
+	 * already past it is not asked again at every equip, and an equip that
+	 * brings it back below is never asked about.
+	 */
+	bool Crosses() const { return Now < Threshold && After >= Threshold; }
+};
+
+/**
+ * Moving an item between the bag and what is worn, without ever losing one.
+ *
+ * WHY THIS IS ITS OWN CLASS. Two things ask for it and they must not disagree:
+ * the `Cataclysm.Equip` console command added with the equipment slots in issue
+ * #828, and a click on the inventory screen's gear panel, issue #831. The first
+ * version had the whole rule written inside the console command, so the screen
+ * would have had a second copy of a rule whose failure mode is a destroyed item.
+ *
+ * NOTHING HERE TOUCHES A WIDGET, so all of it is covered by ordinary automation
+ * tests. That matters more than usual: the automation command in
+ * `tools/unreal_build.py` passes `-nullrhi` and no test in this project can watch
+ * a widget draw (issue #559), so a rule left inside the screen is a rule nothing
+ * checks.
+ *
+ * THE ONE RULE WORTH STATING TWICE. **An item is never destroyed.** Every path
+ * below either completes, leaving every item either worn or carried, or changes
+ * nothing at all. `UCataclysmInventoryComponent::AddItem` answers where an item
+ * went rather than assuming it went anywhere, and every use of it here reads
+ * that answer.
+ */
+UCLASS()
+class CATACLYSM_API UCataclysmWearing : public UBlueprintFunctionLibrary
+{
+	GENERATED_BODY()
+
+public:
+	/**
+	 * Take the item out of a carried slot and put it on.
+	 *
+	 * Whatever comes off goes into the bag. The slot the item came out of is
+	 * emptied first, so a one-for-one swap always has somewhere to put the old
+	 * piece even when the bag was full.
+	 *
+	 * A TWO-HANDED WEAPON CAN TAKE TWO WEAPONS OFF FOR ONE GOING ON, which needs
+	 * a second free slot and is the only case that can be refused for room. It
+	 * is refused before anything moves rather than half-done and rolled back:
+	 * a rollback has its own failure modes and this has one honest answer.
+	 *
+	 * ASKED FIRST WHEN IT WOULD CROSS THE CONSUMPTION THRESHOLD. Issue #2687.
+	 * Unless the player has already said yes, an item that would take the Worn
+	 * Residue from below this tier's threshold to at or past it is not put on,
+	 * and the answer is WouldCrossConsumptionThreshold with nothing moved. The
+	 * caller asks the player, and `WearAfterConfirming` puts it on. Every equip
+	 * the player chooses comes through here; see `EquipInto`'s header for the
+	 * ones that do not ask.
+	 *
+	 * WEARING THE ITEM ON THE CURSOR TAKES IT OFF THE CURSOR. Ruled 2026-11-02
+	 * under issue #878. The hold is a slot number, and what comes off lands in
+	 * the first free slot -- often the one just emptied -- so a hold left in
+	 * place would put that piece on the cursor. Wearing any other item leaves
+	 * the hold alone, and so does every refusal.
+	 *
+	 * @param OutSlot  where the item ended up. Untouched when nothing was worn.
+	 * @param bConfirmedPastThreshold  the player has said yes, so do not ask.
+	 * @param DifficultyTier  the tier whose threshold applies; 0 for the one
+	 *                        the equipment's world is played at.
+	 */
+	static ECataclysmWearResult WearFromCarried(
+		UCataclysmInventoryComponent* Inventory,
+		UCataclysmEquipmentComponent* Equipment,
+		int32 CarriedSlot,
+		ECataclysmGearSlot& OutSlot,
+		bool bConfirmedPastThreshold = false,
+		int32 DifficultyTier = 0);
+
+	/**
+	 * Put on the item the player was asked about and said yes to. Issue #2687.
+	 *
+	 * THE BAG MAY HAVE CHANGED WHILE THE QUESTION WAS OPEN, so the carried
+	 * slot is read again: when it no longer holds exactly `AskedAbout`, nothing
+	 * moves and the answer is NoLongerThere. A yes given about one item must
+	 * never put on another.
+	 */
+	static ECataclysmWearResult WearAfterConfirming(
+		UCataclysmInventoryComponent* Inventory,
+		UCataclysmEquipmentComponent* Equipment,
+		int32 CarriedSlot,
+		const FCataclysmItem& AskedAbout,
+		ECataclysmGearSlot& OutSlot,
+		int32 DifficultyTier = 0);
+
+	/**
+	 * What putting on the item in a carried slot would do to the Worn Residue.
+	 * An empty slot answers the Worn Residue now for both totals, so it never
+	 * crosses. Issue #2687.
+	 *
+	 * @param DifficultyTier  as WearFromCarried's.
+	 */
+	static FCataclysmThresholdCrossing CrossingFor(
+		const UCataclysmInventoryComponent* Inventory,
+		UCataclysmEquipmentComponent* Equipment,
+		int32 CarriedSlot,
+		int32 DifficultyTier = 0);
+
+	/**
+	 * What crossing the threshold does, in the design's words: `docs/Cataclysm_GDD_v2.md`, "What crossing it does",
+	 * its first two sentences word for word. Issue #2688 added it when the mark and the double became real.
+	 */
+	static constexpr const TCHAR* ThresholdConsequence =
+		TEXT("The character is marked. On entering the next dungeon floor, a corrupted double of the character is "
+			 "placed in the dungeon and hunts the player: same class, same level, same equipment, same skills.");
+
+	/**
+	 * The question asked before an equip crosses the threshold, in one line.
+	 *
+	 * IT STATES THE TOTAL, THE THRESHOLD AND THE CONSEQUENCE, AND PROMISES NOTHING ELSE. Ruled 2026-11-01 that it
+	 * promises nothing that does not happen; the consequence, `ThresholdConsequence`, was added by issue #2688 once the
+	 * mark and the double that hunts a marked character existed. Being consumed is not mentioned: it does not exist
+	 * yet (#2693).
+	 */
+	static FString ThresholdQuestion(const FString& ItemName,
+									 const FCataclysmThresholdCrossing& Crossing);
+
+	/**
+	 * Take off what is worn in a gear slot and put it in the bag.
+	 *
+	 * REFUSED WHEN THE BAG IS FULL, rather than taking the item off and leaving
+	 * it nowhere.
+	 *
+	 * THIS COMMENT USED TO SAY "there is no floor to drop it on from a screen",
+	 * AND SINCE ISSUE #1190 THERE IS: DropCarried below puts a carried item on
+	 * the ground. The refusal is unchanged all the same, and deliberately.
+	 * Taking a piece off is not a request to drop it, and quietly putting a
+	 * player's gear on the floor because the bag was full is a worse outcome
+	 * than refusing and saying so. Whether a full bag should offer to drop
+	 * instead is a design question nobody has been asked.
+	 *
+	 * @param OutCarriedSlot  which carried slot the piece landed in.
+	 *                        Untouched unless the result is TakenOff.
+	 */
+	static ECataclysmWearResult TakeOffInto(
+		UCataclysmInventoryComponent* Inventory,
+		UCataclysmEquipmentComponent* Equipment,
+		ECataclysmGearSlot Slot,
+		int32* OutCarriedSlot = nullptr);
+
+	/**
+	 * Put a carried slot on the cursor. Issue #853.
+	 *
+	 * NOTHING MOVES. The item stays in its slot and only the cursor changes,
+	 * so this cannot fail part way and cannot lose anything. See
+	 * UCataclysmInventoryComponent::HeldSlot for why that is the design.
+	 *
+	 * A CRAFTING MATERIAL CAN BE PICKED UP TOO, unlike wearing, because moving
+	 * a stack to a tidier cell is the same gesture and refusing it would be a
+	 * rule the player has to learn for no reason.
+	 */
+	static ECataclysmWearResult PickUpCarried(
+		UCataclysmInventoryComponent* Inventory, int32 CarriedSlot);
+
+	/**
+	 * Put what is on the cursor into a carried slot, exchanging with whatever
+	 * is there. Issue #853.
+	 *
+	 * AN OCCUPIED CELL IS AN EXCHANGE AND NOT A REFUSAL, which is what every
+	 * game in the genre does and what makes the grid rearrangeable at all.
+	 * Nothing enters or leaves the bag, so nothing can be destroyed.
+	 *
+	 * PUTTING IT BACK WHERE IT CAME FROM IS ALLOWED and is how a player
+	 * cancels. It reports PutDown, because from the player's side that is what
+	 * happened.
+	 */
+	static ECataclysmWearResult PutDownCarried(
+		UCataclysmInventoryComponent* Inventory, int32 CarriedSlot);
+
+	/**
+	 * Take a worn piece off into the bag and put it on the cursor. Issue #853.
+	 *
+	 * THE SAME REFUSALS AS TakeOffInto, because it is TakeOffInto: a full bag
+	 * and a character's last weapon both stop it, and neither leaves the piece
+	 * anywhere but where it started.
+	 */
+	static ECataclysmWearResult PickUpWorn(
+		UCataclysmInventoryComponent* Inventory,
+		UCataclysmEquipmentComponent* Equipment,
+		ECataclysmGearSlot Slot);
+
+	/**
+	 * Take whatever is on the cursor off it, leaving it in its slot.
+	 *
+	 * WHAT THE INVENTORY SCREEN CLOSING DOES. Nothing moves and nothing can be
+	 * lost, because the item never left the bag to begin with.
+	 */
+	static void ReleaseHeld(UCataclysmInventoryComponent* Inventory);
+
+	/**
+	 * Take a carried item out of the bag and leave it on the floor. Issue #1190.
+	 *
+	 * THE ONLY WAY AN ITEM LEAVES THE BAG WITHOUT GOING ONTO THE BODY, and
+	 * before this there was none. `docs/Inventory_Screen_Design.md` inherits the
+	 * rule from `docs/Cataclysm_GDD_v2.md` that this game has no town portal, so
+	 * a player who fills the bag part way down a dungeon cannot leave, cannot
+	 * sell and cannot destroy anything. Dropping is the whole release valve.
+	 *
+	 * THE FLOOR IS ASKED FIRST AND THE SLOT IS EMPTIED SECOND, which is the
+	 * order that keeps this class's one rule. Emptying first and then failing to
+	 * spawn would destroy the item, and it is the only step here that can fail
+	 * for a reason the rules did not choose.
+	 *
+	 * NO CONFIRMATION AT ANY RARITY. The project owner decided this on
+	 * 2026-09-02: the item lies where it fell and can be picked straight back
+	 * up, so a mis-click costs a walk. Path of Exile, Last Epoch and Diablo all
+	 * behave this way. UCataclysmDropSpawner::DropInFrontCm is set to half the
+	 * pickup range so that remains true.
+	 *
+	 * A CRAFTING MATERIAL DROPS AS ITS WHOLE STACK, because a carried slot holds
+	 * one stack and this empties one slot. Dropping part of a stack would need a
+	 * quantity to be chosen and there is no screen for that.
+	 *
+	 * THE CURSOR IS RELEASED when the slot dropped was the one being held, so a
+	 * screen cannot be left carrying a slot whose item is now on the floor.
+	 *
+	 * @param At  where to put it. UCataclysmDropSpawner::DropSpotInFrontOf works
+	 *            this out from a character; it is passed in rather than derived
+	 *            here so this stays testable without an actor.
+	 *
+	 * @return Dropped, NothingToDrop for an empty slot or one outside the grid,
+	 *         TheFloorRefusedIt when the spawn failed and the item is untouched,
+	 *         or NothingToWorkWith when there is no inventory.
+	 */
+	static ECataclysmWearResult DropCarried(
+		UCataclysmInventoryComponent* Inventory, int32 CarriedSlot,
+		UWorld* World, const FVector& At);
+
+	/**
+	 * Return the weapon in the second hand when two two-handed weapons are held
+	 * and Both Hands Full no longer is. Issue #1515.
+	 *
+	 * A RESPEC OR A CHANGED ALLOCATION CAN TAKE THE OPTION AWAY while both hands
+	 * hold one, and the rules then allow only one. The weapon in Weapon2 goes to
+	 * the bag, or on the floor at `At` when the bag is full. The respec is never
+	 * refused for it; ruled 2026-09-24 as a judgement, recorded in
+	 * docs/DECISIONS.md.
+	 *
+	 * @return TakenOff when it went to the bag, Dropped when it went on the
+	 *         floor, TheFloorRefusedIt when neither could take it and it is still
+	 *         held, NothingWorn when no second two-handed weapon is held without
+	 *         the option, or NothingToWorkWith without an inventory or equipment.
+	 */
+	static ECataclysmWearResult ReturnSecondTwoHandedWeapon(
+		UCataclysmInventoryComponent* Inventory,
+		UCataclysmEquipmentComponent* Equipment, UWorld* World, const FVector& At);
+
+	/** What a result should say to somebody, in one line. */
+	static FString Explain(ECataclysmWearResult Result);
+};

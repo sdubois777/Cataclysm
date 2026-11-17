@@ -1,0 +1,1201 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "Items/CataclysmEquipmentComponent.h"
+
+#include "AbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmPlantedWeapon.h"
+#include "AbilitySystem/CataclysmStatPipeline.h"
+#include "AbilitySystem/CataclysmTargeting.h"
+#include "Character/CataclysmPlayerClassStats.h"
+#include "Data/CataclysmDataRows.h"
+#include "Dungeon/CataclysmDungeonModifierEffects.h"
+#include "Items/CataclysmDropRoll.h"
+#include "Items/CataclysmWeaponSlotsComponent.h"
+#include "Character/CataclysmPassivePoints.h"
+#include "Character/CataclysmPassiveTree.h"
+#include "Character/CataclysmPlayerBuild.h"
+#include "Player/CataclysmPlayerState.h"
+#include "GameFramework/Pawn.h"
+#include "Engine/DataTable.h"
+
+// ---------------------------------------------------------------------------
+// Which slots exist, and what may go in them
+// ---------------------------------------------------------------------------
+
+const TArray<ECataclysmGearSlot>& UCataclysmGearSlots::AllSlots()
+{
+	// BUILT FROM Count RATHER THAN LISTED, so adding a slot to the enum reaches
+	// every loop in the project without anybody editing a second list.
+	static const TArray<ECataclysmGearSlot> Slots = []
+	{
+		TArray<ECataclysmGearSlot> Built;
+		for (int32 Index = 0; Index < static_cast<int32>(ECataclysmGearSlot::Count); ++Index)
+		{
+			Built.Add(static_cast<ECataclysmGearSlot>(Index));
+		}
+		return Built;
+	}();
+	return Slots;
+}
+
+const TArray<ECataclysmGearSlot>& UCataclysmGearSlots::RingSlots()
+{
+	static const TArray<ECataclysmGearSlot> Slots = {
+		ECataclysmGearSlot::Ring1, ECataclysmGearSlot::Ring2,
+		ECataclysmGearSlot::Ring3, ECataclysmGearSlot::Ring4,
+		ECataclysmGearSlot::Ring5, ECataclysmGearSlot::Ring6,
+		ECataclysmGearSlot::Ring7, ECataclysmGearSlot::Ring8,
+	};
+	return Slots;
+}
+
+const TArray<ECataclysmGearSlot>& UCataclysmGearSlots::WeaponSlots()
+{
+	static const TArray<ECataclysmGearSlot> Slots = {
+		ECataclysmGearSlot::Weapon1, ECataclysmGearSlot::Weapon2,
+	};
+	return Slots;
+}
+
+bool UCataclysmGearSlots::IsRingSlot(ECataclysmGearSlot Slot)
+{
+	return RingSlots().Contains(Slot);
+}
+
+bool UCataclysmGearSlots::IsWeaponSlot(ECataclysmGearSlot Slot)
+{
+	return WeaponSlots().Contains(Slot);
+}
+
+FString UCataclysmGearSlots::DisplayName(ECataclysmGearSlot Slot)
+{
+	// READ OFF THE ENUM'S OWN DisplayName META rather than a second table, so
+	// the name on screen and the name in the editor's dropdown cannot disagree.
+	if (const UEnum* Enum = StaticEnum<ECataclysmGearSlot>())
+	{
+		return Enum->GetDisplayNameTextByValue(static_cast<int64>(Slot)).ToString();
+	}
+	return FString();
+}
+
+FString UCataclysmGearSlots::BaseSlotFor(ECataclysmGearSlot Slot)
+{
+	if (IsRingSlot(Slot))
+	{
+		return TEXT("Ring");
+	}
+	if (IsWeaponSlot(Slot))
+	{
+		return TEXT("Weapon");
+	}
+
+	// EVERY OTHER SLOT'S NAME IS ITS OWN BASE VALUE, which is true of all nine
+	// of them today and is checked by
+	// Cataclysm.Equipment.EverySlotNameMatchesAnItemBaseSlotValue rather than
+	// trusted. A slot added to the enum whose name is not a value in the Slot
+	// column of game/Data/ItemBases.csv fails that test.
+	if (const UEnum* Enum = StaticEnum<ECataclysmGearSlot>())
+	{
+		return Enum->GetNameStringByValue(static_cast<int64>(Slot));
+	}
+	return FString();
+}
+
+TArray<ECataclysmGearSlot> UCataclysmGearSlots::CandidateSlotsFor(const FString& BaseSlot)
+{
+	if (BaseSlot.IsEmpty())
+	{
+		return {};
+	}
+
+	if (BaseSlot.Equals(TEXT("Ring"), ESearchCase::IgnoreCase))
+	{
+		return RingSlots();
+	}
+	if (BaseSlot.Equals(TEXT("Weapon"), ESearchCase::IgnoreCase))
+	{
+		return WeaponSlots();
+	}
+
+	for (const ECataclysmGearSlot Slot : AllSlots())
+	{
+		if (BaseSlotFor(Slot).Equals(BaseSlot, ESearchCase::IgnoreCase))
+		{
+			return {Slot};
+		}
+	}
+
+	// AN EMPTY ANSWER IS NOT AN ERROR AND IS NOT LOGGED. A consumable's base
+	// names a slot this enum deliberately does not carry -- see the header on
+	// why the four potion slots are absent -- and a caller asking about one
+	// should get "nowhere", not a warning.
+	return {};
+}
+
+// ---------------------------------------------------------------------------
+// The component
+// ---------------------------------------------------------------------------
+
+UCataclysmEquipmentComponent::UCataclysmEquipmentComponent()
+{
+	// NOTHING TICKS, for the same reason the carried inventory does not: what a
+	// character is wearing changes when something puts an item on or takes one
+	// off, and neither is a frame event.
+	PrimaryComponentTick.bCanEverTick = false;
+
+	// Every slot exists from the start, empty, so an empty one is representable
+	// and the interface can draw all of them.
+	Slots.SetNum(SlotCount);
+}
+
+const FCataclysmItem* UCataclysmEquipmentComponent::EquippedAt(ECataclysmGearSlot Slot) const
+{
+	const int32 Index = static_cast<int32>(Slot);
+	if (!Slots.IsValidIndex(Index) || Slots[Index].Base.IsNone())
+	{
+		return nullptr;
+	}
+	return &Slots[Index];
+}
+
+bool UCataclysmEquipmentComponent::SlotIsEmpty(ECataclysmGearSlot Slot) const
+{
+	return EquippedAt(Slot) == nullptr;
+}
+
+float UCataclysmEquipmentComponent::WornResidue() const
+{
+	return WornResidueOf(Slots);
+}
+
+float UCataclysmEquipmentComponent::WornResidueOf(const TArray<FCataclysmItem>& WornSlots)
+{
+	float Worn = 0.0f;
+	for (int32 Index = 0; Index < WornSlots.Num(); ++Index) // Worn Residue's: every slot.
+	{
+		if (!WornSlots[Index].Base.IsNone())
+		{
+			Worn += WornSlots[Index].Residue;
+		}
+	}
+	return Worn;
+}
+
+int32 UCataclysmEquipmentComponent::ClearResidueOnEveryWornItem()
+{
+	int32 Cleared = 0;
+	for (FCataclysmItem& Worn : Slots) // The double's death's: every equipped item, none carried.
+	{
+		if (!Worn.Base.IsNone() && Worn.Residue != 0.0f)
+		{
+			Worn.Residue = 0.0f;
+			++Cleared;
+		}
+	}
+
+	// ANNOUNCED, so the sheet's Worn Residue line and a worn item's tooltip are drawn again from the new values.
+	if (Cleared > 0)
+	{
+		AnnounceChange();
+	}
+	return Cleared;
+}
+
+namespace CataclysmConsumptionThreshold
+{
+	/**
+	 * `docs/Cataclysm_GDD_v2.md`, "The Consumption Threshold, one per difficulty tier", tier 1 first. Derived there, not
+	 * chosen; `tools/tests/test_the_consumption_threshold_is_the_designs.py` reads these lines and that table and fails
+	 * when they differ. One per line, so a change to one tier is a change to one line. Issue #1251.
+	 */
+	constexpr float ByTier[] = {
+		1950.0f, // tier 1
+		2400.0f, // tier 2
+		2900.0f, // tier 3
+		3400.0f, // tier 4
+		3950.0f, // tier 5
+		4500.0f, // tier 6
+		5050.0f, // tier 7
+		5600.0f, // tier 8
+	};
+	static_assert(UE_ARRAY_COUNT(ByTier) == 8, "one Consumption Threshold for each of the eight difficulty tiers");
+}
+
+float UCataclysmEquipmentComponent::ConsumptionThresholdFor(int32 DifficultyTier)
+{
+	using namespace CataclysmConsumptionThreshold;
+	const int32 Tier = FMath::Clamp(DifficultyTier, 1, static_cast<int32>(UE_ARRAY_COUNT(ByTier)));
+	return ByTier[Tier - 1];
+}
+
+float UCataclysmEquipmentComponent::WornResidueIfEquipped(const FCataclysmItem& Item)
+{
+	// ONE PROBE FOR BOTH QUESTIONS, since issue #832: the tooltip's comparison and this one ask `PreviewEquip`.
+	const FCataclysmEquipPreview Preview = PreviewEquip(Item);
+	return Preview.bWearable ? WornResidueOf(Preview.SlotsAfter) : WornResidue();
+}
+
+FCataclysmEquipPreview UCataclysmEquipmentComponent::PreviewEquip(const FCataclysmItem& Item)
+{
+	FCataclysmEquipPreview Out;
+	const TArray<FCataclysmItem> SlotsBefore = Slots;
+	const int32 ChangesBefore = Changes;
+	{
+		TGuardValue<bool> Silenced(bAnnouncingSilenced, true);
+		FCataclysmItem FirstOff;
+		FCataclysmItem SecondOff;
+		ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
+		const ECataclysmEquipResult Result = Equip(Item, FirstOff, SecondOff, Went);
+		if (Result == ECataclysmEquipResult::Equipped || Result == ECataclysmEquipResult::Swapped)
+		{
+			Out.bWearable = true;
+			Out.Slot = Went;
+			// BOTH, IN `Equip`'S ORDER: a two-handed weapon put on over two held weapons takes both off, and a
+			// comparison that named only the first would compare a greatsword against half of what it replaces.
+			if (!FirstOff.Base.IsNone())
+			{
+				Out.Replaced.Add(FirstOff);
+			}
+			if (!SecondOff.Base.IsNone())
+			{
+				Out.Replaced.Add(SecondOff);
+			}
+			Out.SlotsAfter = Slots;
+		}
+	}
+	// PUT BACK AS THEY WERE, the slots and the count, so nothing worn changed and nothing was announced.
+	Slots = SlotsBefore;
+	Changes = ChangesBefore;
+	return Out;
+}
+
+bool UCataclysmEquipmentComponent::PlayerNumbers(FCataclysmPlayerBuild& OutNumbers) const
+{
+	if (const APawn* Pawn = Cast<APawn>(GetOwner()))
+	{
+		if (const ACataclysmPlayerState* State = Pawn->GetPlayerState<ACataclysmPlayerState>())
+		{
+			OutNumbers = FCataclysmPlayerBuild::NumbersOf(*State);
+			return true;
+		}
+	}
+	return false;
+}
+
+int32 UCataclysmEquipmentComponent::NumEquipped() const
+{
+	int32 Count = 0;
+	for (const FCataclysmItem& Item : Slots)
+	{
+		if (!Item.Base.IsNone())
+		{
+			++Count;
+		}
+	}
+	return Count;
+}
+
+bool UCataclysmEquipmentComponent::TwoHandedOccupiesBothWeaponSlots() const
+{
+	const FCataclysmItem* First = EquippedAt(ECataclysmGearSlot::Weapon1);
+	if (!First || MayHoldTwoTwoHanded())
+	{
+		return false;
+	}
+	return UCataclysmItemModifiers::IsTwoHanded(
+		*First, UCataclysmItemModifiers::LoadBaseTable());
+}
+
+const TCHAR* UCataclysmEquipmentComponent::BothHandsFullStat =
+	TEXT("two_handed_weapon_in_each_hand");
+
+bool UCataclysmEquipmentComponent::MayHoldTwoTwoHanded() const
+{
+	const UCataclysmAbilitySystemComponent* Holder =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(GetOwner()));
+	return Holder
+		&& Holder->StatForSkill(FName(BothHandsFullStat), FGameplayTagContainer(),
+								0.0f) > 0.0f;
+}
+
+int32 UCataclysmEquipmentComponent::WeaponsComingOffFor(bool bTwoHandedWeapon) const
+{
+	const FCataclysmItem* First = EquippedAt(ECataclysmGearSlot::Weapon1);
+	const FCataclysmItem* Second = EquippedAt(ECataclysmGearSlot::Weapon2);
+	if (!First && !Second)
+	{
+		return 0;
+	}
+
+	// WHETHER THE NEW WEAPON MAY STAND BESIDE A HELD ONE. The same kind, and a
+	// two-handed pair only with the option. EVERY LEGAL LOADOUT HOLDS ONE KIND,
+	// so with both hands held the first one says what the pair is.
+	const FCataclysmItem* Held = First ? First : Second;
+	const bool bHeldIsTwoHanded = UCataclysmItemModifiers::IsTwoHanded(
+		*Held, UCataclysmItemModifiers::LoadBaseTable());
+	const bool bFitsBeside = bTwoHandedWeapon == bHeldIsTwoHanded
+		&& (!bTwoHandedWeapon || MayHoldTwoTwoHanded());
+
+	// ONE HAND FREE: `Equip` puts it there, and the held weapon comes off only
+	// when the two cannot stand together. BOTH HELD: `Equip` replaces the first,
+	// and the second comes off too when the two cannot stand together.
+	if (!First || !Second)
+	{
+		return bFitsBeside ? 0 : 1;
+	}
+	return bFitsBeside ? 1 : 2;
+}
+
+// ---------------------------------------------------------------------------
+// Changing what is worn
+// ---------------------------------------------------------------------------
+
+void UCataclysmEquipmentComponent::PlaceInto(const FCataclysmItem& Item,
+											 ECataclysmGearSlot Slot,
+											 FCataclysmItem& OutRemoved)
+{
+	const int32 Index = static_cast<int32>(Slot);
+	if (!Slots.IsValidIndex(Index))
+	{
+		return;
+	}
+
+	OutRemoved = Slots[Index];
+	Slots[Index] = Item;
+}
+
+ECataclysmEquipResult UCataclysmEquipmentComponent::Equip(
+	const FCataclysmItem& Item,
+	FCataclysmItem& OutRemoved,
+	FCataclysmItem& OutAlsoRemoved,
+	ECataclysmGearSlot& OutSlot)
+{
+	if (Item.Base.IsNone())
+	{
+		return ECataclysmEquipResult::NotAnItem;
+	}
+
+	const UDataTable* BaseTable = UCataclysmItemModifiers::LoadBaseTable();
+	if (!BaseTable)
+	{
+		return ECataclysmEquipResult::NoBaseTable;
+	}
+
+	const FCataclysmItemBaseRow* Base = BaseTable->FindRow<FCataclysmItemBaseRow>(
+		Item.Base, TEXT("Equip"), /*bWarnIfMissing=*/false);
+	if (!Base)
+	{
+		return ECataclysmEquipResult::NotAnItem;
+	}
+
+	const TArray<ECataclysmGearSlot> Candidates =
+		UCataclysmGearSlots::CandidateSlotsFor(Base->Slot);
+	if (Candidates.Num() == 0)
+	{
+		return ECataclysmEquipResult::NoSlotForThisItem;
+	}
+
+	// THE FIRST FREE ONE, AND THE FIRST ONE WHEN NONE IS FREE. With eight ring
+	// slots, filling a free one rather than replacing an occupied one is what a
+	// player means by "wear this"; replacing only becomes the answer once there
+	// is nowhere left to put it. EquipInto is how a player says which.
+	ECataclysmGearSlot Chosen = Candidates[0];
+	for (const ECataclysmGearSlot Candidate : Candidates)
+	{
+		if (SlotIsEmpty(Candidate))
+		{
+			Chosen = Candidate;
+			break;
+		}
+	}
+
+	const ECataclysmEquipResult Result =
+		EquipInto(Item, Chosen, OutRemoved, OutAlsoRemoved);
+
+	// EquipInto sends a two-handed weapon to Weapon1 whichever weapon slot it
+	// was given, unless Both Hands Full is held, when it goes where it was put.
+	// So the slot reported back follows the same rule rather than the slot
+	// asked for.
+	OutSlot = Chosen;
+	if (UCataclysmGearSlots::IsWeaponSlot(Chosen)
+		&& UCataclysmItemModifiers::IsTwoHanded(Item, BaseTable)
+		&& !MayHoldTwoTwoHanded())
+	{
+		OutSlot = ECataclysmGearSlot::Weapon1;
+	}
+	return Result;
+}
+
+ECataclysmEquipResult UCataclysmEquipmentComponent::EquipInto(const FCataclysmItem& Item,
+															   ECataclysmGearSlot Slot,
+															   FCataclysmItem& OutRemoved,
+															   FCataclysmItem& OutAlsoRemoved)
+{
+	if (Item.Base.IsNone())
+	{
+		return ECataclysmEquipResult::NotAnItem;
+	}
+
+	const UDataTable* BaseTable = UCataclysmItemModifiers::LoadBaseTable();
+	if (!BaseTable)
+	{
+		return ECataclysmEquipResult::NoBaseTable;
+	}
+
+	const FCataclysmItemBaseRow* Base = BaseTable->FindRow<FCataclysmItemBaseRow>(
+		Item.Base, TEXT("EquipInto"), /*bWarnIfMissing=*/false);
+	if (!Base)
+	{
+		return ECataclysmEquipResult::NotAnItem;
+	}
+
+	const TArray<ECataclysmGearSlot> Candidates =
+		UCataclysmGearSlots::CandidateSlotsFor(Base->Slot);
+	if (Candidates.Num() == 0)
+	{
+		return ECataclysmEquipResult::NoSlotForThisItem;
+	}
+	if (!Candidates.Contains(Slot))
+	{
+		return ECataclysmEquipResult::WrongSlotForThisItem;
+	}
+
+	const bool bWasEmpty = SlotIsEmpty(Slot);
+	const bool bTwoHandedWeapon = UCataclysmGearSlots::IsWeaponSlot(Slot)
+		&& UCataclysmItemModifiers::IsTwoHanded(Item, BaseTable);
+	const ECataclysmGearSlot OtherHand = Slot == ECataclysmGearSlot::Weapon1
+		? ECataclysmGearSlot::Weapon2 : ECataclysmGearSlot::Weapon1;
+
+	// -- with Both Hands Full, a two-handed weapon takes one hand ---------
+	if (bTwoHandedWeapon && MayHoldTwoTwoHanded())
+	{
+		// WHERE IT WAS PUT, and a two-handed weapon in the other hand stays.
+		// Issue #1515. A ONE-HANDED WEAPON IN THE OTHER HAND COMES OFF, because
+		// the design's four loadouts never mix the two kinds.
+		FCataclysmItem FromThisHand;
+		FCataclysmItem FromOtherHand;
+		PlaceInto(Item, Slot, FromThisHand);
+		const FCataclysmItem* Beside = EquippedAt(OtherHand);
+		if (Beside && !UCataclysmItemModifiers::IsTwoHanded(*Beside, BaseTable))
+		{
+			TakeOutOf(OtherHand, FromOtherHand);
+		}
+
+		// THE FIRST THING THAT CAME OFF IS REPORTED FIRST, whichever hand it
+		// left, and the second is written only when there is one, as the
+		// header promises.
+		if (FromThisHand.Base.IsNone())
+		{
+			OutRemoved = FromOtherHand;
+		}
+		else
+		{
+			OutRemoved = FromThisHand;
+			if (!FromOtherHand.Base.IsNone())
+			{
+				OutAlsoRemoved = FromOtherHand;
+			}
+		}
+
+		AnnounceChange();
+		return (FromThisHand.Base.IsNone() && FromOtherHand.Base.IsNone())
+			? ECataclysmEquipResult::Equipped
+			: ECataclysmEquipResult::Swapped;
+	}
+
+	// -- a two-handed weapon takes both hands ------------------------------
+	if (bTwoHandedWeapon)
+	{
+		// IT LANDS IN Weapon1 WHICHEVER SLOT WAS ASKED FOR. The two weapon
+		// slots are interchangeable -- the design says there is no primary hand
+		// -- so a two-handed weapon in "the second hand" would mean nothing, and
+		// storing it once is what stops every accumulation counting its affixes
+		// twice.
+		FCataclysmItem FromFirst;
+		FCataclysmItem FromSecond;
+		PlaceInto(Item, ECataclysmGearSlot::Weapon1, FromFirst);
+
+		const int32 SecondIndex = static_cast<int32>(ECataclysmGearSlot::Weapon2);
+		FromSecond = Slots[SecondIndex];
+		Slots[SecondIndex] = FCataclysmItem();
+
+		OutRemoved = FromFirst;
+		OutAlsoRemoved = FromSecond;
+
+		AnnounceChange();
+		return (FromFirst.Base.IsNone() && FromSecond.Base.IsNone())
+			? ECataclysmEquipResult::Equipped
+			: ECataclysmEquipResult::Swapped;
+	}
+
+	// -- a one-handed weapon may not go beside a two-handed one -------------
+	//
+	// ASKED OF THE OTHER HAND, NOT OF Weapon1. Issue #1515. Without Both Hands
+	// Full a two-handed weapon is only ever in Weapon1, and this reads the same
+	// as it always did. With it, one may be in Weapon2, and two may be held; a
+	// one-handed weapon put in either hand then takes off what is in that hand
+	// by being placed there, and the two-handed weapon in the other hand here.
+	// A one-handed weapon put in the two-handed weapon's own hand needs no
+	// branch: the placement below takes it off, as any swap in one slot does.
+	//
+	// THE TWO-HANDED WEAPON COMES OFF rather than refusing, which would leave
+	// the player unable to change weapon without an explicit unequip they have
+	// no reason to know about.
+	//
+	// TakeOutOf AND NOT Unequip, WHICH IS THE WHOLE OF ISSUE #1214. Unequip
+	// announces, so this branch used to raise the change twice for one player
+	// action -- and the first of the two fired between the two-handed weapon
+	// coming off and the new one going on, with the character holding nothing.
+	// ACataclysmPlayerCharacter::OnEquipmentChanged is the only listener and it
+	// takes back and regrants every ability from the worn weapon's type, so it
+	// did that once against an unarmed character and once against the real one.
+	const FCataclysmItem* InOtherHand = UCataclysmGearSlots::IsWeaponSlot(Slot)
+		? EquippedAt(OtherHand) : nullptr;
+	if (InOtherHand && UCataclysmItemModifiers::IsTwoHanded(*InOtherHand, BaseTable))
+	{
+		FCataclysmItem Beside;
+		FCataclysmItem FromThisHand;
+		TakeOutOf(OtherHand, Beside);
+		PlaceInto(Item, Slot, FromThisHand);
+		OutRemoved = Beside;
+		// ONLY WHEN SOMETHING CAME OFF THIS HAND TOO, which is two two-handed
+		// weapons held. The header promises it untouched otherwise.
+		if (!FromThisHand.Base.IsNone())
+		{
+			OutAlsoRemoved = FromThisHand;
+		}
+
+		AnnounceChange();
+		return ECataclysmEquipResult::Swapped;
+	}
+
+	PlaceInto(Item, Slot, OutRemoved);
+
+	AnnounceChange();
+	return bWasEmpty ? ECataclysmEquipResult::Equipped
+					 : ECataclysmEquipResult::Swapped;
+}
+
+void UCataclysmEquipmentComponent::AnnounceChange()
+{
+	if (bAnnouncingSilenced)
+	{
+		return; // PreviewEquip's: its slots are put back, so there is no change to announce.
+	}
+
+	// THE COUNT FIRST. A listener on the delegate may read ChangeCount while
+	// handling the broadcast, and it should see the change it is being told
+	// about rather than the one before it.
+	++Changes;
+	EquipmentChanged.Broadcast();
+}
+
+bool UCataclysmEquipmentComponent::TakeOutOf(ECataclysmGearSlot Slot,
+											 FCataclysmItem& OutRemoved)
+{
+	const int32 Index = static_cast<int32>(Slot);
+	if (!Slots.IsValidIndex(Index) || Slots[Index].Base.IsNone())
+	{
+		return false;
+	}
+
+	OutRemoved = Slots[Index];
+	Slots[Index] = FCataclysmItem();
+	return true;
+}
+
+bool UCataclysmEquipmentComponent::Unequip(ECataclysmGearSlot Slot,
+										   FCataclysmItem& OutRemoved)
+{
+	// TAKING A WEAPON OFF ON ITS OWN IS STILL ONE CHANGE AND IS STILL
+	// ANNOUNCED. What moved into TakeOutOf above is only the part that
+	// EquipInto's two-handed swap needs to do silently, mid-swap.
+	if (!TakeOutOf(Slot, OutRemoved))
+	{
+		return false;
+	}
+
+	AnnounceChange();
+	return true;
+}
+
+bool UCataclysmEquipmentComponent::NoteKillOnWornWeapons(UAbilitySystemComponent* AbilitySystem)
+{
+	const UDataTable* Effects = UCataclysmItemModifiers::LoadEnchantmentEffectTable();
+	bool bCrossed = false;
+	for (const ECataclysmGearSlot Slot : {ECataclysmGearSlot::Weapon1, ECataclysmGearSlot::Weapon2})
+	{
+		const int32 Index = static_cast<int32>(Slot);
+		if (!Slots.IsValidIndex(Index) || Slots[Index].Base.IsNone()
+			|| Slots[Index].Kills >= MAX_int32)
+		{
+			continue;
+		}
+		FCataclysmItem& Weapon = Slots[Index];
+		bCrossed |= UCataclysmItemModifiers::KillCrossesAStep(Weapon, Weapon.Kills, Effects);
+		++Weapon.Kills;
+	}
+	if (bCrossed && AbilitySystem)
+	{
+		RefreshAttributes(AbilitySystem);
+	}
+	return bCrossed;
+}
+
+void UCataclysmEquipmentComponent::RestoreWornGear(const TArray<TPair<ECataclysmGearSlot, FCataclysmItem>>& Worn)
+{
+	for (FCataclysmItem& Slot : Slots)
+	{
+		Slot = FCataclysmItem();
+	}
+	for (const TPair<ECataclysmGearSlot, FCataclysmItem>& Entry : Worn)
+	{
+		const int32 Index = static_cast<int32>(Entry.Key);
+		if (Slots.IsValidIndex(Index))
+		{
+			Slots[Index] = Entry.Value;
+		}
+	}
+}
+
+void UCataclysmEquipmentComponent::AnnounceRestored()
+{
+	AnnounceChange();
+}
+
+void UCataclysmEquipmentComponent::UnequipEverything()
+{
+	bool bAnything = false;
+	for (FCataclysmItem& Item : Slots)
+	{
+		if (!Item.Base.IsNone())
+		{
+			Item = FCataclysmItem();
+			bAnything = true;
+		}
+	}
+
+	// BROADCAST ONLY IF SOMETHING CHANGED, so taking everything off a character
+	// wearing nothing does not make every listener recompute for no reason.
+	if (bAnything)
+	{
+		AnnounceChange();
+	}
+}
+
+// ---------------------------------------------------------------------------
+// What it is all for
+// ---------------------------------------------------------------------------
+
+TMap<FName, TArray<FCataclysmStatModifier>>
+UCataclysmEquipmentComponent::GatherModifiers(
+	TArray<FCataclysmPoolAction>* Actions) const
+{
+	return GatherModifiersReading(Actions, /*bPlantedWeaponIsRead=*/false);
+}
+
+TMap<FName, TArray<FCataclysmStatModifier>>
+UCataclysmEquipmentComponent::GatherModifiersReading(
+	TArray<FCataclysmPoolAction>* Actions, bool bPlantedWeaponIsRead) const
+{
+	TMap<FName, TArray<FCataclysmStatModifier>> Totals;
+
+	const UDataTable* BaseTable = UCataclysmItemModifiers::LoadBaseTable();
+	const UDataTable* AffixTable = UCataclysmDropRoll::LoadAffixTable();
+	if (!BaseTable || !AffixTable)
+	{
+		// Nothing to say. An empty map means "wearing nothing that grants
+		// anything", and a caller cannot tell that from "the tables are
+		// missing" -- but the tables missing is already reported loudly by the
+		// loaders themselves, so it is not reported twice here.
+		return Totals;
+	}
+
+	// A SLOT A FLOOR RULE HAS SWITCHED OFF IS READ AS EMPTY, by this loop and by the
+	// enchantments below, so its item gives no stat and no enchantment and is not a piece
+	// of any set. A copy is made only when a slot is off and holds something, which is
+	// one floor rule's case (`Famine_Scarcity`; issues #1820 and #41).
+	const TArray<FCataclysmItem>* Worn = &Slots;
+	TArray<FCataclysmItem> Counted;
+	const int32 Off = static_cast<int32>(DisabledSlot);
+	if (Slots.IsValidIndex(Off) && !Slots[Off].Base.IsNone())
+	{
+		Counted = Slots;
+		Counted[Off] = FCataclysmItem();
+		Worn = &Counted;
+	}
+
+	// A WEAPON LEFT STANDING IN THE GROUND IS READ AS EMPTY TOO, by the same loop and for the same things: its
+	// implicit, its affixes and its enchantments give nothing, and it is not a piece of any set. Issue #1166, ruled
+	// 2026-10-05: "the weapon's own implicit and its affixes are left out while it is planted, and everything worn
+	// elsewhere stays".
+	//
+	// THE PLANTED WEAPON IS THE FIRST WEAPON SLOT THAT HOLDS SOMETHING, which is the slot the character's skills come
+	// from (`EquippedWeaponType`) and so the weapon whose skill planted it. A second weapon in the other hand is
+	// "worn elsewhere" and stays.
+	//
+	// THE ITEM STAYS WORN. Its base swing rate and the critical strike base a held weapon gives are not lines on the
+	// weapon and are read elsewhere (`StatBasesFromWeapons`), so both stay; and its skills stay, which is what lets
+	// the second press pull it free.
+	//
+	// `bPlantedWeaponIsRead` SKIPS THIS BLOCK AND NOTHING ELSE. Ruled 2026-10-09 (J5a): a planted weapon still grants
+	// its class points. `RefreshAttributes` asks for that second reading while a weapon is planted and takes the class
+	// points from it and nothing more. A slot a floor rule switched off is read as empty in both readings.
+	if (!bPlantedWeaponIsRead && ACataclysmPlantedWeapon::LeavesUnarmed(GetOwner()))
+	{
+		for (const ECataclysmGearSlot Slot : UCataclysmGearSlots::WeaponSlots())
+		{
+			const int32 Index = static_cast<int32>(Slot);
+			if (Slots.IsValidIndex(Index) && !Slots[Index].Base.IsNone())
+			{
+				if (Worn == &Slots)
+				{
+					Counted = Slots;
+					Worn = &Counted;
+				}
+				Counted[Index] = FCataclysmItem();
+				break;
+			}
+		}
+	}
+
+	for (const FCataclysmItem& Item : *Worn)
+	{
+		if (Item.Base.IsNone())
+		{
+			continue;
+		}
+		UCataclysmItemModifiers::AccumulateInto(Totals, Item, BaseTable, AffixTable);
+	}
+
+	// AND WHAT THE WORN ENCHANTMENTS GRANT, since issue #45. After the loop
+	// rather than inside it, because a benefit applies once however many pieces
+	// carry it, and only a pass over every worn item can know that. Before this,
+	// a piece recorded its enchantments and none of them changed anything.
+	UCataclysmItemModifiers::AccumulateEnchantmentsInto(
+		Totals, *Worn, UCataclysmItemModifiers::LoadEnchantmentEffectTable(),
+		UCataclysmDropRoll::LoadPositiveEnchantmentTable(),
+		UCataclysmDropRoll::LoadNegativeEnchantmentTable(), Actions);
+
+	return Totals;
+}
+
+FString UCataclysmEquipmentComponent::EquippedWeaponType() const
+{
+	const UDataTable* BaseTable = UCataclysmItemModifiers::LoadBaseTable();
+	if (!BaseTable)
+	{
+		return FString();
+	}
+
+	for (const ECataclysmGearSlot Slot : UCataclysmGearSlots::WeaponSlots())
+	{
+		const FCataclysmItem* Item = EquippedAt(Slot);
+		if (!Item)
+		{
+			continue;
+		}
+
+		const FCataclysmItemBaseRow* Base = BaseTable->FindRow<FCataclysmItemBaseRow>(
+			Item->Base, TEXT("EquippedWeaponType"), /*bWarnIfMissing=*/false);
+		if (Base && !Base->WeaponType.IsEmpty())
+		{
+			// THE FIRST OCCUPIED SLOT, AND THAT IS A PLACEHOLDER. With two
+			// one-handed weapons of different types the answer depends on which
+			// slot the player dropped which weapon into, and the two slots are
+			// supposed to carry no meaning.
+			//
+			// THE ANSWER IS NOT TO PICK A BETTER WEAPON HERE. Both weapons
+			// contribute their skills to one pool and the player assigns any of
+			// them to any slot, which the design said before this was written.
+			// Since issue #837 layer 2 the pool reads every worn weapon
+			// (`WornWeaponTypes`) and this decides no skill; the header lists
+			// what still reads it.
+			return Base->WeaponType;
+		}
+	}
+
+	return FString();
+}
+
+TArray<FCataclysmItem> UCataclysmEquipmentComponent::WornWeapons() const
+{
+	TArray<FCataclysmItem> Worn;
+
+	// NO TABLE IS CONSULTED HERE. Whether a weapon arms, what it is worth and
+	// how fast it swings are all questions about the base, and they belong to
+	// UCataclysmItemModifiers. This answers only what is in the two slots, so a
+	// missing item bases table cannot make a worn weapon disappear.
+	for (const ECataclysmGearSlot HeldWeaponSlot : UCataclysmGearSlots::WeaponSlots())
+	{
+		if (const FCataclysmItem* Item = EquippedAt(HeldWeaponSlot))
+		{
+			Worn.Add(*Item);
+		}
+	}
+
+	return Worn;
+}
+
+TArray<FName> UCataclysmEquipmentComponent::CarriedDamageTypesOf(const TArray<FCataclysmItem>& Weapons,
+																 FName CreationDamageType)
+{
+	TArray<FName> Carried;
+	for (int32 WeaponIndex = 0; WeaponIndex < Weapons.Num(); ++WeaponIndex)
+	{
+		const FCataclysmItem& Weapon = Weapons[WeaponIndex];
+		if (Weapon.Base.IsNone())
+		{
+			continue;
+		}
+		bool bCarriesItsOwn = false;
+		for (const FName& Type : Weapon.DamageTypes)
+		{
+			if (!Type.IsNone())
+			{
+				Carried.AddUnique(Type);
+				bCarriesItsOwn = true;
+			}
+		}
+		// AN EMPTY LIST IS THE CREATION TYPE, which the header says why.
+		if (!bCarriesItsOwn && !CreationDamageType.IsNone())
+		{
+			Carried.AddUnique(CreationDamageType);
+		}
+	}
+
+	// NOTHING WORN IS THE CREATION TYPE ALONE, so the trees screen is never empty.
+	if (Carried.Num() == 0 && !CreationDamageType.IsNone())
+	{
+		Carried.Add(CreationDamageType);
+	}
+	return Carried;
+}
+
+TArray<FName> UCataclysmEquipmentComponent::CarriedDamageTypes(FName CreationDamageType) const
+{
+	// A PLANTED WEAPON STILL CARRIES ITS TYPES. It stays worn and its skills stay, and its class points still count
+	// (ruled 2026-10-09, J5a), so the trees it opens stay open while it stands in the ground. No floor rule switches
+	// a weapon slot off in play (`ACataclysmDungeonGameMode::ChooseTheScarceSlot` draws from the other slots), so
+	// `WornWeapons` is the whole answer and a slot switched off is not asked about.
+	return CarriedDamageTypesOf(WornWeapons(), CreationDamageType);
+}
+
+TArray<FString> UCataclysmEquipmentComponent::WornWeaponTypes() const
+{
+	// THE SAME LOOKUP `EquippedWeaponType` MAKES, over every worn weapon rather than the first. Issue #837 layer 2.
+	TArray<FString> Types;
+	const UDataTable* BaseTable = UCataclysmItemModifiers::LoadBaseTable();
+	if (!BaseTable)
+	{
+		return Types;
+	}
+	for (const FCataclysmItem& Weapon : WornWeapons())
+	{
+		const FCataclysmItemBaseRow* Base = BaseTable->FindRow<FCataclysmItemBaseRow>(
+			Weapon.Base, TEXT("WornWeaponTypes"), /*bWarnIfMissing=*/false);
+		if (Base && !Base->WeaponType.IsEmpty())
+		{
+			Types.Add(Base->WeaponType);
+		}
+	}
+	return Types;
+}
+
+bool UCataclysmEquipmentComponent::CarryCreationDamageType(FName WeaponType, FName DamageType)
+{
+	const UDataTable* BaseTable = UCataclysmItemModifiers::LoadBaseTable();
+	if (WeaponType.IsNone() || DamageType.IsNone() || !BaseTable)
+	{
+		return false;
+	}
+
+	bool bChanged = false;
+	for (const ECataclysmGearSlot HeldWeaponSlot : UCataclysmGearSlots::WeaponSlots())
+	{
+		const int32 Index = static_cast<int32>(HeldWeaponSlot);
+		if (!Slots.IsValidIndex(Index) || Slots[Index].Base.IsNone())
+		{
+			continue;
+		}
+		FCataclysmItem& Weapon = Slots[Index];
+		const FCataclysmItemBaseRow* Base = BaseTable->FindRow<FCataclysmItemBaseRow>(
+			Weapon.Base, TEXT("CarryCreationDamageType"), /*bWarnIfMissing=*/false);
+		// THE MARKER SAYS WHICH WEAPON IT IS (Q-L1), and the weapon type says it is still the one the choice names: a
+		// choice that moved the weapon type puts a new weapon on, and the old one keeps what it carried.
+		const bool bTheCreationWeapon =
+			Weapon.bMadeAtCreation && Base && Base->WeaponType == WeaponType.ToString();
+		if (!bTheCreationWeapon || (Weapon.DamageTypes.Num() == 1 && Weapon.DamageTypes[0] == DamageType))
+		{
+			continue;
+		}
+		Weapon.DamageTypes = {DamageType};
+		bChanged = true;
+	}
+
+	// THE COUNT AND NOT THE DELEGATE, which the header says why.
+	if (bChanged)
+	{
+		++Changes;
+	}
+	return bChanged;
+}
+
+TMap<FName, float> UCataclysmEquipmentComponent::StatBasesFromWeapons() const
+{
+	// ALWAYS WRITTEN, EVEN WHEN IT IS ZERO. Leaving either entry out would
+	// leave its attribute holding whatever the last weapon set, so a character
+	// who ended up holding nothing would keep swinging and keep critically
+	// striking.
+	//
+	// CRITICAL STRIKE CHANCE JOINED THESE IN ISSUE #894. The design gives it to
+	// the skill being used rather than to the character -- "A character has no
+	// critical strike chance in the abstract" -- and every skill in the game
+	// takes the default, so what a character holds is the only question, and
+	// this component is what knows the answer. Before that,
+	// UCataclysmWeaponSlotsComponent::ApplyBaseCritChance SET the attribute, so
+	// the four affixes naming critical strike chance could not have scaled it
+	// even if the map had let them through.
+	//
+	// THE SKILL'S DEFAULT AND NOT THE WEAPON'S, which is why the constant
+	// belongs to the weapon slots component: it is the figure every one of the
+	// six granted skills uses because no skill row can state its own. Issue
+	// #657.
+	const bool bHoldsAWeapon = WornWeapons().Num() > 0;
+
+	return {
+		{ FName(UCataclysmItemModifiers::AttackSpeedStat),
+		  UCataclysmItemModifiers::BlendedAttackSpeed(
+			  WornWeapons(), UCataclysmItemModifiers::LoadBaseTable()) },
+		{ FName(UCataclysmItemModifiers::CritChanceStat),
+		  bHoldsAWeapon
+			  ? UCataclysmWeaponSlotsComponent::DefaultSkillCritChancePercent
+			  : 0.0f },
+	};
+}
+
+int32 UCataclysmEquipmentComponent::RefreshAttributes(
+	UAbilitySystemComponent* AbilitySystem, ECataclysmPoolFill PoolFill) const
+{
+	// THE PLAYER'S NUMBERS ARE FOUND THROUGH THE OWNING ACTOR rather than passed
+	// in, because this component is asked to refresh from several places and a
+	// parameter would have to be threaded through all of them. AND THE LEVEL
+	// COMES FROM THE SAME PLACE, for the same reason. This used to read
+	// `Cataclysm.PlayerLevel` directly, which cannot see a level the character
+	// has gained. Levelling up re-runs this, so it has to resolve at the level
+	// the character now is. `GetCharacterLevel` falls back to that console
+	// variable until a level is earned or loaded. Issue #50.
+	//
+	// READ HERE AND APPLIED IN `RefreshAttributesAs`, since issue #2688 slice 2a:
+	// the corrupted double hands that function a player's build instead, so the
+	// one place that gathers every source stays one (issue #1054). `PlayerNumbers` reads them, since issue #832, so
+	// the tooltip's comparison reads the player the same way.
+	FCataclysmPlayerBuild Numbers;
+	if (PlayerNumbers(Numbers))
+	{
+		return RefreshAttributesAs(AbilitySystem, &Numbers, PoolFill);
+	}
+	return RefreshAttributesAs(AbilitySystem, nullptr, PoolFill);
+}
+
+int32 UCataclysmEquipmentComponent::RefreshAttributesAs(
+	UAbilitySystemComponent* AbilitySystem, const FCataclysmPlayerBuild* Build, ECataclysmPoolFill PoolFill) const
+{
+	if (!AbilitySystem)
+	{
+		return 0;
+	}
+
+	// NOT CONST ANY MORE, because the passive tree adds to it below. What
+	// the worn items grant and what the spent passive points grant are the
+	// same three buckets applied to the same character, so they belong in
+	// one map rather than in two that a caller has to merge.
+	// AND WHAT THE WORN ITEMS DO WHEN AN EVENT HAPPENS, gathered on the same
+	// walk and handed to the same component. Issue #1815. Refreshed here rather
+	// than read at the moment of an event, for the reason the stat line is: a
+	// character that swapped a helmet must act on what it is wearing now, and
+	// nothing should walk a DataTable on every block.
+	TArray<FCataclysmPoolAction> Actions;
+	TMap<FName, TArray<FCataclysmStatModifier>> Modifiers =
+		GatherModifiers(&Actions);
+	TMap<FName, TArray<FCataclysmStatModifier>> HeldBuffRowLines;
+	if (UCataclysmAbilitySystemComponent* Cataclysm =
+			Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		// AND WHAT THE ROWS A HELD RANDOM BUFF WEARS DO AND CHANGE, built by the
+		// worn rows' builder from copies renamed under the buff's own name. Issue
+		// #2538, batch 2. Their lines are kept apart and joined where the buff's
+		// stat lines are, below, after the class points are read.
+		const TArray<FCataclysmEnchantmentEffectRow> BuffRows = Cataclysm->HeldRandomBuffEffectRows();
+		if (!BuffRows.IsEmpty())
+		{
+			UCataclysmItemModifiers::AccumulateEnchantmentsInto(
+				HeldBuffRowLines, TArray<FCataclysmItem>(), UCataclysmItemModifiers::LoadEnchantmentEffectTable(),
+				UCataclysmDropRoll::LoadPositiveEnchantmentTable(), UCataclysmDropRoll::LoadNegativeEnchantmentTable(),
+				&Actions, &BuffRows);
+		}
+		// WHOLESALE, NOT MERGED, for the reason `SetStatInputs` is: a row that
+		// came off with the gear must stop firing rather than keep firing.
+		Cataclysm->SetPoolActions(MoveTemp(Actions));
+	}
+	TMap<FName, float> Bases = StatBasesFromWeapons();
+
+	// THE CLASS POINTS THE WORN ROWS GRANT, READ NOW AND KEPT. Ruled 2026-10-09.
+	//
+	// BEFORE THE PASSIVE TREE IS ADDED TO `Modifiers` BELOW, AND IT HAS TO BE.
+	// The points decide how much of the tree counts, so they are read from what
+	// the worn items grant and from nothing the tree grants. At this line
+	// `Modifiers` holds exactly what `GatherModifiers` returned: one modifier
+	// for each worn row, each with its own rolled value, which is what lets
+	// each row be rounded down by itself (P2).
+	//
+	// WRITTEN ON EVERY REFRESH, a refresh of a character with no player state
+	// included, so the figure is never left over from different gear.
+	//
+	// A WEAPON PLANTED IN THE GROUND BY A SKILL STILL GRANTS ITS CLASS POINTS.
+	// Ruled 2026-10-09 (J5a), so that using a skill never leaves a character
+	// with more points spent than earned. `Modifiers` leaves the planted weapon
+	// out, so while one is planted the worn rows are gathered a second time
+	// with it read, and ONLY THE CLASS POINTS are taken from that second
+	// reading. Every other stat on the planted weapon stays left out, because
+	// `Modifiers` is still what the stat line is made from. The second reading
+	// is handed no list of actions, so no row's action is recorded twice.
+	//
+	// A SLOT A FLOOR RULE SWITCHED OFF GRANTS NO CLASS POINTS (J5b). Both
+	// readings leave it out.
+	ClassPointsGrantedAtLastRefresh =
+		ACataclysmPlantedWeapon::LeavesUnarmed(GetOwner())
+			? UCataclysmPassivePoints::GrantedByWornRows(
+				  GatherModifiersReading(nullptr, /*bPlantedWeaponIsRead=*/true))
+			: UCataclysmPassivePoints::GrantedByWornRows(Modifiers);
+
+	// AND THE UNARMED BASE WHILE THE WEAPON STANDS IN THE GROUND. Issue #1166. Attack damage has no base otherwise:
+	// a weapon's damage is a flat line on its base, and `GatherModifiers` has just left the planted weapon's out.
+	// A BASE AND NOT A FLAT LINE, so everything worn elsewhere adds to it and scales it exactly as it did the weapon.
+	if (ACataclysmPlantedWeapon::LeavesUnarmed(GetOwner()))
+	{
+		Bases.Add(FName(UCataclysmItemModifiers::AttackDamageStat), ACataclysmPlantedWeapon::UnarmedAttackDamage);
+	}
+
+	// AND THE EIGHT ATTRIBUTES, FOR THE SAME REASON THE OTHER CALLER DOES IT.
+	// Leaving them out here would have made swapping a helmet reset every
+	// attribute to zero, because a base override that is absent falls back to
+	// the class line and no class line names an attribute. Issue #50.
+	//
+	// THE BUILD'S, which `RefreshAttributes` reads off the owning pawn's player
+	// state or the corrupted double hands over (issue #2688 slice 2a); see
+	// `RefreshAttributes` for why the level is read there. With no build, the
+	// console's class at the console's level, as a character with no player
+	// state has always had.
+	int32 Level = UCataclysmPlayerClassStats::ChosenLevel();
+	FString ClassName = UCataclysmPlayerClassStats::ChosenClass();
+	if (Build)
+	{
+		UCataclysmPlayerClassStats::MergeAttributeBases(
+			Build->SpentAttributePoints, Bases);
+		Level = Build->Level;
+		ClassName = Build->ClassName;
+		// AND THE PASSIVE TREE, since 2026-08-25. Issue #50.
+		//
+		// HERE, WHERE THE WORN ITEMS' MODIFIERS ALREADY ARE, because a
+		// passive node is another authored source of the same three
+		// buckets. Adding it anywhere else would mean a second place
+		// that has to be re-run whenever anything changes.
+		//
+		// THE DAMAGE TYPES THE WORN WEAPONS CARRY DECIDE WHICH TREES
+		// COUNT. Points in a tree no equipped weapon reaches stay spent
+		// and add nothing, which is the project owner's decision of
+		// 2026-08-25. Since issue #857 layer 1 the list is the worn
+		// weapons' own (`CarriedDamageTypesOf`), asked of this
+		// component's items so no pawn is needed; it was the creation
+		// type alone before.
+		//
+		// AND POINTS SPENT ABOVE THE POINTS EARNED ADD NOTHING EITHER,
+		// which is that rule's sibling. The owner, 2026-10-09, accepted
+		// that when gear that granted class points comes off, the points
+		// stay spent and add nothing. So the tree is accumulated from a
+		// COPY of the allocation with the excess left out, last node
+		// first touched first (`ReducedToPointsEarned`). The copy is a
+		// local and is written nowhere: the player state keeps every
+		// point and every capstone choice, and wearing the gear again
+		// counts all of them on the next refresh with no other act.
+		//
+		// AN ALLOCATION PUT ON BY `SetPassiveAllocation` IS NOT REDUCED
+		// FOR BEING ABOVE THE LEVEL. Ruled 2026-10-10. That function
+		// records the points of the handed allocation the level and the
+		// bosses did not pay for, and the figure asked for below
+		// includes them. Points spent after it with points from gear
+		// are reduced as the paragraph above says.
+		//
+		// THE POINTS EARNED ARE THE BUILD'S POINTS APART FROM GEAR WITH THE
+		// FIGURE SET ABOVE ADDED, which is `ACataclysmPlayerState::
+		// PassivePointsEarnedWith` exactly: the level's and the bosses' points,
+		// and the points an allocation was handed with, are added up in the
+		// player state (`FCataclysmPlayerBuild::NumbersOf` asks it for them with
+		// no gear), and the gear's are this component's own reading. Not
+		// `PassivePointsAvailable()`: that reads the component of the pawn the
+		// player state holds, which is this one in play, and this line must not
+		// depend on that being so.
+		const TArray<FName> Carried =
+			CarriedDamageTypesOf(WornWeapons(), Build->CreationDamageType);
+		const int32 PointsEarned = Build->PassivePointsBesidesGear
+			+ FMath::Max(0, ClassPointsGrantedAtLastRefresh);
+		const FCataclysmPassiveAllocation Counted =
+			UCataclysmPassiveTree::ReducedToPointsEarned(
+				Build->PassiveAllocation, PointsEarned);
+		UCataclysmPassiveTree::AccumulateInto(
+			Modifiers, Counted,
+			UCataclysmPassiveTree::LoadNodeTable(),
+			UCataclysmPassiveTree::LoadEffectTable(), Carried);
+	}
+
+	// AND THE DUNGEON FLOOR BEING STOOD ON, since issue #41. Starvation takes a
+	// share of maximum health and shield and Dehydration a share of maximum
+	// mana, each as a Less multiplier on the finished figure.
+	//
+	// READ FROM THE ABILITY SYSTEM RATHER THAN ASKED OF THE DUNGEON, so that this
+	// refresh keeps them whatever called it. `UCataclysmDungeonModifierEffects::
+	// ApplyToCharacter` puts them there when a floor begins; everywhere outside a
+	// dungeon the map is empty and nothing is added.
+	if (const UCataclysmAbilitySystemComponent* Cataclysm =
+			Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		for (const TPair<FName, TArray<FCataclysmStatModifier>>& Stat :
+			 Cataclysm->GetDungeonStatModifiers())
+		{
+			Modifiers.FindOrAdd(Stat.Key).Append(Stat.Value);
+		}
+
+		// AND THE BUFF A WORN ROW DREW FOR THIS CHARACTER, WHILE IT IS HELD. Ruled 2026-10-12, for "Shard of Anarchy
+		// (2-Piece Bonus): Every 30 seconds, a random buff or debuff is applied to you". The floor's way, for the
+		// floor's reason: the buff is not from gear, so this refresh would drop it unless it is one of the sources
+		// gathered here. The component hands over the lines of the buff it holds, and nothing once the buff's
+		// seconds have passed.
+		//
+		// AFTER THE CLASS POINTS WERE READ ABOVE, and no line of the table grants one.
+		const TMap<FName, TArray<FCataclysmStatModifier>> HeldBuff = Cataclysm->HeldRandomBuffStatModifiers();
+		for (const TPair<FName, TArray<FCataclysmStatModifier>>& Line : HeldBuff)
+		{
+			Modifiers.FindOrAdd(Line.Key).Append(Line.Value);
+		}
+		for (const TPair<FName, TArray<FCataclysmStatModifier>>& Line : HeldBuffRowLines)
+		{
+			Modifiers.FindOrAdd(Line.Key).Append(Line.Value);
+		}
+	}
+
+	return UCataclysmPlayerClassStats::ApplyTo(
+		AbilitySystem,
+		UCataclysmPlayerClassStats::LoadTable(),
+		ClassName,
+		Level,
+		&Modifiers,
+		// WHAT THE CALLER ASKED FOR, AND THE DEFAULT IS TO LEAVE THEM ALONE.
+		// Filling the pools is right for a character arriving in the world and
+		// wrong for every other caller: a player who swapped a helmet during a
+		// fight would be healed to full by doing it.
+		PoolFill,
+		&Bases);
+}

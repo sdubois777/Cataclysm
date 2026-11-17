@@ -1,0 +1,381 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Kismet/BlueprintFunctionLibrary.h"
+#include "CataclysmStacks.generated.h"
+
+class AActor;
+class UCataclysmAbilitySystemComponent;
+
+/**
+ * A count of something that builds on an event and stops counting when the
+ * character goes long enough without that event happening again.
+ *
+ * WHAT IT IS FOR. Three Masochist nodes are written this way and none of them
+ * could be built without it:
+ *
+ *   Sanguine Momentum  a health cost paid soon after the last     3 s, up to 5
+ *   Blood Offering     taking damage                              5 s, up to 5
+ *   Carnage            killing an enemy while holding Fervour     8 s, up to 10
+ *
+ * They differ in what grants a stack, how long it lasts and how many there may
+ * be, and in nothing else. Issues #1002, #1003 and #1004.
+ *
+ * IT NEEDS NO TIMER, WHICH IS THE WHOLE SHAPE.
+ * `UCataclysmAbilitySystemComponent::DisplacementsInWindow` already does this
+ * for a different count and says why: the window is applied when the count is
+ * ASKED FOR rather than when it would expire, so "asking does not reset
+ * anything". Nothing has to be cancelled when a character dies, and nothing runs
+ * on a frame where no stack is granted and none is read.
+ *
+ * ONE EXPIRY FOR ALL STACKS OF A KIND, NOT ONE PER STACK. Gaining a stack
+ * refreshes the whole lot. That is read off the genre rather than off the
+ * design, which states no rule: Path of Exile's charges work exactly this way --
+ * "gaining a charge resets the duration of all accumulated charges of the same
+ * type" -- and it is much easier for a player to reason about than a queue of
+ * individually expiring stacks. `docs/DECISIONS.md` carries the source.
+ *
+ * A SEPARATE CLASS OF STATIC FUNCTIONS, like `UCataclysmHealthDebt`,
+ * `UCataclysmFervour` and `UCataclysmLeech`, and for the reason the first of
+ * those gives: the rules are arithmetic on a few numbers, so they can be checked
+ * by passing numbers in rather than by building a character, a world and an
+ * effect spec for every case.
+ *
+ * SIX PLACES GRANT AND NO MORE (Touch of Nothing is the sixth, #1722). This said four, and left Feasting out, until
+ * Withering was added (#1722): Feasting is granted inside `NoteDamageTaken`, on
+ * the same resolved hit as Blood Offering.
+ *
+ *   Sanguine Momentum  `UCataclysmSkillTemplate::PayHealthCost`, the one place
+ *                      a health cost is worked out
+ *   Blood Offering     `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`,
+ *                      the one place a resolved hit is known about, which also
+ *                      grants Carnage to a character holding Carnivore
+ *   Carnage            `ACataclysmEnemyCharacter::HandleDeath`, which already
+ *                      reaches the player to grant experience for the kill
+ *   Infernal Brand     `UCataclysmEnemyModifiers::BrandOnHit`, for a blow that
+ *                      took health, from a creature carrying that modifier
+ *   Withering          `UCataclysmEnemyModifiers::WitherOnHit`, the same, from
+ *                      a creature carrying Withering Blows, for a blow that is
+ *                      not a damage-over-time tick
+ *   Touch of Nothing   `UCataclysmEnemyModifiers::TouchOfNothingOnHit`, the
+ *                      same, from a creature carrying Touch of Nothing
+ *
+ * AND TWO PLACES EMPTY A COUNT, both through
+ * `UCataclysmAbilitySystemComponent::ClearStacks`. `NoteInfernalBrand` empties
+ * the brand when it explodes, issue #1534. `UCataclysmAbilitySystemComponent::
+ * ClearWhatDeathEnds` empties every kind when a player stands back up after
+ * dying: the project owner ruled on 2026-09-10 that a death clears every stack,
+ * including the three a Masochist earns through passive nodes, issue #1535.
+ * Short of those two, a stack leaves only when its window runs out.
+ *
+ * AND ONE PLACE COULD TAKE A SINGLE STACK, THOUGH NOTHING DOES YET.
+ * `Spend` below removes one and leaves the rest, for issue #1720. It has no
+ * caller: the row that wants it, `Debuff_Touch_of_Nothing`, also needs a
+ * route to remove a buff from a character, and this game has none. The
+ * sentence above stays true until something calls it.
+ */
+UENUM(BlueprintType)
+enum class ECataclysmStackKind : uint8
+{
+	/** Granted by paying a health cost soon after the last one. */
+	SanguineMomentum	UMETA(DisplayName = "Sanguine Momentum"),
+
+	/** Granted by taking damage. */
+	Bloodlust			UMETA(DisplayName = "Bloodlust"),
+
+	/** Granted by killing an enemy while holding enough of the class resource. */
+	Carnage				UMETA(DisplayName = "Carnage"),
+
+	/**
+	 * Granted to a PLAYER by a creature carrying the Infernal Brand enemy
+	 * modifier. At five it explodes and every stack is spent.
+	 *
+	 * THE FIRST KIND THAT IS A DEBUFF RATHER THAN A BUFF, and the first held
+	 * by the character it is bad for. Every kind above is something a
+	 * Masochist earns; this is something done to whoever is being hit. The
+	 * counting is identical, which is why it belongs here rather than in a
+	 * second mechanism.
+	 *
+	 * IT IS ALSO WHAT ISSUE #913 IS ABOUT. Ten enchantments and one passive
+	 * node describe multiple stacks of bleed or poison, and the game could not
+	 * express a stacking debuff at all before this.
+	 */
+	InfernalBrand		UMETA(DisplayName = "Infernal Brand"),
+
+	/**
+	 * Granted to a CREATURE each time it is hit, while it carries the Feasting
+	 * buff. Each stack makes it attack faster.
+	 *
+	 * THE FIRST KIND HELD BY A CREATURE RATHER THAN BY THE PLAYER, and the
+	 * first whose effect is read outside this file's own callers:
+	 * `ACataclysmEnemyCharacter::FeastingMultiplier` counts them and shortens
+	 * the creature's attack interval. Every kind above is held by a player,
+	 * and the stat pipeline reads three of them.
+	 *
+	 * ITS MAGNITUDE IS IN THE DATA AND ITS COUNTING IS HERE. The 4% per stack
+	 * is the `Strength` column of the `Buff_Feasting` row in
+	 * `game/Data/StatusEffects.csv`; the window and the cap below are this
+	 * file's, because no column can hold them. `Debuff_Cripple` splits the
+	 * same way.
+	 *
+	 * ONLY WHILE THE BUFF IS ON. `NoteDamageTaken` refuses to grant one to a
+	 * character not carrying `Status.Buff.Feasting`, so a creature that gains
+	 * the buff part way through a fight starts at nothing rather than
+	 * inheriting a count from blows it took before.
+	 */
+	Feast				UMETA(DisplayName = "Feasting"),
+
+	/**
+	 * Granted to a PLAYER by a creature carrying the Famine enemy modifier
+	 * Withering Blows, one for each of its hits that took health. At ten the
+	 * player is slowed and every stack is spent. Issue #1722.
+	 *
+	 * INFERNAL BRAND'S PATH WITH A DIFFERENT ACT AT THE THRESHOLD. The count is
+	 * kept the same way; what ten stacks do is `Status.Debuff.Wither`, read by
+	 * `UCataclysmSkillEffects::WitherMultiplierOn`. The window and the cap are
+	 * this file's; the slow's strength and duration are the `Debuff_Wither` row's.
+	 *
+	 * TWO STATUSES, BY THE PROJECT OWNER'S CHOICE OF 2026-10-30. While the count
+	 * builds, from one to nine, the player carries `Status.Debuff.Withering`,
+	 * which does nothing and is shown with the count ("Withering 3/10"), so the
+	 * slow can be seen coming and walked away from. At ten Withering is taken
+	 * off and Wither, the slow, is put on.
+	 */
+	Withering			UMETA(DisplayName = "Withering"),
+
+	/**
+	 * Granted to a PLAYER by a creature carrying the Void enemy modifier Touch of Nothing, one for each of its
+	 * hits that took health. Each stack refuses ONE buff the player would gain, and is spent doing so, through
+	 * `NegatesTheNextBuff`. Issue #1722's Touch of Nothing; the project owner ruled on 2026-10-30 which gains
+	 * count ("Buffs + gear procs") and approved a cap of 5 and Withering's and Infernal Brand's 8 seconds.
+	 *
+	 * THE FIRST KIND SPENT ONE AT A TIME IN PLAY, through `Spend`, which waited for it.
+	 */
+	TouchOfNothing		UMETA(DisplayName = "Touch of Nothing"),
+
+	/** How many kinds there are. Not a kind. */
+	Count				UMETA(Hidden)
+};
+
+UCLASS()
+class CATACLYSM_API UCataclysmStacks : public UBlueprintFunctionLibrary
+{
+	GENERATED_BODY()
+
+public:
+	/** How many kinds of stack there are, for the arrays that hold them. */
+	static constexpr int32 KindCount =
+		static_cast<int32>(ECataclysmStackKind::Count);
+
+	/**
+	 * How long a kind of stack lasts after the last one was granted, in seconds.
+	 *
+	 * EACH NUMBER IS ITS NODE'S OWN WORDS. Sanguine Momentum says "within 3
+	 * seconds of the last", Blood Offering says "for 5 seconds", Carnage says
+	 * "for 8 seconds". None of them is a constant this project chose.
+	 */
+	static float WindowSecondsFor(ECataclysmStackKind Kind);
+
+	/**
+	 * The most stacks of a kind a character may hold.
+	 *
+	 * ALSO ITS NODE'S OWN WORDS: "up to 5 stacks" twice and "up to 10 stacks"
+	 * once. A cap of nothing would mean the count runs away, so an unknown kind
+	 * answers zero and grants nothing rather than growing without bound.
+	 */
+	static int32 CapFor(ECataclysmStackKind Kind);
+
+	//~ The stat names Carnivore grants, as `game/Data/PassiveEffects.csv`
+	//~ spells them. They are the keys
+	//~ `UCataclysmPlayerClassStats::StatToAttribute` is looked up by and the
+	//~ keys `StatForSkill` is asked with, so they exist once here rather than as
+	//~ literals at each use.
+
+	/** Whether taking a hit grants a stack of Carnage. Zero for no. #1071. */
+	static const TCHAR* CarnageFromDamageTakenStat;
+
+	/** Whether Carnage has no upper limit on this character. Zero for no. */
+	static const TCHAR* CarnageHasNoMaximumStat;
+
+	/**
+	 * The cap used for a character whose stacks have no maximum. Issue #1071.
+	 *
+	 * THE LARGEST INT32 RATHER THAN A SPECIAL CASE INSIDE `GrantStack`, and it
+	 * is worth saying why calling that "no maximum" is not a lie. A stack of
+	 * Carnage lasts 8 seconds and the whole count lapses when no new one arrives
+	 * inside that window, so reaching this number would need two billion hits to
+	 * land on one character in eight seconds. It is not a large limit; it is a
+	 * limit nothing in this game can approach.
+	 *
+	 * IT ALSO CANNOT OVERFLOW. `GrantStack` writes `Min(Standing + 1, Cap)` and
+	 * `Standing` can only arrive at this value by counting to it one at a time,
+	 * so the addition is never performed on the maximum.
+	 */
+	static constexpr int32 NoMaximum = MAX_int32;
+
+	/**
+	 * Whether taking a hit grants this character a stack of Carnage.
+	 * Issue #1071, the Masochist's Carnivore.
+	 *
+	 * False for every character without that capstone option, and false for any
+	 * ability system with no class resource attribute set, which is every enemy.
+	 */
+	static bool CarnageFromDamageTaken(
+		const UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * The most stacks of a kind THIS character may hold. Issue #1071.
+	 *
+	 * `CapFor` ABOVE IS THE DESIGN'S NUMBER AND THIS IS THIS CHARACTER'S. The
+	 * two agree for everybody in the game except a Masochist holding Carnivore,
+	 * whose Carnage has no maximum.
+	 *
+	 * ASKED AT THE MOMENT A STACK IS GRANTED AND NOWHERE ELSE, because that is
+	 * where a cap is applied:
+	 * `UCataclysmAbilitySystemComponent::GrantStack` stores the capped count and
+	 * `Held` only reports what was stored. A character that loses the option
+	 * keeps whatever it was holding until the window lapses, which takes at most
+	 * the 8 seconds Carnage runs for.
+	 */
+	static int32 CapForOn(const UCataclysmAbilitySystemComponent* AbilitySystem,
+						  ECataclysmStackKind Kind);
+
+	/**
+	 * How much of the class resource Carnage needs the killer to be holding.
+	 *
+	 * STRICTLY ABOVE, BECAUSE THE DESIGN WRITES "above 75 Fervour". The same
+	 * boundary Grand Tithe drew in issue #983, and the same reason: the words
+	 * decide it. A character sitting exactly on 75 gains nothing.
+	 */
+	static constexpr float CarnageClassResourceAbove = 75.0f;
+
+	/**
+	 * A health cost was paid. Grants a Sanguine Momentum stack if the previous
+	 * one was recent enough. Issue #1002.
+	 *
+	 * CALLED BEFORE THE COMPONENT'S OWN TIMESTAMP IS UPDATED, which is what
+	 * makes "within 3 seconds of THE LAST" mean what it says. Called afterwards,
+	 * every payment would be nought seconds after itself and the first health
+	 * cost of a fight would grant a stack.
+	 *
+	 * @return whether a stack was granted
+	 */
+	static bool NoteHealthCostPaid(UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * Damage reached this character. Grants a Bloodlust stack. Issue #1003.
+	 *
+	 * DAMAGE OF ANY TYPE, which is a reading of the node rather than its words.
+	 * Blood Offering says "physical damage" and this game has eight damage types
+	 * and no physical one; issue #1001 carries the question and the
+	 * recommendation this follows.
+	 *
+	 * AND A STACK OF CARNAGE AS WELL, FOR A CHARACTER HOLDING CARNIVORE. Issue
+	 * #1071: "Every hit you take grants a stack of Carnage." Two kinds from one
+	 * event, which is the first time that has happened, and they stay two kinds:
+	 * they last different lengths of time and different nodes read each.
+	 *
+	 * @return whether a Bloodlust stack was granted, which is always. The
+	 *         Carnage stack is reported by `Held` rather than here, because a
+	 *         single yes or no could not say which of the two was meant.
+	 */
+	static bool NoteDamageTaken(UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * This character killed an enemy. Grants a Carnage stack if it is holding
+	 * more than `CarnageClassResourceAbove` of the class resource. Issue #1004.
+	 *
+	 * TAKES AN ACTOR RATHER THAN A COMPONENT, because the one caller has a pawn
+	 * in hand and not an ability system. `UCataclysmHealthDebt::ClearOnKill`
+	 * sits beside it in the same function and takes the same argument.
+	 *
+	 * @return whether a stack was granted
+	 */
+	static bool NoteEnemyKilled(AActor* Killer);
+
+	/**
+	 * One more Infernal Brand on whatever was just hit.
+	 *
+	 * THE STACKS ARE SPENT BEFORE THIS RETURNS TRUE, through
+	 * `UCataclysmAbilitySystemComponent::ClearStacks`. Issue #1534. The caller
+	 * deals the explosion next, and that damage arrives as a blow of its own,
+	 * so it has to find the count at zero rather than at five.
+	 *
+	 * @return true when this stack was the fifth, so the caller should
+	 *         explode it. The stacks are spent here, so a caller that
+	 *         ignores the answer loses the explosion rather than repeating
+	 *         it.
+	 */
+	static bool NoteInfernalBrand(UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * One more Withering on whatever was just hit. Issue #1722.
+	 *
+	 * THE STACKS ARE SPENT BEFORE THIS RETURNS TRUE, as `NoteInfernalBrand`
+	 * spends the brand's, so the next ten start from nought.
+	 *
+	 * @return true when this stack was the tenth, so the caller should slow
+	 *         the target.
+	 */
+	static bool NoteWithering(UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/** One more Touch of Nothing on whatever was just hit, up to five. Issue #1722. */
+	static void NoteTouchOfNothing(UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * Whether Touch of Nothing refuses the buff this character is about to gain. When it holds a stack, ONE is
+	 * spent, the time is noted for the "Negated" line, the status goes with the last stack, and this answers
+	 * true: the caller then grants nothing. Issue #1722's Touch of Nothing.
+	 *
+	 * ASKED AT THE MOMENT OF GAINING AND BEFORE ANYTHING IS GRANTED, by every route the project owner's "Buffs
+	 * + gear procs" names: the random buff a worn row draws (`HoldARandomBuff`), a self-buff skill's cast
+	 * (`UCataclysmSelfBuffSkill::ActivateAbility`, after the cast's cost is paid), and a worn or set row's
+	 * timed grant -- a stack for N seconds, a next-use charge, a kept stack, an absorb, an immunity window -- that
+	 * is not a drawback's (`FCataclysmPoolAction::bFromADrawback`). Nothing else asks: not a Masochist stack, not
+	 * an ally's aura, not a floor's blessing.
+	 *
+	 * @return true when the buff is refused and a stack was spent
+	 */
+	static bool NegatesTheNextBuff(UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * How many stacks of a kind this character is holding right now.
+	 *
+	 * ZERO FOR EVERY CHARACTER THAT HAS NOT EARNED ONE, and zero once the window
+	 * has passed. The two do not have to be told apart, unlike the readings a
+	 * condition depends on: a bonus counting stacks is worth nothing for either,
+	 * and no caller can act differently on them.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Stacks")
+	static int32 Held(const UCataclysmAbilitySystemComponent* AbilitySystem,
+					  ECataclysmStackKind Kind);
+
+	/**
+	 * Take ONE stack of a kind off this character, leaving the rest.
+	 *
+	 * THE COUNTERPART TO `Held`, AND THE SAME DIVISION OF LABOUR. This knows
+	 * the kind's own window and the component does not, exactly as `Held`
+	 * does, so no caller has to hold a number that belongs to the design.
+	 *
+	 * THE FIRST REMOVAL THAT LEAVES ANYTHING BEHIND. Issue #1720.
+	 * `UCataclysmAbilitySystemComponent::ClearStacks` empties a kind and this
+	 * takes one; between them they are the whole of removal. See that
+	 * component's `SpendStack` for why spending does not move the expiry.
+	 *
+	 * ITS CALLER IS `NegatesTheNextBuff`, since issue #1722's Touch of Nothing:
+	 * `Debuff_Touch_of_Nothing` in `game/Data/StatusEffects.csv` -- "a stack
+	 * of this debuff is consumed to negate that buff completely". The second
+	 * blocker this used to name, a way to take a buff away, turned out not to
+	 * be needed: the row refuses the next buff gained, not one already held.
+	 *
+	 * @return whether a stack was actually taken. False for no character, for
+	 *         a character holding none, and for a count that has lapsed.
+	 */
+	static bool Spend(UCataclysmAbilitySystemComponent* AbilitySystem,
+					  ECataclysmStackKind Kind);
+
+	/** The name a console command and a log line print for a kind. */
+	static const TCHAR* NameOf(ECataclysmStackKind Kind);
+};
