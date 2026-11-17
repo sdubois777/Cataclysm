@@ -143,6 +143,23 @@ const TMap<FName, FName>& FCataclysmEnchantmentRenames::Aliases()
 		 TEXT("Positive_Bleed_you_apply_lasts_50_100_longer")},
 		{TEXT("Positive_Traps_apply_1_2_bleed_stacks_to_all_enemies_caug"),
 		 TEXT("Positive_Traps_cause_a_bleed_of_1_2_times_normal_strength")},
+		//
+		// AND SIX ON 2026-11-17 LATER THE SAME DAY, the owner's ruling on #1498: the six light set drawbacks are doubled,
+		// each to what it would have cost at two pieces had it been paid per piece. The number sits in each sentence's
+		// first 48 characters, so each row is renamed. Archon's Aegis and Warlord's Will share one sentence, told apart
+		// by the generator's `_1`.
+		{TEXT("Negative_Your_movement_speed_is_reduced_by_10"),
+		 TEXT("Negative_Your_movement_speed_is_reduced_by_20")},
+		{TEXT("Negative_Your_movement_speed_is_reduced_by_10_1"),
+		 TEXT("Negative_Your_movement_speed_is_reduced_by_20_1")},
+		{TEXT("Negative_Your_health_is_reduced_by_10"),
+		 TEXT("Negative_Your_health_is_reduced_by_20")},
+		{TEXT("Negative_You_take_10_more_damage_from_all_sources"),
+		 TEXT("Negative_You_take_20_more_damage_from_all_sources")},
+		{TEXT("Negative_Ranged_attacks_deal_20_more_damage_to_you"),
+		 TEXT("Negative_Ranged_attacks_deal_40_more_damage_to_you")},
+		{TEXT("Negative_All_buffs_you_apply_to_yourself_now_last_25_les"),
+		 TEXT("Negative_All_buffs_you_apply_to_yourself_now_last_50_les")},
 	};
 	return Table;
 }

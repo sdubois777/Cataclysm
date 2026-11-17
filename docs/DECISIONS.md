@@ -2,6 +2,73 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-17 — Six set drawbacks are doubled, each to its cost at two pieces under the old per-piece reading (#1498)
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (six drawback sentences on the Enchantments sheet, and the name, sentence and
+values of their six Enchantment Effects rows) and from it `game/Data/EnchantmentsNegative.csv` and
+`game/Data/EnchantmentEffects.csv` with their two DataTable assets; `game/Source/Cataclysm/Items/CataclysmEnchantmentRenames.cpp`
+(six aliases); `tools/tests/enchantment_row_names.txt` (six renames pinned); the Unreal tests that name or measure the six
+rows (`CataclysmEnchantmentSetTests.cpp`, `CataclysmEnchantmentEffectTests.cpp`, `CataclysmDungeonModifierEffectsTests.cpp`);
+this file.
+
+### SAID FIRST
+
+- **THIS CHANGES PLAY**: six set drawbacks cost twice what they did. Nothing else about the sets changes.
+- **THE RULING, the project owner, 2026-11-17, on #1498**: "double the six light set drawbacks; leave the other eight as
+  they are." The six are each paid once per set, from two pieces (the ruling of 2026-09-08), and each was a 10%-25% cut
+  against all three of the set's bonuses. The new values are each drawback's cost at two pieces had it been paid per
+  piece, the first point a set grants anything. The reading behind it, "light" against "fair", was made from the rows
+  and is labelled a judgement on #1498; no play or simulation measured it.
+- **AN ITEM SAVED OR ROLLED UNDER AN OLD SENTENCE STILL LOADS**, through six aliases: every changed number sits in its
+  sentence's first 48 characters, from which a row's name is made, so all six rows are renamed.
+
+### THE SIX
+
+| Set | Old sentence and value | New sentence and value |
+| :-- | :-- | :-- |
+| Archon's Aegis (5) | "Your movement speed is reduced by 10%", `movement_speed` increased -10 | "... by 20%", -20 |
+| Warlord's Will (17) | the same sentence and value (its row name ends `_1`) | the same as Archon's Aegis |
+| Divine Retribution (16) | "Your health is reduced by 10%", `max_health` increased -10 | "... by 20%", -20 |
+| Brute's Heart (9) | "You take 10% more damage from all sources", `damage_taken` more 10 | "You take 20% ...", 20 |
+| Demon King's Regalia (11) | "Ranged attacks deal 20% more damage to you", `damage_taken` more 20 on a ranged hit | "... 40% ...", 40 |
+| Chronomancer's Time-Lock (7) | "All buffs you apply to yourself now last 25% less time", `buff_duration` increased -25 | "... 50% less time", -50 |
+
+Unchanged, by the same ruling: Starvation, Null Emperor and Shard of Anarchy (all-or-nothing), and Tyrant's Chains, Mana
+Weaver, Spellblade's Will, Plague Doctor and Reaper's Embrace (half, or a quarter, of a whole stat).
+
+**Measured:** the regenerate changed exactly six sentence rows and six effect rows; each effect row changed only its
+name, its sentence and its value, to the ruled figure; every one of the 575 row names is different.
+
+### THE TESTS
+
+The Unreal tests that measured an old value now measure the new one: Archon's Aegis's movement speed, -20
+(`Cataclysm.EnchantmentSets.TwoArchonsAegisPiecesRaiseBlockAndLowerMovement`),
+Brute's Heart's damage taken, 20, Demon King's Regalia's ranged damage taken, 40 (both in
+`CataclysmEnchantmentSetTests.cpp`), and Chronomancer's Time-Lock's buff duration, 0.5 times
+(`Cataclysm.Enchantments.ChronomancersTwoPiecesLengthenDebuffsAndShortenBuffs`). The others that wear these rows only to
+complete a set now name the new rows. No test is added.
+
+### REGISTERED BEFORE THE RUNS
+
+- **The asset rebuild** changes exactly `DT_EnchantmentsNegative.uasset`, `DT_EnchantmentEffects.uasset` and
+  `game/Data/datatable_asset_sources.json`.
+- **The Unreal suite**: 4712 tests performed, all succeeded: the 4712 measured by `enchant-setid-w2` at `997f492cc`, whose
+  `game/` tree is development `c3e5693ed`, the base of this change. This change adds no Unreal test.
+- **Two Python guards**, `tools/prove_guard.py` `break_and_run`, each in a detached git worktree copy:
+
+| # | Break | Command | Predicted named failures |
+| :-- | :-- | :-- | :-- |
+| 1 | in `CataclysmEnchantmentRenames.cpp`, the alias pair whose old name is `Negative_You_take_10_more_damage_from_all_sources` is deleted | `python -m pytest tools/tests/test_a_reword_must_not_rename_a_row.py` | `tools/tests/test_a_reword_must_not_rename_a_row.py::test_the_pin_s_renames_are_the_alias_table` |
+| 2 | in `game/Data/EnchantmentEffects.csv`, Archon's Aegis's effect row goes back to `-10.0,-10.0` while its sentence says 20% | `python -m pytest tools/tests/test_enchantment_effects_match_the_row_text.py` | `tools/tests/test_enchantment_effects_match_the_row_text.py::test_a_single_value_appears_in_its_words_outside_any_range` |
+
+Traced: 1 leaves a pinned rename with no alias; 2 leaves a row whose single value, 10, its words do not state.
+
+### EVIDENCE
+
+Recorded in the commit that follows the proof.
+
+---
+
 ## 2026-11-17 — Soul Harvest's soul travels: released where a creature died, it floats at 8 m/s to the nearest Demonic creature within 6 m and gives its soul on arrival; it turns when its demon dies, fades after 4 s, ends with the floor, and a save counts it as arrived (#1671)
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmHarvestedSoul.h` and `.cpp`, new (`ACataclysmHarvestedSoul`);

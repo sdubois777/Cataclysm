@@ -22668,7 +22668,7 @@ bool FCataclysmScarcitySetTest::RunTest(const FString& Parameters)
 
 	// ARCHON'S AEGIS, whose two-piece bonus is increased block chance in the live table.
 	const TCHAR* Marker = TEXT("Positive_Archon_s_Aegis_2_Piece_Bonus_Your_block_chanc");
-	const TCHAR* Drawback = TEXT("Negative_Your_movement_speed_is_reduced_by_10");
+	const TCHAR* Drawback = TEXT("Negative_Your_movement_speed_is_reduced_by_20");
 
 	UCataclysmEquipmentComponent* Equipment =
 		NewObject<UCataclysmEquipmentComponent>(GetTransientPackage());
