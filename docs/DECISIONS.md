@@ -52,8 +52,10 @@ complete a set now name the new rows. No test is added.
 
 - **The asset rebuild** changes exactly `DT_EnchantmentsNegative.uasset`, `DT_EnchantmentEffects.uasset` and
   `game/Data/datatable_asset_sources.json`.
-- **The Unreal suite**: 4712 tests performed, all succeeded: the 4712 measured by `enchant-setid-w2` at `997f492cc`, whose
-  `game/` tree is development `c3e5693ed`, the base of this change. This change adds no Unreal test.
+- **The Unreal suite**: 4728 tests performed, all succeeded, 47 skipping part of what they check: the 4728 measured by
+  `soul-harvest-w1` on 2026-11-17 at `2f6adc34c`, whose `game/` change since the base equals what #2726 brought to
+  development `bead00391`, the base of this change after it moved there from `c3e5693ed`. This change adds no Unreal
+  test.
 - **Two Python guards**, `tools/prove_guard.py` `break_and_run`, each in a detached git worktree copy:
 
 | # | Break | Command | Predicted named failures |
