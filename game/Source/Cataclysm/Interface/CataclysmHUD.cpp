@@ -1574,7 +1574,7 @@ void ACataclysmHUD::DrawPlainTags(const TArray<FVector>& Over, float HeightCm, c
 	// A PLAIN BORDER, as a floor object's: a soul has no rarity to show. Measured first and drawn after, so two souls
 	// together do not print over each other.
 	constexpr int32 BorderPx = 1;
-	TArray<FBox2D> Tags;
+	TArray<FBox2D> Boxes;
 	for (const FVector& Point : Over)
 	{
 		const FVector Screen = Project(Point + FVector(0.0f, 0.0f, HeightCm), /*bClampToZeroPlane=*/false);
@@ -1582,13 +1582,13 @@ void ACataclysmHUD::DrawPlainTags(const TArray<FVector>& Over, float HeightCm, c
 		{
 			continue;
 		}
-		Tags.Add(UCataclysmDropPickup::TagAround(MeasureTextCentred(Words, Screen.X, Screen.Y, 1.0f), BorderPx));
+		Boxes.Add(UCataclysmDropPickup::TagAround(MeasureTextCentred(Words, Screen.X, Screen.Y, 1.0f), BorderPx));
 	}
 
-	UCataclysmDropPickup::SeparateOverlappingNames(Tags, UCataclysmDropPickup::NameGapPx);
+	UCataclysmDropPickup::SeparateOverlappingNames(Boxes, UCataclysmDropPickup::NameGapPx);
 
 	const float Inset = static_cast<float>(UCataclysmDropPickup::NameBorderPaddingPx + BorderPx);
-	for (const FBox2D& Tag : Tags)
+	for (const FBox2D& Tag : Boxes)
 	{
 		DrawBorder(Tag, static_cast<float>(BorderPx), Ink);
 		DrawOutlinedText(Words, Ink, Tag.Min.X + Inset, Tag.Min.Y + Inset, 1.0f);
