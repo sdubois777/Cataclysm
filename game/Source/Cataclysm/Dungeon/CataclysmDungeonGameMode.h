@@ -393,7 +393,7 @@ public:
 	 * SOUL HARVEST: its souls and the health they added (which the saved maximum includes) are held again, and
 	 * `ApplySoulHarvestFigures` re-applies the damage and resistance with bFreshBlock false, which keeps the health
 	 * where it is. NOTHING IS FORGOTTEN: the creature is the void's boss again, and the attack damage the void gave
-	 * (`NothingIsForgottenDamageGiven`) is added back; `ApplyNothingIsForgottenFigures` is NOT called, because it adds
+	 * (`NothingIsForgottenDamageGiven`) is its Nothing Is Forgotten part again; `ApplyNothingIsForgottenFigures` is NOT called, because it adds
 	 * the void's health to a maximum that already holds it. THE CATACLYSM BOSS, issue #1324 slice 6d: on
 	 * `IsTheCataclysmBossFloor`, the saved Gatekeeper at `CataclysmBossRung` whose record does not say it rose from the
 	 * dead is the floor's boss again, so the stairs stay sealed under it; one that rose (Dead Rising, Divine Resurgence)
@@ -4014,6 +4014,13 @@ private:
 	 */
 	void PutTheHealthSharesBack(ACataclysmEnemyCharacter* Creature);
 
+	/**
+	 * Soul Harvest's share of a maximum health of `OwnMaximum`, for the souls this creature holds, recorded as what they
+	 * added; nothing for a creature holding none. For a rule that writes a maximum from its own record -- Carrion Feast,
+	 * and Famished Beasts on a feeder -- to put the souls' share back on top of what it writes. Issue #2723.
+	 */
+	float SoulHarvestHealthShareOn(ACataclysmEnemyCharacter* Creature, float OwnMaximum);
+
 	/** Every portal, its zone and every creature it sent destroyed and forgotten. */
 	void ForgetThePortals();
 
@@ -4364,9 +4371,10 @@ private:
 	void NoteDeathForSoulHarvest(const struct FCataclysmDeathNotice& Notice);
 
 	/**
-	 * Soul Harvest's figures on one creature, written onto its bases. `bFreshBlock` is true
+	 * Soul Harvest's figures on one creature: health and resistance written onto its bases, and the damage as the
+	 * creature's Soul Harvest part (issue #2723), which no multiplier written later can drop. `bFreshBlock` is true
 	 * right after a rung change has written the creature's whole stat block over, so nothing
-	 * a soul added is still on it.
+	 * a soul added to a base is still on it.
 	 */
 	void ApplySoulHarvestFigures(ACataclysmEnemyCharacter* Creature, bool bFreshBlock);
 
@@ -4382,11 +4390,11 @@ private:
 	/**
 	 * Give a wraith the four figures that make it one, and put them back when they go.
 	 *
-	 * CALL THIS ONLY WHERE THE CREATURE'S STAT BLOCK HAS JUST BEEN WRITTEN, because the
-	 * three increases MULTIPLY WHAT THEY READ. Twice in a row without a fresh block in
-	 * between would give a wraith 44% rather than 20%. There are two such places and no
-	 * more: the spawn below, and immediately after a rung change, where
-	 * `ApplyStartingAttributes` has just put the new rung's own figures on.
+	 * CALLED WHERE THE CREATURE'S STAT BLOCK HAS JUST BEEN WRITTEN: the spawn below, and
+	 * immediately after a rung change, where `ApplyStartingAttributes` has just put the new
+	 * rung's own figures on and taken its damage reduction off. Since issue #2723 the damage
+	 * increase is the creature's own Vengeful Wraiths part rather than a multiplication of what
+	 * it reads, so a second call gives 20% and not 44%, and no multiplier written later drops it.
 	 */
 	void ApplyVengefulWraithFigures(ACataclysmEnemyCharacter* Wraith);
 
@@ -5666,13 +5674,13 @@ private:
 	/**
 	 * Soul Harvest: each fed creature's souls and what they have added to it, and the souls
 	 * given in this dungeon. The additions are kept so a later soul can find the creature's
-	 * own figures under them.
+	 * own figures under them. THE DAMAGE IS NOT HERE: since issue #2723 it is the creature's own Soul Harvest part,
+	 * `ACataclysmEnemyCharacter::SoulHarvestDamageSource`, built from `Souls`.
 	 */
 	struct FSoulHarvestHeld
 	{
 		int32 Souls = 0;
 		float HealthAdded = 0.0f;
-		float DamageAdded = 0.0f;
 		float ResistanceAdded = 0.0f;
 	};
 	TMap<TWeakObjectPtr<ACataclysmEnemyCharacter>, FSoulHarvestHeld> SoulHarvestHeld;

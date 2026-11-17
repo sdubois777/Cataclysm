@@ -746,6 +746,64 @@ public:
 	/** Every source's multiplier multiplied together: what `WriteAttackDamage` applies. */
 	float DamageMultiplierProduct() const;
 
+	//~ What a rule GIVES a creature's attack damage, beside what the floor's rules multiply it by. Issue #2723.
+
+	/**
+	 * One rule's share of this creature's attack damage, in the bucket the rule's figure belongs to. Issue #2723.
+	 *
+	 * THE ONE RULE FOR THE ORDER, the project's three buckets (`docs/DECISIONS.md`):
+	 * `(own + every Added) x (1 + every IncreasedPercent / 100) x every More x every floor multiplier`, where `own` is
+	 * `OwnAttackDamage`. `AttackDamageFromParts` is that formula and `WriteAttackDamage` is its one caller that writes.
+	 *
+	 * WHY THESE ARE HELD HERE AND NOT WRITTEN ONTO THE ATTRIBUTE. Until #2723 Soul Harvest, Nothing Is Forgotten and
+	 * Vengeful Wraiths read the attribute, added to it and wrote it back; every damage multiplier then rewrote the
+	 * attribute from the creature's own figure and dropped what they had added. Held as parts, every write composes
+	 * them, in either order and through a load.
+	 */
+	struct FRuleDamagePart
+	{
+		/** Flat damage, the `(base + flat)` bucket. Nothing Is Forgotten's. */
+		float Added = 0.0f;
+
+		/** An increase, the `(1 + increases)` bucket, in percent. Vengeful Wraiths' "20% increased damage". */
+		float IncreasedPercent = 0.0f;
+
+		/** A "more" of its own, a multiplier. Soul Harvest's 1 + 10% a soul. */
+		float More = 1.0f;
+	};
+
+	/** The keys of the rule parts, one per rule that gives a creature attack damage. */
+	static constexpr const TCHAR* SoulHarvestDamageSource = TEXT("SoulHarvest");
+	static constexpr const TCHAR* NothingIsForgottenDamageSource = TEXT("NothingIsForgotten");
+	static constexpr const TCHAR* VengefulWraithsDamageSource = TEXT("VengefulWraiths");
+
+	/**
+	 * Writes one rule's part, replacing what that rule gave before, and rewrites the attack damage. A part that gives
+	 * nothing is no entry. Writing the same part twice changes nothing, so a rule may write it again after a rung change
+	 * or a load without giving it twice.
+	 *
+	 * A CREATURE HOLDING A PLAYER'S BUILD (the Corrupted Stalker) has no designed figure to build from and takes none of
+	 * the floor's multipliers (`bHoldsAPlayerBuild`). Its parts go on the build's own figure, which is read off the
+	 * attribute with its parts taken off: what the three rules did to it before #2723.
+	 */
+	void SetRuleDamagePart(const TCHAR* Source, const FRuleDamagePart& Part);
+
+	/** What the rule named `Source` gives this creature's attack damage; a part that gives nothing when none. */
+	FRuleDamagePart RuleDamagePartFrom(const TCHAR* Source) const;
+
+	/**
+	 * This creature's own attack damage, the `base` of the three buckets: what `SetAttackDamage` was given times its
+	 * rarity's damage scale, before any rule's part and any floor multiplier. For a creature holding a player's build,
+	 * the build's figure with its rule parts taken off. Nothing Is Forgotten caps the void's damage at a share of it.
+	 */
+	float OwnAttackDamage() const;
+
+	/**
+	 * The three buckets: `(Own + Added) x (1 + IncreasedPercent / 100) x More`, never below nothing. Issue #2723. Public
+	 * and static so a test can state a figure through the same formula the game writes.
+	 */
+	static float AttackDamageFromParts(float Own, float Added, float IncreasedPercent, float More);
+
 	//~ Dying. Issue #522.
 
 	/**
@@ -2378,6 +2436,19 @@ protected:
 	void SetDamageMultiplierFrom(const TCHAR* Source, float NewMultiplier);
 
 	/**
+	 * What each rule that GIVES this creature attack damage gives it, under that rule's own key: see `FRuleDamagePart`
+	 * and `SetRuleDamagePart`. A key with no entry gives nothing. Issue #2723.
+	 *
+	 * BESIDE `DamageMultipliersBySource` AND NOT IN IT, for one reason: a creature holding a player's build takes these
+	 * and not the floor's multipliers, as it did before #2723. Not a `UPROPERTY`, because the part is not a reflected
+	 * type; nothing reads it but this class, and a save records what the rules hold rather than this.
+	 */
+	TMap<FName, FRuleDamagePart> RuleDamageParts;
+
+	/** Every rule part summed into its bucket: the flat damage, the increase in percent, and the "more" product. */
+	void SumRuleDamageParts(float& OutAdded, float& OutIncreasedPercent, float& OutMore) const;
+
+	/**
 	 * What SetArmour was last asked for. Zero means no armour.
 	 *
 	 * ZERO IS A REAL ANSWER HERE, unlike for health. The Imp's `armor_share` is
@@ -2459,6 +2530,9 @@ private:
 	 * floor-rule setters: the designed figure, times the rarity's damage scale, times
 	 * both floor-rule multipliers, or zero for an illusion. Two copies of it would give
 	 * two answers the first time one of them changed.
+	 *
+	 * AND EVERY RULE'S PART IN ITS BUCKET, since issue #2723, through `AttackDamageFromParts`: so a multiplier written
+	 * after Soul Harvest's souls, Nothing Is Forgotten's damage or a wraith's increase keeps them.
 	 *
 	 * @param DamageScale  the rarity's damage multiplier, which the caller has read
 	 */

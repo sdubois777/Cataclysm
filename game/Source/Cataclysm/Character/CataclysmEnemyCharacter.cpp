@@ -1727,6 +1727,110 @@ float ACataclysmEnemyCharacter::DamageMultiplierProduct() const
 	return Product;
 }
 
+float ACataclysmEnemyCharacter::AttackDamageFromParts(float Own, float Added, float IncreasedPercent, float More)
+{
+	// THE THREE BUCKETS, `(base + flat) x (1 + increases) x more`, the shape docs/DECISIONS.md adopted from Path of
+	// Exile, Last Epoch and Torchlight Infinite for damage. Issue #2723.
+	return FMath::Max(0.0f, (Own + Added) * (1.0f + IncreasedPercent / 100.0f) * More);
+}
+
+void ACataclysmEnemyCharacter::SumRuleDamageParts(float& OutAdded, float& OutIncreasedPercent, float& OutMore) const
+{
+	OutAdded = 0.0f;
+	OutIncreasedPercent = 0.0f;
+	OutMore = 1.0f;
+	for (const TPair<FName, FRuleDamagePart>& One : RuleDamageParts)
+	{
+		// FLAT AND INCREASES ADD WITHIN THEIR BUCKETS; EACH "MORE" MULTIPLIES ON ITS OWN.
+		OutAdded += One.Value.Added;
+		OutIncreasedPercent += One.Value.IncreasedPercent;
+		OutMore *= One.Value.More;
+	}
+}
+
+ACataclysmEnemyCharacter::FRuleDamagePart ACataclysmEnemyCharacter::RuleDamagePartFrom(const TCHAR* Source) const
+{
+	const FRuleDamagePart* Found = RuleDamageParts.Find(FName(Source));
+	return Found ? *Found : FRuleDamagePart();
+}
+
+float ACataclysmEnemyCharacter::OwnAttackDamage() const
+{
+	const FGameplayAttribute Damage = UCataclysmCombatAttributeSet::GetAttackDamageAttribute();
+
+	// A PLAYER'S BUILD: the base on the attribute with its parts taken off, the inverse of the write in
+	// `SetRuleDamagePart`. The base and not the current value, so an effect running on it is not taken as its own.
+	if (bHoldsAPlayerBuild)
+	{
+		if (!AbilitySystemComponent || !AbilitySystemComponent->HasAttributeSetForAttribute(Damage))
+		{
+			return 0.0f;
+		}
+		float Added = 0.0f;
+		float IncreasedPercent = 0.0f;
+		float More = 1.0f;
+		SumRuleDamageParts(Added, IncreasedPercent, More);
+		const float Factor = (1.0f + IncreasedPercent / 100.0f) * More;
+		return Factor > 0.0f
+			? FMath::Max(0.0f, AbilitySystemComponent->GetNumericAttributeBase(Damage) / Factor - Added)
+			: 0.0f;
+	}
+
+	// ANY OTHER CREATURE: its designed figure at its rung, the figure `WriteAttackDamage` builds from.
+	float HealthScale = 1.0f;
+	float DamageScale = 1.0f;
+	float ArmourScale = 1.0f;
+	UCataclysmEnemyRarity::ScalingFromCommon(
+		UCataclysmEnemyRarity::LoadEnemyRarityTable(), RarityStep,
+		HealthScale, DamageScale, ArmourScale);
+	return FMath::Max(0.0f, StartingAttackDamage) * DamageScale;
+}
+
+void ACataclysmEnemyCharacter::SetRuleDamagePart(const TCHAR* Source, const FRuleDamagePart& Part)
+{
+	FRuleDamagePart Wanted;
+	Wanted.Added = FMath::Max(0.0f, Part.Added);
+	Wanted.IncreasedPercent = FMath::Max(-100.0f, Part.IncreasedPercent);
+	Wanted.More = FMath::Max(0.0f, Part.More);
+
+	const FRuleDamagePart Was = RuleDamagePartFrom(Source);
+	if (Was.Added == Wanted.Added && Was.IncreasedPercent == Wanted.IncreasedPercent && Was.More == Wanted.More)
+	{
+		return;
+	}
+
+	// A BUILD'S OWN FIGURE, READ BEFORE THE PART CHANGES, because it is read back through the parts held now.
+	const float BuildOwn = bHoldsAPlayerBuild ? OwnAttackDamage() : 0.0f;
+
+	// A PART THAT GIVES NOTHING IS NO ENTRY, as 1.0 is no entry of the multipliers.
+	if (Wanted.Added == 0.0f && Wanted.IncreasedPercent == 0.0f && Wanted.More == 1.0f)
+	{
+		RuleDamageParts.Remove(FName(Source));
+	}
+	else
+	{
+		RuleDamageParts.Add(FName(Source), Wanted);
+	}
+
+	if (!bHoldsAPlayerBuild)
+	{
+		RewriteAttackDamage();
+		return;
+	}
+
+	// A PLAYER'S BUILD TAKES THE PARTS AND NOT THE FLOOR'S MULTIPLIERS. See `bHoldsAPlayerBuild`.
+	const FGameplayAttribute Damage = UCataclysmCombatAttributeSet::GetAttackDamageAttribute();
+	if (AbilitySystemComponent && AbilitySystemComponent->HasAttributeSetForAttribute(Damage))
+	{
+		float Added = 0.0f;
+		float IncreasedPercent = 0.0f;
+		float More = 1.0f;
+		SumRuleDamageParts(Added, IncreasedPercent, More);
+		AbilitySystemComponent->SetNumericAttributeBase(
+			Damage, AttackDamageFromParts(BuildOwn, Added, IncreasedPercent, More));
+	}
+}
+
 void ACataclysmEnemyCharacter::RewriteAttackDamage()
 {
 	// NOT OVER A PLAYER'S BUILD. See `bHoldsAPlayerBuild`.
@@ -2156,13 +2260,23 @@ void ACataclysmEnemyCharacter::WriteAttackDamage(float DamageScale)
 	// and said "both" until March of Progress made it three, which is the trap issue
 	// #1760 records: a comment that counts what is under it goes wrong without being
 	// touched and nothing reports it.
+	//
+	// AND EVERY RULE'S PART IN ITS BUCKET, since issue #2723: Nothing Is Forgotten's flat damage before the increases
+	// and the multipliers, a wraith's increase, and Soul Harvest's "more" beside the floor's. Until then those three
+	// were written onto the attribute and this write, which every multiplier makes, dropped them. The order is the one
+	// `AttackDamageFromParts` states, and it is the same whichever rule wrote first.
 	if (StartingAttackDamage >= 0.0f
 		&& AbilitySystemComponent->HasAttributeSetForAttribute(Damage))
 	{
+		float Added = 0.0f;
+		float IncreasedPercent = 0.0f;
+		float More = 1.0f;
+		SumRuleDamageParts(Added, IncreasedPercent, More);
 		AbilitySystemComponent->SetNumericAttributeBase(
 			Damage, bIsAnIllusion
 				? 0.0f
-				: StartingAttackDamage * DamageScale * DamageMultiplierProduct());
+				: AttackDamageFromParts(StartingAttackDamage * DamageScale, Added, IncreasedPercent,
+										More * DamageMultiplierProduct()));
 	}
 }
 

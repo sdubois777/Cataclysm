@@ -11030,8 +11030,10 @@ void ACataclysmDungeonGameMode::StrengthenTheFeeders()
 		const float OldMaximum = Abilities ? Abilities->GetNumericAttribute(Vital::GetMaxHealthAttribute()) : 0.0f;
 		// AND ANY DROPS IT ATE FOR FAMISHED BEASTS, so the two rules' health stacks as their damage keys do: each writes
 		// its own maximum times both multipliers, in either order. Issues #1820 and #41.
-		const float NewMaximum = CarrionFeederOwnMaxHealth[Index] * Multiplier
+		const float Multiplied = CarrionFeederOwnMaxHealth[Index] * Multiplier
 			* Effects::FamishedBeastsMultiplier(Feeder->DropsEaten);
+		// AND SOUL HARVEST'S SHARE ON THAT, which this write from the feeder's record dropped until issue #2723.
+		const float NewMaximum = Multiplied + SoulHarvestHealthShareOn(Feeder, Multiplied);
 		if (OldMaximum <= 0.0f || NewMaximum <= 0.0f || FMath::IsNearlyEqual(OldMaximum, NewMaximum))
 		{
 			continue;
@@ -11073,8 +11075,10 @@ void ACataclysmDungeonGameMode::StrengthenTheEater(ACataclysmEnemyCharacter* Eat
 		{
 			return;
 		}
-		const float NewMaximum = CarrionFeederOwnMaxHealth[AsFeeder] * Multiplier
+		const float Multiplied = CarrionFeederOwnMaxHealth[AsFeeder] * Multiplier
 			* Effects::CarrionFeastMultiplier(CarrionFeastStacks);
+		// AND SOUL HARVEST'S SHARE ON THAT, which this write from the feeder's record dropped until issue #2723.
+		const float NewMaximum = Multiplied + SoulHarvestHealthShareOn(Eater, Multiplied);
 		if (NewMaximum > 0.0f && !FMath::IsNearlyEqual(OldMaximum, NewMaximum))
 		{
 			const float Health = Abilities->GetNumericAttribute(Vital::GetHealthAttribute());
@@ -14302,7 +14306,6 @@ void ACataclysmDungeonGameMode::ApplySoulHarvestFigures(ACataclysmEnemyCharacter
 {
 	using Effects = UCataclysmDungeonModifierEffects;
 	using Vital = UCataclysmVitalAttributeSet;
-	using Combat = UCataclysmCombatAttributeSet;
 	using Resist = UCataclysmAllResistanceAttributeSet;
 
 	FSoulHarvestHeld* Held = IsValid(Creature) ? SoulHarvestHeld.Find(Creature) : nullptr;
@@ -14318,21 +14321,17 @@ void ACataclysmDungeonGameMode::ApplySoulHarvestFigures(ACataclysmEnemyCharacter
 	if (bFreshBlock)
 	{
 		Held->HealthAdded = 0.0f;
-		Held->DamageAdded = 0.0f;
 		Held->ResistanceAdded = 0.0f;
 	}
 
 	// ITS OWN FIGURES ARE WHAT IS THERE NOW LESS WHAT THE SOULS ADDED.
 	const float OwnMaximum =
 		Abilities->GetNumericAttribute(Vital::GetMaxHealthAttribute()) - Held->HealthAdded;
-	const float OwnDamage =
-		Abilities->GetNumericAttribute(Combat::GetAttackDamageAttribute()) - Held->DamageAdded;
 	const float OwnResistance =
 		Abilities->GetNumericAttribute(Resist::GetAllResistanceAttribute())
 		- Held->ResistanceAdded;
 
 	const float HealthAdded = Effects::SoulHarvestHealthAdded(OwnMaximum, Held->Souls);
-	const float DamageAdded = Effects::SoulHarvestDamageAdded(OwnDamage, Held->Souls);
 	const float ResistanceAdded = Effects::SoulHarvestResistanceAdded(Held->Souls);
 
 	// THE MAXIMUM FIRST, BECAUSE THE CLAMP ON HEALTH READS IT. A new soul raises health by
@@ -14346,13 +14345,32 @@ void ACataclysmDungeonGameMode::ApplySoulHarvestFigures(ACataclysmEnemyCharacter
 		Abilities->SetNumericAttributeBase(Vital::GetHealthAttribute(),
 										   Health + (HealthAdded - Held->HealthAdded));
 	}
-	Abilities->SetNumericAttributeBase(Combat::GetAttackDamageAttribute(), OwnDamage + DamageAdded);
 	Abilities->SetNumericAttributeBase(Resist::GetAllResistanceAttribute(),
 									   OwnResistance + ResistanceAdded);
 
+	// THE DAMAGE AS THE CREATURE'S OWN "MORE" PART, 1 + 10% A SOUL, and not onto the attribute. Issue #2723: written onto
+	// the attribute, the next damage multiplier any rule set -- Famished Beasts, Grim Totems, Ravenous Hoard on the beat
+	// -- rewrote the attack damage from the creature's own figure and the souls' damage was gone. As a part, every write
+	// keeps it; written again with the same souls it changes nothing, so a rung change or a load does not give it twice.
+	ACataclysmEnemyCharacter::FRuleDamagePart Souls;
+	Souls.More = 1.0f + Effects::SoulHarvestDamageAdded(1.0f, Held->Souls);
+	Creature->SetRuleDamagePart(ACataclysmEnemyCharacter::SoulHarvestDamageSource, Souls);
+
 	Held->HealthAdded = HealthAdded;
-	Held->DamageAdded = DamageAdded;
 	Held->ResistanceAdded = ResistanceAdded;
+}
+
+float ACataclysmDungeonGameMode::SoulHarvestHealthShareOn(ACataclysmEnemyCharacter* Creature, float OwnMaximum)
+{
+	// WHAT THE SOULS IT HOLDS ADD TO THIS MAXIMUM, RECORDED AS WHAT THEY ADDED, so the next soul finds the creature's
+	// own maximum under it. Nothing for a creature holding none. Issue #2723.
+	FSoulHarvestHeld* Held = IsValid(Creature) ? SoulHarvestHeld.Find(Creature) : nullptr;
+	if (!Held)
+	{
+		return 0.0f;
+	}
+	Held->HealthAdded = UCataclysmDungeonModifierEffects::SoulHarvestHealthAdded(OwnMaximum, Held->Souls);
+	return Held->HealthAdded;
 }
 
 int32 ACataclysmDungeonGameMode::SoulHarvestSoulsOn(const ACataclysmEnemyCharacter* Creature) const
@@ -14799,7 +14817,6 @@ void ACataclysmDungeonGameMode::ApplyNothingIsForgottenFigures(ACataclysmEnemyCh
 {
 	using Effects = UCataclysmDungeonModifierEffects;
 	using Vital = UCataclysmVitalAttributeSet;
-	using Combat = UCataclysmCombatAttributeSet;
 
 	if (!IsValid(Creature) || NothingIsForgottenBoss.Get() != Creature)
 	{
@@ -14819,9 +14836,16 @@ void ACataclysmDungeonGameMode::ApplyNothingIsForgottenFigures(ACataclysmEnemyCh
 	Abilities->SetNumericAttributeBase(Vital::GetHealthAttribute(), Maximum);
 
 	// DAMAGE, UP TO THE CAP of the boss's own. Ruled under the owner's delegation.
-	const float Own = Abilities->GetNumericAttribute(Combat::GetAttackDamageAttribute());
-	const float Added = Effects::NothingIsForgottenDamageAdded(NothingIsForgottenDamage, Own);
-	Abilities->SetNumericAttributeBase(Combat::GetAttackDamageAttribute(), Own + Added);
+	//
+	// FLAT DAMAGE IN THE BOSS'S BASE BUCKET, AS ITS OWN PART, AND THE CAP ON ITS OWN DESIGNED FIGURE. Issue #2723: added
+	// onto the attribute, the next damage multiplier any rule set rewrote the attack damage from the boss's own figure
+	// and the void's damage was gone. As a part it sits beside the boss's own figure, so every multiplier and increase
+	// carries it, and capped at the own figure the boss still hits at most twice as hard whatever multiplies it. Written
+	// again after a rung change it replaces, and does not add to, what it gave.
+	ACataclysmEnemyCharacter::FRuleDamagePart Void;
+	Void.Added = Effects::NothingIsForgottenDamageAdded(NothingIsForgottenDamage, Creature->OwnAttackDamage());
+	Creature->SetRuleDamagePart(ACataclysmEnemyCharacter::NothingIsForgottenDamageSource, Void);
+	const float Added = Void.Added;
 
 	NothingIsForgottenHealthGiven = NothingIsForgottenHealth;
 	NothingIsForgottenDamageGiven = Added;
@@ -15718,19 +15742,17 @@ void ACataclysmDungeonGameMode::RestoreCreatureRoles(ACataclysmEnemyCharacter& C
 		FSoulHarvestHeld& Held = SoulHarvestHeld.FindOrAdd(&Creature);
 		Held.Souls = Saved.SoulHarvestSouls;
 		Held.HealthAdded = Saved.SoulHarvestHealthAdded;
-		Held.DamageAdded = 0.0f;
 		Held.ResistanceAdded = 0.0f;
 		ApplySoulHarvestFigures(&Creature, /*bFreshBlock=*/false);
 	}
+	// THE VOID'S DAMAGE AS THE BOSS'S OWN PART, the figure the walk record says was given. Issue #2723: added onto the
+	// attribute here, it was dropped by the Famished Beasts and Grim Totems multipliers this function writes below.
 	if (Saved.bFedByNothingIsForgotten)
 	{
 		NothingIsForgottenBoss = &Creature;
-		if (UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(&Creature))
-		{
-			const FGameplayAttribute Damage = UCataclysmCombatAttributeSet::GetAttackDamageAttribute();
-			Abilities->SetNumericAttributeBase(Damage,
-											   Abilities->GetNumericAttribute(Damage) + NothingIsForgottenDamageGiven);
-		}
+		ACataclysmEnemyCharacter::FRuleDamagePart Void;
+		Void.Added = NothingIsForgottenDamageGiven;
+		Creature.SetRuleDamagePart(ACataclysmEnemyCharacter::NothingIsForgottenDamageSource, Void);
 	}
 	// AND THE CATACLYSM BOSS, which the rebuild placed and the load destroyed: the saved Gatekeeper at the Cataclysm Boss
 	// rung that did not rise from the dead, which only the population places. Without it a load would open the stairs
@@ -19969,13 +19991,15 @@ void ACataclysmDungeonGameMode::ApplyVengefulWraithFigures(
 									   Effects::VengefulWraithsDamageReductionMore);
 
 	// AND THE ONE INCREASE THE ROW STATES, ON THE ONE STAT OF THE THREE THAT IS AN
-	// ATTRIBUTE. It is read and raised, so a wraith is the row's figure above ITS OWN
-	// rung's damage rather than above a fixed one: a wraith later raised a rung keeps the
-	// rung's gain and its own on top.
-	Abilities->SetNumericAttributeBase(
-		Combat::GetAttackDamageAttribute(),
-		Effects::VengefulWraithsIncreased(
-			Abilities->GetNumericAttribute(Combat::GetAttackDamageAttribute())));
+	// ATTRIBUTE, so a wraith is the row's figure above ITS OWN rung's damage rather than
+	// above a fixed one: a wraith later raised a rung keeps the rung's gain and its own on top.
+	//
+	// AS THE CREATURE'S OWN PART, IN THE INCREASES BUCKET, which is the row's word: "20% increased damage". Issue
+	// #2723: until then it was read off the attribute and written back raised, and the next damage multiplier any rule
+	// set rewrote the attack damage from the creature's own figure and the increase was gone.
+	ACataclysmEnemyCharacter::FRuleDamagePart Increase;
+	Increase.IncreasedPercent = Effects::VengefulWraithsIncreasePercent;
+	Wraith->SetRuleDamagePart(ACataclysmEnemyCharacter::VengefulWraithsDamageSource, Increase);
 
 	// AND THE OTHER TWO STATS THE ROW NAMES ARE NOT ATTRIBUTES AT ALL, WHICH WAS MEASURED
 	// AND NOT ASSUMED. A creature's attack rate is its designed interval over

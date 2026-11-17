@@ -2523,8 +2523,9 @@ public:
 	 *   most five souls. A play-test point. A creature holds one resistance figure, not eight
 	 *   (the owner's ruling of 2026-08-12), so the +5 is to that figure.
 	 * - THE GAIN STAYS UNTIL THE CREATURE DIES and is written again after a rung change.
-	 * - THE FIGURES ARE WRITTEN ONTO THE ATTRIBUTE BASES, as Nothing Is Forgotten's are, so this
-	 *   adds no creature damage multiplier.
+	 * - THE HEALTH AND RESISTANCE ARE WRITTEN ONTO THE ATTRIBUTE BASES; THE DAMAGE IS THE CREATURE'S
+	 *   OWN SOUL HARVEST PART, a "more" of 1 + 10% a soul (`ACataclysmEnemyCharacter::SetRuleDamagePart`),
+	 *   since issue #2723: written onto the base, it was dropped by the next damage multiplier.
 	 *
 	 * AND BY THE WORKER SESSION OF 2026-11-17 UNDER THE SAME DELEGATION, issue #1671, which
 	 * replaced the instant grant of 2026-09-24 with a soul that travels:
