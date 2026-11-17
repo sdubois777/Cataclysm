@@ -793,6 +793,9 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(NothingIsForgottenKey)
 		|| RowKey == FName(StarvationCurseKey)
 		|| RowKey == FName(TrickOrTreatKey)
+		// SOUL HARVEST, BUILT WHOLE SINCE ITS SOULS FLOAT, issue #1671, 2026-11-17. From 2026-09-24 it answered Built
+		// in a reduced form, its soul given at once to the nearest creature; the row's "souls float toward the nearest
+		// demon" is now what happens.
 		|| RowKey == FName(SoulHarvestKey)
 		|| RowKey == FName(ChaosTouchedKey)
 		|| RowKey == FName(TheReaperKey)
@@ -3487,6 +3490,32 @@ float UCataclysmDungeonModifierEffects::SoulHarvestDamageAdded(float Base, int32
 float UCataclysmDungeonModifierEffects::SoulHarvestResistanceAdded(int32 Souls)
 {
 	return SoulHarvestResistancePerSoul * static_cast<float>(FMath::Max(0, Souls));
+}
+
+bool UCataclysmDungeonModifierEffects::SoulHarvestTakesAsADemon(FName CreatureDamageType)
+{
+	// THE CREATURE'S CATACLYSM, read as the damage type it deals: the design gives each Cataclysm one, and its
+	// creatures deal it. Issue #1671.
+	return CreatureDamageType == FName(TEXT("Demonic"));
+}
+
+bool UCataclysmDungeonModifierEffects::SoulHarvestSoulArrivesAfter(const FVector& From, const FVector& To,
+																	float Seconds, FVector& OutAt)
+{
+	const float Reach = SoulHarvestSoulSpeedMetresPerSecond * UCataclysmContagion::CentimetresPerMetre
+		* FMath::Max(0.0f, Seconds);
+	const FVector Gap = To - From;
+	const float Away = Gap.Size();
+
+	// ARRIVED: within the arrival distance once this step's reach is spent. A soul already that close arrives on the
+	// step it is asked about, and never in the instant it was released: the release does not step it.
+	if (Away - Reach <= SoulHarvestSoulArrivalCm)
+	{
+		OutAt = To;
+		return true;
+	}
+	OutAt = From + Gap / Away * Reach;
+	return false;
 }
 
 bool UCataclysmDungeonModifierEffects::TrickOrTreatRaisesEnemies(float Roll)

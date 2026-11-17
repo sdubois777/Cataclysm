@@ -2,6 +2,386 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-17 — Soul Harvest's soul travels: released where a creature died, it floats at 8 m/s to the nearest Demonic creature within 6 m and gives its soul on arrival; it turns when its demon dies, fades after 4 s, ends with the floor, and a save counts it as arrived (#1671)
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmHarvestedSoul.h` and `.cpp`, new (`ACataclysmHarvestedSoul`);
+`CataclysmDungeonModifierEffects.h` and `.cpp` (the rulings on `SoulHarvestKey`, three constants, `SoulHarvestTakesAsADemon`,
+`SoulHarvestSoulArrivesAfter`, a comment in `BuiltStateOf`); `CataclysmDungeonGameMode.h` and `.cpp`
+(`NoteDeathForSoulHarvest` releases a soul instead of giving it; new `SoulHarvestMayFeed`, `NearestDemonForASoul`,
+`SoulHarvestSoulArrived`, `SoulHarvestSoulLost`, `SoulHarvestSoulsFloating`, `SoulHarvestSoulsFloatingToward`,
+`SoulHarvestFloatingTaken`; `SoulHarvestHeldBy` and `WalkStateNow` count a floating soul as arrived; the panel line);
+`CataclysmFloorContents.h` and `.cpp` (the clearing destroys every floating soul); `game/Source/Cataclysm/Interface/
+CataclysmHUD.h` and `.cpp` (a tag over each floating soul; the Reaper's Soul's tag drawing shared through
+`DrawPlainTags`); `CataclysmDungeonModifierEffectsTests.cpp` (four tests land their souls, fifteen new in
+`Cataclysm.SoulHarvestTravel.`); `CataclysmSaveLoadTests.cpp` (one new in `Cataclysm.SaveLoad.`, phase 2);
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (three checks); and one sentence in
+`docs/Save_System_Design.md` section 6. Issue [#1671](https://github.com/sdubois777/Cataclysm/issues/1671).
+
+### SAID FIRST
+
+- **COMPILED, NOT RUN IN UNREAL.** Phase 1 was written with no build, by instruction. Phase 2 (below, the same day)
+  rebased it onto development `9c6b604dd`, compiled it (one error, fixed), had every changed `.cpp` compile alone and in
+  its unity file, reviewed it, fixed one bug, added three tests and measured the base. No Unreal test and no C++ guard
+  proof has run; everything under "Registered before the run" is a prediction for a window. The three Python guards are
+  run and proved (below).
+- **THE BUFF'S FIGURES, THE CAP AND THE 6 METRE SEARCH ARE UNCHANGED.** 10% more maximum health, 10% more attack damage
+  and +5 all-resistance a soul, five at most, the Blood-Forged radius, all as ruled on 2026-09-24.
+- **ONE READING CHANGES ON PURPOSE:** "the nearest demon" is now the nearest creature whose damage type is Demonic, not
+  the nearest creature. Every creature a floor places is Demonic (`EnemyArchetypes.csv`'s `Cataclysm` column, all seven),
+  so in play today it passes over only a creature some other rule made of another Cataclysm. The 2026-09-24 entry
+  ("Soul Harvest: each death gives the nearest creature within 6 metres ...") said this reading must be revisited.
+
+### The design
+
+`Demonic_Soul_Harvest`: "Defeated enemies release demonic souls that empower other enemies nearby. Souls float toward
+the nearest demon, granting increased health, damage, and resistances." #1671 asks for three things the instant grant
+did not do: the soul is released by a death, at the place it happened; it travels; it grants on arrival, to one
+creature. It leaves open how many souls a death releases, how far they travel, whether the buff stacks when several reach
+one creature, what happens with no demon present, and what a soul does when its target dies first.
+
+### What was verified, by reading, before anything changed
+
+- **The reduced form** (`NoteDeathForSoulHarvest`, development `bbea27692`): the nearest living creature within
+  `SoulHarvestRadiusCm` of the death, found through `UCataclysmTargeting::FindEnemiesInSphere` from the player, was given
+  the soul in the same call, through `ApplySoulHarvestFigures`. `BuiltStateOf` listed the row as Built with no word of the
+  reduced form; the floor panel's line did not name it either.
+- **`ACataclysmProjectile`, which #1671 offered, was read and not used.** `Fire` refuses without a valid firer and takes
+  its side; the shot flies a fixed direction for a fixed range, hits every enemy of its firer along the way with a share
+  of the firer's weapon damage, pierces, bounces, returns, is turned by Singularity Wells and is taken by a Void Aura. A
+  soul has no living firer, follows a demon that moves, deals nothing, and touches nothing on the way. What is reused is
+  the class's pattern: a public `Step` the tests drive (the automation worlds never tick) and `Tick` calling it.
+  `ACataclysmFloorHazardSource`, which #1671 also named, exists to carry an ability system for a hazard whose owner is
+  dead; a soul applies nothing through an ability system (the game mode writes the figures on bases, as before), so it
+  needs no source.
+- **The one-stack rule does not reach this.** It governs effects the player applies to enemies (the entry on Wasting
+  Sickness, "Stacks are allowed here, and that is not a breach of the one-stack rule"); this is a floor rule empowering
+  creatures, and the reduced form already stacked souls to five.
+- **How the other floor-rule actors are saved.** `docs/Save_System_Design.md` section 6 restores the souls a creature
+  holds (#753 Group 2, `SoulHarvestHeldBy` into `FCataclysmSavedCreature::SoulHarvestSouls` and `SoulHarvestHealthAdded`,
+  `RestoreCreatureRoles` back) and does NOT restore "projectiles and ground effects already in flight". The same section
+  saves on "a creature dying", so a save lands exactly while a soul floats; and it says what a rule charges must be
+  saved "because quitting buys a breather and not a reset".
+- **`RestoreCreatureRoles` already writes extra souls' figures correctly**: it holds the saved souls and the saved
+  health added, then `ApplySoulHarvestFigures(..., false)` takes the saved share off the loaded maximum to find the
+  creature's own, writes the share for the saved count on, and raises health by the difference. So a record carrying one
+  more soul than its health share accounts for gives that soul on load, health with it, as an arrival would.
+- **What clears a floor**: `UCataclysmFloorContents::ClearTheFloor`, from `GoToFloor` when the floor is replaced and not
+  kept (a Horde's next wave keeps its arena, and its drops, and now its souls). It destroyed the Reaper's Souls in both
+  branches already.
+
+### The research
+
+Fetched 2026-11-17; the judgements below are labelled as such because none of it states a travel speed.
+
+| Game | Source | What it says |
+|---|---|---|
+| Path of Exile | `poedb.tw/us/Soul_Eater` | The Soul Eater monster modifier: a monster eats the souls of what dies nearby and grows stronger with each. The modifier data gives "Radius: 50"; the wiki text there gives a limited radius and says the buff stacks. No travel of a soul is described. |
+| Path of Exile 2 | `poe2db.tw/us/Soul_Eater` | "Eat the Souls of enemies that die in your Presence. Each Soul grants 1% increased Skill Speed. You can have up to 50 eaten Souls"; souls are lost over time when none was eaten in the past 4 seconds. No travel described. |
+| Diablo III | `maxroll.gg/d3/guides/jade-harvester-witch-doctor-guide` | Soul Harvest "has a 18 yard radius": a nearby radius, taken at once. (`icy-veins.com`'s skill page answered 403.) |
+| Last Epoch, Torchlight Infinite | not researched | No source was fetched for either. |
+
+**What the research settles:** the shape the row already had and #1671 keeps: a death within a limited radius feeds one
+creature, the gain stacks, and the stack is capped. **What it does not settle:** anything about the soul's flight --
+speed, arrival distance, lifetime, re-targeting, interception. Those are this game's own and are ruled as judgements.
+
+### The rulings
+
+**By the worker session of 2026-11-17 under the owner's delegation of unstated numbers. Judgements, and play-test
+points, unless a source is named.**
+
+1. **ONE SOUL A DEATH, released where the creature died** (`FCataclysmDeathNotice::Location`, the victim's actor
+   location), bound for the nearest demon within 6 metres of the death. Unchanged from 2026-09-24: every death, whoever
+   dealt it, and a risen creature's second death releases nothing.
+2. **A DEMON IS A CREATURE WHOSE DAMAGE TYPE IS DEMONIC, standing, and the player's enemy** (`SoulHarvestMayFeed`). The
+   design gives each Cataclysm one damage type and its creatures deal it (`ACataclysmEnemyCharacter::DamageType`'s
+   comment). The enemy test keeps the reduced form's search (`FindEnemiesInSphere` from the player) and adds the same
+   test for a soul already floating, so a demon the player takes as a thrall mid-flight is no longer its target.
+3. **NO DEMON WITHIN 6 METRES OF THE DEATH: NO SOUL IS RELEASED.** There is nothing for it to float toward; the reduced
+   form released nothing in the same case.
+4. **IT FLOATS AT 8 METRES A SECOND toward where its demon stands at each step**, so a demon that walks is followed.
+   Judgement: faster than any designed creature walks or charges (the Hellhound's 7.5, `EnemyArchetypes.csv`), so a soul
+   catches every creature no rule has hastened; slower than the slowest player projectile (the Succubus's Soulfire,
+   12 m/s, `docs/Cataclysm_GDD_v2.md`), so it reads as floating rather than fired. Across the whole 6 metres it takes 0.75
+   seconds.
+5. **IT ARRIVES WITHIN HALF A METRE of its demon's centre**: about a designed body radius (0.48 m), so it arrives as it
+   touches the body. Judgement. It never arrives in the instant of the death: the release does not step it.
+6. **ON ARRIVAL, ONE MORE SOUL TO THAT ONE CREATURE**, through `SoulHarvestSoulArrived`, which is the reduced form's
+   grant moved: to the cap of five; a soul reaching a creature at five gives nothing and is spent, not passed on.
+7. **SEVERAL SOULS TO ONE CREATURE STACK**, each one soul, to the same cap. Not a breach of the one-stack rule (above).
+   Several souls may float toward one creature at once; each is counted on arrival.
+8. **ITS DEMON DIES, OR STOPS BEING AN ENEMY DEMON, BEFORE IT ARRIVES: it turns to the nearest demon within 6 metres of
+   where the soul then is; with none, it ends giving nothing.** Judgement: the row's own rule, "the nearest demon", asked
+   again from where the soul is. The dead demon's own death releases its own soul as any death does.
+9. **IT CANNOT BE STRUCK, BLOCKED OR TAKEN.** Neither the row nor #1671 gives the player a way to intercept it, so the
+   actor has no collision and no ability system: it passes through walls, and no search finds it.
+10. **IT FADES AFTER 4 SECONDS OF FLIGHT, giving nothing.** Judgement: over five times the longest straight flight, so it
+    ends only a soul chasing a creature some rule has made faster than 8 m/s.
+11. **A FLOOR CLEARED UNDER IT DESTROYS IT, giving nothing**, beside the Reaper's Souls, in both branches of the clearing.
+    A Horde's next wave keeps its arena and its floating souls, as it keeps its drops.
+12. **A SAVE COUNTS A FLOATING SOUL AS ARRIVED.** `SoulHarvestHeldBy`, which the save gather reads, adds each soul
+    floating toward a creature to its held souls, to the cap, while the health added stays the held souls' (what the
+    saved maximum holds); `WalkStateNow` counts the same souls as given. A load then gives the soul through the record
+    (above). **The soul itself is not saved**, as section 6 does not save a projectile in flight; the load's clearing
+    would destroy it anyway. Saving it as an actor was rejected: it needs a schema bump for state that lasts under a
+    second, and the record already carries what the soul is worth. Without either, a quit just after a kill would take
+    back the soul that kill released.
+
+### What changes
+
+- **`ACataclysmHarvestedSoul`**, new: `Release` spawns it at the death, bound for a demon; `Step` turns, arrives, fades
+  or moves, and `Tick` calls it; `FloatingIn` lists the souls still floating. It ticks, has a bare scene root and nothing
+  else.
+- **`NoteDeathForSoulHarvest`** finds the demon (`NearestDemonForASoul`) and releases a soul, and gives nothing.
+- **The floor panel**: "soul harvest: N soul(s) taken, M floating, the most on one living creature K of 5". The floating
+  count is new; it is refreshed on a release, an arrival and a soul ending without one.
+- **The HUD** draws "Demonic soul" in a deep red over each floating soul within a drop's name range, as a Reaper's
+  Soul's "Soul" is drawn; the two now share `DrawPlainTags`.
+- **`BuiltStateOf`** still answers Built; its comment now says the reduced form is gone.
+- **`docs/Save_System_Design.md`**: the restored-column sentence on Soul Harvest's souls adds the floating soul.
+
+### Tests
+
+**Unreal, fifteen new in `Cataclysm.SoulHarvestTravel.`** (in `CataclysmDungeonModifierEffectsTests.cpp`, reusing the
+Soul Harvest floor and its helpers), every soul moved by calling `Step`:
+
+1. `AStepFloatsEightMetresASecondAndArrivesWithinHalfAMetre`: the step's arithmetic (400 cm in 0.5 s; 56 cm short at
+   1.18 s does not arrive, 40 cm short at 1.2 s does; never past the demon; no time, no move) and the demon test
+   (Demonic yes, War and none no).
+2. `ADeathReleasesASoulWhereTheCreatureDied`: one soul, released at the victim's location, not yet moved, bound for the
+   nearest demon, released by this game mode; the panel "0 soul(s) taken, 1 floating ... 0 of 5".
+3. `TheSoulFloatsToItsDemonOverTimeAndIsNotThereAtOnce`: **THE CONTROL**: the demon holds no soul and its maximum has
+   not moved at the instant of the death, which the instant grant fails. Then 80 cm in 0.1 s, all toward the demon,
+   nothing given; 60 cm short still nothing; a twentieth more arrives, and the demon holds the soul at 10% more maximum.
+4. `ArrivalGivesTheSoulToThatCreatureOnly`: the demon gains the soul's four figures; a creature behind it on the soul's
+   line, one aside, and the player gain nothing.
+5. `ASoulWhoseDemonDiesTurnsToTheNearestDemonWhereItIs`: the first demon killed mid-flight; the soul turns once to the
+   next and lands; the next holds two (its own and the first's death's), two given.
+6. `ASoulWithNoDemonLeftFadesGivingNothing`: the only demon killed mid-flight with nobody within 6 m of it or of the
+   soul; the soul ends `NoDemonLeft`, nothing given.
+7. `SeveralSoulsToOneDemonEachCountToTheCap`: seven souls float toward one demon at once; a save reads five and five
+   given; landed, five souls and half again its maximum and damage, +25 resistance.
+8. `ASoulTouchesNothingAndNothingFindsIt`: no primitive component; a player's search where it floats does not find it;
+   it still arrives.
+9. `AFloorEndingUnderASoulDestroysItGivingNothing`: `GoToFloor(2)` mid-flight; the soul is gone, nothing given.
+10. `ASaveCountsAFloatingSoulAsArrivedAndTheRecordGivesIt`: live 0 souls and 0 given, a save's reading 1 soul, 0 health
+    added and 1 given; the soul destroyed and the record put back through `RestoreCreatureRoles`: the demon holds it,
+    with the four figures and health raised as an arrival raises it.
+11. `AFloorWithoutTheRowReleasesNothing`: a floor carrying Blood-Forged Champions only; nothing floats, nothing given,
+    no panel line.
+12. `TheNearestDemonIsTheNearestDemonicCreature`: a War creature at 2 m is passed over for a demon at 5 m; a death with
+    only the War creature within reach releases nothing.
+13. `ASoulThatCannotCatchItsDemonFadesGivingNothing`: the demon pulled away at 10 m/s; the soul fades after 4 s
+    (tolerance 0.11 s, one step), never turned, nothing given.
+14. `ThePanelIsToldASoulFloatsUntilItLandsOrFadesAndNoLonger` (phase 2): through the game's own controller, what the
+    panel was last told after a release ("0 soul(s) taken, 1 floating ... 0 of 5"), a landing ("1 ..., 0 floating ...
+    1 of 5"), a second release ("1 ..., 1 floating") and that soul fading ("1 ..., 0 floating").
+15. `AHordesNextWaveKeepsASoulFloatingToItsDemon` (phase 2): a Horde dungeon's second wave, in the same arena, reached
+    while a soul floats; the soul is still there, in flight, bound for the same demon, not turned, and lands.
+
+**And one new in `Cataclysm.SaveLoad.`** (phase 2): `ASoulStillFloatingAtASaveComesBackGivenToItsDemon`, a real save
+through the writer with a soul released three metres from a floor creature and not yet moved, then the soul landed in
+the saving world; a new world loaded from the save holds one creature with one soul and the figures (maximum, health,
+attack damage, all-resistance and place) the arrival gave, no soul floats there, and the walk counts one given. THE
+CONTROL: the arrival moved the creature's figures.
+
+**Four existing tests in `Cataclysm.DungeonModifierEffects.` changed** to land each soul with
+`ACommonDiesAndItsSoulLands` (a death, then every soul stepped until it ends, then "no soul is left floating"):
+`ADeathFeedsTheNearestLivingCreatureWithinSixMetres` (its panel line gains ", 0 floating"; it also asserts nothing
+floats from the death with nobody in reach), `ACreatureHoldsAtMostFiveSouls`, `ASoulFedCreatureTakesLessOfTheSameBlow`,
+and `SoulsSurviveTheRungABloodForgedChampionGains`, which lands each soul before the next death so the rung change on
+the third death meets two held souls and must keep them.
+
+**Python, three new** in `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`:
+`test_soul_harvest_row_still_releases_souls_that_float` (the row still says "release demonic souls" and "souls float
+toward" and gives no speed or time), `test_a_harvested_soul_outruns_every_designed_creature` (the speed constant against
+every archetype's walk and chase speed in `EnemyArchetypes.csv`), and `test_the_floors_clearing_ends_every_harvested_soul`
+(the clearing destroys the souls once, after the Reaper's Souls' line, which is the control). The existing row check's
+docstring names the demon reading.
+
+### Phase 2: the rebase, the compile, the review and the audit (2026-11-17)
+
+**The rebase.** Branch `feat/soul-harvest-souls-travel-2`, from `origin/feat/soul-harvest-souls-travel` (`3394849be`)
+rebased onto development `9c6b604dd` (#2721, seven enchantment rewords). One conflict, this file, both entries kept,
+this one first. `python tools/check_resolved_cpp.py --changed` read no files after the rebase (the tree was clean); run
+on the branch's eleven `.cpp` and `.h` files by name: "11 files read, 0 with complaints".
+
+**The compile.** One error, in `ACataclysmHUD::DrawPlainTags`: "error C4458: declaration of 'Tags' hides class member"
+(`AActor::Tags`); the local is now `Boxes`. Neither risk phase 1 flagged arose: the forward-declared class inside
+`TWeakObjectPtr` and the float `TestEqual` overloads both compiled. The first attempt never ran: the continuous
+integration runner held the build mutex through the wrapper's five retries. The `Build:` lines, in order: "Failed - 50 actions,
+45 files compiled" (the error); "Succeeded - 13 actions, 9 files compiled: CataclysmHUD.cpp, CataclysmSaveLoadTests.cpp,
+CataclysmDungeonModifierEffectsTests.cpp, Module.Cataclysm.11.cpp, Module.Cataclysm.30.cpp, Module.Cataclysm.38.cpp,
+Module.Cataclysm.39.cpp, Module.Cataclysm.41.cpp, Module.Cataclysm.40.cpp"; with the branch's changes uncommitted on
+development and the makefile moved aside, so each changed `.cpp` compiles alone, "Succeeded - 6 actions, 3 files
+compiled: CataclysmFloorContents.cpp, CataclysmDungeonModifierEffects.cpp, Module.Cataclysm.10.cpp" (the other five had
+compiled alone in the two builds before, with the same text: `CataclysmDungeonGameMode.cpp` and `CataclysmHarvestedSoul.cpp`
+in the failed one, which UnrealBuildTool listed as "Excluded from Cataclysm unity file", the other three in the next);
+and, committed, with the makefile
+moved aside again, "Succeeded - 12 actions, 9 files compiled: Module.Cataclysm.10.cpp, Module.Cataclysm.11.cpp,
+Module.Cataclysm.30.cpp, Module.Cataclysm.38.cpp, Module.Cataclysm.40.cpp, Module.Cataclysm.39.cpp,
+Module.Cataclysm.41.cpp, Module.Cataclysm.42.cpp, Module.Cataclysm.43.cpp". The unity files hold the seven changed
+`.cpp` files: 10 (`CataclysmHarvestedSoul`, `CataclysmDungeonModifierEffects`, `CataclysmFloorContents`), 11
+(`CataclysmHUD`), 30 (`CataclysmSaveLoadTests`), 38 (`CataclysmDungeonGameMode`), 39
+(`CataclysmDungeonModifierEffectsTests`).
+
+**The review, the load order first.**
+
+- **(a) THE LOAD ORDER IS RIGHT, traced, and now tested through a real load.** `RestoreCreatureRoles` keeps the record's
+  health added and sets the damage and resistance added to nought, then `ApplySoulHarvestFigures(..., false)` takes each
+  "added" off the creature's current figure to find its own. That is right only if, at that moment, the maximum holds
+  the souls' health and the attack damage and all-resistance hold no soul's share. They do:
+  `CataclysmSaveLoad::RelinkTheCreatures` calls it on creatures `FCataclysmSaveApply::DungeonFloorInto` has just spawned
+  with `CreatureInto`, which runs `SetRarityStep`, then `SetAttackDamage(Saved.AttackDamage)` -- the record's
+  `AttackDamage` is `GetStartingAttackDamage()`, "before ... any rule's addition" (`FCataclysmSavedCreature`) -- whose
+  `ApplyStartingAttributes` writes the damage as starting damage times the rung's scale times the rules' multipliers and
+  the all-resistance as the archetype's `ResistancePercent`; then `MaximumsInto` writes the saved maximum, which the
+  gather read live and which holds what the souls added (`SoulHarvestHealthAdded`'s comment says so), and `VitalsInto`
+  the saved health. Nothing between the spawn and `RestoreCreatureRoles` writes a soul's share (`ThrallInto` writes the
+  maximum and health again, from the same record). So neither share is counted twice nor lost by the reset. A soul
+  floating at the save rides on the same path: the record carries one more soul and the held souls' health added, and
+  the restore writes the extra soul's four figures, raising health by the difference, as an arrival does. The existing
+  `Cataclysm.SaveLoad.ACreaturesHeldSoulsAndTheFedBossComeBack` already compares a holder's maximum and damage across
+  a real save and load for held souls; the new `ASoulStillFloatingAtASaveComesBackGivenToItsDemon` does it for a
+  floating one, with health and resistance too. FOUND IN PASSING, NOT FIXED HERE, AND NOT THIS CHANGE'S: a later
+  `SetDamageMultiplierFrom` on the same creature (`RewriteAttackDamage`) writes the attack damage from scratch and drops
+  any soul's and Nothing Is Forgotten's addition, in play and in `RestoreCreatureRoles`, which sets Famished Beasts' and
+  Grim Totems' multipliers after the souls. It predates #1671 and is reported to the coordinator rather than widened in.
+- **(b) The clearing** destroys the floating souls after its three branches close (carrying followers, keeping the rules'
+  creatures, and the plain one), beside the Reaper's Souls, so in every branch. `test_the_floors_clearing_ends_every_harvested_soul` already guards the line's place.
+- **(c) A Horde's next wave** keeps its arena: `GoToFloor` runs no `ClearTheFloor` when `bKeptTheArena`, and the next
+  wave arrives while a tenth of the last still stands (`ShouldTheNextWaveArrive`), so a soul keeps flying to its demon,
+  or turns to the nearest demon by rule 8, which may be one of the new wave. New test 15.
+- **(d) `BuiltStateOf`** still answers Built: the comment was added inside the `||` chain, beside the key.
+- **(e) THE PANEL LINE WAS NOT LITERALLY TRUE AFTER A LANDING, AND IS NOW.** The arrival refreshed the panel from
+  `SoulHarvestSoulArrived` while the soul was still marked in flight, so the panel was told "1 soul(s) taken, 1
+  floating" for a soul that had landed, and nothing refreshed it again until the next release. `Step` now marks the soul
+  arrived before it gives it, and `SoulHarvestSoulArrived` refreshes the panel too when the demon no longer qualifies
+  and the soul is spent. New test 14, guarded by proof C4. The words otherwise hold: "taken" counts souls that gave
+  something (a soul spent on a creature at five is not counted), "floating" the souls this game mode released still in
+  flight, and "the most on one living creature" reads the held souls of creatures standing.
+- **(f) The HUD tag code is shared:** `DrawReaperSoulNames` and `DrawHarvestedSoulNames` each gather their points and
+  call `DrawPlainTags`, which holds the one copy of the measuring, separating and drawing.
+
+**The assertion audit: every comparison against a fixed number or a starting state, read against the code as rebased.**
+
+- **Which creatures are demons, and whether test creatures start Demonic.** `ACataclysmEnemyCharacter::DamageType`
+  defaults to "Demonic" and no C++ writes it for a creature; `PlaceCreatureAtRung` spawns an Imp through
+  `SpawnImpWithHealth` and leaves it, so every test creature starts Demonic, hostile and standing. Test 12 sets "War" by
+  hand and checks `SoulHarvestMayFeed` both ways first (the control). The save test's floor creature is checked with
+  `SoulHarvestMayFeed` as a set-up step. Blueprint defaults were not read.
+- **Spawn positions and the 6 m reach.** Deaths at (1000, 0): demons at 3 m (1300), the "behind" creature at 4 m, the
+  "aside" one at 5 m, test 12's demon at 5 m and its War creature at 2 m: all within 600 cm. Out of reach: the Nearest
+  test's creature 8 m from its second death; test 6's far creature 10 m from the death, 7 m from the demon's death and
+  9.2 m from the soul (at 1080); test 12's second death 10 m from the demon. Test 5: the next demon is 4 m from the death,
+  5 m from the first demon's death and 4.08 m from the soul when it turns. `FCataclysmDeathNotice::Location` is the
+  victim's actor location (`CataclysmCombatEvents.cpp`), which test 2 checks to 1 cm.
+- **80 cm per 0.1 s, and the arrival distance.** 8 m/s times `UCataclysmContagion::CentimetresPerMetre` (100) is 800
+  cm/s: 0.1 s is 80 cm, 0.5 s 400, 1.18 s 944 (56 cm short of 1000, outside the 50) and 1.2 s 960 (40 short, inside).
+  Test 3: 300 cm, 80 in the first step, then (300 - 80 - 60) / 800 = 0.2 s to 60 cm short, then 0.05 s is 40 cm, 20
+  short, which arrives; its guard asks for more than 190 cm at the start. Tolerances 0.5 cm on distances, 0.01 on
+  figures.
+- **The cap of 5.** `SoulHarvestMostSouls` is 5 in the header; test 7's seven souls give five, half again the maximum
+  and damage and +25 resistance (5 x 5), and `SoulHarvestFloatingTaken` reads min(0 + 7, 5) - 0 = 5 for the walk.
+- **The 4 s lifetime.** `SoulHarvestSoulLifetimeSeconds` is 4.0; test 13 and test 14's fade step 0.1 s while the demon
+  runs 100 cm a step, so the gap grows 20 cm a step from 300 cm and never closes; float sums of 0.1 may end on step 40 or
+  41, inside the 0.11 s tolerance. The demon runs 40 m off and stays a qualifying demon (no distance in
+  `SoulHarvestMayFeed`), so the soul fades rather than turning.
+- **The 10% and +5 figures.** `SoulHarvestHealthAdded` and `SoulHarvestDamageAdded` are 10% a soul of the creature's own
+  figure, `SoulHarvestResistancePerSoul` is 5; the tests' `* 1.1f`, `* 1.5f`, `+ 25.0f` follow.
+- **The panel's words.** Built by `LiveCountsForTheFloor` with `%d soul(s) taken, %d floating, the most on one living
+  creature %d of %d`; the five expected lines in tests 2, 14 and the Nearest test match it character for character.
+- **The Horde wave.** Test 15 asserts `bSameArenaAsLastFloor` after `GoToFloor(2)` as a set-up step, as the Corrupted
+  Stalker's Horde test does, so a dungeon that stopped keeping its arena fails there and not as a soul gone missing.
+
+### Proofs run in phase 1 (Python only)
+
+With `tools/prove_guard.py`'s `break_and_run` in this worktree, which no other process used, command `python -m pytest
+tools/tests/test_dungeon_modifier_rules_are_the_rows.py`, each anchor once:
+
+- The speed made 7.0 (`SoulHarvestSoulSpeedMetresPerSecond = 8.0f;` to `= 7.0f;`): "PROVED: 1 failed, 221 passed in
+  0.80s | restored: 222 passed in 0.68s", `named_failures`
+  `test_dungeon_modifier_rules_are_the_rows.py::test_a_harvested_soul_outruns_every_designed_creature`.
+- The clearing's line removed (`Destroyed += FloorContentsDestroyEvery<ACataclysmHarvestedSoul>(World);`): "PROVED: 1
+  failed, 221 passed in 0.77s | restored: 222 passed in 0.75s", `named_failures`
+  `...::test_the_floors_clearing_ends_every_harvested_soul`.
+- The row's "Souls float toward" made "Souls drift toward" (`game/Data/DungeonModifiers.csv`): "PROVED: 1 failed, 221
+  passed in 0.77s | restored: 222 passed in 0.70s", `named_failures` `...::test_soul_harvest_row_still_releases_souls_that_float`.
+
+### Registered before the run
+
+Assertion wording is the engine's: "Expected '<what>' to be true." / "... to be false." for `TestTrue` / `TestFalse`,
+"Expected '<what>' to be <e>, but it was <a>." for an `int32` `TestEqual`, and "... and outside tolerance <t>." for a
+`float` one.
+
+**The base, measured in phase 2:** "Test Completed" lines, by prefix ignoring case, in the enchantment window's
+whole-suite engine log `enchant-seven-w1_suite_Cataclysm_2026-11-17.log` (in the coordinator's window-templates `work`
+folder), run at `f4cf7b597`, whose `game/` tree is development `9c6b604dd`'s (`git diff --stat f4cf7b597
+origin/development -- game/` printed nothing): "4712 tests performed", 4712 "Test Completed" lines, all
+`Result={Success}`, 47 distinct `CATACLYSM_SKIPPED_HALF` names, none in a group below. Every prefix ends in a dot, and
+none is a case-insensitive string prefix of another group in that log (`Cataclysm.DungeonModifiers.`, 31, is not one of
+`Cataclysm.DungeonModifierEffects.`). No group began `Cataclysm.SoulHarvest` at the base.
+
+**The groups, and why each.** The two this branch adds to; `Cataclysm.DungeonModifierEffects.`, whose four Soul Harvest
+tests changed; `Cataclysm.SaveWriter.`, `Cataclysm.BossFloor.` and `Cataclysm.ConsumptionDouble.`, whose tests save
+through the gather (`SoulHarvestHeldBy`) or read `WalkStateNow` or call `RestoreCreatureRoles`; and
+`Cataclysm.SetBonus.Reaper6.`, whose test names the Reaper's Souls the shared tag drawing draws. THERE IS NO HUD GROUP
+THAT REACHES THE CHANGE: the automation command passes `-nullrhi`, so `ACataclysmHUD::DrawHUD` never runs under test
+(the HUD test files say so), and no test calls `DrawPlainTags`.
+
+| Figure | Registered |
+|---|---|
+| `Cataclysm.SoulHarvestTravel.` alone | 15 performed, 15 succeeded, 0 failed: none at the base, + 15 by name; no skipped half (no new test calls `ReportSkippedHalf`) |
+| `Cataclysm.SaveLoad.` alone | 76 performed, 76 succeeded, 0 failed: 75 at the base, + 1 by name |
+| `Cataclysm.DungeonModifierEffects.` alone | 768 performed, 768 succeeded, 0 failed: 768 at the base; four changed, none added or removed |
+| `Cataclysm.SaveWriter.`, `Cataclysm.BossFloor.`, `Cataclysm.ConsumptionDouble.`, `Cataclysm.SetBonus.Reaper6.` alone | 25, 5, 15 and 9 performed, all succeeding, as at the base; none added or changed |
+| Whole Unreal suite | 4728 performed, 4728 succeeded, 0 failed: 4712 at the base + 16 by name (15 and 1); 47 skipped halves, as at the base; 0 test saves left behind (the new save test forgets its slots as its neighbours do) |
+| C1, THE CONTROL: the instant grant back (`ACataclysmHarvestedSoul::Release(this, Notice.Location, Nearest)` to `(SoulHarvestSoulArrived(Nearest), nullptr)`, in `CataclysmDungeonGameMode.cpp`), prefix `Cataclysm.SoulHarvestTravel.` | 15 performed, 3 succeeded, 12 failed. Failing, each on its first check of a floating soul or of nothing at the death: 2 ("exactly one soul floats", 0), 3 ("CONTROL: the demon holds no soul at the instant of the death", 1; "CONTROL: and its maximum health has not moved"; "exactly one soul floats"), 5, 6, 8, 9, 12, 13, 15 ("exactly one soul floats", 0, each then returning), 7 ("seven souls float toward it at once", 0 against 7; "with no health added yet, since none has landed", above 0), 10 ("live, the demon holds no soul yet", 1; "with no health added, which the saved maximum does not hold", above 0; "live, none given yet", 1; and, after the record is put back, "its attack damage is 10% more" and "its all-resistance is 5 more", because the restore's own figures are read off a creature already holding the soul's share: 1.21 and +10 where 1.1 and +5 are asserted), 14 ("released: the panel was told one floats", told "1 soul(s) taken, 0 floating ... 1 of 5"; then "exactly one soul floats", 0, after the second death, returning). Passing: 1 (no game mode), 4 (it lands the soul however given), 11 (no row) |
+| C2, no turning (`Demon = Mode->NearestDemonForASoul(GetActorLocation(), nullptr);` to `Demon = nullptr;`, in `CataclysmHarvestedSoul.cpp`), same prefix | 15 performed, 14 succeeded, 1 failed: 5, `ASoulWhoseDemonDiesTurnsToTheNearestDemonWhereItIs`, on "the first soul still floats a twentieth more, now turned" (to be true), "toward the next" (to be true), "having turned once" (0 against 1), "the next holds both souls ..." (1 against 2) and "two given" (1 against 2). Test 6 still passes: its soul ends `NoDemonLeft` either way; 13, 14 and 15 keep their demons alive |
+| C3, a save not counting a floating soul (`const int32 Floating = SoulHarvestSoulsFloatingToward(Creature);` to `const int32 Floating = SoulHarvestSoulsFloatingToward(nullptr);`, which counts none, in `CataclysmDungeonGameMode.cpp`; phase 1 registered `= 0;`, changed so the break leaves no constant condition), same prefix | 15 performed, 13 succeeded, 2 failed: 7 on "a save reads five, the cap, not seven" (0 against 5) alone (its walk count is `SoulHarvestFloatingTaken`'s, unbroken); 10 on "a save reads the floating soul as arrived" (0 against 1), "the demon holds the soul" (0 against 1), "its maximum health is 10% more", "its attack damage is 10% more" and "its all-resistance is 5 more"; its "health rose by as much" still passes (both differences nought) |
+| C4, the arrival refreshing the panel with the soul still marked in flight (`Ended = ECataclysmHarvestedSoulEnd::Arrived;` to `Ended = ECataclysmHarvestedSoulEnd::InFlight;`, in `CataclysmHarvestedSoul.cpp`), same prefix | 15 performed, 14 succeeded, 1 failed: 14, `ThePanelIsToldASoulFloatsUntilItLandsOrFadesAndNoLonger`, on "landed: the panel was told it was taken and floats no longer" alone, told "soul harvest: 1 soul(s) taken, 1 floating, the most on one living creature 1 of 5". Its later lines pass: the second release and the fade refresh the panel after `End` has marked the first soul arrived |
+| C5, C3's break through a real save and load, prefix `Cataclysm.SaveLoad.` | 76 performed, 75 succeeded, 1 failed: `ASoulStillFloatingAtASaveComesBackGivenToItsDemon`, on "one creature holds a soul after the load" (0 against 1), "and it holds the one soul that was floating" (0 against 1) and "with the figures its arrival gave" (to be "(no creature holds a soul)" against the arrived figures, an `FString` `TestEqual`). Its control, "no soul floats in the loaded world" and "the walk counts the soul as given" (`SoulHarvestFloatingTaken`, unbroken) pass; `ACreaturesHeldSoulsAndTheFedBossComeBack` holds no floating soul and passes |
+| Python | Measured in phase 2 on this tree with this cell unfilled (`1d59e594f`), `python -u -m pytest --junit-xml=<a file in the untracked window folder>`: "7361 passed, 9 skipped in 195.46s (0:03:15)", exit 0, and the JUnit file's `testsuite` tests="7370" failures="0" errors="0" skipped="9" (7361 passed), the two agreeing. `python -m ruff check . --extend-exclude .claude`: "All checks passed!" (without the exclusion ruff also reads an older window's untracked script in `.claude/windows`, which fails B023 and is no part of the branch) |
+
+Each C anchor was counted once in its file by `python -u prove_s1671.py <C> --anchors-only` at the registration
+commit's code ("anchor count 1" for all five). The breaks were not compiled.
+
+### Window soul-harvest-w1: the results
+
+Run by the coordinating session on 2026-11-17 (local time) at the registration commit `2f6adc34c` (on `development`
+`9c6b604dd`), lock `soul-harvest-w1`, after the six pre-checks all passed (15,482 MB of physical memory free). Every
+registered figure was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (phase 2's builds of the same tree compiled every changed file alone and every unity file holding one) |
+| The seven groups alone | each at its registered count | every one "0 failed": SoulHarvestTravel. 15, SaveLoad. 76, DungeonModifierEffects. 768, SaveWriter. 25, BossFloor. 5, ConsumptionDouble. 15, SetBonus.Reaper6. 9 |
+| Whole Unreal suite | 4728, 47 skipped halves, 0 left behind | "4728 tests performed, 4728 succeeded, 0 failed. 47 skipped part of what they check"; "Declared: 4728 tests in the tree at 2f6adc34c; 4728 performed, gap 0"; "Test saves: 749 written and deleted, 0 left behind" |
+| Python | of record | "7361 passed, 9 skipped in 191.58s"; JUnit tests 7370, failures 0, errors 0, skipped 9; ruff "All checks passed!" |
+| C1 | 12 tests, 20 assertions | PROVED. "15 tests performed, 3 succeeded, 12 failed": exactly the twenty registered, among them "CONTROL: the demon holds no soul at the instant of the death" (1 read) and the restore's 121 and +10 where 110 and +5 are asserted; restored 15 of 15 |
+| C2 | 1 test, 5 assertions | PROVED. Exactly `ASoulWhoseDemonDiesTurnsToTheNearestDemonWhereItIs` on its five registered assertions; restored 15 of 15 |
+| C3 | 2 tests, 6 assertions | PROVED. Exactly "a save reads five, the cap, not seven" (0 read) and the five registered in the save test; restored 15 of 15 |
+| C4 | 1 test, 1 assertion | PROVED. Exactly "landed: the panel was told it was taken and floats no longer"; restored 15 of 15 |
+| C5 | 1 test, 3 assertions | PROVED. "76 tests performed, 75 succeeded, 1 failed": exactly `ASoulStillFloatingAtASaveComesBackGivenToItsDemon` on its three registered assertions; restored 76 of 76 |
+
+Each assertion count is the broken run's failed-assertion lines, read from its kept log.
+
+Only this section was added after the tested commit.
+
+### Not tested
+
+- **Anything in Unreal**: compiled, not run. See SAID FIRST.
+- **The five C++ breaks were not compiled**; C1 relies on a comma expression `(void call, nullptr)` initialising the
+  pointer in the `if`.
+- **The HUD tag**: drawn by reading, never seen; no test draws a HUD.
+- **A soul through a real wall**: rule 9 is tested as "no collision and no ability system", not against a placed wall.
+- **`Tick`**: the worlds never tick; every test calls `Step`, which `Tick` calls.
+- **A Horde's last-wave clear, and a new wave's creature taking a turned soul**: test 15 keeps the soul's demon alive;
+  the turn to a new wave's creature is rule 8's, tested only in a single wave (test 5).
+- **Blueprint creature classes**: whether any sets `DamageType` other than Demonic was not read.
+- **Real play**: no level was played, so the speed, reach and lifetime are judgements nobody has watched.
+
+---
+
 ## 2026-11-17 — A set row's set number has a column of its own and its Weight is an ordinary 1; the ordinary draw leaves set rows out by their type (#1443)
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (Enchantments sheet: two new columns, K "Positive Set" and L "Negative

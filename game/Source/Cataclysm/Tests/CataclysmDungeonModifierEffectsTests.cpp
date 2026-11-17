@@ -82,6 +82,7 @@
 #include "Save/CataclysmSaveWriter.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Dungeon/CataclysmFloorHazardSource.h"
+#include "Dungeon/CataclysmHarvestedSoul.h"
 #include "Engine/DataTable.h"
 #include "GameplayTagsManager.h"
 #include "Engine/TargetPoint.h"
@@ -24744,7 +24745,9 @@ bool FCataclysmTreatControllerTest::RunTest(const FString& Parameters)
 // toward the nearest demon, granting increased health, damage, and resistances." Each death
 // on a floor carrying the row gives the nearest living creature within 6 metres one soul:
 // 10% more maximum health, 10% more attack damage and +5 all-resistance, at most five.
-// Rulings under the owner's delegation, 2026-09-24.
+// Rulings under the owner's delegation, 2026-09-24. SINCE ISSUE #1671 THE SOUL TRAVELS: these
+// four land it with `ACommonDiesAndItsSoulLands`, and `Cataclysm.SoulHarvestTravel.` below
+// tests the flight itself.
 // ---------------------------------------------------------------------------
 
 namespace CataclysmDungeonModifierEffectsTest
@@ -24812,6 +24815,49 @@ namespace CataclysmDungeonModifierEffectsTest
 		return Test.TestNotNull(TEXT("a creature to die"), Victim)
 			&& ThePlayerKills(Test, Player, Victim);
 	}
+
+	/** Every soul still floating in this world, whoever released it. Issue #1671. */
+	TArray<ACataclysmHarvestedSoul*> SoulsFloatingIn(UWorld* World)
+	{
+		TArray<ACataclysmHarvestedSoul*> Floating;
+		ACataclysmHarvestedSoul::FloatingIn(World, nullptr, Floating);
+		return Floating;
+	}
+
+	/**
+	 * Float every soul in this world, in steps of `Seconds`, until none is left or `MostSteps` have passed; how many
+	 * steps were taken. Issue #1671: these worlds never tick, so a soul moves only when a test steps it. Two hundred
+	 * steps of a twentieth of a second are ten seconds, past a soul's whole four second life, so every soul ends.
+	 */
+	int32 FloatEverySoulUntilItEnds(UWorld* World, float Seconds = 0.05f, int32 MostSteps = 200)
+	{
+		int32 Steps = 0;
+		for (; Steps < MostSteps; ++Steps)
+		{
+			const TArray<ACataclysmHarvestedSoul*> Floating = SoulsFloatingIn(World);
+			if (Floating.IsEmpty())
+			{
+				break;
+			}
+			for (ACataclysmHarvestedSoul* Soul : Floating)
+			{
+				Soul->Step(Seconds);
+			}
+		}
+		return Steps;
+	}
+
+	/**
+	 * As `ACommonDiesAt`, and then the soul it released, if any, floats until it ends. What the instant grant did in
+	 * one call until issue #1671, for the tests written against it, which test what a soul gives and not its flight.
+	 */
+	bool ACommonDiesAndItsSoulLands(FAutomationTestBase& Test, UWorld* World, ACataclysmDungeonGameMode* Mode,
+									const FPossessedPlayer& Player, const FVector& Where)
+	{
+		const bool bDied = ACommonDiesAt(Test, World, Mode, Player, Where);
+		FloatEverySoulUntilItEnds(World);
+		return bDied && Test.TestEqual(TEXT("and no soul is left floating"), SoulsFloatingIn(World).Num(), 0);
+	}
 }
 
 // A DEATH FEEDS THE NEAREST LIVING CREATURE WITHIN SIX METRES, and nothing farther.
@@ -24850,7 +24896,7 @@ bool FCataclysmSoulsNearestTest::RunTest(const FString& Parameters)
 	const FSoulFigures FartherBefore = SoulFiguresOf(Farther);
 	if (!TestTrue(FString::Printf(TEXT("the nearer hits for something: %.2f"), Before.Damage),
 				  Before.Damage > 0.0f)
-		|| !ACommonDiesAt(*this, World, Mode, Player, FVector(1000.0f, 0.0f, 0.0f)))
+		|| !ACommonDiesAndItsSoulLands(*this, World, Mode, Player, FVector(1000.0f, 0.0f, 0.0f)))
 	{
 		return false;
 	}
@@ -24866,20 +24912,23 @@ bool FCataclysmSoulsNearestTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("the farther holds none"), Mode->SoulHarvestSoulsOn(Farther), 0);
 	TestEqual(TEXT("and is unchanged"), SoulFiguresOf(Farther).MaxHealth, FartherBefore.MaxHealth, 0.01f);
 
-	// A DEATH WITH NOBODY WITHIN SIX METRES RELEASES NOTHING: the only creature is eight away.
+	// A DEATH WITH NOBODY WITHIN SIX METRES RELEASES NOTHING: the only creature is eight away. Nothing floats either,
+	// asked before any soul could have been stepped (issue #1671).
 	ACataclysmEnemyCharacter* Beyond = PlaceCreatureAtRung(World, Mode, FVector(5800.0f, 0.0f, 0.0f), 0);
 	if (!TestNotNull(TEXT("a creature eight metres away"), Beyond)
 		|| !ACommonDiesAt(*this, World, Mode, Player, FVector(5000.0f, 0.0f, 0.0f)))
 	{
 		return false;
 	}
+	TestEqual(TEXT("no soul floats from a death with nobody in reach"), SoulsFloatingIn(World).Num(), 0);
+	FloatEverySoulUntilItEnds(World);
 	TestEqual(TEXT("the creature eight metres away holds none"), Mode->SoulHarvestSoulsOn(Beyond), 0);
 	TestEqual(TEXT("one soul given in all"), Mode->SoulHarvestSoulsGiven(), 1);
 
 	const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
 	const FString* Line = Counting.Find(SoulHarvest);
 	TestEqual(TEXT("the panel says it"), Line ? *Line : FString(TEXT("no line")),
-			  FString(TEXT("soul harvest: 1 soul(s) taken, the most on one living creature 1 of 5")));
+			  FString(TEXT("soul harvest: 1 soul(s) taken, 0 floating, the most on one living creature 1 of 5")));
 	return true;
 }
 
@@ -24914,7 +24963,7 @@ bool FCataclysmSoulsCapTest::RunTest(const FString& Parameters)
 	const FSoulFigures Before = SoulFiguresOf(Fed);
 	for (int32 Death = 0; Death < 7; ++Death)
 	{
-		if (!ACommonDiesAt(*this, World, Mode, Player, FVector(1200.0f, 0.0f, 0.0f)))
+		if (!ACommonDiesAndItsSoulLands(*this, World, Mode, Player, FVector(1200.0f, 0.0f, 0.0f)))
 		{
 			return false;
 		}
@@ -24993,7 +25042,7 @@ bool FCataclysmSoulsResistTest::RunTest(const FString& Parameters)
 		|| !TestTrue(FString::Printf(TEXT("and it did not empty the creature: %.2f of %.2f"), Unfed,
 									 SoulFiguresOf(Target).MaxHealth),
 					 Unfed < SoulFiguresOf(Target).MaxHealth * 0.9f)
-		|| !ACommonDiesAt(*this, World, Mode, Player, FVector(1200.0f, 0.0f, 0.0f)))
+		|| !ACommonDiesAndItsSoulLands(*this, World, Mode, Player, FVector(1200.0f, 0.0f, 0.0f)))
 	{
 		return false;
 	}
@@ -25047,9 +25096,11 @@ bool FCataclysmSoulsRungTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// EACH SOUL LANDS BEFORE THE NEXT DEATH, so the last death's rung change meets souls already held and must keep them
+	// (issue #1671 made the souls travel; landing them one by one keeps what this test guards).
 	for (int32 Death = 0; Death < Effects::BloodForgedChampionsDeathsPerRung; ++Death)
 	{
-		if (!ACommonDiesAt(*this, World, Mode, Player, FVector(1200.0f, 0.0f, 0.0f)))
+		if (!ACommonDiesAndItsSoulLands(*this, World, Mode, Player, FVector(1200.0f, 0.0f, 0.0f)))
 		{
 			return false;
 		}
@@ -25073,6 +25124,837 @@ bool FCataclysmSoulsRungTest::RunTest(const FString& Parameters)
 			  Bare.Damage * (1.0f + 0.1f * Souls), 0.01f);
 	TestEqual(TEXT("its all-resistance is its new rung's plus five a soul"), Fed.Resistance,
 			  Bare.Resistance + 5.0f * Souls, 0.01f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Demonic_Soul_Harvest's travelling soul. Issue #1671, ruled 2026-11-17 under the owner's delegation.
+//
+// "Souls float toward the nearest demon": a death releases an `ACataclysmHarvestedSoul` where the creature died,
+// bound for the nearest demon within 6 metres; it floats there at 8 metres a second and gives that one creature the
+// soul on arrival, within half a metre of it. A soul whose demon dies turns to the nearest demon where it is, or fades;
+// one that has floated four seconds fades; a cleared floor destroys it; a save counts it as arrived.
+//
+// THE GROUP IS `Cataclysm.SoulHarvestTravel.`, WITH THE TRAILING DOT, and it lives in this file to reuse the Soul
+// Harvest floor and its helpers above. The automation worlds never tick, so every soul here moves only when a test
+// calls its `Step`.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** The one soul floating in this world; null, and a failed check, when there is not exactly one. */
+	ACataclysmHarvestedSoul* TheOneSoulFloating(FAutomationTestBase& Test, UWorld* World)
+	{
+		const TArray<ACataclysmHarvestedSoul*> Floating = SoulsFloatingIn(World);
+		return Test.TestEqual(TEXT("exactly one soul floats"), Floating.Num(), 1) ? Floating[0] : nullptr;
+	}
+
+	/**
+	 * The distance between two points, in centimetres, as a float. FVector is double in this engine, and `TestEqual`
+	 * with one double and two floats matches both its float and its double overload equally well.
+	 */
+	float SoulCmBetween(const FVector& A, const FVector& B)
+	{
+		return static_cast<float>(FVector::Dist(A, B));
+	}
+
+	/** What the floor panel says for Soul Harvest, or a plain answer when it says nothing. */
+	FString SoulHarvestPanelLine(ACataclysmDungeonGameMode* Mode)
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(SoulHarvest);
+		return Line ? *Line : FString(TEXT("no line"));
+	}
+}
+
+// ONE STEP'S ARITHMETIC: eight metres a second, never past the demon, arriving within half a metre.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSoulTravelStepTest,
+	"Cataclysm.SoulHarvestTravel.AStepFloatsEightMetresASecondAndArrivesWithinHalfAMetre",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSoulTravelStepTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	const FVector From(0.0f, 0.0f, 0.0f);
+	const FVector To(1000.0f, 0.0f, 0.0f);
+	FVector At = FVector::ZeroVector;
+
+	TestFalse(TEXT("half a second toward a demon ten metres off does not arrive"),
+			  Effects::SoulHarvestSoulArrivesAfter(From, To, 0.5f, At));
+	TestEqual(TEXT("and has floated four metres"), static_cast<float>(At.X), 400.0f, 0.01f);
+	TestFalse(TEXT("1.18 s leaves it 56 cm short, outside the half metre"),
+			  Effects::SoulHarvestSoulArrivesAfter(From, To, 1.18f, At));
+	TestEqual(TEXT("at 944 cm"), static_cast<float>(At.X), 944.0f, 0.01f);
+	TestTrue(TEXT("1.2 s leaves it 40 cm short, inside the half metre: it arrives"),
+			 Effects::SoulHarvestSoulArrivesAfter(From, To, 1.2f, At));
+	TestEqual(TEXT("and stands at the demon"), static_cast<float>(At.X), 1000.0f, 0.01f);
+	TestTrue(TEXT("a long step never carries it past the demon"),
+			 Effects::SoulHarvestSoulArrivesAfter(From, To, 60.0f, At) && At.X == 1000.0f);
+	TestFalse(TEXT("no time, no move"), Effects::SoulHarvestSoulArrivesAfter(From, To, 0.0f, At));
+	TestEqual(TEXT("so it stands where it was"), static_cast<float>(At.X), 0.0f, 0.01f);
+	TestTrue(TEXT("one already within half a metre arrives on the step it is asked about"),
+			 Effects::SoulHarvestSoulArrivesAfter(From, FVector(30.0f, 0.0f, 0.0f), 0.0f, At));
+
+	TestTrue(TEXT("a Demonic creature is a demon"), Effects::SoulHarvestTakesAsADemon(FName(TEXT("Demonic"))));
+	TestFalse(TEXT("a War creature is not"), Effects::SoulHarvestTakesAsADemon(FName(TEXT("War"))));
+	TestFalse(TEXT("nor one with no type"), Effects::SoulHarvestTakesAsADemon(NAME_None));
+	return true;
+}
+
+// A DEATH RELEASES ONE SOUL WHERE THE CREATURE DIED, bound for the nearest demon, and it has not moved yet.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSoulTravelReleaseTest,
+	"Cataclysm.SoulHarvestTravel.ADeathReleasesASoulWhereTheCreatureDied",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSoulTravelReleaseTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASoulHarvestFloor(*this, World, Player, {SoulHarvest});
+	ACataclysmEnemyCharacter* Demon =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(1300.0f, 0.0f, 0.0f), 0) : nullptr;
+	ACataclysmEnemyCharacter* Victim =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(1000.0f, 0.0f, 0.0f), 0) : nullptr;
+	if (!TestNotNull(TEXT("a demon three metres from the death"), Demon)
+		|| !TestNotNull(TEXT("and a creature to die"), Victim)
+		|| !TestEqual(TEXT("nothing floats before the death"), SoulsFloatingIn(World).Num(), 0))
+	{
+		return false;
+	}
+	const FVector DiedAt = Victim->GetActorLocation();
+	if (!ThePlayerKills(*this, Player, Victim))
+	{
+		return false;
+	}
+
+	ACataclysmHarvestedSoul* Soul = TheOneSoulFloating(*this, World);
+	if (!Soul)
+	{
+		return false;
+	}
+	TestEqual(TEXT("it was released where the creature died"), SoulCmBetween(Soul->ReleasedAt(), DiedAt), 0.0f, 1.0f);
+	TestEqual(TEXT("and stands there, not yet moved"), SoulCmBetween(Soul->GetActorLocation(), DiedAt), 0.0f, 1.0f);
+	TestTrue(TEXT("bound for the nearest demon"), Soul->Target() == Demon);
+	TestTrue(TEXT("released by this floor's game mode"), Soul->ReleasedBy() == Mode);
+	TestEqual(TEXT("the game mode counts it floating"), Mode->SoulHarvestSoulsFloating(), 1);
+	TestEqual(TEXT("toward the demon"), Mode->SoulHarvestSoulsFloatingToward(Demon), 1);
+	TestEqual(TEXT("the panel says one floats and none is taken"), SoulHarvestPanelLine(Mode),
+			  FString(TEXT("soul harvest: 0 soul(s) taken, 1 floating, the most on one living creature 0 of 5")));
+	return true;
+}
+
+// THE SOUL FLOATS TO ITS DEMON OVER TIME AND IS NOT THERE AT ONCE. THE CONTROL: the instant grant, which this replaced,
+// gave the soul at the death, and fails the first check.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSoulTravelOverTimeTest,
+	"Cataclysm.SoulHarvestTravel.TheSoulFloatsToItsDemonOverTimeAndIsNotThereAtOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSoulTravelOverTimeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASoulHarvestFloor(*this, World, Player, {SoulHarvest});
+	ACataclysmEnemyCharacter* Demon =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(1300.0f, 0.0f, 0.0f), 0) : nullptr;
+	if (!TestNotNull(TEXT("a demon three metres from the death"), Demon))
+	{
+		return false;
+	}
+	const FSoulFigures Before = SoulFiguresOf(Demon);
+	if (!ACommonDiesAt(*this, World, Mode, Player, FVector(1000.0f, 0.0f, 0.0f)))
+	{
+		return false;
+	}
+
+	// CONTROL: NOTHING AT THE DEATH. The instant grant gave the soul here.
+	TestEqual(TEXT("CONTROL: the demon holds no soul at the instant of the death"), Mode->SoulHarvestSoulsOn(Demon), 0);
+	TestEqual(TEXT("CONTROL: and its maximum health has not moved"), SoulFiguresOf(Demon).MaxHealth, Before.MaxHealth,
+			  0.01f);
+	ACataclysmHarvestedSoul* Soul = TheOneSoulFloating(*this, World);
+	if (!Soul)
+	{
+		return false;
+	}
+
+	// A TENTH OF A SECOND: eight tenths of a metre, toward the demon.
+	const float StartAway = SoulCmBetween(Soul->GetActorLocation(), Demon->GetActorLocation());
+	if (!TestTrue(FString::Printf(TEXT("the demon is beyond a first step and the half metre: %.1f cm"), StartAway),
+				  StartAway > 80.0f + Effects::SoulHarvestSoulArrivalCm + 60.0f))
+	{
+		return false;
+	}
+	TestTrue(TEXT("still floating after a tenth of a second"), Soul->Step(0.1f));
+	TestEqual(TEXT("it floated 80 cm from where it was released"),
+			  SoulCmBetween(Soul->GetActorLocation(), Soul->ReleasedAt()), 80.0f, 0.5f);
+	TestEqual(TEXT("and every centimetre of it toward the demon"),
+			  StartAway - SoulCmBetween(Soul->GetActorLocation(), Demon->GetActorLocation()), 80.0f, 0.5f);
+	TestEqual(TEXT("and has given nothing yet"), Mode->SoulHarvestSoulsOn(Demon), 0);
+
+	// THEN TO 60 CM SHORT, STILL OUTSIDE THE HALF METRE, AND THEN ONE TWENTIETH MORE: 40 cm, which arrives.
+	const float ToSixtyShort = (StartAway - 80.0f - 60.0f)
+		/ (Effects::SoulHarvestSoulSpeedMetresPerSecond * UCataclysmContagion::CentimetresPerMetre);
+	TestTrue(TEXT("still floating sixty centimetres short"), Soul->Step(ToSixtyShort));
+	TestEqual(TEXT("sixty centimetres short"), SoulCmBetween(Soul->GetActorLocation(), Demon->GetActorLocation()),
+			  60.0f, 0.5f);
+	TestEqual(TEXT("and still nothing given"), Mode->SoulHarvestSoulsOn(Demon), 0);
+	TestFalse(TEXT("one twentieth more ends its flight"), Soul->Step(0.05f));
+	TestTrue(TEXT("by arriving"), Soul->HowItEnded() == ECataclysmHarvestedSoulEnd::Arrived);
+	TestEqual(TEXT("and the demon now holds the soul"), Mode->SoulHarvestSoulsOn(Demon), 1);
+	TestEqual(TEXT("its maximum health 10% more"), SoulFiguresOf(Demon).MaxHealth, Before.MaxHealth * 1.1f, 0.01f);
+	TestEqual(TEXT("nothing floats after"), SoulsFloatingIn(World).Num(), 0);
+	return true;
+}
+
+// ARRIVAL GIVES THE SOUL TO THAT ONE CREATURE: neither the creature behind it on the soul's line nor one beside the
+// death gains anything, and nor does the player.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSoulTravelOneCreatureTest,
+	"Cataclysm.SoulHarvestTravel.ArrivalGivesTheSoulToThatCreatureOnly",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSoulTravelOneCreatureTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASoulHarvestFloor(*this, World, Player, {SoulHarvest});
+	ACataclysmEnemyCharacter* Demon =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(1300.0f, 0.0f, 0.0f), 0) : nullptr;
+	ACataclysmEnemyCharacter* Behind =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(1400.0f, 0.0f, 0.0f), 0) : nullptr;
+	ACataclysmEnemyCharacter* Aside =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(1000.0f, 500.0f, 0.0f), 0) : nullptr;
+	if (!TestNotNull(TEXT("a demon at three metres"), Demon) || !TestNotNull(TEXT("one behind it at four"), Behind)
+		|| !TestNotNull(TEXT("and one aside at five"), Aside))
+	{
+		return false;
+	}
+	const FSoulFigures DemonBefore = SoulFiguresOf(Demon);
+	const FSoulFigures BehindBefore = SoulFiguresOf(Behind);
+	const FSoulFigures AsideBefore = SoulFiguresOf(Aside);
+	const float PlayerMaximum = Player.Read(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	if (!ACommonDiesAndItsSoulLands(*this, World, Mode, Player, FVector(1000.0f, 0.0f, 0.0f)))
+	{
+		return false;
+	}
+
+	const FSoulFigures DemonAfter = SoulFiguresOf(Demon);
+	TestEqual(TEXT("the demon holds one soul"), Mode->SoulHarvestSoulsOn(Demon), 1);
+	TestEqual(TEXT("its maximum health is 10% more"), DemonAfter.MaxHealth, DemonBefore.MaxHealth * 1.1f, 0.01f);
+	TestEqual(TEXT("and its health rose by as much"), DemonAfter.Health - DemonBefore.Health,
+			  DemonAfter.MaxHealth - DemonBefore.MaxHealth, 0.01f);
+	TestEqual(TEXT("its attack damage is 10% more"), DemonAfter.Damage, DemonBefore.Damage * 1.1f, 0.01f);
+	TestEqual(TEXT("its all-resistance is 5 more"), DemonAfter.Resistance,
+			  DemonBefore.Resistance + Effects::SoulHarvestResistancePerSoul, 0.01f);
+
+	TestEqual(TEXT("the creature behind it holds none"), Mode->SoulHarvestSoulsOn(Behind), 0);
+	TestEqual(TEXT("and its maximum health is unchanged"), SoulFiguresOf(Behind).MaxHealth, BehindBefore.MaxHealth,
+			  0.01f);
+	TestEqual(TEXT("and its attack damage"), SoulFiguresOf(Behind).Damage, BehindBefore.Damage, 0.01f);
+	TestEqual(TEXT("the creature aside holds none"), Mode->SoulHarvestSoulsOn(Aside), 0);
+	TestEqual(TEXT("and its maximum health is unchanged"), SoulFiguresOf(Aside).MaxHealth, AsideBefore.MaxHealth, 0.01f);
+	TestEqual(TEXT("and its all-resistance"), SoulFiguresOf(Aside).Resistance, AsideBefore.Resistance, 0.01f);
+	TestEqual(TEXT("the player's maximum health is unchanged"),
+			  Player.Read(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()), PlayerMaximum, 0.01f);
+	TestEqual(TEXT("one soul given"), Mode->SoulHarvestSoulsGiven(), 1);
+	return true;
+}
+
+// ITS DEMON DIES ON THE WAY: the soul turns to the nearest demon within reach of where it floats, and arrives there.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSoulTravelTurnsTest,
+	"Cataclysm.SoulHarvestTravel.ASoulWhoseDemonDiesTurnsToTheNearestDemonWhereItIs",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSoulTravelTurnsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASoulHarvestFloor(*this, World, Player, {SoulHarvest});
+	// FIRST AT THREE METRES, NEXT AT FOUR: the nearer is the soul's demon until it dies.
+	ACataclysmEnemyCharacter* First =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(1300.0f, 0.0f, 0.0f), 0) : nullptr;
+	ACataclysmEnemyCharacter* Next =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(1000.0f, 400.0f, 0.0f), 0) : nullptr;
+	if (!TestNotNull(TEXT("a first demon"), First) || !TestNotNull(TEXT("and a next"), Next)
+		|| !ACommonDiesAt(*this, World, Mode, Player, FVector(1000.0f, 0.0f, 0.0f)))
+	{
+		return false;
+	}
+	ACataclysmHarvestedSoul* Soul = TheOneSoulFloating(*this, World);
+	if (!Soul || !TestTrue(TEXT("the soul is bound for the first"), Soul->Target() == First)
+		|| !TestTrue(TEXT("and floats a tenth of a second"), Soul->Step(0.1f)))
+	{
+		return false;
+	}
+
+	// THE FIRST DIES. Its own death releases its own soul, bound for the next (five metres from it).
+	if (!ThePlayerKills(*this, Player, First))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the first soul still floats a twentieth more, now turned"), Soul->Step(0.05f));
+	TestTrue(TEXT("toward the next"), Soul->Target() == Next);
+	TestEqual(TEXT("having turned once"), Soul->TimesTurned(), 1);
+
+	FloatEverySoulUntilItEnds(World);
+	TestEqual(TEXT("the next holds both souls: the turned one and the first's own"), Mode->SoulHarvestSoulsOn(Next), 2);
+	TestEqual(TEXT("two given"), Mode->SoulHarvestSoulsGiven(), 2);
+	return true;
+}
+
+// ITS DEMON DIES AND NO DEMON IS WITHIN REACH OF WHERE IT FLOATS: it fades, giving nothing.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSoulTravelNoneLeftTest,
+	"Cataclysm.SoulHarvestTravel.ASoulWithNoDemonLeftFadesGivingNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSoulTravelNoneLeftTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASoulHarvestFloor(*this, World, Player, {SoulHarvest});
+	// THE DEMON AT THREE METRES, AND ANOTHER CREATURE TEN METRES FROM THE DEATH AND SEVEN FROM THE DEMON: beyond
+	// reach of the death, of the demon's own death, and of the soul.
+	ACataclysmEnemyCharacter* Demon =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(1300.0f, 0.0f, 0.0f), 0) : nullptr;
+	ACataclysmEnemyCharacter* Far =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(2000.0f, 0.0f, 0.0f), 0) : nullptr;
+	if (!TestNotNull(TEXT("a demon"), Demon) || !TestNotNull(TEXT("and a creature far off"), Far)
+		|| !ACommonDiesAt(*this, World, Mode, Player, FVector(1000.0f, 0.0f, 0.0f)))
+	{
+		return false;
+	}
+	ACataclysmHarvestedSoul* Soul = TheOneSoulFloating(*this, World);
+	if (!Soul || !TestTrue(TEXT("it floats a tenth of a second"), Soul->Step(0.1f))
+		|| !ThePlayerKills(*this, Player, Demon))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the demon's own death released nothing: nobody within reach of it"), SoulsFloatingIn(World).Num(), 1);
+
+	TestFalse(TEXT("the next step ends the soul"), Soul->Step(0.05f));
+	TestTrue(TEXT("with no demon left"), Soul->HowItEnded() == ECataclysmHarvestedSoulEnd::NoDemonLeft);
+	TestEqual(TEXT("nothing floats"), SoulsFloatingIn(World).Num(), 0);
+	TestEqual(TEXT("the far creature holds none"), Mode->SoulHarvestSoulsOn(Far), 0);
+	TestEqual(TEXT("and none was given"), Mode->SoulHarvestSoulsGiven(), 0);
+	return true;
+}
+
+// SEVERAL SOULS TO ONE DEMON: each is one soul, to the cap of five, and a save counts the floating ones to the cap.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSoulTravelSeveralTest,
+	"Cataclysm.SoulHarvestTravel.SeveralSoulsToOneDemonEachCountToTheCap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSoulTravelSeveralTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASoulHarvestFloor(*this, World, Player, {SoulHarvest});
+	ACataclysmEnemyCharacter* Fed =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(1000.0f, 0.0f, 0.0f), 0) : nullptr;
+	if (!TestNotNull(TEXT("a demon to feed"), Fed))
+	{
+		return false;
+	}
+	const FSoulFigures Before = SoulFiguresOf(Fed);
+	for (int32 Death = 0; Death < 7; ++Death)
+	{
+		if (!ACommonDiesAt(*this, World, Mode, Player, FVector(1200.0f, 0.0f, 0.0f)))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("seven souls float toward it at once"), Mode->SoulHarvestSoulsFloatingToward(Fed), 7);
+
+	// A SAVE NOW reads the floating souls as arrived, to the cap, and as given.
+	int32 Souls = 0;
+	float HealthAdded = -1.0f;
+	Mode->SoulHarvestHeldBy(Fed, Souls, HealthAdded);
+	TestEqual(TEXT("a save reads five, the cap, not seven"), Souls, Effects::SoulHarvestMostSouls);
+	TestEqual(TEXT("with no health added yet, since none has landed"), HealthAdded, 0.0f, 0.001f);
+	TestEqual(TEXT("and five given"), Mode->WalkStateNow().SoulHarvestGiven, Effects::SoulHarvestMostSouls);
+
+	FloatEverySoulUntilItEnds(World);
+	TestEqual(TEXT("seven souls leave five"), Mode->SoulHarvestSoulsOn(Fed), 5);
+	TestEqual(TEXT("and five given"), Mode->SoulHarvestSoulsGiven(), 5);
+	const FSoulFigures After = SoulFiguresOf(Fed);
+	TestEqual(TEXT("maximum health is half again"), After.MaxHealth, Before.MaxHealth * 1.5f, 0.01f);
+	TestEqual(TEXT("attack damage is half again"), After.Damage, Before.Damage * 1.5f, 0.01f);
+	TestEqual(TEXT("all-resistance is 25 more"), After.Resistance, Before.Resistance + 25.0f, 0.01f);
+	return true;
+}
+
+// NOTHING CAN STRIKE, BLOCK OR TAKE A SOUL: it has no part to collide with, a player's search cannot find it, and it
+// still arrives.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSoulTravelUntouchableTest,
+	"Cataclysm.SoulHarvestTravel.ASoulTouchesNothingAndNothingFindsIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSoulTravelUntouchableTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASoulHarvestFloor(*this, World, Player, {SoulHarvest});
+	ACataclysmEnemyCharacter* Demon =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(1300.0f, 0.0f, 0.0f), 0) : nullptr;
+	if (!TestNotNull(TEXT("a demon"), Demon)
+		|| !ACommonDiesAt(*this, World, Mode, Player, FVector(1000.0f, 0.0f, 0.0f)))
+	{
+		return false;
+	}
+	ACataclysmHarvestedSoul* Soul = TheOneSoulFloating(*this, World);
+	if (!Soul || !TestTrue(TEXT("it floats a tenth of a second"), Soul->Step(0.1f)))
+	{
+		return false;
+	}
+	TestNull(TEXT("it has no part that could collide or be struck"), Soul->FindComponentByClass<UPrimitiveComponent>());
+	TestFalse(TEXT("its actor collision is off or empty"),
+			  Soul->GetActorEnableCollision() && Soul->FindComponentByClass<UPrimitiveComponent>() != nullptr);
+	const TArray<AActor*> Found =
+		UCataclysmTargeting::FindEnemiesInSphere(World, Player.Character, Soul->GetActorLocation(), 200.0f);
+	TestFalse(TEXT("a player's search where it floats does not find it"), Found.Contains(Soul));
+
+	FloatEverySoulUntilItEnds(World);
+	TestEqual(TEXT("and it still arrives"), Mode->SoulHarvestSoulsOn(Demon), 1);
+	return true;
+}
+
+// THE FLOOR ENDS WHILE A SOUL FLOATS: the next floor's clearing destroys it, giving nothing.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSoulTravelFloorEndsTest,
+	"Cataclysm.SoulHarvestTravel.AFloorEndingUnderASoulDestroysItGivingNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSoulTravelFloorEndsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASoulHarvestFloor(*this, World, Player, {SoulHarvest});
+	ACataclysmEnemyCharacter* Demon =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(1300.0f, 0.0f, 0.0f), 0) : nullptr;
+	if (!TestNotNull(TEXT("a demon"), Demon)
+		|| !ACommonDiesAt(*this, World, Mode, Player, FVector(1000.0f, 0.0f, 0.0f)))
+	{
+		return false;
+	}
+	ACataclysmHarvestedSoul* Soul = TheOneSoulFloating(*this, World);
+	if (!Soul || !TestTrue(TEXT("it floats a tenth of a second"), Soul->Step(0.1f)))
+	{
+		return false;
+	}
+	const TWeakObjectPtr<ACataclysmHarvestedSoul> Watched(Soul);
+
+	if (!TestTrue(TEXT("the next floor was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("the soul is gone with the floor"), Watched.IsValid());
+	TestEqual(TEXT("nothing floats"), SoulsFloatingIn(World).Num(), 0);
+	TestEqual(TEXT("and nothing was given"), Mode->SoulHarvestSoulsGiven(), 0);
+	return true;
+}
+
+// A SAVE WHILE A SOUL FLOATS COUNTS IT AS ARRIVED, and the creature's record, put back as a load puts it, gives the
+// creature the soul: what an arrival would have given.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSoulTravelSaveTest,
+	"Cataclysm.SoulHarvestTravel.ASaveCountsAFloatingSoulAsArrivedAndTheRecordGivesIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSoulTravelSaveTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASoulHarvestFloor(*this, World, Player, {SoulHarvest});
+	ACataclysmEnemyCharacter* Demon =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(1300.0f, 0.0f, 0.0f), 0) : nullptr;
+	if (!TestNotNull(TEXT("a demon"), Demon))
+	{
+		return false;
+	}
+	const FSoulFigures Before = SoulFiguresOf(Demon);
+	if (!ACommonDiesAt(*this, World, Mode, Player, FVector(1000.0f, 0.0f, 0.0f)))
+	{
+		return false;
+	}
+
+	// THE SAVE'S READING, against the live one.
+	int32 Souls = 0;
+	float HealthAdded = -1.0f;
+	Mode->SoulHarvestHeldBy(Demon, Souls, HealthAdded);
+	TestEqual(TEXT("live, the demon holds no soul yet"), Mode->SoulHarvestSoulsOn(Demon), 0);
+	TestEqual(TEXT("a save reads the floating soul as arrived"), Souls, 1);
+	TestEqual(TEXT("with no health added, which the saved maximum does not hold"), HealthAdded, 0.0f, 0.001f);
+	TestEqual(TEXT("live, none given yet"), Mode->SoulHarvestSoulsGiven(), 0);
+	TestEqual(TEXT("a save reads one given"), Mode->WalkStateNow().SoulHarvestGiven, 1);
+
+	// A LOAD: the floor is cleared under the soul, which destroys it, and the creature's record is put back.
+	for (ACataclysmHarvestedSoul* Soul : SoulsFloatingIn(World))
+	{
+		Soul->Destroy();
+	}
+	FCataclysmSavedCreature Record;
+	Record.SoulHarvestSouls = Souls;
+	Record.SoulHarvestHealthAdded = HealthAdded;
+	Mode->RestoreCreatureRoles(*Demon, Record);
+
+	const FSoulFigures After = SoulFiguresOf(Demon);
+	TestEqual(TEXT("the demon holds the soul"), Mode->SoulHarvestSoulsOn(Demon), 1);
+	TestEqual(TEXT("its maximum health is 10% more"), After.MaxHealth, Before.MaxHealth * 1.1f, 0.01f);
+	TestEqual(TEXT("and its health rose by as much, as an arrival raises it"), After.Health - Before.Health,
+			  After.MaxHealth - Before.MaxHealth, 0.01f);
+	TestEqual(TEXT("its attack damage is 10% more"), After.Damage, Before.Damage * 1.1f, 0.01f);
+	TestEqual(TEXT("its all-resistance is 5 more"), After.Resistance,
+			  Before.Resistance + Effects::SoulHarvestResistancePerSoul, 0.01f);
+	return true;
+}
+
+// A FLOOR WITHOUT THE ROW RELEASES NOTHING, though it carries another rule that listens to every death.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSoulTravelNoRowTest,
+	"Cataclysm.SoulHarvestTravel.AFloorWithoutTheRowReleasesNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSoulTravelNoRowTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASoulHarvestFloor(*this, World, Player, {BloodForgedChampions});
+	if (!Mode || !TestFalse(TEXT("the floor does not carry Soul Harvest"), Mode->FloorBrief.Modifiers.Contains(SoulHarvest)))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Demon = PlaceCreatureAtRung(World, Mode, FVector(1300.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("a demon three metres from the death"), Demon))
+	{
+		return false;
+	}
+	const float MaximumBefore = SoulFiguresOf(Demon).MaxHealth;
+	if (!ACommonDiesAt(*this, World, Mode, Player, FVector(1000.0f, 0.0f, 0.0f)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("no soul floats"), SoulsFloatingIn(World).Num(), 0);
+	FloatEverySoulUntilItEnds(World);
+	TestEqual(TEXT("the demon holds none"), Mode->SoulHarvestSoulsOn(Demon), 0);
+	TestEqual(TEXT("and its maximum health is unchanged"), SoulFiguresOf(Demon).MaxHealth, MaximumBefore, 0.01f);
+	TestEqual(TEXT("and the panel has no Soul Harvest line"), SoulHarvestPanelLine(Mode), FString(TEXT("no line")));
+	return true;
+}
+
+// THE NEAREST DEMON IS THE NEAREST DEMONIC CREATURE: a nearer creature of another Cataclysm is passed over, and a death
+// with only such a creature within reach releases nothing.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSoulTravelDemonTest,
+	"Cataclysm.SoulHarvestTravel.TheNearestDemonIsTheNearestDemonicCreature",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSoulTravelDemonTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASoulHarvestFloor(*this, World, Player, {SoulHarvest});
+	ACataclysmEnemyCharacter* Stranger =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(1200.0f, 0.0f, 0.0f), 0) : nullptr;
+	ACataclysmEnemyCharacter* Demon =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(1500.0f, 0.0f, 0.0f), 0) : nullptr;
+	if (!TestNotNull(TEXT("a creature two metres from the death"), Stranger)
+		|| !TestNotNull(TEXT("and a demon five metres from it"), Demon))
+	{
+		return false;
+	}
+	Stranger->DamageType = FName(TEXT("War"));
+	TestFalse(TEXT("the nearer creature is no demon"), Mode->SoulHarvestMayFeed(Stranger));
+	TestTrue(TEXT("CONTROL: the farther one is"), Mode->SoulHarvestMayFeed(Demon));
+
+	if (!ACommonDiesAt(*this, World, Mode, Player, FVector(1000.0f, 0.0f, 0.0f)))
+	{
+		return false;
+	}
+	ACataclysmHarvestedSoul* Soul = TheOneSoulFloating(*this, World);
+	if (!Soul || !TestTrue(TEXT("the soul is bound for the demon, not the nearer War creature"), Soul->Target() == Demon))
+	{
+		return false;
+	}
+	FloatEverySoulUntilItEnds(World);
+	TestEqual(TEXT("the demon holds the soul"), Mode->SoulHarvestSoulsOn(Demon), 1);
+	TestEqual(TEXT("the War creature holds none"), Mode->SoulHarvestSoulsOn(Stranger), 0);
+
+	// ONLY THE WAR CREATURE WITHIN REACH: no soul. Away from the demon, which is then ten metres off.
+	Stranger->SetActorLocation(FVector(2700.0f, 0.0f, Stranger->GetActorLocation().Z));
+	if (!ACommonDiesAt(*this, World, Mode, Player, FVector(2500.0f, 0.0f, 0.0f)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a death with only a War creature within reach releases nothing"), SoulsFloatingIn(World).Num(), 0);
+	return true;
+}
+
+// A SOUL THAT CANNOT CATCH ITS DEMON FADES AFTER FOUR SECONDS, giving nothing.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSoulTravelFadesTest,
+	"Cataclysm.SoulHarvestTravel.ASoulThatCannotCatchItsDemonFadesGivingNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSoulTravelFadesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASoulHarvestFloor(*this, World, Player, {SoulHarvest});
+	ACataclysmEnemyCharacter* Demon =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(1300.0f, 0.0f, 0.0f), 0) : nullptr;
+	if (!TestNotNull(TEXT("a demon"), Demon)
+		|| !ACommonDiesAt(*this, World, Mode, Player, FVector(1000.0f, 0.0f, 0.0f)))
+	{
+		return false;
+	}
+	ACataclysmHarvestedSoul* Soul = TheOneSoulFloating(*this, World);
+	if (!Soul)
+	{
+		return false;
+	}
+
+	// THE DEMON RUNS AWAY AT TEN METRES A SECOND, faster than the soul's eight, a tenth of a second at a time.
+	int32 Steps = 0;
+	bool bFloating = true;
+	while (bFloating && Steps < 100)
+	{
+		Demon->SetActorLocation(Demon->GetActorLocation() + FVector(100.0f, 0.0f, 0.0f));
+		bFloating = Soul->Step(0.1f);
+		++Steps;
+	}
+	TestFalse(TEXT("the soul ended"), bFloating);
+	TestTrue(TEXT("by fading"), Soul->HowItEnded() == ECataclysmHarvestedSoulEnd::Faded);
+	TestEqual(TEXT("after its four seconds"), Soul->SecondsFloated(), Effects::SoulHarvestSoulLifetimeSeconds, 0.11f);
+	TestEqual(TEXT("still bound for that demon to the end: it never turned"), Soul->TimesTurned(), 0);
+	TestEqual(TEXT("the demon holds none"), Mode->SoulHarvestSoulsOn(Demon), 0);
+	TestEqual(TEXT("and none was given"), Mode->SoulHarvestSoulsGiven(), 0);
+	return true;
+}
+
+// THE FLOOR PANEL IS TOLD A SOUL FLOATS FROM ITS RELEASE UNTIL IT LANDS OR FADES, AND NO LONGER: the line the game's
+// controller was last handed, read after a release, a landing, a second release and a fade. Issue #1671.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSoulTravelPanelTest,
+	"Cataclysm.SoulHarvestTravel.ThePanelIsToldASoulFloatsUntilItLandsOrFadesAndNoLonger",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSoulTravelPanelTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World, ACataclysmPlayerController::StaticClass());
+	ACataclysmPlayerController* Controller = Cast<ACataclysmPlayerController>(Player.Controller);
+	ACataclysmDungeonGameMode* Mode = ASoulHarvestFloor(*this, World, Player, {SoulHarvest});
+	ACataclysmEnemyCharacter* Demon =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(1300.0f, 0.0f, 0.0f), 0) : nullptr;
+	if (!TestNotNull(TEXT("the game's own controller, which keeps what the panel was told"), Controller)
+		|| !TestNotNull(TEXT("a demon three metres from the death"), Demon))
+	{
+		return false;
+	}
+	auto ToldLine = [Controller]()
+	{
+		const FString* Line = Controller->FloorModifiersShown().LiveCounts.Find(SoulHarvest);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+
+	if (!ACommonDiesAt(*this, World, Mode, Player, FVector(1000.0f, 0.0f, 0.0f)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("released: the panel was told one floats"), ToldLine(),
+			  FString(TEXT("soul harvest: 0 soul(s) taken, 1 floating, the most on one living creature 0 of 5")));
+	FloatEverySoulUntilItEnds(World);
+	TestEqual(TEXT("landed: the panel was told it was taken and floats no longer"), ToldLine(),
+			  FString(TEXT("soul harvest: 1 soul(s) taken, 0 floating, the most on one living creature 1 of 5")));
+
+	// A SECOND SOUL, WHICH FADES: the demon runs at ten metres a second, faster than the soul's eight.
+	if (!ACommonDiesAt(*this, World, Mode, Player, FVector(1000.0f, 0.0f, 0.0f)))
+	{
+		return false;
+	}
+	ACataclysmHarvestedSoul* Soul = TheOneSoulFloating(*this, World);
+	if (!Soul)
+	{
+		return false;
+	}
+	TestEqual(TEXT("released again: the panel was told one floats"), ToldLine(),
+			  FString(TEXT("soul harvest: 1 soul(s) taken, 1 floating, the most on one living creature 1 of 5")));
+	int32 Steps = 0;
+	bool bFloating = true;
+	while (bFloating && Steps < 100)
+	{
+		Demon->SetActorLocation(Demon->GetActorLocation() + FVector(100.0f, 0.0f, 0.0f));
+		bFloating = Soul->Step(0.1f);
+		++Steps;
+	}
+	TestTrue(TEXT("the second soul faded"), !bFloating && Soul->HowItEnded() == ECataclysmHarvestedSoulEnd::Faded);
+	TestEqual(TEXT("faded: the panel was told it floats no longer, and nothing more was taken"), ToldLine(),
+			  FString(TEXT("soul harvest: 1 soul(s) taken, 0 floating, the most on one living creature 1 of 5")));
+	return true;
+}
+
+// A HORDE'S NEXT WAVE, WHICH KEEPS ITS ARENA, KEEPS A SOUL FLOATING TO ITS DEMON: the clearing does not run, the soul
+// is not turned, and it lands. Ruling 11 of 2026-11-17, issue #1671.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSoulTravelHordeTest,
+	"Cataclysm.SoulHarvestTravel.AHordesNextWaveKeepsASoulFloatingToItsDemon",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSoulTravelHordeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	Mode->DungeonModifiers = {SoulHarvest};
+	if (!TestTrue(TEXT("set-up: the first wave was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	ACataclysmEnemyCharacter* Demon = PlaceCreatureAtRung(World, Mode, FVector(1300.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("a demon three metres from the death"), Demon)
+		|| !ACommonDiesAt(*this, World, Mode, Player, FVector(1000.0f, 0.0f, 0.0f)))
+	{
+		return false;
+	}
+	ACataclysmHarvestedSoul* Soul = TheOneSoulFloating(*this, World);
+	if (!Soul || !TestTrue(TEXT("it floats a tenth of a second"), Soul->Step(0.1f)))
+	{
+		return false;
+	}
+	const TWeakObjectPtr<ACataclysmHarvestedSoul> Watched(Soul);
+
+	if (!TestTrue(TEXT("set-up: the second wave was reached"), Mode->GoToFloor(2))
+		|| !TestTrue(TEXT("set-up: in the same arena"), Mode->FloorBrief.bSameArenaAsLastFloor))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("the soul is still there"), Watched.IsValid()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("still floating"), Soul->HowItEnded() == ECataclysmHarvestedSoulEnd::InFlight);
+	TestTrue(TEXT("still bound for its demon"), Soul->Target() == Demon);
+	TestEqual(TEXT("not turned"), Soul->TimesTurned(), 0);
+
+	FloatEverySoulUntilItEnds(World);
+	TestTrue(TEXT("it landed"), Soul->HowItEnded() == ECataclysmHarvestedSoulEnd::Arrived);
+	TestEqual(TEXT("the demon holds it"), Mode->SoulHarvestSoulsOn(Demon), 1);
+	TestEqual(TEXT("one given"), Mode->SoulHarvestSoulsGiven(), 1);
 	return true;
 }
 

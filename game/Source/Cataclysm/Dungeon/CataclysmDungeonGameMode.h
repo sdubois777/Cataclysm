@@ -373,7 +373,14 @@ public:
 	 */
 	void RestoreWalkState(const struct FCataclysmSavedWalk& Walk);
 
-	/** The souls Soul Harvest's rule holds for this creature, and the maximum health they added. Issue #753, Group 2. */
+	/**
+	 * The souls Soul Harvest's rule holds for this creature, and the maximum health they added. Issue #753, Group 2.
+	 *
+	 * AS A SAVE READS THEM, SO A SOUL STILL FLOATING TOWARD IT COUNTS AS ARRIVED, to the cap, since issue #1671: the
+	 * soul itself is not saved, and a load clears the floor, so a quit just after a kill would otherwise take back the
+	 * soul that kill released. The health added stays what the held souls added, because that is what the saved maximum
+	 * holds; `RestoreCreatureRoles` then writes the extra souls' figures on, health with them, as an arrival would.
+	 */
 	void SoulHarvestHeldBy(const ACataclysmEnemyCharacter* Creature, int32& OutSouls, float& OutHealthAdded) const;
 
 	/** Whether this creature is the boss Nothing Is Forgotten fed. Issue #753, Group 2. */
@@ -2312,6 +2319,36 @@ public:
 	 */
 	int32 SoulHarvestSoulsOn(const ACataclysmEnemyCharacter* Creature) const;
 	int32 SoulHarvestSoulsGiven() const { return SoulHarvestGiven; }
+
+	/**
+	 * Soul Harvest's travelling souls, issue #1671: the souls this game mode released that are still floating, all of
+	 * them or those bound for one creature. For the floor panel, the save and tests.
+	 */
+	int32 SoulHarvestSoulsFloating() const;
+	int32 SoulHarvestSoulsFloatingToward(const ACataclysmEnemyCharacter* Creature) const;
+
+	/**
+	 * Whether a soul may feed this creature: it stands, it is a demon (`SoulHarvestTakesAsADemon` of its damage type),
+	 * and it is the player's enemy, which a thrall the player took is not. Asked by a floating soul of its own demon
+	 * every step, issue #1671.
+	 */
+	bool SoulHarvestMayFeed(const ACataclysmEnemyCharacter* Creature) const;
+
+	/**
+	 * The nearest creature a soul may feed within `SoulHarvestRadiusCm` of `From`, skipping `Skip`; null when there is
+	 * none. The release asks it at the death, and a soul whose demon no longer qualifies asks it where it floats.
+	 * Issue #1671.
+	 */
+	ACataclysmEnemyCharacter* NearestDemonForASoul(const FVector& From, const AActor* Skip) const;
+
+	/**
+	 * A floating soul reached `Demon`: one more soul for it, to the cap, its figures written, the panel refreshed. What
+	 * the instant grant did at the death until issue #1671. A demon at the cap takes nothing, and the soul is spent.
+	 */
+	void SoulHarvestSoulArrived(ACataclysmEnemyCharacter* Demon);
+
+	/** A floating soul ended giving nothing, faded or with no demon left: the panel's floating count is refreshed. */
+	void SoulHarvestSoulLost() { RefreshFloorModifierPanel(); }
 
 	/** The Reaper on this floor, or null before it arrives. For the floor panel and tests. */
 	ACataclysmEnemyCharacter* TheReaperOnTheFloor() const { return TheReaper.Get(); }
@@ -4320,7 +4357,10 @@ private:
 	void StepDivineWrath(class ACataclysmPlayerCharacter* Player,
 						 class UCataclysmAbilitySystemComponent* AbilitySystem);
 
-	/** Soul Harvest, on every death: a soul to the nearest living creature within reach. */
+	/**
+	 * Soul Harvest, on every death: a soul released where the creature died, floating to the nearest demon within
+	 * reach. Nothing when no demon is within reach. Issue #1671.
+	 */
 	void NoteDeathForSoulHarvest(const struct FCataclysmDeathNotice& Notice);
 
 	/**
@@ -5637,6 +5677,12 @@ private:
 	};
 	TMap<TWeakObjectPtr<ACataclysmEnemyCharacter>, FSoulHarvestHeld> SoulHarvestHeld;
 	int32 SoulHarvestGiven = 0;
+
+	/**
+	 * How many of the souls still floating their demons would take, each demon to the cap: what a save counts as given,
+	 * as `SoulHarvestHeldBy` counts them as arrived. Issue #1671.
+	 */
+	int32 SoulHarvestFloatingTaken() const;
 
 	/**
 	 * Chaos Touched: the stacks of each kind the dungeon has added, and what is on the

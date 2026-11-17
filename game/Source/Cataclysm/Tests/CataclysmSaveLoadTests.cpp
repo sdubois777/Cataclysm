@@ -14,6 +14,7 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmCorruptedStalkerCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -26,6 +27,7 @@
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Dungeon/CataclysmDungeonStairs.h"
 #include "Dungeon/CataclysmFloorBrief.h"
+#include "Dungeon/CataclysmHarvestedSoul.h"
 #include "Dungeon/CataclysmFloorGenerator.h"
 #include "Dungeon/CataclysmFloorObject.h"
 #include "Dungeon/CataclysmFloorObstacle.h"
@@ -1972,6 +1974,150 @@ bool FCataclysmSaveLoadCreatureRolesTest::RunTest(const FString&)
 	TestEqual(TEXT("the creature still holds its 3 souls"), SoulsAfter, 3);
 	TestEqual(TEXT("with the figures they gave it"), HolderAfter, HolderSaved);
 	TestEqual(TEXT("and the void's boss is the void's boss, its health not given twice"), BossAfter, BossSaved);
+	return true;
+}
+
+/**
+ * A Soul Harvest soul still floating when the game saves comes back given to the creature it was bound for: a new world
+ * loaded from the save holds that creature with one soul and the figures the soul's arrival gave it in the saving world.
+ * Issue #1671, ruled 2026-11-17: the save counts a floating soul as arrived (`SoulHarvestHeldBy`), and the soul itself
+ * is not saved.
+ *
+ * THE LOAD ORDER IS WHAT THIS GUARDS AS WELL. `RestoreCreatureRoles` takes the record's health added off the loaded
+ * maximum and treats the attack damage and the all-resistance as holding no soul's share, which is right only because
+ * `FCataclysmSaveApply::CreatureInto` rebuilds both from the creature's own figures (`SetAttackDamage` with the saved
+ * starting damage, the archetype's resistance) and writes the saved maximum, which holds the souls' health. A share
+ * counted twice or lost on either side would make the loaded figures differ from the arrived ones.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadFloatingSoulTest,
+	"Cataclysm.SaveLoad.ASoulStillFloatingAtASaveComesBackGivenToItsDemon",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadFloatingSoulTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	// MAXIMUM, HEALTH, ATTACK DAMAGE AND ALL-RESISTANCE: the four figures a soul moves.
+	auto SoulFigures = [](const ACataclysmEnemyCharacter& Creature)
+	{
+		const UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(&Creature);
+		if (!Abilities)
+		{
+			return FString(TEXT("(no ability system)"));
+		}
+		return FString::Printf(
+			TEXT("max %.1f health %.1f damage %.1f resistance %.1f at %.0f %.0f"),
+			Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()),
+			Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()),
+			Abilities->GetNumericAttribute(UCataclysmCombatAttributeSet::GetAttackDamageAttribute()),
+			Abilities->GetNumericAttribute(UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute()),
+			Creature.GetActorLocation().X, Creature.GetActorLocation().Y);
+	};
+
+	FSaved Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	FString OwnFigures;
+	FString ArrivedFigures;
+	{
+		FDungeonScene Scene = MakeDungeonScene();
+		if (!TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
+		{
+			if (Scene.Base.World)
+			{
+				Scene.Base.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		Saved.RunId = FGuid::NewGuid();
+		Saved.CharacterId = FGuid::NewGuid();
+		Scene.Base.Writer->BeginRun(Saved.RunId, Saved.CharacterId, Scene.Mode->DungeonName, Scene.Mode->FloorNumber);
+		const int32 DungeonId = PlaceADungeonCarrying(*this, Scene, {});
+		if (!TestTrue(TEXT("set-up: a dungeon was placed"), DungeonId != INDEX_NONE)
+			|| !TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId)))
+		{
+			return false;
+		}
+		const TArray<ACataclysmEnemyCharacter*> Standing = UnruledStanding(*Scene.Mode);
+		if (!TestTrue(TEXT("set-up: the floor has a creature"), Standing.Num() >= 1)
+			|| !TestTrue(TEXT("set-up: and a soul may feed it, a hostile Demonic creature"),
+						 Scene.Mode->SoulHarvestMayFeed(Standing[0])))
+		{
+			return false;
+		}
+		ACataclysmEnemyCharacter* Demon = Standing[0];
+		OwnFigures = SoulFigures(*Demon);
+
+		// A SOUL RELEASED THREE METRES FROM IT, as a death there releases one, and not yet moved.
+		ACataclysmHarvestedSoul* Soul = ACataclysmHarvestedSoul::Release(
+			Scene.Mode, Demon->GetActorLocation() + FVector(300.0f, 0.0f, 0.0f), Demon);
+		if (!TestNotNull(TEXT("set-up: a soul was released toward it"), Soul)
+			|| !TestEqual(TEXT("set-up: and it floats toward it"), Scene.Mode->SoulHarvestSoulsFloatingToward(Demon), 1)
+			|| !TestEqual(TEXT("set-up: and the creature holds no soul yet"), Scene.Mode->SoulHarvestSoulsOn(Demon), 0))
+		{
+			return false;
+		}
+
+		// THE SAVE, WITH THE SOUL STILL FLOATING: the death trigger writes both records before it returns.
+		Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+		WaitForSlot(Saved.RunSlot());
+
+		// AND THEN, IN THE SAVING WORLD, THE SOUL ARRIVES: what the load must give back.
+		int32 Steps = 0;
+		while (Soul->Step(0.05f) && Steps < 200)
+		{
+			++Steps;
+		}
+		if (!TestTrue(TEXT("set-up: the soul arrived in the saving world"),
+					  Soul->HowItEnded() == ECataclysmHarvestedSoulEnd::Arrived)
+			|| !TestEqual(TEXT("set-up: and the creature holds it"), Scene.Mode->SoulHarvestSoulsOn(Demon), 1))
+		{
+			return false;
+		}
+		ArrivedFigures = SoulFigures(*Demon);
+	}
+
+	FDungeonScene Scene = MakeDungeonScene();
+	if (!TestTrue(TEXT("set-up: the loading dungeon world was built"), Scene.IsUsable()))
+	{
+		if (Scene.Base.World)
+		{
+			Scene.Base.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World, *Scene.Base.Character,
+																			 Saved.CharacterId);
+	int32 Holders = 0;
+	int32 SoulsAfter = 0;
+	FString LoadedFigures = TEXT("(no creature holds a soul)");
+	for (ACataclysmEnemyCharacter* Creature : UnruledStanding(*Scene.Mode))
+	{
+		if (Scene.Mode->SoulHarvestSoulsOn(Creature) > 0)
+		{
+			++Holders;
+			SoulsAfter = Scene.Mode->SoulHarvestSoulsOn(Creature);
+			LoadedFigures = SoulFigures(*Creature);
+		}
+	}
+	TArray<ACataclysmHarvestedSoul*> Floating;
+	ACataclysmHarvestedSoul::FloatingIn(Scene.Base.World, nullptr, Floating);
+
+	AddInfo(FString::Printf(TEXT("FLOATING SOUL: %s (%s); own %s; arrived %s; loaded %s"),
+							FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, *OwnFigures, *ArrivedFigures,
+							*LoadedFigures));
+
+	TestEqual(TEXT("the load put the character and its run back"),
+			  static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+	TestNotEqual(TEXT("CONTROL: the soul's arrival moved the creature's figures"), ArrivedFigures, OwnFigures);
+	TestEqual(TEXT("one creature holds a soul after the load"), Holders, 1);
+	TestEqual(TEXT("and it holds the one soul that was floating"), SoulsAfter, 1);
+	TestEqual(TEXT("with the figures its arrival gave"), LoadedFigures, ArrivedFigures);
+	TestEqual(TEXT("and no soul floats in the loaded world: the soul itself is not saved"), Floating.Num(), 0);
+	TestEqual(TEXT("the walk counts the soul as given"), Scene.Mode->SoulHarvestSoulsGiven(), 1);
 	return true;
 }
 

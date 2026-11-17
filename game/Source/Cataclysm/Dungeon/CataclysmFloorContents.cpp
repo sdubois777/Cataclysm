@@ -12,6 +12,7 @@
 #include "AbilitySystem/CataclysmTerrain.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Dungeon/CataclysmFloorHazardSource.h"
+#include "Dungeon/CataclysmHarvestedSoul.h"
 #include "Dungeon/CataclysmFloorObstacle.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -131,6 +132,10 @@ int32 UCataclysmFloorContents::ClearTheFloor(UWorld& World, bool bCarryFollowers
 	// 2026-10-18 (R7). Beside the drops, the other thing lying on a floor to be picked up, and in both branches: a Soul
 	// follows nobody down the stairs.
 	Destroyed += FloorContentsDestroyEvery<ACataclysmReaperSoul>(World);
+	// AND EVERY SOUL SOUL HARVEST RELEASED THAT IS STILL FLOATING, giving nothing, in both branches: its demon was the
+	// floor's, and a save already counted it as arrived (`ACataclysmDungeonGameMode::SoulHarvestHeldBy`), so a load that
+	// rebuilds the floor gives it back through the creature's record. Ruled 2026-11-17, issue #1671.
+	Destroyed += FloorContentsDestroyEvery<ACataclysmHarvestedSoul>(World);
 
 	// AND THE THREE THINGS SECTION 6 OF THE SAVE DESIGN SAYS ARE NOT RESTORED. A
 	// projectile still flying across a floor that has just been rebuilt, a

@@ -11,6 +11,7 @@
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyRarity.h"
 #include "Dungeon/CataclysmDungeonGameMode.h"
+#include "Dungeon/CataclysmHarvestedSoul.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
 #include "Engine/EngineTypes.h"
@@ -101,6 +102,7 @@ void ACataclysmHUD::DrawHUD()
 	DrawDropNames();
 	DrawFloorObjectNames();
 	DrawReaperSoulNames();
+	DrawHarvestedSoulNames();
 
 	// WHAT THE LAST DEATH COST, for a few seconds after standing back up. Issue #41, 2026-11-02.
 	DrawDeathCostNotice();
@@ -1532,32 +1534,64 @@ void ACataclysmHUD::DrawReaperSoulNames()
 	TArray<ACataclysmReaperSoul*> Nearby;
 	ACataclysmReaperSoul::SoulsToName(World, LocalPawn->GetActorLocation(), UCataclysmDropPickup::NameShownRangeCm,
 									  Nearby);
-	const FString Words(ACataclysmReaperSoul::NameText);
-	const FLinearColor Ink = ACataclysmReaperSoul::NameColour();
-
-	// A PLAIN BORDER, as a floor object's: a Soul has no rarity to show. Measured first and drawn after, so two Souls
-	// lying together do not print over each other.
-	constexpr int32 BorderPx = 1;
-	TArray<FBox2D> SoulTags;
+	TArray<FVector> Over;
 	for (const ACataclysmReaperSoul* Soul : Nearby)
 	{
-		const FVector Screen = Project(
-			Soul->GetActorLocation() + FVector(0.0f, 0.0f, ACataclysmReaperSoul::NameHeightCm),
-			/*bClampToZeroPlane=*/false);
+		Over.Add(Soul->GetActorLocation());
+	}
+	DrawPlainTags(Over, ACataclysmReaperSoul::NameHeightCm, FString(ACataclysmReaperSoul::NameText),
+				  ACataclysmReaperSoul::NameColour());
+}
+
+void ACataclysmHUD::DrawHarvestedSoulNames()
+{
+	UWorld* World = GetWorld();
+	const APawn* LocalPawn = GetOwningPawn();
+	if (!World || !LocalPawn)
+	{
+		return;
+	}
+
+	// AS FAR AS A DROP'S NAME IS SHOWN, as a Reaper's Soul's is. Issue #1671.
+	TArray<ACataclysmHarvestedSoul*> Floating;
+	ACataclysmHarvestedSoul::FloatingIn(World, nullptr, Floating);
+	const FVector Standing = LocalPawn->GetActorLocation();
+	TArray<FVector> Over;
+	for (const ACataclysmHarvestedSoul* Soul : Floating)
+	{
+		if (FVector::Dist2D(Soul->GetActorLocation(), Standing) <= UCataclysmDropPickup::NameShownRangeCm)
+		{
+			Over.Add(Soul->GetActorLocation());
+		}
+	}
+	DrawPlainTags(Over, ACataclysmHarvestedSoul::NameHeightCm, FString(ACataclysmHarvestedSoul::NameText),
+				  ACataclysmHarvestedSoul::NameColour());
+}
+
+void ACataclysmHUD::DrawPlainTags(const TArray<FVector>& Over, float HeightCm, const FString& Words,
+								  const FLinearColor& Ink)
+{
+	// A PLAIN BORDER, as a floor object's: a soul has no rarity to show. Measured first and drawn after, so two souls
+	// together do not print over each other.
+	constexpr int32 BorderPx = 1;
+	TArray<FBox2D> Boxes;
+	for (const FVector& Point : Over)
+	{
+		const FVector Screen = Project(Point + FVector(0.0f, 0.0f, HeightCm), /*bClampToZeroPlane=*/false);
 		if (Screen.Z <= 0.0f)
 		{
 			continue;
 		}
-		SoulTags.Add(UCataclysmDropPickup::TagAround(MeasureTextCentred(Words, Screen.X, Screen.Y, 1.0f), BorderPx));
+		Boxes.Add(UCataclysmDropPickup::TagAround(MeasureTextCentred(Words, Screen.X, Screen.Y, 1.0f), BorderPx));
 	}
 
-	UCataclysmDropPickup::SeparateOverlappingNames(SoulTags, UCataclysmDropPickup::NameGapPx);
+	UCataclysmDropPickup::SeparateOverlappingNames(Boxes, UCataclysmDropPickup::NameGapPx);
 
 	const float Inset = static_cast<float>(UCataclysmDropPickup::NameBorderPaddingPx + BorderPx);
-	for (const FBox2D& SoulTag : SoulTags)
+	for (const FBox2D& Tag : Boxes)
 	{
-		DrawBorder(SoulTag, static_cast<float>(BorderPx), Ink);
-		DrawOutlinedText(Words, Ink, SoulTag.Min.X + Inset, SoulTag.Min.Y + Inset, 1.0f);
+		DrawBorder(Tag, static_cast<float>(BorderPx), Ink);
+		DrawOutlinedText(Words, Ink, Tag.Min.X + Inset, Tag.Min.Y + Inset, 1.0f);
 	}
 }
 
