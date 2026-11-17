@@ -1287,8 +1287,8 @@ public:
 	/**
 	 * Set a target alight, for the duration and share the DoTs sheet states.
 	 *
-	 * ONE STACK ONLY, which the design states for every effect a player can
-	 * apply. A second application refreshes the duration rather than adding a
+	 * ONE STACK ONLY, which the design states for every ailment and damage over
+	 * time effect a player applies. A second application refreshes the duration rather than adding a
 	 * second burn, which matters here more than anywhere else: fifteen of the
 	 * sixteen designed Demonic skills apply burn, and several apply it many
 	 * times a second.
@@ -2099,8 +2099,9 @@ public:
 	 * question with a true answer, which is what everything else can be built
 	 * against later. Issue #166.
 	 *
-	 * ONE STACK ONLY, refreshed rather than added to, as the design requires of
-	 * every player-applied effect.
+	 * ONE STACK ONLY, refreshed rather than added to. The design requires one stack
+	 * of every ailment and damage over time effect (narrowed on 2026-11-17, #913);
+	 * this keeps the same shape.
 	 *
 	 * AND A SHORTER APPLICATION NEVER CUTS A LONGER ONE SHORT. Issue #1576. An
 	 * effect that is only a tag has no figure but its duration, so the longer of

@@ -4714,7 +4714,7 @@ public:
 	 * `tools/generate_datatables.py` hold the same names.
 	 *
 	 * `ApplyStatusSizedAction` LAYS A DAMAGE OVER TIME ON THE OTHER CHARACTER OF ITS EVENT AT THE VALUE'S MULTIPLE OF ITS
-	 * ORDINARY SIZE, always: "Traps apply 1-2 bleed stacks to all enemies caught in their blast", on `deployable_hit`
+	 * ORDINARY SIZE, always: "Traps cause a bleed of 1-2 times normal strength in every enemy caught in their blast", on `deployable_hit`
 	 * with `Type.Trap` (ruling 8 of 2026-10-07: "1-2 bleed stacks" is one bleed at 1 to 2 times its size). The
 	 * `ECataclysmApplyStatus::Sized` form, which until now only `ApplyStatusToSelfSizedAction` took. The owner's rule of
 	 * a tenth (#917) is asked of it as of every status a blow lays on another.

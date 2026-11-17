@@ -164,7 +164,8 @@ namespace
 	 * available at runtime until the engine provides one. Kept in one function
 	 * so there is a single place to change when it does.
 	 *
-	 * ONE STACK ONLY is the design's rule for every effect a player can apply,
+	 * ONE STACK ONLY is the design's rule for every ailment and damage over time
+	 * effect a player applies,
 	 * and it is aggregated by TARGET rather than by source so that two
 	 * characters burning the same enemy still produce one burn.
 	 *
@@ -1316,8 +1317,8 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	FCataclysmDamageResult* const Result = OutResolved ? OutResolved : &OwnResult;
 	const bool bDealt = ApplyDirectDamage(Instigator, Target, Sent, Arrived, Result);
 	// A SKILL TRAP'S EVENT CARRIES WHAT ITS BLOW TOOK FROM HEALTH (traps layer 3, 2026-10-21), so a status row on it
-	// meets the owner's rule of a tenth (#917) with the blow's own figure: "Traps apply 1-2 bleed stacks to all enemies
-	// caught in their blast". A skill gadget's still carries nought, as every machine's own blow does.
+	// meets the owner's rule of a tenth (#917) with the blow's own figure: "Traps cause a bleed of 1-2 times normal
+	// strength in every enemy caught in their blast". A skill gadget's still carries nought, as every machine's own blow does.
 	const float TrapsBlowDealt = GadgetsPlayer ? 0.0f : Result->DealtToHealth;
 	// AND THE TRAP KEEPS WHAT ITS CAST TOOK FROM THE ENEMY THAT SET IT OFF, for the slow's rule of a tenth (the owner,
 	// 2026-10-21: "Follow the tenth rule"). A TRAP ALREADY USED UP KEEPS NOTHING: a slow waiting for a late blow of its
@@ -2475,7 +2476,7 @@ FCataclysmDamageOverTimeNumbers UCataclysmSkillEffects::DamageOverTimeNumbers(
 	// then; leaving duration and frequency reading the attribute in a function
 	// whose third line asks would have left the next reader to work out whether
 	// the difference was deliberate. `dot_duration` has a row of its own since
-	// issue #1833, "Poison stacks you apply have 30%-60% increased duration".
+	// issue #1833, "Poison you apply lasts 30%-60% longer".
 	// No row exercises `dot_frequency`, so the unchanged-behaviour control in
 	// CataclysmPlayerClassStatsTests.cpp is still what stands behind it, and it
 	// lists all three.

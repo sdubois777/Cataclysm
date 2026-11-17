@@ -2402,9 +2402,12 @@ def ailments_for(slot: str) -> tuple[AilmentAffix, ...]:
 # What happens above 100% chance to apply
 # --------------------------------------------------------------------------
 
-#: An enemy carries at most one stack of any effect the player applies.
+#: An enemy carries at most one stack of each ailment and damage over time
+#: effect the player applies.
 #:
-#: Stated by the project owner 2026-08-03. It is what makes chance above 100%
+#: Stated by the project owner 2026-08-03 for every effect, and narrowed to
+#: ailments and damage over time on 2026-11-17 (#913): a debuff that lowers one
+#: of an enemy's stats may stack. It is what makes chance above 100%
 #: mean something instead of being wasted, and it keeps a screen full of enemies
 #: readable: one enemy has bleeding or it does not.
 MAX_STACKS_ON_AN_ENEMY = 1

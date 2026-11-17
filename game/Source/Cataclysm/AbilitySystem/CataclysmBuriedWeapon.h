@@ -30,8 +30,8 @@
  * nothing is left in reach" means. It stops when nothing is in range, and there
  * is nothing else to stop it -- the row states no limit and neither does this.
  *
- * ONE PER ACTOR, REFRESHED RATHER THAN ADDED TO, the same single-stack rule
- * every player-applied effect in this design follows.
+ * ONE PER ACTOR, REFRESHED RATHER THAN ADDED TO, the same shape as the
+ * one-stack rule the design states for ailments and damage over time.
  */
 UCLASS(ClassGroup = (Cataclysm), meta = (BlueprintSpawnableComponent))
 class CATACLYSM_API UCataclysmBuriedWeapon : public UActorComponent

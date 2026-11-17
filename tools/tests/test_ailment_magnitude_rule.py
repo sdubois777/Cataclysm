@@ -276,8 +276,8 @@ class TestTheCodeMatchesTheWorkedExamples:
         not, and the two choices are alternatives rather than companions.
         """
         assert model.MAX_STACKS_ON_AN_ENEMY == 1
-        assert "**An enemy carries at most one stack of any effect the player " \
-               "applies.**" in section_text()
+        assert "**An enemy carries at most one stack of each ailment and damage " \
+               "over time effect the player applies.**" in section_text()
 
     def test_magnitude_is_never_below_one_and_chance_never_above_the_cap(self, model):
         for chance in (0.0, 1.0, 50.0, 99.9, 100.0, 100.1, 250.0, 800.0, 5000.0):

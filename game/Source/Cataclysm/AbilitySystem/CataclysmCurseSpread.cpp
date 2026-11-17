@@ -17,7 +17,8 @@ UCataclysmCurseSpread* UCataclysmCurseSpread::MarkOn(AActor* Target,
 
 	// REFRESHED RATHER THAN ADDED TO. A second Anathema on the same creature
 	// moves the range and the caster rather than leaving two components on it,
-	// which matches the single-stack rule every player-applied effect follows.
+	// which matches the one-stack rule the design states for ailments and damage
+	// over time.
 	UCataclysmCurseSpread* Mark = Target->FindComponentByClass<UCataclysmCurseSpread>();
 	if (!Mark)
 	{

@@ -121,6 +121,28 @@ const TMap<FName, FName>& FCataclysmEnchantmentRenames::Aliases()
 		 TEXT("Positive_While_the_enemy_is_moving_your_DoTs_on_them_dea")},
 		{TEXT("Negative_50_less_tick_rate_for_your_leech_effects"),
 		 TEXT("Negative_Your_leech_pays_out_50_more_slowly")},
+		//
+		// AND SEVEN ON 2026-11-17, the owner's review of the drafted wording (#913,
+		// #1609). Three healing drawbacks and benefits now name regeneration and
+		// leech, which they always reduced; four sentences drop "stacks", which the
+		// one-stack rule does not allow on an ailment. N027's words were put in a new
+		// order and P215 keeps its 1-2 roll, both ruled the same day, so that every
+		// name is unique and every number the row holds is in its words. No row's
+		// numbers changed.
+		{TEXT("Negative_Healing_effects_on_you_are_reduced_by_30_50"),
+		 TEXT("Negative_Healing_regeneration_and_leech_on_you_are_reduc")},
+		{TEXT("Negative_Healing_effects_are_reduced_by_50_75"),
+		 TEXT("Negative_All_healing_regeneration_and_leech_on_you_is_re")},
+		{TEXT("Positive_Disease_effects_reduce_enemy_healing_by_50_100"),
+		 TEXT("Positive_Diseased_enemies_healing_regeneration_and_leec")},
+		{TEXT("Positive_Bleed_stacks_you_apply_deal_30_60_increased_da"),
+		 TEXT("Positive_Bleed_you_apply_deals_30_60_increased_damage")},
+		{TEXT("Positive_Poison_stacks_you_apply_have_30_60_increased_d"),
+		 TEXT("Positive_Poison_you_apply_lasts_30_60_longer")},
+		{TEXT("Positive_Bleed_stacks_you_apply_have_50_100_increased_d"),
+		 TEXT("Positive_Bleed_you_apply_lasts_50_100_longer")},
+		{TEXT("Positive_Traps_apply_1_2_bleed_stacks_to_all_enemies_caug"),
+		 TEXT("Positive_Traps_cause_a_bleed_of_1_2_times_normal_strength")},
 	};
 	return Table;
 }

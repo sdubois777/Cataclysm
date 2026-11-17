@@ -9,7 +9,9 @@ them has already drifted somewhere else in this project.
      tagged `Item.Weapon.Axe` would generate cleanly and grant the wrong kit.
 
   2. A skill description can contradict a rule the design states. The design
-     says an enemy carries at most one stack of any effect the player applies.
+     says an enemy carries at most one stack of each ailment and damage over
+     time effect the player applies (narrowed from "any effect" on 2026-11-17,
+     #913).
      Fifteen War skill descriptions were written before that rule and still say
      "applies 2 bleed stacks". The Demonic rows must not repeat it.
 
@@ -180,7 +182,8 @@ def test_the_aura_row_carries_no_weapon_tag(designed):
 
 
 def test_no_description_counts_stacks(skills):
-    """The design says an enemy carries at most one stack of any effect.
+    """The design says an enemy carries at most one stack of each ailment and
+    damage over time effect.
 
     EVERY DAMAGE TYPE, not only Demonic. This checked the Demonic rows alone
     until issue #153, because fifteen War descriptions predated the rule and

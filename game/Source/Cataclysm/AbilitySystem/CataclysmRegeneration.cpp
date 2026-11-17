@@ -141,8 +141,9 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 		}
 
 		// AND WHAT RIDES ON THE AILMENTS IT CARRIES, added and capped with it.
-		// Issue #1833, ruled 2026-10-06: "Disease effects reduce enemy healing by
-		// 50%-100%".
+		// Issue #1833, ruled 2026-10-06: "Diseased enemies' healing, regeneration
+		// and leech are reduced by 50%-100%" (worded "Disease effects reduce enemy
+		// healing by 50%-100%" until 2026-11-17).
 		const float AmountReduction = FMath::Clamp(
 			AbilitySystem.GetNumericAttribute(
 				UCataclysmVitalAttributeSet::GetHealingReceivedReductionAttribute())

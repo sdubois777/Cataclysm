@@ -225,7 +225,7 @@ namespace CataclysmEnchantmentEffectTest
 	const TCHAR* SpecialMovingBenefit =
 		TEXT("Positive_Your_special_ability_deals_20_40_increased_dam");
 	const TCHAR* HealingReducedDrawback =
-		TEXT("Negative_Healing_effects_on_you_are_reduced_by_30_50");
+		TEXT("Negative_Healing_regeneration_and_leech_on_you_are_reduc");
 	const TCHAR* ReflectBenefit =
 		TEXT("Positive_Reflect_20_50_of_damage_taken_back_to_attacker");
 	const TCHAR* BelowHalfDrawback =
@@ -2009,7 +2009,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHealingReducedDrawbackTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * "Healing effects on you are reduced by 30%-50%".
+ * "Healing, regeneration and leech on you are reduced by 30%-50%".
  *
  * THE FIRST DATA ROW ANYWHERE ON `healing_received_reduction`. Until this row
  * the stat's only source was C++ -- the Death's Embrace dungeon rule at
@@ -7601,8 +7601,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAilmentScopedDotRowsTest,
  * a creature just like it, is 1.6 times as large. Disease ticks plainly, and the
  * two creatures are alike, so everything but the row cancels.
  *
- * "Bleed stacks you apply deal 30%-60% increased damage" and "Poison stacks you
- * apply have 30%-60% increased duration": read from `DamageOverTimeNumbers`
+ * "Bleed you apply deals 30%-60% increased damage" and "Poison you apply
+ * lasts 30%-60% longer": read from `DamageOverTimeNumbers`
  * asked with the ailment's tag and with another's, because a bleed ticks only
  * while its target moves and a duration is not a tick.
  */
@@ -7646,7 +7646,7 @@ bool FCataclysmAilmentScopedDotRowsTest::RunTest(const FString&)
 	}
 
 	{
-		FWorn Worn(TEXT("Positive_Bleed_stacks_you_apply_deal_30_60_increased_da"), true);
+		FWorn Worn(TEXT("Positive_Bleed_you_apply_deals_30_60_increased_damage"), true);
 		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
 		{
 			return false;
@@ -7662,7 +7662,7 @@ bool FCataclysmAilmentScopedDotRowsTest::RunTest(const FString&)
 		}
 	}
 	{
-		FWorn Worn(TEXT("Positive_Poison_stacks_you_apply_have_30_60_increased_d"), true);
+		FWorn Worn(TEXT("Positive_Poison_you_apply_lasts_30_60_longer"), true);
 		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
 		{
 			return false;
@@ -10212,7 +10212,7 @@ bool FCataclysmGadgetEvasionRowTest::RunTest(const FString&)
 namespace CataclysmRowsNowTest
 {
 	const TCHAR* MaximumResists = TEXT("Positive_You_have_10_maximum_resists");
-	const TCHAR* BleedDuration = TEXT("Positive_Bleed_stacks_you_apply_have_50_100_increased_d");
+	const TCHAR* BleedDuration = TEXT("Positive_Bleed_you_apply_lasts_50_100_longer");
 	const TCHAR* KillLock = TEXT("Negative_Killing_an_enemy_triggers_a_1_2_second_global_co");
 	const TCHAR* CritLock = TEXT("Negative_Critical_strikes_trigger_a_0_5_1_second_global_c");
 
@@ -10258,7 +10258,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBleedDurationRowTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * "Bleed stacks you apply have 50%-100% increased duration", worn at the top of
+ * "Bleed you apply lasts 50%-100% longer", worn at the top of
  * its range, doubles a bleed's duration and leaves a disease's alone. Issue
  * #1833. The same reading the shipped poison-duration row is measured by in
  * `TheAilmentScopedDotRowsReachOnlyTheirOwnAilment`: `DamageOverTimeNumbers`
@@ -15310,7 +15310,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDiseaseHealingRowTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * "Disease effects reduce enemy healing by 50%-100%". Issue #1833, ruled
+ * "Diseased enemies' healing, regeneration and leech are reduced by 50%-100%". Issue #1833, ruled
  * 2026-10-06: a rider on Disease, `ailment_healing_received` 50 to 100, WORN at
  * the top of its roll, 100, where the healing a diseased creature receives is
  * nothing. Read through `UCataclysmRegeneration::TopUp`, the path regeneration,
@@ -15322,7 +15322,7 @@ bool FCataclysmDiseaseHealingRowTest::RunTest(const FString&)
 {
 	using namespace CataclysmSmallHalvesTest;
 	using namespace CataclysmAilmentRiderRowTest;
-	FWorn Worn(TEXT("Positive_Disease_effects_reduce_enemy_healing_by_50_100"), true);
+	FWorn Worn(TEXT("Positive_Diseased_enemies_healing_regeneration_and_leec"), true);
 	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
 	{
 		return false;
@@ -28460,7 +28460,7 @@ bool FCataclysmTrapLayerThreeRowsTest::RunTest(const FString&)
 	const TCHAR* Cap = TEXT("Positive_Your_trap_skills_get_1_6_to_max_trap_count");
 	const TCHAR* NoExpiry = TEXT("Positive_Traps_do_not_expire_they_remain_armed_until_tr");
 	const TCHAR* Slow = TEXT("Positive_Traps_apply_a_20_35_slow_to_triggered_enemies");
-	const TCHAR* Bleed = TEXT("Positive_Traps_apply_1_2_bleed_stacks_to_all_enemies_caug");
+	const TCHAR* Bleed = TEXT("Positive_Traps_cause_a_bleed_of_1_2_times_normal_strength");
 	const TCHAR* Recent = TEXT("Positive_Each_trap_triggered_in_the_last_10_seconds_incre");
 	const TCHAR* Evasion = TEXT("Positive_Placing_a_trap_generates_a_burst_of_evasion_gra");
 	CataclysmConsecutiveRowTest::FStriker Control(BenefitWithNoEffect, DrawbackWithNoEffect);

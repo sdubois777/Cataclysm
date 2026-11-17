@@ -3865,7 +3865,7 @@ enum class ECataclysmAilmentRider : uint8
 
 	/**
 	 * Added to the carrier's healing received reduction, capped at 100 with it:
-	 * "Disease effects reduce enemy healing by 50%-100%".
+	 * "Diseased enemies' healing, regeneration and leech are reduced by 50%-100%".
 	 */
 	HealingReceived UMETA(DisplayName = "Healing received, reduced"),
 
@@ -3981,7 +3981,7 @@ enum class ECataclysmApplyStatus : uint8
 	 * The value is the SIZE of the one application, in multiples of the status's ordinary size, and it always
 	 * applies: "When you apply a DOT, 1-4 stacks are applied to you". Ruled 2026-10-06. For a status laid on the
 	 * wearer, and since traps layer 3 (2026-10-21) for a damage over time laid on the other character of the event,
-	 * "Traps apply 1-2 bleed stacks to all enemies caught in their blast".
+	 * "Traps cause a bleed of 1-2 times normal strength in every enemy caught in their blast".
 	 *
 	 * NO AILMENT IN THIS GAME STACKS: a character carries one effect for each, and a repeat of the same size only
 	 * refreshes it. So "stacks" is read as size, and a 4 is one application four times as large.

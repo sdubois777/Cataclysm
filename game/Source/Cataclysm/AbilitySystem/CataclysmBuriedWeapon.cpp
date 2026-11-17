@@ -22,8 +22,8 @@ UCataclysmBuriedWeapon* UCataclysmBuriedWeapon::BuryIn(
 	}
 
 	// REFRESHED RATHER THAN ADDED TO. Two Harrowers in one creature are one
-	// buried axe, which matches the single-stack rule every player-applied
-	// effect follows.
+	// buried axe, which matches the one-stack rule the design states for
+	// ailments and damage over time.
 	UCataclysmBuriedWeapon* Buried =
 		Target->FindComponentByClass<UCataclysmBuriedWeapon>();
 	if (!Buried)
