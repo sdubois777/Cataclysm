@@ -571,6 +571,19 @@ public:
 	FVector StrikesFromPoint = FVector::ZeroVector;
 
 	/**
+	 * The ailment the firing row's `Ailment=` names, copied when it is fired, or empty. Laid on what it lands on beside
+	 * the burn above and by the same rule, so a thrown flask poisons as a thrown axe burns. Issue #2580, [N1].
+	 */
+	FString StatedAilment;
+
+	/**
+	 * What its contacts pinned, in the order they were pinned. Read by `UCataclysmProjectileSkill::
+	 * OnProjectileFinished`, which binds them into one line when the firing row states `OnDeath=Release`, as
+	 * `HitTargets` binds a beam's. Issue #2580, ruled 2026-11-17.
+	 */
+	TArray<TWeakObjectPtr<AActor>> PinnedAlongItsFlight;
+
+	/**
 	 * The actor the use that fired this was cast from, when its caller named one: the use's `FreeRepeatCastBy`, set
 	 * by `UCataclysmProjectileSkill` just after `Fire` at its three places. Ruled 2026-10-16 (skill gadgets, stack 2,
 	 * item 3). Copied into every contact's delivery as `FCataclysmHitDelivery::CastBy`, so a shot that lands after
@@ -746,12 +759,6 @@ private:
 
 	/** Whether it sets what it hits alight. */
 	bool bBurns = false;
-
-	/**
-	 * The ailment the firing row's `Ailment=` names, copied when it is fired, or empty. Laid on what it lands on beside
-	 * the burn above and by the same rule, so a thrown flask poisons as a thrown axe burns. Issue #2580, [N1].
-	 */
-	FString StatedAilment;
 
 	/**
 	 * Whether Finish has already run.

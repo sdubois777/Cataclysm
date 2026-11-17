@@ -1586,7 +1586,7 @@ bool UCataclysmSkillTemplate::BlowLandedOn(const AActor* Target) const
 }
 
 int32 UCataclysmSkillTemplate::ApplyNamedEffectsTo(AActor* Target,
-												  float DurationScale)
+												  float DurationScale) const
 {
 	if (!IsValid(Target) || DurationScale <= 0.0f)
 	{
@@ -2562,120 +2562,12 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 		// enemy; it is paid below, after every blow has resolved.
 		EnemiesHitForFervour += (bLanded && Dealt > 0.0f) ? 1 : 0;
 
-		// KNOCKBACK IS APPLIED HERE, WHICH IS WHAT MAKES IT A RIDER. It used to
-		// live inside UCataclysmStrikeSkill::SwingOnce, so only a Strike could
-		// shove. Issue #626 moved it: displacement is not specific to one kind of
-		// skill, and while it was a Strike parameter Shockwave Leap knocked back
-		// in its prose and could not say so in its data. Every template that hits
-		// anything comes through this function, so every one of them can now
-		// shove.
-		//
-		// NOT SCALED BY THE DAMAGE DEALT, deliberately. A Support skill deals no
-		// damage by design and can still push, which is what Forge Stance's
-		// opposite number would be. That is the difference between this and the
-		// burn above.
-		//
-		// BUT NOT ON A BLOW THAT WAS EVADED. Issue #1156. The project owner's
-		// rule of 2026-09-05 is that an evaded attack applies nothing it carries,
-		// because the hit was unsuccessful, and a shove is something the blow
-		// carries. The two statements above still hold together: `bLanded` asks
-		// whether the blow CONNECTED, not whether it hurt, and a skill that sends
-		// no blow at all is never evaded -- so a Support skill dealing zero
-		// damage still pushes exactly as before.
-		if (bLanded)
-		{
-			ApplyKnockbackTo(Self, Target);
-		}
-
-		// AND SO IS A STUN. Issue #1195: four rows state a `StunSeconds` and
-		// nothing read it, so no player skill in the game stunned anything.
-		// They are spread over two shapes -- Shield Bash is a Strike and the
-		// other three are Movement -- which is the same argument the knockback
-		// above makes for sitting here.
-		//
-		// THE DAMAGE IS PASSED IN AND ALL FOUR ROWS IGNORE IT, because all
-		// four also write `Effect=Stun` and a skill that names stunning as its
-		// effect skips the damage threshold. `ApplyStun` still enforces the
-		// five second immunity window and the boss exemption on every one.
-		//
-		// `Dealt` IS WHAT THE HIT SENT RATHER THAN WHAT LANDED, and a stated
-		// stun does not read it at all -- so the figure passed here decides
-		// nothing for the four designed rows and everything for an incidental
-		// stun, which still has to clear the damage threshold.
-		//
-		// AN EVADED BLOW STUNS NOTHING. Issue #1156, decided on 2026-09-04. This
-		// comment used to name that as the open question and the answer is the
-		// same one the burn above got: evasion says the blow never connected, so
-		// nothing it carries arrives either. A blow armour stopped dead still
-		// stuns, because armour answers whether it hurt rather than whether it
-		// landed.
-		if (bLanded)
-		{
-			ApplyStunTo(Self, Target, Dealt);
-		}
-
-		// AND SO IS FORCED MOVEMENT, FOR THE SAME REASON KNOCKBACK IS. Nine rows
-		// across the Spear, the Warhammer and the Whip state one of the five
-		// verbs, spread over three different shapes, so putting it in any one
-		// template would mean putting it in three.
-		//
-		// AFTER THE KNOCKBACK RATHER THAN BEFORE IT, which matters only for a
-		// row that states both. None does today: `Knockback` and `ForcedMovement`
-		// are separate columns and no designed row fills them together. If one
-		// ever did, the shove would happen first and then the haul, which is the
-		// order the two columns are written in.
-		//
-		// NOT SCALED BY THE DAMAGE DEALT, like the knockback and unlike the
-		// burn. The damage is handed over only because an undesigned knockdown
-		// would weigh it against the target's maximum health, and every row here
-		// states a designed one.
-		//
-		// AND NOT ON A BLOW THAT WAS EVADED, for the reason the knockback above
-		// records. A haul, a drag or a pull is something the blow carries, and an
-		// evaded blow carries nothing to its target.
-		if (bLanded && ApplyForcedMovementTo(Self, Target, Dealt))
+		// THE RIDERS A LANDED BLOW CARRIES TO ITS TARGET: A SHOVE, A STUN, FORCED MOVEMENT AND A KNOCKDOWN THIS
+		// CHARACTER CARRIES. In `LayTheLandedBlowsHolds` since 2026-11-17, so a fired projectile's contact reaches the
+		// same code rather than a copy of it (issue #2580). The reasons for each, and their order, are written there.
+		if (bLanded && LayTheLandedBlowsHolds(Self, Target, Dealt))
 		{
 			Pinned.Add(Target);
-		}
-
-		// AND A KNOCKDOWN THIS CHARACTER CARRIES RATHER THAN THE ROW STATING
-		// ONE. Issue #45, for "Charge skills knock down enemies they hit for 1-2
-		// seconds". The stat is scoped by its own `RequiredTags` to the keyword
-		// the row names, so the skill's tags decide whether it applies.
-		//
-		// HERE AND NOT IN `ApplyForcedMovementTo`, WHICH IS WHERE IT LOOKS LIKE
-		// IT BELONGS. That function returns at its first statement when the row
-		// states no forced movement -- and a charge skill states none, which is
-		// the entire case this row exists for. Reading the stat in there would
-		// leave the enchantment doing nothing, with every test still passing.
-		//
-		// GUARDED BY `bLanded` FOR THE REASON ABOVE: an evaded blow carries
-		// nothing to its target, and a charge that missed must not knock down.
-		//
-		// DESIGNED, SO IT SKIPS THE DAMAGE THRESHOLD AND NOTHING ELSE. The
-		// shared stun-immunity window and boss immunity still apply, which are
-		// the two guards the design paragraph on `ApplyKnockdown` actually
-		// argues for. THE DESIGN TEXT SAYS "a SKILL whose stated effect is to
-		// knock down" AND THIS IS AN ENCHANTMENT, so this is a ruling rather
-		// than a clean reading: it is the coordinating session's call, made on
-		// the grounds that the row states the effect without qualification and
-		// passing false would make it false for a weak charge.
-		if (bLanded)
-		{
-			if (const UCataclysmAbilitySystemComponent* Cataclysm =
-					Cast<UCataclysmAbilitySystemComponent>(
-						UCataclysmTargeting::AbilitySystemOf(Self)))
-			{
-				const float Seconds = Cataclysm->StatForSkill(
-					FName(UCataclysmSkillEffects::KnockdownSecondsStat),
-					SkillTags, 0.0f);
-				if (Seconds > 0.0f)
-				{
-					UCataclysmSkillEffects::ApplyKnockdown(
-						Self, Target, Seconds, Dealt,
-						/*bKnockdownIsDesigned=*/true);
-				}
-			}
 		}
 
 		// AND THE CASTER'S MINIONS REPEAT THE HIT, when it holds Chorus. Last,
@@ -3006,6 +2898,133 @@ void UCataclysmSkillTemplate::ApplyStunTo(AActor* Self, AActor* Target,
 	// stomp obey one set of rules rather than two.
 	UCataclysmSkillEffects::ApplyStun(Self, Target, Params.StunSeconds,
 									  DamageDealt, StatesStunAsItsEffect());
+}
+
+bool UCataclysmSkillTemplate::LayTheLandedBlowsHolds(AActor* Self, AActor* Target, float Dealt) const
+{
+	if (!IsValid(Self) || !IsValid(Target))
+	{
+		return false;
+	}
+
+	// ASKED ONLY FOR A BLOW THAT LANDED: every caller has already refused an evaded one, which is the rule each
+	// paragraph below records (#1156).
+	// KNOCKBACK IS APPLIED HERE, WHICH IS WHAT MAKES IT A RIDER. It used to
+	// live inside UCataclysmStrikeSkill::SwingOnce, so only a Strike could
+	// shove. Issue #626 moved it: displacement is not specific to one kind of
+	// skill, and while it was a Strike parameter Shockwave Leap knocked back
+	// in its prose and could not say so in its data. Every template that hits
+	// anything comes through this function, so every one of them can now
+	// shove.
+	//
+	// NOT SCALED BY THE DAMAGE DEALT, deliberately. A Support skill deals no
+	// damage by design and can still push, which is what Forge Stance's
+	// opposite number would be. That is the difference between this and the
+	// burn above.
+	//
+	// BUT NOT ON A BLOW THAT WAS EVADED. Issue #1156. The project owner's
+	// rule of 2026-09-05 is that an evaded attack applies nothing it carries,
+	// because the hit was unsuccessful, and a shove is something the blow
+	// carries. The two statements above still hold together: `bLanded` asks
+	// whether the blow CONNECTED, not whether it hurt, and a skill that sends
+	// no blow at all is never evaded -- so a Support skill dealing zero
+	// damage still pushes exactly as before.
+	ApplyKnockbackTo(Self, Target);
+
+	// AND SO IS A STUN. Issue #1195: four rows state a `StunSeconds` and
+	// nothing read it, so no player skill in the game stunned anything.
+	// They are spread over two shapes -- Shield Bash is a Strike and the
+	// other three are Movement -- which is the same argument the knockback
+	// above makes for sitting here.
+	//
+	// THE DAMAGE IS PASSED IN AND ALL FOUR ROWS IGNORE IT, because all
+	// four also write `Effect=Stun` and a skill that names stunning as its
+	// effect skips the damage threshold. `ApplyStun` still enforces the
+	// five second immunity window and the boss exemption on every one.
+	//
+	// `Dealt` IS WHAT THE HIT SENT RATHER THAN WHAT LANDED, and a stated
+	// stun does not read it at all -- so the figure passed here decides
+	// nothing for the four designed rows and everything for an incidental
+	// stun, which still has to clear the damage threshold.
+	//
+	// AN EVADED BLOW STUNS NOTHING. Issue #1156, decided on 2026-09-04. This
+	// comment used to name that as the open question and the answer is the
+	// same one the burn above got: evasion says the blow never connected, so
+	// nothing it carries arrives either. A blow armour stopped dead still
+	// stuns, because armour answers whether it hurt rather than whether it
+	// landed.
+	ApplyStunTo(Self, Target, Dealt);
+
+	// AND SO IS FORCED MOVEMENT, FOR THE SAME REASON KNOCKBACK IS. Nine rows
+	// across the Spear, the Warhammer and the Whip state one of the five
+	// verbs, spread over three different shapes, so putting it in any one
+	// template would mean putting it in three.
+	//
+	// AFTER THE KNOCKBACK RATHER THAN BEFORE IT, which matters only for a
+	// row that states both. None does today: `Knockback` and `ForcedMovement`
+	// are separate columns and no designed row fills them together. If one
+	// ever did, the shove would happen first and then the haul, which is the
+	// order the two columns are written in.
+	//
+	// NOT SCALED BY THE DAMAGE DEALT, like the knockback and unlike the
+	// burn. The damage is handed over only because an undesigned knockdown
+	// would weigh it against the target's maximum health, and every row here
+	// states a designed one.
+	//
+	// AND NOT ON A BLOW THAT WAS EVADED, for the reason the knockback above
+	// records. A haul, a drag or a pull is something the blow carries, and an
+	// evaded blow carries nothing to its target.
+	const bool bPinned = ApplyForcedMovementTo(Self, Target, Dealt);
+
+	// AND A KNOCKDOWN THIS CHARACTER CARRIES RATHER THAN THE ROW STATING
+	// ONE. Issue #45, for "Charge skills knock down enemies they hit for 1-2
+	// seconds". The stat is scoped by its own `RequiredTags` to the keyword
+	// the row names, so the skill's tags decide whether it applies.
+	//
+	// HERE AND NOT IN `ApplyForcedMovementTo`, WHICH IS WHERE IT LOOKS LIKE
+	// IT BELONGS. That function returns at its first statement when the row
+	// states no forced movement -- and a charge skill states none, which is
+	// the entire case this row exists for. Reading the stat in there would
+	// leave the enchantment doing nothing, with every test still passing.
+	//
+	// GUARDED BY `bLanded` FOR THE REASON ABOVE: an evaded blow carries
+	// nothing to its target, and a charge that missed must not knock down.
+	//
+	// DESIGNED, SO IT SKIPS THE DAMAGE THRESHOLD AND NOTHING ELSE. The
+	// shared stun-immunity window and boss immunity still apply, which are
+	// the two guards the design paragraph on `ApplyKnockdown` actually
+	// argues for. THE DESIGN TEXT SAYS "a SKILL whose stated effect is to
+	// knock down" AND THIS IS AN ENCHANTMENT, so this is a ruling rather
+	// than a clean reading: it is the coordinating session's call, made on
+	// the grounds that the row states the effect without qualification and
+	// passing false would make it false for a weak charge.
+	{
+		if (const UCataclysmAbilitySystemComponent* Cataclysm =
+				Cast<UCataclysmAbilitySystemComponent>(
+					UCataclysmTargeting::AbilitySystemOf(Self)))
+		{
+			const float Seconds = Cataclysm->StatForSkill(
+				FName(UCataclysmSkillEffects::KnockdownSecondsStat),
+				SkillTags, 0.0f);
+			if (Seconds > 0.0f)
+			{
+				UCataclysmSkillEffects::ApplyKnockdown(
+					Self, Target, Seconds, Dealt,
+					/*bKnockdownIsDesigned=*/true);
+			}
+		}
+	}
+
+	return bPinned;
+}
+
+bool UCataclysmSkillTemplate::LayWhatALandedShotCarries(AActor* Firer, AActor* Target, float Dealt) const
+{
+	// THE HOLDS FIRST AND THE NAMED EFFECTS AFTER, the order a Strike keeps: `HitTargets` lays the first on each blow
+	// and `SwingOnce` the second once the blows are dealt, so a Shred never lowers the resistance its own blow met.
+	const bool bPinned = LayTheLandedBlowsHolds(Firer, Target, Dealt);
+	ApplyNamedEffectsTo(Target);
+	return bPinned;
 }
 
 bool UCataclysmSkillTemplate::ApplyStatedAilmentTo(AActor* Self, AActor* Target) const

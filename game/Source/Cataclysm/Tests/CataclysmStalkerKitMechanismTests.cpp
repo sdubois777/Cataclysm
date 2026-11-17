@@ -283,6 +283,23 @@ namespace CataclysmStalkerKitTest
 		return Stalker;
 	}
 
+	/**
+	 * Fire one shot from `From` through `To` and six metres beyond, by `Skill`, at 1200 cm/s with a 50 cm radius, and
+	 * fly it by hand until it finishes, as `CataclysmChorusTests.cpp` flies one. Whether a shot was made.
+	 */
+	bool FlyKitShot(const FKitFighter& From, const FKitFighter& To, const UGameplayAbility* Skill)
+	{
+		ACataclysmProjectile* Shot = ACataclysmProjectile::Fire(
+			From.Actor, From.Actor->GetActorLocation(), To.Actor->GetActorLocation() + FVector(6.0f * M, 0.0f, 0.0f),
+			/*InRadiusCm=*/50.0f, /*InSpeed=*/1200.0f, /*InPierce=*/0, /*bInReturns=*/false,
+			/*InDamagePercent=*/100.0f, FGameplayTagContainer(), /*bInBurns=*/false, /*InBodyMesh=*/nullptr,
+			/*InFlightSeconds=*/0.0f, /*InCritChancePercent=*/0.0f, /*InSkillHealthCostPercent=*/-1.0f, Skill);
+		for (int32 Step = 0; Shot && Step < 100 && Shot->Step(0.05f); ++Step)
+		{
+		}
+		return Shot != nullptr;
+	}
+
 	/** Lay a Necrosis on the player through the route `Ailment=Necrosis` takes: `UCataclysmAilments::Apply`. */
 	bool LayNecrosis(AActor* Applier, const FKitPlayer& Player)
 	{
@@ -417,21 +434,8 @@ CATACLYSM_STALKER_KIT_TEST(FCataclysmStalkerKitAilmentShotTest,
 		return false;
 	}
 
-	const auto FlyAt = [](const FKitFighter& From, const FKitFighter& To, const UGameplayAbility* Skill)
-	{
-		ACataclysmProjectile* Shot = ACataclysmProjectile::Fire(
-			From.Actor, From.Actor->GetActorLocation(), To.Actor->GetActorLocation() + FVector(6.0f * M, 0.0f, 0.0f),
-			/*InRadiusCm=*/50.0f, /*InSpeed=*/1200.0f, /*InPierce=*/0, /*bInReturns=*/false,
-			/*InDamagePercent=*/100.0f, FGameplayTagContainer(), /*bInBurns=*/false, /*InBodyMesh=*/nullptr,
-			/*InFlightSeconds=*/0.0f, /*InCritChancePercent=*/0.0f, /*InSkillHealthCostPercent=*/-1.0f, Skill);
-		for (int32 Step = 0; Shot && Step < 100 && Shot->Step(0.05f); ++Step)
-		{
-		}
-		return Shot != nullptr;
-	};
-
 	const float ControlBefore = Control.Health();
-	if (!TestTrue(TEXT("set-up: the plain shot is fired"), FlyAt(Plain, Control, Unstated))
+	if (!TestTrue(TEXT("set-up: the plain shot is fired"), FlyKitShot(Plain, Control, Unstated))
 		|| !TestTrue(TEXT("CONTROL: the plain shot landed, so its target is hurt"), Control.Health() < ControlBefore))
 	{
 		return false;
@@ -439,12 +443,186 @@ CATACLYSM_STALKER_KIT_TEST(FCataclysmStalkerKitAilmentShotTest,
 	TestFalse(TEXT("CONTROL: and a skill stating no ailment poisons nothing"), Control.Carries(Poison));
 
 	const float Before = Poisoned.Health();
-	if (!TestTrue(TEXT("set-up: the stating shot is fired"), FlyAt(Stating, Poisoned, Flask)))
+	if (!TestTrue(TEXT("set-up: the stating shot is fired"), FlyKitShot(Stating, Poisoned, Flask)))
 	{
 		return false;
 	}
 	TestTrue(TEXT("the shot landed"), Poisoned.Health() < Before);
 	TestTrue(TEXT("and laid the Poison its row states"), Poisoned.Carries(Poison));
+	return true;
+}
+
+// ==========================================================================
+// A fired shot delivers what any landed blow delivers
+// ==========================================================================
+
+/**
+ * A SHOT WITH A SPEED LAYS WHAT A LANDED BLOW CARRIES. Ruled by the coordinating session 2026-11-17: its contact,
+ * `ACataclysmProjectile::HitOne`, never passed through `HitTargets`, so it laid no knockback, no stun and no named
+ * effect. Three shots of three Death skills, flown by hand at 1200 cm/s at targets four metres out: `Knockback=2`
+ * pushes its target out to six metres; `Effect=Shred; EffectMagnitude=20` lays the Shred, cutting a Death resistance
+ * of 40 to 20; `StunSeconds=1; Effect=Stun` stuns. THE CONTROL is the same shot of a skill stating none of them: its
+ * target is hurt, so it landed, and is not moved, shredded or stunned.
+ */
+CATACLYSM_STALKER_KIT_TEST(FCataclysmStalkerKitShotRidersTest,
+	"Cataclysm.StalkerKit.AFiredShotLaysWhatALandedBlowCarries")
+{
+	using namespace CataclysmStalkerKitTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+	constexpr float Tolerance = 5.0f;
+
+	const FGameplayTag Shred = UCataclysmSkillShapes::StatusTagFor(TEXT("Shred"));
+	const FGameplayAttribute Death = UCataclysmResistanceAttributeSet::GetDeathResistanceAttribute();
+	if (!TestTrue(TEXT("set-up: the Shred tag"), Shred.IsValid()))
+	{
+		return false;
+	}
+
+	const TCHAR* DeathTags = TEXT("Element.Death");
+	const TCHAR* Shot = TEXT("Range=12; Radius=0.5; Speed=1200");
+
+	// THE CONTROL FIRST.
+	{
+		FKitFighter Caster(World, FVector(0.0f, -30.0f * M, 0.0f));
+		FKitFighter Target(World, FVector(4.0f * M, -30.0f * M, 0.0f));
+		Target.Set(Death, 40.0f);
+		UCataclysmProjectileSkill* Plain =
+			GrantKitSkill<UCataclysmProjectileSkill>(Caster, ECataclysmAbilitySlot::Special, Shot, DeathTags);
+		const float Before = Target.Health();
+		const FVector Where = Target.Actor->GetActorLocation();
+		if (!TestNotNull(TEXT("set-up: the plain shot's skill"), Plain)
+			|| !TestTrue(TEXT("set-up: the plain shot is fired"), FlyKitShot(Caster, Target, Plain))
+			|| !TestTrue(TEXT("CONTROL: the plain shot landed, so its target is hurt"), Target.Health() < Before))
+		{
+			return false;
+		}
+		TestEqual(TEXT("CONTROL: and it is not moved"), FVector::Dist(Target.Actor->GetActorLocation(), Where), 0.0f,
+				  Tolerance);
+		TestFalse(TEXT("CONTROL: nor shredded"), Target.Carries(Shred));
+		TestEqual(TEXT("CONTROL: its Death resistance stays 40"), Target.Get(Death), 40.0f, 0.01f);
+		TestFalse(TEXT("CONTROL: nor stunned"), UCataclysmSkillEffects::IsStunned(Target.Actor));
+	}
+
+	{
+		FKitFighter Caster(World, FVector::ZeroVector);
+		FKitFighter Target(World, FVector(4.0f * M, 0.0f, 0.0f));
+		UCataclysmProjectileSkill* Shoving = GrantKitSkill<UCataclysmProjectileSkill>(
+			Caster, ECataclysmAbilitySlot::Special, FString(Shot) + TEXT("; Knockback=2"), DeathTags);
+		if (!TestNotNull(TEXT("set-up: the shoving shot's skill"), Shoving)
+			|| !TestTrue(TEXT("set-up: the shoving shot is fired"), FlyKitShot(Caster, Target, Shoving)))
+		{
+			return false;
+		}
+		TestEqual(TEXT("a shot stating Knockback=2 pushes its target 2 metres away from the firer"),
+				  Target.Actor->GetActorLocation().X, 6.0f * M, Tolerance);
+	}
+
+	{
+		FKitFighter Caster(World, FVector(0.0f, 30.0f * M, 0.0f));
+		FKitFighter Target(World, FVector(4.0f * M, 30.0f * M, 0.0f));
+		Target.Set(Death, 40.0f);
+		UCataclysmProjectileSkill* Shredding = GrantKitSkill<UCataclysmProjectileSkill>(
+			Caster, ECataclysmAbilitySlot::Special, FString(Shot) + TEXT("; Effect=Shred; EffectMagnitude=20"),
+			DeathTags);
+		if (!TestNotNull(TEXT("set-up: the shredding shot's skill"), Shredding)
+			|| !TestTrue(TEXT("set-up: the shredding shot is fired"), FlyKitShot(Caster, Target, Shredding)))
+		{
+			return false;
+		}
+		TestTrue(TEXT("a shot naming Shred lays it"), Target.Carries(Shred));
+		TestEqual(TEXT("cutting its target's Death resistance from 40 to 20"), Target.Get(Death), 20.0f, 0.01f);
+	}
+
+	{
+		FKitFighter Caster(World, FVector(0.0f, 60.0f * M, 0.0f));
+		FKitFighter Target(World, FVector(4.0f * M, 60.0f * M, 0.0f));
+		UCataclysmProjectileSkill* Stunning = GrantKitSkill<UCataclysmProjectileSkill>(
+			Caster, ECataclysmAbilitySlot::Special, FString(Shot) + TEXT("; StunSeconds=1; Effect=Stun"), DeathTags);
+		if (!TestNotNull(TEXT("set-up: the stunning shot's skill"), Stunning)
+			|| !TestTrue(TEXT("set-up: the stunning shot is fired"), FlyKitShot(Caster, Target, Stunning)))
+		{
+			return false;
+		}
+		TestTrue(TEXT("a shot stating a stun stuns its target"), UCataclysmSkillEffects::IsStunned(Target.Actor));
+	}
+	return true;
+}
+
+/**
+ * THE SPEAR'S SKEWER, AT ITS REAL SPEED, PINS ITS LINE AND BINDS IT. The row as `game/Data/WeaponSkills.csv` writes
+ * it, `Speed=1800` and all, cast and flown through two targets three and six metres out. Both are hurt and both are
+ * pinned, and when the shot finishes the two are bound: killing the first frees the second. THE CONTROL is the same
+ * row without its `ForcedMovement` and `OnDeath`, which is what Skewer did in play until 2026-11-17: both hurt, neither
+ * pinned. `Cataclysm.Skills.AProjectileStatingOnDeathReleaseBindsTheLineItPinned` casts it at `Speed=0`, a beam.
+ */
+CATACLYSM_STALKER_KIT_TEST(FCataclysmStalkerKitSkewerTest,
+	"Cataclysm.StalkerKit.TheSpearsSkewerAtItsRealSpeedPinsAndBindsItsLine")
+{
+	using namespace CataclysmStalkerKitTest;
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game, /*bInformEngineOfWorld=*/false);
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+
+	// CAST AND FLOWN: the shot leaves on activation (no wind-up for a bare fighter), and is stepped by hand until it
+	// finishes, which is when the skill hears of it and binds what it pinned.
+	const auto CastAndFly = [this](const FKitFighter& Caster, const TCHAR* Cell) -> bool
+	{
+		UCataclysmProjectileSkill* Spear =
+			GrantKitSkill<UCataclysmProjectileSkill>(Caster, ECataclysmAbilitySlot::Special, Cell);
+		if (!TestNotNull(TEXT("set-up: the spear"), Spear)
+			|| !TestTrue(TEXT("set-up: it activates"), ActivateKitSkill(Caster.AbilitySystem, Spear))
+			|| !TestNotNull(TEXT("set-up: at a speed, a shot is in the air"), Spear->InFlight.Get()))
+		{
+			return false;
+		}
+		ACataclysmProjectile* Flying = Spear->InFlight;
+		for (int32 Step = 0; Step < 200 && Flying->Step(0.05f); ++Step)
+		{
+		}
+		return TestTrue(TEXT("set-up: and it has finished"), Spear->InFlight.Get() == nullptr);
+	};
+
+	{
+		FKitFighter Caster(World, FVector(0.0f, 30.0f * M, 0.0f));
+		FKitFighter First(World, FVector(3.0f * M, 30.0f * M, 0.0f));
+		FKitFighter Second(World, FVector(6.0f * M, 30.0f * M, 0.0f));
+		const float FirstBefore = First.Health();
+		const float SecondBefore = Second.Health();
+		if (!CastAndFly(Caster, TEXT("Range=14; Radius=1.5; Pierce=99; Speed=1800; Burn=1")))
+		{
+			return false;
+		}
+		if (!TestTrue(TEXT("CONTROL: the shot without its pin passes through both, hurting both"),
+					  First.Health() < FirstBefore && Second.Health() < SecondBefore))
+		{
+			return false;
+		}
+		TestFalse(TEXT("CONTROL: and pins neither"),
+				  UCataclysmSkillEffects::IsPinned(First.Actor) || UCataclysmSkillEffects::IsPinned(Second.Actor));
+	}
+
+	FKitFighter Caster(World, FVector::ZeroVector);
+	FKitFighter First(World, FVector(3.0f * M, 0.0f, 0.0f));
+	FKitFighter Second(World, FVector(6.0f * M, 0.0f, 0.0f));
+	const float FirstBefore = First.Health();
+	const float SecondBefore = Second.Health();
+	if (!CastAndFly(Caster, TEXT("Range=14; Radius=1.5; Pierce=99; Speed=1800; Burn=1; ForcedMovement=Pin; "
+								 "ForcedMovementDuration=4; OnDeath=Release")))
+	{
+		return false;
+	}
+	TestTrue(TEXT("Skewer's shot passes through both, hurting both"),
+			 First.Health() < FirstBefore && Second.Health() < SecondBefore);
+	TestTrue(TEXT("at its real speed it pins the first"), UCataclysmSkillEffects::IsPinned(First.Actor));
+	TestTrue(TEXT("and the second"), UCataclysmSkillEffects::IsPinned(Second.Actor));
+	TestTrue(TEXT("the first one dies"), UCataclysmSkillEffects::MarkDead(First.Actor));
+	TestFalse(TEXT("and the second is freed, so the line was bound"), UCataclysmSkillEffects::IsPinned(Second.Actor));
 	return true;
 }
 

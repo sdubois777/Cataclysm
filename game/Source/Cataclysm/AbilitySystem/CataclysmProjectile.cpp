@@ -794,6 +794,24 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 			UCataclysmSkillTemplate::NoteBlowLanded(
 				Firer, Target, Target->GetActorLocation(), bFromBehind);
 
+			// AND WHAT THE FIRING ROW'S BLOW CARRIES BEYOND ITS DAMAGE: the shove, the stun, the forced movement, a
+			// knockdown the firer's rows carry, and the named effects. Ruled by the coordinating session 2026-11-17,
+			// issue #2580. Until then a shot with a speed laid none of them -- the Spear's Skewer pinned nothing in play
+			// -- because this contact never passes through `HitTargets`. THE SAME CODE, asked of the firing skill, and
+			// nothing for a shot no skill fired: every creature's own shot (the Brute's rock, the Sentinel's bolt, the
+			// Succubus's soulfire) is fired with none, and keeps exactly what it did. By the burn's test above: landed,
+			// and carrying damage. A pin is kept for the line `OnDeath=Release` binds when the shot finishes.
+			if (SpentMoreMultiplier > 0.0f)
+			{
+				if (const UCataclysmSkillTemplate* Firing = Cast<const UCataclysmSkillTemplate>(FiringSkill.Get()))
+				{
+					if (Firing->LayWhatALandedShotCarries(Firer, Target, Dealt))
+					{
+						PinnedAlongItsFlight.AddUnique(Target);
+					}
+				}
+			}
+
 			// AND THE FIRER'S MINIONS REPEAT THE CONTACT, when it holds Chorus
 			// and a skill fired this. Last, since a repeat carries nothing and
 			// may kill the target. Issue #1515.
