@@ -67,7 +67,30 @@ Traced: 1 leaves a pinned rename with no alias; 2 leaves a row whose single valu
 
 ### EVIDENCE
 
-Recorded in the commit that follows the proof.
+**The branch moved before the window**, from `c3e5693ed` to development `bead00391` (#2726, Soul Harvest) as
+`feat/six-set-drawbacks-doubled-1`, which is why the Unreal total registered is 4728. #2726 changed neither the
+workbook nor `game/Data`; the one conflict was this file, both entries at the top, and this entry sits above Soul
+Harvest's because this branch's first commit is the later. Every file's change is the original commit's.
+
+**The editor window `enchant-draw-w1`**, 2026-11-17 15:00 to 15:32, on `b0b534898`, the registration commit, waiting
+first for no build process, at least 10,240 MB free and a free lock:
+
+- **The build**: "Build: Succeeded - 38 actions, 35 files compiled".
+- **The asset rebuild** changed exactly `DT_EnchantmentEffects.uasset`, `DT_EnchantmentsNegative.uasset` and
+  `datatable_asset_sources.json`, committed as `9e566c946`, the tested head.
+- **The full Unreal suite** on `9e566c946`: "4728 tests performed, 4728 succeeded, 0 failed. 47 skipped part of what
+  they check" and "Declared: 4728 tests in the tree at 9e566c946; 4728 performed, gap 0", as registered. The
+  whole-suite engine log is kept at
+  `.claude/master-kit-2026-09-23/window-templates/work/enchant-draw-w1_suite_Cataclysm_2026-11-17.log`.
+- **The two Python guards**, in a detached git worktree copy at `9e566c946`, removed afterwards, each as registered
+  with `result.proved` true: guard 1 "PROVED: 1 failed, 4 passed in 0.84s | restored: 5 passed in 0.75s", named
+  failure `test_the_pin_s_renames_are_the_alias_table`; guard 2 "PROVED: 1 failed, 41 passed in 0.86s | restored: 42
+  passed in 0.79s", named failure `test_a_single_value_appears_in_its_words_outside_any_range`.
+
+**Python of record** at `9e566c946`: "7378 passed, 9 skipped in 208.02s"; JUnit tests 7387, failures 0, errors 0,
+skipped 9. ruff: "All checks passed!" A regenerate run left `game/Data` unchanged. Before the asset commit, on the
+first base `c3e5693ed`, the suite failed one test, `test_datatable_assets_are_current`, naming exactly the two
+tables ("1 failed, 7374 passed, 9 skipped").
 
 ---
 
