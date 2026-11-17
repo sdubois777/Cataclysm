@@ -79,22 +79,25 @@ namespace CataclysmEnchantmentSetTest
 	 * The benefits: three thresholds on set A, one on set B, one on set C, and
 	 * one ordinary row. A set row states its threshold in its own words, which
 	 * is where `UCataclysmDropRoll` reads it from.
+	 *
+	 * A SET ROW CARRIES THE ORDINARY WEIGHT 1 AND ITS SET NUMBER IN `SetId`, as
+	 * the generated tables do since issue #1443; an ordinary row's `SetId` is 0.
 	 */
 	const TCHAR* PositiveCsv =
-		TEXT("Name,Effect,EnchantmentType,Weight,Tags,IsNegative,RollsDown\n")
-		TEXT("Set_A_Two,Test Set A (2-Piece Bonus): armour,Set,7,,False,\n")
-		TEXT("Set_A_Six,Test Set A (6-Piece Bonus): critical chance,Set,7,,False,\n")
-		TEXT("Set_A_Ten,Test Set A (10-Piece Bonus): evasion,Set,7,,False,\n")
-		TEXT("Set_B_Two,Test Set B (2-Piece Bonus): health,Set,8,,False,\n")
-		TEXT("Set_C_Two,Test Set C (2-Piece Bonus): block,Set,9,,False,\n")
-		TEXT("Ordinary,An ordinary benefit,Generic,1,,False,\n");
+		TEXT("Name,Effect,EnchantmentType,Weight,Tags,IsNegative,RollsDown,SetId\n")
+		TEXT("Set_A_Two,Test Set A (2-Piece Bonus): armour,Set,1,,False,,7\n")
+		TEXT("Set_A_Six,Test Set A (6-Piece Bonus): critical chance,Set,1,,False,,7\n")
+		TEXT("Set_A_Ten,Test Set A (10-Piece Bonus): evasion,Set,1,,False,,7\n")
+		TEXT("Set_B_Two,Test Set B (2-Piece Bonus): health,Set,1,,False,,8\n")
+		TEXT("Set_C_Two,Test Set C (2-Piece Bonus): block,Set,1,,False,,9\n")
+		TEXT("Ordinary,An ordinary benefit,Generic,1,,False,,0\n");
 
 	/** The costs. Set C has none, which is what makes it grant nothing. */
 	const TCHAR* NegativeCsv =
-		TEXT("Name,Effect,EnchantmentType,Weight,Tags,IsNegative,RollsDown\n")
-		TEXT("Set_A_Drawback,Test Set A costs movement speed,Set,7,,True,\n")
-		TEXT("Set_B_Drawback,Test Set B costs mana,Set,8,,True,\n")
-		TEXT("Ordinary_Drawback,An ordinary drawback,Generic,3,,True,\n");
+		TEXT("Name,Effect,EnchantmentType,Weight,Tags,IsNegative,RollsDown,SetId\n")
+		TEXT("Set_A_Drawback,Test Set A costs movement speed,Set,1,,True,,7\n")
+		TEXT("Set_B_Drawback,Test Set B costs mana,Set,1,,True,,8\n")
+		TEXT("Ordinary_Drawback,An ordinary drawback,Generic,3,,True,,0\n");
 
 	/** What each made-up row grants. One stat each, so a test can tell them apart. */
 	const TCHAR* EffectCsv =
@@ -142,7 +145,8 @@ namespace CataclysmEnchantmentSetTest
 			// ON A ROW STRUCT BREAKS A TABLE BUILT FROM CSV TEXT HERE: a column
 			// the struct has and the text lacks stops the table reading. Adding
 			// `RollsDown` to the sentence row did that to all six tests on
-			// 2026-10-05.
+			// 2026-10-05, and adding `SetId` (issue #1443) did it again to the
+			// same six on 2026-11-17.
 			Test.AddError(TEXT("A made-up table in this file did not read. Its "
 							   "columns must match the generated CSV's."));
 			return false;
