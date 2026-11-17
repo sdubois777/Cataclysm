@@ -868,6 +868,10 @@ def enchantments(book, negative: bool) -> list[dict]:
     no relationship to the row beside it.
     """
     first = 5 if negative else 0
+    # THE SET NUMBER HAS A COLUMN OF ITS OWN, issue #1443, ruled by the project owner on 2026-09-07: K for the
+    # benefits, L for the drawbacks. They sit after both tables rather than inside each, so every reader that knows
+    # the two tables by position, the made-up workbooks in the tests among them, reads A to J as before.
+    set_column = SET_COLUMN_NEGATIVE if negative else SET_COLUMN_POSITIVE
     out = []
     for index, raw in enumerate(book["Enchantments"].iter_rows(values_only=True), 1):
         if index == 1 or not raw or len(raw) <= first + 3:
@@ -877,6 +881,7 @@ def enchantments(book, negative: bool) -> list[dict]:
             continue
         kind = "Negative" if negative else "Positive"
         rolls_down = clean(raw[first + 4]) if len(raw) > first + 4 else ""
+        set_cell = raw[set_column] if len(raw) > set_column else None
         out.append({"Name": row_name(kind, text[:48]),
                     "Effect": text,
                     "EnchantmentType": clean(raw[first + 1]),
@@ -885,8 +890,29 @@ def enchantments(book, negative: bool) -> list[dict]:
                     "IsNegative": "True" if negative else "False",
                     "RollsDown": ",".join(
                         str(place) for place in
-                        sorted(ranges_rolling_down(rolls_down, text, index)))})
+                        sorted(ranges_rolling_down(rolls_down, text, index))),
+                    "SetId": set_number(set_cell, index)})
     return unique(out, f"Enchantments ({'negative' if negative else 'positive'})")
+
+
+#: Where the Enchantments sheet keeps each table's set number, counted from 0: column K for the benefits and L for
+#: the drawbacks. Issue #1443.
+SET_COLUMN_POSITIVE = 10
+SET_COLUMN_NEGATIVE = 11
+
+
+def set_number(cell, index: int) -> str:
+    """A set number cell as the table carries it: a whole number, or 0 for a row in no set.
+
+    0 AND NOT BLANK, because the engine imports the column into an `int32` (`FCataclysmEnchantmentRow::SetId`), whose
+    default is 0, and a blank cell in a number column is a parse warning there rather than a value.
+    """
+    if cell is None or (isinstance(cell, str) and not cell.strip()):
+        return "0"
+    value = float(cell)
+    if not value.is_integer() or value < 1:
+        raise DataError(f"Enchantments row {index}: the set number {cell!r} is not a whole number of 1 or more.")
+    return str(int(value))
 
 
 def ranges_rolling_down(cell: str, words: str, index: int = 0) -> frozenset[int]:
@@ -935,8 +961,8 @@ def ranges_rolling_down(cell: str, words: str, index: int = 0) -> frozenset[int]
 #: `game/Source/Cataclysm/Items/CataclysmDropRoll.cpp`.
 SET_PIECE_THRESHOLD = re.compile(r"\((\d+)-Piece Bonus", re.IGNORECASE)
 
-#: The highest ordinary enchantment weight. A set row's Weight column carries
-#: the set's identifier instead, which is why an identifier must be above this.
+#: The highest enchantment weight, a set row's included since issue #1443 moved
+#: the set number into a column of its own.
 #: `UCataclysmDropRoll::HighestEnchantmentWeight` is the same number.
 HIGHEST_ENCHANTMENT_WEIGHT = 4
 
@@ -948,18 +974,17 @@ UNREACHABLE_THRESHOLD = 10 ** 9
 def enchantment_set_id(row: dict) -> int:
     """Which named set an enchantment row belongs to, or 0 for none.
 
-    THE IDENTIFIER LIVES IN THE Weight COLUMN, which is issue #1443: a row typed
-    `Set` carries 5 to 18 there instead of a 1 to 4 weight. This is the reading
-    `UCataclysmDropRoll::EnchantmentSetId` makes. Anything that is not a whole
-    number above the highest weight answers 0, so a set row carrying 3 is a
-    fault in the data rather than a set numbered 3.
+    THE NUMBER HAS A COLUMN OF ITS OWN, `SetId`, since issue #1443 (the project
+    owner's ruling of 2026-09-07). Until then it was the Weight column, 5 to 18,
+    on a row typed `Set`. This is the reading `UCataclysmDropRoll::EnchantmentSetId`
+    makes: a row not typed `Set`, or with no number, answers 0.
+    `validate_enchantment_set_ids` refuses both mismatches, so a 0 here is never a
+    set row that lost its number in silence.
     """
     if row["EnchantmentType"].casefold() != "set":
         return 0
-    weight = float(row["Weight"])
-    if not weight.is_integer() or weight <= HIGHEST_ENCHANTMENT_WEIGHT:
-        return 0
-    return int(weight)
+    number = str(row.get("SetId", "")).strip()
+    return int(number) if number else 0  # "0" is no set, and int("0") is 0
 
 
 def set_piece_threshold(words: str) -> int | None:
@@ -14050,8 +14075,8 @@ def validate_element_visuals(tables: dict[str, list[dict]],
 #: `UCataclysmDropRoll::EnchantmentDrawWeight` already prices any weight below 1
 #: at nothing. Issue #1833, ruled 2026-09-25: the owner removed three
 #: enchantments, and deleting a row would shift the position code of every later
-#: row, which merged design-log entries quote. A set row is excluded, because its
-#: Weight column carries the set's identifier.
+#: row, which merged design-log entries quote. A set row is excluded: its weight is
+#: an ordinary 1 since issue #1443, and a set is retired, if ever, as a whole set.
 RETIRABLE_WEIGHT_TABLES = ("EnchantmentsPositive", "EnchantmentsNegative")
 
 
@@ -14076,10 +14101,10 @@ def validate_weights(tables: dict[str, list[dict]]) -> list[str]:
 
 #: The enchantment types the sheet may state.
 #:
-#: `Set` takes a row out of the ordinary weight bands, because
-#: `UCataclysmDropRoll::EnchantmentDrawWeight` prices the set identifier of 5 to
-#: 18 that a set row carries in its Weight column at zero. `Generic` leaves the
-#: row in the bands. Nothing else means anything to the game.
+#: `Set` takes a row out of the ordinary weight bands: since issue #1443
+#: `UCataclysmDropRoll::EnchantmentCandidatesFor` leaves out every row of that
+#: type, and the set's number is in `SetId`. `Generic` leaves the row in the
+#: bands. Nothing else means anything to the game.
 ENCHANTMENT_TYPES = ("Generic", "Set")
 
 #: The tables whose rows carry a type. Named rather than found by pattern, so
@@ -14146,6 +14171,36 @@ def validate_enchantment_types(tables: dict[str, list[dict]]) -> list[str]:
     return problems
 
 
+def validate_enchantment_set_ids(tables: dict[str, list[dict]]) -> list[str]:
+    """A set row carries a set number and a weight of 1 to 4; an ordinary row carries no set number.
+
+    ISSUE #1443, ruled by the project owner on 2026-09-07: "Add a SetId column to the Enchantments sheet and give the
+    set rows an ordinary 1-to-4 weight." Until then a set row's Weight held its set number, 5 to 18, so Weight meant
+    two things. Each half of the rule is checked, because each mistake is quiet on its own: a set row without a number
+    belongs to no set and none of its bonuses can turn on, and an ordinary row with a number would be counted as a set
+    piece. A set row's weight must be a whole 1 to 4, because it is now a weight: 0 retires only an ordinary row, and a
+    number above 4 is the old meaning come back.
+    """
+    problems = []
+    for table in ENCHANTMENT_TABLES:
+        for row in tables.get(table, []):
+            is_set = str(row.get("EnchantmentType", "")).strip().casefold() == "set"
+            number = str(row.get("SetId", "")).strip()
+            number = "" if number in ("", "0") else number
+            if is_set and not number:
+                problems.append(f"{table}/{row['Name']}: a Set row with no set number. Write the set's number in "
+                                f"the sheet's set column (K for a benefit, L for a drawback).")
+            if not is_set and number:
+                problems.append(f"{table}/{row['Name']}: an {row.get('EnchantmentType')!r} row carries the set "
+                                f"number {number}. Only a row typed 'Set' belongs to a set.")
+            weight = float(row["Weight"])
+            if is_set and (not weight.is_integer() or not 1 <= weight <= HIGHEST_ENCHANTMENT_WEIGHT):
+                problems.append(f"{table}/{row['Name']}: a Set row's weight is {row['Weight']}. Since issue #1443 it "
+                                f"is an ordinary weight, a whole number from 1 to {HIGHEST_ENCHANTMENT_WEIGHT}; the "
+                                f"set's number goes in the set column.")
+    return problems
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true",
@@ -14184,6 +14239,7 @@ def main(argv: list[str] | None = None) -> int:
     problems = (validate_tags(tables, known_tags(book))
                 + validate_weights(tables)
                 + validate_enchantment_types(tables)
+                + validate_enchantment_set_ids(tables)
                 + validate_affix_slots(tables)
                 + validate_socket_slots(tables)
                 + validate_enemy_drop_rarities(tables)

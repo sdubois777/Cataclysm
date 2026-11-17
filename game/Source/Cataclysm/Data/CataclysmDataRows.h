@@ -191,7 +191,11 @@ struct FCataclysmEnchantmentRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment")
 	FString EnchantmentType;
 
-	/** 1 is rare and powerful, 4 is common and modest. */
+	/**
+	 * 1 is rare and powerful, 4 is common and modest; 0 retires an ordinary row, which is then never drawn. A set row
+	 * carries an ordinary weight too, 1 by the owner's 2026-09-08 "same bucket as t1" ruling, since issue #1443 moved
+	 * its set number into `SetId`.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment")
 	float Weight = 0.0f;
 
@@ -216,6 +220,15 @@ struct FCataclysmEnchantmentRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment")
 	FString RollsDown;
+
+	/**
+	 * The named set this row belongs to, 5 to 18, or 0 for a row in no set. Read only on a row typed `Set`
+	 * (`UCataclysmDropRoll::EnchantmentSetId`). Issue #1443, the project owner's ruling of 2026-09-07: until then the
+	 * number sat in `Weight`, which then meant two things. The generator refuses a set row without a number and an
+	 * ordinary row with one.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment")
+	int32 SetId = 0;
 };
 
 /** One enemy modifier. Source: Enemy Modifiers, which is stored as a matrix. */

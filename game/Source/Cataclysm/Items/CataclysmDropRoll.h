@@ -803,10 +803,10 @@ public:
 	 * read as meaning a set is handed out whole by some other mechanism. The
 	 * project owner ruled on 2026-09-08 that a set IS an enchantment, so the
 	 * rows belong in this draw after all -- they enter it through
-	 * EnchantmentSetsFor rather than as loose rows, because their Weight column
-	 * holds a set identifier rather than a weight. A set row still never reaches
-	 * the ordinary pool: EnchantmentCandidatesFor drops it because
-	 * EnchantmentDrawWeight prices a weight of 5 to 18 at zero.
+	 * EnchantmentSetsFor rather than as loose rows. A set row still never reaches
+	 * the ordinary pool: EnchantmentCandidatesFor leaves out every row typed
+	 * `Set`, by its type, since issue #1443 gave set rows an ordinary weight of
+	 * 1 and their set number a `SetId` column of its own.
 	 *
 	 * A SLOT TAG BINDS AND EVERY OTHER TAG DOES NOT. The project owner ruled on
 	 * 2026-09-07 that an enchantment's tags say what it AFFECTS, not which item
@@ -841,15 +841,14 @@ public:
 	/**
 	 * Which named set a row belongs to, or 0 when it belongs to none.
 	 *
-	 * THE SET IDENTIFIER LIVES IN THE Weight COLUMN, which is issue #1443. A
-	 * row typed `Set` carries 5 to 18 there instead of a 1 to 4 weight. This is
-	 * the one place that reads the column that way, so when #1443 gives the
-	 * sheet a `SetId` column of its own only this function changes.
+	 * THE SET NUMBER HAS ITS OWN COLUMN, `FCataclysmEnchantmentRow::SetId`, since
+	 * issue #1443 (the project owner's ruling of 2026-09-07). Until then it was
+	 * the Weight column, 5 to 18 on a row typed `Set`, and this was the one place
+	 * that read the column that way, so this is the one place that changed.
 	 *
-	 * A WHOLE NUMBER ABOVE THE HIGHEST WEIGHT, rather than a range of 5 to 18
-	 * written down here. A fifteenth set gets an identifier of 19 and needs no
-	 * change, and a set row carrying 3 is refused rather than being confused
-	 * with a weight.
+	 * ANY NUMBER ABOVE 0, rather than a range of 5 to 18 written down here, so a
+	 * fifteenth set needs no change here. `tools/generate_datatables.py` refuses
+	 * a set row with no number and an ordinary row with one.
 	 *
 	 * NOT A UFUNCTION, for the same reason EnchantmentSuitsSlot is not: it takes
 	 * a data row that this header only forward-declares.

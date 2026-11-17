@@ -216,8 +216,8 @@ bool FCataclysmEnchantmentWeightLadder::RunTest(const FString&)
 			  FDrop::EnchantmentDrawWeight(4.0f), 64.0f);
 
 	// A ROW THIS CANNOT PRICE IS TAKEN OUT OF THE DRAW RATHER THAN GUESSED AT.
-	// 5 and 18 are the range the 56 set rows carry a set identifier in, which is
-	// issue #1443.
+	// 5 and 18 are the range the 56 set rows carried their set number in until
+	// issue #1443 moved it into `SetId`; a weight above 4 is still refused.
 	TestEqual(TEXT("weight 0 cannot be drawn"),
 			  FDrop::EnchantmentDrawWeight(0.0f), 0.0f);
 	TestEqual(TEXT("a set identifier of 5 cannot be drawn"),
@@ -259,6 +259,7 @@ bool FCataclysmEnchantmentSetRowsAreNeverDrawn::RunTest(const FString&)
 		// rows at all, "no set row is a candidate" would pass while testing
 		// nothing.
 		int32 SetRows = 0;
+		int32 SetRowsAtWeightOne = 0;
 		Table->ForeachRow<FCataclysmEnchantmentRow>(TEXT("Test"),
 			[&](const FName&, const FCataclysmEnchantmentRow& Row)
 			{
@@ -266,6 +267,7 @@ bool FCataclysmEnchantmentSetRowsAreNeverDrawn::RunTest(const FString&)
 											   ESearchCase::IgnoreCase))
 				{
 					++SetRows;
+					SetRowsAtWeightOne += FMath::IsNearlyEqual(Row.Weight, 1.0f) ? 1 : 0;
 				}
 			});
 		if (!TestTrue(TEXT("the table really does hold set rows to exclude"),
@@ -273,6 +275,13 @@ bool FCataclysmEnchantmentSetRowsAreNeverDrawn::RunTest(const FString&)
 		{
 			return false;
 		}
+		// AND EVERY ONE OF THEM CARRIES A WEIGHT THE DRAW COULD PRICE, so what
+		// keeps them out below is their type and not their weight. Until issue
+		// #1443 a set row's weight was its set number, 5 to 18, which the draw
+		// prices at nought; since then it is 1, and only the type check in
+		// EnchantmentCandidatesFor stands between a set row and the ordinary pool.
+		TestEqual(TEXT("every set row carries the ordinary weight 1"),
+				  SetRowsAtWeightOne, SetRows);
 
 		TArray<FName> Candidates;
 		FDrop::EnchantmentCandidatesFor(Table, TEXT("Chest"), Candidates);
@@ -295,8 +304,8 @@ bool FCataclysmEnchantmentSetRowsAreNeverDrawn::RunTest(const FString&)
 					TEXT("'%s' is a set row and is in the ordinary draw. Set "
 						 "positives and negatives are paired and guaranteed, so "
 						 "a set enters the draw through EnchantmentSetsFor as "
-						 "one option, not as loose rows priced by a Weight "
-						 "column that holds its set identifier."),
+						 "one option, not as loose rows. EnchantmentCandidatesFor "
+						 "must leave out every row typed 'Set'."),
 					*Candidate.ToString()));
 				return false;
 			}

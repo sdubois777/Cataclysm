@@ -3607,6 +3607,8 @@ A weapon draws from three more positive rows, one each at weights 1, 2 and 3.
 | 3 | Moderate — solid effect, manageable drawback |
 | 4 | Common — modest effect, minor drawback |
 
+**Every enchantment's Weight is a rarity from this table, a set's included. A set row carries the weight 1, and its set number, 5 to 18, sits in a column of its own** (Positive Set and Negative Set on the Enchantments sheet; `SetId` in the generated tables). Weight 1 states what the draw does with a set: the project owner ruled on 2026-09-08 that sets are drawn "in the same bucket as t1 enchantments", so each set a slot can carry is one more option in the weight 1 band. The ordinary draw never offers a Set row on its own, by the row's type. **A weight of 0 on an ordinary row retires it**: the row stays in the sheet, an item that already carries it keeps it, and the draw never offers it again. Until 2026-11-17 a set row's Weight column held its set number instead; the project owner's ruling of 2026-09-07 on issue #1443 moved the number out.
+
   
 
 ### **Enchantment Tag Categories**
@@ -3673,8 +3675,8 @@ with a 10-piece bonus each would have been at least 140 models.
 
   
 
-**Fourteen sets are written**, with identifiers 5 to 18 in the `Weight` column of
-the enchantment sheet — issue #1443 owns moving those into a column of their own.
+**Fourteen sets are written**, numbered 5 to 18 in the enchantment sheet's set
+columns (issue #1443).
 They are Archon's Aegis, Tyrant's Chains, Chronomancer's Time-Lock, Mana Weaver,
 Brute's Heart, Spellblade's Will, Demon King's Regalia, Plague Doctor, Starvation,
 Null Emperor, Shard of Anarchy, Divine Retribution, Warlord's Will and Reaper's

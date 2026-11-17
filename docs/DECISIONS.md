@@ -2,6 +2,83 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-17 — A set row's set number has a column of its own and its Weight is an ordinary 1; the ordinary draw leaves set rows out by their type (#1443)
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (Enchantments sheet: two new columns, K "Positive Set" and L "Negative
+Set"; the 56 Set rows' Weight from 5-18 to 1) and from it `game/Data/EnchantmentsPositive.csv` and
+`game/Data/EnchantmentsNegative.csv` (a new `SetId` column) with their two DataTable assets;
+`tools/generate_datatables.py` (`enchantments` reads the set columns, `set_number`, `enchantment_set_id` reads `SetId`,
+`validate_enchantment_set_ids`); `game/Source/Cataclysm/Data/CataclysmDataRows.h` (`FCataclysmEnchantmentRow::SetId`);
+`game/Source/Cataclysm/Items/CataclysmDropRoll.cpp` and `.h` (`EnchantmentSetId` reads `SetId`;
+`EnchantmentCandidatesFor` leaves out every `Set` row by its type); `game/Source/Cataclysm/Tests/CataclysmEnchantmentTests.cpp`
+(one assertion added); `tools/tests/test_generate_datatables.py` (one fixture, one real-workbook check, a new class of
+17 checks); comments in `tools/tests/test_enchantment_weight_row_counts.py`; `docs/Cataclysm_GDD_v2.md` (the paragraph
+under the weight table, and the set paragraph); `docs/README.md` (the sheet's column list); this file.
+
+### SAID FIRST
+
+- **NOTHING CHANGES IN PLAY.** Every set keeps its number, 5 to 18, its rows and its pieces. A set is drawn as before:
+  one option inside the weight 1 band (`RollEnchantments`, `SetBand = 0`), by the project owner's 2026-09-08 ruling that
+  sets go "in the same bucket as t1 enchantments". Weight 1 now says that in the data, so no drop rate moves.
+- **THE ORDINARY DRAW LEAVES SET ROWS OUT BY THEIR TYPE, NOT THEIR WEIGHT.** Until now a set row's weight of 5 to 18 was
+  what kept it out: `EnchantmentDrawWeight` priced it at nought. At weight 1 it would be priced like any weight 1 row,
+  so `EnchantmentCandidatesFor` now refuses every row typed `Set` first.
+- **THE RULINGS.** The project owner, 2026-09-07, on #1443: "Add a `SetId` column to the Enchantments sheet and give the
+  set rows an ordinary 1-to-4 weight." The coordinating session, 2026-11-17, approved the shape proposed for it: the
+  numbers unchanged in a column of their own, every set row at weight 1, the exclusion by type, the two refusal checks,
+  the tests and the paragraph.
+
+### HOW IT IS BUILT
+
+- **Two columns, after both tables.** The Enchantments sheet holds the benefits in A-E and the drawbacks in F-J. The set
+  numbers go in K (benefits) and L (drawbacks) rather than inside each table, so every reader that knows the two tables
+  by position, the made-up workbooks in the tests among them, reads A to J as before.
+- **0, not blank, for a row in no set**, in the generated `SetId` column, because the engine imports it into an
+  `int32` whose default is 0.
+- **`validate_enchantment_set_ids` refuses three mistakes**, each quiet on its own: a `Set` row with no number (it
+  would belong to no set and none of its bonuses could turn on), an ordinary row with a number (it would be counted as
+  a set piece), and a `Set` row whose weight is not a whole 1 to 4 (the column's old meaning come back).
+- **Measured:** 42 benefit rows (three per set) and 14 drawback rows (one per set), numbers 5 to 18 in each table. Each
+  `Set` row's `SetId` equals its old weight and its weight is 1; no other field of any row changed.
+  `EnchantmentEffects.csv` is unchanged.
+
+### THE TESTS
+
+- **The control the coordinating session asked for, both halves on the real tables:**
+  `Cataclysm.Enchantments.ASetRowIsNeverDrawnFromTheOrdinaryPool` gains the assertion "every set row carries the
+  ordinary weight 1", so what keeps them out is shown to be their type; and
+  `Cataclysm.Enchantments.ARetiredEnchantmentIsNeverADropCandidate`, unchanged, still holds that a weight 0 row is never
+  drawn.
+- **The sets still work at weight 1**: the fourteen `CataclysmSetBonus*Tests.cpp` files and
+  `CataclysmEnchantmentSetTests.cpp` wear real set pieces from the built tables; they run in the whole suite.
+- **Python:** `TestASetRowCarriesItsNumberInItsOwnColumn` (17 checks: the three refusals, the reading from `SetId`, and
+  the cell parsing); `test_the_set_rows_are_left_where_the_owner_put_them` now reads the numbers from `SetId` and holds
+  every set row at weight 1.
+
+### REGISTERED BEFORE THE RUNS
+
+- **The asset rebuild** changes exactly `DT_EnchantmentsPositive.uasset`, `DT_EnchantmentsNegative.uasset` and
+  `game/Data/datatable_asset_sources.json`.
+- **The Unreal suite**: 4712 tests performed, all succeeded: the 4712 measured by `enchant-seven-w1` at `f4cf7b597`, whose
+  `game/` tree is development `9c6b604dd`, the base of this change. This change adds no Unreal test.
+- **A C++ guard**, `prove_cpp_guard`, prefix `Cataclysm.Enchantments.ASetRowIsNeverDrawnFromTheOrdinaryPool`: in
+  `CataclysmDropRoll.cpp`, `if (Row.EnchantmentType.Equals(TEXT("Set"), ESearchCase::IgnoreCase))` becomes
+  `if (Row.EnchantmentType.Equals(TEXT("NotASet"), ESearchCase::IgnoreCase))`. Predicted named failure:
+  `ASetRowIsNeverDrawnFromTheOrdinaryPool`. Traced: at weight 1 a set row now passes `EnchantmentDrawWeight`, so
+  without the type check it becomes an ordinary candidate and the test's error fires. The anchor occurs once in that
+  file.
+- **A Python guard**, `prove_guard`, in a detached git worktree copy, command `python -m pytest
+  tools/tests/test_generate_datatables.py -k SetRowCarries`: in `tools/generate_datatables.py` the line
+  `            if is_set and (not weight.is_integer() or not 1 <= weight <= HIGHEST_ENCHANTMENT_WEIGHT):` becomes
+  `            if False:`. Predicted named failures, the four cases of
+  `test_a_set_row_whose_weight_is_not_a_whole_1_to_4_is_refused` (weights 5, 18, 0 and 2.5).
+
+### EVIDENCE
+
+Recorded in the commit that follows the proof.
+
+---
+
 ## 2026-11-17 — Seven enchantment sentences take the wording the owner approved, and the one-stack rule covers ailments and damage over time only (#913, #1609)
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (seven sentences on the Enchantments sheet, and the name and sentence cells

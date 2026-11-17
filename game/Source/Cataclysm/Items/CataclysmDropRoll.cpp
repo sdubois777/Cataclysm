@@ -1323,11 +1323,11 @@ void UCataclysmDropRoll::TopUpDamageTypes(const UDataTable* WeaponSkillTable,
 float UCataclysmDropRoll::EnchantmentDrawWeight(float SheetWeight)
 {
 	// THE SHEET'S NUMBER MUST BE A WHOLE ONE FROM 1 TO 4. Anything else is a row
-	// this draw cannot price, which today means one of the 56 set rows carrying
-	// a set identifier where a weight belongs -- issue #1443. Those are already
-	// excluded by EnchantmentSuitsSlot, so reaching here with one is a fault in
-	// the data rather than an unlucky roll, and a zero takes the row out of the
-	// draw instead of pricing it wrongly.
+	// this draw cannot price: 0 is an ordinary row retired from the draw, and any
+	// other number is a fault in the data, which a zero takes out of the draw
+	// instead of pricing it wrongly. Until issue #1443 a set row carried its set
+	// number, 5 to 18, here; it now carries an ordinary weight and its number is
+	// `SetId`.
 	const float Rounded = FMath::RoundToFloat(SheetWeight);
 	if (!FMath::IsNearlyEqual(Rounded, SheetWeight)
 		|| Rounded < LowestEnchantmentWeight
@@ -1350,10 +1350,10 @@ bool UCataclysmDropRoll::EnchantmentSuitsSlot(const FCataclysmEnchantmentRow& Ro
 	// "paired and guaranteed" as meaning some other mechanism hands out a whole
 	// set, and no such mechanism was ever written, so 55 authored rows could not
 	// appear in the game. The project owner ruled on 2026-09-08 that a set IS an
-	// enchantment. A set row still never reaches the ordinary pool -- its Weight
-	// holds a set identifier of 5 to 18, which EnchantmentDrawWeight prices at
-	// zero -- but it now honours a slot tag the same way every other row does,
-	// so that a set written for weapons only would bind. None carries one today.
+	// enchantment. A set row still never reaches the ordinary pool --
+	// EnchantmentCandidatesFor leaves out every row typed `Set` -- but it honours
+	// a slot tag the same way every other row does, so that a set written for
+	// weapons only would bind. None carries one today.
 
 	// A SLOT TAG BINDS; EVERY OTHER TAG DESCRIBES WHAT THE ENCHANTMENT AFFECTS.
 	// Three rows of 574 carry one. A row with none may appear anywhere, which is
@@ -1395,6 +1395,14 @@ void UCataclysmDropRoll::EnchantmentCandidatesFor(const UDataTable* Table,
 	Table->ForeachRow<FCataclysmEnchantmentRow>(TEXT("EnchantmentCandidatesFor"),
 		[&](const FName& Key, const FCataclysmEnchantmentRow& Row)
 		{
+			// A SET ROW IS NEVER AN ORDINARY CANDIDATE, asked by its type. Until
+			// issue #1443 its weight of 5 to 18 kept it out, priced at zero; it now
+			// carries an ordinary weight of 1, so the type is what keeps it out.
+			// A set reaches an item through the set draw in RollEnchantments.
+			if (Row.EnchantmentType.Equals(TEXT("Set"), ESearchCase::IgnoreCase))
+			{
+				return;
+			}
 			if (EnchantmentSuitsSlot(Row, Slot)
 				&& EnchantmentDrawWeight(Row.Weight) > 0.0f)
 			{
@@ -1418,18 +1426,12 @@ int32 UCataclysmDropRoll::EnchantmentSetId(const FCataclysmEnchantmentRow& Row)
 		return 0;
 	}
 
-	// A WHOLE NUMBER ABOVE THE HIGHEST WEIGHT. The Weight column does double
-	// duty on set rows and holds the identifier -- issue #1443. Requiring it
-	// above HighestEnchantmentWeight is what keeps the two meanings apart: a
-	// set row carrying 3 is a fault in the data rather than a set numbered 3,
-	// and is refused here so it cannot silently become one.
-	const float Rounded = FMath::RoundToFloat(Row.Weight);
-	if (!FMath::IsNearlyEqual(Rounded, Row.Weight)
-		|| Rounded <= HighestEnchantmentWeight)
-	{
-		return 0;
-	}
-	return static_cast<int32>(Rounded);
+	// THE SET'S OWN COLUMN, `SetId`, since issue #1443 (the project owner's
+	// ruling of 2026-09-07). Until then the Weight column held the number on a
+	// set row, 5 to 18, and meant two things. A set row with no number answers
+	// 0, a row in no set; `tools/generate_datatables.py` refuses such a row, so
+	// this is never a set that lost its number in silence.
+	return Row.SetId > 0 ? Row.SetId : 0;
 }
 
 namespace
@@ -1558,8 +1560,8 @@ static void GatherEnchantmentSets(
 					TEXT("Set %d has %d positive rows and no negative row, so "
 						 "it cannot be paired and guaranteed. It is left out of "
 						 "the draw, and worn pieces of it grant nothing. Write "
-						 "one negative row carrying that set identifier in "
-						 "game/Data/EnchantmentsNegative.csv. This is said once "
+						 "one negative row carrying that set number (its SetId) "
+						 "in game/Data/EnchantmentsNegative.csv. This is said once "
 						 "per run."),
 					SetId, Rows.Num());
 			}
