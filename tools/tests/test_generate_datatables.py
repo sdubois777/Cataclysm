@@ -4168,18 +4168,21 @@ class TestEnchantmentEffects:
     row, and half a set.
     """
 
+    # A SET ROW CARRIES WEIGHT 1 AND ITS SET NUMBER IN THE SET COLUMNS, K for a
+    # benefit and L for a drawback, since issue #1443.
     ENCHANTMENTS = [
         ["Positives", "Type", "Weight", "Column 4", None,
-         "Negatives", "Type", "Weight", "Tags"],
+         "Negatives", "Type", "Weight", "Tags", None,
+         "Positive Set", "Negative Set"],
         ["Double your energy shield", "Generic", 1, "Stat.Defense.EnergyShield",
          None, "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
         ["Archon's Aegis (2-Piece Bonus): Your block chance is increased by 25%",
-         "Set", 5, "Stat.Defense.Block", None,
-         "Your movement speed is reduced by 10%", "Set", 5,
-         "Stat.Utility.Movespeed"],
+         "Set", 1, "Stat.Defense.Block", None,
+         "Your movement speed is reduced by 10%", "Set", 1,
+         "Stat.Utility.Movespeed", None, 5, 5],
         ["Archon's Aegis (6-Piece Bonus): Your block value is doubled",
-         "Set", 5, "Stat.Defense.Block", None,
-         "You cannot block", "Generic", 2, "Stat.Defense.Block"],
+         "Set", 1, "Stat.Defense.Block", None,
+         "You cannot block", "Generic", 2, "Stat.Defense.Block", None, 5, None],
         ["Your block chance is increased by 10%-20%", "Generic", 3,
          "Stat.Defense.Block", None,
          "Your attack speed is reduced by 20%-35%", "Generic", 3,
@@ -5245,10 +5248,10 @@ class TestAgainstTheRealWorkbook:
         assert broken["Name"] in problems[0]
 
     def test_the_set_rows_are_left_where_the_owner_put_them(self):
-        """A set row's Weight is a set identifier of 5 to 18, not a rarity
-        weight, and the project owner set those deliberately. Nothing in the
-        type check may move one, so this states the counts and the identifiers
-        rather than trusting that."""
+        """A set row carries its set number, 5 to 18, in a column of its own and
+        the ordinary weight 1, since issue #1443 (the project owner's rulings of
+        2026-09-07 and 2026-09-08). This states the counts, the numbers and the
+        weight rather than trusting them."""
         tables = self.enchantment_tables()
         expected = {"EnchantmentsPositive": 42, "EnchantmentsNegative": 14}
         for name, wanted in expected.items():
@@ -5256,9 +5259,12 @@ class TestAgainstTheRealWorkbook:
                     if row["EnchantmentType"].strip().casefold() == "set"]
             assert len(sets) == wanted, (
                 f"{name} holds {len(sets)} set rows, not {wanted}")
-            identifiers = sorted({int(float(row["Weight"])) for row in sets})
+            identifiers = sorted({int(row["SetId"]) for row in sets})
             assert identifiers == list(range(5, 19)), (
-                f"{name} set identifiers are {identifiers}, not 5 to 18")
+                f"{name} set numbers are {identifiers}, not 5 to 18")
+            weights = sorted({float(row["Weight"]) for row in sets})
+            assert weights == [1.0], (
+                f"{name} set rows carry the weights {weights}, not only 1")
 
 
 class TestAnAtNPointsRowStatesItsThreshold:
@@ -10664,3 +10670,55 @@ class TestTheDamageTypesCarriedRow(GadgetRowsOnAMadeUpSheet):
         out = self.out(tmp_path, self.WORDS, [dict(self.ROW, **{"Value Kind": "increased"})])
         assert any("damage_types_carried" in problem and "'increased'" in problem
                    for problem in self.validation(out)), self.validation(out)
+
+
+class TestASetRowCarriesItsNumberInItsOwnColumn:
+    """ISSUE #1443, the project owner's ruling of 2026-09-07: "Add a SetId column
+    to the Enchantments sheet and give the set rows an ordinary 1-to-4 weight."
+
+    Each mistake is refused separately because each is quiet on its own: a set
+    row with no number belongs to no set and none of its bonuses can turn on, an
+    ordinary row with a number would be counted as a set piece, and a set row
+    whose weight is above 4 is the old meaning of the column come back.
+    """
+
+    @staticmethod
+    def row(kind="Set", weight=1, set_id="5"):
+        return {"Name": "r", "EnchantmentType": kind, "Weight": weight, "SetId": set_id}
+
+    def check(self, row, table="EnchantmentsPositive"):
+        return gen.validate_enchantment_set_ids({table: [row]})
+
+    def test_a_set_row_with_its_number_and_weight_1_passes(self):
+        assert self.check(self.row()) == []
+
+    def test_an_ordinary_row_with_no_number_passes(self):
+        assert self.check(self.row(kind="Generic", weight=3, set_id="0")) == []
+
+    @pytest.mark.parametrize("set_id", ["", "0"])
+    def test_a_set_row_with_no_number_is_refused(self, set_id):
+        assert len(self.check(self.row(set_id=set_id))) == 1
+
+    def test_an_ordinary_row_with_a_number_is_refused(self):
+        assert len(self.check(self.row(kind="Generic", weight=3, set_id="7"),
+                              table="EnchantmentsNegative")) == 1
+
+    @pytest.mark.parametrize("weight", [5, 18, 0, 2.5])
+    def test_a_set_row_whose_weight_is_not_a_whole_1_to_4_is_refused(self, weight):
+        assert len(self.check(self.row(weight=weight))) == 1
+
+    def test_the_set_number_is_read_from_its_own_column_and_not_the_weight(self):
+        """THE READING THE GAME MAKES, `UCataclysmDropRoll::EnchantmentSetId`:
+        the number comes from `SetId`, and a weight of 5 means nothing now."""
+        assert gen.enchantment_set_id(self.row(weight=1, set_id="12")) == 12
+        assert gen.enchantment_set_id(self.row(kind="Generic", weight=5, set_id="0")) == 0
+        assert gen.enchantment_set_id(self.row(weight=5, set_id="0")) == 0
+
+    @pytest.mark.parametrize("cell, expected", [(None, "0"), ("", "0"), (7, "7"), (7.0, "7")])
+    def test_a_set_number_cell_is_written_as_a_whole_number_or_0(self, cell, expected):
+        assert gen.set_number(cell, 2) == expected
+
+    @pytest.mark.parametrize("cell", [2.5, 0, -3])
+    def test_a_set_number_cell_that_is_not_a_whole_number_from_1_is_refused(self, cell):
+        with pytest.raises(gen.DataError, match="set number"):
+            gen.set_number(cell, 2)

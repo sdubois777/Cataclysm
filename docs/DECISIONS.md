@@ -2,6 +2,118 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-17 — A set row's set number has a column of its own and its Weight is an ordinary 1; the ordinary draw leaves set rows out by their type (#1443)
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (Enchantments sheet: two new columns, K "Positive Set" and L "Negative
+Set"; the 56 Set rows' Weight from 5-18 to 1) and from it `game/Data/EnchantmentsPositive.csv` and
+`game/Data/EnchantmentsNegative.csv` (a new `SetId` column) with their two DataTable assets;
+`tools/generate_datatables.py` (`enchantments` reads the set columns, `set_number`, `enchantment_set_id` reads `SetId`,
+`validate_enchantment_set_ids`); `game/Source/Cataclysm/Data/CataclysmDataRows.h` (`FCataclysmEnchantmentRow::SetId`);
+`game/Source/Cataclysm/Items/CataclysmDropRoll.cpp` and `.h` (`EnchantmentSetId` reads `SetId`;
+`EnchantmentCandidatesFor` leaves out every `Set` row by its type); `game/Source/Cataclysm/Tests/CataclysmEnchantmentTests.cpp`
+(one assertion added); `tools/tests/test_generate_datatables.py` (one fixture, one real-workbook check, a new class of
+17 checks); comments in `tools/tests/test_enchantment_weight_row_counts.py`; `docs/Cataclysm_GDD_v2.md` (the paragraph
+under the weight table, and the set paragraph); `docs/README.md` (the sheet's column list); this file.
+
+### SAID FIRST
+
+- **NOTHING CHANGES IN PLAY.** Every set keeps its number, 5 to 18, its rows and its pieces. A set is drawn as before:
+  one option inside the weight 1 band (`RollEnchantments`, `SetBand = 0`), by the project owner's 2026-09-08 ruling that
+  sets go "in the same bucket as t1 enchantments". Weight 1 now says that in the data, so no drop rate moves.
+- **THE ORDINARY DRAW LEAVES SET ROWS OUT BY THEIR TYPE, NOT THEIR WEIGHT.** Until now a set row's weight of 5 to 18 was
+  what kept it out: `EnchantmentDrawWeight` priced it at nought. At weight 1 it would be priced like any weight 1 row,
+  so `EnchantmentCandidatesFor` now refuses every row typed `Set` first.
+- **THE RULINGS.** The project owner, 2026-09-07, on #1443: "Add a `SetId` column to the Enchantments sheet and give the
+  set rows an ordinary 1-to-4 weight." The coordinating session, 2026-11-17, approved the shape proposed for it: the
+  numbers unchanged in a column of their own, every set row at weight 1, the exclusion by type, the two refusal checks,
+  the tests and the paragraph.
+
+### HOW IT IS BUILT
+
+- **Two columns, after both tables.** The Enchantments sheet holds the benefits in A-E and the drawbacks in F-J. The set
+  numbers go in K (benefits) and L (drawbacks) rather than inside each table, so every reader that knows the two tables
+  by position, the made-up workbooks in the tests among them, reads A to J as before.
+- **0, not blank, for a row in no set**, in the generated `SetId` column, because the engine imports it into an
+  `int32` whose default is 0.
+- **`validate_enchantment_set_ids` refuses three mistakes**, each quiet on its own: a `Set` row with no number (it
+  would belong to no set and none of its bonuses could turn on), an ordinary row with a number (it would be counted as
+  a set piece), and a `Set` row whose weight is not a whole 1 to 4 (the column's old meaning come back).
+- **Measured:** 42 benefit rows (three per set) and 14 drawback rows (one per set), numbers 5 to 18 in each table. Each
+  `Set` row's `SetId` equals its old weight and its weight is 1; no other field of any row changed.
+  `EnchantmentEffects.csv` is unchanged.
+
+### THE TESTS
+
+- **The control the coordinating session asked for, both halves on the real tables:**
+  `Cataclysm.Enchantments.ASetRowIsNeverDrawnFromTheOrdinaryPool` gains the assertion "every set row carries the
+  ordinary weight 1", so what keeps them out is shown to be their type; and
+  `Cataclysm.Enchantments.ARetiredEnchantmentIsNeverADropCandidate`, unchanged, still holds that a weight 0 row is never
+  drawn.
+- **The sets still work at weight 1**: the fourteen `CataclysmSetBonus*Tests.cpp` files and
+  `CataclysmEnchantmentSetTests.cpp` wear real set pieces from the built tables; they run in the whole suite.
+- **Python:** `TestASetRowCarriesItsNumberInItsOwnColumn` (17 checks: the three refusals, the reading from `SetId`, and
+  the cell parsing); `test_the_set_rows_are_left_where_the_owner_put_them` now reads the numbers from `SetId` and holds
+  every set row at weight 1.
+
+### REGISTERED BEFORE THE RUNS
+
+- **The asset rebuild** changes exactly `DT_EnchantmentsPositive.uasset`, `DT_EnchantmentsNegative.uasset` and
+  `game/Data/datatable_asset_sources.json`.
+- **The Unreal suite**: 4712 tests performed, all succeeded: the 4712 measured by `enchant-seven-w1` at `f4cf7b597`, whose
+  `game/` tree is development `9c6b604dd`, the base of this change. This change adds no Unreal test.
+- **A C++ guard**, `prove_cpp_guard`, prefix `Cataclysm.Enchantments.ASetRowIsNeverDrawnFromTheOrdinaryPool`: in
+  `CataclysmDropRoll.cpp`, `if (Row.EnchantmentType.Equals(TEXT("Set"), ESearchCase::IgnoreCase))` becomes
+  `if (Row.EnchantmentType.Equals(TEXT("NotASet"), ESearchCase::IgnoreCase))`. Predicted named failure:
+  `ASetRowIsNeverDrawnFromTheOrdinaryPool`. Traced: at weight 1 a set row now passes `EnchantmentDrawWeight`, so
+  without the type check it becomes an ordinary candidate and the test's error fires. The anchor occurs once in that
+  file.
+- **A Python guard**, `prove_guard`, in a detached git worktree copy, command `python -m pytest
+  tools/tests/test_generate_datatables.py -k SetRowCarries`: in `tools/generate_datatables.py` the line
+  `            if is_set and (not weight.is_integer() or not 1 <= weight <= HIGHEST_ENCHANTMENT_WEIGHT):` becomes
+  `            if False:`. Predicted named failures, the four cases of
+  `test_a_set_row_whose_weight_is_not_a_whole_1_to_4_is_refused` (weights 5, 18, 0 and 2.5).
+
+### EVIDENCE
+
+**THE FIRST WINDOW FAILED.** `enchant-setid-w1`, 2026-11-17 12:34 to 13:02, on `37d16627d`: the build ("43 actions,
+40 files compiled") and the asset rebuild (exactly `DT_EnchantmentsNegative.uasset`, `DT_EnchantmentsPositive.uasset`
+and `datatable_asset_sources.json`, committed as `59823ff1c`) went as registered, and the whole suite did not: "4712
+tests performed, 4706 succeeded, 6 failed", all six in `CataclysmEnchantmentSetTests.cpp`
+(`AnItemCarryingTwoSetsIsAPieceOfEach`, `ASetWithNoDrawbackGrantsNothing`, `EachThresholdAddsItsBonusToTheOnesBelowIt`,
+`PiecesOfDifferentSetsDoNotAddUp`, `TheDrawbackAppliesOnceHoweverManyPiecesAreWorn`,
+`TwoPiecesGrantTheFirstBonusAndTheDrawbackOnce`), each with "A made-up table in this file did not read. Its columns
+must match the generated CSV's." **The cause:** that file builds two enchantment tables from CSV text, which had no
+`SetId` column, and a field the row struct has and the text lacks stops a table built from CSV text reading -- the
+same thing `RollsDown` did to the same six tests on 2026-10-05, as the file's own comment records. The sweep for the
+new column had covered the generated tables and the Python fixtures and missed CSV text inside a C++ test. **The
+fix**, `997f492cc`: both made-up tables carry `SetId` (7, 8 and 9 for their sets A, B and C, 0 for the ordinary
+rows) and their set rows weight 1. No other file builds an enchantment table from CSV text. The C++ guard did not run
+in that window, because the window stops at a failed suite.
+
+**The second window, `enchant-setid-w2`**, 13:07 to 13:37, on `997f492cc`, waiting first for no build process, at
+least 10,240 MB free and a free lock:
+
+- **The build**: "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.22.cpp". The assets were already
+  rebuilt and committed.
+- **The full Unreal suite** on `997f492cc`: "4712 tests performed, 4712 succeeded, 0 failed" and "Declared: 4712
+  tests in the tree at 997f492cc; 4712 performed, gap 0", as registered. 47 tests reported skipping part of what
+  they check: the Paragon-art halves a worktree does not have. The whole-suite engine log is kept at
+  `.claude/master-kit-2026-09-23/window-templates/work/enchant-setid-w2_suite_Cataclysm_2026-11-17.log`.
+- **The C++ guard**: "PROVED: with the break in: 1 tests performed, 0 succeeded, 1 failed:
+  ASetRowIsNeverDrawnFromTheOrdinaryPool | restored: 1 tests performed, 1 succeeded, 0 failed", exactly the
+  registered named failure, the file's hash the same after. The failed assertion was the test's own error, naming
+  `Positive_Archon_s_Aegis_10_Piece_Bonus_When_your_healt` as a set row in the ordinary draw.
+- **The Python guard**, in a detached git worktree copy at `997f492cc`, removed afterwards: "PROVED: 4 failed, 13
+  passed, 1035 deselected in 2.02s | restored: 17 passed, 1035 deselected in 1.64s", named failures exactly the
+  four registered cases ([5], [18], [0] and [2.5]); `result.proved` true.
+
+**Python of record** at `997f492cc`: "7375 passed, 9 skipped in 195.41s"; JUnit tests 7384, failures 0, errors 0,
+skipped 9. ruff: "All checks passed!" A regenerate run left `game/Data` unchanged. Before the asset commit, at
+`37d16627d`, the suite failed one test, `test_datatable_assets_are_current`, naming exactly the two enchantment tables
+("1 failed, 7374 passed, 9 skipped").
+
+---
+
 ## 2026-11-17 — Seven enchantment sentences take the wording the owner approved, and the one-stack rule covers ailments and damage over time only (#913, #1609)
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (seven sentences on the Enchantments sheet, and the name and sentence cells

@@ -44,13 +44,12 @@ Repetition at the common end is what #1458 measured and what the redistribution
 fixed. The rare end needs rows written rather than rows moved, which is that
 issue's first option and was not the one the project owner took.
 
-THE MEASUREMENT MIRRORS THE DRAW, and it has to. `UCataclysmDropRoll` drops a row
-from the ORDINARY pool when its `Weight` is not a whole 1 to 4, which is every
-`Set` row: the 56 of them carry a set identifier of 5 to 18 in that column
-instead of a weight, which is issue
-[#1443](https://github.com/sdubois777/Cataclysm/issues/1443) and is not this
-file's business. Excluding them the way the draw does is. Counting them would put
-42 phantom benefit rows into the bands.
+THE MEASUREMENT MIRRORS THE DRAW, and it has to. `UCataclysmDropRoll` leaves every
+`Set` row out of the ORDINARY pool by its type: since issue
+[#1443](https://github.com/sdubois777/Cataclysm/issues/1443) the 56 of them carry
+the ordinary weight 1 and their set number in a column of their own, so their
+weight no longer keeps them out. Excluding them the way the draw does is this
+file's business. Counting them would put 42 phantom benefit rows into band 1.
 
 A SET IS DRAWN, JUST NOT AS A LOOSE ROW IN A BAND. Until 2026-09-08 no set could
 be drawn at all: `EnchantmentSuitsSlot` refused every `Set` row on the reading
@@ -108,10 +107,10 @@ def suits_slot(row: dict, slot: str) -> bool:
     sit. That part is what the C++ function does.
 
     THE SET EXCLUSION IS NOT THAT FUNCTION'S ANY MORE. `EnchantmentSuitsSlot`
-    refused every `Set` row until 2026-09-08; now `EnchantmentDrawWeight` is what
-    keeps them out of the ordinary bands, by pricing a weight of 5 to 18 at zero.
-    It is kept here because these are per-band counts and a set is not a member
-    of a band, and `band_of` below would drop them anyway.
+    refused every `Set` row until 2026-09-08; now `EnchantmentCandidatesFor` keeps
+    them out of the ordinary bands by their type, since issue #1443 gave them the
+    ordinary weight 1. It is kept here because these are per-band counts and a
+    set is not a member of a band.
     """
     if row["EnchantmentType"].strip().lower() == "set":
         return False
