@@ -502,8 +502,9 @@ CATACLYSM_STALKER_KIT_TEST(FCataclysmStalkerKitShotRidersTest,
 		{
 			return false;
 		}
-		TestEqual(TEXT("CONTROL: and it is not moved"), FVector::Dist(Target.Actor->GetActorLocation(), Where), 0.0f,
-				  Tolerance);
+		// A `float` comparison: under large world coordinates a location is `double`, and the mixed call is ambiguous.
+		TestEqual(TEXT("CONTROL: and it is not moved"),
+				  static_cast<float>(FVector::Dist(Target.Actor->GetActorLocation(), Where)), 0.0f, Tolerance);
 		TestFalse(TEXT("CONTROL: nor shredded"), Target.Carries(Shred));
 		TestEqual(TEXT("CONTROL: its Death resistance stays 40"), Target.Get(Death), 40.0f, 0.01f);
 		TestFalse(TEXT("CONTROL: nor stunned"), UCataclysmSkillEffects::IsStunned(Target.Actor));
@@ -520,7 +521,7 @@ CATACLYSM_STALKER_KIT_TEST(FCataclysmStalkerKitShotRidersTest,
 			return false;
 		}
 		TestEqual(TEXT("a shot stating Knockback=2 pushes its target 2 metres away from the firer"),
-				  Target.Actor->GetActorLocation().X, 6.0f * M, Tolerance);
+				  static_cast<float>(Target.Actor->GetActorLocation().X), 6.0f * M, Tolerance);
 	}
 
 	{
@@ -1002,7 +1003,7 @@ CATACLYSM_STALKER_KIT_TEST(FCataclysmStalkerKitAuraDisplacementTest,
 			return false;
 		}
 		TestEqual(TEXT("CONTROL: an aura stating no displacement moves nothing"),
-				  FVector::Dist(Target.Actor->GetActorLocation(), Where), 0.0f, Tolerance);
+				  static_cast<float>(FVector::Dist(Target.Actor->GetActorLocation(), Where)), 0.0f, Tolerance);
 	}
 
 	{
@@ -1018,10 +1019,10 @@ CATACLYSM_STALKER_KIT_TEST(FCataclysmStalkerKitAuraDisplacementTest,
 		}
 		Undertow->Pulse();
 		TestEqual(TEXT("one pulse pulls the target 1 metre toward the caster"),
-				  Target.Actor->GetActorLocation().X, 4.0f * M, Tolerance);
+				  static_cast<float>(Target.Actor->GetActorLocation().X), 4.0f * M, Tolerance);
 		Undertow->Pulse();
 		TestEqual(TEXT("and a second inside five seconds half as far, 0.5 metres"),
-				  Target.Actor->GetActorLocation().X, 3.5f * M, Tolerance);
+				  static_cast<float>(Target.Actor->GetActorLocation().X), 3.5f * M, Tolerance);
 	}
 
 	{
@@ -1036,7 +1037,7 @@ CATACLYSM_STALKER_KIT_TEST(FCataclysmStalkerKitAuraDisplacementTest,
 		}
 		Aegis->Pulse();
 		TestEqual(TEXT("a pulse stating Knockback=2 pushes the target 2 metres away from the caster"),
-				  Target.Actor->GetActorLocation().Y, 47.0f * M, Tolerance);
+				  static_cast<float>(Target.Actor->GetActorLocation().Y), 47.0f * M, Tolerance);
 	}
 	return true;
 }
