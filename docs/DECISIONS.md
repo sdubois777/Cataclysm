@@ -18,14 +18,14 @@ floor panel line and the floor-change reset; `ACataclysmEnemyCharacter` (`Catacl
 `ACataclysmEnemyController::Think` (`CataclysmEnemyController.cpp`); comments in `CataclysmCharacterBase.h`,
 `CataclysmSaveRecords.h` and `CataclysmEnemyHitTimingTests.cpp`. Tests: `CataclysmDungeonModifierEffectsTests.cpp`,
 `CataclysmSaveLoadTests.cpp`, `CataclysmSilenceTests.cpp`, and `tools/tests/test_attack_impact_is_recorded.py`. Issue
-[#2740](https://github.com/sdubois777/Cataclysm/issues/2740). **Phase 1 written; phase 2 applying two later rulings;
-not compiled yet, and nothing here has run in the engine.**
+[#2740](https://github.com/sdubois777/Cataclysm/issues/2740). **Phase 1 written; phase 2 applied two later rulings,
+compiled and registered the window; nothing here has run in the engine yet.**
 
 ### SAID FIRST
 
-- **NOTHING HERE HAS RUN IN THE ENGINE YET.** Phase 1 is the code, the tests and this entry, written without compiling.
-  Phase 2 compiles, reviews and registers the window; the window runs the build, the automation tests and the guard
-  proofs. Every statement below about what the game does is what the code was written to do, read and not run.
+- **NOTHING HERE HAS RUN IN THE ENGINE YET.** Phase 1 wrote the code, the tests and this entry; phase 2 compiled them
+  (alone and in unity) and registered the window; the window runs the automation tests and the guard proofs. Every
+  statement below about what the game does is what the code was written to do, read and compiled, not run.
 - **NO TEST WALKS AN ECHO IN.** The automation tests beat the game mode without ticking the world, so no brain runs and
   no echo moves. A test that needs an echo within its reach puts it there by hand; the brain's part is tested by
   calling `Think` once and reading what it chose (walk in, or stand). That an echo really reaches the player across a
@@ -285,6 +285,105 @@ On `4cf16761f`, the code and tests of phase 1 without this entry or the `Catacly
 lock free: "7488 passed, 9 skipped in 192.71s", and the JUnit file's `testsuite` tests="7497" failures="0" errors="0"
 skipped="9" (7488 passed), the two agreeing. Not the run of record: phase 2 runs it again on the registered head.
 
+### Compiled (phase 2)
+
+No rebase: `origin/development` was still `1bbba95bc`, the branch's base. Built on `043fa3283`, the branch with both
+later rulings, with no editor open and the Unreal lock not taken, as the coordinating session allowed.
+
+| Build | "Build:" line |
+| :-- | :-- |
+| The branch, every file in its unity file (`git status` clean) | "Build: Succeeded - 72 actions, 65 files compiled": every one of the module's 43 unity files and the Empire and Editor modules' files |
+| Each changed `.cpp` alone (`git read-tree origin/development`, so `git status` lists the branch's files as changed while the branch stays at `043fa3283`; `Makefile.bin` moved aside; built; `git reset -q` after, `git status` clean and HEAD unchanged) | "Build: Succeeded - 23 actions, 20 files compiled": the build tool's "[Adaptive Build] Excluded from Cataclysm unity file" line names the eight changed `.cpp` files and `CataclysmCharacterBase.cpp` and `CataclysmSaveRecords.cpp` (whose headers changed), each compiled alone, and ten unity files rebuilt without them |
+| The unity files again (`Makefile.bin` moved aside again; both moved copies deleted after) | "Build: Succeeded - 13 actions, 10 files compiled: Module.Cataclysm.10.cpp, Module.Cataclysm.13.cpp, Module.Cataclysm.23.cpp, Module.Cataclysm.32.cpp, Module.Cataclysm.37.cpp, Module.Cataclysm.38.cpp, Module.Cataclysm.39.cpp, Module.Cataclysm.40.cpp, Module.Cataclysm.7.cpp, Module.Cataclysm.8.cpp" |
+
+The changed files' unity files, read out of the generated `Module.Cataclysm.*.cpp`: 8 (`CataclysmEnemyCharacter.cpp`,
+`CataclysmEnemyController.cpp`), 7 (`CataclysmCharacterBase.cpp`), 10 (`CataclysmDungeonModifierEffects.cpp`), 13
+(`CataclysmSaveRecords.cpp`), 23 (`CataclysmEnemyHitTimingTests.cpp`), 32 (`CataclysmSilenceTests.cpp`), 37
+(`CataclysmDungeonGameMode.cpp`), 38 (`CataclysmDungeonModifierEffectsTests.cpp`) and 41 (`CataclysmSaveLoadTests.cpp`,
+alone in it, so its unity compile in the first build is the same text as its compile alone). No compile error in any
+build. **One warning, not this branch's:** C4996, `CountBits` for 64-bit values deprecated in 5.8, raised in an engine
+header from `CataclysmAbilitySystemComponent.cpp` line 1315, a file this branch does not touch.
+
+### Review (phase 2)
+
+- **The brain and the game mode agree on where an echo strikes.** Both ask `EchoStandsWithinItsStrike`, which compares
+  the floor-plane distance with `EchoMovesInToCm` plus `ContactToleranceCm`, the tolerance `IsInReach` adds. The game
+  mode writes `EchoMovesInToCm` once, as the echo notices the player, from `EchoesStrikeWithinCm`.
+- **The swing is always ordered in reach.** `EchoMovesInToCm` is never more than `ReachAgainstCm`, so the swing's own
+  test at the order (`bPendingBasicAttackMustStayInReach = IsInReach(...)`) is always true for an echo, and the blow
+  is measured against the full reach when it connects, as the second later ruling asks.
+- **An echo vanishing takes a waiting blow with it**, as any destroyed creature does (issue #783's entry). An echo
+  vanishes a second after its swing, and every ordinary swing's blow lands well inside that second at its authored
+  speed: the Brute's at 0.331 s (`SwingStrikeSeconds`), the Abyssal Warden's at 0.176 s, the Imp's at up to 0.308 s
+  and the Hellhound's at once. A swing slowed far enough could still lose its blow; not measured.
+- **Every reader of `TakesNoHostileAction` was read** (searched for the name in `game/Source`, tests left out): the
+  brain's swing and ability choice, never reached by an echo; `UCataclysmEnemyModifiers`' auras, Infernal Sacrifice,
+  Inferno Charge's channel and charge, now off for an echo; and `StepFamishedBeasts`' eaters. None of them is on the
+  path of the game mode's strike (`UseEnemyAbility`, `AttackTarget`), which asks nothing of it.
+- **The load order holds for R7.** The load in `CataclysmSaveLoad.cpp` calls `ResumeEmpireDungeon` (the floor
+  change, then `RestoreWalkState`, which puts back the list of the dead still to come) before `RestoreFloorRuleState`
+  (which, with `bEchoesStruck`, marks them spent), so the second is not undone by the first.
+- **An echo is still not saved as a creature.** `CataclysmSaveGather.cpp` skips every creature a rule raised that no
+  rule list names, and an echo is marked raised by a rule and named by no list.
+- **The two later rulings' comments**: `StrikeAsARuleOrders` and `bPendingBasicAttackMustStayInReach` in
+  `CataclysmEnemyCharacter.h`, and the file comment of `CataclysmEnemyHitTimingTests.cpp`, said Echoes of the Past
+  struck as a rule; each now says it did until #2740.
+- **This worktree had 22 Git LFS files left as pointers** after its branch was switched (DataTable assets, input
+  actions, four widgets). `git lfs checkout` put them back before any build; the window's pre-checks now refuse a
+  worktree holding a pointer.
+
+### Audit of every fixed number and starting state the new tests assert (phase 2)
+
+| Assertion | Read against | Holds because |
+| :-- | :-- | :-- |
+| An Imp's 132 cm kept, a Sentinel's 1,400 held to 600 | `EchoesDistanceCm`, a clamp to [0, `EchoesMostAwayCm`] | the inputs are the test's own literals |
+| Of six places, those at 0 (5,000 cm straight above), 500 and 1,499 cm are near and those at 1,500, 2,000 (300 cm below) and 3,000 cm are far | `EchoesPlaces`: `Dist2D >= EchoesLeastFromArrivalCm` | the floor-plane distance ignores height, and 1,500 meets `>=` |
+| Seed 36's order | `FRandomStream` in UE 5.8 (`RandomStream.h`: the seed times 196314165 plus 907633515, a fraction from its top 23 bits, `RandHelper` truncating) | computed: the first five fractions are 0.857, 0.983, 0.928, 0.791 and 0.821, which leave a shuffle of three and of six in order. The intact test asserts nothing that depends on the order; the break C1 needs the six to begin 0, 1, 2 |
+| Two echoes, a Common and a Magic Imp | `TwoDieOnFloorTwo` places a Common and a Magic Imp and kills both | |
+| No echo notices a player who has not moved | every kind's `NoticeRadiusCm`: Imp, Hellhound, Brute, Abyssal Warden, Succubus 1,000; Corrupted Sentinel, Gatekeeper 1,400 | each is under the 1,500 cm an echo stands from where the player stood |
+| An Imp notices from 1,000 cm: not at 1,010, at 900 | `ImpNoticeRadiusCm`, read by the test | |
+| The second echo does not notice while the player is 900 or 1,010 cm from the first | distinct cells are at least one cell (400 cm) apart; the player stands beyond the first on the line from the second | the second is at least 1,300 cm from the player |
+| The first strikes at 112 cm | `EchoMovesInToCm`, a Common Imp's reach against the player, 132, minus the test's 20 | within 132 plus the 2 cm tolerance |
+| Gone 4 beats after the strike, not 3 | `BeatsFor(EchoesVanishAfterSeconds)`, 1 s of 0.25 s beats | sums of 0.25 are exact in a float |
+| Still standing 39 beats after noticing, gone at 40 | `BeatsFor(EchoesGiveUpAfterSeconds)`, 10 s | the same |
+| The Brute's echo strikes at 85 cm | a Common Brute's reach against the player, 90 (its contact distance), plus 2 | inside `StompRadiusCm`, 350 |
+| Held echoes strike at 100 cm | an Imp's 132 | the blows by hand land too: `IsInReach` is 132 plus 2 |
+| The Sentinel's echo strikes at 595 cm | its 1,400 reach held to 600, plus 2; its notice 1,400 | |
+| The Sentinel's echo strikes at 13 m, the Succubus's does not at 7 m | the Sentinel's reach 1,400 in full (it cannot walk: `DesignedWalkSpeedCmPerSecond` 0) and notice 1,400; the Succubus's reach 800 held to 600, its notice 1,000 | both distances asserted against the live reach in the test's set-up |
+| The dodged swing: echo at 100 cm, the player steps 300 cm away | an Imp's 132 reach plus 2 | 400 cm is beyond it when the swing connects; the control's player stays at 100 cm |
+| Save-load echoes strike at 50 cm | the smallest designed reach is 90 (Brute, Hellhound, Abyssal Warden) | whatever kinds floor 1 put first in its list |
+
+### Registered before the run
+
+| Figure | Registered |
+| :-- | :-- |
+| `Cataclysm.DungeonModifierEffects.` alone | 772: 769 at the base, + 3 by name (`EchoesOfThePastStandsTheLastFloorsDeadAcrossTheFloorAsItBegins`, `AnEchoThatCannotWalkStrikesFromItsFullReachAndOneThatWalksMovesIn`, `AnEchosSwingMissesAPlayerWhoStepsOutOfItAndIsSpentAllTheSame`); three renamed, none removed |
+| `Cataclysm.SaveLoad.` alone | 77: 76, + 1 by name (`AnEchoThatStruckBeforeASaveStaysGoneAndOneThatHadNotRisesAgain`); two rewritten |
+| `Cataclysm.EchoesHeld.` alone | 4, none added; all four rewritten |
+| `Cataclysm.Silence.` alone | 26, none added; the echo scene rewritten. The prefix also runs the groups `Cataclysm.Silence.Aura` and `Cataclysm.Silence.Void`, counted in the 26 |
+| `Cataclysm.AI.` alone | 51, none added or changed: the brain every creature thinks with gained a branch |
+| Whole Unreal suite | **4795 performed, 4795 succeeded, 0 failed; 47 skipped halves; 0 test saves left behind.** 4791 measured by window b2733s4 at `e468bb95e` (its engine log `b2733s4_suite_engine_e468bb95.log`, 4791 "Test Completed" lines), whose `game/` tree is this branch's base `1bbba95bc` (`git diff --stat e468bb95e 1bbba95bc -- game/` prints nothing), + 4 by name |
+| C1, the fifteen metres taken away: `FVector::Dist2D(Places[Index], Arrival) >= EchoesLeastFromArrivalCm` to `... >= 0.0f` in `CataclysmDungeonModifierEffects.cpp`, prefix `Cataclysm.DungeonModifierEffects.EchoesStandOnTheFloorsPlacesApartAndFifteenMetresFromTheArrival` | 1 performed, 0 succeeded, 1 failed, on 4 assertions: "each at least fifteen metres from the arrival along the floor, and no two on one place", "the first three on the three places far enough, in the order three would take", "and the fourth and fifth begin the order again", "no place far enough, none". Restored: 1 of 1 |
+| C2, the give-up made a hundred times longer: `if (One.SecondsSinceNoticed >= Effects::EchoesGiveUpAfterSeconds)` to `... >= 100.0f * Effects::EchoesGiveUpAfterSeconds)` in `CataclysmDungeonGameMode.cpp`, prefix `Cataclysm.DungeonModifierEffects.EachEchoNoticesMovesInStrikesOnceAndVanishesOnItsOwnClock` | 1 performed, 0 succeeded, 1 failed, on 4 assertions: "ten seconds after noticing, it is gone", "both are spent", "and the floor's echoes are gone", "the panel says none stands". Restored: 1 of 1 |
+| C3, a spent echo kept in the save: `if (Echo.bSpent)` to `if (Echo.bSpent && Echo.Rung < 0)` in `CataclysmDungeonGameMode.cpp`, prefix `Cataclysm.SaveLoad.EchoesThatStruckBeforeASaveDoNotStrikeAgain` | 1 performed, 0 succeeded, 1 failed, on 3 assertions: "no echo that struck is left to come after the load", "no echo is raised again after the load", "and the echoes are gone". Restored: 1 of 1 |
+| C4, the echo's branch of the brain never taken: `Echo && Echo->bIsAnEchoOfThePast)` to `Echo && Echo->bIsAnEchoOfThePast && Echo->RarityStep < 0)` in `CataclysmEnemyController.cpp`, prefix as C2 | 1 performed, 0 succeeded, 1 failed, on 3 assertions: "within its reach, its brain stands it" (the ordinary brain answers `NotAttacking`, an echo taking no hostile action), "while the second's stands it still" (it roams), and "noticing nobody of its own" (it targets the player at 9 m). **One of the three is less certain:** if the ordinary brain finds no target in the test's world, "its brain walks it in" fails in place of "noticing nobody of its own". Restored: 1 of 1 |
+| C5, the echo's swing a rule's strike again: `Echo->AttackTarget(Player);` to `Echo->StrikeAsARuleOrders(Player);` in `CataclysmDungeonGameMode.cpp`, prefix `Cataclysm.DungeonModifierEffects.AnEchosSwingMissesAPlayerWhoStepsOutOfItAndIsSpentAllTheSame` | 1 performed, 0 succeeded, 1 failed, on 2 assertions: "the player who stepped out of the swing is not struck (...)" and "and the player is not struck". Restored: 1 of 1 |
+| C6, an echo that cannot walk taken for one that walks: `Echo->DesignedWalkSpeedCmPerSecond > 0.0f` to `Echo->DesignedWalkSpeedCmPerSecond >= 0.0f` in `CataclysmDungeonGameMode.cpp`, prefix `Cataclysm.DungeonModifierEffects.AnEchoThatCannotWalkStrikesFromItsFullReachAndOneThatWalksMovesIn` | 1 performed, 0 succeeded, 1 failed, on 4 assertions: "the Sentinel's echo strikes from its full reach", "and fired its recorded bolt from thirteen metres", "its one strike made, it moves in on nobody", "one of the two is spent". Restored: 1 of 1 |
+| Python | the run of record below |
+
+Each C++ anchor occurs once in its file: `prove_e2740.py C1|C2|C3|C4|C5|C6 --anchors-only` printed "anchor count 1" for
+each.
+No group prefix registered here is a case-insensitive string prefix of another group but the two named, checked against
+the 330 groups of the base log with this branch's names; each proof prefix selects exactly one test. The breaks are not
+compiled here; the window compiles each.
+
+**Python guard, run with `tools/prove_guard.py` in a `git archive` copy of `043fa3283`, removed afterwards; the anchor
+counted once first:**
+
+| Break | Command | Printed | Named failure |
+| :-- | :-- | :-- | :-- |
+| P1, the echo's swing a rule's strike again (`Echo->AttackTarget(Player);` to `Echo->StrikeAsARuleOrders(Player);` in `CataclysmDungeonGameMode.cpp`) | `python -m pytest tools/tests/test_attack_impact_is_recorded.py` | "PROVED: 1 failed, 55 passed in 0.25s \| restored: 56 passed in 0.11s"; `proved` True, `crashed` False | `test_an_echoes_strike_is_its_own_swing_measured_when_it_lands` |
+
 ### Found and not changed
 
 - **A player's minions may attack an echo they cannot hurt.** An echo is a hostile creature on the floor, so a minion
@@ -293,7 +392,8 @@ skipped="9" (7488 passed), the two agreeing. Not the run of record: phase 2 runs
 
 ### Not tested
 
-- **Nothing has been compiled or run.** Phase 2 and the window follow.
+- **Nothing has run in the engine.** It compiled in phase 2; every Unreal figure above is registered, not measured,
+  until the window runs.
 - **An echo walking in across a real floor**, its path, its speed and whether it reaches the player round walls: no
   test ticks a brain. The owner will see it in play.
 - **The frame cost of many echoes.** Not measured.
