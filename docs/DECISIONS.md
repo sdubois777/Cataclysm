@@ -382,7 +382,15 @@ Both were run by the coordinating session on 2026-11-17 at `fcfa2763a`.
    - A search of the other tests that name one of the six types found none that assumes an empty pool for them. A
      test that uses a weapon a type still has no skills for, such as a Sword for Death, still holds.
 
-The second run's window repeats the registration at the new head, with the asset step skipped because `d3f3b6036`
+3. **A third run, one more stale count.** At `133a2a3c`, after `Cataclysm.StalkerEntries.` 8, `Cataclysm.DungeonModifierEffects.` 769,
+   `Cataclysm.ConsumptionDouble.` 15 and `Cataclysm.StalkerKit.` 13 had all passed alone, `Cataclysm.Skills.` ran 283 and failed
+   1: `EveryRowStatingAStunDurationAlsoNamesStunningAsItsEffect`, "Expected 'four rows state a stun duration' to be 4, but
+   it was 6". Hammer of Dawn and Heaven's Verdict state a stun duration and name Stun, which is what the test's real check
+   asks, and it passed; only the pinned count was stale. Phase 1 updated the Python copy (`SKILL_STUN_SECONDS`) and missed
+   this one. The count is now 6, with a comment. A search of the C++ tests for other fixed counts over the weapon-skill
+   table found only the skill-pool tests, which pool Demonic and War weapons and do not move.
+
+The later runs' window repeats the registration at the new head, with the asset step skipped because `d3f3b6036`
 already holds the rebuilt tables. The Python step's `test_datatable_assets_are_current` is what shows they are current.
 No registered count changes.
 

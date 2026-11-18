@@ -883,7 +883,9 @@ bool FCataclysmEveryStatedStunNamesTheEffectTest::RunTest(const FString&)
 	}
 
 	AddInfo(FString::Printf(TEXT("%d rows state a stun duration."), Stating));
-	TestEqual(TEXT("four rows state a stun duration"), Stating, 4);
+	// Six since #2580 (2026-11-17): the four War rows, and Celestial's Hammer of Dawn and Heaven's Verdict, both of
+	// which name Stun among their effects. Window stalker-rows-w1 stopped on the old count, 4.
+	TestEqual(TEXT("six rows state a stun duration"), Stating, 6);
 	return true;
 }
 
