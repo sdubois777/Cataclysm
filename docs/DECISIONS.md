@@ -15,13 +15,18 @@ comment in `.h`); `FCataclysmSaveLoad::CharacterAndRun` (`game/Source/Cataclysm/
 `CataclysmExperienceBarTests.cpp` (new), `CataclysmCharacterLevelTests.cpp`, `CataclysmSaveLoadTests.cpp`,
 `CataclysmPlayLoopTests.cpp`, and `tools/tests/test_the_play_loop_is_logged_at_each_step.py`.
 `docs/Play_Loop_Checklist.md`. Issue [#2744](https://github.com/sdubois777/Cataclysm/issues/2744). **Applied and
-compiled (phase 2, below); no Unreal test has run yet.**
+compiled (phase 2, below) before the rebase onto gold's slice 1; the rebased tree has not been compiled, and no Unreal
+test has run yet.**
 
 ### SAID FIRST
 
 - **COMPILED, AND NO UNREAL TEST HAS RUN YET.** Every figure below that comes from a test is registered and not
   measured, until the window's results say otherwise. The first attempt to compile each changed file alone did not
   happen, because of a path mistake in this session's script; it was run again and did ("Compiled (phase 2)").
+- **THE TREE THE WINDOW BUILDS HAS NOT BEEN COMPILED.** The three builds below compiled the branch on `development`
+  `07f7e3bf6`. It was then rebased twice, the second time onto gold's slice 1 (#2747), whose PLAY LOOP log builders
+  conflicted with this branch's in `CataclysmPlayLoopLog.cpp` and `.h` and were joined by hand. The window's build is
+  the first compile of that tree (Registered before the run, below).
 - **NOBODY HAS PLAYED TIER 1 AT LEVEL 1.** The owner's ruling names the risk, and nothing here settles it.
   `tools/tests/test_the_starting_character_survives_a_pack.py`, `test_no_class_survives_that_fight_at_level_one`,
   records that no class wins that file's deliberately pessimistic fight at level 1: ten Imps in contact from the first
@@ -165,19 +170,32 @@ anchor counted once first. ITS PREDICTION WAS STATED IN THIS SESSION BEFORE THE 
 
 ### Registered before the run
 
-**THE BASE, REGISTERED AGAIN AFTER A REBASE.** First registered at 4801 against window echoes-spread-w1's 4795 at
-`913861d9f`, whose `game/` tree was `07f7e3bf6`'s. After the three builds below, `development` moved to `8e177d8b2`,
-the empire tree's slice 1a (#2746, 12 Unreal tests added), as the coordinating session said it would, and the branch was
-rebased onto it; the only file both changed is this log. The base is now window empire-tree-1a-w2's whole suite at
-`8c75df8a3`: "4807 tests performed, 4807 succeeded, 0 failed. 47 skipped part of what they check" (the #2741 slice 1a
-entry below). `git diff --stat 8c75df8a3 8e177d8b2 -- game/` prints nothing, so its `game/` tree is this branch's base.
-Group counts are its engine log's "Test Completed" lines, counted by prefix ignoring case
-(`laughing-curran-69e4bb/.claude/windows/t2741a2_suite_engine_8c75df8a.log`, 4807 lines, every one a success); each
-group below counts the same there as at `913861d9f`.
+**THE BASE, REGISTERED A THIRD TIME AFTER A SECOND REBASE.** First registered at 4801 against window echoes-spread-w1's
+4795 at `913861d9f`, whose `game/` tree was `07f7e3bf6`'s. After the three builds below, `development` moved to
+`8e177d8b2`, the empire tree's slice 1a (#2746, 12 Unreal tests added); the branch was rebased onto it and registered at
+4813 against window empire-tree-1a-w2's 4807 at `8c75df8a3`. `development` then moved to `d8d11fc51`, gold's slice 1
+(#2747, 13 Unreal tests added), as the coordinating session said it would, and the branch was rebased onto that, as
+`feat/new-character-starts-at-level-1-3`, a new name because the rebase needs a force push. The base is now window
+gold-1-w2's whole suite at `67dba4d60`: "4820 tests performed, 4820 succeeded, 0 failed. 47 skipped part of what they
+check" (the #2742 slice 1 entry below). `git diff --stat 67dba4d60 d8d11fc51 -- game/ tools/` prints nothing, so its
+`game/` tree is this branch's base. Group counts are its engine log's "Test Completed" lines, counted by prefix ignoring
+case (`adoring-jennings-f8c84c/.claude/windows/gold1_suite_engine_67dba4d6.log`, 4820 lines, every one
+`Result={Success}`); each group below counts the same there as at `8c75df8a3` and at `913861d9f`.
+
+**THE SECOND REBASE CONFLICTED IN C++.** Gold's slice and this branch both change six files. `CataclysmPlayLoopLog.cpp`
+and `.h` conflicted where gold's two builders (`GoldLine`, `GoldLineIn`) and this branch's `LevelGainedLine` were added
+at the same place; resolved by hand, keeping both, gold's first. `docs/DECISIONS.md` conflicted and was resolved by
+`tools/resolve_decisions_log.py resolve --first pools`: this entry first, since its first commit (12:14 MST) is later
+than gold's (11:20 MST). `CataclysmPlayerState.h`, `CataclysmSaveLoadTests.cpp` and `docs/Play_Loop_Checklist.md` merged
+without a conflict. Afterwards `git diff --numstat` against the base printed, for every file, the same lines added and
+removed as before the rebase, and `python tools/check_resolved_cpp.py` over the 18 C++ files this branch changes printed
+"18 files read, 0 with complaints". **The rebased tree has not been compiled: the window's build is its first compile.**
+Gold's slice also makes a creature's death drop gold piles (`ACataclysmEnemyCharacter::HandleDeath`), which
+`AKillThatCrossesALevelRaisesTheNumberTheBarAndMaximumHealth` reaches; nothing that test checks reads the floor.
 
 | Figure | Registered |
 | :-- | :-- |
-| Whole Unreal suite | 4807 + 6 = **4813**, 47 skipped halves, 0 test saves left behind |
+| Whole Unreal suite | 4820 + 6 = **4826**, 47 skipped halves, 0 test saves left behind |
 | `Cataclysm.SaveLoad.` alone | 77 + 2 = **79** |
 | `Cataclysm.CharacterLevel.` alone | 8 + 1 = **9** |
 | `Cataclysm.PlayLoop.` alone | 7 + 1 = **8** |
@@ -202,8 +220,8 @@ Each restored half: the same test, 1 of 1 succeeded.
 
 ### Compiled (phase 2)
 
-Built at `d8698b913`, on `development` `07f7e3bf6`, before the rebase onto `8e177d8b2` (registered above); the
-window's own build compiles the rebased branch. Built by
+Built at `d8698b913`, on `development` `07f7e3bf6`, before the rebases onto `8e177d8b2` and `d8d11fc51` (registered
+above); the window's own build is the first compile of the rebased branch. Built by
 `.claude/windows/compile_l2744.py`, with no editor open, under the Unreal lock `level1-compile`, which the coordinating
 session gave for these builds after window empire-tree-1a-w2 released the lock at 12:21 MST; released after each run
 ("level1-compile released the Unreal editor"), the tracked tree clean and HEAD unchanged after each.
