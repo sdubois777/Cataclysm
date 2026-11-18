@@ -20,9 +20,15 @@ in `tools/tests/test_the_select_screen_is_generated_and_the_game_starts_on_it.py
 
 ### SAID FIRST
 
-- **COMPILED, NOT RUN (phase 1).** Written with no build. No Unreal test and no C++ guard proof has run. The Python
-  checks ran, and all eight proofs of them are proved (below).
-- **`L_Capital.umap` DOES NOT EXIST UNTIL THE WINDOW'S EDITOR RUN MAKES IT**, so until then two Python checks fail,
+- **THE FIRST WINDOW RUN STOPPED AT ITS FIFTH GROUP, ON A FAULT IN A SLICE 1 TEST** ("Window capital-w1, the first
+  run", below): `Cataclysm.FirstSurge.ARunSavedOnDayZero...` read each loaded dungeon's depth after a day had passed,
+  and failed when the clock-seeded run drew a Hollow. Fixed here, by the coordinating session's ruling, with a sweep
+  of every test on a clock-seeded run that found no other. The asset step before it passed: `L_Capital.umap` is in
+  `db428831`, stored through Git LFS. No whole suite and no C++ guard proof has run yet.
+- **COMPILED.** Phase 1 was written with no build; phase 2 compiled it three ways, and the test change two ways, with
+  no error and no warning from this branch's files (below). The Python checks ran, and all eight proofs of them are
+  proved (below).
+- **`L_Capital.umap` DID NOT EXIST UNTIL THE WINDOW'S EDITOR RUN MADE IT (`db428831`)**, so until then two Python checks failed,
   each naming it and nothing else: `test_game_readme_is_true.py::test_the_readme_only_names_files_that_exist`
   (`Content/Maps/L_Capital.umap`, the map table) and
   `test_the_decisions_log_names_real_files.py::test_every_file_named_in_an_affects_line_exists`
@@ -222,6 +228,102 @@ That commit is the tested head.
 
 Assertions are counted in each broken half's kept log in both of the engine's forms, "Expected '...'" and "...: The
 two values are not equal.".
+
+### Window capital-w1, the first run, 2026-11-17: stopped at its fifth group, on a fault in a slice 1 test
+
+At `e293df73`. The runner's lines after the build ("target already up to date"):
+
+```
+assets: git status exit 0, changed: [('??', 'game/Content/Maps/L_Capital.umap')]
+assets: game/Content/Maps/L_Capital.umap on disk: 17647 bytes, begins c1832a9e
+assets: git check-attr filter: game/Content/Maps/L_Capital.umap: filter: lfs
+assets: committed db428831 on e293df73, files ['A\tgame/Content/Maps/L_Capital.umap']; the stored blob begins b'version https://git-lfs.github.com/spec/v1', 130 bytes; git lfs ls-files: ['9d07f1e84b * game/Content/Maps/L_Capital.umap']
+assets: git push exit 0; git lfs push exit 0 ''; origin's feat/2733-capital-level is db428831: the tested head
+alone Cataclysm.Capital.: Tests: 7 tests performed, 7 succeeded, 0 failed | exit 0
+alone Cataclysm.CharacterSelect.: Tests: 10 tests performed, 10 succeeded, 0 failed | exit 0
+alone Cataclysm.Creation.: Tests: 14 tests performed, 14 succeeded, 0 failed | exit 0
+alone Cataclysm.SaveLoad.: Tests: 76 tests performed, 76 succeeded, 0 failed | exit 0
+alone Cataclysm.FirstSurge.: Tests: 3 tests performed, 2 succeeded, 1 failed: ARunSavedOnDayZeroLoadsWithTheSameDungeonsAndNoSecondSurge | exit 1
+STOPPED: Cataclysm.FirstSurge. alone did not pass
+lock release: exit 0 capital-w1 released the Unreal editor.
+```
+
+**The asset step did exactly what was registered:** one new file, the Unreal package tag on disk, `filter: lfs`, a
+commit holding only that file, a stored blob that is a 130-byte Git LFS pointer, the file listed as checked out, and
+the branch on origin at the commit. `db428831` holds `L_Capital.umap` from here on.
+
+**The fault, in `Cataclysm.FirstSurge.ARunSavedOnDayZeroLoadsWithTheSameDungeonsAndNoSecondSurge`, which slice 1
+added.** Its two failed assertions: "dungeon 5 as deep: expected 23, was 22" and "dungeon 6 as deep: expected 27, was
+26". The test read each loaded dungeon's depth AFTER it had run the loaded run's first day (`Run->AdvanceDay()`); a
+Hollow loses `HollowFloorsLostPerDay` = 1 floor a day, and an opening-wave Hollow, spawned on day 0, shrinks on day 1.
+A new character's run takes its seed from the clock (`ACataclysmGameMode::MakeThePendingCharacter`), so each run's
+opening wave differs: this one held two Hollows, and slice 1's window passed with none. The load itself was right: the
+test's own line reads "loaded on day 0 with 12 standing, 1 fired, next dungeon number 12, next surge due 90.0; asked for
+the opening surge: surged no, 12 standing; day 1 surged no". The test's timers were already read before the day, which
+is why only depth failed. The test is on `development` since #2735, where it fails whenever a run's opening wave holds a
+Hollow.
+
+**Ruled by the coordinating session, 2026-11-17:** fix it in slice 2; copy the loaded dungeons before anything can
+change the run and compare from the copy, with a guard proof that a Hollow shrinking before the comparison makes the old
+reading fail; and sweep every test that slices 1 and 2 added, and every test that makes a run seeded from the clock, for
+per-dungeon figures a day or a seed can move.
+
+### The sweep, 2026-11-17
+
+**The paths that seed a run from the clock**, read in the code: `UCataclysmGameInstance::GetOrBeginEmpireRun` (and
+through it `EmpireRunFor(..., true)` and `ACataclysmCapitalGameMode::OpenTheEmpireMapIfReady`);
+`ACataclysmGameMode::MakeThePendingCharacter`; `FCataclysmSaveLoad::CharacterAndRun` when it begins a new run; and
+`UCataclysmGameInstance::BeginTheRunAfterAWin`. `.claude/windows/sweep_clock_seeded_runs.py` lists every automation test
+body that reaches one of them (by `GetOrBeginEmpireRun`, `EmpireRunFor(..., true)`, `OpenTheEmpireMapIfReady`,
+`PendingCreation`, `LoadedWithANewRun`, `BeginTheRunAfterAWin`, `WalkInAndClear` or `Cataclysm.EnterDungeon`) with its
+lines that read depth, timers, kinds, sub-types, counts or cities or pass days: 27 test bodies, every one read.
+
+**One compared a figure a day or the seed can move: the test above, now fixed.** The others, by kind:
+
+| What they assert | Tests | Why the seed and the days cannot move it |
+|---|---|---|
+| How many dungeons stand on day 0: 12, or 15 on Heretic | `FirstSurge.EveryDoor...`, `FirstSurge.ANewCharacters...`, `Capital.ANewCharacterArriving...`, `Capital.PlayOnTheCapital...`, `WinningTheRun.TheNextRunBegins...` | every opening wave lands whole: no city has a dungeon cap without an upgrade (`RoomLeftOn`) |
+| Every opening-wave dungeon's rules on day 0: kind, sender, city, a floor or more, a full timer, `SpawnedDay` 0, `CountFor` modifiers | `FirstSurge.EveryDoor...` (fixed seeds 7, 11 and 1), `FirstSurge.ANewCharacters...` (the clock) | rules every wave obeys, read before any day |
+| Dungeon numbers, the saved list against the loaded list | `Capital.ACharacterSavedInTheCapitalContinues...` | read before any day; the numbers are 0 to 11 whatever the seed |
+| The tier, the Cataclysms faced and their names, `CountFor` | the `EmpireRunTier.` tests, `SaveLoad.ALoadedCharactersNewRun...`, `SaveLoad.ANewCharacterDraws...`, the `WinningTheRun.` tests | the tier and the character's order seed decide them, not the run's seed |
+| Figures of dungeons a test placed by hand | `SaveLoad.ARestoredCreatureHitsAsHardAsItDid`, `SaveLoad.AHeavenlyCoreDestroyed...`, `EmpireRunTier.ARunSaysWhichTier...`'s neighbour, `WalkFromTheScreen.PressingWalk...` | fixed in the test; the runs there are `Begin`'s with fixed seeds |
+| A whole map after 300 days | `EmpireScreen.TheGameInstanceHoldsOneRunAtATime` | fixed seeds 7, 7 and 8 |
+
+**Outside slices 1 and 2: none found.** **Seen and not changed:** the comment in
+`Cataclysm.EmpireRunTier.AskingTheGameForARunGivesOneAtTheGamesTier` that "a headless run has no modifier table to draw
+from" is no longer true -- the game instance loads the table into every run it begins, and `Cataclysm.FirstSurge.` checks
+it as a CONTROL -- and the test checks the rule rather than a drawn dungeon, so its assertion does not depend on it.
+
+### What changed after the first run
+
+- **The test copies the loaded run's dungeons right after the load**, before `FireOpeningSurge` and the first day, as it
+  already did the timers, and compares city, kind, sub-type, depth, modifiers and arrival day from that copy. Nothing
+  else a dungeon carries can change on day 1 either: a Quest dungeon moves only when its timer runs out, and the
+  shortest timer of an opening wave is 9.86 days.
+- **The runner skips the asset step** and instead checks that HEAD's `L_Capital.umap` is the Git LFS object added in
+  `db428831`, with the asset on disk and listed as checked out.
+- **One more C++ guard proof, C7** (below).
+
+### Compiled and registered again after the first run
+
+**Compile**, the one changed file, `CataclysmSaveLoadTests.cpp`, no warning in either:
+
+| Build | Its line |
+|---|---|
+| Alone (uncommitted, the makefile set aside) | "Build: Succeeded - 6 actions, 3 files compiled: CataclysmSaveLoadTests.cpp, Module.Cataclysm.41.cpp, Module.Cataclysm.42.cpp" |
+| In its unity file (committed at `29dba27b7`, the makefile set aside) | "Build: Succeeded - 5 actions, 2 files compiled: Module.Cataclysm.41.cpp, Module.Cataclysm.42.cpp"; 41 holds it |
+
+**Python**, with `L_Capital.umap` committed: "7449 passed, 9 skipped in 190.26s", exit 0; its JUnit file 7458 tests, 0
+failures, 0 errors, 9 skipped. The two checks that failed before the level existed pass.
+
+**Registered again. The counts do not change**: the whole suite 4772 performed, 4772 succeeded, 0 failed; 47 skipped
+halves; 0 test saves left behind; "Declared: 4772"; the six groups alone as above. The asset step is skipped; the
+runner checks instead that HEAD's `L_Capital.umap` is the Git LFS object added in `db428831`, checked out as the asset.
+The proofs are C1 to C6 as above, and:
+
+| Proof | Break | Prefix | Predicted broken half | Restored half |
+|---|---|---|---|---|
+| C7 | before the copy, dungeon 0 made a Hollow (`Type` Quest, `SubType` Hollow, `HollowFrom` its depth) and a day passed (`CataclysmSaveLoadTests.cpp`) | `Cataclysm.FirstSurge.` | 3 performed, 2 succeeded, 1 failed: `ARunSavedOnDayZeroLoadsWithTheSameDungeonsAndNoSecondSurge`, 15 assertions: "the loaded run is on day 0", "dungeon 0 of the same kind and sub-type", "dungeon 0 as deep", and the twelve "came back as it was saved" timers -- 14 if the clock-seeded wave's dungeon 0 was already a Hollow | 3 of 3 |
 
 ---
 
