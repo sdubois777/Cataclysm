@@ -1462,6 +1462,14 @@ bool ACataclysmDungeonGameMode::EnterThePendingWalkIfReady()
 		return false;
 	}
 
+	// THE CREATURES OF THE FREE-PLAY FLOOR THIS LEVEL BUILT WHEN IT LOADED, counted before the walk's floor 1 replaces
+	// it, for the line below. Issue #2749 (B8), ruled by the coordinating session on 2026-11-18.
+	int32 FreePlayCreatures = 0;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
+	{
+		FreePlayCreatures += IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy) ? 1 : 0;
+	}
+
 	// A DUNGEON THAT CANNOT BE ENTERED -- which the capital's checks leave no way to reach, since the record just
 	// written holds it -- sends the character back to the capital rather than leaving it on a floor with no walk.
 	const int32 FloorChangesBefore = Writer->FloorChangesNoted();
@@ -1485,6 +1493,16 @@ bool ACataclysmDungeonGameMode::EnterThePendingWalkIfReady()
 	}
 	UE_LOG(LogCataclysm, Log, TEXT("The character arrived from the capital and is walking dungeon %d, floor 1 of %d."),
 		   DungeonId, EmpireDungeonFloors());
+
+	// AND THE LOG SAYS THE FREE-PLAY FLOOR WAS THROWN AWAY. Issue #2749 (B8), ruled by the coordinating session on
+	// 2026-11-18. `StartPlay` builds a free-play floor from this level's own seed before the walk is entered, and the
+	// walk's floor 1 replaces it in the same frame (`GoToFloor` clears the last floor's creatures). Each of its
+	// creatures was logged as spawned, with its rarity and its modifiers, and none of them is ever met. On 2026-11-18
+	// those lines were read as the same creatures standing in three dungeons. This line says they were removed.
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("Dungeon %d's floor 1 replaced the free-play floor this level built when it loaded, removing its %d "
+				"creature%s before anyone fought them. Each was logged as spawned; none of them is in this walk."),
+		   DungeonId, FreePlayCreatures, FreePlayCreatures == 1 ? TEXT("") : TEXT("s"));
 	return true;
 }
 
