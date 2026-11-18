@@ -118,11 +118,15 @@ namespace
 		ECVF_Default);
 
 	/**
-	 * The starting level of the player's character.
+	 * The level of a character that nothing made or loaded.
 	 *
 	 * IT WAS THE ONLY LEVEL BEFORE LEVELLING EXISTED, and it is now the level a
 	 * character has until it gains one or loads a save:
 	 * `ACataclysmPlayerState::GetCharacterLevel` reads it until then.
+	 *
+	 * NOT A NEW CHARACTER'S. The New character screen's character is made at
+	 * level 1 (`ACataclysmGameMode::MakeThePendingCharacter`, issue #2744), so
+	 * this decides the sandbox's character and an automation test's.
 	 *
 	 * A CHANGE DURING PLAY APPLIES OR SAYS WHY NOT. Issue #1540, ruled
 	 * 2026-10-29, a judgement: see `ACataclysmPlayerState::StartingLevelChanged`.
@@ -130,7 +134,9 @@ namespace
 	TAutoConsoleVariable<int32> CVarPlayerLevel(
 		TEXT("Cataclysm.PlayerLevel"),
 		UCataclysmPlayerClassStats::DefaultLevel,
-		TEXT("The starting level of the player's character, 1 to 100. A "
+		TEXT("The level of a character that nothing made or loaded, 1 to 100: "
+			 "the sandbox's and an automation test's. A character the New "
+			 "character screen makes starts at level 1 and does not read it. A "
 			 "character that has not yet gained a level or loaded a save takes a "
 			 "change at once: its stat line is resolved again at the new level "
 			 "and the log says so. A character whose level is settled keeps it, "

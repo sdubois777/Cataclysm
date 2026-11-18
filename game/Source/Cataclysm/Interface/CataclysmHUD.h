@@ -117,7 +117,8 @@ public:
 
 private:
 	/**
-	 * The player's own health and mana, and its energy shield when it has one. Above them, the list of what is
+	 * The player's own health and mana, and its energy shield when it has one. Under them, nearest the corner, the
+	 * level and the experience into it (`UCataclysmExperienceBar`, issue #2744). Above them, the list of what is
 	 * affecting the player that `UCataclysmPlayerEffects` builds: debuffs in red, then buffs in white. Issue #1591.
 	 */
 	void DrawPlayerVitals();

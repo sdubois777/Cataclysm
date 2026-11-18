@@ -20,6 +20,7 @@
 #include "EngineUtils.h"
 #include "Interface/CataclysmCreaturePanel.h"
 #include "Interface/CataclysmEmpireStatusBar.h"
+#include "Interface/CataclysmExperienceBar.h"
 #include "Interface/CataclysmPlayerEffects.h"
 #include "Interface/CataclysmSkillBar.h"
 #include "Items/CataclysmDroppedItem.h"
@@ -765,10 +766,31 @@ void ACataclysmHUD::DrawPlayerVitals()
 		return;
 	}
 
-	// STACKED UPWARD FROM THE BOTTOM LEFT CORNER, health nearest the corner.
-	// Health is the one a player looks at while being hit, so it is the one that
-	// does not move when a bar above it appears or disappears.
+	// STACKED UPWARD FROM THE BOTTOM LEFT CORNER, the level and experience bar
+	// nearest the corner and health above it. Health is the one a player looks
+	// at while being hit, so it is the one that does not move when a bar above
+	// it appears or disappears.
 	float Top = Canvas->SizeY - PlayerBarMarginPx - PlayerBarHeightPx;
+
+	// THE LEVEL AND THE EXPERIENCE INTO IT, LOWEST. Issue #2744, the owner's
+	// ruling of 2026-11-18: "The HUD gains a level and experience bar". The
+	// lowest row, a judgement of the session that built it, so that no bar that
+	// comes and goes moves it. `UCataclysmExperienceBar` decides its fill and
+	// its words.
+	//
+	// ITS ROW IS KEPT WHETHER OR NOT IT IS DRAWN, so health is never moved by
+	// a player state arriving a frame after the ability system.
+	int32 Level = 0;
+	int64 ExperienceIntoLevel = 0;
+	if (UCataclysmExperienceBar::LevelOf(Pawn, Level, ExperienceIntoLevel))
+	{
+		DrawBar(PlayerBarMarginPx, Top, PlayerBarWidthPx, PlayerBarHeightPx,
+				UCataclysmExperienceBar::FractionFor(Level, ExperienceIntoLevel),
+				UCataclysmCombatOverlay::ColourFromHex(UCataclysmExperienceBar::FillHex), 1.0f);
+		DrawTextCentred(UCataclysmExperienceBar::TextFor(Level, ExperienceIntoLevel), FLinearColor::White,
+						PlayerBarMarginPx + PlayerBarWidthPx * 0.5f, Top + 2.0f, 1.0f);
+	}
+	Top -= PlayerBarHeightPx + PlayerBarGapPx;
 
 	DrawPlayerPool(Top, Health, MaxHealth,
 				   UCataclysmCombatOverlay::HealthFillHex,

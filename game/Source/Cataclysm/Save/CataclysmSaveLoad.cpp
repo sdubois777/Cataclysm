@@ -364,6 +364,18 @@ FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACatacly
 		}
 	}
 
+	// NO SAVED POOLS PUT BACK: FILLED AT THE LOADED LEVEL. Issue #2744, ruled by the coordinating session on 2026-11-18.
+	// The pawn was possessed before this load at the console variable's level, and possession filled its pools to that
+	// level's maxima; the loaded level's stat line then lowered health with its maximum but not mana or shield, and
+	// raised no pool at all. A placement puts back the pools the run record holds, through writes the attribute sets
+	// hold inside the loaded maxima (`VitalsInto`), so it is left alone. Without one -- no run record, a run record with
+	// no placement for this character, or the sandbox's floor dropped -- the save holds no pools, the character is
+	// starting, and `ApplyChosenClassStats` fills them as possession does.
+	if (!bPlaced)
+	{
+		Character.ApplyChosenClassStats(); // A load with no saved pools: full at the loaded level.
+	}
+
 	if (SavedRun)
 	{
 		Report.Outcome = ECataclysmLoadOutcome::Loaded;

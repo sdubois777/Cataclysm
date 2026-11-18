@@ -2,6 +2,7 @@
 
 #include "Player/CataclysmGameMode.h"
 #include "Character/CataclysmEnemyRarity.h"
+#include "Character/CataclysmExperience.h"
 #include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Cataclysm.h"
@@ -190,6 +191,13 @@ ACataclysmGameMode::EPendingLoad ACataclysmGameMode::MakeThePendingCharacter(UCa
 		return EPendingLoad::Refused;
 	}
 
+	// LEVEL 1 WITH NO EXPERIENCE, FIRST, so everything below resolves and writes at it. Issue #2744, the owner's ruling
+	// of 2026-11-18, "Level 1 + experience bar": `UCataclysmExperience::FirstLevel`, "A character is created at level 1
+	// and has paid nothing". Until this nothing here set a level, and a new character took `Cataclysm.PlayerLevel`'s 20,
+	// a placeholder sized for sandbox fights, with the 30 passive points level 20 earns. Setting it SETTLES it: the
+	// console variable no longer decides this character's level, and the record written below holds level 1.
+	State->SetLevelAndExperience(UCataclysmExperience::FirstLevel, 0); // A new character's: level 1, no experience.
+
 	// ITS NAME AND PARTITION, AND ITS WEAPON TYPE AND DAMAGE TYPE, which the screen checked before it handed them over.
 	State->SetIdentity(Creation.Name, Creation.Partition); // A new character's: its name and partition.
 	State->SetCreationChoice(Creation.WeaponType, Creation.DamageType);
@@ -209,6 +217,13 @@ ACataclysmGameMode::EPendingLoad ACataclysmGameMode::MakeThePendingCharacter(UCa
 									   static_cast<int32>(Creation.Partition.Lethality), // A new character's: its run's lethality.
 									   State->GetDifficultyTier()); // A new character's: its run at its tier. Issue #1472.
 	TakeTheRunsTier(); // A new character's: this level fought at its run's tier.
+
+	// ITS POOLS FULL AT LEVEL 1. Issue #2744. The pawn was possessed before this ran, at the console variable's level,
+	// and possession filled health, mana and shield to THAT level's maxima. Lowering the level lowers health with its
+	// maximum (`UCataclysmVitalAttributeSet::PostAttributeChange`) but not mana or shield, so the character would arrive
+	// showing more mana than its maximum. `ApplyChosenClassStats` resolves the line again and fills the pools, the
+	// thing it does for "a character starting", which this is. Before the write, so the record holds full pools.
+	Character.ApplyChosenClassStats(); // A new character's: full pools at level 1.
 
 	// AND WRITTEN AT ONCE, so the select screen lists it even if the player quits before anything else writes.
 	Writer.NoteTrigger(ECataclysmSaveTrigger::CharacterCreated); // A new character's: written at once.

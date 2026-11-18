@@ -20,6 +20,7 @@
 // source of a stat, so a spent passive point is felt at once. Issue #1054.
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Character/CataclysmPlayerClassStats.h"
+#include "Player/CataclysmPlayLoopLog.h"
 #include "Items/CataclysmDroppedItem.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmWearing.h"
@@ -230,9 +231,25 @@ int32 ACataclysmPlayerState::GrantExperience(int64 Amount)
 	// real grant is the moment that stops being acceptable, because a level
 	// gained from a base that then moves is a level gained from nothing.
 	int32 Level = GetCharacterLevel();
+	const int32 LevelBefore = Level;
 	const int32 Gained =
 		UCataclysmExperience::Grant(Amount, Level, ExperienceIntoLevel);
 	CharacterLevel = Level;
+
+	// A LEVEL GAINED REBUILDS THE STAT LINE, HERE, whoever granted it. Issue #2744, ruled by the coordinating session
+	// on 2026-11-18. A level moves every per-level term in the class table; until this only the console command
+	// `Cataclysm.GrantExperience` rebuilt the line, so a level gained from a kill (`ACataclysmEnemyCharacter`'s award)
+	// left the character on the old level's health, mana and damage until it next changed gear or spent a point. The
+	// pools are LEFT WHERE THEY ARE, as every refresh leaves them: a raised maximum raises nothing, so a character at
+	// 120 of 120 health that gains a level stands at 120 of the new maximum.
+	//
+	// AND ONE PLAY LOOP LINE SAYS IT, after the level is stored, so its figures are the new ones.
+	if (Gained > 0)
+	{
+		RefreshCharacterStats(); // A level gained's: the stat line at the new level.
+		FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::LevelGainedLine(LevelBefore, CharacterLevel,
+																		  ExperienceIntoLevel));
+	}
 	return Gained;
 }
 

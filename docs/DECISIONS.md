@@ -2,6 +2,325 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-18 — A new character starts at level 1 with its pools full, the heads-up display shows the level and the experience into it, and a level gained from a kill rebuilds the stat line (#2744)
+
+**Affects:** `ACataclysmGameMode::MakeThePendingCharacter` (`game/Source/Cataclysm/Player/CataclysmGameMode.cpp`, its
+comment in `.h`); `FCataclysmSaveLoad::CharacterAndRun` (`game/Source/Cataclysm/Save/CataclysmSaveLoad.cpp`);
+`ACataclysmPlayerState::GrantExperience` (`game/Source/Cataclysm/Player/CataclysmPlayerState.cpp`, comments in `.h`);
+`UCataclysmExperienceBar` (`game/Source/Cataclysm/Interface/CataclysmExperienceBar.h`, `.cpp`, new) and
+`ACataclysmHUD::DrawPlayerVitals` (`Interface/CataclysmHUD.cpp`, `.h`); `FCataclysmPlayLoopLog::LevelGainedLine`
+(`Player/CataclysmPlayLoopLog.h`, `.cpp`); the console command `Cataclysm.GrantExperience`
+(`Character/CataclysmPlayerCharacter.cpp`); the help text of `Cataclysm.PlayerLevel` and the comment on
+`UCataclysmPlayerClassStats::DefaultLevel` (`Character/CataclysmPlayerClassStats.cpp`, `.h`). Tests:
+`CataclysmExperienceBarTests.cpp` (new), `CataclysmCharacterLevelTests.cpp`, `CataclysmSaveLoadTests.cpp`,
+`CataclysmPlayLoopTests.cpp`, and `tools/tests/test_the_play_loop_is_logged_at_each_step.py`.
+`docs/Play_Loop_Checklist.md`. Issue [#2744](https://github.com/sdubois777/Cataclysm/issues/2744). **Applied, compiled,
+run and proved in window level1-w1 at `b8aaf71a` (The window, below).**
+
+### SAID FIRST
+
+- **COMPILED, RUN AND PROVED, IN ONE WINDOW, AT `b8aaf71a`.** Window level1-w1's build was the rebased tree's first
+  compile ("59 actions, 54 files compiled"). The whole Unreal suite performed the registered 4826, all succeeding, with
+  47 skipped halves and no test save left behind; each of the eight groups this change touches performed its registered
+  count alone, all succeeding; Python (7559 passed, 9 skipped) and ruff passed; the five C++ guard proofs all proved,
+  each failing on the assertions registered. "The window", below.
+- **WHAT DID NOT WORK.** The first attempt to compile each changed file alone did not happen, because of a path mistake
+  in this session's script; it was run again and did ("Compiled (phase 2)"). One prediction, marked less certain when it
+  was registered, did not happen: proof C2 was predicted to fail "health is full" as well as the mana assertion, and
+  only the mana assertion failed.
+- **NOBODY HAS PLAYED TIER 1 AT LEVEL 1.** The owner's ruling names the risk, and nothing here settles it.
+  `tools/tests/test_the_starting_character_survives_a_pack.py`, `test_no_class_survives_that_fight_at_level_one`,
+  records that no class wins that file's deliberately pessimistic fight at level 1: ten Imps in contact from the first
+  second, the character standing still, every skill single-target. The owner's first play decides.
+- **"0 PASSIVE POINTS" WAS NOT APPLIED.** The option the owner chose says "with 0 passive points". The design gives 1 at
+  level 1, and 1 attribute point: `docs/Cataclysm_GDD_v2.md`, section XII, "Levelling to 100 gives 150 — one a level
+  plus five every ten levels", which counts level 1, and the 230 point budget is built on that 150. The coordinating
+  session wrote the option text and ruled on 2026-11-18 that the "0" was its own mistake and not the owner's design,
+  and that it would tell the owner. A level 1 character has 1 passive point and 1 attribute point, and a test says so.
+- **A LEVEL GAINED FROM A KILL CHANGED NOTHING A PLAYER COULD FEEL, until this entry.** Found while reading for #2744:
+  only the console command `Cataclysm.GrantExperience` rebuilt the stat line after a grant, and a kill's grant
+  (`ACataclysmEnemyCharacter`) did not, so the level rose and the health, mana and damage stayed the old level's until
+  the character next changed gear or spent a point. Ruled in, below.
+- **WHERE THE BAR IS DRAWN IS A JUDGEMENT.** The search for where Path of Exile, Last Epoch and Diablo IV draw their
+  experience bar did not settle it (Research, below).
+
+### The rulings, quoted
+
+**The owner, 2026-11-18**, the option chosen, "Level 1 + experience bar", as the issue quotes it:
+
+> New characters start at level 1, as the design says, with 0 passive points. The HUD gains a level and experience
+> bar. Risk: nobody has played tier 1 at level 1 yet, so floor 1 may be too hard; your first play will tell.
+
+**The coordinating session, 2026-11-18**, on this session's plan and its two findings:
+
+- The plan approved as written, "including keeping `DefaultLevel` and `Cataclysm.PlayerLevel` for the sandbox and the
+  tests with the help text corrected, and the bar drawn from C++ at the bottom of the bottom-left stack".
+- **A**, the stat line on a level gained: "INCLUDE IT. A level gained from a kill rebuilds the stat line
+  (`RefreshCharacterStats()` inside `GrantExperience` when a level is gained), with a test that a kill which crosses a
+  level raises maximum health." And: "Do not refill the pools on a level gained unless reading shows the game already
+  does that elsewhere; say in the entry what happens to current health and mana when the maximum rises."
+- **B**, the passive points: "Keep 1 passive point and 1 attribute point at level 1, as the design's arithmetic and
+  `UCataclysmPassivePoints::FromLevel(1)` give. The "0 passive points" in the option text I wrote for the owner was my
+  mistake, not the owner's design; record that it was not applied and why."
+- **C**, a continued character's pools: "INCLUDE IT in this slice, with a test. ... Fill the pools to maximum on that
+  load only if that is what a continued character should have; if the save holds current health and mana, clamp to the
+  new maxima instead of filling, and say which in the entry." The question it answered was this session's, and it was
+  wider than the fault: see "A continued character's pools", below, which the coordinating session accepted on
+  2026-11-18 ("where the save holds the pools they are put back clamped to the loaded level's maxima (unchanged), and
+  only a load with no placement fills them at the loaded level. Record it that way.").
+
+### What changed
+
+- **A new character is made at level 1 with no experience.** `MakeThePendingCharacter`, the one function the New
+  character screen's Begin reaches, calls `SetLevelAndExperience(UCataclysmExperience::FirstLevel, 0)` before anything
+  else, so the stat line resolves at level 1 and the record written at the end of the same function holds level 1 and
+  0. Setting the level settles it: `Cataclysm.PlayerLevel` no longer decides that character's level. Until this,
+  nothing on the New character path set a level, and a new character took the console variable's 20.
+- **Its pools are full at level 1.** The pawn is possessed before `MakeThePendingCharacter` runs, at the console
+  variable's level, and possession fills health, mana and shield to that level's maxima. Lowering the level lowers
+  health with its maximum (`UCataclysmVitalAttributeSet::PostAttributeChange`, #2190) and leaves mana and shield where
+  they are (the #1757 ruling), so the character would have arrived with more mana than its maximum.
+  `ApplyChosenClassStats`, which resolves the line and fills the pools for "a character starting", is called once more
+  before the record is written.
+- **A level gained rebuilds the stat line, and says one PLAY LOOP line**, inside `ACataclysmPlayerState::GrantExperience`,
+  so a kill and the console command both get them: "PLAY LOOP: level 2 reached, from level 1: 3120 experience into it,
+  245740 more to level 3", or "...: the maximum level" at 100. The console command's own rebuild is removed, since the
+  grant now does it.
+- **The heads-up display's level and experience bar**: the lowest bar of the bottom-left stack, under health, the size
+  of the health bar, in a muted gold (`B8912F`), reading "Level 7: 45.2%" and, at level 100, full and "Level 100:
+  maximum". `UCataclysmExperienceBar` holds its fill (`FractionFor`), its words (`TextFor`) and where it reads them from
+  (`LevelOf`, the pawn's player state), so they are tested without a canvas. The display polls every frame, as it does
+  health, so a kill and a level gained show on the next frame.
+- **`DefaultLevel` and `Cataclysm.PlayerLevel` stay at 20**, for the sandbox's character and the automation tests: the
+  sandbox's fights were sized against level 20 and many tests are written against "a level 20 Ravager". Their help text
+  and comment now say they decide the level of a character nothing made or loaded, and not a new character's.
+- **`docs/Play_Loop_Checklist.md`**: step 3 says the new character is level 1 and where the bar is; step 7 says to
+  watch the bar and quotes the level-gained line. The checklist test (`test_the_play_loop_is_logged_at_each_step.py`)
+  now holds ten places that say a PLAY LOOP line, `GrantExperience` the tenth, said after the level is stored.
+
+### A continued character's pools
+
+**The save holds them, and they are put back clamped.** The run record holds the player's health, mana and shield
+(`FCataclysmSavedCharacterPlacement`), written for a floor, for the capital and for a trip, and `CharacterAndRun` puts
+them back through `FCataclysmSaveApply::VitalsInto`, whose writes the vital attribute set holds inside the maxima the
+loaded level just set. Unchanged.
+
+**Only a load that puts back no placement kept possession's pools**: a character record that names no run, a run record
+that cannot be read, a run record with no placement for this character, or the sandbox's floor dropped in the capital.
+That load now calls `ApplyChosenClassStats` and fills the pools at the loaded level: the save holds none, and the
+character is starting. Below level 20 that is what lowers mana to its maximum; above it, what raises the pools to the
+new maxima.
+
+### When a level raises the maximum, current health and mana stay where they are
+
+A rebuild leaves the pools (`ECataclysmPoolFill::LeaveAsTheyAre`); `PostAttributeChange` lowers health with a lowered
+maximum and raises nothing. So a Ravager at level 3, 170 of 170 health, that gains a level stands at 170 of 190. Nothing in the
+game refilled on a level gained before this entry: the console command rebuilt with the same `LeaveAsTheyAre`. The kill
+test asserts it ("and health was left where it was").
+
+### Judgements of the writing session
+
+- **The bar's place: the lowest bar of the bottom-left stack, under health.** Health moves up one row, once, and then
+  never moves: the bar's row is kept whether or not the bar is drawn, so health is not moved by a player state that
+  arrives after the ability system. The skill bar and the potion boxes are clear of it for the reason they are clear of
+  health: it is the same width, at the same left edge.
+- **The words are the share earned, in tenths of a percent, rounded down; not the figures.** The figures near the top
+  of the climb are nine digits each, "Level 99: 480123456 / 519995268", and do not fit the 280 pixels the bar is drawn
+  in. Rounded down so the bar never reads 100.0% before the level is reached; a figure at or above the cost, which no
+  grant leaves, is read as one short of it. The exact figures are in the PLAY LOOP line and in `Cataclysm.ShowLevel`.
+- **The colour**, a muted gold, apart from every fill in the stack and from a critical strike's amber.
+- **The PLAY LOOP line's wording**, and saying it inside `GrantExperience` rather than at the kill, so the console
+  command's grants are logged too.
+
+### Research
+
+The question was where the genre draws a character's experience bar, not a formula: the bar's fill is the existing
+curve's progress over the next level's cost (`UCataclysmExperience`, `docs/DECISIONS.md` 2026-08-24). Two web searches
+and one page fetch on 2026-11-18 did not settle it. A search for Path of Exile returned a summary of a Path of Exile 2
+guide saying the bar shows progress to the next level and the exact percentage on hover; the guide itself (mobalytics.gg,
+Path of Exile 2 user interface) refused the fetch with HTTP 403, so its placement was not read. A search for Last Epoch found no statement of where its bar sits. Gamepressure's Diablo
+IV interface page lists the experience bar and does not say where on the screen it is. **So the bar's place is a
+judgement, and research did not inform it**; the percentage in its words matches what the Path of Exile 2 summary says
+its hover shows.
+
+### Tests
+
+Six Unreal tests, all new:
+
+| Test | What it checks |
+| :-- | :-- |
+| `Cataclysm.SaveLoad.ANewCharacterStartsAtLevelOneWithNoExperienceAndItsPoolsFull` | through `LoadThePendingCharacter`: level 1, 0 experience, settled; health, mana and shield full and mana not above its maximum; 1 passive point and 1 attribute point; the record level 1 and 0. Controls: the pawn stood at the console variable's level, above 1, and level 1's maximum mana is lower |
+| `Cataclysm.SaveLoad.AContinuedCharacterBelowTheStartingLevelArrivesWithItsPoolsInsideItsMaxima` | a level 9 character saved at 37 health: with its run record, 37 put back and mana inside its maximum; with a record that names no run, the pools full at level 9 |
+| `Cataclysm.CharacterLevel.AKillThatCrossesALevelRaisesTheNumberTheBarAndMaximumHealth` | a real kill (`HandleDeath`) of a Boss one experience short of level 2: the level and the remainder `UCataclysmExperience::Grant` gives, the bar's number, fill and words move, maximum health rises by what the class line gives the new level, current health stays |
+| `Cataclysm.ExperienceBar.TheFillIsTheExperienceIntoTheLevelOverWhatTheNextLevelCosts` | empty, half, one short, part-way at level 7, full at and above 100, level 0 read as 1, held at full and empty |
+| `Cataclysm.ExperienceBar.TheWordsSayTheLevelAndTheShareEarnedRoundedDown` | "Level 1: 0.0%", "Level 1: 50.0%", one short "Level 1: 99.9%", "Level 7: 45.2%", "Level 100: maximum", and more than the cost "Level 1: 99.9%" |
+| `Cataclysm.PlayLoop.TheLevelGainedLineSaysTheLevelReachedAndWhatTheNextOneStillCosts` | one level, several in one grant, the maximum |
+
+### Python, phase 1
+
+Measured at `92697e75e`, no Unreal build running: "7490 passed, 8 skipped in 207.38s"; the JUnit file's `testsuite`
+tests="7498" failures="0" errors="0" skipped="8" (7490 passed), the two agreeing. `python -m ruff check .
+--extend-exclude .claude`: "All checks passed!" Not the run of record.
+
+**Python guard P1, run with `tools/prove_guard.py` in a `git archive` copy of `08fc7106e`, removed afterwards; the
+anchor counted once first. ITS PREDICTION WAS STATED IN THIS SESSION BEFORE THE RUN AND NOT COMMITTED FIRST:**
+
+| Break | Command | Printed | Named failure |
+| :-- | :-- | :-- | :-- |
+| P1, the level-gained line not said (`FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::LevelGainedLine(` to `FCataclysmPlayLoopLog::LevelGainedLine(` in `CataclysmPlayerState.cpp`) | `python -m pytest tools/tests/test_the_play_loop_is_logged_at_each_step.py` | "PROVED: 1 failed, 15 passed in 0.50s \| restored: 16 passed in 0.41s"; `proved` True, `crashed` False | `test_each_step_of_the_loop_says_its_line[LevelGainedLine]` |
+
+### Registered before the run
+
+**THE BASE, REGISTERED A THIRD TIME AFTER A SECOND REBASE.** First registered at 4801 against window echoes-spread-w1's
+4795 at `913861d9f`, whose `game/` tree was `07f7e3bf6`'s. After the three builds below, `development` moved to
+`8e177d8b2`, the empire tree's slice 1a (#2746, 12 Unreal tests added); the branch was rebased onto it and registered at
+4813 against window empire-tree-1a-w2's 4807 at `8c75df8a3`. `development` then moved to `d8d11fc51`, gold's slice 1
+(#2747, 13 Unreal tests added), as the coordinating session said it would, and the branch was rebased onto that, as
+`feat/new-character-starts-at-level-1-3`, a new name because the rebase needs a force push. The base is now window
+gold-1-w2's whole suite at `67dba4d60`: "4820 tests performed, 4820 succeeded, 0 failed. 47 skipped part of what they
+check" (the #2742 slice 1 entry below). `git diff --stat 67dba4d60 d8d11fc51 -- game/ tools/` prints nothing, so its
+`game/` tree is this branch's base. Group counts are its engine log's "Test Completed" lines, counted by prefix ignoring
+case (`adoring-jennings-f8c84c/.claude/windows/gold1_suite_engine_67dba4d6.log`, 4820 lines, every one
+`Result={Success}`); each group below counts the same there as at `8c75df8a3` and at `913861d9f`.
+
+**THE SECOND REBASE CONFLICTED IN C++.** Gold's slice and this branch both change six files. `CataclysmPlayLoopLog.cpp`
+and `.h` conflicted where gold's two builders (`GoldLine`, `GoldLineIn`) and this branch's `LevelGainedLine` were added
+at the same place; resolved by hand, keeping both, gold's first. `docs/DECISIONS.md` conflicted and was resolved by
+`tools/resolve_decisions_log.py resolve --first pools`: this entry first, since its first commit (12:14 MST) is later
+than gold's (11:20 MST). `CataclysmPlayerState.h`, `CataclysmSaveLoadTests.cpp` and `docs/Play_Loop_Checklist.md` merged
+without a conflict. Afterwards `git diff --numstat` against the base printed, for every file, the same lines added and
+removed as before the rebase, and `python tools/check_resolved_cpp.py` over the 18 C++ files this branch changes printed
+"18 files read, 0 with complaints". **The rebased tree had not been compiled when this was registered: the window's
+build was its first compile.** Gold's slice also makes a creature's death drop gold piles
+(`ACataclysmEnemyCharacter::HandleDeath`), which `AKillThatCrossesALevelRaisesTheNumberTheBarAndMaximumHealth` reaches;
+nothing that test checks reads the floor.
+
+| Figure | Registered |
+| :-- | :-- |
+| Whole Unreal suite | 4820 + 6 = **4826**, 47 skipped halves, 0 test saves left behind |
+| `Cataclysm.SaveLoad.` alone | 77 + 2 = **79** |
+| `Cataclysm.CharacterLevel.` alone | 8 + 1 = **9** |
+| `Cataclysm.PlayLoop.` alone | 7 + 1 = **8** |
+| `Cataclysm.ExperienceBar.` alone | **2**, a new group; no other group's name begins with it, or it with another's |
+| `Cataclysm.EnemyScore.` alone | **12**, none added: a kill that crosses a level now rebuilds the stat line |
+| `Cataclysm.Capital.` alone | **7**, none added: a new character arrives in the capital at level 1 |
+| `Cataclysm.Travel.` alone | **9**, none added: a level 9 character travels, its pools put back |
+| `Cataclysm.FirstSurge.` alone | **3**, none added: a new character's run and record |
+
+**The C++ guard proofs**, each through `unreal_build.prove_cpp_guard` by `.claude/windows/prove_l2744.py`, narrowed to
+one test's whole name; each anchor is one line, counted once (`--anchors-only`):
+
+| Proof | Break | Test | Predicted with the break in |
+| :-- | :-- | :-- | :-- |
+| C1 | the level-1 line in `MakeThePendingCharacter` made a comment | `ANewCharacterStartsAtLevelOneWithNoExperienceAndItsPoolsFull` | 1 performed, 1 failed; 6 assertions: "CONTROL: level 1's maximum mana is below that level's, ...", "the new character is level 1", "and its level is settled, ...", "1 passive point, the design's arithmetic", "and 1 attribute point", "the record holds level 1" |
+| C2 | the new character's `ApplyChosenClassStats()` made a comment | the same | 1 performed, 1 failed; 1 assertion: "MANA IS FULL AND NOT ABOVE ITS MAXIMUM, which possession at the higher level left it". Less certain: "health is full" as well, if the chosen Greatsword raises maximum health after the level is lowered |
+| C3 | the load's `ApplyChosenClassStats()` made a comment | `AContinuedCharacterBelowTheStartingLevelArrivesWithItsPoolsInsideItsMaxima` | 1 performed, 1 failed; 1 assertion: "none saved: MANA IS FULL AND NOT ABOVE ITS MAXIMUM" |
+| C4 | `RefreshCharacterStats()` in `GrantExperience` made a comment | `AKillThatCrossesALevelRaisesTheNumberTheBarAndMaximumHealth` | 1 performed, 1 failed; 1 assertion: "THE STAT LINE WAS REBUILT: maximum health rose by what the class line gives the new level" |
+| C5 | the bar's tenths rounded to the nearest (`(Earned * 1000 + Cost / 2) / Cost`) | `TheWordsSayTheLevelAndTheShareEarnedRoundedDown` | 1 performed, 1 failed; 2 assertions, each "Level 1: 100.0%": "ONE SHORT OF LEVEL 2 READS 99.9%, NOT 100.0% ..." and "more than the cost, which no grant leaves, reads one short of the level" |
+
+Each restored half: the same test, 1 of 1 succeeded.
+
+### Compiled (phase 2)
+
+Built at `d8698b913`, on `development` `07f7e3bf6`, before the rebases onto `8e177d8b2` and `d8d11fc51` (registered
+above); the window's own build was the first compile of the rebased branch (The window, below). Built by
+`.claude/windows/compile_l2744.py`, with no editor open, under the Unreal lock `level1-compile`, which the coordinating
+session gave for these builds after window empire-tree-1a-w2 released the lock at 12:21 MST; released after each run
+("level1-compile released the Unreal editor"), the tracked tree clean and HEAD unchanged after each.
+
+| Build | When | "Build:" line |
+| :-- | :-- | :-- |
+| 1. The branch, every file in its unity file (`git status` clean) | 12:21:56 to 12:29:03, 428 s, this worktree's first build | "Build: Succeeded - 78 actions, 68 files compiled" |
+| 2. Each changed `.cpp` alone (`git read-tree origin/development`, so `git status` lists the branch's 21 files as changed while HEAD stays; `Makefile.bin` moved aside; built; `git reset -q` after) | 12:36:57 to 12:38:49, 112 s | "Build: Succeeded - 24 actions, 21 files compiled": the build tool's "[Adaptive Build] Excluded from Cataclysm unity file" line names all twelve changed `.cpp` files -- `CataclysmPlayerCharacter.cpp`, `CataclysmPlayerClassStats.cpp`, `CataclysmExperienceBar.cpp`, `CataclysmHUD.cpp`, `CataclysmGameMode.cpp`, `CataclysmPlayerState.cpp`, `CataclysmPlayLoopLog.cpp`, `CataclysmSaveLoad.cpp`, `CataclysmCharacterLevelTests.cpp`, `CataclysmExperienceBarTests.cpp`, `CataclysmPlayLoopTests.cpp`, `CataclysmSaveLoadTests.cpp` -- each compiled alone, and nine unity files rebuilt without them |
+| 3. The unity files again (`Makefile.bin` moved aside again; both moved copies deleted after) | 12:38:50 to 12:46:48, 478 s, of which 408.7 s waiting for the build tool's machine-wide mutex ("Main +408.747" in its log) | "Build: Succeeded - 12 actions, 9 files compiled: Module.Cataclysm.11.cpp, Module.Cataclysm.12.cpp, Module.Cataclysm.13.cpp, Module.Cataclysm.15.cpp, Module.Cataclysm.24.cpp, Module.Cataclysm.28.cpp, Module.Cataclysm.41.cpp, Module.Cataclysm.42.cpp, Module.Cataclysm.9.cpp" |
+
+The changed files' unity files, read out of the generated `Module.Cataclysm.*.cpp`: 9 (`CataclysmPlayerCharacter.cpp`,
+`CataclysmPlayerClassStats.cpp`), 11 (`CataclysmExperienceBar.cpp`, `CataclysmHUD.cpp`), 12 (`CataclysmGameMode.cpp`), 13
+(`CataclysmPlayerState.cpp`, `CataclysmPlayLoopLog.cpp`, `CataclysmSaveLoad.cpp`), 15 (`CataclysmCharacterLevelTests.cpp`),
+24 (`CataclysmExperienceBarTests.cpp`), 28 (`CataclysmPlayLoopTests.cpp`) and 41 (`CataclysmSaveLoadTests.cpp`); all
+eight are in build 3's list. No compile error in any build. **One warning, not this branch's:** C4996, `CountBits` for
+64-bit values deprecated in 5.8, raised in an engine header (`MicrosoftPlatformMath.h`) during build 1, which compiled
+the whole module; build 2 and build 3 printed no warning.
+
+**WHAT DID NOT WORK THE FIRST TIME.** The script's first run, at 12:29 to 12:35, did not compile any file alone. It
+looked for `Makefile.bin` in `game/Intermediate/Build/Win64/CataclysmEditor/Development`, and the file is in
+`.../Win64/x64/CataclysmEditor/Development`, so nothing was moved aside, the build tool kept its old unity grouping, and
+builds 2 and 3 printed "Build: Succeeded - target already up to date, 0 actions, nothing compiled". Build 2 of that run
+also spent 404 of its 405 s waiting for the mutex ("Main +403.977"); the coordinating session judged the holder most
+likely the continuous integration runner compiling the empire tree's pull request #2746. This session reported it and
+the coordinating session gave the lock again; the corrected script (the `x64` folder, and a stop before build 2 when
+no makefile was moved) ran builds 2 and 3 above. The first run's logs are kept beside the script, named `*_firstrun`.
+
+### Review (phase 2)
+
+- **`git diff 07f7e3bf6 d8698b913` read against the rulings** (20 files outside this log): the code lines are the
+  level-1 line and the fill in `MakeThePendingCharacter`, the fill in `CharacterAndRun` under `if (!bPlaced)`, the
+  rebuild and the line in `GrantExperience`, the console command's rebuild removed, the bar's class and its draw; the
+  rest is comments, tests and the checklist. `grep -rn "GrantExperience(" game/Source/Cataclysm --include=*.cpp`
+  outside `Tests/` prints the kill (`CataclysmEnemyCharacter.cpp` line 354), the console command
+  (`CataclysmPlayerCharacter.cpp` line 3839) and the definition: no other caller.
+- **Fixed numbers audited.** The level-gained line's test writes the curve's costs into its expected words (245,740 is
+  level 3's 248,860 less 3,120; 291,336 is level 5's 291,346 less 10; `test_experience_curve_port.py` holds the curve
+  to the simulation's). The continued-pools test's level 9 and 37 health are what `SaveACharacter` saves. The bar
+  tests feed in costs asked of `UCataclysmExperience` and compare against the words themselves ("Level 7: 45.2%"); the
+  kill test asks the class table for the rise; the new-character test asserts the 1 passive point and 1 attribute point
+  ruling B names, beside `UCataclysmPassivePoints::FromLevel(1)`. The bar's 280 by 20 pixels
+  are the health bar's (`PlayerBarWidthPx`, `PlayerBarHeightPx`). `B8912F`, a colour, is the one new constant in the
+  game's code, labelled a judgement.
+- **The console variable's help text was corrected where it read "The starting level of the player's character".**
+  `grep -rn "level 20" docs/Play_Loop_Checklist.md game/README.md` prints one line, this change's own: the checklist's
+  "until then a new character arrived at level 20 with 30 passive points".
+
+### The window
+
+Window level1-w1 ran on 2026-11-18 from 14:35:28 to 15:11:46 MST, at `b8aaf71a` on
+`feat/new-character-starts-at-level-1-3`, by `.claude/windows/run_l2744.py` (started detached, PID 71056), under the
+Unreal lock, which the coordinating session gave. `prechecks_l2744.py` printed "PRECHECKS: ALL PASS" at 14:35:11:
+`development` `d8d11fc51`, its CI and Unreal runs successful; no run queued or in progress; the lock free; no build,
+editor or simulation process; no open pull request; 12,400 MB free; 131 LFS files under `game/Content`, no pointer. The
+runner checks before every step that HEAD is `b8aaf71a` and the tracked tree clean, and stopped at none; it printed
+"tested head: b8aaf71a; HEAD now b8aaf71a" at the end. The lock was released at the end ("level1-w1 released the Unreal
+editor"), and `python tools/unreal_lock.py status` then printed "The Unreal editor is free."
+
+- **The build**: "Build: Succeeded - 59 actions, 54 files compiled", the rebased tree's first compile.
+- **The eight groups alone, each its registered count, all succeeding**: `Cataclysm.SaveLoad.` 79,
+  `Cataclysm.CharacterLevel.` 9, `Cataclysm.PlayLoop.` 8, `Cataclysm.ExperienceBar.` 2, `Cataclysm.EnemyScore.` 12,
+  `Cataclysm.Capital.` 7, `Cataclysm.Travel.` 9 and `Cataclysm.FirstSurge.` 3.
+- **The whole suite**: "Tests: 4826 tests performed, 4826 succeeded, 0 failed. 47 skipped part of what they check";
+  "Test saves: 827 written and deleted, 0 left behind"; "Declared: 4826 tests in the tree at b8aaf71ad; 4826 performed,
+  gap 0". As registered.
+- **Python**: "7559 passed, 9 skipped in 213.52s"; the JUnit file says 7568 tests, 0 failures, 0 errors, 9 skipped.
+  **ruff**: "All checks passed!"
+- **No Claude session reached the test editor** (#2745): no "server/discover" line in the whole suite's engine log or in
+  any proof's two logs.
+
+**What the new tests printed in the whole suite run**, from their info lines:
+
+- **A new character** (Greatsword, War): before creation the pawn stood at level 20, unsettled, health 510 of 510 and
+  mana 116 of 116; after it, level 1 with 0 experience, settled, health 130 of 130, mana 40 of 40, energy shield 0 of 0,
+  1 passive point and 1 attribute point, and the record read back at level 1 with 0 experience.
+- **A kill that crosses a level**: a Boss worth 468 experience, killed at level 1 with 229,999 into it, left level 2
+  with 467 into it, as `UCataclysmExperience::Grant` predicts; the bar went from "Level 1: 99.9%" (fill 1.0000 to four
+  places) to "Level 2: 0.1%" (0.0019); maximum health rose from 130 to 150, the class line's 20; health stayed at 130.
+- **A continued level 9 character**, which stood at level 20 with 116 mana before the load: with its pools put back,
+  health 37 of 290 and mana 72 of 72; with no pools saved (a new run begun), health 290 of 290 and mana 72 of 72.
+- **The bar's words**: "Level 1: 0.0%", "Level 1: 50.0%", "Level 1: 99.9%" one short of level 2, "Level 7: 45.2%", and
+  "Level 100: maximum" at and above the maximum.
+
+**The C++ guard proofs**, each by `.claude/windows/prove_l2744.py` through `unreal_build.prove_cpp_guard`: each anchor
+matched once, the source hash was the same before and after each, and both halves' logs are kept beside the script
+(`l2744_C1_run1.log` to `l2744_C5_run2.log`). Every one PROVED, `crashed` False in both halves:
+
+| Proof | With the break in | Restored | As registered |
+| :-- | :-- | :-- | :-- |
+| C1 | 1 performed, 0 succeeded, 1 failed: `ANewCharacterStartsAtLevelOneWithNoExperienceAndItsPoolsFull`, on six assertions: "CONTROL: level 1's maximum mana is below that level's, ..." (false), "the new character is level 1" (20), "and its level is settled, ..." (false), "1 passive point, the design's arithmetic" (30), "and 1 attribute point" (20), "the record holds level 1" (20) | 1 performed, 1 succeeded | Yes, the six registered |
+| C2 | 1 performed, 0 succeeded, 1 failed: the same test, on one assertion: "MANA IS FULL AND NOT ABOVE ITS MAXIMUM, which possession at the higher level left it" (40 expected, 116) | 1 performed, 1 succeeded | Yes, the one registered as certain; "health is full", registered as less certain, passed with the break in |
+| C3 | 1 performed, 0 succeeded, 1 failed: `AContinuedCharacterBelowTheStartingLevelArrivesWithItsPoolsInsideItsMaxima`, on one assertion: "none saved: MANA IS FULL AND NOT ABOVE ITS MAXIMUM" (72 expected, 116) | 1 performed, 1 succeeded | Yes |
+| C4 | 1 performed, 0 succeeded, 1 failed: `AKillThatCrossesALevelRaisesTheNumberTheBarAndMaximumHealth`, on one assertion: "THE STAT LINE WAS REBUILT: maximum health rose by what the class line gives the new level" (20 expected, 0) | 1 performed, 1 succeeded | Yes |
+| C5 | 1 performed, 0 succeeded, 1 failed: `TheWordsSayTheLevelAndTheShareEarnedRoundedDown`, on two assertions, each "Level 1: 100.0%" where "Level 1: 99.9%" was expected: "ONE SHORT OF LEVEL 2 READS 99.9%, NOT 100.0% ..." and "more than the cost, which no grant leaves, reads one short of the level" | 1 performed, 1 succeeded | Yes |
+
+---
+
 ## 2026-11-18 — Creatures drop gold in piles, picking a pile up adds it to the character's balance -- its lethality mode's, or a Solo Self-Found character's own -- and the empire map and the inventory screen show it (#2742, slice 1)
 
 **Affects:** the Enemy Drops sheet of `docs/All_Things_Cataclysm.xlsx`, which gains Gold Drops, and its new Gold sheet,

@@ -2,13 +2,14 @@
 
 WHY THIS EXISTS. Issue #2733 slice 4: the project owner presses Play once and reads the loop back from the log, step by
 step, with `docs/Play_Loop_Checklist.md` saying what to click and what each step should show. `FCataclysmPlayLoopLog`
-builds the lines; nine places in the game say them. An automation test reaches some of those places -- a walk to its
-last floor, a death -- but not the front end's start, a press on Begin or on a saved character, or the capital's Walk,
-which only a real level reaches. So the nine calls are checked here, by reading the C++.
+builds the lines; ten places in the game say them. An automation test reaches some of those places -- a walk to its
+last floor, a death, a level gained -- but not the front end's start, a press on Begin or on a saved character, or the
+capital's Walk, which only a real level reaches. So the ten calls are checked here, by reading the C++. The tenth, a
+level gained, is issue #2744's.
 
 WHAT IS CHECKED, by reading the C++ with comments removed:
 
-  1. each of the nine places says its builder's line;
+  1. each of the ten places says its builder's line;
   2. each says it after the step it reports -- the floor's line after the floor's day is spent, the clear's account
      after the walk's days have run, the death's after the death's own days;
   3. the dungeons are named before the days run, because a dungeon those days resolve is gone from the run after;
@@ -32,7 +33,7 @@ LOG_CPP = SOURCE / "Player" / "CataclysmPlayLoopLog.cpp"
 CHECKLIST = REPO_ROOT / "docs" / "Play_Loop_Checklist.md"
 GAME_README = REPO_ROOT / "game" / "README.md"
 
-#: The nine places, by file and signature, and the builder each one says.
+#: The ten places, by file and signature, and the builder each one says.
 STEPS = [
     ("Player/CataclysmFrontEndGameMode.cpp", "void ACataclysmFrontEndPlayerController::BeginPlay()", "FrontEndLine"),
     ("Interface/CataclysmNewCharacterWidget.cpp", "bool UCataclysmNewCharacterWidget::ConfirmInto(", "NewCharacterLine"),
@@ -43,6 +44,7 @@ STEPS = [
     ("Dungeon/CataclysmDungeonGameMode.cpp", "bool ACataclysmDungeonGameMode::GoDownOneFloor(", "FloorLine"),
     ("Dungeon/CataclysmDungeonGameMode.cpp", "bool ACataclysmDungeonGameMode::ClearEmpireDungeon()", "ClearLine"),
     ("Dungeon/CataclysmDungeonGameMode.cpp", "bool ACataclysmDungeonGameMode::EndTheDungeonForADeath()", "DeathLine"),
+    ("Player/CataclysmPlayerState.cpp", "int32 ACataclysmPlayerState::GrantExperience(int64 Amount)", "LevelGainedLine"),
 ]
 
 #: What must come before each place's line, whitespace aside: the step it reports.
@@ -52,6 +54,7 @@ AFTER = {
     "GoDownOneFloor": "SpendFloorTimeInTheEmpire();",
     "ClearEmpireDungeon": "Run->NoteDaysAway(",
     "EndTheDungeonForADeath": "Run->AdvanceDays(DaysTheDeathCost)",
+    "GrantExperience": "CharacterLevel = Level;",
 }
 
 
@@ -183,7 +186,7 @@ def as_pattern(fmt: str) -> str:
 def builder_patterns() -> dict[str, list[str]]:
     formats = returned_formats(read_code(LOG_CPP))
     for wanted in ("FrontEndLine", "NewCharacterLine", "ContinueLine", "DungeonLine", "CapitalLine", "WalkLine",
-                   "EnteredLine", "FloorLine", "ClearLine", "DeathLine", "AwayAccount"):
+                   "EnteredLine", "FloorLine", "ClearLine", "DeathLine", "AwayAccount", "LevelGainedLine"):
         assert wanted in formats, f"FCataclysmPlayLoopLog::{wanted} returns no format this check can read"
     patterns = {name: [as_pattern(f) for f in fmts] for name, fmts in formats.items()}
     patterns["StandingLines"] = [r"standing: " + p for p in patterns["DungeonLine"]]

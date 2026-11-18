@@ -6,8 +6,12 @@
 
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmClassStats.h"
+#include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmExperience.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Dungeon/CataclysmEnemyScore.h"
+#include "GameFramework/PlayerController.h"
+#include "Interface/CataclysmExperienceBar.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Save/CataclysmSaveGather.h"
 #include "Save/CataclysmSaveRecords.h"
@@ -668,6 +672,119 @@ bool FCataclysmLevelChangedInPlayAppliesOrSaysWhyNot::RunTest(const FString&)
 			 PlayerState->HasSettledLevel() && PlayerState->GetCharacterLevel() == 40);
 	TestEqual(TEXT("CONTROL: a settled character keeps its health"), AfterFive, AtForty);
 	TestEqual(TEXT("CONTROL: and one warning names the level it is settled at"), Warned, 1);
+	return true;
+}
+
+
+/**
+ * A kill whose experience crosses a level raises the level, moves the heads-up display's bar, and rebuilds the stat
+ * line, so maximum health rises; current health is left where it was. Issue #2744, ruled by the coordinating session
+ * on 2026-11-18. Until then only `Cataclysm.GrantExperience` rebuilt the line, and a level gained from a kill changed
+ * nothing a player could feel. Prints "KILL CROSSES A LEVEL".
+ *
+ * A REAL KILL, `HandleDeath` on a creature, as `Cataclysm.EnemyScore.KillingAnEnemyIsWhatGrantsTheExperience` makes
+ * one, not a call to `GrantExperience`: the kill is the path that lacked the rebuild.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLevelFromAKillTest,
+	"Cataclysm.CharacterLevel.AKillThatCrossesALevelRaisesTheNumberTheBarAndMaximumHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLevelFromAKillTest::RunTest(const FString&)
+{
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	APlayerController* Controller = World->SpawnActor<APlayerController>();
+	ACataclysmPlayerCharacter* Player =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("player state"), PlayerState) || !TestNotNull(TEXT("player controller"), Controller)
+		|| !TestNotNull(TEXT("player character"), Player))
+	{
+		return false;
+	}
+	// POSSESSED, so a kill finds this player through `GetFirstPlayerController`, as in play.
+	Controller->SetPlayerState(PlayerState);
+	Controller->Possess(Player);
+
+	UAbilitySystemComponent* ASC = Player->GetAbilitySystemComponent();
+	const UDataTable* Table = UCataclysmPlayerClassStats::LoadTable();
+	if (!TestNotNull(TEXT("ability system"), ASC) || !TestNotNull(TEXT("DT_ClassStats"), Table))
+	{
+		return false;
+	}
+	const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const FString& ClassName = UCataclysmPlayerClassStats::ChosenClass();
+
+	// LEVEL 1, ONE EXPERIENCE SHORT OF LEVEL 2, its stat line resolved there and its pools full.
+	const int64 ToSecond = UCataclysmExperience::CostOfLevel(2);
+	PlayerState->SetLevelAndExperience(1, ToSecond - 1);
+	Player->ApplyChosenClassStats();
+	int32 BarLevelBefore = 0;
+	int64 BarExperienceBefore = 0;
+	const bool bBarBefore = UCataclysmExperienceBar::LevelOf(Player, BarLevelBefore, BarExperienceBefore);
+	const float FillBefore = UCataclysmExperienceBar::FractionFor(BarLevelBefore, BarExperienceBefore);
+	const FString WordsBefore = UCataclysmExperienceBar::TextFor(BarLevelBefore, BarExperienceBefore);
+	const float MaxHealthBefore = ASC->GetNumericAttribute(MaxHealth);
+	const float HealthBefore = ASC->GetNumericAttribute(Health);
+
+	// A BOSS, as the kill test makes one: worth something wherever the sandbox's floor sits.
+	constexpr int32 BossStep = 4;
+	const int32 Worth = UCataclysmEnemyScore::ScoreFor(UCataclysmEnemyScore::FloorIn(World), BossStep);
+	int32 ExpectedLevel = 1;
+	int64 ExpectedExperience = ToSecond - 1;
+	UCataclysmExperience::Grant(Worth, ExpectedLevel, ExpectedExperience);
+
+	ACataclysmEnemyCharacter* Victim =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(300.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a creature to kill"), Victim))
+	{
+		return false;
+	}
+	Victim->SetRarityStep(BossStep);
+	Victim->HandleDeath();
+
+	int32 BarLevelAfter = 0;
+	int64 BarExperienceAfter = 0;
+	const bool bBarAfter = UCataclysmExperienceBar::LevelOf(Player, BarLevelAfter, BarExperienceAfter);
+	const float FillAfter = UCataclysmExperienceBar::FractionFor(BarLevelAfter, BarExperienceAfter);
+	const FString WordsAfter = UCataclysmExperienceBar::TextFor(BarLevelAfter, BarExperienceAfter);
+	const float MaxHealthAfter = ASC->GetNumericAttribute(MaxHealth);
+	const float HealthAfter = ASC->GetNumericAttribute(Health);
+	const float TableRise = UCataclysmClassStats::BaseFor(Table, ClassName, TEXT("max_health"), ExpectedLevel)
+		- UCataclysmClassStats::BaseFor(Table, ClassName, TEXT("max_health"), 1);
+
+	AddInfo(FString::Printf(TEXT("KILL CROSSES A LEVEL: worth %d; level %d (%lld in) to %d (%lld in), expected %d (%lld); "
+								 "the bar '%s' %.4f to '%s' %.4f; maximum health %.1f to %.1f (the class line rises "
+								 "%.1f); health %.1f to %.1f"),
+							Worth, BarLevelBefore, BarExperienceBefore, PlayerState->GetCharacterLevel(),
+							PlayerState->GetExperienceIntoLevel(), ExpectedLevel, ExpectedExperience, *WordsBefore,
+							FillBefore, *WordsAfter, FillAfter, MaxHealthBefore, MaxHealthAfter, TableRise, HealthBefore,
+							HealthAfter));
+
+	TestTrue(TEXT("set-up: a Boss is worth something here"), Worth > 0);
+	TestTrue(TEXT("set-up: the bar reads the player state, before and after"), bBarBefore && bBarAfter);
+	TestTrue(TEXT("set-up: the bar began at level 1, nearly full"), BarLevelBefore == 1 && FillBefore > 0.99f);
+	TestTrue(TEXT("set-up: the kill's worth crosses at least one level"), ExpectedLevel >= 2);
+	TestTrue(TEXT("set-up: the class line gives more health at that level than at 1, so the test can tell"),
+			 TableRise > 0.0f);
+
+	TestEqual(TEXT("the kill raised the level"), PlayerState->GetCharacterLevel(), ExpectedLevel);
+	TestEqual(TEXT("keeping the remainder"), PlayerState->GetExperienceIntoLevel(), ExpectedExperience);
+	TestEqual(TEXT("the bar's number moved with it"), BarLevelAfter, ExpectedLevel);
+	TestEqual(TEXT("the bar's fill is the remainder over the next level's cost"), FillAfter,
+			  UCataclysmExperienceBar::FractionFor(ExpectedLevel, ExpectedExperience));
+	TestTrue(TEXT("and the bar emptied from nearly full"), FillAfter < FillBefore);
+	TestTrue(TEXT("and its words name the new level"),
+			 WordsAfter.StartsWith(FString::Printf(TEXT("Level %d: "), ExpectedLevel)));
+	TestEqual(TEXT("THE STAT LINE WAS REBUILT: maximum health rose by what the class line gives the new level"),
+			  MaxHealthAfter - MaxHealthBefore, TableRise);
+	TestEqual(TEXT("and health was left where it was: a raised maximum raises nothing"), HealthAfter, HealthBefore);
 	return true;
 }
 

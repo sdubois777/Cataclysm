@@ -270,7 +270,16 @@ public:
 						 const TMap<FName, float>* BaseOverrides = nullptr);
 
 	/**
-	 * The level a character starts at until levelling exists.
+	 * The level of a character that nothing made or loaded: the sandbox's, and
+	 * an automation test's. It was the level every character started at until
+	 * levelling existed.
+	 *
+	 * A NEW CHARACTER DOES NOT START HERE. The New character screen's
+	 * character is made at level 1, the design's starting level, by
+	 * `ACataclysmGameMode::MakeThePendingCharacter` (issue #2744, ruled
+	 * 2026-11-18). This stays at 20 because the sandbox's fights and many
+	 * automation tests were sized against a level 20 character; the paragraph
+	 * below is why 20 was chosen, written before levelling existed.
 	 *
 	 * WHY IT IS NOT 1. Nothing in this project grants experience or raises a
 	 * level -- there is no levelling system at all, so a level-1 character can

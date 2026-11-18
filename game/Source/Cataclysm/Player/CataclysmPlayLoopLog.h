@@ -19,6 +19,7 @@ struct FCataclysmDayReport;
  *   PLAY LOOP: Walk pressed on dungeon 3, the Horde dungeon on Outpost (-3,0): travelling to the dungeon level
  *   PLAY LOOP: entered dungeon 3, floor 1 of 12; the walk owes 1 day
  *   PLAY LOOP: dungeon 3: down to floor 2 of 12; the walk owes 2 days
+ *   PLAY LOOP: level 2 reached, from level 1: 3120 experience into it, 245740 more to level 3
  *   PLAY LOOP: cleared dungeon 3 on day 12: +1.0 empire points; level 4: back to the capital
  *   PLAY LOOP: in the capital on day 12, ...; while away, days 0 to 12: dungeons resolved: 5, ...
  *
@@ -106,4 +107,11 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 	 * its partition's account. A world with no game instance of this project's picked up nothing and holds no balance.
 	 */
 	static FString GoldLineIn(const UObject* WorldContext, int32 DungeonId);
+
+	/**
+	 * A level gained, from a kill or `Cataclysm.GrantExperience`: the level reached, the level it came from, the
+	 * experience into the new level and what the next one still costs. At the maximum level, that it is the maximum.
+	 * Said by `ACataclysmPlayerState::GrantExperience`. Issue #2744.
+	 */
+	static FString LevelGainedLine(int32 From, int32 To, int64 ExperienceIntoLevel);
 };
