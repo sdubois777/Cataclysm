@@ -2,7 +2,7 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-## 2026-11-17 — The Corrupted Stalker's six weapon kits and its six entries: Death a Dagger, Pestilence a Fist, Famine a Sword, Celestial a Warhammer, Chaos a Whip, Void a Greatsword, each with its type's Aura (#2580)
+## 2026-11-17 — The Corrupted Stalker's six weapon kits and its six entries: Death a Dagger, Pestilence a Fist, Famine a Sword, Celestial a Warhammer, Chaos a Whip, Void a Greatsword, each with its type's Aura; the row is built, and one dungeon raises one entry on every floor (#2580)
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (36 rows of the Weapon Skills sheet, columns D to J, nothing else) and the
 regenerated `game/Data/WeaponSkills.csv` (the same 36 rows); `ACataclysmCorruptedStalkerCharacter::Entries` and the new
@@ -11,23 +11,36 @@ regenerated `game/Data/WeaponSkills.csv` (the same 36 rows); `ACataclysmCorrupte
 `game/Source/Cataclysm/Tests/CataclysmStalkerEntryTests.cpp`, new, eight tests in the new group
 `Cataclysm.StalkerEntries.`; three tests of `CataclysmDungeonModifierEffectsTests.cpp` (one renamed) and a comment in
 `CataclysmSkillTemplateTests.cpp`; `tools/tests/test_stalker_kit_rows.py`, new; `tools/tests/test_stun_durations_are_stated.py`
-and `sim/tests/test_anti_stun_lock.py`; two sentences of `docs/Cataclysm_GDD_v2.md`. Issue
-[#2580](https://github.com/sdubois777/Cataclysm/issues/2580).
+and `sim/tests/test_anti_stun_lock.py`; two sentences of `docs/Cataclysm_GDD_v2.md`. **Phase 2:**
+`UCataclysmDungeonModifierEffects::BuiltStateOf` (the row moved to Built), its test renamed
+`TheCorruptedStalkerRowIsBuiltNowThatAllSevenEntriesExist`, and `game/README.md`'s counts;
+`ACataclysmDungeonGameMode::RaiseTheCorruptedStalker` (which entry is drawn on the dungeon's seed),
+`CorruptedStalkerSalt`'s comment in `CataclysmDungeonModifierEffects.h`, and one new test,
+`Cataclysm.DungeonModifierEffects.TheCorruptedStalkerWearsOneEntryOnEveryFloorOfADungeon`; a comment of
+`CataclysmStalkerEntryTests.cpp`. Issue [#2580](https://github.com/sdubois777/Cataclysm/issues/2580).
 
 ### SAID FIRST
 
-- **WRITTEN, NOT COMPILED.** Phase 1 by instruction: no build, no editor, no Unreal test and no C++ guard proof has run.
-  Every Unreal figure below is a prediction. The Python checks are run, and three are proved with `tools/prove_guard.py`.
+- **COMPILED, NOT RUN.** Phase 1 was written with no build, by instruction. Phase 2 compiled it on `development`
+  `e308e0c15` (no rebase was needed), every changed `.cpp` alone and every unity file holding one ("Compiled (phase
+  2)" below). No Unreal test, no editor run and no C++ guard proof has run. Every Unreal figure below is a prediction.
+  The Python checks are run, and three are proved with `tools/prove_guard.py` (phase 1).
 - **`DT_WeaponSkills` MUST BE REBUILT BEFORE ANY UNREAL TEST RUNS.** Every new test reads the 36 rows from the asset;
   against the stale asset the six entries hold no skills. `test_datatable_assets_are_current` fails until then, naming
-  `WeaponSkills.csv` alone.
-- **THE ROW IS STILL PARTLY BUILT.** The coordinating session ruled on 2026-10-25 that the Corrupted Stalker row stays
-  partly built "until all seven exist". All seven non-War entries now exist; this branch does not move the row to built,
-  because nothing here has run in the engine. **The move is the coordinating session's to make.**
-- **WHICH ENTRY A FLOOR RAISES IS NOW DRAWN FROM SEVEN**, on the floor's seed (`RaiseTheCorruptedStalker`). Every test
-  that raises one through the game mode now gets whichever entry its seed draws, where it always got Kaedric. One test
-  asserted his name and now asserts the name of the entry raised; the others were read and assert nothing of the
-  entry's kit, but they have not run with another entry (see "Not tested").
+  `WeaponSkills.csv` alone. The window rebuilds it after its build and commits the asset as the tested head.
+- **THE ROW IS BUILT**, ruled by the coordinating session on 2026-11-17: `Generic_Corrupted_Stalker` moves from Partly
+  built to Built. The counts become 120 built, 1 partly built (Void's Insanity Bursts) and 2 not built. Under "The row
+  is built".
+- **A BUG FIXED IN PHASE 2: A DUNGEON RAISED A DIFFERENT ENTRY ON EACH FLOOR.** Which entry was drawn on the floor's
+  seed, and every floor's seed differs, so with seven entries the Stalker that followed down the stairs was usually
+  another character, carrying the last one's health and potions. It is drawn on the dungeon's seed now. Under "One
+  dungeon, one entry".
+- **WHICH ENTRY A GAME-MODE TEST RAISES.** Every test that raises the Stalker through the game mode gets the entry its
+  dungeon's seed draws, where it always got Kaedric. Each was read again in phase 2: none asserts anything of Kaedric
+  or of a Demonic skill, and each assertion holds for any of the seven (under "Review (phase 2)"). At the game mode's
+  own seed, 1, it is now Hesk the Starveling on every floor.
+- **A SAVE WRITTEN BEFORE THIS CHANGE CAN LOAD AS ANOTHER ENTRY.** The save holds no entry name; the load draws it again
+  on the dungeon's seed, among seven where the save's dungeon had only Kaedric. No player saves exist.
 - **THE SIX ARE WEAKER THAN KAEDRIC, BY THE RULING THAT SHAPES THEM.** On the shared `Default` class line they have no
   armour, less health per level (15 against the Ravager's 20) and no leech, and their weapons' flat damage runs from
   the Dagger's 26 to the Warhammer's 84, against the Greataxe's 72. The tier multipliers were fitted to Kaedric (#1569).
@@ -180,7 +193,10 @@ The last three grant the generated row itself (`SkillsFor` and `StampOnto`) to a
 
 Changed: `TheCorruptedStalkersEntriesAreOnePerDamageTypeAndOnlyDemonicIsAuthored` is renamed
 `...AndAllButWarAreAuthored` and asserts seven authored; `TheCorruptedStalkerComesAMinuteIntoItsFirstFloor...` asserts
-"hunted by" the entry it wears rather than Kaedric; the Wild Magic pool's empty control.
+"hunted by" the entry it wears rather than Kaedric; the Wild Magic pool's empty control. **Phase 2:**
+`TheCorruptedStalkerRowIsPartlyBuiltUntilAllSevenEntriesExist` is renamed `...IsBuiltNowThatAllSevenEntriesExist` and
+asserts `Built`; one test is new, `TheCorruptedStalkerWearsOneEntryOnEveryFloorOfADungeon` (under "One dungeon, one
+entry").
 
 Python: `tools/tests/test_stalker_kit_rows.py`, new, nine checks: each `KitEntry` points at a complete, shaped kit (six,
 with a control that six are read); no row laying Necrosis promises that every heal is denied; an Aura that pulls or
@@ -188,18 +204,135 @@ knocks back every pulse pulses at more than 5 s or states the halving. `test_und
 in `CataclysmUndesignedSkill.h`: NAMED SKILLS 117 to 153, UNDESIGNED 54 unchanged; its sentence "the other 58 ... 51
 Demonic" was already wrong (63 were shaped) and says 99 now.
 
+### The row is built: the coordinating session's ruling, 2026-11-17
+
+The coordinating session's brief for phase 2: "**CODING RULING by the coordinating session, 2026-11-17:
+Generic_Corrupted_Stalker moves from Partly built to Built.** The owner ruled it stays partly built 'until all seven
+non-War entries exist', and Kaedric plus the six now do. War stays excluded under the no-War order." (The ruling of
+2026-10-25 that it quotes is recorded in that day's entry as the coordinating session's.)
+
+**What moved, and every pin of it, searched for by `BuiltStateOf`, `Partly`, `partly built`, `Corrupted_Stalker`,
+`CorruptedStalkerKey` and the counts across `game/`, `tools/`, `sim/` and the design document:**
+
+- `UCataclysmDungeonModifierEffects::BuiltStateOf`: the `CorruptedStalkerKey` arm leaves the partly built list for the
+  built list, with a comment saying why it moved; the partly built list keeps a "WAS HERE" line, as the rows that moved
+  before it did.
+- `Cataclysm.DungeonModifierEffects.TheCorruptedStalkerRowIsPartlyBuiltUntilAllSevenEntriesExist` is renamed
+  `...TheCorruptedStalkerRowIsBuiltNowThatAllSevenEntriesExist` and asserts `Built`, and the condition it waited for
+  (seven authored entries); its controls (Insanity Bursts partly built, War's Supply Lines not built) are unchanged.
+- `game/README.md`: "As of 2026-11-17, 120 of the 123 modifiers do what their rows say, one does part of it, and two
+  are a name and a number", the Stalker's clause rewritten. Its earlier sentence dated 2026-10-23 is left as dated.
+- **Nothing else pins it.** `EveryRuleNamesARowOfTheTable` and `EveryRowWithSomethingBuiltIsInTheRuleList` hold for a
+  built row as for a partly built one; the Floor Brief test that counts rows doing something counts built and partly
+  built alike; the panel's "(partly built)" mark is drawn from `BuiltStateOf` alone, so the Stalker's name line loses
+  it, and no test asserts that mark of the Stalker (searched for "Corrupted Stalker (partly"). No Python check reads
+  the state or the counts. The game mode's "hunted by" line never named the state.
+
+### One dungeon, one entry: a bug fixed in phase 2
+
+**Found in the review of how a save restores the entry.** `RaiseTheCorruptedStalker` drew the entry on
+`CurrentFloor->GetPlan().Seed ^ CorruptedStalkerSalt`, under a comment "so the same dungeon raises the same one". A
+floor's plan seed is `SeedForFloor(dungeon seed, floor number)`, different on every floor, so each floor drew again.
+While Kaedric was the only entry that drew him every time; with seven it was a different character on most floors,
+given the last one's health share and potion charges by `GiveAHunterWhatItCarried`. Computed with the engine's
+`FRandomStream` and `SeedForFloor` written out in Python, at the game mode's own seed, 1, floors 1 to 6 drew Aurel,
+Tamsin, Kaedric, Oswin, Morwen and Oswin. The row is one character that "hunts you across the dungeon floors", and the
+layer 1 rule (2026-10-25) is that it follows "with the share of its health it had".
+
+**Fixed:** the entry is drawn on `ChooseSeed() ^ CorruptedStalkerSalt`, the dungeon's own seed, which is also the
+dungeon's seed on the dark floor and `FCataclysmDungeon::WalkSeed` in an empire dungeon. The affixes' rolls stay on the
+floor's seed, as ruled on 2026-10-25 ("its roll drawn on the floor's seed"), and that stream is advanced once, as the
+entry's draw advanced it, so every roll is the one it was. At seed 1 every floor now raises Hesk the Starveling.
+**JUDGEMENT, labelled:** reading the comment and the row as the intent rather than the floor's seed; flagged for the
+coordinating session. A negative `Cataclysm.DungeonSeed` reads the clock on every call, so a development run with it
+still redraws, as every floor of such a run is a new dungeon anyway.
+
+**New test**, `Cataclysm.DungeonModifierEffects.TheCorruptedStalkerWearsOneEntryOnEveryFloorOfADungeon`: floors 2 to 5
+of one stalked dungeon each raise a Stalker, and all four wear one name. **Its control**: the four floors' own seeds,
+salted as the old draw was, would have drawn at least two different entries (at seed 1, four: Tamsin, Kaedric, Oswin
+and Morwen), so the old draw fails it. Prints "STALKER ENTRY: floor N raised <name>".
+
+**The save.** No save field holds the entry. A load rebuilds the floor and raises the Stalker where it stood
+(`RaiseTheCorruptedStalker(&Location)`), drawing again: on the floor's seed before this fix, on the dungeon's seed
+after it. Both come back the same on a load, because both seeds are rebuilt from the saved dungeon. So a mid-hunt save
+restores the same entry; `Cataclysm.SaveLoad.TheCorruptedStalkerStandsWhereItStoodAfterALoad` compares the build line
+before and after. **A save written before #2580 can load as another entry**: its dungeon had only Kaedric, and the
+same seed now draws among seven. No player saves exist; recorded, not migrated.
+
+### Compiled (phase 2)
+
+No rebase: `origin/development` was still `e308e0c15`, the branch's base, and its workbook unchanged.
+
+| Build | "Build:" line |
+| :-- | :-- |
+| The branch with phase 2's edits | "Build: Succeeded - 33 actions, 30 files compiled" |
+| Each changed `.cpp` alone (`git reset --mixed origin/development`, `Makefile.bin` moved aside, built, `git reset --mixed` back; `git status` and the diff unchanged) | "Build: Succeeded - 11 actions, 8 files compiled: CataclysmCorruptedStalkerCharacter.cpp, CataclysmStalkerEntryTests.cpp, CataclysmSkillTemplateTests.cpp, CataclysmUndesignedSkill.cpp, Module.Cataclysm.34.cpp, Module.Cataclysm.40.cpp, Module.Cataclysm.7.cpp, Module.Cataclysm.8.cpp" |
+| The unity files holding them (`Makefile.bin` moved aside again; both moved copies deleted after) | "Build: Succeeded - 12 actions, 9 files compiled: Module.Cataclysm.34.cpp, Module.Cataclysm.10.cpp, Module.Cataclysm.38.cpp, Module.Cataclysm.39.cpp, Module.Cataclysm.40.cpp, Module.Cataclysm.41.cpp, Module.Cataclysm.42.cpp, Module.Cataclysm.7.cpp, Module.Cataclysm.8.cpp" |
+
+The three files phase 2 edited, `CataclysmDungeonGameMode.cpp`, `CataclysmDungeonModifierEffects.cpp` and
+`CataclysmDungeonModifierEffectsTests.cpp`, were already in the working set at the first build and compiled alone there
+(their own objects, written then); the alone build found them current. The unity files holding the changed `.cpp`
+files are 34 (`CataclysmStalkerEntryTests.cpp`), 42 (`CataclysmSkillTemplateTests.cpp`), 8
+(`CataclysmCorruptedStalkerCharacter.cpp`), 7 (`CataclysmUndesignedSkill.cpp`, whose header changed), and 10, 38 and 39
+(the three above), read out of the generated `Module.Cataclysm.*.cpp`. No compile error, so nothing needed fixing.
+
+### Review (phase 2)
+
+- **Which entry, and the save**: under "One dungeon, one entry".
+- **Every game-mode test that raises a Stalker** was read for what it asserts of the entry:
+  `TheCorruptedStalkerComesAMinute...` (the name of the entry worn, phase 1), `...FollowsThirtySeconds...` (a share of
+  health, 0.4, of any entry), `ASlainCorruptedStalker...`, `...InAHordeArena...`, `ACorruptedStalkersKillsRefill...`
+  (its blow is 1,000,000 by `ABlowLands`, whatever it wields), `...FollowsWithThePotionChargesItHad` (a slot's charges
+  and `MaxCharges`), `Cataclysm.ConsumptionDouble`'s Stalker beside the double (health shares), and the two
+  `Cataclysm.SaveLoad` round trips (place, build line before and after, slain). **None names Kaedric, a Demonic skill or
+  a Demonic figure; every assertion holds for each of the seven.** Each test that needs Kaedric builds him by name
+  (`AStalkerWearingTheDemonicEntry`). **A correction to phase 1's "Not tested"**: the beat in those tests ticks the game
+  mode only (`Beat` calls `Mode->Tick`), not the world, so the raised Stalker's brain does not act in them and its kit
+  never runs there.
+- **The six are authored only where designed**: each is on `UCataclysmClassStats::DefaultClassName` with an empty
+  allocation (`KitEntry`); no class line, stat or node is added to `ClassStats.csv` or the trees; the drafted classes
+  live in the epithets. Every weapon base is a row of `ItemBases.csv` with a Strike basic attack (Dagger 1.5 m, Fist
+  1.5 m, Sword 1.8 m, Warhammer 2.1 m, Whip 3 m, Greatsword 2.7 m); the weapon's two affixes are Kaedric's flat and
+  increased damage, which name no weapon type.
+- **The default class line's mana covers the brain's mana check**: `Default` has 50 + 6 a level against the Ravager's 40
+  + 4, and the choice test's 20% of it already sufficed for Kaedric.
+
+### Audit of every fixed number and starting state the new tests assert (phase 2)
+
+| Assertion | Read against | Holds because |
+| :-- | :-- | :-- |
+| Undertow drags 7 m to 5 m, then 5 m to 3 m 6 s later; the control 5 m to 4 m 1 s later | `Radius=8; Interval=6; ForcedMovement=Pull; ForcedMovementDistance=2`; `ApplyPullFrom` (a stated distance, never past the caster); `TakeNextDisplacementShare` (reset when `Now - Last > 5`, `LastDisplacedAtSeconds` starting at -1) | 7 m is inside 8 m; 6 > 5 strictly and 1 is not; the second pair's target is a new actor, so the control's window does not carry to it |
+| The row's interval is 6 s and above the 5 s window | the row, `StunImmunityWindowSeconds` | the test reads both rather than restating them |
+| Aegis pushes 1 m to 4 m, then 1 m to 2.5 m 1 s later, then 1 m to 4 m 6 s after that | `Knockback=3; Radius=4`, the same window | the second push is the second within 5 s of the first (half, 1.5 m); the third is 6 s after the second |
+| No pulse before the test's own | `UCataclysmAuraSkill::ActivateAbility` sets the pulse timer with its first delay one period out, and the test world is not ticked | each `Pulse()` in the tests is the first, second or third pulse it is said to be |
+| Each of the 36 casts lowers mana | `ManaCostAtLevel` of each slot's figure (Heavy 15, Special 40, Support 25, Aura 20, Ultimate 150, Movement 20 at level 100; none of the 36 states its own); `StalkerAt` refills mana before each | every template pays in `CommitAndBegin` before it acts (phase 1's reading, not re-run) |
+| The Chaos support: Chaos resistance 40 to 10, attack damage 100 to 70, one curse of two unpinned | `EffectMagnitude=30; EffectPick=Random`; the pin `Cataclysm.SkillEffectPick` | a fresh caster and target for each pulse, the target's starting 40 and 100 set by the test |
+| Gravepoint lays Necrosis; Kaedric's heavy lays none | `Ailment=Necrosis`, Radius 2.5 m, the player 2 m away; Molten Cleave lays Burn | a fresh player each, with 10,000,000 health, so no starting Necrosis and no death |
+| The brain's choices at 2, 8, 14 and 20 m | every Heavy reaches 2.5 m to 5 m, every Special 12 m, every Ultimate 4 m or more, Movement only beyond 15 m | read from the 36 rows; 14 m is beyond every Special and short of 15 m |
+| The roll ranges | Wild Lash 50 to 450, Pandemonium 100 to 700, as their sentences say ("half ... to four and a half times", "your weapon damage to seven times") | **asserted by no test of this branch**; `Cataclysm.StalkerKit.` tests the roll on its own row |
+| Which entry a seed draws | `ChooseSeed()` is the game mode's `DungeonSeed`, 1, when `Cataclysm.DungeonSeed` is 0 | at seed 1, Hesk the Starveling (computed, not run); the stalked game-mode tests assert nothing of which, and the new test asserts only that it is one |
+
 ### Registered before the run
 
 | Figure | Registered |
 | :-- | :-- |
-| Asset rebuild | `python tools/run_editor_python.py tools/generate_datatable_assets.py` changes exactly `game/Content/Data/DT_WeaponSkills.uasset` and `game/Data/datatable_asset_sources.json`. Keep both; commit them before the suite |
+| Asset rebuild | `python tools/run_editor_python.py tools/generate_datatable_assets.py`, after the build, changes exactly `game/Content/Data/DT_WeaponSkills.uasset` and `game/Data/datatable_asset_sources.json`. Both are committed alone as "Rebuild DT_WeaponSkills for the six Stalker kits (#2580)" and pushed; that commit is the tested head. Anything else changed stops the window |
 | `Cataclysm.StalkerEntries.` alone | 8 performed, 8 succeeded: none at the base, + 8 by name; no skipped half |
-| Whole Unreal suite | **TO BE MEASURED. Predicted 4760 performed, 4760 succeeded**: 4752 measured by window stalker-kit-w1 at `5d95e7ffe`, whose `game/` tree equals this branch's base `e308e0c15` (`git diff --stat` empty), + 8 by name; one test renamed, none removed. 47 skipped halves, unchanged (no new test calls `ReportSkippedHalf`). 0 test saves left behind |
+| `Cataclysm.DungeonModifierEffects.` alone | 769: 768 at the base, + 1 by name (`TheCorruptedStalkerWearsOneEntryOnEveryFloorOfADungeon`); two renamed (one in each phase), none removed |
+| `Cataclysm.ConsumptionDouble.` alone | 15, none added or changed |
+| `Cataclysm.StalkerKit.` alone | 13, none added or changed |
+| `Cataclysm.Skills.` alone | 283, none added or changed (a comment) |
+| `Cataclysm.SkillPool.` alone | 11, none added or changed; Wild Magic and Echo Chamber draw from the new rows |
+| `Cataclysm.SaveLoad.` alone | 76, none added or changed; the Stalker's two round trips |
+| Whole Unreal suite | **TO BE MEASURED. Predicted 4761 performed, 4761 succeeded**: 4752 measured by window stalker-kit-w1 at `5d95e7ffe`, whose `game/` tree equals this branch's base `e308e0c15` (`git diff --stat 5d95e7ffe e308e0c15 -- game/` prints nothing), + 9 by name (8 + 1); two renamed, none removed. 47 skipped halves, unchanged (no new test calls `ReportSkippedHalf`). 0 test saves left behind |
 | C1, the Death entry's weapon type: `TEXT("Morwen the Gravewalker"), TEXT("Dagger"),` to `TEXT("Morwen the Gravewalker"), TEXT("Axe"),` in `CataclysmCorruptedStalkerCharacter.cpp`, prefix `Cataclysm.StalkerEntries.` | 8 performed, 3 succeeded, 5 failed: `EachOfTheSixKitEntriesIsAuthoredWithItsWeaponAndNoClassLineOrPassives` ("Death's carries a Dagger"), `EachOfTheSixKitEntriesWearsItsSixSkillsThroughSkillsFor` ("Death's Dagger with its Aura is six skills": `SkillsFor` of Death's Axe is empty), `AStalkerOfEachTypeChoosesEachOfItsSixSlots` (Death's six choices; its 14 m control holds), `AStalkerOfEachTypeCastsEachOfItsSixSlots` (Death's six casts and its two running lines), `TheDeathStalkersHeavySkillLaysNecrosisOnThePlayer` (not hurt, no Necrosis; the control holds). The Chaos, Void and Celestial tests read the rows, not the entry, and pass |
 | C2, the class line not set: `Entry.ClassName = UCataclysmClassStats::DefaultClassName;` to `Entry.ClassName = TEXT("Ravager");` in the same file, prefix `Cataclysm.StalkerEntries.EachOfTheSixKitEntriesIsAuthoredWithItsWeaponAndNoClassLineOrPassives` | 1 performed, 0 succeeded, 1 failed, 6 assertions: "<Type>'s is on the shared Default class line" for each of the six; Kaedric's controls hold |
+| C3, the entry drawn on the floor's seed again: `FRandomStream Choice(ChooseSeed() ^ Effects::CorruptedStalkerSalt);` to `FRandomStream Choice(CurrentFloor->GetPlan().Seed ^ Effects::CorruptedStalkerSalt);` in `CataclysmDungeonGameMode.cpp`, prefix `Cataclysm.DungeonModifierEffects.TheCorruptedStalkerWearsOneEntryOnEveryFloorOfADungeon` | 1 performed, 0 succeeded, 1 failed, 1 assertion, "every floor raised the same entry" (four names at seed 1); the control holds in both halves |
 | Python | the run of record below |
 
-Each C++ anchor occurs once in its file (counted). The breaks were not compiled.
+Each C++ anchor occurs once in its file: `prove_r2580.py C1|C2|C3 --anchors-only` printed "anchor count 1" for each.
+The breaks were not compiled. No prefix registered here is a case-insensitive string prefix of another group (checked
+against the 309 groups of the base log), and no other test's name begins with C2's or C3's.
 
 **Python guards, run with `tools/prove_guard.py` in a `git archive` copy of `96e9b8184`, removed afterwards; each
 anchor counted once in its file first; each `result.proved` True and `crashed` False:**
@@ -220,18 +353,32 @@ added are the nine of `test_stalker_kit_rows.py` and four parametrized cases of 
 (two tests, two new rows each). `python -m ruff check .`: "All checks passed!" Only this section was added after the
 measured commit.
 
+**Phase 2**, measured on `e5063d854` with this entry's phase 2 text in the working tree, the Unreal lock free:
+"1 failed, 7437 passed, 9 skipped in 199.05s", and the JUnit file's `testsuite` tests="7447" failures="1" errors="0"
+skipped="9" (7437 passed), the two agreeing. The one failure is the same registered one, naming `['WeaponSkills.csv']`
+alone. **The ninth skip is this worktree's, not the change's**:
+`test_run_editor_python.py::TestPreconditions::test_the_real_check_refuses_this_checkout_when_it_has_no_binaries`
+skipped "this checkout has its modules built, so nothing is missing", because phase 2 built them. Phase 2 adds no Python
+test. `python -m ruff check . --extend-exclude .claude`: "All checks passed!" Only this paragraph was added after the
+measurement.
+
 ### Not tested
 
-- **Nothing here has run in the engine**, nor compiled. Every Unreal figure is a prediction.
-- **The game-mode tests that raise a Stalker by the floor's seed** (`TheCorruptedStalkerComesAMinute...`,
-  `...FollowsThirtySeconds...`, the slain, Horde, refill, charges and save and load tests, and the double's) now raise
-  whichever of seven entries the seed draws. They were read, and none asserts anything of Kaedric's kit but the name
-  fixed above; but each beat lets the raised Stalker act, and a Celestial or Void Stalker's pushes and pulls, or a Death
-  Stalker's Necrosis, have never run in them.
+- **Nothing here has run in the engine.** It compiled in phase 2; every Unreal figure is a prediction, and the window
+  that runs it has not been run. The editor's asset rebuild has not run either.
+- **The game-mode tests that raise a Stalker** now raise the entry the dungeon's seed draws, Hesk the Starveling at the
+  game mode's own seed (computed, not run). They were read again in phase 2 and none asserts anything of Kaedric's
+  kit. Phase 1 said each beat lets the raised Stalker act: it does not, because those tests tick the game mode and not
+  the world, so no entry's kit runs in them at all.
+- **The entry fix's interplay with a Horde arena, the dark floor and the corrupted double** was read, not run: a Horde
+  wave keeps the Stalker it has, the dark floor's raise asks `ChooseSeed()` as every floor's does, and the double reads
+  the player state and never draws an entry.
+- **Tests outside these files that enter an empire dungeon** can carry the row by its 5% grant and raise a Stalker if
+  they beat a minute; none was found that asserts anything of the Stalker, but they were not enumerated one by one.
 - Whether the six are fair fights: on the `Default` line, without armour, with lighter weapons, and with multipliers
   fitted to Kaedric. Not measured.
-- A Corrupted Stalker loaded from a save written before this change draws again among seven on the same seed, so it may
-  come back as another entry; the save holds no entry name.
+- A Corrupted Stalker loaded from a save written before this change draws again among seven on the dungeon's seed, so
+  it may come back as another entry; the save holds no entry name.
 - The rows in a player's hands: each kit is now in the pool of a player wearing that weapon with that type, and in the
   Wild Magic pool of the type. Nothing here plays them.
 - Coin of Misrule's two curses on the player, from a Stalker: the test pulses the row from a plain fighter onto a plain
