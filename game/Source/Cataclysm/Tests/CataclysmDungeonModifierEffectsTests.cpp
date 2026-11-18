@@ -28118,7 +28118,10 @@ bool FCataclysmEchoesPlacedTest::RunTest(const FString& Parameters)
 									FVector(1499.0f, 0.0f, 0.0f), FVector(1500.0f, 0.0f, 0.0f),
 									FVector(2000.0f, 0.0f, -300.0f), FVector(3000.0f, 0.0f, 0.0f)};
 	const TArray<int32> FarEnough = {3, 4, 5};
-	constexpr int32 Seed = 41;
+	// SEED 36 BECAUSE A BREAK MUST SHOW. With the fifteen metres taken away, this seed's shuffle of all six puts the
+	// first three echoes on the three near places (0, 1 and 2, computed from `FRandomStream`'s own arithmetic), so the
+	// assertion below that each stands far enough fails; at some other seeds the shuffle happens to begin 3, 4, 5.
+	constexpr int32 Seed = 36;
 	const auto FarAndApart = [&FarEnough](const TArray<int32>& Chosen, int32 Distinct)
 	{
 		TArray<int32> Seen;
