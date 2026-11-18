@@ -410,17 +410,22 @@ threshold are tuning constants and only playing settles them.**
 | A creature dying | `ACataclysmEnemyCharacter::HandleDeath` |
 | Health falling through the threshold | `UCataclysmSaveWriter::Tick`, sampling once a frame at half of maximum health. **Also a starting figure** |
 | Changing floor | `ACataclysmDungeonGameMode::GoToFloor` calls `UCataclysmSaveWriter::SetFloor`, while the writer is writing, with the dungeon's name, the floor number, whether the floor is the dark floor a fall leads to, and the floor fallen from. `ACataclysmDungeonGameMode::LeaveEmpireDungeon` calls it as well when the dungeon is left from the dark floor. `SetFloor` raises the trigger when any of the four differs from what the writer holds. **And a walk begun on arriving from the capital** raises it once the dungeon is entered, since 2026-11-17 (#2733 slice 3), because floor 1 of the dungeon is the floor the level already held and `SetFloor` would not |
-| An item entering or leaving the inventory | `UCataclysmInventoryComponent`, on adding an item, stacking a material and emptying a slot |
+| An item entering or leaving the inventory | `UCataclysmInventoryComponent`, on adding an item, stacking a material and emptying a slot. **And gold picked up**, since issue #2742's first slice: `UCataclysmDropPickup::BankGold`, because the run record's floor loses the piles and a Solo Self-Found character's own gold is in its character record |
+| The account record changing | `ACataclysmDungeonGameMode::BankTheDefeatsEmpirePoints`, banking a defeated dungeon's empire upgrade points; `UCataclysmDropPickup::BankGold`, when gold picked up went to the account; and `UCataclysmCityUpgradePurchase::Buy`, when the account paid for a city upgrade. The account record only, asynchronously |
+| A city upgrade being bought | `UCataclysmCityUpgradePurchase::Buy`, once it has taken the price and the run has recorded the upgrade: the run record, which holds the city's upgrade, and the character record, which holds a Solo Self-Found character's own gold, asynchronously. Since issue #2742's second slice; until then nothing raised a save for a purchase, and the upgrade waited for the clock |
 | A character being created | `ACataclysmGameMode::MakeThePendingCharacter`, once a character made on the front end's new-character screen has its name, partition and creation choice applied when its level begins. The character record and the run record, asynchronously, so the select screen lists it at once. Since select-screen step 4a (#753) |
 | The character dying | `ACataclysmPlayerCharacter::HandleDeath`, **before the character is marked dead**, so the record holds it where it fell rather than a floor with nobody on it |
 | A death having been paid for | `ACataclysmPlayerCharacter::Revive`, last: after the dungeon is ended, the death's days are charged and the character stands. The run record only, asynchronously. Since 2026-10-30 (#753) |
 | The character leaving the level | `UCataclysmSaveWriter::HandOver`, called when the player travels: the capital's Walk, the last floor's stairs, and a death that ended a walk. The character record and the run record, **synchronously**, with no floor held, and then the departing level writes nothing more. The next level loads the character from them. Since 2026-11-17 (#2733 slice 3) |
 
 **The run record is written at most once a frame**, unless it is a death, the
-paying for one, a run won, a character created, the character leaving the level
-or a change of floor, each of which replaces what an earlier write that frame put
-on disk. A change of floor joined them on 2026-11-18 (#2733 slice 3), after a
-walk begun on arrival was found skipped behind an earlier write in its frame.
+paying for one, a run won, a character created, the character leaving the level,
+a change of floor or a city upgrade bought, each of which replaces what an
+earlier write that frame put on disk. A change of floor joined them on 2026-11-18
+(#2733 slice 3), after a walk begun on arrival was found skipped behind an
+earlier write in its frame. A city upgrade bought joined them the same day
+(#2742's second slice): its gold is written apart, with the account record, so a
+skipped run record would keep the gold spent and lose the upgrade.
 Several creatures dying together raise several triggers in one frame, and each
 write but the last would be overwritten before it reached the disk.
 

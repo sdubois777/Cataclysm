@@ -2,6 +2,126 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-18 — City upgrades cost gold: 10,000 at difficulty tier 1, scaled to the run's tier by the gold pile's scale, paid from the character's balance, the city screen showing each price and the balance (#2742, slice 2)
+
+**Affects:** the City Upgrades sheet of `docs/All_Things_Cataclysm.xlsx`, which gains Tier 1 Gold, Tier 2 Gold, Tier 3
+Gold and Gold Note; `tools/generate_datatables.py` (`city_upgrades` reads the three by name, `_city_upgrade_prices` and
+`CITY_UPGRADE_GOLD_COLUMNS`, new); `game/Data/CityUpgrades.csv` and its asset `DT_CityUpgrades`;
+`FCataclysmCityUpgradeRow::Tier1Gold`, `Tier2Gold` and `Tier3Gold`, new (`CataclysmDataRows.h`);
+`UCataclysmCityUpgradeMapping::PriceFor` and `PriceAt`, new (`CataclysmCityUpgradeMapping.h`, `.cpp`);
+`ECataclysmCityUpgradeResult::NotEnoughGold`, new, and `CannotPayYet` renamed `CannotWaitForABuildYet`;
+`UCataclysmCityUpgradeRules::GoldCost` removed and `IsFreeAndInstant` renamed `IsInstant` (`CataclysmCityUpgrade.h`,
+`.cpp`, in `CataclysmEmpire`); `UCataclysmEmpireRun::WouldBuyCityUpgrade` and `BuyCityUpgrade`, which are told the
+price and the gold held (`CataclysmEmpireRun.h`, `.cpp`); `UCataclysmCityUpgradePurchase`, new
+(`game/Source/Cataclysm/Player/CataclysmCityUpgradePurchase.h`, `.cpp`); `UCataclysmGameInstance::SpendGoldFor`, new;
+`ECataclysmSaveTrigger::CityUpgradeBought`, new, and `UCataclysmSaveTriggers`' rules, names and list for it;
+`FCataclysmPlayLoopLog::UpgradeLine`, new; `docs/Save_System_Design.md` (what raises each trigger, and the
+once-a-frame rule); the city screen (`FCataclysmCityUpgradeOffer::Price` and `bShortOfGold`,
+`UCataclysmCityScreenLayout::OffersFor`, `SlotsAndGoldTextFor`, new, `ButtonTextFor` and `NotBuiltLineFor`, and
+`UCataclysmCityScreenWidget`); the `Cataclysm.CityUpgrades` and `Cataclysm.BuyCityUpgrade` console commands
+(`CataclysmPlayerCharacter.cpp`); `docs/Cataclysm_GDD_v2.md` (City Upgrades, and the stash's sentence on gold sinks);
+`docs/Play_Loop_Checklist.md` (a new step 11); `docs/README.md`; `game/README.md`. Tests:
+`game/Source/Cataclysm/Tests/CataclysmCityUpgradePriceTests.cpp`, new, six in the new group
+`Cataclysm.CityUpgradePrice.`; `Cataclysm.CityUpgrade.ThePriceIsCheckedLastAndAgainstTheGoldHeld`, new, and
+`AnUpgradeIsStillFreeAndImmediate` renamed `AnUpgradeIsStillImmediate` (`CataclysmCityUpgradeTests.cpp`); the city screen
+tests given gold (`CataclysmCityScreenTests.cpp`); the save trigger table test (`CataclysmSaveTriggerTests.cpp`);
+`tools/tests/test_city_upgrades_cost_gold.py`, new; the fake City Upgrades sheet in
+`tools/tests/test_generate_datatables.py`; the new trigger in `tools/tests/test_when_a_save_is_written.py`'s list of
+triggers written after the frame. Issue [#2742](https://github.com/sdubois777/Cataclysm/issues/2742), slice 2
+of 2; the gold half of [#1264](https://github.com/sdubois777/Cataclysm/issues/1264).
+
+### SAID FIRST
+
+- **NOT YET COMPILED OR RUN.** This is phase 1, written without compiling, as the coordinating session's go for it
+  said. Nothing here has been built or run in the engine; "The run" says so until it has.
+- **EVERY PRICE IS A JUDGEMENT, AND WHAT IT RESTS ON IS AN ESTIMATE.** One upgrade at difficulty tier 1 costs 10,000
+  gold, which the slice 1 estimate puts at 0.7 to 1.4 twelve-floor walks. No walk has been measured. The coordinating
+  session is asking the owner to report the gold their walks bring, through the PLAY LOOP line slice 1 added, and the
+  prices are data, so a measurement that disagrees is a change to three columns of the workbook.
+- **NO NEW GENRE RESEARCH WAS DONE FOR THIS SLICE.** The shape -- a price that grows with difficulty as income does,
+  and a dearer purchase at a higher upgrade tier -- is G4, ruled with slice 1's plan, and rests on slice 1's research
+  (the entry below: "gold drops grow with difficulty" and "persistent purchases get dearer"). The one new shape choice,
+  reading the price's scale from the pile column, is labelled a judgement below.
+- **THE NEW SAVE TRIGGER IS NUMBER 13, AND THIS BRANCH ALONE FAILS ONE TEST UNTIL IT IS REBASED.** The empire tree's
+  slice 1b (#2741) takes 12 for `EmpireTreeRespecced` and its window comes first, the coordinating session's ruling of
+  2026-11-18. Until this branch is rebased onto that slice, 12 is unused, and
+  `Cataclysm.SaveTriggers.EveryTriggerIsInTheListThisFileAnswersFor`, which walks every number below the count of
+  triggers, reports 12 as missing. Nothing writes these numbers to disk.
+- **FOUND IN PASSING AND NOT CHANGED:** a purchase refused because a Siege stands on the city has no words of its own.
+  `UCataclysmCityUpgradeRules::ResultText` has no case for `CityIsBesieged`, so the city screen and the console command
+  say "Refused." for it. It predates this slice and is reported to the coordinating session rather than fixed here.
+
+### THE RULINGS
+
+- **The owner, 2026-11-18:** gold comes from creature kills; city upgrades are the first thing it buys; upgrades stay
+  instant, and build days come later.
+- **G4, the coordinating session, 2026-11-18:** every upgrade costs 10,000 gold at upgrade tier 1, times the tier scale
+  (1, 3, 6, 10, 14, 19, 24, 30, slice 1's), so 30,000 at difficulty tier 2 up to 300,000 at tier 8; upgrade tiers 2 and
+  3 at 2 and 4 times, though nothing reaches them.
+- **The owner's reversal of G5, 2026-11-18,** carried over: a Solo Self-Found character earns gold into its own
+  balance, so it pays from its own.
+- **The coordinating session's go for phase 1, 2026-11-18:** write the prices as data, record the estimate behind them
+  as an estimate, keep the design workbook for the price columns, compile only on its go.
+- **The coordinating session's approval of the plan, 2026-11-18,** with one addition: `CityUpgradeBought` belongs in
+  `UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame`, with a test that a purchase made in a frame whose
+  run record was already written still reaches the run record on disk
+  (`Cataclysm.CityUpgradePrice.APurchaseInAFrameAlreadyWrittenStillReachesTheRunRecord`); and the trigger is number 13.
+- **The Treasurer upgrade "Dungeons here drop 25% more gold"** is listed as waiting on #2742
+  ([comment](https://github.com/sdubois777/Cataclysm/issues/2742#issuecomment-6992750575)), as the coordinating session
+  asked, and not filed as a new issue.
+
+### THE JUDGEMENTS, EACH WITH WHAT IT RESTS ON
+
+| Judgement | Value | What it rests on |
+| :-- | :-- | :-- |
+| Where the prices live | three columns on the City Upgrades sheet, Tier 1 Gold to Tier 3 Gold, one price per row | the coordinating session's "the price columns go on the City Upgrades sheet"; one per row, though all 23 are equal today, so a row can be repriced alone |
+| The row with no tier ladder | no price, and never sold | the unbranched last resort has no tier to price and is not built (issue #1265) |
+| The price's tier scale | the Gold sheet's Gold Per Pile at the run's tier over its tier 1 figure | G4's "times the tier scale" is that column's scale; reading it there rather than from a second column kept equal to it means an upgrade costs the same number of walks at every tier, by construction |
+| The tier a price is read at | the empire run's own difficulty tier | every level of the run copies it (`ACataclysmGameMode::TakeTheRunsTier`), so a price follows the tier the gold drops follow |
+| Which upgrade tier is charged | tier 1's price | a bought upgrade is at tier 1 for the whole run (issue #1265); tiers 2 and 3 are written and not read, as the tier values are |
+| Who decides whether it is affordable | the empire run, told the price and the gold held | the run is the one list of purchase rules, which the city screen asks too; it may not see the account, so it is told both numbers |
+| Where the price is checked | last, after fallen, besieged, held and full | a player is told the thing they can act on; no gold changes those four answers |
+| Who charges | `UCataclysmCityUpgradePurchase::Buy`, alone, for the city screen and the console command | one place takes gold, so a second path cannot sell for nothing |
+| The order inside it | ask the run, take the gold, have the run record the upgrade; give the gold back if it then refuses | no upgrade is ever held unpaid; the give-back is a guard, since the run refuses only what it refused a moment before |
+| A character with no balance | holds 0, and is refused | nobody playing has nothing to pay with; selling to it would hand out upgrades free |
+| What the gold leaves | the account's for the character's lethality mode, or a Solo Self-Found character's own | the balance slice 1 earns into (`GoldHeldBy`), all or nothing (`SpendGoldFor`), so a balance never goes below nought |
+| A purchase's saves | a new trigger, `CityUpgradeBought`, writing the run and character records even after another write that frame; and `AccountChanged` when the account paid | the run record holds the upgrade and the account or character record the gold; written apart, a quit between them would keep one change and lose the other. Until now nothing raised a save for a purchase |
+| An upgrade the character cannot afford | a greyed button saying "Costs 10,000 gold; 2,500 more needed." | without it, a player short of gold would see the offers vanish with nothing to say why |
+| An upgrade that is not built | its line shows no price | nothing in that section can be bought, so a price beside it would read as an offer |
+| Where the balance shows on the city screen | after the slot line: "0 of 3 upgrade slots filled.   10,342 gold" | the owner's request that the city screen show the balance; the slot line is the one beside the offers, and no widget asset has to be rebuilt |
+| The PLAY LOOP line | "bought 'Increase max defense by 20%' on Outpost (-3,0) for 10,000 gold; 342 gold held" | the owner's check that a purchase took the price it showed, as the walk's gold line checks a walk |
+
+### WHAT EACH PIECE DOES
+
+- **The price.** `UCataclysmCityUpgradeMapping::PriceFor` reads the row's `Tier1Gold` from `DT_CityUpgrades` and scales
+  it by `DT_Gold`'s pile at the asked tier over the pile at tier 1 (`UCataclysmDropRoll::GoldRow`, which clamps the tier
+  to 1 to 8). `UCataclysmCityUpgradePurchase::PriceIn` asks it at the run's tier.
+- **The question.** `UCataclysmEmpireRun::WouldBuyCityUpgrade` takes the price and the gold held, both nought by
+  default so the empire layer's own tests buy free, and answers `NotEnoughGold` after its other checks. `IsInstant`
+  still refuses everything with `CannotWaitForABuildYet` if `BuildDays` is ever raised without a build timer.
+- **The purchase.** `UCataclysmCityUpgradePurchase::Buy` prices the upgrade, reads the gold held, asks the run, takes
+  the price with `UCataclysmGameInstance::SpendGoldFor`, has the run record the upgrade, raises `AccountChanged` when
+  the account paid and `CityUpgradeBought` always, and says the PLAY LOOP line.
+- **The city screen.** `OffersFor` is passed the gold held and prices every offer; `ButtonTextFor` adds the price, or
+  what is missing for one only gold stops; the widget gives such an offer a greyed button that cannot be pressed, and
+  the slot line ends with the balance (`SlotsAndGoldTextFor`, which reads `GoldBalanceText`).
+- **The console.** `Cataclysm.CityUpgrades` lists each buyable upgrade's price; `Cataclysm.BuyCityUpgrade` buys through
+  `Buy` and says "Bought for 10,000 gold." or why not.
+
+### NOT IN THIS SLICE
+
+- **Build days.** The owner ruled upgrades stay instant for now; `BuildDays` is still nought.
+- **The Treasurer and Artisan upgrades,** among them "Dungeons here drop 25% more gold". They change what a walk of a
+  city's dungeon pays, and nothing in a walk reads a city's upgrades yet.
+- **The five empire tree nodes about upgrade costs** (Public Works, Municipal Bonds, Global Credit, Scaffolding and
+  Reinvestment) are the empire tree session's (#2741).
+
+### THE RUN
+
+Not yet compiled or run.
+
+---
+
 ## 2026-11-18 — The account record keeps what the empire upgrade tree has bought, at version 4, and the game instance buys a point, chooses a capstone option and respecs, saving each; no screen calls them yet and no node acts (#2741, slice 1b)
 
 **Affects:** `UCataclysmAccountSave` (`EmpireTree`, new; `SchemaVersionNow` 3 to 4; the comments on the record and on

@@ -106,4 +106,26 @@ public:
 	 *  Artisan. Empty for the one whose branch is undecided. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static FString BranchFor(FName RowName);
+
+	/**
+	 * What the upgrade costs in gold at a difficulty tier. Issue #2742's second slice, ruled 2026-11-18 (G4).
+	 *
+	 * THE ROW'S `Tier1Gold` SCALED BY THE GOLD SHEET'S PILE COLUMN: times Gold Per Pile at `DifficultyTier` over Gold
+	 * Per Pile at tier 1, so 10,000 at tier 1 is 30,000 at tier 2 and 300,000 at tier 8. ONE SCALE FOR BOTH, read from
+	 * the pile column rather than a second column kept equal to it, so an upgrade costs the same number of walks at
+	 * every tier. That is a judgement, and `docs/DECISIONS.md` records it.
+	 *
+	 * Upgrade tier 1's price, because nothing raises a bought upgrade above tier 1 (issue #1265).
+	 *
+	 * @return 0 for a row the table does not hold or one with no price (the unbranched last resort, never sold). The
+	 *         row's unscaled price, with an error logged, when the Gold table will not load.
+	 */
+	static int64 PriceFor(FName RowName, int32 DifficultyTier);
+
+	/**
+	 * `PriceFor`'s arithmetic without the tables: `TierOneGold` times `GoldPerPileAtTier` over `GoldPerPileAtTierOne`,
+	 * rounded to a whole gold. Nought for a price of nought or less; the price unscaled when the tier 1 pile is not
+	 * above nought, which the generator refuses.
+	 */
+	static int64 PriceAt(int32 TierOneGold, float GoldPerPileAtTier, float GoldPerPileAtTierOne);
 };

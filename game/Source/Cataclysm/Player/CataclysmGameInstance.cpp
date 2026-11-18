@@ -412,6 +412,43 @@ bool UCataclysmGameInstance::AddGoldFor(const UObject* WorldContext, int64 Gold,
 	return Instance != nullptr && Instance->BankGold(State->GetPartition(), Gold) != nullptr;
 }
 
+bool UCataclysmGameInstance::SpendGoldFor(const UObject* WorldContext, int64 Gold, bool& bOutFromTheCharacter)
+{
+	bOutFromTheCharacter = false;
+	if (Gold <= 0)
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State = CataclysmGameInstanceGold::PlayingState(WorldContext);
+	if (State == nullptr)
+	{
+		return false;
+	}
+
+	// A SOLO SELF-FOUND CHARACTER PAYS FROM ITS OWN, as it earns into its own (the owner's ruling of 2026-11-18).
+	if (State->GetPartition().bSoloSelfFound)
+	{
+		if (State->GetOwnGold() < Gold)
+		{
+			return false;
+		}
+		State->SetOwnGold(State->GetOwnGold() - Gold);
+		bOutFromTheCharacter = true;
+		return true;
+	}
+
+	// EVERY OTHER CHARACTER FROM ITS LETHALITY MODE'S ACCOUNT, all or nothing.
+	UCataclysmGameInstance* Instance = In(WorldContext);
+	UCataclysmAccountSave* Account = Instance != nullptr ? Instance->AccountFor(State->GetPartition()) : nullptr;
+	if (Account == nullptr || Account->Gold < Gold)
+	{
+		return false;
+	}
+	Account->Gold -= Gold;
+	return true;
+}
+
 FString UCataclysmGameInstance::GoldBalanceText(const UObject* WorldContext)
 {
 	int64 Held = 0;

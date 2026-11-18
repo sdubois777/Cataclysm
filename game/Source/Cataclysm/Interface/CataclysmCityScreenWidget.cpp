@@ -10,6 +10,7 @@
 #include "Interface/CataclysmChoiceButton.h"
 #include "Interface/CataclysmWalkFromTheScreen.h"
 #include "Player/CataclysmCapitalGameMode.h"
+#include "Player/CataclysmCityUpgradePurchase.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmPlayerController.h"
 
@@ -98,10 +99,12 @@ void UCataclysmCityScreenWidget::WriteStatus()
 			UCataclysmCityScreenLayout::StatusTextFor(Run, CityId)));
 	}
 
+	// AND THE GOLD THAT PAYS FOR AN UPGRADE, after the slots, since issue
+	// #2742's second slice.
 	if (SlotsLabel)
 	{
 		SlotsLabel->SetText(FText::FromString(
-			UCataclysmCityScreenLayout::SlotsTextFor(Run, CityId)));
+			UCataclysmCityScreenLayout::SlotsAndGoldTextFor(this, Run, CityId)));
 	}
 
 	if (RefusalLabel)
@@ -144,12 +147,18 @@ void UCataclysmCityScreenWidget::BuildOfferButtons()
 	}
 
 	for (const FCataclysmCityUpgradeOffer& Offer :
-		 UCataclysmCityScreenLayout::OffersFor(Run, CityId))
+		 UCataclysmCityScreenLayout::OffersFor(
+			 Run, CityId, UCataclysmCityUpgradePurchase::GoldHeldIn(this)))
 	{
 		// ONLY WHAT CAN BE BOUGHT GETS A BUTTON. What the city already has is a
 		// row under "What this city has", and what does nothing yet is a row in
 		// its own section; neither is a thing to press.
-		if (!Offer.bCanBuy)
+		//
+		// AND WHAT ONLY GOLD STOPS, GREYED, since issue #2742's second slice:
+		// its button says the price and how much more is needed, and cannot be
+		// pressed. Left off, a player short of gold would see the offers vanish
+		// with nothing to say why.
+		if (!Offer.bCanBuy && !Offer.bShortOfGold)
 		{
 			continue;
 		}
@@ -164,7 +173,7 @@ void UCataclysmCityScreenWidget::BuildOfferButtons()
 		Button->SetChoice(Offer.RowName,
 						  FText::FromString(
 							  UCataclysmCityScreenLayout::ButtonTextFor(Offer)),
-						  /* bChosen */ false, /* bAvailable */ true);
+						  /* bChosen */ false, /* bAvailable */ Offer.bCanBuy);
 
 		Button->OnChoiceClicked.AddDynamic(
 			this, &UCataclysmCityScreenWidget::HandleOfferClicked);
@@ -184,19 +193,20 @@ void UCataclysmCityScreenWidget::HandleOfferClicked(FName Value)
 		return;
 	}
 
-	const FCataclysmCityUpgrade Upgrade =
-		UCataclysmCityUpgradeMapping::MakeFromTable(Value);
-
+	// BOUGHT WITH GOLD, since issue #2742's second slice: the price at the
+	// run's tier is taken from the character's balance and the saves raised,
+	// all in `UCataclysmCityUpgradePurchase::Buy`, the one place that charges.
+	const int64 Price = UCataclysmCityUpgradePurchase::PriceIn(Run, Value);
+	const int64 Held = UCataclysmCityUpgradePurchase::GoldHeldIn(this);
 	const ECataclysmCityUpgradeResult Result =
-		Run->BuyCityUpgrade(CityId, Upgrade);
+		UCataclysmCityUpgradePurchase::Buy(this, Run, CityId, Value);
 
 	// A REFUSAL IS SHOWN RATHER THAN SWALLOWED. Only a buyable upgrade is given
-	// a button, so a refusal here means the city changed underneath the screen
-	// -- it fell, or another slot was spent -- and a player who pressed a button
-	// and saw nothing happen would reasonably think the screen was broken.
-	Refusal = Result == ECataclysmCityUpgradeResult::Bought
-				  ? FString()
-				  : UCataclysmCityUpgradeRules::ResultText(Result);
+	// a button that can be pressed, so a refusal here means the city changed
+	// underneath the screen -- it fell, or another slot was spent -- and a
+	// player who pressed a button and saw nothing happen would reasonably think
+	// the screen was broken.
+	Refusal = UCataclysmCityUpgradePurchase::RefusalText(Result, Price, Held);
 
 	Refresh();
 }
@@ -270,7 +280,8 @@ void UCataclysmCityScreenWidget::WriteDetailRows()
 	TArray<FCataclysmCityUpgradeOffer> NotBuilt;
 
 	for (const FCataclysmCityUpgradeOffer& Offer :
-		 UCataclysmCityScreenLayout::OffersFor(Run, CityId))
+		 UCataclysmCityScreenLayout::OffersFor(
+			 Run, CityId, UCataclysmCityUpgradePurchase::GoldHeldIn(this)))
 	{
 		if (!Offer.bCanBuy && !Offer.bHeld
 			&& !UCataclysmCityUpgradeRules::IsBuilt(Offer.EffectKind))

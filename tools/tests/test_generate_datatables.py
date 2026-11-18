@@ -176,10 +176,12 @@ class TestCityUpgradeTiers:
 
 
 class TestOneTimeUseUpgrades:
-    SHEET = [["Type", "Tier 1", "Tier 2", "Tier 3"],
-             ["Architect", "Increase max defense by 20%", 0.3, 0.4],
-             ["Architect*", "Restore defenses by 50%", 0.75, 1],
-             ["", "A last resort with no tiers", None, None]]
+    # THE PRICE COLUMNS, since issue #2742's second slice: the generator reads them by name and requires them, so the
+    # sheet here carries them as the real one does. `tools/tests/test_city_upgrades_cost_gold.py` tests the prices.
+    SHEET = [["Type", "Tier 1", "Tier 2", "Tier 3", "Tier 1 Gold", "Tier 2 Gold", "Tier 3 Gold"],
+             ["Architect", "Increase max defense by 20%", 0.3, 0.4, 10000, 20000, 40000],
+             ["Architect*", "Restore defenses by 50%", 0.75, 1, 10000, 20000, 40000],
+             ["", "A last resort with no tiers", None, None, None, None, None]]
 
     def _rows(self, tmp_path):
         book = openpyxl.load_workbook(

@@ -4569,6 +4569,12 @@ definition. Measured before 2026-10-13, when a Quest dungeon's timer cost its ci
 
 Each city has upgrade slots (3 normally, 2 on Heretic difficulty). Upgrades affect defenses, population, dungeon timers, and other city-specific stats. Strategic allocation of upgrade resources is one of the primary meta-decisions of each run.
 
+**A city upgrade costs gold, and is still immediate.** The project owner ruled on 2026-11-18 that city upgrades are the first thing gold buys, and that an upgrade stays instant: build days come later. Every upgrade costs 10,000 gold at upgrade tier 1 on difficulty tier 1, and 20,000 and 40,000 at upgrade tiers 2 and 3, which nothing reaches yet. The price follows the run's difficulty tier by the same scale as a gold pile: 30,000 at tier 2, 60,000 at 3, 100,000 at 4, 140,000 at 5, 190,000 at 6, 240,000 at 7 and 300,000 at 8, so an upgrade costs the same number of walks at every tier.
+
+**It is paid from the balance gold is earned into**: the account's for the character's lethality mode, or a Solo Self-Found character's own. A character holding less than the price is refused and told how much more it needs, and nothing is taken. The city screen shows each upgrade's price on its button, greys one the character cannot afford, and shows the balance beside the slots.
+
+**Every price is a judgement**, ruled by the coordinating session under the owner's delegation of unstated numbers (G4). They are the Tier 1 Gold, Tier 2 Gold and Tier 3 Gold columns of the City Upgrades sheet of `docs/All_Things_Cataclysm.xlsx`, scaled by the Gold sheet's Gold Per Pile column. What they rest on is an estimate -- one upgrade is about 0.7 to 1.4 twelve-floor walks at difficulty tier 1 -- and the gold the owner's walks actually bring is to check it. `docs/DECISIONS.md` records both.
+
   
 
 ## **Empire-Wide Upgrades**
@@ -4928,10 +4934,11 @@ because both facts happened to be true at once.
 **Why fixed rather than earned or bought.** 600 slots is close to what Path of
 Exile 2 gives for free, which is four tabs of 144. Diablo IV starts at 50 and
 sells more for gold; Last Epoch sells up to 200 tabs for gold. Selling tabs for
-gold is the common answer and was not taken here, because this design has no
-other gold sink written down and pricing the first one in isolation would be a
-guess with nothing to calibrate against. `docs/DECISIONS.md` records the sources
-and the case for revisiting it. It rested on a second reason as well until issue
+gold is the common answer and was not taken here, because when the stash was
+decided this design had no other gold sink written down and pricing the first one
+in isolation would be a guess with nothing to calibrate against. City upgrades
+became that first gold sink in issue #2742's second slice (City Upgrades, above).
+`docs/DECISIONS.md` records the sources and the case for revisiting it. It rested on a second reason as well until issue
 #306 removed it: gold is now settled as an account balance held once per
 lethality mode, so a gold price would have a clear owner to charge.
 

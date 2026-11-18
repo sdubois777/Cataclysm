@@ -1,0 +1,114 @@
+// Copyright Stephen Dubois. All Rights Reserved.
+
+#include "Player/CataclysmCityUpgradePurchase.h"
+
+#include "Cataclysm.h"
+#include "Data/CataclysmCityUpgradeMapping.h"
+#include "Empire/CataclysmEmpireRun.h"
+#include "Engine/Engine.h"
+#include "Engine/World.h"
+#include "Items/CataclysmDroppedItem.h"
+#include "Player/CataclysmGameInstance.h"
+#include "Player/CataclysmGameMode.h"
+#include "Player/CataclysmPlayLoopLog.h"
+#include "Save/CataclysmSaveTriggers.h"
+#include "Save/CataclysmSaveWriter.h"
+
+int64 UCataclysmCityUpgradePurchase::PriceIn(const UCataclysmEmpireRun* Run, FName RowName)
+{
+	const int32 Tier = Run != nullptr ? Run->DifficultyTier : ACataclysmGameMode::LowestDifficultyTier;
+	return UCataclysmCityUpgradeMapping::PriceFor(RowName, Tier);
+}
+
+int64 UCataclysmCityUpgradePurchase::GoldHeldIn(const UObject* WorldContext)
+{
+	int64 Held = 0;
+	return UCataclysmGameInstance::GoldHeldBy(WorldContext, Held) ? Held : 0;
+}
+
+ECataclysmCityUpgradeResult UCataclysmCityUpgradePurchase::Buy(const UObject* WorldContext, UCataclysmEmpireRun* Run,
+																int32 CityId, FName RowName)
+{
+	if (Run == nullptr)
+	{
+		return ECataclysmCityUpgradeResult::RunHasNotBegun;
+	}
+
+	const FCataclysmCityUpgrade Upgrade = UCataclysmCityUpgradeMapping::MakeFromTable(RowName);
+	const int64 Price = PriceIn(Run, RowName);
+	const int64 Held = GoldHeldIn(WorldContext);
+
+	// THE RUN'S QUESTION FIRST, so nothing is taken for a purchase it would refuse.
+	const ECataclysmCityUpgradeResult Asked = Run->WouldBuyCityUpgrade(CityId, Upgrade, Price, Held);
+	if (Asked != ECataclysmCityUpgradeResult::Bought)
+	{
+		return Asked;
+	}
+
+	// THE GOLD BEFORE THE UPGRADE, so an upgrade is never held unpaid. All or nothing: a balance that holds less is
+	// left as it was, which the question above has just ruled out.
+	bool bFromTheCharacter = false;
+	if (Price > 0 && !UCataclysmGameInstance::SpendGoldFor(WorldContext, Price, bFromTheCharacter))
+	{
+		UE_LOG(LogCataclysm, Error,
+			   TEXT("City upgrade %s on city %d: the run would sell it for %lld gold against %lld held, and the "
+					"balance would not pay it. Nothing was bought."),
+			   *RowName.ToString(), CityId, Price, Held);
+		return ECataclysmCityUpgradeResult::NotEnoughGold;
+	}
+
+	const ECataclysmCityUpgradeResult Result = Run->BuyCityUpgrade(CityId, Upgrade, Price, Held);
+	if (Result != ECataclysmCityUpgradeResult::Bought)
+	{
+		// GIVEN BACK, a guard: the run refuses only what it refused a moment ago, above.
+		bool bIntoTheCharacter = false;
+		if (Price > 0)
+		{
+			UCataclysmGameInstance::AddGoldFor(WorldContext, Price, bIntoTheCharacter);
+		}
+		UE_LOG(LogCataclysm, Error, TEXT("City upgrade %s on city %d was refused after its price was taken (%s); "
+										 "the %lld gold was given back."),
+			   *RowName.ToString(), CityId, *UCataclysmCityUpgradeRules::ResultText(Result), Price);
+		return Result;
+	}
+
+	// THE SAVES: the run record holds the upgrade and the character record a Solo Self-Found character's own gold
+	// (`CityUpgradeBought`); the account record the account's gold, when it paid (`AccountChanged`).
+	const UWorld* World = WorldContext != nullptr && GEngine != nullptr
+		? GEngine->GetWorldFromContextObject(WorldContext, EGetWorldErrorMode::ReturnNull)
+		: nullptr;
+	if (Price > 0 && !bFromTheCharacter)
+	{
+		UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::AccountChanged);
+	}
+	UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::CityUpgradeBought);
+
+	int64 After = 0;
+	if (!UCataclysmGameInstance::GoldHeldBy(WorldContext, After))
+	{
+		After = -1;
+	}
+	const FString Effect = UCataclysmCityUpgradeMapping::EffectTextFor(RowName);
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::UpgradeLine(Effect.IsEmpty() ? RowName.ToString() : Effect, Run,
+																   CityId, Price, After));
+	return ECataclysmCityUpgradeResult::Bought;
+}
+
+FString UCataclysmCityUpgradePurchase::PriceText(int64 Price)
+{
+	return ACataclysmDroppedItem::GoldName(FMath::Max<int64>(0, Price));
+}
+
+FString UCataclysmCityUpgradePurchase::RefusalText(ECataclysmCityUpgradeResult Result, int64 Price, int64 Held)
+{
+	if (Result == ECataclysmCityUpgradeResult::Bought)
+	{
+		return FString();
+	}
+	if (Result == ECataclysmCityUpgradeResult::NotEnoughGold)
+	{
+		return FString::Printf(TEXT("Costs %s; %s more needed."), *PriceText(Price),
+							   *ACataclysmDroppedItem::GoldAmountText(FMath::Max<int64>(0, Price - Held)));
+	}
+	return UCataclysmCityUpgradeRules::ResultText(Result);
+}

@@ -4,13 +4,23 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "Character/CataclysmPlayerCharacter.h"
 #include "Data/CataclysmCityUpgradeMapping.h"
 #include "DayClock/CataclysmDayClock.h"
 #include "Empire/CataclysmDungeonModifier.h"
 #include "Empire/CataclysmEmpireRun.h"
+#include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
 #include "Interface/CataclysmCityScreenLayout.h"
 #include "Interface/CataclysmCityScreenWidget.h"
 #include "Interface/CataclysmEmpireMapWidget.h"
+#include "Kismet/GameplayStatics.h"
+#include "Misc/ScopeExit.h"
+#include "Player/CataclysmGameInstance.h"
+#include "Player/CataclysmPlayerState.h"
+#include "Save/CataclysmSavePartition.h"
+#include "Save/CataclysmSaveWriter.h"
+#include "Tests/CataclysmTestWorld.h"
 
 /**
  * Tests for the city screen, issue #42.
@@ -59,11 +69,18 @@ namespace CataclysmCityScreenTest
 		Run.Clock->SetResolveDays(DungeonId, ResolveDays);
 	}
 
-	/** The offers a city has, or an empty list. */
+	/**
+	 * Gold enough for any upgrade at any tier, so a test of another rule is not
+	 * refused for gold. Since issue #2742's second slice an upgrade costs gold;
+	 * `Cataclysm.CityUpgradePrice.` tests the price and what is missing.
+	 */
+	constexpr int64 PlentyOfGold = 100000000;
+
+	/** The offers a city has, or an empty list, to a character holding plenty of gold. */
 	TArray<FCataclysmCityUpgradeOffer> Offers(const UCataclysmEmpireRun* Run,
 											  int32 CityId)
 	{
-		return UCataclysmCityScreenLayout::OffersFor(Run, CityId);
+		return UCataclysmCityScreenLayout::OffersFor(Run, CityId, PlentyOfGold);
 	}
 
 	int32 CountBuyable(const TArray<FCataclysmCityUpgradeOffer>& List)
@@ -90,6 +107,45 @@ namespace CataclysmCityScreenTest
 			}
 		}
 		return NAME_None;
+	}
+
+	/**
+	 * A world whose character holds `Gold` in its lethality mode's account, with `Run` on its game instance: what a
+	 * purchase needs since issue #2742's second slice, when an upgrade began to cost gold. A Standard offline
+	 * character; the test's account slot (`_AutomationTest`) is deleted first, so no other test's gold is read.
+	 */
+	UWorld* MakeWorldHolding(int64 Gold, UCataclysmEmpireRun* Run)
+	{
+		FCataclysmCharacterPartition Partition;
+		Partition.Lethality = ECataclysmLethality::Standard;
+		Partition.Population = ECataclysmPopulation::Offline;
+		const FString Slot = UCataclysmGameInstance::AccountSlotFor(Partition);
+		if (UGameplayStatics::DoesSaveGameExist(Slot, UCataclysmSaveWriter::UserIndex))
+		{
+			UGameplayStatics::DeleteGameInSlot(Slot, UCataclysmSaveWriter::UserIndex);
+		}
+
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!World)
+		{
+			return nullptr;
+		}
+		UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
+		World->SetGameInstance(Instance);
+		Instance->EmpireRun = Run;
+
+		ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+		APlayerController* Controller = World->SpawnActor<APlayerController>();
+		ACataclysmPlayerCharacter* Character =
+			World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+		if (State && Controller && Character)
+		{
+			Controller->SetPlayerState(State);
+			Controller->Possess(Character);
+			State->SetIdentity(TEXT("Builder"), Partition);
+		}
+		Instance->BankGold(Partition, Gold);
+		return World;
 	}
 }
 
@@ -574,11 +630,22 @@ bool FCataclysmCityScreenClickBuysTest::RunTest(const FString& Parameters)
 
 	UCataclysmEmpireRun* Run = MakeRun();
 
-	// A WIDGET WITH NO WIDGET BLUEPRINT. Every `BindWidget` property is null, so
-	// nothing is drawn and no label can be read -- but buying does not need a
-	// label, and that is the half worth checking.
+	// IN A WORLD WHOSE CHARACTER HOLDS 25,000 GOLD, since issue #2742's second
+	// slice: an upgrade costs 10,000 at tier 1, and pressing one with no gold
+	// would be refused.
+	UWorld* World = MakeWorldHolding(25000, Run);
+	if (!TestNotNull(TEXT("set-up: a world whose character holds gold"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// A WIDGET WITH NO WIDGET BLUEPRINT, its outer the world, so a purchase finds
+	// the character's gold. Every `BindWidget` property is null, so nothing is
+	// drawn and no label can be read -- but buying does not need a label, and
+	// that is the half worth checking.
 	UCataclysmCityScreenWidget* Screen =
-		NewObject<UCataclysmCityScreenWidget>();
+		NewObject<UCataclysmCityScreenWidget>(World);
 
 	Screen->SetRunForTests(Run);
 	Screen->SetCity(0);
@@ -605,6 +672,10 @@ bool FCataclysmCityScreenClickBuysTest::RunTest(const FString& Parameters)
 
 	TestTrue(TEXT("on the upgrade that was pressed"),
 			 Run->Map->Find(0)->HasUpgrade(Wanted));
+
+	int64 Left = -1;
+	UCataclysmGameInstance::GoldHeldBy(World, Left);
+	TestEqual(TEXT("and takes its 10,000 gold"), Left, static_cast<int64>(15000));
 
 	// PRESSING IT AGAIN IS REFUSED AND THE REASON IS KEPT. Only a buyable
 	// upgrade is given a button, so this can only happen when the city changed

@@ -5,6 +5,7 @@
 #include "Cataclysm.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
+#include "Items/CataclysmDropRoll.h"
 
 const TCHAR* UCataclysmCityUpgradeMapping::TableAssetPath =
 	TEXT("/Game/Data/DT_CityUpgrades.DT_CityUpgrades");
@@ -189,4 +190,41 @@ FString UCataclysmCityUpgradeMapping::BranchFor(FName RowName)
 	const FCataclysmCityUpgradeRow* Row = FindCityUpgradeRow(RowName);
 
 	return Row ? Row->Branch : FString();
+}
+
+int64 UCataclysmCityUpgradeMapping::PriceAt(int32 TierOneGold, float GoldPerPileAtTier, float GoldPerPileAtTierOne)
+{
+	if (TierOneGold <= 0)
+	{
+		return 0;
+	}
+	if (GoldPerPileAtTierOne <= 0.0f || GoldPerPileAtTier <= 0.0f)
+	{
+		return TierOneGold;
+	}
+	return FMath::RoundToInt64(static_cast<double>(TierOneGold) * static_cast<double>(GoldPerPileAtTier)
+							   / static_cast<double>(GoldPerPileAtTierOne));
+}
+
+int64 UCataclysmCityUpgradeMapping::PriceFor(FName RowName, int32 DifficultyTier)
+{
+	const FCataclysmCityUpgradeRow* Row = FindCityUpgradeRow(RowName);
+	if (Row == nullptr || Row->Tier1Gold <= 0)
+	{
+		return 0;
+	}
+
+	// THE PILE COLUMN SCALES IT, the one gold drops read (`UCataclysmDropRoll::GoldRow`, which clamps the tier).
+	const UDataTable* GoldTable = UCataclysmDropRoll::LoadGoldTable();
+	const FCataclysmGoldRow* AtTier = UCataclysmDropRoll::GoldRow(GoldTable, DifficultyTier);
+	const FCataclysmGoldRow* AtTierOne = UCataclysmDropRoll::GoldRow(GoldTable, 1);
+	if (AtTier == nullptr || AtTierOne == nullptr)
+	{
+		UE_LOG(LogCataclysm, Error,
+			   TEXT("City upgrade %s is priced at its tier 1 figure, %d gold, unscaled: the Gold table (%s) would not "
+					"load or has no row for tier %d. Run tools/generate_datatable_assets.py."),
+			   *RowName.ToString(), Row->Tier1Gold, UCataclysmDropRoll::GoldTableAssetPath, DifficultyTier);
+		return Row->Tier1Gold;
+	}
+	return PriceAt(Row->Tier1Gold, AtTier->GoldPerPile, AtTierOne->GoldPerPile);
 }
