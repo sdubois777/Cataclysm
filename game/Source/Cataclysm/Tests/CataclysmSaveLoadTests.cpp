@@ -10795,9 +10795,12 @@ namespace CataclysmPlayLoopTest
 }
 
 /**
- * A walk to its last floor says each step in order -- the dungeon entered, the floor reached, the clear -- and the
- * capital, on arrival, says the walk's days away in its line, from the account the dungeon level left on the game
- * instance, and empties it; then one line for each dungeon standing. Prints "PLAY LOOP WALK".
+ * A walk to its last floor says each step in order -- the dungeon entered, the floor reached, the clear, the gold the
+ * walk picked up -- and the capital, on arrival, says the walk's days away in its line, from the account the dungeon
+ * level left on the game instance, and empties it; then one line for each dungeon standing. Prints "PLAY LOOP WALK".
+ *
+ * THE GOLD LINE IS FOURTH, after the clear, since issue #2742. This test read the capital's line fourth until then, and
+ * the gold slice's first window (gold-1-w1, 2026-11-18) failed on it: the slice added the line and not this check.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlayLoopWalkTest,
 	"Cataclysm.PlayLoop.AWalkToItsLastFloorIsLoggedStepByStepAndTheCapitalSaysTheDaysAway",
@@ -10856,12 +10859,15 @@ bool FCataclysmPlayLoopWalkTest::RunTest(const FString&)
 			  FCataclysmPlayLoopLog::FloorLine(Walking.DungeonId, Floors, Floors, OwedOnTheLast));
 	TestTrue(TEXT("then the clear: its day and its award"), LineAt(Said, 2).StartsWith(ClearOpening));
 	TestTrue(TEXT("and back to the capital"), LineAt(Said, 2).EndsWith(TEXT(": back to the capital")));
+	// THE BALANCE IS NOT CHECKED, only the gold picked up: the balance is the account record's, read from its slot.
+	TestTrue(TEXT("then the walk's gold: none picked up on a walk that killed nothing"),
+			 LineAt(Said, 3).StartsWith(FString::Printf(TEXT("dungeon %d's walk picked up 0 gold; "), Walking.DungeonId)));
 	TestTrue(TEXT("the dungeon level left an account of the walk's days away"), Away.StartsWith(AwayOpening));
-	TestTrue(TEXT("then the capital, on arrival"), LineAt(Said, 3).StartsWith(TEXT("in the capital on day ")));
-	TestTrue(TEXT("saying the days away in its line"), !Away.IsEmpty() && LineAt(Said, 3).EndsWith(TEXT("; ") + Away));
+	TestTrue(TEXT("then the capital, on arrival"), LineAt(Said, 4).StartsWith(TEXT("in the capital on day ")));
+	TestTrue(TEXT("saying the days away in its line"), !Away.IsEmpty() && LineAt(Said, 4).EndsWith(TEXT("; ") + Away));
 	TestEqual(TEXT("and saying them once: the game instance holds them no longer"), Arrived.AwayLeft, FString());
 	int32 NotStanding = 0;
-	for (int32 Index = 4; Index < Said.Num(); ++Index)
+	for (int32 Index = 5; Index < Said.Num(); ++Index)
 	{
 		NotStanding += Said[Index].StartsWith(TEXT("standing: dungeon ")) ? 0 : 1;
 	}
@@ -10929,6 +10935,8 @@ bool FCataclysmPlayLoopDeathTest::RunTest(const FString&)
 	TestEqual(TEXT("then floor 2"), LineAt(Said, 1), FCataclysmPlayLoopLog::FloorLine(Walking.DungeonId, 2, Floors, Owed));
 	TestEqual(TEXT("then the death, on floor 2, and what it cost"), LineAt(Said, 2),
 			  FCataclysmPlayLoopLog::DeathLine(Walking.DungeonId, 2, Floors, Cost));
+	TestTrue(TEXT("then the walk's gold, after the death as after a clear (#2742)"),
+			 LineAt(Said, 3).StartsWith(FString::Printf(TEXT("dungeon %d's walk picked up 0 gold; "), Walking.DungeonId)));
 	TestTrue(TEXT("the account covers the walk's days and the death's"),
 			 Away.StartsWith(FString::Printf(TEXT("while away, days %d to %d: "), DayTheWalkLeft,
 											 DayTheWalkLeft + Owed + Cost)));

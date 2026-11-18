@@ -38,6 +38,10 @@ slice 1 of 2.
 
 ### SAID FIRST
 
+- **THE FIRST WINDOW STOPPED ON ONE FAILED TEST, AND THE FAULT WAS THIS SLICE'S.** A play-loop test reads the walk's
+  log lines by position, and this slice's gold line, said after the clear, moved the capital's line from fourth to
+  fifth; the slice registered the group as touched and did not update the check. Corrected; the second window runs
+  the same registration. "The windows" below has both.
 - **SEVEN TEST EXPECTATIONS WERE WRONG, AND READING FOUND THEM, NOT A RUN.** When the save tests were moved to the new
   committed files, six still asserted the old file's version and one expected one thing on a floor that now holds two.
   The two compiles before the rebase could not see them; reading the rebased tree before the window did. All seven are
@@ -258,7 +262,53 @@ left behind**, measured in the window empire-tree-1a-w2 at `8c75df8a3`, whose en
 | P3 | In the run record's `Migrate_6_to_7`, the line writing a `Gold` of 0 on each ground item becomes `(void)Item;` | `Cataclysm.Gold.ARunFileFromBeforeGoldMigratesWithNoGoldOnItsFloor` | 1 performed, 0 succeeded, 1 failed, on one assertion: "the step writes a gold of 0 on every ground item" |
 | P4 | In `UCataclysmDropPickup::BankGold`, the `AccountChanged` trigger becomes `(void)0;`: a pickup into the account no longer writes it | `Cataclysm.Gold.TheBalanceSurvivesASaveAndIsTheLethalityModesOwn` | 1 performed, 0 succeeded, 1 failed, on one assertion: "the account record reads back from its slot" |
 
-**Not yet run.** The window's results will be added here from its own output.
+### THE WINDOWS
+
+**The first, gold-1-w1, STOPPED ON ONE FAILED TEST.** On 2026-11-18 from 13:15 to 13:26, at `e2601141`, under the
+Unreal lock, after the pre-checks all passed (13,448 MB free):
+
+- **The build**, the rebased tree's first compile: `Build: Succeeded - 62 actions, 55 files compiled`.
+- **The asset step** changed exactly `DT_EnemyDrops.uasset`, `DT_Gold.uasset` (new) and
+  `datatable_asset_sources.json`: DT_EnemyDrops's CSV hash changed and a DT_Gold entry of 8 rows was added, the empire
+  tree's two entries kept. The three were committed alone as `d4cdd31d` and pushed.
+- **Nine groups alone, each its registered count, all succeeding**: `Cataclysm.Gold.` 13, `Cataclysm.Data.` 7,
+  `Cataclysm.Drop.` 30, `Cataclysm.DropPickup.` 19, `Cataclysm.InventoryScreen.` 7, `Cataclysm.EmpirePoints.` 16,
+  `Cataclysm.SaveRecords.` 17, `Cataclysm.SaveLoad.` 77 and `Cataclysm.Travel.` 9. So the seven test expectations
+  corrected before this window that lie in `Cataclysm.SaveRecords.` and `Cataclysm.SaveLoad.` (three of the seven)
+  passed here; the other four are in groups this window did not reach.
+- **`Cataclysm.PlayLoop.` alone: 7 performed, 6 succeeded, 1 failed**:
+  `AWalkToItsLastFloorIsLoggedStepByStepAndTheCapitalSaysTheDaysAway`, on three assertions: "then the capital, on
+  arrival", "saying the days away in its line", and "then only the dungeons standing, one line each" (expected 0, was
+  1). The window stopped there, as registered, and released the lock. The six groups after it, the whole suite, Python
+  and the four proofs did not run.
+- **The cause.** The test reads the walk's PLAY LOOP lines by position. This slice says
+  `dungeon 12's walk picked up 0 gold; 0 gold held` after the clear, so the capital's line was fifth where the test
+  read it fourth. The slice registered the group as touched by the gold line and did not update this check.
+  **Not the outside connection of issue #2745**: the 56 `LogModelContextProtocol` lines in the group's engine log are
+  all at the editor's start-up, before the test began.
+- **The correction.** The walk test reads the gold line fourth, checking only the gold picked up, which is 0 on a walk
+  that killed nothing (the balance is the account record's, read from its slot, so it is not checked); the capital's
+  line fifth; and the standing dungeons from the sixth. The death test heard the gold line fourth, after the death, and
+  did not check it; it checks it now.
+- **Why only this test failed.** Two tests collect the PLAY LOOP lines a walk says, in order, and both are in
+  `CataclysmSaveLoadTests.cpp` under `Cataclysm.PlayLoop.`: this one, and
+  `ADeathThatEndsAWalkIsLoggedAndItsResolveIsInTheDaysAway`, which read only the first three lines, so the gold line
+  fourth went unchecked and it passed. The group's five tests in `CataclysmPlayLoopTests.cpp` call the line builders
+  directly and collect nothing. `tools/tests/test_the_play_loop_is_logged_at_each_step.py` reads the source: that each
+  function says its line after the step the line reports, and that `docs/Play_Loop_Checklist.md` quotes every line the
+  game can say. Nothing in it reads the order of the lines across a walk, so the Python suite passed with the gold line
+  in place. The checklist quotes the gold line where the game says it: after the clear and before the capital's line,
+  and after the death and before the capital's line.
+- **The corrected test file compiled** under the Unreal lock as gold-1-compile2, the coordinating session's go: alone,
+  `Build: Succeeded - 6 actions, 3 files compiled: CataclysmSaveLoadTests.cpp, Module.Cataclysm.41.cpp,
+  Module.Cataclysm.42.cpp`. The unity compile is recorded with the second window's registration.
+- **The Python suite on the corrected tree**: 7558 passed, 9 skipped; its JUnit file says 7567 tests, 0 failures, 0
+  errors, 9 skipped. The four failures before the first window, all for DT_Gold's missing asset and record, are gone,
+  since `d4cdd31d` built and recorded it.
+
+**The second, gold-1-w2**, runs the same registration at the head that carries the correction: 4820, 47 skipped
+halves, no save left, the sixteen groups and P1 to P4. The assets are already committed in `d4cdd31d`, so it skips the
+asset step. Not yet run.
 
 ---
 
