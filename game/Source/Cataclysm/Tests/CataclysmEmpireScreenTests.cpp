@@ -713,8 +713,8 @@ bool FCataclysmEmpireGameInstanceTest::RunTest(const FString& Parameters)
 	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
 
 	// NULL RATHER THAN AN EMPTY RUN, so "no run has been started" and "a run in
-	// which nothing has happened yet" are different states. They are: the second
-	// has a surge due.
+	// which no day has passed yet" are different states. They are: the second
+	// has its opening wave standing (issue #2733; until then, a surge due).
 	TestNull(TEXT("a fresh game instance holds no run"), Instance->EmpireRun.Get());
 
 	UCataclysmEmpireRun* First = Instance->BeginEmpireRun(7);
@@ -758,11 +758,15 @@ bool FCataclysmEmpireGameInstanceTest::RunTest(const FString& Parameters)
 
 	TestTrue(TEXT("an accelerating run escalates"),
 			 Heretic->Surges->Mode == ECataclysmSurgeMode::Accelerating);
-	// ITS NEXT SURGE IS THE OPENING ONE, because nothing has fired: 12 since
-	// 2026-10-20, and trunc(12 x 1.25) = 15 on Heretic. Until then it was
-	// trunc(5 x 1.25) = 6 against 5.
+	// ITS OPENING WAVE HAS LANDED, on day 0: 12 since 2026-10-20, and
+	// trunc(12 x 1.25) = 15 on Heretic. Until then it was trunc(5 x 1.25) = 6
+	// against 5. UNTIL ISSUE #2733 THE WAVE WAITED FOR DAY 1, and this asked
+	// `DungeonsInNextSurge` for the 15; the game instance now fires it as the
+	// run begins, so the next surge is the second, trunc(8 x 1.25) = 10.
 	TestEqual(TEXT("and a Heretic run opens with fifteen dungeons rather than twelve"),
-			  Heretic->Surges->DungeonsInNextSurge(), 15);
+			  Heretic->DungeonCount(), 15);
+	TestEqual(TEXT("and its next surge brings trunc(8 x 1.25) = 10"),
+			  Heretic->Surges->DungeonsInNextSurge(), 10);
 
 	// `GetOrBeginEmpireRun` KEEPS WHAT IS THERE. It is what a console command
 	// asking to see the empire calls, and it must not restart a campaign.

@@ -302,9 +302,12 @@ FString UCataclysmEmpireMapLayout::LastHitLine(const UCataclysmEmpireRun* Run)
 
 FString UCataclysmEmpireMapLayout::LastDeathLine(const UCataclysmEmpireRun* Run)
 {
-	// NOTHING TO SAY: no run, a run that has not begun, or no death yet. Day 0 is what `Begin` writes, and no death
-	// is on day 0: a run begins with nothing standing on the map, and the first wave lands on day 1.
-	if (Run == nullptr || Run->Map == nullptr || Run->LastDeathDay <= 0)
+	// NOTHING TO SAY: no run, a run that has not begun, or no death yet. ASKED OF THE DAYS THE DEATH COST AND NOT OF
+	// ITS DAY: `Begin` writes 0 to both, and every death costs at least `DeathDayCostStandard`, 5 days, while a death
+	// can be on day 0 since issue #2733 -- the first wave lands then, so a dungeon stands to be walked before any day
+	// has passed, and a walk that owes no whole day leaves the death on the run's own day. Until #2733 this asked
+	// `LastDeathDay <= 0`, because the first wave landed on day 1.
+	if (Run == nullptr || Run->Map == nullptr || Run->LastDeathDaysCost <= 0)
 	{
 		return FString();
 	}
@@ -493,7 +496,10 @@ FString UCataclysmEmpireMapLayout::CataclysmDungeonOpenedLine(const UCataclysmEm
 FString UCataclysmEmpireMapLayout::LastRunWonLine(const UCataclysmEmpireRun* Run)
 {
 	// NOTHING TO SAY: no run, a run that has not begun, or no win before it. Day 0 is what `Begin` writes, and no run
-	// is won on day 0: the first wave lands on day 1. Issue #1324 slice 6e.
+	// is won on day 0 in play: a win is the boss dungeon's clear, the win's day adds the whole days its walk owed
+	// (`WonDay` in `UCataclysmEmpireRun::ClearDungeon`), and that walk is one day or more
+	// (`UCataclysmEmpireRun::DeepenCataclysmDungeon`). Issue #1324 slice 6e. Until issue #2733 this gave the reason as
+	// "the first wave lands on day 1", which stopped being true when the first wave moved to day 0.
 	if (Run == nullptr || Run->Clock == nullptr || Run->LastRunWonDay <= 0)
 	{
 		return FString();

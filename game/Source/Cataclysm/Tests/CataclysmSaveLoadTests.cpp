@@ -33,6 +33,7 @@
 #include "Dungeon/CataclysmFloorObstacle.h"
 #include "Dungeon/CataclysmFloorPopulation.h"
 #include "Empire/CataclysmDungeonKind.h"
+#include "Empire/CataclysmDungeonModifier.h"
 #include "Empire/CataclysmEmpireMap.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmRoster.h"
@@ -8338,6 +8339,371 @@ bool FCataclysmSaveLoadLoadedDrawTest::RunTest(const FString&)
 
 	TestTrue(TEXT("the second load's run faces the same Cataclysms as the first's, by name and in order"),
 			 Faced.Num() == 2 && Faced[0] == Faced[1]);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The first surge at run start, issue #2733.
+//
+// "A Surge is triggered at run start" and "The first Surge, at run start, brings 12 dungeons" (`docs/Cataclysm_GDD_v2.md`,
+// the Surge section). Every run the game begins comes through `UCataclysmGameInstance::BeginACharactersEmpireRun`, which
+// fires it on day 0 (`UCataclysmEmpireRun::FireOpeningSurge`); a run restored from a save does not, and keeps the dungeons
+// it was saved with. THE GROUP IS `Cataclysm.FirstSurge.`, WITH THE TRAILING DOT, all three of its tests here; the empire
+// layer's own test of `FireOpeningSurge` is `Cataclysm.EmpireRun.TheOpeningSurgeFiresOnDayZeroOnceWithTheWaveDayOneWould
+// HaveBrought`.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmFirstSurgeTest
+{
+	/** How many of a dungeon's modifiers fill its slots: all of them but the Corrupted Stalker, which comes outside. */
+	int32 SlotModifiersOf(const FCataclysmDungeon& Dungeon)
+	{
+		const FName Stalker = UCataclysmDungeonModifierRules::CorruptedStalkerKey();
+		int32 Count = 0;
+		for (const FName& Key : Dungeon.Modifiers)
+		{
+			Count += Key != Stalker ? 1 : 0;
+		}
+		return Count;
+	}
+
+	/**
+	 * Holds every dungeon standing on the run to what its opening wave lands: an ordinary or Quest dungeon (the only
+	 * kinds a wave makes), sent by one of the run's Cataclysms, on a city of the map, a floor or more deep, a timer
+	 * rolled and still full, arrived on day 0, and carrying the modifiers its tier and sub-type give
+	 * (`UCataclysmDungeonModifierRules::CountFor`), the Corrupted Stalker aside. Answers one line describing them.
+	 */
+	FString CheckTheOpeningWave(FAutomationTestBase& Test, const UCataclysmEmpireRun& Run, const FString& Which)
+	{
+		TArray<FString> Parts;
+		for (const FCataclysmDungeon& Dungeon : Run.Dungeons)
+		{
+			const FString Name = FString::Printf(TEXT("%s: dungeon %d"), *Which, Dungeon.DungeonId);
+			Test.TestTrue(Name + TEXT(" is an ordinary or a Quest dungeon"),
+						  Dungeon.Type == ECataclysmDungeonType::Basic || Dungeon.Type == ECataclysmDungeonType::Quest);
+			Test.TestTrue(Name + TEXT(" was sent by one of the run's Cataclysms"),
+						  Run.ActiveCataclysms.Contains(Dungeon.Cataclysm));
+			Test.TestNotNull(*(Name + TEXT(" stands on a city of the map")), Run.Map->Find(Dungeon.CityId));
+			Test.TestTrue(Name + TEXT(" is a floor or more deep"), Dungeon.Floors >= 1);
+			Test.TestTrue(Name + TEXT(" rolled a timer"), Dungeon.ResolveDays > 0.0f);
+			Test.TestEqual(Name + TEXT("'s timer is still full"), Run.Clock->DaysUntilResolveFor(Dungeon.DungeonId),
+						   Dungeon.ResolveDays, 0.0001f);
+			Test.TestEqual(Name + TEXT(" arrived on day 0"), Dungeon.SpawnedDay, 0);
+			Test.TestEqual(Name + TEXT(" carries its tier's modifiers for its sub-type"), SlotModifiersOf(Dungeon),
+						   UCataclysmDungeonModifierRules::CountFor(Run.DifficultyTier, Dungeon.SubType));
+			const FString SubType = UCataclysmSurgeScheduler::SubTypeName(Dungeon.SubType);
+			Parts.Add(FString::Printf(TEXT("%d %s%s%s %d floors %d modifiers"), Dungeon.DungeonId,
+									  *UCataclysmSurgeScheduler::KindName(Dungeon.Type),
+									  SubType.IsEmpty() ? TEXT("") : TEXT("/"), *SubType, Dungeon.Floors,
+									  Dungeon.Modifiers.Num()));
+		}
+		return FString::Join(Parts, TEXT("; "));
+	}
+}
+
+/**
+ * Every door into a new run stands its opening wave on day 0: `BeginEmpireRun` (the console commands'),
+ * `GetOrBeginEmpireRun` on an instance holding none, and `BeginACharactersEmpireRun` at tier 3, whose dungeons carry three
+ * modifiers each (six on a Sacrificial one). A Heretic run's is trunc(12 x 1.25) = 15. Asking the run again fires
+ * nothing. CONTROL: the modifier table loaded, so the modifier counts are not met by an empty pool. Prints "DOORS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFirstSurgeDoorsTest,
+	"Cataclysm.FirstSurge.EveryDoorIntoANewRunStandsTheOpeningWaveOnDayZero",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFirstSurgeDoorsTest::RunTest(const FString&)
+{
+	using namespace CataclysmFirstSurgeTest;
+
+	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
+	const UCataclysmEmpireRun* Console = Instance->BeginEmpireRun(/* Seed */ 7, ECataclysmSurgeMode::Static, 0, 1);
+	if (!TestNotNull(TEXT("set-up: a console run was begun"), Console)
+		|| !TestTrue(TEXT("CONTROL: the modifier table loaded into the run"), Console->ModifierPool.Num() > 0))
+	{
+		return false;
+	}
+	const FString ConsoleWave = CheckTheOpeningWave(*this, *Console, TEXT("console"));
+
+	UCataclysmGameInstance* Empty = NewObject<UCataclysmGameInstance>();
+	const UCataclysmEmpireRun* Asked = Empty->GetOrBeginEmpireRun();
+
+	UCataclysmGameInstance* ForACharacter = NewObject<UCataclysmGameInstance>();
+	UCataclysmEmpireRun* Character = ForACharacter->BeginACharactersEmpireRun(/* Seed */ 11, /* CataclysmOrderSeed */ 5,
+																			  ECataclysmSurgeMode::Static, 0, /* Tier */ 3);
+	if (!TestNotNull(TEXT("set-up: a run was begun on an empty instance"), Asked)
+		|| !TestNotNull(TEXT("set-up: a character's run was begun"), Character))
+	{
+		return false;
+	}
+	const FString CharacterWave = CheckTheOpeningWave(*this, *Character, TEXT("a character's at tier 3"));
+
+	UCataclysmGameInstance* ForHeretic = NewObject<UCataclysmGameInstance>();
+	const UCataclysmEmpireRun* Heretic = ForHeretic->BeginEmpireRun(/* Seed */ 1, ECataclysmSurgeMode::Accelerating,
+																	/* Heretic */ 2, 1);
+
+	const FCataclysmDayReport Again = Character->FireOpeningSurge();
+
+	AddInfo(FString::Printf(TEXT("DOORS: console day %d, %d standing [%s]; an empty instance's day %d, %d standing; a "
+								 "character's at tier %d day %d, %d standing [%s]; Heretic %d standing; asked again: "
+								 "surged %s, %d standing"),
+							Console->Day(), Console->DungeonCount(), *ConsoleWave, Asked->Day(), Asked->DungeonCount(),
+							Character->DifficultyTier, Character->Day(), Character->DungeonCount(), *CharacterWave,
+							Heretic ? Heretic->DungeonCount() : -1, Again.bSurged ? TEXT("YES") : TEXT("no"),
+							Character->DungeonCount()));
+
+	TestEqual(TEXT("the console's run is on day 0"), Console->Day(), 0);
+	TestEqual(TEXT("with its opening wave of twelve standing"), Console->DungeonCount(), 12);
+	TestEqual(TEXT("an empty instance's run is on day 0"), Asked->Day(), 0);
+	TestEqual(TEXT("with twelve standing"), Asked->DungeonCount(), 12);
+	TestEqual(TEXT("a character's run is at tier 3"), Character->DifficultyTier, 3);
+	TestEqual(TEXT("on day 0"), Character->Day(), 0);
+	TestEqual(TEXT("with twelve standing"), Character->DungeonCount(), 12);
+	TestEqual(TEXT("one surge has fired in it"), Character->Surges->SurgesFired, 1);
+	TestEqual(TEXT("a Heretic run opens with fifteen standing"), Heretic ? Heretic->DungeonCount() : -1, 15);
+	TestFalse(TEXT("asking the run again fires nothing"), Again.bSurged);
+	TestEqual(TEXT("so twelve still stand"), Character->DungeonCount(), 12);
+	return true;
+}
+
+/**
+ * A new character, made as the new-character screen's Start makes one (`ACataclysmGameMode::LoadThePendingCharacter`),
+ * begins a run that stands its opening wave on day 0, every dungeon as the wave lands it; and the run record written at
+ * once (`CharacterCreated`) holds the same twelve, on day 0, with one surge fired. Prints "NEW CHARACTER OPENING".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFirstSurgeNewCharacterTest,
+	"Cataclysm.FirstSurge.ANewCharactersRunStandsTheOpeningWaveOnDayZeroAndItsRecordHoldsIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFirstSurgeNewCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using namespace CataclysmFirstSurgeTest;
+
+	FLoadScene Scene = MakeScene();
+	if (!TestTrue(TEXT("set-up: the world was built"), Scene.IsUsable()))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const FString RunSlot = Scene.Writer->RunSlotName();
+	const FString CharacterSlot = Scene.Writer->CharacterSlotName();
+	ON_SCOPE_EXIT { Delete(RunSlot); Delete(CharacterSlot); };
+	ACataclysmGameMode* Mode = AGameModeIn(Scene);
+	if (!TestNotNull(TEXT("set-up: a game mode"), Mode))
+	{
+		return false;
+	}
+
+	FCataclysmPendingCreation& Creation = Scene.Instance->PendingCreation;
+	Creation.bPending = true;
+	Creation.Name = TEXT("Opens On Day Zero");
+	Creation.WeaponType = FName(TEXT("Greatsword"));
+	Creation.DamageType = FName(TEXT("War"));
+	const ACataclysmGameMode::EPendingLoad Outcome = Mode->LoadThePendingCharacter();
+	const UCataclysmEmpireRun* Run = Scene.Instance->EmpireRun.Get();
+	if (!TestEqual(TEXT("set-up: the new character was made"), static_cast<int32>(Outcome),
+				   static_cast<int32>(ACataclysmGameMode::EPendingLoad::Created))
+		|| !TestNotNull(TEXT("set-up: and its run begun"), Run)
+		|| !TestTrue(TEXT("CONTROL: the modifier table loaded into the run"), Run->ModifierPool.Num() > 0))
+	{
+		return false;
+	}
+	const FString Wave = CheckTheOpeningWave(*this, *Run, TEXT("the new character's run"));
+
+	// THE RUN RECORD, WRITTEN AT ONCE, ASYNCHRONOUSLY: waited for, then read.
+	const bool bWritten = WaitForSlot(RunSlot);
+	const UCataclysmRunSave* Record = bWritten ? Read<UCataclysmRunSave>(RunSlot) : nullptr;
+	TArray<int32> LiveIds;
+	for (const FCataclysmDungeon& Dungeon : Run->Dungeons)
+	{
+		LiveIds.Add(Dungeon.DungeonId);
+	}
+	TArray<int32> RecordIds;
+	if (Record)
+	{
+		for (const FCataclysmDungeon& Dungeon : Record->Dungeons)
+		{
+			RecordIds.Add(Dungeon.DungeonId);
+		}
+	}
+
+	AddInfo(FString::Printf(TEXT("NEW CHARACTER OPENING: outcome %d; the run on day %d at tier %d, %d standing, %d fired "
+								 "[%s]; the record %s: day %d, %d dungeons, %d fired, next due %.1f"),
+							static_cast<int32>(Outcome), Run->Day(), Run->DifficultyTier, Run->DungeonCount(),
+							Run->Surges->SurgesFired, *Wave, Record ? TEXT("read") : TEXT("NOT READ"),
+							Record ? Record->Day : -1, Record ? Record->Dungeons.Num() : -1,
+							Record ? Record->SurgesFired : -1, Record ? Record->NextSurgeDay : -1.0f));
+
+	TestEqual(TEXT("the new character's run is on day 0"), Run->Day(), 0);
+	TestEqual(TEXT("with its opening wave of twelve standing"), Run->DungeonCount(), 12);
+	TestEqual(TEXT("from one surge"), Run->Surges->SurgesFired, 1);
+	if (!TestNotNull(TEXT("its run record was written at once"), Record))
+	{
+		return true;
+	}
+	TestEqual(TEXT("the record is on day 0"), Record->Day, 0);
+	TestEqual(TEXT("holding the twelve, by number"), RecordIds, LiveIds);
+	TestEqual(TEXT("and one surge fired"), Record->SurgesFired, 1);
+	TestEqual(TEXT("with the next due on day 90"), Record->NextSurgeDay, UCataclysmSurgeScheduler::IntervalDays, 0.001f);
+	return true;
+}
+
+/**
+ * A run saved on day 0 -- a new character's, written at its creation -- comes back with a Continue
+ * (`PendingCharacterId`, then `LoadThePendingCharacter`) holding the same twelve dungeons, on the same cities, as deep,
+ * with the same modifiers and timers, on day 0 with one surge fired: the load restores and does not begin, so no second
+ * wave lands. Asking the loaded run for its opening surge fires nothing, and neither does its first day. Prints
+ * "LOADED OPENING".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFirstSurgeLoadedTest,
+	"Cataclysm.FirstSurge.ARunSavedOnDayZeroLoadsWithTheSameDungeonsAndNoSecondSurge",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFirstSurgeLoadedTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	// THE SAVING WORLD: a new character made, its records written, its run's dungeons kept to compare.
+	FSaved Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	TArray<FCataclysmDungeon> SavedDungeons;
+	TArray<float> SavedTimers;
+	{
+		FLoadScene Saving = MakeScene();
+		if (!TestTrue(TEXT("set-up: the saving world was built"), Saving.IsUsable()))
+		{
+			if (Saving.World)
+			{
+				Saving.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Saving.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		Saved.CharacterId = Saving.Writer->HoldsTheCharacter();
+		ACataclysmGameMode* Mode = AGameModeIn(Saving);
+		if (!TestNotNull(TEXT("set-up: a game mode"), Mode))
+		{
+			return false;
+		}
+		FCataclysmPendingCreation& Creation = Saving.Instance->PendingCreation;
+		Creation.bPending = true;
+		Creation.Name = TEXT("Saved On Day Zero");
+		Creation.WeaponType = FName(TEXT("Greatsword"));
+		Creation.DamageType = FName(TEXT("War"));
+		const ACataclysmGameMode::EPendingLoad Made = Mode->LoadThePendingCharacter();
+		const UCataclysmEmpireRun* Run = Saving.Instance->EmpireRun.Get();
+		if (!TestEqual(TEXT("set-up: the new character was made"), static_cast<int32>(Made),
+					   static_cast<int32>(ACataclysmGameMode::EPendingLoad::Created))
+			|| !TestNotNull(TEXT("set-up: and its run begun"), Run)
+			|| !TestEqual(TEXT("set-up: with twelve standing on day 0"), Run->DungeonCount(), 12)
+			|| !TestTrue(TEXT("set-up: the character record was written"), WaitForSlot(Saving.Writer->CharacterSlotName()))
+			|| !TestTrue(TEXT("set-up: and the run record"), WaitForSlot(Saving.Writer->RunSlotName())))
+		{
+			return false;
+		}
+		const UCataclysmCharacterSave* Character = Read<UCataclysmCharacterSave>(Saving.Writer->CharacterSlotName());
+		if (!TestNotNull(TEXT("set-up: the character record reads"), Character))
+		{
+			return false;
+		}
+		Saved.RunId = Character->CurrentRunId;
+		if (!TestEqual(TEXT("set-up: the character record names the run that was written"), Saved.RunSlot(),
+					   Saving.Writer->RunSlotName()))
+		{
+			return false;
+		}
+		SavedDungeons = Run->Dungeons;
+		for (const FCataclysmDungeon& Dungeon : SavedDungeons)
+		{
+			SavedTimers.Add(Run->Clock->DaysUntilResolveFor(Dungeon.DungeonId));
+		}
+	}
+
+	// THE LOADING WORLD, AS A CONTINUE LOADS IT.
+	FLoadScene Scene = MakeScene();
+	if (!TestTrue(TEXT("set-up: the loading world was built"), Scene.IsUsable()))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const FString FreshRun = Scene.Writer->RunSlotName();
+	const FString FreshCharacter = Scene.Writer->CharacterSlotName();
+	ON_SCOPE_EXIT { Delete(FreshRun); Delete(FreshCharacter); };
+	ACataclysmGameMode* Mode = AGameModeIn(Scene);
+	if (!TestNotNull(TEXT("set-up: a game mode"), Mode))
+	{
+		return false;
+	}
+	Scene.Instance->PendingCharacterId = Saved.CharacterId;
+	const ACataclysmGameMode::EPendingLoad Outcome = Mode->LoadThePendingCharacter();
+	UCataclysmEmpireRun* Run = Scene.Instance->EmpireRun.Get();
+	if (!TestEqual(TEXT("set-up: the saved character was loaded"), static_cast<int32>(Outcome),
+				   static_cast<int32>(ACataclysmGameMode::EPendingLoad::Loaded))
+		|| !TestNotNull(TEXT("set-up: with a run"), Run))
+	{
+		return false;
+	}
+	// WHAT CAME BACK, READ BEFORE ANYTHING IS ASKED OF IT OR ANY DAY PASSES.
+	const int32 LoadedDay = Run->Day();
+	const int32 LoadedStanding = Run->DungeonCount();
+	const int32 LoadedFired = Run->Surges->SurgesFired;
+	const int32 LoadedNextId = Run->NextDungeonId;
+	const float LoadedNextSurge = Run->Surges->NextSurgeDay;
+	TArray<float> LoadedTimers;
+	for (const FCataclysmDungeon& Dungeon : SavedDungeons)
+	{
+		LoadedTimers.Add(Run->Clock->DaysUntilResolveFor(Dungeon.DungeonId));
+	}
+	const FCataclysmDayReport Asked = Run->FireOpeningSurge();
+	const int32 AfterAsking = Run->DungeonCount();
+	const FCataclysmDayReport FirstDay = Run->AdvanceDay();
+
+	AddInfo(FString::Printf(TEXT("LOADED OPENING: outcome %d; saved %d dungeons; loaded on day %d with %d standing, %d "
+								 "fired, next dungeon number %d, next surge due %.1f; asked for the opening surge: surged "
+								 "%s, %d standing; day 1 surged %s"),
+							static_cast<int32>(Outcome), SavedDungeons.Num(), LoadedDay, LoadedStanding, LoadedFired,
+							LoadedNextId, LoadedNextSurge, Asked.bSurged ? TEXT("YES") : TEXT("no"), AfterAsking,
+							FirstDay.bSurged ? TEXT("YES") : TEXT("no")));
+
+	TestEqual(TEXT("CONTROL: twelve were saved"), SavedDungeons.Num(), 12);
+	TestEqual(TEXT("the loaded run is on day 0"), LoadedDay, 0);
+	TestEqual(TEXT("its next surge still due on day 90"), LoadedNextSurge, UCataclysmSurgeScheduler::IntervalDays,
+			  0.001f);
+	TestEqual(TEXT("the loaded run stands the twelve it was saved with"), LoadedStanding, 12);
+	TestEqual(TEXT("with one surge fired, not two"), LoadedFired, 1);
+	TestEqual(TEXT("and the next dungeon number after the twelve"), LoadedNextId, 12);
+	for (int32 Index = 0; Index < SavedDungeons.Num(); ++Index)
+	{
+		const FCataclysmDungeon& Was = SavedDungeons[Index];
+		const FCataclysmDungeon* Is = Run->FindDungeon(Was.DungeonId);
+		const FString Which = FString::Printf(TEXT("dungeon %d"), Was.DungeonId);
+		if (!TestNotNull(*(Which + TEXT(" came back")), Is))
+		{
+			continue;
+		}
+		TestEqual(Which + TEXT(" on the same city"), Is->CityId, Was.CityId);
+		TestTrue(Which + TEXT(" of the same kind and sub-type"), Is->Type == Was.Type && Is->SubType == Was.SubType);
+		TestEqual(Which + TEXT(" as deep"), Is->Floors, Was.Floors);
+		TestEqual(Which + TEXT(" with the same modifiers"), Is->Modifiers, Was.Modifiers);
+		TestEqual(Which + TEXT(" arrived on day 0"), Is->SpawnedDay, 0);
+	}
+	// THE TIMERS AS SAVED, read on day 0 before anything moved them.
+	for (int32 Index = 0; Index < SavedDungeons.Num(); ++Index)
+	{
+		TestEqual(FString::Printf(TEXT("dungeon %d's timer came back as it was saved"), SavedDungeons[Index].DungeonId),
+				  LoadedTimers[Index], SavedTimers[Index], 0.0001f);
+	}
+	TestFalse(TEXT("asking the loaded run for its opening surge fires nothing"), Asked.bSurged);
+	TestEqual(TEXT("so twelve still stand"), AfterAsking, 12);
+	TestFalse(TEXT("and its first day does not surge"), FirstDay.bSurged);
 	return true;
 }
 

@@ -623,6 +623,9 @@ bool FCataclysmWinningTheRunNextRunTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("and it is a new run, begun at once"), Next != WonRun);
 	TestEqual(TEXT("one tier higher"), Next->DifficultyTier, 4);
 	TestEqual(TEXT("on its first day"), Next->Day(), 0);
+	// WITH ITS OPENING WAVE STANDING, since issue #2733: the run after a win is begun through
+	// `BeginACharactersEmpireRun`, which fires the first surge on day 0.
+	TestEqual(TEXT("with its opening wave of twelve standing"), Next->DungeonCount(), 12);
 	TestFalse(TEXT("not won"), Next->bWon);
 	TestEqual(TEXT("facing four Cataclysms"), NextList.Num(), 4);
 	TestTrue(TEXT("the first three the won run's, by name and in order"), bFirstThreeKept);

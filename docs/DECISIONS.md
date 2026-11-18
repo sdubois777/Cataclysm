@@ -2,6 +2,130 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-17 — A new run's first surge lands on day 0, as the run begins, so the empire map shows its twelve dungeons before any day has passed (#2733, slice 1)
+
+**Affects:** `UCataclysmEmpireRun` (`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h`, `.cpp`): the new
+`FireOpeningSurge`, and a paragraph on `Begin`; `UCataclysmGameInstance::BeginACharactersEmpireRun`
+(`game/Source/Cataclysm/Player/CataclysmGameInstance.cpp`, `.h`), which calls it and logs what landed;
+`UCataclysmEmpireMapLayout::LastDeathLine` and the comment of `LastRunWonLine`
+(`game/Source/Cataclysm/Interface/CataclysmEmpireMapLayout.cpp`); the comment on `Cataclysm.EnterDungeon`'s empty-board
+day (`CataclysmPlayerCharacter.cpp`); one sentence of `game/README.md`. Tests: one new Unreal test in
+`CataclysmEmpireRunTests.cpp`, three in the new group `Cataclysm.FirstSurge.` at the end of the pending-character tests
+in `CataclysmSaveLoadTests.cpp`, one changed in each of `CataclysmEmpireScreenTests.cpp`, `CataclysmDeathCostTests.cpp`
+and `CataclysmWinningTheRunTests.cpp`, and comments on two in `CataclysmEmpireRunTests.cpp`;
+`tools/tests/test_the_first_surge_fires_at_run_start.py`, new. Issue
+[#2733](https://github.com/sdubois777/Cataclysm/issues/2733), slice 1 of 4.
+
+### SAID FIRST
+
+- **COMPILED, NOT RUN (phase 1).** Written with no build. No Unreal test and no C++ guard proof has run. The Python
+  checks ran and all five are proved (below).
+- **THE SIMULATION STILL LANDS ITS OPENING WAVE ON DAY 1, AND THIS DOES NOT CHANGE IT**, by the ruling below. The game
+  and the model now differ by one day in when the first wave arrives. A test holds the model's day 1, so a change to it
+  is noticed (`test_the_model_still_lands_its_opening_wave_on_day_1`).
+- **TWO CHANGES BEYOND THE SURGE ITSELF, BOTH CAUSED BY IT.** A dungeon now stands on day 0, so a death on day 0 can
+  happen, and the map's death line asked `LastDeathDay <= 0` to mean "no death yet"; it now asks the days the death
+  cost. And two comments gave "the first wave lands on day 1" as a reason; they now give a true one.
+
+### The rulings, quoted
+
+The project owner, 2026-11-17, in #2733: "Starting the game shows the empire map, with the first surge already fired
+and its dungeons generated."
+
+The coordinating session, 2026-11-17, under the owner's delegation, in #2733: "The first surge fires at run start, on
+day 0. The design says, in `docs/Cataclysm_GDD_v2.md`'s surge section, "A Surge is triggered at run start", with 12
+dungeons. [...] If the simulation already fires at start, match it. If it does not, the game follows the design, and an
+issue is filed for the simulation; do not change the simulation in this work."
+
+### What was verified by reading, before anything changed
+
+- **The simulation does not fire at start.** `sim/cataclysm_sim/engine.py`: `next_surge_day` starts at `0.0`, and
+  `Simulation._empire_day` does `self.day += 1` before `if self.day >= self.next_surge_day: self.trigger_surge()`. Its
+  opening wave lands on day 1, which is what the game did: `UCataclysmEmpireRun::AdvanceDay` asks `IsDue` of
+  `Clock->Day + 1`. So by the ruling the game follows the design.
+- **Every new run the game begins goes through `UCataclysmGameInstance::BeginACharactersEmpireRun`.** Outside the
+  tests, `NewObject<UCataclysmEmpireRun>` appears twice: in that function, and in `FCataclysmSaveLoad::CharacterAndRun`'s
+  restore of a saved run. Its callers: a new character (`ACataclysmGameMode::MakeThePendingCharacter`), a loaded
+  character whose run could not be read (`FCataclysmSaveLoad::CharacterAndRun`), the run after a win
+  (`BeginTheRunAfterAWin`), and `BeginEmpireRun`, which `GetOrBeginEmpireRun` and the console commands reach.
+- **`BeginForCharacter` is not a safe place to fire it.** `FCataclysmSaveApply::RunInto` builds a restored run's
+  objects with `Run.Begin(0, ...)`, which is `BeginForCharacter`, then writes the record over them. A wave fired there
+  would be rolled on every load and written over: harmless only while every field `FireSurge` touches is saved.
+- **The modifier table is loaded before the run begins** (`EmpireRun->ModifierPool = ...LoadPool()` above
+  `BeginForCharacter`, whose comment already said "the first wave -- which is due on day 0"), so a wave fired straight
+  after carries modifiers.
+- **`Cataclysm.EnterDungeon` already advances a day only when the board is empty** (`DungeonCount() == 0`), so it
+  spends no day of a run that has its opening wave. Only its comment changes.
+- **What moves, all of it a consequence and none of it a choice.** The wave is the one day 1 brought: `FireSurge` makes
+  the same draws from the same three streams in the same order, and the day only stamps `SpawnedDay` (0, not 1). Every
+  timer resolves on the same day as before: a wave landing inside `AdvanceDay` lost a day as it landed, and the day-0
+  wave loses its first on day 1. The next surge is due on day 90, not 91. A Siege of the opening wave is one day older on
+  every day (one more step of its growth, and no share on the day it arrived, which no day ran), and a Hollow of it
+  shrinks a floor a day sooner.
+
+### What changes
+
+- **`UCataclysmEmpireRun::FireOpeningSurge`**, new: on day 0, with no surge fired and one due, it calls `FireSurge(0,
+  false, Report)` and answers the report; otherwise it does nothing and answers a report with `bSurged` false. It never
+  moves the clock.
+- **`BeginACharactersEmpireRun` calls it straight after `BeginForCharacter`**, and logs "A new empire run began at tier
+  T, facing N Cataclysms: its first surge landed D dungeons on day 0."
+- **`Begin` and `BeginForCharacter` are unchanged**: a run begun by them alone keeps the model's day-1 opening, which the
+  empire layer's tests and the model-port checks use. Their header says so.
+- **`LastDeathLine` asks `LastDeathDaysCost <= 0` for "no death yet"**, not `LastDeathDay <= 0`. Every death costs at
+  least `DeathDayCostStandard`, 5 days, and `Begin` writes 0, so it is exact; and a death on day 0 -- a walk that owes no
+  whole day, in a dungeon of the opening wave -- is now said rather than hidden.
+- **Comments**: `LastRunWonLine`'s reason (a win's day adds the boss walk's owed whole days, and that walk is a day or
+  more), `Cataclysm.EnterDungeon`'s, and `game/README.md`'s empire paragraph.
+
+### Not changed, and why
+
+- **The simulation**, by the ruling. The issue the ruling asks for is to be filed by the coordinating session or by this
+  session when slice 1 lands (asked).
+- **The older entries of this log that say the opening wave lands on day 1**: the 2026-11-03 Walk button and boss's last
+  floor entries, and the 2026-11-02 death-cost and status-bar entries. Each is a dated record of what was true then, and
+  is left as it is.
+
+### Tests
+
+**Unreal, new (4).**
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.EmpireRun.TheOpeningSurgeFiresOnDayZeroOnceWithTheWaveDayOneWouldHaveBrought` | `FireOpeningSurge` on a `Begin` run of seed 7: 12 on day 0, the clock not moved, one fired, the next due on day 90; against the same seed's day-1 wave, every dungeon the same but for `SpawnedDay`; timers full on day 0; on day 1 the timers and all three streams equal the day-1 run's; a second call, day 1, a clock set past day 0 and a run never begun fire nothing; Heretic lands 15 |
+| `Cataclysm.FirstSurge.EveryDoorIntoANewRunStandsTheOpeningWaveOnDayZero` | `BeginEmpireRun`, `GetOrBeginEmpireRun` and `BeginACharactersEmpireRun` at tier 3 each stand 12 on day 0, every dungeon an ordinary or Quest one, sent by an active Cataclysm, on a city, a floor deep or more, its timer full, arrived on day 0, carrying `CountFor(tier, sub-type)` modifiers besides the Corrupted Stalker; Heretic stands 15; asking again fires nothing. CONTROL: the modifier table loaded |
+| `Cataclysm.FirstSurge.ANewCharactersRunStandsTheOpeningWaveOnDayZeroAndItsRecordHoldsIt` | a character made by `LoadThePendingCharacter`, as Start makes one: its run on day 0 with the 12, each as above; the run record written at once holds the same 12 by number, on day 0, one fired, the next due on day 90 |
+| `Cataclysm.FirstSurge.ARunSavedOnDayZeroLoadsWithTheSameDungeonsAndNoSecondSurge` | that record loaded by a Continue (`PendingCharacterId`, `LoadThePendingCharacter`, outcome `Loaded`, not `LoadedWithANewRun`): day 0, the 12 by number on the same cities, as deep, with the same modifiers and timers, one fired, the next dungeon number 12, the next surge day 90; asking for the opening surge fires nothing, and day 1 does not surge |
+
+**Unreal, changed (3).** `Cataclysm.EmpireScreen.TheGameInstanceHoldsOneRunAtATime` asked a fresh Heretic run's
+`DungeonsInNextSurge` for 15; the opening wave has now landed, so it asks that 15 stand and that the next surge brings
+trunc(8 x 1.25) = 10. `Cataclysm.DeathCost.TheLineSaysTheDayTheDungeonTheDaysAndTheCitiesThatFell` gains a death on day
+0, which the line now says. `Cataclysm.WinningTheRun.TheNextRunBeginsAtOnceATierHigherFacingTheWonRunsCataclysmsAndOneMore`
+gains "with its opening wave of twelve standing", for the door after a win.
+
+**Python, new (5),** `tools/tests/test_the_first_surge_fires_at_run_start.py`: the door fires it after loading the table
+and beginning the run; `RunInto`, `Begin` and `BeginForCharacter` fire no surge; `FireOpeningSurge` refuses a day other
+than 0, a run that has fired, and a run with none due, and never moves the clock; only the game instance and the save's
+restore make run objects outside the tests; and the model still lands its opening wave on day 1.
+
+### Proofs run in phase 1 (Python only)
+
+With `tools/prove_guard.py`, each break narrow, `.claude/windows/prove_python_2733.py`:
+
+| Proof | Break | Named failure |
+|---|---|---|
+| P1 | the door's `FireOpeningSurge()` call taken out | `test_the_one_door_into_a_new_run_fires_the_opening_surge_after_the_pool_and_the_begin` |
+| P2 | `Run.FireOpeningSurge();` added to `RunInto` after its `Begin` | `test_a_restored_run_does_not_fire_it_and_begin_does_not_either` |
+| P3 | `Today != 0 ||` taken out of the refusal | `test_the_opening_surge_asks_for_day_0_and_none_fired_before_it_fires` |
+| P4 | `NewObject<UCataclysmEmpireRun>(this);` added to `ACataclysmGameMode::StartPlay` | `test_no_other_code_makes_a_run_that_would_miss_the_opening_surge` |
+| P5 | the model's clock surge asked of `next_surge_day + 2` | `test_the_model_still_lands_its_opening_wave_on_day_1` |
+
+Each summary read "PROVED: 1 failed, 4 passed | restored: 5 passed". **P5's first break did not prove, and the fault
+was the break:** `next_surge_day + 1` is still 1 on day 1, so the model's wave still landed on day 1 and the test
+rightly passed ("5 passed"). The break was corrected to `+ 2` and then proved.
+
+---
+
 ## 2026-11-17 — The Corrupted Stalker's six weapon kits and its six entries: Death a Dagger, Pestilence a Fist, Famine a Sword, Celestial a Warhammer, Chaos a Whip, Void a Greatsword, each with its type's Aura; the row is built, and one dungeon raises one entry on every floor (#2580)
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (36 rows of the Weapon Skills sheet, columns D to J, nothing else) and the

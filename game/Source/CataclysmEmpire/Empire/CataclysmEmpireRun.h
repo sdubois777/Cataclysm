@@ -892,6 +892,10 @@ public:
 	 * Starts a run: an intact empire, a clock at day 0, and a surge due
 	 * immediately.
 	 *
+	 * DUE, NOT FIRED. `FireOpeningSurge` fires it on day 0, and the game calls
+	 * that for every run it begins; a run begun here and nothing else has its
+	 * opening wave on day 1, from `AdvanceDay`, as the model does. Issue #2733.
+	 *
 	 * A SECOND CALL IS A FRESH RUN rather than a continuation, so a caller that
 	 * wants to keep a run has to keep this object.
 	 *
@@ -949,6 +953,47 @@ public:
 						   ECataclysmSurgeMode Mode = ECataclysmSurgeMode::Static,
 						   int32 LethalityRung = 0,
 						   int32 InDifficultyTier = 1);
+
+	/**
+	 * Fires the run's first surge on day 0, before any day has passed, and
+	 * answers what landed. Issue #2733.
+	 *
+	 * THE DESIGN: "A Surge is triggered at run start" and "The first Surge, at
+	 * run start, brings 12 dungeons" (`docs/Cataclysm_GDD_v2.md`, the Surge
+	 * section). Without this a new run's empire map is empty until the first day
+	 * passes, because `AdvanceDay` asks `IsDue` of the day that is ABOUT TO BEGIN,
+	 * day 1. The coordinating session ruled on 2026-11-17, under the owner's
+	 * delegation, that the game follows the design here.
+	 *
+	 * THE MODEL DOES NOT, YET. `Simulation._empire_day` moves the day on before it
+	 * asks `self.day >= self.next_surge_day`, so its opening wave lands on day 1,
+	 * as `Begin` followed by `AdvanceDay` does here. `Begin` and
+	 * `BeginForCharacter` are left that way on purpose: they are also how
+	 * `FCataclysmSaveApply::RunInto` builds the objects of a run it restores, and
+	 * a wave fired there would be rolled on every load and written over. The
+	 * game's one door into a new run, `UCataclysmGameInstance::BeginACharactersEmpireRun`,
+	 * calls this straight after `BeginForCharacter`.
+	 *
+	 * IT FIRES AT MOST ONCE A RUN AND ONLY ON DAY 0: only while the clock is on
+	 * day 0, no surge has fired (`SurgesFired` is 0) and one is due. Asked again,
+	 * asked of a run restored from a save, or asked after a day has passed, it
+	 * does nothing and answers a report with `bSurged` false. So the surge cannot
+	 * fire twice, and a run whose opening wave already landed on day 1 is left as
+	 * it is.
+	 *
+	 * THE WAVE IS THE ONE DAY 1 WOULD HAVE BROUGHT. It goes through `FireSurge`
+	 * with the same streams in the same order, so the same seed lands the same
+	 * dungeons on the same cities with the same modifiers; only `SpawnedDay` is
+	 * 0 rather than 1. The clock does not move, so every timer starts full and
+	 * loses its first day on day 1 -- which resolves each dungeon on the same day
+	 * as before, because a wave that lands during `AdvanceDay` loses a day as it
+	 * lands. The next surge is due `IntervalDays` after day 0 rather than day 1.
+	 *
+	 * @return the day-0 report: `Day` 0, and `Spawned` and `bSurged` as the wave
+	 *         left them, or empty when nothing fired.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
+	FCataclysmDayReport FireOpeningSurge();
 
 	/** Which day the run is on. Counted from 0, before any day has passed. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")

@@ -203,7 +203,10 @@ by `git add` with no error and no warning. Guarded by
   out takes an ordinary dungeon's hit off its host and then refreshes and may
   move, a city whose defence reaches zero falls, and its fall opens
   the lane behind it (issue
-  [#1084](https://github.com/sdubois777/Cataclysm/issues/1084)). The module also
+  [#1084](https://github.com/sdubois777/Cataclysm/issues/1084)). Every run the
+  game begins fires its first wave on day 0, before any day has passed, so a new
+  run's map shows its dungeons at once; the simulation in `sim/` still lands it on
+  day 1 (issue [#2733](https://github.com/sdubois777/Cataclysm/issues/2733)). The module also
   holds `Empire/CataclysmDungeonKind.h`, the two enumerations naming what kind a
   dungeon is and what it does differently, which moved down from the `Cataclysm`
   module so that both modules can name the same kind, and city upgrades

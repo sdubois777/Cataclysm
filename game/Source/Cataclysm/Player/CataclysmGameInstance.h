@@ -184,6 +184,11 @@ public:
 	 * MakeThePendingCharacter`) and a loaded character's new run (`FCataclysmSaveLoad::CharacterAndRun`). Both pass
 	 * `ACataclysmPlayerState::GetCataclysmOrderSeed` or the record's `CataclysmOrderSeed`. `BeginEmpireRun` is this with
 	 * the run's own seed as the order seed, for a caller that names no character: a console command, a test.
+	 *
+	 * THE RUN'S FIRST SURGE FIRES HERE, ON DAY 0 (`UCataclysmEmpireRun::FireOpeningSurge`), so every run the game
+	 * begins -- through either door above, `BeginEmpireRun`, `GetOrBeginEmpireRun` or `BeginTheRunAfterAWin` -- opens
+	 * with its dungeons standing. A run restored from a save does not come through here and does not fire it again.
+	 * Issue #2733.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
 	UCataclysmEmpireRun* BeginACharactersEmpireRun(
