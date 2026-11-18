@@ -18,11 +18,12 @@ Decisions made outside the Google Drive documents, newest first.
 
 ### SAID FIRST
 
-- **COMPILED, NOT RUN.** Phase 1 was written with no build, by instruction. Phase 2 compiled it, each changed `.cpp`
-  alone and then in its unity file, both clean and with nothing to fix (under "Compiled" below). No Unreal test has run
-  and no C++ guard proof has been made; the two Python proofs have, and both proved. The two DataTable assets,
-  `DT_EmpireTreeNodes` and `DT_EmpireTreeEdges`, do not exist until a window builds them, so four tests of
-  `tools/tests/test_datatable_assets_are_current.py` fail until then; the Python run below shows exactly those four.
+- **COMPILED, RUN AND PROVED, IN THE SECOND OF TWO WINDOWS.** The whole Unreal suite performed the registered 4807, all
+  succeeding, with 47 skipped halves and no test save left behind; the twelve new tests passed alone and in the whole
+  suite; the five C++ guard proofs and the two Python ones all proved as registered. The first window stopped on one
+  failure that no assertion raised -- an outside MCP client connecting to the test editor during a dungeon modifier test
+  ([#2745](https://github.com/sdubois777/Cataclysm/issues/2745)) -- and the coordinating session ruled the re-run. "The
+  windows" below has both. The two DataTable assets were built in the first window and committed as `8c75df8a3`.
 - **NOTHING IN PLAY CHANGES.** The game calls none of the new rules. Where the allocation is kept and where the bank is
   spent from is slice 1b; the screen is slice 2; what a bought node does is slices 3 to 5.
 - **SLICE 1 OF THE PLAN IS SPLIT IN THREE.** The gold work (#2742) also adds a field to the account record, so the
@@ -291,6 +292,77 @@ each run and not written down first, so they are reported as results rather than
 | :-- | :-- | :-- |
 | Y1 | a classified name no node has: `stray = sorted(...)` to `stray = []` in `empire_tree_nodes` | PROVED: "1 failed, 40 passed in 0.93s \| restored: 41 passed in 0.91s"; named `test_a_name_no_node_is_called_stops_generation` |
 | Y2 | a node in the wrong branch: `basic_arch_t1d,Architect,` to `basic_arch_t1d,Explorer,` in `game/Data/EmpireTreeNodes.csv` | PROVED: "4 failed, 37 passed in 0.94s \| restored: 41 passed in 0.84s"; named `test_the_tables_are_the_generators_output`, `test_every_identifier_that_names_a_branch_agrees`, `test_no_edge_crosses_from_one_branch_to_another`, `test_each_branch_holds_the_points_the_survey_counted` |
+
+### The windows
+
+**Two windows, on 2026-11-18. The first stopped at the whole suite on a failure that no assertion raised; the second,
+ruled by the coordinating session, ran the whole suite and the five proofs on the same head.** Both on
+`feat/empire-tree-1-data-2`, development `07f7e3bf6`, with the lock taken after `prechecks_t2741a.py` printed
+"PRECHECKS: ALL PASS" (CI and Unreal green on `07f7e3bf6`, no run in progress or queued, the lock free, no build or
+editor process, no pull request open, no simulation process, 13,791 MB and then 13,578 MB free, no LFS pointer file under
+`game/Content`). The scripts are `.claude/windows/prechecks_t2741a.py`, `run_t2741a.py`, `run_t2741a2.py` and
+`prove_t2741a.py` in this session's worktree, with every log beside them.
+
+**The first window, empire-tree-1a-w1, at `1f37c5f76`:**
+
+- **Build:** "Build: Succeeded - 49 actions, 44 files compiled" -- the rebased tree's first compile, clean.
+- **The asset rebuild:** exactly ` M game/Data/datatable_asset_sources.json`, `?? game/Content/Data/DT_EmpireTreeEdges.uasset`
+  and `?? game/Content/Data/DT_EmpireTreeNodes.uasset`, committed alone as `8c75df8a3`, "Build DT_EmpireTreeNodes and
+  DT_EmpireTreeEdges (#2741, slice 1a)", on `1f37c5f76`, and pushed. **`8c75df8a3` is the tested head** of both
+  windows.
+- **`Cataclysm.EmpireTree.` alone:** "Tests: 12 tests performed, 12 succeeded, 0 failed", as registered.
+- **`Cataclysm.Data.` alone:** "Tests: 7 tests performed, 7 succeeded, 0 failed", as registered.
+- **The whole Unreal suite STOPPED THE WINDOW:** "Tests: 4807 tests performed, 4806 succeeded, 1 failed:
+  UnstableDimensionsImposesNoRealityOnTheFirstFloor. 47 skipped part of what they check"; "Test saves: 823 written and
+  deleted, 0 left behind"; "Declared: 4807 tests in the tree at 8c75df8a3; 4807 performed, gap 0". Engine log kept as
+  `t2741a_suite_engine_8c75df8a.log`.
+- **The failure is not this slice's.** `Cataclysm.DungeonModifierEffects.UnstableDimensionsImposesNoRealityOnTheFirstFloor`
+  holds no "Error: Expected" line between its "Test Started" and "Test Completed" lines. Its one error is
+  `LogModelContextProtocol: Error: Call to unknown method "server/discover"` at 18:45:12.469 (engine log line
+  2045549), echoed in its events as `LogAutomationController: Error: LogModelContextProtocol: Call to unknown method
+  "server/discover" [log]` at 18:45:12.656 (line 2046497), followed by "Client requested protocol version '2025-11-25',
+  negotiated '2025-11-25'" and "Initializing new session: 2f6724ef4adfc5e7d16322a4dd2116b6" at 18:45:12.689. The test
+  editor starts the Model Context Protocol server on port 8000 (line 2571, 18:36:22); **an outside MCP client connected
+  to it while that test ran, and the engine counts any Error logged during a test as that test's failure.** The error
+  appears once in the whole run. The coordinating session read the same lines, and records that the owner started a new
+  Claude session at about that minute, and that a new session connects to the Unreal MCP server when it starts. It is
+  the cause recorded for window enchant-tp on 2026-10-21 (the trap layer's entry). The coordinating session filed
+  [#2745](https://github.com/sdubois777/Cataclysm/issues/2745): the test editor should not start the MCP server, a
+  change to `tools/unreal_build.py`. No session changed any MCP configuration for the second window, and the owner was
+  asked not to start new sessions while a window holds the lock.
+- **Python, on the tested head:** "7533 passed, 9 skipped in 212.74s"; JUnit tests 7542, failures 0, errors 0, skipped
+  9. The four asset-record tests of phase 1 now pass. Lint: "All checks passed!".
+- **The proofs did not run:** the runner stops before them when the suite does not match its registered total.
+
+**The ruling, the coordinating session's, 2026-11-18, as on 2026-10-21:** run again on the same tested head
+`8c75df8a3` with nothing changed -- the whole suite against 4807, 47 and 0, then E1 to E5 -- with the assets, the two
+groups and Python standing from the first window; a failure in the re-run reported test by test with its "Error:
+Expected" lines and every other Error line in it, and not run a third time.
+
+**The second window, empire-tree-1a-w2, at `8c75df8a3`:**
+
+- **Build:** "Build: Succeeded - target already up to date, 0 actions, nothing compiled", as on the same head.
+- **The whole Unreal suite, as registered:** "Tests: 4807 tests performed, 4807 succeeded, 0 failed. 47 skipped part of
+  what they check"; "Test saves: 823 written and deleted, 0 left behind"; "Declared: 4807 tests in the tree at
+  8c75df8a3; 4807 performed, gap 0; every declared test was reported by the run". The runner read "performed=4807
+  succeeded=4807 failed=0, registered 4807: MATCH; skipped halves 47, registered 47". Engine log kept as
+  `t2741a2_suite_engine_8c75df8a.log`, which holds 4807 "Test Completed. Result={Success}" lines, a second count, and
+  no `LogModelContextProtocol` error.
+- **Python and lint:** not run again, standing from the first window on this head.
+- **The five guard proofs, every one PROVED,** each through `prove_cpp_guard` on `CataclysmEmpireTree.cpp`, prefix
+  `Cataclysm.EmpireTree.`, each anchor counted once and the source hash the same after each. Every broken half failed
+  exactly the registered tests, and the failed assertions, counted in each broken half's kept log
+  (`t2741a_<P>_run1.log`), are exactly the registered ones, by their text:
+
+| | Broken half, as printed | Failed assertions in its log | Restored half |
+| :-- | :-- | :-- | :-- |
+| E1 | 12 performed, 9 succeeded, 3 failed: `ANodeOpensWhenItsParentHoldsWhatTheEdgeAsks`, `ANodeWhoseSystemIsMissingIsRefusedAndSaysWhich`, `ANodeWithTwoParentsOpensWhenEitherIsSatisfied` | 2 ("and open at the edge's two", "and open at ten"), 1 ("Scaffolding's edge is satisfied, so only its system refuses it"), 2 ("open through Fortified Gates alone", "open through Enduring Foundations alone") | 12 of 12 |
+| E2 | 12 performed, 11 succeeded, 1 failed: `ANodeWhoseSystemIsMissingIsRefusedAndSaysWhich` | 5: "Coinage, a root with a full bank, is refused", "and the refusal names gold and its issue", "the bank is untouched" (50 expected, 49), "nothing is spent" (0 expected, 1), "Scaffolding, with Foundation full, still waits on city upgrade costs" | 12 of 12 |
+| E3 | 12 performed, 11 succeeded, 1 failed: `ABranchCapstoneOpensAtTwoHundredInItsOwnBranch` | 1: "The Royal Engineer's Blessing is shut at 199 in its branch" | 12 of 12 |
+| E4 | 12 performed, 11 succeeded, 1 failed: `APointCostsOneWholePointFromTheBank` | 2: "a bank a billionth short of a point buys one", "and is left at nought, not below it" (0 expected; the bank stayed a billionth short of 1, printed 1.000000) | 12 of 12 |
+| E5 | 12 performed, 11 succeeded, 1 failed: `AnOptionWhoseSystemIsMissingCannotBeChosen` | 4: "The Soul Forge, Edicts of Power's third, cannot be chosen", "and the refusal names crafting", "The Collector's Decree, its second, can", "Imperial Prowess cannot be chosen" | 12 of 12 |
+
+The lock was released at the end of each window.
 
 ---
 
