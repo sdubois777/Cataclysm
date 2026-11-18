@@ -237,19 +237,38 @@ Nothing needed fixing: the two risks named in phase 1 -- the helpers' names besi
 unity file, and a file-scope `using namespace` reaching the files after it -- do not arise, because the rules' helpers
 are in a named namespace called by its name, and the tests open their namespace inside each test.
 
+### Rebased onto Echoes of the Past (phase 2)
+
+Echoes of the Past merged as `07f7e3bf6` (#2743) after the two builds. The branch was rebased onto it under a new name,
+`feat/empire-tree-1-data-2`, because the rebased branch cannot replace the old one without a force push; the old
+`feat/empire-tree-1-data` stays at `2e8077062`. **Git stopped on one file, this file**, at the first commit: both
+entries were inserted at the top. `python tools/resolve_decisions_log.py resolve --first upgrade` put this entry first,
+because it is the newer -- its first commit, `111734594`, was written at 10:19 and the Echoes entry's, `6be012af5` on
+that branch, at 09:37 -- and it was checked afterwards to be the same text, line endings aside, as before the rebase.
+The other four commits applied cleanly. Apart from this file, Echoes changed none of the thirteen files this branch
+changes.
+
+**THE REBASED TREE HAS NOT BEEN COMPILED.** The two builds above are of the tree on `1bbba95bc`. Echoes changed nine
+game source files and four test files, none of them this slice's, so the unity files may be grouped differently; the
+window's own build is the first compile of the rebased tree, and the window stops if it fails. The gold session held the
+build for its own compiles when this was written.
+
 ### Registered before the run
 
-**The base** is the last whole suite on development's game tree: window b2733s4's engine log at `e468bb95e`
-(`b2733s4_suite_engine_e468bb95.log` in that session's worktree), 4791 "Test Completed" lines, all Success, 47 skipped
-halves; development's commit since, #2739, changes `docs/` only. In that log `Cataclysm.Data.` performs 7 and no path
-begins `Cataclysm.EmpireTree`; no group of its 330 is taken by either prefix.
+**The base** is the last whole suite on development's game tree, since the rebase: window echoes-spread-w1's engine log at
+`913861d9f` (`e2740_suite_engine_913861d9.log` in that session's worktree), 4795 "Test Completed" lines, all Success,
+and its run line "Tests: 4795 tests performed, 4795 succeeded, 0 failed. 47 skipped part of what they check", "Test
+saves: 826 written and deleted, 0 left behind" and "Declared: 4795 tests in the tree at 913861d9f"; `git diff --stat
+913861d9f 07f7e3bf6 -- game/` prints nothing. In that log `Cataclysm.Data.` performs 7 and no path begins
+`Cataclysm.EmpireTree`; no group of its 330 is taken by either prefix. (Before the rebase this read 4791, window
+b2733s4's at `e468bb95e`.)
 
 | Run | Registered |
 | :-- | :-- |
 | `Cataclysm.EmpireTree.` alone | 12 performed, 12 succeeded, 0 failed: none at the base, + 12 by name |
 | `Cataclysm.Data.` alone | 7 performed, 7 succeeded, 0 failed: none added; `EveryGeneratedTableImports` pins the two new tables, `EveryGeneratedTableHasAnAssetThatMatchesIt` compares their assets |
-| The whole suite | **4791 + 12 = 4803 performed, 4803 succeeded, 0 failed; 47 skipped halves; 0 test saves left behind** |
-| Python, after the asset rebuild is committed | the phase 1 run's 7542 tests, every one passing: the four asset-record tests pass once the record holds the two tables |
+| The whole suite | **4795 + 12 = 4807 performed, 4807 succeeded, 0 failed; 47 skipped halves; 0 test saves left behind** |
+| Python, after the asset rebuild is committed | every test passing: the four asset-record tests pass once the record holds the two tables. The count is the run's, since Echoes changed a Python test |
 
 **The guard proofs**, each through `prove_cpp_guard` on `game/Source/Cataclysm/Player/CataclysmEmpireTree.cpp`, prefix
 `Cataclysm.EmpireTree.` (each anchor occurs once; checked):
