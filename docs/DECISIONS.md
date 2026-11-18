@@ -384,6 +384,14 @@ counted once first:**
 | :-- | :-- | :-- | :-- |
 | P1, the echo's swing a rule's strike again (`Echo->AttackTarget(Player);` to `Echo->StrikeAsARuleOrders(Player);` in `CataclysmDungeonGameMode.cpp`) | `python -m pytest tools/tests/test_attack_impact_is_recorded.py` | "PROVED: 1 failed, 55 passed in 0.25s \| restored: 56 passed in 0.11s"; `proved` True, `crashed` False | `test_an_echoes_strike_is_its_own_swing_measured_when_it_lands` |
 
+### Python of record
+
+Measured at `94a9fa7a8`, the Unreal lock free and no build running: "7488 passed, 9 skipped in 207.24s", and the JUnit
+file's `testsuite` tests="7497" failures="0" errors="0" skipped="9" (7488 passed), the two agreeing. The same counts as
+phase 1's run: the later rulings took one parametrized case out of
+`test_a_rules_strike_is_not_measured_against_reach` and added one test. `python -m ruff check . --extend-exclude
+.claude`: "All checks passed!" Only this section was added after the measured commit.
+
 ### Found and not changed
 
 - **A player's minions may attack an echo they cannot hurt.** An echo is a hostile creature on the floor, so a minion
