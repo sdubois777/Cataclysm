@@ -18,14 +18,14 @@ floor panel line and the floor-change reset; `ACataclysmEnemyCharacter` (`Catacl
 `ACataclysmEnemyController::Think` (`CataclysmEnemyController.cpp`); comments in `CataclysmCharacterBase.h`,
 `CataclysmSaveRecords.h` and `CataclysmEnemyHitTimingTests.cpp`. Tests: `CataclysmDungeonModifierEffectsTests.cpp`,
 `CataclysmSaveLoadTests.cpp`, `CataclysmSilenceTests.cpp`, and `tools/tests/test_attack_impact_is_recorded.py`. Issue
-[#2740](https://github.com/sdubois777/Cataclysm/issues/2740). **Phase 1 written; phase 2 applied two later rulings,
-compiled and registered the window; nothing here has run in the engine yet.**
+[#2740](https://github.com/sdubois777/Cataclysm/issues/2740). **Applied; compiled, and the automation tests and the
+six guard proofs have run in window echoes-spread-w1; their figures are in "Window echoes-spread-w1: the results".**
 
 ### SAID FIRST
 
-- **NOTHING HERE HAS RUN IN THE ENGINE YET.** Phase 1 wrote the code, the tests and this entry; phase 2 compiled them
-  (alone and in unity) and registered the window; the window runs the automation tests and the guard proofs. Every
-  statement below about what the game does is what the code was written to do, read and compiled, not run.
+- **THE WINDOW PASSED EVERY REGISTERED FIGURE** ("Window echoes-spread-w1: the results", below): the whole Unreal
+  suite 4795 of 4795, the five groups alone, all six guard proofs PROVED on exactly the registered assertions, Python
+  and ruff. What it shows is what the tests check; the owner has not played it.
 - **NO TEST WALKS AN ECHO IN.** The automation tests beat the game mode without ticking the world, so no brain runs and
   no echo moves. A test that needs an echo within its reach puts it there by hand; the brain's part is tested by
   calling `Think` once and reading what it chose (walk in, or stand). That an echo really reaches the player across a
@@ -392,16 +392,56 @@ phase 1's run: the later rulings took one parametrized case out of
 `test_a_rules_strike_is_not_measured_against_reach` and added one test. `python -m ruff check . --extend-exclude
 .claude`: "All checks passed!" Only this section was added after the measured commit.
 
+### Window echoes-spread-w1: the results
+
+Run by this session on 2026-11-18 from 10:08 to 10:55 local time, with the coordinating session's yes, at `913861d9f` (on
+`development` `1bbba95bc`), lock `echoes-spread-w1`, after `prechecks_e2740.py` printed "PRECHECKS: ALL PASS" (CI on
+`development` passed at `1bbba95bc`, no run in progress or queued, the lock free, no build or editor process, no pull
+request open, 14,476 MB free, no Git LFS pointer). The runner, `run_e2740.py`, released the lock at the end ("lock
+release: exit 0"), and HEAD was `913861d9` before and after. **Every registered figure was met.**
+
+| Figure | Registered | Printed |
+| :-- | :-- | :-- |
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (phase 2's last build was of this code) |
+| `Cataclysm.DungeonModifierEffects.` alone | 772 | "772 tests performed, 772 succeeded, 0 failed" |
+| `Cataclysm.SaveLoad.` alone | 77 | "77 tests performed, 77 succeeded, 0 failed" |
+| `Cataclysm.EchoesHeld.` alone | 4 | "4 tests performed, 4 succeeded, 0 failed" |
+| `Cataclysm.Silence.` alone | 26 | "26 tests performed, 26 succeeded, 0 failed" |
+| `Cataclysm.AI.` alone | 51 | "51 tests performed, 51 succeeded, 0 failed. 2 skipped part of what they check" (the two Brute clip tests, which skip their art half in a worktree) |
+| Whole Unreal suite | 4795, 47 skipped halves, 0 left behind | "4795 tests performed, 4795 succeeded, 0 failed. 47 skipped part of what they check"; "Declared: 4795 tests in the tree at 913861d9f; 4795 performed, gap 0"; "Test saves: 826 written and deleted, 0 left behind" |
+| Python | of record | "7488 passed, 9 skipped in 199.10s"; JUnit tests 7497, failures 0, errors 0, skipped 9; ruff "All checks passed!" |
+| C1, the fifteen metres | 1 test, 4 assertions | PROVED. `EchoesStandOnTheFloorsPlacesApartAndFifteenMetresFromTheArrival`, exactly the four registered; restored 1 of 1 |
+| C2, the give-up | 1 test, 4 assertions | PROVED. `EachEchoNoticesMovesInStrikesOnceAndVanishesOnItsOwnClock`: "ten seconds after noticing, it is gone" (0 expected, 1), "both are spent" (2, 1), "and the floor's echoes are gone" (2, 1), "the panel says none stands"; restored 1 of 1 |
+| C3, the save | 1 test, 3 assertions | PROVED. `EchoesThatStruckBeforeASaveDoNotStrikeAgain`: "no echo that struck is left to come after the load" (0, 2), "no echo is raised again after the load" (0, 2), "and the echoes are gone" (2, 1); restored 1 of 1 |
+| C4, the brain's branch | 1 test, 3 assertions, one of them less certain | PROVED. `EachEchoNoticesMovesInStrikesOnceAndVanishesOnItsOwnClock`: "noticing nobody of its own" (the ordinary brain targeted the player, the outcome registered first), "while the second's stands it still" (0, `Idle`, expected; 3, `Roaming`), "within its reach, its brain stands it" (0; 10, `NotAttacking`); restored 1 of 1 |
+| C5, the dodgeable swing | 1 test, 2 assertions | PROVED. `AnEchosSwingMissesAPlayerWhoStepsOutOfItAndIsSpentAllTheSame`: "the player who stepped out of the swing is not struck (389.3 to 303.1)" and "and the player is not struck"; restored 1 of 1 |
+| C6, the full reach | 1 test, 4 assertions | PROVED. `AnEchoThatCannotWalkStrikesFromItsFullReachAndOneThatWalksMovesIn`: "the Sentinel's echo strikes from its full reach" (1400, 600), "and fired its recorded bolt from thirteen metres", "its one strike made, it moves in on nobody", "one of the two is spent" (1, 0); restored 1 of 1 |
+
+The three save-and-load tests' lines, from the whole suite's engine log: "LOAD ECHOES STRUCK ... saved with 2 of 2 struck;
+after the load 0 of the last floor's dead to come, at most 0 echo(es) standing over 10 s, stage 2"; "LOAD ECHOES
+PENDING ... saved with none struck; after the load at most 2 echo(es) standing over 10 s, 2 struck when brought in,
+stage 2"; "LOAD ECHOES ONE STRUCK ... saved with 1 of 2 struck; after the load 1 of the last floor's dead to come, at
+most 1 echo(es) standing over 10 s, 1 struck when brought in". The memory line: "tests=5402 peak_used_virtual_mb=9223
+final_used_virtual_mb=8972". Every proof's broken half also logged the engine's start-up error about `GameFeatureData`
+asset settings, twice; every restored half logged it twice as well, so it is not the break's.
+
+Only this section, the ability note under "Found and not changed" and the two status sentences at the head and foot of
+this entry were added after the tested commit.
+
 ### Found and not changed
 
+- **An echo uses its recorded ability at once, with no wind-up**, as it did before #2740: the game mode calls
+  `UseEnemyAbility` itself, so there is no telegraph to step out of, as there is for an ordinary creature's ability;
+  a projectile can still be dodged in flight. A KNOWN DIFFERENCE FROM AN ORDINARY CREATURE, left as it is by the
+  coordinating session on 2026-11-18 ("leave it as it is for this window"), to be changed after the owner plays it
+  if it matters. The ruling that made the ordinary swing dodgeable did not ask about abilities.
 - **A player's minions may attack an echo they cannot hurt.** An echo is a hostile creature on the floor, so a minion
   may choose it as a target; before, that could last two seconds. The Reaper, Demonic Guide's guide and the other
   creatures a rule makes unhurtable stand for longer already, so this is not new to echoes. Not changed.
 
 ### Not tested
 
-- **Nothing has run in the engine.** It compiled in phase 2; every Unreal figure above is registered, not measured,
-  until the window runs.
+- **The owner has not played it.** Every figure above is an automation test's or a guard proof's.
 - **An echo walking in across a real floor**, its path, its speed and whether it reaches the player round walls: no
   test ticks a brain. The owner will see it in play.
 - **The frame cost of many echoes.** Not measured.
