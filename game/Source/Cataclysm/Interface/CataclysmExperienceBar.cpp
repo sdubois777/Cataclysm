@@ -29,9 +29,14 @@ FString UCataclysmExperienceBar::TextFor(int32 Level, int64 ExperienceIntoLevel)
 		return FString::Printf(TEXT("Level %d: maximum"), Held);
 	}
 
+	// NEVER A WHOLE LEVEL'S WORTH: a figure at or above the cost, which no grant leaves (`UCataclysmExperience::Grant`
+	// levels up first), is read as one short of it.
+	const int64 Earned = FMath::Clamp<int64>(ExperienceIntoLevel, 0, Cost - 1); // The bar's words: under a whole level.
+
 	// TENTHS OF A PERCENT, ROUNDED DOWN, in whole numbers: the experience into a level is below 520 million, so times
-	// 1,000 it is far inside an int64, and no floating point can round 99.96% up to a level not yet reached.
-	const int64 Tenths = FMath::Clamp<int64>(FMath::Max<int64>(0, ExperienceIntoLevel) * 1000 / Cost, 0, 999);
+	// 1,000 it is far inside an int64, and no floating point can round 99.96% up to a level not yet reached. With
+	// `Earned` below the cost, this is at most 999.
+	const int64 Tenths = Earned * 1000 / Cost; // The bar's words: rounded down.
 	return FString::Printf(TEXT("Level %d: %lld.%lld%%"), Held, Tenths / 10, Tenths % 10);
 }
 

@@ -82,6 +82,8 @@ bool FCataclysmExperienceBarWordsTest::RunTest(const FString&)
 	TestEqual(TEXT("a level above the maximum is the maximum"), Bar::TextFor(UCataclysmExperience::MaxLevel + 20, 0),
 			  FString(TEXT("Level 100: maximum")));
 	TestEqual(TEXT("less than nothing reads nothing"), Bar::TextFor(1, -5), FString(TEXT("Level 1: 0.0%")));
+	TestEqual(TEXT("more than the cost, which no grant leaves, reads one short of the level"),
+			  Bar::TextFor(1, ToSecond * 3), FString(TEXT("Level 1: 99.9%")));
 	return true;
 }
 

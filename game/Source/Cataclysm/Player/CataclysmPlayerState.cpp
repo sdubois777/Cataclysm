@@ -246,7 +246,7 @@ int32 ACataclysmPlayerState::GrantExperience(int64 Amount)
 	// AND ONE PLAY LOOP LINE SAYS IT, after the level is stored, so its figures are the new ones.
 	if (Gained > 0)
 	{
-		RefreshCharacterStats();
+		RefreshCharacterStats(); // A level gained's: the stat line at the new level.
 		FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::LevelGainedLine(LevelBefore, CharacterLevel,
 																		  ExperienceIntoLevel));
 	}
