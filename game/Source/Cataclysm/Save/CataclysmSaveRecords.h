@@ -567,6 +567,7 @@ struct CATACLYSM_API FCataclysmSavedWalk
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	TArray<FCataclysmSavedEcho> EchoesThisFloor;
 
+	/** The last floor's dead still to come back: an echo that struck or vanished before the save is left out (#2740). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	TArray<FCataclysmSavedEcho> EchoesFromLastFloor;
 
@@ -824,9 +825,10 @@ struct CATACLYSM_API FCataclysmSavedFloorRuleState
 	int32 VoidParasiteStacks = 0;
 
 	/**
-	 * Echoes of the Past: the echoes have struck on this floor (their stage 2, struck, or 3, gone), so a load raises none
-	 * again (3d-1, Q1). A stage before the strike is not saved: the echoes rise again 5 s after the load and strike, the
-	 * pending strike kept and its clock restarted (D1).
+	 * Echoes of the Past: every echo of this floor is gone, so a load raises none again (3d-1, Q1). Since issue #2740
+	 * each echo strikes on its own clock, and one spent before the rest is left out of `FCataclysmSavedWalk::
+	 * EchoesFromLastFloor` instead; the echoes still to come rise again on the first beat after the load and wait,
+	 * their clocks restarted (D1). Until #2740 this was the stage "struck or gone", when every echo struck at once.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	bool bEchoesStruck = false;

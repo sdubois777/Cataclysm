@@ -958,6 +958,33 @@ public:
 	bool bGuideWaits = false;
 
 	/**
+	 * Whether Echoes of the Past raised this creature as an echo of the last floor's dead, whom it moves in on, and how
+	 * close it comes. Issue #2740, the owner's ruling of 2026-11-18.
+	 *
+	 * WRITTEN BY `ACataclysmDungeonGameMode` AND READ BY THE BRAIN, as Demonic Guide's three fields above are. An echo's
+	 * brain stands it still while `EchoMovesInOn` is none, which is until the game mode has seen it notice the player
+	 * and again once it has struck; while it is set, it walks the echo in until the echo stands within
+	 * `EchoMovesInToCm` of them, and stops. It notices nobody of its own, chooses no ability and makes no swing: the
+	 * game mode makes the echo's one attack. An echo also takes no hostile action; see `TakesNoHostileAction`.
+	 *
+	 * `EchoMovesInToCm` IS THE ECHO'S REACH AGAINST THE PLAYER, at most `UCataclysmDungeonModifierEffects::
+	 * EchoesMostAwayCm`, set by the game mode as the echo notices them. `EchoStandsWithinItsStrike` is the one test of
+	 * it that both read, so the brain stops where the game mode strikes.
+	 *
+	 * NOT SAVED. A load raises the echoes still to come afresh; see `ACataclysmDungeonGameMode::WalkStateNow`.
+	 */
+	bool bIsAnEchoOfThePast = false;
+	TWeakObjectPtr<AActor> EchoMovesInOn;
+	float EchoMovesInToCm = 0.0f;
+
+	/**
+	 * Whether this echo stands close enough to `EchoMovesInOn` to strike: the floor-plane distance no more than
+	 * `EchoMovesInToCm` plus `ACataclysmEnemyController::ContactToleranceCm`, the tolerance the brain's own reach test
+	 * adds. False with nobody to move in on. Issue #2740.
+	 */
+	bool EchoStandsWithinItsStrike() const;
+
+	/**
 	 * How long since a creature carrying Phasewalker last teleported.
 	 *
 	 * PUBLIC FOR THE REASON `SecondsSinceAuraPulse` ABOVE IS: the rule that
@@ -1277,7 +1304,9 @@ public:
 	{
 		// AND DEMONIC GUIDE'S GUIDE, which leads the player and is no enemy of theirs. Issues #1820 and #41.
 		// AND THE PLAGUEBEARER, which "doesn't directly attack you". Issues #1820 and #41.
-		return bHealsAlliesForTheFloorRule || bGuidesThePlayerForTheFloorRule || bIsPlaguebearer;
+		// AND AN ECHO OF ECHOES OF THE PAST, whose one attack the game mode makes: it may now stand on a floor for as
+		// long as the player stays away, so a modifier aura or charge of its own would be a second attack. Issue #2740.
+		return bHealsAlliesForTheFloorRule || bGuidesThePlayerForTheFloorRule || bIsPlaguebearer || bIsAnEchoOfThePast;
 	}
 	//~ End
 
@@ -2122,10 +2151,15 @@ public:
 	 * THE SAME `AttackTarget`, so the swing plays and its blow waits for the swing
 	 * to connect like any other, and death, a stun, a knockdown or fear in the
 	 * gap still drop it. THE ONE DIFFERENCE: the blow is not measured against
-	 * reach when it lands. An echo stands at its reach from where the player was
-	 * when it APPEARED, a second before it strikes, so a reach test at the strike
-	 * would let a player who stood still dodge it and never one who had walked
-	 * away. A JUDGEMENT, labelled so in docs/DECISIONS.md.
+	 * reach when it lands. Until issue #2740 an echo stood at its reach from where
+	 * the player was when it APPEARED, a second before it struck, so a reach test
+	 * at the strike would have let a player who stood still dodge it and never one
+	 * who had walked away. A JUDGEMENT, labelled so in docs/DECISIONS.md.
+	 *
+	 * SINCE ISSUE #2740 AN ECHO WALKS IN AND IS ORDERED TO STRIKE ONLY ONCE IT
+	 * STANDS WITHIN ITS REACH, so that reason is gone for the echo; its strike is
+	 * kept a rule's strike because the 2026-11-18 ruling did not ask for it to
+	 * change. The decisions log entry for #2740 says so.
 	 */
 	void StrikeAsARuleOrders(AActor* Target);
 

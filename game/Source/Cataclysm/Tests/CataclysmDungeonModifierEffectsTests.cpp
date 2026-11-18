@@ -28021,9 +28021,87 @@ namespace CataclysmDungeonModifierEffectsTest
 	}
 }
 
-// AN ECHO STANDS AT ITS OWN ATTACK REACH, NEVER MORE THAN SIX METRES, AT EVEN ANGLES AROUND THE PLAYER.
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/**
+	 * Stands an echo `AwayCm` from the player along the floor, `AngleDegrees` round from X, at the echo's own standing
+	 * height: where its brain's walk in would bring it in a running game. Issue #2740. The beat moves no world clock and
+	 * runs no brain, so no echo walks in a test; a test that needs one within its reach puts it there.
+	 */
+	void StandTheEchoBeside(ACataclysmEnemyCharacter* Echo, const AActor* Player, float AwayCm, float AngleDegrees = 0.0f)
+	{
+		const FVector Feet = Player->GetActorLocation();
+		const float Radians = FMath::DegreesToRadians(AngleDegrees);
+		Echo->SetActorLocation(FVector(Feet.X + AwayCm * FMath::Cos(Radians), Feet.Y + AwayCm * FMath::Sin(Radians),
+									   Echo->GetActorLocation().Z));
+	}
+
+	/** Stands the player `AwayCm` from `Echo` along the floor, on the side away from `Other`, keeping the player's height. */
+	void StandThePlayerFrom(const FPossessedPlayer& Player, const ACataclysmEnemyCharacter* Echo,
+							const ACataclysmEnemyCharacter* Other, float AwayCm)
+	{
+		FVector Away = Echo->GetActorLocation() - Other->GetActorLocation();
+		Away.Z = 0.0f;
+		Away = Away.IsNearlyZero() ? FVector::XAxisVector : Away.GetSafeNormal();
+		const FVector At = Echo->GetActorLocation() + Away * AwayCm;
+		Player.Character->SetActorLocation(FVector(At.X, At.Y, Player.Character->GetActorLocation().Z));
+	}
+
+	/** Whether `Echo` stands on one of the cells the floor puts its own creatures on. */
+	bool StandsOnAPlaceOfTheFloors(const ACataclysmDungeonGameMode* Mode, const ACataclysmEnemyCharacter* Echo)
+	{
+		const FIntPoint Cell = Mode->CurrentFloor->CellOfWorld(Echo->GetActorLocation());
+		return Mode->FloorPopulationNow().Enemies.ContainsByPredicate(
+			[Cell](const FCataclysmEnemyPlacement& Placement) { return Placement.Cell == Cell; });
+	}
+
+	/** The brain an echo keeps, or null. */
+	ACataclysmEnemyController* BrainOf(const ACataclysmEnemyCharacter* Echo)
+	{
+		return Echo ? Cast<ACataclysmEnemyController>(Echo->GetController()) : nullptr;
+	}
+
+	/** What a brain does on one pass, as a number a test can compare. */
+	int32 ThinksOnce(ACataclysmEnemyController* Brain)
+	{
+		return Brain ? static_cast<int32>(Brain->Think()) : -1;
+	}
+
+	/**
+	 * Floor 2 with no row and two of its creatures killed (`TwoDieOnFloorTwo`), then floor 3 carrying Echoes of the Past
+	 * with its own creatures cleared and one beat run, so both echoes stand. Null, with a failure, when any of it did
+	 * not happen; `OutEchoes` holds them in the order they died.
+	 */
+	ACataclysmDungeonGameMode* TwoEchoesStandOnFloorThree(FAutomationTestBase& Test, UWorld* World,
+														  const FPossessedPlayer& Player,
+														  TArray<ACataclysmEnemyCharacter*>& OutEchoes)
+	{
+		ACataclysmDungeonGameMode* Mode = nullptr;
+		if (!TwoDieOnFloorTwo(Test, World, Player, Mode) || !GiveThePlayerHealthForTypedDamage(Test, Player))
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {EchoesRow};
+		if (!Test.TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
+		OutEchoes = Mode->EchoesStandingNow();
+		if (!Test.TestEqual(TEXT("set-up: two echoes stand"), OutEchoes.Num(), 2))
+		{
+			return nullptr;
+		}
+		return Mode;
+	}
+}
+
+// WHERE ECHOES STAND AND HOW CLOSE THEY COME: on the floor's own places, none within fifteen metres of where the player
+// arrives, no two on one place while there are enough; and an echo moves in to its reach, held to six metres. Issue
+// #2740, R1 and R4.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoesPlacedTest,
-	"Cataclysm.DungeonModifierEffects.EchoesStandAtTheirOwnReachAtEvenAnglesNeverBeyondSixMetres",
+	"Cataclysm.DungeonModifierEffects.EchoesStandOnTheFloorsPlacesApartAndFifteenMetresFromTheArrival",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmEchoesPlacedTest::RunTest(const FString& Parameters)
@@ -28033,24 +28111,60 @@ bool FCataclysmEchoesPlacedTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("an Imp's 132 cm reach is kept"), Effects::EchoesDistanceCm(132.0f), 132.0f, 0.01f);
 	TestEqual(TEXT("a Sentinel's 1400 cm is held to six metres"), Effects::EchoesDistanceCm(1400.0f),
 			  Effects::EchoesMostAwayCm, 0.01f);
-	TestTrue(TEXT("the first of four stands straight along X"),
-			 Effects::EchoesOffset(0, 4, 200.0f).Equals(FVector(200.0f, 0.0f, 0.0f), 0.01f));
-	TestTrue(TEXT("the second a quarter turn round"),
-			 Effects::EchoesOffset(1, 4, 200.0f).Equals(FVector(0.0f, 200.0f, 0.0f), 0.01f));
-	TestTrue(TEXT("the third opposite the first"),
-			 Effects::EchoesOffset(2, 4, 200.0f).Equals(FVector(-200.0f, 0.0f, 0.0f), 0.01f));
-	TestTrue(TEXT("and none at all is no offset"), Effects::EchoesOffset(0, 0, 200.0f).IsZero());
+
+	// SIX PLACES ALONG X FROM AN ARRIVAL AT THE ORIGIN: three nearer than fifteen metres -- the first straight above the
+	// arrival, which the floor-plane measure puts at nought -- and three at or beyond it, one of those below it.
+	const TArray<FVector> Places = {FVector(0.0f, 0.0f, 5000.0f), FVector(500.0f, 0.0f, 0.0f),
+									FVector(1499.0f, 0.0f, 0.0f), FVector(1500.0f, 0.0f, 0.0f),
+									FVector(2000.0f, 0.0f, -300.0f), FVector(3000.0f, 0.0f, 0.0f)};
+	const TArray<int32> FarEnough = {3, 4, 5};
+	constexpr int32 Seed = 41;
+	const auto FarAndApart = [&FarEnough](const TArray<int32>& Chosen, int32 Distinct)
+	{
+		TArray<int32> Seen;
+		for (const int32 Index : Chosen)
+		{
+			if (!FarEnough.Contains(Index))
+			{
+				return false;
+			}
+			Seen.AddUnique(Index);
+		}
+		return Seen.Num() == Distinct;
+	};
+
+	const TArray<int32> Three = Effects::EchoesPlaces(Places, FVector::ZeroVector, 3, Seed);
+	TestEqual(TEXT("three echoes take three places"), Three.Num(), 3);
+	TestTrue(TEXT("each at least fifteen metres from the arrival along the floor, and no two on one place"),
+			 FarAndApart(Three, 3));
+	TestTrue(TEXT("the same seed puts them in the same places"),
+			 Effects::EchoesPlaces(Places, FVector::ZeroVector, 3, Seed) == Three);
+
+	// MORE ECHOES THAN PLACES: every place holds one before any holds a second.
+	const TArray<int32> Five = Effects::EchoesPlaces(Places, FVector::ZeroVector, 5, Seed);
+	TestEqual(TEXT("five echoes take five places"), Five.Num(), 5);
+	TestTrue(TEXT("the first three on the three places far enough, in the order three would take"),
+			 Five.Num() == 5 && FarAndApart(TArray<int32>{Five[0], Five[1], Five[2]}, 3) && Five[0] == Three[0]
+				 && Five[1] == Three[1] && Five[2] == Three[2]);
+	TestTrue(TEXT("and the fourth and fifth begin the order again"),
+			 Five.Num() == 5 && Five[3] == Five[0] && Five[4] == Five[1]);
+
+	TestTrue(TEXT("no echo, no place"), Effects::EchoesPlaces(Places, FVector::ZeroVector, 0, Seed).IsEmpty());
+	TestTrue(TEXT("no place far enough, none"),
+			 Effects::EchoesPlaces({FVector::ZeroVector, FVector(1499.0f, 0.0f, 0.0f)}, FVector::ZeroVector, 2, Seed)
+				 .IsEmpty());
 	return true;
 }
 
-// THE LAST FLOOR'S DEAD, RECORDED ON A FLOOR WITHOUT THE ROW, APPEAR FIVE SECONDS INTO ONE WITH IT;
-// THEY CANNOT BE HURT, HAVE NO BRAIN AND ARE NOT THE FLOOR'S CREATURES; A SECOND LATER EACH STRIKES
-// THE PLAYER ONCE, AND A SECOND AFTER THAT THEY ARE GONE.
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoesStrikeTest,
-	"Cataclysm.DungeonModifierEffects.EchoesOfThePastBringsTheLastFloorsDeadBackToStrikeOnceAndVanish",
+// THE LAST FLOOR'S DEAD, RECORDED ON A FLOOR WITHOUT THE ROW, STAND ACROSS THE NEXT FLOOR AS IT BEGINS: each on a place
+// the floor puts its own creatures, at least fifteen metres from where the player stood, no two on one; they cannot be
+// hurt, keep a brain, are not the floor's creatures, and stand and do nothing while the player stays away. Issue #2740,
+// R1, R2 and R5.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoesRiseTest,
+	"Cataclysm.DungeonModifierEffects.EchoesOfThePastStandsTheLastFloorsDeadAcrossTheFloorAsItBegins",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmEchoesStrikeTest::RunTest(const FString& Parameters)
+bool FCataclysmEchoesRiseTest::RunTest(const FString& Parameters)
 {
 	using namespace CataclysmDungeonModifierEffectsTest;
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -28082,75 +28196,166 @@ bool FCataclysmEchoesStrikeTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and this floor has recorded none yet"), Mode->EchoAttacksRecordedThisFloor().Num(), 0);
 	TestTrue(TEXT("the panel says how many come"),
 			 Mode->LiveCountsForTheFloor().FindRef(EchoesRow).Contains(TEXT("2 of the last floor's dead")));
+	TestEqual(TEXT("none stands before the floor's first beat"), Mode->EchoesStandingNow().Num(), 0);
 
-	const int32 ToAppear = BeatsFor(Effects::EchoesAppearAfterSeconds);
-	Beat(Mode, ToAppear - 1);
-	if (!TestEqual(TEXT("none a beat before five seconds"), Mode->EchoesStandingNow().Num(), 0))
-	{
-		return false;
-	}
+	const FVector Arrival = Player.Character->GetActorLocation();
 	Beat(Mode, 1);
 	const TArray<ACataclysmEnemyCharacter*> Echoes = Mode->EchoesStandingNow();
-	if (!TestEqual(TEXT("two echoes at five seconds"), Echoes.Num(), 2))
+	if (!TestEqual(TEXT("both stand on the floor's first beat"), Echoes.Num(), 2))
 	{
 		return false;
 	}
+	TestEqual(TEXT("and the floor's echoes stand"), Mode->EchoesStageNow(), ACataclysmDungeonGameMode::EchoesStand);
 
 	int32 RungsSeen = 0;
 	for (ACataclysmEnemyCharacter* Echo : Echoes)
 	{
 		TestTrue(TEXT("an echo is the kind that died"), Echo->IsA<ACataclysmImpCharacter>());
 		RungsSeen += 1 << Echo->RarityStep;
-		TestNull(TEXT("with no brain"), Echo->GetController());
+		TestNotNull(TEXT("it keeps a brain, which only stands it still and walks it in"), BrainOf(Echo));
+		TestTrue(TEXT("marked an echo"), Echo->bIsAnEchoOfThePast);
+		TestTrue(TEXT("which takes no hostile action of its own"), Echo->TakesNoHostileAction());
 		TestTrue(TEXT("that cannot be hurt"), Echo->bCannotBeHurt);
 		TestFalse(TEXT("pays nothing"), Echo->PaysForItsDeath());
 		TestTrue(TEXT("and was raised by the rule"), Echo->bRaisedByARule);
 		TestFalse(TEXT("and is not one of the floor's creatures"), Mode->FloorEnemies.Contains(Echo));
-		TestEqual(TEXT("standing at its own attack reach from the player"),
-				  static_cast<float>(FVector::Dist2D(Echo->GetActorLocation(), Player.Character->GetActorLocation())),
-				  Effects::EchoesDistanceCm(Echo->AttackReachCm()), 1.0f);
+		TestTrue(TEXT("standing on a place the floor puts its own creatures"), StandsOnAPlaceOfTheFloors(Mode, Echo));
+		const float FromArrival = static_cast<float>(FVector::Dist2D(Echo->GetActorLocation(), Arrival));
+		TestTrue(FString::Printf(TEXT("at least fifteen metres from where the player stood (%.0f cm)"), FromArrival),
+				 FromArrival >= Effects::EchoesLeastFromArrivalCm);
+		TestNull(TEXT("having noticed nobody"), Echo->EchoMovesInOn.Get());
 		UCataclysmSkillEffects::ApplyHit(Player.Character, Echo, 100000.0f);
 		TestFalse(TEXT("and a killing blow does not kill it"), UCataclysmSkillEffects::IsDead(Echo));
-		TestTrue(TEXT("given a blow to strike with"), GiveCreatureAttackDamage(Echo, 100.0f) > 0.0f);
 	}
 	TestEqual(TEXT("one echo at each rung that died, Common and Magic"), RungsSeen, (1 << 0) + (1 << 1));
+	TestTrue(TEXT("no two on one cell"), Mode->CurrentFloor->CellOfWorld(Echoes[0]->GetActorLocation())
+											 != Mode->CurrentFloor->CellOfWorld(Echoes[1]->GetActorLocation()));
 	TestTrue(TEXT("the panel says they stand"),
 			 Mode->LiveCountsForTheFloor().FindRef(EchoesRow).Contains(TEXT("2 echo(es) standing")));
 
-	// THEY STRIKE ONCE, A SECOND LATER. Evasion is taken away so neither blow can miss.
-	Player.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	// THEY STAND AND DO NOTHING WHILE THE PLAYER STAYS WHERE THEY ARRIVED: fifteen metres is beyond every creature's
+	// notice distance, the furthest of which is fourteen.
 	const float Before = HealthOf(Player.Character);
-	Beat(Mode, BeatsFor(Effects::EchoesStrikeAfterSeconds) - 1);
-	// AT LEAST, NOT EQUAL: regeneration may only raise it, and a strike can only lower it.
-	TestTrue(TEXT("no strike a beat early"), HealthOf(Player.Character) >= Before - 0.01f);
-	Beat(Mode, 1);
-	// THE ECHOES ARE IMPS, AND AN IMP'S SWIPE LANDS WHEN IT CONNECTS, a quarter of a second after the beat that
-	// ordered it. Issue #783.
-	LandTheWaitingBlows(World, Mode->EchoesStandingNow());
-	const float AfterStrike = HealthOf(Player.Character);
-	TestTrue(FString::Printf(TEXT("the echoes struck the player (%.1f to %.1f)"), Before, AfterStrike),
-			 AfterStrike < Before);
-	TestEqual(TEXT("and are still standing"), Mode->EchoesStandingNow().Num(), 2);
-
-	// AND GO A SECOND AFTER THAT, HAVING STRUCK ONLY ONCE.
-	Beat(Mode, BeatsFor(Effects::EchoesVanishAfterSeconds) - 1);
-	TestTrue(TEXT("no second strike"), HealthOf(Player.Character) >= AfterStrike - 0.01f);
-	Beat(Mode, 1);
-	TestEqual(TEXT("gone a second after striking"), Mode->EchoesStandingNow().Num(), 0);
-	TestTrue(TEXT("destroyed, not left in the world"), !IsValid(Echoes[0]) || Echoes[0]->IsActorBeingDestroyed());
+	Beat(Mode, BeatsFor(30.0f));
+	TestEqual(TEXT("both still stand thirty seconds on"), Mode->EchoesStandingNow().Num(), 2);
+	TestTrue(TEXT("neither has noticed the player"),
+			 !Echoes[0]->EchoMovesInOn.IsValid() && !Echoes[1]->EchoMovesInOn.IsValid());
+	TestTrue(TEXT("and the player has lost nothing"), HealthOf(Player.Character) >= Before - 0.01f);
+	TestEqual(TEXT("an echo's brain stands it still while it waits"), ThinksOnce(BrainOf(Echoes[0])),
+			  static_cast<int32>(ECataclysmBrainAction::Idle));
+	TestNull(TEXT("and notices nobody of its own"), BrainOf(Echoes[0]) ? BrainOf(Echoes[0])->CurrentTarget.Get() : nullptr);
 	return true;
 }
 
-// WHAT IS RECORDED: NOT A DEATH THAT PAYS NOTHING; ONLY THE LAST SIX; THE RECORD COVERS ONE FLOOR;
-// A FLOOR WITHOUT THE ROW BRINGS NONE; HORDE WAVES BRING THEM; LEAVING THE DUNGEON FORGETS THEM.
+// EACH ECHO ON ITS OWN CLOCK: one notices the player at its kind's notice distance while the other waits; its brain walks
+// it in; within its reach it strikes the player once and vanishes a second later. The other, once it notices, never
+// comes within its reach, and ten seconds on it vanishes without striking. Issue #2740, R3 and R4.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoesStrikeTest,
+	"Cataclysm.DungeonModifierEffects.EachEchoNoticesMovesInStrikesOnceAndVanishesOnItsOwnClock",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEchoesStrikeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	TArray<ACataclysmEnemyCharacter*> Echoes;
+	ACataclysmDungeonGameMode* Mode = TwoEchoesStandOnFloorThree(*this, World, Player, Echoes);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* First = Echoes[0];
+	ACataclysmEnemyCharacter* Second = Echoes[1];
+	if (!TestTrue(TEXT("the first is given a blow to strike with"), GiveCreatureAttackDamage(First, 100.0f) > 0.0f)
+		|| !TestTrue(TEXT("and so is the second"), GiveCreatureAttackDamage(Second, 100.0f) > 0.0f))
+	{
+		return false;
+	}
+	Player.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	const float Notice = First->NoticeRadiusCm;
+	TestEqual(TEXT("an Imp notices from its kind's own ten metres"), Notice,
+			  ACataclysmImpCharacter::ImpNoticeRadiusCm, 0.01f);
+
+	// A BEAT OUTSIDE ITS NOTICE, NOTHING; A BEAT INSIDE IT, THE FIRST NOTICES. The player stands on the far side of the
+	// first from the second, so the second, a cell or more further, does not.
+	StandThePlayerFrom(Player, First, Second, Notice + 10.0f);
+	Beat(Mode, 1);
+	TestNull(TEXT("ten centimetres beyond its notice, the first has not noticed"), First->EchoMovesInOn.Get());
+	StandThePlayerFrom(Player, First, Second, Notice - 100.0f);
+	const float Before = HealthOf(Player.Character);
+	Beat(Mode, 1);
+	TestTrue(TEXT("within it, the first moves in on the player"), First->EchoMovesInOn.Get() == Player.Character);
+	TestNull(TEXT("and the second, further off, still waits"), Second->EchoMovesInOn.Get());
+	TestEqual(TEXT("moving in to its reach against the player"), First->EchoMovesInToCm,
+			  Effects::EchoesDistanceCm(ACataclysmEnemyController::ReachAgainstCm(First, Player.Character)), 0.01f);
+	TestEqual(TEXT("its brain walks it in"), ThinksOnce(BrainOf(First)),
+			  static_cast<int32>(ECataclysmBrainAction::Chasing));
+	TestNull(TEXT("noticing nobody of its own"), BrainOf(First) ? BrainOf(First)->CurrentTarget.Get() : nullptr);
+	TestEqual(TEXT("while the second's stands it still"), ThinksOnce(BrainOf(Second)),
+			  static_cast<int32>(ECataclysmBrainAction::Idle));
+	Beat(Mode, BeatsFor(2.0f));
+	TestTrue(TEXT("out of its reach, it has not struck"), HealthOf(Player.Character) >= Before - 0.01f);
+
+	// WITHIN ITS REACH IT STRIKES, AT ONCE AND ONCE. Put where its walk would bring it.
+	StandTheEchoBeside(First, Player.Character, First->EchoMovesInToCm - 20.0f);
+	TestEqual(TEXT("within its reach, its brain stands it"), ThinksOnce(BrainOf(First)),
+			  static_cast<int32>(ECataclysmBrainAction::Idle));
+	Beat(Mode, 1);
+	// AN IMP'S SWIPE LANDS WHEN IT CONNECTS, a quarter of a second after the beat that ordered it. Issue #783.
+	LandTheWaitingBlows(World, {First});
+	const float AfterStrike = HealthOf(Player.Character);
+	TestTrue(FString::Printf(TEXT("the first echo struck the player (%.1f to %.1f)"), Before, AfterStrike),
+			 AfterStrike < Before);
+	TestNull(TEXT("and moves in on nobody now"), First->EchoMovesInOn.Get());
+	TestEqual(TEXT("both still stand"), Mode->EchoesStandingNow().Num(), 2);
+	TestEqual(TEXT("one of the two is spent"), Mode->EchoesSpentThisFloor(), 1);
+
+	// AND GOES A SECOND AFTER THAT, HAVING STRUCK ONLY ONCE.
+	Beat(Mode, BeatsFor(Effects::EchoesVanishAfterSeconds) - 1);
+	TestTrue(TEXT("no second strike"), HealthOf(Player.Character) >= AfterStrike - 0.01f);
+	TestEqual(TEXT("a beat before a second has passed it still stands"), Mode->EchoesStandingNow().Num(), 2);
+	Beat(Mode, 1);
+	TestEqual(TEXT("gone a second after striking, the second still standing"), Mode->EchoesStandingNow().Num(), 1);
+	TestTrue(TEXT("destroyed, not left in the world"), !IsValid(First) || First->IsActorBeingDestroyed());
+	TestTrue(TEXT("the panel says one stands"),
+			 Mode->LiveCountsForTheFloor().FindRef(EchoesRow).Contains(TEXT("1 echo(es) standing")));
+
+	// THE SECOND NOTICES THE PLAYER BUT NEVER COMES WITHIN ITS REACH -- no brain runs here -- AND GIVES UP.
+	StandThePlayerFrom(Player, Second, Second, Notice - 100.0f);
+	const float BeforeTheSecond = HealthOf(Player.Character);
+	Beat(Mode, 1);
+	TestTrue(TEXT("the second notices the player"), Second->EchoMovesInOn.Get() == Player.Character);
+	Beat(Mode, BeatsFor(Effects::EchoesGiveUpAfterSeconds) - 1);
+	TestEqual(TEXT("a beat before ten seconds it still stands"), Mode->EchoesStandingNow().Num(), 1);
+	Beat(Mode, 1);
+	TestEqual(TEXT("ten seconds after noticing, it is gone"), Mode->EchoesStandingNow().Num(), 0);
+	TestTrue(TEXT("without striking"), HealthOf(Player.Character) >= BeforeTheSecond - 0.01f);
+	TestEqual(TEXT("both are spent"), Mode->EchoesSpentThisFloor(), 2);
+	TestEqual(TEXT("and the floor's echoes are gone"), Mode->EchoesStageNow(), ACataclysmDungeonGameMode::EchoesGone);
+	TestTrue(TEXT("the panel says none stands"),
+			 Mode->LiveCountsForTheFloor().FindRef(EchoesRow).Contains(TEXT("0 echo(es) standing")));
+	return true;
+}
+
+// WHAT IS RECORDED: NOT A DEATH THAT PAYS NOTHING; EVERY OTHER DEATH, NO LIMIT; THE RECORD COVERS ONE FLOOR; A FLOOR
+// WITHOUT THE ROW BRINGS NONE; HORDE WAVES BRING THEM; LEAVING THE DUNGEON FORGETS THEM. Until issue #2740 only the last
+// six were kept.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoesRecordTest,
-	"Cataclysm.DungeonModifierEffects.EchoesOfThePastRecordsTheLastSixPaidDeathsOfOneFloor",
+	"Cataclysm.DungeonModifierEffects.EchoesOfThePastRecordsEveryPaidDeathOfOneFloor",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmEchoesRecordTest::RunTest(const FString& Parameters)
 {
 	using namespace CataclysmDungeonModifierEffectsTest;
-	using Effects = UCataclysmDungeonModifierEffects;
 
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a test world was created"), World))
@@ -28173,14 +28378,14 @@ bool FCataclysmEchoesRecordTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	Unpaid->bDiesUnpaid = true;
-	// AN ATTACK NO OTHER DEATH HERE RECORDS, so a record of this death would show in the last six
-	// below as well as in the count here.
+	// AN ATTACK NO OTHER DEATH HERE RECORDS, so a record of this death would show in the list below as well as in the
+	// count here.
 	Unpaid->LastAttackUsed = 3;
 	UCataclysmSkillEffects::ApplyHit(Player.Character, Unpaid, 100000.0f);
 	TestTrue(TEXT("it died"), UCataclysmSkillEffects::IsDead(Unpaid));
 	TestEqual(TEXT("and is not recorded"), Mode->EchoAttacksRecordedThisFloor().Num(), 2);
 
-	// ONLY THE LAST SIX. Five more, each recorded as having used ability 7, push the first out.
+	// EVERY ONE, NO LIMIT: five more, each recorded as having used ability 7, make seven, the first still kept.
 	for (int32 Which = 0; Which < 5; ++Which)
 	{
 		ACataclysmEnemyCharacter* More =
@@ -28192,8 +28397,9 @@ bool FCataclysmEchoesRecordTest::RunTest(const FString& Parameters)
 		More->LastAttackUsed = 7;
 		UCataclysmSkillEffects::ApplyHit(Player.Character, More, 100000.0f);
 	}
-	TestTrue(TEXT("the last six are kept, the first gone"), Mode->EchoAttacksRecordedThisFloor()
-			  == TArray<int32>{ACataclysmEnemyCharacter::NoAttackYet, 7, 7, 7, 7, 7});
+	TestTrue(TEXT("all seven are kept, in the order they died"), Mode->EchoAttacksRecordedThisFloor()
+			  == TArray<int32>{ACataclysmEnemyCharacter::OrdinaryAttackUsed, ACataclysmEnemyCharacter::NoAttackYet,
+							   7, 7, 7, 7, 7});
 
 	// A FLOOR WITHOUT THE ROW BRINGS NONE, AND THE RECORD STILL MOVES ON: floor 2's dead are not
 	// carried past floor 3.
@@ -28202,7 +28408,7 @@ bool FCataclysmEchoesRecordTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	Mode->ClearFloorEnemies();
-	Beat(Mode, BeatsFor(Effects::EchoesAppearAfterSeconds));
+	Beat(Mode, BeatsFor(5.0f));
 	TestEqual(TEXT("no echoes on a floor without the row"), Mode->EchoesStandingNow().Num(), 0);
 	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
 	Mode->DungeonModifiers = {EchoesRow};
@@ -28212,7 +28418,7 @@ bool FCataclysmEchoesRecordTest::RunTest(const FString& Parameters)
 	}
 	TestEqual(TEXT("floor 2's dead are not carried past floor 3"), Mode->EchoesComingThisFloor(), 0);
 
-	// HORDE WAVES TOO: one dies on this wave and comes back on the next.
+	// HORDE WAVES TOO: one dies on this wave and stands on the next as it begins.
 	Mode->ClearFloorEnemies();
 	ACataclysmEnemyCharacter* OnTheWave = PlaceCreatureAtRung(World, Mode, FVector(300.0f, 0.0f, 0.0f), 0);
 	if (!TestNotNull(TEXT("a creature on the wave"), OnTheWave))
@@ -28225,8 +28431,8 @@ bool FCataclysmEchoesRecordTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	Mode->ClearFloorEnemies();
-	Beat(Mode, BeatsFor(Effects::EchoesAppearAfterSeconds));
-	TestEqual(TEXT("its echo appears on the next Horde wave"), Mode->EchoesStandingNow().Num(), 1);
+	Beat(Mode, 1);
+	TestEqual(TEXT("its echo stands on the next Horde wave"), Mode->EchoesStandingNow().Num(), 1);
 
 	// LEAVING THE DUNGEON FORGETS EVERY DEATH IN IT.
 	ACataclysmEnemyCharacter* Last = PlaceCreatureAtRung(World, Mode, FVector(-300.0f, 0.0f, 0.0f), 0);
@@ -28242,8 +28448,8 @@ bool FCataclysmEchoesRecordTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-// AN ECHO REPEATS THE ABILITY ITS CREATURE LAST USED, BY INDEX: a Brute that last stomped comes back
-// and stomps, which stuns the player where its ordinary attack would not.
+// AN ECHO REPEATS THE ABILITY ITS CREATURE LAST USED, BY INDEX: a Brute that last stomped comes back and, within its reach
+// of the player, stomps, which stuns the player where its ordinary attack would not.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoesAbilityTest,
 	"Cataclysm.DungeonModifierEffects.AnEchoRepeatsTheAbilityItsCreatureLastUsed",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -28251,7 +28457,6 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoesAbilityTest,
 bool FCataclysmEchoesAbilityTest::RunTest(const FString& Parameters)
 {
 	using namespace CataclysmDungeonModifierEffectsTest;
-	using Effects = UCataclysmDungeonModifierEffects;
 
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a test world was created"), World))
@@ -28300,22 +28505,28 @@ bool FCataclysmEchoesAbilityTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	Mode->ClearFloorEnemies();
-	Beat(Mode, BeatsFor(Effects::EchoesAppearAfterSeconds));
+	Beat(Mode, 1);
 	const TArray<ACataclysmEnemyCharacter*> Echoes = Mode->EchoesStandingNow();
 	if (!TestEqual(TEXT("one echo"), Echoes.Num(), 1)
 		|| !TestTrue(TEXT("a Brute's"), Echoes[0]->IsA<ACataclysmBruteCharacter>()))
 	{
 		return false;
 	}
-	TestTrue(TEXT("inside its stomp's ring of the player"),
-			 FVector::Dist2D(Echoes[0]->GetActorLocation(), Player.Character->GetActorLocation())
-				 < ACataclysmBruteCharacter::StompRadiusCm);
 	TestTrue(TEXT("given a blow to strike with"), GiveCreatureAttackDamage(Echoes[0], 100.0f) > 0.0f);
 	TestFalse(TEXT("the player is not stunned before it strikes"),
 			  UCataclysmSkillEffects::IsStunned(Player.Character));
 
+	// WHERE ITS WALK WOULD BRING IT: within its reach of the player, which for a Common Brute is its 90 cm contact
+	// distance, and so inside its stomp's ring.
+	constexpr float WithinABrutesReachCm = 85.0f;
+	StandTheEchoBeside(Echoes[0], Player.Character, WithinABrutesReachCm);
+	TestTrue(TEXT("inside its stomp's ring of the player"),
+			 FVector::Dist2D(Echoes[0]->GetActorLocation(), Player.Character->GetActorLocation())
+				 < ACataclysmBruteCharacter::StompRadiusCm);
 	const float Before = HealthOf(Player.Character);
-	Beat(Mode, BeatsFor(Effects::EchoesStrikeAfterSeconds));
+	Beat(Mode, 1);
+	TestTrue(TEXT("it noticed the player and stood within its reach, so struck at once"),
+			 Mode->EchoesSpentThisFloor() == 1);
 	TestTrue(FString::Printf(TEXT("the echo's stomp struck the player (%.1f to %.1f)"), Before,
 							 HealthOf(Player.Character)),
 			 HealthOf(Player.Character) < Before);
@@ -28376,19 +28587,20 @@ namespace CataclysmDungeonModifierEffectsTest
 	}
 
 	/**
-	 * One scene in a world of its own, driven as `EchoesOfThePastBringsTheLastFloorsDeadBackToStrikeOnceAndVanish` drives
-	 * the rule. Two Common Imps die on floor 2, which carries no row, and come back as two echoes five seconds into floor
-	 * 3, which carries Echoes of the Past. The one called the held echo is given three times the other's attack damage,
-	 * so the player's loss says which struck. Each echo's blow is measured by hand first, with the player's evasion and
+	 * One scene in a world of its own, driven as `EachEchoNoticesMovesInStrikesOnceAndVanishesOnItsOwnClock` drives the
+	 * rule. Two Common Imps die on floor 2, which carries no row, and stand as two echoes on the first beat of floor 3,
+	 * which carries Echoes of the Past; both are then stood beside the player, within their reach, where their walk in
+	 * would bring them (issue #2740). The one called the held echo is given three times the other's attack damage, so
+	 * the player's loss says which struck. Each echo's blow is measured by hand first, with the player's evasion and
 	 * block taken away and the player put back to full health after each. Then `By` is put on the held echo, by the
-	 * player, and the rule's strike a second later is read as what it took off the player's health.
+	 * player, and the rule's strike on the next beat -- both notice the player and stand within their reach -- is read
+	 * as what it took off the player's health.
 	 *
 	 * COMMONS, AND NOT `TwoDieOnFloorTwo`'s COMMON AND MAGIC, so neither echo carries a rung's modifier rows, whose
 	 * effects could make a blow struck by hand differ from the same echo's blow a second later.
 	 */
 	FEchoHeldRead EchoesStrikeWithOneHeld(FAutomationTestBase& Test, const TCHAR* Who, EEchoHeldBy By)
 	{
-		using Effects = UCataclysmDungeonModifierEffects;
 		FEchoHeldRead Read;
 		const auto Named = [Who](const TCHAR* What) { return FString::Printf(TEXT("%s: %s"), Who, What); };
 
@@ -28432,7 +28644,7 @@ namespace CataclysmDungeonModifierEffectsTest
 			return Read;
 		}
 		Mode->ClearFloorEnemies();
-		Beat(Mode, BeatsFor(Effects::EchoesAppearAfterSeconds));
+		Beat(Mode, 1);
 		const TArray<ACataclysmEnemyCharacter*> Echoes = Mode->EchoesStandingNow();
 		if (!Test.TestEqual(*Named(TEXT("set-up: two echoes stand")), Echoes.Num(), 2))
 		{
@@ -28440,6 +28652,11 @@ namespace CataclysmDungeonModifierEffectsTest
 		}
 		ACataclysmEnemyCharacter* Held = Echoes[0];
 		ACataclysmEnemyCharacter* Free = Echoes[1];
+		// EACH WHERE ITS WALK IN WOULD BRING IT, a metre from the player on either side: within an Imp's 132 cm reach,
+		// so a blow struck by hand below lands, and within its strike, so the next beat strikes.
+		constexpr float WithinAnImpsReachCm = 100.0f;
+		StandTheEchoBeside(Held, Player.Character, WithinAnImpsReachCm, 0.0f);
+		StandTheEchoBeside(Free, Player.Character, WithinAnImpsReachCm, 180.0f);
 		if (!Test.TestTrue(*Named(TEXT("set-up: the held echo is given a blow")), GiveCreatureAttackDamage(Held, 300.0f) > 0.0f)
 			|| !Test.TestTrue(*Named(TEXT("set-up: the free echo is given a blow")),
 							  GiveCreatureAttackDamage(Free, 100.0f) > 0.0f))
@@ -28513,9 +28730,11 @@ namespace CataclysmDungeonModifierEffectsTest
 		}
 
 		const float Before = HealthOf(Player.Character);
-		Beat(Mode, BeatsFor(Effects::EchoesStrikeAfterSeconds));
+		Beat(Mode, 1);
 		if (!Test.TestEqual(*Named(TEXT("set-up: both echoes still stand when they have struck")),
 							Mode->EchoesStandingNow().Num(), 2)
+			|| !Test.TestEqual(*Named(TEXT("set-up: and both strikes are spent, made or refused")),
+							   Mode->EchoesSpentThisFloor(), 2)
 			|| !Test.TestTrue(*Named(TEXT("set-up: and what was put on the held echo is still on it")),
 							  EchoIsHeldBy(Held, By)))
 		{

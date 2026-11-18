@@ -892,6 +892,16 @@ void ACataclysmEnemyCharacter::StrikeAsARuleOrders(AActor* Target)
 	AttackTarget(Target);
 }
 
+bool ACataclysmEnemyCharacter::EchoStandsWithinItsStrike() const
+{
+	// ON THE FLOOR PLANE AND WITH THE BRAIN'S OWN TOLERANCE, as `ACataclysmEnemyController::IsInReach` measures, so a
+	// Brute's echo pressed against the player at its 90 cm contact reach is within it. Issue #2740.
+	const AActor* Target = EchoMovesInOn.Get();
+	return Target
+		&& FVector::Dist2D(GetActorLocation(), Target->GetActorLocation())
+			<= EchoMovesInToCm + ACataclysmEnemyController::ContactToleranceCm;
+}
+
 bool ACataclysmEnemyCharacter::LandPendingBasicAttack()
 {
 	if (!HasPendingBasicAttack())

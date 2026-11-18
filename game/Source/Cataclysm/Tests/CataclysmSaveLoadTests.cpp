@@ -4677,11 +4677,11 @@ namespace CataclysmSaveLoadTest
 	}
 
 	/**
-	 * ECHOES OF THE PAST BROUGHT TO A STAGE: two of floor 1's creatures killed by the player, floor 2 reached, and the
-	 * floor's beat run from the entrance for `Seconds`. Answers false when the set-up failed.
+	 * ECHOES OF THE PAST STANDING: two of floor 1's creatures killed by the player, floor 2 reached, the player stood at
+	 * its entrance and the floor's first beat run, so both echoes stand across the floor, fifteen metres or more from
+	 * the player and so beyond every creature's notice. Answers false when the set-up failed. Issue #2740.
 	 */
-	bool EchoesToSeconds(FAutomationTestBase& Test, ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player,
-						 float Seconds)
+	bool EchoesStanding(FAutomationTestBase& Test, ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player)
 	{
 		TArray<ACataclysmEnemyCharacter*> Victims;
 		for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode.FloorEnemies)
@@ -4703,11 +4703,27 @@ namespace CataclysmSaveLoadTest
 			return false;
 		}
 		StandAtTheEntrance(Mode, Player);
-		for (int32 Beat = 0; Beat < BeatsOver(Seconds); ++Beat)
+		BeatOnce(Mode);
+		return Test.TestEqual(TEXT("set-up: both echoes stand"), Mode.EchoesStandingNow().Num(), 2);
+	}
+
+	/**
+	 * The first `HowMany` echoes standing are stood half a metre from the player, within every creature's reach, where
+	 * their walk in would bring them -- no brain runs in a test -- and one beat run, so each of them notices the player
+	 * and strikes once. Answers how many of the floor's echoes are spent after it. Issue #2740.
+	 */
+	int32 BringTheEchoesIn(ACataclysmDungeonGameMode& Mode, const ACataclysmPlayerCharacter& Player, int32 HowMany)
+	{
+		const TArray<ACataclysmEnemyCharacter*> Echoes = Mode.EchoesStandingNow();
+		const FVector Feet = Player.GetActorLocation();
+		for (int32 Which = 0; Which < HowMany && Which < Echoes.Num(); ++Which)
 		{
-			BeatOnce(Mode);
+			const float Angle = PI * static_cast<float>(Which);
+			Echoes[Which]->SetActorLocation(FVector(Feet.X + 50.0f * FMath::Cos(Angle), Feet.Y + 50.0f * FMath::Sin(Angle),
+													Echoes[Which]->GetActorLocation().Z));
 		}
-		return true;
+		BeatOnce(Mode);
+		return Mode.EchoesSpentThisFloor();
 	}
 
 	/** The most echoes standing at once over `Seconds` of the floor's beat, and the stage reached. */
@@ -4767,9 +4783,10 @@ namespace CataclysmSaveLoadTest
 }
 
 /**
- * Echoes that struck before the save are not raised again by the load, so their strike is not taken twice. Until this
- * the load's floor change set their stage back to 0 and they rose 5 s after the load and struck again. Issue #753, Group
- * 3d-1, ruled 2026-10-30 (Q1). Prints "LOAD ECHOES STRUCK".
+ * Echoes that struck before the save are not raised again by the load, so their strike is not taken twice. Until issue
+ * #753 the load's floor change set their stage back and they rose and struck again. Group 3d-1, ruled 2026-10-30 (Q1);
+ * per echo since issue #2740 (R7), whose save leaves each spent echo out of the walk's list. Saved while both stand a
+ * beat after striking, before they vanish. Prints "LOAD ECHOES STRUCK".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadEchoesStruckTest,
 	"Cataclysm.SaveLoad.EchoesThatStruckBeforeASaveDoNotStrikeAgain",
@@ -4782,39 +4799,42 @@ bool FCataclysmSaveLoadEchoesStruckTest::RunTest(const FString&)
 
 	return WithTheSeedPutBack(*this, [this]()
 	{
-		int32 StageSaved = -1;
+		int32 StruckSaved = -1;
 		return ARoundTripOfRows(*this, {FName(Effects::EchoesOfThePastKey)},
-			[this, &StageSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&,
-								FPinnedDungeonSeed&)
+			[this, &StruckSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&,
+								 FPinnedDungeonSeed&)
 			{
-				if (!EchoesToSeconds(*this, Mode, Player, Effects::EchoesAppearAfterSeconds + Effects::EchoesStrikeAfterSeconds))
+				if (!EchoesStanding(*this, Mode, Player))
 				{
 					return false;
 				}
-				StageSaved = Mode.EchoesStageNow();
-				return TestEqual(TEXT("set-up: the echoes have struck and stand"), StageSaved, 2);
+				StruckSaved = BringTheEchoesIn(Mode, Player, 2);
+				return TestEqual(TEXT("set-up: both echoes have struck"), StruckSaved, 2)
+					&& TestEqual(TEXT("set-up: and both still stand"), Mode.EchoesStandingNow().Num(), 2);
 			},
-			[this, &StageSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&,
-								const FCataclysmLoadReport& Report)
+			[this, &StruckSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&,
+								 const FCataclysmLoadReport& Report)
 			{
 				StandAtTheEntrance(Mode, Player);
 				const int32 Coming = Mode.EchoesComingThisFloor();
 				const int32 Most = MostEchoesOver(Mode, 10.0f);
 				const int32 Stage = Mode.EchoesStageNow();
-				AddInfo(FString::Printf(TEXT("LOAD ECHOES STRUCK: %s (%s); saved at stage %d; after the load %d of the "
-											 "last floor's dead recorded, at most %d echo(es) standing over 10 s, stage %d"),
-										FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, StageSaved, Coming, Most,
+				AddInfo(FString::Printf(TEXT("LOAD ECHOES STRUCK: %s (%s); saved with %d of 2 struck; after the load %d of "
+											 "the last floor's dead to come, at most %d echo(es) standing over 10 s, "
+											 "stage %d"),
+										FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, StruckSaved, Coming, Most,
 										Stage));
-				TestEqual(TEXT("CONTROL: the last floor's dead are still recorded after the load"), Coming, 2);
+				TestEqual(TEXT("no echo that struck is left to come after the load"), Coming, 0);
 				TestEqual(TEXT("no echo is raised again after the load"), Most, 0);
-				TestEqual(TEXT("and the echoes stay gone"), Stage, 3);
+				TestEqual(TEXT("and the echoes are gone"), Stage, ACataclysmDungeonGameMode::EchoesGone);
 			});
 	});
 }
 
 /**
- * Echoes that had appeared and not yet struck at the save rise again after the load and strike: the pending strike is
- * kept, its clock restarted (D1). Issue #753, Group 3d-1, ruled 2026-10-30 (Q1). Prints "LOAD ECHOES PENDING".
+ * Echoes standing and not yet struck at the save rise again after the load, and each still strikes once it comes within
+ * its reach: the strike still owed is kept, its clock restarted (D1). Issue #753, Group 3d-1, ruled 2026-10-30 (Q1);
+ * per echo since issue #2740. Prints "LOAD ECHOES PENDING".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadEchoesPendingTest,
 	"Cataclysm.SaveLoad.EchoesThatHadNotStruckAtASaveStillStrike",
@@ -4827,29 +4847,67 @@ bool FCataclysmSaveLoadEchoesPendingTest::RunTest(const FString&)
 
 	return WithTheSeedPutBack(*this, [this]()
 	{
-		int32 StageSaved = -1;
 		return ARoundTripOfRows(*this, {FName(Effects::EchoesOfThePastKey)},
-			[this, &StageSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&,
-								FPinnedDungeonSeed&)
+			[this](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&, FPinnedDungeonSeed&)
 			{
-				if (!EchoesToSeconds(*this, Mode, Player, Effects::EchoesAppearAfterSeconds))
-				{
-					return false;
-				}
-				StageSaved = Mode.EchoesStageNow();
-				return TestEqual(TEXT("set-up: the echoes have appeared and not struck"), StageSaved, 1);
+				return EchoesStanding(*this, Mode, Player)
+					&& TestEqual(TEXT("set-up: none has struck"), Mode.EchoesSpentThisFloor(), 0);
 			},
-			[this, &StageSaved](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&,
-								const FCataclysmLoadReport& Report)
+			[this](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&,
+				   const FCataclysmLoadReport& Report)
 			{
 				StandAtTheEntrance(Mode, Player);
 				const int32 Most = MostEchoesOver(Mode, 10.0f);
+				const int32 Struck = BringTheEchoesIn(Mode, Player, 2);
+				MostEchoesOver(Mode, Effects::EchoesVanishAfterSeconds); // The second after the strike, in which they go.
 				const int32 Stage = Mode.EchoesStageNow();
-				AddInfo(FString::Printf(TEXT("LOAD ECHOES PENDING: %s (%s); saved at stage %d; after the load at most %d "
-											 "echo(es) standing over 10 s, stage %d"),
-										FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, StageSaved, Most, Stage));
+				AddInfo(FString::Printf(TEXT("LOAD ECHOES PENDING: %s (%s); saved with none struck; after the load at most "
+											 "%d echo(es) standing over 10 s, %d struck when brought in, stage %d"),
+										FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, Most, Struck, Stage));
 				TestEqual(TEXT("both echoes rise again after the load"), Most, 2);
-				TestEqual(TEXT("and strike and go"), Stage, 3);
+				TestEqual(TEXT("and each strikes when it comes within its reach"), Struck, 2);
+				TestEqual(TEXT("and they go a second later"), Stage, ACataclysmDungeonGameMode::EchoesGone);
+			});
+	});
+}
+
+/**
+ * One echo struck before the save and the other had not: after the load only the one still owed rises again, and it
+ * strikes once it comes within its reach. Each echo on its own clock, so the save keeps each apart. Issue #2740, R7.
+ * Prints "LOAD ECHOES ONE STRUCK".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadEchoesOneStruckTest,
+	"Cataclysm.SaveLoad.AnEchoThatStruckBeforeASaveStaysGoneAndOneThatHadNotRisesAgain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadEchoesOneStruckTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		return ARoundTripOfRows(*this, {FName(Effects::EchoesOfThePastKey)},
+			[this](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&, FPinnedDungeonSeed&)
+			{
+				return EchoesStanding(*this, Mode, Player)
+					&& TestEqual(TEXT("set-up: one echo has struck"), BringTheEchoesIn(Mode, Player, 1), 1)
+					&& TestEqual(TEXT("set-up: and both still stand"), Mode.EchoesStandingNow().Num(), 2);
+			},
+			[this](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&,
+				   const FCataclysmLoadReport& Report)
+			{
+				StandAtTheEntrance(Mode, Player);
+				const int32 Coming = Mode.EchoesComingThisFloor();
+				const int32 Most = MostEchoesOver(Mode, 10.0f);
+				const int32 Struck = BringTheEchoesIn(Mode, Player, 1);
+				AddInfo(FString::Printf(TEXT("LOAD ECHOES ONE STRUCK: %s (%s); saved with 1 of 2 struck; after the load %d "
+											 "of the last floor's dead to come, at most %d echo(es) standing over 10 s, "
+											 "%d struck when brought in"),
+										FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, Coming, Most, Struck));
+				TestEqual(TEXT("only the echo that had not struck is left to come"), Coming, 1);
+				TestEqual(TEXT("and only it rises again"), Most, 1);
+				TestEqual(TEXT("and it strikes when it comes within its reach"), Struck, 1);
 			});
 	});
 }

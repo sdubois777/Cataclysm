@@ -69,6 +69,7 @@
 #include "GameplayTagsManager.h"
 #include "Character/CataclysmCorruptedSentinelCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmEnemyController.h"
 #include "Character/CataclysmGatekeeperCharacter.h"
 #include "Character/CataclysmHellhoundCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
@@ -4000,12 +4001,23 @@ TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::EchoesStandingNow()
 	return Standing;
 }
 
+int32 ACataclysmDungeonGameMode::EchoesSpentThisFloor() const
+{
+	int32 Spent = 0;
+	for (const FEchoOfTheDead& Dead : EchoesFromLastFloor)
+	{
+		Spent += Dead.bSpent ? 1 : 0;
+	}
+	return Spent;
+}
+
 void ACataclysmDungeonGameMode::NoteDeathForEchoesOfThePast(const FCataclysmDeathNotice& Notice)
 {
 	// EVERY FLOOR, WHETHER OR NOT IT CARRIES THE ROW: the next floor decides. Not a death that
 	// pays nothing, which covers the risen and the rules' own unpaid creatures, and not an
 	// echo, which cannot be hurt and never dies. A creature the floor cannot name a kind for
-	// cannot be brought back and is not kept.
+	// cannot be brought back and is not kept. EVERY ONE IS KEPT, the owner's "All of last floor" of 2026-11-18
+	// (issue #2740); until then only the last six were.
 	const ACataclysmEnemyCharacter* Fallen = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
 	if (!Fallen || !Fallen->PaysForItsDeath() || Fallen->bCannotBeHurt)
 	{
@@ -4021,11 +4033,6 @@ void ACataclysmDungeonGameMode::NoteDeathForEchoesOfThePast(const FCataclysmDeat
 	Dead.Rung = Fallen->RarityStep;
 	Dead.Attack = Fallen->LastAttackUsed;
 	EchoesThisFloor.Add(Dead);
-	// THE LAST TO DIE ARE THE ONES KEPT.
-	while (EchoesThisFloor.Num() > UCataclysmDungeonModifierEffects::EchoesMost)
-	{
-		EchoesThisFloor.RemoveAt(0);
-	}
 }
 
 void ACataclysmDungeonGameMode::DismissTheEchoes()
@@ -4040,6 +4047,87 @@ void ACataclysmDungeonGameMode::DismissTheEchoes()
 	EchoesStanding.Reset();
 }
 
+void ACataclysmDungeonGameMode::RaiseTheEchoes(const ACataclysmPlayerCharacter* Player)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// WHERE THE FLOOR PUTS ITS OWN CREATURES, asked of the populator as Grave Tide asks it, so each echo stands where
+	// one of the floor's own creatures would and they are spread over the floor as the floor's own are. R1 of issue
+	// #2740. A floor whose populator places nothing -- `Cataclysm.DungeonEnemyScale 0` -- has no place for one.
+	const FCataclysmFloorPopulation Population = FloorPopulationNow();
+	TArray<FVector> Places;
+	Places.Reserve(Population.Enemies.Num());
+	for (const FCataclysmEnemyPlacement& Placement : Population.Enemies)
+	{
+		Places.Add(CurrentFloor->WorldOfCell(Placement.Cell));
+	}
+
+	// EVERY ONE OF THE LAST FLOOR'S DEAD NOT YET SPENT, in the order they died: the owner's "All of last floor".
+	TArray<int32> ToRaise;
+	for (int32 Which = 0; Which < EchoesFromLastFloor.Num(); ++Which)
+	{
+		if (!EchoesFromLastFloor[Which].bSpent)
+		{
+			ToRaise.Add(Which);
+		}
+	}
+
+	// NONE WITHIN `EchoesLeastFromArrivalCm` OF WHERE THE PLAYER STANDS AS THEY RISE: on the beat a floor begins that
+	// is where the player arrived; after a load, where the load put them; on a Horde wave, where they stand as the
+	// wave begins. On the floor's own stream, mixed with the floor number because a Horde arena's plan is the first
+	// wave's on every wave.
+	const int32 PlanSeed = CurrentFloor->GetPlan().Seed;
+	const TArray<int32> Chosen = Effects::EchoesPlaces(Places, Player->GetActorLocation(), ToRaise.Num(),
+		FCataclysmFloorGenerator::SeedForFloor(
+			FCataclysmFloorGenerator::SeedForFloor(PlanSeed, Effects::EchoesPlacesSalt), FloorNumber));
+	if (Chosen.Num() < ToRaise.Num())
+	{
+		// NO PLACE FAR ENOUGH: none rises, and none is left to come, so a save does not carry them to the next load.
+		UE_LOG(LogCataclysm, Log, TEXT("Echoes of the Past: floor %d has no place for its %d echo(es); none rises"),
+			   FloorNumber, ToRaise.Num());
+		for (const int32 Which : ToRaise)
+		{
+			EchoesFromLastFloor[Which].bSpent = true;
+		}
+		return;
+	}
+
+	for (int32 Index = 0; Index < ToRaise.Num(); ++Index)
+	{
+		const int32 Which = ToRaise[Index];
+		const FEchoOfTheDead& Dead = EchoesFromLastFloor[Which];
+		FCataclysmEnemyPlacement Placement;
+		Placement.Creature = Dead.Kind;
+		Placement.Cell = Population.Enemies[Chosen[Index]].Cell;
+		// A SIGHT MULTIPLIER OF ONE, so it notices from its own kind's distance and not the floor's widened one. R3.
+		ACataclysmEnemyCharacter* Echo = SpawnPlacedCreature(Placement, 1.0f, Dead.Rung);
+		if (!Echo)
+		{
+			// IT CANNOT STAND ON THIS FLOOR, so it is not left to come.
+			EchoesFromLastFloor[Which].bSpent = true;
+			continue;
+		}
+
+		// IT KEEPS ITS BRAIN, which stands it still until it has noticed the player and then walks it in; see
+		// `ACataclysmEnemyCharacter::bIsAnEchoOfThePast`. Until #2740 the brain was destroyed as the echo appeared,
+		// because an echo then never moved.
+		Echo->bIsAnEchoOfThePast = true;
+		// NOT ON THE FLOOR'S LIST OF CREATURES: a rule that chose from that list -- Blood Bond's one bond, say -- must
+		// not spend itself on a creature that cannot be hurt and is gone once it has struck.
+		Echo->bCannotBeHurt = true;
+		Echo->bDiesUnpaid = true;
+		Echo->bRaisedByARule = true;
+		CreaturesRaisedByARule.Add(Echo);
+		FEchoStanding Standing;
+		Standing.Echo = Echo;
+		Standing.Which = Which;
+		Standing.Attack = Dead.Attack;
+		EchoesStanding.Add(Standing);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Echoes of the Past: %d echo(es) stand across floor %d"), EchoesStanding.Num(),
+		   FloorNumber);
+}
+
 void ACataclysmDungeonGameMode::StepEchoesOfThePast(ACataclysmPlayerCharacter* Player)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -4048,118 +4136,123 @@ void ACataclysmDungeonGameMode::StepEchoesOfThePast(ACataclysmPlayerCharacter* P
 	{
 		return;
 	}
-	EchoesSecondsOnFloor += BeatSeconds;
-	const FVector Centre = Player->GetActorLocation();
 
-	if (EchoesStage == 0)
+	// AS THE FLOOR BEGINS, ON ITS FIRST BEAT: the last floor's dead stand across it and wait. R2 of issue #2740.
+	if (EchoesStage == EchoesWaiting)
 	{
-		if (EchoesSecondsOnFloor < Effects::EchoesAppearAfterSeconds)
-		{
-			return;
-		}
-		// THE LAST FLOOR'S DEAD APPEAR, each at its own ordinary attack reach from the player,
-		// at even angles. SpawnPlacedCreature puts it on the right cell at the right height;
-		// it is then moved to the exact spot and turned to face the player.
-		const int32 Count = EchoesFromLastFloor.Num();
-		for (int32 Which = 0; Which < Count; ++Which)
-		{
-			const FEchoOfTheDead& Dead = EchoesFromLastFloor[Which];
-			FCataclysmEnemyPlacement Placement;
-			Placement.Creature = Dead.Kind;
-			Placement.Cell = CurrentFloor->CellOfWorld(Centre);
-			ACataclysmEnemyCharacter* Echo = SpawnPlacedCreature(Placement, 1.0f, Dead.Rung);
-			if (!Echo)
-			{
-				continue;
-			}
-
-			// ITS BRAIN GOES AT ONCE: with no controller nothing moves it, chooses for it or
-			// attacks with it. Unpossessing clears the controller's thinking timer.
-			if (AController* Brain = Echo->GetController())
-			{
-				Brain->UnPossess();
-				Brain->Destroy();
-			}
-
-			const FVector Offset = Effects::EchoesOffset(
-				Which, Count, Effects::EchoesDistanceCm(Echo->AttackReachCm()));
-			const FVector Where(Centre.X + Offset.X, Centre.Y + Offset.Y, Echo->GetActorLocation().Z);
-			Echo->SetActorLocation(Where);
-			FVector Toward = Centre - Where;
-			Toward.Z = 0.0f;
-			if (!Toward.IsNearlyZero())
-			{
-				Echo->SetActorRotation(Toward.Rotation());
-			}
-
-			// NOT ON THE FLOOR'S LIST OF CREATURES: an echo is gone two seconds later, and a rule
-			// that chose from that list -- Blood Bond's one bond, say -- must not spend itself on one.
-			Echo->bCannotBeHurt = true;
-			Echo->bDiesUnpaid = true;
-			Echo->bRaisedByARule = true;
-			CreaturesRaisedByARule.Add(Echo);
-			FEchoStanding Standing;
-			Standing.Echo = Echo;
-			Standing.Attack = Dead.Attack;
-			EchoesStanding.Add(Standing);
-		}
-		EchoesStage = 1;
-		UE_LOG(LogCataclysm, Log, TEXT("Echoes of the Past: %d echo(es) appeared on floor %d"),
-			   EchoesStanding.Num(), FloorNumber);
+		RaiseTheEchoes(Player);
+		EchoesStage = EchoesStanding.IsEmpty() ? EchoesGone : EchoesStand;
 		RefreshFloorModifierPanel();
 		return;
 	}
 
-	if (EchoesStage == 1)
+	// EACH ECHO ON ITS OWN CLOCK, AND NOTHING MAKES THEM STRIKE TOGETHER. R4. An echo that goes is marked spent, so a
+	// save leaves it out and a load neither raises it again nor lets it strike twice (R7).
+	const auto Spend = [this](int32 Which)
 	{
-		if (EchoesSecondsOnFloor
-			< Effects::EchoesAppearAfterSeconds + Effects::EchoesStrikeAfterSeconds)
+		if (EchoesFromLastFloor.IsValidIndex(Which))
 		{
-			return;
+			EchoesFromLastFloor[Which].bSpent = true;
 		}
-		// EACH STRIKES ONCE: its recorded ability if it has that ability, else its ordinary
-		// attack, which is also what a creature that never attacked repeats.
-		for (const FEchoStanding& One : EchoesStanding)
+	};
+	const FVector Feet = Player->GetActorLocation();
+	for (FEchoStanding& One : EchoesStanding)
+	{
+		ACataclysmEnemyCharacter* Echo = One.Echo.Get();
+		if (!Echo || Echo->IsActorBeingDestroyed())
 		{
-			ACataclysmEnemyCharacter* Echo = One.Echo.Get();
-			if (!Echo)
+			// DESTROYED BY SOMETHING ELSE: gone, and so spent.
+			Spend(One.Which);
+			One.Echo = nullptr;
+			continue;
+		}
+
+		// STRUCK: IT VANISHES `EchoesVanishAfterSeconds` LATER.
+		if (One.SecondsSinceStruck >= 0.0f)
+		{
+			One.SecondsSinceStruck += BeatSeconds;
+			if (One.SecondsSinceStruck >= Effects::EchoesVanishAfterSeconds)
+			{
+				Echo->Destroy();
+				One.Echo = nullptr;
+			}
+			continue;
+		}
+
+		// WAITING: IT NOTICES THE PLAYER AT ITS OWN KIND'S NOTICE DISTANCE, along the floor (R3), and from then on
+		// moves in to its reach of them, held to `EchoesMostAwayCm` (R4). The reach is `ReachAgainstCm`, the brain's
+		// own, so a rarer and so bigger echo, or a Brute's whose reach is its contact distance, can still come within it.
+		if (One.SecondsSinceNoticed < 0.0f)
+		{
+			if (FVector::Dist2D(Echo->GetActorLocation(), Feet) > Echo->NoticeRadiusCm)
 			{
 				continue;
 			}
-			// A STUNNED, KNOCKED-DOWN OR FEARED ECHO DOES NOT STRIKE, ruled 2026-10-27 (#2558): it refuses what the brain's
-			// `Think` refuses, `CannotAct` and then the flee step, in that order. SKIPPED, NOT HELD: its strike is spent,
-			// and stage 1 still ends below.
-			const AActor* Striker = Echo;
-			FVector FleeSource;
-			if (UCataclysmSkillEffects::CannotAct(Striker) || UCataclysmFear::FleeSourceOf(Striker, FleeSource))
-			{
-				continue;
-			}
-			// A SILENCED ECHO USES NO ABILITY BUT ITS BASIC ATTACK, the owner's O1 of 2026-10-17, as `ChooseAbility` refuses one.
-			if (One.Attack >= 0 && Echo->EnemyAbilities().IsValidIndex(One.Attack)
-				&& !(UCataclysmSilence::IsSilenced(Echo) && !Echo->EnemyAbilities()[One.Attack].bIsBasicAttack))
-			{
-				Echo->UseEnemyAbility(One.Attack, Player, Player->GetActorLocation());
-			}
-			else
-			{
-				// AS A RULE'S STRIKE, which waits for its swing like any other and is not measured against reach
-				// when it lands: the echo stands at its reach from where the player was a second ago. Issue #783.
-				Echo->StrikeAsARuleOrders(Player);
-			}
+			One.SecondsSinceNoticed = 0.0f;
+			Echo->EchoMovesInOn = Player;
+			Echo->EchoMovesInToCm = Effects::EchoesDistanceCm(ACataclysmEnemyController::ReachAgainstCm(Echo, Player));
 		}
-		EchoesStage = 2;
-		return;
+		else
+		{
+			One.SecondsSinceNoticed += BeatSeconds;
+		}
+
+		// GIVEN UP: `EchoesGiveUpAfterSeconds` AFTER NOTICING, NOT HAVING STRUCK, IT VANISHES WITHOUT STRIKING. R4.
+		if (One.SecondsSinceNoticed >= Effects::EchoesGiveUpAfterSeconds)
+		{
+			Spend(One.Which);
+			Echo->Destroy();
+			One.Echo = nullptr;
+			continue;
+		}
+
+		// STILL MOVING IN.
+		if (!Echo->EchoStandsWithinItsStrike())
+		{
+			continue;
+		}
+
+		// WITHIN ITS REACH: ITS ONE STRIKE IS SPENT NOW, WHETHER OR NOT IT IS MADE, and it stands still until it goes.
+		Spend(One.Which);
+		One.SecondsSinceStruck = 0.0f;
+		Echo->EchoMovesInOn = nullptr;
+
+		// A STUNNED, KNOCKED-DOWN OR FEARED ECHO DOES NOT STRIKE, ruled 2026-10-27 (#2558): it refuses what the brain's
+		// `Think` refuses, `CannotAct` and then the flee step, in that order. SKIPPED, NOT HELD: its strike is spent
+		// above, and it vanishes as one that struck does.
+		const AActor* Striker = Echo;
+		FVector FleeSource;
+		if (UCataclysmSkillEffects::CannotAct(Striker) || UCataclysmFear::FleeSourceOf(Striker, FleeSource))
+		{
+			continue;
+		}
+		// EACH STRIKES ONCE: its recorded ability if it has that ability, else its ordinary attack, which is also what
+		// a creature that never attacked repeats. A SILENCED ECHO USES NO ABILITY BUT ITS BASIC ATTACK, the owner's O1
+		// of 2026-10-17, as `ChooseAbility` refuses one.
+		if (One.Attack >= 0 && Echo->EnemyAbilities().IsValidIndex(One.Attack)
+			&& !(UCataclysmSilence::IsSilenced(Echo) && !Echo->EnemyAbilities()[One.Attack].bIsBasicAttack))
+		{
+			Echo->UseEnemyAbility(One.Attack, Player, Player->GetActorLocation());
+		}
+		else
+		{
+			// AS A RULE'S STRIKE, which waits for its swing like any other and is not measured against reach when it
+			// lands. Issue #783. Kept so by #2740, whose ruling did not ask for it to change; see that entry.
+			Echo->StrikeAsARuleOrders(Player);
+		}
 	}
 
-	if (EchoesSecondsOnFloor < Effects::EchoesAppearAfterSeconds + Effects::EchoesStrikeAfterSeconds
-			+ Effects::EchoesVanishAfterSeconds)
+	// THE GONE ARE FORGOTTEN; NONE LEFT IS THE FLOOR'S ECHOES GONE.
+	const int32 Before = EchoesStanding.Num();
+	EchoesStanding.RemoveAll([](const FEchoStanding& One) { return !One.Echo.IsValid(); });
+	if (EchoesStanding.Num() != Before)
 	{
-		return;
+		if (EchoesStanding.IsEmpty())
+		{
+			EchoesStage = EchoesGone;
+		}
+		RefreshFloorModifierPanel();
 	}
-	DismissTheEchoes();
-	EchoesStage = 3;
-	RefreshFloorModifierPanel();
 }
 
 TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::PlagueHarbingersAlive() const
@@ -15725,6 +15818,14 @@ FCataclysmSavedWalk ACataclysmDungeonGameMode::WalkStateNow() const
 		TArray<FCataclysmSavedEcho> Out;
 		for (const FEchoOfTheDead& Echo : Echoes)
 		{
+			// A SPENT ECHO IS LEFT OUT -- struck, vanished or destroyed on this floor -- so a load neither raises it again
+			// nor lets it strike a second time; the dead still to come are what the list holds. Issue #2740, R7. No saved
+			// field is added: a save from before #2740 holds either none struck or, with `bEchoesStruck`, all struck,
+			// and both read the same way here. Only the last floor's list can hold a spent one.
+			if (Echo.bSpent)
+			{
+				continue;
+			}
 			FCataclysmSavedEcho One;
 			One.Kind = FName(CataclysmDungeonCreatureName(Echo.Kind));
 			One.Rung = Echo.Rung;
@@ -16332,8 +16433,9 @@ FCataclysmSavedFloorRuleState ACataclysmDungeonGameMode::FloorRuleStateNow() con
 	// VOID PARASITE: the voidlings attached. 3c-2.
 	Out.VoidParasiteStacks = VoidParasiteStacks;
 
-	// ECHOES OF THE PAST: STRUCK, at stage 2 (struck) or 3 (gone). Not the stage before it, nor the clock (D1). 3d-1.
-	Out.bEchoesStruck = EchoesStage >= 2;
+	// ECHOES OF THE PAST: STRUCK, which since issue #2740 is every echo of the floor gone (`EchoesGone`); each one spent
+	// before that is left out of the walk's list instead (`WalkStateNow`). Not the clocks (D1). 3d-1.
+	Out.bEchoesStruck = EchoesStage == EchoesGone;
 
 	// THE PLAGUEBEARER: its stacks, chosen and fallen. Not the seconds since the last stack (D1). 3d-1.
 	Out.PlaguebearerStacks = PlaguebearerStacks;
@@ -16615,14 +16717,19 @@ void ACataclysmDungeonGameMode::RestoreFloorRuleState(const FCataclysmSavedFloor
 	// beat writes the loss once. The voidlings standing at the save are records, put back since 3d-3b. Issue #753, 3c-2.
 	VoidParasiteStacks = State.VoidParasiteStacks;
 
-	// ECHOES OF THE PAST, STRUCK BEFORE THE SAVE: gone, and none raised again, so the strike is not taken twice (Q1).
-	// The load's floor change set the stage to 0 waiting; a stage before the strike stays so, and the echoes rise again
-	// and strike, the pending strike kept. Echoes standing after their strike are not brought back (QC of 3d-3): they
-	// cannot be hurt and are dismissed a second after striking. Issue #753, Group 3d-1.
+	// ECHOES OF THE PAST, ALL GONE BEFORE THE SAVE: none raised again, so no strike is taken twice (Q1). The load's
+	// floor change set the stage to waiting, and otherwise the echoes still to come -- the walk's list, from which a
+	// save leaves out every spent one -- rise again on the first beat and wait, their clocks restarted (D1). Echoes
+	// standing after their strike are not brought back (QC of 3d-3). Issue #753, Group 3d-1; per echo since #2740 (R7).
+	// A save from before #2740 says struck only when every echo had struck, and is read the same way.
 	if (State.bEchoesStruck)
 	{
 		DismissTheEchoes();
-		EchoesStage = 3; // A load's: struck, nothing raised again.
+		for (FEchoOfTheDead& Dead : EchoesFromLastFloor)
+		{
+			Dead.bSpent = true;
+		}
+		EchoesStage = EchoesGone; // A load's: every echo gone, nothing raised again.
 	}
 
 	// THE PLAGUEBEARER: chosen, fallen and its stacks, the bearer having been given back from its record. A bearer that
@@ -17621,7 +17728,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// Issues #1820 and #41.
 	const bool bEchoes = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::EchoesOfThePastKey))
-		&& EchoesStage < 3;
+		&& EchoesStage != EchoesGone;
 	// AND PLAGUE HARBINGERS, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820
 	// and #41.
 	const bool bPlagueHarbingers = FloorBrief.Modifiers.Contains(
@@ -22057,13 +22164,14 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 			PlagueHarbingersAlive().Num(), PlagueHarbingerTrailPatches()));
 	}
 
-	// AND ECHOES OF THE PAST: how many of the last floor's dead come back. Issues #1820 and #41.
+	// AND ECHOES OF THE PAST: how many of the last floor's dead come back, and then how many stand. Issues #1820 and
+	// #41; since #2740 they stand from the floor's first beat, so the first line is seen only before it.
 	const FName Echoes(Effects::EchoesOfThePastKey);
 	if (FloorBrief.Modifiers.Contains(Echoes))
 	{
-		Counting.Add(Echoes, EchoesStage == 0
-			? FString::Printf(TEXT("echoes of the past: %d of the last floor's dead come %.0f seconds in"),
-							  EchoesFromLastFloor.Num(), Effects::EchoesAppearAfterSeconds)
+		Counting.Add(Echoes, EchoesStage == EchoesWaiting
+			? FString::Printf(TEXT("echoes of the past: %d of the last floor's dead come back as the floor begins"),
+							  EchoesFromLastFloor.Num() - EchoesSpentThisFloor())
 			: FString::Printf(TEXT("echoes of the past: %d echo(es) standing"),
 							  EchoesStandingNow().Num()));
 	}
@@ -24663,12 +24771,12 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		DivineWrathBeam.Reset();
 		DivineWrathDestroyed = 0;
 
-		// AND ECHOES OF THE PAST STARTS ITS CLOCK AGAIN, and any echo still standing goes: the
+		// AND ECHOES OF THE PAST WAITS AGAIN, and any echo still standing goes: the
 		// records themselves are handed over where a floor begins, in `GoToFloor`, which runs
-		// once a floor where this runs twice for the first. Issues #1820 and #41.
+		// once a floor where this runs twice for the first. Issues #1820 and #41. Each echo's own clock
+		// went with it (#2740).
 		DismissTheEchoes();
-		EchoesSecondsOnFloor = 0.0f;
-		EchoesStage = 0;
+		EchoesStage = EchoesWaiting;
 
 		// AND DIRGE RESONANCE STARTS ITS NINETY SECONDS AGAIN: the first crescendo on a
 		// floor comes ninety seconds into it. Issues #1820 and #41. A haste already
