@@ -21,9 +21,11 @@ and `CataclysmWinningTheRunTests.cpp`, and comments on two in `CataclysmEmpireRu
 
 ### SAID FIRST
 
-- **THE FIRST WINDOW RUN STOPPED AT ITS FIRST GROUP, ON TWO CAUSES** ("Window first-surge-w1, the first run",
-  below): 25 of the worktree's Git LFS files were pointers, not assets, and a save fault older than this slice. No
-  Unreal test has passed yet and no C++ guard proof has run: everything under "Registered again" is a prediction.
+- **THE WINDOW PASSED ON ITS SECOND RUN** (`2c489f4e`): every group alone, the whole suite 4765 of 4765 with 47
+  skipped halves and 0 saves left behind, Python 7444 passed and 9 skipped, and all four C++ proofs PROVED, each
+  broken half failing exactly the registered assertions ("Window first-surge-w1, the second run", below).
+- **ITS FIRST RUN STOPPED AT ITS FIRST GROUP, ON TWO CAUSES** ("Window first-surge-w1, the first run", below): 25 of
+  the worktree's Git LFS files were pointers, not assets, and a save fault older than this slice.
 - **A SAVE FAULT OLDER THAN THIS SLICE IS FIXED HERE**, by the coordinating session's ruling: a new character's run
   record was written with no empire in it, because its weapon swap wrote the run record before the run began and the
   creation's own write, in the same frame, was skipped. This slice's day-0 load test found it.
@@ -90,8 +92,9 @@ issue is filed for the simulation; do not change the simulation in this work."
 
 ### Not changed, and why
 
-- **The simulation**, by the ruling. The issue the ruling asks for is to be filed by the coordinating session or by this
-  session when slice 1 lands (asked).
+- **The simulation**, by the ruling. The issue the ruling asks for was filed by this session after the window passed,
+  as the coordinating session ruled: [#2734](https://github.com/sdubois777/Cataclysm/issues/2734), citing the
+  window's measured "OPENING SURGE" line and every figure that moves.
 - **The older entries of this log that say the opening wave lands on day 1**: the 2026-11-03 Walk button and boss's last
   floor entries, and the 2026-11-02 death-cost and status-bar entries. Each is a dated record of what was true then, and
   is left as it is.
@@ -338,6 +341,76 @@ groups alone are registered as in the table above. The proofs are C1 to C3 as ab
 C1's prediction stands with the save fix in: with no opening surge, `ANewCharactersRun...` still fails, among other
 assertions on "with its opening wave of twelve standing" (only "holding the twelve, by number" changes, and passes,
 because its record and its run then agree on no dungeons), and the other two fail as before.
+
+### Window first-surge-w1, the second run, 2026-11-17: the results
+
+At `2c489f4e`, after the pre-checks (all pass, "7. Git LFS files: exit 0, 126 listed, 0 still pointers"). The
+runner's lines, every one as printed:
+
+```
+Git LFS: exit 0, 126 files, 0 pointers
+lock acquire: exit 0 first-surge-w1 holds the Unreal editor.
+build: Build: Succeeded - target already up to date, 0 actions, nothing compiled | exit 0
+alone Cataclysm.FirstSurge.: Tests: 3 tests performed, 3 succeeded, 0 failed | exit 0
+alone Cataclysm.EmpireRun.: Tests: 69 tests performed, 69 succeeded, 0 failed | exit 0
+alone Cataclysm.EmpireScreen.: Tests: 14 tests performed, 14 succeeded, 0 failed | exit 0
+alone Cataclysm.DeathCost.: Tests: 9 tests performed, 9 succeeded, 0 failed | exit 0
+alone Cataclysm.WinningTheRun.: Tests: 11 tests performed, 11 succeeded, 0 failed | exit 0
+alone Cataclysm.SaveLoad.: Tests: 76 tests performed, 76 succeeded, 0 failed | exit 0
+alone Cataclysm.SaveWriter.: Tests: 25 tests performed, 25 succeeded, 0 failed | exit 0
+alone Cataclysm.EmpireRunTier.: Tests: 5 tests performed, 5 succeeded, 0 failed | exit 0
+alone Cataclysm.CataclysmDraw.: Tests: 6 tests performed, 6 succeeded, 0 failed | exit 0
+alone Cataclysm.EmpirePoints.: Tests: 16 tests performed, 16 succeeded, 0 failed | exit 0
+alone Cataclysm.BossOnTheMap.: Tests: 5 tests performed, 5 succeeded, 0 failed | exit 0
+suite: Tests: 4765 tests performed, 4765 succeeded, 0 failed. 47 skipped part of what they check: ...
+suite: Test saves: 758 written and deleted, 0 left behind
+suite: Declared: 4765 tests in the tree at 2c489f4e0; 4765 performed, gap 0; every declared test was reported by the run. Issue #1707.
+python: 7444 passed, 9 skipped in 188.42s (0:03:08)
+python exit 0 | junit <testsuite name="pytest" errors="0" failures="0" skipped="9" tests="7453" ...>
+ruff exit 0: All checks passed!
+proofs: C1 PROVED, C2 PROVED, C3 PROVED, C4 PROVED
+lock release: exit 0 first-surge-w1 released the Unreal editor.
+```
+
+**Every figure matches its registration:** the eleven groups alone; the whole suite, 4765 of 4765, 47 skipped halves,
+0 test saves left behind, "Declared: 4765 ... gap 0"; Python 7444 passed and 9 skipped, its JUnit file 7453 tests, 0
+failures, 0 errors, 9 skipped. The engine's memory line: "tests=5372 peak_used_virtual_mb=9070
+final_used_virtual_mb=8832".
+
+**What the new tests printed** (the engine log `b2733_suite_engine_2c489f4e.log`):
+
+- "OPENING SURGE: day 0, surged yes, 12 dungeons, 12 standing, the clock on day 0, 1 fired, the next due on day 90.0;
+  the day-1 run: surged yes, 12 dungeons, the next due on day 91.0"
+- DOORS: the console's run, an empty instance's run and a character's run at tier 3 each "day 0, 12 standing"; at tier 3
+  every dungeon carries 3 modifiers and the Sacrificial one 6; "Heretic 15 standing; asked again: surged no, 12
+  standing"
+- "NEW CHARACTER OPENING: outcome 5; the run on day 0 at tier 1, 12 standing, 1 fired [...]; the record read: day 0, 12
+  dungeons, 1 fired, next due 90.0"
+- "LOADED OPENING: outcome 2; saved 12 dungeons; loaded on day 0 with 12 standing, 1 fired, next dungeon number 12, next
+  surge due 90.0; asked for the opening surge: surged no, 12 standing; day 1 surged no"
+
+**The proofs, each broken half's failed assertions against its registration** (counted in `b2733_<P>_run1.log` by both
+of the engine's forms, "Expected '...'" and "...: The two values are not equal."):
+
+| Proof | Broken half | Failed assertions | Registered | Restored half |
+|---|---|---|---|---|
+| C1 | 3 performed, 0 succeeded, 3 failed | `ANewCharactersRun...` 4: "with its opening wave of twelve standing", "from one surge", "and one surge fired", "with the next due on day 90"; `ARunSavedOnDayZero...` 1: "set-up: with twelve standing on day 0"; `EveryDoor...` 4: "with its opening wave of twelve standing", "with twelve standing", "a Heretic run opens with fifteen standing", "asking the run again fires nothing" | all three tests (no assertion count registered); "holding the twelve, by number" passes, as registered | 3 of 3 |
+| C2 | 69 performed, 68 succeeded, 1 failed | `TheOpeningSurgeFiresOnDayZero...` 2: "nor does one whose clock is past day 0 with none fired", "which stands nothing" | the same 2 | 69 of 69 |
+| C3 | 9 performed, 8 succeeded, 1 failed | `TheLineSaysTheDay...` 1: "a death on day 0" | the same 1 | 9 of 9 |
+| C4 | 3 performed, 1 succeeded, 2 failed | `ANewCharactersRun...` 3: "and one surge fired", "with the next due on day 90", and "holding the twelve, by number: The two values are not equal."; `ARunSavedOnDayZero...` 1: "set-up: with a run" | the same 3 and 1 | 3 of 3 |
+
+In C1, "asking the run again fires nothing" fails because with the door's call taken out, the test's own second call is
+the first, and it fires; the check that it fires only once is C2's. **A first count of C4 found only 2 of its 3**: it
+searched for "Expected '" alone, and the engine's `TestEqual` on an array logs the other form.
+
+### Not tested
+
+- **The travel and the capital level** are slices 2 to 4. Nothing here opens a level; the owner's one press comes in
+  slice 4.
+- **A death on day 0 in play.** The line is tested with a death noted on day 0; no test walks a dungeon on day 0 and
+  dies in it.
+- **The simulation's day 1** is left as it is, by the ruling; issue
+  [#2734](https://github.com/sdubois777/Cataclysm/issues/2734) carries it.
 
 ---
 
