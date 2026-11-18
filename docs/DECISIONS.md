@@ -806,6 +806,15 @@ check that HEAD holds the four input assets of `e06b5f16`, then:
 the chance that none of the nine draws a Cow Level is 0.93 to the ninth power, about 0.52, so the window is about as
 likely as not to see the doubled rate asserted. The "TRAVEL ARRIVE" lines will say which it saw.
 
+**Measured at this registration.** The changed test file compiled alone, uncommitted, with no error and no warning
+("6 actions, 3 files compiled: CataclysmSaveLoadTests.cpp, Module.Cataclysm.41.cpp, Module.Cataclysm.42.cpp"), and in
+its unity group, committed as `5eb999f6f` with the makefile set aside ("5 actions, 2 files compiled:
+Module.Cataclysm.41.cpp, Module.Cataclysm.42.cpp"). C2 and C9 each find their break text once (`prove_b2733s3.py
+--anchors-only`). Python: "7471 passed, 9 skipped", its JUnit file 7480 tests, 0 failures, 0 errors, 9 skipped; `ruff check .` passing.
+
+**The third run's C2 and C9 logs are kept** as `b2733s3_C2_run1_travelw1_run3.log` and its three like it, because
+this window's proofs write the same names.
+
 ---
 
 ## 2026-11-17 — Play opens the front end, and Start and Continue open the capital, a new level that opens the empire map on arrival (#2733, slice 2)
