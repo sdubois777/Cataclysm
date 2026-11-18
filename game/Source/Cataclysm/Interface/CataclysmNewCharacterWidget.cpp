@@ -12,6 +12,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Player/CataclysmFrontEndGameMode.h"
 #include "Player/CataclysmGameInstance.h"
+#include "Player/CataclysmPlayLoopLog.h"
 
 bool UCataclysmNewCharacterWidget::NameIsAllowed(const FString& Typed, FString& OutName, FString& OutWhy)
 {
@@ -122,6 +123,8 @@ bool UCataclysmNewCharacterWidget::ConfirmInto(UCataclysmGameInstance* Instance)
 	// THE CAPITAL, THE EMPIRE MAP'S HOME, where the new character's run stands its opening wave. The sandbox until issue
 	// #2733 slice 2, ruled by the project owner on 2026-11-17: "Character select's Start and Continue go there."
 	Requested = UCataclysmCharacterSelectWidget::CapitalMap;
+	// THE PLAY LOOP: the character begun, and where it goes. Issue #2733 slice 4.
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::NewCharacterLine(Clean, Creation.WeaponType, Creation.DamageType));
 	// NOT IN AN AUTOMATION TEST, which cannot travel; it reads `LevelRequested`.
 	if (!GIsAutomationTesting)
 	{

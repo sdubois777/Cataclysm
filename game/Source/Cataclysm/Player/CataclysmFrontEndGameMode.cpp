@@ -6,6 +6,9 @@
 #include "Interface/CataclysmCharacterSelectWidget.h"
 #include "Interface/CataclysmNewCharacterWidget.h"
 #include "Player/CataclysmPlayerController.h"
+#include "Player/CataclysmPlayLoopLog.h"
+#include "Save/CataclysmSaveLoad.h"
+#include "Save/CataclysmSaveWriter.h"
 
 ACataclysmFrontEndGameMode::ACataclysmFrontEndGameMode()
 {
@@ -21,6 +24,10 @@ void ACataclysmFrontEndPlayerController::BeginPlay()
 		return;
 	}
 	ShowTheSelectScreen();
+
+	// THE PLAY LOOP'S FIRST LINE: the front end, and how many characters it lists. Issue #2733 slice 4.
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::FrontEndLine(
+		FCataclysmSaveLoad::SavedCharacters(UCataclysmSaveWriter::UserIndex).Num()));
 }
 
 UCataclysmCharacterSelectWidget* ACataclysmFrontEndPlayerController::SelectScreen() const

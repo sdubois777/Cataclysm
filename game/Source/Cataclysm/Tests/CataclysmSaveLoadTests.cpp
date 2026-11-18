@@ -54,6 +54,7 @@
 #include "Interface/CataclysmEmpireMapLayout.h"
 #include "Interface/CataclysmWalkFromTheScreen.h"
 #include "Player/CataclysmGameInstance.h"
+#include "Player/CataclysmPlayLoopLog.h"
 #include "Player/CataclysmCapitalGameMode.h"
 #include "Player/CataclysmGameMode.h"
 #include "Player/CataclysmPlayerState.h"
@@ -9887,9 +9888,14 @@ namespace CataclysmTravelTest
 		FString DeathLine;
 		FString ClearLine;
 		FString ReturnLine;
+		// THE PLAY LOOP'S ACCOUNT OF THE DAYS AWAY, as the arrival left it on the game instance: empty once the capital
+		// has said it. Issue #2733 slice 4.
+		FString AwayLeft = TEXT("(not read)");
 	};
 
-	bool ArriveInTheCapital(FAutomationTestBase& Test, const FGuid& Carried, FArrived& Out)
+	/** @param AwayCarried the play loop's account of the days away the game instance carries, given to this world's. */
+	bool ArriveInTheCapital(FAutomationTestBase& Test, const FGuid& Carried, FArrived& Out,
+							const FString& AwayCarried = FString())
 	{
 		FLoadScene Scene = MakeScene();
 		if (!Test.TestTrue(TEXT("set-up: the arriving capital's world was built"), Scene.IsUsable()))
@@ -9908,9 +9914,11 @@ namespace CataclysmTravelTest
 		}
 
 		Scene.Instance->PendingCharacterId = Carried;
+		Scene.Instance->PlayLoopAwayAccount = AwayCarried;
 		Out.bMapBeforeTheLoad = Mode->OpenTheEmpireMapIfReady();
 		Out.Outcome = Mode->LoadThePendingCharacter();
 		Out.bMapOpened = Mode->OpenTheEmpireMapIfReady();
+		Out.AwayLeft = Scene.Instance->PlayLoopAwayAccount;
 		Out.Json = CharacterJsonOf(*Scene.Character);
 		Out.Potions = PotionsOf(*Scene.Character);
 		Out.Health = HealthOf(*Scene.Character);
@@ -10668,6 +10676,203 @@ bool FCataclysmTravelCommittedFileTest::RunTest(const FString&)
 	TestTrue(TEXT("cities 17 and 23 fell"), Away.Fallen == TArray<int32>({17, 23}));
 	TestEqual(TEXT("one surge"), Away.Surges, 1);
 	TestEqual(TEXT("bringing six dungeons"), Away.SurgeDungeons, 6);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The play loop's log, issue #2733 slice 4
+// ---------------------------------------------------------------------------
+
+namespace CataclysmPlayLoopTest
+{
+	/** The PLAY LOOP lines said while it lives, in order, without their prefix. */
+	struct FPlayLoopLines : public FOutputDevice
+	{
+		TArray<FString> Lines;
+
+		FPlayLoopLines()
+		{
+			if (GLog)
+			{
+				GLog->AddOutputDevice(this);
+			}
+		}
+
+		virtual ~FPlayLoopLines() override
+		{
+			if (GLog)
+			{
+				GLog->RemoveOutputDevice(this);
+			}
+		}
+
+		virtual void Serialize(const TCHAR* Text, ELogVerbosity::Type Verbosity, const FName& Category) override
+		{
+			const FString Line(Text);
+			if (Category == FName(TEXT("LogCataclysm")) && Line.StartsWith(FCataclysmPlayLoopLog::Prefix))
+			{
+				Lines.Add(Line.RightChop(FCString::Strlen(FCataclysmPlayLoopLog::Prefix)));
+			}
+		}
+
+		const TArray<FString>& Said()
+		{
+			if (GLog)
+			{
+				GLog->Flush();
+			}
+			return Lines;
+		}
+	};
+
+	/** Line `Index` of what was said, or a sentence saying there was none, so a short log fails on its words. */
+	FString LineAt(const TArray<FString>& Said, int32 Index)
+	{
+		return Said.IsValidIndex(Index) ? Said[Index] : FString::Printf(TEXT("(no line %d)"), Index);
+	}
+}
+
+/**
+ * A walk to its last floor says each step in order -- the dungeon entered, the floor reached, the clear -- and the
+ * capital, on arrival, says the walk's days away in its line, from the account the dungeon level left on the game
+ * instance, and empties it; then one line for each dungeon standing. Prints "PLAY LOOP WALK".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlayLoopWalkTest,
+	"Cataclysm.PlayLoop.AWalkToItsLastFloorIsLoggedStepByStepAndTheCapitalSaysTheDaysAway",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlayLoopWalkTest::RunTest(const FString&)
+{
+	using namespace CataclysmTravelTest;
+	using namespace CataclysmPlayLoopTest;
+
+	FPlayLoopLines Lines;
+	FWalking Walking;
+	ON_SCOPE_EXIT
+	{
+		if (Walking.Scene.Base.World)
+		{
+			Walking.Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false);
+		}
+		Delete(Walking.RunSlot());
+		Delete(Walking.CharacterSlot());
+	};
+	if (!BeginWalking(*this, Walking, /*bTheCataclysmsOwn=*/false))
+	{
+		return false;
+	}
+	ACataclysmDungeonGameMode* Mode = Walking.Scene.Mode;
+	const int32 Floors = Mode->EmpireDungeonFloors();
+	const int32 OwedOnEntering = Walking.Run->DaysOwed();
+	if (!TestTrue(TEXT("set-up: the walk reached the floor before the last"), Mode->GoToFloor(Floors - 1)))
+	{
+		return false;
+	}
+	const bool bDown = Mode->GoDownOneFloor();
+	const int32 OwedOnTheLast = Walking.Run->DaysOwed();
+	const int32 DayTheWalkLeft = Walking.Run->Day();
+	Mode->GoDownOneFloor();
+	const double Awarded = Walking.Run->LastEmpirePointsAwarded;
+	const FString Away = Walking.Scene.Base.Instance->PlayLoopAwayAccount;
+	const FGuid Carried = Walking.Scene.Base.Instance->PendingCharacterId;
+	FArrived Arrived;
+	const bool bArrived = ArriveInTheCapital(*this, Carried, Arrived, Away);
+	const TArray<FString> Said = Lines.Said();
+
+	AddInfo(FString::Printf(TEXT("PLAY LOOP WALK: %d lines: %s"), Said.Num(), *FString::Join(Said, TEXT(" | "))));
+
+	const FString ClearOpening = FString::Printf(TEXT("cleared dungeon %d on day %d: +%s empire points; level "),
+												 Walking.DungeonId, DayTheWalkLeft + OwedOnTheLast,
+												 *UCataclysmEmpireMapLayout::EmpirePointsText(Awarded));
+	const FString AwayOpening = FString::Printf(TEXT("while away, days %d to %d: "), DayTheWalkLeft,
+												DayTheWalkLeft + OwedOnTheLast);
+	TestTrue(TEXT("set-up: the last floor was reached by the stairs"), bDown);
+	TestTrue(TEXT("set-up: the capital loaded the character"), bArrived && Arrived.bMapOpened);
+	TestEqual(TEXT("first, the dungeon entered and what entering cost"), LineAt(Said, 0),
+			  FCataclysmPlayLoopLog::EnteredLine(Walking.DungeonId, Floors, OwedOnEntering));
+	TestEqual(TEXT("then the floor the stairs reached and what the walk owes by then"), LineAt(Said, 1),
+			  FCataclysmPlayLoopLog::FloorLine(Walking.DungeonId, Floors, Floors, OwedOnTheLast));
+	TestTrue(TEXT("then the clear: its day and its award"), LineAt(Said, 2).StartsWith(ClearOpening));
+	TestTrue(TEXT("and back to the capital"), LineAt(Said, 2).EndsWith(TEXT(": back to the capital")));
+	TestTrue(TEXT("the dungeon level left an account of the walk's days away"), Away.StartsWith(AwayOpening));
+	TestTrue(TEXT("then the capital, on arrival"), LineAt(Said, 3).StartsWith(TEXT("in the capital on day ")));
+	TestTrue(TEXT("saying the days away in its line"), !Away.IsEmpty() && LineAt(Said, 3).EndsWith(TEXT("; ") + Away));
+	TestEqual(TEXT("and saying them once: the game instance holds them no longer"), Arrived.AwayLeft, FString());
+	int32 NotStanding = 0;
+	for (int32 Index = 4; Index < Said.Num(); ++Index)
+	{
+		NotStanding += Said[Index].StartsWith(TEXT("standing: dungeon ")) ? 0 : 1;
+	}
+	TestEqual(TEXT("then only the dungeons standing, one line each"), NotStanding, 0);
+	return true;
+}
+
+/**
+ * A death that ends a walk says the floor it fell on and the days it cost, and leaves an account of the days away that
+ * names the dungeon its resolve took off the map, by the name it had before, and the city that resolve hit. Prints
+ * "PLAY LOOP DEATH".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlayLoopDeathTest,
+	"Cataclysm.PlayLoop.ADeathThatEndsAWalkIsLoggedAndItsResolveIsInTheDaysAway",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlayLoopDeathTest::RunTest(const FString&)
+{
+	using namespace CataclysmTravelTest;
+	using namespace CataclysmPlayLoopTest;
+
+	FPlayLoopLines Lines;
+	FWalking Walking;
+	ON_SCOPE_EXIT
+	{
+		if (Walking.Scene.Base.World)
+		{
+			Walking.Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false);
+		}
+		Delete(Walking.RunSlot());
+		Delete(Walking.CharacterSlot());
+	};
+	if (!BeginWalking(*this, Walking, /*bTheCataclysmsOwn=*/false))
+	{
+		return false;
+	}
+	ACataclysmDungeonGameMode* Mode = Walking.Scene.Mode;
+	ACataclysmPlayerCharacter* Character = Walking.Scene.Base.Character;
+	if (!TestTrue(TEXT("set-up: the walk went down a floor"), Mode->GoDownOneFloor()))
+	{
+		return false;
+	}
+	const int32 Floors = Mode->EmpireDungeonFloors();
+	const int32 DayTheWalkLeft = Walking.Run->Day();
+	const int32 Owed = Walking.Run->DaysOwed();
+	const int32 Cost = Walking.Run->DeathDayCost();
+	const FString NameBefore = Walking.Run->NameOfDungeon(Walking.DungeonId);
+	const FCataclysmDungeon* Walked = Walking.Run->FindDungeon(Walking.DungeonId);
+	const FCataclysmCity* HitCity = Walked ? Walking.Run->Map->Find(Walked->CityId) : nullptr;
+	const FString HitCityName = HitCity ? HitCity->Name : FString(TEXT("NO CITY"));
+	UCataclysmSkillEffects::ReduceHealthDirectly(Character, Character, 1000000.0f);
+	if (!TestTrue(TEXT("set-up: the character died"), UCataclysmSkillEffects::IsDead(Character)))
+	{
+		return false;
+	}
+	Character->Revive();
+	const FString Away = Walking.Scene.Base.Instance->PlayLoopAwayAccount;
+	const TArray<FString> Said = Lines.Said();
+	const FString EnteredOpening = FString::Printf(TEXT("entered dungeon %d, "), Walking.DungeonId);
+
+	AddInfo(FString::Printf(TEXT("PLAY LOOP DEATH: %d lines: %s; the days away: %s"), Said.Num(),
+							*FString::Join(Said, TEXT(" | ")), *Away));
+
+	TestTrue(TEXT("first, the dungeon entered"), LineAt(Said, 0).StartsWith(EnteredOpening));
+	TestEqual(TEXT("then floor 2"), LineAt(Said, 1), FCataclysmPlayLoopLog::FloorLine(Walking.DungeonId, 2, Floors, Owed));
+	TestEqual(TEXT("then the death, on floor 2, and what it cost"), LineAt(Said, 2),
+			  FCataclysmPlayLoopLog::DeathLine(Walking.DungeonId, 2, Floors, Cost));
+	TestTrue(TEXT("the account covers the walk's days and the death's"),
+			 Away.StartsWith(FString::Printf(TEXT("while away, days %d to %d: "), DayTheWalkLeft,
+											 DayTheWalkLeft + Owed + Cost)));
+	TestTrue(TEXT("naming the dungeon its resolve took off the map, by the name it had"),
+			 Away.Contains(FString::Printf(TEXT("dungeons resolved: %d (%s)"), Walking.DungeonId, *NameBefore)));
+	TestTrue(TEXT("and the city that resolve hit"), Away.Contains(HitCityName + TEXT(" lost ")));
 	return true;
 }
 

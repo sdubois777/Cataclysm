@@ -114,6 +114,14 @@ public:
 	 */
 	int32 PendingWalkDungeonId = INDEX_NONE;
 
+	/**
+	 * THE PLAY LOOP LOG'S ACCOUNT OF A WALK'S DAYS AWAY, carried from the dungeon level to the capital, which says it in
+	 * its arrival line and empties it (`FCataclysmPlayLoopLog::AwayAccount`). Built where the days' own reports still
+	 * exist: the run record keeps only their summary, and a dungeon the days resolved is no longer on the run. NOT SAVED:
+	 * a log line, lost with the session, like the game instance. Empty when no walk has just ended. Issue #2733 slice 4.
+	 */
+	FString PlayLoopAwayAccount;
+
 	/** The new character the new-character screen made, made by the level's start and cleared first. Step 4a. */
 	FCataclysmPendingCreation PendingCreation;
 

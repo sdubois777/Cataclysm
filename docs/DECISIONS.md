@@ -2,6 +2,287 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-18 — One press of Play: each step of the main loop writes a PLAY LOOP line, and a checklist says what to click and what each step shows (#2733, slice 4)
+
+**Affects:** `FCataclysmPlayLoopLog`, new (`game/Source/Cataclysm/Player/CataclysmPlayLoopLog.h`, `.cpp`), which builds
+each line and says it; `UCataclysmGameInstance::PlayLoopAwayAccount`, new (`CataclysmGameInstance.h`); the nine places
+that say a line: `ACataclysmFrontEndPlayerController::BeginPlay` (`CataclysmFrontEndGameMode.cpp`),
+`UCataclysmNewCharacterWidget::ConfirmInto` (`CataclysmNewCharacterWidget.cpp`),
+`UCataclysmCharacterSelectWidget::ContinueAt` (`CataclysmCharacterSelectWidget.cpp`),
+`ACataclysmCapitalGameMode::OpenTheEmpireMapIfReady` and `TravelToWalk` (`CataclysmCapitalGameMode.cpp`), and
+`ACataclysmDungeonGameMode::EnterEmpireDungeon`, `GoDownOneFloor`, `ClearEmpireDungeon` and `EndTheDungeonForADeath`
+(`CataclysmDungeonGameMode.cpp`); `docs/Play_Loop_Checklist.md`, new; `game/README.md`. Tests:
+`game/Source/Cataclysm/Tests/CataclysmPlayLoopTests.cpp`, new, two tests added to `CataclysmSaveLoadTests.cpp`, and
+`tools/tests/test_the_play_loop_is_logged_at_each_step.py`, new. Issue
+[#2733](https://github.com/sdubois777/Cataclysm/issues/2733), slice 4 of 4.
+
+### SAID FIRST
+
+- **THE LINES CHANGE NOTHING THE GAME DOES.** Each place that says one passes figures the game already holds; the one
+  new piece of state is a string the game instance carries from a walk's end to the capital, and nothing reads it but
+  the capital's line. Nothing is saved.
+- **NO SCREEN SHOWS A DUNGEON'S KIND OR ITS MODIFIERS BEFORE IT IS WALKED.** The city screen shows each dungeon's
+  sub-type, floors and days until it bites; the map's hover line its floors and days left. The capital's `standing:`
+  lines in the log carry the kind and the modifiers, and the checklist says so. No widget was built, as ruled.
+- **THERE IS NO SAFE CONSOLE SHORTCUT** to a walk's last floor or to a death: `Cataclysm.DungeonFloor` only chooses the
+  floor a dungeon level builds when it starts, and no command kills the character. The checklist says to walk and
+  fight, and to choose a dungeon with few floors.
+
+### The rulings, quoted
+
+The issue, slice 4: "Add plain log lines at each step of the loop, for example "PLAY LOOP: walked dungeon 12 (Quest, 7
+floors, 3 modifiers)". The owner can then press Play once and the log shows every step." And: "Write a short checklist
+in the final decisions entry: what the owner should click, and what each step should show."
+
+The coordinating session, 2026-11-18, on this slice's plan: "Put the checklist as a plain markdown file the owner can
+read, inside the repository: `docs/Play_Loop_Checklist.md` or similar, linked from game/README.md. Also put it in the
+decisions entry." Approved, "including the whole suite in the window", with two additions: "Before the first walk:
+open another city's dungeon on the city screen and note its timer, type, sub-type, modifiers and floor count. After
+returning: that dungeon's timer is lower by the days away, or the dungeon has resolved, and its city shows the damage,
+matching the "While you were away" line. Say where on screen each of these appears today. If the city screen does not
+show the timer, modifiers or sub-type, say so plainly in the checklist, and tell me. Do not build a new widget in this
+slice." And: "also include, in the PLAY LOOP line on arrival, the dungeons that resolved and the days away. Do not just
+repeat the map: the log is how the owner checks the map against what happened." And: "only use [a console shortcut]
+that is safe mid-walk [...]. If none is, the checklist says to walk and fight."
+
+### What was verified by reading, before anything changed
+
+- **Every step has one place to say it** (table below), and each was read whole.
+- **What the screens show of a dungeon** (`UCataclysmCityScreenLayout::DungeonLinesFor`, `StatusTextFor`;
+  `UCataclysmEmpireMapWidget::HandleCityHovered`): the city screen, its sub-type when it has one, its floors and "N days
+  until it bites", and the city's tier, defence and people; the map's hover line, "dungeon of N floors, D days left".
+  Neither shows the kind (`UCataclysmSurgeScheduler::KindName`) or the modifiers.
+- **Which dungeons the days away resolved is not saved.** `FCataclysmDaysAway`, which the run record keeps since
+  version 6, holds each city's losses, the cities fallen and the surges; the days' own reports (`FCataclysmDayReport::
+  Resolved`) hold the dungeons resolved, and exist only in the dungeon level at the walk's end. A resolved dungeon is no
+  longer on the run, so it can be named only by a list read before the days run.
+- **The console:** `Cataclysm.DungeonFloor` is a console variable read when a dungeon level builds its first floor; no
+  command reduces the character's health.
+
+### What changes
+
+| Step | Where | The line, by example |
+| :-- | :-- | :-- |
+| The front end | `ACataclysmFrontEndPlayerController::BeginPlay` | the front end is open: 1 saved character to continue, or New character to make one |
+| Begin | `UCataclysmNewCharacterWidget::ConfirmInto` | new character 'Ash' (Greatsword, War) begun: opening the capital |
+| A saved character | `UCataclysmCharacterSelectWidget::ContinueAt` | continuing 'Ash': opening the capital |
+| The capital | `ACataclysmCapitalGameMode::OpenTheEmpireMapIfReady` | in the capital on day 12, tier 1: 9 dungeons standing, 0 cities fallen; level 4, 310 experience into it; while away, days 0 to 12: dungeons resolved: 5 (the dungeon on Outpost (-2,-1)); cities hit: ...; cities fallen: none; 1 surge brought 8 dungeons |
+| | and one per dungeon | standing: dungeon 3, the Horde dungeon on Outpost (-3,0): 12 floors, 9 days until it bites, modifiers Brand of the Aggressor, Hard Mode |
+| Walk | `ACataclysmCapitalGameMode::TravelToWalk`, after the hand-over | Walk pressed: dungeon 3, the Horde dungeon on ...; travelling to the dungeon level |
+| Entering | `ACataclysmDungeonGameMode::EnterEmpireDungeon` | entered dungeon 3, floor 1 of 12; the walk owes 1 day |
+| Each floor | `GoDownOneFloor`, in a walk | dungeon 3: down to floor 2 of 12; the walk owes 2 days |
+| The clear | `ClearEmpireDungeon` | cleared dungeon 3 on day 12: +1.0 empire points; level 4: back to the capital |
+| A death | `EndTheDungeonForADeath` | died in dungeon 7 on floor 3 of 8: the death cost 5 days: back to the capital |
+
+**The days away**: at a clear and at a death, the dungeon level reads the names of the dungeons standing before the
+days run (`FCataclysmPlayLoopLog::NamesStanding`), builds its account from the days' own reports once they have run
+(`AwayAccount`: the days, each dungeon resolved by name, each city hit with its losses added up, each city fallen, the
+surges), and leaves it on the game instance; the capital says it in its arrival line, once, and empties it.
+
+### Judgements of mine
+
+1. **The account is carried on the game instance, not saved.** Saving it would mean run record version 7 for a log
+   line; the game instance already carries the character and the walk through `OpenLevel`. A session that quits
+   between a walk's end and the capital loses one log line.
+2. **The account comes from the days' reports, not from the summary the map reads**, so it is a second account to
+   check the map against, which is what the ruling asks the log for.
+3. **The `standing:` lines name a dungeon as the map's own lines do** (`UCataclysmEmpireRun::NameOfDungeon`: "the Horde
+   Quest dungeon on Outpost (-3,0)"), with the city screen's words for floors and days.
+4. **Entering is said in `EnterEmpireDungeon`**, so an arrival from the capital and `Cataclysm.EnterDungeon` both say
+   it. **A dark floor is not said**: Those in the Dark's fall and the dark floor's stairs change floor without
+   `GoDownOneFloor`.
+5. **Display, not Log**, so the lines reach the Output Log at the editor's default verbosity.
+
+### Tests
+
+New, `Cataclysm.PlayLoop.`:
+
+- `TheFrontEndStartAndContinueLinesSayWhatWasChosen`, `TheWalksLinesSayItsFloorsItsDaysAndItsEnd`,
+  `TheCapitalLineSaysTheBoardTheCharacterAndTheDaysAway`: each line's words from given figures.
+- `EachDungeonStandingIsListedByItsNameFloorsTimerAndModifiers`: a run's opening wave, one line each, with two
+  modifiers set by hand on one dungeon and none on another.
+- `TheDaysAwayNameWhatResolvedWhatEachCityLostWhatFellAndTheSurges`: a run advanced to its soonest timer; every dungeon
+  the reports resolved, by the name it had before, and every city's losses, worked out from the reports in the test.
+- `AWalkToItsLastFloorIsLoggedStepByStepAndTheCapitalSaysTheDaysAway` (in `CataclysmSaveLoadTests.cpp`): the lines a
+  walk to its last floor says, captured from the log, in order, and the capital's arrival line carrying the account
+  and emptying it.
+- `ADeathThatEndsAWalkIsLoggedAndItsResolveIsInTheDaysAway` (also there): the death's line, and an account naming the
+  dungeon its resolve took off the map.
+
+Python, `test_the_play_loop_is_logged_at_each_step.py`: each of the nine places says its line after the step it
+reports; the names are read before the days run; the capital empties the account after saying it; every line the
+checklist quotes matches a builder's format and every builder is quoted; `game/README.md` links the checklist.
+
+### Not tested, and not built
+
+- **No automation test reaches the front end's start, Begin, Continue or the capital's Walk press** in a real level;
+  the Python check reads that they say their lines. The owner's press is their test.
+- **A dark floor's change of floor is not said** (judgement 4).
+- **The checklist's on-screen descriptions were read in the code, not seen**: the owner's press is what sees them.
+
+### The checklist, for the owner's press
+
+The full text, with the line to look for at each step, is `docs/Play_Loop_Checklist.md`. In short:
+
+1. **Play.** The character select screen; the front end's line.
+2. **New character, fill it in, Begin.** The new character's line.
+3. **The capital, with the map** ("Day 0", 12 dungeons). The capital's line and one `standing:` line per dungeon. M
+   closes and opens the map.
+4. **Note a second dungeon**, on another city: its city screen line (sub-type, floors, days until it bites) and its
+   city's defence and people; its `standing:` line for its kind and modifiers.
+5. **Walk a dungeon** from its city screen. The Walk line, and the entering line.
+6. **Walk on any dungeon mid-walk is refused**, on the city screen: "You are walking dungeon N. There is no leaving a
+   dungeon early: clear its last floor, or die in it."
+7. **Each floor's stairs.** One line per floor.
+8. **The last floor's stairs.** The clear's line; back in the capital, whose line says the days away.
+9. **The noted dungeon**: its timer lower by the days away, or among "dungeons resolved", its city's losses matching
+   "cities hit".
+10. **A second walk, ended by a death.** The death's line; the capital's line with the death's days.
+11. **Stop, Play, Continue.** The front end's line, the Continue line, and the capital.
+
+### Phase 2: compiled, reviewed and proved in Python
+
+**Compiled twice, with no error and no warning:** the changed files alone, uncommitted ("29 actions, 26 files
+compiled", the new files and those including the changed game instance header); and committed as `17924eaa9`, the
+makefile set aside ("12 actions, 9 files compiled: Module.Cataclysm.11.cpp, Module.Cataclysm.12.cpp,
+Module.Cataclysm.28.cpp, Module.Cataclysm.13.cpp, Module.Cataclysm.37.cpp, Module.Cataclysm.38.cpp,
+Module.Cataclysm.39.cpp, Module.Cataclysm.40.cpp, Module.Cataclysm.41.cpp"), which hold, read from each unity file:
+`CataclysmCharacterSelectWidget.cpp` and `CataclysmNewCharacterWidget.cpp` (11), `CataclysmCapitalGameMode.cpp` and
+`CataclysmFrontEndGameMode.cpp` (12), `CataclysmPlayLoopLog.cpp` (13), `CataclysmPlayLoopTests.cpp` (28),
+`CataclysmDungeonGameMode.cpp` (37) and `CataclysmSaveLoadTests.cpp` (41).
+
+**Reviewed, by reading the diff:** each line is said after the step it reports, with figures that step has set; every
+pointer a call site reads is checked or was checked before it (`Players[0]` after the capital's own non-empty check,
+the run in `EnterEmpireDungeon` before it binds); the two new `World` variables in `ClearEmpireDungeon` sit in sibling
+blocks and hide nothing; the account is built after the days have run and the names before. **No fixed number was
+added**: every figure in a line is the game's own.
+
+**Five Python proofs, all PROVED**, with `tools/prove_guard.py` on
+`tools/tests/test_the_play_loop_is_logged_at_each_step.py` (15 tests):
+
+| Proof | Break | Named failures, broken half | Restored |
+| :-- | :-- | :-- | :-- |
+| S1 | the capital's Walk says nothing | `test_each_step_of_the_loop_says_its_line[WalkLine]` | 15 passed |
+| S2 | the checklist quotes "made" for "begun" | `test_the_checklist_quotes_only_lines_the_game_says`, `test_the_checklist_quotes_every_line_the_game_says` | 15 passed |
+| S3 | the capital never empties the carried account | `test_the_capital_lists_the_dungeons_standing_and_says_the_days_away_once` | 15 passed |
+| S4 | `game/README.md` names the checklist without linking it | `test_the_games_readme_links_the_checklist` | 15 passed |
+| S5 | the clear names the dungeons standing from no run | `test_the_dungeons_are_named_before_the_days_run_and_the_account_is_left_for_the_capital[clear]` | 15 passed |
+
+**Python: "7488 passed, 9 skipped"**, its JUnit file 7497 tests, 0 failures, 0 errors, 9 skipped. `ruff check .` then found one error, in the new check: an
+f-string with no placeholder (F541), its `f` removed; the check's file again "15 passed", and `ruff check .` passing.
+
+### Registered before window play-loop-w1
+
+`.claude/windows/run_b2733s4.py`, lock `play-loop-w1`: the pre-checks, the lock, one build, the check that HEAD holds
+the four input assets of `e06b5f16`, then each group alone, the whole suite, Python, and three proofs.
+
+**The base.** Window travel-w1's third run, at `9951dbb7`, performed the whole suite, 4784, with 47 skipped halves and
+0 test saves left behind; between it and this branch's base, `development` `e8b310ffb`, the only change under
+`game/Source` is the arrival test's assertion, and both register the same 4702 test names. Per-group counts are that
+run's engine log's "Test Completed" lines by prefix, ignoring case.
+
+**The whole suite: 4784 + 7 = 4791 performed, 4791 succeeded, 0 failed; 47 skipped halves; 0 test saves left behind;
+"Declared: 4791".** The seven are `Cataclysm.PlayLoop.`'s, by name: five in `CataclysmPlayLoopTests.cpp` and two in
+`CataclysmSaveLoadTests.cpp`; 4709 names at this head.
+
+**Each group alone**, each prefix ending in a dot:
+
+| Prefix | Base | Registered | Why it runs alone |
+| :-- | --: | --: | :-- |
+| `Cataclysm.PlayLoop.` | 0 | 7 | new |
+| `Cataclysm.Travel.` | 9 | 9 | the arrival helper gains an optional input and output |
+| `Cataclysm.SaveLoad.` | 76 | 76 | its file changed; entering and a death say a line |
+| `Cataclysm.Capital.` | 7 | 7 | the capital says its line and the standing lines |
+| `Cataclysm.CharacterSelect.` | 10 | 10 | Continue says its line |
+| `Cataclysm.Creation.` | 14 | 14 | Begin says its line |
+| `Cataclysm.WalkFromTheScreen.` | 5 | 5 | a Walk press enters a dungeon, which says its line |
+| `Cataclysm.EmpirePoints.` | 16 | 16 | a clear says its line and builds the days away |
+| `Cataclysm.WinningTheRun.` | 11 | 11 | a won run's clear says its line before the next run begins |
+| `Cataclysm.DeathCost.` | 9 | 9 | a death that ends a walk says its line |
+
+**Three C++ guard proofs,** with `prove_cpp_guard` and the engine log of each half kept (`.claude/windows/
+prove_b2733s4.py`), each on `Cataclysm.PlayLoop.`; each restored half must pass 7 of 7:
+
+| Proof | Break | Predicted broken half |
+| :-- | :-- | :-- |
+| C1 | the capital's line is given no days away: `FString()` for `Instance->PlayLoopAwayAccount` (`CataclysmCapitalGameMode.cpp`) | 7 performed, 6 succeeded, 1 failed: `AWalkToItsLastFloorIsLoggedStepByStepAndTheCapitalSaysTheDaysAway`, 1 assertion: "saying the days away in its line" |
+| C2 | a death names the dungeons standing from an empty list: `TMap<int32, FString>()` for `NamesStanding(Run)` (`CataclysmDungeonGameMode.cpp`) | 7, 6, 1 failed: `ADeathThatEndsAWalkIsLoggedAndItsResolveIsInTheDaysAway`, 1: "naming the dungeon its resolve took off the map, by the name it had" |
+| C3 | a floor's line says the walk owes nothing: `Walking ? 0 : 0` (`CataclysmDungeonGameMode.cpp`) | 7, 5, 2 failed: `AWalkToItsLastFloor...`, 1: "then the floor the stairs reached and what the walk owes by then"; `ADeathThatEndsAWalk...`, 1: "then floor 2" |
+
+Assertions are counted in each broken half's kept log in both of the engine's forms, "Expected '...'" and "...: The
+two values are not equal.".
+
+### Window play-loop-w1, the first run, 2026-11-18: stopped at the asset check, on a fault in my window runner
+
+At `e468bb95`, 03:19 local. The pre-checks all passed and the lock was taken. Then:
+
+```
+build: Build: Succeeded - 5 actions, 2 files compiled: Module.Cataclysm.12.cpp, Module.Cataclysm.37.cpp | exit 0
+STOPPED: HEAD does not hold the four input assets as e06b5f16 committed them, checked out
+lock release: exit 0 play-loop-w1 released the Unreal editor.
+```
+
+**No test ran.** The runner, copied from slice 3's, checks that HEAD holds the four input files the M key needs before
+it skips the asset step, and one of its conditions was that the commit that last changed each was `e06b5f16`. On this
+branch that commit is `e8b310ffb`, slice 3's squash merge into `development`. Every other condition passed for all
+four -- a Git LFS pointer in git, an Unreal package on disk, listed as checked out -- and each one's LFS object id at
+HEAD is the one `e06b5f16` committed: `IA_ToggleEmpireMap` f8d1f6d13f, `DA_InputConfig` 67723e969f,
+`IMC_KeyboardMovement` 3c67168935, `IMC_MouseMovement` 9ac3c7a145.
+
+**Why that build compiled two unity files, which is not a code change.** `Module.Cataclysm.12.cpp` holds
+`CataclysmCapitalGameMode.cpp` and `Module.Cataclysm.37.cpp` holds `CataclysmDungeonGameMode.cpp`. Python proofs S1, S3
+and S5 broke those two files and wrote their original bytes back, which changed their modification times and not their
+content, so the build compiled them again from the same text it had compiled in unity at `17924eaa9`.
+
+**Changed, as the coordinating session ruled on 2026-11-18** ("Compare the LFS object id at HEAD with e06b5f16's [...]
+That is the right test once a squash merge has replaced the commit, and the other three conditions stay"): the
+untracked runner's check compares each file's LFS object id at HEAD with the one in `e06b5f16`. Checked before the
+second run, both ways: at HEAD it answers true, all four ids equal; pointed at `1f16aafde`, before those files took
+their present form, it answers false, three ids different and one file missing.
+
+### Window play-loop-w1, the second run, 2026-11-18: passed, every proof PROVED as registered
+
+At `e468bb95`, from 03:20 to 03:49 local. The pre-checks all passed again; the build was up to date and compiled
+nothing; the asset check passed with all four object ids equal.
+
+**Each group alone, all at the registered counts, 0 failed:** `Cataclysm.PlayLoop.` 7, `Cataclysm.Travel.` 9,
+`Cataclysm.SaveLoad.` 76, `Cataclysm.Capital.` 7, `Cataclysm.CharacterSelect.` 10, `Cataclysm.Creation.` 14,
+`Cataclysm.WalkFromTheScreen.` 5, `Cataclysm.EmpirePoints.` 16, `Cataclysm.WinningTheRun.` 11, `Cataclysm.DeathCost.` 9.
+
+**The whole suite, as registered:**
+
+```
+suite: Tests: 4791 tests performed, 4791 succeeded, 0 failed. 47 skipped part of what they check: [...]
+suite: Test saves: 820 written and deleted, 0 left behind
+suite: Declared: 4791 tests in the tree at e468bb95e; 4791 performed, gap 0; every declared test was reported by the run. Issue #1707.
+suite: read performed=4791 succeeded=4791 failed=0, registered 4791: MATCH; skipped halves 47, registered 47
+```
+
+A second count, from the kept engine log (`b2733s4_suite_engine_e468bb95.log`): 4791 "Test Completed.
+Result={Success}" lines and none failed.
+
+**What the walk test logged**, from its own line in that log: "entered dungeon 12, floor 1 of 20; the walk owes 1 day
+| dungeon 12: down to floor 20 of 20; the walk owes 2 days | cleared dungeon 12 on day 3: +0.9 empire points; level 20:
+back to the capital | in the capital on day 3, tier 1: 0 dungeons standing, 0 cities fallen; level 20, 0 experience
+into it; while away, days 1 to 3: dungeons resolved: none; cities hit: none; cities fallen: none; no surge". And the
+death test's account: "while away, days 1 to 8: dungeons resolved: 12 (the dungeon on Outpost (-3,0)); cities hit:
+Outpost (-3,0) lost 122 defence and 304 people; cities fallen: none; no surge" -- the figures the travel death test
+measures for the same walk.
+
+**Python: "7488 passed, 9 skipped"**, its JUnit file 7497 tests, 0 failures, 0 errors, 9 skipped; **ruff "All checks
+passed!"** -- both as registered.
+
+**The three C++ proofs, all PROVED, each exactly as registered**, counted in each half's kept log in both of the
+engine's forms; no restored half logged a failed assertion:
+
+| Proof | Broken half | Assertions failed | Restored |
+| :-- | :-- | :-- | :-- |
+| C1 | 7 performed, 6 succeeded, 1 failed: `AWalkToItsLastFloorIsLoggedStepByStepAndTheCapitalSaysTheDaysAway` | 1: "saying the days away in its line" | 7 of 7 |
+| C2 | 7, 6, 1 failed: `ADeathThatEndsAWalkIsLoggedAndItsResolveIsInTheDaysAway` | 1: "naming the dungeon its resolve took off the map, by the name it had" | 7 of 7 |
+| C3 | 7, 5, 2 failed: `ADeathThatEndsAWalk...`, `AWalkToItsLastFloor...` | 2: "then floor 2" (owes 0 days, not 2), "then the floor the stairs reached and what the walk owes by then" (the same) | 7 of 7 |
+
+---
+
 ## 2026-11-18 — The capital's Walk takes the character to the dungeon, and the last floor's stairs or a death take it back, each trip a save and a load; no walk can be left early, M opens the map, and the map says what the days away did (#2733, slice 3)
 
 **Affects:** the save writer's hand-over, `UCataclysmSaveWriter::HandOver` and `HasHandedOver`, new

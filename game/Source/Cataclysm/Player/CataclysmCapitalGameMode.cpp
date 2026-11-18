@@ -12,6 +12,8 @@
 #include "Interface/CataclysmCharacterSelectWidget.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmPlayerController.h"
+#include "Player/CataclysmPlayerState.h"
+#include "Player/CataclysmPlayLoopLog.h"
 #include "Save/CataclysmSaveWriter.h"
 
 ACataclysmCapitalGameMode::ACataclysmCapitalGameMode()
@@ -91,6 +93,19 @@ bool ACataclysmCapitalGameMode::OpenTheEmpireMapIfReady()
 	UE_LOG(LogCataclysm, Log, TEXT("The capital opened the empire map: day %d, %d dungeons standing."),
 		   Run ? Run->Day() : -1, Run ? Run->DungeonCount() : -1);
 
+	// THE PLAY LOOP: the capital, with the days away when a walk has just ended -- the dungeon level's account,
+	// carried on the game instance and said once -- then every dungeon standing, with what no screen shows: its kind
+	// and its modifiers. The owner checks the map against these. Issue #2733 slice 4.
+	const ACataclysmPlayerState* State = Players[0]->GetPlayerState<ACataclysmPlayerState>();
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::CapitalLine(Run, State ? State->GetCharacterLevel() : 0,
+																  State ? State->GetExperienceIntoLevel() : 0,
+																  Instance->PlayLoopAwayAccount));
+	Instance->PlayLoopAwayAccount.Empty(); // A capital's: the days away said once.
+	for (const FString& Line : FCataclysmPlayLoopLog::StandingLines(Run))
+	{
+		FCataclysmPlayLoopLog::Say(Line);
+	}
+
 	// NOT IN AN AUTOMATION TEST, which has no viewport; it reads `HasOpenedTheEmpireMap`.
 	if (!GIsAutomationTesting)
 	{
@@ -113,6 +128,9 @@ FString ACataclysmCapitalGameMode::TravelToWalk(int32 DungeonId)
 		return FString::Printf(TEXT("The walk of dungeon %d could not begin: the character's records could not be "
 									"written, so it stays in the capital."), DungeonId);
 	}
+	// THE PLAY LOOP: the dungeon chosen, named as the arrival line will list it. Issue #2733 slice 4.
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::WalkLine(
+		UCataclysmGameInstance::EmpireRunFor(this, /*bStartIfNone*/ false), DungeonId));
 	return FString();
 }
 
