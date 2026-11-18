@@ -3181,9 +3181,21 @@ void ACataclysmDungeonGameMode::RaiseTheCorruptedStalker(const FVector* At)
 		return;
 	}
 
-	// WHICH ENTRY, ON THE FLOOR'S SEED, so the same dungeon raises the same one.
+	// WHICH ENTRY, ON THE DUNGEON'S SEED AND NOT THE FLOOR'S, so every floor of one dungeon raises the same one: the row
+	// is one character that "hunts you across the dungeon floors", and the health and potions a later floor gives it are
+	// what that character carried down the stairs. Issue #2580. THIS WAS THE FLOOR'S SEED until then, under a comment
+	// promising "the same dungeon raises the same one"; every floor's seed is different (`SeedForFloor`), so a dungeon
+	// would have raised a different entry on each floor, and nothing showed it while Kaedric was the only entry.
+	// `ChooseSeed` is the dungeon's own seed on the dark floor too, and `FCataclysmDungeon::WalkSeed` after a load, so a
+	// load draws the same entry. A NEGATIVE `Cataclysm.DungeonSeed` READS THE CLOCK on every call, and there each floor
+	// is a new dungeon anyway.
+	FRandomStream Choice(ChooseSeed() ^ Effects::CorruptedStalkerSalt);
+	const FCataclysmStalkerEntry& Entry = Entries[Choice.RandRange(0, Entries.Num() - 1)];
+
+	// ITS AFFIXES' ROLLS STAY ON THE FLOOR'S SEED, as ruled on 2026-10-25 ("its roll drawn on the floor's seed"). The
+	// stream is advanced by the one draw that picked the entry until #2580, so every roll is the one it was.
 	FRandomStream Stream(CurrentFloor->GetPlan().Seed ^ Effects::CorruptedStalkerSalt);
-	const FCataclysmStalkerEntry& Entry = Entries[Stream.RandRange(0, Entries.Num() - 1)];
+	Stream.GetFraction();
 
 	// THE FIRST FLOOR IT HUNTS: THE WALKABLE CELL FARTHEST FROM THE PLAYER, out of sight, the owner's answer of
 	// 2026-10-25. EVERY FLOOR AFTER: THE ENTRANCE, as if it took the stairs after them. `WhereAHunterArrives`.

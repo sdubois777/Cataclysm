@@ -29,7 +29,7 @@ and it is the part most likely to need extending when new wording appears.
 WHAT IS ASSERTED HERE.
 
     every row in every generated table that applies a stun states a duration
-    the four stunning weapon skills have the exact durations they were designed
+    the stunning weapon skills have the exact durations they were designed
       with, Whip Swing among them
     the design document's list of stunning skills matches the data
     the shortest designed stun equals the simulation constant that claims to
@@ -53,12 +53,15 @@ GDD = REPO_ROOT / "docs" / "Cataclysm_GDD_v2.md"
 sys.path.insert(0, str(REPO_ROOT / "sim"))
 
 #: What each stunning weapon skill stuns for, in seconds. Whip Swing was the one
-#: with no number; the other three are what the design already carried.
+#: with no number; the other three are what the design already carried. The two
+#: Celestial rows are the Corrupted Stalker's Warhammer kit, issue #2580.
 SKILL_STUN_SECONDS = {
     "War_Shield_Heavy": 1.5,        # Shield Bash
     "War_Warhammer_Movement": 1.0,  # Shockwave Leap
     "War_Sword_Movement": 0.75,     # Lunge
     "War_Whip_Movement": 0.75,      # Whip Swing. Issue #271.
+    "Celestial_Warhammer_Special": 1.0,   # Hammer of Dawn. Issue #2580.
+    "Celestial_Warhammer_Ultimate": 1.5,  # Heaven's Verdict. Issue #2580.
 }
 
 #: Wording that mentions stun in order to say it does NOT happen. A row matching
@@ -482,17 +485,20 @@ def test_each_stunning_skill_states_its_duration_as_data_too(key, seconds):
 
     # NAMING THE EFFECT IS WHAT MAKES THE THRESHOLD NOT APPLY. The anti-stun-lock
     # rule says a hit must take at least 10% of the target's maximum health to
-    # stun, UNLESS the skill states stunning as its effect. All four of these are
+    # stun, UNLESS the skill states stunning as its effect. All of these are
     # designed to stun rather than stunning by being big, so each has to say so.
-    assert stated.get("Effect") == "Stun", (
+    # AMONG ITS NAMED EFFECTS, as `UCataclysmSkillTemplate::StatesStunAsItsEffect`
+    # reads it: Heaven's Verdict (#2580) writes `Effect=Stun, Shred`.
+    named = [one.strip() for one in (stated.get("Effect") or "").split(",")]
+    assert "Stun" in named, (
         f"{key} ({row['SkillName']}) does not state Effect=Stun, so its stun "
         f"would be subject to the 10% of maximum health threshold that a "
         f"designed stun is exempt from. See the anti-stun-lock rules in "
         f"game/Data/StatusEffects.csv.")
 
 
-def test_the_stunning_weapon_skills_are_exactly_the_four_that_are_designed():
-    """A fifth stunning skill is fine, but it has to be added here and to the
+def test_the_stunning_weapon_skills_are_exactly_the_ones_designed():
+    """Another stunning skill is fine, but it has to be added here and to the
     design document sentence that lists them by name, or both go stale."""
     found = {key for table, key, _ in stun_rows() if table == "WeaponSkills"}
     assert found == set(SKILL_STUN_SECONDS), (
