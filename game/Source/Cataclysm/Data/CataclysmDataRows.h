@@ -1952,6 +1952,142 @@ struct FCataclysmPassiveEdgeRow : public FTableRowBase
 };
 
 /**
+ * One node of the empire upgrade tree: the permanent tree an account buys with the empire upgrade points a defeated
+ * dungeon awards. Issue #2741.
+ *
+ * WHERE IT COMES FROM. `docs/Empire_Development_Tree_Final.json`, which the owner ruled on 2026-08-05 (#260) is the
+ * tree, exported from the same authoring tool as the class trees. `tools/generate_datatables.py` (`empire_tree_nodes`)
+ * turns it into `game/Data/EmpireTreeNodes.csv`, and `tools/tests/test_empire_tree_tables_match_the_tree_file.py`
+ * holds the two equal.
+ *
+ * THE SAME SHAPE AS `FCataclysmPassiveNodeRow`, with three differences. There is one tree, so the row name is the node
+ * identifier and there is no tree column. A node carries its BRANCH, which the source file does not state and the
+ * generator reads from where the node sits. And a node, or a centre capstone's option, carries what it WAITS ON when
+ * the game does not have the system it acts on.
+ *
+ * WHAT A NODE DOES IS NOT HERE YET. Slices 3 to 5 of #2741 add it. Until then a node that can be bought does nothing.
+ */
+USTRUCT(BlueprintType)
+struct FCataclysmEmpireTreeNodeRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	/**
+	 * `Architect`, `Explorer`, `Treasury` or `Artisan`, or `Centre` for the four tier-milestone capstones.
+	 *
+	 * NOT IN THE SOURCE FILE. Its metadata names the quadrants -- "Architect (NE), Explorer (SE), Treasury (SW),
+	 * Artisan (NW)" -- and the generator puts each node in the quadrant it sits in. Four nodes grow with the points
+	 * spent in another branch, and a branch capstone opens at a number of points spent in its own, so the game needs it.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	FString Branch;
+
+	/** `basic`, `keystone` or `capstone`, as on a class tree. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	FString Kind;
+
+	/** What the node is called. Unique in the tree. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	FString NodeName;
+
+	/** What it does, in the words a player reads. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	FString Description;
+
+	/** The most points this node can hold. One for a keystone and a capstone. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	int32 MaxPoints = 0;
+
+	/**
+	 * When a capstone opens, in points spent; zero for every other node.
+	 *
+	 * A CENTRE CAPSTONE COUNTS THE WHOLE TREE: 25, 50, 100 and 200, from the source file. A BRANCH CAPSTONE COUNTS ITS
+	 * OWN BRANCH: 200, which the source file does not give (the coordinating session, 2026-11-18, Q2).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	int32 Threshold = 0;
+
+	/** Where the node sits on the authoring tool's canvas, for drawing the tree in its authored shape. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	float PositionX = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	float PositionY = 0.0f;
+
+	/**
+	 * Empty when the node can be bought; otherwise what it needs that the game does not have, in words that follow
+	 * "it needs" -- "gold, which the game does not have yet (issue #2742)".
+	 *
+	 * THE OWNER'S SCOPE RULING OF 2026-11-18: "The other nodes are shown but cannot be bought until their system is
+	 * built, as unbuilt city upgrades are refused today." EMPTY FOR A CENTRE CAPSTONE, whose options carry it instead.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	FString WaitsOn;
+
+	/**
+	 * A centre capstone's three choices: each one's name, what it does, and what it waits on, as `WaitsOn` above.
+	 *
+	 * EMPTY FOR EVERY OTHER NODE. Auto-Loot, a keystone, offers two options in the source file; they are not carried,
+	 * as a class tree's keystone's would not be, and the node is refused as a whole until a loot filter exists.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree|Capstone")
+	FString Option1Name;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree|Capstone")
+	FString Option1Description;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree|Capstone")
+	FString Option1WaitsOn;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree|Capstone")
+	FString Option2Name;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree|Capstone")
+	FString Option2Description;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree|Capstone")
+	FString Option2WaitsOn;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree|Capstone")
+	FString Option3Name;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree|Capstone")
+	FString Option3Description;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree|Capstone")
+	FString Option3WaitsOn;
+};
+
+/**
+ * One dependency between two nodes of the empire upgrade tree. Issue #2741.
+ *
+ * THE SAME MEANING AS `FCataclysmPassiveEdgeRow`: the target cannot take its first point until the source holds
+ * `RequiredPoints`, and a node with several incoming edges opens when ANY one is satisfied (the coordinating session's
+ * C2, 2026-11-18, which is the class trees' rule of 2026-08-25). A keystone's edge asks for its source in full, which
+ * the source file already writes.
+ *
+ * THREE EDGES CHAIN THE FOUR CENTRE CAPSTONES WITH A REQUIREMENT OF 0, and they are carried as they are. They require
+ * nothing; a capstone opens at its threshold.
+ */
+USTRUCT(BlueprintType)
+struct FCataclysmEmpireTreeEdgeRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	/** The node that must be invested in. A row name in the node table. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	FString Source;
+
+	/** The node that opens once it is. A row name in the node table. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	FString Target;
+
+	/** How many points the source must hold before the target opens. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	int32 RequiredPoints = 0;
+};
+
+/**
  * What one passive node grants, as a stat modifier the pipeline understands.
  *
  * WHICH NODE IT IS ABOUT IS THE `Node` FIELD, NOT THE ROW NAME. It was the row

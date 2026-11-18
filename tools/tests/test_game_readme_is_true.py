@@ -447,7 +447,8 @@ NUMBER_WORDS = {
     17: "seventeen", 18: "eighteen", 19: "nineteen", 20: "twenty",
     21: "twenty-one", 22: "twenty-two", 23: "twenty-three",
     24: "twenty-four", 25: "twenty-five", 26: "twenty-six",
-    27: "twenty-seven", 28: "twenty-eight", 29: "twenty-nine",
+    27: "twenty-seven", 28: "twenty-eight", 29: "twenty-nine", 30: "thirty",
+    31: "thirty-one", 32: "thirty-two", 33: "thirty-three", 34: "thirty-four",
 }
 
 DATATABLE_GENERATOR = REPO_ROOT / "tools" / "generate_datatables.py"
@@ -505,7 +506,7 @@ def test_the_two_generators_agree_on_how_many_tables_there_are() -> None:
         f"{asset_count()} tables, but tools/generate_datatables.py writes "
         f"{workbook_table_count()} CSV files from the workbook, "
         f"{model_table_count()} from the simulation's enemy model and "
-        f"{tree_table_count()} from the class passive tree files. One of them "
+        f"{tree_table_count()} from the tree files. One of them "
         f"has a table the other does not.")
 
 
@@ -516,10 +517,13 @@ def test_the_readme_states_the_right_number_of_datatable_assets() -> None:
     from_model = NUMBER_WORDS[model_table_count()]
     from_trees = NUMBER_WORDS[tree_table_count()]
 
+    # THE TREE FILES ARE THE CLASS TREES AND, SINCE ISSUE #2741, THE EMPIRE
+    # UPGRADE TREE, two tables each.
     expected = (f"{total.capitalize()} DataTable assets: {from_workbook} "
                 f"imported from the design workbook, {from_model} from the "
                 f"simulation package's enemy model, and {from_trees} from the "
-                f"class passive tree files.")
+                f"tree files: the class passive trees and the empire upgrade "
+                f"tree.")
     assert expected in readme_text(), (
         f"game/README.md does not describe Content/Data/ as it now is. It "
         f"should say: {expected}")

@@ -97,6 +97,8 @@ TABLES = [
     ("DT_CraftingMaterials", "CraftingMaterials.csv", "CataclysmCraftingMaterialRow"),
     ("DT_DungeonModifiers", "DungeonModifiers.csv", "CataclysmDungeonModifierRow"),
     ("DT_ElementVisuals", "ElementVisuals.csv", "CataclysmElementVisualRow"),
+    ("DT_EmpireTreeEdges", "EmpireTreeEdges.csv", "CataclysmEmpireTreeEdgeRow"),
+    ("DT_EmpireTreeNodes", "EmpireTreeNodes.csv", "CataclysmEmpireTreeNodeRow"),
     ("DT_EnchantmentEffects", "EnchantmentEffects.csv", "CataclysmEnchantmentEffectRow"),
     ("DT_EnchantmentsNegative", "EnchantmentsNegative.csv", "CataclysmEnchantmentRow"),
     ("DT_EnchantmentsPositive", "EnchantmentsPositive.csv", "CataclysmEnchantmentRow"),

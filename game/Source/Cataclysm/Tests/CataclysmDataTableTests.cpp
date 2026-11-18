@@ -229,6 +229,12 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// capstone tier is reached by total points spent rather than along a path.
 	// 278 until 2026-09-07, and the two new trees carry 69 edges each.
 	CHECK_TABLE(FCataclysmPassiveEdgeRow,       "PassiveEdges.csv",          416)
+	// 159: every node of the empire upgrade tree, `docs/Empire_Development_Tree_Final.json` -- 110 basic, 41 keystones
+	// and 8 capstones, four in the middle and one at the end of each branch. Issue #2741.
+	CHECK_TABLE(FCataclysmEmpireTreeNodeRow,    "EmpireTreeNodes.csv",       159)
+	// 158: every edge of that tree. One fewer than the nodes, though twenty nodes have no edge into them and nineteen
+	// have two: the counts are the file's, and the generator carries each edge as it is.
+	CHECK_TABLE(FCataclysmEmpireTreeEdgeRow,    "EmpireTreeEdges.csv",       158)
 	// 24 of the 293 nodes have an authored effect, and the small share is the
 	// point rather than a shortfall to be fixed by typing: most nodes are not
 	// stat modifiers under any authoring scheme. Issue #939 measures the gap.
@@ -1076,6 +1082,8 @@ bool FCataclysmDataTableAssetsTest::RunTest(const FString& Parameters)
 		{ TEXT("DT_CraftingMaterials"),     TEXT("CraftingMaterials.csv") },
 		{ TEXT("DT_DungeonModifiers"),      TEXT("DungeonModifiers.csv") },
 		{ TEXT("DT_ElementVisuals"),        TEXT("ElementVisuals.csv") },
+		{ TEXT("DT_EmpireTreeEdges"),       TEXT("EmpireTreeEdges.csv") },
+		{ TEXT("DT_EmpireTreeNodes"),       TEXT("EmpireTreeNodes.csv") },
 		{ TEXT("DT_EnchantmentEffects"),    TEXT("EnchantmentEffects.csv") },
 		{ TEXT("DT_EnchantmentsNegative"),  TEXT("EnchantmentsNegative.csv") },
 		{ TEXT("DT_EnchantmentsPositive"),  TEXT("EnchantmentsPositive.csv") },
