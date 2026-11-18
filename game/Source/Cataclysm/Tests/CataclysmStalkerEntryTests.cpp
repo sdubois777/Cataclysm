@@ -44,7 +44,7 @@
  * lays one of its two curses a pulse, and the Void and Celestial auras move a target as their sentences say under the
  * five-second halving rule.
  *
- * WRITTEN WITHOUT A BUILD. Phase 1 of the branch: every figure is reasoned from the code and the rows, and the run that
+ * WRITTEN WITHOUT A BUILD, COMPILED IN PHASE 2. Every figure is reasoned from the code and the rows, and the run that
  * proves them is registered in `docs/DECISIONS.md` before it happens. Every test here reads the generated
  * `DT_WeaponSkills` asset, so the window must rebuild it first.
  */
