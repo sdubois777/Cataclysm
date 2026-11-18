@@ -352,7 +352,13 @@ public:
 	 * attacks. Issue #1680 records that reading.
 	 *
 	 * FALSE HERE, WHICH IS THE ANSWER FOR THE PLAYER AND FOR EVERY CREATURE
-	 * BUT ONE. Only a floor's Field Medic says otherwise today.
+	 * BUT FOUR. A floor's Field Medic, Demonic Guide's guide, the Plaguebearer
+	 * and an echo of Echoes of the Past say otherwise
+	 * (`ACataclysmEnemyCharacter::TakesNoHostileAction`). This comment said
+	 * "but one" until issue #2740, two rules after it had stopped being true.
+	 *
+	 * NOT AN ATTACK A RULE ORDERS. The game mode makes an echo's one attack
+	 * (`StrikeAsARuleOrders`, `UseEnemyAbility`), and neither asks this.
 	 *
 	 * HERE RATHER THAN ON THE ENEMY, so the controller can ask any character
 	 * it drives without a cast -- the same arrangement `StaysWhereItIsPut`
