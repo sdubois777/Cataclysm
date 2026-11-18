@@ -212,6 +212,75 @@ prove_b2733s4.py`), each on `Cataclysm.PlayLoop.`; each restored half must pass 
 Assertions are counted in each broken half's kept log in both of the engine's forms, "Expected '...'" and "...: The
 two values are not equal.".
 
+### Window play-loop-w1, the first run, 2026-11-18: stopped at the asset check, on a fault in my window runner
+
+At `e468bb95`, 03:19 local. The pre-checks all passed and the lock was taken. Then:
+
+```
+build: Build: Succeeded - 5 actions, 2 files compiled: Module.Cataclysm.12.cpp, Module.Cataclysm.37.cpp | exit 0
+STOPPED: HEAD does not hold the four input assets as e06b5f16 committed them, checked out
+lock release: exit 0 play-loop-w1 released the Unreal editor.
+```
+
+**No test ran.** The runner, copied from slice 3's, checks that HEAD holds the four input files the M key needs before
+it skips the asset step, and one of its conditions was that the commit that last changed each was `e06b5f16`. On this
+branch that commit is `e8b310ffb`, slice 3's squash merge into `development`. Every other condition passed for all
+four -- a Git LFS pointer in git, an Unreal package on disk, listed as checked out -- and each one's LFS object id at
+HEAD is the one `e06b5f16` committed: `IA_ToggleEmpireMap` f8d1f6d13f, `DA_InputConfig` 67723e969f,
+`IMC_KeyboardMovement` 3c67168935, `IMC_MouseMovement` 9ac3c7a145.
+
+**Why that build compiled two unity files, which is not a code change.** `Module.Cataclysm.12.cpp` holds
+`CataclysmCapitalGameMode.cpp` and `Module.Cataclysm.37.cpp` holds `CataclysmDungeonGameMode.cpp`. Python proofs S1, S3
+and S5 broke those two files and wrote their original bytes back, which changed their modification times and not their
+content, so the build compiled them again from the same text it had compiled in unity at `17924eaa9`.
+
+**Changed, as the coordinating session ruled on 2026-11-18** ("Compare the LFS object id at HEAD with e06b5f16's [...]
+That is the right test once a squash merge has replaced the commit, and the other three conditions stay"): the
+untracked runner's check compares each file's LFS object id at HEAD with the one in `e06b5f16`. Checked before the
+second run, both ways: at HEAD it answers true, all four ids equal; pointed at `1f16aafde`, before those files took
+their present form, it answers false, three ids different and one file missing.
+
+### Window play-loop-w1, the second run, 2026-11-18: passed, every proof PROVED as registered
+
+At `e468bb95`, from 03:20 to 03:49 local. The pre-checks all passed again; the build was up to date and compiled
+nothing; the asset check passed with all four object ids equal.
+
+**Each group alone, all at the registered counts, 0 failed:** `Cataclysm.PlayLoop.` 7, `Cataclysm.Travel.` 9,
+`Cataclysm.SaveLoad.` 76, `Cataclysm.Capital.` 7, `Cataclysm.CharacterSelect.` 10, `Cataclysm.Creation.` 14,
+`Cataclysm.WalkFromTheScreen.` 5, `Cataclysm.EmpirePoints.` 16, `Cataclysm.WinningTheRun.` 11, `Cataclysm.DeathCost.` 9.
+
+**The whole suite, as registered:**
+
+```
+suite: Tests: 4791 tests performed, 4791 succeeded, 0 failed. 47 skipped part of what they check: [...]
+suite: Test saves: 820 written and deleted, 0 left behind
+suite: Declared: 4791 tests in the tree at e468bb95e; 4791 performed, gap 0; every declared test was reported by the run. Issue #1707.
+suite: read performed=4791 succeeded=4791 failed=0, registered 4791: MATCH; skipped halves 47, registered 47
+```
+
+A second count, from the kept engine log (`b2733s4_suite_engine_e468bb95.log`): 4791 "Test Completed.
+Result={Success}" lines and none failed.
+
+**What the walk test logged**, from its own line in that log: "entered dungeon 12, floor 1 of 20; the walk owes 1 day
+| dungeon 12: down to floor 20 of 20; the walk owes 2 days | cleared dungeon 12 on day 3: +0.9 empire points; level 20:
+back to the capital | in the capital on day 3, tier 1: 0 dungeons standing, 0 cities fallen; level 20, 0 experience
+into it; while away, days 1 to 3: dungeons resolved: none; cities hit: none; cities fallen: none; no surge". And the
+death test's account: "while away, days 1 to 8: dungeons resolved: 12 (the dungeon on Outpost (-3,0)); cities hit:
+Outpost (-3,0) lost 122 defence and 304 people; cities fallen: none; no surge" -- the figures the travel death test
+measures for the same walk.
+
+**Python: "7488 passed, 9 skipped"**, its JUnit file 7497 tests, 0 failures, 0 errors, 9 skipped; **ruff "All checks
+passed!"** -- both as registered.
+
+**The three C++ proofs, all PROVED, each exactly as registered**, counted in each half's kept log in both of the
+engine's forms; no restored half logged a failed assertion:
+
+| Proof | Broken half | Assertions failed | Restored |
+| :-- | :-- | :-- | :-- |
+| C1 | 7 performed, 6 succeeded, 1 failed: `AWalkToItsLastFloorIsLoggedStepByStepAndTheCapitalSaysTheDaysAway` | 1: "saying the days away in its line" | 7 of 7 |
+| C2 | 7, 6, 1 failed: `ADeathThatEndsAWalkIsLoggedAndItsResolveIsInTheDaysAway` | 1: "naming the dungeon its resolve took off the map, by the name it had" | 7 of 7 |
+| C3 | 7, 5, 2 failed: `ADeathThatEndsAWalk...`, `AWalkToItsLastFloor...` | 2: "then floor 2" (owes 0 days, not 2), "then the floor the stairs reached and what the walk owes by then" (the same) | 7 of 7 |
+
 ---
 
 ## 2026-11-18 — The capital's Walk takes the character to the dungeon, and the last floor's stairs or a death take it back, each trip a save and a load; no walk can be left early, M opens the map, and the map says what the days away did (#2733, slice 3)
