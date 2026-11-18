@@ -109,10 +109,12 @@ bool FCataclysmCharacterSelectRowsTest::RunTest(const FString&)
 }
 
 /**
- * Continue opens the level a character's run needs -- the dungeon level for a run saved inside a dungeon, the sandbox
- * otherwise -- and hands the character to the game instance; an unreadable row cannot be continued and says why; New
- * opens the sandbox with nothing pending. Travel does not run in an automation test, so the level asked for is read.
- * Issue #753, select-screen step 3a. Prints "SELECT CONTINUE".
+ * Continue opens the level a character's run needs -- the dungeon level for a run saved inside a dungeon, the capital
+ * otherwise, a run saved on the sandbox's floor included -- and hands the character to the game instance; an unreadable
+ * row cannot be continued and says why; New opens the sandbox with nothing pending. Travel does not run in an
+ * automation test, so the level asked for is read. Issue #753, select-screen step 3a. THE CAPITAL SINCE ISSUE #2733
+ * SLICE 2, and the sandbox until then: "Character select's Start and Continue go there" (the project owner,
+ * 2026-11-17). Prints "SELECT CONTINUE".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCharacterSelectContinueTest,
 	"Cataclysm.CharacterSelect.ContinueOpensTheLevelTheRunNeeds",
@@ -154,9 +156,11 @@ bool FCataclysmCharacterSelectContinueTest::RunTest(const FString&)
 
 	TestTrue(TEXT("a run saved in a dungeon opens the dungeon level"),
 			 bDungeon && DungeonMap == UCataclysmCharacterSelectWidget::DungeonMap);
-	TestTrue(TEXT("a run saved in the sandbox opens the sandbox"),
-			 bSandbox && SandboxMap == UCataclysmCharacterSelectWidget::SandboxMap);
-	TestTrue(TEXT("a character in no run opens the sandbox"), bNoRun && NoRunMap == UCataclysmCharacterSelectWidget::SandboxMap);
+	TestTrue(TEXT("a run saved in the sandbox opens the capital"),
+			 bSandbox && SandboxMap == UCataclysmCharacterSelectWidget::CapitalMap);
+	TestTrue(TEXT("a character in no run opens the capital"), bNoRun && NoRunMap == UCataclysmCharacterSelectWidget::CapitalMap);
+	TestTrue(TEXT("CONTROL: the capital is not the sandbox"),
+			 FString(UCataclysmCharacterSelectWidget::CapitalMap) != FString(UCataclysmCharacterSelectWidget::SandboxMap));
 	TestFalse(TEXT("an unreadable row cannot be continued"), bUnreadable);
 	TestFalse(TEXT("and says why"), UnreadableWhy.IsEmpty());
 	TestTrue(TEXT("Continue goes"), bContinued);

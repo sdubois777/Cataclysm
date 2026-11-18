@@ -845,7 +845,8 @@ bool FCataclysmNewCharacterNameTest::RunTest(const FString&)
 
 /**
  * The new-character screen hands its character to the game instance at Confirm -- the name, trimmed; the lethality and
- * the Solo Self-Found flag; offline; the weapon type and damage type -- and asks for the sandbox. It refuses a name the
+ * the Solo Self-Found flag; offline; the weapon type and damage type -- and asks for the capital (the sandbox until
+ * issue #2733 slice 2). It refuses a name the
  * rules refuse, and refuses Online with the reason, ruled 2026-11-01. Issue #753, select-screen step 4a. Prints "NEW
  * CHARACTER HANDED".
  */
@@ -905,7 +906,9 @@ bool FCataclysmNewCharacterHandOverTest::RunTest(const FString&)
 	TestEqual(TEXT("offline"), static_cast<int32>(Handed.Partition.Population), static_cast<int32>(ECataclysmPopulation::Offline));
 	TestEqual(TEXT("its weapon type"), Handed.WeaponType, FName(TEXT("Sword")));
 	TestEqual(TEXT("its damage type"), Handed.DamageType, FName(TEXT("War")));
-	TestEqual(TEXT("and the sandbox is asked for"), Screen->LevelRequested(), FString(UCataclysmCharacterSelectWidget::SandboxMap));
+	// THE CAPITAL SINCE ISSUE #2733 SLICE 2, the sandbox until then: "Character select's Start and Continue go there"
+	// (the project owner, 2026-11-17).
+	TestEqual(TEXT("and the capital is asked for"), Screen->LevelRequested(), FString(UCataclysmCharacterSelectWidget::CapitalMap));
 	return true;
 }
 

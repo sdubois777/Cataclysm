@@ -49,6 +49,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Misc/ScopeExit.h"
 #include "Player/CataclysmGameInstance.h"
+#include "Player/CataclysmCapitalGameMode.h"
 #include "Player/CataclysmGameMode.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Save/CataclysmSaveApply.h"
@@ -8992,6 +8993,605 @@ bool FCataclysmPartsSaveCleanseVoidTest::RunTest(const FString&)
 						 FMath::Abs(BossExpected - BossLost) > 1.0f);
 			});
 	});
+}
+
+// ---------------------------------------------------------------------------
+// The capital, issue #2733 slice 2.
+//
+// `L_Capital` is the empire map's home: Start and every Continue not saved inside a dungeon go there, its game mode
+// (`ACataclysmCapitalGameMode`) loads the chosen character as the sandbox's does, spawns no creatures, records no floor,
+// and opens the empire map once the load has settled. A record saved on the sandbox's floor is accepted there without
+// that floor (the coordinating session's ruling of 2026-11-17, Q1), and Play with nothing pending begins a run (Q2).
+// THE GROUP IS `Cataclysm.Capital.`, WITH THE TRAILING DOT, all seven of its tests here. Whether the map is ON SCREEN
+// is not seen here: a test world has no viewport, so the decision is read (`HasOpenedTheEmpireMap`) and the screen is
+// the owner's press.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmCapitalTest
+{
+	/**
+	 * A capital game mode in the scene, with the save writer begun as the capital begins it: two identifiers of its own,
+	 * and the capital's floor, 0. A test world runs no game mode's `StartPlay`, so this is the capital's arrival by hand.
+	 */
+	ACataclysmCapitalGameMode* ACapitalIn(CataclysmSaveLoadTest::FLoadScene& Scene)
+	{
+		ACataclysmCapitalGameMode* Mode = Scene.World->SpawnActor<ACataclysmCapitalGameMode>();
+		if (Mode)
+		{
+			Mode->BeginSavingThisRun();
+		}
+		return Mode;
+	}
+
+	/** How many creatures stand alive in a world. */
+	int32 CreaturesIn(UWorld& World)
+	{
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmEnemyCharacter> It(&World); It; ++It)
+		{
+			Count += IsValid(*It) && !UCataclysmSkillEffects::IsDead(*It) ? 1 : 0;
+		}
+		return Count;
+	}
+}
+
+/**
+ * The capital spawns none of the sandbox's creatures and records no floor: its writer holds the floor name "Capital"
+ * and floor 0, where the sandbox's holds "Sandbox" and 1 (CONTROL). Prints "CAPITAL FLOOR".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCapitalFloorTest,
+	"Cataclysm.Capital.TheCapitalSpawnsNoCreaturesAndRecordsNoFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCapitalFloorTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using namespace CataclysmCapitalTest;
+
+	FLoadScene Scene = MakeScene();
+	if (!TestTrue(TEXT("set-up: the world was built"), Scene.IsUsable()))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const FName SandboxFloor = Scene.Writer->HoldsTheDungeon();
+	const int32 SandboxNumber = Scene.Writer->HoldsTheFloor();
+	ACataclysmCapitalGameMode* Mode = ACapitalIn(Scene);
+	if (!TestNotNull(TEXT("set-up: a capital game mode"), Mode))
+	{
+		return false;
+	}
+
+	AddInfo(FString::Printf(TEXT("CAPITAL FLOOR: the sandbox's writer held floor %d of '%s'; the capital's holds floor %d "
+								 "of '%s'; sandbox creatures %s"),
+							SandboxNumber, *SandboxFloor.ToString(), Scene.Writer->HoldsTheFloor(),
+							*Scene.Writer->HoldsTheDungeon().ToString(),
+							Mode->bSpawnsSandboxCreatures ? TEXT("SPAWNED") : TEXT("not spawned")));
+
+	TestFalse(TEXT("the capital spawns none of the sandbox's creatures"), Mode->bSpawnsSandboxCreatures);
+	TestFalse(TEXT("nor does its class default"),
+			  GetDefault<ACataclysmCapitalGameMode>()->bSpawnsSandboxCreatures);
+	TestEqual(TEXT("CONTROL: the sandbox's writer holds floor 1"), SandboxNumber, 1);
+	TestEqual(TEXT("CONTROL: of the sandbox"), SandboxFloor, FName(ACataclysmGameMode::SandboxFloorName));
+	TestEqual(TEXT("the capital's writer holds floor 0, no floor"), Scene.Writer->HoldsTheFloor(), 0);
+	TestEqual(TEXT("named the capital"), Scene.Writer->HoldsTheDungeon(),
+			  FName(ACataclysmCapitalGameMode::CapitalFloorName));
+	TestTrue(TEXT("and it is writing"), Scene.Writer->IsWriting());
+	return true;
+}
+
+/**
+ * A new character arriving in the capital, as Start sends one: made by the capital's load, its run standing its
+ * opening wave on day 0, its run record written with no floor, and the map opened -- once, and not before the load.
+ * Prints "CAPITAL NEW CHARACTER".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCapitalNewCharacterTest,
+	"Cataclysm.Capital.ANewCharacterArrivingInTheCapitalStandsItsRunAndTheMapOpens",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCapitalNewCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using namespace CataclysmCapitalTest;
+
+	FLoadScene Scene = MakeScene();
+	if (!TestTrue(TEXT("set-up: the world was built"), Scene.IsUsable()))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	ACataclysmCapitalGameMode* Mode = ACapitalIn(Scene);
+	if (!TestNotNull(TEXT("set-up: a capital game mode"), Mode))
+	{
+		return false;
+	}
+	const FString RunSlot = Scene.Writer->RunSlotName();
+	const FString CharacterSlot = Scene.Writer->CharacterSlotName();
+	ON_SCOPE_EXIT { Delete(RunSlot); Delete(CharacterSlot); };
+
+	FCataclysmPendingCreation& Creation = Scene.Instance->PendingCreation;
+	Creation.bPending = true;
+	Creation.Name = TEXT("Arrives In The Capital");
+	Creation.WeaponType = FName(TEXT("Greatsword"));
+	Creation.DamageType = FName(TEXT("War"));
+
+	const bool bBeforeTheLoad = Mode->OpenTheEmpireMapIfReady();
+	const ACataclysmGameMode::EPendingLoad Outcome = Mode->LoadThePendingCharacter();
+	const bool bOpened = Mode->OpenTheEmpireMapIfReady();
+	const bool bAgain = Mode->OpenTheEmpireMapIfReady();
+	const UCataclysmEmpireRun* Run = Scene.Instance->EmpireRun.Get();
+	const UCataclysmRunSave* Record = WaitForSlot(RunSlot) ? Read<UCataclysmRunSave>(RunSlot) : nullptr;
+
+	AddInfo(FString::Printf(TEXT("CAPITAL NEW CHARACTER: before the load the map %s; outcome %d; then %s, again %s; the run "
+								 "on day %d with %d standing; the record %s, on floor %d of '%s' with %d dungeons"),
+							bBeforeTheLoad ? TEXT("OPENED") : TEXT("waited"), static_cast<int32>(Outcome),
+							bOpened ? TEXT("opened") : TEXT("NOT OPENED"), bAgain ? TEXT("OPENED AGAIN") : TEXT("not again"),
+							Run ? Run->Day() : -1, Run ? Run->DungeonCount() : -1, Record ? TEXT("read") : TEXT("NOT READ"),
+							Record ? Record->Floor.Floor : -1, Record ? *Record->Floor.Dungeon.ToString() : TEXT(""),
+							Record ? Record->Dungeons.Num() : -1));
+
+	TestFalse(TEXT("CONTROL: the map does not open while a character is still to be made"), bBeforeTheLoad);
+	TestEqual(TEXT("the new character was made"), static_cast<int32>(Outcome),
+			  static_cast<int32>(ACataclysmGameMode::EPendingLoad::Created));
+	TestTrue(TEXT("then the map opens"), bOpened);
+	TestTrue(TEXT("and the capital says so"), Mode->HasOpenedTheEmpireMap());
+	TestFalse(TEXT("once"), bAgain);
+	if (!TestNotNull(TEXT("the new character's run stands"), Run))
+	{
+		return true;
+	}
+	TestEqual(TEXT("on day 0"), Run->Day(), 0);
+	TestEqual(TEXT("with its opening wave of twelve"), Run->DungeonCount(), 12);
+	if (TestNotNull(TEXT("its run record was written at once"), Record))
+	{
+		TestEqual(TEXT("on no floor: floor 0"), Record->Floor.Floor, 0);
+		TestEqual(TEXT("holding the twelve"), Record->Dungeons.Num(), 12);
+	}
+	return true;
+}
+
+/**
+ * A character saved in the capital continues there: its record, on floor 0, loads in a capital with no floor to
+ * match, its run comes back with its twelve dungeons, and the map opens. Prints "CAPITAL CONTINUE".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCapitalContinueTest,
+	"Cataclysm.Capital.ACharacterSavedInTheCapitalContinuesThereAndTheMapOpens",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCapitalContinueTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using namespace CataclysmCapitalTest;
+
+	// THE SAVING CAPITAL: a new character made there, its records written on floor 0. Its run slot is also deleted by
+	// name, so a set-up that fails before the run's identifier is read leaves no save behind.
+	FSaved Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	FString SavingRunSlot;
+	ON_SCOPE_EXIT { Delete(SavingRunSlot); };
+	TArray<int32> SavedIds;
+	{
+		FLoadScene Saving = MakeScene();
+		if (!TestTrue(TEXT("set-up: the saving world was built"), Saving.IsUsable()))
+		{
+			if (Saving.World)
+			{
+				Saving.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Saving.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmCapitalGameMode* SavingMode = ACapitalIn(Saving);
+		if (!TestNotNull(TEXT("set-up: a saving capital"), SavingMode))
+		{
+			return false;
+		}
+		Saved.CharacterId = Saving.Writer->HoldsTheCharacter();
+		SavingRunSlot = Saving.Writer->RunSlotName();
+		FCataclysmPendingCreation& Creation = Saving.Instance->PendingCreation;
+		Creation.bPending = true;
+		Creation.Name = TEXT("Saved In The Capital");
+		Creation.WeaponType = FName(TEXT("Greatsword"));
+		Creation.DamageType = FName(TEXT("War"));
+		const ACataclysmGameMode::EPendingLoad Made = SavingMode->LoadThePendingCharacter();
+		const UCataclysmEmpireRun* SavedRun = Saving.Instance->EmpireRun.Get();
+		const UCataclysmCharacterSave* Character = WaitForSlot(Saved.CharacterSlot())
+			? Read<UCataclysmCharacterSave>(Saved.CharacterSlot()) : nullptr;
+		if (!TestEqual(TEXT("set-up: the character was made"), static_cast<int32>(Made),
+					   static_cast<int32>(ACataclysmGameMode::EPendingLoad::Created))
+			|| !TestNotNull(TEXT("set-up: with a run"), SavedRun)
+			|| !TestNotNull(TEXT("set-up: its character record was written"), Character))
+		{
+			return false;
+		}
+		Saved.RunId = Character->CurrentRunId;
+		if (!TestEqual(TEXT("set-up: the character record names the run written"), Saved.RunSlot(), SavingRunSlot)
+			|| !TestTrue(TEXT("set-up: and the run record was written"), WaitForSlot(Saved.RunSlot())))
+		{
+			return false;
+		}
+		for (const FCataclysmDungeon& Dungeon : SavedRun->Dungeons)
+		{
+			SavedIds.Add(Dungeon.DungeonId);
+		}
+	}
+
+	// THE LOADING CAPITAL, AS A CONTINUE LOADS IT.
+	FLoadScene Scene = MakeScene();
+	if (!TestTrue(TEXT("set-up: the loading world was built"), Scene.IsUsable()))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	ACataclysmCapitalGameMode* Mode = ACapitalIn(Scene);
+	if (!TestNotNull(TEXT("set-up: a loading capital"), Mode))
+	{
+		return false;
+	}
+	const FString FreshRun = Scene.Writer->RunSlotName();
+	const FString FreshCharacter = Scene.Writer->CharacterSlotName();
+	ON_SCOPE_EXIT { Delete(FreshRun); Delete(FreshCharacter); };
+	Scene.Instance->PendingCharacterId = Saved.CharacterId;
+	const bool bBeforeTheLoad = Mode->OpenTheEmpireMapIfReady();
+	const ACataclysmGameMode::EPendingLoad Outcome = Mode->LoadThePendingCharacter();
+	const bool bOpened = Mode->OpenTheEmpireMapIfReady();
+	const UCataclysmEmpireRun* Run = Scene.Instance->EmpireRun.Get();
+	TArray<int32> LoadedIds;
+	if (Run)
+	{
+		for (const FCataclysmDungeon& Dungeon : Run->Dungeons)
+		{
+			LoadedIds.Add(Dungeon.DungeonId);
+		}
+	}
+
+	AddInfo(FString::Printf(TEXT("CAPITAL CONTINUE: saved %d dungeons; before the load the map %s; outcome %d; then %s; "
+								 "the run on day %d with %d standing; the writer on floor %d of '%s'"),
+							SavedIds.Num(), bBeforeTheLoad ? TEXT("OPENED") : TEXT("waited"), static_cast<int32>(Outcome),
+							bOpened ? TEXT("opened") : TEXT("NOT OPENED"), Run ? Run->Day() : -1,
+							Run ? Run->DungeonCount() : -1, Scene.Writer->HoldsTheFloor(),
+							*Scene.Writer->HoldsTheDungeon().ToString()));
+
+	TestFalse(TEXT("CONTROL: the map does not open while the chosen character is still to be loaded"), bBeforeTheLoad);
+	TestEqual(TEXT("the character saved in the capital was loaded there"), static_cast<int32>(Outcome),
+			  static_cast<int32>(ACataclysmGameMode::EPendingLoad::Loaded));
+	TestTrue(TEXT("then the map opens"), bOpened);
+	TestEqual(TEXT("its run came back with the dungeons it was saved with"), LoadedIds, SavedIds);
+	TestEqual(TEXT("CONTROL: twelve of them"), SavedIds.Num(), 12);
+	TestEqual(TEXT("and the writer goes on on no floor"), Scene.Writer->HoldsTheFloor(), 0);
+	return true;
+}
+
+/**
+ * A character saved on the sandbox's floor -- every character saved before the capital existed -- loads in the
+ * capital without that floor: its run comes back, the floor's creature does not, and the load says the floor was
+ * dropped (Q1). CONTROL: the same record loaded on the sandbox's floor puts the creature back. Prints "CAPITAL
+ * SANDBOX SAVE".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCapitalSandboxSaveTest,
+	"Cataclysm.Capital.ACharacterSavedInTheSandboxLoadsInTheCapitalWithoutThatFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCapitalSandboxSaveTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using namespace CataclysmCapitalTest;
+
+	// THE SAVING SANDBOX: a run twelve days in, one creature standing on the floor, both records written.
+	FSaved Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	int32 CreaturesSaved = -1;
+	{
+		FLoadScene Saving = MakeScene();
+		if (!TestTrue(TEXT("set-up: the saving world was built"), Saving.IsUsable()))
+		{
+			if (Saving.World)
+			{
+				Saving.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Saving.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		Saved.RunId = FGuid::NewGuid();
+		Saved.CharacterId = FGuid::NewGuid();
+		Saving.Writer->BeginRun(Saved.RunId, Saved.CharacterId, FName(ACataclysmGameMode::SandboxFloorName), 1);
+		UCataclysmEmpireRun* SavingRun = Saving.Instance->BeginEmpireRun(7);
+		if (!TestNotNull(TEXT("set-up: an empire run was begun"), SavingRun)
+			|| !TestNotNull(TEXT("set-up: a creature stands on the sandbox's floor"),
+							Saving.World->SpawnActor<ACataclysmEnemyCharacter>(FVector(400.0f, 0.0f, 100.0f),
+																			   FRotator::ZeroRotator)))
+		{
+			return false;
+		}
+		SavingRun->AdvanceDays(12);
+		Saving.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+		const UCataclysmRunSave* Record = Read<UCataclysmRunSave>(Saved.RunSlot());
+		if (!TestNotNull(TEXT("set-up: the run record was written"), Record)
+			|| !TestEqual(TEXT("set-up: on the sandbox's floor"), Record->Floor.Dungeon,
+						  FName(ACataclysmGameMode::SandboxFloorName))
+			|| !TestEqual(TEXT("set-up: floor 1"), Record->Floor.Floor, 1))
+		{
+			return false;
+		}
+		CreaturesSaved = Record->Floor.Creatures.Num();
+	}
+
+	// CONTROL: THE SAME RECORD ON THE SANDBOX'S FLOOR PUTS THE CREATURE BACK.
+	FCataclysmLoadReport OnTheSandbox;
+	int32 CreaturesOnTheSandbox = -1;
+	{
+		FLoadScene Sandbox = MakeScene();
+		if (!TestTrue(TEXT("set-up: the sandbox's loading world was built"), Sandbox.IsUsable()))
+		{
+			if (Sandbox.World)
+			{
+				Sandbox.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Sandbox.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FString SandboxRun = Sandbox.Writer->RunSlotName();
+		const FString SandboxCharacter = Sandbox.Writer->CharacterSlotName();
+		ON_SCOPE_EXIT { Delete(SandboxRun); Delete(SandboxCharacter); };
+		OnTheSandbox = FCataclysmSaveLoad::CharacterAndRun(*Sandbox.World, *Sandbox.Character, Saved.CharacterId);
+		CreaturesOnTheSandbox = CreaturesIn(*Sandbox.World);
+	}
+
+	// THE CAPITAL.
+	FLoadScene Scene = MakeScene();
+	if (!TestTrue(TEXT("set-up: the capital's loading world was built"), Scene.IsUsable()))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	if (!TestNotNull(TEXT("set-up: a loading capital"), ACapitalIn(Scene)))
+	{
+		return false;
+	}
+	const FString FreshRun = Scene.Writer->RunSlotName();
+	const FString FreshCharacter = Scene.Writer->CharacterSlotName();
+	ON_SCOPE_EXIT { Delete(FreshRun); Delete(FreshCharacter); };
+	const FCataclysmLoadReport InTheCapital =
+		FCataclysmSaveLoad::CharacterAndRun(*Scene.World, *Scene.Character, Saved.CharacterId);
+	const int32 CreaturesInTheCapital = CreaturesIn(*Scene.World);
+	const UCataclysmEmpireRun* Run = Scene.Instance->EmpireRun.Get();
+
+	AddInfo(FString::Printf(TEXT("CAPITAL SANDBOX SAVE: saved %d creatures on the sandbox's floor; on the sandbox: %s, %d "
+								 "restored, %d standing; in the capital: %s (%s), %d restored, %d standing, the run on day "
+								 "%d, the writer on floor %d of '%s'"),
+							CreaturesSaved, FCataclysmSaveLoad::Describe(OnTheSandbox.Outcome),
+							OnTheSandbox.CreaturesRestored, CreaturesOnTheSandbox,
+							FCataclysmSaveLoad::Describe(InTheCapital.Outcome), *InTheCapital.Why,
+							InTheCapital.CreaturesRestored, CreaturesInTheCapital, Run ? Run->Day() : -1,
+							Scene.Writer->HoldsTheFloor(), *Scene.Writer->HoldsTheDungeon().ToString()));
+
+	TestTrue(TEXT("CONTROL: the record holds a creature"), CreaturesSaved >= 1);
+	TestEqual(TEXT("CONTROL: on the sandbox's floor the record loads"), static_cast<int32>(OnTheSandbox.Outcome),
+			  static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+	TestTrue(TEXT("CONTROL: and puts the creature back"),
+			 OnTheSandbox.CreaturesRestored >= 1 && CreaturesOnTheSandbox >= 1);
+	TestEqual(TEXT("in the capital the record loads"), static_cast<int32>(InTheCapital.Outcome),
+			  static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+	TestEqual(TEXT("without the floor's creatures"), InTheCapital.CreaturesRestored, 0);
+	TestEqual(TEXT("none standing"), CreaturesInTheCapital, 0);
+	TestTrue(TEXT("and it says the floor was dropped"), InTheCapital.Why.Contains(TEXT("dropped")));
+	TestEqual(TEXT("its run came back, twelve days in"), Run ? Run->Day() : -1, 12);
+	TestEqual(TEXT("and the writer goes on on no floor"), Scene.Writer->HoldsTheFloor(), 0);
+	TestEqual(TEXT("in the capital"), Scene.Writer->HoldsTheDungeon(), FName(ACataclysmCapitalGameMode::CapitalFloorName));
+	return true;
+}
+
+/**
+ * A record saved on a dungeon's floor, outside a walk, is still refused in the capital, as every floor mismatch but
+ * the sandbox's was before: only the sandbox's floor is dropped (Q1). CONTROL: the record before it is moved, on the
+ * sandbox's floor, loads there. Prints "CAPITAL DUNGEON FLOOR".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCapitalDungeonFloorTest,
+	"Cataclysm.Capital.ARunSavedOnADungeonFloorIsStillRefusedInTheCapital",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCapitalDungeonFloorTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using namespace CataclysmCapitalTest;
+
+	FSaved Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	if (!SaveACharacter(*this, /*bDies=*/false, Saved))
+	{
+		return false;
+	}
+
+	// ONE LOAD IN A CAPITAL OF ITS OWN, as each load is in a world of its own.
+	auto LoadInACapital = [this, &Saved](const TCHAR* Which, FCataclysmLoadReport& Out) -> bool
+	{
+		FLoadScene Scene = MakeScene();
+		if (!TestTrue(FString::Printf(TEXT("%s: set-up: the capital's loading world was built"), Which), Scene.IsUsable()))
+		{
+			if (Scene.World)
+			{
+				Scene.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		if (!TestNotNull(*FString::Printf(TEXT("%s: set-up: a loading capital"), Which), ACapitalIn(Scene)))
+		{
+			return false;
+		}
+		const FString FreshRun = Scene.Writer->RunSlotName();
+		const FString FreshCharacter = Scene.Writer->CharacterSlotName();
+		ON_SCOPE_EXIT { Delete(FreshRun); Delete(FreshCharacter); };
+		Out = FCataclysmSaveLoad::CharacterAndRun(*Scene.World, *Scene.Character, Saved.CharacterId);
+		return true;
+	};
+
+	FCataclysmLoadReport OnTheSandboxFloor;
+	if (!LoadInACapital(TEXT("the sandbox's floor"), OnTheSandboxFloor))
+	{
+		return false;
+	}
+
+	UCataclysmRunSave* Moved = Read<UCataclysmRunSave>(Saved.RunSlot());
+	FString Error;
+	if (!TestNotNull(TEXT("set-up: the run record reads"), Moved))
+	{
+		return false;
+	}
+	Moved->Floor.Dungeon = FName(TEXT("Crypt"));
+	Moved->Floor.Floor = 3;
+	if (!TestTrue(TEXT("set-up: the run record was written on floor 3 of a dungeon, outside a walk"),
+				  Moved->CurrentDungeonId == INDEX_NONE
+					  && FCataclysmSaveStorage::WriteToSlot(Moved, Saved.RunSlot(), UserIndex, Error)))
+	{
+		return false;
+	}
+	FCataclysmLoadReport OnADungeonFloor;
+	if (!LoadInACapital(TEXT("a dungeon's floor"), OnADungeonFloor))
+	{
+		return false;
+	}
+
+	AddInfo(FString::Printf(TEXT("CAPITAL DUNGEON FLOOR: on the sandbox's floor %s; on floor 3 of 'Crypt' %s ('%s')"),
+							FCataclysmSaveLoad::Describe(OnTheSandboxFloor.Outcome),
+							FCataclysmSaveLoad::Describe(OnADungeonFloor.Outcome), *OnADungeonFloor.Why));
+
+	TestEqual(TEXT("CONTROL: on the sandbox's floor the record loads in the capital"),
+			  static_cast<int32>(OnTheSandboxFloor.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+	TestEqual(TEXT("on a dungeon's floor it is refused"), static_cast<int32>(OnADungeonFloor.Outcome),
+			  static_cast<int32>(ECataclysmLoadOutcome::Refused));
+	TestTrue(TEXT("with the floor it was saved on"), OnADungeonFloor.Why.Contains(TEXT("floor 3 of 'Crypt'")));
+	return true;
+}
+
+/**
+ * Play pressed on the capital with nothing pending starts fresh, as the sandbox does, and the map opens on a run begun
+ * then, standing its opening wave on day 0 (Q2). CONTROL: no run stood before. Prints "CAPITAL NOTHING PENDING".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCapitalNothingPendingTest,
+	"Cataclysm.Capital.PlayOnTheCapitalWithNothingPendingBeginsARunAndOpensTheMap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCapitalNothingPendingTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using namespace CataclysmCapitalTest;
+
+	FLoadScene Scene = MakeScene();
+	if (!TestTrue(TEXT("set-up: the world was built"), Scene.IsUsable()))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	ACataclysmCapitalGameMode* Mode = ACapitalIn(Scene);
+	if (!TestNotNull(TEXT("set-up: a capital game mode"), Mode))
+	{
+		return false;
+	}
+	const FString RunSlot = Scene.Writer->RunSlotName();
+	const FString CharacterSlot = Scene.Writer->CharacterSlotName();
+	ON_SCOPE_EXIT { Delete(RunSlot); Delete(CharacterSlot); };
+
+	const bool bRunBefore = Scene.Instance->EmpireRun != nullptr;
+	const ACataclysmGameMode::EPendingLoad Outcome = Mode->LoadThePendingCharacter();
+	const bool bOpened = Mode->OpenTheEmpireMapIfReady();
+	const UCataclysmEmpireRun* Run = Scene.Instance->EmpireRun.Get();
+
+	AddInfo(FString::Printf(TEXT("CAPITAL NOTHING PENDING: a run before %s; outcome %d; the map %s; the run on day %d with "
+								 "%d standing"),
+							bRunBefore ? TEXT("STOOD") : TEXT("none"), static_cast<int32>(Outcome),
+							bOpened ? TEXT("opened") : TEXT("NOT OPENED"), Run ? Run->Day() : -1,
+							Run ? Run->DungeonCount() : -1));
+
+	TestFalse(TEXT("CONTROL: no run stood before"), bRunBefore);
+	TestEqual(TEXT("nothing was pending"), static_cast<int32>(Outcome),
+			  static_cast<int32>(ACataclysmGameMode::EPendingLoad::NothingPending));
+	TestTrue(TEXT("the map opens"), bOpened);
+	if (TestNotNull(TEXT("on a run begun for it"), Run))
+	{
+		TestEqual(TEXT("on day 0"), Run->Day(), 0);
+		TestEqual(TEXT("standing its opening wave of twelve"), Run->DungeonCount(), 12);
+	}
+	return true;
+}
+
+/**
+ * A character the load refuses in the capital sends the player back to the front end, as the sandbox's load does,
+ * and the map does not open. The refused character is an unreadable slot at a fixed fixture identifier,
+ * 5E1EC7ED-0000-4C15-A000-000000000027, which a real character's random one will not be. Prints "CAPITAL REFUSED".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCapitalRefusedTest,
+	"Cataclysm.Capital.ARefusedLoadInTheCapitalAsksForTheFrontEndAndOpensNoMap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCapitalRefusedTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using namespace CataclysmCapitalTest;
+
+	const FGuid Refused(0x5E1EC7ED, 0x00004C15, 0xA0000000, 0x27);
+	const FString RefusedSlot = UCataclysmSavePartition::CharacterSlotName(Refused);
+	Delete(RefusedSlot);
+	ON_SCOPE_EXIT { Delete(RefusedSlot); };
+	if (!WriteText(*this, RefusedSlot, TEXT("this is not a save record")))
+	{
+		return false;
+	}
+
+	FLoadScene Scene = MakeScene();
+	if (!TestTrue(TEXT("set-up: the world was built"), Scene.IsUsable()))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	ACataclysmCapitalGameMode* Mode = ACapitalIn(Scene);
+	if (!TestNotNull(TEXT("set-up: a capital game mode"), Mode))
+	{
+		return false;
+	}
+	const FString FreshRun = Scene.Writer->RunSlotName();
+	const FString FreshCharacter = Scene.Writer->CharacterSlotName();
+	ON_SCOPE_EXIT { Delete(FreshRun); Delete(FreshCharacter); };
+
+	Scene.Instance->PendingCharacterId = Refused;
+	const ACataclysmGameMode::EPendingLoad Outcome = Mode->LoadThePendingCharacter();
+	const bool bOpened = Mode->OpenTheEmpireMapIfReady();
+
+	AddInfo(FString::Printf(TEXT("CAPITAL REFUSED: outcome %d; why '%s'; back to '%s'; the map %s"),
+							static_cast<int32>(Outcome), *Scene.Instance->LastLoadRefusal, *Mode->FrontEndRequested(),
+							bOpened ? TEXT("OPENED") : TEXT("not opened")));
+
+	TestEqual(TEXT("the load was refused"), static_cast<int32>(Outcome),
+			  static_cast<int32>(ACataclysmGameMode::EPendingLoad::Refused));
+	TestEqual(TEXT("and the player is sent back to the front end"), Mode->FrontEndRequested(),
+			  FString(ACataclysmGameMode::FrontEndMap));
+	TestFalse(TEXT("the map does not open"), bOpened);
+	TestFalse(TEXT("and the capital says so"), Mode->HasOpenedTheEmpireMap());
+	return true;
 }
 
 #endif // WITH_AUTOMATION_TESTS

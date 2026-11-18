@@ -7,6 +7,7 @@
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Dungeon/CataclysmDungeonGameMode.h"
+#include "Player/CataclysmGameMode.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmSurge.h"
 #include "Engine/World.h"
@@ -186,6 +187,14 @@ FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACatacly
 
 	// 3. WHERE THE RUN WAS SAVED.
 	ACataclysmDungeonGameMode* DungeonMode = nullptr;
+	// A RUN SAVED ON THE SANDBOX'S FLOOR, LOADED IN A LEVEL WITH NO FLOOR, the capital, is accepted WITHOUT THAT FLOOR:
+	// the character and the run are put back, and the floor's creatures and the character's place on it are not. The
+	// coordinating session's ruling of 2026-11-17 on issue #2733 slice 2, Q1: every character saved before the capital
+	// existed was saved on the sandbox's floor, and Continue now opens the capital. Every other floor mismatch is
+	// refused below exactly as before.
+	const bool bDropsTheSandboxFloor = SavedRun && SavedRun->CurrentDungeonId == INDEX_NONE
+		&& SavedRun->Floor.IsOccupied() && SavedRun->Floor.Dungeon == FName(ACataclysmGameMode::SandboxFloorName)
+		&& Writer->HoldsTheFloor() == 0;
 	if (SavedRun && SavedRun->CurrentDungeonId != INDEX_NONE)
 	{
 		// INSIDE AN EMPIRE DUNGEON, WHICH IS ENTERED AGAIN AT ITS FLOOR. Issue #753, the dungeon step, ruled
@@ -223,6 +232,14 @@ FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACatacly
 				SavedDungeon, SavedRun->Floor.Floor, *SavedRun->Floor.Dungeon.ToString(),
 				*DungeonMode->DungeonName.ToString(), Saved->Floors));
 		}
+	}
+	else if (bDropsTheSandboxFloor)
+	{
+		UE_LOG(LogCataclysm, Log,
+			   TEXT("Cataclysm.LoadCharacter: the run was saved on floor %d of '%s', and this level has no floor: the "
+					"character and the run are put back, and that floor's %d creatures and the character's place on "
+					"it are dropped."),
+			   SavedRun->Floor.Floor, *SavedRun->Floor.Dungeon.ToString(), SavedRun->Floor.Creatures.Num());
 	}
 	else if (SavedRun && SavedRun->Floor.IsOccupied()
 			 && (SavedRun->Floor.Dungeon != Writer->HoldsTheDungeon()
@@ -300,7 +317,7 @@ FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACatacly
 			// AND WHAT THE FLOOR'S RULE CREATURES LEFT, without any death's reward or cost again. Issue #753, 3c-1.
 			DungeonMode->RestoreFloorRuleState(OnlyTheFloor.RuleState);
 		}
-		else if (SavedRun->Floor.IsOccupied())
+		else if (SavedRun->Floor.IsOccupied() && !bDropsTheSandboxFloor) // Not the sandbox's floor in the capital.
 		{
 			const FCataclysmFloorRestored Floor = FCataclysmSaveApply::FloorInto(World, OnlyTheFloor);
 			Report.CreaturesRestored = Floor.Creatures;
@@ -319,7 +336,7 @@ FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACatacly
 	}
 
 	// THE WRITER GOES ON INTO THE LOADED SLOTS, FROM THE LOADED RECORDS, on the saved floor when there is one.
-	const bool bSavedFloor = SavedRun && SavedRun->Floor.IsOccupied();
+	const bool bSavedFloor = SavedRun && SavedRun->Floor.IsOccupied() && !bDropsTheSandboxFloor; // The level's own, then.
 	Writer->BeginRun(RunId, CharacterId,
 					 bSavedFloor ? SavedRun->Floor.Dungeon : Writer->HoldsTheDungeon(),
 					 bSavedFloor ? SavedRun->Floor.Floor : Writer->HoldsTheFloor(),
@@ -330,7 +347,7 @@ FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACatacly
 	// THE PLACEMENT LAST, AND ONCE: a character saved at no health dies here, after the writer was told the loaded
 	// run, so its death's write goes to the loaded slots.
 	bool bPlaced = false;
-	if (SavedRun)
+	if (SavedRun && !bDropsTheSandboxFloor) // The sandbox's floor dropped in the capital: no place on it either.
 	{
 		for (const FCataclysmSavedCharacterPlacement& Placement : SavedRun->Floor.Characters)
 		{
@@ -349,7 +366,9 @@ FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACatacly
 			TEXT("character %s and run %s were put back: %s, %d creatures, %s"),
 			*CharacterId.ToString(EGuidFormats::Digits), *RunId.ToString(EGuidFormats::Digits),
 			RestoredEmpire ? *FString::Printf(TEXT("day %d"), SavedRun->Day) : TEXT("no empire run"),
-			Report.CreaturesRestored, bPlaced ? TEXT("placed where it was saved") : TEXT("with no placement saved"));
+			Report.CreaturesRestored,
+			bDropsTheSandboxFloor ? TEXT("the sandbox's floor it was saved on dropped, as this level has none")
+			: bPlaced ? TEXT("placed where it was saved") : TEXT("with no placement saved"));
 	}
 	else
 	{

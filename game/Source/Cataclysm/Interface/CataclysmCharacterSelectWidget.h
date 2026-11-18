@@ -35,6 +35,14 @@ public:
 	static constexpr const TCHAR* DungeonMap = TEXT("/Game/Maps/L_Dungeon");
 
 	/**
+	 * The capital's level, the empire map's home, where Start and every Continue not saved inside a dungeon go since
+	 * issue #2733 slice 2; its game mode is `ACataclysmCapitalGameMode`. `SandboxMap` is no longer opened from here:
+	 * `L_Sandbox` stays as a test level, reached only by opening it in the editor (ruled by the coordinating session,
+	 * 2026-11-17).
+	 */
+	static constexpr const TCHAR* CapitalMap = TEXT("/Game/Maps/L_Capital");
+
+	/**
 	 * One row's text, as ruling 2 lists it: the name, the level, the lethality, the Solo Self-Found and population flags,
 	 * the weapon type, and "in a run: day N", with "floor F of <dungeon>" when the run was saved inside a dungeon. An
 	 * unreadable slot says so, with why.
@@ -43,7 +51,8 @@ public:
 
 	/**
 	 * The level Continue opens for a row: the dungeon level for a run saved on a floor of a dungeon other than the
-	 * sandbox, else the sandbox. False, with why, for a row whose record cannot be read.
+	 * sandbox, else the capital (the sandbox until issue #2733 slice 2). False, with why, for a row whose record cannot
+	 * be read.
 	 */
 	static bool MapToContinue(const FCataclysmCharacterSummary& Row, FString& OutMap, FString& OutWhy);
 

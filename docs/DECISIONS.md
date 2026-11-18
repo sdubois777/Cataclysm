@@ -2,6 +2,159 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-17 — Play opens the front end, and Start and Continue open the capital, a new level that opens the empire map on arrival (#2733, slice 2)
+
+**Affects:** `ACataclysmCapitalGameMode`, new (`game/Source/Cataclysm/Player/CataclysmCapitalGameMode.h`, `.cpp`);
+`ACataclysmPlayerController::OpenEmpireMap`, new, which `ToggleEmpireMap` now shares (`CataclysmPlayerController.h`,
+`.cpp`); `ACataclysmGameMode::SandboxFloorName`, new (`CataclysmGameMode.h`); `UCataclysmCharacterSelectWidget::CapitalMap`
+and `MapToContinue` (`CataclysmCharacterSelectWidget.h`, `.cpp`); `UCataclysmNewCharacterWidget::ConfirmInto`
+(`CataclysmNewCharacterWidget.cpp`, `.h`); `FCataclysmSaveLoad::CharacterAndRun` (`CataclysmSaveLoad.cpp`);
+`EditorStartupMap` in `game/Config/DefaultEngine.ini`; `tools/generate_capital_map.py`, new, which makes
+`game/Content/Maps/L_Capital.umap` in the window; two rows of `game/README.md`'s map table; a pointer line under the
+2026-11-01 entry's bullet "THE GAME NOW OPENS ON `L_FrontEnd`, AND THE EDITOR STILL ON `L_Sandbox`". Tests: seven new
+Unreal tests in the new group `Cataclysm.Capital.` at the end of `CataclysmSaveLoadTests.cpp`; one changed in each of
+`CataclysmCharacterSelectTests.cpp` and `CataclysmCharacterCreationTests.cpp`;
+`tools/tests/test_the_capital_level_is_generated_and_play_opens_the_front_end.py`, new; one check renamed and reworded
+in `tools/tests/test_the_select_screen_is_generated_and_the_game_starts_on_it.py`. Issue
+[#2733](https://github.com/sdubois777/Cataclysm/issues/2733), slice 2 of 4.
+
+### SAID FIRST
+
+- **COMPILED, NOT RUN (phase 1).** Written with no build. No Unreal test and no C++ guard proof has run. The Python
+  checks ran, and all eight proofs of them are proved (below).
+- **`L_Capital.umap` DOES NOT EXIST UNTIL THE WINDOW'S EDITOR RUN MAKES IT**, so until then two Python checks fail,
+  each naming it and nothing else: `test_game_readme_is_true.py::test_the_readme_only_names_files_that_exist`
+  (`Content/Maps/L_Capital.umap`, the map table) and
+  `test_the_decisions_log_names_real_files.py::test_every_file_named_in_an_affects_line_exists`
+  (`game/Content/Maps/L_Capital.umap`, this entry). Measured: "2 failed, 7447 passed, 9 skipped" at phase 1.
+- **MOVING `EditorStartupMap` REPLACES THE 2026-11-01 CHOICE** to keep the editor on `L_Sandbox`, by the project
+  owner's ruling of 2026-11-17 on #2733, "Play opens the front end". The 2026-11-01 entry keeps its lines and gains a
+  pointer line here.
+- **ONE JUDGEMENT BEYOND THE RULING, TELL ME IF IT IS WRONG:** a record saved on the sandbox's floor and loaded in the
+  capital drops the character's place on that floor as well as its creatures -- where it stood and its health -- because
+  a place on a level the character is not in means nothing, and a character saved at no health would die again on
+  arrival.
+
+### The rulings, quoted
+
+The project owner, 2026-11-17, on #2733: "Play opens the front end (character select and creation). This replaces the
+2026-11-01 choice to keep the editor on L_Sandbox." and "The empire map's home is a plain capital level, `L_Capital`. It
+is a new, nearly empty level that opens the empire map as soon as the player arrives. Character select's Start and
+Continue go there." The coordinating session, in #2733: "L_Sandbox stays as a test level, reachable only by opening it
+in the editor."
+
+The coordinating session, on this slice's plan, 2026-11-17 (it dated its message 2026-11-18; this log uses the local
+date): approved as written; Q1, "the capital, which records floor 0, accepts a record saved on the "Sandbox" floor. It
+loads the character and run, does not restore that floor's creatures, and logs that it dropped them. The refusal for
+every other floor mismatch stays exactly as it is"; Q2, "Play pressed on L_Capital with nothing pending starts fresh,
+as the sandbox does, and opens the map on a run begun through GetOrBeginEmpireRun"; Q3, "no key in slice 2. The map
+opens on arrival in the capital and stays open; the key comes with slice 3". And: the window's asset step refuses
+anything but a new `L_Capital.umap`, stored through Git LFS.
+
+### What was verified by reading, before anything changed
+
+- **`L_FrontEnd` is made by `make_front_end_map` in `tools/generate_interface_assets.py`**, which also saves every
+  interface asset it owns (`save_directory`). So the capital has a generator of its own, in the pattern of
+  `tools/generate_dungeon_map.py` and the sandbox's `make_sandbox_level` (`tools/generate_input_assets.py`), and its
+  editor run touches one level.
+- **`ACataclysmDungeonGameMode` derives from `ACataclysmGameMode` and turns `bSpawnsSandboxCreatures` off.** The capital
+  does the same, and inherits `StartPlay`'s `BeginSavingThisRun` and `LoadThePendingCharacter`: a new character made, a
+  chosen one loaded, a refusal sent back to `L_FrontEnd`.
+- **The empire map has no key and no close button**; only `Cataclysm.EmpireMap` opened it, through `ToggleEmpireMap`,
+  which closes an open map.
+- **Routing:** `MapToContinue` sent a run saved on a floor other than the sandbox's to `L_Dungeon` and everything else
+  to `L_Sandbox`; `ConfirmInto` opened `L_Sandbox`. The sandbox records every save as floor 1 of "Sandbox", and
+  `CharacterAndRun` refuses a record whose floor differs from the level's.
+- **`EditorStartupMap` is what the test editor opens** (`tools/unreal_build.py` names no map), and no test reads the
+  editor's own world: searched for `GetEditorWorldContext`, `GWorld` and `EditorWorld` in both test folders, none found.
+  Every test builds its own world.
+- **`.gitattributes` line 14, `*.umap filter=lfs diff=lfs merge=lfs -text`**, stores every level through Git LFS, so
+  `L_Capital.umap` goes there with no change.
+
+### What changes
+
+- **`ACataclysmCapitalGameMode`, the capital's game mode.** No sandbox creatures; the run record's floor is "Capital",
+  0, which means nobody is on a floor, so a capital save reloads with no floor to match. After the sandbox's arrival in
+  `StartPlay` and in `HandleStartingNewPlayer`, it calls `OpenTheEmpireMapIfReady`: once nothing is pending on the game
+  instance, the load did not ask for the front end, the save writer is writing and a player's character stands, it
+  takes the run (beginning one when there is none, Q2), logs "The capital opened the empire map: day D, N dungeons
+  standing.", and opens the map on each player's screen -- not in an automation test, which has no viewport, as a
+  level is not opened in one. Once.
+- **`ACataclysmPlayerController::OpenEmpireMap`** opens and refreshes the map and never closes it; `ToggleEmpireMap`
+  closes an open map and otherwise calls it, so the console command behaves as before.
+- **Start and Continue open the capital** (`UCataclysmCharacterSelectWidget::CapitalMap`, `/Game/Maps/L_Capital`):
+  `ConfirmInto` always, and `MapToContinue` for every row not saved on a dungeon's floor, the sandbox's included. A run
+  saved on a dungeon's floor still opens `L_Dungeon`. A refused load still goes to `L_FrontEnd`.
+- **A record saved on the sandbox's floor loads in the capital without that floor (Q1).** In `CharacterAndRun`, when
+  the record was not saved mid-walk, its floor is the sandbox's, and the level holds floor 0, the load logs "the
+  character and the run are put back, and that floor's N creatures and the character's place on it are dropped", puts
+  back no creature and no place, and the writer goes on on the capital's floor; the report says "the sandbox's floor it
+  was saved on dropped". It is one more branch of the one chain -- a walk's resume, the drop, the refusal -- so a
+  dungeon floor's mismatch is refused exactly as before. `ACataclysmGameMode::SandboxFloorName` is the one spelling of
+  "Sandbox" the routing and the load use.
+- **`EditorStartupMap=/Game/Maps/L_FrontEnd.L_FrontEnd`**, with a comment in the ini; `GameDefaultMap` was already it.
+- **`tools/generate_capital_map.py`** makes `L_Capital`: a cube floor 40 metres square with its top at z=0, a movable
+  sun, a sky atmosphere, a movable sky light and a player start, its world settings naming the capital's game mode. No
+  navigation bounds. Movable lights, so the editor writes no `_BuiltData`. Re-running empties what it made, by label,
+  and makes it again.
+
+### Not changed, and why
+
+- **`L_Sandbox`** stays as it is, a test level opened by hand; `UCataclysmCharacterSelectWidget::SandboxMap` stays for
+  tests that name it.
+- **No key opens the map** (Q3); it comes with slice 3.
+- **Travel into a dungeon from the capital** is slice 3: the map's Walk buttons in the capital still refuse, "This
+  level is not a dungeon".
+
+### Tests
+
+**Unreal, new (7), the group `Cataclysm.Capital.`:**
+
+| Test | What it holds |
+|---|---|
+| `TheCapitalSpawnsNoCreaturesAndRecordsNoFloor` | the mode and its class default turn the sandbox's creatures off; the capital's writer holds floor 0 of "Capital"; CONTROL: the sandbox's held floor 1 of "Sandbox" |
+| `ANewCharacterArrivingInTheCapitalStandsItsRunAndTheMapOpens` | CONTROL: no map before the load; the character made; the map opened, once; its run on day 0 with 12; its run record written on floor 0 with 12 |
+| `ACharacterSavedInTheCapitalContinuesThereAndTheMapOpens` | a character made in one capital, loaded by a Continue in another: no map before the load, `Loaded`, the map opened, the same 12 dungeons by number, the writer on floor 0 |
+| `ACharacterSavedInTheSandboxLoadsInTheCapitalWithoutThatFloor` | a sandbox record twelve days in with a creature on its floor: CONTROL, it loads on the sandbox's floor with the creature; in the capital it loads with no creature restored and none standing, says "dropped", its run on day 12, the writer on floor 0 of "Capital" |
+| `ARunSavedOnADungeonFloorIsStillRefusedInTheCapital` | CONTROL: the sandbox record loads in the capital; moved to floor 3 of "Crypt", outside a walk, it is refused, "floor 3 of 'Crypt'" |
+| `PlayOnTheCapitalWithNothingPendingBeginsARunAndOpensTheMap` | CONTROL: no run before; nothing pending; the map opened on a run begun then, day 0 with 12 |
+| `ARefusedLoadInTheCapitalAsksForTheFrontEndAndOpensNoMap` | an unreadable fixture slot: refused, the front end asked for, no map |
+
+**Unreal, changed (2):** `Cataclysm.CharacterSelect.ContinueOpensTheLevelTheRunNeeds` (a sandbox run and a run-less
+character now open the capital; a new CONTROL that the capital is not the sandbox) and
+`Cataclysm.Creation.TheNewCharacterScreenHandsTheCharacterOver` ("and the capital is asked for").
+
+**Python, new (5),** `test_the_capital_level_is_generated_and_play_opens_the_front_end.py`: the generator makes
+`/Game/Maps/L_Capital` with the capital's game mode, two movable lights, nothing stationary and no navigation; the
+capital mode derives from `ACataclysmGameMode`, records floor 0, turns the creatures off, asks to open the map after the
+arrival in both places, and asks the pending, refusal and begin-a-run conditions; Start and Continue name the capital
+and nothing opens the sandbox; both start maps are the front end; and the drop's three conditions, its place in the
+chain, and its three guards. **Changed (1):** `test_the_game_and_the_editor_both_start_on_the_front_end`, which asked
+for the editor on the sandbox.
+
+### Proofs run in phase 1 (Python only)
+
+With `tools/prove_guard.py`, each break narrow, `.claude/windows/prove_python_2733s2.py`; each read "PROVED: N failed,
+M passed | restored: all passed".
+
+| Proof | Break | Named failure(s) |
+|---|---|---|
+| S1 | the generator's game mode `CataclysmGameMode` | `test_the_generator_makes_l_capital_with_the_capital_game_mode_and_nothing_to_bake` |
+| S2 | the capital's `bSpawnsSandboxCreatures = true` | `test_the_capital_game_mode_turns_the_sandbox_off_records_no_floor_and_opens_the_map` |
+| S3 | the pending check made `if (false)` | the same |
+| S4 | Continue's `CapitalMap` back to `SandboxMap` | `test_start_and_every_continue_not_inside_a_dungeon_go_to_the_capital` |
+| S5 | Start's `CapitalMap` back to `SandboxMap` | the same |
+| S6 | `EditorStartupMap` back to `L_Sandbox` | `test_the_game_and_the_editor_start_on_the_front_end` and `test_the_game_and_the_editor_both_start_on_the_front_end` |
+| S7 | the drop's `Writer->HoldsTheFloor() == 0` taken out | `test_only_the_sandboxs_floor_is_dropped_in_the_capital_and_every_other_mismatch_is_refused` |
+| S8 | the floor restore's `!bDropsTheSandboxFloor` taken out | the same |
+
+**A FAULT OF MINE, CAUGHT BY READING BACK BEFORE ANY BUILD.** The first edit of `CharacterAndRun` put the drop's
+declaration where the old `else if` began, which split the chain: the floor-mismatch refusal would then have run for a
+run saved mid-walk and loaded in `L_Dungeon` too, refusing a valid resume. The declaration now stands before the chain
+and the drop is a branch of it; S7, S8 and the fifth Python check hold that shape.
+
+---
+
 ## 2026-11-17 — A new run's first surge lands on day 0, as the run begins, so the empire map shows its twelve dungeons before any day has passed (#2733, slice 1)
 
 **Affects:** `UCataclysmEmpireRun` (`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h`, `.cpp`): the new
@@ -12360,6 +12513,9 @@ this step in the code; a player's launch has not yet confirmed it (below).
   - `tools/generate_input_assets.py` and `tools/generate_dungeon_map.py` build `L_Sandbox` and `L_Dungeon` by name;
   - `tools/tests/test_game_readme_is_true.py` skips its only-map claim, because the readme no longer makes it, and
     `test_map_built_data_is_not_committed.py` and `test_run_editor_python.py` name `L_Sandbox` only as paths.
+  - **REPLACED ON 2026-11-17 for the editor:** the project owner's ruling on issue #2733, "Play opens the front end",
+    moved `EditorStartupMap` to `L_FrontEnd` in #2733 slice 2; see the entry "Play opens the front end, and Start and
+    Continue open the capital" (2026-11-17).
 - **ONE FAULT ON THE WAY.** The first compile failed at link: `UGameMapsSettings::GetGameDefaultMap` is in the
   EngineSettings module, which the game module does not link. The start-map test reads the same setting through
   `GConfig` from the engine's ini instead; no module dependency is added.

@@ -255,7 +255,14 @@ public:
 	 * that a derived game mode changes what is recorded without reimplementing
 	 * `BeginSavingThisRun` and its two generated identifiers.
 	 */
-	virtual FName RunFloorName() const { return FName(TEXT("Sandbox")); }
+	virtual FName RunFloorName() const { return FName(SandboxFloorName); }
+
+	/**
+	 * The name the sandbox's floor is saved under, `RunFloorName`'s answer here. One spelling, because the select
+	 * screen routes on it (`UCataclysmCharacterSelectWidget::MapToContinue`) and a load in the capital accepts a record
+	 * saved on it (`FCataclysmSaveLoad::CharacterAndRun`). Issue #2733 slice 2.
+	 */
+	static constexpr const TCHAR* SandboxFloorName = TEXT("Sandbox");
 
 	/** Which floor of it, counted from 1. See `RunFloorName`. */
 	virtual int32 RunFloorNumber() const { return 1; }
