@@ -394,6 +394,29 @@ The later runs' window repeats the registration at the new head, with the asset 
 already holds the rebuilt tables. The Python step's `test_datatable_assets_are_current` is what shows they are current.
 No registered count changes.
 
+### Window stalker-rows-w1, the fourth run: the results
+
+Run by the coordinating session on 2026-11-17 (local time) at `cde163c70` (on `development` `e308e0c15`), lock
+`stalker-rows-w1`, after the pre-checks all passed. The asset step was skipped, because `d3f3b6036`, which this head
+holds, is the second run's rebuild of exactly `DT_WeaponSkills.uasset` and `datatable_asset_sources.json`. Every
+registered figure was met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (the coordinator's build of the two test corrections compiled their files and unity files) |
+| The seven groups alone | each at its registered count | every one "0 failed": StalkerEntries. 8, DungeonModifierEffects. 769, ConsumptionDouble. 15, StalkerKit. 13, Skills. 283, SkillPool. 11, SaveLoad. 76 |
+| Whole Unreal suite | 4761, 47 skipped halves, 0 left behind | "4761 tests performed, 4761 succeeded, 0 failed. 47 skipped part of what they check"; "Declared: 4761 tests in the tree at cde163c70; 4761 performed, gap 0"; "Test saves: 758 written and deleted, 0 left behind". "STALKER ENTRY: floor 2 raised Hesk the Starveling", and the same for floors 3, 4 and 5 |
+| Python | of record | "7438 passed, 9 skipped in 192.56s"; JUnit tests 7447, failures 0, errors 0, skipped 9 (so `test_datatable_assets_are_current` passes on the committed rebuild); ruff "All checks passed!" |
+| C1 | 8 performed, 3 succeeded, 5 failed | PROVED. Exactly the five registered; restored 8 of 8 |
+| C2 | 1 test, 6 assertions | PROVED. `EachOfTheSixKitEntriesIsAuthoredWithItsWeaponAndNoClassLineOrPassives`, 6 failed assertions; restored |
+| C3 | 1 test, 1 assertion | PROVED. `TheCorruptedStalkerWearsOneEntryOnEveryFloorOfADungeon`, 1 failed assertion; restored |
+
+**The entry drawn once per dungeon**, which phase 2 found and labelled a judgement, is confirmed by the coordinating
+session: the code's own comment said "the same dungeon raises the same one", and the owner's rulings never asked for a
+different Stalker on each floor.
+
+Only this section was added after the tested commit.
+
 ### Not tested
 
 - **Nothing here has run in the engine.** It compiled in phase 2; every Unreal figure is a prediction, and the window
