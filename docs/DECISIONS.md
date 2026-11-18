@@ -301,14 +301,19 @@ Unreal lock, after the pre-checks all passed (13,448 MB free):
   and after the death and before the capital's line.
 - **The corrected test file compiled** under the Unreal lock as gold-1-compile2, the coordinating session's go: alone,
   `Build: Succeeded - 6 actions, 3 files compiled: CataclysmSaveLoadTests.cpp, Module.Cataclysm.41.cpp,
-  Module.Cataclysm.42.cpp`. The unity compile is recorded with the second window's registration.
+  Module.Cataclysm.42.cpp`; in unity, from a clean tree with the makefile deleted, at `8e251051`,
+  `Build: Succeeded - 5 actions, 2 files compiled: Module.Cataclysm.41.cpp, Module.Cataclysm.42.cpp`, where
+  `Module.Cataclysm.41.cpp` is the unity file that includes `CataclysmSaveLoadTests.cpp`. The lock was released after
+  it.
 - **The Python suite on the corrected tree**: 7558 passed, 9 skipped; its JUnit file says 7567 tests, 0 failures, 0
   errors, 9 skipped. The four failures before the first window, all for DT_Gold's missing asset and record, are gone,
   since `d4cdd31d` built and recorded it.
 
-**The second, gold-1-w2**, runs the same registration at the head that carries the correction: 4820, 47 skipped
-halves, no save left, the sixteen groups and P1 to P4. The assets are already committed in `d4cdd31d`, so it skips the
-asset step. Not yet run.
+**The second, gold-1-w2, REGISTERED UNCHANGED** at the commit that records this, on top of `8e251051`: the
+correction adds and removes no test, so **4820 performed, all succeeding, 47 skipped halves, no test save left**; each
+group alone at the count in the table above, `Cataclysm.PlayLoop.` 7 among them; P1 to P4 as in the table above, each
+anchor still matching exactly once. The assets are already committed in `d4cdd31d`, so it skips the asset step. Not yet
+run.
 
 ---
 
