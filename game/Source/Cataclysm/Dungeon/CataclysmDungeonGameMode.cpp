@@ -1462,6 +1462,7 @@ bool ACataclysmDungeonGameMode::EnterThePendingWalkIfReady()
 
 	// A DUNGEON THAT CANNOT BE ENTERED -- which the capital's checks leave no way to reach, since the record just
 	// written holds it -- sends the character back to the capital rather than leaving it on a floor with no walk.
+	const int32 FloorChangesBefore = Writer->FloorChangesNoted();
 	if (!EnterEmpireDungeon(DungeonId))
 	{
 		UE_LOG(LogCataclysm, Error,
@@ -1471,9 +1472,15 @@ bool ACataclysmDungeonGameMode::EnterThePendingWalkIfReady()
 		return false;
 	}
 
-	// WRITTEN AT ONCE: floor 1 of the dungeon is the floor number this level already held, so `SetFloor` raised
-	// nothing, and a quit before the clock's next write would otherwise continue in the capital.
-	Writer->NoteTrigger(ECataclysmSaveTrigger::ChangedFloor); // An arrival's: the walk written at once.
+	// WRITTEN AT ONCE, so a quit before the clock's next write continues the walk and not the capital. Floor 1 of the
+	// dungeon is usually the floor this level already held, so `SetFloor` raised nothing and this raises the change;
+	// when the level began on another floor -- `Cataclysm.DungeonFloor` set -- `SetFloor` already raised it, and this
+	// does not raise it a second time. Either way, once. Exempt from the once-a-frame rule since window travel-w1's
+	// first run (2026-11-18), which found it skipped behind an earlier write in the same frame.
+	if (Writer->FloorChangesNoted() == FloorChangesBefore)
+	{
+		Writer->NoteTrigger(ECataclysmSaveTrigger::ChangedFloor); // An arrival's: the walk written at once.
+	}
 	UE_LOG(LogCataclysm, Log, TEXT("The character arrived from the capital and is walking dungeon %d, floor 1 of %d."),
 		   DungeonId, EmpireDungeonFloors());
 	return true;

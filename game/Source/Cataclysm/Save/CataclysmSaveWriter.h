@@ -277,7 +277,9 @@ private:
 	 * section 6 does not relax, and the write after it is paid for must replace
 	 * the unpaid death on disk (#753). So do a won run (#1324 slice 6e) and a
 	 * new character (#2733), whose writes record a run that an earlier write in
-	 * the same frame gathered before it existed.
+	 * the same frame gathered before it existed; and, since #2733 slice 3, the
+	 * hand-over before a level change and a change of floor, each of which
+	 * replaces what an earlier write that frame gathered.
 	 */
 	uint64 LastRunWriteFrame = 0;
 

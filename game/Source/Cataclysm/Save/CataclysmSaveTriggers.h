@@ -208,6 +208,11 @@ public:
 	 * a death's `DeathProcessed` all write the run record in the frame the player leaves, and the next level loads
 	 * from what the hand-over writes. Synchronous, it waits for those earlier writes to the slot to finish first, so
 	 * it lands last.
+	 *
+	 * AND A CHANGE OF FLOOR, since issue #2733 slice 3 (ruled 2026-11-18): a write earlier in the same frame gathered
+	 * the floor before the change, and the one after it must replace it. Window travel-w1's first run found the walk
+	 * an arrival begins skipped so, and the record on disk still saying the capital. Every place that raises it does
+	 * so once per change of floor; `docs/DECISIONS.md`'s 2026-11-18 entry lists them.
 	 */
 	static bool WritesEvenIfTheRunWasWrittenThisFrame(ECataclysmSaveTrigger Trigger);
 

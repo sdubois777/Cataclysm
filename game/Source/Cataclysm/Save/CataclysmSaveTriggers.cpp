@@ -72,9 +72,13 @@ bool UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame(ECataclysmSav
 	//
 	// AND THE HAND-OVER BEFORE A LEVEL CHANGE, since issue #2733 slice 3: the clear, a win and a death each write the
 	// run record in the frame the player leaves, and the next level loads from the hand-over's.
+	//
+	// AND A CHANGE OF FLOOR, since issue #2733 slice 3 (ruled 2026-11-18): it writes where the party now stands, and a
+	// write earlier in the same frame gathered the floor before the change. Window travel-w1's first run found the
+	// arrival's write skipped so. Each place that raises it does so once per change of floor (the entry lists them).
 	return Trigger == ECataclysmSaveTrigger::CharacterDied || Trigger == ECataclysmSaveTrigger::DeathProcessed
 		|| Trigger == ECataclysmSaveTrigger::RunWon || Trigger == ECataclysmSaveTrigger::CharacterCreated
-		|| Trigger == ECataclysmSaveTrigger::LeavingTheLevel;
+		|| Trigger == ECataclysmSaveTrigger::LeavingTheLevel || Trigger == ECataclysmSaveTrigger::ChangedFloor;
 }
 
 bool UCataclysmSaveTriggers::ClockHasElapsed(float SecondsSinceLastWrite,

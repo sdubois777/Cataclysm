@@ -9818,6 +9818,11 @@ namespace CataclysmTravelTest
 		Out.Scene.Base.Writer->BeginRun(Out.RunId, Out.CharacterId, Out.Scene.Mode->DungeonName,
 										Out.Scene.Mode->FloorNumber);
 
+		// A CATACLYSM ORDER SEED, DRAWN AS A MADE CHARACTER DRAWS ONE. Without it the character is saved with the seed
+		// its identifier gives, and `CharacterJsonOf`'s record, which has no identifier, with another: window
+		// travel-w1's first run (2026-11-18) read that as the stairs test's "the character exactly as it left" failing.
+		Out.Scene.Base.State->SetCataclysmOrderSeed(975318642);
+
 		Out.Run = Out.Scene.Base.Instance->BeginEmpireRun(1, ECataclysmSurgeMode::Static, 0);
 		if (!Test.TestTrue(TEXT("set-up: an empire run was begun"), Out.Run && Out.Run->Map && Out.Run->Clock))
 		{
@@ -9831,11 +9836,17 @@ namespace CataclysmTravelTest
 		{
 			return false;
 		}
-		if (bTheCataclysmsOwn)
+		// AN OUTPOST DUNGEON'S DESIGNED HIT, as a surge's dungeon carries (`UCataclysmSurgeScheduler::SpecFor`).
+		// `PlaceByHand` leaves both at 0, so its resolve took nothing: window travel-w1's first run (2026-11-18).
+		const FCataclysmDungeonSpec Hit = UCataclysmSurgeScheduler::SpecFor(ECataclysmDungeonType::Basic,
+																			ECataclysmCityTier::Outpost);
+		for (FCataclysmDungeon& Dungeon : Out.Run->Dungeons)
 		{
-			for (FCataclysmDungeon& Dungeon : Out.Run->Dungeons)
+			if (Dungeon.DungeonId == Out.DungeonId)
 			{
-				if (Dungeon.DungeonId == Out.DungeonId)
+				Dungeon.DefenceDamage = Hit.DefenceDamage;
+				Dungeon.PopulationDamage = Hit.PopulationDamage;
+				if (bTheCataclysmsOwn)
 				{
 					Dungeon.Type = ECataclysmDungeonType::Cataclysm;
 				}
@@ -10228,8 +10239,11 @@ bool FCataclysmTravelDeathTest::RunTest(const FString&)
 	const int32 Owed = Walking.Run->DaysOwed();
 	const int32 Cost = Walking.Run->DeathDayCost();
 	const FCataclysmDungeon* Walked = Walking.Run->FindDungeon(Walking.DungeonId);
-	const FCataclysmCity* HitCity = Walked ? Walking.Run->Map->Find(Walked->CityId) : nullptr;
+	const int32 HitCityId = Walked ? Walked->CityId : INDEX_NONE;
+	const FCataclysmCity* HitCity = Walking.Run->Map->Find(HitCityId);
 	const FString HitCityName = HitCity ? HitCity->Name : FString(TEXT("NO CITY"));
+	const float DefenceBefore = HitCity ? HitCity->Defence : -1.0f;
+	const float PeopleBefore = HitCity ? HitCity->Population : -1.0f;
 	const UAbilitySystemComponent* Vitals = UCataclysmTargeting::AbilitySystemOf(Character);
 	const float MaxHealth =
 		Vitals ? Vitals->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) : -1.0f;
@@ -10246,6 +10260,14 @@ bool FCataclysmTravelDeathTest::RunTest(const FString&)
 	const UCataclysmRunSave* Record = Read<UCataclysmRunSave>(Walking.RunSlot());
 	const FCataclysmSavedCharacterPlacement* Placement =
 		Record && Record->Floor.Characters.Num() == 1 ? &Record->Floor.Characters[0] : nullptr;
+
+	// WHAT THE RESOLVE TOOK FROM THE CITY, MEASURED: its figures before the death and now. Nothing else stands on the
+	// map to hit it, and a run begun fresh has no upgrade to repair it.
+	const FCataclysmCity* HitCityAfter = Walking.Run->Map->Find(HitCityId);
+	const FString ExpectedLoss = HitCityAfter
+		? FString::Printf(TEXT("%s lost %.0f defence and %.0f people"), *HitCityName,
+						  DefenceBefore - HitCityAfter->Defence, PeopleBefore - HitCityAfter->Population)
+		: FString(TEXT("NO CITY"));
 
 	FArrived Arrived;
 	const bool bArrived = ArriveInTheCapital(*this, Carried, Arrived);
@@ -10286,13 +10308,15 @@ bool FCataclysmTravelDeathTest::RunTest(const FString&)
 
 	// AND ITS SECOND LINE SAYS WHAT THE DAYS AWAY DID: the walk's, the death's resolve and the death's own days, with
 	// the city the resolve hit, and no clear's line. Issue #2733 slice 3 (Q6).
-	AddInfo(FString::Printf(TEXT("TRAVEL DEATH: the resolve hit %s; the return line \"%s\""), *HitCityName,
-							*Arrived.ReturnLine));
+	AddInfo(FString::Printf(TEXT("TRAVEL DEATH: the resolve hit %s, expected \"%s\"; the return line \"%s\""),
+							*HitCityName, *ExpectedLoss, *Arrived.ReturnLine));
 	TestTrue(TEXT("the second line is the days away, from the day the walk left to the day the death's days reached"),
 			 Arrived.ReturnLine.StartsWith(FString::Printf(TEXT("While you were away, from day %d to day %d: "), DayBefore,
 														   DayBefore + Owed + Cost)));
-	TestTrue(TEXT("naming the city the death's resolve hit, and what it lost"),
-			 Arrived.ReturnLine.Contains(HitCityName + TEXT(" lost ")));
+	TestTrue(TEXT("set-up: the resolve took something from the city"),
+			 HitCityAfter != nullptr && DefenceBefore - HitCityAfter->Defence > 0.0f);
+	TestTrue(TEXT("naming the city the death's resolve hit, and what it lost, in the figures measured"),
+			 Arrived.ReturnLine.Contains(ExpectedLoss));
 	return true;
 }
 

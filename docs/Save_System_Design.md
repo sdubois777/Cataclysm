@@ -417,8 +417,10 @@ threshold are tuning constants and only playing settles them.**
 | The character leaving the level | `UCataclysmSaveWriter::HandOver`, called when the player travels: the capital's Walk, the last floor's stairs, and a death that ended a walk. The character record and the run record, **synchronously**, with no floor held, and then the departing level writes nothing more. The next level loads the character from them. Since 2026-11-17 (#2733 slice 3) |
 
 **The run record is written at most once a frame**, unless it is a death, the
-paying for one, a run won, a character created or the character leaving the
-level, each of which replaces what an earlier write that frame put on disk.
+paying for one, a run won, a character created, the character leaving the level
+or a change of floor, each of which replaces what an earlier write that frame put
+on disk. A change of floor joined them on 2026-11-18 (#2733 slice 3), after a
+walk begun on arrival was found skipped behind an earlier write in its frame.
 Several creatures dying together raise several triggers in one frame, and each
 write but the last would be overwritten before it reached the disk.
 

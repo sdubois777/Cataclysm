@@ -317,6 +317,115 @@ Each restored half must pass its whole prefix; each broken half fails exactly th
 Assertions are counted in each broken half's kept log in both of the engine's forms, "Expected '...'" and "...: The
 two values are not equal.".
 
+### Window travel-w1, the first run, 2026-11-18: stopped at its second group, on two faults in my tests and one in the code
+
+At `c8cda5aa`. The runner's lines after the pre-checks, which all passed:
+
+```
+lock acquire: exit 0 travel-w1 holds the Unreal editor.
+build: Build: Succeeded - target already up to date, 0 actions, nothing compiled | exit 0
+assets: git status exit 0, 23 changed: 21 input assets and L_Sandbox.umap modified, IA_ToggleEmpireMap.uasset new
+assets: restoring: 19 files
+assets: after restoring, git status: DA_InputConfig, IMC_KeyboardMovement, IMC_MouseMovement modified; IA_ToggleEmpireMap new
+assets: committed e06b5f16 on c8cda5aa, files [A IA_ToggleEmpireMap.uasset, M DA_InputConfig.uasset, M IMC_KeyboardMovement.uasset, M IMC_MouseMovement.uasset]
+assets: git push exit 0; git lfs push exit 0 ''; origin's feat/2733-travel is e06b5f16: the tested head
+alone Cataclysm.Input.: Tests: 8 tests performed, 8 succeeded, 0 failed | exit 0
+alone Cataclysm.Travel.: Tests: 9 tests performed, 6 succeeded, 3 failed: ADeathThatEndsAWalkTakesTheCharacterBackToTheCapitalWhole, TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk, TheLastFloorsStairsClearTheDungeonAndTakeTheCharacterBackToTheCapital | exit 1
+STOPPED: Cataclysm.Travel. alone did not pass
+lock release: exit 0 travel-w1 released the Unreal editor.
+```
+
+(The two `assets:` lines on what changed are shortened here; the run's own lines list each path.) **The asset step did
+exactly what was registered**: each of the four is a Git LFS pointer in git and an Unreal package on disk, and
+`e06b5f16` holds them from here on.
+
+**The three failures, read from the kept engine log `b2733s3_alone_engine_Travel_e06b5f16.log`:**
+
+1. **`ADeathThatEndsAWalkTakesTheCharacterBackToTheCapitalWhole`, 1 assertion, "naming the city the death's resolve
+   hit, and what it lost". A FAULT IN MY TEST'S SET-UP.** The line read "While you were away, from day 1 to day 8:
+   nothing was hit." The test's dungeon was placed by hand, and a hand-placed dungeon carries no `DefenceDamage` and
+   no `PopulationDamage` -- both default to 0 -- while a hit is those two scaled by the dungeon's depth. So the
+   resolve took nothing, and the summary rightly left it out. Every other figure in that test matched: day 8, floor
+   0, full health, the death line.
+2. **`TheLastFloorsStairsClearTheDungeonAndTakeTheCharacterBackToTheCapital`, 1 assertion, "the character exactly as
+   it left". A FAULT IN MY TEST'S HELPER, NOT IN THE HAND-OVER.** The two records differ in one field,
+   `CataclysmOrderSeed`: 1768495365 before the trip and 1099154649 after it. The test's dungeon character never drew
+   an order seed, and **a character with no seed is saved with the seed its `CharacterId` gives**
+   (`FCataclysmSaveGather::CharacterFrom`, the rule a version 6 character file migrates by). The helper built its
+   "before" record with no `CharacterId`, so it got the seed of an empty identifier; the hand-over's record had the
+   character's real identifier, and the load set that seed. A character made in play draws its seed when it is made,
+   and the arrival test -- whose character was made so -- matched byte for byte. Every other figure matched: the
+   potions, health 37, not placed, the day, the clear, the award (1.000 back as 1.000).
+3. **`TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk`, 2 assertions, "saying the character is in
+   that dungeon" (-1, not 0) and "on floor 1" (0, not 1). A FAULT IN THE CODE.** The arrival's `ChangedFloor` write was
+   noted -- the last trigger was "changing floor" -- and skipped by the run record's once-a-frame rule, because the
+   test's scene had written the run record earlier in the same frame: `MakeScene` begins a writer on the sandbox's
+   floor, and the dungeon's `StartPlay` then changes floor and writes, and a test's whole body is one frame. In play
+   the writer begins only after `StartPlay` has built the floor, and the load writes nothing (restoring the bag and
+   the gear raises no trigger), so I found no write in play before the arrival's in that frame. But the rule can skip
+   it, and the code and this entry say "written at once".
+
+**Ruled by the coordinating session, 2026-11-18:** all three as proposed. Failure 1, test only: the hand-placed
+dungeon takes an Outpost dungeon's designed hit from `UCataclysmSurgeScheduler::SpecFor`, and the assertion names the
+loss expected, so the summary is checked against real figures. Failure 2, test only: the test's character draws its
+order seed, as a made character does; and this entry says plainly why the "before" record differed (above).
+Failure 3: `ChangedFloor` is exempt from the once-a-frame rule, with a ninth proof, C9 -- on one condition first:
+every caller that raises `ChangedFloor` listed, and none able to raise it more than once in a frame in play.
+
+### Every place that raises `ChangedFloor`, read in the code, 2026-11-18
+
+Two functions call `UCataclysmSaveWriter::SetFloor`, which raises `ChangedFloor` only when the floor it is told differs
+from the one it holds, and only while the writer is writing; and one place raises it directly.
+
+| Raises it | Through | At most, in one frame in play | Why |
+| :-- | :-- | :-- | :-- |
+| `GoToFloor`'s `SetFloor` | `StartPlay`, the level's first floor | never | the writer begins in the parent's `StartPlay`, after the floor is built |
+| | `GoDownOneFloor`, the stairs (`HandleStairsTaken`, and Unstable Portal's "descends") | once | one overlap of the stairs per change; the old floor's stairs go with the old floor |
+| | `GoDownOneFloor`, a Horde's next wave (`BringTheNextWaveIn`) | once | the game mode's tick asks at most once a frame (`SinceWaveCheckSeconds` resets), and only when the wave is down to a tenth, which a wave that has just arrived is not |
+| | `ThePlayerFellIntoAChasm`, Those in the Dark's fall to the dark floor | once | only while `ThoseInTheDarkFallsNoted` is 0 |
+| | `LeaveTheDarkFloor`, the dark floor's stairs | once | as the stairs |
+| | `EnterEmpireDungeon`, floor 1 | once | and only when the level held another floor |
+| | `ResumeEmpireDungeon`, a load inside a dungeon | once | once per load |
+| `LeaveEmpireDungeon`'s `SetFloor` | a walk ended on the dark floor: a death there | once | once per walk's end |
+| `EnterThePendingWalkIfReady` | the arrival from the capital | once | **changed after the first run**: it raises it only when entering did not already (`FloorChangesNoted` unchanged), so a level begun on another floor -- `Cataclysm.DungeonFloor` set -- does not raise it twice |
+
+**Cryptquake and Heaven's Quake change no floor**: their pits and pillars are obstacles on the floor standing, and
+neither reaches `GoToFloor`. **A floor rebuilt in place** is `GoToFloor` to the floor held, which raises nothing.
+`EnterEmpireDungeon` leaving a walk first could raise it twice -- `LeaveEmpireDungeon` from the dark floor, then floor
+1 -- and no player's door reaches that since this slice: a Walk press and `Cataclysm.EnterDungeon` refuse mid-walk, and
+the arrival enters only when nothing is walked. **Two in one frame need two of these to coincide** -- a death paid for on
+the frame the stairs are taken, say -- and then each is one write, the later replacing the earlier, which is what the
+exemption is for.
+
+### What changed after the first run
+
+- **`ChangedFloor` writes whatever else wrote the run record that frame** (`UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame`),
+  and its comment and the save writer's say why; `docs/Save_System_Design.md` section 6 lists it among the writes that
+  replace an earlier one.
+- **The arrival raises `ChangedFloor` only when entering did not already** (above).
+- **The death test's dungeon takes an Outpost dungeon's designed hit** (`UCataclysmSurgeScheduler::SpecFor(Basic,
+  Outpost)`), and the test measures the city before the death and after, and checks the line names that loss in those
+  figures: "<city> lost <defence> defence and <people> people".
+- **The travel tests' dungeon character draws a Cataclysm order seed**, as a made character does.
+- **A Python check**, `test_a_trip_between_levels_is_a_save_and_a_load.py::test_a_change_of_floor_writes_even_after_another_write_this_frame`,
+  and its proof S7, PROVED: "1 failed, 9 passed" with `ChangedFloor` taken out of the exemption, "10 passed" restored.
+- **The runner skips the asset step** and instead checks that HEAD holds the four input assets committed in
+  `e06b5f16`, each a Git LFS object checked out as an Unreal package.
+
+### Re-registered before the second run
+
+**Unchanged from the first registration:** the whole suite 4784, 47 skipped halves, 0 test saves left behind,
+"Declared: 4784"; the fifteen groups alone at the counts above; C1 to C8 as above.
+
+**Added: C9**, with `prove_cpp_guard`:
+
+| Proof | Break | Prefix | Predicted broken half |
+| :-- | :-- | :-- | :-- |
+| C9 | `ChangedFloor` taken out of `WritesEvenIfTheRunWasWrittenThisFrame` (`CataclysmSaveTriggers.cpp`) | `Cataclysm.Travel.` | 9 performed, 8 succeeded, 1 failed: `TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk`, 2 assertions: "saying the character is in that dungeon", "on floor 1" -- the first run's two |
+
+**Python, after the second run's start: "7471 passed, 9 skipped"**, one more than the first registration for the check
+above; ruff passing.
+
 ---
 
 ## 2026-11-17 — Play opens the front end, and Start and Continue open the capital, a new level that opens the empire map on arrival (#2733, slice 2)

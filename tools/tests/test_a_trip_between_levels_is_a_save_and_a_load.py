@@ -173,3 +173,22 @@ def test_travel_writes_the_records_before_it_carries_the_character() -> None:
         "TravelTo does not stop when the records could not be written, so the next level would load older ones")
     assert "if (!GIsAutomationTesting) { UGameplayStatics::OpenLevel(this, FName(Map)); }" in body, (
         "TravelTo opens a level in an automation test, or opens none in play")
+
+
+def test_a_change_of_floor_writes_even_after_another_write_this_frame() -> None:
+    """A change of floor replaces what an earlier write in its frame gathered, and an arrival raises it once.
+
+    WINDOW TRAVEL-W1'S FIRST RUN, 2026-11-18: the walk an arrival begins was written as `ChangedFloor`, and the run
+    record's once-a-frame rule skipped it behind an earlier write in the same frame, so the record on disk still said
+    the capital. Ruled that day: `ChangedFloor` writes whatever else wrote the run record that frame. And the arrival
+    raises it only when entering the dungeon did not already, so it is raised once.
+    """
+    triggers = code(SOURCE / "Cataclysm" / "Save" / "CataclysmSaveTriggers.cpp")
+    body = function_body(triggers, "bool UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame(")
+    assert "ECataclysmSaveTrigger::ChangedFloor" in body, (
+        "a change of floor obeys the once-a-frame rule again, and the walk an arrival begins can go unwritten")
+    dungeon = code(SOURCE / "Cataclysm" / "Dungeon" / "CataclysmDungeonGameMode.cpp")
+    arrival = function_body(dungeon, "bool ACataclysmDungeonGameMode::EnterThePendingWalkIfReady()")
+    assert ("if (Writer->FloorChangesNoted() == FloorChangesBefore) { "
+            "Writer->NoteTrigger(ECataclysmSaveTrigger::ChangedFloor); }") in arrival, (
+        "the arrival raises the change of floor whether or not entering the dungeon already did")
