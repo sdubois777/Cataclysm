@@ -597,6 +597,47 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	float EffectMagnitude = 0.0f;
 
 	/**
+	 * Whether `Effect` lays ONE of the effects it names on each application, drawn at random, rather than all of them.
+	 * "Random" or empty. Issue #2580, [N4], for the Chaos aura Unreason: "each second every enemy within it suffers one
+	 * curse drawn at random". The draw is among the effects `NamedEffectTags` keeps, so a stun or a damage over time
+	 * named beside them is not in it; the generator refuses such a row. `Cataclysm.SkillEffectPick` pins the draw.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	FString EffectPick;
+
+	/**
+	 * The ailment a landed blow of this skill applies outright, at magnitude one, or empty. Issue #2580, [N1], ruled
+	 * by the owner 2026-11-17: `Poison`, `Disease`, `Necrosis` or `VoidSplinter`, through `UCataclysmAilments::Apply`,
+	 * the way `Burn=1` applies burn through `ApplyBurn`. A STATED AILMENT, so the damage threshold an incidental one
+	 * must clear is not asked (#917); an evaded blow applies nothing (#1156).
+	 *
+	 * NOT `Effect`, WHICH DROPS EVERY DAMAGE OVER TIME IT NAMES, and keeps doing so: `NamedEffectTags` would grant the
+	 * tag with no per-tick amount behind it, a target bleeding for nothing. This key is the route that prices one.
+	 *
+	 * BURN IS NOT ONE OF THE VALUES. `Burn=1` already applies it through `ApplyBurn`, which carries burn's own rules;
+	 * two keys for one ailment would let a row state it twice. The generator refuses it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	FString Ailment;
+
+	/**
+	 * The ends of a skill's damage percent when it is drawn on each use, uniformly between them. Issue #2580, [N3], for
+	 * the Chaos Whip's Wild Lash and Pandemonium. Both nought when the skill states no roll; `RollsItsDamage` asks.
+	 *
+	 * NOT `MinDamagePercent` AND `MaxDamagePercent`, which already mean a charged swing's floor and a scaling ceiling.
+	 * A ROLL REPLACES THE ROW'S DAMAGE PERCENT, and the generator refuses a row stating both, so the two cannot
+	 * disagree. `Cataclysm.SkillDamageRoll` pins the draw.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float DamageRollMin = 0.0f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float DamageRollMax = 0.0f;
+
+	/** Whether this skill draws its damage percent on each use. See `DamageRollMin`. */
+	bool RollsItsDamage() const { return DamageRollMax > 0.0f && DamageRollMax >= DamageRollMin; }
+
+	/**
 	 * Percentage points of INCREASED damage an aura grants everyone on the
 	 * caster's side who is standing inside it.
 	 *

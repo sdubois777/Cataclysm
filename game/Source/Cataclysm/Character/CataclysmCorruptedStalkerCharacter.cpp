@@ -14,6 +14,7 @@
 #include "AbilitySystem/CataclysmTriggeredSkill.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
+#include "Character/CataclysmClassStats.h"
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Items/CataclysmDropRoll.h"
@@ -85,6 +86,40 @@ namespace
 		};
 		return Entry;
 	}
+
+	/**
+	 * AN ENTRY OF ONE OF THE SIX TYPES WHOSE WEAPON KITS ISSUE #2580 AUTHORED, on the owner's rulings of 2026-11-17: Death
+	 * a Dagger, Pestilence a Fist, Famine a Sword, Celestial a Warhammer, Chaos a Whip, Void a Greatsword, so
+	 * `WearTheBuild`'s `SkillsFor` finds the weapon's five rows and the type's Aura.
+	 *
+	 * ON THE SHARED `Default` CLASS LINE AND WITH NO PASSIVES, by the coordinating session's reading of the owner's
+	 * answer of 2026-10-25 ("a class or passives only where designed"): `ClassStats.csv` has lines only for the three
+	 * Demonic classes, and only they have trees, so no class line or node is invented for the six. The class each was
+	 * drafted as (Shadow, Virion, Vampire, Nephilim, Agent of Chaos, Singularity) is in its name's epithet only.
+	 *
+	 * KAEDRIC'S EIGHTEEN PIECES, WITH THE ENTRY'S OWN WEAPON, under the owner's delegation of unstated numbers: the same
+	 * armour, rings and jewellery, so every entry is built from one shape of gear and only the weapon differs. Copied
+	 * from `DemonicEntry` rather than written out again, so the two cannot drift; the weapon carries the entry's type
+	 * (`PiecesAt`).
+	 */
+	FCataclysmStalkerEntry KitEntry(const TCHAR* DamageType, const TCHAR* Name, const TCHAR* WeaponType,
+									const TCHAR* WeaponBase)
+	{
+		FCataclysmStalkerEntry Entry = DemonicEntry();
+		Entry.DamageType = FName(DamageType);
+		Entry.Name = Name;
+		Entry.ClassName = UCataclysmClassStats::DefaultClassName;
+		Entry.WeaponType = WeaponType;
+		Entry.Allocation = FCataclysmPassiveAllocation();
+		for (FCataclysmStalkerPiece& Piece : Entry.Pieces)
+		{
+			if (Piece.Slot == ECataclysmGearSlot::Weapon1)
+			{
+				Piece.Base = FName(WeaponBase);
+			}
+		}
+		return Entry;
+	}
 }
 
 ACataclysmCorruptedStalkerCharacter::ACataclysmCorruptedStalkerCharacter()
@@ -103,12 +138,12 @@ TArray<FCataclysmStalkerEntry> ACataclysmCorruptedStalkerCharacter::Entries()
 	return {
 		EmptySlotFor(TEXT("War")),
 		DemonicEntry(),
-		EmptySlotFor(TEXT("Death")),
-		EmptySlotFor(TEXT("Pestilence")),
-		EmptySlotFor(TEXT("Famine")),
-		EmptySlotFor(TEXT("Celestial")),
-		EmptySlotFor(TEXT("Chaos")),
-		EmptySlotFor(TEXT("Void")),
+		KitEntry(TEXT("Death"), TEXT("Morwen the Gravewalker"), TEXT("Dagger"), TEXT("Weapon_Dagger")),
+		KitEntry(TEXT("Pestilence"), TEXT("Oswin the Carrier"), TEXT("Fist"), TEXT("Weapon_Fist")),
+		KitEntry(TEXT("Famine"), TEXT("Hesk the Starveling"), TEXT("Sword"), TEXT("Weapon_Sword")),
+		KitEntry(TEXT("Celestial"), TEXT("Aurel the Unbowed"), TEXT("Warhammer"), TEXT("Weapon_Warhammer")),
+		KitEntry(TEXT("Chaos"), TEXT("Tamsin the Unreasoning"), TEXT("Whip"), TEXT("Weapon_Whip")),
+		KitEntry(TEXT("Void"), TEXT("Ysolde the Starless"), TEXT("Greatsword"), TEXT("Weapon_Greatsword")),
 	};
 }
 

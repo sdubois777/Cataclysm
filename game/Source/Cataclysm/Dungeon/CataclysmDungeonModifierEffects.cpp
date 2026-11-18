@@ -899,7 +899,17 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(LabrynthKey)
 		// UNSTABLE DIMENSIONS, BUILT SINCE ITS REALITY IS AN ENEMY MODIFIER ON EVERY CREATURE, 2026-10-01. Its rule is
 		// `FCataclysmDungeonFloorRules::ModifiersFor`'s rule 3, given out by `SpawnPlacedCreature`.
-		|| RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey))
+		|| RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey)
+		// THE CORRUPTED STALKER, BUILT SINCE 2026-11-17 (issue #2580), partly built from 2026-10-25 (issue #1308, part
+		// B). It arrives, hunts and follows from floor to floor wearing a player's build (layer 1), chooses its skills
+		// and drinks its potions (layer 2), its death pays as a Boss and drops what it wore (layer 3), and it is drawn
+		// from seven authored entries, one per damage type but War (layer 4). WHY IT MOVED: the coordinating session
+		// ruled on 2026-10-25 that the row stays partly built "until all seven non-War entries exist", and #2580
+		// authored the six that were missing; the coordinating session ruled the move on 2026-11-17. War's entry
+		// waits under the standing no-War order, which the ruling's "non-War" already excludes. The row's "shared table
+		// of characters consumed by Worn Residue" is other players' characters, which the design says needs a network
+		// (`docs/Cataclysm_GDD_v2.md`, "This half needs no connection"); the authored entries are what it draws from.
+		|| RowKey == FName(CorruptedStalkerKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -919,12 +929,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		// burst that maddens the player, since 2026-09-26); "attack allies" against other players waits on co-op.
 		// Issues #1820 and #41.
 		RowKey == FName(InsanityBurstsKey)
-		// THE CORRUPTED STALKER, since 2026-10-25 (issue #1308, part B). It arrives, hunts and follows from floor to
-		// floor wearing a player's build (layer 1), chooses its skills and drinks its potions (layer 2), and its death
-		// pays as a Boss and drops what it wore (layer 3). Missing: six of the seven entries the owner asked for, one
-		// per damage type except War, whose weapon skills are undesigned placeholders (layer 4). Ruled to stay partly
-		// built until all seven exist.
-		|| RowKey == FName(CorruptedStalkerKey)
+		// THE CORRUPTED STALKER WAS HERE FROM 2026-10-25 UNTIL 2026-11-17, waiting for six of its seven non-War
+		// entries; issue #2580 authored them, and it is built and answers above.
 		// REALITY RIFTS WAS HERE UNTIL 2026-10-10, for "access hidden areas"; it is built and answers above.
 		// WARZONE CONTROL POINTS WAS HERE UNTIL 2026-10-04, for "opening shortcuts"; it is built and answers above.
 		// THE LABRYNTH WAS HERE UNTIL 2026-10-12, for "rooms rearrange". The rooms still do not move; the row was

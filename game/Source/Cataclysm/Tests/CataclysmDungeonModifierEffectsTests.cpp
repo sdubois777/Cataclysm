@@ -47554,7 +47554,9 @@ bool FCataclysmWildMagicPoolTest::RunTest(const FString& Parameters)
 	Pin(TEXT("War: summon or deployable"), CountOf(War, EWhy::SummonOrDeployable), 3);
 	Pin(TEXT("War: in the pool"), CountOf(War, EWhy::InThePool), 1);
 	TestTrue(TEXT("and that one is Shield Bash"), Holds(War, EWhy::InThePool, TEXT("Shield Bash")));
-	TestEqual(TEXT("a damage type with no skills has an empty pool"), TheWildMagicPool(TEXT("Celestial")).Num(), 0);
+	// A TYPE NO ROW CARRIES, AND NO LONGER CELESTIAL: issue #2580 gave Celestial a Warhammer kit and every damage type
+	// but War and Demonic one kit each, so no damage type is without a shaped skill any more.
+	TestEqual(TEXT("a damage type with no skills has an empty pool"), TheWildMagicPool(TEXT("NoSuchType")).Num(), 0);
 	return true;
 }
 
@@ -47845,8 +47847,11 @@ bool FCataclysmWildMagicSmallPoolTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// A DAMAGE TYPE WITH NO SKILLS AT ALL, FIRST, while nothing is drawn: a use draws nothing, and the panel says so.
-	Weapon->SetDamageType(TEXT("Celestial"));
+	// A CHARACTER CARRYING NO DAMAGE TYPE, FIRST, while nothing is drawn: a use draws nothing, and the panel says so.
+	// Until #2580 this pinned Celestial, then a damage type with no skills at all. Since #2580 every type but War has a
+	// kit, so no type's pool is empty; an empty pin (`SetDamageType` with an empty string) is the empty pool now.
+	// Window stalker-rows-w1, 2026-11-17, failed this test on "pool of 3 Celestial skills".
+	Weapon->SetDamageType(FString());
 	TestEqual(TEXT("the panel says there is nothing to trigger"), Mode->LiveCountsForTheFloor().FindRef(WildMagicRow),
 			  FString(TEXT("wild magic: no other skill to trigger")));
 	ThePlayerUses(Player, TEXT("Some Other Skill"), ECataclysmAbilitySlot::Heavy, Aim);
@@ -61753,9 +61758,11 @@ namespace CataclysmDungeonModifierEffectsTest
 	}
 }
 
-// EIGHT NAMED SLOTS, ONE PER DAMAGE TYPE, AND ONLY DEMONIC FILLED, with every base, affix and passive node a row.
+// EIGHT NAMED SLOTS, ONE PER DAMAGE TYPE, AND EVERY ONE BUT WAR FILLED, with every base, affix and passive node of the
+// Demonic entry a row. Only Demonic was filled until issue #2580, which authored the other six and renamed this test
+// from "...AndOnlyDemonicIsAuthored"; `Cataclysm.StalkerEntries.` checks those six as this checks Kaedric.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerEntriesTest,
-	"Cataclysm.DungeonModifierEffects.TheCorruptedStalkersEntriesAreOnePerDamageTypeAndOnlyDemonicIsAuthored",
+	"Cataclysm.DungeonModifierEffects.TheCorruptedStalkersEntriesAreOnePerDamageTypeAndAllButWarAreAuthored",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmCorruptedStalkerEntriesTest::RunTest(const FString& Parameters)
@@ -61775,12 +61782,16 @@ bool FCataclysmCorruptedStalkerEntriesTest::RunTest(const FString& Parameters)
 				  Entries[Index].DamageType, Types[Index]);
 	}
 	const TArray<FCataclysmStalkerEntry> Authored = ACataclysmCorruptedStalkerCharacter::AuthoredEntries();
-	if (!TestEqual(TEXT("one entry is authored"), Authored.Num(), 1)
-		|| !TestEqual(TEXT("and it is Demonic's"), Authored[0].DamageType, FName(TEXT("Demonic"))))
+	if (!TestEqual(TEXT("seven entries are authored"), Authored.Num(), 7)
+		|| !TestEqual(TEXT("and the first is Demonic's"), Authored[0].DamageType, FName(TEXT("Demonic"))))
 	{
 		return false;
 	}
 	TestFalse(TEXT("War's slot is named and empty"), Entries[0].IsAuthored());
+	for (int32 Index = 1; Index < Types.Num(); ++Index)
+	{
+		TestTrue(FString::Printf(TEXT("%s's slot is authored"), *Types[Index].ToString()), Entries[Index].IsAuthored());
+	}
 
 	const FCataclysmStalkerEntry& Demonic = Authored[0];
 	TestEqual(TEXT("a Ravager"), Demonic.ClassName, FString(TEXT("Ravager")));
@@ -62050,8 +62061,12 @@ bool FCataclysmCorruptedStalkerArrivesTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("CONTROL: and that is not the entrance the player stands at"),
 			 FVector::Dist2D(Stalker->GetActorLocation(), Mode->CurrentFloor->EntranceWorld())
 				 > FCataclysmFloorGenerator::CellSizeCm * 2.0f);
-	TestTrue(TEXT("the panel says who hunts the player"),
-			 Mode->LiveCountsForTheFloor().FindRef(CorruptedStalkerRow).Contains(TEXT("hunted by Kaedric")));
+	// BY THE NAME OF THE ENTRY IT WEARS, which the dungeon's seed draws from the seven authored since issue #2580; this
+	// asked for "hunted by Kaedric" while his was the only entry.
+	TestFalse(TEXT("set-up: it wears a named entry"), Stalker->EntryName().IsEmpty());
+	TestTrue(FString::Printf(TEXT("the panel says who hunts the player: hunted by %s"), *Stalker->EntryName()),
+			 Mode->LiveCountsForTheFloor().FindRef(CorruptedStalkerRow).Contains(
+				 FString::Printf(TEXT("hunted by %s"), *Stalker->EntryName())));
 	TestTrue(TEXT("and the floor is clear while it stands: it holds no floor clear"), Mode->FloorIsCleared());
 
 	// ONCE: another minute raises no second one.
@@ -62122,6 +62137,70 @@ bool FCataclysmCorruptedStalkerFollowsTest::RunTest(const FString& Parameters)
 	const float Share = StalkerRead(Second, Vital::GetHealthAttribute())
 		/ FMath::Max(StalkerRead(Second, Vital::GetMaxHealthAttribute()), 1.0f);
 	TestEqual(TEXT("with the share of its health it had"), Share, 0.4f, 0.01f);
+	return true;
+}
+
+// ONE DUNGEON, ONE ENTRY: THE STALKER THAT FOLLOWS DOWN THE STAIRS IS THE CHARACTER THAT HUNTED THE FLOOR ABOVE. The row is
+// one character that "hunts you across the dungeon floors", carrying its health and potions down; issue #2580 authored
+// six more entries, and the entry was drawn on each floor's own seed, so each floor could raise another. Floors 2 to 5
+// are walked, and the Stalker each raises wears one name. THE CONTROL: the four floors' own seeds, salted as the draw
+// was, would have drawn at least two different entries, so a draw on the floor's seed fails this test.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerOneEntryTest,
+	"Cataclysm.DungeonModifierEffects.TheCorruptedStalkerWearsOneEntryOnEveryFloorOfADungeon",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerOneEntryTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const int32 Authored = ACataclysmCorruptedStalkerCharacter::AuthoredEntries().Num();
+	if (!TestTrue(FString::Printf(TEXT("set-up: more than one entry to draw from (%d)"), Authored), Authored > 1))
+	{
+		return false;
+	}
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AStalkedDungeon(*this, World, Player, 2);
+	if (!Mode)
+	{
+		return false;
+	}
+	TSet<FString> Worn;
+	TSet<int32> TheFloorsOwnDraws;
+	for (int32 Floor = 2; Floor <= 5; ++Floor)
+	{
+		if (Floor > 2)
+		{
+			if (!TestTrue(FString::Printf(TEXT("set-up: floor %d was reached"), Floor), Mode->GoToFloor(Floor)))
+			{
+				return false;
+			}
+			Mode->ClearFloorEnemies();
+		}
+		TheFloorsOwnDraws.Add(FRandomStream(Mode->CurrentFloor->GetPlan().Seed ^ Effects::CorruptedStalkerSalt)
+								  .RandRange(0, Authored - 1));
+		Beat(Mode, BeatsFor(Floor == 2 ? Effects::CorruptedStalkerFirstFloorSeconds
+									   : Effects::CorruptedStalkerFollowSeconds));
+		const ACataclysmCorruptedStalkerCharacter* Stalker = Mode->CorruptedStalkerOnTheFloor();
+		if (!TestNotNull(FString::Printf(TEXT("set-up: a Stalker hunts floor %d"), Floor), Stalker))
+		{
+			return false;
+		}
+		AddInfo(FString::Printf(TEXT("STALKER ENTRY: floor %d raised %s"), Floor, *Stalker->EntryName()));
+		Worn.Add(Stalker->EntryName());
+	}
+	TestTrue(FString::Printf(TEXT("CONTROL: the floors' own seeds would have drawn %d different entries"),
+							 TheFloorsOwnDraws.Num()),
+			 TheFloorsOwnDraws.Num() > 1);
+	TestEqual(TEXT("every floor raised the same entry"), Worn.Num(), 1);
 	return true;
 }
 
@@ -62269,9 +62348,12 @@ bool FCataclysmCorruptedStalkerBlowTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-// THE ROW IS PARTLY BUILT, AND IS ONE WITH A RULE.
+// THE ROW IS BUILT NOW THAT ALL SEVEN NON-WAR ENTRIES EXIST, AND IS ONE WITH A RULE. It was partly built from 2026-10-25,
+// ruled to stay so "until all seven non-War entries exist", and this test was "...IsPartlyBuiltUntilAllSevenEntriesExist"
+// and asserted `Partly` until issue #2580 authored the six that were missing and the coordinating session ruled the move
+// on 2026-11-17. **Not a test weakened to fit a change**: the condition it was written to wait for is asserted here too.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerBuiltStateTest,
-	"Cataclysm.DungeonModifierEffects.TheCorruptedStalkerRowIsPartlyBuiltUntilAllSevenEntriesExist",
+	"Cataclysm.DungeonModifierEffects.TheCorruptedStalkerRowIsBuiltNowThatAllSevenEntriesExist",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmCorruptedStalkerBuiltStateTest::RunTest(const FString& Parameters)
@@ -62279,9 +62361,11 @@ bool FCataclysmCorruptedStalkerBuiltStateTest::RunTest(const FString& Parameters
 	using namespace CataclysmDungeonModifierEffectsTest;
 	using Effects = UCataclysmDungeonModifierEffects;
 
-	TestEqual(TEXT("the Corrupted Stalker is partly built"),
+	TestEqual(TEXT("the condition it waited for: seven entries are authored"),
+			  ACataclysmCorruptedStalkerCharacter::AuthoredEntries().Num(), 7);
+	TestEqual(TEXT("the Corrupted Stalker is built"),
 			  static_cast<int32>(Effects::BuiltStateOf(CorruptedStalkerRow)),
-			  static_cast<int32>(ECataclysmModifierBuilt::Partly));
+			  static_cast<int32>(ECataclysmModifierBuilt::Built));
 	TestTrue(TEXT("and is a row with a rule"), Effects::KeysWithARule().Contains(CorruptedStalkerRow));
 	TestEqual(TEXT("CONTROL: Insanity Bursts is partly built too"),
 			  static_cast<int32>(Effects::BuiltStateOf(FName(Effects::InsanityBurstsKey))),

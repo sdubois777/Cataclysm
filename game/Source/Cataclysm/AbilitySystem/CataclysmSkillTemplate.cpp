@@ -62,6 +62,32 @@
 #include "GameFramework/PlayerController.h"
 #include "GameplayTagsManager.h"
 #include "Items/CataclysmItem.h"
+#include "HAL/IConsoleManager.h"
+
+/**
+ * Pins where a skill's rolled damage percent lands between its `DamageRollMin` and `DamageRollMax`, as a share of
+ * the way from one to the other: 0 the least, 1 the most. -1, the default, draws uniformly. Issue #2580, [N3]. The
+ * same shape as `Cataclysm.RandomDotPick`, so a test can say which figure it expects.
+ */
+static TAutoConsoleVariable<float> CVarCataclysmSkillDamageRoll(
+	TEXT("Cataclysm.SkillDamageRoll"),
+	-1.0f,
+	TEXT("Pins a rolled skill's damage percent as a share of the way from its DamageRollMin to its DamageRollMax: "
+		 "0 the least, 1 the most. -1 draws at random."),
+	ECVF_Default);
+
+/**
+ * Pins which of its named effects a skill stating `EffectPick=Random` lays, by its place among them. -1, the
+ * default, draws each equally likely. Issue #2580, [N4].
+ */
+static TAutoConsoleVariable<int32> CVarCataclysmSkillEffectPick(
+	TEXT("Cataclysm.SkillEffectPick"),
+	-1,
+	TEXT("Pins the effect a skill stating EffectPick=Random lays, by its place among the effects it names. -1 "
+		 "draws at random."),
+	ECVF_Default);
+
+const TCHAR* UCataclysmSkillTemplate::RandomBuffEffect = TEXT("RandomBuff");
 
 UCataclysmSkillTemplate::UCataclysmSkillTemplate()
 {
@@ -97,6 +123,16 @@ float UCataclysmSkillTemplate::GetDamagePercent() const
 	// damage from whichever key it was put on would be worth 250% of weapon
 	// damage on the right mouse button and 400% on R. Decided 2026-08-22;
 	// see docs/DECISIONS.md and issue #836.
+	//
+	// AND A SKILL THAT ROLLS ITS DAMAGE ANSWERS WHAT THIS USE DREW. Issue #2580, [N3]. The generator refuses a row
+	// stating a roll and a Damage Percent both, so the roll stands in for the column. Before the first use there is
+	// no draw, and the middle of the range is answered: the figure a reader of the skill bar expects on average.
+	if (Params.RollsItsDamage())
+	{
+		return RolledDamagePercent >= 0.0f
+			? RolledDamagePercent
+			: 0.5f * (Params.DamageRollMin + Params.DamageRollMax);
+	}
 	if (DamagePercentOverride >= 0.0f)
 	{
 		return DamagePercentOverride;
@@ -167,6 +203,10 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 	// EVERY USE BEGINS HITTING WHAT ITS OWN SHAPE HITS. Written here and not below, because a free start skips the
 	// block that takes what a row rolled.
 	ThisUseHitsAllWithinCm = 0.0f;
+
+	// AND A SKILL THAT ROLLS ITS DAMAGE DRAWS THIS USE'S FIGURE, before anything below reads `GetDamagePercent`.
+	// Issue #2580, [N3]: "drawn uniformly per use". A free repeat is a use of its own and draws again.
+	RolledDamagePercent = Params.RollsItsDamage() ? DrawDamageRoll() : -1.0f;
 
 	if (!bFreeRepeat && !CommitAbility(Handle, ActorInfo, ActivationInfo))
 	{
@@ -1546,7 +1586,7 @@ bool UCataclysmSkillTemplate::BlowLandedOn(const AActor* Target) const
 }
 
 int32 UCataclysmSkillTemplate::ApplyNamedEffectsTo(AActor* Target,
-												  float DurationScale)
+												  float DurationScale) const
 {
 	if (!IsValid(Target) || DurationScale <= 0.0f)
 	{
@@ -1563,8 +1603,21 @@ int32 UCataclysmSkillTemplate::ApplyNamedEffectsTo(AActor* Target,
 	// so every caller of it gets the same rule rather than each remembering.
 	const FName Type = DamageTypeName();
 
+	// ONE OF THEM, DRAWN AT RANDOM, WHEN THE ROW SAYS SO. Issue #2580, [N4]: the Chaos aura Unreason lays "one curse
+	// drawn at random" each pulse. A draw for every application, so each target of one pulse draws its own. Among the
+	// effects kept above, so a stun or a damage over time named beside them is never drawn; the generator refuses a
+	// row naming one. Each equally likely; `Cataclysm.SkillEffectPick` pins the place for tests.
+	TArray<FGameplayTag> Laying = NamedEffectTags();
+	if (Params.EffectPick.Equals(TEXT("Random"), ESearchCase::IgnoreCase) && Laying.Num() > 1)
+	{
+		const int32 Pinned = CVarCataclysmSkillEffectPick.GetValueOnAnyThread();
+		const int32 Pick = Laying.IsValidIndex(Pinned) ? Pinned : FMath::RandRange(0, Laying.Num() - 1);
+		const FGameplayTag Drawn = Laying[Pick];
+		Laying = {Drawn};
+	}
+
 	int32 Applied = 0;
-	for (const FGameplayTag& EffectTag : NamedEffectTags())
+	for (const FGameplayTag& EffectTag : Laying)
 	{
 		const float Seconds = AppliedEffectSeconds(EffectTag) * DurationScale;
 		if (Seconds <= 0.0f)
@@ -2470,6 +2523,14 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 											  /*DealtBy=*/nullptr, /*Skill=*/this);
 		}
 
+		// AND THE AILMENT A ROW STATES, BY THE SAME RULE AS THE BURN ABOVE. Issue #2580, [N1], ruled by the owner
+		// 2026-11-17: `Ailment=Necrosis` applies it outright on a landed blow. Whether the blow hurt is not asked, so a
+		// Support skill dealing nothing still lays it (#917); whether it connected is (#1156).
+		if (bLanded)
+		{
+			ApplyStatedAilmentTo(Self, Target);
+		}
+
 		// AND ANY RUNNING BUFF THAT REACTS TO A LANDED BLOW IS TOLD, AND WHERE.
 		// The Warhammer's Groundbreaker: "for 10 seconds every blow you land
 		// cracks the ground beneath what it hits". Here rather than in the Strike
@@ -2501,120 +2562,12 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 		// enemy; it is paid below, after every blow has resolved.
 		EnemiesHitForFervour += (bLanded && Dealt > 0.0f) ? 1 : 0;
 
-		// KNOCKBACK IS APPLIED HERE, WHICH IS WHAT MAKES IT A RIDER. It used to
-		// live inside UCataclysmStrikeSkill::SwingOnce, so only a Strike could
-		// shove. Issue #626 moved it: displacement is not specific to one kind of
-		// skill, and while it was a Strike parameter Shockwave Leap knocked back
-		// in its prose and could not say so in its data. Every template that hits
-		// anything comes through this function, so every one of them can now
-		// shove.
-		//
-		// NOT SCALED BY THE DAMAGE DEALT, deliberately. A Support skill deals no
-		// damage by design and can still push, which is what Forge Stance's
-		// opposite number would be. That is the difference between this and the
-		// burn above.
-		//
-		// BUT NOT ON A BLOW THAT WAS EVADED. Issue #1156. The project owner's
-		// rule of 2026-09-05 is that an evaded attack applies nothing it carries,
-		// because the hit was unsuccessful, and a shove is something the blow
-		// carries. The two statements above still hold together: `bLanded` asks
-		// whether the blow CONNECTED, not whether it hurt, and a skill that sends
-		// no blow at all is never evaded -- so a Support skill dealing zero
-		// damage still pushes exactly as before.
-		if (bLanded)
-		{
-			ApplyKnockbackTo(Self, Target);
-		}
-
-		// AND SO IS A STUN. Issue #1195: four rows state a `StunSeconds` and
-		// nothing read it, so no player skill in the game stunned anything.
-		// They are spread over two shapes -- Shield Bash is a Strike and the
-		// other three are Movement -- which is the same argument the knockback
-		// above makes for sitting here.
-		//
-		// THE DAMAGE IS PASSED IN AND ALL FOUR ROWS IGNORE IT, because all
-		// four also write `Effect=Stun` and a skill that names stunning as its
-		// effect skips the damage threshold. `ApplyStun` still enforces the
-		// five second immunity window and the boss exemption on every one.
-		//
-		// `Dealt` IS WHAT THE HIT SENT RATHER THAN WHAT LANDED, and a stated
-		// stun does not read it at all -- so the figure passed here decides
-		// nothing for the four designed rows and everything for an incidental
-		// stun, which still has to clear the damage threshold.
-		//
-		// AN EVADED BLOW STUNS NOTHING. Issue #1156, decided on 2026-09-04. This
-		// comment used to name that as the open question and the answer is the
-		// same one the burn above got: evasion says the blow never connected, so
-		// nothing it carries arrives either. A blow armour stopped dead still
-		// stuns, because armour answers whether it hurt rather than whether it
-		// landed.
-		if (bLanded)
-		{
-			ApplyStunTo(Self, Target, Dealt);
-		}
-
-		// AND SO IS FORCED MOVEMENT, FOR THE SAME REASON KNOCKBACK IS. Nine rows
-		// across the Spear, the Warhammer and the Whip state one of the five
-		// verbs, spread over three different shapes, so putting it in any one
-		// template would mean putting it in three.
-		//
-		// AFTER THE KNOCKBACK RATHER THAN BEFORE IT, which matters only for a
-		// row that states both. None does today: `Knockback` and `ForcedMovement`
-		// are separate columns and no designed row fills them together. If one
-		// ever did, the shove would happen first and then the haul, which is the
-		// order the two columns are written in.
-		//
-		// NOT SCALED BY THE DAMAGE DEALT, like the knockback and unlike the
-		// burn. The damage is handed over only because an undesigned knockdown
-		// would weigh it against the target's maximum health, and every row here
-		// states a designed one.
-		//
-		// AND NOT ON A BLOW THAT WAS EVADED, for the reason the knockback above
-		// records. A haul, a drag or a pull is something the blow carries, and an
-		// evaded blow carries nothing to its target.
-		if (bLanded && ApplyForcedMovementTo(Self, Target, Dealt))
+		// THE RIDERS A LANDED BLOW CARRIES TO ITS TARGET: A SHOVE, A STUN, FORCED MOVEMENT AND A KNOCKDOWN THIS
+		// CHARACTER CARRIES. In `LayTheLandedBlowsHolds` since 2026-11-17, so a fired projectile's contact reaches the
+		// same code rather than a copy of it (issue #2580). The reasons for each, and their order, are written there.
+		if (bLanded && LayTheLandedBlowsHolds(Self, Target, Dealt))
 		{
 			Pinned.Add(Target);
-		}
-
-		// AND A KNOCKDOWN THIS CHARACTER CARRIES RATHER THAN THE ROW STATING
-		// ONE. Issue #45, for "Charge skills knock down enemies they hit for 1-2
-		// seconds". The stat is scoped by its own `RequiredTags` to the keyword
-		// the row names, so the skill's tags decide whether it applies.
-		//
-		// HERE AND NOT IN `ApplyForcedMovementTo`, WHICH IS WHERE IT LOOKS LIKE
-		// IT BELONGS. That function returns at its first statement when the row
-		// states no forced movement -- and a charge skill states none, which is
-		// the entire case this row exists for. Reading the stat in there would
-		// leave the enchantment doing nothing, with every test still passing.
-		//
-		// GUARDED BY `bLanded` FOR THE REASON ABOVE: an evaded blow carries
-		// nothing to its target, and a charge that missed must not knock down.
-		//
-		// DESIGNED, SO IT SKIPS THE DAMAGE THRESHOLD AND NOTHING ELSE. The
-		// shared stun-immunity window and boss immunity still apply, which are
-		// the two guards the design paragraph on `ApplyKnockdown` actually
-		// argues for. THE DESIGN TEXT SAYS "a SKILL whose stated effect is to
-		// knock down" AND THIS IS AN ENCHANTMENT, so this is a ruling rather
-		// than a clean reading: it is the coordinating session's call, made on
-		// the grounds that the row states the effect without qualification and
-		// passing false would make it false for a weak charge.
-		if (bLanded)
-		{
-			if (const UCataclysmAbilitySystemComponent* Cataclysm =
-					Cast<UCataclysmAbilitySystemComponent>(
-						UCataclysmTargeting::AbilitySystemOf(Self)))
-			{
-				const float Seconds = Cataclysm->StatForSkill(
-					FName(UCataclysmSkillEffects::KnockdownSecondsStat),
-					SkillTags, 0.0f);
-				if (Seconds > 0.0f)
-				{
-					UCataclysmSkillEffects::ApplyKnockdown(
-						Self, Target, Seconds, Dealt,
-						/*bKnockdownIsDesigned=*/true);
-				}
-			}
 		}
 
 		// AND THE CASTER'S MINIONS REPEAT THE HIT, when it holds Chorus. Last,
@@ -2945,6 +2898,176 @@ void UCataclysmSkillTemplate::ApplyStunTo(AActor* Self, AActor* Target,
 	// stomp obey one set of rules rather than two.
 	UCataclysmSkillEffects::ApplyStun(Self, Target, Params.StunSeconds,
 									  DamageDealt, StatesStunAsItsEffect());
+}
+
+bool UCataclysmSkillTemplate::LayTheLandedBlowsHolds(AActor* Self, AActor* Target, float Dealt) const
+{
+	if (!IsValid(Self) || !IsValid(Target))
+	{
+		return false;
+	}
+
+	// ASKED ONLY FOR A BLOW THAT LANDED: every caller has already refused an evaded one, which is the rule each
+	// paragraph below records (#1156).
+	// KNOCKBACK IS APPLIED HERE, WHICH IS WHAT MAKES IT A RIDER. It used to
+	// live inside UCataclysmStrikeSkill::SwingOnce, so only a Strike could
+	// shove. Issue #626 moved it: displacement is not specific to one kind of
+	// skill, and while it was a Strike parameter Shockwave Leap knocked back
+	// in its prose and could not say so in its data. Every template that hits
+	// anything comes through this function, so every one of them can now
+	// shove.
+	//
+	// NOT SCALED BY THE DAMAGE DEALT, deliberately. A Support skill deals no
+	// damage by design and can still push, which is what Forge Stance's
+	// opposite number would be. That is the difference between this and the
+	// burn above.
+	//
+	// BUT NOT ON A BLOW THAT WAS EVADED. Issue #1156. The project owner's
+	// rule of 2026-09-05 is that an evaded attack applies nothing it carries,
+	// because the hit was unsuccessful, and a shove is something the blow
+	// carries. The two statements above still hold together: `bLanded` asks
+	// whether the blow CONNECTED, not whether it hurt, and a skill that sends
+	// no blow at all is never evaded -- so a Support skill dealing zero
+	// damage still pushes exactly as before.
+	ApplyKnockbackTo(Self, Target);
+
+	// AND SO IS A STUN. Issue #1195: four rows state a `StunSeconds` and
+	// nothing read it, so no player skill in the game stunned anything.
+	// They are spread over two shapes -- Shield Bash is a Strike and the
+	// other three are Movement -- which is the same argument the knockback
+	// above makes for sitting here.
+	//
+	// THE DAMAGE IS PASSED IN AND ALL FOUR ROWS IGNORE IT, because all
+	// four also write `Effect=Stun` and a skill that names stunning as its
+	// effect skips the damage threshold. `ApplyStun` still enforces the
+	// five second immunity window and the boss exemption on every one.
+	//
+	// `Dealt` IS WHAT THE HIT SENT RATHER THAN WHAT LANDED, and a stated
+	// stun does not read it at all -- so the figure passed here decides
+	// nothing for the four designed rows and everything for an incidental
+	// stun, which still has to clear the damage threshold.
+	//
+	// AN EVADED BLOW STUNS NOTHING. Issue #1156, decided on 2026-09-04. This
+	// comment used to name that as the open question and the answer is the
+	// same one the burn above got: evasion says the blow never connected, so
+	// nothing it carries arrives either. A blow armour stopped dead still
+	// stuns, because armour answers whether it hurt rather than whether it
+	// landed.
+	ApplyStunTo(Self, Target, Dealt);
+
+	// AND SO IS FORCED MOVEMENT, FOR THE SAME REASON KNOCKBACK IS. Nine rows
+	// across the Spear, the Warhammer and the Whip state one of the five
+	// verbs, spread over three different shapes, so putting it in any one
+	// template would mean putting it in three.
+	//
+	// AFTER THE KNOCKBACK RATHER THAN BEFORE IT, which matters only for a
+	// row that states both. None does today: `Knockback` and `ForcedMovement`
+	// are separate columns and no designed row fills them together. If one
+	// ever did, the shove would happen first and then the haul, which is the
+	// order the two columns are written in.
+	//
+	// NOT SCALED BY THE DAMAGE DEALT, like the knockback and unlike the
+	// burn. The damage is handed over only because an undesigned knockdown
+	// would weigh it against the target's maximum health, and every row here
+	// states a designed one.
+	//
+	// AND NOT ON A BLOW THAT WAS EVADED, for the reason the knockback above
+	// records. A haul, a drag or a pull is something the blow carries, and an
+	// evaded blow carries nothing to its target.
+	const bool bPinned = ApplyForcedMovementTo(Self, Target, Dealt);
+
+	// AND A KNOCKDOWN THIS CHARACTER CARRIES RATHER THAN THE ROW STATING
+	// ONE. Issue #45, for "Charge skills knock down enemies they hit for 1-2
+	// seconds". The stat is scoped by its own `RequiredTags` to the keyword
+	// the row names, so the skill's tags decide whether it applies.
+	//
+	// HERE AND NOT IN `ApplyForcedMovementTo`, WHICH IS WHERE IT LOOKS LIKE
+	// IT BELONGS. That function returns at its first statement when the row
+	// states no forced movement -- and a charge skill states none, which is
+	// the entire case this row exists for. Reading the stat in there would
+	// leave the enchantment doing nothing, with every test still passing.
+	//
+	// GUARDED BY `bLanded` FOR THE REASON ABOVE: an evaded blow carries
+	// nothing to its target, and a charge that missed must not knock down.
+	//
+	// DESIGNED, SO IT SKIPS THE DAMAGE THRESHOLD AND NOTHING ELSE. The
+	// shared stun-immunity window and boss immunity still apply, which are
+	// the two guards the design paragraph on `ApplyKnockdown` actually
+	// argues for. THE DESIGN TEXT SAYS "a SKILL whose stated effect is to
+	// knock down" AND THIS IS AN ENCHANTMENT, so this is a ruling rather
+	// than a clean reading: it is the coordinating session's call, made on
+	// the grounds that the row states the effect without qualification and
+	// passing false would make it false for a weak charge.
+	{
+		if (const UCataclysmAbilitySystemComponent* Cataclysm =
+				Cast<UCataclysmAbilitySystemComponent>(
+					UCataclysmTargeting::AbilitySystemOf(Self)))
+		{
+			const float Seconds = Cataclysm->StatForSkill(
+				FName(UCataclysmSkillEffects::KnockdownSecondsStat),
+				SkillTags, 0.0f);
+			if (Seconds > 0.0f)
+			{
+				UCataclysmSkillEffects::ApplyKnockdown(
+					Self, Target, Seconds, Dealt,
+					/*bKnockdownIsDesigned=*/true);
+			}
+		}
+	}
+
+	return bPinned;
+}
+
+bool UCataclysmSkillTemplate::LayWhatALandedShotCarries(AActor* Firer, AActor* Target, float Dealt) const
+{
+	// THE HOLDS FIRST AND THE NAMED EFFECTS AFTER, the order a Strike keeps: `HitTargets` lays the first on each blow
+	// and `SwingOnce` the second once the blows are dealt, so a Shred never lowers the resistance its own blow met.
+	const bool bPinned = LayTheLandedBlowsHolds(Firer, Target, Dealt);
+	ApplyNamedEffectsTo(Target);
+	return bPinned;
+}
+
+bool UCataclysmSkillTemplate::ApplyStatedAilmentTo(AActor* Self, AActor* Target) const
+{
+	if (Params.Ailment.IsEmpty() || !IsValid(Self) || !IsValid(Target))
+	{
+		return false;
+	}
+
+	// A NAME NO AILMENT HAS IS SAID OUT LOUD AND APPLIES NOTHING. The generator refuses one, so a name arriving here
+	// means the table was edited in the editor rather than generated.
+	const FCataclysmAilmentKind* Kind = UCataclysmAilments::KindNamedInASkillRow(Params.Ailment);
+	if (!Kind)
+	{
+		UE_LOG(LogCataclysm, Warning, TEXT("'%s' states Ailment=%s, which names no ailment, so it applies nothing."),
+			   *SkillName, *Params.Ailment);
+		return false;
+	}
+
+	// AT MAGNITUDE ONE, the ailment's own row's figures, as `Burn=1` lays burn at its row's. THE SKILL GOES WITH IT,
+	// so every tick names this skill (issue #41, slice 4) and the applier's damage over time stats are asked with its
+	// tags. NO DAMAGE TYPE IS HANDED OVER: the ticks are met as the instigator's, as an ailment a gear chance rolled
+	// is, which is `RollOnLandedBlow`'s call.
+	return UCataclysmAilments::Apply(Self, Target, *Kind, /*Magnitude=*/1.0f, this);
+}
+
+float UCataclysmSkillTemplate::DrawDamageRoll() const
+{
+	const float Least = FMath::Max(0.0f, Params.DamageRollMin);
+	const float Most = FMath::Max(Least, Params.DamageRollMax);
+	const float Pinned = CVarCataclysmSkillDamageRoll.GetValueOnAnyThread();
+	if (Pinned >= 0.0f)
+	{
+		return FMath::Lerp(Least, Most, FMath::Clamp(Pinned, 0.0f, 1.0f));
+	}
+	// UNIFORM, which is what the row's two numbers say and nothing more: no weighting toward the middle and no rule
+	// against repeating the last draw. See `docs/DECISIONS.md`, 2026-11-17.
+	return FMath::FRandRange(Least, Most);
+}
+
+bool UCataclysmSkillTemplate::DrawsARandomBuff() const
+{
+	return Params.Effect.TrimStartAndEnd().Equals(RandomBuffEffect, ESearchCase::IgnoreCase);
 }
 
 void UCataclysmSkillTemplate::ApplyKnockbackTo(AActor* Self, AActor* Target) const

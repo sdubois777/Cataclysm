@@ -7178,7 +7178,10 @@ public:
 	 */
 	static constexpr float CorruptedStalkerStartingFervour = 50.0f;
 
-	/** Mixed into the floor's seed for which entry it raises. The letters "stlk". */
+	/**
+	 * Mixed into the dungeon's seed for which entry it raises, and into the floor's seed for its affixes' rolls. The
+	 * letters "stlk". Which entry was drawn on the floor's seed until issue #2580; see `RaiseTheCorruptedStalker`.
+	 */
 	static constexpr int32 CorruptedStalkerSalt = 0x73746C6B;
 
 	// THE CORRUPTED STALKER'S BRAIN, layer 2. The coordinating session's numbers, 2026-10-25, under the owner's

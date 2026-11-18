@@ -173,8 +173,11 @@ float UCataclysmPotions::HealStep(AActor* Character, float StepSeconds)
 		? Heal.Remaining
 		: Heal.Remaining * StepSeconds / Heal.SecondsLeft;
 
+	// AS A POTION'S HEAL, which a Corrupted Stalker's Necrosis does not deny. The owner, 2026-11-17, issue #2580. Every
+	// other Necrosis still denies it, and every other rule `TopUp` keeps still applies.
 	UCataclysmRegeneration::TopUp(*Holder, UCataclysmVitalAttributeSet::GetHealthAttribute(),
-								  UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), Paid);
+								  UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), Paid,
+								  FGameplayTagContainer(), /*CeilingShare=*/1.0f, /*bFromAPotion=*/true);
 
 	Heal.Remaining -= Paid;
 	Heal.SecondsLeft = FMath::Max(0.0f, Heal.SecondsLeft - StepSeconds);

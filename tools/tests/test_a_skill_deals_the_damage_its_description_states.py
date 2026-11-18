@@ -77,6 +77,58 @@ NOT_THE_BLOW = {
 }
 
 
+#: A range of weapon damage, as a row that rolls its damage writes it: "50% to
+#: 450% weapon damage". Issue #2580, [N3].
+STATES_A_RANGE = re.compile(
+    r"(\d+(?:\.\d+)?)%\s+to\s+(\d+(?:\.\d+)?)%\s+weapon damage", re.IGNORECASE)
+
+
+def roll_of(row: dict[str, str]) -> tuple[float, float] | None:
+    """The two ends a row's damage is drawn between, or None for a row that
+    states no roll. Read out of its Shape Params, `DamageRollMin` and
+    `DamageRollMax`, which `tools/generate_datatables.py` holds to both or
+    neither."""
+    found = {}
+    for piece in (row.get("ShapeParams") or "").split(";"):
+        key, _, value = piece.partition("=")
+        if key.strip() in ("DamageRollMin", "DamageRollMax"):
+            found[key.strip()] = float(value.strip())
+    if "DamageRollMax" not in found:
+        return None
+    return found.get("DamageRollMin", 0.0), found["DamageRollMax"]
+
+
+def rolled_row_problems(skill_rows: list[dict[str, str]]) -> list[str]:
+    """What is wrong with each row that rolls its damage. Issue #2580, [N3].
+
+    THE JUDGEMENT OF 2026-11-17, recorded in docs/DECISIONS.md: a rolled row
+    states no Damage Percent of its own, because the roll IS its damage percent;
+    if its description gives the range as "N% to M% weapon damage", the two
+    figures are the roll's two ends; and it states no single "N% weapon damage"
+    outside such a range, since it deals no one figure.
+    """
+    problems = []
+    for row in skill_rows:
+        roll = roll_of(row)
+        if roll is None:
+            continue
+        name = row["SkillName"]
+        if float(row["DamagePercent"]) != NO_FIGURE_STATED:
+            problems.append(f"{name}: rolls {roll[0]}-{roll[1]} and also states "
+                            f"a Damage Percent of {row['DamagePercent']}")
+        prose = row["SkillDescription"] or ""
+        for low, high in STATES_A_RANGE.findall(prose):
+            if (abs(float(low) - roll[0]) > 0.01
+                    or abs(float(high) - roll[1]) > 0.01):
+                problems.append(f"{name}: says {low}% to {high}% and rolls "
+                                f"{roll[0]} to {roll[1]}")
+        single = STATES_A_PERCENT.findall(STATES_A_RANGE.sub("", prose))
+        if single:
+            problems.append(f"{name}: rolls its damage and says "
+                            f"{', '.join(single)}% weapon damage as one figure")
+    return problems
+
+
 def rows() -> list[dict[str, str]]:
     text = WEAPON_SKILLS.read_bytes().decode("utf-8-sig")
     return list(csv.DictReader(text.splitlines()))
@@ -139,6 +191,11 @@ def test_every_row_stating_a_percentage_of_weapon_damage_deals_it(
     for row in skill_rows:
         name = row["SkillName"]
         if name in NOT_THE_BLOW:
+            continue
+
+        # A ROW THAT ROLLS ITS DAMAGE HAS NO ONE FIGURE, and is held to its
+        # range by `rolled_row_problems` below instead. Issue #2580, [N3].
+        if roll_of(row) is not None:
             continue
 
         found = STATES_A_PERCENT.search(row["SkillDescription"] or "")
@@ -212,3 +269,48 @@ def test_a_stated_figure_is_never_negative_except_the_no_figure_marker(
     assert not odd, (
         "these rows carry a negative Damage Percent that is not the -1 marker "
         "meaning 'take the slot's figure': " + ", ".join(sorted(odd)))
+
+
+def test_every_row_that_rolls_its_damage_states_its_range(skill_rows) -> None:
+    """Issue #2580, [N3]. No row of the table rolls its damage on 2026-11-17,
+    so this compares nothing until the Chaos Whip's rows are authored; the
+    test below shows the check it runs can fail."""
+    problems = rolled_row_problems(skill_rows)
+    assert not problems, (
+        "these rows roll their damage and their prose or their Damage Percent "
+        "says otherwise: " + "; ".join(problems))
+
+
+def _rolled(description: str, params: str = "DamageRollMin=50; "
+            "DamageRollMax=450", damage_percent: str = "-1.0"
+            ) -> dict[str, str]:
+    return {"SkillName": "Wild Lash", "WeaponType": "Whip",
+            "DamageType": "Chaos", "Slot": "Heavy",
+            "SkillDescription": description, "ShapeParams":
+            f"Radius=5; Angle=45; {params}".strip("; "),
+            "DamagePercent": damage_percent}
+
+
+def test_the_rolled_row_check_refuses_each_wrong_row_and_passes_the_right_one(
+        ) -> None:
+    """What the check above would say if a rolled row were wrong, one fault at
+    a time. THE CONTROL is the first: a row stating its range correctly, and a
+    row stating no roll at all, are both passed."""
+    right = _rolled("Crack the whip for 50% to 450% weapon damage.")
+    unrolled = _rolled("A plain lash for 250% weapon damage.", params="",
+                       damage_percent="250.0")
+    assert rolled_row_problems([right, unrolled]) == []
+    assert roll_of(unrolled) is None
+    assert roll_of(right) == (50.0, 450.0)
+
+    for wrong, said in (
+            (_rolled("Crack the whip for 50% to 400% weapon damage."),
+             "says 50% to 400%"),
+            (_rolled("Crack the whip for 250% weapon damage."),
+             "as one figure"),
+            (_rolled("Crack the whip for 50% to 450% weapon damage.",
+                     damage_percent="250.0"),
+             "also states a Damage Percent")):
+        problems = rolled_row_problems([wrong])
+        assert len(problems) == 1, (wrong, problems)
+        assert said in problems[0], (wrong, problems)

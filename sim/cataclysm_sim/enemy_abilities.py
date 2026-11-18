@@ -178,7 +178,11 @@ RIDERS = ("GroundRadius", "GroundDuration", "GroundPercent", "GroundHitsAllies",
           "OnDeath", "OnDeathRange", "ConsumeBurn", "ConsumeRadius",
           "SpreadWhen", "SpreadRadius",
           "MaxDamagePercent", "MinDamagePercent",
-          "ChargeTime", "ChargeBreaksOn", "RefundsCooldown", "Untargetable")
+          "ChargeTime", "ChargeBreaksOn", "RefundsCooldown", "Untargetable",
+          # Four joined on 2026-11-17 for the Corrupted Stalker's weapon kits,
+          # issue #2580: a stated ailment, a damage roll's two ends, and a
+          # random pick among named effects. No enemy ability states any yet.
+          "Ailment", "DamageRollMin", "DamageRollMax", "EffectPick")
 
 #: How long a target is immune to being stunned again, from the anti-stun-lock
 #: rule in section VI of `docs/Cataclysm_GDD_v2.md`. Any ability that stuns has

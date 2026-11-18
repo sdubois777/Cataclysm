@@ -7,6 +7,8 @@
 // For what a blow resolved to, so a burn is refused on an evaded one.
 // Issue #1156.
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+// For the ailment a firing row states, laid on what the shot lands on. Issue #2580.
+#include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmDeployableSelfBlast.h"
 // For the Fervour each enemy a shot lands on earns. Issue #1515.
@@ -292,6 +294,10 @@ ACataclysmProjectile* ACataclysmProjectile::Fire(
 	{
 		Projectile->SpentIncreasePercent = Firing->LastNextUseIncreasePercent;
 		Projectile->SpentMoreMultiplier = Firing->LastNextUseMoreMultiplier;
+
+		// AND THE AILMENT ITS ROW STATES, read off the firing skill here rather than added to the argument list above,
+		// so the three places that fire a shot carry it without each being told. Issue #2580, [N1].
+		Projectile->StatedAilment = Firing->Params.Ailment;
 	}
 	Projectile->bBurns = bInBurns;
 
@@ -754,6 +760,17 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 											  /*SkillTagsWithNoSkill=*/FiringSkill.IsStale() ? &SkillTags : nullptr);
 		}
 
+		// AND THE AILMENT THE FIRING ROW STATES, BY THE BURN'S OWN RULE: landed, and carrying damage. Issue #2580,
+		// [N1]. At magnitude one, with the firing skill when it is still there, as
+		// `UCataclysmSkillTemplate::ApplyStatedAilmentTo` lays it for every blow that passes through `HitTargets`.
+		if (!StatedAilment.IsEmpty() && !Resolved.bEvaded && SpentMoreMultiplier > 0.0f)
+		{
+			if (const FCataclysmAilmentKind* Kind = UCataclysmAilments::KindNamedInASkillRow(StatedAilment))
+			{
+				UCataclysmAilments::Apply(Firer, Target, *Kind, /*Magnitude=*/1.0f, FiringSkill.Get());
+			}
+		}
+
 		// AND THE FERVOUR THIS ENEMY EARNS THE FIRER, when the shot landed.
 		// Issue #1515, the Ravager's starting node: "1 for each enemy your
 		// attacks hit". A projectile's contact never passes through
@@ -776,6 +793,24 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 			// enemies spends Martyr's Ember's store five times.
 			UCataclysmSkillTemplate::NoteBlowLanded(
 				Firer, Target, Target->GetActorLocation(), bFromBehind);
+
+			// AND WHAT THE FIRING ROW'S BLOW CARRIES BEYOND ITS DAMAGE: the shove, the stun, the forced movement, a
+			// knockdown the firer's rows carry, and the named effects. Ruled by the coordinating session 2026-11-17,
+			// issue #2580. Until then a shot with a speed laid none of them -- the Spear's Skewer pinned nothing in play
+			// -- because this contact never passes through `HitTargets`. THE SAME CODE, asked of the firing skill, and
+			// nothing for a shot no skill fired: every creature's own shot (the Brute's rock, the Sentinel's bolt, the
+			// Succubus's soulfire) is fired with none, and keeps exactly what it did. By the burn's test above: landed,
+			// and carrying damage. A pin is kept for the line `OnDeath=Release` binds when the shot finishes.
+			if (SpentMoreMultiplier > 0.0f)
+			{
+				if (const UCataclysmSkillTemplate* Firing = Cast<const UCataclysmSkillTemplate>(FiringSkill.Get()))
+				{
+					if (Firing->LayWhatALandedShotCarries(Firer, Target, Dealt))
+					{
+						PinnedAlongItsFlight.AddUnique(Target);
+					}
+				}
+			}
 
 			// AND THE FIRER'S MINIONS REPEAT THE CONTACT, when it holds Chorus
 			// and a skill fired this. Last, since a repeat carries nothing and

@@ -180,6 +180,13 @@ public:
 	static const FCataclysmAilmentKind* KindNamed(const FString& Ailment);
 
 	/**
+	 * The ailment a skill row's `Ailment=` key names, or null. Issue #2580, [N1]. A key's value cannot carry a space,
+	 * so the row writes `VoidSplinter` where the affix sheet writes "Void Splinter": compared with every space taken out
+	 * of both, and without regard to case. Which names a row may write is the generator's closed set.
+	 */
+	static const FCataclysmAilmentKind* KindNamedInASkillRow(const FString& Written);
+
+	/**
 	 * THE AILMENT THAT BELONGS TO A DAMAGE TYPE, or none. THE ONE PLACE THIS IS STATED IN CODE.
 	 *
 	 * DEMONIC IS BURN AND WAR IS BLEED, which the design document states: "how every War skill applies bleed and

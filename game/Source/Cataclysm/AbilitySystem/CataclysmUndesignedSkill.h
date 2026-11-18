@@ -16,11 +16,14 @@
  * reaches something, and swapping weapons visibly changes what is granted, which
  * is the part of issue #36 that can be built and tested today.
  *
- * UNDESIGNED SKILLS: 54. NAMED SKILLS: 117. Those are how many rows of
+ * UNDESIGNED SKILLS: 54. NAMED SKILLS: 153. Those are how many rows of
  * `game/Data/WeaponSkills.csv` carry a skill name and no shape, and how many
- * carry a name at all. The other 58 do have a shape and its parameters -- 51
- * Demonic and 7 War -- and are built as real abilities rather than by this
- * class.
+ * carry a name at all. The other 99 do have a shape and its parameters -- 56
+ * Demonic, 7 War, and since issue #2580 the Corrupted Stalker's six kits, one
+ * weapon's five rows and the Aura for each of Death, Pestilence, Famine,
+ * Celestial, Chaos and Void -- and are built as real abilities rather than by
+ * this class. (This said "the other 58 ... 51 Demonic" until #2580, when 63
+ * were already shaped.)
  *
  * THIS COMMENT USED TO SAY THAT *EVERY* DESIGNED SKILL HAD NO NUMBERS, AND THAT
  * WENT ON BEING WRONG FOR WEEKS. It was written on 2026-08-03, when it was true.

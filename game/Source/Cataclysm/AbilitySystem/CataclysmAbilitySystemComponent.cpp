@@ -7895,7 +7895,7 @@ bool UCataclysmAbilitySystemComponent::ApplyRandomBuffOrDebuff()
 		/*bWithoutABlow=*/true) != nullptr;
 }
 
-bool UCataclysmAbilitySystemComponent::HoldARandomBuff(FName Excluded)
+bool UCataclysmAbilitySystemComponent::HoldARandomBuff(FName Excluded, float Seconds)
 {
 	// TOUCH OF NOTHING REFUSES THE DRAW, before anything is drawn. Issue #1722, "Buffs + gear procs".
 	if (UCataclysmStacks::NegatesTheNextBuff(this))
@@ -7929,7 +7929,7 @@ bool UCataclysmAbilitySystemComponent::HoldARandomBuff(FName Excluded)
 	const FRandomBuff& Drawn =
 		Table[bThePinIsDrawable ? Pinned : Drawable[FMath::RandRange(0, Drawable.Num() - 1)]];
 	HeldRandomBuffName = FName(Drawn.Name);
-	HeldRandomBuffUntilSeconds = World->GetTimeSeconds() + RandomBuffSeconds;
+	HeldRandomBuffUntilSeconds = World->GetTimeSeconds() + (Seconds > 0.0f ? Seconds : RandomBuffSeconds);
 
 	// AND THE STAT LINE IS WRITTEN WITH IT. The refresh reads `HeldRandomBuffStatModifiers`.
 	RefreshWornStatLine();

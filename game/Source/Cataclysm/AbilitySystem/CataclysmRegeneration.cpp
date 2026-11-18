@@ -20,7 +20,10 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
+// For a Corrupted Stalker's Necrosis, which spares a potion's heal. Issue #2580.
+#include "Character/CataclysmCorruptedStalkerCharacter.h"
 #include "GameFramework/Actor.h"
+#include "GameplayEffect.h"
 
 const TCHAR* UCataclysmRegeneration::HealthRegenStat = TEXT("health_regen");
 const TCHAR* UCataclysmRegeneration::HealingReceivedStat = TEXT("healing_received");
@@ -62,12 +65,41 @@ float UCataclysmRegeneration::HealthHealingCeiling(const UAbilitySystemComponent
 	return FMath::Max(0.0f, Ceiling);
 }
 
+bool UCataclysmRegeneration::NecrosisSparesPotions(const UAbilitySystemComponent& AbilitySystem)
+{
+	const FGameplayTag Necrosis = UCataclysmDebuffs::NecrosisTag();
+	if (!Necrosis.IsValid())
+	{
+		return false;
+	}
+
+	int32 Running = 0;
+	for (const FActiveGameplayEffectHandle& Handle : AbilitySystem.GetActiveEffects(
+			 FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(FGameplayTagContainer(Necrosis))))
+	{
+		const FActiveGameplayEffect* Active = AbilitySystem.GetActiveGameplayEffect(Handle);
+		if (!Active)
+		{
+			continue;
+		}
+		++Running;
+		// THE INSTIGATOR THE EFFECT WAS CREDITED TO, which `UCataclysmSkillEffects::ApplyDamageOverTime` sets to the
+		// character that laid it. A Necrosis laid by anything else, or by nobody, denies the potion as before.
+		if (!Cast<ACataclysmCorruptedStalkerCharacter>(Active->Spec.GetContext().GetInstigator()))
+		{
+			return false;
+		}
+	}
+	return Running > 0;
+}
+
 void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 								   const FGameplayAttribute& Pool,
 								   const FGameplayAttribute& Maximum,
 								   float Gain,
 								   const FGameplayTagContainer& Healing,
-								   float CeilingShare)
+								   float CeilingShare,
+								   bool bFromAPotion)
 {
 	if (Gain <= 0.0f)
 	{
@@ -172,8 +204,14 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 		// came back. A heal a held swing refused never reaches here and is not owed.
 		if (UCataclysmAbilitySystemComponent* Necrotic = Cast<UCataclysmAbilitySystemComponent>(&AbilitySystem))
 		{
+			//
+			// EXCEPT A POTION'S HEAL UNDER A CORRUPTED STALKER'S NECROSIS. The owner, 2026-11-17 (issue #2580): "A
+			// Stalker's Necrosis spares potions. It blocks regeneration and leech, but not potions." So such a heal is
+			// neither denied nor owed: it falls through to be paid as any heal is, and adds nothing to the total dealt
+			// when the Necrosis ends. Every other heal under that Necrosis, and every heal under any other, is denied.
 			const FGameplayTag Necrosis = UCataclysmDebuffs::NecrosisTag();
-			if (Necrosis.IsValid() && Necrotic->HasMatchingGameplayTag(Necrosis))
+			if (Necrosis.IsValid() && Necrotic->HasMatchingGameplayTag(Necrosis)
+				&& !(bFromAPotion && NecrosisSparesPotions(AbilitySystem)))
 			{
 				const float Room = FMath::Max(0.0f,
 					HealthHealingCeiling(AbilitySystem, CeilingShare)
