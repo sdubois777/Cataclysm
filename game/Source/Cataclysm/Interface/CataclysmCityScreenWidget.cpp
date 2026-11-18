@@ -154,11 +154,12 @@ void UCataclysmCityScreenWidget::BuildOfferButtons()
 		// row under "What this city has", and what does nothing yet is a row in
 		// its own section; neither is a thing to press.
 		//
-		// AND WHAT ONLY GOLD STOPS, GREYED, since issue #2742's second slice:
-		// its button says the price and how much more is needed, and cannot be
-		// pressed. Left off, a player short of gold would see the offers vanish
-		// with nothing to say why.
-		if (!Offer.bCanBuy && !Offer.bShortOfGold)
+		// AND WHAT ONLY GOLD OR A SIEGE STOPS, GREYED, since issue #2742's second
+		// slice: its button says the price and how much more is needed, or that
+		// a Siege dungeon stands on the city, and cannot be pressed. Left off, a
+		// player short of gold or under a Siege would see the offers vanish with
+		// nothing to say why.
+		if (!Offer.bCanBuy && !Offer.bShortOfGold && !Offer.bBesieged)
 		{
 			continue;
 		}

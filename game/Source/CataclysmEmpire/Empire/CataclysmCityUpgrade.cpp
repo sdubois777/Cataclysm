@@ -171,6 +171,14 @@ FString UCataclysmCityUpgradeRules::ResultText(
 					"on it.");
 	case ECataclysmCityUpgradeResult::NotAnUpgrade:
 		return TEXT("That is not an upgrade.");
+	case ECataclysmCityUpgradeResult::CityIsBesieged:
+		// WORDS OF ITS OWN SINCE ISSUE #2742's SECOND SLICE: until then it fell
+		// to "Refused." below. Besieged is a Siege dungeon standing on the city
+		// (`UCataclysmEmpireRun::IsBesieged`), and the owner's ruling of
+		// 2026-09-05 keeps the effects of the upgrades it holds working.
+		return TEXT("A Siege dungeon stands on this city, so it cannot be "
+					"upgraded until that dungeon is gone. The upgrades it "
+					"holds still work.");
 	case ECataclysmCityUpgradeResult::CannotWaitForABuildYet:
 		return TEXT("A city upgrade now takes days to build, and nothing can "
 					"wait for one yet.");

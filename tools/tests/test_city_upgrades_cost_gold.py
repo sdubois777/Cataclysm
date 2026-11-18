@@ -243,6 +243,24 @@ def test_one_function_charges_and_takes_the_gold_before_the_run_records_the_upgr
         "could be held unpaid")
 
 
+def test_every_refusal_has_words_of_its_own() -> None:
+    """Each reason a purchase can be refused has a sentence in `ResultText`, so no refusal reads "Refused.".
+
+    A besieged city's did until issue #2742's second slice: the city screen and the console command said "Refused."
+    for it. Found in passing and fixed at the coordinating session's request of 2026-11-18.
+    """
+    header = code("CataclysmEmpire/Empire/CataclysmCityUpgrade.h")
+    declared = braced_from(header, header.find("enum class ECataclysmCityUpgradeResult"), "ECataclysmCityUpgradeResult")
+    results = re.findall(r"(\w+)\s*=\s*\d+", declared)
+    assert len(results) >= 11, f"ECataclysmCityUpgradeResult reads as {results}; this check would compare too little"
+    worded = body("CataclysmEmpire/Empire/CataclysmCityUpgrade.cpp",
+                  "FString UCataclysmCityUpgradeRules::ResultText(")
+    unworded = [name for name in results if f"case ECataclysmCityUpgradeResult::{name}:" not in worded]
+    assert not unworded, (
+        f"UCataclysmCityUpgradeRules::ResultText has no case for {unworded}, so a purchase refused for it says "
+        "\"Refused.\" on the city screen and the console")
+
+
 @pytest.mark.parametrize("relative, signature", [
     ("Cataclysm/Interface/CataclysmCityScreenWidget.cpp", "void UCataclysmCityScreenWidget::HandleOfferClicked("),
     ("Cataclysm/Character/CataclysmPlayerCharacter.cpp", "GCataclysmBuyCityUpgrade("),

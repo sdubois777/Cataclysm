@@ -24,7 +24,9 @@ once-a-frame rule); the city screen (`FCataclysmCityUpgradeOffer::Price` and `bS
 `game/Source/Cataclysm/Tests/CataclysmCityUpgradePriceTests.cpp`, new, six in the new group
 `Cataclysm.CityUpgradePrice.`; `Cataclysm.CityUpgrade.ThePriceIsCheckedLastAndAgainstTheGoldHeld`, new, and
 `AnUpgradeIsStillFreeAndImmediate` renamed `AnUpgradeIsStillImmediate` (`CataclysmCityUpgradeTests.cpp`); the city screen
-tests given gold (`CataclysmCityScreenTests.cpp`); the save trigger table test (`CataclysmSaveTriggerTests.cpp`);
+tests given gold, and `Cataclysm.CityScreen.ABesiegedCitysUpgradesAreGreyedAndSayWhy`, new
+(`CataclysmCityScreenTests.cpp`); `ECataclysmCityUpgradeResult::CityIsBesieged`'s words in `ResultText` and
+`FCataclysmCityUpgradeOffer::bBesieged`, new; the save trigger table test (`CataclysmSaveTriggerTests.cpp`);
 `tools/tests/test_city_upgrades_cost_gold.py`, new; the fake City Upgrades sheet in
 `tools/tests/test_generate_datatables.py`; the new trigger in `tools/tests/test_when_a_save_is_written.py`'s list of
 triggers written after the frame. Issue [#2742](https://github.com/sdubois777/Cataclysm/issues/2742), slice 2
@@ -47,9 +49,14 @@ of 2; the gold half of [#1264](https://github.com/sdubois777/Cataclysm/issues/12
   2026-11-18. Until this branch is rebased onto that slice, 12 is unused, and
   `Cataclysm.SaveTriggers.EveryTriggerIsInTheListThisFileAnswersFor`, which walks every number below the count of
   triggers, reports 12 as missing. Nothing writes these numbers to disk.
-- **FOUND IN PASSING AND NOT CHANGED:** a purchase refused because a Siege stands on the city has no words of its own.
-  `UCataclysmCityUpgradeRules::ResultText` has no case for `CityIsBesieged`, so the city screen and the console command
-  say "Refused." for it. It predates this slice and is reported to the coordinating session rather than fixed here.
+- **FOUND IN PASSING, AND FIXED HERE AT THE COORDINATING SESSION'S REQUEST:** a purchase refused because a Siege
+  stands on the city had no words of its own. `UCataclysmCityUpgradeRules::ResultText` had no case for
+  `CityIsBesieged`, so the city screen and the console command said "Refused." for it, and the city screen hid a
+  besieged city's upgrades with nothing to say why. It now says "A Siege dungeon stands on this city, so it cannot be
+  upgraded until that dungeon is gone. The upgrades it holds still work.", on a greyed button for each built upgrade.
+  `tools/tests/test_city_upgrades_cost_gold.py::test_every_refusal_has_words_of_its_own` now fails for any refusal
+  without a sentence; proved with `tools/prove_guard.py` (the `CityIsBesieged` case removed: 1 failed, that test; the
+  file restored: 17 passed).
 
 ### THE RULINGS
 
@@ -87,6 +94,7 @@ of 2; the gold half of [#1264](https://github.com/sdubois777/Cataclysm/issues/12
 | What the gold leaves | the account's for the character's lethality mode, or a Solo Self-Found character's own | the balance slice 1 earns into (`GoldHeldBy`), all or nothing (`SpendGoldFor`), so a balance never goes below nought |
 | A purchase's saves | a new trigger, `CityUpgradeBought`, writing the run and character records even after another write that frame; and `AccountChanged` when the account paid | the run record holds the upgrade and the account or character record the gold; written apart, a quit between them would keep one change and lose the other. Until now nothing raised a save for a purchase |
 | An upgrade the character cannot afford | a greyed button saying "Costs 10,000 gold; 2,500 more needed." | without it, a player short of gold would see the offers vanish with nothing to say why |
+| A besieged city's upgrades | greyed buttons saying a Siege dungeon stands on the city, so it cannot be upgraded until that dungeon is gone, and that the upgrades it holds still work | the coordinating session asked for words of its own on 2026-11-18; "besieged" is a Siege dungeon on the city (`UCataclysmEmpireRun::IsBesieged`), and the owner's ruling of 2026-09-05 keeps the held upgrades working; greyed rather than hidden for the reason an unaffordable one is |
 | An upgrade that is not built | its line shows no price | nothing in that section can be bought, so a price beside it would read as an offer |
 | Where the balance shows on the city screen | after the slot line: "0 of 3 upgrade slots filled.   10,342 gold" | the owner's request that the city screen show the balance; the slot line is the one beside the offers, and no widget asset has to be rebuilt |
 | The PLAY LOOP line | "bought 'Increase max defense by 20%' on Outpost (-3,0) for 10,000 gold; 342 gold held" | the owner's check that a purchase took the price it showed, as the walk's gold line checks a walk |

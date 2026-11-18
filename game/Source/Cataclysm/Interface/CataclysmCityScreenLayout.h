@@ -61,6 +61,14 @@ struct CATACLYSM_API FCataclysmCityUpgradeOffer
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	bool bShortOfGold = false;
+
+	/**
+	 * Whether a Siege dungeon on the city is what stops it (`ECataclysmCityUpgradeResult::CityIsBesieged`). Such an
+	 * offer is a greyed button saying so, as one short of gold is, rather than vanishing from the screen. Issue #2742's
+	 * second slice, the coordinating session's request of 2026-11-18.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bBesieged = false;
 };
 
 /**

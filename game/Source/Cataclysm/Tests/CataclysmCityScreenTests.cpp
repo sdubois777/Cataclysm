@@ -616,6 +616,80 @@ bool FCataclysmCityScreenFullTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+/**
+ * A besieged city's upgrades are greyed and say why. With a Siege dungeon on city 0, every built upgrade is refused
+ * with the run's own sentence for a besieged city -- not "Refused.", which it fell to until issue #2742's second
+ * slice -- on a greyed button; pressing one spends nothing and the screen's refusal line shows the same sentence. City
+ * 1, with no Siege, can still buy every built upgrade. The coordinating session's request of 2026-11-18. Prints
+ * "BESIEGED".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCityScreenBesiegedTest,
+	"Cataclysm.CityScreen.ABesiegedCitysUpgradesAreGreyedAndSayWhy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCityScreenBesiegedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmCityScreenTest;
+
+	UCataclysmEmpireRun* Run = MakeRun();
+	PlaceDungeon(*Run, /* CityId */ 0, /* DungeonId */ 740, /* Floors */ 12, /* ResolveDays */ 20.0f);
+	for (FCataclysmDungeon& Dungeon : Run->Dungeons)
+	{
+		if (Dungeon.DungeonId == 740)
+		{
+			Dungeon.SubType = ECataclysmDungeonSubType::Siege;
+		}
+	}
+	if (!TestTrue(TEXT("set-up: city 0 is besieged"), Run->IsBesieged(0))
+		|| !TestFalse(TEXT("set-up: and city 1 is not"), Run->IsBesieged(1)))
+	{
+		return false;
+	}
+
+	const FString Sentence =
+		UCataclysmCityUpgradeRules::ResultText(ECataclysmCityUpgradeResult::CityIsBesieged);
+	const TArray<FCataclysmCityUpgradeOffer> List = Offers(Run, 0);
+	int32 Built = 0;
+	int32 SaidBesieged = 0;
+	FString Button;
+	for (const FCataclysmCityUpgradeOffer& Offer : List)
+	{
+		if (!UCataclysmCityUpgradeRules::IsBuilt(Offer.EffectKind))
+		{
+			continue;
+		}
+		++Built;
+		SaidBesieged += Offer.bBesieged && !Offer.bCanBuy && Offer.Refusal == Sentence ? 1 : 0;
+		if (Button.IsEmpty())
+		{
+			Button = UCataclysmCityScreenLayout::ButtonTextFor(Offer);
+		}
+	}
+
+	// PRESSED ANYWAY, as a click on a button the city changed under: nothing is spent, and the refusal line says why.
+	UCataclysmCityScreenWidget* Screen = NewObject<UCataclysmCityScreenWidget>();
+	Screen->SetRunForTests(Run);
+	Screen->SetCity(0);
+	const FName Wanted = FirstBuyable(Offers(Run, 1));
+	Screen->ClickOfferForTests(Wanted);
+
+	AddInfo(FString::Printf(TEXT("BESIEGED: \"%s\"; %d of %d built upgrades say it; button \"%s\"; pressed, %d slot(s) "
+								 "spent, the refusal line \"%s\"; city 1 can buy %d"),
+							*Sentence, SaidBesieged, Built, *Button, Run->Map->Find(0)->Upgrades.Num(),
+							*Screen->LastRefusal(), CountBuyable(Offers(Run, 1))));
+
+	TestNotEqual(TEXT("a besieged city's refusal has words of its own"), Sentence, FString(TEXT("Refused.")));
+	TestTrue(TEXT("naming the Siege"), Sentence.Contains(TEXT("Siege")));
+	TestEqual(TEXT("set-up: the built upgrades"), Built, UCataclysmCityUpgradeRules::BuiltEffectCount());
+	TestEqual(TEXT("every built upgrade is refused for the Siege, in that sentence"), SaidBesieged, Built);
+	TestTrue(TEXT("on its button"), Button.EndsWith(TEXT("  --  ") + Sentence));
+	TestEqual(TEXT("pressing one spends no slot"), Run->Map->Find(0)->Upgrades.Num(), 0);
+	TestEqual(TEXT("and the screen's refusal line says why"), Screen->LastRefusal(), Sentence);
+	TestEqual(TEXT("CONTROL: city 1, with no Siege, can buy every built upgrade"), CountBuyable(Offers(Run, 1)),
+			  UCataclysmCityUpgradeRules::BuiltEffectCount());
+	return true;
+}
+
 // ---------------------------------------------------------------------------
 // The two things the widgets themselves can be asked
 // ---------------------------------------------------------------------------

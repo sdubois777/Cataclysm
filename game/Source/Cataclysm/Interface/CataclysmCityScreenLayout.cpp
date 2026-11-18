@@ -307,6 +307,7 @@ TArray<FCataclysmCityUpgradeOffer> UCataclysmCityScreenLayout::OffersFor(
 
 		Offer.bCanBuy = Result == ECataclysmCityUpgradeResult::Bought;
 		Offer.bShortOfGold = Result == ECataclysmCityUpgradeResult::NotEnoughGold;
+		Offer.bBesieged = Result == ECataclysmCityUpgradeResult::CityIsBesieged;
 		Offer.Refusal = UCataclysmCityUpgradePurchase::RefusalText(
 			Result, Offer.Price, GoldHeld);
 
@@ -354,8 +355,8 @@ FString UCataclysmCityScreenLayout::ButtonTextFor(
 		Offer.Effect.IsEmpty() ? Offer.RowName.ToString() : Offer.Effect;
 
 	// THE PRICE ON THE BUTTON, since issue #2742's second slice, and when gold
-	// is all that stops it, how much more is needed instead.
-	if (Offer.bShortOfGold)
+	// or a Siege is what stops it, why instead.
+	if (Offer.bShortOfGold || Offer.bBesieged)
 	{
 		return FString::Printf(TEXT("%s  --  %s"), *Text, *Offer.Refusal);
 	}
