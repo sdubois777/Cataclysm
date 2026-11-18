@@ -609,6 +609,98 @@ actions, 3 files compiled: CataclysmSaveLoadTests.cpp, Module.Cataclysm.41.cpp, 
 committed as `0effc6e7e`, the makefile set aside ("5 actions, 2 files compiled: Module.Cataclysm.41.cpp,
 Module.Cataclysm.42.cpp"), `Module.Cataclysm.41.cpp` being the unity file that holds `CataclysmSaveLoadTests.cpp`.
 
+### Window travel-w1, the third run, 2026-11-18: passed, every proof PROVED; three predicted assertion counts were wrong
+
+**SAID FIRST: every registered count matched, and every proof failed in exactly the tests registered and passed when
+restored. Three of my predictions of how many assertions a broken half would fail were wrong.** C1 failed one assertion
+where I registered two; C2 and C9 each failed one more than I registered, the same one in both, "owing the day
+entering cost", which read 2 where it reads 1. **I have not found why a walk entered once owes two days in those two
+broken halves.** The restored halves, the group alone and the whole suite all read 1. Details below the proofs.
+
+At `9951dbb78`, from 01:22 to 02:02 local time. The pre-checks all passed: `development` at `1f16aafde`, its CI and
+Unreal runs successful, nothing in progress or queued, the lock free, no build or editor process, no open pull request,
+16849 MB of memory free, 128 Git LFS files and none a pointer. The build was up to date and compiled nothing. The asset
+step was skipped after the runner read, for each of the four input assets, that HEAD holds a Git LFS pointer last
+changed in `e06b5f16a` and the file on disk is an Unreal package.
+
+**Each group alone, all at the registered counts, 0 failed:**
+
+| Prefix | Performed and succeeded |
+| :-- | --: |
+| `Cataclysm.Input.` | 8 |
+| `Cataclysm.Travel.` | 9 |
+| `Cataclysm.EmpireRun.` | 71 |
+| `Cataclysm.WalkFromTheScreen.` | 5 |
+| `Cataclysm.SaveLoad.` | 76 |
+| `Cataclysm.RuleDamageParts.` | 11 |
+| `Cataclysm.DungeonModifierEffects.ThoseInTheDark` | 27 |
+| `Cataclysm.WinningTheRun.` | 11 |
+| `Cataclysm.SaveTriggers.` | 6 |
+| `Cataclysm.SaveRecords.` | 17 |
+| `Cataclysm.DeathCost.` | 9 |
+| `Cataclysm.EarnedBossSave.` | 3 |
+| `Cataclysm.ConsumptionDouble.` | 15 |
+| `Cataclysm.Capital.` | 7 |
+| `Cataclysm.SaveWriter.` | 25 |
+| `Cataclysm.EmpireScreen.` | 14 |
+| `Cataclysm.EmpirePoints.` | 16 |
+
+**The whole suite, as registered:**
+
+```
+suite: Tests: 4784 tests performed, 4784 succeeded, 0 failed. 47 skipped part of what they check: [...]
+suite: Test saves: 815 written and deleted, 0 left behind
+suite: Declared: 4784 tests in the tree at 9951dbb78; 4784 performed, gap 0; every declared test was reported by the run. Issue #1707.
+suite: read performed=4784 succeeded=4784 failed=0, registered 4784: MATCH; skipped halves 47, registered 47
+```
+
+A second count, from the kept engine log (`b2733s3_suite_engine_9951dbb7.log`): 4784 "Test Completed. Result={Success}"
+lines and none failed. The memory summary: `tests=5391 peak_used_virtual_mb=9096 final_used_virtual_mb=8837`.
+
+**Python: "7471 passed, 9 skipped"**, its JUnit file 7480 tests, 0 failures, 0 errors, 9 skipped; **ruff "All checks
+passed!"** -- both as registered.
+
+**Nine C++ guard proofs, all PROVED.** Each broken half failed exactly the tests registered, and each restored half
+passed its whole prefix. The assertions are counted in each broken half's kept log (`b2733s3_C<n>_run1.log`), in both
+of the engine's forms; no restored half logged one.
+
+| Proof | Broken half | Restored | Assertions failed | Registered |
+| :-- | :-- | :-- | :-- | :-- |
+| C1 | 9 performed, 8 succeeded, 1 failed: `TheCapitalsWalkWritesBothRecordsAndCarriesTheCharacterToTheDungeonLevel` | 9 of 9 | **1**: "and stopped writing" | **2**: also "so a trigger after the hand-over writes nothing" |
+| C2 | 9, 7, 2 failed: `TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk`, `TheLastFloorsStairsClearTheDungeonAndTakeTheCharacterBackToTheCapital` | 9 of 9 | **3**: "and not at the capital's place, which means nothing here", "owing the day entering cost" (1 expected, 2 read); "and not at the dungeon's place" | **2**: the first and the third |
+| C3 | 76, 74, 2 failed: `ADeathInADungeonIsPaidForAfterALoad`, `ProcessingADeathWritesTheSaveAfterThePenalty` | 76 of 76 | 4: two in each, as registered | 4 |
+| C4 | 5, 4, 1 failed: `PressingWalkOnACityScreenInADungeonLevelEntersThatDungeon` | 5 of 5 | 4, as registered | 4 |
+| C5 | 9, 8, 1 failed: `TheMapsLatestEventShowsADeathOnDayZero` | 9 of 9 | 1, as registered | 1 |
+| C6 | 71, 70, 1 failed: `EachDaysHitsAddUpToWhatEachCityLost` | 71 of 71 | 1, as registered | 1 |
+| C7 | 9, 8, 1 failed: `TheLastFloorsStairsClearTheDungeonAndTakeTheCharacterBackToTheCapital` | 9 of 9 | 1, as registered | 1 |
+| C8 | 11, 10, 1 failed: `TheEarnedBossDungeonsStairsWinTheRunOnceItsCataclysmBossIsDead` | 11 of 11 | 2, as registered | 2 |
+| C9 | 9, 8, 1 failed: `TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk` | 9 of 9 | **3**: "saying the character is in that dungeon", "on floor 1", "owing the day entering cost" (1 expected, 2 read) | **2**: the first two |
+
+**Why C1 failed one and not two.** With the hand-over's two `Invalidate` lines removed the writer goes on writing, so
+"and stopped writing" fails. "So a trigger after the hand-over writes nothing" still passes, because the trigger it
+raises is the clock's, in the same frame as the hand-over, and the hand-over wrote the run record that frame: the
+once-a-frame rule skips the clock's write whether or not the writer stopped. The test prints "a clock after it wrote
+nothing" in both halves. **That assertion does not guard the stop on its own; "and stopped writing" does**, and the
+proof shows that one fails.
+
+**The extra assertion in C2 and C9, not explained.** "Owing the day entering cost" reads the run's owed days after the
+arrival enters the walk. The test's printed state, from each half's kept log:
+
+| Half | The character after the load | The run record on disk | Owed days |
+| :-- | :-- | :-- | --: |
+| C2 broken | at 1234 567, the capital's place | in dungeon 0, on floor 1 | 2 |
+| C2 restored | at 5600 6000 | in dungeon 0, on floor 1 | 1 |
+| C9 broken | at 5600 6000 | in dungeon -1, on floor 0: the arrival's write skipped | 2 |
+| C9 restored | at 5600 6000 | in dungeon 0, on floor 1 | 1 |
+
+The capital's hand-over prints the same record in both halves of C9: floor 0, no dungeon, day 0, 12 dungeons. Read in
+the code: the load sets the owed days from the record (`FCataclysmSaveApply::RunInto`, `Run.OwedDays =
+Record.DaysOwed`), and entering adds one floor's walk days (`EnterEmpireDungeon` through
+`SpendFloorTimeInTheEmpire`). Neither change -- placing the character, or skipping one write -- touches either of
+those in any way I have found. **So a second owed day under two unrelated breaks is not understood**; it may mean that a
+save's write, or where the character stands, changes the days a walk owes. Nothing in the code as it stands owes two,
+as far as any run shows. Reported to the coordinating session rather than chased further inside the window's record.
+
 ---
 
 ## 2026-11-17 — Play opens the front end, and Start and Continue open the capital, a new level that opens the empire map on arrival (#2733, slice 2)
