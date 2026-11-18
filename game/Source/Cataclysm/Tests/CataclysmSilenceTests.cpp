@@ -965,7 +965,7 @@ namespace CataclysmSilenceTest
 	 *
 	 * On floor 2, carrying no row, a Corrupted Sentinel that last used `Recorded` dies to the player. On floor 3, carrying
 	 * Echoes of the Past, its echo stands on the floor's first beat; it is silenced by the player when `bSilenced` says
-	 * so; it is stood within its reach of the player, held to six metres, where it stood before issue #2740 made echoes
+	 * so; it is stood within its reach of the player, six metres off, where it stood before issue #2740 made echoes
 	 * stand across the floor (a Sentinel cannot walk in, and no brain runs here); and on the next beat it notices the
 	 * player and strikes. Whether it fired a shot is read from `LastShotFired`, which only `UseEnemyAbility` writes: the
 	 * Sentinel's ordinary attack does nothing. The beat moves no world clock, so the silence cannot run out.
@@ -1066,7 +1066,8 @@ namespace CataclysmSilenceTest
 			return Read;
 		}
 
-		// A HAIR INSIDE SIX METRES, its reach held as `EchoesDistanceCm` holds it, at its own standing height.
+		// A HAIR INSIDE SIX METRES, where it stood before issue #2740, at its own standing height: within its reach,
+		// which for an echo that cannot walk is its full fourteen metres (`EchoesStrikeWithinCm`).
 		const FVector Feet = Player->GetActorLocation();
 		Echo->SetActorLocation(FVector(Feet.X + Effects::EchoesMostAwayCm - 5.0f, Feet.Y, Echo->GetActorLocation().Z));
 		Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);

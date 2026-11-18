@@ -57,6 +57,7 @@
 #include "Character/CataclysmGatekeeperCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
 #include "Character/CataclysmCorruptedSentinelCharacter.h"
+#include "Character/CataclysmSuccubusCharacter.h"
 #include "Character/CataclysmEnemyRarity.h"
 #include "Components/CapsuleComponent.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -28111,6 +28112,13 @@ bool FCataclysmEchoesPlacedTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("an Imp's 132 cm reach is kept"), Effects::EchoesDistanceCm(132.0f), 132.0f, 0.01f);
 	TestEqual(TEXT("a Sentinel's 1400 cm is held to six metres"), Effects::EchoesDistanceCm(1400.0f),
 			  Effects::EchoesMostAwayCm, 0.01f);
+	TestEqual(TEXT("an echo that walks strikes from its reach held to six metres"),
+			  Effects::EchoesStrikeWithinCm(1400.0f, /*bWalks=*/true), Effects::EchoesMostAwayCm, 0.01f);
+	TestEqual(TEXT("one that walks with a short reach keeps it"), Effects::EchoesStrikeWithinCm(132.0f, true), 132.0f,
+			  0.01f);
+	TestEqual(TEXT("one that cannot walk strikes from its full reach"), Effects::EchoesStrikeWithinCm(1400.0f, false),
+			  1400.0f, 0.01f);
+	TestEqual(TEXT("and never from below nought"), Effects::EchoesStrikeWithinCm(-5.0f, false), 0.0f, 0.01f);
 
 	// SIX PLACES ALONG X FROM AN ARRIVAL AT THE ORIGIN: three nearer than fifteen metres -- the first straight above the
 	// arrival, which the floor-plane measure puts at nought -- and three at or beyond it, one of those below it.
@@ -28534,6 +28542,203 @@ bool FCataclysmEchoesAbilityTest::RunTest(const FString& Parameters)
 							 HealthOf(Player.Character)),
 			 HealthOf(Player.Character) < Before);
 	TestTrue(TEXT("and stunned them, which only the stomp does"), UCataclysmSkillEffects::IsStunned(Player.Character));
+	return true;
+}
+
+// AN ECHO THAT CANNOT WALK STRIKES FROM ITS KIND'S OWN FULL REACH, AND ONE THAT WALKS IS STILL HELD TO SIX METRES: a
+// Corrupted Sentinel's echo fires its bolt from thirteen metres, and a Succubus's, seven metres off, moves in instead.
+// Ruled by the coordinating session on 2026-11-18 for issue #2740.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoesCannotWalkTest,
+	"Cataclysm.DungeonModifierEffects.AnEchoThatCannotWalkStrikesFromItsFullReachAndOneThatWalksMovesIn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEchoesCannotWalkTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode || !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {};
+	if (!TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+
+	// A SENTINEL THAT LAST FIRED ITS SIEGE BOLT, AND A SUCCUBUS, BOTH KILLED.
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	ACataclysmEnemyCharacter* Sentinel = World->SpawnActor<ACataclysmCorruptedSentinelCharacter>(
+		ACataclysmCorruptedSentinelCharacter::StaticClass(), FVector(400.0f, 0.0f, 0.0f), FRotator::ZeroRotator, Spawn);
+	ACataclysmEnemyCharacter* Succubus = World->SpawnActor<ACataclysmSuccubusCharacter>(
+		ACataclysmSuccubusCharacter::StaticClass(), FVector(-400.0f, 0.0f, 0.0f), FRotator::ZeroRotator, Spawn);
+	if (!TestNotNull(TEXT("a Sentinel"), Sentinel) || !TestNotNull(TEXT("a Succubus"), Succubus))
+	{
+		return false;
+	}
+	for (ACataclysmEnemyCharacter* Fallen : {Sentinel, Succubus})
+	{
+		Fallen->SetRarityStep(0);
+		Fallen->GetAbilitySystemComponent()->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		WoundCreatureTo(Fallen, 100.0f, 0.0f);
+	}
+	Sentinel->LastAttackUsed = ACataclysmCorruptedSentinelCharacter::SiegeBoltAbility;
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Sentinel, 100000.0f);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Succubus, 100000.0f);
+	if (!TestTrue(TEXT("both died"), UCataclysmSkillEffects::IsDead(Sentinel) && UCataclysmSkillEffects::IsDead(Succubus))
+		|| !TestEqual(TEXT("and both were recorded"), Mode->EchoAttacksRecordedThisFloor().Num(), 2))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {EchoesRow};
+	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	Beat(Mode, 1);
+	ACataclysmCorruptedSentinelCharacter* SentinelEcho = nullptr;
+	ACataclysmEnemyCharacter* SuccubusEcho = nullptr;
+	for (ACataclysmEnemyCharacter* Echo : Mode->EchoesStandingNow())
+	{
+		if (ACataclysmCorruptedSentinelCharacter* AsSentinel = Cast<ACataclysmCorruptedSentinelCharacter>(Echo))
+		{
+			SentinelEcho = AsSentinel;
+		}
+		else if (Echo->IsA<ACataclysmSuccubusCharacter>())
+		{
+			SuccubusEcho = Echo;
+		}
+	}
+	if (!TestNotNull(TEXT("a Sentinel's echo stands"), SentinelEcho)
+		|| !TestNotNull(TEXT("and a Succubus's"), SuccubusEcho)
+		|| !TestEqual(TEXT("set-up: the Sentinel's cannot walk"), SentinelEcho->DesignedWalkSpeedCmPerSecond, 0.0f, 0.01f)
+		|| !TestTrue(TEXT("set-up: the Succubus's walks"), SuccubusEcho->DesignedWalkSpeedCmPerSecond > 0.0f)
+		|| !TestNull(TEXT("set-up: the Sentinel's has fired nothing yet"), SentinelEcho->LastShotFired.Get()))
+	{
+		return false;
+	}
+
+	// THIRTEEN METRES FROM THE PLAYER, WITHIN THE SENTINEL'S FOURTEEN AND BEYOND SIX; SEVEN FOR THE SUCCUBUS, WITHIN
+	// ITS EIGHT AND BEYOND SIX. Both are within their kinds' notice: fourteen and ten metres.
+	constexpr float SentinelAwayCm = 1300.0f;
+	constexpr float SuccubusAwayCm = 700.0f;
+	StandTheEchoBeside(SentinelEcho, Player.Character, SentinelAwayCm, 0.0f);
+	StandTheEchoBeside(SuccubusEcho, Player.Character, SuccubusAwayCm, 180.0f);
+	const float SentinelReach = ACataclysmEnemyController::ReachAgainstCm(SentinelEcho, Player.Character);
+	const float SuccubusReach = ACataclysmEnemyController::ReachAgainstCm(SuccubusEcho, Player.Character);
+	if (!TestTrue(FString::Printf(TEXT("set-up: thirteen metres is within the Sentinel's reach (%.0f cm)"), SentinelReach),
+				  SentinelAwayCm < SentinelReach)
+		|| !TestTrue(FString::Printf(TEXT("set-up: seven metres is within the Succubus's reach (%.0f cm) and beyond six"),
+									 SuccubusReach),
+					 SuccubusAwayCm < SuccubusReach && SuccubusAwayCm > Effects::EchoesMostAwayCm))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+
+	TestEqual(TEXT("the Sentinel's echo strikes from its full reach"), SentinelEcho->EchoMovesInToCm, SentinelReach,
+			  0.01f);
+	TestNotNull(TEXT("and fired its recorded bolt from thirteen metres"), SentinelEcho->LastShotFired.Get());
+	TestNull(TEXT("its one strike made, it moves in on nobody"), SentinelEcho->EchoMovesInOn.Get());
+	TestEqual(TEXT("the Succubus's echo moves in to six metres"), SuccubusEcho->EchoMovesInToCm,
+			  Effects::EchoesMostAwayCm, 0.01f);
+	TestTrue(TEXT("and has noticed the player but not struck, seven metres off"),
+			 SuccubusEcho->EchoMovesInOn.Get() == Player.Character);
+	TestEqual(TEXT("one of the two is spent"), Mode->EchoesSpentThisFloor(), 1);
+	TestEqual(TEXT("the Succubus's brain walks it in"), ThinksOnce(BrainOf(SuccubusEcho)),
+			  static_cast<int32>(ECataclysmBrainAction::Chasing));
+	return true;
+}
+
+// AN ECHO'S SWING IS MEASURED WHEN IT LANDS: a player who steps out of it is not struck, the strike is spent all the same,
+// and the echo goes a second later without swinging again. The control is the echo beside it, whose player stays and is
+// struck. Ruled by the coordinating session on 2026-11-18 for issue #2740.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoesDodgedTest,
+	"Cataclysm.DungeonModifierEffects.AnEchosSwingMissesAPlayerWhoStepsOutOfItAndIsSpentAllTheSame",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEchoesDodgedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	TArray<ACataclysmEnemyCharacter*> Echoes;
+	ACataclysmDungeonGameMode* Mode = TwoEchoesStandOnFloorThree(*this, World, Player, Echoes);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Dodged = Echoes[0];
+	ACataclysmEnemyCharacter* Control = Echoes[1];
+	if (!TestTrue(TEXT("the first is given a blow to strike with"), GiveCreatureAttackDamage(Dodged, 100.0f) > 0.0f)
+		|| !TestTrue(TEXT("and so is the second"), GiveCreatureAttackDamage(Control, 100.0f) > 0.0f))
+	{
+		return false;
+	}
+	Player.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	Player.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+
+	// THE CONTROL: stood a metre from the player, within an Imp's 132 cm, it swings on the next beat and the player,
+	// who stays, is struck when the swing connects. The other echo stands fifteen metres or more away and waits.
+	constexpr float WithinAnImpsReachCm = 100.0f;
+	StandTheEchoBeside(Control, Player.Character, WithinAnImpsReachCm, 180.0f);
+	const float BeforeTheControl = HealthOf(Player.Character);
+	Beat(Mode, 1);
+	LandTheWaitingBlows(World, {Control});
+	const float AfterTheControl = HealthOf(Player.Character);
+	TestTrue(FString::Printf(TEXT("control: the player who stays is struck (%.1f to %.1f)"), BeforeTheControl,
+							 AfterTheControl),
+			 AfterTheControl < BeforeTheControl);
+
+	// THE DODGE: the other swings from a metre away, and the player steps three metres off before the swing connects.
+	StandTheEchoBeside(Dodged, Player.Character, WithinAnImpsReachCm, 0.0f);
+	Beat(Mode, 1);
+	if (!TestTrue(TEXT("set-up: its swing is ordered and waits to connect"), Dodged->HasPendingBasicAttack()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("both strikes are spent"), Mode->EchoesSpentThisFloor(), 2);
+	const FVector Feet = Player.Character->GetActorLocation();
+	Player.Character->SetActorLocation(Feet - FVector(300.0f, 0.0f, 0.0f));
+	LandTheWaitingBlows(World, {Dodged});
+	TestTrue(FString::Printf(TEXT("the player who stepped out of the swing is not struck (%.1f to %.1f)"),
+							 AfterTheControl, HealthOf(Player.Character)),
+			 HealthOf(Player.Character) >= AfterTheControl - 0.01f);
+	TestFalse(TEXT("and nothing still waits to land"), Dodged->HasPendingBasicAttack());
+	TestNull(TEXT("it moves in on nobody: its one strike is spent"), Dodged->EchoMovesInOn.Get());
+
+	// NO SECOND SWING: the player steps back beside it, and it does not swing again before it goes.
+	Player.Character->SetActorLocation(Feet);
+	Beat(Mode, BeatsFor(Effects::EchoesVanishAfterSeconds) - 1);
+	TestFalse(TEXT("back within its reach, it does not swing again"), Dodged->HasPendingBasicAttack());
+	TestTrue(TEXT("and the player is not struck"), HealthOf(Player.Character) >= AfterTheControl - 0.01f);
+	TestTrue(TEXT("a beat before a second has passed it still stands"),
+			 IsValid(Dodged) && !Dodged->IsActorBeingDestroyed());
+	Beat(Mode, 1);
+	TestTrue(TEXT("a second after its swing it is gone"), !IsValid(Dodged) || Dodged->IsActorBeingDestroyed());
 	return true;
 }
 

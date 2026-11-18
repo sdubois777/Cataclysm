@@ -4182,6 +4182,8 @@ void ACataclysmDungeonGameMode::StepEchoesOfThePast(ACataclysmPlayerCharacter* P
 		// WAITING: IT NOTICES THE PLAYER AT ITS OWN KIND'S NOTICE DISTANCE, along the floor (R3), and from then on
 		// moves in to its reach of them, held to `EchoesMostAwayCm` (R4). The reach is `ReachAgainstCm`, the brain's
 		// own, so a rarer and so bigger echo, or a Brute's whose reach is its contact distance, can still come within it.
+		// AN ECHO THAT CANNOT WALK -- its designed walk speed is nought, the Corrupted Sentinel -- STRIKES FROM ITS FULL
+		// REACH instead, as the coordinating session ruled on 2026-11-18; see `EchoesStrikeWithinCm`.
 		if (One.SecondsSinceNoticed < 0.0f)
 		{
 			if (FVector::Dist2D(Echo->GetActorLocation(), Feet) > Echo->NoticeRadiusCm)
@@ -4190,7 +4192,8 @@ void ACataclysmDungeonGameMode::StepEchoesOfThePast(ACataclysmPlayerCharacter* P
 			}
 			One.SecondsSinceNoticed = 0.0f;
 			Echo->EchoMovesInOn = Player;
-			Echo->EchoMovesInToCm = Effects::EchoesDistanceCm(ACataclysmEnemyController::ReachAgainstCm(Echo, Player));
+			Echo->EchoMovesInToCm = Effects::EchoesStrikeWithinCm(
+				ACataclysmEnemyController::ReachAgainstCm(Echo, Player), Echo->DesignedWalkSpeedCmPerSecond > 0.0f);
 		}
 		else
 		{
@@ -4236,9 +4239,12 @@ void ACataclysmDungeonGameMode::StepEchoesOfThePast(ACataclysmPlayerCharacter* P
 		}
 		else
 		{
-			// AS A RULE'S STRIKE, which waits for its swing like any other and is not measured against reach when it
-			// lands. Issue #783. Kept so by #2740, whose ruling did not ask for it to change; see that entry.
-			Echo->StrikeAsARuleOrders(Player);
+			// THE CREATURE'S OWN SWING, MEASURED AGAINST ITS REACH WHEN IT LANDS, as every creature's ordinary attack
+			// is (issue #783): a player who steps out of it is not struck, and the strike is spent all the same. Ruled
+			// by the coordinating session on 2026-11-18 for #2740. Until then it was a rule's strike
+			// (`StrikeAsARuleOrders`), which landed wherever the player stood, because the echo stood in a ring at its
+			// reach from where the player had been a second before.
+			Echo->AttackTarget(Player);
 		}
 	}
 

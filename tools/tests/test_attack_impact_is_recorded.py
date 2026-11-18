@@ -524,11 +524,10 @@ def test_attack_target_waits_rather_than_dealing_the_damage_itself(
 
 SOURCE_DIR = REPO_ROOT / "game" / "Source" / "Cataclysm"
 
-#: (file, where the rule's strike is found, what ends that stretch). The two
-#: rules that order a creature's ordinary attack at a target wherever it stands.
+#: (file, where the rule's strike is found, what ends that stretch). The rule
+#: that orders a creature's ordinary attack at a target wherever it stands.
+#: Echoes of the Past was the second until issue #2740; see the test below this.
 RULE_STRIKES = [
-    ("Dungeon/CataclysmDungeonGameMode.cpp",
-     "void ACataclysmDungeonGameMode::StepEchoesOfThePast(", "\n}"),
     ("AbilitySystem/CataclysmSkillTemplates.cpp",
      "if (Params.bCommandStrike", "++Landings;"),
 ]
@@ -537,13 +536,12 @@ RULE_STRIKES = [
 @pytest.mark.parametrize("file_name,start_text,end_text", RULE_STRIKES)
 def test_a_rules_strike_is_not_measured_against_reach(
         file_name, start_text, end_text):
-    """**ECHOES OF THE PAST AND COMPEL STRIKE WHEREVER THE TARGET STANDS.**
-    Issue #783 made an ordinary blow wait for its swing and miss a target that
-    walked out of reach in the gap. An echo stands at its reach from where the
-    player was a second BEFORE it strikes, so through `AttackTarget` a player
-    who stood still could dodge it and one who had walked away could not.
-    `StrikeAsARuleOrders` is the same swing without the reach test at landing;
-    each rule must order its creature's strike through it."""
+    """**COMPEL STRIKES WHEREVER THE TARGET STANDS.** Issue #783 made an
+    ordinary blow wait for its swing and miss a target that walked out of reach
+    in the gap. Compel's row says its creatures strike the enemy "wherever it
+    happens to be standing". `StrikeAsARuleOrders` is the same swing without the
+    reach test at landing; the rule must order its creature's strike through
+    it."""
     source = without_comments(
         (SOURCE_DIR / file_name).read_text(encoding="utf-8"))
     start = source.find(start_text)
@@ -554,6 +552,28 @@ def test_a_rules_strike_is_not_measured_against_reach(
         f"the rule's strike in {file_name} no longer orders the creature's "
         f"ordinary attack through StrikeAsARuleOrders, so its blow is measured "
         f"against a reach the rule never asked for. Issue #783.")
+
+
+def test_an_echoes_strike_is_its_own_swing_measured_when_it_lands():
+    """**AN ECHO OF ECHOES OF THE PAST SWINGS AS AN ORDINARY CREATURE DOES.**
+    Ruled by the coordinating session on 2026-11-18 for issue #2740: an echo
+    walks in and is ordered to strike only once it stands within its reach, so
+    its blow is measured against that reach when the swing lands, as every
+    creature's ordinary attack is, and a player who steps out of the swing is
+    not struck. Through `StrikeAsARuleOrders` it would land wherever the player
+    stood, which is what it did until #2740."""
+    source = without_comments(
+        (SOURCE_DIR / "Dungeon/CataclysmDungeonGameMode.cpp").read_text(encoding="utf-8"))
+    start = source.find("void ACataclysmDungeonGameMode::StepEchoesOfThePast(")
+    assert start != -1, "CataclysmDungeonGameMode.cpp no longer defines StepEchoesOfThePast"
+    body = source[start:source.find("\n}", start)]
+
+    assert "Echo->AttackTarget(Player);" in body, (
+        "StepEchoesOfThePast no longer orders an echo's ordinary attack through the creature's own "
+        "AttackTarget, which measures the blow against its reach when the swing lands. Issue #2740.")
+    assert "StrikeAsARuleOrders(" not in body, (
+        "StepEchoesOfThePast orders an echo's strike through StrikeAsARuleOrders again, so a player "
+        "who steps out of its swing is still struck. Ruled otherwise for issue #2740.")
 
 
 def test_the_measurement_records_its_negative_control():

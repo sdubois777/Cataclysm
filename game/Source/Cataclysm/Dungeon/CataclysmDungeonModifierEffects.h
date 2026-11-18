@@ -2709,9 +2709,12 @@ public:
 	 *   stands then, and no two on one cell while the floor has enough cells. It stands still and does nothing.
 	 * - IT NOTICES THE PLAYER AT ITS OWN KIND'S NOTICE DISTANCE (`ACataclysmEnemyCharacter::NoticeRadiusCm`),
 	 *   measured along the floor, and then moves in to its own reach of the player, never more than
-	 *   `EchoesMostAwayCm`. Within that reach it makes its recorded attack on the player once, at the attack's
-	 *   normal damage, and vanishes `EchoesVanishAfterSeconds` later. One that has not struck
-	 *   `EchoesGiveUpAfterSeconds` after noticing vanishes without striking. Each echo runs its own clock.
+	 *   `EchoesMostAwayCm`; one that cannot walk strikes from its full reach (`EchoesStrikeWithinCm`). Within that
+	 *   reach it makes its recorded attack on the player once, at the attack's normal damage, and vanishes
+	 *   `EchoesVanishAfterSeconds` later. Its ordinary attack is its own swing, measured against its reach when it
+	 *   lands, so a player who steps out of it is not struck; the strike is spent either way. One that has not struck
+	 *   `EchoesGiveUpAfterSeconds` after noticing vanishes without striking. Each echo runs its own clock. The two
+	 *   rulings in this item are the coordinating session's of 2026-11-18, after phase 1.
 	 * - AN ECHO CANNOT BE HURT, PAYS NOTHING, IS RAISED BY THE RULE AND TAKES NO HOSTILE ACTION OF ITS OWN: its brain
 	 *   only stands it still and walks it in (`ACataclysmEnemyCharacter::bIsAnEchoOfThePast`), and the game mode
 	 *   makes its one attack.
@@ -8299,6 +8302,16 @@ public:
 
 	/** How close to the player an echo moves in before it strikes: its attack reach, at most `EchoesMostAwayCm`. */
 	static float EchoesDistanceCm(float AttackReachCm);
+
+	/**
+	 * How close to the player an echo strikes from, given its reach against them and whether it can walk. Issue #2740.
+	 *
+	 * AN ECHO THAT WALKS MOVES IN TO ITS REACH HELD TO `EchoesMostAwayCm` (R4). AN ECHO THAT CANNOT WALK STRIKES FROM
+	 * ITS KIND'S OWN FULL REACH: ruled by the coordinating session on 2026-11-18, a labelled judgement, because "moves
+	 * in" cannot apply to a creature that cannot walk (the Corrupted Sentinel, whose attack is a long-range one), and
+	 * the six-metre hold existed only to keep the old ring of echoes close to the player. Never below nought.
+	 */
+	static float EchoesStrikeWithinCm(float ReachAgainstCm, bool bWalks);
 
 	/**
 	 * Which of `Places` each of `Count` echoes stands on, as indices into `Places`, in the order the echoes are raised.

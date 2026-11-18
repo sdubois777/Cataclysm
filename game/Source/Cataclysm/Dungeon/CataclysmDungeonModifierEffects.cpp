@@ -3370,6 +3370,11 @@ float UCataclysmDungeonModifierEffects::EchoesDistanceCm(float AttackReachCm)
 	return FMath::Clamp(AttackReachCm, 0.0f, EchoesMostAwayCm);
 }
 
+float UCataclysmDungeonModifierEffects::EchoesStrikeWithinCm(float ReachAgainstCm, bool bWalks)
+{
+	return bWalks ? EchoesDistanceCm(ReachAgainstCm) : FMath::Max(0.0f, ReachAgainstCm);
+}
+
 TArray<int32> UCataclysmDungeonModifierEffects::EchoesPlaces(const TArray<FVector>& Places, const FVector& Arrival,
 															 int32 Count, int32 Seed)
 {
