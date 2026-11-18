@@ -14,19 +14,20 @@ comment in `.h`); `FCataclysmSaveLoad::CharacterAndRun` (`game/Source/Cataclysm/
 `UCataclysmPlayerClassStats::DefaultLevel` (`Character/CataclysmPlayerClassStats.cpp`, `.h`). Tests:
 `CataclysmExperienceBarTests.cpp` (new), `CataclysmCharacterLevelTests.cpp`, `CataclysmSaveLoadTests.cpp`,
 `CataclysmPlayLoopTests.cpp`, and `tools/tests/test_the_play_loop_is_logged_at_each_step.py`.
-`docs/Play_Loop_Checklist.md`. Issue [#2744](https://github.com/sdubois777/Cataclysm/issues/2744). **Applied and
-compiled (phase 2, below) before the rebase onto gold's slice 1; the rebased tree has not been compiled, and no Unreal
-test has run yet.**
+`docs/Play_Loop_Checklist.md`. Issue [#2744](https://github.com/sdubois777/Cataclysm/issues/2744). **Applied, compiled,
+run and proved in window level1-w1 at `b8aaf71a` (The window, below).**
 
 ### SAID FIRST
 
-- **COMPILED, AND NO UNREAL TEST HAS RUN YET.** Every figure below that comes from a test is registered and not
-  measured, until the window's results say otherwise. The first attempt to compile each changed file alone did not
-  happen, because of a path mistake in this session's script; it was run again and did ("Compiled (phase 2)").
-- **THE TREE THE WINDOW BUILDS HAS NOT BEEN COMPILED.** The three builds below compiled the branch on `development`
-  `07f7e3bf6`. It was then rebased twice, the second time onto gold's slice 1 (#2747), whose PLAY LOOP log builders
-  conflicted with this branch's in `CataclysmPlayLoopLog.cpp` and `.h` and were joined by hand. The window's build is
-  the first compile of that tree (Registered before the run, below).
+- **COMPILED, RUN AND PROVED, IN ONE WINDOW, AT `b8aaf71a`.** Window level1-w1's build was the rebased tree's first
+  compile ("59 actions, 54 files compiled"). The whole Unreal suite performed the registered 4826, all succeeding, with
+  47 skipped halves and no test save left behind; each of the eight groups this change touches performed its registered
+  count alone, all succeeding; Python (7559 passed, 9 skipped) and ruff passed; the five C++ guard proofs all proved,
+  each failing on the assertions registered. "The window", below.
+- **WHAT DID NOT WORK.** The first attempt to compile each changed file alone did not happen, because of a path mistake
+  in this session's script; it was run again and did ("Compiled (phase 2)"). One prediction, marked less certain when it
+  was registered, did not happen: proof C2 was predicted to fail "health is full" as well as the mana assertion, and
+  only the mana assertion failed.
 - **NOBODY HAS PLAYED TIER 1 AT LEVEL 1.** The owner's ruling names the risk, and nothing here settles it.
   `tools/tests/test_the_starting_character_survives_a_pack.py`, `test_no_class_survives_that_fight_at_level_one`,
   records that no class wins that file's deliberately pessimistic fight at level 1: ten Imps in contact from the first
@@ -189,9 +190,10 @@ at the same place; resolved by hand, keeping both, gold's first. `docs/DECISIONS
 than gold's (11:20 MST). `CataclysmPlayerState.h`, `CataclysmSaveLoadTests.cpp` and `docs/Play_Loop_Checklist.md` merged
 without a conflict. Afterwards `git diff --numstat` against the base printed, for every file, the same lines added and
 removed as before the rebase, and `python tools/check_resolved_cpp.py` over the 18 C++ files this branch changes printed
-"18 files read, 0 with complaints". **The rebased tree has not been compiled: the window's build is its first compile.**
-Gold's slice also makes a creature's death drop gold piles (`ACataclysmEnemyCharacter::HandleDeath`), which
-`AKillThatCrossesALevelRaisesTheNumberTheBarAndMaximumHealth` reaches; nothing that test checks reads the floor.
+"18 files read, 0 with complaints". **The rebased tree had not been compiled when this was registered: the window's
+build was its first compile.** Gold's slice also makes a creature's death drop gold piles
+(`ACataclysmEnemyCharacter::HandleDeath`), which `AKillThatCrossesALevelRaisesTheNumberTheBarAndMaximumHealth` reaches;
+nothing that test checks reads the floor.
 
 | Figure | Registered |
 | :-- | :-- |
@@ -221,7 +223,7 @@ Each restored half: the same test, 1 of 1 succeeded.
 ### Compiled (phase 2)
 
 Built at `d8698b913`, on `development` `07f7e3bf6`, before the rebases onto `8e177d8b2` and `d8d11fc51` (registered
-above); the window's own build is the first compile of the rebased branch. Built by
+above); the window's own build was the first compile of the rebased branch (The window, below). Built by
 `.claude/windows/compile_l2744.py`, with no editor open, under the Unreal lock `level1-compile`, which the coordinating
 session gave for these builds after window empire-tree-1a-w2 released the lock at 12:21 MST; released after each run
 ("level1-compile released the Unreal editor"), the tracked tree clean and HEAD unchanged after each.
@@ -268,6 +270,54 @@ no makefile was moved) ran builds 2 and 3 above. The first run's logs are kept b
 - **The console variable's help text was corrected where it read "The starting level of the player's character".**
   `grep -rn "level 20" docs/Play_Loop_Checklist.md game/README.md` prints one line, this change's own: the checklist's
   "until then a new character arrived at level 20 with 30 passive points".
+
+### The window
+
+Window level1-w1 ran on 2026-11-18 from 14:35:28 to 15:11:46 MST, at `b8aaf71a` on
+`feat/new-character-starts-at-level-1-3`, by `.claude/windows/run_l2744.py` (started detached, PID 71056), under the
+Unreal lock, which the coordinating session gave. `prechecks_l2744.py` printed "PRECHECKS: ALL PASS" at 14:35:11:
+`development` `d8d11fc51`, its CI and Unreal runs successful; no run queued or in progress; the lock free; no build,
+editor or simulation process; no open pull request; 12,400 MB free; 131 LFS files under `game/Content`, no pointer. The
+runner checks before every step that HEAD is `b8aaf71a` and the tracked tree clean, and stopped at none; it printed
+"tested head: b8aaf71a; HEAD now b8aaf71a" at the end. The lock was released at the end ("level1-w1 released the Unreal
+editor"), and `python tools/unreal_lock.py status` then printed "The Unreal editor is free."
+
+- **The build**: "Build: Succeeded - 59 actions, 54 files compiled", the rebased tree's first compile.
+- **The eight groups alone, each its registered count, all succeeding**: `Cataclysm.SaveLoad.` 79,
+  `Cataclysm.CharacterLevel.` 9, `Cataclysm.PlayLoop.` 8, `Cataclysm.ExperienceBar.` 2, `Cataclysm.EnemyScore.` 12,
+  `Cataclysm.Capital.` 7, `Cataclysm.Travel.` 9 and `Cataclysm.FirstSurge.` 3.
+- **The whole suite**: "Tests: 4826 tests performed, 4826 succeeded, 0 failed. 47 skipped part of what they check";
+  "Test saves: 827 written and deleted, 0 left behind"; "Declared: 4826 tests in the tree at b8aaf71ad; 4826 performed,
+  gap 0". As registered.
+- **Python**: "7559 passed, 9 skipped in 213.52s"; the JUnit file says 7568 tests, 0 failures, 0 errors, 9 skipped.
+  **ruff**: "All checks passed!"
+- **No Claude session reached the test editor** (#2745): no "server/discover" line in the whole suite's engine log or in
+  any proof's two logs.
+
+**What the new tests printed in the whole suite run**, from their info lines:
+
+- **A new character** (Greatsword, War): before creation the pawn stood at level 20, unsettled, health 510 of 510 and
+  mana 116 of 116; after it, level 1 with 0 experience, settled, health 130 of 130, mana 40 of 40, energy shield 0 of 0,
+  1 passive point and 1 attribute point, and the record read back at level 1 with 0 experience.
+- **A kill that crosses a level**: a Boss worth 468 experience, killed at level 1 with 229,999 into it, left level 2
+  with 467 into it, as `UCataclysmExperience::Grant` predicts; the bar went from "Level 1: 99.9%" (fill 1.0000 to four
+  places) to "Level 2: 0.1%" (0.0019); maximum health rose from 130 to 150, the class line's 20; health stayed at 130.
+- **A continued level 9 character**, which stood at level 20 with 116 mana before the load: with its pools put back,
+  health 37 of 290 and mana 72 of 72; with no pools saved (a new run begun), health 290 of 290 and mana 72 of 72.
+- **The bar's words**: "Level 1: 0.0%", "Level 1: 50.0%", "Level 1: 99.9%" one short of level 2, "Level 7: 45.2%", and
+  "Level 100: maximum" at and above the maximum.
+
+**The C++ guard proofs**, each by `.claude/windows/prove_l2744.py` through `unreal_build.prove_cpp_guard`: each anchor
+matched once, the source hash was the same before and after each, and both halves' logs are kept beside the script
+(`l2744_C1_run1.log` to `l2744_C5_run2.log`). Every one PROVED, `crashed` False in both halves:
+
+| Proof | With the break in | Restored | As registered |
+| :-- | :-- | :-- | :-- |
+| C1 | 1 performed, 0 succeeded, 1 failed: `ANewCharacterStartsAtLevelOneWithNoExperienceAndItsPoolsFull`, on six assertions: "CONTROL: level 1's maximum mana is below that level's, ..." (false), "the new character is level 1" (20), "and its level is settled, ..." (false), "1 passive point, the design's arithmetic" (30), "and 1 attribute point" (20), "the record holds level 1" (20) | 1 performed, 1 succeeded | Yes, the six registered |
+| C2 | 1 performed, 0 succeeded, 1 failed: the same test, on one assertion: "MANA IS FULL AND NOT ABOVE ITS MAXIMUM, which possession at the higher level left it" (40 expected, 116) | 1 performed, 1 succeeded | Yes, the one registered as certain; "health is full", registered as less certain, passed with the break in |
+| C3 | 1 performed, 0 succeeded, 1 failed: `AContinuedCharacterBelowTheStartingLevelArrivesWithItsPoolsInsideItsMaxima`, on one assertion: "none saved: MANA IS FULL AND NOT ABOVE ITS MAXIMUM" (72 expected, 116) | 1 performed, 1 succeeded | Yes |
+| C4 | 1 performed, 0 succeeded, 1 failed: `AKillThatCrossesALevelRaisesTheNumberTheBarAndMaximumHealth`, on one assertion: "THE STAT LINE WAS REBUILT: maximum health rose by what the class line gives the new level" (20 expected, 0) | 1 performed, 1 succeeded | Yes |
+| C5 | 1 performed, 0 succeeded, 1 failed: `TheWordsSayTheLevelAndTheShareEarnedRoundedDown`, on two assertions, each "Level 1: 100.0%" where "Level 1: 99.9%" was expected: "ONE SHORT OF LEVEL 2 READS 99.9%, NOT 100.0% ..." and "more than the cost, which no grant leaves, reads one short of the level" | 1 performed, 1 succeeded | Yes |
 
 ---
 
