@@ -3,6 +3,7 @@
 #include "Player/CataclysmPlayLoopLog.h"
 
 #include "Cataclysm.h"
+#include "Character/CataclysmExperience.h"
 #include "DayClock/CataclysmDayClock.h"
 #include "Dungeon/CataclysmDungeonModifierTable.h"
 #include "Empire/CataclysmEmpireMap.h"
@@ -250,4 +251,17 @@ FString FCataclysmPlayLoopLog::GoldLineIn(const UObject* WorldContext, int32 Dun
 		Held = -1;
 	}
 	return GoldLine(DungeonId, PickedUp, Held);
+}
+
+FString FCataclysmPlayLoopLog::LevelGainedLine(int32 From, int32 To, int64 ExperienceIntoLevel)
+{
+	// AT THE MAXIMUM THE NEXT LEVEL COSTS NOTHING and the remainder is discarded (`UCataclysmExperience::Grant`), so
+	// there is no figure left to say.
+	if (UCataclysmExperience::IsMaxLevel(To))
+	{
+		return FString::Printf(TEXT("level %d reached, from level %d: the maximum level"), To, From);
+	}
+	return FString::Printf(TEXT("level %d reached, from level %d: %lld experience into it, %lld more to level %d"), To,
+						   From, ExperienceIntoLevel, UCataclysmExperience::CostOfLevel(To + 1) - ExperienceIntoLevel,
+						   To + 1);
 }

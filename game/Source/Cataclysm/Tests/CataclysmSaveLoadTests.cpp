@@ -20,7 +20,10 @@
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmEnemyRarity.h"
+#include "Character/CataclysmExperience.h"
+#include "Character/CataclysmPassivePoints.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Character/CataclysmPlayerClassStats.h"
 #include "DayClock/CataclysmDayClock.h"
 #include "Dungeon/CataclysmDungeonFloor.h"
 #include "Dungeon/CataclysmDungeonGameMode.h"
@@ -7786,6 +7789,234 @@ bool FCataclysmSaveLoadNewCharacterTest::RunTest(const FString&)
 	TestEqual(TEXT("and its weapon type"), Record->StartingWeaponType, FName(TEXT("Greatsword")));
 	TestEqual(TEXT("and the select screen lists it once"), Listed, 1);
 	TestEqual(TEXT("by its name"), ListedName, FString(TEXT("Vesper Ash")));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A new character's level, and a continued character's pools. Issue #2744.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmSaveLoadTest
+{
+	/** A character's level and its three pools, as they stand. */
+	struct FLevelAndPools
+	{
+		int32 Level = 0;
+		int64 Experience = -1;
+		float Health = -1.0f;
+		float MaxHealth = -1.0f;
+		float Mana = -1.0f;
+		float MaxMana = -1.0f;
+		float Shield = -1.0f;
+		float MaxShield = -1.0f;
+
+		static FLevelAndPools Of(const ACataclysmPlayerState& State, const ACataclysmPlayerCharacter& Character)
+		{
+			FLevelAndPools Out;
+			Out.Level = State.GetCharacterLevel();
+			Out.Experience = State.GetExperienceIntoLevel();
+			if (const UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(&Character))
+			{
+				Out.Health = Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+				Out.MaxHealth = Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+				Out.Mana = Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetManaAttribute());
+				Out.MaxMana = Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxManaAttribute());
+				Out.Shield = Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute());
+				Out.MaxShield =
+					Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute());
+			}
+			return Out;
+		}
+
+		FString Describe() const
+		{
+			return FString::Printf(TEXT("level %d (%lld in), health %.1f of %.1f, mana %.1f of %.1f, shield %.1f of %.1f"),
+								   Level, Experience, Health, MaxHealth, Mana, MaxMana, Shield, MaxShield);
+		}
+	};
+}
+
+/**
+ * A new character starts at level 1 with no experience: its level is settled there, its record holds level 1 and 0,
+ * and its health, mana and shield are full at level 1's maxima, not above them, although the pawn the level possessed
+ * stood at `Cataclysm.PlayerLevel`'s level with its pools filled there. It has 1 passive point and 1 attribute point,
+ * the design's arithmetic (`UCataclysmPassivePoints::FromLevel(1)`). Issue #2744, the owner's ruling of 2026-11-18,
+ * "Level 1 + experience bar"; the points ruled the same day. Prints "NEW CHARACTER LEVEL".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadNewCharacterLevelTest,
+	"Cataclysm.SaveLoad.ANewCharacterStartsAtLevelOneWithNoExperienceAndItsPoolsFull",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadNewCharacterLevelTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	FLoadScene Scene = MakeScene();
+	if (!TestTrue(TEXT("set-up: the world was built"), Scene.IsUsable()))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const FString RunSlot = Scene.Writer->RunSlotName();
+	const FString CharacterSlot = Scene.Writer->CharacterSlotName();
+	ON_SCOPE_EXIT { Delete(RunSlot); Delete(CharacterSlot); };
+	ACataclysmGameMode* Mode = AGameModeIn(Scene);
+	if (!TestNotNull(TEXT("set-up: a game mode"), Mode))
+	{
+		return false;
+	}
+
+	const FLevelAndPools Before = FLevelAndPools::Of(*Scene.State, *Scene.Character);
+	const bool bSettledBefore = Scene.State->HasSettledLevel();
+
+	FCataclysmPendingCreation& Creation = Scene.Instance->PendingCreation;
+	Creation.bPending = true;
+	Creation.Name = TEXT("Starts At One");
+	Creation.WeaponType = FName(TEXT("Greatsword"));
+	Creation.DamageType = FName(TEXT("War"));
+	const ACataclysmGameMode::EPendingLoad Outcome = Mode->LoadThePendingCharacter();
+
+	const FLevelAndPools After = FLevelAndPools::Of(*Scene.State, *Scene.Character);
+	const UCataclysmCharacterSave* Record = WaitForSlot(CharacterSlot) ? Read<UCataclysmCharacterSave>(CharacterSlot)
+																		 : nullptr;
+
+	AddInfo(FString::Printf(TEXT("NEW CHARACTER LEVEL: outcome %d; before, %s, %s; after, %s, %s; %d passive points, %d "
+								 "attribute points; the record %s at level %d with %lld experience"),
+							static_cast<int32>(Outcome), *Before.Describe(), bSettledBefore ? TEXT("SETTLED") : TEXT("not settled"),
+							*After.Describe(), Scene.State->HasSettledLevel() ? TEXT("settled") : TEXT("NOT SETTLED"),
+							Scene.State->PassivePointsAvailable(), Scene.State->AttributePointsAvailable(),
+							Record ? TEXT("read") : TEXT("NOT READ"), Record ? Record->Level : -1,
+							Record ? Record->Experience : -1));
+
+	TestEqual(TEXT("set-up: the new character was made"), static_cast<int32>(Outcome),
+			  static_cast<int32>(ACataclysmGameMode::EPendingLoad::Created));
+	TestTrue(TEXT("CONTROL: before it was made, the pawn stood at the console variable's level, unsettled"),
+			 !bSettledBefore && Before.Level == UCataclysmPlayerClassStats::ChosenLevel());
+	TestTrue(TEXT("CONTROL: that level is above 1, so this test can tell the two apart"), Before.Level > 1);
+	TestTrue(TEXT("CONTROL: level 1's maximum mana is below that level's, so mana left above it would show"),
+			 After.MaxMana < Before.MaxMana);
+
+	TestEqual(TEXT("the new character is level 1"), After.Level, UCataclysmExperience::FirstLevel);
+	TestEqual(TEXT("with no experience"), After.Experience, static_cast<int64>(0));
+	TestTrue(TEXT("and its level is settled, so the console variable no longer decides it"),
+			 Scene.State->HasSettledLevel());
+	TestEqual(TEXT("health is full"), After.Health, After.MaxHealth);
+	TestEqual(TEXT("MANA IS FULL AND NOT ABOVE ITS MAXIMUM, which possession at the higher level left it"), After.Mana,
+			  After.MaxMana);
+	TestEqual(TEXT("the shield is full"), After.Shield, After.MaxShield);
+	TestEqual(TEXT("1 passive point, the design's arithmetic"), Scene.State->PassivePointsAvailable(),
+			  UCataclysmPassivePoints::FromLevel(1));
+	TestEqual(TEXT("which is 1"), UCataclysmPassivePoints::FromLevel(1), 1);
+	TestEqual(TEXT("and 1 attribute point"), Scene.State->AttributePointsAvailable(), 1);
+	if (TestNotNull(TEXT("its record was written"), Record))
+	{
+		TestEqual(TEXT("the record holds level 1"), Record->Level, 1);
+		TestEqual(TEXT("and no experience"), Record->Experience, static_cast<int64>(0));
+	}
+	return true;
+}
+
+/**
+ * A character continued below `Cataclysm.PlayerLevel`'s level arrives with its pools inside its maxima. The pawn was
+ * possessed, and its pools filled, at the console variable's level before the load. Issue #2744, ruled by the
+ * coordinating session on 2026-11-18. Prints "CONTINUED POOLS". Two cases, from one saved level 9 character, saved at
+ * 37 health with the mana possession gave it:
+ *
+ *   PUT BACK: its run record holds its pools (a placement), so they are put back -- 37 health, not filled -- and the
+ *   mana, more than level 9's maximum, is held at that maximum by the write.
+ *   NONE SAVED: a record that names no run holds no pools, so they are filled at level 9. Until #2744 its mana stayed
+ *   at the higher level's maximum, above level 9's.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadContinuedPoolsTest,
+	"Cataclysm.SaveLoad.AContinuedCharacterBelowTheStartingLevelArrivesWithItsPoolsInsideItsMaxima",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadContinuedPoolsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	FSaved Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	if (!SaveACharacter(*this, /*bDies=*/false, Saved))
+	{
+		return false;
+	}
+
+	TArray<FString> Lines;
+
+	/** One load into a fresh world: the outcome, and the pools before and after it. */
+	auto LoadOnce = [this, &Saved, &Lines](const TCHAR* Case, ECataclysmLoadOutcome& OutOutcome, FLevelAndPools& OutBefore,
+										   FLevelAndPools& OutAfter)
+	{
+		FLoadScene Scene = MakeScene();
+		if (!TestTrue(FString::Printf(TEXT("%s: set-up: the loading world was built"), Case), Scene.IsUsable()))
+		{
+			if (Scene.World)
+			{
+				Scene.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		OutBefore = FLevelAndPools::Of(*Scene.State, *Scene.Character);
+		const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.World, *Scene.Character,
+																				 Saved.CharacterId);
+		// A NEW RUN'S SLOT, when the load began one, goes with the world: nothing here may leave a save behind.
+		const FString LoadedRunSlot = Scene.Writer->RunSlotName();
+		ON_SCOPE_EXIT
+		{
+			if (LoadedRunSlot != Saved.RunSlot())
+			{
+				Delete(LoadedRunSlot);
+			}
+		};
+		OutOutcome = Report.Outcome;
+		OutAfter = FLevelAndPools::Of(*Scene.State, *Scene.Character);
+		Lines.Add(FString::Printf(TEXT("%s: %s (%s); before, %s; after, %s"), Case,
+								  FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, *OutBefore.Describe(),
+								  *OutAfter.Describe()));
+		return true;
+	};
+
+	ECataclysmLoadOutcome PutBackOutcome = ECataclysmLoadOutcome::Refused;
+	FLevelAndPools PutBackBefore;
+	FLevelAndPools PutBack;
+	const bool bPutBack = LoadOnce(TEXT("put back"), PutBackOutcome, PutBackBefore, PutBack);
+
+	ECataclysmLoadOutcome FilledOutcome = ECataclysmLoadOutcome::Refused;
+	FLevelAndPools FilledBefore;
+	FLevelAndPools Filled;
+	const bool bFilled = RewriteCharacter(*this, Saved, [](UCataclysmCharacterSave& Record)
+						   { Record.CurrentRunId.Invalidate(); })
+		&& LoadOnce(TEXT("none saved"), FilledOutcome, FilledBefore, Filled);
+
+	AddInfo(FString::Printf(TEXT("CONTINUED POOLS: %s"), *FString::Join(Lines, TEXT(" | "))));
+	if (!TestTrue(TEXT("set-up: both loads ran"), bPutBack && bFilled))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("put back: set-up: loaded with its run"), static_cast<int32>(PutBackOutcome),
+			  static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+	TestEqual(TEXT("put back: set-up: at level 9"), PutBack.Level, 9);
+	TestTrue(TEXT("put back: CONTROL: level 9's maximum mana is below the possessing level's"),
+			 PutBack.MaxMana < PutBackBefore.MaxMana);
+	TestEqual(TEXT("put back: the saved health is put back, not filled"), PutBack.Health, 37.0f);
+	TestTrue(TEXT("put back: mana is inside its maximum"), PutBack.Mana <= PutBack.MaxMana);
+	TestTrue(TEXT("put back: the shield is inside its maximum"), PutBack.Shield <= PutBack.MaxShield);
+
+	TestEqual(TEXT("none saved: set-up: loaded with a new run"), static_cast<int32>(FilledOutcome),
+			  static_cast<int32>(ECataclysmLoadOutcome::LoadedWithANewRun));
+	TestEqual(TEXT("none saved: set-up: at level 9"), Filled.Level, 9);
+	TestTrue(TEXT("none saved: CONTROL: level 9's maximum mana is below the possessing level's"),
+			 Filled.MaxMana < FilledBefore.MaxMana);
+	TestEqual(TEXT("none saved: health is full"), Filled.Health, Filled.MaxHealth);
+	TestEqual(TEXT("none saved: MANA IS FULL AND NOT ABOVE ITS MAXIMUM"), Filled.Mana, Filled.MaxMana);
+	TestEqual(TEXT("none saved: the shield is full"), Filled.Shield, Filled.MaxShield);
 	return true;
 }
 

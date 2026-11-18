@@ -246,4 +246,23 @@ bool FCataclysmPlayLoopCapitalTextTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlayLoopLevelGainedTextTest,
+	"Cataclysm.PlayLoop.TheLevelGainedLineSaysTheLevelReachedAndWhatTheNextOneStillCosts",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlayLoopLevelGainedTextTest::RunTest(const FString&)
+{
+	// Issue #2744. The figures are today's curve: level 3 costs 248,860 and level 5 costs 291,346
+	// (`tools/tests/test_experience_curve_port.py` holds the curve to the simulation's), so a retuned curve fails this
+	// test and says which line's figures moved, rather than leaving the checklist quoting a stale example.
+	using Log = FCataclysmPlayLoopLog;
+	TestEqual(TEXT("one level, with the cost of level 3 less what is in hand"), Log::LevelGainedLine(1, 2, 3120),
+			  FString(TEXT("level 2 reached, from level 1: 3120 experience into it, 245740 more to level 3")));
+	TestEqual(TEXT("several levels in one grant name where it started"), Log::LevelGainedLine(1, 4, 10),
+			  FString(TEXT("level 4 reached, from level 1: 10 experience into it, 291336 more to level 5")));
+	TestEqual(TEXT("the maximum level has no next level"), Log::LevelGainedLine(99, 100, 0),
+			  FString(TEXT("level 100 reached, from level 99: the maximum level")));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -54,6 +54,12 @@ capital with the days away shown, a second walk ended by a death, and a Continue
 - **On screen:** a nearly empty level, and the empire map open over it. The map's status line begins "Day 0", says
   "12 dungeons standing", and ends with the gold balance, "0 gold" for a new lethality mode. Each city's box shows its tier and the share of its defence left, "Outpost 100%".
   **M** closes the map and opens it again.
+- **The new character is level 1, with no experience.** Close the map with **M** and look at the bottom-left corner:
+  the lowest bar, under health, is the level and experience bar. It reads "Level 1: 0.0%" and is empty. Health, mana
+  and the shield, when there is one, are full. Issue
+  [#2744](https://github.com/sdubois777/Cataclysm/issues/2744): until then a new character arrived at level 20 with 30
+  passive points. A level 1 character has 1 passive point and 1 attribute point. **Nobody has played tier 1 at level 1
+  yet**, so floor 1 may be too hard; note how it goes.
 - **In the log:** one line for the capital, then one `standing:` line for each dungeon:
 
   `PLAY LOOP: in the capital on day 0, tier 1: 12 dungeons standing, 0 cities fallen; level 1, 0 experience into it`
@@ -98,6 +104,13 @@ Choose a dungeon on **another** city than the one you will walk. This is how you
 - **In the log**, one line per floor:
 
   `PLAY LOOP: dungeon 3: down to floor 2 of 12; the walk owes 2 days`
+
+- **Watch the level and experience bar** in the bottom-left corner as you kill. It fills with each kill that grants
+  experience. When it fills, the level number rises, the bar starts again from the remainder, and maximum health and
+  mana rise. Health and mana themselves do not rise with the maximum.
+- **In the log**, one line for each level gained:
+
+  `PLAY LOOP: level 2 reached, from level 1: 3120 experience into it, 245740 more to level 3`
 
 ### 8. Take the last floor's stairs
 

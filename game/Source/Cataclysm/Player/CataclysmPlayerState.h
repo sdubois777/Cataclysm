@@ -112,6 +112,13 @@ public:
 	 * STARTING level means levelling arrives without moving any of that, and a
 	 * character that has neither gained a level nor loaded a save behaves
 	 * exactly as it did before.
+	 *
+	 * A CHARACTER THE NEW CHARACTER SCREEN MAKES IS DECIDED AT LEVEL 1, with no
+	 * experience, by `ACataclysmGameMode::MakeThePendingCharacter`: the design's
+	 * "created at level 1" (`UCataclysmExperience::FirstLevel`). Issue #2744,
+	 * ruled 2026-11-18. So the console variable decides only the level of a
+	 * character nothing made or loaded: the sandbox's, and an automation
+	 * test's.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Experience")
 	int32 GetCharacterLevel() const;
@@ -130,6 +137,10 @@ public:
 
 	/**
 	 * Add experience, raising the level as far as it pays for.
+	 *
+	 * A LEVEL GAINED REBUILDS THE STAT LINE AND SAYS ONE PLAY LOOP LINE, here,
+	 * so a kill and the console command both get it. The pools are left where
+	 * they are. Issue #2744.
 	 *
 	 * @return how many levels were gained, which is what a caller awarding a
 	 *         point per level needs and cannot recover afterwards.

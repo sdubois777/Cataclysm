@@ -3790,10 +3790,10 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowDebuffs(
 // yet say what a kill is worth. Until it can, this is how the curve, the level
 // and everything that reads a level are exercised at all.
 //
-// THEY RE-APPLY THE STAT LINE THEMSELVES, the same way spending an attribute
-// point does. A level raises every per-level term in the class table, so a
-// level gained that did not change the character would look like a level that
-// did nothing.
+// THE STAT LINE IS RE-APPLIED WHEN A LEVEL IS GAINED, by
+// `ACataclysmPlayerState::GrantExperience` itself since issue #2744. A level
+// raises every per-level term in the class table, so a level gained that did
+// not change the character would look like a level that did nothing.
 // ---------------------------------------------------------------------------
 
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmGrantExperience(
@@ -3832,23 +3832,11 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmGrantExperience
 			}
 
 			const int32 Before = PlayerState->GetCharacterLevel();
-			const int32 Gained = PlayerState->GrantExperience(Amount);
 
-			if (Gained > 0)
-			{
-				// THE STAT LINE IS REBUILT, NOT NUDGED, for the reason the
-				// attribute point commands give: a level moves every per-level
-				// term in game/Data/ClassStats.csv and several of those have
-				// gear increases of their own.
-				if (ACataclysmPlayerCharacter* Character = Player(World, Ar))
-				{
-					if (Character->GetEquipment())
-					{
-						Character->GetEquipment()->RefreshAttributes(
-							Character->GetAbilitySystemComponent());
-					}
-				}
-			}
+			// THE STAT LINE IS REBUILT BY THE GRANT ITSELF when a level is
+			// gained, since issue #2744, so a kill gets it too. This command
+			// rebuilt it here until then, and a kill did not.
+			const int32 Gained = PlayerState->GrantExperience(Amount);
 
 			const int32 Now = PlayerState->GetCharacterLevel();
 			const int64 Next = UCataclysmExperience::CostOfLevel(Now + 1);

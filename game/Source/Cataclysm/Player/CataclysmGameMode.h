@@ -69,9 +69,10 @@ public:
 	EPendingLoad LoadThePendingCharacter();
 
 	/**
-	 * A NEW CHARACTER, from the front end's new-character screen, made on the fresh start, which is its own: its name and
-	 * partition (`SetIdentity`), its weapon type and damage type, its empire run begun at its lethality, and its records
-	 * written at once (`ECataclysmSaveTrigger::CharacterCreated`). The creation is cleared before any of it. Called by
+	 * A NEW CHARACTER, from the front end's new-character screen, made on the fresh start, which is its own: level 1 with
+	 * no experience and its pools full at level 1 (issue #2744), its name and partition (`SetIdentity`), its weapon type
+	 * and damage type, its empire run begun at its lethality, and its records written at once
+	 * (`ECataclysmSaveTrigger::CharacterCreated`). The creation is cleared before any of it. Called by
 	 * `LoadThePendingCharacter` when one is pending. Issue #753, select-screen step 4a, ruled 2026-11-01.
 	 */
 	EPendingLoad MakeThePendingCharacter(class UCataclysmGameInstance& Instance, class UCataclysmSaveWriter& Writer,
