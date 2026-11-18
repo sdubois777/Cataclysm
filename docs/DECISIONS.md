@@ -2,6 +2,407 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-17 — Play opens the front end, and Start and Continue open the capital, a new level that opens the empire map on arrival (#2733, slice 2)
+
+**Affects:** `ACataclysmCapitalGameMode`, new (`game/Source/Cataclysm/Player/CataclysmCapitalGameMode.h`, `.cpp`);
+`ACataclysmPlayerController::OpenEmpireMap`, new, which `ToggleEmpireMap` now shares (`CataclysmPlayerController.h`,
+`.cpp`); `ACataclysmGameMode::SandboxFloorName`, new (`CataclysmGameMode.h`); `UCataclysmCharacterSelectWidget::CapitalMap`
+and `MapToContinue` (`CataclysmCharacterSelectWidget.h`, `.cpp`); `UCataclysmNewCharacterWidget::ConfirmInto`
+(`CataclysmNewCharacterWidget.cpp`, `.h`); `FCataclysmSaveLoad::CharacterAndRun` (`CataclysmSaveLoad.cpp`);
+`EditorStartupMap` in `game/Config/DefaultEngine.ini`; `tools/generate_capital_map.py`, new, which makes
+`game/Content/Maps/L_Capital.umap` in the window; two rows of `game/README.md`'s map table; a pointer line under the
+2026-11-01 entry's bullet "THE GAME NOW OPENS ON `L_FrontEnd`, AND THE EDITOR STILL ON `L_Sandbox`". Tests: seven new
+Unreal tests in the new group `Cataclysm.Capital.` at the end of `CataclysmSaveLoadTests.cpp`; one changed in each of
+`CataclysmCharacterSelectTests.cpp` and `CataclysmCharacterCreationTests.cpp`;
+`tools/tests/test_the_capital_level_is_generated_and_play_opens_the_front_end.py`, new; one check renamed and reworded
+in `tools/tests/test_the_select_screen_is_generated_and_the_game_starts_on_it.py`. Issue
+[#2733](https://github.com/sdubois777/Cataclysm/issues/2733), slice 2 of 4.
+
+### SAID FIRST
+
+- **THE WINDOW PASSED ON ITS SECOND RUN** (`f86d6609`): every group alone, the whole suite 4772 of 4772 with 47
+  skipped halves and 0 saves left behind, Python 7449 passed and 9 skipped, and all seven C++ proofs PROVED, each
+  broken half failing exactly its registered assertions ("Window capital-w1, the second run", below).
+- **THE FIRST WINDOW RUN STOPPED AT ITS FIFTH GROUP, ON A FAULT IN A SLICE 1 TEST** ("Window capital-w1, the first
+  run", below): `Cataclysm.FirstSurge.ARunSavedOnDayZero...` read each loaded dungeon's depth after a day had passed,
+  and failed when the clock-seeded run drew a Hollow. Fixed here, by the coordinating session's ruling, with a sweep
+  of every test on a clock-seeded run that found no other. The asset step before it passed: `L_Capital.umap` is in
+  `db428831`, stored through Git LFS. The second run, after the fix, passed (above).
+- **COMPILED.** Phase 1 was written with no build; phase 2 compiled it three ways, and the test change two ways, with
+  no error and no warning from this branch's files (below). The Python checks ran, and all eight proofs of them are
+  proved (below).
+- **`L_Capital.umap` DID NOT EXIST UNTIL THE WINDOW'S EDITOR RUN MADE IT (`db428831`)**, so until then two Python checks failed,
+  each naming it and nothing else: `test_game_readme_is_true.py::test_the_readme_only_names_files_that_exist`
+  (`Content/Maps/L_Capital.umap`, the map table) and
+  `test_the_decisions_log_names_real_files.py::test_every_file_named_in_an_affects_line_exists`
+  (`game/Content/Maps/L_Capital.umap`, this entry). Measured: "2 failed, 7447 passed, 9 skipped" at phase 1, and the
+  same at registration, its JUnit file 7458 tests, 2 failures, 0 errors, 9 skipped.
+- **MOVING `EditorStartupMap` REPLACES THE 2026-11-01 CHOICE** to keep the editor on `L_Sandbox`, by the project
+  owner's ruling of 2026-11-17 on #2733, "Play opens the front end". The 2026-11-01 entry keeps its lines and gains a
+  pointer line here.
+- **A JUDGEMENT BEYOND THE RULING, ACCEPTED BY THE COORDINATING SESSION:** a record saved on the sandbox's floor and
+  loaded in the capital drops the character's place on that floor as well as its creatures -- where it stood and its
+  health -- so the character arrives at the capital at full health. The reasons: a place on a level the character is
+  not in means nothing, and a character saved at no health would die again on arrival. The coordinating session, on
+  accepting it: "it matches the capital as a place you rest between dungeons."
+
+### The rulings, quoted
+
+The project owner, 2026-11-17, on #2733: "Play opens the front end (character select and creation). This replaces the
+2026-11-01 choice to keep the editor on L_Sandbox." and "The empire map's home is a plain capital level, `L_Capital`. It
+is a new, nearly empty level that opens the empire map as soon as the player arrives. Character select's Start and
+Continue go there." The coordinating session, in #2733: "L_Sandbox stays as a test level, reachable only by opening it
+in the editor."
+
+The coordinating session, on this slice's plan, 2026-11-17 (it dated its message 2026-11-18; this log uses the local
+date): approved as written; Q1, "the capital, which records floor 0, accepts a record saved on the "Sandbox" floor. It
+loads the character and run, does not restore that floor's creatures, and logs that it dropped them. The refusal for
+every other floor mismatch stays exactly as it is"; Q2, "Play pressed on L_Capital with nothing pending starts fresh,
+as the sandbox does, and opens the map on a run begun through GetOrBeginEmpireRun"; Q3, "no key in slice 2. The map
+opens on arrival in the capital and stays open; the key comes with slice 3". And: the window's asset step refuses
+anything but a new `L_Capital.umap`, stored through Git LFS.
+
+### What was verified by reading, before anything changed
+
+- **`L_FrontEnd` is made by `make_front_end_map` in `tools/generate_interface_assets.py`**, which also saves every
+  interface asset it owns (`save_directory`). So the capital has a generator of its own, in the pattern of
+  `tools/generate_dungeon_map.py` and the sandbox's `make_sandbox_level` (`tools/generate_input_assets.py`), and its
+  editor run touches one level.
+- **`ACataclysmDungeonGameMode` derives from `ACataclysmGameMode` and turns `bSpawnsSandboxCreatures` off.** The capital
+  does the same, and inherits `StartPlay`'s `BeginSavingThisRun` and `LoadThePendingCharacter`: a new character made, a
+  chosen one loaded, a refusal sent back to `L_FrontEnd`.
+- **The empire map has no key and no close button**; only `Cataclysm.EmpireMap` opened it, through `ToggleEmpireMap`,
+  which closes an open map.
+- **Routing:** `MapToContinue` sent a run saved on a floor other than the sandbox's to `L_Dungeon` and everything else
+  to `L_Sandbox`; `ConfirmInto` opened `L_Sandbox`. The sandbox records every save as floor 1 of "Sandbox", and
+  `CharacterAndRun` refuses a record whose floor differs from the level's.
+- **`EditorStartupMap` is what the test editor opens** (`tools/unreal_build.py` names no map), and no test reads the
+  editor's own world: searched for `GetEditorWorldContext`, `GWorld` and `EditorWorld` in both test folders, none found.
+  Every test builds its own world.
+- **`.gitattributes` line 14, `*.umap filter=lfs diff=lfs merge=lfs -text`**, stores every level through Git LFS, so
+  `L_Capital.umap` goes there with no change.
+
+### What changes
+
+- **`ACataclysmCapitalGameMode`, the capital's game mode.** No sandbox creatures; the run record's floor is "Capital",
+  0, which means nobody is on a floor, so a capital save reloads with no floor to match. After the sandbox's arrival in
+  `StartPlay` and in `HandleStartingNewPlayer`, it calls `OpenTheEmpireMapIfReady`: once nothing is pending on the game
+  instance, the load did not ask for the front end, the save writer is writing and a player's character stands, it
+  takes the run (beginning one when there is none, Q2), logs "The capital opened the empire map: day D, N dungeons
+  standing.", and opens the map on each player's screen -- not in an automation test, which has no viewport, as a
+  level is not opened in one. Once.
+- **`ACataclysmPlayerController::OpenEmpireMap`** opens and refreshes the map and never closes it; `ToggleEmpireMap`
+  closes an open map and otherwise calls it, so the console command behaves as before.
+- **Start and Continue open the capital** (`UCataclysmCharacterSelectWidget::CapitalMap`, `/Game/Maps/L_Capital`):
+  `ConfirmInto` always, and `MapToContinue` for every row not saved on a dungeon's floor, the sandbox's included. A run
+  saved on a dungeon's floor still opens `L_Dungeon`. A refused load still goes to `L_FrontEnd`.
+- **A record saved on the sandbox's floor loads in the capital without that floor (Q1).** In `CharacterAndRun`, when
+  the record was not saved mid-walk, its floor is the sandbox's, and the level holds floor 0, the load logs "the
+  character and the run are put back, and that floor's N creatures and the character's place on it are dropped", puts
+  back no creature and no place, and the writer goes on on the capital's floor; the report says "the sandbox's floor it
+  was saved on dropped". It is one more branch of the one chain -- a walk's resume, the drop, the refusal -- so a
+  dungeon floor's mismatch is refused exactly as before. `ACataclysmGameMode::SandboxFloorName` is the one spelling of
+  "Sandbox" the routing and the load use.
+- **`EditorStartupMap=/Game/Maps/L_FrontEnd.L_FrontEnd`**, with a comment in the ini; `GameDefaultMap` was already it.
+- **`tools/generate_capital_map.py`** makes `L_Capital`: a cube floor 40 metres square with its top at z=0, a movable
+  sun, a sky atmosphere, a movable sky light and a player start, its world settings naming the capital's game mode. No
+  navigation bounds. Movable lights, so the editor writes no `_BuiltData`. Re-running empties what it made, by label,
+  and makes it again.
+
+### Not changed, and why
+
+- **`L_Sandbox`** stays as it is, a test level opened by hand; `UCataclysmCharacterSelectWidget::SandboxMap` stays for
+  tests that name it.
+- **No key opens the map** (Q3); it comes with slice 3.
+- **Travel into a dungeon from the capital** is slice 3: the map's Walk buttons in the capital still refuse, "This
+  level is not a dungeon".
+
+### Tests
+
+**Unreal, new (7), the group `Cataclysm.Capital.`:**
+
+| Test | What it holds |
+|---|---|
+| `TheCapitalSpawnsNoCreaturesAndRecordsNoFloor` | the mode and its class default turn the sandbox's creatures off; the capital's writer holds floor 0 of "Capital"; CONTROL: the sandbox's held floor 1 of "Sandbox" |
+| `ANewCharacterArrivingInTheCapitalStandsItsRunAndTheMapOpens` | CONTROL: no map before the load; the character made; the map opened, once; its run on day 0 with 12; its run record written on floor 0 with 12 |
+| `ACharacterSavedInTheCapitalContinuesThereAndTheMapOpens` | a character made in one capital, loaded by a Continue in another: no map before the load, `Loaded`, the map opened, the same 12 dungeons by number, the writer on floor 0 |
+| `ACharacterSavedInTheSandboxLoadsInTheCapitalWithoutThatFloor` | a sandbox record twelve days in with a creature on its floor: CONTROL, it loads on the sandbox's floor with the creature; in the capital it loads with no creature restored and none standing, says "dropped", its run on day 12, the writer on floor 0 of "Capital" |
+| `ARunSavedOnADungeonFloorIsStillRefusedInTheCapital` | CONTROL: the sandbox record loads in the capital; moved to floor 3 of "Crypt", outside a walk, it is refused, "floor 3 of 'Crypt'" |
+| `PlayOnTheCapitalWithNothingPendingBeginsARunAndOpensTheMap` | CONTROL: no run before; nothing pending; the map opened on a run begun then, day 0 with 12 |
+| `ARefusedLoadInTheCapitalAsksForTheFrontEndAndOpensNoMap` | an unreadable fixture slot: refused, the front end asked for, no map |
+
+**Unreal, changed (2):** `Cataclysm.CharacterSelect.ContinueOpensTheLevelTheRunNeeds` (a sandbox run and a run-less
+character now open the capital; a new CONTROL that the capital is not the sandbox) and
+`Cataclysm.Creation.TheNewCharacterScreenHandsTheCharacterOver` ("and the capital is asked for").
+
+**Python, new (5),** `test_the_capital_level_is_generated_and_play_opens_the_front_end.py`: the generator makes
+`/Game/Maps/L_Capital` with the capital's game mode, two movable lights, nothing stationary and no navigation; the
+capital mode derives from `ACataclysmGameMode`, records floor 0, turns the creatures off, asks to open the map after the
+arrival in both places, and asks the pending, refusal and begin-a-run conditions; Start and Continue name the capital
+and nothing opens the sandbox; both start maps are the front end; and the drop's three conditions, its place in the
+chain, and its three guards. **Changed (1):** `test_the_game_and_the_editor_both_start_on_the_front_end`, which asked
+for the editor on the sandbox.
+
+### Proofs run in phase 1 (Python only)
+
+With `tools/prove_guard.py`, each break narrow, `.claude/windows/prove_python_2733s2.py`; each read "PROVED: N failed,
+M passed | restored: all passed".
+
+| Proof | Break | Named failure(s) |
+|---|---|---|
+| S1 | the generator's game mode `CataclysmGameMode` | `test_the_generator_makes_l_capital_with_the_capital_game_mode_and_nothing_to_bake` |
+| S2 | the capital's `bSpawnsSandboxCreatures = true` | `test_the_capital_game_mode_turns_the_sandbox_off_records_no_floor_and_opens_the_map` |
+| S3 | the pending check made `if (false)` | the same |
+| S4 | Continue's `CapitalMap` back to `SandboxMap` | `test_start_and_every_continue_not_inside_a_dungeon_go_to_the_capital` |
+| S5 | Start's `CapitalMap` back to `SandboxMap` | the same |
+| S6 | `EditorStartupMap` back to `L_Sandbox` | `test_the_game_and_the_editor_start_on_the_front_end` and `test_the_game_and_the_editor_both_start_on_the_front_end` |
+| S7 | the drop's `Writer->HoldsTheFloor() == 0` taken out | `test_only_the_sandboxs_floor_is_dropped_in_the_capital_and_every_other_mismatch_is_refused` |
+| S8 | the floor restore's `!bDropsTheSandboxFloor` taken out | the same |
+
+**A FAULT OF MINE, CAUGHT BY READING BACK BEFORE ANY BUILD.** The first edit of `CharacterAndRun` put the drop's
+declaration where the old `else if` began, which split the chain: the floor-mismatch refusal would then have run for a
+run saved mid-walk and loaded in `L_Dungeon` too, refusing a valid resume. The declaration now stands before the chain
+and the drop is a branch of it; S7, S8 and the fifth Python check hold that shape.
+
+### Phase 2, 2026-11-17: compiled and reviewed
+
+**No rebase was needed.** The branch is on `development` `011b61bab`, still its head. The coordinating session accepted
+the judgement on the dropped place (SAID FIRST, above) and confirmed the local date.
+
+**Compile.** Three builds:
+
+| Build | Its line |
+|---|---|
+| The head `e664767ad`, the tree clean, the makefile set aside | "Build: Succeeded - 40 actions, 37 files compiled": the change to `CataclysmGameMode.h` recompiled 37 unity files. One warning, C4996 "CountBits for 64-bit values has been deprecated", from `CataclysmAbilitySystemComponent.cpp` line 1315, which is on `development` and not touched here |
+| Every changed `.cpp` alone (HEAD detached and reset to `development`, the branch's files on disk, the makefile set aside) | "Build: Succeeded - 18 actions, 15 files compiled": UnrealBuildTool's log names `CataclysmCapitalGameMode.cpp`, `CataclysmCharacterCreationTests.cpp`, `CataclysmCharacterSelectTests.cpp`, `CataclysmCharacterSelectWidget.cpp`, `CataclysmGameMode.cpp` (its header changed), `CataclysmNewCharacterWidget.cpp`, `CataclysmPlayerController.cpp`, `CataclysmSaveLoad.cpp`, `CataclysmSaveLoadTests.cpp`, and six regrouped unity files; no warning |
+| The unity files (the head restored, the makefile set aside) | "Build: Succeeded - 9 actions, 6 files compiled: Module.Cataclysm.11.cpp, Module.Cataclysm.12.cpp, Module.Cataclysm.13.cpp, Module.Cataclysm.15.cpp, Module.Cataclysm.41.cpp, Module.Cataclysm.42.cpp": 11 the two screens, 12 the capital and the sandbox game modes, 13 the player controller and the load, 15 the two screen tests, 41 the save-load tests; 42 holds none of them and was recompiled because the regrouping moved files into it; no warning |
+
+**Review.**
+
+- **The map is opened at most once and never before the load.** `OpenTheEmpireMapIfReady` returns before it changes
+  anything while a creation or a chosen identifier is pending -- `LoadThePendingCharacter` clears both before it makes
+  or loads -- after a refusal, before the writer writes, or with no player's character standing.
+- **A refused arrival opens no map and begins no run**: the refusal sets `FrontEndRequested` before the capital asks.
+- **The drop cannot touch a dungeon level.** It asks the level's floor to be 0; `L_Dungeon`'s writer holds the
+  dungeon's floor, 1 or more, so a sandbox record there is refused as before.
+- **The editor's start map.** No test reads the editor's own world (above), and `L_FrontEnd` holds a player start and
+  its world settings only, so opening it in the test editor loads nothing the tests use.
+
+### Registered before the run
+
+**The base.** Window first-surge-w1's whole-suite run at `2c489f4e` performed 4765 tests, 47 skipped halves, 0 test
+saves left behind; `git diff --stat 2c489f4e0 origin/development -- game/` prints nothing, so that is this branch's base,
+`011b61bab`. Per-group counts are its engine log's "Test Completed" lines, by prefix, ignoring case.
+
+**The asset step, first.** `tools/run_editor_python.py tools/generate_capital_map.py` must add exactly one new, untracked
+file, `game/Content/Maps/L_Capital.umap` -- no `_BuiltData`, no other map, no tracked file changed -- beginning with the
+Unreal package tag on disk; `git check-attr filter` must say `lfs`; it is committed alone, the commit must hold only
+`A game/Content/Maps/L_Capital.umap` on top of the registration commit, the blob git stores must begin "version
+https://git-lfs.github.com/spec/v1", and `git lfs ls-files` must list it checked out. Then `git push` and `git lfs push`.
+That commit is the tested head.
+
+**The whole suite: 4765 + 7 = 4772 performed, 4772 succeeded, 0 failed; 47 skipped halves; 0 test saves left behind;
+"Declared: 4772".**
+
+**Each group alone,** by its prefix (each ends in a dot):
+
+| Prefix | Base | Registered | Why it runs alone |
+|---|---|---|---|
+| `Cataclysm.Capital.` | 0 | 7 | new |
+| `Cataclysm.CharacterSelect.` | 10 | 10 | one changed |
+| `Cataclysm.Creation.` | 14 | 14 | one changed |
+| `Cataclysm.SaveLoad.` | 76 | 76 | `CharacterAndRun` gains the sandbox floor's branch |
+| `Cataclysm.FirstSurge.` | 3 | 3 | a new character made and a run saved on day 0 loaded |
+| `Cataclysm.SaveWriter.` | 25 | 25 | the sandbox's floor name is now a constant |
+
+**Python, after the asset commit: no failure.** The two checks that fail before the window name only
+`L_Capital.umap`, which the asset step adds.
+
+**Six C++ guard proofs,** with `prove_cpp_guard`, the engine log of each half kept (`.claude/windows/prove_b2733s2.py`):
+
+| Proof | Break | Prefix | Predicted broken half | Restored half |
+|---|---|---|---|---|
+| C1 | Continue's `CapitalMap` back to `SandboxMap` (`CataclysmCharacterSelectWidget.cpp`) | `Cataclysm.CharacterSelect.` | 10 performed, 9 succeeded, 1 failed: `ContinueOpensTheLevelTheRunNeeds`, 2 assertions: "a run saved in the sandbox opens the capital", "a character in no run opens the capital" | 10 of 10 |
+| C2 | the drop never taken: `&& Writer->HoldsTheFloor() == 0 && false;` (`CataclysmSaveLoad.cpp`) | `Cataclysm.Capital.` | 7 performed, 5 succeeded, 2 failed: `ACharacterSavedInTheSandbox...`, 3: "in the capital the record loads", "and it says the floor was dropped", "its run came back, twelve days in"; `ARunSavedOnADungeonFloor...`, 1: its CONTROL "on the sandbox's floor the record loads in the capital" | 7 of 7 |
+| C3 | any floor dropped, the sandbox's name not asked (`CataclysmSaveLoad.cpp`) | `Cataclysm.Capital.` | 7 performed, 6 succeeded, 1 failed: `ARunSavedOnADungeonFloor...`, 2: "on a dungeon's floor it is refused", "with the floor it was saved on" | 7 of 7 |
+| C4 | the pending check made `if (false)` (`CataclysmCapitalGameMode.cpp`) | `Cataclysm.Capital.` | 7 performed, 5 succeeded, 2 failed: `ANewCharacterArriving...` and `ACharacterSavedInTheCapital...`, 2 each: their CONTROL "the map does not open while ..." and "then the map opens" | 7 of 7 |
+| C5 | `EmpireRunFor(this, /*bStartIfNone*/ false)` (`CataclysmCapitalGameMode.cpp`) | `Cataclysm.Capital.` | 7 performed, 6 succeeded, 1 failed: `PlayOnTheCapitalWithNothingPending...`, 1: "on a run begun for it" | 7 of 7 |
+| C6 | the floor restore's `&& !bDropsTheSandboxFloor` taken out (`CataclysmSaveLoad.cpp`) | `Cataclysm.Capital.` | 7 performed, 6 succeeded, 1 failed: `ACharacterSavedInTheSandbox...`, 2: "without the floor's creatures", "none standing" | 7 of 7 |
+
+Assertions are counted in each broken half's kept log in both of the engine's forms, "Expected '...'" and "...: The
+two values are not equal.".
+
+### Window capital-w1, the first run, 2026-11-17: stopped at its fifth group, on a fault in a slice 1 test
+
+At `e293df73`. The runner's lines after the build ("target already up to date"):
+
+```
+assets: git status exit 0, changed: [('??', 'game/Content/Maps/L_Capital.umap')]
+assets: game/Content/Maps/L_Capital.umap on disk: 17647 bytes, begins c1832a9e
+assets: git check-attr filter: game/Content/Maps/L_Capital.umap: filter: lfs
+assets: committed db428831 on e293df73, files ['A\tgame/Content/Maps/L_Capital.umap']; the stored blob begins b'version https://git-lfs.github.com/spec/v1', 130 bytes; git lfs ls-files: ['9d07f1e84b * game/Content/Maps/L_Capital.umap']
+assets: git push exit 0; git lfs push exit 0 ''; origin's feat/2733-capital-level is db428831: the tested head
+alone Cataclysm.Capital.: Tests: 7 tests performed, 7 succeeded, 0 failed | exit 0
+alone Cataclysm.CharacterSelect.: Tests: 10 tests performed, 10 succeeded, 0 failed | exit 0
+alone Cataclysm.Creation.: Tests: 14 tests performed, 14 succeeded, 0 failed | exit 0
+alone Cataclysm.SaveLoad.: Tests: 76 tests performed, 76 succeeded, 0 failed | exit 0
+alone Cataclysm.FirstSurge.: Tests: 3 tests performed, 2 succeeded, 1 failed: ARunSavedOnDayZeroLoadsWithTheSameDungeonsAndNoSecondSurge | exit 1
+STOPPED: Cataclysm.FirstSurge. alone did not pass
+lock release: exit 0 capital-w1 released the Unreal editor.
+```
+
+**The asset step did exactly what was registered:** one new file, the Unreal package tag on disk, `filter: lfs`, a
+commit holding only that file, a stored blob that is a 130-byte Git LFS pointer, the file listed as checked out, and
+the branch on origin at the commit. `db428831` holds `L_Capital.umap` from here on.
+
+**The fault, in `Cataclysm.FirstSurge.ARunSavedOnDayZeroLoadsWithTheSameDungeonsAndNoSecondSurge`, which slice 1
+added.** Its two failed assertions: "dungeon 5 as deep: expected 23, was 22" and "dungeon 6 as deep: expected 27, was
+26". The test read each loaded dungeon's depth AFTER it had run the loaded run's first day (`Run->AdvanceDay()`); a
+Hollow loses `HollowFloorsLostPerDay` = 1 floor a day, and an opening-wave Hollow, spawned on day 0, shrinks on day 1.
+A new character's run takes its seed from the clock (`ACataclysmGameMode::MakeThePendingCharacter`), so each run's
+opening wave differs: this one held two Hollows, and slice 1's window passed with none. The load itself was right: the
+test's own line reads "loaded on day 0 with 12 standing, 1 fired, next dungeon number 12, next surge due 90.0; asked for
+the opening surge: surged no, 12 standing; day 1 surged no". The test's timers were already read before the day, which
+is why only depth failed. The test is on `development` since #2735, where it fails whenever a run's opening wave holds a
+Hollow.
+
+**Ruled by the coordinating session, 2026-11-17:** fix it in slice 2; copy the loaded dungeons before anything can
+change the run and compare from the copy, with a guard proof that a Hollow shrinking before the comparison makes the old
+reading fail; and sweep every test that slices 1 and 2 added, and every test that makes a run seeded from the clock, for
+per-dungeon figures a day or a seed can move.
+
+### The sweep, 2026-11-17
+
+**The paths that seed a run from the clock**, read in the code: `UCataclysmGameInstance::GetOrBeginEmpireRun` (and
+through it `EmpireRunFor(..., true)` and `ACataclysmCapitalGameMode::OpenTheEmpireMapIfReady`);
+`ACataclysmGameMode::MakeThePendingCharacter`; `FCataclysmSaveLoad::CharacterAndRun` when it begins a new run; and
+`UCataclysmGameInstance::BeginTheRunAfterAWin`. `.claude/windows/sweep_clock_seeded_runs.py` lists every automation test
+body that reaches one of them (by `GetOrBeginEmpireRun`, `EmpireRunFor(..., true)`, `OpenTheEmpireMapIfReady`,
+`PendingCreation`, `LoadedWithANewRun`, `BeginTheRunAfterAWin`, `WalkInAndClear` or `Cataclysm.EnterDungeon`) with its
+lines that read depth, timers, kinds, sub-types, counts or cities or pass days: 27 test bodies, every one read.
+
+**One compared a figure a day or the seed can move: the test above, now fixed.** The others, by kind:
+
+| What they assert | Tests | Why the seed and the days cannot move it |
+|---|---|---|
+| How many dungeons stand on day 0: 12, or 15 on Heretic | `FirstSurge.EveryDoor...`, `FirstSurge.ANewCharacters...`, `Capital.ANewCharacterArriving...`, `Capital.PlayOnTheCapital...`, `WinningTheRun.TheNextRunBegins...` | every opening wave lands whole: no city has a dungeon cap without an upgrade (`RoomLeftOn`) |
+| Every opening-wave dungeon's rules on day 0: kind, sender, city, a floor or more, a full timer, `SpawnedDay` 0, `CountFor` modifiers | `FirstSurge.EveryDoor...` (fixed seeds 7, 11 and 1), `FirstSurge.ANewCharacters...` (the clock) | rules every wave obeys, read before any day |
+| Dungeon numbers, the saved list against the loaded list | `Capital.ACharacterSavedInTheCapitalContinues...` | read before any day; the numbers are 0 to 11 whatever the seed |
+| The tier, the Cataclysms faced and their names, `CountFor` | the `EmpireRunTier.` tests, `SaveLoad.ALoadedCharactersNewRun...`, `SaveLoad.ANewCharacterDraws...`, the `WinningTheRun.` tests | the tier and the character's order seed decide them, not the run's seed |
+| Figures of dungeons a test placed by hand | `SaveLoad.ARestoredCreatureHitsAsHardAsItDid`, `SaveLoad.AHeavenlyCoreDestroyed...`, `EmpireRunTier.ARunSaysWhichTier...`'s neighbour, `WalkFromTheScreen.PressingWalk...` | fixed in the test; the runs there are `Begin`'s with fixed seeds |
+| A whole map after 300 days | `EmpireScreen.TheGameInstanceHoldsOneRunAtATime` | fixed seeds 7, 7 and 8 |
+
+**Outside slices 1 and 2: none found.** **Seen and not changed:** the comment in
+`Cataclysm.EmpireRunTier.AskingTheGameForARunGivesOneAtTheGamesTier` that "a headless run has no modifier table to draw
+from" is no longer true -- the game instance loads the table into every run it begins, and `Cataclysm.FirstSurge.` checks
+it as a CONTROL -- and the test checks the rule rather than a drawn dungeon, so its assertion does not depend on it.
+
+### What changed after the first run
+
+- **The test copies the loaded run's dungeons right after the load**, before `FireOpeningSurge` and the first day, as it
+  already did the timers, and compares city, kind, sub-type, depth, modifiers and arrival day from that copy. Nothing
+  else a dungeon carries can change on day 1 either: a Quest dungeon moves only when its timer runs out, and the
+  shortest timer of an opening wave is 9.86 days.
+- **The runner skips the asset step** and instead checks that HEAD's `L_Capital.umap` is the Git LFS object added in
+  `db428831`, with the asset on disk and listed as checked out.
+- **One more C++ guard proof, C7** (below).
+
+### Compiled and registered again after the first run
+
+**Compile**, the one changed file, `CataclysmSaveLoadTests.cpp`, no warning in either:
+
+| Build | Its line |
+|---|---|
+| Alone (uncommitted, the makefile set aside) | "Build: Succeeded - 6 actions, 3 files compiled: CataclysmSaveLoadTests.cpp, Module.Cataclysm.41.cpp, Module.Cataclysm.42.cpp" |
+| In its unity file (committed at `29dba27b7`, the makefile set aside) | "Build: Succeeded - 5 actions, 2 files compiled: Module.Cataclysm.41.cpp, Module.Cataclysm.42.cpp"; 41 holds it |
+
+**Python**, with `L_Capital.umap` committed: "7449 passed, 9 skipped in 190.26s", exit 0; its JUnit file 7458 tests, 0
+failures, 0 errors, 9 skipped. The two checks that failed before the level existed pass.
+
+**Registered again. The counts do not change**: the whole suite 4772 performed, 4772 succeeded, 0 failed; 47 skipped
+halves; 0 test saves left behind; "Declared: 4772"; the six groups alone as above. The asset step is skipped; the
+runner checks instead that HEAD's `L_Capital.umap` is the Git LFS object added in `db428831`, checked out as the asset.
+The proofs are C1 to C6 as above, and:
+
+| Proof | Break | Prefix | Predicted broken half | Restored half |
+|---|---|---|---|---|
+| C7 | before the copy, dungeon 0 made a Hollow (`Type` Quest, `SubType` Hollow, `HollowFrom` its depth) and a day passed (`CataclysmSaveLoadTests.cpp`) | `Cataclysm.FirstSurge.` | 3 performed, 2 succeeded, 1 failed: `ARunSavedOnDayZeroLoadsWithTheSameDungeonsAndNoSecondSurge`, 15 assertions: "the loaded run is on day 0", "dungeon 0 of the same kind and sub-type", "dungeon 0 as deep", and the twelve "came back as it was saved" timers -- 14 if the clock-seeded wave's dungeon 0 was already a Hollow | 3 of 3 |
+
+### Window capital-w1, the second run, 2026-11-17: the results
+
+At `f86d6609`, after the pre-checks (all pass, "7. Git LFS files: exit 0, 127 listed, 0 still pointers"). The runner's
+lines, as printed:
+
+```
+Git LFS: exit 0, 127 files, 0 pointers
+lock acquire: exit 0 capital-w1 holds the Unreal editor.
+build: Build: Succeeded - target already up to date, 0 actions, nothing compiled | exit 0
+assets: SKIPPED, already committed; HEAD's blob begins b'version https://git-lfs.github.com/spec/v1', 130 bytes; on disk 17647 bytes beginning c1832a9e; git lfs ls-files: ['9d07f1e84b * game/Content/Maps/L_Capital.umap']; added in db428831b
+alone Cataclysm.Capital.: Tests: 7 tests performed, 7 succeeded, 0 failed | exit 0
+alone Cataclysm.CharacterSelect.: Tests: 10 tests performed, 10 succeeded, 0 failed | exit 0
+alone Cataclysm.Creation.: Tests: 14 tests performed, 14 succeeded, 0 failed | exit 0
+alone Cataclysm.SaveLoad.: Tests: 76 tests performed, 76 succeeded, 0 failed | exit 0
+alone Cataclysm.FirstSurge.: Tests: 3 tests performed, 3 succeeded, 0 failed | exit 0
+alone Cataclysm.SaveWriter.: Tests: 25 tests performed, 25 succeeded, 0 failed | exit 0
+suite: Tests: 4772 tests performed, 4772 succeeded, 0 failed. 47 skipped part of what they check: ...
+suite: Test saves: 760 written and deleted, 0 left behind
+suite: Declared: 4772 tests in the tree at f86d6609d; 4772 performed, gap 0; every declared test was reported by the run. Issue #1707.
+python: 7449 passed, 9 skipped in 188.49s (0:03:08)
+python exit 0 | junit <testsuite name="pytest" errors="0" failures="0" skipped="9" tests="7458" ...>
+ruff exit 0: All checks passed!
+proofs: C1 PROVED, C2 PROVED, C3 PROVED, C4 PROVED, C5 PROVED, C6 PROVED, C7 PROVED
+lock release: exit 0 capital-w1 released the Unreal editor.
+```
+
+**Every figure matches its registration:** the six groups alone; the whole suite, 4772 of 4772, 47 skipped halves, 0
+test saves left behind, "Declared: 4772 ... gap 0"; Python 7449 passed and 9 skipped, its JUnit file 7458 tests, 0
+failures, 0 errors, 9 skipped. The engine's memory line: "tests=5379 peak_used_virtual_mb=9126".
+
+**What the new tests printed** (the engine log `b2733s2_suite_engine_f86d6609.log`):
+
+- "CAPITAL FLOOR: the sandbox's writer held floor 1 of 'Sandbox'; the capital's holds floor 0 of 'Capital'; sandbox
+  creatures not spawned"
+- "CAPITAL NEW CHARACTER: before the load the map waited; outcome 5; then opened, again not again; the run on day 0 with
+  12 standing; the record read, on floor 0 of 'Capital' with 12 dungeons"
+- "CAPITAL CONTINUE: saved 12 dungeons; before the load the map waited; outcome 2; then opened; the run on day 0 with 12
+  standing; the writer on floor 0 of 'Capital'"
+- "CAPITAL SANDBOX SAVE: saved 1 creatures on the sandbox's floor; on the sandbox: Loaded, 1 restored, 1 standing; in the
+  capital: Loaded (... put back: day 12, 0 creatures, the sandbox's floor it was saved on dropped, as this level has
+  none), 0 restored, 0 standing, the run on day 12, the writer on floor 0 of 'Capital'"
+- "CAPITAL DUNGEON FLOOR: on the sandbox's floor Loaded; on floor 3 of 'Crypt' Refused ... ('the run was saved on floor
+  3 of 'Crypt', and this level is floor 0 of 'Capital'')"
+- "CAPITAL NOTHING PENDING: a run before none; outcome 0; the map opened; the run on day 0 with 12 standing"
+- "CAPITAL REFUSED: outcome 4; ... back to '/Game/Maps/L_FrontEnd'; the map not opened"
+- "SELECT CONTINUE: dungeon run -> /Game/Maps/L_Dungeon, sandbox run -> /Game/Maps/L_Capital, no run ->
+  /Game/Maps/L_Capital, ..." and "NEW CHARACTER HANDED: ... asked for /Game/Maps/L_Capital"
+- "The capital opened the empire map: day 0, 12 dungeons standing."
+
+**The proofs, each broken half's failed assertions against its registration** (counted in `b2733s2_<P>_run1.log` in
+both of the engine's forms):
+
+| Proof | Broken half | Failed assertions | Registered | Restored half |
+|---|---|---|---|---|
+| C1 | 10 performed, 9 succeeded, 1 failed | `ContinueOpensTheLevelTheRunNeeds` 2: "a run saved in the sandbox opens the capital", "a character in no run opens the capital" | the same 2 | 10 of 10 |
+| C2 | 7 performed, 5 succeeded, 2 failed | `ACharacterSavedInTheSandbox...` 3: "in the capital the record loads", "and it says the floor was dropped", "its run came back, twelve days in"; `ARunSavedOnADungeonFloor...` 1: "CONTROL: on the sandbox's floor the record loads in the capital" | the same 3 and 1 | 7 of 7 |
+| C3 | 7 performed, 6 succeeded, 1 failed | `ARunSavedOnADungeonFloor...` 2: "on a dungeon's floor it is refused", "with the floor it was saved on" | the same 2 | 7 of 7 |
+| C4 | 7 performed, 5 succeeded, 2 failed | `ANewCharacterArriving...` 2 and `ACharacterSavedInTheCapital...` 2: each its CONTROL "the map does not open while ..." and "then the map opens" | the same 2 and 2 | 7 of 7 |
+| C5 | 7 performed, 6 succeeded, 1 failed | `PlayOnTheCapitalWithNothingPending...` 1: "on a run begun for it" | the same 1 | 7 of 7 |
+| C6 | 7 performed, 6 succeeded, 1 failed | `ACharacterSavedInTheSandbox...` 2: "without the floor's creatures", "none standing" | the same 2 | 7 of 7 |
+| C7 | 3 performed, 2 succeeded, 1 failed | `ARunSavedOnDayZero...` 15: "the loaded run is on day 0", "dungeon 0 of the same kind and sub-type", "dungeon 0 as deep", and the twelve "dungeon N's timer came back as it was saved" | 15, or 14 | 3 of 3 |
+
+**C7 measured the 15 case.** "dungeon 0 of the same kind and sub-type" fired, which it does only when the saved wave's
+dungeon 0 was not already a Quest dungeon of the Hollow sub-type: the break made it one, so the kinds differed.
+
+### Not tested
+
+- **The screen.** That the empire map shows on arrival in the capital, and that Play in the editor opens the select
+  screen, is not seen by an automation test, which has no viewport; the decision is tested, and the owner's press (slice
+  4) sees the screen.
+- **Travel from the capital into a dungeon and back** is slice 3: the map's Walk buttons in the capital still refuse.
+- **A packaged build** has not been made; `L_Capital` is cooked with every map under Content, as `L_FrontEnd` is.
+
+---
+
 ## 2026-11-17 — A new run's first surge lands on day 0, as the run begins, so the empire map shows its twelve dungeons before any day has passed (#2733, slice 1)
 
 **Affects:** `UCataclysmEmpireRun` (`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h`, `.cpp`): the new
@@ -12360,6 +12761,9 @@ this step in the code; a player's launch has not yet confirmed it (below).
   - `tools/generate_input_assets.py` and `tools/generate_dungeon_map.py` build `L_Sandbox` and `L_Dungeon` by name;
   - `tools/tests/test_game_readme_is_true.py` skips its only-map claim, because the readme no longer makes it, and
     `test_map_built_data_is_not_committed.py` and `test_run_editor_python.py` name `L_Sandbox` only as paths.
+  - **REPLACED ON 2026-11-17 for the editor:** the project owner's ruling on issue #2733, "Play opens the front end",
+    moved `EditorStartupMap` to `L_FrontEnd` in #2733 slice 2; see the entry "Play opens the front end, and Start and
+    Continue open the capital" (2026-11-17).
 - **ONE FAULT ON THE WAY.** The first compile failed at link: `UGameMapsSettings::GetGameDefaultMap` is in the
   EngineSettings module, which the game module does not link. The start-map test reads the same setting through
   `GConfig` from the engine's ini instead; no module dependency is added.

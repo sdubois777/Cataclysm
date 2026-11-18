@@ -320,6 +320,15 @@ public:
 	void ToggleEmpireMap();
 
 	/**
+	 * Opens the empire overview and leaves it open: refreshed and shown, and never closed by a second call, which
+	 * `ToggleEmpireMap` would do. `ACataclysmCapitalGameMode` calls it when the player arrives in the capital. Issue
+	 * #2733 slice 2.
+	 *
+	 * @return whether the screen is shown afterwards; false, logged, when its asset does not load.
+	 */
+	bool OpenEmpireMap();
+
+	/**
 	 * Opens and closes the character sheet.
 	 *
 	 * THE SAME SHAPE AS THE THREE ABOVE, and public for the same reason:

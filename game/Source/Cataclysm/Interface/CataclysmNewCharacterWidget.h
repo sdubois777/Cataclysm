@@ -66,8 +66,9 @@ public:
 	FString CreationRefusalText() const { return CreationRefusal; }
 
 	/**
-	 * Hand the new character to the game instance and open the sandbox, where the level's start makes it
-	 * (`ACataclysmGameMode::LoadThePendingCharacter`). False, with the refusal shown, for a name the rules refuse, a
+	 * Hand the new character to the game instance and open the capital (the sandbox until issue #2733 slice 2), where
+	 * the level's start makes it (`ACataclysmGameMode::LoadThePendingCharacter`) and opens the empire map
+	 * (`ACataclysmCapitalGameMode`). False, with the refusal shown, for a name the rules refuse, a
 	 * weapon type and damage type that cannot be confirmed, or Online.
 	 *
 	 * @param Instance  the game instance to hand it to; the one this screen belongs to when null

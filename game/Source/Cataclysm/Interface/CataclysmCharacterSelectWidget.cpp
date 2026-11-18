@@ -10,6 +10,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Player/CataclysmFrontEndGameMode.h"
 #include "Player/CataclysmGameInstance.h"
+#include "Player/CataclysmGameMode.h"
 #include "Save/CataclysmSaveWriter.h"
 
 FString UCataclysmCharacterSelectWidget::RowText(const FCataclysmCharacterSummary& Row)
@@ -52,9 +53,12 @@ bool UCataclysmCharacterSelectWidget::MapToContinue(const FCataclysmCharacterSum
 		return false;
 	}
 	// A RUN SAVED INSIDE A DUNGEON LOADS ONLY IN A DUNGEON LEVEL (`FCataclysmSaveLoad::CharacterAndRun` refuses it
-	// anywhere else); every other run, and a character in none, loads in the sandbox.
-	const bool bInADungeon = Row.bInARun && Row.bRunReadable && Row.Floor > 0 && Row.Dungeon != FName(TEXT("Sandbox"));
-	OutMap = bInADungeon ? DungeonMap : SandboxMap; // A Continue's: the level its run needs.
+	// anywhere else); every other run, and a character in none, loads in the capital, the empire map's home -- a run
+	// saved on the sandbox's floor included, which the capital accepts without that floor's creatures. The sandbox until
+	// issue #2733 slice 2, ruled by the project owner on 2026-11-17: "Character select's Start and Continue go there."
+	const bool bInADungeon = Row.bInARun && Row.bRunReadable && Row.Floor > 0
+		&& Row.Dungeon != FName(ACataclysmGameMode::SandboxFloorName);
+	OutMap = bInADungeon ? DungeonMap : CapitalMap; // A Continue's: the level its run needs.
 	return true;
 }
 

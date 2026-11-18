@@ -886,31 +886,7 @@ void ACataclysmPlayerController::TogglePassiveTree()
 
 void ACataclysmPlayerController::ToggleEmpireMap()
 {
-	if (!EmpireMapScreen)
-	{
-		UClass* ScreenClass = EmpireMapScreenClass.LoadSynchronous();
-		if (!ScreenClass)
-		{
-			UE_LOG(LogCataclysm, Error,
-				   TEXT("There is no empire overview to open: %s could not be "
-						"loaded. Run  python tools/run_editor_python.py "
-						"tools/generate_interface_assets.py  to build it."),
-				   *EmpireMapScreenClass.ToString());
-			return;
-		}
-
-		EmpireMapScreen =
-			CreateWidget<UCataclysmEmpireMapWidget>(this, ScreenClass);
-		if (!EmpireMapScreen)
-		{
-			UE_LOG(LogCataclysm, Error,
-				   TEXT("The empire overview could not be created, so the "
-						"command that opens it does nothing."));
-			return;
-		}
-	}
-
-	if (EmpireMapScreen->IsInViewport())
+	if (EmpireMapScreen && EmpireMapScreen->IsInViewport())
 	{
 		EmpireMapScreen->RemoveFromParent();
 
@@ -921,12 +897,46 @@ void ACataclysmPlayerController::ToggleEmpireMap()
 		return;
 	}
 
+	OpenEmpireMap();
+}
+
+bool ACataclysmPlayerController::OpenEmpireMap()
+{
+	if (!EmpireMapScreen)
+	{
+		UClass* ScreenClass = EmpireMapScreenClass.LoadSynchronous();
+		if (!ScreenClass)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("There is no empire overview to open: %s could not be "
+						"loaded. Run  python tools/run_editor_python.py "
+						"tools/generate_interface_assets.py  to build it."),
+				   *EmpireMapScreenClass.ToString());
+			return false;
+		}
+
+		EmpireMapScreen =
+			CreateWidget<UCataclysmEmpireMapWidget>(this, ScreenClass);
+		if (!EmpireMapScreen)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("The empire overview could not be created, so the "
+						"command that opens it does nothing."));
+			return false;
+		}
+	}
+
 	ApplyPlayingInputMode();
 
 	// REFRESHED ON EVERY OPENING. Days can have passed since it was last
-	// closed, and the widget is kept rather than rebuilt.
+	// closed, and the widget is kept rather than rebuilt. AN OPEN SCREEN IS
+	// REFRESHED AND LEFT OPEN, rather than added a second time.
 	EmpireMapScreen->Refresh();
-	EmpireMapScreen->AddToViewport();
+	if (!EmpireMapScreen->IsInViewport())
+	{
+		EmpireMapScreen->AddToViewport();
+	}
+	return EmpireMapScreen->IsInViewport();
 }
 
 void ACataclysmPlayerController::ToggleCharacterSheet()

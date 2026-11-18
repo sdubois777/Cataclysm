@@ -119,7 +119,9 @@ bool UCataclysmNewCharacterWidget::ConfirmInto(UCataclysmGameInstance* Instance)
 	Creation.bPending = true; // A new character's: the creation handed over.
 	ShowCreationRefusal(FString());
 
-	Requested = UCataclysmCharacterSelectWidget::SandboxMap;
+	// THE CAPITAL, THE EMPIRE MAP'S HOME, where the new character's run stands its opening wave. The sandbox until issue
+	// #2733 slice 2, ruled by the project owner on 2026-11-17: "Character select's Start and Continue go there."
+	Requested = UCataclysmCharacterSelectWidget::CapitalMap;
 	// NOT IN AN AUTOMATION TEST, which cannot travel; it reads `LevelRequested`.
 	if (!GIsAutomationTesting)
 	{

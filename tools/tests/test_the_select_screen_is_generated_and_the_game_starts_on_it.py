@@ -41,7 +41,9 @@ FRONT_END_HEADER = SOURCE / "Player" / "CataclysmFrontEndGameMode.h"
 SCREEN = "make_character_select"
 LEVEL = "make_front_end_map"
 FRONT_END_MAP = "/Game/Maps/L_FrontEnd.L_FrontEnd"
-EDITOR_MAP = "/Game/Maps/L_Sandbox.L_Sandbox"
+# THE EDITOR TOO, SINCE ISSUE #2733 SLICE 2: "Play opens the front end", the project owner's ruling of 2026-11-17,
+# replacing the choice of 2026-10-31 to keep the editor on L_Sandbox.
+EDITOR_MAP = "/Game/Maps/L_FrontEnd.L_FrontEnd"
 
 #: `UPROPERTY(meta = (BindWidget))` then, on the next code line, `TObjectPtr<UTextBlock> RefusalLabel;`.
 BIND_WIDGET = re.compile(
@@ -87,15 +89,16 @@ def engine_maps() -> configparser.SectionProxy:
     return parser[section]
 
 
-def test_the_game_starts_on_the_front_end_and_the_editor_on_the_sandbox() -> None:
+def test_the_game_and_the_editor_both_start_on_the_front_end() -> None:
     maps = engine_maps()
     assert maps.get("GameDefaultMap") == FRONT_END_MAP, (
         f"DefaultEngine.ini's GameDefaultMap is {maps.get('GameDefaultMap')!r}; the game "
         f"opens on the character select screen's level, {FRONT_END_MAP} (#753, step 3b).")
     assert maps.get("EditorStartupMap") == EDITOR_MAP, (
         f"DefaultEngine.ini's EditorStartupMap is {maps.get('EditorStartupMap')!r}; the "
-        f"editor still opens on {EDITOR_MAP}, ruled 2026-10-31, so Play-in-editor on a "
-        "level works as before.")
+        f"editor opens on {EDITOR_MAP}, so pressing Play opens the front end: the project "
+        "owner's ruling of 2026-11-17 on #2733, which replaced the 2026-10-31 choice to keep "
+        "the editor on L_Sandbox.")
 
 
 def test_main_makes_the_screen_after_the_button_and_the_level_after_both() -> None:
