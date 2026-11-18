@@ -294,7 +294,7 @@ bool FCataclysmEarnedBossSaveCommittedFileTest::RunTest(const FString& Parameter
 							Read->SchemaVersion, Read->bCataclysmDungeonOpened ? TEXT("yes") : TEXT("no"),
 							Read->CataclysmDungeonOpenedDay, Read->CataclysmDungeonBaseFloors));
 
-	TestEqual(TEXT("it says it is version 6"), Read->SchemaVersion, 6);
+	TestEqual(TEXT("it says it is version 7"), Read->SchemaVersion, 7);
 	TestTrue(TEXT("the boss opened"), Read->bCataclysmDungeonOpened);
 	TestEqual(TEXT("on day 109"), Read->CataclysmDungeonOpenedDay, 109);
 	TestEqual(TEXT("having rolled 137 floors"), Read->CataclysmDungeonBaseFloors, 137);

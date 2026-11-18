@@ -1315,7 +1315,7 @@ bool FCataclysmWinningTheRunCommittedFileTest::RunTest(const FString& Parameters
 							Read->SchemaVersion, Read->LastRunWonDay, Read->LastRunWonTier,
 							static_cast<int32>(Read->LastRunWonCataclysm), Read->LastRunWonPassivePoints));
 
-	TestEqual(TEXT("it says it is version 6"), Read->SchemaVersion, 6);
+	TestEqual(TEXT("it says it is version 7"), Read->SchemaVersion, 7);
 	TestEqual(TEXT("the run before it was won on day 381"), Read->LastRunWonDay, 381);
 	TestEqual(TEXT("at tier 3"), Read->LastRunWonTier, 3);
 	TestEqual(TEXT("against War"), static_cast<int32>(Read->LastRunWonCataclysm),

@@ -38,6 +38,10 @@ slice 1 of 2.
 
 ### SAID FIRST
 
+- **SEVEN TEST EXPECTATIONS WERE WRONG, AND READING FOUND THEM, NOT A RUN.** When the save tests were moved to the new
+  committed files, six still asserted the old file's version and one expected one thing on a floor that now holds two.
+  The two compiles before the rebase could not see them; reading the rebased tree before the window did. All seven are
+  corrected; "The run" names them.
 - **THREE SAVE RECORDS MOVE A VERSION.** The account record to 3 (its gold), the character record to 8 (a Solo
   Self-Found character's own gold) and the run record to 7 (gold piles lying on a floor). The account was to take 4
   while the empire upgrade tree (issue #2741) took 3; the coordinating session swapped the two the same day, since this
@@ -173,8 +177,88 @@ not on a fetched page: none of the readable pages said how rarity moves gold.
 
 ### THE RUN
 
-Not yet run. Phase 2 (rebase, compile alone and in unity, review, the window with the automation tests and the guard
-proofs) waits for the coordinating session's go-ahead.
+**The two compiles before the rebase.** At `ef7cfbbbe`, on `1bbba95bc`, under the Unreal lock as gold-1-compile, with no
+editor and no tests: each changed file compiled alone, `Build: Succeeded - 104 actions, 94 files compiled`; and in
+unity, from a clean tree with the makefile deleted, `Build: Succeeded - 25 actions, 20 files compiled`. Neither ran a
+test.
+
+**The rebase onto `8e177d8b2`**, which carries the empire tree's slice 1a (#2746) and Echoes of the Past (#2743), went
+to the branch `feat/gold-drops-and-balance-3`, because `feat/gold-drops-and-balance-2` was already pushed and a rebase
+of it would have needed a force push. Three files conflicted: this file (this entry put above the tree's),
+`game/README.md` (now thirty-two DataTable assets, twenty-six of them from the workbook) and the number words in
+`tools/tests/test_game_readme_is_true.py` (development's, which already reach thirty-four).
+`game/Data/datatable_asset_sources.json` did not conflict, because this branch never committed it: the window's asset
+step writes this branch's two entries into development's file. `git lfs checkout` left no pointer file among the 130
+LFS files. **The rebased tree has not been compiled**; the window's build is its first compile against the tree's
+slice.
+
+**SEVEN TEST EXPECTATIONS WERE WRONG.** Each would have failed the window; reading the rebased tree found them, and no
+run has yet shown them right. When these tests were moved to the new committed files, the expectation beside each was
+not moved with them:
+
+- six tests read `Run_v7.json` or `Character_v8.json` and still asserted the version of the file they read before, 6
+  or 7: `Cataclysm.DeathCost.`, `Cataclysm.EarnedBossSave.`, `Cataclysm.SaveLoad.` and `Cataclysm.WinningTheRun.`
+  (the run file, now 7) and `Cataclysm.SaveRecords.` and `Cataclysm.CataclysmDraw.` (the character file, now 8). A
+  search for every literal version a test in `game/Source/Cataclysm/Tests/` asserts found these six and no other;
+- `Cataclysm.SaveRecords.TheCommittedRunFileKeepsTheFloorAndTheDamageDoneToIt` expected one thing on the floor, and
+  `Run_v7.json` holds an item and a pile of 37 gold. It now checks for two: the item, holding no gold, and the pile.
+
+**Read, not run: the tests that kill a paying creature where a balance exists.** Gold drops only where the character
+playing has a balance, which needs a game instance and a possessed player. Nine test files build such a world besides
+the gold tests; three of them kill a creature that pays for its death: the save-load tests, the winning-the-run test
+that kills the boss, and the Consumption Double tests that kill the double. The save-load tests that count drops count
+them before a save and after the load and compare the two, and a gold pile is saved and put back like any drop, so the
+two counts still match. A kill raises no save trigger (only a pickup does), and no such scene's controller is the
+game's, so nothing picks the piles up. The one Consumption Double test that counts drops builds a world with no game
+instance and calls `DropWhatItWore` directly. Echoes of the Past's echoes die unpaid and drop nothing.
+
+### REGISTERED BEFORE THE RUN
+
+Against the base the coordinating session named: **4807 performed, all succeeding, 47 skipped halves, no test save
+left behind**, measured in the window empire-tree-1a-w2 at `8c75df8a3`, whose engine log is
+`.claude/windows/t2741a2_suite_engine_8c75df8a.log` in that session's worktree. `8c75df8a3` to `8e177d8b2` changes
+`docs/DECISIONS.md` alone: `git diff --stat 8c75df8a3 8e177d8b2 -- game/` prints nothing.
+
+- **The whole Unreal suite: 4820 performed, all succeeding**, which is 4807 and the thirteen tests this branch adds; it
+  removes none. **47 skipped halves**, since no test this branch adds or changes calls
+  `CataclysmTestSkip::ReportSkippedHalf`. **No test save left behind.**
+- **Each group this branch changes, run alone, performs its registered count and all succeed.** The base is the
+  group's "Test Completed" lines in that engine log, counted by prefix ignoring case, as the engine's filter matches;
+  no prefix below is a prefix of another group's name in that log.
+
+| Group | Base | Added by name | Registered |
+|---|---|---|---|
+| `Cataclysm.Gold.` | 0 | 13 | 13 |
+| `Cataclysm.Data.` | 7 | 0 | 7 |
+| `Cataclysm.Drop.` | 30 | 0 | 30 |
+| `Cataclysm.DropPickup.` | 19 | 0 | 19 |
+| `Cataclysm.InventoryScreen.` | 7 | 0 | 7 |
+| `Cataclysm.EmpirePoints.` | 16 | 0 | 16 |
+| `Cataclysm.SaveRecords.` | 17 | 0 | 17 |
+| `Cataclysm.SaveLoad.` | 77 | 0 | 77 |
+| `Cataclysm.Travel.` | 9 | 0 | 9 |
+| `Cataclysm.PlayLoop.` | 7 | 0 | 7 |
+| `Cataclysm.ConsumptionDouble.` | 15 | 0 | 15 |
+| `Cataclysm.ConsumptionMark.` | 6 | 0 | 6 |
+| `Cataclysm.DeathCost.` | 9 | 0 | 9 |
+| `Cataclysm.EarnedBossSave.` | 3 | 0 | 3 |
+| `Cataclysm.WinningTheRun.` | 11 | 0 | 11 |
+| `Cataclysm.CataclysmDraw.` | 6 | 0 | 6 |
+
+- **The asset step** changes exactly `game/Content/Data/DT_EnemyDrops.uasset`, `game/Content/Data/DT_Gold.uasset` (new)
+  and `game/Data/datatable_asset_sources.json`, and those three are committed alone. That commit is the tested head.
+- **Python**: `python -m pytest` and `python -m ruff check .` pass, with the count taken from a JUnit file as well.
+- **The four guard proofs**, each through `tools/unreal_build.py`'s `prove_cpp_guard` with the prefix shown. Each
+  restored half passes every test its prefix selects.
+
+| Proof | The break | Prefix | The broken half |
+|---|---|---|---|
+| P1 | In `ACataclysmEnemyCharacter::HandleDeath`, the call `UCataclysmDropSpawner::SpawnGoldFor(...)` becomes `(void)Stream;`: a paid death drops no gold | `Cataclysm.Gold.KillingCreaturesPutsNamedGoldPilesOnTheFloor` | 1 performed, 0 succeeded, 1 failed, on two assertions: "killing three Cataclysm Bosses put gold on the floor" and "a Solo Self-Found character's kills put gold down too" |
+| P2 | In `UCataclysmGameInstance::GoldHeldBy`, `if (Partition.bSoloSelfFound)` becomes `if (false && Partition.bSoloSelfFound)`: the one balance function no longer knows a Solo Self-Found character's own | `Cataclysm.Gold.` | 13 performed, 9 succeeded, 4 failed: `GoldDropsOnlyWhereTheCharacterPlayingHasABalance`, `KillingCreaturesPutsNamedGoldPilesOnTheFloor`, `PickingUpAPileAddsItToTheBalanceAndTakesItOffTheFloor` and `TheNamesTheMapLineTheInventoryAndThePlayLoopLineSayTheGold` |
+| P3 | In the run record's `Migrate_6_to_7`, the line writing a `Gold` of 0 on each ground item becomes `(void)Item;` | `Cataclysm.Gold.ARunFileFromBeforeGoldMigratesWithNoGoldOnItsFloor` | 1 performed, 0 succeeded, 1 failed, on one assertion: "the step writes a gold of 0 on every ground item" |
+| P4 | In `UCataclysmDropPickup::BankGold`, the `AccountChanged` trigger becomes `(void)0;`: a pickup into the account no longer writes it | `Cataclysm.Gold.TheBalanceSurvivesASaveAndIsTheLethalityModesOwn` | 1 performed, 0 succeeded, 1 failed, on one assertion: "the account record reads back from its slot" |
+
+**Not yet run.** The window's results will be added here from its own output.
 
 ---
 

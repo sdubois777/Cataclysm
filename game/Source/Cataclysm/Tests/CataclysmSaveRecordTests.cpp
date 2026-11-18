@@ -632,7 +632,7 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 		return false;
 	}
 
-	TestEqual(TEXT("it says it is version 7"), Read->SchemaVersion, 7);
+	TestEqual(TEXT("it says it is version 8"), Read->SchemaVersion, 8);
 	// THE SEED THE FILE STATES, NOT THE ONE ITS IDENTIFIER GIVES, so a seed re-derived on load cannot pass. #1324 6a.
 	TestEqual(TEXT("the Cataclysm order seed in the file"), Read->CataclysmOrderSeed,
 		CataclysmSaveFixtures::CommittedCharacterOrderSeed);
@@ -1102,7 +1102,17 @@ bool FCataclysmSaveRunFixtureKeepsTheFloor::RunTest(const FString&)
 	TestEqual(TEXT("the character's energy shield"),
 		Read->Floor.Characters[0].EnergyShield, 25.0f);
 
-	TestEqual(TEXT("an item left on the floor"), Read->Floor.GroundItems.Num(), 1);
+	// AN ITEM AND A GOLD PILE LEFT ON THE FLOOR. `Run_v7.json` added the pile, 37 gold, when the run record went to
+	// version 7 (issue #2742); the item beside it holds no gold.
+	if (Read->Floor.GroundItems.Num() != 2)
+	{
+		AddError(FString::Printf(TEXT("%d things on the floor read, expected an item and a gold pile"),
+			Read->Floor.GroundItems.Num()));
+		return false;
+	}
+	TestEqual(TEXT("an item left on the floor"), Read->Floor.GroundItems[0].Item.Base, FName(TEXT("Circlet")));
+	TestEqual(TEXT("holding no gold"), Read->Floor.GroundItems[0].Gold, 0);
+	TestEqual(TEXT("and a pile of 37 gold beside it"), Read->Floor.GroundItems[1].Gold, 37);
 
 	return true;
 }

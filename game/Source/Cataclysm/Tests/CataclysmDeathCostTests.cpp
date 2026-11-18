@@ -868,7 +868,7 @@ bool FCataclysmDeathCostCommittedFileTest::RunTest(const FString& Parameters)
 							Read->SchemaVersion, Read->LastDeathDay, *Read->LastDeathDungeonName, Read->LastDeathWalkDays,
 							Read->LastDeathDaysCost, Read->LastDeathFallenCityIds.Num()));
 
-	TestEqual(TEXT("it says it is version 6"), Read->SchemaVersion, 6);
+	TestEqual(TEXT("it says it is version 7"), Read->SchemaVersion, 7);
 	TestEqual(TEXT("the death's day"), Read->LastDeathDay, 103);
 	TestEqual(TEXT("the dungeon's name"), Read->LastDeathDungeonName, FString(TEXT("the Siege dungeon on Outpost (-3,0)")));
 	TestEqual(TEXT("the walk's days"), Read->LastDeathWalkDays, 19);

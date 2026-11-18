@@ -10717,7 +10717,7 @@ bool FCataclysmTravelCommittedFileTest::RunTest(const FString&)
 							Away.bEndedInAClear ? TEXT("YES") : TEXT("no"), Away.Cities.Num(), Away.Fallen.Num(),
 							Away.Surges, Away.SurgeDungeons));
 
-	TestEqual(TEXT("it says it is version 6"), Read->SchemaVersion, 6);
+	TestEqual(TEXT("it says it is version 7"), Read->SchemaVersion, 7);
 	TestEqual(TEXT("the last award was 2.25 points"), Read->LastEmpirePointsAwarded, 2.25);
 	TestEqual(TEXT("the last clear on day 80"), Read->LastClearDay, 80);
 	TestEqual(TEXT("of the Horde dungeon on Bulwark (1,2)"), Read->LastClearDungeonName,
