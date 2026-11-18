@@ -9,6 +9,7 @@
 #include "Empire/CataclysmEmpireRun.h"
 #include "Interface/CataclysmChoiceButton.h"
 #include "Interface/CataclysmWalkFromTheScreen.h"
+#include "Player/CataclysmCapitalGameMode.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmPlayerController.h"
 
@@ -366,7 +367,8 @@ void UCataclysmCityScreenWidget::HandleWalkClicked(FName Value)
 
 	// THE RUN THIS SCREEN SHOWS, AND THE LEVEL'S DUNGEON GAME MODE. In a running
 	// game the game mode reads the same run from the game instance.
-	Refusal = FCataclysmWalkFromTheScreen::Walk(ShownRun(), DungeonMode(), DungeonId);
+	Refusal = FCataclysmWalkFromTheScreen::Walk(ShownRun(), DungeonMode(), DungeonId,
+		ACataclysmCapitalGameMode::InWorld(GetWorld())); // In the capital, the press travels: #2733 slice 3.
 
 	// A REFUSAL IS SHOWN RATHER THAN SWALLOWED, on the line that shows a refused
 	// upgrade, for the reason `HandleOfferClicked` gives. Redrawn either way: a

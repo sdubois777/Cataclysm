@@ -71,6 +71,9 @@ void UCataclysmSaveWriter::BeginRun(const FGuid& InRunId, const FGuid& InCharact
 	SecondsSinceClockWrite = 0.0f;
 	LastHealthFraction = 1.0f;
 
+	// A RUN BEGUN WRITES AGAIN, whatever an earlier hand-over stopped. Issue #2733 slice 3.
+	bHandedOver = false;
+
 	UE_LOG(LogCataclysm, Log,
 		TEXT("The save writer is writing run %s and character %s."),
 		*RunId.ToString(EGuidFormats::Digits),
@@ -106,12 +109,72 @@ void UCataclysmSaveWriter::SetFloor(FName InDungeon, int32 InFloor, bool bInOnTh
 	NoteTrigger(ECataclysmSaveTrigger::ChangedFloor);
 }
 
+FGuid UCataclysmSaveWriter::HandOver()
+{
+	if (!IsWriting())
+	{
+		return FGuid();
+	}
+
+	// NO FLOOR, SET HERE RATHER THAN THROUGH `SetFloor`, which would raise `ChangedFloor` and write a record this
+	// replaces in the same frame. Kept to put back if a write fails, so the writer goes on as it was.
+	const FName WasDungeon = Dungeon;
+	const int32 WasFloor = Floor;
+	const bool bWasOnTheDarkFloor = bOnTheDarkFloor;
+	const int32 WasFellFrom = DarkFloorFellFrom;
+	Dungeon = NAME_None;
+	Floor = 0;
+	bOnTheDarkFloor = false;
+	DarkFloorFellFrom = 0;
+
+	// BOTH RECORDS, EACH ASKED WHETHER IT WAS WRITTEN, which `NoteTrigger`'s one answer cannot say: the trip needs
+	// both. `LeavingTheLevel` writes both, before this returns (`UCataclysmSaveTriggers`).
+	LastTriggerSeen = ECataclysmSaveTrigger::LeavingTheLevel;
+	const bool bRunWritten = WriteTheRunRecord(ECataclysmSaveTrigger::LeavingTheLevel);
+	const bool bCharacterWritten = WriteTheCharacterRecord(ECataclysmSaveTrigger::LeavingTheLevel);
+	if (!bRunWritten || !bCharacterWritten)
+	{
+		Dungeon = WasDungeon;
+		Floor = WasFloor;
+		bOnTheDarkFloor = bWasOnTheDarkFloor;
+		DarkFloorFellFrom = WasFellFrom;
+		UE_LOG(LogCataclysm, Error,
+			   TEXT("The character could not be handed over to another level: the %s record was not written. It stays "
+					"in this level, and the writer goes on writing."),
+			   !bRunWritten ? TEXT("run") : TEXT("character"));
+		return FGuid();
+	}
+
+	// AND NOTHING MORE FROM THIS LEVEL.
+	const FGuid Leaving = CharacterId;
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("The save writer handed character %s and run %s over to another level, and writes nothing more here."),
+		   *CharacterId.ToString(EGuidFormats::Digits), *RunId.ToString(EGuidFormats::Digits));
+	RunId.Invalidate();
+	CharacterId.Invalidate();
+	bHandedOver = true;
+	return Leaving;
+}
+
 bool UCataclysmSaveWriter::FloorRecordNow(FCataclysmSavedFloor& OutFloor) const
 {
 	const UWorld* World = GetWorld();
 	if (!World)
 	{
 		return false;
+	}
+
+	// NO FLOOR, NOTHING ON ONE: the capital, or the hand-over before a level change. Only the characters'
+	// placements, which carry their health and potions; see `FCataclysmSaveGather::PlacementsFrom`. Issue #2733
+	// slice 3. Without it a hand-over from a dungeon would write the floor it leaves, creatures and drops, into a
+	// record that names no floor.
+	if (Floor <= 0)
+	{
+		OutFloor = FCataclysmSavedFloor();
+		OutFloor.Dungeon = Dungeon;
+		OutFloor.Floor = Floor;
+		FCataclysmSaveGather::PlacementsFrom(*World, CharacterId, OutFloor.Characters);
+		return true;
 	}
 
 	OutFloor = FCataclysmSaveGather::FloorFrom(*World, Dungeon, Floor, CharacterId);

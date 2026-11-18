@@ -189,13 +189,19 @@ def test_run_v5_is_run_v4_with_the_win_line_and_nothing_else() -> None:
     assert after["ActiveCataclysms"][after["LastRunWonTier"] - 1] == after["LastRunWonCataclysm"]
 
 
-def test_the_run_record_is_at_version_5_and_migrate_4_to_5_writes_not_won() -> None:
-    """The step is registered, one version wide, and writes the four defaults."""
-    assert re.search(r"static constexpr int32 SchemaVersionNow = 5;", code(SAVE_RECORDS_H)), (
-        "the run record is not at version 5")
+def test_the_run_record_is_at_version_5_or_later_and_migrate_4_to_5_writes_not_won() -> None:
+    """The step is registered, one version wide, and writes the four defaults.
+
+    AT VERSION 5 OR LATER, and the step one of the run record's: until issue #2733 slice 3 took the run record to
+    version 6 (2026-11-17) this asked for version 5 and for `Migrate_4_to_5` to be the last step.
+    `tools/tests/test_a_trip_between_levels_is_a_save_and_a_load.py` checks version 6 and its step.
+    """
+    version = re.search(r"static constexpr int32 SchemaVersionNow = (\d+);",
+                        code(SAVE_RECORDS_H).split("class CATACLYSM_API UCataclysmRunSave")[1])
+    assert version and int(version.group(1)) >= 5, "the run record is not at version 5 or later"
     records = code(SAVE_RECORDS_CPP)
-    assert '{ 4, TEXT("Migrate_4_to_5"), &Migrate_4_to_5 },\n\t};' in records.replace("\r\n", "\n"), (
-        "Migrate_4_to_5 is not the run record's last step")
+    assert '{ 4, TEXT("Migrate_4_to_5"), &Migrate_4_to_5 },' in records, (
+        "Migrate_4_to_5 is not one of the run record's steps")
 
     step = body(SAVE_RECORDS_CPP, "bool Migrate_4_to_5(const TSharedRef<FJsonObject>& Record, FString& OutError)\n"
                                   "\t{\n\t\tOutError.Empty();\n\t\tRecord->SetNumberField(TEXT(\"LastRunWonDay\")")

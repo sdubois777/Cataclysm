@@ -338,19 +338,25 @@ ACataclysmDroppedItem* FCataclysmSaveApply::GroundItemInto(
 
 bool FCataclysmSaveApply::PlacementInto(
 	ACataclysmPlayerCharacter& Character,
-	const FCataclysmSavedCharacterPlacement& Saved)
+	const FCataclysmSavedCharacterPlacement& Saved, bool bPutInPlace)
 {
 	// TELEPORTED RATHER THAN MOVED. `SetActorLocation` with sweeping on would
 	// drag the character along the floor from wherever it happens to be
 	// standing, and stop it against the first thing in the way.
-	const FVector Was = Character.GetActorLocation();
-	Character.SetActorLocationAndRotation(Saved.Location,
-										  FRotator(0.0f, Saved.Yaw, 0.0f),
-										  /*bSweep=*/false, nullptr,
-										  ETeleportType::TeleportPhysics);
+	//
+	// NOT AT ALL FOR A RECORD WITH NO FLOOR, whose place belongs to another level: the capital's start, or a
+	// dungeon's entrance once its walk begins, is where the character arrives. Issue #2733 slice 3.
+	if (bPutInPlace)
+	{
+		const FVector Was = Character.GetActorLocation();
+		Character.SetActorLocationAndRotation(Saved.Location,
+											  FRotator(0.0f, Saved.Yaw, 0.0f),
+											  /*bSweep=*/false, nullptr,
+											  ETeleportType::TeleportPhysics);
 
-	// AN INSTANT RELOCATION, not ground walked. Issue #2388.
-	UCataclysmMovement::NoteRelocatedInstantly(&Character, Was);
+		// AN INSTANT RELOCATION, not ground walked. Issue #2388.
+		UCataclysmMovement::NoteRelocatedInstantly(&Character, Was);
+	}
 
 	// THE CLASS RESOURCE, BEFORE THE VITALS for the potions' reason below. Its write is clamped to the maximum less
 	// the Fervour the thralls hold back (`PreAttributeChange`); the loader re-links the thralls first, so the clamp
@@ -630,6 +636,12 @@ bool FCataclysmSaveApply::RunInto(const UCataclysmRunSave& Record, UCataclysmEmp
 	// run still shows the win line it began with. `NoteLastRunWon` is the one writer of the four.
 	Run.NoteLastRunWon(Record.LastRunWonDay, Record.LastRunWonTier, Record.LastRunWonCataclysm,
 					   Record.LastRunWonPassivePoints);
+	// THE LAST DEFEAT'S AWARD AND THE LAST CLEAR, since run record version 6 (issue #2733 slice 3, 2026-11-17), so the
+	// map a walk's end returns to shows the "+x" and the clear line: the return is a load. `NoteClear` is the one
+	// writer of the clear's three.
+	Run.LastEmpirePointsAwarded = Record.LastEmpirePointsAwarded;
+	Run.NoteClear(Record.LastClearDay, Record.LastClearDungeonName, Record.LastClearWalkDays);
+	Run.LastDaysAway = Record.LastDaysAway;
 	Run.ActiveCataclysms = Record.ActiveCataclysms;
 
 	OutWhy.Reset();

@@ -57,6 +57,21 @@ public:
 	/** Whether `OpenTheEmpireMapIfReady` has opened the map in this level. */
 	bool HasOpenedTheEmpireMap() const { return bOpenedTheEmpireMap; }
 
+	/**
+	 * The capital's Walk: take the character to `L_Dungeon` to walk an empire dungeon standing on the map, which that
+	 * level enters once the character is loaded there (`ACataclysmDungeonGameMode::EnterThePendingWalkIfReady`). Issue
+	 * #2733 slice 3, ruled by the coordinating session on 2026-11-17.
+	 *
+	 * `FCataclysmWalkFromTheScreen::Walk` calls it from the city screen's and the empire map's Walk buttons, after its
+	 * own refusals: no run, and no such dungeon standing.
+	 *
+	 * @return the refusal to show, or empty when the trip began: `TravelTo`, with the dungeon to walk.
+	 */
+	FString TravelToWalk(int32 DungeonId);
+
+	/** The capital's game mode in a world, or null: the level's own, found as `ACataclysmDungeonGameMode::InWorld` finds its. */
+	static ACataclysmCapitalGameMode* InWorld(UWorld* World);
+
 	/** The name the run record gives the capital, with floor 0: nobody is on a floor here. */
 	static constexpr const TCHAR* CapitalFloorName = TEXT("Capital");
 

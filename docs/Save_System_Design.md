@@ -409,13 +409,16 @@ threshold are tuning constants and only playing settles them.**
 | A fight starting | `ACataclysmEnemyController` the moment a creature notices somebody it could not see before |
 | A creature dying | `ACataclysmEnemyCharacter::HandleDeath` |
 | Health falling through the threshold | `UCataclysmSaveWriter::Tick`, sampling once a frame at half of maximum health. **Also a starting figure** |
-| Changing floor | `ACataclysmDungeonGameMode::GoToFloor` calls `UCataclysmSaveWriter::SetFloor`, while the writer is writing, with the dungeon's name, the floor number, whether the floor is the dark floor a fall leads to, and the floor fallen from. `ACataclysmDungeonGameMode::LeaveEmpireDungeon` calls it as well when the dungeon is left from the dark floor. `SetFloor` raises the trigger when any of the four differs from what the writer holds |
+| Changing floor | `ACataclysmDungeonGameMode::GoToFloor` calls `UCataclysmSaveWriter::SetFloor`, while the writer is writing, with the dungeon's name, the floor number, whether the floor is the dark floor a fall leads to, and the floor fallen from. `ACataclysmDungeonGameMode::LeaveEmpireDungeon` calls it as well when the dungeon is left from the dark floor. `SetFloor` raises the trigger when any of the four differs from what the writer holds. **And a walk begun on arriving from the capital** raises it once the dungeon is entered, since 2026-11-17 (#2733 slice 3), because floor 1 of the dungeon is the floor the level already held and `SetFloor` would not |
 | An item entering or leaving the inventory | `UCataclysmInventoryComponent`, on adding an item, stacking a material and emptying a slot |
 | A character being created | `ACataclysmGameMode::MakeThePendingCharacter`, once a character made on the front end's new-character screen has its name, partition and creation choice applied when its level begins. The character record and the run record, asynchronously, so the select screen lists it at once. Since select-screen step 4a (#753) |
 | The character dying | `ACataclysmPlayerCharacter::HandleDeath`, **before the character is marked dead**, so the record holds it where it fell rather than a floor with nobody on it |
 | A death having been paid for | `ACataclysmPlayerCharacter::Revive`, last: after the dungeon is ended, the death's days are charged and the character stands. The run record only, asynchronously. Since 2026-10-30 (#753) |
+| The character leaving the level | `UCataclysmSaveWriter::HandOver`, called when the player travels: the capital's Walk, the last floor's stairs, and a death that ended a walk. The character record and the run record, **synchronously**, with no floor held, and then the departing level writes nothing more. The next level loads the character from them. Since 2026-11-17 (#2733 slice 3) |
 
-**The run record is written at most once a frame**, unless it is a death.
+**The run record is written at most once a frame**, unless it is a death, the
+paying for one, a run won, a character created or the character leaving the
+level, each of which replaces what an earlier write that frame put on disk.
 Several creatures dying together raise several triggers in one frame, and each
 write but the last would be overwritten before it reached the disk.
 
@@ -430,6 +433,23 @@ The one rule that cannot be relaxed. For a Hardcore character, death is the even
 this whole feature exists to make stick, so it is written in the same frame the
 health reaches zero, through the synchronous write, before the death is otherwise
 processed. Everything else may be written asynchronously.
+
+**The hand-over before a level change is the one other synchronous write.** A trip
+between the capital and a dungeon is a save and a load: the departing level writes
+the character record and the run record, and the next level loads the character
+from them by the identifier the game instance carries across. An asynchronous
+write could still be in flight when that load reads the slot, so this one is
+written before the level changes; a loading screen follows it, so the stall is not
+seen. It waits for any earlier write to the same slot to finish, so it lands last,
+and the departing level writes nothing after it. Decided 2026-11-17 (#2733 slice
+3), by the coordinating session.
+
+**A record with no floor puts the character back without its place.** The capital
+has no floor, and the hand-over is written with none, so on such a record the load
+puts back health, mana, energy shield, the class resource and the potions, and
+leaves the character at the level's own start: the capital's player start, or the
+dungeon's entrance once its walk begins. A place saved in one level means nothing
+in another. Decided 2026-11-17 (#2733 slice 3).
 
 **Paying for a death is written too, and it is an ordinary write.**
 `ACataclysmPlayerCharacter::Revive` raises `DeathProcessed` once the dungeon is

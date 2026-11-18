@@ -94,6 +94,32 @@ public:
 	int32 HoldsTheFloor() const { return Floor; }
 
 	/**
+	 * Write the character record and the run record for a trip to another level, before this returns, and write
+	 * nothing more from this level. Issue #2733 slice 3, ruled by the coordinating session on 2026-11-17.
+	 *
+	 * A TRIP IS A SAVE AND A CONTINUE. The next level loads the character from these two records, by the identifier
+	 * this returns, which the caller puts on the game instance (`UCataclysmGameInstance::PendingCharacterId`).
+	 *
+	 * WITH NO FLOOR. The records are written with no dungeon and floor 0, so the run record holds the characters'
+	 * placements and nothing of the floor being left (`FloorRecordNow`), the capital accepts it, a Continue after a
+	 * quit during the load opens the capital, and the load puts back the health and potions without the place.
+	 *
+	 * SYNCHRONOUSLY, through `ECataclysmSaveTrigger::LeavingTheLevel`, which also ignores the once-a-frame rule: the
+	 * last floor's clear, a win and a death all write the run record in the frame the player leaves.
+	 *
+	 * AND THEN IT STOPS: the run and the character it held are forgotten, so `IsWriting` answers false and no clock,
+	 * creature or item in the level being left can write over the hand-over before the level changes.
+	 *
+	 * @return the character the records hold; invalid, with the writer still writing, when it was not writing or
+	 *         either record could not be written. A caller must not travel then: the next level would load an older
+	 *         record, and the character would lose what it did since.
+	 */
+	FGuid HandOver();
+
+	/** Whether this writer handed its character over to another level, and so writes nothing more. For a test. */
+	bool HasHandedOver() const { return bHandedOver; }
+
+	/**
 	 * Something happened that the design says is worth writing for.
 	 *
 	 * A DEATH IS WRITTEN BEFORE THIS RETURNS. Everything else is handed to the
@@ -220,6 +246,9 @@ private:
 	bool bOnTheDarkFloor = false;
 	int32 DarkFloorFellFrom = 0;
 	int32 FloorChangesNotedCount = 0;
+
+	/** Whether `HandOver` wrote the records for a trip and the writer stopped. */
+	bool bHandedOver = false;
 
 	float SecondsSinceClockWrite = 0.0f;
 

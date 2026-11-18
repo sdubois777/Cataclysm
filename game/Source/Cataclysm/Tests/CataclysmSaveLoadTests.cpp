@@ -48,6 +48,11 @@
 #include "Items/CataclysmInventoryComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/ScopeExit.h"
+// For `CapitalMap`, the level a walk's end travels to. Issue #2733 slice 3.
+#include "Interface/CataclysmCharacterSelectWidget.h"
+// For the map's lines and the Walk press the travel tests read. Issue #2733 slice 3.
+#include "Interface/CataclysmEmpireMapLayout.h"
+#include "Interface/CataclysmWalkFromTheScreen.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmCapitalGameMode.h"
 #include "Player/CataclysmGameMode.h"
@@ -55,6 +60,8 @@
 #include "Save/CataclysmSaveApply.h"
 #include "Save/CataclysmSaveGather.h"
 #include "Save/CataclysmSaveLoad.h"
+// For the run record's version 6 migration, and its fixtures. Issue #2733 slice 3.
+#include "Save/CataclysmSaveMigration.h"
 #include "Save/CataclysmSavePartition.h"
 #include "Save/CataclysmSaveRecords.h"
 #include "Save/CataclysmSaveStorage.h"
@@ -64,6 +71,7 @@
 #include "Misc/Paths.h"
 #include "Save/CataclysmSaveTriggers.h"
 #include "Save/CataclysmSaveWriter.h"
+#include "Tests/CataclysmSaveFixtures.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "UObject/Package.h"
 
@@ -1190,8 +1198,14 @@ bool FCataclysmSaveLoadDungeonDeathTest::RunTest(const FString&)
 			  Saved.Day + Saved.DaysOwed + Cost);
 	TestTrue(TEXT("the ordinary dungeon resolved on the death"), bResolved);
 	TestEqual(TEXT("and the walk ended"), Scene.Mode->EmpireDungeonId, static_cast<int32>(INDEX_NONE));
-	TestEqual(TEXT("and the paid death was written"), static_cast<int32>(Last),
-			  static_cast<int32>(ECataclysmSaveTrigger::DeathProcessed));
+
+	// THE PAID DEATH IS WRITTEN AND THEN THE CHARACTER GOES BACK TO THE CAPITAL, since issue #2733 slice 3: the
+	// hand-over is the last write. Until then this asserted the paid death's write was the last trigger; changed by
+	// the coordinating session's ruling of 2026-11-17.
+	TestEqual(TEXT("and the hand-over to the capital was the last write"), static_cast<int32>(Last),
+			  static_cast<int32>(ECataclysmSaveTrigger::LeavingTheLevel));
+	TestEqual(TEXT("and the character travels to the capital"), Scene.Mode->TravelRequested(),
+			  FString(UCataclysmCharacterSelectWidget::CapitalMap));
 	return true;
 }
 
@@ -9596,6 +9610,1008 @@ bool FCataclysmCapitalRefusedTest::RunTest(const FString&)
 			  FString(ACataclysmGameMode::FrontEndMap));
 	TestFalse(TEXT("the map does not open"), bOpened);
 	TestFalse(TEXT("and the capital says so"), Mode->HasOpenedTheEmpireMap());
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Travel between the capital and a dungeon, issue #2733 slice 3.
+//
+// A TRIP IS A SAVE AND A CONTINUE, ruled by the coordinating session on 2026-11-17: the departing level writes both
+// records, synchronously and with no floor, and stops writing (`UCataclysmSaveWriter::HandOver`); the game instance
+// carries the character's identifier and, from the capital, the dungeon to walk; the arriving level loads the character
+// as a Continue does (`LoadThePendingCharacter`). A record with no floor puts back the health and the potions and not
+// the place (Q2). THE GROUP IS `Cataclysm.Travel.`, WITH THE TRAILING DOT.
+//
+// WHAT NO TEST HERE DOES: open a level. An automation test cannot travel, so `TravelTo` keeps the level asked for
+// (`TravelRequested`), and the arriving level is a second test world given the two fields the game instance carries
+// across, as the real game instance carries them through `OpenLevel`.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmTravelTest
+{
+	using namespace CataclysmSaveLoadTest;
+
+	/** Everything `FCataclysmSaveGather::CharacterFrom` reads off a character, as the JSON a record of it writes. */
+	FString CharacterJsonOf(const ACataclysmPlayerCharacter& Character)
+	{
+		UCataclysmCharacterSave* Record = NewObject<UCataclysmCharacterSave>();
+		FString Json;
+		FString Error;
+		if (!FCataclysmSaveGather::CharacterFrom(Character, *Record)
+			|| !FCataclysmSaveStorage::ToJson(Record, Json, Error))
+		{
+			return FString();
+		}
+		return Json;
+	}
+
+	/** The four potion slots' charges and the drinks taken, as one line. */
+	FString PotionsOf(const ACataclysmPlayerCharacter& Character)
+	{
+		const UCataclysmAbilitySystemComponent* Holder =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(&Character));
+		if (!Holder)
+		{
+			return TEXT("no potion holder");
+		}
+		return FString::Printf(TEXT("%.0f %.0f %.0f %.0f drunk %d"), Holder->GetPotionCharges(0),
+							   Holder->GetPotionCharges(1), Holder->GetPotionCharges(2), Holder->GetPotionCharges(3),
+							   Holder->GetPotionsDrunk());
+	}
+
+	/**
+	 * Marks a character so a trip that lost anything shows it: level 9 with 77 experience, a ring in the bag, potions
+	 * spent below full (25, 15, 5 and 0, two drunk), 37 health, and a place no other level uses.
+	 */
+	void MarkTheCharacter(FLoadScene& Scene, const FVector& At)
+	{
+		Scene.State->SetLevelAndExperience(9, 77);
+		FCataclysmItem Ring;
+		Ring.Base = FName(TEXT("Ring_Band"));
+		Ring.GearLevel = 3;
+		if (UCataclysmInventoryComponent* Inventory = Scene.Character->GetInventory())
+		{
+			Inventory->AddItem(Ring);
+		}
+		if (UCataclysmAbilitySystemComponent* Holder = Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Scene.Character)))
+		{
+			Holder->SetPotionCharges(0, 25.0f);
+			Holder->SetPotionCharges(1, 15.0f);
+			Holder->SetPotionCharges(2, 5.0f);
+			Holder->SetPotionCharges(3, 0.0f);
+			Holder->SetPotionsDrunk(2);
+		}
+		Scene.Character->SetActorLocation(At);
+		SetHealth(*Scene.Character, 37.0f);
+	}
+
+	/** Whether both of a writer's slots are on disk with no write to them still in flight. */
+	bool OnDiskNow(const FString& RunSlot, const FString& CharacterSlot)
+	{
+		return UGameplayStatics::DoesSaveGameExist(RunSlot, UserIndex)
+			&& UGameplayStatics::DoesSaveGameExist(CharacterSlot, UserIndex)
+			&& !FCataclysmSaveStorage::HasAWriteInFlight(RunSlot)
+			&& !FCataclysmSaveStorage::HasAWriteInFlight(CharacterSlot);
+	}
+
+	/** What the capital left behind when its Walk was pressed, and what it showed while it did. */
+	struct FHandedOver
+	{
+		FGuid CharacterId;
+		FString RunSlot;
+		FString CharacterSlot;
+		int32 DungeonId = INDEX_NONE;
+		FString Json;
+		FString Potions;
+		float Health = -1.0f;
+		FVector PlacedAt = FVector::ZeroVector;
+		FString RefusedText;
+		bool bRefusedWroteNothing = false;
+		FString Refusal;
+		bool bOnDiskAtOnce = false;
+		FString Travel;
+		FGuid PendingId;
+		int32 PendingWalk = INDEX_NONE;
+		bool bHandedOver = false;
+		bool bStillWriting = true;
+		bool bWroteAfter = true;
+		ECataclysmSaveTrigger Last = ECataclysmSaveTrigger::Clock;
+
+		void Forget() const
+		{
+			Delete(RunSlot);
+			Delete(CharacterSlot);
+		}
+	};
+
+	/**
+	 * A new character made in a capital, as Start makes one, marked, and sent to walk the first dungeon of its opening
+	 * wave by the capital's Walk, through `FCataclysmWalkFromTheScreen::Walk` as the screens press it. First a press on
+	 * a dungeon not standing, which must be refused and hand nothing over.
+	 */
+	bool HandOverFromTheCapital(FAutomationTestBase& Test, FHandedOver& Out)
+	{
+		FLoadScene Scene = MakeScene();
+		if (!Test.TestTrue(TEXT("set-up: the capital's world was built"), Scene.IsUsable()))
+		{
+			if (Scene.World)
+			{
+				Scene.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmCapitalGameMode* Mode = CataclysmCapitalTest::ACapitalIn(Scene);
+		if (!Test.TestNotNull(TEXT("set-up: a capital game mode"), Mode))
+		{
+			return false;
+		}
+		Out.RunSlot = Scene.Writer->RunSlotName();
+		Out.CharacterSlot = Scene.Writer->CharacterSlotName();
+
+		FCataclysmPendingCreation& Creation = Scene.Instance->PendingCreation;
+		Creation.bPending = true;
+		Creation.Name = TEXT("Travels From The Capital");
+		Creation.WeaponType = FName(TEXT("Greatsword"));
+		Creation.DamageType = FName(TEXT("War"));
+		if (!Test.TestEqual(TEXT("set-up: a new character was made in the capital"),
+							static_cast<int32>(Mode->LoadThePendingCharacter()),
+							static_cast<int32>(ACataclysmGameMode::EPendingLoad::Created)))
+		{
+			return false;
+		}
+		UCataclysmEmpireRun* Run = Scene.Instance->EmpireRun.Get();
+		if (!Test.TestTrue(TEXT("set-up: its run stands its opening wave"), Run && Run->Dungeons.Num() > 0))
+		{
+			return false;
+		}
+		Out.DungeonId = Run->Dungeons[0].DungeonId;
+		Out.CharacterId = Scene.Writer->HoldsTheCharacter();
+
+		Out.PlacedAt = FVector(1234.0f, 567.0f, 90.0f);
+		MarkTheCharacter(Scene, Out.PlacedAt);
+		Out.Json = CharacterJsonOf(*Scene.Character);
+		Out.Potions = PotionsOf(*Scene.Character);
+		Out.Health = HealthOf(*Scene.Character);
+
+		// A DUNGEON NOT STANDING: refused, with nothing written, carried or asked for.
+		Out.RefusedText = FCataclysmWalkFromTheScreen::Walk(Run, nullptr, 999999, Mode);
+		Out.bRefusedWroteNothing = Scene.Writer->IsWriting() && !Scene.Writer->HasHandedOver()
+			&& !Scene.Instance->PendingCharacterId.IsValid() && Mode->TravelRequested().IsEmpty();
+
+		// THE PRESS.
+		Out.Refusal = FCataclysmWalkFromTheScreen::Walk(Run, nullptr, Out.DungeonId, Mode);
+		Out.bOnDiskAtOnce = OnDiskNow(Out.RunSlot, Out.CharacterSlot);
+		Out.Travel = Mode->TravelRequested();
+		Out.PendingId = Scene.Instance->PendingCharacterId;
+		Out.PendingWalk = Scene.Instance->PendingWalkDungeonId;
+		Out.bHandedOver = Scene.Writer->HasHandedOver();
+		Out.bStillWriting = Scene.Writer->IsWriting();
+		Out.Last = Scene.Writer->LastTrigger();
+		Out.bWroteAfter = Scene.Writer->NoteTrigger(ECataclysmSaveTrigger::Clock);
+		return Test.TestFalse(TEXT("set-up: the character's record was read before the press"), Out.Json.IsEmpty());
+	}
+
+	/** A dungeon world with a run of its own, one ordinary dungeon of 20 floors on an Outpost, walked from floor 1. */
+	struct FWalking
+	{
+		FDungeonScene Scene;
+		FGuid RunId;
+		FGuid CharacterId;
+		int32 DungeonId = INDEX_NONE;
+		UCataclysmEmpireRun* Run = nullptr;
+
+		FString RunSlot() const { return UCataclysmSavePartition::RunSlotName(RunId); }
+		FString CharacterSlot() const { return UCataclysmSavePartition::CharacterSlotName(CharacterId); }
+	};
+
+	bool BeginWalking(FAutomationTestBase& Test, FWalking& Out, bool bTheCataclysmsOwn)
+	{
+		Out.Scene = MakeDungeonScene();
+		if (!Test.TestTrue(TEXT("set-up: the dungeon world was built"), Out.Scene.IsUsable()))
+		{
+			return false;
+		}
+		Out.RunId = FGuid::NewGuid();
+		Out.CharacterId = FGuid::NewGuid();
+		Out.Scene.Base.Writer->BeginRun(Out.RunId, Out.CharacterId, Out.Scene.Mode->DungeonName,
+										Out.Scene.Mode->FloorNumber);
+
+		Out.Run = Out.Scene.Base.Instance->BeginEmpireRun(1, ECataclysmSurgeMode::Static, 0);
+		if (!Test.TestTrue(TEXT("set-up: an empire run was begun"), Out.Run && Out.Run->Map && Out.Run->Clock))
+		{
+			return false;
+		}
+		Out.Run->AdvanceDay();
+		Out.Run->Dungeons.Empty();
+		Out.Run->Clock->Timers.Empty();
+		Out.DungeonId = PlaceByHand(*Out.Run, AnOutpostOf(*Out.Run));
+		if (!Test.TestTrue(TEXT("set-up: a dungeon was placed on an Outpost"), Out.DungeonId != INDEX_NONE))
+		{
+			return false;
+		}
+		if (bTheCataclysmsOwn)
+		{
+			for (FCataclysmDungeon& Dungeon : Out.Run->Dungeons)
+			{
+				if (Dungeon.DungeonId == Out.DungeonId)
+				{
+					Dungeon.Type = ECataclysmDungeonType::Cataclysm;
+				}
+			}
+		}
+		return Test.TestTrue(TEXT("set-up: the dungeon was entered"), Out.Scene.Mode->EnterEmpireDungeon(Out.DungeonId));
+	}
+
+	/** The capital a walk's end arrives in: a capital world, given the identifier the game instance carries across. */
+	struct FArrived
+	{
+		ACataclysmGameMode::EPendingLoad Outcome = ACataclysmGameMode::EPendingLoad::NothingPending;
+		bool bMapBeforeTheLoad = true;
+		bool bMapOpened = false;
+		FString Json;
+		FString Potions;
+		float Health = -1.0f;
+		FVector At = FVector::ZeroVector;
+		int32 Day = -1;
+		int32 Cleared = -1;
+		double LastAwarded = -1.0;
+		FString LatestEvent;
+		FString DeathLine;
+		FString ClearLine;
+		FString ReturnLine;
+	};
+
+	bool ArriveInTheCapital(FAutomationTestBase& Test, const FGuid& Carried, FArrived& Out)
+	{
+		FLoadScene Scene = MakeScene();
+		if (!Test.TestTrue(TEXT("set-up: the arriving capital's world was built"), Scene.IsUsable()))
+		{
+			if (Scene.World)
+			{
+				Scene.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmCapitalGameMode* Mode = CataclysmCapitalTest::ACapitalIn(Scene);
+		if (!Test.TestNotNull(TEXT("set-up: the arriving capital's game mode"), Mode))
+		{
+			return false;
+		}
+
+		Scene.Instance->PendingCharacterId = Carried;
+		Out.bMapBeforeTheLoad = Mode->OpenTheEmpireMapIfReady();
+		Out.Outcome = Mode->LoadThePendingCharacter();
+		Out.bMapOpened = Mode->OpenTheEmpireMapIfReady();
+		Out.Json = CharacterJsonOf(*Scene.Character);
+		Out.Potions = PotionsOf(*Scene.Character);
+		Out.Health = HealthOf(*Scene.Character);
+		Out.At = Scene.Character->GetActorLocation();
+		const UCataclysmEmpireRun* Run = Scene.Instance->EmpireRun.Get();
+		Out.Day = Run ? Run->Day() : -1;
+		Out.Cleared = Run ? Run->DungeonsCleared : -1;
+		Out.LastAwarded = Run ? Run->LastEmpirePointsAwarded : -1.0;
+		Out.LatestEvent = UCataclysmEmpireMapLayout::LatestEventLine(Run);
+		Out.DeathLine = UCataclysmEmpireMapLayout::LastDeathLine(Run);
+		Out.ClearLine = UCataclysmEmpireMapLayout::LastClearLine(Run);
+		Out.ReturnLine = UCataclysmEmpireMapLayout::ReturnLine(Run);
+		return true;
+	}
+}
+
+/**
+ * The capital's Walk writes both records before it returns, with no floor, carries the character and the dungeon to
+ * the dungeon level, and stops the capital's writer. A press on a dungeon not standing is refused and hands nothing
+ * over (CONTROL). Prints "TRAVEL WALK".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTravelWalkTest,
+	"Cataclysm.Travel.TheCapitalsWalkWritesBothRecordsAndCarriesTheCharacterToTheDungeonLevel",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTravelWalkTest::RunTest(const FString&)
+{
+	using namespace CataclysmTravelTest;
+
+	FHandedOver Handed;
+	ON_SCOPE_EXIT { Handed.Forget(); };
+	if (!HandOverFromTheCapital(*this, Handed))
+	{
+		return false;
+	}
+	const UCataclysmRunSave* RunRecord = Read<UCataclysmRunSave>(Handed.RunSlot);
+	const UCataclysmCharacterSave* CharacterRecord = Read<UCataclysmCharacterSave>(Handed.CharacterSlot);
+	const FCataclysmSavedCharacterPlacement* Placement =
+		RunRecord && RunRecord->Floor.Characters.Num() == 1 ? &RunRecord->Floor.Characters[0] : nullptr;
+	const bool bPotionsHeld = Placement && Placement->PotionCharges == TArray<float>({25.0f, 15.0f, 5.0f, 0.0f})
+		&& Placement->PotionsDrunk == 2;
+
+	AddInfo(FString::Printf(
+		TEXT("TRAVEL WALK: refused \"%s\" (wrote nothing: %s); pressed dungeon %d, answer \"%s\"; on disk at once %s; "
+			 "asked for '%s'; carried %s, walk %d; handed over %s, still writing %s, last trigger '%s', a clock after "
+			 "it wrote %s; the run record on floor %d of '%s', %d creatures, %d drops, %d placements, in dungeon %d, "
+			 "day %d, %d dungeons; the placement health %.1f, potions %s; the character record level %d experience "
+			 "%lld"),
+		*Handed.RefusedText, Handed.bRefusedWroteNothing ? TEXT("yes") : TEXT("NO"), Handed.DungeonId,
+		*Handed.Refusal, Handed.bOnDiskAtOnce ? TEXT("yes") : TEXT("NO"), *Handed.Travel,
+		Handed.PendingId == Handed.CharacterId ? TEXT("the character") : TEXT("ANOTHER"), Handed.PendingWalk,
+		Handed.bHandedOver ? TEXT("yes") : TEXT("NO"), Handed.bStillWriting ? TEXT("YES") : TEXT("no"),
+		UCataclysmSaveTriggers::NameOf(Handed.Last), Handed.bWroteAfter ? TEXT("YES") : TEXT("nothing"),
+		RunRecord ? RunRecord->Floor.Floor : -1, RunRecord ? *RunRecord->Floor.Dungeon.ToString() : TEXT(""),
+		RunRecord ? RunRecord->Floor.Creatures.Num() : -1, RunRecord ? RunRecord->Floor.GroundItems.Num() : -1,
+		RunRecord ? RunRecord->Floor.Characters.Num() : -1, RunRecord ? RunRecord->CurrentDungeonId : -2,
+		RunRecord ? RunRecord->Day : -1, RunRecord ? RunRecord->Dungeons.Num() : -1,
+		Placement ? Placement->Health : -1.0f, bPotionsHeld ? TEXT("as spent") : TEXT("NOT AS SPENT"),
+		CharacterRecord ? CharacterRecord->Level : -1, CharacterRecord ? CharacterRecord->Experience : -1));
+
+	TestEqual(TEXT("CONTROL: Walk on a dungeon not standing is refused"), Handed.RefusedText,
+			  FString(TEXT("No dungeon 999999 is standing on the map.")));
+	TestTrue(TEXT("CONTROL: and hands nothing over"), Handed.bRefusedWroteNothing);
+	TestEqual(TEXT("the capital's Walk is not refused"), Handed.Refusal, FString());
+	TestEqual(TEXT("it asks for the dungeon level"), Handed.Travel,
+			  FString(UCataclysmCharacterSelectWidget::DungeonMap));
+	TestEqual(TEXT("carrying the character"), Handed.PendingId, Handed.CharacterId);
+	TestEqual(TEXT("and the dungeon to walk"), Handed.PendingWalk, Handed.DungeonId);
+	TestTrue(TEXT("both records are on disk when the press returns"), Handed.bOnDiskAtOnce);
+	TestEqual(TEXT("written as the character leaving the level"), static_cast<int32>(Handed.Last),
+			  static_cast<int32>(ECataclysmSaveTrigger::LeavingTheLevel));
+	TestTrue(TEXT("the capital's writer handed the character over"), Handed.bHandedOver);
+	TestFalse(TEXT("and stopped writing"), Handed.bStillWriting);
+	TestFalse(TEXT("so a trigger after the hand-over writes nothing"), Handed.bWroteAfter);
+	if (!TestNotNull(TEXT("the run record was written"), RunRecord)
+		|| !TestNotNull(TEXT("the character record was written"), CharacterRecord))
+	{
+		return true;
+	}
+	TestEqual(TEXT("with no floor: floor 0"), RunRecord->Floor.Floor, 0);
+	TestEqual(TEXT("no creatures"), RunRecord->Floor.Creatures.Num(), 0);
+	TestEqual(TEXT("in no dungeon"), RunRecord->CurrentDungeonId, static_cast<int32>(INDEX_NONE));
+	TestEqual(TEXT("its run on day 0 with the opening wave's twelve"), RunRecord->Dungeons.Num(), 12);
+	if (TestNotNull(TEXT("and the character's one placement"), Placement))
+	{
+		TestEqual(TEXT("holding its health"), Placement->Health, 37.0f);
+		TestTrue(TEXT("and its potions"), bPotionsHeld);
+	}
+	TestEqual(TEXT("the character record holds its level"), CharacterRecord->Level, 9);
+	TestEqual(TEXT("and its experience"), CharacterRecord->Experience, static_cast<int64>(77));
+	return true;
+}
+
+/**
+ * The dungeon level loads the character the capital handed over, exactly -- the whole character record the game holds,
+ * its potions and its health -- and not at the capital's place; then enters the pending walk: that dungeon, floor 1,
+ * the potions filled as entering fills them (#806), the walk written at once. It waits while the character is still to
+ * load (CONTROL), and enters once. Prints "TRAVEL ARRIVE".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTravelArriveTest,
+	"Cataclysm.Travel.TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTravelArriveTest::RunTest(const FString&)
+{
+	using namespace CataclysmTravelTest;
+
+	FHandedOver Handed;
+	ON_SCOPE_EXIT { Handed.Forget(); };
+	if (!HandOverFromTheCapital(*this, Handed)
+		|| !TestTrue(TEXT("set-up: the capital handed the character over"),
+					 Handed.Refusal.IsEmpty() && Handed.PendingId.IsValid() && Handed.PendingWalk != INDEX_NONE))
+	{
+		return false;
+	}
+
+	FDungeonScene Scene = MakeDungeonScene();
+	if (!TestTrue(TEXT("set-up: the dungeon level's world was built"), Scene.IsUsable()))
+	{
+		if (Scene.Base.World)
+		{
+			Scene.Base.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// WHAT THE GAME INSTANCE CARRIES THROUGH `OpenLevel`, given to this world's own.
+	Scene.Base.Instance->PendingCharacterId = Handed.PendingId;
+	Scene.Base.Instance->PendingWalkDungeonId = Handed.PendingWalk;
+
+	const bool bBeforeTheLoad = Scene.Mode->EnterThePendingWalkIfReady();
+	const int32 WalkingBeforeTheLoad = Scene.Mode->EmpireDungeonId;
+	const ACataclysmGameMode::EPendingLoad Outcome = Scene.Mode->LoadThePendingCharacter();
+	const FString Json = CharacterJsonOf(*Scene.Base.Character);
+	const FString Potions = PotionsOf(*Scene.Base.Character);
+	const float Health = HealthOf(*Scene.Base.Character);
+	const FVector At = Scene.Base.Character->GetActorLocation();
+	const bool bEntered = Scene.Mode->EnterThePendingWalkIfReady();
+	const bool bAgain = Scene.Mode->EnterThePendingWalkIfReady();
+	const FString PotionsInside = PotionsOf(*Scene.Base.Character);
+	const ECataclysmSaveTrigger Last = Scene.Base.Writer->LastTrigger();
+	const UCataclysmEmpireRun* Run = Scene.Base.Instance->EmpireRun.Get();
+	WaitForSlot(Handed.RunSlot);
+	const UCataclysmRunSave* Record = Read<UCataclysmRunSave>(Handed.RunSlot);
+
+	AddInfo(FString::Printf(
+		TEXT("TRAVEL ARRIVE: before the load entered %s, walking %d; outcome %d; the character %s, potions %s (left "
+			 "%s), health %.1f (left %.1f), at %.0f %.0f (left at %.0f %.0f); then entered %s, again %s, walking %d "
+			 "(chose %d) floor %d, pending walk %d, potions %s, last trigger '%s'; the run day %d owing %d; the record "
+			 "in dungeon %d on floor %d"),
+		bBeforeTheLoad ? TEXT("YES") : TEXT("no"), WalkingBeforeTheLoad, static_cast<int32>(Outcome),
+		Json == Handed.Json ? TEXT("the same") : TEXT("DIFFERS"), *Potions, *Handed.Potions, Health, Handed.Health,
+		At.X, At.Y, Handed.PlacedAt.X, Handed.PlacedAt.Y, bEntered ? TEXT("yes") : TEXT("NO"),
+		bAgain ? TEXT("YES") : TEXT("no"), Scene.Mode->EmpireDungeonId, Handed.DungeonId, Scene.Mode->FloorNumber,
+		Scene.Base.Instance->PendingWalkDungeonId, *PotionsInside, UCataclysmSaveTriggers::NameOf(Last),
+		Run ? Run->Day() : -1, Run ? Run->DaysOwed() : -1, Record ? Record->CurrentDungeonId : -2,
+		Record ? Record->Floor.Floor : -1));
+
+	TestFalse(TEXT("CONTROL: the walk is not entered while the character is still to load"), bBeforeTheLoad);
+	TestEqual(TEXT("CONTROL: and nothing is walked"), WalkingBeforeTheLoad, static_cast<int32>(INDEX_NONE));
+	TestEqual(TEXT("the character the capital handed over is loaded"), static_cast<int32>(Outcome),
+			  static_cast<int32>(ACataclysmGameMode::EPendingLoad::Loaded));
+	TestEqual(TEXT("exactly: level, experience, gear, the bag, passives, attributes and tier, as its record writes them"),
+			  Json, Handed.Json);
+	TestEqual(TEXT("with its potions as they were"), Potions, Handed.Potions);
+	TestEqual(TEXT("and its health"), Health, Handed.Health);
+	TestTrue(TEXT("and not at the capital's place, which means nothing here"),
+			 FVector::Dist2D(At, Handed.PlacedAt) > 1.0f);
+	TestTrue(TEXT("then the pending walk is entered"), bEntered);
+	TestEqual(TEXT("the dungeon the capital's Walk chose"), Scene.Mode->EmpireDungeonId, Handed.DungeonId);
+	TestEqual(TEXT("on its floor 1"), Scene.Mode->FloorNumber, 1);
+	TestEqual(TEXT("the pending walk is cleared"), Scene.Base.Instance->PendingWalkDungeonId,
+			  static_cast<int32>(INDEX_NONE));
+	TestFalse(TEXT("and it is entered once"), bAgain);
+	TestEqual(TEXT("entering filled the potions, as it does since #806"), PotionsInside,
+			  FString(TEXT("30 30 30 30 drunk 0")));
+	TestEqual(TEXT("the walk was written at once"), static_cast<int32>(Last),
+			  static_cast<int32>(ECataclysmSaveTrigger::ChangedFloor));
+	if (TestNotNull(TEXT("the run record was read"), Record))
+	{
+		TestEqual(TEXT("saying the character is in that dungeon"), Record->CurrentDungeonId, Handed.DungeonId);
+		TestEqual(TEXT("on floor 1"), Record->Floor.Floor, 1);
+	}
+	if (TestNotNull(TEXT("the run came with the character"), Run))
+	{
+		TestEqual(TEXT("still on day 0"), Run->Day(), 0);
+		TestEqual(TEXT("owing the day entering cost"), Run->DaysOwed(), 1);
+	}
+	return true;
+}
+
+/**
+ * The last floor's stairs clear the dungeon, run the walk's day, and take the character back to the capital: both
+ * records written with no floor, the writer stopped, the character carried. The capital then loads it exactly, at its
+ * own start, and opens the map on the day the walk reached, the clear counted. Prints "TRAVEL STAIRS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTravelStairsTest,
+	"Cataclysm.Travel.TheLastFloorsStairsClearTheDungeonAndTakeTheCharacterBackToTheCapital",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTravelStairsTest::RunTest(const FString&)
+{
+	using namespace CataclysmTravelTest;
+
+	FWalking Walking;
+	ON_SCOPE_EXIT
+	{
+		if (Walking.Scene.Base.World)
+		{
+			Walking.Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false);
+		}
+		Delete(Walking.RunSlot());
+		Delete(Walking.CharacterSlot());
+	};
+	if (!BeginWalking(*this, Walking, /*bTheCataclysmsOwn=*/false))
+	{
+		return false;
+	}
+	ACataclysmDungeonGameMode* Mode = Walking.Scene.Mode;
+	if (!TestTrue(TEXT("set-up: the walk reached the last floor"), Mode->GoToFloor(Mode->EmpireDungeonFloors()))
+		|| !TestTrue(TEXT("set-up: and it is the last"), Mode->IsOnTheLastFloor()))
+	{
+		return false;
+	}
+	const FVector PlacedAt = Walking.Scene.Base.Character->GetActorLocation() + FVector(300.0f, 200.0f, 0.0f);
+	MarkTheCharacter(Walking.Scene.Base, PlacedAt);
+	const FString Json = CharacterJsonOf(*Walking.Scene.Base.Character);
+	const FString Potions = PotionsOf(*Walking.Scene.Base.Character);
+	const int32 DayBefore = Walking.Run->Day();
+	const int32 Owed = Walking.Run->DaysOwed();
+	const int32 ClearedBefore = Walking.Run->DungeonsCleared;
+
+	const bool bWentDown = Mode->GoDownOneFloor();
+	const double Awarded = Walking.Run->LastEmpirePointsAwarded;
+	const bool bOnDiskAtOnce = OnDiskNow(Walking.RunSlot(), Walking.CharacterSlot());
+	const FString Travel = Mode->TravelRequested();
+	const FGuid Carried = Walking.Scene.Base.Instance->PendingCharacterId;
+	const UCataclysmRunSave* Record = Read<UCataclysmRunSave>(Walking.RunSlot());
+
+	FArrived Arrived;
+	const bool bArrived = ArriveInTheCapital(*this, Carried, Arrived);
+
+	AddInfo(FString::Printf(
+		TEXT("TRAVEL STAIRS: dungeon %d of %d floors, day %d owing %d; the stairs went down %s; the dungeon %s, %d "
+			 "cleared (was %d), day %d, walking %d; asked for '%s', carried %s, handed over %s, on disk at once %s; the "
+			 "record on floor %d with %d creatures, in dungeon %d, day %d; the capital: outcome %d, map before %s then "
+			 "%s, day %d, %d cleared, the character %s, potions %s (left %s), health %.1f, at %.0f %.0f (left at %.0f "
+			 "%.0f)"),
+		Walking.DungeonId, Mode->EmpireDungeonFloors(), DayBefore, Owed, bWentDown ? TEXT("YES") : TEXT("no"),
+		Walking.Run->FindDungeon(Walking.DungeonId) ? TEXT("STILL STANDS") : TEXT("is cleared"),
+		Walking.Run->DungeonsCleared, ClearedBefore, Walking.Run->Day(), Mode->EmpireDungeonId, *Travel,
+		Carried == Walking.CharacterId ? TEXT("the character") : TEXT("ANOTHER"),
+		Walking.Scene.Base.Writer->HasHandedOver() ? TEXT("yes") : TEXT("NO"), bOnDiskAtOnce ? TEXT("yes") : TEXT("NO"),
+		Record ? Record->Floor.Floor : -1, Record ? Record->Floor.Creatures.Num() : -1,
+		Record ? Record->CurrentDungeonId : -2, Record ? Record->Day : -1, static_cast<int32>(Arrived.Outcome),
+		Arrived.bMapBeforeTheLoad ? TEXT("OPENED") : TEXT("waited"), Arrived.bMapOpened ? TEXT("opened") : TEXT("NOT"),
+		Arrived.Day, Arrived.Cleared, Arrived.Json == Json ? TEXT("the same") : TEXT("DIFFERS"), *Arrived.Potions,
+		*Potions, Arrived.Health, Arrived.At.X, Arrived.At.Y, PlacedAt.X, PlacedAt.Y));
+
+	TestFalse(TEXT("the last floor's stairs lead to no further floor"), bWentDown);
+	TestNull(TEXT("they clear the dungeon"), Walking.Run->FindDungeon(Walking.DungeonId));
+	TestEqual(TEXT("which is counted"), Walking.Run->DungeonsCleared, ClearedBefore + 1);
+	TestEqual(TEXT("and the walk's days run"), Walking.Run->Day(), DayBefore + Owed);
+	TestEqual(TEXT("the walk is over"), Mode->EmpireDungeonId, static_cast<int32>(INDEX_NONE));
+	TestEqual(TEXT("and the character is sent to the capital"), Travel,
+			  FString(UCataclysmCharacterSelectWidget::CapitalMap));
+	TestEqual(TEXT("carried"), Carried, Walking.CharacterId);
+	TestTrue(TEXT("its records on disk at once"), bOnDiskAtOnce);
+	TestTrue(TEXT("and the dungeon's writer stopped"), Walking.Scene.Base.Writer->HasHandedOver());
+	if (TestNotNull(TEXT("the run record was written"), Record))
+	{
+		TestEqual(TEXT("with no floor"), Record->Floor.Floor, 0);
+		TestEqual(TEXT("none of the last floor's creatures"), Record->Floor.Creatures.Num(), 0);
+		TestEqual(TEXT("in no dungeon"), Record->CurrentDungeonId, static_cast<int32>(INDEX_NONE));
+		TestEqual(TEXT("on the day the walk reached"), Record->Day, DayBefore + Owed);
+	}
+	if (!bArrived)
+	{
+		return true;
+	}
+	TestEqual(TEXT("the capital loads the character"), static_cast<int32>(Arrived.Outcome),
+			  static_cast<int32>(ACataclysmGameMode::EPendingLoad::Loaded));
+	TestFalse(TEXT("CONTROL: the map waits for the load"), Arrived.bMapBeforeTheLoad);
+	TestTrue(TEXT("then opens"), Arrived.bMapOpened);
+	TestEqual(TEXT("on the day the walk reached"), Arrived.Day, DayBefore + Owed);
+	TestEqual(TEXT("with the clear counted"), Arrived.Cleared, ClearedBefore + 1);
+	TestEqual(TEXT("the character exactly as it left"), Arrived.Json, Json);
+	TestEqual(TEXT("its potions as they were: nothing refills them on the way back"), Arrived.Potions, Potions);
+	TestEqual(TEXT("its health as it was"), Arrived.Health, 37.0f);
+	TestTrue(TEXT("and not at the dungeon's place"), FVector::Dist2D(Arrived.At, PlacedAt) > 1.0f);
+
+	// AND THE MAP SAYS WHAT THE WALK DID, from a run that came back by a load: the defeat's award (Q3), the clear's
+	// line, then the days away (Q6).
+	AddInfo(FString::Printf(TEXT("TRAVEL STAIRS: the award %.3f, back %.3f; the return line \"%s\""), Awarded,
+							Arrived.LastAwarded, *Arrived.ReturnLine));
+	TestTrue(TEXT("set-up: the clear awarded empire points"), Awarded > 0.0);
+	TestEqual(TEXT("the award came back with the run"), Arrived.LastAwarded, Awarded);
+	TestFalse(TEXT("the clear has a line"), Arrived.ClearLine.IsEmpty());
+	TestTrue(TEXT("and the map's second line opens with it"), Arrived.ReturnLine.StartsWith(Arrived.ClearLine));
+	TestTrue(TEXT("then says what the walk's days did"),
+			 Arrived.ReturnLine.Contains(FString::Printf(TEXT("While you were away, from day %d to day %d: "), DayBefore,
+														 DayBefore + Owed)));
+	return true;
+}
+
+/**
+ * A death that ends a walk takes the character back to the capital once it has stood up: the walk's days and the
+ * death's five run, the record holds it at full health, and the capital's map shows the death's line as the latest
+ * thing that happened. Prints "TRAVEL DEATH".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTravelDeathTest,
+	"Cataclysm.Travel.ADeathThatEndsAWalkTakesTheCharacterBackToTheCapitalWhole",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTravelDeathTest::RunTest(const FString&)
+{
+	using namespace CataclysmTravelTest;
+
+	FWalking Walking;
+	ON_SCOPE_EXIT
+	{
+		if (Walking.Scene.Base.World)
+		{
+			Walking.Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false);
+		}
+		Delete(Walking.RunSlot());
+		Delete(Walking.CharacterSlot());
+	};
+	if (!BeginWalking(*this, Walking, /*bTheCataclysmsOwn=*/false))
+	{
+		return false;
+	}
+	ACataclysmDungeonGameMode* Mode = Walking.Scene.Mode;
+	ACataclysmPlayerCharacter* Character = Walking.Scene.Base.Character;
+	if (!TestTrue(TEXT("set-up: the walk went down a floor"), Mode->GoDownOneFloor()))
+	{
+		return false;
+	}
+	const int32 DayBefore = Walking.Run->Day();
+	const int32 Owed = Walking.Run->DaysOwed();
+	const int32 Cost = Walking.Run->DeathDayCost();
+	const FCataclysmDungeon* Walked = Walking.Run->FindDungeon(Walking.DungeonId);
+	const FCataclysmCity* HitCity = Walked ? Walking.Run->Map->Find(Walked->CityId) : nullptr;
+	const FString HitCityName = HitCity ? HitCity->Name : FString(TEXT("NO CITY"));
+	const UAbilitySystemComponent* Vitals = UCataclysmTargeting::AbilitySystemOf(Character);
+	const float MaxHealth =
+		Vitals ? Vitals->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) : -1.0f;
+
+	UCataclysmSkillEffects::ReduceHealthDirectly(Character, Character, 1000000.0f);
+	if (!TestTrue(TEXT("set-up: the character died"), UCataclysmSkillEffects::IsDead(Character)))
+	{
+		return false;
+	}
+	const FString TravelWhileDead = Mode->TravelRequested();
+	Character->Revive();
+	const FString Travel = Mode->TravelRequested();
+	const FGuid Carried = Walking.Scene.Base.Instance->PendingCharacterId;
+	const UCataclysmRunSave* Record = Read<UCataclysmRunSave>(Walking.RunSlot());
+	const FCataclysmSavedCharacterPlacement* Placement =
+		Record && Record->Floor.Characters.Num() == 1 ? &Record->Floor.Characters[0] : nullptr;
+
+	FArrived Arrived;
+	const bool bArrived = ArriveInTheCapital(*this, Carried, Arrived);
+
+	AddInfo(FString::Printf(
+		TEXT("TRAVEL DEATH: day %d owing %d, the death costs %d; asked for '%s' while dead, then '%s'; carried %s; the "
+			 "record day %d, floor %d, placement health %.1f of %.1f, the death's days %d; the capital: outcome %d, "
+			 "day %d, health %.1f; latest event \"%s\""),
+		DayBefore, Owed, Cost, *TravelWhileDead, *Travel,
+		Carried == Walking.CharacterId ? TEXT("the character") : TEXT("ANOTHER"), Record ? Record->Day : -1,
+		Record ? Record->Floor.Floor : -1, Placement ? Placement->Health : -1.0f, MaxHealth,
+		Record ? Record->LastDeathDaysCost : -1, static_cast<int32>(Arrived.Outcome), Arrived.Day, Arrived.Health,
+		*Arrived.LatestEvent));
+
+	TestEqual(TEXT("nothing travels while the character lies dead"), TravelWhileDead, FString());
+	TestEqual(TEXT("standing up sends it to the capital"), Travel, FString(UCataclysmCharacterSelectWidget::CapitalMap));
+	TestEqual(TEXT("carried"), Carried, Walking.CharacterId);
+	if (TestNotNull(TEXT("the run record was written"), Record))
+	{
+		TestEqual(TEXT("with no floor"), Record->Floor.Floor, 0);
+		TestEqual(TEXT("after the walk's days and the death's"), Record->Day, DayBefore + Owed + Cost);
+		TestEqual(TEXT("keeping what the death cost"), Record->LastDeathDaysCost, Cost);
+		if (TestNotNull(TEXT("holding the character's placement"), Placement))
+		{
+			TestEqual(TEXT("at full health, as it stood up"), Placement->Health, MaxHealth);
+		}
+	}
+	if (!bArrived)
+	{
+		return true;
+	}
+	TestEqual(TEXT("the capital loads the character"), static_cast<int32>(Arrived.Outcome),
+			  static_cast<int32>(ACataclysmGameMode::EPendingLoad::Loaded));
+	TestEqual(TEXT("on the day the death's days reached"), Arrived.Day, DayBefore + Owed + Cost);
+	TestEqual(TEXT("whole"), Arrived.Health, MaxHealth);
+	TestFalse(TEXT("the map has a death line"), Arrived.DeathLine.IsEmpty());
+	TestEqual(TEXT("and shows it as the latest thing that happened"), Arrived.LatestEvent, Arrived.DeathLine);
+
+	// AND ITS SECOND LINE SAYS WHAT THE DAYS AWAY DID: the walk's, the death's resolve and the death's own days, with
+	// the city the resolve hit, and no clear's line. Issue #2733 slice 3 (Q6).
+	AddInfo(FString::Printf(TEXT("TRAVEL DEATH: the resolve hit %s; the return line \"%s\""), *HitCityName,
+							*Arrived.ReturnLine));
+	TestTrue(TEXT("the second line is the days away, from the day the walk left to the day the death's days reached"),
+			 Arrived.ReturnLine.StartsWith(FString::Printf(TEXT("While you were away, from day %d to day %d: "), DayBefore,
+														   DayBefore + Owed + Cost)));
+	TestTrue(TEXT("naming the city the death's resolve hit, and what it lost"),
+			 Arrived.ReturnLine.Contains(HitCityName + TEXT(" lost ")));
+	return true;
+}
+
+/**
+ * A death in the Cataclysm's own dungeon ends no walk -- `EndTheDungeonForADeath` leaves that dungeon alone by ruling --
+ * so the character stands back up inside and goes nowhere: still walking it, still writing. The death in an ordinary
+ * dungeon, above, is the control. Prints "TRAVEL BOSS DEATH".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTravelBossDeathTest,
+	"Cataclysm.Travel.ADeathInTheCataclysmsOwnDungeonStandsThePlayerBackUpInside",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTravelBossDeathTest::RunTest(const FString&)
+{
+	using namespace CataclysmTravelTest;
+
+	FWalking Walking;
+	ON_SCOPE_EXIT
+	{
+		if (Walking.Scene.Base.World)
+		{
+			Walking.Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false);
+		}
+		Delete(Walking.RunSlot());
+		Delete(Walking.CharacterSlot());
+	};
+	if (!BeginWalking(*this, Walking, /*bTheCataclysmsOwn=*/true))
+	{
+		return false;
+	}
+	ACataclysmDungeonGameMode* Mode = Walking.Scene.Mode;
+	ACataclysmPlayerCharacter* Character = Walking.Scene.Base.Character;
+
+	UCataclysmSkillEffects::ReduceHealthDirectly(Character, Character, 1000000.0f);
+	if (!TestTrue(TEXT("set-up: the character died"), UCataclysmSkillEffects::IsDead(Character)))
+	{
+		return false;
+	}
+	Character->Revive();
+
+	AddInfo(FString::Printf(TEXT("TRAVEL BOSS DEATH: stood up %s; walking %d (the dungeon %d); asked for '%s'; writing "
+								 "%s; carried %s"),
+							UCataclysmSkillEffects::IsDead(Character) ? TEXT("NO") : TEXT("yes"), Mode->EmpireDungeonId,
+							Walking.DungeonId, *Mode->TravelRequested(),
+							Walking.Scene.Base.Writer->IsWriting() ? TEXT("yes") : TEXT("NO"),
+							Walking.Scene.Base.Instance->PendingCharacterId.IsValid() ? TEXT("SOMEONE") : TEXT("nobody")));
+
+	TestFalse(TEXT("the character stood back up"), UCataclysmSkillEffects::IsDead(Character));
+	TestEqual(TEXT("still walking the Cataclysm's own dungeon"), Mode->EmpireDungeonId, Walking.DungeonId);
+	TestEqual(TEXT("and going nowhere"), Mode->TravelRequested(), FString());
+	TestTrue(TEXT("the writer still writing"), Walking.Scene.Base.Writer->IsWriting());
+	TestFalse(TEXT("and nobody carried"), Walking.Scene.Base.Instance->PendingCharacterId.IsValid());
+	return true;
+}
+
+/**
+ * The empire map's latest-event line shows a death on day 0, which a walk made shorter than its floors allows on the
+ * opening wave's day: `LatestEventLine` asks whether there was a death by the days it cost, as `LastDeathLine` does.
+ * Until issue #2733 slice 3 it asked `LastDeathDay > 0`. CONTROL: with no death the line is the last hit's, empty here;
+ * and a death on day 3 is shown as before. Prints "TRAVEL DAY ZERO".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTravelDayZeroDeathTest,
+	"Cataclysm.Travel.TheMapsLatestEventShowsADeathOnDayZero",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTravelDayZeroDeathTest::RunTest(const FString&)
+{
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	Run->Begin(7);
+	if (!TestNotNull(TEXT("set-up: the run began"), Run->Map.Get()))
+	{
+		return false;
+	}
+
+	const FString NoDeath = UCataclysmEmpireMapLayout::LatestEventLine(Run);
+	Run->NoteDeath(0, TEXT("the dungeon on a city"), 0, 5, TArray<int32>());
+	const FString DayZero = UCataclysmEmpireMapLayout::LatestEventLine(Run);
+	const FString DayZeroDeath = UCataclysmEmpireMapLayout::LastDeathLine(Run);
+	Run->NoteDeath(3, TEXT("the dungeon on a city"), 3, 5, TArray<int32>());
+	const FString DayThree = UCataclysmEmpireMapLayout::LatestEventLine(Run);
+	const FString DayThreeDeath = UCataclysmEmpireMapLayout::LastDeathLine(Run);
+
+	AddInfo(FString::Printf(TEXT("TRAVEL DAY ZERO: no death \"%s\"; day 0 \"%s\"; day 3 \"%s\""), *NoDeath, *DayZero,
+							*DayThree));
+
+	TestEqual(TEXT("CONTROL: with no death and no hit the line is empty"), NoDeath, FString());
+	TestFalse(TEXT("set-up: a death on day 0 has a death line"), DayZeroDeath.IsEmpty());
+	TestEqual(TEXT("and the map shows it as the latest event"), DayZero, DayZeroDeath);
+	TestEqual(TEXT("CONTROL: a death on day 3 is shown as before"), DayThree, DayThreeDeath);
+	return true;
+}
+
+/**
+ * The map's second line says what the last walk's end did: the clear's line and the days away after a clear; the days
+ * away alone after a death, whose line is on the first; "nothing was hit" when nothing was; at most three cities named
+ * in each part and the rest counted; and "no day passed" for a walk that cost none. CONTROL: a run in which no walk has
+ * ended has no such line. The sentences are written out here; only the cities' names are read from the map. Prints
+ * "TRAVEL RETURN LINE".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTravelReturnLineTest,
+	"Cataclysm.Travel.TheMapsReturnLineSaysWhatTheWalksEndDid",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTravelReturnLineTest::RunTest(const FString&)
+{
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	Run->Begin(7);
+	if (!TestNotNull(TEXT("set-up: the run began"), Run->Map.Get())
+		|| !TestTrue(TEXT("set-up: the map has five cities to hit"), Run->Map->Cities.Num() >= 5))
+	{
+		return false;
+	}
+	const FString NoWalk = UCataclysmEmpireMapLayout::ReturnLine(Run);
+
+	TArray<FString> Names;
+	TArray<int32> Ids;
+	for (int32 Index = 0; Index < 5; ++Index)
+	{
+		Names.Add(Run->Map->Cities[Index].Name);
+		Ids.Add(Run->Map->Cities[Index].CityId);
+	}
+	auto AHit = [](int32 CityId, float Defence, float People, bool bFelled)
+	{
+		FCataclysmCityHit Hit;
+		Hit.CityId = CityId;
+		Hit.DefenceLost = Defence;
+		Hit.PopulationLost = People;
+		Hit.bFelledTheCity = bFelled;
+		return Hit;
+	};
+
+	// A CLEAR ON DAY 9 AFTER A WALK OF FOUR DAYS: five cities hit, the first two felled, one surge of six.
+	TArray<FCataclysmDayReport> Reports;
+	FCataclysmDayReport& Day = Reports.AddDefaulted_GetRef();
+	Day.Hits = {AHit(Ids[0], 1000.0f, 2400.0f, true), AHit(Ids[1], 750.0f, 1200.0f, true),
+				AHit(Ids[2], 30.0f, 600.0f, false), AHit(Ids[3], 20.0f, 100.0f, false),
+				AHit(Ids[4], 10.0f, 50.0f, false)};
+	Day.Fallen = {Ids[0], Ids[1]};
+	Day.bSurged = true;
+	Day.SurgeDungeons = 6;
+	Run->NoteClear(9, TEXT("the dungeon on a city"), 4);
+	Run->NoteDaysAway(5, 9, Reports, /*bEndedInAClear*/ true);
+	const FString AfterAClear = UCataclysmEmpireMapLayout::ReturnLine(Run);
+	const FString ClearExpected = FString::Printf(
+		TEXT("Day 9: you cleared the dungeon on a city. The walk's 4 days ran. While you were away, from day 5 to day 9: "
+			 "%s lost 1000 defence and 2400 people, %s lost 750 defence and 1200 people, %s lost 30 defence and 600 "
+			 "people, and 2 more cities were hit; %s and %s fell; a surge brought 6 dungeons."),
+		*Names[0], *Names[1], *Names[2], *Names[0], *Names[1]);
+
+	// A DEATH'S WALK THAT HIT NOTHING: the days away alone, no clear line.
+	Run->NoteDaysAway(9, 20, TArray<FCataclysmDayReport>(), /*bEndedInAClear*/ false);
+	const FString AfterADeath = UCataclysmEmpireMapLayout::ReturnLine(Run);
+
+	// A CLEAR OF A WALK THAT COST NO WHOLE DAY.
+	Run->NoteClear(20, TEXT("the dungeon on a city"), 0);
+	Run->NoteDaysAway(20, 20, TArray<FCataclysmDayReport>(), /*bEndedInAClear*/ true);
+	const FString NoDay = UCataclysmEmpireMapLayout::ReturnLine(Run);
+
+	AddInfo(FString::Printf(TEXT("TRAVEL RETURN LINE: no walk \"%s\"; after a clear \"%s\"; after a death \"%s\"; no day "
+								 "\"%s\""),
+							*NoWalk, *AfterAClear, *AfterADeath, *NoDay));
+
+	TestEqual(TEXT("CONTROL: with no walk ended there is no line"), NoWalk, FString());
+	TestEqual(TEXT("after a clear: its line, then the days away, three cities named and two counted"), AfterAClear,
+			  ClearExpected);
+	TestEqual(TEXT("after a death that hit nothing: the days away alone"), AfterADeath,
+			  FString(TEXT("While you were away, from day 9 to day 20: nothing was hit.")));
+	TestEqual(TEXT("after a walk that cost no whole day"), NoDay,
+			  FString(TEXT("Day 20: you cleared the dungeon on a city. The walk owed no whole day. While you were away "
+						   "no day passed.")));
+	return true;
+}
+
+/**
+ * `Run_v5.json`, written before a trip between levels was a save and a load, through the chain: `Migrate_5_to_6` writes
+ * no award, no clear and no walk ended, one assertion each; the record arrives at the current version; and every other
+ * field is kept. Prints "TRAVEL MIGRATED".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTravelMigrationTest,
+	"Cataclysm.Travel.ARunFileFromBeforeTripsMigratesWithNoAwardNoClearAndNoWalkEnded",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTravelMigrationTest::RunTest(const FString&)
+{
+	FString Text;
+	FString Reason;
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v5.json"), Text, Reason))
+	{
+		AddError(Reason);
+		return false;
+	}
+	const TSharedPtr<FJsonObject> Stepped = CataclysmSaveFixtures::Parse(Text);
+	if (!TestTrue(TEXT("set-up: Run_v5.json is a JSON object"), Stepped.IsValid())
+		|| !TestFalse(TEXT("set-up: and holds no summary of days away"), Stepped->HasField(TEXT("LastDaysAway"))))
+	{
+		return false;
+	}
+	FString StepMessage;
+	const ECataclysmSaveMigrationResult Stepping = FCataclysmSaveMigration::Migrate(
+		GetDefault<UCataclysmRunSave>()->MigrationSteps(), UCataclysmRunSave::SchemaVersionNow, Stepped.ToSharedRef(),
+		StepMessage);
+
+	double Award = -1.0;
+	double ClearDay = 0.0;
+	FString ClearName = TEXT("unread");
+	double ClearWalk = -1.0;
+	const TSharedPtr<FJsonObject>* Away = nullptr;
+	double AwayTo = 0.0;
+	const bool bWroteAward = Stepped->TryGetNumberField(TEXT("LastEmpirePointsAwarded"), Award) && Award == 0.0;
+	const bool bWroteClearDay = Stepped->TryGetNumberField(TEXT("LastClearDay"), ClearDay) && ClearDay == static_cast<double>(INDEX_NONE);
+	const bool bWroteClearName = Stepped->TryGetStringField(TEXT("LastClearDungeonName"), ClearName) && ClearName.IsEmpty();
+	const bool bWroteClearWalk = Stepped->TryGetNumberField(TEXT("LastClearWalkDays"), ClearWalk) && ClearWalk == 0.0;
+	const bool bWroteAway = Stepped->TryGetObjectField(TEXT("LastDaysAway"), Away) && Away != nullptr
+		&& (*Away)->TryGetNumberField(TEXT("ToDay"), AwayTo) && AwayTo == static_cast<double>(INDEX_NONE);
+
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(FCataclysmSaveStorage::FromJson(
+		Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
+	if (Read == nullptr)
+	{
+		AddError(FString::Printf(TEXT("Run_v5.json would not load: %s -- %s"), FCataclysmSaveStorage::Describe(Result),
+								 *Message));
+		return false;
+	}
+
+	// AND NOTHING ELSE MOVED: the version 5 file with the version and the five keys, compared with what the record
+	// writes back.
+	const TSharedPtr<FJsonObject> Expected = CataclysmSaveFixtures::Parse(Text);
+	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmRunSave::SchemaVersionNow);
+	CataclysmSaveFixtures::AddTheRunsVersion6Defaults(*Expected);
+	FString Rewritten;
+	FString Error;
+	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
+	FString Where;
+	const bool bSame = bWroteBack
+		&& CataclysmSaveFixtures::SameObject(Expected, CataclysmSaveFixtures::Parse(Rewritten), Where);
+
+	AddInfo(FString::Printf(TEXT("TRAVEL MIGRATED: the step %d (%s); wrote no award %s, no clear day %s, name %s, walk %s, "
+								 "no walk ended %s; the record at version %d, award %.2f, clear day %d, days away to %d; "
+								 "the rest %s"),
+							static_cast<int32>(Stepping), *StepMessage, bWroteAward ? TEXT("yes") : TEXT("NO"),
+							bWroteClearDay ? TEXT("yes") : TEXT("NO"), bWroteClearName ? TEXT("yes") : TEXT("NO"),
+							bWroteClearWalk ? TEXT("yes") : TEXT("NO"), bWroteAway ? TEXT("yes") : TEXT("NO"),
+							Read->SchemaVersion, Read->LastEmpirePointsAwarded, Read->LastClearDay,
+							Read->LastDaysAway.ToDay, bSame ? TEXT("kept") : *Where));
+
+	TestEqual(TEXT("the chain migrates the version 5 file"), static_cast<int32>(Stepping),
+			  static_cast<int32>(ECataclysmSaveMigrationResult::Migrated));
+	TestTrue(TEXT("the step writes no award"), bWroteAward);
+	TestTrue(TEXT("the step writes no clear's day"), bWroteClearDay);
+	TestTrue(TEXT("no clear's name"), bWroteClearName);
+	TestTrue(TEXT("no clear's walk"), bWroteClearWalk);
+	TestTrue(TEXT("and no walk ended"), bWroteAway);
+	TestEqual(TEXT("it arrives at the current version"), Read->SchemaVersion, UCataclysmRunSave::SchemaVersionNow);
+	TestFalse(TEXT("with no walk ended"), Read->LastDaysAway.HasEnded());
+	TestTrue(TEXT("and every other field is kept"), bSame);
+	return true;
+}
+
+/**
+ * `Run_v6.json` reads into the award, the clear and the days away it states. Every value but one is not a default, so
+ * each is read and not re-defaulted; THE ONE IS `bEndedInAClear`, false, because the run it describes last came back
+ * from a death -- on day 103, at 15 days, felling cities 17 and 23, which the summary lists -- and a fixture describes a
+ * state play reaches. The test of the return line reads a true one. Prints "TRAVEL FILE".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTravelCommittedFileTest,
+	"Cataclysm.Travel.TheCommittedRunFileReadsIntoTheAwardTheClearAndTheDaysAwayItStates",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTravelCommittedFileTest::RunTest(const FString&)
+{
+	FString Text;
+	FString Reason;
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v6.json"), Text, Reason))
+	{
+		AddError(Reason);
+		return false;
+	}
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	const UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(FCataclysmSaveStorage::FromJson(
+		Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
+	if (Read == nullptr)
+	{
+		AddError(FString::Printf(TEXT("Run_v6.json would not load: %s -- %s"), FCataclysmSaveStorage::Describe(Result),
+								 *Message));
+		return false;
+	}
+	const FCataclysmDaysAway& Away = Read->LastDaysAway;
+
+	AddInfo(FString::Printf(TEXT("TRAVEL FILE: version %d; award %.2f; clear day %d '%s' walk %d; days away %d to %d by a "
+								 "clear %s, %d cities, %d fallen, %d surges bringing %d"),
+							Read->SchemaVersion, Read->LastEmpirePointsAwarded, Read->LastClearDay,
+							*Read->LastClearDungeonName, Read->LastClearWalkDays, Away.FromDay, Away.ToDay,
+							Away.bEndedInAClear ? TEXT("YES") : TEXT("no"), Away.Cities.Num(), Away.Fallen.Num(),
+							Away.Surges, Away.SurgeDungeons));
+
+	TestEqual(TEXT("it says it is version 6"), Read->SchemaVersion, 6);
+	TestEqual(TEXT("the last award was 2.25 points"), Read->LastEmpirePointsAwarded, 2.25);
+	TestEqual(TEXT("the last clear on day 80"), Read->LastClearDay, 80);
+	TestEqual(TEXT("of the Horde dungeon on Bulwark (1,2)"), Read->LastClearDungeonName,
+			  FString(TEXT("the Horde dungeon on Bulwark (1,2)")));
+	TestEqual(TEXT("after a walk of 4 days"), Read->LastClearWalkDays, 4);
+	TestEqual(TEXT("the last walk left on day 84"), Away.FromDay, 84);
+	TestEqual(TEXT("and came back on day 118"), Away.ToDay, 118);
+	TestFalse(TEXT("from a death"), Away.bEndedInAClear);
+	if (TestEqual(TEXT("two cities lost something"), Away.Cities.Num(), 2))
+	{
+		TestEqual(TEXT("city 17 first"), Away.Cities[0].CityId, 17);
+		TestEqual(TEXT("which lost 1000 defence"), Away.Cities[0].DefenceLost, 1000.0f);
+		TestEqual(TEXT("and 5000 people"), Away.Cities[0].PopulationLost, 5000.0f);
+		TestEqual(TEXT("then city 23"), Away.Cities[1].CityId, 23);
+		TestEqual(TEXT("which lost 750.5 defence"), Away.Cities[1].DefenceLost, 750.5f);
+		TestEqual(TEXT("and 2400.25 people"), Away.Cities[1].PopulationLost, 2400.25f);
+	}
+	TestTrue(TEXT("cities 17 and 23 fell"), Away.Fallen == TArray<int32>({17, 23}));
+	TestEqual(TEXT("one surge"), Away.Surges, 1);
+	TestEqual(TEXT("bringing six dungeons"), Away.SurgeDungeons, 6);
 	return true;
 }
 

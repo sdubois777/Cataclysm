@@ -2,6 +2,75 @@
 
 #include "Empire/CataclysmEmpireRun.h"
 
+namespace
+{
+	/** A city's figures just before a hit is dealt to it, so `NoteHitIn` can say what the hit took. Issue #2733 slice 3. */
+	struct FCityBeforeAHit
+	{
+		int32 CityId = INDEX_NONE;
+		float Defence = 0.0f;
+		float Population = 0.0f;
+		bool bStanding = false;
+	};
+
+	FCityBeforeAHit BeforeAHit(const UCataclysmEmpireMap* Map, int32 CityId)
+	{
+		FCityBeforeAHit Before;
+		Before.CityId = CityId;
+		if (const FCataclysmCity* City = Map != nullptr ? Map->Find(CityId) : nullptr)
+		{
+			Before.Defence = City->Defence;
+			Before.Population = City->Population;
+			Before.bStanding = !City->bFallen;
+		}
+		return Before;
+	}
+
+	/**
+	 * One entry in the day's `Hits`: the city's figures before the hit less its figures now. RECORDS AND CHANGES
+	 * NOTHING: the ruling of 2026-11-17 made this additive only, and nothing the day loop computes reads it.
+	 */
+	void NoteHitIn(FCataclysmDayReport& OutReport, const UCataclysmEmpireMap* Map, const FCityBeforeAHit& Before,
+				   ECataclysmCityHitKind Kind)
+	{
+		const FCataclysmCity* After = Map != nullptr ? Map->Find(Before.CityId) : nullptr;
+		if (After == nullptr)
+		{
+			return;
+		}
+		FCataclysmCityHit& Hit = OutReport.Hits.AddDefaulted_GetRef();
+		Hit.CityId = Before.CityId;
+		Hit.DefenceLost = Before.Defence - After->Defence;
+		Hit.PopulationLost = Before.Population - After->Population;
+		Hit.Kind = Kind;
+		Hit.bFelledTheCity = Before.bStanding && After->bFallen;
+	}
+
+	/**
+	 * Reads the city when made and records the hit (`NoteHitIn`) when its scope ends, by any path. FOR THE QUEST TIMER'S
+	 * HIT, whose fall returns from inside the braces that hold only `CityFell(HostId, OutReport); return;`: a check in
+	 * `tools/tests/test_the_hollow_in_the_model_and_in_the_game.py` reads that text exactly, and a record written
+	 * inside them would change it. `CityFell` changes neither the city's defence nor its people, so recording after it
+	 * records what the hit took.
+	 */
+	struct FHitRecordedOnLeaving
+	{
+		FHitRecordedOnLeaving(FCataclysmDayReport& InReport, const UCataclysmEmpireMap* InMap, int32 CityId,
+							  ECataclysmCityHitKind InKind)
+			: Report(InReport), Map(InMap), Before(BeforeAHit(InMap, CityId)), Kind(InKind)
+		{
+		}
+		~FHitRecordedOnLeaving() { NoteHitIn(Report, Map, Before, Kind); }
+		FHitRecordedOnLeaving(const FHitRecordedOnLeaving&) = delete;
+		FHitRecordedOnLeaving& operator=(const FHitRecordedOnLeaving&) = delete;
+
+		FCataclysmDayReport& Report;
+		const UCataclysmEmpireMap* Map;
+		FCityBeforeAHit Before;
+		ECataclysmCityHitKind Kind;
+	};
+}
+
 // ---------------------------------------------------------------------------
 // Starting a run
 // ---------------------------------------------------------------------------
@@ -60,6 +129,11 @@ void UCataclysmEmpireRun::BeginForCharacter(int32 InSeed, int32 InCataclysmOrder
 	LastDeathWalkDays = 0;
 	LastDeathDaysCost = 0;
 	LastDeathFallenCityIds.Reset();
+	// AND NO CLEAR YET. Issue #2733 slice 3.
+	LastClearDay = INDEX_NONE;
+	LastClearDungeonName.Reset();
+	LastClearWalkDays = 0;
+	LastDaysAway = FCataclysmDaysAway();
 	SurgesFromEmptyBoard = 0;
 	OwedDays = 0;
 
@@ -658,6 +732,7 @@ void UCataclysmEmpireRun::FireSurge(int32 Today, bool bFromCityFall,
 
 		Dungeons.Add(Dungeon);
 		OutReport.Spawned.Add(Dungeon.DungeonId);
+		++OutReport.SurgeDungeons; // A surge's: one it landed, for the days-away summary. Additive only (#2733).
 
 		NextDungeonId = FMath::Max(NextDungeonId, Dungeon.DungeonId + 1);
 	}
@@ -792,6 +867,9 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 				// it stands; `AddVoidStacks` then fells and erases it at the
 				// tenth stack, and the fall moves this dungeon on as any fall
 				// does.
+				// WHAT THE HIT TAKES, RECORDED as this block is left, by the return below or its end: the city read now and
+				// then. Issue #2733 slice 3; changes nothing. See `FHitRecordedOnLeaving` for why not a call after the if.
+				const FHitRecordedOnLeaving RecordTheHit(OutReport, Map.Get(), HostId, ECataclysmCityHitKind::QuestTimer);
 				if (Map->Damage(HostId, Ordinary.DefenceDamage, Ordinary.PopulationDamage) || (bHollow && Map->AddVoidStacks(HostId, HollowStacks)))
 				{
 					CityFell(HostId, OutReport);
@@ -874,10 +952,13 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 	// COPIED OUT BEFORE THE BITE. `Damage` and `AddVoidStacks` can lead to
 	// `CityFell`, which removes dungeons from `Dungeons`, and `Dungeon` points
 	// into that array; nothing here reads it.
+	// WHAT THE HIT TAKES, RECORDED: the city read before it and after. Issue #2733 slice 3; changes nothing.
+	const FCityBeforeAHit BeforeTheHit = BeforeAHit(Map.Get(), CityId);
 	if (Map->Damage(CityId, Defence, Population) || (bVoid && Map->AddVoidStacks(CityId, Stacks)))
 	{
 		CityFell(CityId, OutReport);
 	}
+	NoteHitIn(OutReport, Map.Get(), BeforeTheHit, ECataclysmCityHitKind::Ordinary);
 
 	// IT HIT ITS CITY, SO IT LEAVES THE MAP. The owner's rule of 2026-10-08,
 	// verbatim: "Ordinary dungeons will do their city/population damage, and
@@ -1271,10 +1352,13 @@ void UCataclysmEmpireRun::ApplySiegeDamage(FCataclysmDayReport& OutReport)
 
 		OutReport.Besieged.Add(CityId);
 
+		// WHAT THE SHARE TAKES, RECORDED: the city read before it and after. Issue #2733 slice 3; changes nothing.
+		const FCityBeforeAHit BeforeTheHit = BeforeAHit(Map.Get(), CityId);
 		if (Map->Damage(CityId, Defence, Population))
 		{
 			CityFell(CityId, OutReport);
 		}
+		NoteHitIn(OutReport, Map.Get(), BeforeTheHit, ECataclysmCityHitKind::SiegeShare);
 	}
 }
 
@@ -1908,6 +1992,51 @@ FString UCataclysmEmpireRun::NameOfDungeon(int32 DungeonId) const
 	// AND THE CITY IT STANDS ON, by the map's own name for it. A dungeon whose city cannot be found is still named.
 	const FCataclysmCity* City = Map != nullptr ? Map->Find(Dungeon->CityId) : nullptr;
 	return City != nullptr ? FString::Printf(TEXT("%s on %s"), *Called, *City->Name) : Called;
+}
+
+void UCataclysmEmpireRun::NoteDaysAway(int32 FromDay, int32 ToDay, const TArray<FCataclysmDayReport>& Reports,
+									   bool bEndedInAClear)
+{
+	FCataclysmDaysAway Away;
+	Away.FromDay = FromDay;
+	Away.ToDay = ToDay;
+	Away.bEndedInAClear = bEndedInAClear;
+	for (const FCataclysmDayReport& Day : Reports)
+	{
+		// EVERY HIT THAT TOOK SOMETHING OR FELLED A CITY, summed by city. A hit that took nothing -- a Hollow's, which
+		// adds Void stacks and takes no points, or one on a city already fallen -- is not a city the player lost
+		// anything in, and the line says nothing of it.
+		for (const FCataclysmCityHit& Hit : Day.Hits)
+		{
+			if (Hit.DefenceLost <= 0.0f && Hit.PopulationLost <= 0.0f && !Hit.bFelledTheCity)
+			{
+				continue;
+			}
+			FCataclysmCityLosses* City = Away.Cities.FindByPredicate(
+				[&Hit](const FCataclysmCityLosses& Each) { return Each.CityId == Hit.CityId; });
+			if (City == nullptr)
+			{
+				City = &Away.Cities.AddDefaulted_GetRef();
+				City->CityId = Hit.CityId;
+			}
+			City->DefenceLost += Hit.DefenceLost;
+			City->PopulationLost += Hit.PopulationLost;
+		}
+		for (const int32 CityId : Day.Fallen)
+		{
+			Away.Fallen.AddUnique(CityId);
+		}
+		Away.Surges += Day.bSurged ? 1 : 0;
+		Away.SurgeDungeons += Day.SurgeDungeons;
+	}
+	LastDaysAway = Away;
+}
+
+void UCataclysmEmpireRun::NoteClear(int32 Day, const FString& DungeonName, int32 WalkDays)
+{
+	LastClearDay = Day;
+	LastClearDungeonName = DungeonName;
+	LastClearWalkDays = WalkDays;
 }
 
 void UCataclysmEmpireRun::NoteDeath(int32 Day, const FString& DungeonName, int32 WalkDays, int32 DaysCost,

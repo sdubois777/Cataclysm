@@ -423,12 +423,40 @@ namespace CataclysmRunSaveMigration
 		return true;
 	}
 
+	/**
+	 * A run written before a trip between levels was a save and a load had saved no award and no clear: issue #2733
+	 * slice 3, 2026-11-17. Written out, for `Migrate_1_to_2`'s reason: no award, 0; no clear, `INDEX_NONE` with an
+	 * empty name and no days; and no walk ended, the summary's defaults. The empire screen reads them as no "+x", no
+	 * clear line and no summary of days away.
+	 */
+	bool Migrate_5_to_6(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		Record->SetNumberField(TEXT("LastEmpirePointsAwarded"), 0.0); // A migration's: no award, written out.
+		Record->SetNumberField(TEXT("LastClearDay"), INDEX_NONE);
+		Record->SetStringField(TEXT("LastClearDungeonName"), FString());
+		Record->SetNumberField(TEXT("LastClearWalkDays"), 0);
+
+		// AND NO WALK HAS ENDED: `FCataclysmDaysAway`'s defaults, every field written out.
+		const TSharedRef<FJsonObject> NoneAway = MakeShared<FJsonObject>();
+		NoneAway->SetNumberField(TEXT("FromDay"), INDEX_NONE);
+		NoneAway->SetNumberField(TEXT("ToDay"), INDEX_NONE);
+		NoneAway->SetBoolField(TEXT("bEndedInAClear"), false);
+		NoneAway->SetArrayField(TEXT("Cities"), TArray<TSharedPtr<FJsonValue>>());
+		NoneAway->SetArrayField(TEXT("Fallen"), TArray<TSharedPtr<FJsonValue>>());
+		NoneAway->SetNumberField(TEXT("Surges"), 0);
+		NoneAway->SetNumberField(TEXT("SurgeDungeons"), 0);
+		Record->SetObjectField(TEXT("LastDaysAway"), NoneAway);
+		return true;
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep RunSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
 		{ 2, TEXT("Migrate_2_to_3"), &Migrate_2_to_3 },
 		{ 3, TEXT("Migrate_3_to_4"), &Migrate_3_to_4 },
 		{ 4, TEXT("Migrate_4_to_5"), &Migrate_4_to_5 },
+		{ 5, TEXT("Migrate_5_to_6"), &Migrate_5_to_6 },
 	};
 }
 

@@ -352,6 +352,125 @@ FString UCataclysmEmpireMapLayout::LastDeathLine(const UCataclysmEmpireRun* Run)
 						   Run->LastDeathDay, *Where, *WalkPart, *CostPart, *FellPart);
 }
 
+FString UCataclysmEmpireMapLayout::LastClearLine(const UCataclysmEmpireRun* Run)
+{
+	// NOTHING TO SAY: no run, a run that has not begun, or no clear yet, which `INDEX_NONE` marks because a clear can be
+	// on day 0. See `UCataclysmEmpireRun::LastClearDay`.
+	if (Run == nullptr || Run->Map == nullptr || Run->LastClearDay == INDEX_NONE)
+	{
+		return FString();
+	}
+
+	const FString Where = Run->LastClearDungeonName.IsEmpty()
+		? FString(TEXT("a dungeon")) : Run->LastClearDungeonName;
+	const int32 Walk = Run->LastClearWalkDays;
+	const FString WalkPart = Walk <= 0
+		? FString(TEXT("The walk owed no whole day."))
+		: FString::Printf(TEXT("The walk's %d day%s ran."), Walk, Walk == 1 ? TEXT("") : TEXT("s"));
+
+	return FString::Printf(TEXT("Day %d: you cleared %s. %s"), Run->LastClearDay, *Where, *WalkPart);
+}
+
+namespace
+{
+	/** A city by the map's name for it, or "a city" when the map cannot find it. */
+	FString CityNameIn(const UCataclysmEmpireRun& Run, int32 CityId)
+	{
+		const FCataclysmCity* City = Run.Map != nullptr ? Run.Map->Find(CityId) : nullptr;
+		return City != nullptr ? City->Name : FString(TEXT("a city"));
+	}
+
+	/** "A", "A and B", "A, B and C", and past `DaysAwayCitiesNamed` names, "A, B, C and 2 more". */
+	FString NamesJoined(const TArray<FString>& Names, int32 More)
+	{
+		TArray<FString> Shown = Names;
+		if (More > 0)
+		{
+			Shown.Add(FString::Printf(TEXT("%d more"), More));
+		}
+		if (Shown.Num() <= 1)
+		{
+			return Shown.IsEmpty() ? FString() : Shown[0];
+		}
+		const FString Last = Shown.Pop();
+		return FString::Printf(TEXT("%s and %s"), *FString::Join(Shown, TEXT(", ")), *Last);
+	}
+}
+
+FString UCataclysmEmpireMapLayout::DaysAwayLine(const UCataclysmEmpireRun* Run)
+{
+	if (Run == nullptr || Run->Map == nullptr || !Run->LastDaysAway.HasEnded())
+	{
+		return FString();
+	}
+	const FCataclysmDaysAway& Away = Run->LastDaysAway;
+	if (Away.ToDay <= Away.FromDay)
+	{
+		return TEXT("While you were away no day passed.");
+	}
+
+	TArray<FString> Parts;
+
+	// THE CITIES HIT, at most `DaysAwayCitiesNamed` by name, in the order each was first hit, and the rest counted.
+	TArray<FString> Hit;
+	for (int32 Index = 0; Index < Away.Cities.Num() && Index < DaysAwayCitiesNamed; ++Index)
+	{
+		const FCataclysmCityLosses& City = Away.Cities[Index];
+		Hit.Add(FString::Printf(TEXT("%s lost %.0f defence and %.0f people"), *CityNameIn(*Run, City.CityId),
+								City.DefenceLost, City.PopulationLost));
+	}
+	const int32 MoreHit = Away.Cities.Num() - Hit.Num();
+	if (Hit.IsEmpty())
+	{
+		Parts.Add(TEXT("nothing was hit"));
+	}
+	else
+	{
+		FString Cities = FString::Join(Hit, TEXT(", "));
+		if (MoreHit > 0)
+		{
+			Cities += FString::Printf(TEXT(", and %d more cit%s %s hit"), MoreHit, MoreHit == 1 ? TEXT("y") : TEXT("ies"),
+									  MoreHit == 1 ? TEXT("was") : TEXT("were"));
+		}
+		Parts.Add(Cities);
+	}
+
+	// THE CITIES THAT FELL, named the same way.
+	TArray<FString> Fell;
+	for (int32 Index = 0; Index < Away.Fallen.Num() && Index < DaysAwayCitiesNamed; ++Index)
+	{
+		Fell.Add(CityNameIn(*Run, Away.Fallen[Index]));
+	}
+	if (!Fell.IsEmpty())
+	{
+		Parts.Add(FString::Printf(TEXT("%s fell"), *NamesJoined(Fell, Away.Fallen.Num() - Fell.Num())));
+	}
+
+	// AND THE SURGES, with the dungeons they landed.
+	if (Away.Surges > 0)
+	{
+		Parts.Add(Away.Surges == 1
+			? FString::Printf(TEXT("a surge brought %d dungeon%s"), Away.SurgeDungeons,
+							  Away.SurgeDungeons == 1 ? TEXT("") : TEXT("s"))
+			: FString::Printf(TEXT("%d surges brought %d dungeon%s"), Away.Surges, Away.SurgeDungeons,
+							  Away.SurgeDungeons == 1 ? TEXT("") : TEXT("s")));
+	}
+
+	return FString::Printf(TEXT("While you were away, from day %d to day %d: %s."), Away.FromDay, Away.ToDay,
+						   *FString::Join(Parts, TEXT("; ")));
+}
+
+FString UCataclysmEmpireMapLayout::ReturnLine(const UCataclysmEmpireRun* Run)
+{
+	const FString Away = DaysAwayLine(Run);
+	if (Away.IsEmpty())
+	{
+		return FString();
+	}
+	const FString Clear = Run->LastDaysAway.bEndedInAClear ? LastClearLine(Run) : FString();
+	return Clear.IsEmpty() ? Away : FString::Printf(TEXT("%s %s"), *Clear, *Away);
+}
+
 FString UCataclysmEmpireMapLayout::LatestEventLine(const UCataclysmEmpireRun* Run)
 {
 	// THE DAY THE BOSS DUNGEON OPENED, or 0 while it has not, so a run without one compares as it did before issue
@@ -359,7 +478,13 @@ FString UCataclysmEmpireMapLayout::LatestEventLine(const UCataclysmEmpireRun* Ru
 	const int32 OpenedDay = Run != nullptr && Run->bCataclysmDungeonOpened ? Run->CataclysmDungeonOpenedDay : 0;
 
 	// THE DEATH WHILE NOTHING ELSE WITH A LINE IS MORE RECENT; on the same day, the death. See the header.
-	if (Run != nullptr && Run->LastDeathDay > 0
+	//
+	// WHETHER THERE WAS A DEATH IS ASKED OF THE DAYS IT COST AND NOT OF ITS DAY, as `LastDeathLine` asks it since
+	// issue #2733 slice 1: the opening wave stands on day 0 since then, and a death in a walk that owes no whole day
+	// is on the run's own day, so a death can be on day 0. At the starting rate entering a dungeon owes floor 1's day,
+	// so that takes a walk made shorter than its floors, by a city upgrade or the empire tree. Until slice 3 this asked
+	// `LastDeathDay > 0` and never showed such a death. Every death costs at least `DeathDayCostStandard` days.
+	if (Run != nullptr && Run->LastDeathDaysCost > 0
 		&& Run->LastDeathDay >= Run->LastHitDay && Run->LastDeathDay >= Run->LastMoveDay
 		&& Run->LastDeathDay >= OpenedDay)
 	{

@@ -97,7 +97,7 @@ them by hand.
 |---|---|
 | `Content/Maps/L_Sandbox.umap` | A flat test level: a floor, a directional light and sky, a player start and a navigation bounds volume. Built by `tools/generate_input_assets.py`, which owns it. No enemy is in the map — `ACataclysmGameMode` spawns them at play time. Reached only by opening it in the editor since issue #2733 slice 2. |
 | `Content/Maps/L_FrontEnd.umap` | The level the game and the editor open on: a player start and nothing else, its world settings naming `ACataclysmFrontEndGameMode`, which shows the character select screen. Built by `tools/generate_interface_assets.py`, which owns it. The editor opened on `L_Sandbox` until issue #2733 slice 2, so pressing Play now opens the front end. Issue #753. |
-| `Content/Maps/L_Capital.umap` | The capital, the empire map's home: a floor, a directional light and sky, and a player start, its world settings naming `ACataclysmCapitalGameMode`, which loads the chosen character, spawns no creatures and opens the empire map. Start and every Continue not saved inside a dungeon open it. Built by `tools/generate_capital_map.py`, which owns it. Issue #2733. |
+| `Content/Maps/L_Capital.umap` | The capital, the empire map's home: a floor, a directional light and sky, and a player start, its world settings naming `ACataclysmCapitalGameMode`, which loads the chosen character, spawns no creatures and opens the empire map. Start and every Continue not saved inside a dungeon open it. A Walk button on its map takes the character to `L_Dungeon` to walk that dungeon, and the end of the walk brings it back here (since issue #2733 slice 3). Built by `tools/generate_capital_map.py`, which owns it. Issue #2733. |
 | `Content/Data/` | Twenty-nine DataTable assets: twenty-five imported from the design workbook, two from the simulation package's enemy model, and two from the class passive tree files. See below. |
 | `Content/Input/` | The Enhanced Input mapping contexts, ten input actions and the input config data asset. Built by `tools/generate_input_assets.py`. |
 
@@ -399,7 +399,11 @@ by `git add` with no error and no warning. Guarded by
   diamond, each reading as sealed, exposed or fallen, with the day, the surge
   countdown and how far the Cataclysm is from the Pillar (issue
   [#1087](https://github.com/sdubois777/Cataclysm/issues/1087)).
-  `Cataclysm.EmpireMap` opens it.
+  M opens and closes it, in both control schemes, and so does
+  `Cataclysm.EmpireMap`; both start a run when there is none. M since
+  2026-11-17 (issue [#2733](https://github.com/sdubois777/Cataclysm/issues/2733)
+  slice 3), once the input assets are regenerated in the editor. The capital
+  opens it on arrival.
 
   **The Cataclysm boss dungeon has a box of its own on the map**, since
   2026-11-03, because it stands on no city: once the run has opened it, the
@@ -444,17 +448,23 @@ by `git add` with no error and no warning. Guarded by
   fall in them; the empire map's status line says how many days will pass.
   `Cataclysm.EmpireAdvance` refuses while a dungeon is being walked.
 
-  **Nothing takes the player from the map into a dungeon level, or back.** There
-  is no capital to stand in between runs (issue
-  [#48](https://github.com/sdubois777/Cataclysm/issues/48)) and no travel between
-  the empire and a dungeon level, so entering one is a Walk button pressed, or a
-  console command typed, while already standing in `L_Dungeon`, and clearing one leaves the player
-  standing on the floor they beat. **Only walking a dungeon, dying in one and the
-  console commands move the day**: a death inside a dungeon of the empire costs
-  5, 10 or 15 days by lethality mode, resolves an ordinary dungeon at once so
-  that it hits its city and leaves the map, and
-  leaves the player on the floor they died on with no dungeon bound (issue
-  [#41](https://github.com/sdubois777/Cataclysm/issues/41)). The equipment a
+  **A walk is a trip from the capital and back, since issue
+  [#2733](https://github.com/sdubois777/Cataclysm/issues/2733) slice 3.** A Walk
+  button on the capital's map takes the character to `L_Dungeon`, which enters
+  that dungeon on floor 1 once the character has loaded; the last floor's stairs,
+  or a death, take it back to `L_Capital`, whose map then says what the walk did
+  and what the days away did. Each trip is a save and a load: the level being left
+  writes the character and run records and the next level loads them, so the
+  character arrives with its level, experience, gear, health and potions and not
+  its place. **No walk can be left early**: a Walk press, `Cataclysm.LeaveDungeon`
+  and `Cataclysm.EnterDungeon` are refused while one is under way. `L_Dungeon`
+  opened directly in the editor still enters a dungeon by a Walk button or the
+  console. **Only walking a dungeon, dying in one and the console commands move
+  the day**: a death inside a dungeon of the empire costs 5, 10 or 15 days by
+  lethality mode, resolves an ordinary dungeon at once so that it hits its city
+  and leaves the map, and stands the player up whole and sends it to the capital
+  (issue [#41](https://github.com/sdubois777/Cataclysm/issues/41)); a death in the
+  Cataclysm boss dungeon stands the player back up inside it. The equipment a
   death costs in Hardcore and Heretic is not built, and there is no forge to
   spend the twelve days a craft takes. A fallen city does not
   become a retakeable Dungeon City (issue

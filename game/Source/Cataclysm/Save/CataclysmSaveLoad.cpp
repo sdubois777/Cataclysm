@@ -346,14 +346,19 @@ FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACatacly
 
 	// THE PLACEMENT LAST, AND ONCE: a character saved at no health dies here, after the writer was told the loaded
 	// run, so its death's write goes to the loaded slots.
+	//
+	// A RECORD WITH NO FLOOR PUTS BACK THE HEALTH AND THE POTIONS AND NOT THE PLACE: the capital's, and the hand-over a
+	// trip between levels writes, whose place was in a level that is not this one. The character stays where this
+	// level put it. Issue #2733 slice 3, ruled by the coordinating session on 2026-11-17 (Q2).
 	bool bPlaced = false;
+	const bool bPutInPlace = SavedRun && SavedRun->Floor.IsOccupied();
 	if (SavedRun && !bDropsTheSandboxFloor) // The sandbox's floor dropped in the capital: no place on it either.
 	{
 		for (const FCataclysmSavedCharacterPlacement& Placement : SavedRun->Floor.Characters)
 		{
 			if (Placement.CharacterId == CharacterId)
 			{
-				bPlaced = FCataclysmSaveApply::PlacementInto(Character, Placement);
+				bPlaced = FCataclysmSaveApply::PlacementInto(Character, Placement, bPutInPlace); // A record with no floor: not in place.
 				break;
 			}
 		}
@@ -368,7 +373,9 @@ FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACatacly
 			RestoredEmpire ? *FString::Printf(TEXT("day %d"), SavedRun->Day) : TEXT("no empire run"),
 			Report.CreaturesRestored,
 			bDropsTheSandboxFloor ? TEXT("the sandbox's floor it was saved on dropped, as this level has none")
-			: bPlaced ? TEXT("placed where it was saved") : TEXT("with no placement saved"));
+			: bPlaced && bPutInPlace ? TEXT("placed where it was saved")
+			: bPlaced ? TEXT("its health and potions put back, where this level starts it")
+			: TEXT("with no placement saved"));
 	}
 	else
 	{

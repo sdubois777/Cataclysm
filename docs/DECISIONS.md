@@ -2,6 +2,229 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-18 — The capital's Walk takes the character to the dungeon, and the last floor's stairs or a death take it back, each trip a save and a load; no walk can be left early, M opens the map, and the map says what the days away did (#2733, slice 3)
+
+**Affects:** the save writer's hand-over, `UCataclysmSaveWriter::HandOver` and `HasHandedOver`, new
+(`game/Source/Cataclysm/Save/CataclysmSaveWriter.h`, `.cpp`), with `FloorRecordNow` gathering only the placements of a
+record with no floor; `ECataclysmSaveTrigger::LeavingTheLevel`, new, and the rules for it
+(`CataclysmSaveTriggers.h`, `.cpp`); `FCataclysmSaveGather::PlacementsFrom`, new (`CataclysmSaveGather.h`, `.cpp`);
+`FCataclysmSaveApply::PlacementInto`'s `bPutInPlace` (`CataclysmSaveApply.h`, `.cpp`); `FCataclysmSaveLoad::CharacterAndRun`
+(`CataclysmSaveLoad.cpp`); the run record at version 6 and `Migrate_5_to_6` (`CataclysmSaveRecords.h`, `.cpp`);
+`ACataclysmGameMode::TravelTo` and `TravelRequested`, new (`game/Source/Cataclysm/Player/CataclysmGameMode.h`, `.cpp`);
+`UCataclysmGameInstance::PendingWalkDungeonId`, new (`CataclysmGameInstance.h`); `ACataclysmCapitalGameMode::TravelToWalk`
+and `InWorld`, new (`CataclysmCapitalGameMode.h`, `.cpp`); `ACataclysmDungeonGameMode::EnterThePendingWalkIfReady`,
+`ReturnToTheCapital`, `HandleStartingNewPlayer_Implementation` and `LastWalksDays`, new, with `GoDownOneFloor`,
+`ClearEmpireDungeon` and `EndTheDungeonForADeath` changed (`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`,
+`.cpp`); `ACataclysmPlayerCharacter::Revive` and the console commands `Cataclysm.EnterDungeon`, `Cataclysm.LeaveDungeon`,
+`Cataclysm.EmpireAdvance` and `Cataclysm.EmpireMap` (`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`);
+`FCataclysmWalkFromTheScreen::NoLeavingEarlyText`, new, with `RefusalFor` and `Walk` (`CataclysmWalkFromTheScreen.h`,
+`.cpp`); the city screen's and the empire map's Walk presses (`CataclysmCityScreenWidget.cpp`,
+`CataclysmEmpireMapWidget.cpp`); `UCataclysmEmpireMapLayout::LastClearLine`, `DaysAwayLine` and `ReturnLine`, new, and
+`LatestEventLine`'s day-0 guard (`CataclysmEmpireMapLayout.h`, `.cpp`); in the empire module,
+`FCataclysmDayReport::Hits` and `SurgeDungeons`, `FCataclysmCityHit`, `FCataclysmCityLosses`, `FCataclysmDaysAway` and
+`ECataclysmCityHitKind`, new, `UCataclysmEmpireRun::NoteClear`, `NoteDaysAway`, `LastClearDay`,
+`LastClearDungeonName`, `LastClearWalkDays` and `LastDaysAway`, new
+(`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h`, `.cpp`); the M key:
+`CataclysmInputActionNames::ToggleEmpireMap` (`game/Source/Cataclysm/Input/CataclysmInputConfig.h`), the controller's
+binding and `Input_ToggleEmpireMap` (`CataclysmPlayerController.h`, `.cpp`), `tools/generate_input_assets.py`, both
+controls tables of `docs/Cataclysm_GDD_v2.md`, and the generated assets `IA_ToggleEmpireMap.uasset` (new),
+`DA_InputConfig.uasset`, `IMC_KeyboardMovement.uasset` and `IMC_MouseMovement.uasset`, made in the window;
+`docs/Save_System_Design.md` section 6; `game/Tests/SaveFixtures/Run_v6.json`, new, and that folder's `README.md`;
+`game/README.md`. Tests: listed under "Tests", below. Issue [#2733](https://github.com/sdubois777/Cataclysm/issues/2733),
+slice 3 of 4.
+
+### SAID FIRST
+
+- **NOT YET COMPILED OR RUN IN UNREAL.** Phase 1 is written; phase 2 compiles it, and the window runs it. Python: "7470
+  passed, 9 skipped" before this entry was added, its JUnit file 7479 tests, 0 failures, 0 errors.
+- **THE WINDOW MAKES FOUR INPUT ASSETS** with `tools/run_editor_python.py tools/generate_input_assets.py`, and commits only
+  `IA_ToggleEmpireMap.uasset` (new), `DA_InputConfig.uasset`, `IMC_KeyboardMovement.uasset` and
+  `IMC_MouseMovement.uasset`; the run rewrites every input asset it owns and `L_Sandbox`, and the rest are restored, as
+  in #837 layer 4. (`test_the_decisions_log_names_real_files.py` does not read `IA_ToggleEmpireMap.uasset`, named
+  above before it exists: it takes an extension of one to five letters for a file, and `uasset` has six. Measured: it
+  passed with the name in this entry.)
+- **THE RUN RECORD IS AT VERSION 6**, so a trip keeps the last defeat's award, the last clear and what the days away
+  did; `Run_v6.json` is new and `Run_v5.json` is a migration input.
+- **ADDITIVE ONLY, AS RULED:** the day report gains `Hits` and `SurgeDungeons` and nothing the day loop computes reads
+  them. The model-port checks ran unchanged and passed (the Python run above); the empire module's Unreal tests run
+  unchanged in the window.
+
+### The rulings, quoted
+
+The project owner's brief for #2733: "The last floor's stairs, or a death, returns the player to L_Capital with the map
+open, after the walk's days have run" and "There is no leaving a dungeon early." The design, `docs/Cataclysm_GDD_v2.md`,
+the inventory section: "There is no town portal and no way out except clearing the dungeon or dying."
+
+The coordinating session, on this slice's plan, 2026-11-17: approved, "travel as save-and-continue", and:
+
+| Question | Ruling |
+| :-- | :-- |
+| Q1, the hand-over written synchronously | "YES. Write the hand-over synchronously. Update `docs/Save_System_Design.md` section 6, both pins, and the "exactly one" comments." |
+| Q2, a record with no floor | "YES. A floor-0 record restores vitals and potions, but not the place." |
+| Q3, the last award saved | "YES. Save `LastEmpirePointsAwarded`: run record schema 5 to 6, with a migration and the fixtures rule (a new fixture; the old fixture unedited)." |
+| Q4, the console commands | "YES. `Cataclysm.LeaveDungeon` and `Cataclysm.EnterDungeon` refuse mid-walk with the same sentence. Report every test that changes because of it." |
+| Q5, the day-0 death guard | "YES. Fix `LatestEventLine`'s day-0 guard here, with a test and a proof." |
+| Q6, what the map says | "YES, and wider", from the owner's aim to see "time has ticked when they go back to the empire map so other dungeons have resolved/lowered their current timers": the clear line, and one "While you were away" summary of the days, "built from what the days actually did: dungeons resolved, with their cities and the damage each did; cities fallen; any surge, with how many dungeons it brought". |
+| Q6's damage figures | "YES, the day loop supplies it": `FCataclysmDayReport::Hits`, filled at the three damage sites, each entry the city, the defence and the people actually lost (before minus after), the kind, and whether it felled the city; a headless test that the entries total the city's loss over the day; the resolve's and the death-cost days' reports kept on a death; the two-line surge label, no widget asset change, at most three cities named, "nothing was hit" when nothing was. Two conditions: additive only, checked by running the empire module's tests and the model-port checks unchanged; and the people formatted as the map already formats populations. |
+| Q7, minions and ground items | "LEAVE BEHIND. Minions and ground items stay on the floor left. Record it under "Not tested / not built". No issue." |
+| Health on arrival | "leave it unchanged, so vitals travel exactly. Put it on the owner's launch-check list in the entry, as "should arriving at the capital refill health?"" |
+| The M key | "THE M KEY IS ALREADY WRITTEN" on the parked branch `feat/keys-for-the-empire-map-and-character-sheet`, commit `288b45cc4`: "Take ONLY its M parts into slice 3, adapted to your code. Leave Y and the character sheet parked. Credit the commit in the entry." The coordinating session had ruled on 2026-11-03: "M opens and closes the empire map". |
+
+And, on the tests this slice changes by ruling: "The six test changes reported under Q4 are all accepted."
+
+### What was verified by reading, before anything changed
+
+- **Every `OpenLevel` in the game** is one of three before this slice -- the select screen's Continue, the
+  new-character screen's Start, and a refused load's way back to the front end -- and none is reachable mid-walk.
+  `TravelTo` is the fourth. `tools/tests/test_a_walk_cannot_be_left_early.py` now fails on a fifth.
+- **The ways a walk was left before this slice**: a Walk press under another dungeon mid-walk (it left the first and
+  ran its days), `Cataclysm.LeaveDungeon`, and `Cataclysm.EnterDungeon` mid-walk. Quitting is not one: Continue
+  reopens `L_Dungeon` on the saved floor, since #753.
+- **The run's fields the map reads, against the save**: a sweep of every `UPROPERTY` on `UCataclysmEmpireRun`
+  against the gather and the restore found one the map shows and the save did not keep, `LastEmpirePointsAwarded`;
+  its own comment said a loaded run read 0 there. Since a return is now a load, that is Q3.
+- **Potions are filled on entering a dungeon and only there** (`EnterEmpireDungeon`, #806), so a trip carries them
+  exactly and the entry fills them, as before. Nothing fills health on a trip, and nothing did before.
+- **The day report held which cities were hit and not how much each hit took**; the figures existed only as locals at
+  the three `Map->Damage` calls. Raised before building, and ruled (Q6's damage figures).
+- **`FCataclysmDayReport::Spawned` lists the Dungeon Cities a fall builds as well as the dungeons a surge lands**, so the
+  summary's count of what the surges brought needed `SurgeDungeons`, recorded where a surge lands its wave. Additive,
+  as `Hits` is, and in the entry rather than asked first: it is the same kind of record the ruling made.
+- **A death on day 0 needs a walk made shorter than its floors.** At the starting rate entering a dungeon owes floor
+  1's day, so a death there is on day 1. My plan said otherwise and I corrected it to the coordinating session.
+
+### What changes
+
+**A trip is a save and a Continue.**
+
+- **The hand-over.** `UCataclysmSaveWriter::HandOver` writes the character record and the run record with no floor
+  (dungeon `None`, floor 0), through the new trigger `LeavingTheLevel`, which is written before the frame ends and is
+  exempt from the run record's once-a-frame rule; then it forgets its run and character, so the departing level writes
+  nothing more. A record with no floor holds the characters' placements and nothing of a floor
+  (`FCataclysmSaveGather::PlacementsFrom`, which `FloorFrom` now uses for its own characters). If either record fails
+  to write, the writer goes on as it was and the trip does not happen.
+- **`ACataclysmGameMode::TravelTo(Map, WalkDungeonId)`** hands over, puts the character's identifier on the game
+  instance (`PendingCharacterId`, the field Continue uses) with the dungeon to walk (`PendingWalkDungeonId`, new), and
+  opens the level -- or, in an automation test, keeps the level asked for (`TravelRequested`).
+- **The arrival** is `LoadThePendingCharacter`, unchanged: the character and the run come back from the two records.
+  **A record with no floor restores health, mana, energy shield, the class resource and the potions, and not the
+  place** (Q2): `PlacementInto(..., bPutInPlace)`. The character arrives at the capital's player start, or at the
+  dungeon's entrance once its walk begins. This also applies to a Continue of a character saved in the capital.
+
+**The capital's Walk** (`ACataclysmCapitalGameMode::TravelToWalk`) travels to `L_Dungeon` with the dungeon pressed.
+`FCataclysmWalkFromTheScreen::Walk` takes the capital, and both screens pass it.
+
+**`L_Dungeon` enters the pending walk once the character has loaded** (`ACataclysmDungeonGameMode::EnterThePendingWalkIfReady`),
+from the end of `StartPlay` and from `HandleStartingNewPlayer`, whichever finds the load settled: the pending dungeon is
+cleared, entered through `EnterEmpireDungeon` -- floor 1 at its entrance, the potions filled, its timer stopped, floor
+1's time charged -- and written at once (`ChangedFloor`), so a quit straight after arriving resumes the walk.
+
+**A walk's end goes back to the capital** (`ReturnToTheCapital`): the last floor's stairs, after the clear, the walk's
+days and any win; and a death that ended a walk, at the end of `Revive`, after the character stands whole and the paid
+death is written. A death in the Cataclysm's own dungeon ends no walk and stays, as `EndTheDungeonForADeath` rules.
+
+**No walk can be left early** (Q4): a Walk press mid-walk is refused whichever dungeon was pressed;
+`Cataclysm.LeaveDungeon` refuses mid-walk and leaves nothing; `Cataclysm.EnterDungeon` refuses mid-walk. All three
+say `NoLeavingEarlyText`: "You are walking dungeon 12. There is no leaving a dungeon early: clear its last floor, or
+die in it." `Cataclysm.EmpireAdvance`'s mid-walk refusal no longer points at `Cataclysm.LeaveDungeon`.
+
+**The map says what the walk's end did** (Q6), as a second line of its surge label (`UCataclysmEmpireMapLayout::ReturnLine`):
+after a clear, the clear's line, "Day 9: you cleared the dungeon on Outpost (-3,0). The walk's 4 days ran."
+(`LastClearLine`), then the days away (`DaysAwayLine`): "While you were away, from day 84 to day 118: Bulwark (1,2)
+lost 1000 defence and 5000 people, ...; ... fell; a surge brought 6 dungeons." After a death, the days away alone: the
+death's own line is the first line's (`LatestEventLine`), which now shows a death on day 0 (Q5). At most three cities
+are named in each part, the rest counted; "nothing was hit" when no hit took anything. Defence and people are written
+"%.0f", as the map writes a city's defence and people on hover.
+
+**The day report records each hit** (`FCataclysmDayReport::Hits`): the city, the defence and the people the city lost
+(read just before `Map->Damage` and just after), the kind, and whether it felled the city -- at the ordinary dungeon's
+hit, the Quest timer's and the Siege's daily share. **Additive only**: nothing the day loop computes reads it. The
+Quest timer's hit is recorded as its block is left (`FHitRecordedOnLeaving`), because its fall returns from braces
+whose text `tools/tests/test_the_hollow_in_the_model_and_in_the_game.py` reads exactly. **The model, `sim/cataclysm_sim`,
+has no matching field.** The dungeon level keeps the reports of the days a walk ran (`LastWalksDays`) and, on a death,
+the resolve's report and the death's own days' reports too, and the run totals them (`UCataclysmEmpireRun::NoteDaysAway`).
+
+**The run record is at version 6** (Q3, Q6): `LastEmpirePointsAwarded`, `LastClearDay`, `LastClearDungeonName`,
+`LastClearWalkDays` and `LastDaysAway`. `Migrate_5_to_6` writes "nothing yet". `Run_v6.json` is new; `Run_v5.json` is
+a migration input. The fixtures README says what the new file describes.
+
+**M opens and closes the empire map**, in both control schemes -- the M parts of the parked commit `288b45cc4`,
+adapted: the action name, the generator rows, both controls tables, the controller's binding, and the run-start line
+moved from `Cataclysm.EmpireMap` into `ToggleEmpireMap`, so the key and the command are one behaviour. Diablo IV binds
+its map screen to M (and Tab) (segmentnext and fextralife's controls pages); a developer's list from an older Last
+Epoch patch lists "Map - M", which I could not confirm is current; Path of Exile's overlay is Tab and its Atlas tree
+Ctrl+G, so it has no single key to borrow. Y and the character sheet stay parked on that branch.
+
+**`docs/Save_System_Design.md` section 6** names the second synchronous write and the rule for a record with no floor.
+
+### Judgements of mine
+
+- **The trigger's name, `LeavingTheLevel`**, and that a failed hand-over leaves the character in the level rather
+  than travelling to an older record.
+- **The place is not put back for any record with no floor**, so a Continue in the capital arrives at the player start
+  too: one rule for the capital and the hand-over, and no per-trip flag that a quit mid-load could leave pointing at
+  another level's coordinates. Ruled as Q2.
+- **`SurgeDungeons`** on the day report (above), and counting a summary's surges by the days `bSurged` is true: a fall's
+  surge waits 25 days on the last, so at most one fires a day.
+- **A hit that took nothing is left out of the summary** -- a Hollow's, which adds Void stacks and takes no points, and
+  one on a city already fallen -- and the summary does not mention Void stacks.
+- **`LastClearDay` is `INDEX_NONE` for "no clear"**, not 0, because a walk made shorter than its floors can clear on
+  day 0.
+- **The arrival writes at once** (`ChangedFloor`) after entering the walk.
+- **The run record's fixture holds `bEndedInAClear` at its default, false**, because the run it describes last came back
+  from a death; the README says so, and the return line's test reads a true one.
+
+### Tests changed by ruling
+
+All accepted by the coordinating session, 2026-11-17:
+
+1. `Cataclysm.WalkFromTheScreen.PressingWalkOnACityScreenInADungeonLevelEntersThatDungeon`: a second press mid-walk is
+   refused; six assertions reworded, the empire-points one kept.
+2. `Cataclysm.WalkFromTheScreen.ARefusedWalkIsShownAndEntersNothing`: one assertion expects `NoLeavingEarlyText(700)`
+   for "You are walking dungeon 700 now.".
+3. `Cataclysm.SaveLoad.` -- the test of a character saved dead in a dungeon -- expects the hand-over as the last write
+   and a trip to the capital, for "the paid death was written".
+4. `Cataclysm.WinningTheRun.TheEarnedBossDungeonsStairsWinTheRunOnceItsCataclysmBossIsDead`: the same. The win's own
+   write stays covered by that file's other tests, which clear without the stairs.
+5. `Cataclysm.SaveTriggers.`: the synchronous test is renamed
+   `OnlyTheCharacterDyingAndLeavingTheLevelAreWrittenBeforeTheFrameEnds` and counts two; the character-record set adds
+   `LeavingTheLevel`.
+6. `Cataclysm.Input.ConfigListsEverySlotAndNativeAction`: thirteen native actions.
+
+And by the version 6 bump, as the version 5 bump did: the committed-file tests read `Run_v6.json` (in
+`CataclysmSaveRecordTests.cpp`, `CataclysmDeathCostTests.cpp`, `CataclysmEarnedBossSaveTests.cpp` and
+`CataclysmWinningTheRunTests.cpp`), three of them saying "version 6"; the four tests that run an older run file through
+the whole chain add what `Migrate_5_to_6` writes; and the Python check
+`test_the_run_record_is_at_version_5_or_later_and_migrate_4_to_5_writes_not_won` no longer asks for version 5.
+
+### Tests
+
+- **Unreal, new:** nine in `Cataclysm.Travel.` (`CataclysmSaveLoadTests.cpp`): the capital's Walk hands over; the
+  dungeon level loads the character exactly and enters the walk; the last floor's stairs return, with the award and
+  the return line; a death returns whole, with its lines; a death in the Cataclysm's own dungeon stays; the day-0 death
+  line; the return line's wording; the version 5 file migrates; the version 6 file reads. Two in
+  `Cataclysm.EmpireRun.` (`game/Source/CataclysmEmpire/Tests/CataclysmEmpireRunTests.cpp`): each day's hits add up to
+  what each city lost, over two Heretic runs of up to 400 days; and the days away are totalled from the reports. One
+  in `Cataclysm.Input.`: the empire map is on M in both schemes.
+- **Python, new:** `tools/tests/test_a_walk_cannot_be_left_early.py`, `test_a_trip_between_levels_is_a_save_and_a_load.py`
+  and `test_the_empire_map_key_reaches_its_command.py`.
+
+### Not tested, and not built
+
+- **Minions and ground items stay on the floor left** (Q7): a creature the player commands and a drop not picked up do
+  not cross a level change. In Path of Exile and Diablo IV minions follow the player between areas.
+- **A level opening.** No automation test can travel; the tests read what `TravelTo` asked for, and the arriving level
+  is a second test world given the two fields the game instance carries. The owner's press is the check.
+- **The death notice the pawn shows on standing up is gone with the pawn** on the trip back; the map's line carries the
+  same words.
+- **A press of M, and the map's second line as drawn.** No test world has a viewport or a local player.
+
+### For the owner's launch check (slice 4's list)
+
+- Should arriving at the capital refill health? Today nothing does but a death; the vitals travel exactly.
+
+---
+
 ## 2026-11-17 — Play opens the front end, and Start and Continue open the capital, a new level that opens the empire map on arrival (#2733, slice 2)
 
 **Affects:** `ACataclysmCapitalGameMode`, new (`game/Source/Cataclysm/Player/CataclysmCapitalGameMode.h`, `.cpp`);
@@ -399,6 +622,7 @@ dungeon 0 was not already a Quest dungeon of the Hollow sub-type: the break made
   screen, is not seen by an automation test, which has no viewport; the decision is tested, and the owner's press (slice
   4) sees the screen.
 - **Travel from the capital into a dungeon and back** is slice 3: the map's Walk buttons in the capital still refuse.
+  **Built** in slice 3, the 2026-11-18 entry above.
 - **A packaged build** has not been made; `L_Capital` is cooked with every map under Content, as `L_FrontEnd` is.
 
 ---

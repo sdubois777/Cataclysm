@@ -1,6 +1,8 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Character/CataclysmPlayerCharacter.h"
+// For the one sentence every way of leaving a walk early is refused with. Issue #2733 slice 3.
+#include "Interface/CataclysmWalkFromTheScreen.h"
 
 #include "Cataclysm.h"
 #include "Character/CataclysmPlayerBuild.h"
@@ -1951,6 +1953,8 @@ void ACataclysmPlayerCharacter::Revive()
 	//
 	// THE SAME LOOKUP THE PLACING BELOW MAKES, for the reason given there: a
 	// test world has no authority game mode to ask.
+	// THE DUNGEON WHOSE WALK THIS DEATH ENDED, for the trip back to the capital at the end. Issue #2733 slice 3.
+	ACataclysmDungeonGameMode* WalkEndedIn = nullptr;
 	if (IsAwaitingRespawn())
 	{
 		if (ACataclysmDungeonGameMode* DungeonDiedIn =
@@ -1962,6 +1966,7 @@ void ACataclysmPlayerCharacter::Revive()
 			const bool bTheWalkEnded = DungeonDiedIn->EndTheDungeonForADeath();
 			if (bTheWalkEnded)
 			{
+				WalkEndedIn = DungeonDiedIn;
 				DeathCostNotice = DungeonDiedIn->DeathCostLine();
 				const UWorld* StoodUpIn = GetWorld();
 				DeathCostNoticePostedAt =
@@ -2149,6 +2154,16 @@ void ACataclysmPlayerCharacter::Revive()
 	// written here, after the dungeon is ended, the days charged and the character standing, the record holds the
 	// death as paid. LAST, so the record holds everything above. Asynchronous, as every write but the death's is.
 	UCataclysmSaveWriter::NoteTriggerIn(GetWorld(), ECataclysmSaveTrigger::DeathProcessed);
+
+	// AND, WHEN THE DEATH ENDED A WALK, BACK TO THE CAPITAL: the design's "respawns the player at the capital". After
+	// everything above, so the hand-over holds the character standing, whole and paid for. The notice above goes with
+	// this level; the empire map in the capital shows the same words. Issue #2733 slice 3, ruled 2026-11-17. A death
+	// that ended no walk -- in the Cataclysm's own dungeon, with no dungeon bound, or under the playtest switch --
+	// stands the player back up here, as before.
+	if (WalkEndedIn != nullptr)
+	{
+		WalkEndedIn->ReturnToTheCapital();
+	}
 }
 
 bool ACataclysmPlayerCharacter::IsAwaitingRespawn() const
@@ -4488,7 +4503,7 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmPassiveTreeZoom
 
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEmpireMapScreen(
 	TEXT("Cataclysm.EmpireMap"),
-	TEXT("Open or close the empire overview. It has no key of its own yet."),
+	TEXT("Open or close the empire overview, starting an empire run if there is none. M opens it too."),
 	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
 		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 		{
@@ -4502,11 +4517,10 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEmpireMapScreen
 				return;
 			}
 
-			// STARTED HERE RATHER THAN BY THE SCREEN, so that opening a screen
-			// to look at it never silently begins a campaign. Asking for the
-			// empire map IS asking for an empire.
-			UCataclysmGameInstance::EmpireRunFor(World, /*bStartIfNone*/ true);
-
+			// THE RUN IS STARTED BY `ToggleEmpireMap`, when there is none, and
+			// no longer here: the M key calls the same function, and moving the
+			// line there on 2026-11-17 is what makes the key and this command
+			// one behaviour rather than two copies.
 			Controller->ToggleEmpireMap();
 		}));
 
@@ -4606,11 +4620,13 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEmpireAdvance(
 			// NOT IN THE MIDDLE OF A WALK. Since 2026-10-24 nothing resolves
 			// while the player is inside a dungeon, by the owner's decision, and
 			// days passed by hand here would resolve exactly that. Ruled by the
-			// coordinating session that day. `Cataclysm.LeaveDungeon` first.
+			// coordinating session that day. Until issue #2733 slice 3 this said
+			// `Cataclysm.LeaveDungeon` first; that refuses mid-walk now, so the
+			// words name the two ways a walk ends.
 			if (Run->IsAWalkUnderWay())
 			{
 				Ar.Log(TEXT("A dungeon is being walked, and its days pass when "
-							"you leave it. Cataclysm.LeaveDungeon first."));
+							"you leave it: clear its last floor, or die in it."));
 				return;
 			}
 
@@ -4852,7 +4868,8 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEnterDungeon(
 	TEXT("Walk a dungeon that stands on the empire map: Cataclysm.EnterDungeon "
 		 "<id>. With no argument, the shallowest one standing. Its timer stops, "
 		 "every other one keeps counting, and each floor you go down costs the "
-		 "empire a day. Only works in a dungeon level."),
+		 "empire a day. Only works in a dungeon level, and not while a walk is "
+		 "under way: there is no leaving a dungeon early."),
 	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
 		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 		{
@@ -4862,6 +4879,14 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEnterDungeon(
 			{
 				Ar.Log(TEXT("This level is not a dungeon, so there is no floor "
 							"to walk. Open L_Dungeon and press Play."));
+				return;
+			}
+
+			// NOT MID-WALK: entering another dungeon would leave this one unfinished, and there is no leaving a
+			// dungeon early. Issue #2733 slice 3, ruled 2026-11-17 (Q4); until then the walk was left first.
+			if (Mode->EmpireDungeonId != INDEX_NONE)
+			{
+				Ar.Log(FCataclysmWalkFromTheScreen::NoLeavingEarlyText(Mode->EmpireDungeonId));
 				return;
 			}
 
@@ -4937,8 +4962,9 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEnterDungeon(
 
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmLeaveDungeon(
 	TEXT("Cataclysm.LeaveDungeon"),
-	TEXT("Stop walking the dungeon without clearing it. Its timer starts again "
-		 "and it stays on the map."),
+	TEXT("Refused while a walk is under way: there is no leaving a dungeon early. "
+		 "A walk ends by clearing its last floor or by dying in it. Until issue "
+		 "#2733 this stopped the walk without clearing the dungeon."),
 	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
 		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 		{
@@ -4956,11 +4982,11 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmLeaveDungeon(
 				return;
 			}
 
-			const int32 Was = Mode->EmpireDungeonId;
-			Mode->LeaveEmpireDungeon();
-
-			Ar.Logf(TEXT("Left dungeon %d. It is still standing and its timer is "
-						 "counting again."), Was);
+			// NO LEAVING A DUNGEON EARLY. The design: "There is no town portal and no way out except clearing the
+			// dungeon or dying." Issue #2733 slice 3, ruled by the coordinating session on 2026-11-17 (Q4): the same
+			// sentence as a Walk press mid-walk, and no override. Until then this left the walk, its days run and the
+			// dungeon still standing.
+			Ar.Log(FCataclysmWalkFromTheScreen::NoLeavingEarlyText(Mode->EmpireDungeonId));
 		}));
 
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowResistances(
