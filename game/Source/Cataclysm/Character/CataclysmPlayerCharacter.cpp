@@ -2157,9 +2157,10 @@ void ACataclysmPlayerCharacter::Revive()
 	{
 		const FCataclysmWhatDeathEnded Ended = Cataclysm->ClearWhatDeathEnds();
 
-		// AT `Log` AND NOT `Verbose`, for the reason the death line in `HandleDeath`
-		// gives (that line is at `Display` since issue #2749): a respawn is rare, and what it cleared is what somebody
-		// reading a play session after a death needs to know.
+		// AT `Log` AND NOT `Verbose`, for the reason the death line in
+		// `HandleDeath` gives (that line is at `Display` since issue #2749): a
+		// respawn is rare, and what it cleared is what somebody reading a play
+		// session after a death needs to know.
 		UE_LOG(LogCataclysm, Log,
 			   TEXT("%s stood back up. The respawn removed %d timed effects, %d "
 					"of them cooldowns, and %d stacks, cleared %.0f health owed, "
