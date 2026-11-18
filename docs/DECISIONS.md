@@ -165,16 +165,19 @@ anchor counted once first. ITS PREDICTION WAS STATED IN THIS SESSION BEFORE THE 
 
 ### Registered before the run
 
-**THE BASE.** Window echoes-spread-w1's whole suite at `913861d9f`: "4795 tests performed, 4795 succeeded, 0 failed. 47
-skipped part of what they check" (this log, the #2740 entry). `git diff --stat 913861d9f 07f7e3bf6 -- game/` prints
-nothing, so its `game/` tree is this branch's base. Group counts are its engine log's "Test Completed" lines, counted by
-prefix ignoring case (`bold-engelbart-a00372/.claude/windows/e2740_suite_engine_913861d9.log`). **If `development`
-moves before the window, the branch is rebased and these are registered again against the base the coordinating
-session names.**
+**THE BASE, REGISTERED AGAIN AFTER A REBASE.** First registered at 4801 against window echoes-spread-w1's 4795 at
+`913861d9f`, whose `game/` tree was `07f7e3bf6`'s. After the three builds below, `development` moved to `8e177d8b2`,
+the empire tree's slice 1a (#2746, 12 Unreal tests added), as the coordinating session said it would, and the branch was
+rebased onto it; the only file both changed is this log. The base is now window empire-tree-1a-w2's whole suite at
+`8c75df8a3`: "4807 tests performed, 4807 succeeded, 0 failed. 47 skipped part of what they check" (the #2741 slice 1a
+entry below). `git diff --stat 8c75df8a3 8e177d8b2 -- game/` prints nothing, so its `game/` tree is this branch's base.
+Group counts are its engine log's "Test Completed" lines, counted by prefix ignoring case
+(`laughing-curran-69e4bb/.claude/windows/t2741a2_suite_engine_8c75df8a.log`, 4807 lines, every one a success); each
+group below counts the same there as at `913861d9f`.
 
 | Figure | Registered |
 | :-- | :-- |
-| Whole Unreal suite | 4795 + 6 = **4801**, 47 skipped halves, 0 test saves left behind |
+| Whole Unreal suite | 4807 + 6 = **4813**, 47 skipped halves, 0 test saves left behind |
 | `Cataclysm.SaveLoad.` alone | 77 + 2 = **79** |
 | `Cataclysm.CharacterLevel.` alone | 8 + 1 = **9** |
 | `Cataclysm.PlayLoop.` alone | 7 + 1 = **8** |
@@ -199,7 +202,8 @@ Each restored half: the same test, 1 of 1 succeeded.
 
 ### Compiled (phase 2)
 
-No rebase: `origin/development` was still `07f7e3bf6`, the branch's base. Built at `d8698b913` by
+Built at `d8698b913`, on `development` `07f7e3bf6`, before the rebase onto `8e177d8b2` (registered above); the
+window's own build compiles the rebased branch. Built by
 `.claude/windows/compile_l2744.py`, with no editor open, under the Unreal lock `level1-compile`, which the coordinating
 session gave for these builds after window empire-tree-1a-w2 released the lock at 12:21 MST; released after each run
 ("level1-compile released the Unreal editor"), the tracked tree clean and HEAD unchanged after each.
