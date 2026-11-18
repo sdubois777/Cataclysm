@@ -18,8 +18,10 @@ and `CataclysmWinningTheRunTests.cpp`, and comments on two in `CataclysmEmpireRu
 
 ### SAID FIRST
 
-- **COMPILED, NOT RUN (phase 1).** Written with no build. No Unreal test and no C++ guard proof has run. The Python
-  checks ran and all five are proved (below).
+- **COMPILED, NOT RUN.** Phase 1 was written with no build. Phase 2 compiled it three ways -- at the head, every
+  changed `.cpp` alone, and in its unity file -- with no error and no warning (below). No Unreal test and no C++ guard
+  proof has run: everything under "Registered before the run" is a prediction for a window. The Python checks ran,
+  and all five new ones are proved (below).
 - **THE SIMULATION STILL LANDS ITS OPENING WAVE ON DAY 1, AND THIS DOES NOT CHANGE IT**, by the ruling below. The game
   and the model now differ by one day in when the first wave arrives. A test holds the model's day 1, so a change to it
   is noticed (`test_the_model_still_lands_its_opening_wave_on_day_1`).
@@ -123,6 +125,94 @@ With `tools/prove_guard.py`, each break narrow, `.claude/windows/prove_python_27
 Each summary read "PROVED: 1 failed, 4 passed | restored: 5 passed". **P5's first break did not prove, and the fault
 was the break:** `next_surge_day + 1` is still 1 on day 1, so the model's wave still landed on day 1 and the test
 rightly passed ("5 passed"). The break was corrected to `+ 2` and then proved.
+
+### Phase 2, 2026-11-17: compiled, reviewed and audited
+
+**Approval.** The coordinating session approved the plan as written on 2026-11-17, and ruled: the run after a win gets
+an opening surge too, with a test on that path (the `Cataclysm.WinningTheRun.` assertion above); every consequence is
+recorded as a consequence (the "What moves" paragraph above); and this session files the simulation issue after slice
+1's window passes, citing the game's measured behaviour, without changing the simulation.
+
+**No rebase was needed.** The branch is on `development` `c72ffe64e`, still its head.
+
+**Compile.** Three builds, none with an error or a warning line in UnrealBuildTool's log:
+
+| Build | Its line |
+|---|---|
+| The head `04f94caea`, the tree clean | "Build: Succeeded - 68 actions, 61 files compiled". The worktree's objects were older than `development`, so this compiled much besides the branch. `CataclysmEmpireRun.cpp` and `CataclysmEmpireRunTests.cpp` compiled alone here: the `CataclysmEmpire` module has no unity files (one object per source file). One test file, `CataclysmSaveLoadTests.cpp`, was edited while this build ran (the load test's slot deletion, `a54810729`), so this build's copy of it is not counted; the two builds below compiled it |
+| Every changed `.cpp` alone (HEAD detached and reset to `development`, the branch's files on disk, the makefile set aside) | "Build: Succeeded - 20 actions, 15 files compiled": UnrealBuildTool's log names `CataclysmEmpireMapLayout.cpp`, `CataclysmDeathCostTests.cpp`, `CataclysmEmpireScreenTests.cpp`, `CataclysmGameInstance.cpp`, `CataclysmPlayerCharacter.cpp`, `CataclysmSaveLoadTests.cpp`, `CataclysmWinningTheRunTests.cpp` and the eight unity files regrouped without them |
+| The unity files (the head `a54810729` restored, the makefile set aside) | "Build: Succeeded - 13 actions, 8 files compiled: Module.Cataclysm.11.cpp, Module.Cataclysm.12.cpp, Module.Cataclysm.19.cpp, Module.Cataclysm.21.cpp, Module.Cataclysm.36.cpp, Module.Cataclysm.41.cpp, Module.Cataclysm.9.cpp, Module.Cataclysm.42.cpp": 9 the player character, 11 the map layout, 12 the game instance, 19 the death-cost tests, 21 the empire screen tests, 36 the win tests, 41 the save-load tests; 42 holds none of them and was recompiled because the regrouping moved files between unity files |
+
+**Python, phase 2.** The whole suite at `a54810729`: "7443 passed, 9 skipped in 194.02s", exit 0; its JUnit
+file says 7452 tests, 0 failures, 0 errors, 9 skipped. `ruff check .` (the `.claude` scripts left out): "All
+checks passed!"
+
+**Review.**
+
+- **Nothing in play announced the first wave by its day-1 report.** The only reader of `FCataclysmDayReport::bSurged`
+  outside the empire layer is `Cataclysm.EmpireAdvance`'s day-by-day print, which now does not print the opening wave;
+  the new log line at the run's start says what landed, and `Cataclysm.EmpireBegin` prints the run's description, "Day
+  0. 12 dungeons standing."
+- **No first-wave dungeon resolves on day 1,** which the empire test's "so twelve stand on day 1" assumes: the
+  shortest timer is `(ResolveBaseDays + 1 x ResolveFloorRatio) x (1 - ResolveJitter)` = (10 + 1.6) x 0.85 = 9.86 days.
+- **The two runs agree on day 1 by draws, not by luck.** `ShrinkHollows` and `ApplySiegeDamage` draw nothing, so the
+  Hollow and Siege differences above cannot move a stream; the test compares all three streams on day 1.
+- **The loaded run is the saved one, not a new run.** The test asks `LoadThePendingCharacter` for `Loaded`, which
+  `LoadedWithANewRun` is not; a new run would also stand twelve, which is why the test compares each dungeon's city,
+  depth, modifiers and timer as well as the count.
+- **No save is left behind** by the new tests: the doors test has no world and writes nothing; the other two delete the
+  scene writer's slots by name on every way out.
+
+**Audit of every fixed number the new and changed tests assert.**
+
+| Figure | Where it comes from |
+|---|---|
+| 12 | `UCataclysmSurgeScheduler::OpeningDungeonsPerSurge`; Standard multiplies by 1 |
+| 15 | trunc(12 x 1.25), `HereticDungeonMultiplier`; no city has a dungeon cap without an upgrade (`RoomLeftOn`), so all land |
+| 10 | trunc(8 x 1.25): `DungeonsPerSurge` after the opening wave; Accelerating adds no count growth (only Swelling and Both do) |
+| 90, 91 | `IntervalDays`; `GapAfterThisSurge` at escalation 0 is 90 in every mode, from day 0 or day 1 |
+| 12, the next dungeon number | the wave's numbers are 0 to 11 (`FirstDungeonId + Index` from `NextDungeonId` 0) |
+| tier 3's modifiers | read from `UCataclysmDungeonModifierRules::CountFor(tier, sub-type)`, not written out |
+| 5 days, the day-0 death | `DeathDayCostStandard`, passed to `NoteDeath` by the test |
+| Starting states | `Begin`'s day 0, nothing standing and no surge fired are asserted as set-up in the empire test; the modifier table loading is a CONTROL in two tests |
+
+### Registered before the run
+
+**The base.** Window stalker-rows-w1's whole-suite run at `cde163c70` performed 4761 tests, 47 skipped halves, 0 test
+saves left behind; `git diff --stat cde163c70 origin/development -- game/` prints nothing, so that is this branch's
+base. Per-group counts are its engine log's "Test Completed" lines, by prefix, ignoring case.
+
+**The whole suite: 4761 + 4 = 4765 performed, 4765 succeeded, 0 failed; 47 skipped halves; 0 test saves left
+behind; "Declared: 4765".**
+
+**Each group alone,** by its prefix (each ends in a dot; none is a case-insensitive prefix of another of the 310):
+
+| Prefix | Base | Registered | Why it runs alone |
+|---|---|---|---|
+| `Cataclysm.FirstSurge.` | 0 | 3 | new |
+| `Cataclysm.EmpireRun.` | 68 | 69 | one new |
+| `Cataclysm.EmpireScreen.` | 14 | 14 | one changed |
+| `Cataclysm.DeathCost.` | 9 | 9 | one changed |
+| `Cataclysm.WinningTheRun.` | 11 | 11 | one changed |
+| `Cataclysm.SaveLoad.` | 76 | 76 | runs begun through the game instance, saved and loaded |
+| `Cataclysm.SaveWriter.` | 25 | 25 | runs begun through the game instance and written |
+| `Cataclysm.EmpireRunTier.` | 5 | 5 | runs begun through the game instance |
+| `Cataclysm.CataclysmDraw.` | 6 | 6 | runs begun through the game instance |
+| `Cataclysm.EmpirePoints.` | 16 | 16 | a character's run begun through the game instance |
+| `Cataclysm.BossOnTheMap.` | 5 | 5 | reads the death line |
+
+**Three C++ guard proofs,** with `prove_cpp_guard`, the engine log of each half kept (`.claude/windows/prove_b2733.py`):
+
+| Proof | Break | Prefix | Predicted broken half | Restored half |
+|---|---|---|---|---|
+| C1 | `const FCataclysmDayReport Opening = EmpireRun->FireOpeningSurge();` becomes `const FCataclysmDayReport Opening;` (`CataclysmGameInstance.cpp`) | `Cataclysm.FirstSurge.` | 3 performed, 0 succeeded, 3 failed: all three | 3 of 3 |
+| C2 | `Today != 0 ||` taken out of `FireOpeningSurge`'s refusal (`CataclysmEmpireRun.cpp`) | `Cataclysm.EmpireRun.` | 69 performed, 68 succeeded, 1 failed: `TheOpeningSurgeFiresOnDayZeroOnceWithTheWaveDayOneWouldHaveBrought`, on "nor does one whose clock is past day 0 with none fired" and "which stands nothing" | 69 of 69 |
+| C3 | `Run->LastDeathDaysCost <= 0)` becomes `Run->LastDeathDay <= 0)` (`CataclysmEmpireMapLayout.cpp`) | `Cataclysm.DeathCost.` | 9 performed, 8 succeeded, 1 failed: `TheLineSaysTheDayTheDungeonTheDaysAndTheCitiesThatFell`, on "a death on day 0" | 9 of 9 |
+
+**Not proved in C++, and why.** That a restored run does not fire the opening surge rests on `RunInto` not calling it,
+which the Python check P2 guards, and on `FireOpeningSurge` refusing a run that has fired, the second clause of the
+refusal C2 breaks. A break that made `RunInto` fire it would not fail the load test, because `RunInto` writes the
+record over whatever the wave did, so no C++ proof of it is registered.
 
 ---
 
