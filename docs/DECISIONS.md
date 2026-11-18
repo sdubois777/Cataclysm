@@ -201,9 +201,14 @@ Demonic" was already wrong (63 were shaped) and says 99 now.
 
 Each C++ anchor occurs once in its file (counted). The breaks were not compiled.
 
-**Python guards, run with `tools/prove_guard.py` in a `git archive` copy of the branch:**
+**Python guards, run with `tools/prove_guard.py` in a `git archive` copy of `96e9b8184`, removed afterwards; each
+anchor counted once in its file first; each `result.proved` True and `crashed` False:**
 
-Recorded in the commit after the one they were run on.
+| Break | Command | Printed | Named failure |
+| :-- | :-- | :-- | :-- |
+| P1, the designed-stun check back to `Effect` equal to `Stun` (`    assert "Stun" in named, (` to `    assert stated.get("Effect") == "Stun", (`) | `python -m pytest tools/tests/test_stun_durations_are_stated.py` | "PROVED: 1 failed, 26 passed in 0.26s \| restored: 27 passed in 0.22s" | `test_each_stunning_skill_states_its_duration_as_data_too[Celestial_Warhammer_Ultimate-1.5]` |
+| P2, Undertow back to a pulse a second, in `WeaponSkills.csv` (`Radius=8; Interval=6; ForcedMovement=Pull` to `Interval=1`) | `python -m pytest tools/tests/test_stalker_kit_rows.py` | "PROVED: 1 failed, 8 passed in 0.09s \| restored: 9 passed in 0.05s" | `test_an_aura_that_displaces_every_pulse_is_tuned_or_worded_for_the_halving` |
+| P3, Gravepoint promising every heal denied, in `WeaponSkills.csv` (`its regeneration and leech restore nothing` to `it cannot be healed`) | the same | "PROVED: 1 failed, 8 passed in 0.09s \| restored: 9 passed in 0.05s" | `test_no_row_laying_necrosis_promises_that_every_heal_is_denied` |
 
 ### Python of record
 
