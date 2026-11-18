@@ -347,6 +347,54 @@ public:
 	static FString LastDeathLine(const UCataclysmEmpireRun* Run);
 
 	/**
+	 * What the player's last clear of a dungeon of the empire did, from what the run kept of it
+	 * (`UCataclysmEmpireRun::NoteClear`): "Day 9: you cleared the dungeon on Outpost (-3,0). The walk's 4 days ran."
+	 * Issue #2733 slice 3, ruled by the coordinating session on 2026-11-17 (Q6): a walk's end returns the player to the
+	 * capital's map, and the map says what the walk did, as `LastDeathLine` says what a death cost.
+	 *
+	 * "a dungeon" when the clear's dungeon had no name. A walk that owed no whole day says so. A day count of one is
+	 * "1 day".
+	 *
+	 * @param Run the run to describe. Null, one that has not begun, and one with no clear in it answer an empty string.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString LastClearLine(const UCataclysmEmpireRun* Run);
+
+	/** How many cities the summary of the days away names, of those hit and of those fallen, before "and N more". */
+	static constexpr int32 DaysAwayCitiesNamed = 3;
+
+	/**
+	 * What the days of the last walk did while the player was away, from what the run kept of them
+	 * (`UCataclysmEmpireRun::LastDaysAway`): "While you were away, from day 84 to day 118: Bulwark (1,2) lost 1000
+	 * defence and 5000 people, Outpost (-3,0) lost 751 defence and 2400 people; Bulwark (1,2) and Outpost (-3,0) fell;
+	 * a surge brought 6 dungeons." Issue #2733 slice 3, ruled by the coordinating session on 2026-11-17 (Q6), from the
+	 * owner's aim of seeing, back on the empire map, that time has passed and other dungeons have resolved.
+	 *
+	 * THE FIGURES ARE THE DAYS' OWN, totalled per city from each day's `FCataclysmDayReport::Hits`, and written as the
+	 * map writes a city's defence and people elsewhere, "%.0f". AT MOST `DaysAwayCitiesNamed` CITIES ARE NAMED in each
+	 * part, the rest counted, so the line fits the map. "nothing was hit" when no hit took anything. No fallen part
+	 * and no surge part when there was none. "While you were away no day passed." for a walk that cost no whole day.
+	 *
+	 * @param Run the run to describe. Null, one that has not begun, and one in which no walk has ended answer an empty
+	 *            string.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString DaysAwayLine(const UCataclysmEmpireRun* Run);
+
+	/**
+	 * The second line of the map's surge label, for as long as nothing replaces it: what the last walk's end did. The
+	 * clear's line (`LastClearLine`) when that walk ended in a clear, then `DaysAwayLine`. A walk that ended in a death
+	 * has its death's line on the first line already, `LatestEventLine`'s. Issue #2733 slice 3 (Q6).
+	 *
+	 * A SECOND LINE OF A LABEL THE MAP ALREADY HAS, so no Widget Blueprint gains a label and no interface asset is
+	 * generated again.
+	 *
+	 * @param Run the run to describe. Empty when no walk has ended in it.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString ReturnLine(const UCataclysmEmpireRun* Run);
+
+	/**
 	 * The one line the empire screen shows for the latest thing that happened to the empire: `LastDeathLine` while
 	 * the death is at least as recent as the last hit, the last fall's move and the opening of the Cataclysm boss
 	 * dungeon; `CataclysmDungeonOpenedLine` while the opening is at least as recent as the last hit and the last

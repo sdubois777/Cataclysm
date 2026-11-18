@@ -282,7 +282,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWalkFromTheScreenCityPressTest,
  * A fresh run (day 0, nothing owed) with two dungeons placed by hand on city 0 at the starting day a floor: 701, 12
  * floors, and 702, 20. The screen's Walk under 701 enters it: the game mode walks 701, 12 floors deep, on floor 1,
  * owing the one day arriving costs, on day 0 still, with no refusal. Then Walk under 702 while 701 is being walked
- * leaves 701 -- its one owed day runs, so day 1 -- and enters 702, owing one day; 701 stays on the map. Prints
+ * is refused, since issue #2733 slice 3 ("There is no leaving a dungeon early"): still walking 701, 12 floors deep,
+ * on day 0, owing its one day, both dungeons standing, and the refusal shown. Until then the press left 701, ran its
+ * day and entered 702; those six assertions changed by the coordinating session's ruling of 2026-11-17. Prints
  * "WALK PRESS".
  */
 bool FCataclysmWalkFromTheScreenCityPressTest::RunTest(const FString& Parameters)
@@ -332,21 +334,24 @@ bool FCataclysmWalkFromTheScreenCityPressTest::RunTest(const FString& Parameters
 	TestEqual(TEXT("owing the one day arriving costs"), Run->DaysOwed(), 1);
 	TestEqual(TEXT("and running none of it while inside"), Run->Day(), 0);
 
-	// AND WALK UNDER ANOTHER DUNGEON, MID-WALK, LEAVES THE FIRST, as `Cataclysm.EnterDungeon` typed mid-walk does.
+	// AND WALK UNDER ANOTHER DUNGEON, MID-WALK, IS REFUSED: there is no leaving a dungeon early. Issue #2733 slice 3,
+	// ruled 2026-11-17; until then it left the first, as `Cataclysm.EnterDungeon` typed mid-walk did, which refuses too.
 	Screen->ClickWalkForTests(702);
 	AddInfo(FString::Printf(TEXT("WALK PRESS: after 702, walking %d, floor %d, %d floors, day %d, owing %d, refusal \"%s\""),
 							Scene.Mode->EmpireDungeonId, Scene.Mode->FloorNumber, Scene.Mode->TotalFloors, Run->Day(),
 							Run->DaysOwed(), *Screen->LastRefusal()));
 
-	TestEqual(TEXT("Walk under a second dungeon mid-walk enters the second"), Scene.Mode->EmpireDungeonId, 702);
-	TestEqual(TEXT("with no refusal shown"), Screen->LastRefusal(), FString());
-	TestEqual(TEXT("as deep as it is"), Scene.Mode->TotalFloors, 20);
-	TestEqual(TEXT("leaving the first ran the one day it owed"), Run->Day(), 1);
-	TestEqual(TEXT("and the second owes the day arriving costs"), Run->DaysOwed(), 1);
-	TestNotNull(TEXT("and the first, left uncleared, is still on the map"), Run->FindDungeon(701));
+	TestEqual(TEXT("Walk under a second dungeon mid-walk is refused: the first is still walked"),
+			  Scene.Mode->EmpireDungeonId, 701);
+	TestEqual(TEXT("and the refusal says there is no leaving a dungeon early"), Screen->LastRefusal(),
+			  FCataclysmWalkFromTheScreen::NoLeavingEarlyText(701));
+	TestEqual(TEXT("still as deep as the first"), Scene.Mode->TotalFloors, 12);
+	TestEqual(TEXT("no day has run"), Run->Day(), 0);
+	TestEqual(TEXT("still owing the first's one day"), Run->DaysOwed(), 1);
+	TestNotNull(TEXT("and the second still stands, not entered"), Run->FindDungeon(702));
 
-	// AND NO EMPIRE POINTS, since issue #52: only `ClearDungeon` awards them, and leaving a walk clears nothing.
-	TestEqual(TEXT("and leaving it uncleared awarded no empire points"), Run->LastEmpirePointsAwarded, 0.0);
+	// AND NO EMPIRE POINTS, since issue #52: only `ClearDungeon` awards them, and a refused press clears nothing.
+	TestEqual(TEXT("and the refused press awarded no empire points"), Run->LastEmpirePointsAwarded, 0.0);
 	return true;
 }
 
@@ -415,8 +420,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWalkFromTheScreenRefusalTest,
  * is not a dungeon...". On the city screen, with a game mode that has no run of its own, `EnterEmpireDungeon`'s false
  * is shown as "Dungeon 700 could not be entered."; with the run, a dungeon not standing is "No dungeon 999 is standing
  * on the map.". CONTROL: the same press on 700 then enters it. A floor down, owing two days on day 0, Walk on 700 again
- * is refused, "You are walking dungeon 700 now.", and the player stays on floor 2 with both days owed and none run.
- * Prints "WALK REFUSED".
+ * is refused with `NoLeavingEarlyText` -- "You are walking dungeon 700 now." until issue #2733 slice 3 gave every
+ * press mid-walk one sentence -- and the player stays on floor 2 with both days owed and none run. Prints
+ * "WALK REFUSED".
  */
 bool FCataclysmWalkFromTheScreenRefusalTest::RunTest(const FString& Parameters)
 {
@@ -501,7 +507,7 @@ bool FCataclysmWalkFromTheScreenRefusalTest::RunTest(const FString& Parameters)
 	AddInfo(FString::Printf(TEXT("WALK REFUSED: walking it \"%s\", floor %d, day %d, owing %d"), *Screen->LastRefusal(),
 							Scene.Mode->FloorNumber, Run->Day(), Run->DaysOwed()));
 	TestEqual(TEXT("pressing Walk on the dungeon being walked is refused, and says why"), Screen->LastRefusal(),
-			  FString(TEXT("You are walking dungeon 700 now.")));
+			  FCataclysmWalkFromTheScreen::NoLeavingEarlyText(700));
 	TestEqual(TEXT("and the player is still on floor 2"), Scene.Mode->FloorNumber, 2);
 	TestEqual(TEXT("and still owes the walk's two days"), Run->DaysOwed(), 2);
 	TestEqual(TEXT("and none of them has run"), Run->Day(), 0);

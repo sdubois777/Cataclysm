@@ -84,6 +84,8 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Player/CataclysmGameInstance.h"
+// For `CapitalMap`, the level a walk's end returns to. Issue #2733 slice 3.
+#include "Interface/CataclysmCharacterSelectWidget.h"
 #include "HAL/IConsoleManager.h"
 #include "Save/CataclysmSaveRecords.h"
 #include "Save/CataclysmSaveWriter.h"
@@ -1399,6 +1401,95 @@ void ACataclysmDungeonGameMode::StartPlay()
 		// three reasons. Ruled 2026-09-26.
 		Events->OnCleansed.AddUObject(this, &ACataclysmDungeonGameMode::OnSomethingWasCleansed);
 	}
+
+	// AND THE WALK THE CAPITAL SENT THE CHARACTER TO MAKE, if the load settled in the parent's `StartPlay`. LAST, so the
+	// free-play floor this level begins on is built, bound and placed before the dungeon replaces it. Issue #2733
+	// slice 3.
+	EnterThePendingWalkIfReady();
+}
+
+void ACataclysmDungeonGameMode::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
+{
+	// THE PARENT LOADS THE CHARACTER WHEN IT COULD NOT IN `StartPlay`; then the walk, as `StartPlay` asks it.
+	Super::HandleStartingNewPlayer_Implementation(NewPlayer);
+	EnterThePendingWalkIfReady();
+}
+
+bool ACataclysmDungeonGameMode::EnterThePendingWalkIfReady()
+{
+	UWorld* World = GetWorld();
+	UCataclysmGameInstance* Instance = World ? Cast<UCataclysmGameInstance>(World->GetGameInstance()) : nullptr;
+	if (!Instance || Instance->PendingWalkDungeonId == INDEX_NONE)
+	{
+		return false;
+	}
+
+	// NOT WHILE THE CHARACTER IT CARRIED IS STILL TO LOAD: `LoadThePendingCharacter` clears what it loads first.
+	if (Instance->PendingCreation.bPending || Instance->PendingCharacterId.IsValid())
+	{
+		return false;
+	}
+
+	// NOT AFTER A REFUSED LOAD, which has asked for the front end: the walk is dropped with the character.
+	if (!FrontEndRequested().IsEmpty())
+	{
+		Instance->PendingWalkDungeonId = INDEX_NONE; // A refused arrival's: no walk.
+		return false;
+	}
+
+	// AND NOT BEFORE THE WRITER WRITES AND THE PLAYER STANDS, the load's own two conditions.
+	UCataclysmSaveWriter* Writer = UCataclysmSaveWriter::In(World);
+	APlayerController* Controller = World->GetFirstPlayerController();
+	if (!Writer || !Writer->IsWriting() || !Controller || !Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()))
+	{
+		return false;
+	}
+
+	// CLEARED BEFORE IT IS ENTERED, so nothing can enter it a second time.
+	const int32 DungeonId = Instance->PendingWalkDungeonId;
+	Instance->PendingWalkDungeonId = INDEX_NONE; // A pending walk's: cleared before it is entered.
+
+	// A LEVEL ALREADY WALKING ONE -- which a load that resumed a walk would leave, and a hand-over, saved with no
+	// dungeon, never does -- KEEPS IT: the pending walk is dropped rather than the walk under way left, which there is
+	// no leaving early. An error, because nothing in play should reach it.
+	if (EmpireDungeonId != INDEX_NONE)
+	{
+		UE_LOG(LogCataclysm, Error,
+			   TEXT("The character arrived to walk dungeon %d, and this level already walks dungeon %d: the pending walk "
+					"is dropped."), DungeonId, EmpireDungeonId);
+		return false;
+	}
+
+	// A DUNGEON THAT CANNOT BE ENTERED -- which the capital's checks leave no way to reach, since the record just
+	// written holds it -- sends the character back to the capital rather than leaving it on a floor with no walk.
+	const int32 FloorChangesBefore = Writer->FloorChangesNoted();
+	if (!EnterEmpireDungeon(DungeonId))
+	{
+		UE_LOG(LogCataclysm, Error,
+			   TEXT("The character arrived to walk dungeon %d and it could not be entered: back to the capital."),
+			   DungeonId);
+		ReturnToTheCapital();
+		return false;
+	}
+
+	// WRITTEN AT ONCE, so a quit before the clock's next write continues the walk and not the capital. Floor 1 of the
+	// dungeon is usually the floor this level already held, so `SetFloor` raised nothing and this raises the change;
+	// when the level began on another floor -- `Cataclysm.DungeonFloor` set -- `SetFloor` already raised it, and this
+	// does not raise it a second time. Either way, once. Exempt from the once-a-frame rule since window travel-w1's
+	// first run (2026-11-18), which found it skipped behind an earlier write in the same frame.
+	if (Writer->FloorChangesNoted() == FloorChangesBefore)
+	{
+		Writer->NoteTrigger(ECataclysmSaveTrigger::ChangedFloor); // An arrival's: the walk written at once.
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("The character arrived from the capital and is walking dungeon %d, floor 1 of %d."),
+		   DungeonId, EmpireDungeonFloors());
+	return true;
+}
+
+bool ACataclysmDungeonGameMode::ReturnToTheCapital()
+{
+	UE_LOG(LogCataclysm, Log, TEXT("The walk is over: back to the capital."));
+	return TravelTo(UCataclysmCharacterSelectWidget::CapitalMap); // A walk's end: back to the capital.
 }
 
 int32 ACataclysmDungeonGameMode::ChooseSeed(int64 Entropy) const
@@ -15254,7 +15345,12 @@ bool ACataclysmDungeonGameMode::GoDownOneFloor(APawn* PawnToMove)
 	// capital hub is issue #48. Issue #1092.
 	if (IsOnTheLastFloor())
 	{
-		ClearEmpireDungeon();
+		// THE LAST FLOOR'S STAIRS CLEAR THE DUNGEON, AND THE WALK IS OVER: back to the capital, once the clear, the
+		// walk's days and any win have run. Issue #2733 slice 3; until then the player stayed on the last floor.
+		if (ClearEmpireDungeon())
+		{
+			ReturnToTheCapital();
+		}
 		return false;
 	}
 
@@ -16719,12 +16815,14 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	{
 		// THE DAYS THE WALK SPENT RUN NOW, IN ORDER, the owner's decision of 2026-10-24: "all of the resolutions and
 		// day/timer updates happen once a player leaves a dungeon". Every way out comes through here: a clear,
-		// after `ClearDungeon` credited it, so the clear counts first; a death, after its resolve and before its own
-		// days; and `Cataclysm.LeaveDungeon`.
+		// after `ClearDungeon` credited it, so the clear counts first; and a death, after its resolve and before its
+		// own days. `Cataclysm.LeaveDungeon` was a third until issue #2733 slice 3 made it refuse mid-walk; a walk left
+		// for another by `EnterEmpireDungeon` is the one way left, which no player's door reaches.
 		//
 		// BEFORE THE CLOCK IS TOLD, so the dungeon walked keeps its timer paused and a Hollow walked keeps its
 		// floors through days that were spent inside it. Ruled by the coordinating session, 2026-10-24.
-		DaysSpentWalking.Append(Run->SettleDaysOwed());
+		LastWalksDays = Run->SettleDaysOwed(); // A walk's end: its days' reports, for the summary of the days away.
+		DaysSpentWalking.Append(LastWalksDays);
 
 		if (Run->Clock)
 		{
@@ -24923,6 +25021,14 @@ bool ACataclysmDungeonGameMode::ClearEmpireDungeon()
 	// days still falls. The run cannot have lost this dungeon while the player was inside it, so the case issue
 	// #2414 handled here, a clear that credited nothing, was removed.
 	const int32 Cleared = EmpireDungeonId;
+
+	// WHAT THE CLEAR'S LINE SAYS, READ BEFORE THE CLEAR: it takes the dungeon off the map, and its name with it. The
+	// day the walk has reached and the whole days it owes, as a death's line reads them. Issue #2733 slice 3 (Q6).
+	const FString NameOfTheDungeon = Run->NameOfDungeon(Cleared);
+	const int32 DaysTheWalkOwed = Run->DaysOwed();
+	const int32 DayOfTheClear = Run->Day() + DaysTheWalkOwed;
+	const int32 DayTheWalkLeft = Run->Day(); // The run's day does not move while the player is inside.
+
 	const bool bCleared = Run->ClearDungeon(EmpireDungeonId);
 
 	// AND THE DEFEAT'S EMPIRE UPGRADE POINTS GO INTO THE ACCOUNT'S BANK, measured by `ClearDungeon` at the defeat and
@@ -24935,9 +25041,18 @@ bool ACataclysmDungeonGameMode::ClearEmpireDungeon()
 	if (bCleared)
 	{
 		BankTheDefeatsEmpirePoints(*Run, Cleared);
+		Run->NoteClear(DayOfTheClear, NameOfTheDungeon, DaysTheWalkOwed); // A clear's: for the map's line.
 	}
 
+	LastWalksDays.Reset();
 	LeaveEmpireDungeon();
+
+	// AND WHAT THOSE DAYS DID, for the map's summary of the days away: the walk's own days, which leaving has just run.
+	// Issue #2733 slice 3 (Q6). Noted on the run walked; a win's next run, begun below, starts with none.
+	if (bCleared)
+	{
+		Run->NoteDaysAway(DayTheWalkLeft, Run->Day(), LastWalksDays, /*bEndedInAClear*/ true);
+	}
 
 	// AND A CLEAR THAT WON THE RUN -- the Cataclysm's own dungeon, cleared -- ENDS IT, after the walk is left, which ran
 	// none of its owed days: a win drops them (`UCataclysmEmpireRun::ClearDungeon`). The character's half -- the
@@ -25070,6 +25185,7 @@ bool ACataclysmDungeonGameMode::EndTheDungeonForADeath()
 	const bool bItResolves = DungeonDiedIn != nullptr && DungeonDiedIn->Resolves();
 	const int32 DaysTheWalkOwed = Run->DaysOwed();
 	const int32 DayOfTheDeath = Run->Day() + DaysTheWalkOwed;
+	const int32 DayTheWalkLeft = Run->Day(); // For the summary of the days away, issue #2733 slice 3.
 
 	// AND WHAT IT WAS CALLED, for the line that says what the death cost (issue #41, 2026-11-02). Read here for the
 	// reason above: after the resolve an ordinary dungeon is off the map and has no name to read. Empty for a number
@@ -25091,6 +25207,7 @@ bool ACataclysmDungeonGameMode::EndTheDungeonForADeath()
 	// the empire told the clock the player was out of it. A Quest dungeon or a
 	// Dungeon City is still on the map; its timer stays paused through the
 	// walk's days, which were spent inside it, and counts again from here.
+	LastWalksDays.Reset();
 	LeaveEmpireDungeon();
 
 	// 3. AND THE DAYS ARE PAID, whole days through the same call every other
@@ -25104,7 +25221,15 @@ bool ACataclysmDungeonGameMode::EndTheDungeonForADeath()
 	// THROUGH THEM, untouched by the death, and hits its host city if it runs
 	// out inside them.
 	const int32 DaysTheDeathCost = Run->DeathDayCost();
-	Run->AdvanceDays(DaysTheDeathCost);
+	const TArray<FCataclysmDayReport> DaysTheDeathRan = Run->AdvanceDays(DaysTheDeathCost);
+
+	// AND WHAT ALL OF IT DID, for the map's summary of the days away: the resolve's report, the walk's days and the
+	// death's own days, every report kept. Issue #2733 slice 3, ruled by the coordinating session on 2026-11-17 (Q6).
+	TArray<FCataclysmDayReport> DaysAway;
+	DaysAway.Add(WhatTheDeathResolved);
+	DaysAway.Append(LastWalksDays);
+	DaysAway.Append(DaysTheDeathRan);
+	Run->NoteDaysAway(DayTheWalkLeft, Run->Day(), DaysAway, /*bEndedInAClear*/ false);
 
 	// 4. AND THE RUN KEEPS WHAT IT COST, the figures above and nothing worked out again: the day the walk had
 	// reached, the dungeon's name, the walk's days, the death's days, and the cities the resolve felled. The empire

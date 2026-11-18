@@ -97,6 +97,47 @@ public:
 
 	virtual void StartPlay() override;
 
+	/** And, once the player has started, the walk the capital sent the character to make. Issue #2733 slice 3. */
+	virtual void HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer) override;
+
+	/**
+	 * Enter the empire dungeon the capital's Walk sent the character here to walk, once the character it carried has
+	 * loaded, and answer whether it did now. Issue #2733 slice 3, ruled by the coordinating session on 2026-11-17.
+	 *
+	 * READY MEANS: a walk is pending on the game instance (`PendingWalkDungeonId`); nothing else is pending (the
+	 * character the capital handed over has been loaded, `LoadThePendingCharacter` having cleared its identifier); the
+	 * load did not send the player back to the front end; the save writer is writing; and a player's character stands.
+	 * `StartPlay` and `HandleStartingNewPlayer` both ask, after the load they each try, so whichever comes second
+	 * enters it, as `ACataclysmCapitalGameMode::OpenTheEmpireMapIfReady` does for the map.
+	 *
+	 * THE PENDING WALK IS CLEARED BEFORE IT IS ENTERED, so a refusal cannot enter it twice. Entered through
+	 * `EnterEmpireDungeon`, as a Walk press in this level is: floor 1 at its entrance, the potions full, the dungeon's
+	 * timer stopped and floor 1's time charged. Then written at once (`ChangedFloor`), so a quit straight after
+	 * arriving resumes the walk rather than the capital.
+	 *
+	 * A REFUSED ENTRY -- which the capital's checks leave no way to reach -- is logged as an error and the character
+	 * goes back to the capital. A LEVEL ALREADY WALKING A DUNGEON keeps that walk and drops the pending one, logged as
+	 * an error: going back to the capital then would be leaving a walk early.
+	 *
+	 * PUBLIC SO A TEST CAN CALL IT, as `LoadThePendingCharacter` is.
+	 */
+	bool EnterThePendingWalkIfReady();
+
+	/**
+	 * The end of a walk, in play: the character goes back to the capital, `L_Capital`, which opens the empire map once
+	 * it has loaded there. Issue #2733 slice 3, ruled by the coordinating session on 2026-11-17.
+	 *
+	 * TWO CALLERS, the two ways a walk ends: `GoDownOneFloor`, when the last floor's stairs have cleared the dungeon,
+	 * and `ACataclysmPlayerCharacter::Revive`, when a death has ended it. By then the walk's days have run, and a
+	 * death's days and a win's next run with them. A trip is `TravelTo`: both records written, the character carried.
+	 *
+	 * NOT FOR A DEATH IN THE CATACLYSM'S OWN DUNGEON, which `EndTheDungeonForADeath` leaves alone and which therefore
+	 * never reaches this: the player stands back up inside, as before.
+	 *
+	 * @return whether the trip began
+	 */
+	bool ReturnToTheCapital();
+
 	/**
 	 * Looks at the wave every `SecondsBetweenWaveChecks` and brings the next one
 	 * in when it is down to a tenth.
@@ -405,8 +446,9 @@ public:
 	 * Stop walking it without clearing it.
 	 *
 	 * ITS TIMER STARTS AGAIN and the dungeon stays on the map. That is what
-	 * leaving unfinished means, and there is nowhere to leave TO yet -- the
-	 * capital hub is issue #48. IN PLAY IT HAS TWO CALLERS: `ClearEmpireDungeon`,
+	 * leaving unfinished means, AND NO PLAYER CAN LEAVE UNFINISHED: since issue
+	 * #2733 slice 3 there is no leaving a dungeon early, and `Cataclysm.LeaveDungeon`
+	 * refuses mid-walk. IN PLAY IT HAS TWO CALLERS: `ClearEmpireDungeon`,
 	 * after the dungeon is beaten, and since issue #41
 	 * `EndTheDungeonForADeath`, when the player's character dies in it. This
 	 * said "nothing calls this in play", which the first of those had already
@@ -496,12 +538,12 @@ public:
 	 *     ordinary dungeon has no timer left to run through them; a Quest
 	 *     dungeon's runs through them like every other.
 	 *
-	 * **WHERE THE PLAYER IS AFTERWARDS IS NOT THE CAPITAL.** The design says a
-	 * death "respawns the player at the capital", and the capital as a place is
-	 * not built -- issue #48. The player is left as clearing the last floor
-	 * leaves them: on the floor they were on, which still stands, with no
-	 * dungeon bound. `ACataclysmPlayerCharacter::Revive` then stands them at
-	 * that floor's entrance.
+	 * **WHERE THE PLAYER IS AFTERWARDS IS THE CAPITAL**, since issue #2733 slice
+	 * 3: the design says a death "respawns the player at the capital". This
+	 * leaves them as clearing the last floor leaves them, on the floor they were
+	 * on with no dungeon bound; `ACataclysmPlayerCharacter::Revive` stands them
+	 * up there and then, last, sends them to the capital (`ReturnToTheCapital`).
+	 * Until then they stood back up at that floor's entrance and stayed.
 	 *
 	 * THE PLAYTEST SWITCH. The console variable
 	 * `Cataclysm.DeathKeepsThePlayerInTheDungeon` is 0 by default, which is
@@ -577,10 +619,19 @@ public:
 	 * no dungeon is bound, and `LeaveEmpireDungeon` the days a walk owed, which
 	 * run when the player leaves since 2026-10-24.
 	 *
-	 * NOTHING IN PLAY READS IT. It grows by one report a day passed walking,
-	 * and nothing clears it.
+	 * IT GROWS BY ONE REPORT A DAY PASSED WALKING, and nothing clears it: a game
+	 * mode lives for one level, and since issue #2733 slice 3 a walk is one
+	 * level's visit.
 	 */
 	TArray<FCataclysmDayReport> DaysSpentWalking;
+
+	/**
+	 * The reports of the days the last walk left ran when it was left (`UCataclysmEmpireRun::SettleDaysOwed`), and only
+	 * those: what `ClearEmpireDungeon` and `EndTheDungeonForADeath` total into the run's summary of the days away
+	 * (`UCataclysmEmpireRun::NoteDaysAway`). Issue #2733 slice 3 (Q6). `DaysSpentWalking` holds them too, after every
+	 * earlier walk's in this level.
+	 */
+	TArray<FCataclysmDayReport> LastWalksDays;
 
 	// ----------------------------------------------------------------------
 	// Looking at another floor without rebuilding

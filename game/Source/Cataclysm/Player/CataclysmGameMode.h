@@ -80,6 +80,30 @@ public:
 	/** The level a refusal asked to go back to, for tests; travel itself does not run in an automation test. */
 	FString FrontEndRequested() const { return FrontEndRequest; }
 
+	/**
+	 * Take the playing character to another level: the capital's Walk to `L_Dungeon`, and the end of a walk back to
+	 * `L_Capital`. Issue #2733 slice 3, ruled by the coordinating session on 2026-11-17.
+	 *
+	 * A TRIP IS A SAVE AND A CONTINUE. The save writer writes the character record and the run record before this
+	 * returns, with no floor, and then writes nothing more here (`UCataclysmSaveWriter::HandOver`); the game instance
+	 * carries the character's identifier (`PendingCharacterId`) and the dungeon to walk (`PendingWalkDungeonId`); and the
+	 * level is opened, where `LoadThePendingCharacter` loads the character from those records as a Continue does.
+	 * Whatever a quit and a Continue keep, a trip keeps.
+	 *
+	 * NOT OPENED IN AN AUTOMATION TEST, which cannot travel: the level asked for is kept instead (`TravelRequested`),
+	 * as `FrontEndRequested` keeps a refusal's.
+	 *
+	 * @param Map            the level to open, `/Game/Maps/...`
+	 * @param WalkDungeonId  the empire dungeon the arriving dungeon level enters, or INDEX_NONE
+	 * @return false, with nothing written, carried or opened, when there is no game instance of this project's or no
+	 *         save writer, or the writer could not write both records. The character stays: a trip that loaded an
+	 *         older record would lose what the character did since.
+	 */
+	bool TravelTo(const TCHAR* Map, int32 WalkDungeonId = INDEX_NONE);
+
+	/** The level `TravelTo` asked for, for tests; empty until it did. */
+	FString TravelRequested() const { return TravelRequest; }
+
 	/** The select screen's level. Made in step 3b. */
 	static constexpr const TCHAR* FrontEndMap = TEXT("/Game/Maps/L_FrontEnd");
 
@@ -1237,4 +1261,7 @@ public:
 private:
 	/** See `FrontEndRequested`. */
 	FString FrontEndRequest;
+
+	/** See `TravelRequested`. */
+	FString TravelRequest;
 };

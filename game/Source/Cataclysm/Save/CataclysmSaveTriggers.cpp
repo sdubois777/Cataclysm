@@ -5,10 +5,12 @@
 bool UCataclysmSaveTriggers::MustBeWrittenBeforeTheFrameEnds(
 	ECataclysmSaveTrigger Trigger)
 {
-	// DEATH AND NOTHING ELSE. Section 6 names one rule that cannot be relaxed
-	// and this is it: written "in the same frame the health reaches zero [...]
-	// before the death is otherwise processed".
-	return Trigger == ECataclysmSaveTrigger::CharacterDied;
+	// DEATH, AND THE HAND-OVER BEFORE A LEVEL CHANGE. Section 6 names one rule
+	// that cannot be relaxed and the first is it: written "in the same frame
+	// the health reaches zero [...] before the death is otherwise processed".
+	// The second is read by the next level's load, so it must be on disk
+	// before the level changes. Issue #2733 slice 3, ruled 2026-11-17.
+	return Trigger == ECataclysmSaveTrigger::CharacterDied || Trigger == ECataclysmSaveTrigger::LeavingTheLevel;
 }
 
 bool UCataclysmSaveTriggers::WritesTheRunRecord(ECataclysmSaveTrigger Trigger)
@@ -50,6 +52,10 @@ bool UCataclysmSaveTriggers::WritesTheCharacterRecord(ECataclysmSaveTrigger Trig
 		case ECataclysmSaveTrigger::RunWon: // A trigger's: a won run writes the character record.
 			return true;
 
+		// A TRIP TO ANOTHER LEVEL, which loads the character from this record. Issue #2733 slice 3.
+		case ECataclysmSaveTrigger::LeavingTheLevel: // A trigger's: the hand-over writes the character record.
+			return true;
+
 		default:
 			return false;
 	}
@@ -63,8 +69,16 @@ bool UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame(ECataclysmSav
 	// AND A NEW CHARACTER, since issue #2733, for the same reason: giving it its chosen weapon writes the run record
 	// (the weapon it wore goes into the bag, `InventoryChanged`) before its run has begun, in the same frame, so its
 	// creation write was skipped and the run record on disk held no empire until the clock's next write.
+	//
+	// AND THE HAND-OVER BEFORE A LEVEL CHANGE, since issue #2733 slice 3: the clear, a win and a death each write the
+	// run record in the frame the player leaves, and the next level loads from the hand-over's.
+	//
+	// AND A CHANGE OF FLOOR, since issue #2733 slice 3 (ruled 2026-11-18): it writes where the party now stands, and a
+	// write earlier in the same frame gathered the floor before the change. Window travel-w1's first run found the
+	// arrival's write skipped so. Each place that raises it does so once per change of floor (the entry lists them).
 	return Trigger == ECataclysmSaveTrigger::CharacterDied || Trigger == ECataclysmSaveTrigger::DeathProcessed
-		|| Trigger == ECataclysmSaveTrigger::RunWon || Trigger == ECataclysmSaveTrigger::CharacterCreated;
+		|| Trigger == ECataclysmSaveTrigger::RunWon || Trigger == ECataclysmSaveTrigger::CharacterCreated
+		|| Trigger == ECataclysmSaveTrigger::LeavingTheLevel || Trigger == ECataclysmSaveTrigger::ChangedFloor;
 }
 
 bool UCataclysmSaveTriggers::ClockHasElapsed(float SecondsSinceLastWrite,
@@ -129,6 +143,7 @@ const TCHAR* UCataclysmSaveTriggers::NameOf(ECataclysmSaveTrigger Trigger)
 		case ECataclysmSaveTrigger::DeathProcessed:         return TEXT("a death having been paid for");
 		case ECataclysmSaveTrigger::CharacterCreated:       return TEXT("a character being created");
 		case ECataclysmSaveTrigger::RunWon:                 return TEXT("a run being won");
+		case ECataclysmSaveTrigger::LeavingTheLevel:        return TEXT("the character leaving the level");
 	}
 
 	// A TRIGGER ADDED WITHOUT A WORDING. Named rather than fallen through to one
@@ -140,8 +155,8 @@ const TCHAR* UCataclysmSaveTriggers::NameOf(ECataclysmSaveTrigger Trigger)
 TArray<ECataclysmSaveTrigger> UCataclysmSaveTriggers::Every()
 {
 	// WRITTEN OUT RATHER THAN COUNTED FROM THE ENUM. A test walks this list and
-	// asserts that exactly one trigger is synchronous and exactly one writes the
-	// account record; a list built from the enum's own range would grow silently
+	// asserts that exactly two triggers are synchronous (one until issue #2733
+	// slice 3) and exactly one writes the account record; a list built from the enum's own range would grow silently
 	// when a trigger is added, and the new one would be covered by nothing.
 	// `Cataclysm.SaveTriggers.EveryTriggerIsInTheListThisFileAnswersFor` is what
 	// notices.
@@ -157,5 +172,6 @@ TArray<ECataclysmSaveTrigger> UCataclysmSaveTriggers::Every()
 		ECataclysmSaveTrigger::DeathProcessed,
 		ECataclysmSaveTrigger::CharacterCreated,
 		ECataclysmSaveTrigger::RunWon,
+		ECataclysmSaveTrigger::LeavingTheLevel,
 	};
 }

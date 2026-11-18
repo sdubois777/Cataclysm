@@ -4,6 +4,7 @@
 
 #include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Empire/CataclysmEmpireRun.h"
+#include "Player/CataclysmCapitalGameMode.h"
 
 namespace
 {
@@ -55,19 +56,33 @@ FString FCataclysmWalkFromTheScreen::NotADungeonLevelText()
 	return TEXT("This level is not a dungeon, so there is no floor to walk. Open L_Dungeon and press Play.");
 }
 
+FString FCataclysmWalkFromTheScreen::NoLeavingEarlyText(int32 WalkingDungeonId)
+{
+	return FString::Printf(TEXT("You are walking dungeon %d. There is no leaving a dungeon early: clear its last floor, or "
+								"die in it."), WalkingDungeonId);
+}
+
 FString FCataclysmWalkFromTheScreen::RefusalFor(const UCataclysmEmpireRun* Run, const ACataclysmDungeonGameMode* Mode,
-												int32 DungeonId)
+												int32 DungeonId, const ACataclysmCapitalGameMode* Capital)
 {
 	if (Run == nullptr)
 	{
 		return TEXT("No run has been started.");
 	}
 
-	// ONLY A DUNGEON LEVEL CAN ENTER A DUNGEON. `EnterEmpireDungeon` is the dungeon game mode's, and there is no
-	// travel from any other level into one (issue #48), so the screen says so rather than doing nothing.
-	if (Mode == nullptr)
+	// ONLY A DUNGEON LEVEL CAN ENTER A DUNGEON, AND ONLY THE CAPITAL CAN TRAVEL TO ONE (issue #2733 slice 3). Anywhere
+	// else the screen says so rather than doing nothing.
+	if (Mode == nullptr && Capital == nullptr)
 	{
 		return NotADungeonLevelText();
+	}
+
+	// NO LEAVING A WALK EARLY, WHICHEVER DUNGEON WAS PRESSED. The design: "There is no town portal and no way out except
+	// clearing the dungeon or dying." Issue #2733 slice 3, ruled 2026-11-17; until then only the dungeon being walked
+	// was refused here, and a press under another left the walk.
+	if (Mode != nullptr && Mode->EmpireDungeonId != INDEX_NONE)
+	{
+		return NoLeavingEarlyText(Mode->EmpireDungeonId);
 	}
 
 	if (Run->FindDungeon(DungeonId) == nullptr)
@@ -75,23 +90,22 @@ FString FCataclysmWalkFromTheScreen::RefusalFor(const UCataclysmEmpireRun* Run, 
 		return FString::Printf(TEXT("No dungeon %d is standing on the map."), DungeonId);
 	}
 
-	// NOT THE DUNGEON BEING WALKED. Entering it again would leave it, run the days the walk owes and start it over on
-	// floor 1; the console does that when asked, and a button does not.
-	if (Mode->EmpireDungeonId == DungeonId)
-	{
-		return FString::Printf(TEXT("You are walking dungeon %d now."), DungeonId);
-	}
-
 	return FString();
 }
 
 FString FCataclysmWalkFromTheScreen::Walk(const UCataclysmEmpireRun* Run, ACataclysmDungeonGameMode* Mode,
-										  int32 DungeonId)
+										  int32 DungeonId, ACataclysmCapitalGameMode* Capital)
 {
-	const FString Refusal = RefusalFor(Run, Mode, DungeonId);
+	const FString Refusal = RefusalFor(Run, Mode, DungeonId, Capital);
 	if (!Refusal.IsEmpty())
 	{
 		return Refusal;
+	}
+
+	// IN THE CAPITAL, THE TRIP. The dungeon level enters the dungeon once the character arrives.
+	if (Mode == nullptr)
+	{
+		return Capital->TravelToWalk(DungeonId);
 	}
 
 	// THE GAME MODE'S OWN REFUSAL IS SHOWN, NOT SWALLOWED. It answers only true or false, so the words are the

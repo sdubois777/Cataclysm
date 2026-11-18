@@ -26,6 +26,8 @@
 #include "Interface/CataclysmEmpireMapLayout.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/ScopeExit.h"
+// For `CapitalMap`, the level a walk's end travels to. Issue #2733 slice 3.
+#include "Interface/CataclysmCharacterSelectWidget.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Save/CataclysmSaveApply.h"
@@ -1011,8 +1013,14 @@ bool FCataclysmWinningTheRunThroughTheStairsTest::RunTest(const FString& Paramet
 	TestEqual(TEXT("its tier"), Next->LastRunWonTier, 1);
 	TestEqual(TEXT("its Cataclysm"), static_cast<int32>(Next->LastRunWonCataclysm), static_cast<int32>(Against));
 	TestEqual(TEXT("and its points"), Next->LastRunWonPassivePoints, 10);
-	TestEqual(TEXT("the win's write was the last trigger"), static_cast<int32>(LastTrigger),
-			  static_cast<int32>(ECataclysmSaveTrigger::RunWon));
+	// THE WIN IS WRITTEN AND THEN THE CHARACTER GOES BACK TO THE CAPITAL, since issue #2733 slice 3: the stairs end
+	// the walk, and the hand-over is the last write, holding the raised tier as the win's did. Until then this asserted
+	// the win's write was the last trigger; changed by the coordinating session's ruling of 2026-11-17. The win's own
+	// write is still checked by the tests above, which clear the dungeon as the stairs do without taking them.
+	TestEqual(TEXT("the hand-over to the capital was the last trigger"), static_cast<int32>(LastTrigger),
+			  static_cast<int32>(ECataclysmSaveTrigger::LeavingTheLevel));
+	TestEqual(TEXT("and the character travels to the capital"), Scene.Mode->TravelRequested(),
+			  FString(UCataclysmCharacterSelectWidget::CapitalMap));
 	TestEqual(TEXT("and the character record on disk holds the raised tier"), Written ? Written->DifficultyTier : -1, 2);
 	return true;
 }
@@ -1242,6 +1250,8 @@ bool FCataclysmWinningTheRunMigrationTest::RunTest(const FString& Parameters)
 	Expected->SetNumberField(TEXT("LastRunWonTier"), 0);
 	Expected->SetStringField(TEXT("LastRunWonCataclysm"), TEXT("None"));
 	Expected->SetNumberField(TEXT("LastRunWonPassivePoints"), 0);
+	// AND WHAT `Migrate_5_to_6` WRITES, because the chain runs on to version 6 since 2026-11-17 (issue #2733 slice 3).
+	CataclysmSaveFixtures::AddTheRunsVersion6Defaults(*Expected);
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -1273,14 +1283,15 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWinningTheRunCommittedFileTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * `Run_v5.json` reads into the four values it states, none of them a default, so each is read and not re-defaulted.
+ * `Run_v6.json` reads into the four values it states, none of them a default, so each is read and not re-defaulted. It
+ * read `Run_v5.json` until the run record went to version 6 on 2026-11-17 (issue #2733 slice 3).
  * Prints "WIN FILE".
  */
 bool FCataclysmWinningTheRunCommittedFileTest::RunTest(const FString& Parameters)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v5.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v6.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1291,7 +1302,7 @@ bool FCataclysmWinningTheRunCommittedFileTest::RunTest(const FString& Parameters
 		Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v5.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Run_v6.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
@@ -1300,7 +1311,7 @@ bool FCataclysmWinningTheRunCommittedFileTest::RunTest(const FString& Parameters
 							Read->SchemaVersion, Read->LastRunWonDay, Read->LastRunWonTier,
 							static_cast<int32>(Read->LastRunWonCataclysm), Read->LastRunWonPassivePoints));
 
-	TestEqual(TEXT("it says it is version 5"), Read->SchemaVersion, 5);
+	TestEqual(TEXT("it says it is version 6"), Read->SchemaVersion, 6);
 	TestEqual(TEXT("the run before it was won on day 381"), Read->LastRunWonDay, 381);
 	TestEqual(TEXT("at tier 3"), Read->LastRunWonTier, 3);
 	TestEqual(TEXT("against War"), static_cast<int32>(Read->LastRunWonCataclysm),

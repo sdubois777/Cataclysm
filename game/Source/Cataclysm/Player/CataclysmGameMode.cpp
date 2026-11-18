@@ -298,6 +298,43 @@ ACataclysmGameMode::EPendingLoad ACataclysmGameMode::LoadThePendingCharacter()
 	return EPendingLoad::Refused;
 }
 
+bool ACataclysmGameMode::TravelTo(const TCHAR* Map, int32 WalkDungeonId)
+{
+	UWorld* World = GetWorld();
+	UCataclysmGameInstance* Instance = World ? Cast<UCataclysmGameInstance>(World->GetGameInstance()) : nullptr;
+	UCataclysmSaveWriter* Writer = UCataclysmSaveWriter::In(World);
+	// A LEVEL WITH NOTHING TO CARRY: no game instance of this project's, no save writer, or one writing no run -- a
+	// test world, say. A warning, which is a state and not a fault; a write that fails below is the error.
+	if (!Instance || !Writer || !Writer->IsWriting())
+	{
+		UE_LOG(LogCataclysm, Warning,
+			   TEXT("The character cannot travel to %s: there is no game instance of this project's, no save writer, or "
+					"no run being written to carry it."), Map);
+		return false;
+	}
+
+	// THE RECORDS FIRST, AND ON DISK BEFORE ANYTHING ELSE CHANGES. A refused hand-over leaves the character here.
+	const FGuid Leaving = Writer->HandOver(); // A trip's: both records, then this level writes no more.
+	if (!Leaving.IsValid())
+	{
+		UE_LOG(LogCataclysm, Error,
+			   TEXT("The character does not travel to %s: its records could not be written, and the next level would load "
+					"older ones."), Map);
+		return false;
+	}
+
+	Instance->PendingCharacterId = Leaving; // A trip's: the arriving level loads this character.
+	Instance->PendingWalkDungeonId = WalkDungeonId;
+	TravelRequest = Map;
+	UE_LOG(LogCataclysm, Log, TEXT("The character travels to %s%s."), Map,
+		   WalkDungeonId != INDEX_NONE ? *FString::Printf(TEXT(" to walk dungeon %d"), WalkDungeonId) : TEXT(""));
+	if (!GIsAutomationTesting)
+	{
+		UGameplayStatics::OpenLevel(this, FName(Map));
+	}
+	return true;
+}
+
 bool ACataclysmGameMode::BeginSavingThisRun()
 {
 	UCataclysmSaveWriter* Writer = UCataclysmSaveWriter::In(GetWorld());

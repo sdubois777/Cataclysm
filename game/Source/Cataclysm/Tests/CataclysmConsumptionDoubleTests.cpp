@@ -885,6 +885,8 @@ bool FCataclysmConsumptionDoubleRunMigrationTest::RunTest(const FString& Paramet
 	Expected->SetNumberField(TEXT("LastRunWonTier"), 0);
 	Expected->SetStringField(TEXT("LastRunWonCataclysm"), TEXT("None"));
 	Expected->SetNumberField(TEXT("LastRunWonPassivePoints"), 0);
+	// AND WHAT `Migrate_5_to_6` WRITES, because the chain runs on to version 6 since 2026-11-17 (issue #2733 slice 3).
+	CataclysmSaveFixtures::AddTheRunsVersion6Defaults(*Expected);
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);

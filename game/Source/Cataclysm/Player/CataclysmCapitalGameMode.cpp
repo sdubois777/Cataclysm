@@ -6,7 +6,10 @@
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
+// For `DungeonMap`, the level the capital's Walk opens. Issue #2733 slice 3.
+#include "Interface/CataclysmCharacterSelectWidget.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmPlayerController.h"
 #include "Save/CataclysmSaveWriter.h"
@@ -100,4 +103,28 @@ bool ACataclysmCapitalGameMode::OpenTheEmpireMapIfReady()
 		}
 	}
 	return true;
+}
+
+FString ACataclysmCapitalGameMode::TravelToWalk(int32 DungeonId)
+{
+	// THE DUNGEON LEVEL, WITH THE DUNGEON TO WALK: the character's records written and carried, as `TravelTo` says.
+	if (!TravelTo(UCataclysmCharacterSelectWidget::DungeonMap, DungeonId)) // A trip's: to walk this dungeon.
+	{
+		return FString::Printf(TEXT("The walk of dungeon %d could not begin: the character's records could not be "
+									"written, so it stays in the capital."), DungeonId);
+	}
+	return FString();
+}
+
+ACataclysmCapitalGameMode* ACataclysmCapitalGameMode::InWorld(UWorld* World)
+{
+	if (!World)
+	{
+		return nullptr;
+	}
+	for (TActorIterator<ACataclysmCapitalGameMode> It(World); It; ++It)
+	{
+		return *It;
+	}
+	return nullptr;
 }

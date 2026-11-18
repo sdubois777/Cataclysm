@@ -155,18 +155,20 @@ def test_the_empire_layer_claim_is_still_true() -> None:
     #1083, then that nothing joined the three until `UCataclysmEmpireRun` landed
     for issue #1084.
 
-    WHAT IS STILL TRUE IS THAT NOTHING TAKES THE PLAYER FROM THE MAP INTO A
-    DUNGEON, OR BACK. Walking one spends the empire's days since issue #1092, and
-    entering one is still done while already standing in `L_Dungeon` -- a console
-    command, or since issue #2715 a Walk button on an empire screen -- because
-    there is nowhere to stand between runs.
+    AND A FIFTH TIME, FOR ISSUE #2733 SLICE 3 (2026-11-18): until then the bullet
+    said "Nothing takes the player from the map into a dungeon level, or back",
+    because entering one was done while already standing in `L_Dungeon`. A walk
+    is now a trip from the capital and back, a save and a load, and the bullet
+    says so in the sentence this looks for. That sentence names no file of this
+    module, so the set below is unchanged: the trip is the `Cataclysm` module's.
 
     A SKIP HERE WOULD MEAN THE GUARD DID NOT RUN, which is why the phrase it
-    looks for is part of the sentence about what is missing rather than the old
-    headline. Rewriting the bullet without saying what is missing turns this off.
+    looks for is the bullet's sentence about the walk. Until slice 3 changed the
+    bullet, the phrase was the old sentence about what was missing, and the
+    first run after the change skipped here; this was pointed at the new one.
     """
-    if "Nothing takes the player from the map into a dungeon" not in readme_text():
-        pytest.skip("The readme no longer says what the empire layer is missing.")
+    if "A walk is a trip from the capital and back" not in readme_text():
+        pytest.skip("The readme no longer says how a walk reaches a dungeon and comes back.")
 
     empire = GAME_SOURCE / "CataclysmEmpire"
     expected = {

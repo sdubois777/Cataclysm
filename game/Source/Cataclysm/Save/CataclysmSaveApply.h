@@ -111,12 +111,15 @@ public:
 
 	/**
 	 * Move a character to where it was and give it back the health, mana and
-	 * energy shield it had.
+	 * energy shield it had, its class resource and its potions.
 	 *
+	 * @param bPutInPlace  false to give back everything but the place, leaving the character where the level put it:
+	 *                     what a record with no floor gets, the capital's or a hand-over's, whose place was in a level
+	 *                     that is not this one. Issue #2733 slice 3, ruled by the coordinating session 2026-11-17.
 	 * @return whether anything was applied
 	 */
 	static bool PlacementInto(ACataclysmPlayerCharacter& Character,
-							  const FCataclysmSavedCharacterPlacement& Saved);
+							  const FCataclysmSavedCharacterPlacement& Saved, bool bPutInPlace = true);
 
 	/**
 	 * Clear the floor and rebuild it from the record.

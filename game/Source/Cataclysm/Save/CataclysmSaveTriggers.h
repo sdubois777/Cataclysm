@@ -33,7 +33,11 @@ enum class ECataclysmSaveTrigger : uint8
 	/** The character's health fell through the threshold. */
 	HealthCrossedThreshold = 3,
 
-	/** The party moved to another floor. **NOTHING RAISES THIS YET.** */
+	/**
+	 * The party moved to another floor: `UCataclysmSaveWriter::SetFloor`, which the dungeon raises on the stairs, and,
+	 * since issue #2733 slice 3, a walk begun on arriving from the capital. This said nothing raised it until then,
+	 * which `SetFloor` had stopped making true.
+	 */
 	ChangedFloor = 4,
 
 	/** An item or a material entered or left the carried inventory. */
@@ -100,6 +104,22 @@ enum class ECataclysmSaveTrigger : uint8
 	 * AN ORDINARY ASYNCHRONOUS WRITE, of the character record and the run record, as `CharacterCreated` is.
 	 */
 	RunWon = 10,
+
+	/**
+	 * The character is leaving this level for another: the capital for a dungeon, or a dungeon for the capital at the
+	 * end of a walk (`UCataclysmSaveWriter::HandOver`). Issue #2733 slice 3, ruled by the coordinating session on
+	 * 2026-11-17.
+	 *
+	 * WHY IT EXISTS. A trip between levels is a save and a Continue: the next level loads the character from the two
+	 * records this writes, by the identifier the game instance carries across. Whatever these records do not hold, the
+	 * trip loses.
+	 *
+	 * WRITTEN BEFORE THE FRAME ENDS, the second trigger that is, because the next level reads what it wrote: an
+	 * asynchronous write could still be in flight when that level's load reads the slot. A loading screen follows it,
+	 * so the stall is not seen. Of the character record and the run record, and whatever else wrote the run record
+	 * this frame -- the last floor's clear, a win's `RunWon`, a death's `DeathProcessed`.
+	 */
+	LeavingTheLevel = 11,
 };
 
 /**
@@ -126,10 +146,11 @@ public:
 	 * Whether this trigger must be written before the frame ends, rather than
 	 * handed to a background thread.
 	 *
-	 * TRUE FOR EXACTLY ONE TRIGGER. Section 6 names death and nothing else:
-	 * "Everything else may be written asynchronously." Making a second trigger
-	 * synchronous would be trading frame time for nothing, and making death
-	 * asynchronous would give back the escape this feature closes.
+	 * TRUE FOR EXACTLY TWO TRIGGERS: the character dying, and the hand-over before a level change. Section 6 names
+	 * death as the write that cannot be relaxed, and says "Everything else may be written asynchronously" -- may, and
+	 * the hand-over is the one that may not: the next level reads it (`LeavingTheLevel`). Any other trigger made
+	 * synchronous would be trading frame time for nothing, and making death asynchronous would give back the escape
+	 * this feature closes. Exactly one until issue #2733 slice 3, ruled by the coordinating session on 2026-11-17.
 	 */
 	static bool MustBeWrittenBeforeTheFrameEnds(ECataclysmSaveTrigger Trigger);
 
@@ -182,6 +203,16 @@ public:
 	 * frame, was skipped, so a Continue before the clock's next write found no empire and began a new run. The two
 	 * writes go through `FCataclysmSaveStorage`'s one pipe, which runs them in the order they were started, so the
 	 * creation's lands last.
+	 *
+	 * AND THE HAND-OVER BEFORE A LEVEL CHANGE, since issue #2733 slice 3: the last floor's clear, a win's `RunWon` and
+	 * a death's `DeathProcessed` all write the run record in the frame the player leaves, and the next level loads
+	 * from what the hand-over writes. Synchronous, it waits for those earlier writes to the slot to finish first, so
+	 * it lands last.
+	 *
+	 * AND A CHANGE OF FLOOR, since issue #2733 slice 3 (ruled 2026-11-18): a write earlier in the same frame gathered
+	 * the floor before the change, and the one after it must replace it. Window travel-w1's first run found the walk
+	 * an arrival begins skipped so, and the record on disk still saying the capital. Every place that raises it does
+	 * so once per change of floor; `docs/DECISIONS.md`'s 2026-11-18 entry lists them.
 	 */
 	static bool WritesEvenIfTheRunWasWrittenThisFrame(ECataclysmSaveTrigger Trigger);
 

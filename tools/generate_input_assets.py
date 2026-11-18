@@ -78,6 +78,11 @@ NATIVE_ACTIONS = [
     # layer 4, ruled Q1 2026-10-25: "K plus Cataclysm.ChooseSkills".
     ("IA_ToggleSkillAssignment", "ToggleSkillAssignment", BOOLEAN,
      "Toggle Skill Assignment"),
+    # The empire overview. Until 2026-11-17 it opened only from its console
+    # command, `Cataclysm.EmpireMap`. Ruled by the coordinating session on
+    # 2026-11-03: "M opens and closes the empire map", in both control schemes.
+    # Built in issue #2733 slice 3, from the parked commit 288b45cc4.
+    ("IA_ToggleEmpireMap", "ToggleEmpireMap", BOOLEAN, "Toggle Empire Map"),
 ]
 
 # Ability actions: the controller binds these to one shared handler that passes
@@ -146,6 +151,10 @@ MOUSE_MAPPINGS = [
     # other key considered, moves the character under keyboard movement.
     # Issue #837 layer 4.
     ("IA_ToggleSkillAssignment", "K", []),
+    # The empire overview. M in both schemes, and free in both: M opens the map
+    # screen in Diablo IV (Tab or M) and in Last Epoch. Ruled by the coordinating
+    # session, 2026-11-03.
+    ("IA_ToggleEmpireMap", "M", []),
 ]
 
 KEYBOARD_MAPPINGS = [
@@ -195,6 +204,10 @@ KEYBOARD_MAPPINGS = [
     # other key considered, moves the character under keyboard movement.
     # Issue #837 layer 4.
     ("IA_ToggleSkillAssignment", "K", []),
+    # The empire overview. M in both schemes, and free in both: M opens the map
+    # screen in Diablo IV (Tab or M) and in Last Epoch. Ruled by the coordinating
+    # session, 2026-11-03.
+    ("IA_ToggleEmpireMap", "M", []),
 ]
 
 # --- the sandbox level -------------------------------------------------------

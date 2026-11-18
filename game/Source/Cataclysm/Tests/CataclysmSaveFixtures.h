@@ -88,6 +88,28 @@ namespace CataclysmSaveFixtures
 	}
 
 	/** Text, parsed. Null when it is not a JSON object. */
+	/**
+	 * What `Migrate_5_to_6` writes into a run file written before version 6, and so what the run record writes back
+	 * for one: no award, no clear and no walk ended. Issue #2733 slice 3, 2026-11-17. ONE COPY, for every test that
+	 * runs an older run file through the whole chain and compares what comes back with what it expects.
+	 */
+	inline void AddTheRunsVersion6Defaults(FJsonObject& Expected)
+	{
+		Expected.SetNumberField(TEXT("LastEmpirePointsAwarded"), 0.0);
+		Expected.SetNumberField(TEXT("LastClearDay"), INDEX_NONE);
+		Expected.SetStringField(TEXT("LastClearDungeonName"), FString());
+		Expected.SetNumberField(TEXT("LastClearWalkDays"), 0);
+		const TSharedRef<FJsonObject> NoneAway = MakeShared<FJsonObject>();
+		NoneAway->SetNumberField(TEXT("FromDay"), INDEX_NONE);
+		NoneAway->SetNumberField(TEXT("ToDay"), INDEX_NONE);
+		NoneAway->SetBoolField(TEXT("bEndedInAClear"), false);
+		NoneAway->SetArrayField(TEXT("Cities"), TArray<TSharedPtr<FJsonValue>>());
+		NoneAway->SetArrayField(TEXT("Fallen"), TArray<TSharedPtr<FJsonValue>>());
+		NoneAway->SetNumberField(TEXT("Surges"), 0);
+		NoneAway->SetNumberField(TEXT("SurgeDungeons"), 0);
+		Expected.SetObjectField(TEXT("LastDaysAway"), NoneAway);
+	}
+
 	inline TSharedPtr<FJsonObject> Parse(const FString& Text)
 	{
 		TSharedPtr<FJsonObject> Parsed;

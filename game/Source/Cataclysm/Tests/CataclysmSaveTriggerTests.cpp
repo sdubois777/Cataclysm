@@ -41,15 +41,17 @@ namespace CataclysmSaveTriggerTest
 }
 
 /**
- * Exactly one trigger is written before the frame ends, and it is death.
+ * Exactly two triggers are written before the frame ends: death, and the hand-over before a level change.
  *
  * BOTH HALVES MATTER. Death being synchronous is the rule section 6 says cannot
- * be relaxed. A SECOND trigger being synchronous would be trading frame time for
- * nothing, and the one most likely to be made synchronous by mistake is a
- * creature dying -- it is the one that reads most like death.
+ * be relaxed, and the hand-over is read by the next level's load (issue #2733
+ * slice 3, ruled 2026-11-17; exactly one, death, until then). A THIRD trigger
+ * being synchronous would be trading frame time for nothing, and the one most
+ * likely to be made synchronous by mistake is a creature dying -- it is the one
+ * that reads most like death.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveOnlyDeathIsSynchronous,
-	"Cataclysm.SaveTriggers.OnlyTheCharacterDyingIsWrittenBeforeTheFrameEnds",
+	"Cataclysm.SaveTriggers.OnlyTheCharacterDyingAndLeavingTheLevelAreWrittenBeforeTheFrameEnds",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmSaveOnlyDeathIsSynchronous::RunTest(const FString&)
@@ -60,13 +62,14 @@ bool FCataclysmSaveOnlyDeathIsSynchronous::RunTest(const FString&)
 	for (const ECataclysmSaveTrigger Trigger : FTriggers::Every())
 	{
 		const bool bNow = FTriggers::MustBeWrittenBeforeTheFrameEnds(Trigger);
-		const bool bExpected = Trigger == ECataclysmSaveTrigger::CharacterDied;
+		const bool bExpected = Trigger == ECataclysmSaveTrigger::CharacterDied
+			|| Trigger == ECataclysmSaveTrigger::LeavingTheLevel;
 
 		if (bNow != bExpected)
 		{
 			AddError(FString::Printf(
 				TEXT("'%s' %s written before the frame ends, and it %s be. Section 6 "
-					 "names the character dying and nothing else."),
+					 "names the character dying and the hand-over before a level change, and nothing else."),
 				FTriggers::NameOf(Trigger),
 				bNow ? TEXT("is") : TEXT("is not"),
 				bExpected ? TEXT("has to") : TEXT("must not")));
@@ -76,7 +79,7 @@ bool FCataclysmSaveOnlyDeathIsSynchronous::RunTest(const FString&)
 		Synchronous += bNow ? 1 : 0;
 	}
 
-	TestEqual(TEXT("exactly one trigger is synchronous"), Synchronous, 1);
+	TestEqual(TEXT("exactly two triggers are synchronous"), Synchronous, 2);
 	return true;
 }
 
@@ -119,9 +122,10 @@ bool FCataclysmSaveRecordsAreWrittenForTheRightReasons::RunTest(const FString&)
 		// RULED 2026-11-01, select-screen step 4a: a character being created writes its record too, so it is listed at
 		// once; the set was InventoryChanged and CharacterDied only.
 		// SINCE 2026-11-03, issue #1324 slice 6e: a won run writes it too, after the tier is raised.
+		// SINCE 2026-11-17, issue #2733 slice 3: the hand-over before a level change, which the next level loads.
 		const bool bCharacter = Trigger == ECataclysmSaveTrigger::InventoryChanged
 			|| Trigger == ECataclysmSaveTrigger::CharacterDied || Trigger == ECataclysmSaveTrigger::CharacterCreated
-			|| Trigger == ECataclysmSaveTrigger::RunWon;
+			|| Trigger == ECataclysmSaveTrigger::RunWon || Trigger == ECataclysmSaveTrigger::LeavingTheLevel;
 		TestEqual(FString::Printf(TEXT("'%s' writes the character record"),
 					FTriggers::NameOf(Trigger)),
 			FTriggers::WritesTheCharacterRecord(Trigger), bCharacter);

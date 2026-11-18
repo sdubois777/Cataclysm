@@ -118,6 +118,16 @@ namespace CataclysmInputActionNames
 	 * K by default, free in both control schemes. S was not taken: it is a movement key under keyboard movement.
 	 */
 	inline const FName ToggleSkillAssignment = FName(TEXT("ToggleSkillAssignment"));
+
+	/**
+	 * Open and close the empire overview. Tapped, not held. Ruled by the coordinating session, 2026-11-03: "M opens
+	 * and closes the empire map"; built in issue #2733 slice 3, from the parked commit 288b45cc4.
+	 *
+	 * M by default, free in both control schemes. M opens the map screen in Diablo IV (Tab or M) and, in a developer's
+	 * list from an older patch, in Last Epoch. `ACataclysmPlayerController::ToggleEmpireMap` is what a press calls,
+	 * the same function `Cataclysm.EmpireMap` calls.
+	 */
+	inline const FName ToggleEmpireMap = FName(TEXT("ToggleEmpireMap"));
 }
 
 /**

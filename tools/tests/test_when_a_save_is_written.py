@@ -1,4 +1,4 @@
-"""A death is the one save written before the frame ends, and it is written first.
+"""A death is written before the frame ends, and first; the only other such write is the hand-over between levels.
 
 WHY THIS EXISTS. Issue #750. The project owner set the rule on 2026-08-20: the
 game saves itself, often, so that a Hardcore character cannot leave a losing boss
@@ -96,10 +96,22 @@ def test_the_design_still_asks_for_a_synchronous_death_write() -> None:
         "asynchronously, which is the other half of the rule below.")
 
 
-def test_only_the_character_dying_is_written_before_the_frame_ends() -> None:
-    """One trigger is synchronous, and the source says which."""
+def test_only_the_character_dying_and_leaving_the_level_are_written_before_the_frame_ends() -> None:
+    """Two triggers are synchronous, and the source says which.
+
+    ONE UNTIL 2026-11-17. Issue #2733 slice 3 made a trip between levels a save
+    and a load, and the coordinating session ruled that the hand-over is written
+    synchronously, because the next level reads it: `LeavingTheLevel`. The
+    design's "Everything else MAY be written asynchronously" permits it, and
+    `docs/Save_System_Design.md` section 6 now names it.
+    """
     body = function_body(read(TRIGGERS_CPP),
                          "bool UCataclysmSaveTriggers::MustBeWrittenBeforeTheFrameEnds(")
+
+    assert "LeavingTheLevel" in body, (
+        "UCataclysmSaveTriggers::MustBeWrittenBeforeTheFrameEnds no longer mentions "
+        "LeavingTheLevel. The next level loads the character from the hand-over's "
+        "records, and an asynchronous write can still be in flight when it reads them.")
 
     assert "CharacterDied" in body, (
         "UCataclysmSaveTriggers::MustBeWrittenBeforeTheFrameEnds no longer mentions "
@@ -107,7 +119,7 @@ def test_only_the_character_dying_is_written_before_the_frame_ends() -> None:
         "cannot be relaxed, and an asynchronous death write hands the player back "
         "the escape this feature closes.")
 
-    # NO OTHER TRIGGER MAY APPEAR IN IT. A second synchronous write would stall
+    # NO OTHER TRIGGER MAY APPEAR IN IT. A third synchronous write would stall
     # the frame for nothing, and the one most likely to be added by mistake is a
     # creature dying, which reads most like death.
     others = ("Clock", "FightStarted", "CreatureDied", "HealthCrossedThreshold",
@@ -117,7 +129,8 @@ def test_only_the_character_dying_is_written_before_the_frame_ends() -> None:
         assert other not in body, (
             f"MustBeWrittenBeforeTheFrameEnds mentions {other}. Section 6: "
             f"'Everything else may be written asynchronously.' Only the character "
-            f"dying is written before the frame ends.")
+            f"dying and the hand-over before a level change are written before the "
+            f"frame ends.")
 
 
 def test_a_death_is_written_before_the_character_is_marked_dead() -> None:

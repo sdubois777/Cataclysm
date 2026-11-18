@@ -9317,4 +9317,173 @@ bool FCataclysmEmpirePointsShapeTest::RunTest(const FString&)
 	return true;
 }
 
+
+// ---------------------------------------------------------------------------
+// What each hit took, and what the days away did -- issue #2733 slice 3
+//
+// The coordinating session's ruling of 2026-11-17 (Q6): the day report records each hit with what it actually took
+// (`FCataclysmDayReport::Hits`), ADDITIVE ONLY -- nothing the day loop computes changes, which every other test in this
+// file, run unchanged, is the check of -- and the run keeps what the days of the last walk did
+// (`UCataclysmEmpireRun::NoteDaysAway`), for the empire map's summary of them.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunHitsAddUpTest,
+	"Cataclysm.EmpireRun.EachDaysHitsAddUpToWhatEachCityLost",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Every day's `Hits` add up, city by city, to what that city's defence and people fell by over the day, and a city that
+ * fell that day has exactly one hit marked as felling it. Two Heretic runs, seeds 11 and 23, for up to 400 days each or
+ * until lost. A run begun fresh has no city upgrade, so nothing repairs a city during a day and a hit is the only thing
+ * that lowers one; the figures are compared to a hundredth. CONTROL: ordinary hits were seen, and the counts of every
+ * kind are printed. Prints "HITS ADD UP".
+ */
+bool FCataclysmEmpireRunHitsAddUpTest::RunTest(const FString& Parameters)
+{
+	int32 Days = 0;
+	int32 Ordinary = 0;
+	int32 Quest = 0;
+	int32 Siege = 0;
+	int32 Felled = 0;
+	int32 Fallen = 0;
+	int32 Wrong = 0;
+	int32 FallsWrong = 0;
+	FString FirstWrong;
+
+	for (const int32 Seed : {11, 23})
+	{
+		UCataclysmEmpireRun* Run = CataclysmEmpireRunTest::MakeRun(Seed, ECataclysmSurgeMode::Static, 2);
+		if (!TestNotNull(TEXT("set-up: the run began"), Run->Map.Get()))
+		{
+			return false;
+		}
+		for (int32 Day = 0; Day < 400 && !Run->IsLost(); ++Day)
+		{
+			TMap<int32, FVector2D> Before;
+			for (const FCataclysmCity& City : Run->Map->Cities)
+			{
+				Before.Add(City.CityId, FVector2D(City.Defence, City.Population));
+			}
+
+			const FCataclysmDayReport Report = Run->AdvanceDay();
+			++Days;
+
+			TMap<int32, FVector2D> Summed;
+			TMap<int32, int32> FellingHits;
+			for (const FCataclysmCityHit& Hit : Report.Hits)
+			{
+				FVector2D& Total = Summed.FindOrAdd(Hit.CityId, FVector2D::ZeroVector);
+				Total += FVector2D(Hit.DefenceLost, Hit.PopulationLost);
+				FellingHits.FindOrAdd(Hit.CityId, 0) += Hit.bFelledTheCity ? 1 : 0;
+				Ordinary += Hit.Kind == ECataclysmCityHitKind::Ordinary ? 1 : 0;
+				Quest += Hit.Kind == ECataclysmCityHitKind::QuestTimer ? 1 : 0;
+				Siege += Hit.Kind == ECataclysmCityHitKind::SiegeShare ? 1 : 0;
+				Felled += Hit.bFelledTheCity ? 1 : 0;
+			}
+
+			for (const FCataclysmCity& City : Run->Map->Cities)
+			{
+				// FOUND RATHER THAN `FindRef`, whose default would be an `FVector2D` constructed with nothing in it.
+				const FVector2D* WasFound = Before.Find(City.CityId);
+				const FVector2D* HitsFound = Summed.Find(City.CityId);
+				const FVector2D Lost =
+					(WasFound ? *WasFound : FVector2D::ZeroVector) - FVector2D(City.Defence, City.Population);
+				const FVector2D Hits = HitsFound ? *HitsFound : FVector2D::ZeroVector;
+				if (!FMath::IsNearlyEqual(Lost.X, Hits.X, 0.01) || !FMath::IsNearlyEqual(Lost.Y, Hits.Y, 0.01))
+				{
+					++Wrong;
+					if (FirstWrong.IsEmpty())
+					{
+						FirstWrong = FString::Printf(TEXT("seed %d day %d city %d lost %.2f defence and %.2f people, its "
+														  "hits say %.2f and %.2f"),
+													 Seed, Report.Day, City.CityId, Lost.X, Lost.Y, Hits.X, Hits.Y);
+					}
+				}
+			}
+			for (const int32 CityId : Report.Fallen)
+			{
+				++Fallen;
+				FallsWrong += FellingHits.FindRef(CityId) == 1 ? 0 : 1;
+			}
+		}
+	}
+
+	AddInfo(FString::Printf(TEXT("HITS ADD UP: %d days; hits %d ordinary, %d Quest timer, %d Siege share, %d felling; %d "
+								 "falls, %d without exactly one felling hit; %d city-days wrong%s%s"),
+							Days, Ordinary, Quest, Siege, Felled, Fallen, FallsWrong, Wrong,
+							FirstWrong.IsEmpty() ? TEXT("") : TEXT(", the first: "), *FirstWrong));
+
+	TestTrue(TEXT("CONTROL: ordinary hits were dealt"), Ordinary > 0);
+	TestEqual(TEXT("every city's hits add up to what it lost, every day"), Wrong, 0);
+	TestEqual(TEXT("and every city that fell has exactly one hit that felled it"), FallsWrong, 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunDaysAwayTest,
+	"Cataclysm.EmpireRun.TheDaysAwayAreTotalledFromTheDaysOwnReports",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `NoteDaysAway` totals the reports it is given: each city once, in the order first hit, its losses summed; a hit that
+ * took nothing and felled nothing left out; every city that fell once; the days a surge fired counted, and the
+ * dungeons they landed summed. CONTROL: a run begun has no walk ended. Prints "DAYS AWAY".
+ */
+bool FCataclysmEmpireRunDaysAwayTest::RunTest(const FString& Parameters)
+{
+	UCataclysmEmpireRun* Run = CataclysmEmpireRunTest::MakeRun(7);
+	const bool bEndedBefore = Run->LastDaysAway.HasEnded();
+
+	auto AHit = [](int32 CityId, float Defence, float People, bool bFelled)
+	{
+		FCataclysmCityHit Hit;
+		Hit.CityId = CityId;
+		Hit.DefenceLost = Defence;
+		Hit.PopulationLost = People;
+		Hit.bFelledTheCity = bFelled;
+		return Hit;
+	};
+
+	TArray<FCataclysmDayReport> Reports;
+	FCataclysmDayReport& First = Reports.AddDefaulted_GetRef();
+	First.Hits = {AHit(4, 100.0f, 200.0f, false), AHit(9, 0.0f, 0.0f, false)};
+	FCataclysmDayReport& Second = Reports.AddDefaulted_GetRef();
+	Second.Hits = {AHit(12, 50.0f, 75.0f, true), AHit(4, 25.0f, 30.0f, false)};
+	Second.Fallen = {12};
+	Second.bSurged = true;
+	Second.SurgeDungeons = 6;
+	FCataclysmDayReport& Third = Reports.AddDefaulted_GetRef();
+	Third.Fallen = {12};
+
+	Run->NoteDaysAway(3, 9, Reports, /*bEndedInAClear*/ true);
+	const FCataclysmDaysAway& Away = Run->LastDaysAway;
+
+	FString Cities;
+	for (const FCataclysmCityLosses& City : Away.Cities)
+	{
+		Cities += FString::Printf(TEXT("[%d %.0f %.0f]"), City.CityId, City.DefenceLost, City.PopulationLost);
+	}
+	AddInfo(FString::Printf(TEXT("DAYS AWAY: before, ended %s; days %d to %d, by a clear %s; cities %s; fallen %d; surges "
+								 "%d bringing %d"),
+							bEndedBefore ? TEXT("YES") : TEXT("no"), Away.FromDay, Away.ToDay,
+							Away.bEndedInAClear ? TEXT("yes") : TEXT("NO"), *Cities, Away.Fallen.Num(), Away.Surges,
+							Away.SurgeDungeons));
+
+	TestFalse(TEXT("CONTROL: a run begun has no walk ended"), bEndedBefore);
+	TestTrue(TEXT("a walk has ended"), Away.HasEnded());
+	TestEqual(TEXT("left on day 3"), Away.FromDay, 3);
+	TestEqual(TEXT("back on day 9"), Away.ToDay, 9);
+	TestTrue(TEXT("by a clear"), Away.bEndedInAClear);
+	if (TestEqual(TEXT("two cities lost something; the hit that took nothing is left out"), Away.Cities.Num(), 2))
+	{
+		TestEqual(TEXT("the first hit first"), Away.Cities[0].CityId, 4);
+		TestEqual(TEXT("its defence summed over its two hits"), Away.Cities[0].DefenceLost, 125.0f);
+		TestEqual(TEXT("and its people"), Away.Cities[0].PopulationLost, 230.0f);
+		TestEqual(TEXT("then the city that fell"), Away.Cities[1].CityId, 12);
+	}
+	TestTrue(TEXT("the city that fell is listed once"), Away.Fallen == TArray<int32>({12}));
+	TestEqual(TEXT("one surge"), Away.Surges, 1);
+	TestEqual(TEXT("bringing six"), Away.SurgeDungeons, 6);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

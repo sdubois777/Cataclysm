@@ -261,6 +261,15 @@ FCataclysmSavedFloor FCataclysmSaveGather::FloorFrom(const UWorld& World,
 		Saved.RuleState = DungeonMode->FloorRuleStateNow();
 	}
 
+	PlacementsFrom(World, SoloCharacterId, Saved.Characters);
+
+	return Saved;
+}
+
+void FCataclysmSaveGather::PlacementsFrom(const UWorld& World, const FGuid& SoloCharacterId,
+										  TArray<FCataclysmSavedCharacterPlacement>& OutPlacements)
+{
+	UWorld* Mutable = const_cast<UWorld*>(&World);
 	for (TActorIterator<ACataclysmPlayerCharacter> It(Mutable); It; ++It)
 	{
 		ACataclysmPlayerCharacter* Character = *It;
@@ -269,8 +278,8 @@ FCataclysmSavedFloor FCataclysmSaveGather::FloorFrom(const UWorld& World,
 			continue;
 		}
 
-		// A DEAD CHARACTER IS NOT GATHERED EITHER, for the same reason. What
-		// happens to a run when its character dies is the death penalty, which
+		// A DEAD CHARACTER IS NOT GATHERED, for the reason `FloorFrom` skips a
+		// dead creature. What happens to a run when its character dies is the death penalty, which
 		// is issue #315's business and not this one's; a placement at zero
 		// health would simply restore the moment of death over and over.
 		if (UCataclysmSkillEffects::IsDead(Character))
@@ -278,10 +287,8 @@ FCataclysmSavedFloor FCataclysmSaveGather::FloorFrom(const UWorld& World,
 			continue;
 		}
 
-		Saved.Characters.Add(PlacementFrom(*Character, SoloCharacterId));
+		OutPlacements.Add(PlacementFrom(*Character, SoloCharacterId));
 	}
-
-	return Saved;
 }
 
 void FCataclysmSaveGather::CarriedSlotsFrom(
@@ -407,6 +414,13 @@ bool FCataclysmSaveGather::ProgressFrom(const UCataclysmEmpireRun& Run,
 	Record.LastRunWonTier = Run.LastRunWonTier;
 	Record.LastRunWonCataclysm = Run.LastRunWonCataclysm;
 	Record.LastRunWonPassivePoints = Run.LastRunWonPassivePoints;
+	// THE LAST DEFEAT'S AWARD AND THE LAST CLEAR, since run record version 6 (issue #2733 slice 3, 2026-11-17), for the
+	// map a walk's end returns to.
+	Record.LastEmpirePointsAwarded = Run.LastEmpirePointsAwarded;
+	Record.LastClearDay = Run.LastClearDay;
+	Record.LastClearDungeonName = Run.LastClearDungeonName;
+	Record.LastClearWalkDays = Run.LastClearWalkDays;
+	Record.LastDaysAway = Run.LastDaysAway;
 
 	return true;
 }

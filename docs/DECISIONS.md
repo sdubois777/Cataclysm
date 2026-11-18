@@ -2,6 +2,866 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-18 — The capital's Walk takes the character to the dungeon, and the last floor's stairs or a death take it back, each trip a save and a load; no walk can be left early, M opens the map, and the map says what the days away did (#2733, slice 3)
+
+**Affects:** the save writer's hand-over, `UCataclysmSaveWriter::HandOver` and `HasHandedOver`, new
+(`game/Source/Cataclysm/Save/CataclysmSaveWriter.h`, `.cpp`), with `FloorRecordNow` gathering only the placements of a
+record with no floor; `ECataclysmSaveTrigger::LeavingTheLevel`, new, and the rules for it
+(`CataclysmSaveTriggers.h`, `.cpp`); `FCataclysmSaveGather::PlacementsFrom`, new (`CataclysmSaveGather.h`, `.cpp`);
+`FCataclysmSaveApply::PlacementInto`'s `bPutInPlace` (`CataclysmSaveApply.h`, `.cpp`); `FCataclysmSaveLoad::CharacterAndRun`
+(`CataclysmSaveLoad.cpp`); the run record at version 6 and `Migrate_5_to_6` (`CataclysmSaveRecords.h`, `.cpp`);
+`ACataclysmGameMode::TravelTo` and `TravelRequested`, new (`game/Source/Cataclysm/Player/CataclysmGameMode.h`, `.cpp`);
+`UCataclysmGameInstance::PendingWalkDungeonId`, new (`CataclysmGameInstance.h`); `ACataclysmCapitalGameMode::TravelToWalk`
+and `InWorld`, new (`CataclysmCapitalGameMode.h`, `.cpp`); `ACataclysmDungeonGameMode::EnterThePendingWalkIfReady`,
+`ReturnToTheCapital`, `HandleStartingNewPlayer_Implementation` and `LastWalksDays`, new, with `GoDownOneFloor`,
+`ClearEmpireDungeon` and `EndTheDungeonForADeath` changed (`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`,
+`.cpp`); `ACataclysmPlayerCharacter::Revive` and the console commands `Cataclysm.EnterDungeon`, `Cataclysm.LeaveDungeon`,
+`Cataclysm.EmpireAdvance` and `Cataclysm.EmpireMap` (`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`);
+`FCataclysmWalkFromTheScreen::NoLeavingEarlyText`, new, with `RefusalFor` and `Walk` (`CataclysmWalkFromTheScreen.h`,
+`.cpp`); the city screen's and the empire map's Walk presses (`CataclysmCityScreenWidget.cpp`,
+`CataclysmEmpireMapWidget.cpp`); `UCataclysmEmpireMapLayout::LastClearLine`, `DaysAwayLine` and `ReturnLine`, new, and
+`LatestEventLine`'s day-0 guard (`CataclysmEmpireMapLayout.h`, `.cpp`); in the empire module,
+`FCataclysmDayReport::Hits` and `SurgeDungeons`, `FCataclysmCityHit`, `FCataclysmCityLosses`, `FCataclysmDaysAway` and
+`ECataclysmCityHitKind`, new, `UCataclysmEmpireRun::NoteClear`, `NoteDaysAway`, `LastClearDay`,
+`LastClearDungeonName`, `LastClearWalkDays` and `LastDaysAway`, new
+(`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h`, `.cpp`); the M key:
+`CataclysmInputActionNames::ToggleEmpireMap` (`game/Source/Cataclysm/Input/CataclysmInputConfig.h`), the controller's
+binding and `Input_ToggleEmpireMap` (`CataclysmPlayerController.h`, `.cpp`), `tools/generate_input_assets.py`, both
+controls tables of `docs/Cataclysm_GDD_v2.md`, and the generated assets `IA_ToggleEmpireMap.uasset` (new),
+`DA_InputConfig.uasset`, `IMC_KeyboardMovement.uasset` and `IMC_MouseMovement.uasset`, made in the window;
+`docs/Save_System_Design.md` section 6; `game/Tests/SaveFixtures/Run_v6.json`, new, and that folder's `README.md`;
+`game/README.md`. Tests: listed under "Tests", below. Issue [#2733](https://github.com/sdubois777/Cataclysm/issues/2733),
+slice 3 of 4.
+
+### SAID FIRST
+
+- **COMPILED, NOT YET RUN IN UNREAL.** Phase 2 compiled it three times with no error, and with no warning from this
+  branch's files once the first build's two were fixed (below). The window runs it. Python: "7470 passed, 9 skipped"
+  before this entry was added, its JUnit file 7479 tests, 0 failures, 0 errors; and all six Python proofs PROVED.
+- **THE WINDOW MAKES FOUR INPUT ASSETS** with `tools/run_editor_python.py tools/generate_input_assets.py`, and commits only
+  `IA_ToggleEmpireMap.uasset` (new), `DA_InputConfig.uasset`, `IMC_KeyboardMovement.uasset` and
+  `IMC_MouseMovement.uasset`; the run rewrites every input asset it owns and `L_Sandbox`, and the rest are restored, as
+  in #837 layer 4. (`test_the_decisions_log_names_real_files.py` does not read `IA_ToggleEmpireMap.uasset`, named
+  above before it exists: it takes an extension of one to five letters for a file, and `uasset` has six. Measured: it
+  passed with the name in this entry.)
+- **THE RUN RECORD IS AT VERSION 6**, so a trip keeps the last defeat's award, the last clear and what the days away
+  did; `Run_v6.json` is new and `Run_v5.json` is a migration input.
+- **ADDITIVE ONLY, AS RULED:** the day report gains `Hits` and `SurgeDungeons` and nothing the day loop computes reads
+  them. The model-port checks ran unchanged and passed (the Python run above); the empire module's Unreal tests run
+  unchanged in the window.
+
+### The rulings, quoted
+
+The project owner's brief for #2733: "The last floor's stairs, or a death, returns the player to L_Capital with the map
+open, after the walk's days have run" and "There is no leaving a dungeon early." The design, `docs/Cataclysm_GDD_v2.md`,
+the inventory section: "There is no town portal and no way out except clearing the dungeon or dying."
+
+The coordinating session, on this slice's plan, 2026-11-17: approved, "travel as save-and-continue", and:
+
+| Question | Ruling |
+| :-- | :-- |
+| Q1, the hand-over written synchronously | "YES. Write the hand-over synchronously. Update `docs/Save_System_Design.md` section 6, both pins, and the "exactly one" comments." |
+| Q2, a record with no floor | "YES. A floor-0 record restores vitals and potions, but not the place." |
+| Q3, the last award saved | "YES. Save `LastEmpirePointsAwarded`: run record schema 5 to 6, with a migration and the fixtures rule (a new fixture; the old fixture unedited)." |
+| Q4, the console commands | "YES. `Cataclysm.LeaveDungeon` and `Cataclysm.EnterDungeon` refuse mid-walk with the same sentence. Report every test that changes because of it." |
+| Q5, the day-0 death guard | "YES. Fix `LatestEventLine`'s day-0 guard here, with a test and a proof." |
+| Q6, what the map says | "YES, and wider", from the owner's aim to see "time has ticked when they go back to the empire map so other dungeons have resolved/lowered their current timers": the clear line, and one "While you were away" summary of the days, "built from what the days actually did: dungeons resolved, with their cities and the damage each did; cities fallen; any surge, with how many dungeons it brought". |
+| Q6's damage figures | "YES, the day loop supplies it": `FCataclysmDayReport::Hits`, filled at the three damage sites, each entry the city, the defence and the people actually lost (before minus after), the kind, and whether it felled the city; a headless test that the entries total the city's loss over the day; the resolve's and the death-cost days' reports kept on a death; the two-line surge label, no widget asset change, at most three cities named, "nothing was hit" when nothing was. Two conditions: additive only, checked by running the empire module's tests and the model-port checks unchanged; and the people formatted as the map already formats populations. |
+| Q7, minions and ground items | "LEAVE BEHIND. Minions and ground items stay on the floor left. Record it under "Not tested / not built". No issue." |
+| Health on arrival | "leave it unchanged, so vitals travel exactly. Put it on the owner's launch-check list in the entry, as "should arriving at the capital refill health?"" |
+| The M key | "THE M KEY IS ALREADY WRITTEN" on the parked branch `feat/keys-for-the-empire-map-and-character-sheet`, commit `288b45cc4`: "Take ONLY its M parts into slice 3, adapted to your code. Leave Y and the character sheet parked. Credit the commit in the entry." The coordinating session had ruled on 2026-11-03, as the parked commit records it: "M opens and closes the empire map". |
+
+And, on the tests this slice changes by ruling: "The six test changes reported under Q4 are all accepted."
+
+### What was verified by reading, before anything changed
+
+- **Every `OpenLevel` in the game** is one of three before this slice -- the select screen's Continue, the
+  new-character screen's Start, and a refused load's way back to the front end -- and none is reachable mid-walk.
+  `TravelTo` is the fourth. `tools/tests/test_a_walk_cannot_be_left_early.py` now fails on a fifth.
+- **The ways a walk was left before this slice**: a Walk press under another dungeon mid-walk (it left the first and
+  ran its days), `Cataclysm.LeaveDungeon`, and `Cataclysm.EnterDungeon` mid-walk. Quitting is not one: Continue
+  reopens `L_Dungeon` on the saved floor, since #753.
+- **The run's fields the map reads, against the save**: a sweep of every `UPROPERTY` on `UCataclysmEmpireRun`
+  against the gather and the restore found one the map shows and the save did not keep, `LastEmpirePointsAwarded`;
+  its own comment said a loaded run read 0 there. Since a return is now a load, that is Q3.
+- **Potions are filled on entering a dungeon and only there** (`EnterEmpireDungeon`, #806), so a trip carries them
+  exactly and the entry fills them, as before. Nothing fills health on a trip, and nothing did before.
+- **The day report held which cities were hit and not how much each hit took**; the figures existed only as locals at
+  the three `Map->Damage` calls. Raised before building, and ruled (Q6's damage figures).
+- **`FCataclysmDayReport::Spawned` lists the Dungeon Cities a fall builds as well as the dungeons a surge lands**, so the
+  summary's count of what the surges brought needed `SurgeDungeons`, recorded where a surge lands its wave. Additive,
+  as `Hits` is, and in the entry rather than asked first: it is the same kind of record the ruling made.
+- **A death on day 0 needs a walk made shorter than its floors.** At the starting rate entering a dungeon owes floor
+  1's day, so a death there is on day 1. My plan said otherwise and I corrected it to the coordinating session.
+
+### What changes
+
+**A trip is a save and a Continue.**
+
+- **The hand-over.** `UCataclysmSaveWriter::HandOver` writes the character record and the run record with no floor
+  (dungeon `None`, floor 0), through the new trigger `LeavingTheLevel`, which is written before the frame ends and is
+  exempt from the run record's once-a-frame rule; then it forgets its run and character, so the departing level writes
+  nothing more. A record with no floor holds the characters' placements and nothing of a floor
+  (`FCataclysmSaveGather::PlacementsFrom`, which `FloorFrom` now uses for its own characters). If either record fails
+  to write, the writer goes on as it was and the trip does not happen.
+- **`ACataclysmGameMode::TravelTo(Map, WalkDungeonId)`** hands over, puts the character's identifier on the game
+  instance (`PendingCharacterId`, the field Continue uses) with the dungeon to walk (`PendingWalkDungeonId`, new), and
+  opens the level -- or, in an automation test, keeps the level asked for (`TravelRequested`).
+- **The arrival** is `LoadThePendingCharacter`, unchanged: the character and the run come back from the two records.
+  **A record with no floor restores health, mana, energy shield, the class resource and the potions, and not the
+  place** (Q2): `PlacementInto(..., bPutInPlace)`. The character arrives at the capital's player start, or at the
+  dungeon's entrance once its walk begins. This also applies to a Continue of a character saved in the capital.
+
+**The capital's Walk** (`ACataclysmCapitalGameMode::TravelToWalk`) travels to `L_Dungeon` with the dungeon pressed.
+`FCataclysmWalkFromTheScreen::Walk` takes the capital, and both screens pass it.
+
+**`L_Dungeon` enters the pending walk once the character has loaded** (`ACataclysmDungeonGameMode::EnterThePendingWalkIfReady`),
+from the end of `StartPlay` and from `HandleStartingNewPlayer`, whichever finds the load settled: the pending dungeon is
+cleared, entered through `EnterEmpireDungeon` -- floor 1 at its entrance, the potions filled, its timer stopped, floor
+1's time charged -- and written at once (`ChangedFloor`), so a quit straight after arriving resumes the walk.
+
+**A walk's end goes back to the capital** (`ReturnToTheCapital`): the last floor's stairs, after the clear, the walk's
+days and any win; and a death that ended a walk, at the end of `Revive`, after the character stands whole and the paid
+death is written. A death in the Cataclysm's own dungeon ends no walk and stays, as `EndTheDungeonForADeath` rules.
+
+**No walk can be left early** (Q4): a Walk press mid-walk is refused whichever dungeon was pressed;
+`Cataclysm.LeaveDungeon` refuses mid-walk and leaves nothing; `Cataclysm.EnterDungeon` refuses mid-walk. All three
+say `NoLeavingEarlyText`: "You are walking dungeon 12. There is no leaving a dungeon early: clear its last floor, or
+die in it." `Cataclysm.EmpireAdvance`'s mid-walk refusal no longer points at `Cataclysm.LeaveDungeon`.
+
+**The map says what the walk's end did** (Q6), as a second line of its surge label (`UCataclysmEmpireMapLayout::ReturnLine`):
+after a clear, the clear's line, "Day 9: you cleared the dungeon on Outpost (-3,0). The walk's 4 days ran."
+(`LastClearLine`), then the days away (`DaysAwayLine`): "While you were away, from day 84 to day 118: Bulwark (1,2)
+lost 1000 defence and 5000 people, ...; ... fell; a surge brought 6 dungeons." After a death, the days away alone: the
+death's own line is the first line's (`LatestEventLine`), which now shows a death on day 0 (Q5). At most three cities
+are named in each part, the rest counted; "nothing was hit" when no hit took anything. Defence and people are written
+"%.0f", as the map writes a city's defence and people on hover.
+
+**The day report records each hit** (`FCataclysmDayReport::Hits`): the city, the defence and the people the city lost
+(read just before `Map->Damage` and just after), the kind, and whether it felled the city -- at the ordinary dungeon's
+hit, the Quest timer's and the Siege's daily share. **Additive only**: nothing the day loop computes reads it. The
+Quest timer's hit is recorded as its block is left (`FHitRecordedOnLeaving`), because its fall returns from braces
+whose text `tools/tests/test_the_hollow_in_the_model_and_in_the_game.py` reads exactly. **The model, `sim/cataclysm_sim`,
+has no matching field.** The dungeon level keeps the reports of the days a walk ran (`LastWalksDays`) and, on a death,
+the resolve's report and the death's own days' reports too, and the run totals them (`UCataclysmEmpireRun::NoteDaysAway`).
+
+**The run record is at version 6** (Q3, Q6): `LastEmpirePointsAwarded`, `LastClearDay`, `LastClearDungeonName`,
+`LastClearWalkDays` and `LastDaysAway`. `Migrate_5_to_6` writes "nothing yet". `Run_v6.json` is new; `Run_v5.json` is
+a migration input. The fixtures README says what the new file describes.
+
+**M opens and closes the empire map**, in both control schemes -- the M parts of the parked commit `288b45cc4`,
+adapted: the action name, the generator rows, both controls tables, the controller's binding, and the run-start line
+moved from `Cataclysm.EmpireMap` into `ToggleEmpireMap`, so the key and the command are one behaviour. Diablo IV binds
+its map screen to M (and Tab) (segmentnext and fextralife's controls pages); a developer's list from an older Last
+Epoch patch lists "Map - M", which I could not confirm is current; Path of Exile's overlay is Tab and its Atlas tree
+Ctrl+G, so it has no single key to borrow. Y and the character sheet stay parked on that branch.
+
+**`docs/Save_System_Design.md` section 6** names the second synchronous write and the rule for a record with no floor.
+
+### Judgements of mine
+
+- **The trigger's name, `LeavingTheLevel`**, and that a failed hand-over leaves the character in the level rather
+  than travelling to an older record.
+- **The place is not put back for any record with no floor**, so a Continue in the capital arrives at the player start
+  too: one rule for the capital and the hand-over, and no per-trip flag that a quit mid-load could leave pointing at
+  another level's coordinates. Ruled as Q2.
+- **`SurgeDungeons`** on the day report (above), and counting a summary's surges by the days `bSurged` is true: a fall's
+  surge waits 25 days on the last, so at most one fires a day.
+- **A hit that took nothing is left out of the summary** -- a Hollow's, which adds Void stacks and takes no points, and
+  one on a city already fallen -- and the summary does not mention Void stacks.
+- **`LastClearDay` is `INDEX_NONE` for "no clear"**, not 0, because a walk made shorter than its floors can clear on
+  day 0.
+- **The arrival writes at once** (`ChangedFloor`) after entering the walk.
+- **The run record's fixture holds `bEndedInAClear` at its default, false**, because the run it describes last came back
+  from a death; the README says so, and the return line's test reads a true one.
+
+### Tests changed by ruling
+
+All accepted by the coordinating session, 2026-11-17:
+
+1. `Cataclysm.WalkFromTheScreen.PressingWalkOnACityScreenInADungeonLevelEntersThatDungeon`: a second press mid-walk is
+   refused; six assertions reworded, the empire-points one kept.
+2. `Cataclysm.WalkFromTheScreen.ARefusedWalkIsShownAndEntersNothing`: one assertion expects `NoLeavingEarlyText(700)`
+   for "You are walking dungeon 700 now.".
+3. `Cataclysm.SaveLoad.` -- the test of a character saved dead in a dungeon -- expects the hand-over as the last write
+   and a trip to the capital, for "the paid death was written".
+4. `Cataclysm.WinningTheRun.TheEarnedBossDungeonsStairsWinTheRunOnceItsCataclysmBossIsDead`: the same. The win's own
+   write stays covered by that file's other tests, which clear without the stairs.
+5. `Cataclysm.SaveTriggers.`: the synchronous test is renamed
+   `OnlyTheCharacterDyingAndLeavingTheLevelAreWrittenBeforeTheFrameEnds` and counts two; the character-record set adds
+   `LeavingTheLevel`.
+6. `Cataclysm.Input.ConfigListsEverySlotAndNativeAction`: thirteen native actions.
+
+And two more after window travel-w1's second run, approved by the coordinating session on 2026-11-18 as test-only
+changes (below, under that run):
+
+7. `Cataclysm.SaveLoad.ProcessingADeathWritesTheSaveAfterThePenalty`: expects the hand-over as the last write and a
+   trip to the capital, for "the paid death was written", as item 3.
+8. `Cataclysm.SaveLoad.ALoadedPactAltarOffersThePactsItOffered`: goes on to the next floor on slots of its own, so that
+   floor change does not write over the save it loads.
+
+And by the version 6 bump, as the version 5 bump did: the committed-file tests read `Run_v6.json` (in
+`CataclysmSaveRecordTests.cpp`, `CataclysmDeathCostTests.cpp`, `CataclysmEarnedBossSaveTests.cpp` and
+`CataclysmWinningTheRunTests.cpp`), three of them saying "version 6"; the four tests that run an older run file through
+the whole chain add what `Migrate_5_to_6` writes; and the Python check
+`test_the_run_record_is_at_version_5_or_later_and_migrate_4_to_5_writes_not_won` no longer asks for version 5.
+
+### Tests
+
+- **Unreal, new:** nine in `Cataclysm.Travel.` (`CataclysmSaveLoadTests.cpp`): the capital's Walk hands over; the
+  dungeon level loads the character exactly and enters the walk; the last floor's stairs return, with the award and
+  the return line; a death returns whole, with its lines; a death in the Cataclysm's own dungeon stays; the day-0 death
+  line; the return line's wording; the version 5 file migrates; the version 6 file reads. Two in
+  `Cataclysm.EmpireRun.` (`game/Source/CataclysmEmpire/Tests/CataclysmEmpireRunTests.cpp`): each day's hits add up to
+  what each city lost, over two Heretic runs of up to 400 days; and the days away are totalled from the reports. One
+  in `Cataclysm.Input.`: the empire map is on M in both schemes.
+- **Python, new:** `tools/tests/test_a_walk_cannot_be_left_early.py`, `test_a_trip_between_levels_is_a_save_and_a_load.py`
+  and `test_the_empire_map_key_reaches_its_command.py`.
+
+### Not tested, and not built
+
+- **Minions and ground items stay on the floor left** (Q7): a creature the player commands and a drop not picked up do
+  not cross a level change. In Path of Exile and Diablo IV minions follow the player between areas.
+- **A level opening.** No automation test can travel; the tests read what `TravelTo` asked for, and the arriving level
+  is a second test world given the two fields the game instance carries. The owner's press is the check.
+- **The death notice the pawn shows on standing up is gone with the pawn** on the trip back; the map's line carries the
+  same words.
+- **A press of M, and the map's second line as drawn.** No test world has a viewport or a local player.
+
+### For the owner's launch check (slice 4's list)
+
+- Should arriving at the capital refill health? Today nothing does but a death; the vitals travel exactly.
+
+### Phase 2: compiled, reviewed and proved in Python
+
+**Three builds, with `python tools/unreal_build.py build`:**
+
+| Build | What it compiled | Result |
+| :-- | :-- | :-- |
+| 1, every change uncommitted, so compiled alone | "78 actions, 73 files compiled", every changed `.cpp` among them by name (UnrealBuildTool's log) | no error; two warnings C5055 in this entry's migration test, a `double` compared with `INDEX_NONE`, an enumerator |
+| 2, after casting both to `double` | "4 actions, 1 file compiled: CataclysmSaveLoadTests.cpp" | no error, no warning |
+| 3, committed (`342fb5bf9`), the makefile set aside to regroup | "24 actions, 19 files compiled": the unity files holding every changed `.cpp` of the `Cataclysm` module | no error, no warning |
+
+The `CataclysmEmpire` module has no unity files: each of its `.cpp` files is its own object, so its two changed files
+compile alone in every build. The only other warning in any build is the engine's own deprecation of `CountBits`
+(C4996), from before this branch.
+
+**Found by reading the code back, and changed before any build:** an arrival that found its level already walking a
+dungeon went back to the capital, which is leaving that walk early. It now keeps the walk, drops the pending one and
+logs an error. Nothing in play reaches it: a hand-over is written with no dungeon.
+
+**Found by the registration's Python run: a README check had stopped running.** The run printed "7469 passed, 10
+skipped" where phase 1's printed "7470 passed, 9 skipped"; the two JUnit files' skipped tests differ in one,
+`test_game_readme_is_true.py::test_the_empire_layer_claim_is_still_true`, which runs only while `game/README.md` holds
+its key sentence. That was "Nothing takes the player from the map into a dungeon", which this slice made false and
+removed. The check now keys on the bullet's new sentence, "A walk is a trip from the capital and back", and runs and
+passes; its comment says so.
+
+**Six Python proofs, with `tools/prove_guard.py`, all PROVED** (`.claude/windows/prove_python_2733s3.py`); each broke one
+line, failed exactly the one check named, and passed whole once restored:
+
+| Proof | Break | The one check that failed |
+| :-- | :-- | :-- |
+| S1 | `Cataclysm.LeaveDungeon` calls `LeaveEmpireDungeon` again | `test_a_walk_cannot_be_left_early.py::test_leave_dungeon_leaves_nothing_and_says_why` |
+| S2 | `ReturnToTheCapital` opens the level itself, a fifth `OpenLevel` | `test_a_walk_cannot_be_left_early.py::test_every_level_change_is_a_known_one` |
+| S3 | `Migrate_5_to_6` writes a clear on day 0 | `test_a_trip_between_levels_is_a_save_and_a_load.py::test_the_run_record_is_at_version_6_and_migrate_5_to_6_writes_nothing_yet` |
+| S4 | recording a hit sets the city's defence to 0 | `test_a_trip_between_levels_is_a_save_and_a_load.py::test_recording_a_hit_changes_nothing_but_the_list_of_hits` |
+| S5 | the mouse scheme puts the map on N | `test_the_empire_map_key_reaches_its_command.py::test_each_scheme_puts_the_screen_on_its_ruled_key_and_nothing_else_there[empire map-MOUSE_MAPPINGS]` |
+| S6 | the hand-over is written asynchronously | `test_when_a_save_is_written.py::test_only_the_character_dying_and_leaving_the_level_are_written_before_the_frame_ends` |
+
+### Registered before the run
+
+**The base.** Window capital-w1's whole-suite run at `f86d6609` performed 4772 tests, 47 skipped halves, 0 test saves
+left behind; `git diff --stat f86d6609 1f16aafde -- game/` prints nothing, so that is this branch's base,
+`development` `1f16aafde`. Per-group counts are its engine log's "Test Completed" lines, by prefix, ignoring case.
+
+**The asset step, first.** `tools/run_editor_python.py tools/generate_input_assets.py` must change nothing but files
+under `game/Content/Input/` and `game/Content/Maps/L_Sandbox.umap`, and must add `IA_ToggleEmpireMap.uasset` and change
+`DA_InputConfig.uasset`, `IMC_KeyboardMovement.uasset` and `IMC_MouseMovement.uasset`. Every other file it rewrote is
+restored with `git checkout --`. The four are committed alone, on top of the registration commit, each stored through
+Git LFS and an Unreal package on disk; then `git push` and `git lfs push`. That commit is the tested head.
+
+**The whole suite: 4772 + 12 = 4784 performed, 4784 succeeded, 0 failed; 47 skipped halves; 0 test saves left behind;
+"Declared: 4784".** The twelve, by name: nine in `Cataclysm.Travel.`, two in `Cataclysm.EmpireRun.`, one in
+`Cataclysm.Input.`.
+
+**Each group alone,** by its prefix (each ends in a dot):
+
+| Prefix | Base | Registered | Why it runs alone |
+| :-- | --: | --: | :-- |
+| `Cataclysm.Input.` | 7 | 8 | the M key's test is new; thirteen native actions, after the asset step |
+| `Cataclysm.Travel.` | 0 | 9 | new |
+| `Cataclysm.EmpireRun.` | 69 | 71 | two new; the other 69 unchanged, which is the check that recording hits changed nothing |
+| `Cataclysm.WalkFromTheScreen.` | 5 | 5 | two changed by ruling |
+| `Cataclysm.SaveLoad.` | 76 | 76 | one changed by ruling; the placement rule for a record with no floor |
+| `Cataclysm.WinningTheRun.` | 11 | 11 | the stairs test changed by ruling; the committed file and the chain |
+| `Cataclysm.SaveTriggers.` | 6 | 6 | one renamed, counting two synchronous triggers; one adding `LeavingTheLevel` |
+| `Cataclysm.SaveRecords.` | 17 | 17 | the committed run file is `Run_v6.json` |
+| `Cataclysm.DeathCost.` | 9 | 9 | the committed file and the chain |
+| `Cataclysm.EarnedBossSave.` | 3 | 3 | the committed file and the chain |
+| `Cataclysm.ConsumptionDouble.` | 15 | 15 | the chain |
+| `Cataclysm.Capital.` | 7 | 7 | a Continue in the capital is no longer put in place |
+| `Cataclysm.SaveWriter.` | 25 | 25 | the floor record and the hand-over beside it |
+| `Cataclysm.EmpireScreen.` | 14 | 14 | the map's surge label gains its second line |
+| `Cataclysm.EmpirePoints.` | 16 | 16 | the last award is saved |
+
+**Python, after the asset commit: "7470 passed, 9 skipped", its JUnit file 7479 tests, 0 failures, 0 errors; ruff
+passing.** Measured at registration, before the asset commit, as exactly that; the window adds no Python.
+
+**Eight C++ guard proofs,** with `prove_cpp_guard`, the engine log of each half kept (`.claude/windows/prove_b2733s3.py`).
+Each restored half must pass its whole prefix; each broken half fails exactly this:
+
+| Proof | Break | Prefix | Predicted broken half |
+| :-- | :-- | :-- | :-- |
+| C1 | the hand-over does not stop the writer: its two `Invalidate` lines removed (`CataclysmSaveWriter.cpp`) | `Cataclysm.Travel.` | 9 performed, 8 succeeded, 1 failed: `TheCapitalsWalkWritesBothRecords...`, 2 assertions: "and stopped writing", "so a trigger after the hand-over writes nothing" |
+| C2 | a record with no floor puts the character in place: `bPutInPlace = SavedRun != nullptr` (`CataclysmSaveLoad.cpp`) | `Cataclysm.Travel.` | 9, 7, 2 failed: `TheDungeonLevelLoads...`, 1: "and not at the capital's place"; `TheLastFloorsStairs...`, 1: "and not at the dungeon's place" |
+| C3 | a death that ended a walk does not go back: `WalkEndedIn = nullptr` (`CataclysmPlayerCharacter.cpp`) | `Cataclysm.SaveLoad.` | 76, 75, 1 failed: the dungeon-death load test, 2: "and the hand-over to the capital was the last write", "and the character travels to the capital" |
+| C4 | mid-walk only the dungeon walked is refused: `EmpireDungeonId == DungeonId` (`CataclysmWalkFromTheScreen.cpp`) | `Cataclysm.WalkFromTheScreen.` | 5, 4, 1 failed: `PressingWalkOnACity...`, 4: "is refused: the first is still walked", the refusal's words, "still as deep as the first", "no day has run" |
+| C5 | the latest event asks the death's day again: `LastDeathDay > 0` (`CataclysmEmpireMapLayout.cpp`) | `Cataclysm.Travel.` | 9, 8, 1 failed: `TheMapsLatestEventShowsADeathOnDayZero`, 1: "and the map shows it as the latest event" |
+| C6 | a hit records the defence before it, not what it took (`CataclysmEmpireRun.cpp`) | `Cataclysm.EmpireRun.` | 71, 70, 1 failed: `EachDaysHitsAddUpToWhatEachCityLost`, 1: "every city's hits add up to what it lost, every day" |
+| C7 | the last award is not saved: its gather line removed (`CataclysmSaveGather.cpp`) | `Cataclysm.Travel.` | 9, 8, 1 failed: `TheLastFloorsStairs...`, 1: "the award came back with the run" |
+| C8 | the last floor's stairs clear and do not go back: `if (ClearEmpireDungeon() && false)` (`CataclysmDungeonGameMode.cpp`) | `Cataclysm.WinningTheRun.` | 11, 10, 1 failed: `TheEarnedBossDungeonsStairs...`, 2: "the hand-over to the capital was the last trigger", "and the character travels to the capital" |
+
+Assertions are counted in each broken half's kept log in both of the engine's forms, "Expected '...'" and "...: The
+two values are not equal.".
+
+### Window travel-w1, the first run, 2026-11-18: stopped at its second group, on two faults in my tests and one in the code
+
+At `c8cda5aa`. The runner's lines after the pre-checks, which all passed:
+
+```
+lock acquire: exit 0 travel-w1 holds the Unreal editor.
+build: Build: Succeeded - target already up to date, 0 actions, nothing compiled | exit 0
+assets: git status exit 0, 23 changed: 21 input assets and L_Sandbox.umap modified, IA_ToggleEmpireMap.uasset new
+assets: restoring: 19 files
+assets: after restoring, git status: DA_InputConfig, IMC_KeyboardMovement, IMC_MouseMovement modified; IA_ToggleEmpireMap new
+assets: committed e06b5f16 on c8cda5aa, files [A IA_ToggleEmpireMap.uasset, M DA_InputConfig.uasset, M IMC_KeyboardMovement.uasset, M IMC_MouseMovement.uasset]
+assets: git push exit 0; git lfs push exit 0 ''; origin's feat/2733-travel is e06b5f16: the tested head
+alone Cataclysm.Input.: Tests: 8 tests performed, 8 succeeded, 0 failed | exit 0
+alone Cataclysm.Travel.: Tests: 9 tests performed, 6 succeeded, 3 failed: ADeathThatEndsAWalkTakesTheCharacterBackToTheCapitalWhole, TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk, TheLastFloorsStairsClearTheDungeonAndTakeTheCharacterBackToTheCapital | exit 1
+STOPPED: Cataclysm.Travel. alone did not pass
+lock release: exit 0 travel-w1 released the Unreal editor.
+```
+
+(The two `assets:` lines on what changed are shortened here; the run's own lines list each path.) **The asset step did
+exactly what was registered**: each of the four is a Git LFS pointer in git and an Unreal package on disk, and
+`e06b5f16` holds them from here on.
+
+**The three failures, read from the kept engine log `b2733s3_alone_engine_Travel_e06b5f16.log`:**
+
+1. **`ADeathThatEndsAWalkTakesTheCharacterBackToTheCapitalWhole`, 1 assertion, "naming the city the death's resolve
+   hit, and what it lost". A FAULT IN MY TEST'S SET-UP.** The line read "While you were away, from day 1 to day 8:
+   nothing was hit." The test's dungeon was placed by hand, and a hand-placed dungeon carries no `DefenceDamage` and
+   no `PopulationDamage` -- both default to 0 -- while a hit is those two scaled by the dungeon's depth. So the
+   resolve took nothing, and the summary rightly left it out. Every other figure in that test matched: day 8, floor
+   0, full health, the death line.
+2. **`TheLastFloorsStairsClearTheDungeonAndTakeTheCharacterBackToTheCapital`, 1 assertion, "the character exactly as
+   it left". A FAULT IN MY TEST'S HELPER, NOT IN THE HAND-OVER.** The two records differ in one field,
+   `CataclysmOrderSeed`: 1768495365 before the trip and 1099154649 after it. The test's dungeon character never drew
+   an order seed, and **a character with no seed is saved with the seed its `CharacterId` gives**
+   (`FCataclysmSaveGather::CharacterFrom`, the rule a version 6 character file migrates by). The helper built its
+   "before" record with no `CharacterId`, so it got the seed of an empty identifier; the hand-over's record had the
+   character's real identifier, and the load set that seed. A character made in play draws its seed when it is made,
+   and the arrival test -- whose character was made so -- matched byte for byte. Every other figure matched: the
+   potions, health 37, not placed, the day, the clear, the award (1.000 back as 1.000).
+3. **`TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk`, 2 assertions, "saying the character is in
+   that dungeon" (-1, not 0) and "on floor 1" (0, not 1). A FAULT IN THE CODE.** The arrival's `ChangedFloor` write was
+   noted -- the last trigger was "changing floor" -- and skipped by the run record's once-a-frame rule, because the
+   test's scene had written the run record earlier in the same frame: `MakeScene` begins a writer on the sandbox's
+   floor, and the dungeon's `StartPlay` then changes floor and writes, and a test's whole body is one frame. In play
+   the writer begins only after `StartPlay` has built the floor, and the load writes nothing (restoring the bag and
+   the gear raises no trigger), so I found no write in play before the arrival's in that frame. But the rule can skip
+   it, and the code and this entry say "written at once".
+
+**Ruled by the coordinating session, 2026-11-18:** all three as proposed. Failure 1, test only: the hand-placed
+dungeon takes an Outpost dungeon's designed hit from `UCataclysmSurgeScheduler::SpecFor`, and the assertion names the
+loss expected, so the summary is checked against real figures. Failure 2, test only: the test's character draws its
+order seed, as a made character does; and this entry says plainly why the "before" record differed (above).
+Failure 3: `ChangedFloor` is exempt from the once-a-frame rule, with a ninth proof, C9 -- on one condition first:
+every caller that raises `ChangedFloor` listed, and none able to raise it more than once in a frame in play.
+
+### Every place that raises `ChangedFloor`, read in the code, 2026-11-18
+
+Two functions call `UCataclysmSaveWriter::SetFloor`, which raises `ChangedFloor` only when the floor it is told differs
+from the one it holds, and only while the writer is writing; and one place raises it directly.
+
+| Raises it | Through | At most, in one frame in play | Why |
+| :-- | :-- | :-- | :-- |
+| `GoToFloor`'s `SetFloor` | `StartPlay`, the level's first floor | never | the writer begins in the parent's `StartPlay`, after the floor is built |
+| | `GoDownOneFloor`, the stairs (`HandleStairsTaken`, and Unstable Portal's "descends") | once | one overlap of the stairs per change; the old floor's stairs go with the old floor |
+| | `GoDownOneFloor`, a Horde's next wave (`BringTheNextWaveIn`) | once | the game mode's tick asks at most once a frame (`SinceWaveCheckSeconds` resets), and only when the wave is down to a tenth, which a wave that has just arrived is not |
+| | `ThePlayerFellIntoAChasm`, Those in the Dark's fall to the dark floor | once | only while `ThoseInTheDarkFallsNoted` is 0 |
+| | `LeaveTheDarkFloor`, the dark floor's stairs | once | as the stairs |
+| | `EnterEmpireDungeon`, floor 1 | once | and only when the level held another floor |
+| | `ResumeEmpireDungeon`, a load inside a dungeon | once | once per load |
+| `LeaveEmpireDungeon`'s `SetFloor` | a walk ended on the dark floor: a death there | once | once per walk's end |
+| `EnterThePendingWalkIfReady` | the arrival from the capital | once | **changed after the first run**: it raises it only when entering did not already (`FloorChangesNoted` unchanged), so a level begun on another floor -- `Cataclysm.DungeonFloor` set -- does not raise it twice |
+
+**Cryptquake and Heaven's Quake change no floor**: their pits and pillars are obstacles on the floor standing, and
+neither reaches `GoToFloor`. **A floor rebuilt in place** is `GoToFloor` to the floor held, which raises nothing.
+`EnterEmpireDungeon` leaving a walk first could raise it twice -- `LeaveEmpireDungeon` from the dark floor, then floor
+1 -- and no player's door reaches that since this slice: a Walk press and `Cataclysm.EnterDungeon` refuse mid-walk, and
+the arrival enters only when nothing is walked. **Two in one frame need two of these to coincide** -- a death paid for on
+the frame the stairs are taken, say -- and then each is one write, the later replacing the earlier, which is what the
+exemption is for.
+
+### What changed after the first run
+
+- **`ChangedFloor` writes whatever else wrote the run record that frame** (`UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame`),
+  and its comment and the save writer's say why; `docs/Save_System_Design.md` section 6 lists it among the writes that
+  replace an earlier one.
+- **The arrival raises `ChangedFloor` only when entering did not already** (above).
+- **The death test's dungeon takes an Outpost dungeon's designed hit** (`UCataclysmSurgeScheduler::SpecFor(Basic,
+  Outpost)`), and the test measures the city before the death and after, and checks the line names that loss in those
+  figures: "<city> lost <defence> defence and <people> people".
+- **The travel tests' dungeon character draws a Cataclysm order seed**, as a made character does.
+- **A Python check**, `test_a_trip_between_levels_is_a_save_and_a_load.py::test_a_change_of_floor_writes_even_after_another_write_this_frame`,
+  and its proof S7, PROVED: "1 failed, 9 passed" with `ChangedFloor` taken out of the exemption, "10 passed" restored.
+- **The runner skips the asset step** and instead checks that HEAD holds the four input assets committed in
+  `e06b5f16`, each a Git LFS object checked out as an Unreal package.
+
+### Re-registered before the second run
+
+**Unchanged from the first registration:** the whole suite 4784, 47 skipped halves, 0 test saves left behind,
+"Declared: 4784"; the fifteen groups alone at the counts above; C1 to C8 as above.
+
+**Added: C9**, with `prove_cpp_guard`:
+
+| Proof | Break | Prefix | Predicted broken half |
+| :-- | :-- | :-- | :-- |
+| C9 | `ChangedFloor` taken out of `WritesEvenIfTheRunWasWrittenThisFrame` (`CataclysmSaveTriggers.cpp`) | `Cataclysm.Travel.` | 9 performed, 8 succeeded, 1 failed: `TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk`, 2 assertions: "saying the character is in that dungeon", "on floor 1" -- the first run's two |
+
+**Python: "7471 passed, 9 skipped"**, one more than the first registration, the check above; measured at this
+re-registration, its JUnit file 7480 tests, 0 failures, 0 errors; ruff passing. The window adds no Python.
+
+**Compiled twice after the first run**, with no error and no warning from this branch's files: the three changed
+`.cpp` files alone, uncommitted ("23 actions, 20 files compiled", the three among them by name, with the files whose
+included headers changed); and committed as `a99d4c754`, the makefile set aside ("9 actions, 6 files compiled: Module.Cataclysm.13.cpp,
+Module.Cataclysm.37.cpp, Module.Cataclysm.39.cpp, Module.Cataclysm.38.cpp, Module.Cataclysm.40.cpp,
+Module.Cataclysm.41.cpp"), the unity files holding `CataclysmSaveTriggers.cpp`, `CataclysmDungeonGameMode.cpp` and
+`CataclysmSaveLoadTests.cpp`.
+
+### Window travel-w1, the second run, 2026-11-18: stopped at its fifth group, on two tests that relied on the old save behaviour
+
+At `c7b9447e`. The pre-checks all passed. The runner's lines after them:
+
+```
+feat/2733-travel c7b9447e dirty=''
+Git LFS: exit 0, 128 files, 0 pointers
+lock acquire: exit 0 travel-w1 holds the Unreal editor.
+build: Build: Succeeded - target already up to date, 0 actions, nothing compiled | exit 0
+assets: SKIPPED, already committed; game/Content/Input/Actions/IA_ToggleEmpireMap.uasset: HEAD's blob begins b'version https://git-lfs.github.com/spec/v1', 129 bytes; on disk 1569 bytes beginning c1832a9e; git lfs ls-files: ['f8d1f6d13f * game/Content/Input/Actions/IA_ToggleEmpireMap.uasset']; last changed in e06b5f16a
+```
+
+and the same line for `DA_InputConfig.uasset`, `IMC_KeyboardMovement.uasset` and `IMC_MouseMovement.uasset`, each
+last changed in `e06b5f16a`; then
+
+```
+alone Cataclysm.Input.: Tests: 8 tests performed, 8 succeeded, 0 failed | exit 0
+alone Cataclysm.Travel.: Tests: 9 tests performed, 9 succeeded, 0 failed | exit 0
+alone Cataclysm.EmpireRun.: Tests: 71 tests performed, 71 succeeded, 0 failed | exit 0
+alone Cataclysm.WalkFromTheScreen.: Tests: 5 tests performed, 5 succeeded, 0 failed | exit 0
+alone Cataclysm.SaveLoad.: Tests: 76 tests performed, 74 succeeded, 2 failed: ALoadedPactAltarOffersThePactsItOffered, ProcessingADeathWritesTheSaveAfterThePenalty | exit 1
+STOPPED: Cataclysm.SaveLoad. alone did not pass
+lock release: exit 0 travel-w1 released the Unreal editor.
+```
+
+**The failed assertions**, quoted from the group's kept engine log (`b2733s3_alone_engine_SaveLoad_c7b9447e.log`):
+
+| Test | Assertion |
+| :-- | :-- |
+| `ProcessingADeathWritesTheSaveAfterThePenalty` | "Expected 'the last write was the one that says the death was paid for' to be 8, but it was 11." |
+| `ALoadedPactAltarOffersThePactsItOffered` | "Expected 'the altar offers the pacts it offered' to be "0,1,2", but it was "0,2,4"." |
+| | "Expected 'and the next floor offers what the walk's did' to be "0,2,4", but it was "1,2,3"." |
+
+**Why each failed. Both are tests that relied on what this slice changed; neither is a fault in the game.**
+
+- **`ProcessingADeathWritesTheSaveAfterThePenalty`** dies in an empire dungeon with a game instance and a writer that
+  is writing, so since this slice the death ends the walk and goes back to the capital, and the hand-over
+  (`LeavingTheLevel`, 11) is written after the paid death (`DeathProcessed`, 8). The dungeon-death load test was
+  changed for the same reason by the ruling of 2026-11-17. Its two other assertions -- the day after the death's days,
+  and the character standing -- passed. My first sweep missed it: I took its revive for one outside a walk without
+  reading the body.
+- **`ALoadedPactAltarOffersThePactsItOffered`** saves on the floor whose offer was drawn again
+  (`NoteTrigger(CharacterDied)`), then goes on to the next floor in the same frame to read what that floor offers.
+  Until the first run's change that floor change's write was skipped, because the save had written the run record that
+  frame. It now writes, so the record on disk is the next floor's, and the load reads that floor: the loaded offer,
+  0,2,4, is what the next floor offered, and the floor after the load offers 1,2,3. A save taken after moving to a
+  new floor should hold that floor.
+
+### The rulings, quoted
+
+The coordinating session, 2026-11-18: "Both approved as test-only fixes, and C3's new prediction too. [...] Your
+reading of the pact altar is right: a save after a floor change should hold the new floor."
+
+And: "Before you re-register, widen the sweep once, because this window has now stopped twice on tests that assumed old
+save behaviour, and the whole suite has not run yet. Search ALL test files, not only CataclysmSaveLoadTests.cpp, for
+any assertion on: the last trigger written, or the last write [...]; a count of writes, or of writes skipped in a
+frame; a record's floor or dungeon read after a revive, a floor change or the stairs, in any test that has a game
+instance and a writing writer. Read each hit's body, and list in the entry which you checked and which you changed."
+
+And: "Add `Cataclysm.RuleDamageParts.` (11) and `Cataclysm.DungeonModifierEffects.ThoseInTheDark` as alone groups
+[...]. In the widened sweep I asked for, close the limit you named: also search for tests that change floor in one
+helper and read the save in another."
+
+### The sweep, 2026-11-18
+
+**What this slice changed that a test can observe through a save**, read in the code before searching:
+
+1. A change of floor writes the run record even when another write took it that frame
+   (`UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame`). Observed through the record on disk,
+   `LastRunRecord`, `WritesStarted` and `SecondsSinceTheClockWrote`; **not** through `LastTrigger`, which
+   `NoteTrigger` sets before the once-a-frame rule is asked, nor `FloorChangesNoted`, which `SetFloor` counts.
+2. A death that ends a walk, and the last floor's stairs, hand over: `LeavingTheLevel` is the last trigger, both
+   records are written with no floor, the writer writes nothing after, and `TravelRequested` names the capital. Only
+   in a world with this project's game instance and a writer that is writing (`ACataclysmGameMode::TravelTo`); in any
+   other a warning is logged and nothing else changes. A warning does not fail an automation test here.
+3. A record taken while the writer holds no floor (floor 0) carries only the characters' placements
+   (`UCataclysmSaveWriter::FloorRecordNow`). A writer holds floor 0 only in the capital, after a hand-over, or after a
+   load of a record with no floor; **every `BeginRun` in the tests passes floor 1, the dungeon's floor or the floor the
+   writer holds** (searched by `git grep`).
+
+**How it was searched.** `.claude/windows/sweep_save_behaviour_tests.py`, read-only, over every C++ file under a
+`Tests` directory in `game/Source` -- 290 files. It finds each function body by the code's brace style, including
+each test registered through a file-local wrapper macro (`CATACLYSM_TEST` and 39 like it), and carries what a helper
+calls to every test that calls it, through any number of helpers. **It found 4787 test bodies against 4784 test names
+registered, the suite's registered total**, so no test body was missed. It lists:
+
+- **A**: a test that reaches a floor change, a revive or a walk's end (`GoToFloor`, `GoDownOneFloor`,
+  `HandleStairsTaken`, `EnterEmpireDungeon`, `ResumeEmpireDungeon`, `LeaveTheDarkFloor`, `ThePlayerFellIntoAChasm`,
+  `LeaveEmpireDungeon`, `ClearEmpireDungeon`, `Revive`, `EndTheDungeonForADeath` and the trip's own functions) **and**
+  a read of a save or of the writer's state (`ReadFromSlot`, `CharacterAndRun`, `LoadThePendingCharacter`,
+  `WaitForSlot`, `DoesSaveGameExist`, `LastRunRecord`, `LastCharacterRecord`, `WritesStarted`, `SynchronousWrites`,
+  `TriggersWithNowhereToWrite`, `LastTrigger`, `FloorRecordNow`, `HoldsTheFloor`, `HoldsTheDungeon` and the like),
+  whether one helper does both or two different ones do: **91 tests**.
+- **B**: a test that asserts on a trigger or a count of writes: **87 tests**.
+- **C**: a test that reaches a revive or the stairs **and** gives its world this project's game instance -- the only
+  tests in which change 2 can happen: **7 tests**, three in `Cataclysm.SaveLoad.`, three in `Cataclysm.Travel.` and
+  `Cataclysm.WinningTheRun.TheEarnedBossDungeonsStairsWinTheRunOnceItsCataclysmBossIsDead`.
+
+**127 tests in all**, every one of C among them. A second search, `.claude/windows/sweep_instance_tick.py`, covers
+what the first cannot: a walk ended by game code while a test ticks the world -- the revive timer, a Horde's next wave,
+the stairs' overlap. **50 tests give their world a game instance and tick it or run the dungeon's beat**: 41 in
+`Cataclysm.SaveLoad.`, which ran in the second run, and 9 in `Cataclysm.ConsumptionDouble.`, none of which puts an
+empire run on its game instance, so no death or floor change in them can end a walk.
+
+**74 of the 127 are in `Cataclysm.SaveLoad.` (69) and `Cataclysm.Travel.` (5)**, and each group ran alone in the
+second run, at the code under test now: 72 passed, and the two above failed. **The other 53 were read by hand**:
+
+| Group | Tests read | Why the slice changes nothing they assert |
+| :-- | :-- | :-- |
+| `Cataclysm.Capital.` | `ACharacterSavedInTheSandboxLoadsInTheCapitalWithoutThatFloor`, `ARunSavedOnADungeonFloorIsStillRefusedInTheCapital` | both records are saved on the sandbox's floor 1 with no floor change after; in the capital the sandbox's floor is dropped by slice 2's rule, before this slice's placement rule is asked, and the refusal is unchanged |
+| `Cataclysm.ConsumptionDouble.` | `ACharacterMarkedBetweenDungeonsIsHuntedOnTheNextDungeonsFirstFloor`, `ADoubleAndACorruptedStalkerHuntOneFloorEachWithItsOwnState`, `ALoadKeepsWhetherTheSavedFloorWasHunted`, `APlayerKilledByTheDoubleStaysMarked`, `KillingTheDoubleZeroesTheWornResidueAndClearsTheMarkAndTheRecordSaysSo`, `TheDoubleComesOnTheNextFloorEnteredAndNeverOnTheFloorOfTheCrossing`, `TheDoubleFollowsThirtySecondsIntoTheNextFloorWithTheHealthItHad`, `TheDoubleWearsTheBuildCapturedAtTheCrossingNotTheGearWornWhenItArrives`, `TheHuntComesBackFromASaveWithTheDoubleWhereItStood` | their "save" is the walk and rule state read in memory (`WalkStateNow`, `FloorRuleStateNow`), and the record one of them reads is the character record, which a change of floor never writes; their slot reads are the clean-up's `DoesSaveGameExist`; no empire run on the game instance, so no walk to end |
+| `Cataclysm.ConsumptionMark.` | `TheMarkIsWrittenToTheCharacterRecordAndLoadsBack` | writes and reads the character record, with no floor change and no revive |
+| `Cataclysm.DrainDeathNotedOnce.` | `APlayerKilledByTheDelayedDamageDrainNotesItsDeathOnce`, `APlayerKilledByTheHealthDebtDrainNotesItsDeathOnce`, `AWriteOfAPlayersHealthToNoughtNotesItsDeathOnce` | count `TriggersWithNowhereToWrite` on a writer that is not writing; the death notes one trigger as before, and nothing revives |
+| `Cataclysm.DungeonModifierEffects.` | `ThoseInTheDarkEnteringADungeonStoresTheSaveClearOfTheDarkFloor`, `ThoseInTheDarkTheSaveRecordsTheDarkFloorAndTheFloorFallenFrom` | assert `FloorChangesNoted` (counted in `SetFloor`), `LastTrigger` (set before the once-a-frame rule) and the floor record gathered in memory on floors numbered 1 or more, never floor 0; no disk read and no write count |
+| `Cataclysm.EmpirePoints.` | `ADeathsResolveBanksNothing`, `ADefeatAtFullPopulationBanksTheBase`, `ADefeatAtHalfTheLivingPopulationBanksHalf`, `ASlotNamingAnotherPartitionIsRefusedOnceAndLeftAsItWas`, `ASoloSelfFoundDefeatBanksNothingInAnyAccount`, `ClearingTheBossDungeonBanksItsPointsBeforeTheNextRunBegins`, `TheBankSurvivesASaveRoundTrip`, `TheMapLineShowsTheBankRoundedDownToATenth`, `ThreeOrdinaryDefeatsAtAThirdOfThePopulationBankOnePoint` | each clears by calling `ClearEmpireDungeon` itself, which does not travel -- only `GoDownOneFloor` goes back after a clear -- and raises no trigger it did not raise before; the one write count asserted is "at least 1"; the record read is the account record |
+| `Cataclysm.RuleDamageParts.` | `SoulsAndHungerComeBackFromALoadAtTheirFigureInEitherOrder`, `SoulsUnderACleanseAndTheVoidsBossComeBackFromALoadAtTheirFigure` | through `ARoundTripOfRows`, which makes every floor change before its save, writes that save with `CharacterDied` (already written whatever else wrote that frame), and reads it in a fresh world |
+| `Cataclysm.SaveTriggers.` | `EachRecordIsWrittenForTheReasonsThatChangeIt`, `OnlyTheCharacterDyingAndLeavingTheLevelAreWrittenBeforeTheFrameEnds` | the rule tests themselves, changed in phase 1 for `LeavingTheLevel` |
+| `Cataclysm.SaveWriter.` | `ADeathIsOnDiskBeforeTheCallThatWroteItReturns`, `AWrittenRunRecordCarriesItsTierAndCataclysms`, `AWrittenRunRecordCarriesTheCitiesThroughTheFile`, `AWrittenRunRecordCarriesTheEmpiresDay`, `AWrittenRunRecordCarriesTheStandingDungeons`, `AWrittenRunRecordCarriesTheSurgeSchedule`, `AWrittenRunRecordCarriesWhatThePlayerAchieved`, `AWrittenRunRecordKeepsTheFloorsACityUpgradeMovedOnADungeon`, `EverythingExceptADeathIsHandedOverRatherThanWrittenNow`, `HealthFallingThroughTheLineIsWhatMakesTheWriterWrite`, `NothingIsWrittenUntilSomethingSaysWhichRunItIs`, `TheClockWritesAfterItsIntervalAndNotBefore`, `TheGameModeIsWhatTurnsTheWriterOn`, `TheRunRecordIsWrittenOncePerFrameUnlessItIsADeath`, `WithNoEmpireRunASaveKeepsTheDayItAlreadyHad` | none changes floor, revives or takes the stairs; the writer is on the sandbox's floor 1; the triggers they count or name (`CreatureDied`, `FightStarted`, `Clock`, `HealthCrossedThreshold`, `CharacterDied`) are written as before |
+| `Cataclysm.WinningTheRun.` | `AWinAtTierEightStaysAtTierEightAndFacesTheSameEight`, `AWinRunsNoneOfTheWalksOwedDays`, `AWonRunRaisesTheTierBeforeTheCharacterRecordIsWritten`, `LeavingTheBossDungeonUnclearedWinsNothing`, `TheFirstWinOverABossPaysTenAndASecondWinOverItPaysNothing`, `TheNewRunsMapCarriesTheWinLine`, `TheNextRunBeginsAtOnceATierHigherFacingTheWonRunsCataclysmsAndOneMore` | each clears by calling `ClearEmpireDungeon` itself, or leaves by `LeaveEmpireDungeon`, neither of which travels; the last trigger they ask for is `RunWon`, written after the floor change entering |
+| | `TheEarnedBossDungeonsStairsWinTheRunOnceItsCataclysmBossIsDead` | **already changed by ruling** in phase 1: the stairs hand over |
+
+**Changed after the sweep: no further test.** The two above are the only ones changed, and no product change is
+needed.
+
+**What the sweep cannot see.** A test that reads a save through a function this list does not name, or ends a walk
+through game code it does not tick, would not be listed; and a reading is a judgement, which the run checks. The two
+groups the coordinating session added run alone early for that reason (below).
+
+### What changed after the second run
+
+- **`ProcessingADeathWritesTheSaveAfterThePenalty`** asserts that the hand-over to the capital was the last write,
+  after the one that says the death was paid for, and that the character travels to the capital; its day and health
+  assertions are unchanged.
+- **`ALoadedPactAltarOffersThePactsItOffered`** begins the writer on slots of its own (`BeginRun` with two new ids, and
+  the dungeon and floor the writer holds) after the save is written and before the walk goes on to the next floor, so
+  that floor change writes there and the save the load reads stays the one on the floor drawn again. Both new slots
+  are deleted at the end, as the save's are.
+
+### Re-registered before the third run
+
+**Unchanged:** the whole suite 4784, 47 skipped halves, 0 test saves left behind, "Declared: 4784"; the fifteen groups
+alone at the counts registered before the first run; C1, C2 and C4 to C9 as registered.
+
+**Two groups added alone**, run straight after `Cataclysm.SaveLoad.`, as the coordinating session asked, so the tests
+the change-of-floor rule can reach outside `Cataclysm.SaveLoad.` and `Cataclysm.Travel.` run before the whole suite:
+
+| Prefix | Registered | Where the count comes from |
+| :-- | --: | :-- |
+| `Cataclysm.RuleDamageParts.` | 11 | "Test Completed" lines by prefix, ignoring case, in window r2580's whole-suite engine log at `cde163c7`, all 11 "Success"; 11 name literals at this branch's base `1f16aafde` and at this head; this branch adds none |
+| `Cataclysm.DungeonModifierEffects.ThoseInTheDark` | 27 | the same log, 27, all "Success"; 27 name literals at the base and at this head. A name prefix inside its group, so it has no trailing dot |
+
+**C3 changes by consequence**, as approved: with a death's return broken (`WalkEndedIn = nullptr`), the death test
+changed above fails as the dungeon-death load test does.
+
+| Proof | Break | Prefix | Predicted broken half |
+| :-- | :-- | :-- | :-- |
+| C3 | a death that ended a walk does not go back: `WalkEndedIn = nullptr` (`CataclysmPlayerCharacter.cpp`) | `Cataclysm.SaveLoad.` | 76 performed, 74 succeeded, 2 failed: the dungeon-death load test, 2: "and the hand-over to the capital was the last write", "and the character travels to the capital"; `ProcessingADeathWritesTheSaveAfterThePenalty`, 2: "the hand-over to the capital was the last write, after the one that says the death was paid for", "and the character travels to the capital" |
+
+**Python: "7471 passed, 9 skipped"**, the same as the last registration, since nothing Python changed; its JUnit file
+7480 tests, 0 failures, 0 errors, 9 skipped. `ruff check .` printed "Found 4 errors", all four in this session's untracked scratch scripts
+under `.claude/windows/`, which continuous integration never sees; the tracked Python files passed on their own
+("All checks passed!"), and after those four lines were fixed `ruff check .` passed. The window adds no Python.
+
+**Compiled twice after the second run**, with no error and no warning: the changed test file alone, uncommitted ("6
+actions, 3 files compiled: CataclysmSaveLoadTests.cpp, Module.Cataclysm.41.cpp, Module.Cataclysm.42.cpp"); and
+committed as `0effc6e7e`, the makefile set aside ("5 actions, 2 files compiled: Module.Cataclysm.41.cpp,
+Module.Cataclysm.42.cpp"), `Module.Cataclysm.41.cpp` being the unity file that holds `CataclysmSaveLoadTests.cpp`.
+
+### Window travel-w1, the third run, 2026-11-18: passed, every proof PROVED; three predicted assertion counts were wrong
+
+**SAID FIRST: every registered count matched, and every proof failed in exactly the tests registered and passed when
+restored. Three of my predictions of how many assertions a broken half would fail were wrong.** C1 failed one assertion
+where I registered two; C2 and C9 each failed one more than I registered, the same one in both, "owing the day
+entering cost", which read 2 where it reads 1. **The cause, found by reading the same day after this record was first
+written: the test walks a dungeon drawn from a run seeded by the clock, and those two broken halves drew a Cow Level,
+whose walk is doubled by design and owes 2 days on entering.** Neither break caused it. The window passed by the luck
+of the draw: about 7 runs in 100 draw a Cow Level first, and then the test fails with the code correct. Until that was
+found this paragraph said "I have not found why"; see "The second owed day was a Cow Level" below.
+
+At `9951dbb78`, from 01:22 to 02:02 local time. The pre-checks all passed: `development` at `1f16aafde`, its CI and
+Unreal runs successful, nothing in progress or queued, the lock free, no build or editor process, no open pull request,
+16849 MB of memory free, 128 Git LFS files and none a pointer. The build was up to date and compiled nothing. The asset
+step was skipped after the runner read, for each of the four input assets, that HEAD holds a Git LFS pointer last
+changed in `e06b5f16a` and the file on disk is an Unreal package.
+
+**Each group alone, all at the registered counts, 0 failed:**
+
+| Prefix | Performed and succeeded |
+| :-- | --: |
+| `Cataclysm.Input.` | 8 |
+| `Cataclysm.Travel.` | 9 |
+| `Cataclysm.EmpireRun.` | 71 |
+| `Cataclysm.WalkFromTheScreen.` | 5 |
+| `Cataclysm.SaveLoad.` | 76 |
+| `Cataclysm.RuleDamageParts.` | 11 |
+| `Cataclysm.DungeonModifierEffects.ThoseInTheDark` | 27 |
+| `Cataclysm.WinningTheRun.` | 11 |
+| `Cataclysm.SaveTriggers.` | 6 |
+| `Cataclysm.SaveRecords.` | 17 |
+| `Cataclysm.DeathCost.` | 9 |
+| `Cataclysm.EarnedBossSave.` | 3 |
+| `Cataclysm.ConsumptionDouble.` | 15 |
+| `Cataclysm.Capital.` | 7 |
+| `Cataclysm.SaveWriter.` | 25 |
+| `Cataclysm.EmpireScreen.` | 14 |
+| `Cataclysm.EmpirePoints.` | 16 |
+
+**The whole suite, as registered:**
+
+```
+suite: Tests: 4784 tests performed, 4784 succeeded, 0 failed. 47 skipped part of what they check: [...]
+suite: Test saves: 815 written and deleted, 0 left behind
+suite: Declared: 4784 tests in the tree at 9951dbb78; 4784 performed, gap 0; every declared test was reported by the run. Issue #1707.
+suite: read performed=4784 succeeded=4784 failed=0, registered 4784: MATCH; skipped halves 47, registered 47
+```
+
+A second count, from the kept engine log (`b2733s3_suite_engine_9951dbb7.log`): 4784 "Test Completed. Result={Success}"
+lines and none failed. The memory summary: `tests=5391 peak_used_virtual_mb=9096 final_used_virtual_mb=8837`.
+
+**Python: "7471 passed, 9 skipped"**, its JUnit file 7480 tests, 0 failures, 0 errors, 9 skipped; **ruff "All checks
+passed!"** -- both as registered.
+
+**Nine C++ guard proofs, all PROVED.** Each broken half failed exactly the tests registered, and each restored half
+passed its whole prefix. The assertions are counted in each broken half's kept log (`b2733s3_C<n>_run1.log`), in both
+of the engine's forms; no restored half logged one.
+
+| Proof | Broken half | Restored | Assertions failed | Registered |
+| :-- | :-- | :-- | :-- | :-- |
+| C1 | 9 performed, 8 succeeded, 1 failed: `TheCapitalsWalkWritesBothRecordsAndCarriesTheCharacterToTheDungeonLevel` | 9 of 9 | **1**: "and stopped writing" | **2**: also "so a trigger after the hand-over writes nothing" |
+| C2 | 9, 7, 2 failed: `TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk`, `TheLastFloorsStairsClearTheDungeonAndTakeTheCharacterBackToTheCapital` | 9 of 9 | **3**: "and not at the capital's place, which means nothing here", "owing the day entering cost" (1 expected, 2 read); "and not at the dungeon's place" | **2**: the first and the third |
+| C3 | 76, 74, 2 failed: `ADeathInADungeonIsPaidForAfterALoad`, `ProcessingADeathWritesTheSaveAfterThePenalty` | 76 of 76 | 4: two in each, as registered | 4 |
+| C4 | 5, 4, 1 failed: `PressingWalkOnACityScreenInADungeonLevelEntersThatDungeon` | 5 of 5 | 4, as registered | 4 |
+| C5 | 9, 8, 1 failed: `TheMapsLatestEventShowsADeathOnDayZero` | 9 of 9 | 1, as registered | 1 |
+| C6 | 71, 70, 1 failed: `EachDaysHitsAddUpToWhatEachCityLost` | 71 of 71 | 1, as registered | 1 |
+| C7 | 9, 8, 1 failed: `TheLastFloorsStairsClearTheDungeonAndTakeTheCharacterBackToTheCapital` | 9 of 9 | 1, as registered | 1 |
+| C8 | 11, 10, 1 failed: `TheEarnedBossDungeonsStairsWinTheRunOnceItsCataclysmBossIsDead` | 11 of 11 | 2, as registered | 2 |
+| C9 | 9, 8, 1 failed: `TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk` | 9 of 9 | **3**: "saying the character is in that dungeon", "on floor 1", "owing the day entering cost" (1 expected, 2 read) | **2**: the first two |
+
+**Why C1 failed one and not two.** With the hand-over's two `Invalidate` lines removed the writer goes on writing, so
+"and stopped writing" fails. "So a trigger after the hand-over writes nothing" still passes, because the trigger it
+raises is the clock's, in the same frame as the hand-over, and the hand-over wrote the run record that frame: the
+once-a-frame rule skips the clock's write whether or not the writer stopped. The test prints "a clock after it wrote
+nothing" in both halves. **That assertion does not guard the stop on its own; "and stopped writing" does**, and the
+proof shows that one fails.
+
+**The extra assertion in C2 and C9: a Cow Level, drawn.** "Owing the day entering cost" reads the run's owed days after the
+arrival enters the walk. The test's printed state, from each half's kept log:
+
+| Half | The character after the load | The run record on disk | Owed days |
+| :-- | :-- | :-- | --: |
+| C2 broken | at 1234 567, the capital's place | in dungeon 0, on floor 1 | 2 |
+| C2 restored | at 5600 6000 | in dungeon 0, on floor 1 | 1 |
+| C9 broken | at 5600 6000 | in dungeon -1, on floor 0: the arrival's write skipped | 2 |
+| C9 restored | at 5600 6000 | in dungeon 0, on floor 1 | 1 |
+
+The capital's hand-over prints the same record in both halves of C9: floor 0, no dungeon, day 0, 12 dungeons. Read in
+the code: the load sets the owed days from the record (`FCataclysmSaveApply::RunInto`, `Run.OwedDays =
+Record.DaysOwed`), and entering adds one floor's walk days (`EnterEmpireDungeon` through
+`SpendFloorTimeInTheEmpire`). Neither change -- placing the character, or skipping one write -- touches either.
+**What differs is the dungeon:** the run is drawn from the clock, and a Cow Level's floor costs 2 days. When first
+written this paragraph said the second owed day was not understood, and that it might mean a save's write or the
+character's place changes the days a walk owes. Neither does; see the next section.
+
+### The second owed day was a Cow Level, 2026-11-18
+
+**Found by reading, before any run.** No log line names a dungeon's sub-type, so the Cow Level in the two broken halves
+is established by the code -- only a Cow Level can owe 2 here -- and not seen.
+
+1. **The arrival test's run is drawn from the clock.** `HandOverFromTheCapital` makes a new character in the capital,
+   and a new character's run is seeded from `FDateTime::Now()` (`ACataclysmGameMode::LoadThePendingCharacter`); the
+   test walks the run's first dungeon. In the four halves of C2 and C9 that dungeon had 8, 12, 14 and 15 floors and four
+   different first-floor modifiers.
+2. **Entering owes the dungeon's floor cost**, its walk days over its floors (`FCataclysmDungeon::WalkDaysPerFloor`),
+   added to the part of a day the clock carries, which is 0 in a new run that has spent no time. A placed dungeon's walk
+   is its floors less any upgrade, at most its floors, so it owes 1 on entering; **a Cow Level's walk is its floors
+   times `CowLevelWalkMultiplier`, 2.0** (`UCataclysmSurgeScheduler`, "Time to complete is doubled"), so it owes 2.
+3. **A placed dungeon draws Cow Level with weight 7.0 of 100** (`SpawnWeightCowLevel`; the seven weights sum to 100).
+4. **14 runs of the test are in the kept logs**: 12 owed 1, and 2 owed 2 -- the C2 and C9 broken halves.
+
+**The coordinating session's two hypotheses, ruled out from the test's own printed state.** The character placed on
+the first floor's stairs at the capital's (1234, 567), descending at once: the C2 broken half printed floor 1 after
+entering, nothing ticks between entering and that print, and the C9 broken half owed 2 at 5600 6000. Something reading
+the record's "no dungeon, floor 0" and entering again: the test printed "again no" and "walking 0", the arrival reads
+the save once, in the load before entering, and run 1 at `e06b5f16` skipped the same write and owed 1.
+
+**In play: nothing wrong.** A Cow Level's walk owing 2 days a floor, floor 1 included, is the design.
+
+**The ruling, quoted.** The coordinating session, 2026-11-18: "HOLD THE MERGE and fix it in slice 3, on the same
+branch. I will not land a test known to fail about 7 runs in 100; it would stop someone else's window by chance later."
+And: "Keep the random draw. Assert owed = FloorToInt of the chosen dungeon's walk days per floor, with the part-day
+asserted 0. Print the sub-type and the rate in TRAVEL ARRIVE." And: "go through every slice 3 test one more time, for
+any assertion whose expected figure depends on which dungeon the clock-seeded run draws [...] List them in the entry."
+
+**The test, changed** (`CataclysmSaveLoadTests.cpp`, `TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk`):
+before entering it reads the dungeon drawn, its walk days per floor and the clock's part of a day; it asserts "set-up:
+no part of a day carried before entering" (0), "CONTROL: entering this dungeon costs at least one whole day", so the
+check cannot compare 0 with 0, and "owing the whole days entering this dungeon's floor 1 cost", the owed days against
+`FMath::FloorToInt` of that rate. "TRAVEL ARRIVE" prints the sub-type drawn, the rate and the part-day. The draw stays
+random, so the test still enters whichever kind of dungeon a run puts first.
+
+### Every slice 3 test, read for figures that depend on the draw, 2026-11-18
+
+`.claude/windows/sweep_slice3_draws.py` lists the tests slice 3 added or changed, directly or through a helper it
+changed -- 36 -- and which of five draws from the clock each reaches: a new character's run
+(`ACataclysmGameMode::LoadThePendingCharacter`), a run begun when none exists (`GetOrBeginEmpireRun`), a load's new run
+when its record has none (`FCataclysmSaveLoad::CharacterAndRun`), the next run after a win
+(`UCataclysmGameInstance`), and a dungeon floor's seed when none is pinned. **27 reach none of them**: they read the
+committed fixture files, build runs from fixed seeds, or test the empire module, the input assets and the trigger rules
+alone:
+
+- `Cataclysm.ConsumptionDouble.ARunFileFromBeforeTheHuntMigratesWithNone`;
+- `Cataclysm.DeathCost.ARunFileFromBeforeTheDeathLineMigratesWithNone`, `TheCommittedRunFileReadsIntoTheDeathItStates`;
+- `Cataclysm.EarnedBossSave.ARunFileFromBeforeTheBossDungeonMigratesUnopened`,
+  `TheCommittedRunFileReadsIntoTheBossDungeonItStates`;
+- `Cataclysm.EmpireRun.EachDaysHitsAddUpToWhatEachCityLost`, `TheDaysAwayAreTotalledFromTheDaysOwnReports`;
+- `Cataclysm.Input.ConfigListsEverySlotAndNativeAction`, `MappingContextsCoverEveryActionWithoutCollisions`,
+  `TheEmpireMapIsOnMInBothSchemes`;
+- `Cataclysm.SaveRecords.AFileWithoutTheDarkFloorStillLoadsAsNotOnIt`, `AFileWithoutThePartOfADayStillLoads`,
+  `AFileWithoutTheSurgeScheduleStillLoads`, `EveryFixtureHoldsEveryFieldItsRecordWrites`,
+  `TheCommittedRunFileKeepsTheDarkFloorAndTheFloorFallenFrom`, `TheCommittedRunFileKeepsTheFloorAndTheDamageDoneToIt`,
+  `TheCommittedRunFileKeepsTheSurgeSchedule`;
+- `Cataclysm.SaveTriggers.EachRecordIsWrittenForTheReasonsThatChangeIt`,
+  `OnlyTheCharacterDyingAndLeavingTheLevelAreWrittenBeforeTheFrameEnds`;
+- `Cataclysm.Travel.ARunFileFromBeforeTripsMigratesWithNoAwardNoClearAndNoWalkEnded`,
+  `TheCommittedRunFileReadsIntoTheAwardTheClearAndTheDaysAwayItStates`, `TheMapsLatestEventShowsADeathOnDayZero`,
+  `TheMapsReturnLineSaysWhatTheWalksEndDid`;
+- `Cataclysm.WalkFromTheScreen.ARefusedWalkIsShownAndEntersNothing`,
+  `PressingWalkOnACityScreenInADungeonLevelEntersThatDungeon`;
+- `Cataclysm.WinningTheRun.ARunFileFromBeforeTheWinLineMigratesWithNone`, `TheCommittedRunFileReadsIntoTheWinLineItStates`.
+
+**Nine reach a draw, and their assertions were read one by one:**
+
+| Test | The draw it reaches | Depends on the draw? |
+| :-- | :-- | :-- |
+| `Cataclysm.Travel.TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk` | a new character's run, so its dungeons, sub-types, floors and modifiers | **The owed days, changed above.** Not the rest: entering refills every potion to the fixed `MaxCharges`, 30, and nothing at a floor's start changes a charge; none of the steps after the floor change's trigger -- a Starvation Curse, a Chaos Touch, the floor's rules on the player, the `floor_start` event on the test's own character -- raises a save trigger, so "the walk was written at once" holds; the floor is 1 and the day 0 whatever the dungeon |
+| `Cataclysm.Travel.TheCapitalsWalkWritesBothRecordsAndCarriesTheCharacterToTheDungeonLevel` | a new character's run | No. "The opening wave's twelve" is `OpeningDungeonsPerSurge` at the Static mode, and on day 0 every exposed city has room; the health, potions, level and experience are the ones the test sets |
+| `Cataclysm.Travel.TheLastFloorsStairsClearTheDungeonAndTakeTheCharacterBackToTheCapital` | floors' seeds | No. `BeginWalking`'s run is seeded 1 and its dungeon placed by hand, one day a floor; the award and the return line follow from that run |
+| `Cataclysm.Travel.ADeathThatEndsAWalkTakesTheCharacterBackToTheCapitalWhole` | floors' seeds | No. Every figure is measured in the test: the day before, the days owed, the death's cost, the city's loss |
+| `Cataclysm.Travel.ADeathInTheCataclysmsOwnDungeonStandsThePlayerBackUpInside` | floors' seeds | No. `BeginWalking`'s run; it asserts where the character stands and what travels |
+| `Cataclysm.SaveLoad.ProcessingADeathWritesTheSaveAfterThePenalty` | floors' seeds | No. A run seeded 1, a dungeon placed by hand; the day is the day inside plus the measured cost |
+| `Cataclysm.SaveLoad.ADeathInADungeonIsPaidForAfterALoad` | floors' seeds; a load of a record holding its run | No. The days are the saved day, the saved owed days and the measured cost |
+| `Cataclysm.SaveLoad.ALoadedPactAltarOffersThePactsItOffered` | floors' seeds, pinned | No. The dungeon's seed is pinned for the whole test |
+| `Cataclysm.WinningTheRun.TheEarnedBossDungeonsStairsWinTheRunOnceItsCataclysmBossIsDead` | the next run after the win | No. The won run is seeded 11; of the next run it asserts the tier, the Cataclysms of the character's own seed and the win it carries |
+
+**Changed: the one test above. No other figure depends on the draw.**
+
+### Registered before window travel-w2
+
+The coordinating session's shape for it, ruled 2026-11-18: the Travel group alone five times, then C2 and C9, then
+Python; no whole suite. `.claude/windows/run_b2733s3_w2.py`, lock `travel-w2`: the pre-checks, the lock, one build, the
+check that HEAD holds the four input assets of `e06b5f16`, then:
+
+| Step | Registered |
+| :-- | :-- |
+| `Cataclysm.Travel.` alone, run 1 to 5 | each 9 performed, 9 succeeded, 0 failed; each "TRAVEL ARRIVE" line naming the sub-type drawn and owing the whole days of its rate, the part-day 0 |
+| C2, broken half | `Cataclysm.Travel.`: 9 performed, 7 succeeded, 2 failed: `TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk`, 1 assertion, "and not at the capital's place, which means nothing here"; `TheLastFloorsStairsClearTheDungeonAndTakeTheCharacterBackToTheCapital`, 1, "and not at the dungeon's place" |
+| C2, restored half | 9 of 9 |
+| C9, broken half | `Cataclysm.Travel.`: 9 performed, 8 succeeded, 1 failed: `TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk`, 2 assertions, "saying the character is in that dungeon", "on floor 1" |
+| C9, restored half | 9 of 9 |
+| Python | "7471 passed, 9 skipped", and ruff passing |
+
+**Nine runs of the arrival test each draw a dungeon**: the five alone, and both halves of C2 and of C9. At 7 in 100,
+the chance that none of the nine draws a Cow Level is 0.93 to the ninth power, about 0.52, so the window is about as
+likely as not to see the doubled rate asserted. The "TRAVEL ARRIVE" lines will say which it saw.
+
+**Measured at this registration.** The changed test file compiled alone, uncommitted, with no error and no warning
+("6 actions, 3 files compiled: CataclysmSaveLoadTests.cpp, Module.Cataclysm.41.cpp, Module.Cataclysm.42.cpp"), and in
+its unity group, committed as `5eb999f6f` with the makefile set aside ("5 actions, 2 files compiled:
+Module.Cataclysm.41.cpp, Module.Cataclysm.42.cpp"). C2 and C9 each find their break text once (`prove_b2733s3.py
+--anchors-only`). Python: "7471 passed, 9 skipped", its JUnit file 7480 tests, 0 failures, 0 errors, 9 skipped; `ruff check .` passing.
+
+**The third run's C2 and C9 logs are kept** as `b2733s3_C2_run1_travelw1_run3.log` and its three like it, because
+this window's proofs write the same names.
+
+### Window travel-w2, 2026-11-18: passed; one of the nine arrivals drew a Cow Level, and owed 2
+
+**SAID FIRST: everything matched its registration.** The five Travel runs alone passed 9 of 9 each; C2 and C9 were
+PROVED, each broken half failing exactly the tests and assertions registered; Python and ruff passed. **Run 2 drew a
+Cow Level, owed 2 days at 2.00 days a floor, and passed** -- the case that failed the test before it was changed.
+
+**Before it: the pre-checks first failed, at 02:26 local, and the lock was not taken.** My push of `0a594665` had
+started pull request #2737's two checks, which compile on this machine (`dotnet` 47800), and #2737, held open for this
+window, failed check 5, "no pull request open". The coordinating session ruled, 2026-11-18: "let check 5 pass when
+the only open pull request is #2737, and change only that line of the untracked script. Check 5 exists because a push
+to an open pull request compiles on this machine during a window. So the condition is: nothing pushes to
+feat/2733-travel while travel-w2 holds the lock. The record commit goes after the lock is released." **Check 5 of
+`.claude/windows/prechecks_b2733s3.py` now passes when the only open pull request is #2737 on `feat/2733-travel`**,
+and still fails on any other, or on a list that cannot be read -- the five cases checked by hand before the run.
+Nothing was pushed while the window held the lock; this record is the first push after. A watch waited for both of
+#2737's checks to conclude -- CI "success" at 02:30, Unreal "success" at 02:33 -- and the pre-checks then all passed at
+02:33: nothing in progress or queued, no build or editor process, 16816 MB of memory free, 128 Git LFS files and none a
+pointer.
+
+At `0a594665`, from 02:33 to 02:40 local. The build was up to date and compiled nothing; HEAD held the four input assets of
+`e06b5f16`.
+
+**The Travel group alone, five times, each "Tests: 9 tests performed, 9 succeeded, 0 failed":**
+
+| Run | The dungeon the arrival test drew | Days a floor | Part-day before entering | Owed |
+| --: | :-- | --: | --: | --: |
+| 1 | Volatile | 1.00 | 0.00 | 1 |
+| 2 | **Cow Level** | **2.00** | 0.00 | **2** |
+| 3 | Horde | 1.00 | 0.00 | 1 |
+| 4 | Horde | 1.00 | 0.00 | 1 |
+| 5 | Timed | 1.00 | 0.00 | 1 |
+
+**Python: "7471 passed, 9 skipped"**, its JUnit file 7480 tests, 0 failures, 0 errors, 9 skipped; **ruff "All checks
+passed!"**.
+
+**The two proofs, both PROVED**, counted in each half's kept log in both of the engine's forms:
+
+| Proof | Broken half | Assertions failed | Restored | The arrival test drew |
+| :-- | :-- | :-- | :-- | :-- |
+| C2 | 9 performed, 7 succeeded, 2 failed: `TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk`, `TheLastFloorsStairsClearTheDungeonAndTakeTheCharacterBackToTheCapital` | 2, as registered: "and not at the capital's place, which means nothing here"; "and not at the dungeon's place" | 9 of 9, none | Horde, then Horde |
+| C9 | 9 performed, 8 succeeded, 1 failed: `TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk` | 2, as registered: "saying the character is in that dungeon", "on floor 1" | 9 of 9, none | Timed, then Horde |
+
+**One Cow Level in nine draws.** The registration put the chance that none of the nine would draw one at about 0.52.
+The changed assertion was seen at both rates, 1 and 2.
+
+---
+
 ## 2026-11-17 — Play opens the front end, and Start and Continue open the capital, a new level that opens the empire map on arrival (#2733, slice 2)
 
 **Affects:** `ACataclysmCapitalGameMode`, new (`game/Source/Cataclysm/Player/CataclysmCapitalGameMode.h`, `.cpp`);
@@ -399,6 +1259,7 @@ dungeon 0 was not already a Quest dungeon of the Hollow sub-type: the break made
   screen, is not seen by an automation test, which has no viewport; the decision is tested, and the owner's press (slice
   4) sees the screen.
 - **Travel from the capital into a dungeon and back** is slice 3: the map's Walk buttons in the capital still refuse.
+  **Built** in slice 3, the 2026-11-18 entry above.
 - **A packaged build** has not been made; `L_Capital` is cooked with every map under Content, as `L_FrontEnd` is.
 
 ---

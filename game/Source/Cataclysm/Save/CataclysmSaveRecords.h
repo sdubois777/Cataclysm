@@ -9,6 +9,8 @@
 #include "Character/CataclysmPassiveTree.h"
 #include "DayClock/CataclysmDayClock.h"
 #include "Empire/CataclysmEmpireMap.h"
+// For `FCataclysmDaysAway`, the run record's summary of the last walk's days since version 6. Issue #2733 slice 3.
+#include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmRoster.h"
 #include "Empire/CataclysmSurge.h"
 #include "Items/CataclysmEquipmentComponent.h"
@@ -1624,8 +1626,13 @@ public:
 	 * 5 SINCE 2026-11-03. The run carries the win of the run before it (issue #1324 slice 6e): the day, the tier, the
 	 * Cataclysm and the passive points, `LastRunWonDay` to `LastRunWonPassivePoints`, and `Migrate_4_to_5` writes "the
 	 * run before this one was not won" into a run written at 4.
+	 *
+	 * 6 SINCE 2026-11-17. A trip between the capital and a dungeon is a save and a load (issue #2733 slice 3), so the run
+	 * carries what the map a walk's end returns to shows: the last defeat's empire points, `LastEmpirePointsAwarded`
+	 * (ruled Q3), the last clear, `LastClearDay` to `LastClearWalkDays`, and what the last walk's days did,
+	 * `LastDaysAway` (both ruled Q6). `Migrate_5_to_6` writes "no award, no clear, no walk ended" into a run written at 5.
 	 */
-	static constexpr int32 SchemaVersionNow = 5;
+	static constexpr int32 SchemaVersionNow = 6;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
@@ -1987,6 +1994,41 @@ public:
 
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	int32 LastRunWonPassivePoints = 0;
+
+	/**
+	 * What the last defeat in this run awarded in empire upgrade points: `UCataclysmEmpireRun::LastEmpirePointsAwarded`,
+	 * which the empire map shows as "(+x from the last dungeon defeated)". Issue #2733 slice 3, ruled by the coordinating
+	 * session on 2026-11-17 (Q3). A SCHEMA VERSION, 6: `Migrate_5_to_6` writes 0, no award, into a run written at 5.
+	 *
+	 * WHY IT IS SAVED NOW. Until slice 3 it was kept in memory only, and a loaded run showed the bank without the last
+	 * award until its next clear. A walk's end now returns to the capital by a save and a load, so without this every
+	 * return would lose it, at the moment it matters.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	double LastEmpirePointsAwarded = 0.0;
+
+	/**
+	 * The player's last clear of a dungeon of the empire: the day the walk had reached, what the dungeon was called and
+	 * the whole days the walk spent. `UCataclysmEmpireRun::LastClearDay` and the two beside it, for the map's clear
+	 * line. Issue #2733 slice 3 (Q6). A SCHEMA VERSION, 6: `Migrate_5_to_6` writes "no clear" -- `INDEX_NONE`, empty
+	 * and 0 -- into a run written at 5.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LastClearDay = INDEX_NONE;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FString LastClearDungeonName;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LastClearWalkDays = 0;
+
+	/**
+	 * What the days of the last walk did while the player was away: `UCataclysmEmpireRun::LastDaysAway`, for the map's
+	 * summary of them. Issue #2733 slice 3 (Q6). A SCHEMA VERSION, 6: `Migrate_5_to_6` writes "no walk has ended" --
+	 * days `INDEX_NONE`, nothing hit, nothing fallen, no surge -- into a run written at 5.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FCataclysmDaysAway LastDaysAway;
 
 	// ---- IDENTITY: what the run IS, not what the player has done in it. Issue #1471. ----
 	//

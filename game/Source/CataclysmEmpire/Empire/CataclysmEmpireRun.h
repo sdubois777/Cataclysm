@@ -12,6 +12,114 @@
 #include "CataclysmEmpireRun.generated.h"
 
 /**
+ * Which way a dungeon took points off a city. Issue #2733 slice 3.
+ */
+UENUM(BlueprintType)
+enum class ECataclysmCityHitKind : uint8
+{
+	/** An ordinary dungeon's hit: its timer ran out, or a death resolved it. Then it left the map, or its city fell. */
+	Ordinary,
+	/** A Quest dungeon's timer ran out: an ordinary dungeon's hit for the city's tier. */
+	QuestTimer,
+	/** A Siege took its daily share of the city it stands on. */
+	SiegeShare,
+};
+
+/**
+ * One hit dealt to a city on one day, and what it actually took. Issue #2733 slice 3, ruled by the coordinating session
+ * on 2026-11-17 (Q6): the map a walk's end returns to says what the days away did, and until this nothing said how
+ * much a hit took.
+ *
+ * MEASURED, NOT WORKED OUT AGAIN: the city's defence and population just before the hit, less what they are after it,
+ * so a hit larger than what was left records what was lost, a city's upgrades that resist a loss are counted, and a
+ * fall -- which sets the defence to nought -- is in the figure. NOT SAVED: a day's report is not, and the summary of
+ * the days away keeps each city's totals (`FCataclysmCityLosses`) instead.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSMEMPIRE_API FCataclysmCityHit
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 CityId = INDEX_NONE;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float DefenceLost = 0.0f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float PopulationLost = 0.0f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	ECataclysmCityHitKind Kind = ECataclysmCityHitKind::Ordinary;
+
+	/** Whether this hit felled the city: it stood before and had fallen after. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bFelledTheCity = false;
+};
+
+/** What one city lost over the days a walk was away: every hit's losses there, summed. Issue #2733 slice 3. */
+USTRUCT(BlueprintType)
+struct CATACLYSMEMPIRE_API FCataclysmCityLosses
+{
+	GENERATED_BODY()
+
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 CityId = INDEX_NONE;
+
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float DefenceLost = 0.0f;
+
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float PopulationLost = 0.0f;
+};
+
+/**
+ * What the empire's days did while the player was away on its last walk: the days, the cities hit and what each lost,
+ * the cities that fell, and the surges. Issue #2733 slice 3, ruled by the coordinating session on 2026-11-17 (Q6), from
+ * the owner's aim: to see, back on the empire map, that time has passed and other dungeons have resolved.
+ *
+ * BUILT FROM THE DAYS' OWN REPORTS (`UCataclysmEmpireRun::NoteDaysAway`) and nothing worked out again: the walk's
+ * settled days, and on a death the resolve's report and the death's own days. `UCataclysmEmpireMapLayout::DaysAwayLine`
+ * turns it into the map's line. SAVED in the run record since version 6, because the return to the capital is a load.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSMEMPIRE_API FCataclysmDaysAway
+{
+	GENERATED_BODY()
+
+	/** The run's day when the player left for the walk; `INDEX_NONE` while no walk has ended this run. */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 FromDay = INDEX_NONE;
+
+	/** The run's day when the player came back, after every day the walk and a death cost had run. */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 ToDay = INDEX_NONE;
+
+	/** Whether the walk ended in a clear rather than a death, which decides whether the map shows the clear's line. */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bEndedInAClear = false;
+
+	/** Every city a hit took something from, or felled, once each, in the order each was first hit. */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<FCataclysmCityLosses> Cities;
+
+	/** The cities that fell in those days, in the order they fell. */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> Fallen;
+
+	/** How many of those days a surge fired on: at most one a day, since a fall's surge waits 25 days on the last. */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 Surges = 0;
+
+	/** How many dungeons those surges landed. */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 SurgeDungeons = 0;
+
+	/** Whether a walk has ended this run, so there is something to say. */
+	bool HasEnded() const { return ToDay != INDEX_NONE; }
+};
+
+/**
  * What one day did to the empire.
  *
  * WHY A REPORT AND NOT A SET OF DELEGATES. Everything that reads this is above
@@ -215,6 +323,25 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	bool bPillarExposed = false;
+
+	/**
+	 * Every hit dealt to a city today, one entry a hit, with what it actually took: an ordinary dungeon's, a Quest
+	 * dungeon's timer and a Siege's daily share, each where `UCataclysmEmpireMap::Damage` is called. Issue #2733 slice
+	 * 3, ruled by the coordinating session on 2026-11-17 (Q6). See `FCataclysmCityHit`.
+	 *
+	 * ADDITIVE ONLY, by that ruling: recorded beside the lists above, which are unchanged, and nothing the day loop
+	 * computes reads it. THE MODEL HAS NO MATCHING FIELD: `sim/cataclysm_sim` reports no per-hit losses.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<FCataclysmCityHit> Hits;
+
+	/**
+	 * How many of `Spawned` a surge landed today. The rest are the Dungeon Cities a city's fall built, which `Spawned`
+	 * lists as well. Issue #2733 slice 3: the map's summary of the days away counts what the surges brought. Additive
+	 * only, as `Hits` is; the model has no matching field.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 SurgeDungeons = 0;
 };
 
 /**
@@ -861,6 +988,28 @@ public:
 	TArray<int32> LastDeathFallenCityIds;
 
 	/**
+	 * The day of the player's last clear of a dungeon of the empire, or `INDEX_NONE` when there has been none this run.
+	 * Issue #2733 slice 3, ruled by the coordinating session on 2026-11-17 (Q6): the map a walk's end returns to says
+	 * what the walk did, as the death's line says what a death cost.
+	 *
+	 * KEPT AS THE LAST DEATH IS KEPT, by `NoteClear`, with what `ACataclysmDungeonGameMode::ClearEmpireDungeon` worked
+	 * out before the clear took the dungeon off the map. THE DAY IS THE DAY THE WALK HAD REACHED: the run's day and the
+	 * days the walk owed. `INDEX_NONE` AND NOT 0 FOR "NONE", because a walk made shorter than its floors can clear on
+	 * day 0, and a day of 0 must not read as no clear. `UCataclysmEmpireMapLayout::LastClearLine` turns the three into
+	 * a line. SAVED, all three, since run record version 6.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LastClearDay = INDEX_NONE;
+
+	/** What the dungeon cleared was called, from `NameOfDungeon`, read before the clear took it off the map. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	FString LastClearDungeonName;
+
+	/** The whole days the walk had spent, which ran when the clear ended it. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LastClearWalkDays = 0;
+
+	/**
 	 * Of `UCataclysmSurgeScheduler::SurgesFired`, how many fired because the
 	 * board was empty rather than because the clock or a city's fall sent them.
 	 *
@@ -1442,8 +1591,9 @@ public:
 	 *
 	 * THE RUN DOES NOT BANK IT. The points belong to the account, across runs, and this module may not reach the save
 	 * records; `ACataclysmDungeonGameMode::ClearEmpireDungeon` reads this straight after the clear and banks it into
-	 * the account record (`UCataclysmGameInstance::BankEmpirePoints`). NOT SAVED with the run: a loaded run reads 0
-	 * here until its next clear, and the empire screen then shows the bank without the last award.
+	 * the account record (`UCataclysmGameInstance::BankEmpirePoints`). SAVED with the run since run record version 6
+	 * (issue #2733 slice 3, ruled 2026-11-17): a walk's end returns to the capital by a save and a load, and until then
+	 * a loaded run read 0 here, so the screen showed the bank without the last award.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	double LastEmpirePointsAwarded = 0.0;
@@ -1547,6 +1697,32 @@ public:
 	 * death's. Issue #41, 2026-11-02. `ACataclysmDungeonGameMode::EndTheDungeonForADeath` is the caller, with the
 	 * figures it has just computed; nothing here works any of them out again.
 	 */
+	/**
+	 * Keeps what the days of the walk just ended did, for the map's summary of them: `LastDaysAway`, replacing the last
+	 * walk's, totalled from the days' own reports. Issue #2733 slice 3 (Q6). `ACataclysmDungeonGameMode` is the caller,
+	 * at a clear and at a death that ended a walk, with the reports those days produced.
+	 *
+	 * @param FromDay        the run's day when the player left for the walk
+	 * @param ToDay          the run's day once every day the walk, and a death, cost has run
+	 * @param Reports        every report those days produced, the walk's and, on a death, the resolve's and its own days'
+	 * @param bEndedInAClear whether the walk ended in a clear
+	 */
+	void NoteDaysAway(int32 FromDay, int32 ToDay, const TArray<FCataclysmDayReport>& Reports, bool bEndedInAClear);
+
+	/**
+	 * What the days of the last walk did, while the player was away. Issue #2733 slice 3 (Q6). See
+	 * `FCataclysmDaysAway`. SAVED since run record version 6.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	FCataclysmDaysAway LastDaysAway;
+
+	/**
+	 * Keeps what a clear did, for the map's clear line: the three `LastClear` fields, replacing the last clear's.
+	 * Issue #2733 slice 3 (Q6). `ACataclysmDungeonGameMode::ClearEmpireDungeon` is the caller, with the figures it read
+	 * before the clear; nothing here works any of them out again.
+	 */
+	void NoteClear(int32 Day, const FString& DungeonName, int32 WalkDays);
+
 	void NoteDeath(int32 Day, const FString& DungeonName, int32 WalkDays, int32 DaysCost,
 				   const TArray<int32>& FallenCityIds);
 

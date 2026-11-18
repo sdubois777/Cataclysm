@@ -63,6 +63,8 @@ KEY_LABEL_TO_ENGINE_KEYS = {
     "P": ("P",),
     # The skill-choice screen, issue #837 layer 4.
     "K": ("K",),
+    # The empire map, ruled 2026-11-03, built in issue #2733 slice 3.
+    "M": ("M",),
 }
 
 #: The words the document uses for an action, and the Input Action asset the
@@ -89,6 +91,8 @@ ACTION_PHRASE_TO_INPUT_ACTION = {
     "Open and close the passive class tree": "IA_TogglePassiveTree",
     # The skill-choice screen, issue #837 layer 4.
     "Open and close the skill choice screen": "IA_ToggleSkillAssignment",
+    # The empire map, ruled 2026-11-03, built in issue #2733 slice 3.
+    "Open and close the empire map": "IA_ToggleEmpireMap",
     # The four potion slots, issue #806. One phrase a slot, because each slot is
     # its own action.
     "Drink the potion in slot 1": "IA_DrinkPotion1",

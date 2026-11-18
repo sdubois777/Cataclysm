@@ -81,6 +81,18 @@ public:
 										  int32 Floor, const FGuid& SoloCharacterId);
 
 	/**
+	 * Every character standing in the world, alive, as `FloorFrom` records them, and nothing else.
+	 *
+	 * WHAT A RECORD WITH NO FLOOR HOLDS: the capital, which has no floor, and the hand-over before a level change,
+	 * which is written with none (issue #2733 slice 3). A creature, a drop or a floor object of the level being left
+	 * belongs to no floor such a record names, and the load reads none of them from it; the placements carry the
+	 * character's health, mana, energy shield, class resource and potions. `FloorFrom` gathers its characters
+	 * through this, so the two cannot disagree about which characters a record holds.
+	 */
+	static void PlacementsFrom(const UWorld& World, const FGuid& SoloCharacterId,
+							   TArray<FCataclysmSavedCharacterPlacement>& OutPlacements);
+
+	/**
 	 * The empire's clock, out of a run and into a run record.
 	 *
 	 * BOTH HALVES OF THE CLOCK OR NEITHER. `Day` is the whole days and

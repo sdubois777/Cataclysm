@@ -529,6 +529,31 @@ followed, ruled 2026-11-01:
   runs it through the step and checks every other field is kept, and
   `Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites` reads
   `Account_v2.json` as the committed account file.
+- **The run record went to version 6 on 2026-11-17**, because a trip between the
+  capital and a dungeon became a save and a load (issue #2733 slice 3): what the
+  run record does not hold, a trip loses. Five fields after
+  `LastRunWonPassivePoints` -- `LastEmpirePointsAwarded` (ruled Q3),
+  `LastClearDay`, `LastClearDungeonName`, `LastClearWalkDays` and
+  `LastDaysAway` (ruled Q6), the last an object of seven fields of its own.
+  `Migrate_5_to_6` writes "nothing yet" into a version 5 file: no award (0), no
+  clear (`LastClearDay` -1, an empty name, 0 days) and no walk ended (both days
+  -1, no cities, nothing fallen, no surge). `Run_v6.json` is `Run_v5.json` at
+  version 6 with those five keys added and nothing else changed. **The fixture
+  describes a state play reaches**: the run on day 118 last came back from the
+  death on day 103 that cost 15 days and felled cities 17 and 23, so its walk left
+  on day 84 (103 less the 19 days the walk spent) and came back on day 118, the
+  summary lists those two cities as fallen, and the surge on day 96 is its one
+  surge; the clear on day 80 came before that walk, and its award, 2.25, is still
+  the last because a death awards nothing. **Every value but one holds something
+  other than its default; the one is `bEndedInAClear`, false**, because that walk
+  ended in a death, and `Cataclysm.Travel.TheMapsReturnLineSaysWhatTheWalksEndDid`
+  reads a true one. The losses, 1000, 5000, 750.5 and 2400.25, are exact in
+  binary. `Run_v5.json` is now a migration input, not edited again;
+  `Cataclysm.Travel.ARunFileFromBeforeTripsMigratesWithNoAwardNoClearAndNoWalkEnded`
+  runs it through the step and checks every other field is kept. Every test that
+  read `Run_v5.json` as the committed run file reads `Run_v6.json` now, and every
+  test that runs an older run file through the whole chain adds what the step
+  writes through one helper, `CataclysmSaveFixtures::AddTheRunsVersion6Defaults`.
 - **A slip, recorded rather than undone, as `LastWrittenUtc` was.**
   `Run_v1.json` was edited thirteen times after saves could load
   (`78ad0fa81`, 2026-10-30), each time adding fields for #753's dungeon load
@@ -556,6 +581,7 @@ followed, ruled 2026-11-01:
 | `Run_v3.json` | The same run at version 3: version 2's contents, plus what the player's last death cost |
 | `Run_v4.json` | The same run at version 4: version 3's contents, plus its Cataclysm boss dungeon, opened on day 109 at 137 floors |
 | `Run_v5.json` | The same run at version 5: version 4's contents, plus the win of the run before it, on day 381 at tier 3 against War, for 10 passive points |
+| `Run_v6.json` | The same run at version 6: version 5's contents, plus the last award of 2.25 empire points, the clear on day 80, and the summary of the days its last walk was away, days 84 to 118 |
 | `Example_v1.json` | The example record at version 1 |
 | `Example_v2.json` | The same record at version 2, after `Title` was renamed to `Label` |
 | `Example_v3.json` | The same record at version 3, after `TotalCopper` was split into `Gold` and `Copper` |
@@ -568,8 +594,8 @@ something.
 `UCataclysmSaveExampleRecord` exists only for these, because all three real
 records were at version 1 when it was written and version 1 is the first, so
 none of them had a migration to run. The character record has had six since
-(version 7 since 2026-11-02), the run record four (version 5 since
-2026-11-03), and the account record one (version 2 since 2026-11-03). Its
+(version 7 since 2026-11-02), the run record five (version 6 since
+2026-11-17), and the account record one (version 2 since 2026-11-03). Its
 header says more.
 
 ## Two things to keep in mind when editing one

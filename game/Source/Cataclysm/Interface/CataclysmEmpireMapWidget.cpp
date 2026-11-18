@@ -9,6 +9,7 @@
 #include "Empire/CataclysmEmpireRun.h"
 #include "Interface/CataclysmChoiceButton.h"
 #include "Interface/CataclysmWalkFromTheScreen.h"
+#include "Player/CataclysmCapitalGameMode.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmPlayerController.h"
 
@@ -432,18 +433,23 @@ void UCataclysmEmpireMapWidget::WriteStatus()
 		// at once after it, one tier higher (issue #1324 slice 6e). Empty when the run before was not won. See
 		// `UCataclysmEmpireMapLayout::LastRunWonLine`.
 		const FString Won = UCataclysmEmpireMapLayout::LastRunWonLine(Run);
+		const FString WalksEnd = UCataclysmEmpireMapLayout::ReturnLine(Run);
 		if (!Won.IsEmpty())
 		{
 			LastHit = LastHit.IsEmpty() ? Won : FString::Printf(TEXT("%s   %s"), *Won, *LastHit);
 		}
 
 		SurgeLabel->SetText(FText::FromString(FString::Printf(
-			TEXT("%s   Next surge in %.0f days, bringing %d.%s%s"),
+			TEXT("%s   Next surge in %.0f days, bringing %d.%s%s%s%s"),
 			*Threat,
 			Run->Surges->DaysUntilNextSurge(Run->Day()),
 			Run->Surges->DungeonsInNextSurge(),
 			LastHit.IsEmpty() ? TEXT("") : TEXT("   "),
-			*LastHit)));
+			*LastHit,
+			// AND, ON A SECOND LINE, WHAT THE LAST WALK'S END DID: the clear's line after a clear, and what the days away
+			// did. Issue #2733 slice 3, ruled 2026-11-17 (Q6). A line break in this label rather than a new label, so
+			// no Widget Blueprint changes. See `UCataclysmEmpireMapLayout::ReturnLine`.
+			WalksEnd.IsEmpty() ? TEXT("") : TEXT("\n"), *WalksEnd)));
 	}
 }
 
@@ -577,7 +583,8 @@ void UCataclysmEmpireMapWidget::WalkDungeon(int32 DungeonId)
 {
 	// THE RUN THIS MAP SHOWS, AND THE LEVEL'S DUNGEON GAME MODE. In a running
 	// game the game mode reads the same run from the game instance.
-	WalkRefusal = FCataclysmWalkFromTheScreen::Walk(ShownRun(), DungeonMode(), DungeonId);
+	WalkRefusal = FCataclysmWalkFromTheScreen::Walk(ShownRun(), DungeonMode(), DungeonId,
+		ACataclysmCapitalGameMode::InWorld(GetWorld())); // In the capital, the press travels: #2733 slice 3.
 
 	// A REFUSAL IS WRITTEN INTO THE LINE UNDER THE MAP, rather than the press
 	// doing nothing: in a level that is not a dungeon, above all, a box that did
