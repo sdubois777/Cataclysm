@@ -773,6 +773,7 @@ bool FCataclysmConsumptionDoubleCharacterMigrationTest::RunTest(const FString& P
 	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmCharacterSave::SchemaVersionNow);
 	Expected->SetObjectField(TEXT("ConsumptionBuild"), CataclysmSaveFixtures::EmptyPlayerBuild());
 	Expected->SetNumberField(TEXT("CataclysmOrderSeed"), CataclysmSaveFixtures::FixtureIdentifiersOrderSeed); // #1324: 7.
+	Expected->SetNumberField(TEXT("Gold"), 0); // And 8, issue #2742: no gold of its own.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -887,6 +888,9 @@ bool FCataclysmConsumptionDoubleRunMigrationTest::RunTest(const FString& Paramet
 	Expected->SetNumberField(TEXT("LastRunWonPassivePoints"), 0);
 	// AND WHAT `Migrate_5_to_6` WRITES, because the chain runs on to version 6 since 2026-11-17 (issue #2733 slice 3).
 	CataclysmSaveFixtures::AddTheRunsVersion6Defaults(*Expected);
+	// AND THE GOLD OF 0 `Migrate_6_to_7` WRITES ON EVERY GROUND ITEM, because the chain runs on to version 7 since
+	// 2026-11-18 (issue #2742).
+	CataclysmSaveFixtures::AddTheRunsVersion7Defaults(*Expected);
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);

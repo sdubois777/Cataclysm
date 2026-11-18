@@ -16,6 +16,32 @@
 #include "GameFramework/PlayerController.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmInventoryComponent.h"
+#include "Dungeon/CataclysmEnemyScore.h"
+#include "Player/CataclysmGameInstance.h"
+#include "Save/CataclysmSaveRecords.h"
+#include "Save/CataclysmSaveTriggers.h"
+#include "Save/CataclysmSaveWriter.h"
+
+// A MUTED GOLD, #D9C27A in sRGB. See the header for why it is not the Legendary yellow. Issue #2742.
+const FLinearColor ACataclysmDroppedItem::GoldNameColour = FLinearColor(FColor(0xD9, 0xC2, 0x7A));
+
+FString ACataclysmDroppedItem::GoldAmountText(int64 Amount)
+{
+	// BY HAND RATHER THAN THROUGH FText::AsNumber, whose grouping follows the culture: a test reading "1,234" must not
+	// depend on the machine's locale, and this text is the same everywhere the game shows gold.
+	const bool bNegative = Amount < 0;
+	FString Digits = FString::Printf(TEXT("%lld"), bNegative ? -Amount : Amount);
+	for (int32 At = Digits.Len() - 3; At > 0; At -= 3)
+	{
+		Digits.InsertAt(At, TEXT(','));
+	}
+	return bNegative ? TEXT("-") + Digits : Digits;
+}
+
+FString ACataclysmDroppedItem::GoldName(int64 Amount)
+{
+	return GoldAmountText(Amount) + TEXT(" gold");
+}
 
 ACataclysmDroppedItem::ACataclysmDroppedItem()
 {
@@ -46,6 +72,16 @@ ACataclysmDroppedItem::ACataclysmDroppedItem()
 
 void ACataclysmDroppedItem::DescribeItself()
 {
+	// A GOLD PILE NEEDS NO TABLE: its name is its amount, and its colour and border are gold's own. Issue #2742.
+	if (IsGold())
+	{
+		DisplayName = GoldName(Gold);
+		NameColour = GoldNameColour;
+		Rarity = ECataclysmRarity::Everyday;
+		MaterialTier = 0;
+		return;
+	}
+
 	if (IsMaterial())
 	{
 		const UDataTable* Materials = UCataclysmDropRoll::LoadCraftingMaterialTable();
@@ -145,7 +181,10 @@ void UCataclysmDropPickup::DropsToName(const UWorld* World,
 		// THE MIRROR OF ComesAutomatically, WHICH EXEMPTS GEAR FROM THE SWEEP
 		// for the same shape of reason: the two kinds of drop are collected
 		// differently, so they are shown differently.
-		if (!Drop->IsMaterial()
+		//
+		// AND A GOLD PILE IS NAMED AS A MATERIAL IS, at any distance, because it
+		// is swept as a material is. Issue #2742, ruled 2026-11-18 (G3).
+		if (!Drop->IsAQuantity()
 			&& !IsWithinNameRange(Standing, Drop->GetActorLocation()))
 		{
 			continue;
@@ -295,6 +334,13 @@ int32 UCataclysmDropPickup::NameBorderThicknessForMaterialTier(int32 Tier)
 int32 UCataclysmDropPickup::NameBorderThicknessOf(
 	const ACataclysmDroppedItem& Drop)
 {
+	// A GOLD PILE HAS THE THINNEST BORDER: it has no rarity and no tier, and the
+	// border is what sets it apart from a Legendary item's five pixels. Issue #2742.
+	if (Drop.IsGold())
+	{
+		return ThinnestNameBorderPx;
+	}
+
 	return Drop.IsMaterial()
 		? NameBorderThicknessForMaterialTier(Drop.MaterialTier)
 		: NameBorderThicknessFor(Drop.Rarity);
@@ -324,6 +370,14 @@ bool UCataclysmDropPickup::TakeInto(UCataclysmInventoryComponent* Inventory,
 		return false;
 	}
 
+	// GOLD GOES TO THE ACCOUNT AND NOT INTO THE BAG, and is not announced as loot. Issue #2742. A click lands here
+	// only for a pile the sweep did not take -- one the balance refused, which BankGold leaves lying.
+	if (Drop->IsGold())
+	{
+		const AActor* Holder = Inventory->GetOwner();
+		return BankGold(Holder ? Holder->GetWorld() : nullptr, { Drop }) > 0;
+	}
+
 	// A MATERIAL GOES ONTO A STACK AND A PIECE OF GEAR TAKES A SLOT. Both can
 	// fail for the same reason -- no free slot -- and both leave the drop where
 	// it is when they do.
@@ -344,6 +398,56 @@ bool UCataclysmDropPickup::TakeInto(UCataclysmInventoryComponent* Inventory,
 	Drop->Destroy();
 	UCataclysmCombatEvents::NoteLootTaken(Inventory->GetOwner(), Where, bByHand, bMarked, bInfested);
 	return true;
+}
+
+int64 UCataclysmDropPickup::BankGold(UWorld* World, const TArray<ACataclysmDroppedItem*>& Piles)
+{
+	int64 Total = 0;
+	for (const ACataclysmDroppedItem* Pile : Piles)
+	{
+		if (IsValid(Pile) && Pile->IsGold())
+		{
+			Total += Pile->Gold;
+		}
+	}
+	if (Total <= 0 || World == nullptr)
+	{
+		return 0;
+	}
+
+	// THE BALANCE OF THE CHARACTER PLAYING: its lethality mode's in the account record, or a Solo Self-Found
+	// character's own (the owner's ruling of 2026-11-18). `AddGoldFor` is the one place that decides which.
+	bool bIntoTheCharacter = false;
+	if (!UCataclysmGameInstance::AddGoldFor(World, Total, bIntoTheCharacter))
+	{
+		// NOBODY PLAYING, OR A BANK REFUSED (`AccountFor` logged which, the first time). Left lying.
+		return 0;
+	}
+
+	// IN THE BALANCE FIRST, AND ONLY THEN OFF THE FLOOR, so nothing destroys gold that was not banked.
+	for (ACataclysmDroppedItem* Pile : Piles)
+	{
+		if (IsValid(Pile) && Pile->IsGold())
+		{
+			Pile->Destroy();
+		}
+	}
+	if (UCataclysmGameInstance* Instance = UCataclysmGameInstance::In(World))
+	{
+		Instance->GoldPickedUpThisWalk += Total;
+	}
+
+	// AND THE RECORDS ARE WRITTEN, once for every pile taken together. THE ACCOUNT RECORD when the gold went there.
+	// THE RUN AND CHARACTER RECORDS ALWAYS, through `InventoryChanged`, as an item picked up writes them: the run
+	// record's floor must lose the piles in the same write that gains the gold, or a load before the next clock write
+	// would put piles back that the balance already holds; and a Solo Self-Found character's balance is in its
+	// character record.
+	if (!bIntoTheCharacter)
+	{
+		UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::AccountChanged);
+	}
+	UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::InventoryChanged);
+	return Total;
 }
 
 FVector UCataclysmDropSpawner::ScatterOffset(int32 Index, int32 Count)
@@ -374,7 +478,7 @@ FVector UCataclysmDropSpawner::DropSpotInFrontOf(const AActor& Character)
 
 ACataclysmDroppedItem* UCataclysmDropSpawner::PutOnTheFloor(
 	UWorld* World, const FVector& At, const FCataclysmItem& Item,
-	FName Material, int32 MaterialQuantity)
+	FName Material, int32 MaterialQuantity, int32 Gold)
 {
 	if (!World)
 	{
@@ -396,6 +500,7 @@ ACataclysmDroppedItem* UCataclysmDropSpawner::PutOnTheFloor(
 	Drop->Item = Item;
 	Drop->Material = Material;
 	Drop->MaterialQuantity = MaterialQuantity;
+	Drop->Gold = FMath::Max(0, Gold);
 
 	// THE NAME, THE COLOUR, THE RARITY AND THE TIER ARE WORKED OUT rather than
 	// passed in, because all four follow from what the drop IS. A caller holding
@@ -672,6 +777,75 @@ int32 UCataclysmDropSpawner::SpawnOneInfestedDropFor(UWorld* World, int32 EnemyR
 						 /*bMarked=*/false, /*bInfested=*/true,
 						 /*GearCountGiven=*/bGear ? 1 : 0,
 						 /*MaterialCountGiven=*/bGear ? 0 : 1);
+}
+
+bool UCataclysmDropSpawner::GoldDropsIn(const UWorld* World)
+{
+	// A BALANCE TO DROP IT FOR, whichever the character playing has: its lethality mode's in the account record, or a
+	// Solo Self-Found character's own. The one place that decides is `GoldHeldBy`. See the header.
+	int64 Held = 0;
+	return UCataclysmGameInstance::GoldHeldBy(World, Held);
+}
+
+FVector UCataclysmDropSpawner::GoldScatterOffset(int32 Index, int32 Count)
+{
+	// ONE STEP WIDER THAN THE ITEMS' RING AND HALF A STEP ROUND, so a pile is never where an item of the same kill
+	// is: `ScatterOffset` puts a lone item on the corpse, and a lone pile lands 50 cm off it.
+	const int32 Piles = FMath::Max(1, Count);
+	const float Radius = 25.0f * static_cast<float>(Piles + 1);
+	const float Angle = 2.0f * PI * (static_cast<float>(Index) + 0.5f) / static_cast<float>(Piles);
+	return FVector(Radius * FMath::Cos(Angle), Radius * FMath::Sin(Angle), 0.0f);
+}
+
+int32 UCataclysmDropSpawner::SpawnGoldFor(UWorld* World, int32 EnemyRarityStep, const FVector& At,
+										  FRandomStream& Stream)
+{
+	if (World == nullptr)
+	{
+		return 0;
+	}
+
+	const UDataTable* Drops = UCataclysmDropRoll::LoadEnemyDropTable();
+	const UDataTable* GoldTable = UCataclysmDropRoll::LoadGoldTable();
+	if (Drops == nullptr || GoldTable == nullptr)
+	{
+		// Each Load* has already said which table is missing and why.
+		return 0;
+	}
+
+	const FName EnemyRarity = EnemyRarityForStep(Drops, EnemyRarityStep);
+	if (EnemyRarity.IsNone())
+	{
+		return 0;
+	}
+
+	// HOW MANY: a Poisson draw on the rung's expected piles, as gear and materials are counted.
+	const int32 Count = UCataclysmDropRoll::RollDropCount(
+		UCataclysmDropRoll::ExpectedGoldDrops(Drops, EnemyRarity), Stream);
+	if (Count <= 0)
+	{
+		return 0;
+	}
+
+	// HOW MUCH EACH: the tier being played and the floor the kill was on, asked once for the whole kill. A world with
+	// no dungeon answers floor 1.
+	const int32 DifficultyTier = ACataclysmGameMode::DifficultyTierIn(World);
+	const int32 Floor = UCataclysmEnemyScore::FloorIn(World).FloorNumber;
+
+	int32 Placed = 0;
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		const int32 Amount = UCataclysmDropRoll::RollGoldPile(GoldTable, DifficultyTier, Floor, Stream);
+		if (Amount <= 0)
+		{
+			continue;
+		}
+		if (PutOnTheFloor(World, At + GoldScatterOffset(Index, Count), FCataclysmItem(), NAME_None, 0, Amount))
+		{
+			++Placed;
+		}
+	}
+	return Placed;
 }
 
 int32 UCataclysmDropSpawner::SpawnMaterialsFor(UWorld* World, FName EnemyRarity,

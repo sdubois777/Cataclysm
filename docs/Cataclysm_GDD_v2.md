@@ -2894,7 +2894,7 @@ So an Extremely Rare material is one material drop in 341, and since five materi
 
   
 
-**Crafting materials within fifteen metres are collected without a click; gear never is.** The three metres is how near a click has to happen from, not a radius that sweeps things up. Crafting materials are the exception, by the project owner's decision of 2026-08-23: a material lying within fifteen metres of the character, five times the click range, comes to them on its own, because a material is an interchangeable quantity and collecting it is not a decision (issues #851 and #883). A piece of gear is never collected automatically, at any distance, because taking one is a decision the player makes after reading it. The game drops no gold.
+**Crafting materials within fifteen metres are collected without a click; gear never is.** The three metres is how near a click has to happen from, not a radius that sweeps things up. Crafting materials are the exception, by the project owner's decision of 2026-08-23: a material lying within fifteen metres of the character, five times the click range, comes to them on its own, because a material is an interchangeable quantity and collecting it is not a decision (issues #851 and #883). A piece of gear is never collected automatically, at any distance, because taking one is a decision the player makes after reading it. **Gold is collected the same way as a material**, within the same fifteen metres; the Gold paragraphs below say why.
 
   
 
@@ -2915,6 +2915,47 @@ So an Extremely Rare material is one material drop in 341, and since five materi
   
 
 **These numbers are a starting point and are expected to move.** The 0.16 for a Common enemy is Path of Exile's published figure for a normal monster, taken because this design had none of its own; their figure covers currency and everything else a monster can drop rather than gear alone, so it is the right order of magnitude rather than a measured equivalent. Every number in the table is a column of the Enemy Drops sheet in `docs/All_Things_Cataclysm.xlsx` and changing one is a cell edit.
+
+  
+
+**A kill can drop gold too, as piles lying on the floor.** The project owner ruled on 2026-11-18 that gold comes from creature kills, "larger for rarer creatures and deeper floors, as gear and materials drop today" (issue #2742). How many piles a kill drops is an expected number, drawn as the drops above are, and it is the gear column: 0.16 piles for a Common kill and 12 for a Cataclysm Boss. How much a pile holds depends on where the kill happened and not on what was killed: the difficulty tier being played and the floor. That is Diablo II's shape, in which a rarer monster drops more piles and a pile's value follows the level.
+
+  
+
+| Difficulty tier | Gold per pile on floor 1 | More per floor deeper |
+| --: | --: | --: |
+| 1 | 10 | 4% |
+| 2 | 30 | 4% |
+| 3 | 60 | 4% |
+| 4 | 100 | 4% |
+| 5 | 140 | 4% |
+| 6 | 190 | 4% |
+| 7 | 240 | 4% |
+| 8 | 300 | 4% |
+
+  
+
+**A pile on floor f holds the floor 1 figure plus 4% of it for each floor deeper**, so floor 26 holds twice floor 1, and then 0.8 to 1.2 times that at random, as a whole number of gold. So a deeper dungeon pays more gold: depth and reward are the same axis. The tier figures are the tier 1 pile times the middle of each tier's Power Score band over tier 1's, rounded: 1, 3, 6, 10, 14, 19, 24 and 30. Gold therefore grows with the game's own measure of a tier, about thirty times over the eight, which sits between Diablo IV's difficulty bonus to gold (about four times) and Diablo III's (about seventy).
+
+  
+
+**Neither magic find nor loot quantity raises gold.** Diablo II and Diablo III keep gold apart from magic find, and this design has gold modifiers of its own: the empire tree's Economic Zones and Coinage, and the city upgrade that makes the dungeons on a city drop more gold, beside a separate magic find one.
+
+  
+
+**Gold is collected without a click within fifteen metres, as a crafting material is, and its name is drawn at any distance.** Path of Exile 2, Diablo IV and Last Epoch all collect gold by walking near it, and the reason this design sweeps up materials, that collecting an interchangeable quantity is not a decision, holds for gold more strongly still. A pile's name is its amount, "12 gold", drawn in a muted gold with the thinnest border, which keeps it apart from a Legendary item's yellow name and five-pixel border. Taking a pile adds it to the character's balance (see Storage) -- its lethality mode's, held by the account, or a Solo Self-Found character's own -- and not to the bag. The balance is shown on the empire map's status line and on the inventory screen's header line. Piles still lying on a floor when it is left are lost, as every drop is.
+
+  
+
+**A Solo Self-Found character's kills drop gold too, into its own balance.** The project owner ruled so on 2026-11-18 ("ssf characters can earn gold though"). Its gold is its own, as the Storage section says, so it is held in its character record and shared with nothing, where every other character's goes to its lethality mode's balance.
+
+  
+
+**Only a creature's own death drops gold.** What a dungeon rule hands out (Luxury Hoarders, Pandora's Box, the Reality Chamber, Soul Chains) is items and materials only; The Infested Hoard's extra drop is still read as an item or a material; and Famished Beasts eats "dropped items", which gold is not.
+
+  
+
+**Every figure in the gold paragraphs is a judgement**, ruled by the coordinating session under the owner's delegation of unstated numbers, and `docs/DECISIONS.md` records the sources and what each figure rests on. They are the Gold sheet of `docs/All_Things_Cataclysm.xlsx`, one row per difficulty tier, and the Gold Drops column of its Enemy Drops sheet.
 
   
 

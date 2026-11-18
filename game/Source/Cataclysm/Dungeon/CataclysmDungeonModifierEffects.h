@@ -3061,8 +3061,9 @@ public:
 	 * figure here is a play-test value:
 	 * - ONE INFESTED DROP, sometimes, when one of the floor's creatures dies and pays: `InfestedHoardChancePercentFor`
 	 *   of the stacks held. It is exactly one drop, gear or a crafting material in the creature's own ratio, rolled
-	 *   at its rarity and magic find as its own drops are, and it is extra to them. The game has no gold drops, so
-	 *   "gold and items" is read as items and materials.
+	 *   at its rarity and magic find as its own drops are, and it is extra to them. The game had no gold drops then,
+	 *   so "gold and items" was read as items and materials; since gold drops arrived (issue #2742, 2026-11-18) the
+	 *   reading is kept, ruled the same day: no dungeon rule pays gold in that work.
 	 * - "INFESTED " IN FRONT OF ITS NAME while it lies on the floor. The mark is lost once it is picked up.
 	 * - NEVER COLLECTED AUTOMATICALLY, material or not, so taking it is always a click and always a choice.
 	 * - TAKEN BY HAND, IT ADDS ONE STACK, to `InfestedHoardMostStacks`.

@@ -40,7 +40,13 @@ enum class ECataclysmSaveTrigger : uint8
 	 */
 	ChangedFloor = 4,
 
-	/** An item or a material entered or left the carried inventory. */
+	/**
+	 * An item or a material entered or left the carried inventory.
+	 *
+	 * AND GOLD WAS PICKED UP, since issue #2742: `UCataclysmDropPickup::BankGold` raises it, because a pickup of gold
+	 * changes what this writes -- the run record's floor loses the piles, and a Solo Self-Found character's own gold is
+	 * in its character record -- exactly as an item picked up does. The account's gold is `AccountChanged`'s.
+	 */
 	InventoryChanged = 5,
 
 	/**

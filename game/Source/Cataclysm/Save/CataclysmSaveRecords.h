@@ -357,6 +357,13 @@ struct CATACLYSM_API FCataclysmSavedGroundItem
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	bool bDroppedByARaisedCreature = false;
 
+	/**
+	 * How much gold this pile holds, or zero when the drop is gear or a crafting material. Issue #2742, run record
+	 * version 7. Without it a save made mid-floor lost every pile not yet collected.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 Gold = 0;
+
 	/** Whether this drop is crafting materials rather than a piece of gear. */
 	bool IsMaterial() const { return !Material.IsNone() && MaterialQuantity > 0; }
 };
@@ -1019,6 +1026,10 @@ struct CATACLYSM_API FCataclysmSavedFloor
  * for a field that had never held anything. The banked points are here because
  * the game banks them: a defeated dungeon's award, since issue #52's first slice.
  *
+ * VERSION 3 SINCE 2026-11-18. The account holds its gold (`Gold`, issue #2742), and `Migrate_2_to_3` writes a
+ * balance of 0 into an account written at 2: nothing dropped gold before the field existed. The empire upgrade tree
+ * (issue #2741) takes version 4, ruled by the coordinating session on 2026-11-18.
+ *
  * VERSION 2 SINCE 2026-11-03. `EmpireUpgradePoints` was a whole number and is a
  * double, because an award is a fraction -- an ordinary dungeon is worth 1 point
  * times the share of the population living -- and the coordinating session ruled
@@ -1032,7 +1043,7 @@ class CATACLYSM_API UCataclysmAccountSave : public UCataclysmSaveRecord
 
 public:
 	static const FName TypeName;
-	static constexpr int32 SchemaVersionNow = 2;
+	static constexpr int32 SchemaVersionNow = 3;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
@@ -1062,6 +1073,18 @@ public:
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	double EmpireUpgradePoints = 0.0;
+
+	/**
+	 * The partition's gold: one balance per lethality mode and population, which nothing moves between. Issue #2742.
+	 *
+	 * `docs/Cataclysm_GDD_v2.md`, Storage: "Gold is held by the account, once per lethality mode ... and nothing moves
+	 * between them", and it is a balance rather than an item, so it is here and not in `Stash`. Picking a pile up adds
+	 * to it (`UCataclysmGameInstance::AddGoldFor`). A Solo Self-Found character's gold is its own, in its character
+	 * record (`UCataclysmCharacterSave::Gold`), and never here. A WHOLE NUMBER, AND 64 BITS: a late tier walk is worth
+	 * about 210,000 and the design's treasury nodes reach into the millions. RECORD VERSION 3.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int64 Gold = 0;
 
 	/**
 	 * The characters belonging to this partition, by identifier.
@@ -1221,6 +1244,10 @@ public:
 	static const FName TypeName;
 
 	/**
+	 * 8 SINCE 2026-11-18. A Solo Self-Found character holds its own gold (`Gold`, issue #2742): the owner ruled that day
+	 * that such a character earns gold, and the design's Storage section puts its gold on the character, "its gold is
+	 * its own". `Migrate_7_to_8` writes a balance of 0 into a character written at 7: nothing dropped gold before.
+	 *
 	 * 7 SINCE 2026-11-02. The character carries its Cataclysm order seed (`CataclysmOrderSeed`, issue #1324 slice 6a), and
 	 * `Migrate_6_to_7` writes into a character written at 6 the seed its identifier gives (`CataclysmOrderSeedFor`): no
 	 * character had one before the field existed, and that keeps an existing character to one fixed draw from then on.
@@ -1246,7 +1273,7 @@ public:
 	 * when attribute allocation became something the running game produces, so
 	 * a character written before that has no such field at all. Issue #50.
 	 */
-	static constexpr int32 SchemaVersionNow = 7;
+	static constexpr int32 SchemaVersionNow = 8;
 
 	/**
 	 * The Cataclysm order seed a character's identifier gives: what `Migrate_6_to_7` writes into a character written
@@ -1334,6 +1361,20 @@ public:
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	int32 CataclysmOrderSeed = 0;
+
+	/**
+	 * A Solo Self-Found character's own gold. Issue #2742; `ACataclysmPlayerState::GetOwnGold`.
+	 *
+	 * THE DESIGN'S STORAGE SECTION: gold is held by the account once per lethality mode, and "A Solo Self-Found
+	 * character is the exception again: its gold is its own and is shared with nothing". The owner ruled on 2026-11-18
+	 * that such a character earns gold ("ssf characters can earn gold though"), reversing the coordinating session's
+	 * G5, so its balance is here and every other character's is `UCataclysmAccountSave::Gold`. ZERO AND UNUSED FOR EVERY
+	 * OTHER CHARACTER. `UCataclysmGameInstance::GoldHeldBy` is the one place that says which balance a character has.
+	 *
+	 * VERSION 8: a record written before the field is at version 7, and `Migrate_7_to_8` writes a balance of 0 into it.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int64 Gold = 0;
 
 	/**
 	 * When the save writer last wrote this record, in UTC, as ISO 8601 text; empty in a record written before the
@@ -1633,8 +1674,11 @@ public:
 	 * carries what the map a walk's end returns to shows: the last defeat's empire points, `LastEmpirePointsAwarded`
 	 * (ruled Q3), the last clear, `LastClearDay` to `LastClearWalkDays`, and what the last walk's days did,
 	 * `LastDaysAway` (both ruled Q6). `Migrate_5_to_6` writes "no award, no clear, no walk ended" into a run written at 5.
+	 *
+	 * 7 SINCE 2026-11-18. A gold pile can lie on the floor (issue #2742), so a ground item carries `Gold`, and
+	 * `Migrate_6_to_7` writes a `Gold` of 0 on every ground item of a run written at 6: no kill dropped gold before.
 	 */
-	static constexpr int32 SchemaVersionNow = 6;
+	static constexpr int32 SchemaVersionNow = 7;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }

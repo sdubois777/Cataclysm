@@ -319,6 +319,15 @@ void ACataclysmEnemyCharacter::HandleDeath()
 				World, RarityStepItPaysAs(), MagicFind, LootQuantity, GetActorLocation(),
 				Stream, /*bMarked=*/bRaisedByARule, /*bInfested=*/false, RandomGearDropsGiven());
 			DropWhatItWore(World, GetActorLocation(), Stream);
+
+			// AND ITS GOLD, LAST, so the piles draw on the stream after every item and leave each item as it was. The
+			// rung it pays as sets how many piles; the tier and the floor set how much each holds. None where the
+			// character playing has no balance to put it in, which is a world with nobody playing (`GoldDropsIn`). A
+			// Solo Self-Found character's kills drop gold for its own balance. Issue #2742.
+			if (UCataclysmDropSpawner::GoldDropsIn(World))
+			{
+				UCataclysmDropSpawner::SpawnGoldFor(World, RarityStepItPaysAs(), GetActorLocation(), Stream);
+			}
 		}
 
 		// AND THE EXPERIENCE, which is this creature's Enemy Score. Issue #926.

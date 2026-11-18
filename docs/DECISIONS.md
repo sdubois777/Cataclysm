@@ -2,6 +2,182 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-18 — Creatures drop gold in piles, picking a pile up adds it to the character's balance -- its lethality mode's, or a Solo Self-Found character's own -- and the empire map and the inventory screen show it (#2742, slice 1)
+
+**Affects:** the Enemy Drops sheet of `docs/All_Things_Cataclysm.xlsx`, which gains Gold Drops, and its new Gold sheet,
+one row per difficulty tier; `tools/generate_datatables.py` (`enemy_drops`, `gold`, new) and
+`tools/generate_datatable_assets.py`; `game/Data/EnemyDrops.csv` and `game/Data/Gold.csv`, new, with their assets
+`DT_EnemyDrops` and `DT_Gold`, new; `FCataclysmEnemyDropRow::GoldDrops` and `FCataclysmGoldRow`, new
+(`CataclysmDataRows.h`); `UCataclysmDropRoll::LoadGoldTable`, `ExpectedGoldDrops`, `GoldRow`, `GoldPileMean` and
+`RollGoldPile`, new (`CataclysmDropRoll.h`, `.cpp`); `ACataclysmDroppedItem::Gold`, `IsGold`, `IsAQuantity`,
+`GoldNameColour`, `GoldAmountText` and `GoldName`, new, `UCataclysmDropSpawner::GoldDropsIn`, `SpawnGoldFor` and
+`GoldScatterOffset`, new, `UCataclysmDropPickup::BankGold`, new, and `DescribeItself`, `DropsToName`,
+`NameBorderThicknessOf`, `TakeInto` and `PutOnTheFloor` (`CataclysmDroppedItem.h`, `.cpp`);
+`ACataclysmEnemyCharacter::HandleDeath` (`CataclysmEnemyCharacter.cpp`);
+`ACataclysmPlayerController::CollectMaterialsNearby` and `TakeDrop` (`CataclysmPlayerController.cpp`);
+`UCataclysmGameInstance::BankGold`, `GoldHeldBy`, `AddGoldFor`, `GoldBalanceText` and `GoldPickedUpThisWalk`, new
+(`CataclysmGameInstance.h`, `.cpp`); `ACataclysmPlayerState::GetOwnGold`, `AddOwnGold` and `SetOwnGold`, new
+(`CataclysmPlayerState.h`); `UCataclysmAccountSave::Gold`, new, the account record at version 3,
+`UCataclysmCharacterSave::Gold`, new, the character record at version 8, and `FCataclysmSavedGroundItem::Gold`, new,
+the run record at version 7, with `Migrate_2_to_3` (account), `Migrate_7_to_8` (character) and `Migrate_6_to_7` (run)
+(`CataclysmSaveRecords.h`, `.cpp`); `FCataclysmSaveGather::GroundItemFrom` and `CharacterFrom`, and
+`FCataclysmSaveApply::GroundItemInto` and `CharacterInto`; `ECataclysmSaveTrigger::InventoryChanged`'s comment
+(`CataclysmSaveTriggers.h`); `UCataclysmEmpireMapLayout::GoldLine` and `GoldLineIn`, new, and the empire map's status
+line (`CataclysmEmpireMapWidget.cpp`); `UCataclysmInventoryScreen::HeaderTextFor` and the inventory screen's header
+(`CataclysmInventoryScreen.h`, `.cpp`, `CataclysmInventoryWidget.cpp`);
+`FCataclysmPlayLoopLog::GoldLine` and `GoldLineIn`, new, said by `ACataclysmDungeonGameMode::ClearEmpireDungeon` and
+`EndTheDungeonForADeath`, with the count zeroed in `EnterEmpireDungeon`;
+`UCataclysmDungeonModifierEffects::FamishedBeastsEats`; `docs/Cataclysm_GDD_v2.md`, What a Kill Drops;
+`docs/Inventory_Screen_Design.md`; `docs/Play_Loop_Checklist.md`; `docs/README.md`; `game/README.md`;
+`game/Tests/SaveFixtures/Account_v3.json`, `game/Tests/SaveFixtures/Character_v8.json` and
+`game/Tests/SaveFixtures/Run_v7.json`, new, and `game/Tests/SaveFixtures/README.md`. Tests:
+`game/Source/Cataclysm/Tests/CataclysmGoldTests.cpp`, new, thirteen tests; `tools/tests/test_gold_drops_and_the_balance.py`,
+new, twenty-two tests; and the save tests that read the committed account, character and run files, which read the new
+versions. Issue [#2742](https://github.com/sdubois777/Cataclysm/issues/2742),
+slice 1 of 2.
+
+### SAID FIRST
+
+- **THREE SAVE RECORDS MOVE A VERSION.** The account record to 3 (its gold), the character record to 8 (a Solo
+  Self-Found character's own gold) and the run record to 7 (gold piles lying on a floor). The account was to take 4
+  while the empire upgrade tree (issue #2741) took 3; the coordinating session swapped the two the same day, since this
+  work was ready first, so the tree's slice 1b takes 4 and every chain here is whole.
+- **THE OWNER REVERSED G5 THE SAME DAY: A SOLO SELF-FOUND CHARACTER EARNS GOLD.** Its kills drop gold, it picks it up,
+  and it holds it, in a balance of its own that its character record saves (version 8), as the design's Storage section
+  says: "its gold is its own". Every other character's gold is its lethality mode's, in the account record. One
+  function, `UCataclysmGameInstance::GoldHeldBy`, says which balance the character playing has, and `AddGoldFor` adds
+  to that one; every screen and the PLAY LOOP line read it, and slice 2's purchase spends from it.
+- **THE OWNER ASKED FOR THE BALANCE ON THE INVENTORY SCREEN**, and it is on the header line above the carried grid.
+  No widget asset was regenerated: the inventory screen builds its widgets in C++.
+- **EVERY GOLD FIGURE IS A JUDGEMENT.** The research below settles how gold behaves -- it is collected by walking near
+  it, it grows with difficulty, it is kept apart from magic find, and one-off purchases get dearer -- and settles no
+  absolute number.
+- **WHAT A WALK EARNS IS AN ESTIMATE UNTIL IT IS PLAYED.** A floor holds 73 to 510 creatures (measured,
+  `CataclysmFloorPopulation.h`); assuming 100 to 200 kills a floor, a 12-floor Outpost walk at tier 1 earns about 7,000
+  to 14,000 gold. The new PLAY LOOP line measures it, and slice 2's upgrade price is to be checked against that line.
+
+### THE RULINGS
+
+The project owner, 2026-11-18, each the option chosen, verbatim:
+
+1. Where gold comes from: **"Creature kills"** -- "Each kill has a chance to drop gold, larger for rarer creatures and
+   deeper floors, as gear and materials drop today. The session picks the amounts from how shipped ARPGs do it and
+   records them for your review." This supersedes the reading "The game has no gold drops" in the entry for The
+   Infested Hoard (2026-09-25).
+2. What gold buys first: **"City upgrades"** -- slice 2.
+3. Build time: **"Gold now, days later"** -- slice 2 keeps upgrades instant.
+4. Later the same day, relayed by the coordinating session: **"Make sure for the gold work that the player's total gold
+   is displayed somewhere in the inventory screen and probably somewhere on the city screen so they can see if they can
+   afford an upgrade."** The inventory screen is this slice; the city screen is slice 2's.
+5. Later still: **"ssf characters can earn gold though..."**, which reverses G5 below.
+
+The coordinating session, 2026-11-18, under the owner's delegation of unstated numbers (2026-09-11), each a judgement:
+
+- **G1, the drops.** A kill's expected gold piles equal its expected gear drops, the Gear Drops ladder (Common 0.16,
+  Elite 0.5, Legendary 1, Herald 2, Boss 5, Cataclysm Boss 12), drawn by the same Poisson roll. A pile's size does not
+  depend on the creature: 10 gold on floor 1 at tier 1, 4% of that more for each floor deeper, times the tier scale 1,
+  3, 6, 10, 14, 19, 24, 30, and then 0.8 to 1.2 of the result at random, rounded to a whole gold and never below 1.
+  **The +4% a floor means a deeper dungeon pays more gold, which is the project's rule that depth and reward are the
+  same axis.**
+- **G2.** Neither magic find nor loot quantity raises gold.
+- **G3.** Gold is collected without a click within the 15 m crafting materials are, and its name is drawn at any
+  distance, as a material's is.
+- **G4, for slice 2.** 10,000 gold per upgrade at tier 1, times the tier scale; upgrade tiers 2 and 3 at 2 and 4 times.
+  Slice 2 checks it against the measured gold per walk and changes it if one upgrade is not within about one to two
+  walks.
+- **G5, REVERSED BY THE OWNER.** It read: a Solo Self-Found character's kills drop no gold, because its gold would need
+  a new character record version. The owner ruled the opposite (ruling 5 above), so this slice takes the character
+  record to version 8 and the balance is the character's own. Its private empire bank stays on #52, at a later version.
+- **G6.** The balance is on the empire map's status line now, and on the city screen beside each price in slice 2.
+- **No dungeon rule pays or acts on gold in this work**: Luxury Hoarders, Pandora's Box, the Reality Chamber and Soul
+  Chains drop items and materials only, and The Infested Hoard's "infested gold and items" keeps its reading as items
+  and materials. The list goes on #2742 as a comment when slice 1 merges, not into a new issue.
+- **Account record version 3, character record version 8, run record version 7.** Ruled first as account 4, with 3 the
+  empire tree's; swapped by the coordinating session later the same day, the tree taking 4.
+- **The balance shown is the playing character's**: its lethality mode's, or a Solo Self-Found character's own, which
+  its screens show as they show any balance.
+
+### THE RESEARCH, AND WHAT IT SETTLES
+
+Every page below was read through WebFetch on 2026-11-18, which summarises, so each line is that summary's account of
+the page. Many sites refused automated reads that day (HTTP 403 or a bot page): mobalytics.gg, poe2wiki.net,
+di.diablowiki.net, diablo2.diablowiki.net, icy-veins.com, destructoid.com, and lurkerlounge.com (HTTP 409).
+
+| Game | Page | What it says |
+| :-- | :-- | :-- |
+| Path of Exile 2 | [poe2db.tw/us/Gold](https://poe2db.tw/us/Gold) | "Gold is proximity auto-pickup"; spent at vendors, on gambling and on passive respecs; the respec price rises with level, 15 gold at level 1 to 10,129 at level 100 |
+| Diablo IV | [maxroll.gg/d4/resources/difficulty-overview](https://maxroll.gg/d4/resources/difficulty-overview) | each Torment level gives "also larger Gold drops": +100% at Torment 1, +20% a step to +200% at 6, then +25% steps to +300% at 10 to 12 |
+| Diablo IV | [maxroll.gg/d4/resources/shrines](https://maxroll.gg/d4/resources/shrines) | the Greed shrine lets you "automatically pick up Gold from farther away": gold is collected by walking near it, within a radius |
+| Diablo II | [maxroll.gg/d2/resources/gold-magic-find](https://maxroll.gg/d2/resources/gold-magic-find) | Gold Find is its own stat beside Magic Find; "Gold find only increases the value of the Gold pile" |
+| Diablo III | [maxroll.gg/d3/resources/gold-find-magic-find-explained](https://maxroll.gg/d3/resources/gold-find-magic-find-explained) | Gold Find is its own stat, "multiplied by game difficulty bonus", up to 7,000% on Torment XVI; Magic Find only raises rarity |
+| Last Epoch | [forum.lastepoch.com/t/larger-gold-pick-up-radius/59775](https://forum.lastepoch.com/t/larger-gold-pick-up-radius/59775) | a player, 2023: gold is collected by walking onto it, "I have to practically stand on top of it" |
+| Last Epoch | [forum.lastepoch.com/t/cost-of-stash-tabs/58342](https://forum.lastepoch.com/t/cost-of-stash-tabs/58342) | players, 2023: each stash tab costs more gold than the last, "My next tab will cost 260k gold" |
+| Torchlight Infinite | [tlidb.com/en/](https://tlidb.com/en/) and its Loot, Drop Source and Inventory pages | no gold currency is listed; its currencies are Flame Elementium and Flame Sand, so it is not comparable |
+
+Search snippets only, NOT FETCHED, carrying no weight: a Diablo II pile of RND(level x 5) + level; Diablo IV stash tabs
+at 100,000 gold rising 100,000 a tab; a Last Epoch tab price formula and its halving in patch 1.0.3; Path of Exile gold
+scaling with area level.
+
+**Settled by the research:** gold is collected by walking near it (Path of Exile 2, Diablo IV, Last Epoch); gold drops
+grow with difficulty (Diablo III, Diablo IV); gold is a stat of its own, apart from magic find (Diablo II, Diablo III);
+persistent purchases get dearer (Last Epoch's tabs, Path of Exile 2's respec by level).
+
+**Not settled, and so judgements:** every number. That a rarer creature drops more gold rests on the owner's ruling,
+not on a fetched page: none of the readable pages said how rarity moves gold.
+
+### THE JUDGEMENTS, EACH WITH WHAT IT RESTS ON
+
+| Judgement | Value | What it rests on |
+| :-- | :-- | :-- |
+| Piles per kill | the Gear Drops ladder, 0.16 to 12 | the owner's "as gear and materials drop today"; one ladder rather than a second to tune |
+| Pile size depends on where, not on what | tier and floor only | Diablo II's shape, more piles from a rarer monster and value by level (the RND formula is a snippet, so this is the shape and not a figure) |
+| A pile on floor 1 at tier 1 | 10 gold | a small first number, so the tier scale and the depth term read as multiples of it |
+| Each floor deeper | +4% of the floor 1 pile | depth and reward are one axis (`CLAUDE.md`); +4% makes floor 26 pay twice floor 1 and a 150-floor dungeon's last floor seven times |
+| Tier scale | 1, 3, 6, 10, 14, 19, 24, 30 | the midpoints of the eight Power Score bands (`PLAYER_MAX_SCORES` in `sim/cataclysm_sim/scoring.py`) over tier 1's, rounded; about x30 overall, between Diablo IV's difficulty bonus (about x4) and Diablo III's (about x71) |
+| Spread | 0.8 to 1.2, whole gold, at least 1 | a pile of exactly 10 every time reads as a constant; a pile of 0 would be a name worth nothing |
+| Magic find and loot quantity | do not raise gold | Diablo II and III; and the design's gold-only modifiers (Economic Zones, Coinage, the city upgrade "Dungeons here drop that much more gold") would otherwise double up |
+| Pickup radius | 15 m, the materials' | the owner's 2026-08-23 reason for materials holds for gold; the genre's radii are smaller (Last Epoch's players ask for more) |
+| A pile's name | "12 gold", "1,234 gold" | the amount is what a player reads |
+| Its colour and border | `#D9C27A`, the thinnest border | not the Legendary yellow `#FFD100`: paler, less saturated, one pixel where a Legendary item has five, and the word "gold" |
+| A pile's ring | one step wider than the items' ring, half a step round | a pile never lands where an item of the same kill does, the lone item included |
+| Which worlds drop gold | where the character playing has a balance (`GoldHeldBy`) | a world with nobody playing has no balance for gold, which also leaves every automation test that kills with no player as it was |
+| Where a Solo Self-Found character's gold is held while playing | its player state, saved in its character record | the Storage section's "its gold is its own"; the player state is where the character record's other figures are held between saves |
+| A pickup's saves | the account record when the gold went there, and the run and character records always (`InventoryChanged`) | the run record must lose the piles in the same write that the balance gains them, or a load before the next clock write would put back piles already banked; a Solo Self-Found character's balance is in its character record |
+| The inventory screen's balance | on the header line, "Carried    12 / 48        1,234 gold" | the owner's request; the header is the one line above the grid, and the gold is read every frame the screen is open, as the rest of the header is |
+| A screen with no balance to read | shows nothing | a 0 there would say the character holds nothing, which is not what is known |
+| Famished Beasts | eats no gold | its row says "consume dropped items", and gold is not an item |
+| A walk's gold count | on the game instance, zeroed when a walk is entered, not saved | the PLAY LOOP line needs it across the level change; a walk resumed from a save counts from the load |
+
+### WHAT EACH PIECE DOES
+
+- **A kill.** `ACataclysmEnemyCharacter::HandleDeath`, inside the block that pays for a death, after the creature's gear,
+  materials and worn items, asks `UCataclysmDropSpawner::GoldDropsIn` and calls `SpawnGoldFor`, which draws the pile
+  count on the kill's stream and each pile's gold from `DT_Gold` at the tier being played and the floor
+  (`UCataclysmEnemyScore::FloorIn`), and puts each pile on the floor through `PutOnTheFloor`. Drawing last leaves every
+  item the kill rolls as it was before gold existed.
+- **Picking up.** The player's sweep (`CollectMaterialsNearby`) gathers gold piles within 15 m apart from materials and
+  banks them together with `UCataclysmDropPickup::BankGold`: the sum goes, through `UCataclysmGameInstance::AddGoldFor`,
+  into the playing character's balance -- `UCataclysmAccountSave::Gold` of its partition, or a Solo Self-Found
+  character's own on its player state -- the piles are destroyed only after, the walk's count rises, `AccountChanged`
+  is raised when the gold went to the account, and `InventoryChanged` always, which writes the run and character
+  records. A click on a pile goes through `TakeInto`, which banks it the same way. Nothing is announced as loot taken,
+  so no dungeon rule answers it. When there is no balance -- nobody playing, or an account record refused -- the piles
+  stay.
+- **Saving.** The account record holds `Gold` (an `int64`, at version 3), and the character record holds a Solo
+  Self-Found character's own (an `int64`, at version 8; 0 for every other character). A pile lying on a floor is a
+  ground item with `Gold` (run record version 7), so a save made mid-floor keeps uncollected piles. Piles left on a floor when it is
+  left are destroyed with every other drop, as before.
+- **Showing.** The empire map's status line ends with "1,234 gold", the inventory screen's header line shows the same
+  balance, and a walk's end says `PLAY LOOP: dungeon 3's walk picked up 8,412 gold; 8,412 gold held`, after the clear's
+  or the death's line. Each reads the balance through `GoldHeldBy`, so a Solo Self-Found character sees its own.
+
+### THE RUN
+
+Not yet run. Phase 2 (rebase, compile alone and in unity, review, the window with the automation tests and the guard
+proofs) waits for the coordinating session's go-ahead.
+
+---
+
 ## 2026-11-18 — The empire upgrade tree reaches the game as two tables, each node placed in its branch and marked buyable or waiting on a system, and its buying rules are written; nothing is saved and no node acts yet (#2741, slice 1a)
 
 **Affects:** `tools/generate_datatables.py` (`empire_tree_nodes`, `empire_tree_edges`, `_empire_branch`,

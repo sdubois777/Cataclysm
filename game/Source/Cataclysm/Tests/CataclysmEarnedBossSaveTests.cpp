@@ -229,6 +229,9 @@ bool FCataclysmEarnedBossSaveMigrationTest::RunTest(const FString& Parameters)
 	Expected->SetNumberField(TEXT("LastRunWonPassivePoints"), 0);
 	// AND WHAT `Migrate_5_to_6` WRITES, because the chain runs on to version 6 since 2026-11-17 (issue #2733 slice 3).
 	CataclysmSaveFixtures::AddTheRunsVersion6Defaults(*Expected);
+	// AND THE GOLD OF 0 `Migrate_6_to_7` WRITES ON EVERY GROUND ITEM, because the chain runs on to version 7 since
+	// 2026-11-18 (issue #2742).
+	CataclysmSaveFixtures::AddTheRunsVersion7Defaults(*Expected);
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -259,18 +262,19 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEarnedBossSaveCommittedFileTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * `Run_v6.json` reads into the three values it states, none of them a default, so
+ * `Run_v7.json` reads into the three values it states, none of them a default, so
  * each is read and not re-defaulted. Prints "BOSS FILE". It read `Run_v4.json`
  * until the run record went to version 5 on 2026-11-03 (issue #1324 slice 6e),
  * and `Run_v5.json` until it went to version 6 on 2026-11-17 (issue #2733 slice
- * 3); `Run_v6.json` holds the same three values, and the older files are
- * migration inputs now.
+ * 3), and `Run_v6.json` until it went to version 7 on 2026-11-18 (issue #2742);
+ * `Run_v7.json` holds the same three values, and the older files are migration
+ * inputs now.
  */
 bool FCataclysmEarnedBossSaveCommittedFileTest::RunTest(const FString& Parameters)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v6.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v7.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -281,7 +285,7 @@ bool FCataclysmEarnedBossSaveCommittedFileTest::RunTest(const FString& Parameter
 		Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v6.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Run_v7.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}

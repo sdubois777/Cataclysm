@@ -32,7 +32,7 @@ python tools/reformat_google_docs_artefacts.py
 |---|---|---|
 | `Cataclysm_GDD_v2.md` | Doc "Cataclysm\_GDD\_v2(1)" | Converted to Markdown so it produces readable diffs. No version number: see below. |
 | `Empire_Skill_Tree_Keystones.md` | Doc "Empire Skill Tree Keystones" | The 12 keystones plus all four empire quadrants (Architect, Treasury, Explorer, Artisan). Converted to Markdown. |
-| `All_Things_Cataclysm.xlsx` | Sheet "All Things Cataclysm" | 27 sheets, listed below. Exported unchanged as `.xlsx`, and edited in place since. |
+| `All_Things_Cataclysm.xlsx` | Sheet "All Things Cataclysm" | 28 sheets, listed below. Exported unchanged as `.xlsx`, and edited in place since. |
 | `Empire_Development_Tree_Final.json` | Passive Trees/ | Node graph: `version`, `metadata`, `viewport`, `nodes`, `uiElements`, `edges`. |
 | `Berserker_Class_Tree_Final.json` | Passive Trees/ | Same schema. |
 | `Bulwark_Class_Tree_Final.json` | Passive Trees/ | Same schema. |
@@ -83,8 +83,9 @@ heading row describe their layout instead. Issue #1884.
 | Gear Rarity | 8 | Rarity, Drop Weight, Gear Level Gate, Residue On Drop Lowest, Residue On Drop Highest, Colour, Note |
 | Item Sockets | 12 | Slot, Hands, Max Sockets, Note |
 | Affix Tiers | 7 | Tier, Drop Weight, Note |
-| Enemy Drops | 6 | Enemy Rarity, Step, Gear Drops, Magic Find, Material Drops, Note |
+| Enemy Drops | 6 | Enemy Rarity, Step, Gear Drops, Magic Find, Material Drops, Gold Drops, Note |
 | Material Tiers | 5 | Tier, Tier Name, Drop Weight, Materials, Colour, Note |
+| Gold | 8 | Difficulty Tier, Gold Per Pile, More Per Floor, Note |
 | Passive Effects | 325 | Node, Stat, Value Kind, Value Per Point, Required Tags, Condition, Condition Value, Scale, Scale Step, Option, Node Name, Reach Metres, Min Points |
 | Weapon Meshes | 14 | Base Name, Mesh, Scale |
 | Enchantment Effects | 707 | Enchantment, Effect, Stat, Value Kind, Value Low, Value High, Required Tags, Condition, Condition Value, Scale, Scale Step, Action, Action Event, Fraction Of, Scale Max Steps, Scale Offset, Stack Seconds, Every Seconds, Every Nth, Scale Step High, Stack Seconds High, Condition 2, Condition Value 2, Condition Value High, Trigger Cooldown, Event Value, Ailment, Damage Share |

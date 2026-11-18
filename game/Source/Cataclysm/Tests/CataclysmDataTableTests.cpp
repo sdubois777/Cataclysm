@@ -205,6 +205,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// sheet names them. The Materials column on each is checked against how
 	// many crafting materials really are in that tier.
 	CHECK_TABLE(FCataclysmMaterialTierRow,      "MaterialTiers.csv",           5)
+	// 8: one per difficulty tier, the eight `UCataclysmEnemyScore::HighestDifficultyTier` holds. The generator refuses
+	// the sheet unless it lists every tier from 1 to 8 in order. How much a gold pile holds; issue #2742.
+	CHECK_TABLE(FCataclysmGoldRow,              "Gold.csv",                    8)
 	// 8: one per damage type, and it is the same eight for good. The generator
 	// refuses to build this table unless every Element.* tag on the workbook's
 	// Tags sheet has exactly one row, so a ninth damage type raises this number
@@ -1093,6 +1096,7 @@ bool FCataclysmDataTableAssetsTest::RunTest(const FString& Parameters)
 		{ TEXT("DT_EnemyRarities"),         TEXT("EnemyRarities.csv") },
 		{ TEXT("DT_GearRarity"),            TEXT("GearRarity.csv") },
 		{ TEXT("DT_Gems"),                  TEXT("Gems.csv") },
+		{ TEXT("DT_Gold"),                  TEXT("Gold.csv") },
 		{ TEXT("DT_ItemBases"),             TEXT("ItemBases.csv") },
 		{ TEXT("DT_ItemSockets"),           TEXT("ItemSockets.csv") },
 		{ TEXT("DT_MaterialTiers"),         TEXT("MaterialTiers.csv") },

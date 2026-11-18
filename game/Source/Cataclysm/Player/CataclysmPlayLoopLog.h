@@ -90,4 +90,20 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 
 	/** A death that ended a walk. */
 	static FString DeathLine(int32 DungeonId, int32 Floor, int32 Floors, int32 DaysTheDeathCost);
+
+	/**
+	 * The gold a walk picked up and the balance it left, said at the walk's end after the clear's or the death's line:
+	 * "dungeon 3's walk picked up 1,234 gold; 5,678 gold held". Issue #2742, slice 1: what a walk earns, measured, so
+	 * slice 2's city upgrade price can be checked against it (the coordinating session's G4 ruling).
+	 *
+	 * @param Held  the balance after the walk, or below zero when there is none to name -- no character playing, or an
+	 *              account record that would not read -- and the line says so.
+	 */
+	static FString GoldLine(int32 DungeonId, int64 PickedUp, int64 Held);
+
+	/**
+	 * `GoldLine` for the character playing in a world: the game instance's `GoldPickedUpThisWalk`, and the balance of
+	 * its partition's account. A world with no game instance of this project's picked up nothing and holds no balance.
+	 */
+	static FString GoldLineIn(const UObject* WorldContext, int32 DungeonId);
 };

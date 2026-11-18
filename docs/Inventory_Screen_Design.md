@@ -159,6 +159,21 @@ two-handed weapon costs twelve. That is a real softening of the rule compared
 with today, where a material and a greatsword each cost one slot of 48, and it
 is worth watching in play rather than pre-empting.
 
+## The gold balance is on the header line
+
+**The header above the carried grid shows the character's gold**, after the count of
+slots: "Carried    12 / 48        1,234 gold". The project owner asked on 2026-11-18
+for "the player's total gold" to be "displayed somewhere in the inventory screen"
+(issue #2742), so a player can see what they can afford without opening the empire
+map.
+
+**Which balance it is.** Gold is not an item and does not take a cell (the Storage
+section of `docs/Cataclysm_GDD_v2.md`). An ordinary character's gold is its
+lethality mode's, held by the account and shared with the mode's other characters;
+a Solo Self-Found character's is its own. The header shows whichever one the
+character playing has, and shows nothing when there is no balance to read rather
+than a 0 that is not true.
+
 ## What the tooltip says
 
 **What the item is, and what the character's totals would become if it were

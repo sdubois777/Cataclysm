@@ -1655,6 +1655,44 @@ struct FCataclysmEnemyDropRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Drops")
 	float MagicFind = 0.0f;
+
+	/**
+	 * How many gold PILES this kill is expected to drop: an expected count, rolled as the two above are. Issue #2742.
+	 *
+	 * THE GEAR LADDER, ruled 2026-11-18 (G1) from the owner's words, "larger for rarer creatures ... as gear and
+	 * materials drop today". How much a pile holds is `FCataclysmGoldRow`'s, by difficulty tier and floor, and not
+	 * this rarity's. NEITHER LOOT QUANTITY NOR MAGIC FIND MOVES IT (G2): Diablo II and III keep gold apart from magic
+	 * find, and the design has gold modifiers of its own.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Drops")
+	float GoldDrops = 0.0f;
+};
+
+/**
+ * How much a gold pile holds at one difficulty tier. Source: Gold. Issue #2742.
+ *
+ * A PILE ON FLOOR f HOLDS `GoldPerPile x (1 + MorePerFloor x (f - 1))`, times a spread of 0.8 to 1.2 rolled per pile
+ * (`UCataclysmDropRoll::RollGoldPile`). So a deeper floor pays more, and depth and reward stay the same axis.
+ *
+ * EIGHT ROWS, ONE PER DIFFICULTY TIER, keyed "Tier_1" to "Tier_8". The tier scale 1, 3, 6, 10, 14, 19, 24, 30 is the
+ * midpoints of the eight Power Score bands over tier 1's. Every figure is a judgement, ruled 2026-11-18 (G1).
+ */
+USTRUCT(BlueprintType)
+struct FCataclysmGoldRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	/** 1 to 8. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gold")
+	int32 DifficultyTier = 0;
+
+	/** A pile on floor 1 of a dungeon at this tier, before the spread. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gold")
+	float GoldPerPile = 0.0f;
+
+	/** The share of the floor 1 pile each floor deeper adds. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gold")
+	float MorePerFloor = 0.0f;
 };
 
 /**

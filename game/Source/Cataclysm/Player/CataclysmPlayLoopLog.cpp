@@ -9,6 +9,9 @@
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmSurge.h"
 #include "Interface/CataclysmEmpireMapLayout.h"
+#include "Items/CataclysmDroppedItem.h"
+#include "Player/CataclysmGameInstance.h"
+#include "Save/CataclysmSaveRecords.h"
 
 const TCHAR* const FCataclysmPlayLoopLog::Prefix = TEXT("PLAY LOOP: ");
 
@@ -221,4 +224,30 @@ FString FCataclysmPlayLoopLog::DeathLine(int32 DungeonId, int32 Floor, int32 Flo
 {
 	return FString::Printf(TEXT("died in dungeon %d on floor %d of %d: the death cost %s: back to the capital"),
 						   DungeonId, Floor, Floors, *CataclysmPlayLoopLog::DaysText(DaysTheDeathCost));
+}
+
+FString FCataclysmPlayLoopLog::GoldLine(int32 DungeonId, int64 PickedUp, int64 Held)
+{
+	if (Held < 0)
+	{
+		return FString::Printf(TEXT("dungeon %d's walk picked up %s gold; no gold balance to hold it"), DungeonId,
+							   *ACataclysmDroppedItem::GoldAmountText(PickedUp));
+	}
+	return FString::Printf(TEXT("dungeon %d's walk picked up %s gold; %s gold held"), DungeonId,
+						   *ACataclysmDroppedItem::GoldAmountText(PickedUp), *ACataclysmDroppedItem::GoldAmountText(Held));
+}
+
+FString FCataclysmPlayLoopLog::GoldLineIn(const UObject* WorldContext, int32 DungeonId)
+{
+	UCataclysmGameInstance* Instance = UCataclysmGameInstance::In(WorldContext);
+	const int64 PickedUp = Instance != nullptr ? Instance->GoldPickedUpThisWalk : 0;
+
+	// THE BALANCE OF THE CHARACTER PLAYING, as the empire map's status line reads it: a Solo Self-Found character's
+	// own, or its lethality mode's.
+	int64 Held = 0;
+	if (!UCataclysmGameInstance::GoldHeldBy(WorldContext, Held))
+	{
+		Held = -1;
+	}
+	return GoldLine(DungeonId, PickedUp, Held);
 }

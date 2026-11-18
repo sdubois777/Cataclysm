@@ -2510,14 +2510,17 @@ def enemy_drops(book) -> list[dict]:
     `validate_enemy_drop_rarities` cross-checks them rather than either trusting
     the other.
 
-    THREE NUMBERS PER RARITY, and each is checked against the rarity below it:
+    FOUR NUMBERS PER RARITY, and each is checked against the rarity below it:
 
       Gear Drops       never falls. A rarer enemy cannot give less.
       Material Drops   never falls, for the same reason.
+      Gold Drops       never falls, for the same reason. Gold piles, not gold:
+                       how much a pile holds is the Gold sheet's, by tier and
+                       floor. Issue #2742.
       Magic Find       never falls, and a Common enemy adds none at all,
                        because it is the baseline the ladder is read against.
 
-    AN EXPECTED COUNT RATHER THAN A CHANCE for both drop columns. A chance
+    AN EXPECTED COUNT RATHER THAN A CHANCE for the three drop columns. A chance
     cannot exceed one and a Cataclysm Boss drops twelve items; the fractional
     part is rolled as a probability where the drop happens.
     """
@@ -2544,6 +2547,16 @@ def enemy_drops(book) -> list[dict]:
                     f"{what} items. Loot quantity multiplies this, so no amount "
                     "of it would make a rate of zero produce anything.")
 
+        # GOLD PILES PER KILL. Issue #2742, ruled 2026-11-18 (G1): the gear
+        # ladder, "as gear and materials drop today". Zero is refused for the
+        # reason above, and a rate is never multiplied by loot quantity (G2).
+        gold = number(_cell(raw, headers, "Gold Drops"), "Gold Drops", index)
+        if gold <= 0.0:
+            raise DataError(
+                f"Enemy Drops row {index}: a {rarity} drops {gold:g} gold "
+                "piles. Every creature's kill is ruled to have a chance of "
+                "gold, so a rate of zero is a typing mistake.")
+
         magic_find = number(_cell(raw, headers, "Magic Find") or 0,
                             "Magic Find", index)
         if magic_find < 0.0:
@@ -2558,6 +2571,7 @@ def enemy_drops(book) -> list[dict]:
             "GearDrops": gear,
             "MaterialDrops": materials,
             "MagicFind": magic_find,
+            "GoldDrops": gold,
         })
 
     if not out:
@@ -2579,6 +2593,7 @@ def enemy_drops(book) -> list[dict]:
                   f"{below['EnemyRarity']} and")
         for column, what in (("GearDrops", "gear"),
                              ("MaterialDrops", "crafting materials"),
+                             ("GoldDrops", "gold"),
                              ("MagicFind", "magic find")):
             if above[column] < below[column]:
                 raise DataError(
@@ -2667,6 +2682,77 @@ def material_tiers(book) -> list[dict]:
         seen_colours[row["Colour"]] = row["TierName"]
 
     return unique(out, "Material Tiers")
+
+
+#: How many difficulty tiers a run can be played at, the same eight
+#: `UCataclysmEnemyScore::HighestDifficultyTier` holds. The Gold sheet gives each
+#: one a row, and a tier with no row would drop piles of nothing.
+DIFFICULTY_TIER_COUNT = 8
+
+
+def gold(book) -> list[dict]:
+    """How much a gold pile holds, one row per difficulty tier. Issue #2742.
+
+    A PILE, NOT A KILL. How many piles a kill drops is the Gold Drops column of
+    the Enemy Drops sheet; this says how much each one holds, which depends on
+    where the kill happened and not on what was killed -- Diablo II's shape, in
+    which a rarer monster drops more piles and a pile's value follows the level.
+
+    Gold Per Pile   the pile on floor 1 of a dungeon at this tier, before the
+                    0.8 to 1.2 spread a drop is rolled with. Never falls with
+                    the tier: a harder tier cannot pay less.
+    More Per Floor  the share of the floor 1 pile each floor deeper adds, so
+                    floor f holds Gold Per Pile x (1 + More Per Floor x (f - 1)).
+                    Depth and reward are the same axis (`CLAUDE.md`), so it is
+                    never negative.
+
+    Ruled 2026-11-18 by the coordinating session under the owner's delegation
+    of unstated numbers (G1); every figure on the sheet is a judgement, and
+    `docs/DECISIONS.md` carries the sources.
+    """
+    rows = list(book["Gold"].iter_rows(values_only=True))
+    headers = _header_index(rows, "Gold")
+
+    out = []
+    for index, raw in enumerate(rows[1:], start=2):
+        cell = _cell(raw, headers, "Difficulty Tier")
+        if not cell:
+            continue
+        tier = int(number(cell, "Difficulty Tier", index))
+
+        pile = number(_cell(raw, headers, "Gold Per Pile"), "Gold Per Pile",
+                      index)
+        if pile <= 0.0:
+            raise DataError(f"Gold row {index}: tier {tier} holds {pile:g} gold "
+                            "in a pile, so its piles would be empty")
+
+        deeper = number(_cell(raw, headers, "More Per Floor"),
+                        "More Per Floor", index)
+        if deeper < 0.0:
+            raise DataError(f"Gold row {index}: tier {tier} adds {deeper:g} a "
+                            "floor, so a deeper floor would pay less gold; depth "
+                            "and reward are the same axis")
+
+        out.append({
+            "Name": row_name(f"Tier {tier}"),
+            "DifficultyTier": tier,
+            "GoldPerPile": pile,
+            "MorePerFloor": deeper,
+        })
+
+    tiers = [row["DifficultyTier"] for row in out]
+    if tiers != list(range(1, DIFFICULTY_TIER_COUNT + 1)):
+        raise DataError(f"Gold must list every difficulty tier from 1 to "
+                        f"{DIFFICULTY_TIER_COUNT} in order, and it lists {tiers}")
+
+    for below, above in zip(out[:-1], out[1:], strict=True):
+        if above["GoldPerPile"] < below["GoldPerPile"]:
+            raise DataError(
+                f"Gold: tier {above['DifficultyTier']} is harder than tier "
+                f"{below['DifficultyTier']} and its pile holds less "
+                f"({above['GoldPerPile']:g} against {below['GoldPerPile']:g})")
+
+    return unique(out, "Gold")
 
 
 #: The two slots that are allowed to have no cooldown, and the reason each has
@@ -13758,6 +13844,7 @@ TABLES = {
     "AffixTiers": affix_tiers,
     "EnemyDrops": enemy_drops,
     "MaterialTiers": material_tiers,
+    "Gold": gold,
     "ClassStats": class_stats,
     "MinionTypes": minion_types,
     "MinionScaling": minion_scaling,

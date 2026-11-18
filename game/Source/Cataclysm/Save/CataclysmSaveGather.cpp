@@ -140,6 +140,9 @@ FCataclysmSavedGroundItem FCataclysmSaveGather::GroundItemFrom(
 	Saved.Location = Drop.GetActorLocation();
 	Saved.bDroppedByARaisedCreature = Drop.bDroppedByARaisedCreature;
 
+	// AND A GOLD PILE'S AMOUNT, so a save made mid-floor keeps the piles not yet collected. Issue #2742.
+	Saved.Gold = Drop.Gold;
+
 	// THE NAME, THE COLOUR, THE RARITY AND THE TIER ARE NOT COPIED. All four are
 	// worked out from the two fields above plus the game's data tables, so a
 	// record holding them would be holding a second copy of something derived --
@@ -566,6 +569,7 @@ bool FCataclysmSaveGather::CharacterFrom(const ACataclysmPlayerCharacter& Charac
 		Record.DifficultyTier = State->GetDifficultyTier(); // A save's: the character's tier.
 		Record.bMarkedByConsumption = State->IsMarkedByConsumption(); // A save's: the Consumption mark. Issue #2688.
 		Record.ConsumptionBuild = State->ConsumptionBuild(); // A save's: the build captured at the crossing (O4).
+		Record.Gold = State->GetOwnGold(); // A save's: a Solo Self-Found character's own gold, 0 for any other. #2742.
 
 		// AND THE CATACLYSM ORDER SEED, ALWAYS, issue #1324 slice 6a: the one the creator drew or a load set, and for a
 		// character that never had one the seed its identifier gives, the rule a version 6 file migrates by. The writer

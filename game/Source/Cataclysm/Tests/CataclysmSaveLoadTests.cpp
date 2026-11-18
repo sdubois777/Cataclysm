@@ -10646,6 +10646,9 @@ bool FCataclysmTravelMigrationTest::RunTest(const FString&)
 	const TSharedPtr<FJsonObject> Expected = CataclysmSaveFixtures::Parse(Text);
 	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmRunSave::SchemaVersionNow);
 	CataclysmSaveFixtures::AddTheRunsVersion6Defaults(*Expected);
+	// AND THE GOLD OF 0 `Migrate_6_to_7` WRITES ON EVERY GROUND ITEM, because the chain runs on to version 7 since
+	// 2026-11-18 (issue #2742).
+	CataclysmSaveFixtures::AddTheRunsVersion7Defaults(*Expected);
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -10676,7 +10679,8 @@ bool FCataclysmTravelMigrationTest::RunTest(const FString&)
 }
 
 /**
- * `Run_v6.json` reads into the award, the clear and the days away it states. Every value but one is not a default, so
+ * `Run_v7.json` reads into the award, the clear and the days away it states (it read `Run_v6.json` until the run record
+ * went to version 7 on 2026-11-18, issue #2742, and the two hold the same values). Every value but one is not a default, so
  * each is read and not re-defaulted; THE ONE IS `bEndedInAClear`, false, because the run it describes last came back
  * from a death -- on day 103, at 15 days, felling cities 17 and 23, which the summary lists -- and a fixture describes a
  * state play reaches. The test of the return line reads a true one. Prints "TRAVEL FILE".
@@ -10689,7 +10693,7 @@ bool FCataclysmTravelCommittedFileTest::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v6.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v7.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -10700,7 +10704,7 @@ bool FCataclysmTravelCommittedFileTest::RunTest(const FString&)
 		Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v6.json would not load: %s -- %s"), FCataclysmSaveStorage::Describe(Result),
+		AddError(FString::Printf(TEXT("Run_v7.json would not load: %s -- %s"), FCataclysmSaveStorage::Describe(Result),
 								 *Message));
 		return false;
 	}

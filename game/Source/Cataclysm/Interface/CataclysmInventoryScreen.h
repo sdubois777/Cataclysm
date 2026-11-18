@@ -294,12 +294,21 @@ public:
 	 * colour, and it is the one of the two a test can read: the drawing cannot
 	 * be checked here, because the automation command passes -nullrhi.
 	 *
+	 * AND THE GOLD BALANCE, since issue #2742: the project owner asked on
+	 * 2026-11-18 for "the player's total gold" to be shown "somewhere in the
+	 * inventory screen". It goes between the count and what is held:
+	 * "Carried    12 / 48        1,234 gold        holding Quality Helm".
+	 *
 	 * @param HeldName  what is on the cursor, from LabelFor. Empty when
 	 *                  nothing is held, which says nothing rather than saying
 	 *                  "holding nothing"
+	 * @param Gold      the balance as `UCataclysmGameInstance::GoldBalanceText`
+	 *                  gives it, "1,234 gold"; empty when there is no balance to
+	 *                  read, which says nothing rather than a 0 that is untrue
 	 */
 	static FString HeaderTextFor(int32 Used, int32 Capacity,
-								 const FString& HeldName = FString());
+								 const FString& HeldName = FString(),
+								 const FString& Gold = FString());
 
 	//~ What is on the cursor. Issue #878.
 

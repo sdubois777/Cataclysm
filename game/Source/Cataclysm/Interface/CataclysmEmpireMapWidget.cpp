@@ -393,15 +393,20 @@ void UCataclysmEmpireMapWidget::WriteStatus()
 		// AND THE EMPIRE UPGRADE POINT BANK OF THE CHARACTER PLAYING, LAST, with what the last dungeon defeated added to
 		// it, since issue #52's first slice: "12.5 empire points banked (+0.5 from the last dungeon defeated)". Empty
 		// with no character playing. See `UCataclysmEmpireMapLayout::EmpirePointsLineIn`.
+		//
+		// AND THE GOLD BALANCE, after the bank, since issue #2742: "1,234 gold", the character's lethality mode's or a
+		// Solo Self-Found character's own. Empty with no character playing. See `UCataclysmEmpireMapLayout::GoldLineIn`.
 		const FString Owed = UCataclysmEmpireMapLayout::DaysOwedLine(Run);
 		const FString Bank = UCataclysmEmpireMapLayout::EmpirePointsLineIn(this, Run);
+		const FString Gold = UCataclysmEmpireMapLayout::GoldLineIn(this);
 		StatusLabel->SetText(FText::FromString(FString::Printf(
-			TEXT("Day %d%s   %d cities lost of 24   %d dungeon%s standing   %s%s%s"),
+			TEXT("Day %d%s   %d cities lost of 24   %d dungeon%s standing   %s%s%s%s%s"),
 			Run->Day(), Owed.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(" (%s)"), *Owed),
 			Run->Map->FallenCityCount(), Run->DungeonCount(),
 			Run->DungeonCount() == 1 ? TEXT("") : TEXT("s"),
 			*UCataclysmEmpireMapLayout::ProgressLine(Run),
-			Bank.IsEmpty() ? TEXT("") : TEXT("   "), *Bank)));
+			Bank.IsEmpty() ? TEXT("") : TEXT("   "), *Bank,
+			Gold.IsEmpty() ? TEXT("") : TEXT("   "), *Gold)));
 	}
 
 	if (SurgeLabel)

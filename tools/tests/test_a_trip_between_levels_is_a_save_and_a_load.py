@@ -15,8 +15,8 @@ pull request. Reading the source as text does.
 
 WHAT IS CHECKED, with comments removed:
 
-  1. the run record is at version 6, and `Migrate_5_to_6` is its last step and
-     writes the five fields' "nothing yet" values;
+  1. the run record is at version 6 or later, and `Migrate_5_to_6` is one of its
+     steps and writes the five fields' "nothing yet" values;
   2. the gather writes and the restore reads all five;
   3. each of the three `Map->Damage` calls in the day loop records its hit, and
      there are exactly three, so a new place a city is damaged must record too;
@@ -110,12 +110,15 @@ def function_body(text: str, signature: str) -> str:
     return braced_from(text, text.find(signature), signature)
 
 
-def test_the_run_record_is_at_version_6_and_migrate_5_to_6_writes_nothing_yet() -> None:
+def test_the_run_record_is_at_version_6_or_later_and_migrate_5_to_6_writes_nothing_yet() -> None:
+    """AT VERSION 6 OR LATER, and the step one of the run record's: until issue #2742 took the run record to version 7
+    (2026-11-18) this asked for version 6 and for `Migrate_5_to_6` to be the last step."""
     run_record = code(RECORDS_H).split("class CATACLYSM_API UCataclysmRunSave")[1]
-    assert "static constexpr int32 SchemaVersionNow = 6;" in run_record, "the run record is not at version 6"
+    version = re.search(r"static constexpr int32 SchemaVersionNow = (\d+);", run_record)
+    assert version and int(version.group(1)) >= 6, "the run record is not at version 6 or later"
     records = code(RECORDS_CPP)
-    assert '{ 5, TEXT("Migrate_5_to_6"), &Migrate_5_to_6 }, };' in records, (
-        "Migrate_5_to_6 is not the run record's last step")
+    assert '{ 5, TEXT("Migrate_5_to_6"), &Migrate_5_to_6 },' in records, (
+        "Migrate_5_to_6 is not one of the run record's steps")
     # THE RUN RECORD'S STEP: the character record has a `Migrate_5_to_6` of its own, in its own namespace.
     run_steps = records.split("namespace CataclysmRunSaveMigration")[1]
     step = function_body(run_steps, "bool Migrate_5_to_6(const TSharedRef<FJsonObject>& Record, FString& OutError)")

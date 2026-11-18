@@ -172,6 +172,8 @@ HOOKS = {
                 "recording that a creature died, for the save",
             "UCataclysmDropSpawner::SpawnDropsFor":
                 "what the creature dropped",
+            "UCataclysmDropSpawner::SpawnGoldFor":
+                "the gold piles the creature dropped, after its items, issue #2742",
             "UCataclysmHealthDebt::ClearOnKill":
                 "a kill clearing what the killer owes, issue #997",
             "UCataclysmStacks::NoteEnemyKilled":
@@ -201,6 +203,8 @@ HOOKS = {
         "questions": {
             "UCataclysmSkillEffects::MarkDead",
             "UCataclysmDropSpawner::PlayerLootStats",
+            # WHETHER THIS KILL DROPS GOLD: the character playing has a balance to put it in. Issue #2742.
+            "UCataclysmDropSpawner::GoldDropsIn",
             "UCataclysmEnemyScore::ScoreFor",
             "UCataclysmEnemyScore::FloorIn",
             # A QUESTION AND NOT A JOB, for the same reason `PlayerLootStats` beside

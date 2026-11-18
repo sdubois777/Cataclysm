@@ -212,6 +212,7 @@ bool FCataclysmDrawMigrationTest::RunTest(const FString& Parameters)
 	const TSharedPtr<FJsonObject> Expected = CataclysmSaveFixtures::Parse(Text);
 	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmCharacterSave::SchemaVersionNow);
 	Expected->SetNumberField(TEXT("CataclysmOrderSeed"), CataclysmSaveFixtures::FixtureIdentifiersOrderSeed);
+	Expected->SetNumberField(TEXT("Gold"), 0); // And 8, issue #2742: no gold of its own.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -242,7 +243,9 @@ bool FCataclysmDrawMigrationTest::RunTest(const FString& Parameters)
 }
 
 /**
- * The committed version 7 file reads into the seed it states, and the seed survives being written out and read back.
+ * The committed character file reads into the seed it states, and the seed survives being written out and read back.
+ * It read `Character_v7.json` until the character record went to version 8 on 2026-11-18 (issue #2742);
+ * `Character_v8.json` states the same seed.
  * The file states 975318642, which is not the seed its identifier gives, so a seed worked out again on load cannot pass.
  * Prints "DRAW FILE".
  */
@@ -254,7 +257,7 @@ bool FCataclysmDrawFixtureTest::RunTest(const FString& Parameters)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v7.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v8.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -266,7 +269,7 @@ bool FCataclysmDrawFixtureTest::RunTest(const FString& Parameters)
 		Text, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v7.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v8.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}

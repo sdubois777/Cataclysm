@@ -10,6 +10,7 @@
 #include "Empire/CataclysmRoster.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "Items/CataclysmDroppedItem.h"
 #include "Misc/DateTime.h"
 #include "Player/CataclysmGameMode.h"
 #include "Player/CataclysmPlayerState.h"
@@ -285,8 +286,8 @@ UCataclysmAccountSave* UCataclysmGameInstance::AccountFor(const FCataclysmCharac
 	{
 		// REFUSED, NOT REPLACED. A fresh record banked into would be written over this file and empty its bank.
 		UE_LOG(LogCataclysm, Error,
-			   TEXT("The account record in '%s' could not be read (%s: %s), so no empire upgrade points are banked "
-					"into it this session."),
+			   TEXT("The account record in '%s' could not be read (%s: %s), so no empire upgrade points or gold are "
+					"banked into it this session."),
 			   *Slot, FCataclysmSaveStorage::Describe(Result), *Message);
 		RefusedAccountSlots.Add(Slot);
 		return nullptr;
@@ -297,8 +298,8 @@ UCataclysmAccountSave* UCataclysmGameInstance::AccountFor(const FCataclysmCharac
 		// A FILE COPIED INTO ANOTHER PARTITION'S SLOT, which the record carries its partition to catch. Banking into it
 		// would pour one mode's points into another's tree.
 		UE_LOG(LogCataclysm, Error,
-			   TEXT("The account record in '%s' names another partition, so no empire upgrade points are banked into "
-					"it this session."),
+			   TEXT("The account record in '%s' names another partition, so no empire upgrade points or gold are "
+					"banked into it this session."),
 			   *Slot);
 		RefusedAccountSlots.Add(Slot);
 		return nullptr;
@@ -320,6 +321,98 @@ UCataclysmAccountSave* UCataclysmGameInstance::BankEmpirePoints(const FCataclysm
 	// THE FRACTION IS KEPT: ruled 2026-11-03. Rounding each award down would erase most ordinary dungeons' awards.
 	Account->EmpireUpgradePoints += Points;
 	return Account;
+}
+
+UCataclysmAccountSave* UCataclysmGameInstance::BankGold(const FCataclysmCharacterPartition& Partition, int64 Gold)
+{
+	// NOTHING TO ADD, OR A SUBTRACTION, which is not banking. Issue #2742.
+	if (Gold <= 0)
+	{
+		return nullptr;
+	}
+
+	UCataclysmAccountSave* Account = AccountFor(Partition);
+	if (Account == nullptr)
+	{
+		return nullptr;
+	}
+
+	Account->Gold += Gold;
+	return Account;
+}
+
+namespace CataclysmGameInstanceGold
+{
+	/** The player state of the character playing in a world, or null. The one `PlayingPartition` reads. */
+	ACataclysmPlayerState* PlayingState(const UObject* WorldContext)
+	{
+		const UWorld* World = WorldContext != nullptr && GEngine != nullptr
+			? GEngine->GetWorldFromContextObject(WorldContext, EGetWorldErrorMode::ReturnNull)
+			: nullptr;
+		const ACataclysmPlayerCharacter* Character = World != nullptr ? FCataclysmSaveGather::CharacterIn(*World)
+																	  : nullptr;
+		return Character != nullptr ? Character->GetPlayerState<ACataclysmPlayerState>() : nullptr;
+	}
+}
+
+bool UCataclysmGameInstance::GoldHeldBy(const UObject* WorldContext, int64& OutGold)
+{
+	OutGold = 0;
+	const ACataclysmPlayerState* State = CataclysmGameInstanceGold::PlayingState(WorldContext);
+	if (State == nullptr)
+	{
+		return false;
+	}
+
+	// A SOLO SELF-FOUND CHARACTER'S OWN: the design's Storage section, "its gold is its own and is shared with
+	// nothing". Issue #2742, the owner's ruling of 2026-11-18.
+	const FCataclysmCharacterPartition& Partition = State->GetPartition();
+	if (Partition.bSoloSelfFound)
+	{
+		OutGold = State->GetOwnGold();
+		return true;
+	}
+
+	// EVERY OTHER CHARACTER'S LETHALITY MODE'S, held once per partition in the account record.
+	UCataclysmGameInstance* Instance = In(WorldContext);
+	const UCataclysmAccountSave* Account = Instance != nullptr ? Instance->AccountFor(Partition) : nullptr;
+	if (Account == nullptr)
+	{
+		return false;
+	}
+	OutGold = Account->Gold;
+	return true;
+}
+
+bool UCataclysmGameInstance::AddGoldFor(const UObject* WorldContext, int64 Gold, bool& bOutIntoTheCharacter)
+{
+	bOutIntoTheCharacter = false;
+	if (Gold <= 0)
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State = CataclysmGameInstanceGold::PlayingState(WorldContext);
+	if (State == nullptr)
+	{
+		return false;
+	}
+
+	if (State->GetPartition().bSoloSelfFound)
+	{
+		State->AddOwnGold(Gold);
+		bOutIntoTheCharacter = true;
+		return true;
+	}
+
+	UCataclysmGameInstance* Instance = In(WorldContext);
+	return Instance != nullptr && Instance->BankGold(State->GetPartition(), Gold) != nullptr;
+}
+
+FString UCataclysmGameInstance::GoldBalanceText(const UObject* WorldContext)
+{
+	int64 Held = 0;
+	return GoldHeldBy(WorldContext, Held) ? ACataclysmDroppedItem::GoldName(Held) : FString();
 }
 
 bool UCataclysmGameInstance::PlayingPartition(const UObject* WorldContext, FCataclysmCharacterPartition& OutPartition)
