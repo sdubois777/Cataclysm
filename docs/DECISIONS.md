@@ -362,6 +362,30 @@ skipped "this checkout has its modules built, so nothing is missing", because ph
 test. `python -m ruff check . --extend-exclude .claude`: "All checks passed!" Only this paragraph was added after the
 measurement.
 
+### Window stalker-rows-w1: two stopped runs
+
+Both were run by the coordinating session on 2026-11-17 at `fcfa2763a`.
+
+1. **A fault in the window script.** The asset step rebuilt the tables and changed exactly the two registered files:
+   `DT_WeaponSkills.uasset` and `datatable_asset_sources.json`. The runner then read `git status` through a helper that
+   strips its output, which took the leading space off " M game/Content/...", so the path read as "ame/Content/...". The
+   runner judged that path unexpected and stopped. No test ran. The helper was replaced by an unstripped `git status`
+   read, and the two files were put back.
+2. **One stale test.** The rerun committed the rebuilt tables as `d3f3b6036`. `Cataclysm.StalkerEntries.` alone ran 8
+   of 8. `Cataclysm.DungeonModifierEffects.` alone ran 769 and failed 1:
+   `WildMagicWithAPoolOfOneOrNoneTriggersNothingMoreAndThePanelSaysSo`, on three assertions. The first was "Expected
+   'the panel says there is nothing to trigger' to be "wild magic: no other skill to trigger", but it was "wild magic:
+   0 triggered; pool of 3 Celestial skills"". The test pinned Celestial as a damage type with no skills, which this
+   change makes false. The other two failures followed from the Celestial draw still pending.
+   - **The correction is to the test:** it now pins no damage type at all (`SetDamageType` with an empty string). Since
+     this change every type but War has a kit, so that is the only empty pool left. Its comment says why.
+   - A search of the other tests that name one of the six types found none that assumes an empty pool for them. A
+     test that uses a weapon a type still has no skills for, such as a Sword for Death, still holds.
+
+The second run's window repeats the registration at the new head, with the asset step skipped because `d3f3b6036`
+already holds the rebuilt tables. The Python step's `test_datatable_assets_are_current` is what shows they are current.
+No registered count changes.
+
 ### Not tested
 
 - **Nothing here has run in the engine.** It compiled in phase 2; every Unreal figure is a prediction, and the window

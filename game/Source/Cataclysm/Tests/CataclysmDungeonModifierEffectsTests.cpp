@@ -47847,8 +47847,11 @@ bool FCataclysmWildMagicSmallPoolTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// A DAMAGE TYPE WITH NO SKILLS AT ALL, FIRST, while nothing is drawn: a use draws nothing, and the panel says so.
-	Weapon->SetDamageType(TEXT("Celestial"));
+	// A CHARACTER CARRYING NO DAMAGE TYPE, FIRST, while nothing is drawn: a use draws nothing, and the panel says so.
+	// Until #2580 this pinned Celestial, then a damage type with no skills at all. Since #2580 every type but War has a
+	// kit, so no type's pool is empty; an empty pin (`SetDamageType` with an empty string) is the empty pool now.
+	// Window stalker-rows-w1, 2026-11-17, failed this test on "pool of 3 Celestial skills".
+	Weapon->SetDamageType(FString());
 	TestEqual(TEXT("the panel says there is nothing to trigger"), Mode->LiveCountsForTheFloor().FindRef(WildMagicRow),
 			  FString(TEXT("wild magic: no other skill to trigger")));
 	ThePlayerUses(Player, TEXT("Some Other Skill"), ECataclysmAbilitySlot::Heavy, Aim);
