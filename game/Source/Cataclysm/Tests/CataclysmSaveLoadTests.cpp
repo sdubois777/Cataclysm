@@ -8659,7 +8659,11 @@ bool FCataclysmFirstSurgeLoadedTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	// WHAT CAME BACK, READ BEFORE ANYTHING IS ASKED OF IT OR ANY DAY PASSES.
+	// WHAT CAME BACK, READ BEFORE ANYTHING IS ASKED OF IT OR ANY DAY PASSES -- the dungeons too, copied whole. UNTIL
+	// ISSUE #2733 SLICE 2 THE DUNGEONS WERE READ AFTER THE FIRST DAY BELOW, and a Hollow loses a floor a day
+	// (`HollowFloorsLostPerDay`), so the test failed whenever the new character's run, seeded from the clock, drew a
+	// Hollow into its opening wave: window capital-w1, 2026-11-17, "dungeon 5 as deep: expected 23, was 22".
+	const TArray<FCataclysmDungeon> LoadedDungeons = Run->Dungeons;
 	const int32 LoadedDay = Run->Day();
 	const int32 LoadedStanding = Run->DungeonCount();
 	const int32 LoadedFired = Run->Surges->SurgesFired;
@@ -8691,7 +8695,8 @@ bool FCataclysmFirstSurgeLoadedTest::RunTest(const FString&)
 	for (int32 Index = 0; Index < SavedDungeons.Num(); ++Index)
 	{
 		const FCataclysmDungeon& Was = SavedDungeons[Index];
-		const FCataclysmDungeon* Is = Run->FindDungeon(Was.DungeonId);
+		const FCataclysmDungeon* Is = LoadedDungeons.FindByPredicate(
+			[&Was](const FCataclysmDungeon& Candidate) { return Candidate.DungeonId == Was.DungeonId; });
 		const FString Which = FString::Printf(TEXT("dungeon %d"), Was.DungeonId);
 		if (!TestNotNull(*(Which + TEXT(" came back")), Is))
 		{
