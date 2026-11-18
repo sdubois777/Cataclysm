@@ -14,13 +14,14 @@ comment in `.h`); `FCataclysmSaveLoad::CharacterAndRun` (`game/Source/Cataclysm/
 `UCataclysmPlayerClassStats::DefaultLevel` (`Character/CataclysmPlayerClassStats.cpp`, `.h`). Tests:
 `CataclysmExperienceBarTests.cpp` (new), `CataclysmCharacterLevelTests.cpp`, `CataclysmSaveLoadTests.cpp`,
 `CataclysmPlayLoopTests.cpp`, and `tools/tests/test_the_play_loop_is_logged_at_each_step.py`.
-`docs/Play_Loop_Checklist.md`. Issue [#2744](https://github.com/sdubois777/Cataclysm/issues/2744). **Applied; not yet
-compiled, and no Unreal test has run.**
+`docs/Play_Loop_Checklist.md`. Issue [#2744](https://github.com/sdubois777/Cataclysm/issues/2744). **Applied and
+compiled (phase 2, below); no Unreal test has run yet.**
 
 ### SAID FIRST
 
-- **NOT YET COMPILED, AND NO UNREAL TEST HAS RUN.** Every figure below that comes from the game is registered and not
-  measured, until the sections "Compiled (phase 2)" and the window's results say otherwise.
+- **COMPILED, AND NO UNREAL TEST HAS RUN YET.** Every figure below that comes from a test is registered and not
+  measured, until the window's results say otherwise. The first attempt to compile each changed file alone did not
+  happen, because of a path mistake in this session's script; it was run again and did ("Compiled (phase 2)").
 - **NOBODY HAS PLAYED TIER 1 AT LEVEL 1.** The owner's ruling names the risk, and nothing here settles it.
   `tools/tests/test_the_starting_character_survives_a_pack.py`, `test_no_class_survives_that_fight_at_level_one`,
   records that no class wins that file's deliberately pessimistic fight at level 1: ten Imps in contact from the first
@@ -198,7 +199,53 @@ Each restored half: the same test, 1 of 1 succeeded.
 
 ### Compiled (phase 2)
 
-Not yet run: it waits for the coordinating session's go, after window empire-tree-1a-w2.
+No rebase: `origin/development` was still `07f7e3bf6`, the branch's base. Built at `d8698b913` by
+`.claude/windows/compile_l2744.py`, with no editor open, under the Unreal lock `level1-compile`, which the coordinating
+session gave for these builds after window empire-tree-1a-w2 released the lock at 12:21 MST; released after each run
+("level1-compile released the Unreal editor"), the tracked tree clean and HEAD unchanged after each.
+
+| Build | When | "Build:" line |
+| :-- | :-- | :-- |
+| 1. The branch, every file in its unity file (`git status` clean) | 12:21:56 to 12:29:03, 428 s, this worktree's first build | "Build: Succeeded - 78 actions, 68 files compiled" |
+| 2. Each changed `.cpp` alone (`git read-tree origin/development`, so `git status` lists the branch's 21 files as changed while HEAD stays; `Makefile.bin` moved aside; built; `git reset -q` after) | 12:36:57 to 12:38:49, 112 s | "Build: Succeeded - 24 actions, 21 files compiled": the build tool's "[Adaptive Build] Excluded from Cataclysm unity file" line names all twelve changed `.cpp` files -- `CataclysmPlayerCharacter.cpp`, `CataclysmPlayerClassStats.cpp`, `CataclysmExperienceBar.cpp`, `CataclysmHUD.cpp`, `CataclysmGameMode.cpp`, `CataclysmPlayerState.cpp`, `CataclysmPlayLoopLog.cpp`, `CataclysmSaveLoad.cpp`, `CataclysmCharacterLevelTests.cpp`, `CataclysmExperienceBarTests.cpp`, `CataclysmPlayLoopTests.cpp`, `CataclysmSaveLoadTests.cpp` -- each compiled alone, and nine unity files rebuilt without them |
+| 3. The unity files again (`Makefile.bin` moved aside again; both moved copies deleted after) | 12:38:50 to 12:46:48, 478 s, of which 408.7 s waiting for the build tool's machine-wide mutex ("Main +408.747" in its log) | "Build: Succeeded - 12 actions, 9 files compiled: Module.Cataclysm.11.cpp, Module.Cataclysm.12.cpp, Module.Cataclysm.13.cpp, Module.Cataclysm.15.cpp, Module.Cataclysm.24.cpp, Module.Cataclysm.28.cpp, Module.Cataclysm.41.cpp, Module.Cataclysm.42.cpp, Module.Cataclysm.9.cpp" |
+
+The changed files' unity files, read out of the generated `Module.Cataclysm.*.cpp`: 9 (`CataclysmPlayerCharacter.cpp`,
+`CataclysmPlayerClassStats.cpp`), 11 (`CataclysmExperienceBar.cpp`, `CataclysmHUD.cpp`), 12 (`CataclysmGameMode.cpp`), 13
+(`CataclysmPlayerState.cpp`, `CataclysmPlayLoopLog.cpp`, `CataclysmSaveLoad.cpp`), 15 (`CataclysmCharacterLevelTests.cpp`),
+24 (`CataclysmExperienceBarTests.cpp`), 28 (`CataclysmPlayLoopTests.cpp`) and 41 (`CataclysmSaveLoadTests.cpp`); all
+eight are in build 3's list. No compile error in any build. **One warning, not this branch's:** C4996, `CountBits` for
+64-bit values deprecated in 5.8, raised in an engine header (`MicrosoftPlatformMath.h`) during build 1, which compiled
+the whole module; build 2 and build 3 printed no warning.
+
+**WHAT DID NOT WORK THE FIRST TIME.** The script's first run, at 12:29 to 12:35, did not compile any file alone. It
+looked for `Makefile.bin` in `game/Intermediate/Build/Win64/CataclysmEditor/Development`, and the file is in
+`.../Win64/x64/CataclysmEditor/Development`, so nothing was moved aside, the build tool kept its old unity grouping, and
+builds 2 and 3 printed "Build: Succeeded - target already up to date, 0 actions, nothing compiled". Build 2 of that run
+also spent 404 of its 405 s waiting for the mutex ("Main +403.977"); the coordinating session judged the holder most
+likely the continuous integration runner compiling the empire tree's pull request #2746. This session reported it and
+the coordinating session gave the lock again; the corrected script (the `x64` folder, and a stop before build 2 when
+no makefile was moved) ran builds 2 and 3 above. The first run's logs are kept beside the script, named `*_firstrun`.
+
+### Review (phase 2)
+
+- **`git diff 07f7e3bf6 d8698b913` read against the rulings** (20 files outside this log): the code lines are the
+  level-1 line and the fill in `MakeThePendingCharacter`, the fill in `CharacterAndRun` under `if (!bPlaced)`, the
+  rebuild and the line in `GrantExperience`, the console command's rebuild removed, the bar's class and its draw; the
+  rest is comments, tests and the checklist. `grep -rn "GrantExperience(" game/Source/Cataclysm --include=*.cpp`
+  outside `Tests/` prints the kill (`CataclysmEnemyCharacter.cpp` line 354), the console command
+  (`CataclysmPlayerCharacter.cpp` line 3839) and the definition: no other caller.
+- **Fixed numbers audited.** The level-gained line's test writes the curve's costs into its expected words (245,740 is
+  level 3's 248,860 less 3,120; 291,336 is level 5's 291,346 less 10; `test_experience_curve_port.py` holds the curve
+  to the simulation's). The continued-pools test's level 9 and 37 health are what `SaveACharacter` saves. The bar
+  tests feed in costs asked of `UCataclysmExperience` and compare against the words themselves ("Level 7: 45.2%"); the
+  kill test asks the class table for the rise; the new-character test asserts the 1 passive point and 1 attribute point
+  ruling B names, beside `UCataclysmPassivePoints::FromLevel(1)`. The bar's 280 by 20 pixels
+  are the health bar's (`PlayerBarWidthPx`, `PlayerBarHeightPx`). `B8912F`, a colour, is the one new constant in the
+  game's code, labelled a judgement.
+- **The console variable's help text was corrected where it read "The starting level of the player's character".**
+  `grep -rn "level 20" docs/Play_Loop_Checklist.md game/README.md` prints one line, this change's own: the checklist's
+  "until then a new character arrived at level 20 with 30 passive points".
 
 ---
 
