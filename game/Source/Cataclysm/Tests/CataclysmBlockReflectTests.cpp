@@ -7,6 +7,8 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+// For the announcement a reflected blow is marked on. Issue #2749 (B1).
+#include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -180,16 +182,47 @@ CATACLYSM_TEST(FCataclysmReflectBlockedTest,
 		Reflect.bReflectBlocked = true;
 		Defender.AbilitySystem->SetPoolActions({Reflect});
 
+		// AND WHETHER EACH BLOW WAS MARKED AS RETURNED FOR A BLOW TAKEN, by what the announcement carried: the reflect
+		// is, the blocked blow is not. Issue #2749 (B1), for the player's hit log.
+		TArray<bool> MarksOnTheAttacker;
+		TArray<bool> MarksOnTheDefender;
+		UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+		if (!TestNotNull(TEXT("set-up: the announcer"), Events))
+		{
+			return false;
+		}
+		const FDelegateHandle Listening = Events->OnHit.AddLambda(
+			[&MarksOnTheAttacker, &MarksOnTheDefender, &Attacker, &Defender](const FCataclysmHitNotice& Notice)
+			{
+				if (Notice.Target == Attacker.Actor)
+				{
+					MarksOnTheAttacker.Add(Notice.bRetaliation);
+				}
+				else if (Notice.Target == Defender.Actor)
+				{
+					MarksOnTheDefender.Add(Notice.bRetaliation);
+				}
+			});
+
 		float Before = Attacker.Health();
 		FCataclysmDamageResult Result;
 		{
 			const FPinned AlwaysBlocks(TEXT("Cataclysm.BlockRoll"), 0.0f);
 			Result = Blow(Attacker, Defender);
 		}
+		Events->OnHit.Remove(Listening);
 		if (!TestTrue(*FString::Printf(TEXT("set-up: the blow was blocked and removed %.2f"), Result.DamageBlocked),
 				Result.bBlocked && Result.DamageBlocked > 0.0f))
 		{
 			return false;
+		}
+		if (TestEqual(TEXT("one blow came back to the attacker"), MarksOnTheAttacker.Num(), 1))
+		{
+			TestTrue(TEXT("marked as returned for a blow taken"), MarksOnTheAttacker[0]);
+		}
+		if (TestEqual(TEXT("set-up: one blow reached the defender"), MarksOnTheDefender.Num(), 1))
+		{
+			TestFalse(TEXT("CONTROL: the blocked blow is not marked"), MarksOnTheDefender[0]);
 		}
 		TestEqual(TEXT("the block removed half the blow, what reached health again"),
 			Result.DamageBlocked, Result.DealtToHealth, 0.01f);
