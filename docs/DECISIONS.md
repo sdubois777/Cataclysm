@@ -35,8 +35,9 @@ slice 3 of 4.
 
 ### SAID FIRST
 
-- **NOT YET COMPILED OR RUN IN UNREAL.** Phase 1 is written; phase 2 compiles it, and the window runs it. Python: "7470
-  passed, 9 skipped" before this entry was added, its JUnit file 7479 tests, 0 failures, 0 errors.
+- **COMPILED, NOT YET RUN IN UNREAL.** Phase 2 compiled it three times with no error, and with no warning from this
+  branch's files once the first build's two were fixed (below). The window runs it. Python: "7470 passed, 9 skipped"
+  before this entry was added, its JUnit file 7479 tests, 0 failures, 0 errors; and all six Python proofs PROVED.
 - **THE WINDOW MAKES FOUR INPUT ASSETS** with `tools/run_editor_python.py tools/generate_input_assets.py`, and commits only
   `IA_ToggleEmpireMap.uasset` (new), `DA_InputConfig.uasset`, `IMC_KeyboardMovement.uasset` and
   `IMC_MouseMovement.uasset`; the run rewrites every input asset it owns and `L_Sandbox`, and the rest are restored, as
@@ -68,7 +69,7 @@ The coordinating session, on this slice's plan, 2026-11-17: approved, "travel as
 | Q6's damage figures | "YES, the day loop supplies it": `FCataclysmDayReport::Hits`, filled at the three damage sites, each entry the city, the defence and the people actually lost (before minus after), the kind, and whether it felled the city; a headless test that the entries total the city's loss over the day; the resolve's and the death-cost days' reports kept on a death; the two-line surge label, no widget asset change, at most three cities named, "nothing was hit" when nothing was. Two conditions: additive only, checked by running the empire module's tests and the model-port checks unchanged; and the people formatted as the map already formats populations. |
 | Q7, minions and ground items | "LEAVE BEHIND. Minions and ground items stay on the floor left. Record it under "Not tested / not built". No issue." |
 | Health on arrival | "leave it unchanged, so vitals travel exactly. Put it on the owner's launch-check list in the entry, as "should arriving at the capital refill health?"" |
-| The M key | "THE M KEY IS ALREADY WRITTEN" on the parked branch `feat/keys-for-the-empire-map-and-character-sheet`, commit `288b45cc4`: "Take ONLY its M parts into slice 3, adapted to your code. Leave Y and the character sheet parked. Credit the commit in the entry." The coordinating session had ruled on 2026-11-03: "M opens and closes the empire map". |
+| The M key | "THE M KEY IS ALREADY WRITTEN" on the parked branch `feat/keys-for-the-empire-map-and-character-sheet`, commit `288b45cc4`: "Take ONLY its M parts into slice 3, adapted to your code. Leave Y and the character sheet parked. Credit the commit in the entry." The coordinating session had ruled on 2026-11-03, as the parked commit records it: "M opens and closes the empire map". |
 
 And, on the tests this slice changes by ruling: "The six test changes reported under Q4 are all accepted."
 
@@ -222,6 +223,99 @@ the whole chain add what `Migrate_5_to_6` writes; and the Python check
 ### For the owner's launch check (slice 4's list)
 
 - Should arriving at the capital refill health? Today nothing does but a death; the vitals travel exactly.
+
+### Phase 2: compiled, reviewed and proved in Python
+
+**Three builds, with `python tools/unreal_build.py build`:**
+
+| Build | What it compiled | Result |
+| :-- | :-- | :-- |
+| 1, every change uncommitted, so compiled alone | "78 actions, 73 files compiled", every changed `.cpp` among them by name (UnrealBuildTool's log) | no error; two warnings C5055 in this entry's migration test, a `double` compared with `INDEX_NONE`, an enumerator |
+| 2, after casting both to `double` | "4 actions, 1 file compiled: CataclysmSaveLoadTests.cpp" | no error, no warning |
+| 3, committed (`342fb5bf9`), the makefile set aside to regroup | "24 actions, 19 files compiled": the unity files holding every changed `.cpp` of the `Cataclysm` module | no error, no warning |
+
+The `CataclysmEmpire` module has no unity files: each of its `.cpp` files is its own object, so its two changed files
+compile alone in every build. The only other warning in any build is the engine's own deprecation of `CountBits`
+(C4996), from before this branch.
+
+**Found by reading the code back, and changed before any build:** an arrival that found its level already walking a
+dungeon went back to the capital, which is leaving that walk early. It now keeps the walk, drops the pending one and
+logs an error. Nothing in play reaches it: a hand-over is written with no dungeon.
+
+**Found by the registration's Python run: a README check had stopped running.** The run printed "7469 passed, 10
+skipped" where phase 1's printed "7470 passed, 9 skipped"; the two JUnit files' skipped tests differ in one,
+`test_game_readme_is_true.py::test_the_empire_layer_claim_is_still_true`, which runs only while `game/README.md` holds
+its key sentence. That was "Nothing takes the player from the map into a dungeon", which this slice made false and
+removed. The check now keys on the bullet's new sentence, "A walk is a trip from the capital and back", and runs and
+passes; its comment says so.
+
+**Six Python proofs, with `tools/prove_guard.py`, all PROVED** (`.claude/windows/prove_python_2733s3.py`); each broke one
+line, failed exactly the one check named, and passed whole once restored:
+
+| Proof | Break | The one check that failed |
+| :-- | :-- | :-- |
+| S1 | `Cataclysm.LeaveDungeon` calls `LeaveEmpireDungeon` again | `test_a_walk_cannot_be_left_early.py::test_leave_dungeon_leaves_nothing_and_says_why` |
+| S2 | `ReturnToTheCapital` opens the level itself, a fifth `OpenLevel` | `test_a_walk_cannot_be_left_early.py::test_every_level_change_is_a_known_one` |
+| S3 | `Migrate_5_to_6` writes a clear on day 0 | `test_a_trip_between_levels_is_a_save_and_a_load.py::test_the_run_record_is_at_version_6_and_migrate_5_to_6_writes_nothing_yet` |
+| S4 | recording a hit sets the city's defence to 0 | `test_a_trip_between_levels_is_a_save_and_a_load.py::test_recording_a_hit_changes_nothing_but_the_list_of_hits` |
+| S5 | the mouse scheme puts the map on N | `test_the_empire_map_key_reaches_its_command.py::test_each_scheme_puts_the_screen_on_its_ruled_key_and_nothing_else_there[empire map-MOUSE_MAPPINGS]` |
+| S6 | the hand-over is written asynchronously | `test_when_a_save_is_written.py::test_only_the_character_dying_and_leaving_the_level_are_written_before_the_frame_ends` |
+
+### Registered before the run
+
+**The base.** Window capital-w1's whole-suite run at `f86d6609` performed 4772 tests, 47 skipped halves, 0 test saves
+left behind; `git diff --stat f86d6609 1f16aafde -- game/` prints nothing, so that is this branch's base,
+`development` `1f16aafde`. Per-group counts are its engine log's "Test Completed" lines, by prefix, ignoring case.
+
+**The asset step, first.** `tools/run_editor_python.py tools/generate_input_assets.py` must change nothing but files
+under `game/Content/Input/` and `game/Content/Maps/L_Sandbox.umap`, and must add `IA_ToggleEmpireMap.uasset` and change
+`DA_InputConfig.uasset`, `IMC_KeyboardMovement.uasset` and `IMC_MouseMovement.uasset`. Every other file it rewrote is
+restored with `git checkout --`. The four are committed alone, on top of the registration commit, each stored through
+Git LFS and an Unreal package on disk; then `git push` and `git lfs push`. That commit is the tested head.
+
+**The whole suite: 4772 + 12 = 4784 performed, 4784 succeeded, 0 failed; 47 skipped halves; 0 test saves left behind;
+"Declared: 4784".** The twelve, by name: nine in `Cataclysm.Travel.`, two in `Cataclysm.EmpireRun.`, one in
+`Cataclysm.Input.`.
+
+**Each group alone,** by its prefix (each ends in a dot):
+
+| Prefix | Base | Registered | Why it runs alone |
+| :-- | --: | --: | :-- |
+| `Cataclysm.Input.` | 7 | 8 | the M key's test is new; thirteen native actions, after the asset step |
+| `Cataclysm.Travel.` | 0 | 9 | new |
+| `Cataclysm.EmpireRun.` | 69 | 71 | two new; the other 69 unchanged, which is the check that recording hits changed nothing |
+| `Cataclysm.WalkFromTheScreen.` | 5 | 5 | two changed by ruling |
+| `Cataclysm.SaveLoad.` | 76 | 76 | one changed by ruling; the placement rule for a record with no floor |
+| `Cataclysm.WinningTheRun.` | 11 | 11 | the stairs test changed by ruling; the committed file and the chain |
+| `Cataclysm.SaveTriggers.` | 6 | 6 | one renamed, counting two synchronous triggers; one adding `LeavingTheLevel` |
+| `Cataclysm.SaveRecords.` | 17 | 17 | the committed run file is `Run_v6.json` |
+| `Cataclysm.DeathCost.` | 9 | 9 | the committed file and the chain |
+| `Cataclysm.EarnedBossSave.` | 3 | 3 | the committed file and the chain |
+| `Cataclysm.ConsumptionDouble.` | 15 | 15 | the chain |
+| `Cataclysm.Capital.` | 7 | 7 | a Continue in the capital is no longer put in place |
+| `Cataclysm.SaveWriter.` | 25 | 25 | the floor record and the hand-over beside it |
+| `Cataclysm.EmpireScreen.` | 14 | 14 | the map's surge label gains its second line |
+| `Cataclysm.EmpirePoints.` | 16 | 16 | the last award is saved |
+
+**Python, after the asset commit: "7470 passed, 9 skipped", its JUnit file 7479 tests, 0 failures, 0 errors; ruff
+passing.** Measured at registration, before the asset commit, as exactly that; the window adds no Python.
+
+**Eight C++ guard proofs,** with `prove_cpp_guard`, the engine log of each half kept (`.claude/windows/prove_b2733s3.py`).
+Each restored half must pass its whole prefix; each broken half fails exactly this:
+
+| Proof | Break | Prefix | Predicted broken half |
+| :-- | :-- | :-- | :-- |
+| C1 | the hand-over does not stop the writer: its two `Invalidate` lines removed (`CataclysmSaveWriter.cpp`) | `Cataclysm.Travel.` | 9 performed, 8 succeeded, 1 failed: `TheCapitalsWalkWritesBothRecords...`, 2 assertions: "and stopped writing", "so a trigger after the hand-over writes nothing" |
+| C2 | a record with no floor puts the character in place: `bPutInPlace = SavedRun != nullptr` (`CataclysmSaveLoad.cpp`) | `Cataclysm.Travel.` | 9, 7, 2 failed: `TheDungeonLevelLoads...`, 1: "and not at the capital's place"; `TheLastFloorsStairs...`, 1: "and not at the dungeon's place" |
+| C3 | a death that ended a walk does not go back: `WalkEndedIn = nullptr` (`CataclysmPlayerCharacter.cpp`) | `Cataclysm.SaveLoad.` | 76, 75, 1 failed: the dungeon-death load test, 2: "and the hand-over to the capital was the last write", "and the character travels to the capital" |
+| C4 | mid-walk only the dungeon walked is refused: `EmpireDungeonId == DungeonId` (`CataclysmWalkFromTheScreen.cpp`) | `Cataclysm.WalkFromTheScreen.` | 5, 4, 1 failed: `PressingWalkOnACity...`, 4: "is refused: the first is still walked", the refusal's words, "still as deep as the first", "no day has run" |
+| C5 | the latest event asks the death's day again: `LastDeathDay > 0` (`CataclysmEmpireMapLayout.cpp`) | `Cataclysm.Travel.` | 9, 8, 1 failed: `TheMapsLatestEventShowsADeathOnDayZero`, 1: "and the map shows it as the latest event" |
+| C6 | a hit records the defence before it, not what it took (`CataclysmEmpireRun.cpp`) | `Cataclysm.EmpireRun.` | 71, 70, 1 failed: `EachDaysHitsAddUpToWhatEachCityLost`, 1: "every city's hits add up to what it lost, every day" |
+| C7 | the last award is not saved: its gather line removed (`CataclysmSaveGather.cpp`) | `Cataclysm.Travel.` | 9, 8, 1 failed: `TheLastFloorsStairs...`, 1: "the award came back with the run" |
+| C8 | the last floor's stairs clear and do not go back: `if (ClearEmpireDungeon() && false)` (`CataclysmDungeonGameMode.cpp`) | `Cataclysm.WinningTheRun.` | 11, 10, 1 failed: `TheEarnedBossDungeonsStairs...`, 2: "the hand-over to the capital was the last trigger", "and the character travels to the capital" |
+
+Assertions are counted in each broken half's kept log in both of the engine's forms, "Expected '...'" and "...: The
+two values are not equal.".
 
 ---
 
