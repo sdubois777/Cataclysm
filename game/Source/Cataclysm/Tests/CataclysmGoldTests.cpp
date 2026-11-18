@@ -969,6 +969,8 @@ bool FCataclysmGoldAccountMigrationTest::RunTest(const FString&)
 	const TSharedPtr<FJsonObject> Expected = CataclysmSaveFixtures::Parse(Before);
 	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmAccountSave::SchemaVersionNow);
 	Expected->SetNumberField(TEXT("Gold"), 0);
+	// AND THE EMPTY TREE `Migrate_3_to_4` WRITES: the chain runs on to version 4 since 2026-11-18 (issue #2741).
+	CataclysmSaveFixtures::AddTheAccountsVersion4Defaults(*Expected);
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -988,9 +990,10 @@ bool FCataclysmGoldAccountMigrationTest::RunTest(const FString&)
 }
 
 /**
- * The committed files hold their gold: `Account_v3.json` reads 1234567 into the balance and is read rather than
+ * The committed files hold their gold: `Account_v4.json` reads 1234567 into the balance and is read rather than
  * migrated, `Character_v8.json` reads 4321 into the character's own, and `Run_v7.json` restores a pile of 37 beside its
- * piece of gear. Prints "FILES".
+ * piece of gear. Prints "FILES". The account file was `Account_v3.json` until the account record went to version 4 on
+ * 2026-11-18 (issue #2741 slice 1b); `Account_v4.json` holds the same gold.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGoldCommittedFilesTest,
 	"Cataclysm.Gold.TheCommittedFilesReadIntoTheGoldTheyState",
@@ -1002,7 +1005,7 @@ bool FCataclysmGoldCommittedFilesTest::RunTest(const FString&)
 	FString RunText;
 	FString CharacterText;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Account_v3.json"), AccountText, Reason)
+	if (!CataclysmSaveFixtures::Read(TEXT("Account_v4.json"), AccountText, Reason)
 		|| !CataclysmSaveFixtures::Read(TEXT("Run_v7.json"), RunText, Reason)
 		|| !CataclysmSaveFixtures::Read(TEXT("Character_v8.json"), CharacterText, Reason))
 	{
@@ -1020,7 +1023,7 @@ bool FCataclysmGoldCommittedFilesTest::RunTest(const FString&)
 		RunText, UCataclysmRunSave::StaticClass(), GetTransientPackage(), RunResult, Message));
 	const UCataclysmCharacterSave* Character = Cast<UCataclysmCharacterSave>(FCataclysmSaveStorage::FromJson(
 		CharacterText, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), CharacterResult, Message));
-	if (!TestNotNull(TEXT("Account_v3.json loads"), Account) || !TestNotNull(TEXT("Run_v7.json loads"), Run)
+	if (!TestNotNull(TEXT("Account_v4.json loads"), Account) || !TestNotNull(TEXT("Run_v7.json loads"), Run)
 		|| !TestNotNull(TEXT("Character_v8.json loads"), Character))
 	{
 		return false;

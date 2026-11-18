@@ -66,8 +66,15 @@ enum class ECataclysmSaveTrigger : uint8
 	 * A DEFEATED DUNGEON RAISES IT, since issue #52's first slice (2026-11-03):
 	 * `ACataclysmDungeonGameMode::ClearEmpireDungeon` banks the defeat's empire
 	 * upgrade points into the account record the game instance holds, and the
-	 * writer writes that record. Nothing else raises it yet -- there is no stash.
-	 * This said nothing raised it until then.
+	 * writer writes that record. This said nothing raised it until then.
+	 *
+	 * SO DO GOLD PICKED UP INTO THE ACCOUNT (`UCataclysmDropPickup::BankGold`,
+	 * issue #2742), and A POINT BOUGHT, AN OPTION CHOSEN OR A RESPEC in the
+	 * empire upgrade tree (`UCataclysmGameInstance::BuyEmpireTreePoint`,
+	 * `ChooseEmpireTreeOption` and `RespecEmpireTree`, issue #2741 slice 1b; a
+	 * respec raises `EmpireTreeRespecced` as well, for the run record).
+	 * This said "Nothing else raises it yet -- there is no stash" until slice 1b;
+	 * gold had already made that untrue. Nothing fills the stash yet.
 	 */
 	AccountChanged = 7,
 
@@ -126,6 +133,21 @@ enum class ECataclysmSaveTrigger : uint8
 	 * this frame -- the last floor's clear, a win's `RunWon`, a death's `DeathProcessed`.
 	 */
 	LeavingTheLevel = 11,
+
+	/**
+	 * The empire upgrade tree was respecced, and the days it cost passed in the run
+	 * (`UCataclysmGameInstance::RespecEmpireTree`). Issue #2741 slice 1b, ruled by the coordinating session on
+	 * 2026-11-18.
+	 *
+	 * WHY IT EXISTS, AND IS NOT THE CLOCK. The respec raises `AccountChanged` for the points it returned, and the run
+	 * record must hold the days it took, or a player who quit before the next run write would come back to a respec
+	 * that cost nothing. `Clock` writes the run record, but at most once a frame, so a write earlier in the respec's
+	 * frame would have left the days off the disk until the next one. This one is in
+	 * `UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame`.
+	 *
+	 * AN ORDINARY ASYNCHRONOUS WRITE, OF THE RUN RECORD ONLY: a respec changes nothing the character record holds.
+	 */
+	EmpireTreeRespecced = 12,
 };
 
 /**
@@ -219,6 +241,9 @@ public:
 	 * the floor before the change, and the one after it must replace it. Window travel-w1's first run found the walk
 	 * an arrival begins skipped so, and the record on disk still saying the capital. Every place that raises it does
 	 * so once per change of floor; `docs/DECISIONS.md`'s 2026-11-18 entry lists them.
+	 *
+	 * AND A RESPEC OF THE EMPIRE UPGRADE TREE, since issue #2741 slice 1b (ruled 2026-11-18): the days it cost passed in
+	 * the run after any earlier write in its frame gathered it, and the one after must hold them.
 	 */
 	static bool WritesEvenIfTheRunWasWrittenThisFrame(ECataclysmSaveTrigger Trigger);
 

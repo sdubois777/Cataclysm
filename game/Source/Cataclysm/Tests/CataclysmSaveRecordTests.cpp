@@ -129,12 +129,15 @@ namespace CataclysmSaveRecordTest
 	static TArray<FFixture> Fixtures()
 	{
 		return {
-			// ACCOUNT IS AT v3 SINCE 2026-11-18, when it came to hold its gold
+			// ACCOUNT IS AT v4 SINCE 2026-11-18, when it came to hold what its
+			// empire upgrade tree has bought (issue #2741 slice 1b);
+			// Account_v3.json is a migration input now.
+			// ACCOUNT WAS AT v3 FROM 2026-11-18, when it came to hold its gold
 			// (issue #2742); Account_v2.json is a migration input now.
 			// ACCOUNT WAS AT v2 FROM 2026-11-03, when its banked empire upgrade
 			// points became a double so a fraction of a point is kept (issue #52);
 			// Account_v1.json is a migration input now.
-			{ UCataclysmAccountSave::StaticClass(),   TEXT("Account_v3.json") },
+			{ UCataclysmAccountSave::StaticClass(),   TEXT("Account_v4.json") },
 			// RUN IS AT v7 SINCE 2026-11-18, when a ground item came to carry a gold
 			// pile's amount (issue #2742); Run_v6.json is a migration input now.
 			// RUN WAS AT v6 FROM 2026-11-17, when a trip between levels became a

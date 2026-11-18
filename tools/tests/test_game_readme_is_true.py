@@ -237,6 +237,9 @@ DAY_ADVANCERS_ALLOWED = (
     "game/Source/Cataclysm/Tests/",
     "game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp",
     "game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp",
+    # A RESPEC OF THE EMPIRE UPGRADE TREE costs the lethality mode's death cost in days, taken in
+    # `UCataclysmGameInstance::RespecEmpireTree`. Issue #2741 slice 1b, 2026-11-18.
+    "game/Source/Cataclysm/Player/CataclysmGameInstance.cpp",
 )
 
 
@@ -252,15 +255,17 @@ def test_only_walking_a_dungeon_and_the_console_move_the_empires_day() -> None:
     which is exactly the change this guard existed to catch, and it caught it.
     IT NARROWED AGAIN FOR ISSUE #41: dying inside a dungeon of the empire now
     costs 5, 10 or 15 days, charged from the dungeon game mode, which was already
-    on the list below. What is left is the one the design still owes: the forge
-    costs twelve and does not exist.
+    on the list below. IT WIDENED FOR ISSUE #2741 SLICE 1B: a respec of the empire
+    upgrade tree costs the same days, from the game instance, and the readme
+    names it. What is left is the one the design still owes: the forge costs
+    twelve and does not exist.
 
     IT IS THE POINT AT WHICH THE EMPIRE STOPS BEING A DEMONSTRATION. A player who
     has to type a command to make time pass is looking at a diagram; a player
     whose dungeon run costs them forty days is playing the game. Whoever spends a
     day from somewhere new has to come here, which is the whole purpose of it.
     """
-    if "Only walking a dungeon, dying in one and the" not in readme_text():
+    if "Only walking a dungeon, dying in one, a respec of the empire upgrade" not in readme_text():
         pytest.skip("The readme no longer says what may move the empire's day.")
 
     movers = [
@@ -271,8 +276,8 @@ def test_only_walking_a_dungeon_and_the_console_move_the_empires_day() -> None:
     ]
 
     assert not movers, (
-        "game/README.md says only walking a dungeon, dying in one and the console "
-        f"commands move the empire's day, but these files advance it: {', '.join(movers)}."
+        "game/README.md says only walking a dungeon, dying in one, a respec of the empire upgrade tree and the "
+        f"console commands move the empire's day, but these files advance it: {', '.join(movers)}."
         " Update that bullet in the 'What is not here yet' section."
     )
 

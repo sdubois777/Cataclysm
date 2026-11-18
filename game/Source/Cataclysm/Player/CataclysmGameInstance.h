@@ -12,6 +12,30 @@ class ACataclysmPlayerState;
 class UCataclysmAccountSave;
 class UCataclysmEmpireRun;
 class UCataclysmSaveWriter;
+struct FCataclysmPassiveAllocation;
+
+/**
+ * The empire upgrade tree the character playing has, and the bank it is bought with: what
+ * `UCataclysmGameInstance::EmpireTreeHeldBy` answers. Issue #2741 slice 1b.
+ *
+ * POINTERS INTO THE RECORD THAT HOLDS THEM, to read and change at once and never to keep. Today that record is the
+ * account record the game instance holds (`HeldAccount`), and asking `AccountFor` for another partition replaces it.
+ * A Solo Self-Found character's tree and bank will be its own, on its player state and saved in its character record
+ * (slice 1c), behind the same two pointers, so nothing that reads them asks which record it is.
+ */
+struct FCataclysmHeldEmpireTree
+{
+	/** Empire upgrade points banked and not yet spent; null when there is no tree. */
+	double* Bank = nullptr;
+
+	/** What the tree has bought; null when there is no tree. */
+	FCataclysmPassiveAllocation* Allocation = nullptr;
+
+	/** Why there is no tree, in a sentence a screen or a log can show; empty when there is one. */
+	FString Why;
+
+	bool IsHeld() const { return Bank != nullptr && Allocation != nullptr; }
+};
 
 /**
  * A character made on the front end's new-character screen, waiting for the level its Confirm opened to begin: the name
@@ -384,6 +408,67 @@ public:
 	 * from the load, which the line says nothing to contradict -- it reports what this session picked up.
 	 */
 	int64 GoldPickedUpThisWalk = 0;
+
+	// ----------------------------------------------------------------------
+	// The empire upgrade tree -- issue #2741, slice 1b
+	// ----------------------------------------------------------------------
+
+	/**
+	 * THE ONE PLACE THAT SAYS WHICH EMPIRE UPGRADE TREE THE CHARACTER PLAYING HAS, and the bank it is bought with.
+	 * Issue #2741 slice 1b; `GoldHeldBy` is the precedent for gold.
+	 *
+	 * EVERY CHARACTER BUT A SOLO SELF-FOUND ONE: ITS LETHALITY MODE'S, the partition's account record's
+	 * `EmpireUpgradePoints` and `EmpireTree` (version 4). `docs/Cataclysm_GDD_v2.md`, Empire-Wide Upgrades: a point
+	 * earned by a character is earned into its lethality mode and shared by every character in it, so what the points
+	 * buy is shared the same way. The screen and every node's effect read the tree here (slices 2 to 5).
+	 *
+	 * A SOLO SELF-FOUND CHARACTER HAS NONE YET. The owner ruled on 2026-11-18 that such a character banks and spends
+	 * its own; that is slice 1c, which puts it behind this function. Until then this answers false and says so.
+	 *
+	 * @return false, with `OutHeld.Why` saying why and both pointers null, when there is no tree to read: no world, no
+	 *         character playing, a Solo Self-Found character, no game instance of this project's, or an account record
+	 *         that would not read (see `AccountFor`)
+	 */
+	static bool EmpireTreeHeldBy(const UObject* WorldContext, FCataclysmHeldEmpireTree& OutHeld);
+
+	/**
+	 * Puts one point into a node of the tree `EmpireTreeHeldBy` reads, paid from its bank, and has the record written.
+	 * Issue #2741 slice 1b.
+	 *
+	 * THE RULES ARE `UCataclysmEmpireTree::Spend`'s, and a refusal is its sentence (or `EmpireTreeHeldBy`'s): nothing
+	 * changes and nothing is written. A point bought raises `ECataclysmSaveTrigger::AccountChanged`, which writes the
+	 * account record.
+	 */
+	static bool BuyEmpireTreePoint(const UObject* WorldContext, FName Node, FString& OutReason);
+
+	/**
+	 * Chooses one of a centre capstone's three options in the tree `EmpireTreeHeldBy` reads, and has the record
+	 * written. The rules and refusals are `UCataclysmEmpireTree::ChooseOption`'s. Issue #2741 slice 1b.
+	 */
+	static bool ChooseEmpireTreeOption(const UObject* WorldContext, FName Node, int32 Option, FString& OutReason);
+
+	/**
+	 * Returns every point spent in the tree `EmpireTreeHeldBy` reads to its bank and forgets every choice, at the
+	 * price of days off the run being played. Issue #2741 slice 1b; the coordinating session's Q3 of 2026-11-18.
+	 *
+	 * THE DAYS ARE THE RUN'S DEATH COST, `UCataclysmEmpireTree::RespecDays` of the run's own lethality rung -- 5, 10 or
+	 * 15 -- and they pass through `UCataclysmEmpireRun::AdvanceDays`, so a surge or a resolve that falls inside them
+	 * happens on its own day, as for any other days passed.
+	 *
+	 * REFUSED, CHANGING NOTHING, when the tree holds nothing, when there is no run to take the days from, and WHILE A
+	 * DUNGEON IS BEING WALKED: nothing resolves while the player is inside one, by the owner's decision of 2026-10-24,
+	 * and `Cataclysm.EmpireAdvance` refuses there for the same reason.
+	 *
+	 * SAVED WHOLE: `AccountChanged` writes the account record and `EmpireTreeRespecced` the run record, in the same
+	 * frame. With the account alone, a player who quit before the next run write would come back to a respec that cost
+	 * no days; and `Clock`, which also writes the run record, is skipped when another write wrote it earlier in the
+	 * frame. Ruled by the coordinating session on 2026-11-18.
+	 *
+	 * @param OutPointsReturned how many points went back to the bank
+	 * @param OutDays           how many days the run passed
+	 */
+	static bool RespecEmpireTree(const UObject* WorldContext, int32& OutPointsReturned, int32& OutDays,
+								 FString& OutReason);
 
 	/**
 	 * The partition of the character being played in a world: the first player character's player state's. False,
