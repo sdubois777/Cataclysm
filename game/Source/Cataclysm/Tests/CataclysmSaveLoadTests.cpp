@@ -10049,6 +10049,16 @@ bool FCataclysmTravelArriveTest::RunTest(const FString&)
 	const FString Potions = PotionsOf(*Scene.Base.Character);
 	const float Health = HealthOf(*Scene.Base.Character);
 	const FVector At = Scene.Base.Character->GetActorLocation();
+	// THE DUNGEON THIS RUN DREW, AND WHAT ITS FLOOR COSTS, read before entering with the part of a day the clock
+	// carries. A new character's run is seeded from the clock (`ACataclysmGameMode::LoadThePendingCharacter`), so the
+	// dungeon walked differs from run to run: a Cow Level's walk is doubled by design and owes 2 days a floor, every
+	// other dungeon 1 on day 0. Until 2026-11-18 this test asserted 1 and failed whenever the draw put a Cow Level
+	// first, about 7 runs in 100: window travel-w1's third run drew one in two broken halves. Issue #2733 slice 3.
+	UCataclysmEmpireRun* Loaded = Scene.Base.Instance->EmpireRun.Get();
+	const FCataclysmDungeon* Drawn = Loaded ? Loaded->FindDungeon(Handed.DungeonId) : nullptr;
+	const float PartDayBefore = Loaded && Loaded->Clock ? Loaded->Clock->PartialDay : -1.0f;
+	const float Rate = Drawn ? Drawn->WalkDaysPerFloor() : -1.0f;
+	const FString SubType = Drawn ? UCataclysmSurgeScheduler::SubTypeName(Drawn->SubType) : FString(TEXT("NONE"));
 	const bool bEntered = Scene.Mode->EnterThePendingWalkIfReady();
 	const bool bAgain = Scene.Mode->EnterThePendingWalkIfReady();
 	const FString PotionsInside = PotionsOf(*Scene.Base.Character);
@@ -10060,15 +10070,15 @@ bool FCataclysmTravelArriveTest::RunTest(const FString&)
 	AddInfo(FString::Printf(
 		TEXT("TRAVEL ARRIVE: before the load entered %s, walking %d; outcome %d; the character %s, potions %s (left "
 			 "%s), health %.1f (left %.1f), at %.0f %.0f (left at %.0f %.0f); then entered %s, again %s, walking %d "
-			 "(chose %d) floor %d, pending walk %d, potions %s, last trigger '%s'; the run day %d owing %d; the record "
-			 "in dungeon %d on floor %d"),
+			 "(chose %d) floor %d, pending walk %d, potions %s, last trigger '%s'; the run day %d owing %d; the dungeon "
+			 "drawn '%s', %.2f days a floor, part-day before entering %.2f; the record in dungeon %d on floor %d"),
 		bBeforeTheLoad ? TEXT("YES") : TEXT("no"), WalkingBeforeTheLoad, static_cast<int32>(Outcome),
 		Json == Handed.Json ? TEXT("the same") : TEXT("DIFFERS"), *Potions, *Handed.Potions, Health, Handed.Health,
 		At.X, At.Y, Handed.PlacedAt.X, Handed.PlacedAt.Y, bEntered ? TEXT("yes") : TEXT("NO"),
 		bAgain ? TEXT("YES") : TEXT("no"), Scene.Mode->EmpireDungeonId, Handed.DungeonId, Scene.Mode->FloorNumber,
 		Scene.Base.Instance->PendingWalkDungeonId, *PotionsInside, UCataclysmSaveTriggers::NameOf(Last),
-		Run ? Run->Day() : -1, Run ? Run->DaysOwed() : -1, Record ? Record->CurrentDungeonId : -2,
-		Record ? Record->Floor.Floor : -1));
+		Run ? Run->Day() : -1, Run ? Run->DaysOwed() : -1, *SubType, Rate, PartDayBefore,
+		Record ? Record->CurrentDungeonId : -2, Record ? Record->Floor.Floor : -1));
 
 	TestFalse(TEXT("CONTROL: the walk is not entered while the character is still to load"), bBeforeTheLoad);
 	TestEqual(TEXT("CONTROL: and nothing is walked"), WalkingBeforeTheLoad, static_cast<int32>(INDEX_NONE));
@@ -10095,10 +10105,17 @@ bool FCataclysmTravelArriveTest::RunTest(const FString&)
 		TestEqual(TEXT("saying the character is in that dungeon"), Record->CurrentDungeonId, Handed.DungeonId);
 		TestEqual(TEXT("on floor 1"), Record->Floor.Floor, 1);
 	}
-	if (TestNotNull(TEXT("the run came with the character"), Run))
+	if (TestNotNull(TEXT("the run came with the character"), Run)
+		&& TestNotNull(TEXT("set-up: the dungeon drawn is in the run"), Drawn))
 	{
 		TestEqual(TEXT("still on day 0"), Run->Day(), 0);
-		TestEqual(TEXT("owing the day entering cost"), Run->DaysOwed(), 1);
+		// BY THIS DUNGEON'S OWN RATE: whole days of its walk per floor, the part-day before entering being 0 -- 1 for
+		// most dungeons, 2 for a Cow Level. The CONTROL keeps the check able to fail: a floor costing less than a day
+		// would make it compare 0 with 0.
+		TestEqual(TEXT("set-up: no part of a day carried before entering"), PartDayBefore, 0.0f);
+		TestTrue(TEXT("CONTROL: entering this dungeon costs at least one whole day"), FMath::FloorToInt(Rate) >= 1);
+		TestEqual(TEXT("owing the whole days entering this dungeon's floor 1 cost"), Run->DaysOwed(),
+				  FMath::FloorToInt(Rate));
 	}
 	return true;
 }

@@ -614,8 +614,11 @@ Module.Cataclysm.42.cpp"), `Module.Cataclysm.41.cpp` being the unity file that h
 **SAID FIRST: every registered count matched, and every proof failed in exactly the tests registered and passed when
 restored. Three of my predictions of how many assertions a broken half would fail were wrong.** C1 failed one assertion
 where I registered two; C2 and C9 each failed one more than I registered, the same one in both, "owing the day
-entering cost", which read 2 where it reads 1. **I have not found why a walk entered once owes two days in those two
-broken halves.** The restored halves, the group alone and the whole suite all read 1. Details below the proofs.
+entering cost", which read 2 where it reads 1. **The cause, found by reading the same day after this record was first
+written: the test walks a dungeon drawn from a run seeded by the clock, and those two broken halves drew a Cow Level,
+whose walk is doubled by design and owes 2 days on entering.** Neither break caused it. The window passed by the luck
+of the draw: about 7 runs in 100 draw a Cow Level first, and then the test fails with the code correct. Until that was
+found this paragraph said "I have not found why"; see "The second owed day was a Cow Level" below.
 
 At `9951dbb78`, from 01:22 to 02:02 local time. The pre-checks all passed: `development` at `1f16aafde`, its CI and
 Unreal runs successful, nothing in progress or queued, the lock free, no build or editor process, no open pull request,
@@ -683,7 +686,7 @@ once-a-frame rule skips the clock's write whether or not the writer stopped. The
 nothing" in both halves. **That assertion does not guard the stop on its own; "and stopped writing" does**, and the
 proof shows that one fails.
 
-**The extra assertion in C2 and C9, not explained.** "Owing the day entering cost" reads the run's owed days after the
+**The extra assertion in C2 and C9: a Cow Level, drawn.** "Owing the day entering cost" reads the run's owed days after the
 arrival enters the walk. The test's printed state, from each half's kept log:
 
 | Half | The character after the load | The run record on disk | Owed days |
@@ -696,10 +699,112 @@ arrival enters the walk. The test's printed state, from each half's kept log:
 The capital's hand-over prints the same record in both halves of C9: floor 0, no dungeon, day 0, 12 dungeons. Read in
 the code: the load sets the owed days from the record (`FCataclysmSaveApply::RunInto`, `Run.OwedDays =
 Record.DaysOwed`), and entering adds one floor's walk days (`EnterEmpireDungeon` through
-`SpendFloorTimeInTheEmpire`). Neither change -- placing the character, or skipping one write -- touches either of
-those in any way I have found. **So a second owed day under two unrelated breaks is not understood**; it may mean that a
-save's write, or where the character stands, changes the days a walk owes. Nothing in the code as it stands owes two,
-as far as any run shows. Reported to the coordinating session rather than chased further inside the window's record.
+`SpendFloorTimeInTheEmpire`). Neither change -- placing the character, or skipping one write -- touches either.
+**What differs is the dungeon:** the run is drawn from the clock, and a Cow Level's floor costs 2 days. When first
+written this paragraph said the second owed day was not understood, and that it might mean a save's write or the
+character's place changes the days a walk owes. Neither does; see the next section.
+
+### The second owed day was a Cow Level, 2026-11-18
+
+**Found by reading, before any run.** No log line names a dungeon's sub-type, so the Cow Level in the two broken halves
+is established by the code -- only a Cow Level can owe 2 here -- and not seen.
+
+1. **The arrival test's run is drawn from the clock.** `HandOverFromTheCapital` makes a new character in the capital,
+   and a new character's run is seeded from `FDateTime::Now()` (`ACataclysmGameMode::LoadThePendingCharacter`); the
+   test walks the run's first dungeon. In the four halves of C2 and C9 that dungeon had 8, 12, 14 and 15 floors and four
+   different first-floor modifiers.
+2. **Entering owes the dungeon's floor cost**, its walk days over its floors (`FCataclysmDungeon::WalkDaysPerFloor`),
+   added to the part of a day the clock carries, which is 0 in a new run that has spent no time. A placed dungeon's walk
+   is its floors less any upgrade, at most its floors, so it owes 1 on entering; **a Cow Level's walk is its floors
+   times `CowLevelWalkMultiplier`, 2.0** (`UCataclysmSurgeScheduler`, "Time to complete is doubled"), so it owes 2.
+3. **A placed dungeon draws Cow Level with weight 7.0 of 100** (`SpawnWeightCowLevel`; the seven weights sum to 100).
+4. **14 runs of the test are in the kept logs**: 12 owed 1, and 2 owed 2 -- the C2 and C9 broken halves.
+
+**The coordinating session's two hypotheses, ruled out from the test's own printed state.** The character placed on
+the first floor's stairs at the capital's (1234, 567), descending at once: the C2 broken half printed floor 1 after
+entering, nothing ticks between entering and that print, and the C9 broken half owed 2 at 5600 6000. Something reading
+the record's "no dungeon, floor 0" and entering again: the test printed "again no" and "walking 0", the arrival reads
+the save once, in the load before entering, and run 1 at `e06b5f16` skipped the same write and owed 1.
+
+**In play: nothing wrong.** A Cow Level's walk owing 2 days a floor, floor 1 included, is the design.
+
+**The ruling, quoted.** The coordinating session, 2026-11-18: "HOLD THE MERGE and fix it in slice 3, on the same
+branch. I will not land a test known to fail about 7 runs in 100; it would stop someone else's window by chance later."
+And: "Keep the random draw. Assert owed = FloorToInt of the chosen dungeon's walk days per floor, with the part-day
+asserted 0. Print the sub-type and the rate in TRAVEL ARRIVE." And: "go through every slice 3 test one more time, for
+any assertion whose expected figure depends on which dungeon the clock-seeded run draws [...] List them in the entry."
+
+**The test, changed** (`CataclysmSaveLoadTests.cpp`, `TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk`):
+before entering it reads the dungeon drawn, its walk days per floor and the clock's part of a day; it asserts "set-up:
+no part of a day carried before entering" (0), "CONTROL: entering this dungeon costs at least one whole day", so the
+check cannot compare 0 with 0, and "owing the whole days entering this dungeon's floor 1 cost", the owed days against
+`FMath::FloorToInt` of that rate. "TRAVEL ARRIVE" prints the sub-type drawn, the rate and the part-day. The draw stays
+random, so the test still enters whichever kind of dungeon a run puts first.
+
+### Every slice 3 test, read for figures that depend on the draw, 2026-11-18
+
+`.claude/windows/sweep_slice3_draws.py` lists the tests slice 3 added or changed, directly or through a helper it
+changed -- 36 -- and which of five draws from the clock each reaches: a new character's run
+(`ACataclysmGameMode::LoadThePendingCharacter`), a run begun when none exists (`GetOrBeginEmpireRun`), a load's new run
+when its record has none (`FCataclysmSaveLoad::CharacterAndRun`), the next run after a win
+(`UCataclysmGameInstance`), and a dungeon floor's seed when none is pinned. **27 reach none of them**: they read the
+committed fixture files, build runs from fixed seeds, or test the empire module, the input assets and the trigger rules
+alone:
+
+- `Cataclysm.ConsumptionDouble.ARunFileFromBeforeTheHuntMigratesWithNone`;
+- `Cataclysm.DeathCost.ARunFileFromBeforeTheDeathLineMigratesWithNone`, `TheCommittedRunFileReadsIntoTheDeathItStates`;
+- `Cataclysm.EarnedBossSave.ARunFileFromBeforeTheBossDungeonMigratesUnopened`,
+  `TheCommittedRunFileReadsIntoTheBossDungeonItStates`;
+- `Cataclysm.EmpireRun.EachDaysHitsAddUpToWhatEachCityLost`, `TheDaysAwayAreTotalledFromTheDaysOwnReports`;
+- `Cataclysm.Input.ConfigListsEverySlotAndNativeAction`, `MappingContextsCoverEveryActionWithoutCollisions`,
+  `TheEmpireMapIsOnMInBothSchemes`;
+- `Cataclysm.SaveRecords.AFileWithoutTheDarkFloorStillLoadsAsNotOnIt`, `AFileWithoutThePartOfADayStillLoads`,
+  `AFileWithoutTheSurgeScheduleStillLoads`, `EveryFixtureHoldsEveryFieldItsRecordWrites`,
+  `TheCommittedRunFileKeepsTheDarkFloorAndTheFloorFallenFrom`, `TheCommittedRunFileKeepsTheFloorAndTheDamageDoneToIt`,
+  `TheCommittedRunFileKeepsTheSurgeSchedule`;
+- `Cataclysm.SaveTriggers.EachRecordIsWrittenForTheReasonsThatChangeIt`,
+  `OnlyTheCharacterDyingAndLeavingTheLevelAreWrittenBeforeTheFrameEnds`;
+- `Cataclysm.Travel.ARunFileFromBeforeTripsMigratesWithNoAwardNoClearAndNoWalkEnded`,
+  `TheCommittedRunFileReadsIntoTheAwardTheClearAndTheDaysAwayItStates`, `TheMapsLatestEventShowsADeathOnDayZero`,
+  `TheMapsReturnLineSaysWhatTheWalksEndDid`;
+- `Cataclysm.WalkFromTheScreen.ARefusedWalkIsShownAndEntersNothing`,
+  `PressingWalkOnACityScreenInADungeonLevelEntersThatDungeon`;
+- `Cataclysm.WinningTheRun.ARunFileFromBeforeTheWinLineMigratesWithNone`, `TheCommittedRunFileReadsIntoTheWinLineItStates`.
+
+**Nine reach a draw, and their assertions were read one by one:**
+
+| Test | The draw it reaches | Depends on the draw? |
+| :-- | :-- | :-- |
+| `Cataclysm.Travel.TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk` | a new character's run, so its dungeons, sub-types, floors and modifiers | **The owed days, changed above.** Not the rest: entering refills every potion to the fixed `MaxCharges`, 30, and nothing at a floor's start changes a charge; none of the steps after the floor change's trigger -- a Starvation Curse, a Chaos Touch, the floor's rules on the player, the `floor_start` event on the test's own character -- raises a save trigger, so "the walk was written at once" holds; the floor is 1 and the day 0 whatever the dungeon |
+| `Cataclysm.Travel.TheCapitalsWalkWritesBothRecordsAndCarriesTheCharacterToTheDungeonLevel` | a new character's run | No. "The opening wave's twelve" is `OpeningDungeonsPerSurge` at the Static mode, and on day 0 every exposed city has room; the health, potions, level and experience are the ones the test sets |
+| `Cataclysm.Travel.TheLastFloorsStairsClearTheDungeonAndTakeTheCharacterBackToTheCapital` | floors' seeds | No. `BeginWalking`'s run is seeded 1 and its dungeon placed by hand, one day a floor; the award and the return line follow from that run |
+| `Cataclysm.Travel.ADeathThatEndsAWalkTakesTheCharacterBackToTheCapitalWhole` | floors' seeds | No. Every figure is measured in the test: the day before, the days owed, the death's cost, the city's loss |
+| `Cataclysm.Travel.ADeathInTheCataclysmsOwnDungeonStandsThePlayerBackUpInside` | floors' seeds | No. `BeginWalking`'s run; it asserts where the character stands and what travels |
+| `Cataclysm.SaveLoad.ProcessingADeathWritesTheSaveAfterThePenalty` | floors' seeds | No. A run seeded 1, a dungeon placed by hand; the day is the day inside plus the measured cost |
+| `Cataclysm.SaveLoad.ADeathInADungeonIsPaidForAfterALoad` | floors' seeds; a load of a record holding its run | No. The days are the saved day, the saved owed days and the measured cost |
+| `Cataclysm.SaveLoad.ALoadedPactAltarOffersThePactsItOffered` | floors' seeds, pinned | No. The dungeon's seed is pinned for the whole test |
+| `Cataclysm.WinningTheRun.TheEarnedBossDungeonsStairsWinTheRunOnceItsCataclysmBossIsDead` | the next run after the win | No. The won run is seeded 11; of the next run it asserts the tier, the Cataclysms of the character's own seed and the win it carries |
+
+**Changed: the one test above. No other figure depends on the draw.**
+
+### Registered before window travel-w2
+
+The coordinating session's shape for it, ruled 2026-11-18: the Travel group alone five times, then C2 and C9, then
+Python; no whole suite. `.claude/windows/run_b2733s3_w2.py`, lock `travel-w2`: the pre-checks, the lock, one build, the
+check that HEAD holds the four input assets of `e06b5f16`, then:
+
+| Step | Registered |
+| :-- | :-- |
+| `Cataclysm.Travel.` alone, run 1 to 5 | each 9 performed, 9 succeeded, 0 failed; each "TRAVEL ARRIVE" line naming the sub-type drawn and owing the whole days of its rate, the part-day 0 |
+| C2, broken half | `Cataclysm.Travel.`: 9 performed, 7 succeeded, 2 failed: `TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk`, 1 assertion, "and not at the capital's place, which means nothing here"; `TheLastFloorsStairsClearTheDungeonAndTakeTheCharacterBackToTheCapital`, 1, "and not at the dungeon's place" |
+| C2, restored half | 9 of 9 |
+| C9, broken half | `Cataclysm.Travel.`: 9 performed, 8 succeeded, 1 failed: `TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk`, 2 assertions, "saying the character is in that dungeon", "on floor 1" |
+| C9, restored half | 9 of 9 |
+| Python | "7471 passed, 9 skipped", and ruff passing |
+
+**Nine runs of the arrival test each draw a dungeon**: the five alone, and both halves of C2 and of C9. At 7 in 100,
+the chance that none of the nine draws a Cow Level is 0.93 to the ninth power, about 0.52, so the window is about as
+likely as not to see the doubled rate asserted. The "TRAVEL ARRIVE" lines will say which it saw.
 
 ---
 
