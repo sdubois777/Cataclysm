@@ -423,8 +423,15 @@ exemption is for.
 | :-- | :-- | :-- | :-- |
 | C9 | `ChangedFloor` taken out of `WritesEvenIfTheRunWasWrittenThisFrame` (`CataclysmSaveTriggers.cpp`) | `Cataclysm.Travel.` | 9 performed, 8 succeeded, 1 failed: `TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk`, 2 assertions: "saying the character is in that dungeon", "on floor 1" -- the first run's two |
 
-**Python, after the second run's start: "7471 passed, 9 skipped"**, one more than the first registration for the check
-above; ruff passing.
+**Python: "7471 passed, 9 skipped"**, one more than the first registration, the check above; measured at this
+re-registration, its JUnit file 7480 tests, 0 failures, 0 errors; ruff passing. The window adds no Python.
+
+**Compiled twice after the first run**, with no error and no warning from this branch's files: the three changed
+`.cpp` files alone, uncommitted ("23 actions, 20 files compiled", the three among them by name, with the files whose
+included headers changed); and committed as `a99d4c754`, the makefile set aside ("9 actions, 6 files compiled: Module.Cataclysm.13.cpp,
+Module.Cataclysm.37.cpp, Module.Cataclysm.39.cpp, Module.Cataclysm.38.cpp, Module.Cataclysm.40.cpp,
+Module.Cataclysm.41.cpp"), the unity files holding `CataclysmSaveTriggers.cpp`, `CataclysmDungeonGameMode.cpp` and
+`CataclysmSaveLoadTests.cpp`.
 
 ---
 
