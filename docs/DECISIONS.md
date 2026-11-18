@@ -348,6 +348,34 @@ a dot; no group at the base begins `Cataclysm.StalkerKit`.
 Each anchor occurs once in its file: counted in phase 1, and again on the rebased tree in phase 2 (`prove_k2580.py
 --anchors-only`, "anchor count 1" for all five). The breaks were not compiled.
 
+### Window stalker-kit-w1: the results
+
+Run by the coordinating session on 2026-11-17 (local time) at `5d95e7ffe` (on `development` `cee5fa175`), lock
+`stalker-kit-w1`, after the six pre-checks all passed (13,941 MB of physical memory free). Every registered figure was
+met.
+
+| Figure | Registered | Printed |
+|---|---|---|
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (phase 2's builds of the same tree compiled every changed file alone and every unity file holding one) |
+| The thirteen groups alone | each at its registered count | every one "0 failed": StalkerKit. 13, Skills. 283, Projectile. 2, Effects. 55, Chorus. 6, SkillGadgets. 22, ForcedMovement. 13, Potions. 7, PotionFamine. 3, Regeneration. 12, Ailments. 23, StatExemption. 37, ConsumptionDouble. 15 |
+| Whole Unreal suite | 4752, 47 skipped halves, 0 left behind | "4752 tests performed, 4752 succeeded, 0 failed. 47 skipped part of what they check"; "Declared: 4752 tests in the tree at 5d95e7ffe; 4752 performed, gap 0"; "Test saves: 757 written and deleted, 0 left behind" |
+| Python | of record | "7425 passed, 9 skipped in 188.48s"; JUnit tests 7434, failures 0, errors 0, skipped 9; ruff "All checks passed!" |
+| C1 | 2 tests, 5 assertions | PROVED. `AStatedAilmentIsLaidByALandedBlow` and `ATimedAuraInTheSupportSlotPaysOneUseAndLaysItsAilment`, 5 failed assertions; restored 13 of 13 |
+| C2 | 2 tests, 4 assertions | PROVED. `ANecrosisFromAnyOtherSourceStillDeniesAPotion` and `AStalkersNecrosisSparesAPotionAndDeniesEveryOtherHeal`, 4; restored 13 of 13 |
+| C3 | 1 test, 2 assertions | PROVED. `ARolledSkillDealsTheFigureThisUseDrew`, 2; restored 13 of 13 |
+| C4 | 1 test, 6 assertions | PROVED. `APickLaysOneNamedEffectAndNotAll`, 6; restored 13 of 13 |
+| C5 | 2 tests, 6 assertions | PROVED. `AFiredShotLaysWhatALandedBlowCarries` and `TheSpearsSkewerAtItsRealSpeedPinsAndBindsItsLine`, 6; restored 13 of 13 |
+
+Each assertion count is the broken run's failed-assertion lines, read from its kept log.
+
+**The corrupted double's Necrosis, ruled by the coordinating session on 2026-11-17.** Phase 2 found that the potion
+exemption also covers the Consumption double, a subclass of `ACataclysmCorruptedStalkerCharacter`. Ruled: KEEP IT. The
+game mode's two other rules that single out the Stalker (Divine Wrath's beam, the Epidemic chain) include the double the
+same way, and the owner's reason for sparing potions, that the player always keeps an answer, applies to the double
+equally. No test asserts the double's case; one is not added here.
+
+Only this section was added after the tested commit.
+
 ### Not tested
 
 - **Nothing in this entry has run in the engine.** It compiles (phase 2); every Unreal figure above is a prediction.
