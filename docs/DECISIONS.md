@@ -212,7 +212,13 @@ anchor counted once in its file first; each `result.proved` True and `crashed` F
 
 ### Python of record
 
-Recorded in the commit after the one it was measured on.
+Measured at `5b0bb8292`, the Unreal lock free: "1 failed, 7438 passed, 8 skipped in 189.58s", and the JUnit file's
+`testsuite` tests="7447" failures="1" errors="0" skipped="8" (7438 passed), the two agreeing. **The one failure is the
+registered one**, `test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+naming `['WeaponSkills.csv']` alone: the asset rebuild above clears it. Against the base's 7434 collected, the 13
+added are the nine of `test_stalker_kit_rows.py` and four parametrized cases of `test_stun_durations_are_stated.py`
+(two tests, two new rows each). `python -m ruff check .`: "All checks passed!" Only this section was added after the
+measured commit.
 
 ### Not tested
 
