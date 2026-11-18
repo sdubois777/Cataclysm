@@ -26,9 +26,13 @@ now `const`; `ACataclysmProjectile::PinnedAlongItsFlight`, new; and `UCataclysmP
 
 ### SAID FIRST
 
-- **WRITTEN, NOT COMPILED.** Phase 1, by instruction: another session holds the build machine. No C++ in this change
-  has been compiled, no Unreal test has run and no C++ guard proof has run. Everything under "Registered before the
-  run" is a prediction. The Python checks are run, and each new one is proved with `tools/prove_guard.py`.
+- **COMPILED IN PHASE 2, NOT YET RUN.** Phase 1 was written without a build, by instruction. Phase 2 rebased it onto
+  development `cee5fa175`, compiled it (one fix, to the tests: see "Phase 2" below), compiled every changed `.cpp`
+  alone and every unity file holding one, and registered the run. No Unreal test and no C++ guard proof has run:
+  everything under "Registered before the run" is a prediction. The Python checks are run, and each new one is proved
+  with `tools/prove_guard.py`.
+- **THE CORRUPTED DOUBLE'S NECROSIS SPARES A POTION TOO**, found in phase 2: it is a subclass of the Stalker, and the
+  class is what the exemption asks. Kept, and reported as a reading for the coordinating session (see "Phase 2").
 - **MECHANISMS ONLY.** No workbook cell, no generated CSV and no skill row changes. No row of
   `game/Data/WeaponSkills.csv` states any of the new keys; the 36 rows are authored later by another branch.
 - **`UCataclysmAilments::AilmentOfDamageType` IS UNCHANGED**, by instruction. Its readers are listed below; whether
@@ -256,6 +260,73 @@ wrong row). The new riders join `RIDERS` in the simulation, which `test_enemy_ab
 
 Each summary read "PROVED: N failed, M passed | restored: 49 passed".
 
+### Phase 2, 2026-11-17: rebased, compiled, reviewed and registered
+
+**Rebase.** `feat/stalker-kit-mechanisms` at `eda79140f` (cut from `bbea27692`) was rebased onto development `cee5fa175`
+as `feat/stalker-kit-mechanisms-2`. Since `bbea27692` development had added #2721, #2724, #1671, #2727 and #2728. The
+one conflict was this log, both sides adding an entry at the top: this entry first, then development's. No C++
+conflicted. The rebased branch changes exactly the lines the original did (the two diffs' changed lines compared
+equal, this file apart). `python tools/check_resolved_cpp.py` on the branch's 15 C++ files: "15 files read, 0 with
+complaints" (`--changed` reads nothing on a clean tree, so the files were named).
+
+**Compile.** The first build compiled everything but the new test file, which failed six times with C2666,
+"'FAutomationTestBase::TestEqual': overloaded functions have similar conversions": each compared a location's
+coordinate, a `double` under large world coordinates, with `float` figures. Each actual is now cast to `float`
+(`cad8b1f39`); nothing else failed. Then:
+
+| Build | Its line |
+|---|---|
+| After the fix | "Build: Succeeded - 6 actions, 2 files compiled: CataclysmStalkerKitMechanismTests.cpp, Module.Cataclysm.34.cpp" |
+| Every changed `.cpp` alone (tree reset to development, makefile set aside) | "Build: Succeeded - 15 actions, 12 files compiled: CataclysmAbilitySystemComponent.cpp, CataclysmAilments.cpp, CataclysmPotions.cpp, CataclysmProjectile.cpp, CataclysmSkillShape.cpp, CataclysmSkillTemplate.cpp, CataclysmSkillTemplates.cpp, Module.Cataclysm.2.cpp, ... .6.cpp". `CataclysmRegeneration.cpp` and the test file had compiled alone in the two builds before, unchanged since |
+| The unity files (head restored, makefile set aside) | "Build: Succeeded - 9 actions, 6 files compiled: Module.Cataclysm.2.cpp, Module.Cataclysm.3.cpp, Module.Cataclysm.34.cpp, Module.Cataclysm.4.cpp, Module.Cataclysm.5.cpp, Module.Cataclysm.6.cpp": every unity file holding a changed `.cpp` (2 the ability system component, 3 the ailments, 4 potions, projectile and regeneration, 5 the shape and the template, 6 the templates, 34 the tests) |
+
+No warning names a file of this branch.
+
+**Review.**
+
+- **#2728 and attack damage.** Nothing in this branch writes a creature's attack damage attribute. Its only writes of
+  `GetAttackDamageAttribute` are two test set-ups, on a plain fighter (`FKitFighter`, an `AActor`, not an
+  `ACataclysmEnemyCharacter`) and on the player. Weaken, which the kits lay, moves the attribute through a timed
+  effect's modifier in `ApplyNamedEffect`, never by writing it, and that path is not changed here.
+  `tools/tests/test_a_rule_gives_a_creature_damage_as_a_part.py` passes on the rebased tree.
+- **The projectile riders keep every row stating none.** Read again against `game/Data`: of the nine Projectile rows of
+  `WeaponSkills.csv` only `Demonic_Spear_Special` states one of `Effect`, `Knockback`, `ForcedMovement`, `StunSeconds`;
+  the four ranged basic attacks of `ItemBases.csv` state none; `MinionTypes.csv` has no Projectile shape. Each rider
+  refuses a nought: `ApplyKnockback` and `ApplyKnockbackFrom` return on a distance of nought, `ApplyStun` on a
+  duration of nought, `ApplyForcedMovementTo` on an empty verb, and `ApplyNamedEffectsTo` lays nothing for an empty
+  `Effect`. The one rider a row does not state, the carried knockdown, comes only from `knockdown_seconds`, and its only
+  row (`Positive_Charge_skills_knock_down_enemies_they_hit_for_1`) is scoped to `Keyword.Charge`, which no projectile
+  row or basic attack carries. A shot no skill fired, every creature's own, reaches none of it.
+- **The potion exemption asks the instigator's class and nothing else**: `Cast<ACataclysmCorruptedStalkerCharacter>`
+  on the running Necrosis's context instigator, which `ApplyDamageOverTime` sets with `AddInstigator(Instigator,
+  Instigator)`. **FOUND: that includes the corrupted double**, a subclass; the judgement table above said otherwise
+  and is corrected (`a8338d0c0`), with the header comment. The code is kept, because the game mode's two other
+  `IsA<ACataclysmCorruptedStalkerCharacter>` rules include the double the same way. **A reading for the coordinating
+  session to confirm or overrule**; no test asserts either answer.
+- **The random buff grants the Stalker no stat lines**, as ruling 2 above says, and nothing in the branch claims
+  otherwise: the self buff's comment, the test's and the header's say only that a buff is held for the self buff's
+  seconds. `RefreshWornStatLine` finds no `UCataclysmEquipmentComponent` on the Stalker, whose wardrobe belongs to the
+  transient package. Accepted, since the Chaos row is to be replaced.
+
+**Audit of every assertion against a fixed number or a starting state**, read against the code it reaches:
+
+| Test | Figure or state | Why it holds |
+|---|---|---|
+| All thirteen | the crit roll pinned at 100 where a blow's size is read; health 100000 on every fighter; no fighter in reach of another test's | `FScopedCritRoll`, as `CataclysmSkillTemplateTests.cpp`; the fighters of one block stand 20 to 30 m from the next block's, beyond every radius used (8 m at most) |
+| `AStatedAilmentIsLaidByALandedBlow` | each tag after one cast | `Apply` at magnitude 1 lays a DoT row with a duration and a per-tick figure (Poison 20/s 8 s, Disease 12/s 6 s, Necrosis 10/s 10 s) and Void Splinter's 1% a second for 4 s; the first tick is a second in, and no world time passes |
+| The shot tests | 1200 cm/s, 100 steps of 0.05 s, a 10 m flight; knockback 4 m to 6 m within 5 cm; Death resistance 40 to 20 | 0.83 s of flight in 5 s of steps; the first displacement in 5 s is whole; Shred takes `EffectMagnitude` points, 20, from a resistance set to 40 |
+| `TheSpearsSkewer...` | 1800 cm/s, 200 steps, 14 m; both pinned after the flight | 0.78 s of flight; the pin's 4 s is a timed effect and no world time passes in a stepped flight |
+| The potion tests | 500 of 1000, regeneration 0; the potion 350; owed 0 or 350; the CONTROL's 100 | `HealShareOfMaximum` is 0.35 and `Drink` fixes it from the maximum; a step longer than `HealSeconds` pays it all; `HealStep` returns what it offered whether or not `TopUp` denied it; the CONTROL's room is 1000 - 850 - 0 = 150, so all 100 is owed |
+| `ARolledSkillDealsTheFigureThisUseDrew` | 50, 250, 450 of a weapon dealing 100; 250 before any use | the precedent in `CataclysmSkillTemplateTests.cpp` deals the Heavy slot's 250% of the fighter's weapon damage in full to a target with no armour, resistance or evasion |
+| `APickLaysOneNamedEffectAndNotAll` | places 0 and 1; unpinned exactly one | `NamedEffectTags` keeps Shred and Weaken in the cell's order; a Chaos resistance of 40 gives the Shred something to cut |
+| `ASelfBuffDrawingARandomBuff...` | Commander at place 3; 8 s left | `RandomBuffTable` lists Mana Surge, Tactical Advantage, Famished, Commander first (the test also checks the place); `OwnDurationMultiplier` is 1 for a fighter with no stat lines |
+| `ATimedAuraInTheSupportSlot...` | one cost at the cast; nothing at a pulse; the toggle drains the same cost | a pulse charges `ManaCostFor(..., false) x Interval` only when `Duration <= 0`, and both auras are in the Support slot at level 100; activation does not pulse |
+| `AnAuraPulsePulls...` | 5 m to 4 m to 3.5 m; 45 m to 47 m | `ApplyPullFrom` moves `min(distance, gap)` at once; the second displacement inside 5 s is halved; no pulse at activation |
+| `WitheredTouchNamedByASkill...` | maximum mana 1000 to 800; 0.8 kept | Withered Touch's row: 5 s, strength 20, moving `max_mana` and `max_energy_shield` by proportion |
+| `ShredWeakenAndStun...` | 40 to 20; 100 to 60; stunned | Shred 20 points of the skill's own element; Weaken 40 by proportion (cap 80); `StunSeconds=1` with `Effect=Stun` is a designed stun. The four casters stand within 3 m of each other and their rings strike each other too; no assertion reads a caster |
+
+Nothing was found wrong by the audit.
+
 ### Registered before the run
 
 Assertion wording is the engine's: "Expected '<what>' to be true." / "to be false." for `TestTrue` / `TestFalse`, and
@@ -265,20 +336,23 @@ a dot; no group at the base begins `Cataclysm.StalkerKit`.
 | Figure | Registered |
 |---|---|
 | `Cataclysm.StalkerKit.` alone | 13 performed, 13 succeeded: none at the base, + 13 by name; no skipped half |
-| Groups whose code paths changed, none of their tests changed | `Cataclysm.Skills.`, `Cataclysm.Potions.`, `Cataclysm.Ailments.`, `Cataclysm.Chorus.`, `Cataclysm.StatExemption.`: TO BE MEASURED at the base; registered as the base's count, all succeeding |
-| Whole Unreal suite | TO BE MEASURED: the base's last measured total plus 13, all succeeding; skipped halves unchanged (no new test calls `ReportSkippedHalf`); 0 test saves left behind |
+| Groups whose code paths changed, none of their tests changed, each alone, all succeeding | `Cataclysm.Skills.` 283 (`HitTargets`' riders, a beam's landing, the Skewer's beam test); `Cataclysm.Projectile.` 2, `Cataclysm.Effects.` 55, `Cataclysm.Chorus.` 6 and `Cataclysm.SkillGadgets.` 22 (shots through `HitOne`); `Cataclysm.ForcedMovement.` 13; `Cataclysm.Potions.` 7 and `Cataclysm.PotionFamine.` 3 (`HealStep`); `Cataclysm.Regeneration.` 12; `Cataclysm.Ailments.` 23 (the Necrosis denial in `TopUp`); `Cataclysm.StatExemption.` 37; `Cataclysm.ConsumptionDouble.` 15 (the double, a Stalker subclass). Each is the count of "Test Completed" lines under its prefix in rule-damage-w1's whole-suite engine log at `da83171f` (4739 performed, 47 skipped halves); development `cee5fa175`'s `game/` tree is that tree plus #2727, whose diff adds and removes no test name. Each prefix ends in a dot and is a case-insensitive string prefix of no other group (`Cataclysm.Skills` would take `SkillShape` and `SkillStats`, `Cataclysm.Projectile` would take `ProjectileCount` and `ProjectileRange`, `Cataclysm.Chorus` would take `ChorusHeld`, `Cataclysm.Potion` would take `PotionFamine`) |
+| Whole Unreal suite | 4752 performed, 4752 succeeded: 4739 at the base + 13 by name; 47 skipped halves, unchanged (no new test calls `ReportSkippedHalf`); 0 test saves left behind (no new test writes one) |
 | C1, the rider removed: `			ApplyStatedAilmentTo(Self, Target);` to `			(void)Self;`, in `CataclysmSkillTemplate.cpp`, prefix `Cataclysm.StalkerKit.` | 13 performed, 11 succeeded, 2 failed, 5 assertions: `AStatedAilmentIsLaidByALandedBlow`, four, "Ailment=<X> lays Keyword.DoT.<X>" for Poison, Disease, Necrosis and VoidSplinter, each "to be true."; `ATimedAuraInTheSupportSlotPaysOneUseAndLaysItsAilment`, one, "and still lays the Necrosis its row states". The two shot tests and the Skewer test pass: a shot's ailment is laid in `HitOne` and its holds through `LayTheLandedBlowsHolds`, neither of which the break touches |
 | C2, the exemption inverted: `&& !(bFromAPotion && NecrosisSparesPotions(AbilitySystem)))` to `&& !(bFromAPotion && !NecrosisSparesPotions(AbilitySystem)))`, in `CataclysmRegeneration.cpp`, same prefix | 13 performed, 11 succeeded, 2 failed, 4 assertions: `AStalkersNecrosisSparesAPotionAndDeniesEveryOtherHeal`, "and restored, under the Stalker's Necrosis" ("to be 850.000000, but it was 500.000000 ...") and "and none of it is owed, so none is dealt when the Necrosis ends" ("to be 0.000000, but it was 350.000000 ..."); `ANecrosisFromAnyOtherSourceStillDeniesAPotion`, "the potion restores nothing under another source's Necrosis" ("to be 500.000000, but it was 850.000000 ...") and "and its whole heal is owed, as before" ("to be 350.000000, but it was 0.000000 ..."). Every CONTROL holds |
 | C3, no draw: `	RolledDamagePercent = Params.RollsItsDamage() ? DrawDamageRoll() : -1.0f;` to `	RolledDamagePercent = -1.0f;`, in `CataclysmSkillTemplate.cpp`, same prefix | 13 performed, 12 succeeded, 1 failed, 2 assertions: `ARolledSkillDealsTheFigureThisUseDrew`, "pinned at the least, the use deals 50% of 100" ("to be 50.000000, but it was 250.000000 ...") and "pinned at the most, 450" ("to be 450.000000, but it was 250.000000 ..."); the middle and the CONTROL hold |
 | C4, no pick: `ESearchCase::IgnoreCase) && Laying.Num() > 1)` to `ESearchCase::IgnoreCase) && Laying.Num() > 99)`, in `CataclysmSkillTemplate.cpp`, same prefix | 13 performed, 12 succeeded, 1 failed, 6 assertions: `APickLaysOneNamedEffectAndNotAll`, "and the Weaken is not" ("to be false."), "pinned to the second place, the Shred is not laid" ("to be false."), and "unpinned, target N carries exactly one of the two" for N 0 to 3 ("to be true.") |
 | C5, a shot's riders cut off: `if (Firing->LayWhatALandedShotCarries(Firer, Target, Dealt))` to `if (Firing->DrawsARandomBuff())`, in `CataclysmProjectile.cpp`, same prefix | 13 performed, 11 succeeded, 2 failed, 6 assertions: `AFiredShotLaysWhatALandedBlowCarries`, "a shot stating Knockback=2 pushes its target 2 metres away from the firer" ("to be 600.000000, but it was 400.000000 and outside tolerance 5.000000."), "a shot naming Shred lays it" ("to be true."), "cutting its target's Death resistance from 40 to 20" ("to be 20.000000, but it was 40.000000 ...") and "a shot stating a stun stuns its target" ("to be true."); `TheSpearsSkewerAtItsRealSpeedPinsAndBindsItsLine`, "at its real speed it pins the first" and "and the second" ("to be true."). Every CONTROL holds; "and the second is freed, so the line was bound" passes, since nothing was pinned |
-| Python | Measured again at `957282a33`, after the rulings: "7402 passed, 8 skipped in 202.42s", and the JUnit file tests="7410" failures="0" errors="0" skipped="8", the two agreeing (no Python changed). Measured first at this branch's first commit, `7d154ddc6`: "7402 passed, 8 skipped in 195.54s", and the JUnit file's `testsuite` tests="7410" failures="0" errors="0" skipped="8" (7402 passed), the two agreeing. A first run failed one test, `test_every_top_level_directory_is_in_the_layout_table`, on this session's untracked scratch folder at the worktree root; it was moved under `.claude/` and the suite run again. `ruff check .`: "All checks passed!" |
+| Python | **Phase 2, measured at `a8338d0c0` on development `cee5fa175`:** "7425 passed, 9 skipped in 198.52s", and the JUnit file's `testsuite` tests="7434" failures="0" errors="0" skipped="9" (7425 passed), the two agreeing. `python -m ruff check . --extend-exclude .claude`: "All checks passed!" **Phase 1**, measured again at `957282a33`, after the rulings: "7402 passed, 8 skipped in 202.42s", and the JUnit file tests="7410" failures="0" errors="0" skipped="8", the two agreeing (no Python changed). Measured first at this branch's first commit, `7d154ddc6`: "7402 passed, 8 skipped in 195.54s", and the JUnit file's `testsuite` tests="7410" failures="0" errors="0" skipped="8" (7402 passed), the two agreeing. A first run failed one test, `test_every_top_level_directory_is_in_the_layout_table`, on this session's untracked scratch folder at the worktree root; it was moved under `.claude/` and the suite run again. `ruff check .`: "All checks passed!" |
 
-Each anchor occurs once in its file (counted with `grep -c` at this commit). The breaks were not compiled.
+Each anchor occurs once in its file: counted in phase 1, and again on the rebased tree in phase 2 (`prove_k2580.py
+--anchors-only`, "anchor count 1" for all five). The breaks were not compiled.
 
 ### Not tested
 
-- **Nothing in this entry has been compiled or run in the engine.** Every Unreal figure above is a prediction.
+- **Nothing in this entry has run in the engine.** It compiles (phase 2); every Unreal figure above is a prediction.
+- Whether the corrupted double's Necrosis should spare a potion: kept as it falls out of the class (see "Phase 2"),
+  and asserted by no test either way.
 - An evaded blow laying no stated ailment: the rule is the burn's (`bLanded`), not exercised here.
 - A Corrupted Stalker casting these skills through its brain: the tests cast from a plain fighter and lay the
   Stalker's Necrosis through `UCataclysmAilments::Apply`, the call `Ailment=Necrosis` makes. The Stalker's choice of
