@@ -8570,6 +8570,11 @@ bool FCataclysmFirstSurgeLoadedTest::RunTest(const FString&)
 	// THE SAVING WORLD: a new character made, its records written, its run's dungeons kept to compare.
 	FSaved Saved;
 	ON_SCOPE_EXIT { Saved.Forget(); };
+	// THE SAVING WORLD'S OWN SLOTS, BY NAME, deleted too: the same two as `Saved`'s when the set-up holds, and still
+	// deleted when it does not, so a failed set-up leaves no save behind.
+	FString SavingRunSlot;
+	FString SavingCharacterSlot;
+	ON_SCOPE_EXIT { Delete(SavingRunSlot); Delete(SavingCharacterSlot); };
 	TArray<FCataclysmDungeon> SavedDungeons;
 	TArray<float> SavedTimers;
 	{
@@ -8583,6 +8588,8 @@ bool FCataclysmFirstSurgeLoadedTest::RunTest(const FString&)
 			return false;
 		}
 		ON_SCOPE_EXIT { Saving.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		SavingRunSlot = Saving.Writer->RunSlotName();
+		SavingCharacterSlot = Saving.Writer->CharacterSlotName();
 		Saved.CharacterId = Saving.Writer->HoldsTheCharacter();
 		ACataclysmGameMode* Mode = AGameModeIn(Saving);
 		if (!TestNotNull(TEXT("set-up: a game mode"), Mode))
