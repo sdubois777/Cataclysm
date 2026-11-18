@@ -84,6 +84,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Player/CataclysmGameInstance.h"
+#include "Player/CataclysmPlayLoopLog.h"
 // For `CapitalMap`, the level a walk's end returns to. Issue #2733 slice 3.
 #include "Interface/CataclysmCharacterSelectWidget.h"
 #include "HAL/IConsoleManager.h"
@@ -15378,6 +15379,15 @@ bool ACataclysmDungeonGameMode::GoDownOneFloor(APawn* PawnToMove)
 	// 1 is spent by `EnterEmpireDungeon`.
 	SpendFloorTimeInTheEmpire();
 
+	// THE PLAY LOOP: each floor of a walk, and what the walk owes by now. Not in the sandbox, which walks no dungeon.
+	// Issue #2733 slice 4.
+	if (EmpireDungeonId != INDEX_NONE)
+	{
+		const UCataclysmEmpireRun* Walking = EmpireRun();
+		FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::FloorLine(EmpireDungeonId, FloorNumber, EmpireDungeonFloors(),
+																	Walking ? Walking->DaysOwed() : 0));
+	}
+
 	return true;
 }
 
@@ -15529,6 +15539,9 @@ bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
 	// each descent. `SpendFloorTimeInTheEmpire` charges the dungeon's own
 	// `WalkDaysPerFloor`, which a city upgrade can have lowered.
 	SpendFloorTimeInTheEmpire();
+
+	// THE PLAY LOOP: the dungeon entered, and what entering it cost. Issue #2733 slice 4.
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::EnteredLine(DungeonId, EmpireDungeonFloors(), Run->DaysOwed()));
 
 	return true;
 }
@@ -25028,6 +25041,9 @@ bool ACataclysmDungeonGameMode::ClearEmpireDungeon()
 	const int32 DaysTheWalkOwed = Run->DaysOwed();
 	const int32 DayOfTheClear = Run->Day() + DaysTheWalkOwed;
 	const int32 DayTheWalkLeft = Run->Day(); // The run's day does not move while the player is inside.
+	// THE DUNGEONS STANDING BEFORE THE WALK'S DAYS RUN, for the play loop's account of the days away: a dungeon those
+	// days resolve is no longer on the run to be named afterwards. Issue #2733 slice 4.
+	const TMap<int32, FString> NamesBeforeTheDays = FCataclysmPlayLoopLog::NamesStanding(Run);
 
 	const bool bCleared = Run->ClearDungeon(EmpireDungeonId);
 
@@ -25052,6 +25068,18 @@ bool ACataclysmDungeonGameMode::ClearEmpireDungeon()
 	if (bCleared)
 	{
 		Run->NoteDaysAway(DayTheWalkLeft, Run->Day(), LastWalksDays, /*bEndedInAClear*/ true);
+
+		// THE PLAY LOOP: the clear, here; the days away, for the capital to say on arrival. Issue #2733 slice 4.
+		UWorld* World = GetWorld();
+		APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+		const ACataclysmPlayerState* Clearer = Controller ? Controller->GetPlayerState<ACataclysmPlayerState>() : nullptr;
+		FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ClearLine(Cleared, DayOfTheClear, Run->LastEmpirePointsAwarded,
+																	Clearer ? Clearer->GetCharacterLevel() : 0));
+		if (UCataclysmGameInstance* Instance = World ? Cast<UCataclysmGameInstance>(World->GetGameInstance()) : nullptr)
+		{
+			Instance->PlayLoopAwayAccount = FCataclysmPlayLoopLog::AwayAccount(DayTheWalkLeft, Run->Day(), LastWalksDays,
+																			   NamesBeforeTheDays, Run);
+		}
 	}
 
 	// AND A CLEAR THAT WON THE RUN -- the Cataclysm's own dungeon, cleared -- ENDS IT, after the walk is left, which ran
@@ -25192,6 +25220,12 @@ bool ACataclysmDungeonGameMode::EndTheDungeonForADeath()
 	// with no dungeon behind it.
 	const FString NameOfTheDungeon = Run->NameOfDungeon(DiedInDungeon);
 
+	// THE FLOOR DIED ON, AND THE DUNGEONS STANDING BEFORE THE DEATH'S RESOLVE AND ITS DAYS, for the play loop. Issue
+	// #2733 slice 4.
+	const int32 FloorDiedOn = FloorNumber;
+	const int32 FloorsOfTheWalk = EmpireDungeonFloors();
+	const TMap<int32, FString> NamesBeforeTheDays = FCataclysmPlayLoopLog::NamesStanding(Run);
+
 	// 1. IT RESOLVES, IF IT IS THE KIND THAT DOES, WHILE THE PLAYER IS STILL
 	// INSIDE. Every part of that is the empire's: the consequence on the city,
 	// the dungeon leaving the map after it, and doing nothing at all for a
@@ -25237,6 +25271,19 @@ bool ACataclysmDungeonGameMode::EndTheDungeonForADeath()
 	// LastDeathLine` of it. Issue #41, ruled by the coordinating session on 2026-11-02.
 	Run->NoteDeath(DayOfTheDeath, NameOfTheDungeon, DaysTheWalkOwed, DaysTheDeathCost,
 				   WhatTheDeathResolved.Fallen);
+
+	// THE PLAY LOOP: the death, here; the days away, its resolve's among them, for the capital to say on arrival.
+	// Issue #2733 slice 4.
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::DeathLine(DiedInDungeon, FloorDiedOn, FloorsOfTheWalk,
+																DaysTheDeathCost));
+	if (UWorld* World = GetWorld())
+	{
+		if (UCataclysmGameInstance* Instance = Cast<UCataclysmGameInstance>(World->GetGameInstance()))
+		{
+			Instance->PlayLoopAwayAccount = FCataclysmPlayLoopLog::AwayAccount(DayTheWalkLeft, Run->Day(), DaysAway,
+																			   NamesBeforeTheDays, Run);
+		}
+	}
 
 	// AT `Log`, LIKE THE DEATH ITSELF AND FOR ITS REASON. The same figures are on screen since 2026-11-02, in the
 	// line the run now keeps; this stays as the record a log reader has.

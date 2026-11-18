@@ -456,7 +456,11 @@ by `git add` with no error and no warning. Guarded by
   and what the days away did. Each trip is a save and a load: the level being left
   writes the character and run records and the next level loads them, so the
   character arrives with its level, experience, gear, health and potions and not
-  its place. **No walk can be left early**: a Walk press, `Cataclysm.LeaveDungeon`
+  its place. **To play the whole loop with one press of Play**, follow
+  [docs/Play_Loop_Checklist.md](../docs/Play_Loop_Checklist.md): what to click,
+  and what each step shows on screen and as a `PLAY LOOP:` line in the log
+  (issue [#2733](https://github.com/sdubois777/Cataclysm/issues/2733) slice 4).
+  **No walk can be left early**: a Walk press, `Cataclysm.LeaveDungeon`
   and `Cataclysm.EnterDungeon` are refused while one is under way. `L_Dungeon`
   opened directly in the editor still enters a dungeon by a Walk button or the
   console. **Only walking a dungeon, dying in one and the console commands move

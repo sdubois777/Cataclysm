@@ -11,6 +11,7 @@
 #include "Player/CataclysmFrontEndGameMode.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmGameMode.h"
+#include "Player/CataclysmPlayLoopLog.h"
 #include "Save/CataclysmSaveWriter.h"
 
 FString UCataclysmCharacterSelectWidget::RowText(const FCataclysmCharacterSummary& Row)
@@ -285,6 +286,8 @@ bool UCataclysmCharacterSelectWidget::ContinueAt(int32 Index, UCataclysmGameInst
 	}
 	Instance->PendingCharacterId = Shown[Index].CharacterId; // A Continue's: the character handed over.
 	Instance->LastLoadRefusal.Empty();
+	// THE PLAY LOOP: the character continued, and the level it opens. Issue #2733 slice 4.
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ContinueLine(Shown[Index].Name, Map == DungeonMap));
 	Open(Map);
 	return true;
 }
