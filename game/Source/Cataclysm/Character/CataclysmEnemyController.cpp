@@ -670,6 +670,41 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 		return LastAction;
 	}
 
+	// AN ECHO OF ECHOES OF THE PAST STANDS STILL UNTIL THE GAME MODE HAS SEEN IT NOTICE THE PLAYER, THEN WALKS IN TO
+	// ITS REACH OF THEM AND STOPS, AND DOES NOTHING ELSE. Issue #2740, the owner's ruling of 2026-11-18. After death, a
+	// hard stop and flight, which still hold it as they hold any creature, and after the charge and wind-up branches,
+	// so the attack the game mode orders runs as any creature's does. BEFORE THE CHOICE OF A TARGET, so it notices
+	// nobody of its own, starts no ability and makes no swing: the game mode makes its one attack. A pinned echo stands
+	// where it is held, as a pinned creature does not chase. The walk is the chase's request and its straight-line
+	// fallback when there is no navigation mesh.
+	if (const ACataclysmEnemyCharacter* Echo = Cast<ACataclysmEnemyCharacter>(Driven);
+		Echo && Echo->bIsAnEchoOfThePast)
+	{
+		CurrentTarget = nullptr;
+		bHasRoamTarget = false;
+		AActor* Quarry = Echo->EchoMovesInOn.Get();
+		if (!Quarry || Echo->EchoStandsWithinItsStrike() || UCataclysmSkillEffects::IsPinned(Driven))
+		{
+			StopMovement();
+			if (Quarry)
+			{
+				FaceTarget(Driven, Quarry);
+			}
+			LastAction = ECataclysmBrainAction::Idle;
+			return LastAction;
+		}
+
+		FaceTravelDirection(Driven);
+		FAIMoveRequest Request = MakeChaseMoveRequest(Quarry, Echo->EchoMovesInToCm);
+		if (MoveTo(Request) == EPathFollowingRequestResult::Failed)
+		{
+			Request.SetUsePathfinding(false);
+			MoveTo(Request);
+		}
+		LastAction = ECataclysmBrainAction::Chasing;
+		return LastAction;
+	}
+
 	AActor* Target = ChooseTarget();
 
 	// A FLOOR RULE'S HUNGRY CREATURE WALKS TO THE NEAREST DROP WITHIN REACH AND EATS IT BEFORE IT CHASES THE PLAYER,

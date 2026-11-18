@@ -3370,14 +3370,41 @@ float UCataclysmDungeonModifierEffects::EchoesDistanceCm(float AttackReachCm)
 	return FMath::Clamp(AttackReachCm, 0.0f, EchoesMostAwayCm);
 }
 
-FVector UCataclysmDungeonModifierEffects::EchoesOffset(int32 Which, int32 Count, float DistanceCm)
+float UCataclysmDungeonModifierEffects::EchoesStrikeWithinCm(float ReachAgainstCm, bool bWalks)
 {
-	if (Count <= 0)
+	return bWalks ? EchoesDistanceCm(ReachAgainstCm) : FMath::Max(0.0f, ReachAgainstCm);
+}
+
+TArray<int32> UCataclysmDungeonModifierEffects::EchoesPlaces(const TArray<FVector>& Places, const FVector& Arrival,
+															 int32 Count, int32 Seed)
+{
+	// EVERY PLACE FAR ENOUGH FROM WHERE THE PLAYER ARRIVED, in the order given, then shuffled on the rule's own stream.
+	TArray<int32> FarEnough;
+	for (int32 Index = 0; Index < Places.Num(); ++Index)
 	{
-		return FVector::ZeroVector;
+		if (FVector::Dist2D(Places[Index], Arrival) >= EchoesLeastFromArrivalCm)
+		{
+			FarEnough.Add(Index);
+		}
 	}
-	const float Angle = 2.0f * PI * static_cast<float>(Which) / static_cast<float>(Count);
-	return FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f) * DistanceCm;
+	TArray<int32> Chosen;
+	if (Count <= 0 || FarEnough.IsEmpty())
+	{
+		return Chosen;
+	}
+	FRandomStream Stream(Seed);
+	for (int32 Index = FarEnough.Num() - 1; Index > 0; --Index)
+	{
+		FarEnough.Swap(Index, Stream.RandRange(0, Index));
+	}
+
+	// EACH ECHO THE NEXT PLACE, and the order again from its start only once every place holds one.
+	Chosen.Reserve(Count);
+	for (int32 Which = 0; Which < Count; ++Which)
+	{
+		Chosen.Add(FarEnough[Which % FarEnough.Num()]);
+	}
+	return Chosen;
 }
 
 bool UCataclysmDungeonModifierEffects::DivineWrathIsDue(float SecondsSinceLast)

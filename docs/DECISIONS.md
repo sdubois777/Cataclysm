@@ -2,6 +2,452 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-18 — Echoes of the Past: every creature killed on the last floor stands somewhere on the next, and each one the player comes near moves in, makes its last attack once and vanishes (#2740)
+
+**Affects:** `UCataclysmDungeonModifierEffects` (`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h`,
+`.cpp`): the row key's description, the figures (`EchoesAppearAfterSeconds`, `EchoesStrikeAfterSeconds` and
+`EchoesMost` removed; `EchoesLeastFromArrivalCm` and `EchoesGiveUpAfterSeconds` new; `EchoesVanishAfterSeconds` and
+`EchoesMostAwayCm` kept), the salt `EchoesPlacesSalt` (new), `EchoesPlaces` and `EchoesStrikeWithinCm` (new) and
+`EchoesOffset` (removed);
+`ACataclysmDungeonGameMode` (`CataclysmDungeonGameMode.h`, `.cpp`): `NoteDeathForEchoesOfThePast`,
+`StepEchoesOfThePast`, `RaiseTheEchoes` (new), `EchoesSpentThisFloor` (new), the records `FEchoOfTheDead` and
+`FEchoStanding`, the stages, the save (`WalkStateNow`, `FloorRuleStateNow`), the load (`RestoreFloorRuleState`), the
+floor panel line and the floor-change reset; `ACataclysmEnemyCharacter` (`CataclysmEnemyCharacter.h`, `.cpp`):
+`bIsAnEchoOfThePast`, `EchoMovesInOn`, `EchoMovesInToCm` and `EchoStandsWithinItsStrike` (new), and
+`TakesNoHostileAction`, and comments on `StrikeAsARuleOrders` and `bPendingBasicAttackMustStayInReach`;
+`ACataclysmEnemyController::Think` (`CataclysmEnemyController.cpp`); comments in `CataclysmCharacterBase.h`,
+`CataclysmSaveRecords.h` and `CataclysmEnemyHitTimingTests.cpp`. Tests: `CataclysmDungeonModifierEffectsTests.cpp`,
+`CataclysmSaveLoadTests.cpp`, `CataclysmSilenceTests.cpp`, and `tools/tests/test_attack_impact_is_recorded.py`. Issue
+[#2740](https://github.com/sdubois777/Cataclysm/issues/2740). **Applied; compiled, and the automation tests and the
+six guard proofs have run in window echoes-spread-w1; their figures are in "Window echoes-spread-w1: the results".**
+
+### SAID FIRST
+
+- **THE WINDOW PASSED EVERY REGISTERED FIGURE** ("Window echoes-spread-w1: the results", below): the whole Unreal
+  suite 4795 of 4795, the five groups alone, all six guard proofs PROVED on exactly the registered assertions, Python
+  and ruff. What it shows is what the tests check; the owner has not played it.
+- **NO TEST WALKS AN ECHO IN.** The automation tests beat the game mode without ticking the world, so no brain runs and
+  no echo moves. A test that needs an echo within its reach puts it there by hand; the brain's part is tested by
+  calling `Think` once and reading what it chose (walk in, or stand). That an echo really reaches the player across a
+  floor's navigation mesh is not tested; the owner will see it in play.
+- **TWO RULINGS CAME AFTER PHASE 1 AND CHANGED IT.** Phase 1 asked the coordinating session two questions; its answers
+  of 2026-11-18 are quoted under "The rulings, quoted" and applied: an echo that cannot walk strikes from its full
+  reach, and an echo's swing is measured against its reach when it lands, so a player can step out of it. Each added a
+  test and a guard proof.
+- **EVERY DEATH OF A FLOOR CAN NOW STAND AS AN ECHO, AND THAT IS NOT MEASURED.** A floor is populated with 73 to 510
+  creatures (measured over 1,000 seeds, `FCataclysmFloorPopulator::EnemiesPerWalkableCell`). If the player killed most
+  of them, the next floor raises that many echoes on its first beat, each with a brain that thinks four times a second.
+  An echo's brain returns before the target search, which is what a capture measured as the brain's cost (issue
+  #1547), but nothing here measured the frame cost. The owner parked performance on 2026-09-10 to move forward.
+
+### The rulings, quoted
+
+The owner, playing the main loop on 2026-11-18: "It spawns like 10 enemies at the start of a new floor right around
+you and they attack once. But I wanted it to be more of a, every enemy you killed comes back and attacks you spread out
+through the floor, not just suddenly surrounded and attacked all at once."
+
+The owner's two answers, the option chosen, verbatim from the issue:
+
+1. Which dead come back: **"All of last floor"**: "Every creature killed on the previous floor, no limit of six. Matches
+   the modifier's text."
+2. How they attack: **"Wait, strike once"**: "Each echo stands somewhere across the floor. When you come near, it moves
+   in, makes its last attack once, and vanishes. It cannot be hurt. Keeps the text 'repeat their final attacks before
+   vanishing'."
+
+The coordinating session's rulings for what the owner left open, made under the owner's delegation of unstated numbers,
+each a judgement and a play-test value, quoted from the issue:
+
+- **R1 Where each echo stands:** "spread across the floor. Use the places the floor already puts its own creatures, if
+  such a mechanism exists. No two echoes share a spot where the floor has enough places, and none stands within 15 m of
+  where the player arrives on the floor."
+- **R2 When they appear:** "when the floor begins. They stand still and do nothing until they notice the player."
+- **R3 "When you come near":** "the creature kind's own ordinary notice distance, if the game defines one. Search where
+  such a distance is defined, not only where it is used. If none exists, use 15 m from the echo to the player, measured
+  horizontally."
+- **R4 Moving in:** "an echo that has noticed the player moves to its own attack reach (the existing reach rule, held to
+  6 m); it makes its recorded last attack once, at that attack's normal damage; it vanishes 1 s after the strike
+  (`EchoesVanishAfterSeconds`, unchanged); if it has not struck within 10 s of noticing, it vanishes without striking;
+  each echo does this on its own clock; nothing makes them strike together."
+- **R5 Unchanged:** "an echo cannot be hurt, pays nothing, is marked raised by a rule, and is not on the floor's creature
+  list; a stunned, knocked-down or feared echo does not strike (#2558), and a silenced one uses its basic attack; in
+  Horde waves, the previous wave counts as the previous floor; deaths are still recorded on every floor, now all of
+  them."
+- **R6** "Do not edit the design workbook. The row's sentence is unchanged."
+- **R7 The floor panel line and the save:** "keep both working. Today one stage covers all the echoes. With each echo on
+  its own clock, a load must not raise an echo that has struck or vanished, and must not let one strike a second time.
+  The new decisions-log entry says how this is done."
+
+The coordinating session's answers to phase 1's two questions, 2026-11-18, under the owner's delegation of vague
+wording, each a judgement:
+
+> 1. AN ECHO THAT CANNOT MOVE STRIKES FROM ITS KIND'S OWN FULL REACH. The 6 m hold existed to keep the old ring close
+> to the player; nothing stands in a ring now. So a Corrupted Sentinel's echo, once it has noticed the player, strikes
+> when the player is within its own `ReachAgainstCm` (not held to 6 m), and still vanishes 10 s after noticing if it
+> has not. Echoes that walk keep the 6 m hold, as R4 says. Reason: the owner's "moves in" cannot apply to a creature
+> that cannot walk, and a Sentinel's attack is a long-range one.
+>
+> 2. MAKE THE STRIKE DODGEABLE. Measure it against reach when the swing lands, as the creature's own ordinary attack
+> is, so stepping out of the swing avoids it. A strike that missed this way counts as the echo's one strike: it
+> vanishes 1 s later and does not try again. Reason: echoes now walk up and swing like ordinary creatures, the old
+> reason (a stationary ring that struck on a timer) no longer applies, and the game lets the player step out of an
+> ordinary creature's swing.
+
+**How they are applied.** An echo cannot walk when its designed walk speed (`DesignedWalkSpeedCmPerSecond`, read from
+its movement component as it begins play) is nought, which of the seven kinds is the Corrupted Sentinel alone;
+`EchoesStrikeWithinCm` then gives its full reach against the player rather than that reach held to 6 m. The echo's
+ordinary attack is now `AttackTarget`, the creature's own swing, which records at the order that the blow must still be
+in reach when it lands (issue #783) and measures that with the full reach, as every creature's swing does. **An echo's
+recorded ability is unchanged by the second ruling:** the game mode uses it at once, with no wind-up, as before, so
+there is no swing to step out of; it is as dodgeable as its own shape makes it (a Siege Bolt can be stepped out of in
+flight, a Brute's stomp cannot once it lands). That was not asked about and is not changed.
+
+### What changed from 2026-09-24
+
+The entry of 2026-09-24, "Echoes of the Past: five seconds into a floor, the last six creatures killed on the floor
+before come back as echoes, each makes its last attack once, and they vanish", and the later entries that name the rule
+("A stunned, knocked-down or feared echo of Echoes of the Past does not strike (#2558)", 2026-10-27, and "A load no
+longer has echoes strike twice ... (#753, Group 3d-1)", 2026-10-31), are superseded where this table says so.
+
+| | 2026-09-24 | Now |
+| :-- | :-- | :-- |
+| Which dead | the last six to die on the floor before | every one (R5, the owner's "All of last floor") |
+| When they appear | 5 s into the floor | on the floor's first beat (R2) |
+| Where | a ring round the player, each at its own reach (at most 6 m), at even angles | each on a cell the floor puts its own creatures on, at least 15 m from where the player stands then, no two on one cell while there are enough (R1) |
+| Until they strike | 1 s, standing | they stand still until each notices the player at its kind's notice distance, then walk in to its reach, held to 6 m (R2 to R4) |
+| The strike | all together, 1 s after appearing | each on its own, once it stands within its reach, or within its full reach if it cannot walk; one that has not struck 10 s after noticing vanishes without striking (R4, the first later ruling) |
+| The ordinary attack | a rule's strike (`StrikeAsARuleOrders`), landing wherever the player stood | the creature's own swing (`AttackTarget`), which misses a player who has stepped out of its reach when it connects; the strike is spent either way (the second later ruling) |
+| Vanishing | all together, 1 s after the strike | each 1 s after its own strike (R4, `EchoesVanishAfterSeconds` unchanged) |
+| The brain | destroyed as the echo appeared | kept; it only stands the echo still and walks it in |
+| Held echoes (#2558) | a held echo skips the one strike beat | unchanged in kind: a held echo within its reach skips its strike, which is spent; see J4 |
+| The floor's stages | 0 waiting, 1 appeared, 2 struck, 3 gone | `EchoesWaiting` (0), `EchoesStand` (1), `EchoesGone` (2); no stage of the floor's says "struck" |
+| The save | `bEchoesStruck` when the stage was 2 or 3; both lists kept | each spent echo left out of the walk's list; `bEchoesStruck` when every echo is gone (R7) |
+
+### What the rule does now
+
+- **Every death is recorded**, on every floor, whether or not it carries the row: the creature's kind, rarity rung and
+  last attack (`LastAttackUsed`). Not a death that pays nothing, not an echo, not a creature the floor cannot name a
+  kind for. No limit.
+- **On the floor's first beat**, if it carries the row, each of the last floor's dead stands as an echo:
+  - **where:** `RaiseTheEchoes` asks the floor's populator where it puts its own creatures (`FloorPopulationNow`, the
+    same question Grave Tide asks for its waves' cells), and `EchoesPlaces` leaves out every one of those cells within
+    `EchoesLeastFromArrivalCm` (15 m, along the floor) of where the player stands, shuffles the rest on a stream seeded
+    from the floor's plan, `EchoesPlacesSalt` and the floor number, and gives each echo the next cell. Only with more
+    echoes than cells does the order begin again.
+  - **what:** the creature's kind at its rung, through `SpawnPlacedCreature` with a sight multiplier of 1; it cannot be
+    hurt, pays nothing, is marked raised by a rule, is not on the floor's creature list, and is marked an echo
+    (`bIsAnEchoOfThePast`), which also makes it take no hostile action of its own (see J5).
+- **On every beat after**, for each echo, on its own clock:
+  - **waiting:** it notices the player when they stand within its kind's `NoticeRadiusCm` along the floor (Imp,
+    Hellhound, Brute, Abyssal Warden and Succubus 10 m; Corrupted Sentinel and Gatekeeper 14 m). Fifteen metres from
+    the arrival is beyond every one of those, so no echo notices a player who has not moved.
+  - **moving in:** the game mode sets `EchoMovesInOn` to the player and `EchoMovesInToCm` to its reach against them,
+    held to `EchoesMostAwayCm` (6 m), or in full for an echo that cannot walk (`EchoesStrikeWithinCm`). The brain walks
+    it in until `EchoStandsWithinItsStrike`, and stands it there.
+  - **the strike:** on the beat it stands within its reach, its strike is spent; unless it is stunned, knocked down or
+    feared, it uses its recorded ability, or its ordinary attack if it has none or is silenced and the ability is not
+    its basic attack. The ordinary attack is the creature's own swing, measured against its reach when it connects.
+    It then stands still and vanishes `EchoesVanishAfterSeconds` (1 s) later.
+  - **giving up:** `EchoesGiveUpAfterSeconds` (10 s) after it noticed the player, if it has not struck, it vanishes
+    without striking.
+- **The floor's echoes are gone** when none stands; the beat then runs the rule no more on that floor.
+- **The panel**: before the first beat, "echoes of the past: N of the last floor's dead come back as the floor begins";
+  after it, "echoes of the past: N echo(es) standing".
+- **Horde waves**: the previous wave is the previous floor, and a new wave dismisses any echo still standing, as before.
+- **Where R1's placement came from.** The issue said to stop and report if no floor placement could be reused. One
+  exists: `FCataclysmFloorPopulator::Populate`, asked through `ACataclysmDungeonGameMode::FloorPopulationNow`, gives
+  every cell the floor puts one of its own creatures on, and Grave Tide already draws its waves' cells from it. On a
+  Horde arena those cells are where the arena's wave forms, around its rim or at its far end, so there the echoes stand
+  where the wave does.
+- **Where R3's distance is defined.** `ACataclysmEnemyCharacter::NoticeRadiusCm` (1,500 cm on the base class), set by
+  each kind's constructor from its own constant (`ImpNoticeRadiusCm` and the others in each character's header).
+  `NoticesFromCm` multiplies it by the floor's sight multiplier, which only a Horde floor raises; R3 says "ordinary", so
+  the echo is raised with a multiplier of 1 and the game mode reads `NoticeRadiusCm` itself. R3's 15 m fallback is not
+  needed.
+
+### The save (R7)
+
+**No saved field is added and no schema version changes.** Each of the last floor's dead carries `bSpent` in the game
+mode (not saved): set when its echo strikes (whether or not the strike is made), vanishes without striking, is
+destroyed by anything else, or cannot be raised. `WalkStateNow` leaves every spent one out of the walk's
+`EchoesFromLastFloor`, so the list saved is the dead still to come. `bEchoesStruck` in the floor's rule state is now
+"every echo of the floor is gone" (`EchoesGone`).
+
+- **A load** runs the floor change (the stage back to waiting, as before), restores the walk's lists, then the floor's
+  rule state. With `bEchoesStruck` set, every echo is dismissed and marked spent and the stage is gone. Otherwise the
+  first beat raises the dead still to come, each waiting again with its clock restarted (D1 of #753).
+- **An echo that struck or vanished is not raised again, and none strikes a second time**, because it is not in the
+  saved list. An echo standing after its strike is not brought back, as before (the save's creature gather skips every
+  creature a rule raised that no rule list names).
+- **A save from before this change reads the same way.** It held either none struck (stage 0 or 1, `bEchoesStruck`
+  false), and all of its list rise again, or all struck (`bEchoesStruck` true), and none does.
+
+### Judgements of the writing session
+
+Each is a labelled judgement, not a ruling; the coordinating session may overrule any.
+
+- **J1. "Where the player arrives" is where the player stands on the floor's first beat.** On a floor just entered that
+  is the arrival; after a load it is where the load put them; on a Horde wave it is where they stand as the wave
+  begins. One measure for all three, taken when the echoes rise.
+- **J2. An echo's reach is the brain's reach against the player, held to 6 m, with the brain's 2 cm tolerance.** That
+  is `ACataclysmEnemyController::ReachAgainstCm` (issue #2706), which adds a rarer creature's bigger body, and
+  `ContactToleranceCm`, which `IsInReach` adds. Without the first, an Elite Brute's echo could never stand within its
+  90 cm (its body touches the player at 99.6 cm) and would always give up; without the second, a Common Brute's,
+  whose reach is its contact distance, would not either. `EchoStandsWithinItsStrike` is the one test the brain and the
+  game mode both ask.
+- **J3. Once an echo has noticed the player it keeps walking in until it strikes or its 10 s end**, even if the player
+  walks beyond its notice distance. R4 says "an echo that has noticed the player moves to its own attack reach"; the
+  10 s bounds it.
+- **J4. A held echo within its reach loses its strike (skip, not hold), and vanishes a second later as one that
+  struck.** That is #2558's ruling, "SKIPPED, NOT HELD", applied at the moment an echo would strike, which is now its
+  own. A held echo out of its reach is held as any creature is: a stun or a knockdown stops its brain, and a fear makes
+  it flee, which an echo could not before because it had no brain. Its 10 s still run.
+- **J5. An echo takes no hostile action of its own (`TakesNoHostileAction`).** Its one attack is the one the game mode
+  makes. Before, an echo with a modifier aura could burn the player for its two seconds; now an echo may stand for a
+  whole floor, so an aura or an Inferno Charge would be a second attack, or many. The same answer stops its Infernal
+  Sacrifice (eating a creature beside it) and keeps it out of Famished Beasts' eaters (`StepFamishedBeasts`), as it
+  does for Field Medic's medic, Demonic Guide's guide and the Plaguebearer.
+- **J6, overruled.** Phase 1 kept the echo's ordinary attack a rule's strike (`StrikeAsARuleOrders`), landing wherever
+  the player stood, because the ruling had not asked for a change. The coordinating session ruled it dodgeable (quoted
+  above), and it is now the creature's own swing.
+- **J7. No place far enough, or none at all, raises no echo.** A floor whose populator places nothing
+  (`Cataclysm.DungeonEnemyScale 0`), or whose every creature cell is within 15 m of the player, has nowhere R1 allows.
+  Its dead are marked spent and a log line says so, as Grave Tide brings nothing where it has nothing to place.
+- **J8. More echoes than places: the places are used again in the same order** once every one holds an echo. R1 says
+  "no two echoes share a spot where the floor has enough places", and says nothing of what happens when it has not.
+- **J9. The draw of places is seeded**, from the floor's plan, `EchoesPlacesSalt` (0x5D0A, the next of the population
+  draws' salts after `PandorasBoxRollSalt`) and the floor number, as Plague Harbingers' choice is. The same dead on the
+  same floor stand in the same places.
+- **J10. All of them rise on one beat**, as the floor's own creatures are all placed at once on an ordinary floor. A
+  Horde wave spreads its arrivals over frames (`ContinueTheWaveArriving`); echoes do not.
+
+### Re-checked: the paths that read an echo's brain
+
+The 2026-09-24 entry destroyed an echo's brain and listed the paths that read a creature's controller, each of which
+handles none. With the brain kept, the same paths were read again:
+
+- **The Brute's carried rock, rip crater and ability clip, and the Gatekeeper's and the Succubus's wind-up clips** ask
+  the brain whether it is winding an ability up. An echo's brain never starts a wind-up (it returns before choosing
+  one), so each answers as it did with no brain. The game mode's `UseEnemyAbility` lands the recorded ability at once,
+  as before.
+- **The Brute's chasing check** (`LastAction == Chasing`) is now true while a Brute's echo walks in, so it walks at its
+  chase speed. Before, it never moved.
+- **The flinch facts** (`FlinchFactsNow`) read the brain's wind-up: none, as before.
+- **`UCataclysmCommand::CommanderOf`** answers none for a creature whose brain has no commander. Nothing commands an
+  echo, and subjugation refuses a creature that cannot be hurt.
+- **New with the brain:** it joins the crowd and thinks four times a second on a staggered timer. The echo's branch in
+  `Think` comes after death, a hard stop, flight, the charge and the wind-up, and before the choice of a target, so it
+  never searches for a target.
+
+### Research
+
+No new genre research was done. The shape is the owner's ruling and every figure is either the coordinating session's
+ruling or a figure the game already had (each kind's notice distance and reach). The 2026-09-24 research (Dark Souls'
+bloodstains replay a dead player's last moments; no Diablo IV Nightmare Dungeon affix brings the dead back) still
+settles only that the idea reads well. That a creature waits until it notices the player and then closes in is how
+every creature in this game behaves, and its per-kind notice distance follows Diablo II's per-monster vision distance,
+recorded in `CataclysmEnemyCharacter.h`.
+
+### Tests
+
+**Unreal automation tests.** `Cataclysm.DungeonModifierEffects.` goes from four Echoes tests to seven (three added,
+three renamed, one kept); `Cataclysm.SaveLoad.` gains one; `Cataclysm.EchoesHeld.` (four) and the Silence test keep
+their names and are rewritten for the new rule. Four tests are added in all, two of them for the two later rulings.
+
+| Test | What it checks |
+| :-- | :-- |
+| `DungeonModifierEffects.EchoesStandOnTheFloorsPlacesApartAndFifteenMetresFromTheArrival` (renamed from `EchoesStandAtTheirOwnReachAtEvenAnglesNeverBeyondSixMetres`) | `EchoesDistanceCm` keeps an Imp's 132 cm and holds a Sentinel's 1,400 to 600; of six places along X from an arrival at the origin, three echoes take the three at 15 m or more (one below the arrival, and one straight above it left out by the floor-plane measure), no two on one; the same seed gives the same; five echoes take the three and then the first two again; none for no echo, none where no place is far enough; `EchoesStrikeWithinCm` holds a walking echo's 1,400 to 600 and keeps an Imp's 132, keeps a Sentinel's 1,400 when it cannot walk, and never goes below nought |
+| `DungeonModifierEffects.EchoesOfThePastStandsTheLastFloorsDeadAcrossTheFloorAsItBegins` (new) | two die on floor 2 with no row; on floor 3 with the row, none before the first beat and the panel says 2 come; on the first beat both stand, each an Imp at the rung that died, with a brain, marked an echo, taking no hostile action, unhurt by a killing blow, unpaid, raised by the rule, not on the floor's list, on a cell the floor's populator gives, 15 m or more from where the player stood, having noticed nobody, on different cells; the panel says 2 stand; 30 s on with the player unmoved, both stand, neither has noticed, the player has lost nothing, and a brain asked to think stands its echo still and notices nobody |
+| `DungeonModifierEffects.EachEchoNoticesMovesInStrikesOnceAndVanishesOnItsOwnClock` (renamed from `EchoesOfThePastBringsTheLastFloorsDeadBackToStrikeOnceAndVanish`) | the player 10.1 m from the first echo: it has not noticed; 9 m: it moves in on the player to its reach against them, its brain chooses to walk and notices nobody, and the second, further off, still waits and its brain stands it; 2 s on, no strike; stood within its reach, its brain stands it, and the next beat it strikes once, moves in on nobody, and one is spent; a beat before a second, it still stands and has not struck again; a second after, it is gone and destroyed and the panel says 1 stands; the second notices the player at 9 m, still stands a beat before 10 s, is gone at 10 s without striking; both spent, the stage gone, the panel says 0 stand |
+| `DungeonModifierEffects.EchoesOfThePastRecordsEveryPaidDeathOfOneFloor` (renamed from `EchoesOfThePastRecordsTheLastSixPaidDeathsOfOneFloor`) | a death that pays nothing is not recorded; seven deaths are all kept in order; a floor without the row raises none and the record moves on; a Horde wave's dead stand on the next wave's first beat; leaving the dungeon forgets both lists |
+| `DungeonModifierEffects.AnEchoRepeatsTheAbilityItsCreatureLastUsed` (kept) | a Brute recorded as last stomping comes back; stood 85 cm from the player, within its 90 cm reach and its stomp's ring, it strikes on the next beat with its stomp, which takes health and stuns |
+| `DungeonModifierEffects.AnEchoThatCannotWalkStrikesFromItsFullReachAndOneThatWalksMovesIn` (new, the first later ruling) | a Corrupted Sentinel recorded as last firing its Siege Bolt and a Succubus die on floor 2; on floor 3 their echoes stand, the Sentinel's with a designed walk speed of nought and the Succubus's above it; stood 13 m and 7 m from the player (within each kind's notice, reach and beyond 6 m), on the next beat the Sentinel's strikes from its full reach, fires its bolt and moves in on nobody, while the Succubus's moves in to 6 m, has noticed the player and not struck, and its brain walks it; one is spent |
+| `DungeonModifierEffects.AnEchosSwingMissesAPlayerWhoStepsOutOfItAndIsSpentAllTheSame` (new, the second later ruling) | control: an echo stood a metre from the player swings and the player, who stays, is struck; the other, stood a metre away, swings, both strikes are spent, the player steps 3 m off before the swing connects and is not struck, nothing still waits to land, and it moves in on nobody; with the player back beside it, it does not swing again, still stands a beat before a second and is gone a second after its swing |
+| `EchoesHeld.` (four, kept) | rewritten so both echoes are stood a metre from the player before the blows are measured by hand and before the one beat on which they strike; also asserts both strikes are spent, made or refused |
+| `Silence.ASilencedEchoUsesNoAbilityButItsBasicAttack` (kept) | the Sentinel's echo stands on the first beat and is stood 5.95 m from the player, within its reach and where it stood before #2740, before the beat on which it strikes; also asserts its one strike is spent |
+| `SaveLoad.EchoesThatStruckBeforeASaveDoNotStrikeAgain` (kept, rewritten) | both echoes struck and still stand at the save; after the load none is left to come, none rises over 10 s, and the stage is gone. Prints "LOAD ECHOES STRUCK" |
+| `SaveLoad.EchoesThatHadNotStruckAtASaveStillStrike` (kept, rewritten) | both stand, none struck, at the save; after the load both rise again over 10 s, both strike when brought within their reach, and a second later they are gone. Prints "LOAD ECHOES PENDING" |
+| `SaveLoad.AnEchoThatStruckBeforeASaveStaysGoneAndOneThatHadNotRisesAgain` (new) | one struck and one not at the save; after the load one is left to come, one rises over 10 s, and it strikes when brought in. Prints "LOAD ECHOES ONE STRUCK" |
+
+**What used to be the control of the struck test** ("the last floor's dead are still recorded after the load") is no
+longer true and is gone: the dead that struck are now left out of the save on purpose. Its place as a control is taken
+by the new mixed test, where the one still owed is kept and rises, and the pending test, where both rise.
+
+**Python.** In `tools/tests/test_attack_impact_is_recorded.py`, `test_a_rules_strike_is_not_measured_against_reach`
+loses its Echoes of the Past case (it required `StrikeAsARuleOrders(` in `StepEchoesOfThePast`) and keeps Compel's,
+and `test_an_echoes_strike_is_its_own_swing_measured_when_it_lands` is new: `StepEchoesOfThePast` must call
+`Echo->AttackTarget(Player);` and must not call `StrikeAsARuleOrders(`. One case out, one test in, so the Python count
+does not move. `tools/tests/test_dungeon_modifier_rules_are_the_rows.py::test_echoes_of_the_past_row_still_brings_back_the_previous_floors_dead_for_one_attack`
+still finds the row's four phrases and no figure.
+
+### Python, phase 1
+
+On `4cf16761f`, the code and tests of phase 1 without this entry or the `CataclysmCharacterBase.h` comment, the Unreal
+lock free: "7488 passed, 9 skipped in 192.71s", and the JUnit file's `testsuite` tests="7497" failures="0" errors="0"
+skipped="9" (7488 passed), the two agreeing. Not the run of record: phase 2 runs it again on the registered head.
+
+### Compiled (phase 2)
+
+No rebase: `origin/development` was still `1bbba95bc`, the branch's base. Built on `043fa3283`, the branch with both
+later rulings, with no editor open and the Unreal lock not taken, as the coordinating session allowed.
+
+| Build | "Build:" line |
+| :-- | :-- |
+| The branch, every file in its unity file (`git status` clean) | "Build: Succeeded - 72 actions, 65 files compiled": every one of the module's 43 unity files and the Empire and Editor modules' files |
+| Each changed `.cpp` alone (`git read-tree origin/development`, so `git status` lists the branch's files as changed while the branch stays at `043fa3283`; `Makefile.bin` moved aside; built; `git reset -q` after, `git status` clean and HEAD unchanged) | "Build: Succeeded - 23 actions, 20 files compiled": the build tool's "[Adaptive Build] Excluded from Cataclysm unity file" line names the eight changed `.cpp` files and `CataclysmCharacterBase.cpp` and `CataclysmSaveRecords.cpp` (whose headers changed), each compiled alone, and ten unity files rebuilt without them |
+| The unity files again (`Makefile.bin` moved aside again; both moved copies deleted after) | "Build: Succeeded - 13 actions, 10 files compiled: Module.Cataclysm.10.cpp, Module.Cataclysm.13.cpp, Module.Cataclysm.23.cpp, Module.Cataclysm.32.cpp, Module.Cataclysm.37.cpp, Module.Cataclysm.38.cpp, Module.Cataclysm.39.cpp, Module.Cataclysm.40.cpp, Module.Cataclysm.7.cpp, Module.Cataclysm.8.cpp" |
+
+The changed files' unity files, read out of the generated `Module.Cataclysm.*.cpp`: 8 (`CataclysmEnemyCharacter.cpp`,
+`CataclysmEnemyController.cpp`), 7 (`CataclysmCharacterBase.cpp`), 10 (`CataclysmDungeonModifierEffects.cpp`), 13
+(`CataclysmSaveRecords.cpp`), 23 (`CataclysmEnemyHitTimingTests.cpp`), 32 (`CataclysmSilenceTests.cpp`), 37
+(`CataclysmDungeonGameMode.cpp`), 38 (`CataclysmDungeonModifierEffectsTests.cpp`) and 41 (`CataclysmSaveLoadTests.cpp`,
+alone in it, so its unity compile in the first build is the same text as its compile alone). No compile error in any
+build. **One warning, not this branch's:** C4996, `CountBits` for 64-bit values deprecated in 5.8, raised in an engine
+header from `CataclysmAbilitySystemComponent.cpp` line 1315, a file this branch does not touch.
+
+### Review (phase 2)
+
+- **The brain and the game mode agree on where an echo strikes.** Both ask `EchoStandsWithinItsStrike`, which compares
+  the floor-plane distance with `EchoMovesInToCm` plus `ContactToleranceCm`, the tolerance `IsInReach` adds. The game
+  mode writes `EchoMovesInToCm` once, as the echo notices the player, from `EchoesStrikeWithinCm`.
+- **The swing is always ordered in reach.** `EchoMovesInToCm` is never more than `ReachAgainstCm`, so the swing's own
+  test at the order (`bPendingBasicAttackMustStayInReach = IsInReach(...)`) is always true for an echo, and the blow
+  is measured against the full reach when it connects, as the second later ruling asks.
+- **An echo vanishing takes a waiting blow with it**, as any destroyed creature does (issue #783's entry). An echo
+  vanishes a second after its swing, and every ordinary swing's blow lands well inside that second at its authored
+  speed: the Brute's at 0.331 s (`SwingStrikeSeconds`), the Abyssal Warden's at 0.176 s, the Imp's at up to 0.308 s
+  and the Hellhound's at once. A swing slowed far enough could still lose its blow; not measured.
+- **Every reader of `TakesNoHostileAction` was read** (searched for the name in `game/Source`, tests left out): the
+  brain's swing and ability choice, never reached by an echo; `UCataclysmEnemyModifiers`' auras, Infernal Sacrifice,
+  Inferno Charge's channel and charge, now off for an echo; and `StepFamishedBeasts`' eaters. None of them is on the
+  path of the game mode's strike (`UseEnemyAbility`, `AttackTarget`), which asks nothing of it.
+- **The load order holds for R7.** The load in `CataclysmSaveLoad.cpp` calls `ResumeEmpireDungeon` (the floor
+  change, then `RestoreWalkState`, which puts back the list of the dead still to come) before `RestoreFloorRuleState`
+  (which, with `bEchoesStruck`, marks them spent), so the second is not undone by the first.
+- **An echo is still not saved as a creature.** `CataclysmSaveGather.cpp` skips every creature a rule raised that no
+  rule list names, and an echo is marked raised by a rule and named by no list.
+- **The two later rulings' comments**: `StrikeAsARuleOrders` and `bPendingBasicAttackMustStayInReach` in
+  `CataclysmEnemyCharacter.h`, and the file comment of `CataclysmEnemyHitTimingTests.cpp`, said Echoes of the Past
+  struck as a rule; each now says it did until #2740.
+- **This worktree had 22 Git LFS files left as pointers** after its branch was switched (DataTable assets, input
+  actions, four widgets). `git lfs checkout` put them back before any build; the window's pre-checks now refuse a
+  worktree holding a pointer.
+
+### Audit of every fixed number and starting state the new tests assert (phase 2)
+
+| Assertion | Read against | Holds because |
+| :-- | :-- | :-- |
+| An Imp's 132 cm kept, a Sentinel's 1,400 held to 600 | `EchoesDistanceCm`, a clamp to [0, `EchoesMostAwayCm`] | the inputs are the test's own literals |
+| Of six places, those at 0 (5,000 cm straight above), 500 and 1,499 cm are near and those at 1,500, 2,000 (300 cm below) and 3,000 cm are far | `EchoesPlaces`: `Dist2D >= EchoesLeastFromArrivalCm` | the floor-plane distance ignores height, and 1,500 meets `>=` |
+| Seed 36's order | `FRandomStream` in UE 5.8 (`RandomStream.h`: the seed times 196314165 plus 907633515, a fraction from its top 23 bits, `RandHelper` truncating) | computed: the first five fractions are 0.857, 0.983, 0.928, 0.791 and 0.821, which leave a shuffle of three and of six in order. The intact test asserts nothing that depends on the order; the break C1 needs the six to begin 0, 1, 2 |
+| Two echoes, a Common and a Magic Imp | `TwoDieOnFloorTwo` places a Common and a Magic Imp and kills both | |
+| No echo notices a player who has not moved | every kind's `NoticeRadiusCm`: Imp, Hellhound, Brute, Abyssal Warden, Succubus 1,000; Corrupted Sentinel, Gatekeeper 1,400 | each is under the 1,500 cm an echo stands from where the player stood |
+| An Imp notices from 1,000 cm: not at 1,010, at 900 | `ImpNoticeRadiusCm`, read by the test | |
+| The second echo does not notice while the player is 900 or 1,010 cm from the first | distinct cells are at least one cell (400 cm) apart; the player stands beyond the first on the line from the second | the second is at least 1,300 cm from the player |
+| The first strikes at 112 cm | `EchoMovesInToCm`, a Common Imp's reach against the player, 132, minus the test's 20 | within 132 plus the 2 cm tolerance |
+| Gone 4 beats after the strike, not 3 | `BeatsFor(EchoesVanishAfterSeconds)`, 1 s of 0.25 s beats | sums of 0.25 are exact in a float |
+| Still standing 39 beats after noticing, gone at 40 | `BeatsFor(EchoesGiveUpAfterSeconds)`, 10 s | the same |
+| The Brute's echo strikes at 85 cm | a Common Brute's reach against the player, 90 (its contact distance), plus 2 | inside `StompRadiusCm`, 350 |
+| Held echoes strike at 100 cm | an Imp's 132 | the blows by hand land too: `IsInReach` is 132 plus 2 |
+| The Sentinel's echo strikes at 595 cm | its 1,400 reach held to 600, plus 2; its notice 1,400 | |
+| The Sentinel's echo strikes at 13 m, the Succubus's does not at 7 m | the Sentinel's reach 1,400 in full (it cannot walk: `DesignedWalkSpeedCmPerSecond` 0) and notice 1,400; the Succubus's reach 800 held to 600, its notice 1,000 | both distances asserted against the live reach in the test's set-up |
+| The dodged swing: echo at 100 cm, the player steps 300 cm away | an Imp's 132 reach plus 2 | 400 cm is beyond it when the swing connects; the control's player stays at 100 cm |
+| Save-load echoes strike at 50 cm | the smallest designed reach is 90 (Brute, Hellhound, Abyssal Warden) | whatever kinds floor 1 put first in its list |
+
+### Registered before the run
+
+| Figure | Registered |
+| :-- | :-- |
+| `Cataclysm.DungeonModifierEffects.` alone | 772: 769 at the base, + 3 by name (`EchoesOfThePastStandsTheLastFloorsDeadAcrossTheFloorAsItBegins`, `AnEchoThatCannotWalkStrikesFromItsFullReachAndOneThatWalksMovesIn`, `AnEchosSwingMissesAPlayerWhoStepsOutOfItAndIsSpentAllTheSame`); three renamed, none removed |
+| `Cataclysm.SaveLoad.` alone | 77: 76, + 1 by name (`AnEchoThatStruckBeforeASaveStaysGoneAndOneThatHadNotRisesAgain`); two rewritten |
+| `Cataclysm.EchoesHeld.` alone | 4, none added; all four rewritten |
+| `Cataclysm.Silence.` alone | 26, none added; the echo scene rewritten. The prefix also runs the groups `Cataclysm.Silence.Aura` and `Cataclysm.Silence.Void`, counted in the 26 |
+| `Cataclysm.AI.` alone | 51, none added or changed: the brain every creature thinks with gained a branch |
+| Whole Unreal suite | **4795 performed, 4795 succeeded, 0 failed; 47 skipped halves; 0 test saves left behind.** 4791 measured by window b2733s4 at `e468bb95e` (its engine log `b2733s4_suite_engine_e468bb95.log`, 4791 "Test Completed" lines), whose `game/` tree is this branch's base `1bbba95bc` (`git diff --stat e468bb95e 1bbba95bc -- game/` prints nothing), + 4 by name |
+| C1, the fifteen metres taken away: `FVector::Dist2D(Places[Index], Arrival) >= EchoesLeastFromArrivalCm` to `... >= 0.0f` in `CataclysmDungeonModifierEffects.cpp`, prefix `Cataclysm.DungeonModifierEffects.EchoesStandOnTheFloorsPlacesApartAndFifteenMetresFromTheArrival` | 1 performed, 0 succeeded, 1 failed, on 4 assertions: "each at least fifteen metres from the arrival along the floor, and no two on one place", "the first three on the three places far enough, in the order three would take", "and the fourth and fifth begin the order again", "no place far enough, none". Restored: 1 of 1 |
+| C2, the give-up made a hundred times longer: `if (One.SecondsSinceNoticed >= Effects::EchoesGiveUpAfterSeconds)` to `... >= 100.0f * Effects::EchoesGiveUpAfterSeconds)` in `CataclysmDungeonGameMode.cpp`, prefix `Cataclysm.DungeonModifierEffects.EachEchoNoticesMovesInStrikesOnceAndVanishesOnItsOwnClock` | 1 performed, 0 succeeded, 1 failed, on 4 assertions: "ten seconds after noticing, it is gone", "both are spent", "and the floor's echoes are gone", "the panel says none stands". Restored: 1 of 1 |
+| C3, a spent echo kept in the save: `if (Echo.bSpent)` to `if (Echo.bSpent && Echo.Rung < 0)` in `CataclysmDungeonGameMode.cpp`, prefix `Cataclysm.SaveLoad.EchoesThatStruckBeforeASaveDoNotStrikeAgain` | 1 performed, 0 succeeded, 1 failed, on 3 assertions: "no echo that struck is left to come after the load", "no echo is raised again after the load", "and the echoes are gone". Restored: 1 of 1 |
+| C4, the echo's branch of the brain never taken: `Echo && Echo->bIsAnEchoOfThePast)` to `Echo && Echo->bIsAnEchoOfThePast && Echo->RarityStep < 0)` in `CataclysmEnemyController.cpp`, prefix as C2 | 1 performed, 0 succeeded, 1 failed, on 3 assertions: "within its reach, its brain stands it" (the ordinary brain answers `NotAttacking`, an echo taking no hostile action), "while the second's stands it still" (it roams), and "noticing nobody of its own" (it targets the player at 9 m). **One of the three is less certain:** if the ordinary brain finds no target in the test's world, "its brain walks it in" fails in place of "noticing nobody of its own". Restored: 1 of 1 |
+| C5, the echo's swing a rule's strike again: `Echo->AttackTarget(Player);` to `Echo->StrikeAsARuleOrders(Player);` in `CataclysmDungeonGameMode.cpp`, prefix `Cataclysm.DungeonModifierEffects.AnEchosSwingMissesAPlayerWhoStepsOutOfItAndIsSpentAllTheSame` | 1 performed, 0 succeeded, 1 failed, on 2 assertions: "the player who stepped out of the swing is not struck (...)" and "and the player is not struck". Restored: 1 of 1 |
+| C6, an echo that cannot walk taken for one that walks: `Echo->DesignedWalkSpeedCmPerSecond > 0.0f` to `Echo->DesignedWalkSpeedCmPerSecond >= 0.0f` in `CataclysmDungeonGameMode.cpp`, prefix `Cataclysm.DungeonModifierEffects.AnEchoThatCannotWalkStrikesFromItsFullReachAndOneThatWalksMovesIn` | 1 performed, 0 succeeded, 1 failed, on 4 assertions: "the Sentinel's echo strikes from its full reach", "and fired its recorded bolt from thirteen metres", "its one strike made, it moves in on nobody", "one of the two is spent". Restored: 1 of 1 |
+| Python | the run of record below |
+
+Each C++ anchor occurs once in its file: `prove_e2740.py C1|C2|C3|C4|C5|C6 --anchors-only` printed "anchor count 1" for
+each.
+No group prefix registered here is a case-insensitive string prefix of another group but the two named, checked against
+the 330 groups of the base log with this branch's names; each proof prefix selects exactly one test. The breaks are not
+compiled here; the window compiles each.
+
+**Python guard, run with `tools/prove_guard.py` in a `git archive` copy of `043fa3283`, removed afterwards; the anchor
+counted once first:**
+
+| Break | Command | Printed | Named failure |
+| :-- | :-- | :-- | :-- |
+| P1, the echo's swing a rule's strike again (`Echo->AttackTarget(Player);` to `Echo->StrikeAsARuleOrders(Player);` in `CataclysmDungeonGameMode.cpp`) | `python -m pytest tools/tests/test_attack_impact_is_recorded.py` | "PROVED: 1 failed, 55 passed in 0.25s \| restored: 56 passed in 0.11s"; `proved` True, `crashed` False | `test_an_echoes_strike_is_its_own_swing_measured_when_it_lands` |
+
+### Python of record
+
+Measured at `94a9fa7a8`, the Unreal lock free and no build running: "7488 passed, 9 skipped in 207.24s", and the JUnit
+file's `testsuite` tests="7497" failures="0" errors="0" skipped="9" (7488 passed), the two agreeing. The same counts as
+phase 1's run: the later rulings took one parametrized case out of
+`test_a_rules_strike_is_not_measured_against_reach` and added one test. `python -m ruff check . --extend-exclude
+.claude`: "All checks passed!" Only this section was added after the measured commit.
+
+### Window echoes-spread-w1: the results
+
+Run by this session on 2026-11-18 from 10:08 to 10:55 local time, with the coordinating session's yes, at `913861d9f` (on
+`development` `1bbba95bc`), lock `echoes-spread-w1`, after `prechecks_e2740.py` printed "PRECHECKS: ALL PASS" (CI on
+`development` passed at `1bbba95bc`, no run in progress or queued, the lock free, no build or editor process, no pull
+request open, 14,476 MB free, no Git LFS pointer). The runner, `run_e2740.py`, released the lock at the end ("lock
+release: exit 0"), and HEAD was `913861d9` before and after. **Every registered figure was met.**
+
+| Figure | Registered | Printed |
+| :-- | :-- | :-- |
+| Build | | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" (phase 2's last build was of this code) |
+| `Cataclysm.DungeonModifierEffects.` alone | 772 | "772 tests performed, 772 succeeded, 0 failed" |
+| `Cataclysm.SaveLoad.` alone | 77 | "77 tests performed, 77 succeeded, 0 failed" |
+| `Cataclysm.EchoesHeld.` alone | 4 | "4 tests performed, 4 succeeded, 0 failed" |
+| `Cataclysm.Silence.` alone | 26 | "26 tests performed, 26 succeeded, 0 failed" |
+| `Cataclysm.AI.` alone | 51 | "51 tests performed, 51 succeeded, 0 failed. 2 skipped part of what they check" (the two Brute clip tests, which skip their art half in a worktree) |
+| Whole Unreal suite | 4795, 47 skipped halves, 0 left behind | "4795 tests performed, 4795 succeeded, 0 failed. 47 skipped part of what they check"; "Declared: 4795 tests in the tree at 913861d9f; 4795 performed, gap 0"; "Test saves: 826 written and deleted, 0 left behind" |
+| Python | of record | "7488 passed, 9 skipped in 199.10s"; JUnit tests 7497, failures 0, errors 0, skipped 9; ruff "All checks passed!" |
+| C1, the fifteen metres | 1 test, 4 assertions | PROVED. `EchoesStandOnTheFloorsPlacesApartAndFifteenMetresFromTheArrival`, exactly the four registered; restored 1 of 1 |
+| C2, the give-up | 1 test, 4 assertions | PROVED. `EachEchoNoticesMovesInStrikesOnceAndVanishesOnItsOwnClock`: "ten seconds after noticing, it is gone" (0 expected, 1), "both are spent" (2, 1), "and the floor's echoes are gone" (2, 1), "the panel says none stands"; restored 1 of 1 |
+| C3, the save | 1 test, 3 assertions | PROVED. `EchoesThatStruckBeforeASaveDoNotStrikeAgain`: "no echo that struck is left to come after the load" (0, 2), "no echo is raised again after the load" (0, 2), "and the echoes are gone" (2, 1); restored 1 of 1 |
+| C4, the brain's branch | 1 test, 3 assertions, one of them less certain | PROVED. `EachEchoNoticesMovesInStrikesOnceAndVanishesOnItsOwnClock`: "noticing nobody of its own" (the ordinary brain targeted the player, the outcome registered first), "while the second's stands it still" (0, `Idle`, expected; 3, `Roaming`), "within its reach, its brain stands it" (0; 10, `NotAttacking`); restored 1 of 1 |
+| C5, the dodgeable swing | 1 test, 2 assertions | PROVED. `AnEchosSwingMissesAPlayerWhoStepsOutOfItAndIsSpentAllTheSame`: "the player who stepped out of the swing is not struck (389.3 to 303.1)" and "and the player is not struck"; restored 1 of 1 |
+| C6, the full reach | 1 test, 4 assertions | PROVED. `AnEchoThatCannotWalkStrikesFromItsFullReachAndOneThatWalksMovesIn`: "the Sentinel's echo strikes from its full reach" (1400, 600), "and fired its recorded bolt from thirteen metres", "its one strike made, it moves in on nobody", "one of the two is spent" (1, 0); restored 1 of 1 |
+
+The three save-and-load tests' lines, from the whole suite's engine log: "LOAD ECHOES STRUCK ... saved with 2 of 2 struck;
+after the load 0 of the last floor's dead to come, at most 0 echo(es) standing over 10 s, stage 2"; "LOAD ECHOES
+PENDING ... saved with none struck; after the load at most 2 echo(es) standing over 10 s, 2 struck when brought in,
+stage 2"; "LOAD ECHOES ONE STRUCK ... saved with 1 of 2 struck; after the load 1 of the last floor's dead to come, at
+most 1 echo(es) standing over 10 s, 1 struck when brought in". The memory line: "tests=5402 peak_used_virtual_mb=9223
+final_used_virtual_mb=8972". Every proof's broken half also logged the engine's start-up error about `GameFeatureData`
+asset settings, twice; every restored half logged it twice as well, so it is not the break's.
+
+Only this section, the ability note under "Found and not changed" and the two status sentences at the head and foot of
+this entry were added after the tested commit.
+
+### Found and not changed
+
+- **An echo uses its recorded ability at once, with no wind-up**, as it did before #2740: the game mode calls
+  `UseEnemyAbility` itself, so there is no telegraph to step out of, as there is for an ordinary creature's ability;
+  a projectile can still be dodged in flight. A KNOWN DIFFERENCE FROM AN ORDINARY CREATURE, left as it is by the
+  coordinating session on 2026-11-18 ("leave it as it is for this window"), to be changed after the owner plays it
+  if it matters. The ruling that made the ordinary swing dodgeable did not ask about abilities.
+- **A player's minions may attack an echo they cannot hurt.** An echo is a hostile creature on the floor, so a minion
+  may choose it as a target; before, that could last two seconds. The Reaper, Demonic Guide's guide and the other
+  creatures a rule makes unhurtable stand for longer already, so this is not new to echoes. Not changed.
+
+### Not tested
+
+- **The owner has not played it.** Every figure above is an automation test's or a guard proof's.
+- **An echo walking in across a real floor**, its path, its speed and whether it reaches the player round walls: no
+  test ticks a brain. The owner will see it in play.
+- **The frame cost of many echoes.** Not measured.
+
+---
+
 ## 2026-11-18 — One press of Play: each step of the main loop writes a PLAY LOOP line, and a checklist says what to click and what each step shows (#2733, slice 4)
 
 **Affects:** `FCataclysmPlayLoopLog`, new (`game/Source/Cataclysm/Player/CataclysmPlayLoopLog.h`, `.cpp`), which builds

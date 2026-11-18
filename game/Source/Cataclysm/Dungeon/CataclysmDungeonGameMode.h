@@ -2881,10 +2881,21 @@ public:
 	/** How many of the last floor's dead come back as echoes on this one. */
 	int32 EchoesComingThisFloor() const { return EchoesFromLastFloor.Num(); }
 
+	/** How many of them are spent: struck, vanished without striking, or destroyed. Issue #2740. */
+	int32 EchoesSpentThisFloor() const;
+
 	/** The echoes standing now. */
 	TArray<ACataclysmEnemyCharacter*> EchoesStandingNow() const;
 
-	/** Echoes of the Past, for tests: 0 waiting, 1 appeared, 2 struck, 3 gone. */
+	/**
+	 * Echoes of the Past's stages on a floor, for the beat, the save and tests. Issue #2740. WAITING: the floor's
+	 * first beat has not raised them. STANDING: raised, and at least one still stands. GONE: none stands and none is to
+	 * come. Until #2740 there were four, the third "struck", when every echo struck on one beat; each echo now strikes
+	 * on its own clock, so no stage of the floor's says it.
+	 */
+	static constexpr int32 EchoesWaiting = 0;
+	static constexpr int32 EchoesStand = 1;
+	static constexpr int32 EchoesGone = 2;
 	int32 EchoesStageNow() const { return EchoesStage; }
 
 	/** Plague Harbingers, for the panel and tests: the Harbingers alive now. */
@@ -3800,8 +3811,14 @@ private:
 	/** Echoes of the Past, on every death: a creature's kind, rung and last attack are kept. */
 	void NoteDeathForEchoesOfThePast(const struct FCataclysmDeathNotice& Notice);
 
-	/** Echoes of the Past, on the beat: the last floor's dead appear, strike once and go. */
+	/**
+	 * Echoes of the Past, on the beat: on the floor's first, the last floor's dead stand across it; on every beat
+	 * after, each echo notices the player, moves in, strikes once and vanishes on its own clock. Issue #2740.
+	 */
 	void StepEchoesOfThePast(class ACataclysmPlayerCharacter* Player);
+
+	/** Echoes of the Past, on the floor's first beat: every one of the last floor's dead not spent stands. */
+	void RaiseTheEchoes(const class ACataclysmPlayerCharacter* Player);
 
 	/** Every echo standing is destroyed and forgotten. */
 	void DismissTheEchoes();
@@ -5804,30 +5821,39 @@ private:
 	TWeakObjectPtr<class ACataclysmGroundZone> DivineWrathBeam;
 	int32 DivineWrathDestroyed = 0;
 
-	/** Echoes of the Past: one death that may come back, as recorded. */
+	/**
+	 * Echoes of the Past: one death that may come back, as recorded, and whether its echo is SPENT on this floor: it
+	 * has struck, or vanished without striking, or was destroyed by something else. A save leaves a spent death out,
+	 * so a load raises it no more and it cannot strike twice. Issue #2740, R7.
+	 */
 	struct FEchoOfTheDead
 	{
 		ECataclysmDungeonCreature Kind = ECataclysmDungeonCreature::Count;
 		int32 Rung = 0;
 		int32 Attack = -2; // ACataclysmEnemyCharacter::NoAttackYet; the class is only declared here
-	};
-
-	/** An echo standing, and the attack it will make. */
-	struct FEchoStanding
-	{
-		TWeakObjectPtr<ACataclysmEnemyCharacter> Echo;
-		int32 Attack = -2; // ACataclysmEnemyCharacter::NoAttackYet; the class is only declared here
+		bool bSpent = false;
 	};
 
 	/**
-	 * Echoes of the Past: this floor's deaths, the last `EchoesMost`; the last floor's, handed
-	 * over as a floor begins; the echoes standing; the floor's seconds; and how far the echoes
-	 * have got -- 0 waiting, 1 appeared, 2 struck, 3 gone.
+	 * An echo standing, on its own clock. Issue #2740: which of `EchoesFromLastFloor` it is, the attack it will make,
+	 * and the seconds since it noticed the player and since it struck, each negative until that has happened.
+	 */
+	struct FEchoStanding
+	{
+		TWeakObjectPtr<ACataclysmEnemyCharacter> Echo;
+		int32 Which = INDEX_NONE;
+		int32 Attack = -2; // ACataclysmEnemyCharacter::NoAttackYet; the class is only declared here
+		float SecondsSinceNoticed = -1.0f;
+		float SecondsSinceStruck = -1.0f;
+	};
+
+	/**
+	 * Echoes of the Past: this floor's deaths, every one; the last floor's, handed over as a floor begins; the echoes
+	 * standing; and how far the floor's echoes have got, one of the three `Echoes...` stages below. Issue #2740.
 	 */
 	TArray<FEchoOfTheDead> EchoesThisFloor;
 	TArray<FEchoOfTheDead> EchoesFromLastFloor;
 	TArray<FEchoStanding> EchoesStanding;
-	float EchoesSecondsOnFloor = 0.0f;
 	int32 EchoesStage = 0;
 
 	/** Plague Harbingers: one Harbinger, where it last laid a patch, and its patches, oldest first. */

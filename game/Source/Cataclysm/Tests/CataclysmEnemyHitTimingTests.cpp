@@ -37,7 +37,8 @@
  *   - a creature that dies, or is stunned, in the gap lands nothing;
  *   - a target that walks out of reach in the gap is missed, and a strike
  *     ordered at a target already beyond reach -- the Staff's Compel -- is not,
- *     nor is any strike a rule orders (Echoes of the Past, Compel);
+ *     nor is any strike a rule orders (Compel; Echoes of the Past until issue
+ *     #2740, whose echo now swings as an ordinary creature does);
  *   - the creature's own Tick is what lands the blow in play.
  *
  * NO WORLD IS TICKED. A world built by `UWorld::CreateWorld` never is, so each

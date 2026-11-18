@@ -964,9 +964,11 @@ namespace CataclysmSilenceTest
 	 * the dungeon game mode's own beat, `Tick` at `SecondsBetweenWaveChecks`, with a possessed player the beat can find.
 	 *
 	 * On floor 2, carrying no row, a Corrupted Sentinel that last used `Recorded` dies to the player. On floor 3, carrying
-	 * Echoes of the Past, its echo appears after five seconds; it is silenced by the player when `bSilenced` says so; and
-	 * a second later it strikes. Whether it fired a shot is read from `LastShotFired`, which only `UseEnemyAbility`
-	 * writes: the Sentinel's ordinary attack does nothing. The beat moves no world clock, so the silence cannot run out.
+	 * Echoes of the Past, its echo stands on the floor's first beat; it is silenced by the player when `bSilenced` says
+	 * so; it is stood within its reach of the player, six metres off, where it stood before issue #2740 made echoes
+	 * stand across the floor (a Sentinel cannot walk in, and no brain runs here); and on the next beat it notices the
+	 * player and strikes. Whether it fired a shot is read from `LastShotFired`, which only `UseEnemyAbility` writes: the
+	 * Sentinel's ordinary attack does nothing. The beat moves no world clock, so the silence cannot run out.
 	 */
 	FSilenceEchoRead SilenceEchoStrikes(FAutomationTestBase& Test, const TCHAR* Who, int32 Recorded, bool bSilenced)
 	{
@@ -1048,11 +1050,7 @@ namespace CataclysmSilenceTest
 			return Read;
 		}
 		Mode->ClearFloorEnemies();
-		for (int32 Each = FMath::CeilToInt(Effects::EchoesAppearAfterSeconds
-										   / ACataclysmDungeonGameMode::SecondsBetweenWaveChecks); Each > 0; --Each)
-		{
-			Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
-		}
+		Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
 		const TArray<ACataclysmEnemyCharacter*> Echoes = Mode->EchoesStandingNow();
 		ACataclysmCorruptedSentinelCharacter* Echo =
 			Echoes.Num() == 1 ? Cast<ACataclysmCorruptedSentinelCharacter>(Echoes[0]) : nullptr;
@@ -1068,13 +1066,14 @@ namespace CataclysmSilenceTest
 			return Read;
 		}
 
-		for (int32 Each = FMath::CeilToInt(Effects::EchoesStrikeAfterSeconds
-										   / ACataclysmDungeonGameMode::SecondsBetweenWaveChecks); Each > 0; --Each)
-		{
-			Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
-		}
-		if (!Test.TestEqual(*Named(TEXT("set-up: the echo is still standing when it has struck")),
-							Mode->EchoesStandingNow().Num(), 1)
+		// A HAIR INSIDE SIX METRES, where it stood before issue #2740, at its own standing height: within its reach,
+		// which for an echo that cannot walk is its full fourteen metres (`EchoesStrikeWithinCm`).
+		const FVector Feet = Player->GetActorLocation();
+		Echo->SetActorLocation(FVector(Feet.X + Effects::EchoesMostAwayCm - 5.0f, Feet.Y, Echo->GetActorLocation().Z));
+		Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+		if (!Test.TestEqual(*Named(TEXT("set-up: the echo has made its one strike")), Mode->EchoesSpentThisFloor(), 1)
+			|| !Test.TestEqual(*Named(TEXT("set-up: the echo is still standing when it has struck")),
+							   Mode->EchoesStandingNow().Num(), 1)
 			|| !Test.TestEqual(*Named(TEXT("set-up: and is silenced exactly when asked")),
 							   UCataclysmSilence::IsSilenced(Echo), bSilenced))
 		{

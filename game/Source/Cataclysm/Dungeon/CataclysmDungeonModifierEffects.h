@@ -2694,20 +2694,30 @@ public:
 	 * "Spectral versions of enemies killed on the previous floor appear and repeat their
 	 * final attacks before vanishing."
 	 *
-	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-24. Every figure
-	 * is a play-test value:
-	 * - DEATHS ARE RECORDED ON EVERY FLOOR, whether or not it carries the row: the row decides
-	 *   only whether echoes appear on the next. Each record is the creature's kind, rung and
-	 *   last attack (`ACataclysmEnemyCharacter::LastAttackUsed`); a creature that made no
-	 *   attack repeats its ordinary attack. Not echoes, and not deaths that pay nothing. A
-	 *   floor's boss is recorded: its echo is still one attack.
-	 * - `EchoesAppearAfterSeconds` INTO THE NEXT FLOOR, at most `EchoesMost` -- the last to
-	 *   die -- each at its own ordinary attack reach from the player, never more than
-	 *   `EchoesMostAwayCm`, at even angles around them. The record covers one floor.
-	 * - EACH ATTACKS THE PLAYER ONCE `EchoesStrikeAfterSeconds` after appearing and vanishes
-	 *   `EchoesVanishAfterSeconds` after that, dealing its attack's normal damage.
-	 * - AN ECHO CANNOT BE HURT, PAYS NOTHING, IS RAISED BY THE RULE AND DOES NOTHING ELSE: its
-	 *   controller is removed as it appears, and the game mode makes its one attack.
+	 * REBUILT TO THE PROJECT OWNER'S RULING OF 2026-11-18, issue #2740: "All of last floor" and "Wait, strike once" --
+	 * "Each echo stands somewhere across the floor. When you come near, it moves in, makes its last attack once, and
+	 * vanishes. It cannot be hurt." The coordinating session ruled what the owner left open (R1 to R7 on the issue);
+	 * every figure is a play-test value. Until then (ruled 2026-09-24) the last six appeared in a ring around the
+	 * player five seconds into the floor and all struck together a second later.
+	 * - DEATHS ARE RECORDED ON EVERY FLOOR, whether or not it carries the row, EVERY ONE OF THEM: the row decides
+	 *   only whether echoes appear on the next. Each record is the creature's kind, rung and last attack
+	 *   (`ACataclysmEnemyCharacter::LastAttackUsed`); a creature that made no attack repeats its ordinary attack. Not
+	 *   echoes, and not deaths that pay nothing. A floor's boss is recorded: its echo is still one attack. The record
+	 *   covers one floor.
+	 * - AS THE FLOOR BEGINS, ON ITS FIRST BEAT, every recorded death stands as an echo on one of the cells the floor
+	 *   puts its own creatures on (`EchoesPlaces`): none within `EchoesLeastFromArrivalCm` of where the player
+	 *   stands then, and no two on one cell while the floor has enough cells. It stands still and does nothing.
+	 * - IT NOTICES THE PLAYER AT ITS OWN KIND'S NOTICE DISTANCE (`ACataclysmEnemyCharacter::NoticeRadiusCm`),
+	 *   measured along the floor, and then moves in to its own reach of the player, never more than
+	 *   `EchoesMostAwayCm`; one that cannot walk strikes from its full reach (`EchoesStrikeWithinCm`). Within that
+	 *   reach it makes its recorded attack on the player once, at the attack's normal damage, and vanishes
+	 *   `EchoesVanishAfterSeconds` later. Its ordinary attack is its own swing, measured against its reach when it
+	 *   lands, so a player who steps out of it is not struck; the strike is spent either way. One that has not struck
+	 *   `EchoesGiveUpAfterSeconds` after noticing vanishes without striking. Each echo runs its own clock. The two
+	 *   rulings in this item are the coordinating session's of 2026-11-18, after phase 1.
+	 * - AN ECHO CANNOT BE HURT, PAYS NOTHING, IS RAISED BY THE RULE AND TAKES NO HOSTILE ACTION OF ITS OWN: its brain
+	 *   only stands it still and walks it in (`ACataclysmEnemyCharacter::bIsAnEchoOfThePast`), and the game mode
+	 *   makes its one attack.
 	 * - HORDE WAVES TOO: the previous wave is the previous floor.
 	 */
 	static const TCHAR* EchoesOfThePastKey;
@@ -6210,17 +6220,32 @@ public:
 	static constexpr float DivineWrathRadiusCm = 300.0f;
 	static constexpr float DivineWrathMaxHealthPercent = 20.0f;
 
-	/** Echoes of the Past's figures. Ruled; every one a play-test value. See the key. */
-	static constexpr float EchoesAppearAfterSeconds = 5.0f;
-	static constexpr float EchoesStrikeAfterSeconds = 1.0f;
+	/**
+	 * Echoes of the Past's figures. Ruled; every one a play-test value. See the key.
+	 *
+	 * `EchoesVanishAfterSeconds` and `EchoesMostAwayCm` are the 2026-09-24 figures, kept by R4 of issue #2740.
+	 * `EchoesLeastFromArrivalCm` (R1) and `EchoesGiveUpAfterSeconds` (R4) are the coordinating session's of
+	 * 2026-11-18. The 2026-09-24 figures for appearing five seconds in, striking a second later and keeping the last
+	 * six went with the ruling that the dead stand across the floor from its start, each on its own clock, all of them.
+	 */
 	static constexpr float EchoesVanishAfterSeconds = 1.0f;
-	static constexpr int32 EchoesMost = 6;
 	static constexpr float EchoesMostAwayCm = 600.0f;
+	static constexpr float EchoesLeastFromArrivalCm = 1500.0f;
+	static constexpr float EchoesGiveUpAfterSeconds = 10.0f;
 
 	static_assert(
-		EchoesAppearAfterSeconds > 0.0f && EchoesStrikeAfterSeconds > 0.0f
-			&& EchoesVanishAfterSeconds > 0.0f && EchoesMost > 0 && EchoesMostAwayCm > 0.0f,
-		"An echo that came at once, struck at once, never went, or had no room is not the row.");
+		EchoesVanishAfterSeconds > 0.0f && EchoesMostAwayCm > 0.0f && EchoesLeastFromArrivalCm > 0.0f
+			&& EchoesGiveUpAfterSeconds > 0.0f,
+		"An echo that vanished as it struck, had no reach to move in to, could stand where the player arrives, or "
+		"gave up as it noticed is not the ruling.");
+
+	/**
+	 * The salt of Echoes of the Past's draw of which of the floor's places each echo stands on (`EchoesPlaces`), mixed
+	 * with the floor's seed and the floor number as `PlagueHarbingersChoiceSalt` is: a Horde wave keeps the first
+	 * wave's plan, and so its seed, on every wave. Issue #2740. The next number after `PandorasBoxRollSalt`; NO OTHER
+	 * SALT IN THE GAME'S SOURCE EQUALS IT (searched 2026-11-18, as 0x5D0A and as 23818).
+	 */
+	static constexpr int32 EchoesPlacesSalt = 0x5D0A;
 
 	/** Plague Harbingers' figures. Ruled; every one a play-test value. See the key. */
 	static constexpr int32 PlagueHarbingersCreaturesEach = 10;
@@ -8275,11 +8300,33 @@ public:
 	/** What one sweep of a beam burns, from this maximum health. */
 	static float DivineWrathBurn(float MaximumHealth);
 
-	/** How far from the player an echo appears: its attack reach, at most `EchoesMostAwayCm`. */
+	/** How close to the player an echo moves in before it strikes: its attack reach, at most `EchoesMostAwayCm`. */
 	static float EchoesDistanceCm(float AttackReachCm);
 
-	/** Where echo `Which` of `Count` stands from the player: at even angles, level. */
-	static FVector EchoesOffset(int32 Which, int32 Count, float DistanceCm);
+	/**
+	 * How close to the player an echo strikes from, given its reach against them and whether it can walk. Issue #2740.
+	 *
+	 * AN ECHO THAT WALKS MOVES IN TO ITS REACH HELD TO `EchoesMostAwayCm` (R4). AN ECHO THAT CANNOT WALK STRIKES FROM
+	 * ITS KIND'S OWN FULL REACH: ruled by the coordinating session on 2026-11-18, a labelled judgement, because "moves
+	 * in" cannot apply to a creature that cannot walk (the Corrupted Sentinel, whose attack is a long-range one), and
+	 * the six-metre hold existed only to keep the old ring of echoes close to the player. Never below nought.
+	 */
+	static float EchoesStrikeWithinCm(float ReachAgainstCm, bool bWalks);
+
+	/**
+	 * Which of `Places` each of `Count` echoes stands on, as indices into `Places`, in the order the echoes are raised.
+	 * Issue #2740, R1.
+	 *
+	 * `Places` ARE WHERE THE FLOOR PUTS ITS OWN CREATURES, in the world: the cells of
+	 * `ACataclysmDungeonGameMode::FloorPopulationNow`, which Grave Tide draws its waves' cells from too. So the echoes
+	 * stand where the floor's own creatures stand, spread over the floor as they are.
+	 *
+	 * NONE WITHIN `EchoesLeastFromArrivalCm` OF `Arrival`, measured along the floor; those places are left out. The
+	 * rest are shuffled on a stream seeded with `Seed`, and the echoes take them in that order. NO TWO SHARE A PLACE
+	 * WHILE THERE ARE ENOUGH: only with more echoes than places does the order begin again from its first place.
+	 * Empty when `Count` is not above nought or no place is far enough; the same `Seed` gives the same answer.
+	 */
+	static TArray<int32> EchoesPlaces(const TArray<FVector>& Places, const FVector& Arrival, int32 Count, int32 Seed);
 
 	/** How many Harbingers a floor or wave of `Placed` creatures has: one per ten, rounded up. */
 	static int32 PlagueHarbingersFor(int32 Placed);
