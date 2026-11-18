@@ -18,10 +18,11 @@ Decisions made outside the Google Drive documents, newest first.
 
 ### SAID FIRST
 
-- **WRITTEN, NOT COMPILED.** Phase 1 was written with no build, by instruction. No Unreal test has run and no guard
-  proof has been made. The two DataTable assets, `DT_EmpireTreeNodes` and `DT_EmpireTreeEdges`, do not exist until a
-  window builds them, so four tests of `tools/tests/test_datatable_assets_are_current.py` fail until then; the Python
-  run below shows exactly those four.
+- **NOT YET COMPILED.** Phase 1 was written with no build, by instruction, and phase 2 has not built either: the
+  coordinating session held the compile while another window ran. No Unreal test has run and no C++ guard proof has been
+  made; the two Python proofs have, and both proved. The two DataTable assets, `DT_EmpireTreeNodes` and
+  `DT_EmpireTreeEdges`, do not exist until a window builds them, so four tests of
+  `tools/tests/test_datatable_assets_are_current.py` fail until then; the Python run below shows exactly those four.
 - **NOTHING IN PLAY CHANGES.** The game calls none of the new rules. Where the allocation is kept and where the bank is
   spent from is slice 1b; the screen is slice 2; what a bought node does is slices 3 to 5.
 - **SLICE 1 OF THE PLAN IS SPLIT IN TWO.** The gold work (#2742) also adds a field to the account record, so the
@@ -193,6 +194,58 @@ are the ones named under SAID FIRST, all in `tools/tests/test_datatable_assets_a
 `test_every_csv_still_hashes_to_what_was_recorded` and `test_every_asset_named_in_the_record_exists`, each naming the two
 new tables and nothing else. They pass once the window rebuilds the assets and commits the record.
 `python -m ruff check .`: "All checks passed!"
+
+### Phase 2 before the build: review, the assets, the fixed numbers
+
+**Not rebased: development has not moved** from `1bbba95bc` (`git fetch`, then `git merge-base HEAD origin/development`
+printed `1bbba95bce...`). The coordinating session held the compile back while the Echoes of the Past window (#2740)
+ran; everything below was done without one.
+
+**Reviewed, and nothing changed.** Every assertion of the twelve tests was traced through the code it calls and the
+generated tables: the branch counts (40, 39, 38, 38 and 4) are the tables' own; the 24 and 25 points of the centre test
+are Pacing 10, Structural Integrity 10 and Enduring Foundations 4 and 5; the Architect branch's ordinary nodes hold 325
+points and the Explorer's 316, so `FillBranch` reaches 200, 199 and 100 exactly; each expected sentence is the one the
+code builds from the row it names; 0.5 and 31.5 are exact in a double, and `TestEqual` on a double allows 0.0001.
+
+**The worktree's assets were LFS pointer files, 120 of 124**, which would fail every test that loads a DataTable (the
+coordinating session's note from first-surge-w1, 2026-11-17). `git lfs checkout` replaced them, 128 objects, with no
+tracked file changed; the window's pre-checks count them again.
+
+### Registered before the run
+
+**The base** is the last whole suite on development's game tree: window b2733s4's engine log at `e468bb95e`
+(`b2733s4_suite_engine_e468bb95.log` in that session's worktree), 4791 "Test Completed" lines, all Success, 47 skipped
+halves; development's commit since, #2739, changes `docs/` only. In that log `Cataclysm.Data.` performs 7 and no path
+begins `Cataclysm.EmpireTree`; no group of its 330 is taken by either prefix.
+
+| Run | Registered |
+| :-- | :-- |
+| `Cataclysm.EmpireTree.` alone | 12 performed, 12 succeeded, 0 failed: none at the base, + 12 by name |
+| `Cataclysm.Data.` alone | 7 performed, 7 succeeded, 0 failed: none added; `EveryGeneratedTableImports` pins the two new tables, `EveryGeneratedTableHasAnAssetThatMatchesIt` compares their assets |
+| The whole suite | **4791 + 12 = 4803 performed, 4803 succeeded, 0 failed; 47 skipped halves; 0 test saves left behind** |
+| Python, after the asset rebuild is committed | the phase 1 run's 7542 tests, every one passing: the four asset-record tests pass once the record holds the two tables |
+
+**The guard proofs**, each through `prove_cpp_guard` on `game/Source/Cataclysm/Player/CataclysmEmpireTree.cpp`, prefix
+`Cataclysm.EmpireTree.` (each anchor occurs once; checked):
+
+| | Break | Predicted, broken half |
+| :-- | :-- | :-- |
+| E1 | any parent: `>= Edge.RequiredPoints` to `> Edge.RequiredPoints` in `EdgesAllow` | 12 performed, 9 succeeded, 3 failed: `ANodeOpensWhenItsParentHoldsWhatTheEdgeAsks`, 2 assertions ("and open at the edge's two", "and open at ten"); `ANodeWithTwoParentsOpensWhenEitherIsSatisfied`, 2 ("open through Fortified Gates alone", "open through Enduring Foundations alone"); `ANodeWhoseSystemIsMissingIsRefusedAndSaysWhich`, 1 ("Scaffolding's edge is satisfied, so only its system refuses it") |
+| E2 | a waiting node refused: `if (!Row->WaitsOn.IsEmpty())` to `if (!Row->Option1WaitsOn.IsEmpty())` in `RefusalForSpending` | 12 performed, 11 succeeded, 1 failed: `ANodeWhoseSystemIsMissingIsRefusedAndSaysWhich`, 5 ("Coinage, a root with a full bank, is refused", "and the refusal names gold and its issue", "the bank is untouched", "nothing is spent", "Scaffolding, with Foundation full, still waits on city upgrade costs") |
+| E3 | a branch capstone counts its branch: `OutSpent = SpentInBranch(NodeTable, Allocation, Row->Branch);` to `OutSpent = SpentInTree(Allocation);` in `CapstoneThreshold` | 12 performed, 11 succeeded, 1 failed: `ABranchCapstoneOpensAtTwoHundredInItsOwnBranch`, 1 ("The Royal Engineer's Blessing is shut at 199 in its branch") |
+| E4 | the bank's noise: `FloorToDouble(Bank + BankNoise)` to `FloorToDouble(Bank)` in `WholePointsIn` | 12 performed, 11 succeeded, 1 failed: `APointCostsOneWholePointFromTheBank`, 2 ("a bank a billionth short of a point buys one", "and is left at nought, not below it") |
+| E5 | a waiting option refused: `OptionField(*Row, Option, /*bWaitsOn=*/true)` to `OptionField(*Row, Option + 3, /*bWaitsOn=*/true)` for `Needs` in `RefusalForChoosingOption` | 12 performed, 11 succeeded, 1 failed: `AnOptionWhoseSystemIsMissingCannotBeChosen`, 4 ("The Soul Forge, Edicts of Power's third, cannot be chosen", "and the refusal names crafting", "The Collector's Decree, its second, can", "Imperial Prowess cannot be chosen") |
+
+Every restored half: 12 performed, 12 succeeded, 0 failed.
+
+**The two Python proofs were run in phase 2, before this table was written** -- their predictions were made before
+each run and not written down first, so they are reported as results rather than as registrations -- through
+`tools/prove_guard.py`'s `break_and_run` on `tools/tests/test_empire_tree_tables_match_the_tree_file.py`:
+
+| | Break | Result |
+| :-- | :-- | :-- |
+| Y1 | a classified name no node has: `stray = sorted(...)` to `stray = []` in `empire_tree_nodes` | PROVED: "1 failed, 40 passed in 0.93s \| restored: 41 passed in 0.91s"; named `test_a_name_no_node_is_called_stops_generation` |
+| Y2 | a node in the wrong branch: `basic_arch_t1d,Architect,` to `basic_arch_t1d,Explorer,` in `game/Data/EmpireTreeNodes.csv` | PROVED: "4 failed, 37 passed in 0.94s \| restored: 41 passed in 0.84s"; named `test_the_tables_are_the_generators_output`, `test_every_identifier_that_names_a_branch_agrees`, `test_no_edge_crosses_from_one_branch_to_another`, `test_each_branch_holds_the_points_the_survey_counted` |
 
 ---
 
