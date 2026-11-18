@@ -389,6 +389,11 @@ public:
 	 * nothing new travels with the ailment and no Necrosis from any other source changes. A carrier holds one Necrosis
 	 * at a time (a stronger one replaces the running one, #1503), so this asks of the one running. False for a
 	 * carrier with none.
+	 *
+	 * THE CORRUPTED DOUBLE COUNTS AS A STALKER HERE: `ACataclysmConsumptionDoubleCharacter` is a subclass, "a
+	 * Corrupted Stalker in every way but three", and the potion is not one of the three. The game mode's other rules
+	 * asking `IsA<ACataclysmCorruptedStalkerCharacter>` spare it the same way. Recorded in `docs/DECISIONS.md`,
+	 * 2026-11-17, as a reading for the coordinating session to confirm (issue #2580).
 	 */
 	static bool NecrosisSparesPotions(const UAbilitySystemComponent& AbilitySystem);
 };
