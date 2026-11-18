@@ -192,6 +192,14 @@ All accepted by the coordinating session, 2026-11-17:
    `LeavingTheLevel`.
 6. `Cataclysm.Input.ConfigListsEverySlotAndNativeAction`: thirteen native actions.
 
+And two more after window travel-w1's second run, approved by the coordinating session on 2026-11-18 as test-only
+changes (below, under that run):
+
+7. `Cataclysm.SaveLoad.ProcessingADeathWritesTheSaveAfterThePenalty`: expects the hand-over as the last write and a
+   trip to the capital, for "the paid death was written", as item 3.
+8. `Cataclysm.SaveLoad.ALoadedPactAltarOffersThePactsItOffered`: goes on to the next floor on slots of its own, so that
+   floor change does not write over the save it loads.
+
 And by the version 6 bump, as the version 5 bump did: the committed-file tests read `Run_v6.json` (in
 `CataclysmSaveRecordTests.cpp`, `CataclysmDeathCostTests.cpp`, `CataclysmEarnedBossSaveTests.cpp` and
 `CataclysmWinningTheRunTests.cpp`), three of them saying "version 6"; the four tests that run an older run file through
@@ -432,6 +440,144 @@ included headers changed); and committed as `a99d4c754`, the makefile set aside 
 Module.Cataclysm.37.cpp, Module.Cataclysm.39.cpp, Module.Cataclysm.38.cpp, Module.Cataclysm.40.cpp,
 Module.Cataclysm.41.cpp"), the unity files holding `CataclysmSaveTriggers.cpp`, `CataclysmDungeonGameMode.cpp` and
 `CataclysmSaveLoadTests.cpp`.
+
+### Window travel-w1, the second run, 2026-11-18: stopped at its fifth group, on two tests that relied on the old save behaviour
+
+At `c7b9447e`. The pre-checks all passed. The runner's lines after them:
+
+```
+feat/2733-travel c7b9447e dirty=''
+Git LFS: exit 0, 128 files, 0 pointers
+lock acquire: exit 0 travel-w1 holds the Unreal editor.
+build: Build: Succeeded - target already up to date, 0 actions, nothing compiled | exit 0
+assets: SKIPPED, already committed; game/Content/Input/Actions/IA_ToggleEmpireMap.uasset: HEAD's blob begins b'version https://git-lfs.github.com/spec/v1', 129 bytes; on disk 1569 bytes beginning c1832a9e; git lfs ls-files: ['f8d1f6d13f * game/Content/Input/Actions/IA_ToggleEmpireMap.uasset']; last changed in e06b5f16a
+```
+
+and the same line for `DA_InputConfig.uasset`, `IMC_KeyboardMovement.uasset` and `IMC_MouseMovement.uasset`, each
+last changed in `e06b5f16a`; then
+
+```
+alone Cataclysm.Input.: Tests: 8 tests performed, 8 succeeded, 0 failed | exit 0
+alone Cataclysm.Travel.: Tests: 9 tests performed, 9 succeeded, 0 failed | exit 0
+alone Cataclysm.EmpireRun.: Tests: 71 tests performed, 71 succeeded, 0 failed | exit 0
+alone Cataclysm.WalkFromTheScreen.: Tests: 5 tests performed, 5 succeeded, 0 failed | exit 0
+alone Cataclysm.SaveLoad.: Tests: 76 tests performed, 74 succeeded, 2 failed: ALoadedPactAltarOffersThePactsItOffered, ProcessingADeathWritesTheSaveAfterThePenalty | exit 1
+STOPPED: Cataclysm.SaveLoad. alone did not pass
+lock release: exit 0 travel-w1 released the Unreal editor.
+```
+
+**The failed assertions**, quoted from the group's kept engine log (`b2733s3_alone_engine_SaveLoad_c7b9447e.log`):
+
+| Test | Assertion |
+| :-- | :-- |
+| `ProcessingADeathWritesTheSaveAfterThePenalty` | "Expected 'the last write was the one that says the death was paid for' to be 8, but it was 11." |
+| `ALoadedPactAltarOffersThePactsItOffered` | "Expected 'the altar offers the pacts it offered' to be "0,1,2", but it was "0,2,4"." |
+| | "Expected 'and the next floor offers what the walk's did' to be "0,2,4", but it was "1,2,3"." |
+
+**Why each failed. Both are tests that relied on what this slice changed; neither is a fault in the game.**
+
+- **`ProcessingADeathWritesTheSaveAfterThePenalty`** dies in an empire dungeon with a game instance and a writer that
+  is writing, so since this slice the death ends the walk and goes back to the capital, and the hand-over
+  (`LeavingTheLevel`, 11) is written after the paid death (`DeathProcessed`, 8). The dungeon-death load test was
+  changed for the same reason by the ruling of 2026-11-17. Its two other assertions -- the day after the death's days,
+  and the character standing -- passed. My first sweep missed it: I took its revive for one outside a walk without
+  reading the body.
+- **`ALoadedPactAltarOffersThePactsItOffered`** saves on the floor whose offer was drawn again
+  (`NoteTrigger(CharacterDied)`), then goes on to the next floor in the same frame to read what that floor offers.
+  Until the first run's change that floor change's write was skipped, because the save had written the run record that
+  frame. It now writes, so the record on disk is the next floor's, and the load reads that floor: the loaded offer,
+  0,2,4, is what the next floor offered, and the floor after the load offers 1,2,3. A save taken after moving to a
+  new floor should hold that floor.
+
+### The rulings, quoted
+
+The coordinating session, 2026-11-18: "Both approved as test-only fixes, and C3's new prediction too. [...] Your
+reading of the pact altar is right: a save after a floor change should hold the new floor."
+
+And: "Before you re-register, widen the sweep once, because this window has now stopped twice on tests that assumed old
+save behaviour, and the whole suite has not run yet. Search ALL test files, not only CataclysmSaveLoadTests.cpp, for
+any assertion on: the last trigger written, or the last write [...]; a count of writes, or of writes skipped in a
+frame; a record's floor or dungeon read after a revive, a floor change or the stairs, in any test that has a game
+instance and a writing writer. Read each hit's body, and list in the entry which you checked and which you changed."
+
+And: "Add `Cataclysm.RuleDamageParts.` (11) and `Cataclysm.DungeonModifierEffects.ThoseInTheDark` as alone groups
+[...]. In the widened sweep I asked for, close the limit you named: also search for tests that change floor in one
+helper and read the save in another."
+
+### The sweep, 2026-11-18
+
+**What this slice changed that a test can observe through a save**, read in the code before searching:
+
+1. A change of floor writes the run record even when another write took it that frame
+   (`UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame`). Observed through the record on disk,
+   `LastRunRecord`, `WritesStarted` and `SecondsSinceTheClockWrote`; **not** through `LastTrigger`, which
+   `NoteTrigger` sets before the once-a-frame rule is asked, nor `FloorChangesNoted`, which `SetFloor` counts.
+2. A death that ends a walk, and the last floor's stairs, hand over: `LeavingTheLevel` is the last trigger, both
+   records are written with no floor, the writer writes nothing after, and `TravelRequested` names the capital. Only
+   in a world with this project's game instance and a writer that is writing (`ACataclysmGameMode::TravelTo`); in any
+   other a warning is logged and nothing else changes. A warning does not fail an automation test here.
+3. A record taken while the writer holds no floor (floor 0) carries only the characters' placements
+   (`UCataclysmSaveWriter::FloorRecordNow`). A writer holds floor 0 only in the capital, after a hand-over, or after a
+   load of a record with no floor; **every `BeginRun` in the tests passes floor 1, the dungeon's floor or the floor the
+   writer holds** (searched by `git grep`).
+
+**How it was searched.** `.claude/windows/sweep_save_behaviour_tests.py`, read-only, over every C++ file under a
+`Tests` directory in `game/Source` -- 290 files. It finds each function body by the code's brace style, including
+each test registered through a file-local wrapper macro (`CATACLYSM_TEST` and 39 like it), and carries what a helper
+calls to every test that calls it, through any number of helpers. **It found 4787 test bodies against 4784 test names
+registered, the suite's registered total**, so no test body was missed. It lists:
+
+- **A**: a test that reaches a floor change, a revive or a walk's end (`GoToFloor`, `GoDownOneFloor`,
+  `HandleStairsTaken`, `EnterEmpireDungeon`, `ResumeEmpireDungeon`, `LeaveTheDarkFloor`, `ThePlayerFellIntoAChasm`,
+  `LeaveEmpireDungeon`, `ClearEmpireDungeon`, `Revive`, `EndTheDungeonForADeath` and the trip's own functions) **and**
+  a read of a save or of the writer's state (`ReadFromSlot`, `CharacterAndRun`, `LoadThePendingCharacter`,
+  `WaitForSlot`, `DoesSaveGameExist`, `LastRunRecord`, `LastCharacterRecord`, `WritesStarted`, `SynchronousWrites`,
+  `TriggersWithNowhereToWrite`, `LastTrigger`, `FloorRecordNow`, `HoldsTheFloor`, `HoldsTheDungeon` and the like),
+  whether one helper does both or two different ones do: **91 tests**.
+- **B**: a test that asserts on a trigger or a count of writes: **87 tests**.
+- **C**: a test that reaches a revive or the stairs **and** gives its world this project's game instance -- the only
+  tests in which change 2 can happen: **7 tests**, three in `Cataclysm.SaveLoad.`, three in `Cataclysm.Travel.` and
+  `Cataclysm.WinningTheRun.TheEarnedBossDungeonsStairsWinTheRunOnceItsCataclysmBossIsDead`.
+
+**127 tests in all**, every one of C among them. A second search, `.claude/windows/sweep_instance_tick.py`, covers
+what the first cannot: a walk ended by game code while a test ticks the world -- the revive timer, a Horde's next wave,
+the stairs' overlap. **50 tests give their world a game instance and tick it or run the dungeon's beat**: 41 in
+`Cataclysm.SaveLoad.`, which ran in the second run, and 9 in `Cataclysm.ConsumptionDouble.`, none of which puts an
+empire run on its game instance, so no death or floor change in them can end a walk.
+
+**74 of the 127 are in `Cataclysm.SaveLoad.` (69) and `Cataclysm.Travel.` (5)**, and each group ran alone in the
+second run, at the code under test now: 72 passed, and the two above failed. **The other 53 were read by hand**:
+
+| Group | Tests read | Why the slice changes nothing they assert |
+| :-- | :-- | :-- |
+| `Cataclysm.Capital.` | `ACharacterSavedInTheSandboxLoadsInTheCapitalWithoutThatFloor`, `ARunSavedOnADungeonFloorIsStillRefusedInTheCapital` | both records are saved on the sandbox's floor 1 with no floor change after; in the capital the sandbox's floor is dropped by slice 2's rule, before this slice's placement rule is asked, and the refusal is unchanged |
+| `Cataclysm.ConsumptionDouble.` | `ACharacterMarkedBetweenDungeonsIsHuntedOnTheNextDungeonsFirstFloor`, `ADoubleAndACorruptedStalkerHuntOneFloorEachWithItsOwnState`, `ALoadKeepsWhetherTheSavedFloorWasHunted`, `APlayerKilledByTheDoubleStaysMarked`, `KillingTheDoubleZeroesTheWornResidueAndClearsTheMarkAndTheRecordSaysSo`, `TheDoubleComesOnTheNextFloorEnteredAndNeverOnTheFloorOfTheCrossing`, `TheDoubleFollowsThirtySecondsIntoTheNextFloorWithTheHealthItHad`, `TheDoubleWearsTheBuildCapturedAtTheCrossingNotTheGearWornWhenItArrives`, `TheHuntComesBackFromASaveWithTheDoubleWhereItStood` | their "save" is the walk and rule state read in memory (`WalkStateNow`, `FloorRuleStateNow`), and the record one of them reads is the character record, which a change of floor never writes; their slot reads are the clean-up's `DoesSaveGameExist`; no empire run on the game instance, so no walk to end |
+| `Cataclysm.ConsumptionMark.` | `TheMarkIsWrittenToTheCharacterRecordAndLoadsBack` | writes and reads the character record, with no floor change and no revive |
+| `Cataclysm.DrainDeathNotedOnce.` | `APlayerKilledByTheDelayedDamageDrainNotesItsDeathOnce`, `APlayerKilledByTheHealthDebtDrainNotesItsDeathOnce`, `AWriteOfAPlayersHealthToNoughtNotesItsDeathOnce` | count `TriggersWithNowhereToWrite` on a writer that is not writing; the death notes one trigger as before, and nothing revives |
+| `Cataclysm.DungeonModifierEffects.` | `ThoseInTheDarkEnteringADungeonStoresTheSaveClearOfTheDarkFloor`, `ThoseInTheDarkTheSaveRecordsTheDarkFloorAndTheFloorFallenFrom` | assert `FloorChangesNoted` (counted in `SetFloor`), `LastTrigger` (set before the once-a-frame rule) and the floor record gathered in memory on floors numbered 1 or more, never floor 0; no disk read and no write count |
+| `Cataclysm.EmpirePoints.` | `ADeathsResolveBanksNothing`, `ADefeatAtFullPopulationBanksTheBase`, `ADefeatAtHalfTheLivingPopulationBanksHalf`, `ASlotNamingAnotherPartitionIsRefusedOnceAndLeftAsItWas`, `ASoloSelfFoundDefeatBanksNothingInAnyAccount`, `ClearingTheBossDungeonBanksItsPointsBeforeTheNextRunBegins`, `TheBankSurvivesASaveRoundTrip`, `TheMapLineShowsTheBankRoundedDownToATenth`, `ThreeOrdinaryDefeatsAtAThirdOfThePopulationBankOnePoint` | each clears by calling `ClearEmpireDungeon` itself, which does not travel -- only `GoDownOneFloor` goes back after a clear -- and raises no trigger it did not raise before; the one write count asserted is "at least 1"; the record read is the account record |
+| `Cataclysm.RuleDamageParts.` | `SoulsAndHungerComeBackFromALoadAtTheirFigureInEitherOrder`, `SoulsUnderACleanseAndTheVoidsBossComeBackFromALoadAtTheirFigure` | through `ARoundTripOfRows`, which makes every floor change before its save, writes that save with `CharacterDied` (already written whatever else wrote that frame), and reads it in a fresh world |
+| `Cataclysm.SaveTriggers.` | `EachRecordIsWrittenForTheReasonsThatChangeIt`, `OnlyTheCharacterDyingAndLeavingTheLevelAreWrittenBeforeTheFrameEnds` | the rule tests themselves, changed in phase 1 for `LeavingTheLevel` |
+| `Cataclysm.SaveWriter.` | `ADeathIsOnDiskBeforeTheCallThatWroteItReturns`, `AWrittenRunRecordCarriesItsTierAndCataclysms`, `AWrittenRunRecordCarriesTheCitiesThroughTheFile`, `AWrittenRunRecordCarriesTheEmpiresDay`, `AWrittenRunRecordCarriesTheStandingDungeons`, `AWrittenRunRecordCarriesTheSurgeSchedule`, `AWrittenRunRecordCarriesWhatThePlayerAchieved`, `AWrittenRunRecordKeepsTheFloorsACityUpgradeMovedOnADungeon`, `EverythingExceptADeathIsHandedOverRatherThanWrittenNow`, `HealthFallingThroughTheLineIsWhatMakesTheWriterWrite`, `NothingIsWrittenUntilSomethingSaysWhichRunItIs`, `TheClockWritesAfterItsIntervalAndNotBefore`, `TheGameModeIsWhatTurnsTheWriterOn`, `TheRunRecordIsWrittenOncePerFrameUnlessItIsADeath`, `WithNoEmpireRunASaveKeepsTheDayItAlreadyHad` | none changes floor, revives or takes the stairs; the writer is on the sandbox's floor 1; the triggers they count or name (`CreatureDied`, `FightStarted`, `Clock`, `HealthCrossedThreshold`, `CharacterDied`) are written as before |
+| `Cataclysm.WinningTheRun.` | `AWinAtTierEightStaysAtTierEightAndFacesTheSameEight`, `AWinRunsNoneOfTheWalksOwedDays`, `AWonRunRaisesTheTierBeforeTheCharacterRecordIsWritten`, `LeavingTheBossDungeonUnclearedWinsNothing`, `TheFirstWinOverABossPaysTenAndASecondWinOverItPaysNothing`, `TheNewRunsMapCarriesTheWinLine`, `TheNextRunBeginsAtOnceATierHigherFacingTheWonRunsCataclysmsAndOneMore` | each clears by calling `ClearEmpireDungeon` itself, or leaves by `LeaveEmpireDungeon`, neither of which travels; the last trigger they ask for is `RunWon`, written after the floor change entering |
+| | `TheEarnedBossDungeonsStairsWinTheRunOnceItsCataclysmBossIsDead` | **already changed by ruling** in phase 1: the stairs hand over |
+
+**Changed after the sweep: no further test.** The two above are the only ones changed, and no product change is
+needed.
+
+**What the sweep cannot see.** A test that reads a save through a function this list does not name, or ends a walk
+through game code it does not tick, would not be listed; and a reading is a judgement, which the run checks. The two
+groups the coordinating session added run alone early for that reason (below).
+
+### What changed after the second run
+
+- **`ProcessingADeathWritesTheSaveAfterThePenalty`** asserts that the hand-over to the capital was the last write,
+  after the one that says the death was paid for, and that the character travels to the capital; its day and health
+  assertions are unchanged.
+- **`ALoadedPactAltarOffersThePactsItOffered`** begins the writer on slots of its own (`BeginRun` with two new ids, and
+  the dungeon and floor the writer holds) after the save is written and before the walk goes on to the next floor, so
+  that floor change writes there and the save the load reads stays the one on the floor drawn again. Both new slots
+  are deleted at the end, as the save's are.
 
 ---
 

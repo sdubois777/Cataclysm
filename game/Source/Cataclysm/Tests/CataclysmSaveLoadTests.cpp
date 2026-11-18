@@ -857,8 +857,13 @@ bool FCataclysmSaveLoadDeathProcessedTest::RunTest(const FString&)
 							DayInside, Run->DeathDayCost(), Written->Day, WrittenHealth,
 							UCataclysmSaveTriggers::NameOf(Last)));
 
-	TestEqual(TEXT("the last write was the one that says the death was paid for"),
-			  static_cast<int32>(Last), static_cast<int32>(ECataclysmSaveTrigger::DeathProcessed));
+	// THE PAID DEATH IS WRITTEN AND THEN THE CHARACTER GOES BACK TO THE CAPITAL, since issue #2733 slice 3: the
+	// death ends the walk, so the hand-over is the last write. Until then this asserted the paid death's write was the
+	// last trigger; changed by the coordinating session's ruling of 2026-11-18, as the dungeon-death load test was.
+	TestEqual(TEXT("the hand-over to the capital was the last write, after the one that says the death was paid for"),
+			  static_cast<int32>(Last), static_cast<int32>(ECataclysmSaveTrigger::LeavingTheLevel));
+	TestEqual(TEXT("and the character travels to the capital"), Mode->TravelRequested(),
+			  FString(UCataclysmCharacterSelectWidget::CapitalMap));
 	TestEqual(TEXT("the record holds the day after the death's days"), Written->Day, DayInside + Run->DeathDayCost());
 	TestTrue(TEXT("and the character standing"), WrittenHealth > 0.0f);
 	return true;
@@ -3256,6 +3261,11 @@ namespace CataclysmSaveLoadTest
 
 		FSaved Saved;
 		ON_SCOPE_EXIT { Saved.Forget(); };
+		// THE SLOTS THE WALK GOES ON IN after the save, deleted as the save's are.
+		FSaved WalkedOn;
+		WalkedOn.RunId = FGuid::NewGuid();
+		WalkedOn.CharacterId = FGuid::NewGuid();
+		ON_SCOPE_EXIT { WalkedOn.Forget(); };
 		// THE DUNGEON'S SEED PINNED FOR THE WHOLE TEST, THE LOAD INCLUDED, so the floor found is the floor loaded.
 		FPinnedDungeonSeed PinnedSeed;
 		if (!Test.TestNotNull(TEXT("set-up: the dungeon's seed can be pinned"), PinnedSeed.Variable))
@@ -3333,7 +3343,12 @@ namespace CataclysmSaveLoadTest
 			Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
 			WaitForSlot(Saved.RunSlot());
 
-			// AND WHAT THE WALK'S NEXT FLOOR OFFERS, after the save is written.
+			// AND WHAT THE WALK'S NEXT FLOOR OFFERS, after the save is written, IN SLOTS OF ITS OWN. A change of floor
+			// writes even when another write took the run record this frame, since issue #2733 slice 3 (ruled
+			// 2026-11-18), so going on in the save's own slots would write the next floor over the save this test
+			// loads. The writer keeps the dungeon and the floor it holds, so the next floor is still a change of floor.
+			Scene.Base.Writer->BeginRun(WalkedOn.RunId, WalkedOn.CharacterId, Scene.Base.Writer->HoldsTheDungeon(),
+										Scene.Base.Writer->HoldsTheFloor());
 			if (!Test.TestTrue(TEXT("set-up: the walk went on to the next floor"), Mode.GoToFloor(Floor + 1)))
 			{
 				return false;
