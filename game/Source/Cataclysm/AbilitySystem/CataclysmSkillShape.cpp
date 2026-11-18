@@ -231,6 +231,9 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 			TEXT("Requires"), TEXT("ChargeBreaksOn"), TEXT("RefundsCooldown"),
 			TEXT("TargetMode"), TEXT("OnDeath"), TEXT("SpreadWhen"),
 			TEXT("Immune"), TEXT("HoldForbids"),
+			// AND TWO MORE ON 2026-11-17 FOR THE STALKER'S KITS, issue #2580: an ailment's name and a pick. Each would
+			// otherwise go through Atof and take the whole cell down, as `Minions` did on #622.
+			TEXT("Ailment"), TEXT("EffectPick"),
 		};
 		bool bIsNumber = true;
 		for (const TCHAR* const TextKey : TextKeys)
@@ -420,6 +423,25 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		else if (Key.Equals(TEXT("EffectMagnitude"), ESearchCase::IgnoreCase))
 		{
 			Params.EffectMagnitude = Number;
+		}
+		// --- The Stalker's kits, issue #2580 -----------------------------
+		else if (Key.Equals(TEXT("EffectPick"), ESearchCase::IgnoreCase))
+		{
+			Params.EffectPick = Value;
+		}
+		else if (Key.Equals(TEXT("Ailment"), ESearchCase::IgnoreCase))
+		{
+			// Not checked against the four names here, for the reason `Effect` is not: the generator holds the closed
+			// set and refuses anything outside it.
+			Params.Ailment = Value;
+		}
+		else if (Key.Equals(TEXT("DamageRollMin"), ESearchCase::IgnoreCase))
+		{
+			Params.DamageRollMin = Number;
+		}
+		else if (Key.Equals(TEXT("DamageRollMax"), ESearchCase::IgnoreCase))
+		{
+			Params.DamageRollMax = Number;
 		}
 		else if (Key.Equals(TEXT("AllyIncreasedDamage"), ESearchCase::IgnoreCase))
 		{

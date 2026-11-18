@@ -368,11 +368,32 @@ public:
 	 * @param CeilingShare  the share of the maximum this restoration may fill to,
 	 *                 1 for all of it. Issue #1833: the shield's regeneration
 	 *                 step passes its recharge ceiling; everything else passes 1
+	 * @param bFromAPotion  whether this is a potion's heal, which a Corrupted
+	 *                 Stalker's Necrosis does not deny. `UCataclysmPotions::
+	 *                 HealStep` alone passes true. See `NecrosisSparesPotions`
 	 */
 	static void TopUp(UAbilitySystemComponent& AbilitySystem,
 					  const FGameplayAttribute& Pool,
 					  const FGameplayAttribute& Maximum, float Gain,
 					  const FGameplayTagContainer& Healing =
 						  FGameplayTagContainer(),
-					  float CeilingShare = 1.0f);
+					  float CeilingShare = 1.0f,
+					  bool bFromAPotion = false);
+
+	/**
+	 * Whether the Necrosis this character carries lets a potion's heal through. The owner, 2026-11-17, issue #2580:
+	 * "A Stalker's Necrosis spares potions. It blocks regeneration and leech, but not potions."
+	 *
+	 * TRUE ONLY WHEN EVERY NECROSIS RUNNING ON IT WAS LAID BY A CORRUPTED STALKER: the instigator its effect's context
+	 * credits is an `ACataclysmCorruptedStalkerCharacter`. Read off the running effect rather than marked on it, so
+	 * nothing new travels with the ailment and no Necrosis from any other source changes. A carrier holds one Necrosis
+	 * at a time (a stronger one replaces the running one, #1503), so this asks of the one running. False for a
+	 * carrier with none.
+	 *
+	 * THE CORRUPTED DOUBLE COUNTS AS A STALKER HERE: `ACataclysmConsumptionDoubleCharacter` is a subclass, "a
+	 * Corrupted Stalker in every way but three", and the potion is not one of the three. The game mode's other rules
+	 * asking `IsA<ACataclysmCorruptedStalkerCharacter>` spare it the same way. Recorded in `docs/DECISIONS.md`,
+	 * 2026-11-17, as a reading for the coordinating session to confirm (issue #2580).
+	 */
+	static bool NecrosisSparesPotions(const UAbilitySystemComponent& AbilitySystem);
 };

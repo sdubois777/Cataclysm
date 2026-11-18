@@ -295,6 +295,35 @@ public:
 	float LastHealthCostPercentOfMaximum = -1.0f;
 
 	/**
+	 * The damage percent this use drew, for a skill stating `DamageRollMin` and `DamageRollMax`; -1 before its first
+	 * use and for every skill stating none. Issue #2580, [N3]. Drawn once per use in `CommitAndBegin`, so every blow
+	 * of one use deals the same figure, and read back by `GetDamagePercent`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	float RolledDamagePercent = -1.0f;
+
+	/**
+	 * The name `Effect=` writes on a self buff that draws one buff from the game's random-buff pool,
+	 * `UCataclysmAbilitySystemComponent::RandomBuffTable`. Issue #2580, [N5]. `RANDOM_BUFF_EFFECT` in
+	 * `tools/generate_datatables.py` holds the same name; it names no row of the Status Effects sheet.
+	 */
+	static const TCHAR* RandomBuffEffect;
+
+	/** Whether this skill's `Effect=` cell is `RandomBuffEffect`. */
+	bool DrawsARandomBuff() const;
+
+	/**
+	 * Lay on one target what a landed contact of this skill's FIRED PROJECTILE carries beyond its damage, its burn and
+	 * its stated ailment: the shove, the stun, the forced movement and the knockdown `HitTargets` lays on every landed
+	 * blow (`LayTheLandedBlowsHolds`), then the named effects (`ApplyNamedEffectsTo`). Ruled by the coordinating
+	 * session 2026-11-17, issue #2580: a projectile with a speed hits through `ACataclysmProjectile::HitOne`, which
+	 * never passed through `HitTargets`, so none of them reached what it touched. The same code, not a copy.
+	 *
+	 * @return whether the contact pinned the target, for a line `OnDeath=Release` binds when the shot finishes
+	 */
+	bool LayWhatALandedShotCarries(AActor* Firer, AActor* Target, float Dealt) const;
+
+	/**
 	 * How far the character had moved since its own last attack when this skill
 	 * was last used, in metres. Issue #41, slice 2.
 	 *
@@ -1044,6 +1073,28 @@ protected:
 	void ApplyStunTo(AActor* Self, AActor* Target, float DamageDealt) const;
 
 	/**
+	 * Apply the ailment this skill's `Ailment=` names to one target, at magnitude one, through
+	 * `UCataclysmAilments::Apply`. Issue #2580, [N1]. Nothing for a skill naming none. A rider on HitTargets beside
+	 * the burn, the knockback and the stun, asked only for a blow that landed.
+	 *
+	 * @return whether the ailment was applied
+	 */
+	bool ApplyStatedAilmentTo(AActor* Self, AActor* Target) const;
+
+	/**
+	 * The riders `HitTargets` lays on every LANDED blow beyond its damage, its burn and its stated ailment: the
+	 * knockback, the stun, the forced movement and a knockdown the caster's rows carry, in that order. Moved out of
+	 * `HitTargets` on 2026-11-17 (issue #2580) so a fired projectile's contact reaches the same code. The caller has
+	 * already refused an evaded blow.
+	 *
+	 * @return whether the blow pinned the target
+	 */
+	bool LayTheLandedBlowsHolds(AActor* Self, AActor* Target, float Dealt) const;
+
+	/** Draw this use's damage percent between `DamageRollMin` and `DamageRollMax`. See `RolledDamagePercent`. */
+	float DrawDamageRoll() const;
+
+	/**
 	 * Whether this skill names stunning as its effect, rather than merely
 	 * stating a duration.
 	 *
@@ -1229,7 +1280,7 @@ protected:
 	 *                       already burning".
 	 * @return how many effects were applied
 	 */
-	int32 ApplyNamedEffectsTo(AActor* Target, float DurationScale = 1.0f);
+	int32 ApplyNamedEffectsTo(AActor* Target, float DurationScale = 1.0f) const;
 
 	/**
 	 * This skill's damage type as the name the resistance slots are keyed by,

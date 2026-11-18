@@ -21,6 +21,8 @@
 // For the greatsword Buried Fire leaves standing in the ground. Issue #1141.
 #include "AbilitySystem/CataclysmPlantedWeapon.h"
 #include "AbilitySystem/CataclysmProjectile.h"
+// For binding the line a fired Skewer pinned. Issue #2580, ruled 2026-11-17.
+#include "AbilitySystem/CataclysmPinnedLine.h"
 // For the attack speed a rack of axes is thrown at. Issue #37.
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCommand.h"
@@ -1697,6 +1699,23 @@ void UCataclysmProjectileSkill::OnProjectileFinished(
 		const TArray<AActor*> Struck = Projectile->StruckEnemies();
 		CursesSpread += SpreadCursesFrom(Struck);
 
+		// AND WHAT ITS CONTACTS PINNED IS BOUND INTO ONE LINE, IF THE ROW SAYS SO, as `HitTargets` binds what a beam
+		// pinned. The Spear's Skewer: "the whole line is held together for 4 seconds. Killing any one of them frees the
+		// rest." Since 2026-11-17 (issue #2580) a shot with a speed pins what it lands on, one contact at a time, so the
+		// line is known only when it finishes.
+		if (Params.OnDeath.Equals(TEXT("Release"), ESearchCase::IgnoreCase))
+		{
+			TArray<AActor*> Line;
+			for (const TWeakObjectPtr<AActor>& One : Projectile->PinnedAlongItsFlight)
+			{
+				if (AActor* Held = One.Get())
+				{
+					Line.Add(Held);
+				}
+			}
+			UCataclysmPinnedLine::BindTogether(Line);
+		}
+
 		// AND THE AXE STAYS IN WHAT IT HIT, if the row says so. The Axe's
 		// Harrower: "the axe stays where it lands. When that enemy dies it tears
 		// free and buries itself in the nearest living enemy within 10 meters."
@@ -2224,6 +2243,18 @@ int32 UCataclysmProjectileSkill::Land()
 			GetWorld(), Self, FreeRepeatCastBy.Get(), Destination, ScaledRadiusCm(), FreeRepeatCastBy);
 	const bool bBeganForTheUser = StruckWearer && BeginAttackOn(Targets);
 	HitTargets(Targets);
+
+	// AND THE EFFECTS THE ROW NAMES, ON EVERY TARGET THE BLOW LANDED ON, as a Strike lays them once its blows are
+	// dealt. Ruled by the coordinating session 2026-11-17 (issue #2580): a projectile delivers what any hit does, and
+	// until then neither a beam's landing nor a flying shot's contact laid a named effect. No projectile row states
+	// one today, so no row changes for this.
+	for (AActor* Target : Targets)
+	{
+		if (BlowLandedOn(Target))
+		{
+			ApplyNamedEffectsTo(Target);
+		}
+	}
 	if (StruckWearer)
 	{
 		StrikeTheWearerInItsDeployablesBlast(StruckWearer, GetDamagePercent());
@@ -2433,6 +2464,20 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 	UCataclysmSkillEffects::ApplyTagForDuration(
 		Self, Self, UCataclysmSkillShapes::StatusTagFor(Params.Effect),
 		Lasts);
+
+	// AND A ROW WRITING `Effect=RandomBuff` DRAWS ONE BUFF FROM THE GAME'S OWN POOL, for as long as this buff lasts.
+	// Issue #2580, [N5], the Chaos Whip's Loaded Dice: "gain one buff drawn at random from every buff there is, for 8
+	// seconds". THE POOL IS REUSED, NOT COPIED: `HoldARandomBuff` is the draw the Shard of Anarchy set and Chaotic
+	// Barrier make, from `RandomBuffTable`, with its pin, its Touch of Nothing refusal and its one-buff-at-a-time rule.
+	// Only the seconds are this row's. The name above resolves to no tag, so the line above lays nothing for it.
+	if (DrawsARandomBuff())
+	{
+		if (UCataclysmAbilitySystemComponent* Drawing =
+				Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self)))
+		{
+			Drawing->HoldARandomBuff(NAME_None, Lasts);
+		}
+	}
 
 	if (UWorld* World = Self->GetWorld())
 	{
