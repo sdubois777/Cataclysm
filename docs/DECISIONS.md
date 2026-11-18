@@ -815,6 +815,51 @@ Module.Cataclysm.41.cpp, Module.Cataclysm.42.cpp"). C2 and C9 each find their br
 **The third run's C2 and C9 logs are kept** as `b2733s3_C2_run1_travelw1_run3.log` and its three like it, because
 this window's proofs write the same names.
 
+### Window travel-w2, 2026-11-18: passed; one of the nine arrivals drew a Cow Level, and owed 2
+
+**SAID FIRST: everything matched its registration.** The five Travel runs alone passed 9 of 9 each; C2 and C9 were
+PROVED, each broken half failing exactly the tests and assertions registered; Python and ruff passed. **Run 2 drew a
+Cow Level, owed 2 days at 2.00 days a floor, and passed** -- the case that failed the test before it was changed.
+
+**Before it: the pre-checks first failed, at 02:26 local, and the lock was not taken.** My push of `0a594665` had
+started pull request #2737's two checks, which compile on this machine (`dotnet` 47800), and #2737, held open for this
+window, failed check 5, "no pull request open". The coordinating session ruled, 2026-11-18: "let check 5 pass when
+the only open pull request is #2737, and change only that line of the untracked script. Check 5 exists because a push
+to an open pull request compiles on this machine during a window. So the condition is: nothing pushes to
+feat/2733-travel while travel-w2 holds the lock. The record commit goes after the lock is released." **Check 5 of
+`.claude/windows/prechecks_b2733s3.py` now passes when the only open pull request is #2737 on `feat/2733-travel`**,
+and still fails on any other, or on a list that cannot be read -- the five cases checked by hand before the run.
+Nothing was pushed while the window held the lock; this record is the first push after. A watch waited for both of
+#2737's checks to conclude -- CI "success" at 02:30, Unreal "success" at 02:33 -- and the pre-checks then all passed at
+02:33: nothing in progress or queued, no build or editor process, 16816 MB of memory free, 128 Git LFS files and none a
+pointer.
+
+At `0a594665`, from 02:33 to 02:40 local. The build was up to date and compiled nothing; HEAD held the four input assets of
+`e06b5f16`.
+
+**The Travel group alone, five times, each "Tests: 9 tests performed, 9 succeeded, 0 failed":**
+
+| Run | The dungeon the arrival test drew | Days a floor | Part-day before entering | Owed |
+| --: | :-- | --: | --: | --: |
+| 1 | Volatile | 1.00 | 0.00 | 1 |
+| 2 | **Cow Level** | **2.00** | 0.00 | **2** |
+| 3 | Horde | 1.00 | 0.00 | 1 |
+| 4 | Horde | 1.00 | 0.00 | 1 |
+| 5 | Timed | 1.00 | 0.00 | 1 |
+
+**Python: "7471 passed, 9 skipped"**, its JUnit file 7480 tests, 0 failures, 0 errors, 9 skipped; **ruff "All checks
+passed!"**.
+
+**The two proofs, both PROVED**, counted in each half's kept log in both of the engine's forms:
+
+| Proof | Broken half | Assertions failed | Restored | The arrival test drew |
+| :-- | :-- | :-- | :-- | :-- |
+| C2 | 9 performed, 7 succeeded, 2 failed: `TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk`, `TheLastFloorsStairsClearTheDungeonAndTakeTheCharacterBackToTheCapital` | 2, as registered: "and not at the capital's place, which means nothing here"; "and not at the dungeon's place" | 9 of 9, none | Horde, then Horde |
+| C9 | 9 performed, 8 succeeded, 1 failed: `TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk` | 2, as registered: "saying the character is in that dungeon", "on floor 1" | 9 of 9, none | Timed, then Horde |
+
+**One Cow Level in nine draws.** The registration put the chance that none of the nine would draw one at about 0.52.
+The changed assertion was seen at both rates, 1 and 2.
+
 ---
 
 ## 2026-11-17 — Play opens the front end, and Start and Continue open the capital, a new level that opens the empire map on arrival (#2733, slice 2)
