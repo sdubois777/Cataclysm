@@ -8,6 +8,12 @@ capital with the days away shown, a second walk ended by a death, and a Continue
 
 ## Before you start
 
+- **Rebuild the editor after updating the code.** After a `git pull`, close the editor and run
+  `python tools/unreal_build.py build` from the repository root before opening the project. The editor loads the game
+  libraries in `game/Binaries/Win64` as they are, and it did not warn that they were older than the code on
+  2026-11-18: it ran a library built on 2026-09-16, which has no character select screen, so Play put a test dungeon's
+  creatures into the front end level and the screen was black. **If Play shows anything other than the character select
+  screen, rebuild first.**
 - **Open the project in the editor.** It opens on `L_FrontEnd`, the character select level.
 - **Open the log:** Window > Output Log, and type `PLAY LOOP` in its search box. Every step below writes one line that
   begins `PLAY LOOP:`, and the search box then shows those lines and nothing else. The same lines are in
