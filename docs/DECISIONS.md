@@ -20,11 +20,14 @@ in `tools/tests/test_the_select_screen_is_generated_and_the_game_starts_on_it.py
 
 ### SAID FIRST
 
+- **THE WINDOW PASSED ON ITS SECOND RUN** (`f86d6609`): every group alone, the whole suite 4772 of 4772 with 47
+  skipped halves and 0 saves left behind, Python 7449 passed and 9 skipped, and all seven C++ proofs PROVED, each
+  broken half failing exactly its registered assertions ("Window capital-w1, the second run", below).
 - **THE FIRST WINDOW RUN STOPPED AT ITS FIFTH GROUP, ON A FAULT IN A SLICE 1 TEST** ("Window capital-w1, the first
   run", below): `Cataclysm.FirstSurge.ARunSavedOnDayZero...` read each loaded dungeon's depth after a day had passed,
   and failed when the clock-seeded run drew a Hollow. Fixed here, by the coordinating session's ruling, with a sweep
   of every test on a clock-seeded run that found no other. The asset step before it passed: `L_Capital.umap` is in
-  `db428831`, stored through Git LFS. No whole suite and no C++ guard proof has run yet.
+  `db428831`, stored through Git LFS. The second run, after the fix, passed (above).
 - **COMPILED.** Phase 1 was written with no build; phase 2 compiled it three ways, and the test change two ways, with
   no error and no warning from this branch's files (below). The Python checks ran, and all eight proofs of them are
   proved (below).
@@ -324,6 +327,79 @@ The proofs are C1 to C6 as above, and:
 | Proof | Break | Prefix | Predicted broken half | Restored half |
 |---|---|---|---|---|
 | C7 | before the copy, dungeon 0 made a Hollow (`Type` Quest, `SubType` Hollow, `HollowFrom` its depth) and a day passed (`CataclysmSaveLoadTests.cpp`) | `Cataclysm.FirstSurge.` | 3 performed, 2 succeeded, 1 failed: `ARunSavedOnDayZeroLoadsWithTheSameDungeonsAndNoSecondSurge`, 15 assertions: "the loaded run is on day 0", "dungeon 0 of the same kind and sub-type", "dungeon 0 as deep", and the twelve "came back as it was saved" timers -- 14 if the clock-seeded wave's dungeon 0 was already a Hollow | 3 of 3 |
+
+### Window capital-w1, the second run, 2026-11-17: the results
+
+At `f86d6609`, after the pre-checks (all pass, "7. Git LFS files: exit 0, 127 listed, 0 still pointers"). The runner's
+lines, as printed:
+
+```
+Git LFS: exit 0, 127 files, 0 pointers
+lock acquire: exit 0 capital-w1 holds the Unreal editor.
+build: Build: Succeeded - target already up to date, 0 actions, nothing compiled | exit 0
+assets: SKIPPED, already committed; HEAD's blob begins b'version https://git-lfs.github.com/spec/v1', 130 bytes; on disk 17647 bytes beginning c1832a9e; git lfs ls-files: ['9d07f1e84b * game/Content/Maps/L_Capital.umap']; added in db428831b
+alone Cataclysm.Capital.: Tests: 7 tests performed, 7 succeeded, 0 failed | exit 0
+alone Cataclysm.CharacterSelect.: Tests: 10 tests performed, 10 succeeded, 0 failed | exit 0
+alone Cataclysm.Creation.: Tests: 14 tests performed, 14 succeeded, 0 failed | exit 0
+alone Cataclysm.SaveLoad.: Tests: 76 tests performed, 76 succeeded, 0 failed | exit 0
+alone Cataclysm.FirstSurge.: Tests: 3 tests performed, 3 succeeded, 0 failed | exit 0
+alone Cataclysm.SaveWriter.: Tests: 25 tests performed, 25 succeeded, 0 failed | exit 0
+suite: Tests: 4772 tests performed, 4772 succeeded, 0 failed. 47 skipped part of what they check: ...
+suite: Test saves: 760 written and deleted, 0 left behind
+suite: Declared: 4772 tests in the tree at f86d6609d; 4772 performed, gap 0; every declared test was reported by the run. Issue #1707.
+python: 7449 passed, 9 skipped in 188.49s (0:03:08)
+python exit 0 | junit <testsuite name="pytest" errors="0" failures="0" skipped="9" tests="7458" ...>
+ruff exit 0: All checks passed!
+proofs: C1 PROVED, C2 PROVED, C3 PROVED, C4 PROVED, C5 PROVED, C6 PROVED, C7 PROVED
+lock release: exit 0 capital-w1 released the Unreal editor.
+```
+
+**Every figure matches its registration:** the six groups alone; the whole suite, 4772 of 4772, 47 skipped halves, 0
+test saves left behind, "Declared: 4772 ... gap 0"; Python 7449 passed and 9 skipped, its JUnit file 7458 tests, 0
+failures, 0 errors, 9 skipped. The engine's memory line: "tests=5379 peak_used_virtual_mb=9126".
+
+**What the new tests printed** (the engine log `b2733s2_suite_engine_f86d6609.log`):
+
+- "CAPITAL FLOOR: the sandbox's writer held floor 1 of 'Sandbox'; the capital's holds floor 0 of 'Capital'; sandbox
+  creatures not spawned"
+- "CAPITAL NEW CHARACTER: before the load the map waited; outcome 5; then opened, again not again; the run on day 0 with
+  12 standing; the record read, on floor 0 of 'Capital' with 12 dungeons"
+- "CAPITAL CONTINUE: saved 12 dungeons; before the load the map waited; outcome 2; then opened; the run on day 0 with 12
+  standing; the writer on floor 0 of 'Capital'"
+- "CAPITAL SANDBOX SAVE: saved 1 creatures on the sandbox's floor; on the sandbox: Loaded, 1 restored, 1 standing; in the
+  capital: Loaded (... put back: day 12, 0 creatures, the sandbox's floor it was saved on dropped, as this level has
+  none), 0 restored, 0 standing, the run on day 12, the writer on floor 0 of 'Capital'"
+- "CAPITAL DUNGEON FLOOR: on the sandbox's floor Loaded; on floor 3 of 'Crypt' Refused ... ('the run was saved on floor
+  3 of 'Crypt', and this level is floor 0 of 'Capital'')"
+- "CAPITAL NOTHING PENDING: a run before none; outcome 0; the map opened; the run on day 0 with 12 standing"
+- "CAPITAL REFUSED: outcome 4; ... back to '/Game/Maps/L_FrontEnd'; the map not opened"
+- "SELECT CONTINUE: dungeon run -> /Game/Maps/L_Dungeon, sandbox run -> /Game/Maps/L_Capital, no run ->
+  /Game/Maps/L_Capital, ..." and "NEW CHARACTER HANDED: ... asked for /Game/Maps/L_Capital"
+- "The capital opened the empire map: day 0, 12 dungeons standing."
+
+**The proofs, each broken half's failed assertions against its registration** (counted in `b2733s2_<P>_run1.log` in
+both of the engine's forms):
+
+| Proof | Broken half | Failed assertions | Registered | Restored half |
+|---|---|---|---|---|
+| C1 | 10 performed, 9 succeeded, 1 failed | `ContinueOpensTheLevelTheRunNeeds` 2: "a run saved in the sandbox opens the capital", "a character in no run opens the capital" | the same 2 | 10 of 10 |
+| C2 | 7 performed, 5 succeeded, 2 failed | `ACharacterSavedInTheSandbox...` 3: "in the capital the record loads", "and it says the floor was dropped", "its run came back, twelve days in"; `ARunSavedOnADungeonFloor...` 1: "CONTROL: on the sandbox's floor the record loads in the capital" | the same 3 and 1 | 7 of 7 |
+| C3 | 7 performed, 6 succeeded, 1 failed | `ARunSavedOnADungeonFloor...` 2: "on a dungeon's floor it is refused", "with the floor it was saved on" | the same 2 | 7 of 7 |
+| C4 | 7 performed, 5 succeeded, 2 failed | `ANewCharacterArriving...` 2 and `ACharacterSavedInTheCapital...` 2: each its CONTROL "the map does not open while ..." and "then the map opens" | the same 2 and 2 | 7 of 7 |
+| C5 | 7 performed, 6 succeeded, 1 failed | `PlayOnTheCapitalWithNothingPending...` 1: "on a run begun for it" | the same 1 | 7 of 7 |
+| C6 | 7 performed, 6 succeeded, 1 failed | `ACharacterSavedInTheSandbox...` 2: "without the floor's creatures", "none standing" | the same 2 | 7 of 7 |
+| C7 | 3 performed, 2 succeeded, 1 failed | `ARunSavedOnDayZero...` 15: "the loaded run is on day 0", "dungeon 0 of the same kind and sub-type", "dungeon 0 as deep", and the twelve "dungeon N's timer came back as it was saved" | 15, or 14 | 3 of 3 |
+
+**C7 measured the 15 case.** "dungeon 0 of the same kind and sub-type" fired, which it does only when the saved wave's
+dungeon 0 was not already a Quest dungeon of the Hollow sub-type: the break made it one, so the kinds differed.
+
+### Not tested
+
+- **The screen.** That the empire map shows on arrival in the capital, and that Play in the editor opens the select
+  screen, is not seen by an automation test, which has no viewport; the decision is tested, and the owner's press (slice
+  4) sees the screen.
+- **Travel from the capital into a dungeon and back** is slice 3: the map's Walk buttons in the capital still refuse.
+- **A packaged build** has not been made; `L_Capital` is cooked with every map under Content, as `L_FrontEnd` is.
 
 ---
 
