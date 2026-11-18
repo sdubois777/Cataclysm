@@ -18,10 +18,10 @@ Decisions made outside the Google Drive documents, newest first.
 
 ### SAID FIRST
 
-- **NOT YET COMPILED.** Phase 1 was written with no build, by instruction, and phase 2 has not built either: the
-  coordinating session held the compile while another window ran. No Unreal test has run and no C++ guard proof has been
-  made; the two Python proofs have, and both proved. The two DataTable assets, `DT_EmpireTreeNodes` and
-  `DT_EmpireTreeEdges`, do not exist until a window builds them, so four tests of
+- **COMPILED, NOT RUN.** Phase 1 was written with no build, by instruction. Phase 2 compiled it, each changed `.cpp`
+  alone and then in its unity file, both clean and with nothing to fix (under "Compiled" below). No Unreal test has run
+  and no C++ guard proof has been made; the two Python proofs have, and both proved. The two DataTable assets,
+  `DT_EmpireTreeNodes` and `DT_EmpireTreeEdges`, do not exist until a window builds them, so four tests of
   `tools/tests/test_datatable_assets_are_current.py` fail until then; the Python run below shows exactly those four.
 - **NOTHING IN PLAY CHANGES.** The game calls none of the new rules. Where the allocation is kept and where the bank is
   spent from is slice 1b; the screen is slice 2; what a bought node does is slices 3 to 5.
@@ -216,6 +216,26 @@ code builds from the row it names; 0.5 and 31.5 are exact in a double, and `Test
 **The worktree's assets were LFS pointer files, 120 of 124**, which would fail every test that loads a DataTable (the
 coordinating session's note from first-surge-w1, 2026-11-17). `git lfs checkout` replaced them, 128 objects, with no
 tracked file changed; the window's pre-checks count them again.
+
+### Compiled (phase 2)
+
+`python tools/unreal_build.py build`, twice, in the background with no time limit, after the coordinating session said
+the Echoes of the Past window had released the lock. Development had not moved from `1bbba95bc`, so nothing was
+rebased.
+
+1. **Each changed `.cpp` alone.** With every change of the branch uncommitted (`git reset --mixed origin/development`,
+   the branch put back on `54e84f021` afterwards), so adaptive unity compiled the working set's files on their own. The
+   worktree had never been built, so this was the whole module as well: "Build: Succeeded - 81 actions, 71 files
+   compiled". The object files show `CataclysmEmpireTree.cpp.obj`, `CataclysmEmpireTreeTests.cpp.obj` and
+   `CataclysmDataTableTests.cpp.obj` built on their own, beside the 43 unity files `Module.Cataclysm.1` to `.43`.
+2. **In unity.** Committed (`79dd1a8f9`), with `Makefile.bin` moved aside so the unity files were made again: "Build:
+   Succeeded - 6 actions, 3 files compiled: Module.Cataclysm.12.cpp, Module.Cataclysm.18.cpp, Module.Cataclysm.22.cpp".
+   Those three hold the rules (12), the data table tests (18) and the empire tree tests (22), read from the unity files
+   themselves. The empire module is not changed by this slice.
+
+Nothing needed fixing: the two risks named in phase 1 -- the helpers' names beside `CataclysmPassiveTree.cpp`'s in a
+unity file, and a file-scope `using namespace` reaching the files after it -- do not arise, because the rules' helpers
+are in a named namespace called by its name, and the tests open their namespace inside each test.
 
 ### Registered before the run
 
