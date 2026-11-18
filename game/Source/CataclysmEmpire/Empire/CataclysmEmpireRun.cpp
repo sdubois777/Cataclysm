@@ -127,6 +127,35 @@ void UCataclysmEmpireRun::BeginForCharacter(int32 InSeed, int32 InCataclysmOrder
 	// dungeons modifiers.
 }
 
+FCataclysmDayReport UCataclysmEmpireRun::FireOpeningSurge()
+{
+	FCataclysmDayReport Report;
+
+	if (Map == nullptr || Clock == nullptr || Surges == nullptr)
+	{
+		// `Begin` HAS NOT RUN, as in `AdvanceDay`: an empty report, not a read
+		// through a null map.
+		return Report;
+	}
+
+	// DAY 0, NOTHING FIRED YET, AND ONE DUE: the three refusals that make a
+	// second call, a restored run and a run already past its first day all do
+	// nothing. See the header. Issue #2733.
+	const int32 Today = Clock->Day;
+	Report.Day = Today;
+	if (Today != 0 || Surges->SurgesFired != 0 || !Surges->IsDue(Today))
+	{
+		return Report;
+	}
+
+	// THE SAME CALL `AdvanceDay` MAKES FOR THE CLOCK'S SURGE, with today's
+	// number, so the wave, its modifiers, its timers and the schedule's move
+	// are all made the one way. The clock is not moved: the day has not passed.
+	FireSurge(Today, /* bFromCityFall */ false, Report);
+
+	return Report;
+}
+
 void UCataclysmEmpireRun::GiveModifiers(FCataclysmDungeon& Dungeon)
 {
 	if (ModifierPool.Num() == 0)

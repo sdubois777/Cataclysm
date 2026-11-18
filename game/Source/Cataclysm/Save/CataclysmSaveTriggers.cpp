@@ -59,8 +59,12 @@ bool UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame(ECataclysmSav
 {
 	// AND A WON RUN, since issue #1324 slice 6e: its write replaces the won run's record with the next run's, and a
 	// run record written earlier in the same frame would otherwise leave the won run on disk to be loaded again.
+	//
+	// AND A NEW CHARACTER, since issue #2733, for the same reason: giving it its chosen weapon writes the run record
+	// (the weapon it wore goes into the bag, `InventoryChanged`) before its run has begun, in the same frame, so its
+	// creation write was skipped and the run record on disk held no empire until the clock's next write.
 	return Trigger == ECataclysmSaveTrigger::CharacterDied || Trigger == ECataclysmSaveTrigger::DeathProcessed
-		|| Trigger == ECataclysmSaveTrigger::RunWon;
+		|| Trigger == ECataclysmSaveTrigger::RunWon || Trigger == ECataclysmSaveTrigger::CharacterCreated;
 }
 
 bool UCataclysmSaveTriggers::ClockHasElapsed(float SecondsSinceLastWrite,

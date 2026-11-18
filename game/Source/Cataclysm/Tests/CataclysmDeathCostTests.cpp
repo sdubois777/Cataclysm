@@ -198,8 +198,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathCostLineTest,
 
 /**
  * `LastDeathLine` for representative records: no city fell, one, two, three, one the map cannot find; a walk of one
- * day, of several, and of none; a name and no name. CONTROL: no run, a run not begun and a run with no death say
- * nothing. The sentences are written out here; only the cities' names are read from the map.
+ * day, of several, and of none; a name and no name; a death on day 0 (issue #2733). CONTROL: no run, a run not begun
+ * and a run with no death say nothing. The sentences are written out here; only the cities' names are read from the
+ * map.
  */
 bool FCataclysmDeathCostLineTest::RunTest(const FString& Parameters)
 {
@@ -246,6 +247,13 @@ bool FCataclysmDeathCostLineTest::RunTest(const FString& Parameters)
 	Run->NoteDeath(9, TEXT("the dungeon on ") + A, 0, 5, TArray<int32>());
 	TestEqual(TEXT("a walk that owed no whole day"), UCataclysmEmpireMapLayout::LastDeathLine(Run),
 		FString::Printf(TEXT("Day 9: you died in the dungeon on %s. The walk owed no whole day, the death cost 5 days, "
+							 "and no city fell."), *A));
+
+	// A DEATH ON DAY 0, which a walk that owes no whole day gives since the first wave lands on day 0 (issue #2733).
+	// The line is still said: "no death yet" is asked of the days the death cost, not of its day.
+	Run->NoteDeath(0, TEXT("the dungeon on ") + A, 0, 5, TArray<int32>());
+	TestEqual(TEXT("a death on day 0"), UCataclysmEmpireMapLayout::LastDeathLine(Run),
+		FString::Printf(TEXT("Day 0: you died in the dungeon on %s. The walk owed no whole day, the death cost 5 days, "
 							 "and no city fell."), *A));
 
 	Run->NoteDeath(9, FString(), 2, 5, TArray<int32>());

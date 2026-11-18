@@ -94,6 +94,16 @@ UCataclysmEmpireRun* UCataclysmGameInstance::BeginACharactersEmpireRun(
 	// faces. Issue #1324 slice 6a.
 	EmpireRun->BeginForCharacter(Seed, CataclysmOrderSeed, Mode, LethalityRung, Tier);
 
+	// AND THE FIRST SURGE, ON DAY 0, so a new run's map shows its dungeons before any day has passed: "A Surge is
+	// triggered at run start" (`docs/Cataclysm_GDD_v2.md`, the Surge section). HERE AND NOT IN `BeginForCharacter`,
+	// because every new run the game begins comes through this function -- a new character, a loaded character whose run
+	// could not be read, the run after a win, and the console commands' `BeginEmpireRun` -- while `BeginForCharacter` is
+	// also how a saved run is rebuilt (`FCataclysmSaveApply::RunInto`), which must not roll a wave. Issue #2733.
+	const FCataclysmDayReport Opening = EmpireRun->FireOpeningSurge();
+	UE_LOG(LogCataclysm, Log, TEXT("A new empire run began at tier %d, facing %d Cataclysms: its first surge landed %d "
+								   "dungeons on day %d."),
+		   Tier, EmpireRun->ActiveCataclysms.Num(), Opening.Spawned.Num(), Opening.Day);
+
 	// AND THE GAME MODE OF THE LEVEL BEING PLAYED TAKES ITS TIER, so a run begun during play is fought at its own tier at
 	// once. Issue #1472.
 	if (UWorld* World = GetWorld())

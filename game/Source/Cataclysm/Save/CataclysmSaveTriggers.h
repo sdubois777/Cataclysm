@@ -175,6 +175,13 @@ public:
 	 * AND A WON RUN, since issue #1324 slice 6e (2026-11-03), for the processing write's reason: it replaces the won
 	 * run's record with the next run's in the same slot, and a run record written earlier in the frame -- a creature
 	 * dying, a floor changing -- would otherwise leave the won run on disk until the next write, for a load to resume.
+	 *
+	 * AND A NEW CHARACTER, since issue #2733, for the same reason. `ACataclysmGameMode::MakeThePendingCharacter` gives
+	 * the character its chosen weapon (`ApplyCreationChoice`) before it begins the run; the weapon it wore goes into the
+	 * bag, which raises `InventoryChanged` and writes a run record with no run in it; and `CharacterCreated`, in the same
+	 * frame, was skipped, so a Continue before the clock's next write found no empire and began a new run. The two
+	 * writes go through `FCataclysmSaveStorage`'s one pipe, which runs them in the order they were started, so the
+	 * creation's lands last.
 	 */
 	static bool WritesEvenIfTheRunWasWrittenThisFrame(ECataclysmSaveTrigger Trigger);
 

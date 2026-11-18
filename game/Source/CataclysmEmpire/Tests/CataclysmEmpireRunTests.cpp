@@ -84,6 +84,11 @@ bool FCataclysmEmpireRunBeginTest::RunTest(const FString& Parameters)
 			  Run->Clock->Timers.Num(), 0);
 
 	// "A SURGE IS TRIGGERED AT RUN START", so the first day advanced brings one.
+	// THIS IS A RUN BEGUN BY `Begin` ALONE, which keeps the model's timing: its
+	// opening wave lands on day 1. The game fires it on day 0 instead, through
+	// `FireOpeningSurge` (issue #2733);
+	// `TheOpeningSurgeFiresOnDayZeroOnceWithTheWaveDayOneWouldHaveBrought` below
+	// holds the two to the same wave.
 	TestEqual(TEXT("no surge has fired yet"), Run->Surges->SurgesFired, 0);
 
 	const FCataclysmDayReport First = Run->AdvanceDay();
@@ -183,12 +188,146 @@ bool FCataclysmEmpireRunDayNumberTest::RunTest(const FString& Parameters)
 			0.001f);
 	}
 
-	// "A SURGE IS TRIGGERED AT RUN START."
+	// "A SURGE IS TRIGGERED AT RUN START." On day 1 for a run begun by `Begin`
+	// alone, as the model's is; on day 0 for a run the game begins (issue #2733).
 	TestTrue(TEXT("a surge fired on the first day"), bSurgedOnDayOne);
 	TestTrue(FString::Printf(
 		TEXT("%d days of the two hundred surged"), SurgeDays),
 		SurgeDays >= 2);
 
+	return true;
+}
+
+/**
+ * `FireOpeningSurge`: the first surge on day 0, before any day has passed, as
+ * the game fires it for every run it begins. Issue #2733.
+ *
+ * AGAINST A RUN OF THE SAME SEED WHOSE OPENING WAVE LANDS ON DAY 1, as `Begin`
+ * and `AdvanceDay` land it: the two waves are the same dungeons -- the same
+ * numbers on the same cities, of the same kind, sub-type, depth, walk, damage,
+ * sender and timer -- and differ only in the day they arrived. On day 1 the two
+ * runs' timers and all three streams agree, so everything after day 1 is the
+ * same draws. The next surge is due on day 90 rather than 91.
+ *
+ * AND IT FIRES ONCE: a second call, the first day advanced, a run already on
+ * day 1 and a run never begun all fire nothing. Prints "OPENING SURGE".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunOpeningSurgeTest,
+	"Cataclysm.EmpireRun.TheOpeningSurgeFiresOnDayZeroOnceWithTheWaveDayOneWouldHaveBrought",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunOpeningSurgeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireRunTest;
+
+	UCataclysmEmpireRun* OnDayZero = MakeRun(/* Seed */ 7);
+	UCataclysmEmpireRun* OnDayOne = MakeRun(/* Seed */ 7);
+
+	// SET-UP: both begun as `Begin` leaves a run, a surge due and none fired.
+	if (!TestEqual(TEXT("set-up: day 0"), OnDayZero->Day(), 0)
+		|| !TestEqual(TEXT("set-up: nothing standing"), OnDayZero->DungeonCount(), 0)
+		|| !TestEqual(TEXT("set-up: no surge fired"), OnDayZero->Surges->SurgesFired, 0))
+	{
+		return false;
+	}
+
+	const FCataclysmDayReport Opening = OnDayZero->FireOpeningSurge();
+	const FCataclysmDayReport DayOne = OnDayOne->AdvanceDay();
+
+	AddInfo(FString::Printf(TEXT("OPENING SURGE: day %d, surged %s, %d dungeons, %d standing, the clock on day %d, "
+								 "%d fired, the next due on day %.1f; the day-1 run: surged %s, %d dungeons, the next "
+								 "due on day %.1f"),
+							Opening.Day, Opening.bSurged ? TEXT("yes") : TEXT("no"), Opening.Spawned.Num(),
+							OnDayZero->DungeonCount(), OnDayZero->Day(), OnDayZero->Surges->SurgesFired,
+							OnDayZero->Surges->NextSurgeDay, DayOne.bSurged ? TEXT("yes") : TEXT("no"),
+							DayOne.Spawned.Num(), OnDayOne->Surges->NextSurgeDay));
+
+	// ON DAY 0, WITH THE CLOCK NOT MOVED.
+	TestEqual(TEXT("the opening surge is reported on day 0"), Opening.Day, 0);
+	TestTrue(TEXT("and it surged"), Opening.bSurged);
+	TestEqual(TEXT("bringing the opening wave's twelve"), Opening.Spawned.Num(),
+			  UCataclysmSurgeScheduler::OpeningDungeonsPerSurge);
+	TestEqual(TEXT("which stand on the map"), OnDayZero->DungeonCount(), 12);
+	TestEqual(TEXT("with a timer each"), OnDayZero->Clock->Timers.Num(), 12);
+	TestEqual(TEXT("and the run is still on day 0"), OnDayZero->Day(), 0);
+	TestEqual(TEXT("one surge has fired"), OnDayZero->Surges->SurgesFired, 1);
+	TestEqual(TEXT("recorded on day 0"), OnDayZero->Surges->LastSurgeDay, 0);
+	TestEqual(TEXT("so the next is due on day 90"), OnDayZero->Surges->NextSurgeDay,
+			  UCataclysmSurgeScheduler::IntervalDays, 0.001f);
+
+	// CONTROL: the run whose wave lands on day 1, as the model's does.
+	TestTrue(TEXT("CONTROL: the day-1 run surged on day 1"), DayOne.bSurged);
+	TestEqual(TEXT("CONTROL: with twelve"), DayOne.Spawned.Num(), 12);
+	TestEqual(TEXT("CONTROL: and its next is due on day 91"), OnDayOne->Surges->NextSurgeDay,
+			  1.0f + UCataclysmSurgeScheduler::IntervalDays, 0.001f);
+
+	// THE SAME WAVE, DUNGEON BY DUNGEON, but for the day it arrived. Every timer
+	// starts full on day 0: no day has passed to take one off.
+	if (!TestEqual(TEXT("the two waves are the same size"), OnDayZero->Dungeons.Num(), OnDayOne->Dungeons.Num()))
+	{
+		return false;
+	}
+	for (int32 Index = 0; Index < OnDayZero->Dungeons.Num(); ++Index)
+	{
+		const FCataclysmDungeon& Early = OnDayZero->Dungeons[Index];
+		const FCataclysmDungeon& Late = OnDayOne->Dungeons[Index];
+		const FString Which = FString::Printf(TEXT("dungeon %d"), Early.DungeonId);
+		TestEqual(Which + TEXT(": the same number"), Early.DungeonId, Late.DungeonId);
+		TestEqual(Which + TEXT(": on the same city"), Early.CityId, Late.CityId);
+		TestTrue(Which + TEXT(": of the same kind"), Early.Type == Late.Type);
+		TestTrue(Which + TEXT(": and sub-type"), Early.SubType == Late.SubType);
+		TestTrue(Which + TEXT(": sent by the same Cataclysm"), Early.Cataclysm == Late.Cataclysm);
+		TestEqual(Which + TEXT(": as deep"), Early.Floors, Late.Floors);
+		TestEqual(Which + TEXT(": as long to walk"), Early.WalkDays, Late.WalkDays, 0.0001f);
+		TestEqual(Which + TEXT(": with the same timer rolled"), Early.ResolveDays, Late.ResolveDays, 0.0001f);
+		TestEqual(Which + TEXT(": and the same bite"), Early.DefenceDamage, Late.DefenceDamage, 0.0001f);
+		TestEqual(Which + TEXT(": arrived on day 0"), Early.SpawnedDay, 0);
+		TestEqual(Which + TEXT(": where the day-1 run's arrived on day 1"), Late.SpawnedDay, 1);
+		TestEqual(Which + TEXT(": its timer full on day 0"),
+				  OnDayZero->Clock->DaysUntilResolveFor(Early.DungeonId), Early.ResolveDays, 0.0001f);
+	}
+
+	// A SECOND CALL FIRES NOTHING.
+	const FCataclysmDayReport Again = OnDayZero->FireOpeningSurge();
+	TestFalse(TEXT("a second call does not surge"), Again.bSurged);
+	TestEqual(TEXT("and lands nothing"), Again.Spawned.Num(), 0);
+	TestEqual(TEXT("so twelve still stand"), OnDayZero->DungeonCount(), 12);
+	TestEqual(TEXT("and one surge has fired"), OnDayZero->Surges->SurgesFired, 1);
+
+	// DAY 1: NO SECOND OPENING WAVE FROM THE CLOCK, and the two runs agree.
+	const FCataclysmDayReport AfterTheOpening = OnDayZero->AdvanceDay();
+	TestEqual(TEXT("the first day advanced is day 1"), AfterTheOpening.Day, 1);
+	TestFalse(TEXT("and does not surge again"), AfterTheOpening.bSurged);
+	TestEqual(TEXT("so twelve stand on day 1"), OnDayZero->DungeonCount(), 12);
+	for (const FCataclysmDungeon& Early : OnDayZero->Dungeons)
+	{
+		TestEqual(FString::Printf(TEXT("dungeon %d's timer on day 1 is the day-1 run's"), Early.DungeonId),
+				  OnDayZero->Clock->DaysUntilResolveFor(Early.DungeonId),
+				  OnDayOne->Clock->DaysUntilResolveFor(Early.DungeonId), 0.0001f);
+	}
+	TestEqual(TEXT("the run's stream has made the same draws by day 1"),
+			  OnDayZero->Stream.GetCurrentSeed(), OnDayOne->Stream.GetCurrentSeed());
+	TestEqual(TEXT("the Cataclysm stream too"),
+			  OnDayZero->CataclysmStream.GetCurrentSeed(), OnDayOne->CataclysmStream.GetCurrentSeed());
+	TestEqual(TEXT("and the modifier stream"),
+			  OnDayZero->ModifierStream.GetCurrentSeed(), OnDayOne->ModifierStream.GetCurrentSeed());
+
+	// NOTHING FOR A RUN PAST DAY 0, OR NEVER BEGUN.
+	TestFalse(TEXT("a run on day 1 fires no opening surge"), OnDayOne->FireOpeningSurge().bSurged);
+	UCataclysmEmpireRun* PastDayZero = MakeRun(/* Seed */ 7);
+	PastDayZero->Clock->Day = 1;
+	const FCataclysmDayReport PastReport = PastDayZero->FireOpeningSurge();
+	TestFalse(TEXT("nor does one whose clock is past day 0 with none fired"), PastReport.bSurged);
+	TestEqual(TEXT("which stands nothing"), PastDayZero->DungeonCount(), 0);
+	UCataclysmEmpireRun* NotBegun = NewObject<UCataclysmEmpireRun>();
+	TestFalse(TEXT("and a run never begun fires nothing"), NotBegun->FireOpeningSurge().bSurged);
+
+	// HERETIC OPENS WITH trunc(12 x 1.25) = 15, AND ALL OF THEM LAND.
+	UCataclysmEmpireRun* Heretic = MakeRun(/* Seed */ 7, ECataclysmSurgeMode::Accelerating, /* Heretic */ 2);
+	const int32 HereticDue = Heretic->Surges->DungeonsInNextSurge();
+	const FCataclysmDayReport HereticOpening = Heretic->FireOpeningSurge();
+	TestEqual(TEXT("a Heretic run's opening wave is fifteen"), HereticDue, 15);
+	TestEqual(TEXT("and all fifteen land on day 0"), HereticOpening.Spawned.Num(), 15);
 	return true;
 }
 

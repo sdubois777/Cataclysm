@@ -4874,10 +4874,13 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEnterDungeon(
 				return;
 			}
 
-			// THE FIRST SURGE HAS TO HAVE LANDED. A run begins on day 0 with an
-			// intact empire and nothing standing on it, so a player who asked to
-			// enter a dungeon before any day had passed would be told there were
-			// none and would reasonably think the command was broken.
+			// THE FIRST SURGE HAS TO HAVE LANDED. Since issue #2733 a run the game
+			// begins fires it on day 0, so this does nothing on a new run's first
+			// day. It is kept for a board with nothing standing on it for any
+			// other reason, which a run begun by `UCataclysmEmpireRun::Begin` alone
+			// has on day 0, so a player is not told there are no dungeons and left
+			// to think the command broken. ONLY WHEN THE BOARD IS EMPTY, so it
+			// never spends a day of a run that has dungeons.
 			if (Run->DungeonCount() == 0)
 			{
 				Run->AdvanceDay();
