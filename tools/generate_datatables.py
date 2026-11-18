@@ -3540,6 +3540,354 @@ def passive_edges(_book=None) -> list[dict]:
     return _no_duplicates(out, "Passive Edges")
 
 
+# --------------------------------------------------------------------------
+# The empire upgrade tree, from docs/Empire_Development_Tree_Final.json
+#
+# THE FOURTH SOURCE, AND THE SAME ROUTE AS THE CLASS TREES. The empire tree is
+# authored in the same separate tool and exported into `docs/`; the owner ruled
+# on 2026-08-05 (#260) that this file is the tree and that
+# `docs/Empire_Skill_Tree_Keystones.md` is commentary on it. The game cannot read
+# `docs/`, so the file reaches it as two tables. Issue #2741, slice 1a.
+#
+# WHAT IS ADDED THAT THE FILE DOES NOT SAY, each a ruling recorded in
+# docs/DECISIONS.md (the #2741 slice 1a entry):
+#
+#   a branch for every node        derived from where the node sits on the
+#                                  canvas; the file's own metadata names the
+#                                  quadrants, and nothing else in it says
+#   a threshold for the four       200 points spent in the capstone's own
+#   branch capstones               branch (coordinator, Q2, 2026-11-18); the file
+#                                  gives them neither an edge nor a threshold
+#   which nodes can be bought      the owner's scope ruling of 2026-11-18: a
+#                                  node whose system the game has, and no other
+# --------------------------------------------------------------------------
+
+EMPIRE_TREE_FILE = REPO_ROOT / "docs" / "Empire_Development_Tree_Final.json"
+
+#: The four branches, and the quadrant of the canvas each occupies. The file's
+#: own metadata says it in words -- "Branches: Architect (NE), Explorer (SE),
+#: Treasury (SW), Artisan (NW)" -- and `_empire_branch` reads it from the
+#: positions. North is up, which is a NEGATIVE y on the authoring tool's canvas.
+EMPIRE_BRANCHES = ("Architect", "Explorer", "Treasury", "Artisan")
+
+#: What the four tier-milestone capstones in the middle are called as a branch.
+#: They belong to no quadrant and their thresholds count the whole tree.
+EMPIRE_CENTRE = "Centre"
+
+#: When a branch's own capstone opens: this many points spent in that branch.
+#: THE FILE GIVES THEM NOTHING. The commentary says they are "not mutually
+#: exclusive" and are taken "by investing enough points into each respective
+#: branch"; the class trees' last capstone opens at 200 of 230. Ruled by the
+#: coordinating session on 2026-11-18 (Q2), a judgement under the owner's
+#: delegation of unstated numbers.
+EMPIRE_BRANCH_CAPSTONE_THRESHOLD = 200
+
+#: WHAT A REFUSED NODE IS WAITING FOR, in the words a player reads after "it
+#: needs". The owner's scope ruling of 2026-11-18, verbatim: "The other nodes are
+#: shown but cannot be bought until their system is built, as unbuilt city
+#: upgrades are refused today." Each clause names the system and, where there is
+#: one, the issue that builds it.
+EMPIRE_TREE_SYSTEMS = {
+    "gold": "gold, which the game does not have yet (issue #2742)",
+    "upgrade cost": ("a gold cost for city upgrades, which are free and "
+                     "immediate today (issue #1264)"),
+    "crafting": "crafting, which the game does not have yet (issue #47)",
+    "population growth": ("a population growth rate, which the design does "
+                          "not define"),
+    "loot chest": "a loot chest on a dungeon floor, which the game does not have",
+    "bonus dungeon": "bonus dungeons, which the design does not define",
+    "stash": "a stash inside dungeons, which the game does not have",
+    "modifier reroll": "dungeon modifier rerolls, which the game does not have",
+    "loot filter": "a loot filter, which the game does not have",
+    "prowess ruling": ("a ruling on what \"an additional keystone from any of "
+                       "the previous tiers\" means, which the owner has not "
+                       "made"),
+    "destroy upgrade": ("a city screen action that destroys a city upgrade, "
+                        "which the game does not have"),
+}
+
+#: EVERY NODE AND EVERY CENTRE CAPSTONE OPTION THE GAME WILL BUILD IN #2741, by
+#: name, with the slice that makes it act: 3 for the city numbers, 4 for a
+#: dungeon's walk and depth, 5 for the player's loot and movement. Until its
+#: slice lands a node here can be bought and does nothing.
+#:
+#: TOGETHER WITH `EMPIRE_TREE_REFUSED` IT NAMES EVERY NODE AND OPTION, AND
+#: `empire_tree_nodes` REFUSES A NAME IN NEITHER OR IN BOTH. A node added to the
+#: tree file therefore stops generation until someone decides which it is,
+#: rather than becoming buyable by default.
+#:
+#: READINGS THAT DECIDE MEMBERSHIP, each a coordinator ruling of 2026-11-18:
+#: Veteran's Edge's "Empire XP" is empire upgrade points (C4); "surge damage" is
+#: the damage a resolving dungeon does to a city (C4), so Urban Fortification,
+#: Civil Defense and Imperial Command are here; Dungeon Mastery's "dungeon type"
+#: is the design's four dungeon types (Q7).
+EMPIRE_TREE_BUILT = {
+    # The four tier-milestone capstones' options.
+    "The Aegis of Hope": 3, "The Sentinel": 3, "The Flood Barrier": 3,
+    "The Delver": 4, "The Collector's Decree": 4, "The Warlord": 4,
+    "The Last Stand": 4,
+    "The Hoarder": 5,
+    # Architect.
+    "Foundation": 3, "Structural Integrity": 3, "Urban Planning": 3,
+    "Fortified Gates": 3, "Enduring Foundations": 3, "Civil Order": 3,
+    "Border Patrol": 3, "Emergency Shelters": 3, "Masonry Techniques": 3,
+    "Urban Fortification": 3, "Imperial Census": 3, "Civil Defense": 3,
+    "Supply Lines": 3, "Reinforced Walls": 3, "The Mason's Guild": 3,
+    "Global Vigilance": 3, "Metropolitan Growth": 3, "Siege Resistance": 3,
+    "Monument Building": 3, "Strategic Reserve": 3, "Martial Law": 3,
+    "Imperial Decree": 3, "Bastion Spirit": 3, "Sovereign's Might": 3,
+    "Manifest Destiny": 3, "Unyielding Defense": 3, "Iron Will": 3,
+    "Fortified Pillar": 3, "Reclaimer's Resolve": 3, "Imperial Command": 3,
+    "Beacon of Hope": 3, "Last Stand Protocols": 3, "The Architect's Legacy": 3,
+    "The Royal Engineer's Blessing": 3,
+    "Imperial Roads": 4,
+    # Explorer.
+    "Pacing": 4, "Fleet Footed": 4, "Overclock": 4, "Temporal Mastery": 4,
+    "Sovereign's Haste": 4, "Opportunist": 4, "Tactical Entry": 4,
+    "Rapid Descent": 4, "Deep Boring": 4, "Architect of Greed": 4,
+    "Exclusionary Mapping": 4, "Infinite Depths": 4, "Architectural Insight": 4,
+    "Veteran's Edge": 4,
+    "Eyes of the Empire": 5, "Opportunistic Looting": 5, "Pathfinding": 5,
+    "Bounty": 5, "Dungeon Mastery": 5, "Efficiency Premium": 5,
+    "Quality over Quantity": 5, "Relentless Pursuit": 5, "Dungeon Expertise": 5,
+    "Spoils of War": 5, "Temporal Efficiency": 5, "The High Roller": 5,
+    "Manifest Wealth": 5, "Speed Runner": 5, "Dungeon Legend": 5,
+    "Plunderer's Eye": 5, "One-Day Specialist": 5,
+    "The Cartographer's Blessing": 5,
+    # Treasury: the one node about people rather than gold.
+    "Golden Age": 3,
+    # Artisan: crafting materials already drop.
+    "Scavenger": 5,
+}
+
+#: EVERY NODE AND OPTION THAT CANNOT BE BOUGHT YET, by name, with the key of the
+#: system it waits for in `EMPIRE_TREE_SYSTEMS`.
+#:
+#: FIELD DEPOT I, II AND III ARE RANKS, "each replacing the one before", and the
+#: file puts them on three separate paths. Ruled 2026-11-18 (Q4): II will require
+#: I held and III will require II, beside their own edges -- built with the
+#: stash, not now, because none of the three can be bought until then.
+EMPIRE_TREE_REFUSED = {
+    # The four tier-milestone capstones' options.
+    "The Soul Forge": "crafting", "The Master Tinkerer": "crafting",
+    "The Midas Touch": "gold", "Imperial Prowess": "prowess ruling",
+    # Architect.
+    "Scaffolding": "upgrade cost", "Rapid Renovation": "upgrade cost",
+    "Public Works": "upgrade cost", "Scorched Earth": "destroy upgrade",
+    "Civic Pride": "population growth",
+    # Explorer.
+    "Supply Caches": "loot chest", "Field Depot I": "stash",
+    "Field Depot II": "stash", "Field Depot III": "stash",
+    "Gamble": "modifier reroll", "Scout Parties": "bonus dungeon",
+    "Auto-Loot": "loot filter",
+    # Treasury.
+    "Coinage": "gold", "Master Trader": "gold", "War Funding": "upgrade cost",
+    "Tax Collection": "gold", "Merchant Guild": "gold", "Minting Rights": "gold",
+    "Trade Routes": "gold", "Cleanup Crew": "gold",
+    "Municipal Bonds": "upgrade cost", "Global Credit": "upgrade cost",
+    "Investment Funds": "gold", "Economic Zones": "gold",
+    "Surplus Storage": "gold", "Price Controls": "upgrade cost",
+    "Fiscal Policy": "gold", "Commercial Hubs": "gold",
+    "Rapid Funding": "upgrade cost", "Salvage Rights": "gold", "Thrifty": "gold",
+    "Wealth Interest": "gold", "Wartime Economy": "gold", "Profiteering": "gold",
+    "Venture Capital": "gold", "Bribery": "gold", "Black Market": "gold",
+    "Reinvestment": "upgrade cost", "Imperial Reserve": "gold",
+    "Untouchable Wealth": "gold", "War Chest": "gold", "Treasury Guard": "gold",
+    "Sovereign Loans": "upgrade cost", "Prosperity Index": "gold",
+    "Economic Bailout": "gold", "The Gilded Path": "gold",
+    "Stimulus Package": "gold", "Pax Imperialis": "gold",
+    "The Golden Touch": "gold",
+    # Artisan.
+    "Apprentice Smith": "crafting", "Material Conservation": "crafting",
+    "Rough Draft": "crafting", "Tool Maintenance": "crafting",
+    "Workshop Upgrades": "crafting", "Limited Knowledge": "crafting",
+    "Apprentice Oversight": "crafting", "Industrial Speed": "crafting",
+    "Refining Techniques": "crafting", "Salvage Protocol": "crafting",
+    "Quality Materials": "crafting", "Forge Upgrades": "crafting",
+    "Stable Compounds": "crafting", "Explorer Synergy": "crafting",
+    "Disassembly Expert": "crafting", "Master Craftsman": "crafting",
+    "Resource Management": "crafting", "Expanded Station (Jeweler)": "crafting",
+    "Expanded Station (Smith)": "crafting",
+    "Expanded Station (Enchantress)": "crafting",
+    "Precision Crafting": "crafting", "Architectural Synergy": "crafting",
+    "Master's Touch": "crafting", "Sovereign's Assembly": "crafting",
+    "Heat Shielding": "crafting", "Flawless Production": "crafting",
+    "Residue Protocols": "crafting", "Grand Forge": "crafting",
+    "Ancient Techniques": "crafting", "Master's Workshop": "crafting",
+    "Residue Mastery": "crafting", "The Hidden Stash": "crafting",
+    "Treasury Synergy": "crafting", "Assembly Line": "crafting",
+    "The Alchemist's Transmutation": "crafting", "Steady Hands": "crafting",
+    "Tempting Fate": "crafting",
+}
+
+
+def _load_empire_tree() -> dict:
+    path = EMPIRE_TREE_FILE
+    if not path.is_file():
+        raise DataError(f"{path.name} is not present")
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise DataError(f"{path.name} is not valid JSON: {error}") from error
+
+
+def _empire_branch(node: dict) -> str:
+    """Which branch a node of the empire tree is in.
+
+    A CAPSTONE THAT IS A DECISION IS IN THE MIDDLE, and the four of them are the
+    tier milestones at 25, 50, 100 and 200. Every other node is in the branch
+    whose quadrant it sits in. North is a negative y on the authoring tool's
+    canvas, which is why the sign is turned over before comparing.
+
+    A NODE EXACTLY ON AN AXIS IS REFUSED rather than given a branch by which
+    side of a comparison zero falls on. None is today; the nearest is 33 units
+    from one.
+    """
+    body = node.get("data", {})
+    if body.get("kind") == "capstone" and body.get("options"):
+        return EMPIRE_CENTRE
+
+    position = node.get("position", {})
+    x = float(position.get("x", 0.0))
+    north = -float(position.get("y", 0.0))
+    if x == 0.0 or north == 0.0:
+        raise DataError(
+            f"{EMPIRE_TREE_FILE.name}: node {body.get('name')!r} sits on an axis "
+            f"of the canvas, so its branch cannot be read from where it is")
+    if x > 0.0:
+        return "Architect" if north > 0.0 else "Explorer"
+    return "Artisan" if north > 0.0 else "Treasury"
+
+
+def _empire_waits_on(name: str) -> str:
+    """What a node or option waits for, or empty when it can be bought.
+
+    A NAME IN NEITHER LIST, OR IN BOTH, STOPS GENERATION. See `EMPIRE_TREE_BUILT`.
+    """
+    built = name in EMPIRE_TREE_BUILT
+    refused = name in EMPIRE_TREE_REFUSED
+    if built == refused:
+        raise DataError(
+            f"{EMPIRE_TREE_FILE.name}: {name!r} is "
+            f"{'in both' if built else 'in neither'} of EMPIRE_TREE_BUILT and "
+            f"EMPIRE_TREE_REFUSED. Every node and option is one or the other, "
+            f"decided by the owner's scope ruling of 2026-11-18 (#2741).")
+    if built:
+        return ""
+    system = EMPIRE_TREE_REFUSED[name]
+    if system not in EMPIRE_TREE_SYSTEMS:
+        raise DataError(f"{name!r} waits on {system!r}, which EMPIRE_TREE_SYSTEMS "
+                        f"does not name")
+    return EMPIRE_TREE_SYSTEMS[system]
+
+
+def empire_tree_nodes(_book=None) -> list[dict]:
+    """One row per node of the empire upgrade tree.
+
+    THE ROW NAME IS THE NODE IDENTIFIER, with no tree in front of it, because
+    there is one empire tree and its identifiers are unique within it.
+    """
+    data = _load_empire_tree()
+    named: set[str] = set()
+    out = []
+    for node in data.get("nodes", []):
+        body = node.get("data", {})
+        kind = node.get("type", "")
+        if kind not in ("basic", "keystone", "capstone"):
+            raise DataError(f"{EMPIRE_TREE_FILE.name}: node {node.get('id')} has "
+                            f"kind {kind!r}, which is not one of the three")
+
+        branch = _empire_branch(node)
+        name = clean(body.get("name", ""))
+        options = body.get("options", []) if kind == "capstone" else []
+        if branch == EMPIRE_CENTRE:
+            threshold = int(body.get("threshold") or 0)
+            if threshold <= 0:
+                raise DataError(f"{EMPIRE_TREE_FILE.name}: the capstone {name!r} "
+                                f"states no threshold")
+        elif kind == "capstone":
+            threshold = EMPIRE_BRANCH_CAPSTONE_THRESHOLD
+        else:
+            threshold = 0
+
+        # A CENTRE CAPSTONE IS BOUGHT BY TAKING ONE OF ITS OPTIONS, so the
+        # options are what is classified and the capstone itself is not. A
+        # branch capstone has no options and is classified like any node.
+        if branch == EMPIRE_CENTRE:
+            waits_on = ""
+            named.update(clean(option.get("name", "")) for option in options)
+        else:
+            waits_on = _empire_waits_on(name)
+            named.add(name)
+
+        position = node.get("position", {})
+        row = {
+            "Name": node["id"],
+            "Branch": branch,
+            "Kind": kind,
+            "NodeName": name,
+            "Description": clean(body.get("description", "")),
+            "MaxPoints": int(body.get("maxPoints", 0)),
+            "Threshold": threshold,
+            "PositionX": float(position.get("x", 0.0)),
+            "PositionY": float(position.get("y", 0.0)),
+            "WaitsOn": waits_on,
+        }
+        for index in range(CAPSTONE_OPTIONS):
+            option = options[index] if index < len(options) else {}
+            option_name = clean(option.get("name", ""))
+            row[f"Option{index + 1}Name"] = option_name
+            row[f"Option{index + 1}Description"] = clean(
+                option.get("description", ""))
+            row[f"Option{index + 1}WaitsOn"] = (
+                _empire_waits_on(option_name)
+                if branch == EMPIRE_CENTRE and option_name else "")
+        out.append(row)
+
+    if not out:
+        raise DataError("no empire tree nodes were read")
+
+    # AND THE OTHER WAY: A NAME IN EITHER LIST THAT IS NO NODE OR OPTION. A node
+    # renamed in the tree file would otherwise leave its old name classified and
+    # its new one stopped above, and the old one would never be noticed.
+    stray = sorted((set(EMPIRE_TREE_BUILT) | set(EMPIRE_TREE_REFUSED)) - named)
+    if stray:
+        raise DataError(f"EMPIRE_TREE_BUILT or EMPIRE_TREE_REFUSED names "
+                        f"{stray}, which no node or option of "
+                        f"{EMPIRE_TREE_FILE.name} is called")
+    return _no_duplicates(out, "Empire Tree Nodes")
+
+
+def empire_tree_edges(_book=None) -> list[dict]:
+    """One row per dependency edge of the empire upgrade tree.
+
+    THE SAME MEANING AS A CLASS TREE'S EDGE: `requiredPoints` on an edge from A
+    to B means B is shut until A holds that many. The three edges chaining the
+    four centre capstones require 0 and are carried as they are; what opens a
+    capstone is its threshold.
+    """
+    data = _load_empire_tree()
+    node_ids = {node["id"] for node in data.get("nodes", [])}
+    out = []
+    for edge in data.get("edges", []):
+        source = edge.get("source")
+        target = edge.get("target")
+        if source not in node_ids or target not in node_ids:
+            raise DataError(
+                f"{EMPIRE_TREE_FILE.name}: edge {edge.get('id')} joins {source} "
+                f"to {target} and one of them is not a node")
+        out.append({
+            "Name": edge["id"],
+            "Source": source,
+            "Target": target,
+            "RequiredPoints": int(edge.get("data", {}).get("requiredPoints", 0)),
+        })
+
+    if not out:
+        raise DataError("no empire tree edges were read")
+    return _no_duplicates(out, "Empire Tree Edges")
+
+
 #: The states of the character a passive bonus may be made to depend on.
 #:
 #: HELD HERE AS WELL AS IN C++ ON PURPOSE, and the two have to agree.
@@ -13429,12 +13777,15 @@ MODEL_TABLES = {
     "EnemyRarities": enemy_rarities,
 }
 
-#: Built from the class tree node graphs in `docs/`, which are exported from a
-#: separate authoring tool. A third source beside the workbook and the Python
-#: model; everything after this point treats all three alike.
+#: Built from the tree node graphs in `docs/`, which are exported from a
+#: separate authoring tool: the class trees, and since issue #2741 the empire
+#: upgrade tree. A third source beside the workbook and the Python model;
+#: everything after this point treats all three alike.
 TREE_TABLES = {
     "PassiveNodes": passive_nodes,
     "PassiveEdges": passive_edges,
+    "EmpireTreeNodes": empire_tree_nodes,
+    "EmpireTreeEdges": empire_tree_edges,
 }
 
 

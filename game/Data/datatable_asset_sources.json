@@ -50,6 +50,18 @@
       "csv_sha256": "610b18d95ab301584e75d0b493147d68eee84afecade9f3c2a1988253f132967"
     },
     {
+      "asset": "DT_EmpireTreeEdges",
+      "csv": "EmpireTreeEdges.csv",
+      "rows": 158,
+      "csv_sha256": "72ce170b19c9be4708e7b322af37db050a0562ff36d2464592f94e771b6c2181"
+    },
+    {
+      "asset": "DT_EmpireTreeNodes",
+      "csv": "EmpireTreeNodes.csv",
+      "rows": 159,
+      "csv_sha256": "bf36a631f1249da65c651fc5fceb993bb612309a2d2a6b38d22c7bb1edff884b"
+    },
+    {
       "asset": "DT_EnchantmentEffects",
       "csv": "EnchantmentEffects.csv",
       "rows": 707,

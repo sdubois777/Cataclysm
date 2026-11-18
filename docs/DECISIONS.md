@@ -2,6 +2,370 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-18 — The empire upgrade tree reaches the game as two tables, each node placed in its branch and marked buyable or waiting on a system, and its buying rules are written; nothing is saved and no node acts yet (#2741, slice 1a)
+
+**Affects:** `tools/generate_datatables.py` (`empire_tree_nodes`, `empire_tree_edges`, `_empire_branch`,
+`_empire_waits_on`, `EMPIRE_TREE_SYSTEMS`, `EMPIRE_TREE_BUILT`, `EMPIRE_TREE_REFUSED` and three constants, new;
+`TREE_TABLES` gains both); `game/Data/EmpireTreeNodes.csv` and `EmpireTreeEdges.csv`, new;
+`tools/generate_datatable_assets.py` (two tables); `FCataclysmEmpireTreeNodeRow` and `FCataclysmEmpireTreeEdgeRow`, new
+(`game/Source/Cataclysm/Data/CataclysmDataRows.h`); `UCataclysmEmpireTree`, new
+(`game/Source/Cataclysm/Player/CataclysmEmpireTree.h`, `.cpp`); `game/README.md` (the table counts). Tests:
+`game/Source/Cataclysm/Tests/CataclysmEmpireTreeTests.cpp`, new, twelve in the new group `Cataclysm.EmpireTree.`; two
+`CHECK_TABLE` lines and two asset pairs in `CataclysmDataTableTests.cpp`;
+`tools/tests/test_empire_tree_tables_match_the_tree_file.py`, new; the sentence and the number words in
+`tools/tests/test_game_readme_is_true.py`. Issue [#2741](https://github.com/sdubois777/Cataclysm/issues/2741), slice
+1a of seven; the tree half of [#52](https://github.com/sdubois777/Cataclysm/issues/52).
+
+### SAID FIRST
+
+- **COMPILED, RUN AND PROVED, IN THE SECOND OF TWO WINDOWS.** The whole Unreal suite performed the registered 4807, all
+  succeeding, with 47 skipped halves and no test save left behind; the twelve new tests passed alone and in the whole
+  suite; the five C++ guard proofs and the two Python ones all proved as registered. The first window stopped on one
+  failure that no assertion raised -- an outside MCP client connecting to the test editor during a dungeon modifier test
+  ([#2745](https://github.com/sdubois777/Cataclysm/issues/2745)) -- and the coordinating session ruled the re-run. "The
+  windows" below has both. The two DataTable assets were built in the first window and committed as `8c75df8a3`.
+- **NOTHING IN PLAY CHANGES.** The game calls none of the new rules. Where the allocation is kept and where the bank is
+  spent from is slice 1b; the screen is slice 2; what a bought node does is slices 3 to 5.
+- **SLICE 1 OF THE PLAN IS SPLIT IN THREE.** The gold work (#2742) also adds a field to the account record, so the
+  coordinating session asked for the account record change in a slice of its own. This slice changes no save record;
+  1b adds the allocation to `UCataclysmAccountSave` at version 4, after the gold work's version 3 (the coordinating
+  session's ruling of 2026-11-18, which first gave 1b version 3 and swapped the two when gold's slice was ready to
+  merge first). **1c** gives a Solo Self-Found character its own bank and tree on `UCataclysmCharacterSave` at
+  version 9 (the gold work takes 8), because the owner reversed C8 the same day; see C8 below.
+- **TWO NODES MOVED FROM THE PLAN'S COUNT INTO "CAN BE BOUGHT".** Dungeon Mastery (10 points) was a question in the
+  plan; the coordinating session ruled it built (Q7). The High Roller (1 point) was counted as waiting on a
+  guaranteed-rarity drop; the drop roll already rolls an item at a stated rarity, so it is built in slice 5. The plan
+  said 626 points could be bought; it is 629 nodes' points and 8 options.
+- **AUTO-LOOT'S TWO OPTIONS ARE NOT CARRIED.** It is a keystone with "Auto-Seller" and "Auto-Shatter" in the file. Only
+  a capstone carries options, as on the class trees, and the node is refused as a whole until a loot filter exists.
+  When it is built, its options need columns or a rule.
+
+### The owner's rulings, verbatim (2026-11-18, on #2741)
+
+1. **Scope, "Nodes with a system":** "Build the tree screen, buying with banked points, saving and respec, plus every
+   node whose numbers exist. The other nodes are shown but cannot be bought until their system is built, as unbuilt
+   city upgrades are refused today."
+2. **The five cross-branch synergy nodes, "Cap each one":** "Keep the wording and add a maximum per node, chosen by the
+   building session from the simulation and recorded as a judgement for you to review." Architectural Insight,
+   Temporal Efficiency, Explorer Synergy, Architectural Synergy and Golden Age. The caps are chosen in the slices that
+   build the nodes.
+3. **Explorer depth, "Build as designed":** "Build the depth nodes as written and record the finding for tuning after
+   play. A respec, which costs days, lets a player take the depth nodes back." The finding: in the simulation (300
+   campaigns a cell, current defaults, the survey of 2026-11-18) the full Explorer branch does worse at tiers 4 to 8
+   than its 56-point speed-only part -- at tier 8 it won 2.7% against 7.0% and earned 16.6 points a run against 130.5,
+   because the depth nodes add 180 floors there and points are paid per dungeon, not per floor. The simulation has no
+   loot model, so the reward depth should bring is not in those figures. Slice 4 builds these nodes.
+
+Earlier rulings that bind the build: the tree belongs to the account, separately for each lethality mode (2026-08-05,
+#273, #277), and Solo Self-Found shares nothing (#325); respec at the Trainer at a cost in days, and the four centre
+capstone choices belong to the tree (#288); a league resets the tree (#287); Infinite Depths' floors do not reach the
+Cataclysm boss dungeon (2026-10-30); the game is balanced around a player fully invested in the Explorer tree
+(2026-09-06), and "The Explorer tree stays as designed" (2026-10-29).
+
+### The coordinating session's rulings, under the owner's delegation of 2026-09-11 -- each a judgement
+
+- **C1.** Where the tree file and another document disagree, the file wins.
+- **C2.** A node with two parents opens when any one parent meets its requirement (the class trees' rule, 2026-08-25).
+  Nineteen nodes have two.
+- **C3.** A bonus that grows "per N points" or "per 2 days" counts whole steps, rounded down. Answers #1428 when Speed
+  Runner is built (slice 5).
+- **C4.** "Empire XP" means empire upgrade points, so Veteran's Edge is built. "Surge damage" means the damage a
+  resolving dungeon does to a city, so Urban Fortification, Civil Defense and Imperial Command are built.
+- **C5.** A multi-point node's stated amount is per point, unless its text says it is a total.
+- **C6, Q3.** Respec is a button on the tree screen until the Trainer exists. It returns every point and clears the
+  four centre choices, and costs the lethality mode's death cost in days -- 5 on Standard, 10 on Hardcore, 15 on
+  Heretic, `UCataclysmDayClock::DeathDayCostFor` -- taken off the run being played; refused with no run. The design
+  calls the number "a tuning value" and no class tree respec cost exists to match.
+- **C7, Q2.** Each branch capstone opens at 200 points spent in its own branch; the file gives them no edge and no
+  threshold. **Q4:** Field Depot II requires I held and III requires II, beside their own edges -- recorded here and
+  built with the stash, since all three wait on it.
+- **C8, REVERSED BY THE OWNER ON 2026-11-18.** The coordinating session first ruled a Solo Self-Found character's tree
+  out of scope (it needed a character record version). Asked "Should the tree session include Solo Self-Found
+  characters?", the owner chose **"Include them"**: such a character banks empire points and buys its own tree, held on
+  its character record. Slice 1c builds it, and takes over the Solo Self-Found points bank #52 had left open. Nothing
+  in this slice depends on which record holds the bank or the allocation.
+- **Q1.** Bastion Spirit is capped like the five, chosen from the simulation in slice 3: read per point it gives +225
+  days to every resolve timer with the tree full.
+- **Q5, Q6.** Imperial Prowess (what "an additional keystone from any of the previous tiers" means) and Scorched Earth
+  (a city screen action that destroys an upgrade) are refused here. Both are **waiting on the owner**.
+- **Q7.** Dungeon Mastery is built in slice 5: "dungeon type" is the design's four (`docs/Cataclysm_GDD_v2.md`,
+  "Dungeon Types": Basic, Quest, Fallen City, Cataclysm), counted for the current run, at most four and +12%; "damage"
+  is attack and spell damage (the 2026-08-25 entry on "increased damage" on a passive node).
+- **Q8.** Explorer Synergy's and Architectural Synergy's caps are chosen when crafting is built; the simulation has no
+  crafting to choose them from.
+- **Q9.** Relentless Pursuit is capped, chosen in slice 5; Manifest Wealth is built as written, the drop roll's soft
+  cap bounding it, and its size recorded then.
+- **Q10.** A bought node acts on the run at once and a respec removes it at once, each number derived where the game
+  reads it, because a loaded run is rebuilt through `Begin` and has its saved city maxima written over it.
+- **Not asked, accepted:** the three edges chaining the centre capstones require 0 and so require nothing -- a later
+  capstone does not need an earlier one taken; the centre thresholds count every point in the tree, capstones
+  included; there are no leagues in the game, so nothing is built for #287. **Withdrawn the same day:** that the
+  screen would say the tree is not available yet to a Solo Self-Found character -- C8's reversal makes it available.
+
+### What the tables hold
+
+`game/Data/EmpireTreeNodes.csv`, 159 rows, one per node, named by the node's identifier (there is one tree, so no tree
+name in front): `Branch`, `Kind`, `NodeName`, `Description`, `MaxPoints`, `Threshold`, `PositionX`, `PositionY`,
+`WaitsOn`, and each centre capstone's three options as name, description and `WaitsOn`.
+`game/Data/EmpireTreeEdges.csv`, 158 rows: `Source`, `Target`, `RequiredPoints`, as the file has them.
+
+**The branch is read from where a node sits**, because the file has no field for it: its metadata says "Branches:
+Architect (NE), Explorer (SE), Treasury (SW), Artisan (NW)", and north is a negative y on the canvas. The four decision
+capstones are `Centre`. That reading gives Architect 326 points, Explorer 317, Treasury 313, Artisan 288 and the centre
+4 -- the survey's 325, 316, 312 and 287 plus each branch capstone -- puts all 64 nodes whose identifier names a branch
+in that branch, and leaves no edge joining two branches. A node exactly on an axis would stop generation rather than be
+put in a branch by which side of a comparison zero falls on; none is (the nearest is 33 units off).
+
+**`WaitsOn` is empty when the node can be bought**, and otherwise says what it needs in words that follow "it needs":
+"gold, which the game does not have yet (issue #2742)". The generator's two lists, `EMPIRE_TREE_BUILT` and
+`EMPIRE_TREE_REFUSED`, name every node and every centre option; a name in neither or in both, or a name no node has,
+stops generation, so a node added to the file cannot become buyable by default.
+
+### Which nodes can be bought
+
+1,256 points counting each of the twelve centre options as one:
+
+| | Points | |
+| :-- | --: | :-- |
+| Can be bought; acts in slice 3 (city numbers) | 315 | and three options: The Aegis of Hope, The Sentinel, The Flood Barrier |
+| Can be bought; acts in slice 4 (a dungeon's walk and depth) | 162 | and four options: The Delver, The Collector's Decree, The Warlord, The Last Stand |
+| Can be bought; acts in slice 5 (the player's loot and movement) | 152 | and one option: The Hoarder |
+| Waits on gold (#2742) | 251 | and one option: The Midas Touch |
+| Waits on crafting (#47) | 278 | and two options: The Soul Forge, The Master Tinkerer |
+| Waits on a gold cost for city upgrades (#1264) | 52 | War Funding, Municipal Bonds, Public Works, Price Controls, Global Credit, Scaffolding, Rapid Renovation, Rapid Funding, Sovereign Loans, Reinvestment |
+| Waits on a population growth rate, not designed | 10 | Civic Pride |
+| Waits on a loot chest on a floor | 8 | Supply Caches |
+| Waits on bonus dungeons, not designed | 8 | Scout Parties |
+| Waits on a stash in dungeons | 3 | Field Depot I, II, III |
+| Waits on dungeon modifier rerolls | 3 | Gamble |
+| Waits on a loot filter | 1 | Auto-Loot |
+| Waits on a city screen action that destroys an upgrade (the owner) | 1 | Scorched Earth |
+| Waits on a ruling (the owner) | | one option: Imperial Prowess |
+
+By branch, the points that can be bought are 310 of the Architect's 326, 283 of the Explorer's 317, 15 of the
+Treasury's 313 (Golden Age) and 10 of the Artisan's 288 (Scavenger: crafting materials already drop). When #2742's gold
+lands, the gold nodes' entries move, on the coordinating session's word and not before.
+
+### The rules, in `UCataclysmEmpireTree`
+
+The class trees' shape: statics over the generated tables and an allocation passed in, the same
+`FCataclysmPassiveAllocation` (node, points, chosen option) the class trees use, because the empire tree records
+exactly that. A node holds at most its `MaxPoints`; it opens when any one edge into it is satisfied, or has none; a
+keystone's edge already asks for its parent full; a centre capstone opens at its threshold in the whole tree and is
+taken by choosing an option and then spending its point; a branch capstone opens at 200 in its branch; a node or option
+that waits on a system is refused with a sentence naming it; a point costs 1.0 from the bank; a respec returns every
+point and forgets every node and choice. The days of a respec are taken by the caller, from the run (slice 1b).
+
+### Judgements of this session
+
+- **WHAT A NODE WAITS ON IS SAID BEFORE THE BANK.** The class trees refuse "no points left" first. A missing system is
+  true whatever the bank holds and for as long as the system is missing, so it is what a player looking at the node
+  should be told; "no points" would hide it until they had some.
+- **A BANK A MILLIONTH SHORT OF A POINT PAYS FOR IT, AND IS LEFT AT NOUGHT.** The bank is a sum of fractions -- three
+  awards of a third add to a hair below one -- and the empire map forgives the same noise before it shows the bank
+  rounded down to a tenth (`UCataclysmEmpireMapLayout::EmpirePointsText`). A bank the map shows as "1.0" buys a point.
+- **A CHOICE STANDS UNTIL A RESPEC**, as on the class trees. Choosing again would be a respec of one capstone for no
+  days.
+- **A RESPEC IS REFUSED ONLY WHEN THE ALLOCATION HOLDS NOTHING AT ALL.** An option is chosen before its point is spent,
+  so an allocation holding a choice and no point is one a player may need to undo, and the respec is the way.
+- **A CENTRE CAPSTONE ITSELF WAITS ON NOTHING; ITS OPTIONS DO.** It is taken by choosing an option, and a capstone
+  awaits a choice only while at least one of its options can be chosen.
+- **THE HELPERS ARE IN A NAMED NAMESPACE, CALLED BY ITS NAME, WITH NO `using namespace` AT FILE SCOPE**, in the rules
+  and in the tests. `CataclysmPassiveTree.cpp` has helpers of the same names in its unnamed namespace, and a unity build
+  may compile both files as one; a file-scope `using` would carry the clash into the files compiled after.
+
+### Tests written
+
+- **Python**, `tools/tests/test_empire_tree_tables_match_the_tree_file.py`, 41: the tables are the generator's output;
+  every node and edge is carried with its words, kind, cap, place, threshold, options and requirement; a keystone's
+  edge asks for its parent in full; the branch matches the metadata, the 64 identifiers and the survey's totals, and no
+  edge crosses branches; every node and option is classified once, says what it waits on exactly when it is refused,
+  and the totals above are pinned; the coordinating session's rulings are each pinned to the node they name; a name in
+  neither list, in both, or matching no node stops generation.
+- **Unreal**, `Cataclysm.EmpireTree.`, 12, over the real generated tables: the tables hold 159 and 158 and each branch
+  its nodes; a node opens at its edge's requirement; a two-parent node opens through either; a keystone needs its parent
+  full; Coinage is refused with gold named, and Scaffolding with its edge satisfied; the bank pays whole points, keeps
+  the half, and pays for a point from a bank a billionth short; a full node takes no more; a centre capstone opens at 25
+  in the whole tree, needs its option first, and its choice stands; an option waiting on crafting cannot be chosen and
+  Imperial Prowess cannot either; a branch capstone opens at 200 in its branch and not elsewhere; a respec returns
+  every point and choice, is refused with nothing or no run, and costs 5, 10 and 15 days.
+- **`Cataclysm.Data.`** gains no test: `EveryGeneratedTableImports` pins the two tables at 159 and 158 rows, and
+  `EveryGeneratedTableHasAnAssetThatMatchesIt` compares both assets with their files.
+
+### The Python run of phase 1
+
+`python -u -m pytest --junit-xml=<outside the repository>` on the phase 1 tree, before the entry was inserted: **4
+failed, 7530 passed, 8 skipped in 199.23 s**; the JUnit file says 7542 tests, 4 failures, 0 errors, 8 skipped. The four
+are the ones named under SAID FIRST, all in `tools/tests/test_datatable_assets_are_current.py`:
+`test_every_table_the_generator_builds_is_recorded`, `test_every_recorded_asset_name_matches_the_generator`,
+`test_every_csv_still_hashes_to_what_was_recorded` and `test_every_asset_named_in_the_record_exists`, each naming the two
+new tables and nothing else. They pass once the window rebuilds the assets and commits the record.
+`python -m ruff check .`: "All checks passed!"
+
+### Phase 2 before the build: review, the assets, the fixed numbers
+
+**Not rebased: development has not moved** from `1bbba95bc` (`git fetch`, then `git merge-base HEAD origin/development`
+printed `1bbba95bce...`). The coordinating session held the compile back while the Echoes of the Past window (#2740)
+ran; everything below was done without one.
+
+**Reviewed, and nothing changed.** Every assertion of the twelve tests was traced through the code it calls and the
+generated tables: the branch counts (40, 39, 38, 38 and 4) are the tables' own; the 24 and 25 points of the centre test
+are Pacing 10, Structural Integrity 10 and Enduring Foundations 4 and 5; the Architect branch's ordinary nodes hold 325
+points and the Explorer's 316, so `FillBranch` reaches 200, 199 and 100 exactly; each expected sentence is the one the
+code builds from the row it names; 0.5 and 31.5 are exact in a double, and `TestEqual` on a double allows 0.0001.
+
+**The worktree's assets were LFS pointer files, 120 of 124**, which would fail every test that loads a DataTable (the
+coordinating session's note from first-surge-w1, 2026-11-17). `git lfs checkout` replaced them, 128 objects, with no
+tracked file changed; the window's pre-checks count them again.
+
+### Compiled (phase 2)
+
+`python tools/unreal_build.py build`, twice, in the background with no time limit, after the coordinating session said
+the Echoes of the Past window had released the lock. Development had not moved from `1bbba95bc`, so nothing was
+rebased.
+
+1. **Each changed `.cpp` alone.** With every change of the branch uncommitted (`git reset --mixed origin/development`,
+   the branch put back on `54e84f021` afterwards), so adaptive unity compiled the working set's files on their own. The
+   worktree had never been built, so this was the whole module as well: "Build: Succeeded - 81 actions, 71 files
+   compiled". The object files show `CataclysmEmpireTree.cpp.obj`, `CataclysmEmpireTreeTests.cpp.obj` and
+   `CataclysmDataTableTests.cpp.obj` built on their own, beside the 43 unity files `Module.Cataclysm.1` to `.43`.
+2. **In unity.** Committed (`79dd1a8f9`), with `Makefile.bin` moved aside so the unity files were made again: "Build:
+   Succeeded - 6 actions, 3 files compiled: Module.Cataclysm.12.cpp, Module.Cataclysm.18.cpp, Module.Cataclysm.22.cpp".
+   Those three hold the rules (12), the data table tests (18) and the empire tree tests (22), read from the unity files
+   themselves. The empire module is not changed by this slice.
+
+Nothing needed fixing: the two risks named in phase 1 -- the helpers' names beside `CataclysmPassiveTree.cpp`'s in a
+unity file, and a file-scope `using namespace` reaching the files after it -- do not arise, because the rules' helpers
+are in a named namespace called by its name, and the tests open their namespace inside each test.
+
+### Rebased onto Echoes of the Past (phase 2)
+
+Echoes of the Past merged as `07f7e3bf6` (#2743) after the two builds. The branch was rebased onto it under a new name,
+`feat/empire-tree-1-data-2`, because the rebased branch cannot replace the old one without a force push; the old
+`feat/empire-tree-1-data` stays at `2e8077062`. **Git stopped on one file, this file**, at the first commit: both
+entries were inserted at the top. `python tools/resolve_decisions_log.py resolve --first upgrade` put this entry first,
+because it is the newer -- its first commit, `111734594`, was written at 10:19 and the Echoes entry's, `6be012af5` on
+that branch, at 09:37 -- and it was checked afterwards to be the same text, line endings aside, as before the rebase.
+The other four commits applied cleanly. Apart from this file, Echoes changed none of the thirteen files this branch
+changes.
+
+**THE REBASED TREE HAS NOT BEEN COMPILED.** The two builds above are of the tree on `1bbba95bc`. Echoes changed nine
+game source files and four test files, none of them this slice's, so the unity files may be grouped differently; the
+window's own build is the first compile of the rebased tree, and the window stops if it fails. The gold session held the
+build for its own compiles when this was written.
+
+### Registered before the run
+
+**The base** is the last whole suite on development's game tree, since the rebase: window echoes-spread-w1's engine log at
+`913861d9f` (`e2740_suite_engine_913861d9.log` in that session's worktree), 4795 "Test Completed" lines, all Success,
+and its run line "Tests: 4795 tests performed, 4795 succeeded, 0 failed. 47 skipped part of what they check", "Test
+saves: 826 written and deleted, 0 left behind" and "Declared: 4795 tests in the tree at 913861d9f"; `git diff --stat
+913861d9f 07f7e3bf6 -- game/` prints nothing. In that log `Cataclysm.Data.` performs 7 and no path begins
+`Cataclysm.EmpireTree`; no group of its 330 is taken by either prefix. (Before the rebase this read 4791, window
+b2733s4's at `e468bb95e`.)
+
+| Run | Registered |
+| :-- | :-- |
+| `Cataclysm.EmpireTree.` alone | 12 performed, 12 succeeded, 0 failed: none at the base, + 12 by name |
+| `Cataclysm.Data.` alone | 7 performed, 7 succeeded, 0 failed: none added; `EveryGeneratedTableImports` pins the two new tables, `EveryGeneratedTableHasAnAssetThatMatchesIt` compares their assets |
+| The whole suite | **4795 + 12 = 4807 performed, 4807 succeeded, 0 failed; 47 skipped halves; 0 test saves left behind** |
+| Python, after the asset rebuild is committed | every test passing: the four asset-record tests pass once the record holds the two tables. The count is the run's, since Echoes changed a Python test |
+
+**The guard proofs**, each through `prove_cpp_guard` on `game/Source/Cataclysm/Player/CataclysmEmpireTree.cpp`, prefix
+`Cataclysm.EmpireTree.` (each anchor occurs once; checked):
+
+| | Break | Predicted, broken half |
+| :-- | :-- | :-- |
+| E1 | any parent: `>= Edge.RequiredPoints` to `> Edge.RequiredPoints` in `EdgesAllow` | 12 performed, 9 succeeded, 3 failed: `ANodeOpensWhenItsParentHoldsWhatTheEdgeAsks`, 2 assertions ("and open at the edge's two", "and open at ten"); `ANodeWithTwoParentsOpensWhenEitherIsSatisfied`, 2 ("open through Fortified Gates alone", "open through Enduring Foundations alone"); `ANodeWhoseSystemIsMissingIsRefusedAndSaysWhich`, 1 ("Scaffolding's edge is satisfied, so only its system refuses it") |
+| E2 | a waiting node refused: `if (!Row->WaitsOn.IsEmpty())` to `if (!Row->Option1WaitsOn.IsEmpty())` in `RefusalForSpending` | 12 performed, 11 succeeded, 1 failed: `ANodeWhoseSystemIsMissingIsRefusedAndSaysWhich`, 5 ("Coinage, a root with a full bank, is refused", "and the refusal names gold and its issue", "the bank is untouched", "nothing is spent", "Scaffolding, with Foundation full, still waits on city upgrade costs") |
+| E3 | a branch capstone counts its branch: `OutSpent = SpentInBranch(NodeTable, Allocation, Row->Branch);` to `OutSpent = SpentInTree(Allocation);` in `CapstoneThreshold` | 12 performed, 11 succeeded, 1 failed: `ABranchCapstoneOpensAtTwoHundredInItsOwnBranch`, 1 ("The Royal Engineer's Blessing is shut at 199 in its branch") |
+| E4 | the bank's noise: `FloorToDouble(Bank + BankNoise)` to `FloorToDouble(Bank)` in `WholePointsIn` | 12 performed, 11 succeeded, 1 failed: `APointCostsOneWholePointFromTheBank`, 2 ("a bank a billionth short of a point buys one", "and is left at nought, not below it") |
+| E5 | a waiting option refused: `OptionField(*Row, Option, /*bWaitsOn=*/true)` to `OptionField(*Row, Option + 3, /*bWaitsOn=*/true)` for `Needs` in `RefusalForChoosingOption` | 12 performed, 11 succeeded, 1 failed: `AnOptionWhoseSystemIsMissingCannotBeChosen`, 4 ("The Soul Forge, Edicts of Power's third, cannot be chosen", "and the refusal names crafting", "The Collector's Decree, its second, can", "Imperial Prowess cannot be chosen") |
+
+Every restored half: 12 performed, 12 succeeded, 0 failed.
+
+**The two Python proofs were run in phase 2, before this table was written** -- their predictions were made before
+each run and not written down first, so they are reported as results rather than as registrations -- through
+`tools/prove_guard.py`'s `break_and_run` on `tools/tests/test_empire_tree_tables_match_the_tree_file.py`:
+
+| | Break | Result |
+| :-- | :-- | :-- |
+| Y1 | a classified name no node has: `stray = sorted(...)` to `stray = []` in `empire_tree_nodes` | PROVED: "1 failed, 40 passed in 0.93s \| restored: 41 passed in 0.91s"; named `test_a_name_no_node_is_called_stops_generation` |
+| Y2 | a node in the wrong branch: `basic_arch_t1d,Architect,` to `basic_arch_t1d,Explorer,` in `game/Data/EmpireTreeNodes.csv` | PROVED: "4 failed, 37 passed in 0.94s \| restored: 41 passed in 0.84s"; named `test_the_tables_are_the_generators_output`, `test_every_identifier_that_names_a_branch_agrees`, `test_no_edge_crosses_from_one_branch_to_another`, `test_each_branch_holds_the_points_the_survey_counted` |
+
+### The windows
+
+**Two windows, on 2026-11-18. The first stopped at the whole suite on a failure that no assertion raised; the second,
+ruled by the coordinating session, ran the whole suite and the five proofs on the same head.** Both on
+`feat/empire-tree-1-data-2`, development `07f7e3bf6`, with the lock taken after `prechecks_t2741a.py` printed
+"PRECHECKS: ALL PASS" (CI and Unreal green on `07f7e3bf6`, no run in progress or queued, the lock free, no build or
+editor process, no pull request open, no simulation process, 13,791 MB and then 13,578 MB free, no LFS pointer file under
+`game/Content`). The scripts are `.claude/windows/prechecks_t2741a.py`, `run_t2741a.py`, `run_t2741a2.py` and
+`prove_t2741a.py` in this session's worktree, with every log beside them.
+
+**The first window, empire-tree-1a-w1, at `1f37c5f76`:**
+
+- **Build:** "Build: Succeeded - 49 actions, 44 files compiled" -- the rebased tree's first compile, clean.
+- **The asset rebuild:** exactly ` M game/Data/datatable_asset_sources.json`, `?? game/Content/Data/DT_EmpireTreeEdges.uasset`
+  and `?? game/Content/Data/DT_EmpireTreeNodes.uasset`, committed alone as `8c75df8a3`, "Build DT_EmpireTreeNodes and
+  DT_EmpireTreeEdges (#2741, slice 1a)", on `1f37c5f76`, and pushed. **`8c75df8a3` is the tested head** of both
+  windows.
+- **`Cataclysm.EmpireTree.` alone:** "Tests: 12 tests performed, 12 succeeded, 0 failed", as registered.
+- **`Cataclysm.Data.` alone:** "Tests: 7 tests performed, 7 succeeded, 0 failed", as registered.
+- **The whole Unreal suite STOPPED THE WINDOW:** "Tests: 4807 tests performed, 4806 succeeded, 1 failed:
+  UnstableDimensionsImposesNoRealityOnTheFirstFloor. 47 skipped part of what they check"; "Test saves: 823 written and
+  deleted, 0 left behind"; "Declared: 4807 tests in the tree at 8c75df8a3; 4807 performed, gap 0". Engine log kept as
+  `t2741a_suite_engine_8c75df8a.log`.
+- **The failure is not this slice's.** `Cataclysm.DungeonModifierEffects.UnstableDimensionsImposesNoRealityOnTheFirstFloor`
+  holds no "Error: Expected" line between its "Test Started" and "Test Completed" lines. Its one error is
+  `LogModelContextProtocol: Error: Call to unknown method "server/discover"` at 18:45:12.469 (engine log line
+  2045549), echoed in its events as `LogAutomationController: Error: LogModelContextProtocol: Call to unknown method
+  "server/discover" [log]` at 18:45:12.656 (line 2046497), followed by "Client requested protocol version '2025-11-25',
+  negotiated '2025-11-25'" and "Initializing new session: 2f6724ef4adfc5e7d16322a4dd2116b6" at 18:45:12.689. The test
+  editor starts the Model Context Protocol server on port 8000 (line 2571, 18:36:22); **an outside MCP client connected
+  to it while that test ran, and the engine counts any Error logged during a test as that test's failure.** The error
+  appears once in the whole run. The coordinating session read the same lines, and records that the owner started a new
+  Claude session at about that minute, and that a new session connects to the Unreal MCP server when it starts. It is
+  the cause recorded for window enchant-tp on 2026-10-21 (the trap layer's entry). The coordinating session filed
+  [#2745](https://github.com/sdubois777/Cataclysm/issues/2745): the test editor should not start the MCP server, a
+  change to `tools/unreal_build.py`. No session changed any MCP configuration for the second window, and the owner was
+  asked not to start new sessions while a window holds the lock.
+- **Python, on the tested head:** "7533 passed, 9 skipped in 212.74s"; JUnit tests 7542, failures 0, errors 0, skipped
+  9. The four asset-record tests of phase 1 now pass. Lint: "All checks passed!".
+- **The proofs did not run:** the runner stops before them when the suite does not match its registered total.
+
+**The ruling, the coordinating session's, 2026-11-18, as on 2026-10-21:** run again on the same tested head
+`8c75df8a3` with nothing changed -- the whole suite against 4807, 47 and 0, then E1 to E5 -- with the assets, the two
+groups and Python standing from the first window; a failure in the re-run reported test by test with its "Error:
+Expected" lines and every other Error line in it, and not run a third time.
+
+**The second window, empire-tree-1a-w2, at `8c75df8a3`:**
+
+- **Build:** "Build: Succeeded - target already up to date, 0 actions, nothing compiled", as on the same head.
+- **The whole Unreal suite, as registered:** "Tests: 4807 tests performed, 4807 succeeded, 0 failed. 47 skipped part of
+  what they check"; "Test saves: 823 written and deleted, 0 left behind"; "Declared: 4807 tests in the tree at
+  8c75df8a3; 4807 performed, gap 0; every declared test was reported by the run". The runner read "performed=4807
+  succeeded=4807 failed=0, registered 4807: MATCH; skipped halves 47, registered 47". Engine log kept as
+  `t2741a2_suite_engine_8c75df8a.log`, which holds 4807 "Test Completed. Result={Success}" lines, a second count, and
+  no `LogModelContextProtocol` error.
+- **Python and lint:** not run again, standing from the first window on this head.
+- **The five guard proofs, every one PROVED,** each through `prove_cpp_guard` on `CataclysmEmpireTree.cpp`, prefix
+  `Cataclysm.EmpireTree.`, each anchor counted once and the source hash the same after each. Every broken half failed
+  exactly the registered tests, and the failed assertions, counted in each broken half's kept log
+  (`t2741a_<P>_run1.log`), are exactly the registered ones, by their text:
+
+| | Broken half, as printed | Failed assertions in its log | Restored half |
+| :-- | :-- | :-- | :-- |
+| E1 | 12 performed, 9 succeeded, 3 failed: `ANodeOpensWhenItsParentHoldsWhatTheEdgeAsks`, `ANodeWhoseSystemIsMissingIsRefusedAndSaysWhich`, `ANodeWithTwoParentsOpensWhenEitherIsSatisfied` | 2 ("and open at the edge's two", "and open at ten"), 1 ("Scaffolding's edge is satisfied, so only its system refuses it"), 2 ("open through Fortified Gates alone", "open through Enduring Foundations alone") | 12 of 12 |
+| E2 | 12 performed, 11 succeeded, 1 failed: `ANodeWhoseSystemIsMissingIsRefusedAndSaysWhich` | 5: "Coinage, a root with a full bank, is refused", "and the refusal names gold and its issue", "the bank is untouched" (50 expected, 49), "nothing is spent" (0 expected, 1), "Scaffolding, with Foundation full, still waits on city upgrade costs" | 12 of 12 |
+| E3 | 12 performed, 11 succeeded, 1 failed: `ABranchCapstoneOpensAtTwoHundredInItsOwnBranch` | 1: "The Royal Engineer's Blessing is shut at 199 in its branch" | 12 of 12 |
+| E4 | 12 performed, 11 succeeded, 1 failed: `APointCostsOneWholePointFromTheBank` | 2: "a bank a billionth short of a point buys one", "and is left at nought, not below it" (0 expected; the bank stayed a billionth short of 1, printed 1.000000) | 12 of 12 |
+| E5 | 12 performed, 11 succeeded, 1 failed: `AnOptionWhoseSystemIsMissingCannotBeChosen` | 4: "The Soul Forge, Edicts of Power's third, cannot be chosen", "and the refusal names crafting", "The Collector's Decree, its second, can", "Imperial Prowess cannot be chosen" | 12 of 12 |
+
+The lock was released at the end of each window.
+
+---
+
 ## 2026-11-18 — Echoes of the Past: every creature killed on the last floor stands somewhere on the next, and each one the player comes near moves in, makes its last attack once and vanishes (#2740)
 
 **Affects:** `UCataclysmDungeonModifierEffects` (`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h`,
