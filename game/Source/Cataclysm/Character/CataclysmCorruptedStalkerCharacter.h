@@ -96,9 +96,10 @@ public:
 	/**
 	 * Every entry, one per damage type in the order War, Demonic, Death, Pestilence, Famine, Celestial, Chaos, Void.
 	 *
-	 * ONLY DEMONIC IS AUTHORED, ruled by the coordinating session on 2026-10-25. War waits under the standing order of
-	 * no War work in the game. The other six types' weapon skills are undesigned placeholders in `WeaponSkills.csv`, so
-	 * an entry of theirs could not fight with player skills; each is a named slot until its skills are designed.
+	 * EVERY TYPE BUT WAR IS AUTHORED. War waits under the standing order of no War work in the game, a named slot.
+	 * Demonic was the only entry from 2026-10-25, ruled by the coordinating session, because the other six types' weapon
+	 * skills were undesigned placeholders; issue #2580 authored one weapon kit for each of the six on the owner's rulings
+	 * of 2026-11-17, and its entry for each wears that weapon on the shared `Default` class line with no passives.
 	 */
 	static TArray<FCataclysmStalkerEntry> Entries();
 

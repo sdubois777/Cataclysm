@@ -132,8 +132,9 @@ def test_a_defender_with_no_health_is_not_stunnable_rather_than_always():
 # --------------------------------------------------------------------------
 
 def test_a_designed_stun_ignores_the_damage_threshold():
-    """Four shipped skills in `game/Data/WeaponSkills.csv` stun by design --
-    Shield Bash, Shockwave Leap, Lunge and Whip Swing. A threshold that made
+    """Six shipped skills in `game/Data/WeaponSkills.csv` stun by design --
+    Shield Bash, Shockwave Leap, Lunge and Whip Swing, and since issue #2580
+    Hammer of Dawn and Heaven's Verdict. A threshold that made
     Shield Bash fail against a healthy target would leave the skill doing
     nothing it was written to do."""
     tiny = dm.Attacker(damage=MAX_HEALTH * 0.01, subtype="Blunt",

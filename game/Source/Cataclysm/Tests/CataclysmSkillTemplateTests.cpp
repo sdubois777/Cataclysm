@@ -6581,8 +6581,9 @@ bool FCataclysmStunNotAppliedAsATagTest::RunTest(const FString&)
 	FScopedFighter Caster(World, FVector::ZeroVector);
 	FScopedFighter Enemy(World, FVector(3 * M, 0, 0));
 
-	// FOUR REAL ROWS WRITE `Effect=Stun` -- Shield Bash, Shockwave Leap, Lunge
-	// and Whip Swing. `UCataclysmSkillEffects::ApplyStun` carries three rules the
+	// SIX REAL ROWS WRITE `Effect=Stun` -- Shield Bash, Shockwave Leap, Lunge
+	// and Whip Swing, and since issue #2580 Hammer of Dawn and Heaven's Verdict.
+	// `UCataclysmSkillEffects::ApplyStun` carries three rules the
 	// design states: a damage threshold, five seconds of immunity after one
 	// lands, and bosses immune outright. Granting `Status.Debuff.Stun` as a plain
 	// tag through the curse path would walk past all three, so the curse path

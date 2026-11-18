@@ -921,9 +921,10 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		RowKey == FName(InsanityBurstsKey)
 		// THE CORRUPTED STALKER, since 2026-10-25 (issue #1308, part B). It arrives, hunts and follows from floor to
 		// floor wearing a player's build (layer 1), chooses its skills and drinks its potions (layer 2), and its death
-		// pays as a Boss and drops what it wore (layer 3). Missing: six of the seven entries the owner asked for, one
-		// per damage type except War, whose weapon skills are undesigned placeholders (layer 4). Ruled to stay partly
-		// built until all seven exist.
+		// pays as a Boss and drops what it wore (layer 3). Ruled to stay partly built until all seven non-War entries
+		// exist (layer 4). ALL SEVEN ARE AUTHORED SINCE ISSUE #2580, which authored the other six types' weapon kits and
+		// entries; that branch did not move the row to built, and leaves the move to the coordinating session, because
+		// the six were authored without a run in the engine.
 		|| RowKey == FName(CorruptedStalkerKey)
 		// REALITY RIFTS WAS HERE UNTIL 2026-10-10, for "access hidden areas"; it is built and answers above.
 		// WARZONE CONTROL POINTS WAS HERE UNTIL 2026-10-04, for "opening shortcuts"; it is built and answers above.

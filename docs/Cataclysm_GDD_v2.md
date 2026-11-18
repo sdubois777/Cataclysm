@@ -2488,7 +2488,7 @@ The stun uses the shortest duration any designed skill uses. A weapon sub-type t
 
   
 
-**A skill whose stated effect is to stun ignores the damage threshold.** Shield Bash, Shockwave Leap, Lunge and Whip Swing all state that they stun, and a threshold that made them fail against a healthy target would leave them doing nothing they were written to do. Such a skill does **not** ignore boss immunity, and it does not ignore the immunity window.
+**A skill whose stated effect is to stun ignores the damage threshold.** Shield Bash, Shockwave Leap, Lunge, Whip Swing, Hammer of Dawn and Heaven's Verdict all state that they stun, and a threshold that made them fail against a healthy target would leave them doing nothing they were written to do. Such a skill does **not** ignore boss immunity, and it does not ignore the immunity window.
 
   
 
@@ -2609,7 +2609,7 @@ of its uses.
 
   
 
-**Why distance rather than immunity.** Path of Exile 2 already treats distance as the quantity rather than as a yes or no: skills carry increased knockback distance, and defensive modifiers reduce the distance an incoming knockback moves you. Diablo IV takes the other route, adding a flat 40% to a hidden crowd control resistance per knockback and making the target immune once that resistance reaches 65%. Immunity works there because knockback in Diablo IV comes from skills that can be repeated quickly. **Here it cannot**: all nine displacing skills sit in the Heavy or Movement slot, and nothing in any other slot displaces at all, so the case Diablo IV's threshold exists to stop is already bounded by which slots the effect lives in. A Heavy attack is the slow one by design — Molten Crush is described as "the slowest heavy blow in the game" — and a Movement skill goes on cooldown.
+**Why distance rather than immunity.** Path of Exile 2 already treats distance as the quantity rather than as a yes or no: skills carry increased knockback distance, and defensive modifiers reduce the distance an incoming knockback moves you. Diablo IV takes the other route, adding a flat 40% to a hidden crowd control resistance per knockback and making the target immune once that resistance reaches 65%. Immunity works there because knockback in Diablo IV comes from skills that can be repeated quickly. **Here it mostly cannot**: all twelve displacing skills, the skills whose words knock a target back, sit in the Heavy or Movement slot, so the case Diablo IV's threshold exists to stop is bounded by which slots the effect lives in. A Heavy attack is the slow one by design — Molten Crush is described as "the slowest heavy blow in the game" — and a Movement skill goes on cooldown. The exceptions are pulses that repeat on a timer: Coil of Embers and Aegis of Dawn push, and Undertow pulls. The halving above is what holds them, since a target pushed or pulled every second moves less than twice the stated distance however long it stays; that is why Undertow pulses every 6 seconds rather than every second, and why Aegis of Dawn's sentence states the halving (issue #2580).
 
   
 
