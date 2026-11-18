@@ -27,8 +27,9 @@ Decisions made outside the Google Drive documents, newest first.
   spent from is slice 1b; the screen is slice 2; what a bought node does is slices 3 to 5.
 - **SLICE 1 OF THE PLAN IS SPLIT IN THREE.** The gold work (#2742) also adds a field to the account record, so the
   coordinating session asked for the account record change in a slice of its own. This slice changes no save record;
-  1b adds the allocation to `UCataclysmAccountSave` at version 3 (the coordinating session's ruling of 2026-11-18; the
-  gold work takes 4). **1c** gives a Solo Self-Found character its own bank and tree on `UCataclysmCharacterSave` at
+  1b adds the allocation to `UCataclysmAccountSave` at version 4, after the gold work's version 3 (the coordinating
+  session's ruling of 2026-11-18, which first gave 1b version 3 and swapped the two when gold's slice was ready to
+  merge first). **1c** gives a Solo Self-Found character its own bank and tree on `UCataclysmCharacterSave` at
   version 9 (the gold work takes 8), because the owner reversed C8 the same day; see C8 below.
 - **TWO NODES MOVED FROM THE PLAN'S COUNT INTO "CAN BE BOUGHT".** Dungeon Mastery (10 points) was a question in the
   plan; the coordinating session ruled it built (Q7). The High Roller (1 point) was counted as waiting on a
