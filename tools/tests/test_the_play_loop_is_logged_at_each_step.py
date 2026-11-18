@@ -132,7 +132,7 @@ def test_each_step_of_the_loop_says_its_line(relative: str, signature: str, buil
 def test_the_capital_lists_the_dungeons_standing_and_says_the_days_away_once() -> None:
     body = body_of("Player/CataclysmCapitalGameMode.cpp", "bool ACataclysmCapitalGameMode::OpenTheEmpireMapIfReady()")
     carried = "Instance->PlayLoopAwayAccount"
-    assert f"FCataclysmPlayLoopLog::CapitalLine(" in body and carried in body, (
+    assert "FCataclysmPlayLoopLog::CapitalLine(" in body and carried in body, (
         "The capital's arrival line no longer carries the days away the dungeon level left on the game instance.")
     emptied = "Instance->PlayLoopAwayAccount.Empty();"
     assert emptied in body, "The capital no longer empties the carried account, so it would be said on every arrival."

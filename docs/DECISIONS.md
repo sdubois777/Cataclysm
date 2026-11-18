@@ -140,6 +140,78 @@ The full text, with the line to look for at each step, is `docs/Play_Loop_Checkl
 10. **A second walk, ended by a death.** The death's line; the capital's line with the death's days.
 11. **Stop, Play, Continue.** The front end's line, the Continue line, and the capital.
 
+### Phase 2: compiled, reviewed and proved in Python
+
+**Compiled twice, with no error and no warning:** the changed files alone, uncommitted ("29 actions, 26 files
+compiled", the new files and those including the changed game instance header); and committed as `17924eaa9`, the
+makefile set aside ("12 actions, 9 files compiled: Module.Cataclysm.11.cpp, Module.Cataclysm.12.cpp,
+Module.Cataclysm.28.cpp, Module.Cataclysm.13.cpp, Module.Cataclysm.37.cpp, Module.Cataclysm.38.cpp,
+Module.Cataclysm.39.cpp, Module.Cataclysm.40.cpp, Module.Cataclysm.41.cpp"), which hold, read from each unity file:
+`CataclysmCharacterSelectWidget.cpp` and `CataclysmNewCharacterWidget.cpp` (11), `CataclysmCapitalGameMode.cpp` and
+`CataclysmFrontEndGameMode.cpp` (12), `CataclysmPlayLoopLog.cpp` (13), `CataclysmPlayLoopTests.cpp` (28),
+`CataclysmDungeonGameMode.cpp` (37) and `CataclysmSaveLoadTests.cpp` (41).
+
+**Reviewed, by reading the diff:** each line is said after the step it reports, with figures that step has set; every
+pointer a call site reads is checked or was checked before it (`Players[0]` after the capital's own non-empty check,
+the run in `EnterEmpireDungeon` before it binds); the two new `World` variables in `ClearEmpireDungeon` sit in sibling
+blocks and hide nothing; the account is built after the days have run and the names before. **No fixed number was
+added**: every figure in a line is the game's own.
+
+**Five Python proofs, all PROVED**, with `tools/prove_guard.py` on
+`tools/tests/test_the_play_loop_is_logged_at_each_step.py` (15 tests):
+
+| Proof | Break | Named failures, broken half | Restored |
+| :-- | :-- | :-- | :-- |
+| S1 | the capital's Walk says nothing | `test_each_step_of_the_loop_says_its_line[WalkLine]` | 15 passed |
+| S2 | the checklist quotes "made" for "begun" | `test_the_checklist_quotes_only_lines_the_game_says`, `test_the_checklist_quotes_every_line_the_game_says` | 15 passed |
+| S3 | the capital never empties the carried account | `test_the_capital_lists_the_dungeons_standing_and_says_the_days_away_once` | 15 passed |
+| S4 | `game/README.md` names the checklist without linking it | `test_the_games_readme_links_the_checklist` | 15 passed |
+| S5 | the clear names the dungeons standing from no run | `test_the_dungeons_are_named_before_the_days_run_and_the_account_is_left_for_the_capital[clear]` | 15 passed |
+
+**Python: "7488 passed, 9 skipped"**, its JUnit file 7497 tests, 0 failures, 0 errors, 9 skipped. `ruff check .` then found one error, in the new check: an
+f-string with no placeholder (F541), its `f` removed; the check's file again "15 passed", and `ruff check .` passing.
+
+### Registered before window play-loop-w1
+
+`.claude/windows/run_b2733s4.py`, lock `play-loop-w1`: the pre-checks, the lock, one build, the check that HEAD holds
+the four input assets of `e06b5f16`, then each group alone, the whole suite, Python, and three proofs.
+
+**The base.** Window travel-w1's third run, at `9951dbb7`, performed the whole suite, 4784, with 47 skipped halves and
+0 test saves left behind; between it and this branch's base, `development` `e8b310ffb`, the only change under
+`game/Source` is the arrival test's assertion, and both register the same 4702 test names. Per-group counts are that
+run's engine log's "Test Completed" lines by prefix, ignoring case.
+
+**The whole suite: 4784 + 7 = 4791 performed, 4791 succeeded, 0 failed; 47 skipped halves; 0 test saves left behind;
+"Declared: 4791".** The seven are `Cataclysm.PlayLoop.`'s, by name: five in `CataclysmPlayLoopTests.cpp` and two in
+`CataclysmSaveLoadTests.cpp`; 4709 names at this head.
+
+**Each group alone**, each prefix ending in a dot:
+
+| Prefix | Base | Registered | Why it runs alone |
+| :-- | --: | --: | :-- |
+| `Cataclysm.PlayLoop.` | 0 | 7 | new |
+| `Cataclysm.Travel.` | 9 | 9 | the arrival helper gains an optional input and output |
+| `Cataclysm.SaveLoad.` | 76 | 76 | its file changed; entering and a death say a line |
+| `Cataclysm.Capital.` | 7 | 7 | the capital says its line and the standing lines |
+| `Cataclysm.CharacterSelect.` | 10 | 10 | Continue says its line |
+| `Cataclysm.Creation.` | 14 | 14 | Begin says its line |
+| `Cataclysm.WalkFromTheScreen.` | 5 | 5 | a Walk press enters a dungeon, which says its line |
+| `Cataclysm.EmpirePoints.` | 16 | 16 | a clear says its line and builds the days away |
+| `Cataclysm.WinningTheRun.` | 11 | 11 | a won run's clear says its line before the next run begins |
+| `Cataclysm.DeathCost.` | 9 | 9 | a death that ends a walk says its line |
+
+**Three C++ guard proofs,** with `prove_cpp_guard` and the engine log of each half kept (`.claude/windows/
+prove_b2733s4.py`), each on `Cataclysm.PlayLoop.`; each restored half must pass 7 of 7:
+
+| Proof | Break | Predicted broken half |
+| :-- | :-- | :-- |
+| C1 | the capital's line is given no days away: `FString()` for `Instance->PlayLoopAwayAccount` (`CataclysmCapitalGameMode.cpp`) | 7 performed, 6 succeeded, 1 failed: `AWalkToItsLastFloorIsLoggedStepByStepAndTheCapitalSaysTheDaysAway`, 1 assertion: "saying the days away in its line" |
+| C2 | a death names the dungeons standing from an empty list: `TMap<int32, FString>()` for `NamesStanding(Run)` (`CataclysmDungeonGameMode.cpp`) | 7, 6, 1 failed: `ADeathThatEndsAWalkIsLoggedAndItsResolveIsInTheDaysAway`, 1: "naming the dungeon its resolve took off the map, by the name it had" |
+| C3 | a floor's line says the walk owes nothing: `Walking ? 0 : 0` (`CataclysmDungeonGameMode.cpp`) | 7, 5, 2 failed: `AWalkToItsLastFloor...`, 1: "then the floor the stairs reached and what the walk owes by then"; `ADeathThatEndsAWalk...`, 1: "then floor 2" |
+
+Assertions are counted in each broken half's kept log in both of the engine's forms, "Expected '...'" and "...: The
+two values are not equal.".
+
 ---
 
 ## 2026-11-18 — The capital's Walk takes the character to the dungeon, and the last floor's stairs or a death take it back, each trip a save and a load; no walk can be left early, M opens the map, and the map says what the days away did (#2733, slice 3)
