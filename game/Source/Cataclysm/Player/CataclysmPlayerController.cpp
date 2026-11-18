@@ -2007,6 +2007,16 @@ bool ACataclysmPlayerController::TakeDrop(ACataclysmDroppedItem* Drop)
 		return true;
 	}
 
+	// A GOLD PILE THE BALANCE REFUSED, which a full bag has nothing to do with. Issue #2742.
+	if (Drop->IsGold())
+	{
+		UE_LOG(LogCataclysm, Warning,
+			   TEXT("'%s' stays on the floor: there is no gold balance to put it in (no character playing, or an "
+					"account record that would not read)."),
+			   *Drop->DisplayName);
+		return false;
+	}
+
 	// FULL. Said out loud rather than silently ignored, because from the
 	// player's side a click that does nothing is indistinguishable from a click
 	// that missed. The real answer is a message on screen, which needs the
@@ -2074,22 +2084,32 @@ void ACataclysmPlayerController::CollectMaterialsNearby()
 	// ITERATING EVERY DROP EACH FRAME IS WHAT THE HEADS-UP DISPLAY ALREADY
 	// DOES to draw their names, so this adds a second pass over the same small
 	// set rather than a new kind of cost.
+	//
+	// GOLD COMES THE SAME WAY, within the same fifteen metres, and is gathered
+	// apart: it goes to the account rather than the bag, and every pile in reach
+	// is banked together so the account record is written once. Issue #2742.
 	TArray<ACataclysmDroppedItem*> Coming;
+	TArray<ACataclysmDroppedItem*> GoldComing;
 	for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
 	{
 		ACataclysmDroppedItem* Drop = *It;
 		if (IsValid(Drop)
 			&& UCataclysmDropPickup::ComesAutomatically(
-				   Drop->IsMaterial(), Standing, Drop->GetActorLocation(),
+				   Drop->IsAQuantity(), Standing, Drop->GetActorLocation(),
 				   Drop->bInfested))
 		{
-			Coming.Add(Drop);
+			(Drop->IsGold() ? GoldComing : Coming).Add(Drop);
 		}
 	}
 
 	for (ACataclysmDroppedItem* Drop : Coming)
 	{
 		UCataclysmDropPickup::TakeInto(Inventory, Drop);
+	}
+
+	if (GoldComing.Num() > 0)
+	{
+		UCataclysmDropPickup::BankGold(World, GoldComing);
 	}
 }
 

@@ -301,6 +301,25 @@ namespace CataclysmCharacterSaveMigration
 	}
 
 	/**
+	 * A character written before gold existed holds none of its own. Issue #2742, 2026-11-18: a Solo Self-Found
+	 * character's gold is on its character record, and no character could hold any before the field. Written out, for
+	 * `Migrate_3_to_4`'s reason. A key already holding a number is kept, and one holding anything else is refused, as
+	 * the account record's `Migrate_2_to_3` does.
+	 */
+	bool Migrate_7_to_8(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		double Held = 0.0;
+		if (Record->HasField(TEXT("Gold")) && !Record->TryGetNumberField(TEXT("Gold"), Held))
+		{
+			OutError = TEXT("Gold holds something that is not a number");
+			return false;
+		}
+		Record->SetNumberField(TEXT("Gold"), Held); // A migration's: the character's own gold, written out.
+		return true;
+	}
+
+	/**
 	 * The chain, newest step last.
 	 *
 	 * The order is for a reader rather than for the machinery, which looks a
@@ -314,6 +333,7 @@ namespace CataclysmCharacterSaveMigration
 		{ 4, TEXT("Migrate_4_to_5"), &Migrate_4_to_5 },
 		{ 5, TEXT("Migrate_5_to_6"), &Migrate_5_to_6 },
 		{ 6, TEXT("Migrate_6_to_7"), &Migrate_6_to_7 },
+		{ 7, TEXT("Migrate_7_to_8"), &Migrate_7_to_8 },
 	};
 }
 
@@ -450,6 +470,32 @@ namespace CataclysmRunSaveMigration
 		return true;
 	}
 
+	/**
+	 * A run written before gold existed has none lying on its floor: no kill could drop any. Issue #2742, 2026-11-18.
+	 * Written out, for `Migrate_1_to_2`'s reason, as a `Gold` of 0 on every item the floor's `GroundItems` holds. A
+	 * floor with no array, or an entry that is not an object, is left as it is: the read that follows refuses a
+	 * malformed record, and this step is not the place to decide what it meant.
+	 */
+	bool Migrate_6_to_7(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		const TSharedPtr<FJsonObject>* Floor = nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* GroundItems = nullptr;
+		if (Record->TryGetObjectField(TEXT("Floor"), Floor) && Floor && Floor->IsValid()
+			&& (*Floor)->TryGetArrayField(TEXT("GroundItems"), GroundItems) && GroundItems)
+		{
+			for (const TSharedPtr<FJsonValue>& Entry : *GroundItems)
+			{
+				const TSharedPtr<FJsonObject>* Item = nullptr;
+				if (Entry.IsValid() && Entry->TryGetObject(Item) && Item && Item->IsValid())
+				{
+					(*Item)->SetNumberField(TEXT("Gold"), 0); // A migration's: no gold lay there, written out.
+				}
+			}
+		}
+		return true;
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep RunSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
@@ -457,6 +503,7 @@ namespace CataclysmRunSaveMigration
 		{ 3, TEXT("Migrate_3_to_4"), &Migrate_3_to_4 },
 		{ 4, TEXT("Migrate_4_to_5"), &Migrate_4_to_5 },
 		{ 5, TEXT("Migrate_5_to_6"), &Migrate_5_to_6 },
+		{ 6, TEXT("Migrate_6_to_7"), &Migrate_6_to_7 },
 	};
 }
 
@@ -492,9 +539,31 @@ namespace CataclysmAccountSaveMigration
 		return true;
 	}
 
+	/**
+	 * An account written before gold existed holds none. Issue #2742, 2026-11-18: `Gold` arrived with gold drops, so
+	 * no account written at 2 can have held any, and the migrated file states its balance of 0 -- written out, for
+	 * the character record's `Migrate_3_to_4` reason.
+	 *
+	 * A KEY ALREADY HOLDING A NUMBER IS KEPT, and one holding anything else is refused rather than read as 0, as
+	 * `Migrate_1_to_2` refuses: that would empty a balance somebody edited by hand without saying so.
+	 */
+	bool Migrate_2_to_3(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		double Held = 0.0;
+		if (Record->HasField(TEXT("Gold")) && !Record->TryGetNumberField(TEXT("Gold"), Held))
+		{
+			OutError = TEXT("Gold holds something that is not a number");
+			return false;
+		}
+		Record->SetNumberField(TEXT("Gold"), Held); // A migration's: the balance, written out.
+		return true;
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep AccountSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
+		{ 2, TEXT("Migrate_2_to_3"), &Migrate_2_to_3 },
 	};
 }
 

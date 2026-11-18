@@ -372,11 +372,15 @@ public:
 	 * Scaffolding and Reinvestment, all in
 	 * `docs/Empire_Skill_Tree_Keystones.md`. **No such cost is written
 	 * anywhere**: the City Upgrades sheet has four columns and none of them is a
-	 * price, and no character, account or run in this game holds gold at all.
+	 * price. Until issue #2742 no character, account or run held gold at all;
+	 * since its first slice (2026-11-18) kills drop it and the account holds a
+	 * balance per lethality mode (a Solo Self-Found character holds its own),
+	 * and its second slice is what prices upgrades.
 	 *
-	 * So an upgrade is free until gold exists and a cost is designed. The
-	 * project owner decided that on 2026-09-05, to be revisited once gold drops
-	 * are in. Issue #1264, and `docs/DECISIONS.md` records it.
+	 * So an upgrade is free until a cost is built. The project owner decided
+	 * that on 2026-09-05, to be revisited once gold drops are in, and on
+	 * 2026-11-18 ruled that an upgrade costs gold. Issues #1264 and #2742, and
+	 * `docs/DECISIONS.md` records both.
 	 */
 	static constexpr int32 GoldCost = 0;
 

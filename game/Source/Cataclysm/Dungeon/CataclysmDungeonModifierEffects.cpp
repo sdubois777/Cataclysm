@@ -263,7 +263,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::FamishedBeastsKey =
 
 bool UCataclysmDungeonModifierEffects::FamishedBeastsEats(const ACataclysmDroppedItem* Drop)
 {
-	return IsValid(Drop) && !Drop->bInfested;
+	// NOT A GOLD PILE: the row says "consume dropped items", and gold is not an item (the design's Storage section).
+	// Issue #2742, ruled 2026-11-18: no dungeon rule acts on gold in this work.
+	return IsValid(Drop) && !Drop->bInfested && !Drop->IsGold();
 }
 
 ACataclysmDroppedItem* UCataclysmDungeonModifierEffects::FamishedBeastsNearestDrop(

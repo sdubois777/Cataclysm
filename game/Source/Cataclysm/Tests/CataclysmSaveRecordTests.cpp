@@ -129,11 +129,15 @@ namespace CataclysmSaveRecordTest
 	static TArray<FFixture> Fixtures()
 	{
 		return {
-			// ACCOUNT IS AT v2 SINCE 2026-11-03, when its banked empire upgrade
+			// ACCOUNT IS AT v3 SINCE 2026-11-18, when it came to hold its gold
+			// (issue #2742); Account_v2.json is a migration input now.
+			// ACCOUNT WAS AT v2 FROM 2026-11-03, when its banked empire upgrade
 			// points became a double so a fraction of a point is kept (issue #52);
 			// Account_v1.json is a migration input now.
-			{ UCataclysmAccountSave::StaticClass(),   TEXT("Account_v2.json") },
-			// RUN IS AT v6 SINCE 2026-11-17, when a trip between levels became a
+			{ UCataclysmAccountSave::StaticClass(),   TEXT("Account_v3.json") },
+			// RUN IS AT v7 SINCE 2026-11-18, when a ground item came to carry a gold
+			// pile's amount (issue #2742); Run_v6.json is a migration input now.
+			// RUN WAS AT v6 FROM 2026-11-17, when a trip between levels became a
 			// save and a load and a run came to carry the last award, the last clear
 			// and what the last walk's days did (issue #2733 slice 3); Run_v5.json
 			// is a migration input now.
@@ -143,7 +147,10 @@ namespace CataclysmSaveRecordTest
 			// RUN WAS AT v4 FROM 2026-11-02 AS WELL, when a run came to keep its
 			// Cataclysm boss dungeon (issue #1324 slice 6b); Run_v3.json is a
 			// migration input now.
-			// CHARACTER IS AT v7 SINCE 2026-11-02, when a character came to carry its
+			// CHARACTER IS AT v8 SINCE 2026-11-18, when a Solo Self-Found character
+			// came to hold its own gold (issue #2742); Character_v7.json is a
+			// migration input now.
+			// CHARACTER WAS AT v7 FROM 2026-11-02, when a character came to carry its
 			// Cataclysm order seed (issue #1324 slice 6a); Character_v6.json is a
 			// migration input now.
 			// RUN WAS AT v3 FROM 2026-11-02 AS WELL, when a run came to keep what the
@@ -163,8 +170,8 @@ namespace CataclysmSaveRecordTest
 			// THIS LIST IS THE CURRENT SHAPE OF EACH RECORD, and an out-of-date
 			// file here would leave the completeness check below comparing a
 			// record against a fixture that no longer describes it. Issue #50.
-			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v7.json") },
-			{ UCataclysmRunSave::StaticClass(),       TEXT("Run_v6.json") },
+			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v8.json") },
+			{ UCataclysmRunSave::StaticClass(),       TEXT("Run_v7.json") },
 		};
 	}
 }
@@ -607,7 +614,7 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v7.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v8.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -620,12 +627,12 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v7.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v8.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
 
-	TestEqual(TEXT("it says it is version 7"), Read->SchemaVersion, 7);
+	TestEqual(TEXT("it says it is version 8"), Read->SchemaVersion, 8);
 	// THE SEED THE FILE STATES, NOT THE ONE ITS IDENTIFIER GIVES, so a seed re-derived on load cannot pass. #1324 6a.
 	TestEqual(TEXT("the Cataclysm order seed in the file"), Read->CataclysmOrderSeed,
 		CataclysmSaveFixtures::CommittedCharacterOrderSeed);
@@ -855,6 +862,7 @@ bool FCataclysmSaveCharacterV3Migrates::RunTest(const FString&)
 	Expected->SetBoolField(TEXT("bMarkedByConsumption"), false); // Since #2688: the chain runs on to version 5.
 	Expected->SetObjectField(TEXT("ConsumptionBuild"), CataclysmSaveFixtures::EmptyPlayerBuild()); // And on to 6.
 	Expected->SetNumberField(TEXT("CataclysmOrderSeed"), CataclysmSaveFixtures::FixtureIdentifiersOrderSeed); // And 7.
+	Expected->SetNumberField(TEXT("Gold"), 0); // And 8, issue #2742: no gold of its own.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -1028,7 +1036,7 @@ bool FCataclysmSaveRunFixtureKeepsTheFloor::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v6.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v7.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1041,7 +1049,7 @@ bool FCataclysmSaveRunFixtureKeepsTheFloor::RunTest(const FString&)
 
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v6.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Run_v7.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
@@ -1094,7 +1102,17 @@ bool FCataclysmSaveRunFixtureKeepsTheFloor::RunTest(const FString&)
 	TestEqual(TEXT("the character's energy shield"),
 		Read->Floor.Characters[0].EnergyShield, 25.0f);
 
-	TestEqual(TEXT("an item left on the floor"), Read->Floor.GroundItems.Num(), 1);
+	// AN ITEM AND A GOLD PILE LEFT ON THE FLOOR. `Run_v7.json` added the pile, 37 gold, when the run record went to
+	// version 7 (issue #2742); the item beside it holds no gold.
+	if (Read->Floor.GroundItems.Num() != 2)
+	{
+		AddError(FString::Printf(TEXT("%d things on the floor read, expected an item and a gold pile"),
+			Read->Floor.GroundItems.Num()));
+		return false;
+	}
+	TestEqual(TEXT("an item left on the floor"), Read->Floor.GroundItems[0].Item.Base, FName(TEXT("Circlet")));
+	TestEqual(TEXT("holding no gold"), Read->Floor.GroundItems[0].Gold, 0);
+	TestEqual(TEXT("and a pile of 37 gold beside it"), Read->Floor.GroundItems[1].Gold, 37);
 
 	return true;
 }
@@ -1125,7 +1143,7 @@ bool FCataclysmSaveRunFileWithoutThePartOfADay::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v6.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v7.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1147,7 +1165,7 @@ bool FCataclysmSaveRunFileWithoutThePartOfADay::RunTest(const FString&)
 	}
 	else
 	{
-		AddError(TEXT("Run_v6.json no longer carries a PartialDay line to "
+		AddError(TEXT("Run_v7.json no longer carries a PartialDay line to "
 					  "remove, so this test would prove nothing. If the field "
 					  "was renamed, rename it here."));
 		return false;
@@ -1209,7 +1227,7 @@ bool FCataclysmSaveRunFixtureKeepsTheSchedule::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v6.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v7.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1223,7 +1241,7 @@ bool FCataclysmSaveRunFixtureKeepsTheSchedule::RunTest(const FString&)
 
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v6.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Run_v7.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
@@ -1284,7 +1302,7 @@ bool FCataclysmSaveRunFileWithoutTheSchedule::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v6.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v7.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1323,7 +1341,7 @@ bool FCataclysmSaveRunFileWithoutTheSchedule::RunTest(const FString&)
 		if (!bRemoved)
 		{
 			AddError(FString::Printf(
-				TEXT("Run_v6.json no longer carries the line `%s`, so this test "
+				TEXT("Run_v7.json no longer carries the line `%s`, so this test "
 					 "would prove nothing. If the field was renamed or its value "
 					 "changed, change it here too."), *Line));
 			return false;
@@ -1392,7 +1410,7 @@ bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v7.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v8.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1404,7 +1422,7 @@ bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
 		Text, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v7.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v8.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
@@ -1557,7 +1575,7 @@ bool FCataclysmSaveRunFixtureKeepsTheDarkFloor::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v6.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v7.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1570,7 +1588,7 @@ bool FCataclysmSaveRunFixtureKeepsTheDarkFloor::RunTest(const FString&)
 										GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v6.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Run_v7.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
@@ -1597,7 +1615,7 @@ bool FCataclysmSaveRunFileWithoutTheDarkFloor::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v6.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v7.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1619,7 +1637,7 @@ bool FCataclysmSaveRunFileWithoutTheDarkFloor::RunTest(const FString&)
 	}
 	else
 	{
-		AddError(TEXT("Run_v6.json no longer carries the two dark floor lines to remove, so this test would prove "
+		AddError(TEXT("Run_v7.json no longer carries the two dark floor lines to remove, so this test would prove "
 					  "nothing. If a field was renamed, rename it here."));
 		return false;
 	}

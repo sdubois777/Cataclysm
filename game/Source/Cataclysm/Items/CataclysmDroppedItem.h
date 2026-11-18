@@ -110,12 +110,55 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Drop")
 	int32 MaterialTier = 0;
 
+	/**
+	 * How much gold this pile holds, or zero when the drop is gear or a crafting material. Issue #2742.
+	 *
+	 * ONE ACTOR FOR A THIRD KIND, for the reason given above for materials: lying on a floor, a name, a colour and
+	 * a position are the same for gold. What differs is where it goes when taken: NOT INTO THE INVENTORY, because gold
+	 * is not an item (`docs/Cataclysm_GDD_v2.md`, Storage), but into the balance of the character playing -- its
+	 * lethality mode's, held by the account, or a Solo Self-Found character's own (`UCataclysmDropPickup::BankGold`).
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Drop")
+	int32 Gold = 0;
+
 	/** Whether this drop is crafting materials rather than a piece of gear. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
 	bool IsMaterial() const
 	{
 		return !Material.IsNone() && MaterialQuantity > 0;
 	}
+
+	/** Whether this drop is a gold pile. Issue #2742. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	bool IsGold() const
+	{
+		return Gold > 0;
+	}
+
+	/**
+	 * Whether this drop is an interchangeable quantity -- a crafting material or gold -- and so collected without a
+	 * click and named at any distance. Issue #2742, ruled 2026-11-18 (G3): the owner's 2026-08-23 reason for
+	 * materials, "a material is an interchangeable quantity and collecting it is not a decision", holds for gold.
+	 */
+	bool IsAQuantity() const
+	{
+		return IsMaterial() || IsGold();
+	}
+
+	/**
+	 * The colour a gold pile's name is drawn in: a muted gold, `#D9C27A`. Issue #2742.
+	 *
+	 * NOT THE LEGENDARY GEAR YELLOW (`#FFD100`) and further from it than a hue alone: paler and less saturated, with
+	 * the thinnest border where a Legendary item has five pixels, and the word "gold" in the name. A judgement, to be
+	 * tuned by eye, which is why it is one named constant.
+	 */
+	static const FLinearColor GoldNameColour;
+
+	/** "1,234": a whole amount with a comma every three digits, for a pile's name and the balance on screen. */
+	static FString GoldAmountText(int64 Amount);
+
+	/** A gold pile's name, and a balance as a screen shows it: "12 gold", "1,234 gold". */
+	static FString GoldName(int64 Amount);
 
 	/**
 	 * Work out this drop's printed name, its colour, its rarity and its
@@ -239,7 +282,8 @@ public:
 	static ACataclysmDroppedItem* PutOnTheFloor(UWorld* World, const FVector& At,
 												const FCataclysmItem& Item,
 												FName Material,
-												int32 MaterialQuantity);
+												int32 MaterialQuantity,
+												int32 Gold = 0);
 
 	/** The colour an item of this rarity has its name drawn in, or white when
 	 *  the table is missing it. */
@@ -285,6 +329,41 @@ public:
 	 */
 	static int32 SpawnOneInfestedDropFor(UWorld* World, int32 EnemyRarityStep, float MagicFind,
 										 const FVector& At, FRandomStream& Stream);
+
+	/**
+	 * Whether a kill in this world drops gold: the character playing has a balance to put it in
+	 * (`UCataclysmGameInstance::GoldHeldBy`). Issue #2742.
+	 *
+	 * GOLD BELONGS TO A BALANCE, so a kill with no character playing drops none, and neither does one whose account
+	 * record would not read. That is every automation test that kills a creature with no player, which therefore drops
+	 * what it dropped before. A SOLO SELF-FOUND CHARACTER'S KILLS DROP GOLD into its own balance: the owner ruled so on
+	 * 2026-11-18, reversing the coordinating session's G5.
+	 */
+	static bool GoldDropsIn(const UWorld* World);
+
+	/**
+	 * Roll the gold piles a kill drops and put them on the floor. Issue #2742.
+	 *
+	 * HOW MANY, from the creature's rung (`UCataclysmDropRoll::ExpectedGoldDrops`), and HOW MUCH EACH, from the tier
+	 * being played and the floor (`UCataclysmDropRoll::RollGoldPile`): the Diablo II shape, more piles from a rarer
+	 * monster and a pile's value from where it died. Neither magic find nor loot quantity enters (G2).
+	 *
+	 * CALLED BY A CREATURE'S OWN DEATH AND BY NOTHING ELSE, after its gear and materials, so the gold draws on the
+	 * kill's stream after them and leaves every item they roll as it was. A dungeon rule's reward of drops is not a
+	 * kill and pays no gold (ruled 2026-11-18).
+	 *
+	 * ON A RING OF ITS OWN, `GoldScatterOffset`, so a pile does not land on the spot a lone item takes.
+	 *
+	 * @return how many piles were placed
+	 */
+	static int32 SpawnGoldFor(UWorld* World, int32 EnemyRarityStep, const FVector& At, FRandomStream& Stream);
+
+	/**
+	 * Where one of a kill's gold piles lands, relative to the corpse: a ring one step wider than `ScatterOffset` gives
+	 * the same count, turned half a step, so a pile never shares a spot with an item from the same kill -- including
+	 * the lone item, which `ScatterOffset` puts on the corpse.
+	 */
+	static FVector GoldScatterOffset(int32 Index, int32 Count);
 
 	/**
 	 * The magic find and loot quantity the player in this world is carrying.
@@ -563,11 +642,41 @@ public:
 	 * is: a drop from a tall creature, or one that died on a step, must not be
 	 * quietly harder to collect than the same drop on flat ground.
 	 *
-	 * @param bIsMaterial  ACataclysmDroppedItem::IsMaterial for the drop
+	 * GOLD COMES AS A MATERIAL DOES, within the same fifteen metres. Issue #2742, ruled 2026-11-18 (G3): Path of
+	 * Exile 2's gold is "proximity auto-pickup" and Diablo IV's and Last Epoch's are collected by walking near them;
+	 * the radius is this game's material radius, because the owner's reason for sweeping materials holds for gold.
+	 *
+	 * @param bIsMaterial  ACataclysmDroppedItem::IsAQuantity for the drop: a crafting material or a gold pile. The
+	 *                     name is the one it had before gold existed.
 	 * @return false for gear at any distance
 	 */
 	static bool ComesAutomatically(bool bIsMaterial, const FVector& Character,
 								   const FVector& Drop, bool bInfested = false);
+
+	/**
+	 * Takes gold piles off the floor into the balance of the character playing, and answers how much gold that was.
+	 * Issue #2742.
+	 *
+	 * INTO THE BALANCE THE CHARACTER PLAYING HAS (`UCataclysmGameInstance::AddGoldFor`): its lethality mode's in the
+	 * account record, or a Solo Self-Found character's own, which its character record saves.
+	 *
+	 * ALL OR NOTHING, AND NOTHING LEAVES THEM LYING THERE, as a full inventory leaves an item: no character playing,
+	 * or -- for a character that is not Solo Self-Found -- no game instance of this project's or an account record
+	 * that would not read (`UCataclysmGameInstance::AccountFor`). The piles are destroyed only after the gold is in the
+	 * balance.
+	 *
+	 * ONE BANKING AND ONE SET OF SAVE TRIGGERS FOR THE WHOLE LIST, which is why it takes a list: the sweep collects
+	 * every pile in reach in one frame. `AccountChanged` when the gold went to the account, and `InventoryChanged`
+	 * always, which writes the run record (the floor without the piles) and the character record. The gold is added
+	 * to `UCataclysmGameInstance::GoldPickedUpThisWalk` as well, when there is a game instance, which the PLAY LOOP
+	 * line at a walk's end reports.
+	 *
+	 * NOT ANNOUNCED AS LOOT TAKEN. `UCataclysmCombatEvents::OnLootTaken` is what the dungeon rules answer, and no rule
+	 * pays out on gold (ruled 2026-11-18).
+	 *
+	 * @return the gold banked; 0 when nothing was, and then every pile is still lying where it was
+	 */
+	static int64 BankGold(UWorld* World, const TArray<ACataclysmDroppedItem*>& Piles);
 
 	/**
 	 * Which of the drawn names the cursor is over, or INDEX_NONE for none.
@@ -715,6 +824,9 @@ public:
 	 *
 	 * A TAKE IS ANNOUNCED on `UCataclysmCombatEvents::OnLootTaken`, saying whether
 	 * it was by hand. Only the player controller's click passes true.
+	 *
+	 * A GOLD PILE IS BANKED RATHER THAN CARRIED, through `BankGold`, and is not
+	 * announced: a click on one that the sweep has not taken lands here. Issue #2742.
 	 */
 	static bool TakeInto(UCataclysmInventoryComponent* Inventory,
 						 ACataclysmDroppedItem* Drop, bool bByHand = false);

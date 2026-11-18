@@ -2,6 +2,373 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-18 — Creatures drop gold in piles, picking a pile up adds it to the character's balance -- its lethality mode's, or a Solo Self-Found character's own -- and the empire map and the inventory screen show it (#2742, slice 1)
+
+**Affects:** the Enemy Drops sheet of `docs/All_Things_Cataclysm.xlsx`, which gains Gold Drops, and its new Gold sheet,
+one row per difficulty tier; `tools/generate_datatables.py` (`enemy_drops`, `gold`, new) and
+`tools/generate_datatable_assets.py`; `game/Data/EnemyDrops.csv` and `game/Data/Gold.csv`, new, with their assets
+`DT_EnemyDrops` and `DT_Gold`, new; `FCataclysmEnemyDropRow::GoldDrops` and `FCataclysmGoldRow`, new
+(`CataclysmDataRows.h`); `UCataclysmDropRoll::LoadGoldTable`, `ExpectedGoldDrops`, `GoldRow`, `GoldPileMean` and
+`RollGoldPile`, new (`CataclysmDropRoll.h`, `.cpp`); `ACataclysmDroppedItem::Gold`, `IsGold`, `IsAQuantity`,
+`GoldNameColour`, `GoldAmountText` and `GoldName`, new, `UCataclysmDropSpawner::GoldDropsIn`, `SpawnGoldFor` and
+`GoldScatterOffset`, new, `UCataclysmDropPickup::BankGold`, new, and `DescribeItself`, `DropsToName`,
+`NameBorderThicknessOf`, `TakeInto` and `PutOnTheFloor` (`CataclysmDroppedItem.h`, `.cpp`);
+`ACataclysmEnemyCharacter::HandleDeath` (`CataclysmEnemyCharacter.cpp`);
+`ACataclysmPlayerController::CollectMaterialsNearby` and `TakeDrop` (`CataclysmPlayerController.cpp`);
+`UCataclysmGameInstance::BankGold`, `GoldHeldBy`, `AddGoldFor`, `GoldBalanceText` and `GoldPickedUpThisWalk`, new
+(`CataclysmGameInstance.h`, `.cpp`); `ACataclysmPlayerState::GetOwnGold`, `AddOwnGold` and `SetOwnGold`, new
+(`CataclysmPlayerState.h`); `UCataclysmAccountSave::Gold`, new, the account record at version 3,
+`UCataclysmCharacterSave::Gold`, new, the character record at version 8, and `FCataclysmSavedGroundItem::Gold`, new,
+the run record at version 7, with `Migrate_2_to_3` (account), `Migrate_7_to_8` (character) and `Migrate_6_to_7` (run)
+(`CataclysmSaveRecords.h`, `.cpp`); `FCataclysmSaveGather::GroundItemFrom` and `CharacterFrom`, and
+`FCataclysmSaveApply::GroundItemInto` and `CharacterInto`; `ECataclysmSaveTrigger::InventoryChanged`'s comment
+(`CataclysmSaveTriggers.h`); `UCataclysmEmpireMapLayout::GoldLine` and `GoldLineIn`, new, and the empire map's status
+line (`CataclysmEmpireMapWidget.cpp`); `UCataclysmInventoryScreen::HeaderTextFor` and the inventory screen's header
+(`CataclysmInventoryScreen.h`, `.cpp`, `CataclysmInventoryWidget.cpp`);
+`FCataclysmPlayLoopLog::GoldLine` and `GoldLineIn`, new, said by `ACataclysmDungeonGameMode::ClearEmpireDungeon` and
+`EndTheDungeonForADeath`, with the count zeroed in `EnterEmpireDungeon`;
+`UCataclysmDungeonModifierEffects::FamishedBeastsEats`; `docs/Cataclysm_GDD_v2.md`, What a Kill Drops;
+`docs/Inventory_Screen_Design.md`; `docs/Play_Loop_Checklist.md`; `docs/README.md`; `game/README.md`;
+`game/Tests/SaveFixtures/Account_v3.json`, `game/Tests/SaveFixtures/Character_v8.json` and
+`game/Tests/SaveFixtures/Run_v7.json`, new, and `game/Tests/SaveFixtures/README.md`. Tests:
+`game/Source/Cataclysm/Tests/CataclysmGoldTests.cpp`, new, thirteen tests; `tools/tests/test_gold_drops_and_the_balance.py`,
+new, twenty-two tests; and the save tests that read the committed account, character and run files, which read the new
+versions. Issue [#2742](https://github.com/sdubois777/Cataclysm/issues/2742),
+slice 1 of 2.
+
+### SAID FIRST
+
+- **COMPILED, RUN AND PROVED, ACROSS THREE WINDOWS, AT `67dba4d6`.** The whole Unreal suite performed the registered
+  4820, all succeeding, with 47 skipped halves and no test save left behind; each of the sixteen groups this slice
+  changes passed alone at its registered count; Python (7558 passed, 9 skipped) and ruff passed; the four guard proofs
+  all proved as registered. "The windows" below has all three.
+- **THE FIRST WINDOW STOPPED ON ONE FAILED TEST, AND THE FAULT WAS THIS SLICE'S.** A play-loop test reads the walk's
+  log lines by position, and this slice's gold line, said after the clear, moved the capital's line from fourth to
+  fifth; the slice registered the group as touched and did not update the check. Corrected; it passed in the second
+  window.
+- **THE SECOND WINDOW STOPPED AT THE SECOND PROOF, AND THE FAULT WAS THE PROOF SCRIPT'S.** Its two anchors that span
+  lines were written with CRLF, and the proof tool hands the edit the file's text with CRLF made LF, so the break was
+  refused before anything was built. Corrected in the untracked script; the third window ran the last three proofs at
+  the same head.
+- **SEVEN TEST EXPECTATIONS WERE WRONG, AND READING FOUND THEM, NOT A RUN.** When the save tests were moved to the new
+  committed files, six still asserted the old file's version and one expected one thing on a floor that now holds two.
+  The two compiles before the rebase could not see them; reading the rebased tree before the window did. All seven are
+  corrected; "The run" names them.
+- **THREE SAVE RECORDS MOVE A VERSION.** The account record to 3 (its gold), the character record to 8 (a Solo
+  Self-Found character's own gold) and the run record to 7 (gold piles lying on a floor). The account was to take 4
+  while the empire upgrade tree (issue #2741) took 3; the coordinating session swapped the two the same day, since this
+  work was ready first, so the tree's slice 1b takes 4 and every chain here is whole.
+- **THE OWNER REVERSED G5 THE SAME DAY: A SOLO SELF-FOUND CHARACTER EARNS GOLD.** Its kills drop gold, it picks it up,
+  and it holds it, in a balance of its own that its character record saves (version 8), as the design's Storage section
+  says: "its gold is its own". Every other character's gold is its lethality mode's, in the account record. One
+  function, `UCataclysmGameInstance::GoldHeldBy`, says which balance the character playing has, and `AddGoldFor` adds
+  to that one; every screen and the PLAY LOOP line read it, and slice 2's purchase spends from it.
+- **THE OWNER ASKED FOR THE BALANCE ON THE INVENTORY SCREEN**, and it is on the header line above the carried grid.
+  No widget asset was regenerated: the inventory screen builds its widgets in C++.
+- **EVERY GOLD FIGURE IS A JUDGEMENT.** The research below settles how gold behaves -- it is collected by walking near
+  it, it grows with difficulty, it is kept apart from magic find, and one-off purchases get dearer -- and settles no
+  absolute number.
+- **WHAT A WALK EARNS IS AN ESTIMATE UNTIL IT IS PLAYED.** A floor holds 73 to 510 creatures (measured,
+  `CataclysmFloorPopulation.h`); assuming 100 to 200 kills a floor, a 12-floor Outpost walk at tier 1 earns about 7,000
+  to 14,000 gold. The new PLAY LOOP line measures it, and slice 2's upgrade price is to be checked against that line.
+
+### THE RULINGS
+
+The project owner, 2026-11-18, each the option chosen, verbatim:
+
+1. Where gold comes from: **"Creature kills"** -- "Each kill has a chance to drop gold, larger for rarer creatures and
+   deeper floors, as gear and materials drop today. The session picks the amounts from how shipped ARPGs do it and
+   records them for your review." This supersedes the reading "The game has no gold drops" in the entry for The
+   Infested Hoard (2026-09-25).
+2. What gold buys first: **"City upgrades"** -- slice 2.
+3. Build time: **"Gold now, days later"** -- slice 2 keeps upgrades instant.
+4. Later the same day, relayed by the coordinating session: **"Make sure for the gold work that the player's total gold
+   is displayed somewhere in the inventory screen and probably somewhere on the city screen so they can see if they can
+   afford an upgrade."** The inventory screen is this slice; the city screen is slice 2's.
+5. Later still: **"ssf characters can earn gold though..."**, which reverses G5 below.
+
+The coordinating session, 2026-11-18, under the owner's delegation of unstated numbers (2026-09-11), each a judgement:
+
+- **G1, the drops.** A kill's expected gold piles equal its expected gear drops, the Gear Drops ladder (Common 0.16,
+  Elite 0.5, Legendary 1, Herald 2, Boss 5, Cataclysm Boss 12), drawn by the same Poisson roll. A pile's size does not
+  depend on the creature: 10 gold on floor 1 at tier 1, 4% of that more for each floor deeper, times the tier scale 1,
+  3, 6, 10, 14, 19, 24, 30, and then 0.8 to 1.2 of the result at random, rounded to a whole gold and never below 1.
+  **The +4% a floor means a deeper dungeon pays more gold, which is the project's rule that depth and reward are the
+  same axis.**
+- **G2.** Neither magic find nor loot quantity raises gold.
+- **G3.** Gold is collected without a click within the 15 m crafting materials are, and its name is drawn at any
+  distance, as a material's is.
+- **G4, for slice 2.** 10,000 gold per upgrade at tier 1, times the tier scale; upgrade tiers 2 and 3 at 2 and 4 times.
+  Slice 2 checks it against the measured gold per walk and changes it if one upgrade is not within about one to two
+  walks.
+- **G5, REVERSED BY THE OWNER.** It read: a Solo Self-Found character's kills drop no gold, because its gold would need
+  a new character record version. The owner ruled the opposite (ruling 5 above), so this slice takes the character
+  record to version 8 and the balance is the character's own. Its private empire bank stays on #52, at a later version.
+- **G6.** The balance is on the empire map's status line now, and on the city screen beside each price in slice 2.
+- **No dungeon rule pays or acts on gold in this work**: Luxury Hoarders, Pandora's Box, the Reality Chamber and Soul
+  Chains drop items and materials only, and The Infested Hoard's "infested gold and items" keeps its reading as items
+  and materials. The list goes on #2742 as a comment when slice 1 merges, not into a new issue.
+- **Account record version 3, character record version 8, run record version 7.** Ruled first as account 4, with 3 the
+  empire tree's; swapped by the coordinating session later the same day, the tree taking 4.
+- **The balance shown is the playing character's**: its lethality mode's, or a Solo Self-Found character's own, which
+  its screens show as they show any balance.
+
+### THE RESEARCH, AND WHAT IT SETTLES
+
+Every page below was read through WebFetch on 2026-11-18, which summarises, so each line is that summary's account of
+the page. Many sites refused automated reads that day (HTTP 403 or a bot page): mobalytics.gg, poe2wiki.net,
+di.diablowiki.net, diablo2.diablowiki.net, icy-veins.com, destructoid.com, and lurkerlounge.com (HTTP 409).
+
+| Game | Page | What it says |
+| :-- | :-- | :-- |
+| Path of Exile 2 | [poe2db.tw/us/Gold](https://poe2db.tw/us/Gold) | "Gold is proximity auto-pickup"; spent at vendors, on gambling and on passive respecs; the respec price rises with level, 15 gold at level 1 to 10,129 at level 100 |
+| Diablo IV | [maxroll.gg/d4/resources/difficulty-overview](https://maxroll.gg/d4/resources/difficulty-overview) | each Torment level gives "also larger Gold drops": +100% at Torment 1, +20% a step to +200% at 6, then +25% steps to +300% at 10 to 12 |
+| Diablo IV | [maxroll.gg/d4/resources/shrines](https://maxroll.gg/d4/resources/shrines) | the Greed shrine lets you "automatically pick up Gold from farther away": gold is collected by walking near it, within a radius |
+| Diablo II | [maxroll.gg/d2/resources/gold-magic-find](https://maxroll.gg/d2/resources/gold-magic-find) | Gold Find is its own stat beside Magic Find; "Gold find only increases the value of the Gold pile" |
+| Diablo III | [maxroll.gg/d3/resources/gold-find-magic-find-explained](https://maxroll.gg/d3/resources/gold-find-magic-find-explained) | Gold Find is its own stat, "multiplied by game difficulty bonus", up to 7,000% on Torment XVI; Magic Find only raises rarity |
+| Last Epoch | [forum.lastepoch.com/t/larger-gold-pick-up-radius/59775](https://forum.lastepoch.com/t/larger-gold-pick-up-radius/59775) | a player, 2023: gold is collected by walking onto it, "I have to practically stand on top of it" |
+| Last Epoch | [forum.lastepoch.com/t/cost-of-stash-tabs/58342](https://forum.lastepoch.com/t/cost-of-stash-tabs/58342) | players, 2023: each stash tab costs more gold than the last, "My next tab will cost 260k gold" |
+| Torchlight Infinite | [tlidb.com/en/](https://tlidb.com/en/) and its Loot, Drop Source and Inventory pages | no gold currency is listed; its currencies are Flame Elementium and Flame Sand, so it is not comparable |
+
+Search snippets only, NOT FETCHED, carrying no weight: a Diablo II pile of RND(level x 5) + level; Diablo IV stash tabs
+at 100,000 gold rising 100,000 a tab; a Last Epoch tab price formula and its halving in patch 1.0.3; Path of Exile gold
+scaling with area level.
+
+**Settled by the research:** gold is collected by walking near it (Path of Exile 2, Diablo IV, Last Epoch); gold drops
+grow with difficulty (Diablo III, Diablo IV); gold is a stat of its own, apart from magic find (Diablo II, Diablo III);
+persistent purchases get dearer (Last Epoch's tabs, Path of Exile 2's respec by level).
+
+**Not settled, and so judgements:** every number. That a rarer creature drops more gold rests on the owner's ruling,
+not on a fetched page: none of the readable pages said how rarity moves gold.
+
+### THE JUDGEMENTS, EACH WITH WHAT IT RESTS ON
+
+| Judgement | Value | What it rests on |
+| :-- | :-- | :-- |
+| Piles per kill | the Gear Drops ladder, 0.16 to 12 | the owner's "as gear and materials drop today"; one ladder rather than a second to tune |
+| Pile size depends on where, not on what | tier and floor only | Diablo II's shape, more piles from a rarer monster and value by level (the RND formula is a snippet, so this is the shape and not a figure) |
+| A pile on floor 1 at tier 1 | 10 gold | a small first number, so the tier scale and the depth term read as multiples of it |
+| Each floor deeper | +4% of the floor 1 pile | depth and reward are one axis (`CLAUDE.md`); +4% makes floor 26 pay twice floor 1 and a 150-floor dungeon's last floor seven times |
+| Tier scale | 1, 3, 6, 10, 14, 19, 24, 30 | the midpoints of the eight Power Score bands (`PLAYER_MAX_SCORES` in `sim/cataclysm_sim/scoring.py`) over tier 1's, rounded; about x30 overall, between Diablo IV's difficulty bonus (about x4) and Diablo III's (about x71) |
+| Spread | 0.8 to 1.2, whole gold, at least 1 | a pile of exactly 10 every time reads as a constant; a pile of 0 would be a name worth nothing |
+| Magic find and loot quantity | do not raise gold | Diablo II and III; and the design's gold-only modifiers (Economic Zones, Coinage, the city upgrade "Dungeons here drop that much more gold") would otherwise double up |
+| Pickup radius | 15 m, the materials' | the owner's 2026-08-23 reason for materials holds for gold; the genre's radii are smaller (Last Epoch's players ask for more) |
+| A pile's name | "12 gold", "1,234 gold" | the amount is what a player reads |
+| Its colour and border | `#D9C27A`, the thinnest border | not the Legendary yellow `#FFD100`: paler, less saturated, one pixel where a Legendary item has five, and the word "gold" |
+| A pile's ring | one step wider than the items' ring, half a step round | a pile never lands where an item of the same kill does, the lone item included |
+| Which worlds drop gold | where the character playing has a balance (`GoldHeldBy`) | a world with nobody playing has no balance for gold, which also leaves every automation test that kills with no player as it was |
+| Where a Solo Self-Found character's gold is held while playing | its player state, saved in its character record | the Storage section's "its gold is its own"; the player state is where the character record's other figures are held between saves |
+| A pickup's saves | the account record when the gold went there, and the run and character records always (`InventoryChanged`) | the run record must lose the piles in the same write that the balance gains them, or a load before the next clock write would put back piles already banked; a Solo Self-Found character's balance is in its character record |
+| The inventory screen's balance | on the header line, "Carried    12 / 48        1,234 gold" | the owner's request; the header is the one line above the grid, and the gold is read every frame the screen is open, as the rest of the header is |
+| A screen with no balance to read | shows nothing | a 0 there would say the character holds nothing, which is not what is known |
+| Famished Beasts | eats no gold | its row says "consume dropped items", and gold is not an item |
+| A walk's gold count | on the game instance, zeroed when a walk is entered, not saved | the PLAY LOOP line needs it across the level change; a walk resumed from a save counts from the load |
+
+### WHAT EACH PIECE DOES
+
+- **A kill.** `ACataclysmEnemyCharacter::HandleDeath`, inside the block that pays for a death, after the creature's gear,
+  materials and worn items, asks `UCataclysmDropSpawner::GoldDropsIn` and calls `SpawnGoldFor`, which draws the pile
+  count on the kill's stream and each pile's gold from `DT_Gold` at the tier being played and the floor
+  (`UCataclysmEnemyScore::FloorIn`), and puts each pile on the floor through `PutOnTheFloor`. Drawing last leaves every
+  item the kill rolls as it was before gold existed.
+- **Picking up.** The player's sweep (`CollectMaterialsNearby`) gathers gold piles within 15 m apart from materials and
+  banks them together with `UCataclysmDropPickup::BankGold`: the sum goes, through `UCataclysmGameInstance::AddGoldFor`,
+  into the playing character's balance -- `UCataclysmAccountSave::Gold` of its partition, or a Solo Self-Found
+  character's own on its player state -- the piles are destroyed only after, the walk's count rises, `AccountChanged`
+  is raised when the gold went to the account, and `InventoryChanged` always, which writes the run and character
+  records. A click on a pile goes through `TakeInto`, which banks it the same way. Nothing is announced as loot taken,
+  so no dungeon rule answers it. When there is no balance -- nobody playing, or an account record refused -- the piles
+  stay.
+- **Saving.** The account record holds `Gold` (an `int64`, at version 3), and the character record holds a Solo
+  Self-Found character's own (an `int64`, at version 8; 0 for every other character). A pile lying on a floor is a
+  ground item with `Gold` (run record version 7), so a save made mid-floor keeps uncollected piles. Piles left on a floor when it is
+  left are destroyed with every other drop, as before.
+- **Showing.** The empire map's status line ends with "1,234 gold", the inventory screen's header line shows the same
+  balance, and a walk's end says `PLAY LOOP: dungeon 3's walk picked up 8,412 gold; 8,412 gold held`, after the clear's
+  or the death's line. Each reads the balance through `GoldHeldBy`, so a Solo Self-Found character sees its own.
+
+### THE RUN
+
+**The two compiles before the rebase.** At `ef7cfbbbe`, on `1bbba95bc`, under the Unreal lock as gold-1-compile, with no
+editor and no tests: each changed file compiled alone, `Build: Succeeded - 104 actions, 94 files compiled`; and in
+unity, from a clean tree with the makefile deleted, `Build: Succeeded - 25 actions, 20 files compiled`. Neither ran a
+test.
+
+**The rebase onto `8e177d8b2`**, which carries the empire tree's slice 1a (#2746) and Echoes of the Past (#2743), went
+to the branch `feat/gold-drops-and-balance-3`, because `feat/gold-drops-and-balance-2` was already pushed and a rebase
+of it would have needed a force push. Three files conflicted: this file (this entry put above the tree's),
+`game/README.md` (now thirty-two DataTable assets, twenty-six of them from the workbook) and the number words in
+`tools/tests/test_game_readme_is_true.py` (development's, which already reach thirty-four).
+`game/Data/datatable_asset_sources.json` did not conflict, because this branch never committed it: the window's asset
+step writes this branch's two entries into development's file. `git lfs checkout` left no pointer file among the 130
+LFS files. **The rebased tree has not been compiled**; the window's build is its first compile against the tree's
+slice.
+
+**SEVEN TEST EXPECTATIONS WERE WRONG.** Each would have failed the window; reading the rebased tree found them, and no
+run has yet shown them right. When these tests were moved to the new committed files, the expectation beside each was
+not moved with them:
+
+- six tests read `Run_v7.json` or `Character_v8.json` and still asserted the version of the file they read before, 6
+  or 7: `Cataclysm.DeathCost.`, `Cataclysm.EarnedBossSave.`, `Cataclysm.SaveLoad.` and `Cataclysm.WinningTheRun.`
+  (the run file, now 7) and `Cataclysm.SaveRecords.` and `Cataclysm.CataclysmDraw.` (the character file, now 8). A
+  search for every literal version a test in `game/Source/Cataclysm/Tests/` asserts found these six and no other;
+- `Cataclysm.SaveRecords.TheCommittedRunFileKeepsTheFloorAndTheDamageDoneToIt` expected one thing on the floor, and
+  `Run_v7.json` holds an item and a pile of 37 gold. It now checks for two: the item, holding no gold, and the pile.
+
+**Read, not run: the tests that kill a paying creature where a balance exists.** Gold drops only where the character
+playing has a balance, which needs a game instance and a possessed player. Nine test files build such a world besides
+the gold tests; three of them kill a creature that pays for its death: the save-load tests, the winning-the-run test
+that kills the boss, and the Consumption Double tests that kill the double. The save-load tests that count drops count
+them before a save and after the load and compare the two, and a gold pile is saved and put back like any drop, so the
+two counts still match. A kill raises no save trigger (only a pickup does), and no such scene's controller is the
+game's, so nothing picks the piles up. The one Consumption Double test that counts drops builds a world with no game
+instance and calls `DropWhatItWore` directly. Echoes of the Past's echoes die unpaid and drop nothing.
+
+### REGISTERED BEFORE THE RUN
+
+Against the base the coordinating session named: **4807 performed, all succeeding, 47 skipped halves, no test save
+left behind**, measured in the window empire-tree-1a-w2 at `8c75df8a3`, whose engine log is
+`.claude/windows/t2741a2_suite_engine_8c75df8a.log` in that session's worktree. `8c75df8a3` to `8e177d8b2` changes
+`docs/DECISIONS.md` alone: `git diff --stat 8c75df8a3 8e177d8b2 -- game/` prints nothing.
+
+- **The whole Unreal suite: 4820 performed, all succeeding**, which is 4807 and the thirteen tests this branch adds; it
+  removes none. **47 skipped halves**, since no test this branch adds or changes calls
+  `CataclysmTestSkip::ReportSkippedHalf`. **No test save left behind.**
+- **Each group this branch changes, run alone, performs its registered count and all succeed.** The base is the
+  group's "Test Completed" lines in that engine log, counted by prefix ignoring case, as the engine's filter matches;
+  no prefix below is a prefix of another group's name in that log.
+
+| Group | Base | Added by name | Registered |
+|---|---|---|---|
+| `Cataclysm.Gold.` | 0 | 13 | 13 |
+| `Cataclysm.Data.` | 7 | 0 | 7 |
+| `Cataclysm.Drop.` | 30 | 0 | 30 |
+| `Cataclysm.DropPickup.` | 19 | 0 | 19 |
+| `Cataclysm.InventoryScreen.` | 7 | 0 | 7 |
+| `Cataclysm.EmpirePoints.` | 16 | 0 | 16 |
+| `Cataclysm.SaveRecords.` | 17 | 0 | 17 |
+| `Cataclysm.SaveLoad.` | 77 | 0 | 77 |
+| `Cataclysm.Travel.` | 9 | 0 | 9 |
+| `Cataclysm.PlayLoop.` | 7 | 0 | 7 |
+| `Cataclysm.ConsumptionDouble.` | 15 | 0 | 15 |
+| `Cataclysm.ConsumptionMark.` | 6 | 0 | 6 |
+| `Cataclysm.DeathCost.` | 9 | 0 | 9 |
+| `Cataclysm.EarnedBossSave.` | 3 | 0 | 3 |
+| `Cataclysm.WinningTheRun.` | 11 | 0 | 11 |
+| `Cataclysm.CataclysmDraw.` | 6 | 0 | 6 |
+
+- **The asset step** changes exactly `game/Content/Data/DT_EnemyDrops.uasset`, `game/Content/Data/DT_Gold.uasset` (new)
+  and `game/Data/datatable_asset_sources.json`, and those three are committed alone. That commit is the tested head.
+- **Python**: `python -m pytest` and `python -m ruff check .` pass, with the count taken from a JUnit file as well.
+- **The four guard proofs**, each through `tools/unreal_build.py`'s `prove_cpp_guard` with the prefix shown. Each
+  restored half passes every test its prefix selects.
+
+| Proof | The break | Prefix | The broken half |
+|---|---|---|---|
+| P1 | In `ACataclysmEnemyCharacter::HandleDeath`, the call `UCataclysmDropSpawner::SpawnGoldFor(...)` becomes `(void)Stream;`: a paid death drops no gold | `Cataclysm.Gold.KillingCreaturesPutsNamedGoldPilesOnTheFloor` | 1 performed, 0 succeeded, 1 failed, on two assertions: "killing three Cataclysm Bosses put gold on the floor" and "a Solo Self-Found character's kills put gold down too" |
+| P2 | In `UCataclysmGameInstance::GoldHeldBy`, `if (Partition.bSoloSelfFound)` becomes `if (false && Partition.bSoloSelfFound)`: the one balance function no longer knows a Solo Self-Found character's own | `Cataclysm.Gold.` | 13 performed, 9 succeeded, 4 failed: `GoldDropsOnlyWhereTheCharacterPlayingHasABalance`, `KillingCreaturesPutsNamedGoldPilesOnTheFloor`, `PickingUpAPileAddsItToTheBalanceAndTakesItOffTheFloor` and `TheNamesTheMapLineTheInventoryAndThePlayLoopLineSayTheGold` |
+| P3 | In the run record's `Migrate_6_to_7`, the line writing a `Gold` of 0 on each ground item becomes `(void)Item;` | `Cataclysm.Gold.ARunFileFromBeforeGoldMigratesWithNoGoldOnItsFloor` | 1 performed, 0 succeeded, 1 failed, on one assertion: "the step writes a gold of 0 on every ground item" |
+| P4 | In `UCataclysmDropPickup::BankGold`, the `AccountChanged` trigger becomes `(void)0;`: a pickup into the account no longer writes it | `Cataclysm.Gold.TheBalanceSurvivesASaveAndIsTheLethalityModesOwn` | 1 performed, 0 succeeded, 1 failed, on one assertion: "the account record reads back from its slot" |
+
+### THE WINDOWS
+
+**The first, gold-1-w1, STOPPED ON ONE FAILED TEST.** On 2026-11-18 from 13:15 to 13:26, at `e2601141`, under the
+Unreal lock, after the pre-checks all passed (13,448 MB free):
+
+- **The build**, the rebased tree's first compile: `Build: Succeeded - 62 actions, 55 files compiled`.
+- **The asset step** changed exactly `DT_EnemyDrops.uasset`, `DT_Gold.uasset` (new) and
+  `datatable_asset_sources.json`: DT_EnemyDrops's CSV hash changed and a DT_Gold entry of 8 rows was added, the empire
+  tree's two entries kept. The three were committed alone as `d4cdd31d` and pushed.
+- **Nine groups alone, each its registered count, all succeeding**: `Cataclysm.Gold.` 13, `Cataclysm.Data.` 7,
+  `Cataclysm.Drop.` 30, `Cataclysm.DropPickup.` 19, `Cataclysm.InventoryScreen.` 7, `Cataclysm.EmpirePoints.` 16,
+  `Cataclysm.SaveRecords.` 17, `Cataclysm.SaveLoad.` 77 and `Cataclysm.Travel.` 9. So the seven test expectations
+  corrected before this window that lie in `Cataclysm.SaveRecords.` and `Cataclysm.SaveLoad.` (three of the seven)
+  passed here; the other four are in groups this window did not reach.
+- **`Cataclysm.PlayLoop.` alone: 7 performed, 6 succeeded, 1 failed**:
+  `AWalkToItsLastFloorIsLoggedStepByStepAndTheCapitalSaysTheDaysAway`, on three assertions: "then the capital, on
+  arrival", "saying the days away in its line", and "then only the dungeons standing, one line each" (expected 0, was
+  1). The window stopped there, as registered, and released the lock. The six groups after it, the whole suite, Python
+  and the four proofs did not run.
+- **The cause.** The test reads the walk's PLAY LOOP lines by position. This slice says
+  `dungeon 12's walk picked up 0 gold; 0 gold held` after the clear, so the capital's line was fifth where the test
+  read it fourth. The slice registered the group as touched by the gold line and did not update this check.
+  **Not the outside connection of issue #2745**: the 56 `LogModelContextProtocol` lines in the group's engine log are
+  all at the editor's start-up, before the test began.
+- **The correction.** The walk test reads the gold line fourth, checking only the gold picked up, which is 0 on a walk
+  that killed nothing (the balance is the account record's, read from its slot, so it is not checked); the capital's
+  line fifth; and the standing dungeons from the sixth. The death test heard the gold line fourth, after the death, and
+  did not check it; it checks it now.
+- **Why only this test failed.** Two tests collect the PLAY LOOP lines a walk says, in order, and both are in
+  `CataclysmSaveLoadTests.cpp` under `Cataclysm.PlayLoop.`: this one, and
+  `ADeathThatEndsAWalkIsLoggedAndItsResolveIsInTheDaysAway`, which read only the first three lines, so the gold line
+  fourth went unchecked and it passed. The group's five tests in `CataclysmPlayLoopTests.cpp` call the line builders
+  directly and collect nothing. `tools/tests/test_the_play_loop_is_logged_at_each_step.py` reads the source: that each
+  function says its line after the step the line reports, and that `docs/Play_Loop_Checklist.md` quotes every line the
+  game can say. Nothing in it reads the order of the lines across a walk, so the Python suite passed with the gold line
+  in place. The checklist quotes the gold line where the game says it: after the clear and before the capital's line,
+  and after the death and before the capital's line.
+- **The corrected test file compiled** under the Unreal lock as gold-1-compile2, the coordinating session's go: alone,
+  `Build: Succeeded - 6 actions, 3 files compiled: CataclysmSaveLoadTests.cpp, Module.Cataclysm.41.cpp,
+  Module.Cataclysm.42.cpp`; in unity, from a clean tree with the makefile deleted, at `8e251051`,
+  `Build: Succeeded - 5 actions, 2 files compiled: Module.Cataclysm.41.cpp, Module.Cataclysm.42.cpp`, where
+  `Module.Cataclysm.41.cpp` is the unity file that includes `CataclysmSaveLoadTests.cpp`. The lock was released after
+  it.
+- **The Python suite on the corrected tree**: 7558 passed, 9 skipped; its JUnit file says 7567 tests, 0 failures, 0
+  errors, 9 skipped. The four failures before the first window, all for DT_Gold's missing asset and record, are gone,
+  since `d4cdd31d` built and recorded it.
+
+**The second, gold-1-w2, REGISTERED UNCHANGED** at the commit that records this, on top of `8e251051`: the
+correction adds and removes no test, so **4820 performed, all succeeding, 47 skipped halves, no test save left**; each
+group alone at the count in the table above, `Cataclysm.PlayLoop.` 7 among them; P1 to P4 as in the table above, each
+anchor still matching exactly once. The assets are already committed in `d4cdd31d`, so it skips the asset step.
+
+It ran on 2026-11-18 from 13:38 to 14:06 at `67dba4d6`, under the Unreal lock, after the pre-checks all passed (13,906 MB
+free):
+
+- **The build**: `Build: Succeeded - target already up to date, 0 actions, nothing compiled`, since the unity compile
+  had built this content. The asset step was skipped, as registered.
+- **The sixteen groups alone, each its registered count, all succeeding**: `Cataclysm.Gold.` 13, `Cataclysm.Data.` 7,
+  `Cataclysm.Drop.` 30, `Cataclysm.DropPickup.` 19, `Cataclysm.InventoryScreen.` 7, `Cataclysm.EmpirePoints.` 16,
+  `Cataclysm.SaveRecords.` 17, `Cataclysm.SaveLoad.` 77, `Cataclysm.Travel.` 9, `Cataclysm.PlayLoop.` 7,
+  `Cataclysm.ConsumptionDouble.` 15, `Cataclysm.ConsumptionMark.` 6, `Cataclysm.DeathCost.` 9,
+  `Cataclysm.EarnedBossSave.` 3, `Cataclysm.WinningTheRun.` 11 and `Cataclysm.CataclysmDraw.` 6. So the corrected walk
+  test, the death test's new check and all seven expectations corrected before the first window have passed in a run.
+- **The whole suite**: `Tests: 4820 tests performed, 4820 succeeded, 0 failed. 47 skipped part of what they check`;
+  `Test saves: 826 written and deleted, 0 left behind`; `Declared: 4820 tests in the tree at 67dba4d60; 4820
+  performed, gap 0`. As registered.
+- **Python**: 7558 passed, 9 skipped; the JUnit file says 7567 tests, 0 failures, 0 errors, 9 skipped. **ruff**: all
+  checks passed.
+- **P1 PROVED** as registered (the table below).
+- **P2 WAS NOT MEASURED, AND THE FAULT WAS THE PROOF SCRIPT'S.** Its break raised an `AssertionError` inside the edit
+  function before `prove_cpp_guard` wrote or built anything; the source hash before and after was the same and the
+  tree clean. `prove_cpp_guard` reads the file with `read_text`, which makes the file's CRLF line endings LF, and the
+  window's `prove_gold1.py` had built the two anchors that span lines, P2's and P4's, with CRLF. Its own anchor check
+  read the raw bytes, so it matched there and the registration's check passed. P3 and P4 did not run. The script now
+  builds those anchors with LF and reads the file with `read_text`, as the tool does; a dry run, reading each file the
+  same way and applying each break in memory, found each anchor once and each break changing the text. No tracked
+  file changed, so the head stayed `67dba4d6`.
+
+**The third, gold-1-w3, the proofs P2, P3 and P4 alone**, at `67dba4d6`, the coordinating session's go, on 2026-11-18
+from 14:08 to 14:11, under the Unreal lock, after the pre-checks all passed (13,825 MB free). The build was up to date;
+each proof then built its broken and its restored file. The groups, the suite, Python and P1 stand from the second
+window. Every proof printed the same source hash before and after.
+
+| Proof | The broken half | The restored half |
+|---|---|---|
+| P1 (second window) | 1 performed, 0 succeeded, 1 failed: `KillingCreaturesPutsNamedGoldPilesOnTheFloor`, on "killing three Cataclysm Bosses put gold on the floor" and "a Solo Self-Found character's kills put gold down too" | 1 performed, 1 succeeded |
+| P2 | 13 performed, 9 succeeded, 4 failed: `GoldDropsOnlyWhereTheCharacterPlayingHasABalance` ("and for a Solo Self-Found one, the owner's ruling of 2026-11-18"), `KillingCreaturesPutsNamedGoldPilesOnTheFloor` ("a Solo Self-Found character's kills put gold down too"), `PickingUpAPileAddsItToTheBalanceAndTakesItOffTheFloor` ("CONTROL: a Solo Self-Found character starts with none", 0 expected, -1; "into its own balance", 37 expected, -1) and `TheNamesTheMapLineTheInventoryAndThePlayLoopLineSayTheGold` ("a Solo Self-Found character's map line is its own balance", "50 gold" expected, ""; "and a Solo Self-Found one's", the play loop line saying "no gold balance to hold it") | 13 performed, 13 succeeded |
+| P3 | 1 performed, 0 succeeded, 1 failed: `ARunFileFromBeforeGoldMigratesWithNoGoldOnItsFloor`, on "the step writes a gold of 0 on every ground item" (1 expected, 0) | 1 performed, 1 succeeded |
+| P4 | 1 performed, 0 succeeded, 1 failed: `TheBalanceSurvivesASaveAndIsTheLethalityModesOwn`, on "the account record reads back from its slot" | 1 performed, 1 succeeded |
+
+All four failed where they were registered to, on the tests and the assertions registered. P2's two assertions in
+`PickingUpAPileAddsItToTheBalanceAndTakesItOffTheFloor` and two in `TheNamesTheMapLineTheInventoryAndThePlayLoopLineSayTheGold`
+were not named in the registration, which named the four tests; they are those tests' Solo Self-Found checks.
+
+**Not measured:** the owner has not played it. How much gold a real walk earns is still the estimate in "The
+judgements"; slice 2 prices city upgrades against it.
+
+---
+
 ## 2026-11-18 — The empire upgrade tree reaches the game as two tables, each node placed in its branch and marked buyable or waiting on a system, and its buying rules are written; nothing is saved and no node acts yet (#2741, slice 1a)
 
 **Affects:** `tools/generate_datatables.py` (`empire_tree_nodes`, `empire_tree_edges`, `_empire_branch`,

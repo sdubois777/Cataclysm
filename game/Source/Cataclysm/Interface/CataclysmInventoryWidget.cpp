@@ -13,6 +13,7 @@
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmItem.h"
+#include "Player/CataclysmGameInstance.h"
 #include "Blueprint/SlateBlueprintLibrary.h"
 #include "Blueprint/WidgetTree.h"
 #include "Brushes/SlateColorBrush.h"
@@ -483,8 +484,10 @@ void UCataclysmInventoryWidget::Refresh(
 		HeldName = FScreen::LabelFor(
 			Inventory->GetSlots()[Inventory->HeldSlot()], Bases, Materials);
 	}
+	// AND THE GOLD BALANCE OF THE CHARACTER PLAYING, its lethality mode's or a Solo Self-Found character's own.
+	// Issue #2742, the owner's request of 2026-11-18. Read every frame the screen is open, as the rest of the header is.
 	Header->SetText(FText::FromString(FScreen::HeaderTextFor(
-		Used, UCataclysmInventoryComponent::SlotCount, HeldName)));
+		Used, UCataclysmInventoryComponent::SlotCount, HeldName, UCataclysmGameInstance::GoldBalanceText(this))));
 
 	// THE AFFIX TABLE IS ONLY THE TOOL TIP'S BUSINESS. A cell's label is the
 	// base's own name and its colour is its rarity, neither of which needs to

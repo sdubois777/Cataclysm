@@ -324,9 +324,10 @@ ACataclysmDroppedItem* FCataclysmSaveApply::GroundItemInto(
 	// to the save system where no other caller could reach it, is what issues
 	// #1176 and #1190 both ran into. UCataclysmDropSpawner::PutOnTheFloor is the
 	// one copy; what is left here is unpacking the record.
+	// A GOLD PILE COMES BACK AS ONE, with its amount: run record version 7, issue #2742.
 	ACataclysmDroppedItem* Drop = UCataclysmDropSpawner::PutOnTheFloor(
 		&World, Saved.Location, Saved.Item, Saved.Material,
-		Saved.MaterialQuantity);
+		Saved.MaterialQuantity, Saved.Gold);
 	// AND WHETHER A RAISED CREATURE DROPPED IT, so Trick or Treat rolls for it no more after a load than before.
 	// Issue #753, Group 3d-4a.
 	if (Drop)
@@ -698,6 +699,7 @@ bool FCataclysmSaveApply::CharacterInto(const UCataclysmCharacterSave& Record, A
 	State->SetIdentity(Record.CharacterName, Record.Partition); // A load's: the name and partition.
 	State->SetDifficultyTier(Record.DifficultyTier); // A load's: the character's tier. Issue #1472.
 	State->SetCataclysmOrderSeed(Record.CataclysmOrderSeed); // A load's: the character's draw. Issue #1324 slice 6a.
+	State->SetOwnGold(Record.Gold); // A load's: a Solo Self-Found character's own gold. Issue #2742.
 	if (Record.bMarkedByConsumption) // A load's: the Consumption mark. Issue #2688.
 	{
 		State->MarkByConsumption();

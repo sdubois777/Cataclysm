@@ -70,7 +70,8 @@ namespace CataclysmSaveFixtures
 	 */
 	inline constexpr int32 FixtureIdentifiersOrderSeed = 1412640493;
 
-	/** The seed `Character_v7.json` states: not the one its identifier gives, so a seed re-derived on load cannot pass. */
+	/** The seed `Character_v7.json` and `Character_v8.json` state: not the one their identifier gives, so a seed re-derived
+	 *  on load cannot pass. */
 	inline constexpr int32 CommittedCharacterOrderSeed = 975318642;
 
 	/**
@@ -108,6 +109,30 @@ namespace CataclysmSaveFixtures
 		NoneAway->SetNumberField(TEXT("Surges"), 0);
 		NoneAway->SetNumberField(TEXT("SurgeDungeons"), 0);
 		Expected.SetObjectField(TEXT("LastDaysAway"), NoneAway);
+	}
+
+	/**
+	 * What `Migrate_6_to_7` writes into a run file written before version 7, and so what the run record writes back
+	 * for one: a `Gold` of 0 on every item lying on its floor. Issue #2742, 2026-11-18. ONE COPY, beside the version 6
+	 * one and for the same callers. A file whose floor has no ground items is left as it is.
+	 */
+	inline void AddTheRunsVersion7Defaults(FJsonObject& Expected)
+	{
+		const TSharedPtr<FJsonObject>* Floor = nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* GroundItems = nullptr;
+		if (!Expected.TryGetObjectField(TEXT("Floor"), Floor) || Floor == nullptr || !Floor->IsValid()
+			|| !(*Floor)->TryGetArrayField(TEXT("GroundItems"), GroundItems) || GroundItems == nullptr)
+		{
+			return;
+		}
+		for (const TSharedPtr<FJsonValue>& Entry : *GroundItems)
+		{
+			const TSharedPtr<FJsonObject>* Item = nullptr;
+			if (Entry.IsValid() && Entry->TryGetObject(Item) && Item != nullptr && Item->IsValid())
+			{
+				(*Item)->SetNumberField(TEXT("Gold"), 0);
+			}
+		}
 	}
 
 	inline TSharedPtr<FJsonObject> Parse(const FString& Text)

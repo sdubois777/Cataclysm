@@ -380,6 +380,28 @@ public:
 	void MarkByConsumption() { bMarkedByConsumption = true; }
 
 	/**
+	 * A Solo Self-Found character's own gold, which its character record holds (version 8). Issue #2742.
+	 *
+	 * ONLY A SOLO SELF-FOUND CHARACTER'S. Every other character's gold is its lethality mode's, in the account record;
+	 * this stays 0 for them. `UCataclysmGameInstance::GoldHeldBy` and `AddGoldFor` are the one place that decides which
+	 * balance a character reads and adds to, so nothing else should read this directly. The owner ruled on 2026-11-18
+	 * that a Solo Self-Found character earns gold; the design's Storage section, "its gold is its own".
+	 */
+	int64 GetOwnGold() const { return OwnGold; }
+
+	/** Add to it; an amount of zero or less is ignored, since spending is not this. */
+	void AddOwnGold(int64 Gold)
+	{
+		if (Gold > 0)
+		{
+			OwnGold += Gold;
+		}
+	}
+
+	/** Set it, as a load does. A negative balance, which nothing produces, is held at 0. */
+	void SetOwnGold(int64 Gold) { OwnGold = FMath::Max<int64>(0, Gold); }
+
+	/**
 	 * Take the mark off, and the build captured with it.
 	 *
 	 * IN PLAY, KILLING THE DOUBLE IS WHAT CALLS THIS (O1): `ACataclysmDungeonGameMode`'s note of the double's death,
@@ -870,6 +892,10 @@ protected:
 	/** See `IsMarkedByConsumption`. Issue #2688. */
 	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")
 	bool bMarkedByConsumption = false;
+
+	/** See `GetOwnGold`. Issue #2742. */
+	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")
+	int64 OwnGold = 0;
 
 	/** See `ConsumptionBuild`. Issue #2688. */
 	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")

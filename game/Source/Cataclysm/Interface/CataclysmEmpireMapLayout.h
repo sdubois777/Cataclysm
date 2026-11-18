@@ -277,6 +277,21 @@ public:
 	 */
 	static FString EmpirePointsLineIn(const UObject* WorldContext, const UCataclysmEmpireRun* Run);
 
+	// ----------------------------------------------------------------------
+	// Gold -- issue #2742, slice 1
+	// ----------------------------------------------------------------------
+
+	/** The balance as the status line shows it: "1,234 gold". Negative, which nothing produces, reads as 0 gold. */
+	static FString GoldLine(int64 Held);
+
+	/**
+	 * What the empire screen's status line says about gold, for the character playing in a world: its balance,
+	 * `UCataclysmGameInstance::GoldBalanceText`, shown beside the empire points (G6, 2026-11-18). A Solo Self-Found
+	 * character's is its own (the owner's ruling of 2026-11-18); every other character's is its lethality mode's.
+	 * Empty with no character playing or no balance to read.
+	 */
+	static FString GoldLineIn(const UObject* WorldContext);
+
 	/**
 	 * The days a walk under way has spent and the empire has not yet run, as a line: "3 days pass when you
 	 * leave", "1 day passes when you leave", or empty when none are owed.

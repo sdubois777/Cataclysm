@@ -6,6 +6,7 @@
 #include "Empire/CataclysmRoster.h"
 #include "Empire/CataclysmSurge.h"
 #include "Interface/CataclysmWalkFromTheScreen.h"
+#include "Items/CataclysmDroppedItem.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Save/CataclysmSaveRecords.h"
 
@@ -237,6 +238,16 @@ FString UCataclysmEmpireMapLayout::EmpirePointsLineIn(const UObject* WorldContex
 	}
 
 	return EmpirePointsLine(Account->EmpireUpgradePoints, Run != nullptr ? Run->LastEmpirePointsAwarded : 0.0);
+}
+
+FString UCataclysmEmpireMapLayout::GoldLine(int64 Held)
+{
+	return ACataclysmDroppedItem::GoldName(FMath::Max<int64>(0, Held));
+}
+
+FString UCataclysmEmpireMapLayout::GoldLineIn(const UObject* WorldContext)
+{
+	return UCataclysmGameInstance::GoldBalanceText(WorldContext);
 }
 
 FString UCataclysmEmpireMapLayout::DaysOwedLine(const UCataclysmEmpireRun* Run)

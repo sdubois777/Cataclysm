@@ -89,7 +89,7 @@
       "asset": "DT_EnemyDrops",
       "csv": "EnemyDrops.csv",
       "rows": 6,
-      "csv_sha256": "7c6c4cd63517b6a6f07439ced46506113890563c50d326103dc1b1d65a009bf5"
+      "csv_sha256": "670438d80d6c20b3504d23edfb0dd884ba03456b4b8f059305382ae1e649ef2a"
     },
     {
       "asset": "DT_EnemyModifiers",
@@ -114,6 +114,12 @@
       "csv": "Gems.csv",
       "rows": 27,
       "csv_sha256": "a743f8d36e688ea757217c7f13e0b7d1422b33d6bc9ac576e147bfef0ecc15e8"
+    },
+    {
+      "asset": "DT_Gold",
+      "csv": "Gold.csv",
+      "rows": 8,
+      "csv_sha256": "e84e546c92f0b322ab2f47e0610c51ad2b6b772ed913062af9cbf67a228df252"
     },
     {
       "asset": "DT_ItemBases",

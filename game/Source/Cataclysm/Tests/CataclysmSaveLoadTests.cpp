@@ -10646,6 +10646,9 @@ bool FCataclysmTravelMigrationTest::RunTest(const FString&)
 	const TSharedPtr<FJsonObject> Expected = CataclysmSaveFixtures::Parse(Text);
 	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmRunSave::SchemaVersionNow);
 	CataclysmSaveFixtures::AddTheRunsVersion6Defaults(*Expected);
+	// AND THE GOLD OF 0 `Migrate_6_to_7` WRITES ON EVERY GROUND ITEM, because the chain runs on to version 7 since
+	// 2026-11-18 (issue #2742).
+	CataclysmSaveFixtures::AddTheRunsVersion7Defaults(*Expected);
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -10676,7 +10679,8 @@ bool FCataclysmTravelMigrationTest::RunTest(const FString&)
 }
 
 /**
- * `Run_v6.json` reads into the award, the clear and the days away it states. Every value but one is not a default, so
+ * `Run_v7.json` reads into the award, the clear and the days away it states (it read `Run_v6.json` until the run record
+ * went to version 7 on 2026-11-18, issue #2742, and the two hold the same values). Every value but one is not a default, so
  * each is read and not re-defaulted; THE ONE IS `bEndedInAClear`, false, because the run it describes last came back
  * from a death -- on day 103, at 15 days, felling cities 17 and 23, which the summary lists -- and a fixture describes a
  * state play reaches. The test of the return line reads a true one. Prints "TRAVEL FILE".
@@ -10689,7 +10693,7 @@ bool FCataclysmTravelCommittedFileTest::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v6.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v7.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -10700,7 +10704,7 @@ bool FCataclysmTravelCommittedFileTest::RunTest(const FString&)
 		Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v6.json would not load: %s -- %s"), FCataclysmSaveStorage::Describe(Result),
+		AddError(FString::Printf(TEXT("Run_v7.json would not load: %s -- %s"), FCataclysmSaveStorage::Describe(Result),
 								 *Message));
 		return false;
 	}
@@ -10713,7 +10717,7 @@ bool FCataclysmTravelCommittedFileTest::RunTest(const FString&)
 							Away.bEndedInAClear ? TEXT("YES") : TEXT("no"), Away.Cities.Num(), Away.Fallen.Num(),
 							Away.Surges, Away.SurgeDungeons));
 
-	TestEqual(TEXT("it says it is version 6"), Read->SchemaVersion, 6);
+	TestEqual(TEXT("it says it is version 7"), Read->SchemaVersion, 7);
 	TestEqual(TEXT("the last award was 2.25 points"), Read->LastEmpirePointsAwarded, 2.25);
 	TestEqual(TEXT("the last clear on day 80"), Read->LastClearDay, 80);
 	TestEqual(TEXT("of the Horde dungeon on Bulwark (1,2)"), Read->LastClearDungeonName,
@@ -10791,9 +10795,12 @@ namespace CataclysmPlayLoopTest
 }
 
 /**
- * A walk to its last floor says each step in order -- the dungeon entered, the floor reached, the clear -- and the
- * capital, on arrival, says the walk's days away in its line, from the account the dungeon level left on the game
- * instance, and empties it; then one line for each dungeon standing. Prints "PLAY LOOP WALK".
+ * A walk to its last floor says each step in order -- the dungeon entered, the floor reached, the clear, the gold the
+ * walk picked up -- and the capital, on arrival, says the walk's days away in its line, from the account the dungeon
+ * level left on the game instance, and empties it; then one line for each dungeon standing. Prints "PLAY LOOP WALK".
+ *
+ * THE GOLD LINE IS FOURTH, after the clear, since issue #2742. This test read the capital's line fourth until then, and
+ * the gold slice's first window (gold-1-w1, 2026-11-18) failed on it: the slice added the line and not this check.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlayLoopWalkTest,
 	"Cataclysm.PlayLoop.AWalkToItsLastFloorIsLoggedStepByStepAndTheCapitalSaysTheDaysAway",
@@ -10852,12 +10859,15 @@ bool FCataclysmPlayLoopWalkTest::RunTest(const FString&)
 			  FCataclysmPlayLoopLog::FloorLine(Walking.DungeonId, Floors, Floors, OwedOnTheLast));
 	TestTrue(TEXT("then the clear: its day and its award"), LineAt(Said, 2).StartsWith(ClearOpening));
 	TestTrue(TEXT("and back to the capital"), LineAt(Said, 2).EndsWith(TEXT(": back to the capital")));
+	// THE BALANCE IS NOT CHECKED, only the gold picked up: the balance is the account record's, read from its slot.
+	TestTrue(TEXT("then the walk's gold: none picked up on a walk that killed nothing"),
+			 LineAt(Said, 3).StartsWith(FString::Printf(TEXT("dungeon %d's walk picked up 0 gold; "), Walking.DungeonId)));
 	TestTrue(TEXT("the dungeon level left an account of the walk's days away"), Away.StartsWith(AwayOpening));
-	TestTrue(TEXT("then the capital, on arrival"), LineAt(Said, 3).StartsWith(TEXT("in the capital on day ")));
-	TestTrue(TEXT("saying the days away in its line"), !Away.IsEmpty() && LineAt(Said, 3).EndsWith(TEXT("; ") + Away));
+	TestTrue(TEXT("then the capital, on arrival"), LineAt(Said, 4).StartsWith(TEXT("in the capital on day ")));
+	TestTrue(TEXT("saying the days away in its line"), !Away.IsEmpty() && LineAt(Said, 4).EndsWith(TEXT("; ") + Away));
 	TestEqual(TEXT("and saying them once: the game instance holds them no longer"), Arrived.AwayLeft, FString());
 	int32 NotStanding = 0;
-	for (int32 Index = 4; Index < Said.Num(); ++Index)
+	for (int32 Index = 5; Index < Said.Num(); ++Index)
 	{
 		NotStanding += Said[Index].StartsWith(TEXT("standing: dungeon ")) ? 0 : 1;
 	}
@@ -10925,6 +10935,8 @@ bool FCataclysmPlayLoopDeathTest::RunTest(const FString&)
 	TestEqual(TEXT("then floor 2"), LineAt(Said, 1), FCataclysmPlayLoopLog::FloorLine(Walking.DungeonId, 2, Floors, Owed));
 	TestEqual(TEXT("then the death, on floor 2, and what it cost"), LineAt(Said, 2),
 			  FCataclysmPlayLoopLog::DeathLine(Walking.DungeonId, 2, Floors, Cost));
+	TestTrue(TEXT("then the walk's gold, after the death as after a clear (#2742)"),
+			 LineAt(Said, 3).StartsWith(FString::Printf(TEXT("dungeon %d's walk picked up 0 gold; "), Walking.DungeonId)));
 	TestTrue(TEXT("the account covers the walk's days and the death's"),
 			 Away.StartsWith(FString::Printf(TEXT("while away, days %d to %d: "), DayTheWalkLeft,
 											 DayTheWalkLeft + Owed + Cost)));

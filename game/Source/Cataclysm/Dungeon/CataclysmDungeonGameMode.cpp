@@ -15639,6 +15639,12 @@ bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
 	// `WalkDaysPerFloor`, which a city upgrade can have lowered.
 	SpendFloorTimeInTheEmpire();
 
+	// A WALK BEGINS HAVING PICKED UP NO GOLD, for the PLAY LOOP line its end says. Issue #2742.
+	if (UCataclysmGameInstance* Instance = UCataclysmGameInstance::In(this))
+	{
+		Instance->GoldPickedUpThisWalk = 0;
+	}
+
 	// THE PLAY LOOP: the dungeon entered, and what entering it cost. Issue #2733 slice 4.
 	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::EnteredLine(DungeonId, EmpireDungeonFloors(), Run->DaysOwed()));
 
@@ -25189,6 +25195,8 @@ bool ACataclysmDungeonGameMode::ClearEmpireDungeon()
 		const ACataclysmPlayerState* Clearer = Controller ? Controller->GetPlayerState<ACataclysmPlayerState>() : nullptr;
 		FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ClearLine(Cleared, DayOfTheClear, Run->LastEmpirePointsAwarded,
 																	Clearer ? Clearer->GetCharacterLevel() : 0));
+		// AND THE GOLD THE WALK PICKED UP, with the balance it left. Issue #2742.
+		FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::GoldLineIn(this, Cleared));
 		if (UCataclysmGameInstance* Instance = World ? Cast<UCataclysmGameInstance>(World->GetGameInstance()) : nullptr)
 		{
 			Instance->PlayLoopAwayAccount = FCataclysmPlayLoopLog::AwayAccount(DayTheWalkLeft, Run->Day(), LastWalksDays,
@@ -25390,6 +25398,8 @@ bool ACataclysmDungeonGameMode::EndTheDungeonForADeath()
 	// Issue #2733 slice 4.
 	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::DeathLine(DiedInDungeon, FloorDiedOn, FloorsOfTheWalk,
 																DaysTheDeathCost));
+	// AND THE GOLD THE WALK PICKED UP BEFORE THE DEATH, which the balance keeps. Issue #2742.
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::GoldLineIn(this, DiedInDungeon));
 	if (UWorld* World = GetWorld())
 	{
 		if (UCataclysmGameInstance* Instance = Cast<UCataclysmGameInstance>(World->GetGameInstance()))

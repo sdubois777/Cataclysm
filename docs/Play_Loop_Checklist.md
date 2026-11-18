@@ -51,8 +51,8 @@ capital with the days away shown, a second walk ended by a death, and a Continue
 
 ### 3. The capital opens, with the empire map
 
-- **On screen:** a nearly empty level, and the empire map open over it. The map's status line begins "Day 0" and says
-  "12 dungeons standing". Each city's box shows its tier and the share of its defence left, "Outpost 100%".
+- **On screen:** a nearly empty level, and the empire map open over it. The map's status line begins "Day 0", says
+  "12 dungeons standing", and ends with the gold balance, "0 gold" for a new lethality mode. Each city's box shows its tier and the share of its defence left, "Outpost 100%".
   **M** closes the map and opens it again.
 - **In the log:** one line for the capital, then one `standing:` line for each dungeon:
 
@@ -92,7 +92,9 @@ Choose a dungeon on **another** city than the one you will walk. This is how you
 
 ### 7. Take each floor's stairs
 
-- **On screen:** the next floor. Experience and drops come from the creatures you kill on the way.
+- **On screen:** the next floor. Experience and drops come from the creatures you kill on the way. **Gold** lies on
+  the floor as a name such as "12 gold" in a muted gold, and is picked up without a click when you come within 15
+  metres of it, as crafting materials are. Gold is not put in the bag.
 - **In the log**, one line per floor:
 
   `PLAY LOOP: dungeon 3: down to floor 2 of 12; the walk owes 2 days`
@@ -101,9 +103,15 @@ Choose a dungeon on **another** city than the one you will walk. This is how you
 
 - **On screen:** back in the capital, with the map open. The map's status line shows the new day. Its second line says
   what the walk did and what the days away did. The dungeon you walked is gone from the map.
-- **In the log**, the clear, then the capital with the days away, then the dungeons standing:
+- **In the log**, the clear, then the gold the walk picked up, then the capital with the days away, then the dungeons
+  standing:
 
   `PLAY LOOP: cleared dungeon 3 on day 12: +1.0 empire points; level 4: back to the capital`
+
+  `PLAY LOOP: dungeon 3's walk picked up 8,412 gold; 8,412 gold held`
+
+  **Gold:** the map's status line ends with the same balance, "8,412 gold". A first walk's two figures are equal; after
+  that the balance is the walks' gold added together.
 
   `PLAY LOOP: in the capital on day 12, tier 1: 9 dungeons standing, 0 cities fallen; level 4, 310 experience into it; while away, days 0 to 12: dungeons resolved: 5 (the dungeon on Outpost (-2,-1)); cities hit: Outpost (-2,-1) lost 750 defence and 1200 people; cities fallen: none; 1 surge brought 8 dungeons`
 
@@ -128,6 +136,10 @@ The days away are the two numbers after "while away, days": 12 days in the examp
   resolves at once when you die in it, so it is among "dungeons resolved", and its city among "cities hit":
 
   `PLAY LOOP: died in dungeon 7 on floor 3 of 8: the death cost 5 days: back to the capital`
+
+  `PLAY LOOP: dungeon 7's walk picked up 1,930 gold; 10,342 gold held`
+
+  The death keeps the gold picked up before it: the balance is step 8's plus this walk's.
 
   `PLAY LOOP: in the capital on day 20, tier 1: 10 dungeons standing, 0 cities fallen; level 5, 40 experience into it; while away, days 12 to 20: dungeons resolved: 7 (the Timed dungeon on Bulwark (1,2)); cities hit: Bulwark (1,2) lost 300 defence and 600 people; cities fallen: none; no surge`
 

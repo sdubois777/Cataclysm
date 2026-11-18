@@ -4575,8 +4575,9 @@ def test_infested_hoard_row_still_has_infested_drops_stacks_that_drain_and_a_cha
     "Infestation" that drains your health over time. However, the more stacks you have, the higher your chance of
     finding more infested loot." CHANCE TO DROP INFESTED is the extra drop; PICKING UP INFESTED LOOT and A STACK are
     the pick-up by hand; DRAINS YOUR HEALTH OVER TIME is the drain; THE MORE STACKS and HIGHER YOUR CHANCE are the
-    chance that grows. GOLD is read as items and materials because the game drops no gold. If any of them changes,
-    the reading must be revisited.
+    chance that grows. GOLD is read as items and materials: the game dropped no gold when this was ruled, and since
+    gold drops arrived (issue #2742, 2026-11-18) the coordinating session has kept that reading, no dungeon rule paying
+    gold in that work. If any of them changes, the reading must be revisited.
     """
     words = flat(rows()["Pestilence_The_Infested_Hoard"]["Description"])
     lower = words.lower()

@@ -1,0 +1,9 @@
+Name,DifficultyTier,GoldPerPile,MorePerFloor
+Tier_1,1,10.0,0.04
+Tier_2,2,30.0,0.04
+Tier_3,3,60.0,0.04
+Tier_4,4,100.0,0.04
+Tier_5,5,140.0,0.04
+Tier_6,6,190.0,0.04
+Tier_7,7,240.0,0.04
+Tier_8,8,300.0,0.04

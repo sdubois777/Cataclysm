@@ -554,6 +554,47 @@ followed, ruled 2026-11-01:
   read `Run_v5.json` as the committed run file reads `Run_v6.json` now, and every
   test that runs an older run file through the whole chain adds what the step
   writes through one helper, `CataclysmSaveFixtures::AddTheRunsVersion6Defaults`.
+- **The run record went to version 7 on 2026-11-18**, because a kill can drop
+  a gold pile (issue #2742) and a pile lying on the floor is a ground item: a
+  save made mid-floor would otherwise lose every pile not yet collected. One
+  field on each ground item, `Gold`, after `bDroppedByARaisedCreature`.
+  `Migrate_6_to_7` writes a `Gold` of 0 on every ground item of a version 6
+  file, and `Run_v7.json` is `Run_v6.json` at version 7 with `"Gold": 0` on its
+  one ground item (gear) and **a second ground item added, a gold pile of 37**
+  lying 50 cm from the first -- an empty item, no material, unmarked -- and
+  nothing else changed. **37 and not 0**, because 0 is the default and a
+  fixture holding only zeroes would pass whether the field was read or not.
+  `Run_v6.json` is now a migration input, not edited again. Every test that read
+  `Run_v6.json` as the committed run file reads `Run_v7.json` now, and every test
+  that runs an older run file through the whole chain adds what the step writes
+  through `CataclysmSaveFixtures::AddTheRunsVersion7Defaults`.
+- **The character record went to version 8 on 2026-11-18**, because a Solo
+  Self-Found character holds its own gold (issue #2742): the owner ruled that day
+  that such a character earns gold, and the design's Storage section puts it on
+  the character, "its gold is its own". One field, `Gold`, after
+  `CataclysmOrderSeed`. `Migrate_7_to_8` writes a balance of 0 into a version 7
+  file, and `Character_v8.json` is `Character_v7.json` at version 8 with
+  `"Gold": 4321` added and nothing else changed. **4321 and not 0**, because 0 is
+  the default and only another figure shows the field is read; and **the
+  character in the file is not Solo Self-Found**, so this is a value play does
+  not give it -- every other character keeps 0 there -- kept so that the file
+  differs from version 7 in the one field. `Character_v7.json` is now a migration
+  input, not edited again; `Cataclysm.Gold.ACharacterFileFromBeforeGoldMigratesHoldingNone`
+  runs it through the step and checks every other field is kept, every test that
+  read `Character_v7.json` as the committed character file reads
+  `Character_v8.json` now, and every test that runs an older character file
+  through the whole chain adds `"Gold": 0` to what it expects.
+- **The account record went to version 3 on 2026-11-18**, for its gold (issue
+  #2742): `Gold`, a whole number, after `EmpireUpgradePoints`. The empire
+  upgrade tree (issue #2741) takes version 4, as the coordinating session ruled
+  the same day. `Migrate_2_to_3` writes a balance of 0 into a version 2 file, and
+  `Account_v3.json` is `Account_v2.json` at version 3 with `"Gold": 1234567`
+  added and nothing else changed; 1234567 because 0 is the default.
+  `Account_v2.json` is a migration input now:
+  `Cataclysm.Gold.AnAccountFromBeforeGoldMigratesHoldingNone` runs it through the
+  whole chain and checks every other field is kept, every test that read it as
+  the committed account file reads `Account_v3.json`, and the test that runs
+  `Account_v1.json` through the whole chain expects the gold of 0 as well.
 - **A slip, recorded rather than undone, as `LastWrittenUtc` was.**
   `Run_v1.json` was edited thirteen times after saves could load
   (`78ad0fa81`, 2026-10-30), each time adding fields for #753's dungeon load
@@ -569,6 +610,7 @@ followed, ruled 2026-11-01:
 | :-- | :-- |
 | `Account_v1.json` | An account record at schema version 1. An online Hardcore partition with two characters in it |
 | `Account_v2.json` | The same account at version 2: version 1's contents, with its banked empire upgrade points 37.625, a fraction |
+| `Account_v3.json` | The same account at version 3: version 2's contents, plus its gold, 1234567 |
 | `Character_v1.json` | A character record at version 1. Online Hardcore, not Solo Self-Found, carrying one piece of gear and one stack of material |
 | `Character_v2.json` | The same character at version 2, with its attribute points, its creation choices and two passive points in the Masochist tree |
 | `Character_v3.json` | The same character at version 3: version 2's contents, plus a greatsword worn in `Weapon1` and a ring in `Ring3`, and one enchantment each on the greatsword and the carried Circlet, and one chosen skill |
@@ -576,12 +618,14 @@ followed, ruled 2026-11-01:
 | `Character_v5.json` | The same character at version 5: version 4's contents, plus its Consumption mark, true |
 | `Character_v6.json` | The same character at version 6: version 5's contents, plus the build its corrupted double wears |
 | `Character_v7.json` | The same character at version 7: version 6's contents, plus its Cataclysm order seed, 975318642 |
+| `Character_v8.json` | The same character at version 8: version 7's contents, plus its own gold, 4321 |
 | `Run_v1.json` | A run record at version 1, on floor 6 of a dungeon, with a boss at part health and a common creature beside it |
 | `Run_v2.json` | The same run at version 2: version 1's contents, plus the corrupted double's hunt, standing |
 | `Run_v3.json` | The same run at version 3: version 2's contents, plus what the player's last death cost |
 | `Run_v4.json` | The same run at version 4: version 3's contents, plus its Cataclysm boss dungeon, opened on day 109 at 137 floors |
 | `Run_v5.json` | The same run at version 5: version 4's contents, plus the win of the run before it, on day 381 at tier 3 against War, for 10 passive points |
 | `Run_v6.json` | The same run at version 6: version 5's contents, plus the last award of 2.25 empire points, the clear on day 80, and the summary of the days its last walk was away, days 84 to 118 |
+| `Run_v7.json` | The same run at version 7: version 6's contents, with a `Gold` on each ground item, and a second ground item that is a gold pile of 37 |
 | `Example_v1.json` | The example record at version 1 |
 | `Example_v2.json` | The same record at version 2, after `Title` was renamed to `Label` |
 | `Example_v3.json` | The same record at version 3, after `TotalCopper` was split into `Gold` and `Copper` |
@@ -593,9 +637,9 @@ something.
 
 `UCataclysmSaveExampleRecord` exists only for these, because all three real
 records were at version 1 when it was written and version 1 is the first, so
-none of them had a migration to run. The character record has had six since
-(version 7 since 2026-11-02), the run record five (version 6 since
-2026-11-17), and the account record one (version 2 since 2026-11-03). Its
+none of them had a migration to run. The character record has had seven since
+(version 8 since 2026-11-18), the run record six (version 7 since
+2026-11-18), and the account record two (version 3 since 2026-11-18). Its
 header says more.
 
 ## Two things to keep in mind when editing one

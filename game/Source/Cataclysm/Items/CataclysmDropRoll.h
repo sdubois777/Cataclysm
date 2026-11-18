@@ -10,6 +10,7 @@ struct FCataclysmAffixRow;
 struct FCataclysmEnchantmentRow;
 struct FCataclysmEnemyDropRow;
 struct FCataclysmGearRarityRow;
+struct FCataclysmGoldRow;
 struct FCataclysmItemBaseRow;
 struct FCataclysmMaterialTierRow;
 class UDataTable;
@@ -1055,6 +1056,49 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
 	static float MagicFindFrom(const UDataTable* EnemyDropTable,
 							   FName EnemyRarity);
+
+	// -----------------------------------------------------------------------
+	// Gold. Issue #2742.
+	// -----------------------------------------------------------------------
+
+	static const TCHAR* GoldTableAssetPath;
+
+	/** How much a gold pile holds by difficulty tier, or null with the reason logged. */
+	static const UDataTable* LoadGoldTable();
+
+	/**
+	 * How many gold piles a kill of this rarity is expected to drop: `FCataclysmEnemyDropRow::GoldDrops`.
+	 *
+	 * NO LOOT QUANTITY, unlike the two above, and that is the ruling rather than an omission (G2, 2026-11-18): neither
+	 * loot quantity nor magic find raises gold. Diablo II and III keep gold apart from magic find, and the design has
+	 * gold modifiers of its own -- Economic Zones, and the city upgrade "Dungeons here drop that much more gold" beside
+	 * a separate magic find one.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static float ExpectedGoldDrops(const UDataTable* EnemyDropTable, FName EnemyRarity);
+
+	/** The Gold row of a difficulty tier, held inside 1 to 8 as a console variable can say anything; or null. */
+	static const FCataclysmGoldRow* GoldRow(const UDataTable* GoldTable, int32 DifficultyTier);
+
+	/**
+	 * What a gold pile holds on average on this floor of a dungeon at this tier, before the spread:
+	 * `GoldPerPile x (1 + MorePerFloor x (Floor - 1))`. Zero when the table or the row is missing.
+	 *
+	 * @param Floor  counted from 1; anything below is read as 1, which is what a world with no dungeon is
+	 *               (`UCataclysmEnemyScore::FloorIn` answers floor 1 there).
+	 */
+	static float GoldPileMean(const UDataTable* GoldTable, int32 DifficultyTier, int32 Floor);
+
+	/** The spread a pile is rolled with, uniformly between the two: 0.8 to 1.2 of the mean (G1, a judgement). */
+	static constexpr float GoldPileSpreadLowest = 0.8f;
+	static constexpr float GoldPileSpreadHighest = 1.2f;
+
+	/**
+	 * One pile's gold: `GoldPileMean` times a spread drawn from the stream, rounded to the nearest whole gold and
+	 * never below 1, since a pile of nothing would be a name on the floor worth nothing to walk to. Zero only when
+	 * the table or the row is missing, and then nothing should be placed.
+	 */
+	static int32 RollGoldPile(const UDataTable* GoldTable, int32 DifficultyTier, int32 Floor, FRandomStream& Stream);
 
 	/**
 	 * Turn an expected number of drops into how many actually fall.

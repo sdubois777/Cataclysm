@@ -3,6 +3,7 @@
 #include "Items/CataclysmDropRoll.h"
 #include "Cataclysm.h"
 #include "Data/CataclysmDataRows.h"
+#include "Dungeon/CataclysmEnemyScore.h"
 #include "Engine/DataTable.h"
 
 namespace
@@ -507,6 +508,75 @@ float UCataclysmDropRoll::MagicFindFrom(const UDataTable* EnemyDropTable,
 {
 	const FCataclysmEnemyDropRow* Row = EnemyDropRow(EnemyDropTable, EnemyRarity);
 	return Row ? Row->MagicFind : 0.0f;
+}
+
+// ---------------------------------------------------------------------------
+// Gold. Issue #2742.
+// ---------------------------------------------------------------------------
+
+const TCHAR* UCataclysmDropRoll::GoldTableAssetPath = TEXT("/Game/Data/DT_Gold.DT_Gold");
+
+const UDataTable* UCataclysmDropRoll::LoadGoldTable()
+{
+	return LoadTableAt(GoldTableAssetPath, TEXT("Gold.csv"), TEXT("Gold"));
+}
+
+float UCataclysmDropRoll::ExpectedGoldDrops(const UDataTable* EnemyDropTable, FName EnemyRarity)
+{
+	// NOT SCALED BY LOOT QUANTITY: ruled 2026-11-18 (G2). See the header.
+	const FCataclysmEnemyDropRow* Row = EnemyDropRow(EnemyDropTable, EnemyRarity);
+	return Row ? FMath::Max(0.0f, Row->GoldDrops) : 0.0f;
+}
+
+const FCataclysmGoldRow* UCataclysmDropRoll::GoldRow(const UDataTable* GoldTable, int32 DifficultyTier)
+{
+	if (!GoldTable)
+	{
+		return nullptr;
+	}
+
+	// HELD INSIDE THE EIGHT TIERS, as `UCataclysmEnemyScore::ScoreFor` holds its own: the tier reaches here from a
+	// console variable that can say anything, and the nearest tier's pile is a better answer than none.
+	const int32 Tier = FMath::Clamp(DifficultyTier, UCataclysmEnemyScore::LowestDifficultyTier,
+									UCataclysmEnemyScore::HighestDifficultyTier);
+	const FCataclysmGoldRow* Found = nullptr;
+	GoldTable->ForeachRow<FCataclysmGoldRow>(
+		TEXT("UCataclysmDropRoll::GoldRow"),
+		[&](const FName& /*Key*/, const FCataclysmGoldRow& Row)
+		{
+			if (Found == nullptr && Row.DifficultyTier == Tier)
+			{
+				Found = &Row;
+			}
+		});
+	return Found;
+}
+
+float UCataclysmDropRoll::GoldPileMean(const UDataTable* GoldTable, int32 DifficultyTier, int32 Floor)
+{
+	const FCataclysmGoldRow* Row = GoldRow(GoldTable, DifficultyTier);
+	if (Row == nullptr)
+	{
+		return 0.0f;
+	}
+
+	// LINEAR IN THE FLOOR, so floor 26 holds twice floor 1 at +4% a floor: a deeper dungeon pays more, as depth and
+	// reward are one axis in this design. Floor 0 or below is "no dungeon", which is floor 1.
+	const int32 Deeper = FMath::Max(1, Floor) - 1;
+	return FMath::Max(0.0f, Row->GoldPerPile) * (1.0f + FMath::Max(0.0f, Row->MorePerFloor) * static_cast<float>(Deeper));
+}
+
+int32 UCataclysmDropRoll::RollGoldPile(const UDataTable* GoldTable, int32 DifficultyTier, int32 Floor,
+									   FRandomStream& Stream)
+{
+	const float Mean = GoldPileMean(GoldTable, DifficultyTier, Floor);
+	if (Mean <= 0.0f)
+	{
+		return 0;
+	}
+
+	const float Spread = Stream.FRandRange(GoldPileSpreadLowest, GoldPileSpreadHighest);
+	return FMath::Max(1, FMath::RoundToInt(Mean * Spread));
 }
 
 int32 UCataclysmDropRoll::RollDropCount(float Expected, FRandomStream& Stream)

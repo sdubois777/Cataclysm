@@ -330,6 +330,61 @@ public:
 	 */
 	UCataclysmAccountSave* BankEmpirePoints(const FCataclysmCharacterPartition& Partition, double Points);
 
+	// ----------------------------------------------------------------------
+	// Gold -- issue #2742, slice 1
+	// ----------------------------------------------------------------------
+
+	/**
+	 * Adds gold to a partition's ACCOUNT balance. Answers the record banked into, or null when nothing was banked -- a
+	 * Solo Self-Found partition, which has no account record, or an account record that would not read (see
+	 * `AccountFor`) -- and an amount of zero or less is refused, since spending is not this. The design's Storage
+	 * section: "Gold is held by the account, once per lethality mode".
+	 *
+	 * CALL `AddGoldFor` RATHER THAN THIS for the character playing: it decides between this and a Solo Self-Found
+	 * character's own balance. IT DOES NOT WRITE THE RECORD, as `BankEmpirePoints` does not: `UCataclysmDropPickup::
+	 * BankGold` raises the save triggers once for every pile it took.
+	 */
+	UCataclysmAccountSave* BankGold(const FCataclysmCharacterPartition& Partition, int64 Gold);
+
+	/**
+	 * THE ONE PLACE THAT SAYS WHICH BALANCE THE CHARACTER PLAYING HAS, and what it holds. Issue #2742.
+	 *
+	 * A SOLO SELF-FOUND CHARACTER'S OWN, on its player state and saved in its character record (version 8); EVERY
+	 * OTHER CHARACTER'S LETHALITY MODE'S, in the account record (version 3). The design's Storage section, and the
+	 * owner's ruling of 2026-11-18 that a Solo Self-Found character earns gold. The inventory screen, the empire map's
+	 * status line, the PLAY LOOP line and slice 2's city screen all read it here.
+	 *
+	 * @return false, with `OutGold` 0, when there is no balance to read: no world, no character playing, or -- for a
+	 *         character that is not Solo Self-Found -- no game instance of this project's or an account record that
+	 *         would not read. A Solo Self-Found character's needs no game instance.
+	 */
+	static bool GoldHeldBy(const UObject* WorldContext, int64& OutGold);
+
+	/**
+	 * Adds gold to the balance `GoldHeldBy` reads, and says which record now holds the change. Issue #2742.
+	 *
+	 * @param bOutIntoTheCharacter  true when the gold went to a Solo Self-Found character's own balance, which the
+	 *                              character record saves; false when it went to the account's
+	 * @return false, and nothing added, for an amount of zero or less or where `GoldHeldBy` has no balance
+	 */
+	static bool AddGoldFor(const UObject* WorldContext, int64 Gold, bool& bOutIntoTheCharacter);
+
+	/**
+	 * The balance as every screen shows it: "1,234 gold". Empty when `GoldHeldBy` has no balance to read, so a screen
+	 * shows nothing rather than a 0 that is not true.
+	 */
+	static FString GoldBalanceText(const UObject* WorldContext);
+
+	/**
+	 * The gold picked up since the walk being played began, for the PLAY LOOP line that reports it at the walk's end
+	 * (`FCataclysmPlayLoopLog::GoldLine`). Issue #2742.
+	 *
+	 * HELD HERE BECAUSE A GAME INSTANCE OUTLIVES THE LEVEL, as `HeldAccount` does. Set to zero when a walk is entered
+	 * (`ACataclysmDungeonGameMode`, beside the "entered" PLAY LOOP line). NOT SAVED: a walk resumed from a save counts
+	 * from the load, which the line says nothing to contradict -- it reports what this session picked up.
+	 */
+	int64 GoldPickedUpThisWalk = 0;
+
 	/**
 	 * The partition of the character being played in a world: the first player character's player state's. False,
 	 * and nothing written, when there is no world, no player character or no player state.
