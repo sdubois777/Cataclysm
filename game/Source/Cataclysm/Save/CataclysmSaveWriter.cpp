@@ -193,6 +193,10 @@ bool UCataclysmSaveWriter::WriteTheRunRecord(ECataclysmSaveTrigger Trigger)
 	// A DEATH, AND THE PROCESSING OF ONE, ARE WRITTEN WHATEVER ELSE WROTE IN THE SAME FRAME. The processing write
 	// exists to replace the record of an unpaid death with the paid one, and leaving the dungeon on the way can raise
 	// another trigger in that frame; skipping it would leave the unpaid death on disk. Issue #753, the start-up step.
+	// SO ARE A WON RUN (#1324 slice 6e) AND A NEW CHARACTER (#2733): each gathers a run that an earlier write in the
+	// same frame could not see -- the gather runs at each write, not at the end of the frame, so "the state the last
+	// one writes" holds only for triggers that change nothing the run record reads. See
+	// `UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame`.
 	const bool bWritesWhateverElseWroteThisFrame =
 		UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame(Trigger);
 	if (!bWritesWhateverElseWroteThisFrame && LastRunWriteFrame == GFrameCounter && StartedCount > 0)

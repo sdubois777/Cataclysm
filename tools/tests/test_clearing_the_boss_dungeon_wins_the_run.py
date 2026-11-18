@@ -145,6 +145,29 @@ def test_the_win_trigger_writes_the_character_record_whatever_wrote_this_frame()
     assert "ECataclysmSaveTrigger::RunWon" in listed, "the trigger is not in the list its tests walk"
 
 
+def test_a_new_characters_write_records_its_run_whatever_wrote_this_frame() -> None:
+    """`CharacterCreated` writes the run record even after another write this frame, for `RunWon`'s reason. #2733.
+
+    `ACataclysmGameMode::MakeThePendingCharacter` gives the new character its chosen weapon before it begins the run;
+    the weapon it wore goes into the bag, `InventoryChanged` writes a run record with no run, and `CharacterCreated`
+    in the same frame was skipped by the once-a-frame rule, so a Continue found no empire. The Unreal tests
+    `Cataclysm.FirstSurge.ANewCharactersRun...` and `...ARunSavedOnDayZero...` show it in play.
+    """
+    again = body(TRIGGERS, "bool UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame(")
+    assert "ECataclysmSaveTrigger::CharacterCreated" in again, (
+        "a new character's write can be skipped by the run record its weapon swap wrote earlier in the frame, before "
+        "its run began, leaving a run record with no empire on disk. Issue #2733")
+
+    begun = body(SOURCE / "Cataclysm" / "Player" / "CataclysmGameMode.cpp",
+                 "ACataclysmGameMode::EPendingLoad ACataclysmGameMode::MakeThePendingCharacter(")
+    chosen = begun.find("Character.ApplyCreationChoice();")
+    run = begun.find("Instance.BeginACharactersEmpireRun(")
+    written = begun.find("Writer.NoteTrigger(ECataclysmSaveTrigger::CharacterCreated);")
+    assert -1 not in (chosen, run, written) and chosen < run < written, (
+        "MakeThePendingCharacter no longer gives the weapon, then begins the run, then writes CharacterCreated, in that "
+        "order. The order is the reason CharacterCreated must write whatever wrote this frame; read it again")
+
+
 def test_run_v5_is_run_v4_with_the_win_line_and_nothing_else() -> None:
     """The fixture rule: the new file is the old one at the new version, plus the new keys, none at its default."""
     before = json.loads((FIXTURES / "Run_v4.json").read_text(encoding="utf-8"))

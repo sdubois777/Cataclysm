@@ -246,7 +246,9 @@ private:
 	 * `UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame`. A death
 	 * must be written whatever else happened in the frame, which is the one rule
 	 * section 6 does not relax, and the write after it is paid for must replace
-	 * the unpaid death on disk (#753).
+	 * the unpaid death on disk (#753). So do a won run (#1324 slice 6e) and a
+	 * new character (#2733), whose writes record a run that an earlier write in
+	 * the same frame gathered before it existed.
 	 */
 	uint64 LastRunWriteFrame = 0;
 
