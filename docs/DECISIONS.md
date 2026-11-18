@@ -14,7 +14,7 @@ Decisions made outside the Google Drive documents, newest first.
 `CHECK_TABLE` lines and two asset pairs in `CataclysmDataTableTests.cpp`;
 `tools/tests/test_empire_tree_tables_match_the_tree_file.py`, new; the sentence and the number words in
 `tools/tests/test_game_readme_is_true.py`. Issue [#2741](https://github.com/sdubois777/Cataclysm/issues/2741), slice
-1a of six; the tree half of [#52](https://github.com/sdubois777/Cataclysm/issues/52).
+1a of seven; the tree half of [#52](https://github.com/sdubois777/Cataclysm/issues/52).
 
 ### SAID FIRST
 
@@ -25,10 +25,11 @@ Decisions made outside the Google Drive documents, newest first.
   `tools/tests/test_datatable_assets_are_current.py` fail until then; the Python run below shows exactly those four.
 - **NOTHING IN PLAY CHANGES.** The game calls none of the new rules. Where the allocation is kept and where the bank is
   spent from is slice 1b; the screen is slice 2; what a bought node does is slices 3 to 5.
-- **SLICE 1 OF THE PLAN IS SPLIT IN TWO.** The gold work (#2742) also adds a field to the account record, so the
+- **SLICE 1 OF THE PLAN IS SPLIT IN THREE.** The gold work (#2742) also adds a field to the account record, so the
   coordinating session asked for the account record change in a slice of its own. This slice changes no save record;
   1b adds the allocation to `UCataclysmAccountSave` at version 3 (the coordinating session's ruling of 2026-11-18; the
-  gold work takes 4).
+  gold work takes 4). **1c** gives a Solo Self-Found character its own bank and tree on `UCataclysmCharacterSave` at
+  version 9 (the gold work takes 8), because the owner reversed C8 the same day; see C8 below.
 - **TWO NODES MOVED FROM THE PLAN'S COUNT INTO "CAN BE BOUGHT".** Dungeon Mastery (10 points) was a question in the
   plan; the coordinating session ruled it built (Q7). The High Roller (1 point) was counted as waiting on a
   guaranteed-rarity drop; the drop roll already rolls an item at a stated rarity, so it is built in slice 5. The plan
@@ -76,7 +77,11 @@ Cataclysm boss dungeon (2026-10-30); the game is balanced around a player fully 
 - **C7, Q2.** Each branch capstone opens at 200 points spent in its own branch; the file gives them no edge and no
   threshold. **Q4:** Field Depot II requires I held and III requires II, beside their own edges -- recorded here and
   built with the stash, since all three wait on it.
-- **C8.** Solo Self-Found characters' tree is out of scope (character record version 8); it stays on #52.
+- **C8, REVERSED BY THE OWNER ON 2026-11-18.** The coordinating session first ruled a Solo Self-Found character's tree
+  out of scope (it needed a character record version). Asked "Should the tree session include Solo Self-Found
+  characters?", the owner chose **"Include them"**: such a character banks empire points and buys its own tree, held on
+  its character record. Slice 1c builds it, and takes over the Solo Self-Found points bank #52 had left open. Nothing
+  in this slice depends on which record holds the bank or the allocation.
 - **Q1.** Bastion Spirit is capped like the five, chosen from the simulation in slice 3: read per point it gives +225
   days to every resolve timer with the tree full.
 - **Q5, Q6.** Imperial Prowess (what "an additional keystone from any of the previous tiers" means) and Scorched Earth
@@ -92,8 +97,8 @@ Cataclysm boss dungeon (2026-10-30); the game is balanced around a player fully 
   reads it, because a loaded run is rebuilt through `Begin` and has its saved city maxima written over it.
 - **Not asked, accepted:** the three edges chaining the centre capstones require 0 and so require nothing -- a later
   capstone does not need an earlier one taken; the centre thresholds count every point in the tree, capstones
-  included; there are no leagues in the game, so nothing is built for #287; the screen will say the tree is not
-  available yet to a Solo Self-Found character.
+  included; there are no leagues in the game, so nothing is built for #287. **Withdrawn the same day:** that the
+  screen would say the tree is not available yet to a Solo Self-Found character -- C8's reversal makes it available.
 
 ### What the tables hold
 
