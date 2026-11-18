@@ -38,10 +38,18 @@ slice 1 of 2.
 
 ### SAID FIRST
 
+- **COMPILED, RUN AND PROVED, ACROSS THREE WINDOWS, AT `67dba4d6`.** The whole Unreal suite performed the registered
+  4820, all succeeding, with 47 skipped halves and no test save left behind; each of the sixteen groups this slice
+  changes passed alone at its registered count; Python (7558 passed, 9 skipped) and ruff passed; the four guard proofs
+  all proved as registered. "The windows" below has all three.
 - **THE FIRST WINDOW STOPPED ON ONE FAILED TEST, AND THE FAULT WAS THIS SLICE'S.** A play-loop test reads the walk's
   log lines by position, and this slice's gold line, said after the clear, moved the capital's line from fourth to
-  fifth; the slice registered the group as touched and did not update the check. Corrected; the second window runs
-  the same registration. "The windows" below has both.
+  fifth; the slice registered the group as touched and did not update the check. Corrected; it passed in the second
+  window.
+- **THE SECOND WINDOW STOPPED AT THE SECOND PROOF, AND THE FAULT WAS THE PROOF SCRIPT'S.** Its two anchors that span
+  lines were written with CRLF, and the proof tool hands the edit the file's text with CRLF made LF, so the break was
+  refused before anything was built. Corrected in the untracked script; the third window ran the last three proofs at
+  the same head.
 - **SEVEN TEST EXPECTATIONS WERE WRONG, AND READING FOUND THEM, NOT A RUN.** When the save tests were moved to the new
   committed files, six still asserted the old file's version and one expected one thing on a floor that now holds two.
   The two compiles before the rebase could not see them; reading the rebased tree before the window did. All seven are
@@ -312,8 +320,52 @@ Unreal lock, after the pre-checks all passed (13,448 MB free):
 **The second, gold-1-w2, REGISTERED UNCHANGED** at the commit that records this, on top of `8e251051`: the
 correction adds and removes no test, so **4820 performed, all succeeding, 47 skipped halves, no test save left**; each
 group alone at the count in the table above, `Cataclysm.PlayLoop.` 7 among them; P1 to P4 as in the table above, each
-anchor still matching exactly once. The assets are already committed in `d4cdd31d`, so it skips the asset step. Not yet
-run.
+anchor still matching exactly once. The assets are already committed in `d4cdd31d`, so it skips the asset step.
+
+It ran on 2026-11-18 from 13:38 to 14:06 at `67dba4d6`, under the Unreal lock, after the pre-checks all passed (13,906 MB
+free):
+
+- **The build**: `Build: Succeeded - target already up to date, 0 actions, nothing compiled`, since the unity compile
+  had built this content. The asset step was skipped, as registered.
+- **The sixteen groups alone, each its registered count, all succeeding**: `Cataclysm.Gold.` 13, `Cataclysm.Data.` 7,
+  `Cataclysm.Drop.` 30, `Cataclysm.DropPickup.` 19, `Cataclysm.InventoryScreen.` 7, `Cataclysm.EmpirePoints.` 16,
+  `Cataclysm.SaveRecords.` 17, `Cataclysm.SaveLoad.` 77, `Cataclysm.Travel.` 9, `Cataclysm.PlayLoop.` 7,
+  `Cataclysm.ConsumptionDouble.` 15, `Cataclysm.ConsumptionMark.` 6, `Cataclysm.DeathCost.` 9,
+  `Cataclysm.EarnedBossSave.` 3, `Cataclysm.WinningTheRun.` 11 and `Cataclysm.CataclysmDraw.` 6. So the corrected walk
+  test, the death test's new check and all seven expectations corrected before the first window have passed in a run.
+- **The whole suite**: `Tests: 4820 tests performed, 4820 succeeded, 0 failed. 47 skipped part of what they check`;
+  `Test saves: 826 written and deleted, 0 left behind`; `Declared: 4820 tests in the tree at 67dba4d60; 4820
+  performed, gap 0`. As registered.
+- **Python**: 7558 passed, 9 skipped; the JUnit file says 7567 tests, 0 failures, 0 errors, 9 skipped. **ruff**: all
+  checks passed.
+- **P1 PROVED** as registered (the table below).
+- **P2 WAS NOT MEASURED, AND THE FAULT WAS THE PROOF SCRIPT'S.** Its break raised an `AssertionError` inside the edit
+  function before `prove_cpp_guard` wrote or built anything; the source hash before and after was the same and the
+  tree clean. `prove_cpp_guard` reads the file with `read_text`, which makes the file's CRLF line endings LF, and the
+  window's `prove_gold1.py` had built the two anchors that span lines, P2's and P4's, with CRLF. Its own anchor check
+  read the raw bytes, so it matched there and the registration's check passed. P3 and P4 did not run. The script now
+  builds those anchors with LF and reads the file with `read_text`, as the tool does; a dry run, reading each file the
+  same way and applying each break in memory, found each anchor once and each break changing the text. No tracked
+  file changed, so the head stayed `67dba4d6`.
+
+**The third, gold-1-w3, the proofs P2, P3 and P4 alone**, at `67dba4d6`, the coordinating session's go, on 2026-11-18
+from 14:08 to 14:11, under the Unreal lock, after the pre-checks all passed (13,825 MB free). The build was up to date;
+each proof then built its broken and its restored file. The groups, the suite, Python and P1 stand from the second
+window. Every proof printed the same source hash before and after.
+
+| Proof | The broken half | The restored half |
+|---|---|---|
+| P1 (second window) | 1 performed, 0 succeeded, 1 failed: `KillingCreaturesPutsNamedGoldPilesOnTheFloor`, on "killing three Cataclysm Bosses put gold on the floor" and "a Solo Self-Found character's kills put gold down too" | 1 performed, 1 succeeded |
+| P2 | 13 performed, 9 succeeded, 4 failed: `GoldDropsOnlyWhereTheCharacterPlayingHasABalance` ("and for a Solo Self-Found one, the owner's ruling of 2026-11-18"), `KillingCreaturesPutsNamedGoldPilesOnTheFloor` ("a Solo Self-Found character's kills put gold down too"), `PickingUpAPileAddsItToTheBalanceAndTakesItOffTheFloor` ("CONTROL: a Solo Self-Found character starts with none", 0 expected, -1; "into its own balance", 37 expected, -1) and `TheNamesTheMapLineTheInventoryAndThePlayLoopLineSayTheGold` ("a Solo Self-Found character's map line is its own balance", "50 gold" expected, ""; "and a Solo Self-Found one's", the play loop line saying "no gold balance to hold it") | 13 performed, 13 succeeded |
+| P3 | 1 performed, 0 succeeded, 1 failed: `ARunFileFromBeforeGoldMigratesWithNoGoldOnItsFloor`, on "the step writes a gold of 0 on every ground item" (1 expected, 0) | 1 performed, 1 succeeded |
+| P4 | 1 performed, 0 succeeded, 1 failed: `TheBalanceSurvivesASaveAndIsTheLethalityModesOwn`, on "the account record reads back from its slot" | 1 performed, 1 succeeded |
+
+All four failed where they were registered to, on the tests and the assertions registered. P2's two assertions in
+`PickingUpAPileAddsItToTheBalanceAndTakesItOffTheFloor` and two in `TheNamesTheMapLineTheInventoryAndThePlayLoopLineSayTheGold`
+were not named in the registration, which named the four tests; they are those tests' Solo Self-Found checks.
+
+**Not measured:** the owner has not played it. How much gold a real walk earns is still the estimate in "The
+judgements"; slice 2 prices city upgrades against it.
 
 ---
 
