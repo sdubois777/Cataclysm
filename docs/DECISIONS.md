@@ -579,6 +579,36 @@ groups the coordinating session added run alone early for that reason (below).
   that floor change writes there and the save the load reads stays the one on the floor drawn again. Both new slots
   are deleted at the end, as the save's are.
 
+### Re-registered before the third run
+
+**Unchanged:** the whole suite 4784, 47 skipped halves, 0 test saves left behind, "Declared: 4784"; the fifteen groups
+alone at the counts registered before the first run; C1, C2 and C4 to C9 as registered.
+
+**Two groups added alone**, run straight after `Cataclysm.SaveLoad.`, as the coordinating session asked, so the tests
+the change-of-floor rule can reach outside `Cataclysm.SaveLoad.` and `Cataclysm.Travel.` run before the whole suite:
+
+| Prefix | Registered | Where the count comes from |
+| :-- | --: | :-- |
+| `Cataclysm.RuleDamageParts.` | 11 | "Test Completed" lines by prefix, ignoring case, in window r2580's whole-suite engine log at `cde163c7`, all 11 "Success"; 11 name literals at this branch's base `1f16aafde` and at this head; this branch adds none |
+| `Cataclysm.DungeonModifierEffects.ThoseInTheDark` | 27 | the same log, 27, all "Success"; 27 name literals at the base and at this head. A name prefix inside its group, so it has no trailing dot |
+
+**C3 changes by consequence**, as approved: with a death's return broken (`WalkEndedIn = nullptr`), the death test
+changed above fails as the dungeon-death load test does.
+
+| Proof | Break | Prefix | Predicted broken half |
+| :-- | :-- | :-- | :-- |
+| C3 | a death that ended a walk does not go back: `WalkEndedIn = nullptr` (`CataclysmPlayerCharacter.cpp`) | `Cataclysm.SaveLoad.` | 76 performed, 74 succeeded, 2 failed: the dungeon-death load test, 2: "and the hand-over to the capital was the last write", "and the character travels to the capital"; `ProcessingADeathWritesTheSaveAfterThePenalty`, 2: "the hand-over to the capital was the last write, after the one that says the death was paid for", "and the character travels to the capital" |
+
+**Python: "7471 passed, 9 skipped"**, the same as the last registration, since nothing Python changed; its JUnit file
+7480 tests, 0 failures, 0 errors, 9 skipped. `ruff check .` printed "Found 4 errors", all four in this session's untracked scratch scripts
+under `.claude/windows/`, which continuous integration never sees; the tracked Python files passed on their own
+("All checks passed!"), and after those four lines were fixed `ruff check .` passed. The window adds no Python.
+
+**Compiled twice after the second run**, with no error and no warning: the changed test file alone, uncommitted ("6
+actions, 3 files compiled: CataclysmSaveLoadTests.cpp, Module.Cataclysm.41.cpp, Module.Cataclysm.42.cpp"); and
+committed as `0effc6e7e`, the makefile set aside ("5 actions, 2 files compiled: Module.Cataclysm.41.cpp,
+Module.Cataclysm.42.cpp"), `Module.Cataclysm.41.cpp` being the unity file that holds `CataclysmSaveLoadTests.cpp`.
+
 ---
 
 ## 2026-11-17 — Play opens the front end, and Start and Continue open the capital, a new level that opens the empire map on arrival (#2733, slice 2)
