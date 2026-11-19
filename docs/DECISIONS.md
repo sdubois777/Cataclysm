@@ -2,6 +2,160 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-19 — The Cataclysmic Forge raises an item one gear level with two stones of that level, 25 residue and a day per craft plus the residue's time penalty, and combines two stones into one of the next; its screen opens from the empire map; "Gear Leveling" now counts two stones per level
+
+**Affects:** `UCataclysmForge`, new (`game/Source/Cataclysm/Items/CataclysmForge.h` and `.cpp`: the rules);
+`UCataclysmForgeCraft`, `FCataclysmForgeTarget` and `ECataclysmForgeResult`, new
+(`game/Source/Cataclysm/Player/CataclysmForgeCraft.h` and `.cpp`: the crafts done to the character playing);
+`UCataclysmForgeWidget` and `UCataclysmForgeLayout`, new (`game/Source/Cataclysm/Interface/`), and `make_forge` in
+`tools/generate_interface_assets.py`, which makes `WBP_Forge`; `ACataclysmPlayerController::ToggleForge`,
+`IsForgeOpen`, `ForgeScreenClass` and `CloseEmpireScreens`; the empire map's "Forge" button
+(`UCataclysmEmpireMapWidget`: `ForgeButton`, `PlaceForgeButton`, `ClickForgeForTests`, `ForgeRequestCount`;
+`UCataclysmEmpireMapLayout::ForgeButtonPosition`, `ForgeButtonSize`, `ForgeButtonText`, `ForgeButtonBrief`);
+`UCataclysmInventoryComponent::ReplaceItemAt` and `UCataclysmEquipmentComponent::ReplaceEquippedAt`, new;
+`ECataclysmSaveTrigger::ForgeCrafted`, 16, new, writing the character record and in
+`WritesEvenIfTheRunWasWrittenThisFrame`; `FCataclysmPlayLoopLog::ForgeUpgradeLine` and `ForgeCombineLine`, new; a
+comment in `CataclysmPlayerState.h`; `docs/Cataclysm_GDD_v2.md` ("Gear Leveling" and the materials paragraph);
+`docs/Play_Loop_Checklist.md` step 15, new. Tests: `CataclysmForgeTests.cpp`, new, 8 in `Cataclysm.Forge.`;
+`CataclysmForgeScreenTests.cpp`, new, 4 in `Cataclysm.ForgeScreen.`; one in `CataclysmPlayLoopTests.cpp`;
+`CataclysmSaveTriggerTests.cpp` lists the trigger; `tools/tests/test_the_forge_matches_the_design.py` and
+`tools/tests/test_the_forge_screen_is_generated_with_its_bindings.py`, new;
+`tools/tests/test_the_play_loop_is_logged_at_each_step.py` and `tools/tests/test_when_a_save_is_written.py`, changed.
+The owner's ruling of 2026-11-19 ("Yes, build it next"), planned by this session and ruled by the coordinating session
+the same day, a to i below.
+
+### SAID FIRST
+
+- **NOT YET COMPILED OR RUN IN THE ENGINE.** Written without compiling, as the coordinating session's approval said.
+- **THE BRANCH MUST BE REBASED ONTO A DEVELOPMENT THAT HOLDS TRIGGER 15 BEFORE ITS WINDOW.** `ForgeCrafted` is 16 as
+  ruled, because issue #2763 takes 15 for `CharacterBuildChanged` and merges first. On a development without 15,
+  `Cataclysm.SaveTriggers.EveryTriggerIsInTheListThisFileAnswersFor` fails: it walks the trigger numbers from 0 to the
+  count and finds 15 missing. The registration below is for after that rebase, and its `Cataclysm.SaveTriggers.` count
+  is re-registered then if #2763 adds tests to that group.
+- **THE DESIGN CONTRADICTED ITSELF ON THE STONE COUNT, AND THE TABLE WAS CORRECTED.** "Gear Leveling" counted one +1
+  stone per level, 1, 3, 7 ... 1,023, against three statements that two are consumed: the operations row ("Consumes two
+  upgrade stones"), the materials paragraph ("a +8 stone is what raises a piece to +8, and two of them are consumed")
+  and the workbook ("Uses two +x upgrade stones"). Ruled (a): the three outvote the table, which is arithmetic from
+  them; it now reads 2, 6, 14, 30, 62, 126, 254, 510, 1,022 and 2,046, 2^(N+1) - 2, and a Python check holds every row.
+  The materials paragraph's "See Upgrading Gear", a heading that did not exist, now names "Gear Leveling".
+- **NO GOLD IS CHARGED** (ruling c): the design gives a gold multiplier, `(CR / 50) + 1`, and no base price for any
+  craft. That base is the owner's later choice across all eighteen operations.
+- **THIS DOES NOT SHARE `NameShownFor`** with the display slice's branch (`feat/basic-hit-against-the-run-family`), which
+  names an item the same way: `UCataclysmForge::NameOf` is its own copy, because the two branches are separate. Whichever
+  merges second should call the other's.
+
+### What the design settles
+
+| Detail | Settled by |
+|---|---|
+| One level per craft, in order, +1 to +10 | "Upgrades are sequential — you cannot skip levels." |
+| Two stones of the level the item goes to | The operations row, the materials paragraph and the workbook, above |
+| 25 residue per level raised | The workbook's row is "Upgrade Item Level (1 Tier)", "25 CR per tier"; `sim/cataclysm_sim/residue.py` adds `UPGRADE_LEVEL_RESIDUE_PER_LEVEL` = 25 per level, and the Consumption Thresholds are derived from it; `tools/tests/test_craft_residue_costs_match_the_sheet.py` already ties the two |
+| One day per level, plus the time penalty | The workbook's "1 day per tier. (Max of 10)"; the design's global rule, "Craft time penalty in days: `CR / 100`, rounded down", read on "the item's own residue at the moment the craft begins, before the craft's own CR is added". One craft costs 1 + floor(residue / 100) days |
+| No failure; nothing destroyed | "A craft never destroys the item being crafted"; the forge is "deterministic" |
+| At the Smith, in the capital, between walks | "Capital Services": "Smith (Cataclysmic Forge) / Crafting, upgrading gear, Forge interactions"; "All capital services cost time." |
+| A worn piece's upgrade past the threshold asks first | "There is no path across the threshold that does not show the warning first." (ruling e) |
+
+### What the design does not settle: the rulings, each a judgement
+
+- **(b) Combining two +N stones into one +N+1 is in this slice, costs no day and adds no residue**, because it changes
+  no item and the operations table has no row for it. A judgement against "All capital services cost time". Path of
+  Exile's vendor recipe of three Armourer's Scraps for one Blacksmith's Whetstone is the same shape, at no cost beyond
+  its inputs.
+- **(d) Two stones for every item, two-handed weapons included.** Diablo IV doubles material costs for a two-handed
+  weapon, and this design's own rule that a two-handed weapon doubles its values so two loadouts are worth the same
+  would argue for four; the row states two with no exception. Listed for the owner as the alternative.
+- **(f) Carried and worn items; stones from the bag only.** The stash is not in this slice.
+- **(g) A "Forge" button on the empire map until the Smith exists**, under the empire upgrade tree's button, as the
+  boss dungeon's Walk box sits under its marker. It opens during a walk, to be read, and refuses every craft there:
+  "The forge can be used in the capital, not during a walk."
+- **(h) Two presses**, the respec's way: the first says what it costs ("Press again to upgrade to +3: two +3 stones,
+  residue 87 to 112, 1 day of the run."), the second does it, any other press cancels. A worn piece crossing the
+  threshold asks that question on the second press and a third does it; a confirmed crossing marks the character and
+  captures the build its double wears, as wearing a piece across it does.
+- **(i) Saving: `ForgeCrafted`, 16**, writing the character record and the run record, the run record even after a
+  same-frame write, for `EmpireTreeRespecced`'s reason. A combine raises it too.
+- **With no run, an upgrade is refused** -- it has no run to take its days from -- **and a combine is done**, passing
+  no day. A judgement of this session.
+
+### The genre, fetched 2026-11-19
+
+- **Diablo IV**, maxroll.gg/d4/resources/masterworking-guide (updated 2026-05-23): masterworking is "accessed via the
+  Blacksmith, found in any major Town"; "Quality" ranks go to 25, "+1% per rank" to base damage, armour, resistance and
+  all affix values; "Each upgrade can give up to 5 Quality ranks at once" (random); Obducite costs "floor(
+  3.75*CurrentQuality + 10 )", with gold and one other material; material costs "are doubled for 2H weapons". It states
+  no failure and no in-game time.
+- **Path of Exile**, poedb.tw/us/Blacksmiths_Whetstone: "Right click this item then left click a weapon to apply it";
+  quality +5, +2, +1 and +1 for Normal, Magic, Rare and Unique; "The maximum quality is 20%"; a vendor recipe trades three
+  Armourer's Scraps for one whetstone. It states no failure.
+- **Last Epoch**, maxroll.gg/last-epoch/resources/beginner-crafting-guide (header 2026-03-27): no item level upgrade at
+  all, only affix tiers, with shards and a random forging-potential cost ("a range from 1 to 18" in its example); at 0
+  forging potential "no more crafting can be done"; the Forge is opened "by pressing 'F'". It states no failure.
+- Earlier search results describe Diablo IV's older twelve-rank masterworking; the current page supersedes them and
+  they were not used. No page was refused.
+
+**What the research settles:** no failure (all three); a fixed count of a material per step (Path of Exile's one
+whetstone; Diablo IV's count rises with the rank). **What it does not:** the stone count, the residue and the days are
+the design's own; where the forge is opened differs between the three (a town NPC, anywhere, a key).
+
+### Registered before the run
+
+After the rebase onto a development holding trigger 15. The base for the whole suite is the coordinating session's
+latest measured window; this branch adds **thirteen** tests by name and removes none: the eight of `Cataclysm.Forge.`,
+the four of `Cataclysm.ForgeScreen.`, and `Cataclysm.PlayLoop.TheForgesLinesSayWhatWasRaisedAndWhatWasCombined`. No
+test calls `CataclysmTestSkip::ReportSkippedHalf`.
+
+- **The asset step**: `tools/generate_interface_assets.py`, through `tools/run_editor_python.py`, creates
+  `game/Content/Interface/WBP_Forge.uasset` and changes no other file; its log says "satisfies 7 BindWidget properties"
+  and "created /Game/Interface/WBP_Forge". That file is committed alone; that commit is the tested head.
+- **Each group alone**, all succeeding. The bases are window gold-2-w1's engine log
+  (`.claude/windows/gold2_suite_engine_e4cb8b58.log` in this session's worktree), and `git diff da5783f4c a96b2cead --
+  game/Source` adds the ten `Cataclysm.EmpireTreeScreen.` tests and no other in these groups:
+
+| Group | Base | Added by name | Registered |
+|---|---|---|---|
+| `Cataclysm.Forge.` | 0 | 8 | 8 |
+| `Cataclysm.ForgeScreen.` | 0 | 4 | 4 |
+| `Cataclysm.PlayLoop.` | 8 | 1 | 9 |
+| `Cataclysm.SaveTriggers.` | 6 | 0 | 6, re-registered after the rebase |
+| `Cataclysm.EmpireTreeScreen.` | 10 | 0 | 10 |
+| `Cataclysm.EmpireScreen.` | 14 | 0 | 14 |
+| `Cataclysm.BossOnTheMap.` | 5 | 0 | 5 |
+| `Cataclysm.WalkFromTheScreen.` | 5 | 0 | 5 |
+| `Cataclysm.CityScreen.` | 16 | 0 | 16 |
+| `Cataclysm.Equipment.` | 30 | 0 | 30 |
+| `Cataclysm.Inventory.` | 11 | 0 | 11 |
+
+- **Six C++ guard proofs**, each through `prove_cpp_guard`; each restored half passes every test its prefix selects.
+
+| Proof | The break | Prefix | The broken half |
+|---|---|---|---|
+| F1 | In `UCataclysmForge::UpgradeOf`, `Out.ResidueAfter = Item.Residue + ResiduePerLevel;` becomes `Out.ResidueAfter = Item.Residue;` | `Cataclysm.Forge.` | 8 performed, 5 succeeded, 3 failed: `AnUpgradeTakesTwoStonesOfTheNextLevel25ResidueAndADayPerHundred` (112 expected), `UpgradingACarriedPieceRaisesItInItsCellTakesTheStonesAndPassesTheDays` (75 expected) and `AWornUpgradeThatWouldCrossTheThresholdAsksAndMarksOnlyWhenConfirmed` (the Worn Residue stays below the threshold) |
+| F2 | In `UCataclysmForgeCraft::Upgrade`, `if (!Inventory->RemoveMaterial(Plan.Stone, Plan.StonesNeeded))` becomes `if (!Inventory->RemoveMaterial(Plan.Stone, 0) && Plan.StonesNeeded < 0)`: no stone is taken, and the refusal never comes | `Cataclysm.Forge.` | 8 performed, 7 succeeded, 1 failed: `UpgradingACarriedPieceRaisesItInItsCellTakesTheStonesAndPassesTheDays` (three left expected, five) |
+| F3 | In `UCataclysmForgeCraft::Upgrade`, `Run->AdvanceDays(Plan.Days);` becomes `Run->AdvanceDays(0);` | `Cataclysm.Forge`, WITHOUT THE DOT on purpose: it selects `Cataclysm.Forge.` (8) and `Cataclysm.ForgeScreen.` (4), and no other group begins so | 12 performed, 10 succeeded, 2 failed: `UpgradingACarriedPieceRaisesItInItsCellTakesTheStonesAndPassesTheDays` and `AnUpgradeTakesTwoPressesAndAnyOtherPressCancels` ("a day passed") |
+| F4 | In `UCataclysmForgeCraft::Upgrade`, `if (bCrosses && !bConfirmedPastThreshold)` becomes `if (bCrosses && bConfirmedPastThreshold && !bConfirmedPastThreshold)`: never asks | `Cataclysm.Forge.` | 8 performed, 7 succeeded, 1 failed: `AWornUpgradeThatWouldCrossTheThresholdAsksAndMarksOnlyWhenConfirmed` |
+| F5 | In `UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame`, `ForgeCrafted` is taken out of the list | `Cataclysm.Forge.` | 8 performed, 7 succeeded, 1 failed: `AnUpgradeInAFrameAlreadyWrittenStillWritesItsDays` ("holds the day the upgrade's day reached") |
+| F6 | In `UCataclysmForgeWidget::HandleActionClicked`, `if (!bUpgradeAsked)` becomes `if (!bUpgradeAsked && bUpgradeAsked)`: one press upgrades | `Cataclysm.ForgeScreen.` | 4 performed, 3 succeeded, 1 failed: `AnUpgradeTakesTwoPressesAndAnyOtherPressCancels` |
+
+### Python, measured
+
+At `71b9d0d59`, the code commit: "7662 passed, 9 skipped in 276.28s"; the JUnit file: tests 7671, failures 0, errors 0, skipped 9. ruff: "All checks passed!". The first full run,
+before the code was committed, failed one test, as it should have:
+`tools/tests/test_game_readme_is_true.py::test_only_walking_a_dungeon_and_the_console_move_the_empires_day` found
+`CataclysmForgeCraft.cpp` passing days that `game/README.md` did not name. The readme's bullet now names an upgrade at
+the forge, and the check's list allows the file.
+
+Four Python guard proofs, through `tools/prove_guard.py`'s `break_and_run` in a `git archive` copy, each PROVED:
+
+| Break | Named failure | Restored |
+|---|---|---|
+| `UCataclysmForge::ResiduePerLevel` 25 becomes 20 | `test_the_forge_matches_the_design.py::test_the_residue_per_level_is_the_simulations` (1 failed, 4 passed) | 5 passed |
+| The design's "Gear Leveling" row `+3` reads 7 | `...::test_the_gear_leveling_table_counts_two_stones_per_level` (1 failed, 4 passed) | 5 passed |
+| `make_forge` adds `MessageLine` in place of `MessageLabel` | `test_the_forge_screen_is_generated_with_its_bindings.py::test_every_bound_widget_of_the_forge_screen_is_added_by_its_generator` (1 failed, 2 passed) | 3 passed |
+| The upgrade's `Say` becomes `(void)` | `test_the_play_loop_is_logged_at_each_step.py::test_each_step_of_the_loop_says_its_line[ForgeUpgradeLine]` (1 failed, 20 passed) | 21 passed |
+
+---
+
 ## 2026-11-19 — The empire upgrade tree's walk, depth and clear nodes: a dungeon's walk is shortened where it is charged, the tree's floors are added when a dungeon is made, and a clear can remove another dungeon or pay more points (#2741, slice 4)
 
 **Affects:** `FCataclysmEmpireTreeBonuses` (`game/Source/CataclysmEmpire/Empire/CataclysmEmpireMap.h`: `WalkTimeFactor`,
