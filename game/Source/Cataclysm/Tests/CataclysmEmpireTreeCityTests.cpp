@@ -763,8 +763,8 @@ bool FCataclysmEmpireTreeCityCommonestTest::RunTest(const FString&)
 
 /**
  * The tree's days are on every timer at once and gone at once, and the clock resolves by them: Strategic Reserve and
- * Border Patrol add 15 to a timer on an Outpost and 10 to one on a Bulwark; a timer with one day left and the tree's
- * days on it does not resolve, and does on the next day once the tree is gone. Prints "TIMERS".
+ * Border Patrol add 15 to a timer on an Outpost and 10 to one on a Bulwark; a timer whose own days run out with the
+ * tree's days on it does not resolve, and does on the next day once the tree is gone. Prints "TIMERS".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeCityTimersTest,
 	"Cataclysm.EmpireTreeCity.TimerDaysComeAtOnceAndGoAtOnce",
@@ -782,14 +782,15 @@ bool FCataclysmEmpireTreeCityTimersTest::RunTest(const FString&)
 		return false;
 	}
 	Place(*Run, 9201, ECataclysmDungeonType::Basic, ECataclysmDungeonSubType::None, *Outpost, 30.0f);
-	Place(*Run, 9202, ECataclysmDungeonType::Basic, ECataclysmDungeonSubType::None, *Bulwark, 2.0f);
+	// ONE DAY OF ITS OWN, so after the day below only the tree's days hold it: a clock that ignored them would resolve it.
+	Place(*Run, 9202, ECataclysmDungeonType::Basic, ECataclysmDungeonSubType::None, *Bulwark, 1.0f);
 
 	FCataclysmPassiveAllocation Tree = Holding(StrategicReserve, 10);
 	Tree.Add(BorderPatrol, 5);
 	Run->SetTreeBonuses(BonusesOf(Tree));
 	const float OutpostWith = Run->Clock->DaysUntilResolveFor(9201);
 	const float BulwarkWith = Run->Clock->DaysUntilResolveFor(9202);
-	const FCataclysmDayReport First = Run->AdvanceDay(); // The Bulwark's timer: 1 left of its own, 11 with the tree.
+	const FCataclysmDayReport First = Run->AdvanceDay(); // The Bulwark's timer: none left of its own, 10 with the tree.
 	const bool bHeld = !First.Resolved.Contains(9202);
 
 	Run->SetTreeBonuses(FCataclysmEmpireTreeBonuses());
@@ -801,8 +802,8 @@ bool FCataclysmEmpireTreeCityTimersTest::RunTest(const FString&)
 								 "resolved %d"),
 							OutpostWith, OutpostWithout, BulwarkWith, bHeld, bResolved));
 	TestEqual(TEXT("an Outpost's timer: 30 and 15"), OutpostWith, 45.0f, 0.001f);
-	TestEqual(TEXT("a Bulwark's: 2 and 10"), BulwarkWith, 12.0f, 0.001f);
-	TestTrue(TEXT("a timer with the tree's days left does not resolve"), bHeld);
+	TestEqual(TEXT("a Bulwark's: 1 and 10"), BulwarkWith, 11.0f, 0.001f);
+	TestTrue(TEXT("a timer whose own days ran out, with the tree's days left, does not resolve"), bHeld);
 	TestEqual(TEXT("without the tree the Outpost's timer has its own 29"), OutpostWithout, 29.0f, 0.001f);
 	TestTrue(TEXT("and the Bulwark's resolves the next day"), bResolved);
 	return true;
