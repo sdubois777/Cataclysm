@@ -136,6 +136,16 @@ namespace CataclysmSaveFixtures
 	}
 
 	/**
+	 * What `Migrate_7_to_8` writes into a run file written before version 8, and so what the run record writes back
+	 * for one: a mask of 0 on its dungeons' walk seeds, the mask that leaves every dungeon the seed it had. Issue #2749
+	 * (B10), 2026-11-18. ONE COPY, beside the version 7 one and for the same callers.
+	 */
+	inline void AddTheRunsVersion8Defaults(FJsonObject& Expected)
+	{
+		Expected.SetNumberField(TEXT("WalkSeedMask"), 0);
+	}
+
+	/**
 	 * What `Migrate_3_to_4` writes into an account file written before version 4, and so what the account record
 	 * writes back for one: an empty empire upgrade tree, `"EmpireTree": { "Nodes": [] }`. Issue #2741 slice 1b,
 	 * 2026-11-18. ONE COPY, for every test that runs an older account file through the whole chain.

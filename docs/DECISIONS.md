@@ -2,6 +2,274 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-18 — Each run masks its dungeons' walk seeds, so two runs' dungeons differ; the run record goes to version 8, and a run saved at version 7 keeps the seeds it had (#2749, B10)
+
+**Affects:** `FCataclysmDungeon::WalkSeed` (`game/Source/CataclysmEmpire/Empire/CataclysmSurge.h`, `.cpp`), now taking
+the run's mask; `UCataclysmEmpireRun::WalkSeedMask` and `WalkSeedSalt`, new, drawn in `Begin`, and the two callers
+`GiveModifiers` and `ResolveDungeon` (`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h`, `.cpp`); `ACataclysmDungeonGameMode::
+BindEmpireDungeon` (`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`); `UCataclysmCityScreenLayout::
+DungeonLinesFor` (`Interface/CataclysmCityScreenLayout.cpp`); `UCataclysmRunSave` at version 8 with `WalkSeedMask`,
+and `CataclysmRunSaveMigration::Migrate_7_to_8`, new (`Save/CataclysmSaveRecords.h`, `.cpp`); `FCataclysmSaveGather`
+and `FCataclysmSaveApply` (`Save/CataclysmSaveGather.cpp`, `CataclysmSaveApply.cpp`); `game/Tests/SaveFixtures/
+Run_v8.json`, new, and that folder's `README.md`; `docs/Cataclysm_GDD_v2.md`. Tests: `CataclysmWalkSeedTests.cpp`
+(new), `CataclysmSaveFixtures.h`, `CataclysmSaveRunRestoreTests.cpp`, `CataclysmFloorBriefTests.cpp`,
+`CataclysmConsumptionDoubleTests.cpp`, `CataclysmDeathCostTests.cpp`, `CataclysmEarnedBossSaveTests.cpp`,
+`CataclysmGoldTests.cpp`, `CataclysmSaveLoadTests.cpp`, `CataclysmSaveRecordTests.cpp`,
+`CataclysmWinningTheRunTests.cpp`, `game/Source/CataclysmEmpire/Tests/CataclysmEmpireRunTests.cpp`,
+`CataclysmSurgeTests.cpp`, and `tools/tests/test_a_runs_walk_seed_mask.py` (new). Issue
+[#2749](https://github.com/sdubois777/Cataclysm/issues/2749), B10. **Applied, compiled, run and proved in window
+walk-seed-w1 at `b150abd9` (The window, below).**
+
+### SAID FIRST
+
+- **COMPILED, RUN AND PROVED, IN ONE WINDOW (walk-seed-w1), AT `b150abd9`** on development `38dd97d85`. The fourteen
+  groups alone each performed their registered count, all succeeding; the whole Unreal suite performed the registered
+  4857, all succeeding, with 47 skipped halves and no test save left behind; Python (7593 passed, 9 skipped) and ruff
+  passed; the five C++ guard proofs all proved, each failing the registered assertions -- W2 its less certain second
+  one as well -- and each restored half passed. "The window", below. The branch compiled before and after its rebase,
+  each time as one unity build and with each changed file compiled alone ("Compiled (phase 2)"); the window's own build
+  found the tree already up to date.
+- **ONE EXCEPTION TO "EVERY DUNGEON OF A RUN GETS ITS OWN SEED", STATED AND NOT CHANGED, AS RULED.** XOR with one mask
+  never gives two identifiers the same number, but the seed is never below 1: when the mask equals some dungeon's
+  identifier plus one, that dungeon's XOR is 0 and it walks seed 1, the seed of the dungeon whose XOR is 1. That needs a
+  mask smaller than the run's dungeon count. A mask is drawn from 2^31 values, so it happens to about one run in ten
+  million for a run of 200 dungeons.
+- **A RUN THAT DRAWS A MASK OF 0 WALKS THE OLD SEEDS**, about one run in 2^31. Accepted as stated.
+- **WHAT A PLAYER SEES CHANGE.** A new character's dungeon 0 no longer walks the floor the dungeon level builds for
+  free play on load, and no two new runs share their dungeons' floors unless they draw the same mask. A run saved before
+  this change walks exactly what it walked: its floors, its Ascendants' Edicts and its Corrupted Stalker roll.
+
+### The rulings, quoted
+
+**The coordinating session, 2026-11-18**, on this session's B8 question (c):
+
+> (c) IS A FAULT AND IS RULED NOW, not filed: two runs' dungeons must differ, because the design's dungeons are
+> procedurally generated and a new character meeting the same dungeon 0 every run is not that. Do it as its own slice
+> in #2749 right after slice 1 (I will add it to the issue as B10): a per-run seed saved on the run record, mixed into
+> WalkSeed. Run record version 8 is free (gold took 7; nobody else is changing the run record). For a run saved before
+> the change, the migration should write the value that reproduces today's WalkSeed exactly, so a walk saved
+> mid-dungeon loads the same floors it was on; say how in that slice's plan. Edicts and the Corrupted Stalker roll
+> changing with it is accepted.
+
+**The coordinating session, 2026-11-18**, on the plan: approved. "Q1: XOR with a per-run mask, as you wrote it. One
+thing to state in the entry rather than fix: max(1, ...) means that when the mask equals some dungeon's id+1, that
+dungeon gets seed 1, the same as the dungeon whose (id+1) XOR mask is 1. So "every dungeon of a run gets a different
+seed" has one exception, reachable only when the mask is smaller than the run's dungeon count. Say so plainly, with how
+rare it is." "Q2: WalkSeedMask and the salt 0x77616C6B ("walk") are fine." On phase 1: "THE DESIGN SENTENCE IS
+ACCEPTED as written".
+
+### What changed
+
+- **A dungeon's walk seed is `max(1, (DungeonId + 1) XOR RunMask)`**, where `RunMask` is its run's `WalkSeedMask`. A
+  mask of 0 is exactly the seed before, `max(1, DungeonId + 1)`. The mask is a parameter of `WalkSeed`, not a field the
+  dungeon carries, so a caller that leaves the run out does not compile. The four callers pass the run's mask: the
+  floors (`BindEmpireDungeon`), the Corrupted Stalker roll as a dungeon is made (`GiveModifiers`), the Edict an
+  Ascendant's hit leaves (`ResolveDungeon`), and the city screen's count of an Ascendant's Edicts, which depends on
+  floors and not on the seed.
+- **Each run draws its mask in `Begin`**: `MixedSeed(InSeed, WalkSeedSalt) & 0x7FFFFFFF`, beside the Corrupted
+  Stalker's seed and the same way, before any surge makes a dungeon. A character's run is seeded from the clock, so
+  each new character's run draws its own.
+- **The run record goes to version 8** and carries `WalkSeedMask`, gathered and applied beside the Corrupted Stalker's
+  seed. **`Migrate_7_to_8` writes a mask of 0**, the mask that leaves every dungeon of a version 7 run the seed it had,
+  so a walk saved mid-dungeon loads the floor it was on. A load applies the run record (`FCataclysmSaveApply::RunInto`)
+  before it resumes the dungeon (`ResumeEmpireDungeon`), so the resumed walk is bound with the saved mask.
+- **`Run_v8.json`** is `Run_v7.json` at version 8 with `"WalkSeedMask": 12345`, not 0, because 0 is the default and
+  the migration's value. The six tests that walk an older run file through the chain add the mask of 0 through
+  `CataclysmSaveFixtures::AddTheRunsVersion8Defaults`; the tests that read `Run_v7.json` as the committed run file read
+  `Run_v8.json` (27 code lines in six files, four of them "it says it is version 7", now 8).
+- **The design**, `docs/Cataclysm_GDD_v2.md`, after "**A floor is generated from the dungeon's seed mixed with the floor
+  number.**": "**A dungeon's seed is drawn for its run:** it is the dungeon's number within the run, mixed with a number
+  the run draws from its own seed when it begins, so a new run does not walk the floors of the run before it, and one
+  run's dungeon is the same each time it is entered or loaded."
+- **The free-play floor** a dungeon level builds on load keeps the level's own seed, 1. Slice 1's line saying it is
+  thrown away stays.
+
+### Judgements of the writing session
+
+- **XOR with a mask**, rather than "0 means the old formula, otherwise a mixed seed": one formula, no branch, and 0 is
+  exactly the old seed. Ruled Q1.
+- **The salt "walk", 0x77616C6B**, apart from the roster's salts 1 to 3 and the modifier rules' four-letter salts.
+- **The mask never below 0**, so no seed is below 0.
+- **`Migrate_7_to_8` writes 0 whatever the key held**: a run written at 7 never wrote it.
+- **12345 in `Run_v8.json`.**
+
+### Tests
+
+| Test | What it checks |
+| :-- | :-- |
+| `Cataclysm.WalkSeed.ADungeonsWalkSeedIsItsIdentifierPlusOneMaskedByItsRun` | mask 0 gives dungeons 0 and 4 seeds 1 and 5; a mask gives 5 XOR it (CONTROL: not the unmasked seed); a mask equal to the identifier plus one gives 1, never 0; no identifier gives 1; 200 dungeons under one mask, 200 seeds |
+| `Cataclysm.WalkSeed.TwoRunsBegunOnDifferentSeedsDrawDifferentMasks` | runs begun on 11 and 12 draw masks above 0 that differ, and their dungeon 0 walk different seeds. CONTROL: 11 again draws the same mask |
+| `Cataclysm.WalkSeed.ARunFileFromVersion7MigratesToMaskZeroAndKeepsItsWalkSeeds` | `Run_v7.json` through the chain: a mask of 0 written, read, at the current version, every other field kept, and its dungeon keeps seed DungeonId + 1. CONTROL: `Run_v8.json`'s mask moves it |
+| `Cataclysm.WalkSeed.EnteringADungeonCarvesItsFloorsFromTheRunsMaskedSeed` | entering a begun run's first dungeon gives the game mode its masked seed. CONTROL: that is not its identifier plus one |
+| `Cataclysm.WalkSeed.TheCorruptedStalkerIsRolledOnTheRunsMaskedSeed` | 200 dungeons given modifiers by a begun run: each carries the Stalker exactly when the roll on its masked seed says so. CONTROL: the roll on the unmasked seeds names another set |
+| `Cataclysm.SaveApply.ARestoredRunAdvancesExactlyAsTheRunItWasSavedFrom`, existing | its internal values now include the mask |
+
+### Python, phase 1
+
+| Break | Command | Printed | Named failure |
+| :-- | :-- | :-- | :-- |
+| `Migrate_7_to_8` writes a mask of 1 (`TEXT("WalkSeedMask"), 0)` to `1)`) | `python -m pytest tools/tests/test_a_runs_walk_seed_mask.py` | "PROVED: 1 failed, 4 passed in 0.10s \| restored: 5 passed in 0.06s"; `proved` True, `crashed` False | `test_the_run_record_is_at_version_8_and_migrate_7_to_8_writes_a_mask_of_0` |
+
+The full suite on phase 1 at `492e9fd16`: "7590 passed, 9 skipped in 212.44s"; JUnit `errors="0" failures="0"
+skipped="9" tests="7599"`; ruff "All checks passed!".
+
+### Compiled (phase 2)
+
+**Before the rebase**, at `492e9fd16` on development `6e655ffb2`: three builds through `tools/unreal_build.py build` by `.claude/windows/compile_b10.py`, no lock taken (the coordinating
+session's go), each started only once no Unreal workflow run had been seen in progress or queued twice, two minutes
+apart; the empire tree session compiled its slice 1c at the same time, under its own lock. Output in
+`b10_compile.out` beside the script.
+
+| Build | When | "Build:" line |
+| :-- | :-- | :-- |
+| 1. The branch at `492e9fd16`, every file in its unity file (`git status` clean) | 19:46:43 to 19:51:48, 305 s | "Build: Succeeded - 55 actions, 50 files compiled" |
+| 2. Each changed `.cpp` alone (`git read-tree origin/development`, `Makefile.bin` moved aside, built, `git reset -q` after) | 19:53:52 to 19:56:36, 165 s | "Build: Succeeded - 34 actions, 29 files compiled". The "[Adaptive Build] Excluded from ... unity file" lines name all 19 `.cpp` files this branch changes: `CataclysmEmpireRun.cpp`, `CataclysmSurge.cpp`, `CataclysmEmpireRunTests.cpp`, `CataclysmSurgeTests.cpp` in the empire module, and `CataclysmDungeonGameMode.cpp`, `CataclysmCityScreenLayout.cpp`, `CataclysmSaveApply.cpp`, `CataclysmSaveGather.cpp`, `CataclysmSaveRecords.cpp`, `CataclysmConsumptionDoubleTests.cpp`, `CataclysmDeathCostTests.cpp`, `CataclysmEarnedBossSaveTests.cpp`, `CataclysmFloorBriefTests.cpp`, `CataclysmGoldTests.cpp`, `CataclysmSaveLoadTests.cpp`, `CataclysmSaveRecordTests.cpp`, `CataclysmSaveRunRestoreTests.cpp`, `CataclysmWalkSeedTests.cpp`, `CataclysmWinningTheRunTests.cpp` in the game module. Development had not moved, so `git status` listed only this branch's 27 files |
+| 3. The unity files again (`Makefile.bin` moved aside again; both moved copies deleted after) | 19:58:39 to 20:00:32, 113 s | "Build: Succeeded - 19 actions, 14 files compiled" |
+
+Build 1's log held one compiler warning line, the engine's own `MicrosoftPlatformMath.h(183,3): warning C4996: ...
+CountBits for 64-bit values has been deprecated`; builds 2 and 3 held none.
+
+### Rebased onto the empire tree's slice 1c, and the version sweep
+
+**Rebased** onto `38dd97d85` (#2754) as `feat/walk-seed-per-run-2749-2`. Three files conflicted and each kept both
+sides: `CataclysmGoldTests.cpp` (three blocks) and `CataclysmSaveRecordTests.cpp` (one), where development moved the
+character file to `Character_v9.json` and this branch moved the run file to `Run_v8.json`; and
+`game/Tests/SaveFixtures/README.md`, both version notes kept and the count of migrations reading "the character record
+has had eight since (version 9 ...), the run record seven (version 8 ...)". `python tools/check_resolved_cpp.py` on the
+two hand-resolved files: "2 files read, 0 with complaints"; with `--changed`, over all 23 changed C++ files: "23 files
+read, 0 with complaints". `git lfs checkout` left 0 pointer files. Only the migration test reads `Run_v7.json`, as the
+migration's input.
+
+**The sweep the coordinating session asked for**, because a record version written out as a number stopped the gold
+and tree windows on 2026-11-18: every test line stating a version as a number, searched for "is version", "says it is
+version", a `SchemaVersion` compared with or set to a literal, and a literal version beside a `Run_`, `Character_`,
+`Account_` or `Example_` file, in `game/Source/Cataclysm/Tests`, `game/Source/CataclysmEmpire/Tests` and `tools/tests`.
+**It found no mismatch.** Each line and the file it reads:
+
+| Line | States | Reads |
+| :-- | :-- | :-- |
+| `CataclysmDeathCostTests.cpp:875`, `CataclysmEarnedBossSaveTests.cpp:301`, `CataclysmSaveLoadTests.cpp:10997`, `CataclysmWinningTheRunTests.cpp:1322` | "it says it is version 8" | `Run_v8.json` |
+| `CataclysmCataclysmDrawTests.cpp:294`, `CataclysmSaveRecordTests.cpp:645` | version 9 | `Character_v9.json` |
+| `CataclysmSaveMigrationTests.cpp:289` | "the record says it is version 4" | `Example_v3.json`, the example record's chain, not a game record |
+| `CataclysmGoldTests.cpp:924` | sets `SchemaVersion` 2 | the committed account file put back to version 2 on purpose, for its migration |
+| `CataclysmSaveStorageTests.cpp:240` | "the backup still says it is version 1" | a backup the storage test writes |
+| `tools/tests/test_a_runs_walk_seed_mask.py` | `Run_v7.json` at 7, `Run_v8.json` at 8, the run record at 8 | those files and the record |
+| `tools/tests/test_a_trip_between_levels_is_a_save_and_a_load.py:118`, `test_clearing_the_boss_dungeon_wins_the_run.py:176`, `:201` | the run record at 6 or later; `Run_v4.json` at 4 and `Run_v5.json` at 5; at 5 or later | the record (8) and those two files |
+| `tools/tests/test_empire_tree_on_the_account_record.py` | `Account_v4.json`, `Character_v9.json` | the account record (4) and the character record (9) |
+
+### Compiled after the rebase
+
+**After the rebase**, at `559cc59bd` on development `38dd97d85`, the same three builds by the same script, asked for by
+the coordinating session because the save code conflicted. Its first check found the continuous integration runner
+compiling development's new head, and build 1 began once it had been seen idle twice. Output in `b10_compile.out`; the
+first run's is kept as `b10_compile_before_rebase.out`.
+
+| Build | When | "Build:" line |
+| :-- | :-- | :-- |
+| 1. The branch at `559cc59bd` (`git status` clean) | 20:59:34 to 21:04:38, 304 s | "Build: Succeeded - 56 actions, 51 files compiled" |
+| 2. Each changed `.cpp` alone | 21:06:41 to 21:09:24, 162 s | "Build: Succeeded - 34 actions, 29 files compiled". The "[Adaptive Build]" lines name the same 19 files: 4 in the empire module and 15 in the game module. Development had not moved: `git status` listed only this branch's 27 files |
+| 3. The unity files again | 21:11:27 to 21:13:18, 112 s | "Build: Succeeded - 19 actions, 14 files compiled" |
+
+Build 1's log again held the engine's own `CountBits` deprecation line and nothing else; builds 2 and 3 held none.
+
+### Python, after the rebase
+
+At `559cc59bd`: "7593 passed, 9 skipped in 219.49s"; JUnit `errors="0" failures="0" skipped="9" tests="7602"`; ruff
+"All checks passed!".
+
+### Registered before the run
+
+The base is window tree-1c-w2's whole-suite engine log at `2e2bb7e44`
+(`laughing-curran-69e4bb/.claude/windows/t2741c_suite_engine_2e2bb7e4.log`, 4852 "Test Completed" lines; 4852
+performed, all succeeding, 47 skipped halves, 0 test saves left behind, as the coordinating session gave them), whose
+`game/` tree is this branch's base `38dd97d85` (`git diff --stat 2e2bb7e44 38dd97d85 -- game/` prints nothing). Group
+counts are its "Test Completed" lines whose test path begins with the prefix, ignoring case. Every prefix ends in a dot,
+and none is a case-insensitive string prefix of another of that log's 319 groups (`Cataclysm.EarnedBoss.` and
+`Cataclysm.EarnedBossSave.` are two groups, and neither prefix with its dot selects the other).
+
+| Figure | Registered |
+| :-- | :-- |
+| Whole Unreal suite | 4852 + 5 = **4857**, 47 skipped halves, 0 test saves left behind |
+| `Cataclysm.WalkSeed.` alone | **5**, a new group |
+| `Cataclysm.SaveApply.` alone | **24**, none added: the restore test compares the mask |
+| `Cataclysm.SaveRecords.` alone | **17**, none added: the committed run file is `Run_v8.json` |
+| `Cataclysm.SaveLoad.` alone | **79**, none added: the chain test adds the version 8 default |
+| `Cataclysm.Travel.` alone | **9**, none added: a trip is a save and a load of the run |
+| `Cataclysm.Gold.` alone | **13**, none added: the chain test and the committed files |
+| `Cataclysm.DeathCost.` alone | **9**, none added: the chain test and the committed file |
+| `Cataclysm.EarnedBossSave.` alone | **3**, none added: the same |
+| `Cataclysm.WinningTheRun.` alone | **11**, none added: the same |
+| `Cataclysm.ConsumptionDouble.` alone | **15**, none added: the chain test |
+| `Cataclysm.FloorBrief.` alone | **31**, none added: an Ascendant's seed with no mask |
+| `Cataclysm.Surge.` alone | **54**, none added: the walk seed with no mask |
+| `Cataclysm.EmpireRun.` alone | **71**, none added: an Ascendant's left Edict on the run's mask |
+| `Cataclysm.CityScreen.` alone | **16**, none added: an Ascendant's Edict count on the run's mask |
+
+Each proof's prefix is one whole test's name, which no other test's name begins with, so each is predicted at
+1 performed, 1 failed with the break in, and 1 performed, 1 succeeded with it out. The assertions are named by the
+words each test gives them.
+
+| Proof | Break | Test | Predicted with the break in |
+| :-- | :-- | :-- | :-- |
+| W1 | `(DungeonId + 1) ^ RunMask` to `(DungeonId + 1) ^ (RunMask & 0)` in `FCataclysmDungeon::WalkSeed` | `ADungeonsWalkSeedIsItsIdentifierPlusOneMaskedByItsRun` | 3 assertions: "dungeon 4 with the mask 0x5A5A walks on 5 XOR 0x5A5A", "CONTROL: and that is not its seed with no mask", "a mask equal to its identifier plus one gives it 1, never 0" |
+| W2 | `Record.WalkSeedMask = Run.WalkSeedMask;` to `Record.WalkSeedMask = 0;` in the save's gather | `Cataclysm.SaveApply.ARestoredRunAdvancesExactlyAsTheRunItWasSavedFrom` | 1 assertion: "the restored run agrees with the live one on every internal value on every day". **Less certain**: also "and on everything visible", if a dungeon made during the compared days carries the Corrupted Stalker in one run and not the other |
+| W3 | `TEXT("WalkSeedMask"), 0)` to `1)` in `Migrate_7_to_8` | `ARunFileFromVersion7MigratesToMaskZeroAndKeepsItsWalkSeeds` | 4 assertions: "the step writes a mask of 0", "the record reads a mask of 0", "and every other field is kept", "every dungeon keeps its version 7 seed, its identifier plus one" |
+| W4 | `Dungeon.WalkSeed(Run.WalkSeedMask)` to `Dungeon.WalkSeed(0)` in `BindEmpireDungeon` | `EnteringADungeonCarvesItsFloorsFromTheRunsMaskedSeed` | 1 assertion: "the floors are carved from the run's masked seed" |
+| W5 | `& 0x7FFFFFFF` to `& 0` on the mask `Begin` draws | `TwoRunsBegunOnDifferentSeedsDrawDifferentMasks` | 3 assertions: "a begun run draws a mask above 0", "two seeds, two masks", "so the two runs' dungeon 0 walk different seeds" |
+
+All five anchors match once, read as `prove_cpp_guard` reads a file (LF).
+
+### The window
+
+Window **walk-seed-w1**, `.claude/windows/run_b10.py` in this worktree, started by `gate_b10.py` once `prechecks_b10.py`
+printed "PRECHECKS: ALL PASS", at `feat/walk-seed-per-run-2749-2` `b150abd9` with a clean tree, on development
+`38dd97d85`. Every log below is kept beside the script.
+
+- **The pre-checks, 21:19:03**: development's latest CI and Unreal runs at `38dd97d85` completed with success; no run in
+  progress or queued; "The Unreal editor is free."; no build or editor process; no pull request open; no simulation
+  process; 12,050 MB of physical memory free (10,240 needed). **The lock**: "walk-seed-w1 holds the Unreal editor." at
+  21:19:07, and "walk-seed-w1 released the Unreal editor." at 21:50:57, after the last proof.
+- **The build**: "Build: Succeeded - target already up to date, 0 actions, nothing compiled". Build 3 of "Compiled after
+  the rebase" had compiled this tree, and the registration commit after it changed only this log.
+- **The groups alone**, each "Tests: N tests performed, N succeeded, 0 failed" at its registered N:
+  `Cataclysm.WalkSeed.` 5, `Cataclysm.SaveApply.` 24, `Cataclysm.SaveRecords.` 17, `Cataclysm.SaveLoad.` 79,
+  `Cataclysm.Travel.` 9, `Cataclysm.Gold.` 13, `Cataclysm.DeathCost.` 9, `Cataclysm.EarnedBossSave.` 3,
+  `Cataclysm.WinningTheRun.` 11, `Cataclysm.ConsumptionDouble.` 15, `Cataclysm.FloorBrief.` 31, `Cataclysm.Surge.` 54,
+  `Cataclysm.EmpireRun.` 71, `Cataclysm.CityScreen.` 16.
+- **The whole Unreal suite**, ending 21:41:33: "Tests: 4857 tests performed, 4857 succeeded, 0 failed. 47 skipped part
+  of what they check"; "Test saves: 840 written and deleted, 0 left behind"; "Declared: 4857 tests in the tree at
+  b150abd9c; 4857 performed, gap 0; every declared test was reported by the run". Registered 4857, 47 and 0:
+  **match**. Engine log kept as `b10_suite_engine_b150abd9.log`. Its 56 `LogModelContextProtocol` lines are the test
+  editor's own server starting up, none an error: no outside client connected (#2745).
+- **What the tests printed**, from that log:
+  - "WALK SEED MASKS: seed 11 draws 583488695, seed 12 draws 1090440808, seed 11 again 583488695; dungeon 0 walks on
+    583488694 and 1090440809"
+  - "WALK SEED MIGRATED: ... mask written yes 0; the record at version 8 with mask 0; 1 of 1 dungeons keep their seed;
+    Run_v8.json's mask 12345 moves 1; the rest kept"
+  - "WALK SEED ENTERED: dungeon 0, mask 912732378, the game mode's seed 912732379, its masked seed 912732379"
+  - "WALK SEED STALKER: mask 1343937481; 14 of 200 carry it; the masked roll names 14, the unmasked 12"
+  - "RUN RESTORE: after 60 days played, over 200 days compared the restored run first differs on day -1 in its internal
+    values and on day -1 in what is visible; the twin run on day -1 (-1 is never)", the mask now among those values.
+- **Python**, ending 21:44:48: "7593 passed, 9 skipped in 191.91s"; JUnit `errors="0" failures="0" skipped="9"
+  tests="7602"`. **Ruff**: "All checks passed!".
+- **The proofs**, ending 21:50:57, each through `prove_cpp_guard`, its anchor matching once, the source hash the same
+  before and after, both halves' engine logs kept (`b10_<P>_run1.log`, `b10_<P>_run2.log`). Every one printed "PROVED:
+  with the break in: 1 tests performed, 0 succeeded, 1 failed: <test> | restored: 1 tests performed, 1 succeeded, 0
+  failed", `crashed` False in both halves, and failed the registered assertions. A `TestNotEqual` that fails is logged
+  as "<what>: The two values are equal." and not with "Expected":
+
+| Proof | Named failure | The broken half's failed assertions, as the engine logged them |
+| :-- | :-- | :-- |
+| W1 | `ADungeonsWalkSeedIsItsIdentifierPlusOneMaskedByItsRun` | "Expected 'dungeon 4 with the mask 0x5A5A walks on 5 XOR 0x5A5A' to be 23135, but it was 5."; "CONTROL: and that is not its seed with no mask: The two values are equal."; "Expected 'a mask equal to its identifier plus one gives it 1, never 0' to be 1, but it was 5." |
+| W2 | `ARestoredRunAdvancesExactlyAsTheRunItWasSavedFrom` | "Expected 'the restored run agrees with the live one on every internal value on every day' to be -1, but it was 0."; **and the less certain one, which happened**: "Expected 'and on everything visible' to be -1, but it was 31." -- a dungeon made on day 31 rolled the Corrupted Stalker differently |
+| W3 | `ARunFileFromVersion7MigratesToMaskZeroAndKeepsItsWalkSeeds` | "Expected 'the step writes a mask of 0' to be true."; "Expected 'the record reads a mask of 0' to be 0, but it was 1."; "Expected 'and every other field is kept' to be true."; "Expected 'every dungeon keeps its version 7 seed, its identifier plus one' to be 1, but it was 0." |
+| W4 | `EnteringADungeonCarvesItsFloorsFromTheRunsMaskedSeed` | "Expected 'the floors are carved from the run's masked seed' to be 912732379, but it was 1." |
+| W5 | `TwoRunsBegunOnDifferentSeedsDrawDifferentMasks` | "Expected 'a begun run draws a mask above 0' to be true."; "two seeds, two masks: The two values are equal."; "so the two runs' dungeon 0 walk different seeds: The two values are equal." |
+
+Each restored half's engine log holds no `LogAutomationController: Error:` line.
+
+---
+
 ## 2026-11-18 — A Solo Self-Found character banks a defeat's empire upgrade points into its own bank and spends them in a tree of its own, both saved on its character record at version 9 (#2741, slice 1c)
 
 **Affects:** `UCataclysmCharacterSave` (`PrivateEmpireUpgradePoints` from `int32` to `double`; `PrivateEmpireTree`, new;

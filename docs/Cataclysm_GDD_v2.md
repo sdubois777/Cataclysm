@@ -4125,7 +4125,7 @@ Which family each Cataclysm uses still has to be chosen. That there is a choice 
 
   
 
-**A floor is generated from the dungeon's seed mixed with the floor number.** So floor 7 can be built without floors 1 to 6 ever existing, a dungeon is the same when the player leaves and returns, a bug in a floor is reproducible from its seed, and only the floor the player is standing on has to exist. A dungeon of 150 floors costs nothing to hold.
+**A floor is generated from the dungeon's seed mixed with the floor number.** So floor 7 can be built without floors 1 to 6 ever existing, a dungeon is the same when the player leaves and returns, a bug in a floor is reproducible from its seed, and only the floor the player is standing on has to exist. A dungeon of 150 floors costs nothing to hold. **A dungeon's seed is drawn for its run:** it is the dungeon's number within the run, mixed with a number the run draws from its own seed when it begins, so a new run does not walk the floors of the run before it, and one run's dungeon is the same each time it is entered or loaded.
 
   
 

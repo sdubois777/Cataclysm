@@ -1717,8 +1717,12 @@ public:
 	 *
 	 * 7 SINCE 2026-11-18. A gold pile can lie on the floor (issue #2742), so a ground item carries `Gold`, and
 	 * `Migrate_6_to_7` writes a `Gold` of 0 on every ground item of a run written at 6: no kill dropped gold before.
+	 *
+	 * 8 SINCE 2026-11-18. The run carries its mask on every dungeon's walk seed, `WalkSeedMask` (issue #2749, B10), so
+	 * two runs' dungeons differ, and `Migrate_7_to_8` writes a mask of 0 into a run written at 7: the mask that gives
+	 * every dungeon the seed it had then, so that run's floors, Edicts and Corrupted Stalker roll stay as they were.
 	 */
-	static constexpr int32 SchemaVersionNow = 7;
+	static constexpr int32 SchemaVersionNow = 8;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
@@ -2161,6 +2165,13 @@ public:
 	/** `UCataclysmEmpireRun::CorruptedStalkerSeed`, drawn from the seed the run began with like the two streams. */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	int32 CorruptedStalkerSeed = 0;
+
+	/**
+	 * `UCataclysmEmpireRun::WalkSeedMask`, drawn from the seed the run began with like `CorruptedStalkerSeed`. Issue
+	 * #2749 (B10). VERSION 8: a record written before the field is at version 7, and `Migrate_7_to_8` writes 0 into it.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 WalkSeedMask = 0;
 };
 
 /**

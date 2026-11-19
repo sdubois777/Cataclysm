@@ -195,6 +195,11 @@ void UCataclysmEmpireRun::BeginForCharacter(int32 InSeed, int32 InCataclysmOrder
 	CorruptedStalkerSeed = UCataclysmRoster::MixedSeed(
 		InSeed, UCataclysmDungeonModifierRules::CorruptedStalkerSalt);
 
+	// AND THE MASK ON EVERY DUNGEON'S WALK SEED, so this run's dungeons carve floors no other run's do. Issue #2749
+	// (B10). NEVER BELOW 0, so a dungeon's seed is never below 0 either. Set here, before the opening surge makes a
+	// dungeon, because `GiveModifiers` rolls the Corrupted Stalker on the walk seed as each dungeon is made.
+	WalkSeedMask = UCataclysmRoster::MixedSeed(InSeed, WalkSeedSalt) & 0x7FFFFFFF;
+
 	// THE POOL IS NOT CLEARED BY A FRESH RUN. It is the modifier TABLE and not
 	// anything this campaign did, and the caller that filled it in did so once.
 	// Clearing it here would make `Begin` a second time silently stop giving
@@ -258,7 +263,8 @@ void UCataclysmEmpireRun::GiveModifiers(FCataclysmDungeon& Dungeon)
 	const FCataclysmDungeonModifier* Stalker = ModifierPool.FindByPredicate(
 		[&StalkerKey](const FCataclysmDungeonModifier& Row) { return Row.RowKey == StalkerKey; });
 	if (Stalker
-		&& UCataclysmDungeonModifierRules::CarriesTheCorruptedStalker(CorruptedStalkerSeed, Dungeon.WalkSeed()))
+		&& UCataclysmDungeonModifierRules::CarriesTheCorruptedStalker(CorruptedStalkerSeed,
+																	   Dungeon.WalkSeed(WalkSeedMask)))
 	{
 		Dungeon.Modifiers.Add(Stalker->RowKey);
 		Dungeon.ModifierScore += Stalker->Danger;
@@ -830,7 +836,7 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 				// Quest hit. Drawn here, while `Dungeon` still points at it.
 				const FName LeftEdict = Dungeon->IsAscendant()
 					? UCataclysmDungeonModifierRules::EdictLeftBy(
-						  Dungeon->WalkSeed(), Dungeon->Modifiers, OutReport.Day)
+						  Dungeon->WalkSeed(WalkSeedMask), Dungeon->Modifiers, OutReport.Day)
 					: FName(NAME_None);
 
 				++QuestHits;

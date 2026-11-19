@@ -604,6 +604,9 @@ bool FCataclysmSaveApply::RunInto(const UCataclysmRunSave& Record, UCataclysmEmp
 	Run.CataclysmStream.Initialize(Record.CataclysmStreamSeed);
 	Run.ModifierStream.Initialize(Record.ModifierStreamSeed);
 	Run.CorruptedStalkerSeed = Record.CorruptedStalkerSeed;
+	// AND THE MASK ON ITS DUNGEONS' WALK SEEDS, so a dungeon walked after a load carves the floors it did before it.
+	// Issue #2749 (B10).
+	Run.WalkSeedMask = Record.WalkSeedMask;
 
 	// WHAT THE PLAYER HAS ACHIEVED (#1374) AND WHAT THE RUN IS (#1471). The
 	// objectives by Cataclysm REPLACE the keys `Begin` drew from the seed of 0;

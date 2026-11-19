@@ -372,6 +372,8 @@ bool FCataclysmSaveGather::SurgeScheduleFrom(const UCataclysmEmpireRun& Run,
 	Record.CataclysmStreamSeed = Run.CataclysmStream.GetCurrentSeed();
 	Record.ModifierStreamSeed = Run.ModifierStream.GetCurrentSeed();
 	Record.CorruptedStalkerSeed = Run.CorruptedStalkerSeed;
+	// AND THE MASK ON ITS DUNGEONS' WALK SEEDS, so a reloaded run's dungeons carve the floors they did. Issue #2749 (B10).
+	Record.WalkSeedMask = Run.WalkSeedMask;
 
 	return true;
 }
