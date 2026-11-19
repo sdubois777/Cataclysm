@@ -18,11 +18,13 @@ Issue [#2749](https://github.com/sdubois777/Cataclysm/issues/2749), B9, the thir
 
 ### SAID FIRST
 
-- **THE FIRST WINDOW FAILED, ON TWO TESTS THAT STILL ASSUMED 8 TO 15, AND THE SECOND HAS NOT RUN.** Window
-  outpost-depth-w1 ("The first window", below) passed `Cataclysm.Surge.` alone and failed 2 of 71 in
-  `Cataclysm.EmpireRun.` alone, and stopped there: no whole suite and no C++ proof has run. Both tests are corrected
-  as ruled, and every Unreal test file was swept again for the range; nothing else assumes it. Phase 1's Python suite
-  passes and its two Python guard proofs are proved; `sim/experiments.py` ran on the committed change (below).
+- **RUN AND PASSED IN THE SECOND WINDOW**, outpost-depth-w2 at `f1f6bf84` ("The second window", below): each of the
+  three groups alone at its registered count; the whole suite 4872 performed, 4872 succeeded, 47 skipped halves, 0
+  test saves left behind; Python 7605 passed, 9 skipped; ruff clean; D1 PROVED. The two Python guard proofs were
+  proved in phase 1, and `sim/experiments.py` ran on the committed change (below).
+- **THE FIRST WINDOW FAILED, ON TWO TESTS THAT STILL ASSUMED 8 TO 15.** Window outpost-depth-w1 ("The first window",
+  below) passed `Cataclysm.Surge.` alone and failed 2 of 71 in `Cataclysm.EmpireRun.` alone, and stopped there. Both
+  tests were corrected as ruled, and every Unreal test file was swept again for the range; nothing else assumes it.
 - **A CONSEQUENCE OF THIS CHANGE: A CITY'S FALL NOW FIRES A SURGE LESS OFTEN.** A fall fires one only when the last
   surge is at least 25 days back. An Outpost's ordinary timers now run out about 15 to 30 days after the wave that
   brought them, against about 19 to 39 at 8 to 15, so a fall caused by a wave's own dungeons lands inside those 25 days
@@ -231,6 +233,32 @@ it at 02:09. Output in this worktree's `.claude/windows/` (`b9_run.out`, `b9_alo
 **The rulings on the two, the coordinating session, 2026-11-19**: the Void test's depth "derive[d] ... from SpecFor's range rather than writing a new literal", accepted as least plus half the span; the fall test "CONSTRUCTED. Skip the diagnostic ... The constructed feller (day 2, 5,000 points, timer ending day 30, next clock surge day 91), with the new assertion that the constructed city fell on day 30 and every other assertion kept, is the better test." And for the next window (R-b): "runs every group alone and the whole suite even when a group fails, and runs the proofs only if everything passed."
 
 **Python after the corrections**: "7605 passed, 9 skipped"; the JUnit file 7614 tests, 0 failures, 0 errors, 9 skipped; ruff "All checks passed!".
+
+### The second window, outpost-depth-w2 (PASSED)
+
+Started by `gate_b9.py` at 02:21:17 once the pre-checks all passed, at `f1f6bf84`; the runner took the lock and
+released it. Since the first window, the runner goes on past a group that fails and runs no proof unless every group
+and the whole suite passed (R-b); nothing failed, so that made no difference here. Output in this worktree's
+`.claude/windows/` (`b9_run.out`; the whole suite's engine log `b9_suite_engine_f1f6bf84.log`; D1's two halves
+`b9_D1_run1.log` and `b9_D1_run2.log`).
+
+- **Build**: "Build: Succeeded - 4 actions, 1 file compiled: CataclysmEmpireRunTests.cpp".
+- **Each group alone**, every one at its registered count, none failed: `Cataclysm.Surge.` 54, `Cataclysm.EmpireRun.`
+  71, `Cataclysm.DungeonMode.` 46.
+- **The whole suite**: "Tests: 4872 tests performed, 4872 succeeded, 0 failed. 47 skipped part of what they check";
+  "Test saves: 836 written and deleted, 0 left behind"; "Declared: 4872 tests in the tree at f1f6bf841; 4872
+  performed, gap 0". The registered 4872, 47 and 0 matched. No "server/discover" line is in its engine log.
+- **Python**: "7605 passed, 9 skipped"; the JUnit file 7614 tests, 0 failures, 0 errors, 9 skipped. ruff: "All checks
+  passed!".
+- **D1, PROVED as predicted**: with the break in, "1 tests performed, 0 succeeded, 1 failed:
+  ABiggerCityBreedsADeeperDungeon", its two assertions "Expected 'an Outpost dungeon is 5 to 10 floors' to be 5, but it
+  was 8" and "Expected 'at most' to be 10, but it was 15"; restored, "1 tests performed, 1 succeeded, 0 failed".
+- **The constructed fall**: `Cataclysm.EmpireRun.ACityFallingOpensALaneAbsorbsItsDungeonsAndMayFireASurge` passed
+  ("Result={Success}") in the group alone and in the whole suite, so its new assertion, `TestEqual("the constructed
+  feller's city, %d, fell on day %d", ConstructedCityFellOnDay, ConstructedFallDay)` with `ConstructedFallDay` 30,
+  held, and so did "at least one of the days a city fell had a fall's surge due and surged". SAID PLAINLY: the engine
+  prints no line for an assertion that passes and the test prints none of its own, so the day is shown by the
+  assertion passing and not by a printed figure; the test's span in the log is its start and its result.
 
 ### experiments.py
 
