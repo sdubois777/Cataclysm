@@ -191,8 +191,9 @@ public:
 	 * there is no floor ratio and a creature has no score at all -- and since
 	 * 2026-08-24 a creature's score IS the experience it grants. Issue #926.
 	 *
-	 * TEN, WHICH IS INSIDE THE DESIGN'S SMALLEST BASIC DUNGEON of 8 to 15
-	 * floors, and chosen over the 50-floor average for a reason worth keeping: at
+	 * TEN, WHICH IS INSIDE THE DESIGN'S SMALLEST BASIC DUNGEON of 5 to 10
+	 * floors (its deepest; the row was 8 to 15 until issue #2749), and chosen
+	 * over the 50-floor average for a reason worth keeping: at
 	 * difficulty tier 1 the depth term is large and negative near an entrance, so
 	 * in a 50-floor dungeon the first three floors score a Common enemy below
 	 * zero and pay no experience at all. In a 10-floor dungeon every floor pays

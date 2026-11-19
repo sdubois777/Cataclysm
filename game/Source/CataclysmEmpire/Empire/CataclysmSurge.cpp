@@ -532,8 +532,20 @@ FCataclysmDungeonSpec UCataclysmSurgeScheduler::SpecFor(
 			break;
 
 		default:
-			Spec.LeastFloors = 8;
-			Spec.MostFloors = 15;
+			// AN OUTPOST'S ORDINARY DUNGEON IS 5 TO 10 FLOORS SINCE ISSUE #2749
+			// (B9), ruled by the coordinating session on 2026-11-19 after the
+			// owner found first-surge dungeons of 14 and 15 floors "a bit
+			// excessive for the initial wave of dungeons out on the weakest
+			// cities" and answered "Just lower the non quest dungeons". It was
+			// 8 to 15. `sim/analyse_outpost_depth.py` measured 8-15, 6-12, 5-10,
+			// 4-8 and 3-6 over every policy: win rates within noise, and 5-10
+			// costing six points of triage pressure with idle time at its 20%
+			// line, where 4-8 crossed it. A typical one is 7.5 floors, which
+			// `FCataclysmDungeon::BiteScale` divides by, so a typical dungeon
+			// still bites this whole row. The Quest row and the inner rings did
+			// not move. `config.DUNGEON_SPECS` holds the same pair.
+			Spec.LeastFloors = 5;
+			Spec.MostFloors = 10;
 			Spec.DefenceDamage = 70.0f;
 			Spec.PopulationDamage = 175.0f;
 			break;

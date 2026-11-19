@@ -651,8 +651,11 @@ class TestWhatADungeonIs:
     # model check below skipped these eight numbers and the two halves were
     # pinned apart in a file of their own; the game's layer wrote the new rows
     # here and took the skip out, as that file said to.
+    #
+    # AN OUTPOST'S ORDINARY ROW IS 5 TO 10 FLOORS SINCE ISSUE #2749 (B9), ruled
+    # 2026-11-19; it was 8 to 15. Its damage did not move.
     SPECS = {
-        ("Basic", "Outpost"):        (8, 15, 70.0, 175.0),
+        ("Basic", "Outpost"):        (5, 10, 70.0, 175.0),
         ("Basic", "Bulwark"):        (15, 25, 189.0, 700.0),
         ("Basic", "Sanctuary"):      (25, 40, 448.0, 1680.0),
         ("Basic", "Pillar"):         (40, 60, 840.0, 3150.0),

@@ -6,7 +6,8 @@ NATURAL floors, not the floors the Explorer tree adds. Until then
 `Simulation._resolve` scaled a hit by `floors / typical`, and `floors` included
 what the empire tree added, so the Explorer preset's +40 floors at difficulty
 tier 1 made every ordinary dungeon on an Outpost hit about 4.5 times as hard
-(51.5 floors over 11.5 against 11.5 over 11.5).
+(51.5 floors over 11.5 against 11.5 over 11.5, when an Outpost's ordinary range
+was 8 to 15; it is 5 to 10 since issue #2749).
 
 WHAT NATURAL FLOORS ARE. The depth rolled from the dungeon's row, times the
 Cataclysm pattern's `floors_mult`, before the tree's floors. The pattern's

@@ -2,6 +2,304 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-19 — An Outpost's ordinary dungeons are 5 to 10 floors, not 8 to 15; Quest dungeons and the inner rings do not move (#2749, B9)
+
+**Affects:** `UCataclysmSurgeScheduler::SpecFor`, the Basic row's default (Outpost) case
+(`game/Source/CataclysmEmpire/Empire/CataclysmSurge.cpp`); `TuningConfig.DUNGEON_SPECS[(BASIC, OUTPOST)]` and a
+comment (`sim/cataclysm_sim/config.py`); two comments in `sim/cataclysm_sim/engine.py`; the comment on
+`ACataclysmDungeonGameMode::TotalFloors` (`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`);
+`sim/analyse_outpost_depth.py` (new); the docstrings of `sim/analyse_surge_cadence.py` and
+`sim/analyse_explorer_shape.py`; the median walks stated by `policies.siege_urgency`
+(`sim/cataclysm_sim/policies.py`) and quoted in a `config.py` comment, re-measured. Tests: `CataclysmSurgeTests.cpp`, `CataclysmEmpireRunTests.cpp`,
+`CataclysmDungeonCostsDaysTests.cpp`, `tools/tests/test_surge_port.py`, `sim/tests/test_analysis_scripts.py`,
+`sim/tests/test_a_hit_is_sized_by_natural_floors.py`, `sim/tests/test_a_quest_dungeons_timer_scales_with_its_depth.py`,
+`sim/tests/test_explorer_shape.py` and `sim/tests/test_the_siege_prose_in_policies_is_true.py`.
+Issue [#2749](https://github.com/sdubois777/Cataclysm/issues/2749), B9, the third slice.
+
+### SAID FIRST
+
+- **RUN AND PASSED IN THE SECOND WINDOW**, outpost-depth-w2 at `f1f6bf84` ("The second window", below): each of the
+  three groups alone at its registered count; the whole suite 4872 performed, 4872 succeeded, 47 skipped halves, 0
+  test saves left behind; Python 7605 passed, 9 skipped; ruff clean; D1 PROVED. The two Python guard proofs were
+  proved in phase 1, and `sim/experiments.py` ran on the committed change (below).
+- **THE FIRST WINDOW FAILED, ON TWO TESTS THAT STILL ASSUMED 8 TO 15.** Window outpost-depth-w1 ("The first window",
+  below) passed `Cataclysm.Surge.` alone and failed 2 of 71 in `Cataclysm.EmpireRun.` alone, and stopped there. Both
+  tests were corrected as ruled, and every Unreal test file was swept again for the range; nothing else assumes it.
+- **A CONSEQUENCE OF THIS CHANGE: A CITY'S FALL NOW FIRES A SURGE LESS OFTEN.** A fall fires one only when the last
+  surge is at least 25 days back. An Outpost's ordinary timers now run out about 15 to 30 days after the wave that
+  brought them, against about 19 to 39 at 8 to 15, so a fall caused by a wave's own dungeons lands inside those 25 days
+  more often. READ FROM THE CODE AND NOT MEASURED ON ITS OWN; the simulation models the same least interval, so the
+  sweep's figures include it. It is what one of the two failed tests ran into.
+- **THERE IS NO BEFORE-RUN OF `experiments.py` TO SET ITS RESULT AGAINST.** None is saved and none was quoted here.
+  The paired before-and-after for this change is the 18,000-campaign sweep, which varied only the Outpost row.
+- **THREE PYTHON TESTS FAILED ON THE FIRST RUN OF THIS CHANGE, AND EACH WAS A FIGURE THE RANGE MOVED.** The
+  explorer-shape test's shallowest reachable dungeon (4 floors, now 3), and two checks of the median walk that
+  `policies.siege_urgency` states (14 days to an Outpost, now 9). Each figure was re-measured and rewritten, not
+  loosened ("The median walk the Siege prose states", below).
+- **RESEARCH DOES NOT SETTLE THIS NUMBER, AND NONE WAS QUOTED.** One floor here is a day of the empire clock and
+  drives a city's timer and a dungeon's hit, so another game's dungeon depth does not translate. B9 asked for the
+  range to come from the simulation, and it did.
+- **ONLY THE OUTPOST RING'S ORDINARY ROW MOVED.** Its damage (70 defence, 175 people), the Quest rows, the Fallen
+  City rows and the Bulwark, Sanctuary and Pillar rows are as they were.
+
+### The rulings, quoted
+
+**The project owner, 2026-11-18**, in issue #2749, of first-surge dungeons of 14, 15 and 28 floors on the Outposts:
+"a bit excessive for the initial wave of dungeons out on the weakest cities"; asked what should change: **"Just lower
+the non quest dungeons. I guess I didn't realize the one was a quest dungeon".**
+
+**The coordinating session, 2026-11-18**, in issue #2749:
+
+> **B9 The Outpost ring's ordinary dungeons are lowered** from 8 to 15 floors. The suggested starting point is 4 to 8;
+> the session proposes the range from the simulation.
+> - Keep `UCataclysmSurgeScheduler::SpecFor` and the simulation's `DUNGEON_SPECS` (`sim/cataclysm_sim/config.py`)
+>   equal, with their port test.
+> - The floor count also sets a dungeon's resolve timer and the size of its hit, so measure what the change does to
+>   the campaign in the simulation: cities lost, days and win rate. Report it before choosing.
+> - Anything sized from the Outpost range's midpoint (a hit's scale, Void stacks) moves with it; read those readers
+>   first.
+> - Run `sim/experiments.py` only if the change is final, in the background, and quote its result.
+
+**The coordinating session, 2026-11-19**, on this session's plan:
+
+- **Q1**: "5 TO 10 FLOORS for the Outpost ring's ordinary (Basic) dungeons. Your table supports it: it removes every
+  first-wave depth above 10, which is what the owner complained of; it cuts the typical depth from 11.5 to 7.5; triage
+  falls 6 points; idle stays at its 20% line, where 4 to 8 crosses it for no measured gain in wins. Record it as the
+  coordinator's ruling, with your sweep (script and output) in the entry. Commit outpost_depth_sweep.py with the slice
+  so the table can be reproduced; ... put it in sim/ as analyse_outpost_depth.py".
+- **Q2**: "YES. For slice 4, the target becomes "a new character gains at least three levels (level 1 to level 4 or
+  higher) over a first dungeon of the typical Outpost depth, 7 or 8 floors". Report the shortest case (5 floors) too,
+  without a target on it. "At least three" is my reading of the issue's "several"; label it as the coordinator's
+  judgement in that entry."
+- **Q3**: "Run experiments.py right after phase 1 is committed, because phase 1 holds the final sim change. ... I
+  grant no window while it runs."
+- **Q4**: "LEAVE the Explorer "5 fewer floors" upgrade as it is, and note it in the entry. ... It does not lower only
+  the walk days, so an Outpost dungeon at rank 1 is 1 to 5 floors and worth that much less. That is the upgrade's
+  designed trade, and the minimum of 1 holds."
+
+### The measurement
+
+`sim/analyse_outpost_depth.py` (the script, committed with this slice, as ruled): the shipped `TuningConfig()` with
+ONLY the `(BASIC, OUTPOST)` row's floors replaced, every policy in `policies.ALL`, 400 campaigns each per range, the
+same seeds in every cell; `experiments.summarise`, then the mean of the nine policies. Run 2026-11-19 on development
+`2e0d6f8fc`, before the row moved: 18,000 campaigns, 530 seconds.
+
+| Outpost floors | Win % | Lost % | Cities lost | Days | Triage % | Idle % of free days | Floors cleared |
+|---|---|---|---|---|---|---|---|
+| 8-15 (before) | 35.3 | 40.9 | 9.4 | 1231 | 31.4 | 17.3 | 767 |
+| 6-12 | 36.9 | 40.3 | 9.1 | 1204 | 28.4 | 18.5 | 750 |
+| **5-10 (ruled)** | **37.0** | **41.1** | **8.4** | **1178** | **25.1** | **20.2** | **729** |
+| 4-8 | 37.3 | 41.9 | 7.8 | 1165 | 21.7 | 22.9 | 707 |
+| 3-6 | 38.7 | 41.2 | 7.1 | 1151 | 17.1 | 26.5 | 684 |
+
+Win and loss barely move: the steps in win rate are inside the noise, about 2.5 points for one policy at 400
+campaigns. What moves steadily is the strategy layer: cities lost and triage pressure fall and the idle share of
+free days rises as the Outposts get shallower. `experiments.health` aims at triage near 45% and idle at or below
+20%. For the strongest policy, `triage`: 8-15 won 42.5% and lost 4.0 cities at 41.7% triage; 5-10 won 44.8% and
+lost 3.8 at 32.7%.
+
+### What changed
+
+- **`SpecFor` and `DUNGEON_SPECS`: an Outpost's ordinary dungeon is 5 to 10 floors.** `tools/tests/test_surge_port.py`
+  ties the two and holds a third, hand-written copy, which moved with them.
+- **What follows the range without an edit**, because it is computed from `SpecFor`:
+  - `FCataclysmDungeon::BiteScale`, a dungeon's natural floors over its row's midpoint, now 7.5. A typical
+    dungeon still bites the whole row; a 5-floor one two thirds of it and a 10-floor one four thirds.
+  - `FCataclysmDungeon::VoidStacksItAdds`, thirds of the span, now 5 floors: 5 and 6 floors add 1 stack, 7 and 8 add
+    2, 9 and 10 add 3.
+- **What does not move:**
+  - A Quest dungeon's hit, which is the ordinary row of its host's tier "AT A SCALE OF ONE", not the midpoint
+    (`UCataclysmEmpireRun::ResolveDungeon`, `Simulation._quest_hit`).
+  - Empire points per clear, which are by the dungeon's type and not its floors (`EmpirePointsFor`).
+- **What moves with the floors, by design:**
+  - The resolve timer, `10 + floors x 1.6` days in both halves: 18 to 26 days before its variation, against 22.8 to
+    34 at 8 to 15. The walk at one day a floor is 5 to 10 days.
+  - Loot and experience, which a floor pays: a first dungeon is worth fewer floors of both. Slice 4's target is
+    restated for it (Q2).
+  - The Explorer upgrade "Dungeons here have 5 fewer floors, to a minimum of 1" (10 and 15 at ranks 2 and 3) leaves an
+    Outpost's ordinary dungeon at 1 to 5 floors at rank 1, against 3 to 10 before. LEFT AS IT IS (Q4).
+- **Comments and documents swept** for "8 to 15", "8-15" and "11.5": every present-tense statement of the old
+  range now states the new one, and every dated one names the old range as such. `docs/Cataclysm_GDD_v2.md` gives no
+  depth for an Outpost's ordinary dungeon (only the Fallen City minimums, which did not move), so it has nothing to
+  change.
+
+### The tests
+
+- `Cataclysm.Surge.ABiggerCityBreedsADeeperDungeon`: the Outpost row is 5 and 10.
+- `Cataclysm.Surge.ADeeperDungeonTakesABiggerBiteOutOfItsCity`: 5, 8 and 10 floors over 7.5.
+- `Cataclysm.Surge.AVoidDungeonAddsOneTwoOrThreeStacksByTheThirdOfItsRowsDepth`: every Outpost line worked again on
+  5 to 10, and the two upgrade lines with their controls.
+- `Cataclysm.EmpireRun.AShallowAMiddleAndADeepVoidDungeonAddOneTwoAndThreeStacks`: 5, 8 and 10 floors.
+- `Cataclysm.DungeonMode.ClearingAWholeWaveCostsWhatItsDungeonsCostToWalk`: its bound "floors walked at least 8 a dungeon" reads `SpecFor`'s least floors
+  instead of a literal.
+- `sim/tests/test_analysis_scripts.py`: the new script runs, sweeps 8-15 and 5-10, marks 5-10 as shipped, and each cell
+  changes only the Outpost ordinary row's floors.
+- After window outpost-depth-w1 (below): `Cataclysm.EmpireRun.AnOrdinaryVoidDungeonAddsItsStacksInsteadOfDamageAndStillLeaves`
+  reads its middle-third depth from `SpecFor` (least plus half the span, 7 of 5 to 10), and
+  `Cataclysm.EmpireRun.ACityFallingOpensALaneAbsorbsItsDungeonsAndMayFireASurge` carries a constructed fall with a
+  fall's surge due, on day 30, with every assertion kept and one added.
+- **No Unreal test is added or removed.**
+
+### The median walk the Siege prose states, re-measured
+
+`policies.siege_urgency` states the median walk to each city size and the slack a fresh Siege leaves;
+`sim/tests/test_the_siege_prose_in_policies_is_true.py` re-measures it over 320 campaigns and allows a day, and holds
+two copies of it to the same figures (a `config.py` comment and this log). The first Python run of this change failed
+there: 320 campaigns gave an Outpost median of 9 against the stated 14. Re-measured on 2026-11-19 by the test's own
+method (its report settings, no tree, `triage`, every dungeon recorded as it is made) over 10,000 campaigns, seeds 0
+to 9999, 707,221 dungeons:
+
+| | Outpost | Bulwark | Sanctuary | Pillar |
+|---|---|---|---|---|
+| Median walk, days | **9** (was 14) | 23 | 35 | **125** (was 123) |
+| Dungeons | 641,381 | 47,108 | 8,625 | 10,107 |
+
+Against the 25 / 39 / 55 days a fresh Siege leaves, the slack is 16 / 16 / 20 days (it was 11 / 16 / 20). 46.72% of
+Outpost dungeons walk in 8 days or fewer and 55.31% in 9 or fewer. **THE OUTPOST'S MEDIAN DAY IS NOW A DIP, NOT FLAT:**
+day 9 holds 8.59% of walks against 11.77% on day 8 and 10.51% on day 10 (a ratio of 0.77; 0.81 over the test's own
+seeds 0 to 319), and the Outpost median was 9 in all ten disjoint blocks of 320 campaigns (seeds 0 to 3199), where the
+Bulwark's ran 22 to 23, the Sanctuary's 34 to 36 and the Pillar's 123 to 127. The test's limit rejects a spike on the
+median day and passes a dip; the one-day tolerance is kept, because the other sizes still move by a day.
+
+Rewritten to these figures, each saying what it was before: the prose in `siege_urgency`, the comment on
+`siege_damage_growth_per_day` in `config.py`, and the test file's comments that state measured figures. The 2026-09-06
+entry "Halve the Siege's rate and cut its growth", where the re-measurements of #1376 are kept, gained a dated
+re-measurement note under the earlier ones.
+
+### Guard proofs
+
+**Python, run** (`tools/prove_guard.break_and_run`, against `tools/tests/test_surge_port.py`):
+
+| Proof | Break | Result |
+|---|---|---|
+| P1 | the game's `SpecFor` Outpost row back to `LeastFloors = 8` | PROVED: 1 failed, 82 passed; restored 83 passed. Failed: `TestWhatADungeonIs::test_every_dungeon_spec_matches_in_the_game` |
+| P2 | `DUNGEON_SPECS` Outpost row back to `(8, 15)` | PROVED: 1 failed, 82 passed; restored 83 passed. Failed: `TestWhatADungeonIs::test_the_model_holds_the_thirteen_specs_this_test_expects` |
+
+**C++, registered before the run** (`tools/unreal_build.prove_cpp_guard`, its anchor checked to match exactly once as
+the proof reads the file, LF; its prefix one whole test's name, which no other test's name begins with):
+
+| Proof | Break | Prefix | Predicted |
+|---|---|---|---|
+| D1 | `SpecFor`'s Outpost ordinary row back to `LeastFloors = 8`, `MostFloors = 15` | `Cataclysm.Surge.ABiggerCityBreedsADeeperDungeon` | 1 performed, 1 failed; restored, 1 performed, none failed |
+
+### Registered before the run
+
+**The whole suite: 4872 performed, all succeeding, 47 skipped halves, 0 test saves left behind.** The base is window
+reflect-fixed-hit-w2 at `e367e9fb` (#2749 slice 2): 4872 performed, all succeeded, 47 skipped halves, 0 left behind;
+its engine log holds 4872 "Test Completed" lines, every one Success, and `git diff --stat e367e9fb2 2e0d6f8fc -- game/`
+prints nothing, so its game tree is this branch's base. No Unreal test is added or removed: **+0, 4872.**
+
+**Each group this change touches, run alone in the window by its prefix before the whole suite**, counted by prefix
+ignoring case in the same log; every prefix ends in a dot, and none is a case-insensitive string prefix of another of
+that log's groups.
+
+| Group | Tests | Why it is run alone |
+|---|---|---|
+| `Cataclysm.Surge.` | 54 | the depth, bite and Void stacks tests |
+| `Cataclysm.EmpireRun.` | 71 | the Void thirds test |
+| `Cataclysm.DungeonMode.` | 46 | the wave test's bound |
+
+### The first window, outpost-depth-w1 (FAILED)
+
+Started by `gate_b9.py` at 02:07:42 once the pre-checks all passed, at `6ac92419`; the runner took the lock and released
+it at 02:09. Output in this worktree's `.claude/windows/` (`b9_run.out`, `b9_alone_engine_EmpireRun_6ac92419.log`).
+
+- **Build**: "Build: Succeeded - target already up to date, 0 actions, nothing compiled".
+- **`Cataclysm.Surge.` alone**: "54 tests performed, 54 succeeded, 0 failed".
+- **`Cataclysm.EmpireRun.` alone: "71 tests performed, 69 succeeded, 2 failed"**, and the window stopped: no
+  `Cataclysm.DungeonMode.` group, no whole suite, no Python step, no proof. No "server/discover" line is in that log,
+  so #2745 was not the cause.
+  1. **`AnOrdinaryVoidDungeonAddsItsStacksInsteadOfDamageAndStillLeaves`**: "Expected 'set-up: an 11 floor Outpost
+     dungeon adds 2' to be 2, but it was 3". 11 floors was the middle third of 8 to 15 and lies above 5 to 10, where it
+     is held at 3. The phase 1 sweep missed it: it named neither the range nor 11.5. **Corrected as ruled**: the depth
+     is read from `SpecFor`, least plus half the span (7 of 5 to 10; it would be 11 of 8 to 15), so the next range
+     does not break it the same way.
+  2. **`ACityFallingOpensALaneAbsorbsItsDungeonsAndMayFireASurge`**: "Expected '0 of the 4 days a city fell had a
+     fall's surge due and surged' to be true". The seeded unattended run's falls in six hundred days, four, all came
+     inside the 25 days after a surge. **A REAL CONSEQUENCE OF THIS CHANGE, read from the code and not measured on its
+     own**: an Outpost's ordinary timers now run out about 15 to 30 days after the wave that brought them (about 19 to
+     39 at 8 to 15), so a fall caused by a wave's own dungeons mostly lands inside the 25-day least interval, and a
+     city's fall fires a surge less often. The simulation models the same interval, so the sweep's figures include
+     it. **Corrected as ruled** ("Do NOT turn this into a check that can pass with zero cases ... a constructed state
+     is better"): at the start of day 2 a feller is put on the first standing Outpost, carrying 5,000 defence points
+     and a timer that runs out on day 30, 29 days after the opening wave; every assertion is unchanged, its fall is
+     checked as every other fall is, and a new assertion holds that it fell on day 30.
+- **SWEPT AGAIN, AS RULED**, every Unreal test file for figures that assume 8 to 15 (11, 11.5, 8, 15 and 12 near
+  Outpost, Basic or `SpecFor`, every hand-set `Floors`, and every timer worked from a depth): nothing else assumes the
+  range. Hand-set Outpost depths outside a range test are 10, 12, 15 and 20; each is read through `BiteScale` or
+  `VoidStacksItAdds` by a test that computes its expectation from them (a 15-floor Void dungeon still adds 3, held at
+  the top), or is not a hit at all (the empire screen tests size their hit from the Quest rule, at a scale of one).
+
+**The rulings on the two, the coordinating session, 2026-11-19**: the Void test's depth "derive[d] ... from SpecFor's range rather than writing a new literal", accepted as least plus half the span; the fall test "CONSTRUCTED. Skip the diagnostic ... The constructed feller (day 2, 5,000 points, timer ending day 30, next clock surge day 91), with the new assertion that the constructed city fell on day 30 and every other assertion kept, is the better test." And for the next window (R-b): "runs every group alone and the whole suite even when a group fails, and runs the proofs only if everything passed."
+
+**Python after the corrections**: "7605 passed, 9 skipped"; the JUnit file 7614 tests, 0 failures, 0 errors, 9 skipped; ruff "All checks passed!".
+
+### The second window, outpost-depth-w2 (PASSED)
+
+Started by `gate_b9.py` at 02:21:17 once the pre-checks all passed, at `f1f6bf84`; the runner took the lock and
+released it. Since the first window, the runner goes on past a group that fails and runs no proof unless every group
+and the whole suite passed (R-b); nothing failed, so that made no difference here. Output in this worktree's
+`.claude/windows/` (`b9_run.out`; the whole suite's engine log `b9_suite_engine_f1f6bf84.log`; D1's two halves
+`b9_D1_run1.log` and `b9_D1_run2.log`).
+
+- **Build**: "Build: Succeeded - 4 actions, 1 file compiled: CataclysmEmpireRunTests.cpp".
+- **Each group alone**, every one at its registered count, none failed: `Cataclysm.Surge.` 54, `Cataclysm.EmpireRun.`
+  71, `Cataclysm.DungeonMode.` 46.
+- **The whole suite**: "Tests: 4872 tests performed, 4872 succeeded, 0 failed. 47 skipped part of what they check";
+  "Test saves: 836 written and deleted, 0 left behind"; "Declared: 4872 tests in the tree at f1f6bf841; 4872
+  performed, gap 0". The registered 4872, 47 and 0 matched. No "server/discover" line is in its engine log.
+- **Python**: "7605 passed, 9 skipped"; the JUnit file 7614 tests, 0 failures, 0 errors, 9 skipped. ruff: "All checks
+  passed!".
+- **D1, PROVED as predicted**: with the break in, "1 tests performed, 0 succeeded, 1 failed:
+  ABiggerCityBreedsADeeperDungeon", its two assertions "Expected 'an Outpost dungeon is 5 to 10 floors' to be 5, but it
+  was 8" and "Expected 'at most' to be 10, but it was 15"; restored, "1 tests performed, 1 succeeded, 0 failed".
+- **The constructed fall**: `Cataclysm.EmpireRun.ACityFallingOpensALaneAbsorbsItsDungeonsAndMayFireASurge` passed
+  ("Result={Success}") in the group alone and in the whole suite, so its new assertion, `TestEqual("the constructed
+  feller's city, %d, fell on day %d", ConstructedCityFellOnDay, ConstructedFallDay)` with `ConstructedFallDay` 30,
+  held, and so did "at least one of the days a city fell had a fall's surge due and surged". SAID PLAINLY: the engine
+  prints no line for an assertion that passes and the test prints none of its own, so the day is shown by the
+  assertion passing and not by a printed figure; the test's span in the log is its start and its result.
+
+### experiments.py
+
+Run on the committed change (`cfa9b924d`), as ruled (Q3), in the background with `python -u`, with no window while it
+ran. Its last line: **"Done. 39,240 campaigns run."** Tier 1, 250 campaigns a cell:
+
+- Section 0: "BEST STATIC BASELINE: ratio 1.6, surge every 120d x5 -> 56% win, 44% loss, 0% stalemate, 28% triage, 2%
+  idle, final power 252".
+- Section 1: `triage` 53% won, 47% lost, 1.6 cities lost over 581 days; the policies' spread is 44 points of win rate.
+- Section 7: "The ordering holds at NO tier once the surge size moves."
+- Section 8, with no tree: 38 / 38 / 20 / 18 / 4 / 1% won at 1 / 2 / 3 / 4 / 6 / 8 active Cataclysms.
+
+No before-run exists to compare it with (SAID FIRST); the output is kept as `.claude/windows/b9_experiments.out` in the
+worktree that made it.
+
+### Python
+
+Phase 1, before this entry was inserted: `python -u -m pytest --junit-xml=...`: "7605 passed, 9 skipped"; the
+JUnit file: 7614 tests, 0 failures, 0 errors, 9 skipped. `python -m ruff check .`: "All checks passed!". The first
+run of the change, before the three re-measured figures, was "3 failed, 7602 passed, 9 skipped" (SAID FIRST).
+
+### Compiled
+
+Three builds through `tools/unreal_build.py build` at `6dcd6d5e1`, on the coordinating session's go, no lock taken,
+each started once no Unreal workflow run had been seen in progress or queued twice, two minutes apart
+(`compile_b9.py`, `b9_compile.out` in this worktree's `.claude/windows/`):
+
+| Build | When | "Build:" line |
+| :-- | :-- | :-- |
+| 1. The branch (`git status` clean) | 01:55:07 to 01:59:14, 247 s | "Build: Succeeded - 38 actions, 33 files compiled", among them `CataclysmSurge.cpp`, `CataclysmSurgeTests.cpp` and `CataclysmEmpireRunTests.cpp`, each compiled alone |
+| 2. Each changed `.cpp` alone (`git read-tree origin/development`, `Makefile.bin` moved aside, `git reset -q` after) | 02:01:18 to 02:02:36, 78 s | "Build: Succeeded - 14 actions, 9 files compiled": `CataclysmDungeonCostsDaysTests.cpp` and `CataclysmDungeonGameMode.cpp` alone, and the Cataclysm unity files. The three CataclysmEmpire files were named as excluded and not compiled again: build 1 had compiled each alone already |
+| 3. The unity files again (`Makefile.bin` moved aside again) | 02:04:39 to 02:05:46, 67 s | "Build: Succeeded - 12 actions, 7 files compiled": the Cataclysm unity files |
+
+**THE CATACLYSMEMPIRE MODULE HAS NO UNITY FILE**: its intermediate directory holds one object per source file and
+`Module.CataclysmEmpire.gen.cpp`, so every file of it compiles alone in every build, and build 1's compile of the three
+changed files is the only one there is to have. Build 1's log held one compiler warning line, the CountBits deprecation
+that `CataclysmAbilitySystemComponent.cpp` line 1315 triggers (#2756); this change does not touch that file. Builds 2
+and 3 logged none.
+
+---
+
 ## 2026-11-18 — Thorns of Glass strikes back for the creature's own attack damage, and Echo Chamber's self hit is 5% of the player's maximum health (#2749 slice 2)
 
 **Affects:** `UCataclysmRetaliation::StrikeBack` and `StrikeBackDamagePercent` (new) and the header's account of
@@ -145205,6 +145503,13 @@ any dose: 70 days against a median walk of 123.
 > settings, no tree, `triage`, every dungeon recorded when it is made): Against a
 > median walk of 14 / 23 / 35 days, the slack is eleven, sixteen and twenty days.
 > It was 14 / 22 / 34 and eleven, seventeen and twenty-one, measured on 2026-10-12.
+
+> **Re-measured on 2026-11-19**, after an Outpost's ordinary dungeons became 5 to 10
+> floors rather than 8 to 15 (issue #2749, B9), over 10,000 campaigns (seeds 0 to
+> 9999, 707,221 dungeons) by the prose test's own method: Against a median walk of
+> 9 / 23 / 35 days, the slack is sixteen, sixteen and twenty days. It was 14 / 23 /
+> 35 and eleven, sixteen and twenty, measured on 2026-10-18. The Pillar's median is
+> 125, against 123.
 
 ### The other six sub-types took the 7.5 in proportion, rounded to one decimal
 

@@ -528,8 +528,9 @@ bool FCataclysmSurgeDungeonDepthTest::RunTest(const FString& Parameters)
 	const FCataclysmDungeonSpec Pillar = UCataclysmSurgeScheduler::SpecFor(
 		ECataclysmDungeonType::Basic, ECataclysmCityTier::Pillar);
 
-	TestEqual(TEXT("an Outpost dungeon is 8 to 15 floors"), Outpost.LeastFloors, 8);
-	TestEqual(TEXT("at most"), Outpost.MostFloors, 15);
+	// AN OUTPOST'S ORDINARY DUNGEON IS 5 TO 10 FLOORS SINCE ISSUE #2749 (B9); it was 8 to 15.
+	TestEqual(TEXT("an Outpost dungeon is 5 to 10 floors"), Outpost.LeastFloors, 5);
+	TestEqual(TEXT("at most"), Outpost.MostFloors, 10);
 	TestEqual(TEXT("a Bulwark dungeon is 15 to 25"), Bulwark.LeastFloors, 15);
 	TestEqual(TEXT("at most"), Bulwark.MostFloors, 25);
 	TestEqual(TEXT("a Sanctuary dungeon is 25 to 40"), Sanctuary.LeastFloors, 25);
@@ -791,25 +792,26 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSurgeBiteScaleTest,
 
 bool FCataclysmSurgeBiteScaleTest::RunTest(const FString& Parameters)
 {
-	// AN OUTPOST DUNGEON IS 8 TO 15 FLOORS, so a typical one is 11.5.
+	// AN OUTPOST DUNGEON IS 5 TO 10 FLOORS, so a typical one is 7.5. Since issue #2749 (B9); it was 8 to 15, and
+	// this test read 8, 12 and 15 over 11.5.
 	FCataclysmDungeon Shallow;
 	Shallow.CityTier = ECataclysmCityTier::Outpost;
-	Shallow.Floors = 8;
+	Shallow.Floors = 5;
 
 	FCataclysmDungeon Typical;
 	Typical.CityTier = ECataclysmCityTier::Outpost;
-	Typical.Floors = 12;
+	Typical.Floors = 8;
 
 	FCataclysmDungeon Deep;
 	Deep.CityTier = ECataclysmCityTier::Outpost;
-	Deep.Floors = 15;
+	Deep.Floors = 10;
 
-	TestEqual(TEXT("the shallowest takes 8 over 11.5 of its type's bite"),
-			  Shallow.BiteScale(), 8.0f / 11.5f, 0.001f);
+	TestEqual(TEXT("the shallowest takes 5 over 7.5 of its type's bite"),
+			  Shallow.BiteScale(), 5.0f / 7.5f, 0.001f);
 	TestEqual(TEXT("a typical one takes about all of it"),
-			  Typical.BiteScale(), 12.0f / 11.5f, 0.001f);
-	TestEqual(TEXT("and the deepest takes 15 over 11.5"),
-			  Deep.BiteScale(), 15.0f / 11.5f, 0.001f);
+			  Typical.BiteScale(), 8.0f / 7.5f, 0.001f);
+	TestEqual(TEXT("and the deepest takes 10 over 7.5"),
+			  Deep.BiteScale(), 10.0f / 7.5f, 0.001f);
 
 	TestTrue(TEXT("so the shallowest takes less than its type's full bite"),
 			 Shallow.BiteScale() < 1.0f);
@@ -2801,7 +2803,7 @@ bool FCataclysmSurgeQuestDungeonTest::RunTest(const FString& Parameters)
 		// that a Quest dungeon starts deeper than a Basic one ENDS, and that is
 		// false at a Sanctuary: Quest is 30 to 50 there and Basic is 25 to 40,
 		// so the two overlap between 30 and 40. The claim holds at an Outpost
-		// (20-30 against 8-15) and a Bulwark (30-45 against 15-25) and nowhere
+		// (20-30 against 5-10 since #2749) and a Bulwark (30-45 against 15-25) and nowhere
 		// else. That is why the assertions inside the loop read the KIND and the
 		// TIMER as well as the depth: at a Sanctuary the depth is not on its own
 		// evidence of anything.
@@ -4569,8 +4571,9 @@ bool FCataclysmSurgeVoidStacksByThirdTest::RunTest(const FString& Parameters)
 	const FCataclysmDungeonSpec Bulwark = UCataclysmSurgeScheduler::SpecFor(
 		ECataclysmDungeonType::Basic, ECataclysmCityTier::Bulwark);
 
-	if (!TestEqual(TEXT("set-up: an ordinary Outpost dungeon is 8 floors at least"), Outpost.LeastFloors, 8)
-		|| !TestEqual(TEXT("set-up: and 15 at most"), Outpost.MostFloors, 15)
+	// THE OUTPOST ROW IS 5 TO 10 SINCE ISSUE #2749 (B9); it was 8 to 15, and every Outpost line below was worked again.
+	if (!TestEqual(TEXT("set-up: an ordinary Outpost dungeon is 5 floors at least"), Outpost.LeastFloors, 5)
+		|| !TestEqual(TEXT("set-up: and 10 at most"), Outpost.MostFloors, 10)
 		|| !TestEqual(TEXT("set-up: an ordinary Bulwark dungeon is 15 at least"), Bulwark.LeastFloors, 15)
 		|| !TestEqual(TEXT("set-up: and 25 at most"), Bulwark.MostFloors, 25))
 	{
@@ -4588,13 +4591,13 @@ bool FCataclysmSurgeVoidStacksByThirdTest::RunTest(const FString& Parameters)
 	// `1 + clamp(int(3 x (natural - least) / (most - least)), 0, 2)`, worked
 	// out by hand for each line.
 	const FCase Cases[] = {
-		{ ECataclysmCityTier::Outpost, 8, 1, TEXT("the shallowest Outpost dungeon, 8 floors") },
-		{ ECataclysmCityTier::Outpost, 10, 1, TEXT("10 floors, the top of the first third (6 / 7 is 0)") },
-		{ ECataclysmCityTier::Outpost, 11, 2, TEXT("11 floors, the start of the second (9 / 7 is 1)") },
-		{ ECataclysmCityTier::Outpost, 12, 2, TEXT("12 floors, the top of the second (12 / 7 is 1)") },
-		{ ECataclysmCityTier::Outpost, 13, 3, TEXT("13 floors, the start of the third (15 / 7 is 2)") },
-		{ ECataclysmCityTier::Outpost, 15, 3, TEXT("the deepest Outpost dungeon, 15 floors (21 / 7 is 3, held at 2)") },
-		{ ECataclysmCityTier::Outpost, 5, 1, TEXT("5 floors, below the row, held at the first") },
+		{ ECataclysmCityTier::Outpost, 5, 1, TEXT("the shallowest Outpost dungeon, 5 floors") },
+		{ ECataclysmCityTier::Outpost, 6, 1, TEXT("6 floors, the top of the first third (3 / 5 is 0)") },
+		{ ECataclysmCityTier::Outpost, 7, 2, TEXT("7 floors, the start of the second (6 / 5 is 1)") },
+		{ ECataclysmCityTier::Outpost, 8, 2, TEXT("8 floors, the top of the second (9 / 5 is 1)") },
+		{ ECataclysmCityTier::Outpost, 9, 3, TEXT("9 floors, the start of the third (12 / 5 is 2)") },
+		{ ECataclysmCityTier::Outpost, 10, 3, TEXT("the deepest Outpost dungeon, 10 floors (15 / 5 is 3, held at 2)") },
+		{ ECataclysmCityTier::Outpost, 3, 1, TEXT("3 floors, below the row, held at the first") },
 		{ ECataclysmCityTier::Outpost, 30, 3, TEXT("30 floors, above the row, held at the third") },
 		{ ECataclysmCityTier::Bulwark, 15, 1, TEXT("the shallowest Bulwark dungeon, 15 floors") },
 		{ ECataclysmCityTier::Bulwark, 18, 1, TEXT("18 floors, the top of the first third (9 / 10 is 0)") },
@@ -4613,14 +4616,14 @@ bool FCataclysmSurgeVoidStacksByThirdTest::RunTest(const FString& Parameters)
 	// A CITY'S FLOOR UPGRADES MOVE NO STACKS. Each line has a control: the same
 	// floors with no upgrade counted come out in another third, so the upgrade
 	// floors really are what is left out.
-	TestEqual(TEXT("16 floors of which an upgrade added 5 are 11 natural and add 2"),
-			  StacksAt(ECataclysmCityTier::Outpost, 16, 5), 2);
-	TestEqual(TEXT("CONTROL: 16 floors all natural add 3"),
-			  StacksAt(ECataclysmCityTier::Outpost, 16, 0), 3);
-	TestEqual(TEXT("8 floors after an upgrade took 5 are 13 natural and add 3"),
-			  StacksAt(ECataclysmCityTier::Outpost, 8, -5), 3);
-	TestEqual(TEXT("CONTROL: 8 floors all natural add 1"),
-			  StacksAt(ECataclysmCityTier::Outpost, 8, 0), 1);
+	TestEqual(TEXT("11 floors of which an upgrade added 5 are 6 natural and add 1"),
+			  StacksAt(ECataclysmCityTier::Outpost, 11, 5), 1);
+	TestEqual(TEXT("CONTROL: 11 floors all natural add 3"),
+			  StacksAt(ECataclysmCityTier::Outpost, 11, 0), 3);
+	TestEqual(TEXT("5 floors after an upgrade took 5 are 10 natural and add 3"),
+			  StacksAt(ECataclysmCityTier::Outpost, 5, -5), 3);
+	TestEqual(TEXT("CONTROL: 5 floors all natural add 1"),
+			  StacksAt(ECataclysmCityTier::Outpost, 5, 0), 1);
 
 	return true;
 }

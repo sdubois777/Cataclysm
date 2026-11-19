@@ -446,9 +446,12 @@ def section_one(nodes: list[dict]) -> dict:
 #: Cataclysm dungeon.
 QUOTED_DEPTHS = (11, 20, 32, 50, 125)
 
-#: The floors an ordinary surge-spawned Basic dungeon can have, across the three
-#: city sizes a surge targets: 8-15, 15-25, 25-40 from `DUNGEON_SPECS`. This is
-#: the range issue #1383's own table uses and the common case.
+#: The floors an ordinary surge-spawned Basic dungeon could have, across the three
+#: city sizes a surge targets: 8-15, 15-25, 25-40 from `DUNGEON_SPECS` when issue
+#: #1383 was measured. This is the range issue #1383's own table uses and the
+#: common case. KEPT AS THAT ANALYSIS'S RANGE: since issue #2749 (B9,
+#: 2026-11-19) an Outpost's ordinary row is 5-10, so today's span starts at 5;
+#: this script's recorded results are on 8-40.
 ORDINARY = range(8, 41)
 
 
@@ -460,7 +463,9 @@ def surge_reachable() -> range:
     (`quest_dungeon_chance`) and a Quest at a Sanctuary is 30-50 floors where a
     Basic is 25-40. And every surge-spawned dungeon is scaled by the active
     Cataclysm's `floors_mult`, which runs from 0.55 for Death to 1.60 for
-    Celestial. Together they take the reachable range from 8-40 to 4-80, so
+    Celestial. Together they take the reachable range from 8-40 to 4-80 (3-80
+    since issue #2749 made an Outpost's ordinary row 5-10: 5 x 0.55 rounds to
+    3), so
     **a flat 70 does not put literally every surge dungeon on the one-day
     floor**: a Celestial Quest at a Sanctuary can be 80 floors and still walk
     in 10 days. How rare that is, is what the `at floor%` column in section 3

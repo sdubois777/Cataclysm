@@ -561,8 +561,19 @@ bool FCataclysmEmpireRunPersistTest::RunTest(const FString& Parameters)
  * `Cataclysm.EmpireRun.ACityFallingInsideTheLeastIntervalStillFallsAndBringsNoWave`.
  * This one asserts nothing about the surge on a day the answer was no.
  *
+ * ONE FALL IS CONSTRUCTED, since issue #2749 (B9). See the comment in the test.
+ *
  * WHERE EVERYTHING STANDS: nowhere. No actor and no world; a run is an object.
  */
+namespace CataclysmEmpireRunTest
+{
+	// DECLARED HERE AND DEFINED FURTHER DOWN THIS FILE, for the constructed fall in the test below (issue #2749, B9).
+	void PlaceDungeon(UCataclysmEmpireRun& Run, int32 DungeonId, ECataclysmDungeonType Type,
+					  ECataclysmDungeonSubType SubType, const FCataclysmCity& City, float ResolveDays);
+	void GiveDamageAndDaysLeft(UCataclysmEmpireRun& Run, int32 DungeonId, float DefencePoints,
+							   float PopulationPoints, float DaysLeft);
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunFallMaySurgeTest,
 	"Cataclysm.EmpireRun.ACityFallingOpensALaneAbsorbsItsDungeonsAndMayFireASurge",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -580,6 +591,22 @@ bool FCataclysmEmpireRunFallMaySurgeTest::RunTest(const FString& Parameters)
 	// interval do not pass this test having checked no surge at all.
 	int32 FallDaysDueThatSurged = 0;
 
+	// A FALL WITH A FALL'S SURGE DUE, CONSTRUCTED, since issue #2749 (B9), as the coordinating session ruled on
+	// 2026-11-19: "Rebuild the set-up so at least one fall happens with a fall's surge due ... a constructed state is
+	// better". With an Outpost's ordinary dungeons 5 to 10 floors, their timers run out about 15 to 30 days after the
+	// wave that brought them, so in window outpost-depth-w1 this seed's falls in six hundred days -- four -- all came
+	// inside the 25 days after a surge, and it printed "0 of the 4 days a city fell had a fall's surge due and
+	// surged". So at the start of day 2, after the opening wave of day 1, a feller is put on the first standing
+	// Outpost, carrying five times an Outpost's whole defence (`FallSurgeFellingPoints`' figure, defined further down)
+	// and a timer that runs out on day 30: 29 days after the last surge, with the clock's own next surge on day 91.
+	// EVERY ASSERTION IS UNCHANGED. Its fall is checked as every other fall is, and the closing assertion still needs a
+	// fall with a surge due that surged; an earlier fall of the run with one due, if there is one, does as well.
+	const int32 ConstructedFellerId = 9590;
+	constexpr float ConstructedFellingPoints = 5000.0f;
+	constexpr int32 ConstructedFallDay = 30;
+	int32 ConstructedCityId = INDEX_NONE;
+	int32 ConstructedCityFellOnDay = INDEX_NONE;
+
 	// WATCHED UNTIL THREE FALLS HAVE BEEN SEEN AND ONE OF THEM HAD A FALL'S
 	// SURGE DUE AND SURGED, still bounded at six hundred days. Until 2026-10-21
 	// the loop stopped at the third fall, `FallsSeen < 3`, and with the larger
@@ -592,6 +619,33 @@ bool FCataclysmEmpireRunFallMaySurgeTest::RunTest(const FString& Parameters)
 		 Days < 600 && (FallsSeen < 3 || FallDaysDueThatSurged < 1);
 		 ++Days)
 	{
+		// THE CONSTRUCTED FELLER, at the start of day 2: see above.
+		if (ConstructedCityId == INDEX_NONE && Run->Day() == 1)
+		{
+			if (!TestEqual(TEXT("set-up: the opening wave fired on day 1, so day 30 is 29 days after the last surge"),
+						   Run->Surges->LastSurgeDay, 1))
+			{
+				return false;
+			}
+			for (const FCataclysmCity& City : Run->Map->Cities)
+			{
+				if (City.Tier == ECataclysmCityTier::Outpost && !City.bFallen)
+				{
+					ConstructedCityId = City.CityId;
+					PlaceDungeon(*Run, ConstructedFellerId, ECataclysmDungeonType::Basic,
+								 ECataclysmDungeonSubType::None, City, static_cast<float>(ConstructedFallDay - 1));
+					GiveDamageAndDaysLeft(*Run, ConstructedFellerId, ConstructedFellingPoints, 0.0f,
+										  static_cast<float>(ConstructedFallDay - 1));
+					break;
+				}
+			}
+			if (!TestNotEqual(TEXT("set-up: a standing Outpost took the constructed feller"), ConstructedCityId,
+							  static_cast<int32>(INDEX_NONE)))
+			{
+				return false;
+			}
+		}
+
 		// What was standing where, before the day, and which were Quest
 		// dungeons.
 		TMap<int32, TArray<int32>> StandingOn;
@@ -625,6 +679,10 @@ bool FCataclysmEmpireRunFallMaySurgeTest::RunTest(const FString& Parameters)
 		}
 
 		++FallsSeen;
+		if (ConstructedCityId != INDEX_NONE && Report.Fallen.Contains(ConstructedCityId))
+		{
+			ConstructedCityFellOnDay = Report.Day;
+		}
 
 		for (const int32 CityId : Report.Fallen)
 		{
@@ -803,6 +861,11 @@ bool FCataclysmEmpireRunFallMaySurgeTest::RunTest(const FString& Parameters)
 	TestTrue(FString::Printf(
 		TEXT("%d cities fell within six hundred unattended days"), FallsSeen),
 		FallsSeen >= 1);
+
+	// AND THE CONSTRUCTED FALL CAME ON ITS DAY, so the set-up above did what it says.
+	TestEqual(FString::Printf(TEXT("the constructed feller's city, %d, fell on day %d"), ConstructedCityId,
+							  ConstructedFallDay),
+			  ConstructedCityFellOnDay, ConstructedFallDay);
 
 	// AND AT LEAST ONE OF THE DAYS WATCHED HAD A SURGE DUE AND SURGED. The loop
 	// above keeps watching past the third fall until one has, so this fails
@@ -7071,9 +7134,18 @@ bool FCataclysmEmpireRunVoidAddsStacksTest::RunTest(const FString& Parameters)
 
 	const int32 VoidId = 9901;
 
-	// TWO RUNS FROM ONE SEED, THE SAME DUNGEON ON THE SAME OUTPOST, 11 FLOORS
-	// DEEP, ITS TIMER ONE DAY FROM RUNNING OUT. In `Run` the Void sent it; in
-	// `Control` nobody did.
+	// TWO RUNS FROM ONE SEED, THE SAME DUNGEON ON THE SAME OUTPOST, IN THE MIDDLE
+	// THIRD OF THE OUTPOST ROW'S DEPTH, ITS TIMER ONE DAY FROM RUNNING OUT. In
+	// `Run` the Void sent it; in `Control` nobody did. THE DEPTH IS READ FROM
+	// `SpecFor` AND NOT WRITTEN: least plus half the span, which is 7 of 5 to 10
+	// (3 x 2 / 5 is 1) and was 11 of 8 to 15 (3 x 3 / 7 is 1). It was the literal
+	// 11 until issue #2749 (B9) moved the row and left 11 above it, adding 3;
+	// ruled by the coordinating session on 2026-11-19 so the next range does
+	// not break it the same way.
+	const FCataclysmDungeonSpec OutpostRow = UCataclysmSurgeScheduler::SpecFor(
+		ECataclysmDungeonType::Basic, ECataclysmCityTier::Outpost);
+	const int32 MiddleThirdFloors =
+		OutpostRow.LeastFloors + (OutpostRow.MostFloors - OutpostRow.LeastFloors) / 2;
 	UCataclysmEmpireRun* Run = MakeEmptyRun(1);
 	UCataclysmEmpireRun* Control = MakeEmptyRun(1);
 
@@ -7092,8 +7164,8 @@ bool FCataclysmEmpireRunVoidAddsStacksTest::RunTest(const FString& Parameters)
 		GiveDamageAndDaysLeft(*Each, VoidId, 100.0f, 40.0f, 1.0f);
 	}
 
-	SendFrom(*Run, VoidId, ECataclysmType::Void, 11);
-	SendFrom(*Control, VoidId, ECataclysmType::None, 11);
+	SendFrom(*Run, VoidId, ECataclysmType::Void, MiddleThirdFloors);
+	SendFrom(*Control, VoidId, ECataclysmType::None, MiddleThirdFloors);
 
 	const FCataclysmDungeon* Placed = Run->FindDungeon(VoidId);
 	const FCataclysmDungeon* ControlPlaced = Control->FindDungeon(VoidId);
@@ -7103,7 +7175,8 @@ bool FCataclysmEmpireRunVoidAddsStacksTest::RunTest(const FString& Parameters)
 		|| !TestNotNull(TEXT("set-up: and the control's"), ControlPlaced)
 		|| !TestNotNull(TEXT("set-up: and the city"), City)
 		|| !TestNotNull(TEXT("set-up: and the control's city"), ControlCity)
-		|| !TestEqual(TEXT("set-up: an 11 floor Outpost dungeon adds 2"),
+		|| !TestEqual(FString::Printf(TEXT("set-up: a %d floor Outpost dungeon, the middle third of %d to %d, adds 2"),
+								  MiddleThirdFloors, OutpostRow.LeastFloors, OutpostRow.MostFloors),
 					  Placed->VoidStacksItAdds(), 2))
 	{
 		return false;
@@ -7162,14 +7235,15 @@ bool FCataclysmEmpireRunVoidThirdsTest::RunTest(const FString& Parameters)
 		ECataclysmDungeonType::Basic, ECataclysmCityTier::Outpost);
 
 	if (!TestEqual(TEXT("set-up: the map has three Outposts standing"), Outposts.Num(), 3)
-		|| !TestEqual(TEXT("set-up: an ordinary Outpost dungeon is 8 floors at least"), Row.LeastFloors, 8)
-		|| !TestEqual(TEXT("set-up: and 15 at most"), Row.MostFloors, 15))
+		|| !TestEqual(TEXT("set-up: an ordinary Outpost dungeon is 5 floors at least"), Row.LeastFloors, 5)
+		|| !TestEqual(TEXT("set-up: and 10 at most"), Row.MostFloors, 10))
 	{
 		return false;
 	}
 
-	// THE SHALLOWEST, ONE IN THE MIDDLE THIRD, AND THE DEEPEST.
-	const int32 Floors[] = { 8, 12, 15 };
+	// THE SHALLOWEST, ONE IN THE MIDDLE THIRD, AND THE DEEPEST, of the Outpost row of 5 to 10 since issue #2749 (B9);
+	// they were 8, 12 and 15 of 8 to 15. 8 floors is in the middle third: 3 x 3 / 5 is 1.
+	const int32 Floors[] = { 5, 8, 10 };
 	const int32 Expected[] = { 1, 2, 3 };
 
 	for (int32 Index = 0; Index < 3; ++Index)

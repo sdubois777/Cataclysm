@@ -7,7 +7,8 @@ the empire tree's resolve bonus, rolled once when the dungeon is made: a
 labelled judgement of the coordinating session under that decision.
 
 A Quest dungeon's floor ranges are deeper than an ordinary one's on the same
-tier (an Outpost's 20 to 30 against 8 to 15), so its timer is longer.
+tier (an Outpost's 20 to 30 against 5 to 10 since issue #2749), so its timer is
+longer.
 
 EVERY CASE HAS A CONTROL: an ordinary dungeon under the same rule, a shallower
 Quest dungeon, or the same seed without the tree.

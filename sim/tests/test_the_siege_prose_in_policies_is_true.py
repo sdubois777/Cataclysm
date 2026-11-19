@@ -140,7 +140,14 @@ REPORT_SETTINGS = dict(
 #: 23,152 to 25,213 each, with medians of 13 to 14 for the Outpost, 22 to 23
 #: for the Bulwark, 34 to 35 for the Sanctuary and 121 to 126 for the Pillar,
 #: against a 10,000-campaign answer of 14 / 22 / 34 / 123. None is outside
-#: its tolerance. This file reads seeds 0 to 319: 24,140 dungeons.
+#: its tolerance. This file read seeds 0 to 319: 24,140 dungeons.
+#:
+#: SINCE ISSUE #2749 (2026-11-19) an Outpost's ordinary dungeons are 5 to 10
+#: floors. Ten disjoint blocks of 320 (seeds 0 to 3199) then made 22,301 to
+#: 23,403 dungeons each, with medians of 9 for the Outpost in every block, 22 to
+#: 23 for the Bulwark, 34 to 36 for the Sanctuary and 123 to 127 for the Pillar,
+#: against a 10,000-campaign answer of 9 / 23 / 35 / 125. None is outside its
+#: tolerance. Seeds 0 to 319 give 22,725 dungeons.
 CAMPAIGNS = 320
 
 #: How far a measured median may sit from the stated one. See the module
@@ -260,7 +267,10 @@ def walks(made, tier: CityTier) -> list[int]:
 #: A JUDGEMENT AND NOT A DERIVATION. Twice is where one day holds as many walks
 #: as its two neighbours together. Measured on 2026-10-29 over this file's own
 #: 320 campaigns, the Outpost median day 14 holds 8.40% of walks, day 13 6.97%
-#: and day 15 6.76%: a ratio of 1.22.
+#: and day 15 6.76%: a ratio of 1.22. On 2026-11-19, with an Outpost's ordinary
+#: dungeons 5 to 10 floors (issue #2749), the median day 9 holds 8.94%, day 8
+#: 11.30% and day 10 10.91%: a ratio of 0.81, a dip rather than a spike, which
+#: this limit allows.
 MEDIAN_DAY_SPIKE_LIMIT = 2.0
 
 
@@ -414,9 +424,10 @@ class TestTheMedianWalkTheProseStates:
             "there makes the median a stable number, and the one-day tolerance "
             "should then tighten rather than this limit widen. Issue #1389.")
         says(DOC_URGENCY,
-             "48.17% of Outpost dungeons walk in 13 days or fewer and 56.35% in "
-             "14 or fewer",
-             "Those are the shares from the 10,000-campaign measurement.")
+             "46.72% of Outpost dungeons walk in 8 days or fewer and 55.31% in "
+             "9 or fewer",
+             "Those are the shares from the 10,000-campaign measurement of "
+             "2026-11-19, with an Outpost's ordinary dungeons 5 to 10 floors.")
 
     def test_a_spike_on_the_median_day_is_what_the_check_rejects(self):
         """THE CONTROL. The same helper over walk lists built by hand: a flat
