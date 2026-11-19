@@ -70,7 +70,7 @@ namespace CataclysmSaveFixtures
 	 */
 	inline constexpr int32 FixtureIdentifiersOrderSeed = 1412640493;
 
-	/** The seed `Character_v7.json` and `Character_v8.json` state: not the one their identifier gives, so a seed re-derived
+	/** The seed `Character_v7.json`, `Character_v8.json` and `Character_v9.json` state: not the one their identifier gives, so a seed re-derived
 	 *  on load cannot pass. */
 	inline constexpr int32 CommittedCharacterOrderSeed = 975318642;
 
@@ -145,6 +145,22 @@ namespace CataclysmSaveFixtures
 		const TSharedRef<FJsonObject> Empty = MakeShared<FJsonObject>();
 		Empty->SetArrayField(TEXT("Nodes"), TArray<TSharedPtr<FJsonValue>>());
 		Expected.SetObjectField(TEXT("EmpireTree"), Empty);
+	}
+
+	/**
+	 * What `Migrate_8_to_9` writes into a character file written before version 9, and so what the character record
+	 * writes back for one: its private empire upgrade points as the same number (0 where the key is absent) and an empty
+	 * tree of its own, `"PrivateEmpireTree": { "Nodes": [] }`. Issue #2741 slice 1c, 2026-11-18. ONE COPY, for every test
+	 * that runs an older character file through the whole chain.
+	 */
+	inline void AddTheCharactersVersion9Defaults(FJsonObject& Expected)
+	{
+		double Banked = 0.0;
+		Expected.TryGetNumberField(TEXT("PrivateEmpireUpgradePoints"), Banked);
+		Expected.SetNumberField(TEXT("PrivateEmpireUpgradePoints"), Banked);
+		const TSharedRef<FJsonObject> Empty = MakeShared<FJsonObject>();
+		Empty->SetArrayField(TEXT("Nodes"), TArray<TSharedPtr<FJsonValue>>());
+		Expected.SetObjectField(TEXT("PrivateEmpireTree"), Empty);
 	}
 
 	inline TSharedPtr<FJsonObject> Parse(const FString& Text)

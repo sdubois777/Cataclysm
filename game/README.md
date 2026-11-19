@@ -483,7 +483,8 @@ by `git add` with no error and no warning. Guarded by
   not fire when the path to the Pillar opens (issue
   [#43](https://github.com/sdubois777/Cataclysm/issues/43)), and the empire
   upgrade tree is game data whose points can be bought, chosen and respecced and
-  are saved on the account record, but no screen offers it and no node acts yet
+  are saved on the account record -- or, for a Solo Self-Found character, on its
+  own character record -- but no screen offers it and no node acts yet
   (issue [#2741](https://github.com/sdubois777/Cataclysm/issues/2741)); until
   then the Python model in `sim/` is the only place a node does anything (issue
   [#52](https://github.com/sdubois777/Cataclysm/issues/52)). **10 of the 24 city

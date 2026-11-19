@@ -25249,42 +25249,30 @@ bool ACataclysmDungeonGameMode::BankTheDefeatsEmpirePoints(const UCataclysmEmpir
 {
 	const double Awarded = Run.LastEmpirePointsAwarded;
 
-	// THE PARTITION OF THE CHARACTER PLAYING, whose lethality mode and population the points are earned into: the design,
-	// "An empire upgrade point earned by a character is earned into that character's lethality mode".
-	FCataclysmCharacterPartition Partition;
-	UCataclysmGameInstance* Instance = UCataclysmGameInstance::In(this);
-	if (Instance == nullptr || !UCataclysmGameInstance::PlayingPartition(this, Partition))
+	// THE BANK OF THE CHARACTER PLAYING, as `UCataclysmGameInstance::EmpireTreeHeldBy` names it: its lethality mode's, in
+	// the account record -- the design, "An empire upgrade point earned by a character is earned into that character's
+	// lethality mode" -- or, since issue #2741 slice 1c, a Solo Self-Found character's own (the owner's reversal of C8).
+	FCataclysmHeldEmpireTree Held;
+	if (!UCataclysmGameInstance::BankEmpirePointsFor(this, Awarded, Held))
 	{
-		UE_LOG(LogCataclysm, Log,
-			   TEXT("Dungeon %d defeated: +%.3f empire upgrade points, not banked: there is no game instance of this "
-					"project's or no character playing to bank them for."),
-			   DungeonId, Awarded);
-		return false;
-	}
-
-	const UCataclysmAccountSave* Account = Instance->BankEmpirePoints(Partition, Awarded);
-	if (Account == nullptr)
-	{
-		// SOLO SELF-FOUND, OR A BANK REFUSED: a record that would not read or one naming another partition (`AccountFor`
-		// logged which, the first time it was asked). A Solo Self-Found character's points belong in its own character
-		// record, which this slice does not bank into. Issue #52.
-		UE_LOG(LogCataclysm, Log,
-			   TEXT("Dungeon %d defeated: +%.3f empire upgrade points, not banked: %s."),
-			   DungeonId, Awarded,
-			   Partition.bSoloSelfFound
-				   ? TEXT("a Solo Self-Found character's points are not banked yet")
-				   : TEXT("the account record in its slot was refused"));
+		// NOBODY PLAYING, NO GAME INSTANCE OF THIS PROJECT'S, OR A BANK REFUSED: an account record that would not read
+		// or one naming another partition (`AccountFor` logged which, the first time it was asked).
+		UE_LOG(LogCataclysm, Log, TEXT("Dungeon %d defeated: +%.3f empire upgrade points, not banked: %s"),
+			   DungeonId, Awarded, *Held.Why);
 		return false;
 	}
 
 	// THE LINE A PLAYTEST LOG READS, since no line reported a clear at all until this.
-	UE_LOG(LogCataclysm, Log,
-		   TEXT("Dungeon %d defeated: +%.3f empire upgrade points; %.3f banked in '%s'."),
-		   DungeonId, Awarded, Account->EmpireUpgradePoints,
-		   *UCataclysmGameInstance::AccountSlotFor(Partition));
+	FCataclysmCharacterPartition Partition;
+	UCataclysmGameInstance::PlayingPartition(this, Partition);
+	UE_LOG(LogCataclysm, Log, TEXT("Dungeon %d defeated: +%.3f empire upgrade points; %.3f banked in %s."),
+		   DungeonId, Awarded, *Held.Bank,
+		   Held.bTheCharactersOwn
+			   ? TEXT("the Solo Self-Found character's own record")
+			   : *FString::Printf(TEXT("'%s'"), *UCataclysmGameInstance::AccountSlotFor(Partition)));
 
-	// AND THE ACCOUNT RECORD IS WRITTEN, by the one trigger that writes it.
-	UCataclysmSaveWriter::NoteTriggerIn(GetWorld(), ECataclysmSaveTrigger::AccountChanged);
+	// AND THE RECORD THAT HOLDS THE BANK IS WRITTEN: the account record, or the character's own.
+	UCataclysmGameInstance::NoteTheEmpireTreeChanged(this, Held);
 	return true;
 }
 

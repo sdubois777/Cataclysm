@@ -125,10 +125,12 @@ bool FCataclysmSaveRecordsAreWrittenForTheRightReasons::RunTest(const FString&)
 		// SINCE 2026-11-17, issue #2733 slice 3: the hand-over before a level change, which the next level loads.
 		// SINCE 2026-11-18, issue #2742's second slice: a city upgrade bought, which a Solo Self-Found character pays
 		// for from its own gold.
+		// SINCE 2026-11-18, issue #2741 slice 1c: a Solo Self-Found character's own empire points or tree.
 		const bool bCharacter = Trigger == ECataclysmSaveTrigger::InventoryChanged
 			|| Trigger == ECataclysmSaveTrigger::CharacterDied || Trigger == ECataclysmSaveTrigger::CharacterCreated
 			|| Trigger == ECataclysmSaveTrigger::RunWon || Trigger == ECataclysmSaveTrigger::LeavingTheLevel
-			|| Trigger == ECataclysmSaveTrigger::CityUpgradeBought;
+			|| Trigger == ECataclysmSaveTrigger::CityUpgradeBought
+			|| Trigger == ECataclysmSaveTrigger::OwnEmpireTreeChanged;
 		TestEqual(FString::Printf(TEXT("'%s' writes the character record"),
 					FTriggers::NameOf(Trigger)),
 			FTriggers::WritesTheCharacterRecord(Trigger), bCharacter);

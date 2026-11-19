@@ -166,6 +166,20 @@ enum class ECataclysmSaveTrigger : uint8
 	 * coordinating session's ruling of 2026-11-18. Nothing writes these numbers to disk.
 	 */
 	CityUpgradeBought = 13,
+
+	/**
+	 * A Solo Self-Found character's own empire upgrade points or tree changed: a defeat's award banked, a point bought,
+	 * an option chosen, or a respec (`UCataclysmGameInstance::NoteTheEmpireTreeChanged`). Issue #2741 slice 1c.
+	 *
+	 * WHY IT EXISTS. Such a character's bank and tree are its own, in its character record (version 9), and
+	 * `AccountChanged` writes only the account record, which it has none of. OF THE CHARACTER RECORD, and of the run
+	 * record as every trigger but `AccountChanged` is; an ordinary asynchronous write. A respec raises
+	 * `EmpireTreeRespecced` after it, for the run record's days.
+	 *
+	 * NUMBERED 13 ON THIS BRANCH. Gold's slice 2 adds `CityUpgradeBought`, also 13 on its own branch; whichever merges
+	 * second takes the next number, which nothing persists.
+	 */
+	OwnEmpireTreeChanged = 14,
 };
 
 /**
@@ -223,8 +237,10 @@ public:
 	/**
 	 * Whether this trigger writes the character record.
 	 *
-	 * THE INVENTORY AND DEATH, AND NOTHING ELSE -- and since then a new character (`CharacterCreated`, 2026-11-01) and
-	 * a won run (`RunWon`, issue #1324 slice 6e, 2026-11-03). What a character is carrying
+	 * THE INVENTORY AND DEATH, AND NOTHING ELSE -- and since then a new character (`CharacterCreated`, 2026-11-01),
+	 * a won run (`RunWon`, issue #1324 slice 6e, 2026-11-03), the hand-over before a level change (`LeavingTheLevel`,
+	 * issue #2733 slice 3) and a Solo Self-Found character's own empire points or tree (`OwnEmpireTreeChanged`, issue
+	 * #2741 slice 1c). What a character is carrying
 	 * lives in its own record rather than in the run, so an item picked up has
 	 * to reach that record; and a death has to be written whole, which means the
 	 * character as well as the floor it fell on.

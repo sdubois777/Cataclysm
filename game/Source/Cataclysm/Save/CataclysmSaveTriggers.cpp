@@ -61,6 +61,10 @@ bool UCataclysmSaveTriggers::WritesTheCharacterRecord(ECataclysmSaveTrigger Trig
 		case ECataclysmSaveTrigger::CityUpgradeBought: // A trigger's: a purchase writes the character record.
 			return true;
 
+		// A SOLO SELF-FOUND CHARACTER'S OWN EMPIRE POINTS OR TREE, which this record holds. Issue #2741 slice 1c.
+		case ECataclysmSaveTrigger::OwnEmpireTreeChanged: // A trigger's: its own bank and tree are in this record.
+			return true;
+
 		default:
 			return false;
 	}
@@ -161,6 +165,8 @@ const TCHAR* UCataclysmSaveTriggers::NameOf(ECataclysmSaveTrigger Trigger)
 		case ECataclysmSaveTrigger::LeavingTheLevel:        return TEXT("the character leaving the level");
 		case ECataclysmSaveTrigger::EmpireTreeRespecced:    return TEXT("the empire upgrade tree being respecced");
 		case ECataclysmSaveTrigger::CityUpgradeBought:      return TEXT("a city upgrade being bought");
+		case ECataclysmSaveTrigger::OwnEmpireTreeChanged:
+			return TEXT("a Solo Self-Found character's own empire points or tree changing");
 	}
 
 	// A TRIGGER ADDED WITHOUT A WORDING. Named rather than fallen through to one
@@ -192,5 +198,6 @@ TArray<ECataclysmSaveTrigger> UCataclysmSaveTriggers::Every()
 		ECataclysmSaveTrigger::LeavingTheLevel,
 		ECataclysmSaveTrigger::EmpireTreeRespecced,
 		ECataclysmSaveTrigger::CityUpgradeBought,
+		ECataclysmSaveTrigger::OwnEmpireTreeChanged,
 	};
 }

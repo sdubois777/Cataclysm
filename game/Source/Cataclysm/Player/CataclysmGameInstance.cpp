@@ -248,8 +248,8 @@ UCataclysmAccountSave* UCataclysmGameInstance::AccountFor(const FCataclysmCharac
 	const FString Slot = AccountSlotFor(Partition);
 	if (Slot.IsEmpty())
 	{
-		// SOLO SELF-FOUND: NO ACCOUNT RECORD. Its points belong in its own character record, which this slice does not
-		// bank into. Issue #52.
+		// SOLO SELF-FOUND: NO ACCOUNT RECORD. Its points belong in its own character record, which `BankEmpirePointsFor`
+		// banks into since issue #2741 slice 1c. Issue #52.
 		return nullptr;
 	}
 
@@ -455,6 +455,34 @@ FString UCataclysmGameInstance::GoldBalanceText(const UObject* WorldContext)
 	return GoldHeldBy(WorldContext, Held) ? ACataclysmDroppedItem::GoldName(Held) : FString();
 }
 
+bool UCataclysmGameInstance::BankEmpirePointsFor(const UObject* WorldContext, double Points,
+											 FCataclysmHeldEmpireTree& OutHeld)
+{
+	if (!EmpireTreeHeldBy(WorldContext, OutHeld))
+	{
+		return false;
+	}
+	// A SUBTRACTION, which is not banking: spending is the tree's. An award of nought is banked, as `BankEmpirePoints`
+	// banks it, so the caller's write and log do not change with the figure.
+	if (Points < 0.0)
+	{
+		OutHeld.Why = TEXT("Empire upgrade points below nought are not banked.");
+		return false;
+	}
+	// THE FRACTION IS KEPT, as `BankEmpirePoints` keeps it: ruled 2026-11-03.
+	*OutHeld.Bank += Points;
+	return true;
+}
+
+void UCataclysmGameInstance::NoteTheEmpireTreeChanged(const UObject* WorldContext, const FCataclysmHeldEmpireTree& Held)
+{
+	const UWorld* World = WorldContext != nullptr && GEngine != nullptr
+		? GEngine->GetWorldFromContextObject(WorldContext, EGetWorldErrorMode::ReturnNull)
+		: nullptr;
+	UCataclysmSaveWriter::NoteTriggerIn(World, Held.bTheCharactersOwn ? ECataclysmSaveTrigger::OwnEmpireTreeChanged
+																	  : ECataclysmSaveTrigger::AccountChanged);
+}
+
 namespace CataclysmGameInstanceEmpireTree
 {
 	/** What a buy, a choice and a respec say when the tree's two tables are not there to read. */
@@ -479,21 +507,22 @@ namespace CataclysmGameInstanceEmpireTree
 bool UCataclysmGameInstance::EmpireTreeHeldBy(const UObject* WorldContext, FCataclysmHeldEmpireTree& OutHeld)
 {
 	OutHeld = FCataclysmHeldEmpireTree();
-	const ACataclysmPlayerState* State = CataclysmGameInstanceGold::PlayingState(WorldContext);
+	ACataclysmPlayerState* State = CataclysmGameInstanceGold::PlayingState(WorldContext);
 	if (State == nullptr)
 	{
 		OutHeld.Why = TEXT("Nobody is playing, so there is no empire upgrade tree to read.");
 		return false;
 	}
 
-	// A SOLO SELF-FOUND CHARACTER'S TREE IS ITS OWN, and slice 1c builds it on its character record. The owner's
-	// ruling of 2026-11-18, which reversed the coordinating session's C8.
+	// A SOLO SELF-FOUND CHARACTER'S TREE IS ITS OWN, on its player state and saved in its character record: the owner's
+	// ruling of 2026-11-18, which reversed the coordinating session's C8. Issue #2741 slice 1c.
 	const FCataclysmCharacterPartition& Partition = State->GetPartition();
 	if (Partition.bSoloSelfFound)
 	{
-		OutHeld.Why = TEXT("A Solo Self-Found character's empire upgrade tree is its own, and its character record does "
-						   "not hold one yet (issue #2741, slice 1c).");
-		return false;
+		OutHeld.Bank = &State->EditOwnEmpireUpgradePoints();
+		OutHeld.Allocation = &State->EditOwnEmpireTree();
+		OutHeld.bTheCharactersOwn = true;
+		return true;
 	}
 
 	// EVERY OTHER CHARACTER'S LETHALITY MODE'S, held once per partition in the account record.
@@ -541,8 +570,7 @@ bool UCataclysmGameInstance::BuyEmpireTreePoint(const UObject* WorldContext, FNa
 
 	UE_LOG(LogCataclysm, Log, TEXT("Empire upgrade tree: a point bought in %s, which now holds %d; %.3f banked."),
 		   *CataclysmGameInstanceEmpireTree::NameOf(Nodes, Node), Held.Allocation->PointsIn(Node), *Held.Bank);
-	UCataclysmSaveWriter::NoteTriggerIn(CataclysmGameInstanceEmpireTree::WorldOf(WorldContext),
-										ECataclysmSaveTrigger::AccountChanged);
+	NoteTheEmpireTreeChanged(WorldContext, Held);
 	return true;
 }
 
@@ -570,8 +598,7 @@ bool UCataclysmGameInstance::ChooseEmpireTreeOption(const UObject* WorldContext,
 
 	UE_LOG(LogCataclysm, Log, TEXT("Empire upgrade tree: option %d of %s chosen."), Option,
 		   *CataclysmGameInstanceEmpireTree::NameOf(Nodes, Node));
-	UCataclysmSaveWriter::NoteTriggerIn(CataclysmGameInstanceEmpireTree::WorldOf(WorldContext),
-										ECataclysmSaveTrigger::AccountChanged);
+	NoteTheEmpireTreeChanged(WorldContext, Held);
 	return true;
 }
 
@@ -626,11 +653,12 @@ bool UCataclysmGameInstance::RespecEmpireTree(const UObject* WorldContext, int32
 				"in which %d dungeon(s) resolved and %d city(ies) fell."),
 		   OutPointsReturned, *Held.Bank, Days, DayBefore, Run->Day(), Resolved, Fallen);
 
-	// SAVED WHOLE: the account's points, and the run's days by a trigger that writes the run record whatever else wrote
-	// it earlier in this frame. `Clock` would have been skipped then; the coordinating session's ruling of 2026-11-18.
-	const UWorld* World = CataclysmGameInstanceEmpireTree::WorldOf(WorldContext);
-	UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::AccountChanged);
-	UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::EmpireTreeRespecced);
+	// SAVED WHOLE: the points, in the record that holds the tree, and the run's days by a trigger that writes the run
+	// record whatever else wrote it earlier in this frame. `Clock` would have been skipped then; the coordinating
+	// session's ruling of 2026-11-18.
+	NoteTheEmpireTreeChanged(WorldContext, Held);
+	UCataclysmSaveWriter::NoteTriggerIn(CataclysmGameInstanceEmpireTree::WorldOf(WorldContext),
+										ECataclysmSaveTrigger::EmpireTreeRespecced);
 	return true;
 }
 

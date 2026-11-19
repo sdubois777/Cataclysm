@@ -18,10 +18,10 @@ struct FCataclysmPassiveAllocation;
  * The empire upgrade tree the character playing has, and the bank it is bought with: what
  * `UCataclysmGameInstance::EmpireTreeHeldBy` answers. Issue #2741 slice 1b.
  *
- * POINTERS INTO THE RECORD THAT HOLDS THEM, to read and change at once and never to keep. Today that record is the
- * account record the game instance holds (`HeldAccount`), and asking `AccountFor` for another partition replaces it.
- * A Solo Self-Found character's tree and bank will be its own, on its player state and saved in its character record
- * (slice 1c), behind the same two pointers, so nothing that reads them asks which record it is.
+ * POINTERS INTO WHAT HOLDS THEM, to read and change at once and never to keep: the account record the game instance
+ * holds (`HeldAccount`), which asking `AccountFor` for another partition replaces; or, for a Solo Self-Found character,
+ * its player state's own two fields, which its character record saves (slice 1c). Behind the same two pointers, so
+ * nothing that reads them asks which it is -- except what raises the save trigger, which reads `bTheCharactersOwn`.
  */
 struct FCataclysmHeldEmpireTree
 {
@@ -33,6 +33,12 @@ struct FCataclysmHeldEmpireTree
 
 	/** Why there is no tree, in a sentence a screen or a log can show; empty when there is one. */
 	FString Why;
+
+	/**
+	 * True when the tree and bank are a Solo Self-Found character's own, which its character record saves; false when
+	 * they are its lethality mode's, which the account record saves. Issue #2741 slice 1c.
+	 */
+	bool bTheCharactersOwn = false;
 
 	bool IsHeld() const { return Bank != nullptr && Allocation != nullptr; }
 };
@@ -337,7 +343,8 @@ public:
 	 * from its slot, and made fresh -- at the current version, holding nothing -- when the slot is empty.
 	 *
 	 * NULL FOR A SOLO SELF-FOUND CHARACTER, which has no account record: its points belong in its own character record
-	 * (`UCataclysmCharacterSave::PrivateEmpireUpgradePoints`), and THIS SLICE DOES NOT BANK THEM. Issue #52.
+	 * (`UCataclysmCharacterSave::PrivateEmpireUpgradePoints`), which `BankEmpirePointsFor` banks into since issue #2741
+	 * slice 1c. Issue #52.
 	 *
 	 * NULL WHEN THE SLOT HOLDS A RECORD THAT WOULD NOT READ, or one naming another partition, and that is logged: a
 	 * fresh record banked into would be written over the file and empty the bank it held. Logged ONCE: the slot is
@@ -351,8 +358,32 @@ public:
 	 *
 	 * IT DOES NOT WRITE THE RECORD. The caller raises `ECataclysmSaveTrigger::AccountChanged`, which the save writer
 	 * answers by writing `HeldAccount` (`UCataclysmSaveWriter::NoteTrigger`).
+	 *
+	 * CALL `BankEmpirePointsFor` RATHER THAN THIS for the character playing: it decides between this and a Solo
+	 * Self-Found character's own bank.
 	 */
 	UCataclysmAccountSave* BankEmpirePoints(const FCataclysmCharacterPartition& Partition, double Points);
+
+	/**
+	 * Adds points to the bank `EmpireTreeHeldBy` reads for the character playing, keeping the fraction: its lethality
+	 * mode's, in the account record, or a Solo Self-Found character's own, on its player state. Issue #2741 slice 1c; the
+	 * owner's reversal of C8 on 2026-11-18. `AddGoldFor` is the precedent for gold.
+	 *
+	 * IT DOES NOT WRITE ANY RECORD; the caller raises the trigger `OutHeld.bTheCharactersOwn` names.
+	 *
+	 * @param OutHeld  the tree and bank banked into, `Why` saying why when nothing was
+	 * @return false, and nothing added, for points below nought or where `EmpireTreeHeldBy` has no bank; an award of
+	 *         nought is banked, as `BankEmpirePoints` banks it
+	 */
+	static bool BankEmpirePointsFor(const UObject* WorldContext, double Points, FCataclysmHeldEmpireTree& OutHeld);
+
+	/**
+	 * Has the record that holds a tree written: `AccountChanged` for a lethality mode's, which the account record holds,
+	 * and `OwnEmpireTreeChanged` for a Solo Self-Found character's own, which its character record holds. Issue #2741
+	 * slice 1c. Every change to a tree or its bank -- a point bought, an option chosen, a respec, a defeat's award -- is
+	 * saved through this, so none of them asks which record it is.
+	 */
+	static void NoteTheEmpireTreeChanged(const UObject* WorldContext, const FCataclysmHeldEmpireTree& Held);
 
 	// ----------------------------------------------------------------------
 	// Gold -- issue #2742, slice 1
@@ -437,12 +468,14 @@ public:
 	 * earned by a character is earned into its lethality mode and shared by every character in it, so what the points
 	 * buy is shared the same way. The screen and every node's effect read the tree here (slices 2 to 5).
 	 *
-	 * A SOLO SELF-FOUND CHARACTER HAS NONE YET. The owner ruled on 2026-11-18 that such a character banks and spends
-	 * its own; that is slice 1c, which puts it behind this function. Until then this answers false and says so.
+	 * A SOLO SELF-FOUND CHARACTER'S OWN, on its player state and saved in its character record (version 9), with
+	 * `OutHeld.bTheCharactersOwn` true. The owner ruled on 2026-11-18 that such a character banks and spends its own
+	 * ("Include them"), reversing the coordinating session's C8; the design's Solo Self-Found rule, it "shares a tree
+	 * with no other character at all". Slice 1c; until then this answered false for one. It needs no game instance.
 	 *
 	 * @return false, with `OutHeld.Why` saying why and both pointers null, when there is no tree to read: no world, no
-	 *         character playing, a Solo Self-Found character, no game instance of this project's, or an account record
-	 *         that would not read (see `AccountFor`)
+	 *         character playing, or -- for a character that is not Solo Self-Found -- no game instance of this
+	 *         project's or an account record that would not read (see `AccountFor`)
 	 */
 	static bool EmpireTreeHeldBy(const UObject* WorldContext, FCataclysmHeldEmpireTree& OutHeld);
 
@@ -451,8 +484,8 @@ public:
 	 * Issue #2741 slice 1b.
 	 *
 	 * THE RULES ARE `UCataclysmEmpireTree::Spend`'s, and a refusal is its sentence (or `EmpireTreeHeldBy`'s): nothing
-	 * changes and nothing is written. A point bought raises `ECataclysmSaveTrigger::AccountChanged`, which writes the
-	 * account record.
+	 * changes and nothing is written. A point bought has the record that holds the tree written
+	 * (`NoteTheEmpireTreeChanged`): the account record, or a Solo Self-Found character's own since slice 1c.
 	 */
 	static bool BuyEmpireTreePoint(const UObject* WorldContext, FName Node, FString& OutReason);
 
@@ -474,8 +507,9 @@ public:
 	 * DUNGEON IS BEING WALKED: nothing resolves while the player is inside one, by the owner's decision of 2026-10-24,
 	 * and `Cataclysm.EmpireAdvance` refuses there for the same reason.
 	 *
-	 * SAVED WHOLE: `AccountChanged` writes the account record and `EmpireTreeRespecced` the run record, in the same
-	 * frame. With the account alone, a player who quit before the next run write would come back to a respec that cost
+	 * SAVED WHOLE: the record that holds the tree (`NoteTheEmpireTreeChanged`: `AccountChanged` for the account record,
+	 * `OwnEmpireTreeChanged` for a Solo Self-Found character's own since slice 1c) and then `EmpireTreeRespecced` for the
+	 * run record, in the same frame. With the account alone, a player who quit before the next run write would come back to a respec that cost
 	 * no days; and `Clock`, which also writes the run record, is skipped when another write wrote it earlier in the
 	 * frame. Ruled by the coordinating session on 2026-11-18.
 	 *

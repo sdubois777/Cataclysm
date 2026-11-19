@@ -447,11 +447,14 @@ bool FCataclysmEmpireTreeAccountFileReachableTest::RunTest(const FString&)
 
 /**
  * `EmpireTreeHeldBy` reads the account record of the lethality mode playing: its bank and its tree, the very fields.
- * A Solo Self-Found character has none yet and is told so, as is a world with nobody playing, and buying through the
- * game instance is refused with the same sentence. Prints "HELD".
+ * A Solo Self-Found character's are its own, on its player state, and a point bought through the game instance goes
+ * there; a world with nobody playing has none, and says so. Prints "HELD".
+ *
+ * NAMED `TheTreeHeldIsTheLethalityModesAccounts` IN SLICE 1B, when a Solo Self-Found character had none and was told it
+ * was slice 1c's; renamed in slice 1c (issue #2741), which gave it its own.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeAccountHeldTest,
-	"Cataclysm.EmpireTree.TheTreeHeldIsTheLethalityModesAccounts",
+	"Cataclysm.EmpireTree.TheTreeHeldIsTheModesAccountsOrASoloSelfFoundCharactersOwn",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmEmpireTreeAccountHeldTest::RunTest(const FString&)
@@ -492,30 +495,46 @@ bool FCataclysmEmpireTreeAccountHeldTest::RunTest(const FString&)
 	const bool bHardcore = UCataclysmGameInstance::EmpireTreeHeldBy(Hardcore.World, HardcoreTree);
 	const bool bSolo = UCataclysmGameInstance::EmpireTreeHeldBy(Solo.World, SoloTree);
 	const bool bNobody = UCataclysmGameInstance::EmpireTreeHeldBy(Nobody, NobodysTree);
+
+	// A SOLO SELF-FOUND CHARACTER'S OWN BANK PAYS FOR ITS OWN POINT, and no account record is made for it.
+	Solo.State->SetOwnEmpireTree(1.0, FCataclysmPassiveAllocation());
 	FString SoloBuys;
 	const bool bSoloBought = UCataclysmGameInstance::BuyEmpireTreePoint(Solo.World, StructuralIntegrity, SoloBuys);
 
-	AddInfo(FString::Printf(TEXT("HELD: Hardcore %s, the account's own fields %s; Solo Self-Found %s, \"%s\"; nobody %s, "
-								 "\"%s\"; a Solo Self-Found buy %s, \"%s\""),
+	AddInfo(FString::Printf(TEXT("HELD: Hardcore %s, the account's own fields %s, its own %s; Solo Self-Found %s, the "
+								 "player state's own fields %s, its own %s; nobody %s, \"%s\"; a Solo Self-Found buy %s "
+								 "(%s), its own tree %s, its own bank %g, an account held %s"),
 							bHardcore ? TEXT("yes") : TEXT("no"),
 							HardcoreTree.Bank == &Account->EmpireUpgradePoints
 									&& HardcoreTree.Allocation == &Account->EmpireTree
 								? TEXT("yes")
 								: TEXT("NO"),
-							bSolo ? TEXT("yes") : TEXT("no"), *SoloTree.Why, bNobody ? TEXT("yes") : TEXT("no"),
-							*NobodysTree.Why, bSoloBought ? TEXT("bought") : TEXT("refused"), *SoloBuys));
+							HardcoreTree.bTheCharactersOwn ? TEXT("yes") : TEXT("no"),
+							bSolo ? TEXT("yes") : TEXT("no"),
+							SoloTree.Bank == &Solo.State->EditOwnEmpireUpgradePoints()
+									&& SoloTree.Allocation == &Solo.State->EditOwnEmpireTree()
+								? TEXT("yes")
+								: TEXT("NO"),
+							SoloTree.bTheCharactersOwn ? TEXT("yes") : TEXT("no"), bNobody ? TEXT("yes") : TEXT("no"),
+							*NobodysTree.Why, bSoloBought ? TEXT("bought") : TEXT("refused"), *SoloBuys,
+							*Describe(Solo.State->GetOwnEmpireTree()), Solo.State->GetOwnEmpireUpgradePoints(),
+							Solo.Instance->HeldAccount != nullptr ? TEXT("yes") : TEXT("no")));
 
 	TestTrue(TEXT("a Hardcore character has a tree"), bHardcore && HardcoreTree.IsHeld());
 	TestTrue(TEXT("whose bank is its account record's"), HardcoreTree.Bank == &Account->EmpireUpgradePoints);
 	TestTrue(TEXT("and whose tree is its account record's"), HardcoreTree.Allocation == &Account->EmpireTree);
+	TestFalse(TEXT("and not its own"), HardcoreTree.bTheCharactersOwn);
 	TestTrue(TEXT("with no reason given"), HardcoreTree.Why.IsEmpty());
-	TestFalse(TEXT("a Solo Self-Found character has none yet"), bSolo || SoloTree.IsHeld());
-	TestTrue(TEXT("and is told it is slice 1c's"), SoloTree.Why.Contains(TEXT("Solo Self-Found"))
-												  && SoloTree.Why.Contains(TEXT("slice 1c")));
+	TestTrue(TEXT("a Solo Self-Found character has a tree"), bSolo && SoloTree.IsHeld());
+	TestTrue(TEXT("whose bank is its player state's own"), SoloTree.Bank == &Solo.State->EditOwnEmpireUpgradePoints());
+	TestTrue(TEXT("and whose tree is its player state's own"), SoloTree.Allocation == &Solo.State->EditOwnEmpireTree());
+	TestTrue(TEXT("and says so"), SoloTree.bTheCharactersOwn);
 	TestFalse(TEXT("a world with nobody playing has none"), bNobody || NobodysTree.IsHeld());
 	TestFalse(TEXT("and says why"), NobodysTree.Why.IsEmpty());
-	TestFalse(TEXT("a Solo Self-Found character's buy is refused"), bSoloBought);
-	TestEqual(TEXT("with the same sentence"), SoloBuys, SoloTree.Why);
+	TestTrue(TEXT("a Solo Self-Found character's point is bought"), bSoloBought);
+	TestEqual(TEXT("into its own tree"), Solo.State->GetOwnEmpireTree().PointsIn(StructuralIntegrity), 1);
+	TestTrue(TEXT("paid from its own bank"), Solo.State->GetOwnEmpireUpgradePoints() == 0.0);
+	TestTrue(TEXT("and no account record is held for it"), Solo.Instance->HeldAccount == nullptr);
 	return true;
 }
 

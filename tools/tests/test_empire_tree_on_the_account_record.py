@@ -1,5 +1,6 @@
-"""The empire upgrade tree is kept on the account record, the committed account
-file holds a tree play can reach, and every change to the tree is saved.
+"""The empire upgrade tree is kept on the account record -- and a Solo Self-Found
+character's own on its character record -- the committed files hold trees play
+can reach, and every change to a tree is saved in the record that holds it.
 
 WHY THIS EXISTS. Issue #2741, slice 1b. The account record went to version 4 to
 hold `EmpireTree`, what the partition's empire upgrade tree has bought, and the
@@ -7,6 +8,10 @@ game instance buys, chooses and respecs through `EmpireTreeHeldBy`. The Unreal
 tests in `game/Source/Cataclysm/Tests/CataclysmEmpireTreeAccountTests.cpp` cover
 all of it, and continuous integration compiles no C++, so the parts that can be
 read as text are checked here as well.
+
+SLICE 1C (the same issue) gave a Solo Self-Found character its own bank and tree,
+on its character record at version 9 (the owner's reversal of C8, 2026-11-18), so
+`Character_v9.json` is checked the same way as `Account_v4.json`.
 
 WHAT EACH CHECK HOLDS, and what would go wrong without it:
 
@@ -26,7 +31,10 @@ WHAT EACH CHECK HOLDS, and what would go wrong without it:
                                      clock's trigger is skipped when another
                                      write wrote the run record in the frame
   a buy and a choice write the     a point bought and not written is a point the
-    account record                   next session does not have
+    record that holds the tree       next session does not have; a Solo
+                                     Self-Found character's own tree is in its
+                                     character record, which `AccountChanged`
+                                     does not write (slice 1c)
 """
 
 from __future__ import annotations
@@ -45,10 +53,16 @@ RECORDS_H = REPO_ROOT / "game" / "Source" / "Cataclysm" / "Save" / "CataclysmSav
 GAME_INSTANCE = REPO_ROOT / "game" / "Source" / "Cataclysm" / "Player" / "CataclysmGameInstance.cpp"
 TRIGGERS = REPO_ROOT / "game" / "Source" / "Cataclysm" / "Save" / "CataclysmSaveTriggers.cpp"
 ACCOUNT_FILE = REPO_ROOT / "game" / "Tests" / "SaveFixtures" / "Account_v4.json"
+CHARACTER_FILE = REPO_ROOT / "game" / "Tests" / "SaveFixtures" / "Character_v9.json"
 
 #: `class CATACLYSM_API UCataclysmAccountSave ... SchemaVersionNow = 4;`
 ACCOUNT_VERSION = re.compile(
     r"class\s+CATACLYSM_API\s+UCataclysmAccountSave\s*:.*?static\s+constexpr\s+int32\s+SchemaVersionNow\s*=\s*(\d+)\s*;",
+    re.DOTALL)
+
+#: `class CATACLYSM_API UCataclysmCharacterSave ... SchemaVersionNow = 9;`
+CHARACTER_VERSION = re.compile(
+    r"class\s+CATACLYSM_API\s+UCataclysmCharacterSave\s*:.*?static\s+constexpr\s+int32\s+SchemaVersionNow\s*=\s*(\d+)\s*;",
     re.DOTALL)
 
 
@@ -159,7 +173,7 @@ def test_the_reachability_check_can_say_no(spent, node_rows, edges_into):
 def test_a_respec_writes_the_account_record_and_the_run_record():
     code = without_comments(GAME_INSTANCE.read_text(encoding="utf-8"))
     respec = body_of(code, "bool UCataclysmGameInstance::RespecEmpireTree(")
-    assert "ECataclysmSaveTrigger::AccountChanged" in respec, "a respec no longer writes the account record"
+    assert "NoteTheEmpireTreeChanged(" in respec, "a respec no longer writes the record that holds the tree"
     assert "ECataclysmSaveTrigger::EmpireTreeRespecced" in respec, (
         "a respec no longer writes the run record by its own trigger. With the account record alone, a player who quits "
         "before the next run write comes back to a respec that cost no days (#2741, slice 1b).")
@@ -178,7 +192,68 @@ def test_a_respec_writes_the_account_record_and_the_run_record():
     "bool UCataclysmGameInstance::BuyEmpireTreePoint(",
     "bool UCataclysmGameInstance::ChooseEmpireTreeOption(",
 ])
-def test_a_buy_and_a_choice_write_the_account_record(signature):
+def test_a_buy_and_a_choice_write_the_record_that_holds_the_tree(signature):
     code = without_comments(GAME_INSTANCE.read_text(encoding="utf-8"))
-    assert "ECataclysmSaveTrigger::AccountChanged" in body_of(code, signature), (
-        f"{signature.split('::')[1].rstrip('(')} no longer writes the account record")
+    assert "NoteTheEmpireTreeChanged(" in body_of(code, signature), (
+        f"{signature.split('::')[1].rstrip('(')} no longer writes the record that holds the tree")
+
+
+def test_the_record_that_holds_the_tree_is_the_one_written():
+    """The account record for a lethality mode's tree, a Solo Self-Found character's own record for its own. Issue
+    #2741 slice 1c: `AccountChanged` writes only the account record, and such a character has none."""
+    code = without_comments(GAME_INSTANCE.read_text(encoding="utf-8"))
+    noted = body_of(code, "void UCataclysmGameInstance::NoteTheEmpireTreeChanged(")
+    assert "bTheCharactersOwn" in noted, "the trigger no longer depends on which record holds the tree"
+    assert "ECataclysmSaveTrigger::AccountChanged" in noted, "a lethality mode's tree no longer writes the account record"
+    assert "ECataclysmSaveTrigger::OwnEmpireTreeChanged" in noted, (
+        "a Solo Self-Found character's own tree no longer writes its character record")
+    triggers = without_comments(TRIGGERS.read_text(encoding="utf-8"))
+    character = body_of(triggers, "bool UCataclysmSaveTriggers::WritesTheCharacterRecord(")
+    assert "case ECataclysmSaveTrigger::OwnEmpireTreeChanged:" in character, (
+        "the trigger for a Solo Self-Found character's own tree does not write the character record")
+    listed = body_of(triggers, "TArray<ECataclysmSaveTrigger> UCataclysmSaveTriggers::Every(")
+    assert "ECataclysmSaveTrigger::OwnEmpireTreeChanged" in listed, "the trigger is not in the list its tests walk"
+
+
+def test_the_committed_character_file_holds_its_own_tree_at_the_records_version(node_rows, edges_into):
+    """`Character_v9.json`: at the character record's version, with private points and a tree of its own whose every
+    node is a row within its points, waits on nothing, takes no option, and is open. Slice 1c."""
+    character = json.loads(CHARACTER_FILE.read_text(encoding="utf-8"))
+    match = CHARACTER_VERSION.search(RECORDS_H.read_text(encoding="utf-8"))
+    assert match, f"no SchemaVersionNow found for UCataclysmCharacterSave in {RECORDS_H.relative_to(REPO_ROOT)}"
+    assert character["SchemaVersion"] == int(match.group(1)), (
+        f"{CHARACTER_FILE.name} is at version {character['SchemaVersion']} and the character record at "
+        f"{match.group(1)}. A version bump commits a new fixture: game/Tests/SaveFixtures/README.md.")
+    points = character["PrivateEmpireUpgradePoints"]
+    assert points != 0 and points != int(points), (
+        f"{CHARACTER_FILE.name}'s private points are {points}; a fraction other than 0 shows the double is read")
+    nodes = character["PrivateEmpireTree"]["Nodes"]
+    assert nodes, f"{CHARACTER_FILE.name} holds an empty tree of its own, which shows nothing about reading one"
+    spent = {}
+    for entry in nodes:
+        row = node_rows.get(entry["Node"])
+        assert row is not None, f"{CHARACTER_FILE.name} names {entry['Node']}, which EmpireTreeNodes.csv does not hold"
+        assert 1 <= entry["Points"] <= int(row["MaxPoints"]) and row["WaitsOn"] == "" and entry["ChosenOption"] == 0, (
+            f"{entry} is not a state its own tree can hold")
+        spent[entry["Node"]] = entry["Points"]
+    assert shut_nodes(spent, node_rows, edges_into) == [], f"{CHARACTER_FILE.name} holds nodes no player could open"
+
+
+def test_a_solo_self_found_characters_own_tree_is_gathered_restored_and_read_in_one_place():
+    """The save gather writes the character's own bank and tree, the load puts them back, and `EmpireTreeHeldBy` hands
+    them out for a Solo Self-Found character. Slice 1c; without the first two a save loses them, without the third
+    nothing spends them."""
+    gather = without_comments((REPO_ROOT / "game" / "Source" / "Cataclysm" / "Save" / "CataclysmSaveGather.cpp")
+                              .read_text(encoding="utf-8"))
+    apply = without_comments((REPO_ROOT / "game" / "Source" / "Cataclysm" / "Save" / "CataclysmSaveApply.cpp")
+                             .read_text(encoding="utf-8"))
+    assert "Record.PrivateEmpireUpgradePoints = State->GetOwnEmpireUpgradePoints();" in gather, (
+        "the save gather no longer writes a Solo Self-Found character's own empire upgrade points")
+    assert "Record.PrivateEmpireTree = State->GetOwnEmpireTree();" in gather, (
+        "the save gather no longer writes a Solo Self-Found character's own tree")
+    assert "State->SetOwnEmpireTree(Record.PrivateEmpireUpgradePoints, Record.PrivateEmpireTree);" in apply, (
+        "a load no longer puts a Solo Self-Found character's own bank and tree back")
+    code = without_comments(GAME_INSTANCE.read_text(encoding="utf-8"))
+    held = body_of(code, "bool UCataclysmGameInstance::EmpireTreeHeldBy(")
+    assert "EditOwnEmpireUpgradePoints()" in held and "EditOwnEmpireTree()" in held, (
+        "a Solo Self-Found character's own bank and tree are no longer what the one read hands out")

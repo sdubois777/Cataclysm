@@ -1264,6 +1264,12 @@ public:
 	static const FName TypeName;
 
 	/**
+	 * 9 SINCE 2026-11-18. A Solo Self-Found character banks and spends its own empire upgrade points (issue #2741 slice
+	 * 1c): the owner reversed the coordinating session's C8 that day ("Include them"). `PrivateEmpireUpgradePoints` was a
+	 * whole number and is a double, because an award is a fraction, as the account record's bank became at its version 2;
+	 * and `PrivateEmpireTree` holds what the character's own tree has bought. `Migrate_8_to_9` writes the same points
+	 * back and an empty tree: nothing banked or bought into either before.
+	 *
 	 * 8 SINCE 2026-11-18. A Solo Self-Found character holds its own gold (`Gold`, issue #2742): the owner ruled that day
 	 * that such a character earns gold, and the design's Storage section puts its gold on the character, "its gold is
 	 * its own". `Migrate_7_to_8` writes a balance of 0 into a character written at 7: nothing dropped gold before.
@@ -1293,7 +1299,7 @@ public:
 	 * when attribute allocation became something the running game produces, so
 	 * a character written before that has no such field at all. Issue #50.
 	 */
-	static constexpr int32 SchemaVersionNow = 8;
+	static constexpr int32 SchemaVersionNow = 9;
 
 	/**
 	 * The Cataclysm order seed a character's identifier gives: what `Migrate_6_to_7` writes into a character written
@@ -1583,15 +1589,29 @@ public:
 	TArray<FCataclysmWornItem> WornGear;
 
 	/**
-	 * A Solo Self-Found character's own empire upgrade points.
+	 * A Solo Self-Found character's own empire upgrade points, banked and not yet spent.
 	 *
 	 * SEPARATE FROM THE ACCOUNT RECORD'S, and not a copy of it. A Solo Self-Found
 	 * character shares an empire tree with no other character at all, not even
 	 * another Solo Self-Found one, so its points cannot live in a record that
 	 * anybody else reads. Left at zero and unused for every other character.
+	 *
+	 * A DOUBLE SINCE VERSION 9, AND BANKED INTO SINCE THEN (issue #2741 slice 1c): a defeated dungeon's award banks here
+	 * for such a character (`UCataclysmGameInstance::BankEmpirePointsFor`), a fraction kept as the account's is, and its
+	 * own tree spends it. It was an `int32` nothing wrote until then. `ACataclysmPlayerState::GetOwnEmpireUpgradePoints`
+	 * holds it in play.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
-	int32 PrivateEmpireUpgradePoints = 0;
+	double PrivateEmpireUpgradePoints = 0.0;
+
+	/**
+	 * What a Solo Self-Found character's own empire upgrade tree has bought, in the account record's shape
+	 * (`UCataclysmAccountSave::EmpireTree`). Empty and unused for every other character. Issue #2741 slice 1c, VERSION 9;
+	 * `ACataclysmPlayerState::GetOwnEmpireTree` holds it in play, and `UCataclysmGameInstance::EmpireTreeHeldBy` is the one
+	 * place that says which tree a character has.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FCataclysmPassiveAllocation PrivateEmpireTree;
 
 	/**
 	 * A Solo Self-Found character's own 600-slot stash, for the same reason.

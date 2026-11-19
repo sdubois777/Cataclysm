@@ -486,13 +486,14 @@ public:
 	bool ClearEmpireDungeon();
 
 	/**
-	 * Banks what the dungeon just cleared awarded (`UCataclysmEmpireRun::LastEmpirePointsAwarded`) into the account
-	 * record of the playing character's partition, logs it, and raises `ECataclysmSaveTrigger::AccountChanged` so the
-	 * save writer writes that record. Issue #52, the first slice.
+	 * Banks what the dungeon just cleared awarded (`UCataclysmEmpireRun::LastEmpirePointsAwarded`) into the bank of the
+	 * character playing -- its partition's account record, or since issue #2741 slice 1c a Solo Self-Found character's
+	 * own, which its character record saves -- logs it, and raises the trigger that writes that record
+	 * (`UCataclysmGameInstance::NoteTheEmpireTreeChanged`). Issue #52, the first slice.
 	 *
-	 * NOTHING IS BANKED, AND THAT IS LOGGED, with no game instance of this project's, no character playing, a Solo
-	 * Self-Found character -- its points belong in its own character record, which this slice does not write -- or an
-	 * account record that would not read. `ClearEmpireDungeon` calls it only for a clear that cleared something.
+	 * NOTHING IS BANKED, AND THAT IS LOGGED, with no game instance of this project's for a character that is not Solo
+	 * Self-Found, no character playing, or an account record that would not read. `ClearEmpireDungeon` calls it only
+	 * for a clear that cleared something.
 	 *
 	 * @return whether the points were banked
 	 */

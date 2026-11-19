@@ -213,6 +213,7 @@ bool FCataclysmDrawMigrationTest::RunTest(const FString& Parameters)
 	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmCharacterSave::SchemaVersionNow);
 	Expected->SetNumberField(TEXT("CataclysmOrderSeed"), CataclysmSaveFixtures::FixtureIdentifiersOrderSeed);
 	Expected->SetNumberField(TEXT("Gold"), 0); // And 8, issue #2742: no gold of its own.
+	CataclysmSaveFixtures::AddTheCharactersVersion9Defaults(*Expected); // And 9, issue #2741 slice 1c: its own tree.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -244,8 +245,8 @@ bool FCataclysmDrawMigrationTest::RunTest(const FString& Parameters)
 
 /**
  * The committed character file reads into the seed it states, and the seed survives being written out and read back.
- * It read `Character_v7.json` until the character record went to version 8 on 2026-11-18 (issue #2742);
- * `Character_v8.json` states the same seed.
+ * It read `Character_v7.json` until the character record went to version 8 on 2026-11-18 (issue #2742), and
+ * `Character_v8.json` until it went to version 9 the same day (issue #2741 slice 1c); each states the same seed.
  * The file states 975318642, which is not the seed its identifier gives, so a seed worked out again on load cannot pass.
  * Prints "DRAW FILE".
  */
@@ -257,7 +258,7 @@ bool FCataclysmDrawFixtureTest::RunTest(const FString& Parameters)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v8.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v9.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -269,7 +270,7 @@ bool FCataclysmDrawFixtureTest::RunTest(const FString& Parameters)
 		Text, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v8.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v9.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}

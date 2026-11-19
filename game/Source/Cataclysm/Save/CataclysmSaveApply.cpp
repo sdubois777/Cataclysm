@@ -700,6 +700,8 @@ bool FCataclysmSaveApply::CharacterInto(const UCataclysmCharacterSave& Record, A
 	State->SetDifficultyTier(Record.DifficultyTier); // A load's: the character's tier. Issue #1472.
 	State->SetCataclysmOrderSeed(Record.CataclysmOrderSeed); // A load's: the character's draw. Issue #1324 slice 6a.
 	State->SetOwnGold(Record.Gold); // A load's: a Solo Self-Found character's own gold. Issue #2742.
+	// A load's: a Solo Self-Found character's own empire upgrade points and tree. Issue #2741 slice 1c.
+	State->SetOwnEmpireTree(Record.PrivateEmpireUpgradePoints, Record.PrivateEmpireTree);
 	if (Record.bMarkedByConsumption) // A load's: the Consumption mark. Issue #2688.
 	{
 		State->MarkByConsumption();
