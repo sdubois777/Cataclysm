@@ -1,26 +1,30 @@
 """What each city node of the empire upgrade tree does must be what its own words say.
 
 WHY THIS EXISTS. Issue #2741 slice 3a makes 31 nodes and capstone options act on the
-empire's cities, slice 3b seven more that act at an event, and slice 4 nineteen
-for a dungeon's walk and depth and for a clear. What each one does is stated once, in `EMPIRE_TREE_EFFECTS` in
+empire's cities, slice 3b seven more that act at an event, slice 4 nineteen
+for a dungeon's walk and depth and for a clear, and slice 5a fifteen for the
+player inside a dungeon. What each one does is stated once, in `EMPIRE_TREE_EFFECTS` in
 `tools/generate_datatables.py`, which becomes `game/Data/EmpireTreeEffects.csv`
-and `DT_EmpireTreeEffects`, which `UCataclysmEmpireTree::CityBonusesFor` adds up.
+and `DT_EmpireTreeEffects`, which `UCataclysmEmpireTree::CityBonusesFor` and
+`PlayerBonusesFor` add up.
 A value typed there is a copy of a node's text, and this project has recorded
 copies drifting before (`CLAUDE.md`).
 
 WHAT IS CHECKED:
   the effect names           the generator's list and the C++ enum agree
   which nodes act            exactly the 31 slice 3a builds, the seven of
-                             slice 3b and the nineteen of slice 4; slice 5's
-                             have none yet
+                             slice 3b, the nineteen of slice 4 and the fifteen
+                             of slice 5a; slice 5b's five have none yet
   every value                found in its own node's or option's text
-  the six caps               Golden Age +40% and Bastion Spirit +15 days, the
+  the nine caps              Golden Age +40% and Bastion Spirit +15 days, the
                              coordinating session's S3 and S4 of 2026-11-18;
-                             Global Vigilance's 15% and Sovereign's Haste's 30
-                             days, their own texts; Reclaimer's Resolve's 15%,
-                             the Q2 of 2026-11-19; Architectural Insight's +10
-                             floors, the W4 of 2026-11-19; and no other
-                             effect has one
+                             Global Vigilance's 15%, Sovereign's Haste's 30
+                             days, Speed Runner's 100% and Efficiency
+                             Premium's 50%, their own texts; Reclaimer's
+                             Resolve's 15%, the Q2 of 2026-11-19; Architectural
+                             Insight's +10 floors, the W4 of 2026-11-19;
+                             Temporal Efficiency's +50%, the D3 of 2026-11-19;
+                             and no other effect has one
   the simulation's preset    the city-health and damage nodes, at full points,
                              for a Sanctuary next to the Pillar, give the
                              simulation's `TREE_ARCHITECT_AS_DESIGNED`
@@ -92,6 +96,14 @@ SLICE_4 = {"Pacing", "Overclock", "Temporal Mastery", "Fleet Footed", "Tactical 
            "Exclusionary Mapping", "The Collector's Decree", "Infinite Depths",
            "Architectural Insight", "The Warlord", "Veteran's Edge"}
 
+#: SLICE 5A'S FIFTEEN, the player inside a dungeon: the coordinating session's
+#: D1 to D4 of 2026-11-19. Slice 5b's five -- Relentless Pursuit and the four
+#: drop rules -- follow at run record version 10.
+SLICE_5A = {"Eyes of the Empire", "Bounty", "The Hoarder", "Pathfinding", "Spoils of War",
+            "Speed Runner", "Efficiency Premium", "Quality over Quantity", "Dungeon Expertise",
+            "Manifest Wealth", "Dungeon Legend", "The Cartographer's Blessing",
+            "Temporal Efficiency", "One-Day Specialist", "Dungeon Mastery"}
+
 DAY_EFFECTS = {"ResolveDaysAll", "ResolveDaysOutposts", "ResolveDaysPerBranchStep",
                "ResolveDaysBelowTenPercent", "SurgeGapDays", "WalkDaysFewerWhenAlone",
                "WalkDaysFewerPerActiveType", "WalkDaysFewerOnFallenCities",
@@ -102,7 +114,8 @@ FLOOR_EFFECTS = {"FloorsAdded", "FloorsAddedPerActiveType", "FloorsPerBranchStep
 
 #: AN EFFECT WHOSE VALUE THE TEXT STATES ANOTHER WAY, with the words it is found
 #: in: The Delver's "by 5", Tactical Entry's "more than 50 floors".
-OTHER_WORDS = {"WalkDaysFewer": "by {:g}", "WalkTimeHalvedAboveFloors": "more than {:g} floors"}
+OTHER_WORDS = {"WalkDaysFewer": "by {:g}", "WalkTimeHalvedAboveFloors": "more than {:g} floors",
+               "ExplorerLootDoubledAtOneDay": "{:g}-Day minimum"}
 
 #: AN EFFECT WHOSE VALUE IS A DEFENCE, found in its text as "at <value>": Last
 #: Stand Protocols' "survive at 1".
@@ -150,11 +163,12 @@ def test_the_effect_names_agree_with_the_cpp_enum() -> None:
         f"{list(gen.EMPIRE_TREE_EFFECT_KINDS)}; they must be the same names in the same order")
 
 
-def test_exactly_the_57_nodes_of_slices_3a_3b_and_4_act() -> None:
+def test_exactly_the_72_nodes_of_slices_3a_3b_4_and_5a_act() -> None:
     named = set(gen.EMPIRE_TREE_EFFECTS)
-    assert len(SLICE_3A) == 31 and len(SLICE_3B) == 7 and len(SLICE_4) == 19
+    assert len(SLICE_3A) == 31 and len(SLICE_3B) == 7 and len(SLICE_4) == 19 and len(SLICE_5A) == 15
     assert not SLICE_3A & SLICE_3B and not (SLICE_3A | SLICE_3B) & SLICE_4
-    built = SLICE_3A | SLICE_3B | SLICE_4
+    assert not (SLICE_3A | SLICE_3B | SLICE_4) & SLICE_5A
+    built = SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A
     assert named == built, (
         f"EMPIRE_TREE_EFFECTS names {sorted(named - built)} beyond slice 3 and "
         f"leaves out {sorted(built - named)}")
@@ -162,6 +176,8 @@ def test_exactly_the_57_nodes_of_slices_3a_3b_and_4_act() -> None:
         "every slice 3 node with an effect is one EMPIRE_TREE_BUILT gives to slice 3")
     assert all(gen.EMPIRE_TREE_BUILT.get(name) == 4 for name in SLICE_4), (
         "every slice 4 node with an effect is one EMPIRE_TREE_BUILT gives to slice 4")
+    assert all(gen.EMPIRE_TREE_BUILT.get(name) == 5 for name in SLICE_5A), (
+        "every slice 5a node with an effect is one EMPIRE_TREE_BUILT gives to slice 5")
 
 
 def test_every_value_is_in_its_own_words(texts) -> None:
@@ -198,19 +214,27 @@ def test_every_value_is_in_its_own_words(texts) -> None:
     assert not wrong, "\n".join(wrong)
 
 
-def test_the_six_caps_are_the_rulings_and_nothing_else_is_capped(texts) -> None:
+def test_the_nine_caps_are_the_rulings_and_nothing_else_is_capped(texts) -> None:
     caps = {name: effect[4]
             for name, effects in gen.EMPIRE_TREE_EFFECTS.items()
             for effect in effects if len(effect) > 4 and effect[4]}
     # S4: Golden Age +40% in total; S3: Bastion Spirit +15 days in total; Global
     # Vigilance's own "15% cap"; Q2 of 2026-11-19: Reclaimer's Resolve 15%.
     # W4 of 2026-11-19: Architectural Insight +10 floors in total; Sovereign's
-    # Haste's own "(Max of -30 floors)", read as 30 days (W8).
+    # Haste's own "(Max of -30 floors)", read as 30 days (W8). Slice 5a: Speed
+    # Runner's own "cap 100%", Efficiency Premium's own "cap 50%", and D3 of
+    # 2026-11-19: Temporal Efficiency +50% in total, Efficiency Premium's figure.
     assert caps == {"Golden Age": 0.40, "Bastion Spirit": 15.0,
                     "Global Vigilance": 0.15, "Reclaimer's Resolve": 0.15,
-                    "Architectural Insight": 10.0, "Sovereign's Haste": 30.0}, caps
+                    "Architectural Insight": 10.0, "Sovereign's Haste": 30.0,
+                    "Speed Runner": 1.00, "Efficiency Premium": 0.50,
+                    "Temporal Efficiency": 0.50}, caps
     assert "15% cap" in texts["Global Vigilance"]
     assert "Max of -30" in texts["Sovereign's Haste"]
+    assert "cap 100%" in texts["Speed Runner"]
+    assert "cap 50%" in texts["Efficiency Premium"]
+    assert caps["Temporal Efficiency"] == caps["Efficiency Premium"], (
+        "D3 gave Temporal Efficiency the cap Efficiency Premium states; they have come apart")
     assert math.isclose(1.0 - caps["Global Vigilance"], GLOBAL_VIGILANCE_AT_ITS_CAP), (
         "the table's Global Vigilance cap and the one the simulation's preset multiplies in differ")
 

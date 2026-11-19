@@ -2269,6 +2269,27 @@ public:
 	}
 
 	/**
+	 * Replaces the empire upgrade tree's lines on this character: the bought player nodes, worked out for the dungeon
+	 * and floor being walked. Issue #2741 slice 5a.
+	 *
+	 * BESIDE THE FLOOR'S LINES AND NOT AMONG THEM, for the same reason the floor's are kept here --
+	 * `UCataclysmEquipmentComponent::RefreshAttributes` gathers both, so no refresh made for another reason drops them
+	 * -- and so a line says it is the tree's (`ECataclysmModifierSource::EmpireTree`) rather than a dungeon rule's.
+	 *
+	 * WRITTEN BY `ACataclysmDungeonGameMode::ApplyFloorRulesTo` at every floor, and empty once the player has left.
+	 */
+	void SetEmpireTreeStatModifiers(TMap<FName, TArray<FCataclysmStatModifier>>&& Modifiers)
+	{
+		EmpireTreeStatModifiers = MoveTemp(Modifiers);
+	}
+
+	/** What `SetEmpireTreeStatModifiers` last wrote. Empty outside a dungeon. */
+	const TMap<FName, TArray<FCataclysmStatModifier>>& GetEmpireTreeStatModifiers() const
+	{
+		return EmpireTreeStatModifiers;
+	}
+
+	/**
 	 * What one stat is worth to a skill carrying these tags. Issue #943.
 	 *
 	 * WHY A SKILL HAS TO ASK RATHER THAN READ THE ATTRIBUTE. The gameplay
@@ -5414,10 +5435,16 @@ protected:
 	TMap<FName, TArray<FCataclysmStatModifier>> DungeonStatModifiers;
 
 	/**
+	 * The empire upgrade tree's lines, inside a dungeon. Issue #2741 slice 5a; see `SetEmpireTreeStatModifiers`. Not
+	 * replicated, as `DungeonStatModifiers` is not.
+	 */
+	TMap<FName, TArray<FCataclysmStatModifier>> EmpireTreeStatModifiers;
+
+	/**
 	 * The damage type whose per-type resistance a worn row is holding at nought, or none. Ruled 2026-10-12. Written
 	 * by `HoldARandomResistanceAtNought`, read through `ResistanceHeldAtNought`.
 	 *
-	 * NOT A STAT MODIFIER AND NOT IN ANY OF THE THREE LISTS ABOVE, so the gear refresh never writes or erases it.
+	 * NOT A STAT MODIFIER AND NOT IN ANY OF THE FOUR LISTS ABOVE, so the gear refresh never writes or erases it.
 	 * NOT REPLICATED, as those lists are not.
 	 */
 	FName ResistanceHeldAtNoughtType;

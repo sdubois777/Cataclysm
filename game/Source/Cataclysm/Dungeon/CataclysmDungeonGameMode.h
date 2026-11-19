@@ -10,6 +10,7 @@
 #include "Dungeon/CataclysmFloorPlan.h"
 #include "Dungeon/CataclysmFloorPopulation.h"
 #include "Empire/CataclysmEmpireRun.h"
+#include "Player/CataclysmEmpireTree.h"
 #include "Templates/SubclassOf.h"
 #include "CataclysmDungeonGameMode.generated.h"
 
@@ -884,6 +885,33 @@ public:
 	 */
 	bool ApplyFloorRulesTo(class UCataclysmAbilitySystemComponent* AbilitySystem,
 						   class UCataclysmEquipmentComponent* Equipment) const;
+
+	/**
+	 * The empire upgrade tree's player nodes, worked out for the dungeon and the floor being walked: what
+	 * `ApplyFloorRulesTo` puts on the character. Issue #2741 slice 5a.
+	 *
+	 * EMPTY WITH NO RUN OR NO DUNGEON BOUND, which is the sandbox and the moment after `LeaveEmpireDungeon`, so the
+	 * nodes act inside a dungeon of the empire and nowhere else. Worked out at every floor, because three of them grow
+	 * with the floor (Dungeon Expertise, Manifest Wealth) or with what the floor carries.
+	 */
+	TMap<FName, TArray<FCataclysmStatModifier>> EmpireTreeStatModifiersHere() const;
+
+	/** What the bought player nodes add up to: the test seam's figures when set, else the tree the game instance holds
+	 *  for the character playing (`UCataclysmGameInstance::EmpireTreePlayerBonusesFor`). */
+	FCataclysmEmpireTreePlayerBonuses EmpireTreePlayerBonusesHere() const;
+
+	/**
+	 * The player bonuses to use when there is no game instance to ask, for the reason `SetEmpireRunForTests` gives: a
+	 * world built by `UWorld::CreateWorld` has no game instance of this project's class, so without this every test of
+	 * the tree on a floor would be a test of the case with no tree. Issue #2741 slice 5a.
+	 */
+	void SetEmpireTreePlayerBonusesForTests(const FCataclysmEmpireTreePlayerBonuses& Bonuses)
+	{
+		EmpireTreePlayerBonusesForTests = Bonuses;
+	}
+
+	/** See `SetEmpireTreePlayerBonusesForTests`. Unset in a running game, always. */
+	TOptional<FCataclysmEmpireTreePlayerBonuses> EmpireTreePlayerBonusesForTests;
 
 	/**
 	 * The same for the first player's character, then the floor panel, then one

@@ -491,6 +491,17 @@ FCataclysmEmpireTreeBonuses UCataclysmGameInstance::EmpireTreeBonusesFor(const U
 												UCataclysmEmpireTree::LoadEffectTable(), *Held.Allocation);
 }
 
+FCataclysmEmpireTreePlayerBonuses UCataclysmGameInstance::EmpireTreePlayerBonusesFor(const UObject* WorldContext)
+{
+	FCataclysmHeldEmpireTree Held;
+	if (!EmpireTreeHeldBy(WorldContext, Held))
+	{
+		return FCataclysmEmpireTreePlayerBonuses();
+	}
+	return UCataclysmEmpireTree::PlayerBonusesFor(UCataclysmEmpireTree::LoadNodeTable(),
+												  UCataclysmEmpireTree::LoadEffectTable(), *Held.Allocation);
+}
+
 void UCataclysmGameInstance::RefreshEmpireTreeBonuses(const UObject* WorldContext)
 {
 	if (UCataclysmEmpireRun* Run = EmpireRunFor(WorldContext, /*bStartIfNone*/ false))

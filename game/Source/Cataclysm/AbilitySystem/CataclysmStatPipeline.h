@@ -108,6 +108,21 @@ enum class ECataclysmModifierSource : uint8
 	 * rule is what forbids More.
 	 */
 	DungeonRule		UMETA(DisplayName = "Dungeon Rule"),
+
+	/**
+	 * A node of the empire upgrade tree the account has bought, acting on the
+	 * player inside a dungeon. Issue #2741 slice 5a.
+	 *
+	 * Bounty's "+5% Loot Quantity per point" is one: `UCataclysmEmpireTree::
+	 * PlayerStatModifiersFor` turns the bought nodes into these, and the
+	 * dungeon game mode puts them on the character at every floor and takes
+	 * them off when the player leaves.
+	 *
+	 * FLAT OR INCREASED, NEVER MORE. Every player node of the tree says "+N%",
+	 * which joins the sum of increases (or, for magic find, whose base is
+	 * nought, adds percentage points), so nothing it states needs More.
+	 */
+	EmpireTree		UMETA(DisplayName = "Empire Tree"),
 };
 
 /**

@@ -621,7 +621,7 @@ def section_three() -> dict:
 #: the shape of the reduction and all three change what they are worth, which is
 #: why issue #1390 is part of this change rather than a separate one.
 REWARD_NODES = (
-    ("Speed Runner", 10, "+5% bonus Loot Quantity per 2 days under default "
+    ("Speed Runner", 10, "+5% bonus Loot Quantity per 2 full days under default "
      "run time per point (cap 100%)."),
     ("Efficiency Premium", 1, "+5% Loot Quantity for every Day removed from "
      "default run time (cap 50%)."),
@@ -648,12 +648,17 @@ def speed_runner(base_floors: int, tree: EmpireTree, extra_flat: float = 0.0,
     why the payout barely moves when the reduction's shape changes and grows
     without bound with depth. That is issue #1390's finding, recomputed here
     rather than quoted.
+
+    WHOLE STEPS OF TWO DAYS, since issue #2741 slice 5a: the coordinating
+    session's C3 of 2026-11-18 ruled that "per 2 days" counts whole steps, and
+    its D4 of 2026-11-19 reworded the node to "per 2 full days" so the text says
+    so (issue #1428). Until then this paid exact halves.
     """
     floors = max(1, int(round(base_floors + tree.floors_added(ACTIVE_TYPES))))
     default = floors * BASE.days_per_floor
     actual = walk_days(tree, floors, extra_flat)
     under = max(0.0, default - actual)
-    paid = under / 2.0 * 0.05 * 10          # +5% per 2 days per point, 10 points
+    paid = math.floor(under / 2.0) * 0.05 * 10   # +5% per 2 full days per point, 10 points
     return paid if cap is None else min(paid, cap)
 
 

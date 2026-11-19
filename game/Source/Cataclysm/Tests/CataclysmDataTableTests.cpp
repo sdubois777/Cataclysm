@@ -241,7 +241,7 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// 59: the effects of the 31 city nodes and options that act in issue #2741 slice 3a, Imperial Decree having two (32),
 	// of slice 3b's seven event rules, The Mason's Guild having two (8), and of slice 4's nineteen walk, depth and clear
 	// nodes (19). It was 32 until slice 3b and 40 until slice 4.
-	CHECK_TABLE(FCataclysmEmpireTreeEffectRow,  "EmpireTreeEffects.csv",      59)
+	CHECK_TABLE(FCataclysmEmpireTreeEffectRow,  "EmpireTreeEffects.csv",      76)
 	// 24 of the 293 nodes have an authored effect, and the small share is the
 	// point rather than a shortfall to be fixed by typing: most nodes are not
 	// stat modifiers under any authoring scheme. Issue #939 measures the gap.

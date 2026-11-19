@@ -15517,6 +15517,32 @@ void ACataclysmDungeonGameMode::SetEmpireRunForTests(UCataclysmEmpireRun* Run)
 	EmpireRunForTests = Run;
 }
 
+FCataclysmEmpireTreePlayerBonuses ACataclysmDungeonGameMode::EmpireTreePlayerBonusesHere() const
+{
+	if (EmpireTreePlayerBonusesForTests.IsSet())
+	{
+		return EmpireTreePlayerBonusesForTests.GetValue();
+	}
+	return UCataclysmGameInstance::EmpireTreePlayerBonusesFor(this);
+}
+
+TMap<FName, TArray<FCataclysmStatModifier>> ACataclysmDungeonGameMode::EmpireTreeStatModifiersHere() const
+{
+	const UCataclysmEmpireRun* Run = EmpireRun();
+	const FCataclysmDungeon* Dungeon = BoundDungeon();
+	if (!Run || !Dungeon)
+	{
+		return TMap<FName, TArray<FCataclysmStatModifier>>();
+	}
+
+	// THE FLOOR'S OWN LIST, AS THE FLOOR'S RULES READ IT, and the floor number rather than the brief's (a Horde
+	// dungeon's brief counts waves). The tree cannot change during a walk (`EmpireTreeChangeRefusal`), so only the
+	// dungeon and the floor move what this returns.
+	return UCataclysmEmpireTree::PlayerStatModifiersFor(
+		EmpireTreePlayerBonusesHere(),
+		UCataclysmEmpireTree::DungeonStateFor(*Run, *Dungeon, FloorBrief.Modifiers, FloorNumber));
+}
+
 UCataclysmEmpireRun* ACataclysmDungeonGameMode::EmpireRun() const
 {
 	// THE GAME'S OWN RUN FIRST, ALWAYS. The test seam is only reached when there
@@ -17190,6 +17216,13 @@ bool ACataclysmDungeonGameMode::ApplyFloorRulesTo(
 	// brief's number, which for a Horde dungeon is the wave.
 	//
 	// AND THE EDICT STRENGTH HERE, since 2026-10-22 (G7b): the Edicts of Temperance and Patience scale in an Ascendant.
+	//
+	// AND THE EMPIRE UPGRADE TREE'S PLAYER NODES FOR THIS FLOOR FIRST, so the refresh `ApplyToCharacter` makes gathers
+	// them with the floor's. Empty with no dungeon bound, which is how leaving takes them off. Issue #2741 slice 5a.
+	if (AbilitySystem)
+	{
+		AbilitySystem->SetEmpireTreeStatModifiers(EmpireTreeStatModifiersHere());
+	}
 	return UCataclysmDungeonModifierEffects::ApplyToCharacter(
 		UCataclysmDungeonModifierEffects::PlayerEffectsFor(
 			FloorBrief.Modifiers, FloorBrief.FloorNumber, FloorBrief.RuleOfChaosChange, EdictStrengthHere()),

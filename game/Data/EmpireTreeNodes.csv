@@ -74,7 +74,7 @@ keystone_0000002t,Explorer,keystone,Field Depot III,A Stash appears every 5 floo
 basic_0000002r,Explorer,basic,Temporal Mastery,"-2.5% of dungeon run time per point, multiplicative.",25,0,466.47712749699645,307.36210192264207,,,,,,,,,,
 basic_0000002s,Explorer,basic,Manifest Wealth,+1% Magic Find per floor cleared in the current dungeon.,25,0,622.0555672438322,274.7023441026662,,,,,,,,,,
 basic_expl_t4c,Explorer,basic,Infinite Depths,"+2 floors per active Cataclysm type per point, to every dungeon except the Cataclysm boss dungeon.",10,0,545.0,198.4,,,,,,,,,,
-basic_expl_t4d,Explorer,basic,Speed Runner,+5% bonus Loot Quantity per 2 days under default run time per point (cap 100%).,10,0,474.3789753216546,354.55339324044655,,,,,,,,,,
+basic_expl_t4d,Explorer,basic,Speed Runner,+5% bonus Loot Quantity per 2 full days under default run time per point (cap 100%).,10,0,474.3789753216546,354.55339324044655,,,,,,,,,,
 basic_expl_t4e,Explorer,basic,Dungeon Legend,+1% Magic Find per 5 unique dungeons cleared this run per point.,10,0,339.9754395192499,515.7212039824788,,,,,,,,,,
 basic_expl_t4g,Explorer,basic,Plunderer's Eye,+2% chance per point for any enemy to drop a crafting material.,10,0,258.4730954165837,504.11885987981253,,,,,,,,,,
 keystone_0000002u,Explorer,keystone,Auto-Loot,Pick between selling or scrapping loot hidden by your loot filter.,1,0,379.19982501090493,403.270144454842,"a loot filter, which the game does not have",,,,,,,,,

@@ -1184,6 +1184,14 @@ int32 UCataclysmEquipmentComponent::RefreshAttributesAs(
 			Modifiers.FindOrAdd(Stat.Key).Append(Stat.Value);
 		}
 
+		// AND THE EMPIRE UPGRADE TREE'S PLAYER NODES, inside a dungeon, for the floor's reason: the dungeon game mode
+		// writes them at every floor, and a refresh made for another reason must not drop them. Issue #2741 slice 5a.
+		for (const TPair<FName, TArray<FCataclysmStatModifier>>& Stat :
+			 Cataclysm->GetEmpireTreeStatModifiers())
+		{
+			Modifiers.FindOrAdd(Stat.Key).Append(Stat.Value);
+		}
+
 		// AND THE BUFF A WORN ROW DREW FOR THIS CHARACTER, WHILE IT IS HELD. Ruled 2026-10-12, for "Shard of Anarchy
 		// (2-Piece Bonus): Every 30 seconds, a random buff or debuff is applied to you". The floor's way, for the
 		// floor's reason: the buff is not from gear, so this refresh would drop it unless it is one of the sources

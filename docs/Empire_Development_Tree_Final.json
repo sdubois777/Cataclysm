@@ -1733,7 +1733,7 @@
       "data": {
         "kind": "basic",
         "name": "Speed Runner",
-        "description": "+5% bonus Loot Quantity per 2 days under default run time per point (cap 100%).",
+        "description": "+5% bonus Loot Quantity per 2 full days under default run time per point (cap 100%).",
         "currentPoints": 0,
         "color": "#22c55e",
         "maxPoints": 10

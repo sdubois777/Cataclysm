@@ -13,6 +13,7 @@ class ACataclysmPlayerState;
 class UCataclysmAccountSave;
 class UCataclysmEmpireRun;
 class UCataclysmSaveWriter;
+struct FCataclysmEmpireTreePlayerBonuses;
 struct FCataclysmPassiveAllocation;
 
 /**
@@ -493,6 +494,14 @@ public:
 	 * Issue #2741 slice 3a; `UCataclysmEmpireTree::CityBonusesFor` does the adding.
 	 */
 	static FCataclysmEmpireTreeBonuses EmpireTreeBonusesFor(const UObject* WorldContext);
+
+	/**
+	 * What the tree `EmpireTreeHeldBy` reads adds up to for the player inside a dungeon, or no bonuses when nobody
+	 * holds one. Issue #2741 slice 5a; `UCataclysmEmpireTree::PlayerBonusesFor` does the adding, and the dungeon game
+	 * mode asks for it at every floor (`ACataclysmDungeonGameMode::EmpireTreeStatModifiersHere`), so nothing is handed
+	 * over or kept and a respec has nothing to undo.
+	 */
+	static FCataclysmEmpireTreePlayerBonuses EmpireTreePlayerBonusesFor(const UObject* WorldContext);
 
 	/**
 	 * Hands the run this world plays the bonuses of the tree its character holds: `EmpireTreeBonusesFor`, through

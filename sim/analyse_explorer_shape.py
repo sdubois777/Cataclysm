@@ -197,7 +197,7 @@ FLOOR_NODES = (
 #: change the shape and these three change what they are worth.
 REWARD_NODES = (
     ("Speed Runner", 10,
-     "+5% Loot Quantity per 2 days under default run time per point, cap 100%"),
+     "+5% Loot Quantity per 2 full days under default run time per point, cap 100%"),
     ("Efficiency Premium", 1, "+5% Loot Quantity per day removed, capped at 50%"),
     ("One-Day Specialist", 1,
      "if run time reaches the 1-day minimum, all Explorer loot modifiers doubled"),

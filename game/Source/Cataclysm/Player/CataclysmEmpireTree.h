@@ -3,13 +3,108 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "AbilitySystem/CataclysmStatPipeline.h"
 #include "Character/CataclysmPassiveTree.h"
 #include "Empire/CataclysmEmpireMap.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "CataclysmEmpireTree.generated.h"
 
+struct FCataclysmDungeon;
 struct FCataclysmEmpireTreeNodeRow;
+class UCataclysmEmpireRun;
 class UDataTable;
+
+/**
+ * What the empire upgrade tree's bought player nodes add up to, before the dungeon being walked is known. Issue #2741
+ * slice 5a; `UCataclysmEmpireTree::PlayerBonusesFor` fills it from the allocation.
+ *
+ * EVERY SHARE IS A FRACTION, as the effect table holds it: 0.05 is 5%. Magic find becomes that many percentage points of
+ * FLAT magic find, because its base is nought and an increase on it would scale only flat magic find; loot quantity,
+ * movement speed and damage become increases. `UCataclysmEmpireTree::PlayerStatModifiersFor` does both.
+ *
+ * THE EXPLORER BRANCH'S FLAT FIGURES ARE HELD APART FROM EVERY OTHER BRANCH'S, because One-Day Specialist doubles "all
+ * Explorer Loot modifiers" and nothing else: The Hoarder, a centre capstone's option, is the other. Every figure that
+ * grows with the dungeon or the run belongs to an Explorer node, which `tools/tests/test_empire_tree_player_nodes.py`
+ * holds, so those are doubled whole.
+ */
+struct CATACLYSM_API FCataclysmEmpireTreePlayerBonuses
+{
+	/** Flat magic find and increased loot quantity from nodes outside the Explorer branch, and inside it. */
+	float MagicFind = 0.0f;
+	float ExplorerMagicFind = 0.0f;
+	float LootQuantity = 0.0f;
+	float ExplorerLootQuantity = 0.0f;
+
+	/** Increased movement speed, inside a dungeon: Pathfinding. */
+	float MovementSpeed = 0.0f;
+
+	/** Loot quantity for each active Cataclysm type: Spoils of War. */
+	float LootQuantityPerActiveType = 0.0f;
+
+	/** Loot quantity for each whole two days a walk is shorter than its default, to its cap: Speed Runner. */
+	float LootQuantityPerTwoDaysRemoved = 0.0f;
+	float TwoDaysRemovedCap = 0.0f;
+
+	/** Loot quantity for each whole day a walk is shorter than its default, to its cap: Efficiency Premium. */
+	float LootQuantityPerDayRemoved = 0.0f;
+	float DayRemovedCap = 0.0f;
+
+	/** Magic find for each floor removed from a dungeon's default depth: Quality over Quantity. */
+	float MagicFindPerFloorRemoved = 0.0f;
+
+	/** Magic find for each distinct modifier on the floor being walked: Dungeon Expertise. */
+	float MagicFindPerModifierActive = 0.0f;
+
+	/** Magic find for each floor cleared in the dungeon being walked: Manifest Wealth. */
+	float MagicFindPerFloorCleared = 0.0f;
+
+	/** Magic find for each whole five dungeons cleared this run: Dungeon Legend. */
+	float MagicFindPerFiveClears = 0.0f;
+
+	/** Loot quantity and magic find for each standing city holding a bought Explorer city upgrade: The Cartographer's
+	 *  Blessing. */
+	float LootQuantityPerExplorerCity = 0.0f;
+	float MagicFindPerExplorerCity = 0.0f;
+
+	/** One-Day Specialist: the walk, in days, at which the Explorer branch's loot figures are doubled; 0 without it. */
+	int32 ExplorerLootDoubledAtWalkDays = 0;
+
+	/** Increased attack and spell damage, inside a dungeon, for each dungeon kind defeated this run: Dungeon Mastery. */
+	float DamagePerKindDefeated = 0.0f;
+};
+
+/**
+ * What the dungeon being walked, and its run, say to the player nodes. Issue #2741 slice 5a. Filled by
+ * `UCataclysmEmpireTree::DungeonStateFor` from the run, the bound dungeon and the floor; every field is a count or a day
+ * figure the readings of the coordinating session's plan acceptance of 2026-11-19 name, each a judgement.
+ */
+struct CATACLYSM_API FCataclysmEmpireTreeDungeonState
+{
+	/** How many Cataclysms are active in the run. */
+	int32 ActiveTypes = 0;
+
+	/** The dungeon's walk at the starting rate -- its floors, a day each, two for a Cow Level -- and what it costs. */
+	float DefaultWalkDays = 0.0f;
+	float WalkDays = 0.0f;
+
+	/** Floors below the dungeon's default depth, the depth before city upgrades and the tree; never below nought. */
+	int32 FloorsRemoved = 0;
+
+	/** Distinct modifiers on the floor being walked. */
+	int32 ModifiersActive = 0;
+
+	/** Floors cleared in the dungeon being walked: the floor number less one. */
+	int32 FloorsCleared = 0;
+
+	/** Dungeons cleared this run, every kind. */
+	int32 DungeonsCleared = 0;
+
+	/** Standing cities holding at least one bought Explorer city upgrade. */
+	int32 ExplorerCities = 0;
+
+	/** Of the four dungeon kinds -- Basic, Quest, Fallen City, Cataclysm -- how many have been defeated this run. */
+	int32 KindsDefeated = 0;
+};
 
 /**
  * The rules that decide where an empire upgrade point may go. Issue #2741, slice 1a.
@@ -38,8 +133,10 @@ class UDataTable;
  *   a respec returns every point to the bank and clears the four centre choices, and costs the lethality mode's death
  *     cost in days (Q3)
  *
- * WHAT A BOUGHT NODE DOES IS NOT HERE. Slices 3 to 5 of #2741 add it; until then a node that can be bought does
- * nothing. Where the allocation is kept -- the account record of the lethality mode -- is slice 1b.
+ * WHAT A BOUGHT NODE DOES IS ADDED UP HERE AND DONE WHERE EACH NUMBER IS READ: `CityBonusesFor` for the empire's
+ * cities and dungeons (#2741 slices 3 and 4), which the run reads; `PlayerBonusesFor` for the player inside a dungeon
+ * (slice 5a), which the dungeon game mode puts on the character. Where the allocation is kept -- the account record of
+ * the lethality mode, or a Solo Self-Found character's own -- is slices 1b and 1c.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmEmpireTree : public UBlueprintFunctionLibrary
@@ -95,6 +192,66 @@ public:
 	 */
 	static FCataclysmEmpireTreeBonuses CityBonusesFor(const UDataTable* NodeTable, const UDataTable* EffectTable,
 													  const FCataclysmPassiveAllocation& Allocation);
+
+	/**
+	 * The words three player nodes count in, which the effect table has no column for: Speed Runner's "per 2 full
+	 * days", Dungeon Legend's "per 5 unique dungeons" and One-Day Specialist's "doubled". Issue #2741 slice 5a;
+	 * `tools/tests/test_empire_tree_player_nodes.py` finds each in its node's text.
+	 */
+	static constexpr int32 SpeedRunnerDaysAStep = 2;
+	static constexpr int32 DungeonLegendClearsAStep = 5;
+	static constexpr float OneDaySpecialistFactor = 2.0f;
+
+	/**
+	 * What an allocation's bought player nodes add up to. Issue #2741 slice 5a. The same pass over the effect table as
+	 * `CityBonusesFor`, reading the rows that one leaves alone: a node's points from the allocation, an option's one
+	 * point while it is chosen, whole steps of another branch (C3) and a cap. The caps of Speed Runner and Efficiency
+	 * Premium are on what the days bring, so they are held beside the figure rather than applied here.
+	 *
+	 * @return nothing at all with either table missing
+	 */
+	static FCataclysmEmpireTreePlayerBonuses PlayerBonusesFor(const UDataTable* NodeTable, const UDataTable* EffectTable,
+															  const FCataclysmPassiveAllocation& Allocation);
+
+	/**
+	 * What the run and the dungeon being walked say to the player nodes. Issue #2741 slice 5a, each reading a judgement
+	 * of the coordinating session's acceptance of 2026-11-19:
+	 *
+	 *   the default walk     the floors, a day each, two for a Cow Level; the walk is `EffectiveWalkDaysFor`
+	 *   the default depth    Basic and Quest: `Floors - UpgradeFloors`, the city's and the tree's floors being one net
+	 *                        figure; Fallen City: the more of its bosses and its tier's least floors; the boss dungeon:
+	 *                        its base and the floors the Basic clears added. A Hollow's own shrinking is not a removal
+	 *   floors cleared       the floor number less one
+	 *   kinds defeated       Basic, Quest and Cataclysm from their own counts; Fallen City as the clears left over
+	 *   Explorer cities      standing cities holding an upgrade whose row is in the Explorer branch
+	 *
+	 * @param FloorModifiers  the modifiers on the floor being walked, counted once each
+	 * @param FloorNumber     the floor being walked, counted from 1
+	 */
+	static FCataclysmEmpireTreeDungeonState DungeonStateFor(const UCataclysmEmpireRun& Run, const FCataclysmDungeon& Dungeon,
+															const TArray<FName>& FloorModifiers, int32 FloorNumber);
+
+	/** Whether One-Day Specialist doubles the Explorer branch's loot figures here: it is bought, the walk is its days and
+	 *  the default walk was longer. */
+	static bool DoublesExplorerLoot(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
+									const FCataclysmEmpireTreeDungeonState& State);
+
+	/** Flat magic find, in percentage points; increased loot quantity, movement speed and attack and spell damage, in
+	 *  percent. What `PlayerStatModifiersFor` puts on the player. */
+	static float MagicFindFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses, const FCataclysmEmpireTreeDungeonState& State);
+	static float LootQuantityFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
+								 const FCataclysmEmpireTreeDungeonState& State);
+	static float MovementSpeedFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses);
+	static float DamageFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses, const FCataclysmEmpireTreeDungeonState& State);
+
+	/**
+	 * The stat lines the player nodes put on the character inside a dungeon. Issue #2741 slice 5a. From the source
+	 * `ECataclysmModifierSource::EmpireTree`: flat `magic_find`; increased `loot_quantity`, `movement_speed`,
+	 * `attack_damage` and `spell_damage` -- Dungeon Mastery's "damage" is the two, as a passive node's "increased
+	 * damage" is (2026-08-25). A figure of nought puts no line on, so a tree with no player node gives an empty map.
+	 */
+	static TMap<FName, TArray<FCataclysmStatModifier>> PlayerStatModifiersFor(
+		const FCataclysmEmpireTreePlayerBonuses& Bonuses, const FCataclysmEmpireTreeDungeonState& State);
 
 	/** The four branches, in the order the source file's metadata names them, and then the centre. */
 	static TArray<FString> BranchNames();

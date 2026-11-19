@@ -43,6 +43,10 @@ bool UCataclysmStatPipeline::CanGrantMore(ECataclysmModifierSource Source)
 	case ECataclysmModifierSource::GearAffix:
 	case ECataclysmModifierSource::GearImplicit:
 	case ECataclysmModifierSource::Attribute:
+
+	// An empire tree node states every player bonus as "+N%", so it has no use
+	// for More. Issue #2741 slice 5a.
+	case ECataclysmModifierSource::EmpireTree:
 	default:
 		return false;
 	}
