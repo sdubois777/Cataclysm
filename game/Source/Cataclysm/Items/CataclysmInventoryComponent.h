@@ -187,6 +187,20 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Inventory")
 	bool RemoveItemAt(int32 Slot);
 
+	/**
+	 * Puts a changed copy of the item in a slot back in that same slot: the forge raising a carried piece a gear level
+	 * (`UCataclysmForgeCraft::Upgrade`). Issue #2742's follow-up, ruled 2026-11-19.
+	 *
+	 * IN PLACE, so the piece keeps its cell: a remove and an add would move it to the first free cell.
+	 *
+	 * REFUSED, CHANGING NOTHING, for a slot holding no item -- an empty one, a material's, one outside the grid -- and
+	 * for a replacement of another base, which is a different item rather than this one changed.
+	 *
+	 * IT RAISES NO SAVE TRIGGER, and counts a change. The forge raises `ForgeCrafted`, which writes the character record
+	 * this slot is in; raising `InventoryChanged` here too would ask for the same write twice.
+	 */
+	bool ReplaceItemAt(int32 Slot, const FCataclysmItem& Changed);
+
 	/** Empties every slot. */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Inventory")
 	void RemoveEverything();

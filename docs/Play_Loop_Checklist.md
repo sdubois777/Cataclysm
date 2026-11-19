@@ -274,6 +274,31 @@ until then they waited for the next item, death or trip to be written, and stopp
 
 `PLAY LOOP: continuing 'Ash': opening the dungeon level, to resume the walk it was saved in`
 
+### 16. Raise a piece at the forge, and combine two stones
+
+The walks of steps 5 to 10 leave upgrade stones in the bag: a +1 or +2 stone is a Common material, collected without a
+click like any other.
+
+- **Click "Forge"**, under the empire upgrade tree's button in the top right corner of the map. Its screen lists every
+  worn piece, then every carried one, and the stones held: "Upgrade stones held: +1 x16, +2 x19, +3 x5".
+- **Click a piece**, then **Upgrade to +1**. The line under the buttons asks first: "Press again to upgrade to +1: two
+  +1 stones, residue 52 to 77, 1 day of the run." Click it again. The piece's button now ends "+1", two +1 stones are
+  gone, and the map's status line shows the next day. Any other click before the second press cancels it.
+- **In the log:**
+
+  `PLAY LOOP: upgraded Everyday Torc of Warding from +0 to +1 with two +1 stones, 14 left; residue 52 to 77; it cost 1 day, day 25 to day 26`
+
+- **Click "Combine two +1 stones into one +2".** Two +1 stones become one +2, and no day passes.
+- **In the log:**
+
+  `PLAY LOOP: combined two +1 upgrade stones into one +2: 12 +1 and 20 +2 held`
+
+- **A worn piece raised past the Consumption Threshold** asks that question on the second press, and a third press
+  raises it and marks the character, as wearing a piece past it does.
+- **During a walk** the screen opens from the map as well, to be read, and every Upgrade and Combine says "The forge can
+  be used in the capital, not during a walk." and changes nothing.
+- **Close** the screen with its Close button.
+
 ## If a step does not show what it should
 
 Note the step, and copy its PLAY LOOP lines. A line that is missing means that step did not run. A line whose figures

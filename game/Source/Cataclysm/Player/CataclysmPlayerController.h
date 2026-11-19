@@ -15,6 +15,7 @@ class UCataclysmCharacterSheetWidget;
 class UCataclysmCityScreenWidget;
 class UCataclysmEmpireMapWidget;
 class UCataclysmEmpireTreeWidget;
+class UCataclysmForgeWidget;
 class UCataclysmFloorModifierPanel;
 
 /**
@@ -392,6 +393,18 @@ public:
 	bool IsEmpireTreeOpen() const;
 
 	/**
+	 * Opens and closes the Cataclysmic Forge's screen. The owner's ruling of 2026-11-19, "build it next".
+	 *
+	 * THE EMPIRE MAP'S "Forge" BUTTON CALLS IT, until the capital's Smith exists, and so does the screen's own Close
+	 * button. It opens wherever the map opens -- during a walk too, to be read; every craft is refused there
+	 * (`UCataclysmForgeCraft::WalkRefusal`). REFRESHED ON EVERY OPENING: a walk changes what is carried and worn.
+	 */
+	void ToggleForge();
+
+	/** Whether the forge's screen is open. For tests. */
+	bool IsForgeOpen() const;
+
+	/**
 	 * Open the choice panel for this floor object, or show its choices on the panel already open. Called when the
 	 * player clicks the object's name in reach, or arrives at it after a click from further off. Issues #1820 and
 	 * #41, the choice screen.
@@ -737,6 +750,17 @@ private:
 	/** The empire upgrade tree screen, once it has been opened at least once. */
 	UPROPERTY()
 	TObjectPtr<UCataclysmEmpireTreeWidget> EmpireTreeScreen = nullptr;
+
+	/** Which Widget Blueprint the forge's screen is. Soft, for the reason the character creator's is.
+	 *  `tools/generate_interface_assets.py` makes it. */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Interface")
+	TSoftClassPtr<UCataclysmForgeWidget> ForgeScreenClass =
+		TSoftClassPtr<UCataclysmForgeWidget>(FSoftObjectPath(
+			TEXT("/Game/Interface/WBP_Forge.WBP_Forge_C")));
+
+	/** The forge's screen, once it has been opened at least once. */
+	UPROPERTY()
+	TObjectPtr<UCataclysmForgeWidget> ForgeScreen = nullptr;
 
 	/** Which Widget Blueprint the empire overview is. Soft, for the reason
 	 *  the character creator's is. */

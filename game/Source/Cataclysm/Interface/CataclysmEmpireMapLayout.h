@@ -589,6 +589,32 @@ public:
 	static FString EmpireTreeButtonBrief();
 
 	// ----------------------------------------------------------------------
+	// The button that opens the forge -- ruled 2026-11-19, until the capital's Smith exists
+	// ----------------------------------------------------------------------
+
+	/**
+	 * Where the "Forge" button sits, as its CENTRE: UNDER THE EMPIRE UPGRADE TREE'S BUTTON, against the right margin, a
+	 * small gap below it. THE BOSS DUNGEON'S WALK BOX, MIRRORED: that box is one city wide and sits under the marker
+	 * against the left margin (`CataclysmDungeonWalkPosition`), and the tree's button is the marker's mirror, so the
+	 * reason the Walk box covers no city holds here reflected. `Cataclysm.ForgeScreen.TheMapButtonSitsUnderTheTreeButton`
+	 * checks it against every city, the marker, the Walk box and the tree's button.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FVector2D ForgeButtonPosition(float Scale, FVector2D PanelSize);
+
+	/** How big the "Forge" button is drawn at this scale: one city, the Walk box's size. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FVector2D ForgeButtonSize(float Scale);
+
+	/** What the button says: "Forge". */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString ForgeButtonText();
+
+	/** What the line under the map says when the cursor is on the button. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString ForgeButtonBrief();
+
+	// ----------------------------------------------------------------------
 	// The win of the run before this one -- issue #1324 slice 6e
 	// ----------------------------------------------------------------------
 

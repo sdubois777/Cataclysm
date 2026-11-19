@@ -159,6 +159,22 @@ const FCataclysmItem* UCataclysmEquipmentComponent::EquippedAt(ECataclysmGearSlo
 	return &Slots[Index];
 }
 
+bool UCataclysmEquipmentComponent::ReplaceEquippedAt(ECataclysmGearSlot Slot, const FCataclysmItem& Changed)
+{
+	const int32 Index = static_cast<int32>(Slot);
+	if (EquippedAt(Slot) == nullptr || Changed.Base != Slots[Index].Base)
+	{
+		return false;
+	}
+
+	Slots[Index] = Changed;
+
+	// ANNOUNCED AS ANY CHANGE OF GEAR IS, so `ACataclysmPlayerCharacter::OnEquipmentChanged` refreshes the stat line
+	// from the raised piece.
+	AnnounceChange();
+	return true;
+}
+
 bool UCataclysmEquipmentComponent::SlotIsEmpty(ECataclysmGearSlot Slot) const
 {
 	return EquippedAt(Slot) == nullptr;

@@ -487,7 +487,8 @@ by `git add` with no error and no warning. Guarded by
   and `Cataclysm.EnterDungeon` are refused while one is under way. `L_Dungeon`
   opened directly in the editor still enters a dungeon by a Walk button or the
   console. **Only walking a dungeon, dying in one, a respec of the empire upgrade
-  tree and the console commands move the day**: a death inside a dungeon of the
+  tree, an upgrade at the forge and the console commands move the day**: a death
+  inside a dungeon of the
   empire costs 5, 10 or 15 days by
   lethality mode, resolves an ordinary dungeon at once so that it hits its city
   and leaves the map, and stands the player up whole and sends it to the capital
@@ -495,9 +496,12 @@ by `git add` with no error and no warning. Guarded by
   Cataclysm boss dungeon stands the player back up inside it. A respec of the
   empire upgrade tree costs the same 5, 10 or 15 days (issue
   [#2741](https://github.com/sdubois777/Cataclysm/issues/2741)), offered by the
-  tree's screen, two presses, since slice 2. The equipment a
-  death costs in Hardcore and Heretic is not built, and there is no forge to
-  spend the twelve days a craft takes. A fallen city does not
+  tree's screen, two presses, since slice 2. An upgrade at the Cataclysmic Forge
+  raises an item one gear level for a day and the residue's time penalty,
+  offered by the forge's screen from the empire map's "Forge" button, two presses,
+  ruled 2026-11-19; a combine of two upgrade stones costs no day, and the forge's
+  other sixteen crafts are not built. The equipment a death costs in Hardcore and
+  Heretic is not built. A fallen city does not
   become a retakeable Dungeon City (issue
   [#41](https://github.com/sdubois777/Cataclysm/issues/41)), the Last Stand does
   not fire when the path to the Pillar opens (issue

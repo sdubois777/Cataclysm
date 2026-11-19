@@ -215,6 +215,25 @@ enum class ECataclysmSaveTrigger : uint8
 	 * One write for each act, so `Cataclysm.SpendPassivePoint <node> 5` writes five times in one frame; accepted.
 	 */
 	CharacterBuildChanged = 15,
+
+	/**
+	 * A craft at the Cataclysmic Forge: an item raised a gear level (`UCataclysmForgeCraft::Upgrade`), or two upgrade
+	 * stones combined into one of the next level (`UCataclysmForgeCraft::Combine`). The owner's ruling of 2026-11-19,
+	 * "build it next".
+	 *
+	 * WHY IT EXISTS. An upgrade changes two records at once: the character record holds the raised item and the stones
+	 * it spent, and the run record holds the days it cost. Written by neither, a quit before the clock's next write
+	 * would hand back the stones and the days, or keep the stones spent and the item unraised. A combine changes the
+	 * character record alone, and raises it too.
+	 *
+	 * AN ORDINARY ASYNCHRONOUS WRITE, of the run record and the character record; and written even if the run record
+	 * was written earlier the same frame, since that write gathered the run before the upgrade's days had passed,
+	 * `EmpireTreeRespecced`'s reason.
+	 *
+	 * SIXTEEN, NOT FIFTEEN: issue #2763 took 15 for `CharacterBuildChanged` and merged first, the coordinating
+	 * session's ruling of 2026-11-19. Nothing writes these numbers to disk.
+	 */
+	ForgeCrafted = 16,
 };
 
 /**
@@ -275,8 +294,9 @@ public:
 	 * THE INVENTORY AND DEATH, AND NOTHING ELSE -- and since then a new character (`CharacterCreated`, 2026-11-01),
 	 * a won run (`RunWon`, issue #1324 slice 6e, 2026-11-03), the hand-over before a level change (`LeavingTheLevel`,
 	 * issue #2733 slice 3), a city upgrade bought (`CityUpgradeBought`, issue #2742 slice 2), a Solo Self-Found
-	 * character's own empire points or tree (`OwnEmpireTreeChanged`, issue #2741 slice 1c) and a change the player made
-	 * to the character's build (`CharacterBuildChanged`, issue #2763). What a character is carrying
+	 * character's own empire points or tree (`OwnEmpireTreeChanged`, issue #2741 slice 1c), a change the player
+	 * made to the character's build (`CharacterBuildChanged`, issue #2763) and a craft at the forge (`ForgeCrafted`,
+	 * ruled 2026-11-19). What a character is carrying
 	 * lives in its own record rather than in the run, so an item picked up has
 	 * to reach that record; and a death has to be written whole, which means the
 	 * character as well as the floor it fell on.

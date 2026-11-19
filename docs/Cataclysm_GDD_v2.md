@@ -3772,20 +3772,24 @@ it as open is called out rather than quietly deleted.
 
 Gear can be upgraded from +1 to +10 using upgrade stones obtained as dungeon drops. Two +1 stones combine into a +2, and so on. Upgrades are sequential — you cannot skip levels. The max upgrade stone tier that can drop is capped by the current difficulty tier.
 
-  
+**Each upgrade consumes two stones of the level the item goes to**: two +3 stones raise a piece from +2 to +3. That is the forge's operations row ("Consumes two upgrade stones"), the materials paragraph ("a +8 stone is what raises a piece to +8, and two of them are consumed") and the design workbook ("Uses two +x upgrade stones"). **This table counted one stone per level until 2026-11-19** -- 1, 3, 7 and so on to 1,023 -- against those three; the coordinating session ruled that the three outvote it, since the table is arithmetic from them, and the counts below are two per level with two stones of a level combining into one of the next: to reach +N takes 2^(N+1) − 2 +1 stones in all.
 
 | Upgrade Level | +1 Stones Required (cumulative) |
 | :-: | :-: |
-| +1 | 1 |
-| +2 | 3 |
-| +3 | 7 |
-| +4 | 15 |
-| +5 | 31 |
-| +6 | 63 |
-| +7 | 127 |
-| +8 | 255 |
-| +9 | 511 |
-| +10 | 1,023 |
+| +1 | 2 |
+| +2 | 6 |
+| +3 | 14 |
+| +4 | 30 |
+| +5 | 62 |
+| +6 | 126 |
+| +7 | 254 |
+| +8 | 510 |
+| +9 | 1,022 |
+| +10 | 2,046 |
+
+**Where it is done.** At the Cataclysmic Forge, in the capital, between walks (section VII). Until the capital's Smith exists, the forge's screen opens from the empire map's "Forge" button, under the empire upgrade tree's; it opens during a walk too, to be read, and refuses every craft there. Ruled 2026-11-19.
+
+**Combining two stones into one of the next level costs no day and adds no residue**, because it changes no item; the operations table has no row for it. That is a judgement of 2026-11-19 against "All capital services cost time", recorded in `docs/DECISIONS.md`. **No gold is charged for an upgrade yet**: the design gives a gold multiplier, `(CR / 50) + 1`, and no base price for any craft, so the base is a later choice across all eighteen operations.
 
   
 
@@ -3945,7 +3949,7 @@ Twenty-seven materials. Tier is the rarity band it drops in, not an item level.
 
   
 
-**The ten upgrade stones are one material family spread across all five rarity bands**, two to a band, decided by the project owner on 2026-08-23. A stone is named for the level it takes an item to, so a +8 stone is what raises a piece to +8, and two of them are consumed. See Upgrading Gear for how they combine.
+**The ten upgrade stones are one material family spread across all five rarity bands**, two to a band, decided by the project owner on 2026-08-23. A stone is named for the level it takes an item to, so a +8 stone is what raises a piece to +8, and two of them are consumed. See Gear Leveling in section VI for how they combine.
 
 **Why they are not all one band.** A material drop picks evenly among the materials sharing its rarity band, so ten stones in one band would make ten of that band's thirteen materials upgrade stones and crowd out everything else in it. Spreading them also makes a stone's rarity track how far into a piece's life it is used: a +1 stone is Common and a +10 stone is Extremely Rare, so finishing a piece is a long errand rather than a purchase.
 

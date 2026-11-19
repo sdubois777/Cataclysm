@@ -172,6 +172,12 @@ public:
 	 */
 	int32 EmpireTreeRequestCount() const { return EmpireTreeRequests; }
 
+	/** Presses the "Forge" button, through the handler the button calls. Ruled 2026-11-19. */
+	void ClickForgeForTests();
+
+	/** How many times the "Forge" button has asked for the forge's screen, for `EmpireTreeRequestCount`'s reason. */
+	int32 ForgeRequestCount() const { return ForgeRequests; }
+
 protected:
 	/**
 	 * Where the cities are drawn: one box per city, placed by lattice
@@ -287,6 +293,16 @@ private:
 
 	/** See `EmpireTreeRequestCount`. */
 	int32 EmpireTreeRequests = 0;
+
+	/** The "Forge" button under the tree's, made with the cities, and not in `CityButtons`. Ruled 2026-11-19. */
+	UPROPERTY(Transient)
+	TObjectPtr<UCataclysmChoiceButton> ForgeButton;
+
+	/** Places and labels the "Forge" button. */
+	void PlaceForgeButton(float Scale, FVector2D PanelSize);
+
+	/** See `ForgeRequestCount`. */
+	int32 ForgeRequests = 0;
 
 	/** The level's dungeon game mode, or the one a test supplied, or null. */
 	ACataclysmDungeonGameMode* DungeonMode() const;

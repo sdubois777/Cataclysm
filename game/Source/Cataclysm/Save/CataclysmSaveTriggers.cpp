@@ -70,6 +70,10 @@ bool UCataclysmSaveTriggers::WritesTheCharacterRecord(ECataclysmSaveTrigger Trig
 		case ECataclysmSaveTrigger::CharacterBuildChanged: // A trigger's: the build is in this record.
 			return true;
 
+		// A CRAFT AT THE FORGE, ruled 2026-11-19: the raised item and the stones spent are in this record.
+		case ECataclysmSaveTrigger::ForgeCrafted: // A trigger's: a craft writes the character record.
+			return true;
+
 		default:
 			return false;
 	}
@@ -98,11 +102,15 @@ bool UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame(ECataclysmSav
 	// AND A CITY UPGRADE BOUGHT, since issue #2742's second slice, for the same reason: a write earlier in the same
 	// frame gathered the city before it held the upgrade, while the gold that paid for it is written apart, with the
 	// account record. `UCataclysmCityUpgradePurchase::Buy` raises it once per purchase.
+	//
+	// AND A CRAFT AT THE FORGE, ruled 2026-11-19, for the respec's reason: an upgrade's days passed after any earlier
+	// write in its frame gathered the run. `UCataclysmForgeCraft` raises it once per craft.
 	return Trigger == ECataclysmSaveTrigger::CharacterDied || Trigger == ECataclysmSaveTrigger::DeathProcessed
 		|| Trigger == ECataclysmSaveTrigger::RunWon || Trigger == ECataclysmSaveTrigger::CharacterCreated
 		|| Trigger == ECataclysmSaveTrigger::LeavingTheLevel || Trigger == ECataclysmSaveTrigger::ChangedFloor
 		|| Trigger == ECataclysmSaveTrigger::EmpireTreeRespecced
-		|| Trigger == ECataclysmSaveTrigger::CityUpgradeBought;
+		|| Trigger == ECataclysmSaveTrigger::CityUpgradeBought
+		|| Trigger == ECataclysmSaveTrigger::ForgeCrafted;
 }
 
 bool UCataclysmSaveTriggers::ClockHasElapsed(float SecondsSinceLastWrite,
@@ -174,6 +182,7 @@ const TCHAR* UCataclysmSaveTriggers::NameOf(ECataclysmSaveTrigger Trigger)
 			return TEXT("a Solo Self-Found character's own empire points or tree changing");
 		case ECataclysmSaveTrigger::CharacterBuildChanged:
 			return TEXT("the character's passive tree, attribute points or skill choices changing");
+		case ECataclysmSaveTrigger::ForgeCrafted:           return TEXT("a craft at the forge");
 	}
 
 	// A TRIGGER ADDED WITHOUT A WORDING. Named rather than fallen through to one
@@ -207,5 +216,6 @@ TArray<ECataclysmSaveTrigger> UCataclysmSaveTriggers::Every()
 		ECataclysmSaveTrigger::CityUpgradeBought,
 		ECataclysmSaveTrigger::OwnEmpireTreeChanged,
 		ECataclysmSaveTrigger::CharacterBuildChanged,
+		ECataclysmSaveTrigger::ForgeCrafted,
 	};
 }

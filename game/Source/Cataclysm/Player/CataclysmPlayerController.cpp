@@ -13,6 +13,7 @@
 #include "Dungeon/CataclysmFloorObject.h"
 #include "Interface/CataclysmEmpireMapWidget.h"
 #include "Interface/CataclysmEmpireTreeWidget.h"
+#include "Interface/CataclysmForgeWidget.h"
 #include "Interface/CataclysmInventoryWidget.h"
 #include "Interface/CataclysmPassiveTreeWidget.h"
 #include "Interface/CataclysmSkillAssignmentWidget.h"
@@ -1133,6 +1134,13 @@ void ACataclysmPlayerController::CloseEmpireScreens()
 		bClosedAny = true;
 	}
 
+	// AND THE FORGE, which the map opens too, ruled 2026-11-19.
+	if (ForgeScreen && ForgeScreen->IsInViewport())
+	{
+		ForgeScreen->RemoveFromParent();
+		bClosedAny = true;
+	}
+
 	// THE SAME INPUT MODE AS CLOSING ANY ONE OF THEM, for the reason issue #1015
 	// recorded: `FInputModeGameOnly` here would leave the player unable to move.
 	if (bClosedAny)
@@ -1180,6 +1188,47 @@ void ACataclysmPlayerController::ToggleEmpireTree()
 bool ACataclysmPlayerController::IsEmpireTreeOpen() const
 {
 	return EmpireTreeScreen != nullptr && EmpireTreeScreen->IsInViewport();
+}
+
+void ACataclysmPlayerController::ToggleForge()
+{
+	if (!ForgeScreen)
+	{
+		UClass* ScreenClass = ForgeScreenClass.LoadSynchronous();
+		if (!ScreenClass)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("There is no forge screen to open: %s could not be loaded. Run  python "
+						"tools/run_editor_python.py tools/generate_interface_assets.py  to build it."),
+				   *ForgeScreenClass.ToString());
+			return;
+		}
+
+		ForgeScreen = CreateWidget<UCataclysmForgeWidget>(this, ScreenClass);
+		if (!ForgeScreen)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("The forge screen could not be created, so the button that opens it does nothing."));
+			return;
+		}
+	}
+
+	// THE SAME INPUT MODE OPENING AND CLOSING, for the reason issue #1015 recorded on the passive tree screen.
+	ApplyPlayingInputMode();
+
+	if (ForgeScreen->IsInViewport())
+	{
+		ForgeScreen->RemoveFromParent();
+		return;
+	}
+
+	ForgeScreen->RefreshDisplay();
+	ForgeScreen->AddToViewport();
+}
+
+bool ACataclysmPlayerController::IsForgeOpen() const
+{
+	return ForgeScreen != nullptr && ForgeScreen->IsInViewport();
 }
 
 FKey ACataclysmPlayerController::KeyForAbilitySlot(FGameplayTag SlotTag) const
