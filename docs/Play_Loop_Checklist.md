@@ -239,8 +239,9 @@ until then they waited for the next item, death or trip to be written, and stopp
 
   `PLAY LOOP: took the option Reprisal Wave at the capstone The First Vow; 26 of 33 passive points spent`
 
-- **Open the console** (the \` key) and type `Cataclysm.CharacterSheet`: the character sheet has no key of its own
-  yet. Click the button **Ferocity 0**. It reads "Ferocity 1".
+- **Press C** for the character sheet (since issue [#2770](https://github.com/sdubois777/Cataclysm/issues/2770); C opened
+  the character creator before). Click the button **Ferocity 0**. It reads "Ferocity 1". **Press C again**: the sheet
+  closes and the character moves as before.
 - **In the log:**
 
   `PLAY LOOP: spent 1 attribute point on Ferocity: 1 in it; 1 unspent`
@@ -278,8 +279,8 @@ until then they waited for the next item, death or trip to be written, and stopp
   what the purchase left, the empire upgrade tree holds what steps 12 and 13 left in it, and the Outpost of step 13
   still reads "defence 1000 of 1050": the tree's bonus is applied once, on loading, and not saved into the city -- and
   the capital's line. It says no days away, because no walk has just ended.
-- **And what step 14 chose is still chosen.** P shows the passive point in its node, the character sheet shows
-  "Ferocity 1", and K shows the skill on the Heavy slot. If any of them is gone, the save did not hold it: copy step
+- **And what step 14 chose is still chosen.** P shows the passive point in its node, C shows "Ferocity 1" on the
+  character sheet, and K shows the skill on the Heavy slot. If any of them is gone, the save did not hold it: copy step
   14's PLAY LOOP lines and note which.
 
 **A character saved in the middle of a walk** opens the dungeon level instead, and goes on walking:

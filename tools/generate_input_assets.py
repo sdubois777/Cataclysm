@@ -61,10 +61,19 @@ NATIVE_ACTIONS = [
     # One action for opening and for closing, because it is a screen rather than
     # a modifier. Issue #731.
     ("IA_ToggleInventory", "ToggleInventory", BOOLEAN, "Toggle Inventory"),
-    # The character creator. One action for opening and closing, for the
-    # same reason the inventory has one. Issue #50.
-    ("IA_ToggleCharacterCreation", "ToggleCharacterCreation", BOOLEAN,
-     "Toggle Character Creation"),
+    # The character sheet: every stat the character has, and the attributes to
+    # spend points into. One action for opening and closing, for the same
+    # reason the inventory has one. Ruled by the project owner on 2026-11-19,
+    # issue #2770: "C opens the sheet".
+    #
+    # IT REPLACED THE CHARACTER CREATOR'S ACTION, IA_ToggleCharacterCreation,
+    # which had C until then (issue #50). The creator is reached from the front
+    # end's New character screen and from `Cataclysm.CharacterCreation`, and has
+    # no key: an action with no key fails
+    # tools/tests/test_native_input_actions_match_the_engine.py, so the action
+    # went rather than staying unbound.
+    ("IA_ToggleCharacterSheet", "ToggleCharacterSheet", BOOLEAN,
+     "Toggle Character Sheet"),
     # The passive class tree. Issue #50.
     ("IA_TogglePassiveTree", "TogglePassiveTree", BOOLEAN,
      "Toggle Passive Tree"),
@@ -134,9 +143,10 @@ MOUSE_MAPPINGS = [
     # The carried inventory. I in both schemes, where Diablo, Path of Exile and
     # Last Epoch all put it, and free in both. Issue #731.
     ("IA_ToggleInventory", "I", []),
-    # The character creator. C in both schemes, where every game in the
-    # genre puts the character screen, and free in both. Issue #50.
-    ("IA_ToggleCharacterCreation", "C", []),
+    # The character sheet. C in both schemes, where Path of Exile, Last Epoch
+    # and Diablo IV put the character screen. Ruled by the project owner,
+    # 2026-11-19, issue #2770; C opened the character creator until then.
+    ("IA_ToggleCharacterSheet", "C", []),
     # The passive tree. P in both schemes, which is where Path of Exile
     # puts its passive tree, and free in both. Issue #50.
     ("IA_TogglePassiveTree", "P", []),
@@ -187,9 +197,10 @@ KEYBOARD_MAPPINGS = [
     ("IA_SlotMovement", "SpaceBar", []),
     ("IA_Zoom", "MouseWheelAxis", []),
     ("IA_ToggleInventory", "I", []),
-    # The character creator. C in both schemes, where every game in the
-    # genre puts the character screen, and free in both. Issue #50.
-    ("IA_ToggleCharacterCreation", "C", []),
+    # The character sheet. C in both schemes, where Path of Exile, Last Epoch
+    # and Diablo IV put the character screen. Ruled by the project owner,
+    # 2026-11-19, issue #2770; C opened the character creator until then.
+    ("IA_ToggleCharacterSheet", "C", []),
     # The passive tree. P in both schemes, which is where Path of Exile
     # puts its passive tree, and free in both. Issue #50.
     ("IA_TogglePassiveTree", "P", []),

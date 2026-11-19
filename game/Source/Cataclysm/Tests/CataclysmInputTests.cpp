@@ -105,6 +105,68 @@ namespace CataclysmInputTest
 	{
 		return Context ? Context->GetMappings() : TArray<FEnhancedActionKeyMapping>();
 	}
+
+	/**
+	 * A screen's action is on `Key` in both control schemes, on that key alone, and nothing else is on that key.
+	 *
+	 * THE EMPIRE OVERVIEW'S TEST WAS THIS BODY until issue #2770 gave the character sheet a key as well; both tests now
+	 * call it, so the two keys are held to the same three assertions in each scheme, worded as they were.
+	 *
+	 * @return false when the set-up failed: no input config, or a config that does not list the action.
+	 */
+	bool ExpectTheScreenOnItsKeyInBothSchemes(
+		FAutomationTestBase& Test, const FName& ActionName, const FKey& Key, const TCHAR* Screen)
+	{
+		const UCataclysmInputConfig* Config = LoadObject<UCataclysmInputConfig>(nullptr, ConfigPath);
+		if (!Config)
+		{
+			Test.AddError(TEXT("The input config does not exist. Run tools/generate_input_assets.py."));
+			return false;
+		}
+
+		const UInputAction* Action = Config->FindNativeAction(ActionName);
+		if (!Test.TestNotNull(FString::Printf(TEXT("set-up: the config lists the %s's action"), Screen), Action))
+		{
+			return false;
+		}
+
+		const FString KeyName = Key.ToString();
+		const TCHAR* const ContextPaths[] = {
+			MouseContextPath,
+			KeyboardContextPath,
+		};
+
+		for (const TCHAR* Path : ContextPaths)
+		{
+			const UInputMappingContext* Context = LoadObject<UInputMappingContext>(nullptr, Path);
+			if (!Test.TestNotNull(FString::Printf(TEXT("set-up: %s exists"), Path), Context))
+			{
+				continue;
+			}
+
+			TArray<FKey> KeysOfTheAction;
+			TArray<const UInputAction*> ActionsOnTheKey;
+			for (const FEnhancedActionKeyMapping& Mapping : MappingsOf(Context))
+			{
+				if (Mapping.Action.Get() == Action)
+				{
+					KeysOfTheAction.Add(Mapping.Key);
+				}
+				if (Mapping.Key == Key)
+				{
+					ActionsOnTheKey.Add(Mapping.Action.Get());
+				}
+			}
+
+			Test.TestEqual(FString::Printf(TEXT("%s: the %s is on one key"), Path, Screen), KeysOfTheAction.Num(), 1);
+			Test.TestTrue(FString::Printf(TEXT("%s: the %s is on %s"), Path, Screen, *KeyName),
+				KeysOfTheAction.Contains(Key));
+			Test.TestEqual(FString::Printf(TEXT("%s: %s carries one action and no other"), Path, *KeyName),
+				ActionsOnTheKey.Num(), 1);
+		}
+
+		return true;
+	}
 }
 
 /**
@@ -288,11 +350,13 @@ bool FCataclysmInputConfigContentsTest::RunTest(const FString& Parameters)
 		CataclysmInputActionNames::StandStill,
 		CataclysmInputActionNames::Zoom,
 		CataclysmInputActionNames::ToggleInventory,
-		// The character creator, issue #50. It joined on 2026-08-25 and this
-		// test is what noticed, which is what "and lists no others" below is
-		// for: adding a native action without regenerating the input assets
-		// leaves a key that reaches nothing.
-		CataclysmInputActionNames::ToggleCharacterCreation,
+		// The character sheet on C, ruled by the project owner on 2026-11-19,
+		// issue #2770. It took the place of the character creator's action,
+		// which joined on 2026-08-25 (issue #50) and is asserted gone below.
+		// "And lists no others" is what noticed the creator's arrival: adding a
+		// native action without regenerating the input assets leaves a key that
+		// reaches nothing.
+		CataclysmInputActionNames::ToggleCharacterSheet,
 		// The passive class tree, issue #50. It joined on 2026-08-25.
 		CataclysmInputActionNames::TogglePassiveTree,
 		// The four potion slots, issue #806. They joined on 2026-09-25.
@@ -319,6 +383,12 @@ bool FCataclysmInputConfigContentsTest::RunTest(const FString& Parameters)
 
 	TestNull(TEXT("a name the config does not list resolves to nothing"),
 		Config->FindNativeAction(FName(TEXT("NotABinding"))));
+
+	// THE CHARACTER CREATOR HAS NO ACTION SINCE 2026-11-19. C, its key, went to
+	// the character sheet (issue #2770), and an action no key reaches is not
+	// built. Named by its old string because the C++ name was removed with it.
+	TestNull(TEXT("the character creator's action is gone, since C opens the character sheet"),
+		Config->FindNativeAction(FName(TEXT("ToggleCharacterCreation"))));
 
 	// Six ability bindings: the seven slots less the basic attack, which the
 	// design makes automatic and gives no key.
@@ -396,6 +466,11 @@ bool FCataclysmMappingContextsTest::RunTest(const FString& Parameters)
 	// Neither scheme uses that key for anything else. Issue #2733 slice 3.
 	RequiredEverywhere.Add(
 		Config->FindNativeAction(CataclysmInputActionNames::ToggleEmpireMap));
+
+	// The character sheet on C, in both schemes, as the project owner ruled on
+	// 2026-11-19. C opened the character creator until then. Issue #2770.
+	RequiredEverywhere.Add(
+		Config->FindNativeAction(CataclysmInputActionNames::ToggleCharacterSheet));
 
 	// The four potions are on 2 to 5 in both schemes, so a player who changes
 	// scheme finds them where they were. Issue #806.
@@ -529,6 +604,9 @@ bool FCataclysmMappingContextsTest::RunTest(const FString& Parameters)
  * `ACataclysmPlayerController::SetupInputComponent` binds nothing there and `CreateWidget` makes no screen.
  * `tools/tests/test_the_empire_map_key_reaches_its_command.py` reads instead that the key's handler calls the function
  * its console command calls, and that the controller binds the handler.
+ *
+ * ITS BODY IS `CataclysmInputTest::ExpectTheScreenOnItsKeyInBothSchemes` since issue #2770, which the character sheet's
+ * test below calls too. The assertions and their words are the ones this test made before.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireMapKeyTest,
 	"Cataclysm.Input.TheEmpireMapIsOnMInBothSchemes",
@@ -536,53 +614,31 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireMapKeyTest,
 
 bool FCataclysmEmpireMapKeyTest::RunTest(const FString& Parameters)
 {
-	const UCataclysmInputConfig* Config =
-		LoadObject<UCataclysmInputConfig>(nullptr, CataclysmInputTest::ConfigPath);
-	if (!Config)
-	{
-		AddError(TEXT("The input config does not exist. Run tools/generate_input_assets.py."));
-		return false;
-	}
+	return CataclysmInputTest::ExpectTheScreenOnItsKeyInBothSchemes(
+		*this, CataclysmInputActionNames::ToggleEmpireMap, EKeys::M, TEXT("empire overview"));
+}
 
-	const UInputAction* EmpireMap = Config->FindNativeAction(CataclysmInputActionNames::ToggleEmpireMap);
-	if (!TestNotNull(TEXT("set-up: the config lists the empire overview's action"), EmpireMap))
-	{
-		return false;
-	}
+/**
+ * The character sheet is on C, in both schemes, and nothing else is on that key.
+ *
+ * RULED BY THE PROJECT OWNER, 2026-11-19, issue #2770: "C opens the sheet", where Path of Exile, Last Epoch and Diablo
+ * IV put the character screen. Until then the sheet, the only place attribute points are spent, opened only from
+ * `Cataclysm.CharacterSheet`, and C opened the character creator. "AND NOTHING ELSE" is the creator's half of the
+ * ruling: the creator kept no key.
+ *
+ * WHAT IT CANNOT CHECK is the same as the empire overview's test above: a press reaching the screen.
+ * `tools/tests/test_the_empire_map_key_reaches_its_command.py` reads that C's handler calls the function
+ * `Cataclysm.CharacterSheet` calls, and the owner's press of C in step 14 of `docs/Play_Loop_Checklist.md` is the
+ * test of the screen opening.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCharacterSheetKeyTest,
+	"Cataclysm.Input.TheCharacterSheetIsOnCInBothSchemes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-	const TCHAR* const ContextPaths[] = {
-		CataclysmInputTest::MouseContextPath,
-		CataclysmInputTest::KeyboardContextPath,
-	};
-
-	for (const TCHAR* Path : ContextPaths)
-	{
-		const UInputMappingContext* Context = LoadObject<UInputMappingContext>(nullptr, Path);
-		if (!TestNotNull(FString::Printf(TEXT("set-up: %s exists"), Path), Context))
-		{
-			continue;
-		}
-
-		TArray<FKey> KeysOfTheAction;
-		TArray<const UInputAction*> ActionsOnTheKey;
-		for (const FEnhancedActionKeyMapping& Mapping : CataclysmInputTest::MappingsOf(Context))
-		{
-			if (Mapping.Action.Get() == EmpireMap)
-			{
-				KeysOfTheAction.Add(Mapping.Key);
-			}
-			if (Mapping.Key == EKeys::M)
-			{
-				ActionsOnTheKey.Add(Mapping.Action.Get());
-			}
-		}
-
-		TestEqual(FString::Printf(TEXT("%s: the empire overview is on one key"), Path), KeysOfTheAction.Num(), 1);
-		TestTrue(FString::Printf(TEXT("%s: the empire overview is on M"), Path), KeysOfTheAction.Contains(EKeys::M));
-		TestEqual(FString::Printf(TEXT("%s: M carries one action and no other"), Path), ActionsOnTheKey.Num(), 1);
-	}
-
-	return true;
+bool FCataclysmCharacterSheetKeyTest::RunTest(const FString& Parameters)
+{
+	return CataclysmInputTest::ExpectTheScreenOnItsKeyInBothSchemes(
+		*this, CataclysmInputActionNames::ToggleCharacterSheet, EKeys::C, TEXT("character sheet"));
 }
 
 /**

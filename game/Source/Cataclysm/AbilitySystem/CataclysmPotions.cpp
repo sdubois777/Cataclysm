@@ -264,9 +264,8 @@ bool UCataclysmPotions::Enabled()
 
 /**
  * `Cataclysm.DrinkPotion <1-4>`. THE KEYS 2 TO 5 NEED THE INPUT ASSETS
- * REGENERATED IN THE EDITOR, as `Cataclysm.CharacterCreation` explains for the C
- * key, so a checkout without them can still drink and be told why a drink was
- * refused.
+ * REGENERATED IN THE EDITOR, as every key does, so a checkout without them can
+ * still drink and be told why a drink was refused.
  */
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmDrinkPotion(
 	TEXT("Cataclysm.DrinkPotion"),
