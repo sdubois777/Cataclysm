@@ -208,7 +208,21 @@ run of the change, before the three re-measured figures, was "3 failed, 7602 pas
 
 ### Compiled
 
-Not yet.
+Three builds through `tools/unreal_build.py build` at `6dcd6d5e1`, on the coordinating session's go, no lock taken,
+each started once no Unreal workflow run had been seen in progress or queued twice, two minutes apart
+(`compile_b9.py`, `b9_compile.out` in this worktree's `.claude/windows/`):
+
+| Build | When | "Build:" line |
+| :-- | :-- | :-- |
+| 1. The branch (`git status` clean) | 01:55:07 to 01:59:14, 247 s | "Build: Succeeded - 38 actions, 33 files compiled", among them `CataclysmSurge.cpp`, `CataclysmSurgeTests.cpp` and `CataclysmEmpireRunTests.cpp`, each compiled alone |
+| 2. Each changed `.cpp` alone (`git read-tree origin/development`, `Makefile.bin` moved aside, `git reset -q` after) | 02:01:18 to 02:02:36, 78 s | "Build: Succeeded - 14 actions, 9 files compiled": `CataclysmDungeonCostsDaysTests.cpp` and `CataclysmDungeonGameMode.cpp` alone, and the Cataclysm unity files. The three CataclysmEmpire files were named as excluded and not compiled again: build 1 had compiled each alone already |
+| 3. The unity files again (`Makefile.bin` moved aside again) | 02:04:39 to 02:05:46, 67 s | "Build: Succeeded - 12 actions, 7 files compiled": the Cataclysm unity files |
+
+**THE CATACLYSMEMPIRE MODULE HAS NO UNITY FILE**: its intermediate directory holds one object per source file and
+`Module.CataclysmEmpire.gen.cpp`, so every file of it compiles alone in every build, and build 1's compile of the three
+changed files is the only one there is to have. Build 1's log held one compiler warning line, the CountBits deprecation
+that `CataclysmAbilitySystemComponent.cpp` line 1315 triggers (#2756); this change does not touch that file. Builds 2
+and 3 logged none.
 
 ---
 
