@@ -252,6 +252,70 @@ struct CATACLYSMEMPIRE_API FCataclysmEmpireTreeBonuses
 	float UpgradeStrengthAfterDays = 0.0f;
 
 	// ---------------------------------------------------------------------
+	// Slice 4: a dungeon's walk and depth, and what a clear brings. Each reading is a judgement of the coordinating
+	// session's W1 to W9 of 2026-11-19, recorded in `docs/DECISIONS.md`. THE WALK IS READ WHERE IT IS CHARGED
+	// (`UCataclysmEmpireRun::EffectiveWalkDaysFor`): the stored walk days, less the flat days, times `WalkTimeFactor`,
+	// halved by Tactical Entry, and never below one day (W1). THE FLOORS ARE ADDED WHEN A DUNGEON IS MADE (W3).
+	// ---------------------------------------------------------------------
+
+	/** The share of a walk left, compounded per point: Pacing, Overclock, Temporal Mastery (2.5% each), Fleet Footed (12%). */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float WalkTimeFactor = 1.0f;
+
+	/** Tactical Entry: a dungeon of more than this many floors walks in half the days. 0 is no node. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 HalveWalkAboveFloors = 0;
+
+	/** Days off every walk: The Delver, 5. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float WalkDaysFewer = 0.0f;
+
+	/** Days off the walk of a dungeon standing alone on its city: Opportunist, 1 a point (W9). */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float WalkDaysFewerWhenAlone = 0.0f;
+
+	/** Days off every walk for each active Cataclysm type, and the most it may take: Sovereign's Haste, 1 a point, 30 (W8). */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float WalkDaysFewerPerActiveType = 0.0f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float WalkDaysFewerPerActiveTypeCap = 0.0f;
+
+	/** Days off a Fallen City dungeon's walk: Imperial Roads, 1 a point. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float WalkDaysFewerOnFallenCities = 0.0f;
+
+	/** Days off a walk for each floor cleared before the last: Rapid Descent, 0.1 a point (W2). */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float WalkDaysFewerPerFloorCleared = 0.0f;
+
+	/**
+	 * The Last Stand option: a dungeon on a city the hits already scheduled over this many days would fell walks in one
+	 * day, whatever else applies (W5). 0 is no option chosen.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 OneDayWalkWithinDaysOfFalling = 0;
+
+	/**
+	 * Floors added to every dungeon made, the boss's count too: Deep Boring, Architect of Greed, Exclusionary Mapping
+	 * (less), The Collector's Decree, and Architectural Insight to its cap of +10 (W3, W4). Never below one floor.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 FloorsAdded = 0;
+
+	/** Floors added for each active Cataclysm type to every dungeon made but the boss: Infinite Depths, 2 a point. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 FloorsAddedPerActiveType = 0;
+
+	/** The Warlord: the chance a clear removes another dungeon on the same city (W6). */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float RemoveAnotherDungeonChance = 0.0f;
+
+	/** Veteran's Edge: the increase on the empire upgrade points a clear pays, 3% a point, summed (W7). */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float EmpirePointsIncrease = 0.0f;
+
+	// ---------------------------------------------------------------------
 	// The words in the node texts that are rules rather than numbers
 	// ---------------------------------------------------------------------
 
@@ -306,6 +370,12 @@ struct CATACLYSMEMPIRE_API FCataclysmEmpireTreeBonuses
 	 * compounded per point for each clear since the last surge, or each city reclaimed in the run, and held at its cap.
 	 */
 	float EventDamageFactorFor(int32 ClearsSinceLastSurge, int32 CitiesReclaimed) const;
+
+	/** Whether any walk node is held, so a walk with none is charged exactly the stored figure. */
+	bool ReachesTheWalk() const;
+
+	/** The floors added to a dungeon made now: `FloorsAdded`, and Infinite Depths for the active types unless the boss. */
+	int32 FloorsAddedTo(bool bTheBoss, int32 ActiveCataclysmTypes) const;
 };
 
 /**

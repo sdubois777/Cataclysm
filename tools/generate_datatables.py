@@ -4052,6 +4052,12 @@ EMPIRE_TREE_EFFECT_KINDS = (
     "LowestCityRestoresDefence", "LowestCityRestoresPopulation",
     "DamageTakenPerClearThisSurge", "DamageTakenPerCityReclaimed",
     "SanctuarySurvivesAt", "UpgradeEffectAfterDays",
+    # Slice 4: a dungeon's walk and depth, and what a clear brings.
+    "WalkTimeCompounded", "WalkTimeHalvedAboveFloors", "WalkDaysFewer",
+    "WalkDaysFewerWhenAlone", "WalkDaysFewerPerActiveType",
+    "WalkDaysFewerOnFallenCities", "WalkDaysFewerPerFloorCleared",
+    "WalkOneDayWithinDaysOfFalling", "FloorsAdded", "FloorsAddedPerActiveType",
+    "FloorsPerBranchStep", "RemoveAnotherDungeonChance", "EmpirePointsFromClears",
 )
 
 #: WHAT EACH BUILT NODE OR OPTION OF THE EMPIRE TREE DOES, by name. Issue
@@ -4063,11 +4069,13 @@ EMPIRE_TREE_EFFECT_KINDS = (
 #: branch, cap). Per point is a fraction for a percentage and days for days; a
 #: reduction is the share it takes off, written positive. Every value is the
 #: node's own words, and `test_empire_tree_effects_match_their_texts.py` finds
-#: each one in its text. THREE OF THE FOUR CAPS ARE NOT IN ANY TEXT: Golden
+#: each one in its text. FOUR OF THE SIX CAPS ARE NOT IN ANY TEXT: Golden
 #: Age's and Bastion Spirit's are the owner's ruling 2 of 2026-11-18, "Cap each
-#: one", chosen in slice 3a from the simulation (S3, S4), and Reclaimer's
+#: one", chosen in slice 3a from the simulation (S3, S4); Reclaimer's
 #: Resolve's is the coordinating session's Q2 of 2026-11-19, the 15% Global
-#: Vigilance's own text states. Each is recorded as a judgement.
+#: Vigilance's own text states; and Architectural Insight's +10 floors is its
+#: W4 of 2026-11-19, under ruling 2. Global Vigilance's 15% and Sovereign's
+#: Haste's 30 are in their texts. Each is recorded as a judgement.
 #:
 #: READINGS, each a judgement of 2026-11-18 (S5): "Max Health" and "Defense" of
 #: a city are its maximum defence; "within 2 rings of the Pillar" is rings 0 to
@@ -4122,6 +4130,31 @@ EMPIRE_TREE_EFFECTS = {
     "Reclaimer's Resolve": [("DamageTakenPerCityReclaimed", 0.01, 0, "", 0.15)],
     "Last Stand Protocols": [("SanctuarySurvivesAt", 1.0)],
     "Enduring Foundations": [("UpgradeEffectAfterDays", 0.02)],
+    # Slice 4: a dungeon's walk and depth, each reading a judgement of the
+    # coordinating session's W1 to W9 of 2026-11-19 (`docs/DECISIONS.md`).
+    # The walk: a share off compounded per point; flat days off; Tactical
+    # Entry's threshold in floors; The Last Stand option's days.
+    "Pacing": [("WalkTimeCompounded", 0.025)],
+    "Overclock": [("WalkTimeCompounded", 0.025)],
+    "Temporal Mastery": [("WalkTimeCompounded", 0.025)],
+    "Fleet Footed": [("WalkTimeCompounded", 0.12)],
+    "Tactical Entry": [("WalkTimeHalvedAboveFloors", 50.0)],
+    "The Delver": [("WalkDaysFewer", 5.0)],
+    "Opportunist": [("WalkDaysFewerWhenAlone", 1.0)],
+    "Sovereign's Haste": [("WalkDaysFewerPerActiveType", 1.0, 0, "", 30.0)],
+    "Imperial Roads": [("WalkDaysFewerOnFallenCities", 1.0)],
+    "Rapid Descent": [("WalkDaysFewerPerFloorCleared", 0.1)],
+    "The Last Stand": [("WalkOneDayWithinDaysOfFalling", 7.0)],
+    # The depth: floors per point, added when a dungeon is made (W3).
+    "Deep Boring": [("FloorsAdded", 1.0)],
+    "Architect of Greed": [("FloorsAdded", 1.0)],
+    "Exclusionary Mapping": [("FloorsAdded", -1.0)],
+    "The Collector's Decree": [("FloorsAdded", 10.0)],
+    "Infinite Depths": [("FloorsAddedPerActiveType", 2.0)],
+    "Architectural Insight": [("FloorsPerBranchStep", 1.0, 10, "Architect", 10.0)],
+    # A clear.
+    "The Warlord": [("RemoveAnotherDungeonChance", 0.15)],
+    "Veteran's Edge": [("EmpirePointsFromClears", 0.03)],
 }
 
 

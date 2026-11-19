@@ -272,6 +272,47 @@ FCataclysmEmpireTreeBonuses UCataclysmEmpireTree::CityBonusesFor(const UDataTabl
 		case ECataclysmEmpireTreeEffect::UpgradeEffectAfterDays:
 			Bonuses.UpgradeStrengthAfterDays += Total;
 			break;
+
+		// SLICE 4, a dungeon's walk and depth. Sovereign's Haste's cap is on its days times the active types, so its
+		// per-type figure and cap are held apart; Architectural Insight's steps and cap are in `Total` (W4, C3).
+		case ECataclysmEmpireTreeEffect::WalkTimeCompounded:
+			Bonuses.WalkTimeFactor *= Kept;
+			break;
+		case ECataclysmEmpireTreeEffect::WalkTimeHalvedAboveFloors:
+			Bonuses.HalveWalkAboveFloors = FMath::RoundToInt(Row->PerPoint);
+			break;
+		case ECataclysmEmpireTreeEffect::WalkDaysFewer:
+			Bonuses.WalkDaysFewer += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::WalkDaysFewerWhenAlone:
+			Bonuses.WalkDaysFewerWhenAlone += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::WalkDaysFewerPerActiveType:
+			Bonuses.WalkDaysFewerPerActiveType += Row->PerPoint * static_cast<float>(Points);
+			Bonuses.WalkDaysFewerPerActiveTypeCap = Row->Cap;
+			break;
+		case ECataclysmEmpireTreeEffect::WalkDaysFewerOnFallenCities:
+			Bonuses.WalkDaysFewerOnFallenCities += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::WalkDaysFewerPerFloorCleared:
+			Bonuses.WalkDaysFewerPerFloorCleared += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::WalkOneDayWithinDaysOfFalling:
+			Bonuses.OneDayWalkWithinDaysOfFalling = FMath::RoundToInt(Row->PerPoint);
+			break;
+		case ECataclysmEmpireTreeEffect::FloorsAdded:
+		case ECataclysmEmpireTreeEffect::FloorsPerBranchStep:
+			Bonuses.FloorsAdded += FMath::RoundToInt(Total);
+			break;
+		case ECataclysmEmpireTreeEffect::FloorsAddedPerActiveType:
+			Bonuses.FloorsAddedPerActiveType += FMath::RoundToInt(Total);
+			break;
+		case ECataclysmEmpireTreeEffect::RemoveAnotherDungeonChance:
+			Bonuses.RemoveAnotherDungeonChance = FMath::Max(Bonuses.RemoveAnotherDungeonChance, Row->PerPoint);
+			break;
+		case ECataclysmEmpireTreeEffect::EmpirePointsFromClears:
+			Bonuses.EmpirePointsIncrease += Total;
+			break;
 		default:
 			break;
 		}

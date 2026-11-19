@@ -959,7 +959,7 @@ TArray<int32> UCataclysmSurgeScheduler::PickTargets(
 
 FCataclysmDungeon UCataclysmSurgeScheduler::MakeFallenCityDungeon(
 	int32 DungeonId, const FCataclysmCity& City, int32 Day,
-	int32 DungeonsAbsorbed)
+	int32 DungeonsAbsorbed, int32 FloorsAdded)
 {
 	const FCataclysmDungeonSpec Spec =
 		SpecFor(ECataclysmDungeonType::FallenCity, City.Tier);
@@ -984,7 +984,8 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeFallenCityDungeon(
 	// THE FLOOR IS THE SPEC'S SHALLOW END, which is the design's 20/40/60. A
 	// city that fell carrying more dungeons than that is deeper than the
 	// minimum; a quiet one is exactly it.
-	Dungeon.Floors = FMath::Max(Absorbed, Spec.LeastFloors);
+	// AND THE EMPIRE UPGRADE TREE'S FLOORS, which the run passes in, never below one floor. Issue #2741 slice 4, W3.
+	Dungeon.Floors = FMath::Max(1, FMath::Max(Absorbed, Spec.LeastFloors) + FloorsAdded);
 
 	// ONE BOSS PER DUNGEON THAT WAS STANDING, which is the same count and not
 	// the same number as the floors: a city that fell holding three dungeons is
@@ -1324,8 +1325,12 @@ FCataclysmDungeon UCataclysmSurgeScheduler::MakeDungeon(
 	// AFTER THE ROLL AND NOT INSTEAD OF IT, so the depth a dungeon would have
 	// had is still drawn from the same range with the same draw. Rolling a
 	// different range would change every later roll in the run.
+	//
+	// AND THE EMPIRE UPGRADE TREE'S FLOORS WITH THEM, which are added floors in the same sense: counted in `UpgradeFloors`
+	// below, so the timer and the walk grow with them and the hit does not. Issue #2741 slice 4, W3. Exclusionary
+	// Mapping can make it negative, and the clamp at one floor below holds then too.
 	const int32 Deeper = FMath::RoundToInt(
-		City.UpgradeValueFor(ECataclysmCityUpgradeEffect::DungeonFloorsMore));
+		City.UpgradeValueFor(ECataclysmCityUpgradeEffect::DungeonFloorsMore)) + FloorsTheTreeAdds;
 
 	const int32 Shallower = FMath::RoundToInt(
 		City.UpgradeValueFor(ECataclysmCityUpgradeEffect::DungeonFloorsFewer));

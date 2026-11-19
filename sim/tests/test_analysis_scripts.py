@@ -125,7 +125,8 @@ def penetration_run():
                                   "analyse_tier_throughput.py",
                                   "analyse_outpost_depth.py",
                                   "analyse_opening.py",
-                                  "analyse_empire_tree_caps.py"])
+                                  "analyse_empire_tree_caps.py",
+                                  "analyse_architectural_insight_cap.py"])
 def test_the_script_runs_and_prints_something(name):
     printed, _ = run(name)
     assert len(printed.splitlines()) > 20, printed
@@ -3820,3 +3821,34 @@ def test_it_measures_each_chosen_cap_and_past_it(tree_caps_run):
     assert max(ns["BASTION_DAYS"]) > caps["Bastion Spirit"]
     assert 1.0 + caps["Golden Age"] in ns["GOLDEN_FACTORS"]
     assert max(ns["GOLDEN_FACTORS"]) > 1.0 + caps["Golden Age"]
+
+
+# --------------------------------------------------------------------------
+# analyse_architectural_insight_cap.py -- issue #2741 slice 4
+# --------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def insight_cap_run():
+    """The evidence for Architectural Insight's cap. At the default of one
+    campaign a cell it plays 18; a measurement needs 200 a cell, which no test
+    runs."""
+    return run("analyse_architectural_insight_cap.py")
+
+
+def test_the_insight_script_measures_every_cell(insight_cap_run):
+    _, ns = insight_cap_run
+    expected = {(float(v), t) for v in ns["INSIGHT_FLOORS"] for t in ns["TIERS"]}
+    assert set(ns["ROWS"]) == expected
+
+
+def test_it_measures_the_chosen_cap_and_past_it_and_the_uncapped_reading(insight_cap_run):
+    """The cap the generator writes is among the sizes measured, a size past it
+    is too, and so is the uncapped reading at a full Architect branch, +320. W4
+    of 2026-11-19."""
+    import generate_datatables as gen
+
+    _, ns = insight_cap_run
+    (cap,) = [effect[4] for effect in gen.EMPIRE_TREE_EFFECTS["Architectural Insight"]]
+    assert cap in ns["INSIGHT_FLOORS"]
+    assert max(ns["INSIGHT_FLOORS"]) > cap
+    assert 320 in ns["INSIGHT_FLOORS"]
