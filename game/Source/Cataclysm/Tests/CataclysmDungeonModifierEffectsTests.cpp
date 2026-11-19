@@ -48698,7 +48698,8 @@ bool FCataclysmEchoChamberFiguresTest::RunTest(const FString& Parameters)
 	using namespace CataclysmDungeonModifierEffectsTest;
 	using Effects = UCataclysmDungeonModifierEffects;
 
-	TestEqual(TEXT("the copy hits the player for a tenth"), Effects::EchoChamberSelfHitPercent, 10.0f, 0.001f);
+	TestEqual(TEXT("the copy hits the player for 5% of their maximum health"),
+			  Effects::EchoChamberSelfHitShareOfMaximumHealthPercent, 5.0f, 0.001f);
 	TestEqual(TEXT("a use aimed at one's own feet is aimed one metre away"), Effects::EchoChamberLeastAimCm, 100.0f, 0.001f);
 	TestEqual(TEXT("Echo Chamber is built"), static_cast<int32>(Effects::BuiltStateOf(EchoChamberRow)),
 			  static_cast<int32>(ECataclysmModifierBuilt::Built));
@@ -48854,19 +48855,12 @@ bool FCataclysmEchoChamberSelfHitTest::RunTest(const FString& Parameters)
 	const float Lost = BeforeTheNearOne - Player.Read(Health);
 	TestTrue(FString::Printf(TEXT("who loses health (%.2f)"), Lost), Lost > 0.0f);
 
-	// AND NO MORE THAN A TENTH OF WHAT THE COPY WOULD DEAL TO AN ENEMY, before the player's own defences. PRICED AS
-	// THE CODE PRICES IT SINCE #2234 PATH C, from the whole attack damage line with the copied row's tags and no
-	// target. This player wears nothing, so its line holds no conditioned or tag-scoped row and the figure is the
-	// attribute's as before.
-	const float Percent = Strike->DamagePercent >= 0.0f
-		? Strike->DamagePercent
-		: UCataclysmSkillSlots::NumbersFor(UCataclysmSkillSlots::LoadGeneratedTable(), Strike->Slot).DamagePercent;
-	const float ToAnEnemy = UCataclysmSkillEffects::ModifiedDamage(Player.AbilitySystem,
-		UCataclysmSkillEffects::AttackDamageWithNoTarget(Player.AbilitySystem, Strike->Tags) * Percent / 100.0f,
-		Strike->Tags);
-	TestTrue(FString::Printf(TEXT("set-up: the copy would deal something to an enemy (%.2f)"), ToAnEnemy), ToAnEnemy > 0.0f);
-	TestTrue(FString::Printf(TEXT("at most a tenth of it: %.2f of %.2f"), Lost, ToAnEnemy),
-			 Lost <= ToAnEnemy * Effects::EchoChamberSelfHitPercent / 100.0f + 0.01f);
+	// AND NO MORE THAN 5% OF THE PLAYER'S MAXIMUM HEALTH, before the player's own defences, since issue #2749 (B3).
+	// Until then it was a tenth of what the copy would deal to an enemy. The tests below hold it to the figure.
+	const float MaximumHealth = Player.Read(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	TestTrue(FString::Printf(TEXT("set-up: the player has a maximum health (%.2f)"), MaximumHealth), MaximumHealth > 0.0f);
+	TestTrue(FString::Printf(TEXT("at most 5%% of it: %.2f of %.2f"), Lost, MaximumHealth),
+			 Lost <= MaximumHealth * Effects::EchoChamberSelfHitShareOfMaximumHealthPercent / 100.0f + 0.01f);
 	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(EchoChamberRow),
 			  FString(TEXT("echo chamber: 2 copies fired, 1 hit you")));
 	return true;
@@ -48988,9 +48982,10 @@ bool FCataclysmEchoChamberWithWildMagicTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-// ISSUE #2234 PATH C, ruled 2026-10-23: the copy that hits the player is priced from the player's whole attack damage
-// line, asked with the copied row's own tags and no target. A row about the player is judged when the copy is made; no
-// row about an enemy reaches it. Each test reads a control first and compares health lost against it.
+// ISSUE #2749 (B3), ruled 2026-11-18: the copy that hits the player deals 5% of the player's maximum health, before
+// their defences, and reads no damage of theirs. Until then it was priced from the player's whole attack damage line
+// (#2234 path C, ruled 2026-10-23) and a Spell's spell damage (#2498); the three tests of those rules were deleted with
+// it, since the ruling inverts what they asserted. Each test reads a control first and compares health lost against it.
 namespace CataclysmDungeonModifierEffectsTest
 {
 	/** A roll pinned for as long as it is in scope, and put back to what it was. */
@@ -49059,7 +49054,8 @@ namespace CataclysmDungeonModifierEffectsTest
 	{
 		const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
 		Player.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 0.0f);
-		Player.AbilitySystem->SetNumericAttributeBase(Health, 1000.0f);
+		Player.AbilitySystem->SetNumericAttributeBase(Health,
+			Player.Read(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()));
 		const float Before = Player.Read(Health);
 		const int32 HitsBefore = Mode->EchoChamberSelfHits();
 		ThePlayerUses(Player, Strike.Name, ECataclysmAbilitySlot::Heavy, Player.Character->GetActorLocation());
@@ -49069,15 +49065,44 @@ namespace CataclysmDungeonModifierEffectsTest
 		}
 		return Before - Player.Read(Health);
 	}
+
+	/**
+	 * THE CONTROL: the health a direct hit of `Damage` takes when the player deals it to themselves with the delivery
+	 * the copy's self hit carries, from full health and with no energy shield, so the player's own defences reduce it
+	 * as they reduce the copy.
+	 */
+	float HealthADirectHitOnThePlayerTakes(const FPossessedPlayer& Player, float Damage)
+	{
+		const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+		Player.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 0.0f);
+		Player.AbilitySystem->SetNumericAttributeBase(Health,
+			Player.Read(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()));
+		const float Before = Player.Read(Health);
+		FCataclysmHitDelivery Delivery;
+		Delivery.bIsArea = true;
+		Delivery.bCannotCriticallyStrike = true;
+		Delivery.bCannotLeech = true;
+		Delivery.bCannotBeRetaliatedAgainst = true;
+		UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Player.Character, Damage, Delivery);
+		return Before - Player.Read(Health);
+	}
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoChamberSelfHitStationaryRowTest,
-	"Cataclysm.DungeonModifierEffects.EchoChamberSelfHitTakesTheWearersStationaryRowAsItHoldsWhenTheCopyIsMade",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoChamberSelfHitShareOfMaximumHealthTest,
+	"Cataclysm.DungeonModifierEffects.EchoChamberSelfHitIsFivePercentOfTheMaximumHealthBeforeTheDefences",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmEchoChamberSelfHitStationaryRowTest::RunTest(const FString& Parameters)
+/**
+ * Issue #2749 (B3), ruled 2026-11-18. At two maxima, 1,000 and 2,000 health, THE CONTROL FIRST: a direct hit of 5% of
+ * the maximum, dealt by the player to themselves with the copy's delivery, which the player's own defences reduce as
+ * they reduce the copy, and which takes some health and no more than it was. Then the copy aimed at the player's own
+ * feet takes what the control took, within 0.5%. Before #2749 the copy took a tenth of its hit on an enemy, which did
+ * not follow the player's maximum health at all.
+ */
+bool FCataclysmEchoChamberSelfHitShareOfMaximumHealthTest::RunTest(const FString& Parameters)
 {
 	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
 
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a test world was created"), World))
@@ -49105,53 +49130,37 @@ bool FCataclysmEchoChamberSelfHitStationaryRowTest::RunTest(const FString& Param
 	{
 		return false;
 	}
-	Player.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
 
-	// "WHILE STATIONARY YOUR DAMAGE IS INCREASED BY 50%", a row about the player, beside the plain weapon figure.
-	FCataclysmStatModifier Stationary = AnEchoChamberTestRow(50.0f);
-	Stationary.Condition = ECataclysmStatCondition::WhileStationary;
-	GiveThePlayerAttackDamageRows(Player, {Stationary});
-	const float Attribute = UCataclysmSkillEffects::WeaponDamageOf(Player.AbilitySystem);
-
-	// THE CONTROL, READ FIRST: having just moved, the row does not hold when the copy is made.
-	Player.AbilitySystem->NoteMovedMetres(1.0f);
-	if (!TestEqual(TEXT("set-up: moved, the line reads the plain weapon figure"),
-				   UCataclysmSkillEffects::AttackDamageWithNoTarget(Player.AbilitySystem, Strike->Tags), Attribute,
-				   Attribute * 0.001f))
+	for (const float Maximum : {1000.0f, 2000.0f})
 	{
-		return false;
+		Player.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), Maximum);
+		const float Share = Maximum * Effects::EchoChamberSelfHitShareOfMaximumHealthPercent / 100.0f;
+		const float Control = HealthADirectHitOnThePlayerTakes(Player, Share);
+		if (!TestTrue(FString::Printf(TEXT("control at %.0f maximum health: a direct hit of %.2f takes %.2f, some and no more"),
+									  Maximum, Share, Control),
+					  Control > 0.0f && Control <= Share + 0.01f))
+		{
+			return false;
+		}
+		const float Copy = HealthAnEchoChamberCopyTakes(Mode, Player, *Strike);
+		TestEqual(FString::Printf(TEXT("at %.0f maximum health the copy takes what the control took"), Maximum), Copy,
+				  Control, Control * 0.005f);
 	}
-	const float WhenMoved = HealthAnEchoChamberCopyTakes(Mode, Player, *Strike);
-	if (!TestTrue(FString::Printf(TEXT("control: moved, the copy hits the player, who loses health (%.2f)"), WhenMoved),
-				  WhenMoved > 0.0f))
-	{
-		return false;
-	}
-
-	// STANDING STILL: the row holds when the copy is made, and the copy that hits the player carries it.
-	Player.AbilitySystem->NoteDidNotMove();
-	if (!TestEqual(TEXT("set-up: still, the line reads 50% more"),
-				   UCataclysmSkillEffects::AttackDamageWithNoTarget(Player.AbilitySystem, Strike->Tags),
-				   Attribute * 1.5f, Attribute * 0.001f))
-	{
-		return false;
-	}
-	const float WhenStill = HealthAnEchoChamberCopyTakes(Mode, Player, *Strike);
-	TestTrue(FString::Printf(TEXT("still, the copy hits the player, who loses health (%.2f)"), WhenStill),
-			 WhenStill > 0.0f);
-	// AT LEAST HALF AS MUCH AGAIN: every step of the player's defences multiplies, except a flat reduction, which takes
-	// a smaller share of a larger hit. Before #2234 path C the two readings were equal.
-	TestTrue(FString::Printf(TEXT("still, the self hit takes the 50%% row: %.2f against the control's %.2f"), WhenStill,
-							 WhenMoved),
-			 WhenStill >= WhenMoved * 1.5f * 0.995f);
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoChamberSelfHitTagRowsTest,
-	"Cataclysm.DungeonModifierEffects.EchoChamberSelfHitTakesARowScopedToTheCopiedSkillsTagButNotAnotherTagsOrAnEnemys",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoChamberSelfHitReadsNoDamageTest,
+	"Cataclysm.DungeonModifierEffects.EchoChamberSelfHitDoesNotChangeWithThePlayersDamageRowsOrSpellDamage",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmEchoChamberSelfHitTagRowsTest::RunTest(const FString& Parameters)
+/**
+ * Issue #2749 (B3), ruled 2026-11-18: the self hit "no longer scales with the player's damage". THE CONTROL FIRST: the
+ * plain weapon figure, no row and no spell damage, at 1,000 maximum health. Then two changes that each raise the
+ * copy's hit on an enemy, each confirmed live as set-up, and each leaves the self hit at the control's within 0.5%:
+ * "while stationary your damage is increased by 50%", holding when the copy is made, and a Spell's copy with spell
+ * damage equal to its own weapon part. These are the rows the three deleted tests showed reaching the self hit.
+ */
+bool FCataclysmEchoChamberSelfHitReadsNoDamageTest::RunTest(const FString& Parameters)
 {
 	using namespace CataclysmDungeonModifierEffectsTest;
 
@@ -49172,25 +49181,27 @@ bool FCataclysmEchoChamberSelfHitTagRowsTest::RunTest(const FString& Parameters)
 	}
 	const TArray<FCataclysmWeaponSkill> Demonic = EverySkillOf(TEXT("Demonic"));
 	const FCataclysmWeaponSkill* Strike = AStrikeEchoChamberCopies(Demonic, 200.0f);
+	const FCataclysmWeaponSkill* SpellCopy = Demonic.FindByPredicate([](const FCataclysmWeaponSkill& Skill)
+	{
+		return Skill.Shape == ECataclysmSkillShape::Strike && Skill.Params.RadiusCm >= 200.0f
+			&& UCataclysmDungeonModifierEffects::EchoChamberCopies(Skill) && UCataclysmSkillEffects::IsSpell(Skill.Tags);
+	});
 	FEchoChamberAnglePinned Pinned(0.0f);
 	if (!TestNotNull(TEXT("set-up: a copied strike with a radius of two metres or more"), Strike)
+		|| !TestNotNull(TEXT("set-up: a copied Spell strike with a radius of two metres or more"), SpellCopy)
+		|| !TestFalse(TEXT("set-up: the first is no Spell"), UCataclysmSkillEffects::IsSpell(Strike->Tags))
 		|| !TestNotNull(TEXT("set-up: the angle can be pinned"), Pinned.Variable)
 		|| !TestNotNull(TEXT("set-up: the block roll can be pinned"), NeverBlocks.Variable))
 	{
 		return false;
 	}
-	const FGameplayTag Melee = UCataclysmDamageCalculation::MeleeTag();
-	const FGameplayTag Spell = UGameplayTagsManager::Get().RequestGameplayTag(
-		FName(UCataclysmSkillEffects::SpellTagName), /*ErrorIfNotFound=*/false);
-	if (!TestTrue(TEXT("set-up: the copied strike carries Type.Melee"), Melee.IsValid() && Strike->Tags.HasTag(Melee))
-		|| !TestTrue(TEXT("set-up: and does not carry Type.Spell"), Spell.IsValid() && !Strike->Tags.HasTag(Spell)))
-	{
-		return false;
-	}
 	Player.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
 
-	// THE CONTROL, READ FIRST: the plain weapon figure and no row beside it.
+	// THE CONTROL, READ FIRST: the plain weapon figure, no row and no spell damage. No `spell_damage` line is recorded,
+	// so the attribute is the figure.
 	GiveThePlayerAttackDamageRows(Player, {});
+	const FGameplayAttribute SpellDamage = UCataclysmCombatAttributeSet::GetSpellDamageAttribute();
+	Player.AbilitySystem->SetNumericAttributeBase(SpellDamage, 0.0f);
 	const float Plain = HealthAnEchoChamberCopyTakes(Mode, Player, *Strike);
 	if (!TestTrue(FString::Printf(TEXT("control: the copy hits the player, who loses health (%.2f)"), Plain),
 				  Plain > 0.0f))
@@ -49198,116 +49209,37 @@ bool FCataclysmEchoChamberSelfHitTagRowsTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// "MELEE SKILLS DEAL 30% INCREASED DAMAGE": a tag the copied row carries. At least 1.3 times the control, for the
-	// reason the stationary test gives.
-	FCataclysmStatModifier MeleeRow = AnEchoChamberTestRow(30.0f);
-	MeleeRow.RequiredTags.AddTag(Melee);
-	GiveThePlayerAttackDamageRows(Player, {MeleeRow});
-	const float WithMelee = HealthAnEchoChamberCopyTakes(Mode, Player, *Strike);
-	TestTrue(FString::Printf(TEXT("a row scoped to the copied skill's Type.Melee raises it: %.2f against %.2f"),
-							 WithMelee, Plain),
-			 WithMelee >= Plain * 1.3f * 0.995f);
-
-	// 40% INCREASED SCOPED TO TYPE.SPELL, which the copied row does not carry: the control's figure.
-	FCataclysmStatModifier SpellRow = AnEchoChamberTestRow(40.0f);
-	SpellRow.RequiredTags.AddTag(Spell);
-	GiveThePlayerAttackDamageRows(Player, {SpellRow});
-	TestEqual(TEXT("a row scoped to a tag the copied skill does not carry does not raise it"),
+	// "WHILE STATIONARY YOUR DAMAGE IS INCREASED BY 50%", a row about the player, holding when the copy is made.
+	FCataclysmStatModifier Stationary = AnEchoChamberTestRow(50.0f);
+	Stationary.Condition = ECataclysmStatCondition::WhileStationary;
+	GiveThePlayerAttackDamageRows(Player, {Stationary});
+	const float Attribute = UCataclysmSkillEffects::WeaponDamageOf(Player.AbilitySystem);
+	Player.AbilitySystem->NoteDidNotMove();
+	if (!TestEqual(TEXT("set-up: still, the line reads 50% more"),
+				   UCataclysmSkillEffects::AttackDamageWithNoTarget(Player.AbilitySystem, Strike->Tags),
+				   Attribute * 1.5f, Attribute * 0.001f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a row raising the player's damage leaves the self hit at the control's"),
 			  HealthAnEchoChamberCopyTakes(Mode, Player, *Strike), Plain, Plain * 0.005f);
 
-	// 60% INCREASED AGAINST A BOSS, a row about the enemy struck. No enemy is struck: the control's figure.
-	FCataclysmStatModifier BossRow = AnEchoChamberTestRow(60.0f);
-	BossRow.Condition = ECataclysmStatCondition::TargetIsBoss;
-	GiveThePlayerAttackDamageRows(Player, {BossRow});
-	TestEqual(TEXT("a row about the enemy struck (a boss) does not raise it"),
-			  HealthAnEchoChamberCopyTakes(Mode, Player, *Strike), Plain, Plain * 0.005f);
-	return true;
-}
-
-// ISSUE #2498, settled 2026-10-25 (Q-S1): the copy's self hit is "a tenth of what it would deal an enemy", and a
-// Spell's hit on an enemy includes its spell damage, so the copy of a Spell carries it. One test of the group
-// `Cataclysm.NoTargetSpellDamage.`, whose other four are in `CataclysmSkillTemplateTests.cpp`.
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoChamberSpellCopyTest,
-	"Cataclysm.NoTargetSpellDamage.AnEchoChamberCopyOfASpellHitsThePlayerWithItsSpellDamage",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-/**
- * The first Spell strike of the real table that Echo Chamber copies and whose radius is at least 2 m, and the strike
- * the tests above copy, which is no Spell. THE CONTROL FIRST, with no spell damage: each copy hits the player. Then the
- * player is given spell damage equal to the Spell copy's own weapon part, W x its percent, which doubles that copy's hit
- * before the player's defences: the Spell copy's self hit is at least twice the control's (every defence step
- * multiplies, except a flat reduction, which takes a smaller share of a larger hit), and the other copy's is the
- * control's within 0.5%. Before #2498 both were the control's.
- */
-bool FCataclysmEchoChamberSpellCopyTest::RunTest(const FString& Parameters)
-{
-	using namespace CataclysmDungeonModifierEffectsTest;
-
-	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
-	if (!TestNotNull(TEXT("a test world was created"), World))
-	{
-		return false;
-	}
-	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
-	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
-	const FEchoChamberRollPinned NeverBlocks(TEXT("Cataclysm.BlockRoll"), 100.0f);
-
-	const FPossessedPlayer Player(World);
-	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {EchoChamberRow});
-	if (!Mode)
-	{
-		return false;
-	}
-	const TArray<FCataclysmWeaponSkill> Demonic = EverySkillOf(TEXT("Demonic"));
-	const FCataclysmWeaponSkill* SpellCopy = Demonic.FindByPredicate([](const FCataclysmWeaponSkill& Skill)
-	{
-		return Skill.Shape == ECataclysmSkillShape::Strike && Skill.Params.RadiusCm >= 200.0f
-			&& UCataclysmDungeonModifierEffects::EchoChamberCopies(Skill) && UCataclysmSkillEffects::IsSpell(Skill.Tags);
-	});
-	const FCataclysmWeaponSkill* OtherCopy = AStrikeEchoChamberCopies(Demonic, 200.0f);
-	FEchoChamberAnglePinned Pinned(0.0f);
-	if (!TestNotNull(TEXT("set-up: a copied Spell strike with a radius of two metres or more"), SpellCopy)
-		|| !TestNotNull(TEXT("set-up: the copied strike the tests above use"), OtherCopy)
-		|| !TestFalse(TEXT("set-up: which is no Spell"), UCataclysmSkillEffects::IsSpell(OtherCopy->Tags))
-		|| !TestNotNull(TEXT("set-up: the angle can be pinned"), Pinned.Variable)
-		|| !TestNotNull(TEXT("set-up: the block roll can be pinned"), NeverBlocks.Variable))
-	{
-		return false;
-	}
-	Player.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
-
-	// THE CONTROL, READ FIRST: the plain weapon figure, no row, and no spell damage. No `spell_damage` line is recorded,
-	// so the attribute is the figure.
+	// A SPELL'S COPY, WITH SPELL DAMAGE EQUAL TO ITS WEAPON PART, W x ITS PERCENT, so its hit on an enemy is doubled.
 	GiveThePlayerAttackDamageRows(Player, {});
-	const FGameplayAttribute SpellDamage = UCataclysmCombatAttributeSet::GetSpellDamageAttribute();
-	Player.AbilitySystem->SetNumericAttributeBase(SpellDamage, 0.0f);
-	const float SpellPlain = HealthAnEchoChamberCopyTakes(Mode, Player, *SpellCopy);
-	const float OtherPlain = HealthAnEchoChamberCopyTakes(Mode, Player, *OtherCopy);
-	if (!TestTrue(FString::Printf(TEXT("control: the Spell's copy hits the player, who loses health (%.2f)"), SpellPlain),
-				  SpellPlain > 0.0f)
-		|| !TestTrue(FString::Printf(TEXT("control: the other copy hits the player, who loses health (%.2f)"), OtherPlain),
-					 OtherPlain > 0.0f))
-	{
-		return false;
-	}
-
-	// SPELL DAMAGE EQUAL TO THE SPELL COPY'S WEAPON PART, W x ITS PERCENT, so its hit before defences is doubled.
 	const float Percent = SpellCopy->DamagePercent >= 0.0f
 		? SpellCopy->DamagePercent
 		: UCataclysmSkillSlots::NumbersFor(UCataclysmSkillSlots::LoadGeneratedTable(), SpellCopy->Slot).DamagePercent;
 	const float Given = UCataclysmSkillEffects::WeaponDamageOf(Player.AbilitySystem) * Percent / 100.0f;
-	if (!TestTrue(FString::Printf(TEXT("set-up: the spell damage given is above nought (%.2f)"), Given), Given > 0.0f))
+	Player.AbilitySystem->SetNumericAttributeBase(SpellDamage, Given);
+	const float SpellHit = UCataclysmSkillEffects::SkillHitWithNoTarget(Player.AbilitySystem, SpellCopy->Tags, Percent);
+	if (!TestTrue(FString::Printf(TEXT("set-up: the Spell's hit on an enemy carries its spell damage: %.2f, its weapon part %.2f"),
+								  SpellHit, Given),
+				  Given > 0.0f && SpellHit >= Given * 1.5f))
 	{
 		return false;
 	}
-	Player.AbilitySystem->SetNumericAttributeBase(SpellDamage, Given);
-	const float SpellWith = HealthAnEchoChamberCopyTakes(Mode, Player, *SpellCopy);
-	TestTrue(FString::Printf(TEXT("the Spell's copy takes its spell damage: %.2f, at least twice the control's %.2f"),
-							 SpellWith, SpellPlain),
-			 SpellWith >= SpellPlain * 2.0f * 0.995f);
-	TestEqual(TEXT("and the other copy, under the same spell damage, is the control's: it is no Spell"),
-			  HealthAnEchoChamberCopyTakes(Mode, Player, *OtherCopy), OtherPlain, OtherPlain * 0.005f);
+	TestEqual(TEXT("the copy of a Spell with spell damage leaves the self hit at the control's"),
+			  HealthAnEchoChamberCopyTakes(Mode, Player, *SpellCopy), Plain, Plain * 0.005f);
 	return true;
 }
 

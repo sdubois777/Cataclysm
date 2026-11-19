@@ -348,8 +348,9 @@ CATACLYSM_HIT_LOG_TEST(FCataclysmHitLogOneLineTest,
 
 /**
  * A blow returned for a blow taken carries the retaliation mark to the announcement, and its line says so; a plain blow
- * from the same creature carries neither. Paid by `UCataclysmRetaliation::PayReflected`, the path Thorns of Glass's
- * retaliation and a reflected melee hit both take.
+ * from the same creature carries neither. Paid by `UCataclysmRetaliation::PayReflected`, the path a reflected melee hit
+ * and the retaliation stat take. Thorns of Glass took it too until issue #2749 (B2) made it a strike back, which
+ * `Cataclysm.ThornsOfGlass.` checks carries the same mark.
  */
 CATACLYSM_HIT_LOG_TEST(FCataclysmHitLogReturnedBlowTest,
 	"Cataclysm.HitLog.AReturnedBlowIsMarkedAndAPlainOneIsNot")

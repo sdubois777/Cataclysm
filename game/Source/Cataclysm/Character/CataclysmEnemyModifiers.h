@@ -363,20 +363,6 @@ public:
 	 */
 	static constexpr int32 PhaseDrawSalt = 0x9A5E;
 
-	/**
-	 * Thorns of Glass: "Reflects 50% of all damage taken back to the attacker."
-	 *
-	 * IT USED TO BE 100% AND ONE POINT OF HEALTH. The project owner changed it
-	 * on 2026-09-05, in the Enemy Modifiers sheet of
-	 * `docs/All_Things_Cataclysm.xlsx`, which is where the row comes from. The
-	 * old wording made the creature killable by anything that touched it and
-	 * made reflected damage the only thing about it; the new one is a
-	 * modifier a creature carries alongside its own health.
-	 *
-	 * SO IT CHANGES NO HEALTH AT ALL NOW, and `ForcedMaxHealth` went with it:
-	 * nothing in the game forces a creature's maximum health any more.
-	 */
-	static constexpr float ThornsOfGlassRetaliationPercent = 50.0f;
 
 	/**
 	 * How far an aura modifier reaches, in centimetres.
@@ -449,8 +435,21 @@ public:
 	/** Life leech the modifiers grant, as a percentage of damage dealt. */
 	static float LifeLeechPercent(const TArray<FName>& Rows);
 
-	/** Retaliation the modifiers grant, as a percentage of damage taken. */
-	static float RetaliationPercent(const TArray<FName>& Rows);
+	/**
+	 * Whether the modifiers make the creature strike back at whatever hits it, once per hit, for its own attack damage:
+	 * Thorns of Glass, "Strikes back at whatever hits it, once per hit, for its own attack damage." Issue #2749 (B2).
+	 *
+	 * THE OWNER'S RULING OF 2026-11-18, the option chosen: "When struck, a reflecting creature hits back for its own
+	 * attack damage, sized by its strength like any other hit and reduced by your defences. Your own damage no longer
+	 * matters to it." Until then the row read "Reflects 50% of all damage taken back to the attacker" and gave the
+	 * creature 50 retaliation, so a level 1 character's own big hit came back at half its size; the owner died to one.
+	 * Before that, until 2026-09-05, it reflected all of it on a creature of one health.
+	 *
+	 * A YES OR NO AND NOT A FIGURE: the strike back's size is the creature's own attack damage, which
+	 * `UCataclysmRetaliation::StrikeBack` reads. It changes no health and no stat, so `ApplyModifierAttributes` writes
+	 * nothing for it.
+	 */
+	static bool StrikesBack(const TArray<FName>& Rows);
 
 	/** Crowd control resistance the modifiers grant, as a percentage. */
 	static float CrowdControlResistancePercent(const TArray<FName>& Rows);

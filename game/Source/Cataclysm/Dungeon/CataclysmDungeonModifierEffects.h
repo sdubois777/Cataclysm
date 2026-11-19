@@ -2321,8 +2321,15 @@ public:
 	 *
 	 * "IT CAN ALSO HIT YOU" IS THE ROW'S OWN STATED EXCEPTION TO THE OWNER'S RULE OF 2026-08-20, "a creature does not
 	 * burn itself or its own side". RULED 2026-10-05 BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, a
-	 * labelled judgement: the row's sentence decides yes, and `EchoChamberSelfHitPercent` of what the copy would deal
-	 * to an enemy, ONLY WHEN THE PLAYER STANDS INSIDE THE COPY'S OWN AREA. "A small amount" has no figure in the row.
+	 * labelled judgement: the row's sentence decides yes, ONLY WHEN THE PLAYER STANDS INSIDE THE COPY'S OWN AREA.
+	 * "A small amount" has no figure in the row.
+	 *
+	 * HOW MUCH, SINCE ISSUE #2749 (B3, ruled by the coordinating session on 2026-11-18):
+	 * `EchoChamberSelfHitShareOfMaximumHealthPercent` of the player's maximum health per copy that reaches them, before
+	 * the player's defences,
+	 * "so the row's 'a small amount' holds at every level". It no longer follows the player's damage. Until then it
+	 * was 10% of what the copy would deal to an enemy, which the issue's survey put at about 13.5 on a level 1
+	 * character, and it grew with every increase to the player's damage.
 	 *
 	 * EACH A LABELLED JUDGEMENT OF THE WRITING SESSION, 2026-10-05:
 	 * - EVERY SKILL USE THE PLAYER PAYS FOR, the basic attack excepted, the line Wild Magic and the worn "on skill
@@ -2333,9 +2340,10 @@ public:
 	 * - "INSIDE THE COPY'S OWN AREA" IS: the copy's aim point is within the skill's own radius of the player. The
 	 *   copy is aimed as far from the player as the use was, so a skill aimed at one's own feet copies onto oneself
 	 *   and one aimed far away does not. `EchoChamberHitsTheCaster` is the rule.
-	 * - WHAT THE COPY "WOULD DEAL TO AN ENEMY" IS the player's weapon damage at the skill's damage percent with the
-	 *   player's own modifiers for that skill's tags (`ModifiedDamage`). The player's own defences then reduce it as
-	 *   an enemy's would. It cannot critically strike, leeches nothing and is not retaliated against.
+	 * - THE SELF HIT IS DEALT AS THE PLAYER'S OWN DIRECT DAMAGE TO THEMSELVES: the player's own defences reduce it as
+	 *   an enemy's would, and it cannot critically strike, leeches nothing and is not retaliated against. Until issue
+	 *   #2749 it was what the copy would deal to an enemy, the player's weapon damage at the skill's damage percent with
+	 *   the player's own modifiers for that skill's tags (`ModifiedDamage`, #2234 path C and #2498).
 	 */
 	static const TCHAR* EchoChamberKey;
 
@@ -6667,8 +6675,12 @@ public:
 	static constexpr float WildMagicChancePercent = 5.0f;
 	static constexpr float WildMagicSecondsBetweenTriggers = 0.25f;
 
-	/** Echo Chamber's figures, ruled 2026-10-05. The least distance is a use aimed at the player's own position. */
-	static constexpr float EchoChamberSelfHitPercent = 10.0f;
+	/**
+	 * Echo Chamber's figures, ruled 2026-10-05; the self hit's since issue #2749 (B3), ruled 2026-11-18: 5% of the
+	 * player's maximum health per copy that reaches them, before their defences. It was 10% of the copy's hit on an
+	 * enemy until then. The least distance is a use aimed at the player's own position.
+	 */
+	static constexpr float EchoChamberSelfHitShareOfMaximumHealthPercent = 5.0f;
 	static constexpr float EchoChamberLeastAimCm = 100.0f;
 
 	/** The player's sight while a travelling swarm covers them, a play-test value. */

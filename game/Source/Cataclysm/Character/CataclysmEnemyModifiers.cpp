@@ -241,16 +241,9 @@ float UCataclysmEnemyModifiers::LifeLeechPercent(const TArray<FName>& Rows)
 	return Percent;
 }
 
-float UCataclysmEnemyModifiers::RetaliationPercent(const TArray<FName>& Rows)
+bool UCataclysmEnemyModifiers::StrikesBack(const TArray<FName>& Rows)
 {
-	float Percent = 0.0f;
-
-	if (Carries(Rows, ThornsOfGlassRow))
-	{
-		Percent += ThornsOfGlassRetaliationPercent;
-	}
-
-	return Percent;
+	return Carries(Rows, ThornsOfGlassRow);
 }
 
 float UCataclysmEnemyModifiers::HealthRegenShareOfMaximum(

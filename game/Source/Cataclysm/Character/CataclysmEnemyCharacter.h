@@ -398,6 +398,13 @@ public:
 	TArray<FName> ModifierRows;
 
 	/**
+	 * Whether this creature strikes back at whatever hits it, once per hit, for its own attack damage: it carries
+	 * Thorns of Glass. Issue #2749 (B2). `UCataclysmVitalAttributeSet` asks it of the body a hit lands on, where it
+	 * decides retaliation, and `UCataclysmRetaliation::StrikeBack` deals the blow.
+	 */
+	bool StrikesBackWhenHit() const;
+
+	/**
 	 * THE ONE ROW OF `ModifierRows` THE FLOOR GAVE, NOT THE CREATURE'S OWN DRAW: Unstable Dimensions' reality, set by
 	 * the game mode only when it adds that row. `DrawModifiersForRarity` leaves it out of the count a rung wants, so a
 	 * creature raised a rung later draws as if the reality were not there. Ruled 2026-10-01. `NAME_None` for none.

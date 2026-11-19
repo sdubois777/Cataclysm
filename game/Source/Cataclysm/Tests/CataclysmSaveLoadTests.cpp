@@ -5997,10 +5997,11 @@ bool FCataclysmSaveLoadCarrionTest::RunTest(const FString&)
 }
 
 /**
- * A test's kill does nothing to the player who makes it: a creature given Thorns of Glass's retaliation, by the path the
- * modifier takes at spawn, is killed by `KillOnTheFloor` and the player's health is as it was. The guard for the helper's
- * no-retaliation mark: without it the hit is dealt half back, which killed the test player in window w114. Issue #753,
- * Group 3d-2, ruled 2026-10-31. Prints "TEST KILL REFLECTS".
+ * A test's kill does nothing to the player who makes it: a creature given Thorns of Glass, by the path the modifier takes
+ * at spawn, is killed by `KillOnTheFloor` and the player's health is as it was. The guard for the helper's no-retaliation
+ * mark: without it the creature strikes back -- with half the hit until issue #2749, with its own attack damage since
+ * (B2) -- and half the hit killed the test player in window w114. Issue #753, Group 3d-2, ruled 2026-10-31. Prints
+ * "TEST KILL REFLECTS".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadTestKillReflectsNothingTest,
 	"Cataclysm.SaveLoad.ATestKillReflectsNothingOntoThePlayer",
@@ -6045,9 +6046,12 @@ bool FCataclysmSaveLoadTestKillReflectsNothingTest::RunTest(const FString&)
 	}
 	Thorned->ModifierRows.AddUnique(FName(UCataclysmEnemyModifiers::ThornsOfGlassRow));
 	Thorned->ApplyModifierAttributes();
-	const float WouldReflect = UCataclysmRetaliation::AmountFor(Thorned->GetAbilitySystemComponent(), 100000.0f);
-	if (!TestTrue(FString::Printf(TEXT("set-up: it would deal back a share of a hit (%.1f of 100000)"), WouldReflect),
-				  WouldReflect > 0.0f))
+	// IT STRIKES BACK FOR ITS OWN ATTACK DAMAGE since issue #2749 (B2), and gives no retaliation: what it would deal
+	// back is that attack damage, whatever the hit.
+	const float WouldReflect = Thorned->GetAbilitySystemComponent()->GetNumericAttribute(
+		UCataclysmCombatAttributeSet::GetAttackDamageAttribute());
+	if (!TestTrue(FString::Printf(TEXT("set-up: it would strike back for its own attack damage (%.1f)"), WouldReflect),
+				  Thorned->StrikesBackWhenHit() && WouldReflect > 0.0f))
 	{
 		return false;
 	}
@@ -6060,7 +6064,7 @@ bool FCataclysmSaveLoadTestKillReflectsNothingTest::RunTest(const FString&)
 		return false;
 	}
 	const float After = Abilities ? Abilities->GetNumericAttribute(Health) : -1.0f;
-	AddInfo(FString::Printf(TEXT("TEST KILL REFLECTS: it would deal back %.1f of a 100000 hit; the player's health %.1f "
+	AddInfo(FString::Printf(TEXT("TEST KILL REFLECTS: it would strike back for %.1f; the player's health %.1f "
 								 "before the kill, %.1f after, %s"),
 							WouldReflect, Before, After,
 							UCataclysmSkillEffects::IsDead(&Player) ? TEXT("DEAD") : TEXT("alive")));
