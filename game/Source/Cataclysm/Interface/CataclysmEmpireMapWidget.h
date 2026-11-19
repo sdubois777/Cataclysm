@@ -158,6 +158,20 @@ public:
 	 *  empty when it entered the dungeon or nothing was pressed. Issue #2715. */
 	FString LastWalkRefusal() const { return WalkRefusal; }
 
+	/**
+	 * Presses the "Empire upgrade tree" button in the top right corner as though it had been clicked: the handler the
+	 * button calls, with the name the button carries. Issue #2741 slice 2.
+	 */
+	void ClickEmpireTreeForTests();
+
+	/**
+	 * How many times the "Empire upgrade tree" button has asked for the tree screen.
+	 *
+	 * RECORDED BECAUSE OPENING THE SCREEN CANNOT BE WATCHED, for `ClickedCityId`'s reason: a headless test has no
+	 * player controller. Issue #2741 slice 2.
+	 */
+	int32 EmpireTreeRequestCount() const { return EmpireTreeRequests; }
+
 protected:
 	/**
 	 * Where the cities are drawn: one box per city, placed by lattice
@@ -260,6 +274,19 @@ private:
 
 	/** Enters a dungeon and closes the empire screens, or says why not. */
 	void WalkDungeon(int32 DungeonId);
+
+	/**
+	 * The "Empire upgrade tree" button in the top right corner, made with the cities. NOT IN `CityButtons`, for the
+	 * boss marker's reason. Issue #2741 slice 2.
+	 */
+	UPROPERTY(Transient)
+	TObjectPtr<UCataclysmChoiceButton> EmpireTreeButton;
+
+	/** Places and labels the "Empire upgrade tree" button. */
+	void PlaceEmpireTreeButton(float Scale, FVector2D PanelSize);
+
+	/** See `EmpireTreeRequestCount`. */
+	int32 EmpireTreeRequests = 0;
 
 	/** The level's dungeon game mode, or the one a test supplied, or null. */
 	ACataclysmDungeonGameMode* DungeonMode() const;

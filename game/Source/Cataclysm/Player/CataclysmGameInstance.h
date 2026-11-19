@@ -480,18 +480,28 @@ public:
 	static bool EmpireTreeHeldBy(const UObject* WorldContext, FCataclysmHeldEmpireTree& OutHeld);
 
 	/**
+	 * Why the empire upgrade tree cannot be changed now -- a point bought, an option chosen, a respec -- or empty when it
+	 * can. Issue #2741 slice 2, ruled by the coordinating session on 2026-11-18: refused WHILE A WALK IS UNDER WAY, one
+	 * rule for all three, because slices 3 to 5 read the tree where each number is read and a point bought mid-walk would
+	 * change the walk under way. The tree's screen still opens during a walk, to be read; this is the sentence it shows.
+	 */
+	static FString EmpireTreeChangeRefusal(const UObject* WorldContext);
+
+	/**
 	 * Puts one point into a node of the tree `EmpireTreeHeldBy` reads, paid from its bank, and has the record written.
 	 * Issue #2741 slice 1b.
 	 *
 	 * THE RULES ARE `UCataclysmEmpireTree::Spend`'s, and a refusal is its sentence (or `EmpireTreeHeldBy`'s): nothing
 	 * changes and nothing is written. A point bought has the record that holds the tree written
-	 * (`NoteTheEmpireTreeChanged`): the account record, or a Solo Self-Found character's own since slice 1c.
+	 * (`NoteTheEmpireTreeChanged`): the account record, or a Solo Self-Found character's own since slice 1c. REFUSED
+	 * DURING A WALK (`EmpireTreeChangeRefusal`). Says a PLAY LOOP line (`FCataclysmPlayLoopLog::TreePointLine`).
 	 */
 	static bool BuyEmpireTreePoint(const UObject* WorldContext, FName Node, FString& OutReason);
 
 	/**
 	 * Chooses one of a centre capstone's three options in the tree `EmpireTreeHeldBy` reads, and has the record
-	 * written. The rules and refusals are `UCataclysmEmpireTree::ChooseOption`'s. Issue #2741 slice 1b.
+	 * written. The rules and refusals are `UCataclysmEmpireTree::ChooseOption`'s, and refused during a walk
+	 * (`EmpireTreeChangeRefusal`). Says a PLAY LOOP line (`FCataclysmPlayLoopLog::TreeOptionLine`). Issue #2741 slice 1b.
 	 */
 	static bool ChooseEmpireTreeOption(const UObject* WorldContext, FName Node, int32 Option, FString& OutReason);
 
@@ -503,9 +513,9 @@ public:
 	 * 15 -- and they pass through `UCataclysmEmpireRun::AdvanceDays`, so a surge or a resolve that falls inside them
 	 * happens on its own day, as for any other days passed.
 	 *
-	 * REFUSED, CHANGING NOTHING, when the tree holds nothing, when there is no run to take the days from, and WHILE A
-	 * DUNGEON IS BEING WALKED: nothing resolves while the player is inside one, by the owner's decision of 2026-10-24,
-	 * and `Cataclysm.EmpireAdvance` refuses there for the same reason.
+	 * REFUSED, CHANGING NOTHING, WHILE A DUNGEON IS BEING WALKED (`EmpireTreeChangeRefusal`, the rule buying and
+	 * choosing obey too since slice 2), when the tree holds nothing, and when there is no run to take the days from.
+	 * Says a PLAY LOOP line (`FCataclysmPlayLoopLog::TreeRespecLine`).
 	 *
 	 * SAVED WHOLE: the record that holds the tree (`NoteTheEmpireTreeChanged`: `AccountChanged` for the account record,
 	 * `OwnEmpireTreeChanged` for a Solo Self-Found character's own since slice 1c) and then `EmpireTreeRespecced` for the

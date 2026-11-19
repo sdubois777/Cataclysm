@@ -620,6 +620,34 @@ FString UCataclysmEmpireMapLayout::CataclysmDungeonOpenedLine(const UCataclysmEm
 	return FString::Printf(TEXT("Day %d: the Cataclysm boss dungeon opened."), Run->CataclysmDungeonOpenedDay);
 }
 
+// ---------------------------------------------------------------------------
+// The button that opens the empire upgrade tree -- issue #2741 slice 2
+// ---------------------------------------------------------------------------
+
+FVector2D UCataclysmEmpireMapLayout::EmpireTreeButtonPosition(float Scale, FVector2D PanelSize)
+{
+	// THE CENTRE, A MARGIN IN FROM THE TOP AND THE RIGHT: the boss marker's corner, mirrored. The margin is not
+	// scaled, as the marker's is not. See the header for why no city can be under it.
+	const FVector2D Size = EmpireTreeButtonSize(Scale);
+	return FVector2D(PanelSize.X - FitMarginPx - Size.X * 0.5, FitMarginPx + Size.Y * 0.5);
+}
+
+FVector2D UCataclysmEmpireMapLayout::EmpireTreeButtonSize(float Scale)
+{
+	return FVector2D(EmpireTreeButtonWidthPx * Scale, EmpireTreeButtonHeightPx * Scale);
+}
+
+FString UCataclysmEmpireMapLayout::EmpireTreeButtonText()
+{
+	return TEXT("Empire upgrade tree");
+}
+
+FString UCataclysmEmpireMapLayout::EmpireTreeButtonBrief()
+{
+	return TEXT("The empire upgrade tree: empire upgrade points are spent there. It can be read at any time and "
+				"changed in the capital, not during a walk.");
+}
+
 FString UCataclysmEmpireMapLayout::LastRunWonLine(const UCataclysmEmpireRun* Run)
 {
 	// NOTHING TO SAY: no run, a run that has not begun, or no win before it. Day 0 is what `Begin` writes, and no run

@@ -1,0 +1,94 @@
+"""The empire upgrade tree screen's generator builds every widget its C++ class binds.
+
+WHY THIS EXISTS. Issue #2741 slice 2 adds `UCataclysmEmpireTreeWidget` and
+`make_empire_tree` in `tools/generate_interface_assets.py`, which writes the
+first `WBP_EmpireTree`. The generator runs only inside the editor, under the
+machine's lock, after a compile. If it leaves out one `BindWidget` name, the
+Blueprint does not compile and the editor run stops there -- a whole window spent
+on a missing line. This finds that on a pull request instead, as
+`test_the_skill_assignment_screen_is_generated_with_its_bindings.py` does for the
+skill screen; the reading helpers are that file's, imported rather than copied.
+
+WHAT IS CHECKED, AND ITS SCOPE: THIS ONE SCREEN ONLY. That `main()` calls
+`make_empire_tree` after `make_choice_button`, whose class the screen's node
+buttons are copies of; that every name the header declares
+`UPROPERTY(meta = (BindWidget))` is added by an `add(blueprint, unreal.<Type>,
+"<Name>", ...)` call inside `make_empire_tree`; and that the controller's soft
+path and the generator name the same asset.
+
+WHAT IS NOT. That the generator was run, or that a widget's TYPE suits its
+binding. The editor's own compile checks the type when the asset is made.
+"""
+
+from __future__ import annotations
+
+import ast
+import pathlib
+import sys
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "tools" / "tests"))
+
+from test_the_skill_assignment_screen_is_generated_with_its_bindings import (  # noqa: E402
+    BIND_WIDGET,
+    CONTROLLER_HEADER,
+    generator_constant,
+    generator_function,
+    names_added_by,
+    without_comments,
+)
+
+HEADER = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Interface"
+          / "CataclysmEmpireTreeWidget.h")
+
+SCREEN = "make_empire_tree"
+
+
+def bound_names() -> list[str]:
+    """Every name the tree screen's header binds with `BindWidget`, in order."""
+    assert HEADER.is_file(), f"{HEADER.relative_to(REPO_ROOT)} does not exist."
+    return BIND_WIDGET.findall(without_comments(HEADER.read_text(encoding="utf-8")))
+
+
+def test_main_makes_the_empire_tree_screen_after_the_choice_button() -> None:
+    calls = [
+        node.func.id for node in ast.walk(generator_function("main"))
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    ]
+    assert "make_choice_button" in calls and SCREEN in calls, (
+        f"main() in tools/generate_interface_assets.py calls {calls}; it must call "
+        f"make_choice_button and {SCREEN}.")
+    assert calls.index("make_choice_button") < calls.index(SCREEN), (
+        f"main() calls {SCREEN} before make_choice_button, so the tree screen's "
+        "ChoiceButtonClass points at an asset that does not exist yet.")
+
+
+def test_every_bound_widget_of_the_empire_tree_screen_is_added_by_its_generator() -> None:
+    bound = bound_names()
+    # A FLOOR, so a header whose declarations changed shape cannot pass with
+    # nothing to compare: the screen binds nine today.
+    assert len(bound) >= 9, (
+        f"Only {len(bound)} BindWidget names were read from "
+        f"{HEADER.relative_to(REPO_ROOT)} ({bound}); the empire tree screen binds "
+        "nine. If the declarations changed shape, update BIND_WIDGET.")
+    added = names_added_by(generator_function(SCREEN))
+    missing = [name for name in bound if name not in added]
+    assert not missing, (
+        f"The empire upgrade tree screen (only this screen is checked here) binds "
+        f"{len(bound)} widgets: {bound}. {SCREEN}() adds {len(added)}: {added}. "
+        f"Missing: {missing}. The editor would refuse to compile WBP_EmpireTree.")
+
+
+def test_the_controller_opens_the_asset_the_generator_makes() -> None:
+    asset = generator_constant("EMPIRE_TREE_ASSET")
+    parent = generator_constant("EMPIRE_TREE_PARENT")
+    controller = CONTROLLER_HEADER.read_text(encoding="utf-8")
+    path = f"/Game/Interface/{asset}.{asset}_C"
+    assert controller.count(path) == 1, (
+        f"CataclysmPlayerController.h names {path} {controller.count(path)} times; "
+        "the empire tree screen's soft path must name the asset the generator makes, "
+        "once.")
+    assert f"class CATACLYSM_API U{parent} : public UUserWidget" in HEADER.read_text(
+        encoding="utf-8"), (
+        f"EMPIRE_TREE_PARENT is {parent!r}, but {HEADER.name} does not declare "
+        f"U{parent} as a UUserWidget.")

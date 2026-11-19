@@ -889,7 +889,9 @@ bool FCataclysmEmpireTreeAccountRespecRefusedTest::RunTest(const FString&)
 	TestFalse(TEXT("a tree with nothing spent is not respecced"), bEmpty);
 	TestTrue(TEXT("and says there is nothing to respec"), Empty.Contains(TEXT("nothing to respec")));
 	TestFalse(TEXT("a respec in a walk is refused"), bInAWalk);
-	TestTrue(TEXT("and says a dungeon is being walked"), InAWalk.Contains(TEXT("dungeon is being walked")));
+	// THE ONE SENTENCE BUYING, CHOOSING AND RESPEC SHARE SINCE SLICE 2 (`UCataclysmGameInstance::EmpireTreeChangeRefusal`).
+	TestTrue(TEXT("and says it is changed in the capital, not during a walk"),
+			 InAWalk.Contains(TEXT("in the capital, not during a walk")));
 	TestEqual(TEXT("passing no day"), DayInTheWalk, DayBefore);
 	TestEqual(TEXT("and keeping the tree"), PointsInTheWalk, 2);
 	TestTrue(TEXT("and the bank"), BankInTheWalk == 1.0);

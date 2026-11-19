@@ -166,14 +166,23 @@ by `git add` with no error and no warning. Guarded by
   still where creatures are fought without a floor (issues
   [#40](https://github.com/sdubois777/Cataclysm/issues/40) and
   [#41](https://github.com/sdubois777/Cataclysm/issues/41)).
-- **No interface screens, and only combat is visible on screen.** Nothing in the
-  project uses UMG. `ACataclysmHUD` draws three things on the canvas — a bar over
-  creatures that have been hurt, a floating number where each blow lands, and the
-  player's own health in the bottom left corner (issue
-  [#518](https://github.com/sdubois777/Cataclysm/issues/518)). Skill slots,
-  cooldowns, the empire status bar, the minimap and every screen are still absent
-  (issue [#49](https://github.com/sdubois777/Cataclysm/issues/49)), and the port
-  of the combat overlay to UMG is issue
+- **Every screen is a first version nobody has designed, and the heads-up display
+  is still drawn on the canvas.** The screens are UMG: the logic is a C++
+  `UUserWidget` and the layout a Widget Blueprint that
+  `tools/generate_interface_assets.py` makes once and then leaves alone — a dark
+  panel of plain headings and lists (`docs/DECISIONS.md`, 2026-08-24). There are
+  eleven, and `WBP_ChoiceButton` is the button they all copy: the character
+  select and new-character screens the game opens on (`L_FrontEnd`), the
+  character creator, the character sheet, the passive tree, the skill choice
+  screen, the empire map, a city's screen, the empire upgrade tree (since
+  2026-11-18, issue [#2741](https://github.com/sdubois777/Cataclysm/issues/2741)
+  slice 2), what a floor object offers, and the floor's dungeon modifiers. The
+  carried inventory, `UCataclysmInventoryWidget`, is UMG built wholly in C++.
+  `ACataclysmHUD` still draws the rest on the canvas: the empire status bar, the
+  player's pools and potions, the skill bar, bars and names over creatures, and a
+  floating number where each blow lands. The minimap is not built (issue
+  [#49](https://github.com/sdubois777/Cataclysm/issues/49)), and the port of the
+  canvas overlay to UMG is issue
   [#650](https://github.com/sdubois777/Cataclysm/issues/650).
 - **The game saves itself and cannot load what it saved.** Three `USaveGame`
   records in `Source/Cataclysm/Save/` are written as JSON, with a schema

@@ -5182,6 +5182,25 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmCityScreen(
 			Controller->ToggleCityScreen(CityId);
 		}));
 
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEmpireTree(
+	TEXT("Cataclysm.EmpireTree"),
+	TEXT("Open or close the empire upgrade tree screen: the bank, the branches, buying a point, choosing a centre "
+		 "capstone's option and respec. The empire map's \"Empire upgrade tree\" button opens the same screen. Issue "
+		 "#2741 slice 2."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			ACataclysmPlayerController* Controller =
+				Cast<ACataclysmPlayerController>(World ? World->GetFirstPlayerController() : nullptr);
+			if (!Controller)
+			{
+				Ar.Log(TEXT("There is no Cataclysm player controller, so there is nothing to open a screen on."));
+				return;
+			}
+
+			Controller->ToggleEmpireTree();
+		}));
+
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmCharacterSheet(
 	TEXT("Cataclysm.CharacterSheet"),
 	TEXT("Open or close the character sheet: every stat the character has, and "

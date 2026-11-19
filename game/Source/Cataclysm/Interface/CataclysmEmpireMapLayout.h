@@ -547,6 +547,48 @@ public:
 	static FString CataclysmDungeonOpenedLine(const UCataclysmEmpireRun* Run);
 
 	// ----------------------------------------------------------------------
+	// The button that opens the empire upgrade tree -- issue #2741 slice 2
+	// ----------------------------------------------------------------------
+
+	/**
+	 * How big the "Empire upgrade tree" button is drawn, at a scale of one, in pixels: two cities wide and one tall,
+	 * the boss dungeon's marker's size, whose label is the longer of the two.
+	 */
+	static constexpr float EmpireTreeButtonWidthPx = 2.0f * CityWidthPx;
+	static constexpr float EmpireTreeButtonHeightPx = CityHeightPx;
+
+	/**
+	 * Where the button sits, as its CENTRE: THE TOP RIGHT CORNER, a margin in from the top and the right.
+	 *
+	 * THE BOSS DUNGEON'S MARKER HAS THE TOP LEFT, and this is its mirror. The diamond is the same on both sides of its
+	 * middle column -- every row runs from -k to k -- and it is fitted inside the same margins and centred, so the
+	 * reason `CataclysmDungeonMarkerPosition` gives for covering no city holds here reflected: the top row holds only
+	 * the Outpost in the middle, whose box ends 564 scaled pixels left of the diamond's right edge, where this button
+	 * begins at most 344 left of it. NOT ON A PANEL TOO SMALL FOR THE DIAMOND, for the marker's reason.
+	 * `Cataclysm.EmpireTreeScreen.TheMapButtonSitsInTheEmptyTopRightCorner` checks it against every city, the marker
+	 * and the Walk box under it, on the panels the marker's test uses.
+	 *
+	 * IT NEEDS THE PANEL, where the marker does not: its corner is measured from the right edge.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FVector2D EmpireTreeButtonPosition(float Scale, FVector2D PanelSize);
+
+	/** How big the button is drawn at this scale. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FVector2D EmpireTreeButtonSize(float Scale);
+
+	/** What the button says: "Empire upgrade tree". */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString EmpireTreeButtonText();
+
+	/**
+	 * What the line under the map says when the cursor is on the button: "The empire upgrade tree: empire upgrade
+	 * points are spent there. It can be read at any time and changed in the capital, not during a walk."
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString EmpireTreeButtonBrief();
+
+	// ----------------------------------------------------------------------
 	// The win of the run before this one -- issue #1324 slice 6e
 	// ----------------------------------------------------------------------
 
