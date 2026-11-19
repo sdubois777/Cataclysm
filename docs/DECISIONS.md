@@ -354,8 +354,12 @@ left behind". This branch adds **five** tests by name and removes none:
 the branch as committed, the build plan moved aside first, "Build: Succeeded - 64 actions, 57 files compiled"; (2) each
 changed file alone, the index read from `8c019826a`, "Build: Succeeded - 22 actions, 19 files compiled", the build
 tool's "[Adaptive Build] Excluded from Cataclysm unity file" line naming the 11 changed `.cpp` files; (3) the unity files
-again, "Build: Succeeded - 11 actions, 8 files compiled". The one warning line in any of the three is the engine's own
-C4996 about `CountBits` in `MicrosoftPlatformMath.h`; none from this project's code.
+again, "Build: Succeeded - 11 actions, 8 files compiled". The one warning line in any of the three, in compile 1, is
+C4996 "CountBits for 64-bit values has been deprecated", printed at the engine's `MicrosoftPlatformMath.h(183,3)` but
+TRIGGERED BY THIS PROJECT'S CODE, which this slice does not touch: the build tool's log goes on
+"CataclysmAbilitySystemComponent.cpp(1315,36): note: see reference to function template instantiation 'int32
+FMicrosoftPlatformMathBase::CountBits<uint64>(T)' being compiled". Issue #2756. This entry first called it the
+engine's own, and said none came from this project's code; that was wrong, corrected before it merged.
 
 **The window**, at `622bc0243`, lock hitline-w1, started through a launcher that gives the runner no console window.
 The build compiled nothing ("target already up to date").
