@@ -14,14 +14,14 @@ Decisions made outside the Google Drive documents, newest first.
 read them); `UCataclysmEmpireRun` (`ClearsSinceLastSurge`, `CitiesReclaimed`, `bSanctuaryLastStandSpent`,
 `ArmTheLastStandFor`, `NoteTheLastStand`, `RunTreeIntervals`, new; `AdvanceDay`, `FireSurge`, `ClearDungeon`,
 `TreeDamageFactorsFor`, `RunCityUpgradeIntervals`, `BuyCityUpgrade` and `BeginForCharacter` changed);
-`FCataclysmCityUpgrade::BoughtDay`, new, `Empire/CataclysmCityUpgrade.h`; `ECataclysmEmpireTreeEffect`, eight values,
+`FCataclysmCityUpgrade::BoughtDay`, new, `game/Source/CataclysmEmpire/Empire/CataclysmCityUpgrade.h`; `ECataclysmEmpireTreeEffect`, eight values,
 `game/Source/Cataclysm/Data/CataclysmDataRows.h`; `UCataclysmEmpireTree::CityBonusesFor`; the run record
 (`UCataclysmRunSave`, version 9, `Migrate_8_to_9`; `FCataclysmSaveGather::ProgressFrom`, `FCataclysmSaveApply::RunInto`);
 `game/Tests/SaveFixtures/Run_v9.json`, new, and its README; `tools/generate_datatables.py` (`EMPIRE_TREE_EFFECTS`,
 `EMPIRE_TREE_EFFECT_KINDS`) and `game/Data/EmpireTreeEffects.csv`, 40 rows; `game/README.md`. Tests:
 `game/Source/Cataclysm/Tests/CataclysmEmpireTreeEventsTests.cpp`, new, 14 in the new group
 `Cataclysm.EmpireTreeEvents.`; the version 9 helper `AddTheRunsVersion9Defaults` (`CataclysmSaveFixtures.h`) in the
-seven chain tests; the tests reading the committed run file move to `Run_v9.json`
+seven chain tests; the tests reading the committed run file move to `game/Tests/SaveFixtures/Run_v9.json`
 (`CataclysmSaveRecordTests.cpp`, `CataclysmDeathCostTests.cpp`, `CataclysmEarnedBossSaveTests.cpp`,
 `CataclysmSaveLoadTests.cpp`, `CataclysmWinningTheRunTests.cpp`, `CataclysmGoldTests.cpp`, `CataclysmWalkSeedTests.cpp`);
 `CataclysmSaveRunRestoreTests.cpp` compares the new fields; `CataclysmDataTableTests.cpp` pins 40 rows;
