@@ -267,8 +267,9 @@ by `UCataclysmDropPickup::TakeInto` (`CataclysmDroppedItem.cpp`) and `UCataclysm
 
 ### SAID FIRST
 
-- **NOT YET COMPILED OR RUN IN THE ENGINE.** Written without compiling, as the coordinating session's approval said;
-  the machine is queued with windows. What the run must show is under "Registered before the run", below.
+- **COMPILED THREE WAYS, AND RUN IN WINDOW hitline-w1 WITH EVERY REGISTERED FIGURE MET.** Written without compiling,
+  as the coordinating session's approval said; compiled and run on 2026-11-19 at `622bc0243`, both under "Measured in
+  window hitline-w1", below.
 - **ONE FUNCTION NAMES A PIECE: THE FORGE'S.** As written, this slice had `UCataclysmItemComparison::NameShownFor`,
   line for line the same as `UCataclysmForge::NameOf`, which the forge (#2768) merged first. As the coordinating
   session ruled, the rebase deleted it: the comparison's heading and the wear line call `UCataclysmForge::NameOf`, and
@@ -346,6 +347,49 @@ left behind". This branch adds **five** tests by name and removes none:
 | H2 | In the same function, `(1.0f + UCataclysmDamageCalculation::SubtypeBonus / 100.0f)` becomes `(1.0f + 0.0f / 100.0f)`: no Slashing bonus | `Cataclysm.ItemComparison.` | 8 performed, 6 succeeded, 2 failed: `ANecklaceAgainstTheRunsFamilyRaisesItsLineAndNotThePlainHit` (63.36 expected, 57.6) and `TheFamilyLineCountsASlashingWeaponsBonusAndNoOtherSubType` (the Greataxe) |
 | H3 | In `UCataclysmWearing::WearFromCarried`, `FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::WoreLine(` becomes `(void)(FCataclysmPlayLoopLog::WoreLine(` | `Cataclysm.Wearing.` | 19 performed, 18 succeeded, 1 failed: `WearingAPieceSaysAPlayLoopLineWithItsNameAndSlot` |
 | H4 | In `UCataclysmDropPickup::TakeInto`, `FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::PickedUpLine(` becomes `(void)(FCataclysmPlayLoopLog::PickedUpLine(` | `Cataclysm.DropPickup.` | 20 performed, 19 succeeded, 1 failed: `TakingGearSaysAPlayLoopLineAndAMaterialSaysNone` |
+
+### Measured in window hitline-w1
+
+**The three compiles**, at `622bc0243`, lock hitline-compile, 13:31 to 13:39, each succeeding on the first attempt: (1)
+the branch as committed, the build plan moved aside first, "Build: Succeeded - 64 actions, 57 files compiled"; (2) each
+changed file alone, the index read from `8c019826a`, "Build: Succeeded - 22 actions, 19 files compiled", the build
+tool's "[Adaptive Build] Excluded from Cataclysm unity file" line naming the 11 changed `.cpp` files; (3) the unity files
+again, "Build: Succeeded - 11 actions, 8 files compiled". The one warning line in any of the three is the engine's own
+C4996 about `CountBits` in `MicrosoftPlatformMath.h`; none from this project's code.
+
+**The window**, at `622bc0243`, lock hitline-w1, started through a launcher that gives the runner no console window.
+The build compiled nothing ("target already up to date").
+
+| Group | Registered | Performed, succeeded, failed |
+|---|---|---|
+| `Cataclysm.ItemComparison.` | 8 | 8, 8, 0 |
+| `Cataclysm.PlayLoop.` | 11 | 11, 11, 0 |
+| `Cataclysm.DropPickup.` | 20 | 20, 20, 0 |
+| `Cataclysm.Wearing.` | 19 | 19, 19, 0 |
+
+**The whole suite**: "Tests: 4947 tests performed, 4947 succeeded, 0 failed. 47 skipped part of what they check",
+against 4947 and 47 registered; "Declared: 4947 tests in the tree at 622bc0243; 4947 performed, gap 0"; "Test saves:
+850 written and deleted, 0 left behind". **The test saves, test by test** against window forge-w2's log (850): every one
+of its 4942 tests has the same share here, and each of the five new tests has 0, so the total is unchanged. The log
+holds no "server/discover" and no "ConsoleCtrl" line.
+
+**What the new test measured**: "FAMILY HIT: plain 57.60, on a Demonic creature 63.36; Demonic Torc: ... Basic attack
+hit on a Demonic creature's health, before its defences: 63.4 to 97.2, up 33.8; Celestial Torc: Health: 510 to 548, up
+38 | Damage against Celestial: 0% to 53.3%, up 53.3%": the Demonic Torc raises the family line by 33.8; the Celestial
+one, against a family the run does not face, leaves the Demonic line as it was, so the comparison does not list it.
+
+**Python of record**, in the window: "7704 passed, 9 skipped in 313.38s"; the JUnit file: tests 7713, failures 0,
+errors 0, skipped 9. ruff: "All checks passed!".
+
+**The four C++ guard proofs**, each through `prove_cpp_guard`, each PROVED, each broken half exactly as registered and
+each restored half passing every test its prefix selects:
+
+| Proof | The broken half | Restored |
+|---|---|---|
+| H1 | 8 performed, 7 succeeded, 1 failed: `ANecklaceAgainstTheRunsFamilyRaisesItsLineAndNotThePlainHit` | 8 of 8 |
+| H2 | 8 performed, 6 succeeded, 2 failed: `ANecklaceAgainstTheRunsFamilyRaisesItsLineAndNotThePlainHit`, `TheFamilyLineCountsASlashingWeaponsBonusAndNoOtherSubType` | 8 of 8 |
+| H3 | 19 performed, 18 succeeded, 1 failed: `WearingAPieceSaysAPlayLoopLineWithItsNameAndSlot` | 19 of 19 |
+| H4 | 20 performed, 19 succeeded, 1 failed: `TakingGearSaysAPlayLoopLineAndAMaterialSaysNone` | 20 of 20 |
 
 ### Python, measured
 
