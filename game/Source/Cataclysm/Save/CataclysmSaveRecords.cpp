@@ -552,6 +552,45 @@ namespace CataclysmRunSaveMigration
 		return true;
 	}
 
+	/**
+	 * A run written before the empire upgrade tree's event rules counted anything has counted nothing, and its city
+	 * upgrades are held since its run began. Issue #2741 slice 3b, ruled by the coordinating session on 2026-11-19.
+	 * Written out, for `Migrate_3_to_4`'s reason: no clear since the last surge, no city reclaimed, the Last Stand not
+	 * spent, and a `BoughtDay` of 0 on every upgrade of every city, so Enduring Foundations counts each as held from day
+	 * 0. A `Cities` that is not an array, or an entry or upgrade that is not an object, is left as it is, for
+	 * `Migrate_6_to_7`'s reason.
+	 */
+	bool Migrate_8_to_9(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		Record->SetNumberField(TEXT("ClearsSinceLastSurge"), 0); // A migration's: nothing counted.
+		Record->SetNumberField(TEXT("CitiesReclaimed"), 0); // A migration's: nothing counted.
+		Record->SetBoolField(TEXT("bSanctuaryLastStandSpent"), false); // A migration's: not spent.
+		const TArray<TSharedPtr<FJsonValue>>* Cities = nullptr;
+		if (Record->TryGetArrayField(TEXT("Cities"), Cities) && Cities)
+		{
+			for (const TSharedPtr<FJsonValue>& CityEntry : *Cities)
+			{
+				const TSharedPtr<FJsonObject>* City = nullptr;
+				const TArray<TSharedPtr<FJsonValue>>* Upgrades = nullptr;
+				if (!CityEntry.IsValid() || !CityEntry->TryGetObject(City) || !City || !City->IsValid()
+					|| !(*City)->TryGetArrayField(TEXT("Upgrades"), Upgrades) || !Upgrades)
+				{
+					continue;
+				}
+				for (const TSharedPtr<FJsonValue>& UpgradeEntry : *Upgrades)
+				{
+					const TSharedPtr<FJsonObject>* Upgrade = nullptr;
+					if (UpgradeEntry.IsValid() && UpgradeEntry->TryGetObject(Upgrade) && Upgrade && Upgrade->IsValid())
+					{
+						(*Upgrade)->SetNumberField(TEXT("BoughtDay"), 0); // A migration's: held since the run began.
+					}
+				}
+			}
+		}
+		return true;
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep RunSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
@@ -561,6 +600,7 @@ namespace CataclysmRunSaveMigration
 		{ 5, TEXT("Migrate_5_to_6"), &Migrate_5_to_6 },
 		{ 6, TEXT("Migrate_6_to_7"), &Migrate_6_to_7 },
 		{ 7, TEXT("Migrate_7_to_8"), &Migrate_7_to_8 },
+		{ 8, TEXT("Migrate_8_to_9"), &Migrate_8_to_9 },
 	};
 }
 

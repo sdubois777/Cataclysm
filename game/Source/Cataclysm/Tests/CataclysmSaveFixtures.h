@@ -146,6 +146,43 @@ namespace CataclysmSaveFixtures
 	}
 
 	/**
+	 * What `Migrate_8_to_9` writes into a run file written before version 9, and so what the run record writes back
+	 * for one: the empire upgrade tree's event counts at nothing -- no clear since the last surge, no city reclaimed,
+	 * the Last Stand not spent -- and a `BoughtDay` of 0 on every upgrade of every city. Issue #2741 slice 3b,
+	 * 2026-11-19. ONE COPY, beside the version 8 one and for the same callers.
+	 */
+	inline void AddTheRunsVersion9Defaults(FJsonObject& Expected)
+	{
+		Expected.SetNumberField(TEXT("ClearsSinceLastSurge"), 0);
+		Expected.SetNumberField(TEXT("CitiesReclaimed"), 0);
+		Expected.SetBoolField(TEXT("bSanctuaryLastStandSpent"), false);
+		const TArray<TSharedPtr<FJsonValue>>* Cities = nullptr;
+		if (!Expected.TryGetArrayField(TEXT("Cities"), Cities) || Cities == nullptr)
+		{
+			return;
+		}
+		for (const TSharedPtr<FJsonValue>& CityEntry : *Cities)
+		{
+			const TSharedPtr<FJsonObject>* City = nullptr;
+			const TArray<TSharedPtr<FJsonValue>>* Upgrades = nullptr;
+			if (!CityEntry.IsValid() || !CityEntry->TryGetObject(City) || City == nullptr || !City->IsValid()
+				|| !(*City)->TryGetArrayField(TEXT("Upgrades"), Upgrades) || Upgrades == nullptr)
+			{
+				continue;
+			}
+			for (const TSharedPtr<FJsonValue>& UpgradeEntry : *Upgrades)
+			{
+				const TSharedPtr<FJsonObject>* Upgrade = nullptr;
+				if (UpgradeEntry.IsValid() && UpgradeEntry->TryGetObject(Upgrade) && Upgrade != nullptr
+					&& Upgrade->IsValid())
+				{
+					(*Upgrade)->SetNumberField(TEXT("BoughtDay"), 0);
+				}
+			}
+		}
+	}
+
+	/**
 	 * What `Migrate_3_to_4` writes into an account file written before version 4, and so what the account record
 	 * writes back for one: an empty empire upgrade tree, `"EmpireTree": { "Nodes": [] }`. Issue #2741 slice 1b,
 	 * 2026-11-18. ONE COPY, for every test that runs an older account file through the whole chain.

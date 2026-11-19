@@ -110,6 +110,14 @@ void UCataclysmEmpireRun::BeginForCharacter(int32 InSeed, int32 InCataclysmOrder
 		return Run != nullptr ? Run->ResolveBonusDaysFor(DungeonId) : 0.0f;
 	};
 
+	// AND TODAY, ASKED OF THIS RUN, which Enduring Foundations reads on the map. Weak for the clock's reason. Issue #2741
+	// slice 3b.
+	Map->TodayIs = [WeakRun = TWeakObjectPtr<UCataclysmEmpireRun>(this)]()
+	{
+		const UCataclysmEmpireRun* Run = WeakRun.Get();
+		return Run != nullptr ? Run->Day() : 0;
+	};
+
 	Surges = NewObject<UCataclysmSurgeScheduler>(this);
 	Surges->Mode = Mode;
 	Surges->LethalityRung = LethalityRung;
@@ -150,6 +158,12 @@ void UCataclysmEmpireRun::BeginForCharacter(int32 InSeed, int32 InCataclysmOrder
 	LastDaysAway = FCataclysmDaysAway();
 	SurgesFromEmptyBoard = 0;
 	OwedDays = 0;
+
+	// AND THE EMPIRE UPGRADE TREE'S EVENT COUNTS START AGAIN: no clear since a surge, no city reclaimed, and the Last
+	// Stand not yet spent, which is how it "Resets every tier" (Q3). Issue #2741 slice 3b.
+	ClearsSinceLastSurge = 0;
+	CitiesReclaimed = 0;
+	bSanctuaryLastStandSpent = false;
 
 	// AND NO DEFEAT HAS AWARDED ANYTHING IN THIS RUN YET. Issue #52.
 	LastEmpirePointsAwarded = 0.0;
@@ -518,6 +532,9 @@ FCataclysmDayReport UCataclysmEmpireRun::AdvanceDay()
 	// would expect and the more forgiving of the two.
 	RunCityUpgradeIntervals(Today);
 
+	// AND THE EMPIRE UPGRADE TREE'S TWO REPAIRS, at the same point for the same reason. Issue #2741 slice 3b.
+	RunTreeIntervals(Today);
+
 	// EVERY TIMER MOVES, INCLUDING ONE THAT ARRIVED A MOMENT AGO. That is what
 	// the model does: a dungeon spawned today has a day taken off it today.
 	const TArray<int32> Resolved = Clock->AdvanceDay();
@@ -767,6 +784,10 @@ void UCataclysmEmpireRun::FireSurge(int32 Today, bool bFromCityFall,
 	// again the next day. The two differ only when nothing can be landed on.
 	Surges->RecordSurge(Today, bFromCityFall);
 
+	// A NEW SURGE CYCLE, SO GLOBAL VIGILANCE COUNTS AGAIN FROM NONE: "Resets on new Surge". Every surge comes through
+	// here -- the opening one, the clock's, the empty board's and a city's fall -- so every one resets it (Q1).
+	ClearsSinceLastSurge = 0;
+
 	OutReport.bSurged = true;
 }
 
@@ -896,11 +917,15 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 				Ordinary.PopulationDamage *= Taken.Population;
 
 				const FHitRecordedOnLeaving RecordTheHit(OutReport, Map.Get(), HostId, ECataclysmCityHitKind::QuestTimer);
+				// LAST STAND PROTOCOLS, armed for this one call: a Quest dungeon's timer is a dungeon's resolution (Q3).
+				// Issue #2741 slice 3b.
+				ArmTheLastStandFor(HostId);
 				if (Map->Damage(HostId, Ordinary.DefenceDamage, Ordinary.PopulationDamage) || (bHollow && Map->AddVoidStacks(HostId, HollowStacks)))
 				{
 					CityFell(HostId, OutReport);
 					return;
 				}
+				NoteTheLastStand();
 			}
 		}
 
@@ -984,10 +1009,13 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 	// into that array; nothing here reads it.
 	// WHAT THE HIT TAKES, RECORDED: the city read before it and after. Issue #2733 slice 3; changes nothing.
 	const FCityBeforeAHit BeforeTheHit = BeforeAHit(Map.Get(), CityId);
+	// LAST STAND PROTOCOLS, armed for this one call, an ordinary dungeon's resolution (Q3). Issue #2741 slice 3b.
+	ArmTheLastStandFor(CityId);
 	if (Map->Damage(CityId, Defence, Population) || (bVoid && Map->AddVoidStacks(CityId, Stacks)))
 	{
 		CityFell(CityId, OutReport);
 	}
+	NoteTheLastStand();
 	NoteHitIn(OutReport, Map.Get(), BeforeTheHit, ECataclysmCityHitKind::Ordinary);
 
 	// IT HIT ITS CITY, SO IT LEAVES THE MAP. The owner's rule of 2026-10-08,
@@ -1742,6 +1770,9 @@ bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)
 	// an objective for watching one be destroyed.
 	++DungeonsCleared;
 
+	// AND GLOBAL VIGILANCE'S COUNT, every kind as `DungeonsCleared` counts every kind (Q1). Issue #2741 slice 3b.
+	++ClearsSinceLastSurge;
+
 	// ORDINARY DUNGEONS ONLY, WHICH IS A DIFFERENT NUMBER AND NOT A SUBSET
 	// KEPT FOR CONVENIENCE. `docs/Cataclysm_GDD_v2.md` section VIII: "Every
 	// **ordinary** dungeon defeated adds one floor to the Cataclysm boss
@@ -1798,7 +1829,15 @@ bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)
 	// bought it should get.
 	if (bWasFallenCity && Map != nullptr && CityId != INDEX_NONE)
 	{
+		// RECLAIMER'S RESOLVE COUNTS A CITY THAT COMES BACK: one fallen and not erased, which is exactly when `Retake`
+		// retakes it (Q2). Issue #2741 slice 3b.
+		const FCataclysmCity* Fallen = Map->Find(CityId);
+		const bool bCanBeReclaimed = Fallen != nullptr && Fallen->bFallen && !Fallen->bErased;
 		Map->Retake(CityId);
+		if (bCanBeReclaimed)
+		{
+			++CitiesReclaimed;
+		}
 	}
 
 	// AND THE CITY IS REPAIRED A LITTLE, IF IT BOUGHT THAT UPGRADE. The sheet
@@ -1812,7 +1851,8 @@ bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)
 	{
 		if (FCataclysmCity* City = Map->FindMutable(CityId))
 		{
-			const float Restored = City->UpgradeValueFor(
+			// AS READ TODAY, so Enduring Foundations strengthens one held long enough. Issue #2741 slice 3b.
+			const float Restored = Map->UpgradeValueNowFor(*City,
 				ECataclysmCityUpgradeEffect::RestoreDefenceOnClear);
 
 			// A FALLEN CITY IS NOT REPAIRED BY THIS. It has no defence to
@@ -1909,9 +1949,91 @@ FCataclysmTreeDamageFactors UCataclysmEmpireRun::TreeDamageFactorsFor(int32 City
 	{
 		return FCataclysmTreeDamageFactors();
 	}
-	return TreeBonuses.DamageFactorsFor(City->Ring(), ActiveCataclysms.Num(),
-										static_cast<float>(LivingPopulationShare()), City->Upgrades.Num(),
-										IsTheCommonestTypeOn(CityId, Sender));
+	FCataclysmTreeDamageFactors Taken = TreeBonuses.DamageFactorsFor(City->Ring(), ActiveCataclysms.Num(),
+																	  static_cast<float>(LivingPopulationShare()),
+																	  City->Upgrades.Num(),
+																	  IsTheCommonestTypeOn(CityId, Sender));
+
+	// AND GLOBAL VIGILANCE AND RECLAIMER'S RESOLVE, which read what this run has done: the clears since the last surge
+	// and the cities reclaimed. Every city, defence and population alike (Q1, Q2). Issue #2741 slice 3b.
+	const float ByEvents = TreeBonuses.EventDamageFactorFor(ClearsSinceLastSurge, CitiesReclaimed);
+	Taken.Defence *= ByEvents;
+	Taken.Population *= ByEvents;
+	return Taken;
+}
+
+void UCataclysmEmpireRun::ArmTheLastStandFor(int32 CityId)
+{
+	const FCataclysmCity* City = Map != nullptr ? Map->Find(CityId) : nullptr;
+	if (City != nullptr && TreeBonuses.SanctuarySurvivesAt > 0.0f && !bSanctuaryLastStandSpent
+		&& City->Tier == ECataclysmCityTier::Sanctuary && City->IsAlive())
+	{
+		Map->ArmTheLastStand(CityId, TreeBonuses.SanctuarySurvivesAt);
+	}
+}
+
+void UCataclysmEmpireRun::NoteTheLastStand()
+{
+	if (Map != nullptr && Map->TakeTheLastStandHeld())
+	{
+		bSanctuaryLastStandSpent = true;
+	}
+}
+
+void UCataclysmEmpireRun::RunTreeIntervals(int32 Today)
+{
+	if (Map == nullptr || Today <= 0)
+	{
+		return;
+	}
+
+	// CIVIL ORDER: "Outposts regenerate 3% of their current defense every 30 days per point." Of what each living
+	// Outpost holds as the game reads it, to its maximum (Q4, Q7).
+	if (TreeBonuses.OutpostRegeneration > 0.0f && Today % FCataclysmEmpireTreeBonuses::CivilOrderIntervalDays == 0)
+	{
+		for (FCataclysmCity& City : Map->Cities)
+		{
+			if (City.IsAlive() && City.Tier == ECataclysmCityTier::Outpost)
+			{
+				const float Held = Map->DefenceOf(City);
+				City.Defence = FMath::Min(Map->EffectiveMaxDefence(City),
+										  Held + Held * TreeBonuses.OutpostRegeneration);
+			}
+		}
+	}
+
+	// THE MASON'S GUILD: "Every 20 days, the Outpost or Bulwark with the lowest defense restores 20% of its Max Defense
+	// and 15% of its Max Population." The living one with the lowest SHARE of its maximum defence, the lowest id on a
+	// tie; nothing when that one is full; the same city may be chosen again (Q4, Q5).
+	const bool bGuild = TreeBonuses.LowestCityDefenceRestored > 0.0f || TreeBonuses.LowestCityPopulationRestored > 0.0f;
+	if (bGuild && Today % FCataclysmEmpireTreeBonuses::MasonsGuildIntervalDays == 0)
+	{
+		FCataclysmCity* Lowest = nullptr;
+		float LowestShare = 0.0f;
+		for (FCataclysmCity& City : Map->Cities)
+		{
+			const bool bReached = City.Tier == ECataclysmCityTier::Outpost || City.Tier == ECataclysmCityTier::Bulwark;
+			if (!bReached || !City.IsAlive())
+			{
+				continue;
+			}
+			const float Share = Map->DefenceFractionOf(City);
+			if (Lowest == nullptr || Share < LowestShare)
+			{
+				Lowest = &City;
+				LowestShare = Share;
+			}
+		}
+		if (Lowest != nullptr && LowestShare < 1.0f)
+		{
+			const float MaxDefence = Map->EffectiveMaxDefence(*Lowest);
+			const float MaxPopulation = Map->EffectiveMaxPopulation(*Lowest);
+			Lowest->Defence = FMath::Min(MaxDefence,
+										 Map->DefenceOf(*Lowest) + MaxDefence * TreeBonuses.LowestCityDefenceRestored);
+			Lowest->Population = FMath::Min(MaxPopulation, Map->PopulationOf(*Lowest)
+												+ MaxPopulation * TreeBonuses.LowestCityPopulationRestored);
+		}
+	}
 }
 
 bool UCataclysmEmpireRun::IsTheCommonestTypeOn(int32 CityId, ECataclysmType Sender) const
@@ -2266,6 +2388,9 @@ ECataclysmCityUpgradeResult UCataclysmEmpireRun::BuyCityUpgrade(
 	FCataclysmCityUpgrade Bought = Upgrade;
 	Bought.Tier = 1;
 
+	// THE DAY IT WAS BOUGHT, which Enduring Foundations reads. Issue #2741 slice 3b.
+	Bought.BoughtDay = Clock->Day;
+
 	// THE FIRST TRIGGER IS A FULL INTERVAL AWAY. An upgrade bought on day 37
 	// with a 20 day interval first fires on day 57, rather than on whichever
 	// coming day happens to divide by 20. Zero for every effect that is not one
@@ -2353,15 +2478,16 @@ void UCataclysmEmpireRun::RunCityUpgradeIntervals(int32 Today)
 			}
 
 			// OF THE MAXIMA WITH THE EMPIRE UPGRADE TREE, from what the city is read as holding. Issue #2741 slice 3a.
+			// AND THE UPGRADE'S VALUE AS READ TODAY, so Enduring Foundations strengthens one held long enough (3b).
 			if (Upgrade.Effect == ECataclysmCityUpgradeEffect::HealDefenceEvery)
 			{
 				const float Max = Map->EffectiveMaxDefence(City);
-				City.Defence = FMath::Min(Max, Map->DefenceOf(City) + Max * Upgrade.Value);
+				City.Defence = FMath::Min(Max, Map->DefenceOf(City) + Max * Map->UpgradeValueNow(Upgrade));
 			}
 			else
 			{
 				const float Max = Map->EffectiveMaxPopulation(City);
-				City.Population = FMath::Min(Max, Map->PopulationOf(City) + Max * Upgrade.Value);
+				City.Population = FMath::Min(Max, Map->PopulationOf(City) + Max * Map->UpgradeValueNow(Upgrade));
 			}
 
 			// THE NEXT ONE IS AN INTERVAL FROM TODAY, not from the day it was

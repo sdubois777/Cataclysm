@@ -99,6 +99,9 @@ namespace CataclysmSaveRunRestoreTest
 							   Run.QuestHits, Run.SurgesFromEmptyBoard, Run.LastHitDay, Run.LastHitCityId,
 							   Run.bLastHitWasAQuestTimer ? 1 : 0, Run.LastMoveDay, Run.LastMoveFromCityId,
 							   Run.LastMoveToCityId);
+		// AND THE EMPIRE UPGRADE TREE'S EVENT COUNTS, since issue #2741 slice 3b, so a count the save drops fails here.
+		Out += FString::Printf(TEXT(" | tree events %d %d %d"), Run.ClearsSinceLastSurge, Run.CitiesReclaimed,
+							   Run.bSanctuaryLastStandSpent ? 1 : 0);
 		for (const ECataclysmType Type : Run.ActiveCataclysms)
 		{
 			Out += FString::Printf(TEXT(" %d"), static_cast<int32>(Type));
@@ -120,7 +123,9 @@ namespace CataclysmSaveRunRestoreTest
 								   *City.LeftEdict.ToString(), City.LeftEdictUntilDay, City.Upgrades.Num());
 			for (const FCataclysmCityUpgrade& Upgrade : City.Upgrades)
 			{
-				Out += FString::Printf(TEXT(" %s@%d"), *Upgrade.RowName.ToString(), Upgrade.NextTriggerDay);
+				// AND THE DAY IT WAS BOUGHT, since issue #2741 slice 3b.
+				Out += FString::Printf(TEXT(" %s@%d b%d"), *Upgrade.RowName.ToString(), Upgrade.NextTriggerDay,
+									   Upgrade.BoughtDay);
 			}
 		}
 		return Out;

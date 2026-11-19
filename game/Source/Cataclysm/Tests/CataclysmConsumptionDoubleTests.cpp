@@ -895,6 +895,9 @@ bool FCataclysmConsumptionDoubleRunMigrationTest::RunTest(const FString& Paramet
 	// AND THE WALK SEED MASK OF 0 `Migrate_7_to_8` WRITES, because the chain runs on to version 8 since 2026-11-18
 	// (issue #2749, B10).
 	CataclysmSaveFixtures::AddTheRunsVersion8Defaults(*Expected);
+	// AND THE TREE'S EVENT COUNTS AT NOTHING AND A BOUGHT DAY OF 0 ON EVERY UPGRADE, which `Migrate_8_to_9` writes,
+	// because the chain runs on to version 9 since 2026-11-19 (issue #2741 slice 3b).
+	CataclysmSaveFixtures::AddTheRunsVersion9Defaults(*Expected);
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);

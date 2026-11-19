@@ -71,7 +71,9 @@ All six from the coordinating session, 2026-11-18, on this session's plan.
 - **S2, the split: AGREED.** Slice 3a builds the 31 nodes whose effects are standing numbers the run already holds; slice
   3b builds the seven that act at an event and need run state (Civil Order, The Mason's Guild, The Architect's Legacy,
   Last Stand Protocols, Enduring Foundations, Global Vigilance, Reclaimer's Resolve) at run record version 9.
-  Reclaimer's Resolve's cap and Global Vigilance's "resets every tier" go into 3b's plan.
+  Reclaimer's Resolve's cap and Last Stand Protocols' "resets every tier" go into 3b's plan. (This line gave "resets
+  every tier" to Global Vigilance until slice 3b corrected it on 2026-11-19: the words are Last Stand Protocols', and
+  Global Vigilance's are "Resets on new Surge".)
 - **S3, Bastion Spirit's size: AGREED, +15 days in total.** "+1 Day to all dungeon Resolution Timers per 20 points spent
   in the Explorer tree", read once per whole 20 points, to at most 15 days. Read per point it would be +225 days at a
   full Explorer branch. The measurement and its tuning note are below.

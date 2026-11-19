@@ -2201,6 +2201,30 @@ enum class ECataclysmEmpireTreeEffect : uint8
 
 	/** Days on every gap between surges. */
 	SurgeGapDays,
+
+	// Slice 3b: the rules that act at an event. Issue #2741.
+
+	/** The share of its maximum defence and population a retaken city comes back with. */
+	RetakeFraction,
+
+	/** A share of an Outpost's CURRENT defence it regains every `CivilOrderIntervalDays`, per point. */
+	OutpostDefenceRegeneration,
+
+	/** Every `MasonsGuildIntervalDays`, the most damaged Outpost or Bulwark regains these shares of its maxima. */
+	LowestCityRestoresDefence,
+	LowestCityRestoresPopulation,
+
+	/** Damage taken by every city, compounded per point for each dungeon cleared since the last surge, to a cap. */
+	DamageTakenPerClearThisSurge,
+
+	/** Damage taken by every city, compounded per point for each city reclaimed in the run, to a cap. */
+	DamageTakenPerCityReclaimed,
+
+	/** The defence a Sanctuary is left at by the run's first ordinary resolve or Quest timer hit that would fell one. */
+	SanctuarySurvivesAt,
+
+	/** How much stronger a city upgrade held `EnduringFoundationsDays` or more makes its effect, per point. */
+	UpgradeEffectAfterDays,
 };
 
 /**

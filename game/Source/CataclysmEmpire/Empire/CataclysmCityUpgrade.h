@@ -338,6 +338,16 @@ struct CATACLYSMEMPIRE_API FCataclysmCityUpgrade
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 NextTriggerDay = 0;
 
+	/**
+	 * The day it was bought, which Enduring Foundations reads: "City upgrades that have been active for 10+ days".
+	 * Issue #2741 slice 3b, Q6.
+	 *
+	 * SET BY `UCataclysmEmpireRun::BuyCityUpgrade`, the one way a player buys one. RUN RECORD VERSION 9: an upgrade
+	 * saved before the field is given day 0 by `Migrate_8_to_9`, so it counts as held since its run began.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 BoughtDay = 0;
+
 	bool IsValid() const
 	{
 		return Effect != ECataclysmCityUpgradeEffect::None;

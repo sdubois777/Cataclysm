@@ -618,6 +618,10 @@ bool FCataclysmSaveApply::RunInto(const UCataclysmRunSave& Record, UCataclysmEmp
 	Run.DungeonsDetonated = Record.DungeonsDetonated;
 	Run.QuestHits = Record.QuestHits;
 	Run.SurgesFromEmptyBoard = Record.SurgesFromEmptyBoard;
+	// AND WHAT THE EMPIRE UPGRADE TREE'S EVENT RULES COUNT. Issue #2741 slice 3b, run record version 9.
+	Run.ClearsSinceLastSurge = Record.ClearsSinceLastSurge;
+	Run.CitiesReclaimed = Record.CitiesReclaimed;
+	Run.bSanctuaryLastStandSpent = Record.bSanctuaryLastStandSpent;
 	Run.NextDungeonId = Record.NextDungeonId;
 	Run.LastHitDay = Record.LastHitDay;
 	Run.LastHitCityId = Record.LastHitCityId;

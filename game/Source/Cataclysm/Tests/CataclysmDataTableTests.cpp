@@ -238,8 +238,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// 158: every edge of that tree. One fewer than the nodes, though twenty nodes have no edge into them and nineteen
 	// have two: the counts are the file's, and the generator carries each edge as it is.
 	CHECK_TABLE(FCataclysmEmpireTreeEdgeRow,    "EmpireTreeEdges.csv",       158)
-	// 32: the effects of the 31 city nodes and options that act in issue #2741 slice 3a, Imperial Decree having two.
-	CHECK_TABLE(FCataclysmEmpireTreeEffectRow,  "EmpireTreeEffects.csv",      32)
+	// 40: the effects of the 31 city nodes and options that act in issue #2741 slice 3a, Imperial Decree having two (32),
+	// and of slice 3b's seven event rules, The Mason's Guild having two (8). It was 32 until slice 3b.
+	CHECK_TABLE(FCataclysmEmpireTreeEffectRow,  "EmpireTreeEffects.csv",      40)
 	// 24 of the 293 nodes have an authored effect, and the small share is the
 	// point rather than a shortfall to be fixed by typing: most nodes are not
 	// stat modifiers under any authoring scheme. Issue #939 measures the gap.

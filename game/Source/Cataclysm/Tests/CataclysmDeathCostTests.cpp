@@ -809,6 +809,9 @@ bool FCataclysmDeathCostMigrationTest::RunTest(const FString& Parameters)
 	// AND THE WALK SEED MASK OF 0 `Migrate_7_to_8` WRITES, because the chain runs on to version 8 since 2026-11-18
 	// (issue #2749, B10).
 	CataclysmSaveFixtures::AddTheRunsVersion8Defaults(*Expected);
+	// AND THE TREE'S EVENT COUNTS AT NOTHING AND A BOUGHT DAY OF 0 ON EVERY UPGRADE, which `Migrate_8_to_9` writes,
+	// because the chain runs on to version 9 since 2026-11-19 (issue #2741 slice 3b).
+	CataclysmSaveFixtures::AddTheRunsVersion9Defaults(*Expected);
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -841,18 +844,19 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathCostCommittedFileTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * `Run_v8.json` reads into the five values it states, none of them a default, so each is read and not re-defaulted.
+ * `Run_v9.json` reads into the five values it states, none of them a default, so each is read and not re-defaulted.
  * Prints "DEATH FILE". It read `Run_v3.json` until the run record went to version 4 on 2026-11-02 (issue #1324 slice
  * 6b), `Run_v4.json` until it went to version 5 on 2026-11-03 (slice 6e), and `Run_v5.json` until it went to version 6
  * on 2026-11-17 (issue #2733 slice 3), `Run_v6.json` until it went to version 7 on 2026-11-18 (issue #2742), and
- * `Run_v7.json` until it went to version 8 the same day (issue #2749, B10); `Run_v8.json` holds the same five values,
- * and the older files are migration inputs now.
+ * `Run_v7.json` until it went to version 8 the same day (issue #2749, B10), and `Run_v8.json` until it went to version 9
+ * on 2026-11-19 (issue #2741 slice 3b); `Run_v9.json` holds the same five values, and the older files are migration inputs
+ * now.
  */
 bool FCataclysmDeathCostCommittedFileTest::RunTest(const FString& Parameters)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v8.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v9.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -863,7 +867,7 @@ bool FCataclysmDeathCostCommittedFileTest::RunTest(const FString& Parameters)
 		Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v8.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Run_v9.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
@@ -872,7 +876,7 @@ bool FCataclysmDeathCostCommittedFileTest::RunTest(const FString& Parameters)
 							Read->SchemaVersion, Read->LastDeathDay, *Read->LastDeathDungeonName, Read->LastDeathWalkDays,
 							Read->LastDeathDaysCost, Read->LastDeathFallenCityIds.Num()));
 
-	TestEqual(TEXT("it says it is version 8"), Read->SchemaVersion, 8);
+	TestEqual(TEXT("it says it is version 9"), Read->SchemaVersion, 9);
 	TestEqual(TEXT("the death's day"), Read->LastDeathDay, 103);
 	TestEqual(TEXT("the dungeon's name"), Read->LastDeathDungeonName, FString(TEXT("the Siege dungeon on Outpost (-3,0)")));
 	TestEqual(TEXT("the walk's days"), Read->LastDeathWalkDays, 19);

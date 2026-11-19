@@ -15,7 +15,9 @@ never run on a pull request. Reading the source and the committed save files as 
 WHAT IS CHECKED:
 
   1. `Run_v8.json` is `Run_v7.json` at version 8 with a mask added that is not 0, and nothing else changed;
-  2. the run record is at version 8, and its `Migrate_7_to_8` writes a mask of 0 and is the chain's last step;
+  2. the run record is at version 8 or later, and its `Migrate_7_to_8` writes a mask of 0 and is the chain's step from
+     7 (it was the last until the run record went to version 9 on 2026-11-19, issue #2741 slice 3b, which
+     `tools/tests/test_empire_tree_event_counts_are_saved.py` checks);
   3. the walk seed XORs the identifier plus one with the run's mask, never below 1;
   4. `Begin` draws the mask from the run's seed, and the save gathers and applies it;
   5. the fixtures README lists `Run_v8.json`.
@@ -90,11 +92,11 @@ def test_run_v8_is_run_v7_with_a_mask_that_is_not_the_default() -> None:
 
 
 def test_the_run_record_is_at_version_8_and_migrate_7_to_8_writes_a_mask_of_0() -> None:
-    """Version 8, and a step from 7 that writes 0 -- the mask that keeps every version 7 seed -- last in the chain."""
+    """Version 8 or later, and a step from 7 that writes 0 -- the mask that keeps every version 7 seed -- in the chain."""
     header = code(SAVE / "CataclysmSaveRecords.h")
     run_class = header.split("class CATACLYSM_API UCataclysmRunSave")[1]
     version = re.search(r"static constexpr int32 SchemaVersionNow = (\d+);", run_class)
-    assert version is not None and int(version.group(1)) == 8, "the run record is not at version 8"
+    assert version is not None and int(version.group(1)) >= 8, "the run record is below version 8"
     assert re.search(r"\bint32\s+WalkSeedMask\s*=\s*0\s*;", run_class), "the run record does not carry WalkSeedMask"
 
     migrations = run_migrations()
@@ -104,7 +106,7 @@ def test_the_run_record_is_at_version_8_and_migrate_7_to_8_writes_a_mask_of_0() 
 
     chain = body(migrations, "const FCataclysmSaveMigrationStep RunSteps[] =", "the run record's chain")
     steps = re.findall(r"\{\s*(\d+)\s*,\s*TEXT\(\"(Migrate_\d+_to_\d+)\"\)", chain)
-    assert steps and steps[-1] == ("7", "Migrate_7_to_8"), f"the run record's last step is {steps[-1:]}"
+    assert ("7", "Migrate_7_to_8") in steps, f"the run record's chain has no step from 7: {steps}"
 
 
 def test_the_walk_seed_xors_the_identifier_plus_one_with_the_runs_mask() -> None:

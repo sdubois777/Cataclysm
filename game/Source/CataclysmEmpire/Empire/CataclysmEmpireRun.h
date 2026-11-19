@@ -614,6 +614,50 @@ public:
 	/** The tree's days on a dungeon's resolve timer, by its city's tier and share of defence. 0 on no city. */
 	float ResolveBonusDaysFor(int32 DungeonId) const;
 
+	// ----------------------------------------------------------------------
+	// The empire upgrade tree's rules that act at an event -- issue #2741 slice 3b
+	// ----------------------------------------------------------------------
+
+	/**
+	 * Dungeons of every kind cleared since the last surge, which Global Vigilance reads: "for each dungeon cleared in the
+	 * current Surge cycle ... Resets on new Surge." Raised in `ClearDungeon` beside `DungeonsCleared`; set to 0 by every
+	 * surge, in `FireSurge`, the one way a surge fires (Q1).
+	 *
+	 * SAVED, RUN RECORD VERSION 9, because no other count can say it: the run keeps totals and not a history of clears.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 ClearsSinceLastSurge = 0;
+
+	/**
+	 * Cities reclaimed in this run, which Reclaimer's Resolve reads: "Each reclaimed city permanently grants" -- for the
+	 * rest of the run, and no surge resets it (Q2). Raised when `ClearDungeon` retakes a fallen city. SAVED, version 9.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 CitiesReclaimed = 0;
+
+	/**
+	 * Whether Last Stand Protocols has held a Sanctuary in this run: once per run, across the empire (Q3). "Resets every
+	 * tier" is this field being the run's, because a run's difficulty tier is fixed and every tier is a new run. SAVED,
+	 * version 9.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bSanctuaryLastStandSpent = false;
+
+	/**
+	 * Arms Last Stand Protocols on the map for the next hit, when the tree holds it, it has not held this run, and the
+	 * city is a living Sanctuary. Called before the two hits a dungeon's resolution deals and no other (Q3).
+	 */
+	void ArmTheLastStandFor(int32 CityId);
+
+	/** After an armed hit: notes the Last Stand spent if it held. */
+	void NoteTheLastStand();
+
+	/**
+	 * Civil Order and The Mason's Guild, on the run days that are multiples of their intervals from day 0 (Q4): called
+	 * by `AdvanceDay` beside `RunCityUpgradeIntervals`, so a city repairs before the day's assaults.
+	 */
+	void RunTreeIntervals(int32 Today);
+
 	/**
 	 * Every dungeon standing on the map, in the order they arrived.
 	 *
