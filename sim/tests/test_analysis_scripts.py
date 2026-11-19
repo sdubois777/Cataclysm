@@ -127,7 +127,8 @@ def penetration_run():
                                   "analyse_opening.py",
                                   "analyse_empire_tree_caps.py",
                                   "analyse_architectural_insight_cap.py",
-                                  "analyse_enemy_burn_and_thorns.py"])
+                                  "analyse_enemy_burn_and_thorns.py",
+                                  "analyse_placement_seeds.py"])
 def test_the_script_runs_and_prints_something(name):
     printed, _ = run(name)
     assert len(printed.splitlines()) > 20, printed
@@ -3913,3 +3914,57 @@ def test_thorns_once_per_interval_returns_about_what_the_carriers_own_swings_dea
         assert per_hit > 2.5 * own, (kind, per_hit, own)
         assert abs(per_interval - own) < own / 3.0, (kind, per_interval, own)
     assert ns["RESULTS"]["owners_brute"] == (7, 3)
+
+
+# --------------------------------------------------------------------------
+# analyse_placement_seeds.py -- issue #2749, the placement seeding slice
+# --------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def placement_seeds_run():
+    """The smoke default: 120 floors of each type. The figures in the entry are 2,000."""
+    return run("analyse_placement_seeds.py")
+
+
+def test_the_games_placement_seeds_put_every_floors_elites_in_a_band_and_the_planned_seeds_do_not(placement_seeds_run):
+    """THE FAULT AND ITS FIX, on the Demonic pool the owner's floor drew from: with the game's seeds every floor's Elites
+    carry first modifiers from a cyclic band of `BAND_ROWS` rows of the sorted pool, and few distinct ones; with the
+    planned seeds no floor's do, and most of the pool appears."""
+    _, ns = placement_seeds_run
+    game, planned = ns["RESULTS"][("Demonic", False)], ns["RESULTS"][("Demonic", True)]
+    assert game["floors"] > 100 and game["floors_in_a_band"] == game["floors"], game
+    assert game["distinct_median"] <= 6, game
+    assert planned["floors_in_a_band"] == 0, planned
+    assert planned["distinct_median"] >= 15, planned
+
+
+def test_the_planned_seeds_make_neighbouring_placements_independent(placement_seeds_run):
+    """Two placements next to each other in a floor's list are both Elite about as often as two independent draws at
+    the Elite weight would be (0.2 x 0.2), with the planned seeds; nearly three times as often with the game's."""
+    _, ns = placement_seeds_run
+    game, planned = ns["RESULTS"][("Demonic", False)], ns["RESULTS"][("Demonic", True)]
+    assert game["adjacent_elites"] > 0.09, game["adjacent_elites"]
+    assert abs(planned["adjacent_elites"] - 0.04) < 0.01, planned["adjacent_elites"]
+
+
+def test_over_every_floor_each_modifier_is_near_its_uniform_share_with_either_seeding(placement_seeds_run):
+    """The design's rates already hold over all floors; the fault is how they gather on one floor. So neither seeding
+    moves any modifier more than two points from the pool's uniform share."""
+    _, ns = placement_seeds_run
+    for (kind, planned), got in ns["RESULTS"].items():
+        worst = max(abs(share - got["uniform"]) for share in got["shares"].values())
+        assert worst < 0.02, (kind, planned, worst)
+
+
+def test_the_planned_seed_is_never_nought_and_differs_for_neighbouring_indices_and_salts(placement_seeds_run):
+    """Nought means the clock to the game's callers, so the planned mix never gives it; and the next index, or the
+    other salt, gives a different seed."""
+    _, ns = placement_seeds_run
+    mix = ns["planned_seed"]
+    rarity, modifiers = ns["RARITY_FROM_THE_FLOOR_SALT"], ns["MODIFIERS_FROM_THE_FLOOR_SALT"]
+    for seed in (1, 7, 0x7FFFFFFF, 123456789):
+        for index in range(50):
+            here = mix(seed, rarity, index)
+            assert here != 0
+            assert here != mix(seed, rarity, index + 1)
+            assert here != mix(seed, modifiers, index)
