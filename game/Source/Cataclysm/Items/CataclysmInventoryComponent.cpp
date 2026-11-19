@@ -237,8 +237,8 @@ bool UCataclysmInventoryComponent::HoldSlot(int32 Slot)
 
 bool UCataclysmInventoryComponent::ReplaceItemAt(int32 Slot, const FCataclysmItem& Changed)
 {
-	const FCataclysmItem* Held = ItemAt(Slot);
-	if (Held == nullptr || Changed.Base != Held->Base)
+	const FCataclysmItem* Current = ItemAt(Slot);
+	if (Current == nullptr || Changed.Base != Current->Base)
 	{
 		return false;
 	}

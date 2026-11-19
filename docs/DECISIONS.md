@@ -27,6 +27,11 @@ the same day, a to i below.
 ### SAID FIRST
 
 - **NOT YET COMPILED OR RUN IN THE ENGINE.** Written without compiling, as the coordinating session's approval said.
+- **THE FIRST COMPILE FAILED, AND ONE LOCAL WAS RENAMED.** The three compiles started at `063706600` on 2026-11-19
+  stopped in the first, the branch as committed: `CataclysmInventoryComponent.cpp(240,24): error C4458: declaration
+  of 'Held' hides class member`. `UCataclysmInventoryComponent::ReplaceItemAt`, new here, named its local `Held`,
+  which is also the member holding the bag slot under the cursor, and C4458 is an error in this project. The local
+  is now `Current`. The second and third compiles did not run.
 - **REBASED ONTO `1bf6611c5`, WHICH HOLDS TRIGGER 15, BEFORE ITS WINDOW.** `ForgeCrafted` is 16 as ruled, because
   issue #2763 took 15 for `CharacterBuildChanged` and merged first. On a development without 15,
   `Cataclysm.SaveTriggers.EveryTriggerIsInTheListThisFileAnswersFor` fails: it walks the trigger numbers from 0 to the
