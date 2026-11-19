@@ -2,6 +2,299 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-18 — Thorns of Glass strikes back for the creature's own attack damage, and Echo Chamber's self hit is 5% of the player's maximum health (#2749 slice 2)
+
+**Affects:** `UCataclysmRetaliation::StrikeBack` and `StrikeBackDamagePercent` (new) and the header's account of
+retaliation (`game/Source/Cataclysm/AbilitySystem/CataclysmRetaliation.h`, `.cpp`); the retaliation branch of
+`UCataclysmVitalAttributeSet::PostGameplayEffectExecute` (`AbilitySystem/CataclysmVitalAttributeSet.cpp`);
+`UCataclysmEnemyModifiers::StrikesBack` (new), `RetaliationPercent` and `ThornsOfGlassRetaliationPercent` (removed)
+(`Character/CataclysmEnemyModifiers.h`, `.cpp`); `ACataclysmEnemyCharacter::StrikesBackWhenHit` (new) and
+`ApplyModifierAttributes` (`Character/CataclysmEnemyCharacter.h`, `.cpp`); `ACataclysmDungeonGameMode::
+MakeTheEchoChamberCopy` (`Dungeon/CataclysmDungeonGameMode.cpp`); `UCataclysmDungeonModifierEffects::
+EchoChamberSelfHitShareOfMaximumHealthPercent` (new, in place of `EchoChamberSelfHitPercent`) and `EchoChamberKey`'s
+account (`Dungeon/CataclysmDungeonModifierEffects.h`); comments in `AbilitySystem/CataclysmSkillEffects.h` and
+`AbilitySystem/CataclysmSkillTemplate.cpp`; the design workbook's Enemy Modifiers sheet (`docs/All_Things_Cataclysm.xlsx`,
+cell I12) and `game/Data/EnemyModifiers.csv`. Tests: `CataclysmThornsOfGlassTests.cpp` (new),
+`CataclysmDungeonModifierEffectsTests.cpp`, `CataclysmEnemyModifierTests.cpp`, `CataclysmSaveLoadTests.cpp`,
+`CataclysmHitLogTests.cpp`, `CataclysmSkillTemplateTests.cpp`, `tools/tests/test_thorns_of_glass_strikes_back.py`
+(new) and `tools/tests/test_every_conditioned_stat_has_an_asker.py`. Issue
+[#2749](https://github.com/sdubois777/Cataclysm/issues/2749), slice 2.
+
+### SAID FIRST
+
+- **COMPILED, NOT YET RUN.** The rebased branch compiled three ways ("Compiled (phase 2)", below). No automation test
+  and no C++ guard proof has run. The count and the five proofs' failures are registered below, before the window that
+  will test them.
+- **ONE PYTHON TEST FAILS ON THE BRANCH UNTIL THE WINDOW**, as ruled (Q4): `test_datatable_assets_are_current`,
+  because `game/Data/EnemyModifiers.csv` changed and `DT_EnemyModifiers.uasset` is rebuilt only by the editor. The
+  window rebuilds it and commits it alone with `datatable_asset_sources.json`.
+- **THE RESEARCH WAS NOT RE-VERIFIED.** No page this session could read confirmed the survey's two claims about other
+  games ("What the research says", below). The owner's ruling is the authority for the shape.
+- **THREE TESTS WERE DELETED**, because the ruling inverts what they asserted (Q3). They are named, with why, under
+  "The tests".
+- **NOT TESTED: ECHO CHAMBER'S EXACT CALL, WITH NO ORIGIN, WAS NOT RUN AGAINST A THORNS CREATURE.** Echo Chamber
+  fires its copy with `UCataclysmTriggeredSkill::Trigger(Player, Skill, Aim)` and no cast origin. A player's start
+  without an origin waits for the player's attack animation before its blow lands, and an automation test's world is
+  never ticked, so that wait never ends and the copy strikes nothing. The test that checks a triggered copy is struck
+  back (`ATriggeredAreaBlowOnThreeThornedCreaturesIsStruckBackThreeTimes`) calls the same `Trigger` with the player's
+  own position as the origin, as `Cataclysm.AoeStrikesAllies.` does for the same reason. That the blows carry no
+  no-retaliation mark with or without an origin was read from the code, not run. Accepted by the coordinating session
+  on 2026-11-18.
+- **THE SIXTH THORNS TEST IS NOT THE ONE PLANNED.** The plan's sixth test was "a triggered copy of the player's skill is
+  struck back"; the area test above already does that, so the sixth checks the judgement accepted in Q2, that a hit
+  which kills the creature is still struck back. Accepted by the coordinating session on 2026-11-18.
+
+### The rulings, quoted
+
+**The project owner, 2026-11-18**, in issue #2749 (the option chosen, verbatim):
+
+> **Reflect: "Fixed hit from the creature"**: When struck, a reflecting creature hits back for its own attack damage,
+> sized by its strength like any other hit and reduced by your defences. Your own damage no longer matters to it.
+
+**The coordinating session, 2026-11-18**, in issue #2749 (B2 and B3):
+
+> **B2 Reflect as a fixed hit.**
+> - A Thorns creature struck by a direct hit strikes back for its own current attack damage: after its rarity, the
+>   floor and `DamageScale`.
+> - It applies once per direct hit it takes. Damage over time does not trigger it, as in Path of Exile.
+> - It hits whoever struck it, and the target's defences apply.
+> - The modifier's sentence changes in the design workbook, and the new text is stated in the decisions entry. [...]
+> - Check whether Echo Chamber copies trigger reflect, which the survey inferred but did not test, and keep whatever
+>   happens consistent with the new rule.
+
+> **B3 Echo Chamber's self-hit** follows the same principle: it no longer scales with the player's damage. It becomes
+> 5% of the player's maximum health per copy that reaches them, so the row's "a small amount" holds at every level.
+> This replaces the coordinator's 10% ruling of 2026-10-05.
+
+**The coordinating session, 2026-11-18**, on this session's plan:
+
+- "Slice 2's plan is APPROVED (B2 steps 1 to 4, B3, the stale comments, the tests and R1 to R5)."
+- **Research**: "accepted as you propose. The entry quotes the owner's ruling as the authority for the shape and
+  records the survey's research as the survey's, not re-verified, naming the pages that failed."
+- **Q1**: "THE FIRST SENTENCE: "Thorns of Glass: Strikes back at whatever hits it, once per hit, for its own attack
+  damage." It is a direct statement of the owner's chosen option; I will put it before the owner for confirmation in
+  the morning, and if they change it the change is one row."
+- **Q2**: "APPROVED: the strike back cannot crit, leech or be retaliated against, and is marked returned. The killing
+  hit still being struck back is accepted as a judgement; record it."
+- **Q3**: "APPROVED: delete the three Echo Chamber tests whose premise the ruling inverts, add the two for the new
+  rule, and name the deleted tests in the entry with why."
+- **Q4**: "APPROVED: the window rebuilds the DataTable assets, accepts only DT_EnemyModifiers.uasset and
+  datatable_asset_sources.json changing, commits them alone, and tests that head. Say each time that the one asset test
+  is the expected failure until then."
+- **Q5**: "5% OF MAXIMUM HEALTH BEFORE DEFENCES, reduced by the player's defences, as the 2026-10-05 delivery did."
+
+### The sentence
+
+The design workbook's Enemy Modifiers sheet, Generic column, cell I12, and the row `Generic_Thorns_of_Glass` of
+`game/Data/EnemyModifiers.csv` generated from it:
+
+> Thorns of Glass: Strikes back at whatever hits it, once per hit, for its own attack damage.
+
+It was "Thorns of Glass: Reflects 50% of all damage taken back to the attacker." The workbook was edited with openpyxl
+loaded without `data_only`, every cell of every sheet snapshotted before and compared after reloading from disk: one
+cell changed, and the sheets, formulas, images, charts, tables and sheet order were the same.
+
+### What changed
+
+- **Thorns of Glass writes no stat.** Until now `ACataclysmEnemyCharacter::ApplyModifierAttributes` wrote 50 into the
+  creature's `Retaliation` attribute, and `UCataclysmRetaliation::Pay` sent half of every hit's figure back, before the
+  creature's mitigation and with no cap: the survey measured about 68 back per creature from a Molten Cleave and 81
+  from an Emberhurl, against 130 health at level 1. `UCataclysmEnemyModifiers::RetaliationPercent` and
+  `ThornsOfGlassRetaliationPercent` are gone; `UCataclysmEnemyModifiers::StrikesBack(Rows)` answers whether a creature
+  carries the row, and `ACataclysmEnemyCharacter::StrikesBackWhenHit` asks it of the creature's own rows.
+- **A creature carrying it strikes back once for each hit it takes** (B2). In `UCataclysmVitalAttributeSet`'s
+  retaliation branch, beside `Pay` and under that branch's conditions: a hit that got through (not evaded, not stopped
+  completely), not a damage over time tick, and not a blow carrying the no-retaliation mark. `UCataclysmRetaliation::
+  StrikeBack(Creature, Attacker)` deals `UCataclysmSkillEffects::ApplyHit(Creature, Attacker, StrikeBackDamagePercent
+  = 100, no skill tags, Delivery)`: the pipeline the creature's own attack takes, at its whole attack damage attribute,
+  which already holds its rarity, its floor's multipliers and `DamageScale`. The attacker's defences apply. The target
+  is the effect's causer, "whoever struck it", as retaliation is paid. The Masochist's retaliation, which `Pay` still
+  pays, is not touched.
+- **The strike back is a returned blow** (Q2): `bCannotBeRetaliatedAgainst`, so a player with retaliation does not
+  answer it and two returners cannot trade blows without end; `bCannotCriticallyStrike`; `bCarriesNoWeaponSubType`;
+  `bCannotLeech`; and `bIsRetaliation`, so the player's hit log calls it "reflected or retaliation" (slice 1). The first
+  four are what every returned blow in the game carries (the design's Retaliation section, "But it is still not itself
+  a hit").
+- **Echo Chamber's copy is struck back.** Its copy is `UCataclysmTriggeredSkill::Trigger(Player, Skill, Aim)`: the
+  player's own skill, whose blows carry no no-retaliation mark, so each creature carrying the row that a copy hits
+  strikes back once, as for the player's own use. That was true of the old reflect too; the survey inferred it and B2
+  asked for it to be checked. `Cataclysm.ThornsOfGlass.ATriggeredAreaBlowOnThreeThornedCreaturesIsStruckBackThreeTimes`
+  checks it through `Trigger`, with the limit said first above.
+- **Echo Chamber's self hit is 5% of the player's maximum health per copy that reaches them, before their defences**
+  (B3, Q5). `UCataclysmDungeonModifierEffects::EchoChamberSelfHitShareOfMaximumHealthPercent = 5`, in place of
+  `EchoChamberSelfHitPercent = 10`, which took a tenth of what the copy would deal to an enemy, priced through the
+  player's whole attack damage line (#2234 path C) and a Spell's spell damage (#2498). The trigger
+  (`EchoChamberHitsTheCaster`) and the delivery (area, no critical strike, no leech, not retaliated against) are as
+  they were, so the player's own defences reduce it as they did.
+- **Stale comments corrected, as ruled.** Above `Pay`'s call in `CataclysmVitalAttributeSet.cpp`: "A FLAT AMOUNT, NOT A
+  SHARE OF THE HIT" (a share since #1227), "NOT ITSELF A HIT ... ReduceHealthDirectly writes to the Health attribute"
+  (a blow through the damage formula, carrying the no-retaliation mark, since #1227), and "A MINION'S BLOW PROVOKES
+  NONE" (it does, and the minion takes it, since #1515). `CataclysmRetaliation.h`'s header said "a FLAT amount" and "IS
+  NOT ITSELF A HIT". The comments that named Echo Chamber as a user of `SkillHitWithNoTarget`, in
+  `CataclysmSkillEffects.h`, `CataclysmSkillTemplate.cpp` and the `Cataclysm.NoTargetSpellDamage.` group's header, and
+  the docstring of `tools/tests/test_every_conditioned_stat_has_an_asker.py`, say it no longer is.
+
+### Judgements, each labelled
+
+- **A HIT THAT KILLS THE CREATURE IS STILL STRUCK BACK.** Judgement of this session, accepted by the coordinating
+  session as one (Q2). The attribute set makes the strike back before it writes the creature's health (the branch is
+  above the health write, and the death is handled inside that write), as retaliation has always been paid. Checked by
+  `Cataclysm.ThornsOfGlass.AHitThatKillsTheCreatureIsStillStruckBack`.
+- **THE STRIKE BACK CARRIES NO SKILL TAGS**, so no row that asks for a skill's tags (melee, spell, projectile, area)
+  reaches it. Judgement of this session: the ruling says "its own attack damage" and names no skill, and the
+  creature's basic attack's tags would make it a melee or ranged attack it did not make.
+- **A MINION'S ORDINARY BLOW IS STRUCK BACK AT THE MINION**, and a minion's death blast is not. Not a new judgement:
+  it follows from putting the strike back under retaliation's conditions, and the design's Retaliation section already
+  says a minion's blow provokes retaliation and the minion takes it.
+- **5% IS THE RULED FIGURE (B3), NOT A JUDGEMENT OF THIS SESSION.** "Before defences, reduced by the player's defences"
+  is Q5.
+
+### The tests
+
+**`Cataclysm.ThornsOfGlass.`, six, new** (`CataclysmThornsOfGlassTests.cpp`). A real player pawn with its ability
+system on a player state, never refreshed, its armour, evasion, block chance and resistance set to nought, so a blow on
+it takes what was sent; creatures of the monsters' side given the row by `ApplyModifierAttributes`, as a spawned creature
+is, undefended, each with an attack damage of 40. Every reading has a control.
+
+1. `AHitIsStruckBackForTheCreaturesOwnAttackDamage`: a creature without the row sends nothing back (control); one with
+   it strikes back for 40.
+2. `AHitOfTenAndAHitOfAThousandAreStruckBackForTheSame`: both for 40. Until now the second sent back fifty times what
+   the first did.
+3. `ADamageOverTimeTickIsNotStruckBack`: a tick that landed is not struck back; an ordinary blow on the same creature is
+   (control).
+4. `ATriggeredAreaBlowOnThreeThornedCreaturesIsStruckBackThreeTimes`: a point-blank nova of 4 m started by
+   `UCataclysmTriggeredSkill::Trigger`, Echo Chamber's call, strikes three thorned creatures and the player loses
+   3 x 40.
+5. `AStrikeBackIsMarkedReturnedAndARetaliatingPlayerDoesNotAnswerIt`: the creature's plain blow on a player with 20
+   retaliation is announced unmarked and answered (control); the strike back is announced with the retaliation mark,
+   and the creature takes the player's hit and nothing more.
+6. `AHitThatKillsTheCreatureIsStillStruckBack`: a thorned creature of 10 health, a hit of 100, and the player loses 40.
+
+**Echo Chamber: three deleted, two added, two changed** (`CataclysmDungeonModifierEffectsTests.cpp`).
+
+- Deleted, because each asserted that the self hit FOLLOWS the player's damage and B3 says it must not:
+  - `Cataclysm.DungeonModifierEffects.EchoChamberSelfHitTakesTheWearersStationaryRowAsItHoldsWhenTheCopyIsMade`: a
+    "while stationary, 50% increased damage" row raised the self hit by half as much again (#2234 path C).
+  - `Cataclysm.DungeonModifierEffects.EchoChamberSelfHitTakesARowScopedToTheCopiedSkillsTagButNotAnotherTagsOrAnEnemys`:
+    a row scoped to the copied skill's `Type.Melee` raised it, and rows scoped to `Type.Spell` or to a boss did not.
+  - `Cataclysm.NoTargetSpellDamage.AnEchoChamberCopyOfASpellHitsThePlayerWithItsSpellDamage`: a Spell's copy's self hit
+    took its spell damage (#2498). Its group keeps its other four tests, in `CataclysmSkillTemplateTests.cpp`.
+- Added: `EchoChamberSelfHitIsFivePercentOfTheMaximumHealthBeforeTheDefences`: at 1,000 and at 2,000 maximum health,
+  the copy aimed at the player's feet takes what a direct hit of 5% of the maximum, dealt by the player to themselves
+  with the copy's delivery, takes (the control, read first). And
+  `EchoChamberSelfHitDoesNotChangeWithThePlayersDamageRowsOrSpellDamage`: two of the deleted tests' own changes, the
+  stationary row holding and a Spell's copy given spell damage equal to its weapon part, each confirmed live as set-up,
+  each leave the self hit at the control's.
+- Changed: the figures test checks the constant is 5; the self-hit test's bound is 5% of the player's maximum health.
+
+**Elsewhere.** `CataclysmEnemyModifierTests.cpp`: the row no longer gives retaliation and does strike back.
+`Cataclysm.SaveLoad.ATestKillReflectsNothingOntoThePlayer`: its set-up reads what the creature would strike back for,
+its attack damage. `tools/tests/test_thorns_of_glass_strikes_back.py`, three, new: the row's sentence is the ruled one;
+`ApplyModifierAttributes` writes no retaliation; `StrikeBack` is one `ApplyHit` from the creature at the attacker at
+`StrikeBackDamagePercent`, which is 100, carrying both marks.
+
+**Unreal test count: +5** (+6 Thorns of Glass, -3 and +2 Echo Chamber).
+
+### Registered before the run
+
+**The whole suite: 4872 performed, all succeeding.** The base is the empire tree screen's window tree-2-w2 at
+1304e355a: 4867 performed, all succeeded, 47 skipped halves, 0 test saves left behind (its engine log,
+`t2741s2_suite_engine_1304e355.log`, counted on "Test Completed. Result={" lines: 4867, every one Success).
+`git diff --stat 1304e355a df6fd0850 -- game/` printed nothing, so that is development's head as far as the game goes.
+This branch adds 6 and removes 3 and adds 2: **+5, 4872**.
+
+| Group | In the base log | After this slice |
+|---|---|---|
+| `Cataclysm.ThornsOfGlass.` | 0 | 6 |
+| `Cataclysm.DungeonModifierEffects.` | 772 | 772 (-2, +2) |
+| `Cataclysm.NoTargetSpellDamage.` | 5 | 4 |
+
+**The guard proofs**, each through `tools/unreal_build.prove_cpp_guard`, its anchor checked to match exactly once as
+the proof reads the file (LF), its prefix checked against the base log's names and this slice's new ones:
+
+| Proof | Break | Prefix | Predicted |
+|---|---|---|---|
+| R1 | `UCataclysmEnemyModifiers::StrikesBack` answers false: `return Rows.Num() < 0 && Carries(...)` | `Cataclysm.ThornsOfGlass.` (6 tests) | 6 performed, 6 failed |
+| R2 | the retaliation branch no longer excludes a damage over time tick | `...ThornsOfGlass.ADamageOverTimeTickIsNotStruckBack` | 1 performed, 1 failed |
+| R3 | `StrikeBack`'s blow carries neither `bCannotBeRetaliatedAgainst` nor `bIsRetaliation` | `...ThornsOfGlass.AStrikeBackIsMarkedReturnedAndARetaliatingPlayerDoesNotAnswerIt` | 1 performed, 1 failed |
+| R4 | `ApplyModifierAttributes` writes 50 retaliation for the row again, as before the ruling | `...ThornsOfGlass.AHitOfTenAndAHitOfAThousandAreStruckBackForTheSame` | 1 performed, 1 failed |
+| R5 | Echo Chamber's self hit is `MaximumHealth * 10 / 100`, not the constant | `...DungeonModifierEffects.EchoChamberSelfHitIsFivePercentOfTheMaximumHealthBeforeTheDefences` | 1 performed, 1 failed |
+
+Each restored half: the same tests performed, none failed.
+
+**The Python proofs, run** (`tools/prove_guard.break_and_run`, against `tools/tests/test_thorns_of_glass_strikes_back.py`
+alone, because the branch's whole suite has its one expected failure until the window):
+
+| Proof | Break | Result |
+|---|---|---|
+| P1 | the row's sentence ends "for half of what it took." | PROVED: 1 failed, 2 passed; restored 3 passed. Failed: `test_the_row_says_the_ruled_sentence` |
+| P2 | R4's break | PROVED: 1 failed, 2 passed; restored 3 passed. Failed: `test_the_creature_writes_no_retaliation_for_its_rows` |
+| P3 | `StrikeBackDamagePercent = 50.0f` | PROVED: 1 failed, 2 passed; restored 3 passed. Failed: `test_the_strike_back_is_the_creatures_own_hit_at_its_whole_attack_damage` |
+
+### What the research says, and what it does not
+
+The survey in issue #2749 said: "No shipped game caps monster reflect at a share of the player's life. Diablo III
+(patch 2.0.1) turned it into "a fixed amount of damage per attack", independent of the player's damage. Path of Exile 2
+and Diablo IV removed it." B2 adds "Damage over time does not trigger it, as in Path of Exile."
+
+**Not re-verified.** Every page this session tried failed: diablowiki.net and di.diablowiki.net answered HTTP 403;
+Blizzard's 2.0.1 blog post redirected to the game's home page; maxroll.gg's Diablo III monster affix page answered 404;
+poedb.tw's reflect pages answered 404, and its damage over time page does not say. A search summary cited the 2.0.1
+test realm notes as saying the Siegebreaker's version of the affix is "percentage-based rather than flat", which
+implies the ordinary affix was flat; this session could not read that page. As ruled, the survey's research is
+recorded as the survey's.
+
+**What settles each part.** The shape -- a hit of the creature's own attack damage, reduced by the attacker's
+defences, independent of the player's damage -- is the owner's ruling of 2026-11-18. That damage over time does not
+provoke it rests on the design's own Retaliation section, "It answers a hit, not a tick", since the strike back is
+decided under retaliation's conditions. The flags the blow carries are the design's for every returned blow. The 5% is
+B3's figure. No number in this slice is a judgement of this session.
+
+### Python, phase 1
+
+At `89547ba01`, before the rebase: `python -u -m pytest --junit-xml=...`: "1 failed, 7595 passed, 9 skipped"; the
+JUnit file: 7605 tests, 1 failure, 0 errors, 9 skipped. The failure: `test_datatable_assets_are_current`, expected.
+`python -m ruff check .`: "All checks passed!". That run was one comment-only edit to `CataclysmSkillEffects.h` before
+the commit; phase 2's run is on the committed tree.
+
+### Python, phase 2
+
+At `5e1dc113b`, the rebased commit on `df6fd0850`: "1 failed, 7601 passed, 9 skipped"; the JUnit file: 7611 tests, 1
+failure, 0 errors, 9 skipped. The failure: `test_datatable_assets_are_current`, expected. ruff: "All checks passed!".
+
+### Compiled (phase 2)
+
+Rebased onto `df6fd0850` (#2757, the empire tree screen) as `feat/reflect-fixed-hit-2749-2` (the rebase moves a pushed
+commit, so it is a new branch name): no file is changed by both, so nothing was resolved by hand and
+`check_resolved_cpp.py --changed` had no file to read. `git lfs checkout` after it: 0 pointer files under
+`game/Content`.
+
+Three builds through `tools/unreal_build.py build`, no lock taken (the coordinating session's go), each started only
+once no Unreal workflow run had been seen in progress or queued twice, two minutes apart. The script and its output are
+in this worktree's `.claude/windows/` (`compile_rf2749.py`, `rf2749_compile.out`).
+
+| Build | When | "Build:" line |
+| :-- | :-- | :-- |
+| 1. The branch at `5e1dc113b` (`git status` clean) | 23:10:16 to 23:15:25, 310 s | "Build: Succeeded - 51 actions, 46 files compiled" |
+| 2. Each changed `.cpp` alone (`git read-tree origin/development`, `Makefile.bin` moved aside, built, `git reset -q` after) | 23:17:29 to 23:19:56, 146 s | "Build: Succeeded - 28 actions, 25 files compiled". The "[Adaptive Build] Excluded from Cataclysm unity file" line names fourteen: `CataclysmRetaliation.cpp`, `CataclysmSkillEffects.cpp`, `CataclysmSkillTemplate.cpp`, `CataclysmVitalAttributeSet.cpp`, `CataclysmEnemyCharacter.cpp`, `CataclysmEnemyModifiers.cpp`, `CataclysmDungeonGameMode.cpp`, `CataclysmDungeonModifierEffects.cpp`, `CataclysmDungeonModifierEffectsTests.cpp`, `CataclysmEnemyModifierTests.cpp`, `CataclysmHitLogTests.cpp`, `CataclysmSaveLoadTests.cpp`, `CataclysmSkillTemplateTests.cpp`, `CataclysmThornsOfGlassTests.cpp` -- every `.cpp` this branch changes, and the two whose headers it changes |
+| 3. The unity files again (`Makefile.bin` moved aside again; both moved copies deleted after) | 23:21:59 to 23:23:25, 86 s | "Build: Succeeded - 14 actions, 11 files compiled" |
+
+Build 1's log held one compiler warning line, the engine's own: `MicrosoftPlatformMath.h(183,3): warning C4996: ...
+CountBits for 64-bit values has been deprecated`, while compiling `Module.Cataclysm.2.cpp`. The builds of slice 1 and
+of B10 logged the same line. None came from this change; builds 2 and 3 logged none.
+
+### Review (phase 2)
+
+- **The diff read against the rulings.** B2's four points: the strike back is the creature's own current attack damage
+  (its attribute, after rarity, the floor and `DamageScale`); once per direct hit, never a tick; at whoever struck it,
+  through its defences; the sentence changed in the workbook and stated here. B3: 5% of maximum health per copy that
+  reaches the player, before defences. The Masochist's retaliation (`Pay`) is unchanged.
+- **Fixed numbers audited.** Two in game code: `StrikeBackDamagePercent = 100` ("its own attack damage") and
+  `EchoChamberSelfHitShareOfMaximumHealthPercent = 5` (B3). The figures in the tests (40 attack damage, hits of 10, 100
+  and 1,000, 20 retaliation, 10 health, 1,000 and 2,000 maximum health) are inputs the tests give, not game data.
+
+---
+
 ## 2026-11-18 — The empire upgrade tree has a screen, opened from the empire map's top right corner: one branch at a time, a click buys a point, a centre capstone offers its options, Respec takes two presses, and nothing in it changes during a walk (#2741, slice 2)
 
 **Affects:** `UCataclysmEmpireTreeWidget`, new, `game/Source/Cataclysm/Interface/CataclysmEmpireTreeWidget.h`, `.cpp`;
