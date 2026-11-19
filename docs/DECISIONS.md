@@ -18,8 +18,11 @@ Issue [#2749](https://github.com/sdubois777/Cataclysm/issues/2749), B9, the thir
 
 ### SAID FIRST
 
-- **WRITTEN, NOT YET COMPILED OR RUN IN UNREAL.** Phase 1: the Python suite passes and the two Python guard
-  proofs are proved (below). `sim/experiments.py` runs next, as ruled (Q3); then phase 2 compiles and registers.
+- **NOT YET COMPILED OR RUN IN UNREAL.** Phase 1: the Python suite passes and the two Python guard proofs are
+  proved; `sim/experiments.py` ran on the committed change (below). The Unreal count and the C++ proof are registered
+  below, before the window that will test them.
+- **THERE IS NO BEFORE-RUN OF `experiments.py` TO SET ITS RESULT AGAINST.** None is saved and none was quoted here.
+  The paired before-and-after for this change is the 18,000-campaign sweep, which varied only the Outpost row.
 - **THREE PYTHON TESTS FAILED ON THE FIRST RUN OF THIS CHANGE, AND EACH WAS A FIGURE THE RANGE MOVED.** The
   explorer-shape test's shallowest reachable dungeon (4 floors, now 3), and two checks of the median walk that
   `policies.siege_urgency` states (14 days to an Outpost, now 9). Each figure was re-measured and rewritten, not
@@ -159,11 +162,43 @@ re-measurement note under the earlier ones.
 | P1 | the game's `SpecFor` Outpost row back to `LeastFloors = 8` | PROVED: 1 failed, 82 passed; restored 83 passed. Failed: `TestWhatADungeonIs::test_every_dungeon_spec_matches_in_the_game` |
 | P2 | `DUNGEON_SPECS` Outpost row back to `(8, 15)` | PROVED: 1 failed, 82 passed; restored 83 passed. Failed: `TestWhatADungeonIs::test_the_model_holds_the_thirteen_specs_this_test_expects` |
 
-**C++**: registered in phase 2.
+**C++, registered before the run** (`tools/unreal_build.prove_cpp_guard`, its anchor checked to match exactly once as
+the proof reads the file, LF; its prefix one whole test's name, which no other test's name begins with):
+
+| Proof | Break | Prefix | Predicted |
+|---|---|---|---|
+| D1 | `SpecFor`'s Outpost ordinary row back to `LeastFloors = 8`, `MostFloors = 15` | `Cataclysm.Surge.ABiggerCityBreedsADeeperDungeon` | 1 performed, 1 failed; restored, 1 performed, none failed |
+
+### Registered before the run
+
+**The whole suite: 4872 performed, all succeeding, 47 skipped halves, 0 test saves left behind.** The base is window
+reflect-fixed-hit-w2 at `e367e9fb` (#2749 slice 2): 4872 performed, all succeeded, 47 skipped halves, 0 left behind;
+its engine log holds 4872 "Test Completed" lines, every one Success, and `git diff --stat e367e9fb2 2e0d6f8fc -- game/`
+prints nothing, so its game tree is this branch's base. No Unreal test is added or removed: **+0, 4872.**
+
+**Each group this change touches, run alone in the window by its prefix before the whole suite**, counted by prefix
+ignoring case in the same log; every prefix ends in a dot, and none is a case-insensitive string prefix of another of
+that log's groups.
+
+| Group | Tests | Why it is run alone |
+|---|---|---|
+| `Cataclysm.Surge.` | 54 | the depth, bite and Void stacks tests |
+| `Cataclysm.EmpireRun.` | 71 | the Void thirds test |
+| `Cataclysm.DungeonMode.` | 46 | the wave test's bound |
 
 ### experiments.py
 
-Runs after this commit, as ruled (Q3).
+Run on the committed change (`cfa9b924d`), as ruled (Q3), in the background with `python -u`, with no window while it
+ran. Its last line: **"Done. 39,240 campaigns run."** Tier 1, 250 campaigns a cell:
+
+- Section 0: "BEST STATIC BASELINE: ratio 1.6, surge every 120d x5 -> 56% win, 44% loss, 0% stalemate, 28% triage, 2%
+  idle, final power 252".
+- Section 1: `triage` 53% won, 47% lost, 1.6 cities lost over 581 days; the policies' spread is 44 points of win rate.
+- Section 7: "The ordering holds at NO tier once the surge size moves."
+- Section 8, with no tree: 38 / 38 / 20 / 18 / 4 / 1% won at 1 / 2 / 3 / 4 / 6 / 8 active Cataclysms.
+
+No before-run exists to compare it with (SAID FIRST); the output is kept as `.claude/windows/b9_experiments.out` in the
+worktree that made it.
 
 ### Python
 
