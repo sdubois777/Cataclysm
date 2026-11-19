@@ -22,32 +22,40 @@ empire points; so the most this can show is points per run.
 Policy `triage`, the default `TuningConfig` at each tier, and the same seeds 0..TRIALS-1 for every value, so the cells
 of a tier differ only by the value.
 
-MEASURED 2026-11-18 AT 200 CAMPAIGNS A CELL, 7,200 campaigns, the figures the caps were chosen from:
+MEASURED 2026-11-19 AT 200 CAMPAIGNS A CELL, 7,200 campaigns, at development `58b5ddb51`, where an Outpost's ordinary
+dungeon is 5 to 10 floors (issue #2749, B9). At 200 campaigns one standard error of a win rate is about 3 points.
 
     Bastion Spirit days   tier 1 win%      tier 4 win% / cities lost   tier 8 win%
-      0                   58.0             19.5 / 6.92                  1.5
-      5                   53.5             24.5 / 7.11                  2.0
-     10                   54.5             26.5 / 7.13                  0.5
-     15                   59.5             16.0 / 7.35                  1.0
-     30                   56.0             21.0 / 7.92                  2.0
-     60                   52.5             22.0 / 8.54                  0.5
-    225                   57.5             17.0 / 9.36                  1.5
+      0                   62.0             25.0 / 6.76                  2.0
+      5                   63.5             17.5 / 6.87                  2.0
+     10                   59.5             21.0 / 6.82                  3.5
+     15                   57.0             20.0 / 7.09                  1.5
+     30                   59.0             16.0 / 7.46                  3.0
+     60                   53.5             18.5 / 8.62                  2.0
+    225                   59.5             21.5 / 9.46                  1.5
 
-  No change in wins at any size, within the noise of 200 campaigns, and MORE cities lost at tier 4 as the days grow: a
-  Siege bites its city every day it stands until its timer fires, so a longer timer is more bites. That finding holds
-  for every timer node, Strategic Reserve included. Cap chosen: +15 days in total (S3).
+  No size wins more campaigns than none; the win rates move by about the noise of 200 campaigns with no trend in the
+  size. MORE cities are lost at tier 4 as the days grow: a Siege bites its city every day it stands until its timer
+  fires, so a longer timer is more bites. That finding holds for every timer node, Strategic Reserve included. Cap
+  chosen: +15 days in total (S3).
 
     Golden Age factor     win% at tiers 1 / 4 / 8     tier 8 points a run
-      x1.0                40.0 / 17.5 / 3.0           164.3
-      x1.2                40.0 / 17.5 / 1.5           165.4
-      x1.4                40.0 / 17.5 / 1.5           165.4
-      x2.0                40.0 / 17.5 / 2.0           167.3
-      x3.4                40.0 / 17.5 / 2.0           169.8
+      x1.0                36.0 / 20.5 / 2.0           171.8
+      x1.2                36.0 / 20.5 / 2.5           171.7
+      x1.4                36.0 / 21.0 / 3.5           172.9
+      x2.0                36.0 / 21.0 / 3.5           172.7
+      x3.4                36.0 / 20.0 / 4.5           174.3
 
-  No change in wins or cities lost at any size; points per run up 3% at x3.4. The model cannot measure what population
-  is worth, so the cap is a judgement: +40% in total (S4).
+  No change in wins at tiers 1 and 4 or in cities lost at any size; at tier 8 the wins are 4 to 9 campaigns of 200;
+  points per run up 1.5% at x3.4. The model cannot measure what population is worth, so the cap is a judgement: +40% in
+  total (S4).
 
-RUN WITH NO SETTINGS IT PLAYS ONE CAMPAIGN A CELL, 72 in all, which `sim/tests/test_analysis_scripts.py` runs to keep
+THE CAPS WERE CHOSEN ON 2026-11-18 from this measurement taken before Outpost dungeons became 5 to 10 floors. Tier 4
+cities lost then were 6.92, 7.35, 7.92, 8.54 and 9.36 at 0, 15, 30, 60 and 225 days, and Golden Age's tier 8 points ran
+from 164.3 to 169.8, up 3%. The same conclusions held then: no size won more campaigns, and cities lost rose with the
+days.
+
+RUN WITH NO SETTINGS IT PLAYS ONE CAMPAIGN A CELL, 36 in all, which `sim/tests/test_analysis_scripts.py` runs to keep
 the script working; the figures above need the 200.
 """
 
