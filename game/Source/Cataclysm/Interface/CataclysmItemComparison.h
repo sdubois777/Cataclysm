@@ -176,14 +176,6 @@ public:
 									 FName Family);
 
 	/**
-	 * What the player sees an item called: its whole name (`UCataclysmItemName::NameOf`), or, for a piece with no
-	 * rarity and so no whole name -- no affix and no enchantment, as the starting weapon is -- its base's `BaseName`,
-	 * as its inventory cell calls it, and the row key only for a base the table does not hold. `HeadingFor` and the
-	 * play loop's wear line (`FCataclysmPlayLoopLog::WoreLine`) both name a piece by it.
-	 */
-	static FString NameShownFor(const FCataclysmItem& Item, const UDataTable* BaseTable, const UDataTable* AffixTable);
-
-	/**
 	 * The totals for one set of worn slots, gathered onto the stand-in: the slots restored as they are listed onto an
 	 * equipment component that belongs to no actor, with the live component's switched-off slot, the player's numbers
 	 * (`UCataclysmEquipmentComponent::PlayerNumbers`) and the floor's stat lines (the live ability system's

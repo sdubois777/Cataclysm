@@ -141,6 +141,11 @@ public:
 	 */
 	static FString ThresholdQuestion(const FString& ItemName, float WornResidueAfter, float Threshold);
 
-	/** The name the forge shows for an item: its whole name, or its base's name when it has none, or the row key. */
+	/**
+	 * The name the player sees for an item: its whole name, or its base's name when it has none, or the row key. The
+	 * forge's screen and lines, the item comparison's heading (`UCataclysmItemComparison::HeadingFor`) and the play
+	 * loop's wear line (`FCataclysmPlayLoopLog::WoreLine`, said by `UCataclysmWearing::WearFromCarried`) all name a
+	 * piece by it, so the three cannot call one piece by different names.
+	 */
 	static FString NameOf(const FCataclysmItem& Item, const UDataTable* BaseTable, const UDataTable* AffixTable);
 };

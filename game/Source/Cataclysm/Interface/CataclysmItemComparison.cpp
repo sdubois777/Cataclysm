@@ -19,6 +19,7 @@
 #include "Interface/CataclysmItemTooltip.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmEquipmentComponent.h"
+#include "Items/CataclysmForge.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
@@ -207,27 +208,6 @@ float UCataclysmItemComparison::BasicHitOnAFamilyOf(const UAbilitySystemComponen
 	return bSlashing ? Hit * (1.0f + UCataclysmDamageCalculation::SubtypeBonus / 100.0f) : Hit;
 }
 
-FString UCataclysmItemComparison::NameShownFor(const FCataclysmItem& Item, const UDataTable* BaseTable,
-											   const UDataTable* AffixTable)
-{
-	// ITS WHOLE NAME, AND ELSE ITS BASE'S OWN NAME, AS ITS INVENTORY CELL SHOWS IT. `NameOf` names only an item that
-	// has a rarity, and `UCataclysmItemValues::RarityOf` gives none to a piece with no affix and no enchantment -- the
-	// starting weapon is one -- so for such a piece it returns nothing. Until the item comparison window ran (issue
-	// #832) the heading then fell back to the row key, and read "If worn, in place of Weapon_Sword:" to the player.
-	// `UCataclysmInventoryScreen::LabelFor` calls a piece by its base's `BaseName`, "Sword", and so does this. The key
-	// only for a base the table does not hold.
-	FString Name = UCataclysmItemName::NameOf(Item, BaseTable, AffixTable);
-	if (Name.IsEmpty() && BaseTable)
-	{
-		if (const FCataclysmItemBaseRow* Row = BaseTable->FindRow<FCataclysmItemBaseRow>(
-				Item.Base, TEXT("UCataclysmItemComparison::NameShownFor"), /*bWarnIfMissing=*/false))
-		{
-			Name = Row->BaseName;
-		}
-	}
-	return Name.IsEmpty() ? Item.Base.ToString() : Name;
-}
-
 // ---------------------------------------------------------------------------
 // Reading a set of gear, and comparing two
 // ---------------------------------------------------------------------------
@@ -341,8 +321,11 @@ FString UCataclysmItemComparison::HeadingFor(const FCataclysmComparisonResult& R
 	TArray<FString> Names;
 	for (const FCataclysmItem& Off : Result.Replaced)
 	{
-		// EACH PIECE BY THE NAME THE PLAYER SEES FOR IT, `NameShownFor`, which says why that is not always `NameOf`.
-		Names.Add(NameShownFor(Off, BaseTable, AffixTable));
+		// EACH PIECE BY THE NAME THE PLAYER SEES FOR IT: its whole name, and else its base's own name, as its inventory
+		// cell shows it (`UCataclysmForge::NameOf` says why). Until the item comparison window ran (issue #832) the
+		// heading fell back to the row key for a piece with no whole name, and read "If worn, in place of
+		// Weapon_Sword:" to the player.
+		Names.Add(UCataclysmForge::NameOf(Off, BaseTable, AffixTable));
 	}
 	return FString::Printf(TEXT("If worn, in place of %s:"), *FString::Join(Names, TEXT(" and ")));
 }

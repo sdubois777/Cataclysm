@@ -252,14 +252,15 @@ Four Python guard proofs, through `tools/prove_guard.py`'s `break_and_run` in a 
 ## 2026-11-19 — The item comparison shows the basic attack's hit on the health of a creature of the run's Cataclysm, with the weapon's Slashing bonus; picking up and wearing gear each say a PLAY LOOP line
 
 **Affects:** `UCataclysmItemComparison` (`game/Source/Cataclysm/Interface/CataclysmItemComparison.h` and `.cpp`:
-`FamilyHitLineName`, `RunFamiliesIn`, `BasicHitOnAFamilyOf` and `NameShownFor`, new; `ReadingOf` and `Compare` take the
-families, `ChangeLines` lists a line per family, `HeadingFor` names a piece through `NameShownFor`;
+`FamilyHitLineName`, `RunFamiliesIn` and `BasicHitOnAFamilyOf`, new; `ReadingOf` and `Compare` take the families,
+`ChangeLines` lists a line per family, `HeadingFor` names a piece through `UCataclysmForge::NameOf`;
 `FCataclysmComparisonReading::Families` and `FamilyHits`, new); `UCataclysmSkillEffects::DamageAgainstTypeNamed`, new,
 which `DamageAgainstTypeOf` now asks (`CataclysmSkillEffects.h` and `.cpp`);
 `UCataclysmWeaponSlotsComponent::SubTypeOfWeaponType`, new, which `GetEquippedSubType` now asks;
 `FCataclysmPlayLoopLog::PickedUpLine`, `WoreLine`, `HitsOf` and `FHits`, new (`CataclysmPlayLoopLog.h` and `.cpp`), said
 by `UCataclysmDropPickup::TakeInto` (`CataclysmDroppedItem.cpp`) and `UCataclysmWearing::WearFromCarried`
-(`CataclysmWearing.cpp`); `docs/Play_Loop_Checklist.md` (step 7). Tests: `CataclysmItemComparisonTests.cpp` (two),
+(`CataclysmWearing.cpp`), which names the piece through `UCataclysmForge::NameOf`; that function's comment in
+`game/Source/Cataclysm/Items/CataclysmForge.h` now names both; `docs/Play_Loop_Checklist.md` (step 7). Tests: `CataclysmItemComparisonTests.cpp` (two),
 `CataclysmPlayLoopTests.cpp` (one), `CataclysmDropPickupTests.cpp` (one), `CataclysmWearingTests.cpp` (one);
 `tools/tests/test_the_play_loop_is_logged_at_each_step.py` (two places). Ruled by the coordinating session on
 2026-11-19, from the investigation of the owner's report that a new character's damage does not seem to scale.
@@ -268,6 +269,16 @@ by `UCataclysmDropPickup::TakeInto` (`CataclysmDroppedItem.cpp`) and `UCataclysm
 
 - **NOT YET COMPILED OR RUN IN THE ENGINE.** Written without compiling, as the coordinating session's approval said;
   the machine is queued with windows. What the run must show is under "Registered before the run", below.
+- **ONE FUNCTION NAMES A PIECE: THE FORGE'S.** As written, this slice had `UCataclysmItemComparison::NameShownFor`,
+  line for line the same as `UCataclysmForge::NameOf`, which the forge (#2768) merged first. As the coordinating
+  session ruled, the rebase deleted it: the comparison's heading and the wear line call `UCataclysmForge::NameOf`, and
+  `HeadingFor`'s own inline copy of the same lines, on development since issue #832, went with it. The forge's screen,
+  its lines, the comparison and the wear line now cannot call one piece by two names.
+- **REBASED ONTO `8c019826a`**, the forge's merge, as `feat/basic-hit-against-the-run-family-2`. Both sides kept where
+  both added to a list: the play-loop builders, their test and the check's places, now twenty-four. This entry was
+  placed directly below the forge's, by the author dates of the commits that first wrote each (the forge's 10:17, this
+  one 09:45; the three below it 09:31 or earlier). `tools/check_resolved_cpp.py --changed` read 14 files with no
+  complaint.
 - **WHY.** The owner's character 'test' (level 2, 220 kills; its save read from a copy) wore nine dropped pieces whose
   damage that reaches a Demonic creature came to +2.2 flat: a hit of 65.8 against the starting 63.4. Its gloves carried
   "increased damage against Death enemies" and its necklace "against Celestial enemies", neither of which touches the
@@ -301,9 +312,11 @@ Not counted, for ruling (e)'s reason: a critical strike, a row about the enemy s
 
 ### Registered before the run
 
-At development `5b401cb87`, before any rebase. The base count for the whole suite comes from the coordinating session's
-latest measured window and is registered with the window request; this branch adds **five** tests by name and removes
-none:
+After the rebase onto `8c019826a`. The base is window forge-w2, run at `cd93633d2`, whose `game/` tree is `8c019826a`'s
+(`git diff --stat cd93633d2 8c019826a -- game/` prints nothing); its engine log,
+`.claude/windows/forge_suite_engine_cd93633d.log` in this session's worktree, reads "4942 tests performed", 4942 "Test
+Completed" lines, none of them other than a success, 47 skipped halves, and "Test saves: 850 written and deleted, 0
+left behind". This branch adds **five** tests by name and removes none:
 
 - `Cataclysm.ItemComparison.ANecklaceAgainstTheRunsFamilyRaisesItsLineAndNotThePlainHit` and
   `Cataclysm.ItemComparison.TheFamilyLineCountsASlashingWeaponsBonusAndNoOtherSubType`;
@@ -311,15 +324,16 @@ none:
 - `Cataclysm.DropPickup.TakingGearSaysAPlayLoopLineAndAMaterialSaysNone`;
 - `Cataclysm.Wearing.WearingAPieceSaysAPlayLoopLineWithItsNameAndSlot`.
 
+- **The whole suite**: **4947** performed (4942 + 5), all succeeding, 47 skipped halves, and "Test saves: N written and
+  deleted, 0 left behind", with N compared test by test against forge-w2's log and any change named by the tests that
+  make it.
 - **Each group this branch changes, run alone, performs its registered count and all succeed.** The base is each
-  group's "Test Completed" lines in window gold-2-w1's engine log (`.claude/windows/gold2_suite_engine_e4cb8b58.log` in
-  the #2742 session's worktree, at development `da5783f4c`); `git diff da5783f4c 5b401cb87 -- game/Source` adds or
-  removes no test in any of the four.
+  group's "Test Completed" lines in the same forge-w2 log.
 
 | Group | Base | Added by name | Registered |
 |---|---|---|---|
 | `Cataclysm.ItemComparison.` | 6 | 2 | 8 |
-| `Cataclysm.PlayLoop.` | 8 | 1 | 9 |
+| `Cataclysm.PlayLoop.` | 10 | 1 | 11 |
 | `Cataclysm.DropPickup.` | 19 | 1 | 20 |
 | `Cataclysm.Wearing.` | 18 | 1 | 19 |
 
