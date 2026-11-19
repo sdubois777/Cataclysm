@@ -14,15 +14,18 @@ blocked blow in `UCataclysmAbilitySystemComponent::ActOnEvent` (`AbilitySystem/C
 `ACataclysmDungeonGameMode::EnterThePendingWalkIfReady` (`Dungeon/CataclysmDungeonGameMode.cpp`). Tests:
 `CataclysmHitLogTests.cpp` (new), `CataclysmSaveLoadTests.cpp`, `CataclysmBlockReflectTests.cpp`, and
 `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`. Issue
-[#2749](https://github.com/sdubois777/Cataclysm/issues/2749), slice 1.
+[#2749](https://github.com/sdubois777/Cataclysm/issues/2749), slice 1. **Applied, compiled, run and proved in window
+hit-log-w1 at `5c5af734` (The window, below).**
 
 ### SAID FIRST
 
-- **COMPILED, NOT YET RUN.** The branch compiled before its rebase, as one unity build and with each changed file
-  compiled alone, and the tree rebased onto `da5783f4c` compiled once after it ("Compiled (phase 2)", below). It was then
-  rebased again, onto gold's slice 2 (`04fb305f1`, #2751), and **that tree's first compile is the window's build**. No
-  automation test and no guard proof has run. The counts and the six proofs' failures are registered below, before the
-  window that will test them.
+- **COMPILED, RUN AND PROVED, IN ONE WINDOW (hit-log-w1), AT `5c5af734`** on development `04fb305f1`. The window's
+  build was the rebased tree's first compile ("63 actions, 56 files compiled"). The seven groups alone each performed
+  their registered count, all succeeding; the whole Unreal suite performed the registered 4848, all succeeding, with 47
+  skipped halves and no test save left behind; Python (7585 passed, 9 skipped) and ruff passed; the six C++ guard
+  proofs all proved, each failing exactly the registered assertions, and each restored half passed. "The window",
+  below. Before that, the branch compiled before its first rebase, as one unity build and with each changed file
+  compiled alone, and once after it ("Compiled (phase 2)").
 - **WHAT DID NOT WORK.** The first attempt to compile did not run: the continuous integration runner held the build
   tool's lock for all five tries. The first full Python run on the rebased branch failed one test,
   `test_every_log_capture_in_the_tests_flushes_before_it_reads`: two of the log captures this slice added to the C++
@@ -242,7 +245,59 @@ not compiled before the window; the window's build is its first compile.**
 - **A stale comment, not changed here.** `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, above its call to
   `UCataclysmRetaliation::Pay`, still says retaliation is "NOT ITSELF A HIT" because "ReduceHealthDirectly writes to the
   Health attribute". `Pay` deals its blow through `UCataclysmSkillEffects::ApplyDirectDamage` now, which is why the hit
-  announcement sees a reflect at all. Reported to the coordinating session rather than changed in this slice.
+  announcement sees a reflect at all. Reported to the coordinating session, which ruled on 2026-11-18 that slice 2
+  corrects it, since slice 2 rewrites reflect.
+
+### The window
+
+Window **hit-log-w1**, `.claude/windows/run_h2749.py` in this worktree, started by `gate_h2749.py` once
+`prechecks_h2749.py` printed "PRECHECKS: ALL PASS", at `feat/hit-log-2749-3` `5c5af734` with a clean tree, on
+development `04fb305f1`. Every log below is kept beside the script.
+
+- **The pre-checks, 18:40:45**: development's latest CI and Unreal runs at `04fb305f1` completed with success; no run in
+  progress or queued; "The Unreal editor is free."; no build or editor process; no pull request open; no simulation
+  process; 12,336 MB of physical memory free (10,240 needed). **The lock**: "hit-log-w1 holds the Unreal editor." at
+  18:40:49, and "hit-log-w1 released the Unreal editor." at 19:15:58, after the last proof.
+- **The build**, ending 18:46:14: "Build: Succeeded - 63 actions, 56 files compiled", the rebased tree's first compile.
+- **The groups alone**, each "Tests: N tests performed, N succeeded, 0 failed" at its registered N:
+  `Cataclysm.HitLog.` 6, `Cataclysm.Travel.` 9, `Cataclysm.BlockReflect.` 5, `Cataclysm.Retaliation.` 11,
+  `Cataclysm.Death.` 30, `Cataclysm.CombatEvents.` 26, `Cataclysm.PlayerListenersBoundOnce.` 2.
+- **The whole Unreal suite**, ending 19:05:03: "Tests: 4848 tests performed, 4848 succeeded, 0 failed. 47 skipped part
+  of what they check"; "Test saves: 836 written and deleted, 0 left behind"; "Declared: 4848 tests in the tree at
+  5c5af7344; 4848 performed, gap 0; every declared test was reported by the run". Registered 4848, 47 and 0:
+  **match**. Engine log kept as `h2749_suite_engine_5c5af734.log`. Its 56 `LogModelContextProtocol` lines are the test
+  editor's own server starting up, none an error, the same 56 as window gold-2-w1's log: no outside client connected
+  (#2745).
+- **The lines as the game said them**, from the tests' own reports in that log:
+  - "HIT: took 5.0 from CataclysmEnemyCharacter_0 (Boss), attack: 5.0 to health; health 100 of 100 before it"
+  - "HIT: took 5.0 from CataclysmEnemyCharacter_0 (Legendary), attack: 5.0 to health; reflected or retaliation; health
+    95 of 100 before it", the returned blow; the two blows' marks "0 1"
+  - "CataclysmPlayerCharacter_0 died at 0 of 100 health, owing 0 health, with 0 class resource; the killing blow: 100
+    from CataclysmEnemyCharacter_0 (Common), attack: 100 to health."
+  - "... no blow killed it: health reached zero another way (a cost, a debt or a direct write); the last blow taken was
+    5.0 from CataclysmEnemyCharacter_0 (Common), attack: 5.0 to health, 0.0 s earlier."
+  - "HIT: took 10 from nobody, burn, 2 ticks within one second: 10 to health; damage over time; health 100 of 130 before
+    the first"
+  - "Dungeon 0's floor 1 replaced the free-play floor this level built when it loaded, removing its 211 creatures before
+    anyone fought them. Each was logged as spawned; none of them is in this walk." In the test, 211 creatures stood on
+    the free-play floor before entering, the same 211 the owner's log of 2026-11-18 shows for each load.
+- **Python**, ending 19:08:24: "7585 passed, 9 skipped in 196.25s"; JUnit `errors="0" failures="0" skipped="9"
+  tests="7594"`. **Ruff**: "All checks passed!".
+- **The proofs**, 19:09 to 19:15:57, each through `prove_cpp_guard`, its anchor matching once, the source hash the same
+  before and after, both halves' engine logs kept (`h2749_<P>_run1.log`, `h2749_<P>_run2.log`). Every one printed
+  "PROVED: with the break in: 1 tests performed, 0 succeeded, 1 failed: <test> | restored: 1 tests performed, 1
+  succeeded, 0 failed", `crashed` False in both halves, and failed exactly the registered assertions:
+
+| Proof | Named failure | The broken half's failed assertions, as the engine logged them |
+| :-- | :-- | :-- |
+| H1 | `AReturnedBlowIsMarkedAndAPlainOneIsNot` | "Expected 'the returned blow carries the mark' to be true."; "Expected 'the returned blow's line says so' to be 1, but it was 0." |
+| H2 | `ACreaturesBlowOnThePlayerSaysOneLine` | "Expected 'one line for one blow taken' to be 1, but it was 0."; "Expected 'CONTROL: a blow the player dealt says no line' to be 0, but it was 1." |
+| H3 | `DamageOverTimeIsAddedUpPerSourceEachSecond` | "Expected 'ticks inside their second say nothing' to be 0, but it was 2."; "Expected 'a blow that is not damage over time is said at once, alone' to be 1, but it was 2."; "Expected 'the burn's second has run; the bleed's has not' to be 1, but it was 0."; "Expected 'the end says every open total, oldest first' to be 2, but it was 1." |
+| H4 | `TheDeathLineNamesTheKillingBlow` | "Expected 'naming the creature's blow as the killing blow' to be 1, but it was 0." |
+| H5 | `AReflectPaysItsShareOfWhatTheBlockRemovedToTheAttacker` | "Expected 'marked as returned for a blow taken' to be true." |
+| H6 | `TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk` | "Expected 'with the count of its creatures' to be true." |
+
+Each restored half's engine log holds no `LogAutomationController: Error:` line.
 
 ---
 
