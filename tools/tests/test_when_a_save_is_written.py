@@ -124,7 +124,8 @@ def test_only_the_character_dying_and_leaving_the_level_are_written_before_the_f
     # creature dying, which reads most like death.
     others = ("Clock", "FightStarted", "CreatureDied", "HealthCrossedThreshold",
               "ChangedFloor", "InventoryChanged", "AccountChanged", "DeathProcessed",
-              "CharacterCreated", "RunWon", "CityUpgradeBought")
+              "CharacterCreated", "RunWon", "EmpireTreeRespecced",
+              "CityUpgradeBought")
     for other in others:
         assert other not in body, (
             f"MustBeWrittenBeforeTheFrameEnds mentions {other}. Section 6: "

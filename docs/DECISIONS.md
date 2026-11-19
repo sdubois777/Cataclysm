@@ -44,11 +44,11 @@ of 2; the gold half of [#1264](https://github.com/sdubois777/Cataclysm/issues/12
   and a dearer purchase at a higher upgrade tier -- is G4, ruled with slice 1's plan, and rests on slice 1's research
   (the entry below: "gold drops grow with difficulty" and "persistent purchases get dearer"). The one new shape choice,
   reading the price's scale from the pile column, is labelled a judgement below.
-- **THE NEW SAVE TRIGGER IS NUMBER 13, AND THIS BRANCH ALONE FAILS ONE TEST UNTIL IT IS REBASED.** The empire tree's
-  slice 1b (#2741) takes 12 for `EmpireTreeRespecced` and its window comes first, the coordinating session's ruling of
-  2026-11-18. Until this branch is rebased onto that slice, 12 is unused, and
-  `Cataclysm.SaveTriggers.EveryTriggerIsInTheListThisFileAnswersFor`, which walks every number below the count of
-  triggers, reports 12 as missing. Nothing writes these numbers to disk.
+- **THE NEW SAVE TRIGGER IS NUMBER 13.** The empire tree's slice 1b (#2741) took 12 for `EmpireTreeRespecced` and
+  merged first (#2750, development `da5783f4c`), the coordinating session's ruling of 2026-11-18. This branch was
+  rebased onto it, and both triggers are in `UCataclysmSaveTriggers::Every`, `NameOf` and
+  `WritesEvenIfTheRunWasWrittenThisFrame`; `tools/tests/test_when_a_save_is_written.py` now names both among the
+  triggers that may not be written before the frame ends. Nothing writes these numbers to disk.
 - **FOUND IN PASSING, AND FIXED HERE AT THE COORDINATING SESSION'S REQUEST:** a purchase refused because a Siege
   stands on the city had no words of its own. `UCataclysmCityUpgradeRules::ResultText` had no case for
   `CityIsBesieged`, so the city screen and the console command said "Refused." for it, and the city screen hid a
