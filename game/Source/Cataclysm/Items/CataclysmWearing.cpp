@@ -6,10 +6,13 @@
 
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
+#include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmDroppedItem.h"
+#include "Items/CataclysmForge.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmItem.h"
 #include "Player/CataclysmGameMode.h"
+#include "Player/CataclysmPlayLoopLog.h"
 
 ECataclysmWearResult UCataclysmWearing::WearFromCarried(
 	UCataclysmInventoryComponent* Inventory,
@@ -78,6 +81,9 @@ ECataclysmWearResult UCataclysmWearing::WearFromCarried(
 	// worn and not about whatever lands in its slot afterwards. Issue #878.
 	const bool bWearingWhatIsHeld = Inventory->HeldSlot() == CarriedSlot;
 
+	// THE HITS BEFORE ANYTHING MOVES, for the play loop's line below.
+	const FCataclysmPlayLoopLog::FHits HitsBefore = FCataclysmPlayLoopLog::HitsOf(*Equipment);
+
 	Inventory->RemoveItemAt(CarriedSlot);
 
 	FCataclysmItem First;
@@ -131,6 +137,12 @@ ECataclysmWearResult UCataclysmWearing::WearFromCarried(
 				   *CameOff.Base.ToString());
 		}
 	}
+
+	// AND THE PLAY LOOP'S LINE, with the basic attack's hit before and after: the coordinating session's ruling of
+	// 2026-11-19. After the equip, which refreshed the wearer's numbers as it announced the change.
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::WoreLine(
+		UCataclysmForge::NameOf(Item, BaseTable, UCataclysmDropRoll::LoadAffixTable()),
+		UCataclysmGearSlots::DisplayName(OutSlot), HitsBefore, FCataclysmPlayLoopLog::HitsOf(*Equipment)));
 
 	return bAnythingCameOff ? ECataclysmWearResult::Swapped
 							: ECataclysmWearResult::Worn;

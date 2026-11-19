@@ -1581,6 +1581,17 @@ public:
 									 const AActor* Target);
 
 	/**
+	 * `DamageAgainstTypeOf` for a damage type named outright rather than read off a target: "Demonic", "Void", as
+	 * `UCataclysmRoster::NameFor` and an enemy's `DamageType` spell them. A FRACTION; zero for a name that is not one of
+	 * the eight, or an attacker with nothing against it.
+	 *
+	 * FOR A HIT PRICED WITH NO ENEMY IN IT that still has to say what it does to one kind of creature: the item
+	 * comparison's line for the run's Cataclysm family (`UCataclysmItemComparison::BasicHitOnAFamilyOf`), ruled by the
+	 * coordinating session on 2026-11-19. `DamageAgainstTypeOf` asks this, so the two cannot disagree.
+	 */
+	static float DamageAgainstTypeNamed(const UAbilitySystemComponent* Source, FName Type);
+
+	/**
 	 * This character's flat spell damage, or zero when it has none.
 	 *
 	 * ADDED TO A SPELL'S BASE RATHER THAN REPLACING IT. The project owner chose

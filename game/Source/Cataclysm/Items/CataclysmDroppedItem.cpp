@@ -18,6 +18,7 @@
 #include "Items/CataclysmInventoryComponent.h"
 #include "Dungeon/CataclysmEnemyScore.h"
 #include "Player/CataclysmGameInstance.h"
+#include "Player/CataclysmPlayLoopLog.h"
 #include "Save/CataclysmSaveRecords.h"
 #include "Save/CataclysmSaveTriggers.h"
 #include "Save/CataclysmSaveWriter.h"
@@ -389,6 +390,13 @@ bool UCataclysmDropPickup::TakeInto(UCataclysmInventoryComponent* Inventory,
 	{
 		// NO ROOM. The drop is untouched and stays where it is.
 		return false;
+	}
+
+	// A PIECE OF GEAR TAKEN IS SAID IN THE PLAY LOOP, by the name the floor showed for it: the coordinating session's
+	// ruling of 2026-11-19. A material is not; `FCataclysmPlayLoopLog::PickedUpLine` says why.
+	if (!Drop->IsMaterial())
+	{
+		FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::PickedUpLine(Drop->DisplayName, Drop->Item.GearLevel));
 	}
 
 	// WHERE IT LAY IS READ BEFORE THE ACTOR GOES, and the take announced after.

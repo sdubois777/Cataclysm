@@ -249,6 +249,173 @@ Four Python guard proofs, through `tools/prove_guard.py`'s `break_and_run` in a 
 
 ---
 
+## 2026-11-19 — The item comparison shows the basic attack's hit on the health of a creature of the run's Cataclysm, with the weapon's Slashing bonus; picking up and wearing gear each say a PLAY LOOP line
+
+**Affects:** `UCataclysmItemComparison` (`game/Source/Cataclysm/Interface/CataclysmItemComparison.h` and `.cpp`:
+`FamilyHitLineName`, `RunFamiliesIn` and `BasicHitOnAFamilyOf`, new; `ReadingOf` and `Compare` take the families,
+`ChangeLines` lists a line per family, `HeadingFor` names a piece through `UCataclysmForge::NameOf`;
+`FCataclysmComparisonReading::Families` and `FamilyHits`, new); `UCataclysmSkillEffects::DamageAgainstTypeNamed`, new,
+which `DamageAgainstTypeOf` now asks (`CataclysmSkillEffects.h` and `.cpp`);
+`UCataclysmWeaponSlotsComponent::SubTypeOfWeaponType`, new, which `GetEquippedSubType` now asks;
+`FCataclysmPlayLoopLog::PickedUpLine`, `WoreLine`, `HitsOf` and `FHits`, new (`CataclysmPlayLoopLog.h` and `.cpp`), said
+by `UCataclysmDropPickup::TakeInto` (`CataclysmDroppedItem.cpp`) and `UCataclysmWearing::WearFromCarried`
+(`CataclysmWearing.cpp`), which names the piece through `UCataclysmForge::NameOf`; that function's comment in
+`game/Source/Cataclysm/Items/CataclysmForge.h` now names both; `docs/Play_Loop_Checklist.md` (step 7). Tests: `CataclysmItemComparisonTests.cpp` (two),
+`CataclysmPlayLoopTests.cpp` (one), `CataclysmDropPickupTests.cpp` (one), `CataclysmWearingTests.cpp` (one);
+`tools/tests/test_the_play_loop_is_logged_at_each_step.py` (two places). Ruled by the coordinating session on
+2026-11-19, from the investigation of the owner's report that a new character's damage does not seem to scale.
+
+### SAID FIRST
+
+- **COMPILED THREE WAYS, AND RUN IN WINDOW hitline-w1 WITH EVERY REGISTERED FIGURE MET.** Written without compiling,
+  as the coordinating session's approval said; compiled and run on 2026-11-19 at `622bc0243`, both under "Measured in
+  window hitline-w1", below.
+- **ONE FUNCTION NAMES A PIECE: THE FORGE'S.** As written, this slice had `UCataclysmItemComparison::NameShownFor`,
+  line for line the same as `UCataclysmForge::NameOf`, which the forge (#2768) merged first. As the coordinating
+  session ruled, the rebase deleted it: the comparison's heading and the wear line call `UCataclysmForge::NameOf`, and
+  `HeadingFor`'s own inline copy of the same lines, on development since issue #832, went with it. The forge's screen,
+  its lines, the comparison and the wear line now cannot call one piece by two names.
+- **REBASED ONTO `8c019826a`**, the forge's merge, as `feat/basic-hit-against-the-run-family-2`. Both sides kept where
+  both added to a list: the play-loop builders, their test and the check's places, now twenty-four. This entry was
+  placed directly below the forge's, by the author dates of the commits that first wrote each (the forge's 10:17, this
+  one 09:45; the three below it 09:31 or earlier). `tools/check_resolved_cpp.py --changed` read 14 files with no
+  complaint.
+- **WHY.** The owner's character 'test' (level 2, 220 kills; its save read from a copy) wore nine dropped pieces whose
+  damage that reaches a Demonic creature came to +2.2 flat: a hit of 65.8 against the starting 63.4. Its gloves carried
+  "increased damage against Death enemies" and its necklace "against Celestial enemies", neither of which touches the
+  run's Demonic creatures, while a Torc of "+54.4% against Demonic enemies" and gloves of "+18.1% increased damage" lay
+  in the bag: worn, 109.3. The comparison's one hit line, ruling (e) of 2026-11-02, is priced with no enemy in it, so it
+  counted neither the damage against a family nor the Greataxe's Slashing bonus, and a family affix -- the largest
+  damage affix a tier 1 drop carries -- showed as no change to it. That this is why the owner chose those pieces is an
+  inference; the owner was not asked.
+- **THE PLAIN LINE IS KEPT AND A SECOND ONE ADDED**, as the coordinating session preferred, so the plain figure stays
+  comparable between runs: "Basic attack hit on a Demonic creature's health, before its defences". One line per
+  Cataclysm the run faces (`UCataclysmEmpireRun::ActiveCataclysms`), so one at difficulty tier 1, each listed only when
+  it changes.
+- **THE CHARACTER SHEET HAS NO "BASIC ATTACK HIT" LINE**, so nothing there changed. The coordinating session's ruling
+  named the sheet's line as well as the comparison's; the sheet lists the stat "damage against Demonic" and has never
+  shown a hit.
+- **A PICKED-UP PIECE'S LINE CARRIES NO HIT**, because picking a piece up changes nothing worn; the wear line carries
+  both hits before and after. **A crafting material picked up says no line**: several drop per kill and none is a choice.
+  Gold already has the walk's line.
+
+### What the new line counts, and what it does not
+
+`BasicHitOnAFamilyOf` is `BasicHitOf`'s no-target price with two things added, each as the real hit applies it:
+
+- the wearer's increased damage against that family, into the increases bracket, as `ApplyHit` adds
+  `DamageAgainstTypeOf` (now `DamageAgainstTypeNamed` underneath, so the two read one map);
+- `UCataclysmDamageCalculation::SubtypeBonus`, 10% more, when the first worn weapon is Slashing, as step 9 of the
+  calculation multiplies the damage health takes. Magic's bonus is against energy shield and Piercing's is armour
+  ignored; neither is a creature's health before its defences, so neither is counted.
+
+Not counted, for ruling (e)'s reason: a critical strike, a row about the enemy struck, and what the moment holds.
+
+### Registered before the run
+
+After the rebase onto `8c019826a`. The base is window forge-w2, run at `cd93633d2`, whose `game/` tree is `8c019826a`'s
+(`git diff --stat cd93633d2 8c019826a -- game/` prints nothing); its engine log,
+`.claude/windows/forge_suite_engine_cd93633d.log` in this session's worktree, reads "4942 tests performed", 4942 "Test
+Completed" lines, none of them other than a success, 47 skipped halves, and "Test saves: 850 written and deleted, 0
+left behind". This branch adds **five** tests by name and removes none:
+
+- `Cataclysm.ItemComparison.ANecklaceAgainstTheRunsFamilyRaisesItsLineAndNotThePlainHit` and
+  `Cataclysm.ItemComparison.TheFamilyLineCountsASlashingWeaponsBonusAndNoOtherSubType`;
+- `Cataclysm.PlayLoop.ThePickedUpAndWoreLinesNameThePieceAndTheHitBeforeAndAfter`;
+- `Cataclysm.DropPickup.TakingGearSaysAPlayLoopLineAndAMaterialSaysNone`;
+- `Cataclysm.Wearing.WearingAPieceSaysAPlayLoopLineWithItsNameAndSlot`.
+
+- **The whole suite**: **4947** performed (4942 + 5), all succeeding, 47 skipped halves, and "Test saves: N written and
+  deleted, 0 left behind", with N compared test by test against forge-w2's log and any change named by the tests that
+  make it.
+- **Each group this branch changes, run alone, performs its registered count and all succeed.** The base is each
+  group's "Test Completed" lines in the same forge-w2 log.
+
+| Group | Base | Added by name | Registered |
+|---|---|---|---|
+| `Cataclysm.ItemComparison.` | 6 | 2 | 8 |
+| `Cataclysm.PlayLoop.` | 10 | 1 | 11 |
+| `Cataclysm.DropPickup.` | 19 | 1 | 20 |
+| `Cataclysm.Wearing.` | 18 | 1 | 19 |
+
+- **Four guard proofs**, each through `tools/unreal_build.py`'s `prove_cpp_guard`; each restored half passes every test
+  its prefix selects.
+
+| Proof | The break | Prefix | The broken half |
+|---|---|---|---|
+| H1 | In `UCataclysmItemComparison::BasicHitOnAFamilyOf`, `UCataclysmSkillEffects::DamageAgainstTypeNamed(AbilitySystem, Family));` becomes `0.0f);`: the family line counts no damage against the family | `Cataclysm.ItemComparison.` | 8 performed, 7 succeeded, 1 failed: `ANecklaceAgainstTheRunsFamilyRaisesItsLineAndNotThePlainHit`, its "63.4 to 97.2" line missing |
+| H2 | In the same function, `(1.0f + UCataclysmDamageCalculation::SubtypeBonus / 100.0f)` becomes `(1.0f + 0.0f / 100.0f)`: no Slashing bonus | `Cataclysm.ItemComparison.` | 8 performed, 6 succeeded, 2 failed: `ANecklaceAgainstTheRunsFamilyRaisesItsLineAndNotThePlainHit` (63.36 expected, 57.6) and `TheFamilyLineCountsASlashingWeaponsBonusAndNoOtherSubType` (the Greataxe) |
+| H3 | In `UCataclysmWearing::WearFromCarried`, `FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::WoreLine(` becomes `(void)(FCataclysmPlayLoopLog::WoreLine(` | `Cataclysm.Wearing.` | 19 performed, 18 succeeded, 1 failed: `WearingAPieceSaysAPlayLoopLineWithItsNameAndSlot` |
+| H4 | In `UCataclysmDropPickup::TakeInto`, `FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::PickedUpLine(` becomes `(void)(FCataclysmPlayLoopLog::PickedUpLine(` | `Cataclysm.DropPickup.` | 20 performed, 19 succeeded, 1 failed: `TakingGearSaysAPlayLoopLineAndAMaterialSaysNone` |
+
+### Measured in window hitline-w1
+
+**The three compiles**, at `622bc0243`, lock hitline-compile, 13:31 to 13:39, each succeeding on the first attempt: (1)
+the branch as committed, the build plan moved aside first, "Build: Succeeded - 64 actions, 57 files compiled"; (2) each
+changed file alone, the index read from `8c019826a`, "Build: Succeeded - 22 actions, 19 files compiled", the build
+tool's "[Adaptive Build] Excluded from Cataclysm unity file" line naming the 11 changed `.cpp` files; (3) the unity files
+again, "Build: Succeeded - 11 actions, 8 files compiled". The one warning line in any of the three, in compile 1, is
+C4996 "CountBits for 64-bit values has been deprecated", printed at the engine's `MicrosoftPlatformMath.h(183,3)` but
+TRIGGERED BY THIS PROJECT'S CODE, which this slice does not touch: the build tool's log goes on
+"CataclysmAbilitySystemComponent.cpp(1315,36): note: see reference to function template instantiation 'int32
+FMicrosoftPlatformMathBase::CountBits<uint64>(T)' being compiled". Issue #2756. This entry first called it the
+engine's own, and said none came from this project's code; that was wrong, corrected before it merged.
+
+**The window**, at `622bc0243`, lock hitline-w1, started through a launcher that gives the runner no console window.
+The build compiled nothing ("target already up to date").
+
+| Group | Registered | Performed, succeeded, failed |
+|---|---|---|
+| `Cataclysm.ItemComparison.` | 8 | 8, 8, 0 |
+| `Cataclysm.PlayLoop.` | 11 | 11, 11, 0 |
+| `Cataclysm.DropPickup.` | 20 | 20, 20, 0 |
+| `Cataclysm.Wearing.` | 19 | 19, 19, 0 |
+
+**The whole suite**: "Tests: 4947 tests performed, 4947 succeeded, 0 failed. 47 skipped part of what they check",
+against 4947 and 47 registered; "Declared: 4947 tests in the tree at 622bc0243; 4947 performed, gap 0"; "Test saves:
+850 written and deleted, 0 left behind". **The test saves, test by test** against window forge-w2's log (850): every one
+of its 4942 tests has the same share here, and each of the five new tests has 0, so the total is unchanged. The log
+holds no "server/discover" and no "ConsoleCtrl" line.
+
+**What the new test measured**: "FAMILY HIT: plain 57.60, on a Demonic creature 63.36; Demonic Torc: ... Basic attack
+hit on a Demonic creature's health, before its defences: 63.4 to 97.2, up 33.8; Celestial Torc: Health: 510 to 548, up
+38 | Damage against Celestial: 0% to 53.3%, up 53.3%": the Demonic Torc raises the family line by 33.8; the Celestial
+one, against a family the run does not face, leaves the Demonic line as it was, so the comparison does not list it.
+
+**Python of record**, in the window: "7704 passed, 9 skipped in 313.38s"; the JUnit file: tests 7713, failures 0,
+errors 0, skipped 9. ruff: "All checks passed!".
+
+**The four C++ guard proofs**, each through `prove_cpp_guard`, each PROVED, each broken half exactly as registered and
+each restored half passing every test its prefix selects:
+
+| Proof | The broken half | Restored |
+|---|---|---|
+| H1 | 8 performed, 7 succeeded, 1 failed: `ANecklaceAgainstTheRunsFamilyRaisesItsLineAndNotThePlainHit` | 8 of 8 |
+| H2 | 8 performed, 6 succeeded, 2 failed: `ANecklaceAgainstTheRunsFamilyRaisesItsLineAndNotThePlainHit`, `TheFamilyLineCountsASlashingWeaponsBonusAndNoOtherSubType` | 8 of 8 |
+| H3 | 19 performed, 18 succeeded, 1 failed: `WearingAPieceSaysAPlayLoopLineWithItsNameAndSlot` | 19 of 19 |
+| H4 | 20 performed, 19 succeeded, 1 failed: `TakingGearSaysAPlayLoopLineAndAMaterialSaysNone` | 20 of 20 |
+
+### Python, measured
+
+At `8b03a4bed`, after the rebase onto `8c019826a` and the change to `UCataclysmForge::NameOf`: "7704 passed, 9 skipped
+in 314.64s"; the JUnit file: tests 7713, failures 0, errors 0, skipped 9. ruff: "All checks passed!". Before the
+rebase, at `37b4fd627` (the code commit then; `013e0ce59` after it), it read "7646 passed, 9 skipped in 310.88s" and
+the JUnit file tests 7655. The first full run, before the code was committed, failed one test,
+`tools/tests/test_a_log_capture_in_the_tests_flushes_first.py`: the two new log captures read their lines without
+flushing the log first. Each now reads through a `Said()` that calls `GLog->Flush()`, and the second run above is
+after that.
+
+Two Python guard proofs, through `tools/prove_guard.py`'s `break_and_run` in a `git archive` copy of `8b03a4bed`, each
+PROVED. They were run again after the rebase: the play-loop check now reads twenty-four places, so its counts are 29
+and 30 where they were 20 and 21 before it.
+
+| Break | Named failure | Restored |
+|---|---|---|
+| H3's break, in the C++ text | `test_the_play_loop_is_logged_at_each_step.py::test_each_step_of_the_loop_says_its_line[WoreLine]` (1 failed, 29 passed) | 30 passed |
+| H4's break | `...::test_each_step_of_the_loop_says_its_line[PickedUpLine]` (1 failed, 29 passed) | 30 passed |
+
+---
+
 ## 2026-11-19 — The empire upgrade tree's walk, depth and clear nodes: a dungeon's walk is shortened where it is charged, the tree's floors are added when a dungeon is made, and a clear can remove another dungeon or pay more points (#2741, slice 4)
 
 **Affects:** `FCataclysmEmpireTreeBonuses` (`game/Source/CataclysmEmpire/Empire/CataclysmEmpireMap.h`: `WalkTimeFactor`,

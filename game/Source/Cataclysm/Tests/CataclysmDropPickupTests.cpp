@@ -13,6 +13,7 @@
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmWearing.h"
 #include "Misc/ScopeExit.h"
+#include "Player/CataclysmPlayLoopLog.h"
 
 /**
  * Tests for picking a drop up. Issue #707.
@@ -1635,6 +1636,94 @@ bool FCataclysmDropRefusedKeepsTheItemTest::RunTest(const FString&)
 		UCataclysmWearing::DropCarried(nullptr, 0, nullptr, FVector::ZeroVector),
 		ECataclysmWearResult::NothingToWorkWith);
 
+	return true;
+}
+
+namespace CataclysmDropPickupTest
+{
+	/** The PLAY LOOP lines said while it lives, in order, without their prefix. */
+	struct FPickedUpLines : public FOutputDevice
+	{
+		TArray<FString> Lines;
+
+		FPickedUpLines()
+		{
+			if (GLog)
+			{
+				GLog->AddOutputDevice(this);
+			}
+		}
+
+		virtual ~FPickedUpLines() override
+		{
+			if (GLog)
+			{
+				GLog->RemoveOutputDevice(this);
+			}
+		}
+
+		virtual void Serialize(const TCHAR* Text, ELogVerbosity::Type Verbosity, const FName& Category) override
+		{
+			const FString Line(Text);
+			if (Category == FName(TEXT("LogCataclysm")) && Line.StartsWith(FCataclysmPlayLoopLog::Prefix))
+			{
+				Lines.Add(Line.RightChop(FCString::Strlen(FCataclysmPlayLoopLog::Prefix)));
+			}
+		}
+
+		/** What was said, after the log is flushed: a line written off the game thread is buffered until then. */
+		const TArray<FString>& Said()
+		{
+			if (GLog)
+			{
+				GLog->Flush();
+			}
+			return Lines;
+		}
+	};
+}
+
+/**
+ * Taking a piece of gear says a PLAY LOOP line with the name the floor showed and its gear level, and taking a
+ * crafting material says none. The coordinating session's ruling of 2026-11-19: the owner's play log said nothing
+ * about gear. Prints "PICKED UP".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPickupSaysAPlayLoopLineTest,
+	"Cataclysm.DropPickup.TakingGearSaysAPlayLoopLineAndAMaterialSaysNone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPickupSaysAPlayLoopLineTest::RunTest(const FString&)
+{
+	using namespace CataclysmDropPickupTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	UCataclysmInventoryComponent* Inventory =
+		NewObject<UCataclysmInventoryComponent>(GetTransientPackage());
+	ACataclysmDroppedItem* Gear = DropAt(World, FVector(100.0f, 0.0f, 0.0f),
+										 TEXT("Weapon_Greataxe"), TEXT("Superb Greataxe"));
+	ACataclysmDroppedItem* Material = MaterialAt(World, FVector(200.0f, 0.0f, 0.0f),
+												 TEXT("IronOre"), TEXT("Iron Ore"));
+	if (!TestNotNull(TEXT("inventory"), Inventory) || !TestNotNull(TEXT("a piece of gear"), Gear)
+		|| !TestNotNull(TEXT("a material"), Material))
+	{
+		return false;
+	}
+
+	FPickedUpLines Capture;
+	TestTrue(TEXT("CONTROL: the gear was taken"), FPickup::TakeInto(Inventory, Gear, /*bByHand=*/true));
+	TestEqual(TEXT("one line, naming it as the floor did, at the +3 `SomeItem` gives it"), Capture.Said(),
+			  TArray<FString>{TEXT("picked up Superb Greataxe, +3")});
+
+	TestTrue(TEXT("CONTROL: the material was taken"), FPickup::TakeInto(Inventory, Material));
+	TestEqual(TEXT("and a material adds no line"), Capture.Said().Num(), 1);
+
+	AddInfo(TEXT("PICKED UP: ") + FString::Join(Capture.Said(), TEXT(" | ")));
 	return true;
 }
 

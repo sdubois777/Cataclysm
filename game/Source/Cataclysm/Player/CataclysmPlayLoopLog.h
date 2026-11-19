@@ -5,7 +5,9 @@
 #include "CoreMinimal.h"
 
 class UCataclysmEmpireRun;
+class UCataclysmEquipmentComponent;
 struct FCataclysmDayReport;
+struct FCataclysmItem;
 
 /**
  * THE PLAY LOOP'S LOG: one plain line at each step of the main loop, so that one press of Play leaves the whole loop in
@@ -207,4 +209,43 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 	 * 17 +2 and 6 +3 held". Said by `UCataclysmForgeCraft::Combine`, after the stones have changed.
 	 */
 	static FString ForgeCombineLine(int32 FromLevel, int32 IntoLevel, int32 FromHeld, int32 IntoHeld);
+
+	/**
+	 * A piece of gear picked up off a floor: "picked up Quality Torc of Warding, +0". The coordinating session's ruling
+	 * of 2026-11-19: the owner's play log said nothing about gear, so a walk could not be read for what was taken. Said
+	 * by `UCataclysmDropPickup::TakeInto`, for a piece of gear only, once it is in the bag. A crafting material is not
+	 * announced: it is collected without a click, several to a kill, and is not a choice. Gold has `GoldLine`.
+	 *
+	 * NO HIT IN IT, because picking a piece up changes nothing worn; `WoreLine` says what wearing one did.
+	 *
+	 * @param ItemName  the name the floor showed for it, `ACataclysmDroppedItem::DisplayName`
+	 */
+	static FString PickedUpLine(const FString& ItemName, int32 GearLevel);
+
+	/**
+	 * The basic attack's hits for the gear a character wears: the plain one and one on each of the run's families,
+	 * as the item comparison prices them (`UCataclysmItemComparison::BasicHitOf` and `BasicHitOnAFamilyOf`).
+	 */
+	struct FHits
+	{
+		float Plain = 0.0f;
+		TArray<FName> Families;
+		TArray<float> OnFamilies;
+	};
+
+	/**
+	 * `FHits` for what a character wears now, read off the ability system of the actor that owns the equipment, which
+	 * `ACataclysmPlayerCharacter::OnEquipmentChanged` refreshes as the gear changes. Nought, and no family, for
+	 * equipment no actor with an ability system owns; the families are the run's
+	 * (`UCataclysmItemComparison::RunFamiliesIn`).
+	 */
+	static FHits HitsOf(const UCataclysmEquipmentComponent& Worn);
+
+	/**
+	 * A piece of gear put on, and what it did to the basic attack: "wore Quality Torc of Warding in Necklace: basic
+	 * attack hit 57.6 to 57.6; on a Demonic creature's health 63.4 to 97.8". The coordinating session's ruling of
+	 * 2026-11-19, with `PickedUpLine`. Said by `UCataclysmWearing::WearFromCarried`, which every wear the player
+	 * chooses comes through, after the equip. The figures are written as the item comparison writes them.
+	 */
+	static FString WoreLine(const FString& ItemName, const FString& SlotName, const FHits& Before, const FHits& After);
 };

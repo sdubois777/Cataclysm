@@ -9,8 +9,13 @@
 #include "Empire/CataclysmEmpireMap.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmSurge.h"
+#include "AbilitySystemGlobals.h"
+#include "Character/CataclysmPlayerBuild.h"
+#include "Interface/CataclysmCharacterSheetLayout.h"
 #include "Interface/CataclysmEmpireMapLayout.h"
+#include "Interface/CataclysmItemComparison.h"
 #include "Items/CataclysmDroppedItem.h"
+#include "Items/CataclysmEquipmentComponent.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Save/CataclysmSaveRecords.h"
 
@@ -355,4 +360,55 @@ FString FCataclysmPlayLoopLog::ForgeCombineLine(int32 FromLevel, int32 IntoLevel
 {
 	return FString::Printf(TEXT("combined two +%d upgrade stones into one +%d: %d +%d and %d +%d held"), FromLevel,
 						   IntoLevel, FromHeld, FromLevel, IntoHeld, IntoLevel);
+}
+
+FString FCataclysmPlayLoopLog::PickedUpLine(const FString& ItemName, int32 GearLevel)
+{
+	return FString::Printf(TEXT("picked up %s, +%d"), *ItemName, GearLevel);
+}
+
+FCataclysmPlayLoopLog::FHits FCataclysmPlayLoopLog::HitsOf(const UCataclysmEquipmentComponent& Worn)
+{
+	FHits Hits;
+	const UAbilitySystemComponent* Abilities =
+		UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Worn.GetOwner());
+	if (!Abilities)
+	{
+		return Hits;
+	}
+
+	// THE CREATION DAMAGE TYPE AS THE COMPARISON TAKES IT, from the player's numbers.
+	FCataclysmPlayerBuild Numbers;
+	const FName Creation = Worn.PlayerNumbers(Numbers) ? Numbers.CreationDamageType : FName();
+	Hits.Plain = UCataclysmItemComparison::BasicHitOf(Abilities, Worn, Creation);
+	Hits.Families = UCataclysmItemComparison::RunFamiliesIn(&Worn);
+	for (const FName Family : Hits.Families)
+	{
+		Hits.OnFamilies.Add(UCataclysmItemComparison::BasicHitOnAFamilyOf(Abilities, Worn, Creation, Family));
+	}
+	return Hits;
+}
+
+FString FCataclysmPlayLoopLog::WoreLine(const FString& ItemName, const FString& SlotName, const FHits& Before,
+										const FHits& After)
+{
+	// EACH FAMILY BOTH SIDES PRICED, in the order the first gives them.
+	FString OnFamilies;
+	for (int32 Index = 0; Index < Before.Families.Num(); ++Index)
+	{
+		const int32 InAfter = After.Families.IndexOfByKey(Before.Families[Index]);
+		if (!Before.OnFamilies.IsValidIndex(Index) || !After.OnFamilies.IsValidIndex(InAfter))
+		{
+			continue;
+		}
+		OnFamilies += FString::Printf(TEXT("; on a %s creature's health %s to %s"), *Before.Families[Index].ToString(),
+									  *UCataclysmCharacterSheetLayout::Number(Before.OnFamilies[Index]),
+									  *UCataclysmCharacterSheetLayout::Number(After.OnFamilies[InAfter]));
+	}
+
+	// ONE RETURNED FORMAT, which `tools/tests/test_the_play_loop_is_logged_at_each_step.py` reads to match the
+	// checklist's quotation against.
+	return FString::Printf(TEXT("wore %s in %s: basic attack hit %s to %s%s"), *ItemName, *SlotName,
+						   *UCataclysmCharacterSheetLayout::Number(Before.Plain),
+						   *UCataclysmCharacterSheetLayout::Number(After.Plain), *OnFamilies);
 }

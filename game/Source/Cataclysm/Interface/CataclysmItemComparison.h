@@ -30,6 +30,12 @@ struct FCataclysmComparisonReading
 
 	/** `UCataclysmItemComparison::BasicHitOf` for this gear. Nought with no weapon that swings. */
 	float BasicHit = 0.0f;
+
+	/** The run's Cataclysm families this reading priced a hit against, "Demonic" and so on, in the run's order. */
+	TArray<FName> Families;
+
+	/** `UCataclysmItemComparison::BasicHitOnAFamilyOf` for this gear, one per entry of `Families`. */
+	TArray<float> FamilyHits;
 };
 
 /** What comparing a carried item with what it would replace found. A plain struct, for the same reason. */
@@ -44,7 +50,10 @@ struct FCataclysmComparisonResult
 	/** What would come off, in `Equip`'s order. Empty when the slot is free: "compared with nothing". */
 	TArray<FCataclysmItem> Replaced;
 
-	/** One line per total that would change, in the sheet's order, then the basic attack's hit when it would. */
+	/**
+	 * One line per total that would change, in the sheet's order, then the basic attack's hit and its hit on each of
+	 * the run's families when they would.
+	 */
 	TArray<FString> ChangeLines;
 
 	/** The basic attack's hit now and with the item worn, the figures behind its line. */
@@ -79,8 +88,24 @@ class CATACLYSM_API UCataclysmItemComparison : public UBlueprintFunctionLibrary
 	GENERATED_BODY()
 
 public:
-	/** The name of the one line that is not a sheet stat: the basic attack's hit. */
+	/** The name of the first line that is not a sheet stat: the basic attack's hit. */
 	static const TCHAR* BasicHitLineName;
+
+	/**
+	 * The name of the line for the basic attack's hit on one Cataclysm family's creatures: "Basic attack hit on a
+	 * Demonic creature's health, before its defences". See `BasicHitOnAFamilyOf`.
+	 */
+	static FString FamilyHitLineName(FName Family);
+
+	/**
+	 * The Cataclysm families the run being played faces, each as `UCataclysmRoster::NameFor` spells it ("Demonic"),
+	 * in the run's order: its `UCataclysmEmpireRun::ActiveCataclysms`. Every creature in the run is one of them, so
+	 * these are the families whose "increased damage against" a player's hits can meet. One at difficulty tier 1.
+	 *
+	 * EMPTY WITH NO RUN -- no game instance of this project's, or no run begun -- and the comparison then shows no
+	 * family line. The run is only looked at; none is started.
+	 */
+	static TArray<FName> RunFamiliesIn(const UObject* WorldContext);
 
 	/** What the comparison says when no total would move. */
 	static const TCHAR* NothingChangesLine;
@@ -97,7 +122,10 @@ public:
 	/** `ChangeLine` for a line with its own name, written as a percentage or as a plain figure. */
 	static FString ChangeLineNamed(const FString& Name, bool bPercentage, float Now, float With);
 
-	/** Every line that changes between two readings: the sheet's stats in order, then the basic attack's hit. */
+	/**
+	 * Every line that changes between two readings: the sheet's stats in order, then the basic attack's hit, then its
+	 * hit on each family's creatures (`FamilyHitLineName`) that both readings priced.
+	 */
 	static TArray<FString> ChangeLines(const FCataclysmComparisonReading& Now, const FCataclysmComparisonReading& With);
 
 	/**
@@ -111,7 +139,8 @@ public:
 	 *
 	 * NOT COUNTED, because a hit with no enemy in it cannot know them: a row about the enemy struck, increased damage
 	 * against its type, a critical strike, and what the moment holds -- a stored blow, a cut on the attacker, a charge
-	 * bought.
+	 * bought. The type, and the weapon's sub-type bonus against health, are counted by `BasicHitOnAFamilyOf`, on a line
+	 * of its own.
 	 *
 	 * @param AbilitySystem       an ability system already refreshed for this gear
 	 * @param Wearing             the gear, for its weapons
@@ -122,15 +151,44 @@ public:
 							FName CreationDamageType);
 
 	/**
+	 * What one basic attack of this gear does to the health of a creature of one Cataclysm family, before that
+	 * creature's defences. The coordinating session's ruling of 2026-11-19: `BasicHitOf` leaves out the two things
+	 * that are certain about every creature of a run, so at difficulty tier 1 it hid the largest damage affix a drop
+	 * carries -- the owner wore a necklace of "increased damage against Celestial enemies" against Demonic creatures
+	 * and left a "+54% against Demonic" one in the bag. THE PLAIN LINE IS KEPT, so it stays comparable between runs;
+	 * this is a second line, after it.
+	 *
+	 * `BasicHitOf`'s price with two things added, each as `ApplyHit` and `UCataclysmDamageCalculation` apply it:
+	 *   - the wearer's increased damage against that family (`UCataclysmSkillEffects::DamageAgainstTypeNamed`), in the
+	 *     increases, as `ApplyHit` adds `DamageAgainstTypeOf`;
+	 *   - the first worn weapon's sub-type bonus against health, `UCataclysmDamageCalculation::SubtypeBonus` per cent
+	 *     MORE when that weapon is Slashing, as step 9 of the calculation multiplies the damage health takes. Magic's
+	 *     bonus is against energy shield and Piercing's is armour ignored, neither of which is a creature's health
+	 *     before its defences, so neither is counted.
+	 *
+	 * Still not counted, for `BasicHitOf`'s reason: a critical strike, a row about the enemy struck, and what the
+	 * moment holds.
+	 *
+	 * @return nought when no worn weapon supplies a basic attack
+	 */
+	static float BasicHitOnAFamilyOf(const UAbilitySystemComponent* AbilitySystem,
+									 const UCataclysmEquipmentComponent& Wearing, FName CreationDamageType,
+									 FName Family);
+
+	/**
 	 * The totals for one set of worn slots, gathered onto the stand-in: the slots restored as they are listed onto an
 	 * equipment component that belongs to no actor, with the live component's switched-off slot, the player's numbers
 	 * (`UCataclysmEquipmentComponent::PlayerNumbers`) and the floor's stat lines (the live ability system's
 	 * `GetDungeonStatModifiers`).
+	 *
+	 * @param Families  the Cataclysm families to price a hit against, one `FamilyHits` entry each. Null reads the run's
+	 *                  (`RunFamiliesIn`, from the live component's world); a test names its own.
 	 */
 	static FCataclysmComparisonReading ReadingOf(const TArray<FCataclysmItem>& WornSlots,
 												 const UCataclysmEquipmentComponent& Live,
 												 const UAbilitySystemComponent* LiveAbilities,
-												 ACataclysmComparisonStandIn& StandIn);
+												 ACataclysmComparisonStandIn& StandIn,
+												 const TArray<FName>* Families = nullptr);
 
 	/**
 	 * Compares a carried item with what wearing it would replace.
@@ -140,11 +198,14 @@ public:
 	 * @param LiveAbilities  the character's ability system, for the floor's lines; may be null
 	 * @param Now            the reading of what is worn now, when the caller has already taken it for another item.
 	 *                       Null reads it here. A screen comparing every carried item reads it once.
+	 * @param Families       as `ReadingOf`'s, for a reading taken here. With `Now` given, its families are used, so
+	 *                       the two readings price the same families.
 	 */
 	static FCataclysmComparisonResult Compare(const FCataclysmItem& Hovered, UCataclysmEquipmentComponent& Live,
 											  const UAbilitySystemComponent* LiveAbilities,
 											  ACataclysmComparisonStandIn& StandIn,
-											  const FCataclysmComparisonReading* Now = nullptr);
+											  const FCataclysmComparisonReading* Now = nullptr,
+											  const TArray<FName>* Families = nullptr);
 
 	/**
 	 * The line above the change lines: "If worn, in place of Iron Helm:", "If worn, in place of Sword and Dagger:", or

@@ -8,11 +8,13 @@ capital's Walk, which only a real level reaches. So the calls are checked here, 
 level gained, is issue #2744's; the eleventh to thirteenth, the empire upgrade tree's point, option and respec, are
 issue #2741 slice 2's; the fourteenth to twentieth, the character's build -- a passive point, a capstone option, the
 tree reset, attribute points spent and reset, a skill chosen and a choice forgotten -- are issue #2763's; the
-twenty-first and twenty-second, the forge's upgrade and combine, are the owner's ruling of 2026-11-19.
+twenty-first and twenty-second, the forge's upgrade and combine, are the owner's ruling of 2026-11-19; the
+twenty-third and twenty-fourth, a piece of gear picked up and one worn, are the coordinating session's ruling of
+2026-11-19.
 
 WHAT IS CHECKED, by reading the C++ with comments removed:
 
-  1. each of the twenty-two places says its builder's line;
+  1. each of the twenty-four places says its builder's line;
   2. each says it after the step it reports -- the floor's line after the floor's day is spent, the clear's account
      after the walk's days have run, the death's after the death's own days;
   3. the dungeons are named before the days run, because a dungeon those days resolve is gone from the run after;
@@ -36,7 +38,7 @@ LOG_CPP = SOURCE / "Player" / "CataclysmPlayLoopLog.cpp"
 CHECKLIST = REPO_ROOT / "docs" / "Play_Loop_Checklist.md"
 GAME_README = REPO_ROOT / "game" / "README.md"
 
-#: The twenty-two places, by file and signature, and the builder each one says.
+#: The twenty-four places, by file and signature, and the builder each one says.
 STEPS = [
     ("Player/CataclysmFrontEndGameMode.cpp", "void ACataclysmFrontEndPlayerController::BeginPlay()", "FrontEndLine"),
     ("Interface/CataclysmNewCharacterWidget.cpp", "bool UCataclysmNewCharacterWidget::ConfirmInto(", "NewCharacterLine"),
@@ -66,6 +68,10 @@ STEPS = [
     # THE FORGE, ruled 2026-11-19: an item raised a level, and two stones combined into one of the next.
     ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::Upgrade(", "ForgeUpgradeLine"),
     ("Player/CataclysmForgeCraft.cpp", "bool UCataclysmForgeCraft::Combine(", "ForgeCombineLine"),
+    # GEAR PICKED UP AND WORN, the coordinating session's ruling of 2026-11-19: the owner's play log said nothing about
+    # gear. Said where every pickup and every wear the player chooses comes through.
+    ("Items/CataclysmDroppedItem.cpp", "bool UCataclysmDropPickup::TakeInto(", "PickedUpLine"),
+    ("Items/CataclysmWearing.cpp", "ECataclysmWearResult UCataclysmWearing::WearFromCarried(", "WoreLine"),
 ]
 
 #: What must come before each place's line, whitespace aside: the step it reports.
@@ -88,6 +94,8 @@ AFTER = {
     "ForgetSkillChoice": "ClearSkillChoice(Slot)",
     "Upgrade": "Run->AdvanceDays(Plan.Days);",
     "Combine": "Inventory->AddMaterial(Plan.Into, 1)",
+    "TakeInto": "Inventory->AddItem(Drop->Item)",
+    "WearFromCarried": "Equipment->Equip(Item, First, Second, OutSlot)",
 }
 
 

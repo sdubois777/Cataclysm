@@ -194,6 +194,14 @@ public:
 	FString GetEquippedSubType() const;
 
 	/**
+	 * The sub-type of a weapon type, read off the item bases table exactly as `GetEquippedSubType` reads the equipped
+	 * one: the first row whose `WeaponType` matches, ignoring case. Empty for an empty type, no table, or a type with no
+	 * row. `GetEquippedSubType` asks this, so the item comparison's hit on a creature's health
+	 * (`UCataclysmItemComparison::BasicHitOnAFamilyOf`), which has gear but no component to ask, reads the same answer.
+	 */
+	static FString SubTypeOfWeaponType(const UDataTable* Bases, const FString& WeaponType);
+
+	/**
 	 * How many hands the equipped weapon takes, or -1 when that is not known.
 	 * Issue #1515, for the condition `wielding_two_handed_weapon`.
 	 *
