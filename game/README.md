@@ -219,8 +219,12 @@ by `git add` with no error and no warning. Guarded by
   day 1 (issue [#2733](https://github.com/sdubois777/Cataclysm/issues/2733)). The module also
   holds `Empire/CataclysmDungeonKind.h`, the two enumerations naming what kind a
   dungeon is and what it does differently, which moved down from the `Cataclysm`
-  module so that both modules can name the same kind, and city upgrades
-  (`Empire/CataclysmCityUpgrade.h`). **It reads the empire upgrade tree's city
+  module so that both modules can name the same kind, city upgrades
+  (`Empire/CataclysmCityUpgrade.h`), and `Empire/CataclysmSeedMix.h`, the one
+  function every random stream either module derives takes its seed from, so
+  that no two streams are a fixed distance apart (issue
+  [#2749](https://github.com/sdubois777/Cataclysm/issues/2749)'s placement
+  seeding slice). **It reads the empire upgrade tree's city
   nodes**, since issue [#2741](https://github.com/sdubois777/Cataclysm/issues/2741)
   slice 3a: `FCataclysmEmpireTreeBonuses` (declared in `Empire/CataclysmEmpireMap.h`,
   its rules in `Empire/CataclysmEmpireTreeBonuses.cpp`) is what the `Cataclysm`

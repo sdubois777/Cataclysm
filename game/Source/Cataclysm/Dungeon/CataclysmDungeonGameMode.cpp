@@ -82,6 +82,7 @@
 #include "Dungeon/CataclysmFloorGenerator.h"
 #include "Empire/CataclysmDungeonKind.h"
 #include "Empire/CataclysmEmpireRun.h"
+#include "Empire/CataclysmSeedMix.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Player/CataclysmGameInstance.h"
@@ -2016,20 +2017,26 @@ void ACataclysmDungeonGameMode::ClearFloorEnemies()
 	WavePlacementsTried = 0;
 }
 
+int32 ACataclysmDungeonGameMode::ModifierSeedForPlacementOn(int32 FloorSeed, int32 Index, int32 Salt)
+{
+	// A creature's modifiers: never nought, which `DrawModifiersForRarity` reads as the clock. `Mix` never gives it.
+	return CataclysmSeedMix::Mix(FloorSeed, Salt, Index);
+}
+
+int32 ACataclysmDungeonGameMode::RaritySeedForPlacementOn(int32 FloorSeed, int32 Index)
+{
+	return CataclysmSeedMix::Mix(FloorSeed, RarityFromTheFloorSalt, Index);
+}
+
 int32 ACataclysmDungeonGameMode::ModifierSeedForPlacement(int32 Index, int32 Salt) const
 {
-	if (!CurrentFloor)
-	{
-		return 0;
-	}
-	const int32 Mixed = CurrentFloor->GetPlan().Seed ^ (Salt + Index);
-	return Mixed != 0 ? Mixed : 1; // A creature's modifiers: a floor seed is never nought, which means the clock.
+	return CurrentFloor ? ModifierSeedForPlacementOn(CurrentFloor->GetPlan().Seed, Index, Salt) : 0;
 }
 
 FRandomStream ACataclysmDungeonGameMode::RarityStreamForPlacement(int32 Index) const
 {
 	// NO FLOOR, NO SEED: a stream of nought, which no caller reaches, since both callers place on a built floor.
-	return FRandomStream(CurrentFloor ? CurrentFloor->GetPlan().Seed ^ (RarityFromTheFloorSalt + Index) : 0);
+	return FRandomStream(CurrentFloor ? RaritySeedForPlacementOn(CurrentFloor->GetPlan().Seed, Index) : 0);
 }
 
 int32 ACataclysmDungeonGameMode::PopulateFloor()
@@ -3300,12 +3307,15 @@ void ACataclysmDungeonGameMode::RaiseTheCorruptedStalker(const FVector* At)
 	// `ChooseSeed` is the dungeon's own seed on the dark floor too, and `FCataclysmDungeon::WalkSeed` after a load, so a
 	// load draws the same entry. A NEGATIVE `Cataclysm.DungeonSeed` READS THE CLOCK on every call, and there each floor
 	// is a new dungeon anyway.
-	FRandomStream Choice(ChooseSeed() ^ Effects::CorruptedStalkerSalt);
+	// THROUGH THE MIX, index 0, and the build's stream below index 1, so neither is the other a fixed distance apart.
+	// Issue #2749's placement seeding slice; until it this was `ChooseSeed() ^ CorruptedStalkerSalt`.
+	FRandomStream Choice(CataclysmSeedMix::Mix(ChooseSeed(), Effects::CorruptedStalkerSalt, 0));
 	const FCataclysmStalkerEntry& Entry = Entries[Choice.RandRange(0, Entries.Num() - 1)];
 
-	// ITS AFFIXES' ROLLS STAY ON THE FLOOR'S SEED, as ruled on 2026-10-25 ("its roll drawn on the floor's seed"). The
-	// stream is advanced by the one draw that picked the entry until #2580, so every roll is the one it was.
-	FRandomStream Stream(CurrentFloor->GetPlan().Seed ^ Effects::CorruptedStalkerSalt);
+	// ITS AFFIXES' ROLLS STAY ON THE FLOOR'S SEED, as ruled on 2026-10-25 ("its roll drawn on the floor's seed"),
+	// through the mix since issue #2749's placement seeding slice (it was `Plan.Seed ^ CorruptedStalkerSalt`), so the
+	// rolls moved then. The stream is still advanced by one draw, as it was when it also picked the entry (until #2580).
+	FRandomStream Stream(CataclysmSeedMix::Mix(CurrentFloor->GetPlan().Seed, Effects::CorruptedStalkerSalt, 1));
 	Stream.GetFraction();
 
 	// THE FIRST FLOOR IT HUNTS: THE WALKABLE CELL FARTHEST FROM THE PLAYER, out of sight, the owner's answer of
@@ -8526,7 +8536,9 @@ void ACataclysmDungeonGameMode::StepGatedShortcuts()
 		float MagicFind = 0.0f;
 		float LootQuantity = UCataclysmDropRoll::BaselineLootQuantity;
 		UCataclysmDropSpawner::PlayerLootStats(World, MagicFind, LootQuantity);
-		FRandomStream Drops(CurrentFloor->GetPlan().Seed ^ (0x50C4 + One.Index));
+		// THROUGH THE MIX, the shortcut's index as the index: until issue #2749's placement seeding slice it was
+		// `Plan.Seed ^ (0x50C4 + Index)`, so one floor's shortcuts' streams were a fixed distance apart.
+		FRandomStream Drops(CataclysmSeedMix::Mix(CurrentFloor->GetPlan().Seed, 0x50C4, One.Index));
 		SoulChainsRewardDrops += UCataclysmDropSpawner::SpawnDropsFor(World, Effects::SoulChainsRewardRung, MagicFind,
 																	  LootQuantity, Where, Drops);
 		++SoulChainsRewardRolls;
@@ -9481,8 +9493,10 @@ void ACataclysmDungeonGameMode::NoteDeathForInfestedHoard(const FCataclysmDeathN
 	float MagicFind = 0.0f;
 	float LootQuantity = UCataclysmDropRoll::BaselineLootQuantity;
 	UCataclysmDropSpawner::PlayerLootStats(World, MagicFind, LootQuantity);
-	FRandomStream Stream(Victim->GetUniqueID() ^ 0x1F35D0A7
-		^ static_cast<int32>(World->GetTimeSeconds() * 1000.0f));
+	// THROUGH THE MIX, the victim's identity, this draw's salt and the clock: until issue #2749's placement seeding
+	// slice it was their XOR, so creatures killed together, with neighbouring identities, drew related rolls.
+	FRandomStream Stream(CataclysmSeedMix::Mix(static_cast<int32>(Victim->GetUniqueID()), 0x1F35D0A7,
+		static_cast<int32>(World->GetTimeSeconds() * 1000.0f)));
 	const int32 Spawned = UCataclysmDropSpawner::SpawnOneInfestedDropFor(
 		World, Victim->RarityStep, MagicFind, Victim->GetActorLocation(), Stream);
 	UE_LOG(LogCataclysm, Log, TEXT("The Infested Hoard: %d infested drop(s) on floor %d at %d stack(s)"), Spawned,
@@ -10308,7 +10322,8 @@ void ACataclysmDungeonGameMode::PlaceTheHoards()
 
 		// THE PILE: drop rolls at the Legendary rung, lying there from the start, on a stream seeded from the floor so
 		// the same floor lays the same pile.
-		FRandomStream Stream(CurrentFloor->GetPlan().Seed ^ (0x5A17 + Index));
+		// Through the mix since issue #2749's placement seeding slice; it was `Plan.Seed ^ (0x5A17 + Index)`.
+		FRandomStream Stream(CataclysmSeedMix::Mix(CurrentFloor->GetPlan().Seed, 0x5A17, Index));
 		for (int32 Roll = 0; Roll < Effects::LuxuryHoardersPileRolls; ++Roll)
 		{
 			LuxuryHoardDrops += UCataclysmDropSpawner::SpawnDropsFor(
@@ -12504,7 +12519,9 @@ void ACataclysmDungeonGameMode::PlaceTheBoxes()
 		Box->Choices = {Open};
 		// EACH BOX'S REWARD ON A STREAM SEEDED FROM THE FLOOR, as Luxury Hoarders' pile is, so the same box gives the
 		// same loot.
-		PandorasBoxSeeds.Add(CurrentFloor->GetPlan().Seed ^ (0x9A7D + PandorasBoxes.Num()));
+		// Through the mix since issue #2749's placement seeding slice; it was `Plan.Seed ^ (0x9A7D + box number)`. NOT
+		// SAVED: rebuilt from the floor's seed with the boxes, so a loaded floor's boxes are this floor's.
+		PandorasBoxSeeds.Add(CataclysmSeedMix::Mix(CurrentFloor->GetPlan().Seed, 0x9A7D, PandorasBoxes.Num()));
 		PandorasBoxes.Add(Box);
 	}
 	UE_LOG(LogCataclysm, Log, TEXT("Pandora's Box: %d box(es) on floor %d"), PandorasBoxes.Num(), FloorNumber);

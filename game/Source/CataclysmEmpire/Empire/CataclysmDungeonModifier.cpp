@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Empire/CataclysmDungeonModifier.h"
+#include "Empire/CataclysmSeedMix.h"
 
 #include "HAL/IConsoleManager.h"
 
@@ -114,7 +115,10 @@ bool UCataclysmDungeonModifierRules::CarriesTheCorruptedStalker(int32 RunStalker
 	const float Pinned = CVarCorruptedStalkerRoll.GetValueOnAnyThread();
 	const float Roll = Pinned >= 0.0f
 		? Pinned
-		: FRandomStream(UCataclysmRoster::MixedSeed(RunStalkerSeed, WalkSeed)).FRandRange(0.0f, 100.0f);
+		// The run's Stalker seed with the dungeon's walk seed as the index, through the mix since issue #2749's placement
+		// seeding slice: until it this was `MixedSeed(RunStalkerSeed, WalkSeed)`, which is linear, so one run's dungeons
+		// drew related rolls.
+		: FRandomStream(CataclysmSeedMix::Mix(RunStalkerSeed, CorruptedStalkerSalt, WalkSeed)).FRandRange(0.0f, 100.0f);
 	return Roll < CorruptedStalkerChance * 100.0f;
 }
 
@@ -212,7 +216,8 @@ TArray<FName> UCataclysmDungeonModifierRules::EdictOrderFor(int32 WalkSeed)
 
 	// THE DUNGEON'S OWN STREAM, from its walk seed alone, so the order is the
 	// same whoever asks and nothing the run draws moves it.
-	FRandomStream Stream(UCataclysmRoster::MixedSeed(WalkSeed, EdictSalt));
+	// Through the mix since issue #2749's placement seeding slice; it was `MixedSeed(WalkSeed, EdictSalt)`, linear.
+	FRandomStream Stream(CataclysmSeedMix::Mix(WalkSeed, EdictSalt, 0));
 	return KeysOf(Draw(All, All.Num(), Stream));
 }
 
@@ -249,8 +254,9 @@ FName UCataclysmDungeonModifierRules::EdictLeftBy(
 		return NAME_None;
 	}
 
-	FRandomStream Stream(UCataclysmRoster::MixedSeed(
-		UCataclysmRoster::MixedSeed(WalkSeed, LeftEdictSalt), Day));
+	// The day as the index, through the mix since issue #2749's placement seeding slice; it was
+	// `MixedSeed(MixedSeed(WalkSeed, LeftEdictSalt), Day)`, linear, so one dungeon's days drew related Edicts.
+	FRandomStream Stream(CataclysmSeedMix::Mix(WalkSeed, LeftEdictSalt, Day));
 	return Held[Stream.RandRange(0, Held.Num() - 1)];
 }
 

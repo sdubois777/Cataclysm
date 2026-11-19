@@ -57,10 +57,13 @@ int32 UCataclysmRoster::ActiveCountFor(int32 DifficultyTier)
 
 int32 UCataclysmRoster::MixedSeed(int32 Seed, int32 Salt)
 {
-	// THE SALT GOES IN BEFORE THE MULTIPLY, not after, so two salts do not
-	// merely offset one another's output -- an addend applied afterwards would
-	// leave the two sequences a fixed distance apart, which is the correlation
-	// this exists to remove.
+	// THE SALT GOES IN BEFORE THE MULTIPLY, BUT THAT DOES NOT SEPARATE TWO SALTS'
+	// SEQUENCES: the multiply distributes over the addition, so two salts of one
+	// seed come out `(SaltA - SaltB) * Offset * Mix` apart for every seed, a fixed
+	// distance. This comment said the opposite until issue #2749's placement
+	// seeding slice, which moved every pair of related streams to
+	// `CataclysmSeedMix::Mix`. See the header for what still uses this and why
+	// that is safe.
 	const uint32 Salted = static_cast<uint32>(Seed)
 		+ static_cast<uint32>(Salt) * CataclysmOrderSeedOffset;
 

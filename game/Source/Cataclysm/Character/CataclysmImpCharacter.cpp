@@ -10,6 +10,7 @@
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "UObject/SoftObjectPath.h"
+#include "Empire/CataclysmSeedMix.h"
 
 // THE MELEE LANE MINION. The Corrupted Sentinel is played by the SIEGE lane
 // minion out of the same pack, and they are separate meshes on separate
@@ -196,8 +197,9 @@ int32 ACataclysmImpCharacter::PlayRendAnimation()
 	// creature's last swipe to the way it falls over.
 	const UWorld* World = GetWorld();
 	const float Now = World ? World->GetTimeSeconds() : 0.0f;
-	FRandomStream Stream(GetUniqueID()
-		^ static_cast<int32>(Now * 1000.0f) ^ RendDrawSalt);
+	// Its identity, the draw's salt and the clock, through the mix: issue #2749's placement seeding slice; until it this was their XOR, so creatures made or killed together, with neighbouring identities and one clock, drew related rolls.
+	FRandomStream Stream(CataclysmSeedMix::Mix(static_cast<int32>(GetUniqueID()), RendDrawSalt,
+		static_cast<int32>(Now * 1000.0f)));
 
 	const int32 Index = Stream.RandRange(0, RendAnimationCount - 1);
 	LastRendDrawn = Index;

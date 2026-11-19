@@ -20,6 +20,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameplayTagContainer.h"
 #include "UObject/SoftObjectPath.h"
+#include "Empire/CataclysmSeedMix.h"
 
 // SEVAROG, FROM THE PARAGON SEVAROG PACK. 85,163 triangles across 155 bones and
 // **3.11 metres tall**, which is the design document's "towering" as a
@@ -536,9 +537,9 @@ void ACataclysmGatekeeperCharacter::UseEnemyAbility(
 		// Imp's own swipe draw and the death draw use, salted differently so it
 		// is not the stream either of those runs on.
 		constexpr int32 CallDrawSalt = 0x1D0FF;
-		FRandomStream Stream(GetUniqueID()
-			^ static_cast<int32>(World->GetTimeSeconds() * 1000.0f)
-			^ CallDrawSalt);
+		// Its identity, the draw's salt and the clock, through the mix: issue #2749's placement seeding slice; until it this was their XOR, so creatures made or killed together, with neighbouring identities and one clock, drew related rolls.
+		FRandomStream Stream(CataclysmSeedMix::Mix(static_cast<int32>(GetUniqueID()), CallDrawSalt,
+			static_cast<int32>(World->GetTimeSeconds() * 1000.0f)));
 
 		for (int32 Index2 = 0; Index2 < Arriving; ++Index2)
 		{
