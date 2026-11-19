@@ -37,6 +37,11 @@ struct FCataclysmHitNotice;
  * on the character's death line (Q2). It is worked out from this log's own record because the record of the last blow
  * kept on the ability system (`FCataclysmLastBlow`) holds neither what landed nor the flags.
  *
+ * AND ONE LINE FOR EVERY BLOW THE CHARACTER DEALS that is not damage over time: `OutgoingLine`, which begins "HIT OUT: ".
+ * Issue #2749, ruled by the coordinating session on 2026-11-19, so a play session's log says how many blows a creature
+ * took to fall and what each sent and landed; the owner's Brute on 2026-11-19 took at least seven where the model said
+ * two, and nothing logged a blow the character dealt. It is said at once and never added up.
+ *
  * PLAIN C++, LIKE `FCataclysmPlayLoopLog`: every line is built here from what it is given, and the character that owns
  * it says the lines, so a test can check every word and the one-second totals without a world.
  */
@@ -90,6 +95,17 @@ struct CATACLYSM_API FCataclysmHitLog
 
 	/** The whole line: `Prefix`, "took ", the description, and the health before it. */
 	static FString Line(const FBlow& Blow);
+
+	/** What every line of a blow dealt begins with. Not `Prefix` followed by more, so a filter on either finds one. */
+	static const TCHAR* const OutgoingPrefix;
+
+	/**
+	 * The line of a blow the character dealt: "HIT OUT: Molten Cleave on CataclysmBruteCharacter_30 (Elite): sent 158,
+	 * landed 145, 145 to health; critical". What struck, as `WhatText` names it; on whom, as `AttackerText` names an
+	 * attacker; `FCataclysmHitNotice::Sent`, which is before the critical strike multiplier; what landed on every pool
+	 * and on health; and the flags that are true. AN EVADED BLOW says only "sent 158, evaded", since nothing landed.
+	 */
+	static FString OutgoingLine(const FCataclysmHitNotice& Notice);
 
 	/**
 	 * Notes a blow the character took at world time `Now`, and answers the lines to say now: every second's total

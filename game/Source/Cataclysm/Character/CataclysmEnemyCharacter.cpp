@@ -2304,6 +2304,21 @@ bool ACataclysmEnemyCharacter::StrikesBackWhenHit() const
 	return UCataclysmEnemyModifiers::StrikesBack(ModifierRows);
 }
 
+bool ACataclysmEnemyCharacter::TakeAStrikeBackIfDue()
+{
+	const UWorld* World = GetWorld();
+	const double Now = World ? World->GetTimeSeconds() : 0.0;
+	// AT OR PAST THE INTERVAL, as `AuraPulseIsDue` reads its own: a hit landing exactly one interval after the last
+	// strike back is struck back.
+	if (bHasStruckBack && Now - LastStrikeBackSeconds < static_cast<double>(SecondsBetweenAttacks()))
+	{
+		return false;
+	}
+	bHasStruckBack = true;
+	LastStrikeBackSeconds = Now;
+	return true;
+}
+
 void ACataclysmEnemyCharacter::ApplyModifierAttributes()
 {
 	if (ModifierRows.IsEmpty())

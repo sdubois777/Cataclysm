@@ -132,6 +132,17 @@ public:
 	/** The name of the entry it wears, or empty before `WearTheBuild`. */
 	const FString& EntryName() const { return WornEntryName; }
 
+	/**
+	 * What every damage over time it applies is multiplied by: the damage multiplier its build applied to its hits,
+	 * `UCataclysmDungeonModifierEffects::CorruptedStalkerDamageMultiplier`, stored by `WearTheBuild`. One until then,
+	 * and one for the corrupted double, which carries the player's own numbers and no multiplier (R4, ruled
+	 * 2026-11-02). Ruled by the coordinating session on 2026-11-19, issue #2749's enemy burn slice: "The Corrupted
+	 * Stalker's and Corrupted Double's kit DoTs are multiplied by the same multiplier their hits carry." Until then its
+	 * kit's burns and bleeds were the player's table figures, 25 and 20 a tick, beside hits cut to 0.06 at tier 1.
+	 * `UCataclysmSkillEffects::ApplyDamageOverTime` reads it.
+	 */
+	float DamageOverTimeMultiplier() const { return WornDamageMultiplier; }
+
 	/** Its weapon's basic attack reach once it wears a build, and a creature's melee reach before. */
 	virtual float AttackReachCm() const override;
 
@@ -217,6 +228,9 @@ protected:
 
 	FString WornEntryName;
 	FCataclysmWeaponSkill BasicAttack;
+
+	/** See `DamageOverTimeMultiplier`. One until `WearTheBuild` sets it, and one for the corrupted double. */
+	float WornDamageMultiplier = 1.0f;
 
 	/** Its weapon's skills, from `UCataclysmWeaponSkills::SkillsFor` for its weapon type and damage type. */
 	TArray<FCataclysmWeaponSkill> Skills;

@@ -330,14 +330,27 @@ def share_of_a_hit_taken(lines, constants, class_name: str, level: int,
     return (1.0 - reduction / 100.0) * (1.0 - flat / 100.0)
 
 
+def share_of_a_tick_taken(lines, constants, class_name: str, level: int) -> float:
+    """What a damage over time tick keeps after the class's flat damage reduction. Armour is left off: whether it meets
+    a tick is what `Cataclysm.EnemyBurn.ATableBurnFromACreatureArrivesAtWhatTheDefendersStepsLeave` measures, and
+    leaving it off overstates a tick by at most the 3.4% a level 2 Ravager's armour takes, so this errs harder."""
+    flat = min(stat(lines, constants, class_name, "damage_reduction", level),
+               float(constants["damage_reduction_cap"]))
+    return 1.0 - flat / 100.0
+
+
 def fight(class_name: str, level: int, *, lines, constants, slots, weapon,
-          tier: int = 1, use_skills: bool = True) -> dict:
+          tier: int = 1, use_skills: bool = True, burn_per_second: float = 0.0) -> dict:
     """Ten Imps against one character. Returns who won and how long it took.
 
     Everything after `level` is keyword-only, because `lines`, `constants`,
     `slots` and `weapon` are four dictionaries and passing them positionally is
     a mistake nothing would catch. The mana costs are taken at `level` and the
     weapon's sub-type bonus is applied here, so every caller fights the same way.
+
+    `burn_per_second` IS A BURN TICKING ONCE A SECOND FOR THE WHOLE FIGHT, before the character's defences: a Hellfire
+    Aura the character stands in throughout (issue #2749's enemy burn slice). Nought by default, which is the fight
+    every caller had before.
     """
     def line(name: str) -> float:
         return stat(lines, constants, class_name, name, level)
@@ -357,8 +370,9 @@ def fight(class_name: str, level: int, *, lines, constants, slots, weapon,
     imps = [float(constants["imp_health"])] * imp_count
 
     ready = {slot: 0.0 for slot in ROTATION}
-    elapsed = since_swing = since_basic = 0.0
+    elapsed = since_swing = since_basic = since_tick = 0.0
     swing_gap = 1.0 / weapon["speed"]
+    tick = burn_per_second * share_of_a_tick_taken(lines, constants, class_name, level)
 
     def strike(amount: float) -> None:
         nonlocal health
@@ -396,6 +410,14 @@ def fight(class_name: str, level: int, *, lines, constants, slots, weapon,
             absorbed = min(shield, incoming)
             shield -= absorbed
             health -= incoming - absorbed
+
+        if tick > 0.0:
+            since_tick += STEP_SECONDS
+            if since_tick >= 1.0:
+                since_tick -= 1.0
+                absorbed = min(shield, tick)
+                shield -= absorbed
+                health -= tick - absorbed
 
         health = min(max_health, health + line("health_regen") * STEP_SECONDS)
         shield = min(max_shield, shield + line("energy_shield_regen") * STEP_SECONDS)
@@ -858,3 +880,83 @@ def test_control_the_bulwarks_clears_are_lost_at_four_times_an_outposts_figure(
     assert failed > len(bulwark) // 20, (
         f"at {FORMER_FIRST_TIER_SCALE} only {failed} of {len(bulwark)} Bulwark clears fail, so this walk no longer "
         "tells a survivable ring figure from one that is not")
+
+
+# ---------------------------------------------------------------------------
+# THE GUARD ON HELLFIRE AURA'S BURN, since issue #2749's enemy burn slice.
+#
+# The project owner died on 2026-11-19 on floor 2 of a 5-floor Outpost dungeon at level 2, most of it to Hellfire Aura's
+# burn: the status table's flat 25 a tick, which no tier, ring or floor scaled. The coordinating session ruled the same
+# day that an enemy-applied damage over time is sized from what applies it, and set the share by the rule that chose tier
+# 1's damage scale: a new character, levelling at half the kills, wins every floor of every first-surge Outpost dungeon
+# with at least `LEAST_HEALTH_LEFT` of its health left while standing in a Hellfire Aura on every floor, carried by an
+# Elite Abyssal Warden, the creature whose hit is the largest. `sim/analyse_enemy_burn_and_thorns.py` is the measurement.
+
+#: The aura's carrier in the guard: the Elite of the kind whose hit is the largest, so the guard is the hardest case.
+AURA_CARRIER = ("Elite", "Abyssal Warden")
+
+
+def table_burn_per_tick() -> float:
+    """The status table's burn, `DoT_Burn`'s flat figure a tick: what Hellfire Aura dealt until the enemy burn slice."""
+    with (DATA / "StatusEffects.csv").open(encoding="utf-8-sig", newline="") as handle:
+        for row in csv.DictReader(handle):
+            if row["Name"] == "DoT_Burn":
+                return float(row["FlatDamagePerTick"])
+    raise AssertionError("no DoT_Burn row in game/Data/StatusEffects.csv")
+
+
+def walk_in_an_aura(dungeon, *, model, lines, constants, slots, weapon, flat_burn=None,
+                    kill_share=KILL_SHARE) -> dict:
+    """`walk`, with a Hellfire Aura burning the character for the whole of every floor's fight: the carrier's hit times
+    the aura's share, or `flat_burn` a tick when given, for the control."""
+    from cataclysm_sim import enemy_stats as es
+
+    class_name = constants["starting_class"]
+    banked, left = 0.0, 0.0
+    for floor in range(1, dungeon.floors + 1):
+        level = level_for(banked, model)
+        imp = es.strength_on_floor("Common", 1, "Basic", dungeon.subtype, dungeon.floors, floor,
+                                   dungeon.modifier_score, kind="Imp")
+        carrier = es.strength_on_floor(AURA_CARRIER[0], 1, "Basic", dungeon.subtype, dungeon.floors, floor,
+                                       dungeon.modifier_score, kind=AURA_CARRIER[1])
+        burn = flat_burn if flat_burn is not None else es.hellfire_aura_burn_per_tick(carrier.damage_per_hit)
+        result = fight(class_name, level=level, lines=lines, slots=slots, weapon=weapon, burn_per_second=burn,
+                       constants=dict(constants, imp_health=str(imp.health), imp_damage=str(imp.damage_per_hit)))
+        if result["won"] is not True:
+            return {"won": False, "lost_on": floor, "left": 0.0, "level": level}
+        left = result["health_left"] / result["max_health"]
+        banked += kill_share * floor_experience(model, dungeon.subtype, dungeon.floors, floor, dungeon.modifier_score)
+    return {"won": True, "lost_on": None, "left": left, "level": level_for(banked, model)}
+
+
+def test_a_new_character_survives_a_hellfire_aura_on_every_floor_of_every_first_surge_dungeon(
+        model, surge_dungeons, constants, class_lines, slots, weapon) -> None:
+    """THE GUARD ON THE AURA'S SHARE (`UCataclysmEnemyModifiers::HellfireAuraBurnShareOfWeaponDamage`, 0.09)."""
+    from cataclysm_sim import enemy_stats as es
+
+    failed = []
+    for dungeon in surge_dungeons:
+        result = walk_in_an_aura(dungeon, model=model, lines=class_lines, constants=constants, slots=slots,
+                                 weapon=weapon)
+        if not result["won"] or result["left"] < LEAST_HEALTH_LEFT:
+            failed.append((dungeon.did, dungeon.subtype, dungeon.floors, dungeon.modifier_score, result["lost_on"],
+                           round(result["left"], 3)))
+    assert not failed, (
+        f"{len(failed)} of {len(surge_dungeons)} first-surge Outpost dungeons are lost, or won with under "
+        f"{LEAST_HEALTH_LEFT:.0%} health left, standing in an {' '.join(AURA_CARRIER)}'s Hellfire Aura at "
+        f"{es.HELLFIRE_AURA_BURN_SHARE_OF_WEAPON_DAMAGE} of its hit a tick. The first ten: {failed[:10]}")
+
+
+def test_control_the_status_tables_flat_burn_kills_most_of_them(
+        model, surge_dungeons, constants, class_lines, slots, weapon) -> None:
+    """THE CONTROL: the walk tells a survivable aura from one that is not. At the table's flat 25 a tick, the aura's
+    figure until the enemy burn slice, measured 2026-11-19: 41 of the 3,057 dungeons are won with 10% health left."""
+    flat = table_burn_per_tick()
+    assert flat == 25.0, flat
+    passed = sum(1 for dungeon in surge_dungeons
+                 if (result := walk_in_an_aura(dungeon, model=model, lines=class_lines, constants=constants,
+                                               slots=slots, weapon=weapon, flat_burn=flat))["won"]
+                 and result["left"] >= LEAST_HEALTH_LEFT)
+    assert passed < len(surge_dungeons) // 2, (
+        f"at the table's flat {flat} a tick {passed} of {len(surge_dungeons)} pass, so this walk no longer tells a "
+        "survivable aura from one that is not")

@@ -877,6 +877,20 @@ LAST_TIER = 8
 #: The minimum strength is what the creature scores on floor 1 of a dungeon this deep.
 MINIMUM_STRENGTH_REFERENCE_FLOORS = 12
 
+#: What one tick of Hellfire Aura's burn deals, once a second, as a share of its carrier's weapon damage. Issue #2749's
+#: enemy burn slice, ruled by the coordinating session on 2026-11-19: an enemy-applied damage over time is sized from
+#: what applies it. It was the status table's flat 25 a tick, which no tier, ring or floor scaled. The largest step of
+#: 0.01 at which a new character wins every floor of all 3,057 first-surge Outpost dungeons with 10% health left while
+#: standing in an Elite Abyssal Warden's aura on every floor; 0.1 left 3 short. The game's copy is
+#: `UCataclysmEnemyModifiers::HellfireAuraBurnShareOfWeaponDamage`; `tools/tests/test_enemy_damage_over_time_port.py`
+#: holds them equal and `tools/tests/test_the_starting_character_survives_a_pack.py` is the guard.
+HELLFIRE_AURA_BURN_SHARE_OF_WEAPON_DAMAGE = 0.09
+
+
+def hellfire_aura_burn_per_tick(carrier_damage_per_hit: float) -> float:
+    """One tick of a Hellfire Aura carrier's burn, before the target's defences: its hit times the share."""
+    return max(0.0, carrier_damage_per_hit) * HELLFIRE_AURA_BURN_SHARE_OF_WEAPON_DAMAGE
+
 
 def damage_scale(tier: int, ring=DEFAULT_RING) -> float:
     """What a creature's damage is multiplied by at this difficulty tier on a dungeon rolled on this ring: at tier 1,

@@ -126,7 +126,8 @@ def penetration_run():
                                   "analyse_outpost_depth.py",
                                   "analyse_opening.py",
                                   "analyse_empire_tree_caps.py",
-                                  "analyse_architectural_insight_cap.py"])
+                                  "analyse_architectural_insight_cap.py",
+                                  "analyse_enemy_burn_and_thorns.py"])
 def test_the_script_runs_and_prints_something(name):
     printed, _ = run(name)
     assert len(printed.splitlines()) > 20, printed
@@ -3875,3 +3876,40 @@ def test_it_measures_the_chosen_cap_and_past_it_and_the_uncapped_reading(insight
     assert cap in ns["INSIGHT_FLOORS"]
     assert max(ns["INSIGHT_FLOORS"]) > cap
     assert 320 in ns["INSIGHT_FLOORS"]
+
+
+# --------------------------------------------------------------------------
+# analyse_enemy_burn_and_thorns.py -- issue #2749, the enemy burn slice
+# --------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def enemy_burn_run():
+    """The smoke default: 20 seeds' first surges. The figures in the script's docstring are 300 seeds."""
+    return run("analyse_enemy_burn_and_thorns.py")
+
+
+def test_the_shipped_aura_share_passes_every_dungeon_the_smoke_run_walks_and_the_flat_burn_does_not(enemy_burn_run):
+    """The ruling's claim on the smoke run's dungeons, with the strongest carrier: every one is won with 10% health left
+    at the shipped share, and fewer than half at the table's flat figure."""
+    from cataclysm_sim import enemy_stats as es
+
+    printed, ns = enemy_burn_run
+    sweep = ns["RESULTS"]["sweep"]
+    warden = ("Elite", "Abyssal Warden")
+    passed, total = sweep[(warden, es.HELLFIRE_AURA_BURN_SHARE_OF_WEAPON_DAMAGE)]
+    assert total > 100 and passed == total, (passed, total)
+    flat, _ = sweep[(warden, None)]
+    assert flat < total // 2, flat
+    assert "SMOKE RUN" in printed
+
+
+def test_thorns_once_per_interval_returns_about_what_the_carriers_own_swings_deal(enemy_burn_run):
+    """The owner's ruling of 2026-11-19, "so it returns about what its own swings would deal", on the deepest floor's
+    armoured carriers, where it bites: the strike backs come to within a third of the carrier's own swings over the same
+    seconds, where once per hit they came to several times as much. And the owner's logged Brute keeps three of seven."""
+    _, ns = enemy_burn_run
+    for kind in ("Brute", "Abyssal Warden"):
+        hits, per_hit, gated, per_interval, own = ns["RESULTS"]["thorns"][(8, 8, "None", kind)]
+        assert per_hit > 2.5 * own, (kind, per_hit, own)
+        assert abs(per_interval - own) < own / 3.0, (kind, per_interval, own)
+    assert ns["RESULTS"]["owners_brute"] == (7, 3)

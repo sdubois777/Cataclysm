@@ -1934,17 +1934,24 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						Data.EffectSpec.GetContext().GetEffectCauser(),
 						Hit.Damage);
 
-					// AND A CREATURE CARRYING THORNS OF GLASS STRIKES BACK, once
-					// for this hit, with its own attack damage, whatever the hit
-					// was worth. Issue #2749 (B2), the owner's ruling of
-					// 2026-11-18. Here, under retaliation's own conditions, so it
-					// answers a hit that got through and never a tick, and a blow
-					// that cannot be retaliated against -- a returned blow, a
-					// death blast -- provokes none. At whoever struck the blow,
-					// the effect's causer, as retaliation is paid.
+					// AND A CREATURE CARRYING THORNS OF GLASS STRIKES BACK, with its
+					// own attack damage, whatever the hit was worth. Issue #2749
+					// (B2), the owner's ruling of 2026-11-18. Here, under
+					// retaliation's own conditions, so it answers a hit that got
+					// through and never a tick, and a blow that cannot be
+					// retaliated against -- a returned blow, a death blast --
+					// provokes none. At whoever struck the blow, the effect's
+					// causer, as retaliation is paid.
+					//
+					// AT MOST ONCE PER ITS OWN ATTACK INTERVAL since the owner's
+					// ruling of 2026-11-19, which replaced once per hit:
+					// `TakeAStrikeBackIfDue` asks the creature's own clock, and is
+					// asked last, so a hit that could not be struck back anyway
+					// does not use up the creature's interval.
 					ACataclysmEnemyCharacter* ThornedCreature =
 						Cast<ACataclysmEnemyCharacter>(CataclysmDefendingBody(*this));
-					if (ThornedCreature != nullptr && ThornedCreature->StrikesBackWhenHit())
+					if (ThornedCreature != nullptr && ThornedCreature->StrikesBackWhenHit()
+						&& ThornedCreature->TakeAStrikeBackIfDue())
 					{
 						UCataclysmRetaliation::StrikeBack(
 							ThornedCreature, Data.EffectSpec.GetContext().GetEffectCauser());

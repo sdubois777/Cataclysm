@@ -398,11 +398,27 @@ public:
 	TArray<FName> ModifierRows;
 
 	/**
-	 * Whether this creature strikes back at whatever hits it, once per hit, for its own attack damage: it carries
-	 * Thorns of Glass. Issue #2749 (B2). `UCataclysmVitalAttributeSet` asks it of the body a hit lands on, where it
-	 * decides retaliation, and `UCataclysmRetaliation::StrikeBack` deals the blow.
+	 * Whether this creature strikes back at whatever hits it, for its own attack damage: it carries Thorns of Glass.
+	 * Issue #2749 (B2). `UCataclysmVitalAttributeSet` asks it of the body a hit lands on, where it decides retaliation,
+	 * and `UCataclysmRetaliation::StrikeBack` deals the blow, when `TakeAStrikeBackIfDue` agrees.
 	 */
 	bool StrikesBackWhenHit() const;
+
+	/**
+	 * Whether a strike back is due for a hit that just got through, and if it is, counts it. AT MOST ONCE PER ITS OWN
+	 * ATTACK INTERVAL: the project owner, 2026-11-19, verbatim, "Once per its attack time: It can strike back at most
+	 * once per its own attack interval, so it returns about what its own swings would deal (~40 in the example). Still
+	 * punishes hitting it; can no longer out-damage itself." It replaced "once per hit" (2026-11-18), under which a
+	 * deep floor's armoured Elite carrier struck a new character back for one to four times its health per kill.
+	 *
+	 * ITS OWN ATTACK INTERVAL IS `SecondsBetweenAttacks()` AT THE MOMENT OF THE HIT: the interval its own swings use,
+	 * its speed, feasting and darkness multipliers included, so a Commander's haste shortens it and a Cripple lengthens
+	 * it. THE FIRST HIT THAT GETS THROUGH IS STRUCK BACK; the next only once that interval has passed on the world clock
+	 * since the last strike back. A hit in between is not struck back and nothing is queued. Each creature keeps its own
+	 * clock, so an area hit on several carriers draws one strike back from each that is due. Not saved: a loaded
+	 * creature may strike back at its first hit.
+	 */
+	bool TakeAStrikeBackIfDue();
 
 	/**
 	 * THE ONE ROW OF `ModifierRows` THE FLOOR GAVE, NOT THE CREATURE'S OWN DRAW: Unstable Dimensions' reality, set by
@@ -2204,6 +2220,10 @@ public:
 	/** Seconds between its attacks. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cataclysm|Enemy", meta = (ClampMin = "0.01"))
 	float AttackIntervalSeconds = 1.5f;
+
+	/** Whether it has struck back yet, and when it last did on the world clock. See `TakeAStrikeBackIfDue`. */
+	bool bHasStruckBack = false;
+	double LastStrikeBackSeconds = 0.0;
 
 	/**
 	 * The four designed figures that are the same at every rarity. Issue #372.

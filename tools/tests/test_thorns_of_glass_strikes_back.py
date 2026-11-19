@@ -29,9 +29,12 @@ MODIFIERS_HEADER = SOURCE / "Character" / "CataclysmEnemyModifiers.h"
 RETALIATION = SOURCE / "AbilitySystem" / "CataclysmRetaliation.cpp"
 RETALIATION_HEADER = SOURCE / "AbilitySystem" / "CataclysmRetaliation.h"
 
-#: The coordinating session's words of 2026-11-18 (#2749, Q1), as the design
-#: workbook's Enemy Modifiers sheet carries them and the generator copies them.
-RULED_SENTENCE = "Strikes back at whatever hits it, once per hit, for its own attack damage."
+#: The coordinating session's words of 2026-11-19, carrying the project owner's ruling of the same day (at most once
+#: per its own attack interval, which replaced the 2026-11-18 sentence's "once per hit"), as the design workbook's Enemy
+#: Modifiers sheet carries them and the generator copies them.
+RULED_SENTENCE = ("Strikes back at whatever hits it, at most once per its own attack interval, "
+                  "for its own attack damage.")
+VITAL = SOURCE / "AbilitySystem" / "CataclysmVitalAttributeSet.cpp"
 
 
 def read(path: pathlib.Path) -> str:
@@ -120,3 +123,17 @@ def test_the_strike_back_is_the_creatures_own_hit_at_its_whole_attack_damage():
                      without_comments(read(RETALIATION_HEADER)))
     for mark in ("bCannotBeRetaliatedAgainst", "bIsRetaliation"):
         assert re.search(rf"Delivery\.{mark}\s*=\s*true;", body), mark
+
+
+def test_the_strike_back_waits_its_own_attack_interval():
+    """THE OWNER'S RULING OF 2026-11-19: "It can strike back at most once per its own attack interval". The attribute
+    set strikes back only when the creature carries the row AND its own clock says one is due; the clock reads the
+    interval its own swings use, buffs included (`SecondsBetweenAttacks`), and records the strike back. THE FIRST
+    ASSERTION SHOWS THE PARSE FOUND THE STRIKE BACK, so the others cannot pass on an empty match."""
+    vital = without_comments(read(VITAL))
+    assert "UCataclysmRetaliation::StrikeBack(" in vital
+    assert re.search(r"StrikesBackWhenHit\(\)\s*&&\s*ThornedCreature->TakeAStrikeBackIfDue\(\)", vital), (
+        "the strike back is no longer gated by the creature's own interval")
+    due = body_of(without_comments(read(CREATURE)), "bool ACataclysmEnemyCharacter::TakeAStrikeBackIfDue()")
+    assert "SecondsBetweenAttacks()" in due, due
+    assert re.search(r"LastStrikeBackSeconds\s*=\s*Now", due), due

@@ -236,6 +236,8 @@ void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data
 	Notice.Landed = Outcome.AbsorbedByMana + Outcome.AbsorbedByShield
 		+ Outcome.AbsorbedByTemporary + Outcome.DealtToHealth;
 	Notice.DealtToHealth = Outcome.DealtToHealth;
+	// AND WHAT WAS SENT: the figure the defender's calculation was given, which nothing changes after it. Issue #2749.
+	Notice.Sent = Hit.Damage;
 	Notice.bCritical = Outcome.bWasCritical;
 	Notice.bBlocked = Outcome.bBlocked;
 	Notice.bEvaded = Outcome.bEvaded;

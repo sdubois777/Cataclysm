@@ -27,11 +27,15 @@
 #include "Tests/CataclysmTestWorld.h"
 
 /**
- * Thorns of Glass: "Strikes back at whatever hits it, once per hit, for its own attack damage." Issue #2749 (B2), the
- * owner's ruling of 2026-11-18, which replaced "Reflects 50% of all damage taken back to the attacker": a share of the
- * hit grew with the player's own damage, so the stronger the player, the harder the creature punished them. The
- * mechanism is `UCataclysmRetaliation::StrikeBack`, called by `UCataclysmVitalAttributeSet` under retaliation's own
- * conditions: a hit that got through, never a tick, and never a blow that cannot be retaliated against.
+ * Thorns of Glass: "Strikes back at whatever hits it, at most once per its own attack interval, for its own attack
+ * damage." Issue #2749 (B2), the owner's ruling of 2026-11-18, which replaced "Reflects 50% of all damage taken back to
+ * the attacker": a share of the hit grew with the player's own damage, so the stronger the player, the harder the
+ * creature punished them. AT MOST ONCE PER ITS OWN ATTACK INTERVAL since the owner's ruling of 2026-11-19, which
+ * replaced "once per hit": a deep floor's armoured Elite carrier struck a new character back for one to four times its
+ * health per kill. The mechanism is `UCataclysmRetaliation::StrikeBack`, called by `UCataclysmVitalAttributeSet` under
+ * retaliation's own conditions -- a hit that got through, never a tick, and never a blow that cannot be retaliated
+ * against -- when `ACataclysmEnemyCharacter::TakeAStrikeBackIfDue` agrees. A test that hits one creature twice moves the
+ * world's clock past its interval between the hits, so each hit is struck back as before.
  *
  * THE CHARACTERS ARE REAL: a player pawn with its ability system on a player state, as the game wires one, and creatures
  * of the monsters' side given the row as a spawned creature is, by `ApplyModifierAttributes`. The player is never
@@ -226,6 +230,9 @@ CATACLYSM_THORNS_TEST(FCataclysmThornsOfGlassAnyHitTest,
 
 	ThornsHeal(Player);
 	ThornsSet(Player, Combat::GetAttackDamageAttribute(), 1000.0f);
+	// PAST ITS ATTACK INTERVAL, so the second hit is due a strike back as the first was. Issue #2749, the owner's
+	// ruling of 2026-11-19: at most once per its own attack interval.
+	World->TimeSeconds += Thorned->SecondsBetweenAttacks() + 0.01f;
 	Before = ThornsHealthOf(Player);
 	const float SentLarge = ThornsPlayerHits(Player, Thorned);
 	const float BackForLarge = Before - ThornsHealthOf(Player);
@@ -433,7 +440,9 @@ CATACLYSM_THORNS_TEST(FCataclysmThornsOfGlassReturnedBlowTest,
 		return false;
 	}
 
-	// 3. HOLDING 20 RETALIATION, the player hits as in 1, and is struck back.
+	// 3. HOLDING 20 RETALIATION, the player hits as in 1, and is struck back. PAST THE CREATURE'S ATTACK INTERVAL since
+	// reading 1's strike back, so this hit is due one: at most once per its own attack interval (the owner, 2026-11-19).
+	World->TimeSeconds += Thorned->SecondsBetweenAttacks() + 0.01f;
 	ThornsHeal(Player);
 	PlayerBefore = ThornsHealthOf(Player);
 	CreatureBefore = ThornsHealthOf(Thorned);
@@ -507,6 +516,149 @@ CATACLYSM_THORNS_TEST(FCataclysmThornsOfGlassKillingHitTest,
 	}
 	TestEqual(TEXT("and it struck back as it fell, for its attack damage"), Before - ThornsHealthOf(Player),
 			  ThornsCreatureAttackDamage, 0.01f);
+	return true;
+}
+
+/**
+ * AT MOST ONCE PER ITS OWN ATTACK INTERVAL: three hits at one moment are struck back once. The project owner,
+ * 2026-11-19: "It can strike back at most once per its own attack interval, so it returns about what its own swings
+ * would deal". THE CONTROL: each of the three hits landed on the creature, so the two that drew nothing were hits that
+ * got through and not hits that missed.
+ */
+CATACLYSM_THORNS_TEST(FCataclysmThornsOfGlassOncePerIntervalTest,
+	"Cataclysm.ThornsOfGlass.HitsWithinItsAttackIntervalAreStruckBackOnce")
+{
+	using namespace CataclysmThornsOfGlassTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerCharacter* Player = SpawnThornsPlayer(World);
+	ACataclysmEnemyCharacter* Thorned = SpawnThornsCreature(World, FVector(3.0f * ThornsMetre, 0.0f, 0.0f), true);
+	if (!TestNotNull(TEXT("set-up: a player"), Player) || !TestNotNull(TEXT("set-up: a thorned creature"), Thorned))
+	{
+		return false;
+	}
+
+	const float PlayerBefore = ThornsHealthOf(Player);
+	int32 Landed = 0;
+	for (int32 Hit = 0; Hit < 3; ++Hit)
+	{
+		const float CreatureBefore = ThornsHealthOf(Thorned);
+		ThornsPlayerHits(Player, Thorned);
+		Landed += ThornsHealthOf(Thorned) < CreatureBefore ? 1 : 0;
+	}
+	if (!TestEqual(TEXT("CONTROL: all three hits landed on the creature"), Landed, 3))
+	{
+		return false;
+	}
+	TestEqual(TEXT("three hits at one moment are struck back once, for its attack damage"),
+			  PlayerBefore - ThornsHealthOf(Player), ThornsCreatureAttackDamage, 0.01f);
+	return true;
+}
+
+/**
+ * ITS OWN ATTACK INTERVAL, AND THEN AGAIN: a hit is struck back; a hit a tenth of a second before its interval has
+ * passed is not; a hit just after it is. The interval is the one its own swings use, `SecondsBetweenAttacks`, 1.5
+ * seconds for a creature that states none.
+ */
+CATACLYSM_THORNS_TEST(FCataclysmThornsOfGlassAgainAfterIntervalTest,
+	"Cataclysm.ThornsOfGlass.AHitAfterItsAttackIntervalIsStruckBackAgain")
+{
+	using namespace CataclysmThornsOfGlassTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerCharacter* Player = SpawnThornsPlayer(World);
+	ACataclysmEnemyCharacter* Thorned = SpawnThornsCreature(World, FVector(3.0f * ThornsMetre, 0.0f, 0.0f), true);
+	if (!TestNotNull(TEXT("set-up: a player"), Player) || !TestNotNull(TEXT("set-up: a thorned creature"), Thorned))
+	{
+		return false;
+	}
+	const float Interval = Thorned->SecondsBetweenAttacks();
+	TestEqual(TEXT("set-up: a creature that states no interval swings every 1.5 seconds"), Interval, 1.5f, 0.001f);
+
+	float Before = ThornsHealthOf(Player);
+	ThornsPlayerHits(Player, Thorned);
+	TestEqual(TEXT("the first hit is struck back"), Before - ThornsHealthOf(Player), ThornsCreatureAttackDamage, 0.01f);
+
+	World->TimeSeconds += Interval - 0.1f;
+	Before = ThornsHealthOf(Player);
+	ThornsPlayerHits(Player, Thorned);
+	TestEqual(TEXT("a hit a tenth of a second before its interval has passed is not"), Before - ThornsHealthOf(Player),
+			  0.0f, 0.01f);
+
+	World->TimeSeconds += 0.2f;
+	Before = ThornsHealthOf(Player);
+	ThornsPlayerHits(Player, Thorned);
+	TestEqual(TEXT("a hit just after it is struck back again"), Before - ThornsHealthOf(Player),
+			  ThornsCreatureAttackDamage, 0.01f);
+	return true;
+}
+
+/**
+ * EACH CARRIER KEEPS ITS OWN CLOCK: one area blow on two thorned creatures is struck back once by each; the same blow
+ * again at once draws nothing from either; past their interval it draws one from each again. The blow is the point-blank
+ * nova `ATriggeredAreaBlowOnThreeThornedCreaturesIsStruckBackThreeTimes` uses.
+ */
+CATACLYSM_THORNS_TEST(FCataclysmThornsOfGlassEachItsOwnClockTest,
+	"Cataclysm.ThornsOfGlass.AnAreaHitOnTwoCarriersIsStruckBackOnceByEachAndNotAgainWithinTheirIntervals")
+{
+	using namespace CataclysmThornsOfGlassTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerCharacter* Player = SpawnThornsPlayer(World);
+	if (!TestNotNull(TEXT("set-up: a player"), Player))
+	{
+		return false;
+	}
+	const FVector Here = Player->GetActorLocation();
+	ACataclysmEnemyCharacter* First = SpawnThornsCreature(World, Here + FVector(2.0f * ThornsMetre, 0.0f, 0.0f), true);
+	ACataclysmEnemyCharacter* Second = SpawnThornsCreature(World, Here + FVector(-2.0f * ThornsMetre, 0.0f, 0.0f), true);
+	if (!TestNotNull(TEXT("set-up: a first carrier"), First) || !TestNotNull(TEXT("set-up: a second carrier"), Second))
+	{
+		return false;
+	}
+
+	FCataclysmWeaponSkill Nova;
+	Nova.Slot = ECataclysmAbilitySlot::Heavy;
+	Nova.Name = TEXT("A point-blank nova");
+	Nova.Shape = ECataclysmSkillShape::Strike;
+	Nova.Params = UCataclysmSkillShapes::ParseParams(TEXT("Radius=4; Angle=360"));
+	Nova.Tags = UCataclysmSkillShapes::TagsFromCell(TEXT("Type.AOE.PointBlank, Type.Melee"));
+	const FVector Aim = Here + FVector(1.0f * ThornsMetre, 0.0f, 0.0f);
+	const auto NovaCost = [&]() -> float
+	{
+		const float Before = ThornsHealthOf(Player);
+		const float FirstBefore = ThornsHealthOf(First);
+		const float SecondBefore = ThornsHealthOf(Second);
+		const bool bStarted = UCataclysmTriggeredSkill::Trigger(Player, Nova, Aim, /*DamageShare=*/1.0f,
+																/*bPaysCost=*/false, &Here);
+		const bool bStruckBoth = ThornsHealthOf(First) < FirstBefore && ThornsHealthOf(Second) < SecondBefore;
+		return bStarted && bStruckBoth ? Before - ThornsHealthOf(Player) : -1.0f;
+	};
+
+	TestEqual(TEXT("one area blow on two carriers is struck back once by each"), NovaCost(),
+			  2.0f * ThornsCreatureAttackDamage, 0.01f);
+	TestEqual(TEXT("the same blow again at once draws nothing from either"), NovaCost(), 0.0f, 0.01f);
+	World->TimeSeconds += First->SecondsBetweenAttacks() + 0.01f;
+	TestEqual(TEXT("past their interval it draws one from each again"), NovaCost(), 2.0f * ThornsCreatureAttackDamage,
+			  0.01f);
 	return true;
 }
 

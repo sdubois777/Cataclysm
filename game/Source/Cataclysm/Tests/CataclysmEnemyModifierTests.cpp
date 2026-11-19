@@ -480,8 +480,9 @@ CATACLYSM_MODIFIER_TEST(FCataclysmModifierStatEffectsTest,
 	TestEqual(TEXT("Bloodthirsty grants ten percent life leech"),
 			  UCataclysmEnemyModifiers::LifeLeechPercent({Bloodthirsty}), 10.0f);
 
-	// THORNS OF GLASS: "Strikes back at whatever hits it, once per hit, for its
-	// own attack damage." Issue #2749 (B2), the owner's ruling of 2026-11-18.
+	// THORNS OF GLASS: "Strikes back at whatever hits it, at most once per its
+	// own attack interval, for its own attack damage." Issue #2749 (B2), the
+	// owner's rulings of 2026-11-18 and 2026-11-19.
 	//
 	// IT REFLECTED HALF OF EACH HIT UNTIL THEN, AND THE WHOLE HIT ON A CREATURE OF
 	// ONE HEALTH UNTIL 2026-09-05. A yes or no now: the strike back's size is the
@@ -2567,6 +2568,11 @@ CATACLYSM_MODIFIER_TEST(FCataclysmMedicBurnsNobodyTest,
 		return false;
 	}
 	Burner->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	// AN ATTACK DAMAGE, because its burn is a share of its weapon damage since issue #2749's enemy burn slice
+	// (`UCataclysmEnemyModifiers::HellfireAuraBurnPerTick`), and a creature spawned bare has none: without it the
+	// ordinary reading below would burn nobody for want of a figure, not for the reason this test is about. BEFORE
+	// THE HEALTH, because setting it writes the creature's starting attributes again.
+	Burner->SetAttackDamage(20.0f);
 	Burner->SetHealth(500.0f);
 	Burner->ModifierRows.Add(FName(UCataclysmEnemyModifiers::HellfireAuraRow));
 

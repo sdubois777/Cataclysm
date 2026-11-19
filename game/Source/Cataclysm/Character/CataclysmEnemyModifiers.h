@@ -388,6 +388,30 @@ public:
 	static constexpr float AuraPulseIntervalSeconds = 1.0f;
 
 	/**
+	 * What one tick of Hellfire Aura's burn deals, as a share of its carrier's weapon damage (the figure its own hits
+	 * are built from, `UCataclysmSkillEffects::WeaponDamageOf`, which the Inferno Charge path and the Hellhound's lane
+	 * already read for the ground they leave burning). Issue #2749, the enemy burn slice.
+	 *
+	 * 0.09 SINCE 2026-11-19; IT WAS THE STATUS TABLE'S FLAT 25 A TICK. The project owner died on floor 2 of a 5-floor
+	 * Outpost dungeon at level 2 with 228 maximum health, most of it to this burn, which no tier, ring or floor scaled:
+	 * at tier 1 it was 3 to 15 times a creature's hit. The coordinating session ruled the same day that an
+	 * enemy-applied damage over time is sized from what applies it -- Path of Exile 2 sizes an ignite at 20% of the
+	 * hit a second -- and set the share by the rule that chose tier 1's damage scale: the largest step of 0.01 at which
+	 * a new character, levelling at half the kills, wins every floor of all 3,057 first-surge Outpost dungeons with at
+	 * least 10% health left while standing in an Elite Abyssal Warden's aura on every floor, the strongest carrier. 0.1
+	 * left 3 short; Path of Exile 2's 0.2 costs 36 of 597. A judgement. `docs/DECISIONS.md` has the measurement and
+	 * `tools/tests/test_the_starting_character_survives_a_pack.py` the guard.
+	 *
+	 * THE BURN'S DURATION, ONE STACK AND THE PULSE ARE UNCHANGED: four seconds, refreshed every second while the target
+	 * stays in reach. The player's own burns keep the table's 25 (the owner's ruling of 2026-08-24).
+	 */
+	static constexpr float HellfireAuraBurnShareOfWeaponDamage = 0.09f;
+
+	/** What one tick of a carrier's Hellfire Aura burn deals before the target's defences: its weapon damage times
+	 *  `HellfireAuraBurnShareOfWeaponDamage`, never below nought. */
+	static float HellfireAuraBurnPerTick(float CarrierWeaponDamage);
+
+	/**
 	 * What one pulse of a medic's aura restores, as a percentage of each
 	 * ally's own maximum health.
 	 *

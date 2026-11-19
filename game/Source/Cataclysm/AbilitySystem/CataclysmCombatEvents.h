@@ -84,6 +84,14 @@ struct CATACLYSM_API FCataclysmHitNotice
 	/** The part of `Landed` that reached health. */
 	float DealtToHealth = 0.0f;
 
+	/**
+	 * The blow's figure as it was handed to the target's defences: `FCataclysmIncomingHit::Damage`, before evasion, the
+	 * critical strike multiplier, block, armour, resistance and every pool, so a critical blow can land more than this.
+	 * Set for every blow, an evaded one included. Issue #2749, ruled by the coordinating session on 2026-11-19, so the
+	 * player's outgoing hit line can say what was sent beside what landed. Read by `FCataclysmHitLog::OutgoingLine`.
+	 */
+	float Sent = 0.0f;
+
 	bool bCritical = false;
 	bool bBlocked = false;
 	bool bEvaded = false;

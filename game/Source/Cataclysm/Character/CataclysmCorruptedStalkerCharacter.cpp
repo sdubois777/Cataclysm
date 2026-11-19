@@ -228,8 +228,13 @@ bool ACataclysmCorruptedStalkerCharacter::WearTheBuild(const FCataclysmStalkerEn
 	Abilities->SetNumericAttributeBase(MaxHealth, Health);
 	Abilities->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Health);
 	const FGameplayAttribute AttackDamage = UCataclysmCombatAttributeSet::GetAttackDamageAttribute();
+	// KEPT, SO EVERY DAMAGE OVER TIME IT APPLIES TAKES THE SAME MULTIPLIER ITS HITS DO, the floor's ring included. Issue
+	// #2749's enemy burn slice; see `DamageOverTimeMultiplier`. THE RING IS PASSED, NOT LEFT TO ITS DEFAULT: the ring's
+	// parameter defaults to an Outpost, so a call without it compiles and gives the damage over time an Outpost's
+	// multiplier on every ring -- which is what the rebase onto the ring slice first produced.
+	WornDamageMultiplier = Effects::CorruptedStalkerDamageMultiplier(DifficultyTier, Ring);
 	Abilities->SetNumericAttributeBase(AttackDamage,
-		Abilities->GetNumericAttribute(AttackDamage) * Effects::CorruptedStalkerDamageMultiplier(DifficultyTier, Ring));
+		Abilities->GetNumericAttribute(AttackDamage) * WornDamageMultiplier);
 
 	// ENOUGH FERVOUR FOR ITS ULTIMATE ONCE, on every floor, since every floor it hunts raises it through here. See
 	// `CorruptedStalkerStartingFervour`.

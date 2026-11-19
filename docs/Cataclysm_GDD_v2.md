@@ -1953,6 +1953,14 @@ The chance summed is the total across every source: affixes, gems, keystones and
 | Weaken | Reduces the enemy's damage by 20% for 5 seconds | The reduction, to a cap of 80%, then the duration |
 | Stun | The target cannot act for 0.75 seconds | The duration, to a cap of 3 seconds, and then nothing |
 
+**An effect a creature applies is sized from that creature, not from this table.** The figures above are what a
+player applies. The Hellfire Aura enemy modifier burns whoever stands within 6 metres of its carrier for 9% of the
+carrier's weapon damage a second, so the burn grows with the tier, the ring, the floor and the creature, as the
+creature's own hits do. A Corrupted Stalker's skills apply these effects at the table's figures times the damage
+multiplier its hits carry; the corrupted double, which carries the player's own numbers, applies them at the player's
+figures. Ruled on 2026-11-19 (issue #2749): until then the aura burned for the table's 25 a second at every tier, three
+to fifteen times a tier 1 creature's hit, and a new character died to it on its second floor.
+
   
 
 **No ailment is meant to be the best one. Each is meant to be the best in a different situation.** That is a requirement rather than an observation, stated by the project owner on 2026-08-24: in every game in the genre the damage over time effects end up interchangeable and one of them is simply strongest. So each of the six is separated by a condition rather than by a number, and which one a build wants depends on what it is fighting.

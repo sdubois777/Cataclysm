@@ -9,6 +9,7 @@
 #include "GameFramework/Actor.h"
 
 const TCHAR* const FCataclysmHitLog::Prefix = TEXT("HIT: ");
+const TCHAR* const FCataclysmHitLog::OutgoingPrefix = TEXT("HIT OUT: ");
 
 namespace CataclysmHitLog
 {
@@ -156,6 +157,37 @@ FString FCataclysmHitLog::Line(const FBlow& Blow)
 	return FString::Printf(TEXT("%stook %s; health %s of %s before %s"), Prefix, *Description(Blow),
 						   *NumberText(Blow.HealthBefore), *NumberText(Blow.MaxHealth),
 						   Blow.Ticks > 0 ? TEXT("the first") : TEXT("it"));
+}
+
+FString FCataclysmHitLog::OutgoingLine(const FCataclysmHitNotice& Notice)
+{
+	using CataclysmHitLog::NumberText;
+
+	// ON WHOM, named as a blow taken names who struck: a creature with its rarity, "itself" for a blow the character
+	// dealt itself (Echo Chamber's copy), "nobody" when no target was named.
+	FString Out = FString::Printf(TEXT("%s%s on %s: sent %s"), OutgoingPrefix, *WhatText(Notice),
+								  *AttackerText(Notice.Target, Notice.Attacker), *NumberText(Notice.Sent));
+	if (Notice.bEvaded)
+	{
+		return Out + TEXT(", evaded");
+	}
+	Out += FString::Printf(TEXT(", landed %s, %s to health"), *NumberText(Notice.Landed),
+						   *NumberText(Notice.DealtToHealth));
+
+	// THE FLAGS A BLOW TAKEN SAYS, but damage over time, which this line is never said for.
+	if (Notice.bCritical)
+	{
+		Out += TEXT("; critical");
+	}
+	if (Notice.bBlocked)
+	{
+		Out += TEXT("; blocked");
+	}
+	if (Notice.bRetaliation)
+	{
+		Out += TEXT("; reflected or retaliation");
+	}
+	return Out;
 }
 
 TArray<FString> FCataclysmHitLog::Note(const FCataclysmHitNotice& Notice, float HealthBefore, float MaxHealth,

@@ -1029,6 +1029,16 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 		return;
 	}
 
+	// AND EVERY BLOW CREDITED TO THIS CHARACTER THAT IS NOT DAMAGE OVER TIME GOES TO THE HIT LOG AS AN OUTGOING LINE,
+	// before the rules below refuse any: an evaded blow, one on itself, a returned one and the consequence of a death
+	// included. Issue #2749, ruled by the coordinating session on 2026-11-19. TICKS ARE LEFT OUT, because a burn on a
+	// pack would bury every other line and Thorns of Glass strikes back at no tick. The log changes nothing about the
+	// blow.
+	if (!Notice.bDamageOverTime)
+	{
+		SayHitLogLines(TArray<FString>{FCataclysmHitLog::OutgoingLine(Notice)});
+	}
+
 	// ONLY A BLOW THAT CONNECTED: NOT A DAMAGE OVER TIME TICK, AND NOT AN EVADED
 	// BLOW. Ruled 2026-09-16 under the project owner's delegation. Issue #1815.
 	//
