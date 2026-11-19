@@ -1019,12 +1019,14 @@ struct CATACLYSM_API FCataclysmSavedFloor
  * a Hardcore account record dropped into the Standard slot would quietly become
  * the Standard tree.
  *
- * WHAT IS DELIBERATELY ABSENT: the empire upgrade TREE ALLOCATION -- which nodes
- * are filled and to what depth. The tree's node graph exists as
- * `docs/Empire_Development_Tree_Final.json` but nothing in the game reads it
- * yet, and guessing at the allocation's shape now would cost a migration later
- * for a field that had never held anything. The banked points are here because
- * the game banks them: a defeated dungeon's award, since issue #52's first slice.
+ * THE EMPIRE UPGRADE TREE ALLOCATION IS HERE SINCE VERSION 4 (`EmpireTree`, issue #2741 slice 1b). This said it was
+ * deliberately absent, because nothing in the game read the tree, until the tree became game data in slice 1a and its
+ * buying rules were written (`UCataclysmEmpireTree`). The banked points are here because the game banks them: a
+ * defeated dungeon's award, since issue #52's first slice.
+ *
+ * VERSION 4 SINCE 2026-11-18. The account holds what its empire upgrade tree has bought (`EmpireTree`, issue #2741
+ * slice 1b), and `Migrate_3_to_4` writes an empty tree into an account written at 3: nothing could be bought before the
+ * field existed. The coordinating session gave gold version 3 and the tree version 4 the same day.
  *
  * VERSION 3 SINCE 2026-11-18. The account holds its gold (`Gold`, issue #2742), and `Migrate_2_to_3` writes a
  * balance of 0 into an account written at 2: nothing dropped gold before the field existed. The empire upgrade tree
@@ -1043,7 +1045,7 @@ class CATACLYSM_API UCataclysmAccountSave : public UCataclysmSaveRecord
 
 public:
 	static const FName TypeName;
-	static constexpr int32 SchemaVersionNow = 3;
+	static constexpr int32 SchemaVersionNow = 4;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
@@ -1067,8 +1069,10 @@ public:
 	 * 2026-11-03 under the owner's delegation of unstated numbers. Rounding each
 	 * award down would erase most ordinary dungeons' awards, which are 1 point
 	 * times a population share below one. The empire screen shows it rounded down
-	 * to a tenth (`UCataclysmEmpireMapLayout::EmpirePointsText`). Spending it is the
-	 * empire upgrade tree's, which is not built. RECORD VERSION 2; it was an
+	 * to a tenth (`UCataclysmEmpireMapLayout::EmpirePointsText`). The empire
+	 * upgrade tree spends it, one whole point a node point, into `EmpireTree`
+	 * below (`UCataclysmGameInstance::BuyEmpireTreePoint`, issue #2741 slice 1b),
+	 * and a respec puts every spent point back. RECORD VERSION 2; it was an
 	 * `int32` at version 1. Issue #52.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
@@ -1085,6 +1089,22 @@ public:
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	int64 Gold = 0;
+
+	/**
+	 * What the partition's empire upgrade tree has bought: each node's points, and which option each centre capstone
+	 * took. Issue #2741 slice 1b. RECORD VERSION 4.
+	 *
+	 * THE CLASS TREES' STRUCT, NOT A TWIN OF IT. A node, its points and a chosen option is the whole of what either tree
+	 * keeps, and `UCataclysmEmpireTree`'s rules already take this struct. The node names are the rows of
+	 * `game/Data/EmpireTreeNodes.csv` (`basic_0000000w`, `capstone_0000000m`).
+	 *
+	 * ONCE PER PARTITION, BESIDE THE BANK IT IS BOUGHT WITH. `docs/Cataclysm_GDD_v2.md`, Empire-Wide Upgrades: the points
+	 * "persist through all runs -- including failed ones", earned into a lethality mode and shared by its characters, so
+	 * what they buy is the partition's too. A Solo Self-Found character's tree is its own, in its character record
+	 * (slice 1c). `UCataclysmGameInstance::EmpireTreeHeldBy` is the one place that says which tree a character has.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FCataclysmPassiveAllocation EmpireTree;
 
 	/**
 	 * The characters belonging to this partition, by identifier.

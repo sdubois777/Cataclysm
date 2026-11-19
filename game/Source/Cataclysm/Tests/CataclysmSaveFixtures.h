@@ -135,6 +135,18 @@ namespace CataclysmSaveFixtures
 		}
 	}
 
+	/**
+	 * What `Migrate_3_to_4` writes into an account file written before version 4, and so what the account record
+	 * writes back for one: an empty empire upgrade tree, `"EmpireTree": { "Nodes": [] }`. Issue #2741 slice 1b,
+	 * 2026-11-18. ONE COPY, for every test that runs an older account file through the whole chain.
+	 */
+	inline void AddTheAccountsVersion4Defaults(FJsonObject& Expected)
+	{
+		const TSharedRef<FJsonObject> Empty = MakeShared<FJsonObject>();
+		Empty->SetArrayField(TEXT("Nodes"), TArray<TSharedPtr<FJsonValue>>());
+		Expected.SetObjectField(TEXT("EmpireTree"), Empty);
+	}
+
 	inline TSharedPtr<FJsonObject> Parse(const FString& Text)
 	{
 		TSharedPtr<FJsonObject> Parsed;

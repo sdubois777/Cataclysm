@@ -560,10 +560,40 @@ namespace CataclysmAccountSaveMigration
 		return true;
 	}
 
+	/**
+	 * An account written before the empire upgrade tree could be bought holds an empty tree. Issue #2741 slice 1b,
+	 * 2026-11-18: `EmpireTree` arrived with the rules for buying it, so no account written at 3 can have bought a node,
+	 * and the migrated file states its empty tree -- written out, for the character record's `Migrate_3_to_4` reason.
+	 *
+	 * AN OBJECT ALREADY THERE IS KEPT, and anything else under the key is refused rather than replaced by an empty tree,
+	 * as `Migrate_2_to_3` refuses a balance that is not a number: that would throw away a tree somebody edited by hand
+	 * without saying so. What the object holds is the record's read to judge, not this step's.
+	 */
+	bool Migrate_3_to_4(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		if (Record->HasField(TEXT("EmpireTree")))
+		{
+			const TSharedPtr<FJsonObject>* Held = nullptr;
+			if (!Record->TryGetObjectField(TEXT("EmpireTree"), Held) || Held == nullptr || !Held->IsValid())
+			{
+				OutError = TEXT("EmpireTree holds something that is not an object");
+				return false;
+			}
+			return true;
+		}
+
+		const TSharedRef<FJsonObject> Empty = MakeShared<FJsonObject>();
+		Empty->SetArrayField(TEXT("Nodes"), TArray<TSharedPtr<FJsonValue>>());
+		Record->SetObjectField(TEXT("EmpireTree"), Empty); // A migration's: nothing bought, written out.
+		return true;
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep AccountSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
 		{ 2, TEXT("Migrate_2_to_3"), &Migrate_2_to_3 },
+		{ 3, TEXT("Migrate_3_to_4"), &Migrate_3_to_4 },
 	};
 }
 

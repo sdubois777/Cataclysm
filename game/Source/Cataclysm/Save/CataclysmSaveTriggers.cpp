@@ -76,9 +76,14 @@ bool UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame(ECataclysmSav
 	// AND A CHANGE OF FLOOR, since issue #2733 slice 3 (ruled 2026-11-18): it writes where the party now stands, and a
 	// write earlier in the same frame gathered the floor before the change. Window travel-w1's first run found the
 	// arrival's write skipped so. Each place that raises it does so once per change of floor (the entry lists them).
+	//
+	// AND A RESPEC OF THE EMPIRE UPGRADE TREE, since issue #2741 slice 1b (ruled 2026-11-18): the days it cost passed
+	// after any earlier write in its frame gathered the run, and a respec whose days were not written would cost nothing
+	// to a player who quit before the next write.
 	return Trigger == ECataclysmSaveTrigger::CharacterDied || Trigger == ECataclysmSaveTrigger::DeathProcessed
 		|| Trigger == ECataclysmSaveTrigger::RunWon || Trigger == ECataclysmSaveTrigger::CharacterCreated
-		|| Trigger == ECataclysmSaveTrigger::LeavingTheLevel || Trigger == ECataclysmSaveTrigger::ChangedFloor;
+		|| Trigger == ECataclysmSaveTrigger::LeavingTheLevel || Trigger == ECataclysmSaveTrigger::ChangedFloor
+		|| Trigger == ECataclysmSaveTrigger::EmpireTreeRespecced;
 }
 
 bool UCataclysmSaveTriggers::ClockHasElapsed(float SecondsSinceLastWrite,
@@ -144,6 +149,7 @@ const TCHAR* UCataclysmSaveTriggers::NameOf(ECataclysmSaveTrigger Trigger)
 		case ECataclysmSaveTrigger::CharacterCreated:       return TEXT("a character being created");
 		case ECataclysmSaveTrigger::RunWon:                 return TEXT("a run being won");
 		case ECataclysmSaveTrigger::LeavingTheLevel:        return TEXT("the character leaving the level");
+		case ECataclysmSaveTrigger::EmpireTreeRespecced:    return TEXT("the empire upgrade tree being respecced");
 	}
 
 	// A TRIGGER ADDED WITHOUT A WORDING. Named rather than fallen through to one
@@ -173,5 +179,6 @@ TArray<ECataclysmSaveTrigger> UCataclysmSaveTriggers::Every()
 		ECataclysmSaveTrigger::CharacterCreated,
 		ECataclysmSaveTrigger::RunWon,
 		ECataclysmSaveTrigger::LeavingTheLevel,
+		ECataclysmSaveTrigger::EmpireTreeRespecced,
 	};
 }

@@ -595,6 +595,28 @@ followed, ruled 2026-11-01:
   whole chain and checks every other field is kept, every test that read it as
   the committed account file reads `Account_v3.json`, and the test that runs
   `Account_v1.json` through the whole chain expects the gold of 0 as well.
+- **The account record went to version 4 on 2026-11-18**, for what its empire
+  upgrade tree has bought (issue #2741 slice 1b): `EmpireTree`, after `Gold`,
+  the class trees' allocation struct -- each node's points, and the option each
+  centre capstone took. `Migrate_3_to_4` writes an empty tree,
+  `{ "Nodes": [] }`, into a version 3 file, keeps an object already there and
+  refuses anything else under the key, and `Account_v4.json` is
+  `Account_v3.json` at version 4 with `EmpireTree` added and nothing else
+  changed. **The tree in it is one play reaches**: Structural Integrity at its
+  full 10, Fortified Gates at its full 8 (it opens at 2 in Structural
+  Integrity), Masonry Techniques at 7 (it opens at 6 in Fortified Gates), and
+  with those 25 points spent the centre capstone Foundations of the Empire
+  (`capstone_0000000m`), its second option, The Delver, chosen and its point
+  spent: 26 points, and the 37.625 banked beside them is what is left unspent.
+  **Option 2 and not 1**, because 0 is the default and 1 the first option, and
+  only another figure shows the choice is read.
+  `Cataclysm.EmpireTree.TheCommittedAccountFilesTreeIsOnePlayCanReach` replays
+  it through the buying rules. `Account_v3.json` is a migration input now:
+  `Cataclysm.EmpireTree.AnAccountFromBeforeTheTreeMigratesHoldingAnEmptyTree`
+  runs it through the step and checks every other field is kept, every test
+  that read it as the committed account file reads `Account_v4.json`, and every
+  test that runs an older account file through the whole chain adds the empty
+  tree through `CataclysmSaveFixtures::AddTheAccountsVersion4Defaults`.
 - **A slip, recorded rather than undone, as `LastWrittenUtc` was.**
   `Run_v1.json` was edited thirteen times after saves could load
   (`78ad0fa81`, 2026-10-30), each time adding fields for #753's dungeon load
@@ -611,6 +633,7 @@ followed, ruled 2026-11-01:
 | `Account_v1.json` | An account record at schema version 1. An online Hardcore partition with two characters in it |
 | `Account_v2.json` | The same account at version 2: version 1's contents, with its banked empire upgrade points 37.625, a fraction |
 | `Account_v3.json` | The same account at version 3: version 2's contents, plus its gold, 1234567 |
+| `Account_v4.json` | The same account at version 4: version 3's contents, plus its empire upgrade tree, 26 points in the Architect branch and the first centre capstone with its second option chosen |
 | `Character_v1.json` | A character record at version 1. Online Hardcore, not Solo Self-Found, carrying one piece of gear and one stack of material |
 | `Character_v2.json` | The same character at version 2, with its attribute points, its creation choices and two passive points in the Masochist tree |
 | `Character_v3.json` | The same character at version 3: version 2's contents, plus a greatsword worn in `Weapon1` and a ring in `Ring3`, and one enchantment each on the greatsword and the carried Circlet, and one chosen skill |
@@ -639,7 +662,7 @@ something.
 records were at version 1 when it was written and version 1 is the first, so
 none of them had a migration to run. The character record has had seven since
 (version 8 since 2026-11-18), the run record six (version 7 since
-2026-11-18), and the account record two (version 3 since 2026-11-18). Its
+2026-11-18), and the account record three (version 4 since 2026-11-18). Its
 header says more.
 
 ## Two things to keep in mind when editing one

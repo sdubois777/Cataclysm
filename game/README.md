@@ -463,19 +463,26 @@ by `git add` with no error and no warning. Guarded by
   **No walk can be left early**: a Walk press, `Cataclysm.LeaveDungeon`
   and `Cataclysm.EnterDungeon` are refused while one is under way. `L_Dungeon`
   opened directly in the editor still enters a dungeon by a Walk button or the
-  console. **Only walking a dungeon, dying in one and the console commands move
-  the day**: a death inside a dungeon of the empire costs 5, 10 or 15 days by
+  console. **Only walking a dungeon, dying in one, a respec of the empire upgrade
+  tree and the console commands move the day**: a death inside a dungeon of the
+  empire costs 5, 10 or 15 days by
   lethality mode, resolves an ordinary dungeon at once so that it hits its city
   and leaves the map, and stands the player up whole and sends it to the capital
   (issue [#41](https://github.com/sdubois777/Cataclysm/issues/41)); a death in the
-  Cataclysm boss dungeon stands the player back up inside it. The equipment a
+  Cataclysm boss dungeon stands the player back up inside it. A respec of the
+  empire upgrade tree costs the same 5, 10 or 15 days (issue
+  [#2741](https://github.com/sdubois777/Cataclysm/issues/2741)), and nothing in
+  the game offers one until the tree's screen is built. The equipment a
   death costs in Hardcore and Heretic is not built, and there is no forge to
   spend the twelve days a craft takes. A fallen city does not
   become a retakeable Dungeon City (issue
   [#41](https://github.com/sdubois777/Cataclysm/issues/41)), the Last Stand does
   not fire when the path to the Pillar opens (issue
   [#43](https://github.com/sdubois777/Cataclysm/issues/43)), and the empire
-  upgrade tree is still only the Python model in `sim/` (issue
+  upgrade tree is game data whose points can be bought, chosen and respecced and
+  are saved on the account record, but no screen offers it and no node acts yet
+  (issue [#2741](https://github.com/sdubois777/Cataclysm/issues/2741)); until
+  then the Python model in `sim/` is the only place a node does anything (issue
   [#52](https://github.com/sdubois777/Cataclysm/issues/52)). **10 of the 24 city
   upgrades are refused** because their effect is not built (issue
   [#42](https://github.com/sdubois777/Cataclysm/issues/42)). The simulation in

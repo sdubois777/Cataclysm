@@ -5,13 +5,16 @@
 #include "Cataclysm.h"
 #include "Character/CataclysmPassivePoints.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Data/CataclysmDataRows.h"
 #include "Dungeon/CataclysmDungeonModifierTable.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmRoster.h"
+#include "Engine/DataTable.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "Items/CataclysmDroppedItem.h"
 #include "Misc/DateTime.h"
+#include "Player/CataclysmEmpireTree.h"
 #include "Player/CataclysmGameMode.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Save/CataclysmSaveGather.h"
@@ -413,6 +416,185 @@ FString UCataclysmGameInstance::GoldBalanceText(const UObject* WorldContext)
 {
 	int64 Held = 0;
 	return GoldHeldBy(WorldContext, Held) ? ACataclysmDroppedItem::GoldName(Held) : FString();
+}
+
+namespace CataclysmGameInstanceEmpireTree
+{
+	/** What a buy, a choice and a respec say when the tree's two tables are not there to read. */
+	const TCHAR* const TablesMissing = TEXT("The empire upgrade tree's tables did not load, so nothing in it can be bought.");
+
+	/** The world a context is in, or null: what `UCataclysmSaveWriter::NoteTriggerIn` is handed. */
+	const UWorld* WorldOf(const UObject* WorldContext)
+	{
+		return WorldContext != nullptr && GEngine != nullptr
+			? GEngine->GetWorldFromContextObject(WorldContext, EGetWorldErrorMode::ReturnNull)
+			: nullptr;
+	}
+
+	/** A node's name as the tree file gives it, for a log line; its row name when the table has no such row. */
+	FString NameOf(const UDataTable* NodeTable, FName Node)
+	{
+		const FCataclysmEmpireTreeNodeRow* Row = UCataclysmEmpireTree::FindNode(NodeTable, Node);
+		return Row != nullptr ? Row->NodeName : Node.ToString();
+	}
+}
+
+bool UCataclysmGameInstance::EmpireTreeHeldBy(const UObject* WorldContext, FCataclysmHeldEmpireTree& OutHeld)
+{
+	OutHeld = FCataclysmHeldEmpireTree();
+	const ACataclysmPlayerState* State = CataclysmGameInstanceGold::PlayingState(WorldContext);
+	if (State == nullptr)
+	{
+		OutHeld.Why = TEXT("Nobody is playing, so there is no empire upgrade tree to read.");
+		return false;
+	}
+
+	// A SOLO SELF-FOUND CHARACTER'S TREE IS ITS OWN, and slice 1c builds it on its character record. The owner's
+	// ruling of 2026-11-18, which reversed the coordinating session's C8.
+	const FCataclysmCharacterPartition& Partition = State->GetPartition();
+	if (Partition.bSoloSelfFound)
+	{
+		OutHeld.Why = TEXT("A Solo Self-Found character's empire upgrade tree is its own, and its character record does "
+						   "not hold one yet (issue #2741, slice 1c).");
+		return false;
+	}
+
+	// EVERY OTHER CHARACTER'S LETHALITY MODE'S, held once per partition in the account record.
+	UCataclysmGameInstance* Instance = In(WorldContext);
+	if (Instance == nullptr)
+	{
+		OutHeld.Why = TEXT("There is no game instance of this project's, so no account record holds an empire upgrade "
+						   "tree.");
+		return false;
+	}
+	UCataclysmAccountSave* Account = Instance->AccountFor(Partition);
+	if (Account == nullptr)
+	{
+		OutHeld.Why = TEXT("The account record of this lethality mode would not read, so its empire upgrade tree "
+						   "cannot be bought into this session.");
+		return false;
+	}
+
+	OutHeld.Bank = &Account->EmpireUpgradePoints;
+	OutHeld.Allocation = &Account->EmpireTree;
+	return true;
+}
+
+bool UCataclysmGameInstance::BuyEmpireTreePoint(const UObject* WorldContext, FName Node, FString& OutReason)
+{
+	FCataclysmHeldEmpireTree Held;
+	if (!EmpireTreeHeldBy(WorldContext, Held))
+	{
+		OutReason = Held.Why;
+		return false;
+	}
+
+	const UDataTable* Nodes = UCataclysmEmpireTree::LoadNodeTable();
+	const UDataTable* Edges = UCataclysmEmpireTree::LoadEdgeTable();
+	if (Nodes == nullptr || Edges == nullptr)
+	{
+		OutReason = CataclysmGameInstanceEmpireTree::TablesMissing;
+		return false;
+	}
+
+	if (!UCataclysmEmpireTree::Spend(Nodes, Edges, *Held.Allocation, Node, *Held.Bank, OutReason))
+	{
+		return false;
+	}
+
+	UE_LOG(LogCataclysm, Log, TEXT("Empire upgrade tree: a point bought in %s, which now holds %d; %.3f banked."),
+		   *CataclysmGameInstanceEmpireTree::NameOf(Nodes, Node), Held.Allocation->PointsIn(Node), *Held.Bank);
+	UCataclysmSaveWriter::NoteTriggerIn(CataclysmGameInstanceEmpireTree::WorldOf(WorldContext),
+										ECataclysmSaveTrigger::AccountChanged);
+	return true;
+}
+
+bool UCataclysmGameInstance::ChooseEmpireTreeOption(const UObject* WorldContext, FName Node, int32 Option,
+												   FString& OutReason)
+{
+	FCataclysmHeldEmpireTree Held;
+	if (!EmpireTreeHeldBy(WorldContext, Held))
+	{
+		OutReason = Held.Why;
+		return false;
+	}
+
+	const UDataTable* Nodes = UCataclysmEmpireTree::LoadNodeTable();
+	if (Nodes == nullptr)
+	{
+		OutReason = CataclysmGameInstanceEmpireTree::TablesMissing;
+		return false;
+	}
+
+	if (!UCataclysmEmpireTree::ChooseOption(Nodes, *Held.Allocation, Node, Option, OutReason))
+	{
+		return false;
+	}
+
+	UE_LOG(LogCataclysm, Log, TEXT("Empire upgrade tree: option %d of %s chosen."), Option,
+		   *CataclysmGameInstanceEmpireTree::NameOf(Nodes, Node));
+	UCataclysmSaveWriter::NoteTriggerIn(CataclysmGameInstanceEmpireTree::WorldOf(WorldContext),
+										ECataclysmSaveTrigger::AccountChanged);
+	return true;
+}
+
+bool UCataclysmGameInstance::RespecEmpireTree(const UObject* WorldContext, int32& OutPointsReturned, int32& OutDays,
+											  FString& OutReason)
+{
+	OutPointsReturned = 0;
+	OutDays = 0;
+
+	FCataclysmHeldEmpireTree Held;
+	if (!EmpireTreeHeldBy(WorldContext, Held))
+	{
+		OutReason = Held.Why;
+		return false;
+	}
+
+	// THE RUN THE DAYS COME OFF: the one this game instance holds, and none is begun to pay for a respec.
+	UCataclysmEmpireRun* Run = EmpireRunFor(WorldContext, /*bStartIfNone*/ false);
+	OutReason = UCataclysmEmpireTree::RefusalForRespec(*Held.Allocation, Run != nullptr);
+	if (OutReason.IsEmpty() && Run->IsAWalkUnderWay())
+	{
+		// NOT IN THE MIDDLE OF A WALK, for `Cataclysm.EmpireAdvance`'s reason: nothing resolves while the player is
+		// inside a dungeon (the owner's decision of 2026-10-24), and these days would resolve exactly that.
+		OutReason = TEXT("A dungeon is being walked. The empire upgrade tree is respecced at the capital, once the walk "
+						 "has ended.");
+	}
+	if (!OutReason.IsEmpty())
+	{
+		return false;
+	}
+
+	const int32 Days = UCataclysmEmpireTree::RespecDays(Run->Surges != nullptr ? Run->Surges->LethalityRung : 0);
+	OutPointsReturned = UCataclysmEmpireTree::Respec(*Held.Allocation, *Held.Bank, /*bRunBeingPlayed*/ true, OutReason);
+	if (!OutReason.IsEmpty())
+	{
+		return false; // The same rule refused it above; this cannot happen, and changes nothing if it does.
+	}
+
+	// THE DAYS, through the call every other run of days goes through.
+	const int32 DayBefore = Run->Day();
+	int32 Resolved = 0;
+	int32 Fallen = 0;
+	for (const FCataclysmDayReport& Report : Run->AdvanceDays(Days))
+	{
+		Resolved += Report.Resolved.Num();
+		Fallen += Report.Fallen.Num();
+	}
+	OutDays = Days;
+
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("Empire upgrade tree respecced: %d point(s) returned, %.3f banked. It cost %d days, day %d to day %d, "
+				"in which %d dungeon(s) resolved and %d city(ies) fell."),
+		   OutPointsReturned, *Held.Bank, Days, DayBefore, Run->Day(), Resolved, Fallen);
+
+	// SAVED WHOLE: the account's points, and the run's days by a trigger that writes the run record whatever else wrote
+	// it earlier in this frame. `Clock` would have been skipped then; the coordinating session's ruling of 2026-11-18.
+	const UWorld* World = CataclysmGameInstanceEmpireTree::WorldOf(WorldContext);
+	UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::AccountChanged);
+	UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::EmpireTreeRespecced);
+	return true;
 }
 
 bool UCataclysmGameInstance::PlayingPartition(const UObject* WorldContext, FCataclysmCharacterPartition& OutPartition)
