@@ -147,20 +147,20 @@ behind". This branch adds **thirteen** tests by name and removes none: the eight
 
 ### Python, measured
 
-At `71b9d0d59`, the code commit: "7662 passed, 9 skipped in 276.28s"; the JUnit file: tests 7671, failures 0, errors 0, skipped 9. ruff: "All checks passed!". The first full run,
+At `abf99d9d3`, the re-registration after the rebase onto `1bf6611c5`: "7702 passed, 9 skipped in 367.90s"; the JUnit file: tests 7711, failures 0, errors 0, skipped 9. ruff: "All checks passed!". Before the rebase, at `71b9d0d59` (the code commit then; `5509e63c0` after it), the suite read "7662 passed, 9 skipped in 276.28s" and the JUnit file tests 7671. The first full run,
 before the code was committed, failed one test, as it should have:
 `tools/tests/test_game_readme_is_true.py::test_only_walking_a_dungeon_and_the_console_move_the_empires_day` found
 `CataclysmForgeCraft.cpp` passing days that `game/README.md` did not name. The readme's bullet now names an upgrade at
 the forge, and the check's list allows the file.
 
-Four Python guard proofs, through `tools/prove_guard.py`'s `break_and_run` in a `git archive` copy, each PROVED:
+Four Python guard proofs, through `tools/prove_guard.py`'s `break_and_run` in a `git archive` copy of `abf99d9d3`, each PROVED. They were run again after the rebase: the play-loop check gained #2763's seven places, so its counts are 27 and 28 where they were 20 and 21 before it.
 
 | Break | Named failure | Restored |
 |---|---|---|
 | `UCataclysmForge::ResiduePerLevel` 25 becomes 20 | `test_the_forge_matches_the_design.py::test_the_residue_per_level_is_the_simulations` (1 failed, 4 passed) | 5 passed |
 | The design's "Gear Leveling" row `+3` reads 7 | `...::test_the_gear_leveling_table_counts_two_stones_per_level` (1 failed, 4 passed) | 5 passed |
 | `make_forge` adds `MessageLine` in place of `MessageLabel` | `test_the_forge_screen_is_generated_with_its_bindings.py::test_every_bound_widget_of_the_forge_screen_is_added_by_its_generator` (1 failed, 2 passed) | 3 passed |
-| The upgrade's `Say` becomes `(void)` | `test_the_play_loop_is_logged_at_each_step.py::test_each_step_of_the_loop_says_its_line[ForgeUpgradeLine]` (1 failed, 20 passed) | 21 passed |
+| The upgrade's `Say` becomes `(void)` | `test_the_play_loop_is_logged_at_each_step.py::test_each_step_of_the_loop_says_its_line[ForgeUpgradeLine]` (1 failed, 27 passed) | 28 passed |
 
 ---
 
