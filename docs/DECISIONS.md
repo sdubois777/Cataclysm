@@ -903,6 +903,83 @@ they are here, and ran in the copy, which has none.
 
 ---
 
+## 2026-11-19 — The count of pools being leeched into calls `FMath::CountBits` on its 32-bit value, so the build no longer prints the warning C4996 that Unreal Engine 5.8 gives for a 64-bit one (#2756)
+
+**Affects:** `UCataclysmAbilitySystemComponent::CurrentConditions`
+(`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`): one line, and a comment above it. No test
+is added or changed. Issue #2756; the plan was accepted by the coordinating session on 2026-11-19.
+
+### SAID FIRST
+
+- **NOT YET COMPILED OR RUN IN THE ENGINE.** Written while the owner played from the main checkout, when the
+  coordinating session allowed no compile; the machine turn comes after skill levelling. What the run must show is
+  under "Registered before the run", below.
+- **THE CHANGE.** `State.LeechPoolsInFlight = FMath::CountBits(static_cast<uint64>(PoolsSeen));` becomes
+  `State.LeechPoolsInFlight = FMath::CountBits(PoolsSeen);`. `PoolsSeen` is a `uint32` with one bit for each pool
+  being leeched into (`ECataclysmLeechPool`: health, mana, energy shield), so at most three bits are set and the cast
+  to 64 bits added nothing. It is the only `CountBits` call in `game/Source`: a search for `CountBits` there finds this
+  line alone.
+- **WHAT THE ENGINE OFFERS.** Unreal Engine 5.8's `MicrosoftPlatformMath.h` has three: `CountBits(uint32)` at line
+  155, not deprecated; `CountBits64(uint64)` at line 167; and a template `CountBits(T)` for an integer wider than four
+  bytes, lines 179 to 185, whose `UE_STATIC_DEPRECATE(5.8, sizeof(T) > 4, ...)` at line 183 prints the warning and
+  which then calls `CountBits64`. A `uint32` argument chooses the first, which counts the same bits.
+  `GenericPlatformMath.h` has the same three, at lines 1149, 1158 and 1169.
+- **THE WARNING, BEFORE.** The first of the display slice's three compiles (#2769), whose build tool log is
+  `.claude/windows/hitline_build_1_branch_ubt.log` in this session's worktree, printed it while compiling
+  `Module.Cataclysm.2.cpp`: "MicrosoftPlatformMath.h(183,3): warning C4996: ... CountBits for 64-bit values has been
+  deprecated, please use CountBits64 instead. - Please update your code to the new API before upgrading to the next
+  release, otherwise your project will no longer compile.", followed by
+  "CataclysmAbilitySystemComponent.cpp(1315,36): note: see reference to function template instantiation 'int32
+  FMicrosoftPlatformMathBase::CountBits<uint64>(T)' being compiled".
+- **EARLIER ENTRIES CALLED THE WARNING "THE ENGINE'S OWN", AND ARE LEFT AS WRITTEN**, as the coordinating session
+  ruled. The line that triggered it was this project's. These say "the engine's own":
+  - 2026-11-18, "Each run masks its dungeons' walk seeds ..." (#2749, B10), twice;
+  - 2026-11-18, "Every blow the player takes is logged ..." (#2749 slice 1), which adds "None came from this change":
+    true of that change, but the call was this project's;
+  - 2026-11-18, "The capital's Walk takes the character to the dungeon ..." (#2733, slice 3).
+
+  The display slice's entry (#2769) said the same and was corrected before it merged. Three more, all 2026-11-18 --
+  #2741 slice 1b, #2741 slice 1c and #2744 -- say the warning was raised "in an engine header" and was "not this
+  branch's", without naming the line that triggers it. The other entries that mention it name
+  `CataclysmAbilitySystemComponent.cpp` line 1315.
+- **NO PYTHON CHECK**, as the coordinating session ruled. No file under `tools/` or `sim/` names `CountBits`,
+  `PoolsSeen` or `LeechPoolsInFlight`; the two engine tests below read the count.
+
+### Registered before the run
+
+The base is window hitline-w1, run at `622bc0243`, whose `game/` tree is `055ac0254`'s (`git diff --stat 622bc0243
+055ac0254 -- game/` prints nothing); its engine log, `.claude/windows/hitline_suite_engine_622bc024.log` in this
+session's worktree, reads "Tests: 4947 tests performed, 4947 succeeded, 0 failed. 47 skipped part of what they check"
+and "Test saves: 850 written and deleted, 0 left behind". This branch adds no test and removes none. **If
+development's `game/` tree moves before the window runs, the whole-suite figures are registered again from the newest
+window's log before it starts.**
+
+- **The three compiles** -- the branch as committed, the build plan moved aside first; the changed file alone, the
+  index read from `055ac0254`; the unity files again -- each succeed with **NO WARNING OR ERROR LINE IN ANY OF THE
+  THREE**. Each of them compiles `CataclysmAbilitySystemComponent.cpp`, in its unity file or alone, so each would print
+  the warning if the call still chose the deprecated template.
+- **Each of the two tests that read the count, run alone by its own prefix, performs 1 and succeeds 1.** Each prefix
+  selects exactly one name in the base log's list of tests.
+
+| Prefix | The test | What it reads |
+|---|---|---|
+| `Cataclysm.Enchantments.TheLeechPoolsScale` | `TheLeechPoolsScaleCountsEachPoolBeingLeechedIntoOnceAndAtMostThree` | a damage reduction of 5 per pool: 0, 5, 10, 15, 5 and 10 for no payment, two into health, health and mana, all three with health twice, one with nothing left to pay, and all three with no energy shield |
+| `Cataclysm.Enchantments.StarvationsSixPieces` | `StarvationsSixPiecesGiveFiveDamageReductionForEachPoolBeingLeechedInto` | the Starvation six-piece row from the built table: 5 for each pool the wearer has and is leeching into |
+
+- **The whole suite**: **4947** performed (4947 + 0), all succeeding, 47 skipped halves, and "Test saves: 850 written
+  and deleted, 0 left behind", each test's share compared with its share in the base log, and any difference named by
+  the test that makes it.
+- **One guard proof**, through `tools/unreal_build.py`'s `prove_cpp_guard`:
+
+| Proof | The break | Prefix | The broken half | Restored |
+|---|---|---|---|---|
+| P1 | `FMath::CountBits(PoolsSeen)` becomes `(PoolsSeen != 0 ? 1 : 0)`: any number of pools counts as one | `Cataclysm.Enchantments.TheLeechPoolsScale` | 1 performed, 0 succeeded, 1 failed: `TheLeechPoolsScaleCountsEachPoolBeingLeechedIntoOnceAndAtMostThree` (10, 15 and 10 expected; 5 read for each) | 1 of 1 |
+
+The Starvation test would fail under the same break by reading its code (10 and 15 expected, 5 read), but P1's prefix
+does not select it, so the proof does not show that.
+
+---
+
 ## 2026-11-19 — C opens the character sheet in both control schemes, and the character creator has no key (#2770)
 
 **Affects:** `tools/generate_input_assets.py` (`NATIVE_ACTIONS`: `IA_ToggleCharacterSheet` in place of
