@@ -14,8 +14,9 @@ approved by the coordinating session on 2026-11-19.
 
 ### SAID FIRST
 
-- **NOT YET RUN IN THE ENGINE.** Python is measured, below. That the override keeps the server off is known BY READING
-  the engine's source; V1 and V2, under "Registered before the run", are the runs that will show it.
+- **RUN IN WINDOW mcp-w1 WITH EVERY REGISTERED FIGURE MET.** Written and measured in Python first, when that the
+  override keeps the server off was known only by reading the engine's source; run at `aab0baca4` on 2026-11-19, under
+  "Measured in window mcp-w1", below. The window also reproduced the failure of issue #2745 on purpose, with one POST.
 - **WHY.** `game/Config/DefaultEditorPerProjectUserSettings.ini` sets `bAutoStartServer=True`, so every editor process
   started the Model Context Protocol server on port 8000, the test editor included: window hitline-w1's whole-suite log
   reads "LogModelContextProtocol: Starting MCP server on port 8000 (override with -ModelContextProtocolPort=N)." and
@@ -71,6 +72,33 @@ The window runs with `--no-build`, and the pre-checks check that diff again. The
 
 **Not known until it runs**: whether one POST with no MCP `initialize` before it gives that exact Error line. If the base
 half does not reproduce it, that is said here plainly, and V1 with the log check stays the evidence.
+
+### Measured in window mcp-w1
+
+At `aab0baca4`, lock mcp-w1, 16:21 to 16:24 local time on 2026-11-19, started through a launcher that gives the
+runner no console window; the pre-checks all passed, the ninth reading `git diff --stat 622bc0243 HEAD -- game/Source`
+as empty. No build. The engine logs are kept in `.claude/windows/` in this session's worktree (`mcp_V1_engine.log`,
+`mcp_V2 base_engine.log`, `mcp_V2 fixed_engine.log`).
+
+**V1**: "Tests: 1 tests performed, 1 succeeded, 0 failed"; "Test saves: 0 written and deleted, 0 left behind"; "MCP
+server: not started (no start-up line in the log)"; exit 0. The engine log's command line ends `-log
+-ini:EditorPerProjectUserSettings:[/Script/ModelContextProtocolEngine.ModelContextProtocolSettings]:bAutoStartServer=False`,
+and the log holds 0 "Starting MCP server" lines and 0 "Created new HttpListener" lines. It holds 0 "Branch
+EditorPerProjectUserSettings had commandline override(s)" lines, reported and not required, as said first above.
+
+**V2**, each half running the 366 `Cataclysm.Enchantments.` tests, the POST sent once the group's first test,
+`AUseOfASkillSpendsEveryOneAndCastsItAgainADrawnNumberOfTimesAtFullDamage`, had started:
+
+| Half | The POST | The log | Tests |
+|---|---|---|---|
+| Base, development's command | sent 14.7 s after the editor started; answered HTTP 400, a JSON-RPC error of code -32601, "Call to unknown method \"server/discover\"" | "Starting MCP server on port 8000" and "Created new HttpListener on 127.0.0.1:8000"; `LogModelContextProtocol: Error: Call to unknown method "server/discover"` at 23:22:13.982 UTC, echoed by the automation controller | 366 performed, 365 succeeded, 1 failed: `AUseOfASkillSpendsEveryOneAndCastsItAgainADrawnNumberOfTimesAtFullDamage` |
+| Fixed, `run_automation_tests` | sent 16.3 s after the editor started; refused, `ConnectionRefusedError` 10061 | the switch on the command line; no "Starting MCP server", no "Created new HttpListener", no unknown-method line | 366 performed, 366 succeeded, 0 failed |
+
+**THE FAILURE OF ISSUE #2745 IS REPRODUCED, AND THE SWITCH REMOVES IT.** The one POST, with no MCP `initialize` before
+it, gave the exact Error line of both earlier windows, and the test running at that moment failed with no other Error
+line between its "Test Started" and "Test Completed" lines; the same test passed in the fixed half. The fixed half's log
+holds two Error lines, both at start-up before any test, the engine's own about `GameFeatureData` asset-manager rules;
+the base half's holds the same two. Each half's "Test saves:" line reads "0 written and deleted, 0 left behind".
 
 ### Python, measured
 
