@@ -651,6 +651,32 @@ FString UCataclysmEmpireMapLayout::EmpireTreeButtonBrief()
 				"changed in the capital, not during a walk.");
 }
 
+FVector2D UCataclysmEmpireMapLayout::ForgeButtonPosition(float Scale, FVector2D PanelSize)
+{
+	// THE WALK BOX'S ARITHMETIC, MIRRORED: against the right margin, the tree's button's height and the Walk box's gap
+	// below the top margin.
+	const FVector2D Tree = EmpireTreeButtonSize(Scale);
+	const FVector2D Size = ForgeButtonSize(Scale);
+	return FVector2D(PanelSize.X - FitMarginPx - Size.X * 0.5,
+					 FitMarginPx + Tree.Y + CataclysmDungeonWalkGapPx * Scale + Size.Y * 0.5);
+}
+
+FVector2D UCataclysmEmpireMapLayout::ForgeButtonSize(float Scale)
+{
+	return CitySize(Scale);
+}
+
+FString UCataclysmEmpireMapLayout::ForgeButtonText()
+{
+	return TEXT("Forge");
+}
+
+FString UCataclysmEmpireMapLayout::ForgeButtonBrief()
+{
+	return TEXT("The Cataclysmic Forge: raise a piece of gear a level with two upgrade stones, or combine two stones "
+				"into one of the next level. It can be read at any time and used in the capital, not during a walk.");
+}
+
 FString UCataclysmEmpireMapLayout::LastRunWonLine(const UCataclysmEmpireRun* Run)
 {
 	// NOTHING TO SAY: no run, a run that has not begun, or no win before it. Day 0 is what `Begin` writes, and no run

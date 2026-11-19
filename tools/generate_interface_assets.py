@@ -28,6 +28,9 @@ WHAT IT MAKES, under `/Game/Interface`:
                             weapon type and damage type, issue #753
     WBP_EmpireTree          the empire upgrade tree: one branch at a time, the
                             points banked, Respec and Close, issue #2741
+    WBP_Forge               the Cataclysmic Forge: every worn and carried piece,
+                            Upgrade, one Combine per stone level, and Close,
+                            ruled 2026-11-19
 
 AND ONE LEVEL, under `/Game/Maps`:
 
@@ -974,6 +977,74 @@ def make_empire_tree():
     log("created {}/{}".format(INTERFACE_DIR, EMPIRE_TREE_ASSET))
 
 
+FORGE_PARENT = "CataclysmForgeWidget"
+FORGE_ASSET = "WBP_Forge"
+
+
+def make_forge():
+    """The Cataclysmic Forge, the owner's ruling of 2026-11-19 ("build it next").
+
+    THE WHOLE SCREEN, as the city screen is: the title, the stones held, one
+    button per worn and carried piece, what raising the chosen piece takes,
+    Upgrade and one Combine per level of stone held, the message a press leaves,
+    and Close. The empire map's "Forge" button opens it.
+    """
+    parent = parent_class(FORGE_PARENT)
+    if authoring.widget_blueprint_exists(INTERFACE_DIR, FORGE_ASSET):
+        log("{}/{} already exists; left alone.".format(
+            INTERFACE_DIR, FORGE_ASSET))
+        return
+
+    blueprint = authoring.create_or_load_widget_blueprint(
+        INTERFACE_DIR, FORGE_ASSET, parent)
+    if blueprint is None:
+        raise SystemExit("Could not create {}.".format(FORGE_ASSET))
+
+    add(blueprint, unreal.CanvasPanel, "RootCanvas")
+
+    backdrop = add(blueprint, unreal.Border, "Backdrop", "RootCanvas")
+    backdrop.set_editor_property("brush_color", PANEL)
+    fill_the_screen(backdrop)
+    backdrop.set_editor_property("padding", unreal.Margin(48.0, 36.0, 48.0, 36.0))
+
+    add(blueprint, unreal.VerticalBox, "Body", "Backdrop")
+
+    title = add(blueprint, unreal.TextBlock, "TitleLabel", "Body")
+    set_text(title, "Cataclysmic Forge", size=30)
+
+    stones = add(blueprint, unreal.TextBlock, "StonesLabel", "Body")
+    set_text(stones, "", size=18)
+
+    # ONE BUTTON PER WORN AND CARRIED PIECE, up to eighteen worn and forty-eight
+    # carried. A scroll box holding a wrap box: a wrap box starts a new row when
+    # one is full, and the scroll box stops the rows at the space available.
+    # EMPTY HERE AND FILLED AT RUN TIME by UCataclysmForgeWidget.
+    pieces = add(blueprint, unreal.ScrollBox, "PieceScroll", "Body")
+    fill_remaining_height(pieces)
+    add(blueprint, unreal.WrapBox, "PieceBox", "PieceScroll")
+
+    detail = add(blueprint, unreal.TextBlock, "DetailLabel", "Body")
+    set_text(detail, "", size=18)
+    detail.set_editor_property("auto_wrap_text", True)
+
+    # UPGRADE AND ONE COMBINE PER STONE LEVEL HELD, filled at run time.
+    add(blueprint, unreal.WrapBox, "ActionBox", "Body")
+
+    message = add(blueprint, unreal.TextBlock, "MessageLabel", "Body")
+    set_text(message, "", size=16)
+    message.set_editor_property("auto_wrap_text", True)
+
+    add(blueprint, unreal.Button, "CloseButton", "Body")
+    close = add(blueprint, unreal.TextBlock, "CloseLabel", "CloseButton")
+    set_text(close, "Close", size=18)
+
+    check_every_bound_widget(blueprint, parent)
+    if not authoring.compile_and_save(blueprint):
+        raise SystemExit("{} did not compile or could not be saved.".format(
+            FORGE_ASSET))
+    log("created {}/{}".format(INTERFACE_DIR, FORGE_ASSET))
+
+
 MAPS_DIR = "/Game/Maps"
 FRONT_END_LEVEL = "L_FrontEnd"
 FRONT_END_GAME_MODE = "/Script/Cataclysm.CataclysmFrontEndGameMode"
@@ -1041,6 +1112,7 @@ def main():
     make_character_select()
     make_new_character()
     make_empire_tree()
+    make_forge()
     editor_assets.save_directory(INTERFACE_DIR, recursive=True)
     # THE LEVEL LAST, AFTER THE SCREENS ARE SAVED, so its save is its own.
     make_front_end_map()

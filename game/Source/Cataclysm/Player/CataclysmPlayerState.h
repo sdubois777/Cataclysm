@@ -443,7 +443,8 @@ public:
 	 *
 	 * IN PLAY, KILLING THE DOUBLE IS WHAT CALLS THIS (O1): `ACataclysmDungeonGameMode`'s note of the double's death,
 	 * which also zeroes the residue on every worn item. The other callers: `WearPastTheThreshold` taking back a mark it
-	 * set for an equip that then did not happen, a load of an unmarked record, and the tests.
+	 * set for an equip that then did not happen, `UCataclysmForgeCraft::Upgrade` doing the same for an upgrade, a load
+	 * of an unmarked record, and the tests.
 	 */
 	void ClearConsumptionMark()
 	{

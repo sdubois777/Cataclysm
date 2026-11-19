@@ -193,4 +193,18 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 	 * `ACataclysmPlayerState::ForgetSkillChoice`.
 	 */
 	static FString SkillForgottenLine(const FString& Slot);
+
+	/**
+	 * An item raised a gear level at the forge: "upgraded Quality Torc of Warding from +2 to +3 with two +3 stones, 4
+	 * left; residue 87 to 112; it cost 1 day, day 20 to day 21". The owner's ruling of 2026-11-19, "build it next".
+	 * Said by `UCataclysmForgeCraft::Upgrade`, after the stones are taken, the item raised and the days passed.
+	 */
+	static FString ForgeUpgradeLine(const FString& ItemName, int32 FromLevel, int32 ToLevel, int32 StonesLeft,
+									int32 ResidueBefore, int32 ResidueAfter, int32 Days, int32 DayFrom, int32 DayTo);
+
+	/**
+	 * Two upgrade stones combined into one of the next level at the forge: "combined two +2 upgrade stones into one +3:
+	 * 17 +2 and 6 +3 held". Said by `UCataclysmForgeCraft::Combine`, after the stones have changed.
+	 */
+	static FString ForgeCombineLine(int32 FromLevel, int32 IntoLevel, int32 FromHeld, int32 IntoHeld);
 };

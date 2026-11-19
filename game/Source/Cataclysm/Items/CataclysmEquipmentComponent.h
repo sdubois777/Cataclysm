@@ -183,6 +183,17 @@ public:
 	/** The item in a slot, or null when it is empty or the slot is out of range. */
 	const FCataclysmItem* EquippedAt(ECataclysmGearSlot Slot) const;
 
+	/**
+	 * Puts a changed copy of the item worn in a slot back in that slot, and announces the change, so the wearer's stat
+	 * line is refreshed for it: the forge raising a worn piece a gear level (`UCataclysmForgeCraft::Upgrade`). Issue
+	 * #2742's follow-up, ruled 2026-11-19.
+	 *
+	 * NOT `Equip`, which decides a slot and takes off what is there: this is the same piece, changed, in its own slot.
+	 *
+	 * REFUSED, CHANGING NOTHING, for an empty slot or one outside the range, and for a replacement of another base.
+	 */
+	bool ReplaceEquippedAt(ECataclysmGearSlot Slot, const FCataclysmItem& Changed);
+
 	/** Whether a slot holds an item. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Equipment")
 	bool SlotIsEmpty(ECataclysmGearSlot Slot) const;

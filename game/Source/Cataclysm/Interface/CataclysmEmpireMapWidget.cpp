@@ -38,6 +38,12 @@ namespace
 	{
 		return FName(TEXT("EmpireUpgradeTree"));
 	}
+
+	/** The name the "Forge" button carries. No city's name can be it, nor a Walk box's. Ruled 2026-11-19. */
+	FName ForgeButtonName()
+	{
+		return FName(TEXT("CataclysmicForge"));
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -255,6 +261,29 @@ void UCataclysmEmpireMapWidget::BuildCities()
 
 		EmpireTreeButton = Button;
 	}
+
+	// AND THE BUTTON THAT OPENS THE FORGE, under the tree's, as the boss dungeon's Walk box sits under its marker: the
+	// coordinating session's ruling g of 2026-11-19, until the capital's Smith exists. Always shown: a craft during a
+	// walk is refused on the forge's screen, which says why.
+	if (UCataclysmChoiceButton* Button =
+			CreateWidget<UCataclysmChoiceButton>(this, ButtonClass))
+	{
+		Button->OnChoiceHovered.AddDynamic(
+			this, &UCataclysmEmpireMapWidget::HandleCityHovered);
+		Button->OnChoiceClicked.AddDynamic(
+			this, &UCataclysmEmpireMapWidget::HandleCityClicked);
+		Button->SetClipping(EWidgetClipping::ClipToBounds);
+
+		if (UCanvasPanelSlot* Placement =
+				Cast<UCanvasPanelSlot>(MapCanvas->AddChild(Button)))
+		{
+			Placement->SetAnchors(FAnchors(0.0f, 0.0f));
+			Placement->SetAlignment(FVector2D(0.5, 0.5));
+			Placement->SetAutoSize(false);
+		}
+
+		ForgeButton = Button;
+	}
 }
 
 void UCataclysmEmpireMapWidget::PlaceCities()
@@ -309,6 +338,27 @@ void UCataclysmEmpireMapWidget::PlaceCities()
 
 	PlaceCataclysmDungeon(Scale);
 	PlaceEmpireTreeButton(Scale, Size);
+	PlaceForgeButton(Scale, Size);
+}
+
+void UCataclysmEmpireMapWidget::PlaceForgeButton(float Scale, FVector2D PanelSize)
+{
+	if (ForgeButton == nullptr)
+	{
+		return;
+	}
+
+	if (UCanvasPanelSlot* Placement = Cast<UCanvasPanelSlot>(ForgeButton->Slot))
+	{
+		Placement->SetPosition(UCataclysmEmpireMapLayout::ForgeButtonPosition(Scale, PanelSize));
+		Placement->SetSize(UCataclysmEmpireMapLayout::ForgeButtonSize(Scale));
+	}
+
+	ForgeButton->SetLabelScale(Scale);
+
+	// PLAIN, as the tree's button is.
+	ForgeButton->SetChoice(ForgeButtonName(), FText::FromString(UCataclysmEmpireMapLayout::ForgeButtonText()),
+						   /*bChosen*/ false, /*bAvailable*/ true);
 }
 
 void UCataclysmEmpireMapWidget::PlaceEmpireTreeButton(float Scale, FVector2D PanelSize)
@@ -539,6 +589,13 @@ void UCataclysmEmpireMapWidget::HandleCityHovered(FName Value)
 		return;
 	}
 
+	// AND THE FORGE'S, ruled 2026-11-19.
+	if (Value == ForgeButtonName())
+	{
+		DetailLabel->SetText(FText::FromString(UCataclysmEmpireMapLayout::ForgeButtonBrief()));
+		return;
+	}
+
 	const UCataclysmEmpireRun* Run = ShownRun();
 	const int32 CityId = CityForButton(Value);
 
@@ -624,6 +681,19 @@ void UCataclysmEmpireMapWidget::HandleCityClicked(FName Value)
 		return;
 	}
 
+	// THE FORGE'S BUTTON OPENS THE FORGE'S SCREEN, which the player controller owns, counted for the same reason.
+	// Ruled 2026-11-19.
+	if (Value == ForgeButtonName())
+	{
+		++ForgeRequests;
+		if (ACataclysmPlayerController* Controller =
+				Cast<ACataclysmPlayerController>(GetOwningPlayer()))
+		{
+			Controller->ToggleForge();
+		}
+		return;
+	}
+
 	const int32 CityId = CityForButton(Value);
 	const UCataclysmEmpireRun* Run = ShownRun();
 
@@ -700,6 +770,11 @@ void UCataclysmEmpireMapWidget::ClickEmpireTreeForTests()
 {
 	// THE NAME THE BUTTON CARRIES, through the handler the button calls.
 	HandleCityClicked(EmpireTreeButtonName());
+}
+
+void UCataclysmEmpireMapWidget::ClickForgeForTests()
+{
+	HandleCityClicked(ForgeButtonName());
 }
 
 int32 UCataclysmEmpireMapWidget::CityForButton(FName Value) const

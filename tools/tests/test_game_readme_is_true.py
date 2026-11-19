@@ -245,6 +245,9 @@ DAY_ADVANCERS_ALLOWED = (
     # A RESPEC OF THE EMPIRE UPGRADE TREE costs the lethality mode's death cost in days, taken in
     # `UCataclysmGameInstance::RespecEmpireTree`. Issue #2741 slice 1b, 2026-11-18.
     "game/Source/Cataclysm/Player/CataclysmGameInstance.cpp",
+    # AN UPGRADE AT THE FORGE costs a day per level and the residue's time penalty, taken in
+    # `UCataclysmForgeCraft::Upgrade`. The owner's ruling of 2026-11-19.
+    "game/Source/Cataclysm/Player/CataclysmForgeCraft.cpp",
 )
 
 
@@ -262,8 +265,9 @@ def test_only_walking_a_dungeon_and_the_console_move_the_empires_day() -> None:
     costs 5, 10 or 15 days, charged from the dungeon game mode, which was already
     on the list below. IT WIDENED FOR ISSUE #2741 SLICE 1B: a respec of the empire
     upgrade tree costs the same days, from the game instance, and the readme
-    names it. What is left is the one the design still owes: the forge costs
-    twelve and does not exist.
+    names it. IT WIDENED AGAIN ON 2026-11-19: an upgrade at the forge costs a day
+    per level and the residue's time penalty, from `UCataclysmForgeCraft`, and the
+    readme names it. The forge's other crafts are not built.
 
     IT IS THE POINT AT WHICH THE EMPIRE STOPS BEING A DEMONSTRATION. A player who
     has to type a command to make time pass is looking at a diagram; a player

@@ -340,3 +340,19 @@ FString FCataclysmPlayLoopLog::SkillForgottenLine(const FString& Slot)
 {
 	return FString::Printf(TEXT("forgot the %s slot's skill choice: it shows its default again"), *Slot);
 }
+
+FString FCataclysmPlayLoopLog::ForgeUpgradeLine(const FString& ItemName, int32 FromLevel, int32 ToLevel,
+												int32 StonesLeft, int32 ResidueBefore, int32 ResidueAfter, int32 Days,
+												int32 DayFrom, int32 DayTo)
+{
+	return FString::Printf(
+		TEXT("upgraded %s from +%d to +%d with two +%d stones, %d left; residue %d to %d; it cost %d day%s, day %d to day %d"),
+		*ItemName, FromLevel, ToLevel, ToLevel, StonesLeft, ResidueBefore, ResidueAfter, Days,
+		Days == 1 ? TEXT("") : TEXT("s"), DayFrom, DayTo);
+}
+
+FString FCataclysmPlayLoopLog::ForgeCombineLine(int32 FromLevel, int32 IntoLevel, int32 FromHeld, int32 IntoHeld)
+{
+	return FString::Printf(TEXT("combined two +%d upgrade stones into one +%d: %d +%d and %d +%d held"), FromLevel,
+						   IntoLevel, FromHeld, FromLevel, IntoHeld, IntoLevel);
+}

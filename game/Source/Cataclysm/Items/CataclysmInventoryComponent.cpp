@@ -235,6 +235,19 @@ bool UCataclysmInventoryComponent::HoldSlot(int32 Slot)
 	return true;
 }
 
+bool UCataclysmInventoryComponent::ReplaceItemAt(int32 Slot, const FCataclysmItem& Changed)
+{
+	const FCataclysmItem* Current = ItemAt(Slot);
+	if (Current == nullptr || Changed.Base != Current->Base)
+	{
+		return false;
+	}
+
+	Slots[Slot].Item = Changed;
+	++Changes;
+	return true;
+}
+
 bool UCataclysmInventoryComponent::RemoveItemAt(int32 Slot)
 {
 	if (!Slots.IsValidIndex(Slot) || SlotIsEmpty(Slots[Slot]))
