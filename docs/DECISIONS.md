@@ -19,9 +19,10 @@ blocked blow in `UCataclysmAbilitySystemComponent::ActOnEvent` (`AbilitySystem/C
 ### SAID FIRST
 
 - **COMPILED, NOT YET RUN.** The branch compiled before its rebase, as one unity build and with each changed file
-  compiled alone, and the rebased tree compiled once after it ("Compiled (phase 2)", below). No automation test and no
-  guard proof has run. The counts and the six proofs' failures are registered below, before the window that will test
-  them.
+  compiled alone, and the tree rebased onto `da5783f4c` compiled once after it ("Compiled (phase 2)", below). It was then
+  rebased again, onto gold's slice 2 (`04fb305f1`, #2751), and **that tree's first compile is the window's build**. No
+  automation test and no guard proof has run. The counts and the six proofs' failures are registered below, before the
+  window that will test them.
 - **WHAT DID NOT WORK.** The first attempt to compile did not run: the continuous integration runner held the build
   tool's lock for all five tries. The first full Python run on the rebased branch failed one test,
   `test_every_log_capture_in_the_tests_flushes_before_it_reads`: two of the log captures this slice added to the C++
@@ -168,15 +169,18 @@ what `LogCataclysm` printed through an output device.
 
 ### Registered before the run
 
-The base is window tree-1b-w1's whole-suite engine log at `a3eddb1d1`
-(`laughing-curran-69e4bb/.claude/windows/t2741b_suite_engine_a3eddb1d.log`, 4834 "Test Completed" lines, 47 skipped
-halves), whose `game/` tree is this branch's base `da5783f4c` (`git diff --stat a3eddb1d1 da5783f4c -- game/` prints
-nothing). Group counts are its "Test Completed" lines whose test path begins with the prefix, ignoring case. Every
-prefix ends in a dot, and none is a case-insensitive string prefix of another of that log's 317 groups.
+The base is window gold-2-w1's whole-suite engine log at `e4cb8b589`
+(`adoring-jennings-f8c84c/.claude/windows/gold2_suite_engine_e4cb8b58.log`, 4842 "Test Completed" lines; 4842
+performed, all succeeding, 47 skipped halves, 0 test saves left behind, as the coordinating session gave them), whose
+`game/` tree is this branch's base `04fb305f1` (`git diff --stat e4cb8b589 04fb305f1 -- game/` prints nothing). Group
+counts are its "Test Completed" lines whose test path begins with the prefix, ignoring case. Every prefix ends in a dot,
+and none is a case-insensitive string prefix of another of that log's 318 groups. **Registered first at 4840, on
+`da5783f4c`, against window tree-1b-w1's 4834 at `a3eddb1d1`; registered again here after the rebase onto gold's slice
+2, which added 8 tests to none of these groups.**
 
 | Figure | Registered |
 | :-- | :-- |
-| Whole Unreal suite | 4834 + 6 = **4840**, 47 skipped halves, 0 test saves left behind |
+| Whole Unreal suite | 4842 + 6 = **4848**, 47 skipped halves, 0 test saves left behind |
 | `Cataclysm.HitLog.` alone | **6**, a new group; no other group's name begins with it, or it with another's |
 | `Cataclysm.Travel.` alone | **9**, none added: the arrive test checks the free-play floor's line |
 | `Cataclysm.BlockReflect.` alone | **5**, none added: the reflect test checks the mark |
@@ -218,6 +222,13 @@ Each build's log held one compiler warning line, the engine's own: `MicrosoftPla
 
 **Then rebased** onto `da5783f4c` as `feat/hit-log-2749-2` (the rebase moves pushed commits, so it is a new branch): no
 file is changed by both. Build 4 is the rebased tree's compile, after the correction in "Python, phase 2".
+
+**And rebased again** onto `04fb305f1`, gold's slice 2 (#2751), as `feat/hit-log-2749-3`. Two files are changed by
+both. `CataclysmPlayerCharacter.cpp` merged without a conflict: gold's lines are in the city upgrade console commands,
+far from this branch's. `docs/DECISIONS.md` conflicted at its top and was resolved with `tools/resolve_decisions_log.py
+resolve --first "Every blow the player takes"`: this entry was first written at `2898c4919` (17:47:47), gold's at its
+branch commit `707f5f19f` (15:03:14), so this one is the newer. `git lfs checkout` left 0 pointer files. **This tree is
+not compiled before the window; the window's build is its first compile.**
 
 ### Review (phase 2)
 
