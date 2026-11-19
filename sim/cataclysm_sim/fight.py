@@ -96,6 +96,19 @@ HEALTH_MULTIPLIERS = (0.49, 0.77, 0.87, 1.01, 1.06, 1.04, 1.19, 1.15)
 DAMAGE_MULTIPLIERS = (0.06, 0.58, 1.01, 1.39, 1.68, 1.86, 2.40, 2.97)
 
 
+def damage_multiplier(tier: int, ring=es.DEFAULT_RING) -> float:
+    """The Stalker's damage multiplier on a dungeon rolled on `ring`: the table's, which was fitted on an Outpost's
+    damage scale, times that ring's damage scale over an Outpost's at the same tier. ISSUE #2749'S RING SLICE, ruled by
+    the coordinating session on 2026-11-19: the Stalker is as dangerous as a Boss on the same floor, a Boss's damage is
+    multiplied by `enemy_stats.damage_scale(tier, ring)`, and the fit is linear in the Boss's damage, so the ratio
+    carries the fit to every ring with no second table. At tier 1: 0.06 on an Outpost, 0.132 on a Bulwark, 0.156 on a
+    Sanctuary, 0.12 on the Pillar; tiers 2 to 8 are the same on every ring, as their damage scale is. The game's copy is
+    `UCataclysmDungeonModifierEffects::CorruptedStalkerDamageMultiplier(Tier, Ring)`."""
+    held = min(max(tier, 1), 8)
+    return (DAMAGE_MULTIPLIERS[held - 1] * es.damage_scale(held, ring)
+            / es.damage_scale(held, es.DEFAULT_RING))
+
+
 def _defender(hero: Character, tier: int) -> dmg.Defender:
     return dmg.Defender(
         health=hero.stat("max_health"),

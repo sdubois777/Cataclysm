@@ -47,7 +47,7 @@ struct CATACLYSM_API FCataclysmStartingFigures
  * score `UCataclysmEnemyScore::StrengthScoreFor` gives:
  *
  *     health = strength x Common's HealthPerScore x the archetype's HealthShare
- *     damage = strength x Common's DamagePerScore x the archetype's DamageShare x DamageScale(tier)
+ *     damage = strength x Common's DamagePerScore x the archetype's DamageShare x DamageScale(tier, ring)
  *     armour = strength x Common's ArmorPerScore  x the archetype's ArmorShare
  *
  * with Common's figures from `DT_EnemyRarities` and the shares from

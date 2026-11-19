@@ -3324,7 +3324,9 @@ void ACataclysmDungeonGameMode::RaiseTheCorruptedStalker(const FVector* At)
 		return;
 	}
 	Stalker->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
-	if (!Stalker->WearTheBuild(Entry, ACataclysmGameMode::DifficultyTierIn(this), Stream))
+	// THE RING TOO, since issue #2749's ring slice: the Stalker keeps pace with a Boss on the same floor, whose damage
+	// rises by ring at tier 1.
+	if (!Stalker->WearTheBuild(Entry, ACataclysmGameMode::DifficultyTierIn(this), Stream, RunCityTier()))
 	{
 		Stalker->Destroy();
 		return;
@@ -15702,6 +15704,11 @@ void ACataclysmDungeonGameMode::BindEmpireDungeon(int32 DungeonId, const FCatacl
 	// floors. Until then the count was written to the save and read by nothing.
 	DungeonBosses = FMath::Max(1, Dungeon.Bosses);
 
+	// AND THE RING ITS DEPTH WAS ROLLED ON, which moves every floor creature's damage at difficulty tier 1 through
+	// `RunCityTier` and `UCataclysmEnemyScore::FloorFor`. `CityTier` and not the ring a moved Quest dungeon stands on
+	// now: see `DungeonCityTier`. Issue #2749's ring slice.
+	DungeonCityTier = Dungeon.CityTier;
+
 	// AND WHAT ITS MODIFIERS ADD. `UCataclysmEnemyScore` reads this back off the
 	// game mode and adds it to every creature on the floor, which is how a
 	// dungeon modifier makes a dungeon harder --
@@ -17017,6 +17024,9 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	DungeonModifierPool.Reset();
 	DungeonEveryBuiltModifier.Reset();
 	DungeonBosses = 1;
+	// AND ITS RING, back to an Outpost's: a floor walked after this with no empire dungeon behind it builds its
+	// creatures as every floor did before the ring existed. Issue #2749's ring slice.
+	DungeonCityTier = ECataclysmCityTier::Outpost;
 	FloorBrief = FCataclysmFloorBrief();
 
 	// AND THE ARMOUR MARCH OF PROGRESS PAID FOR GOES WITH THE RUN. Issues #1820 and #41.

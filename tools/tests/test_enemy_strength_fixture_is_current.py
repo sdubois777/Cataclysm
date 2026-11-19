@@ -28,3 +28,41 @@ def test_the_figures_cover_every_creature_a_floor_places_at_every_rarity():
     steps = {int(line.split(",")[1]) for line in lines}
     assert kinds == {row for row, _ in fixture.KINDS}
     assert steps == set(range(6))
+
+
+def test_the_figures_cover_every_ring_at_tier_one_for_every_creature_and_rarity():
+    """ISSUE #2749's RING SLICE: tier 1 damage rises by the ring the dungeon was rolled on, so the game is checked on
+    every ring for every creature and rarity, and on a ring at tier 2, where the figure must be the Outpost's."""
+    import csv
+
+    rows = list(csv.DictReader(fixture.text().splitlines()))
+    rings = {row["CityTier"] for row in rows}
+    assert rings == {"Outpost", "Bulwark", "Sanctuary", "Pillar"}, rings
+    for ring in ("Bulwark", "Sanctuary", "Pillar"):
+        on_it = [row for row in rows if row["CityTier"] == ring and row["Tier"] == "1"]
+        assert {(row["Archetype"], int(row["RarityStep"])) for row in on_it} == {
+            (key, step) for key, _ in fixture.KINDS for step in range(6)}, ring
+    flat = [row for row in rows if row["Tier"] == "2" and row["CityTier"] != "Outpost"]
+    assert len(flat) == len(fixture.KINDS), flat
+
+
+def test_a_rings_row_differs_from_its_outposts_in_damage_alone():
+    """The same creature on the same floor, on a Bulwark and on an Outpost: the score, health and armour equal, the
+    damage 0.11 / 0.05 times as much. At tier 2 on a Sanctuary, the damage equal as well."""
+    import csv
+
+    rows = list(csv.DictReader(fixture.text().splitlines()))
+    key = ("Archetype", "RarityStep", "Tier", "DungeonType", "TotalFloors", "Floor", "ModifierScore")
+    outpost = {tuple(row[k] for k in key): row for row in rows if row["CityTier"] == "Outpost"}
+    compared = 0
+    for row in rows:
+        if row["CityTier"] == "Outpost":
+            continue
+        same = outpost[tuple(row[k] for k in key)]
+        assert (row["StrengthScore"], row["Health"], row["Armour"]) == (
+            same["StrengthScore"], same["Health"], same["Armour"]), row
+        ratio = {"Bulwark": 0.11 / 0.05, "Sanctuary": 0.13 / 0.05, "Pillar": 0.10 / 0.05}[row["CityTier"]]
+        expected = float(same["Damage"]) * (ratio if row["Tier"] == "1" else 1.0)
+        assert abs(float(row["Damage"]) - expected) <= 1e-3 * max(1.0, expected), (row, same)
+        compared += 1
+    assert compared == 133

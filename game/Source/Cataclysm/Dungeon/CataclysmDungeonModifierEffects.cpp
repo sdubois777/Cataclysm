@@ -3,6 +3,7 @@
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "Dungeon/CataclysmEnemyScore.h"
 #include "Dungeon/CataclysmFloorBrief.h"
 #include "Dungeon/CataclysmFloorGenerator.h"
 #include "Items/CataclysmEquipmentComponent.h"
@@ -3334,9 +3335,14 @@ float UCataclysmDungeonModifierEffects::CorruptedStalkerHealthMultiplier(int32 D
 	return CorruptedStalkerHealthMultipliers[FMath::Clamp(DifficultyTier, 1, 8) - 1];
 }
 
-float UCataclysmDungeonModifierEffects::CorruptedStalkerDamageMultiplier(int32 DifficultyTier)
+float UCataclysmDungeonModifierEffects::CorruptedStalkerDamageMultiplier(int32 DifficultyTier, ECataclysmCityTier Ring)
 {
-	return CorruptedStalkerDamageMultipliers[FMath::Clamp(DifficultyTier, 1, 8) - 1];
+	const int32 Held = FMath::Clamp(DifficultyTier, 1, 8);
+	// THE RING'S DAMAGE SCALE OVER THE OUTPOST'S, which the table was fitted on: one at tiers 2 to 8 and on an Outpost,
+	// 2.2 on a tier 1 Bulwark. Issue #2749's ring slice.
+	const double RingOverOutpost = UCataclysmEnemyScore::DamageScale(Held, Ring)
+		/ UCataclysmEnemyScore::DamageScale(Held, ECataclysmCityTier::Outpost);
+	return static_cast<float>(CorruptedStalkerDamageMultipliers[Held - 1] * RingOverOutpost);
 }
 
 bool UCataclysmDungeonModifierEffects::WingsOfTheHostIsDue(float SecondsSinceLast)

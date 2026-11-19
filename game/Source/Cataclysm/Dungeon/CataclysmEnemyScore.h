@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Empire/CataclysmDungeonKind.h"
+#include "Empire/CataclysmEmpireMap.h"
 #include "CataclysmEnemyScore.generated.h"
 
 class ACataclysmGameMode;
@@ -67,6 +68,19 @@ struct CATACLYSM_API FCataclysmScoredFloor
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Score")
 	float ModifierScore = 0.0f;
+
+	/**
+	 * The ring the dungeon was rolled on: `FCataclysmDungeon::CityTier`, which also set its depth. Issue #2749's ring
+	 * slice.
+	 *
+	 * READ BY THE STRENGTH PATH ALONE. At difficulty tier 1 it moves a creature's damage (`DamageScale`); `ScoreFor`
+	 * does not read it, so the experience a kill grants is the same on every ring, as the ruling asked for damage only.
+	 *
+	 * AN OUTPOST WHEN NOTHING SAYS OTHERWISE, which is what every floor read before the ring existed: the sandbox, a
+	 * world with no game mode, and a dungeon walked with no empire dungeon bound.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Score")
+	ECataclysmCityTier CityTier = ECataclysmCityTier::Outpost;
 };
 
 /**
@@ -258,8 +272,34 @@ public:
 	 * last floor: a judgement, approved by the coordinating session on
 	 * 2026-11-19. `tools/tests/test_the_starting_character_survives_a_pack.py`
 	 * is the guard; `docs/DECISIONS.md`, 2026-11-19, has the measurement.
+	 *
+	 * AN OUTPOST'S SINCE ISSUE #2749'S RING SLICE: the three constants below are the other rings'.
 	 */
 	static constexpr double DamageScaleAtFirstTier = 0.05;
+
+	/**
+	 * DAMAGE AT DIFFICULTY TIER 1 RISES BY THE RING THE DUNGEON WAS ROLLED ON. The project owner, 2026-11-19, chose
+	 * "Rise by city ring" over a rise with character level and over leaving it flat: Outpost dungeons stay at 0.05,
+	 * Bulwark and Sanctuary dungeons hit harder. Each figure is the coordinating session's ruling of the same day, by the
+	 * rule that chose the Outpost's 0.05: the largest step of 0.01 at which every dungeon of that ring the simulation's
+	 * tier 1 campaigns clear (seeds 0 to 59 of every policy), walked again from the level the character held when it
+	 * entered, is won with at least 10% of its health left on the last floor, against 10 Common Imps. Checked on seeds
+	 * 60 to 119. A judgement; `sim/analyse_opening.py` section 5 is the measurement and
+	 * `tools/tests/test_the_starting_character_survives_a_pack.py` the guard.
+	 */
+	static constexpr double DamageScaleAtFirstTierOnABulwark = 0.11;
+
+	/** A Sanctuary's, by the same rule. See `DamageScaleAtFirstTierOnABulwark`. */
+	static constexpr double DamageScaleAtFirstTierOnASanctuary = 0.13;
+
+	/**
+	 * The Pillar's, by the same rule: BELOW THE BULWARK'S, THE ONE EXCEPTION TO "RISES BY RING", ruled by the
+	 * coordinating session on 2026-11-19. Only the earned Cataclysm boss dungeon has this ring -- no surge targets the
+	 * Pillar, and `UCataclysmSurgeScheduler::MakeCataclysmDungeon` labels the boss dungeon Pillar though it stands on
+	 * no city -- and it is reached soonest, at the lowest levels, by the characters that win soonest, 100 to 197 floors
+	 * deep. At 0.11 two of the 219 measured clears ended under 10% health.
+	 */
+	static constexpr double DamageScaleAtFirstTierOnThePillar = 0.10;
 
 	/**
 	 * TIERS 2 TO 8 LIE ON A LINE RISING EVENLY FROM THIS AT TIER 1 TO ONE AT THE
@@ -280,9 +320,19 @@ public:
 	 *  the three `ContentRelief` constants above, 0 below their first tier. */
 	static double ContentRelief(int32 Tier);
 
-	/** What a creature's damage is multiplied by at this tier: 0.05 at tier 1,
-	 *  then 0.314 at tier 2 rising evenly to 1.00 at tier 8. */
-	static double DamageScale(int32 Tier);
+	/**
+	 * What a creature's damage is multiplied by at this tier on a dungeon rolled on this ring: at tier 1 the ring's own
+	 * figure (`FirstTierDamageScaleOn`), then 0.314 at tier 2 rising evenly to 1.00 at tier 8 on every ring.
+	 *
+	 * TIERS 2 TO 8 ARE THE SAME ON EVERY RING, ruled by the coordinating session on 2026-11-19: the gap in level between
+	 * a tier's Outpost and Sanctuary dungeons is largest at tier 1 and shrinks with the tier. The ring reaches this
+	 * function at every tier, so giving tiers 2 to 8 ring figures later is a table here, not a new path.
+	 */
+	static double DamageScale(int32 Tier, ECataclysmCityTier Ring = ECataclysmCityTier::Outpost);
+
+	/** Tier 1's damage scale on a dungeon rolled on this ring: 0.05 on an Outpost, 0.11 on a Bulwark, 0.13 on a
+	 *  Sanctuary, 0.10 on the Pillar. */
+	static double FirstTierDamageScaleOn(ECataclysmCityTier Ring);
 
 	/**
 	 * The score a creature on this floor is BUILT from: `ScoreFor` less the

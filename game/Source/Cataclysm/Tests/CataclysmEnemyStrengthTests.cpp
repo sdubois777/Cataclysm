@@ -10,6 +10,8 @@
 #include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Dungeon/CataclysmEnemyScore.h"
 #include "Dungeon/CataclysmEnemyStrength.h"
+#include "Empire/CataclysmEmpireMap.h"
+#include "Empire/CataclysmEmpireRun.h"
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
 #include "Misc/FileHelper.h"
@@ -44,8 +46,18 @@ namespace CataclysmEnemyStrengthTest
 		return false;
 	}
 
+	/** The fixture's `CityTier` column, by the enum's value names. Issue #2749's ring slice. */
+	bool RingNamed(const FString& Name, ECataclysmCityTier& Out)
+	{
+		if (Name == TEXT("Outpost")) { Out = ECataclysmCityTier::Outpost; return true; }
+		if (Name == TEXT("Bulwark")) { Out = ECataclysmCityTier::Bulwark; return true; }
+		if (Name == TEXT("Sanctuary")) { Out = ECataclysmCityTier::Sanctuary; return true; }
+		if (Name == TEXT("Pillar")) { Out = ECataclysmCityTier::Pillar; return true; }
+		return false;
+	}
+
 	FCataclysmScoredFloor Floor(int32 Tier, ECataclysmDungeonType Type, int32 Total, int32 Which,
-								float ModifierScore = 0.0f)
+								float ModifierScore = 0.0f, ECataclysmCityTier Ring = ECataclysmCityTier::Outpost)
 	{
 		FCataclysmScoredFloor Out;
 		Out.DifficultyTier = Tier;
@@ -54,6 +66,7 @@ namespace CataclysmEnemyStrengthTest
 		Out.TotalFloors = Total;
 		Out.FloorNumber = Which;
 		Out.ModifierScore = ModifierScore;
+		Out.CityTier = Ring;
 		return Out;
 	}
 
@@ -107,12 +120,16 @@ bool FCataclysmEnemyStrengthEveryFigureIsTheModels::RunTest(const FString& Param
 	Text.ParseIntoArrayLines(Lines);
 	int32 Checked = 0;
 	int32 Wrong = 0;
+	int32 OffTheOutposts = 0;
 	for (int32 Index = 1; Index < Lines.Num(); ++Index)
 	{
+		// TWELVE CELLS SINCE ISSUE #2749'S RING SLICE: the ring the dungeon was rolled on is the eighth, after the
+		// modifier score, and the four figures follow it.
 		TArray<FString> Cells;
 		Lines[Index].ParseIntoArray(Cells, TEXT(","), false);
 		ECataclysmDungeonType Type = ECataclysmDungeonType::Basic;
-		if (Cells.Num() != 11 || !TypeNamed(Cells[3], Type))
+		ECataclysmCityTier Ring = ECataclysmCityTier::Outpost;
+		if (Cells.Num() != 12 || !TypeNamed(Cells[3], Type) || !RingNamed(Cells[7], Ring))
 		{
 			AddError(FString::Printf(TEXT("fixture line %d is not a row this test reads: %s"), Index + 1, *Lines[Index]));
 			++Wrong;
@@ -122,7 +139,8 @@ bool FCataclysmEnemyStrengthEveryFigureIsTheModels::RunTest(const FString& Param
 		const FName Row(*Cells[0]);
 		const int32 Step = FCString::Atoi(*Cells[1]);
 		const FCataclysmScoredFloor Where = Floor(FCString::Atoi(*Cells[2]), Type, FCString::Atoi(*Cells[4]),
-												  FCString::Atoi(*Cells[5]), FCString::Atof(*Cells[6]));
+												  FCString::Atoi(*Cells[5]), FCString::Atof(*Cells[6]), Ring);
+		OffTheOutposts += Ring != ECataclysmCityTier::Outpost ? 1 : 0;
 
 		FCataclysmStartingFigures Built;
 		float HealthScale = 1.0f;
@@ -138,18 +156,18 @@ bool FCataclysmEnemyStrengthEveryFigureIsTheModels::RunTest(const FString& Param
 		const double Damage = static_cast<double>(Built.AttackDamage) * DamageScale;
 		const double Armour = static_cast<double>(Built.Armour) * ArmourScale;
 		const bool bRight = bBuilt
-			&& Near(Strength, FCString::Atod(*Cells[7])) && Near(Health, FCString::Atod(*Cells[8]))
-			&& Near(Damage, FCString::Atod(*Cells[9])) && Near(Armour, FCString::Atod(*Cells[10]));
+			&& Near(Strength, FCString::Atod(*Cells[8])) && Near(Health, FCString::Atod(*Cells[9]))
+			&& Near(Damage, FCString::Atod(*Cells[10])) && Near(Armour, FCString::Atod(*Cells[11]));
 		if (!bRight)
 		{
-			// THE FIRST FEW ARE NAMED, so a wholesale break says what broke without printing 840 lines.
+			// THE FIRST FEW ARE NAMED, so a wholesale break says what broke without printing 973 lines.
 			if (Wrong < 5)
 			{
 				AddError(FString::Printf(
-					TEXT("%s rung %d, tier %s, %s floor %s of %s, modifiers %s: built strength %.4f health %.4f damage "
-						 "%.4f armour %.4f; the model says %s, %s, %s, %s"),
-					*Cells[0], Step, *Cells[2], *Cells[3], *Cells[5], *Cells[4], *Cells[6], Strength, Health, Damage,
-					Armour, *Cells[7], *Cells[8], *Cells[9], *Cells[10]));
+					TEXT("%s rung %d, tier %s, %s floor %s of %s, modifiers %s, %s: built strength %.4f health %.4f "
+						 "damage %.4f armour %.4f; the model says %s, %s, %s, %s"),
+					*Cells[0], Step, *Cells[2], *Cells[3], *Cells[5], *Cells[4], *Cells[6], *Cells[7], Strength, Health,
+					Damage, Armour, *Cells[8], *Cells[9], *Cells[10], *Cells[11]));
 			}
 			++Wrong;
 		}
@@ -157,6 +175,9 @@ bool FCataclysmEnemyStrengthEveryFigureIsTheModels::RunTest(const FString& Param
 	}
 
 	TestTrue(TEXT("the fixture holds a whole grid of rows"), Checked >= 800);
+	// 133 SINCE ISSUE #2749'S RING SLICE: tier 1 on a Bulwark, a Sanctuary and the Pillar for every creature and
+	// rarity, and tier 2 on a Sanctuary for each creature's Common.
+	TestEqual(TEXT("rows on a ring other than an Outpost"), OffTheOutposts, 133);
 	TestEqual(TEXT("rows where the game builds what the model builds"), Checked - Wrong, Checked);
 	return true;
 }
@@ -344,6 +365,175 @@ bool FCataclysmEnemyStrengthAFloorBuildsIt::RunTest(const FString& Parameters)
 		TestNotEqual(TEXT("and it is not the fixed sandbox Imp"), Imp->GetStartingMaxHealth(),
 					 Fixed->GetPropertyValue_InContainer(GameMode));
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnemyStrengthDamageByRing,
+	"Cataclysm.EnemyStrength.AtTierOneDamageRisesByTheRingTheDungeonWasRolledOnAndAtTiersTwoToEightItDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEnemyStrengthDamageByRing::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEnemyStrengthTest;
+
+	// ISSUE #2749'S RING SLICE. The project owner, 2026-11-19, "Rise by city ring"; the figures are the coordinating
+	// session's of the same day. Typed, so a moved constant fails here.
+	TestEqual(TEXT("an Outpost's at tier 1 is a twentieth"),
+			  UCataclysmEnemyScore::DamageScale(1, ECataclysmCityTier::Outpost), 0.05, 1e-9);
+	TestEqual(TEXT("a Bulwark's is 0.11"), UCataclysmEnemyScore::DamageScale(1, ECataclysmCityTier::Bulwark), 0.11, 1e-9);
+	TestEqual(TEXT("a Sanctuary's is 0.13"),
+			  UCataclysmEnemyScore::DamageScale(1, ECataclysmCityTier::Sanctuary), 0.13, 1e-9);
+	TestEqual(TEXT("the Pillar's, where only the boss dungeon stands, is 0.10"),
+			  UCataclysmEnemyScore::DamageScale(1, ECataclysmCityTier::Pillar), 0.10, 1e-9);
+	TestEqual(TEXT("with no ring named, an Outpost's"), UCataclysmEnemyScore::DamageScale(1), 0.05, 1e-9);
+	for (int32 Tier = 2; Tier <= 8; ++Tier)
+	{
+		TestEqual(FString::Printf(TEXT("tier %d: a Sanctuary's is an Outpost's"), Tier),
+				  UCataclysmEnemyScore::DamageScale(Tier, ECataclysmCityTier::Sanctuary),
+				  UCataclysmEnemyScore::DamageScale(Tier, ECataclysmCityTier::Outpost), 1e-9);
+	}
+
+	// AND IT MOVES THE DAMAGE ALONE: the same Brute on the same floor of an Outpost's and a Sanctuary's dungeon.
+	const UDataTable* Rarities = UCataclysmEnemyRarity::LoadEnemyRarityTable();
+	const UDataTable* Archetypes = UCataclysmEnemyStrength::LoadEnemyArchetypeTable();
+	FCataclysmStartingFigures OnAnOutpost;
+	FCataclysmStartingFigures OnASanctuary;
+	if (!TestTrue(TEXT("a tier 1 Brute is built on both rings"),
+				  UCataclysmEnemyStrength::StartingFiguresFor(
+					  Rarities, Archetypes, TEXT("Brute"),
+					  Floor(1, ECataclysmDungeonType::Basic, 12, 6, 0.0f, ECataclysmCityTier::Outpost), 0, OnAnOutpost)
+				  && UCataclysmEnemyStrength::StartingFiguresFor(
+					  Rarities, Archetypes, TEXT("Brute"),
+					  Floor(1, ECataclysmDungeonType::Basic, 12, 6, 0.0f, ECataclysmCityTier::Sanctuary), 0,
+					  OnASanctuary)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the Sanctuary's hits 0.13 / 0.05 times as hard"), OnASanctuary.AttackDamage,
+			  OnAnOutpost.AttackDamage * 2.6f, 0.001f);
+	TestEqual(TEXT("with the same health"), OnASanctuary.Health, OnAnOutpost.Health, 0.001f);
+	TestEqual(TEXT("and the same armour"), OnASanctuary.Armour, OnAnOutpost.Armour, 0.001f);
+	TestEqual(TEXT("and it is worth the same: the score a kill grants does not read the ring"),
+			  UCataclysmEnemyScore::ScoreFor(Floor(1, ECataclysmDungeonType::Basic, 12, 6, 0.0f,
+												   ECataclysmCityTier::Sanctuary), 0),
+			  UCataclysmEnemyScore::ScoreFor(Floor(1, ECataclysmDungeonType::Basic, 12, 6), 0));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnemyStrengthABulwarksWalk,
+	"Cataclysm.EnemyStrength.AWalkInADungeonRolledOnABulwarkBuildsItsCreaturesWithTheBulwarksDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEnemyStrengthABulwarksWalk::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEnemyStrengthTest;
+
+	// THE WHOLE ROUTE: the empire dungeon's ring, carried across the module line by `BindEmpireDungeon`, read back by
+	// `FloorFor`, and built into a creature by `ApplyDesignedStats`. Issue #2749's ring slice.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("a dungeon game mode"), Mode))
+	{
+		return false;
+	}
+
+	// A TIER 1 RUN, whose first surge lands on the Outposts, the only front line there is at the start.
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	Run->Begin(/* Seed */ 1, ECataclysmSurgeMode::Static, /* LethalityRung */ 0, /* DifficultyTier */ 1);
+	Run->AdvanceDay();
+	if (!TestTrue(TEXT("set-up: the first surge put a dungeon on the map"), Run->Dungeons.Num() > 0))
+	{
+		return false;
+	}
+	Mode->SetEmpireRunForTests(Run);
+
+	// ITS DEPTH ROLLED ON A BULWARK, AND STANDING ON A SANCTUARY, as a Quest dungeon that moved inward would: the ring it
+	// was rolled on is the one that counts, ruled by the coordinating session on 2026-11-19.
+	int32 SanctuaryId = INDEX_NONE;
+	for (const FCataclysmCity& City : Run->Map->Cities)
+	{
+		if (City.Tier == ECataclysmCityTier::Sanctuary)
+		{
+			SanctuaryId = City.CityId;
+			break;
+		}
+	}
+	if (!TestNotEqual(TEXT("set-up: the map has a Sanctuary"), SanctuaryId, static_cast<int32>(INDEX_NONE)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("set-up: the surge rolled it on an Outpost"), static_cast<int32>(Run->Dungeons[0].CityTier),
+			  static_cast<int32>(ECataclysmCityTier::Outpost));
+	Run->Dungeons[0].CityTier = ECataclysmCityTier::Bulwark;
+	Run->Dungeons[0].CityId = SanctuaryId;
+	const int32 DungeonId = Run->Dungeons[0].DungeonId;
+
+	TestEqual(TEXT("before entering, a walk is on an Outpost"), static_cast<int32>(Mode->RunCityTier()),
+			  static_cast<int32>(ECataclysmCityTier::Outpost));
+	if (!TestTrue(TEXT("the dungeon is entered"), Mode->EnterEmpireDungeon(DungeonId)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("entering carries the ring its depth was rolled on, not the one it stands on"),
+			  static_cast<int32>(Mode->RunCityTier()), static_cast<int32>(ECataclysmCityTier::Bulwark));
+
+	const int32 Tier = ACataclysmGameMode::DifficultyTierIn(Mode);
+	TestEqual(TEXT("set-up: the walk is at tier 1"), Tier, 1);
+	const FCataclysmScoredFloor Read = UCataclysmEnemyScore::FloorFor(Mode, Tier);
+	TestEqual(TEXT("and the score model reads the ring off the game mode"), static_cast<int32>(Read.CityTier),
+			  static_cast<int32>(ECataclysmCityTier::Bulwark));
+
+	// THE SAME FLOOR ON EACH RING, set by hand, so the figures expected do not come through the reading under test.
+	FCataclysmScoredFloor OnAnOutpost = Read;
+	OnAnOutpost.CityTier = ECataclysmCityTier::Outpost;
+	FCataclysmScoredFloor OnABulwark = Read;
+	OnABulwark.CityTier = ECataclysmCityTier::Bulwark;
+	const UDataTable* Rarities = UCataclysmEnemyRarity::LoadEnemyRarityTable();
+	const UDataTable* Archetypes = UCataclysmEnemyStrength::LoadEnemyArchetypeTable();
+	FCataclysmStartingFigures AtAnOutpost;
+	FCataclysmStartingFigures AtABulwark;
+	if (!TestTrue(TEXT("set-up: a Common Imp is built for this floor on both rings"),
+				  UCataclysmEnemyStrength::StartingFiguresFor(Rarities, Archetypes, TEXT("Imp"), OnAnOutpost, 0,
+															  AtAnOutpost)
+				  && UCataclysmEnemyStrength::StartingFiguresFor(Rarities, Archetypes, TEXT("Imp"), OnABulwark, 0,
+																 AtABulwark)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("on this floor a Bulwark's Imp hits 0.11 / 0.05 times as hard as an Outpost's"),
+			  AtABulwark.AttackDamage, AtAnOutpost.AttackDamage * 2.2f, 0.001f);
+
+	// AND A CREATURE PLACED ON THE FLOOR IS BUILT WITH THE BULWARK'S.
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	ACataclysmEnemyCharacter* Imp = World->SpawnActor<ACataclysmEnemyCharacter>(
+		ACataclysmDungeonGameMode::ClassFor(ECataclysmDungeonCreature::Imp), FVector::ZeroVector, FRotator::ZeroRotator,
+		SpawnParams);
+	if (!TestNotNull(TEXT("an Imp"), Imp))
+	{
+		return false;
+	}
+	Mode->ImpRarityStep = 0;
+	Mode->ApplyDesignedStats(Imp, ECataclysmDungeonCreature::Imp);
+	TestEqual(TEXT("set-up: the Imp is a Common"), Imp->RarityStep, 0);
+	TestEqual(TEXT("its Starting damage is the Bulwark's"), Imp->GetStartingAttackDamage(), AtABulwark.AttackDamage,
+			  0.001f);
+	TestEqual(TEXT("and its Starting health the same as on an Outpost, which the ring does not move"),
+			  Imp->GetStartingMaxHealth(), AtAnOutpost.Health, 0.01f);
+	// THE CONTROL: not an Outpost's damage, so the ring really reached the creature.
+	TestTrue(FString::Printf(TEXT("CONTROL: and not an Outpost's %.3f"), AtAnOutpost.AttackDamage),
+			 Imp->GetStartingAttackDamage() > AtAnOutpost.AttackDamage * 1.5f);
+
+	// LEAVING PUTS IT BACK: a plain floor walked afterwards is built as every floor was before the ring.
+	Mode->LeaveEmpireDungeon();
+	TestEqual(TEXT("leaving the dungeon puts the walk back on an Outpost"), static_cast<int32>(Mode->RunCityTier()),
+			  static_cast<int32>(ECataclysmCityTier::Outpost));
 	return true;
 }
 

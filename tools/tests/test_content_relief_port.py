@@ -154,10 +154,27 @@ class TestTheDamageScaleMatches:
 
     SOURCE = HEADER.with_suffix(".cpp")
 
+    #: The game's tier 1 constant for each ring, by the ring's name in `enemy_stats`. Issue #2749's ring slice.
+    RING_CONSTANTS = {
+        "Outpost": "DamageScaleAtFirstTier",
+        "Bulwark": "DamageScaleAtFirstTierOnABulwark",
+        "Sanctuary": "DamageScaleAtFirstTierOnASanctuary",
+        "Pillar": "DamageScaleAtFirstTierOnThePillar",
+    }
+
     def test_the_tier_one_figure_matches(self, header):
         from cataclysm_sim import enemy_stats
         assert constant(header, "DamageScaleAtFirstTier") == pytest.approx(enemy_stats.DAMAGE_SCALE_AT_FIRST_TIER)
         assert enemy_stats.DAMAGE_SCALE_AT_FIRST_TIER == pytest.approx(0.05), "ruled 2026-11-19, issue #2749"
+
+    def test_every_rings_tier_one_figure_matches(self, header):
+        """The owner's "Rise by city ring" and the coordinating session's figures, both 2026-11-19."""
+        from cataclysm_sim import enemy_stats
+        assert set(self.RING_CONSTANTS) == set(enemy_stats.DAMAGE_SCALE_AT_FIRST_TIER_BY_RING)
+        for ring, name in self.RING_CONSTANTS.items():
+            assert constant(header, name) == pytest.approx(enemy_stats.DAMAGE_SCALE_AT_FIRST_TIER_BY_RING[ring]), ring
+        assert enemy_stats.DAMAGE_SCALE_AT_FIRST_TIER_BY_RING == pytest.approx(
+            {"Outpost": 0.05, "Bulwark": 0.11, "Sanctuary": 0.13, "Pillar": 0.10}), "ruled 2026-11-19, issue #2749"
 
     def test_the_line_tiers_two_to_eight_are_on_matches(self, header):
         from cataclysm_sim import enemy_stats
@@ -168,7 +185,17 @@ class TestTheDamageScaleMatches:
 
     def test_the_game_gives_tier_one_its_own_figure_and_the_rest_the_line(self):
         body = body_of(self.SOURCE.read_text(encoding="utf-8"), "double UCataclysmEnemyScore::DamageScale(")
-        assert re.search(r"Held\s*==\s*LowestDifficultyTier\s*\)\s*\{\s*return\s+DamageScaleAtFirstTier\s*;", body), (
-            "DamageScale no longer returns the tier 1 figure at tier 1. Issue #2749.")
+        assert re.search(r"Held\s*==\s*LowestDifficultyTier\s*\)\s*\{\s*return\s+FirstTierDamageScaleOn\(\s*Ring\s*\)\s*;",
+                         body), "DamageScale no longer returns the ring's tier 1 figure at tier 1. Issue #2749."
         assert re.search(r"return\s+DamageScaleLineAtFirstTier\s*\+\s*\(\s*1\.0\s*-\s*DamageScaleLineAtFirstTier\s*\)",
                          body), "DamageScale no longer puts tiers 2 to 8 on the line from DamageScaleLineAtFirstTier."
+
+    def test_the_game_reads_each_rings_own_constant(self):
+        """Each ring returns its own constant in `FirstTierDamageScaleOn`, so the four constants compared above are the
+        ones a floor reads, and no ring falls through to another's."""
+        body = body_of(self.SOURCE.read_text(encoding="utf-8"),
+                       "double UCataclysmEnemyScore::FirstTierDamageScaleOn(")
+        for ring, name in self.RING_CONSTANTS.items():
+            # The simulation's ring names are the enum's value names, `ECataclysmCityTier::Outpost` and so on.
+            assert re.search(rf"case\s+ECataclysmCityTier::{ring}\s*:\s*return\s+{name}\s*;", body), (
+                f"FirstTierDamageScaleOn does not return {name} for the {ring}")
