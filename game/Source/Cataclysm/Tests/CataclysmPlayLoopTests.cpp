@@ -265,4 +265,38 @@ bool FCataclysmPlayLoopLevelGainedTextTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlayLoopBuildTextTest,
+	"Cataclysm.PlayLoop.TheBuildLinesSayWhatChangedAndWhatIsLeft",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlayLoopBuildTextTest::RunTest(const FString&)
+{
+	// Issue #2763: one line for each change the player makes to the build, said beside the write of the character
+	// record. The names are real rows of `game/Data/PassiveNodes.csv` and `WeaponSkills.csv`, but nothing here reads
+	// a table: these are the words for the figures given, and the places that say them pass the figures.
+	using Log = FCataclysmPlayLoopLog;
+	TestEqual(TEXT("a passive point: the node, its tree, its points and the character's"),
+			  Log::PassivePointLine(TEXT("Fervour"), TEXT("Masochist"), 1, 1, 1, 2),
+			  FString(TEXT("spent a passive point in Fervour (Masochist): 1 of 1; 1 of 2 passive points spent")));
+	TestEqual(TEXT("a capstone option: the option, the capstone and the points spent with it"),
+			  Log::PassiveOptionLine(TEXT("Reprisal Wave"), TEXT("The First Vow"), 26, 33),
+			  FString(TEXT("took the option Reprisal Wave at the capstone The First Vow; 26 of 33 passive points spent")));
+	TestEqual(TEXT("the passive tree reset, several points back"), Log::PassiveResetLine(3, 3),
+			  FString(TEXT("reset the passive tree: 3 points back; 3 to spend")));
+	TestEqual(TEXT("and one point back is one point"), Log::PassiveResetLine(1, 2),
+			  FString(TEXT("reset the passive tree: 1 point back; 2 to spend")));
+	TestEqual(TEXT("attribute points: how many, on what, what it now holds and what is left"),
+			  Log::AttributePointLine(1, TEXT("Ferocity"), 2, 0),
+			  FString(TEXT("spent 1 attribute point on Ferocity: 2 in it; 0 unspent")));
+	TestEqual(TEXT("and several at once, as the console spends them"), Log::AttributePointLine(3, TEXT("Mind"), 3, 2),
+			  FString(TEXT("spent 3 attribute points on Mind: 3 in it; 2 unspent")));
+	TestEqual(TEXT("the attribute points reset"), Log::AttributeResetLine(2, 2),
+			  FString(TEXT("reset the attribute points: 2 points back; 2 unspent")));
+	TestEqual(TEXT("a skill put on a key, by its name"), Log::SkillChosenLine(TEXT("Pyroclasm"), TEXT("Heavy")),
+			  FString(TEXT("put Pyroclasm in the Heavy slot")));
+	TestEqual(TEXT("a key's choice forgotten"), Log::SkillForgottenLine(TEXT("Heavy")),
+			  FString(TEXT("forgot the Heavy slot's skill choice: it shows its default again")));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

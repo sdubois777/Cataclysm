@@ -298,3 +298,45 @@ FString FCataclysmPlayLoopLog::TreeRespecLine(int32 PointsBack, double Banked, i
 		PointsBack, PointsBack == 1 ? TEXT("") : TEXT("s"),
 		*UCataclysmEmpireMapLayout::EmpirePointsText(Banked), Days, DayFrom, DayTo);
 }
+
+FString FCataclysmPlayLoopLog::PassivePointLine(const FString& Node, const FString& Tree, int32 Points,
+												int32 MaxPoints, int32 Spent, int32 Available)
+{
+	return FString::Printf(TEXT("spent a passive point in %s (%s): %d of %d; %d of %d passive points spent"), *Node,
+						   *Tree, Points, MaxPoints, Spent, Available);
+}
+
+FString FCataclysmPlayLoopLog::PassiveOptionLine(const FString& Option, const FString& Capstone, int32 Spent,
+												 int32 Available)
+{
+	return FString::Printf(TEXT("took the option %s at the capstone %s; %d of %d passive points spent"), *Option,
+						   *Capstone, Spent, Available);
+}
+
+FString FCataclysmPlayLoopLog::PassiveResetLine(int32 PointsBack, int32 ToSpend)
+{
+	return FString::Printf(TEXT("reset the passive tree: %d point%s back; %d to spend"), PointsBack,
+						   PointsBack == 1 ? TEXT("") : TEXT("s"), ToSpend);
+}
+
+FString FCataclysmPlayLoopLog::AttributePointLine(int32 Count, const FString& Attribute, int32 InIt, int32 Unspent)
+{
+	return FString::Printf(TEXT("spent %d attribute point%s on %s: %d in it; %d unspent"), Count,
+						   Count == 1 ? TEXT("") : TEXT("s"), *Attribute, InIt, Unspent);
+}
+
+FString FCataclysmPlayLoopLog::AttributeResetLine(int32 PointsBack, int32 Unspent)
+{
+	return FString::Printf(TEXT("reset the attribute points: %d point%s back; %d unspent"), PointsBack,
+						   PointsBack == 1 ? TEXT("") : TEXT("s"), Unspent);
+}
+
+FString FCataclysmPlayLoopLog::SkillChosenLine(const FString& Skill, const FString& Slot)
+{
+	return FString::Printf(TEXT("put %s in the %s slot"), *Skill, *Slot);
+}
+
+FString FCataclysmPlayLoopLog::SkillForgottenLine(const FString& Slot)
+{
+	return FString::Printf(TEXT("forgot the %s slot's skill choice: it shows its default again"), *Slot);
+}

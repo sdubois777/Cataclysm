@@ -3402,7 +3402,7 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmAssignSkill(
 					return;
 				}
 				const FString Named = ACataclysmPlayerState::SkillSlotName(Slot);
-				if (State->ClearSkillChoice(Slot))
+				if (State->ForgetSkillChoice(Slot)) // The player's act, which saves. Issue #2763.
 				{
 					Ar.Logf(TEXT("The %s slot is back to its default, and the choice is forgotten."), *Named);
 				}
@@ -3413,8 +3413,9 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmAssignSkill(
 				return;
 			}
 
+			// THE PLAYER'S ACT, which writes the character record; `AssignSkill` is the load's. Issue #2763.
 			FString Reason;
-			if (!State->AssignSkill(Slot, FName(*Args[1]), Reason))
+			if (!State->ChooseSkill(Slot, FName(*Args[1]), Reason))
 			{
 				Ar.Log(*Reason);
 				return;

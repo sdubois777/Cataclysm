@@ -210,11 +210,51 @@ The days away are the two numbers after "while away, days": 12 days in the examp
   Planning's two -- and what the city holds did not. The map shows the Outpost at 96%. That is the rule for a maximum
   the tree raises mid-run, as for a player's own health: raising the maximum raises nothing. A run begun after this
   builds every city full at the raised maximum, "1050 of 1050".
-- **Keep the points** for step 14.
+- **Keep the points** for step 15.
 
-### 14. Stop, press Play, and Continue
+### 14. Spend a passive point and an attribute point, and choose a skill
 
-- Stop the game, and press Play again.
+Each of these writes the character record at once, so stopping the game straight afterwards keeps it. Issue [#2763](https://github.com/sdubois777/Cataclysm/issues/2763):
+until then they waited for the next item, death or trip to be written, and stopping Play In Editor first lost them.
+
+- **Press P** for the passive tree, and click a node you can reach: the first node of your class's tree. It shows one
+  more point, and the count of points left falls by one.
+- **In the log:**
+
+  `PLAY LOOP: spent a passive point in Fervour (Masochist): 1 of 1; 1 of 2 passive points spent`
+
+  A capstone's option, once its tree holds enough points, is a line of its own:
+
+  `PLAY LOOP: took the option Reprisal Wave at the capstone The First Vow; 26 of 33 passive points spent`
+
+- **Open the console** (the \` key) and type `Cataclysm.CharacterSheet`: the character sheet has no key of its own
+  yet. Click the button **Ferocity 0**. It reads "Ferocity 1".
+- **In the log:**
+
+  `PLAY LOOP: spent 1 attribute point on Ferocity: 1 in it; 1 unspent`
+
+- **Press K** for the skill screen, click the **Heavy** slot, then a skill from the pool. Then click **Clear the
+  slot**, and choose it again.
+- **In the log**, one line for each:
+
+  `PLAY LOOP: put Pyroclasm in the Heavy slot`
+
+  `PLAY LOOP: forgot the Heavy slot's skill choice: it shows its default again`
+
+- **A reset** gives the points back, and has a line of its own. Only the console resets, with
+  `Cataclysm.ResetPassivePoints` and `Cataclysm.ResetAttributePoints`; **skip them here**, so step 15 has the points
+  to show:
+
+  `PLAY LOOP: reset the passive tree: 3 points back; 3 to spend`
+
+  `PLAY LOOP: reset the attribute points: 2 points back; 2 unspent`
+
+- **Stop the game now**, straight after the last choice, without walking or picking anything up. Step 15 shows what
+  was kept.
+
+### 15. Stop, press Play, and Continue
+
+- Stop the game, if step 14 has not, and press Play again.
 - **On screen:** the character select screen, with your character's row. Click the row.
 - **In the log:**
 
@@ -226,6 +266,9 @@ The days away are the two numbers after "while away, days": 12 days in the examp
   what the purchase left, the empire upgrade tree holds what steps 12 and 13 left in it, and the Outpost of step 13
   still reads "defence 1000 of 1050": the tree's bonus is applied once, on loading, and not saved into the city -- and
   the capital's line. It says no days away, because no walk has just ended.
+- **And what step 14 chose is still chosen.** P shows the passive point in its node, the character sheet shows
+  "Ferocity 1", and K shows the skill on the Heavy slot. If any of them is gone, the save did not hold it: copy step
+  14's PLAY LOOP lines and note which.
 
 **A character saved in the middle of a walk** opens the dungeon level instead, and goes on walking:
 

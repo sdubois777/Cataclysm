@@ -26,6 +26,9 @@
 #include "Items/CataclysmWearing.h"
 // For the pool a skill choice is made from. Issue #837 layer 3.
 #include "Items/CataclysmWeaponSlotsComponent.h"
+// For writing the character record when the player changes the build. Issue #2763.
+#include "Save/CataclysmSaveTriggers.h"
+#include "Save/CataclysmSaveWriter.h"
 #include "Engine/DataTable.h"
 #include "Net/UnrealNetwork.h"
 #include "UObject/UObjectIterator.h"
@@ -350,12 +353,23 @@ bool ACataclysmPlayerState::SpendAttributePoints(const FString& Attribute,
 	}
 
 	SpentAttributePoints = Wanted;
+
+	// AND THE CHARACTER RECORD IS WRITTEN, which holds the points. Issue #2763: until this a point spent waited for
+	// the next item, death or trip to reach the disk, and stopping play first lost it.
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::AttributePointLine(Count, Attribute,
+		SpentAttributePoints.PointsIn(Attribute), AttributePointsUnspent()));
+	UCataclysmSaveWriter::NoteTriggerIn(GetWorld(), ECataclysmSaveTrigger::CharacterBuildChanged);
 	return true;
 }
 
 void ACataclysmPlayerState::ResetAttributePoints()
 {
+	const int32 PointsBack = SpentAttributePoints.Total();
 	SpentAttributePoints = FCataclysmAttributePoints();
+
+	// AND THE CHARACTER RECORD IS WRITTEN, for `SpendAttributePoints`' reason. Issue #2763.
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::AttributeResetLine(PointsBack, AttributePointsUnspent()));
+	UCataclysmSaveWriter::NoteTriggerIn(GetWorld(), ECataclysmSaveTrigger::CharacterBuildChanged);
 }
 
 // ---------------------------------------------------------------------------
@@ -515,6 +529,15 @@ bool ACataclysmPlayerState::SpendPassivePoint(FName Node, FString& OutReason)
 	// recorded and changes nothing until the player happens to equip something,
 	// spend an attribute point or gain a level.
 	RefreshCharacterStats();
+
+	// AND THE CHARACTER RECORD IS WRITTEN, which holds the tree. Issue #2763: the project owner spent points in a
+	// dungeon on 2026-11-19, stopped play, and their record held none of them.
+	const FCataclysmPassiveNodeRow* Row = UCataclysmPassiveTree::FindNode(NodeTable, Node);
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::PassivePointLine(
+		Row ? Row->NodeName : Node.ToString(), UCataclysmPassiveTree::TreeOf(NodeTable, Node),
+		PassiveAllocation.PointsIn(Node), Row ? Row->MaxPoints : 0, PassiveAllocation.Total(),
+		PassivePointsAvailable()));
+	UCataclysmSaveWriter::NoteTriggerIn(GetWorld(), ECataclysmSaveTrigger::CharacterBuildChanged);
 	return true;
 }
 
@@ -570,6 +593,16 @@ bool ACataclysmPlayerState::ChoosePassiveOption(FName Node, int32 Option,
 	// A CHOICE TURNS ON THAT OPTION'S EFFECT ROWS, so it moves the stat line for
 	// the same reason spending a point does. Issue #1054.
 	RefreshCharacterStats();
+
+	// AND THE CHARACTER RECORD IS WRITTEN, for `SpendPassivePoint`'s reason. Issue #2763. The option by its name,
+	// or its number when the row names none.
+	const TArray<FString> Options = Row ? UCataclysmPassiveTree::OptionNamesOf(*Row) : TArray<FString>();
+	const FString Taken = Options.IsValidIndex(Option - 1) && !Options[Option - 1].IsEmpty()
+		? Options[Option - 1]
+		: FString::Printf(TEXT("%d"), Option);
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::PassiveOptionLine(
+		Taken, Row ? Row->NodeName : Node.ToString(), PassiveAllocation.Total(), PassivePointsAvailable()));
+	UCataclysmSaveWriter::NoteTriggerIn(GetWorld(), ECataclysmSaveTrigger::CharacterBuildChanged);
 	return true;
 }
 
@@ -578,6 +611,7 @@ void ACataclysmPlayerState::ResetPassivePoints()
 	// THE CAPSTONE CHOICES GO WITH THE POINTS. Each capstone's own description
 	// ends "The choice is permanent", and a respec that returned the points
 	// while leaving the capstone decisions made would not be a respec at all.
+	const int32 PointsBack = PassiveAllocation.Total();
 	PassiveAllocation.Clear();
 
 	// AND THE POINTS AN ALLOCATION WAS HANDED WITH. Ruled 2026-10-10. The figure
@@ -590,6 +624,10 @@ void ACataclysmPlayerState::ResetPassivePoints()
 	// clamps current health down to it, which `UCataclysmVitalAttributeSet`
 	// already does for any other way of losing it.
 	RefreshCharacterStats();
+
+	// AND THE CHARACTER RECORD IS WRITTEN, for `SpendPassivePoint`'s reason. Issue #2763.
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::PassiveResetLine(PointsBack, PassivePointsUnspent()));
+	UCataclysmSaveWriter::NoteTriggerIn(GetWorld(), ECataclysmSaveTrigger::CharacterBuildChanged);
 }
 
 void ACataclysmPlayerState::SetPassiveAllocation(
@@ -842,4 +880,41 @@ bool ACataclysmPlayerState::ClearSkillChoice(ECataclysmAbilitySlot Slot)
 		Character->RefillAbilitySlots();
 	}
 	return Removed > 0;
+}
+
+bool ACataclysmPlayerState::ChooseSkill(ECataclysmAbilitySlot Slot, FName SkillRow, FString& OutReason)
+{
+	// THE PLAYER'S ACT, AND NOT `AssignSkill`, RAISES THE SAVE: a load calls `AssignSkill` to put saved choices back,
+	// and a load writing back what it has just read would be a write for nothing. Issue #2763, ruled by the
+	// coordinating session on 2026-11-19.
+	if (!AssignSkill(Slot, SkillRow, OutReason))
+	{
+		return false;
+	}
+
+	// BY THE SKILL'S NAME, NEVER ITS ROW, as the screen names it; the row only for a row with no name.
+	const ACataclysmPlayerCharacter* Character = Cast<ACataclysmPlayerCharacter>(GetPawn());
+	const UCataclysmWeaponSlotsComponent* Slots =
+		Character ? Character->FindComponentByClass<UCataclysmWeaponSlotsComponent>() : nullptr;
+	const FCataclysmWeaponSkill* InPool = Slots
+		? Slots->GetSkillPool().FindByPredicate(
+			  [SkillRow](const FCataclysmWeaponSkill& Skill) { return Skill.RowName == SkillRow; })
+		: nullptr;
+	const FString Named = InPool && !InPool->Name.IsEmpty() ? InPool->Name : SkillRow.ToString();
+
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::SkillChosenLine(Named, SkillSlotName(Slot)));
+	UCataclysmSaveWriter::NoteTriggerIn(GetWorld(), ECataclysmSaveTrigger::CharacterBuildChanged);
+	return true;
+}
+
+bool ACataclysmPlayerState::ForgetSkillChoice(ECataclysmAbilitySlot Slot)
+{
+	// NOTHING TO FORGET, NOTHING SAID OR WRITTEN: the record already holds no choice for the key.
+	if (!ClearSkillChoice(Slot))
+	{
+		return false;
+	}
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::SkillForgottenLine(SkillSlotName(Slot)));
+	UCataclysmSaveWriter::NoteTriggerIn(GetWorld(), ECataclysmSaveTrigger::CharacterBuildChanged);
+	return true;
 }

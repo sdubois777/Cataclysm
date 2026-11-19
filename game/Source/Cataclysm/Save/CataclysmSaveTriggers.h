@@ -191,6 +191,30 @@ enum class ECataclysmSaveTrigger : uint8
 	 * session's ruling of 2026-11-18. Nothing writes these numbers to disk.
 	 */
 	OwnEmpireTreeChanged = 14,
+
+	/**
+	 * The player changed the character's build: a passive point spent (`ACataclysmPlayerState::SpendPassivePoint`), a
+	 * capstone option taken (`ChoosePassiveOption`), the passive tree reset (`ResetPassivePoints`), attribute points
+	 * spent or reset (`SpendAttributePoints`, `ResetAttributePoints`), or a skill put on a key or a key's choice
+	 * forgotten (`ChooseSkill`, `ForgetSkillChoice`). Issue #2763, ruled by the coordinating session on
+	 * 2026-11-19.
+	 *
+	 * WHY IT EXISTS. All of these live in the character record, and until this nothing wrote it when they changed:
+	 * the clock writes the run record only. The project owner spent passive points in a dungeon on 2026-11-19 and
+	 * stopped Play In Editor 43 seconds after entering it; their character record, last written when they pressed
+	 * Walk, holds no passive node and no attribute point.
+	 *
+	 * RAISED BY THE PLAYER'S ACTS AND NEVER BY A LOAD. `AssignSkill` is what a load calls to put saved choices back
+	 * (`FCataclysmSaveApply`), so the trigger is raised by `ChooseSkill`, which the skill screen and
+	 * `Cataclysm.AssignSkill` call, and not by `AssignSkill`; `RestorePassiveAllocation`, `RestoreSpentAttributePoints`
+	 * and `SetPassiveAllocation` raise nothing.
+	 *
+	 * AN ORDINARY ASYNCHRONOUS WRITE, OF THE CHARACTER RECORD, and of the run record as every trigger but
+	 * `AccountChanged` is. NOT IN `UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame`: the run record holds
+	 * none of it, and the character record's write does not wait on the frame rule (see `OwnEmpireTreeChanged`).
+	 * One write for each act, so `Cataclysm.SpendPassivePoint <node> 5` writes five times in one frame; accepted.
+	 */
+	CharacterBuildChanged = 15,
 };
 
 /**
@@ -250,8 +274,9 @@ public:
 	 *
 	 * THE INVENTORY AND DEATH, AND NOTHING ELSE -- and since then a new character (`CharacterCreated`, 2026-11-01),
 	 * a won run (`RunWon`, issue #1324 slice 6e, 2026-11-03), the hand-over before a level change (`LeavingTheLevel`,
-	 * issue #2733 slice 3), a city upgrade bought (`CityUpgradeBought`, issue #2742 slice 2) and a Solo Self-Found
-	 * character's own empire points or tree (`OwnEmpireTreeChanged`, issue #2741 slice 1c). What a character is carrying
+	 * issue #2733 slice 3), a city upgrade bought (`CityUpgradeBought`, issue #2742 slice 2), a Solo Self-Found
+	 * character's own empire points or tree (`OwnEmpireTreeChanged`, issue #2741 slice 1c) and a change the player made
+	 * to the character's build (`CharacterBuildChanged`, issue #2763). What a character is carrying
 	 * lives in its own record rather than in the run, so an item picked up has
 	 * to reach that record; and a death has to be written whole, which means the
 	 * character as well as the floor it fell on.
