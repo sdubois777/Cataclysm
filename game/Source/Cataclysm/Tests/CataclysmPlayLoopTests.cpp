@@ -319,4 +319,47 @@ bool FCataclysmPlayLoopForgeTextTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlayLoopGearTextTest,
+	"Cataclysm.PlayLoop.ThePickedUpAndWoreLinesNameThePieceAndTheHitBeforeAndAfter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlayLoopGearTextTest::RunTest(const FString&)
+{
+	// The coordinating session's ruling of 2026-11-19. The figures are the owner's case: a Greataxe +0 hits for 57.6,
+	// 63.4 on a Demonic creature's health with Slashing's 10%, and 97.2 with a T1 Torc of +53.3% against Demonic
+	// enemies (`Cataclysm.ItemComparison.ANecklaceAgainstTheRunsFamilyRaisesItsLineAndNotThePlainHit` works them out).
+	using Log = FCataclysmPlayLoopLog;
+	TestEqual(TEXT("a piece picked up, by the name the floor showed"), Log::PickedUpLine(TEXT("Quality Torc of Warding"), 0),
+			  FString(TEXT("picked up Quality Torc of Warding, +0")));
+	TestEqual(TEXT("and its gear level"), Log::PickedUpLine(TEXT("Legendary Greataxe"), 4),
+			  FString(TEXT("picked up Legendary Greataxe, +4")));
+
+	Log::FHits Before;
+	Before.Plain = 57.6f;
+	Before.Families = {FName(TEXT("Demonic"))};
+	Before.OnFamilies = {63.36f};
+	Log::FHits After = Before;
+	After.OnFamilies = {97.152f};
+	TestEqual(TEXT("a piece worn, with both hits before and after"),
+			  Log::WoreLine(TEXT("Everyday Torc"), TEXT("Necklace"), Before, After),
+			  FString(TEXT("wore Everyday Torc in Necklace: basic attack hit 57.6 to 57.6; on a Demonic creature's "
+						   "health 63.4 to 97.2")));
+
+	// WITH NO RUN THERE IS NO FAMILY, and the line says only the plain hit.
+	Log::FHits NoRun;
+	NoRun.Plain = 57.6f;
+	Log::FHits Sword;
+	Sword.Plain = 16.0f;
+	TestEqual(TEXT("with no run, the plain hit alone"), Log::WoreLine(TEXT("Sword"), TEXT("Weapon 1"), NoRun, Sword),
+			  FString(TEXT("wore Sword in Weapon 1: basic attack hit 57.6 to 16")));
+
+	// A FAMILY ONLY ONE SIDE PRICED IS LEFT OUT, rather than set against nothing.
+	Log::FHits Other = After;
+	Other.Families = {FName(TEXT("Death"))};
+	TestEqual(TEXT("a family the other side did not price is left out"),
+			  Log::WoreLine(TEXT("Everyday Torc"), TEXT("Necklace"), Before, Other),
+			  FString(TEXT("wore Everyday Torc in Necklace: basic attack hit 57.6 to 57.6")));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -3,6 +3,7 @@
 #include "Interface/CataclysmItemComparison.h"
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
@@ -11,6 +12,8 @@
 #include "Character/CataclysmPlayerBuild.h"
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Data/CataclysmDataRows.h"
+#include "Empire/CataclysmEmpireRun.h"
+#include "Empire/CataclysmRoster.h"
 #include "Engine/DataTable.h"
 #include "Interface/CataclysmCharacterSheetLayout.h"
 #include "Interface/CataclysmItemTooltip.h"
@@ -19,11 +22,33 @@
 #include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
+#include "Player/CataclysmGameInstance.h"
 #include "UObject/Package.h"
 
 const TCHAR* UCataclysmItemComparison::BasicHitLineName = TEXT("Basic attack hit, before the target's defences");
 
 const TCHAR* UCataclysmItemComparison::NothingChangesLine = TEXT("No total on the character sheet changes.");
+
+FString UCataclysmItemComparison::FamilyHitLineName(FName Family)
+{
+	return FString::Printf(TEXT("Basic attack hit on a %s creature's health, before its defences"), *Family.ToString());
+}
+
+TArray<FName> UCataclysmItemComparison::RunFamiliesIn(const UObject* WorldContext)
+{
+	TArray<FName> Families;
+	if (const UCataclysmEmpireRun* Run = UCataclysmGameInstance::EmpireRunFor(WorldContext, /*bStartIfNone=*/false))
+	{
+		for (const ECataclysmType Cataclysm : Run->ActiveCataclysms)
+		{
+			if (Cataclysm != ECataclysmType::None)
+			{
+				Families.AddUnique(UCataclysmRoster::NameFor(Cataclysm));
+			}
+		}
+	}
+	return Families;
+}
 
 // ---------------------------------------------------------------------------
 // The lines
@@ -74,11 +99,26 @@ TArray<FString> UCataclysmItemComparison::ChangeLines(const FCataclysmComparison
 		}
 	}
 
-	// AND THE ONE LINE THE SHEET DOES NOT HAVE, LAST: ruling (e).
+	// AND THE LINES THE SHEET DOES NOT HAVE, LAST: ruling (e)'s plain hit, then the hit on each family's creatures,
+	// the coordinating session's ruling of 2026-11-19. A family only one reading priced has nothing to compare.
 	const FString Hit = ChangeLineNamed(BasicHitLineName, /*bPercentage=*/false, Now.BasicHit, With.BasicHit);
 	if (!Hit.IsEmpty())
 	{
 		Lines.Add(Hit);
+	}
+	for (int32 Index = 0; Index < Now.Families.Num(); ++Index)
+	{
+		const int32 InWith = With.Families.IndexOfByKey(Now.Families[Index]);
+		if (!Now.FamilyHits.IsValidIndex(Index) || !With.FamilyHits.IsValidIndex(InWith))
+		{
+			continue;
+		}
+		const FString OnFamily = ChangeLineNamed(FamilyHitLineName(Now.Families[Index]), /*bPercentage=*/false,
+												 Now.FamilyHits[Index], With.FamilyHits[InWith]);
+		if (!OnFamily.IsEmpty())
+		{
+			Lines.Add(OnFamily);
+		}
 	}
 	return Lines;
 }
@@ -87,41 +127,105 @@ TArray<FString> UCataclysmItemComparison::ChangeLines(const FCataclysmComparison
 // The basic attack's hit
 // ---------------------------------------------------------------------------
 
+namespace
+{
+	/** The basic attack a set of gear swings and its damage percent, as `BasicHitOf` and `BasicHitOnAFamilyOf` price
+	 *  it; false with no worn weapon that supplies one. */
+	bool ComparisonBasicAttackOf(const UCataclysmEquipmentComponent& Wearing, FName CreationDamageType,
+					   FCataclysmWeaponSkill& OutBasic, float& OutPercent, FString& OutWeaponType)
+	{
+		// THE FIRST WORN WEAPON'S, as the player's basic attack is: `UCataclysmWeaponSlotsComponent` takes the first
+		// entry of `WornWeaponTypes` for it.
+		const TArray<FString> WeaponTypes = Wearing.WornWeaponTypes();
+		if (WeaponTypes.IsEmpty())
+		{
+			return false;
+		}
+
+		// WITH THE ELEMENT IT WOULD BE GRANTED WITH: the first carried type in fill order, which is what the weapon
+		// slots component's `GetDamageType` answers once these weapons are worn.
+		const TArray<FString> DamageTypes = UCataclysmWeaponSlotsComponent::InFillOrder(
+			UCataclysmEquipmentComponent::CarriedDamageTypesOf(Wearing.WornWeapons(), CreationDamageType),
+			CreationDamageType);
+		OutBasic = UCataclysmWeaponSlotsComponent::BasicAttackCarrying(
+			UCataclysmItemModifiers::LoadBaseTable(), WeaponTypes[0],
+			DamageTypes.IsEmpty() ? FString() : DamageTypes[0]);
+		if (OutBasic.Slot == ECataclysmAbilitySlot::None)
+		{
+			return false;
+		}
+
+		// ITS OWN PERCENT, AND ITS SLOT'S WHEN IT STATES NONE, which is `UCataclysmSkillTemplate::GetDamagePercent`'s
+		// order. The basic attack states none, so this is the Basic slot's figure, the design's 100.
+		OutPercent = OutBasic.DamagePercent;
+		if (OutPercent < 0.0f)
+		{
+			const FCataclysmSkillSlotNumbers Numbers = UCataclysmSkillSlots::NumbersFor(
+				UCataclysmSkillSlots::LoadGeneratedTable(), UCataclysmWeaponSkills::DesignedSlotOf(OutBasic));
+			OutPercent = Numbers.bFound ? Numbers.DamagePercent : 0.0f;
+		}
+		OutWeaponType = WeaponTypes[0];
+		return true;
+	}
+}
+
 float UCataclysmItemComparison::BasicHitOf(const UAbilitySystemComponent* AbilitySystem,
 										   const UCataclysmEquipmentComponent& Wearing, FName CreationDamageType)
 {
-	// THE FIRST WORN WEAPON'S, as the player's basic attack is: `UCataclysmWeaponSlotsComponent` takes the first entry
-	// of `WornWeaponTypes` for it.
-	const TArray<FString> WeaponTypes = Wearing.WornWeaponTypes();
-	if (!AbilitySystem || WeaponTypes.IsEmpty())
+	FCataclysmWeaponSkill Basic;
+	float Percent = 0.0f;
+	FString WeaponType;
+	if (!AbilitySystem || !ComparisonBasicAttackOf(Wearing, CreationDamageType, Basic, Percent, WeaponType))
 	{
 		return 0.0f;
 	}
-
-	// WITH THE ELEMENT IT WOULD BE GRANTED WITH: the first carried type in fill order, which is what the weapon slots
-	// component's `GetDamageType` answers once these weapons are worn.
-	const TArray<FString> DamageTypes = UCataclysmWeaponSlotsComponent::InFillOrder(
-		UCataclysmEquipmentComponent::CarriedDamageTypesOf(Wearing.WornWeapons(), CreationDamageType),
-		CreationDamageType);
-	const FCataclysmWeaponSkill Basic = UCataclysmWeaponSlotsComponent::BasicAttackCarrying(
-		UCataclysmItemModifiers::LoadBaseTable(), WeaponTypes[0],
-		DamageTypes.IsEmpty() ? FString() : DamageTypes[0]);
-	if (Basic.Slot == ECataclysmAbilitySlot::None)
-	{
-		return 0.0f;
-	}
-
-	// ITS OWN PERCENT, AND ITS SLOT'S WHEN IT STATES NONE, which is `UCataclysmSkillTemplate::GetDamagePercent`'s
-	// order. The basic attack states none, so this is the Basic slot's figure, the design's 100.
-	float Percent = Basic.DamagePercent;
-	if (Percent < 0.0f)
-	{
-		const FCataclysmSkillSlotNumbers Numbers = UCataclysmSkillSlots::NumbersFor(
-			UCataclysmSkillSlots::LoadGeneratedTable(), UCataclysmWeaponSkills::DesignedSlotOf(Basic));
-		Percent = Numbers.bFound ? Numbers.DamagePercent : 0.0f;
-	}
-
 	return UCataclysmSkillEffects::SkillHitWithNoTarget(AbilitySystem, Basic.Tags, Percent);
+}
+
+float UCataclysmItemComparison::BasicHitOnAFamilyOf(const UAbilitySystemComponent* AbilitySystem,
+													const UCataclysmEquipmentComponent& Wearing,
+													FName CreationDamageType, FName Family)
+{
+	FCataclysmWeaponSkill Basic;
+	float Percent = 0.0f;
+	FString WeaponType;
+	if (!AbilitySystem || !ComparisonBasicAttackOf(Wearing, CreationDamageType, Basic, Percent, WeaponType))
+	{
+		return 0.0f;
+	}
+
+	// THE FAMILY'S INCREASE JOINS THE INCREASES, as `ApplyHit` adds `DamageAgainstTypeOf`; `SkillHitWithNoTarget`'s
+	// `ExtraIncreases` is that bracket.
+	const float Hit = UCataclysmSkillEffects::SkillHitWithNoTarget(
+		AbilitySystem, Basic.Tags, Percent, /*SkillHealthCostPercent=*/0.0f, /*MetresMovedBeforeBlow=*/0.0f,
+		UCataclysmSkillEffects::DamageAgainstTypeNamed(AbilitySystem, Family));
+
+	// AND A SLASHING WEAPON'S MORE AGAINST HEALTH, which the calculation's step 9 multiplies the damage health takes
+	// by. The first worn weapon's sub-type, as `UCataclysmWeaponSlotsComponent::GetEquippedSubType` reads it.
+	const bool bSlashing = UCataclysmWeaponSlotsComponent::SubTypeOfWeaponType(
+		UCataclysmItemModifiers::LoadBaseTable(), WeaponType).Equals(TEXT("Slashing"), ESearchCase::IgnoreCase);
+	return bSlashing ? Hit * (1.0f + UCataclysmDamageCalculation::SubtypeBonus / 100.0f) : Hit;
+}
+
+FString UCataclysmItemComparison::NameShownFor(const FCataclysmItem& Item, const UDataTable* BaseTable,
+											   const UDataTable* AffixTable)
+{
+	// ITS WHOLE NAME, AND ELSE ITS BASE'S OWN NAME, AS ITS INVENTORY CELL SHOWS IT. `NameOf` names only an item that
+	// has a rarity, and `UCataclysmItemValues::RarityOf` gives none to a piece with no affix and no enchantment -- the
+	// starting weapon is one -- so for such a piece it returns nothing. Until the item comparison window ran (issue
+	// #832) the heading then fell back to the row key, and read "If worn, in place of Weapon_Sword:" to the player.
+	// `UCataclysmInventoryScreen::LabelFor` calls a piece by its base's `BaseName`, "Sword", and so does this. The key
+	// only for a base the table does not hold.
+	FString Name = UCataclysmItemName::NameOf(Item, BaseTable, AffixTable);
+	if (Name.IsEmpty() && BaseTable)
+	{
+		if (const FCataclysmItemBaseRow* Row = BaseTable->FindRow<FCataclysmItemBaseRow>(
+				Item.Base, TEXT("UCataclysmItemComparison::NameShownFor"), /*bWarnIfMissing=*/false))
+		{
+			Name = Row->BaseName;
+		}
+	}
+	return Name.IsEmpty() ? Item.Base.ToString() : Name;
 }
 
 // ---------------------------------------------------------------------------
@@ -131,7 +235,8 @@ float UCataclysmItemComparison::BasicHitOf(const UAbilitySystemComponent* Abilit
 FCataclysmComparisonReading UCataclysmItemComparison::ReadingOf(const TArray<FCataclysmItem>& WornSlots,
 																const UCataclysmEquipmentComponent& Live,
 																const UAbilitySystemComponent* LiveAbilities,
-																ACataclysmComparisonStandIn& StandIn)
+																ACataclysmComparisonStandIn& StandIn,
+																const TArray<FName>* Families)
 {
 	FCataclysmComparisonReading Reading;
 	UCataclysmAbilitySystemComponent* Gathered = StandIn.GetCataclysmAbilitySystem();
@@ -173,7 +278,15 @@ FCataclysmComparisonReading UCataclysmItemComparison::ReadingOf(const TArray<FCa
 	{
 		Reading.Figures.Add(UCataclysmCharacterSheetLayout::FigureFor(Stat, Gathered));
 	}
-	Reading.BasicHit = BasicHitOf(Gathered, *Wardrobe, bNumbers ? Numbers.CreationDamageType : FName());
+	const FName Creation = bNumbers ? Numbers.CreationDamageType : FName();
+	Reading.BasicHit = BasicHitOf(Gathered, *Wardrobe, Creation);
+
+	// AND THE HIT ON EACH OF THE RUN'S FAMILIES, the coordinating session's ruling of 2026-11-19.
+	Reading.Families = Families ? *Families : RunFamiliesIn(&Live);
+	for (const FName Family : Reading.Families)
+	{
+		Reading.FamilyHits.Add(BasicHitOnAFamilyOf(Gathered, *Wardrobe, Creation, Family));
+	}
 	Reading.bRead = true;
 	return Reading;
 }
@@ -182,7 +295,8 @@ FCataclysmComparisonResult UCataclysmItemComparison::Compare(const FCataclysmIte
 															 UCataclysmEquipmentComponent& Live,
 															 const UAbilitySystemComponent* LiveAbilities,
 															 ACataclysmComparisonStandIn& StandIn,
-															 const FCataclysmComparisonReading* Now)
+															 const FCataclysmComparisonReading* Now,
+															 const TArray<FName>* Families)
 {
 	FCataclysmComparisonResult Result;
 
@@ -193,9 +307,11 @@ FCataclysmComparisonResult UCataclysmItemComparison::Compare(const FCataclysmIte
 		return Result;
 	}
 
+	// THE SECOND READING PRICES THE FIRST'S FAMILIES, so the two always have the same lines to set side by side.
 	const FCataclysmComparisonReading Before =
-		Now && Now->bRead ? *Now : ReadingOf(Live.GetSlots(), Live, LiveAbilities, StandIn);
-	const FCataclysmComparisonReading After = ReadingOf(Preview.SlotsAfter, Live, LiveAbilities, StandIn);
+		Now && Now->bRead ? *Now : ReadingOf(Live.GetSlots(), Live, LiveAbilities, StandIn, Families);
+	const FCataclysmComparisonReading After =
+		ReadingOf(Preview.SlotsAfter, Live, LiveAbilities, StandIn, &Before.Families);
 	if (!Before.bRead || !After.bRead)
 	{
 		return Result;
@@ -225,22 +341,8 @@ FString UCataclysmItemComparison::HeadingFor(const FCataclysmComparisonResult& R
 	TArray<FString> Names;
 	for (const FCataclysmItem& Off : Result.Replaced)
 	{
-		// ITS WHOLE NAME, AND ELSE ITS BASE'S OWN NAME, AS ITS INVENTORY CELL SHOWS IT. `NameOf` names only an item
-		// that has a rarity, and `UCataclysmItemValues::RarityOf` gives none to a piece with no affix and no
-		// enchantment -- the starting weapon is one -- so for such a piece it returns nothing. Until the item
-		// comparison window ran (issue #832) the heading then fell back to the row key, and read "If worn, in place
-		// of Weapon_Sword:" to the player. `UCataclysmInventoryScreen::LabelFor` calls a piece by its base's
-		// `BaseName`, "Sword", and so does this. The key only for a base the table does not hold.
-		FString Name = UCataclysmItemName::NameOf(Off, BaseTable, AffixTable);
-		if (Name.IsEmpty() && BaseTable)
-		{
-			if (const FCataclysmItemBaseRow* Row = BaseTable->FindRow<FCataclysmItemBaseRow>(
-					Off.Base, TEXT("UCataclysmItemComparison::HeadingFor"), /*bWarnIfMissing=*/false))
-			{
-				Name = Row->BaseName;
-			}
-		}
-		Names.Add(Name.IsEmpty() ? Off.Base.ToString() : Name);
+		// EACH PIECE BY THE NAME THE PLAYER SEES FOR IT, `NameShownFor`, which says why that is not always `NameOf`.
+		Names.Add(NameShownFor(Off, BaseTable, AffixTable));
 	}
 	return FString::Printf(TEXT("If worn, in place of %s:"), *FString::Join(Names, TEXT(" and ")));
 }

@@ -8,6 +8,7 @@
 #include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmWearing.h"
+#include "Player/CataclysmPlayLoopLog.h"
 
 /**
  * Tests for moving an item between the bag and what is worn. Issues #828, #831.
@@ -866,6 +867,87 @@ bool FCataclysmWearingCursorLosesNothing::RunTest(const FString& Parameters)
 			Now != nullptr && *Now == Each.Value);
 	}
 
+	return true;
+}
+
+namespace CataclysmWearingTest
+{
+	/** The PLAY LOOP lines said while it lives, in order, without their prefix. */
+	struct FWoreLines : public FOutputDevice
+	{
+		TArray<FString> Lines;
+
+		FWoreLines()
+		{
+			if (GLog)
+			{
+				GLog->AddOutputDevice(this);
+			}
+		}
+
+		virtual ~FWoreLines() override
+		{
+			if (GLog)
+			{
+				GLog->RemoveOutputDevice(this);
+			}
+		}
+
+		virtual void Serialize(const TCHAR* Text, ELogVerbosity::Type Verbosity, const FName& Category) override
+		{
+			const FString Line(Text);
+			if (Category == FName(TEXT("LogCataclysm")) && Line.StartsWith(FCataclysmPlayLoopLog::Prefix))
+			{
+				Lines.Add(Line.RightChop(FCString::Strlen(FCataclysmPlayLoopLog::Prefix)));
+			}
+		}
+
+		/** What was said, after the log is flushed: a line written off the game thread is buffered until then. */
+		const TArray<FString>& Said()
+		{
+			if (GLog)
+			{
+				GLog->Flush();
+			}
+			return Lines;
+		}
+	};
+}
+
+/**
+ * Wearing a piece says a PLAY LOOP line naming it, the slot it went to, and the basic attack's hit before and after.
+ * The coordinating session's ruling of 2026-11-19. Prints "WORE".
+ *
+ * THESE COMPONENTS BELONG TO NO ACTOR, so there is no ability system to read a hit from and the line says 0 to 0, which
+ * is what `FCataclysmPlayLoopLog::HitsOf` answers for that. The figures a real character's line carries are the item
+ * comparison's, held by `Cataclysm.ItemComparison.ANecklaceAgainstTheRunsFamilyRaisesItsLineAndNotThePlainHit`, and
+ * the words by `Cataclysm.PlayLoop.ThePickedUpAndWoreLinesNameThePieceAndTheHitBeforeAndAfter`. This one holds that
+ * the wear says it, once, and that a refused wear says nothing.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWearingSaysAPlayLoopLine,
+	"Cataclysm.Wearing.WearingAPieceSaysAPlayLoopLineWithItsNameAndSlot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWearingSaysAPlayLoopLine::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmWearingTest;
+
+	FCarriedAndWorn Character;
+	const int32 Slot = Character.Inventory->AddItem(Of(HelmBase, 4));
+
+	FWoreLines Capture;
+	ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
+	const ECataclysmWearResult Result = UCataclysmWearing::WearFromCarried(
+		Character.Inventory, Character.Equipment, Slot, Went);
+	TestTrue(TEXT("CONTROL: the helm goes on"), Result == ECataclysmWearResult::Worn);
+	TestEqual(TEXT("one line, naming the helm by its base's name and the slot it went to"), Capture.Said(),
+			  TArray<FString>{TEXT("wore Helm in Head: basic attack hit 0 to 0")});
+
+	// A REFUSED WEAR SAYS NOTHING: an empty cell has nothing to wear.
+	UCataclysmWearing::WearFromCarried(Character.Inventory, Character.Equipment, Slot, Went);
+	TestEqual(TEXT("and a wear that did not happen adds no line"), Capture.Said().Num(), 1);
+
+	AddInfo(TEXT("WORE: ") + FString::Join(Capture.Said(), TEXT(" | ")));
 	return true;
 }
 

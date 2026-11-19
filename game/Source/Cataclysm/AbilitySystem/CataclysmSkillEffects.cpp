@@ -674,7 +674,11 @@ float UCataclysmSkillEffects::DamageAgainstTypeOf(
 	// ONLY AN ENEMY CARRIES A DAMAGE TYPE, so a hit on anything else finds no
 	// type to match and the affix correctly does nothing. That is the design's
 	// own rule: "They read the target, not the weapon."
-	const FName Type = DamageTypeOf(Target);
+	return DamageAgainstTypeNamed(Source, DamageTypeOf(Target));
+}
+
+float UCataclysmSkillEffects::DamageAgainstTypeNamed(const UAbilitySystemComponent* Source, FName Type)
+{
 	if (Type.IsNone() || !Source)
 	{
 		return 0.0f;

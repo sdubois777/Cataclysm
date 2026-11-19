@@ -110,10 +110,13 @@ FString UCataclysmWeaponSlotsComponent::GetEquippedSubType() const
 		return FString();
 	}
 
-	const UDataTable* Bases = ItemBaseTable
-		? ItemBaseTable.Get()
-		: UCataclysmItemModifiers::LoadBaseTable();
-	if (!Bases)
+	return SubTypeOfWeaponType(ItemBaseTable ? ItemBaseTable.Get() : UCataclysmItemModifiers::LoadBaseTable(),
+							   EquippedWeaponType);
+}
+
+FString UCataclysmWeaponSlotsComponent::SubTypeOfWeaponType(const UDataTable* Bases, const FString& WeaponType)
+{
+	if (!Bases || WeaponType.IsEmpty())
 	{
 		return FString();
 	}
@@ -124,7 +127,7 @@ FString UCataclysmWeaponSlotsComponent::GetEquippedSubType() const
 		[&](const FName&, const FCataclysmItemBaseRow& Row)
 		{
 			if (Found.IsEmpty()
-				&& Row.WeaponType.Equals(EquippedWeaponType, ESearchCase::IgnoreCase))
+				&& Row.WeaponType.Equals(WeaponType, ESearchCase::IgnoreCase))
 			{
 				Found = Row.SubType;
 			}

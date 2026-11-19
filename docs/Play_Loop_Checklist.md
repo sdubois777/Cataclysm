@@ -112,6 +112,18 @@ Choose a dungeon on **another** city than the one you will walk. This is how you
 
   `PLAY LOOP: level 2 reached, from level 1: 3120 experience into it, 46280 more to level 3`
 
+- **Pick up a piece of gear** by clicking its name on the floor; gear is never picked up without a click. Press **I**
+  to open the inventory and hover the piece: the comparison's last two lines are the basic attack's hit, and its hit
+  on the health of a creature of the run's Cataclysm, before and after wearing it. A piece of "increased damage
+  against" another Cataclysm's enemies moves neither. **Right-click** the piece to wear it.
+- **In the log**, one line for the piece picked up and one for the piece worn. The hit on a creature is the plain hit
+  with the weapon's Slashing bonus and the damage against that Cataclysm added; a Greataxe +0 with nothing else worn
+  hits for 57.6, and 63.4 on a creature's health:
+
+  `PLAY LOOP: picked up Quality Torc of Warding, +0`
+
+  `PLAY LOOP: wore Quality Torc of Warding in Necklace: basic attack hit 57.6 to 57.6; on a Demonic creature's health 63.4 to 97.2`
+
 ### 8. Take the last floor's stairs
 
 - **On screen:** back in the capital, with the map open. The map's status line shows the new day. Its second line says

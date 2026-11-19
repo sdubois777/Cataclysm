@@ -575,4 +575,156 @@ bool FCataclysmItemComparisonBasicHit::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// 8 and 9. The hit on the run's family's creatures: the coordinating session's ruling of 2026-11-19
+// ---------------------------------------------------------------------------
+
+namespace CataclysmItemComparisonTest
+{
+	const TCHAR* GreataxeBase = TEXT("Weapon_Greataxe");
+	const TCHAR* TorcBase = TEXT("Necklace_Torc");
+
+	/** A Torc carrying one T1 "increased damage against <Family> enemies", rolled at the top of its band. */
+	FCataclysmItem TorcAgainst(const TCHAR* Family)
+	{
+		FCataclysmItem Item = PlainOf(TorcBase);
+		FCataclysmRolledAffix Rolled;
+		Rolled.Affix = FName(FString::Printf(TEXT("Stat_Increased_damage_against_%s_enemies"), Family));
+		Rolled.Tier = 1;
+		Rolled.Roll = 1.0f;
+		Item.Affixes.Add(Rolled);
+		return Item;
+	}
+
+	/** Whether any of these lines begins with this name. */
+	bool AnyLineNamed(const TArray<FString>& Lines, const FString& Name)
+	{
+		return Lines.ContainsByPredicate([&Name](const FString& Line) { return Line.StartsWith(Name + TEXT(":")); });
+	}
+}
+
+/**
+ * The owner's case of 2026-11-19, a Greataxe +0 and a run of Demonic creatures: a Torc of "increased damage against
+ * Demonic enemies" raises the new line, the hit on a Demonic creature's health, and leaves the plain hit where it is;
+ * a Torc against Celestial enemies raises neither. Prints "FAMILY HIT".
+ *
+ * THE FIGURES ARE WORKED OUT HERE AND NOT READ BACK. The Greataxe's 72 attack damage is stated at +10, and a
+ * two-handed weapon doubles it: 72 / 2.5 x 2 = 57.6 at +0. The Slashing bonus is 10% more against health: 63.36. A T1
+ * affix rolled at the top of its band, with no floor, is its 400% top x 1/3 (T1 is a third of T7) / 2.5 (stated at
+ * +10): 53.33%, so the hit becomes 57.6 x 1.5333 x 1.1 = 97.15.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmItemComparisonFamilyHit,
+	"Cataclysm.ItemComparison.ANecklaceAgainstTheRunsFamilyRaisesItsLineAndNotThePlainHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmItemComparisonFamilyHit::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmItemComparisonTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmComparisonStandIn* StandIn = StandInFor(*this, World);
+	if (!StandIn)
+	{
+		return false;
+	}
+
+	FComparedCharacter Character(World);
+	Character.Wear(PlainOf(GreataxeBase));
+	Character.Equipment->RefreshAttributes(Character.AbilitySystem);
+	const TArray<FName> Demonic = {FName(TEXT("Demonic"))};
+
+	// THE READING ITSELF, against the figures worked out above.
+	const FCataclysmComparisonReading Now = UCataclysmItemComparison::ReadingOf(
+		Character.Equipment->GetSlots(), *Character.Equipment, Character.AbilitySystem, *StandIn, &Demonic);
+	if (!TestEqual(TEXT("the reading priced the one family it was given"), Now.FamilyHits.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("CONTROL: the Greataxe's plain hit is 72 / 2.5 x 2 = 57.6"), Now.BasicHit, 57.6f, 0.01f);
+	TestEqual(TEXT("its hit on a Demonic creature's health is 10% more, Slashing's bonus: 63.36"), Now.FamilyHits[0],
+			  63.36f, 0.01f);
+
+	const FCataclysmItem Against = TorcAgainst(TEXT("Demonic"));
+	const FCataclysmComparisonResult Raised =
+		UCataclysmItemComparison::Compare(Against, *Character.Equipment, Character.AbilitySystem, *StandIn, nullptr,
+										  &Demonic);
+	TestTrue(TEXT("a Torc against Demonic enemies is compared"), Raised.bCompared);
+	TestTrue(TEXT("and the line for the hit on a Demonic creature goes from 63.4 to 97.2"),
+			 Raised.ChangeLines.Contains(UCataclysmItemComparison::ChangeLineNamed(
+				 UCataclysmItemComparison::FamilyHitLineName(FName(TEXT("Demonic"))), /*bPercentage=*/false, 63.36f,
+				 97.152f)));
+	TestFalse(TEXT("while the plain hit, which knows no creature, does not move"),
+			  AnyLineNamed(Raised.ChangeLines, UCataclysmItemComparison::BasicHitLineName));
+
+	// CONTROL: ANOTHER FAMILY'S AFFIX DOES NOTHING TO A DEMONIC CREATURE.
+	const FCataclysmComparisonResult Other = UCataclysmItemComparison::Compare(
+		TorcAgainst(TEXT("Celestial")), *Character.Equipment, Character.AbilitySystem, *StandIn, nullptr, &Demonic);
+	TestTrue(TEXT("CONTROL: a Torc against Celestial enemies is compared"), Other.bCompared);
+	TestFalse(TEXT("CONTROL: and moves no line for a Demonic creature"),
+			  AnyLineNamed(Other.ChangeLines,
+						   UCataclysmItemComparison::FamilyHitLineName(FName(TEXT("Demonic")))));
+	TestFalse(TEXT("CONTROL: nor the plain hit"),
+			  AnyLineNamed(Other.ChangeLines, UCataclysmItemComparison::BasicHitLineName));
+
+	AddInfo(FString::Printf(TEXT("FAMILY HIT: plain %.2f, on a Demonic creature %.2f; Demonic Torc: %s; Celestial "
+								 "Torc: %s"),
+							Now.BasicHit, Now.FamilyHits[0], *FString::Join(Raised.ChangeLines, TEXT(" | ")),
+							*FString::Join(Other.ChangeLines, TEXT(" | "))));
+	return true;
+}
+
+/**
+ * The family line counts a Slashing weapon's 10% more against health and no other sub-type's: a Warhammer's (Blunt)
+ * hit on a creature equals its plain hit, a Greataxe's (Slashing) is 10% more. And a world with no run names no
+ * family, so the comparison shows no family line there. Prints "SUB-TYPE".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmItemComparisonFamilySubType,
+	"Cataclysm.ItemComparison.TheFamilyLineCountsASlashingWeaponsBonusAndNoOtherSubType",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmItemComparisonFamilySubType::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmItemComparisonTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	TestEqual(TEXT("a world with no run names no family"),
+			  UCataclysmItemComparison::RunFamiliesIn(World).Num(), 0);
+
+	const FName Demonic(TEXT("Demonic"));
+	FString Said;
+	for (const TCHAR* Base : {TEXT("Weapon_Greataxe"), TEXT("Weapon_Warhammer")})
+	{
+		FComparedCharacter Character(World);
+		Character.Wear(PlainOf(Base));
+		Character.Equipment->RefreshAttributes(Character.AbilitySystem);
+		const float Plain =
+			UCataclysmItemComparison::BasicHitOf(Character.AbilitySystem, *Character.Equipment, FName());
+		const float OnDemonic = UCataclysmItemComparison::BasicHitOnAFamilyOf(
+			Character.AbilitySystem, *Character.Equipment, FName(), Demonic);
+		const bool bSlashing = FCString::Strcmp(Base, TEXT("Weapon_Greataxe")) == 0;
+
+		TestTrue(FString::Printf(TEXT("CONTROL: a %s hits for something"), Base), Plain > 0.0f);
+		TestEqual(FString::Printf(TEXT("a %s's hit on a creature's health is its plain hit x %s"), Base,
+								  bSlashing ? TEXT("1.1, Slashing's bonus") : TEXT("1, Blunt having none against "
+																				 "health")),
+				  OnDemonic, Plain * (bSlashing ? 1.1f : 1.0f), 0.01f);
+		Said += FString::Printf(TEXT("%s plain %.2f on a Demonic creature %.2f; "), Base, Plain, OnDemonic);
+	}
+
+	AddInfo(TEXT("SUB-TYPE: ") + Said);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
