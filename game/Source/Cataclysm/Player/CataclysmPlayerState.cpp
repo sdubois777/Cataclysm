@@ -537,7 +537,7 @@ bool ACataclysmPlayerState::SpendPassivePoint(FName Node, FString& OutReason)
 		Row ? Row->NodeName : Node.ToString(), UCataclysmPassiveTree::TreeOf(NodeTable, Node),
 		PassiveAllocation.PointsIn(Node), Row ? Row->MaxPoints : 0, PassiveAllocation.Total(),
 		PassivePointsAvailable()));
-	UCataclysmSaveWriter::NoteTriggerIn(GetWorld(), ECataclysmSaveTrigger::CharacterBuildChanged);
+	UCataclysmSaveWriter::NoteTriggerIn(GetWorld(), ECataclysmSaveTrigger::CharacterBuildChanged); // A point's write.
 	return true;
 }
 
