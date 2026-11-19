@@ -2,6 +2,207 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-19 — The empire upgrade tree's walk, depth and clear nodes: a dungeon's walk is shortened where it is charged, the tree's floors are added when a dungeon is made, and a clear can remove another dungeon or pay more points (#2741, slice 4)
+
+**Affects:** `FCataclysmEmpireTreeBonuses` (`game/Source/CataclysmEmpire/Empire/CataclysmEmpireMap.h`: `WalkTimeFactor`,
+`HalveWalkAboveFloors`, `WalkDaysFewer`, `WalkDaysFewerWhenAlone`, `WalkDaysFewerPerActiveType`,
+`WalkDaysFewerPerActiveTypeCap`, `WalkDaysFewerOnFallenCities`, `WalkDaysFewerPerFloorCleared`,
+`OneDayWalkWithinDaysOfFalling`, `FloorsAdded`, `FloorsAddedPerActiveType`, `RemoveAnotherDungeonChance`,
+`EmpirePointsIncrease`, new; `ReachesTheWalk` and `FloorsAddedTo`, new, in `CataclysmEmpireTreeBonuses.cpp`);
+`UCataclysmEmpireRun` (`EffectiveWalkDaysFor`, `WalkDaysPerFloorFor`, `ScheduledDefenceLossOn`,
+`IsWithinDaysOfFalling`, `TheWarlordsDungeonOn`, `WarlordSalt`, `LastDungeonTheWarlordRemoved`, new; `BeginForCharacter`,
+`SetTreeBonuses`, `CataclysmDungeonFloorsNow`, `ClearDungeon` and `AddFallenCityDungeon` changed);
+`UCataclysmSurgeScheduler::FloorsTheTreeAdds`, new, and `MakeDungeon` and `MakeFallenCityDungeon` (a floors parameter),
+`game/Source/CataclysmEmpire/Empire/CataclysmSurge.h` and `.cpp`; `ACataclysmDungeonGameMode::SpendFloorTimeInTheEmpire`
+(`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`); the console command `Cataclysm.EnterDungeon`
+(`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`); `ECataclysmEmpireTreeEffect`, thirteen values,
+`game/Source/Cataclysm/Data/CataclysmDataRows.h`; `UCataclysmEmpireTree::CityBonusesFor`; `tools/generate_datatables.py`
+(`EMPIRE_TREE_EFFECTS`, `EMPIRE_TREE_EFFECT_KINDS`) and `game/Data/EmpireTreeEffects.csv`, 59 rows;
+`sim/analyse_architectural_insight_cap.py`, new. Tests: `game/Source/Cataclysm/Tests/CataclysmEmpireTreeWalkTests.cpp`,
+new, 14 in the new group `Cataclysm.EmpireTreeWalk.`; `CataclysmDataTableTests.cpp` pins 59 rows;
+`tools/tests/test_empire_tree_walk_and_depth.py`, new; `tools/tests/test_empire_tree_effects_match_their_texts.py` and
+`sim/tests/test_analysis_scripts.py`, changed. Issue [#2741](https://github.com/sdubois777/Cataclysm/issues/2741), slice
+4.
+
+### SAID FIRST
+
+- **COMPILED, RUN AND PROVED IN ONE WINDOW (tree-4-w1).** At `8c22f94c0` on development `5b401cb87`:
+  - `DT_EmpireTreeEffects.uasset` was rebuilt at 59 rows by the DataTable asset generator and committed with its record
+    line. No other file changed.
+  - The written-out record version check, kept as a guard though no record version moves in this slice, found the run,
+    character and account records at 9, 9 and 4, and no test stating another version.
+  - The nineteen groups each passed alone at their registered counts.
+  - The whole Unreal suite performed the registered 4919, all succeeding, with 47 skipped halves and "836 written and
+    deleted, 0 left behind".
+  - Python passed, 7652 with 9 skipped, and ruff passed.
+  - The five C++ guard proofs each proved, failing exactly the registered tests with exactly the registered number of
+    assertions; each restored half passed 14 of 14. The three Python guard proofs were proved in phase 1.
+  - All three of phase 2's compiles succeeded.
+- **A WALK IS READ WHERE IT IS CHARGED; A DUNGEON'S FLOORS ARE FIXED WHEN IT IS MADE.** The second departs from the rule
+  slice 3a was built on (Q10, "not saved, applied where read"), and the coordinating session ruled it so (W3). Why: a
+  dungeon's depth sets its timer and its creatures when it appears, so a respec reaching a dungeon already standing
+  would leave its timer and its walk disagreeing with its floors. So a bought or respecced floor node reaches only
+  dungeons made after it. A walk has no such tie, and the tree cannot change during a walk, so the walk nodes act at
+  once and a respec takes them away at once.
+- **ARCHITECTURAL INSIGHT IS CAPPED AT +10 FLOORS**, and the simulation measured every size worse than none (below).
+- **THE COMMITTED ACCOUNT FILE NOW HOLDS THE DELVER.** `game/Tests/SaveFixtures/Account_v4.json` has the first centre
+  capstone with its option 2 chosen, which is The Delver (-5 days on every walk) since this slice. No test that walks a
+  dungeon hands a run that account's tree: the one test that reads the file (`Cataclysm.EmpirePoints.`) reads it as a
+  record only. The coordinating session accepted this on 2026-11-19.
+
+### The rulings this slice builds on
+
+All from the coordinating session, 2026-11-19, on this session's plan. **EVERY READING BELOW IS A JUDGEMENT** of that
+session and this one; the node texts leave each open. The node texts and the simulation fix the shapes -- a share off
+compounded per point, flat days off, a threshold, floors per point -- so no formula was invented, and the order the
+walk nodes combine in is the simulation's, chosen on 2026-09-07 (`sim/analyse_explorer_rate.py`).
+
+- **W1, how the walk nodes combine:** the stored walk days (the depth less any city upgrade, never below a day), less the
+  flat days, times the share left, halved by Tactical Entry above 50 floors, then never below one day; every dungeon but
+  a Cow Level, whose "Time to complete is doubled and cannot be reduced". The boss and Fallen City dungeons are reached.
+- **W2, Rapid Descent**, "Each floor cleared reduces the remaining run time by 0.1 days per point": 0.1 a point for each
+  floor cleared before the last, so 0.1 x points x (floors - 1) days, counted among the flat days, with the one-day
+  minimum holding.
+- **W3, floors when a dungeon is made**, counted with a city's own floor upgrades in `UpgradeFloors`, so the timer and the
+  walk grow with them and the hit does not, as the simulation's `_make_dungeon` adds the tree's floors after the natural
+  depth. Every dungeon made after a buy, Fallen City dungeons and Cow Levels included; the boss gets the flat floor
+  nodes and not Infinite Depths, whose text excludes it; never below one floor.
+- **W4, Architectural Insight's cap: +10 floors in total**, measured (below).
+- **W5, The Last Stand option**, "When you enter a dungeon in a city within 7 days of falling, run time is reduced to one
+  day": a city is within 7 days of falling when the hits already scheduled on it over the next 7 days would take its
+  defence to 0 -- an ordinary dungeon or a Quest dungeon whose timer runs out inside 7 days, once each at its full hit
+  after the tree's reductions and the city's resistance, and 7 days of a Siege's daily share -- worked out when the walk
+  is charged. The walk is then one day, replacing every other reduction. **THIS OPTION SHARES A NAME WITH TWO OTHER
+  THINGS AND IS NEITHER**: the design's Last Stand, the capital fight after a clear path to the Pillar (issue #43, not
+  built), and Last Stand Protocols, slice 3b's Sanctuary that survives a fatal hit. The owner reviews this reading.
+- **W6, The Warlord**, "When you clear a dungeon, 15% chance to instantly remove another dungeon in the same city": the
+  roll takes no draw from the run's streams, so the waves and every seeded test are as they were; it is seeded from the
+  run's walk seed mask and the cleared dungeon's id, so a reload rolls the same; it removes the other dungeon on the city
+  that resolves soonest, the precedent of the city upgrade that removes dungeons, never a Fallen City dungeon, and never
+  the boss, which stands on no city; through `RemoveDungeon`, so it pays nothing and is not a clear, not even for Global
+  Vigilance.
+- **W7, Veteran's Edge**, "+3% Empire XP gained from dungeon clears per point": "Empire XP" is empire upgrade points (C4);
+  +3% a point, summed, on every clear's award, on the line after `EmpirePointsFor`. **The simulation has no such node.**
+- **W8, Sovereign's Haste**'s "(Max of -30 floors)" is 30 days, as the simulation's config and its preset test read it.
+- **W9, Opportunist**'s "no other active dungeons" is read when the walk is charged; the board cannot change during a
+  walk, because nothing resolves until the player leaves.
+
+### Measured: Architectural Insight's size (W4)
+
+`sim/analyse_architectural_insight_cap.py`, 200 campaigns a cell, 3,600 in all, policy triage, both branches as
+designed (an Explorer node that counts Architect points is held by a player who holds both), the node's floors added to
+every dungeon including the boss, as the simulation adds the tree's flat floors. "Dungeons gain +1 floor for every 10
+points invested in the Architect branch per point", 10 points: read per point and uncapped, a full Architect branch
+gives +320.
+
+| Floors added | tier 1 win% | tier 4 win% | tier 4 cities lost | tier 8 win% | tier 8 points a run |
+|---|---|---|---|---|---|
+| 0 | 62.0 | 25.0 | 6.76 | 2.0 | 71.5 |
+| 10 | 54.5 | 18.0 | 8.11 | 2.0 | 68.2 |
+| 20 | 51.5 | 15.0 | 10.28 | 0.5 | 64.8 |
+| 40 | 48.0 | 13.0 | 13.49 | 1.5 | 57.7 |
+| 80 | 0.5 | 7.0 | 18.83 | 0.5 | 48.9 |
+| 320 | 0.0 | 11.0 | 18.35 | 1.0 | 0.1 |
+
+**Every size costs wins and points, and the cost grows with the size; from +80 the campaigns collapse.** +10, the
+smallest size measured, costs about 7 win points at tiers 1 and 4 -- about one and a half times what chance alone moves
+the difference between two cells at 200 campaigns -- and 1.35 more cities lost at tier 4. **THE REASON, RECORDED WITH
+THE TABLE AS THE COORDINATING SESSION RULED: the simulation cannot value depth, because it pays points per dungeon and
+not per floor, and has no loot.** That is the owner's depth finding of 2026-11-18 again, which the owner ruled "Build
+as designed" and recorded for tuning after play. So the figures argue against the node at every size and not against
++10 in particular, and the coordinating session kept +10.
+
+### Judgements of this session, each with what it rests on
+
+1. **The tree's floors join the city's floor upgrades in the existing `Deeper` figure**, before
+   `Dungeon.Floors = FMath::Max(1, Dungeon.Floors + Deeper - Shallower);`, which `tools/tests/
+   test_what_a_hit_is_scaled_by_in_the_model_and_in_the_game.py` reads word for word and which is unchanged. The
+   scheduler's field is named `FloorsTheTreeAdds` because that test forbids any name containing `TreeFloors`.
+2. **The walk with no walk node is exactly the stored figure**, so a run with no tree, and every test that builds one by
+   hand, is charged what it was charged before.
+3. **The Warlord's choice of dungeon is a function of its own, `TheWarlordsDungeonOn`**, because
+   `tools/tests/test_surge_port.py` holds `ClearDungeon` to naming each dungeon kind once. The first draft named the
+   Fallen City and Cataclysm kinds in `ClearDungeon`, and Python caught it before the commit.
+4. **The boss's tree floors are counted where its floors are counted, `CataclysmDungeonFloorsNow`**, as the boss's
+   floors are recomputed whenever it deepens; so a respec reaches the boss at its next deepening, where it reaches no
+   other standing dungeon.
+5. **The Last Stand's projection reads each hit as the run deals it** (`ResolveDungeon`, `ApplySiegeDamage`, and the
+   city's resistance in `UCataclysmEmpireMap::Damage`), so the projection and the hits cannot disagree on a figure.
+
+### Registered before the run
+
+Sent to and accepted by the coordinating session on 2026-11-19, before either compile.
+
+- **Base: 4905**, measured by window tree-3b-w1 at `6b1eabc43`, whose `game/` is development `5b401cb87`'s (`git diff
+  --stat 6b1eabc43 5b401cb87 -- game/` prints nothing).
+- **The whole suite: 4919 performed, 4919 succeeded, 0 failed**: the base's 4905 and 14 new in
+  `Cataclysm.EmpireTreeWalk.`; 47 skipped halves, the base's; "Test saves: 836 written and deleted, 0 left behind", the
+  base's, because no new test writes a save slot.
+- **Each group alone**, counted from the base log on "Test Completed. Result={" lines and by distinct path, which agree:
+  `Cataclysm.EmpireTreeWalk.` 14 (new), `EmpireTreeCity.` 17, `EmpireTreeEvents.` 14, `EmpireTree.` 24, `EmpireMap.`
+  17, `EmpireRun.` 71, `DayClock.` 10, `Surge.` 54, `CityUpgrade.` 15, `FirstSurge.` 3, `EarnedBoss.` 4, `EmpirePoints.`
+  16, `WinningTheRun.` 11, `DungeonMode.` 46, `Travel.` 9, `WalkFromTheScreen.` 5, `PlayLoop.` 8, `DeathCost.` 9,
+  `Data.` 7.
+- **Five C++ guard proofs**, each narrowed to `Cataclysm.EmpireTreeWalk.`, 14 performed in each half; the restored half
+  14 of 14:
+
+| Proof | File | The break | Predicted with it in |
+|---|---|---|---|
+| M1 | `CataclysmEmpireRun.cpp` | the walk's share left is not applied | 12 succeeded, 2 failed: `TheShareNodesAndTacticalEntryShortenAWalkAndNotACowLevel` (3 assertions), `TheFlatDaysComeBeforeTheShareAndTheWalkIsNeverBelowADay` (1) |
+| M2 | `CataclysmSurge.cpp` | a dungeon is made without the tree's floors | 12, 2: `FloorsAreAddedWhenADungeonIsMadeAndNotToItsHit` (2), `InfiniteDepthsCountsActiveTypesAndFloorsNeverGoBelowOne` (2) |
+| M3 | `CataclysmEmpireRun.cpp` | the boss is given Infinite Depths | 13, 1: `TheBossGetsTheFlatFloorsAndNotInfiniteDepths` (1) |
+| M4 | `CataclysmEmpireRun.cpp` | The Warlord removes the dungeon that resolves latest | 13, 1: `TheWarlordRemovesTheSoonestOtherDungeonOnTheCity` (1) |
+| M5 | `CataclysmEmpireRun.cpp` | no city is ever within 7 days of falling | 13, 1: `TheLastStandOptionWalksADungeonOnAFallingCityInOneDay` (1) |
+
+- **The asset step**: `python tools/run_editor_python.py tools/generate_datatable_assets.py` rebuilds
+  `DT_EmpireTreeEffects.uasset` at 59 rows and changes `datatable_asset_sources.json`; those two are committed alone.
+- **Python before the window**: at `42de582d0`, 7651 passed, 1 failed, 9 skipped; JUnit tests 7661, failures 1, skipped
+  9; ruff clean. The failure was `test_datatable_assets_are_current.py`, naming only `EmpireTreeEffects.csv`, until the
+  asset step. A first run had also failed `tools/tests/test_surge_port.py` (`ClearDungeon` naming a dungeon kind twice)
+  and `tools/tests/test_the_tree_is_read_per_tier.py` (the measurement script reading `floor_delta` directly); both
+  were corrected before `42de582d0`.
+
+### The three Python guards, proved in phase 1
+
+Each through `tools/prove_guard.py`'s `break_and_run` on `tools/tests/test_empire_tree_walk_and_depth.py`, `proved`
+True, "1 failed, 4 passed | restored: 5 passed":
+
+- **Z1, the game mode charges the dungeon's stored rate again**: `test_the_game_mode_charges_the_runs_effective_walk`.
+- **Z2, the boss is given Infinite Depths**: `test_the_boss_is_not_given_infinite_depths_and_every_other_dungeon_is`.
+- **Z3, The Warlord draws from the run's stream**: `test_the_warlord_rolls_a_stream_of_its_own_and_removes_through_remove_dungeon`.
+
+### The window
+
+**tree-4-w1, 2026-11-19, at `822e1b8da` and then `8c22f94c0`.** The pre-checks all passed at 08:47: development
+`5b401cb87` with its CI and Unreal runs succeeded, no run in progress or queued, the lock free, no build or editor
+process, no open pull request, 12,672 MB free, no LFS pointer file. The recount of the eighteen existing groups from the
+base log matched every registered count, and the written-out version check found "20 lines stating a version; NO
+MISMATCH".
+
+- **The build**: "target already up to date, 0 actions, nothing compiled", after phase 2's three compiles: the branch
+  (55 files), each of the 9 changed `.cpp` files alone, and the unity files (10), the one warning `CountBits` in
+  `CataclysmAbilitySystemComponent.cpp`, which issue #2756 holds.
+- **The asset step** left exactly the two expected files changed, committed alone as `8c22f94c0` and pushed:
+  `DT_EmpireTreeEffects.uasset`, and `datatable_asset_sources.json`, `EmpireTreeEffects.csv` at 59 rows.
+- **Each group alone**: all nineteen at their registered counts, all succeeding.
+- **The whole suite**: "Tests: 4919 tests performed, 4919 succeeded, 0 failed. 47 skipped part of what they check";
+  "Test saves: 836 written and deleted, 0 left behind"; "Declared: 4919 tests in the tree at 8c22f94c0; 4919 performed,
+  gap 0".
+- **Python**: "7652 passed, 9 skipped"; JUnit tests 7661, failures 0, errors 0, skipped 9; ruff "All checks passed!".
+- **The proofs**, each with the registered tests failing in its broken half and 14 of 14 in its restored half:
+
+| Proof | With the break in | The failed assertions |
+|---|---|---|
+| M1 | 14 performed, 12 succeeded, 2 failed | `TheShareNodesAndTacticalEntryShortenAWalkAndNotACowLevel` 3 ("half of 20 days", 20; "half of 60, halved again above 50 floors", 30; "50 floors is not more than 50", 50); `TheFlatDaysComeBeforeTheShareAndTheWalkIsNeverBelowADay` 1 ("(20 - 5) x 0.5", 15) |
+| M2 | 12, 2 | `FloorsAreAddedWhenADungeonIsMadeAndNotToItsHit` 2 ("every dungeon has 30 more floors, counted as added", 0 of 8; "and a longer timer", 0 of 8); `InfiniteDepthsCountsActiveTypesAndFloorsNeverGoBelowOne` 2 ("2 floors for each active type", 0; "500 floors fewer leaves every dungeon one floor", 0 of 8) |
+| M3 | 13, 1 | `TheBossGetsTheFlatFloorsAndNotInfiniteDepths` 1 ("100 + 30, and no Infinite Depths", 150) |
+| M4 | 13, 1 | `TheWarlordRemovesTheSoonestOtherDungeonOnTheCity` 1 ("the soonest other dungeon that is not a Fallen City's", 9001 expected 9002) |
+| M5 | 13, 1 | `TheLastStandOptionWalksADungeonOnAFallingCityInOneDay` 1 ("a city a scheduled hit fells inside 7 days: one day", 20) |
+
+No failure's span holds a "server/discover" line (#2745). The lock was released when the window ended.
+
+---
+
 ## 2026-11-19 — The empire upgrade tree's seven rules that act at an event: a retake at 75%, two repairs on fixed run days, two damage reductions that count clears and reclaims, a Sanctuary that survives one fatal hit, and city upgrades that strengthen after 10 days; the run record goes to version 9 (#2741, slice 3b)
 
 **Affects:** `FCataclysmEmpireTreeBonuses` (`game/Source/CataclysmEmpire/Empire/CataclysmEmpireMap.h`: `RetakeFraction`,
