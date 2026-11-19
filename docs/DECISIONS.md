@@ -2,6 +2,193 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-18 — The empire upgrade tree has a screen, opened from the empire map's top right corner: one branch at a time, a click buys a point, a centre capstone offers its options, Respec takes two presses, and nothing in it changes during a walk (#2741, slice 2)
+
+**Affects:** `UCataclysmEmpireTreeWidget`, new, `game/Source/Cataclysm/Interface/CataclysmEmpireTreeWidget.h`, `.cpp`;
+`UCataclysmEmpireTreeLayout`, new, `CataclysmEmpireTreeLayout.h`, `.cpp`; the empire map's "Empire upgrade tree"
+button (`UCataclysmEmpireMapLayout::EmpireTreeButtonPosition`, `EmpireTreeButtonSize`, `EmpireTreeButtonText`,
+`EmpireTreeButtonBrief`, new; `UCataclysmEmpireMapWidget::PlaceEmpireTreeButton`, `ClickEmpireTreeForTests`,
+`EmpireTreeRequestCount`, new, and its click and hover handlers); `ACataclysmPlayerController::ToggleEmpireTree`,
+`IsEmpireTreeOpen`, `EmpireTreeScreenClass`, new, and `CloseEmpireScreens`; the console command `Cataclysm.EmpireTree`,
+new, `CataclysmPlayerCharacter.cpp`; `UCataclysmGameInstance::EmpireTreeChangeRefusal`, new, and the walk refusal in
+`BuyEmpireTreePoint`, `ChooseEmpireTreeOption` and `RespecEmpireTree`; `FCataclysmPlayLoopLog::TreePointLine`,
+`TreeOptionLine`, `TreeRespecLine`, new, said by those three; `tools/generate_interface_assets.py`
+(`make_empire_tree`, new, which made `game/Content/Interface/WBP_EmpireTree.uasset`, new, in the window);
+`docs/Play_Loop_Checklist.md` step 12, new;
+`game/README.md`, the screens bullet. Tests: `game/Source/Cataclysm/Tests/CataclysmEmpireTreeScreenTests.cpp`, new, ten
+in the new group `Cataclysm.EmpireTreeScreen.`; one changed in `CataclysmEmpireTreeAccountTests.cpp`;
+`tools/tests/test_the_empire_tree_screen_is_generated_with_its_bindings.py`, new;
+`tools/tests/test_the_play_loop_is_logged_at_each_step.py` and `tools/tests/test_empire_tree_on_the_account_record.py`,
+changed. Issue [#2741](https://github.com/sdubois777/Cataclysm/issues/2741), slice 2 of seven.
+
+### SAID FIRST
+
+- **COMPILED, RUN AND PROVED, IN THE SECOND OF TWO WINDOWS (tree-2-w2).** At `1304e355a` on development `8aaea75a3`:
+  `WBP_EmpireTree.uasset` made by the interface generator and committed alone; the nine groups alone each at their
+  registered count, all succeeding; the whole Unreal suite performed the registered 4867, all succeeding, with 47
+  skipped halves and no test save left behind; Python and ruff passed; the four C++ guard proofs each proved, failing
+  exactly the registered test with exactly the registered number of assertions, and each restored half passed 10 of 10.
+- **THE FIRST WINDOW (tree-2-w1) STOPPED ON A FAULT OF THIS SESSION'S LAUNCH COMMAND**, not of the slice: a process-ID
+  file written in the worktree root stopped its asset step before any test ran. "The windows" below has it.
+- **THE GROUP COUNTS WERE FIRST REGISTERED DOUBLED**, and the coordinating session caught it before either window;
+  "Registered before the run" says how.
+- **THE PLAYER CAN NOW SEE AND SPEND THE TREE**, which slices 1a to 1c kept and saved with no way into it. No bought
+  node does anything yet; slices 3 to 5 make them act.
+- **NOTHING IN THE TREE CHANGES DURING A WALK**, buying and choosing as well as respec: the coordinating session's S2,
+  a judgement of that session and not of the design (below). Until this slice only a respec was refused there.
+
+### The rulings this slice builds on
+
+All four from the coordinating session, 2026-11-18, on this session's plan.
+
+- **S1, where a respec is offered: AGREED.** The design puts respec at the capital's Trainer ("Trainer | Respec class
+  passive skill points, and respec the empire upgrade tree. Both cost days.", `docs/Cataclysm_GDD_v2.md`, Capital
+  Services). No Trainer exists, and the owner's scope ruling includes respec, so a Respec button is on the tree screen
+  **until the Trainer is built, when it moves there**. The first press shows "Press again to respec: 5 days of the
+  run"; the second respecs; any other press cancels.
+- **S2, where buying and choosing are allowed: CHANGED from this session's recommendation.** This session recommended
+  wherever the map opens, with only a respec refused during a walk. The coordinating session ruled that the screen
+  OPENS wherever the map opens, so a player can read the tree during a walk, but buying, choosing and respec are all
+  refused during one, one rule for the three, and the screen says why: "The empire upgrade tree can be changed in the
+  capital, not during a walk." **Its reason, recorded as its judgement:** slices 3 to 5 read the tree where each number
+  is read, so a point bought mid-walk would change the walk under way -- its days, floors and loot -- and a player could
+  bank points and spend them in the middle of a dungeon to shorten the walk they are on; and the design puts the
+  tree's services at the capital.
+- **S3, how the tree is drawn: AGREED.** One branch at a time, with the class tree screen's zoom, pan and fit; the
+  branch capstones in their branches, the four centre capstones in a fifth view, "The centre".
+- **S4, the stale README bullet: AGREED.** `game/README.md` said "No interface screens ... Nothing in the project uses
+  UMG"; it now lists the screens as they are.
+
+### Judgements of this session, each with what it rests on
+
+1. **One branch at a time, because the whole tree does not fit legibly.** Measured from `game/Data/EmpireTreeNodes.csv`
+   with the class trees' node box (150 by 44 at a scale of one) and their rule that the closest pair of nodes sets how
+   big every box may be drawn: the whole tree's closest pair allows 0.263 of a box (measured with a Python copy of the
+   rule), and the window's run printed each branch's: 0.280 (Architect), 0.375 (Explorer), 0.326 (Treasury), 0.325
+   (Artisan) and 1.000 (the centre's four). Every node is in one view and every
+   one of the 158 edges joins two nodes of one branch, so drawing a branch at a time loses no edge;
+   `Cataclysm.EmpireTreeScreen.EveryBranchHoldsItsOwnNodesAndEdgesAndFits` checks both over the generated tables.
+2. **The button is in the map panel's top right corner**, two cities wide and one tall, because the boss dungeon's
+   marker has the top left and the diamond is the same on both sides of its middle column, so the marker's reason for
+   covering no city holds there mirrored. A test checks it against every city, the marker and the Walk box under it on
+   the four panels the marker's test uses. Made on the map's canvas in C++, as the marker is, so `WBP_EmpireMap` is not
+   regenerated.
+3. **A click on a node that cannot take a point is still a click**: the box is dimmed, its tool tip says why, and the
+   click writes the same sentence under the branch -- the class tree screen's rule (`UCataclysmChoiceButton::SetDimmed`).
+4. **A click on a centre capstone that has opened during a walk offers no options**, and says the walk sentence: the
+   choice it would lead to is refused, so offering it would be a question the screen then declines to take an answer
+   to. A click on any other node reaches the game instance, whose refusal is the same sentence.
+5. **The walk refusal is said by the screen even when nothing was clicked**, in the line a refusal is shown in, so a
+   player opening the tree in a dungeon reads why nothing will take before trying.
+
+### What is not proven here
+
+- **The default view.** The screen opens on the Architect branch because `NativeConstruct` chooses it; no headless test
+  constructs the Blueprint, so that line is read, not run.
+- **Opening the screen through the player controller**, which loads `WBP_EmpireTree`, is not run by any test: the
+  controller loads the Blueprint, and a headless test has none. The map button's test counts the request instead.
+- **Nothing else is left to a skipped half.** This session first wrote that the label measurement in
+  `TheMapButtonSitsInTheEmptyTopRightCorner` would skip itself under `-nullrhi`; the base window's engine log shows the
+  boss marker's identical measurement ran there ("needs 285 pixels of 344"), so both halves run.
+
+### Registered before the run
+
+**The base.** Window walk-seed-w1 measured `b150abd9c`: 4857 performed, all succeeded, 47 skipped halves, no test save
+left behind (engine log `b10_suite_engine_b150abd9.log` in the worktree interesting-snyder-dca273). Development is
+`8aaea75a3`; `git diff --stat b150abd9c 8aaea75a3 -- game/` prints nothing, so that measurement is development's.
+
+**The whole suite: 4867 performed** (4857 and the 10 of `Cataclysm.EmpireTreeScreen.`), all succeeding, **47 skipped
+halves** (none of the ten skips a half: the label measurement runs, as the boss marker's does in the base log), no test
+save left behind (no scene here begins the save writer).
+
+**The groups alone**, each all succeeding with no skipped half. Every count but the new group's is the base log's,
+counted on its "Test Completed. Result={" lines and again by distinct test path, which agree; this slice adds no test
+to any of those eight groups and moves none between them.
+
+| Group | Performed | Why it is run |
+|---|---|---|
+| `Cataclysm.EmpireTreeScreen.` | 10 | new |
+| `Cataclysm.EmpireTree.` | 24 | the game instance's buy, choose and respec; one test changed |
+| `Cataclysm.EmpirePoints.` | 16 | the game instance |
+| `Cataclysm.Gold.` | 13 | the game instance |
+| `Cataclysm.PlayLoop.` | 8 | the PLAY LOOP builders |
+| `Cataclysm.EmpireScreen.` | 14 | the empire map's widget and layout |
+| `Cataclysm.BossOnTheMap.` | 5 | the empire map's layout |
+| `Cataclysm.WalkFromTheScreen.` | 5 | the empire map's click handler |
+| `Cataclysm.CityScreen.` | 16 | the empire map's click handler opens a city's screen |
+
+**THESE COUNTS WERE FIRST REGISTERED DOUBLED** (EmpireTree 48, EmpirePoints 32, Gold 26, PlayLoop 16, EmpireScreen
+28, BossOnTheMap 10, WalkFromTheScreen 10, CityScreen 32), and the
+coordinating session caught it before the window. This session had counted every `Path={Cataclysm.<group>.` in the
+base log, and the engine writes each test's path twice: on its "Test Started" line and on its "Test Completed" line.
+The total, 4857, was counted on "Test Completed" lines alone and was right. Counted on those lines, and by distinct
+path, every group is half what was first registered.
+
+**Four C++ guard proofs**, each narrowed to `Cataclysm.EmpireTreeScreen.`, 10 performed in each half; each restored
+half 10 of 10 succeeding. A count in brackets is failed assertions.
+
+| Proof | Break | Predicted broken half |
+|---|---|---|
+| P1 | `BuyEmpireTreePoint` loses its walk refusal (`CataclysmGameInstance.cpp`) | 9 succeeded, 1 failed: `APurchaseDuringAWalkIsRefusedAndSpendsNothing` (7) |
+| P2 | `EmpireTreeButtonPosition` answers the top left (`CataclysmEmpireMapLayout.cpp`) | 9 succeeded, 1 failed: `TheMapButtonSitsInTheEmptyTopRightCorner` (5: its centre at scale one, and the boss marker covered on each of four panels; no city is covered, by the marker's own reason) |
+| P3 | `TouchNode` loses its walk check on a capstone (`CataclysmEmpireTreeWidget.cpp`) | 9 succeeded, 1 failed: `APurchaseDuringAWalkIsRefusedAndSpendsNothing` (3: the click takes, offers the options, says no walk sentence) |
+| P4 | `PressRespec` respecs on a first press that nothing refuses (`CataclysmEmpireTreeWidget.cpp`) | 9 succeeded, 1 failed: `RespecTakesTwoPressesAndAnyOtherPressCancelsIt` (7) |
+
+P1's seven: the direct buy is made (1) with no reason (2); the click buys (3); 27 points, not 25 (4), and 1 banked,
+not 3 (5); after the walk Masonry Techniques holds 10, not 8 (6), and the bank 0, not 2 (7). P4's seven: the first
+press respecs (1), awaits nothing (2), and the button does not say "Press again" (3); the tree is empty after the
+cancel, not 2 (4); of the two presses the first respecs (5) and the second finds nothing to respec (6); two respecs
+took twice the days (7).
+
+### The windows
+
+**The three builds (tree-2-compile), at `ab7d3e565` on development `8aaea75a3`**, all succeeded: the branch as committed
+(56 actions, 51 files compiled, 309 s); each changed `.cpp` alone (14 files compiled; the build tool excluded exactly the
+ten this slice changes from the unity file); the unity files again (4 compiled). No warning came from this slice. The
+first build's one warning, C4996 for a 64-bit `FMath::CountBits` in `CataclysmAbilitySystemComponent.cpp`, was in the
+slice 1c build too; the coordinating session is filing it as its own issue.
+
+**THE FIRST WINDOW (tree-2-w1) STOPPED AT THE ASSET STEP, ON A FAULT OF THIS SESSION'S LAUNCH COMMAND, before any test
+ran.** The command was `cd <window folder> && python -u run_t2741s2.py ... & pid=$!; echo "$pid" > t2741s2_run.pid`;
+bash puts the whole `cd ... && python ...` list in the background, so the runner ran in the window folder and the
+`echo` wrote the process-ID file in the worktree root. The asset step found that untracked file outside `.claude/` and
+stopped, as written. Before it: the pre-checks all passed, the recount matched all eight groups, the lock was taken,
+and the build had nothing to compile. The generator had run and exited 0 -- "satisfies 9 BindWidget properties",
+"created /Game/Interface/WBP_EmpireTree", no other asset re-saved -- and nothing was committed. The coordinating
+session accepted the account and ruled the second window: the launch with absolute paths and no `cd`, and the
+untracked `WBP_EmpireTree.uasset` the first window made deleted first, so the second window's own log shows it made.
+The first window's logs are kept under `t2741s2_w1_`.
+
+**THE SECOND WINDOW (tree-2-w2), at `ab7d3e565`, tested at `1304e355a`.** The pre-checks all passed; the recount of
+the base log matched all eight unchanged groups (lines and distinct paths); the build had nothing to compile.
+
+- **The asset step:** `tools/generate_interface_assets.py` logged "satisfies 9 BindWidget properties: BankLabel,
+  BranchBox, BranchLabel, CloseButton, DescriptionLabel, GraphCanvas, RefusalLabel, RespecButton, RespecLabel" and
+  "created /Game/Interface/WBP_EmpireTree"; it changed no other file. The runner committed
+  `game/Content/Interface/WBP_EmpireTree.uasset` alone as `1304e355a` and pushed it; every run below is at that head.
+- **The groups alone**, each its registered count, all succeeding: EmpireTreeScreen 10, EmpireTree 24, EmpirePoints 16,
+  Gold 13, PlayLoop 8, EmpireScreen 14, BossOnTheMap 5, WalkFromTheScreen 5, CityScreen 16.
+- **The whole suite:** "4867 tests performed, 4867 succeeded, 0 failed. 47 skipped part of what they check"; "Test
+  saves: 840 written and deleted, 0 left behind"; "Declared: 4867 tests in the tree at 1304e355a; 4867 performed, gap
+  0". None of the ten new tests skipped a half: the button's label measured "Empire upgrade tree needs 205 pixels of
+  344", and its placement checked 100 city placements. The branch test printed 159 of 159 nodes and 158 of 158 edges
+  drawn.
+- **Python:** 7599 passed, 9 skipped in 192.46 s; the JUnit file says tests 7608, failures 0, errors 0, skipped 9.
+  **ruff:** all checks passed.
+- **The proofs**, each narrowed to `Cataclysm.EmpireTreeScreen.`, 10 performed in each half:
+
+  | Proof | Broken half | Failed assertions, counted in the kept log | Restored half |
+  |---|---|---|---|
+  | P1 | 9 succeeded, 1 failed: `APurchaseDuringAWalkIsRefusedAndSpendsNothing` | 7, the seven registered | 10 of 10 |
+  | P2 | 9 succeeded, 1 failed: `TheMapButtonSitsInTheEmptyTopRightCorner` | 5: the centre (1404 expected, 196 found) and the boss marker on each of the four panels | 10 of 10 |
+  | P3 | 9 succeeded, 1 failed: `APurchaseDuringAWalkIsRefusedAndSpendsNothing` | 3: the capstone click took, offered the options, and said "Foundations of the Empire has opened" | 10 of 10 |
+  | P4 | 9 succeeded, 1 failed: `RespecTakesTwoPressesAndAnyOtherPressCancelsIt` | 7, the seven registered (the days taken were 10 against 5) | 10 of 10 |
+
+  No proof's log has a `LogModelContextProtocol` line in the failing test's span. The logs are kept as
+  `t2741s2_P<n>_run1.log` and `_run2.log` in the session's window folder.
+
+---
+
 ## 2026-11-18 — Each run masks its dungeons' walk seeds, so two runs' dungeons differ; the run record goes to version 8, and a run saved at version 7 keeps the seeds it had (#2749, B10)
 
 **Affects:** `FCataclysmDungeon::WalkSeed` (`game/Source/CataclysmEmpire/Empire/CataclysmSurge.h`, `.cpp`), now taking
