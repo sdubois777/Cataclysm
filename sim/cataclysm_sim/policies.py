@@ -320,26 +320,39 @@ def siege_urgency(sim, d, city, fatal_mult: float) -> float:
 
     WHY THE DISTINCTION STILL MATTERS NOW THAT THE MARGIN IS NOT TIGHT. At
     difficulty tier 1 -- one active Cataclysm -- with no empire tree, `triage`,
-    and static surges of five dungeons every 120 days, the median walk is 14
-    days to an Outpost, 23 to a Bulwark, 35 to a Sanctuary and 123 to the
+    and static surges of five dungeons every 120 days, the median walk is 9
+    days to an Outpost, 23 to a Bulwark, 35 to a Sanctuary and 125 to the
     Pillar. Against the 25 / 39 / 55 days a fresh Siege leaves those three
-    sizes, the slack is 11 / 16 / 20 days. Measured on 2026-10-18 over 10,000
-    campaigns (seeds 0 to 9999) and 756,907 dungeons, each recorded at the
+    sizes, the slack is 16 / 16 / 20 days. Measured on 2026-11-19 over 10,000
+    campaigns (seeds 0 to 9999) and 707,221 dungeons, each recorded at the
     moment it was made, with an ordinary dungeon leaving after it hits its city
     (`dungeon_persists_after_resolve` False, the default since 2026-10-12),
-    each Cataclysm's Quest dungeons one fixed sub-type and War's at most two a
-    wave. UNTIL 2026-10-18 THIS SAID 14 / 22 / 34 / 123 AND A SLACK OF
+    each Cataclysm's Quest dungeons one fixed sub-type, War's at most two a
+    wave, and an Outpost's ordinary dungeons 5 to 10 floors (issue #2749, B9).
+    UNTIL 2026-11-19 THIS SAID 14 / 23 / 35 / 123 AND A SLACK OF 11 / 16 / 20,
+    measured on 2026-10-18 over 756,907 dungeons with an Outpost's ordinary
+    dungeons 8 to 15 floors: the Outpost median fell by five days with the
+    row, and the Pillar's moved by two inside its own tolerance.
+    UNTIL 2026-10-18 THIS SAID 14 / 22 / 34 / 123 AND A SLACK OF
     11 / 17 / 21, measured on 2026-10-12 over 754,158 dungeons. UNTIL 2026-10-12
     IT SAID 14 / 24 / 37 / 123 AND A SLACK OF 11 / 15 / 18,
     measured on 2026-09-16 over 890,790 dungeons with the dungeon staying;
     issues #1364 and #1432.
 
     QUOTE THOSE TO THE DAY AND NO FINER, AND RE-MEASURE RATHER THAN CARRYING
-    THEM FORWARD. The walk lengths are nearly uniform where the median sits --
-    48.17% of Outpost dungeons walk in 13 days or fewer and 56.35% in 14 or
-    fewer, in the 2026-10-12 measurement above (47.3% and 54.9% on 2026-09-16)
-    -- so the median is a coin flip between two adjacent days, and a block of
-    320 campaigns lands on either side of it at random. That is how this file
+    THEM FORWARD. While an Outpost's ordinary dungeons were 8 to 15 floors the
+    walk lengths were nearly uniform where the median sat -- 48.17% of Outpost
+    dungeons walked in 13 days or fewer and 56.35% in 14 or fewer, in the
+    2026-10-12 measurement (47.3% and 54.9% on 2026-09-16) -- so the median was
+    a coin flip between two adjacent days, and a block of 320 campaigns landed
+    on either side of it at random. SINCE ISSUE #2749 THE OUTPOST'S MEDIAN DAY
+    HOLDS FEWER WALKS THAN EITHER NEIGHBOUR: 46.72% of Outpost dungeons walk in
+    8 days or fewer and 55.31% in 9 or fewer, and day 9 holds 8.59% of walks
+    against 11.77% on day 8 and 10.51% on day 10, in the 2026-11-19
+    measurement above. The Outpost median was 9 in all ten disjoint blocks of
+    320 campaigns (seeds 0 to 3199); the Bulwark's ran 22 to 23, the
+    Sanctuary's 34 to 36 and the Pillar's 123 to 127, so the day of tolerance
+    is still what the other sizes need. That is how this file
     came to state 12 / 20 / 33 while issue #1364 measured 14 / 22 / 33 on the
     same code: neither was reproducible, and neither was wrong by much.
     `tests/test_the_siege_prose_in_policies_is_true.py` re-measures all four and

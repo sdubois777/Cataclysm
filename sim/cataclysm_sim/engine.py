@@ -1166,7 +1166,8 @@ class Simulation:
         floors the Explorer tree adds. Until then this was `d.floors`, so
         the Explorer preset's 40 extra floors at difficulty tier 1 made an
         ordinary dungeon on an Outpost hit about 4.5 times as hard: 51.5
-        floors over a typical 11.5.
+        floors over a typical 11.5, when an Outpost's ordinary range was 8 to
+        15 (5 to 10 since #2749).
 
         A TREE THAT REMOVES FLOORS DOES NOT SHRINK THE HIT EITHER, which the
         ruling's words imply and did not spell out. `Exclusionary Mapping`
@@ -1210,8 +1211,9 @@ class Simulation:
 
         NO SCALE BY DEPTH, WHICH IS A READING. A Quest dungeon is deeper
         than an ordinary one of the same city (20 to 30 floors on an
-        Outpost against 8 to 15), so dividing its floors by the ordinary
-        midpoint would make every Quest hit about twice an ordinary one.
+        Outpost against 5 to 10 since #2749), so dividing its floors by the
+        ordinary midpoint would make every Quest hit larger than an ordinary
+        one, about 3.3 times on an Outpost (25 floors over 7.5).
         "An ordinary dungeon's size" is read as the row at a scale of 1.0.
         `cfg.quest_hit_scales_with_depth` is the other reading, kept so the
         two can be measured side by side.

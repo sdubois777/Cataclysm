@@ -7162,14 +7162,15 @@ bool FCataclysmEmpireRunVoidThirdsTest::RunTest(const FString& Parameters)
 		ECataclysmDungeonType::Basic, ECataclysmCityTier::Outpost);
 
 	if (!TestEqual(TEXT("set-up: the map has three Outposts standing"), Outposts.Num(), 3)
-		|| !TestEqual(TEXT("set-up: an ordinary Outpost dungeon is 8 floors at least"), Row.LeastFloors, 8)
-		|| !TestEqual(TEXT("set-up: and 15 at most"), Row.MostFloors, 15))
+		|| !TestEqual(TEXT("set-up: an ordinary Outpost dungeon is 5 floors at least"), Row.LeastFloors, 5)
+		|| !TestEqual(TEXT("set-up: and 10 at most"), Row.MostFloors, 10))
 	{
 		return false;
 	}
 
-	// THE SHALLOWEST, ONE IN THE MIDDLE THIRD, AND THE DEEPEST.
-	const int32 Floors[] = { 8, 12, 15 };
+	// THE SHALLOWEST, ONE IN THE MIDDLE THIRD, AND THE DEEPEST, of the Outpost row of 5 to 10 since issue #2749 (B9);
+	// they were 8, 12 and 15 of 8 to 15. 8 floors is in the middle third: 3 x 3 / 5 is 1.
+	const int32 Floors[] = { 5, 8, 10 };
 	const int32 Expected[] = { 1, 2, 3 };
 
 	for (int32 Index = 0; Index < 3; ++Index)

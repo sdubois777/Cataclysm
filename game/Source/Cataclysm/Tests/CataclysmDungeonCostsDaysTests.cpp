@@ -11,6 +11,7 @@
 #include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Empire/CataclysmDungeonKind.h"
 #include "Empire/CataclysmEmpireRun.h"
+#include "Empire/CataclysmSurge.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
@@ -580,10 +581,12 @@ bool FCataclysmDungeonWholeWaveTest::RunTest(const FString& Parameters)
 	// WHAT THIS TEST DELIBERATELY DOES NOT CLAIM: that a dungeon of the wave
 	// is gone before its turn, or that none is. Since 2026-10-13 an ordinary
 	// dungeon hits its city when its timer runs out and leaves the map. An
-	// Outpost dungeon's timer is about 19 to 39 days, and walking the opening
-	// wave's twelve dungeons, an ordinary one 8 to 15 floors and a Quest one
-	// 20 to 30 on an Outpost, costs about 138 days if all twelve are ordinary
-	// at the typical 11.5 floors, and more for each Quest one, against about
+	// ordinary Outpost dungeon's timer is about 15 to 30 days, and walking the
+	// opening wave's twelve dungeons, an ordinary one 5 to 10 floors and a
+	// Quest one 20 to 30 on an Outpost, costs about 90 days if all twelve are
+	// ordinary at the typical 7.5 floors, and more for each Quest one. (Before
+	// issue #2749 the ordinary row was 8 to 15: timers of about 19 to 39 days
+	// and about 138 days for twelve at 11.5 floors.) Against about
 	// 44 for the four ordinary dungeons of the wave of five before
 	// 2026-10-20. So a dungeon of the wave can be gone before the player
 	// reaches it, and the test counts that rather than asserting it: claiming
@@ -776,12 +779,17 @@ bool FCataclysmDungeonWholeWaveTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and the floors walked are those dungeons' floors"),
 			  FloorsWalked, FloorsToWalk);
 
-	// A WAVE IS WEEKS OF WORK, not an afternoon. Outpost dungeons are 8 to 15
-	// floors each, which is what makes ignoring one a real decision rather than
-	// an obvious mistake.
+	// A WAVE IS WEEKS OF WORK, not an afternoon. An ordinary Outpost dungeon is
+	// at least `LeastFloors` of its row deep (5 since issue #2749; it was 8), and
+	// every other dungeon a first wave holds is deeper, which is what makes
+	// ignoring one a real decision rather than an obvious mistake. READ FROM THE
+	// ROW, so the bound follows the range rather than repeating it.
+	const int32 ShallowestOrdinary = UCataclysmSurgeScheduler::SpecFor(
+		ECataclysmDungeonType::Basic, ECataclysmCityTier::Outpost).LeastFloors;
 	TestTrue(FString::Printf(
-		TEXT("walking what was left of the wave took %d floors"), FloorsWalked),
-		FloorsWalked >= Cleared * 8);
+		TEXT("walking what was left of the wave took %d floors, at least %d a dungeon"),
+		FloorsWalked, ShallowestOrdinary),
+		ShallowestOrdinary >= 1 && FloorsWalked >= Cleared * ShallowestOrdinary);
 
 	return true;
 }

@@ -259,15 +259,18 @@ def test_a_surge_reaches_deeper_than_the_basic_dungeon_range(report):
 
     A surge rolls a Quest 12% of the time and a Quest at a Sanctuary is 30-50
     floors, and every surge dungeon is scaled by the active Cataclysm's
-    `floors_mult`, which runs 0.55 to 1.60. So the reachable range is 4-80
+    `floors_mult`, which runs 0.55 to 1.60. So the reachable range is 3-80
     floors, not 8-40, and a flat 70 leaves a gradient on the deepest of them.
+    IT WAS 4-80 UNTIL ISSUE #2749 made an Outpost's ordinary row 5-10 rather
+    than 8-15: the shallowest is 5 x 0.55, which rounds to 3, where it was 8 x
+    0.55, which rounds to 4. The deepest did not move.
     """
     from cataclysm_sim.patterns import PATTERNS
     _printed, namespace = report
     wide = namespace["surge_reachable"]()
     mults = [p.floors_mult for p in PATTERNS.values()]
     assert (min(mults), max(mults)) == (0.55, 1.60)
-    assert (wide[0], wide[-1]) == (4, 80)
+    assert (wide[0], wide[-1]) == (3, 80)
 
     replaced = namespace["Shape"]("probe", flat=namespace["FLAT_REPLACED"])
     assert on_floor(namespace, replaced) == 100.0

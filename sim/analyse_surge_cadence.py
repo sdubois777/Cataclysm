@@ -46,16 +46,20 @@ future sweeper of the surge count will open:
 The axis keeps one value above the cap -- 20, the number in the owner's question
 -- so the grid can show what the ruling costs rather than merely asserting it.
 
-THE OWNER'S FLOOR RANGES ARE NOT THE SHIPPED ONES, and the difference is not
-cosmetic. An earlier form of the question described three layers at 5-10, 15-25
-and 30-50 floors. `TuningConfig.DUNGEON_SPECS` ships four city tiers, and only
-the middle one matches:
+THE OWNER'S FLOOR RANGES WERE NOT THE SHIPPED ONES when this was written, and the
+difference was not cosmetic. An earlier form of the question described three
+layers at 5-10, 15-25 and 30-50 floors. `TuningConfig.DUNGEON_SPECS` shipped four
+city tiers, and only the middle one matched:
 
     layer in the question   shipped tier   shipped Basic floors
     5-10                    Outpost        8-15
     15-25                   Bulwark        15-25   <- the only match
     30-50                   Sanctuary      25-40
     (none)                  Pillar         40-60
+
+SINCE ISSUE #2749 (B9, 2026-11-19) THE OUTPOST ROW IS 5-10, so the first layer
+matches too. The measurements recorded on issue #1090 were taken on the 8-15
+row; `section_1_walk_days` prints the shipped rows as they are when it runs.
 
 Whether the question proposes those ranges, misremembers the table, or counts
 three of the four tiers is a design question and not one this file can settle.
@@ -352,7 +356,8 @@ JOBS = int(os.environ.get("CATACLYSM_SURGE_CADENCE_JOBS", "1"))
 WORKER_CELL = os.environ.get("CATACLYSM_SURGE_CADENCE_CELL", "").strip()
 
 #: The layers an earlier form of the owner's question described, against the
-#: tiers this model ships. See the module docstring: only the middle one matches.
+#: tiers this model ships. See the module docstring: the middle one matched, and
+#: the Outpost's matches too since issue #2749 made its row 5-10.
 OWNER_LAYERS = ((5, 10), (15, 25), (30, 50))
 
 CITY_TIERS = (CityTier.OUTPOST, CityTier.BULWARK,
@@ -644,8 +649,8 @@ def section_1_walk_days() -> dict:
     print("1. WHAT A DUNGEON COSTS AN INVESTED PLAYER. Exact arithmetic, no "
           "campaigns.")
     print("=" * 118)
-    print("\n  THE OWNER'S FLOOR RANGES AGAINST THE SHIPPED ONES. Only the "
-          "middle layer matches.")
+    print("\n  THE OWNER'S FLOOR RANGES AGAINST THE SHIPPED ONES. A layer that "
+          "matches is marked.")
     print(f"    {'layer in the question':<24}{'shipped tier':<14}"
           f"{'shipped Basic floors':<22}")
     shipped = [base_config().spec(DungeonType.BASIC, t).floors
@@ -653,7 +658,7 @@ def section_1_walk_days() -> dict:
     for i, tier in enumerate(CITY_TIERS):
         asked = (f"{OWNER_LAYERS[i][0]}-{OWNER_LAYERS[i][1]}"
                  if i < len(OWNER_LAYERS) else "(none)")
-        mark = ("   <- the only match"
+        mark = ("   <- matches"
                 if i < len(OWNER_LAYERS) and OWNER_LAYERS[i] == shipped[i]
                 else "")
         print(f"    {asked:<24}{tier.value:<14}"

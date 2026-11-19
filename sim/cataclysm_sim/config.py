@@ -763,10 +763,12 @@ class TuningConfig:
     # IT WAS 10 UNTIL 2026-09-06 AND THE OWNER CUT IT ON ISSUE #1349, verbatim
     # "Halve the rate and cut the growth". At 10 an unattended Siege emptied a
     # city in 14 / 23 / 34 / 47 days by size against a median walk of
-    # 14 / 23 / 35 (the walk today, re-measured on 2026-10-18 over 10,000
+    # 9 / 23 / 35 (the walk today, re-measured on 2026-11-19 over 10,000
     # campaigns, seeds 0 to 9999, by the prose test's own method: its report
-    # settings, no tree, `triage`, every dungeon recorded when it is made; it
-    # was 14 / 22 / 34 on 2026-10-12, 14 / 23 / 37 on the day of the cut and
+    # settings, no tree, `triage`, every dungeon recorded when it is made, with
+    # an Outpost's ordinary dungeons 5 to 10 floors since issue #2749; it was
+    # 14 / 23 / 35 on 2026-10-18 with them 8 to 15,
+    # 14 / 22 / 34 on 2026-10-12, 14 / 23 / 37 on the day of the cut and
     # 14 / 24 / 37 after issue #1432), so on the day of the cut the
     # player arrived on the day the city fell for the two
     # smaller sizes and after it had fallen for the third; at 2.5 it
@@ -953,8 +955,10 @@ class TuningConfig:
     # a Quest dungeon's hit by its floors over the midpoint of the ordinary
     # row's floor range, which is how an ordinary dungeon's hit is scaled.
     # A Quest dungeon is deeper than an ordinary one of the same city, so
-    # True makes its hit larger than an ordinary one: about 2.2 times on an
-    # Outpost at the middle of both ranges (25 floors over 11.5). The
+    # True makes its hit larger than an ordinary one: about 3.3 times on an
+    # Outpost at the middle of both ranges (25 floors over 7.5) since the
+    # Outpost's ordinary range became 5 to 10 (#2749), and 2.2 times (25 over
+    # 11.5) when it was 8 to 15. The
     # accepted recommendation says "an ordinary dungeon's size" and False
     # is the reading taken: a labelled judgement, 2026-10-13.
     quest_hit_scales_with_depth: bool = False
@@ -1103,8 +1107,15 @@ class TuningConfig:
     # 3,150 on the Pillar. A Quest dungeon's hit reads these rows too.
     DUNGEON_SPECS: dict[tuple[DungeonType, CityTier], DungeonSpec] = field(
         default_factory=lambda: {
+            # AN OUTPOST'S ORDINARY DUNGEON IS 5 TO 10 FLOORS SINCE ISSUE
+            # #2749 (B9), ruled by the coordinating session on 2026-11-19; it
+            # was 8 to 15. The owner found first-surge dungeons of 14 and 15
+            # floors excessive on the weakest cities and asked for the
+            # non-Quest ones to be lowered. `analyse_outpost_depth.py` is the
+            # measurement the range was chosen from. The game's `SpecFor` holds
+            # the same pair.
             (DungeonType.BASIC, CityTier.OUTPOST):
-                DungeonSpec((8, 15),   70.0, 175.0),
+                DungeonSpec((5, 10),   70.0, 175.0),
             (DungeonType.BASIC, CityTier.BULWARK):
                 DungeonSpec((15, 25),  189.0, 700.0),
             (DungeonType.BASIC, CityTier.SANCTUARY):

@@ -122,7 +122,8 @@ def penetration_run():
                                   "analyse_explorer_rate.py",
                                   "analyse_surge_cadence.py",
                                   "analyse_board_empty_surge.py",
-                                  "analyse_tier_throughput.py"])
+                                  "analyse_tier_throughput.py",
+                                  "analyse_outpost_depth.py"])
 def test_the_script_runs_and_prints_something(name):
     printed, _ = run(name)
     assert len(printed.splitlines()) > 20, printed
@@ -3653,3 +3654,54 @@ def test_the_throughput_script_recommends_no_constant(throughput_run):
     assert "IT MEASURES AND PROPOSES NOTHING" in source(
         "analyse_tier_throughput.py")
     assert "issue #1349" in flat
+
+
+# --------------------------------------------------------------------------
+# analyse_outpost_depth.py -- issue #2749, B9
+# --------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def outpost_depth_run():
+    """The smoke default: one campaign a policy a range, 45 campaigns. The
+    table in the script's docstring is 18,000 and is a record; these check what
+    each cell changes and which ranges it sweeps, which do not depend on size."""
+    return run("analyse_outpost_depth.py")
+
+
+def test_the_outpost_depth_sweep_holds_the_row_before_the_ruling_and_the_ruled_one(
+        outpost_depth_run):
+    """The comparison the ruling was made on: 8-15 against 5-10. And the ruled
+    row is the one that ships, so the script's "shipped" mark is on it."""
+    from cataclysm_sim.config import CityTier, DungeonType, TuningConfig
+
+    printed, ns = outpost_depth_run
+    shipped = TuningConfig().DUNGEON_SPECS[(DungeonType.BASIC, CityTier.OUTPOST)]
+
+    assert ns["BEFORE"] == (8, 15) and ns["RULED"] == (5, 10)
+    assert ns["BEFORE"] in ns["RANGES"] and ns["RULED"] in ns["RANGES"]
+    assert shipped.floors == ns["RULED"], shipped
+    assert set(ns["RESULTS"]) == set(ns["RANGES"])
+    assert "SMOKE RUN" in printed
+    shipped_rows = [line for line in printed.splitlines() if line.endswith("<- shipped")]
+    assert len(shipped_rows) == 1 and shipped_rows[0].startswith("5-10"), shipped_rows
+
+
+def test_each_outpost_depth_cell_changes_only_the_outpost_ordinary_rows_floors(
+        outpost_depth_run):
+    """A cell that moved anything else -- the row's damage, another row, any
+    other setting -- would attribute that change to depth."""
+    from dataclasses import replace
+
+    from cataclysm_sim.config import TuningConfig
+
+    _, ns = outpost_depth_run
+    key = ns["KEY"]
+    shipped = TuningConfig()
+    for least, most in ns["RANGES"]:
+        cfg = ns["config_for"](least, most)
+        row = cfg.DUNGEON_SPECS[key]
+        assert row.floors == (least, most)
+        assert replace(row, floors=shipped.DUNGEON_SPECS[key].floors) == shipped.DUNGEON_SPECS[key]
+        assert {k: v for k, v in cfg.DUNGEON_SPECS.items() if k != key} == {
+            k: v for k, v in shipped.DUNGEON_SPECS.items() if k != key}
+        assert replace(cfg, DUNGEON_SPECS=shipped.DUNGEON_SPECS) == shipped
