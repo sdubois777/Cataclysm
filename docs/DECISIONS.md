@@ -225,10 +225,12 @@ takes the new column; two tests, new), `CataclysmDungeonModifierEffectsTests.cpp
 
 ### SAID FIRST
 
-- **NOT YET COMPILED OR RUN IN UNREAL.** Phase 1 at `b4d7f01f9`: the Python suite passes, 7,660 passed and 9 skipped;
+- **COMPILED, NOT YET RUN IN UNREAL.** Phase 1 at `b4d7f01f9`: the Python suite passes, 7,660 passed and 9 skipped;
   ruff is clean; both Python guard proofs are proved as registered ("Phase 1's Python run" and "The two Python guard
-  proofs", below). The Unreal count and the two C++ proofs are registered below, before the window that will test
-  them.
+  proofs", below). Rebased onto `a96b2cead` (the empire upgrade tree's slice 4) and run again at `058fcd3a5`: 7,668
+  passed and 9 skipped, by the count line and by the JUnit file (7,677 tests, 0 failures, 0 errors); ruff is clean.
+  Phase 2's three builds at `058fcd3a5` succeeded ("Phase 2's compiles", below). The Unreal count and the two C++
+  proofs are registered below, before the window that will test them.
 - **THE MEASUREMENT USED A DEMONIC CATACLYSM THAT FOLLOWS THE FRONT LINE, AND THE SHIPPED SIMULATION'S DOES NOT YET.**
   The game's surge targets only the exposed front line for every Cataclysm, ruled for Demonic on 2026-09-14
   ([#1085](https://github.com/sdubois777/Cataclysm/issues/1085)); the simulation's Demonic still ignores it
@@ -443,8 +445,22 @@ with no game instance and write no save. Python with a JUnit file, and ruff. The
   `AWalkInADungeonRolledOnABulwarkBuildsItsCreaturesWithTheBulwarksDamage` two ("on this floor a Bulwark's Imp hits
   0.11 / 0.05 times as hard" and the control); restored, 8 of 8.
 
-Phase 2's compiles, each changed `.cpp` alone and then in unity, wait for the coordinating session's word that the
-machine is free.
+### Phase 2's compiles
+
+At `058fcd3a5`, started once no Unreal workflow run was in progress or queued and the Unreal lock read free, twice
+two minutes apart, after the continuous integration runner's compile of `a96b2cead`:
+
+| Build | Result | Warnings |
+| :-- | :-- | :-- |
+| The branch as committed | Succeeded, 67 actions, 60 files compiled, 350 s | 1: C4996 in the engine's `MicrosoftPlatformMath.h`, a 64-bit `CountBits`, reached from `CataclysmAbilitySystemComponent.cpp` line 1315, which this branch does not change |
+| Each changed `.cpp` alone | Succeeded, 22 actions, 19 files compiled, 116 s | 0 |
+| The unity files again | Succeeded, 13 actions, 10 unity files compiled, 84 s | 0 |
+
+**COMPILED ALONE**, by the build tool's "Excluded from Cataclysm unity file" line: the seven `.cpp` files this branch
+changes (`CataclysmCorruptedStalkerCharacter.cpp`, `CataclysmDungeonGameMode.cpp`, `CataclysmDungeonModifierEffects.cpp`,
+`CataclysmEnemyScore.cpp`, `CataclysmEnemyStrength.cpp`, `CataclysmDungeonModifierEffectsTests.cpp` and
+`CataclysmEnemyStrengthTests.cpp`), and `CataclysmPlayerClassStats.cpp` and `CataclysmGameMode.cpp`, whose headers it
+changes.
 
 ---
 
