@@ -16,6 +16,23 @@ simulation adds to every dungeon it makes, the boss's included (`Simulation._mak
 Policy `triage`, the default `TuningConfig` at each tier, and the same seeds 0..TRIALS-1 for every value, so the cells
 of a tier differ only by the value.
 
+MEASURED 2026-11-19 AT 200 CAMPAIGNS A CELL, 3,600 campaigns, at development `5b401cb87` with this slice's branch. At
+200 campaigns one standard error of a win rate is about 3 points.
+
+    Floors added    win% tier 1    tier 4 win% / cities lost    tier 8 win% / points a run
+      0             62.0           25.0 /  6.76                 2.0 / 71.5
+     10             54.5           18.0 /  8.11                 2.0 / 68.2
+     20             51.5           15.0 / 10.28                 0.5 / 64.8
+     40             48.0           13.0 / 13.49                 1.5 / 57.7
+     80              0.5            7.0 / 18.83                 0.5 / 48.9
+    320              0.0           11.0 / 18.35                 1.0 /  0.1
+
+  EVERY SIZE COSTS WINS AND POINTS, and the cost grows with the size; from +80 the campaigns collapse. That is the
+  owner's depth finding of 2026-11-18 again: the model pays points per dungeon, not per floor, and has no loot, so it
+  cannot value a deeper dungeon. +10, the smallest size measured, costs about 7 win points at tiers 1 and 4 -- about
+  one and a half times what chance alone moves the difference between two cells -- and 1.35 more cities lost at tier 4.
+  Cap chosen: +10 floors in total, the coordinating session's W4, with these figures sent to it.
+
 RUN WITH NO SETTINGS IT PLAYS ONE CAMPAIGN A CELL, 18 in all, which `sim/tests/test_analysis_scripts.py` runs to keep
 the script working; a measurement needs the 200.
 """
