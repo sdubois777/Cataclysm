@@ -76,7 +76,7 @@ import pathlib
 import subprocess
 import sys
 
-from unreal_build import EDITOR_CMD, ENGINE_ROOT, GAME_DIR, PROJECT_FILE, REPO_ROOT
+from unreal_build import EDITOR_CMD, ENGINE_ROOT, GAME_DIR, MCP_SERVER_OFF, PROJECT_FILE, REPO_ROOT
 
 #: Where UnrealBuildTool puts this project's compiled editor modules. Gitignored,
 #: because it is build output regenerated from `game/Source/`.
@@ -342,7 +342,10 @@ def run(script: pathlib.Path, timeout: float = 1800.0,
     subprocess.run(
         [str(EDITOR_CMD), str(PROJECT_FILE), "-run=pythonscript",
          f"-script={script}", f"-abslog={RUN_LOG}",
-         "-unattended", "-nopause", "-nosplash"],
+         "-unattended", "-nopause", "-nosplash",
+         # NO MCP SERVER IN THIS EDITOR EITHER: it started one on port 8000 like the test editor (the forge's asset
+         # run, 2026-11-19). `unreal_build.MCP_SERVER_OFF` says why. Issue #2745.
+         MCP_SERVER_OFF],
         capture_output=True, text=True, cwd=GAME_DIR, timeout=timeout, check=False)
 
     # BEFORE THE LOG IS JUDGED, so that a run which started the editor, dirtied
