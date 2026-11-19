@@ -1379,7 +1379,7 @@ public:
 	 */
 	static FCataclysmDungeon MakeFallenCityDungeon(
 		int32 DungeonId, const FCataclysmCity& City, int32 Day,
-		int32 DungeonsAbsorbed);
+		int32 DungeonsAbsorbed, int32 FloorsAdded = 0);
 
 	/**
 	 * The Cataclysm boss dungeon a run has earned, as it is the moment it opens.
@@ -1543,6 +1543,18 @@ public:
 
 	/** `GapBonusDays` once a surge has fired, and nothing before the first. */
 	float GapBonusDaysNow() const;
+
+	/**
+	 * Floors the empire upgrade tree adds to every dungeon this scheduler makes: its flat floor nodes and Infinite
+	 * Depths for the run's active Cataclysm types. Set by `UCataclysmEmpireRun::SetTreeBonuses` and `Begin`, which know
+	 * the active types; not saved, as the tree is not. Issue #2741 slice 4, W3.
+	 *
+	 * ADDED WHEN A DUNGEON IS MADE, to the city's own floor upgrades, so they are counted in `UpgradeFloors`: the
+	 * dungeon's timer grows with them and its hit does not, as the simulation's `_make_dungeon` adds the tree's floors
+	 * after the natural depth. A dungeon already standing keeps the floors it was made with.
+	 */
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 FloorsTheTreeAdds = 0;
 
 	/**
 	 * How many days it has been since a surge last fired.

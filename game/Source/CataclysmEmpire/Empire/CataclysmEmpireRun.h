@@ -658,6 +658,42 @@ public:
 	 */
 	void RunTreeIntervals(int32 Today);
 
+	// ----------------------------------------------------------------------
+	// The empire upgrade tree's walk -- issue #2741 slice 4
+	// ----------------------------------------------------------------------
+
+	/**
+	 * The days a walk of this dungeon costs, with the empire upgrade tree: its stored walk days (or one day a floor
+	 * where none is stored), less the tree's flat days, times its share left, halved by Tactical Entry above 50 floors,
+	 * and never below one day -- the coordinating session's W1 of 2026-11-19, the simulation's order. A Cow Level is
+	 * not reduced ("cannot be reduced"). The Last Stand option makes it one day, whatever else applies (W5).
+	 *
+	 * READ WHERE IT IS CHARGED AND NOT STORED, so a bought node reaches a dungeon already standing and a respec takes it
+	 * away at once (Q10); the tree cannot change during a walk, so a walk is charged one figure throughout. With no walk
+	 * node held it is exactly the stored figure.
+	 */
+	float EffectiveWalkDaysFor(const FCataclysmDungeon& Dungeon) const;
+
+	/** `EffectiveWalkDaysFor` over the dungeon's floors: the rate the game mode charges each floor. */
+	float WalkDaysPerFloorFor(const FCataclysmDungeon& Dungeon) const;
+
+	/**
+	 * The defence the hits already scheduled on a city over the next `Days` days would take, as the run deals them: an
+	 * ordinary dungeon or a Quest dungeon whose timer runs out inside those days, once each at its full hit after the
+	 * tree's reductions and the city's resistance; and a Siege's daily share for each of those days. The Last Stand
+	 * option's "within 7 days of falling" is this reaching what the city holds (W5).
+	 */
+	float ScheduledDefenceLossOn(int32 CityId, int32 Days) const;
+
+	/** Whether the hits scheduled over the next `Days` days would fell this living city. */
+	bool IsWithinDaysOfFalling(int32 CityId, int32 Days) const;
+
+	/**
+	 * The dungeon The Warlord removes from a city when a clear's roll lands: the one there that resolves soonest, never
+	 * a Fallen City dungeon (W6). `INDEX_NONE` when there is none.
+	 */
+	int32 TheWarlordsDungeonOn(int32 CityId) const;
+
 	/**
 	 * Every dungeon standing on the map, in the order they arrived.
 	 *
@@ -835,6 +871,19 @@ public:
 
 	/** The salt `Begin` mixes into the run's seed for `WalkSeedMask`: "walk". Issue #2749 (B10). */
 	static constexpr int32 WalkSeedSalt = 0x77616C6B;
+
+	/**
+	 * The salt The Warlord's roll mixes with `WalkSeedMask` and the cleared dungeon's id: "warl". A roll of its own, so it
+	 * takes no draw from `Stream` and moves no later wave (W6). Issue #2741 slice 4.
+	 */
+	static constexpr int32 WarlordSalt = 0x7761726C;
+
+	/**
+	 * The dungeon The Warlord removed at the last `ClearDungeon`, or `INDEX_NONE`: what a test reads to see the roll
+	 * land. Not saved; the removal itself is the run's state.
+	 */
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LastDungeonTheWarlordRemoved = INDEX_NONE;
 
 	/**
 	 * Gives one dungeon its modifiers and its modifier score.

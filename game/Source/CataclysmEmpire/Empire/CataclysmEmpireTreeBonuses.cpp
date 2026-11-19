@@ -123,3 +123,16 @@ float FCataclysmEmpireTreeBonuses::EventDamageFactorFor(int32 ClearsSinceLastSur
 	return CataclysmEmpireTreeBonuses::KeptAfter(ReductionPerClear, ClearPoints, ClearsSinceLastSurge, ClearReductionCap)
 		* CataclysmEmpireTreeBonuses::KeptAfter(ReductionPerReclaim, ReclaimPoints, CitiesReclaimed, ReclaimReductionCap);
 }
+
+bool FCataclysmEmpireTreeBonuses::ReachesTheWalk() const
+{
+	return WalkTimeFactor != 1.0f || HalveWalkAboveFloors > 0 || WalkDaysFewer > 0.0f || WalkDaysFewerWhenAlone > 0.0f
+		|| WalkDaysFewerPerActiveType > 0.0f || WalkDaysFewerOnFallenCities > 0.0f || WalkDaysFewerPerFloorCleared > 0.0f
+		|| OneDayWalkWithinDaysOfFalling > 0;
+}
+
+int32 FCataclysmEmpireTreeBonuses::FloorsAddedTo(bool bTheBoss, int32 ActiveCataclysmTypes) const
+{
+	// INFINITE DEPTHS: "to every dungeon except the Cataclysm boss dungeon" (W3).
+	return FloorsAdded + (bTheBoss ? 0 : FloorsAddedPerActiveType * FMath::Max(0, ActiveCataclysmTypes));
+}

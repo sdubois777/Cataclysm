@@ -15588,7 +15588,10 @@ void ACataclysmDungeonGameMode::SpendFloorTimeInTheEmpire()
 	// while the player is inside the dungeon it OWES them rather than running
 	// them: nothing resolves until the player leaves, the owner's decision of
 	// 2026-10-24. `LeaveEmpireDungeon` runs them, and adds their reports here.
-	DaysSpentWalking.Append(Run->SpendFloorTime(Dungeon->WalkDaysPerFloor()));
+	//
+	// AS THE RUN READS IT WITH THE EMPIRE UPGRADE TREE, since issue #2741 slice 4: the stored rate, less the tree's
+	// walk nodes, which cannot change during a walk, so every floor of it is charged the same rate.
+	DaysSpentWalking.Append(Run->SpendFloorTime(Run->WalkDaysPerFloorFor(*Dungeon)));
 }
 
 bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)

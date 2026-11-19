@@ -2225,6 +2225,37 @@ enum class ECataclysmEmpireTreeEffect : uint8
 
 	/** How much stronger a city upgrade held `EnduringFoundationsDays` or more makes its effect, per point. */
 	UpgradeEffectAfterDays,
+
+	// Slice 4: a dungeon's walk and depth, and what a clear brings. Issue #2741.
+
+	/** A share off a dungeon's walk, compounded per point. */
+	WalkTimeCompounded,
+
+	/** A dungeon of more than this many floors walks in half the days. */
+	WalkTimeHalvedAboveFloors,
+
+	/** Days off a dungeon's walk: every dungeon; one alone on its city; per active Cataclysm type, to a cap; on Fallen City
+	 *  dungeons; for each floor cleared before the last. */
+	WalkDaysFewer,
+	WalkDaysFewerWhenAlone,
+	WalkDaysFewerPerActiveType,
+	WalkDaysFewerOnFallenCities,
+	WalkDaysFewerPerFloorCleared,
+
+	/** A dungeon on a city the hits scheduled over this many days would fell walks in one day. */
+	WalkOneDayWithinDaysOfFalling,
+
+	/** Floors added to a dungeon when it is made: every dungeon, the boss's count too; per active Cataclysm type, not the
+	 *  boss; for whole steps of a branch's points, to a cap. */
+	FloorsAdded,
+	FloorsAddedPerActiveType,
+	FloorsPerBranchStep,
+
+	/** The chance a clear removes another dungeon on the same city. */
+	RemoveAnotherDungeonChance,
+
+	/** More empire upgrade points from a clear, per point. */
+	EmpirePointsFromClears,
 };
 
 /**

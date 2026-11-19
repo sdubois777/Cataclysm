@@ -195,6 +195,11 @@ void UCataclysmEmpireRun::BeginForCharacter(int32 InSeed, int32 InCataclysmOrder
 	// #1357 and #1324 slice 6a.
 	ActiveCataclysms = UCataclysmRoster::ActiveFor(InCataclysmOrderSeed, InDifficultyTier);
 
+	// AND THE FLOORS THE EMPIRE UPGRADE TREE ADDS TO EVERY DUNGEON MADE, which need the active types for Infinite
+	// Depths, so they are set here once those are known and before the opening surge makes a dungeon. Issue #2741 slice
+	// 4, W3.
+	Surges->FloorsTheTreeAdds = TreeBonuses.FloorsAddedTo(/*bTheBoss*/ false, ActiveCataclysms.Num());
+
 	// EVERY ACTIVE CATACLYSM IS A KEY BEFORE ANYTHING HAS HAPPENED, so one that
 	// has never sent a quest dungeon reads as 0 rather than as absent. A caller
 	// showing the player their progress towards each Cataclysm gets the whole
@@ -398,12 +403,17 @@ int32 UCataclysmEmpireRun::CataclysmDungeonFloorsNow() const
 		return 0;
 	}
 
-	// THE ROLL AND THE COUNT, AND NOTHING ELSE. Every ordinary dungeon defeated
+	// THE ROLL AND THE COUNT. Every ordinary dungeon defeated
 	// this run is in `BasicDungeonsCleared`, those before the boss opened and
 	// those after, so this is the design's rule with no cap.
-	return CataclysmDungeonBaseFloors
+	//
+	// AND THE EMPIRE UPGRADE TREE'S FLAT FLOORS, NOT INFINITE DEPTHS, whose text excludes the boss: the coordinating
+	// session's W3 of 2026-11-19, as the simulation's `_make_dungeon` gives the boss the flat floors. Counted here, where
+	// the boss's floors are counted, never below one. Issue #2741 slice 4.
+	return FMath::Max(1, CataclysmDungeonBaseFloors
 		+ BasicDungeonsCleared
-			* UCataclysmSurgeScheduler::CataclysmFloorsPerOrdinaryDungeon;
+			* UCataclysmSurgeScheduler::CataclysmFloorsPerOrdinaryDungeon
+		+ TreeBonuses.FloorsAddedTo(/*bTheBoss*/ true, ActiveCataclysms.Num()));
 }
 
 const FCataclysmDungeon* UCataclysmEmpireRun::FindCataclysmDungeon() const
@@ -1616,7 +1626,7 @@ void UCataclysmEmpireRun::AddFallenCityDungeon(
 
 	FCataclysmDungeon Dungeon =
 		UCataclysmSurgeScheduler::MakeFallenCityDungeon(
-			NextDungeonId, *City, OutReport.Day, DungeonsAbsorbed);
+			NextDungeonId, *City, OutReport.Day, DungeonsAbsorbed, Surges->FloorsTheTreeAdds);
 
 	// A FALLEN CITY CARRIES MODIFIERS TOO. The design's rule is about dungeons
 	// and names no exception -- "a dungeon carries one modifier per difficulty
@@ -1738,6 +1748,8 @@ bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)
 	// A CALL THAT CLEARS NOTHING AWARDS NOTHING, so the award a caller reads after it is this call's and never the
 	// last one's. Issue #52.
 	LastEmpirePointsAwarded = 0.0;
+	// AND NOTHING REMOVED BY THE WARLORD YET, for the same reason. Issue #2741 slice 4.
+	LastDungeonTheWarlordRemoved = INDEX_NONE;
 
 	if (!RemoveDungeon(DungeonId))
 	{
@@ -1758,6 +1770,10 @@ bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)
 	LastEmpirePointsAwarded = EmpirePointsFor(Kind,
 		Map != nullptr ? static_cast<double>(Map->TotalPopulation()) : 0.0,
 		Map != nullptr ? static_cast<double>(Map->TotalMaxPopulation()) : 0.0);
+	// AND VETERAN'S EDGE: "+3% Empire XP gained from dungeon clears per point", summed, on every clear's award (W7).
+	// After `EmpirePointsFor` and not in it, whose body the port tests hold to the simulation's, which has no such node.
+	// Issue #2741 slice 4.
+	LastEmpirePointsAwarded *= 1.0 + static_cast<double>(TreeBonuses.EmpirePointsIncrease);
 
 	const bool bWasFallenCity = Kind == ECataclysmDungeonType::FallenCity;
 
@@ -1868,6 +1884,26 @@ bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)
 		}
 	}
 
+	// AND THE WARLORD: "When you clear a dungeon, 15% chance to instantly remove another dungeon in the same city."
+	// The coordinating session's W6 of 2026-11-19: the roll takes no draw from the run's streams, so the waves and every
+	// seeded test are as they were, and is seeded from the run's walk seed mask and this dungeon's id, so a reload rolls
+	// the same; it removes the other dungeon on the city that resolves soonest, never the boss or a Fallen City dungeon;
+	// through `RemoveDungeon`, so it pays nothing and is not a clear. THE BOSS IS NEVER ON THE CITY: it stands on none,
+	// and a clear of it has no city, so neither reaches this. Issue #2741 slice 4.
+	if (TreeBonuses.RemoveAnotherDungeonChance > 0.0f && CityId != INDEX_NONE)
+	{
+		FRandomStream Roll(UCataclysmRoster::MixedSeed(WalkSeedMask ^ (DungeonId + 1), WarlordSalt));
+		if (Roll.FRand() < TreeBonuses.RemoveAnotherDungeonChance)
+		{
+			const int32 Soonest = TheWarlordsDungeonOn(CityId);
+			if (Soonest != INDEX_NONE)
+			{
+				RemoveDungeon(Soonest);
+				LastDungeonTheWarlordRemoved = Soonest;
+			}
+		}
+	}
+
 	// AND CLEARING THE CATACLYSM'S OWN DUNGEON WINS THE RUN. Issue #1324 slice 6e, ruled by the coordinating session on
 	// 2026-11-02: clearing the boss dungeon, through this function as every dungeon is cleared, is the win.
 	// `docs/Cataclysm_GDD_v2.md`, Game Start: "The run ends when the player defeats the Cataclysm boss dungeon or loses
@@ -1939,6 +1975,8 @@ void UCataclysmEmpireRun::SetTreeBonuses(const FCataclysmEmpireTreeBonuses& Bonu
 	if (Surges != nullptr)
 	{
 		Surges->GapBonusDays = Bonuses.SurgeGapDays;
+		// AND THE FLOORS IT ADDS TO DUNGEONS MADE FROM NOW ON. Issue #2741 slice 4, W3.
+		Surges->FloorsTheTreeAdds = Bonuses.FloorsAddedTo(/*bTheBoss*/ false, ActiveCataclysms.Num());
 	}
 }
 
@@ -2034,6 +2072,151 @@ void UCataclysmEmpireRun::RunTreeIntervals(int32 Today)
 												+ MaxPopulation * TreeBonuses.LowestCityPopulationRestored);
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// The empire upgrade tree's walk -- issue #2741 slice 4
+// ---------------------------------------------------------------------------
+
+float UCataclysmEmpireRun::EffectiveWalkDaysFor(const FCataclysmDungeon& Dungeon) const
+{
+	// THE STORED FIGURE: the depth less any city upgrade, never below one day; or, where nothing stored one -- a Fallen
+	// City, a dungeon built by hand -- one day a floor, which is what `WalkDaysPerFloor` charges then.
+	const float Stored = Dungeon.WalkDays > 0.0f
+		? Dungeon.WalkDays
+		: static_cast<float>(FMath::Max(1, Dungeon.Floors)) * UCataclysmDayClock::DaysPerFloor;
+
+	// NO WALK NODE, OR A COW LEVEL, WHOSE "Time to complete is doubled and cannot be reduced": the stored figure, exactly.
+	if (!TreeBonuses.ReachesTheWalk() || Dungeon.SubType == ECataclysmDungeonSubType::CowLevel)
+	{
+		return Stored;
+	}
+
+	// THE LAST STAND OPTION: one day, replacing every other reduction (W5).
+	if (TreeBonuses.OneDayWalkWithinDaysOfFalling > 0 && Dungeon.CityId != INDEX_NONE
+		&& IsWithinDaysOfFalling(Dungeon.CityId, TreeBonuses.OneDayWalkWithinDaysOfFalling))
+	{
+		return 1.0f;
+	}
+
+	// THE FLAT DAYS FIRST (W1): The Delver; Opportunist when no other dungeon stands on the city (W9); Sovereign's Haste
+	// for each active type, to its 30 (W8); Imperial Roads on a Fallen City dungeon; Rapid Descent for each floor
+	// cleared before the last (W2).
+	float Flat = TreeBonuses.WalkDaysFewer;
+	if (TreeBonuses.WalkDaysFewerWhenAlone > 0.0f && Dungeon.CityId != INDEX_NONE)
+	{
+		const bool bAlone = !Dungeons.ContainsByPredicate(
+			[&Dungeon](const FCataclysmDungeon& Other)
+			{
+				return Other.CityId == Dungeon.CityId && Other.DungeonId != Dungeon.DungeonId;
+			});
+		if (bAlone)
+		{
+			Flat += TreeBonuses.WalkDaysFewerWhenAlone;
+		}
+	}
+	const float PerType = TreeBonuses.WalkDaysFewerPerActiveType * static_cast<float>(ActiveCataclysms.Num());
+	Flat += TreeBonuses.WalkDaysFewerPerActiveTypeCap > 0.0f
+		? FMath::Min(PerType, TreeBonuses.WalkDaysFewerPerActiveTypeCap)
+		: PerType;
+	if (Dungeon.Type == ECataclysmDungeonType::FallenCity)
+	{
+		Flat += TreeBonuses.WalkDaysFewerOnFallenCities;
+	}
+	Flat += TreeBonuses.WalkDaysFewerPerFloorCleared * static_cast<float>(FMath::Max(0, Dungeon.Floors - 1));
+
+	// THEN THE SHARE LEFT, THEN TACTICAL ENTRY'S HALF ABOVE ITS FLOORS, THEN THE ONE-DAY MINIMUM (W1).
+	float Days = (Stored - Flat) * TreeBonuses.WalkTimeFactor;
+	if (TreeBonuses.HalveWalkAboveFloors > 0 && Dungeon.Floors > TreeBonuses.HalveWalkAboveFloors)
+	{
+		Days *= 0.5f;
+	}
+	return FMath::Max(1.0f, Days);
+}
+
+float UCataclysmEmpireRun::WalkDaysPerFloorFor(const FCataclysmDungeon& Dungeon) const
+{
+	return EffectiveWalkDaysFor(Dungeon) / static_cast<float>(FMath::Max(1, Dungeon.Floors));
+}
+
+float UCataclysmEmpireRun::ScheduledDefenceLossOn(int32 CityId, int32 Days) const
+{
+	const FCataclysmCity* City = Map != nullptr ? Map->Find(CityId) : nullptr;
+	if (City == nullptr || City->bFallen || Clock == nullptr)
+	{
+		return 0.0f;
+	}
+
+	float Loss = 0.0f;
+	for (const FCataclysmDungeon& Dungeon : Dungeons)
+	{
+		if (Dungeon.CityId != CityId)
+		{
+			continue;
+		}
+		const float Taken = TreeDamageFactorsFor(CityId, Dungeon.Cataclysm).Defence;
+
+		// A TIMER THAT RUNS OUT INSIDE THE DAYS: one hit, as `ResolveDungeon` deals it. An ordinary dungeon's own damage
+		// scaled by its depth, a Quest dungeon's the ordinary row of its city's tier; a Void dungeon or a Hollow takes
+		// no defence. Once each: an ordinary dungeon leaves after it hits, and a Quest dungeon moves on.
+		if (Clock->DaysUntilResolveFor(Dungeon.DungeonId) <= static_cast<float>(Days))
+		{
+			if (Dungeon.Resolves() && !Dungeon.AddsVoidStacks())
+			{
+				Loss += Dungeon.DefenceDamage * Dungeon.BiteScale() * Taken;
+			}
+			else if (Dungeon.Type == ECataclysmDungeonType::Quest && !Dungeon.IsHollow())
+			{
+				Loss += UCataclysmSurgeScheduler::SpecFor(ECataclysmDungeonType::Basic, City->Tier).DefenceDamage
+					* Taken;
+			}
+		}
+
+		// A SIEGE'S DAILY SHARE FOR EACH OF THOSE DAYS, growing as it stands, as `ApplySiegeDamage` takes it.
+		if (Dungeon.SubType == ECataclysmDungeonSubType::Siege)
+		{
+			for (int32 Ahead = 1; Ahead <= Days; ++Ahead)
+			{
+				const int32 DaysStood = FMath::Max(0, Clock->Day + Ahead - Dungeon.SpawnedDay);
+				Loss += (Map->EffectiveMaxDefence(*City) * SiegeDefenceBitePerDay
+						 + SiegeDamageGrowthPerDay * DaysStood) * Taken;
+			}
+		}
+	}
+
+	// AND THE CITY'S OWN RESISTANCE, as `UCataclysmEmpireMap::Damage` takes it off every hit.
+	const float Resisted = FMath::Clamp(Map->UpgradeValueNowFor(*City, ECataclysmCityUpgradeEffect::ResistDefenceLoss),
+										0.0f, 1.0f);
+	return Loss * (1.0f - Resisted);
+}
+
+int32 UCataclysmEmpireRun::TheWarlordsDungeonOn(int32 CityId) const
+{
+	// THE SOONEST TO RESOLVE, as the city upgrade that removes dungeons takes them; NEVER A FALLEN CITY DUNGEON, the
+	// city's own retaking (W6). A function of its own so `ClearDungeon` names each kind once, which
+	// `tools/tests/test_surge_port.py` holds.
+	int32 Soonest = INDEX_NONE;
+	float SoonestDays = 0.0f;
+	for (const FCataclysmDungeon& Other : Dungeons)
+	{
+		if (Other.CityId != CityId || Other.Type == ECataclysmDungeonType::FallenCity || Clock == nullptr)
+		{
+			continue;
+		}
+		const float Days = Clock->DaysUntilResolveFor(Other.DungeonId);
+		if (Soonest == INDEX_NONE || Days < SoonestDays)
+		{
+			Soonest = Other.DungeonId;
+			SoonestDays = Days;
+		}
+	}
+	return Soonest;
+}
+
+bool UCataclysmEmpireRun::IsWithinDaysOfFalling(int32 CityId, int32 Days) const
+{
+	const FCataclysmCity* City = Map != nullptr ? Map->Find(CityId) : nullptr;
+	return City != nullptr && City->IsAlive() && ScheduledDefenceLossOn(CityId, Days) >= Map->DefenceOf(*City);
 }
 
 bool UCataclysmEmpireRun::IsTheCommonestTypeOn(int32 CityId, ECataclysmType Sender) const
