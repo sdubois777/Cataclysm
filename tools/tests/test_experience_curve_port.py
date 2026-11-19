@@ -13,8 +13,11 @@ progress into that level, so a curve that disagreed with itself by a single unit
 would put a character at a different level on the two sides. That is why the
 rounding rule is compared here and not just the constants.
 
-WHAT IT COMPARES. The three constants, and the rounding rule, and that the two
-curves inside the Python model have not parted company.
+WHAT IT COMPARES. The constants, the opening's Path of Exile figures, EVERY
+LEVEL'S COST -- worked out from the C++ constants by the C++'s own rule and set
+beside the model's, since issue #2749; until then this said "a spread of levels"
+and compared only the constants -- the rounding rule, and that the two curves
+inside the Python model have not parted company.
 
 WHAT IT DOES NOT CHECK, AND WHERE THAT IS CHECKED INSTEAD. That the C++ produces
 those numbers when it runs, and that granting experience raises a level and
@@ -33,6 +36,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import math
 import pathlib
 import re
 import runpy
@@ -46,10 +50,9 @@ SOURCE = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
           / "CataclysmExperience.cpp")
 SCRIPT = REPO_ROOT / "sim" / "analyse_experience_curve.py"
 
-#: Levels compared one by one. The two ends, the two the design document quotes,
-#: and three with nothing special about them, because a rate applied to the
-#: wrong exponent agrees at level 2 and nowhere else.
-SAMPLE_LEVELS = (2, 3, 10, 25, 37, 50, 64, 75, 90, 99, 100)
+#: Levels the model is asked about by `test_the_two_curves_the_port_could_have_copied_still_differ`. Every level is
+#: compared with the game's by `test_every_level_costs_the_same_on_both_sides`.
+SAMPLE_LEVELS = (2, 3, 7, 8, 10, 25, 37, 50, 64, 75, 90, 99, 100)
 
 
 def read(path: pathlib.Path) -> str:
@@ -112,23 +115,68 @@ def test_the_growth_per_level_matches(model, header):
         f"{model['DECIDED_RATE']:.4%}")
 
 
-def test_the_cost_of_level_two_matches(model, header):
+def test_the_curves_anchor_matches(model, header):
     """230,000. The one number the whole size rests on, and it has to be the
-    model's level 2 cost rather than merely the same literal, because the model
-    rounds it and this does not."""
-    stated = int(constant(header, "SecondLevelCost", r"\d+"))
+    model's curve price for level 2 rather than merely the same literal, because
+    the model rounds it and this does not. NOT WHAT LEVEL 2 COSTS since issue
+    #2749 -- the opening prices it -- which is why the C++ constant was renamed
+    from `SecondLevelCost` to `CurveLevelTwoCost`."""
+    stated = int(constant(header, "CurveLevelTwoCost", r"\d+"))
     assert stated == int(model["DECIDED_LEVEL_2_COST"])
-    assert stated == model["whole_level_cost"](2)
+    assert stated == model["curve_whole_level_cost"](2)
+    assert not re.search(r"constexpr\s+[\w:]+\s+SecondLevelCost\b", header), (
+        "the old name is declared in the header again, and it says level 2 costs 230,000, which it has not since #2749")
+
+
+def cpp_opening_costs(source: str) -> tuple[int, ...]:
+    """Path of Exile's six figures as `CataclysmExperience.cpp` holds them."""
+    match = re.search(r"PathOfExileOpeningCosts\[\]\s*=\s*\{([^}]*)\}", without_comments(source))
+    if not match:
+        pytest.fail(f"could not find PathOfExileOpeningCosts in {SOURCE.name}; has it been renamed?")
+    return tuple(int(part) for part in match.group(1).split(","))
+
+
+def test_the_opening_matches(model, header, source):
+    """Issue #2749: levels 2 to 7 cost 40 times Path of Exile's own. The scale, the last level and the six figures,
+    each compared."""
+    assert int(constant(header, "OpeningScale", r"\d+")) == model["OPENING_SCALE"]
+    assert int(constant(header, "LastOpeningLevel", r"\d+")) == model["LAST_OPENING_LEVEL"]
+    assert cpp_opening_costs(source) == tuple(model["POE_OPENING_COSTS"])
+
+
+def cpp_level_cost(level: int, header: str, source: str) -> int:
+    """What the C++ table holds for one level, worked out from its constants by the rule `LevelCosts` follows: the
+    opening's scale times Path of Exile's figure for levels 2 to `LastOpeningLevel`, and floor(anchor x (1 + growth)
+    ^ (L - 2) + 0.5) above. That the C++ really follows this rule when it runs is `Cataclysm.Experience`'s half."""
+    if not 2 <= level <= int(constant(header, "MaxLevel", r"\d+")):
+        return 0
+    if level <= int(constant(header, "LastOpeningLevel", r"\d+")):
+        return int(constant(header, "OpeningScale", r"\d+")) * cpp_opening_costs(source)[level - 2]
+    anchor = int(constant(header, "CurveLevelTwoCost", r"\d+"))
+    growth = float(constant(header, "GrowthPerLevel", r"[\d.]+"))
+    return math.floor(anchor * (1.0 + growth) ** (level - 2) + 0.5)
+
+
+def test_every_level_costs_the_same_on_both_sides(model, header, source):
+    """EVERY LEVEL, 2 TO 100, and not a sample: the coordinating session asked for it on 2026-11-19 (issue #2749). A
+    rate applied to the wrong exponent, or an opening shifted by one level, agrees at some levels and nowhere else."""
+    differ = [(level, cpp_level_cost(level, header, source), model["whole_level_cost"](level))
+              for level in range(1, model["MAX_LEVEL"] + 2)
+              if cpp_level_cost(level, header, source) != model["whole_level_cost"](level)]
+    assert not differ, f"(level, the game, the model) where they differ: {differ}"
 
 
 def test_the_two_curves_the_port_could_have_copied_still_differ(model):
     """The Python model has a float curve and a whole-number one, and the port
     had to pick the whole-number one. If they ever became the same thing this
     test file would be checking nothing, so the difference is asserted here as
-    well as in the model's own tests."""
-    total = model["whole_total_to_reach"](model["MAX_LEVEL"])
-    closed = model["total_experience"](model["DECIDED_RATE"],
-                                       model["DECIDED_LEVEL_2_COST"])
+    well as in the model's own tests. Over the curve's levels, 8 to 100, since
+    issue #2749: the opening's levels are whole numbers already."""
+    first = model["LAST_OPENING_LEVEL"] + 1
+    total = sum(model["whole_level_cost"](level) for level in range(first, model["MAX_LEVEL"] + 1))
+    closed = (model["total_experience"](model["DECIDED_RATE"], model["DECIDED_LEVEL_2_COST"])
+              - model["total_experience"](model["DECIDED_RATE"], model["DECIDED_LEVEL_2_COST"],
+                                          model["LAST_OPENING_LEVEL"]))
     assert total != int(closed + 0.5)
     for level in SAMPLE_LEVELS:
         assert model["whole_level_cost"](level) > 0, (
@@ -174,18 +222,15 @@ def test_the_total_is_summed_from_rounded_costs_and_says_why(source):
         "written down, so the next person will replace it with the one-liner")
 
 
-def test_the_port_names_what_it_cannot_do_yet(header):
-    """The design says an enemy's Enemy Score IS the experience it grants, and
-    Enemy Score has no port at all. A header that did not say so would read as
-    though the levelling model were finished."""
+def test_the_port_names_where_a_kills_experience_comes_from(header):
+    """The design says an enemy's Enemy Score IS the experience it grants. Until issue #2749 this test pinned a header
+    sentence saying Enemy Score had no port, which stopped being true when issue #926 ported it as
+    `UCataclysmEnemyScore::ScoreFor`; a creature's death grants it through `ACataclysmPlayerState::GrantExperience`.
+    The header names both, so a reader can find what feeds this curve."""
     assert "Enemy Score" in header
-    assert "#926" in header, (
-        "the header no longer names the issue that owns the Enemy Score port, "
-        "so a reader has no way to find out why nothing feeds this curve")
-    assert "#41" in header, (
-        "the header no longer names the issue that owns a dungeon's floor "
-        "count, which is one of the three inputs an Enemy Score port needs and "
-        "which the game does not have")
+    assert "UCataclysmEnemyScore::ScoreFor" in header
+    assert "ACataclysmPlayerState::GrantExperience" in header
+    assert "has no port" not in header, "the header says Enemy Score has no port again; it has had one since #926"
 
 
 def test_the_port_keeps_progress_into_a_level_rather_than_a_running_total(header):

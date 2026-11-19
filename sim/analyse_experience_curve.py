@@ -318,25 +318,70 @@ LEVEL_WEIGHT = 6.3270
 # The rate is `POE_RATE` rounded from 8.1876% to 8.2%, which moves the Path of
 # Exile checkpoints by about a twentieth of a percentage point -- the share of
 # the climb spent by level 90 goes from 45.50% to 45.45% -- and leaves the level
-# at the end of every tier's campaign unchanged. The cost of level 2
-# is likewise rounded to a number a person can hold, from 230,366 to 230,000.
-# The script asserts both of those claims rather than stating them.
+# at the end of every tier's campaign unchanged. The cost of level 2 was likewise
+# rounded to a number a person can hold: the fitted figure was 230,366 when it
+# was decided, and the inputs have moved since -- this script printed 232,649 on
+# 2026-11-19 -- while the decided 230,000 stays. The script asserts the rate's
+# claims rather than stating them.
+#
+# SINCE ISSUE #2749, 230,000 IS THE CURVE'S ANCHOR AND NOT WHAT LEVEL 2 COSTS:
+# levels 2 to 7 are the opening below, and the curve prices levels 8 to 100.
 
 DECIDED_RATE = 0.082
 DECIDED_LEVEL_2_COST = 230_000.0
+
+# ---------------------------------------------------------------------------
+# THE OPENING. Issue #2749, ruled 2026-11-19. A character starts at level 1
+# since issue #2744, and the project owner ruled on 2026-11-18 to "make the
+# first levels much cheaper, so a new character gains several levels in its
+# first dungeon as in Path of Exile's first areas". On the curve above, killing
+# every creature of a first dungeon of 7 or 8 floors reached only level 2 or 3.
+#
+# Levels 2 to 7 cost OPENING_SCALE times Path of Exile's own cost for the same
+# level. Path of Exile's table settles the SHAPE -- first costs a small share of
+# later ones, rising steeply -- and not the scale. 40 IS A JUDGEMENT, and so is
+# the half share it was fitted at: a character killing half of each floor's
+# creatures reaches level 4 over a first dungeon of 7 or 8 floors. What share a
+# player really kills is not measured (issue #925). `sim/analyse_opening.py`
+# is the measurement; `docs/DECISIONS.md`, 2026-11-19, records it.
+#
+# Level 8 is the first level the curve prices below 40 times Path of Exile's
+# own (369,055 against 40 x 10,053 = 402,120), which is where the opening ends.
+
+#: Path of Exile's own cost of each of levels 2 to 7, from its published
+#: experience table, poedb.tw/us/Experience (poe2db.tw/us/Experience gives the
+#: same figures).
+POE_OPENING_COSTS = (525, 1_235, 2_021, 3_403, 5_002, 7_138)
+
+#: The last level the opening prices.
+LAST_OPENING_LEVEL = 7
+
+#: How many times Path of Exile's own cost an opening level costs. A judgement.
+OPENING_SCALE = 40
+
+
+def curve_whole_level_cost(level: int) -> int:
+    """What the 8.2% curve prices one level at, as a whole number, with no
+    opening: floor(x + 0.5), the rounding `scoring._js_round` uses."""
+    if not 2 <= level <= MAX_LEVEL:
+        return 0
+    return math.floor(level_cost(level, DECIDED_RATE, DECIDED_LEVEL_2_COST) + 0.5)
 
 
 def whole_level_cost(level: int) -> int:
     """The cost of one level as the GAME charges it: a whole number.
 
-    Rounded the way `scoring._js_round` rounds, floor(x + 0.5), so the two
-    models agree about a half. The C++ port has to produce these exact integers,
-    because a save record stores a character's progress into its current level
-    and a curve that disagreed by one would move it.
+    The opening's levels, 2 to 7, are 40 times Path of Exile's own; every level
+    above is the curve, rounded the way `scoring._js_round` rounds, floor(x +
+    0.5), so the two models agree about a half. The C++ port has to produce
+    these exact integers, because a save record stores a character's progress
+    into its current level and a curve that disagreed by one would move it.
     """
     if not 2 <= level <= MAX_LEVEL:
         return 0
-    return math.floor(level_cost(level, DECIDED_RATE, DECIDED_LEVEL_2_COST) + 0.5)
+    if level <= LAST_OPENING_LEVEL:
+        return OPENING_SCALE * POE_OPENING_COSTS[level - 2]
+    return curve_whole_level_cost(level)
 
 
 def whole_total_to_reach(level: int) -> int:
@@ -349,6 +394,40 @@ def whole_total_to_reach(level: int) -> int:
     comparing two integers.
     """
     return sum(whole_level_cost(step) for step in range(2, level + 1))
+
+
+def whole_levels_at_tier_ends(cost=whole_level_cost,
+                              per_dungeon: dict[int, float] | None = None,
+                              campaign_dungeons: int = CAMPAIGN_DUNGEONS) -> list[int]:
+    """What level the character is when each tier's campaign ends, on the
+    WHOLE-NUMBER curve the game charges -- `cost` per level, the opening
+    included by default -- rather than on the fitted float curve that
+    `levels_at_tier_ends` sizes. Issue #2749 checks with it that the opening
+    does not move the design's tier-end levels."""
+    per_dungeon = PER_DUNGEON if per_dungeon is None else per_dungeon
+    earned, out = 0.0, []
+    for tier in TIERS:
+        earned += campaign_dungeons * per_dungeon[tier]
+        level, paid = 1, 0
+        while level < MAX_LEVEL and paid + cost(level + 1) <= earned:
+            paid += cost(level + 1)
+            level += 1
+        out.append(level)
+    return out
+
+
+def whole_first_level_in_floors() -> float:
+    """Floors of an average tier 1 dungeon needed for level 2 at what the game
+    charges for it, the opening included."""
+    average = sum(creature_experience(1, f, WHOLE_FLOORS, WEIGHTS)
+                  for f in range(1, WHOLE_FLOORS + 1)) / WHOLE_FLOORS
+    return whole_level_cost(2) / (average * POPULATION)
+
+
+#: What the opening takes off the climb: the curve's price for levels 2 to 7
+#: less the opening's. 922,836.
+OPENING_SAVES = sum(curve_whole_level_cost(level) - whole_level_cost(level)
+                    for level in range(2, LAST_OPENING_LEVEL + 1))
 
 #: The size of the whole climb, in dungeons. Derived, not chosen.
 CLIMB_DUNGEONS = whole_climb_dungeons()
@@ -561,11 +640,24 @@ def _print_the_decided_curve() -> None:
 
     print("THE CURVE AS DECIDED")
     print()
-    print(f"  A level costs the last level's cost times {1 + rate:g}. Level 2 costs "
-          f"{scale:,.0f}.")
+    print(f"  THE OPENING, since issue #2749: levels 2 to {LAST_OPENING_LEVEL} cost "
+          f"{OPENING_SCALE} times Path of Exile's own cost")
+    print("  for the same level (poedb.tw/us/Experience).")
     print()
-    print(f"    cost of level L = {scale:,.0f} x {1 + rate:g} ^ (L - 2),  for L from 2 to "
-          f"{MAX_LEVEL}")
+    print("  Level | Path of Exile | Costs     | Cumulative | The curve alone would charge")
+    print("  " + "-" * 78)
+    for level in range(2, LAST_OPENING_LEVEL + 2):
+        theirs = (f"{POE_OPENING_COSTS[level - 2]:>13,}" if level <= LAST_OPENING_LEVEL
+                  else f"{'-':>13}")
+        print(f"  {level:>5} | {theirs} | {whole_level_cost(level):>9,} | "
+              f"{whole_total_to_reach(level):>10,} | {curve_whole_level_cost(level):>11,}")
+    print()
+    print(f"  From level {LAST_OPENING_LEVEL + 1}, a level costs the last level's cost times "
+          f"{1 + rate:g}, on a curve anchored at {scale:,.0f}")
+    print("  for level 2:")
+    print()
+    print(f"    cost of level L = {scale:,.0f} x {1 + rate:g} ^ (L - 2),  for L from "
+          f"{LAST_OPENING_LEVEL + 1} to {MAX_LEVEL}")
     print()
     print("  Level | Costs             | Cumulative")
     print("  " + "-" * 52)
@@ -573,16 +665,21 @@ def _print_the_decided_curve() -> None:
         print(f"  {level:>5} | {whole_level_cost(level):>17,} | "
               f"{whole_total_to_reach(level):>18,}")
     print()
-    print(f"  The whole climb costs {climb:,.0f}. Eight campaigns of "
-          f"{CAMPAIGN_DUNGEONS} dungeons pay")
-    print(f"  {earned:,.0f}, which is {earned / climb:.3f} times it, so level "
-          f"{MAX_LEVEL} arrives at the end of")
-    print(f"  difficulty tier 8. Reaching level 2 takes "
-          f"{first_level_in_floors(rate, scale, POPULATION, WEIGHTS, WHOLE_FLOORS):.1f} floors "
-          "of a tier 1 dungeon.")
+    print(f"  The whole climb costs {climb:,.0f}, {OPENING_SAVES:,} less than the curve "
+          "alone. Eight campaigns of")
+    print(f"  {CAMPAIGN_DUNGEONS} dungeons pay {earned:,.0f}, which is {earned / climb:.3f} "
+          f"times it, so level {MAX_LEVEL} arrives at the end of")
+    print(f"  difficulty tier 8. Reaching level 2 takes {whole_first_level_in_floors():.2f} floors "
+          "of a tier 1 dungeon, cleared;")
+    print(f"  on the curve alone it took "
+          f"{first_level_in_floors(rate, scale, POPULATION, WEIGHTS, WHOLE_FLOORS):.1f}.")
     print()
     print("  Level at the end of each tier's campaign: "
           + "  ".join(str(level) for level in levels_at_tier_ends(rate, PER_DUNGEON)))
+    print("  The same on the whole-number curve the game charges, with the opening: "
+          + "  ".join(str(level) for level in whole_levels_at_tier_ends()))
+    print("  and without it:                                                       "
+          + "  ".join(str(level) for level in whole_levels_at_tier_ends(curve_whole_level_cost)))
     print()
 
 

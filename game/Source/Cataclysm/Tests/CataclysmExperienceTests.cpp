@@ -20,15 +20,31 @@
  * constant out of source cannot notice the constant is wrong, so both halves
  * are needed and neither is redundant.
  *
- * EVERY EXPECTED FIGURE BELOW IS COMPUTED FROM `SecondLevelCost` AND
- * `GrowthPerLevel` RATHER THAN TYPED, except the seven quoted from the design
- * document in the first test. Typing the other ninety-two would make this file
- * a second copy of the curve, which is the failure the port test exists to
- * prevent.
+ * EVERY EXPECTED FIGURE BELOW IS COMPUTED RATHER THAN TYPED, from
+ * `CurveLevelTwoCost` and `GrowthPerLevel` for levels 8 to 100 and from
+ * `OpeningScale` and Path of Exile's own six costs for levels 2 to 7, except
+ * the rows quoted from the design document in the first test. Path of Exile's
+ * six figures ARE typed here, as a second copy of an external table, because
+ * the port's copy is what is being checked. Typing the curve's ninety-three
+ * would make this file a second copy of the curve, which is the failure the
+ * port test exists to prevent.
  */
 
 namespace CataclysmExperienceTest
 {
+	/** Path of Exile's own cost of levels 2 to 7, from its published table
+	 *  (poedb.tw/us/Experience). Issue #2749. */
+	constexpr int64 PathOfExileCosts[] = { 525, 1235, 2021, 3403, 5002, 7138 };
+
+	/** What the 8.2% curve prices a level at, with no opening. */
+	int64 CurveCost(int32 Level)
+	{
+		const double Raw = static_cast<double>(UCataclysmExperience::CurveLevelTwoCost)
+			* FMath::Pow(1.0 + UCataclysmExperience::GrowthPerLevel,
+						 static_cast<double>(Level - 2));
+		return static_cast<int64>(FMath::FloorToDouble(Raw + 0.5));
+	}
+
 	/** The curve worked out here, independently of the port's own table. */
 	int64 ExpectedCost(int32 Level)
 	{
@@ -36,10 +52,11 @@ namespace CataclysmExperienceTest
 		{
 			return 0;
 		}
-		const double Raw = static_cast<double>(UCataclysmExperience::SecondLevelCost)
-			* FMath::Pow(1.0 + UCataclysmExperience::GrowthPerLevel,
-						 static_cast<double>(Level - 2));
-		return static_cast<int64>(FMath::FloorToDouble(Raw + 0.5));
+		if (Level <= UCataclysmExperience::LastOpeningLevel)
+		{
+			return UCataclysmExperience::OpeningScale * PathOfExileCosts[Level - 2];
+		}
+		return CurveCost(Level);
 	}
 }
 
@@ -57,19 +74,26 @@ bool FCataclysmExperienceMatchesTheDesignDocument::RunTest(const FString&)
 	// every other test here. This one compares the port against the design
 	// document, so recomputing would compare the port against itself.
 
-	// THE ONLY TYPED NUMBERS IN THIS FILE, and they are typed on purpose: they
-	// are what `docs/Cataclysm_GDD_v2.md` section XII prints in its cost table,
-	// so this is the one test that would notice the port and the document
-	// drifting apart while remaining internally consistent.
+	// TYPED ON PURPOSE: they are what `docs/Cataclysm_GDD_v2.md` section XII
+	// prints in its cost table, so this is the one test that would notice the
+	// port and the document drifting apart while remaining internally
+	// consistent. The opening's six rows and level 8 since issue #2749; every
+	// cumulative figure from level 8 up fell by 922,836 then.
 	struct FStated { int32 Level; int64 Cost; int64 Cumulative; };
 	const FStated Stated[] = {
-		{   2,       230000,          230000 },
-		{  10,       432062,         2896231 },
-		{  25,      1409142,        15788927 },
-		{  50,     10107328,       130562548 },
-		{  75,     72496639,       953797118 },
-		{  90,    236443176,      3117091665 },
-		{ 100,    519995268,      6858596102 },
+		{   2,        21000,           21000 },
+		{   3,        49400,           70400 },
+		{   4,        80840,          151240 },
+		{   5,       136120,          287360 },
+		{   6,       200080,          487440 },
+		{   7,       285520,          772960 },
+		{   8,       369055,         1142015 },
+		{  10,       432062,         1973395 },
+		{  25,      1409142,        14866091 },
+		{  50,     10107328,       129639712 },
+		{  75,     72496639,       952874282 },
+		{  90,    236443176,      3116168829 },
+		{ 100,    519995268,      6857673266 },
 	};
 
 	for (const FStated& Row : Stated)
@@ -83,8 +107,11 @@ bool FCataclysmExperienceMatchesTheDesignDocument::RunTest(const FString&)
 	return true;
 }
 
+// RENAMED SINCE ISSUE #2749 from `EveryLevelCostsTheRateMoreThanTheOneBelow`,
+// which the opening's six levels made untrue: they rise by Path of Exile's
+// steps, not by 8.2%. The rate is checked from level 9, where it holds.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmExperienceEveryLevelFollowsTheRate,
-	"Cataclysm.Experience.EveryLevelCostsTheRateMoreThanTheOneBelow",
+	"Cataclysm.Experience.EveryLevelCostsItsFigureAndMoreThanTheOneBelow",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmExperienceEveryLevelFollowsTheRate::RunTest(const FString&)
@@ -92,7 +119,7 @@ bool FCataclysmExperienceEveryLevelFollowsTheRate::RunTest(const FString&)
 	using namespace CataclysmExperienceTest;
 
 	// ALL NINETY-NINE, not a sample. The table is built in a loop and an
-	// off-by-one in its exponent would agree at level 2 and diverge everywhere
+	// off-by-one in its exponent would agree at one level and diverge everywhere
 	// else, which a sample of five could easily miss.
 	for (int32 Level = 2; Level <= UCataclysmExperience::MaxLevel; ++Level)
 	{
@@ -100,14 +127,70 @@ bool FCataclysmExperienceEveryLevelFollowsTheRate::RunTest(const FString&)
 			UCataclysmExperience::CostOfLevel(Level), ExpectedCost(Level));
 	}
 
-	// AND IT RISES EVERY STEP. A rounding that went the wrong way, or a rate
-	// read as a divisor, would show here even if the table matched itself.
+	// AND IT RISES EVERY STEP, the opening into the curve included. A rounding
+	// that went the wrong way, or a rate read as a divisor, would show here even
+	// if the table matched itself.
 	for (int32 Level = 3; Level <= UCataclysmExperience::MaxLevel; ++Level)
 	{
 		TestTrue(FString::Printf(TEXT("level %d costs more than level %d"),
 				 Level, Level - 1),
 			UCataclysmExperience::CostOfLevel(Level) > UCataclysmExperience::CostOfLevel(Level - 1));
 	}
+
+	// FROM LEVEL 9, EACH LEVEL IS THE RATE MORE THAN THE ONE BELOW, to within
+	// the rounding of two whole numbers.
+	for (int32 Level = UCataclysmExperience::LastOpeningLevel + 2; Level <= UCataclysmExperience::MaxLevel; ++Level)
+	{
+		const double Ratio = static_cast<double>(UCataclysmExperience::CostOfLevel(Level))
+			/ static_cast<double>(UCataclysmExperience::CostOfLevel(Level - 1));
+		TestTrue(FString::Printf(TEXT("level %d costs %.6f times level %d, the rate is %.3f"),
+				 Level, Ratio, Level - 1, 1.0 + UCataclysmExperience::GrowthPerLevel),
+			FMath::Abs(Ratio - (1.0 + UCataclysmExperience::GrowthPerLevel)) < 1e-4);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmExperienceTheOpeningIsPathOfExiles,
+	"Cataclysm.Experience.TheOpeningLevelsCostFortyTimesPathOfExilesOwnAndJoinTheCurve",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmExperienceTheOpeningIsPathOfExiles::RunTest(const FString&)
+{
+	using namespace CataclysmExperienceTest;
+
+	// ISSUE #2749. Levels 2 to 7 cost 40 times Path of Exile's own cost for the
+	// same level, and from level 8 the 8.2% curve takes over. Typed from Path
+	// of Exile's table rather than from the port's, so a changed figure in
+	// either copy fails here.
+	TestEqual(TEXT("the opening's scale"), UCataclysmExperience::OpeningScale, static_cast<int64>(40));
+	TestEqual(TEXT("the opening's last level"), UCataclysmExperience::LastOpeningLevel, 7);
+	for (int32 Level = 2; Level <= UCataclysmExperience::LastOpeningLevel; ++Level)
+	{
+		const int64 TheirCost = PathOfExileCosts[Level - 2];
+		TestEqual(FString::Printf(TEXT("level %d costs 40 times Path of Exile's %lld"), Level, TheirCost),
+			UCataclysmExperience::CostOfLevel(Level), 40 * TheirCost);
+		TestTrue(FString::Printf(TEXT("and less than the curve's %lld for it"), CurveCost(Level)),
+			UCataclysmExperience::CostOfLevel(Level) < CurveCost(Level));
+	}
+
+	// THE JOIN IS WHERE THE CURVE FIRST COSTS LESS THAN 40 TIMES PATH OF
+	// EXILE'S. Their level 8 costs 10,053 (poedb.tw/us/Experience), so 402,120,
+	// and the curve prices level 8 at 369,055: the opening ends at 7 because of
+	// that, not because 7 was chosen.
+	constexpr int64 TheirLevelEight = 10053;
+	TestEqual(TEXT("level 8 is the curve's"), UCataclysmExperience::CostOfLevel(8), CurveCost(8));
+	TestTrue(FString::Printf(TEXT("the curve's level 8, %lld, is below 40 times Path of Exile's, %lld"),
+			 CurveCost(8), 40 * TheirLevelEight),
+		CurveCost(8) < 40 * TheirLevelEight);
+
+	// AND WHAT THE OPENING TAKES OFF THE CLIMB, stated in the class comment.
+	int64 Saved = 0;
+	for (int32 Level = 2; Level <= UCataclysmExperience::LastOpeningLevel; ++Level)
+	{
+		Saved += CurveCost(Level) - UCataclysmExperience::CostOfLevel(Level);
+	}
+	TestEqual(TEXT("the opening takes 922,836 off the climb"), Saved, static_cast<int64>(922836));
 
 	return true;
 }
@@ -148,30 +231,38 @@ bool FCataclysmExperienceTotalIsSummedNotClosedForm::RunTest(const FString&)
 	using namespace CataclysmExperienceTest;
 
 	// THE DISTINCTION THAT IS EASY TO COLLAPSE. A player pays each level's whole
-	// cost, so the climb is the sum of 99 roundings. The closed-form geometric
-	// sum, rounded once, is 5 lower. Five is nothing as a quantity and
-	// everything to a save record that stores progress into a level.
+	// cost, so the climb is the sum of the roundings. Over the curve's levels,
+	// 8 to 100, the closed-form geometric sum rounded once is 5 lower. Five is
+	// nothing as a quantity and everything to a save record that stores
+	// progress into a level. The opening's levels are whole numbers already, so
+	// the comparison is made over the curve's, since issue #2749.
 	int64 Summed = 0;
 	for (int32 Level = 2; Level <= UCataclysmExperience::MaxLevel; ++Level)
 	{
 		Summed += ExpectedCost(Level);
 	}
+	int64 CurveSummed = 0;
+	for (int32 Level = UCataclysmExperience::LastOpeningLevel + 1; Level <= UCataclysmExperience::MaxLevel; ++Level)
+	{
+		CurveSummed += ExpectedCost(Level);
+	}
 
-	const double ClosedForm = static_cast<double>(UCataclysmExperience::SecondLevelCost)
-		* (FMath::Pow(1.0 + UCataclysmExperience::GrowthPerLevel,
-					  static_cast<double>(UCataclysmExperience::MaxLevel - 1)) - 1.0)
+	const double Rate = 1.0 + UCataclysmExperience::GrowthPerLevel;
+	const double ClosedForm = static_cast<double>(UCataclysmExperience::CurveLevelTwoCost)
+		* (FMath::Pow(Rate, static_cast<double>(UCataclysmExperience::MaxLevel - 1))
+		   - FMath::Pow(Rate, static_cast<double>(UCataclysmExperience::LastOpeningLevel - 1)))
 		/ UCataclysmExperience::GrowthPerLevel;
 	const int64 RoundedClosedForm =
 		static_cast<int64>(FMath::FloorToDouble(ClosedForm + 0.5));
 
 	TestEqual(TEXT("the whole climb is the sum of the level costs"),
 		UCataclysmExperience::TotalToReach(UCataclysmExperience::MaxLevel), Summed);
-	TestTrue(TEXT("and that is NOT the rounded closed-form sum, which is why "
-				  "TotalToReach adds them up"),
-		Summed != RoundedClosedForm);
+	TestTrue(TEXT("and over the curve's levels that is NOT the rounded closed-form "
+				  "sum, which is why TotalToReach adds them up"),
+		CurveSummed != RoundedClosedForm);
 	TestTrue(TEXT("the two differ by less than a hundred, so one of them is not "
 				  "simply wrong"),
-		FMath::Abs(Summed - RoundedClosedForm) < 100);
+		FMath::Abs(CurveSummed - RoundedClosedForm) < 100);
 
 	return true;
 }
@@ -278,9 +369,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmExperienceIgnoresNothingAndLessThanNo
 
 bool FCataclysmExperienceIgnoresNothingAndLessThanNothing::RunTest(const FString&)
 {
-	// A kill that is worth nothing is a real case: Enemy Score is not yet
-	// ported, so a caller may well have zero to hand over. It must not be able
-	// to take a level away.
+	// A kill that is worth nothing is a real case: a Common creature on the
+	// first floors of a deep dungeon scores below zero, which
+	// `ACataclysmPlayerState::GrantExperience` passes on as nothing. It must not
+	// be able to take a level away.
 	int32 Level = 40;
 	int64 Progress = 12345;
 

@@ -17,6 +17,12 @@ The console variable now defaults to the Ravager. This file is what stops that
 being undone by accident, and what stops a class re-tune making the starting
 character unplayable again without anybody noticing.
 
+A NEW CHARACTER STARTS AT LEVEL 1 SINCE ISSUE #2744, AND LEVELS AS IT KILLS. The
+guard on tier 1's creature damage, at the bottom of this file, walks that
+character through the dungeons the first surge really makes, levelling as it
+goes (issue #2749). The sandbox's fixed pack in the first tests is still fought
+at `DefaultLevel`, which stays the level of a character nothing made or loaded.
+
 WHAT IS MEASURED. Ten Imps against one character, both dealing damage until one
 side is gone, at difficulty tier 1. Modelled as a fight rather than compared as
 two rates, because incoming damage falls as Imps die -- a rate comparison says
@@ -28,25 +34,40 @@ WHAT IS DELIBERATELY PESSIMISTIC, so that passing means something:
   still and trades. A real pack arrives over time.
 * Every skill is treated as single-target. Several designed Greataxe skills are
   area effects that would hit the whole pack.
-* No critical strikes, and no potions, because no healing item exists.
+* No critical strikes, and no potions.
+
+WHAT IS LEFT OUT IN THE CHARACTER'S FAVOUR: an Imp's 25% evasion and its armour.
+A skill's mana cost and the basic attack's mana on hit are the slot's level 100
+figures scaled to the character's level, as `UCataclysmSkillSlots::ManaCostAtLevel`
+scales them (issue #2749; until then this charged the level 100 figures at every
+level, which overcharged a level 1 character about thirteen times). The starting
+weapon's sub-type bonus counts against the Imps' health, as the game counts it.
 
 WHAT IT READS RATHER THAN RESTATES. Every constant is parsed out of the C++ that
 owns it and every table value out of the generated CSV, so a change to either
 moves this measurement instead of leaving it asserting a stale number. A constant
 that cannot be found fails the test rather than falling back to a literal.
+
+THE READERS ARE PLAIN FUNCTIONS, WITH FIXTURES AROUND THEM, so
+`sim/analyse_opening.py` runs this file's own fight and walk and the measurement
+and the guard cannot part company.
 """
 
 from __future__ import annotations
 
+import contextlib
 import csv
+import io
 import pathlib
 import re
+import runpy
 
 import pytest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 DATA = REPO_ROOT / "game" / "Data"
 SOURCE = REPO_ROOT / "game" / "Source" / "Cataclysm"
+EXPERIENCE_MODEL = REPO_ROOT / "sim" / "analyse_experience_curve.py"
 
 #: Where each C++ constant lives, and the pattern that reads its value.
 #: The name on the left is what this file calls it.
@@ -84,6 +105,12 @@ CONSTANTS: dict[str, tuple[pathlib.Path, str]] = {
     "damage_reduction_cap": (
         SOURCE / "AbilitySystem" / "CataclysmDamageCalculation.h",
         r"DamageReductionCap\s*=\s*([\d.]+)f"),
+    "subtype_bonus": (
+        SOURCE / "AbilitySystem" / "CataclysmDamageCalculation.h",
+        r"SubtypeBonus\s*=\s*([\d.]+)f"),
+    "mana_cost_reference_level": (
+        SOURCE / "AbilitySystem" / "CataclysmSkillSlots.h",
+        r"ManaCostReferenceLevel\s*=\s*(\d+)"),
     "gear_level_factor": (
         SOURCE / "Items" / "CataclysmItem.h",
         r"GearLevelFactor\s*=\s*([\d.]+)f?"),
@@ -107,9 +134,16 @@ FIGHT_LIMIT_SECONDS = 180.0
 #: attack interval and a 1.5 second cooldown both land near their real times.
 STEP_SECONDS = 0.05
 
+#: The sub-type whose bonus is "more damage vs. HP" (`docs/Cataclysm_GDD_v2.md`,
+#: "Weapon Sub-Types"), which is all an Imp has.
+HEALTH_SUBTYPE = "Slashing"
 
-@pytest.fixture(scope="module")
-def constants() -> dict[str, str]:
+
+# ---------------------------------------------------------------------------
+# The readers: plain functions, so `sim/analyse_opening.py` can call them.
+
+
+def read_constants() -> dict[str, str]:
     """Every C++ constant this measurement needs, read from the file owning it.
 
     A pattern that does not match fails here rather than anywhere else, because
@@ -131,8 +165,7 @@ def constants() -> dict[str, str]:
     return found
 
 
-@pytest.fixture(scope="module")
-def class_lines() -> dict[str, dict[str, tuple[float, float]]]:
+def read_class_lines() -> dict[str, dict[str, tuple[float, float]]]:
     """class -> stat -> (base, per level), from game/Data/ClassStats.csv."""
     path = DATA / "ClassStats.csv"
     if not path.is_file():
@@ -146,13 +179,13 @@ def class_lines() -> dict[str, dict[str, tuple[float, float]]]:
     return out
 
 
-@pytest.fixture(scope="module")
-def slots() -> dict[str, dict[str, float]]:
+def read_slots() -> dict[str, dict[str, float]]:
     """slot -> its damage percent, cooldown and mana, from SkillSlots.csv.
 
     Every row of game/Data/WeaponSkills.csv states DamagePercent -1, and
     UCataclysmSkillTemplate::GetDamagePercent treats -1 as "take the slot's
-    figure", so these are what every skill in the game is worth today.
+    figure", so these are what every skill in the game is worth today. The mana
+    figures are the LEVEL 100 ones; `slots_at_level` scales them.
     """
     path = DATA / "SkillSlots.csv"
     if not path.is_file():
@@ -170,8 +203,7 @@ def slots() -> dict[str, dict[str, float]]:
     return out
 
 
-@pytest.fixture(scope="module")
-def weapon(constants) -> dict[str, float]:
+def read_weapon(constants: dict[str, str]) -> dict:
     """What the starting weapon actually grants, not what its row states.
 
     THE STATED VALUE IS THE FIGURE AT MAXIMUM GEAR LEVEL.
@@ -208,7 +240,32 @@ def weapon(constants) -> dict[str, float]:
                   if int(row["Hands"]) == 2 else 1.0)
     # Gear level 0, so the multiplier at the item's own level is exactly 1.
     return {"damage": stated / at_max * two_handed,
-            "speed": float(row["AttackSpeed"])}
+            "speed": float(row["AttackSpeed"]),
+            "subtype": row["SubType"]}
+
+
+@pytest.fixture(scope="module")
+def constants() -> dict[str, str]:
+    return read_constants()
+
+
+@pytest.fixture(scope="module")
+def class_lines() -> dict[str, dict[str, tuple[float, float]]]:
+    return read_class_lines()
+
+
+@pytest.fixture(scope="module")
+def slots() -> dict[str, dict[str, float]]:
+    return read_slots()
+
+
+@pytest.fixture(scope="module")
+def weapon(constants) -> dict:
+    return read_weapon(constants)
+
+
+# ---------------------------------------------------------------------------
+# The fight.
 
 
 def stat(lines, constants, class_name: str, name: str, level: int) -> float:
@@ -224,6 +281,31 @@ def stat(lines, constants, class_name: str, name: str, level: int) -> float:
         return 0.0
     base, per_level = row
     return base + per_level * (max(1, level) - 1)
+
+
+def slots_at_level(slots, lines, constants, level: int) -> dict[str, dict[str, float]]:
+    """The slots with their mana cost and mana on hit at a character's level.
+
+    `UCataclysmSkillSlots::ManaCostAtLevel`: the level 100 figure times the shared
+    line's maximum mana at the level over the same at `ManaCostReferenceLevel`,
+    for every class ("Costs ride the default mana progression", the design's
+    "What a Skill Costs"). The game charged the level 1 figure at every level
+    until issue #2749 made a skill's cost read the character's level.
+    """
+    shared = constants["shared_line"]
+    reference = stat(lines, constants, shared, "max_mana", int(constants["mana_cost_reference_level"]))
+    share = stat(lines, constants, shared, "max_mana", level) / reference
+    return {name: dict(spec, mana=spec["mana"] * share, mana_on_hit=spec["mana_on_hit"] * share)
+            for name, spec in slots.items()}
+
+
+def weapon_against_health(weapon, constants) -> dict:
+    """The weapon's damage against a creature's health: a Slashing weapon's sub-type
+    bonus is `SubtypeBonus`% more damage against health, as
+    `UCataclysmDamageCalculation` applies it, and an Imp has nothing else."""
+    if weapon.get("subtype") != HEALTH_SUBTYPE:
+        return weapon
+    return dict(weapon, damage=weapon["damage"] * (1.0 + float(constants["subtype_bonus"]) / 100.0))
 
 
 def share_of_a_hit_taken(lines, constants, class_name: str, level: int,
@@ -251,10 +333,14 @@ def fight(class_name: str, level: int, *, lines, constants, slots, weapon,
 
     Everything after `level` is keyword-only, because `lines`, `constants`,
     `slots` and `weapon` are four dictionaries and passing them positionally is
-    a mistake nothing would catch.
+    a mistake nothing would catch. The mana costs are taken at `level` and the
+    weapon's sub-type bonus is applied here, so every caller fights the same way.
     """
     def line(name: str) -> float:
         return stat(lines, constants, class_name, name, level)
+
+    slots = slots_at_level(slots, lines, constants, level)
+    weapon = weapon_against_health(weapon, constants)
 
     max_health, max_shield = line("max_health"), line("max_energy_shield")
     max_mana = line("max_mana")
@@ -353,6 +439,25 @@ def test_the_starting_class_is_a_real_class_and_not_the_shared_line(
         f"back to the shared line and the character would have no defences.")
 
 
+def test_the_mana_a_skill_costs_rides_the_level(constants, class_lines, slots) -> None:
+    """ISSUE #2749. A level 1 character pays a small share of the level 100 cost, and the level 100 character pays the
+    whole of it; free stays free. The share is the shared line's maximum mana at the level over the same at 100."""
+    at_one = slots_at_level(slots, class_lines, constants, 1)
+    at_hundred = slots_at_level(slots, class_lines, constants, int(constants["mana_cost_reference_level"]))
+    for name, spec in slots.items():
+        assert at_hundred[name]["mana"] == pytest.approx(spec["mana"]), name
+        assert at_one[name]["mana"] <= spec["mana"] * 0.1, name
+    assert at_one["Basic"]["mana"] == 0.0
+    assert at_one["Heavy"]["mana"] == pytest.approx(15.0 * 50.0 / 644.0), "a 15 cost at level 1, on the 50 + 6 line"
+
+
+def test_the_starting_weapon_is_slashing_and_its_bonus_counts(constants, weapon) -> None:
+    """The coordinating session, 2026-11-19 (slice 2 of issue #2749): the starting weapon's Slashing sub-type counts
+    in any time-to-kill sum. A greataxe that stopped being Slashing would make this file's fights wrong, so it says."""
+    assert weapon["subtype"] == HEALTH_SUBTYPE
+    assert weapon_against_health(weapon, constants)["damage"] == pytest.approx(weapon["damage"] * 1.10)
+
+
 def test_the_starting_character_survives_a_pack_of_imps(
         constants, class_lines, slots, weapon) -> None:
     """The regression guard. This is the fight that opened issue #806."""
@@ -363,8 +468,8 @@ def test_the_starting_character_survives_a_pack_of_imps(
 
     assert result["won"] is True, (
         f"a {class_name} at level {level} -- which is what pressing Play gives "
-        f"you -- loses to the pack of {constants['imp_count']} Imps the sandbox "
-        f"places. It "
+        f"a character nothing made or loaded -- loses to the pack of "
+        f"{constants['imp_count']} Imps the sandbox places. It "
         f"{'ran out of time' if result['won'] is None else 'died'} after "
         f"{result['seconds']}s with {result.get('imps_left')} Imps still up, "
         f"starting from {result['max_health']:.0f} health.\n"
@@ -381,11 +486,18 @@ def test_the_starting_character_survives_a_pack_of_imps(
 #: character stronger, and at level 20 the shared line now wins too -- so the
 #: control stopped discriminating and started passing for the wrong reason.
 #:
-#: 10 IS MEASURED RATHER THAN CHOSEN. At levels 1 and 5 both lines lose; at 15
-#: and 20 both win; at 10 the shared line loses and the starting class wins,
-#: which is the only level of those tried where the fight tells them apart.
-#: Re-measure it rather than nudging it if this ever fails again.
-CONTROL_LEVEL = 10
+#: 10 WAS MEASURED RATHER THAN CHOSEN. At levels 1 and 5 both lines lost; at 15
+#: and 20 both won; at 10 the shared line lost and the starting class won.
+#:
+#: MOVED FROM 10 TO 6 ON 2026-11-19, MEASURED AGAIN AS THIS SAYS TO. Issue #2749
+#: made the fight charge a skill's mana at the character's level rather than the
+#: level 100 figure, and count the Greataxe's Slashing 10% against the Imps'
+#: health, so both lines win more: at 10 the shared line won with 47 health left.
+#: Every level from 1 to 20 was fought. Levels 1 to 3 both lose, 8 to 20 both
+#: win, and 4 to 7 come apart -- the shared line losing with 3 Imps up, the
+#: starting class winning with 22 to 87 health left. 6 is that band's upper
+#: middle. Re-measure it rather than nudging it if this ever fails again.
+CONTROL_LEVEL = 6
 
 
 def test_the_shared_line_still_loses_a_fight_the_starting_class_wins(
@@ -427,11 +539,13 @@ def test_the_shared_line_still_loses_a_fight_the_starting_class_wins(
 
 def test_no_class_survives_that_fight_at_level_one(
         constants, class_lines, slots, weapon) -> None:
-    """Recorded because it is the part of #806 that is NOT fixed.
+    """No class survives the SANDBOX's fixed pack at level 1, and that is recorded rather than fixed.
 
-    Levelling does not exist -- `Cataclysm.PlayerLevel` is a console variable
-    read at possession -- so nothing in the game can start a character at 1 and
-    grow them. If that changes, this test fails and says so, which is the point.
+    The sandbox places ten Imps of 87 health hitting for 9 (`CataclysmGameMode.h`), a pack no dungeon floor builds:
+    a tier 1 floor builds its creatures from the enemy score, with damage scaled by the tier, and the guard at the
+    bottom of this file walks a level 1 character through those. This said "Levelling does not exist" until issue
+    #2749; a character starts at level 1 and levels as it kills since issue #2744. If a class ever survives the
+    sandbox pack at level 1, this fails and says so.
     """
     level_one_losers = [
         name for name in sorted(class_lines)
@@ -439,39 +553,164 @@ def test_no_class_survives_that_fight_at_level_one(
                  slots=slots, weapon=weapon)["won"] is not True
     ]
     assert level_one_losers == sorted(class_lines), (
-        f"these classes now survive the pack at level 1: "
+        f"these classes now survive the sandbox pack at level 1: "
         f"{sorted(set(class_lines) - set(level_one_losers))}. On 2026-08-24 "
-        f"none of them did. Issue #806 records that as unfixed, so if it is "
-        f"fixed now, update the issue and this test.")
+        f"none of them did. Issue #806 records that, so if it changed, update "
+        f"the issue and this test.")
 
 
-#: THE TARGET THE CREATURE DAMAGE SCALE WAS TUNED TO, ruled 2026-10-30 (issue #1569): the starting character beats a
-#: full pack of Common Imps, as the game builds them on each floor, on every floor of a 12-floor tier-1 Basic dungeon,
-#: with at least this share of its health left on the last floor.
-SCALED_PACK_FLOORS = 12
-SCALED_PACK_LEAST_HEALTH_LEFT = 0.10
+# ---------------------------------------------------------------------------
+# THE GUARD ON TIER 1'S CREATURE DAMAGE, since issue #2749.
+#
+# The owner ruled on 2026-11-18 to "make the first levels much cheaper ... Then re-set tier 1 enemy damage so a
+# character levelling at that pace survives". The coordinating session set the target on 2026-11-19: the starting
+# character, starting at level 1 and levelling as it kills half of each floor's creatures, beats a full pack of 10
+# Common Imps, as the game builds them, on every floor of every Outpost ordinary dungeon the first surge makes, with at
+# least 10% of its health left on the last floor. Until then the target was a level 20 character (`DefaultLevel`) on a
+# 12-floor Basic dungeon with no sub-type (issue #1569), which a new character never is and which a surge never makes.
+
+#: The share of each floor's creatures the character kills, for the experience it banks. A judgement (issue #925:
+#: nobody has measured what share a player kills); the opening's cost was fitted at the same share.
+KILL_SHARE = 0.5
+
+#: The least share of its health the character ends the last floor with.
+LEAST_HEALTH_LEFT = 0.10
+
+#: The simulation's seeds whose first surge's dungeons are walked: every one of them, 3,057 dungeons of 3 to 16 floors,
+#: every sub-type a surge rolls and modifier scores from 5 to 50. The damage scale was fitted on the same seeds.
+FIRST_SURGE_SEEDS = range(300)
+
+#: The damage scale tier 1 had until issue #2749, which the control below must lose with.
+FORMER_FIRST_TIER_SCALE = 0.20
 
 
-def test_the_starting_character_beats_a_pack_of_the_creatures_the_game_builds_on_every_tier_one_floor(
-        constants, class_lines, slots, weapon) -> None:
-    """THE GUARD ON THE DAMAGE SCALE. The game builds a creature from the design's enemy score on its floor, with its
-    damage multiplied by `enemy_stats.damage_scale` (0.20 at tier 1). The project owner chose "Scale damage to a
-    target", and the coordinating session set this target: a fresh character survives a full 10-Imp pack on every floor
-    of a typical tier-1 dungeon, trading blows, with at least 10% of its health left on the last floor. Unscaled, the
-    same character died from floor 6. The sandbox's fixed Imp above is not what a dungeon floor builds."""
+def experience_model() -> dict:
+    """`sim/analyse_experience_curve.py`'s globals, its printed report thrown away. Its `whole_level_cost` is the
+    game's curve: `tools/tests/test_experience_curve_port.py` holds the two equal at every level."""
+    with contextlib.redirect_stdout(io.StringIO()):
+        return runpy.run_path(str(EXPERIENCE_MODEL))
+
+
+def first_surge_dungeons(seeds=FIRST_SURGE_SEEDS) -> list:
+    """The Outpost ordinary dungeons the simulation's first surge makes, for each seed: the opening wave a new
+    character walks into. `Simulation.trigger_surge` is what the engine calls on day 0."""
+    from cataclysm_sim.config import CityTier, DungeonType, TuningConfig
+    from cataclysm_sim.engine import Simulation
+
+    out = []
+    for seed in seeds:
+        sim = Simulation(TuningConfig(), seed)
+        sim.trigger_surge()
+        out += [d for d in sim.dungeons.values()
+                if d.dtype is DungeonType.BASIC and d.city_tier is CityTier.OUTPOST]
+    return out
+
+
+def floor_experience(model: dict, subtype: str, floors: int, floor: int, modifier_score: float) -> float:
+    """What killing every creature on one tier 1 floor pays: each rarity's design score, which IS its experience, at
+    the floor's spawn weights and population, the dungeon's boss added on its last floor. The same arithmetic as
+    `analyse_experience_curve.dungeon_experience`, on the dungeon's own sub-type and modifiers."""
+    from cataclysm_sim import scoring
+
+    scores = scoring.enemy_scores(1, "Basic", subtype, floors, floor, modifier_score)
+    paid = model["POPULATION"] * sum(max(0, scores[rarity]) * weight
+                                     for rarity, weight in model["WEIGHTS"].items())
+    if floor == floors:
+        paid += max(0, scoring.final_boss_score(1, "Basic", subtype, floors, modifier_score))
+    return paid
+
+
+def level_for(total: float, model: dict) -> int:
+    """The level a total amount of experience reaches from level 1, on the game's curve."""
+    level, paid = 1, 0
+    while level < model["MAX_LEVEL"] and paid + model["whole_level_cost"](level + 1) <= total:
+        paid += model["whole_level_cost"](level + 1)
+        level += 1
+    return level
+
+
+def level_after(dungeon, model, kill_share=KILL_SHARE) -> int:
+    """The level a new character ends a dungeon at from its experience alone, every floor's share banked: no fight,
+    so the curve's target is checked apart from the damage scale's."""
+    banked = sum(kill_share * floor_experience(model, dungeon.subtype, dungeon.floors, floor, dungeon.modifier_score)
+                 for floor in range(1, dungeon.floors + 1))
+    return level_for(banked, model)
+
+
+def walk(dungeon, *, model, lines, constants, slots, weapon, kill_share=KILL_SHARE, first_tier_scale=None) -> dict:
+    """A new character through one dungeon, floor by floor: it fights the floor's pack at the level it held when the
+    floor began, then banks `kill_share` of the floor's experience. `first_tier_scale` replaces tier 1's damage scale
+    when given, for the control. Returns whether every floor was won, the first floor lost, the share of health left on
+    the last floor and the level at the end."""
     from cataclysm_sim import enemy_stats as es
 
     class_name = constants["starting_class"]
-    level = int(constants["default_level"])
-    for floor in range(1, SCALED_PACK_FLOORS + 1):
-        imp = es.strength_on_floor("Common", 1, "Basic", "None", SCALED_PACK_FLOORS, floor, kind="Imp")
-        result = fight(class_name, level=level, lines=class_lines, slots=slots, weapon=weapon,
-                       constants=dict(constants, imp_health=str(imp.health), imp_damage=str(imp.damage_per_hit)))
-        assert result["won"] is True, (
-            f"a {class_name} at level {level} loses to {constants['imp_count']} Imps as the game builds them on floor "
-            f"{floor} of a {SCALED_PACK_FLOORS}-floor tier-1 dungeon (health {imp.health:.1f}, damage {imp.damage_per_hit:.2f} "
-            f"a hit). The damage scale was tuned so this fight is won on every floor. Issue #1569.")
-        if floor == SCALED_PACK_FLOORS:
-            assert result["health_left"] >= SCALED_PACK_LEAST_HEALTH_LEFT * result["max_health"], (
-                f"the last floor is won with {result['health_left']:.0f} of {result['max_health']:.0f} health, under the "
-                f"{SCALED_PACK_LEAST_HEALTH_LEFT:.0%} the damage scale was tuned to leave. Issue #1569.")
+    banked, left = 0.0, 0.0
+    for floor in range(1, dungeon.floors + 1):
+        level = level_for(banked, model)
+        imp = es.strength_on_floor("Common", 1, "Basic", dungeon.subtype, dungeon.floors, floor,
+                                   dungeon.modifier_score, kind="Imp")
+        damage = imp.damage_per_hit
+        if first_tier_scale is not None:
+            damage = damage / es.damage_scale(1) * first_tier_scale
+        result = fight(class_name, level=level, lines=lines, slots=slots, weapon=weapon,
+                       constants=dict(constants, imp_health=str(imp.health), imp_damage=str(damage)))
+        if result["won"] is not True:
+            return {"won": False, "lost_on": floor, "left": 0.0, "level": level}
+        left = result["health_left"] / result["max_health"]
+        banked += kill_share * floor_experience(model, dungeon.subtype, dungeon.floors, floor,
+                                                dungeon.modifier_score)
+    return {"won": True, "lost_on": None, "left": left, "level": level_for(banked, model)}
+
+
+@pytest.fixture(scope="module")
+def model() -> dict:
+    return experience_model()
+
+
+@pytest.fixture(scope="module")
+def surge_dungeons() -> list:
+    dungeons = first_surge_dungeons()
+    assert len(dungeons) > 2000, f"only {len(dungeons)} first-surge Outpost dungeons; the set this was fitted on had 3,057"
+    return dungeons
+
+
+def test_a_new_character_beats_the_pack_on_every_floor_of_every_first_surge_dungeon(
+        model, surge_dungeons, constants, class_lines, slots, weapon) -> None:
+    """THE GUARD ON TIER 1'S DAMAGE SCALE (`UCataclysmEnemyScore::DamageScaleAtFirstTier`, 0.05 since issue #2749)."""
+    failed = []
+    for dungeon in surge_dungeons:
+        result = walk(dungeon, model=model, lines=class_lines, constants=constants, slots=slots, weapon=weapon)
+        if not result["won"] or result["left"] < LEAST_HEALTH_LEFT:
+            failed.append((dungeon.did, dungeon.subtype, dungeon.floors, dungeon.modifier_score,
+                           result["lost_on"], round(result["left"], 3)))
+    assert not failed, (
+        f"{len(failed)} of {len(surge_dungeons)} first-surge Outpost dungeons are lost, or won with under "
+        f"{LEAST_HEALTH_LEFT:.0%} of the character's health left on the last floor, by a new {constants['starting_class']} "
+        f"levelling at {KILL_SHARE:.0%} of each floor's kills. (id, sub-type, floors, modifier score, floor lost, "
+        f"health left), the first ten: {failed[:10]}. The tier 1 damage scale was fitted so none is. Issue #2749.")
+
+
+def test_control_the_former_tier_one_scale_loses_those_dungeons(
+        model, surge_dungeons, constants, class_lines, slots, weapon) -> None:
+    """THE CONTROL: the walk tells a survivable scale from one that is not. At 0.20, tier 1's figure until issue #2749
+    and fitted to a level 20 character, the same new character loses most of the same dungeons."""
+    lost = sum(1 for dungeon in surge_dungeons
+               if not walk(dungeon, model=model, lines=class_lines, constants=constants, slots=slots, weapon=weapon,
+                           first_tier_scale=FORMER_FIRST_TIER_SCALE)["won"])
+    assert lost > len(surge_dungeons) // 2, (
+        f"at the former scale of {FORMER_FIRST_TIER_SCALE} the new character loses only {lost} of "
+        f"{len(surge_dungeons)} dungeons, so this walk no longer tells the two scales apart")
+
+
+def test_a_new_character_gains_at_least_three_levels_over_a_first_dungeon_of_seven_or_eight_floors(
+        model, surge_dungeons) -> None:
+    """ISSUE #2749, B4: "a new character gains at least three levels (level 1 to level 4 or higher) over a first
+    dungeon of the typical Outpost depth, 7 or 8 floors" -- the coordinating session's reading of the owner's
+    "several", a judgement -- at the kill share the opening's cost was fitted at. From the experience alone, so a
+    changed damage scale cannot fail it; the guard above is the fight's."""
+    typical = [dungeon for dungeon in surge_dungeons if dungeon.floors in (7, 8)]
+    assert len(typical) > 500
+    short = [(dungeon.did, dungeon.subtype, dungeon.floors, level)
+             for dungeon in typical if (level := level_after(dungeon, model)) < 4]
+    assert not short, f"{len(short)} of {len(typical)} end below level 4; the first ten: {short[:10]}"

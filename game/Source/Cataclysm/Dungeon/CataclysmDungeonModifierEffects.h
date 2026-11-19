@@ -8263,7 +8263,8 @@ public:
 
 	/**
 	 * What a Corrupted Stalker's maximum health is multiplied by at a tier, 1 to 8, held at the end above and below:
-	 * 0.49, 0.76, 0.91, 1.07, 1.15, 1.15, 1.32, 1.33. Ruled by the coordinating session on 2026-10-26 from the fight model
+	 * 0.49, 0.77, 0.87, 1.01, 1.06, 1.04, 1.19, 1.15 (0.49, 0.76, 0.91, 1.07, 1.15, 1.15, 1.32, 1.33 until the re-fit of
+	 * 2026-10-30 for issue #1569, which this comment missed). Ruled by the coordinating session on 2026-10-26 from the fight model
 	 * `sim/cataclysm_sim/fight.py` run against the game's measured build: the multiplier at which the tier's reference
 	 * character takes as long to kill it, its potions counted, as to kill the simulation's Boss on the middle floor of a
 	 * fifty-floor dungeon. Below 1 at tiers 1 to 3 is A JUDGEMENT, accepted: a player's peak build there is tougher than
@@ -8273,7 +8274,9 @@ public:
 
 	/**
 	 * What a Corrupted Stalker's attack damage is multiplied by at a tier, 1 to 8, held at the end above and below:
-	 * 1.12, 2.12, 2.76, 3.04, 3.08, 2.95, 3.32, 3.68. Ruled with the health multiplier: the multiplier at which it deals
+	 * 0.06, 0.58, 1.01, 1.39, 1.68, 1.86, 2.40, 2.97. It was 1.12, 2.12, 2.76, 3.04, 3.08, 2.95, 3.32, 3.68 until the
+	 * re-fit of 2026-10-30 for issue #1569, and 0.22 at tier 1 until issue #2749 cut tier 1's damage scale from 0.20 to
+	 * 0.05 on 2026-11-19. Ruled with the health multiplier: the multiplier at which it deals
 	 * that Boss's damage per second to the reference character, the Boss's hit every 1.5 seconds against its own blow
 	 * every 0.75. Critical strikes are left out on both sides.
 	 */

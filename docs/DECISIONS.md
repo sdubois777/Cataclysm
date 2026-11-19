@@ -2,6 +2,395 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-19 — The opening for a level 1 start: levels 2 to 7 cost 40 times Path of Exile's, tier 1 creature damage is 0.05, and a skill's mana is charged at the character's level (#2749, slice 4)
+
+**Affects:** `UCataclysmExperience` (`game/Source/Cataclysm/Character/CataclysmExperience.h` and `.cpp`: the opening,
+`SecondLevelCost` renamed `CurveLevelTwoCost`, the class comment); `UCataclysmEnemyScore::DamageScale` and
+`DamageScaleAtFirstTier`, with a new `DamageScaleLineAtFirstTier` (`game/Source/Cataclysm/Dungeon/CataclysmEnemyScore.h`
+and `.cpp`); `CorruptedStalkerDamageMultipliers`' tier 1 figure and two comments
+(`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.cpp` and `.h`); `UCataclysmGameplayAbility::GetManaCost`,
+`ManaCostFor` and `GetManaOnHit`, with new `LevelForCosts`, `ManaCostAtTheHoldersLevel` and `HoldersAbilitySystem`
+(`game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp`); comments and texts in
+`CataclysmPlayerClassStats.h`, `CataclysmPlayerState.cpp`, `CataclysmPlayLoopLog.h` and the `Cataclysm.GrantExperience`
+console command (`CataclysmPlayerCharacter.cpp`); `sim/analyse_experience_curve.py` (the opening);
+`sim/cataclysm_sim/enemy_stats.py` (`DAMAGE_SCALE_AT_FIRST_TIER`, `DAMAGE_SCALE_LINE_AT_FIRST_TIER`, `damage_scale`);
+`sim/cataclysm_sim/fight.py` (`DAMAGE_MULTIPLIERS[0]`); `sim/analyse_opening.py` (new);
+`game/Tests/EnemyStrength/ExpectedFigures.csv` (its 210 tier 1 rows, regenerated); `docs/Cataclysm_GDD_v2.md`
+("The Experience Curve"); `docs/Play_Loop_Checklist.md` (one example line). Tests: `CataclysmExperienceTests.cpp`,
+`CataclysmEnemyStrengthTests.cpp`, `CataclysmDungeonModifierEffectsTests.cpp`, `CataclysmEnemyScoreTests.cpp`,
+`CataclysmPlayLoopTests.cpp`, `CataclysmSkillAssignmentTests.cpp`, `tools/tests/test_the_starting_character_survives_a_pack.py`,
+`tools/tests/test_experience_curve_port.py`, `tools/tests/test_experience_curve_matches_the_model.py`,
+`tools/tests/test_content_relief_port.py`, `sim/tests/test_creature_strength.py` and `sim/tests/test_analysis_scripts.py`.
+Issue [#2749](https://github.com/sdubois777/Cataclysm/issues/2749), B4 to B7, the fourth slice.
+
+### SAID FIRST
+
+- **NOT YET COMPILED OR RUN IN UNREAL.** Phase 1: the Python suite passes, ruff is clean and the two Python guard
+  proofs are proved ("Phase 1's Python run" and "Guard proofs", below). The Unreal count and the two C++ proofs are
+  registered below, before the window that will test them. NO `sim/experiments.py` RUN: neither the experience curve
+  nor the damage scale reaches the campaign simulation -- `cataclysm_sim` has no experience model, and `damage_scale`
+  is read only by `strength_on_floor`, which feeds `fight.py`, the fixture generator and the pack test, none of which
+  the engine calls.
+- **THE ISSUE'S "EMBERHURL COSTS 40, A LEVEL 1 CHARACTER'S WHOLE POOL" WAS WRONG FOR THE GAME, AND THE FAULT RAN THE
+  OTHER WAY.** 40 is `game/Data/SkillSlots.csv`'s level 100 figure. The game charged
+  `ManaCostAtLevel(cost at 100, GetAbilityLevel())`, and `UCataclysmWeaponSlotsComponent` grants every skill at ability
+  level 1 (`GiveAbilityInSlot(..., /*Level=*/1, ...)`) and nothing raised it. So every character, at every level, paid
+  the level 1 cost -- Molten Cleave 1.16, Emberhurl 3.11, Pyroclasm 11.65, Conflagration 1.55 a second -- and the comment
+  above that line said the opposite. A level 1 character could always use its starting skills; the design's scaling
+  ("The numbers above are quoted at level 100, and scale down with character level") never happened above it. Fixed here
+  (B6, below), as ruled.
+- **TIER 1 IS NOW ITS OWN FIGURE, AND TIERS 2 TO 8 DID NOT MOVE**, as ruled. The step from tier 1 to tier 2 is now 0.05
+  to 0.314, 6.3 times, against 1.57 before.
+- **THE MIDDLE AND END OF TIER 1 ARE NOW GENTLER, AND NOTHING WAS CHANGED FOR IT** (the section of that name,
+  below). 0.20 was fitted
+  to a level 20 character, so 0.05 also makes the rest of tier 1 about four times gentler for an older one: a level 20
+  to 40 Ravager ends the deepest tier 1 dungeons the first surges make with 79% to 93% of its health at 0.05, against 4%
+  to 57% at 0.20. Tier 1 ships at 0.05 flat, as ruled; the coordinating session takes to the owner, as a separate
+  question, whether creature damage should rise within tier 1, by dungeon ring or by character level. Nothing is
+  built for it here.
+- **WHAT SHARE OF A FLOOR A PLAYER KILLS IS NOT MEASURED** (issue #925). The opening's 40 and the damage scale's 0.05
+  were both fitted at half of each floor's creatures, and both are judgements; the measurement prints a quarter and a
+  whole beside it.
+- **THE PLAN'S FIGURES CAME FROM 2,000 SEEDS, AND THIS ENTRY QUOTES THE COMMITTED SCRIPT'S 300.** The plan sent to the
+  coordinating session quoted a 7-floor first dungeon's full clear at 477,184 and an 8-floor one's at 550,951, and level
+  4 for 97% and 54% of them at half the kills; `sim/analyse_opening.py` at 300 seeds gives 499,119, 530,341, 95% and
+  59%. No ruling rests on the difference.
+- **THE PACK TEST'S CONTROL LEVEL MOVED FROM 10 TO 6, MEASURED.** Charging mana at the level and counting the Greataxe's
+  Slashing 10% made the shared "Default" line win the sandbox pack at level 10. Every level from 1 to 20 was fought:
+  levels 4 to 7 still tell the two lines apart, and 6 is that band's upper middle ("The pack test", below).
+- **A CHARACTER SAVED BEFORE THIS CHANGE, AT LEVELS 1 TO 7, MAY LOAD WITH LESS PROGRESS TOWARD ITS NEXT LEVEL, AND
+  THAT IS ACCEPTED.** `ACataclysmPlayerState::SetLevelAndExperience` holds a loaded save's progress below the next
+  level's cost, and the opening lowered six of those costs: a character saved at level 1 with 100,000 toward level 2
+  loads at level 1 with 20,999, and the other 79,001 is lost rather than becoming levels 2 and 3. A new character does
+  not meet it. The coordinating session ruled on Q7, 2026-11-19: "(a), accept the clamp. No change to the save path.
+  The only saves at levels 1 to 7 are the owner's test characters made since #2744, and the owner has treated test
+  saves as disposable (they had 293 deleted on 2026-11-18). A load-path change would add risk to the save code for a
+  one-time loss of part of one or two early levels." Nothing on the save path changed; the coordinating session tells
+  the owner.
+
+### The rulings
+
+The plan, with the measurement below, went to the coordinating session on 2026-11-19. Its answer, verbatim:
+
+- "Q1: YES. Levels 2 to 7 cost 40 times Path of Exile's own costs (21,000 to 285,520), joining today's curve at level 8,
+  judged against killing half of each floor's creatures. Label both 40 and the half share as judgements, cite #925 for
+  the unmeasured kill share, and record the sources you fetched and the ones that failed. Commit sim/analyse_opening.py,
+  and extend tools/tests/test_experience_curve_port.py to compare every level's cost. Confirm with the script run that
+  the design's tier-end levels (42, 59, ...) do not move, and quote it."
+- "Q2: YES, tier 1 DamageScale 0.05, with the test and control as you describe and the unmodelled factors listed in the
+  entry."
+- "Q3: YES, leave tiers 2 to 8 as they are; re-fit the Corrupted Stalker's tier 1 multiplier and its game copy, change
+  only the tier 1 rows of ExpectedFigures.csv, and add the direct port check of the tier 1 constant. ADDED MEASUREMENT:
+  0.20 was fitted to a level 20 Ravager, and tier 1 runs to about level 42, so cutting it to 0.05 also makes the middle
+  and end of tier 1 four times gentler. Run the fight 0.20 was originally fitted to (level 20 Ravager, its reference
+  dungeon) at 0.05 and report the health left at 0.20 and at 0.05, plus a level 30 and a level 40 Ravager against the
+  deepest tier 1 dungeons the first surges make. Do not change anything because of it; report it, and I decide whether
+  it goes to the owner as a question about a rise within tier 1."
+- "Q4: YES, fix it in this slice. I read docs/Cataclysm_GDD_v2.md "What a Skill Costs": "The numbers above are quoted
+  at level 100, and scale down with character level." So a cost that stays at the level 1 figure for life contradicts
+  the design. Read the character's level from ACataclysmPlayerState, fall back to the ability level for creatures, add
+  the Unreal test (a level gain raises the cost) and the C++ guard proof, and correct the comment at
+  CataclysmGameplayAbility.cpp lines 257-258. Make the pack test model mana at the character's level, not the level 100
+  figures."
+- "Q5: YES, correct every stale text you listed, including the wording pinned by
+  test_the_port_names_what_it_cannot_do_yet, and the 230,366 figure."
+- "Q6: YES. docs/Cataclysm_GDD_v2.md "The Experience Curve" states the opening costs and drops "4.3 floors to level 2";
+  the design document must say what the game does."
+
+On Q6: the design document never carried "4.3 floors"; that figure was the analysis script's printed line and this log's
+2026-08-24 entry. The section now states the opening, its table and what it takes off the climb.
+
+### The measurement
+
+`sim/analyse_opening.py` (committed, as ruled). The dungeons are the Outpost ordinary dungeons the simulation's first
+surge makes (`Simulation.trigger_surge` on day 0), one wave a seed. A floor pays its creatures' design scores, which ARE
+their experience, at the `EnemyRarities.csv` spawn weights and 257.5 creatures a floor (`analyse_experience_curve.py`'s
+population), its boss on the last floor. The fight is the pack test's own, loaded from
+`tools/tests/test_the_starting_character_survives_a_pack.py`: 10 Common Imps as `enemy_stats.strength_on_floor` builds
+them for that dungeon's sub-type, depth, floor and modifier score, against the starting Ravager with its gear-level-0
+Greataxe (57.6 attack damage), the Slashing 10%, and mana at its level. A walk fights each floor at the level held when
+the floor began, then banks a share of the floor's experience. Run 2026-11-19 at 300 seeds and the 20 deepest, on
+development `b67599db5` with this slice: 58 seconds.
+
+The first surge's Outpost ordinary dungeons, seeds 0 to 299: 3,057, of 3 to 16 floors (the Cataclysm patterns' floor
+multipliers reach past 5 to 10), every sub-type a surge rolls (Timed 611, Horde 609, Elite 527, Volatile 487,
+Sacrificial 407, Siege 218, Cow Level 198), modifier scores 5 to 50, median 10.
+
+### B4: the first levels
+
+**Sources fetched**, 2026-11-19:
+
+- Path of Exile's experience table, poedb.tw/us/Experience, and the same figures on poe2db.tw/us/Experience: levels 2
+  to 8 cost 525, 1,235, 2,021, 3,403, 5,002, 7,138 and 10,053; level 2 is 2.2% of level 11's cost (24,297).
+- Path of Exile's Act 1 areas, poedb.tw/us/Act_1: area level 1 (The Twilight Strand) to 13 over sixteen areas, about a
+  character level an area at the start.
+- Diablo II's experience table, classic.battle.net/diablo2exp/basics/levels.shtml: levels 2 to 6 cost 500, 1,000, 2,250,
+  4,125 and 6,300 (cumulative 500, 1,500, 3,750, 7,875, 14,175).
+- maxroll.gg/d2/resources/general-leveling: the Den of Evil "can get you to level 3-5" -- in a full party; it states no
+  solo figure.
+
+**Failed**: www.poe2wiki.net/wiki/Experience (a bot check), www.icy-veins.com/last-epoch/leveling-guide and
+www.icy-veins.com/d2/ (403), maxroll.gg's Last Epoch, Path of Exile and Diablo IV levelling guides (404), and
+diablo2.diablowiki.net/Level_Up_Guide (403). No Last Epoch or Diablo IV figure was obtained.
+
+**What the research settles and what it does not.** It settles the SHAPE: the first levels cost a small share of later
+ones and rise steeply, and a character gains several levels in its first area. It does not settle the scale: what a
+kill pays here is the design's enemy score and a floor holds about 258 creatures, so another game's numbers do not
+transfer. 40, the half kill share it was fitted at, and "at least three levels" -- the coordinating session's reading
+of the owner's "several" -- are judgements.
+
+**Today's curve paid a first dungeon one or two levels.** A full clear of a 7-floor first-surge dungeon pays a median
+499,119 and an 8-floor one 530,341; level 4 cost 748,127.
+
+**The opening.** Levels 2 to 7 cost 40 times Path of Exile's own: 21,000, 49,400, 80,840, 136,120, 200,080 and 285,520
+(151,240 in total to level 4). From level 8 the 8.2% curve is unchanged: level 8 is the first level it prices below 40
+times Path of Exile's (369,055 against 402,120), so that is where the opening ends -- it was not chosen. Every cumulative
+total from level 8 up falls by 922,836, 0.013% of the climb, to 6,857,673,266.
+
+| Floors | Kills | Level at the end, the curve alone | With the opening |
+| --: | --: | :-- | :-- |
+| 5 | a quarter | 1 | 3 |
+| 5 | half | 1 | 4 (95%), 3 (5%) |
+| 5 | all | 2 | 5 |
+| 7 | a quarter | 1 | 3 |
+| 7 | half | 2 (62%), 1 (38%) | 4 (95%), 5 (5%) |
+| 7 | all | 3 (51%), 2 (49%) | 6 (51%), 5 (49%) |
+| 8 | half | 2 (96%), 1 (4%) | 4 (59%), 5 (41%) |
+| 8 | all | 3 (84%), 2 (16%) | 6 (82%), 5 (18%) |
+
+Level 2 comes after floor 2 at half the kills; on the curve alone, a cleared average tier 1 dungeon took 4.3 floors to
+pay for it, and with the opening 0.40.
+
+**The design's tier-end levels do not move**, as the ruling asked to confirm. `sim/analyse_experience_curve.py` printed,
+2026-11-19:
+
+```
+  Level at the end of each tier's campaign: 42  59  70  79  85  91  95  100
+  The same on the whole-number curve the game charges, with the opening: 42  59  70  79  85  91  95  100
+  and without it:                                                       42  59  70  79  85  91  95  100
+```
+
+`sim/tests/test_analysis_scripts.py` asserts all three. The script's line 322 is corrected as ruled: the fitted level 2
+cost was 230,366 when it was decided and the script now prints 232,649, while the decided 230,000 stays as the curve's
+anchor.
+
+**Ported, and compared at every level.** `sim/analyse_experience_curve.py` is the simulation's only copy of the curve --
+`cataclysm_sim` has no experience model -- and carries `POE_OPENING_COSTS`, `LAST_OPENING_LEVEL`, `OPENING_SCALE` and
+`curve_whole_level_cost`. `tools/tests/test_experience_curve_port.py` now works out every level's cost, 1 to 101, from
+the C++ constants by the C++'s own rule and compares it with the model's; until now it compared three constants, and
+its docstring said "a spread of levels".
+
+### B5: tier 1's creature damage
+
+**Tier 1's `DamageScale` is 0.05, from 0.20.** The target, set by the coordinating session: the starting character,
+starting at level 1 and levelling as it kills half of each floor's creatures, beats a full pack of 10 Common Imps, as the
+game builds them, on every floor of every Outpost ordinary dungeon the first surge makes, with at least 10% of its
+health left on the last floor. The pack and the 10% are the 2026-10-30 target's (issue #1569); the character and the
+dungeons are new. 3,057 dungeons -- every floor won, and won with 10% left:
+
+| Scale | A quarter's kills | Half | All |
+| --: | :-- | :-- | :-- |
+| 0.20 | 0, 0 | 0, 0 | 0, 0 |
+| 0.10 | 41, 41 | 47, 41 | 559, 111 |
+| 0.08 | 369, 75 | 1,539, 775 | 2,647, 2,238 |
+| 0.07 | 1,909, 1,125 | 2,726, 2,355 | 3,012, 2,900 |
+| 0.06 | 2,977, 2,704 | 3,057, 2,994 | 3,057, 3,057 |
+| 0.055 | 3,057, 3,001 | 3,057, 3,057 | 3,057, 3,057 |
+| **0.05** | **3,057, 3,057** | **3,057, 3,057** | **3,057, 3,057** |
+| 0.04 | 3,057, 3,057 | 3,057, 3,057 | 3,057, 3,057 |
+
+0.05 is the largest step of 0.01 that passes at half the kills; it passes at a quarter as well. The 63 dungeons 0.06
+leaves under 10% are shallow ones, 3 or 4 floors, 59 of them Elite or Volatile, whose last floor comes before the
+character has gained much: a shallow dungeon's last floor is built at the full depth ratio after only two or three
+floors of experience.
+
+**What the fight leaves out**, as ruled to list: an Imp's 25% evasion and its armour (in the character's favour);
+critical strikes and area damage, which several Greataxe skills deal (in the Imps' favour); every creature but a Common
+Imp -- Elites, Legendaries, bosses and the other six archetypes; and each modifier's own effect, which enters only
+through its score. All ten Imps are in contact from the first second.
+
+**Tiers 2 to 8 did not move.** `DamageScale` returns `DamageScaleAtFirstTier` at tier 1 and keeps tiers 2 to 8 on the
+line from `DamageScaleLineAtFirstTier`, 0.20, to 1.00 at tier 8: 0.314, 0.429, 0.543, 0.657, 0.771, 0.886, 1.00. Ruled
+for the reasons in the plan: the owner named tier 1; a new character always begins at tier 1
+(`ACataclysmGameMode::DifficultyTier`, issue #1472), so tiers 2 to 8 are entered by the same levelled characters as
+before; and re-hanging the even line from 0.05 would have eased them by 38%, 23%, 15%, 9%, 5% and 2% with no
+measurement behind it.
+
+**What moved with it.** The 210 tier 1 rows of `game/Tests/EnemyStrength/ExpectedFigures.csv`, regenerated by
+`tools/generate_enemy_strength_fixture.py` -- 420 lines in the diff, every one at tier 1. The Corrupted Stalker's tier 1
+damage multiplier, re-fitted as its rule says (`fight.fitted_to_the_game`, ruled 2026-10-26 to be the table to two
+decimals): 0.0559, so 0.06, from 0.22, in `fight.DAMAGE_MULTIPLIERS` and the game's
+`CorruptedStalkerDamageMultipliers`; tiers 2 to 8 and every health multiplier did not move. The header's comments on
+both tables still listed the figures from before the 2026-10-30 re-fit; they are corrected. A direct port check of the
+two constants, `TestTheDamageScaleMatches` in `tools/tests/test_content_relief_port.py`: until now only the fixture,
+read by the game's automation test, held the game's tier 1 figure to the simulation's.
+
+### The middle and end of tier 1 are now gentler
+
+The measurement the coordinating session added to Q3, reported and acted on in nothing, as ruled. Its reply on
+receiving it: "Slice 4 ships tier 1 at 0.05 flat as ruled. I am taking the result to the owner tomorrow as a separate
+question: whether creature damage should rise within tier 1 (by dungeon ring or by character level) now that a level 20
+to 40 Ravager ends tier 1's deepest dungeons with 79% to 93% of its health. Do not build anything for it."
+
+0.20 was fitted to a level 20 character and tier 1 runs to about level 42, so 0.05 also makes the middle and end of tier
+1 gentler. The same fight, the character held at one level. ITS LIMITS: the pack target only -- 10 Common Imps -- with
+no Elites, Legendaries, bosses, other archetypes or modifier effects, and no gear beyond the gear-level-0 Greataxe.
+
+The fight 0.20 was fitted to -- a level 20 Ravager, a 12-floor Basic dungeon with no sub-type -- health left on floor 12:
+
+| Mana | At 0.20 | At 0.05 |
+| :-- | --: | --: |
+| at level 100's figures, as 0.20 was fitted | 13.2% | 83.6% |
+| at the level, as since this change | 26.3% | 85.8% |
+
+The deepest dungeons the first three surges make, seeds 0 to 299, the three surges called back to back on day 0 so the
+frontier does not move between them (an approximation): 8,505 dungeons; the 20 deepest ordinary ones are 33 to 39
+floors and the 20 deepest Quest ones 46 to 49. Every floor won, and health left on the last floor, median and least:
+
+| Level | Ordinary, 0.20 | Ordinary, 0.05 | Quest, 0.20 | Quest, 0.05 |
+| --: | :-- | :-- | :-- | :-- |
+| 20 | 17 of 20; 14%, 4% | 20; 82%, 79% | 17 of 20; 9%, 4% | 20; 82%, 79% |
+| 30 | 20; 41%, 31% | 20; 89%, 87% | 20; 39%, 31% | 20; 89%, 87% |
+| 40 | 20; 57%, 50% | 20; 93%, 91% | 20; 55%, 49% | 20; 93%, 91% |
+
+A real character of those levels carries gear, so it does better at both scales; and the creatures left out hit
+harder than a Common Imp, so a real floor is harder than this at both.
+
+### B6: a skill's mana at the character's level
+
+`UCataclysmGameplayAbility::LevelForCosts` gives the level a cost is worked out at: the level the holder's
+`ACataclysmPlayerState` has when the cost is asked, since the player's ability system belongs to its player state;
+the ability level for anything else -- a creature, a test's bare actor. `ManaCostFor` -- what `CheckCost`, `ApplyCost`,
+an aura's upkeep and the skill bar all charge or show -- reads it through `ManaCostAtTheHoldersLevel` for the ability
+system it is handed, so a skill bar asking about a default object gets the charged figure; `GetManaCost` and
+`GetManaOnHit` read it for the ability's own holder, through `HoldersAbilitySystem`, which returns nothing on a default
+object or before the ability is given instead of raising the ensure `GetAbilitySystemComponentFromActorInfo` raises. The
+comment that said the weapon slots grant each skill at the character's level is replaced with what they do.
+
+Read when asked, so a level gained cannot leave a cost behind; granting at the character's level and re-levelling every
+spec on each level change, save load and console command was the alternative, with a path to miss.
+
+What each slot costs, from `SkillSlots.csv`'s level 100 figures times the shared line's maximum mana at the level over
+the same at 100 (50 against 644 at level 1, 164 at level 20): at level 1, where a Ravager has 40 mana, Heavy 1.16,
+Support 1.94, Special 3.11, Movement 1.55, Ultimate 11.65 and Aura 1.55 a second; at level 20, with 116, 3.82, 6.37,
+10.19, 5.09, 38.20 and 5.09 a second. The basic attack's mana on hit is 0.47 at level 1 and 1.53 at 20. SAID PLAINLY:
+the Aura at level 1, 1.55 a second, is more than a level 1 Ravager's 1.0 a second of mana regeneration, so it cannot be
+held for ever at level 1. The issue's survey said so of the level 100 figure; it is true of the level 1 one too, and
+nothing here changes it.
+
+New: `Cataclysm.Skills.AHeldSkillCostsItsManaAtTheCharactersLevelAndALevelGainRaisesIt`. Changed:
+`Cataclysm.SkillAssignment.AMovedSkillKeepsTheNumbersOfTheSlotItWasMadeFor`, which compared a player's cost against
+the ability level. The pack test charges mana at the level, from the shared line's maximum mana as
+`ManaCostAtLevel` does.
+
+### B7 and the stale texts
+
+- `CataclysmPlayerClassStats.h`: the figures it called what "the creatures on a dungeon floor deal" are the sandbox's
+  fixed ones; it says so, and what a tier 1 floor builds. Its closing paragraph said levelling, gear reaching
+  attributes, potions and leech did not exist; all four do.
+- `test_no_class_survives_that_fight_at_level_one`: "Levelling does not exist" is gone; it records that no class
+  survives the sandbox's fixed pack at level 1, which no dungeon floor builds. Its assertion is unchanged and holds.
+- `CataclysmExperience.h`: "Enemy Score has no port" is replaced by where a kill's experience comes from;
+  `test_the_port_names_where_a_kills_experience_comes_from` replaces the test that pinned the old sentence.
+- `CataclysmPlayerState.cpp` (`GrantExperience`'s comment), `Cataclysm.GrantExperience`'s help text ("A stand-in until
+  killing things grants it") and its prompt, which typed "Level 2 costs 230000." and now reads the curve.
+- `analyse_experience_curve.py` line 322 (above), and `Cataclysm.Experience.GrantingZeroOrLessChangesNothing`'s comment.
+- `CataclysmPlayLoopLog.h`, `docs/Play_Loop_Checklist.md` and `Cataclysm.PlayLoop.TheLevelGainedLineSaysTheLevelReachedAndWhatTheNextOneStillCosts`:
+  the level-gained example's "245740 more to level 3" is 46280 on the new curve.
+- `Cataclysm.EnemyScore.ClearingADungeonMovesTheCharactersLevel`: its comment said a cleared 50-floor tier 1 dungeon was
+  "about eleven levels"; on the old curve it took a fresh character to level 9, and with the opening to 11.
+
+### The pack test
+
+`tools/tests/test_the_starting_character_survives_a_pack.py`. Its readers are plain functions with fixtures around them,
+so the measurement runs the same fight. Its fight charges mana at the character's level and counts the Slashing 10%
+against health (`SubtypeBonus`, `CataclysmDamageCalculation.h`), each read from the C++.
+
+- **The guard on tier 1's damage**, `test_a_new_character_beats_the_pack_on_every_floor_of_every_first_surge_dungeon`,
+  replaces the 12-floor level 20 one: all 3,057 first-surge dungeons of seeds 0 to 299, the character levelling at half
+  the kills on the game's curve (`analyse_experience_curve.whole_level_cost`, which the port test holds to the C++),
+  every floor won and 10% left on the last.
+- **Its control**, `test_control_the_former_tier_one_scale_loses_those_dungeons`: at 0.20 the same walk loses more than
+  half of them; it loses all 3,057.
+- **B4's target**, `test_a_new_character_gains_at_least_three_levels_over_a_first_dungeon_of_seven_or_eight_floors`:
+  every 7- or 8-floor one ends at level 4 or higher, from the experience alone.
+- **The sandbox control's level, 10 to 6.** At 10 the shared line now won with 47 health left. Fought at every level
+  from 1 to 20: 1 to 3 both lose, 8 to 20 both win, 4 to 7 come apart (the shared line losing with 3 Imps up, the
+  starting class winning with 22 to 87 health). The sandbox pack at `DefaultLevel` 20 is still won, and no class wins it
+  at level 1.
+
+### Phase 1's Python run
+
+The whole suite on 2026-11-19, before the last two corrections below: "7620 passed, 9 skipped in 205.40s"; the JUnit file 7,629 tests, 0 failures, 0 errors, 9 skipped. ruff: "All checks passed!". After it, two corrections -- a cast in `CataclysmExperience.cpp`'s compile-time check, so it compares two signed numbers, and B4's level test counting levels from the experience alone, so a changed damage scale cannot fail it -- were followed by the files that read them, "48 passed", and by the run of record on the tree as committed: "7620 passed, 9 skipped in 202.37s", and the JUnit file 7,629 tests, 0 failures, 0 errors, 9 skipped. The Q7 ruling and this section's heading were written into this entry after that run, and the 95 test files that read this log were run again: "3598 passed, 1 skipped in 104.98s".
+
+### Guard proofs
+
+Run 2026-11-19 through `tools/prove_guard.py`'s `break_and_run`, in this worktree with nothing else running
+(`.claude/windows/prove_py_s4.py`, output `s4_pyproofs.out`):
+
+- **P1, PROVED**: `sim/cataclysm_sim/enemy_stats.py`'s `DAMAGE_SCALE_AT_FIRST_TIER = 0.05` back to 0.20, over the pack
+  test, the relief port test and `sim/tests/test_creature_strength.py`. "PROVED: 3 failed, 22 passed in 4.11s |
+  restored: 25 passed in 4.71s". The three, as predicted:
+  `test_a_new_character_beats_the_pack_on_every_floor_of_every_first_surge_dungeon`,
+  `TestTheDamageScaleMatches::test_the_tier_one_figure_matches` and
+  `test_the_damage_scale_is_a_twentieth_at_tier_one_and_tiers_two_to_eight_are_on_the_line_from_a_fifth`.
+- **P2, PROVED**: one of Path of Exile's figures in `CataclysmExperience.cpp`'s opening table, 1235 to 1236, over the
+  curve's port test. "PROVED: 2 failed, 8 passed in 0.14s | restored: 10 passed in 0.09s": `test_the_opening_matches`
+  and `test_every_level_costs_the_same_on_both_sides`, as predicted.
+
+**Registered for the window, C++, through `unreal_build.prove_cpp_guard`:**
+
+- **S1, the cost at the character's level.** In `UCataclysmGameplayAbility::LevelForCosts`,
+  `return Holder ? Holder->GetCharacterLevel() : AbilityLevel;` becomes `return Holder ? AbilityLevel : AbilityLevel;`
+  -- the ability level always, as before this change, with `Holder` still read so nothing warns. Prefix
+  `Cataclysm.Skills.AHeldSkillCostsItsManaAtTheCharactersLevelAndALevelGainRaisesIt`, one test. Predicted: 1
+  performed, 1 failed, on four assertions -- "at level 2 it costs the level 2 figure", "at level 20 it costs the level
+  20 figure", "and the basic attack pays the level 20 mana on hit" and "which is more than the level 1 figure it paid
+  before"; the level 1 assertions and "though the ability level is still 1" hold. Restored, 1 performed, 1 succeeded.
+- **S2, the opening.** The same break as P2, `{ 525, 1235, 2021,` to `{ 525, 1236, 2021,` in
+  `CataclysmExperience.cpp`. Prefix `Cataclysm.Experience.`, 11 tests. Predicted: 11 performed, 7 succeeded, 4 failed:
+  `TheCurveMatchesTheDesignDocument` (level 3's cost and every typed cumulative from level 3),
+  `EveryLevelCostsItsFigureAndMoreThanTheOneBelow` (level 3), `TheOpeningLevelsCostFortyTimesPathOfExilesOwnAndJoinTheCurve`
+  (level 3 and the 922,836) and `TheTotalIsSummedFromWholeLevelCosts` (the whole climb against the test's own sum). The
+  grant and level-for-total tests read the port's own table and agree with it, so they pass. Restored, 11 and 11.
+
+### What the window will run, registered before it
+
+**The Unreal count.** The base is window outpost-depth-w2's whole suite at `f1f6bf84`: 4,872 performed, 47 skipped
+halves, 0 test saves left behind; `git diff --stat f1f6bf84 b67599db5 -- game/` prints nothing, so its game tree is this
+branch's base. This branch adds two tests by name and renames one:
+
+- added `Cataclysm.Experience.TheOpeningLevelsCostFortyTimesPathOfExilesOwnAndJoinTheCurve`;
+- added `Cataclysm.Skills.AHeldSkillCostsItsManaAtTheCharactersLevelAndALevelGainRaisesIt`;
+- renamed `Cataclysm.Experience.EveryLevelCostsTheRateMoreThanTheOneBelow` to
+  `Cataclysm.Experience.EveryLevelCostsItsFigureAndMoreThanTheOneBelow`.
+
+**The whole suite is registered at 4,872 + 2 = 4,874**, with 47 skipped halves and 0 test saves left behind.
+
+**Each group this change touches, alone**, counted by prefix in that run's engine log, ignoring case, plus the tests
+added:
+
+| Prefix | Base | Registered | Why it runs |
+| :-- | --: | --: | :-- |
+| `Cataclysm.Experience.` | 10 | 11 | the curve |
+| `Cataclysm.ExperienceBar.` | 2 | 2 | reads level costs |
+| `Cataclysm.CharacterLevel.` | 9 | 9 | reads level costs |
+| `Cataclysm.PlayLoop.` | 8 | 8 | the level-gained line's figures |
+| `Cataclysm.EnemyScore.` | 12 | 12 | a cleared dungeon's levels |
+| `Cataclysm.EnemyStrength.` | 6 | 6 | the damage scale and the fixture |
+| `Cataclysm.DungeonModifierEffects.ACorruptedStalker` | 9 | 9 | the Stalker's tier 1 multiplier |
+| `Cataclysm.SkillAssignment.` | 16 | 16 | a cost compared at the character's level |
+| `Cataclysm.SkillBar.` | 22 | 22 | shows the cost the skill charges |
+| `Cataclysm.Skills.` | 283 | 284 | every skill's cost, and the new test |
+
+THE RISK THIS WINDOW IS FOR, SAID PLAINLY: a test player with a player state and no level of its own is at
+`DefaultLevel`, 20, and now pays the level 20 cost of a skill, 3.28 times the level 1 figure it paid before. A test
+that compares a cost or a mana pool against a figure computed by the same ability reads the new cost and is unaffected;
+one that typed a level 1 figure, or relied on a level 20 player affording a costly skill on a small pool, would fail.
+The sweep found one, the skill-assignment test above, and changed it; the whole suite is what finds any other.
+
+---
+
 ## 2026-11-19 — An Outpost's ordinary dungeons are 5 to 10 floors, not 8 to 15; Quest dungeons and the inner rings do not move (#2749, B9)
 
 **Affects:** `UCataclysmSurgeScheduler::SpecFor`, the Basic row's default (Outpost) case

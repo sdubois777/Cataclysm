@@ -6768,23 +6768,46 @@ every character arrives at.
 
 **An enemy's Enemy Score IS the experience it grants.** Nothing separate is stored or tuned. Section X already builds Enemy Score from the difficulty tier, the dungeon type and sub-type, how deep the floor is, the enemy's rarity and the floor's modifiers, so all of those already move what a kill is worth. On the last floor of a 50-floor Basic dungeon, one creature averaged over the rarities that actually spawn there is worth 420 at difficulty tier 1 and 6,517 at tier 8.
 
-**A level costs 8.2% more than the level below it. Level 2 costs 230,000.**
+**Levels 2 to 7 are the opening: each costs 40 times what Path of Exile charges for the same level. Level 2 costs 21,000.**
 
   
 
-    cost of level L = 230,000 × 1.082 ^ (L − 2),    for L from 2 to 100
+| Level | Path of Exile | Costs | Cumulative |
+| :-: | --: | --: | --: |
+| 2 | 525 | 21,000 | 21,000 |
+| 3 | 1,235 | 49,400 | 70,400 |
+| 4 | 2,021 | 80,840 | 151,240 |
+| 5 | 3,403 | 136,120 | 287,360 |
+| 6 | 5,002 | 200,080 | 487,440 |
+| 7 | 7,138 | 285,520 | 772,960 |
+
+  
+
+A character starts at level 1, and the first levels are cheap so that a new character gains several levels in its first dungeon, as a character does in Path of Exile's first areas. Path of Exile's published experience table gives the shape, first costs a small share of later ones and rising steeply; the scale of 40 is a judgement, set so a character killing half of each floor's creatures reaches level 4 over a first dungeon of 7 or 8 floors, and level 5 or 6 if it kills them all. What share of a floor a player really kills has not been measured. The opening ends at level 7 because level 8 is the first level the curve below prices for less than 40 times Path of Exile's own.
+
+  
+
+**From level 8, a level costs 8.2% more than the level below it, on a curve anchored at 230,000 for level 2.**
+
+  
+
+    cost of level L = 230,000 × 1.082 ^ (L − 2),    for L from 8 to 100
 
   
 
 | Level | Costs | Cumulative |
 | :-: | --: | --: |
-| 2 | 230,000 | 230,000 |
-| 10 | 432,062 | 2,896,231 |
-| 25 | 1,409,142 | 15,788,927 |
-| 50 | 10,107,328 | 130,562,548 |
-| 75 | 72,496,639 | 953,797,118 |
-| 90 | 236,443,176 | 3,117,091,665 |
-| 100 | 519,995,268 | 6,858,596,102 |
+| 2 | 21,000 | 21,000 |
+| 10 | 432,062 | 1,973,395 |
+| 25 | 1,409,142 | 14,866,091 |
+| 50 | 10,107,328 | 129,639,712 |
+| 75 | 72,496,639 | 952,874,282 |
+| 90 | 236,443,176 | 3,116,168,829 |
+| 100 | 519,995,268 | 6,857,673,266 |
+
+  
+
+The opening takes 922,836 off the climb, 0.013% of it, and moves no figure below.
 
   
 

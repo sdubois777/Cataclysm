@@ -21,6 +21,7 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmExperience.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
@@ -545,8 +546,11 @@ bool FCataclysmSkillAssignmentNumbersTest::RunTest(const FString&)
 	TestEqual(TEXT("Pyroclasm on the Heavy key deals the Ultimate slot's damage"), Moved->GetDamagePercent(),
 			  Ultimate.DamagePercent, 0.001f);
 	TestEqual(TEXT("waits the Ultimate slot's cooldown"), Moved->GetBaseCooldown(), Ultimate.Cooldown, 0.001f);
-	TestEqual(TEXT("costs the Ultimate slot's mana at its level"), Moved->GetManaCost(),
-			  UCataclysmSkillSlots::ManaCostAtLevel(Ultimate.ManaCostAtLevel100, Moved->GetAbilityLevel()), 0.001f);
+	// AT THE CHARACTER'S LEVEL, NOT THE ABILITY'S, since issue #2749: this read `Moved->GetAbilityLevel()`, which is 1
+	// for every skill the weapon slots grant.
+	TestEqual(TEXT("costs the Ultimate slot's mana at the character's level"), Moved->GetManaCost(),
+			  UCataclysmSkillSlots::ManaCostAtLevel(Ultimate.ManaCostAtLevel100, Carrier.State->GetCharacterLevel()),
+			  0.001f);
 	TestEqual(TEXT("and the Ultimate slot's Fervour"), Moved->FervourCostFor(Carrier.AbilitySystem),
 			  Ultimate.FervourCost, 0.001f);
 	const FCataclysmWeaponSkill* HeldEntry = HeldOnKey(Carrier.Slots, ECataclysmAbilitySlot::Heavy);
@@ -1542,6 +1546,83 @@ bool FCataclysmSkillAssignmentResetReachesOffTheKeysTest::RunTest(const FString&
 	}
 	TestEqual(TEXT("after a reduction of five seconds it waits five fewer"),
 			  SecondsLeftOn(Carrier.AbilitySystem, ECataclysmAbilitySlot::Ultimate), LeftBefore - 5.0f, 0.1f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A skill's mana cost at the character's level. Issue #2749.
+// ---------------------------------------------------------------------------
+
+// IN THIS FILE BECAUSE ITS CARRIER IS THE CASE: a possessed player whose weapon slots granted the Greataxe's skills, as
+// play does, at ability level 1. Registered under `Cataclysm.Skills.`, beside
+// `Cataclysm.Skills.ManaCostRidesTheDefaultManaProgression`, which checks the arithmetic this reaches.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillCostAtTheCharactersLevelTest,
+	"Cataclysm.Skills.AHeldSkillCostsItsManaAtTheCharactersLevelAndALevelGainRaisesIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The design, "What a Skill Costs": "The numbers above are quoted at level 100, and scale down with character level."
+ * Until issue #2749 a skill's cost read its ability level, and the weapon slots grant every skill at ability level 1
+ * and nothing raised it, so a character paid the level 1 cost at every level. The coordinating session ruled the fix on
+ * 2026-11-19: the cost reads the character's level from its player state. The basic attack's mana on hit rides the same
+ * level.
+ */
+bool FCataclysmSkillCostAtTheCharactersLevelTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillAssignmentTest;
+
+	const UDataTable* SlotTable = UCataclysmSkillSlots::LoadGeneratedTable();
+	const FCataclysmSkillSlotNumbers Heavy = UCataclysmSkillSlots::NumbersFor(SlotTable, ECataclysmAbilitySlot::Heavy);
+	const FCataclysmSkillSlotNumbers Basic =
+		UCataclysmSkillSlots::NumbersFor(SlotTable, ECataclysmAbilitySlot::BasicAttack);
+	if (!TestTrue(TEXT("set-up: the slot table has a Heavy row that costs mana and a Basic row that pays it"),
+				  Heavy.bFound && Basic.bFound && Heavy.ManaCostAtLevel100 > 0.0f && Basic.ManaOnHitAtLevel100 > 0.0f))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FSkillAssignmentCarrier Carrier = SpawnAssignmentCarrier(*this, World);
+	if (!Carrier.IsComplete())
+	{
+		return false;
+	}
+	UCataclysmGameplayAbility* Cleave = AbilityOnKey(Carrier.AbilitySystem, ECataclysmAbilitySlot::Heavy);
+	UCataclysmGameplayAbility* Swing = AbilityOnKey(Carrier.AbilitySystem, ECataclysmAbilitySlot::BasicAttack);
+	if (!TestNotNull(TEXT("set-up: a skill is on the Heavy key"), Cleave)
+		|| !TestNotNull(TEXT("set-up: and the basic attack on its key"), Swing)
+		|| !TestEqual(TEXT("set-up: the weapon slots granted it at ability level 1, as play does"),
+					  Cleave->GetAbilityLevel(), 1))
+	{
+		return false;
+	}
+
+	// A NEW CHARACTER, AT LEVEL 1.
+	Carrier.State->SetLevelAndExperience(1, 0);
+	const float AtOne = UCataclysmSkillSlots::ManaCostAtLevel(Heavy.ManaCostAtLevel100, 1);
+	TestEqual(TEXT("at level 1 it costs the level 1 figure"), Cleave->ManaCostFor(Carrier.AbilitySystem), AtOne, 0.001f);
+	TestEqual(TEXT("and says so"), Cleave->GetManaCost(), AtOne, 0.001f);
+
+	// ONE LEVEL GAINED THROUGH THE GRANT PLAY USES, and the cost rises with it while the ability level does not move.
+	Carrier.State->GrantExperience(UCataclysmExperience::CostOfLevel(2));
+	if (!TestEqual(TEXT("set-up: the grant reached level 2"), Carrier.State->GetCharacterLevel(), 2))
+	{
+		return false;
+	}
+	const float AtTwo = UCataclysmSkillSlots::ManaCostAtLevel(Heavy.ManaCostAtLevel100, 2);
+	TestEqual(TEXT("at level 2 it costs the level 2 figure"), Cleave->ManaCostFor(Carrier.AbilitySystem), AtTwo, 0.001f);
+	TestTrue(FString::Printf(TEXT("which is more than at level 1: %.3f against %.3f"), AtTwo, AtOne), AtTwo > AtOne);
+	TestEqual(TEXT("though the ability level is still 1"), Cleave->GetAbilityLevel(), 1);
+
+	// AND AT LEVEL 20, the sandbox's, where the level 1 figure was being charged.
+	Carrier.State->SetLevelAndExperience(20, 0);
+	TestEqual(TEXT("at level 20 it costs the level 20 figure"), Cleave->ManaCostFor(Carrier.AbilitySystem),
+			  UCataclysmSkillSlots::ManaCostAtLevel(Heavy.ManaCostAtLevel100, 20), 0.001f);
+	TestEqual(TEXT("and the basic attack pays the level 20 mana on hit"), Swing->GetManaOnHit(),
+			  UCataclysmSkillSlots::ManaOnHitAtLevel(Basic.ManaOnHitAtLevel100, 20), 0.001f);
+	TestTrue(TEXT("which is more than the level 1 figure it paid before"),
+			 Swing->GetManaOnHit() > UCataclysmSkillSlots::ManaOnHitAtLevel(Basic.ManaOnHitAtLevel100, 1));
 	return true;
 }
 

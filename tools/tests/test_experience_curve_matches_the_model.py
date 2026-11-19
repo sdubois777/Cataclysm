@@ -92,11 +92,21 @@ def section() -> str:
 def test_the_stated_formula_is_the_decided_one(model, section):
     """The formula is what an implementer types in. It is checked first."""
     rate, scale = model["DECIDED_RATE"], model["DECIDED_LEVEL_2_COST"]
-    assert f"cost of level L = {scale:,.0f} × {1 + rate:g} ^ (L − 2)" in section, (
-        f"the document's formula no longer matches DECIDED_RATE {rate} and "
-        f"DECIDED_LEVEL_2_COST {scale:,.0f}")
-    assert f"A level costs {rate:.1%} more than the level below it" in section
-    assert f"Level 2 costs {scale:,.0f}." in section
+    first = model["LAST_OPENING_LEVEL"] + 1
+    assert (f"cost of level L = {scale:,.0f} × {1 + rate:g} ^ (L − 2),    "
+            f"for L from {first} to {model['MAX_LEVEL']}") in section, (
+        f"the document's formula no longer matches DECIDED_RATE {rate}, "
+        f"DECIDED_LEVEL_2_COST {scale:,.0f} and the opening's end")
+    assert (f"From level {first}, a level costs {rate:.1%} more than the level below it, "
+            f"on a curve anchored at {scale:,.0f} for level 2") in section
+    # THE OPENING, since issue #2749: what level 2 really costs, and each opening row.
+    assert f"Level 2 costs {model['whole_level_cost'](2):,}." in section
+    assert f"each costs {model['OPENING_SCALE']} times what Path of Exile charges" in section
+    for level in range(2, model["LAST_OPENING_LEVEL"] + 1):
+        row = (f"| {level} | {model['POE_OPENING_COSTS'][level - 2]:,} | {model['whole_level_cost'](level):,} | "
+               f"{model['whole_total_to_reach'](level):,} |")
+        assert row in section, f"the opening's row for level {level} should read {row!r}"
+    assert f"The opening takes {model['OPENING_SAVES']:,} off the climb" in section
 
 
 def test_every_row_of_the_stated_cost_table_is_recomputed(model, section):

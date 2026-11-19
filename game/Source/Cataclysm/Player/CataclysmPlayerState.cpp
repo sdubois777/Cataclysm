@@ -217,7 +217,8 @@ int32 ACataclysmPlayerState::GrantExperience(int64 Amount)
 {
 	// GRANTING NOTHING CHANGES NOTHING, INCLUDING THE LEVEL, and that is worth
 	// a branch of its own rather than leaving it to the clamp below. A kill
-	// worth zero is a real case while Enemy Score has no port -- issue #926 --
+	// worth zero or less is a real case -- a Common creature on the first floors
+	// of a deep dungeon scores below zero (`UCataclysmEnemyScore::ScoreFor`) --
 	// and without this the first such kill would settle the character's level
 	// at whatever `Cataclysm.PlayerLevel` happened to say at that instant, which
 	// is a lasting change made by an event that did nothing.

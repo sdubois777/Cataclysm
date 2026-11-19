@@ -144,3 +144,31 @@ class TestTheStrengthPathAppliesIt:
         assert not re.search(r"ContentRelief|StrengthScore|DamageScale", body), (
             "ScoreFor reads the relief or the strength path. It is also the experience a kill grants, which the "
             "ruling does not lower. Issue #1569.")
+
+
+class TestTheDamageScaleMatches:
+    """ISSUE #2749. The tier damage scale, the other ease on the strength path, compared constant by constant. Until
+    then nothing compared the game's tier 1 figure with the simulation's directly: only the 840 rows of
+    `game/Tests/EnemyStrength/ExpectedFigures.csv`, which the game's automation test reads, held them together, so a
+    Python-only run could not see the two part. The coordinating session asked for this check on 2026-11-19."""
+
+    SOURCE = HEADER.with_suffix(".cpp")
+
+    def test_the_tier_one_figure_matches(self, header):
+        from cataclysm_sim import enemy_stats
+        assert constant(header, "DamageScaleAtFirstTier") == pytest.approx(enemy_stats.DAMAGE_SCALE_AT_FIRST_TIER)
+        assert enemy_stats.DAMAGE_SCALE_AT_FIRST_TIER == pytest.approx(0.05), "ruled 2026-11-19, issue #2749"
+
+    def test_the_line_tiers_two_to_eight_are_on_matches(self, header):
+        from cataclysm_sim import enemy_stats
+        assert (constant(header, "DamageScaleLineAtFirstTier")
+                == pytest.approx(enemy_stats.DAMAGE_SCALE_LINE_AT_FIRST_TIER))
+        assert enemy_stats.DAMAGE_SCALE_LINE_AT_FIRST_TIER == pytest.approx(0.20), (
+            "tiers 2 to 8 were left where they were by the ruling of 2026-11-19")
+
+    def test_the_game_gives_tier_one_its_own_figure_and_the_rest_the_line(self):
+        body = body_of(self.SOURCE.read_text(encoding="utf-8"), "double UCataclysmEnemyScore::DamageScale(")
+        assert re.search(r"Held\s*==\s*LowestDifficultyTier\s*\)\s*\{\s*return\s+DamageScaleAtFirstTier\s*;", body), (
+            "DamageScale no longer returns the tier 1 figure at tier 1. Issue #2749.")
+        assert re.search(r"return\s+DamageScaleLineAtFirstTier\s*\+\s*\(\s*1\.0\s*-\s*DamageScaleLineAtFirstTier\s*\)",
+                         body), "DamageScale no longer puts tiers 2 to 8 on the line from DamageScaleLineAtFirstTier."

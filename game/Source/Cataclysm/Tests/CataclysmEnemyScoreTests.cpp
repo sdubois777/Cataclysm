@@ -595,10 +595,11 @@ bool FCataclysmEnemyScoreAWholeDungeonPaysALevel::RunTest(const FString&)
 	//
 	// THE FIGURE IT IS CHECKED AGAINST comes from sim/analyse_experience_curve.py
 	// and docs/DECISIONS.md: a 50-floor Basic dungeon at difficulty tier 1,
-	// fully cleared, is worth 2,649,059, and level 2 costs 230,000. So one
-	// dungeon at the shallowest tier is worth about eleven levels at the start
-	// of the climb. Anything within a factor of two of that is the two halves
-	// agreeing; a factor of a thousand is not.
+	// fully cleared, is worth 2,649,059. On today's curve, with issue #2749's
+	// opening, that takes a fresh character to level 11, ten levels gained: the
+	// total to reach level 11 is 2,440,886 and level 12 is 2,946,711. (It was
+	// level 9 before the opening.) Anything within a factor of two of that is
+	// the two halves agreeing; a factor of a thousand is not.
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("world"), World))
 	{
@@ -649,7 +650,7 @@ bool FCataclysmEnemyScoreAWholeDungeonPaysALevel::RunTest(const FString&)
 	const int32 Gained = State->GrantExperience(Whole);
 	TestTrue(FString::Printf(
 			TEXT("clearing it takes a fresh character to level %d, and the "
-				 "curve says about 11"), State->GetCharacterLevel()),
+				 "curve says 11"), State->GetCharacterLevel()),
 		Gained >= 8 && Gained <= 14);
 
 	return true;

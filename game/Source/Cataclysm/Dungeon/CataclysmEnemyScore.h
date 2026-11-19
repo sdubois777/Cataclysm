@@ -244,9 +244,33 @@ public:
 	// same arithmetic, and `Cataclysm.EnemyStrength.EveryFigureIsTheModels`
 	// holds the two equal through `game/Tests/EnemyStrength/ExpectedFigures.csv`.
 
-	/** Damage is multiplied by this at difficulty tier 1, rising evenly to one at
-	 *  the last tier. The owner: "Scale damage to a target", then "Approve". */
-	static constexpr double DamageScaleAtFirstTier = 0.20;
+	/**
+	 * Damage is multiplied by this at difficulty tier 1. The owner: "Scale damage
+	 * to a target", then "Approve" (issue #1569).
+	 *
+	 * 0.05 SINCE ISSUE #2749, FROM 0.20. 0.20 was fitted to a level 20 character,
+	 * and a character starts at level 1 since issue #2744. The owner ruled on
+	 * 2026-11-18 to "re-set tier 1 enemy damage so a character levelling at that
+	 * pace survives". 0.05 is the largest step of 0.01 at which the starting
+	 * Ravager, levelling as it kills half of each floor's creatures, wins every
+	 * floor of every first-surge Outpost dungeon the simulation's seeds 0 to 299
+	 * make, against 10 Common Imps, with at least 10% of its health left on the
+	 * last floor: a judgement, approved by the coordinating session on
+	 * 2026-11-19. `tools/tests/test_the_starting_character_survives_a_pack.py`
+	 * is the guard; `docs/DECISIONS.md`, 2026-11-19, has the measurement.
+	 */
+	static constexpr double DamageScaleAtFirstTier = 0.05;
+
+	/**
+	 * TIERS 2 TO 8 LIE ON A LINE RISING EVENLY FROM THIS AT TIER 1 TO ONE AT THE
+	 * LAST TIER: 0.314 at tier 2 up to 1.00 at tier 8. It is the line tier 1 was
+	 * on until issue #2749, which moved tier 1 alone and left tiers 2 to 8 where
+	 * they were, as the coordinating session ruled on 2026-11-19: a new
+	 * character always begins at tier 1, so the characters entering tiers 2 to
+	 * 8 are the same levelled characters as before, and nothing measured them
+	 * as wrong.
+	 */
+	static constexpr double DamageScaleLineAtFirstTier = 0.20;
 
 	/** The minimum strength is what the same creature scores on floor 1 of a
 	 *  dungeon this many floors deep, of the same kind, after the relief. */
@@ -256,8 +280,8 @@ public:
 	 *  the three `ContentRelief` constants above, 0 below their first tier. */
 	static double ContentRelief(int32 Tier);
 
-	/** What a creature's damage is multiplied by at this tier: 0.20 at tier 1,
-	 *  rising evenly to 1.00 at tier 8. */
+	/** What a creature's damage is multiplied by at this tier: 0.05 at tier 1,
+	 *  then 0.314 at tier 2 rising evenly to 1.00 at tier 8. */
 	static double DamageScale(int32 Tier);
 
 	/**

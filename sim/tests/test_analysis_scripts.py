@@ -123,7 +123,8 @@ def penetration_run():
                                   "analyse_surge_cadence.py",
                                   "analyse_board_empty_surge.py",
                                   "analyse_tier_throughput.py",
-                                  "analyse_outpost_depth.py"])
+                                  "analyse_outpost_depth.py",
+                                  "analyse_opening.py"])
 def test_the_script_runs_and_prints_something(name):
     printed, _ = run(name)
     assert len(printed.splitlines()) > 20, printed
@@ -1700,27 +1701,64 @@ def test_the_decided_curve_is_printed_as_a_formula_and_a_table(experience_run):
     assert f"cost of level L = {scale:,.0f} x {1 + rate:g} ^ (L - 2)" in printed
     assert f"{ns['level_cost'](ns['MAX_LEVEL'], rate, scale):,.0f}" in printed
 
-    opening = ns["first_level_in_floors"](rate, scale, ns["POPULATION"],
-                                          ns["WEIGHTS"], ns["WHOLE_FLOORS"])
-    assert f"level 2 takes {opening:.1f} floors" in printed
+    # SINCE ISSUE #2749 level 2 is the opening's, and the sentence says so; the
+    # curve alone's figure is printed beside it.
+    assert f"level 2 takes {ns['whole_first_level_in_floors']():.2f} floors" in printed
+    curve_alone = ns["first_level_in_floors"](rate, scale, ns["POPULATION"],
+                                              ns["WEIGHTS"], ns["WHOLE_FLOORS"])
+    assert f"on the curve alone it took {curve_alone:.1f}" in printed
+    for level in range(2, ns["LAST_OPENING_LEVEL"] + 1):
+        assert f"{ns['whole_level_cost'](level):>9,}" in printed, level
+
+
+def test_the_opening_is_forty_times_path_of_exiles_own_and_ends_below_the_curve(experience_run):
+    """Issue #2749, ruled 2026-11-19: levels 2 to 7 cost 40 times Path of Exile's own cost for the same level, every
+    one of them below what the curve alone charges, and from level 8 the curve's. The opening's figures here are the
+    ones `tools/tests/test_experience_curve_port.py` holds the game to."""
+    _, ns = experience_run
+    assert ns["OPENING_SCALE"] == 40
+    assert ns["POE_OPENING_COSTS"] == (525, 1235, 2021, 3403, 5002, 7138), "poedb.tw/us/Experience"
+    assert ns["LAST_OPENING_LEVEL"] == len(ns["POE_OPENING_COSTS"]) + 1
+    for level in range(2, ns["LAST_OPENING_LEVEL"] + 1):
+        assert ns["whole_level_cost"](level) == 40 * ns["POE_OPENING_COSTS"][level - 2], level
+        assert ns["whole_level_cost"](level) < ns["curve_whole_level_cost"](level), level
+    for level in range(ns["LAST_OPENING_LEVEL"] + 1, ns["MAX_LEVEL"] + 1):
+        assert ns["whole_level_cost"](level) == ns["curve_whole_level_cost"](level), level
+    assert ns["OPENING_SAVES"] == 922_836
+
+
+def test_the_opening_does_not_move_the_level_at_the_end_of_any_tier(experience_run):
+    """The coordinating session, 2026-11-19: "Confirm with the script run that the design's tier-end levels (42, 59,
+    ...) do not move". Asserted on the whole-number curve the game charges, with the opening and without it, and
+    against the fitted curve the design document's row was printed from."""
+    printed, ns = experience_run
+    stated = [42, 59, 70, 79, 85, 91, 95, 100]
+    assert ns["whole_levels_at_tier_ends"]() == stated
+    assert ns["whole_levels_at_tier_ends"](ns["curve_whole_level_cost"]) == stated
+    assert ns["levels_at_tier_ends"](ns["DECIDED_RATE"], ns["PER_DUNGEON"]) == stated
+    assert "with the opening: " + "  ".join(str(level) for level in stated) in printed
 
 
 def test_the_whole_number_curve_is_not_the_float_one_rounded(experience_run):
     """WHY `whole_total_to_reach` EXISTS AT ALL, asserted so it cannot be quietly
     replaced by rounding the closed-form sum.
 
-    A player pays each level's rounded cost, so the climb is the sum of 99
+    A player pays each level's rounded cost, so the climb is the sum of the
     roundings. Rounding the geometric sum instead gives a different number. The
-    gap is 5 over 6.8 billion, which is nothing as a quantity and everything to
-    the C++ port, which has to reproduce these integers exactly because a save
-    record stores a character's progress into its current level.
+    gap is 5 over the curve's levels, 8 to 100, which is nothing as a quantity and
+    everything to the C++ port, which has to reproduce these integers exactly
+    because a save record stores a character's progress into its current level.
+    SINCE ISSUE #2749 the comparison is over the curve's levels: the opening's
+    are whole numbers already.
     """
     import math
 
     _, ns = experience_run
-    summed = ns["whole_total_to_reach"](ns["MAX_LEVEL"])
-    closed = math.floor(ns["total_experience"](ns["DECIDED_RATE"],
-                                               ns["DECIDED_LEVEL_2_COST"]) + 0.5)
+    first = ns["LAST_OPENING_LEVEL"] + 1
+    summed = sum(ns["whole_level_cost"](level) for level in range(first, ns["MAX_LEVEL"] + 1))
+    closed = math.floor(ns["total_experience"](ns["DECIDED_RATE"], ns["DECIDED_LEVEL_2_COST"])
+                        - ns["total_experience"](ns["DECIDED_RATE"], ns["DECIDED_LEVEL_2_COST"],
+                                                 ns["LAST_OPENING_LEVEL"]) + 0.5)
     assert summed != closed, (
         "the sum of the rounded level costs now equals the rounded closed-form "
         "sum. If that is genuinely true the two functions can be merged, but "
@@ -1731,7 +1769,7 @@ def test_the_whole_number_curve_is_not_the_float_one_rounded(experience_run):
 
     # And the per-level cost really is floor(x + 0.5), the rounding
     # `scoring._js_round` uses, rather than Python's round-half-to-even.
-    for level in (2, 37, 64, ns["MAX_LEVEL"]):
+    for level in (first, 37, 64, ns["MAX_LEVEL"]):
         raw = ns["level_cost"](level, ns["DECIDED_RATE"], ns["DECIDED_LEVEL_2_COST"])
         assert ns["whole_level_cost"](level) == math.floor(raw + 0.5)
 
@@ -3705,3 +3743,45 @@ def test_each_outpost_depth_cell_changes_only_the_outpost_ordinary_rows_floors(
         assert {k: v for k, v in cfg.DUNGEON_SPECS.items() if k != key} == {
             k: v for k, v in shipped.DUNGEON_SPECS.items() if k != key}
         assert replace(cfg, DUNGEON_SPECS=shipped.DUNGEON_SPECS) == shipped
+
+
+# --------------------------------------------------------------------------
+# analyse_opening.py -- issue #2749, slice 4
+# --------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def opening_run():
+    """The smoke default: 20 seeds' first surges and the 3 deepest dungeons. The figures in the script's docstring
+    are 300 seeds and a record; these check what the smoke run can: that it walks what it says, marks the scale that
+    ships, and that the ruled scale and opening do what they were ruled for on the dungeons it has."""
+    return run("analyse_opening.py")
+
+
+def test_the_opening_sweep_marks_the_shipped_scale_and_compares_it_with_the_former_one(opening_run):
+    from cataclysm_sim import enemy_stats as es
+
+    printed, ns = opening_run
+    assert ns["SHIPPED_SCALE"] == es.DAMAGE_SCALE_AT_FIRST_TIER == 0.05
+    assert ns["FORMER_SCALE"] == 0.20
+    assert {ns["SHIPPED_SCALE"], ns["FORMER_SCALE"]} <= set(ns["CANDIDATE_SCALES"])
+    assert "SMOKE RUN" in printed
+    shipped = [line for line in printed.splitlines() if line.endswith("<- shipped")]
+    assert len(shipped) == 1 and shipped[0].lstrip().startswith("0.050 |   50%"), shipped
+
+
+def test_the_shipped_scale_passes_every_dungeon_the_smoke_run_walks_and_the_former_one_none(opening_run):
+    """The ruling's claim on the smoke run's 200-odd dungeons: at a half's kills every floor of every one is won with
+    10% health left at 0.05, and at 0.20 not one is."""
+    _, ns = opening_run
+    sweep = ns["RESULTS"]["sweep"]
+    won, healthy, total = sweep[(0.05, 0.5)]
+    assert total > 100 and won == healthy == total, (won, healthy, total)
+    assert sweep[(0.20, 0.5)][0] == 0, sweep[(0.20, 0.5)]
+
+
+def test_the_opening_reaches_level_four_at_half_the_kills_over_seven_or_eight_floors(opening_run):
+    """B4's target, the coordinating session's judgement: level 4 or higher over a first dungeon of 7 or 8 floors."""
+    _, ns = opening_run
+    for floors in (7, 8):
+        reached = ns["RESULTS"]["levels"][(floors, 0.5)]
+        assert reached and min(reached) >= 4, (floors, reached)

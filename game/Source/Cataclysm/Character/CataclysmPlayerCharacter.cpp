@@ -3895,7 +3895,8 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmGrantExperience
 	TEXT("Cataclysm.GrantExperience"),
 	TEXT("Give the character experience: Cataclysm.GrantExperience <amount>. "
 		 "Levels are gained as far as it pays for and the remainder is kept "
-		 "toward the next one. A stand-in until killing things grants it."),
+		 "toward the next one. A developer's tool: killing creatures grants "
+		 "experience in play."),
 	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
 		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 		{
@@ -3904,8 +3905,11 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmGrantExperience
 
 			if (Args.Num() < 1)
 			{
-				Ar.Log(TEXT("Name an amount: Cataclysm.GrantExperience <amount>. "
-							"Level 2 costs 230000."));
+				// READ FROM THE CURVE RATHER THAN TYPED, so a retune cannot leave
+				// it stale: it said 230000 until issue #2749's opening.
+				Ar.Logf(TEXT("Name an amount: Cataclysm.GrantExperience <amount>. "
+							 "Level 2 costs %lld."),
+						UCataclysmExperience::CostOfLevel(2));
 				return;
 			}
 

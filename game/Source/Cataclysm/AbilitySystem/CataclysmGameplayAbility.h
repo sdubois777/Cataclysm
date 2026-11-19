@@ -233,9 +233,28 @@ public:
 	static void ApplyCooldownEffect(UAbilitySystemComponent* AbilitySystem,
 									const FGameplayTag& Tag, float Seconds);
 
-	/** Mana one use costs for the character holding it, at their level. */
+	/** Mana one use costs for the character holding it, at their level: see
+	 *  `LevelForCosts`. Before any stat row; `ManaCostFor` is what is charged. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Ability")
 	float GetManaCost() const;
+
+	/**
+	 * The level a skill's mana cost and mana on hit are worked out at, for the
+	 * holder of this ability system. Issue #2749.
+	 *
+	 * THE CHARACTER'S LEVEL WHEN A PLAYER HOLDS IT: the level its
+	 * `ACataclysmPlayerState`, which owns the player's ability system, holds at
+	 * the moment the cost is asked. The design, "What a Skill Costs": "The
+	 * numbers above are quoted at level 100, and scale down with character
+	 * level." Until issue #2749 the cost read the ability level, and the weapon
+	 * slots component grants every skill at ability level 1 and nothing raised
+	 * it, so every character paid the level 1 cost for life. Read at the moment
+	 * it is asked, it cannot fall behind a level gained.
+	 *
+	 * THE ABILITY LEVEL OTHERWISE: a creature, a test's bare actor, or no
+	 * ability system at all.
+	 */
+	static int32 LevelForCosts(const UAbilitySystemComponent* AbilitySystem, int32 AbilityLevel);
 
 	/**
 	 * The tags a stat asked for this skill is scoped by. Empty here. Issue #1815.
@@ -593,6 +612,17 @@ public:
 	bool CooldownIsSkipped(const UAbilitySystemComponent* AbilitySystem) const;
 
 private:
+	/** `GetManaCost` for the holder of `AbilitySystem`, at `LevelForCosts`: what
+	 *  `ManaCostFor` starts from, so the cost charged and the cost shown read one
+	 *  level. Issue #2749. */
+	float ManaCostAtTheHoldersLevel(const UAbilitySystemComponent* AbilitySystem) const;
+
+	/** The ability system this given ability belongs to, or null on a default
+	 *  object or before it is given -- with no ensure, unlike
+	 *  `GetAbilitySystemComponentFromActorInfo`, so a cost asked of either answers
+	 *  at the ability level as it did before issue #2749. */
+	const UAbilitySystemComponent* HoldersAbilitySystem() const;
+
 	/**
 	 * Reads this ability's slot numbers out of the generated table, once.
 	 *

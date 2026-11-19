@@ -14,6 +14,8 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 // For the cooldown skip roll, drawn below 100. Issue #2201.
 #include "AbilitySystem/CataclysmPercentDraw.h"
+// For the character's level, which a skill's mana cost is figured at. Issue #2749.
+#include "Player/CataclysmPlayerState.h"
 #include "AbilitySystemComponent.h"
 #include "Cataclysm.h"
 #include "GameplayEffect.h"
@@ -242,7 +244,26 @@ float UCataclysmGameplayAbility::UltimateCostDoublingFactor(const UAbilitySystem
 	return static_cast<float>(1 << Doublings);
 }
 
+int32 UCataclysmGameplayAbility::LevelForCosts(const UAbilitySystemComponent* AbilitySystem, int32 AbilityLevel)
+{
+	// THE PLAYER'S ABILITY SYSTEM BELONGS TO ITS PLAYER STATE, which holds the
+	// character's level; a creature's belongs to the creature. See the header.
+	const ACataclysmPlayerState* Holder =
+		AbilitySystem ? Cast<const ACataclysmPlayerState>(AbilitySystem->GetOwner()) : nullptr;
+	return Holder ? Holder->GetCharacterLevel() : AbilityLevel;
+}
+
+const UAbilitySystemComponent* UCataclysmGameplayAbility::HoldersAbilitySystem() const
+{
+	return IsInstantiated() && CurrentActorInfo ? CurrentActorInfo->AbilitySystemComponent.Get() : nullptr;
+}
+
 float UCataclysmGameplayAbility::GetManaCost() const
+{
+	return ManaCostAtTheHoldersLevel(HoldersAbilitySystem());
+}
+
+float UCataclysmGameplayAbility::ManaCostAtTheHoldersLevel(const UAbilitySystemComponent* AbilitySystem) const
 {
 	const float AtLevel100 = [this]
 	{
@@ -254,9 +275,13 @@ float UCataclysmGameplayAbility::GetManaCost() const
 		return SlotManaCostAtLevel100;
 	}();
 
-	// GAS's ability level is this project's character level: the weapon slots
-	// component grants each skill at the character's level.
-	return UCataclysmSkillSlots::ManaCostAtLevel(AtLevel100, GetAbilityLevel());
+	// THE CHARACTER'S LEVEL, NOT THE ABILITY'S, since issue #2749. This said
+	// "GAS's ability level is this project's character level: the weapon slots
+	// component grants each skill at the character's level", and neither half
+	// was true: `UCataclysmWeaponSlotsComponent` grants every skill at ability
+	// level 1 and nothing raised it, so every character paid the level 1 cost
+	// at every level. `LevelForCosts` reads the level the holder has now.
+	return UCataclysmSkillSlots::ManaCostAtLevel(AtLevel100, LevelForCosts(AbilitySystem, GetAbilityLevel()));
 }
 
 const FGameplayTagContainer& UCataclysmGameplayAbility::SkillTagsForStats() const
@@ -270,7 +295,10 @@ const FGameplayTagContainer& UCataclysmGameplayAbility::SkillTagsForStats() cons
 float UCataclysmGameplayAbility::ManaCostFor(
 	const UAbilitySystemComponent* AbilitySystem, bool bForAUse) const
 {
-	const float Base = GetManaCost();
+	// AT THE LEVEL OF THE CHARACTER ASKED ABOUT, which is `AbilitySystem`'s
+	// holder, so a skill bar asking from a default object gets the same answer
+	// as the ability charging the cost. Issue #2749.
+	const float Base = ManaCostAtTheHoldersLevel(AbilitySystem);
 	const UCataclysmAbilitySystemComponent* Cataclysm =
 		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
 
@@ -419,8 +447,9 @@ float UCataclysmGameplayAbility::GetManaOnHit() const
 	// differ in -- it comes from the weapon, not from the skill matrix. One
 	// would be a knob nothing could turn.
 	EnsureSlotNumbersLoaded();
+	// AT THE CHARACTER'S LEVEL, as the cost is, since issue #2749.
 	return UCataclysmSkillSlots::ManaOnHitAtLevel(SlotManaOnHitAtLevel100,
-												  GetAbilityLevel());
+												  LevelForCosts(HoldersAbilitySystem(), GetAbilityLevel()));
 }
 
 FGameplayAttribute UCataclysmGameplayAbility::CostPool(
