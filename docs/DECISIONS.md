@@ -26,12 +26,32 @@ the same day, a to i below.
 
 ### SAID FIRST
 
-- **NOT YET COMPILED OR RUN IN THE ENGINE.** Written without compiling, as the coordinating session's approval said.
+- **COMPILED THREE WAYS, AND RUN IN WINDOW forge-w2 WITH EVERY REGISTERED FIGURE MET.** Written without compiling, as
+  the coordinating session's approval said; compiled and run on 2026-11-19, below. Window forge-w1 ran first and
+  stopped before any test, on a fault in this session's window script (the third point here).
 - **THE FIRST COMPILE FAILED, AND ONE LOCAL WAS RENAMED.** The three compiles started at `063706600` on 2026-11-19
   stopped in the first, the branch as committed: `CataclysmInventoryComponent.cpp(240,24): error C4458: declaration
   of 'Held' hides class member`. `UCataclysmInventoryComponent::ReplaceItemAt`, new here, named its local `Held`,
   which is also the member holding the bag slot under the cursor, and C4458 is an error in this project. The local
-  is now `Current`. The second and third compiles did not run.
+  is now `Current`. The second and third compiles did not run. **They were run again at `2585f2d43` and all three
+  succeeded**: (1) the branch as committed, "Build: Succeeded - 5 actions, 1 file compiled: Module.Cataclysm.12.cpp",
+  because the failed attempt had compiled the other 59 files and failed only on that unity file, which holds
+  `CataclysmInventoryComponent.cpp`, so every unity file of the branch compiled, across the two attempts and not in
+  one build; (2) each changed file alone, "Build: Succeeded - 26 actions, 23 files compiled", the build tool's
+  "[Adaptive Build] Excluded from Cataclysm unity file" line naming the 16 changed `.cpp` files; (3) the unity files
+  again, "Build: Succeeded - 10 actions, 7 files compiled". No compiler warning or error from this project's code in
+  any of the three.
+- **WINDOW forge-w1 STOPPED AT THE ASSET STEP, ON THE WINDOW SCRIPT'S FAULT; THE ASSET WAS COMMITTED BY HAND FROM ITS
+  RUN, AND forge-w2 SKIPPED THE STEP.** At `2585f2d43`, under the lock, `tools/run_editor_python.py
+  tools/generate_interface_assets.py` exited 0 and did what is registered below. Its own log,
+  `game/Saved/Logs/run_editor_python.log`, says "satisfies 7 BindWidget properties: ActionBox, CloseButton,
+  DetailLabel, MessageLabel, PieceBox, StonesLabel, TitleLabel" and "created /Game/Interface/WBP_Forge"; every other
+  screen "already exists; left alone"; `WBP_Forge.uasset` (41,218 bytes) was the only file the run added. The window
+  script looked for those two lines in the wrapper's output, which says only "Read ... run_editor_python.log for what
+  it did", found neither, and stopped, releasing the lock. The file was committed alone by hand from that run as
+  `cd93633d2`, the commit message quoting both lines, with the coordinating session's agreement; forge-w2 ran at
+  `cd93633d2` and skipped the asset step after checking the file is tracked. The script now reads the generator's own
+  log.
 - **REBASED ONTO `1bf6611c5`, WHICH HOLDS TRIGGER 15, BEFORE ITS WINDOW.** `ForgeCrafted` is 16 as ruled, because
   issue #2763 took 15 for `CharacterBuildChanged` and merged first. On a development without 15,
   `Cataclysm.SaveTriggers.EveryTriggerIsInTheListThisFileAnswersFor` fails: it walks the trigger numbers from 0 to the
@@ -149,6 +169,66 @@ behind". This branch adds **thirteen** tests by name and removes none: the eight
 | F4 | In `UCataclysmForgeCraft::Upgrade`, `if (bCrosses && !bConfirmedPastThreshold)` becomes `if (bCrosses && bConfirmedPastThreshold && !bConfirmedPastThreshold)`: never asks | `Cataclysm.Forge.` | 8 performed, 7 succeeded, 1 failed: `AWornUpgradeThatWouldCrossTheThresholdAsksAndMarksOnlyWhenConfirmed` |
 | F5 | In `UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame`, `ForgeCrafted` is taken out of the list | `Cataclysm.Forge.` | 8 performed, 7 succeeded, 1 failed: `AnUpgradeInAFrameAlreadyWrittenStillWritesItsDays` ("holds the day the upgrade's day reached") |
 | F6 | In `UCataclysmForgeWidget::HandleActionClicked`, `if (!bUpgradeAsked)` becomes `if (!bUpgradeAsked && bUpgradeAsked)`: one press upgrades | `Cataclysm.ForgeScreen.` | 4 performed, 3 succeeded, 1 failed: `AnUpgradeTakesTwoPressesAndAnyOtherPressCancels` |
+
+### Measured in window forge-w2
+
+At `cd93633d2`, 2026-11-19, lock forge-w2, started through a launcher that gives the runner no console window. The
+build compiled nothing ("target already up to date"): the C++ is `2585f2d43`'s, compiled three ways above.
+
+**Each group alone**, every count as registered, every test succeeding:
+
+| Group | Registered | Performed, succeeded, failed |
+|---|---|---|
+| `Cataclysm.Forge.` | 8 | 8, 8, 0 |
+| `Cataclysm.ForgeScreen.` | 4 | 4, 4, 0 |
+| `Cataclysm.PlayLoop.` | 10 | 10, 10, 0 |
+| `Cataclysm.SaveTriggers.` | 6 | 6, 6, 0 |
+| `Cataclysm.EmpireTreeScreen.` | 10 | 10, 10, 0 |
+| `Cataclysm.EmpireScreen.` | 14 | 14, 14, 0 |
+| `Cataclysm.BossOnTheMap.` | 5 | 5, 5, 0 |
+| `Cataclysm.WalkFromTheScreen.` | 5 | 5, 5, 0 |
+| `Cataclysm.CityScreen.` | 16 | 16, 16, 0 |
+| `Cataclysm.Equipment.` | 30 | 30, 30, 0 |
+| `Cataclysm.Inventory.` | 11 | 11, 11, 0 |
+
+**The whole suite**: "Tests: 4942 tests performed, 4942 succeeded, 0 failed. 47 skipped part of what they check",
+against 4942 and 47 registered; "Declared: 4942 tests in the tree at cd93633d2; 4942 performed, gap 0"; "Test saves:
+850 written and deleted, 0 left behind".
+
+**The test saves, test by test** (the coordinating session asked for any rise to be explained this way): each test's
+share is its "Test saves:" total less the one before, since the line is logged at each test's end just before that
+test's "Test Completed" line. Compared with window buildsave-w1's log at `4a55d2fa3` (850), every one of the 4929
+tests there has the same share here, and each of the 13 new tests has 0, so the total is unchanged. The counter adds
+only the slots a test noted that still exist when it ends (`FCataclysmTestSaves::DeleteWhatTheTestWrote`). One forge
+test writes slots, `AnUpgradeInAFrameAlreadyWrittenStillWritesItsDays`, and it deletes its run and character slots
+itself before it ends; the other twelve start no save writer.
+
+**What the new tests measured**, from their own lines in the engine log:
+
+- "WORN: result 0 ''; slot 17 holds +1; attack damage 57.60 to 66.24": a worn Greataxe raised to +1 adds 8.64.
+- "CARRIED: result 0 ''; cell 0 holds +1 with residue 75; 3 +1 stones left; day 0 to 1".
+- "THRESHOLD: 1950; worn 1940 before, 1965 after; asked ''; confirmed 0, marked yes, build held yes".
+- "SAME FRAME: the item's trigger started 1 write(s), the clock after it 0, the upgrade 3; last trigger 'a craft at
+  the forge'; the run is on day 1 and 'Run_...' read back day 1".
+- "TWO PRESSES: asked 'Press again to upgrade to +1: two +1 stones, residue 50 to 75, 1 day of the run.'; done
+  'Raised to +1. It cost 1 day of the run.'; in a walk 'The forge can be used in the capital, not during a walk.'"
+- "LISTED: Worn, Head: Helm +2 | Worn, Weapon 1: Greataxe +0 | Carried: Handwraps +0; Upgrade stones held: +1 x16,
+  +3 x5".
+
+**Python of record**, in the window: "7702 passed, 9 skipped in 300.35s"; the JUnit file: tests 7711, failures 0,
+errors 0, skipped 9. ruff: "All checks passed!".
+
+**The six C++ guard proofs**, each through `prove_cpp_guard`, each PROVED, each broken half exactly as registered and
+each restored half passing every test its prefix selects:
+
+| Proof | The broken half | Restored |
+|---|---|---|
+| F1 | 8 performed, 5 succeeded, 3 failed: `AnUpgradeTakesTwoStonesOfTheNextLevel25ResidueAndADayPerHundred`, `AWornUpgradeThatWouldCrossTheThresholdAsksAndMarksOnlyWhenConfirmed`, `UpgradingACarriedPieceRaisesItInItsCellTakesTheStonesAndPassesTheDays` | 8 of 8 |
+| F2 | 8 performed, 7 succeeded, 1 failed: `UpgradingACarriedPieceRaisesItInItsCellTakesTheStonesAndPassesTheDays` | 8 of 8 |
+| F3 | 12 performed, 10 succeeded, 2 failed: `UpgradingACarriedPieceRaisesItInItsCellTakesTheStonesAndPassesTheDays`, `AnUpgradeTakesTwoPressesAndAnyOtherPressCancels` | 12 of 12 |
+| F4 | 8 performed, 7 succeeded, 1 failed: `AWornUpgradeThatWouldCrossTheThresholdAsksAndMarksOnlyWhenConfirmed` | 8 of 8 |
+| F5 | 8 performed, 7 succeeded, 1 failed: `AnUpgradeInAFrameAlreadyWrittenStillWritesItsDays` | 8 of 8 |
+| F6 | 4 performed, 3 succeeded, 1 failed: `AnUpgradeTakesTwoPressesAndAnyOtherPressCancels` | 4 of 4 |
 
 ### Python, measured
 
