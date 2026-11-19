@@ -349,18 +349,22 @@ left behind". This branch adds **five** tests by name and removes none:
 
 ### Python, measured
 
-At `37b4fd627`, the code commit: "7646 passed, 9 skipped in 310.88s"; the JUnit file: tests 7655, failures 0,
-errors 0, skipped 9. ruff: "All checks passed!". The first full run, before the code was committed, failed one test,
+At `8b03a4bed`, after the rebase onto `8c019826a` and the change to `UCataclysmForge::NameOf`: "7704 passed, 9 skipped
+in 314.64s"; the JUnit file: tests 7713, failures 0, errors 0, skipped 9. ruff: "All checks passed!". Before the
+rebase, at `37b4fd627` (the code commit then; `013e0ce59` after it), it read "7646 passed, 9 skipped in 310.88s" and
+the JUnit file tests 7655. The first full run, before the code was committed, failed one test,
 `tools/tests/test_a_log_capture_in_the_tests_flushes_first.py`: the two new log captures read their lines without
 flushing the log first. Each now reads through a `Said()` that calls `GLog->Flush()`, and the second run above is
 after that.
 
-Two Python guard proofs, through `tools/prove_guard.py`'s `break_and_run` in a `git archive` copy, each PROVED:
+Two Python guard proofs, through `tools/prove_guard.py`'s `break_and_run` in a `git archive` copy of `8b03a4bed`, each
+PROVED. They were run again after the rebase: the play-loop check now reads twenty-four places, so its counts are 29
+and 30 where they were 20 and 21 before it.
 
 | Break | Named failure | Restored |
 |---|---|---|
-| H3's break, in the C++ text | `test_the_play_loop_is_logged_at_each_step.py::test_each_step_of_the_loop_says_its_line[WoreLine]` (1 failed, 20 passed) | 21 passed |
-| H4's break | `...::test_each_step_of_the_loop_says_its_line[PickedUpLine]` (1 failed, 20 passed) | 21 passed |
+| H3's break, in the C++ text | `test_the_play_loop_is_logged_at_each_step.py::test_each_step_of_the_loop_says_its_line[WoreLine]` (1 failed, 29 passed) | 30 passed |
+| H4's break | `...::test_each_step_of_the_loop_says_its_line[PickedUpLine]` (1 failed, 29 passed) | 30 passed |
 
 ---
 
