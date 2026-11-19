@@ -37,8 +37,9 @@ four in the group `Cataclysm.EnemyBurn.`; three new in `CataclysmThornsOfGlassTe
   `test_datatable_assets_are_current` naming `EnemyModifiers.csv` and `StatusEffects.csv`. ruff is clean.
 - **THE OWNER'S PLAYTEST OF 2026-11-19, ON A BUILD WITHOUT THIS SLICE**: five deaths, four ended by a strike-back from a
   creature carrying Thorns of Glass and one by a Legendary Hellhound's critical hit; of 5,056 health lost, burn took
-  2,438 (48%) and strike-backs 2,361 (47%). This slice acts on the sources of at least 64% and at most 95% of it,
-  because 1,481 of the burn names no source ("The owner's playtest of 2026-11-19", below).
+  2,438 (48%) and strike-backs 2,361 (47%). This slice acts on the sources of 93% to 95% of it: the 1,481 of the
+  burn that names no source is, by elimination in the code and the log, Hellfire Aura's burn still ticking after its
+  carrier's body was removed, and no dungeon modifier burns ("The owner's playtest of 2026-11-19", below).
 - **THE REBASE ONTO THE RING RISE MERGED ONE LINE WRONG, WITHOUT A CONFLICT**: the Stalker's kept multiplier came through
   without its floor's ring, which compiles because the ring's parameter defaults to an Outpost. Fixed, with a guard in
   each suite and a third C++ proof registered ("The rebase onto the ring rise", below).
@@ -208,16 +209,47 @@ each hit was matched to the latest such line for its creature's name:
 - **Strike-backs: 2,331 of the 2,361 came from creatures carrying Thorns of Glass**; the other 30 from creatures with no
   such line (a Succubus 22, a Brute 8). Echoes of the Void, the only other modifier whose row strikes back, appears
   nowhere in the log.
-- **Burn: 884 came from creatures carrying Hellfire Aura**, 180 of it from carriers also carrying Inferno Charge, whose
-  burning path deals direct hits credited to its creature and so is not in the burn; 73 from a Brute with no such line;
-  and **1,481 names no source ("from nobody"). THE LOG DOES NOT SAY WHAT THAT 1,481 IS.** Hellfire Aura is the only
-  creature modifier whose row applies burn. One explanation fits and is NOT checked, in the code or the log: an aura's
-  burn still ticking after its carrier was killed, when the carrier no longer exists to be named. The log has no line
-  for a creature's death to test it against.
+- **Burn: 884 named a creature carrying Hellfire Aura**, 180 of it a carrier also carrying Inferno Charge, whose burning
+  path deals direct hits credited to its creature and so is not in the burn; 73 named a Herald Brute with no "drew" line
+  in the log, so which modifiers it carried is not known (it laid Unholy Sigils, so it carried some); and **1,481 named
+  no source ("from nobody")**.
 
-**SO THIS SLICE ACTS ON THE SOURCES OF AT LEAST 64% OF THE HEALTH LOST, AND AT MOST 95%; NOT A MEASURED 95%.** Thorns
-of Glass's 2,331 and Hellfire Aura's named 884 are 3,215 of 5,056. The 95% holds only if the 1,481 of unnamed burn and
-the 103 from creatures with no modifier line are those two modifiers' as well. "Acts on" is not "removes": Thorns of
+**THE 1,481 IS HELLFIRE AURA'S BURN STILL TICKING AFTER ITS CARRIER'S BODY WAS REMOVED, BY ELIMINATION**, checked in the
+code and the log on 2026-11-19 at the coordinating session's request, because a flat burn with no source would be one
+this slice does not touch:
+
+- **"Nobody" means the effect's source no longer exists.** The hit log prints it for a notice with no attacker
+  (`FCataclysmHitLog::AttackerText`); `UCataclysmCombatEvents::AttackerOf` reads the effect context's instigator, which
+  the engine holds as a `TWeakObjectPtr<AActor>` (`GameplayEffectTypes.h` line 423), so it reads empty once that actor
+  is destroyed. The one other way, converted damage (#2664), is the Masochist's bleed and is logged as bleed.
+- **No burn is laid without a source.** `UCataclysmSkillEffects::ApplyDamageOverTime` refuses one whose instigator has
+  no ability system.
+- **A dead creature's body is destroyed when its death animation ends, at most 4 seconds
+  (`UCataclysmEnemyDeath::LongestCorpseSeconds`), or on the next frame when it has none. A burn on the player lasts 4
+  seconds**, at the figure fixed when it was laid (the effect's modifier magnitude), and ticks on after its source is
+  gone.
+- **Each of the 51 runs of sourceless burn in the log lasted at most 4 seconds** (the longest 3.3), so none was laid
+  again; 878 of the 1,481 came within 4 seconds of a named burn from a Hellfire Aura carrier, and 85 more within 8.
+- **Hellfire Aura is the only creature burn in the code.** On development `UCataclysmEnemyModifiers::AuraStep` is the
+  one caller of `ApplyBurn` outside `game/Source/Cataclysm/AbilitySystem/`, and nothing outside that folder asks for
+  `BurnTag()`; the callers inside it are player skills, affixes and minions, which a creature reaches only by wearing a
+  player's build (the Corrupted Stalker, absent from this session, and the consumption double, named twice in the log).
+  Every named burn in the session came from a Hellfire Aura carrier, but for the Brute's 73 above.
+- **No dungeon modifier burns.** The sourceless burn fell in dungeon 8 (Infernal Beacons) 1,076, dungeon 4 (Hellfire)
+  327, dungeon 18 (Hellfire) 47 and dungeon 15 (Demon Prince) 32. Infernal Beacons' row raises creatures' power for
+  each beacon lit; Demon Prince's raises a creature from a corpse; Hellfire's explodes a dead creature in one direct
+  blow of its attack damage (`ACataclysmDungeonGameMode::NoteDeathForHellfire`, through `ApplyDirectDamage`), credited
+  to the floor's hazard source, which the log names ("CataclysmFloorHazardSource": 14 health in all, from every
+  hazard). Dungeon 11, with Infernal Seals, was not entered.
+- **WHAT THE ELIMINATION DOES NOT SHOW BY A LINE**: a burn whose carrier died and was removed within the second before
+  its first tick never shows a name, so the 518 with no named aura burn in the 8 seconds before them are the aura's by
+  the rules above and not by a line naming it.
+- **UNDER THIS SLICE THOSE TICKS DEAL THE AURA'S NEW FIGURE**: `AuraStep` lays the burn at `HellfireAuraBurnPerTick`,
+  9% of the carrier's weapon damage, and the effect keeps that figure after the carrier is gone.
+
+**SO THIS SLICE ACTS ON THE SOURCES OF 93% TO 95% OF THE HEALTH LOST.** Thorns of Glass's 2,331 strike-backs and
+Hellfire Aura's 884 named and 1,481 unnamed burn are 4,696 of 5,056; the 95% holds if the 103 from creatures with no
+modifier line are those two modifiers' as well. "Acts on" is not "removes": Thorns of
 Glass still strikes back, at most once per its own attack interval, and Hellfire Aura still burns, at 9% of its
 carrier's weapon damage.
 
