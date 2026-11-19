@@ -25,9 +25,13 @@ Issue [#2749](https://github.com/sdubois777/Cataclysm/issues/2749), B4 to B7, th
 
 ### SAID FIRST
 
-- **NOT YET COMPILED OR RUN IN UNREAL.** Phase 1: the Python suite passes, ruff is clean and the two Python guard
-  proofs are proved ("Phase 1's Python run" and "Guard proofs", below). The Unreal count and the two C++ proofs are
-  registered below, before the window that will test them. NO `sim/experiments.py` RUN: neither the experience curve
+- **THE FIRST WINDOW FAILED 2 OF 4,874, ON TWO CONTROLS THE LOWER TIER 1 DAMAGE TOOK UNDER AN ABSOLUTE GAP, AND THE
+  SECOND HAS NOT RUN.** Window opening-w1 ("The first window", below) passed every group alone at its registered
+  count, Python and ruff; the whole suite performed 4,874 and failed two save-and-load tests in
+  `Cataclysm.RuleDamageParts.`, whose "told apart" controls asked for a gap of more than 1.0 in raw damage between two
+  tier 1 figures a quarter of their old size. No proof ran. Neither failure was about mana. The two controls now count
+  their gap in multiples of the test's own tolerance, as ruled ("The correction after the first window", below).
+  Phase 1's Python suite passes and its two Python guard proofs are proved; all three of phase 2's compiles succeeded. NO `sim/experiments.py` RUN: neither the experience curve
   nor the damage scale reaches the campaign simulation -- `cataclysm_sim` has no experience model, and `damage_scale`
   is read only by `strength_on_floor`, which feeds `fight.py`, the fixture generator and the pack test, none of which
   the engine calls.
@@ -354,6 +358,74 @@ Run 2026-11-19 through `tools/prove_guard.py`'s `break_and_run`, in this worktre
   (level 3 and the 922,836) and `TheTotalIsSummedFromWholeLevelCosts` (the whole climb against the test's own sum). The
   grant and level-for-total tests read the port's own table and agree with it, so they pass. Restored, 11 and 11.
 
+### Phase 2's compiles
+
+`compile_s4.py` in this worktree's `.claude/windows/`, no lock, each build after two checks two minutes apart that no
+Unreal workflow run was in progress or queued, at `12bea4e03`, 2026-11-19:
+
+1. The branch as committed: "Build: Succeeded - 48 actions, 45 files compiled", 304 seconds. The one warning line is
+   the engine's `CountBits` deprecation (`MicrosoftPlatformMath.h` line 183), which comes from
+   `CataclysmAbilitySystemComponent.cpp` line 1315 (issue #2756) and was there before this branch.
+2. Each changed `.cpp` alone (`git read-tree origin/development`, `Makefile.bin` moved aside): "Build: Succeeded - 32
+   actions, 29 files compiled", 150 seconds, no warning or error line. The build tool's "[Adaptive Build] Excluded from
+   Cataclysm unity file" line names 14 files: all twelve changed `.cpp` files, and `CataclysmPlayerClassStats.cpp` and
+   `CataclysmPlayLoopLog.cpp`, which include changed headers.
+3. The unity files again: "Build: Succeeded - 17 actions, 14 files compiled", 107 seconds, no warning or error line.
+
+### The first window, opening-w1 (FAILED)
+
+Started by `gate_s4.py` at 04:00:22 once the pre-checks all passed, at `12bea4e0`; the runner took the lock and
+released it. Output in this worktree's `.claude/windows/` (`s4_run.out`; the whole suite's engine log
+`s4_suite_engine_12bea4e0.log`).
+
+- **Build**: "Build: Succeeded - target already up to date, 0 actions, nothing compiled".
+- **Each group alone**, every one at its registered count, none failed: `Cataclysm.Experience.` 11,
+  `Cataclysm.ExperienceBar.` 2, `Cataclysm.CharacterLevel.` 9, `Cataclysm.PlayLoop.` 8, `Cataclysm.EnemyScore.` 12,
+  `Cataclysm.EnemyStrength.` 6, `Cataclysm.DungeonModifierEffects.ACorruptedStalker` 9, `Cataclysm.SkillAssignment.` 16,
+  `Cataclysm.SkillBar.` 22, `Cataclysm.Skills.` 284.
+- **The whole suite: "Tests: 4874 tests performed, 4872 succeeded, 2 failed"**; "Test saves: 836 written and deleted,
+  0 left behind"; "Declared: 4874 tests in the tree at 12bea4e03; 4874 performed, gap 0"; 47 skipped halves, as
+  registered. Neither failed test's span holds a "server/discover" line, so issue #2745 was not the cause.
+  1. **`Cataclysm.RuleDamageParts.SoulsAndHungerComeBackFromALoadAtTheirFigureInEitherOrder`**: "Expected 'souls first:
+     CONTROL: that and the figure without the souls' damage, 2.90 against 2.23, are told apart' to be true", and the
+     same for "hunger first". Every equality in it held: saved and loaded 2.90, own 1.86 times the multipliers 1.200
+     times the souls.
+  2. **`Cataclysm.RuleDamageParts.SoulsUnderACleanseAndTheVoidsBossComeBackFromALoadAtTheirFigure`**: "Expected
+     'CONTROL: that and the figure without the souls' damage, 1.81 against 1.39, are told apart' to be true". Every
+     equality held, and so did the Void boss's own control, 12.47 against about 1.67.
+- **Python**: "7620 passed, 9 skipped"; the JUnit file 7,629 tests, 0 failures, 0 errors, 9 skipped. ruff: "All checks
+  passed!".
+- **No proof ran**: the runner runs them only when every group and the whole suite passed.
+
+### The correction after the first window
+
+**THE CAUSE, read from the code.** Each control asserted `FMath::Abs(Expected - Lost) > 1.0f`, a gap in raw damage.
+The two tests compare every figure at `Tolerance`, 0.01. Their creatures are tier 1 Imps the floor builds, whose own
+attack damage is now 1.86, a quarter of what it was at 0.20, so the three souls' 30% came to 0.67 and 0.42: about 67
+and 42 times the tolerance, and under 1.0.
+
+**THE RULING, the coordinating session, 2026-11-19**: "APPROVED: replace "> 1.0f" with "> 10.0f * Tolerance" in the
+two souls controls (lines 9196 and 9305) only. You have shown the threshold was in the wrong units, which is the
+condition I set. The control exists to show that the figure without the souls would fail the test's own equality
+check, so it belongs in multiples of that check's tolerance, not in raw damage. The gaps of 0.67 and 0.42 are 42 to 67
+times the tolerance. ... Leave the Void boss control and line 5512 alone." It had first asked for the set-up to change
+instead, "Do not lower the separation threshold unless you can show the threshold itself is in the wrong units, and if
+you do, say why"; the two messages crossed this session's proposal, and the second approved it on that condition.
+
+So both controls now ask for more than ten times the tolerance, 0.1 -- the old value was 1.0 -- and each says why in
+its comment and in its message. The first test's comment on its tolerance, which said its figures were "tens to
+hundreds", now says what they are.
+
+**SWEPT, as ruled**: every control in the game's tests that compares two figures by an absolute gap
+(`FMath::Abs(...) > N`) in a test file that builds creatures on a dungeon floor -- `CataclysmSaveLoadTests.cpp` and
+`CataclysmDungeonModifierEffectsTests.cpp`, the only two such files with one. Besides the two corrected:
+`CataclysmSaveLoadTests.cpp` line 5512 compares maximum health, which the damage scale does not touch; its Void boss
+control's gap is the Void's 12 flat damage times the multipliers, about 10.8, which the scale does not touch either.
+The five in `CataclysmDungeonModifierEffectsTests.cpp` are built on creatures whose damage the test sets -- 100 through
+`PlaceCreatureAtRung`, a Gatekeeper fed 1,000, and an Imp spawned by hand -- so none rests on a tier 1 figure and none
+passes narrowly because of this change. NOT SWEPT: a control written in another form, which the whole suite is what
+finds.
+
 ### What the window will run, registered before it
 
 **The Unreal count.** The base is window outpost-depth-w2's whole suite at `f1f6bf84`: 4,872 performed, 47 skipped
@@ -367,7 +439,13 @@ branch's base. This branch adds two tests by name and renames one:
 
 **The whole suite is registered at 4,872 + 2 = 4,874**, with 47 skipped halves and 0 test saves left behind.
 
-**Each group this change touches, alone**, counted by prefix in that run's engine log, ignoring case, plus the tests
+**The second window, opening-w2**, at the commit carrying the correction: `Cataclysm.RuleDamageParts.` alone at 11,
+counted in window opening-w1's whole-suite engine log (every one of them performed there, two failed); the whole suite
+at 4,874, 47 skipped halves and 0 test saves left behind, unchanged, since the correction adds and removes no test;
+Python with a JUnit file; ruff; then S1 and S2 as registered above. As ruled, it needs no separate compile: the
+correction is one test file's lines, with no include.
+
+**The first window's groups, each alone**, counted by prefix in that run's engine log, ignoring case, plus the tests
 added:
 
 | Prefix | Base | Registered | Why it runs |
