@@ -25,13 +25,17 @@ Issue [#2749](https://github.com/sdubois777/Cataclysm/issues/2749), B4 to B7, th
 
 ### SAID FIRST
 
-- **THE FIRST WINDOW FAILED 2 OF 4,874, ON TWO CONTROLS THE LOWER TIER 1 DAMAGE TOOK UNDER AN ABSOLUTE GAP, AND THE
-  SECOND HAS NOT RUN.** Window opening-w1 ("The first window", below) passed every group alone at its registered
-  count, Python and ruff; the whole suite performed 4,874 and failed two save-and-load tests in
-  `Cataclysm.RuleDamageParts.`, whose "told apart" controls asked for a gap of more than 1.0 in raw damage between two
-  tier 1 figures a quarter of their old size. No proof ran. Neither failure was about mana. The two controls now count
-  their gap in multiples of the test's own tolerance, as ruled ("The correction after the first window", below).
-  Phase 1's Python suite passes and its two Python guard proofs are proved; all three of phase 2's compiles succeeded. NO `sim/experiments.py` RUN: neither the experience curve
+- **RUN AND PASSED IN THE SECOND WINDOW**, opening-w2 at `62831fe7` ("The second window", below):
+  `Cataclysm.RuleDamageParts.` alone at its registered 11; the whole suite 4874 performed, 4874 succeeded, 47 skipped
+  halves, 0 test saves left behind; Python 7620 passed, 9 skipped; ruff clean; S1 and S2 PROVED, each on exactly the
+  assertions registered. The two Python guard proofs were proved in phase 1, and all three of phase 2's compiles
+  succeeded.
+- **THE FIRST WINDOW FAILED 2 OF 4,874, ON TWO CONTROLS THE LOWER TIER 1 DAMAGE TOOK UNDER AN ABSOLUTE GAP.** Window
+  opening-w1 ("The first window", below) passed every group alone at its registered count, Python and ruff; the whole
+  suite failed two save-and-load tests in `Cataclysm.RuleDamageParts.`, whose "told apart" controls asked for a gap of
+  more than 1.0 in raw damage between two tier 1 figures a quarter of their old size. No proof ran. Neither failure was
+  about mana, and no test anywhere failed on the higher level 20 skill cost. The two controls now count their gap in
+  multiples of the test's own tolerance, as ruled ("The correction after the first window", below). NO `sim/experiments.py` RUN: neither the experience curve
   nor the damage scale reaches the campaign simulation -- `cataclysm_sim` has no experience model, and `damage_scale`
   is read only by `strength_on_floor`, which feeds `fight.py`, the fixture generator and the pack test, none of which
   the engine calls.
@@ -425,6 +429,34 @@ The five in `CataclysmDungeonModifierEffectsTests.cpp` are built on creatures wh
 `PlaceCreatureAtRung`, a Gatekeeper fed 1,000, and an Imp spawned by hand -- so none rests on a tier 1 figure and none
 passes narrowly because of this change. NOT SWEPT: a control written in another form, which the whole suite is what
 finds.
+
+### The second window, opening-w2 (PASSED)
+
+Started by `gate_s4w2.py` at 04:35:00 once the pre-checks all passed, at `62831fe7`; the runner took the lock and
+released it. Output in this worktree's `.claude/windows/` (`s4w2_run.out`; the whole suite's engine log
+`s4w2_suite_engine_62831fe7.log`; each proof's two halves `s4w2_S1_run1.log`, `s4w2_S1_run2.log`, `s4w2_S2_run1.log`
+and `s4w2_S2_run2.log`).
+
+- **Build**: "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.43.cpp" -- the unity file holding
+  `CataclysmSaveLoadTests.cpp`.
+- **`Cataclysm.RuleDamageParts.` alone**: "11 tests performed, 11 succeeded, 0 failed", as registered.
+- **The whole suite**: "Tests: 4874 tests performed, 4874 succeeded, 0 failed. 47 skipped part of what they check";
+  "Test saves: 836 written and deleted, 0 left behind"; "Declared: 4874 tests in the tree at 62831fe7f; 4874 performed,
+  gap 0". The registered 4874, 47 and 0 matched.
+- **Python**: "7620 passed, 9 skipped"; the JUnit file 7,629 tests, 0 failures, 0 errors, 9 skipped. ruff: "All checks
+  passed!".
+- **S1, PROVED as predicted**: with the break in, "1 tests performed, 0 succeeded, 1 failed:
+  AHeldSkillCostsItsManaAtTheCharactersLevelAndALevelGainRaisesIt", on the four assertions registered -- "Expected 'at
+  level 2 it costs the level 2 figure' to be 1.304348, but it was 1.164596", "Expected 'at level 20 it costs the level
+  20 figure' to be 3.819875, but it was 1.164596", "Expected 'and the basic attack pays the level 20 mana on hit' to be
+  1.527950, but it was 0.465838" and "Expected 'which is more than the level 1 figure it paid before' to be true";
+  restored, "1 tests performed, 1 succeeded, 0 failed".
+- **S2, PROVED as predicted**: with the break in, "11 tests performed, 7 succeeded, 4 failed:
+  EveryLevelCostsItsFigureAndMoreThanTheOneBelow, TheCurveMatchesTheDesignDocument,
+  TheOpeningLevelsCostFortyTimesPathOfExilesOwnAndJoinTheCurve, TheTotalIsSummedFromWholeLevelCosts", on 17 assertions:
+  level 3's cost three times (49440 for 49400), every typed cumulative from level 3 to 100 forty over, the climb's sum
+  and "the opening takes 922,836 off the climb" (922796); restored, "11 tests performed, 11 succeeded, 0 failed".
+- Neither proof half's log holds a "server/discover" line.
 
 ### What the window will run, registered before it
 
