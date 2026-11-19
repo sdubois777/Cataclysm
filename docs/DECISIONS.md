@@ -218,13 +218,26 @@ No failure's span holds a "server/discover" line (#2745). The lock was released 
 `game/Source/Cataclysm/Tests/CataclysmBuildSaveTests.cpp`, new, 6 in the new group `Cataclysm.BuildSave.`;
 `Cataclysm.PlayLoop.TheBuildLinesSayWhatChangedAndWhatIsLeft`, new; `Cataclysm.SaveTriggers.EachRecordIsWrittenForTheReasonsThatChangeIt`,
 changed; `tools/tests/test_a_build_change_is_saved.py`, new; `tools/tests/test_the_play_loop_is_logged_at_each_step.py`
-and `tools/tests/test_when_a_save_is_written.py`, changed. Issue [#2763](https://github.com/sdubois777/Cataclysm/issues/2763). **Compiled three ways ("Compiled", below);
-no Unreal test has run yet, and no C++ guard proof (the window registered below).**
+and `tools/tests/test_when_a_save_is_written.py`, changed. Issue [#2763](https://github.com/sdubois777/Cataclysm/issues/2763). **Compiled three ways, run in window
+buildsave-w1 and proved in buildsave-w1-c2 ("The windows", below).**
 
 ### SAID FIRST
 
-- **COMPILED, NOT YET RUN IN UNREAL.** The three compiles succeeded after the rebase onto `0b7b554d1` ("Compiled",
-  below); the coordinating session gives the window. The four Python guard proofs ran and proved (below).
+- **RUN AND PASSED IN WINDOW buildsave-w1, AND BOTH C++ PROOFS PROVED** ("The windows", below): every group alone at its
+  registered count; the whole suite 4929 of 4929, 47 skipped halves, 0 test saves left behind; Python 7692 passed, 9
+  skipped; ruff clean; C1 proved there, and C2 in buildsave-w1-c2.
+- **WHAT DID NOT WORK: C2'S REGISTERED BREAK DID NOT COMPILE**, so in buildsave-w1 C2 measured nothing. It replaced only
+  the `case ECataclysmSaveTrigger::CharacterBuildChanged:` line, which left that case's `return true;` straight after
+  the previous case's, and the build stopped on "error C4702: unreachable code" (`CataclysmSaveTriggers.cpp` line 71).
+  The corrected break removes the case and its return together; the prediction did not change, and C2 proved on it in
+  buildsave-w1-c2.
+- **THE WHOLE SUITE'S TEST SAVES ROSE FROM 836 TO 850**, every one deleted, none left behind. Counted test by test
+  against the empire tree slice 4 window's whole-suite log: 12 are the six new `Cataclysm.BuildSave.` tests, each
+  writing a run slot and a character slot; 2 are
+  `Cataclysm.DungeonModifierEffects.AMasochistInRawSewageGivesANearbyEnemyADisease` and
+  `AMasochistWithNoSewageStacksSpreadsNothing`, whose set-up spends passive points in a world that saves, so each now
+  writes its character slot as well as its run slot (2 where it was 1). Each test's "Test saves:" line is logged before
+  its "Test Completed" line.
 - **WHAT THE OWNER LOST, FROM THEIR OWN FILES, READ AND NOT CHANGED.** `game/Saved/Logs/Cataclysm.log` has no line for
   a passive or attribute spend, because the game logged none, so the log alone could not say when points were spent.
   Their character record, `Character_2DC9399B44FB50F7E4370CA31C10FEAB.sav`, holds level 2, 44,683 experience,
@@ -354,6 +367,48 @@ editor. The lock was released at the end, and the tracked tree was clean at the 
 | 1. The branch | "Build: Succeeded - 67 actions, 60 files compiled", 357 s; one warning, the engine's `CountBits` deprecation in `MicrosoftPlatformMath.h`, which issue #2756 holds |
 | 2. Each changed `.cpp` alone | "Build: Succeeded - 18 actions, 15 files compiled", 72 s; "[Adaptive Build] Excluded from Cataclysm unity file": all eight -- `CataclysmPlayerCharacter.cpp`, `CataclysmSkillAssignmentWidget.cpp`, `CataclysmPlayerState.cpp`, `CataclysmPlayLoopLog.cpp`, `CataclysmSaveTriggers.cpp`, `CataclysmBuildSaveTests.cpp`, `CataclysmPlayLoopTests.cpp` and `CataclysmSaveTriggerTests.cpp`; no warning |
 | 3. The unity files | "Build: Succeeded - 10 actions, 7 files compiled", 51 s; no warning |
+
+### The windows
+
+**buildsave-w1**, 2026-11-19, 11:15 to 11:44, at `4a55d2fa` on `fix/spending-points-saves-the-character-2`, by
+`.claude/windows/run_bs.py` started through `start_detached.py` (PID 90700), under the lock `buildsave-w1`, which the
+coordinating session gave. `prechecks_bs.py` printed "PRECHECKS: ALL PASS" at 11:14:52: `development` `0b7b554d1`, its
+CI and Unreal runs successful; no run in progress or queued; the lock free; no build, editor or simulation process; no
+open pull request; 12,192 MB free; 133 LFS files, no pointer. The runner checked before every step that HEAD was the
+tested commit and the tracked tree clean, and stopped at none; it printed "tested head: 4a55d2fa; HEAD now 4a55d2fa".
+The lock was released at the end ("buildsave-w1 released the Unreal editor").
+
+- **The build**: "target already up to date, 0 actions, nothing compiled": the three compiles had built this head.
+- **Each group alone, at its registered count, all succeeding**: `Cataclysm.BuildSave.` 6, `Cataclysm.PlayLoop.` 9,
+  `Cataclysm.SaveTriggers.` 6, `Cataclysm.SkillAssignment.` 16, `Cataclysm.CharacterSheet.` 10, `Cataclysm.Attributes.`
+  21 and `Cataclysm.Passives.` 161.
+- **The whole suite**: "Tests: 4929 tests performed, 4929 succeeded, 0 failed. 47 skipped part of what they check";
+  "Test saves: 850 written and deleted, 0 left behind"; "Declared: 4929 tests in the tree at 4a55d2fa3; 4929 performed,
+  gap 0". As registered.
+- **What the new tests printed**: each change started one write after the clock wrote the run record first in the same
+  frame, two for the two resets; the slot read back 1 point in Fervour; option 2 and 1 point at The First Vow, 26 spent;
+  2 in Ferocity; 0 passive and 0 attribute points after both resets; and `Demonic_Greataxe_Ultimate` on Heavy, then no
+  choice. Putting a build back started 0 writes, and the player's choice after it 2.
+- **Python**: "7692 passed, 9 skipped in 388.46s"; the JUnit file says 7701 tests, 0 failures, 0 errors, 9 skipped.
+  **ruff**: "All checks passed!"
+- **No Claude session reached the test editor and no console was closed**: neither "server/discover" (#2745) nor
+  "ConsoleCtrl" appears in a proof's logs.
+
+**buildsave-w1-c2**, 11:46 to 11:47, proof C2 alone at the same head with the corrected break, by
+`.claude/windows/run_bs_c2.py` through `start_detached.py`, under the lock `buildsave-w1-c2`, the name the coordinating
+session gave; the head, a clean tree, the lock free, no build or editor process and 13,689 MB free were checked first,
+and the lock was released at the end.
+
+| Proof | With the break in | Restored | As registered |
+| :-- | :-- | :-- | :-- |
+| C1, buildsave-w1 | 6 performed, 5 succeeded, 1 failed: `APassivePointSpentIsWrittenToTheCharacterRecord`, on "ONE WRITE STARTED, THE CHARACTER RECORD'S ..." (1 expected, 0) and "the character record reads back from its slot" (not null expected) | 6 of 6 | Yes |
+| C2, buildsave-w1 | the build failed, "error C4702: unreachable code"; no test ran | -- | NOT PROVED: the break was wrong |
+| C2, buildsave-w1-c2: the case and its return removed | 6 performed, 0 succeeded, 6 failed, on 13 assertions: in each of the first five the write count (0 where 1 or 2) and the read-back (no slot, or `None` on the Heavy key); in the sixth the control, "CONTROL: and it starts two writes ..." (2 expected, 1) | 6 of 6 | Yes: the five start no write and find no slot, and the sixth's control counts the run record's write alone |
+
+Both proofs' source hash was the same before and after (`game` tree `008e3ef9a`), and both halves' engine logs are kept
+beside the scripts (`bs_C1_run1.log`, `bs_C2_run1.log` and their `run2`; the first C2's build output as
+`bs_C2_w1_failed_build.log`). The `Cataclysm.SaveTriggers.` half of C2's registered prediction was not measured: the
+proof runs `Cataclysm.BuildSave.` alone, as its prefix says.
 
 ---
 
