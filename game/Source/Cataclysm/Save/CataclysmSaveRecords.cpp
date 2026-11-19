@@ -320,6 +320,45 @@ namespace CataclysmCharacterSaveMigration
 	}
 
 	/**
+	 * A character written before a Solo Self-Found character could bank empire upgrade points keeps the points it held
+	 * and gets an empty tree of its own. Issue #2741 slice 1c, 2026-11-18. `PrivateEmpireUpgradePoints` became a double,
+	 * and a whole number is already a number the double reads, so it is written back unchanged -- 0 where the key is
+	 * absent -- for `Migrate_3_to_4`'s reason; and `PrivateEmpireTree` arrived with the tree, so nothing was bought.
+	 *
+	 * A KEY HOLDING THE WRONG KIND OF VALUE IS REFUSED rather than replaced, as the account record's `Migrate_3_to_4`
+	 * refuses: points that are not a number, or a tree that is not an object, would otherwise be thrown away without a
+	 * word. A tree object already there is kept.
+	 */
+	bool Migrate_8_to_9(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		double Banked = 0.0;
+		if (Record->HasField(TEXT("PrivateEmpireUpgradePoints"))
+			&& !Record->TryGetNumberField(TEXT("PrivateEmpireUpgradePoints"), Banked))
+		{
+			OutError = TEXT("PrivateEmpireUpgradePoints holds something that is not a number");
+			return false;
+		}
+		if (Record->HasField(TEXT("PrivateEmpireTree")))
+		{
+			const TSharedPtr<FJsonObject>* Held = nullptr;
+			if (!Record->TryGetObjectField(TEXT("PrivateEmpireTree"), Held) || Held == nullptr || !Held->IsValid())
+			{
+				OutError = TEXT("PrivateEmpireTree holds something that is not an object");
+				return false;
+			}
+		}
+		else
+		{
+			const TSharedRef<FJsonObject> Empty = MakeShared<FJsonObject>();
+			Empty->SetArrayField(TEXT("Nodes"), TArray<TSharedPtr<FJsonValue>>());
+			Record->SetObjectField(TEXT("PrivateEmpireTree"), Empty); // A migration's: nothing bought, written out.
+		}
+		Record->SetNumberField(TEXT("PrivateEmpireUpgradePoints"), Banked); // A migration's: the same points, written out.
+		return true;
+	}
+
+	/**
 	 * The chain, newest step last.
 	 *
 	 * The order is for a reader rather than for the machinery, which looks a
@@ -334,6 +373,7 @@ namespace CataclysmCharacterSaveMigration
 		{ 5, TEXT("Migrate_5_to_6"), &Migrate_5_to_6 },
 		{ 6, TEXT("Migrate_6_to_7"), &Migrate_6_to_7 },
 		{ 7, TEXT("Migrate_7_to_8"), &Migrate_7_to_8 },
+		{ 8, TEXT("Migrate_8_to_9"), &Migrate_8_to_9 },
 	};
 }
 

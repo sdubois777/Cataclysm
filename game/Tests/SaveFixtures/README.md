@@ -617,6 +617,32 @@ followed, ruled 2026-11-01:
   that read it as the committed account file reads `Account_v4.json`, and every
   test that runs an older account file through the whole chain adds the empty
   tree through `CataclysmSaveFixtures::AddTheAccountsVersion4Defaults`.
+- **The character record went to version 9 on 2026-11-18**, for a Solo Self-Found
+  character's own empire upgrade points and tree (issue #2741 slice 1c): the owner
+  reversed the coordinating session's C8 that day, so such a character banks a
+  defeat's award and spends it in a tree of its own. `PrivateEmpireUpgradePoints`,
+  which nothing had written, was a whole number and is a double, as the account's
+  bank became at its version 2; and `PrivateEmpireTree`, after it, holds what the
+  character's own tree has bought, in the account record's shape. `Migrate_8_to_9`
+  writes the points back as the same number (0 where the key is absent) and an
+  empty tree, keeps a tree object already there, and refuses points that are not a
+  number or a tree that is not an object. `Character_v9.json` is
+  `Character_v8.json` at version 9 with `"PrivateEmpireUpgradePoints": 12.75` in
+  place of 0 and a `PrivateEmpireTree` holding Structural Integrity
+  (`basic_0000000w`) at 3, and nothing else changed. **12.75 and not 0, and a node
+  and not an empty tree**, because 0 and empty are the defaults; 12.75 is exact in
+  binary, and a fraction shows the double is read. **As at version 8, the character
+  in the file is not Solo Self-Found**, so these are values play does not give it
+  -- every other character keeps 0 and an empty tree -- kept so that the file
+  differs from version 8 in these two fields only;
+  `Cataclysm.SaveRecords.TheCommittedCharacterFileReadsIntoTheValuesItStates`,
+  which until then asserted no private points, now reads both. `Character_v8.json`
+  is now a migration input, not edited again;
+  `Cataclysm.EmpireTree.ACharacterFromBeforeItsOwnTreeMigratesKeepingItsPoints`
+  runs it through the step and checks every other field is kept, every test that
+  read it as the committed character file reads `Character_v9.json`, and every
+  test that runs an older character file through the whole chain adds what the
+  step writes through `CataclysmSaveFixtures::AddTheCharactersVersion9Defaults`.
 - **A slip, recorded rather than undone, as `LastWrittenUtc` was.**
   `Run_v1.json` was edited thirteen times after saves could load
   (`78ad0fa81`, 2026-10-30), each time adding fields for #753's dungeon load
@@ -642,6 +668,7 @@ followed, ruled 2026-11-01:
 | `Character_v6.json` | The same character at version 6: version 5's contents, plus the build its corrupted double wears |
 | `Character_v7.json` | The same character at version 7: version 6's contents, plus its Cataclysm order seed, 975318642 |
 | `Character_v8.json` | The same character at version 8: version 7's contents, plus its own gold, 4321 |
+| `Character_v9.json` | The same character at version 9: version 8's contents, with its own empire upgrade points 12.75, a fraction, and its own tree, Structural Integrity at 3 |
 | `Run_v1.json` | A run record at version 1, on floor 6 of a dungeon, with a boss at part health and a common creature beside it |
 | `Run_v2.json` | The same run at version 2: version 1's contents, plus the corrupted double's hunt, standing |
 | `Run_v3.json` | The same run at version 3: version 2's contents, plus what the player's last death cost |
@@ -660,8 +687,8 @@ something.
 
 `UCataclysmSaveExampleRecord` exists only for these, because all three real
 records were at version 1 when it was written and version 1 is the first, so
-none of them had a migration to run. The character record has had seven since
-(version 8 since 2026-11-18), the run record six (version 7 since
+none of them had a migration to run. The character record has had eight since
+(version 9 since 2026-11-18), the run record six (version 7 since
 2026-11-18), and the account record three (version 4 since 2026-11-18). Its
 header says more.
 

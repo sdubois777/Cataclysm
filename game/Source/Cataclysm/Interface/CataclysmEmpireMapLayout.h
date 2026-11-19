@@ -267,11 +267,10 @@ public:
 
 	/**
 	 * What the empire screen's status line says about the bank, for the character playing in a world: `EmpirePointsLine`
-	 * of its partition's bank (`UCataclysmGameInstance::AccountFor`) and the run's last award.
-	 *
-	 * "Solo Self-Found: empire points are not banked yet" for a Solo Self-Found character, whose points belong in its
-	 * own character record, which this slice does not write. Empty with no game instance of this project's, no
-	 * character playing, or an account record that would not read.
+	 * of the bank `UCataclysmGameInstance::EmpireTreeHeldBy` names -- its partition's, or since issue #2741 slice 1c a
+	 * Solo Self-Found character's own -- and the run's last award. It said "Solo Self-Found: empire points are not
+	 * banked yet" for such a character until then. Empty with no character playing, or, for a character that is not
+	 * Solo Self-Found, no game instance of this project's or an account record that would not read.
 	 *
 	 * NOT CONST ON THE GAME INSTANCE: the first ask reads the bank from its slot and holds it from then on.
 	 */

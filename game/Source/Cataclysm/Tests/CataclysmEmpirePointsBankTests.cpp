@@ -530,8 +530,13 @@ bool FCataclysmEmpirePointsBankDeathTest::RunTest(const FString&)
 }
 
 /**
- * A Solo Self-Found character has no account record, and this slice does not bank into its own character record: the
- * defeat banks nothing anywhere, and the screen says so. Prints "SOLO".
+ * A Solo Self-Found character has no account record, and its defeat banks into its own bank instead, on its player
+ * state, which its character record saves: no account record is held, the character's own bank holds the award, and
+ * the screen's line is that bank's. Prints "SOLO".
+ *
+ * UNTIL ISSUE #2741 SLICE 1C (2026-11-18) the defeat banked nothing anywhere and the line read "Solo Self-Found: empire
+ * points are not banked yet"; the owner reversed the coordinating session's C8 that day. The test's name, that nothing
+ * is banked in any account, is still true.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpirePointsBankSoloTest,
 	"Cataclysm.EmpirePoints.ASoloSelfFoundDefeatBanksNothingInAnyAccount",
@@ -561,15 +566,17 @@ bool FCataclysmEmpirePointsBankSoloTest::RunTest(const FString&)
 	const bool bCleared = Scene.Mode->ClearEmpireDungeon();
 	const FString Line = UCataclysmEmpireMapLayout::EmpirePointsLineIn(Scene.World, Scene.Run);
 
-	AddInfo(FString::Printf(TEXT("SOLO: cleared %s, awarded %g, account held %s; the line '%s'"),
+	AddInfo(FString::Printf(TEXT("SOLO: cleared %s, awarded %g, account held %s, its own bank %g; the line '%s'"),
 							bCleared ? TEXT("yes") : TEXT("no"), Scene.Run->LastEmpirePointsAwarded,
-							Scene.Instance->HeldAccount != nullptr ? TEXT("yes") : TEXT("no"), *Line));
+							Scene.Instance->HeldAccount != nullptr ? TEXT("yes") : TEXT("no"),
+							Scene.State->GetOwnEmpireUpgradePoints(), *Line));
 	TestTrue(TEXT("CONTROL: the dungeon was cleared"), bCleared);
 	TestTrue(TEXT("CONTROL: and the run measured its award"), Scene.Run->LastEmpirePointsAwarded == 1.0);
 	TestTrue(TEXT("no account record is held for a Solo Self-Found character"),
 			 Scene.Instance->HeldAccount == nullptr);
-	TestEqual(TEXT("and the screen says its points are not banked"), Line,
-			  FString(TEXT("Solo Self-Found: empire points are not banked yet")));
+	TestTrue(TEXT("its own bank holds the award"), Scene.State->GetOwnEmpireUpgradePoints() == 1.0);
+	TestEqual(TEXT("and the screen's line is that bank's"), Line,
+			  UCataclysmEmpireMapLayout::EmpirePointsLine(1.0, Scene.Run->LastEmpirePointsAwarded));
 	return true;
 }
 

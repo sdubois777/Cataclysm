@@ -413,6 +413,32 @@ public:
 	void SetOwnGold(int64 Gold) { OwnGold = FMath::Max<int64>(0, Gold); }
 
 	/**
+	 * A Solo Self-Found character's own empire upgrade points, banked and not yet spent, and what its own empire upgrade
+	 * tree has bought, which its character record holds (version 9). Issue #2741 slice 1c.
+	 *
+	 * ONLY A SOLO SELF-FOUND CHARACTER'S. The owner ruled on 2026-11-18 that such a character banks and spends its own
+	 * ("Include them"), reversing the coordinating session's C8; every other character's are its lethality mode's, in
+	 * the account record, and these stay 0 and empty for them. `UCataclysmGameInstance::EmpireTreeHeldBy` is the one
+	 * place that decides which a character reads and spends, so nothing else should read these directly.
+	 */
+	double GetOwnEmpireUpgradePoints() const { return OwnEmpireUpgradePoints; }
+	const FCataclysmPassiveAllocation& GetOwnEmpireTree() const { return OwnEmpireTree; }
+
+	/**
+	 * The two fields themselves, for `UCataclysmGameInstance::EmpireTreeHeldBy` to hand out, which the buying rules
+	 * change in place as they change the account record's.
+	 */
+	double& EditOwnEmpireUpgradePoints() { return OwnEmpireUpgradePoints; }
+	FCataclysmPassiveAllocation& EditOwnEmpireTree() { return OwnEmpireTree; }
+
+	/** Set both, as a load does. A negative bank, which nothing produces, is held at 0. */
+	void SetOwnEmpireTree(double Banked, const FCataclysmPassiveAllocation& Tree)
+	{
+		OwnEmpireUpgradePoints = FMath::Max(0.0, Banked);
+		OwnEmpireTree = Tree;
+	}
+
+	/**
 	 * Take the mark off, and the build captured with it.
 	 *
 	 * IN PLAY, KILLING THE DOUBLE IS WHAT CALLS THIS (O1): `ACataclysmDungeonGameMode`'s note of the double's death,
@@ -907,6 +933,14 @@ protected:
 	/** See `GetOwnGold`. Issue #2742. */
 	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")
 	int64 OwnGold = 0;
+
+	/** See `GetOwnEmpireUpgradePoints`. Issue #2741 slice 1c. */
+	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")
+	double OwnEmpireUpgradePoints = 0.0;
+
+	/** See `GetOwnEmpireTree`. Issue #2741 slice 1c. */
+	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")
+	FCataclysmPassiveAllocation OwnEmpireTree;
 
 	/** See `ConsumptionBuild`. Issue #2688. */
 	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")

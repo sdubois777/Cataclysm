@@ -219,25 +219,16 @@ FString UCataclysmEmpireMapLayout::EmpirePointsLine(double Banked, double LastAw
 
 FString UCataclysmEmpireMapLayout::EmpirePointsLineIn(const UObject* WorldContext, const UCataclysmEmpireRun* Run)
 {
-	UCataclysmGameInstance* Instance = UCataclysmGameInstance::In(WorldContext);
-	FCataclysmCharacterPartition Partition;
-	if (Instance == nullptr || !UCataclysmGameInstance::PlayingPartition(WorldContext, Partition))
+	// THE BANK `UCataclysmGameInstance::EmpireTreeHeldBy` NAMES: the partition's, or a Solo Self-Found character's own
+	// since issue #2741 slice 1c. Until then a Solo Self-Found character's line read "Solo Self-Found: empire points are
+	// not banked yet".
+	FCataclysmHeldEmpireTree Held;
+	if (!UCataclysmGameInstance::EmpireTreeHeldBy(WorldContext, Held))
 	{
 		return FString();
 	}
 
-	if (Partition.bSoloSelfFound)
-	{
-		return TEXT("Solo Self-Found: empire points are not banked yet");
-	}
-
-	const UCataclysmAccountSave* Account = Instance->AccountFor(Partition);
-	if (Account == nullptr)
-	{
-		return FString();
-	}
-
-	return EmpirePointsLine(Account->EmpireUpgradePoints, Run != nullptr ? Run->LastEmpirePointsAwarded : 0.0);
+	return EmpirePointsLine(*Held.Bank, Run != nullptr ? Run->LastEmpirePointsAwarded : 0.0);
 }
 
 FString UCataclysmEmpireMapLayout::GoldLine(int64 Held)

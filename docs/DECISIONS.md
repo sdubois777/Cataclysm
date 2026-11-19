@@ -2,6 +2,281 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-18 — A Solo Self-Found character banks a defeat's empire upgrade points into its own bank and spends them in a tree of its own, both saved on its character record at version 9 (#2741, slice 1c)
+
+**Affects:** `UCataclysmCharacterSave` (`PrivateEmpireUpgradePoints` from `int32` to `double`; `PrivateEmpireTree`, new;
+`SchemaVersionNow` 8 to 9), `game/Source/Cataclysm/Save/CataclysmSaveRecords.h`; `CataclysmCharacterSaveMigration::
+Migrate_8_to_9`, new, `CataclysmSaveRecords.cpp`; `ACataclysmPlayerState`'s own bank and tree (`GetOwnEmpireUpgradePoints`,
+`GetOwnEmpireTree`, `EditOwn...`, `SetOwnEmpireTree`, new), `CataclysmPlayerState.h`; the save gather and the load
+(`CataclysmSaveGather.cpp`, `CataclysmSaveApply.cpp`); `FCataclysmHeldEmpireTree::bTheCharactersOwn`,
+`UCataclysmGameInstance::EmpireTreeHeldBy`'s Solo Self-Found branch, `BankEmpirePointsFor` and
+`NoteTheEmpireTreeChanged`, new, `CataclysmGameInstance.h`, `.cpp`; `ACataclysmDungeonGameMode::
+BankTheDefeatsEmpirePoints`; `UCataclysmEmpireMapLayout::EmpirePointsLineIn`; `ECataclysmSaveTrigger::
+OwnEmpireTreeChanged`, new, with its name, its place in `Every` and in `WritesTheCharacterRecord`
+(`CataclysmSaveTriggers.h`, `.cpp`); `game/Tests/SaveFixtures/Character_v9.json`, new, and the fixtures README;
+`game/README.md`. Tests: `game/Source/Cataclysm/Tests/CataclysmEmpireTreeOwnTests.cpp`, new, four in the group
+`Cataclysm.EmpireTree.`; two changed (below); `CataclysmSaveFixtures::AddTheCharactersVersion9Defaults`, new; the
+version 9 sweep (below); `tools/tests/test_empire_tree_on_the_account_record.py`. Issue
+[#2741](https://github.com/sdubois777/Cataclysm/issues/2741), slice 1c of seven.
+
+### SAID FIRST
+
+- **COMPILED, RUN AND PROVED, IN THE SECOND OF TWO WINDOWS (tree-1c-w2).** At `2e2bb7e44` on development `6e655ffb2`:
+  the nine groups alone each at their registered count, all succeeding; the whole Unreal suite performed the registered
+  4852, all succeeding, with 47 skipped halves and no test save left behind; Python and ruff passed; the four C++ guard
+  proofs each proved, failing exactly the registered tests and assertions, and each restored half passed 24 of 24.
+- **THE FIRST WINDOW (tree-1c-w1) STOPPED ON A FAULT OF THIS SLICE**: two tests stated the committed character file's
+  version as the number 8, and the version 9 sweep had searched for the version constant and the old file's name, not
+  for a number written out. Both say 9 now; "The windows" below has the failure, the sweep after it and the fix.
+- **THE OWNER REVERSED C8 ON 2026-11-18.** The coordinating session's C8 had left a Solo Self-Found character out of
+  the empire upgrade tree; slice 1a's entry recorded it, and its judgement that the screen would say the tree was not
+  available yet. The owner chose "Include them": such a character banks the empire upgrade points its defeats award and
+  spends them in a tree of its own, which shares nothing with any other character -- the design's Solo Self-Found
+  rule, it "shares a tree with no other character at all" (`docs/Save_System_Design.md` section 2 already lists "its
+  own private empire upgrade points and tree allocation" on such a character's record). The coordinating session
+  withdrew the screen judgement and asked for this slice, at character record version 9 (gold took 8).
+- **NOTHING IN PLAY OFFERS THE TREE YET**, to any character: slice 2 builds the screen. What changes in play now is the
+  bank: a Solo Self-Found character's defeat banks its award, which was logged as "not banked" until this slice, and the
+  empire map's points line shows that bank, where it read "Solo Self-Found: empire points are not banked yet".
+
+### The rulings this slice builds on
+
+- **The plan, steps 1 to 8**, approved by the coordinating session on 2026-11-18.
+- **Q1, the trigger:** a new trigger, `OwnEmpireTreeChanged`, raised by a Solo Self-Found character's banked award,
+  point bought and option chosen; a Solo Self-Found respec raises it and then `EmpireTreeRespecced`. Numbered 14: gold's slice 2 took 13 for
+  `CityUpgradeBought` and merged first. **With one check:** whether the
+  save writer skips a trigger's character-record write when the once-a-frame rule skips its run-record write. **It does
+  not** (judgement 2), so `OwnEmpireTreeChanged` is not in `WritesEvenIfTheRunWasWrittenThisFrame`.
+- **Q2, the committed file's values: follow gold.** `Character_v9.json` holds 12.75 points and Structural Integrity at 3
+  on its character, which is not Solo Self-Found; the README says play does not give that character those values; the
+  one assertion that said it held no private points reads the file's values, with a comment saying why.
+
+### Judgements of this session, each with what it rests on
+
+1. **The player state holds the character's own bank and tree in play, and the character record saves them**, as gold
+   holds a Solo Self-Found character's own gold (`GetOwnGold`, gold's slice 1). The save gather writes them and the load
+   puts them back; `EmpireTreeHeldBy` hands out pointers to the player state's two fields, so buying, choosing and
+   respec work for such a character unchanged.
+2. **The character-record write is not skipped by the run record's once-a-frame rule**, so the new trigger is not in
+   the same-frame list. `UCataclysmSaveWriter::NoteTrigger` asks `WritesTheRunRecord` and `WritesTheCharacterRecord`
+   separately and calls `WriteTheRunRecord` and `WriteTheCharacterRecord` each on its own; the only frame check in the
+   writer is in `WriteTheRunRecord` (its `LastRunWriteFrame == GFrameCounter` line), which returns false for the run
+   record alone. `Cataclysm.EmpireTree.ASoloSelfFoundPointBoughtIsWrittenToItsOwnRecord` writes the run record by the
+   clock first in the same frame, buys, and reads the point back from the character record's slot, with exactly one
+   write started.
+3. **`PrivateEmpireUpgradePoints` becomes a double**, as the account's bank did at its version 2 (issue #52): an award is
+   a fraction, and the coordinating session ruled then that a fraction is kept. `Migrate_8_to_9` writes the same number
+   back, as the account's `Migrate_1_to_2` did, and refuses a value that is not a number.
+4. **One banking function for the character playing** (`BankEmpirePointsFor`), which banks into whichever bank
+   `EmpireTreeHeldBy` names, so the dungeon's award and the map's line ask no question about which record it is. An
+   award of nought is banked, as `BankEmpirePoints` banks it; only a negative amount is refused.
+5. **One helper raises the trigger for whichever record holds the tree** (`NoteTheEmpireTreeChanged`), so buying,
+   choosing, respec and the award each save through it and none of them asks which record it is.
+6. **Comments this slice made untrue were corrected**: the account lookup's and the account banking's "this slice does
+   not bank" lines, the map line's, the dungeon banking's, `WritesTheCharacterRecord`'s list, and `game/README.md`'s
+   sentence on where the tree is saved.
+
+### Tests written and changed
+
+Four new in `CataclysmEmpireTreeOwnTests.cpp`, group `Cataclysm.EmpireTree.`:
+
+| Test | What it holds |
+| :-- | :-- |
+| `ACharacterFromBeforeItsOwnTreeMigratesKeepingItsPoints` | the step keeps the points (0, and 7), writes an empty tree, keeps a tree object, refuses a word for either; `Character_v8.json` reads through with every other field kept |
+| `ASoloSelfFoundCharactersTreeSurvivesItsCharacterRecord` | the gather writes 2.5 and Structural Integrity at 3, the JSON round trip keeps them, the load puts them back; an ordinary character's record holds 0 and no tree |
+| `ASoloSelfFoundPointBoughtIsWrittenToItsOwnRecord` | with the run record already written in the frame, the buy comes off the own bank, one write starts, the character slot reads the point back, no account record is held |
+| `ASoloSelfFoundRespecIsWrittenToItsOwnRecordAndTheRun` | 13 points back to the own bank, 5 days off the run, the character slot holds the empty tree and full bank, the run slot the respec's day |
+
+Changed: `Cataclysm.EmpireTree.TheTreeHeldIsTheLethalityModesAccounts` is renamed
+`TheTreeHeldIsTheModesAccountsOrASoloSelfFoundCharactersOwn` and checks a Solo Self-Found character's own fields and a
+point bought into them; `Cataclysm.EmpirePoints.ASoloSelfFoundDefeatBanksNothingInAnyAccount` checks the award in the
+character's own bank and the map line, where it checked that nothing was banked.
+
+**The version 9 sweep:** the five tests that run an older character file through the whole chain
+(`CataclysmCataclysmDrawTests.cpp`, `CataclysmConsumptionDoubleTests.cpp`, `CataclysmConsumptionMarkTests.cpp`,
+`CataclysmGoldTests.cpp`'s version 7 file, `CataclysmSaveRecordTests.cpp`) add `AddTheCharactersVersion9Defaults`; the
+four that read the committed character file (`Cataclysm.CataclysmDraw.TheCommittedCharacterFileKeepsItsSeedThroughARoundTrip`,
+`Cataclysm.Gold.TheCommittedFilesReadIntoTheGoldTheyState`,
+`Cataclysm.SaveRecords.TheCommittedCharacterFileReadsIntoTheValuesItStates`,
+`Cataclysm.SaveRecords.TheCommittedCharacterFileKeepsItsWornGear`) read `Character_v9.json`; the record test's fixture
+list names it; `Cataclysm.SaveTriggers.EachRecordIsWrittenForTheReasonsThatChangeIt` lists the new trigger among those
+that write the character record.
+
+Python, `tools/tests/test_empire_tree_on_the_account_record.py`: `Character_v9.json` is at the character record's
+version with a fraction and a tree whose every node is a row, within its points, waiting on nothing, open; the gather,
+the load and the one read handle the character's own; buying and choosing save through `NoteTheEmpireTreeChanged`, which
+raises `AccountChanged` or `OwnEmpireTreeChanged` by `bTheCharactersOwn`, the second writing the character record.
+
+### The Python run of phase 1
+
+On `a3f12d0ca` and again after the same-frame test, on the head that carries it: "7571 passed, 9 skipped"; JUnit
+tests 7580, failures 0, errors 0, skipped 9. Lint: "All checks passed!". Two Python guard proofs, each through
+`tools/prove_guard.py`, each PROVED (one failed with the break in, all twelve passed with it out):
+
+| Proof | What was broken | The check that failed |
+| :-- | :-- | :-- |
+| Y4 | the save gather's line writing the character's own tree removed | `test_a_solo_self_found_characters_own_tree_is_gathered_restored_and_read_in_one_place` |
+| Y5 | `Character_v9.json`'s points 12 in place of 12.75 | `test_the_committed_character_file_holds_its_own_tree_at_the_records_version` |
+
+### Rebased onto gold's slice 2
+
+`90486624d`'s branch, with the trigger table's two rows (`56c7d8687`), rebased onto development `04fb305f1` (#2751,
+gold's slice 2) as `feat/empire-tree-1c-ssf-2`. **Three conflicts, all where both branches added a trigger** --
+`CataclysmSaveTriggers.h` (the enum), `CataclysmSaveTriggers.cpp` (`WritesTheCharacterRecord`, `NameOf`, `Every`) and
+`CataclysmSaveTriggerTests.cpp` (the character-record list) -- each resolved by keeping both, `CityUpgradeBought` at 13
+and `OwnEmpireTreeChanged` at 14. `python tools/check_resolved_cpp.py --changed`: "23 files read, 0 with complaints".
+After the rebase, one commit (`3379405b1`): the trigger's comment says 14; the comments on `AccountChanged` and
+`WritesTheCharacterRecord` name gold's city upgrade purchase beside the tree; and `docs/Save_System_Design.md`'s
+"The account record changing" row names the tree's point bought, option chosen and respec, and its once-a-frame
+paragraph names a respec of the tree -- which slice 1b had left out -- and says the rule skips the run record's write
+and nothing else. Both edits waited for the rebase because gold's branch rewrote those lines. `git lfs checkout`: no
+`.uasset` or `.umap` under `game/Content` is a pointer file (131 read). Python on `3379405b1`: "7588 passed, 9
+skipped in 220.76s"; JUnit tests 7597, failures 0, errors 0, skipped 9. Lint: "All checks passed!".
+
+### Rebased onto the hit log slice
+
+`3379405b1` (on `04fb305f1`) rebased onto development `6e655ffb2` (#2752, the hit log slice) as
+`feat/empire-tree-1c-ssf-3`, head `09fe1d62f`: no conflict -- the two share one file,
+`CataclysmDungeonGameMode.cpp`, in places apart -- so `python tools/check_resolved_cpp.py --changed` had no file to
+read ("read no files, so nothing was checked"). `git lfs checkout`: no `.uasset` or `.umap` under `game/Content` is a
+pointer file (131 read). The four proof anchors each match once on the rebased tree.
+
+### Registered before the run
+
+**The base: 4848**, measured in the hit log slice's window hit-log-w1 at `5c5af7344` -- "Tests: 4848 tests performed,
+4848 succeeded, 0 failed. 47 skipped part of what they check"; "Test saves: 836 written and deleted, 0 left behind";
+"Declared: 4848 tests in the tree at 5c5af7344; 4848 performed, gap 0" -- and `git diff --stat 5c5af7344 6e655ffb2 --
+game/` prints nothing. **This slice adds 4 tests and removes none (one is renamed): 4852.** The 47 skipped halves stay
+47: no new test calls a skip helper. Test saves: 0 left behind.
+
+**The groups run alone**, each counted from hit-log-w1's whole-suite engine log (`h2749_suite_engine_5c5af734.log`):
+
+| Prefix | In hit-log-w1 | This slice | Registered |
+| :-- | --: | :-- | --: |
+| `Cataclysm.EmpireTree.` | 20 | +4 new, 1 renamed | 24 |
+| `Cataclysm.EmpirePoints.` | 16 | 1 changed (the Solo Self-Found award) | 16 |
+| `Cataclysm.Gold.` | 13 | 2 moved to version 9 | 13 |
+| `Cataclysm.SaveRecords.` | 17 | 4 moved to version 9 | 17 |
+| `Cataclysm.SaveTriggers.` | 6 | they walk the new trigger | 6 |
+| `Cataclysm.CataclysmDraw.` | 6 | 2 moved to version 9 | 6 |
+| `Cataclysm.ConsumptionDouble.` | 15 | 1 moved to version 9 | 15 |
+| `Cataclysm.ConsumptionMark.` | 6 | 1 moved to version 9 | 6 |
+| `Cataclysm.SaveLoad.` | 79 | none changed; it loads characters through the changed load | 79 |
+
+**The C++ guard proofs**, each through `unreal_build.prove_cpp_guard` by `.claude/windows/prove_t2741c.py`, narrowed to
+`Cataclysm.EmpireTree.` (24 performed in each run); the restored half of each must be 24 of 24:
+
+| Proof | File | What is broken | Predicted: broken half |
+| :-- | :-- | :-- | :-- |
+| G1 | `CataclysmSaveRecords.cpp` | `Migrate_8_to_9` writes no tree | 1 failed: `ACharacterFromBeforeItsOwnTreeMigratesKeepingItsPoints`, 1 assertion ("and gaining an empty tree of its own, written out") |
+| G2 | `CataclysmGameInstance.cpp` | `bTheCharactersOwn` false for a Solo Self-Found character | 3 failed: `TheTreeHeldIsTheModesAccountsOrASoloSelfFoundCharactersOwn` (1, "and says so"), `ASoloSelfFoundPointBoughtIsWrittenToItsOwnRecord` (2: no write, no record read back), `ASoloSelfFoundRespecIsWrittenToItsOwnRecordAndTheRun` (1: no record read back) |
+| G3 | `CataclysmSaveGather.cpp` | the gather writes no tree of its own | 2 failed: `ASoloSelfFoundCharactersTreeSurvivesItsCharacterRecord` (3), `ASoloSelfFoundPointBoughtIsWrittenToItsOwnRecord` (1, "and the point") |
+| G4 | `CataclysmSaveApply.cpp` | the load puts no own bank or tree back | 1 failed: `ASoloSelfFoundCharactersTreeSurvivesItsCharacterRecord`, 2 assertions (the points and the tree after the restore) |
+
+### Compiled (phase 2)
+
+Built at `09fe1d62f`, on development `6e655ffb2`, by `.claude/windows/compile_t2741c.py` (slice 1b's with its names
+changed), under the Unreal lock `tree-1c-compile`, which the coordinating session gave for these builds while the
+continuous integration runner was compiling development's head. **They did not start until the runner had finished**:
+`.claude/windows/wait_then_compile_t2741c.py` asked GitHub every 30 seconds for an Unreal run in progress or queued and
+read free memory, and started the builds after two checks in a row found none and at least 10,240 MB free -- 19:34:51
+still "in progress", free 8,288 MB; 19:35:23 and 19:35:54 none, 12,343 and 12,463 MB. No build was started into the
+runner's lock, and nothing was killed. The lock was taken at 19:35:55 and released at 19:46:23 MST ("tree-1c-compile
+released the Unreal editor"), the tracked tree clean and HEAD unchanged after.
+
+| Build | When | "Build:" line |
+| :-- | :-- | :-- |
+| 1. The branch, every file in its unity file | 19:35:55 to 19:41:24, 330 s | "Build: Succeeded - 63 actions, 56 files compiled" |
+| 2. Each changed `.cpp` alone (`git read-tree origin/development`, `Makefile.bin` moved aside, `git reset -q` after) | 19:41:25 to 19:44:21, 176 s | "Build: Succeeded - 35 actions, 32 files compiled": "[Adaptive Build] Excluded from Cataclysm unity file" names all sixteen changed `.cpp` files and `CataclysmPlayerState.cpp`, whose header this slice changed -- each compiled alone |
+| 3. The unity files again | 19:44:21 to 19:46:23, 121 s | "Build: Succeeded - 18 actions, 15 files compiled"; the build tool's log names Module.Cataclysm 11, 12, 13, 15, 17, 18, 22, 26, 31, 38, 39, 40, 41, 42 and 43 |
+
+The changed files' unity files, read out of the generated `Module.Cataclysm.*.cpp`: 38 (`CataclysmDungeonGameMode.cpp`),
+11 (`CataclysmEmpireMapLayout.cpp`), 12 (`CataclysmGameInstance.cpp`), 13 (`CataclysmPlayerState.cpp`,
+`CataclysmSaveApply.cpp`, `CataclysmSaveGather.cpp`, `CataclysmSaveRecords.cpp`, `CataclysmSaveTriggers.cpp`), 15
+(`CataclysmCataclysmDrawTests.cpp`), 17 (`CataclysmConsumptionDoubleTests.cpp`), 18 (`CataclysmConsumptionMarkTests.cpp`),
+22 (`CataclysmEmpirePointsBankTests.cpp`, `CataclysmEmpireTreeAccountTests.cpp`, `CataclysmEmpireTreeOwnTests.cpp`), 26
+(`CataclysmGoldTests.cpp`) and 31 (`CataclysmSaveRecordTests.cpp`, `CataclysmSaveTriggerTests.cpp`); all ten are in build
+3's list. No compile error. **One warning, not this branch's:** C4996, `CountBits` for 64-bit values deprecated in 5.8,
+in an engine header (`MicrosoftPlatformMath.h`), during build 1; builds 2 and 3 printed none.
+
+### The windows
+
+**The first window, tree-1c-w1, at `09fe1d62f`, STOPPED at the fourth group alone, on a fault of this slice.**
+`prechecks_t2741c.py` printed "PRECHECKS: ALL PASS" at 20:01:01 (CI and Unreal green on `6e655ffb2`, nothing in progress
+or queued, the lock free, no build or editor process, no pull request open, no simulation process, 12,392 MB free, no
+LFS pointer file). Build: "Build: Succeeded - target already up to date, 0 actions, nothing compiled". Alone:
+`Cataclysm.EmpireTree.` "24 tests performed, 24 succeeded, 0 failed", `Cataclysm.EmpirePoints.` 16 of 16,
+`Cataclysm.Gold.` 13 of 13, then `Cataclysm.SaveRecords.` "17 tests performed, 16 succeeded, 1 failed:
+TheCommittedCharacterFileReadsIntoTheValuesItStates", and the runner stopped there and released the lock; the whole
+suite, Python and the proofs did not run. The failing test's one error, from its events in the kept engine log
+(`t2741c_alone_engine_SaveRecords_09fe1d62.log`): "Expected 'it says it is version 8' to be 8, but it was 9.
+[...CataclysmSaveRecordTests.cpp(643)]". No `LogModelContextProtocol` line falls in its span.
+
+**THE SWEEP MISSED IT.** The version 9 sweep searched for the record's version constant and for the old file's name,
+and this test states the committed file's version as a number written out, 8. A search after the window for every test
+that compares a record's version with a number written out found one more on the same file:
+`Cataclysm.CataclysmDraw.TheCommittedCharacterFileKeepsItsSeedThroughARoundTrip`, "set-up: the file is version 8",
+which would have stopped the same window at the `Cataclysm.CataclysmDraw.` group. Both now say 9, with a comment
+saying when they moved. The other written-out versions that search found are the run record's 7, read from
+`Run_v7.json`, which this slice does not change.
+
+**THE SWEEP THE COORDINATING SESSION ASKED FOR, after w1**, as the gold session's for its seven: every test that
+asserts a record's version as a number written out -- "it says it is version", "the file is version", and any
+`SchemaVersion` or `SchemaVersionNow` compared with a number -- across `game/Source`, and every Python check naming a
+character file or version. It found the two above, both now 9; the run record's 7 in
+`Cataclysm.DeathCost`, `Cataclysm.EarnedBossSave`, `Cataclysm.SaveLoad` and `Cataclysm.WinningTheRun`, each reading
+`Run_v7.json`, which this slice does not change; and the example record's 2 in `CataclysmSaveMigrationTests.cpp`. No
+Python check names a character version but 9.
+
+**The two corrected test files compiled again before the second window**, under the Unreal lock `tree-1c-compile2`,
+by `.claude/windows/compile_t2741c2.py` (`compile_t2741c.py` comparing against `09fe1d62f`, so `git status` listed
+only the two files as changed). The coordinating session first asked for these builds and then, in a message that
+crossed with them, ruled that the window's own build would do for two whole-number constants; they had begun, and a
+build is not stopped part-way, so they ran to the end before the window:
+
+| Build | When | "Build:" line |
+| :-- | :-- | :-- |
+| 1. The branch | 20:08:09 to 20:08:26, 17 s | "Build: Succeeded - 5 actions, 2 files compiled: Module.Cataclysm.15.cpp, Module.Cataclysm.31.cpp" |
+| 2. The two files alone | 20:08:27 to 20:08:50, 24 s | "Build: Succeeded - 7 actions, 4 files compiled: CataclysmCataclysmDrawTests.cpp, CataclysmSaveRecordTests.cpp, Module.Cataclysm.15.cpp, Module.Cataclysm.31.cpp"; "[Adaptive Build] Excluded from Cataclysm unity file: CataclysmCataclysmDrawTests.cpp, CataclysmSaveRecordTests.cpp" |
+| 3. Their unity files again | 20:08:51 to 20:09:08, 18 s | "Build: Succeeded - 5 actions, 2 files compiled: Module.Cataclysm.15.cpp, Module.Cataclysm.31.cpp" |
+
+No warning and no error in any of the three; the lock released at 20:09 ("tree-1c-compile2 released the Unreal
+editor"), the tracked tree clean and HEAD `2e2bb7e44` after.
+
+**The second window, tree-1c-w2, at `2e2bb7e44`**, by `.claude/windows/run_t2741c.py` with the lock `tree-1c-w2`, after
+`prechecks_t2741c.py` printed "PRECHECKS: ALL PASS" at 20:09:15 (CI and Unreal green on `6e655ffb2`, nothing in progress
+or queued, the lock free, no build or editor process, no pull request open, no simulation process, 12,331 MB free, no
+LFS pointer file). The lock was taken by the runner and released at its end ("tree-1c-w2 released the Unreal editor");
+HEAD was `2e2bb7e4` from start to end, and the tracked tree clean.
+
+- **Build:** "Build: Succeeded - target already up to date, 0 actions, nothing compiled" -- the builds above had
+  compiled this head. **The coordinating session ruled that no separate three-build phase 2 was needed for two
+  whole-number constants, the window's build compiling their two unity files**; the builds above had begun under an
+  earlier ruling before that one arrived, and ran to the end.
+- **The groups alone**, each "Tests: N tests performed, N succeeded, 0 failed" at its registered N:
+  `Cataclysm.EmpireTree.` 24, `Cataclysm.EmpirePoints.` 16, `Cataclysm.Gold.` 13, `Cataclysm.SaveRecords.` 17,
+  `Cataclysm.SaveTriggers.` 6, `Cataclysm.CataclysmDraw.` 6, `Cataclysm.ConsumptionDouble.` 15,
+  `Cataclysm.ConsumptionMark.` 6, `Cataclysm.SaveLoad.` 79.
+- **The whole Unreal suite:** "Tests: 4852 tests performed, 4852 succeeded, 0 failed. 47 skipped part of what they
+  check"; "Test saves: 840 written and deleted, 0 left behind"; "Declared: 4852 tests in the tree at 2e2bb7e44; 4852
+  performed, gap 0; every declared test was reported by the run". Registered 4852, 47 and 0: **match**. Engine log
+  kept as `t2741c_suite_engine_2e2bb7e4.log`. No `LogModelContextProtocol` error or `server/discover` line in it, in the
+  groups' logs or in any proof's.
+- **Python, on the tested head:** "7588 passed, 9 skipped in 193.58s"; JUnit tests 7597, failures 0, errors 0, skipped
+  9. Lint: "All checks passed!".
+- **The four proofs, all PROVED**, each the registered break narrowed to `Cataclysm.EmpireTree.`, both halves' engine
+  logs kept as `t2741c_<P>_run1.log` (broken) and `run2.log` (restored), the source hash the same before and after each.
+  The failed assertions, read out of each broken half's "Error: Expected" lines, are the registered ones:
+
+  | Proof | Broken half | Failed assertions | Restored half |
+  | :-- | :-- | :-- | :-- |
+  | G1 | 24 performed, 23 succeeded, 1 failed: `ACharacterFromBeforeItsOwnTreeMigratesKeepingItsPoints` | 1: "and gaining an empty tree of its own, written out" | 24 of 24 |
+  | G2 | 3 failed: `TheTreeHeldIsTheModesAccountsOrASoloSelfFoundCharactersOwn`, `ASoloSelfFoundPointBoughtIsWrittenToItsOwnRecord`, `ASoloSelfFoundRespecIsWrittenToItsOwnRecordAndTheRun` | 4: "and says so"; one write started was 0, and the character record read back nothing; the respec's character record read back nothing | 24 of 24 |
+  | G3 | 2 failed: `ASoloSelfFoundCharactersTreeSurvivesItsCharacterRecord`, `ASoloSelfFoundPointBoughtIsWrittenToItsOwnRecord` | 3 (the gathered tree 0, not read back, not restored) and 1 ("and the point", 0) | 24 of 24 |
+  | G4 | 1 failed: `ASoloSelfFoundCharactersTreeSurvivesItsCharacterRecord` | 2: the 2.5 points and the tree not put back | 24 of 24 |
+
+---
+
 ## 2026-11-18 — Every blow the player takes is logged, the player's death line names the blow that killed, and the free-play floor a dungeon level builds on load is said to be thrown away (#2749 slice 1)
 
 **Affects:** `FCataclysmHitLog` (`game/Source/Cataclysm/Character/CataclysmHitLog.h`, `.cpp`, new);

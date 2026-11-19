@@ -69,10 +69,14 @@ enum class ECataclysmSaveTrigger : uint8
 	 * writer writes that record. This said nothing raised it until then.
 	 *
 	 * SO DO GOLD PICKED UP INTO THE ACCOUNT (`UCataclysmDropPickup::BankGold`,
-	 * issue #2742), and A POINT BOUGHT, AN OPTION CHOSEN OR A RESPEC in the
-	 * empire upgrade tree (`UCataclysmGameInstance::BuyEmpireTreePoint`,
-	 * `ChooseEmpireTreeOption` and `RespecEmpireTree`, issue #2741 slice 1b; a
-	 * respec raises `EmpireTreeRespecced` as well, for the run record).
+	 * issue #2742), A CITY UPGRADE PAID FOR FROM THE ACCOUNT
+	 * (`UCataclysmCityUpgradePurchase::Buy`, issue #2742 slice 2, beside
+	 * `CityUpgradeBought`), and A POINT BOUGHT, AN OPTION CHOSEN OR A RESPEC in a
+	 * lethality mode's empire upgrade tree (`UCataclysmGameInstance::
+	 * NoteTheEmpireTreeChanged`, issue #2741 slices 1b and 1c; a respec raises
+	 * `EmpireTreeRespecced` as well, for the run record). A Solo Self-Found
+	 * character's own tree raises `OwnEmpireTreeChanged` instead: it has no
+	 * account record.
 	 * This said "Nothing else raises it yet -- there is no stash" until slice 1b;
 	 * gold had already made that untrue. Nothing fills the stash yet.
 	 */
@@ -166,6 +170,27 @@ enum class ECataclysmSaveTrigger : uint8
 	 * coordinating session's ruling of 2026-11-18. Nothing writes these numbers to disk.
 	 */
 	CityUpgradeBought = 13,
+
+	/**
+	 * A Solo Self-Found character's own empire upgrade points or tree changed: a defeat's award banked, a point bought,
+	 * an option chosen, or a respec (`UCataclysmGameInstance::NoteTheEmpireTreeChanged`). Issue #2741 slice 1c.
+	 *
+	 * WHY IT EXISTS. Such a character's bank and tree are its own, in its character record (version 9), and
+	 * `AccountChanged` writes only the account record, which it has none of. OF THE CHARACTER RECORD, and of the run
+	 * record as every trigger but `AccountChanged` is; an ordinary asynchronous write. A respec raises
+	 * `EmpireTreeRespecced` after it, for the run record's days.
+	 *
+	 * NOT IN `UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame`, AND IT NEED NOT BE. When an earlier write
+	 * in the frame wrote the run record, the once-a-frame rule skips this trigger's run-record write and nothing else:
+	 * `UCataclysmSaveWriter::NoteTrigger` asks for each record on its own, and only `WriteTheRunRecord` checks the frame.
+	 * The character record holds what changed, and it is written. `Cataclysm.EmpireTree.
+	 * ASoloSelfFoundPointBoughtIsWrittenToItsOwnRecord` writes the run record first in the same frame and reads the point
+	 * back from the character record's slot. Asked by the coordinating session on 2026-11-18.
+	 *
+	 * FOURTEEN, NOT THIRTEEN: gold's slice 2 (#2742) took 13 for `CityUpgradeBought` and merged first, the coordinating
+	 * session's ruling of 2026-11-18. Nothing writes these numbers to disk.
+	 */
+	OwnEmpireTreeChanged = 14,
 };
 
 /**
@@ -223,8 +248,10 @@ public:
 	/**
 	 * Whether this trigger writes the character record.
 	 *
-	 * THE INVENTORY AND DEATH, AND NOTHING ELSE -- and since then a new character (`CharacterCreated`, 2026-11-01) and
-	 * a won run (`RunWon`, issue #1324 slice 6e, 2026-11-03). What a character is carrying
+	 * THE INVENTORY AND DEATH, AND NOTHING ELSE -- and since then a new character (`CharacterCreated`, 2026-11-01),
+	 * a won run (`RunWon`, issue #1324 slice 6e, 2026-11-03), the hand-over before a level change (`LeavingTheLevel`,
+	 * issue #2733 slice 3), a city upgrade bought (`CityUpgradeBought`, issue #2742 slice 2) and a Solo Self-Found
+	 * character's own empire points or tree (`OwnEmpireTreeChanged`, issue #2741 slice 1c). What a character is carrying
 	 * lives in its own record rather than in the run, so an item picked up has
 	 * to reach that record; and a death has to be written whole, which means the
 	 * character as well as the floor it fell on.

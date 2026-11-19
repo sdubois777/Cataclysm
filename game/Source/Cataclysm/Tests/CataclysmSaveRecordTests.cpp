@@ -150,7 +150,10 @@ namespace CataclysmSaveRecordTest
 			// RUN WAS AT v4 FROM 2026-11-02 AS WELL, when a run came to keep its
 			// Cataclysm boss dungeon (issue #1324 slice 6b); Run_v3.json is a
 			// migration input now.
-			// CHARACTER IS AT v8 SINCE 2026-11-18, when a Solo Self-Found character
+			// CHARACTER IS AT v9 SINCE 2026-11-18, when a Solo Self-Found character
+			// came to bank and spend its own empire upgrade points (issue #2741
+			// slice 1c); Character_v8.json is a migration input now.
+			// CHARACTER WAS AT v8 FROM 2026-11-18, when a Solo Self-Found character
 			// came to hold its own gold (issue #2742); Character_v7.json is a
 			// migration input now.
 			// CHARACTER WAS AT v7 FROM 2026-11-02, when a character came to carry its
@@ -173,7 +176,7 @@ namespace CataclysmSaveRecordTest
 			// THIS LIST IS THE CURRENT SHAPE OF EACH RECORD, and an out-of-date
 			// file here would leave the completeness check below comparing a
 			// record against a fixture that no longer describes it. Issue #50.
-			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v8.json") },
+			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v9.json") },
 			{ UCataclysmRunSave::StaticClass(),       TEXT("Run_v7.json") },
 		};
 	}
@@ -617,7 +620,7 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v8.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v9.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -630,12 +633,13 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v8.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v9.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
 
-	TestEqual(TEXT("it says it is version 8"), Read->SchemaVersion, 8);
+	// 9 SINCE `Character_v9.json` BECAME THE COMMITTED FILE (issue #2741 slice 1c); it was 8 until then.
+	TestEqual(TEXT("it says it is version 9"), Read->SchemaVersion, 9);
 	// THE SEED THE FILE STATES, NOT THE ONE ITS IDENTIFIER GIVES, so a seed re-derived on load cannot pass. #1324 6a.
 	TestEqual(TEXT("the Cataclysm order seed in the file"), Read->CataclysmOrderSeed,
 		CataclysmSaveFixtures::CommittedCharacterOrderSeed);
@@ -715,8 +719,15 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 	// ordinary character's stash lives in an account record.
 	TestEqual(TEXT("a character that is not Solo Self-Found has no private stash"),
 		Read->PrivateStash.Num(), 0);
-	TestEqual(TEXT("and no private empire upgrade points"),
-		Read->PrivateEmpireUpgradePoints, 0);
+	// ITS PRIVATE EMPIRE UPGRADE POINTS AND TREE ARE NOT ZERO, AND PLAY DOES NOT GIVE
+	// IT THEM. Version 9 (issue #2741 slice 1c) put 12.75 points and Structural
+	// Integrity at 3 in the file, so that a reader putting the defaults back is
+	// caught, as version 8 put a gold of its own there; the fixtures README says
+	// so. Until version 9 this said the character held no private points, 0.
+	TestTrue(TEXT("its private empire upgrade points, a fraction"),
+		Read->PrivateEmpireUpgradePoints == 12.75);
+	TestEqual(TEXT("and its private tree's one node"),
+		Read->PrivateEmpireTree.PointsIn(FName(TEXT("basic_0000000w"))), 3);
 
 	// THE ATTRIBUTE ALLOCATION, which the v2 fixture is the reason for. Issue
 	// #50. Read field by field rather than only as a total, because a reader
@@ -866,6 +877,7 @@ bool FCataclysmSaveCharacterV3Migrates::RunTest(const FString&)
 	Expected->SetObjectField(TEXT("ConsumptionBuild"), CataclysmSaveFixtures::EmptyPlayerBuild()); // And on to 6.
 	Expected->SetNumberField(TEXT("CataclysmOrderSeed"), CataclysmSaveFixtures::FixtureIdentifiersOrderSeed); // And 7.
 	Expected->SetNumberField(TEXT("Gold"), 0); // And 8, issue #2742: no gold of its own.
+	CataclysmSaveFixtures::AddTheCharactersVersion9Defaults(*Expected); // And 9, issue #2741 slice 1c: its own tree.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -1413,7 +1425,7 @@ bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v8.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v9.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1425,7 +1437,7 @@ bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
 		Text, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v8.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v9.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
