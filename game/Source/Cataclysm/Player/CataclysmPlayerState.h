@@ -758,17 +758,35 @@ public:
 	 * the character's pool now, a row already chosen for another key (O4). The skill moved keeps every rule of the slot
 	 * it was made for (O1). The key it leaves takes its next default, or stays empty (O4).
 	 *
+	 * NOT THE PLAYER'S ACT, AND IT SAVES NOTHING: a load calls it to put saved choices back (`FCataclysmSaveApply`).
+	 * The player's act is `ChooseSkill`, which calls this and then saves. Issue #2763.
+	 *
 	 * @return whether the choice was recorded
 	 */
 	bool AssignSkill(ECataclysmAbilitySlot Slot, FName SkillRow, FString& OutReason);
 
 	/**
 	 * "Clear the slot" (Q5): forget the choice for `Slot`, so the key returns to its default for good (O5), and fill
-	 * the keys again. Issue #837 layer 3.
+	 * the keys again. Issue #837 layer 3. Saves nothing; the player's act is `ForgetSkillChoice`.
 	 *
 	 * @return whether there was a choice to forget
 	 */
 	bool ClearSkillChoice(ECataclysmAbilitySlot Slot);
+
+	/**
+	 * The player putting a skill on a key, from the skill screen or `Cataclysm.AssignSkill`: `AssignSkill`, and when
+	 * it succeeds a PLAY LOOP line and a write of the character record (`ECataclysmSaveTrigger::CharacterBuildChanged`).
+	 * Issue #2763. Refused exactly as `AssignSkill` refuses, saying and saving nothing.
+	 */
+	bool ChooseSkill(ECataclysmAbilitySlot Slot, FName SkillRow, FString& OutReason);
+
+	/**
+	 * The player forgetting a key's choice: `ClearSkillChoice`, and when there was one to forget a PLAY LOOP line and a
+	 * write of the character record. Issue #2763.
+	 *
+	 * @return whether there was a choice to forget
+	 */
+	bool ForgetSkillChoice(ECataclysmAbilitySlot Slot);
 
 	/**
 	 * Why `SkillRow` may not be chosen for `Slot`, in one sentence, or empty when it may. Issue #837 layer 3. A

@@ -146,4 +146,51 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 	 * the points are back and the days have passed.
 	 */
 	static FString TreeRespecLine(int32 PointsBack, double Banked, int32 Days, int32 DayFrom, int32 DayTo);
+
+	// THE CHARACTER'S BUILD, issue #2763: one line for each change the player makes to it, each said where the
+	// change is made and beside the save it raises (`ECataclysmSaveTrigger::CharacterBuildChanged`). Until these the
+	// log said nothing when a point was spent, so the owner's log could not show when their lost points were spent.
+
+	/**
+	 * A passive point spent: "spent a passive point in Fervour (Masochist): 1 of 1; 1 of 2 passive points spent".
+	 * Said by `ACataclysmPlayerState::SpendPassivePoint`, after the point is in the node.
+	 */
+	static FString PassivePointLine(const FString& Node, const FString& Tree, int32 Points, int32 MaxPoints,
+									int32 Spent, int32 Available);
+
+	/**
+	 * A capstone option taken, which spends its point: "took the option Water to Blood at the capstone The First
+	 * Vow; 25 of 25 passive points spent". Said by `ACataclysmPlayerState::ChoosePassiveOption`.
+	 */
+	static FString PassiveOptionLine(const FString& Option, const FString& Capstone, int32 Spent, int32 Available);
+
+	/**
+	 * The passive tree reset: "reset the passive tree: 3 points back; 3 to spend". Said by
+	 * `ACataclysmPlayerState::ResetPassivePoints`, after the points are back.
+	 */
+	static FString PassiveResetLine(int32 PointsBack, int32 ToSpend);
+
+	/**
+	 * Attribute points spent: "spent 1 attribute point on Ferocity: 2 in it; 0 unspent". Said by
+	 * `ACataclysmPlayerState::SpendAttributePoints`.
+	 */
+	static FString AttributePointLine(int32 Count, const FString& Attribute, int32 InIt, int32 Unspent);
+
+	/**
+	 * The attribute points reset: "reset the attribute points: 2 points back; 2 unspent". Said by
+	 * `ACataclysmPlayerState::ResetAttributePoints`.
+	 */
+	static FString AttributeResetLine(int32 PointsBack, int32 Unspent);
+
+	/**
+	 * A skill put on a key: "put Molten Cleave in the Heavy slot". Said by `ACataclysmPlayerState::ChooseSkill`, which
+	 * the skill screen and `Cataclysm.AssignSkill` call; never by a load.
+	 */
+	static FString SkillChosenLine(const FString& Skill, const FString& Slot);
+
+	/**
+	 * A key's choice forgotten: "forgot the Heavy slot's skill choice: it shows its default again". Said by
+	 * `ACataclysmPlayerState::ForgetSkillChoice`.
+	 */
+	static FString SkillForgottenLine(const FString& Slot);
 };

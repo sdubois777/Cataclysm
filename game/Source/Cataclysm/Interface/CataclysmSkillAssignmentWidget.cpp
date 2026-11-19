@@ -277,9 +277,10 @@ bool UCataclysmSkillAssignmentWidget::PickSkill(FName SkillRow)
 		return false;
 	}
 
-	// THE PLAYER STATE DECIDES AND SAYS WHY, and the screen shows its sentence as it is (ruled Q3 and Q5).
+	// THE PLAYER STATE DECIDES AND SAYS WHY, and the screen shows its sentence as it is (ruled Q3 and Q5). The player's
+	// act, `ChooseSkill`, which writes the character record; `AssignSkill` is the load's. Issue #2763.
 	FString Reason;
-	if (!State->AssignSkill(SelectedSlot, SkillRow, Reason))
+	if (!State->ChooseSkill(SelectedSlot, SkillRow, Reason))
 	{
 		LastRefusal = Reason;
 		WriteLabels();
@@ -297,7 +298,7 @@ bool UCataclysmSkillAssignmentWidget::ClearSelectedSlot()
 	{
 		return false;
 	}
-	const bool bForgot = State->ClearSkillChoice(SelectedSlot);
+	const bool bForgot = State->ForgetSkillChoice(SelectedSlot); // The player's act, which saves. #2763.
 	LastRefusal.Reset();
 	Refresh();
 	return bForgot;

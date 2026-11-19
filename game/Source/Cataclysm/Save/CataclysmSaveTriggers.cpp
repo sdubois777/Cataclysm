@@ -65,6 +65,11 @@ bool UCataclysmSaveTriggers::WritesTheCharacterRecord(ECataclysmSaveTrigger Trig
 		case ECataclysmSaveTrigger::OwnEmpireTreeChanged: // A trigger's: its own bank and tree are in this record.
 			return true;
 
+		// THE CHARACTER'S BUILD, which this record holds: its passive tree, attribute points and skill choices. Issue
+		// #2763. Until it, a point spent waited for the next item, death or trip to reach the disk.
+		case ECataclysmSaveTrigger::CharacterBuildChanged: // A trigger's: the build is in this record.
+			return true;
+
 		default:
 			return false;
 	}
@@ -167,6 +172,8 @@ const TCHAR* UCataclysmSaveTriggers::NameOf(ECataclysmSaveTrigger Trigger)
 		case ECataclysmSaveTrigger::CityUpgradeBought:      return TEXT("a city upgrade being bought");
 		case ECataclysmSaveTrigger::OwnEmpireTreeChanged:
 			return TEXT("a Solo Self-Found character's own empire points or tree changing");
+		case ECataclysmSaveTrigger::CharacterBuildChanged:
+			return TEXT("the character's passive tree, attribute points or skill choices changing");
 	}
 
 	// A TRIGGER ADDED WITHOUT A WORDING. Named rather than fallen through to one
@@ -199,5 +206,6 @@ TArray<ECataclysmSaveTrigger> UCataclysmSaveTriggers::Every()
 		ECataclysmSaveTrigger::EmpireTreeRespecced,
 		ECataclysmSaveTrigger::CityUpgradeBought,
 		ECataclysmSaveTrigger::OwnEmpireTreeChanged,
+		ECataclysmSaveTrigger::CharacterBuildChanged,
 	};
 }

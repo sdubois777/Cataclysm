@@ -6,11 +6,12 @@ builds the lines; ten places in the game say them. An automation test reaches so
 last floor, a death, a level gained -- but not the front end's start, a press on Begin or on a saved character, or the
 capital's Walk, which only a real level reaches. So the calls are checked here, by reading the C++. The tenth, a
 level gained, is issue #2744's; the eleventh to thirteenth, the empire upgrade tree's point, option and respec, are
-issue #2741 slice 2's.
+issue #2741 slice 2's; the fourteenth to twentieth, the character's build -- a passive point, a capstone option, the
+tree reset, attribute points spent and reset, a skill chosen and a choice forgotten -- are issue #2763's.
 
 WHAT IS CHECKED, by reading the C++ with comments removed:
 
-  1. each of the thirteen places says its builder's line;
+  1. each of the twenty places says its builder's line;
   2. each says it after the step it reports -- the floor's line after the floor's day is spent, the clear's account
      after the walk's days have run, the death's after the death's own days;
   3. the dungeons are named before the days run, because a dungeon those days resolve is gone from the run after;
@@ -34,7 +35,7 @@ LOG_CPP = SOURCE / "Player" / "CataclysmPlayLoopLog.cpp"
 CHECKLIST = REPO_ROOT / "docs" / "Play_Loop_Checklist.md"
 GAME_README = REPO_ROOT / "game" / "README.md"
 
-#: The thirteen places, by file and signature, and the builder each one says.
+#: The twenty places, by file and signature, and the builder each one says.
 STEPS = [
     ("Player/CataclysmFrontEndGameMode.cpp", "void ACataclysmFrontEndPlayerController::BeginPlay()", "FrontEndLine"),
     ("Interface/CataclysmNewCharacterWidget.cpp", "bool UCataclysmNewCharacterWidget::ConfirmInto(", "NewCharacterLine"),
@@ -51,6 +52,16 @@ STEPS = [
     ("Player/CataclysmGameInstance.cpp", "bool UCataclysmGameInstance::BuyEmpireTreePoint(", "TreePointLine"),
     ("Player/CataclysmGameInstance.cpp", "bool UCataclysmGameInstance::ChooseEmpireTreeOption(", "TreeOptionLine"),
     ("Player/CataclysmGameInstance.cpp", "bool UCataclysmGameInstance::RespecEmpireTree(", "TreeRespecLine"),
+    # THE CHARACTER'S BUILD, issue #2763: said by the player state, beside the write of the character record, so
+    # the screens and the console commands log it alike. A skill choice is said by `ChooseSkill` and
+    # `ForgetSkillChoice`, the player's acts, and never by `AssignSkill`, which a load calls.
+    ("Player/CataclysmPlayerState.cpp", "bool ACataclysmPlayerState::SpendPassivePoint(", "PassivePointLine"),
+    ("Player/CataclysmPlayerState.cpp", "bool ACataclysmPlayerState::ChoosePassiveOption(", "PassiveOptionLine"),
+    ("Player/CataclysmPlayerState.cpp", "void ACataclysmPlayerState::ResetPassivePoints()", "PassiveResetLine"),
+    ("Player/CataclysmPlayerState.cpp", "bool ACataclysmPlayerState::SpendAttributePoints(", "AttributePointLine"),
+    ("Player/CataclysmPlayerState.cpp", "void ACataclysmPlayerState::ResetAttributePoints()", "AttributeResetLine"),
+    ("Player/CataclysmPlayerState.cpp", "bool ACataclysmPlayerState::ChooseSkill(", "SkillChosenLine"),
+    ("Player/CataclysmPlayerState.cpp", "bool ACataclysmPlayerState::ForgetSkillChoice(", "SkillForgottenLine"),
 ]
 
 #: What must come before each place's line, whitespace aside: the step it reports.
@@ -64,6 +75,13 @@ AFTER = {
     "BuyEmpireTreePoint": "UCataclysmEmpireTree::Spend(",
     "ChooseEmpireTreeOption": "UCataclysmEmpireTree::ChooseOption(",
     "RespecEmpireTree": "Run->AdvanceDays(Days)",
+    "SpendPassivePoint": "UCataclysmPassiveTree::Spend(",
+    "ChoosePassiveOption": "PassiveAllocation = Attempt;",
+    "ResetPassivePoints": "PassiveAllocation.Clear();",
+    "SpendAttributePoints": "SpentAttributePoints = Wanted;",
+    "ResetAttributePoints": "SpentAttributePoints = FCataclysmAttributePoints();",
+    "ChooseSkill": "AssignSkill(Slot, SkillRow, OutReason)",
+    "ForgetSkillChoice": "ClearSkillChoice(Slot)",
 }
 
 
