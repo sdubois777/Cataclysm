@@ -176,8 +176,15 @@ enum class ECataclysmSaveTrigger : uint8
 	 * record as every trigger but `AccountChanged` is; an ordinary asynchronous write. A respec raises
 	 * `EmpireTreeRespecced` after it, for the run record's days.
 	 *
-	 * NUMBERED 13 ON THIS BRANCH. Gold's slice 2 adds `CityUpgradeBought`, also 13 on its own branch; whichever merges
-	 * second takes the next number, which nothing persists.
+	 * NOT IN `UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame`, AND IT NEED NOT BE. When an earlier write
+	 * in the frame wrote the run record, the once-a-frame rule skips this trigger's run-record write and nothing else:
+	 * `UCataclysmSaveWriter::NoteTrigger` asks for each record on its own, and only `WriteTheRunRecord` checks the frame.
+	 * The character record holds what changed, and it is written. `Cataclysm.EmpireTree.
+	 * ASoloSelfFoundPointBoughtIsWrittenToItsOwnRecord` writes the run record first in the same frame and reads the point
+	 * back from the character record's slot. Asked by the coordinating session on 2026-11-18.
+	 *
+	 * NUMBERED 13 ON THIS BRANCH, AND 14 AFTER THE REBASE onto gold's slice 2, which takes 13 for `CityUpgradeBought` and
+	 * merges first (the coordinating session, 2026-11-18). Nothing persists the number.
 	 */
 	OwnEmpireTreeChanged = 14,
 };

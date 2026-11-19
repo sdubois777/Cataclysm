@@ -352,6 +352,13 @@ bool FCataclysmEmpireTreeOwnRecordTest::RunTest(const FString&)
 /**
  * A point a Solo Self-Found character buys comes off its own bank and into its own tree, and its own character record
  * is written holding both: the slot reads them back, and no account record is made or held. Prints "OWN BUY".
+ *
+ * THE RUN RECORD IS WRITTEN FIRST, IN THE SAME FRAME, BY THE CLOCK. The save writer writes the run record at most once
+ * a frame, and `OwnEmpireTreeChanged` is not in `UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame`, so the
+ * buy's run-record write is skipped: the coordinating session asked, on 2026-11-18, whether the character-record write
+ * is skipped with it. `UCataclysmSaveWriter::NoteTrigger` asks for each record on its own and only the run record's
+ * write checks the frame, so it is not; this shows it, with one write started -- the character record's -- and the
+ * point on disk.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeOwnBuyTest,
 	"Cataclysm.EmpireTree.ASoloSelfFoundPointBoughtIsWrittenToItsOwnRecord",
@@ -376,6 +383,9 @@ bool FCataclysmEmpireTreeOwnBuyTest::RunTest(const FString&)
 	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	Scene.State->SetOwnEmpireTree(1.5, FCataclysmPassiveAllocation());
+
+	// THE RUN RECORD WRITTEN EARLIER IN THIS FRAME, before the buy, as the clock's interval write could be.
+	const bool bWrittenFirst = Writer->NoteTrigger(ECataclysmSaveTrigger::Clock);
 	const int32 WritesBefore = Writer->WritesStarted();
 	FString Reason;
 	const bool bBought = UCataclysmGameInstance::BuyEmpireTreePoint(Scene.World, StructuralIntegrity, Reason);
@@ -383,9 +393,11 @@ bool FCataclysmEmpireTreeOwnBuyTest::RunTest(const FString&)
 	const FString Slot = Writer->CharacterSlotName();
 	const UCataclysmCharacterSave* Read = ReadTheCharacterSlot(Slot);
 
-	AddInfo(FString::Printf(TEXT("OWN BUY: %s (%s) with %d write(s); its own tree %s, its own bank %g; an account held "
-								 "%s, its account slot '%s'; the character slot '%s' %s, holding %g and %s"),
-							bBought ? TEXT("bought") : TEXT("refused"), *Reason, Writes,
+	AddInfo(FString::Printf(TEXT("OWN BUY: the run written first %s; %s (%s) with %d write(s); its own tree %s, its own "
+								 "bank %g; an account held %s, its account slot '%s'; the character slot '%s' %s, holding "
+								 "%g and %s"),
+							bWrittenFirst ? TEXT("yes") : TEXT("NO"), bBought ? TEXT("bought") : TEXT("refused"),
+							*Reason, Writes,
 							*Describe(Scene.State->GetOwnEmpireTree()), Scene.State->GetOwnEmpireUpgradePoints(),
 							Scene.Instance->HeldAccount != nullptr ? TEXT("yes") : TEXT("no"),
 							*UCataclysmGameInstance::AccountSlotFor(Scene.Partition), *Slot,
@@ -393,13 +405,15 @@ bool FCataclysmEmpireTreeOwnBuyTest::RunTest(const FString&)
 							Read != nullptr ? Read->PrivateEmpireUpgradePoints : -1.0,
 							Read != nullptr ? *Describe(Read->PrivateEmpireTree) : TEXT("-")));
 
+	TestTrue(TEXT("CONTROL: the run record was written earlier in the buy's frame"), bWrittenFirst);
 	TestTrue(TEXT("Structural Integrity is bought"), bBought);
 	TestEqual(TEXT("into its own tree"), Scene.State->GetOwnEmpireTree().PointsIn(StructuralIntegrity), 1);
 	TestTrue(TEXT("paid from its own bank, 1.5 to 0.5"), Scene.State->GetOwnEmpireUpgradePoints() == 0.5);
 	TestTrue(TEXT("CONTROL: a Solo Self-Found character has no account slot"),
 			 UCataclysmGameInstance::AccountSlotFor(Scene.Partition).IsEmpty());
 	TestTrue(TEXT("and no account record is held for it"), Scene.Instance->HeldAccount == nullptr);
-	TestTrue(TEXT("writes started"), Writes > 0);
+	TestEqual(TEXT("one write started, the character record's: the run record's was skipped as written this frame"),
+			  Writes, 1);
 	if (!TestNotNull(TEXT("its character record reads back from its slot"), Read))
 	{
 		return false;
