@@ -225,8 +225,10 @@ takes the new column; two tests, new), `CataclysmDungeonModifierEffectsTests.cpp
 
 ### SAID FIRST
 
-- **NOT YET COMPILED OR RUN IN UNREAL.** Phase 1: the Python suite, ruff and the two Python guard proofs below. The
-  Unreal count and the two C++ proofs are registered below, before the window that will test them.
+- **NOT YET COMPILED OR RUN IN UNREAL.** Phase 1 at `b4d7f01f9`: the Python suite passes, 7,660 passed and 9 skipped;
+  ruff is clean; both Python guard proofs are proved as registered ("Phase 1's Python run" and "The two Python guard
+  proofs", below). The Unreal count and the two C++ proofs are registered below, before the window that will test
+  them.
 - **THE MEASUREMENT USED A DEMONIC CATACLYSM THAT FOLLOWS THE FRONT LINE, AND THE SHIPPED SIMULATION'S DOES NOT YET.**
   The game's surge targets only the exposed front line for every Cataclysm, ruled for Demonic on 2026-09-14
   ([#1085](https://github.com/sdubois777/Cataclysm/issues/1085)); the simulation's Demonic still ignores it
@@ -391,6 +393,25 @@ a table there and in `enemy_stats.damage_scale`, not a new path.
   seconds.
 - Nothing in the simulation's campaign engine reads creature damage, so no campaign figure and no `experiments.py`
   result moves.
+
+### Phase 1's Python run
+
+At `b4d7f01f9`, 2026-11-19: `python -u -m pytest --junit-xml=<outside the repository>` printed "7660 passed, 9 skipped
+in 277.80s"; the JUnit file holds 7,669 tests, 0 failures, 0 errors, 9 skipped. Slice 3b's window ran 7,644 passed and
+9 skipped, and this branch adds 16 Python tests by name. `python -m ruff check .`: "All checks passed!".
+
+### The two Python guard proofs
+
+Through `tools/prove_guard.break_and_run`, each registered before it ran (`.claude/windows/prove_py_ring.py` in this
+worktree):
+
+- **P1**: the simulation's Bulwark figure, `"Bulwark": 0.11` in `DAMAGE_SCALE_AT_FIRST_TIER_BY_RING`, raised to 0.20;
+  `python -m pytest tools/tests/test_the_starting_character_survives_a_pack.py`. "PROVED: 1 failed, 13 passed |
+  restored: 14 passed"; the one named failure is
+  `test_every_dungeon_a_tier_one_campaign_clears_on_this_ring_is_won_with_health_left[Bulwark]`, as registered.
+- **P2**: the game's `DamageScaleAtFirstTierOnASanctuary = 0.13;` moved to 0.14;
+  `python -m pytest tools/tests/test_content_relief_port.py`. "PROVED: 1 failed, 9 passed | restored: 10 passed"; the
+  one named failure is `TestTheDamageScaleMatches::test_every_rings_tier_one_figure_matches`, as registered.
 
 ### Registered before the window
 
