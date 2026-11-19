@@ -674,6 +674,10 @@ At difficulty tier 8 that puts an ordinary hit at 1,681, a Heavy Attack at 4,202
 
   
 
+**EVERY FIGURE ABOVE IS THE SKILL AT LEVEL 1.** A skill levels as it is used ("What a Skill Levels", section V), and each level multiplies its percentage by 1.0567, so at level 20 it deals 2.85 times its figure: a Heavy Attack's 250% is 712%, an Ultimate's 400% is 1,140%, and at tier 8 they hit for 11,974 and 19,160. **The Basic Attack does not level**, so it stays 100% of weapon damage, which is why the Damage Target and every affix fitted to it do not move. The owner accepted that end-game rise for skills on 2026-11-19 (issue #2764).
+
+  
+
 ### **What a Skill Costs**
 
 Two things limit how often a skill is used: a cooldown in seconds, and a mana cost. Both belong to the slot, and a skill states its own only when it differs, exactly as it does for damage. The stat source table above already says the base cooldown comes from the skill being used.
@@ -743,7 +747,7 @@ Using every skill the moment it returns costs 35.75 mana per second, the same fo
 
 ### **Skill Acquisition**
 
-Skills are not leveled or unlocked through a skill tree. They are determined entirely by weapon type and damage type. Changing your weapon changes your available skill set. This keeps the skill system tightly coupled to itemization and makes gear drops feel meaningful beyond raw stat comparisons.
+Skills are not unlocked through a skill tree: which skills a character has is determined entirely by weapon type and damage type. Changing your weapon changes your available skill set. **A skill does level as it is used** (issue #2764, the project owner's ruling of 2026-11-19, "I like the idea of skills leveling as you use them"), up to level 20, and each level multiplies its damage percentage by 1.0567; "What a Skill Levels" in section V says how. This keeps the skill system tightly coupled to itemization and makes gear drops feel meaningful beyond raw stat comparisons.
 
   
 
@@ -2040,7 +2044,7 @@ These figures may need tuning once the game is playable.
 
 ## **Skill Acquisition**
 
-Skills in Cataclysm are not learned or leveled independently. They are determined entirely by the combination of weapon type and damage type on the player's weapon. Every weapon type paired with every damage type produces a unique set of six skills (one per non-basic slot). This design ensures that gear upgrades are never just stat checks — changing weapon types fundamentally changes the player's available kit.
+Skills in Cataclysm are not learned independently. They are determined entirely by the combination of weapon type and damage type on the player's weapon, and each one levels as it is used ("What a Skill Levels", below). Every weapon type paired with every damage type produces a unique set of six skills (one per non-basic slot). This design ensures that gear upgrades are never just stat checks — changing weapon types fundamentally changes the player's available kit.
 
   
 
@@ -2091,6 +2095,36 @@ Skills in Cataclysm are not learned or leveled independently. They are determine
   
 
 **A basic attack carries no riders.** No burn, no patch of ground, no stun, no knockback, and it hits one target. That is stricter than the enemy basic attacks, four of whose seven cap themselves at one target and one of which — the Hellhound's Maul — does set what it hits alight. The player's basic attack is held to the stricter rule because it is the 100% figure every other slot's percentage is measured against, so a rider on it would silently move all six of the others.
+
+  
+
+## **What a Skill Levels**
+
+**A skill levels as it is used, up to level 20.** The project owner's ruling of 2026-11-19, after playing a level 1 character and finding that damage did not seem to scale: "I like the idea of skills leveling as you use them." Issue #2764. `UCataclysmSkillLevels` holds the numbers, and `sim/cataclysm_sim/skill_levels.py` the simulation's copy.
+
+  
+
+| Rule | What it is | Where it comes from |
+| :-- | :-- | :-- |
+| Earning | When a creature dies, its experience -- the same figure the character is granted -- is shared among the skills that hurt it, by the share of its health each removed. The character's own experience does not change | Dungeon Siege pays each hit "(damage / max_hitpoints) x exp_value"; paying at the death keeps the total to the kill's |
+| The basic attack | Does not level, and earns nothing | The owner's ruling: the Damage Target and every affix are fitted to it |
+| A level's price | A quarter of the character's own experience up to the character level Path of Exile pairs with that gem level: 1, 2, 4, 7, 11, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64, 67, 70 | The pairing is Path of Exile's "Requires Level"; the quarter is a judgement, a skill dealing a quarter of a fight's damage keeping that pace |
+| The cap | 20, and no higher than the level paired with the character's level; experience above it is kept | Path of Exile's gems, Diablo II's hard points and Last Epoch's default are all 20 |
+| What a level does | Multiplies the skill's damage percentage by 1.0567: level 20 deals 2.85 times level 1 | Path of Exile's Cleave, 179.4% of base damage at gem level 1 to 511.2% at 20 |
+| Where it applies | The skill's percentage multiplies the weapon part of the blow before the increases and the "more" multipliers, so the factor is in the base bucket | The three-bucket pipeline's base, as Path of Exile's skill percentage is |
+| Mana cost | Unchanged: it follows the character's level ("What a Skill Costs") | A judgement: the cost is a share of the pool, which follows the character |
+
+  
+
+**IN THE FIRST DUNGEON A SKILL GAINS LITTLE, AND THAT IS THE GENRE'S PACE.** Measured over the first surge's Outpost dungeons of 5 to 8 floors, a character ends most of them at level 4 with its main skill at level 3, 11.7% more damage, while the floors' creatures' health rises about four times (`sim/analyse_opening.py`, section 7). The opening's damage growth comes from gear. Skill levels matter over tens of levels.
+
+  
+
+**WHAT THIS FIRST SLICE COUNTS.** A skill's direct hits: its strikes, the projectiles it fires, an axe it throws, a zone's blast. Damage over time, minions, gadgets and traps credit their skill in a second slice. A skill that deals no damage does not level.
+
+  
+
+**WHAT THE PLAYER SEES.** The skill bar shows each skill's level in its box's top left corner and a thin bar of the experience into it along the box's foot; the box's pop-up says it in words, "Level 3: 45.2%", or "Level 2: waits for character level 4". The skill choice screen names each skill with its level. A PLAY LOOP line says each skill level gained.
 
   
 

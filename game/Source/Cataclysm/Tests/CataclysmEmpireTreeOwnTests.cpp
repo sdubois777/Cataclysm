@@ -248,6 +248,7 @@ bool FCataclysmEmpireTreeOwnMigrationTest::RunTest(const FString&)
 	const TSharedPtr<FJsonObject> Expected = CataclysmSaveFixtures::Parse(Text);
 	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmCharacterSave::SchemaVersionNow);
 	CataclysmSaveFixtures::AddTheCharactersVersion9Defaults(*Expected);
+	CataclysmSaveFixtures::AddTheCharactersVersion10Defaults(*Expected); // And 10, issue #2764: no skill experience.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);

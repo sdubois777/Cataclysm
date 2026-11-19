@@ -11,6 +11,8 @@
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "Character/CataclysmCharacterCreation.h"
 #include "Character/CataclysmExperience.h"
+// For a skill's level from its experience and the character's. Issue #2764.
+#include "Character/CataclysmSkillLevels.h"
 #include "Character/CataclysmPassivePoints.h"
 #include "Character/CataclysmPassiveTree.h"
 // For a passive node's own MaxPoints, which decides whether choosing a capstone
@@ -236,6 +238,8 @@ int32 ACataclysmPlayerState::GrantExperience(int64 Amount)
 	// gained from a base that then moves is a level gained from nothing.
 	int32 Level = GetCharacterLevel();
 	const int32 LevelBefore = Level;
+	// THE SKILLS' LEVELS BEFORE, because a character level can let a skill's kept experience through its cap. #2764.
+	const TMap<FName, int32> SkillsBefore = SkillLevelsNow();
 	const int32 Gained =
 		UCataclysmExperience::Grant(Amount, Level, ExperienceIntoLevel);
 	CharacterLevel = Level;
@@ -253,6 +257,8 @@ int32 ACataclysmPlayerState::GrantExperience(int64 Amount)
 		RefreshCharacterStats(); // A level gained's: the stat line at the new level.
 		FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::LevelGainedLine(LevelBefore, CharacterLevel,
 																		  ExperienceIntoLevel));
+		// AND A SKILL WHOSE KEPT EXPERIENCE THE NEW LEVEL LETS THROUGH SAYS ITS OWN LINE. Issue #2764.
+		SaySkillLevelsGained(SkillsBefore);
 	}
 	return Gained;
 }
@@ -917,4 +923,128 @@ bool ACataclysmPlayerState::ForgetSkillChoice(ECataclysmAbilitySlot Slot)
 	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::SkillForgottenLine(SkillSlotName(Slot)));
 	UCataclysmSaveWriter::NoteTriggerIn(GetWorld(), ECataclysmSaveTrigger::CharacterBuildChanged);
 	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Skill levels. Issue #2764.
+// ---------------------------------------------------------------------------
+
+double ACataclysmPlayerState::GetSkillExperience(FName SkillRow) const
+{
+	const double* Held = SkillExperience.Find(SkillRow);
+	return Held ? *Held : 0.0;
+}
+
+int32 ACataclysmPlayerState::SkillLevelOf(FName SkillRow) const
+{
+	return UCataclysmSkillLevels::LevelFor(GetSkillExperience(SkillRow), GetCharacterLevel());
+}
+
+void ACataclysmPlayerState::GrantSkillExperience(int64 KillExperience, const TMap<FName, float>& HealthRemovedBySkill,
+												 float MaxHealth)
+{
+	if (KillExperience <= 0 || HealthRemovedBySkill.IsEmpty())
+	{
+		return;
+	}
+
+	// AGAINST THE CREATURE'S MAXIMUM HEALTH, OR EVERYTHING THE SKILLS REMOVED WHEN THAT IS MORE. A creature that healed
+	// lost more than its maximum in all, and measured against the maximum alone its skills' shares would pass the whole
+	// kill. The basic attack's share and damage no skill dealt go to no skill: they are simply not in the list.
+	double Removed = 0.0;
+	for (const TPair<FName, float>& Each : HealthRemovedBySkill)
+	{
+		Removed += FMath::Max(0.0f, Each.Value);
+	}
+	const double Whole = FMath::Max(static_cast<double>(MaxHealth), Removed);
+	if (Whole <= 0.0)
+	{
+		return;
+	}
+
+	const TMap<FName, int32> Before = SkillLevelsNow();
+	for (const TPair<FName, float>& Each : HealthRemovedBySkill)
+	{
+		if (!Each.Key.IsNone() && Each.Value > 0.0f)
+		{
+			SkillExperience.FindOrAdd(Each.Key) += static_cast<double>(KillExperience) * Each.Value / Whole;
+		}
+	}
+	SaySkillLevelsGained(Before);
+}
+
+TArray<FCataclysmSkillExperience> ACataclysmPlayerState::GetSkillExperienceRecord() const
+{
+	TArray<FCataclysmSkillExperience> Out;
+	for (const TPair<FName, double>& Each : SkillExperience)
+	{
+		FCataclysmSkillExperience& Entry = Out.AddDefaulted_GetRef();
+		Entry.SkillRow = Each.Key;
+		Entry.Experience = Each.Value;
+	}
+	return Out;
+}
+
+void ACataclysmPlayerState::RestoreSkillExperience(const TArray<FCataclysmSkillExperience>& Record)
+{
+	SkillExperience.Reset();
+	for (const FCataclysmSkillExperience& Entry : Record)
+	{
+		if (!Entry.SkillRow.IsNone())
+		{
+			SkillExperience.FindOrAdd(Entry.SkillRow) = FMath::Max(0.0, Entry.Experience);
+		}
+	}
+}
+
+void ACataclysmPlayerState::SetSkillExperience(FName SkillRow, double Experience)
+{
+	if (!SkillRow.IsNone())
+	{
+		SkillExperience.FindOrAdd(SkillRow) = FMath::Max(0.0, Experience);
+	}
+}
+
+TMap<FName, int32> ACataclysmPlayerState::SkillLevelsNow() const
+{
+	TMap<FName, int32> Levels;
+	for (const TPair<FName, double>& Each : SkillExperience)
+	{
+		Levels.Add(Each.Key, UCataclysmSkillLevels::LevelFor(Each.Value, GetCharacterLevel()));
+	}
+	return Levels;
+}
+
+void ACataclysmPlayerState::SaySkillLevelsGained(const TMap<FName, int32>& Before) const
+{
+	for (const TPair<FName, double>& Each : SkillExperience)
+	{
+		const int32* Was = Before.Find(Each.Key);
+		const int32 From = Was ? *Was : UCataclysmSkillLevels::FirstLevel;
+		const int32 To = UCataclysmSkillLevels::LevelFor(Each.Value, GetCharacterLevel());
+		if (To > From)
+		{
+			FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::SkillLevelLine(SkillNameOf(Each.Key), From, To));
+		}
+	}
+}
+
+FString ACataclysmPlayerState::SkillNameOf(FName SkillRow) const
+{
+	// BY THE SKILL'S NAME, NEVER ITS ROW, as the screen names it: the pool's name, else the table row's.
+	const ACataclysmPlayerCharacter* Character = Cast<ACataclysmPlayerCharacter>(GetPawn());
+	const UCataclysmWeaponSlotsComponent* Slots =
+		Character ? Character->FindComponentByClass<UCataclysmWeaponSlotsComponent>() : nullptr;
+	const FCataclysmWeaponSkill* InPool = Slots
+		? Slots->GetSkillPool().FindByPredicate(
+			  [SkillRow](const FCataclysmWeaponSkill& Skill) { return Skill.RowName == SkillRow; })
+		: nullptr;
+	if (InPool && !InPool->Name.IsEmpty())
+	{
+		return InPool->Name;
+	}
+	const UDataTable* Table = UCataclysmWeaponSkills::LoadGeneratedTable();
+	const FCataclysmWeaponSkillRow* Row =
+		Table ? Table->FindRow<FCataclysmWeaponSkillRow>(SkillRow, TEXT(""), /*bWarnIfRowMissing=*/false) : nullptr;
+	return Row && !Row->SkillName.IsEmpty() ? Row->SkillName : SkillRow.ToString();
 }

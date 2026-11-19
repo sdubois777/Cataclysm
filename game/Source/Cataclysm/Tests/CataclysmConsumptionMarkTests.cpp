@@ -385,6 +385,7 @@ bool FCataclysmConsumptionMarkMigration::RunTest(const FString& Parameters)
 	Expected->SetNumberField(TEXT("CataclysmOrderSeed"), CataclysmSaveFixtures::FixtureIdentifiersOrderSeed); // #1324: 7.
 	Expected->SetNumberField(TEXT("Gold"), 0); // And 8, issue #2742: no gold of its own.
 	CataclysmSaveFixtures::AddTheCharactersVersion9Defaults(*Expected); // And 9, issue #2741 slice 1c: its own tree.
+	CataclysmSaveFixtures::AddTheCharactersVersion10Defaults(*Expected); // And 10, issue #2764: no skill experience.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);

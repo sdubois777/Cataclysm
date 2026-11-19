@@ -70,8 +70,8 @@ namespace CataclysmSaveFixtures
 	 */
 	inline constexpr int32 FixtureIdentifiersOrderSeed = 1412640493;
 
-	/** The seed `Character_v7.json`, `Character_v8.json` and `Character_v9.json` state: not the one their identifier gives, so a seed re-derived
-	 *  on load cannot pass. */
+	/** The seed `Character_v7.json` to `Character_v10.json` state: not the one their identifier gives, so a seed
+	 *  re-derived on load cannot pass. */
 	inline constexpr int32 CommittedCharacterOrderSeed = 975318642;
 
 	/**
@@ -208,6 +208,16 @@ namespace CataclysmSaveFixtures
 		const TSharedRef<FJsonObject> Empty = MakeShared<FJsonObject>();
 		Empty->SetArrayField(TEXT("Nodes"), TArray<TSharedPtr<FJsonValue>>());
 		Expected.SetObjectField(TEXT("PrivateEmpireTree"), Empty);
+	}
+
+	/**
+	 * What `Migrate_9_to_10` writes into a character file written before version 10, and so what the character record
+	 * writes back for one: no skill experience, `"SkillExperience": []`. Issue #2764, 2026-11-19. ONE COPY, for every
+	 * test that runs an older character file through the whole chain.
+	 */
+	inline void AddTheCharactersVersion10Defaults(FJsonObject& Expected)
+	{
+		Expected.SetArrayField(TEXT("SkillExperience"), TArray<TSharedPtr<FJsonValue>>());
 	}
 
 	inline TSharedPtr<FJsonObject> Parse(const FString& Text)

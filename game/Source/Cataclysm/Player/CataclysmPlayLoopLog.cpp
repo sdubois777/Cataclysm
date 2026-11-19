@@ -412,3 +412,8 @@ FString FCataclysmPlayLoopLog::WoreLine(const FString& ItemName, const FString& 
 						   *UCataclysmCharacterSheetLayout::Number(Before.Plain),
 						   *UCataclysmCharacterSheetLayout::Number(After.Plain), *OnFamilies);
 }
+
+FString FCataclysmPlayLoopLog::SkillLevelLine(const FString& Skill, int32 From, int32 To)
+{
+	return FString::Printf(TEXT("skill %s reached level %d, from level %d"), *Skill, To, From);
+}

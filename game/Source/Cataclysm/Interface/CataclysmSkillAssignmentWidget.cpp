@@ -359,7 +359,15 @@ void UCataclysmSkillAssignmentWidget::DescribePoolButton(UCataclysmChoiceButton&
 {
 	// CHOSEN-LOOKING WHEN IT SITS ON A KEY, so the pool says which of its skills are in use.
 	const ECataclysmAbilitySlot OnKey = KeyHolding(Skill.RowName);
-	Button.SetChoice(Skill.RowName, FText::FromString(SkillScreenName(Skill)),
+	// AND ITS LEVEL, "Molten Cleave, level 3", for a skill that levels: every pool skill but the basic attack. Issue
+	// #2764. On the label and not the tool tip, which stays the skill's four lines (ruled Q7).
+	FString Label = SkillScreenName(Skill);
+	const ACataclysmPlayerState* Holder = ShownState();
+	if (Holder && UCataclysmWeaponSkills::DesignedSlotOf(Skill) != ECataclysmAbilitySlot::BasicAttack)
+	{
+		Label += FString::Printf(TEXT(", level %d"), Holder->SkillLevelOf(Skill.RowName));
+	}
+	Button.SetChoice(Skill.RowName, FText::FromString(Label),
 					 /*bInChosen=*/OnKey != ECataclysmAbilitySlot::None, /*bInAvailable=*/true);
 	Button.SetToolTipText(FText::FromString(ToolTipFor(Skill, OnKey)));
 }

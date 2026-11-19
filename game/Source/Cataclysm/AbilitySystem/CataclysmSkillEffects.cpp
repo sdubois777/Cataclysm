@@ -52,6 +52,8 @@
 #include "Character/CataclysmEnemyCharacter.h"
 // For a Corrupted Stalker's damage over time, which takes the multiplier its hits carry. Issue #2749.
 #include "Character/CataclysmCorruptedStalkerCharacter.h"
+// For a skill's level: the factor its blows get, and the health they remove credited to it. Issue #2764.
+#include "Character/CataclysmSkillLevels.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 #include "GameplayEffect.h"
@@ -833,6 +835,32 @@ float UCataclysmSkillEffects::ModifiedDamage(const UAbilitySystemComponent* Sour
 										 ChargeRangeMetres))).Final;
 }
 
+namespace CataclysmSkillEffectsLevels
+{
+	/**
+	 * The health a blow removed, credited on the creature to the skill that dealt it, so the creature's death can split
+	 * its experience among the skills that hurt it. Issue #2764, slice 1: DIRECT HITS ONLY, as the owner ruled on
+	 * 2026-11-19. Damage over time, a share struck at an ally, and a use a minion or gadget cast in the player's name
+	 * (`CastBy` set) credit nothing here; minions and damage over time credit their skill in the second slice. The
+	 * basic attack and a creature's own blows name no skill that levels (`UCataclysmSkillLevels::RowThatLevels`).
+	 */
+	void CreditTheSkill(AActor* Target, const FCataclysmHitDelivery& Arrived, bool bAShareOnAnAlly,
+						const FCataclysmDamageResult& Result)
+	{
+		if (bAShareOnAnAlly || Arrived.bIsDamageOverTime || !Arrived.CastBy.IsExplicitlyNull()
+			|| Result.DealtToHealth <= 0.0f)
+		{
+			return;
+		}
+		ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Target);
+		const FName Row = Enemy ? UCataclysmSkillLevels::RowThatLevels(Arrived.Skill.Get()) : NAME_None;
+		if (!Row.IsNone())
+		{
+			Enemy->NoteHealthRemovedBySkill(Row, Result.DealtToHealth);
+		}
+	}
+}
+
 float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 									   float DamagePercent,
 									   const FGameplayTagContainer& SkillTags,
@@ -886,6 +914,14 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	{
 		return 0.0f;
 	}
+
+	// AND A LEVELLED SKILL'S BLOW ON A CREATURE IS WORTH ITS LEVEL'S PERCENTAGE. Issue #2764, ruled 2026-11-19: each
+	// skill level multiplies the skill's damage percentage by 1.0567, and the percentage multiplies the weapon part of
+	// the blow before the increases and the "more" multipliers, so the factor sits in the base bucket. HERE, ONCE, for
+	// every blow that names its skill (`Delivery.Skill`): a strike, a fired projectile, a thrown axe, a zone's blast. A
+	// creature's blow, the basic attack, a blow on the skill's own user and a blow that names no skill keep the stated
+	// figure (`UCataclysmSkillLevels::DamageFactorForBlow`).
+	DamagePercent *= static_cast<float>(UCataclysmSkillLevels::DamageFactorForBlow(Delivery.Skill.Get(), Target));
 
 	// A SKILL GADGET'S CAST IS PRICED AS THE GADGET'S, IN FIVE PARTS, ruled 2026-10-16 (S5) for "Scales off gadget
 	// damage". Its skill tags carry `Type.Deployable`, given by `ACataclysmMinion::CastPlayersSkillFromHere`, so the
@@ -1306,8 +1342,13 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	const ACataclysmMinion* const Machine = GadgetsPlayer ? SkillGadget : SkillTrap;
 	if (!MachinesPlayer || bAShareOnAnAlly || Arrived.bIsDamageOverTime)
 	{
-		return ApplyDirectDamage(Instigator, Target, Sent, Arrived, OutResolved)
-			? Sent : 0.0f;
+		// A RESULT EVEN WHEN THE CALLER ASKED FOR NONE, so the health the blow removed can be credited to its skill
+		// (issue #2764). `ApplyDirectDamage` fills one handed to it and does nothing else differently.
+		FCataclysmDamageResult PlainResult;
+		FCataclysmDamageResult* const Plain = OutResolved ? OutResolved : &PlainResult;
+		const bool bDealtPlain = ApplyDirectDamage(Instigator, Target, Sent, Arrived, Plain);
+		CataclysmSkillEffectsLevels::CreditTheSkill(Target, Arrived, bAShareOnAnAlly, *Plain);
+		return bDealtPlain ? Sent : 0.0f;
 	}
 	// AND A LATE BLOW OF A TRAP ALREADY USED UP IS ANNOUNCED AS THE TRAP'S, with the tags it was kept with (ruled
 	// 2026-10-21, #2462), as a living trap's blow is below. A ZONE'S SWEEP NEVER REACHES HERE: it is dealt through
@@ -1322,6 +1363,8 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	}
 	FCataclysmDamageResult OwnResult;
 	FCataclysmDamageResult* const Result = OutResolved ? OutResolved : &OwnResult;
+	// NO SKILL EXPERIENCE FOR A GADGET'S OR A TRAP'S BLOW: machines credit their skill with minions, in issue #2764's
+	// second slice. The player's own blows are credited on the path above.
 	const bool bDealt = ApplyDirectDamage(Instigator, Target, Sent, Arrived, Result);
 	// A SKILL TRAP'S EVENT CARRIES WHAT ITS BLOW TOOK FROM HEALTH (traps layer 3, 2026-10-21), so a status row on it
 	// meets the owner's rule of a tenth (#917) with the blow's own figure: "Traps cause a bleed of 1-2 times normal

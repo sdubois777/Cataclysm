@@ -789,6 +789,35 @@ public:
 	 */
 	bool ForgetSkillChoice(ECataclysmAbilitySlot Slot);
 
+	// ----------------------------------------------------------------------
+	// Skill levels. Issue #2764, ruled 2026-11-19: a skill levels as it is used. `UCataclysmSkillLevels` holds the
+	// numbers; this holds each skill's total experience, by skill row, and nothing else, so a level can never disagree
+	// with the experience it comes from.
+
+	/** A skill's total experience: 0 for a row it has never earned under. */
+	double GetSkillExperience(FName SkillRow) const;
+
+	/** A skill's level now: its experience read against the character's level (`UCataclysmSkillLevels::LevelFor`). */
+	int32 SkillLevelOf(FName SkillRow) const;
+
+	/**
+	 * A creature's death, shared among the skills that hurt it: `KillExperience`, the figure the character itself was
+	 * granted, times the share of the creature's health each skill removed. The share is measured against
+	 * `MaxHealth`, or against everything the skills removed when that is more -- a creature that healed -- so the
+	 * shares never pass the whole kill. A PLAY LOOP line says each skill level gained. Nothing for a kill worth nothing
+	 * or a creature no skill hurt.
+	 */
+	void GrantSkillExperience(int64 KillExperience, const TMap<FName, float>& HealthRemovedBySkill, float MaxHealth);
+
+	/** Every skill's experience, for the character record: one entry per row, in the order the rows were first met. */
+	TArray<FCataclysmSkillExperience> GetSkillExperienceRecord() const;
+
+	/** FOR A SAVE RESTORE AND NOTHING ELSE: puts back what a character record holds, says nothing and saves nothing. */
+	void RestoreSkillExperience(const TArray<FCataclysmSkillExperience>& Record);
+
+	/** Sets one skill's total experience, says nothing and saves nothing: for a test and the console. */
+	void SetSkillExperience(FName SkillRow, double Experience);
+
 	/**
 	 * Why `SkillRow` may not be chosen for `Slot`, in one sentence, or empty when it may. Issue #837 layer 3. A
 	 * static, so the screen of layer 4 can ask it of any pool. EVERY SKILL IS NAMED BY ITS NAME AND NOT ITS ROW (layer
@@ -1000,6 +1029,21 @@ protected:
 	 */
 	UPROPERTY(Replicated, VisibleAnywhere, Category = "Cataclysm|Skills")
 	TArray<FCataclysmSkillChoice> SkillAssignment;
+
+	/** See `GetSkillExperience`. Issue #2764. Written by `GrantSkillExperience`, `RestoreSkillExperience` and
+	 *  `SetSkillExperience`, and by nothing else. */
+	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Skills")
+	TMap<FName, double> SkillExperience;
+
+	/** Every skill's level now, by row, for `SaySkillLevelsGained` to compare against. */
+	TMap<FName, int32> SkillLevelsNow() const;
+
+	/** A PLAY LOOP line for each skill whose level is above what `Before` held: a kill's share, or a character level
+	 *  that let a skill's kept experience through. Issue #2764. */
+	void SaySkillLevelsGained(const TMap<FName, int32>& Before) const;
+
+	/** The skill's name as the screen names it, from the pool or the table; its row only for a row with no name. */
+	FString SkillNameOf(FName SkillRow) const;
 
 	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Abilities")
 	TObjectPtr<UCataclysmAbilitySystemComponent> AbilitySystemComponent;

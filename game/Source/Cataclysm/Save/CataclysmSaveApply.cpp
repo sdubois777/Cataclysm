@@ -722,6 +722,10 @@ bool FCataclysmSaveApply::CharacterInto(const UCataclysmCharacterSave& Record, A
 	// THE ATTRIBUTE POINTS, AS SPENT.
 	State->RestoreSpentAttributePoints(Record.SpentAttributePoints);
 
+	// AND EACH SKILL'S EXPERIENCE, kept for a skill whose weapon is off as its choice is. Issue #2764. Its level is read
+	// from this and the character's level whenever it is asked, so nothing else is put back.
+	State->RestoreSkillExperience(Record.SkillExperience);
+
 	// THE WORN GEAR AND THE BAG, EACH IN ITS SAVED PLACE. The bag replaces the
 	// weapon possession put into it when the creation choice swapped weapons.
 	Equipment->RestoreWornGear(Worn);

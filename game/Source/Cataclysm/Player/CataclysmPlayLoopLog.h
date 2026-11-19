@@ -248,4 +248,11 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 	 * chooses comes through, after the equip. The figures are written as the item comparison writes them.
 	 */
 	static FString WoreLine(const FString& ItemName, const FString& SlotName, const FHits& Before, const FHits& After);
+
+	/**
+	 * A skill level gained, from a kill's share or from a character level that let a skill's kept experience through:
+	 * "skill Molten Cleave reached level 3, from level 2". Issue #2764. Said by `ACataclysmPlayerState::
+	 * SaySkillLevelsGained`, after the experience is held, so the level is the new one.
+	 */
+	static FString SkillLevelLine(const FString& Skill, int32 From, int32 To);
 };

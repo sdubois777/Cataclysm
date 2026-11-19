@@ -124,6 +124,16 @@ Choose a dungeon on **another** city than the one you will walk. This is how you
 
   `PLAY LOOP: wore Quality Torc of Warding in Necklace: basic attack hit 57.6 to 57.6; on a Demonic creature's health 63.4 to 97.2`
 
+- **Watch the skill bar's boxes too.** A skill levels as it is used (issue
+  [#2764](https://github.com/sdubois777/Cataclysm/issues/2764)): when a creature it hurt dies, it earns that creature's
+  experience times the share of its health it removed. Its level is the number in its box's top left corner, and the
+  thin bar along the box's foot is the experience into that level; holding the cursor over the box says it in words,
+  "Level 2: 45.2%". The basic attack does not level and shows neither. Each level adds 5.7% to the skill's damage, and
+  a first dungeon takes a skill to about level 2 or 3. A skill whose next level waits on the character's level reads
+  "Level 2: waits for character level 4". **In the log**, one line for each skill level gained:
+
+  `PLAY LOOP: skill Molten Cleave reached level 2, from level 1`
+
 ### 8. Take the last floor's stairs
 
 - **On screen:** back in the capital, with the map open. The map's status line shows the new day. Its second line says

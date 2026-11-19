@@ -82,6 +82,8 @@ or being killed by the corrupted double — costs the run and not the character.
 this record is never deleted as a consequence of play.
 
 - Character level and experience
+- Each skill's total experience, by skill row, since version 10 (issue #2764): a skill levels as it is used, and its
+  level is read from this and the character's level, so the level itself is not written
 - Attribute allocation
 - Passive class tree allocation
 - Class resource state where it persists between runs

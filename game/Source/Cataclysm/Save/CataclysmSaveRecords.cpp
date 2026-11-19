@@ -359,6 +359,29 @@ namespace CataclysmCharacterSaveMigration
 	}
 
 	/**
+	 * A character written before skills levelled has earned no skill experience. Issue #2764, 2026-11-19: an empty
+	 * `SkillExperience`, so every skill stands at level 1, as it did. A LIST ALREADY THERE IS KEPT, and a key holding
+	 * anything but a list is refused rather than replaced, for `Migrate_8_to_9`'s reason: a value thrown away without a
+	 * word is a loss nobody sees.
+	 */
+	bool Migrate_9_to_10(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		if (Record->HasField(TEXT("SkillExperience")))
+		{
+			const TArray<TSharedPtr<FJsonValue>>* Held = nullptr;
+			if (!Record->TryGetArrayField(TEXT("SkillExperience"), Held) || Held == nullptr)
+			{
+				OutError = TEXT("SkillExperience holds something that is not a list");
+				return false;
+			}
+			return true;
+		}
+		Record->SetArrayField(TEXT("SkillExperience"), TArray<TSharedPtr<FJsonValue>>()); // A migration's: none earned.
+		return true;
+	}
+
+	/**
 	 * The chain, newest step last.
 	 *
 	 * The order is for a reader rather than for the machinery, which looks a
@@ -374,6 +397,7 @@ namespace CataclysmCharacterSaveMigration
 		{ 6, TEXT("Migrate_6_to_7"), &Migrate_6_to_7 },
 		{ 7, TEXT("Migrate_7_to_8"), &Migrate_7_to_8 },
 		{ 8, TEXT("Migrate_8_to_9"), &Migrate_8_to_9 },
+		{ 9, TEXT("Migrate_9_to_10"), &Migrate_9_to_10 },
 	};
 }
 
