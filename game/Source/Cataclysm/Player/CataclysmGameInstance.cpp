@@ -97,6 +97,11 @@ UCataclysmEmpireRun* UCataclysmGameInstance::BeginACharactersEmpireRun(
 
 	// THE CHARACTER'S DRAW, NOT THE RUN'S: the run's seed is its chance, and the order seed decides which Cataclysms it
 	// faces. Issue #1324 slice 6a.
+	// THE EMPIRE UPGRADE TREE BEFORE THE RUN BEGINS, so its cities are built full at the maxima the tree raises (S1),
+	// as the modifier table is handed over before for the same kind of reason. `this` is the world context, as above: a
+	// run begun before anyone is playing has no tree to read and begins with none. Issue #2741 slice 3a.
+	EmpireRun->SetTreeBonuses(EmpireTreeBonusesFor(this));
+
 	EmpireRun->BeginForCharacter(Seed, CataclysmOrderSeed, Mode, LethalityRung, Tier);
 
 	// AND THE FIRST SURGE, ON DAY 0, so a new run's map shows its dungeons before any day has passed: "A Surge is
@@ -475,6 +480,25 @@ bool UCataclysmGameInstance::BankEmpirePointsFor(const UObject* WorldContext, do
 	return true;
 }
 
+FCataclysmEmpireTreeBonuses UCataclysmGameInstance::EmpireTreeBonusesFor(const UObject* WorldContext)
+{
+	FCataclysmHeldEmpireTree Held;
+	if (!EmpireTreeHeldBy(WorldContext, Held))
+	{
+		return FCataclysmEmpireTreeBonuses();
+	}
+	return UCataclysmEmpireTree::CityBonusesFor(UCataclysmEmpireTree::LoadNodeTable(),
+												UCataclysmEmpireTree::LoadEffectTable(), *Held.Allocation);
+}
+
+void UCataclysmGameInstance::RefreshEmpireTreeBonuses(const UObject* WorldContext)
+{
+	if (UCataclysmEmpireRun* Run = EmpireRunFor(WorldContext, /*bStartIfNone*/ false))
+	{
+		Run->SetTreeBonuses(EmpireTreeBonusesFor(WorldContext));
+	}
+}
+
 void UCataclysmGameInstance::NoteTheEmpireTreeChanged(const UObject* WorldContext, const FCataclysmHeldEmpireTree& Held)
 {
 	const UWorld* World = WorldContext != nullptr && GEngine != nullptr
@@ -589,6 +613,9 @@ bool UCataclysmGameInstance::BuyEmpireTreePoint(const UObject* WorldContext, FNa
 		return false;
 	}
 
+	// THE NODE ACTS AT ONCE: the run is handed the tree as it now stands. Issue #2741 slice 3a.
+	RefreshEmpireTreeBonuses(WorldContext);
+
 	// THE PLAY LOOP: the point, the node's points after it, and the bank. Issue #2741 slice 2.
 	const FCataclysmEmpireTreeNodeRow* Row = UCataclysmEmpireTree::FindNode(Nodes, Node);
 	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::TreePointLine(
@@ -624,6 +651,9 @@ bool UCataclysmGameInstance::ChooseEmpireTreeOption(const UObject* WorldContext,
 	{
 		return false;
 	}
+
+	// THE OPTION ACTS AT ONCE, once the capstone's point is bought. Issue #2741 slice 3a.
+	RefreshEmpireTreeBonuses(WorldContext);
 
 	// THE PLAY LOOP: which option of which capstone. Issue #2741 slice 2.
 	const FCataclysmEmpireTreeNodeRow* Row = UCataclysmEmpireTree::FindNode(Nodes, Node);
@@ -669,6 +699,9 @@ bool UCataclysmGameInstance::RespecEmpireTree(const UObject* WorldContext, int32
 	{
 		return false; // The same rule refused it above; this cannot happen, and changes nothing if it does.
 	}
+
+	// THE TREE GOES BEFORE THE DAYS PASS, so they pass without it. Issue #2741 slice 3a.
+	RefreshEmpireTreeBonuses(WorldContext);
 
 	// THE DAYS, through the call every other run of days goes through.
 	const int32 DayBefore = Run->Day();

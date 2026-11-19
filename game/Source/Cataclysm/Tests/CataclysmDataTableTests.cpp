@@ -238,6 +238,8 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// 158: every edge of that tree. One fewer than the nodes, though twenty nodes have no edge into them and nineteen
 	// have two: the counts are the file's, and the generator carries each edge as it is.
 	CHECK_TABLE(FCataclysmEmpireTreeEdgeRow,    "EmpireTreeEdges.csv",       158)
+	// 32: the effects of the 31 city nodes and options that act in issue #2741 slice 3a, Imperial Decree having two.
+	CHECK_TABLE(FCataclysmEmpireTreeEffectRow,  "EmpireTreeEffects.csv",      32)
 	// 24 of the 293 nodes have an authored effect, and the small share is the
 	// point rather than a shortfall to be fixed by typing: most nodes are not
 	// stat modifiers under any authoring scheme. Issue #939 measures the gap.
@@ -1086,6 +1088,7 @@ bool FCataclysmDataTableAssetsTest::RunTest(const FString& Parameters)
 		{ TEXT("DT_DungeonModifiers"),      TEXT("DungeonModifiers.csv") },
 		{ TEXT("DT_ElementVisuals"),        TEXT("ElementVisuals.csv") },
 		{ TEXT("DT_EmpireTreeEdges"),       TEXT("EmpireTreeEdges.csv") },
+		{ TEXT("DT_EmpireTreeEffects"),     TEXT("EmpireTreeEffects.csv") },
 		{ TEXT("DT_EmpireTreeNodes"),       TEXT("EmpireTreeNodes.csv") },
 		{ TEXT("DT_EnchantmentEffects"),    TEXT("EnchantmentEffects.csv") },
 		{ TEXT("DT_EnchantmentsNegative"),  TEXT("EnchantmentsNegative.csv") },

@@ -688,12 +688,17 @@ float UCataclysmSurgeScheduler::GapAfterThisSurge() const
 
 bool UCataclysmSurgeScheduler::IsDue(int32 Day) const
 {
-	return static_cast<float>(Day) >= NextSurgeDay;
+	return static_cast<float>(Day) >= NextSurgeDay + GapBonusDaysNow();
 }
 
 float UCataclysmSurgeScheduler::DaysUntilNextSurge(int32 Day) const
 {
-	return FMath::Max(0.0f, NextSurgeDay - static_cast<float>(Day));
+	return FMath::Max(0.0f, NextSurgeDay + GapBonusDaysNow() - static_cast<float>(Day));
+}
+
+float UCataclysmSurgeScheduler::GapBonusDaysNow() const
+{
+	return SurgesFired > 0 ? GapBonusDays : 0.0f;
 }
 
 float UCataclysmSurgeScheduler::DaysSinceLastSurge(int32 Day) const

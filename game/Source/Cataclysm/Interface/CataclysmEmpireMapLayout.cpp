@@ -126,7 +126,10 @@ FString UCataclysmEmpireMapLayout::CityLabel(const UCataclysmEmpireMap* Map,
 	// ROUNDED UP, SO A CITY WITH ANYTHING LEFT NEVER READS AS 0%. A player told
 	// a city is at nothing would stop defending it, and a city at 0.4% is still
 	// standing and still savable.
-	const int32 Percent = FMath::CeilToInt(City->DefenceFraction() * 100.0f);
+	//
+	// OF THE MAXIMUM WITH THE EMPIRE UPGRADE TREE, so a point bought mid-run shows: a full Outpost reads 96% after one
+	// point of Foundation, the "1000 of 1050" of the coordinating session's S1. Issue #2741 slice 3a.
+	const int32 Percent = FMath::CeilToInt(Map->DefenceFractionOf(*City) * 100.0f);
 
 	return FString::Printf(TEXT("%s %d%%"), *Tier, FMath::Clamp(Percent, 0, 100));
 }

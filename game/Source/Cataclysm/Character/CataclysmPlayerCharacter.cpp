@@ -4956,8 +4956,8 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmBuyCityUpgrade(
 				Ar.Logf(TEXT("%s now has %d of %d slots filled. Defence %.0f of "
 							 "%.0f, %.0f of %.0f people."),
 						*City->Name, City->Upgrades.Num(),
-						Run->Map->UpgradeSlots, City->Defence, City->MaxDefence,
-						City->Population, City->MaxPopulation);
+						Run->Map->UpgradeSlots, Run->Map->DefenceOf(*City), Run->Map->EffectiveMaxDefence(*City),
+						Run->Map->PopulationOf(*City), Run->Map->EffectiveMaxPopulation(*City)); // With the tree: #2741 3a.
 			}
 		}));
 

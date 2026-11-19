@@ -355,8 +355,10 @@ def test_only_an_ordinary_void_dungeon_adds_them_in_both() -> None:
     where = "UCataclysmEmpireRun::ResolveDungeon"
     marks = ("const bool bVoid = Dungeon->AddsVoidStacks();",
              "const int32 Stacks = bVoid ? Dungeon->VoidStacksItAdds() : 0;",
-             "const float Defence = bVoid ? 0.0f : Dungeon->DefenceDamage * Scale;",
-             "const float Population = bVoid ? 0.0f : Dungeon->PopulationDamage * Scale;",
+             # THE EMPIRE UPGRADE TREE'S REDUCTION ON EACH since issue #2741
+             # slice 3a; a Void dungeon's points are still nought.
+             "const float Defence = bVoid ? 0.0f : Dungeon->DefenceDamage * Scale * Taken.Defence;",
+             "const float Population = bVoid ? 0.0f : Dungeon->PopulationDamage * Scale * Taken.Population;",
              "++DungeonsDetonated;",
              "if (Map->Damage(CityId, Defence, Population) "
              "|| (bVoid && Map->AddVoidStacks(CityId, Stacks))) "

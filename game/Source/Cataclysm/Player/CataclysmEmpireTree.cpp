@@ -17,6 +17,7 @@ namespace CataclysmEmpireTreeTables
 {
 	const TCHAR* NodeAssetPath = TEXT("/Game/Data/DT_EmpireTreeNodes.DT_EmpireTreeNodes");
 	const TCHAR* EdgeAssetPath = TEXT("/Game/Data/DT_EmpireTreeEdges.DT_EmpireTreeEdges");
+	const TCHAR* EffectAssetPath = TEXT("/Game/Data/DT_EmpireTreeEffects.DT_EmpireTreeEffects");
 
 	/**
 	 * Kept alive deliberately, as `UCataclysmPassiveTree` keeps its tables: nothing else references the asset, so
@@ -24,6 +25,7 @@ namespace CataclysmEmpireTreeTables
 	 */
 	TWeakObjectPtr<const UDataTable> CachedNodes;
 	TWeakObjectPtr<const UDataTable> CachedEdges;
+	TWeakObjectPtr<const UDataTable> CachedEffects;
 
 	const UDataTable* LoadAndKeep(const TCHAR* Path, TWeakObjectPtr<const UDataTable>& Cache)
 	{
@@ -110,6 +112,139 @@ const UDataTable* UCataclysmEmpireTree::LoadEdgeTable()
 {
 	return CataclysmEmpireTreeTables::LoadAndKeep(CataclysmEmpireTreeTables::EdgeAssetPath,
 												  CataclysmEmpireTreeTables::CachedEdges);
+}
+
+const UDataTable* UCataclysmEmpireTree::LoadEffectTable()
+{
+	return CataclysmEmpireTreeTables::LoadAndKeep(CataclysmEmpireTreeTables::EffectAssetPath,
+												  CataclysmEmpireTreeTables::CachedEffects);
+}
+
+// ---------------------------------------------------------------------------
+// What the city nodes add up to -- issue #2741 slice 3a
+// ---------------------------------------------------------------------------
+
+FCataclysmEmpireTreeBonuses UCataclysmEmpireTree::CityBonusesFor(const UDataTable* NodeTable,
+																 const UDataTable* EffectTable,
+																 const FCataclysmPassiveAllocation& Allocation)
+{
+	FCataclysmEmpireTreeBonuses Bonuses;
+	if (!NodeTable || !EffectTable)
+	{
+		return Bonuses;
+	}
+
+	for (const TPair<FName, uint8*>& Pair : EffectTable->GetRowMap())
+	{
+		const FCataclysmEmpireTreeEffectRow* Row = reinterpret_cast<const FCataclysmEmpireTreeEffectRow*>(Pair.Value);
+		if (!Row)
+		{
+			continue;
+		}
+
+		// A NODE'S POINTS, OR ONE FOR AN OPTION THAT IS CHOSEN AND WHOSE CAPSTONE'S POINT IS BOUGHT.
+		const FName Node(*Row->Node);
+		const int32 Held = Allocation.PointsIn(Node);
+		const int32 Points = Row->Option == 0
+			? Held
+			: (Held > 0 && Allocation.ChosenOptionIn(Node) == Row->Option ? 1 : 0);
+		if (Points <= 0)
+		{
+			continue;
+		}
+
+		// THE TOTAL, FOR AN EFFECT THAT ADDS: per point, times whole steps of another branch where it counts them (C3),
+		// held at the cap where there is one. A compounded effect below reads `PerPoint` and `Points` instead.
+		float Total = Row->PerPoint * static_cast<float>(Points);
+		if (Row->StepPoints > 0)
+		{
+			Total *= static_cast<float>(SpentInBranch(NodeTable, Allocation, Row->StepBranch) / Row->StepPoints);
+		}
+		if (Row->Cap > 0.0f)
+		{
+			Total = FMath::Min(Total, Row->Cap);
+		}
+		const float Kept = FMath::Pow(FMath::Max(0.0f, 1.0f - Row->PerPoint), static_cast<float>(Points));
+
+		switch (Row->Effect)
+		{
+		case ECataclysmEmpireTreeEffect::MaxDefenceAll:
+			Bonuses.MaxDefenceAll += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::MaxDefenceOutposts:
+			Bonuses.MaxDefenceOutposts += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::MaxDefenceBulwarksAndSanctuaries:
+			Bonuses.MaxDefenceBulwarks += Total;
+			Bonuses.MaxDefenceSanctuaries += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::MaxDefenceSanctuaries:
+			Bonuses.MaxDefenceSanctuaries += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::MaxDefenceNearPillar:
+			Bonuses.MaxDefenceNearPillar += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::MaxDefencePerDefendedCity:
+			Bonuses.MaxDefencePerDefendedCity += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::BasePopulationAll:
+			Bonuses.BasePopulationAll += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::BasePopulationOutposts:
+			Bonuses.BasePopulationOutposts += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::BasePopulationBulwarks:
+			Bonuses.BasePopulationBulwarks += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::TotalPopulationCompounded:
+			Bonuses.TotalPopulationFactor *= FMath::Pow(1.0f + Row->PerPoint, static_cast<float>(Points));
+			break;
+		case ECataclysmEmpireTreeEffect::TotalPopulationPerBranchStep:
+			Bonuses.TotalPopulationFactor *= 1.0f + Total;
+			break;
+		case ECataclysmEmpireTreeEffect::DamageTakenCompounded:
+			Bonuses.DamageTaken *= Kept;
+			break;
+		case ECataclysmEmpireTreeEffect::PopulationDamageTakenCompounded:
+			Bonuses.PopulationDamageTaken *= Kept;
+			break;
+		case ECataclysmEmpireTreeEffect::DamageTakenAdjacentToPillarCompounded:
+			Bonuses.DamageTakenAdjacentToPillar *= Kept;
+			break;
+		case ECataclysmEmpireTreeEffect::PopulationDamageTakenNearPillarCompounded:
+			Bonuses.PopulationDamageTakenNearPillar *= Kept;
+			break;
+		case ECataclysmEmpireTreeEffect::DamageTakenPerActiveTypeCompounded:
+			Bonuses.DamageTakenPerActiveType *= Kept;
+			break;
+		case ECataclysmEmpireTreeEffect::DamageTakenByLivingShare:
+			Bonuses.LivingShareReductionPerPoint = Row->PerPoint;
+			Bonuses.LivingSharePoints += Points;
+			break;
+		case ECataclysmEmpireTreeEffect::DamageTakenWithUpgrades:
+			Bonuses.DamageTakenWithUpgrades *= Kept;
+			break;
+		case ECataclysmEmpireTreeEffect::DamageTakenFromCommonestType:
+			Bonuses.DamageTakenFromCommonestType *= Kept;
+			break;
+		case ECataclysmEmpireTreeEffect::ResolveDaysAll:
+		case ECataclysmEmpireTreeEffect::ResolveDaysPerBranchStep:
+			Bonuses.ResolveDaysAll += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::ResolveDaysOutposts:
+			Bonuses.ResolveDaysOutposts += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::ResolveDaysBelowTenPercent:
+			Bonuses.ResolveDaysBelowTenPercent += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::SurgeGapDays:
+			Bonuses.SurgeGapDays += Total;
+			break;
+		default:
+			break;
+		}
+	}
+	return Bonuses;
 }
 
 TArray<FString> UCataclysmEmpireTree::BranchNames()

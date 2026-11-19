@@ -19,8 +19,10 @@ namespace
 		Before.CityId = CityId;
 		if (const FCataclysmCity* City = Map != nullptr ? Map->Find(CityId) : nullptr)
 		{
-			Before.Defence = City->Defence;
-			Before.Population = City->Population;
+			// AS THE CITY IS READ, so a hit after a respec lowered a maximum records what the hit took and not the clamp
+			// down to that maximum. Issue #2741 slice 3a.
+			Before.Defence = Map->DefenceOf(*City);
+			Before.Population = Map->PopulationOf(*City);
 			Before.bStanding = !City->bFallen;
 		}
 		return Before;
@@ -40,8 +42,8 @@ namespace
 		}
 		FCataclysmCityHit& Hit = OutReport.Hits.AddDefaulted_GetRef();
 		Hit.CityId = Before.CityId;
-		Hit.DefenceLost = Before.Defence - After->Defence;
-		Hit.PopulationLost = Before.Population - After->Population;
+		Hit.DefenceLost = Before.Defence - Map->DefenceOf(*After);
+		Hit.PopulationLost = Before.Population - Map->PopulationOf(*After);
 		Hit.Kind = Kind;
 		Hit.bFelledTheCity = Before.bStanding && After->bFallen;
 	}
@@ -88,6 +90,9 @@ void UCataclysmEmpireRun::BeginForCharacter(int32 InSeed, int32 InCataclysmOrder
 											int32 InDifficultyTier)
 {
 	Map = NewObject<UCataclysmEmpireMap>(this);
+
+	// THE TREE BEFORE THE CITIES, so they are built full at the maxima it raises (S1). See `TreeBonuses`.
+	Map->TreeBonuses = TreeBonuses;
 	Map->Build();
 
 	// HERETIC GIVES A CITY TWO UPGRADE SLOTS INSTEAD OF THREE. The map cannot
@@ -97,9 +102,18 @@ void UCataclysmEmpireRun::BeginForCharacter(int32 InSeed, int32 InCataclysmOrder
 
 	Clock = NewObject<UCataclysmDayClock>(this);
 
+	// THE TREE'S DAYS ON A TIMER ARE ASKED OF THIS RUN, which knows the dungeon's city. Weak, so a clock that outlives
+	// its run asks nothing. Issue #2741 slice 3a.
+	Clock->ResolveBonusDays = [WeakRun = TWeakObjectPtr<UCataclysmEmpireRun>(this)](int32 DungeonId)
+	{
+		const UCataclysmEmpireRun* Run = WeakRun.Get();
+		return Run != nullptr ? Run->ResolveBonusDaysFor(DungeonId) : 0.0f;
+	};
+
 	Surges = NewObject<UCataclysmSurgeScheduler>(this);
 	Surges->Mode = Mode;
 	Surges->LethalityRung = LethalityRung;
+	Surges->GapBonusDays = TreeBonuses.SurgeGapDays;
 
 	Dungeons.Reset();
 	NextDungeonId = 0;
@@ -875,6 +889,12 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 				// does.
 				// WHAT THE HIT TAKES, RECORDED as this block is left, by the return below or its end: the city read now and
 				// then. Issue #2733 slice 3; changes nothing. See `FHitRecordedOnLeaving` for why not a call after the if.
+				// AND THE EMPIRE UPGRADE TREE'S REDUCTIONS, on the figures rather than in the call, so the call stays the
+				// one line the port tests read. Read while `Dungeon` still points at it. Issue #2741 slice 3a.
+				const FCataclysmTreeDamageFactors Taken = TreeDamageFactorsFor(HostId, Dungeon->Cataclysm);
+				Ordinary.DefenceDamage *= Taken.Defence;
+				Ordinary.PopulationDamage *= Taken.Population;
+
 				const FHitRecordedOnLeaving RecordTheHit(OutReport, Map.Get(), HostId, ECataclysmCityHitKind::QuestTimer);
 				if (Map->Damage(HostId, Ordinary.DefenceDamage, Ordinary.PopulationDamage) || (bHollow && Map->AddVoidStacks(HostId, HollowStacks)))
 				{
@@ -921,8 +941,12 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 	const int32 Stacks = bVoid ? Dungeon->VoidStacksItAdds() : 0;
 
 	const float Scale = Dungeon->BiteScale();
-	const float Defence = bVoid ? 0.0f : Dungeon->DefenceDamage * Scale;
-	const float Population = bVoid ? 0.0f : Dungeon->PopulationDamage * Scale;
+
+	// AND THE EMPIRE UPGRADE TREE'S REDUCTIONS: the comment on `UCataclysmEmpireMap::Damage` has always said its caller
+	// folds in "any empire tree reduction", and this is it. Issue #2741 slice 3a.
+	const FCataclysmTreeDamageFactors Taken = TreeDamageFactorsFor(CityId, Dungeon->Cataclysm);
+	const float Defence = bVoid ? 0.0f : Dungeon->DefenceDamage * Scale * Taken.Defence;
+	const float Population = bVoid ? 0.0f : Dungeon->PopulationDamage * Scale * Taken.Population;
 
 	// THE EMPIRE IS ABOUT TO PAY, SO THIS IS WHERE IT IS COUNTED. Every return
 	// above this line leaves the city untouched -- a kind that does not
@@ -1296,7 +1320,14 @@ void UCataclysmEmpireRun::ApplySiegeDamage(FCataclysmDayReport& OutReport)
 	// removes dungeons from `Dungeons`, and walking that array while it is being
 	// emptied is how a crash gets written. `ResolveDungeon` beside this takes
 	// the same care for the same reason.
-	TArray<TPair<int32, int32>> Hosts;
+	// WITH THE SIEGE'S SENDER, which The Sentinel reads. Issue #2741 slice 3a.
+	struct FSiegeHost
+	{
+		int32 CityId = INDEX_NONE;
+		int32 DaysStood = 0;
+		ECataclysmType Sender = ECataclysmType::None;
+	};
+	TArray<FSiegeHost> Hosts;
 
 	for (const FCataclysmDungeon& Dungeon : Dungeons)
 	{
@@ -1308,13 +1339,13 @@ void UCataclysmEmpireRun::ApplySiegeDamage(FCataclysmDayReport& OutReport)
 			const int32 DaysStood =
 				FMath::Max(0, Clock->Day - Dungeon.SpawnedDay);
 
-			Hosts.Emplace(Dungeon.CityId, DaysStood);
+			Hosts.Add({ Dungeon.CityId, DaysStood, Dungeon.Cataclysm });
 		}
 	}
 
-	for (const TPair<int32, int32>& Host : Hosts)
+	for (const FSiegeHost& Host : Hosts)
 	{
-		const int32 CityId = Host.Key;
+		const int32 CityId = Host.CityId;
 
 		// CHECKED AGAIN FOR EACH ONE. A city that fell to an earlier Siege in
 		// this same loop must not be bitten a second time, and a city whose
@@ -1349,12 +1380,19 @@ void UCataclysmEmpireRun::ApplySiegeDamage(FCataclysmDayReport& OutReport)
 		// twentieth of that. See `SiegeDamageGrowthPerDay` for why that
 		// asymmetry is the point rather than a rounding of it, and for the
 		// ruling of 2026-09-06 that took the growth from 10 to 2.5.
-		const float Grown = SiegeDamageGrowthPerDay * Host.Value;
+		const float Grown = SiegeDamageGrowthPerDay * Host.DaysStood;
 
-		const float Defence = City->MaxDefence * SiegeDefenceBitePerDay + Grown;
+		// THE SHARE IS OF THE MAXIMUM WITH THE EMPIRE UPGRADE TREE, so the tree's raised walls are no better against a
+		// Siege than a city upgrade's -- the owner's exception above, kept -- as the simulation's Siege takes its share
+		// of a `max_defense` the tree has already raised. The tree's reductions then apply, as the simulation's
+		// `damage_taken` does at its Siege. Issue #2741 slice 3a.
+		const FCataclysmTreeDamageFactors Taken = TreeDamageFactorsFor(CityId, Host.Sender);
+
+		const float Defence =
+			(Map->EffectiveMaxDefence(*City) * SiegeDefenceBitePerDay + Grown) * Taken.Defence;
 
 		const float Population =
-			City->MaxPopulation * SiegePopulationBitePerDay + Grown;
+			(Map->EffectiveMaxPopulation(*City) * SiegePopulationBitePerDay + Grown) * Taken.Population;
 
 		OutReport.Besieged.Add(CityId);
 
@@ -1783,9 +1821,9 @@ bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)
 			// expects.
 			if (Restored > 0.0f && !City->bFallen)
 			{
-				City->Defence = FMath::Min(
-					City->MaxDefence,
-					City->Defence + City->MaxDefence * Restored);
+				// OF THE MAXIMUM WITH THE EMPIRE UPGRADE TREE, from what the city is read as holding. Issue #2741 slice 3a.
+				const float Max = Map->EffectiveMaxDefence(*City);
+				City->Defence = FMath::Min(Max, Map->DefenceOf(*City) + Max * Restored);
 			}
 		}
 	}
@@ -1845,6 +1883,71 @@ double UCataclysmEmpireRun::EmpirePointsFor(ECataclysmDungeonType Type, double L
 	// LIVING OVER EVERY CITY'S MAXIMUM, THE DENOMINATOR HELD AT ONE OR MORE, as `World.population_frac` holds it.
 	// Linear, no floor and no cap: the owner's ruling of 2026-09-06.
 	return EmpirePointsBaseFor(Type) * (LivingPopulation / FMath::Max(1.0, MaxPopulation));
+}
+
+// ---------------------------------------------------------------------------
+// The empire upgrade tree's city nodes -- issue #2741 slice 3a
+// ---------------------------------------------------------------------------
+
+void UCataclysmEmpireRun::SetTreeBonuses(const FCataclysmEmpireTreeBonuses& Bonuses)
+{
+	TreeBonuses = Bonuses;
+	if (Map != nullptr)
+	{
+		Map->TreeBonuses = Bonuses;
+	}
+	if (Surges != nullptr)
+	{
+		Surges->GapBonusDays = Bonuses.SurgeGapDays;
+	}
+}
+
+FCataclysmTreeDamageFactors UCataclysmEmpireRun::TreeDamageFactorsFor(int32 CityId, ECataclysmType Sender) const
+{
+	const FCataclysmCity* City = Map != nullptr ? Map->Find(CityId) : nullptr;
+	if (City == nullptr)
+	{
+		return FCataclysmTreeDamageFactors();
+	}
+	return TreeBonuses.DamageFactorsFor(City->Ring(), ActiveCataclysms.Num(),
+										static_cast<float>(LivingPopulationShare()), City->Upgrades.Num(),
+										IsTheCommonestTypeOn(CityId, Sender));
+}
+
+bool UCataclysmEmpireRun::IsTheCommonestTypeOn(int32 CityId, ECataclysmType Sender) const
+{
+	if (Sender == ECataclysmType::None)
+	{
+		return false;
+	}
+
+	TMap<ECataclysmType, int32> Counts;
+	for (const FCataclysmDungeon& Dungeon : Dungeons)
+	{
+		if (Dungeon.CityId == CityId && Dungeon.Cataclysm != ECataclysmType::None)
+		{
+			++Counts.FindOrAdd(Dungeon.Cataclysm);
+		}
+	}
+
+	int32 Most = 0;
+	for (const TPair<ECataclysmType, int32>& Count : Counts)
+	{
+		Most = FMath::Max(Most, Count.Value);
+	}
+	const int32* Senders = Counts.Find(Sender);
+	return Senders != nullptr && *Senders == Most;
+}
+
+float UCataclysmEmpireRun::ResolveBonusDaysFor(int32 DungeonId) const
+{
+	const FCataclysmDungeon* Dungeon = FindDungeon(DungeonId);
+	const FCataclysmCity* City = (Dungeon != nullptr && Map != nullptr) ? Map->Find(Dungeon->CityId) : nullptr;
+	if (City == nullptr)
+	{
+		return 0.0f;
+	}
+	return TreeBonuses.ResolveDaysFor(City->Tier, Map->DefenceFractionOf(*City));
 }
 
 double UCataclysmEmpireRun::LivingPopulationShare() const
@@ -2249,17 +2352,16 @@ void UCataclysmEmpireRun::RunCityUpgradeIntervals(int32 Today)
 				continue;
 			}
 
+			// OF THE MAXIMA WITH THE EMPIRE UPGRADE TREE, from what the city is read as holding. Issue #2741 slice 3a.
 			if (Upgrade.Effect == ECataclysmCityUpgradeEffect::HealDefenceEvery)
 			{
-				City.Defence = FMath::Min(
-					City.MaxDefence,
-					City.Defence + City.MaxDefence * Upgrade.Value);
+				const float Max = Map->EffectiveMaxDefence(City);
+				City.Defence = FMath::Min(Max, Map->DefenceOf(City) + Max * Upgrade.Value);
 			}
 			else
 			{
-				City.Population = FMath::Min(
-					City.MaxPopulation,
-					City.Population + City.MaxPopulation * Upgrade.Value);
+				const float Max = Map->EffectiveMaxPopulation(City);
+				City.Population = FMath::Min(Max, Map->PopulationOf(City) + Max * Upgrade.Value);
 			}
 
 			// THE NEXT ONE IS AN INTERVAL FROM TODAY, not from the day it was

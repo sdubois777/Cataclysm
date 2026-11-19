@@ -565,10 +565,11 @@ void UCataclysmEmpireMapWidget::HandleCityHovered(FName Value)
 	}
 	else
 	{
+		// WITH THE EMPIRE UPGRADE TREE, as the city screen says it. Issue #2741 slice 3a.
 		Parts.Add(FString::Printf(TEXT("%.0f of %.0f defence"),
-								  City->Defence, City->MaxDefence));
+								  Run->Map->DefenceOf(*City), Run->Map->EffectiveMaxDefence(*City)));
 		Parts.Add(FString::Printf(TEXT("%.0f of %.0f people"),
-								  City->Population, City->MaxPopulation));
+								  Run->Map->PopulationOf(*City), Run->Map->EffectiveMaxPopulation(*City)));
 		Parts.Add(Run->Map->IsExposed(CityId) ? TEXT("exposed")
 											  : TEXT("sealed behind the frontier"));
 	}

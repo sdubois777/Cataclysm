@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Empire/CataclysmEmpireMap.h"
 #include "Empire/CataclysmSurge.h"
 #include "Engine/GameInstance.h"
 #include "Save/CataclysmSavePartition.h"
@@ -486,6 +487,23 @@ public:
 	 * change the walk under way. The tree's screen still opens during a walk, to be read; this is the sentence it shows.
 	 */
 	static FString EmpireTreeChangeRefusal(const UObject* WorldContext);
+
+	/**
+	 * What the tree `EmpireTreeHeldBy` reads adds up to for the empire's cities, or no bonuses when nobody holds one.
+	 * Issue #2741 slice 3a; `UCataclysmEmpireTree::CityBonusesFor` does the adding.
+	 */
+	static FCataclysmEmpireTreeBonuses EmpireTreeBonusesFor(const UObject* WorldContext);
+
+	/**
+	 * Hands the run this world plays the bonuses of the tree its character holds: `EmpireTreeBonusesFor`, through
+	 * `UCataclysmEmpireRun::SetTreeBonuses`. Nothing when there is no run. Issue #2741 slice 3a.
+	 *
+	 * CALLED AFTER EVERY CHANGE TO THE TREE AND AFTER A RUN LOADS, so a bought node acts at once and a respec takes it
+	 * away at once (Q10): by `BuyEmpireTreePoint`, `ChooseEmpireTreeOption` and `RespecEmpireTree` -- before a respec's
+	 * days pass, so they pass without the tree -- and by `FCataclysmSaveLoad::CharacterAndRun` once the loaded run is the
+	 * game's. A NEW run is handed them before `Begin` instead, in `BeginACharactersEmpireRun`, so it is built full.
+	 */
+	static void RefreshEmpireTreeBonuses(const UObject* WorldContext);
 
 	/**
 	 * Puts one point into a node of the tree `EmpireTreeHeldBy` reads, paid from its bank, and has the record written.

@@ -209,6 +209,11 @@ def test_the_empire_layer_claim_is_still_true() -> None:
         "CataclysmDungeonModifier.h",
         "CataclysmDungeonModifier.cpp",
         "CataclysmDungeonModifierTests.cpp",
+        # The empire upgrade tree's city bonuses, added 2026-11-18 for issue
+        # #2741 slice 3a. The struct is declared in CataclysmEmpireMap.h; its
+        # rules are this file. The readme's empire bullet now says the layer
+        # reads the tree's city nodes and saves none of it.
+        "CataclysmEmpireTreeBonuses.cpp",
     }
     unexpected = sorted(
         path.relative_to(REPO_ROOT).as_posix()

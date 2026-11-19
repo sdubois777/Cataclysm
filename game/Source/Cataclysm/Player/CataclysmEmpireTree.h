@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Character/CataclysmPassiveTree.h"
+#include "Empire/CataclysmEmpireMap.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "CataclysmEmpireTree.generated.h"
 
@@ -75,6 +76,25 @@ public:
 
 	/** The generated edge table, the same way. */
 	static const UDataTable* LoadEdgeTable();
+
+	/** The generated effect table, `DT_EmpireTreeEffects`, the same way. Issue #2741 slice 3a. */
+	static const UDataTable* LoadEffectTable();
+
+	/**
+	 * What an allocation's bought city nodes add up to, for the empire layer to read. Issue #2741 slice 3a.
+	 *
+	 * ONE PASS OVER THE EFFECT TABLE AND NO NODE NAMED: each row says which node or option it belongs to, what it
+	 * changes and by how much a point (`FCataclysmEmpireTreeEffectRow`). A node's points come from the allocation; an
+	 * option acts while it is the capstone's chosen one and the capstone's point is bought. Golden Age and Bastion
+	 * Spirit count whole steps of 20 points in another branch (C3) and stop at their caps (S3, S4).
+	 *
+	 * @param NodeTable the node table, which says which branch each node is in
+	 * @param EffectTable the effect table
+	 * @param Allocation what has been bought
+	 * @return no bonuses at all with either table missing, which is the game before slice 3a
+	 */
+	static FCataclysmEmpireTreeBonuses CityBonusesFor(const UDataTable* NodeTable, const UDataTable* EffectTable,
+													  const FCataclysmPassiveAllocation& Allocation);
 
 	/** The four branches, in the order the source file's metadata names them, and then the centre. */
 	static TArray<FString> BranchNames();

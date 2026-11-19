@@ -576,6 +576,44 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	TObjectPtr<UCataclysmSurgeScheduler> Surges;
 
+	// ----------------------------------------------------------------------
+	// The empire upgrade tree's city nodes -- issue #2741 slice 3a
+	// ----------------------------------------------------------------------
+
+	/**
+	 * What the empire upgrade tree's city nodes add up to, for this run.
+	 *
+	 * NOT SAVED, so the saved run holds the base of every number the tree changes: see `FCataclysmEmpireTreeBonuses`.
+	 * The game instance sets it through `SetTreeBonuses` when a run begins -- BEFORE `Begin`, so the map is built full at
+	 * the raised maxima -- after a run loads, and after every point bought, option chosen or respec. A run nobody hands a
+	 * tree to, which is every run a test makes by hand, has none.
+	 */
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	FCataclysmEmpireTreeBonuses TreeBonuses;
+
+	/**
+	 * Hands the run the tree's bonuses, and its map and surge scheduler with it; the day clock asks
+	 * `ResolveBonusDaysFor`. A bought node acts at once and a respec takes it away at once; nothing is written into the
+	 * cities, the timers or the next surge day (S1).
+	 */
+	void SetTreeBonuses(const FCataclysmEmpireTreeBonuses& Bonuses);
+
+	/**
+	 * What a hit by a dungeon `Sender` sent on this city is reduced to by the tree: at every place a dungeon damages a
+	 * city -- an ordinary resolve, a Quest dungeon's timer and a Siege's daily share -- as the simulation applies its
+	 * `damage_taken` at the same three. Whole hits with no map or no such city.
+	 */
+	FCataclysmTreeDamageFactors TreeDamageFactorsFor(int32 CityId, ECataclysmType Sender) const;
+
+	/**
+	 * Whether `Sender` is a Cataclysm type with the most dungeons standing on this city, a tie counting every type in
+	 * it (S5): The Sentinel's "the Cataclysm type with the most dungeons in that city".
+	 */
+	bool IsTheCommonestTypeOn(int32 CityId, ECataclysmType Sender) const;
+
+	/** The tree's days on a dungeon's resolve timer, by its city's tier and share of defence. 0 on no city. */
+	float ResolveBonusDaysFor(int32 DungeonId) const;
+
 	/**
 	 * Every dungeon standing on the map, in the order they arrived.
 	 *

@@ -356,9 +356,30 @@ public:
 	/** The timer for a dungeon, or null if the clock does not know it. */
 	const FCataclysmDungeonTimer* FindTimer(int32 DungeonId) const;
 
-	/** How many days are left on a dungeon's timer. -1 if it is not known. */
+	/**
+	 * How many days are left on a dungeon's timer, with the empire upgrade tree's days on it. -1 if it is not known.
+	 *
+	 * EVERY READER OF A TIMER ASKS THIS, so the tree's days are on every display and every sort. The timer itself holds
+	 * the base, which is saved; the tree's days are not. Issue #2741 slice 3a.
+	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	float DaysUntilResolveFor(int32 DungeonId) const;
+
+	/**
+	 * The empire upgrade tree's days on a dungeon's timer, asked of whoever set `ResolveBonusDays`; 0 when nobody did.
+	 * Issue #2741 slice 3a.
+	 */
+	float ResolveBonusDaysFor(int32 DungeonId) const;
+
+	/**
+	 * Who to ask for the tree's days on a dungeon's timer. `UCataclysmEmpireRun` sets it when it makes this clock, so a
+	 * clock made on its own -- every clock a test makes by hand -- adds nothing.
+	 *
+	 * ASKED EVERY TIME, NOT COPIED, because the days depend on the dungeon's city (Border Patrol and Emergency Shelters
+	 * are for Outposts; Martial Law is for a city below a tenth of its defence) and dungeons arrive and cities are hit
+	 * between any two days. A copy would need refreshing at every one of those. Not saved: the tree is not.
+	 */
+	TFunction<float(int32 DungeonId)> ResolveBonusDays;
 
 	/** The player walks into a dungeon, which stops its timer. */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
@@ -373,7 +394,9 @@ public:
 	 *
 	 * Every timer moves down by one except the one the player is standing in.
 	 * Any that reach zero resolve: they are counted, their timer is set back to
-	 * full, and they stay on the clock.
+	 * full, and they stay on the clock. ZERO WITH THE EMPIRE UPGRADE TREE'S DAYS
+	 * ON IT: a timer resolves when what it holds and the tree's days come to
+	 * nothing. Issue #2741 slice 3a.
 	 *
 	 * @return the dungeons that resolved today, in the order they were added.
 	 *         Empty on most days, which is the point of a timer.

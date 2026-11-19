@@ -2143,6 +2143,122 @@ struct FCataclysmEmpireTreeEdgeRow : public FTableRowBase
 };
 
 /**
+ * What one effect of an empire upgrade tree node changes. Issue #2741 slice 3a, the city nodes; slices 3b to 5 add more.
+ *
+ * ONE VALUE PER NUMBER THE EMPIRE LAYER READS AND PER WAY IT COMBINES, so `UCataclysmEmpireTree::CityBonusesFor` is one
+ * switch with no node named in it. "Compounded" is a node whose text says its points multiply, each point a factor (the
+ * simulation's reading of the same words, `TREE_ARCHITECT_AS_DESIGNED`); every other percentage is an increase, summed.
+ */
+UENUM(BlueprintType)
+enum class ECataclysmEmpireTreeEffect : uint8
+{
+	None,
+
+	/** Maximum defence, an increase: every city; Outposts; Bulwarks and Sanctuaries; Sanctuaries; rings 0 to 2. */
+	MaxDefenceAll,
+	MaxDefenceOutposts,
+	MaxDefenceBulwarksAndSanctuaries,
+	MaxDefenceSanctuaries,
+	MaxDefenceNearPillar,
+
+	/** Maximum defence of every city, an increase for each standing city holding a defensive upgrade. */
+	MaxDefencePerDefendedCity,
+
+	/** Base population, an increase: every city; Outposts; Bulwarks. */
+	BasePopulationAll,
+	BasePopulationOutposts,
+	BasePopulationBulwarks,
+
+	/** Total empire population: compounded per point; or a factor that counts whole steps of a branch's points. */
+	TotalPopulationCompounded,
+	TotalPopulationPerBranchStep,
+
+	/** Damage a dungeon does to a city, compounded per point: defence and population; population only. */
+	DamageTakenCompounded,
+	PopulationDamageTakenCompounded,
+
+	/** The same, for cities adjacent to the Pillar; population only, for cities within two rings of it. */
+	DamageTakenAdjacentToPillarCompounded,
+	PopulationDamageTakenNearPillarCompounded,
+
+	/** The same, compounded once more for every Cataclysm type the run faces. */
+	DamageTakenPerActiveTypeCompounded,
+
+	/** The same, each point's reduction scaled by the empire's living share of its population. */
+	DamageTakenByLivingShare,
+
+	/** A reduction for a city holding two or more upgrades. */
+	DamageTakenWithUpgrades,
+
+	/** A reduction against a dungeon of the Cataclysm type with the most dungeons on the city. */
+	DamageTakenFromCommonestType,
+
+	/** Days on a dungeon's resolve timer: every dungeon; on Outposts; whole steps of a branch's points; below a tenth. */
+	ResolveDaysAll,
+	ResolveDaysOutposts,
+	ResolveDaysPerBranchStep,
+	ResolveDaysBelowTenPercent,
+
+	/** Days on every gap between surges. */
+	SurgeGapDays,
+};
+
+/**
+ * One effect of a node, or of a centre capstone's option, of the empire upgrade tree. Issue #2741 slice 3a.
+ *
+ * GENERATED FROM `EMPIRE_TREE_EFFECTS` in `tools/generate_datatables.py`, which names each node and states its effect,
+ * and `tools/tests/test_empire_tree_effects_match_their_texts.py` checks every value against the node's own words. A
+ * node with two effects -- Imperial Decree raises defence and lowers population -- has two rows.
+ *
+ * WHICH NODE IS THE `Node` FIELD, NOT THE ROW NAME, as on `FCataclysmPassiveGrantRow`: the row name is the node's
+ * identifier with `#1`, `#2` after it, and nothing reads it.
+ */
+USTRUCT(BlueprintType)
+struct FCataclysmEmpireTreeEffectRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	/** The node, a row name in the node table. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	FString Node;
+
+	/**
+	 * 0 for the node's own points. 1 to 3 for a centre capstone's option, which acts while it is the one chosen and the
+	 * capstone's point is bought.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	int32 Option = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	ECataclysmEmpireTreeEffect Effect = ECataclysmEmpireTreeEffect::None;
+
+	/**
+	 * The amount per point bought, as a fraction for a percentage (0.05 is 5%) and in days for days; a one-point node
+	 * or an option has all of it on its one point. A reduction is written as the share it takes off, positive.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	float PerPoint = 0.0f;
+
+	/**
+	 * For a node whose amount counts "per 20 points spent in" a branch: the 20. The amount is then multiplied by the
+	 * whole steps of that many points the allocation holds in `StepBranch` (C3). 0 for every other node.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	int32 StepPoints = 0;
+
+	/** The branch `StepPoints` counts. Empty when `StepPoints` is 0. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	FString StepBranch;
+
+	/**
+	 * The most the effect gives in total, in `PerPoint`'s units; 0 is no cap. The owner's ruling 2 of 2026-11-18, "Cap
+	 * each one", and the coordinating session's Q1: Golden Age and Bastion Spirit, chosen in slice 3a.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	float Cap = 0.0f;
+};
+
+/**
  * What one passive node grants, as a stat modifier the pipeline understands.
  *
  * WHICH NODE IT IS ABOUT IS THE `Node` FIELD, NOT THE ROW NAME. It was the row

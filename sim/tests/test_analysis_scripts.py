@@ -124,7 +124,8 @@ def penetration_run():
                                   "analyse_board_empty_surge.py",
                                   "analyse_tier_throughput.py",
                                   "analyse_outpost_depth.py",
-                                  "analyse_opening.py"])
+                                  "analyse_opening.py",
+                                  "analyse_empire_tree_caps.py"])
 def test_the_script_runs_and_prints_something(name):
     printed, _ = run(name)
     assert len(printed.splitlines()) > 20, printed
@@ -3785,3 +3786,37 @@ def test_the_opening_reaches_level_four_at_half_the_kills_over_seven_or_eight_fl
     for floors in (7, 8):
         reached = ns["RESULTS"]["levels"][(floors, 0.5)]
         assert reached and min(reached) >= 4, (floors, reached)
+
+
+# --------------------------------------------------------------------------
+# analyse_empire_tree_caps.py -- issue #2741 slice 3a
+# --------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def tree_caps_run():
+    """The evidence for Bastion Spirit's and Golden Age's caps. At the default
+    of one campaign a cell it plays 36, about five seconds; the figures its
+    docstring quotes need 200 a cell, which no test runs."""
+    return run("analyse_empire_tree_caps.py")
+
+
+def test_the_tree_caps_script_measures_every_cell(tree_caps_run):
+    _, ns = tree_caps_run
+    expected = {("Bastion Spirit", float(v), t) for v in ns["BASTION_DAYS"] for t in ns["TIERS"]}
+    expected |= {("Golden Age", float(v), t) for v in ns["GOLDEN_FACTORS"] for t in ns["TIERS"]}
+    assert set(ns["ROWS"]) == expected
+
+
+def test_it_measures_each_chosen_cap_and_past_it(tree_caps_run):
+    """The caps the generator writes into the effect table are among the sizes
+    measured, and so is a size past each, or the table would quote a cap the
+    measurement never reached. S3 and S4 of 2026-11-18."""
+    import generate_datatables as gen
+
+    _, ns = tree_caps_run
+    caps = {name: effect[4] for name, effects in gen.EMPIRE_TREE_EFFECTS.items()
+            for effect in effects if len(effect) > 4 and effect[4]}
+    assert caps["Bastion Spirit"] in ns["BASTION_DAYS"]
+    assert max(ns["BASTION_DAYS"]) > caps["Bastion Spirit"]
+    assert 1.0 + caps["Golden Age"] in ns["GOLDEN_FACTORS"]
+    assert max(ns["GOLDEN_FACTORS"]) > 1.0 + caps["Golden Age"]
