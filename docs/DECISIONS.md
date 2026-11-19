@@ -225,12 +225,17 @@ takes the new column; two tests, new), `CataclysmDungeonModifierEffectsTests.cpp
 
 ### SAID FIRST
 
-- **COMPILED, NOT YET RUN IN UNREAL.** Phase 1 at `b4d7f01f9`: the Python suite passes, 7,660 passed and 9 skipped;
+- **PASSED IN UNREAL, AS REGISTERED, IN WINDOW ring-w1's SECOND RUN AT `0c23e3dbb`**: 4,922 of 4,922, 47 skipped
+  halves, "Test saves: 836 written and deleted, 0 left behind"; Python 7,668 passed and 9 skipped; ruff clean; S1 and
+  S2 proved, each on exactly its registered tests and assertions ("Window ring-w1", below). **ITS FIRST RUN WAS STOPPED
+  FROM OUTSIDE, NOT BY A TEST**: its five groups passed alone, then a console control event ended the whole suite after
+  3,822 tests, none failed, and a second ended Python; the cause is probable, not confirmed (below).
+- Phase 1 at `b4d7f01f9`: the Python suite passes, 7,660 passed and 9 skipped;
   ruff is clean; both Python guard proofs are proved as registered ("Phase 1's Python run" and "The two Python guard
   proofs", below). Rebased onto `a96b2cead` (the empire upgrade tree's slice 4) and run again at `058fcd3a5`: 7,668
   passed and 9 skipped, by the count line and by the JUnit file (7,677 tests, 0 failures, 0 errors); ruff is clean.
   Phase 2's three builds at `058fcd3a5` succeeded ("Phase 2's compiles", below). The Unreal count and the two C++
-  proofs are registered below, before the window that will test them.
+  proofs were registered below before the window that tested them.
 - **THE MEASUREMENT USED A DEMONIC CATACLYSM THAT FOLLOWS THE FRONT LINE, AND THE SHIPPED SIMULATION'S DOES NOT YET.**
   The game's surge targets only the exposed front line for every Cataclysm, ruled for Demonic on 2026-09-14
   ([#1085](https://github.com/sdubois777/Cataclysm/issues/1085)); the simulation's Demonic still ignores it
@@ -461,6 +466,56 @@ changes (`CataclysmCorruptedStalkerCharacter.cpp`, `CataclysmDungeonGameMode.cpp
 `CataclysmEnemyScore.cpp`, `CataclysmEnemyStrength.cpp`, `CataclysmDungeonModifierEffectsTests.cpp` and
 `CataclysmEnemyStrengthTests.cpp`), and `CataclysmPlayerClassStats.cpp` and `CataclysmGameMode.cpp`, whose headers it
 changes.
+
+### Window ring-w1
+
+At `0c23e3dbb`, whose tree differs from the compiled `058fcd3a5` in `docs/DECISIONS.md` alone, under the Unreal lock
+`ring-w1`, after the pre-checks passed (no Unreal run in progress or queued, the lock free, no build or editor process,
+no open pull request, more than 10,240 MB of memory free). The build found the target up to date and compiled nothing.
+
+**THE FIRST RUN, 09:58 to 10:16, WAS STOPPED FROM OUTSIDE.** Each group alone passed at exactly its registered count
+and exit 0: `Cataclysm.EnemyStrength.` 8 of 8, `Cataclysm.DungeonModifierEffects.ACorruptedStalker` 10 of 10,
+`Cataclysm.EnemyScore.` 12 of 12, `Cataclysm.DungeonModifiers.` 31 of 31 and `Cataclysm.ConsumptionDouble.` 15 of 15.
+The whole suite began at 10:00:43; at 10:15:27 the test editor logged "Engine exit requested (reason: ConsoleCtrl
+RequestExit)" during `Cataclysm.SaveWriter.NothingIsWrittenUntilSomethingSaysWhichRunItIs`, after 3,822 tests had
+completed, every one a success, with no "server/discover" line (#2745). The wrapper exited 3221225786 (0xC000013A, a
+process ended by a console control event) and printed no count. Python, next, exited the same way 45 seconds in. No
+proof ran. The session that ran the window made no tool call between 09:59:00 and 10:16:35.
+
+**THE CAUSE IS PROBABLE, NOT CONFIRMED.** The gate started the runner with `DETACHED_PROCESS`, copied from every earlier
+window, and a process with no console gives each console program it starts a new console with a visible window. So the
+test wrapper's console and then pytest's appeared on the screen while the owner was at the computer, and closing either
+sends the event the editor logged; two events 47 seconds apart, each ending the program running at that moment, fit
+that. Earlier windows ran the same way, mostly at night. The gate now starts the runner with `CREATE_NO_WINDOW |
+CREATE_NEW_PROCESS_GROUP`: its own console with no window, shared by everything it starts. Fifteen seconds into the
+second run the runner, its console host, the test wrapper and the editor all had no window. The first run's logs are
+kept in the window's working folder, `ring_w1_attempt1`.
+
+**THE SECOND RUN, 10:19 to 10:43, SKIPPED THE GROUPS**, as the coordinating session allowed: they had passed alone at
+this head with these binaries, and the whole suite runs each of their tests again.
+
+| Check | Registered | Measured |
+| :-- | :-- | :-- |
+| The whole suite | 4,922 performed | 4,922 performed, 4,922 succeeded, 0 failed; declared 4,922, gap 0; exit 0 |
+| Skipped halves | 47 | 47 |
+| Test saves | 836 written and deleted, 0 left behind | 836 written and deleted, 0 left behind |
+| Python with a JUnit file | -- | 7,668 passed, 9 skipped; the JUnit file 7,677 tests, 0 failures, 0 errors |
+| ruff | clean | All checks passed |
+
+**S1 PROVED, AS REGISTERED.** Broken: 8 performed, 1 failed,
+`AWalkInADungeonRolledOnABulwarkBuildsItsCreaturesWithTheBulwarksDamage`, on three assertions: "and the score model
+reads the ring off the game mode" (0, expected 1), "its Starting damage is the Bulwark's" (0.628875, expected 1.383525)
+and "CONTROL: and not an Outpost's 0.629". Restored: 8 of 8.
+
+**S2 PROVED, AS REGISTERED.** Broken: 8 performed, 3 failed, on twelve assertions: `EveryFigureIsTheModels` six -- five
+rows named, each a tier 1 Imp on a Bulwark built at an Outpost's damage, and "rows where the game builds what the model
+builds" 847 of 973, the 126 tier 1 ring rows wrong;
+`AtTierOneDamageRisesByTheRingTheDungeonWasRolledOnAndAtTiersTwoToEightItDoesNot` four -- the Bulwark's, Sanctuary's
+and Pillar's figures, each 0.05, and the Sanctuary Brute's damage (10.18, expected 26.47); and
+`AWalkInADungeonRolledOnABulwarkBuildsItsCreaturesWithTheBulwarksDamage` two -- "on this floor a Bulwark's Imp hits
+0.11 / 0.05 times as hard as an Outpost's" and the control. Restored: 8 of 8.
+
+The lock was released when the window ended.
 
 ---
 
