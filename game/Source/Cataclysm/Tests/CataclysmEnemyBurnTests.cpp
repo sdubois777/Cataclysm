@@ -332,7 +332,7 @@ CATACLYSM_ENEMY_BURN_TEST(FCataclysmEnemyBurnStalkerTest,
 	// A SHARE OF THE TARGET'S HEALTH TAKES NO MULTIPLIER: the coordinating session, 2026-11-19, "EXEMPT
 	// percentage-of-health effects from the Stalker's multiplier ... A share of the target's health already sizes
 	// itself to the target". The Stalker's Void Splinter, 1% of current health a tick, on an undefended player of
-	// 10,000 health with nothing else on it: its first tick is 1% of the health it met, not 0.06% of it.
+	// 10,000 health: its first tick is 1% of the health it met, not 0.06% of it.
 	ACataclysmPlayerCharacter* Splintered = SpawnBurnPlayer(World, FVector(0.0f, 2.0f * BurnMetre, 0.0f));
 	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
 	const FGameplayTag Splinter = UCataclysmDebuffs::VoidSplinterTag();
@@ -344,25 +344,38 @@ CATACLYSM_ENEMY_BURN_TEST(FCataclysmEnemyBurnStalkerTest,
 	BurnSet(Splintered, Combat::GetArmorAttribute(), 0.0f);
 	BurnSet(Splintered, Combat::GetDamageReductionAttribute(), 0.0f);
 	BurnSet(Splintered, Vital::GetHealthRegenAttribute(), 0.0f);
+	// EACH TICK WITH THE HEALTH IT MET, READ WHEN IT IS ANNOUNCED. The Stalker is a live creature and fights this
+	// player while the clock runs: in window burn-w1 (2026-11-19) its Pyroclasm and Molten Cleave took the player
+	// below 10,000 before the first tick, which landed 98.33 against a health read before the clock ran. A share of
+	// health is sized from the health at the tick (`UCataclysmSkillEffects::ApplyShareOfHealthOverTime`: "from the
+	// health it has at that moment"), and the health read in this listener is that health:
+	// `UCataclysmCombatEvents::NoteBlow` announces a blow before `UCataclysmVitalAttributeSet` writes it to health, as
+	// `ACataclysmPlayerCharacter::NoteBlowTakenInTheHitLog` relies on. ONLY THE VOID SPLINTER'S TICKS, by the tag the
+	// effect grants, so a burn the Stalker lays on this player is not counted as one.
 	TArray<float> SplinterTicks;
-	const FDelegateHandle Listening = Events->OnHit.AddLambda([&SplinterTicks, Splintered](const FCataclysmHitNotice& Notice)
-	{
-		if (Notice.Target == Splintered && Notice.bDamageOverTime)
+	TArray<float> HealthEachTickMet;
+	const FDelegateHandle Listening = Events->OnHit.AddLambda(
+		[&SplinterTicks, &HealthEachTickMet, Splintered, Splinter](const FCataclysmHitNotice& Notice)
 		{
-			SplinterTicks.Add(Notice.Landed);
-		}
-	});
+			if (Notice.Target == Splintered && Notice.bDamageOverTime && Notice.GrantedTags != nullptr
+				&& Notice.GrantedTags->HasTag(Splinter))
+			{
+				SplinterTicks.Add(Notice.Landed);
+				HealthEachTickMet.Add(BurnRead(Splintered, Vital::GetHealthAttribute()));
+			}
+		});
 	ON_SCOPE_EXIT { Events->OnHit.Remove(Listening); };
-	const float HealthMet = BurnRead(Splintered, Vital::GetHealthAttribute());
 	TestTrue(TEXT("set-up: the Stalker lays a Void Splinter of 1% a tick"),
 			 UCataclysmSkillEffects::ApplyShareOfHealthOverTime(Stalker, Splintered, 0.01f, 4.0f, Splinter,
 																/*bScalesWithInstigator=*/false));
 	CataclysmTestWorld::RunClock(World, 1.1f);
 	if (TestTrue(FString::Printf(TEXT("set-up: a Void Splinter tick landed (%d)"), SplinterTicks.Num()),
-				 SplinterTicks.Num() > 0))
+				 SplinterTicks.Num() > 0 && HealthEachTickMet.Num() == SplinterTicks.Num()))
 	{
+		TestTrue(FString::Printf(TEXT("set-up: the tick met a player with health (%.1f)"), HealthEachTickMet[0]),
+				 HealthEachTickMet[0] > 1000.0f);
 		TestEqual(TEXT("the Stalker's Void Splinter tick is still 1% of the target's current health"), SplinterTicks[0],
-				  HealthMet * 0.01f, 0.5f);
+				  HealthEachTickMet[0] * 0.01f, 0.5f);
 	}
 
 	// AND ON ITS FLOOR'S RING, as its hits are since the ring slice: a Stalker worn on a Bulwark keeps the Bulwark's

@@ -26,7 +26,12 @@ four in the group `Cataclysm.EnemyBurn.`; three new in `CataclysmThornsOfGlassTe
 
 ### SAID FIRST
 
-- **NOT YET COMPILED OR RUN IN UNREAL.** Phase 1 at `1009bfe7b`, on development `0b7b554d1`: the Python suite gives 1
+- **WINDOW burn-w1 FAILED ONE ASSERTION, AND IT WAS THE TEST'S, NOT THE GAME'S** (at `4e9bc42af`, 2026-11-19): the
+  Stalker's Void Splinter tick was compared with 1% of the player's health from before the clock ran, while the Stalker,
+  a live creature, struck that player during it. Everything else passed: seven groups alone at their counts, 4,954 of
+  the whole suite's 4,955, Python and ruff. No proof ran. The test now reads the health each tick met; that correction
+  is NOT YET COMPILED OR RUN ("Window burn-w1", below).
+- **PHASE 1 WAS WRITTEN WITHOUT A COMPILE.** Phase 1 at `1009bfe7b`, on development `0b7b554d1`: the Python suite gives 1
   failed, 7,677 passed and 9 skipped, by its count line and by its JUnit file (7,687 tests, 1 failure, 0 errors); ruff
   is clean; the three Python guard proofs are proved as registered ("Phase 1's Python guard proofs", below).
 - **REBASED AGAIN ONTO DEVELOPMENT `055ac0254`**, where the forge (#2768) and the gear display slice (#2769) merged:
@@ -344,6 +349,51 @@ the machine is free:
     Predicted: 4 performed, 1 failed,
     `ACorruptedStalkersDamageOverTimeIsTheTableFigureTimesItsDamageMultiplier`, on two assertions (the Bulwark Stalker's
     0.132, and its control that it is not 0.06); restored, 4 of 4.
+
+### Window burn-w1
+
+**THE COMPILES**, at `010e507ba` on 2026-11-19, 15:37 to 15:52, before the window and outside the lock, all succeeding:
+the branch as committed (66 actions, 59 files); each of the 12 `.cpp` files this branch changes compiled alone (the
+build tool excluded exactly those 12 from the unity files; 20 files, no warning); and the unity files again (8, no
+warning). **ONE WARNING IN THE FIRST, AND IT IS NOT THE ENGINE'S OWN**: C4996, "CountBits for 64-bit values has been
+deprecated", is printed from the engine's `MicrosoftPlatformMath.h` but triggered by this project's
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` line 1315, which the build log's next note
+names ("see reference to function template instantiation ... CountBits<uint64>"). It is issue #2756, whose fix is
+queued; this branch does not change that file. It was first reported to the coordinating session as the engine's own,
+which was wrong.
+
+**THE WINDOW**, lock burn-w1, 15:55 to 16:20, started by `gate_burn.py` with no console window once the pre-checks all
+passed (development `055ac0254` with its CI and Unreal runs passed, no run in progress, the lock free, no build or
+editor process, no open pull request, 13,507 MB free):
+
+| Check | Registered | Measured |
+| :-- | :-- | :-- |
+| The asset step | `DT_EnemyModifiers.uasset`, `DT_StatusEffects.uasset` and `datatable_asset_sources.json` alone | Those three, committed alone as `4e9bc42af` and pushed; every test below ran there |
+| Each group alone | The eight at their counts | Seven passed at their counts; `Cataclysm.EnemyBurn.` performed 4, 3 succeeded, 1 failed |
+| The whole suite | 4,955; 47 skipped halves; 850 test saves, none left | 4,955 performed, 4,954 succeeded, 1 failed (the same test, the same figure); 47 skipped halves; "850 written and deleted, 0 left behind"; 4,955 declared, gap 0 |
+| Python and ruff | Every test passing | 7,714 passed, 9 skipped; the JUnit file 7,723 tests, 0 failures, 0 errors; ruff clean |
+| The proofs | S1, S2 and S3 | None run: the runner runs no proof once a test has failed, because the fix moves the head |
+
+**THE ONE FAILED ASSERTION**, in `Cataclysm.EnemyBurn.ACorruptedStalkersDamageOverTimeIsTheTableFigureTimesItsDamageMultiplier`,
+alone and in the whole suite: "Expected 'the Stalker's Void Splinter tick is still 1% of the target's current health'
+to be 100.000000, but it was 98.329628 and outside tolerance 0.500000". Neither span holds a "server/discover" or a
+"ConsoleCtrl" line. Every other assertion of the test passed, the Bulwark Stalker's 0.132 among them.
+
+**IT WAS THE TEST'S.** The test compared the tick with 1% of the health it read before the clock ran. The Stalker it
+spawns is a live creature, and while the clock ran its Pyroclasm (84) and Molten Cleave (52) struck the players beside
+it; the log shows those blows meeting health of 10,000, 10,000, 9,917, 9,865 and 9,916. A Void Splinter tick is sized from the health
+at the tick (`UCataclysmSkillEffects::ApplyShareOfHealthOverTime`: "from the health it has at that moment"), and 98.33
+is 1% of 9,833, a health the player could hold after those blows; the log does not print the health at the tick. The
+rule the assertion guards held: the Stalker's multiplier on it would have made the tick about 6.
+
+**THE TEST IS CORRECTED, NOT THE GAME.** The listener now records, with each Void Splinter tick, the player's health
+read when the tick is announced -- the health the tick met, because `UCataclysmCombatEvents::NoteBlow` announces a blow
+before `UCataclysmVitalAttributeSet` writes it to health, which `ACataclysmPlayerCharacter::NoteBlowTakenInTheHitLog`
+relies on too -- and counts only ticks whose effect grants the Void Splinter tag, so a burn the Stalker lays on that
+player is not counted as one. The assertion compares the first tick with 1% of that health, within the same 0.5, and a
+new set-up check says the health met was above 1,000. **NOT YET COMPILED OR RUN.** The registration does not change:
+4 in `Cataclysm.EnemyBurn.`, 4,955 in all, and the proofs S1, S2 and S3 as registered above; S3's predicted failures
+are the Bulwark block's two assertions, which this does not touch.
 
 ---
 
