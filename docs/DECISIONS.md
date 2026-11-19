@@ -978,6 +978,12 @@ window's log before it starts.**
 The Starvation test would fail under the same break by reading its code (10 and 15 expected, 5 read), but P1's prefix
 does not select it, so the proof does not show that.
 
+### Python, measured
+
+At `96a9b2466`, the change and this entry committed: "7704 passed, 9 skipped in 399.95s (0:06:39)"; the JUnit file:
+tests 7713, failures 0, errors 0, skipped 9. ruff: "All checks passed!". The same counts as at the display slice's
+`8b03a4bed`, as expected: this branch adds and removes no Python test.
+
 ---
 
 ## 2026-11-19 — C opens the character sheet in both control schemes, and the character creator has no key (#2770)
