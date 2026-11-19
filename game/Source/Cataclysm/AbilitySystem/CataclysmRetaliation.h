@@ -12,11 +12,20 @@ class UAbilitySystemComponent;
 /**
  * Retaliation: what a defender sends back to whatever lands a hit on it.
  *
- * WHAT THE DESIGN SAYS, at docs/Cataclysm_GDD_v2.md, Retaliation. It is a FLAT
- * amount rather than a share of the hit; it answers a hit and never a damage
- * over time tick; only a hit that got through provokes it; a minion's blow
- * provokes none; and what comes back IS NOT ITSELF A HIT, which is what stops
- * two retaliating characters reflecting at one another without end.
+ * WHAT THE DESIGN SAYS, at docs/Cataclysm_GDD_v2.md, Retaliation. It is a SHARE
+ * of the blow, measured before the defender's own mitigation (a flat amount
+ * until 2026-09-03, issue #1227); it answers a hit and never a damage over time
+ * tick; only a hit that got through provokes it; a minion's blow provokes it and
+ * the minion takes it; and what comes back is dealt through the damage formula
+ * as a blow that cannot itself be retaliated against, which is what stops two
+ * retaliating characters reflecting at one another without end. This comment
+ * said "a FLAT amount", "a minion's blow provokes none" and "IS NOT ITSELF A
+ * HIT" until issue #2749 corrected it.
+ *
+ * AND A CREATURE'S THORNS OF GLASS IS NOT RETALIATION SINCE ISSUE #2749 (B2). It
+ * strikes back with the creature's own attack damage, whatever the blow it took
+ * was worth: `StrikeBack` below. It is decided at the same place and under the
+ * same conditions as retaliation.
  *
  * THE RULES LIVED IN `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`
  * AND STILL START THERE. That function is where a blow is resolved and it is the
@@ -179,9 +188,8 @@ public:
 	 * @param Attacker    what hit the character, which is the effect causer
 	 * @return how much health was actually taken, across every target
 	 *
-	 * EACH TARGET TAKES THE WHOLE AMOUNT RATHER THAN A SHARE OF IT. Retaliation
-	 * is a flat amount by design, and nothing in Reprisal Wave's sentence
-	 * divides it. Splitting it would leave the total unchanged and so make the
+	 * EACH TARGET TAKES THE WHOLE AMOUNT RATHER THAN A SHARE OF IT. Nothing in
+	 * Reprisal Wave's sentence divides it. Splitting it would leave the total unchanged and so make the
 	 * option worth nothing, and all twelve capstone options were rewritten on
 	 * 2026-08-27 as pure upgrades with no drawbacks. Issue #1031.
 	 *
@@ -233,4 +241,33 @@ public:
 	 */
 	static float PayReflected(UAbilitySystemComponent* Defender, AActor* Instigator, AActor* Attacker,
 							  float DamageTaken);
+
+	/**
+	 * A creature carrying Thorns of Glass strikes back at whatever hit it: one blow of its own attack damage, sized by
+	 * its own strength and reduced by the attacker's defences, whatever the blow it took was worth. Issue #2749 (B2),
+	 * the owner's ruling of 2026-11-18: "When struck, a reflecting creature hits back for its own attack damage, sized
+	 * by its strength like any other hit and reduced by your defences. Your own damage no longer matters to it."
+	 *
+	 * DEALT THROUGH `UCataclysmSkillEffects::ApplyHit` AT `StrikeBackDamagePercent` OF THE CREATURE'S ATTACK DAMAGE,
+	 * the pipeline its own basic attack takes (`ACataclysmEnemyCharacter::AttackTarget`). Its attack damage attribute
+	 * already holds its rarity's scale, any rule's part and the floor's multipliers, so the figure is the creature's
+	 * own current one. No skill tags: it is no skill.
+	 *
+	 * A RETURNED BLOW, WITH THE FOUR FLAGS EVERY RETURNED BLOW CARRIES (see `Pay`): it cannot be retaliated against,
+	 * so a retaliating player does not answer it; it cannot critically strike; it carries no weapon sub-type; it cannot
+	 * leech. And it is marked `FCataclysmHitDelivery::bIsRetaliation`, so the player's hit log says it was returned.
+	 * Ruled by the coordinating session on 2026-11-18 (Q2).
+	 *
+	 * CALLED BY `UCataclysmVitalAttributeSet` where it decides retaliation, under the same conditions: a hit that got
+	 * through, not a damage over time tick, and not a blow that cannot be retaliated against. So once per hit, and a
+	 * minion's blow is struck back at the minion. A hit that kills the creature is still struck back, because that
+	 * branch runs before the hit is written to health, as retaliation's does: a judgement, recorded in
+	 * `docs/DECISIONS.md`.
+	 *
+	 * @return how much health the attacker lost, measured off its health
+	 */
+	static float StrikeBack(AActor* Creature, AActor* Attacker);
+
+	/** How much of the creature's own attack damage a strike back is: all of it. Issue #2749 (B2). */
+	static constexpr float StrikeBackDamagePercent = 100.0f;
 };

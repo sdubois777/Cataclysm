@@ -20261,7 +20261,7 @@ bool FCataclysmRolledUseHitsItsUserWithItsRowsTest::RunTest(const FString&)
 }
 
 // --------------------------------------------------------------------------
-// Issue #2498: a Spell's self hit, its ground and its Echo Chamber copy take its spell damage, as its hit does.
+// Issue #2498: a Spell's self hit and its ground take its spell damage, as its hit does.
 // --------------------------------------------------------------------------
 
 /**
@@ -20276,8 +20276,10 @@ bool FCataclysmRolledUseHitsItsUserWithItsRowsTest::RunTest(const FString&)
  * 16.7% = 41.75; and the self hit tests' rolled row. The spell damage is the attribute, set by hand, with no
  * `spell_damage` line recorded, so `SpellDamageOf` answers the attribute; the gadget test records a line, for its row
  * naming gadgets. EVERY READING WITH SPELL DAMAGE HAS A CONTROL WITH NONE, READ FIRST. The critical strike roll is
- * pinned at 100 after each world is made. The Echo Chamber test of this group is in
- * `CataclysmDungeonModifierEffectsTests.cpp`, with the rig of the Echo Chamber tests.
+ * pinned at 100 after each world is made.
+ *
+ * THE GROUP'S FIFTH TEST, ON THE ECHO CHAMBER COPY, WAS DELETED WITH ISSUE #2749 (B3, ruled 2026-11-18), which made
+ * the copy's self hit a share of the player's maximum health that reads no damage, so it carries no spell damage.
  */
 namespace CataclysmNoTargetSpellDamageTest
 {

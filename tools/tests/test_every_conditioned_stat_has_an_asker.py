@@ -27,9 +27,11 @@ WHAT IS NOT MEASURED. Which of "blow taken" and "hit dealt" an asker passes is
 read from the code, stat by stat, on 2026-10-06; no probe hands over a blow or a
 target to prove it. And a stat can have a second consumer that reads the
 attribute: issues #2234 and #2235 record two. A third, #2233's throw
-interval, asks since 2026-10-23. All three of #2234's paths are built: the self
-hit reads the whole line since 2026-10-24 (path B), the Echo Chamber copy since
-2026-10-25 (path C), and a skill's ground patch since 2026-10-25 (path A).
+interval, asks since 2026-10-23. All three of #2234's paths were built: the self
+hit reads the whole line since 2026-10-24 (path B), the Echo Chamber copy's hit
+on the player did from 2026-10-25 (path C) until issue #2749 (B3, 2026-11-18)
+made it a share of the player's maximum health that reads no damage row, and a
+skill's ground patch since 2026-10-25 (path A).
 
 THE PARSE IS NARROW, as in `test_every_scaled_stat_has_an_asker.py`: one literal
 block per table, anchored on the accessor that opens it, raising when the shape

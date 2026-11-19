@@ -84,9 +84,10 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	 * with `UCataclysmSkillEffects::RetaliationDataName` and the hit announcement carries it as
 	 * `FCataclysmHitNotice::bRetaliation`, so the player's hit log can say a blow was returned rather than struck.
 	 *
-	 * SET IN TWO PLACES: `UCataclysmRetaliation::Pay`, which pays both the retaliation stat (the creature modifier
-	 * Thorns of Glass gives it) and a reflected melee hit, and the worn row that reflects a share of a blocked blow
-	 * (`UCataclysmAbilitySystemComponent::ActOnEvent`). IT CHANGES NOTHING ABOUT HOW THE BLOW RESOLVES: it is read only
+	 * SET IN THREE PLACES: `UCataclysmRetaliation::Pay`, which pays both the retaliation stat and a reflected melee
+	 * hit; `UCataclysmRetaliation::StrikeBack`, the creature modifier Thorns of Glass's blow for a hit taken since issue
+	 * #2749 (B2), which until then gave the creature the retaliation stat that `Pay` paid; and the worn row that
+	 * reflects a share of a blocked blow (`UCataclysmAbilitySystemComponent::ActOnEvent`). IT CHANGES NOTHING ABOUT HOW THE BLOW RESOLVES: it is read only
 	 * by the announcement. Whether a returned blow can itself be returned is `bCannotBeRetaliatedAgainst`'s business.
 	 */
 	bool bIsRetaliation = false;
@@ -1700,7 +1701,8 @@ public:
 	 * "backfire"), and next a copied blow and a ground patch. It is `ApplyHit`'s own
 	 * weapon part -- the attribute with its folded increases undone, times
 	 * `MoreForSkill`, times one plus `IncreasesForSkill` -- with no enemy in it. SINCE #2498 THE THREE ARE PRICED BY
-	 * `SkillHitWithNoTarget` below, which is this at the skill's percent and, for a Spell, adds its spell damage.
+	 * `SkillHitWithNoTarget` below, which is this at the skill's percent and, for a Spell, adds its spell damage. The
+	 * copied blow was Echo Chamber's self hit until issue #2749 (B3) made that a share of the player's maximum health.
 	 *
 	 * NO TARGET AND NO BLOW BEYOND THE TWO USE FACTS. The target is null and every
 	 * other blow fact is "not known", so a row about the enemy struck (a boss, its
@@ -1727,7 +1729,8 @@ public:
 	 * part above at `DamagePercent`, AND A SPELL'S SPELL DAMAGE, as `ApplyHit` adds it. Issue #2498, settled
 	 * 2026-10-25 by the coordinating session (Q-S1): a Spell's backfire ("half damage"), its Echo Chamber copy ("a
 	 * tenth of what it would deal an enemy") and its ground ("one hit of the skill that left it") all name the
-	 * Spell's own hit, and a Spell's hit includes its spell damage.
+	 * Spell's own hit, and a Spell's hit includes its spell damage. THE ECHO CHAMBER COPY LEFT THIS WITH ISSUE #2749
+	 * (B3, ruled 2026-11-18): its self hit is a share of the player's maximum health and reads no damage at all.
 	 *
 	 * `(W / (1 + F) x M x DamagePercent / 100 + SpellFlat) x (1 + A + ExtraIncreases)`, `ApplyHit`'s bracket: the
 	 * spell damage is outside the skill's percent and inside the increases. `SpellFlat` is `SpellDamageOf` with this

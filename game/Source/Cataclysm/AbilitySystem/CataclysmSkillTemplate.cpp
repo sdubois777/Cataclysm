@@ -342,7 +342,8 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 			}
 		}
 		// AND ITS USER TAKES THE SHARE OF WHAT THE USE WOULD HAVE DEALT ONE ENEMY: the use's own priced hit, before
-		// any target's defences, as Echo Chamber prices its self hit. Dealt as the user's own direct damage to
+		// any target's defences, as Echo Chamber priced its self hit until issue #2749 (B3) made that a share of the
+		// player's maximum health. Dealt as the user's own direct damage to
 		// themselves with that rule's delivery, so their own defences reduce it and it neither critically strikes,
 		// leeches nor is retaliated against. Here, when the use is paid for, and not when its blow would have landed.
 		// A use with no damage of its own deals its user nothing.

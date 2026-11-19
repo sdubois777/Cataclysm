@@ -2299,6 +2299,11 @@ void ACataclysmEnemyCharacter::WriteAttackDamage(float DamageScale)
 	}
 }
 
+bool ACataclysmEnemyCharacter::StrikesBackWhenHit() const
+{
+	return UCataclysmEnemyModifiers::StrikesBack(ModifierRows);
+}
+
 void ACataclysmEnemyCharacter::ApplyModifierAttributes()
 {
 	if (ModifierRows.IsEmpty())
@@ -2326,16 +2331,10 @@ void ACataclysmEnemyCharacter::ApplyModifierAttributes()
 		ApplyIfHeld(UCataclysmVitalAttributeSet::GetLifeLeechAttribute(), Leech);
 	}
 
-	// DEALS BACK HALF OF WHAT IT TAKES. Thorns of Glass. It touches no health:
-	// the project owner changed the modifier on 2026-09-05 from reflecting the
-	// whole hit on a one-health creature to reflecting half on an ordinary one.
-	const float Retaliation =
-		UCataclysmEnemyModifiers::RetaliationPercent(ModifierRows);
-	if (Retaliation > 0.0f)
-	{
-		ApplyIfHeld(UCataclysmCombatAttributeSet::GetRetaliationAttribute(),
-					Retaliation);
-	}
+	// THORNS OF GLASS WRITES NO STAT. Since issue #2749 (B2) it strikes back at
+	// whatever hits it for its own attack damage, which the attribute set asks
+	// of the creature through `StrikesBackWhenHit`; until then it wrote 50
+	// retaliation here, and half of every hit taken went back.
 
 	// AND SHRUGS OFF BEING STUNNED, KNOCKED DOWN OR SHOVED. Unyielding. The
 	// stat shortens a stun's seconds, a knockdown's seconds and a shove's

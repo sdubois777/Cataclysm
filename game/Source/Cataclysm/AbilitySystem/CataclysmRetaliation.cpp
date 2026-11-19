@@ -186,6 +186,27 @@ TArray<AActor*> UCataclysmRetaliation::TargetsOf(
 	return Targets;
 }
 
+float UCataclysmRetaliation::StrikeBack(AActor* Creature, AActor* Attacker)
+{
+	if (Creature == nullptr || Attacker == nullptr || Creature == Attacker)
+	{
+		return 0.0f;
+	}
+
+	// A RETURNED BLOW: the four flags `Pay` gives every returned blow, and the mark the hit log reads. See the header.
+	FCataclysmHitDelivery Delivery;
+	Delivery.bCannotBeRetaliatedAgainst = true;
+	Delivery.bCannotCriticallyStrike = true;
+	Delivery.bCarriesNoWeaponSubType = true;
+	Delivery.bCannotLeech = true;
+	Delivery.bIsRetaliation = true;
+
+	// THE CREATURE'S OWN ATTACK DAMAGE, THROUGH ITS OWN ATTACK'S PIPELINE, and the attacker's defences take their share.
+	const float Before = HealthOfRetaliationTarget(Attacker);
+	UCataclysmSkillEffects::ApplyHit(Creature, Attacker, StrikeBackDamagePercent, FGameplayTagContainer(), Delivery);
+	return FMath::Max(0.0f, Before - HealthOfRetaliationTarget(Attacker));
+}
+
 float UCataclysmRetaliation::PayReflected(UAbilitySystemComponent* Defender, AActor* Instigator, AActor* Attacker,
 										  float DamageTaken)
 {

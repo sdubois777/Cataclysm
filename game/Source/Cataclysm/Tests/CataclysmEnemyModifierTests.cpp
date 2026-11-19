@@ -460,8 +460,7 @@ CATACLYSM_MODIFIER_TEST(FCataclysmModifierStatEffectsTest,
 			 UCataclysmEnemyModifiers::ForcedCritChance(None) < 0.0f);
 	TestEqual(TEXT("no modifiers grant no leech"),
 			  UCataclysmEnemyModifiers::LifeLeechPercent(None), 0.0f);
-	TestEqual(TEXT("no modifiers grant no retaliation"),
-			  UCataclysmEnemyModifiers::RetaliationPercent(None), 0.0f);
+	TestFalse(TEXT("no modifiers strike back"), UCataclysmEnemyModifiers::StrikesBack(None));
 
 	// A MODIFIER THAT HAS NO EFFECT BUILT CHANGES NOTHING, which is most of the
 	// 79 and is the honest state of the work. Beguiling is one of them.
@@ -481,14 +480,14 @@ CATACLYSM_MODIFIER_TEST(FCataclysmModifierStatEffectsTest,
 	TestEqual(TEXT("Bloodthirsty grants ten percent life leech"),
 			  UCataclysmEnemyModifiers::LifeLeechPercent({Bloodthirsty}), 10.0f);
 
-	// THORNS OF GLASS: "Reflects 50% of all damage taken back to the attacker."
+	// THORNS OF GLASS: "Strikes back at whatever hits it, once per hit, for its
+	// own attack damage." Issue #2749 (B2), the owner's ruling of 2026-11-18.
 	//
-	// IT USED TO REFLECT THE WHOLE HIT AND LEAVE THE CREATURE ON ONE HEALTH.
-	// The project owner changed it on 2026-09-05 in the design workbook, so this
-	// checks the new figure and that it leaves health alone -- which is what it
-	// stopped doing, and is the half a stale test would miss.
-	TestEqual(TEXT("Thorns of Glass reflects half the hit"),
-			  UCataclysmEnemyModifiers::RetaliationPercent({Thorns}), 50.0f);
+	// IT REFLECTED HALF OF EACH HIT UNTIL THEN, AND THE WHOLE HIT ON A CREATURE OF
+	// ONE HEALTH UNTIL 2026-09-05. A yes or no now: the strike back's size is the
+	// creature's own attack damage, which `Cataclysm.ThornsOfGlass.` checks. This
+	// still checks that it leaves health alone.
+	TestTrue(TEXT("Thorns of Glass strikes back"), UCataclysmEnemyModifiers::StrikesBack({Thorns}));
 	TestEqual(TEXT("and does not touch the creature's health"),
 			  UCataclysmEnemyModifiers::MaxHealthMultiplier({Thorns}), 1.0f);
 
@@ -498,8 +497,7 @@ CATACLYSM_MODIFIER_TEST(FCataclysmModifierStatEffectsTest,
 	const TArray<FName> Both = { Thorns, Titanic };
 	TestEqual(TEXT("Titanic Resolve still multiplies health beside Thorns of Glass"),
 			  UCataclysmEnemyModifiers::MaxHealthMultiplier(Both), 1.5f);
-	TestEqual(TEXT("and Thorns of Glass still reflects half"),
-			  UCataclysmEnemyModifiers::RetaliationPercent(Both), 50.0f);
+	TestTrue(TEXT("and Thorns of Glass still strikes back"), UCataclysmEnemyModifiers::StrikesBack(Both));
 
 	// AN AURA MODIFIER CHANGES NO STAT. Hellfire Aura reaches out on the
 	// per-character step instead, and a stat answer here would mean two things
@@ -667,17 +665,19 @@ CATACLYSM_MODIFIER_TEST(FCataclysmModifierReachesACreatureTest,
 	TestEqual(TEXT("Overpowered reaches the creature's critical strike chance"),
 			  ASC->GetNumericAttribute(Crit), 100.0f, 0.01f);
 
-	// THORNS OF GLASS REFLECTS HALF AND LEAVES THE HEALTH ALONE. The creature is
-	// still carrying Titanic Resolve, so the health check is what proves this
-	// modifier no longer overrules another one -- which it did until the project
-	// owner changed it on 2026-09-05.
+	// THORNS OF GLASS STRIKES BACK, GIVES NO RETALIATION AND LEAVES THE HEALTH
+	// ALONE. Issue #2749 (B2): until 2026-11-18 it wrote 50 retaliation here. The
+	// creature is still carrying Titanic Resolve, so the health check is what
+	// proves this modifier no longer overrules another one -- which it did until
+	// the project owner changed it on 2026-09-05.
 	Enemy->ModifierRows.Add(FName(UCataclysmEnemyModifiers::ThornsOfGlassRow));
 	Enemy->ApplyStartingAttributes();
 
-	TestEqual(TEXT("Thorns of Glass reflects half the hit"),
+	TestTrue(TEXT("Thorns of Glass makes it strike back"), Enemy->StrikesBackWhenHit());
+	TestEqual(TEXT("and gives it no retaliation"),
 			  ASC->GetNumericAttribute(
 				  UCataclysmCombatAttributeSet::GetRetaliationAttribute()),
-			  50.0f, 0.01f);
+			  0.0f, 0.01f);
 	TestEqual(TEXT("and leaves Titanic Resolve's health untouched"),
 			  ASC->GetNumericAttribute(MaxHealth), PlainHealth * 1.5f, 0.01f);
 

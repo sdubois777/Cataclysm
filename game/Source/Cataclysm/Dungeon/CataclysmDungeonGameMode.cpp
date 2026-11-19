@@ -14741,30 +14741,28 @@ bool ACataclysmDungeonGameMode::MakeTheEchoChamberCopy()
 	}
 	++EchoChamberCopiesMade;
 
-	// "IT CAN ALSO HIT YOU, DEALING A SMALL AMOUNT OF DAMAGE": a tenth of what the copy would deal to an enemy, only
-	// when the player stands inside the copy's area. Ruled 2026-10-05; see `EchoChamberKey`. Dealt as the player's own
-	// direct damage to themselves, which their defences reduce as an enemy's would.
+	// "IT CAN ALSO HIT YOU, DEALING A SMALL AMOUNT OF DAMAGE": only when the player stands inside the copy's area,
+	// ruled 2026-10-05; see `EchoChamberKey`. Dealt as the player's own direct damage to themselves, which their
+	// defences reduce as an enemy's would.
+	//
+	// 5% OF THE PLAYER'S MAXIMUM HEALTH PER COPY THAT REACHES THEM, BEFORE THEIR DEFENCES, since issue #2749 (B3), ruled
+	// by the coordinating session on 2026-11-18, "so the row's 'a small amount' holds at every level". It no longer
+	// follows the player's damage. Until then it was a tenth of what the copy would deal to an enemy, priced through the
+	// player's whole attack damage line (#2234 path C) and a spell's spell damage (#2498), so it grew with every
+	// increase the player bought.
 	const UAbilitySystemComponent* AbilitySystem = UCataclysmTargeting::AbilitySystemOf(Player);
 	if (AbilitySystem && Effects::EchoChamberHitsTheCaster(EchoChamberPendingAimCm, Skill.Params.RadiusCm))
 	{
-		const float Percent = Skill.DamagePercent >= 0.0f
-			? Skill.DamagePercent
-			: UCataclysmSkillSlots::NumbersFor(UCataclysmSkillSlots::LoadGeneratedTable(), Skill.Slot).DamagePercent;
-		// AND FROM THE WHOLE ATTACK DAMAGE LINE, ruled 2026-10-23 for #2234 (path C): the player's own conditioned,
-		// scaled and skill-type rows, asked with the copied row's own tags, are judged here, on the tick after the use,
-		// which is when the copy is made. No enemy is struck and no blow fact is passed, so no enemy row reaches it.
-		// AND A SPELL'S SPELL DAMAGE IS IN IT, as in its hit on an enemy (#2498).
-		const float ToAnEnemy = UCataclysmSkillEffects::ModifiedDamage(
-			AbilitySystem,
-			UCataclysmSkillEffects::SkillHitWithNoTarget(AbilitySystem, Skill.Tags, Percent),
-			Skill.Tags);
+		const float MaximumHealth =
+			AbilitySystem->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
 		FCataclysmHitDelivery Delivery;
 		Delivery.bIsArea = true;
 		Delivery.bCannotCriticallyStrike = true;
 		Delivery.bCannotLeech = true;
 		Delivery.bCannotBeRetaliatedAgainst = true;
-		if (UCataclysmSkillEffects::ApplyDirectDamage(Player, Player,
-													  ToAnEnemy * Effects::EchoChamberSelfHitPercent / 100.0f, Delivery))
+		if (UCataclysmSkillEffects::ApplyDirectDamage(
+				Player, Player, MaximumHealth * Effects::EchoChamberSelfHitShareOfMaximumHealthPercent / 100.0f,
+				Delivery))
 		{
 			++EchoChamberHitsOnThePlayer;
 		}

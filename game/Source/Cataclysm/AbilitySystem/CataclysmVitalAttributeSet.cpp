@@ -1863,10 +1863,10 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// was given to the Masochist by its class line at 158, and no
 				// code in the project read it.
 				//
-				// A FLAT AMOUNT, NOT A SHARE OF THE HIT. The class stat table
-				// writes it as a bare 158 while writing damage reduction as "8%"
-				// and life leech as "3%", so the table already says which of the
-				// two it is. Diablo IV's Thorns is flat in the same way.
+				// A SHARE OF THE BLOW, NOT A FLAT AMOUNT, since issue #1227
+				// (2026-09-03): the design's Retaliation section, "It is a share of
+				// the hit, not a flat amount". This comment said the opposite until
+				// issue #2749 corrected it.
 				//
 				// ONLY WHEN SOMETHING GOT THROUGH, so a hit that was evaded, or
 				// that armour and resistance stopped completely, provokes
@@ -1877,15 +1877,19 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// a tick, and a burn ticking once a second against a retaliating
 				// target would otherwise be a second, silent source of damage.
 				//
-				// NOT ITSELF A HIT, which is what stops two retaliating
-				// characters reflecting at one another without end.
-				// ReduceHealthDirectly writes to the Health attribute rather
-				// than to the Damage meta attribute, so none of the mitigation
-				// order runs and nothing here is reached a second time.
+				// WHAT COMES BACK CANNOT ITSELF BE RETALIATED AGAINST, which is
+				// what stops two retaliating characters reflecting at one another
+				// without end. It is dealt through the damage formula since issue
+				// #1227, as a blow carrying the no-retaliation mark that the test
+				// below refuses. This said it was "NOT ITSELF A HIT" because
+				// ReduceHealthDirectly wrote health directly, which stopped being
+				// true with #1227; corrected by issue #2749.
 				//
-				// AND A MINION'S BLOW PROVOKES NONE. It is credited to its
-				// summoner, so without the check a Ritualist standing at range
-				// would take this every time one of its imps struck.
+				// A MINION'S BLOW PROVOKES IT, AND THE MINION TAKES IT: the
+				// design's Retaliation section, and since issue #1515 a minion
+				// deals its own blow. Only a minion's death blast carries the
+				// no-retaliation mark. This said "A MINION'S BLOW PROVOKES NONE"
+				// until issue #2749 corrected it.
 				if (!Hit.bIsDamageOverTime
 					&& !AssetTags.HasTag(
 						UCataclysmDamageCalculation::NoRetaliationTag()))
@@ -1929,6 +1933,22 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						GetOwningAbilitySystemComponent(), CataclysmDefendingBody(*this),
 						Data.EffectSpec.GetContext().GetEffectCauser(),
 						Hit.Damage);
+
+					// AND A CREATURE CARRYING THORNS OF GLASS STRIKES BACK, once
+					// for this hit, with its own attack damage, whatever the hit
+					// was worth. Issue #2749 (B2), the owner's ruling of
+					// 2026-11-18. Here, under retaliation's own conditions, so it
+					// answers a hit that got through and never a tick, and a blow
+					// that cannot be retaliated against -- a returned blow, a
+					// death blast -- provokes none. At whoever struck the blow,
+					// the effect's causer, as retaliation is paid.
+					ACataclysmEnemyCharacter* ThornedCreature =
+						Cast<ACataclysmEnemyCharacter>(CataclysmDefendingBody(*this));
+					if (ThornedCreature != nullptr && ThornedCreature->StrikesBackWhenHit())
+					{
+						UCataclysmRetaliation::StrikeBack(
+							ThornedCreature, Data.EffectSpec.GetContext().GetEffectCauser());
+					}
 				}
 
 				// AND ANY RUNNING BUFF THAT REACTS TO A BLOW TAKEN IS TOLD, AND
