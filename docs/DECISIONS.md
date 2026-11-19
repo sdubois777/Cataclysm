@@ -31,9 +31,11 @@ cell I12) and `game/Data/EnemyModifiers.csv`. Tests: `CataclysmThornsOfGlassTest
   the creature losing 110 where the test expected the 100 the player's hit sent. The second window settled what that
   test asks: **a retaliating player does not answer the strike back**; the strike back on its own moved the creature's
   health by 0.
-- **NOT FOUND: WHY A PLAYER'S HIT SENT AT 100 TAKES 110 FROM THESE CREATURES.** The second window measured it with no
-  retaliation present and no ailment chance on the hit, so it is neither the strike back nor an answer to it, and it is
-  outside this slice. Reported to the coordinating session rather than filed.
+- **A PLAYER'S HIT SENT AT 100 TAKES 110 FROM THESE CREATURES BY DESIGN: THE GREATAXE IS A SLASHING WEAPON.** The
+  second window measured it with no retaliation present and no ailment chance on the hit, so it is neither the strike
+  back nor an answer to it. Traced after the window ("The second window", below): the design's "Weapon Sub-Types"
+  table gives Slashing "10% more damage vs. HP". Accepted by the coordinating session as intended, and to be counted in
+  any time-to-kill sum for the level 1 rebalance.
 - **ONE PYTHON TEST FAILED ON THE BRANCH UNTIL THE FIRST WINDOW**, as ruled (Q4): `test_datatable_assets_are_current`,
   because `game/Data/EnemyModifiers.csv` changed and `DT_EnemyModifiers.uasset` is rebuilt only by the editor. The
   first window rebuilt it and committed it alone with `datatable_asset_sources.json` (`480518bf2`); it passes since.
@@ -275,8 +277,9 @@ group's engine log `rf2749_alone_engine_ThornsOfGlass_480518bf.log`).
      helper sets only attributes whose set the ability system holds.
   2. **`AStrikeBackIsMarkedReturnedAndARetaliatingPlayerDoesNotAnswerIt`**: "Expected 'the creature takes the player's
      hit and nothing more: the strike back is not answered' to be 100.000000, but it was 110.000000". The marks were
-     right: the hit log printed the creature's plain blow and then "HIT: took 40 ... reflected or retaliation". **WHERE
-     THE EXTRA 10 CAME FROM WAS NOT FOUND.** The test compared the creature's loss with the figure `ApplyHit` returns,
+     right: the hit log printed the creature's plain blow and then "HIT: took 40 ... reflected or retaliation". Where
+     the extra 10 came from was not found during this window; it was traced after the second one (below). The test
+     compared the creature's loss with the figure `ApplyHit` returns,
      which is taken before the creature's own damage step. Read from the code and not run: the strike back carries the
      no-retaliation tag the way every retaliation payment does; the player's answer to a blow of 40 at 20 retaliation
      is 8 before the player's own modifiers, not 10; and the player's ailment chances are nought by default.
@@ -284,8 +287,9 @@ group's engine log `rf2749_alone_engine_ThornsOfGlass_480518bf.log`).
      player's carrying no ailment chance, and to print every figure ("THORNS STRIKE BACK UNANSWERED"). AND A FOURTH
      READING DECIDES IT BY ITSELF: `UCataclysmRetaliation::StrikeBack` called on its own, at the player holding 20
      retaliation, must leave the creature's health where it was. Agreed with the coordinating session: if it moves,
-     the code is fixed, not the test. If the strike back were answered, the test fails as before; R3 still breaks it. **The second window settled
-     it** (below): the strike back is not answered, and the extra 10 belongs to the player's hit itself.
+     the code is fixed, not the test. If the strike back were answered, the test fails as before; R3 still breaks it.
+     **The second window settled it** (below): the strike back is not answered, and the extra 10 belongs to the
+     player's hit itself, the Greataxe's Slashing sub-type.
 - **Not Claude's connection to the editor (#2745).** That log's 56 `LogModelContextProtocol` lines are all from the
   editor's start, before the first test.
 
@@ -340,9 +344,28 @@ And in R3's broken half, where the strike back carried neither mark:
 
 So **a retaliating player does not answer the strike back**, and without its marks it would be answered for 8, the
 same as the player's answer to the creature's plain blow of 40 at 20 retaliation. The first window's extra 10 was not an
-answer: the creature lost 110 to a hit sent at 100 with no retaliation present and no ailment chance on the hit. **Why
-the creature's own damage step takes a tenth more than was sent was not found.** It is the same with or without the
-strike back, so it is outside this slice; it is reported to the coordinating session, not filed.
+answer: the creature lost 110 to a hit sent at 100 with no retaliation present and no ailment chance on the hit.
+
+**The tenth is the Greataxe's Slashing sub-type, and it is intended.** Traced after the window, from the code and the
+design, and accepted by the coordinating session:
+
+- The test player starts holding a Greataxe (the log prints "Weapon change: Greataxe, Demonic damage" as it spawns).
+  `game/Data/ItemBases.csv` row `Weapon_Greataxe` gives its sub-type as Slashing, as the design's weapon table does
+  ("Greataxe | 2 | Slashing | 8 | 1.28 | 72 flat damage, 22 critical strike multiplier").
+- `docs/Cataclysm_GDD_v2.md`, "Weapon Sub-Types": "Slashing | 10% more damage vs. HP".
+- `UCataclysmVitalAttributeSet` reads the sub-type off the weapons of the blow's causer
+  (`UCataclysmWeaponSlotsComponent::SubTypeOf`) and sets `Hit.bIsSlashing`, unless the blow carries the
+  no-weapon-sub-type mark. `UCataclysmDamageCalculation`'s last step, "Health takes the remainder", multiplies by
+  1 + `SubtypeBonus` / 100, with `SubtypeBonus = 10.0f` (`CataclysmDamageCalculation.h`): 10% more to health, after
+  every defence.
+- **The strike back is exempt**: it carries the no-weapon-sub-type mark (`bCarriesNoWeaponSubType`), as every returned
+  blow does, which is why the player took exactly 40.
+- Ruled out on the way, from the code: the difficulty tier's resistance penalty, which applies only when a player is
+  hit; a creature's damage-taken stat, which defaults to 100 and which no creature code writes; and the bonus a hit
+  carries, which needs a row.
+- **For the level 1 rebalance** (coordinating session, 2026-11-19): a starting Greataxe character takes 10% more health
+  with every blow than the figure the blow sends. Any time-to-kill sum counts it; it is the design and is not to be
+  removed.
 
 ### What the research says, and what it does not
 
