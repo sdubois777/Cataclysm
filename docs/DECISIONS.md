@@ -16,7 +16,7 @@ Decisions made outside the Google Drive documents, newest first.
 `ECataclysmSaveTrigger::ForgeCrafted`, 16, new, writing the character record and in
 `WritesEvenIfTheRunWasWrittenThisFrame`; `FCataclysmPlayLoopLog::ForgeUpgradeLine` and `ForgeCombineLine`, new; a
 comment in `CataclysmPlayerState.h`; `docs/Cataclysm_GDD_v2.md` ("Gear Leveling" and the materials paragraph);
-`docs/Play_Loop_Checklist.md` step 15, new. Tests: `CataclysmForgeTests.cpp`, new, 8 in `Cataclysm.Forge.`;
+`docs/Play_Loop_Checklist.md` step 16, new. Tests: `CataclysmForgeTests.cpp`, new, 8 in `Cataclysm.Forge.`;
 `CataclysmForgeScreenTests.cpp`, new, 4 in `Cataclysm.ForgeScreen.`; one in `CataclysmPlayLoopTests.cpp`;
 `CataclysmSaveTriggerTests.cpp` lists the trigger; `tools/tests/test_the_forge_matches_the_design.py` and
 `tools/tests/test_the_forge_screen_is_generated_with_its_bindings.py`, new;
@@ -27,11 +27,14 @@ the same day, a to i below.
 ### SAID FIRST
 
 - **NOT YET COMPILED OR RUN IN THE ENGINE.** Written without compiling, as the coordinating session's approval said.
-- **THE BRANCH MUST BE REBASED ONTO A DEVELOPMENT THAT HOLDS TRIGGER 15 BEFORE ITS WINDOW.** `ForgeCrafted` is 16 as
-  ruled, because issue #2763 takes 15 for `CharacterBuildChanged` and merges first. On a development without 15,
+- **REBASED ONTO `1bf6611c5`, WHICH HOLDS TRIGGER 15, BEFORE ITS WINDOW.** `ForgeCrafted` is 16 as ruled, because
+  issue #2763 took 15 for `CharacterBuildChanged` and merged first. On a development without 15,
   `Cataclysm.SaveTriggers.EveryTriggerIsInTheListThisFileAnswersFor` fails: it walks the trigger numbers from 0 to the
-  count and finds 15 missing. The registration below is for after that rebase, and its `Cataclysm.SaveTriggers.` count
-  is re-registered then if #2763 adds tests to that group.
+  count and finds 15 missing. The rebase kept both sides of every conflict, #2763's first and the forge's after it: the
+  trigger's enum, `WritesTheCharacterRecord`, `NameOf`, `Every()` and the test's character list; the play-loop builders,
+  their test and the check's places, now twenty-two; and `others` in `tools/tests/test_when_a_save_is_written.py`.
+  #2763 added a checklist step 14 and moved the Continue to 15, so the forge's step is now 16.
+  `tools/check_resolved_cpp.py --changed` read 27 files with no complaint.
 - **THE DESIGN CONTRADICTED ITSELF ON THE STONE COUNT, AND THE TABLE WAS CORRECTED.** "Gear Leveling" counted one +1
   stone per level, 1, 3, 7 ... 1,023, against three statements that two are consumed: the operations row ("Consumes two
   upgrade stones"), the materials paragraph ("a +8 stone is what raises a piece to +8, and two of them are consumed")
@@ -100,24 +103,29 @@ the design's own; where the forge is opened differs between the three (a town NP
 
 ### Registered before the run
 
-After the rebase onto a development holding trigger 15. The base for the whole suite is the coordinating session's
-latest measured window; this branch adds **thirteen** tests by name and removes none: the eight of `Cataclysm.Forge.`,
-the four of `Cataclysm.ForgeScreen.`, and `Cataclysm.PlayLoop.TheForgesLinesSayWhatWasRaisedAndWhatWasCombined`. No
-test calls `CataclysmTestSkip::ReportSkippedHalf`.
+After the rebase onto `1bf6611c5`. The base is window buildsave-w1, run at `4a55d2fa3`, whose `game/` tree is
+`1bf6611c5`'s (`git diff --stat 4a55d2fa3 1bf6611c5 -- game/` prints nothing); its engine log,
+`.claude/windows/bs_suite_engine_4a55d2fa.log` in the worktree `sharp-meitner-246682`, reads "4929 tests performed",
+4929 "Test Completed" lines, none of them other than a success, and "Test saves: 850 written and deleted, 0 left
+behind". This branch adds **thirteen** tests by name and removes none: the eight of `Cataclysm.Forge.`, the four of
+`Cataclysm.ForgeScreen.`, and `Cataclysm.PlayLoop.TheForgesLinesSayWhatWasRaisedAndWhatWasCombined`. No test calls
+`CataclysmTestSkip::ReportSkippedHalf`.
 
+- **The whole suite**: **4942** performed (4929 + 13), all succeeding, and "Test saves: N written and deleted, 0 left
+  behind". N is not predicted: the forge's tests start play in worlds that write run and character slots, and how many
+  new slots that makes is not read off the code; it is reported as measured. 0 left behind is the gate.
 - **The asset step**: `tools/generate_interface_assets.py`, through `tools/run_editor_python.py`, creates
   `game/Content/Interface/WBP_Forge.uasset` and changes no other file; its log says "satisfies 7 BindWidget properties"
   and "created /Game/Interface/WBP_Forge". That file is committed alone; that commit is the tested head.
-- **Each group alone**, all succeeding. The bases are window gold-2-w1's engine log
-  (`.claude/windows/gold2_suite_engine_e4cb8b58.log` in this session's worktree), and `git diff da5783f4c a96b2cead --
-  game/Source` adds the ten `Cataclysm.EmpireTreeScreen.` tests and no other in these groups:
+- **Each group alone**, all succeeding. The bases are counted from the same buildsave-w1 log, by the group each
+  "Test Completed" line's path names:
 
 | Group | Base | Added by name | Registered |
 |---|---|---|---|
 | `Cataclysm.Forge.` | 0 | 8 | 8 |
 | `Cataclysm.ForgeScreen.` | 0 | 4 | 4 |
-| `Cataclysm.PlayLoop.` | 8 | 1 | 9 |
-| `Cataclysm.SaveTriggers.` | 6 | 0 | 6, re-registered after the rebase |
+| `Cataclysm.PlayLoop.` | 9 | 1 | 10 |
+| `Cataclysm.SaveTriggers.` | 6 | 0 | 6 |
 | `Cataclysm.EmpireTreeScreen.` | 10 | 0 | 10 |
 | `Cataclysm.EmpireScreen.` | 14 | 0 | 14 |
 | `Cataclysm.BossOnTheMap.` | 5 | 0 | 5 |
