@@ -203,11 +203,26 @@ its attack damage. `tools/tests/test_thorns_of_glass_strikes_back.py`, three, ne
 `git diff --stat 1304e355a df6fd0850 -- game/` printed nothing, so that is development's head as far as the game goes.
 This branch adds 6 and removes 3 and adds 2: **+5, 4872**.
 
-| Group | In the base log | After this slice |
-|---|---|---|
-| `Cataclysm.ThornsOfGlass.` | 0 | 6 |
-| `Cataclysm.DungeonModifierEffects.` | 772 | 772 (-2, +2) |
-| `Cataclysm.NoTargetSpellDamage.` | 5 | 4 |
+**Each group this change touches, run alone in the window by its prefix before the whole suite**, with the count it
+must perform and pass. Counted by prefix ignoring case in the same log; every prefix ends in a dot, and none is a
+case-insensitive string prefix of another of that log's 337 groups.
+
+| Group | In the base log | After this slice | Why it is run alone |
+|---|---|---|---|
+| `Cataclysm.ThornsOfGlass.` | 0 | 6 | new |
+| `Cataclysm.DungeonModifierEffects.` | 772 | 772 (-2, +2) | Echo Chamber's self hit |
+| `Cataclysm.NoTargetSpellDamage.` | 5 | 4 | the Echo Chamber copy of a Spell, deleted |
+| `Cataclysm.EnemyModifiers.` | 57 | 57 | two assertions changed |
+| `Cataclysm.SaveLoad.` | 79 | 79 | `ATestKillReflectsNothingOntoThePlayer`'s set-up |
+| `Cataclysm.HitLog.` | 6 | 6 | the returned-blow mark |
+| `Cataclysm.Retaliation.` | 11 | 11 | the branch the strike back sits in |
+| `Cataclysm.RetaliationUnmitigated.` | 6 | 6 | the same branch |
+| `Cataclysm.BlockReflect.` | 5 | 5 | another returned blow |
+
+**The DataTable asset step** (Q4), after the build: `tools/run_editor_python.py tools/generate_datatable_assets.py`
+may change only `game/Content/Data/DT_EnemyModifiers.uasset` and `game/Data/datatable_asset_sources.json`, and must
+change both; they are committed alone, and that commit is the head every later step tests. Python at that head is
+registered with no failure: `test_datatable_assets_are_current` passes once the asset is rebuilt.
 
 **The guard proofs**, each through `tools/unreal_build.prove_cpp_guard`, its anchor checked to match exactly once as
 the proof reads the file (LF), its prefix checked against the base log's names and this slice's new ones:
