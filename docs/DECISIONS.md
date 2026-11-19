@@ -26,11 +26,12 @@ four in the group `Cataclysm.EnemyBurn.`; three new in `CataclysmThornsOfGlassTe
 
 ### SAID FIRST
 
-- **WINDOW burn-w1 FAILED ONE ASSERTION, AND IT WAS THE TEST'S, NOT THE GAME'S** (at `4e9bc42af`, 2026-11-19): the
-  Stalker's Void Splinter tick was compared with 1% of the player's health from before the clock ran, while the Stalker,
-  a live creature, struck that player during it. Everything else passed: seven groups alone at their counts, 4,954 of
-  the whole suite's 4,955, Python and ruff. No proof ran. The test now reads the health each tick met; that correction
-  is NOT YET COMPILED OR RUN ("Window burn-w1", below).
+- **WINDOW burn-w1 FAILED ONE ASSERTION, IN THE TEST'S MEASUREMENT** (at `4e9bc42af`, 2026-11-19): the Stalker's
+  Void Splinter tick LANDED 98.33 against 1% of the player's health read before the clock ran, while the Stalker, a live
+  creature, struck that player during it, and while a share tick also passes the player's defences. Everything else
+  passed: seven groups alone at their counts, 4,954 of the whole suite's 4,955, Python and ruff. No proof ran. The test
+  now asserts what the tick SENT against the health it met, and prints what landed; NOT YET COMPILED OR RUN ("Window
+  burn-w1", below).
 - **PHASE 1 WAS WRITTEN WITHOUT A COMPILE.** Phase 1 at `1009bfe7b`, on development `0b7b554d1`: the Python suite gives 1
   failed, 7,677 passed and 9 skipped, by its count line and by its JUnit file (7,687 tests, 1 failure, 0 errors); ruff
   is clean; the three Python guard proofs are proved as registered ("Phase 1's Python guard proofs", below).
@@ -379,19 +380,39 @@ alone and in the whole suite: "Expected 'the Stalker's Void Splinter tick is sti
 to be 100.000000, but it was 98.329628 and outside tolerance 0.500000". Neither span holds a "server/discover" or a
 "ConsoleCtrl" line. Every other assertion of the test passed, the Bulwark Stalker's 0.132 among them.
 
-**IT WAS THE TEST'S.** The test compared the tick with 1% of the health it read before the clock ran. The Stalker it
-spawns is a live creature, and while the clock ran its Pyroclasm (84) and Molten Cleave (52) struck the players beside
-it; the log shows those blows meeting health of 10,000, 10,000, 9,917, 9,865 and 9,916. A Void Splinter tick is sized from the health
-at the tick (`UCataclysmSkillEffects::ApplyShareOfHealthOverTime`: "from the health it has at that moment"), and 98.33
-is 1% of 9,833, a health the player could hold after those blows; the log does not print the health at the tick. The
-rule the assertion guards held: the Stalker's multiplier on it would have made the tick about 6.
+**THE TEST MEASURED THE WRONG FIGURE, AND THE RUN DOES NOT SETTLE WHICH OF TWO THINGS TOOK THE 1.67.** The test
+compared what the tick LANDED with 1% of the health it read before the clock ran. Two things lie between those, and the
+code has both:
 
-**THE TEST IS CORRECTED, NOT THE GAME.** The listener now records, with each Void Splinter tick, the player's health
-read when the tick is announced -- the health the tick met, because `UCataclysmCombatEvents::NoteBlow` announces a blow
-before `UCataclysmVitalAttributeSet` writes it to health, which `ACataclysmPlayerCharacter::NoteBlowTakenInTheHitLog`
-relies on too -- and counts only ticks whose effect grants the Void Splinter tag, so a burn the Stalker lays on that
-player is not counted as one. The assertion compares the first tick with 1% of that health, within the same 0.5, and a
-new set-up check says the health met was above 1,000. **NOT YET COMPILED OR RUN.** The registration does not change:
+- **The player's health fell before the tick.** The Stalker it spawns is a live creature, and while the clock ran its
+  Pyroclasm (84) and Molten Cleave (52) struck the two players beside it; the log shows those blows meeting health of
+  10,000, 10,000, 9,917, 9,865 and 9,916. A Void Splinter tick is sized from the health at the tick
+  (`UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, through `ShareOfHealthTick`, share times health for any
+  character but a boss). The Void Splinter's player has no health regeneration, so the blows met at 10,000 and then
+  at 9,916 are most likely its, while the other player, which regenerates, was met at 9,917 and then 9,865. Two
+  Pyroclasms that each landed between 83.5 and 84.5 (the log rounds them to "84") leave 9,831 to 9,833, and 1% of that
+  is 98.31 to 98.33, which holds the 98.3296 measured.
+- **A share tick then passes the defender's steps**, after it is sized ("applied before resistance", in the same
+  function). This player meets it with nought armour, damage reduction, energy shield and health regeneration, set by
+  the test, and with every one of the eight Cataclysm resistances at its default of nought
+  (`UCataclysmResistanceAttributeSet`); the class table grants only crowd control resistance. So nothing found in the
+  code would take 1.67% off this tick.
+
+The first fits the figure within the log's rounding and the second has nothing in the code to supply it, so the run most likely
+measured a tick sized from 9,832.96 and reduced by nothing. **THAT IS AN INFERENCE, NOT A MEASUREMENT**: the run did not
+print the figure the tick sent or the health it met. The rule the assertion guards held either way: the Stalker's
+multiplier on it would have made the tick about 6.
+
+**THE TEST IS CORRECTED, NOT THE GAME, TO ASSERT WHAT THE TICK SENT**, as the coordinating session asked: "measure the
+figure the tick SENDS ... so the assertion asks 'is it still a share of health and not multiplied' without asserting
+defences away". The listener records, with each Void Splinter tick, `FCataclysmHitNotice::Sent` -- the figure the
+defender's calculation was given, set from the share times the health at the tick -- and the player's health read when
+the tick is announced, which is the health the tick met, because `UCataclysmCombatEvents::NoteBlow` announces a blow
+before `UCataclysmVitalAttributeSet` writes it to health (`ACataclysmPlayerCharacter::NoteBlowTakenInTheHitLog` relies
+on the same). It counts only ticks whose effect grants the Void Splinter tag, so a burn the Stalker lays is not counted.
+The assertion compares the first tick's sent figure with 1% of that health within 0.05; a set-up check says the health
+met was above 1,000; and an information line prints the sent figure, the landed figure and the health met, so the next
+window shows which of the two above took the 1.67. What landed is not asserted. **NOT YET COMPILED OR RUN.** The registration does not change:
 4 in `Cataclysm.EnemyBurn.`, 4,955 in all, and the proofs S1, S2 and S3 as registered above; S3's predicted failures
 are the Bulwark block's two assertions, which this does not touch.
 
