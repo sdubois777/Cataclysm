@@ -18,9 +18,16 @@ Issue [#2749](https://github.com/sdubois777/Cataclysm/issues/2749), B9, the thir
 
 ### SAID FIRST
 
-- **NOT YET COMPILED OR RUN IN UNREAL.** Phase 1: the Python suite passes and the two Python guard proofs are
-  proved; `sim/experiments.py` ran on the committed change (below). The Unreal count and the C++ proof are registered
-  below, before the window that will test them.
+- **THE FIRST WINDOW FAILED, ON TWO TESTS THAT STILL ASSUMED 8 TO 15, AND THE SECOND HAS NOT RUN.** Window
+  outpost-depth-w1 ("The first window", below) passed `Cataclysm.Surge.` alone and failed 2 of 71 in
+  `Cataclysm.EmpireRun.` alone, and stopped there: no whole suite and no C++ proof has run. Both tests are corrected
+  as ruled, and every Unreal test file was swept again for the range; nothing else assumes it. Phase 1's Python suite
+  passes and its two Python guard proofs are proved; `sim/experiments.py` ran on the committed change (below).
+- **A CONSEQUENCE OF THIS CHANGE: A CITY'S FALL NOW FIRES A SURGE LESS OFTEN.** A fall fires one only when the last
+  surge is at least 25 days back. An Outpost's ordinary timers now run out about 15 to 30 days after the wave that
+  brought them, against about 19 to 39 at 8 to 15, so a fall caused by a wave's own dungeons lands inside those 25 days
+  more often. READ FROM THE CODE AND NOT MEASURED ON ITS OWN; the simulation models the same least interval, so the
+  sweep's figures include it. It is what one of the two failed tests ran into.
 - **THERE IS NO BEFORE-RUN OF `experiments.py` TO SET ITS RESULT AGAINST.** None is saved and none was quoted here.
   The paired before-and-after for this change is the 18,000-campaign sweep, which varied only the Outpost row.
 - **THREE PYTHON TESTS FAILED ON THE FIRST RUN OF THIS CHANGE, AND EACH WAS A FIGURE THE RANGE MOVED.** The
@@ -125,6 +132,10 @@ lost 3.8 at 32.7%.
   instead of a literal.
 - `sim/tests/test_analysis_scripts.py`: the new script runs, sweeps 8-15 and 5-10, marks 5-10 as shipped, and each cell
   changes only the Outpost ordinary row's floors.
+- After window outpost-depth-w1 (below): `Cataclysm.EmpireRun.AnOrdinaryVoidDungeonAddsItsStacksInsteadOfDamageAndStillLeaves`
+  reads its middle-third depth from `SpecFor` (least plus half the span, 7 of 5 to 10), and
+  `Cataclysm.EmpireRun.ACityFallingOpensALaneAbsorbsItsDungeonsAndMayFireASurge` carries a constructed fall with a
+  fall's surge due, on day 30, with every assertion kept and one added.
 - **No Unreal test is added or removed.**
 
 ### The median walk the Siege prose states, re-measured
@@ -185,6 +196,41 @@ that log's groups.
 | `Cataclysm.Surge.` | 54 | the depth, bite and Void stacks tests |
 | `Cataclysm.EmpireRun.` | 71 | the Void thirds test |
 | `Cataclysm.DungeonMode.` | 46 | the wave test's bound |
+
+### The first window, outpost-depth-w1 (FAILED)
+
+Started by `gate_b9.py` at 02:07:42 once the pre-checks all passed, at `6ac92419`; the runner took the lock and released
+it at 02:09. Output in this worktree's `.claude/windows/` (`b9_run.out`, `b9_alone_engine_EmpireRun_6ac92419.log`).
+
+- **Build**: "Build: Succeeded - target already up to date, 0 actions, nothing compiled".
+- **`Cataclysm.Surge.` alone**: "54 tests performed, 54 succeeded, 0 failed".
+- **`Cataclysm.EmpireRun.` alone: "71 tests performed, 69 succeeded, 2 failed"**, and the window stopped: no
+  `Cataclysm.DungeonMode.` group, no whole suite, no Python step, no proof. No "server/discover" line is in that log,
+  so #2745 was not the cause.
+  1. **`AnOrdinaryVoidDungeonAddsItsStacksInsteadOfDamageAndStillLeaves`**: "Expected 'set-up: an 11 floor Outpost
+     dungeon adds 2' to be 2, but it was 3". 11 floors was the middle third of 8 to 15 and lies above 5 to 10, where it
+     is held at 3. The phase 1 sweep missed it: it named neither the range nor 11.5. **Corrected as ruled**: the depth
+     is read from `SpecFor`, least plus half the span (7 of 5 to 10; it would be 11 of 8 to 15), so the next range
+     does not break it the same way.
+  2. **`ACityFallingOpensALaneAbsorbsItsDungeonsAndMayFireASurge`**: "Expected '0 of the 4 days a city fell had a
+     fall's surge due and surged' to be true". The seeded unattended run's falls in six hundred days, four, all came
+     inside the 25 days after a surge. **A REAL CONSEQUENCE OF THIS CHANGE, read from the code and not measured on its
+     own**: an Outpost's ordinary timers now run out about 15 to 30 days after the wave that brought them (about 19 to
+     39 at 8 to 15), so a fall caused by a wave's own dungeons mostly lands inside the 25-day least interval, and a
+     city's fall fires a surge less often. The simulation models the same interval, so the sweep's figures include
+     it. **Corrected as ruled** ("Do NOT turn this into a check that can pass with zero cases ... a constructed state
+     is better"): at the start of day 2 a feller is put on the first standing Outpost, carrying 5,000 defence points
+     and a timer that runs out on day 30, 29 days after the opening wave; every assertion is unchanged, its fall is
+     checked as every other fall is, and a new assertion holds that it fell on day 30.
+- **SWEPT AGAIN, AS RULED**, every Unreal test file for figures that assume 8 to 15 (11, 11.5, 8, 15 and 12 near
+  Outpost, Basic or `SpecFor`, every hand-set `Floors`, and every timer worked from a depth): nothing else assumes the
+  range. Hand-set Outpost depths outside a range test are 10, 12, 15 and 20; each is read through `BiteScale` or
+  `VoidStacksItAdds` by a test that computes its expectation from them (a 15-floor Void dungeon still adds 3, held at
+  the top), or is not a hit at all (the empire screen tests size their hit from the Quest rule, at a scale of one).
+
+**The rulings on the two, the coordinating session, 2026-11-19**: the Void test's depth "derive[d] ... from SpecFor's range rather than writing a new literal", accepted as least plus half the span; the fall test "CONSTRUCTED. Skip the diagnostic ... The constructed feller (day 2, 5,000 points, timer ending day 30, next clock surge day 91), with the new assertion that the constructed city fell on day 30 and every other assertion kept, is the better test." And for the next window (R-b): "runs every group alone and the whole suite even when a group fails, and runs the proofs only if everything passed."
+
+**Python after the corrections**: "7605 passed, 9 skipped"; the JUnit file 7614 tests, 0 failures, 0 errors, 9 skipped; ruff "All checks passed!".
 
 ### experiments.py
 
