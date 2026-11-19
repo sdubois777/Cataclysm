@@ -15676,15 +15676,16 @@ void ACataclysmDungeonGameMode::BindEmpireDungeon(int32 DungeonId, const FCatacl
 	// `DungeonSeed` were stand-ins for exactly these; this header used to say
 	// there was no dungeon object to take them from.
 	//
-	// THE SEED IS DERIVED FROM THE DUNGEON'S NUMBER rather than stored on it,
+	// THE SEED IS DERIVED FROM THE DUNGEON'S NUMBER AND ITS RUN'S MASK rather than stored on it,
 	// because a dungeon is a strategy-layer record and how a floor is carved is
 	// not its business. Any two dungeons get different floors and one dungeon
-	// gets the same floors twice, which is all a seed has to do.
+	// gets the same floors twice; and since issue #2749 (B10), two runs' dungeon
+	// N get different floors, which until then they did not.
 	//
 	// FROM `FCataclysmDungeon::WalkSeed`, since 2026-10-22, the same number worked out where the empire can ask it
 	// too: an Ascendant's Edicts are drawn on a stream made from it.
 	EmpireDungeonId = DungeonId;
-	DungeonSeed = Dungeon.WalkSeed();
+	DungeonSeed = Dungeon.WalkSeed(Run.WalkSeedMask);
 	TotalFloors = FMath::Max(1, Dungeon.Floors);
 	DungeonType = Dungeon.Type;
 

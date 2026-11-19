@@ -2587,7 +2587,8 @@ bool FCataclysmFloorBriefAscendantSeedTest::RunTest(const FString& Parameters)
 {
 	using namespace CataclysmFloorBriefTest;
 
-	// THE DUNGEON ON THE MAP, AND THE SEED A WALK OF IT IS GIVEN.
+	// THE DUNGEON ON THE MAP, AND THE SEED A WALK OF IT IS GIVEN. BUILT BY HAND WITH NO RUN, SO WITH NO RUN'S MASK:
+	// `WalkSeed(0)` is the seed it had before issue #2749's B10 gave each run one.
 	int32 Differs = 0;
 	for (int32 DungeonId = 0; DungeonId < 40; ++DungeonId)
 	{
@@ -2596,10 +2597,10 @@ bool FCataclysmFloorBriefAscendantSeedTest::RunTest(const FString& Parameters)
 		OnTheMap.Type = ECataclysmDungeonType::Quest;
 		OnTheMap.SubType = ECataclysmDungeonSubType::Ascendant;
 
-		FCataclysmDungeonIdentity Walked = AnAscendant(OnTheMap.WalkSeed());
+		FCataclysmDungeonIdentity Walked = AnAscendant(OnTheMap.WalkSeed(0));
 		OnTheMap.Modifiers = Walked.Modifiers;
 		const TArray<FName> TheEmpiresFour = UCataclysmDungeonModifierRules::EdictsOnFloor(
-			OnTheMap.WalkSeed(), OnTheMap.Modifiers, UCataclysmDungeonModifierRules::AscendantMostEdicts);
+			OnTheMap.WalkSeed(0), OnTheMap.Modifiers, UCataclysmDungeonModifierRules::AscendantMostEdicts);
 
 		TArray<FName> Expected = Walked.Modifiers;
 		Expected.Append(TheEmpiresFour);
@@ -2609,8 +2610,8 @@ bool FCataclysmFloorBriefAscendantSeedTest::RunTest(const FString& Parameters)
 
 		// ON THE DARK FLOOR THE FLOOR'S SEED IS ANOTHER; THE EDICTS' IS STILL THE DUNGEON'S.
 		FCataclysmDungeonIdentity Dark = Walked;
-		Dark.DungeonSeed = FCataclysmDungeonFloorRules::SeedOnTheDarkFloor(OnTheMap.WalkSeed());
-		Dark.EdictSeed = OnTheMap.WalkSeed();
+		Dark.DungeonSeed = FCataclysmDungeonFloorRules::SeedOnTheDarkFloor(OnTheMap.WalkSeed(0));
+		Dark.EdictSeed = OnTheMap.WalkSeed(0);
 		Dark.bTheDarkFloor = true;
 		TestTrue(FString::Printf(TEXT("dungeon %d's dark floor carries the same Edicts"), DungeonId),
 				 FCataclysmDungeonFloorRules::BriefFor(Dark, 4).Modifiers == Expected);

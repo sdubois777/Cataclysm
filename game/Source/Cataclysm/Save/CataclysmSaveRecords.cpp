@@ -536,6 +536,22 @@ namespace CataclysmRunSaveMigration
 		return true;
 	}
 
+	/**
+	 * A run written before each run had its own mask on its dungeons' walk seeds is given the mask 0. Issue #2749,
+	 * B10, ruled by the coordinating session on 2026-11-18: "the migration should write the value that reproduces
+	 * today's WalkSeed exactly, so a walk saved mid-dungeon loads the same floors it was on". `FCataclysmDungeon::
+	 * WalkSeed` XORs the mask with a dungeon's identifier plus one, and XOR with 0 changes nothing, so every dungeon of
+	 * such a run keeps the seed it had at version 7: its floors, the Edicts an Ascendant draws on it, and its Corrupted
+	 * Stalker roll. Written out, for `Migrate_3_to_4`'s reason, and written whatever the key held: a run written at 7
+	 * never wrote it.
+	 */
+	bool Migrate_7_to_8(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		Record->SetNumberField(TEXT("WalkSeedMask"), 0); // A migration's: the mask that keeps version 7's seeds.
+		return true;
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep RunSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
@@ -544,6 +560,7 @@ namespace CataclysmRunSaveMigration
 		{ 4, TEXT("Migrate_4_to_5"), &Migrate_4_to_5 },
 		{ 5, TEXT("Migrate_5_to_6"), &Migrate_5_to_6 },
 		{ 6, TEXT("Migrate_6_to_7"), &Migrate_6_to_7 },
+		{ 7, TEXT("Migrate_7_to_8"), &Migrate_7_to_8 },
 	};
 }
 

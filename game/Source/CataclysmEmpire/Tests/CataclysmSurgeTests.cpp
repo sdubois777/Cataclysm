@@ -5223,9 +5223,9 @@ bool FCataclysmSurgeAscendantTest::RunTest(const FString& Parameters)
 
 	// AND THE SEED A WALK OF IT CARVES FROM, which the game mode used to work out itself.
 	Dungeon.DungeonId = 5;
-	TestEqual(TEXT("dungeon 5 walks on seed 6"), Dungeon.WalkSeed(), 6);
+	TestEqual(TEXT("dungeon 5 walks on seed 6 with no mask"), Dungeon.WalkSeed(0), 6);
 	Dungeon.DungeonId = INDEX_NONE;
-	TestEqual(TEXT("a dungeon with no identifier on seed 1, never nought"), Dungeon.WalkSeed(), 1);
+	TestEqual(TEXT("a dungeon with no identifier on seed 1, never nought"), Dungeon.WalkSeed(0), 1);
 	return true;
 }
 

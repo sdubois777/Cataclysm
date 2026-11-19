@@ -228,7 +228,7 @@ TArray<FString> UCataclysmCityScreenLayout::DungeonLinesFor(
 		if (Dungeon->IsAscendant())
 		{
 			const int32 Edicts = UCataclysmDungeonModifierRules::EdictsOnFloor(
-				Dungeon->WalkSeed(), Dungeon->Modifiers, Dungeon->Floors).Num();
+				Dungeon->WalkSeed(Run->WalkSeedMask), Dungeon->Modifiers, Dungeon->Floors).Num();
 			const FString Held = Edicts == 1
 				? FString(TEXT("1 Edict"))
 				: FString::Printf(TEXT("%d Edicts"), Edicts);

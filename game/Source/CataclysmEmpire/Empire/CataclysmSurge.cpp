@@ -66,11 +66,14 @@ bool FCataclysmDungeon::IsAscendant() const
 		&& SubType == ECataclysmDungeonSubType::Ascendant;
 }
 
-int32 FCataclysmDungeon::WalkSeed() const
+int32 FCataclysmDungeon::WalkSeed(int32 RunMask) const
 {
+	// THE IDENTIFIER PLUS ONE, XORED WITH THE RUN'S MASK, so two runs' dungeon N differ; a mask of 0 is the seed every
+	// dungeon had before issue #2749's B10. See the header.
+	//
 	// NEVER NOUGHT OR BELOW, the number `EnterEmpireDungeon` used before this
 	// existed. A dungeon built by hand with no identifier still walks.
-	return FMath::Max(1, DungeonId + 1);
+	return FMath::Max(1, (DungeonId + 1) ^ RunMask);
 }
 
 int32 FCataclysmDungeon::HollowMinimum() const

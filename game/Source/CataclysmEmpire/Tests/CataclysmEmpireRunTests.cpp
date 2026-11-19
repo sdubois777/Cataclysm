@@ -8007,7 +8007,7 @@ bool FCataclysmEmpireRunAscendantLeavesTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	const FName Expected = UCataclysmDungeonModifierRules::EdictLeftBy(Placed->WalkSeed(), Placed->Modifiers,
+	const FName Expected = UCataclysmDungeonModifierRules::EdictLeftBy(Placed->WalkSeed(Run->WalkSeedMask), Placed->Modifiers,
 																	   Run->Day() + 1);
 	const FCataclysmDungeonSpec OutpostRow =
 		UCataclysmSurgeScheduler::SpecFor(ECataclysmDungeonType::Basic, ECataclysmCityTier::Outpost);
@@ -8076,7 +8076,7 @@ bool FCataclysmEmpireRunAscendantReplacesTest::RunTest(const FString& Parameters
 	}
 
 	// AN EARLIER EDICT, THE OTHER ONE, LEFT BY AN EARLIER HIT AND THREE DAYS FROM ENDING.
-	const FName ThisHit = UCataclysmDungeonModifierRules::EdictLeftBy(Placed->WalkSeed(), Placed->Modifiers,
+	const FName ThisHit = UCataclysmDungeonModifierRules::EdictLeftBy(Placed->WalkSeed(Run->WalkSeedMask), Placed->Modifiers,
 																	  Run->Day() + 1);
 	const FName Earlier = ThisHit == AscendantSilenceKey ? AscendantTitheKey : AscendantSilenceKey;
 	FCataclysmCity* City = Run->Map->FindMutable(Outposts[0]);
@@ -8131,7 +8131,7 @@ bool FCataclysmEmpireRunAscendantUnwalkedTest::RunTest(const FString& Parameters
 					 *Run->Map->Find(CityId), 200.0f);
 		ResolveOnTheNextDay(*Run, AscendantId);
 
-		const int32 WalkSeed = Run->FindDungeon(AscendantId)->WalkSeed();
+		const int32 WalkSeed = Run->FindDungeon(AscendantId)->WalkSeed(Run->WalkSeedMask);
 		TestEqual(TEXT("set-up: nobody is inside it"), Run->Clock->CurrentDungeonId, static_cast<int32>(INDEX_NONE));
 		Run->AdvanceDay();
 

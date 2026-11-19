@@ -643,6 +643,20 @@ followed, ruled 2026-11-01:
   read it as the committed character file reads `Character_v9.json`, and every
   test that runs an older character file through the whole chain adds what the
   step writes through `CataclysmSaveFixtures::AddTheCharactersVersion9Defaults`.
+- **The run record went to version 8 on 2026-11-18**, because each run has its
+  own mask on its dungeons' walk seeds (issue #2749, B10): until then every
+  run's dungeon N walked the same floors. One field, `WalkSeedMask`, after
+  `CorruptedStalkerSeed`. `Migrate_7_to_8` writes a mask of 0 into a version 7
+  file -- the mask that leaves every dungeon the seed it had at version 7 -- and
+  `Run_v8.json` is `Run_v7.json` at version 8 with `"WalkSeedMask": 12345`
+  added and nothing else changed. **12345 and not 0**, because 0 is the default
+  and the migration's value, and only another figure shows the field is read.
+  `Run_v7.json` is now a migration input, not edited again:
+  `Cataclysm.WalkSeed.ARunFileFromVersion7MigratesToMaskZeroAndKeepsItsWalkSeeds`
+  runs it through the step and checks every other field is kept, every test
+  that read `Run_v7.json` as the committed run file reads `Run_v8.json` now, and
+  every test that runs an older run file through the whole chain adds the mask
+  of 0 through `CataclysmSaveFixtures::AddTheRunsVersion8Defaults`.
 - **A slip, recorded rather than undone, as `LastWrittenUtc` was.**
   `Run_v1.json` was edited thirteen times after saves could load
   (`78ad0fa81`, 2026-10-30), each time adding fields for #753's dungeon load
@@ -676,6 +690,7 @@ followed, ruled 2026-11-01:
 | `Run_v5.json` | The same run at version 5: version 4's contents, plus the win of the run before it, on day 381 at tier 3 against War, for 10 passive points |
 | `Run_v6.json` | The same run at version 6: version 5's contents, plus the last award of 2.25 empire points, the clear on day 80, and the summary of the days its last walk was away, days 84 to 118 |
 | `Run_v7.json` | The same run at version 7: version 6's contents, with a `Gold` on each ground item, and a second ground item that is a gold pile of 37 |
+| `Run_v8.json` | The same run at version 8: version 7's contents, plus its mask on its dungeons' walk seeds, 12345 |
 | `Example_v1.json` | The example record at version 1 |
 | `Example_v2.json` | The same record at version 2, after `Title` was renamed to `Label` |
 | `Example_v3.json` | The same record at version 3, after `TotalCopper` was split into `Gold` and `Copper` |
@@ -688,7 +703,7 @@ something.
 `UCataclysmSaveExampleRecord` exists only for these, because all three real
 records were at version 1 when it was written and version 1 is the first, so
 none of them had a migration to run. The character record has had eight since
-(version 9 since 2026-11-18), the run record six (version 7 since
+(version 9 since 2026-11-18), the run record seven (version 8 since
 2026-11-18), and the account record three (version 4 since 2026-11-18). Its
 header says more.
 

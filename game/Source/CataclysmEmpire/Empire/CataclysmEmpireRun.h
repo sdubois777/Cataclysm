@@ -740,6 +740,21 @@ public:
 	int32 CorruptedStalkerSeed = 0;
 
 	/**
+	 * The run's mask on every dungeon's walk seed: `FCataclysmDungeon::WalkSeed` XORs it with the dungeon's identifier
+	 * plus one, so two runs' dungeon N carve different floors. Issue #2749 (B10), ruled by the coordinating session on
+	 * 2026-11-18: "two runs' dungeons must differ, because the design's dungeons are procedurally generated".
+	 *
+	 * DRAWN BY `Begin` FROM THE RUN'S SEED, as `CorruptedStalkerSeed` is, and never below 0. Saved on the run record
+	 * since its version 8. 0, THE DEFAULT, IS THE SEED EVERY DUNGEON HAD BEFORE: `Migrate_7_to_8` writes it into a run
+	 * saved at version 7, so that run's dungeons keep their floors, their Edicts and their Corrupted Stalker roll.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 WalkSeedMask = 0;
+
+	/** The salt `Begin` mixes into the run's seed for `WalkSeedMask`: "walk". Issue #2749 (B10). */
+	static constexpr int32 WalkSeedSalt = 0x77616C6B;
+
+	/**
 	 * Gives one dungeon its modifiers and its modifier score.
 	 *
 	 * DOES NOTHING WHEN THE POOL IS EMPTY, which leaves the dungeon exactly as it

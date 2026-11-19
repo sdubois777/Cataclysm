@@ -493,7 +493,27 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 
 	/**
 	 * The seed a walk of this dungeon carves its floors from:
-	 * `max(1, DungeonId + 1)`.
+	 * `max(1, (DungeonId + 1) XOR RunMask)`, where `RunMask` is its run's
+	 * `UCataclysmEmpireRun::WalkSeedMask`.
+	 *
+	 * THE RUN'S MASK MAKES TWO RUNS' DUNGEONS DIFFER, since issue #2749 (B10,
+	 * ruled by the coordinating session on 2026-11-18). Until then the seed was
+	 * `max(1, DungeonId + 1)`, identifiers start at 0 in every run, and so every
+	 * run's dungeon N walked the same floors with the same creatures. A mask of
+	 * 0 gives exactly that old seed, which is what a run saved before version 8
+	 * of the run record is given (`Migrate_7_to_8`), so a walk saved then keeps
+	 * its floors.
+	 *
+	 * A PARAMETER AND NOT A FIELD, so no caller can leave the run out: a call
+	 * without the mask does not compile.
+	 *
+	 * ONE EXCEPTION TO "EVERY DUNGEON OF A RUN GETS ITS OWN SEED". XOR with one
+	 * mask never maps two identifiers to the same number, but the `max(1, ...)`
+	 * floor does: when the mask equals some dungeon's `DungeonId + 1`, that
+	 * dungeon's XOR is 0 and it is given 1, the seed of the dungeon whose XOR
+	 * is 1. That needs a mask smaller than the run's dungeon count, about one
+	 * run in ten million for a run of 200 dungeons, since a mask is drawn from
+	 * 2^31 values. Ruled to be stated rather than changed, 2026-11-18.
 	 *
 	 * ONE NUMBER FOR BOTH MODULES, since 2026-10-22.
 	 * `ACataclysmDungeonGameMode::EnterEmpireDungeon` gives the floors this
@@ -503,7 +523,7 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	 * it would hold from floor 4, ruled by the coordinating session that day.
 	 * The game mode worked out the same number itself until then.
 	 */
-	int32 WalkSeed() const;
+	int32 WalkSeed(int32 RunMask) const;
 
 	/**
 	 * The fewest natural floors this Hollow shrinks to: half of `HollowFrom`,

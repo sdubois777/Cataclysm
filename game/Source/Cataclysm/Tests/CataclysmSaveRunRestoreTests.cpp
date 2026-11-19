@@ -80,13 +80,14 @@ namespace CataclysmSaveRunRestoreTest
 	 *  tallies, the identity, and each city's saved fields. */
 	FString InternalValues(const UCataclysmEmpireRun& Run)
 	{
+		// AND THE MASK ON ITS DUNGEONS' WALK SEEDS, since issue #2749 (B10), so a mask the save drops fails here.
 		FString Out = FString::Printf(TEXT("day %d %.4f cur %d owed %d | surge %d %d %.4f %d | streams %d %d %d stalker %d"
-										   " | next %d tier %d slots %d"),
+										   " walk mask %d | next %d tier %d slots %d"),
 									  Run.Clock->Day, Run.Clock->PartialDay, Run.Clock->CurrentDungeonId, Run.OwedDays,
 									  Run.Surges->SurgeIndex, Run.Surges->SurgesFired, Run.Surges->NextSurgeDay,
 									  Run.Surges->LastSurgeDay, Run.Stream.GetCurrentSeed(),
 									  Run.CataclysmStream.GetCurrentSeed(), Run.ModifierStream.GetCurrentSeed(),
-									  Run.CorruptedStalkerSeed, Run.NextDungeonId, Run.DifficultyTier,
+									  Run.CorruptedStalkerSeed, Run.WalkSeedMask, Run.NextDungeonId, Run.DifficultyTier,
 									  Run.Map->UpgradeSlots);
 		for (const FCataclysmDungeonTimer& Timer : Run.Clock->Timers)
 		{

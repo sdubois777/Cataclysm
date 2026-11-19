@@ -892,6 +892,9 @@ bool FCataclysmConsumptionDoubleRunMigrationTest::RunTest(const FString& Paramet
 	// AND THE GOLD OF 0 `Migrate_6_to_7` WRITES ON EVERY GROUND ITEM, because the chain runs on to version 7 since
 	// 2026-11-18 (issue #2742).
 	CataclysmSaveFixtures::AddTheRunsVersion7Defaults(*Expected);
+	// AND THE WALK SEED MASK OF 0 `Migrate_7_to_8` WRITES, because the chain runs on to version 8 since 2026-11-18
+	// (issue #2749, B10).
+	CataclysmSaveFixtures::AddTheRunsVersion8Defaults(*Expected);
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
