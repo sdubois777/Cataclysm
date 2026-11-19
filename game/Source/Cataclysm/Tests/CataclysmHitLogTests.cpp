@@ -72,8 +72,12 @@ namespace CataclysmHitLogTest
 		}
 
 		/** Where in the printed order the first line holding `Needle` is, or -1. */
-		int32 IndexOf(const FString& Needle) const
+		int32 IndexOf(const FString& Needle)
 		{
+			if (GLog)
+			{
+				GLog->Flush();
+			}
 			return Lines.IndexOfByPredicate([&Needle](const TPair<FString, ELogVerbosity::Type>& Line)
 			{
 				return Line.Key.Contains(Needle, ESearchCase::CaseSensitive);
