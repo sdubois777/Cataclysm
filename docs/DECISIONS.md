@@ -26,12 +26,19 @@ four in the group `Cataclysm.EnemyBurn.`; three new in `CataclysmThornsOfGlassTe
 
 ### SAID FIRST
 
+- **PASSED IN UNREAL, AS REGISTERED, IN WINDOW burn-w2 AT `f1ec9e61b`** (2026-11-19, 16:31 to 16:56): `Cataclysm.EnemyBurn.`
+  4 of 4 alone; the whole suite 4,955 of 4,955, 47 skipped halves, "850 written and deleted, 0 left behind"; Python
+  7,714 passed and 9 skipped, its JUnit file agreeing; ruff clean; S1, S2 and S3 each PROVED on exactly its registered
+  tests and assertions. The other seven groups passed alone at their counts in window burn-w1 at `4e9bc42af` and were not
+  run again, as the coordinating session ruled; this head differs from that one only in `CataclysmEnemyBurnTests.cpp`
+  and this log ("Window burn-w2", below).
 - **WINDOW burn-w1 FAILED ONE ASSERTION, IN THE TEST'S MEASUREMENT** (at `4e9bc42af`, 2026-11-19): the Stalker's
   Void Splinter tick LANDED 98.33 against 1% of the player's health read before the clock ran, while the Stalker, a live
   creature, struck that player during it, and while a share tick also passes the player's defences. Everything else
   passed: seven groups alone at their counts, 4,954 of the whole suite's 4,955, Python and ruff. No proof ran. The test
   now asserts what the tick SENT against the health it met, and prints what landed; NOT YET COMPILED OR RUN ("Window
-  burn-w1", below).
+  burn-w1", below). Window burn-w2 printed it: sent 98.330, landed 98.330, on health 9,832.96 -- the Stalker's blows,
+  and no defence.
 - **PHASE 1 WAS WRITTEN WITHOUT A COMPILE.** Phase 1 at `1009bfe7b`, on development `0b7b554d1`: the Python suite gives 1
   failed, 7,677 passed and 9 skipped, by its count line and by its JUnit file (7,687 tests, 1 failure, 0 errors); ruff
   is clean; the three Python guard proofs are proved as registered ("Phase 1's Python guard proofs", below).
@@ -415,6 +422,36 @@ met was above 1,000; and an information line prints the sent figure, the landed 
 window shows which of the two above took the 1.67. What landed is not asserted. **NOT YET COMPILED OR RUN.** The registration does not change:
 4 in `Cataclysm.EnemyBurn.`, 4,955 in all, and the proofs S1, S2 and S3 as registered above; S3's predicted failures
 are the Bulwark block's two assertions, which this does not touch.
+
+### Window burn-w2
+
+At `f1ec9e61b`, the corrected Void Splinter check on the asset commit `4e9bc42af`, lock burn-w2, 2026-11-19, 16:31 to
+16:56, started by `gate_burn2.py` with no console window once the pre-checks all passed (no run in progress, the lock
+free, no build or editor process, no open pull request, 14,560 MB free). As the coordinating session ruled: no asset
+step (burn-w1 committed the assets), no separate compile (the change since `4e9bc42af` is the test file and this log,
+with no `#include` changed, so the window's own build compiled it: 4 actions, 1 file, `Module.Cataclysm.24.cpp`), and
+only the group that failed run alone again. A standalone Python run of this head was stopped before the window, by its
+process ID, because the window's Python run is the run of record.
+
+| Check | Registered | Measured |
+| :-- | :-- | :-- |
+| `Cataclysm.EnemyBurn.` alone | 4 | 4 performed, 4 succeeded |
+| The seven other groups | Not run again | Passed alone at their counts in burn-w1 at `4e9bc42af`: `Cataclysm.ThornsOfGlass.` 9, `Cataclysm.EnemyModifiers.` 57, `Cataclysm.Retaliation.` 11, `Cataclysm.Ailments.` 23, `Cataclysm.ConsumptionDouble.` 15, `Cataclysm.DungeonModifierEffects.ACorruptedStalker` 10, `Cataclysm.HitLog.` 7 |
+| The whole suite | 4,955; 47 skipped halves; 850 test saves, none left | 4,955 performed, 4,955 succeeded; 47 skipped halves; "850 written and deleted, 0 left behind"; 4,955 declared, gap 0 |
+| Python and ruff | Every test passing | 7,714 passed, 9 skipped; the JUnit file 7,723 tests, 0 failures, 0 errors; ruff clean |
+
+**THE VOID SPLINTER'S FIGURES CONFIRM burn-w1's INFERENCE.** The new information line, in the group run and in the whole
+suite alike: "the first Void Splinter tick: sent 98.330, landed 98.330, on health 9832.96". The tick met a player the
+Stalker's blows had taken to 9,832.96, sent 1% of it, and landed all of it: no defence took anything.
+
+**THE PROOFS**, through `prove_cpp_guard` with each half's engine log kept (`.claude/windows/burn_S<n>_run<1|2>.log`
+in this worktree), each PROVED on exactly its registered tests and with exactly its registered assertions failing:
+
+| Proof | Broken half | Its failed assertions | Restored half |
+| :-- | :-- | :-- | :-- |
+| S1, the aura's tick back to the table's | 4 performed, 1 failed: `AHellfireAurasTickIsNinePercentOfItsCarriersWeaponDamage` | Four: "the burn deals 9% of the carrier's 200 a tick, 18" and "typed: 18", each 25; "CONTROL: and not the table's 25 (25.00)"; "a carrier with no weapon damage burns nobody", 1 | 4 of 4 |
+| S2, the gate always open | 9 performed, 3 failed: `HitsWithinItsAttackIntervalAreStruckBackOnce`, `AHitAfterItsAttackIntervalIsStruckBackAgain`, `AnAreaHitOnTwoCarriersIsStruckBackOnceByEachAndNotAgainWithinTheirIntervals` | One each: "three hits at one moment are struck back once, for its attack damage", 120 for 40; "a hit a tenth of a second before its interval has passed is not", 40 for 0; "the same blow again at once draws nothing from either", 80 for 0 | 9 of 9 |
+| S3, the Stalker's multiplier without its ring | 4 performed, 1 failed: `ACorruptedStalkersDamageOverTimeIsTheTableFigureTimesItsDamageMultiplier` | Two: "a Bulwark Stalker's damage over time multiplier is its hits', 0.132", 0.060; "CONTROL: and not an Outpost's 0.06" | 4 of 4 |
 
 ---
 
