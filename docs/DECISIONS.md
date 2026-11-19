@@ -34,9 +34,11 @@ of 2; the gold half of [#1264](https://github.com/sdubois777/Cataclysm/issues/12
 
 ### SAID FIRST
 
-- **NOT YET RUN IN THE ENGINE.** Phase 1 was written without compiling, as the coordinating session's go for it
-  said. After the rebase onto the empire tree's slice 1b it was compiled, under "Compiled" below; nothing has run in
-  the engine, and "The run" says so until it has. What the window must show is registered below, before it.
+- **COMPILED, RUN AND PROVED, IN ONE WINDOW (gold-2-w1).** At `e4cb8b589` on development `da5783f4c`: the asset
+  step changed exactly the two registered files; the thirteen groups alone each at their registered count, all
+  succeeding; the whole Unreal suite the registered 4842, all succeeding, 47 skipped halves, no test save left behind;
+  Python 7585 passed and 9 skipped with ruff clean; and all five guard proofs proved, each failing exactly the tests
+  registered for it. Every figure is under "The run", below.
 - **EVERY PRICE IS A JUDGEMENT, AND WHAT IT RESTS ON IS AN ESTIMATE.** One upgrade at difficulty tier 1 costs 10,000
   gold, which the slice 1 estimate puts at 0.7 to 1.4 twelve-floor walks. No walk has been measured. The coordinating
   session is asking the owner to report the gold their walks bring, through the PLAY LOOP line slice 1 added, and the
@@ -127,7 +129,66 @@ of 2; the gold half of [#1264](https://github.com/sdubois777/Cataclysm/issues/12
 
 ### THE RUN
 
-Not yet run in the engine.
+Window **gold-2-w1**, lock `gold-2-w1`, 17:52:36 to 18:21:08 on 2026-11-18, the coordinating session's go. Runner
+`.claude/windows/run_gold2.py` in this session's worktree, started detached as process 73812; its output is
+`gold2_w1_run.out` beside it, and every log named below is there too. The pre-checks, measured at 17:52:17, all passed:
+development's latest CI and Unreal runs succeeded at `da5783f4c`, nothing was running or queued, the lock was free, no
+build or editor process ran, no pull request was open, 12,495 MB was free, and no asset was a Git LFS pointer.
+
+- **The build**, at the registration commit `5bd76f8c5`: "Build: Succeeded - target already up to date, 0 actions,
+  nothing compiled". That commit changes `docs/DECISIONS.md` alone, and the unity build under "Compiled" had built
+  `9c6237f53`.
+- **The asset step**: `tools/generate_datatable_assets.py` exited 0 and changed exactly
+  `game/Content/Data/DT_CityUpgrades.uasset` and `game/Data/datatable_asset_sources.json`. They were committed alone as
+  `e4cb8b589`, "Rebuild DT_CityUpgrades for city upgrade prices (#2742)", on `5bd76f8c5`, and pushed. **`e4cb8b589` IS
+  THE TESTED HEAD.**
+- **Each group alone**, every one at its registered count with none failed:
+
+| Group | Performed | Succeeded |
+|---|---|---|
+| `Cataclysm.CityUpgradePrice.` | 6 | 6 |
+| `Cataclysm.CityUpgrade.` | 15 | 15 |
+| `Cataclysm.CityScreen.` | 16 | 16 |
+| `Cataclysm.SaveTriggers.` | 6 | 6 |
+| `Cataclysm.Data.` | 7 | 7 |
+| `Cataclysm.WalkFromTheScreen.` | 5 | 5 |
+| `Cataclysm.EmpireRun.` | 71 | 71 |
+| `Cataclysm.BossClearedWins.` | 2 | 2 |
+| `Cataclysm.EarnedBoss.` | 4 | 4 |
+| `Cataclysm.EmpirePoints.` | 16 | 16 |
+| `Cataclysm.PlayLoop.` | 8 | 8 |
+| `Cataclysm.EmpireTree.` | 20 | 20 |
+| `Cataclysm.Gold.` | 13 | 13 |
+
+- **The whole Unreal suite**: "Tests: 4842 tests performed, 4842 succeeded, 0 failed. 47 skipped part of what they
+  check" and "Test saves: 836 written and deleted, 0 left behind", the registered figures. The engine log,
+  `gold2_suite_engine_e4cb8b58.log`, holds 4842 "Test Completed" lines and "Automation Test Queue Empty 4842 tests
+  performed". Its memory line: `tests=5449 peak_used_virtual_mb=9212 final_used_virtual_mb=8967`.
+- **What the new tests printed** in that run, among them: "PRICE: 23 rows priced 10,000/20,000/40,000, 1 unpriced, 0
+  otherwise; tiers 1-8 10000 30000 60000 100000 140000 190000 240000 300000"; "BOUGHT: Bought. with 25000 held, 15000
+  after; the city holds it yes; last trigger 'a city upgrade being bought'; 3 write(s) started; ... read back a record
+  holding 15000"; "SAME FRAME: the item's trigger started 2 write(s), the clock after it 0; the purchase Bought. started
+  3; ... city 0 holding the upgrade yes"; "OWN: Bought.; its own 2000; the mode's account 0"; "SHORT: 9,999 against
+  10,000 Not enough gold., "Costs 10,000 gold; 1 more needed.", 9999 after, 0 upgrade(s) held"; "SCREEN: with 25,000
+  14 buyable, every one 10,000 yes, ... with 5,000 14 short, ... at tier 2 14 short at 30,000"; and "BESIEGED: ... 14 of
+  14 built upgrades say it".
+- **Python**, at `e4cb8b589`: "7585 passed, 9 skipped in 194.42s"; the JUnit file `gold2_junit_e4cb8b58.xml`: tests
+  7594, failures 0, errors 0, skipped 9. The asset test that failed before the window passes. **ruff**: "All checks
+  passed!"
+- **The five guard proofs**, each through `prove_cpp_guard` from `.claude/windows/prove_gold2.py`; every break's anchor
+  matched once, the source hash was the same before and after each, and no run crashed. Both halves' engine logs are
+  kept as `gold2_P<n>_run1.log` (broken) and `gold2_P<n>_run2.log` (restored).
+
+| Proof | The broken half | The restored half |
+|---|---|---|
+| P1 | 21 performed, 18 succeeded, 3 failed: `ThePriceIsCheckedLastAndAgainstTheGoldHeld`; `TheCityScreenShowsEachPriceTheBalanceAndWhatIsMissing`; and `TooLittleGoldIsRefusedAndNothingIsTaken`, **on the two errors `Buy` logged and on nothing else**, as registered: "the run would sell it for 10000 gold against 9999 held, and the balance would not pay it. Nothing was bought." and the same against 0 held, for the world with nobody playing. Its own checks held: 9,999 left and no upgrade. So with the run's check broken, the purchase still takes nothing | 21 performed, 21 succeeded |
+| P2 | 6 performed, 4 succeeded, 2 failed: `BuyingTakesThePriceFromTheModesAccountAndSavesIt` ("for 10,000, leaving 15,000", 15000 expected, 25000; "holding the 15,000 left", the same) and `ASoloSelfFoundCharacterPaysFromItsOwnGold` ("from its own 12,000, leaving 2,000", 2000 expected, 12000) | 6 performed, 6 succeeded |
+| P3 | 6 performed, 4 succeeded, 2 failed: `BuyingTakesThePriceFromTheModesAccountAndSavesIt` ("the writer was told a city upgrade was bought, last", 13 expected, 7, which is `AccountChanged`; and "the purchase started writes", fewer than two) and `APurchaseInAFrameAlreadyWrittenStillReachesTheRunRecord` ("and its city 0 holds the upgrade bought") | 6 performed, 6 succeeded |
+| P4 | 6 performed, 4 succeeded, 2 failed: `ThePriceIsTheRowsTierOneGoldScaledByThePileColumn` (tiers 2 to 8, tier 99, the tier 3 run and the arithmetic each 10000) and `TheCityScreenShowsEachPriceTheBalanceAndWhatIsMissing` ("at tier 2 each costs 30,000, which 25,000 does not reach", 14 expected, 0) | 6 performed, 6 succeeded |
+| P5 | 6 performed, 5 succeeded, 1 failed: `APurchaseInAFrameAlreadyWrittenStillReachesTheRunRecord` ("and its city 0 holds the upgrade bought"); `BuyingTakesThePriceFromTheModesAccountAndSavesIt` passed, as registered | 6 performed, 6 succeeded |
+
+Runner: "proofs: P1 PROVED, P2 PROVED, P3 PROVED, P4 PROVED, P5 PROVED"; "tested head: e4cb8b58; HEAD now e4cb8b58";
+the lock released. The commit after the tested head changes `docs/DECISIONS.md` only, to record this.
 
 ### COMPILED, AFTER THE REBASE
 
