@@ -16,6 +16,7 @@
 #include "Misc/DateTime.h"
 #include "Player/CataclysmEmpireTree.h"
 #include "Player/CataclysmGameMode.h"
+#include "Player/CataclysmPlayLoopLog.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Save/CataclysmSaveGather.h"
 #include "Save/CataclysmSaveRecords.h"
@@ -546,12 +547,32 @@ bool UCataclysmGameInstance::EmpireTreeHeldBy(const UObject* WorldContext, FCata
 	return true;
 }
 
+FString UCataclysmGameInstance::EmpireTreeChangeRefusal(const UObject* WorldContext)
+{
+	// ONE RULE FOR BUYING, CHOOSING AND RESPEC: NOT DURING A WALK. Issue #2741 slice 2, ruled by the coordinating session
+	// on 2026-11-18. Slices 3 to 5 read the tree where each number is read, so a point bought mid-walk would change the
+	// walk under way -- its days, its floors, its loot -- and a player could bank points and buy them inside a dungeon to
+	// shorten the walk they are on; the design puts the tree's services at the capital. And for a respec, the reason
+	// `Cataclysm.EmpireAdvance` gives too: nothing resolves while the player is inside a dungeon (the owner, 2026-10-24).
+	const UCataclysmEmpireRun* Run = EmpireRunFor(WorldContext, /*bStartIfNone*/ false);
+	if (Run != nullptr && Run->IsAWalkUnderWay())
+	{
+		return TEXT("The empire upgrade tree can be changed in the capital, not during a walk.");
+	}
+	return FString();
+}
+
 bool UCataclysmGameInstance::BuyEmpireTreePoint(const UObject* WorldContext, FName Node, FString& OutReason)
 {
 	FCataclysmHeldEmpireTree Held;
 	if (!EmpireTreeHeldBy(WorldContext, Held))
 	{
 		OutReason = Held.Why;
+		return false;
+	}
+	OutReason = EmpireTreeChangeRefusal(WorldContext);
+	if (!OutReason.IsEmpty())
+	{
 		return false;
 	}
 
@@ -568,8 +589,11 @@ bool UCataclysmGameInstance::BuyEmpireTreePoint(const UObject* WorldContext, FNa
 		return false;
 	}
 
-	UE_LOG(LogCataclysm, Log, TEXT("Empire upgrade tree: a point bought in %s, which now holds %d; %.3f banked."),
-		   *CataclysmGameInstanceEmpireTree::NameOf(Nodes, Node), Held.Allocation->PointsIn(Node), *Held.Bank);
+	// THE PLAY LOOP: the point, the node's points after it, and the bank. Issue #2741 slice 2.
+	const FCataclysmEmpireTreeNodeRow* Row = UCataclysmEmpireTree::FindNode(Nodes, Node);
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::TreePointLine(
+		CataclysmGameInstanceEmpireTree::NameOf(Nodes, Node), Row != nullptr ? Row->Branch : FString(),
+		Held.Allocation->PointsIn(Node), Row != nullptr ? Row->MaxPoints : 0, *Held.Bank));
 	NoteTheEmpireTreeChanged(WorldContext, Held);
 	return true;
 }
@@ -581,6 +605,11 @@ bool UCataclysmGameInstance::ChooseEmpireTreeOption(const UObject* WorldContext,
 	if (!EmpireTreeHeldBy(WorldContext, Held))
 	{
 		OutReason = Held.Why;
+		return false;
+	}
+	OutReason = EmpireTreeChangeRefusal(WorldContext);
+	if (!OutReason.IsEmpty())
+	{
 		return false;
 	}
 
@@ -596,8 +625,12 @@ bool UCataclysmGameInstance::ChooseEmpireTreeOption(const UObject* WorldContext,
 		return false;
 	}
 
-	UE_LOG(LogCataclysm, Log, TEXT("Empire upgrade tree: option %d of %s chosen."), Option,
-		   *CataclysmGameInstanceEmpireTree::NameOf(Nodes, Node));
+	// THE PLAY LOOP: which option of which capstone. Issue #2741 slice 2.
+	const FCataclysmEmpireTreeNodeRow* Row = UCataclysmEmpireTree::FindNode(Nodes, Node);
+	const TArray<FString> Options = Row != nullptr ? UCataclysmEmpireTree::OptionNamesOf(*Row) : TArray<FString>();
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::TreeOptionLine(
+		Options.IsValidIndex(Option - 1) ? Options[Option - 1] : FString::Printf(TEXT("option %d"), Option),
+		CataclysmGameInstanceEmpireTree::NameOf(Nodes, Node)));
 	NoteTheEmpireTreeChanged(WorldContext, Held);
 	return true;
 }
@@ -615,16 +648,16 @@ bool UCataclysmGameInstance::RespecEmpireTree(const UObject* WorldContext, int32
 		return false;
 	}
 
+	// NOT DURING A WALK, the one rule buying and choosing obey too (`EmpireTreeChangeRefusal`, slice 2).
+	OutReason = EmpireTreeChangeRefusal(WorldContext);
+	if (!OutReason.IsEmpty())
+	{
+		return false;
+	}
+
 	// THE RUN THE DAYS COME OFF: the one this game instance holds, and none is begun to pay for a respec.
 	UCataclysmEmpireRun* Run = EmpireRunFor(WorldContext, /*bStartIfNone*/ false);
 	OutReason = UCataclysmEmpireTree::RefusalForRespec(*Held.Allocation, Run != nullptr);
-	if (OutReason.IsEmpty() && Run->IsAWalkUnderWay())
-	{
-		// NOT IN THE MIDDLE OF A WALK, for `Cataclysm.EmpireAdvance`'s reason: nothing resolves while the player is
-		// inside a dungeon (the owner's decision of 2026-10-24), and these days would resolve exactly that.
-		OutReason = TEXT("A dungeon is being walked. The empire upgrade tree is respecced at the capital, once the walk "
-						 "has ended.");
-	}
 	if (!OutReason.IsEmpty())
 	{
 		return false;
@@ -652,6 +685,9 @@ bool UCataclysmGameInstance::RespecEmpireTree(const UObject* WorldContext, int32
 		   TEXT("Empire upgrade tree respecced: %d point(s) returned, %.3f banked. It cost %d days, day %d to day %d, "
 				"in which %d dungeon(s) resolved and %d city(ies) fell."),
 		   OutPointsReturned, *Held.Bank, Days, DayBefore, Run->Day(), Resolved, Fallen);
+	// THE PLAY LOOP: the points back, the bank, and the days it cost. Issue #2741 slice 2.
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::TreeRespecLine(OutPointsReturned, *Held.Bank, Days, DayBefore,
+		Run->Day()));
 
 	// SAVED WHOLE: the points, in the record that holds the tree, and the run's days by a trigger that writes the run
 	// record whatever else wrote it earlier in this frame. `Clock` would have been skipped then; the coordinating

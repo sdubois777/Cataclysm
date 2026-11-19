@@ -26,6 +26,8 @@ WHAT IT MAKES, under `/Game/Interface`:
     WBP_NewCharacter        the new-character screen New opens: a name, the
                             lethality, Solo Self-Found, the population, the
                             weapon type and damage type, issue #753
+    WBP_EmpireTree          the empire upgrade tree: one branch at a time, the
+                            points banked, Respec and Close, issue #2741
 
 AND ONE LEVEL, under `/Game/Maps`:
 
@@ -896,6 +898,82 @@ def make_new_character():
     log("created {}/{}".format(INTERFACE_DIR, NEW_CHARACTER_ASSET))
 
 
+EMPIRE_TREE_PARENT = "CataclysmEmpireTreeWidget"
+EMPIRE_TREE_ASSET = "WBP_EmpireTree"
+
+
+def make_empire_tree():
+    """The empire upgrade tree, issue #2741 slice 2.
+
+    THE WHOLE SCREEN, as the passive tree is, and laid out the same way: the
+    points, a list of the five branches, the branch shown, the graph, and the
+    lines under it. The empire map's "Empire upgrade tree" button opens it, and
+    so does Cataclysm.EmpireTree.
+    """
+    parent = parent_class(EMPIRE_TREE_PARENT)
+    if authoring.widget_blueprint_exists(INTERFACE_DIR, EMPIRE_TREE_ASSET):
+        log("{}/{} already exists; left alone.".format(
+            INTERFACE_DIR, EMPIRE_TREE_ASSET))
+        return
+
+    blueprint = authoring.create_or_load_widget_blueprint(
+        INTERFACE_DIR, EMPIRE_TREE_ASSET, parent)
+    if blueprint is None:
+        raise SystemExit("Could not create {}.".format(EMPIRE_TREE_ASSET))
+
+    add(blueprint, unreal.CanvasPanel, "RootCanvas")
+
+    backdrop = add(blueprint, unreal.Border, "Backdrop", "RootCanvas")
+    backdrop.set_editor_property("brush_color", PANEL)
+    fill_the_screen(backdrop)
+    backdrop.set_editor_property("padding", unreal.Margin(48.0, 36.0, 48.0, 36.0))
+
+    add(blueprint, unreal.VerticalBox, "Body", "Backdrop")
+
+    title = add(blueprint, unreal.TextBlock, "TitleLabel", "Body")
+    set_text(title, "Empire upgrade tree", size=30)
+
+    bank = add(blueprint, unreal.TextBlock, "BankLabel", "Body")
+    set_text(bank, "", size=18)
+
+    # THE FIVE BRANCHES, or a capstone's three options while one waits on a
+    # choice. A wrap box, for the reason the passive tree's list is one. EMPTY
+    # HERE AND FILLED AT RUN TIME by UCataclysmEmpireTreeWidget.
+    add(blueprint, unreal.WrapBox, "BranchBox", "Body")
+
+    branch = add(blueprint, unreal.TextBlock, "BranchLabel", "Body")
+    set_text(branch, "", size=18)
+
+    # WHERE THE BRANCH IS DRAWN, at each node's authored position, for the
+    # passive tree's reason (issue #937). Empty here and filled at run time.
+    canvas = add(blueprint, unreal.CanvasPanel, "GraphCanvas", "Body")
+    fill_remaining_height(canvas)
+    canvas.set_editor_property("clipping", unreal.WidgetClipping.CLIP_TO_BOUNDS)
+
+    description = add(blueprint, unreal.TextBlock, "DescriptionLabel", "Body")
+    set_text(description, "", size=16)
+    description.set_editor_property("auto_wrap_text", True)
+
+    refusal = add(blueprint, unreal.TextBlock, "RefusalLabel", "Body")
+    set_text(refusal, "", size=16)
+    refusal.set_editor_property("auto_wrap_text", True)
+
+    # RESPEC AND CLOSE, side by side. A button holds one child, its label.
+    add(blueprint, unreal.HorizontalBox, "ActionRow", "Body")
+    add(blueprint, unreal.Button, "RespecButton", "ActionRow")
+    respec = add(blueprint, unreal.TextBlock, "RespecLabel", "RespecButton")
+    set_text(respec, "Respec", size=18)
+    add(blueprint, unreal.Button, "CloseButton", "ActionRow")
+    close = add(blueprint, unreal.TextBlock, "CloseLabel", "CloseButton")
+    set_text(close, "Close", size=18)
+
+    check_every_bound_widget(blueprint, parent)
+    if not authoring.compile_and_save(blueprint):
+        raise SystemExit("{} did not compile or could not be saved.".format(
+            EMPIRE_TREE_ASSET))
+    log("created {}/{}".format(INTERFACE_DIR, EMPIRE_TREE_ASSET))
+
+
 MAPS_DIR = "/Game/Maps"
 FRONT_END_LEVEL = "L_FrontEnd"
 FRONT_END_GAME_MODE = "/Script/Cataclysm.CataclysmFrontEndGameMode"
@@ -962,6 +1040,7 @@ def main():
     make_skill_assignment()
     make_character_select()
     make_new_character()
+    make_empire_tree()
     editor_assets.save_directory(INTERFACE_DIR, recursive=True)
     # THE LEVEL LAST, AFTER THE SCREENS ARE SAVED, so its save is its own.
     make_front_end_map()

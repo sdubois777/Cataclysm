@@ -168,7 +168,35 @@ The days away are the two numbers after "while away, days": 12 days in the examp
 
   **Gold:** the map's status line ends with the same balance, "342 gold".
 
-### 12. Stop, press Play, and Continue
+### 12. Open the empire upgrade tree, buy a point, and respec
+
+- **Click "Empire upgrade tree"** in the top right corner of the map. The tree's screen opens on the Architect branch,
+  one box per node with its name and points: "Structural Integrity  0/10". The line under the title shows the bank:
+  "1.0 empire upgrade points banked: 1 to spend". A node waiting on a system the game does not have yet is greyed --
+  Coinage, in the Treasury branch, waits on gold's slice 6 -- and the cursor on it shows what it waits on.
+- **Click Structural Integrity.** It shows "1/10" and the bank falls by one point.
+- **In the log:**
+
+  `PLAY LOOP: bought a point in Structural Integrity (Architect): 1 of 10; 0.0 empire points banked`
+
+- **Click Respec**, under the branch. It reads "Press again to respec: 5 days of the run". Click it again. Structural
+  Integrity shows "0/10", the bank is back, and the map's status line shows a day 5 days later (10 on Hardcore, 15 on
+  Heretic). Any other click before the second press cancels it.
+- **In the log:**
+
+  `PLAY LOOP: respecced the empire upgrade tree: 1 point back, 1.0 points banked; it cost 5 days, day 20 to day 25`
+
+- **A centre capstone's choice is not reached in one session**: the first, Foundations of the Empire, opens at 25
+  points spent in the tree. When it has, click it in the fifth list entry, "The centre", then one of the three options
+  the list shows in its place:
+
+  `PLAY LOOP: chose The Delver for Foundations of the Empire`
+
+- **During a walk** the screen opens from the map as well, to be read, and every click on a node or on Respec says
+  "The empire upgrade tree can be changed in the capital, not during a walk." and changes nothing.
+- **Close** the screen with its Close button.
+
+### 13. Stop, press Play, and Continue
 
 - Stop the game, and press Play again.
 - **On screen:** the character select screen, with your character's row. Click the row.
@@ -178,8 +206,8 @@ The days away are the two numbers after "while away, days": 12 days in the examp
 
   `PLAY LOOP: continuing 'Ash': opening the capital`
 
-- **Then:** the capital and the map, as at the end of step 11 -- the city still holds the upgrade, and the balance
-  is what the purchase left -- and the capital's line. It says no days away, because
+- **Then:** the capital and the map, as at the end of step 12 -- the city still holds the upgrade, the balance is
+  what the purchase left, and the empire upgrade tree holds what step 12 left in it -- and the capital's line. It says no days away, because
   no walk has just ended.
 
 **A character saved in the middle of a walk** opens the dungeon level instead, and goes on walking:

@@ -29,6 +29,15 @@ namespace
 	{
 		return FName(TEXT("CataclysmBossDungeon"));
 	}
+
+	/**
+	 * The name the "Empire upgrade tree" button carries. No city's name can be it, nor a Walk box's. Issue #2741
+	 * slice 2.
+	 */
+	FName EmpireTreeButtonName()
+	{
+		return FName(TEXT("EmpireUpgradeTree"));
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -223,6 +232,29 @@ void UCataclysmEmpireMapWidget::BuildCities()
 
 		CataclysmDungeonWalkButton = Button;
 	}
+
+	// AND THE BUTTON THAT OPENS THE EMPIRE UPGRADE TREE, in the top right corner, which the diamond leaves empty as it
+	// leaves the top left. The same button class, handlers and placement rules. Always shown: the tree is read at any
+	// time, and a change during a walk is refused on the tree screen, which says why. Issue #2741 slice 2.
+	if (UCataclysmChoiceButton* Button =
+			CreateWidget<UCataclysmChoiceButton>(this, ButtonClass))
+	{
+		Button->OnChoiceHovered.AddDynamic(
+			this, &UCataclysmEmpireMapWidget::HandleCityHovered);
+		Button->OnChoiceClicked.AddDynamic(
+			this, &UCataclysmEmpireMapWidget::HandleCityClicked);
+		Button->SetClipping(EWidgetClipping::ClipToBounds);
+
+		if (UCanvasPanelSlot* Placement =
+				Cast<UCanvasPanelSlot>(MapCanvas->AddChild(Button)))
+		{
+			Placement->SetAnchors(FAnchors(0.0f, 0.0f));
+			Placement->SetAlignment(FVector2D(0.5, 0.5));
+			Placement->SetAutoSize(false);
+		}
+
+		EmpireTreeButton = Button;
+	}
 }
 
 void UCataclysmEmpireMapWidget::PlaceCities()
@@ -276,6 +308,28 @@ void UCataclysmEmpireMapWidget::PlaceCities()
 	}
 
 	PlaceCataclysmDungeon(Scale);
+	PlaceEmpireTreeButton(Scale, Size);
+}
+
+void UCataclysmEmpireMapWidget::PlaceEmpireTreeButton(float Scale, FVector2D PanelSize)
+{
+	if (EmpireTreeButton == nullptr)
+	{
+		return;
+	}
+
+	if (UCanvasPanelSlot* Placement = Cast<UCanvasPanelSlot>(EmpireTreeButton->Slot))
+	{
+		Placement->SetPosition(UCataclysmEmpireMapLayout::EmpireTreeButtonPosition(Scale, PanelSize));
+		Placement->SetSize(UCataclysmEmpireMapLayout::EmpireTreeButtonSize(Scale));
+	}
+
+	EmpireTreeButton->SetLabelScale(Scale);
+
+	// PLAIN, so the boss marker and an exposed city stay the bright ones.
+	EmpireTreeButton->SetChoice(EmpireTreeButtonName(),
+								FText::FromString(UCataclysmEmpireMapLayout::EmpireTreeButtonText()),
+								/*bChosen*/ false, /*bAvailable*/ true);
 }
 
 void UCataclysmEmpireMapWidget::PlaceCataclysmDungeon(float Scale)
@@ -478,6 +532,13 @@ void UCataclysmEmpireMapWidget::HandleCityHovered(FName Value)
 		return;
 	}
 
+	// THE EMPIRE UPGRADE TREE'S BUTTON, which is no city's either. Issue #2741 slice 2.
+	if (Value == EmpireTreeButtonName())
+	{
+		DetailLabel->SetText(FText::FromString(UCataclysmEmpireMapLayout::EmpireTreeButtonBrief()));
+		return;
+	}
+
 	const UCataclysmEmpireRun* Run = ShownRun();
 	const int32 CityId = CityForButton(Value);
 
@@ -546,6 +607,19 @@ void UCataclysmEmpireMapWidget::HandleCityClicked(FName Value)
 	if (WalkId != INDEX_NONE)
 	{
 		WalkDungeon(WalkId);
+		return;
+	}
+
+	// THE EMPIRE UPGRADE TREE'S BUTTON OPENS THE TREE SCREEN, which the player controller owns, as it owns the city
+	// screen. The request is counted whether or not a screen opens, for `ClickedCityId`'s reason. Issue #2741 slice 2.
+	if (Value == EmpireTreeButtonName())
+	{
+		++EmpireTreeRequests;
+		if (ACataclysmPlayerController* Controller =
+				Cast<ACataclysmPlayerController>(GetOwningPlayer()))
+		{
+			Controller->ToggleEmpireTree();
+		}
 		return;
 	}
 
@@ -619,6 +693,12 @@ void UCataclysmEmpireMapWidget::ClickCataclysmDungeonWalkForTests()
 	// through the same lookup a real press does. `NAME_None` while no boss stands
 	// is no city's name and no Walk box's, so the handler does nothing with it.
 	HandleCityClicked(UCataclysmEmpireMapLayout::CataclysmDungeonWalkButtonName(ShownRun()));
+}
+
+void UCataclysmEmpireMapWidget::ClickEmpireTreeForTests()
+{
+	// THE NAME THE BUTTON CARRIES, through the handler the button calls.
+	HandleCityClicked(EmpireTreeButtonName());
 }
 
 int32 UCataclysmEmpireMapWidget::CityForButton(FName Value) const

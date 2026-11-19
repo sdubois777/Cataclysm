@@ -14,6 +14,7 @@ class UCataclysmCharacterCreationWidget;
 class UCataclysmCharacterSheetWidget;
 class UCataclysmCityScreenWidget;
 class UCataclysmEmpireMapWidget;
+class UCataclysmEmpireTreeWidget;
 class UCataclysmFloorModifierPanel;
 
 /**
@@ -378,6 +379,19 @@ public:
 	void CloseEmpireScreens();
 
 	/**
+	 * Opens and closes the empire upgrade tree screen. Issue #2741 slice 2.
+	 *
+	 * THE EMPIRE MAP'S "Empire upgrade tree" BUTTON CALLS IT, and so do the screen's own Close button and
+	 * `Cataclysm.EmpireTree`. It opens wherever the map opens -- during a walk too, to be read; buying, choosing and
+	 * respec are refused there (`UCataclysmGameInstance::EmpireTreeChangeRefusal`). REFRESHED ON EVERY OPENING: points
+	 * banked by a clear, a load, or another character of the mode can have moved the tree since it was last open.
+	 */
+	void ToggleEmpireTree();
+
+	/** Whether the empire upgrade tree screen is open. For the empire map's button and for tests. */
+	bool IsEmpireTreeOpen() const;
+
+	/**
 	 * Open the choice panel for this floor object, or show its choices on the panel already open. Called when the
 	 * player clicks the object's name in reach, or arrives at it after a click from further off. Issues #1820 and
 	 * #41, the choice screen.
@@ -712,6 +726,17 @@ private:
 	/** The passive tree screen, once it has been opened at least once. */
 	UPROPERTY()
 	TObjectPtr<UCataclysmPassiveTreeWidget> PassiveTreeScreen = nullptr;
+
+	/** Which Widget Blueprint the empire upgrade tree screen is. Soft, for the reason the character creator's is.
+	 *  Issue #2741 slice 2; `tools/generate_interface_assets.py` makes it. */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Interface")
+	TSoftClassPtr<UCataclysmEmpireTreeWidget> EmpireTreeScreenClass =
+		TSoftClassPtr<UCataclysmEmpireTreeWidget>(FSoftObjectPath(
+			TEXT("/Game/Interface/WBP_EmpireTree.WBP_EmpireTree_C")));
+
+	/** The empire upgrade tree screen, once it has been opened at least once. */
+	UPROPERTY()
+	TObjectPtr<UCataclysmEmpireTreeWidget> EmpireTreeScreen = nullptr;
 
 	/** Which Widget Blueprint the empire overview is. Soft, for the reason
 	 *  the character creator's is. */

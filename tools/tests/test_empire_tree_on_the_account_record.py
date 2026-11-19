@@ -185,7 +185,9 @@ def test_a_respec_writes_the_account_record_and_the_run_record():
     listed = body_of(triggers, "TArray<ECataclysmSaveTrigger> UCataclysmSaveTriggers::Every(")
     assert "ECataclysmSaveTrigger::EmpireTreeRespecced" in listed, "the respec's trigger is not in the list its tests walk"
     assert "AdvanceDays(" in respec, "a respec no longer passes its days through the run's AdvanceDays"
-    assert "IsAWalkUnderWay()" in respec, "a respec is no longer refused while a dungeon is being walked"
+    assert "EmpireTreeChangeRefusal(" in respec, "a respec is no longer refused while a dungeon is being walked"
+    refusal = body_of(code, "FString UCataclysmGameInstance::EmpireTreeChangeRefusal(")
+    assert "IsAWalkUnderWay()" in refusal, "the tree's one walk refusal no longer asks whether a walk is under way"
 
 
 @pytest.mark.parametrize("signature", [
@@ -196,6 +198,9 @@ def test_a_buy_and_a_choice_write_the_record_that_holds_the_tree(signature):
     code = without_comments(GAME_INSTANCE.read_text(encoding="utf-8"))
     assert "NoteTheEmpireTreeChanged(" in body_of(code, signature), (
         f"{signature.split('::')[1].rstrip('(')} no longer writes the record that holds the tree")
+    # AND IS REFUSED DURING A WALK, the one rule buying, choosing and respec share since slice 2.
+    assert "EmpireTreeChangeRefusal(" in body_of(code, signature), (
+        f"{signature.split('::')[1].rstrip('(')} is no longer refused while a dungeon is being walked")
 
 
 def test_the_record_that_holds_the_tree_is_the_one_written():

@@ -278,3 +278,23 @@ FString FCataclysmPlayLoopLog::UpgradeLine(const FString& Upgrade, const UCatacl
 	return FString::Printf(TEXT("bought '%s' on %s for %s gold; %s gold held"), *Upgrade, *City,
 						   *ACataclysmDroppedItem::GoldAmountText(Price), *ACataclysmDroppedItem::GoldAmountText(Held));
 }
+
+FString FCataclysmPlayLoopLog::TreePointLine(const FString& Node, const FString& Branch, int32 Points, int32 MaxPoints,
+											 double Banked)
+{
+	return FString::Printf(TEXT("bought a point in %s (%s): %d of %d; %s empire points banked"), *Node, *Branch, Points,
+						   MaxPoints, *UCataclysmEmpireMapLayout::EmpirePointsText(Banked));
+}
+
+FString FCataclysmPlayLoopLog::TreeOptionLine(const FString& Option, const FString& Capstone)
+{
+	return FString::Printf(TEXT("chose %s for %s"), *Option, *Capstone);
+}
+
+FString FCataclysmPlayLoopLog::TreeRespecLine(int32 PointsBack, double Banked, int32 Days, int32 DayFrom, int32 DayTo)
+{
+	return FString::Printf(
+		TEXT("respecced the empire upgrade tree: %d point%s back, %s points banked; it cost %d days, day %d to day %d"),
+		PointsBack, PointsBack == 1 ? TEXT("") : TEXT("s"),
+		*UCataclysmEmpireMapLayout::EmpirePointsText(Banked), Days, DayFrom, DayTo);
+}

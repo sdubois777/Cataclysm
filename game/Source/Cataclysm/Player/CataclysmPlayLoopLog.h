@@ -124,4 +124,26 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 	 */
 	static FString UpgradeLine(const FString& Upgrade, const UCataclysmEmpireRun* Run, int32 CityId, int64 Price,
 							   int64 Held);
+
+	/**
+	 * A point bought in the empire upgrade tree: "bought a point in Structural Integrity (Architect): 3 of 10; 9.5
+	 * empire points banked". Issue #2741 slice 2; said by `UCataclysmGameInstance::BuyEmpireTreePoint`, after the point
+	 * is in the tree and paid for, so the figures are the ones after it. The bank is rounded down to a tenth, as the
+	 * empire map shows it (`UCataclysmEmpireMapLayout::EmpirePointsText`).
+	 */
+	static FString TreePointLine(const FString& Node, const FString& Branch, int32 Points, int32 MaxPoints,
+								 double Banked);
+
+	/**
+	 * One of a centre capstone's options chosen: "chose The Delver for Foundations of the Empire". Issue #2741 slice 2;
+	 * said by `UCataclysmGameInstance::ChooseEmpireTreeOption`, after the choice is made.
+	 */
+	static FString TreeOptionLine(const FString& Option, const FString& Capstone);
+
+	/**
+	 * The empire upgrade tree respecced: "respecced the empire upgrade tree: 26 points back, 26.5 points banked; it cost
+	 * 5 days, day 12 to day 17". Issue #2741 slice 2; said by `UCataclysmGameInstance::RespecEmpireTree`, after
+	 * the points are back and the days have passed.
+	 */
+	static FString TreeRespecLine(int32 PointsBack, double Banked, int32 Days, int32 DayFrom, int32 DayTo);
 };

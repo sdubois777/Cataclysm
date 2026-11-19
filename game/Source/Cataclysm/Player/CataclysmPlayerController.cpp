@@ -12,6 +12,7 @@
 #include "Interface/CataclysmChoicePanelWidget.h"
 #include "Dungeon/CataclysmFloorObject.h"
 #include "Interface/CataclysmEmpireMapWidget.h"
+#include "Interface/CataclysmEmpireTreeWidget.h"
 #include "Interface/CataclysmInventoryWidget.h"
 #include "Interface/CataclysmPassiveTreeWidget.h"
 #include "Interface/CataclysmSkillAssignmentWidget.h"
@@ -1125,12 +1126,60 @@ void ACataclysmPlayerController::CloseEmpireScreens()
 		bClosedAny = true;
 	}
 
+	// AND THE EMPIRE UPGRADE TREE, which the map opens. Issue #2741 slice 2.
+	if (EmpireTreeScreen && EmpireTreeScreen->IsInViewport())
+	{
+		EmpireTreeScreen->RemoveFromParent();
+		bClosedAny = true;
+	}
+
 	// THE SAME INPUT MODE AS CLOSING ANY ONE OF THEM, for the reason issue #1015
 	// recorded: `FInputModeGameOnly` here would leave the player unable to move.
 	if (bClosedAny)
 	{
 		ApplyPlayingInputMode();
 	}
+}
+
+void ACataclysmPlayerController::ToggleEmpireTree()
+{
+	if (!EmpireTreeScreen)
+	{
+		UClass* ScreenClass = EmpireTreeScreenClass.LoadSynchronous();
+		if (!ScreenClass)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("There is no empire upgrade tree screen to open: %s could not be loaded. Run  python "
+						"tools/run_editor_python.py tools/generate_interface_assets.py  to build it."),
+				   *EmpireTreeScreenClass.ToString());
+			return;
+		}
+
+		EmpireTreeScreen = CreateWidget<UCataclysmEmpireTreeWidget>(this, ScreenClass);
+		if (!EmpireTreeScreen)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("The empire upgrade tree screen could not be created, so the button that opens it does nothing."));
+			return;
+		}
+	}
+
+	// THE SAME INPUT MODE OPENING AND CLOSING, for the reason issue #1015 recorded on the passive tree screen.
+	ApplyPlayingInputMode();
+
+	if (EmpireTreeScreen->IsInViewport())
+	{
+		EmpireTreeScreen->RemoveFromParent();
+		return;
+	}
+
+	EmpireTreeScreen->RefreshDisplay();
+	EmpireTreeScreen->AddToViewport();
+}
+
+bool ACataclysmPlayerController::IsEmpireTreeOpen() const
+{
+	return EmpireTreeScreen != nullptr && EmpireTreeScreen->IsInViewport();
 }
 
 FKey ACataclysmPlayerController::KeyForAbilitySlot(FGameplayTag SlotTag) const

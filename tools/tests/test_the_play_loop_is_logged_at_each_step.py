@@ -4,12 +4,13 @@ WHY THIS EXISTS. Issue #2733 slice 4: the project owner presses Play once and re
 step, with `docs/Play_Loop_Checklist.md` saying what to click and what each step should show. `FCataclysmPlayLoopLog`
 builds the lines; ten places in the game say them. An automation test reaches some of those places -- a walk to its
 last floor, a death, a level gained -- but not the front end's start, a press on Begin or on a saved character, or the
-capital's Walk, which only a real level reaches. So the ten calls are checked here, by reading the C++. The tenth, a
-level gained, is issue #2744's.
+capital's Walk, which only a real level reaches. So the calls are checked here, by reading the C++. The tenth, a
+level gained, is issue #2744's; the eleventh to thirteenth, the empire upgrade tree's point, option and respec, are
+issue #2741 slice 2's.
 
 WHAT IS CHECKED, by reading the C++ with comments removed:
 
-  1. each of the ten places says its builder's line;
+  1. each of the thirteen places says its builder's line;
   2. each says it after the step it reports -- the floor's line after the floor's day is spent, the clear's account
      after the walk's days have run, the death's after the death's own days;
   3. the dungeons are named before the days run, because a dungeon those days resolve is gone from the run after;
@@ -33,7 +34,7 @@ LOG_CPP = SOURCE / "Player" / "CataclysmPlayLoopLog.cpp"
 CHECKLIST = REPO_ROOT / "docs" / "Play_Loop_Checklist.md"
 GAME_README = REPO_ROOT / "game" / "README.md"
 
-#: The ten places, by file and signature, and the builder each one says.
+#: The thirteen places, by file and signature, and the builder each one says.
 STEPS = [
     ("Player/CataclysmFrontEndGameMode.cpp", "void ACataclysmFrontEndPlayerController::BeginPlay()", "FrontEndLine"),
     ("Interface/CataclysmNewCharacterWidget.cpp", "bool UCataclysmNewCharacterWidget::ConfirmInto(", "NewCharacterLine"),
@@ -45,6 +46,11 @@ STEPS = [
     ("Dungeon/CataclysmDungeonGameMode.cpp", "bool ACataclysmDungeonGameMode::ClearEmpireDungeon()", "ClearLine"),
     ("Dungeon/CataclysmDungeonGameMode.cpp", "bool ACataclysmDungeonGameMode::EndTheDungeonForADeath()", "DeathLine"),
     ("Player/CataclysmPlayerState.cpp", "int32 ACataclysmPlayerState::GrantExperience(int64 Amount)", "LevelGainedLine"),
+    # THE EMPIRE UPGRADE TREE, issue #2741 slice 2: a point bought, an option chosen, a respec. Said by the game
+    # instance rather than the tree's screen, so a console command or a test that changes the tree logs it too.
+    ("Player/CataclysmGameInstance.cpp", "bool UCataclysmGameInstance::BuyEmpireTreePoint(", "TreePointLine"),
+    ("Player/CataclysmGameInstance.cpp", "bool UCataclysmGameInstance::ChooseEmpireTreeOption(", "TreeOptionLine"),
+    ("Player/CataclysmGameInstance.cpp", "bool UCataclysmGameInstance::RespecEmpireTree(", "TreeRespecLine"),
 ]
 
 #: What must come before each place's line, whitespace aside: the step it reports.
@@ -55,6 +61,9 @@ AFTER = {
     "ClearEmpireDungeon": "Run->NoteDaysAway(",
     "EndTheDungeonForADeath": "Run->AdvanceDays(DaysTheDeathCost)",
     "GrantExperience": "CharacterLevel = Level;",
+    "BuyEmpireTreePoint": "UCataclysmEmpireTree::Spend(",
+    "ChooseEmpireTreeOption": "UCataclysmEmpireTree::ChooseOption(",
+    "RespecEmpireTree": "Run->AdvanceDays(Days)",
 }
 
 
