@@ -303,14 +303,16 @@ would then have passed for either quote.
   forms.
 - **`Cataclysm.SaveTriggers.EachRecordIsWrittenForTheReasonsThatChangeIt`**, changed: the character record's set holds
   the new trigger. `EveryTriggerIsInTheListThisFileAnswersFor` walks the enum and needs no change.
-- **Registered**: the whole suite at 4905 + 7 = **4912**, against 4905 measured at `6b1eabc43` (slice 3b's window,
-  merged as `development` `5b401cb87`, this branch's base); 47 skipped halves, as there; 0 test saves left behind.
-  `Cataclysm.BuildSave.` 6 and `Cataclysm.PlayLoop.` 9 (8 measured in window level1-w1, and one new) alone; the
-  groups that spend or choose through the changed functions alone at their counts in the base's whole-suite engine
-  log (slice 3b's window, `t2741s3b_suite_engine_6b1eabc4.log`, 4905 "Test Completed" lines, every one a success),
-  none of them changed in count: `Cataclysm.SaveTriggers.` 6, `Cataclysm.SkillAssignment.` 16,
-  `Cataclysm.CharacterSheet.` 10, `Cataclysm.Attributes.` 21 and `Cataclysm.Passives.` 161. The same log counts
-  `Cataclysm.PlayLoop.` 8 and `Cataclysm.BuildSave.` 0.
+- **Registered, after the rebase onto `development` `0b7b554d1`**: the whole suite at 4922 + 7 = **4929**, against
+  4922 measured by window ring-w1 at `0c23e3dbb`, whose `game/` is `0b7b554d1`'s (`git diff --stat 0c23e3dbb
+  0b7b554d1 -- game/` prints nothing); 47 skipped halves, as there; 0 test saves left behind. Each group alone:
+  `Cataclysm.BuildSave.` 6, all new; `Cataclysm.PlayLoop.` 9, 8 and one new; and the groups that spend or choose
+  through the changed functions, none changed in count: `Cataclysm.SaveTriggers.` 6, `Cataclysm.SkillAssignment.`
+  16, `Cataclysm.CharacterSheet.` 10, `Cataclysm.Attributes.` 21 and `Cataclysm.Passives.` 161. The base counts
+  are "Test Completed. Result={" lines by path in the empire tree slice 4 window's whole-suite engine log
+  (`t2741s4_suite_engine_8c22f94c.log`, 4919 lines, every one a success); the ring rise, the only change between
+  that log and `0b7b554d1`, adds to none of these groups, by the coordinating session's reading. Slice 3b's log
+  (`t2741s3b_suite_engine_6b1eabc4.log`, 4905), the base registered before the rebase, counts the same in each.
 - **Python**: `tools/tests/test_a_build_change_is_saved.py`, new, 17: each act raises the write after its change; the
   five put-back functions and the save apply raise nothing; the skill screen and the console command call the
   player's acts; the trigger is 15, writes the character record, and is neither synchronous nor exempt from the
