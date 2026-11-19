@@ -2,6 +2,242 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-19 — Hellfire Aura burns for 9% of its carrier's weapon damage, a Corrupted Stalker's flat damage over time takes the multiplier its hits carry, Thorns of Glass strikes back at most once per its own attack interval, and the log says every blow the player deals (#2749, enemy burn slice)
+
+**Affects:** `UCataclysmEnemyModifiers` (`game/Source/Cataclysm/Character/CataclysmEnemyModifiers.h`, `.cpp`:
+`HellfireAuraBurnShareOfWeaponDamage` and `HellfireAuraBurnPerTick`, new; `AuraStep` applies the carrier's burn);
+`UCataclysmSkillEffects::ApplyDamageOverTime` (a Corrupted Stalker's multiplier); `ACataclysmCorruptedStalkerCharacter`
+(`DamageOverTimeMultiplier` and `WornDamageMultiplier`, new; `WearTheBuild` keeps the multiplier);
+`ACataclysmEnemyCharacter::TakeAStrikeBackIfDue`, new, and the strike back's call in `UCataclysmVitalAttributeSet`;
+`FCataclysmHitNotice::Sent`, new, set in `UCataclysmCombatEvents::NoteBlow`; `FCataclysmHitLog::OutgoingLine` and
+`OutgoingPrefix`, new (`game/Source/Cataclysm/Character/CataclysmHitLog.h`, `.cpp`), said by
+`ACataclysmPlayerCharacter::OnSomethingWasHit`; the
+design workbook `docs/All_Things_Cataclysm.xlsx` (Enemy Modifiers, Thorns of Glass; DoTs, Burn) and
+`game/Data/EnemyModifiers.csv` and `game/Data/StatusEffects.csv`, one row each; `docs/Cataclysm_GDD_v2.md`, after "The
+effects a player can apply". The simulation: `enemy_stats.HELLFIRE_AURA_BURN_SHARE_OF_WEAPON_DAMAGE` and
+`hellfire_aura_burn_per_tick`; `sim/analyse_enemy_burn_and_thorns.py`, new. Tests: `CataclysmEnemyBurnTests.cpp`, new,
+four in the group `Cataclysm.EnemyBurn.`; three new in `CataclysmThornsOfGlassTests.cpp` and two of its tests moved;
+`Cataclysm.EnemyModifiers.AMedicWithABurningAuraBurnsNobody` moved;
+`Cataclysm.HitLog.ABlowThePlayerDealsIsSaidWithWhatWasSentAndWhatLanded`, new, and one assertion message reworded in
+`Cataclysm.HitLog.ACreaturesBlowOnThePlayerSaysOneLine` ("says no line of a blow taken", which is what it counts);
+`tools/tests/test_the_starting_character_survives_a_pack.py` (the aura walk, its guard and its control, new),
+`tools/tests/test_enemy_damage_over_time_port.py`, new, `tools/tests/test_thorns_of_glass_strikes_back.py` and
+`sim/tests/test_analysis_scripts.py`. Issue [#2749](https://github.com/sdubois777/Cataclysm/issues/2749).
+
+### SAID FIRST
+
+- **NOT YET COMPILED OR RUN IN UNREAL.** Phase 1 at `1009bfe7b`, on development `0b7b554d1`: the Python suite gives 1
+  failed, 7,677 passed and 9 skipped, by its count line and by its JUnit file (7,687 tests, 1 failure, 0 errors); ruff
+  is clean; the three Python guard proofs are proved as registered ("Phase 1's Python guard proofs", below).
+- **THE REBASE ONTO THE RING RISE MERGED ONE LINE WRONG, WITHOUT A CONFLICT**: the Stalker's kept multiplier came through
+  without its floor's ring, which compiles because the ring's parameter defaults to an Outpost. Fixed, with a guard in
+  each suite and a third C++ proof registered ("The rebase onto the ring rise", below).
+- **THIS BRANCH HOLDS THE ONLY UNMERGED EDIT TO THE DESIGN WORKBOOK** (`9053ef4f1` on
+  `feat/enemy-burn-thorns-rate-2749-2`; it was `361740025` before the rebase, which moved it unchanged because
+  development had not touched the workbook), two sentences ruled verbatim, held on that branch until it merges. Nobody
+  else may edit the workbook until then: git cannot merge two edits of it.
+- **ONE PYTHON TEST FAILS ON THE BRANCH UNTIL THE WINDOW**, as in slice 2 (Q4 there):
+  `test_datatable_assets_are_current`, because `EnemyModifiers.csv` and `StatusEffects.csv` changed and their DataTable
+  assets are rebuilt only by the editor. The window rebuilds them and commits them alone with
+  `datatable_asset_sources.json`.
+- **THE 18% GAP IS NOT EXPLAINED YET.** The owner's log shows burn ticks of 20 to 20.5; a creature's 25 should reach a bare
+  level 2 Ravager as 23.40 if armour meets a tick, or 24.24 if it does not. That prediction is registered for
+  `Cataclysm.EnemyBurn.ATableBurnFromACreatureArrivesAtWhatTheDefendersStepsLeave`. The log records no gear, so whatever
+  took the rest -- gear, or an aura the character carried -- is not visible in it.
+- **0.09, NOT THE 0.1 FIRST RULED.** 0.1 was the largest passing step on seeds 0 to 59 (597 dungeons); on the guard's
+  3,057 it left 3 under 10% health, one shape, a 3-floor Volatile dungeon of modifier score 15 ending with 9.3%.
+- **TWO MORE TESTS MOVE THAN THE REGISTRATION RULED** ("Registered before the window", below): the plan named
+  `AHitOfTenAndAHitOfAThousandAreStruckBackForTheSame`; writing the tests found
+  `AStrikeBackIsMarkedReturnedAndARetaliatingPlayerDoesNotAnswerIt` (it hits one creature twice at one moment) and
+  `Cataclysm.EnemyModifiers.AMedicWithABurningAuraBurnsNobody` (its creature had no attack damage, so the aura's new
+  figure is nought and it burns nobody for that reason, not the test's). The count of tests does not change.
+- **A STALKER'S MULTIPLIER MEETS FLAT FIGURES ONLY.** Void Splinter, a share of the target's current health, takes none,
+  as ruled below: it is laid by `UCataclysmSkillEffects::ApplyShareOfHealthOverTime`, which never passes through
+  `ApplyDamageOverTime`, where the multiplier is. Applied, it would have been 0.06% a tick at tier 1.
+- **"SENT" ON THE OUTGOING LINE IS BEFORE THE CRITICAL STRIKE MULTIPLIER**, because the defender's calculation rolls the
+  critical strike after evasion, from the figure it was handed. So a critical blow's line can say it landed more than it
+  sent. The line says "critical" when it was one.
+
+### The rulings
+
+**The project owner, 2026-11-19**, on Thorns of Glass, the option chosen verbatim: "Once per its attack time: It can
+strike back at most once per its own attack interval, so it returns about what its own swings would deal (~40 in the
+example). Still punishes hitting it; can no longer out-damage itself." It replaces "once per hit" from the owner's
+ruling of 2026-11-18; the strike back's size, its own attack damage, is unchanged.
+
+**The coordinating session, 2026-11-19**, verbatim:
+
+- "(A) ACCEPTED as one slice: an enemy-applied damage over time is sized from what applies it. A floor creature's aura
+  burn per tick is K = 0.1 x its own attack damage as the floor built it, a judgement by the rule that chose the ring
+  figures with the worst carrier. Record that Path of Exile 2's 0.2 is the genre figure and costs 36 of 597. The
+  Corrupted Stalker's and Corrupted Double's kit DoTs are multiplied by the same multiplier their hits carry. The
+  player's own burns stay flat (owner, 2026-08-24). Explain the 18% gap between the log's 20 to 20.5 ticks and your
+  24.25 inside the slice (a C++ test will show what reduces it), and say what it was."
+- "Q1: K = 0.09, the same rule applied to the full guard set (3,057 first-surge dungeons). Record that 0.1 was the
+  figure on seeds 0 to 59 and left 3 of 3,057 under 10% (one 3-floor Volatile shape at 9.3%)."
+- "Q2: YES, take the design workbook once in this slice, for these two sentences exactly: - Enemy Modifiers, Thorns of
+  Glass: "Strikes back at whatever hits it, at most once per its own attack interval, for its own attack damage." -
+  Status Effects, DoT_Burn: replace "The Hellfire Aura enemy modifier applies it to the player." with "The Hellfire Aura
+  enemy modifier applies it to the player at 9% of its carrier's attack damage a second." Release the workbook as soon as
+  the slice merges, and tell me."
+- "Q3: YES, branch now from development and write phase 1. Rebase onto the ring rise after it merges, before any
+  compile; if the rebase needs a force push, push to a new -2 name. No compile until I say."
+- "the 18% test's registered prediction (23.4 or 24.2) is right to register before the run. If the run shows a third
+  figure, say so plainly rather than re-fitting the prediction."
+- "VOID SPLINTER: EXEMPT percentage-of-health effects from the Stalker's multiplier. The ruling's purpose was to size
+  FLAT table figures to the content. A share of the target's health already sizes itself to the target, as the floor
+  hazards do, and 0.06% would remove the effect. The multiplier applies to flat-figure DoTs only. Say so in the entry,
+  and add one assertion that a Stalker's Void Splinter tick is still 1% of the target's current health."
+- "OUTGOING-HIT LINE: YES, as planned (my answer crossed with your message). The Sent field, the "HIT OUT:" line for
+  every non-tick blow the player deals, one new test. Registration +8; add Cataclysm.HitLog. (7) to the groups alone."
+
+The share (0.09) and the definition of "its own attack interval" are judgements; the rest follows the rulings.
+
+### The outgoing hit line
+
+**WHY.** The owner's floor-1 Brute on 2026-11-19 took at least seven of the character's blows where the model says two,
+and the log could not say why: it recorded every blow the character took and none it dealt. **WHAT.** Every blow
+credited to the player's character that is not damage over time says one line at Display, an evaded one, one on itself
+and a returned one included: "HIT OUT: Molten Cleave on CataclysmBruteCharacter_30 (Elite): sent 158, landed 145, 145 to
+health; critical", or "sent 158, evaded". Sent is the figure the defender's calculation was handed
+(`FCataclysmIncomingHit::Damage`), which only the Beguiling charm rewrites, to nought, before the calculation and nothing
+after it. **TICKS ARE LEFT OUT**: a burn on a pack would bury every other line, and Thorns of Glass strikes back at no tick.
+A minion's blow is credited to the minion and says nothing, unless its summoner holds the Conduit keystone.
+
+### The genre research
+
+Fetched 2026-11-19 by this session; the quotations are as the fetch returned them and were not fetched a second time.
+
+| Game | Source | What the page says |
+| :-- | :-- | :-- |
+| Path of Exile 2 | poe2db.tw `/us/Ignite` | "The base Magnitude of Ignite is Fire damage per second equal to 20%" "of the Fire damage dealt by the Hit that inflicted it", lasting 4 seconds by default. The wording is the generic hit; it names no exception for monsters. |
+| Path of Exile 1 | poedb.tw `/us/Ignite`, `/us/Burning_Ground` | The part of the ignite page read gives no percentage ("Deals Base Fire Damage per second"; "Base duration is 4 seconds"); its tail was not read. Burning ground's damage "depends on its source"; the map modifier's is 800, 1,200 and 1,600 base by map tier. |
+| Last Epoch | maxroll.gg `/last-epoch/resources/ailments-explained`, a guide | Ignite "has 40 base damage and lasts 2.5 seconds", a stack each, raised by the applier's damage modifiers. Nothing about enemies. |
+| Diablo IV | maxroll.gg | Both pages tried returned 404; nothing read. |
+
+**WHAT IT SETTLES:** an enemy's ailment is tied to the content -- sized from the hit that applies it (Path of Exile 2), or
+by the content's tier (Path of Exile 1's ground) -- and none is one figure at every difficulty. **WHAT IT CANNOT:** the
+share for an aura, which has no hit. That is measured.
+
+### The measurement
+
+`sim/analyse_enemy_burn_and_thorns.py`, at 300 seeds: the first surge's 3,057 Outpost dungeons, a new character
+levelling at half the kills, the pack test's fight with a burn ticking once a second throughout every floor's fight
+(kept by the character's flat damage reduction; armour left off, which overstates a tick by at most 3.4%). Won with 10%
+health left on the last floor:
+
+| Carrier | Flat 25 | 0.05 | 0.08 | **0.09** | 0.10 | 0.20 |
+| :-- | --: | --: | --: | --: | --: | --: |
+| Elite Imp | 41 | 3,057 | 3,057 | 3,057 | 3,057 | 3,057 |
+| Elite Abyssal Warden | 41 | 3,057 | 3,057 | **3,057** | 3,054 | 2,775 |
+
+On seeds 0 to 59 (597), 0.10 passed and Path of Exile 2's 0.20 left 36 short. Standing alone in a Warden's aura on
+floor 4, a level 1 character dies in 6 seconds at the flat 25, 192 seconds at 0.09 and 48 at 0.20.
+
+**THE RING FIGURES WITH AN AURA**, measured on the ring rise's branch at 0.10 with a Warden's aura on every floor: of its
+guard's 4,654 campaign clears, 1 Bulwark clear ended under 10% and 1 of the boss dungeon's was lost; the rest passed. Not
+measured again at 0.09, which burns less.
+
+### Thorns of Glass: its own attack interval
+
+**"ITS OWN ATTACK INTERVAL" IS `ACataclysmEnemyCharacter::SecondsBetweenAttacks()` AT THE MOMENT OF THE HIT** -- the
+interval its own swings use, its designed seconds divided by its speed, feasting and darkness multipliers, so a
+Commander's haste shortens it and a Cripple lengthens it. Designed: Imp 0.9, Hellhound 1.1, Brute 1.2, Corrupted
+Sentinel 2.0, Abyssal Warden 2.4, Succubus 2.6, Gatekeeper 3.0, any other 1.5. **THE GATE**: the first hit that gets
+through is struck back; the next only once that interval has passed on the world clock since its last strike back; a
+hit between draws nothing and nothing is queued. **EACH CARRIER KEEPS ITS OWN CLOCK**, so an area hit on several draws one
+from each that is due. A tick still never strikes back. The clock is not saved.
+
+Measured by the same script, an Elite carrier killed by the pack rotation at level 1 (130 health), creature armour
+included:
+
+| Carrier, floor | Once per hit | Once per its interval | Its own swings, same seconds |
+| :-- | --: | --: | --: |
+| Brute, floor 8 of 8 | 303 (233%) | 91 (70%) | 80 |
+| Abyssal Warden, floor 8 of 8 | 527 (405%) | 99 (76%) | 76 |
+| Abyssal Warden, floor 4 of 8 | 126 (97%) | 18 (14%) | 12 |
+| The owner's floor-1 Brute, from the log | 7 strike backs, 84 | 3 strike backs, 36 | |
+
+### The rebase onto the ring rise
+
+Rebased onto development `0b7b554d1`, where the ring rise merged (#2766), as `feat/enemy-burn-thorns-rate-2749-2`, as
+ruled (Q3). Three conflicts, each both sides adding at one place, each kept whole: `sim/tests/test_analysis_scripts.py`
+(two script names in one list, and two sections) and `tools/tests/test_the_starting_character_survives_a_pack.py` (the
+ring guard and the aura guard), and the Stalker's `WearTheBuild`, where the hits' line now multiplies by
+`WornDamageMultiplier`. **THE LINE ABOVE THAT CONFLICT MERGED WITHOUT ONE, AND WAS WRONG**:
+`WornDamageMultiplier = Effects::CorruptedStalkerDamageMultiplier(DifficultyTier);` came through with no ring, and the
+ring's parameter defaults to an Outpost, so it compiles and gives a Stalker on a Bulwark or a Sanctuary an Outpost's
+multiplier for its hits and its damage over time alike. It now passes `Ring`. Two guards are added for it: one
+assertion in `ACorruptedStalkersDamageOverTimeIsTheTableFigureTimesItsDamageMultiplier` that a Stalker worn on a
+Bulwark keeps 0.132 for its damage over time (with a control that it is not 0.06), and one in
+`tools/tests/test_enemy_damage_over_time_port.py` that the kept multiplier is called with `DifficultyTier` and `Ring`.
+
+### Phase 1's Python guard proofs
+
+Each through `tools/prove_guard.py`'s `break_and_run`, each registered before it ran, each PROVED with exactly its
+registered test failing with the break in and nothing failing with it out:
+
+| Proof | The break | The command | Failed with the break in | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| P1 | `HELLFIRE_AURA_BURN_SHARE_OF_WEAPON_DAMAGE = 0.09` to `0.20` in `sim/cataclysm_sim/enemy_stats.py` | the pack test file | `test_a_new_character_survives_a_hellfire_aura_on_every_floor_of_every_first_surge_dungeon`, 1 of 16 | 16 passed |
+| P2 | `HellfireAuraBurnShareOfWeaponDamage = 0.09f;` to `0.10f;` in `CataclysmEnemyModifiers.h` | `tools/tests/test_enemy_damage_over_time_port.py` | `test_the_auras_share_is_the_simulations`, 1 of 4 | 4 passed |
+| P3 | the Stalker's `CorruptedStalkerDamageMultiplier(DifficultyTier, Ring)` without `Ring` | `tools/tests/test_enemy_damage_over_time_port.py` | `test_a_stalkers_damage_over_time_takes_the_multiplier_its_hits_carry`, 1 of 4 | 4 passed |
+
+**THE ONE PYTHON FAILURE IS THE REGISTERED ONE.** `tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`
+names `EnemyModifiers.csv` and `StatusEffects.csv` and nothing else: only the editor rebuilds their DataTable assets,
+which the window does first.
+
+### Registered before the window
+
+At `feat/enemy-burn-thorns-rate-2749-2`'s head, on development `0b7b554d1`, and only once the coordinating session says
+the machine is free:
+
+- **The DataTable asset step, after the build:** `tools/run_editor_python.py tools/generate_datatable_assets.py` may
+  change only `game/Content/Data/DT_EnemyModifiers.uasset`, `game/Content/Data/DT_StatusEffects.uasset` and
+  `game/Data/datatable_asset_sources.json`; they are committed alone, and the tests run at that head. Any other file
+  changing stops the window.
+- **Each group alone**, counted by a literal, case-insensitive prefix in the whole-suite engine log of window ring-w1's
+  second run (at `0c23e3dbb`, whose tree differs from `0b7b554d1` in `docs/DECISIONS.md` alone; 4,922 performed, none
+  failed), plus the tests added by name: `Cataclysm.EnemyBurn.` 4 (new), `Cataclysm.ThornsOfGlass.` 9 (6 and three
+  new), `Cataclysm.EnemyModifiers.` 57, `Cataclysm.Retaliation.` 11, `Cataclysm.Ailments.` 23,
+  `Cataclysm.ConsumptionDouble.` 15, `Cataclysm.DungeonModifierEffects.ACorruptedStalker` 10 and `Cataclysm.HitLog.` 7
+  (6 and one new).
+- **`Cataclysm.EnemyBurn.ACorruptedStalkersDamageOverTimeIsTheTableFigureTimesItsDamageMultiplier`** also checks that a
+  Stalker's Void Splinter tick is 1% of its target's current health, within 0.5, and that a Stalker worn on a Bulwark
+  keeps the Bulwark's 0.132 for its damage over time.
+- **`Cataclysm.HitLog.ABlowThePlayerDealsIsSaidWithWhatWasSentAndWhatLanded`**: the player's direct 40 on a creature
+  says one line, "sent 40", with what reached the creature's health; the player's burn ticks and a creature's blow on the
+  player add none.
+- **The tests that move**, each rewritten and each passing: `Cataclysm.ThornsOfGlass.AHitOfTenAndAHitOfAThousandAreStruckBackForTheSame`
+  and `Cataclysm.ThornsOfGlass.AStrikeBackIsMarkedReturnedAndARetaliatingPlayerDoesNotAnswerIt` move the world's clock past
+  the creature's interval before their second hit; `Cataclysm.EnemyModifiers.AMedicWithABurningAuraBurnsNobody` gives its
+  creature an attack damage of 20 before its health.
+- **The whole suite: 4,930 performed**, the 4,922 window ring-w1 measured and the eight this branch adds (four in
+  `Cataclysm.EnemyBurn.`, three in `Cataclysm.ThornsOfGlass.`, one in `Cataclysm.HitLog.`); 47 skipped halves; "Test
+  saves: 836 written and deleted, 0 left behind", as that log has them, since the new tests run in worlds with no game
+  instance and write no save.
+- **`Cataclysm.EnemyBurn.ATableBurnFromACreatureArrivesAtWhatTheDefendersStepsLeave`**: the first tick arrives at 23.40 if
+  armour meets a tick, or 24.24 if not; a third figure is said as a third figure.
+- **Python** with a JUnit file, every test passing once the assets are rebuilt; ruff.
+- **Three proofs, under `prove_cpp_guard`, only if all of that passed:**
+  - **S1, the aura's tick back to the table's.** In `AuraStep`, `const float PerTick = HellfireAuraBurnPerTick(` becomes
+    `const float PerTick = Burn.DamagePerTickAgainst(0.0f) + 0.0f * HellfireAuraBurnPerTick(`; prefix
+    `Cataclysm.EnemyBurn.`. Predicted: 4 performed, 1 failed, `AHellfireAurasTickIsNinePercentOfItsCarriersWeaponDamage`,
+    on four assertions (the 18 twice, its control against 25, and the unarmed carrier burning nobody); restored, 4 of 4.
+  - **S2, the gate always open.** In `UCataclysmVitalAttributeSet`, `&& ThornedCreature->TakeAStrikeBackIfDue())`
+    becomes `&& (ThornedCreature->TakeAStrikeBackIfDue() || true))`; prefix `Cataclysm.ThornsOfGlass.`. Predicted: 9
+    performed, 3 failed -- `HitsWithinItsAttackIntervalAreStruckBackOnce`, `AHitAfterItsAttackIntervalIsStruckBackAgain`
+    and `AnAreaHitOnTwoCarriersIsStruckBackOnceByEachAndNotAgainWithinTheirIntervals`, one assertion each; restored, 9 of
+    9.
+  - **S3, the Stalker's multiplier without its ring.** In `ACataclysmCorruptedStalkerCharacter::WearTheBuild`,
+    `WornDamageMultiplier = Effects::CorruptedStalkerDamageMultiplier(DifficultyTier, Ring);` becomes
+    `WornDamageMultiplier = Effects::CorruptedStalkerDamageMultiplier(DifficultyTier);`; prefix `Cataclysm.EnemyBurn.`.
+    Predicted: 4 performed, 1 failed,
+    `ACorruptedStalkersDamageOverTimeIsTheTableFigureTimesItsDamageMultiplier`, on two assertions (the Bulwark Stalker's
+    0.132, and its control that it is not 0.06); restored, 4 of 4.
+
+---
+
 ## 2026-11-19 — The Cataclysmic Forge raises an item one gear level with two stones of that level, 25 residue and a day per craft plus the residue's time penalty, and combines two stones into one of the next; its screen opens from the empire map; "Gear Leveling" now counts two stones per level
 
 **Affects:** `UCataclysmForge`, new (`game/Source/Cataclysm/Items/CataclysmForge.h` and `.cpp`: the rules);
