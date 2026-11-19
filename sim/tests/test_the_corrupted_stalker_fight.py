@@ -78,6 +78,40 @@ def test_the_ruled_tables_are_the_games():
         assert tuple(float(v.strip().rstrip("f")) for v in found[0].split(",")) == model, name
 
 
+def test_on_a_bulwark_sanctuary_or_the_pillar_its_damage_follows_the_rings_damage_scale():
+    """ISSUE #2749'S RING SLICE: the Stalker keeps pace with a Boss on the same floor, whose damage rises by ring at
+    tier 1, so its multiplier rises by the same ratio there and nowhere else."""
+    assert fight.damage_multiplier(1) == fight.DAMAGE_MULTIPLIERS[0]
+    assert fight.damage_multiplier(1, "Outpost") == pytest.approx(0.06)
+    assert fight.damage_multiplier(1, "Bulwark") == pytest.approx(0.132)
+    assert fight.damage_multiplier(1, "Sanctuary") == pytest.approx(0.156)
+    assert fight.damage_multiplier(1, "Pillar") == pytest.approx(0.12)
+    for tier in range(2, 9):
+        for ring in ("Outpost", "Bulwark", "Sanctuary", "Pillar"):
+            assert fight.damage_multiplier(tier, ring) == pytest.approx(fight.DAMAGE_MULTIPLIERS[tier - 1]), (tier, ring)
+    # CONTROL: the ratio is not one, so the Bulwark's figure is not the Outpost's read twice.
+    assert fight.damage_multiplier(1, "Bulwark") > 2 * fight.damage_multiplier(1, "Outpost")
+
+
+def test_the_game_multiplies_the_stalkers_damage_by_the_same_ratio():
+    """The game's `CorruptedStalkerDamageMultiplier(Tier, Ring)` multiplies the table by `DamageScale(Tier, Ring)`
+    over `DamageScale(Tier, Outpost)`, and the Stalker passes the floor's ring to it."""
+    source = EFFECTS_CPP.read_text(encoding="utf-8")
+    body = source.split("float UCataclysmDungeonModifierEffects::CorruptedStalkerDamageMultiplier(", 1)[1]
+    body = body.split("\n}", 1)[0]
+    assert re.search(r"UCataclysmEnemyScore::DamageScale\(\s*Held\s*,\s*Ring\s*\)", body), body
+    assert re.search(r"UCataclysmEnemyScore::DamageScale\(\s*Held\s*,\s*ECataclysmCityTier::Outpost\s*\)", body), body
+    stalker = STALKER_CPP.read_text(encoding="utf-8")
+    assert re.search(r"CorruptedStalkerDamageMultiplier\(\s*DifficultyTier\s*,\s*\w+", stalker), (
+        "the Stalker no longer passes a ring to its damage multiplier")
+    # AND THE FLOOR HANDS IT THE RING: the one place a floor raises a Stalker passes the walk's ring to its build.
+    # Read as text because no automation test raises a Stalker on a bound empire dungeon.
+    mode = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Dungeon" / "CataclysmDungeonGameMode.cpp").read_text(
+        encoding="utf-8")
+    calls = re.findall(r"WearTheBuild\(([^;]*)\)\)", mode)
+    assert len(calls) == 1 and re.search(r",\s*RunCityTier\(\)\s*$", calls[0]), calls
+
+
 def test_the_models_stalker_is_the_games_measured_one(rows):
     """Its built health within 2.5% and its blow within 1.5% of what window w60 measured, at every tier: measured on
     2026-10-26 as 1.7% to 2.2% above for health and 0.7% to 1.4% below for the blow, neither cause measured. Until

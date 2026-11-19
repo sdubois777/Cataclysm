@@ -3789,6 +3789,29 @@ def test_the_opening_reaches_level_four_at_half_the_kills_over_seven_or_eight_fl
         assert reached and min(reached) >= 4, (floors, reached)
 
 
+def test_section_five_walks_every_ring_at_its_shipped_figure_and_every_one_passes(opening_run):
+    """Issue #2749's ring slice, on the smoke run's 3 seeds a policy: each ring's shipped tier 1 figure is one of the
+    scales walked and is marked, and on the clears the smoke run has, none is lost or left under 10% at it."""
+    from cataclysm_sim import enemy_stats as es
+
+    printed, ns = opening_run
+    sweep = ns["RESULTS"]["rings"]["sweep"]
+    for ring, shipped in es.DAMAGE_SCALE_AT_FIRST_TIER_BY_RING.items():
+        assert shipped in ns["RING_SCALES"][ring], ring
+        lost, low, total, _ = sweep[(ring, shipped)]
+        assert total > 0 and lost == low == 0, (ring, lost, low, total)
+    assert printed.count("<- shipped on this ring") == len(es.DAMAGE_SCALE_AT_FIRST_TIER_BY_RING)
+    assert "SMOKE RUN: 3 seeds a policy" in printed
+
+
+def test_section_six_gains_fewer_levels_inside_a_campaign_as_the_tier_rises(opening_run):
+    """The measurement tiers 2 to 8 were left flat by ring on: a tier 1 campaign gains more levels than a tier 3 one."""
+    _, ns = opening_run
+    gain = {tier: row["end_median"] - row["start"] for tier, row in ns["RESULTS"]["tier_gain"].items()}
+    assert set(gain) == {1, 2, 3}
+    assert gain[1] > gain[3] > 0, gain
+
+
 # --------------------------------------------------------------------------
 # analyse_empire_tree_caps.py -- issue #2741 slice 3a
 # --------------------------------------------------------------------------

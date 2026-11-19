@@ -4510,6 +4510,14 @@ of the geometry rather than a separate decision.
 | 2 | **Bulwark** | 8 | 40 |
 | 3 | **Outpost** | 12 | 20 |
 
+**At difficulty tier 1 a dungeon's creatures hit harder the further in its ring.** Their damage is multiplied by 0.05 in
+a dungeon rolled on an Outpost, 0.11 on a Bulwark and 0.13 on a Sanctuary. The Cataclysm boss dungeon, the only dungeon
+that stands on the Pillar, takes 0.10: the one exception to the rise, because the characters that win soonest reach it
+soonest and at the lowest levels. The ring is the one the dungeon's depth was rolled on, so a Quest dungeon that moves
+keeps it, as it keeps its depth. Health, armour and the experience a kill grants do not change with the ring, and from
+tier 2 the ring changes nothing. The project owner chose the rise by ring on 2026-11-19, over a rise with the character's
+level and over leaving tier 1 flat (issue #2749); each figure is measured, and `docs/DECISIONS.md` has the measurement.
+
   
 
 **"City" is the general word for a place on the map at any tier. It is not a tier

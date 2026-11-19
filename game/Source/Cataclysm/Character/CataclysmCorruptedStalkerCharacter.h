@@ -6,6 +6,7 @@
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPassiveTree.h"
+#include "Empire/CataclysmEmpireMap.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
 #include "CataclysmCorruptedStalkerCharacter.generated.h"
@@ -118,12 +119,15 @@ public:
 	 * Wears the entry at a tier: gathers its pieces' modifiers, applies its class line at the tier's reference level, its passives
 	 * and its gear through `UCataclysmPlayerClassStats::ApplyTo`, multiplies its maximum health and its attack damage by
 	 * the tier's multipliers (`UCataclysmDungeonModifierEffects::CorruptedStalkerHealthMultiplier` and
-	 * `CorruptedStalkerDamageMultiplier`), fills its
+	 * `CorruptedStalkerDamageMultiplier`, the latter on the floor's ring since issue #2749's ring slice), fills its
 	 * pools, and sets `bHoldsAPlayerBuild`, so no archetype setter or floor damage rule writes over it afterwards.
 	 *
+	 * @param Ring  the ring the dungeon was rolled on; an Outpost, the figure every floor had before the ring, unless
+	 *              told otherwise
 	 * @return false when a table could not be read or the creature has no ability system; nothing is set then
 	 */
-	bool WearTheBuild(const FCataclysmStalkerEntry& Entry, int32 DifficultyTier, FRandomStream& Stream);
+	bool WearTheBuild(const FCataclysmStalkerEntry& Entry, int32 DifficultyTier, FRandomStream& Stream,
+					  ECataclysmCityTier Ring = ECataclysmCityTier::Outpost);
 
 	/** The name of the entry it wears, or empty before `WearTheBuild`. */
 	const FString& EntryName() const { return WornEntryName; }

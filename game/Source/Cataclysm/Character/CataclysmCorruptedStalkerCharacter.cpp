@@ -187,7 +187,7 @@ TArray<FCataclysmItem> ACataclysmCorruptedStalkerCharacter::PiecesAt(const FCata
 }
 
 bool ACataclysmCorruptedStalkerCharacter::WearTheBuild(const FCataclysmStalkerEntry& Entry, int32 DifficultyTier,
-														FRandomStream& Stream)
+														FRandomStream& Stream, ECataclysmCityTier Ring)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
 
@@ -220,7 +220,8 @@ bool ACataclysmCorruptedStalkerCharacter::WearTheBuild(const FCataclysmStalkerEn
 										ECataclysmPoolFill::FillToMaximum, &Bases);
 
 	// THE MULTIPLIERS, a table of eight each, ruled by the coordinating session on 2026-10-26 from the simulation's fight
-	// model. See `CorruptedStalkerHealthMultiplier` and `CorruptedStalkerDamageMultiplier`.
+	// model. See `CorruptedStalkerHealthMultiplier` and `CorruptedStalkerDamageMultiplier`. The damage one on the
+	// floor's ring since issue #2749's ring slice; the health one is the same on every ring, as a creature's is.
 	const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
 	const float Health = Abilities->GetNumericAttribute(MaxHealth)
 		* Effects::CorruptedStalkerHealthMultiplier(DifficultyTier);
@@ -228,7 +229,7 @@ bool ACataclysmCorruptedStalkerCharacter::WearTheBuild(const FCataclysmStalkerEn
 	Abilities->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Health);
 	const FGameplayAttribute AttackDamage = UCataclysmCombatAttributeSet::GetAttackDamageAttribute();
 	Abilities->SetNumericAttributeBase(AttackDamage,
-		Abilities->GetNumericAttribute(AttackDamage) * Effects::CorruptedStalkerDamageMultiplier(DifficultyTier));
+		Abilities->GetNumericAttribute(AttackDamage) * Effects::CorruptedStalkerDamageMultiplier(DifficultyTier, Ring));
 
 	// ENOUGH FERVOUR FOR ITS ULTIMATE ONCE, on every floor, since every floor it hunts raises it through here. See
 	// `CorruptedStalkerStartingFervour`.

@@ -203,6 +203,226 @@ No failure's span holds a "server/discover" line (#2745). The lock was released 
 
 ---
 
+## 2026-11-19 — Tier 1 creature damage rises by the ring the dungeon was rolled on: 0.05 on an Outpost, 0.11 on a Bulwark, 0.13 on a Sanctuary, and 0.10 in the Cataclysm boss dungeon on the Pillar (#2749, ring slice)
+
+**Affects:** `UCataclysmEnemyScore` (`game/Source/Cataclysm/Dungeon/CataclysmEnemyScore.h`, `.cpp`:
+`FCataclysmScoredFloor::CityTier`, `DamageScaleAtFirstTierOnABulwark`, `DamageScaleAtFirstTierOnASanctuary`,
+`DamageScaleAtFirstTierOnThePillar` and `FirstTierDamageScaleOn`, new; `DamageScale(Tier, Ring)` and `FloorFor`
+changed); `UCataclysmEnemyStrength::StartingFiguresFor`; `ACataclysmGameMode::RunCityTier`, new
+(`Player/CataclysmGameMode.h`); `ACataclysmDungeonGameMode` (`DungeonCityTier` and the `RunCityTier` override, new;
+`BindEmpireDungeon`, `LeaveEmpireDungeon` and the Corrupted Stalker's spawn changed);
+`UCataclysmDungeonModifierEffects::CorruptedStalkerDamageMultiplier(Tier, Ring)` and
+`ACataclysmCorruptedStalkerCharacter::WearTheBuild(..., Ring)`; the comment in `CataclysmPlayerClassStats.h`. The
+simulation: `enemy_stats.DAMAGE_SCALE_AT_FIRST_TIER_BY_RING`, `damage_scale(tier, ring)` and
+`strength_on_floor(..., ring)`; `fight.damage_multiplier`; `sim/analyse_opening.py` sections 5 and 6, new.
+`tools/generate_enemy_strength_fixture.py` and `game/Tests/EnemyStrength/ExpectedFigures.csv` (a `CityTier` column and
+133 rows, 973 in all). `docs/Cataclysm_GDD_v2.md`, "City Tiers". Tests: `CataclysmEnemyStrengthTests.cpp` (the reader
+takes the new column; two tests, new), `CataclysmDungeonModifierEffectsTests.cpp` (one test, new);
+`tools/tests/test_the_starting_character_survives_a_pack.py` (the ring guard and its control, new),
+`tools/tests/test_content_relief_port.py`, `tools/tests/test_enemy_strength_fixture_is_current.py`,
+`sim/tests/test_creature_strength.py`, `sim/tests/test_the_corrupted_stalker_fight.py` and
+`sim/tests/test_analysis_scripts.py`. Issue [#2749](https://github.com/sdubois777/Cataclysm/issues/2749).
+
+### SAID FIRST
+
+- **NOT YET COMPILED OR RUN IN UNREAL.** Phase 1: the Python suite, ruff and the two Python guard proofs below. The
+  Unreal count and the two C++ proofs are registered below, before the window that will test them.
+- **THE MEASUREMENT USED A DEMONIC CATACLYSM THAT FOLLOWS THE FRONT LINE, AND THE SHIPPED SIMULATION'S DOES NOT YET.**
+  The game's surge targets only the exposed front line for every Cataclysm, ruled for Demonic on 2026-09-14
+  ([#1085](https://github.com/sdubois777/Cataclysm/issues/1085)); the simulation's Demonic still ignores it
+  (`patterns.PATTERNS["Demonic"].ignores_frontier`), which would put level 1 characters into Bulwark and Sanctuary
+  dungeons the game never sends them to. Section 5 of `sim/analyse_opening.py` and the pack test's ring guard set it to
+  follow the line while they run (`game_front_line`). Making the simulation follow the ruling is the next slice of
+  issue #2749, as ruled (R6 below).
+- **THE MEDIAN CHARACTER STILL KEEPS ABOUT TWO THIRDS OF ITS HEALTH ON A BULWARK OR SANCTUARY DUNGEON**: 68% and 64%
+  at the ruled figures, against 88% and 89% at 0.05. Each figure is bound by the weakest entries -- characters that
+  reach a Bulwark at level 8 to 17 because an Outpost fell early -- not by the median. **THE PACK TARGET IS TEN COMMON
+  IMPS, WITH NO ELITES, BOSSES OR MODIFIER EFFECTS**, and the gear-level-0 Greataxe. **The owner may ask for a harder
+  median after playing**; Bulwark 0.15 leaves the median at 55% and loses 27 of 2,039 clears (1.3%).
+- **THE BOSS DUNGEON, AT 0.10, IS THE ONE EXCEPTION TO "RISES BY RING".** It is the only dungeon on the Pillar, it is
+  reached soonest, at the lowest levels, by the characters that win soonest (10th percentile level 13), and it is 100 to
+  197 floors deep. At 0.11, two of its 219 clears ended under 10% health.
+- **A CORRECTION TO THE PLAN'S RESEARCH**, found when every quotation was fetched again for this entry: the plan said
+  Path of Exile's rarity raises a monster's life "not its level or damage". The page gives rarity a table of life and
+  says nothing about damage; the table below says only what the page says.
+
+### The rulings
+
+**The project owner, 2026-11-19**, recorded on issue #2749: "tier 1 creature damage rises by city ring (Outpost
+dungeons stay gentle; Bulwark and Sanctuary dungeons hit harder), chosen over rising with character level or staying
+flat. Reason: at the flat 0.05 a level 20 to 40 Ravager ends tier 1's deepest dungeons with 79% to 93% health." This is
+the authority for the rise itself. The same ruling kept Bulwark ordinary dungeons at 15 to 25 floors.
+
+**The coordinating session, 2026-11-19**, on this slice's plan, verbatim:
+
+- "R1 YES: the same rule that chose the Outpost's 0.05, giving Bulwark 0.11, Sanctuary 0.13, Outpost 0.05. State
+  plainly in the entry that the median character still keeps about two thirds of its health on a Bulwark or Sanctuary
+  dungeon, that the pack target is ten Common Imps with no Elites, bosses or modifier effects, and that the owner may ask
+  for a harder median after playing."
+- "R2 YES: the ring the dungeon was rolled on (CityTier), consistent with the owner's 2026-09-06 ruling for a relocated
+  Quest dungeon."
+- "R3 YES: the boss dungeon at 0.10, below the Bulwark, measured. Say in the entry that it is the one exception to
+  "rises by ring" and why. I will tell the owner."
+- "R4 YES: tiers 2 to 8 flat by ring in this slice, with the table shaped to take ring values later."
+- "R5 YES: the Stalker follows the ring ratio."
+- "R6: DO NOT open an issue. The game's ruling on #1085 already answers what the simulation should do, so it is a fix,
+  not a question. After this slice merges, make it your next slice: the simulation's Demonic follows the front line as
+  the game does, Python only, with experiments.py before and after quoted. Record in this slice's entry that your
+  measurement used a front-line-following Demonic and that the shipped simulation does not yet."
+
+R1, R3, R4 and R5 are judgements, labelled as such below; R2 follows an owner ruling.
+
+### The genre research
+
+Fetched 2026-11-19, and every quotation fetched again for this entry.
+
+| Game | Source | What the page says |
+| :-- | :-- | :-- |
+| Path of Exile | poedb.tw `/us/Monster_level`, `/us/Act_1` | "Each area has a predetermined non-random monster level." "The level of a monster determines its life, damage, and defenses." Its base table's damage: 5.0 at monster level 1, 7.0 at 5, 12.0 at 10, 15.0 at 13. Act 1 runs from area level 1 (The Twilight Strand) to 13 (The Cavern of Anger). Magic and rare monsters get "Multiplicative life based on the monster's rarity and level"; the page states no extra level or damage for them. |
+| Diablo II: Resurrected | diablobytes.com `/tools/area-levels/`, a fan site; purediablo.com and diablowiki.net refused the fetch, so nothing checks it | "Area Level (alvl) is a hidden stat on every zone" that "controls monster levels, item drops, and experience." In Nightmare and Hell, champions are the area level +2 and uniques +3; "In Normal difficulty, each monster has its own predefined level regardless of area level." Normal / Nightmare / Hell: Blood Moor 1 / 36 / 67, Catacombs Level 4 12 / 43 / 73, Throne of Destruction 43 / 66 / 85. |
+| Last Epoch | maxroll.gg `/last-epoch/resources/experience-guide`, a guide "Updated April 2, 2026", not the developer; forum thread 58228, community members, 2023 | "Enemy level is the same as area level". Titan's Canyon is "area level 36"; being above or below a zone's level changes experience "but this does not affect enemy levels". |
+| Diablo IV, patch 2.0 | Kotaku, "Published October 3, 2024"; Blizzard's own 2.0 notes were not read | "Enemies no longer have levels and will just scale to the difficulty". |
+
+**WHAT THE RESEARCH SETTLES: THE SHAPE.** In three of the four, a monster's strength belongs to the place, is fixed for
+that place, and rises as the player moves further into the game; it does not follow the character's level, which is
+the option the owner rejected. The fourth sets it by the chosen difficulty, which is this game's other axis, the
+difficulty tier. Diablo II is the closest model: its difficulties are this game's tiers, and inside each the areas
+climb.
+
+**WHAT IT CANNOT SETTLE, AND SO IS MEASURED: HOW MUCH EACH RING RISES.** A player walks those areas in order by choice.
+This game's inner rings receive dungeons only after an outer city falls, so a run that is losing reaches them sooner,
+and each ring's step has to fit the levels characters actually hold there. Path of Exile's threefold rise over Act 1
+belongs to areas whose level rises by 12 over the act; it is not a number to copy.
+
+### Where the ring is known when a creature's damage is set
+
+Every empire dungeon already carries `FCataclysmDungeon::CityTier`, saved: the ring its depth was rolled from, set once
+by `MakeDungeon`, `MakeFallenCityDungeon` and `MakeCataclysmDungeon` and never moved. A floor creature's damage is set
+in one place, `ACataclysmDungeonGameMode::ApplyDesignedStats` through `UCataclysmEnemyScore::FloorFor` and
+`UCataclysmEnemyStrength::StartingFiguresFor`; the other setters are the sandbox's fixed figures and a load restoring a
+creature's saved damage. `BindEmpireDungeon`, which entering and resuming both call, now copies the ring into the game
+mode as it copies the type, sub-type, floors and modifiers, and `LeaveEmpireDungeon` puts it back to an Outpost.
+
+- An ordinary dungeon takes its own ring; a Fallen City dungeon the fallen city's.
+- A Quest dungeon takes the ring it was rolled on, also after it moves (R2): in section 5's campaigns, 487 of 17,925
+  clears stood on another ring when cleared, all of them Quest dungeons.
+- No surge targets the Pillar and the Last Stand is not built
+  ([#43](https://github.com/sdubois777/Cataclysm/issues/43)), so the only dungeon with the Pillar's ring is the earned
+  Cataclysm boss dungeon, which stands on no city and which `MakeCataclysmDungeon` already labels the Pillar's.
+- The sandbox, and a dungeon walked with no empire dungeon bound, are an Outpost's: what every floor was before.
+- The ring moves damage alone. Health, armour and the score a kill is worth do not read it, so the experience a kill
+  grants is the same on every ring.
+
+### The measurement
+
+`sim/analyse_opening.py` section 5. 540 tier 1 campaigns, seeds 0 to 59 under each of the nine policies, with Demonic
+following the front line. Every dungeon a campaign clears is logged in order and the character banks half of each
+floor's experience, the opening's share, so its level at entry to every dungeon is known. Each cleared dungeon is then
+walked again on its ring from that level, levelling as it goes, against the pack test's fight: 10 Common Imps as the
+game builds them on that floor, the starting Ravager, the gear-level-0 Greataxe. 426 seconds with the first sections
+at full size.
+
+Level at entry (10th percentile, median, 90th, lowest) and floors (median):
+
+| Ring | Basic | Quest | Fallen City |
+| :-- | :-- | :-- | :-- |
+| Outpost | 5, 20, 35, 1; 7 floors | 7, 17, 31, 1; 24 | 13, 24, 35, 6; 20 |
+| Bulwark | 17, 28, 38, 8; 22 | 19, 29, 37, 8; 39 | 20, 32, 39, 14; 40 |
+| Sanctuary | 22, 30, 38, 11; 40 | 27, 34, 39, 16; 48 | 28, 35, 39, 20; 60 |
+| Pillar (the boss dungeon) | 13, 24, 34, 10; 134 floors | | |
+
+**THE RULE (R1, A JUDGEMENT)**, the rule that chose the Outpost's 0.05: for each ring, the largest step of 0.01 at
+which every dungeon of that ring the campaigns cleared is won on every floor with at least 10% of the character's health
+left on the last. Each cell is lost / won under 10% / median health left:
+
+| Scale | Bulwark, 2,039 clears | Sanctuary, 1,025 | Pillar, 219 |
+| :-: | :-- | :-- | :-- |
+| 0.05 | 0 / 0 / 88% | 0 / 0 / 89% | 0 / 0 / 78% |
+| 0.10 | 0 / 0 / 72% | 0 / 0 / 73% | **0 / 0 / 50%** |
+| 0.11 | **0 / 0 / 68%** | | 0 / 2 / 45% |
+| 0.12 | 0 / 1 / 65% | 0 / 0 / 67% | 2 / 0 / 39% |
+| 0.13 | | **0 / 0 / 64%** | 2 / 13 / 34% |
+| 0.14 | | 0 / 1 / 60% | |
+| 0.15 | 27 / 28 / 55% | 1 / 0 / 57% | 36 / 13 / 23% |
+| 0.20 | 176 / 123 / 38% | 11 / 13 / 41% | 135 / 29 / 0% |
+
+The Outpost's 14,642 clears all pass at 0.05 (82% median left), so the opening result does not move, and the
+first-surge guard in the pack test is untouched.
+
+**CHECKED ON SEEDS THE FIGURES WERE NOT CHOSEN ON**, 60 to 119 (540 more campaigns, 18,597 clears): every ring passes
+at its figure -- Outpost 15,251 clears, Bulwark 2,077 (0.12 leaves 4 under 10% there), Sanctuary 1,067, Pillar 202.
+The lowest entry levels there are 7 on a Bulwark, 14 on a Sanctuary and 10 in the boss dungeon.
+
+### Tiers 2 to 8 (R4, a judgement)
+
+Flat by ring in this slice. `sim/analyse_opening.py` section 6, 40 seeds of each policy a tier, each tier entered at
+the median level the tier before ended at:
+
+| Tier | Entered at | Levels gained, median | Median entry, Outpost to Sanctuary | Starting class health there |
+| :-: | :-: | :-: | :-- | :-- |
+| 1 | 1 | 26 | 20 to 34 | 510 to 790, 1.55 times |
+| 2 | 27 | 14 | 34 to 46 | 790 to 1,030, 1.30 times |
+| 3 | 41 | 11 | 46 to 53 | 1,030 to 1,170, 1.14 times |
+
+The gap the ring rise answers is largest at tier 1 and shrinks with the tier. Tiers 2 to 8's line was never fitted
+against a levelled character, so ring steps on it would refine an unmeasured base, and they would move the Stalker at
+seven tiers. Against it: Diablo II repeats its area climb in every difficulty, which is the reason to revisit once a
+tier 2 run has been played. The ring reaches `DamageScale` at every tier, so giving tiers 2 to 8 ring figures later is
+a table there and in `enemy_stats.damage_scale`, not a new path.
+
+### What it does to its neighbours
+
+- **The Corrupted Stalker (R5, a judgement).** Its damage is a player's numbers times
+  `CorruptedStalkerDamageMultiplier`, fitted so it is as dangerous as a Boss on the same floor, and it does not read the
+  creature damage scale. It now multiplies by the ring's damage scale over an Outpost's at the same tier: at tier 1
+  0.06 on an Outpost, 0.132 on a Bulwark, 0.156 on a Sanctuary, 0.12 in the boss dungeon; one at tiers 2 to 8. No
+  second table, because `fight.py`'s fit is linear in the Boss's damage. Measured 2026-11-19 by building the Boss at
+  each ring's scale and fitting again: `fitted_to_the_game(1)` gives 0.0559, 0.1230, 0.1453 and 0.1118, exactly 2.2,
+  2.6 and 2.0 times the Outpost's. The game's figures are the table's 0.06, which is 0.0559 to two decimals, times
+  the ratio, so they sit the same 7% above the unrounded fit on every ring as on an Outpost. Its health multiplier does
+  not move, as a creature's health does not.
+- **`game/Tests/EnemyStrength/ExpectedFigures.csv`.** A `CityTier` column; the 840 rows it held are an Outpost's and
+  otherwise unchanged; 133 rows added: tier 1 for every creature and rarity on a Bulwark and a Sanctuary (the 12-floor
+  Basic dungeon's floor 6) and on the Pillar (the 50-floor Cataclysm dungeon's floor 25), and tier 2 on a Sanctuary for
+  each creature's Common, which pins tiers 2 to 8 as flat.
+- **The pack test.** The first-surge guard and its control are unchanged. Added: a guard that every Bulwark, Sanctuary
+  and Pillar dungeon tier 1 campaigns clear on seeds 0 to 14 (493, 217 and 60 clears) is won with 10% health left at
+  its ring's figure, and a control that 52 of the 493 Bulwark clears fail at 0.20, against the 24 it asks for. About 15
+  seconds.
+- Nothing in the simulation's campaign engine reads creature damage, so no campaign figure and no `experiments.py`
+  result moves.
+
+### Registered before the window
+
+**Each group this change touches, alone**, counted at the base in window opening-w2's whole-suite engine log
+(`62831fe7`), plus the tests this branch adds by name; `git diff 58b5ddb51 5b401cb87` adds no test to any of them:
+`Cataclysm.EnemyStrength.` 8 (6 and two new), `Cataclysm.DungeonModifierEffects.ACorruptedStalker` 10 (9 and one
+new), `Cataclysm.EnemyScore.` 12, `Cataclysm.DungeonModifiers.` 31 and `Cataclysm.ConsumptionDouble.` 15.
+
+**The whole suite: 4,908 performed**, 4,905 measured by slice 3b's window at `6b1eabc43` -- whose tree differs from
+`5b401cb87` in `docs/DECISIONS.md` alone -- and the three this branch adds; 47 skipped halves; "Test saves: 836
+written and deleted, 0 left behind", since the new tests run in worlds with no game instance and write no save. Python
+with a JUnit file, and ruff. Then two proofs, each built and run under `prove_cpp_guard`, only if all of that passed:
+
+- **S1, the ring read off the game mode.** `Floor.CityTier = Mode->RunCityTier();` in `FloorFor` becomes
+  `Floor.CityTier = ECataclysmCityTier::Outpost;`; prefix `Cataclysm.EnemyStrength.`. Predicted: 8 performed, 1
+  failed, `AWalkInADungeonRolledOnABulwarkBuildsItsCreaturesWithTheBulwarksDamage`, on three assertions -- "and the
+  score model reads the ring off the game mode", "its Starting damage is the Bulwark's" and "CONTROL: and not an
+  Outpost's"; restored, 8 of 8.
+- **S2, the damage scale's ring.** `return FirstTierDamageScaleOn(Ring);` in `DamageScale` becomes
+  `return FirstTierDamageScaleOn(ECataclysmCityTier::Outpost);`; prefix `Cataclysm.EnemyStrength.`. Predicted: 8
+  performed, 3 failed, on twelve assertions -- `EveryFigureIsTheModels` six (five rows named, of the 126 tier 1 ring
+  rows that go wrong, and "rows where the game builds what the model builds"),
+  `AtTierOneDamageRisesByTheRingTheDungeonWasRolledOnAndAtTiersTwoToEightItDoesNot` four (the Bulwark's, Sanctuary's
+  and Pillar's figures and the Sanctuary Brute's damage), and
+  `AWalkInADungeonRolledOnABulwarkBuildsItsCreaturesWithTheBulwarksDamage` two ("on this floor a Bulwark's Imp hits
+  0.11 / 0.05 times as hard" and the control); restored, 8 of 8.
+
+Phase 2's compiles, each changed `.cpp` alone and then in unity, wait for the coordinating session's word that the
+machine is free.
+
+---
+
 ## 2026-11-19 — The empire upgrade tree's seven rules that act at an event: a retake at 75%, two repairs on fixed run days, two damage reductions that count clears and reclaims, a Sanctuary that survives one fatal hit, and city upgrades that strengthen after 10 days; the run record goes to version 9 (#2741, slice 3b)
 
 **Affects:** `FCataclysmEmpireTreeBonuses` (`game/Source/CataclysmEmpire/Empire/CataclysmEmpireMap.h`: `RetakeFraction`,

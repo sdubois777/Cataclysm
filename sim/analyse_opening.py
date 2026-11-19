@@ -55,11 +55,38 @@ end of tier 1 four times gentler. Section 4 fights the level 20 Ravager's own
 reference dungeon at both scales, and level 20, 30 and 40 Ravagers through the
 deepest dungeons the first three surges make.
 
-RUNNING IT. The default is a smoke run, 20 seeds and the 3 deepest dungeons, which
-proves the code path and nothing else, and the output says so. For the figures
-above:
+THE RING SLICE, sections 5 and 6. The project owner ruled on 2026-11-19 that tier
+1 creature damage rises by city ring: Outposts stay at 0.05, Bulwark and
+Sanctuary dungeons hit harder. Section 5 runs tier 1 campaigns under every
+policy, with Demonic following the front line as the game's does (the shipped
+simulation's does not yet), logs every dungeon cleared and the level the
+character held when it entered, and walks each again on its ring at each scale.
+Measured 2026-11-19 on seeds 0 to 59 (17,925 clears) in 426 seconds with the
+first sections at full size; the largest step of 0.01 at which none of a ring's
+clears is lost and none ends under 10% health:
 
-    CATACLYSM_OPENING_SEEDS=300 CATACLYSM_OPENING_DEEPEST=20 python -u sim/analyse_opening.py
+    ring       clears   level at entry, median   largest passing   median health left there
+    Outpost    14,642   17 to 24 by type          0.05 (only one walked)   82%
+    Bulwark     2,039   28 to 32                  0.11              68%
+    Sanctuary   1,025   30 to 35                  0.13              64%
+    Pillar        219   24                        0.10              50%
+
+The coordinating session ruled those four the same day. On seeds 60 to 119, never
+used to choose them, every one passes again. Section 6 is the measurement tiers 2
+to 8 were left flat by ring on: a campaign gains a median 26 levels at tier 1,
+14 at tier 2 and 11 at tier 3, and the starting class's health at the median
+Sanctuary entry over the median Outpost entry is 1.55, 1.30 and 1.14 times.
+
+RUNNING IT. The default is a smoke run, 20 seeds and the 3 deepest dungeons, 3
+campaign seeds a policy and 2 a tier for section 6, which proves the code path and
+nothing else, and the output says so. For the figures above:
+
+    CATACLYSM_OPENING_SEEDS=300 CATACLYSM_OPENING_DEEPEST=20 CATACLYSM_OPENING_CAMPAIGNS=60 \\
+        CATACLYSM_OPENING_TIER_GAIN=40 python -u sim/analyse_opening.py
+
+and for the check on seeds the ring figures were not chosen on:
+
+    CATACLYSM_OPENING_CAMPAIGNS=60 CATACLYSM_OPENING_CAMPAIGNS_FROM=60 python -u sim/analyse_opening.py
 """
 
 from __future__ import annotations
@@ -94,6 +121,22 @@ SHIPPED_SCALE = es.DAMAGE_SCALE_AT_FIRST_TIER
 FORMER_SCALE = 0.20
 #: The levels section 4 fights at.
 FIXED_LEVELS = (20, 30, 40)
+
+#: How many seeds of each policy's tier 1 campaign section 5 runs, and the first. 60 from 0 is the measurement the ring
+#: figures were fitted on and 60 from 60 the check on seeds it never saw; the default is a smoke run.
+CAMPAIGN_SEEDS = int(os.environ.get("CATACLYSM_OPENING_CAMPAIGNS", "3"))
+CAMPAIGN_FROM = int(os.environ.get("CATACLYSM_OPENING_CAMPAIGNS_FROM", "0"))
+#: How many seeds of each policy's campaign section 6 runs at each of tiers 1 to 3. 40 is the measurement.
+TIER_GAIN_SEEDS = int(os.environ.get("CATACLYSM_OPENING_TIER_GAIN", "2"))
+#: The tier 1 damage scales section 5 walks each ring's clears at. Every ring is walked at 0.05, the scale every ring
+#: had before the ring slice, and the inner rings at 0.20, tier 1's before issue #2749; the steps of 0.01 around each
+#: ruled figure find the largest that passes.
+RING_SCALES = {
+    "Outpost": (0.05,),
+    "Bulwark": (0.05, 0.10, 0.11, 0.12, 0.15, 0.20),
+    "Sanctuary": (0.05, 0.10, 0.12, 0.13, 0.14, 0.15, 0.20),
+    "Pillar": (0.05, 0.08, 0.10, 0.11, 0.12, 0.13, 0.15, 0.20),
+}
 
 
 def _load_pack():
@@ -270,8 +313,127 @@ def main() -> dict:
     print("  The pack target only: no Elites, Legendaries, bosses, other archetypes or modifier effects, and no gear")
     print("  beyond the gear-level-0 Greataxe, so a real character of those levels does better at both scales.")
     print()
+    print()
+
+    results["rings"] = section_five()
+    results["tier_gain"] = section_six()
     print(f"Done in {time.time() - started:.0f} seconds.")
     return results
+
+
+def _pct(values: list, share: float):
+    ordered = sorted(values)
+    return ordered[min(len(ordered) - 1, int(share * len(ordered)))]
+
+
+def section_five() -> dict:
+    """The ring figures: every dungeon tier 1 campaigns clear, by the ring its depth was rolled on, walked again from
+    the level the character held when it entered."""
+    seeds = range(CAMPAIGN_FROM, CAMPAIGN_FROM + CAMPAIGN_SEEDS)
+    print("5. THE RING FIGURES: WHAT TIER 1 CAMPAIGNS CLEAR ON EACH RING, AND AT WHAT LEVEL")
+    print()
+    if CAMPAIGN_SEEDS < 60:
+        print(f"  SMOKE RUN: {CAMPAIGN_SEEDS} seeds a policy. The figures in docs/DECISIONS.md are 60 from seed 0, and 60")
+        print("  from seed 60 for the check; set CATACLYSM_OPENING_CAMPAIGNS and CATACLYSM_OPENING_CAMPAIGNS_FROM.")
+        print()
+    clears = PACK.campaign_clears(MODEL, seeds)
+    out: dict = {"clears": len(clears)}
+    print(f"  {len(clears)} clears in the tier 1 campaigns of seeds {seeds.start} to {seeds.stop - 1} under each of the")
+    print("  simulation's policies, the character banking half of each floor's experience, with Demonic following the")
+    print("  front line as the game's does (the shipped simulation's does not yet; issue #2749's next slice).")
+    print()
+    print("  ring       | type        | clears | level at entry: 10th, median, 90th, lowest | floors, median")
+    print("  " + "-" * 92)
+    levels: dict = {}
+    for ring in RING_SCALES:
+        for kind in ("Basic", "Quest", "Fallen City", "Cataclysm"):
+            these = [c for c in clears if c.ring == ring and c.dungeon_type == kind]
+            if not these:
+                continue
+            entry = [PACK.level_for(c.banked, MODEL) for c in these]
+            levels[(ring, kind)] = entry
+            print(f"  {ring:<10} | {kind:<11} | {len(these):>6} | {_pct(entry, 0.1):>4} {statistics.median(entry):>7}"
+                  f" {_pct(entry, 0.9):>5} {min(entry):>6}   | {statistics.median(c.floors for c in these):>5}")
+    out["levels"] = levels
+    moved = collections.Counter((c.ring, c.standing_on, c.dungeon_type) for c in clears
+                                if c.standing_on is not None and c.standing_on != c.ring)
+    out["moved"] = sum(moved.values())
+    print()
+    print(f"  {out['moved']} of the {len(clears)} stood on a ring other than the one their depth was rolled on when")
+    print("  cleared; each keeps its own ring's figure. (rolled on, standing on, type): "
+          + ", ".join(f"{k}: {v}" for k, v in moved.most_common()))
+    print()
+    print("  Each ring's clears at each scale: lost, won with under 10% health left, and the health left (10th")
+    print("  percentile and median). The rule, the one that chose the Outpost's 0.05: the largest step of 0.01 at")
+    print("  which none is lost and none is under 10%.")
+    print()
+    sweep: dict = {}
+    for ring, scales in RING_SCALES.items():
+        these = [c for c in clears if c.ring == ring]
+        if not these:
+            continue
+        shipped = es.damage_scale(1, ring)
+        print(f"  {ring}: {len(these)} clears, {min(c.floors for c in these)} to {max(c.floors for c in these)} floors")
+        passing = []
+        for scale in scales:
+            walked = [PACK.walk_clear(c, model=MODEL, lines=LINES, constants=CONSTANTS, slots=SLOTS, weapon=WEAPON,
+                                      first_tier_scale=scale) for c in these]
+            lost = sum(1 for w in walked if not w["won"])
+            low = sum(1 for w in walked if w["won"] and w["left"] < PACK.LEAST_HEALTH_LEFT)
+            lefts = [w["left"] for w in walked]
+            sweep[(ring, scale)] = (lost, low, len(walked), statistics.median(lefts))
+            if lost == low == 0:
+                passing.append(scale)
+            mark = "  <- shipped on this ring" if abs(scale - shipped) < 1e-9 else ""
+            print(f"    {scale:.3f} | lost {lost:>5} | under 10% {low:>5} | left {_pct(lefts, 0.1):>4.0%} "
+                  f"{statistics.median(lefts):>4.0%}{mark}")
+        print(f"    largest passing here: {max(passing) if passing else '-'}; shipped {shipped}")
+        print()
+    out["sweep"] = sweep
+    print("  The pack target only, as in section 3: ten Common Imps, no Elites, bosses or modifier effects, and the")
+    print("  gear-level-0 Greataxe. The rule is bound by the weakest entries, not the median.")
+    print()
+    print()
+    return out
+
+
+def section_six() -> dict:
+    """The levels a character gains inside one campaign at tiers 1, 2 and 3, each entered at the median level the tier
+    before ended at: the measurement tiers 2 to 8 were left flat by ring on."""
+    print("6. LEVELS GAINED INSIDE A CAMPAIGN, TIERS 1 TO 3")
+    print()
+    if TIER_GAIN_SEEDS < 40:
+        print(f"  SMOKE RUN: {TIER_GAIN_SEEDS} seeds a policy a tier. The figures in docs/DECISIONS.md are 40; set")
+        print("  CATACLYSM_OPENING_TIER_GAIN.")
+        print()
+    cumulative = [0, 0]
+    for level in range(2, MODEL["MAX_LEVEL"] + 1):
+        cumulative.append(cumulative[-1] + MODEL["whole_level_cost"](level))
+    out: dict = {}
+    start = 1
+    for tier in (1, 2, 3):
+        clears = PACK.campaign_clears(MODEL, range(TIER_GAIN_SEEDS), tier=tier,
+                                      banked_at_start=float(cumulative[start]))
+        ends = {(c.policy, c.seed): c.banked_after for c in clears}
+        finals = [PACK.level_for(total, MODEL) for total in ends.values()]
+        entry = {ring: [PACK.level_for(c.banked, MODEL) for c in clears if c.ring == ring] for ring in RING_SCALES}
+        health = {ring: PACK.stat(LINES, CONSTANTS, CLASS, "max_health", int(statistics.median(levels)))
+                  for ring, levels in entry.items() if levels}
+        out[tier] = {"start": start, "end_median": statistics.median(finals),
+                     "entry_median": {ring: statistics.median(v) for ring, v in entry.items() if v}}
+        print(f"  tier {tier}: entered at level {start}; ends at level {statistics.median(finals)} (median), levels "
+              f"gained {statistics.median(finals) - start}")
+        for ring, levels in entry.items():
+            if levels:
+                print(f"    {ring:<10} entered at level {statistics.median(levels)} (median), starting class health "
+                      f"{health[ring]:.0f}")
+        if "Outpost" in health and "Sanctuary" in health:
+            print(f"    Sanctuary over Outpost, in health: {health['Sanctuary'] / health['Outpost']:.2f} times")
+        start = int(statistics.median(finals))
+    print()
+    print("  Only campaigns that cleared something count; each tier is entered at the median end of the one before.")
+    print()
+    return out
 
 
 def _spread(counter: collections.Counter) -> str:

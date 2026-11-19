@@ -62064,9 +62064,11 @@ namespace CataclysmDungeonModifierEffectsTest
 		return FCataclysmStalkerEntry();
 	}
 
-	/** A Corrupted Stalker spawned at `Where` and wearing the Demonic entry at `Tier`, seeded with `Seed`. */
+	/** A Corrupted Stalker spawned at `Where` and wearing the Demonic entry at `Tier`, seeded with `Seed`, on a dungeon
+	 *  rolled on `Ring` (an Outpost unless told otherwise; issue #2749's ring slice). */
 	ACataclysmCorruptedStalkerCharacter* AStalkerWearingTheDemonicEntry(UWorld* World, const FVector& Where,
-																		int32 Tier, int32 Seed)
+																		int32 Tier, int32 Seed,
+																		ECataclysmCityTier Ring = ECataclysmCityTier::Outpost)
 	{
 		FActorSpawnParameters Params;
 		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
@@ -62078,7 +62080,7 @@ namespace CataclysmDungeonModifierEffectsTest
 		}
 		Stalker->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
 		FRandomStream Stream(Seed);
-		return Stalker->WearTheBuild(TheDemonicStalkerEntry(), Tier, Stream) ? Stalker : nullptr;
+		return Stalker->WearTheBuild(TheDemonicStalkerEntry(), Tier, Stream, Ring) ? Stalker : nullptr;
 	}
 
 	float StalkerRead(const AActor* Actor, const FGameplayAttribute& Attribute)
@@ -62182,6 +62184,64 @@ bool FCataclysmCorruptedStalkerEntriesTest::RunTest(const FString& Parameters)
 	}
 	TestTrue(TEXT("the Greataxe has a basic attack"),
 			 UCataclysmWeaponSkills::BasicAttackFor(Bases, Demonic.WeaponType).Slot != ECataclysmAbilitySlot::None);
+	return true;
+}
+
+// ITS DAMAGE FOLLOWS THE RING ITS DUNGEON WAS ROLLED ON, AS A BOSS'S DOES: AT TIER 1 THE MULTIPLIER IS THE TABLE'S TIMES
+// THE RING'S DAMAGE SCALE OVER AN OUTPOST'S, AND AT TIERS 2 TO 8 IT IS THE SAME ON EVERY RING. Issue #2749's ring slice,
+// ruled by the coordinating session on 2026-11-19. `sim/cataclysm_sim/fight.py`'s `damage_multiplier` is the same.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerRingTest,
+	"Cataclysm.DungeonModifierEffects.ACorruptedStalkersDamageFollowsTheRingItsDungeonWasRolledOn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCorruptedStalkerRingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	// TYPED, so a moved constant fails here: 0.06 times 0.11, 0.13 and 0.10 over 0.05.
+	TestEqual(TEXT("an Outpost's at tier 1 is the table's 0.06"),
+			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Outpost), 0.06f, 0.0001f);
+	TestEqual(TEXT("a Bulwark's at tier 1 is 0.132"),
+			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Bulwark), 0.132f, 0.0001f);
+	TestEqual(TEXT("a Sanctuary's at tier 1 is 0.156"),
+			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Sanctuary), 0.156f, 0.0001f);
+	TestEqual(TEXT("the Pillar's at tier 1 is 0.12"),
+			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Pillar), 0.12f, 0.0001f);
+	for (int32 Tier = 2; Tier <= 8; ++Tier)
+	{
+		TestEqual(FString::Printf(TEXT("tier %d: a Sanctuary's is an Outpost's"), Tier),
+				  Effects::CorruptedStalkerDamageMultiplier(Tier, ECataclysmCityTier::Sanctuary),
+				  Effects::CorruptedStalkerDamageMultiplier(Tier, ECataclysmCityTier::Outpost), 0.0001f);
+	}
+
+	// AND THE BUILT CREATURE CARRIES IT: two Stalkers wearing the same entry on the same seed at tier 1, one on an
+	// Outpost's dungeon and one on a Bulwark's.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	ACataclysmCorruptedStalkerCharacter* OnAnOutpost =
+		AStalkerWearingTheDemonicEntry(World, FVector(0.0f, 0.0f, 100.0f), 1, 7, ECataclysmCityTier::Outpost);
+	ACataclysmCorruptedStalkerCharacter* OnABulwark =
+		AStalkerWearingTheDemonicEntry(World, FVector(2000.0f, 0.0f, 100.0f), 1, 7, ECataclysmCityTier::Bulwark);
+	if (!TestNotNull(TEXT("a Stalker on an Outpost's dungeon"), OnAnOutpost)
+		|| !TestNotNull(TEXT("a Stalker on a Bulwark's dungeon"), OnABulwark))
+	{
+		return false;
+	}
+	const float OutpostDamage = StalkerRead(OnAnOutpost, Combat::GetAttackDamageAttribute());
+	TestTrue(FString::Printf(TEXT("set-up: the Outpost's Stalker has an attack damage: %.2f"), OutpostDamage),
+			 OutpostDamage > 0.0f);
+	TestEqual(TEXT("the Bulwark's Stalker hits 0.11 / 0.05 times as hard"),
+			  StalkerRead(OnABulwark, Combat::GetAttackDamageAttribute()), OutpostDamage * 2.2f, 0.01f);
+	TestEqual(TEXT("and has the same maximum health, which the ring does not move"),
+			  StalkerRead(OnABulwark, Vital::GetMaxHealthAttribute()),
+			  StalkerRead(OnAnOutpost, Vital::GetMaxHealthAttribute()), 0.5f);
 	return true;
 }
 

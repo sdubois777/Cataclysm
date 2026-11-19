@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "AbilitySystem/CataclysmContagion.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
+#include "Empire/CataclysmEmpireMap.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "CataclysmDungeonModifierEffects.generated.h"
 
@@ -8279,8 +8280,16 @@ public:
 	 * 0.05 on 2026-11-19. Ruled with the health multiplier: the multiplier at which it deals
 	 * that Boss's damage per second to the reference character, the Boss's hit every 1.5 seconds against its own blow
 	 * every 0.75. Critical strikes are left out on both sides.
+	 *
+	 * ON THE RING THE DUNGEON WAS ROLLED ON, SINCE ISSUE #2749'S RING SLICE: the table was fitted on an Outpost's damage
+	 * scale, and the result is multiplied by `UCataclysmEnemyScore::DamageScale(Tier, Ring)` over the Outpost's, because
+	 * the Boss it is set beside hits that much harder there and the fit is linear in the Boss's damage. At tier 1: 0.06
+	 * on an Outpost, 0.132 on a Bulwark, 0.156 on a Sanctuary, 0.12 on the Pillar; tiers 2 to 8 are the same on every
+	 * ring. Ruled by the coordinating session on 2026-11-19. `sim/cataclysm_sim/fight.py`'s `damage_multiplier` is the
+	 * same arithmetic.
 	 */
-	static float CorruptedStalkerDamageMultiplier(int32 DifficultyTier);
+	static float CorruptedStalkerDamageMultiplier(int32 DifficultyTier,
+												  ECataclysmCityTier Ring = ECataclysmCityTier::Outpost);
 
 	/**
 	 * Whether a creature may take the Blood Bond: at `BloodBondRung`, not a floor's boss, and

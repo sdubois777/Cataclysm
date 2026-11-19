@@ -8,7 +8,10 @@ the design's enemy score on each floor. Ruled 2026-10-30, and all three live in
 1. the tier relief of #1425 is subtracted from the score;
 2. the score is never below the same creature on floor 1 of a 12-floor dungeon
    of the same kind;
-3. damage is multiplied by 0.20 at tier 1, rising evenly to 1.00 at tier 8.
+3. damage is multiplied by a figure for the tier: at tier 1 by the ring the
+   dungeon was rolled on (0.05 on an Outpost, 0.11 on a Bulwark, 0.13 on a
+   Sanctuary, 0.10 on the Pillar, since issue #2749; it was 0.20 until then),
+   then 0.314 at tier 2 rising evenly to 1.00 at tier 8 on every ring.
 
 `stats_on_floor` stays the design's figure, because `affixes.py` anchors the
 player's offence on it.
@@ -34,6 +37,42 @@ def test_the_damage_scale_is_a_twentieth_at_tier_one_and_tiers_two_to_eight_are_
     # Held at the ends, as the game's DamageScale clamps.
     assert es.damage_scale(0) == es.damage_scale(1)
     assert es.damage_scale(9) == es.damage_scale(8)
+
+
+def test_at_tier_one_the_damage_scale_rises_by_the_ring_the_dungeon_was_rolled_on():
+    """Issue #2749's ring slice. The project owner, 2026-11-19: "Rise by city ring" -- Outpost dungeons stay at 0.05,
+    Bulwark and Sanctuary dungeons hit harder. The coordinating session ruled the figures the same day: 0.11, 0.13, and
+    0.10 on the Pillar, where only the Cataclysm boss dungeon stands. Typed, so a moved constant fails here."""
+    assert es.damage_scale(1, "Outpost") == pytest.approx(0.05)
+    assert es.damage_scale(1, "Bulwark") == pytest.approx(0.11)
+    assert es.damage_scale(1, "Sanctuary") == pytest.approx(0.13)
+    assert es.damage_scale(1, "Pillar") == pytest.approx(0.10)
+    # With no ring named, an Outpost's: the sandbox and a walk with no empire dungeon behind it.
+    assert es.damage_scale(1) == es.damage_scale(1, "Outpost")
+    # A ring may be passed as the simulation's own `CityTier`.
+    from cataclysm_sim.config import CityTier
+    assert es.damage_scale(1, CityTier.SANCTUARY) == es.damage_scale(1, "Sanctuary")
+
+
+def test_tiers_two_to_eight_are_the_same_on_every_ring():
+    """Ruled 2026-11-19: tiers 2 to 8 do not rise by ring in this slice."""
+    for tier in range(2, 9):
+        assert {es.damage_scale(tier, ring) for ring in ("Outpost", "Bulwark", "Sanctuary", "Pillar")} == {
+            es.damage_scale(tier)}, tier
+
+
+def test_an_unknown_ring_is_refused_rather_than_read_as_an_outpost():
+    with pytest.raises(ValueError):
+        es.damage_scale(1, "Capital")
+
+
+def test_the_ring_moves_a_creatures_damage_and_nothing_else():
+    outpost = es.strength_on_floor("Elite", 1, "Basic", "None", 12, 6, kind="Brute")
+    bulwark = es.strength_on_floor("Elite", 1, "Basic", "None", 12, 6, kind="Brute", ring="Bulwark")
+    assert bulwark.health == outpost.health
+    assert bulwark.armor == outpost.armor
+    assert bulwark.score == outpost.score
+    assert bulwark.damage_per_hit == pytest.approx(outpost.damage_per_hit * 0.11 / 0.05)
 
 
 def test_the_relief_is_taken_off_the_score():

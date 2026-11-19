@@ -234,6 +234,10 @@ FCataclysmScoredFloor UCataclysmEnemyScore::FloorFor(
 	Floor.Type = Mode->RunDungeonType();
 	Floor.SubType = Mode->RunDungeonSubType();
 
+	// THE RING THE DUNGEON WAS ROLLED ON, which moves a creature's damage at tier 1 and nothing else (issue #2749's ring
+	// slice). An Outpost for every game mode but a dungeon walking a bound empire dungeon.
+	Floor.CityTier = Mode->RunCityTier();
+
 	// THE DUNGEON'S MODIFIERS, as the sum of their danger scores. It was
 	// hard-zeroed here until issue #41's modifier slice, with a comment saying
 	// dungeon modifiers did not exist. They do now: the empire layer draws them
@@ -257,18 +261,33 @@ double UCataclysmEnemyScore::ContentRelief(int32 Tier)
 	return ContentReliefTierWidths + ContentReliefPerTierWidths * static_cast<double>(Held - ContentReliefFromTier);
 }
 
-double UCataclysmEnemyScore::DamageScale(int32 Tier)
+double UCataclysmEnemyScore::DamageScale(int32 Tier, ECataclysmCityTier Ring)
 {
 	const int32 Held = FMath::Clamp(Tier, LowestDifficultyTier, HighestDifficultyTier);
-	// TIER 1 IS ITS OWN FIGURE AND TIERS 2 TO 8 ARE ON THE LINE, since issue
-	// #2749: see the two constants.
+	// TIER 1 IS ITS OWN FIGURE ON EACH RING AND TIERS 2 TO 8 ARE ON THE LINE ON EVERY RING, since issue #2749 and its
+	// ring slice: see the constants.
 	if (Held == LowestDifficultyTier)
 	{
-		return DamageScaleAtFirstTier;
+		return FirstTierDamageScaleOn(Ring);
 	}
 	return DamageScaleLineAtFirstTier + (1.0 - DamageScaleLineAtFirstTier)
 		* static_cast<double>(Held - LowestDifficultyTier)
 		/ static_cast<double>(HighestDifficultyTier - LowestDifficultyTier);
+}
+
+double UCataclysmEnemyScore::FirstTierDamageScaleOn(ECataclysmCityTier Ring)
+{
+	switch (Ring)
+	{
+	case ECataclysmCityTier::Outpost: return DamageScaleAtFirstTier;
+	case ECataclysmCityTier::Bulwark: return DamageScaleAtFirstTierOnABulwark;
+	case ECataclysmCityTier::Sanctuary: return DamageScaleAtFirstTierOnASanctuary;
+	case ECataclysmCityTier::Pillar: return DamageScaleAtFirstTierOnThePillar;
+	default:
+		// NO OTHER RING EXISTS. A value outside the enum is read as an Outpost, the figure every floor had before the
+		// ring did, rather than as nothing: a creature with no damage would be a worse failure than a gentle one.
+		return DamageScaleAtFirstTier;
+	}
 }
 
 double UCataclysmEnemyScore::StrengthScoreFor(const FCataclysmScoredFloor& Floor, int32 RarityStep)

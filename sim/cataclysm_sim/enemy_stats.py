@@ -824,7 +824,8 @@ def stats_on_floor(rarity: str, tier: int, dungeon_type: str = "Basic",
 #      12-floor dungeon of the same kind, after the relief. Without it the first
 #      floors of a deep dungeon score nothing -- depth tension is negative below
 #      the middle floor -- and their creatures had 1 health and 0 damage.
-#   3. DAMAGE IS SCALED BY THE TIER: x0.05 at tier 1, then x0.314 at tier 2
+#   3. DAMAGE IS SCALED BY THE TIER: x0.05 at tier 1 (an Outpost's; 4 below has
+#      the other rings), then x0.314 at tier 2
 #      rising evenly to x1.00 at tier 8. The project owner, "Scale damage to a
 #      target" and then "Approve": the tier 8 figures this module's damage
 #      constants were fitted to (issue #108) are unchanged. TIER 1 WAS x0.20,
@@ -838,6 +839,20 @@ def stats_on_floor(rarity: str, tier: int, dungeon_type: str = "Basic",
 #      stay on the line from x0.20, as the coordinating session ruled on
 #      2026-11-19: a new character always begins at tier 1.
 #      `sim/analyse_opening.py` is the measurement.
+#   4. AT TIER 1 THE DAMAGE SCALE RISES BY CITY RING, since issue #2749's ring
+#      slice. The project owner, 2026-11-19, chose "Rise by city ring" among
+#      that, a rise with character level, and leaving it flat: Outpost dungeons
+#      stay at x0.05, Bulwark and Sanctuary dungeons hit harder. The ring is the
+#      one the dungeon's depth was rolled on (`Dungeon.city_tier`, the game's
+#      `FCataclysmDungeon::CityTier`), not the one a Quest dungeon stands on
+#      after it moves. Each figure is the largest step of 0.01 at which every
+#      dungeon of that ring the tier 1 campaigns clear, walked again from the
+#      level the character held when it entered, is won with at least 10% of its
+#      health left: x0.11 on a Bulwark, x0.13 on a Sanctuary, and x0.10 on the
+#      Pillar, where only the Cataclysm boss dungeon stands -- the one exception
+#      to "rises by ring", because it is reached soonest by the characters that
+#      win soonest. Tiers 2 to 8 do not rise by ring, ruled the same day.
+#      `sim/analyse_opening.py` section 5 is the measurement.
 #
 # `stats_on_floor` ABOVE IS LEFT THE DESIGN'S FIGURE, deliberately. `affixes.py`
 # anchors every offensive number on a Common enemy's health from it, and the
@@ -846,8 +861,15 @@ def stats_on_floor(rarity: str, tier: int, dungeon_type: str = "Basic",
 # design's creature and the game builds the eased one, from here.
 # `docs/DECISIONS.md`, 2026-10-30.
 
-#: Damage is multiplied by this at difficulty tier 1. 0.20 until issue #2749.
-DAMAGE_SCALE_AT_FIRST_TIER = 0.05
+#: Damage is multiplied by these at difficulty tier 1, by the ring the dungeon was rolled on (`CityTier`'s values). The
+#: game's copies are `UCataclysmEnemyScore::DamageScaleAtFirstTier` and the three `DamageScaleAtFirstTierOn...`
+#: constants; `tools/tests/test_content_relief_port.py` holds them equal. Issue #2749.
+DAMAGE_SCALE_AT_FIRST_TIER_BY_RING = {"Outpost": 0.05, "Bulwark": 0.11, "Sanctuary": 0.13, "Pillar": 0.10}
+#: An Outpost's: what every tier 1 floor had before the ring slice, and what a floor with no empire dungeon behind it
+#: still has. 0.20 until issue #2749.
+DAMAGE_SCALE_AT_FIRST_TIER = DAMAGE_SCALE_AT_FIRST_TIER_BY_RING["Outpost"]
+#: The ring a creature is on when nothing says otherwise: the game's sandbox and any walk with no empire dungeon bound.
+DEFAULT_RING = "Outpost"
 #: Tiers 2 to 8 lie on a line rising evenly from this at tier 1 ...
 DAMAGE_SCALE_LINE_AT_FIRST_TIER = 0.20
 #: ... to one at the last tier.
@@ -856,13 +878,19 @@ LAST_TIER = 8
 MINIMUM_STRENGTH_REFERENCE_FLOORS = 12
 
 
-def damage_scale(tier: int) -> float:
-    """What a creature's damage is multiplied by at this difficulty tier: 0.05 at
-    tier 1, then 0.314 at tier 2 rising evenly to 1.00 at tier 8. Tier 1 is its
-    own figure since issue #2749; the others are on the line from 0.20."""
+def damage_scale(tier: int, ring=DEFAULT_RING) -> float:
+    """What a creature's damage is multiplied by at this difficulty tier on a dungeon rolled on this ring: at tier 1,
+    0.05 on an Outpost, 0.11 on a Bulwark, 0.13 on a Sanctuary and 0.10 on the Pillar; then 0.314 at tier 2 rising
+    evenly to 1.00 at tier 8 on every ring. Tier 1 is its own figure since issue #2749; the others are on the line
+    from 0.20. `ring` is a `CityTier` or its value; an unknown one raises rather than reading as an Outpost."""
+    ring = getattr(ring, "value", ring)
+    if ring not in DAMAGE_SCALE_AT_FIRST_TIER_BY_RING:
+        raise ValueError(f"no ring named {ring!r}; the rings are {tuple(DAMAGE_SCALE_AT_FIRST_TIER_BY_RING)}")
     tier = min(max(tier, 1), LAST_TIER)
     if tier == 1:
-        return DAMAGE_SCALE_AT_FIRST_TIER
+        return DAMAGE_SCALE_AT_FIRST_TIER_BY_RING[ring]
+    # TIERS 2 TO 8 ARE THE SAME ON EVERY RING, ruled 2026-11-19 (issue #2749): the ring reaches this function at every
+    # tier, so giving them ring figures later is a table here and in `UCataclysmEnemyScore::DamageScale`.
     return (DAMAGE_SCALE_LINE_AT_FIRST_TIER
             + (1.0 - DAMAGE_SCALE_LINE_AT_FIRST_TIER) * (tier - 1) / (LAST_TIER - 1))
 
@@ -889,13 +917,15 @@ def strength_on_floor(rarity: str, tier: int, dungeon_type: str = "Basic",
                       subtype: str = "None", total_floors: int = 50,
                       floor: int | None = None,
                       modifier_score: float = 0.0,
-                      kind: Archetype | str = BASELINE) -> EnemyStats:
+                      kind: Archetype | str = BASELINE,
+                      ring=DEFAULT_RING) -> EnemyStats:
     """The stat block the game builds for a creature on this floor: `stats_for`
-    at `strength_score`, with its damage multiplied by `damage_scale(tier)`."""
+    at `strength_score`, with its damage multiplied by `damage_scale(tier, ring)`.
+    The ring moves the damage only: health, armour and the score do not read it."""
     built = stats_for(rarity, strength_score(rarity, tier, dungeon_type, subtype,
                                              total_floors, floor, modifier_score),
                       kind, tier=tier)
-    return replace(built, damage_per_hit=built.damage_per_hit * damage_scale(tier))
+    return replace(built, damage_per_hit=built.damage_per_hit * damage_scale(tier, ring))
 
 
 # --------------------------------------------------------------------------

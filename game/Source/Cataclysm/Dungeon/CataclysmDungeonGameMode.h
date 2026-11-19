@@ -287,6 +287,20 @@ public:
 	 */
 	int32 DungeonBosses = 1;
 
+	/**
+	 * The ring the dungeon being walked was rolled on: `FCataclysmDungeon::CityTier`, copied by `BindEmpireDungeon` and
+	 * put back to an Outpost by `LeaveEmpireDungeon`, and read through `RunCityTier`. At difficulty tier 1 it moves every
+	 * floor creature's damage. Issue #2749's ring slice.
+	 *
+	 * THE RING ITS DEPTH WAS ROLLED ON, NOT THE ONE IT STANDS ON NOW: a relocated Quest dungeon keeps the figure of the
+	 * ring it came from, as it keeps its depth -- ruled by the coordinating session on 2026-11-19, as the project owner
+	 * ruled on 2026-09-06 that a relocated dungeon "Keeps everything". So damage, depth and reward come from one ring.
+	 *
+	 * NOT SAVED HERE: a resumed walk binds the saved empire dungeon again, and its `CityTier` is saved.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	ECataclysmCityTier DungeonCityTier = ECataclysmCityTier::Outpost;
+
 	/** Which layout family carves it. */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Dungeon")
 	ECataclysmFloorLayout Layout = ECataclysmFloorLayout::Halls;
@@ -1331,6 +1345,12 @@ public:
 	virtual float RunModifierScore() const override
 	{
 		return FloorBrief.ModifierScore;
+	}
+
+	/** The bound empire dungeon's ring, `DungeonCityTier`; an Outpost with none bound. Issue #2749's ring slice. */
+	virtual ECataclysmCityTier RunCityTier() const override
+	{
+		return DungeonCityTier;
 	}
 
 	/**

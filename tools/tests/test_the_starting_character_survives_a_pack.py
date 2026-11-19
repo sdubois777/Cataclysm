@@ -20,8 +20,11 @@ character unplayable again without anybody noticing.
 A NEW CHARACTER STARTS AT LEVEL 1 SINCE ISSUE #2744, AND LEVELS AS IT KILLS. The
 guard on tier 1's creature damage, at the bottom of this file, walks that
 character through the dungeons the first surge really makes, levelling as it
-goes (issue #2749). The sandbox's fixed pack in the first tests is still fought
-at `DefaultLevel`, which stays the level of a character nothing made or loaded.
+goes (issue #2749). The guard on each ring's tier 1 figure, after it, walks
+every Bulwark, Sanctuary and Pillar dungeon tier 1 campaigns clear, from the
+level the character held when it entered. The sandbox's fixed pack in the first
+tests is still fought at `DefaultLevel`, which stays the level of a character
+nothing made or loaded.
 
 WHAT IS MEASURED. Ten Imps against one character, both dealing damage until one
 side is gone, at difficulty tier 1. Modelled as a fight rather than compared as
@@ -606,17 +609,19 @@ def first_surge_dungeons(seeds=FIRST_SURGE_SEEDS) -> list:
     return out
 
 
-def floor_experience(model: dict, subtype: str, floors: int, floor: int, modifier_score: float) -> float:
-    """What killing every creature on one tier 1 floor pays: each rarity's design score, which IS its experience, at
-    the floor's spawn weights and population, the dungeon's boss added on its last floor. The same arithmetic as
-    `analyse_experience_curve.dungeon_experience`, on the dungeon's own sub-type and modifiers."""
+def floor_experience(model: dict, subtype: str, floors: int, floor: int, modifier_score: float,
+                     dungeon_type: str = "Basic", tier: int = 1) -> float:
+    """What killing every creature on one floor pays, at tier 1 unless told otherwise: each rarity's design score,
+    which IS its experience, at the floor's spawn weights and population, the dungeon's boss added on its last floor.
+    The same arithmetic as `analyse_experience_curve.dungeon_experience`, on the dungeon's own type, sub-type and
+    modifiers."""
     from cataclysm_sim import scoring
 
-    scores = scoring.enemy_scores(1, "Basic", subtype, floors, floor, modifier_score)
+    scores = scoring.enemy_scores(tier, dungeon_type, subtype, floors, floor, modifier_score)
     paid = model["POPULATION"] * sum(max(0, scores[rarity]) * weight
                                      for rarity, weight in model["WEIGHTS"].items())
     if floor == floors:
-        paid += max(0, scoring.final_boss_score(1, "Basic", subtype, floors, modifier_score))
+        paid += max(0, scoring.final_boss_score(tier, dungeon_type, subtype, floors, modifier_score))
     return paid
 
 
@@ -637,29 +642,31 @@ def level_after(dungeon, model, kill_share=KILL_SHARE) -> int:
     return level_for(banked, model)
 
 
-def walk(dungeon, *, model, lines, constants, slots, weapon, kill_share=KILL_SHARE, first_tier_scale=None) -> dict:
-    """A new character through one dungeon, floor by floor: it fights the floor's pack at the level it held when the
-    floor began, then banks `kill_share` of the floor's experience. `first_tier_scale` replaces tier 1's damage scale
-    when given, for the control. Returns whether every floor was won, the first floor lost, the share of health left on
-    the last floor and the level at the end."""
+def walk(dungeon, *, model, lines, constants, slots, weapon, kill_share=KILL_SHARE, first_tier_scale=None,
+         dungeon_type="Basic", ring="Outpost", banked=0.0) -> dict:
+    """A character through one dungeon, floor by floor: it fights the floor's pack at the level it held when the floor
+    began, then banks `kill_share` of the floor's experience. A new character by default: an Outpost's Basic dungeon
+    and nothing banked; a campaign's clear passes its own type, ring and the experience banked before it.
+    `first_tier_scale` replaces tier 1's damage scale on that ring when given, for the controls. Returns whether every
+    floor was won, the first floor lost, the share of health left on the last floor and the level at the end."""
     from cataclysm_sim import enemy_stats as es
 
     class_name = constants["starting_class"]
-    banked, left = 0.0, 0.0
+    left = 0.0
     for floor in range(1, dungeon.floors + 1):
         level = level_for(banked, model)
-        imp = es.strength_on_floor("Common", 1, "Basic", dungeon.subtype, dungeon.floors, floor,
-                                   dungeon.modifier_score, kind="Imp")
+        imp = es.strength_on_floor("Common", 1, dungeon_type, dungeon.subtype, dungeon.floors, floor,
+                                   dungeon.modifier_score, kind="Imp", ring=ring)
         damage = imp.damage_per_hit
         if first_tier_scale is not None:
-            damage = damage / es.damage_scale(1) * first_tier_scale
+            damage = damage / es.damage_scale(1, ring) * first_tier_scale
         result = fight(class_name, level=level, lines=lines, slots=slots, weapon=weapon,
                        constants=dict(constants, imp_health=str(imp.health), imp_damage=str(damage)))
         if result["won"] is not True:
             return {"won": False, "lost_on": floor, "left": 0.0, "level": level}
         left = result["health_left"] / result["max_health"]
         banked += kill_share * floor_experience(model, dungeon.subtype, dungeon.floors, floor,
-                                                dungeon.modifier_score)
+                                                dungeon.modifier_score, dungeon_type)
     return {"won": True, "lost_on": None, "left": left, "level": level_for(banked, model)}
 
 
@@ -677,7 +684,8 @@ def surge_dungeons() -> list:
 
 def test_a_new_character_beats_the_pack_on_every_floor_of_every_first_surge_dungeon(
         model, surge_dungeons, constants, class_lines, slots, weapon) -> None:
-    """THE GUARD ON TIER 1'S DAMAGE SCALE (`UCataclysmEnemyScore::DamageScaleAtFirstTier`, 0.05 since issue #2749)."""
+    """THE GUARD ON TIER 1'S DAMAGE SCALE ON AN OUTPOST (`UCataclysmEnemyScore::DamageScaleAtFirstTier`, 0.05 since
+    issue #2749). The other rings' are guarded at the end of this file."""
     failed = []
     for dungeon in surge_dungeons:
         result = walk(dungeon, model=model, lines=class_lines, constants=constants, slots=slots, weapon=weapon)
@@ -714,3 +722,139 @@ def test_a_new_character_gains_at_least_three_levels_over_a_first_dungeon_of_sev
     short = [(dungeon.did, dungeon.subtype, dungeon.floors, level)
              for dungeon in typical if (level := level_after(dungeon, model)) < 4]
     assert not short, f"{len(short)} of {len(typical)} end below level 4; the first ten: {short[:10]}"
+
+
+# ---------------------------------------------------------------------------
+# THE GUARD ON EACH RING'S TIER 1 DAMAGE, since issue #2749's ring slice.
+#
+# The project owner, 2026-11-19: "Rise by city ring" -- Outpost dungeons stay gentle, Bulwark and Sanctuary dungeons
+# hit harder. The coordinating session ruled the figures the same day by the rule that chose the Outpost's 0.05: for
+# each ring, the largest step of 0.01 at which every dungeon of that ring a tier 1 campaign clears, walked again from
+# the level the character held when it entered, is won on every floor with at least `LEAST_HEALTH_LEFT` of its health
+# left on the last. Fitted in `sim/analyse_opening.py` section 5 on 60 seeds of every policy; guarded here on fewer,
+# for run time. A subset of a set that passes passes, so this guard can fail only when a figure, the fight, the
+# experience model or the campaigns move.
+#
+# THE CAMPAIGNS RUN WITH DEMONIC FOLLOWING THE FRONT LINE, AS THE GAME'S DOES. The game's surge targets the exposed
+# front line for every Cataclysm, ruled for Demonic on 2026-09-14 (issue #1085); the simulation's Demonic still ignores
+# it, which would put level 1 characters into Bulwark dungeons the game never sends them to. Making the simulation
+# follow the ruling is the next slice of issue #2749, after which `game_front_line` is no longer needed.
+
+#: The seeds of each policy's tier 1 campaigns the guard walks. The fit used 0 to 59 and was checked on 60 to 119.
+RING_GUARD_SEEDS = range(15)
+
+#: The simulation's dungeon type -> the name `scoring` and `enemy_stats` take.
+SCORING_TYPE = {"Basic": "Basic", "Quest": "Quest", "FallenCity": "Fallen City", "Cataclysm": "Cataclysm"}
+
+
+@contextlib.contextmanager
+def game_front_line():
+    """The simulation's Demonic set to target only the exposed front line, as the game's does, while the block runs."""
+    import dataclasses
+
+    from cataclysm_sim import patterns
+
+    shipped = patterns.PATTERNS["Demonic"]
+    patterns.PATTERNS["Demonic"] = dataclasses.replace(shipped, ignores_frontier=False)
+    try:
+        yield
+    finally:
+        patterns.PATTERNS["Demonic"] = shipped
+
+
+class Clear:
+    """One dungeon a campaign cleared: what `walk` needs, the ring its depth was rolled on, the ring of the city it
+    stood on when cleared (None for the boss dungeon, which stands on no city), and the experience the character had
+    banked when it entered."""
+
+    def __init__(self, policy, seed, dungeon, banked, standing_on=None):
+        self.policy, self.seed = policy, seed
+        self.dungeon_type = SCORING_TYPE[dungeon.dtype.value]
+        self.ring = dungeon.city_tier.value
+        self.standing_on = standing_on
+        self.subtype, self.floors, self.modifier_score = dungeon.subtype, dungeon.floors, dungeon.modifier_score
+        self.banked = banked
+
+
+def campaign_clears(model, seeds=RING_GUARD_SEEDS, kill_share=KILL_SHARE, tier=1, banked_at_start=0.0) -> list:
+    """Every dungeon every policy's campaign at `tier` clears for `seeds`, in the order cleared, the character starting
+    with `banked_at_start` experience and banking `kill_share` of each floor's as it goes."""
+    from cataclysm_sim import policies
+    from cataclysm_sim.config import TuningConfig
+    from cataclysm_sim.engine import Simulation
+
+    class Logged(Simulation):
+        def _finish_current(self):
+            dungeon, before = self.current, self.cleared
+            city = self.empire.cities.get(dungeon.city_id) if dungeon.city_id is not None else None
+            super()._finish_current()
+            if self.cleared > before:
+                self.cleared_in_order.append((dungeon, city.tier.value if city is not None else None))
+
+    out = []
+    with game_front_line():
+        for name, policy in policies.ALL.items():
+            for seed in seeds:
+                sim = Logged(TuningConfig(tier=tier), seed)
+                sim.cleared_in_order = []
+                sim.run(policy)
+                banked = banked_at_start
+                for dungeon, standing_on in sim.cleared_in_order:
+                    clear = Clear(name, seed, dungeon, banked, standing_on)
+                    out.append(clear)
+                    banked += kill_share * sum(
+                        floor_experience(model, clear.subtype, clear.floors, floor, clear.modifier_score,
+                                         clear.dungeon_type, tier) for floor in range(1, clear.floors + 1))
+                    clear.banked_after = banked
+    return out
+
+
+def walk_clear(clear, *, model, lines, constants, slots, weapon, first_tier_scale=None) -> dict:
+    """A campaign's clear walked again from the experience banked when it was entered, on its own ring."""
+    return walk(clear, model=model, lines=lines, constants=constants, slots=slots, weapon=weapon,
+                first_tier_scale=first_tier_scale, dungeon_type=clear.dungeon_type, ring=clear.ring,
+                banked=clear.banked)
+
+
+@pytest.fixture(scope="module")
+def clears(model) -> list:
+    found = campaign_clears(model)
+    by_ring = {ring: sum(1 for c in found if c.ring == ring) for ring in ("Outpost", "Bulwark", "Sanctuary", "Pillar")}
+    # Measured 2026-11-19 on seeds 0 to 14: 3,884 Outpost, 493 Bulwark, 217 Sanctuary and 60 Pillar clears.
+    assert by_ring["Bulwark"] > 200 and by_ring["Sanctuary"] > 100 and by_ring["Pillar"] > 20, by_ring
+    return found
+
+
+@pytest.mark.parametrize("ring", ["Bulwark", "Sanctuary", "Pillar"])
+def test_every_dungeon_a_tier_one_campaign_clears_on_this_ring_is_won_with_health_left(
+        ring, model, clears, constants, class_lines, slots, weapon) -> None:
+    """THE GUARD ON EACH RING'S FIGURE (`UCataclysmEnemyScore::DamageScale(1, Ring)`, issue #2749's ring slice). The
+    Outpost is guarded by the first-surge test above, and its later clears pass at 0.05 in the measurement."""
+    from cataclysm_sim import enemy_stats as es
+
+    failed = []
+    for clear in (c for c in clears if c.ring == ring):
+        result = walk_clear(clear, model=model, lines=class_lines, constants=constants, slots=slots, weapon=weapon)
+        if not result["won"] or result["left"] < LEAST_HEALTH_LEFT:
+            failed.append((clear.policy, clear.seed, clear.dungeon_type, clear.subtype, clear.floors,
+                           level_for(clear.banked, model), result["lost_on"], round(result["left"], 3)))
+    assert not failed, (
+        f"{len(failed)} of the {ring} dungeons tier 1 campaigns clear are lost, or won with under "
+        f"{LEAST_HEALTH_LEFT:.0%} health left, at the {ring}'s damage scale of {es.damage_scale(1, ring)}. (policy, "
+        f"seed, type, sub-type, floors, level at entry, floor lost, health left), the first ten: {failed[:10]}")
+
+
+def test_control_the_bulwarks_clears_are_lost_at_four_times_an_outposts_figure(
+        model, clears, constants, class_lines, slots, weapon) -> None:
+    """THE CONTROL: the walk tells a survivable ring figure from one that is not. At 0.20 -- tier 1's figure until issue
+    #2749 -- the 60-seed measurement lost 176 of 2,039 Bulwark clears and left 123 more under 10% health; on this
+    guard's 15 seeds, measured 2026-11-19, 52 of 493 fail, against the 24 this asks for."""
+    bulwark = [c for c in clears if c.ring == "Bulwark"]
+    failed = 0
+    for clear in bulwark:
+        result = walk_clear(clear, model=model, lines=class_lines, constants=constants, slots=slots, weapon=weapon,
+                            first_tier_scale=FORMER_FIRST_TIER_SCALE)
+        failed += not result["won"] or result["left"] < LEAST_HEALTH_LEFT
+    assert failed > len(bulwark) // 20, (
+        f"at {FORMER_FIRST_TIER_SCALE} only {failed} of {len(bulwark)} Bulwark clears fail, so this walk no longer "
+        "tells a survivable ring figure from one that is not")
