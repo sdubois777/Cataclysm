@@ -415,15 +415,19 @@ worktree):
 
 ### Registered before the window
 
-**Each group this change touches, alone**, counted at the base in window opening-w2's whole-suite engine log
-(`62831fe7`), plus the tests this branch adds by name; `git diff 58b5ddb51 5b401cb87` adds no test to any of them:
-`Cataclysm.EnemyStrength.` 8 (6 and two new), `Cataclysm.DungeonModifierEffects.ACorruptedStalker` 10 (9 and one
-new), `Cataclysm.EnemyScore.` 12, `Cataclysm.DungeonModifiers.` 31 and `Cataclysm.ConsumptionDouble.` 15.
+**RE-REGISTERED AFTER THE REBASE ONTO `a96b2cead`** (the empire upgrade tree's slice 4), as the coordinating session
+asked on 2026-11-19. It was 4,908, counted against slice 3b's window; the group counts did not move.
 
-**The whole suite: 4,908 performed**, 4,905 measured by slice 3b's window at `6b1eabc43` -- whose tree differs from
-`5b401cb87` in `docs/DECISIONS.md` alone -- and the three this branch adds; 47 skipped halves; "Test saves: 836
-written and deleted, 0 left behind", since the new tests run in worlds with no game instance and write no save. Python
-with a JUnit file, and ruff. Then two proofs, each built and run under `prove_cpp_guard`, only if all of that passed:
+**Each group this change touches, alone**, counted by a literal, case-insensitive prefix in the empire tree slice 4
+window's whole-suite engine log (`t2741s4_suite_engine_8c22f94c.log`, at `8c22f94c0`, whose tree differs from
+`a96b2cead` in `docs/DECISIONS.md` alone), plus the tests this branch adds by name: `Cataclysm.EnemyStrength.` 8 (6
+and two new), `Cataclysm.DungeonModifierEffects.ACorruptedStalker` 10 (9 and one new), `Cataclysm.EnemyScore.` 12,
+`Cataclysm.DungeonModifiers.` 31 and `Cataclysm.ConsumptionDouble.` 15.
+
+**The whole suite: 4,922 performed**, the 4,919 that window measured and the three this branch adds; 47 skipped halves
+and "Test saves: 836 written and deleted, 0 left behind", both as that log has them, since the new tests run in worlds
+with no game instance and write no save. Python with a JUnit file, and ruff. Then two proofs, each built and run under
+`prove_cpp_guard`, only if all of that passed:
 
 - **S1, the ring read off the game mode.** `Floor.CityTier = Mode->RunCityTier();` in `FloorFor` becomes
   `Floor.CityTier = ECataclysmCityTier::Outpost;`; prefix `Cataclysm.EnemyStrength.`. Predicted: 8 performed, 1
