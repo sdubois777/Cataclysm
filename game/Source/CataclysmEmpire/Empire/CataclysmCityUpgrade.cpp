@@ -10,9 +10,9 @@ int32 UCataclysmCityUpgradeRules::SlotsFor(int32 LethalityRung)
 	return LethalityRung == 2 ? SlotsOnHeretic : SlotsNormally;
 }
 
-bool UCataclysmCityUpgradeRules::IsFreeAndInstant()
+bool UCataclysmCityUpgradeRules::IsInstant()
 {
-	return GoldCost == 0 && BuildDays == 0;
+	return BuildDays == 0;
 }
 
 bool UCataclysmCityUpgradeRules::IsBuilt(ECataclysmCityUpgradeEffect Effect)
@@ -171,9 +171,22 @@ FString UCataclysmCityUpgradeRules::ResultText(
 					"on it.");
 	case ECataclysmCityUpgradeResult::NotAnUpgrade:
 		return TEXT("That is not an upgrade.");
-	case ECataclysmCityUpgradeResult::CannotPayYet:
-		return TEXT("A city upgrade now has a price or a build time, and "
-					"nothing can pay either yet.");
+	case ECataclysmCityUpgradeResult::CityIsBesieged:
+		// WORDS OF ITS OWN SINCE ISSUE #2742's SECOND SLICE: until then it fell
+		// to "Refused." below. Besieged is a Siege dungeon standing on the city
+		// (`UCataclysmEmpireRun::IsBesieged`), and the owner's ruling of
+		// 2026-09-05 keeps the effects of the upgrades it holds working.
+		return TEXT("A Siege dungeon stands on this city, so it cannot be "
+					"upgraded until that dungeon is gone. The upgrades it "
+					"holds still work.");
+	case ECataclysmCityUpgradeResult::CannotWaitForABuildYet:
+		return TEXT("A city upgrade now takes days to build, and nothing can "
+					"wait for one yet.");
+	case ECataclysmCityUpgradeResult::NotEnoughGold:
+		// THE AMOUNTS ARE NOT HERE: this module is not told them again. The city
+		// screen says the price and how much more is needed
+		// (`UCataclysmCityUpgradePurchase::RefusalText`).
+		return TEXT("Not enough gold.");
 	default:
 		return TEXT("Refused.");
 	}

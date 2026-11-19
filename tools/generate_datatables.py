@@ -1674,9 +1674,20 @@ def city_upgrades(book) -> list[dict]:
     added, a reader could see what tier 2 would improve a number to and not what
     the number started at, which is enough to block a city upgrade system
     entirely.
+
+    THE PRICE IN GOLD at each upgrade tier, since issue #2742's second slice:
+    the Tier 1 Gold, Tier 2 Gold and Tier 3 Gold columns, read by name. A row
+    with a tier ladder has all three, above nought and never falling with the
+    tier; a row without one (the unbranched last resort) has none, since there
+    is no tier to price. They are the price at difficulty tier 1;
+    `UCataclysmCityUpgradeMapping::PriceFor` scales them to the run's tier by
+    the Gold sheet's pile column. Ruled 2026-11-18 (G4); every figure is a
+    judgement.
     """
+    rows = list(book["City Upgrades"].iter_rows(values_only=True))
+    headers = _header_index(rows, "City Upgrades")
     out = []
-    for index, raw in enumerate(book["City Upgrades"].iter_rows(values_only=True), 1):
+    for index, raw in enumerate(rows, 1):
         if index == 1 or not raw:
             continue
         branch, effect = clean(raw[0]), clean(raw[1])
@@ -1706,6 +1717,9 @@ def city_upgrades(book) -> list[dict]:
         else:
             t1_kind, t1_value, t1_interval = "", 0.0, 0.0
 
+        prices = _city_upgrade_prices(raw, headers, index, effect,
+                                      bool(tier2_cell or tier3_cell))
+
         out.append({"Name": row_name(branch or "Unbranched", effect[:40]),
                     "Branch": branch,
                     "BranchUndecided": "True" if not branch else "False",
@@ -1727,8 +1741,49 @@ def city_upgrades(book) -> list[dict]:
                     "Tier3Raw": tier3_cell,
                     "Tier3Kind": t3_kind,
                     "Tier3Value": t3_value,
-                    "Tier3IntervalDays": t3_interval})
+                    "Tier3IntervalDays": t3_interval,
+                    "Tier1Gold": prices[0],
+                    "Tier2Gold": prices[1],
+                    "Tier3Gold": prices[2]})
     return unique(out, "City Upgrades")
+
+
+#: The City Upgrades sheet's price columns, upgrade tier 1 to 3. Issue #2742.
+CITY_UPGRADE_GOLD_COLUMNS = ("Tier 1 Gold", "Tier 2 Gold", "Tier 3 Gold")
+
+
+def _city_upgrade_prices(raw, headers, index: int, effect: str,
+                         has_ladder: bool) -> list[int]:
+    """One city upgrade's price in gold at upgrade tiers 1, 2 and 3.
+
+    A row with a tier ladder must have all three, each a whole number above
+    nought and none below the tier before it: a better upgrade cannot cost
+    less. A row without a ladder must have none, and is priced at nought, which
+    `UCataclysmEmpireRun` never sells because nothing builds such a row.
+    """
+    cells = [_cell(raw, headers, column) for column in CITY_UPGRADE_GOLD_COLUMNS]
+    if not has_ladder:
+        if any(cells):
+            raise DataError(f"City Upgrades row {index} ({effect!r}) has a price "
+                            "but no tier ladder, so there is no tier to price")
+        return [0, 0, 0]
+
+    prices = []
+    for column, cell in zip(CITY_UPGRADE_GOLD_COLUMNS, cells, strict=True):
+        value = number(cell, f"City Upgrades {column}", index)
+        if value != int(value) or value <= 0:
+            raise DataError(f"City Upgrades row {index} ({effect!r}): {column} "
+                            f"is {value:g}; a price is a whole number of gold "
+                            "above nought")
+        prices.append(int(value))
+    for tier in range(1, len(prices)):
+        if prices[tier] < prices[tier - 1]:
+            raise DataError(
+                f"City Upgrades row {index} ({effect!r}): "
+                f"{CITY_UPGRADE_GOLD_COLUMNS[tier]} ({prices[tier]}) is below "
+                f"{CITY_UPGRADE_GOLD_COLUMNS[tier - 1]} ({prices[tier - 1]}); a "
+                "higher upgrade tier cannot cost less")
+    return prices
 
 
 def crafting_materials(book) -> list[dict]:

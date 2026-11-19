@@ -156,7 +156,19 @@ The days away are the two numbers after "while away, days": 12 days in the examp
 
   `PLAY LOOP: in the capital on day 20, tier 1: 10 dungeons standing, 0 cities fallen; level 5, 40 experience into it; while away, days 12 to 20: dungeons resolved: 7 (the Timed dungeon on Bulwark (1,2)); cities hit: Bulwark (1,2) lost 300 defence and 600 people; cities fallen: none; no surge`
 
-### 11. Stop, press Play, and Continue
+### 11. Buy a city upgrade with gold
+
+- **Open a city's screen** from the map. Its slot line ends with the balance: "0 of 3 upgrade slots filled.   10,342
+  gold". Each upgrade it can build has a button ending with its price, "--  10,000 gold" at difficulty tier 1. One the
+  character cannot afford is greyed and says how much more it needs: "Costs 10,000 gold; 2,500 more needed."
+- **Click an upgrade you can afford.** It moves under "What this city has", and the balance falls by its price.
+- **In the log:**
+
+  `PLAY LOOP: bought 'Increase max defense by 20%' on Outpost (-3,0) for 10,000 gold; 342 gold held`
+
+  **Gold:** the map's status line ends with the same balance, "342 gold".
+
+### 12. Stop, press Play, and Continue
 
 - Stop the game, and press Play again.
 - **On screen:** the character select screen, with your character's row. Click the row.
@@ -166,7 +178,8 @@ The days away are the two numbers after "while away, days": 12 days in the examp
 
   `PLAY LOOP: continuing 'Ash': opening the capital`
 
-- **Then:** the capital and the map, as at the end of step 10, and the capital's line. It says no days away, because
+- **Then:** the capital and the map, as at the end of step 11 -- the city still holds the upgrade, and the balance
+  is what the purchase left -- and the capital's line. It says no days away, because
   no walk has just ended.
 
 **A character saved in the middle of a walk** opens the dungeon level instead, and goes on walking:

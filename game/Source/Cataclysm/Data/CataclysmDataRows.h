@@ -608,6 +608,23 @@ struct FCataclysmCityUpgradeRow : public FTableRowBase
 	/** Only meaningful when Tier3Kind is IntervalPercent. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City Upgrade|Tier 3")
 	float Tier3IntervalDays = 0.0f;
+
+	/**
+	 * Gold to buy it at upgrade tier 1, at difficulty tier 1. Issue #2742's second slice, ruled 2026-11-18 (G4).
+	 *
+	 * THE PRICE A CITY IS CHARGED IS THIS SCALED TO THE RUN'S DIFFICULTY TIER, by the Gold sheet's pile column:
+	 * `UCataclysmCityUpgradeMapping::PriceFor`. Nought on the one row with no tier ladder, which is not built.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City Upgrade|Gold")
+	int32 Tier1Gold = 0;
+
+	/** The same at upgrade tier 2. NOT READ: nothing raises a bought upgrade above tier 1 (issue #1265). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City Upgrade|Gold")
+	int32 Tier2Gold = 0;
+
+	/** The same at upgrade tier 3. Not read, for the same reason. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City Upgrade|Gold")
+	int32 Tier3Gold = 0;
 };
 
 /**

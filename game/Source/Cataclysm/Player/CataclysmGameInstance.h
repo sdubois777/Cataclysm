@@ -394,6 +394,21 @@ public:
 	static bool AddGoldFor(const UObject* WorldContext, int64 Gold, bool& bOutIntoTheCharacter);
 
 	/**
+	 * Takes gold from the balance `GoldHeldBy` reads, and says which record now holds the change. Issue #2742's second
+	 * slice: a city upgrade's price. `AddGoldFor`'s other half.
+	 *
+	 * ALL OR NOTHING. A balance holding less than `Gold` is left as it was and the answer is false, so no balance goes
+	 * below nought and no purchase is half paid. IT DOES NOT WRITE THE RECORD: `UCataclysmCityUpgradePurchase::Buy`
+	 * raises the save triggers.
+	 *
+	 * @param bOutFromTheCharacter  true when the gold came from a Solo Self-Found character's own balance, which the
+	 *                              character record saves; false when it came from the account's
+	 * @return false, and nothing taken, for an amount of zero or less, where `GoldHeldBy` has no balance, or where the
+	 *         balance holds less than `Gold`
+	 */
+	static bool SpendGoldFor(const UObject* WorldContext, int64 Gold, bool& bOutFromTheCharacter);
+
+	/**
 	 * The balance as every screen shows it: "1,234 gold". Empty when `GoldHeldBy` has no balance to read, so a screen
 	 * shows nothing rather than a 0 that is not true.
 	 */

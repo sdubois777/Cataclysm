@@ -42,6 +42,7 @@
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Character/CataclysmCharacterCreation.h"
 #include "Data/CataclysmCityUpgradeMapping.h"
+#include "Player/CataclysmCityUpgradePurchase.h"
 #include "Data/CataclysmDataRows.h"
 #include "Character/CataclysmPassivePoints.h"
 #include "Character/CataclysmPassiveTree.h"
@@ -4782,18 +4783,21 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmCityUpgrades(
 					continue;
 				}
 
-				Ar.Logf(TEXT("  buy  %s (%s, %.2f)"), *RowName.ToString(),
+				// WITH ITS PRICE IN THIS RUN, since issue #2742's second slice.
+				Ar.Logf(TEXT("  buy  %s (%s, %.2f) for %s"), *RowName.ToString(),
 						*UCataclysmCityUpgradeRules::EffectName(Upgrade.Effect),
-						Upgrade.Value);
+						Upgrade.Value,
+						*UCataclysmCityUpgradePurchase::PriceText(
+							UCataclysmCityUpgradePurchase::PriceIn(Run, RowName)));
 			}
 		}));
 
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmBuyCityUpgrade(
 	TEXT("Cataclysm.BuyCityUpgrade"),
 	TEXT("Spend one of a city's upgrade slots: Cataclysm.BuyCityUpgrade "
-		 "<cityId> <rowName>. Cataclysm.CityUpgrades lists the row names. It is "
-		 "free and immediate, because no city upgrade cost or build time is "
-		 "designed yet."),
+		 "<cityId> <rowName>. Cataclysm.CityUpgrades lists the row names and "
+		 "prices. It costs the character playing that much gold and is "
+		 "immediate, because no build time is designed yet."),
 	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
 		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 		{
@@ -4833,11 +4837,19 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmBuyCityUpgrade(
 				return;
 			}
 
+			// BOUGHT AS THE CITY SCREEN BUYS, with the character's gold, since
+			// issue #2742's second slice.
+			const int64 Price = UCataclysmCityUpgradePurchase::PriceIn(Run, RowName);
+			const int64 Held = UCataclysmCityUpgradePurchase::GoldHeldIn(World);
 			const ECataclysmCityUpgradeResult Result =
-				Run->BuyCityUpgrade(CityId, Upgrade);
+				UCataclysmCityUpgradePurchase::Buy(World, Run, CityId, RowName);
 
-			Ar.Logf(TEXT("%s"),
-					*UCataclysmCityUpgradeRules::ResultText(Result));
+			const FString Said =
+				Result == ECataclysmCityUpgradeResult::Bought
+					? FString::Printf(TEXT("Bought for %s."),
+									  *UCataclysmCityUpgradePurchase::PriceText(Price))
+					: UCataclysmCityUpgradePurchase::RefusalText(Result, Price, Held);
+			Ar.Logf(TEXT("%s"), *Said);
 
 			if (Result == ECataclysmCityUpgradeResult::Bought)
 			{

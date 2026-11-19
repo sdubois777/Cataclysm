@@ -114,4 +114,14 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 	 * Said by `ACataclysmPlayerState::GrantExperience`. Issue #2744.
 	 */
 	static FString LevelGainedLine(int32 From, int32 To, int64 ExperienceIntoLevel);
+
+	/**
+	 * A city upgrade bought on the city screen, what it cost and the balance it left: "bought 'Increase max defense
+	 * by 20%' on Outpost (-3,0) for 10,000 gold; 2,345 gold held". Issue #2742's second slice: the owner's check that
+	 * a purchase took the price it showed.
+	 *
+	 * @param Held  the balance after the purchase, or below zero when there is none to name, and the line says so.
+	 */
+	static FString UpgradeLine(const FString& Upgrade, const UCataclysmEmpireRun* Run, int32 CityId, int64 Price,
+							   int64 Held);
 };

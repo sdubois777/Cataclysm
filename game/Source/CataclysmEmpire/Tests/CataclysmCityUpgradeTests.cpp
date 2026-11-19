@@ -114,24 +114,73 @@ bool FCataclysmCityUpgradeSlotsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCityUpgradeFreeAndInstantTest,
-	"Cataclysm.CityUpgrade.AnUpgradeIsStillFreeAndImmediate",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCityUpgradeInstantTest,
+	"Cataclysm.CityUpgrade.AnUpgradeIsStillImmediate",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmCityUpgradeFreeAndInstantTest::RunTest(const FString& Parameters)
+bool FCataclysmCityUpgradeInstantTest::RunTest(const FString& Parameters)
 {
-	// THIS TEST EXISTS TO BE CHANGED DELIBERATELY. The design has five empire
-	// tree nodes that only make sense if a city upgrade costs gold and takes
-	// days to build, and neither number is written anywhere; there is no gold in
-	// this game at all. Both constants are zero until that is designed, which
-	// the project owner decided on 2026-09-05. Issue #1264.
-	TestEqual(TEXT("an upgrade costs no gold"),
-			  UCataclysmCityUpgradeRules::GoldCost, 0);
-	TestEqual(TEXT("and takes no days to build"),
+	// THIS TEST EXISTS TO BE CHANGED DELIBERATELY. The design says an upgrade
+	// takes days to build and no number is written anywhere, and the owner ruled
+	// on 2026-11-18 that upgrades stay instant and build days come later. It was
+	// "AnUpgradeIsStillFreeAndImmediate" until issue #2742's second slice gave an
+	// upgrade a price, which `Cataclysm.CityUpgradePrice.` covers.
+	TestEqual(TEXT("an upgrade takes no days to build"),
 			  UCataclysmCityUpgradeRules::BuildDays, 0);
-	TestTrue(TEXT("so it is free and immediate"),
-			 UCataclysmCityUpgradeRules::IsFreeAndInstant());
+	TestTrue(TEXT("so it is immediate"), UCataclysmCityUpgradeRules::IsInstant());
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCityUpgradeGoldCheckTest,
+	"Cataclysm.CityUpgrade.ThePriceIsCheckedLastAndAgainstTheGoldHeld",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The run refuses an upgrade the character cannot pay for, with `NotEnoughGold`, and only after every other check:
+ * a price of 300 against 299 held is refused, against 300 is bought, a price of nought is bought with none held, and
+ * a full city says it is full whatever gold is offered. Issue #2742's second slice. Prints "GOLD CHECK".
+ */
+bool FCataclysmCityUpgradeGoldCheckTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmCityUpgradeTest;
+
+	UCataclysmEmpireRun* Run = MakeRun();
+	const FCataclysmCityUpgrade Upgrade = Make(ECataclysmCityUpgradeEffect::MaxDefence, 0.2f, TEXT("Test_MaxDefence"));
+
+	const ECataclysmCityUpgradeResult Short = Run->WouldBuyCityUpgrade(0, Upgrade, 300, 299);
+	const ECataclysmCityUpgradeResult Exact = Run->WouldBuyCityUpgrade(0, Upgrade, 300, 300);
+	const ECataclysmCityUpgradeResult Free = Run->WouldBuyCityUpgrade(0, Upgrade, 0, 0);
+	const ECataclysmCityUpgradeResult Bought = Run->BuyCityUpgrade(0, Upgrade, 300, 299);
+	const bool bHeldAfterRefusal = Run->Map->Find(0) && Run->Map->Find(0)->HasUpgrade(Upgrade.RowName);
+
+	// A FULL CITY, then asked with too little gold: it says it is full. Filled free, as the empire layer's own tests buy.
+	Run->BuyCityUpgrade(1, Make(ECataclysmCityUpgradeEffect::MaxDefence, 0.2f, TEXT("Test_Filler_0")));
+	Run->BuyCityUpgrade(1, Make(ECataclysmCityUpgradeEffect::MaxPopulation, 0.2f, TEXT("Test_Filler_1")));
+	Run->BuyCityUpgrade(1, Make(ECataclysmCityUpgradeEffect::RestoreDefence, 0.5f, TEXT("Test_Filler_2")));
+	const bool bFilled = Run->Map->FreeUpgradeSlots(1) == 0;
+	const ECataclysmCityUpgradeResult Full = Run->WouldBuyCityUpgrade(1, Upgrade, 300, 0);
+
+	AddInfo(FString::Printf(TEXT("GOLD CHECK: 300 against 299 %s; against 300 %s; free with none %s; bought short %s, "
+								 "held after %s; a full city short of gold %s"),
+							*UCataclysmCityUpgradeRules::ResultText(Short),
+							*UCataclysmCityUpgradeRules::ResultText(Exact),
+							*UCataclysmCityUpgradeRules::ResultText(Free),
+							*UCataclysmCityUpgradeRules::ResultText(Bought), bHeldAfterRefusal ? TEXT("YES") : TEXT("no"),
+							*UCataclysmCityUpgradeRules::ResultText(Full)));
+
+	TestEqual(TEXT("a price of 300 against 299 held is refused for gold"), static_cast<int32>(Short),
+			  static_cast<int32>(ECataclysmCityUpgradeResult::NotEnoughGold));
+	TestEqual(TEXT("against 300 it is bought"), static_cast<int32>(Exact),
+			  static_cast<int32>(ECataclysmCityUpgradeResult::Bought));
+	TestEqual(TEXT("a price of nought is bought with no gold held"), static_cast<int32>(Free),
+			  static_cast<int32>(ECataclysmCityUpgradeResult::Bought));
+	TestEqual(TEXT("the purchase refuses as the question does"), static_cast<int32>(Bought),
+			  static_cast<int32>(ECataclysmCityUpgradeResult::NotEnoughGold));
+	TestFalse(TEXT("and the city does not hold it"), bHeldAfterRefusal);
+	TestTrue(TEXT("set-up: city 1 is full"), bFilled);
+	TestEqual(TEXT("a full city says it is full, whatever gold is offered"), static_cast<int32>(Full),
+			  static_cast<int32>(ECataclysmCityUpgradeResult::NoSlotsLeft));
 	return true;
 }
 

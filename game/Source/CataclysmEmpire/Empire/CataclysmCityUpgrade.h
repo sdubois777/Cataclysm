@@ -140,10 +140,11 @@ enum class ECataclysmCityUpgradeEffect : uint8
 	SubTypeChanceVolatile		= 18,
 
 	// ----------------------------------------------------------------------
-	// Treasurer and Artisan. NOT BUILT. Each needs a reward a dungeon in this
-	// layer does not have: an empire dungeon is a timer and a bite, and it
-	// grants no experience, no loot, no gold and no materials. Issue #41 is the
-	// dungeon runtime; issue #1264 is gold.
+	// Treasurer and Artisan. NOT BUILT. Each changes what a walk of a dungeon
+	// standing on this city pays, and in this layer an empire dungeon is a timer
+	// and a bite. Walking one is the dungeon level's, where kills drop
+	// experience, loot, materials and, since issue #2742's first slice, gold;
+	// nothing there reads these effects yet. Issue #41 is the dungeon runtime.
 	// ----------------------------------------------------------------------
 
 	/** Multiplier. Dungeons here grant that many times the experience. */
@@ -216,15 +217,19 @@ enum class ECataclysmCityUpgradeResult : uint8
 	NotAnUpgrade			= 7,
 
 	/**
-	 * An upgrade is no longer free and instant, and nothing can pay for it.
+	 * An upgrade is no longer instant, and nothing can wait for one to be built.
 	 *
 	 * THIS IS A GUARD RATHER THAN A STATE THE GAME REACHES. It fires only if
-	 * someone raises `UCataclysmCityUpgradeRules::GoldCost` or `BuildDays` above
-	 * zero without building the payment and the timer that would then be
-	 * needed. Refusing loudly is better than silently handing out a paid upgrade
-	 * for nothing. See `IsFreeAndInstant`.
+	 * someone raises `UCataclysmCityUpgradeRules::BuildDays` above zero without
+	 * building the timer that would then be needed. Refusing loudly is better
+	 * than silently handing out a built upgrade at once. See `IsInstant`.
+	 *
+	 * IT WAS `CannotPayYet` UNTIL ISSUE #2742's SECOND SLICE, guarding a gold
+	 * cost as well as the build time. An upgrade now has a price and the gold to
+	 * pay it, so only the build time is left for it to guard; a price the
+	 * character cannot meet is `NotEnoughGold`.
 	 */
-	CannotPayYet			= 8,
+	CannotWaitForABuildYet	= 8,
 
 	/**
 	 * A Siege stands on that city, and a besieged city may not be improved.
@@ -238,12 +243,27 @@ enum class ECataclysmCityUpgradeResult : uint8
 	 *
 	 * ONLY THE BLOCKING HALF EXISTS, AND THAT IS NOT AN OVERSIGHT. Nothing is
 	 * ever part way through being built, because `BuildDays` is zero and every
-	 * purchase is instant -- see `IsFreeAndInstant`. There is no in-progress
-	 * build for a Siege to interrupt until issue #1264 gives an upgrade a build
-	 * time, and raising `BuildDays` to create one would trip that same guard and
-	 * refuse every purchase in the game.
+	 * purchase is instant -- see `IsInstant`. There is no in-progress build for
+	 * a Siege to interrupt until issue #1264 gives an upgrade a build time, and
+	 * raising `BuildDays` to create one would trip that same guard and refuse
+	 * every purchase in the game.
 	 */
 	CityIsBesieged			= 9,
+
+	/**
+	 * The character buying it holds less gold than it costs. Issue #2742's
+	 * second slice, ruled 2026-11-18.
+	 *
+	 * THE EMPIRE LAYER IS TOLD BOTH NUMBERS AND DECIDES, rather than looking the
+	 * balance up: the gold is held by the account record or a Solo Self-Found
+	 * character's player state, both in the `Cataclysm` module, which this
+	 * module may not depend on. `UCataclysmCityUpgradePurchase::Buy` over there
+	 * reads them and passes them in.
+	 *
+	 * CHECKED LAST, so a city that is full, fallen or besieged says that, which
+	 * no amount of gold would change.
+	 */
+	NotEnoughGold			= 10,
 };
 
 /**
@@ -364,25 +384,15 @@ public:
 	// What an upgrade costs
 	// ----------------------------------------------------------------------
 
-	/**
-	 * Gold to buy one. ZERO, DELIBERATELY, AND IT SHOULD NOT STAY ZERO.
-	 *
-	 * The design has five empire tree nodes that only make sense if a city
-	 * upgrade costs gold -- Public Works, Municipal Bonds, Global Credit,
-	 * Scaffolding and Reinvestment, all in
-	 * `docs/Empire_Skill_Tree_Keystones.md`. **No such cost is written
-	 * anywhere**: the City Upgrades sheet has four columns and none of them is a
-	 * price. Until issue #2742 no character, account or run held gold at all;
-	 * since its first slice (2026-11-18) kills drop it and the account holds a
-	 * balance per lethality mode (a Solo Self-Found character holds its own),
-	 * and its second slice is what prices upgrades.
-	 *
-	 * So an upgrade is free until a cost is built. The project owner decided
-	 * that on 2026-09-05, to be revisited once gold drops are in, and on
-	 * 2026-11-18 ruled that an upgrade costs gold. Issues #1264 and #2742, and
-	 * `docs/DECISIONS.md` records both.
-	 */
-	static constexpr int32 GoldCost = 0;
+	// THE PRICE IN GOLD IS NOT HERE. It is data -- the City Upgrades sheet's
+	// Tier 1 Gold column, scaled to the run's difficulty tier -- and data lives
+	// in the `Cataclysm` module, which this one may not depend on.
+	// `UCataclysmCityUpgradeMapping::PriceFor` computes it there, and
+	// `UCataclysmEmpireRun::BuyCityUpgrade` is told it, with the gold the
+	// character holds. Until issue #2742's second slice (2026-11-18) this was a
+	// constant `GoldCost` of zero: the owner decided on 2026-09-05 that an
+	// upgrade is free until gold exists, and on 2026-11-18 that it costs gold.
+	// Issues #1264 and #2742; `docs/DECISIONS.md` records both.
 
 	/**
 	 * Days to build one. ZERO, DELIBERATELY, AND IT SHOULD NOT STAY ZERO.
@@ -397,22 +407,28 @@ public:
 	 * build timer and no half-built upgrade anywhere in this module. Adding one
 	 * is not a matter of raising this number: the standing effects are applied
 	 * to the city when the upgrade is bought rather than recomputed each day, so
-	 * a delay would need them to become derived first. `IsFreeAndInstant` below
-	 * is the guard that stops this being changed by halves.
+	 * a delay would need them to become derived first. `IsInstant` below is the
+	 * guard that stops this being changed by halves.
+	 *
+	 * STILL ZERO AFTER GOLD: the owner ruled on 2026-11-18 that upgrades stay
+	 * instant and build days come later. Issue #2742.
 	 */
 	static constexpr int32 BuildDays = 0;
 
 	/**
-	 * Whether an upgrade is still free and immediate.
+	 * Whether an upgrade still takes effect the moment it is bought.
 	 *
-	 * WHY A PURCHASE ASKS. Raising either constant above zero without also
-	 * building something to pay from and something to wait on would hand out a
-	 * paid upgrade for nothing, silently. `UCataclysmEmpireRun::BuyCityUpgrade`
-	 * refuses with `ECataclysmCityUpgradeResult::CannotPayYet` instead, so the
+	 * WHY A PURCHASE ASKS. Raising `BuildDays` above zero without also building
+	 * something to wait on would hand out the upgrade at once, silently.
+	 * `UCataclysmEmpireRun::BuyCityUpgrade` refuses with
+	 * `ECataclysmCityUpgradeResult::CannotWaitForABuildYet` instead, so the
 	 * half-done change fails loudly at the first purchase.
+	 *
+	 * IT WAS `IsFreeAndInstant` UNTIL ISSUE #2742's SECOND SLICE, which gave an
+	 * upgrade a price and the gold to pay it.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
-	static bool IsFreeAndInstant();
+	static bool IsInstant();
 
 	// ----------------------------------------------------------------------
 	// Which effects exist

@@ -23,7 +23,7 @@
       "asset": "DT_CityUpgrades",
       "csv": "CityUpgrades.csv",
       "rows": 24,
-      "csv_sha256": "7c3ef45db6f19a686e18b6c0d3d63b1295bddbe35b1f12daf869aedd7b462144"
+      "csv_sha256": "81a2622089d02025cda25788423a23e7726e52630e55776dd58e51ec97fdb00f"
     },
     {
       "asset": "DT_ClassStats",

@@ -56,6 +56,11 @@ bool UCataclysmSaveTriggers::WritesTheCharacterRecord(ECataclysmSaveTrigger Trig
 		case ECataclysmSaveTrigger::LeavingTheLevel: // A trigger's: the hand-over writes the character record.
 			return true;
 
+		// A CITY UPGRADE BOUGHT, since issue #2742's second slice: a Solo Self-Found character paid from its own gold,
+		// which its character record saves. Written for every character, as `InventoryChanged` is.
+		case ECataclysmSaveTrigger::CityUpgradeBought: // A trigger's: a purchase writes the character record.
+			return true;
+
 		default:
 			return false;
 	}
@@ -80,10 +85,15 @@ bool UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame(ECataclysmSav
 	// AND A RESPEC OF THE EMPIRE UPGRADE TREE, since issue #2741 slice 1b (ruled 2026-11-18): the days it cost passed
 	// after any earlier write in its frame gathered the run, and a respec whose days were not written would cost nothing
 	// to a player who quit before the next write.
+	//
+	// AND A CITY UPGRADE BOUGHT, since issue #2742's second slice, for the same reason: a write earlier in the same
+	// frame gathered the city before it held the upgrade, while the gold that paid for it is written apart, with the
+	// account record. `UCataclysmCityUpgradePurchase::Buy` raises it once per purchase.
 	return Trigger == ECataclysmSaveTrigger::CharacterDied || Trigger == ECataclysmSaveTrigger::DeathProcessed
 		|| Trigger == ECataclysmSaveTrigger::RunWon || Trigger == ECataclysmSaveTrigger::CharacterCreated
 		|| Trigger == ECataclysmSaveTrigger::LeavingTheLevel || Trigger == ECataclysmSaveTrigger::ChangedFloor
-		|| Trigger == ECataclysmSaveTrigger::EmpireTreeRespecced;
+		|| Trigger == ECataclysmSaveTrigger::EmpireTreeRespecced
+		|| Trigger == ECataclysmSaveTrigger::CityUpgradeBought;
 }
 
 bool UCataclysmSaveTriggers::ClockHasElapsed(float SecondsSinceLastWrite,
@@ -150,6 +160,7 @@ const TCHAR* UCataclysmSaveTriggers::NameOf(ECataclysmSaveTrigger Trigger)
 		case ECataclysmSaveTrigger::RunWon:                 return TEXT("a run being won");
 		case ECataclysmSaveTrigger::LeavingTheLevel:        return TEXT("the character leaving the level");
 		case ECataclysmSaveTrigger::EmpireTreeRespecced:    return TEXT("the empire upgrade tree being respecced");
+		case ECataclysmSaveTrigger::CityUpgradeBought:      return TEXT("a city upgrade being bought");
 	}
 
 	// A TRIGGER ADDED WITHOUT A WORDING. Named rather than fallen through to one
@@ -180,5 +191,6 @@ TArray<ECataclysmSaveTrigger> UCataclysmSaveTriggers::Every()
 		ECataclysmSaveTrigger::RunWon,
 		ECataclysmSaveTrigger::LeavingTheLevel,
 		ECataclysmSaveTrigger::EmpireTreeRespecced,
+		ECataclysmSaveTrigger::CityUpgradeBought,
 	};
 }

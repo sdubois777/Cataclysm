@@ -2054,7 +2054,8 @@ void UCataclysmEmpireRun::NoteDeath(int32 Day, const FString& DungeonName, int32
 // ---------------------------------------------------------------------------
 
 ECataclysmCityUpgradeResult UCataclysmEmpireRun::WouldBuyCityUpgrade(
-	int32 CityId, const FCataclysmCityUpgrade& Upgrade) const
+	int32 CityId, const FCataclysmCityUpgrade& Upgrade, int64 GoldCost,
+	int64 GoldHeld) const
 {
 	if (Map == nullptr || Clock == nullptr)
 	{
@@ -2066,14 +2067,14 @@ ECataclysmCityUpgradeResult UCataclysmEmpireRun::WouldBuyCityUpgrade(
 		return ECataclysmCityUpgradeResult::NotAnUpgrade;
 	}
 
-	// THE GUARD ON THE TWO CONSTANTS. An upgrade is free and immediate because
-	// no cost and no build time is written anywhere and there is no gold. If
-	// somebody raises either without building what would then be needed, every
-	// purchase refuses instead of quietly handing out a paid upgrade for
-	// nothing. Issue #1264.
-	if (!UCataclysmCityUpgradeRules::IsFreeAndInstant())
+	// THE GUARD ON THE BUILD TIME. An upgrade is immediate because no build
+	// time is written anywhere: the owner ruled on 2026-11-18 that build days
+	// come later. If somebody raises it without building what would then be
+	// needed, every purchase refuses instead of quietly handing out the upgrade
+	// at once. Issue #1264.
+	if (!UCataclysmCityUpgradeRules::IsInstant())
 	{
-		return ECataclysmCityUpgradeResult::CannotPayYet;
+		return ECataclysmCityUpgradeResult::CannotWaitForABuildYet;
 	}
 
 	if (!UCataclysmCityUpgradeRules::IsBuilt(Upgrade.Effect))
@@ -2105,8 +2106,8 @@ ECataclysmCityUpgradeResult UCataclysmEmpireRun::WouldBuyCityUpgrade(
 	// AS IMPOSSIBLE. Nothing is ever part way through being built: `BuildDays`
 	// is zero and every purchase is instant, so there is no in-progress build to
 	// interrupt. Whoever gives an upgrade a build time under issue #1264 should
-	// stop it here as well. Raising `BuildDays` alone would trip
-	// `IsFreeAndInstant` above and refuse every purchase in the game.
+	// stop it here as well. Raising `BuildDays` alone would trip `IsInstant`
+	// above and refuse every purchase in the game.
 	//
 	// CHECKED BEFORE THE SLOT COUNT, so a player asking about a besieged city
 	// that is also full is told the thing they can actually act on.
@@ -2125,17 +2126,28 @@ ECataclysmCityUpgradeResult UCataclysmEmpireRun::WouldBuyCityUpgrade(
 		return ECataclysmCityUpgradeResult::NoSlotsLeft;
 	}
 
+	// THE PRICE, LAST, so a refusal for anything above -- which no amount of
+	// gold would change -- is the one a player is told. Both numbers are the
+	// `Cataclysm` module's and are passed in: the gold is held by the account
+	// record or a Solo Self-Found character, which this module cannot see. A
+	// price of nought is free whatever is held. Issue #2742's second slice.
+	if (GoldCost > 0 && GoldHeld < GoldCost)
+	{
+		return ECataclysmCityUpgradeResult::NotEnoughGold;
+	}
+
 	return ECataclysmCityUpgradeResult::Bought;
 }
 
 ECataclysmCityUpgradeResult UCataclysmEmpireRun::BuyCityUpgrade(
-	int32 CityId, const FCataclysmCityUpgrade& Upgrade)
+	int32 CityId, const FCataclysmCityUpgrade& Upgrade, int64 GoldCost,
+	int64 GoldHeld)
 {
 	// EVERY CHECK IS ABOVE, IN ONE PLACE. The city screen greys out what a city
 	// cannot buy and says why, and it asks exactly this question rather than
 	// deciding for itself, so the screen and the purchase cannot drift apart.
 	const ECataclysmCityUpgradeResult Refusal =
-		WouldBuyCityUpgrade(CityId, Upgrade);
+		WouldBuyCityUpgrade(CityId, Upgrade, GoldCost, GoldHeld);
 
 	if (Refusal != ECataclysmCityUpgradeResult::Bought)
 	{

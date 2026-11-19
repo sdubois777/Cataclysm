@@ -50,6 +50,25 @@ struct CATACLYSM_API FCataclysmCityUpgradeOffer
 	/** Why it cannot be bought, or empty when it can. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	FString Refusal;
+
+	/** What it costs in this run, in gold (`UCataclysmCityUpgradePurchase::PriceIn`). Issue #2742's second slice. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int64 Price = 0;
+
+	/**
+	 * Whether gold is all that stops it: every other rule would sell it, and the character holds less than `Price`.
+	 * Such an offer is a greyed button saying how much more is needed, rather than vanishing from the screen.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bShortOfGold = false;
+
+	/**
+	 * Whether a Siege dungeon on the city is what stops it (`ECataclysmCityUpgradeResult::CityIsBesieged`). Such an
+	 * offer is a greyed button saying so, as one short of gold is, rather than vanishing from the screen. Issue #2742's
+	 * second slice, the coordinating session's request of 2026-11-18.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bBesieged = false;
 };
 
 /**
@@ -100,6 +119,15 @@ public:
 	/** "1 of 3 upgrade slots filled." */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static FString SlotsTextFor(const UCataclysmEmpireRun* Run, int32 CityId);
+
+	/**
+	 * The slot line and the gold the character playing holds, which pays for an upgrade: "1 of 3 upgrade slots
+	 * filled.   1,234 gold". Issue #2742's second slice, the owner's request of 2026-11-18 that the city screen show
+	 * the balance. The gold is `UCataclysmGameInstance::GoldBalanceText`, the one every screen reads, and is left off
+	 * when there is no balance to show.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire", meta = (WorldContext = "WorldContext"))
+	static FString SlotsAndGoldTextFor(const UObject* WorldContext, const UCataclysmEmpireRun* Run, int32 CityId);
 
 	/**
 	 * One line per dungeon standing on the city, deepest threat first.
@@ -156,10 +184,17 @@ public:
 	 * EMPTY WHEN THE DATATABLE IS MISSING, which is the same answer
 	 * `UCataclysmCityUpgradeMapping::AllRowNames` gives, and the screen says so
 	 * rather than showing nothing.
+	 *
+	 * WITH ITS PRICE, AND ASKED WITH THE GOLD HELD, since issue #2742's second
+	 * slice: the run answers with the price at its difficulty tier and
+	 * `GoldHeld`, exactly as `UCataclysmCityUpgradePurchase::Buy` asks it, so
+	 * an offer the character cannot afford reads "Costs 30,000 gold; 2,500 more
+	 * needed." The gold is passed in, not looked up, so the layout needs no
+	 * world; the screen passes `UCataclysmCityUpgradePurchase::GoldHeldIn`.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static TArray<FCataclysmCityUpgradeOffer> OffersFor(
-		const UCataclysmEmpireRun* Run, int32 CityId);
+		const UCataclysmEmpireRun* Run, int32 CityId, int64 GoldHeld);
 
 	/** The heading over the upgrades a city could buy now. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")

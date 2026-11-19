@@ -265,3 +265,16 @@ FString FCataclysmPlayLoopLog::LevelGainedLine(int32 From, int32 To, int64 Exper
 						   From, ExperienceIntoLevel, UCataclysmExperience::CostOfLevel(To + 1) - ExperienceIntoLevel,
 						   To + 1);
 }
+
+FString FCataclysmPlayLoopLog::UpgradeLine(const FString& Upgrade, const UCataclysmEmpireRun* Run, int32 CityId,
+										   int64 Price, int64 Held)
+{
+	const FString City = CataclysmPlayLoopLog::CityName(Run, CityId);
+	if (Held < 0)
+	{
+		return FString::Printf(TEXT("bought '%s' on %s for %s gold; no gold balance to hold it"), *Upgrade, *City,
+							   *ACataclysmDroppedItem::GoldAmountText(Price));
+	}
+	return FString::Printf(TEXT("bought '%s' on %s for %s gold; %s gold held"), *Upgrade, *City,
+						   *ACataclysmDroppedItem::GoldAmountText(Price), *ACataclysmDroppedItem::GoldAmountText(Held));
+}

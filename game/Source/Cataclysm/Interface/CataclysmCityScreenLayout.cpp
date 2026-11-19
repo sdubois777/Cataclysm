@@ -8,6 +8,8 @@
 #include "Empire/CataclysmEmpireMap.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmSurge.h"
+#include "Player/CataclysmCityUpgradePurchase.h"
+#include "Player/CataclysmGameInstance.h"
 
 namespace
 {
@@ -124,6 +126,19 @@ FString UCataclysmCityScreenLayout::SlotsTextFor(const UCataclysmEmpireRun* Run,
 
 	return FString::Printf(TEXT("%d of %d upgrade slots filled."),
 						   City->Upgrades.Num(), Run->Map->UpgradeSlots);
+}
+
+FString UCataclysmCityScreenLayout::SlotsAndGoldTextFor(const UObject* WorldContext,
+													   const UCataclysmEmpireRun* Run,
+													   int32 CityId)
+{
+	const FString Slots = SlotsTextFor(Run, CityId);
+	const FString Gold = UCataclysmGameInstance::GoldBalanceText(WorldContext);
+	if (Slots.IsEmpty() || Gold.IsEmpty())
+	{
+		return Slots;
+	}
+	return FString::Printf(TEXT("%s   %s"), *Slots, *Gold);
 }
 
 TArray<int32> UCataclysmCityScreenLayout::DungeonIdsFor(
@@ -259,7 +274,7 @@ TArray<FString> UCataclysmCityScreenLayout::HeldLinesFor(
 }
 
 TArray<FCataclysmCityUpgradeOffer> UCataclysmCityScreenLayout::OffersFor(
-	const UCataclysmEmpireRun* Run, int32 CityId)
+	const UCataclysmEmpireRun* Run, int32 CityId, int64 GoldHeld)
 {
 	TArray<FCataclysmCityUpgradeOffer> Offers;
 
@@ -283,14 +298,18 @@ TArray<FCataclysmCityUpgradeOffer> UCataclysmCityScreenLayout::OffersFor(
 
 		// THE RUN ANSWERS, NOT THIS. Asking `WouldBuyCityUpgrade` is what stops
 		// the screen and the purchase drifting apart: every rule about slots,
-		// duplicates, fallen cities and unbuilt effects lives there.
+		// duplicates, fallen cities, unbuilt effects and, since issue #2742's
+		// second slice, the price against the gold held lives there. Asked with
+		// the price `UCataclysmCityUpgradePurchase::Buy` charges.
+		Offer.Price = UCataclysmCityUpgradePurchase::PriceIn(Run, RowName);
 		const ECataclysmCityUpgradeResult Result =
-			Run->WouldBuyCityUpgrade(CityId, Upgrade);
+			Run->WouldBuyCityUpgrade(CityId, Upgrade, Offer.Price, GoldHeld);
 
 		Offer.bCanBuy = Result == ECataclysmCityUpgradeResult::Bought;
-		Offer.Refusal = Offer.bCanBuy
-							? FString()
-							: UCataclysmCityUpgradeRules::ResultText(Result);
+		Offer.bShortOfGold = Result == ECataclysmCityUpgradeResult::NotEnoughGold;
+		Offer.bBesieged = Result == ECataclysmCityUpgradeResult::CityIsBesieged;
+		Offer.Refusal = UCataclysmCityUpgradePurchase::RefusalText(
+			Result, Offer.Price, GoldHeld);
 
 		Offers.Add(Offer);
 	}
@@ -332,13 +351,31 @@ FString UCataclysmCityScreenLayout::DungeonHeading(int32 Count)
 FString UCataclysmCityScreenLayout::ButtonTextFor(
 	const FCataclysmCityUpgradeOffer& Offer)
 {
-	return Offer.Effect.IsEmpty() ? Offer.RowName.ToString() : Offer.Effect;
+	const FString Text =
+		Offer.Effect.IsEmpty() ? Offer.RowName.ToString() : Offer.Effect;
+
+	// THE PRICE ON THE BUTTON, since issue #2742's second slice, and when gold
+	// or a Siege is what stops it, why instead.
+	if (Offer.bShortOfGold || Offer.bBesieged)
+	{
+		return FString::Printf(TEXT("%s  --  %s"), *Text, *Offer.Refusal);
+	}
+	if (Offer.Price > 0)
+	{
+		return FString::Printf(
+			TEXT("%s  --  %s"), *Text,
+			*UCataclysmCityUpgradePurchase::PriceText(Offer.Price));
+	}
+	return Text;
 }
 
 FString UCataclysmCityScreenLayout::NotBuiltLineFor(
 	const FCataclysmCityUpgradeOffer& Offer)
 {
-	const FString Text = ButtonTextFor(Offer);
+	// THE SENTENCE ALONE, without a price: nothing in this section can be
+	// bought, so a price beside it would read as an offer.
+	const FString Text =
+		Offer.Effect.IsEmpty() ? Offer.RowName.ToString() : Offer.Effect;
 
 	if (Offer.Refusal.IsEmpty())
 	{

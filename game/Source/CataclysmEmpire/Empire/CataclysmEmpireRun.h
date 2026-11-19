@@ -1742,19 +1742,27 @@ public:
 	 * upgrade the city already has, and an upgrade whose effect is not built.
 	 * See `ECataclysmCityUpgradeResult`.
 	 *
-	 * IT IS FREE AND IMMEDIATE. The design says a city upgrade costs gold and
-	 * takes days to build and neither number is written anywhere, so both are
-	 * zero. `UCataclysmCityUpgradeRules::GoldCost` and `BuildDays` are where
-	 * they will go, and this refuses outright if either is raised without the
-	 * payment and the timer being built. Issue #1264.
+	 * IT COSTS GOLD AND IS IMMEDIATE. The price and the gold the character holds
+	 * are passed in, since both belong to the `Cataclysm` module, and a
+	 * character holding less than the price is refused with `NotEnoughGold`.
+	 * THIS DOES NOT TAKE THE GOLD: the balance is not this module's to change.
+	 * `UCataclysmCityUpgradePurchase::Buy` takes it once this answers `Bought`,
+	 * and that is the only caller that charges. Issue #2742's second slice.
+	 * Build days are still zero (`UCataclysmCityUpgradeRules::BuildDays`), and
+	 * this refuses outright if they are raised without the timer being built.
+	 * Issue #1264.
 	 *
-	 * @param Upgrade what to buy. `UCataclysmCityUpgradeMapping::Make` in the
-	 *                `Cataclysm` module builds one from a row of
-	 *                `game/Data/CityUpgrades.csv`.
+	 * @param Upgrade  what to buy. `UCataclysmCityUpgradeMapping::Make` in the
+	 *                 `Cataclysm` module builds one from a row of
+	 *                 `game/Data/CityUpgrades.csv`.
+	 * @param GoldCost its price at the run's difficulty tier. Nought for a free
+	 *                 one, which is what the empire layer's own tests buy.
+	 * @param GoldHeld the gold the character buying it holds.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
 	ECataclysmCityUpgradeResult BuyCityUpgrade(
-		int32 CityId, const FCataclysmCityUpgrade& Upgrade);
+		int32 CityId, const FCataclysmCityUpgrade& Upgrade, int64 GoldCost = 0,
+		int64 GoldHeld = 0);
 
 	/**
 	 * What `BuyCityUpgrade` would answer, without buying anything.
@@ -1766,11 +1774,13 @@ public:
 	 * drift the first time a rule changed.
 	 *
 	 * `BuyCityUpgrade` CALLS THIS AND REFUSES ON ANYTHING BUT `Bought`, so there
-	 * is one list of checks rather than two.
+	 * is one list of checks rather than two. The price and the gold held are
+	 * `BuyCityUpgrade`'s.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	ECataclysmCityUpgradeResult WouldBuyCityUpgrade(
-		int32 CityId, const FCataclysmCityUpgrade& Upgrade) const;
+		int32 CityId, const FCataclysmCityUpgrade& Upgrade, int64 GoldCost = 0,
+		int64 GoldHeld = 0) const;
 
 	// ----------------------------------------------------------------------
 	// Seeing it

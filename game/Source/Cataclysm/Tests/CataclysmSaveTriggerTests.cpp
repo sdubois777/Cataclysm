@@ -123,9 +123,12 @@ bool FCataclysmSaveRecordsAreWrittenForTheRightReasons::RunTest(const FString&)
 		// once; the set was InventoryChanged and CharacterDied only.
 		// SINCE 2026-11-03, issue #1324 slice 6e: a won run writes it too, after the tier is raised.
 		// SINCE 2026-11-17, issue #2733 slice 3: the hand-over before a level change, which the next level loads.
+		// SINCE 2026-11-18, issue #2742's second slice: a city upgrade bought, which a Solo Self-Found character pays
+		// for from its own gold.
 		const bool bCharacter = Trigger == ECataclysmSaveTrigger::InventoryChanged
 			|| Trigger == ECataclysmSaveTrigger::CharacterDied || Trigger == ECataclysmSaveTrigger::CharacterCreated
-			|| Trigger == ECataclysmSaveTrigger::RunWon || Trigger == ECataclysmSaveTrigger::LeavingTheLevel;
+			|| Trigger == ECataclysmSaveTrigger::RunWon || Trigger == ECataclysmSaveTrigger::LeavingTheLevel
+			|| Trigger == ECataclysmSaveTrigger::CityUpgradeBought;
 		TestEqual(FString::Printf(TEXT("'%s' writes the character record"),
 					FTriggers::NameOf(Trigger)),
 			FTriggers::WritesTheCharacterRecord(Trigger), bCharacter);

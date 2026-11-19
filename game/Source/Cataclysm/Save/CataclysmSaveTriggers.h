@@ -148,6 +148,24 @@ enum class ECataclysmSaveTrigger : uint8
 	 * AN ORDINARY ASYNCHRONOUS WRITE, OF THE RUN RECORD ONLY: a respec changes nothing the character record holds.
 	 */
 	EmpireTreeRespecced = 12,
+
+	/**
+	 * A city upgrade was bought: `UCataclysmCityUpgradePurchase::Buy`, once it has taken the price and the run has
+	 * recorded the upgrade. Issue #2742's second slice, ruled by the coordinating session on 2026-11-18.
+	 *
+	 * WHY IT EXISTS. A purchase changes two records at once: the run record's city holds the upgrade, and the gold that
+	 * paid for it left the account record or, for a Solo Self-Found character, the character record. Until gold priced
+	 * an upgrade nothing raised a save for one, and the upgrade waited for the clock's next write. Written so, a quit or
+	 * a crash in that gap would keep the gold spent and lose the upgrade. `AccountChanged` is raised beside it when the
+	 * gold came from the account.
+	 *
+	 * AN ORDINARY ASYNCHRONOUS WRITE, of the run record and the character record, as `InventoryChanged` is; and written
+	 * even if the run record was written earlier the same frame, since that write gathered the city before the upgrade.
+	 *
+	 * THIRTEEN, NOT TWELVE: the empire tree's slice 1b (#2741) took 12 for `EmpireTreeRespecced` and merged first, the
+	 * coordinating session's ruling of 2026-11-18. Nothing writes these numbers to disk.
+	 */
+	CityUpgradeBought = 13,
 };
 
 /**

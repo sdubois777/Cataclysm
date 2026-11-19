@@ -387,12 +387,15 @@ by `git add` with no error and no warning. Guarded by
   through the ordinary day loop as they accumulate.
 
   The other ten are refused at purchase rather than sold, because each waits on a
-  system that does not exist — a dungeon sub-type roll, a dungeon that grants
-  rewards, gold, or an upgrade tier above one.
-  `Cataclysm.CityUpgrades` lists what a city can buy and marks
-  the ones that do nothing yet; `Cataclysm.BuyCityUpgrade` spends the slot. It is
-  free and immediate, because no cost and no build time is designed (issue
-  [#1264](https://github.com/sdubois777/Cataclysm/issues/1264)).
+  system that does not exist — a dungeon sub-type roll, a walk that reads a
+  city's reward upgrades, or an upgrade tier above one.
+  `Cataclysm.CityUpgrades` lists what a city can buy, with each price, and marks
+  the ones that do nothing yet; `Cataclysm.BuyCityUpgrade` spends the slot, as the
+  city screen does. It costs the character playing gold — 10,000 at difficulty
+  tier 1, scaled to the run's tier — and takes effect at once, because no build
+  time is designed (issues
+  [#1264](https://github.com/sdubois777/Cataclysm/issues/1264) and
+  [#2742](https://github.com/sdubois777/Cataclysm/issues/2742)).
 
   A run lives on `UCataclysmGameInstance`, which survives travelling between
   levels, and `UCataclysmEmpireMapWidget` draws it: the 25 cities in their
