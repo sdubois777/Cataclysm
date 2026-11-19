@@ -638,7 +638,8 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 		return false;
 	}
 
-	TestEqual(TEXT("it says it is version 8"), Read->SchemaVersion, 8);
+	// 9 SINCE `Character_v9.json` BECAME THE COMMITTED FILE (issue #2741 slice 1c); it was 8 until then.
+	TestEqual(TEXT("it says it is version 9"), Read->SchemaVersion, 9);
 	// THE SEED THE FILE STATES, NOT THE ONE ITS IDENTIFIER GIVES, so a seed re-derived on load cannot pass. #1324 6a.
 	TestEqual(TEXT("the Cataclysm order seed in the file"), Read->CataclysmOrderSeed,
 		CataclysmSaveFixtures::CommittedCharacterOrderSeed);

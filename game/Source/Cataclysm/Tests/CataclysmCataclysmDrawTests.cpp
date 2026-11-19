@@ -290,7 +290,8 @@ bool FCataclysmDrawFixtureTest::RunTest(const FString& Parameters)
 							UCataclysmCharacterSave::CataclysmOrderSeedFor(Read->CharacterId),
 							Back ? *FString::FromInt(Back->CataclysmOrderSeed) : *Error));
 
-	TestEqual(TEXT("set-up: the file is version 8"), Read->SchemaVersion, 8);
+	// 9 SINCE `Character_v9.json` BECAME THE COMMITTED FILE (issue #2741 slice 1c); it was 8 until then.
+	TestEqual(TEXT("set-up: the file is version 9"), Read->SchemaVersion, 9);
 	TestEqual(TEXT("the seed the file states"), Read->CataclysmOrderSeed, CataclysmSaveFixtures::CommittedCharacterOrderSeed);
 	TestTrue(TEXT("CONTROL: which is not the seed its identifier gives"),
 			 Read->CataclysmOrderSeed != UCataclysmCharacterSave::CataclysmOrderSeedFor(Read->CharacterId));
