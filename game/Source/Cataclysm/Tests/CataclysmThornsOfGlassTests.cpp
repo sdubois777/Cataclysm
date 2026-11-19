@@ -8,6 +8,7 @@
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmRetaliation.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -357,12 +358,14 @@ CATACLYSM_THORNS_TEST(FCataclysmThornsOfGlassAreaBlowTest,
 /**
  * THE STRIKE BACK IS A RETURNED BLOW: announced with the retaliation mark, which the player's hit log reads as
  * "reflected or retaliation", and carrying the no-retaliation mark, so a player with retaliation does not answer it.
- * THREE READINGS:
+ * FOUR READINGS:
  * 1. THE CONTROL: the player, with no retaliation, hits the creature and is struck back.
  * 2. THE SECOND CONTROL: the creature's own plain blow on the player, now holding 20 retaliation, is announced unmarked
  *    and is answered.
  * 3. The player, holding 20 retaliation, hits the creature as in 1, and is struck back: the creature loses what it lost
  *    in 1, so the strike back was not answered.
+ * 4. `UCataclysmRetaliation::StrikeBack` called on its own, at the player still holding 20 retaliation: the player is
+ *    struck, and the creature's health does not move. This reading decides the question by itself.
  * COMPARED WITH READING 1 AND NOT WITH THE FIGURE SENT, AND EVERY HIT OF THE PLAYER'S CARRIES NO AILMENT CHANCE. Window
  * reflect-fixed-hit-w1 compared the creature's loss with the figure `ApplyHit` sent and read 110 against 100, with
  * nothing in the log to say where the 10 came from; the figure sent is taken before the creature's own damage step.
@@ -437,19 +440,36 @@ CATACLYSM_THORNS_TEST(FCataclysmThornsOfGlassReturnedBlowTest,
 	const float SentWithTwenty = ThornsPlayerHits(Player, Thorned, NoAilment);
 	const float LostWithTwenty = CreatureBefore - ThornsHealthOf(Thorned);
 	const float StruckBackWithTwenty = PlayerBefore - ThornsHealthOf(Player);
+
+	// 4. THE STRIKE BACK ON ITS OWN, at the player still holding 20 retaliation, with no hit of the player's around it:
+	// the player loses the creature's attack damage, and the creature's health does not move, because nothing answers
+	// the strike back. Reading 3 compares two hits; this one isolates the strike back, so the two cannot be confused.
+	ThornsHeal(Player);
+	PlayerBefore = ThornsHealthOf(Player);
+	CreatureBefore = ThornsHealthOf(Thorned);
+	const float StruckBackAlone = UCataclysmRetaliation::StrikeBack(Thorned, Player);
+	const float PlayerLostAlone = PlayerBefore - ThornsHealthOf(Player);
+	const float CreatureMovedAlone = CreatureBefore - ThornsHealthOf(Thorned);
+
 	AddInfo(FString::Printf(TEXT("THORNS STRIKE BACK UNANSWERED: sent %.2f, then %.2f; the creature lost %.2f with no "
 								 "retaliation and %.2f with 20; struck back for %.2f, then %.2f; a plain blow was "
-								 "answered for %.2f"),
+								 "answered for %.2f; the strike back alone took %.2f (returned %.2f) and moved the "
+								 "creature's health by %.2f"),
 							SentWithNone, SentWithTwenty, LostWithNone, LostWithTwenty, StruckBackWithNone,
-							StruckBackWithTwenty, Answered));
+							StruckBackWithTwenty, Answered, PlayerLostAlone, StruckBackAlone, CreatureMovedAlone));
 	TestEqual(TEXT("holding 20 retaliation the creature loses what it lost holding none: the strike back is not answered"),
 			  LostWithTwenty, LostWithNone, 0.01f);
+	TestTrue(FString::Printf(TEXT("set-up: the strike back on its own lands on the player (%.2f)"), PlayerLostAlone),
+			 PlayerLostAlone > 0.0f);
+	TestEqual(TEXT("the strike back on its own leaves the creature's health where it was: nothing answers it"),
+			  CreatureMovedAlone, 0.0f, 0.01f);
 
-	if (TestEqual(TEXT("set-up: three blows on the player were announced"), Marks.Num(), 3))
+	if (TestEqual(TEXT("set-up: four blows on the player were announced"), Marks.Num(), 4))
 	{
 		TestTrue(TEXT("the first strike back carries the retaliation mark"), Marks[0]);
 		TestFalse(TEXT("control: the creature's plain blow carries none"), Marks[1]);
 		TestTrue(TEXT("the second strike back carries it"), Marks[2]);
+		TestTrue(TEXT("and the strike back on its own carries it"), Marks[3]);
 	}
 	return true;
 }

@@ -255,8 +255,10 @@ group's engine log `rf2749_alone_engine_ThornsOfGlass_480518bf.log`).
      no-retaliation tag the way every retaliation payment does; the player's answer to a blow of 40 at 20 retaliation
      is 8 before the player's own modifiers, not 10; and the player's ailment chances are nought by default.
      **Rewritten** to compare the creature's loss holding 20 retaliation with its loss holding none, every hit of the
-     player's carrying no ailment chance, and to print every figure ("THORNS STRIKE BACK UNANSWERED"). If the strike back
-     were answered, it fails as before; R3 still breaks it.
+     player's carrying no ailment chance, and to print every figure ("THORNS STRIKE BACK UNANSWERED"). AND A FOURTH
+     READING DECIDES IT BY ITSELF: `UCataclysmRetaliation::StrikeBack` called on its own, at the player holding 20
+     retaliation, must leave the creature's health where it was. Agreed with the coordinating session: if it moves,
+     the code is fixed, not the test. If the strike back were answered, the test fails as before; R3 still breaks it.
 - **Not Claude's connection to the editor (#2745).** That log's 56 `LogModelContextProtocol` lines are all from the
   editor's start, before the first test.
 
