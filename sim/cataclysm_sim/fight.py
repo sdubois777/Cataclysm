@@ -89,9 +89,11 @@ GAME_BLOW = (348.0, 468.0, 634.0, 867.0, 1195.0, 1661.0, 1874.0, 2101.0)
 #: The multipliers in the game, tiers 1 to 8: `fitted_to_the_game` to two decimals, ruled by the coordinating session
 #: on 2026-10-26 and re-fitted on 2026-10-30 to the Boss the game now builds (issue #1569). They were health 0.49, 0.76,
 #: 0.91, 1.07, 1.15, 1.15, 1.32, 1.33 and damage 1.12, 2.12, 2.76, 3.04, 3.08, 2.95, 3.32, 3.68. The game's copies are
-#: `CorruptedStalkerHealthMultipliers` and `CorruptedStalkerDamageMultipliers`.
+#: `CorruptedStalkerHealthMultipliers` and `CorruptedStalkerDamageMultipliers`. TIER 1'S DAMAGE RE-FITTED 2026-11-19,
+#: 0.22 to 0.06 (0.0559 to two decimals), when issue #2749 cut tier 1's damage scale from 0.20 to 0.05 and so the Boss's
+#: damage; tiers 2 to 8 and every health figure did not move.
 HEALTH_MULTIPLIERS = (0.49, 0.77, 0.87, 1.01, 1.06, 1.04, 1.19, 1.15)
-DAMAGE_MULTIPLIERS = (0.22, 0.58, 1.01, 1.39, 1.68, 1.86, 2.40, 2.97)
+DAMAGE_MULTIPLIERS = (0.06, 0.58, 1.01, 1.39, 1.68, 1.86, 2.40, 2.97)
 
 
 def _defender(hero: Character, tier: int) -> dmg.Defender:

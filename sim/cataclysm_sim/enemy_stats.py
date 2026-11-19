@@ -824,12 +824,20 @@ def stats_on_floor(rarity: str, tier: int, dungeon_type: str = "Basic",
 #      12-floor dungeon of the same kind, after the relief. Without it the first
 #      floors of a deep dungeon score nothing -- depth tension is negative below
 #      the middle floor -- and their creatures had 1 health and 0 damage.
-#   3. DAMAGE IS SCALED BY THE TIER: x0.20 at tier 1, rising evenly to x1.00 at
-#      tier 8. The project owner, "Scale damage to a target" and then "Approve":
-#      a fresh starting character beats a full 10-Imp pack on every floor of a
-#      12-floor tier-1 Basic dungeon with at least 10% of its health left, and
-#      the tier 8 figures this module's damage constants were fitted to (issue
-#      #108) are unchanged.
+#   3. DAMAGE IS SCALED BY THE TIER: x0.05 at tier 1, then x0.314 at tier 2
+#      rising evenly to x1.00 at tier 8. The project owner, "Scale damage to a
+#      target" and then "Approve": the tier 8 figures this module's damage
+#      constants were fitted to (issue #108) are unchanged. TIER 1 WAS x0.20,
+#      the first point of the same even line, fitted so a level 20 character
+#      beat a full 10-Imp pack on every floor of a 12-floor tier-1 Basic dungeon
+#      with at least 10% of its health left. ISSUE #2749 refitted tier 1 ALONE
+#      to a character that starts at level 1 and levels: the starting Ravager,
+#      levelling as it kills half of each floor's creatures, wins every floor
+#      of every first-surge Outpost dungeon the engine's seeds 0 to 299 make,
+#      with at least 10% of its health left on the last floor. Tiers 2 to 8
+#      stay on the line from x0.20, as the coordinating session ruled on
+#      2026-11-19: a new character always begins at tier 1.
+#      `sim/analyse_opening.py` is the measurement.
 #
 # `stats_on_floor` ABOVE IS LEFT THE DESIGN'S FIGURE, deliberately. `affixes.py`
 # anchors every offensive number on a Common enemy's health from it, and the
@@ -838,20 +846,25 @@ def stats_on_floor(rarity: str, tier: int, dungeon_type: str = "Basic",
 # design's creature and the game builds the eased one, from here.
 # `docs/DECISIONS.md`, 2026-10-30.
 
-#: Damage is multiplied by this at difficulty tier 1 ...
-DAMAGE_SCALE_AT_FIRST_TIER = 0.20
-#: ... rising evenly to one at the last tier.
+#: Damage is multiplied by this at difficulty tier 1. 0.20 until issue #2749.
+DAMAGE_SCALE_AT_FIRST_TIER = 0.05
+#: Tiers 2 to 8 lie on a line rising evenly from this at tier 1 ...
+DAMAGE_SCALE_LINE_AT_FIRST_TIER = 0.20
+#: ... to one at the last tier.
 LAST_TIER = 8
 #: The minimum strength is what the creature scores on floor 1 of a dungeon this deep.
 MINIMUM_STRENGTH_REFERENCE_FLOORS = 12
 
 
 def damage_scale(tier: int) -> float:
-    """What a creature's damage is multiplied by at this difficulty tier: 0.20 at
-    tier 1, rising evenly to 1.00 at tier 8."""
+    """What a creature's damage is multiplied by at this difficulty tier: 0.05 at
+    tier 1, then 0.314 at tier 2 rising evenly to 1.00 at tier 8. Tier 1 is its
+    own figure since issue #2749; the others are on the line from 0.20."""
     tier = min(max(tier, 1), LAST_TIER)
-    return (DAMAGE_SCALE_AT_FIRST_TIER
-            + (1.0 - DAMAGE_SCALE_AT_FIRST_TIER) * (tier - 1) / (LAST_TIER - 1))
+    if tier == 1:
+        return DAMAGE_SCALE_AT_FIRST_TIER
+    return (DAMAGE_SCALE_LINE_AT_FIRST_TIER
+            + (1.0 - DAMAGE_SCALE_LINE_AT_FIRST_TIER) * (tier - 1) / (LAST_TIER - 1))
 
 
 def strength_score(rarity: str, tier: int, dungeon_type: str = "Basic",

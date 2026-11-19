@@ -8,12 +8,29 @@
 /**
  * What a character level costs, ported from `sim/analyse_experience_curve.py`.
  *
- * THE CURVE. A level costs 8.2% more than the level below it, and level 2 costs
- * 230,000:
+ * THE OPENING, SINCE ISSUE #2749. Levels 2 to 7 cost 40 times what Path of
+ * Exile charges for the same levels -- 525, 1,235, 2,021, 3,403, 5,002 and 7,138
+ * in its published table (poedb.tw/us/Experience) -- so 21,000, 49,400, 80,840,
+ * 136,120, 200,080 and 285,520. A character starts at level 1 since issue #2744,
+ * and the project owner ruled on 2026-11-18 to "make the first levels much
+ * cheaper, so a new character gains several levels in its first dungeon as in
+ * Path of Exile's first areas". 40 IS A JUDGEMENT, and so is the half share it
+ * was fitted at: proposed by the session that made this change and approved by
+ * the coordinating session on 2026-11-19, so a character killing half of each
+ * floor's creatures reaches level 4 over a first dungeon of 7 or 8 floors. What
+ * share a player really kills is not measured (issue #925). Path of Exile's
+ * table settles the SHAPE, tiny first costs rising steeply, and not the scale.
+ * `docs/DECISIONS.md`, 2026-11-19.
  *
- *     cost of level L = 230,000 x 1.082 ^ (L - 2),   for L from 2 to 100
+ * THE CURVE, FROM LEVEL 8. A level costs 8.2% more than the level below it, on
+ * a curve anchored at 230,000 for level 2:
  *
- * Level 100 costs 519,995,268 and the whole climb 6,858,596,102.
+ *     cost of level L = 230,000 x 1.082 ^ (L - 2),   for L from 8 to 100
+ *
+ * Level 8 is the first level the curve prices for less than 40 times Path of
+ * Exile's own, which is why the opening ends at 7. Level 100 costs 519,995,268
+ * and the whole climb 6,857,673,266, which is 922,836 less than before the
+ * opening.
  *
  * WHERE 8.2% COMES FROM, because it is not a number anybody picked. Path of
  * Exile publishes its whole experience table, and 45.50% of the climb to level
@@ -26,7 +43,8 @@
  * at a fixed difficulty tier, so passing through all eight tiers is eight
  * campaigns; a campaign is about 26 dungeons; so the climb is 208 dungeons, and
  * 230,000 is what makes those 208 dungeons pay for exactly 99 levels. Level 100
- * arrives at the end of difficulty tier 8.
+ * arrives at the end of difficulty tier 8. The opening takes 0.013% off the
+ * climb and does not move that.
  *
  * WHY THE ROUNDING IS SPELLED OUT AND TESTED. A player pays each level's cost as
  * a WHOLE number, so the climb is the sum of 99 roundings and not the rounding
@@ -36,17 +54,17 @@
  * `sim/cataclysm_sim/scoring.py`, so a half goes up on both sides.
  *
  * WHAT THIS DOES NOT DO. It does not say what a kill is worth. The design says
- * an enemy's Enemy Score IS the experience it grants, and Enemy Score has no
- * port in this project at all -- it lives only in
- * `sim/cataclysm_sim/scoring.py`. Porting it needs three inputs the game does
- * not have yet: a dungeon's total floor count, its type and its sub-type.
- * `ACataclysmDungeonGameMode` says so itself -- "There is no bottom to the
- * dungeon, so the stairs go down for ever". Issue #926 is the port and the
- * stand-in it needs; issue #41 is where a real dungeon object lands.
+ * an enemy's Enemy Score IS the experience it grants, and that is
+ * `UCataclysmEnemyScore::ScoreFor`, the port of `sim/cataclysm_sim/scoring.py`
+ * (issue #926), read on the floor the creature died on -- its difficulty tier,
+ * the dungeon's type, sub-type and floor count, and its modifiers' score. A
+ * creature's death hands it to `ACataclysmPlayerState::GrantExperience`, which
+ * calls `Grant` below.
  *
- * `tools/tests/test_experience_curve_port.py` compares every constant and a
- * spread of levels against the Python, because two copies of a number are two
- * numbers and this repository has watched that go wrong twice already.
+ * `tools/tests/test_experience_curve_port.py` compares every constant, the
+ * opening's Path of Exile figures and every level's cost against the Python,
+ * because two copies of a number are two numbers and this repository has
+ * watched that go wrong twice already.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmExperience : public UObject
@@ -60,12 +78,24 @@ public:
 	/** A character is created at level 1 and has paid nothing. */
 	static constexpr int32 FirstLevel = 1;
 
-	/** How much more each level costs than the one below it. */
+	/** How much more each level from 8 up costs than the one below it. */
 	static constexpr double GrowthPerLevel = 0.082;
 
-	/** What the step from level 1 to level 2 costs. Every other level is this
-	 *  multiplied by the growth, so it sets the size of the whole climb. */
-	static constexpr int64 SecondLevelCost = 230000;
+	/** What the 8.2% curve prices level 2 at: every level from 8 to 100 is this
+	 *  multiplied by the growth, so it sets the size of the whole climb. It is
+	 *  NOT what level 2 costs, which is in the opening below. It was named
+	 *  `SecondLevelCost` until issue #2749 made that untrue. */
+	static constexpr int64 CurveLevelTwoCost = 230000;
+
+	/** The last level the opening prices. Levels 2 to this cost `OpeningScale`
+	 *  times Path of Exile's own cost for the same level; the table of those six
+	 *  figures is in `CataclysmExperience.cpp`. Issue #2749. */
+	static constexpr int32 LastOpeningLevel = 7;
+
+	/** How many times Path of Exile's own cost an opening level costs. A
+	 *  judgement, approved by the coordinating session on 2026-11-19: see the
+	 *  class comment. */
+	static constexpr int64 OpeningScale = 40;
 
 	/**
 	 * What the step from `Level - 1` to `Level` costs.

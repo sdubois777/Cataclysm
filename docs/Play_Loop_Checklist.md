@@ -110,7 +110,7 @@ Choose a dungeon on **another** city than the one you will walk. This is how you
   mana rise. Health and mana themselves do not rise with the maximum.
 - **In the log**, one line for each level gained:
 
-  `PLAY LOOP: level 2 reached, from level 1: 3120 experience into it, 245740 more to level 3`
+  `PLAY LOOP: level 2 reached, from level 1: 3120 experience into it, 46280 more to level 3`
 
 ### 8. Take the last floor's stairs
 

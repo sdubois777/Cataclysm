@@ -48,12 +48,21 @@ enum class ECataclysmPoolFill : uint8
  * the Default line's own 100 plus 15 a level all existed as data and never
  * reached a character.
  *
- * WHAT THE ARITHMETIC LOOKED LIKE AT 100 HEALTH. The creatures on a dungeon
- * floor deal, per hit: Imp 9, Hellhound 19, Corrupted Sentinel 22, Succubus 32,
- * Brute 35, Abyssal Warden 38, Gatekeeper 42. Against 100 health with no armour,
- * no resistance, no block and no flat reduction, a Brute killed the player in
- * three hits and a group of ten Imps in about one second. Health came back at 1
- * per second.
+ * WHAT THE ARITHMETIC LOOKED LIKE AT 100 HEALTH, WHEN THIS CLASS WAS WRITTEN.
+ * The creatures then dealt, per hit: Imp 9, Hellhound 19, Corrupted Sentinel
+ * 22, Succubus 32, Brute 35, Abyssal Warden 38, Gatekeeper 42. Against 100
+ * health with no armour, no resistance, no block and no flat reduction, a Brute
+ * killed the player in three hits and a group of ten Imps in about one second.
+ * Health came back at 1 per second.
+ *
+ * THOSE ARE THE SANDBOX'S FIXED FIGURES, AND NOT WHAT A DUNGEON FLOOR DEALS.
+ * This said "the creatures on a dungeon floor deal" them until issue #2749. The
+ * sandbox (`ACataclysmGameMode`) still places its Imps at 9 a hit, but since
+ * issue #1569 a dungeon floor builds each creature from the design's enemy
+ * score on that floor, with its damage scaled by the difficulty tier: at tier
+ * 1, a Common Imp on a 12-floor Basic dungeon hits for 0.35 on floor 1 and 5.3
+ * on floor 12 (`UCataclysmEnemyScore::DamageScale`, 0.05 at tier 1 since issue
+ * #2749).
  *
  * THE ENEMY NUMBERS WERE NEVER TUNED AGAINST THAT CHARACTER, and the simulation
  * says so in its own words. `sim/cataclysm_sim/enemy_stats.py` explains the two
@@ -63,10 +72,11 @@ enum class ECataclysmPoolFill : uint8
  * chosen against nothing." The player has none of those four layers, so they
  * were taking roughly ten times what the numbers were fitted for.
  *
- * THIS CLASS DOES NOT FIX THAT, and saying otherwise would be wrong. It supplies
- * the base stat line, which is one of the missing pieces. Levelling, gear that
- * reaches attributes, potions and leech are the others and none of them exists.
- * Issue #806 records the whole gap.
+ * THIS CLASS DOES NOT FIX THAT ALONE. It supplies the base stat line, which was
+ * one of the missing pieces. Gear that reaches attributes, life leech (issue
+ * #905), potions (`UCataclysmPotions`) and levelling (#2744) were the
+ * others, and none of them existed when this was written; all four do now.
+ * Issue #806 records the gap as it was.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmPlayerClassStats : public UBlueprintFunctionLibrary

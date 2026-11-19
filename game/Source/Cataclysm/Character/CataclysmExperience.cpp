@@ -5,6 +5,18 @@
 namespace
 {
 	/**
+	 * PATH OF EXILE'S OWN COST OF EACH OF LEVELS 2 TO 7, from its published
+	 * experience table (poedb.tw/us/Experience; poe2db.tw/us/Experience gives the
+	 * same figures). The opening charges `OpeningScale` times these. Issue #2749.
+	 * `tools/tests/test_experience_curve_port.py` compares them with
+	 * `sim/analyse_experience_curve.py`.
+	 */
+	constexpr int64 PathOfExileOpeningCosts[] = { 525, 1235, 2021, 3403, 5002, 7138 };
+	static_assert(static_cast<int32>(UE_ARRAY_COUNT(PathOfExileOpeningCosts))
+					  == UCataclysmExperience::LastOpeningLevel - 1,
+				  "one Path of Exile figure for each opening level, 2 to LastOpeningLevel");
+
+	/**
 	 * The cost of every level, worked out once and kept.
 	 *
 	 * A TABLE RATHER THAN A `pow` PER CALL, for two reasons that are not speed.
@@ -25,6 +37,14 @@ namespace
 			Built.SetNumZeroed(UCataclysmExperience::MaxLevel + 1);
 			for (int32 Level = 2; Level <= UCataclysmExperience::MaxLevel; ++Level)
 			{
+				// THE OPENING, levels 2 to 7: whole numbers already, so no
+				// rounding. See the class comment and issue #2749.
+				if (Level <= UCataclysmExperience::LastOpeningLevel)
+				{
+					Built[Level] = UCataclysmExperience::OpeningScale * PathOfExileOpeningCosts[Level - 2];
+					continue;
+				}
+
 				// FLOOR OF x + 0.5, WHICH IS NOT FMath::RoundToInt64's RULE ON
 				// EVERY PLATFORM and is not C's `round` either. It is what
 				// `_js_round` in sim/cataclysm_sim/scoring.py does, so a half
@@ -32,7 +52,7 @@ namespace
 				// integers. tools/tests/test_experience_curve_port.py compares
 				// them level by level.
 				const double Raw = static_cast<double>(
-					UCataclysmExperience::SecondLevelCost)
+					UCataclysmExperience::CurveLevelTwoCost)
 					* FMath::Pow(1.0 + UCataclysmExperience::GrowthPerLevel,
 								 static_cast<double>(Level - 2));
 				Built[Level] = static_cast<int64>(FMath::FloorToDouble(Raw + 0.5));
@@ -55,10 +75,10 @@ int64 UCataclysmExperience::CostOfLevel(int32 Level)
 int64 UCataclysmExperience::TotalToReach(int32 Level)
 {
 	// SUMMED FROM THE ROUNDED COSTS, not computed from a closed form. A player
-	// pays each level's whole-number cost, so the climb is the sum of 99
-	// roundings; the closed-form geometric sum rounded once gives a number 5
-	// lower over the whole climb. The Python model has the same two functions
-	// and a test asserting they differ, for the same reason.
+	// pays each level's whole-number cost, so the climb is the sum of the
+	// roundings; over the curve's levels, 8 to 100, the closed-form geometric
+	// sum rounded once gives a number 5 lower. The Python model has the same two
+	// functions and a test asserting they differ, for the same reason.
 	const int32 Top = FMath::Clamp(Level, FirstLevel, MaxLevel);
 	int64 Total = 0;
 	for (int32 Step = 2; Step <= Top; ++Step)

@@ -3322,9 +3322,11 @@ namespace
 	// TIERS 1 TO 8, RULED 2026-10-26 AND RE-FITTED 2026-10-30. `sim/cataclysm_sim/fight.py` holds the same two tables and
 	// its test reads these back, so the two cannot drift apart in silence. The principle is unchanged -- the Stalker is as
 	// dangerous as a Boss on the same floor -- and the numbers follow the Boss the game now builds from the enemy score,
-	// eased by the tier relief and with damage scaled by the tier (issue #1569).
+	// eased by the tier relief and with damage scaled by the tier (issue #1569). TIER 1'S DAMAGE RE-FITTED 2026-11-19,
+	// 0.22 to 0.06, when issue #2749 cut tier 1's damage scale from 0.20 to 0.05; tiers 2 to 8 and every health figure
+	// did not move.
 	constexpr float CorruptedStalkerHealthMultipliers[8] = {0.49f, 0.77f, 0.87f, 1.01f, 1.06f, 1.04f, 1.19f, 1.15f};
-	constexpr float CorruptedStalkerDamageMultipliers[8] = {0.22f, 0.58f, 1.01f, 1.39f, 1.68f, 1.86f, 2.40f, 2.97f};
+	constexpr float CorruptedStalkerDamageMultipliers[8] = {0.06f, 0.58f, 1.01f, 1.39f, 1.68f, 1.86f, 2.40f, 2.97f};
 }
 
 float UCataclysmDungeonModifierEffects::CorruptedStalkerHealthMultiplier(int32 DifficultyTier)

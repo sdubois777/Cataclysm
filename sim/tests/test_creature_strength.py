@@ -22,11 +22,18 @@ from cataclysm_sim import scoring
 from cataclysm_sim.config import TuningConfig
 
 
-def test_the_damage_scale_is_a_fifth_at_tier_one_rising_evenly_to_one_at_tier_eight():
-    assert [es.damage_scale(t) for t in range(1, 9)] == pytest.approx(
-        [0.20 + 0.80 * (t - 1) / 7 for t in range(1, 9)])
-    assert es.damage_scale(1) == pytest.approx(0.20)
+def test_the_damage_scale_is_a_twentieth_at_tier_one_and_tiers_two_to_eight_are_on_the_line_from_a_fifth():
+    """Issue #2749, ruled 2026-11-19: tier 1 is 0.05, refitted to a character that starts at level 1; tiers 2 to 8
+    stay where they were, on the line rising evenly from 0.20 at tier 1 to one at tier 8. Typed rather than read
+    from the constants, so a moved constant fails here."""
+    assert es.damage_scale(1) == pytest.approx(0.05)
+    assert [es.damage_scale(t) for t in range(2, 9)] == pytest.approx(
+        [0.20 + 0.80 * (t - 1) / 7 for t in range(2, 9)])
+    assert es.damage_scale(2) == pytest.approx(0.3142857)
     assert es.damage_scale(8) == pytest.approx(1.0)
+    # Held at the ends, as the game's DamageScale clamps.
+    assert es.damage_scale(0) == es.damage_scale(1)
+    assert es.damage_scale(9) == es.damage_scale(8)
 
 
 def test_the_relief_is_taken_off_the_score():

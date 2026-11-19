@@ -9105,8 +9105,10 @@ bool FCataclysmPartsSaveSoulsHungerTest::RunTest(const FString&)
 	using namespace CataclysmSaveLoadTest;
 	using Effects = UCataclysmDungeonModifierEffects;
 
-	// A HUNDREDTH OF A POINT, on figures of tens to hundreds; a creature without its souls' damage is short by a fifth
-	// or more of its figure.
+	// A HUNDREDTH OF A POINT. A creature without its souls' damage is short by 30% of its figure: three souls at 10%
+	// each. The figures were tens to hundreds when this was written; since issue #2749 cut tier 1's damage scale from
+	// 0.20 to 0.05 these tier 1 creatures' are about 2 to 3, so the shortfall is about 0.7 -- still about seventy
+	// times this tolerance.
 	constexpr float Tolerance = 0.01f;
 	const float Hunger = Effects::FamishedBeastsMultiplier(2);
 	const float Souls = 1.0f + Effects::SoulHarvestDamagePercentPerSoul * 3.0f / 100.0f;
@@ -9190,10 +9192,16 @@ bool FCataclysmPartsSaveSoulsHungerTest::RunTest(const FString&)
 					const float Lost = One->OwnAttackDamage() * One->DamageMultiplierProduct();
 					TestEqual(FString::Printf(TEXT("%s: after the load, own x the multipliers x the souls"), Which),
 							  PartsDamageOf(*One), Expected, Tolerance);
+					// IN MULTIPLES OF THE TOLERANCE, SINCE ISSUE #2749, AND NOT IN RAW DAMAGE. This control exists to
+					// show that the figure without the souls would fail the equality above, which compares at
+					// `Tolerance`, so its gap belongs in multiples of that tolerance. It was "> 1.0f", a gap in raw
+					// damage, which held while tier 1's creatures hit for tens; issue #2749 cut tier 1's damage scale
+					// from 0.20 to 0.05, and in window opening-w1 the gaps were 0.67 (2.90 against 2.23) -- about 67
+					// times the tolerance, under 1.0. Ruled by the coordinating session on 2026-11-19.
 					TestTrue(FString::Printf(TEXT("%s: CONTROL: that and the figure without the souls' damage, %.2f "
-												  "against %.2f, are told apart"),
+												  "against %.2f, are told apart by more than ten times the tolerance"),
 											 Which, Expected, Lost),
-							 FMath::Abs(Expected - Lost) > 1.0f);
+							 FMath::Abs(Expected - Lost) > 10.0f * Tolerance);
 				}
 				TestEqual(TEXT("souls first: the figure it was saved with"), PartsDamageOf(*SoulsFirst), SoulsFirstSaved,
 						  Tolerance);
@@ -9299,10 +9307,16 @@ bool FCataclysmPartsSaveCleanseVoidTest::RunTest(const FString&)
 				TestEqual(TEXT("souls under a cleanse, after the load: own x the multipliers x the souls"),
 						  PartsDamageOf(*Cleansed), CleansedExpected, Tolerance);
 				TestEqual(TEXT("and the figure it was saved with"), PartsDamageOf(*Cleansed), CleansedSaved, Tolerance);
+				// IN MULTIPLES OF THE TOLERANCE, SINCE ISSUE #2749, AND NOT IN RAW DAMAGE: the figure without the souls
+				// would fail the equality above, which compares at `Tolerance`. It was "> 1.0f", a gap in raw damage;
+				// issue #2749 cut tier 1's damage scale from 0.20 to 0.05, and in window opening-w1 the gap was 0.42
+				// (1.81 against 1.39) -- about 42 times the tolerance, under 1.0. Ruled by the coordinating session on
+				// 2026-11-19. The Void boss's control below is left in raw damage: the Void adds 12 flat, which the
+				// damage scale does not touch.
 				TestTrue(FString::Printf(TEXT("CONTROL: that and the figure without the souls' damage, %.2f against "
-											  "%.2f, are told apart"),
+											  "%.2f, are told apart by more than ten times the tolerance"),
 										 CleansedExpected, CleansedLost),
-						 FMath::Abs(CleansedExpected - CleansedLost) > 1.0f);
+						 FMath::Abs(CleansedExpected - CleansedLost) > 10.0f * Tolerance);
 
 				TestTrue(TEXT("the void's boss is the void's boss"), Mode.IsTheVoidsBoss(Boss));
 				TestEqual(TEXT("and still cleansed"),

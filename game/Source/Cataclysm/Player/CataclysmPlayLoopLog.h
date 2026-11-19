@@ -19,7 +19,7 @@ struct FCataclysmDayReport;
  *   PLAY LOOP: Walk pressed on dungeon 3, the Horde dungeon on Outpost (-3,0): travelling to the dungeon level
  *   PLAY LOOP: entered dungeon 3, floor 1 of 12; the walk owes 1 day
  *   PLAY LOOP: dungeon 3: down to floor 2 of 12; the walk owes 2 days
- *   PLAY LOOP: level 2 reached, from level 1: 3120 experience into it, 245740 more to level 3
+ *   PLAY LOOP: level 2 reached, from level 1: 3120 experience into it, 46280 more to level 3
  *   PLAY LOOP: cleared dungeon 3 on day 12: +1.0 empire points; level 4: back to the capital
  *   PLAY LOOP: in the capital on day 12, ...; while away, days 0 to 12: dungeons resolved: 5, ...
  *

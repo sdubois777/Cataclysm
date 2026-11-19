@@ -260,7 +260,13 @@ double UCataclysmEnemyScore::ContentRelief(int32 Tier)
 double UCataclysmEnemyScore::DamageScale(int32 Tier)
 {
 	const int32 Held = FMath::Clamp(Tier, LowestDifficultyTier, HighestDifficultyTier);
-	return DamageScaleAtFirstTier + (1.0 - DamageScaleAtFirstTier)
+	// TIER 1 IS ITS OWN FIGURE AND TIERS 2 TO 8 ARE ON THE LINE, since issue
+	// #2749: see the two constants.
+	if (Held == LowestDifficultyTier)
+	{
+		return DamageScaleAtFirstTier;
+	}
+	return DamageScaleLineAtFirstTier + (1.0 - DamageScaleLineAtFirstTier)
 		* static_cast<double>(Held - LowestDifficultyTier)
 		/ static_cast<double>(HighestDifficultyTier - LowestDifficultyTier);
 }

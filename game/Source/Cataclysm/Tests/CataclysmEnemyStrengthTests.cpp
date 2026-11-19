@@ -221,9 +221,14 @@ bool FCataclysmEnemyStrengthDamageScale::RunTest(const FString& Parameters)
 {
 	using namespace CataclysmEnemyStrengthTest;
 
-	TestEqual(TEXT("a fifth at tier 1"), UCataclysmEnemyScore::DamageScale(1), 0.20, 1e-9);
+	// ISSUE #2749, ruled 2026-11-19: tier 1 is a twentieth, refitted to a character that starts at level 1, and
+	// tiers 2 to 8 stay on the line rising evenly from a fifth at tier 1 to one at tier 8, where they were.
+	TestEqual(TEXT("a twentieth at tier 1"), UCataclysmEnemyScore::DamageScale(1), 0.05, 1e-9);
+	TestEqual(TEXT("tier 2 where it was, on the line from a fifth"), UCataclysmEnemyScore::DamageScale(2),
+			  0.20 + 0.80 / 7.0, 1e-9);
 	TestEqual(TEXT("one at tier 8"), UCataclysmEnemyScore::DamageScale(8), 1.0, 1e-9);
 	TestEqual(TEXT("evenly between"), UCataclysmEnemyScore::DamageScale(4), 0.20 + 0.80 * 3.0 / 7.0, 1e-9);
+	TestEqual(TEXT("held at tier 1 below the tiers there are"), UCataclysmEnemyScore::DamageScale(0), 0.05, 1e-9);
 
 	const UDataTable* Rarities = UCataclysmEnemyRarity::LoadEnemyRarityTable();
 	const UDataTable* Archetypes = UCataclysmEnemyStrength::LoadEnemyArchetypeTable();
@@ -244,8 +249,8 @@ bool FCataclysmEnemyStrengthDamageScale::RunTest(const FString& Parameters)
 		return false;
 	}
 	const double Strength = UCataclysmEnemyScore::StrengthScoreFor(Where, 0);
-	TestEqual(TEXT("its damage is the score's times a fifth"), static_cast<double>(Built.AttackDamage),
-			  Strength * Common->DamagePerScore * Brute->DamageShare * 0.20, 0.01);
+	TestEqual(TEXT("its damage is the score's times a twentieth"), static_cast<double>(Built.AttackDamage),
+			  Strength * Common->DamagePerScore * Brute->DamageShare * 0.05, 0.01);
 	TestEqual(TEXT("and its health is the score's, unscaled"), static_cast<double>(Built.Health),
 			  Strength * Common->HealthPerScore * Brute->HealthShare, 0.01);
 	TestEqual(TEXT("and its armour too"), static_cast<double>(Built.Armour),
