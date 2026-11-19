@@ -22,17 +22,21 @@ cell I12) and `game/Data/EnemyModifiers.csv`. Tests: `CataclysmThornsOfGlassTest
 
 ### SAID FIRST
 
-- **THE FIRST WINDOW FAILED, ON TWO OF THE SIX NEW TESTS, AND ONE CAUSE IS NOT ESTABLISHED.** Window
-  reflect-fixed-hit-w1 ("The first window", below) built, rebuilt and committed the DataTable asset, then ran
-  `Cataclysm.ThornsOfGlass.` alone: 6 performed, 4 succeeded, 2 failed, and it stopped there. One failure was the
-  test helper's fault and is corrected. The other read the creature losing 110 where the test expected the 100 the
-  player's hit sent; where the extra 10 came from was not found. That test is rewritten so that its own figures settle
-  it. No whole suite and no C++ guard proof has run.
-- **COMPILED, NOT YET RUN AFTER THAT.** The rebased branch compiled three ways ("Compiled (phase 2)", below). The count
-  and the five proofs' failures are registered below, before the window that will test them.
-- **ONE PYTHON TEST FAILS ON THE BRANCH UNTIL THE WINDOW**, as ruled (Q4): `test_datatable_assets_are_current`,
+- **RUN AND PASSED IN THE SECOND WINDOW**, reflect-fixed-hit-w2 at `e367e9fb` ("The second window", below): each of
+  the nine groups alone at its registered count; the whole suite 4872 performed, 4872 succeeded, 47 skipped halves, 0
+  test saves left behind; Python 7602 passed, 9 skipped; ruff clean; R1 to R5 all PROVED.
+- **THE FIRST WINDOW FAILED, ON TWO OF THE SIX NEW TESTS.** Window reflect-fixed-hit-w1 ("The first window", below)
+  built, rebuilt and committed the DataTable asset, then ran `Cataclysm.ThornsOfGlass.` alone: 6 performed, 4
+  succeeded, 2 failed, and it stopped there. One failure was the test helper's fault and is corrected. The other read
+  the creature losing 110 where the test expected the 100 the player's hit sent. The second window settled what that
+  test asks: **a retaliating player does not answer the strike back**; the strike back on its own moved the creature's
+  health by 0.
+- **NOT FOUND: WHY A PLAYER'S HIT SENT AT 100 TAKES 110 FROM THESE CREATURES.** The second window measured it with no
+  retaliation present and no ailment chance on the hit, so it is neither the strike back nor an answer to it, and it is
+  outside this slice. Reported to the coordinating session rather than filed.
+- **ONE PYTHON TEST FAILED ON THE BRANCH UNTIL THE FIRST WINDOW**, as ruled (Q4): `test_datatable_assets_are_current`,
   because `game/Data/EnemyModifiers.csv` changed and `DT_EnemyModifiers.uasset` is rebuilt only by the editor. The
-  window rebuilds it and commits it alone with `datatable_asset_sources.json`.
+  first window rebuilt it and committed it alone with `datatable_asset_sources.json` (`480518bf2`); it passes since.
 - **THE RESEARCH WAS NOT RE-VERIFIED.** No page this session could read confirmed the survey's two claims about other
   games ("What the research says", below). The owner's ruling is the authority for the shape.
 - **THREE TESTS WERE DELETED**, because the ruling inverts what they asserted (Q3). They are named, with why, under
@@ -230,6 +234,28 @@ change both; they are committed alone, and that commit is the head every later s
 registered with no failure: `test_datatable_assets_are_current` passes once the asset is rebuilt. **The first window
 did this** (`480518bf`, below), so the second window skips the step, and its Python run shows the asset current.
 
+**The guard proofs**, each through `tools/unreal_build.prove_cpp_guard`, its anchor checked to match exactly once as
+the proof reads the file (LF), its prefix checked against the base log's names and this slice's new ones:
+
+| Proof | Break | Prefix | Predicted |
+|---|---|---|---|
+| R1 | `UCataclysmEnemyModifiers::StrikesBack` answers false: `return Rows.Num() < 0 && Carries(...)` | `Cataclysm.ThornsOfGlass.` (6 tests) | 6 performed, 6 failed |
+| R2 | the retaliation branch no longer excludes a damage over time tick | `...ThornsOfGlass.ADamageOverTimeTickIsNotStruckBack` | 1 performed, 1 failed |
+| R3 | `StrikeBack`'s blow carries neither `bCannotBeRetaliatedAgainst` nor `bIsRetaliation` | `...ThornsOfGlass.AStrikeBackIsMarkedReturnedAndARetaliatingPlayerDoesNotAnswerIt` | 1 performed, 1 failed |
+| R4 | `ApplyModifierAttributes` writes 50 retaliation for the row again, as before the ruling | `...ThornsOfGlass.AHitOfTenAndAHitOfAThousandAreStruckBackForTheSame` | 1 performed, 1 failed |
+| R5 | Echo Chamber's self hit is `MaximumHealth * 10 / 100`, not the constant | `...DungeonModifierEffects.EchoChamberSelfHitIsFivePercentOfTheMaximumHealthBeforeTheDefences` | 1 performed, 1 failed |
+
+Each restored half: the same tests performed, none failed.
+
+**The Python proofs, run** (`tools/prove_guard.break_and_run`, against `tools/tests/test_thorns_of_glass_strikes_back.py`
+alone, because the branch's whole suite has its one expected failure until the window):
+
+| Proof | Break | Result |
+|---|---|---|
+| P1 | the row's sentence ends "for half of what it took." | PROVED: 1 failed, 2 passed; restored 3 passed. Failed: `test_the_row_says_the_ruled_sentence` |
+| P2 | R4's break | PROVED: 1 failed, 2 passed; restored 3 passed. Failed: `test_the_creature_writes_no_retaliation_for_its_rows` |
+| P3 | `StrikeBackDamagePercent = 50.0f` | PROVED: 1 failed, 2 passed; restored 3 passed. Failed: `test_the_strike_back_is_the_creatures_own_hit_at_its_whole_attack_damage` |
+
 ### The first window, reflect-fixed-hit-w1 (FAILED)
 
 Started by `gate_rf2749.py` at 23:31:20 once the pre-checks all passed, at the registration commit `4c877a04`; the lock
@@ -258,31 +284,65 @@ group's engine log `rf2749_alone_engine_ThornsOfGlass_480518bf.log`).
      player's carrying no ailment chance, and to print every figure ("THORNS STRIKE BACK UNANSWERED"). AND A FOURTH
      READING DECIDES IT BY ITSELF: `UCataclysmRetaliation::StrikeBack` called on its own, at the player holding 20
      retaliation, must leave the creature's health where it was. Agreed with the coordinating session: if it moves,
-     the code is fixed, not the test. If the strike back were answered, the test fails as before; R3 still breaks it.
+     the code is fixed, not the test. If the strike back were answered, the test fails as before; R3 still breaks it. **The second window settled
+     it** (below): the strike back is not answered, and the extra 10 belongs to the player's hit itself.
 - **Not Claude's connection to the editor (#2745).** That log's 56 `LogModelContextProtocol` lines are all from the
   editor's start, before the first test.
 
-**The guard proofs**, each through `tools/unreal_build.prove_cpp_guard`, its anchor checked to match exactly once as
-the proof reads the file (LF), its prefix checked against the base log's names and this slice's new ones:
+### The second window, reflect-fixed-hit-w2 (PASSED)
 
-| Proof | Break | Prefix | Predicted |
-|---|---|---|---|
-| R1 | `UCataclysmEnemyModifiers::StrikesBack` answers false: `return Rows.Num() < 0 && Carries(...)` | `Cataclysm.ThornsOfGlass.` (6 tests) | 6 performed, 6 failed |
-| R2 | the retaliation branch no longer excludes a damage over time tick | `...ThornsOfGlass.ADamageOverTimeTickIsNotStruckBack` | 1 performed, 1 failed |
-| R3 | `StrikeBack`'s blow carries neither `bCannotBeRetaliatedAgainst` nor `bIsRetaliation` | `...ThornsOfGlass.AStrikeBackIsMarkedReturnedAndARetaliatingPlayerDoesNotAnswerIt` | 1 performed, 1 failed |
-| R4 | `ApplyModifierAttributes` writes 50 retaliation for the row again, as before the ruling | `...ThornsOfGlass.AHitOfTenAndAHitOfAThousandAreStruckBackForTheSame` | 1 performed, 1 failed |
-| R5 | Echo Chamber's self hit is `MaximumHealth * 10 / 100`, not the constant | `...DungeonModifierEffects.EchoChamberSelfHitIsFivePercentOfTheMaximumHealthBeforeTheDefences` | 1 performed, 1 failed |
+Started by `gate_rf2749.py` at 23:57:19 once the pre-checks all passed, at `e367e9fb` (the test corrections of
+`cf5521fcb` and the direct reading of `e367e9fb2`, on the asset commit `480518bf2`); the runner took the lock and
+released it. The asset step was skipped: `480518bf2` already holds the rebuilt asset. The output is in this worktree's
+`.claude/windows/` (`rf2749_run.out`; the whole suite's engine log `rf2749_suite_engine_e367e9fb.log`; each proof's two
+halves `rf2749_R<n>_run1.log` and `rf2749_R<n>_run2.log`).
 
-Each restored half: the same tests performed, none failed.
+- **Build**: "Build: Succeeded - target already up to date, 0 actions, nothing compiled".
+- **Each group alone**, every one at its registered count, none failed:
 
-**The Python proofs, run** (`tools/prove_guard.break_and_run`, against `tools/tests/test_thorns_of_glass_strikes_back.py`
-alone, because the branch's whole suite has its one expected failure until the window):
+  | Group | Tests performed and succeeded |
+  |---|---|
+  | `Cataclysm.ThornsOfGlass.` | 6 |
+  | `Cataclysm.DungeonModifierEffects.` | 772 |
+  | `Cataclysm.NoTargetSpellDamage.` | 4 |
+  | `Cataclysm.EnemyModifiers.` | 57 |
+  | `Cataclysm.SaveLoad.` | 79 |
+  | `Cataclysm.HitLog.` | 6 |
+  | `Cataclysm.Retaliation.` | 11 |
+  | `Cataclysm.RetaliationUnmitigated.` | 6 |
+  | `Cataclysm.BlockReflect.` | 5 |
 
-| Proof | Break | Result |
-|---|---|---|
-| P1 | the row's sentence ends "for half of what it took." | PROVED: 1 failed, 2 passed; restored 3 passed. Failed: `test_the_row_says_the_ruled_sentence` |
-| P2 | R4's break | PROVED: 1 failed, 2 passed; restored 3 passed. Failed: `test_the_creature_writes_no_retaliation_for_its_rows` |
-| P3 | `StrikeBackDamagePercent = 50.0f` | PROVED: 1 failed, 2 passed; restored 3 passed. Failed: `test_the_strike_back_is_the_creatures_own_hit_at_its_whole_attack_damage` |
+- **The whole suite**: "Tests: 4872 tests performed, 4872 succeeded, 0 failed. 47 skipped part of what they check";
+  "Test saves: 836 written and deleted, 0 left behind"; "Declared: 4872 tests in the tree at e367e9fb2; 4872
+  performed, gap 0". The registered 4872, 47 and 0, matched. No "server/discover" line is in its engine log (#2745).
+- **Python**: "7602 passed, 9 skipped"; the JUnit file: 7611 tests, 0 failures, 0 errors, 9 skipped.
+  `test_datatable_assets_are_current` passed. ruff: "All checks passed!".
+- **The proofs**, all PROVED, each restored half performing the same tests with none failing:
+
+  | Proof | With the break in | Named failures |
+  |---|---|---|
+  | R1 | 6 performed, 0 succeeded, 6 failed | all six `Cataclysm.ThornsOfGlass.` tests |
+  | R2 | 1 performed, 1 failed | `ADamageOverTimeTickIsNotStruckBack` |
+  | R3 | 1 performed, 1 failed | `AStrikeBackIsMarkedReturnedAndARetaliatingPlayerDoesNotAnswerIt` |
+  | R4 | 1 performed, 1 failed | `AHitOfTenAndAHitOfAThousandAreStruckBackForTheSame` |
+  | R5 | 1 performed, 1 failed | `EchoChamberSelfHitIsFivePercentOfTheMaximumHealthBeforeTheDefences` |
+
+**What the strike-back test printed**, the same in the group run alone and in the whole suite:
+
+> THORNS STRIKE BACK UNANSWERED: sent 100.00, then 100.00; the creature lost 110.00 with no retaliation and 110.00
+> with 20; struck back for 40.00, then 40.00; a plain blow was answered for 8.00; the strike back alone took 40.00
+> (returned 40.00) and moved the creature's health by 0.00
+
+And in R3's broken half, where the strike back carried neither mark:
+
+> ... the creature lost 110.00 with no retaliation and 118.00 with 20; ... a plain blow was answered for 8.00; the
+> strike back alone took 40.00 (returned 40.00) and moved the creature's health by 8.00
+
+So **a retaliating player does not answer the strike back**, and without its marks it would be answered for 8, the
+same as the player's answer to the creature's plain blow of 40 at 20 retaliation. The first window's extra 10 was not an
+answer: the creature lost 110 to a hit sent at 100 with no retaliation present and no ailment chance on the hit. **Why
+the creature's own damage step takes a tenth more than was sent was not found.** It is the same with or without the
+strike back, so it is outside this slice; it is reported to the coordinating session, not filed.
 
 ### What the research says, and what it does not
 
