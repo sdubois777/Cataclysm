@@ -490,9 +490,10 @@ bool FCataclysmEmpireTreeScreenWalkTest::RunTest(const FString&)
 	Run->Clock->EnterDungeon(/*DungeonId*/ 7);
 	TestTrue(TEXT("CONTROL: the run says a walk is under way"), Run->IsAWalkUnderWay());
 
-	// THROUGH THE GAME INSTANCE, which every way of buying goes through.
+	// THROUGH THE GAME INSTANCE, which every way of buying goes through. MASONRY TECHNIQUES, which holds 7 of 15 and
+	// could take a point outside a walk: Structural Integrity is full here, and a refusal for that would prove nothing.
 	FString BuyReason;
-	const bool bBoughtDirectly = UCataclysmGameInstance::BuyEmpireTreePoint(Scene.World, StructuralIntegrity, BuyReason);
+	const bool bBoughtDirectly = UCataclysmGameInstance::BuyEmpireTreePoint(Scene.World, MasonryTechniques, BuyReason);
 	FString ChooseReason;
 	const bool bChoseDirectly = UCataclysmGameInstance::ChooseEmpireTreeOption(Scene.World, Foundations, 2, ChooseReason);
 
