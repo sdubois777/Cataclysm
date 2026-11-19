@@ -218,13 +218,13 @@ No failure's span holds a "server/discover" line (#2745). The lock was released 
 `game/Source/Cataclysm/Tests/CataclysmBuildSaveTests.cpp`, new, 6 in the new group `Cataclysm.BuildSave.`;
 `Cataclysm.PlayLoop.TheBuildLinesSayWhatChangedAndWhatIsLeft`, new; `Cataclysm.SaveTriggers.EachRecordIsWrittenForTheReasonsThatChangeIt`,
 changed; `tools/tests/test_a_build_change_is_saved.py`, new; `tools/tests/test_the_play_loop_is_logged_at_each_step.py`
-and `tools/tests/test_when_a_save_is_written.py`, changed. Issue [#2763](https://github.com/sdubois777/Cataclysm/issues/2763). **Written and not compiled: no Unreal
-build or test has run, and no C++ guard proof (the window registered below).**
+and `tools/tests/test_when_a_save_is_written.py`, changed. Issue [#2763](https://github.com/sdubois777/Cataclysm/issues/2763). **Compiled three ways ("Compiled", below);
+no Unreal test has run yet, and no C++ guard proof (the window registered below).**
 
 ### SAID FIRST
 
-- **WRITTEN, NOT COMPILED.** The machine was in use for the empire tree's compile, and the coordinating session gives
-  the window. The four Python guard proofs ran and proved (below).
+- **COMPILED, NOT YET RUN IN UNREAL.** The three compiles succeeded after the rebase onto `0b7b554d1` ("Compiled",
+  below); the coordinating session gives the window. The four Python guard proofs ran and proved (below).
 - **WHAT THE OWNER LOST, FROM THEIR OWN FILES, READ AND NOT CHANGED.** `game/Saved/Logs/Cataclysm.log` has no line for
   a passive or attribute spend, because the game logged none, so the log alone could not say when points were spent.
   Their character record, `Character_2DC9399B44FB50F7E4370CA31C10FEAB.sav`, holds level 2, 44,683 experience,
@@ -341,6 +341,19 @@ C++, registered for the window, by `unreal_build.prove_cpp_guard`:
 
 C2's prefix is narrowed to `Cataclysm.BuildSave.` in the proof's own run; the SaveTriggers half is checked in the
 group run. Restored, each must perform the same count with none failed.
+
+### Compiled
+
+2026-11-19, 11:04 to 11:12, at `eb3b01078` on `development` `0b7b554d1`, under the lock `buildsave-compile`, by
+`.claude/windows/compile_bs.py` started through `start_detached.py` (one hidden console, as the coordinating session
+ruled after the rebalance session's window was stopped twice by a closed console window). Free memory 13,490 MB, no
+editor. The lock was released at the end, and the tracked tree was clean at the same head after.
+
+| Build | Result |
+| :-- | :-- |
+| 1. The branch | "Build: Succeeded - 67 actions, 60 files compiled", 357 s; one warning, the engine's `CountBits` deprecation in `MicrosoftPlatformMath.h`, which issue #2756 holds |
+| 2. Each changed `.cpp` alone | "Build: Succeeded - 18 actions, 15 files compiled", 72 s; "[Adaptive Build] Excluded from Cataclysm unity file": all eight -- `CataclysmPlayerCharacter.cpp`, `CataclysmSkillAssignmentWidget.cpp`, `CataclysmPlayerState.cpp`, `CataclysmPlayLoopLog.cpp`, `CataclysmSaveTriggers.cpp`, `CataclysmBuildSaveTests.cpp`, `CataclysmPlayLoopTests.cpp` and `CataclysmSaveTriggerTests.cpp`; no warning |
+| 3. The unity files | "Build: Succeeded - 10 actions, 7 files compiled", 51 s; no warning |
 
 ---
 
