@@ -891,19 +891,24 @@ class TestWhatADungeonIs:
         besieging = source.split("UCataclysmEmpireRun::ApplySiegeDamage(", 1)[1]
         besieging = besieging.split("\n}", 1)[0]
 
-        assert "City->MaxDefence * SiegeDefenceBitePerDay" in besieging, (
+        # OF THE MAXIMUM WITH THE EMPIRE UPGRADE TREE since issue #2741 slice
+        # 3a, as the model's Siege takes its share of a `max_defense` the tree
+        # has raised: still a share of the city's maximum, the exception kept.
+        assert "Map->EffectiveMaxDefence(*City) * SiegeDefenceBitePerDay" in besieging, (
             "ApplySiegeDamage no longer takes a share of the city's maximum "
             "defence. That share is the project owner's deliberate exception "
             "of 2026-09-05 and not an oversight left over from issue #1331")
 
-        assert "City->MaxPopulation * SiegePopulationBitePerDay" in besieging, (
+        assert "Map->EffectiveMaxPopulation(*City) * SiegePopulationBitePerDay" in besieging, (
             "ApplySiegeDamage no longer takes a share of the city's maximum "
             "population. See above")
 
         # AND THE GROWTH IS STILL POINTS, which is the half of a Siege that city
         # health DOES protect against -- 2.5 points is 0.25% of an Outpost's
         # defence and 0.0125% of the Pillar's.
-        assert "SiegeDamageGrowthPerDay * Host.Value" in besieging, (
+        # `Host.DaysStood` since issue #2741 slice 3a, which gave each Siege
+        # host its sender for The Sentinel; the days it has stood, as before.
+        assert "SiegeDamageGrowthPerDay * Host.DaysStood" in besieging, (
             "ApplySiegeDamage no longer grows by a flat number of points per "
             "day the Siege has stood. Issue #1329")
 

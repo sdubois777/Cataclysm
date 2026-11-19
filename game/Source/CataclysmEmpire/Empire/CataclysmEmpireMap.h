@@ -36,6 +36,198 @@ enum class ECataclysmCityTier : uint8
 };
 
 /**
+ * What a bought empire tree reduces a dungeon's hit on one city to: the share of its defence damage and of its
+ * population damage the city still takes. 1 is the whole hit. Issue #2741 slice 3a.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSMEMPIRE_API FCataclysmTreeDamageFactors
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float Defence = 1.0f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float Population = 1.0f;
+};
+
+/**
+ * What the empire upgrade tree's city nodes add up to, as the empire layer reads it. Issue #2741 slice 3a.
+ *
+ * PLAIN NUMBERS, BECAUSE THIS MODULE MUST NOT DEPEND ON THE `Cataclysm` MODULE (`CataclysmEmpire.Build.cs`). The tree,
+ * its allocation and its effect table live over there; `UCataclysmEmpireTree::CityBonusesFor` adds the bought nodes up
+ * into one of these, and `UCataclysmEmpireRun::SetTreeBonuses` hands it to the run. The default is no tree at all, so a
+ * run nobody hands one to -- every test that builds a run by hand -- is the run the game had before.
+ *
+ * NOT SAVED, AND THAT IS THE RULE THIS SLICE IS BUILT ON. A loaded run is rebuilt through `Begin` and then has its saved
+ * cities written over it (`FCataclysmSaveApply::RunInto`), so a bonus folded into a saved maximum would be counted
+ * twice, or lost. Every number here is applied where the game READS the number it changes, and the saved numbers stay
+ * the tree's base: the coordinating session's ruling Q10 of 2026-11-18, under the owner's delegation. A bought node acts
+ * at once, and a respec takes it away at once.
+ *
+ * HOW THE NODES COMBINE, each a judgement of 2026-11-18 (S5) recorded in `docs/DECISIONS.md`: the maximum-defence and
+ * base-population increases are summed, as the simulation's `city_health_mult` sums six of them; each damage reduction
+ * is a factor, compounded per point as its text says "multiplicative" and as the simulation's `city_damage_mult`
+ * compounds them; Manifest Destiny compounds per point on total population, and Golden Age is its own factor on top.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSMEMPIRE_API FCataclysmEmpireTreeBonuses
+{
+	GENERATED_BODY()
+
+	// ---------------------------------------------------------------------
+	// Maximum defence: increases, summed. 0.05 is +5%.
+	// ---------------------------------------------------------------------
+
+	/** Every city: Foundation, Reinforced Walls, Imperial Decree. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float MaxDefenceAll = 0.0f;
+
+	/** Outposts: Fortified Gates, The Aegis of Hope. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float MaxDefenceOutposts = 0.0f;
+
+	/** Bulwarks: Masonry Techniques. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float MaxDefenceBulwarks = 0.0f;
+
+	/** Sanctuaries: Masonry Techniques, Monument Building. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float MaxDefenceSanctuaries = 0.0f;
+
+	/** Cities within `NearPillarRings` of the Pillar, the Pillar too: Beacon of Hope. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float MaxDefenceNearPillar = 0.0f;
+
+	/**
+	 * Every city, for each standing city holding a defensive upgrade: The Royal Engineer's Blessing. A defensive upgrade
+	 * is one that raises maximum defence or resists defence loss (S5).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float MaxDefencePerDefendedCity = 0.0f;
+
+	// ---------------------------------------------------------------------
+	// Maximum population: base increases summed, then one factor on the total.
+	// ---------------------------------------------------------------------
+
+	/** Every city: Metropolitan Growth, and Imperial Decree's -10%. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float BasePopulationAll = 0.0f;
+
+	/** Outposts: Urban Planning. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float BasePopulationOutposts = 0.0f;
+
+	/** Bulwarks: Imperial Census. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float BasePopulationBulwarks = 0.0f;
+
+	/** The factor on total empire population: Manifest Destiny compounded, times one plus Golden Age (capped). */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float TotalPopulationFactor = 1.0f;
+
+	// ---------------------------------------------------------------------
+	// Damage taken: factors, 1 being the whole hit.
+	// ---------------------------------------------------------------------
+
+	/** Defence and population damage, every city: Structural Integrity, Urban Fortification, Siege Resistance, Sovereign's Might. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float DamageTaken = 1.0f;
+
+	/** Population damage only, every city: Civil Defense. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float PopulationDamageTaken = 1.0f;
+
+	/** Defence and population damage, cities adjacent to the Pillar (ring 1): Supply Lines. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float DamageTakenAdjacentToPillar = 1.0f;
+
+	/** Population damage only, cities within `NearPillarRings` of the Pillar: Fortified Pillar. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float PopulationDamageTakenNearPillar = 1.0f;
+
+	/** The factor for ONE active Cataclysm type, raised to the number active: Unyielding Defense. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float DamageTakenPerActiveType = 1.0f;
+
+	/** Iron Will's reduction per point at a full empire, and its points; the reduction falls with the living share. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float LivingShareReductionPerPoint = 0.0f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 LivingSharePoints = 0;
+
+	/** Cities holding `UpgradesForImperialCommand` or more upgrades: Imperial Command. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float DamageTakenWithUpgrades = 1.0f;
+
+	/** Damage from a dungeon of the Cataclysm type with the most dungeons on the city, ties all counting: The Sentinel. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float DamageTakenFromCommonestType = 1.0f;
+
+	// ---------------------------------------------------------------------
+	// Days
+	// ---------------------------------------------------------------------
+
+	/** Added to every dungeon's resolve timer: Strategic Reserve, Bastion Spirit (capped). */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float ResolveDaysAll = 0.0f;
+
+	/** Added to the timers of dungeons on Outposts: Border Patrol, Emergency Shelters. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float ResolveDaysOutposts = 0.0f;
+
+	/** Added to the timers of dungeons on a city below `MartialLawDefenceFraction` of its defence: Martial Law. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float ResolveDaysBelowTenPercent = 0.0f;
+
+	/** Added to every gap between surges after the first: The Flood Barrier. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float SurgeGapDays = 0.0f;
+
+	// ---------------------------------------------------------------------
+	// The words in the node texts that are rules rather than numbers
+	// ---------------------------------------------------------------------
+
+	/** "within 2 rings of the Pillar": rings 0 to 2, the Pillar included (S5). */
+	static constexpr int32 NearPillarRings = 2;
+
+	/** "adjacent to the Pillar": ring 1 (S5). */
+	static constexpr int32 AdjacentToPillarRing = 1;
+
+	/** Imperial Command's "Cities with 2+ upgrades". */
+	static constexpr int32 UpgradesForImperialCommand = 2;
+
+	/** Martial Law's "At <10% City Health". */
+	static constexpr float MartialLawDefenceFraction = 0.1f;
+
+	// ---------------------------------------------------------------------
+	// What a city gets
+	// ---------------------------------------------------------------------
+
+	/** The factor on a city's maximum defence: one plus every increase that reaches it. */
+	float MaxDefenceFactorFor(ECataclysmCityTier Tier, int32 Ring, int32 CitiesWithADefensiveUpgrade) const;
+
+	/** The factor on a city's maximum population: one plus every base increase that reaches it, times the total factor. */
+	float MaxPopulationFactorFor(ECataclysmCityTier Tier) const;
+
+	/**
+	 * What a dungeon's hit on a city is reduced to.
+	 *
+	 * @param Ring the city's ring; 0 is the Pillar
+	 * @param ActiveCataclysmTypes how many Cataclysms the run faces
+	 * @param LivingShare the empire's living population over its maximum, 0 to 1
+	 * @param UpgradesHeld how many upgrades the city holds
+	 * @param bFromTheCommonestType whether the dungeon is of a Cataclysm type with the most dungeons on the city
+	 */
+	FCataclysmTreeDamageFactors DamageFactorsFor(int32 Ring, int32 ActiveCataclysmTypes, float LivingShare,
+												 int32 UpgradesHeld, bool bFromTheCommonestType) const;
+
+	/** The days added to the timer of a dungeon standing on a city of this tier, at this share of its defence. */
+	float ResolveDaysFor(ECataclysmCityTier Tier, float DefenceFraction) const;
+};
+
+/**
  * One city on the empire map.
  *
  * A PORT OF `world.City` in `sim/cataclysm_sim/world.py`.
@@ -186,8 +378,9 @@ struct CATACLYSMEMPIRE_API FCataclysmCity
 	 * stacks as well as its tier, up to twice at ten; see
 	 * `UCataclysmSurgeScheduler::TargetWeightForSender`.
 	 *
-	 * SAVED WITH THE REST OF THE CITY, AND NOTHING LOADS IT BACK, because nothing
-	 * loads a run's cities back at all yet. Issue #753.
+	 * SAVED WITH THE REST OF THE CITY, and put back by `FCataclysmSaveApply::RunInto`.
+	 * Until issue #2741 slice 3a this said nothing loaded it back, which stopped
+	 * being true when the run's cities were first loaded.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 VoidStacks = 0;
@@ -207,8 +400,9 @@ struct CATACLYSMEMPIRE_API FCataclysmCity
 	 * KEPT WHEN THE CITY FALLS, as the Void stacks are, until its days run
 	 * out; nothing clears it.
 	 *
-	 * SAVED WITH THE REST OF THE CITY, AND NOTHING LOADS IT BACK, because
-	 * nothing loads a run's cities back at all yet. Issue #753.
+	 * SAVED WITH THE REST OF THE CITY, and put back by
+	 * `FCataclysmSaveApply::RunInto`. Until issue #2741 slice 3a this said
+	 * nothing loaded it back.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	FName LeftEdict = NAME_None;
@@ -284,7 +478,12 @@ struct CATACLYSMEMPIRE_API FCataclysmCity
 
 	bool IsAlive() const { return !bFallen; }
 
-	/** Defence as a fraction of its maximum, 0 to 1. Zero if it has none. */
+	/**
+	 * Defence as a fraction of its maximum, 0 to 1. Zero if it has none.
+	 *
+	 * THE BASE, WITHOUT THE EMPIRE UPGRADE TREE. The map and the city screen read
+	 * `UCataclysmEmpireMap::DefenceFractionOf`, which applies it. Issue #2741 slice 3a.
+	 */
 	float DefenceFraction() const
 	{
 		return MaxDefence <= 0.0f ? 0.0f : Defence / MaxDefence;
@@ -486,6 +685,16 @@ public:
 	int32 UpgradeSlots = UCataclysmCityUpgradeRules::SlotsNormally;
 
 	/**
+	 * What the empire upgrade tree adds to every city, as the run hands it over. Issue #2741 slice 3a.
+	 *
+	 * NOT SAVED. Each city's `MaxDefence` and `MaxPopulation` stay the base -- the tier's figure and what city upgrades
+	 * added -- and the readers below apply this; see `FCataclysmEmpireTreeBonuses` for why. A map built on its own,
+	 * which is every map a test builds by hand, holds none, and is the map the game had before.
+	 */
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	FCataclysmEmpireTreeBonuses TreeBonuses;
+
+	/**
 	 * Lays out the 25 cities and links their lanes. Discards whatever was here
 	 * before, so a second call is a fresh empire rather than a doubled one.
 	 */
@@ -589,6 +798,42 @@ public:
 	/** How many there would be with every city intact. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	float TotalMaxPopulation() const;
+
+	// ----------------------------------------------------------------------
+	// What the empire upgrade tree makes of a city -- issue #2741 slice 3a
+	// ----------------------------------------------------------------------
+
+	/**
+	 * A city's maximum defence with the empire upgrade tree: its own `MaxDefence` times the tree's factor for its tier
+	 * and ring. EVERY READER OF A CITY'S MAXIMUM ASKS THIS RATHER THAN THE FIELD, because the field is the saved base.
+	 */
+	float EffectiveMaxDefence(const FCataclysmCity& City) const;
+
+	/** A city's maximum population with the empire upgrade tree. */
+	float EffectiveMaxPopulation(const FCataclysmCity& City) const;
+
+	/**
+	 * A city's defence as the game reads it: what it holds, and never more than its maximum.
+	 *
+	 * A RAISED MAXIMUM LEAVES WHAT A CITY HOLDS WHERE IT IS, AND A LOWERED ONE IS READ AS THE SMALLER OF THE TWO. The
+	 * coordinating session's S1 of 2026-11-18, a judgement for the owner, matching this game's rule for a player's
+	 * health in `CataclysmVitalAttributeSet.cpp` (raising the maximum raises nothing; a lowered one brings health down
+	 * to it). So a point bought mid-run makes a full Outpost read "1000 of 1050", and a respec writes nothing: the
+	 * smaller of the two is read until a hit writes it.
+	 */
+	float DefenceOf(const FCataclysmCity& City) const;
+
+	/** A city's population as the game reads it, on `DefenceOf`'s rule. */
+	float PopulationOf(const FCataclysmCity& City) const;
+
+	/** `DefenceOf` over `EffectiveMaxDefence`, 0 to 1, zero when there is no maximum. */
+	float DefenceFractionOf(const FCataclysmCity& City) const;
+
+	/** How many standing cities hold a defensive upgrade, which The Royal Engineer's Blessing counts. */
+	int32 CitiesWithADefensiveUpgrade() const;
+
+	/** Whether an upgrade raises maximum defence or resists defence loss: the reading of "defensive upgrade" (S5). */
+	static bool IsADefensiveUpgrade(const FCataclysmCityUpgrade& Upgrade);
 
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	int32 FallenCityCount() const;
@@ -723,13 +968,15 @@ public:
 	 *
 	 * WHICH EFFECTS ARE APPLIED HERE. The two that raise a maximum and the two
 	 * that restore, because all four change a city's numbers the moment they are
-	 * bought. The two resistances are applied in `Bite` instead, and everything
+	 * bought. The two resistances are applied in `Damage` instead, and everything
 	 * that involves a dungeon or a day is the run's.
 	 *
 	 * A RAISED MAXIMUM RAISES CURRENT DEFENCE BY THE SAME AMOUNT, so a city at
 	 * full defence stays at full defence and a damaged one stays short by the
 	 * same absolute figure. Without that, buying "increase max defence by 20%"
-	 * would make an untouched city read as 83% damaged.
+	 * would make an untouched city read as 83% damaged. THE FIGURE IS WHAT THE
+	 * MAXIMUM WITH THE EMPIRE UPGRADE TREE ROSE BY, for the same reason: a full
+	 * city under the tree is full at its effective maximum. Issue #2741 slice 3a.
 	 *
 	 * @return false only when there is no such city.
 	 */
@@ -751,7 +998,8 @@ public:
 
 	/**
 	 * A city is retaken: the lane it was sealing closes again, and it comes back
-	 * with half its defence and half its people.
+	 * with half its defence and half its people -- half of each maximum with the
+	 * empire upgrade tree, since issue #2741 slice 3a.
 	 *
 	 * AND WITH NO VOID STACKS, since 2026-10-22: retaking a city clears them, as
 	 * `Simulation._retake` does, ruled by the coordinating session on

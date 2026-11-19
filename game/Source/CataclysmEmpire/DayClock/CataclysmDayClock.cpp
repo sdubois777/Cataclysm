@@ -110,7 +110,12 @@ const FCataclysmDungeonTimer* UCataclysmDayClock::FindTimer(int32 DungeonId) con
 float UCataclysmDayClock::DaysUntilResolveFor(int32 DungeonId) const
 {
 	const FCataclysmDungeonTimer* Timer = FindTimer(DungeonId);
-	return Timer ? Timer->DaysUntilResolve : -1.0f;
+	return Timer ? Timer->DaysUntilResolve + ResolveBonusDaysFor(DungeonId) : -1.0f;
+}
+
+float UCataclysmDayClock::ResolveBonusDaysFor(int32 DungeonId) const
+{
+	return ResolveBonusDays ? ResolveBonusDays(DungeonId) : 0.0f;
 }
 
 void UCataclysmDayClock::EnterDungeon(int32 DungeonId)
@@ -149,7 +154,9 @@ TArray<int32> UCataclysmDayClock::AdvanceDay()
 
 	for (FCataclysmDungeonTimer& Timer : Timers)
 	{
-		if (Timer.DaysUntilResolve > 0.0f)
+		// WITH THE EMPIRE UPGRADE TREE'S DAYS, which are not in the timer. A respec that takes them away resolves a
+		// timer whose own days have already run out on the next day passed. Issue #2741 slice 3a.
+		if (Timer.DaysUntilResolve + ResolveBonusDaysFor(Timer.DungeonId) > 0.0f)
 		{
 			continue;
 		}

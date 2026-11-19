@@ -82,12 +82,15 @@ FString UCataclysmCityScreenLayout::StatusTextFor(const UCataclysmEmpireRun* Run
 	// THE SAME THREE FACTS THE EMPIRE OVERVIEW'S DETAIL LINE GIVES, and worded
 	// the same way, so moving from the map to a city does not restate the city
 	// in different words.
+	//
+	// WITH THE EMPIRE UPGRADE TREE: what the city is read as holding, of its maximum with the tree. Issue #2741 slice 3a.
+	const UCataclysmEmpireMap* Map = Run->Map;
 	Parts.Add(FString::Printf(TEXT("defence %.0f of %.0f (%.0f%%)"),
-							  City->Defence, City->MaxDefence,
-							  City->DefenceFraction() * 100.0f));
+							  Map->DefenceOf(*City), Map->EffectiveMaxDefence(*City),
+							  Map->DefenceFractionOf(*City) * 100.0f));
 
-	Parts.Add(FString::Printf(TEXT("%.0f of %.0f people"), City->Population,
-							  City->MaxPopulation));
+	Parts.Add(FString::Printf(TEXT("%.0f of %.0f people"), Map->PopulationOf(*City),
+							  Map->EffectiveMaxPopulation(*City)));
 
 	// THE VOID'S COUNT, AND ONLY WHEN IT HAS BEGUN, so a city the Void has not
 	// touched reads exactly as it did. Out of the ten that erase it.

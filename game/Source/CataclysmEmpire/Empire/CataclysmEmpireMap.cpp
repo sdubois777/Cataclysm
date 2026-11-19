@@ -94,8 +94,12 @@ void UCataclysmEmpireMap::Build()
 			City.Name = FString::Printf(TEXT("%s (%d,%d)"), *TierName(City.Tier), R, C);
 			City.MaxDefence = MaxDefenceFor(City.Tier);
 			City.MaxPopulation = MaxPopulationFor(City.Tier);
-			City.Defence = City.MaxDefence;
-			City.Population = City.MaxPopulation;
+
+			// FULL AT THE MAXIMUM WITH THE EMPIRE UPGRADE TREE, so a run begun with the tree starts every city full at
+			// the raised figure, as the simulation's `build_empire` does (S1). The tree is the run's, handed to this map
+			// before `Build`; a map built on its own has none. Issue #2741 slice 3a.
+			City.Defence = EffectiveMaxDefence(City);
+			City.Population = EffectiveMaxPopulation(City);
 
 			if (Ring == 0)
 			{
@@ -386,7 +390,7 @@ float UCataclysmEmpireMap::TotalPopulation() const
 	{
 		if (City.IsAlive())
 		{
-			Total += City.Population;
+			Total += PopulationOf(City);
 		}
 	}
 
@@ -402,10 +406,65 @@ float UCataclysmEmpireMap::TotalMaxPopulation() const
 	// not shrink as cities are lost.
 	for (const FCataclysmCity& City : Cities)
 	{
-		Total += City.MaxPopulation;
+		Total += EffectiveMaxPopulation(City);
 	}
 
 	return Total;
+}
+
+// ---------------------------------------------------------------------------
+// What the empire upgrade tree makes of a city -- issue #2741 slice 3a
+// ---------------------------------------------------------------------------
+
+float UCataclysmEmpireMap::EffectiveMaxDefence(const FCataclysmCity& City) const
+{
+	return City.MaxDefence * TreeBonuses.MaxDefenceFactorFor(City.Tier, City.Ring(), CitiesWithADefensiveUpgrade());
+}
+
+float UCataclysmEmpireMap::EffectiveMaxPopulation(const FCataclysmCity& City) const
+{
+	return City.MaxPopulation * TreeBonuses.MaxPopulationFactorFor(City.Tier);
+}
+
+float UCataclysmEmpireMap::DefenceOf(const FCataclysmCity& City) const
+{
+	return FMath::Min(City.Defence, EffectiveMaxDefence(City));
+}
+
+float UCataclysmEmpireMap::PopulationOf(const FCataclysmCity& City) const
+{
+	return FMath::Min(City.Population, EffectiveMaxPopulation(City));
+}
+
+float UCataclysmEmpireMap::DefenceFractionOf(const FCataclysmCity& City) const
+{
+	const float Max = EffectiveMaxDefence(City);
+	return Max <= 0.0f ? 0.0f : DefenceOf(City) / Max;
+}
+
+bool UCataclysmEmpireMap::IsADefensiveUpgrade(const FCataclysmCityUpgrade& Upgrade)
+{
+	return Upgrade.Effect == ECataclysmCityUpgradeEffect::MaxDefence
+		|| Upgrade.Effect == ECataclysmCityUpgradeEffect::ResistDefenceLoss;
+}
+
+int32 UCataclysmEmpireMap::CitiesWithADefensiveUpgrade() const
+{
+	// NOTHING TO COUNT WITHOUT THE NODE, and the count is read for every city's maximum.
+	if (TreeBonuses.MaxDefencePerDefendedCity == 0.0f)
+	{
+		return 0;
+	}
+
+	int32 Count = 0;
+	for (const FCataclysmCity& City : Cities)
+	{
+		if (City.IsAlive() && City.Upgrades.ContainsByPredicate(&UCataclysmEmpireMap::IsADefensiveUpgrade))
+		{
+			++Count;
+		}
+	}
+	return Count;
 }
 
 int32 UCataclysmEmpireMap::FallenCityCount() const
@@ -478,6 +537,11 @@ bool UCataclysmEmpireMap::Damage(int32 CityId, float DefencePoints,
 	const float PopulationTaken =
 		FMath::Max(0.0f, PopulationPoints) * (1.0f - PopulationResisted);
 
+	// FROM WHAT THE CITY IS READ AS HOLDING, so a hit after a respec lowered a maximum starts from that maximum rather
+	// than from a figure above it (S1). Issue #2741 slice 3a.
+	City->Defence = DefenceOf(*City);
+	City->Population = PopulationOf(*City);
+
 	City->Defence -= DefenceTaken;
 	City->Population -= PopulationTaken;
 	City->Population = FMath::Max(0.0f, City->Population);
@@ -503,8 +567,8 @@ bool UCataclysmEmpireMap::Bite(int32 CityId, float DefenceFraction,
 	// on population and the fall check exist once rather than twice. See the
 	// header: this path survives for the Siege sub-type's deliberate exception
 	// and for nothing else.
-	return Damage(CityId, City->MaxDefence * FMath::Max(0.0f, DefenceFraction),
-				  City->MaxPopulation * FMath::Max(0.0f, PopulationFraction));
+	return Damage(CityId, EffectiveMaxDefence(*City) * FMath::Max(0.0f, DefenceFraction),
+				  EffectiveMaxPopulation(*City) * FMath::Max(0.0f, PopulationFraction));
 }
 
 bool UCataclysmEmpireMap::AddVoidStacks(int32 CityId, int32 Stacks)
@@ -595,6 +659,12 @@ bool UCataclysmEmpireMap::AddUpgrade(int32 CityId,
 		return false;
 	}
 
+	// THE MAXIMA WITH THE EMPIRE UPGRADE TREE BEFORE THE UPGRADE, so a raise below adds what the effective maximum rose
+	// by. Read before the upgrade is recorded: recording it can make this city one The Royal Engineer's Blessing counts.
+	// Issue #2741 slice 3a.
+	const float DefenceMaxBefore = EffectiveMaxDefence(*City);
+	const float PopulationMaxBefore = EffectiveMaxPopulation(*City);
+
 	City->Upgrades.Add(Upgrade);
 
 	switch (Upgrade.Effect)
@@ -603,38 +673,40 @@ bool UCataclysmEmpireMap::AddUpgrade(int32 CityId,
 	{
 		// CURRENT DEFENCE RISES BY THE SAME ABSOLUTE AMOUNT. See the header: a
 		// full city has to stay full, and a damaged one has to stay short by
-		// what it was short by.
-		const float Added = City->MaxDefence * Upgrade.Value;
-		City->MaxDefence += Added;
-		City->Defence += Added;
+		// what it was short by. The amount is what the maximum WITH THE TREE
+		// rose by, read from what the city is read as holding.
+		City->MaxDefence += City->MaxDefence * Upgrade.Value;
+		City->Defence = DefenceOf(*City) + FMath::Max(0.0f, EffectiveMaxDefence(*City) - DefenceMaxBefore);
 		break;
 	}
 
 	case ECataclysmCityUpgradeEffect::MaxPopulation:
 	{
-		const float Added = City->MaxPopulation * Upgrade.Value;
-		City->MaxPopulation += Added;
-		City->Population += Added;
+		City->MaxPopulation += City->MaxPopulation * Upgrade.Value;
+		City->Population = PopulationOf(*City) + FMath::Max(0.0f, EffectiveMaxPopulation(*City) - PopulationMaxBefore);
 		break;
 	}
 
 	case ECataclysmCityUpgradeEffect::RestoreDefence:
+	{
 		// A ONE-TIME RESTORE, AND IT CANNOT OVERFILL. "Restore city's defenses
-		// by 50%" on a city at 80% leaves it at 100 rather than 130.
-		City->Defence = FMath::Min(City->MaxDefence,
-								   City->Defence
-									   + City->MaxDefence * Upgrade.Value);
+		// by 50%" on a city at 80% leaves it at 100 rather than 130. Of the
+		// maximum with the empire upgrade tree.
+		const float Max = EffectiveMaxDefence(*City);
+		City->Defence = FMath::Min(Max, DefenceOf(*City) + Max * Upgrade.Value);
 		break;
+	}
 
 	case ECataclysmCityUpgradeEffect::RestorePopulation:
-		City->Population = FMath::Min(City->MaxPopulation,
-									  City->Population
-										  + City->MaxPopulation * Upgrade.Value);
+	{
+		const float Max = EffectiveMaxPopulation(*City);
+		City->Population = FMath::Min(Max, PopulationOf(*City) + Max * Upgrade.Value);
 		break;
+	}
 
 	default:
 		// EVERY OTHER EFFECT IS SOMEBODY ELSE'S. The two resistances are read in
-		// `Bite`, the two interval heals and the two dungeon effects are the
+		// `Damage`, the two interval heals and the two dungeon effects are the
 		// run's, and the rest are not built. Doing nothing here is correct
 		// rather than a gap.
 		break;
@@ -673,8 +745,8 @@ bool UCataclysmEmpireMap::Retake(int32 CityId)
 	}
 
 	City->bFallen = false;
-	City->Defence = City->MaxDefence * RetakenFraction;
-	City->Population = City->MaxPopulation * RetakenFraction;
+	City->Defence = EffectiveMaxDefence(*City) * RetakenFraction;
+	City->Population = EffectiveMaxPopulation(*City) * RetakenFraction;
 
 	// A RETAKEN CITY'S VOID STACKS ARE CLEARED, as `Simulation._retake` clears
 	// them, ruled by the coordinating session on 2026-10-16. It fell with fewer

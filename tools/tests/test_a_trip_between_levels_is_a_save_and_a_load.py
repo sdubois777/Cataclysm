@@ -157,7 +157,9 @@ def test_every_place_a_city_is_damaged_records_its_hit() -> None:
 def test_recording_a_hit_changes_nothing_but_the_list_of_hits() -> None:
     body = function_body(code(RUN_CPP), "void NoteHitIn(")
     calls = set(re.findall(r"(?:->|\.)(\w+)\(", body))
-    assert calls <= {"Find", "AddDefaulted_GetRef"}, (
+    # `DefenceOf` AND `PopulationOf` ONLY READ: the city as the game reads it, never more than its maximum with the
+    # empire upgrade tree, so a hit after a respec lowered a maximum records what it took. Issue #2741 slice 3a.
+    assert calls <= {"Find", "AddDefaulted_GetRef", "DefenceOf", "PopulationOf"}, (
         f"NoteHitIn calls {sorted(calls)}; recording a hit is additive only (ruled 2026-11-17), so it may only read "
         "the city and add to the report's hits.")
     # EVERY ASSIGNMENT is to the new hit's own fields, or declares the city read or the hit added.

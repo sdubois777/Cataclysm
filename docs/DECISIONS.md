@@ -2,6 +2,229 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-19 — The empire upgrade tree's 31 city nodes act on the empire: maximum defence and population, the damage a city takes, and timer and surge days, each read where the number is read and never saved; a raised maximum leaves what a city holds where it is (#2741, slice 3a)
+
+**Affects:** `FCataclysmEmpireTreeBonuses` and `FCataclysmTreeDamageFactors`, new, in
+`game/Source/CataclysmEmpire/Empire/CataclysmEmpireMap.h`, with their bodies in `CataclysmEmpireTreeBonuses.cpp`, new;
+`UCataclysmEmpireMap` (`TreeBonuses`, `EffectiveMaxDefence`, `EffectiveMaxPopulation`, `DefenceOf`, `PopulationOf`,
+`DefenceFractionOf`, `CitiesWithADefensiveUpgrade`, `IsADefensiveUpgrade`, new; `Build`, `Damage`, `AddUpgrade`, the
+bite, the retake and the population totals read the tree); `UCataclysmEmpireRun` (`TreeBonuses`, `SetTreeBonuses`,
+`TreeDamageFactorsFor`, `IsTheCommonestTypeOn`, `ResolveBonusDaysFor`, new; the ordinary, Quest and Siege hits, the
+clear restore and the interval heal read it); `UCataclysmDayClock::ResolveBonusDays`, new, read by `DaysUntilResolveFor`
+and `AdvanceDay`; `UCataclysmSurgeScheduler::GapBonusDays` and `GapBonusDaysNow`, new, read by `IsDue` and
+`DaysUntilNextSurge`; `ECataclysmEmpireTreeEffect` and `FCataclysmEmpireTreeEffectRow`, new,
+`game/Source/Cataclysm/Data/CataclysmDataRows.h`; `UCataclysmEmpireTree::LoadEffectTable` and `CityBonusesFor`, new;
+`UCataclysmGameInstance::EmpireTreeBonusesFor` and `RefreshEmpireTreeBonuses`, new, called when a run begins, after a
+load (`CataclysmSaveLoad.cpp`), and after a point is bought, an option chosen and a respec made; the city label, the
+city screen's status line, the map's hover text and the console print read the effective values;
+`game/Data/EmpireTreeEffects.csv`, new, and `DT_EmpireTreeEffects`, new (`tools/generate_datatables.py`,
+`EMPIRE_TREE_EFFECT_KINDS` and `EMPIRE_TREE_EFFECTS`, new; `tools/generate_datatable_assets.py`);
+`sim/analyse_empire_tree_caps.py`, new; `docs/Play_Loop_Checklist.md` step 13, new, and step 14's load check;
+`game/README.md`. Tests: `game/Source/Cataclysm/Tests/CataclysmEmpireTreeCityTests.cpp`, new, 17 in the new group
+`Cataclysm.EmpireTreeCity.`; `CataclysmDataTableTests.cpp`, the new table checked;
+`tools/tests/test_empire_tree_effects_match_their_texts.py` and
+`tools/tests/test_empire_tree_bonuses_are_handed_to_every_run.py`, new; `sim/tests/test_analysis_scripts.py`,
+`tools/tests/test_game_readme_is_true.py`, `test_a_trip_between_levels_is_a_save_and_a_load.py`,
+`test_surge_port.py` and `test_void_stacks_in_the_model_and_in_the_game.py`, changed. Issue
+[#2741](https://github.com/sdubois777/Cataclysm/issues/2741), slice 3a; slice 3b is the seven event rules.
+
+### SAID FIRST
+
+- **COMPILED, RUN AND PROVED IN ONE WINDOW (tree-3a-w1).** At `71a64f810` on development `58b5ddb51`:
+  - `DT_EmpireTreeEffects.uasset` was made by the DataTable asset generator and committed with its record line. No
+    other file changed.
+  - The thirteen groups each passed alone at their registered counts.
+  - The whole Unreal suite performed the registered 4891, all succeeding, with 47 skipped halves and "836 written and
+    deleted, 0 left behind".
+  - Python passed, 7637 with 9 skipped, and ruff passed.
+  - The five C++ guard proofs each proved, failing exactly the registered tests with exactly the registered number of
+    assertions; each restored half passed 17 of 17.
+  - All three of phase 2's compiles succeeded.
+- **A PLAYER WHO BUYS A MAXIMUM-DEFENCE NODE SEES A CITY BELOW FULL.** Foundation 1 raises an Outpost's maximum from
+  1000 to 1050 and leaves its defence at 1000, so the city screen reads "defence 1000 of 1050 (95%)". That is ruling S1
+  (below), a judgement of the coordinating session's and this session's, for the owner to review. A run begun after the
+  buy builds its cities full at the raised maximum.
+- **NOTHING NEW IS SAVED.** The run record stays at version 8. The bonuses are worked out from the character's tree
+  whenever a run begins or loads and whenever the tree changes, and are read where each number is read.
+- **TWO CORRECTIONS TO THE PLAN THE RULINGS WERE MADE ON**, both found before this entry was written and both sent to
+  the coordinating session: Golden Age's cap was argued as "equal to Manifest Destiny's full +40%", and Manifest
+  Destiny's full value is +48.6% (S4 below); and a Path of Exile 2 patch note the plan cited for S1 could not be found
+  when re-fetched (S1 below). The coordinating session kept both rulings: Golden Age stays at +40% as a judgement on
+  its own, and S1 is unchanged.
+
+### The rulings this slice builds on
+
+All six from the coordinating session, 2026-11-18, on this session's plan.
+
+- **S1, what a changed maximum does to what a city holds: AGREED, a judgement.** A raised maximum leaves current defence
+  and population where they are; a lowered maximum is read as the smaller of the two; nothing is written at a buy or a
+  respec; a run begun with the tree builds its cities full at the raised maximum; a city upgrade raises what a city holds
+  by the rise in its effective maximum, as it did by the rise in its base. **What this rests on:** this game's own rule
+  for a player's health, which keeps current health where it is when maximum health rises
+  (`CataclysmVitalAttributeSet.cpp`); and two player posts on the official forum saying Path of Exile 2 does the same
+  with maximum life (`pathofexile.com/forum/view-thread/3775907`, May 2025, and `view-thread/3750348`, page 2,
+  September 2025; player posts, not patch notes). **The plan also cited a Path of Exile 2 patch note of January 2025
+  "fixing the opposite as a bug". Re-fetched before this entry, it was not found**: the thread a reply pointed to,
+  `view-thread/3617298`, is 0.1.0c Hotfix 2 and holds one unrelated line. It is not cited. The coordinating session,
+  told of this on 2026-11-19, kept S1 unchanged and ruled that this entry records only what can be cited. It sends the
+  visible result, "1000 of 1050", to the owner.
+- **S2, the split: AGREED.** Slice 3a builds the 31 nodes whose effects are standing numbers the run already holds; slice
+  3b builds the seven that act at an event and need run state (Civil Order, The Mason's Guild, The Architect's Legacy,
+  Last Stand Protocols, Enduring Foundations, Global Vigilance, Reclaimer's Resolve) at run record version 9.
+  Reclaimer's Resolve's cap and Global Vigilance's "resets every tier" go into 3b's plan.
+- **S3, Bastion Spirit's size: AGREED, +15 days in total.** "+1 Day to all dungeon Resolution Timers per 20 points spent
+  in the Explorer tree", read once per whole 20 points, to at most 15 days. Read per point it would be +225 days at a
+  full Explorer branch. The measurement and its tuning note are below.
+- **S4, Golden Age's size: AGREED, +40% in total, a judgement.** "+1% Total Empire Population per point, for every 20
+  points invested in the Architect branch", 15 points, read per point and per whole step, to at most +40%. Read without a
+  cap it is +240% at a full Architect branch. **The reason the plan gave was wrong:** it called +40% "equal to Manifest
+  Destiny's full value". Manifest Destiny reads "+2% Total Empire Population per point (Multiplicative)", 20 points; the
+  table and the simulation compound it per point, 1.02^20 = +48.6%, so +40% does not equal it. **The coordinating
+  session ruled on 2026-11-19, told of the error: the cap stays at +40%, a judgement standing on its own.** The
+  simulation showed no difference in wins at any size up to x3.4, so the measurement does not choose between +40% and
+  +48.6%. The owner reviews this cap, with the corrected reason.
+- **S5, the readings: AGREED, each a judgement.** As the plan put them:
+  1. "Adjacent to the Pillar" is ring 1; "within 2 rings of the Pillar" is rings 0 to 2, the Pillar included.
+  2. The Sentinel: when the most dungeons standing on a city are tied between Cataclysm types, every tied type counts.
+  3. The Royal Engineer's Blessing: a "defensive upgrade" is a city upgrade that raises maximum defence or resists
+     defence loss (`ECataclysmCityUpgradeEffect::MaxDefence` and `ResistDefenceLoss`), counted over living cities.
+  4. How they combine: the maximum-defence and base-population increases add into one sum each; every damage reduction
+     multiplies, as each node's text says; Manifest Destiny multiplies after that; Golden Age is its own multiplier on
+     total population; a city upgrade's own raise stays on the stored base, so the tree multiplies the upgraded value.
+- **S6, the measurement: AGREED.** Committed as `sim/analyse_empire_tree_caps.py`, which uses only the simulation's
+  public settings, so the simulation is unchanged and stays standard library only.
+
+### Judgements of this session, each with what it rests on
+
+1. **The damage reductions apply at all three places a dungeon hits a city**: the ordinary resolve, the Quest timer and
+   the Siege. Imperial Command's "Surge damage" is read as these three hits. A Siege takes its share of the effective
+   maximum, so a tree that raises a maximum raises the Siege's bite with it, as a city upgrade's raise already did.
+2. **The timer and surge days are added where they are read, never written into a timer or the surge schedule.** A
+   respec removes them at once, and a saved timer holds only its own days: the plan's question 10, "not saved,
+   applied where read".
+3. **The Flood Barrier's 20 days lengthen every gap between surges, and not the wait for the first**, because the
+   simulation adds `surge_bonus_days` to the gap it records (`engine.py`, `trigger_surge`). Its text, "Add 20 days to
+   the surge timer. This applies to every surge.", reads either way.
+4. **Martial Law's 5 days count while a city holds less than a tenth of its effective maximum defence**, and go when it
+   rises above, as "At <10% City Health" reads as a state and not an event.
+5. **The tree is handed to a run before its cities are built**, so they are built full (S1); after a load; after a buy
+   or a choice; and after a respec's points come back and before its days pass, so those days pass without the tree.
+   `tools/tests/test_empire_tree_bonuses_are_handed_to_every_run.py` holds each of these in the source, because an
+   automation test's game instance has no world of its own to begin a character's run in.
+6. **What each node does is one table, `EMPIRE_TREE_EFFECTS` in `tools/generate_datatables.py`**, which becomes
+   `game/Data/EmpireTreeEffects.csv` and `DT_EmpireTreeEffects`, and a Python test finds every value in its own node's
+   or option's text. A typed copy of a node's text is the kind of copy this project has seen drift.
+
+### Measured: what Bastion Spirit's and Golden Age's sizes do (S3, S4)
+
+`sim/analyse_empire_tree_caps.py`, 200 campaigns a cell, policy triage, tiers 1, 4 and 8, the same seeds for every value.
+Measured first on 2026-11-18 at development `df6fd0850`, the figures the caps were chosen from; measured again on
+2026-11-19 at `58b5ddb51`, after an Outpost's ordinary dungeons became 5 to 10 floors (#2749, B9). The second:
+
+| Bastion Spirit days | tier 1 win% | tier 4 win% | tier 4 cities lost | tier 8 win% |
+|---|---|---|---|---|
+| 0 | 62.0 | 25.0 | 6.76 | 2.0 |
+| 5 | 63.5 | 17.5 | 6.87 | 2.0 |
+| 10 | 59.5 | 21.0 | 6.82 | 3.5 |
+| 15 | 57.0 | 20.0 | 7.09 | 1.5 |
+| 30 | 59.0 | 16.0 | 7.46 | 3.0 |
+| 60 | 53.5 | 18.5 | 8.62 | 2.0 |
+| 225 | 59.5 | 21.5 | 9.46 | 1.5 |
+
+| Golden Age factor | win% tier 1 / 4 / 8 | tier 8 points a run |
+|---|---|---|
+| x1.0 | 36.0 / 20.5 / 2.0 | 171.8 |
+| x1.2 | 36.0 / 20.5 / 2.5 | 171.7 |
+| x1.4 | 36.0 / 21.0 / 3.5 | 172.9 |
+| x2.0 | 36.0 / 21.0 / 3.5 | 172.7 |
+| x3.4 | 36.0 / 20.0 / 4.5 | 174.3 |
+
+At 200 campaigns one standard error of a win rate is about 3 points. No Bastion Spirit size wins more campaigns than
+none. Golden Age changes no win rate at tiers 1 and 4 and no count of cities lost; tier 8 points rise 1.5% at x3.4. The
+first measurement said the same: tier 4 cities lost 6.92, 7.35, 7.92, 8.54 and 9.36 at 0, 15, 30, 60 and 225 days, and
+tier 8 points up 3% at x3.4. **The model cannot measure what population is worth**, so Golden Age's cap is a judgement.
+
+### Tuning note: a longer timer is more Siege bites
+
+**Every node that lengthens resolution timers costs cities in a Siege**: Bastion Spirit, Strategic Reserve, Border
+Patrol, Emergency Shelters and Martial Law. A Siege bites its city every day it stands until its timer fires, so more
+days are more bites. Measured above for Bastion Spirit: tier 4 cities lost rise from 6.76 with no days to 9.46 at 225;
+the other timer nodes were not measured. This is recorded for tuning and changes nothing here. The coordinating session puts it on issue #2741 when this slice
+merges.
+
+### Registered before the run
+
+- **Base: 4874**, measured by window opening-w2 at `62831fe7f`, whose `game/` is development `58b5ddb51`'s (`git diff
+  --stat 62831fe7f 58b5ddb51 -- game/` prints nothing).
+- **The whole suite: 4891 performed, 4891 succeeded, 0 failed**: the base's 4874 and 17 new in
+  `Cataclysm.EmpireTreeCity.`; 47 skipped halves, the base's; "Test saves: 836 written and deleted, 0 left behind", the
+  base's. The one new test that builds a game instance empties its account slot first and does not start the save
+  writer, as slice 2's screen tests do.
+- **Each group alone**, counted from the base log on "Test Completed. Result={" lines and by distinct path, which agree:
+  `Cataclysm.EmpireTreeCity.` 17 (new), `EmpireMap.` 17, `EmpireRun.` 71, `DayClock.` 10, `Surge.` 54, `CityUpgrade.`
+  15, `EmpireTree.` 24, `EmpireTreeScreen.` 10, `EmpireScreen.` 14, `CityScreen.` 16, `SaveApply.` 24, `SaveLoad.` 79,
+  `Data.` 7.
+- **Five C++ guard proofs**, each narrowed to `Cataclysm.EmpireTreeCity.`, 17 performed in each half; the restored half
+  17 of 17:
+
+| Proof | File | The break | Predicted with it in |
+|---|---|---|---|
+| K1 | `CataclysmEmpireMap.cpp` | `Build` fills each city to its base maximum | 14 succeeded, 3 failed: `ARunBegunWithTheTreeBuildsItsCitiesFull` (2 assertions), `UpgradesRetakesAndTheRoyalEngineerReadTheRaisedMaximum` (1), `ABuyActsAtOnceAndARespecTakesItAway` (1) |
+| K2 | `CataclysmDayClock.cpp` | `AdvanceDay` resolves a timer by its own days | 16, 1: `TimerDaysComeAtOnceAndGoAtOnce` (2) |
+| K3 | `CataclysmEmpireRun.cpp` | An ordinary resolve's defence hit is not reduced | 16, 1: `EveryHitADungeonDoesIsReduced` (1) |
+| K4 | `CataclysmEmpireRun.cpp` | The Sentinel counts any type standing on the city | 16, 1: `TheCommonestTypeIsCountedOnTheCityTiesIncluded` (1) |
+| K5 | `CataclysmEmpireTree.cpp` | No cap is applied | 16, 1: `GoldenAgeAndBastionSpiritCountStepsAndStopAtTheirCaps` (2) |
+
+- **The asset step**: `python tools/run_editor_python.py tools/generate_datatable_assets.py` makes
+  `game/Content/Data/DT_EmpireTreeEffects.uasset` and changes `game/Data/datatable_asset_sources.json`; those two are
+  committed alone.
+- **Python before the window**: four tests in `tools/tests/test_datatable_assets_are_current.py` fail, each naming only
+  `EmpireTreeEffects`, until the asset step. Measured at `b49e12ce7`: 7633 passed, 4 failed, 9 skipped; JUnit tests 7646,
+  failures 4, skipped 9; ruff clean.
+
+### The two Python guards, proved in phase 1
+
+Both through `tools/prove_guard.py`'s `break_and_run`, `proved` True:
+
+- **Siege Resistance's value typed as 0.0134 instead of 0.0133** in `EMPIRE_TREE_EFFECTS`: "3 failed, 4 passed |
+  restored: 7 passed", the three
+  `test_the_effect_table_is_what_the_generator_writes`, `test_every_value_is_in_its_own_words` and
+  `test_the_damage_nodes_give_the_simulations_preset`.
+- **The respec's hand-over taken out** of `UCataclysmGameInstance::RespecEmpireTree`: "1 failed, 4 passed | restored:
+  5 passed", `test_a_respec_hands_the_tree_over_before_its_days_pass`.
+
+### The window
+
+**tree-3a-w1, 2026-11-19, at `b49e12ce7` and then `71a64f810`.** The pre-checks all passed at 05:43: development
+`58b5ddb51` with its CI and Unreal runs succeeded, no run in progress or queued, the lock free, no build or editor process,
+no open pull request, 11,694 MB free, no LFS pointer file. The recount of the thirteen groups from the base log matched
+every registered count.
+
+- **The build**: "target already up to date, 0 actions, nothing compiled", after phase 2's three compiles.
+- **The asset step** left exactly the two expected files changed, committed alone as `71a64f810` and pushed:
+  `DT_EmpireTreeEffects.uasset`, new, and `datatable_asset_sources.json`, one record line for `EmpireTreeEffects.csv`,
+  32 rows.
+- **Each group alone**, all at their registered counts, all succeeding: `EmpireTreeCity.` 17, `EmpireMap.` 17,
+  `EmpireRun.` 71, `DayClock.` 10, `Surge.` 54, `CityUpgrade.` 15, `EmpireTree.` 24, `EmpireTreeScreen.` 10,
+  `EmpireScreen.` 14, `CityScreen.` 16, `SaveApply.` 24, `SaveLoad.` 79, `Data.` 7.
+- **The whole suite**: "Tests: 4891 tests performed, 4891 succeeded, 0 failed. 47 skipped part of what they check";
+  "Test saves: 836 written and deleted, 0 left behind"; "Declared: 4891 tests in the tree at 71a64f810; 4891 performed,
+  gap 0".
+- **Python**: "7637 passed, 9 skipped"; JUnit tests 7646, failures 0, errors 0, skipped 9; ruff "All checks passed!".
+- **The proofs**, each with the registered tests failing in its broken half and 17 of 17 in its restored half:
+
+| Proof | With the break in | The failed assertions |
+|---|---|---|
+| K1 | 17 performed, 14 succeeded, 3 failed | `ARunBegunWithTheTreeBuildsItsCitiesFull` 2 ("and it holds all of it", 2140 expected, 1000; "the Pillar has Foundation and not Fortified Gates", 30000 expected, 20000); `UpgradesRetakesAndTheRoyalEngineerReadTheRaisedMaximum` 1 ("and it is still full", 1800 expected, 1300); `ABuyActsAtOnceAndARespecTakesItAway` 1 ("a run begun with the player's tree holds 1500 in an Outpost") |
+| K2 | 16, 1 | `TimerDaysComeAtOnceAndGoAtOnce` 2 ("a timer whose own days ran out, with the tree's days left, does not resolve"; "and the Bulwark's resolves the next day") |
+| K3 | 16, 1 | `EveryHitADungeonDoesIsReduced` 1 ("an ordinary resolve takes 0.985^10 of the defence", 0.859731 expected, 1.0) |
+| K4 | 16, 1 | `TheCommonestTypeIsCountedOnTheCityTiesIncluded` 1 ("and Famine does not") |
+| K5 | 16, 1 | `GoldenAgeAndBastionSpiritCountStepsAndStopAtTheirCaps` 2 ("60 would be +45% and is held at +40%", 1.40 expected, 1.45; "4 would be 20 and is held at 15", 15 expected, 20) |
+
+No failure's span holds a "server/discover" line (#2745). The lock was released when the window ended.
+
+---
+
 ## 2026-11-19 — The opening for a level 1 start: levels 2 to 7 cost 40 times Path of Exile's, tier 1 creature damage is 0.05, and a skill's mana is charged at the character's level (#2749, slice 4)
 
 **Affects:** `UCataclysmExperience` (`game/Source/Cataclysm/Character/CataclysmExperience.h` and `.cpp`: the opening,

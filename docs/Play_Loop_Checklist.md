@@ -196,7 +196,23 @@ The days away are the two numbers after "while away, days": 12 days in the examp
   "The empire upgrade tree can be changed in the capital, not during a walk." and changes nothing.
 - **Close** the screen with its Close button.
 
-### 13. Stop, press Play, and Continue
+### 13. Buy Foundation and see a city's maximum defence rise
+
+- **Once 3 points are banked** -- each dungeon defeated adds to the bank, as the line under the tree's title shows --
+  open the tree in the capital and buy 2 points of **Urban Planning**, which opens Foundation, and then 1 of
+  **Foundation**. Each is a "bought a point" line, the last:
+
+  `PLAY LOOP: bought a point in Foundation (Architect): 1 of 10; 0.0 empire points banked`
+
+- **Close the tree and click an Outpost at full defence** on the map -- not the one step 11 upgraded, whose maximum is
+  1200 and now reads 1260. Its screen reads "defence 1000 of 1050 (95%)"
+  and "5000 of 5500 people": the maxima rose -- 5% for Foundation's point, 10% of an Outpost's people for Urban
+  Planning's two -- and what the city holds did not. The map shows the Outpost at 96%. That is the rule for a maximum
+  the tree raises mid-run, as for a player's own health: raising the maximum raises nothing. A run begun after this
+  builds every city full at the raised maximum, "1050 of 1050".
+- **Keep the points** for step 14.
+
+### 14. Stop, press Play, and Continue
 
 - Stop the game, and press Play again.
 - **On screen:** the character select screen, with your character's row. Click the row.
@@ -206,9 +222,10 @@ The days away are the two numbers after "while away, days": 12 days in the examp
 
   `PLAY LOOP: continuing 'Ash': opening the capital`
 
-- **Then:** the capital and the map, as at the end of step 12 -- the city still holds the upgrade, the balance is
-  what the purchase left, and the empire upgrade tree holds what step 12 left in it -- and the capital's line. It says no days away, because
-  no walk has just ended.
+- **Then:** the capital and the map, as at the end of step 13 -- the city still holds the upgrade, the balance is
+  what the purchase left, the empire upgrade tree holds what steps 12 and 13 left in it, and the Outpost of step 13
+  still reads "defence 1000 of 1050": the tree's bonus is applied once, on loading, and not saved into the city -- and
+  the capital's line. It says no days away, because no walk has just ended.
 
 **A character saved in the middle of a walk** opens the dungeon level instead, and goes on walking:
 

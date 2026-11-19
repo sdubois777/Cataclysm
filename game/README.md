@@ -98,7 +98,7 @@ them by hand.
 | `Content/Maps/L_Sandbox.umap` | A flat test level: a floor, a directional light and sky, a player start and a navigation bounds volume. Built by `tools/generate_input_assets.py`, which owns it. No enemy is in the map — `ACataclysmGameMode` spawns them at play time. Reached only by opening it in the editor since issue #2733 slice 2. |
 | `Content/Maps/L_FrontEnd.umap` | The level the game and the editor open on: a player start and nothing else, its world settings naming `ACataclysmFrontEndGameMode`, which shows the character select screen. Built by `tools/generate_interface_assets.py`, which owns it. The editor opened on `L_Sandbox` until issue #2733 slice 2, so pressing Play now opens the front end. Issue #753. |
 | `Content/Maps/L_Capital.umap` | The capital, the empire map's home: a floor, a directional light and sky, and a player start, its world settings naming `ACataclysmCapitalGameMode`, which loads the chosen character, spawns no creatures and opens the empire map. Start and every Continue not saved inside a dungeon open it. A Walk button on its map takes the character to `L_Dungeon` to walk that dungeon, and the end of the walk brings it back here (since issue #2733 slice 3). Built by `tools/generate_capital_map.py`, which owns it. Issue #2733. |
-| `Content/Data/` | Thirty-two DataTable assets: twenty-six imported from the design workbook, two from the simulation package's enemy model, and four from the tree files: the class passive trees and the empire upgrade tree. See below. |
+| `Content/Data/` | Thirty-three DataTable assets: twenty-six imported from the design workbook, two from the simulation package's enemy model, and five from the tree files: the class passive trees and the empire upgrade tree. See below. |
 | `Content/Input/` | The Enhanced Input mapping contexts, ten input actions and the input config data asset. Built by `tools/generate_input_assets.py`. |
 
 **Not in git.**
@@ -220,7 +220,13 @@ by `git add` with no error and no warning. Guarded by
   holds `Empire/CataclysmDungeonKind.h`, the two enumerations naming what kind a
   dungeon is and what it does differently, which moved down from the `Cataclysm`
   module so that both modules can name the same kind, and city upgrades
-  (`Empire/CataclysmCityUpgrade.h`).
+  (`Empire/CataclysmCityUpgrade.h`). **It reads the empire upgrade tree's city
+  nodes**, since issue [#2741](https://github.com/sdubois777/Cataclysm/issues/2741)
+  slice 3a: `FCataclysmEmpireTreeBonuses` (declared in `Empire/CataclysmEmpireMap.h`,
+  its rules in `Empire/CataclysmEmpireTreeBonuses.cpp`) is what the `Cataclysm`
+  module adds the bought nodes up to, and the map, the timers and the surge gap
+  apply it where each number is read. None of it is saved: the saved cities,
+  timers and next surge day hold the base, so a load cannot count it twice.
 
   **The layer knows which Cataclysms a campaign faces, and which one sent each
   dungeon.** `UCataclysmRoster` names the eight, draws the order a character adds
@@ -483,8 +489,8 @@ by `git add` with no error and no warning. Guarded by
   (issue [#41](https://github.com/sdubois777/Cataclysm/issues/41)); a death in the
   Cataclysm boss dungeon stands the player back up inside it. A respec of the
   empire upgrade tree costs the same 5, 10 or 15 days (issue
-  [#2741](https://github.com/sdubois777/Cataclysm/issues/2741)), and nothing in
-  the game offers one until the tree's screen is built. The equipment a
+  [#2741](https://github.com/sdubois777/Cataclysm/issues/2741)), offered by the
+  tree's screen, two presses, since slice 2. The equipment a
   death costs in Hardcore and Heretic is not built, and there is no forge to
   spend the twelve days a craft takes. A fallen city does not
   become a retakeable Dungeon City (issue
@@ -554,14 +560,17 @@ them, and `--check` compares them. They are **not content**. Nothing in the
 engine can reference one, `Data/` is not cooked, and a packaged build does not
 contain them. So they are then imported as DataTable assets under `/Game/Data/`:
 
-Six of the thirty-two do not come from the workbook. `EnemyArchetypes.csv` and
+Seven of the thirty-three do not come from the workbook. `EnemyArchetypes.csv` and
 `EnemyRarities.csv` are built from `sim/cataclysm_sim/enemy_stats.py`, which is
 where the enemy stat block is designed and where its self-checks live.
 `PassiveNodes.csv` and `PassiveEdges.csv` are built from the class passive
 tree files in `docs/`, and `EmpireTreeNodes.csv` and `EmpireTreeEdges.csv` from
-`docs/Empire_Development_Tree_Final.json` (issue #2741). All of those are exported
+`docs/Empire_Development_Tree_Final.json` (issue #2741). Those tree files are exported
 from `C:\Projects\PassiveTreeCreator`, and the game cannot read them directly,
-because `docs/` is not packaged. The same generator writes all six and the same
+because `docs/` is not packaged. `EmpireTreeEffects.csv` is what each built node
+of that tree does, stated in the generator itself (`EMPIRE_TREE_EFFECTS`) against
+the node identifiers the tree file gives, and checked against each node's own
+words (issue #2741 slice 3a). The same generator writes all seven and the same
 `--check` compares them, so editing any of those CSVs by hand achieves nothing.
 
 ```bash

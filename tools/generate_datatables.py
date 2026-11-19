@@ -4029,6 +4029,141 @@ def empire_tree_edges(_book=None) -> list[dict]:
     return _no_duplicates(out, "Empire Tree Edges")
 
 
+#: THE EFFECTS `ECataclysmEmpireTreeEffect` NAMES, in its order, without `None`.
+#: HELD HERE AS WELL AS IN C++ ON PURPOSE, and the two have to agree:
+#: `tools/tests/test_empire_tree_effects_match_their_texts.py` reads the enum
+#: out of `CataclysmDataRows.h` and compares. An effect named in
+#: `EMPIRE_TREE_EFFECTS` that is not here stops generation.
+EMPIRE_TREE_EFFECT_KINDS = (
+    "MaxDefenceAll", "MaxDefenceOutposts", "MaxDefenceBulwarksAndSanctuaries",
+    "MaxDefenceSanctuaries", "MaxDefenceNearPillar", "MaxDefencePerDefendedCity",
+    "BasePopulationAll", "BasePopulationOutposts", "BasePopulationBulwarks",
+    "TotalPopulationCompounded", "TotalPopulationPerBranchStep",
+    "DamageTakenCompounded", "PopulationDamageTakenCompounded",
+    "DamageTakenAdjacentToPillarCompounded",
+    "PopulationDamageTakenNearPillarCompounded",
+    "DamageTakenPerActiveTypeCompounded", "DamageTakenByLivingShare",
+    "DamageTakenWithUpgrades", "DamageTakenFromCommonestType",
+    "ResolveDaysAll", "ResolveDaysOutposts", "ResolveDaysPerBranchStep",
+    "ResolveDaysBelowTenPercent",
+    "SurgeGapDays",
+)
+
+#: WHAT EACH BUILT NODE OR OPTION OF THE EMPIRE TREE DOES, by name. Issue
+#: #2741 slice 3a: the 31 city nodes and options that act through numbers the
+#: run already saves. Slice 3b's seven event rules and slices 4 and 5 add
+#: theirs here.
+#:
+#: EACH EFFECT IS (effect, per point) or (effect, per point, step points, step
+#: branch, cap). Per point is a fraction for a percentage and days for days; a
+#: reduction is the share it takes off, written positive. Every value is the
+#: node's own words, and `test_empire_tree_effects_match_their_texts.py` finds
+#: each one in its text. THE TWO CAPS ARE NOT IN ANY TEXT: the owner's ruling 2
+#: of 2026-11-18, "Cap each one", and the coordinating session's Q1, chosen in
+#: slice 3a from the simulation (S3, S4) and recorded as judgements.
+#:
+#: READINGS, each a judgement of 2026-11-18 (S5): "Max Health" and "Defense" of
+#: a city are its maximum defence; "within 2 rings of the Pillar" is rings 0 to
+#: 2 and "adjacent to the Pillar" ring 1; "Surge damage", "damage from
+#: dungeons" and "damage from dungeon resolutions" are the damage a dungeon
+#: does to its city, at all three places it does it (C4, and the simulation's
+#: `damage_taken`); a "defensive upgrade" raises maximum defence or resists
+#: defence loss.
+EMPIRE_TREE_EFFECTS = {
+    # Maximum defence: increases, summed.
+    "Foundation": [("MaxDefenceAll", 0.05)],
+    "Fortified Gates": [("MaxDefenceOutposts", 0.08)],
+    "Masonry Techniques": [("MaxDefenceBulwarksAndSanctuaries", 0.10)],
+    "Reinforced Walls": [("MaxDefenceAll", 0.08)],
+    "Monument Building": [("MaxDefenceSanctuaries", 0.10)],
+    "Beacon of Hope": [("MaxDefenceNearPillar", 0.50)],
+    "Imperial Decree": [("MaxDefenceAll", 0.20), ("BasePopulationAll", -0.10)],
+    "The Aegis of Hope": [("MaxDefenceOutposts", 0.50)],
+    "The Royal Engineer's Blessing": [("MaxDefencePerDefendedCity", 0.02)],
+    # Population.
+    "Urban Planning": [("BasePopulationOutposts", 0.05)],
+    "Imperial Census": [("BasePopulationBulwarks", 0.10)],
+    "Metropolitan Growth": [("BasePopulationAll", 0.15)],
+    "Manifest Destiny": [("TotalPopulationCompounded", 0.02)],
+    "Golden Age": [("TotalPopulationPerBranchStep", 0.01, 20, "Architect", 0.40)],
+    # Damage a dungeon does to a city: factors, compounded per point.
+    "Structural Integrity": [("DamageTakenCompounded", 0.015)],
+    "Urban Fortification": [("DamageTakenCompounded", 0.04)],
+    "Civil Defense": [("PopulationDamageTakenCompounded", 0.015)],
+    "Supply Lines": [("DamageTakenAdjacentToPillarCompounded", 0.015)],
+    "Siege Resistance": [("DamageTakenCompounded", 0.0133)],
+    "Sovereign's Might": [("DamageTakenCompounded", 0.01)],
+    "Unyielding Defense": [("DamageTakenPerActiveTypeCompounded", 0.005)],
+    "Fortified Pillar": [("PopulationDamageTakenNearPillarCompounded", 0.02)],
+    "Iron Will": [("DamageTakenByLivingShare", 0.01)],
+    "Imperial Command": [("DamageTakenWithUpgrades", 0.40)],
+    "The Sentinel": [("DamageTakenFromCommonestType", 0.10)],
+    # Days.
+    "Border Patrol": [("ResolveDaysOutposts", 1.0)],
+    "Emergency Shelters": [("ResolveDaysOutposts", 3.0)],
+    "Strategic Reserve": [("ResolveDaysAll", 1.0)],
+    "Bastion Spirit": [("ResolveDaysPerBranchStep", 1.0, 20, "Explorer", 15.0)],
+    "Martial Law": [("ResolveDaysBelowTenPercent", 5.0)],
+    "The Flood Barrier": [("SurgeGapDays", 20.0)],
+}
+
+
+def empire_tree_effects(_book=None) -> list[dict]:
+    """One row per effect of a built node or option of the empire upgrade tree.
+
+    THE ROW NAME IS THE NODE IDENTIFIER WITH `#1`, `#2` AFTER IT, and nothing
+    reads it: which node is the `Node` column, as on the class trees' grant
+    table. An option's row carries its capstone's identifier and the option's
+    number, 1 to 3.
+    """
+    data = _load_empire_tree()
+    where: dict[str, tuple[str, int]] = {}
+    for node in data.get("nodes", []):
+        body = node.get("data", {})
+        name = clean(body.get("name", ""))
+        if _empire_branch(node) == EMPIRE_CENTRE:
+            for index, option in enumerate(body.get("options", [])):
+                where[clean(option.get("name", ""))] = (node["id"], index + 1)
+        else:
+            where[name] = (node["id"], 0)
+
+    out = []
+    counts: dict[str, int] = {}
+    for name, effects in EMPIRE_TREE_EFFECTS.items():
+        if name not in where:
+            raise DataError(f"EMPIRE_TREE_EFFECTS names {name!r}, which no node "
+                            f"or option of {EMPIRE_TREE_FILE.name} is called")
+        if name not in EMPIRE_TREE_BUILT:
+            raise DataError(f"EMPIRE_TREE_EFFECTS gives {name!r} an effect, and "
+                            f"it is not in EMPIRE_TREE_BUILT: a node that cannot "
+                            f"be bought has nothing to do")
+        node_id, option = where[name]
+        for effect in effects:
+            kind, per_point = effect[0], effect[1]
+            step_points, step_branch, cap = (effect[2:] + (0, "", 0.0))[:3]
+            if kind not in EMPIRE_TREE_EFFECT_KINDS:
+                raise DataError(f"{name!r} has the effect {kind!r}, which "
+                                f"EMPIRE_TREE_EFFECT_KINDS does not name")
+            if step_points and step_branch not in EMPIRE_BRANCHES:
+                raise DataError(f"{name!r} counts steps of {step_branch!r}, "
+                                f"which is not one of {EMPIRE_BRANCHES}")
+            counts[node_id] = counts.get(node_id, 0) + 1
+            out.append({
+                "Name": f"{node_id}#{counts[node_id]}",
+                "Node": node_id,
+                "Option": option,
+                "Effect": kind,
+                "PerPoint": float(per_point),
+                "StepPoints": int(step_points),
+                "StepBranch": step_branch,
+                "Cap": float(cap),
+            })
+
+    if not out:
+        raise DataError("no empire tree effects were written")
+    return _no_duplicates(out, "Empire Tree Effects")
+
+
 #: The states of the character a passive bonus may be made to depend on.
 #:
 #: HELD HERE AS WELL AS IN C++ ON PURPOSE, and the two have to agree.
@@ -13928,6 +14063,7 @@ TREE_TABLES = {
     "PassiveEdges": passive_edges,
     "EmpireTreeNodes": empire_tree_nodes,
     "EmpireTreeEdges": empire_tree_edges,
+    "EmpireTreeEffects": empire_tree_effects,
 }
 
 

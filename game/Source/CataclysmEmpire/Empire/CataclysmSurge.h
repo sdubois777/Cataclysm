@@ -293,8 +293,8 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	 * `HollowStacksOnto`. A Hollow built by hand with nought here never
 	 * shrinks, as the model's `_hollow_shrink` skips one.
 	 *
-	 * SAVED WITH THE DUNGEON, AND NOTHING LOADS IT BACK, because nothing loads
-	 * a run's dungeons back at all yet. Issue #753.
+	 * SAVED WITH THE DUNGEON, and put back by `FCataclysmSaveApply::RunInto`.
+	 * Until issue #2741 slice 3a this said nothing loaded it back.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 HollowFrom = 0;
@@ -1522,13 +1522,27 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	float GapAfterThisSurge() const;
 
-	/** Whether a surge is due on this day. */
+	/** Whether a surge is due on this day, with the empire upgrade tree's days on the gap. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	bool IsDue(int32 Day) const;
 
-	/** How many days until the next surge. Zero once it is due. */
+	/** How many days until the next surge, with the empire upgrade tree's days on the gap. Zero once it is due. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	float DaysUntilNextSurge(int32 Day) const;
+
+	/**
+	 * Days the empire upgrade tree adds to every gap between surges: The Flood Barrier's "Add 20 days to the surge
+	 * timer. This applies to every surge." Set by `UCataclysmEmpireRun::SetTreeBonuses`; not saved, as the tree is not.
+	 * Issue #2741 slice 3a.
+	 *
+	 * ON THE GAP, NOT BEFORE THE FIRST WAVE, as the simulation adds `surge_bonus_days` to the gap it records (engine.py,
+	 * `trigger_surge`). `NextSurgeDay` keeps the base, so a respec takes the days away at once.
+	 */
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float GapBonusDays = 0.0f;
+
+	/** `GapBonusDays` once a surge has fired, and nothing before the first. */
+	float GapBonusDaysNow() const;
 
 	/**
 	 * How many days it has been since a surge last fired.
