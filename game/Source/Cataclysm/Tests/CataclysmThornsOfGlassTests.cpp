@@ -34,9 +34,9 @@
  *
  * THE CHARACTERS ARE REAL: a player pawn with its ability system on a player state, as the game wires one, and creatures
  * of the monsters' side given the row as a spawned creature is, by `ApplyModifierAttributes`. The player is never
- * refreshed, so it holds no class line; its armour, evasion, block chance and resistance are set to nought, so a blow
- * on it takes the figure sent. Every creature's are nought too, so no blow on one is evaded or blocked. Each creature's
- * attack damage is `ThornsCreatureAttackDamage`, written after the row is given.
+ * refreshed, so it holds no class line; its armour, evasion and block chance are set to nought, and it holds no
+ * all-resistance set, so a blow on it takes the figure sent. Every creature's four are nought too, so no blow on one is
+ * evaded or blocked. Each creature's attack damage is `ThornsCreatureAttackDamage`, written after the row is given.
  *
  * NO ROLL IS LEFT TO CHANCE: `CataclysmTestWorld::MakeWorldThatHasBegunPlay` pins the critical strike roll to 100, which
  * never strikes, and a strike back cannot critically strike anyway. Every reading has a control.
@@ -56,15 +56,25 @@ namespace CataclysmThornsOfGlassTest
 		return System ? System->GetNumericAttribute(Vital::GetHealthAttribute()) : -1.0f;
 	}
 
+	/**
+	 * The attribute's base, ONLY WHERE THE ABILITY SYSTEM HOLDS ITS SET. The player's has no all-resistance set, and
+	 * setting an attribute whose set is missing fails an engine `ensure`, which the automation run counts as an error in
+	 * whichever test meets it first: window reflect-fixed-hit-w1 failed `ADamageOverTimeTickIsNotStruckBack` on exactly
+	 * that, at the first `ThornsUndefended` call on a player. An attribute that is not held is nought already.
+	 */
 	void ThornsSet(const AActor* Actor, const FGameplayAttribute& Attribute, float Value)
 	{
-		if (UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Actor))
+		UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Actor);
+		if (System != nullptr && System->HasAttributeSetForAttribute(Attribute))
 		{
 			System->SetNumericAttributeBase(Attribute, Value);
 		}
 	}
 
-	/** No armour, evasion, block chance or resistance, so a blow takes what was sent and none is evaded or blocked. */
+	/**
+	 * No armour, evasion, block chance or all-resistance where the character holds them, so a blow is neither evaded nor
+	 * blocked and none of the four reduces it.
+	 */
 	void ThornsUndefended(const AActor* Actor)
 	{
 		ThornsSet(Actor, Combat::GetArmorAttribute(), 0.0f);
@@ -347,8 +357,16 @@ CATACLYSM_THORNS_TEST(FCataclysmThornsOfGlassAreaBlowTest,
 /**
  * THE STRIKE BACK IS A RETURNED BLOW: announced with the retaliation mark, which the player's hit log reads as
  * "reflected or retaliation", and carrying the no-retaliation mark, so a player with retaliation does not answer it.
- * THE CONTROL FIRST: the creature's own plain blow on the player is announced unmarked, and the player's retaliation
- * answers it. Then the player hits the creature, which takes the player's hit and nothing more.
+ * THREE READINGS:
+ * 1. THE CONTROL: the player, with no retaliation, hits the creature and is struck back.
+ * 2. THE SECOND CONTROL: the creature's own plain blow on the player, now holding 20 retaliation, is announced unmarked
+ *    and is answered.
+ * 3. The player, holding 20 retaliation, hits the creature as in 1, and is struck back: the creature loses what it lost
+ *    in 1, so the strike back was not answered.
+ * COMPARED WITH READING 1 AND NOT WITH THE FIGURE SENT, AND EVERY HIT OF THE PLAYER'S CARRIES NO AILMENT CHANCE. Window
+ * reflect-fixed-hit-w1 compared the creature's loss with the figure `ApplyHit` sent and read 110 against 100, with
+ * nothing in the log to say where the 10 came from; the figure sent is taken before the creature's own damage step.
+ * The figures are printed (THORNS STRIKE BACK UNANSWERED), so a run says what each reading cost.
  */
 CATACLYSM_THORNS_TEST(FCataclysmThornsOfGlassReturnedBlowTest,
 	"Cataclysm.ThornsOfGlass.AStrikeBackIsMarkedReturnedAndARetaliatingPlayerDoesNotAnswerIt")
@@ -370,7 +388,6 @@ CATACLYSM_THORNS_TEST(FCataclysmThornsOfGlassReturnedBlowTest,
 	{
 		return false;
 	}
-	ThornsSet(Player, Combat::GetRetaliationAttribute(), 20.0f);
 
 	// EVERY ANNOUNCED BLOW ON THE PLAYER, with whether it carried the retaliation mark.
 	TArray<bool> Marks;
@@ -383,7 +400,26 @@ CATACLYSM_THORNS_TEST(FCataclysmThornsOfGlassReturnedBlowTest,
 	});
 	ON_SCOPE_EXIT { Events->OnHit.Remove(Listening); };
 
+	FCataclysmHitDelivery NoAilment;
+	NoAilment.bCarriesNoAilmentChance = true;
+
+	// 1. THE CONTROL: no retaliation, the player hits, and is struck back.
+	float PlayerBefore = ThornsHealthOf(Player);
 	float CreatureBefore = ThornsHealthOf(Thorned);
+	const float SentWithNone = ThornsPlayerHits(Player, Thorned, NoAilment);
+	const float LostWithNone = CreatureBefore - ThornsHealthOf(Thorned);
+	const float StruckBackWithNone = PlayerBefore - ThornsHealthOf(Player);
+	if (!TestTrue(FString::Printf(TEXT("control: with no retaliation the creature loses %.2f and strikes back for %.2f"),
+								  LostWithNone, StruckBackWithNone),
+				  LostWithNone > 0.0f && StruckBackWithNone > 0.0f))
+	{
+		return false;
+	}
+
+	// 2. THE SECOND CONTROL: holding 20 retaliation, the player answers the creature's own plain blow.
+	ThornsHeal(Player);
+	ThornsSet(Player, Combat::GetRetaliationAttribute(), 20.0f);
+	CreatureBefore = ThornsHealthOf(Thorned);
 	UCataclysmSkillEffects::ApplyHit(Thorned, Player, /*DamagePercent=*/100.0f, FGameplayTagContainer(),
 									 FCataclysmHitDelivery());
 	const float Answered = CreatureBefore - ThornsHealthOf(Thorned);
@@ -394,16 +430,26 @@ CATACLYSM_THORNS_TEST(FCataclysmThornsOfGlassReturnedBlowTest,
 		return false;
 	}
 
+	// 3. HOLDING 20 RETALIATION, the player hits as in 1, and is struck back.
 	ThornsHeal(Player);
+	PlayerBefore = ThornsHealthOf(Player);
 	CreatureBefore = ThornsHealthOf(Thorned);
-	const float Sent = ThornsPlayerHits(Player, Thorned);
-	TestEqual(TEXT("the creature takes the player's hit and nothing more: the strike back is not answered"),
-			  CreatureBefore - ThornsHealthOf(Thorned), Sent, 0.01f);
+	const float SentWithTwenty = ThornsPlayerHits(Player, Thorned, NoAilment);
+	const float LostWithTwenty = CreatureBefore - ThornsHealthOf(Thorned);
+	const float StruckBackWithTwenty = PlayerBefore - ThornsHealthOf(Player);
+	AddInfo(FString::Printf(TEXT("THORNS STRIKE BACK UNANSWERED: sent %.2f, then %.2f; the creature lost %.2f with no "
+								 "retaliation and %.2f with 20; struck back for %.2f, then %.2f; a plain blow was "
+								 "answered for %.2f"),
+							SentWithNone, SentWithTwenty, LostWithNone, LostWithTwenty, StruckBackWithNone,
+							StruckBackWithTwenty, Answered));
+	TestEqual(TEXT("holding 20 retaliation the creature loses what it lost holding none: the strike back is not answered"),
+			  LostWithTwenty, LostWithNone, 0.01f);
 
-	if (TestEqual(TEXT("set-up: two blows on the player were announced"), Marks.Num(), 2))
+	if (TestEqual(TEXT("set-up: three blows on the player were announced"), Marks.Num(), 3))
 	{
-		TestFalse(TEXT("control: the creature's plain blow carries no retaliation mark"), Marks[0]);
-		TestTrue(TEXT("the strike back carries it"), Marks[1]);
+		TestTrue(TEXT("the first strike back carries the retaliation mark"), Marks[0]);
+		TestFalse(TEXT("control: the creature's plain blow carries none"), Marks[1]);
+		TestTrue(TEXT("the second strike back carries it"), Marks[2]);
 	}
 	return true;
 }

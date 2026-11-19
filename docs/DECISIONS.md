@@ -22,9 +22,14 @@ cell I12) and `game/Data/EnemyModifiers.csv`. Tests: `CataclysmThornsOfGlassTest
 
 ### SAID FIRST
 
-- **COMPILED, NOT YET RUN.** The rebased branch compiled three ways ("Compiled (phase 2)", below). No automation test
-  and no C++ guard proof has run. The count and the five proofs' failures are registered below, before the window that
-  will test them.
+- **THE FIRST WINDOW FAILED, ON TWO OF THE SIX NEW TESTS, AND ONE CAUSE IS NOT ESTABLISHED.** Window
+  reflect-fixed-hit-w1 ("The first window", below) built, rebuilt and committed the DataTable asset, then ran
+  `Cataclysm.ThornsOfGlass.` alone: 6 performed, 4 succeeded, 2 failed, and it stopped there. One failure was the
+  test helper's fault and is corrected. The other read the creature losing 110 where the test expected the 100 the
+  player's hit sent; where the extra 10 came from was not found. That test is rewritten so that its own figures settle
+  it. No whole suite and no C++ guard proof has run.
+- **COMPILED, NOT YET RUN AFTER THAT.** The rebased branch compiled three ways ("Compiled (phase 2)", below). The count
+  and the five proofs' failures are registered below, before the window that will test them.
 - **ONE PYTHON TEST FAILS ON THE BRANCH UNTIL THE WINDOW**, as ruled (Q4): `test_datatable_assets_are_current`,
   because `game/Data/EnemyModifiers.csv` changed and `DT_EnemyModifiers.uasset` is rebuilt only by the editor. The
   window rebuilds it and commits it alone with `datatable_asset_sources.json`.
@@ -222,7 +227,38 @@ case-insensitive string prefix of another of that log's 337 groups.
 **The DataTable asset step** (Q4), after the build: `tools/run_editor_python.py tools/generate_datatable_assets.py`
 may change only `game/Content/Data/DT_EnemyModifiers.uasset` and `game/Data/datatable_asset_sources.json`, and must
 change both; they are committed alone, and that commit is the head every later step tests. Python at that head is
-registered with no failure: `test_datatable_assets_are_current` passes once the asset is rebuilt.
+registered with no failure: `test_datatable_assets_are_current` passes once the asset is rebuilt. **The first window
+did this** (`480518bf`, below), so the second window skips the step, and its Python run shows the asset current.
+
+### The first window, reflect-fixed-hit-w1 (FAILED)
+
+Started by `gate_rf2749.py` at 23:31:20 once the pre-checks all passed, at the registration commit `4c877a04`; the lock
+was taken and released by the runner. The output is in this worktree's `.claude/windows/` (`rf2749_run.out`, and the
+group's engine log `rf2749_alone_engine_ThornsOfGlass_480518bf.log`).
+
+- **Build**: "Build: Succeeded - target already up to date, 0 actions, nothing compiled".
+- **Asset step**: the rebuild changed exactly `DT_EnemyModifiers.uasset` and `datatable_asset_sources.json`; they were
+  committed alone as `480518bf` ("Rebuild DT_EnemyModifiers for Thorns of Glass's new sentence (#2749, slice 2)") on
+  `4c877a04` and pushed. From there the tested head was `480518bf`.
+- **`Cataclysm.ThornsOfGlass.` alone: "6 tests performed, 4 succeeded, 2 failed"**, and the window stopped: no other
+  group, no whole suite, no Python, no proof.
+  1. **`ADamageOverTimeTickIsNotStruckBack`**, A TEST FAULT. Its only error: "Ensure condition failed ...
+     FActiveGameplayEffectsContainer::SetAttributeBaseValue: Unable to get attribute set for attribute AllResistance",
+     raised from `ThornsUndefended` by `SpawnThornsPlayer`. The player's ability system has no all-resistance set, and
+     the engine raises an `ensure` once, so it was counted against the first test to call the helper. Corrected: the
+     helper sets only attributes whose set the ability system holds.
+  2. **`AStrikeBackIsMarkedReturnedAndARetaliatingPlayerDoesNotAnswerIt`**: "Expected 'the creature takes the player's
+     hit and nothing more: the strike back is not answered' to be 100.000000, but it was 110.000000". The marks were
+     right: the hit log printed the creature's plain blow and then "HIT: took 40 ... reflected or retaliation". **WHERE
+     THE EXTRA 10 CAME FROM WAS NOT FOUND.** The test compared the creature's loss with the figure `ApplyHit` returns,
+     which is taken before the creature's own damage step. Read from the code and not run: the strike back carries the
+     no-retaliation tag the way every retaliation payment does; the player's answer to a blow of 40 at 20 retaliation
+     is 8 before the player's own modifiers, not 10; and the player's ailment chances are nought by default.
+     **Rewritten** to compare the creature's loss holding 20 retaliation with its loss holding none, every hit of the
+     player's carrying no ailment chance, and to print every figure ("THORNS STRIKE BACK UNANSWERED"). If the strike back
+     were answered, it fails as before; R3 still breaks it.
+- **Not Claude's connection to the editor (#2745).** That log's 56 `LogModelContextProtocol` lines are all from the
+  editor's start, before the first test.
 
 **The guard proofs**, each through `tools/unreal_build.prove_cpp_guard`, its anchor checked to match exactly once as
 the proof reads the file (LF), its prefix checked against the base log's names and this slice's new ones:
@@ -294,9 +330,12 @@ in this worktree's `.claude/windows/` (`compile_rf2749.py`, `rf2749_compile.out`
 | 2. Each changed `.cpp` alone (`git read-tree origin/development`, `Makefile.bin` moved aside, built, `git reset -q` after) | 23:17:29 to 23:19:56, 146 s | "Build: Succeeded - 28 actions, 25 files compiled". The "[Adaptive Build] Excluded from Cataclysm unity file" line names fourteen: `CataclysmRetaliation.cpp`, `CataclysmSkillEffects.cpp`, `CataclysmSkillTemplate.cpp`, `CataclysmVitalAttributeSet.cpp`, `CataclysmEnemyCharacter.cpp`, `CataclysmEnemyModifiers.cpp`, `CataclysmDungeonGameMode.cpp`, `CataclysmDungeonModifierEffects.cpp`, `CataclysmDungeonModifierEffectsTests.cpp`, `CataclysmEnemyModifierTests.cpp`, `CataclysmHitLogTests.cpp`, `CataclysmSaveLoadTests.cpp`, `CataclysmSkillTemplateTests.cpp`, `CataclysmThornsOfGlassTests.cpp` -- every `.cpp` this branch changes, and the two whose headers it changes |
 | 3. The unity files again (`Makefile.bin` moved aside again; both moved copies deleted after) | 23:21:59 to 23:23:25, 86 s | "Build: Succeeded - 14 actions, 11 files compiled" |
 
-Build 1's log held one compiler warning line, the engine's own: `MicrosoftPlatformMath.h(183,3): warning C4996: ...
-CountBits for 64-bit values has been deprecated`, while compiling `Module.Cataclysm.2.cpp`. The builds of slice 1 and
-of B10 logged the same line. None came from this change; builds 2 and 3 logged none.
+Build 1's log held one compiler warning line, `MicrosoftPlatformMath.h(183,3): warning C4996: ... CountBits for 64-bit
+values has been deprecated`, while compiling `Module.Cataclysm.2.cpp`. It is reported inside the engine's header and
+triggered by this project's code: `CataclysmAbilitySystemComponent.cpp` line 1315 calls `FMath::CountBits` on a
+64-bit value, which the engine has deprecated; filed as #2756 (corrected by the coordinating session: this entry first
+called it the engine's own). The builds of slice 1 and of B10 logged the same line. This change does not touch that
+file; builds 2 and 3 logged none.
 
 ### Review (phase 2)
 
