@@ -407,6 +407,7 @@ const TCHAR* UCataclysmSkillEffects::BleedRowName = TEXT("DoT_Bleed");
 const TCHAR* UCataclysmSkillEffects::ConvertedDamageDataName = TEXT("Cataclysm.ConvertedDamage");
 const TCHAR* UCataclysmSkillEffects::DeniedHealingDataName = TEXT("Cataclysm.DeniedHealing");
 const TCHAR* UCataclysmSkillEffects::ConsequenceOfADeathDataName = TEXT("Cataclysm.ConsequenceOfADeath");
+const TCHAR* UCataclysmSkillEffects::RetaliationDataName = TEXT("Cataclysm.Retaliation");
 const TCHAR* UCataclysmSkillEffects::CannotBeEvadedDataName = TEXT("Cataclysm.CannotBeEvaded");
 const TCHAR* UCataclysmSkillEffects::CannotBeMitigatedDataName = TEXT("Cataclysm.CannotBeMitigated");
 const TCHAR* UCataclysmSkillEffects::NamedArmorPenetrationDataName =
@@ -2109,6 +2110,13 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 	if (Delivery.bIsConsequenceOfADeath)
 	{
 		Spec.SetSetByCallerMagnitude(FName(ConsequenceOfADeathDataName), 1.0f);
+	}
+
+	// AND WHETHER IT IS A BLOW RETURNED FOR A BLOW TAKEN, which the announcement carries to the player's hit log. Issue
+	// #2749 (B1). Not stamped when false, so every other blow is as it was.
+	if (Delivery.bIsRetaliation)
+	{
+		Spec.SetSetByCallerMagnitude(FName(RetaliationDataName), 1.0f);
 	}
 
 	// AND WHETHER IT CANNOT BE EVADED, which the target reads before it rolls its evasion. Ruled 2026-10-07.

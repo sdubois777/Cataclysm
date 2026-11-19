@@ -249,6 +249,9 @@ void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data
 	// THE STAMP THE DELIVERY LEFT, read off the effect. Ruled 2026-10-07.
 	Notice.bConsequenceOfADeath = Data.EffectSpec.GetSetByCallerMagnitude(
 		FName(UCataclysmSkillEffects::ConsequenceOfADeathDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f;
+	// AND WHETHER IT IS A BLOW RETURNED FOR A BLOW TAKEN, by the stamp its delivery left. Issue #2749 (B1).
+	Notice.bRetaliation = Data.EffectSpec.GetSetByCallerMagnitude(
+		FName(UCataclysmSkillEffects::RetaliationDataName), /*WarnIfNotFound=*/false, 0.0f) > 0.0f;
 	// THE SHARED READING, NOT A COPY KEPT HERE. Until this was moved, this file
 	// held its own `CombatEventsMetresBetween` and the passive tree had no
 	// distance at all. Adding one to the hit would have made two definitions of

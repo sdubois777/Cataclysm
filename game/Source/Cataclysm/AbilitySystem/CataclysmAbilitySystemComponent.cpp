@@ -6627,6 +6627,8 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				Delivery.bCannotCriticallyStrike = true;
 				Delivery.bCarriesNoWeaponSubType = true;
 				Delivery.bCannotLeech = true;
+				// AND MARKED AS A BLOW RETURNED FOR A BLOW TAKEN, as a retaliation payment is. Issue #2749 (B1).
+				Delivery.bIsRetaliation = true;
 				UCataclysmSkillEffects::ApplyDirectDamage(Self, Attacker, Reflected, Delivery);
 				NoteTriggerFired(Action);
 			}

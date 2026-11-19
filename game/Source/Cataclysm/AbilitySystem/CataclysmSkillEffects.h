@@ -79,6 +79,19 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	bool bIsConsequenceOfADeath = false;
 
 	/**
+	 * Whether this blow is one returned for a blow taken: a retaliation payment, a reflected melee hit, or a share of a
+	 * blocked blow paid back. Issue #2749, ruled by the coordinating session on 2026-11-18 (B1). The effect is stamped
+	 * with `UCataclysmSkillEffects::RetaliationDataName` and the hit announcement carries it as
+	 * `FCataclysmHitNotice::bRetaliation`, so the player's hit log can say a blow was returned rather than struck.
+	 *
+	 * SET IN TWO PLACES: `UCataclysmRetaliation::Pay`, which pays both the retaliation stat (the creature modifier
+	 * Thorns of Glass gives it) and a reflected melee hit, and the worn row that reflects a share of a blocked blow
+	 * (`UCataclysmAbilitySystemComponent::ActOnEvent`). IT CHANGES NOTHING ABOUT HOW THE BLOW RESOLVES: it is read only
+	 * by the announcement. Whether a returned blow can itself be returned is `bCannotBeRetaliatedAgainst`'s business.
+	 */
+	bool bIsRetaliation = false;
+
+	/**
 	 * This blow cannot be evaded, whatever the target's evasion is. Ruled 2026-10-07 for the action
 	 * `strike_target`: "When you evade a ranged attack, throw an attack dealing 20-70% of your attack damage at
 	 * that enemy", whose thrown attack "cannot be evaded back into a loop and raises no dodge event of its own".
@@ -2226,6 +2239,13 @@ public:
 	 * `UCataclysmCombatEvents::NoteBlow`. See `FCataclysmHitDelivery::bIsConsequenceOfADeath`.
 	 */
 	static const TCHAR* ConsequenceOfADeathDataName;
+
+	/**
+	 * The name an effect is stamped under when its blow is one returned for a blow taken, with any value above nought.
+	 * Issue #2749 (B1). A plain name and no gameplay tag, as `ConsequenceOfADeathDataName` is. Read by
+	 * `UCataclysmCombatEvents::NoteBlow`. See `FCataclysmHitDelivery::bIsRetaliation`.
+	 */
+	static const TCHAR* RetaliationDataName;
 
 	/**
 	 * The name an effect is stamped under when its blow cannot be evaded, with any value above nought. Ruled

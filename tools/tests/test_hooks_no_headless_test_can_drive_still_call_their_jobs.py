@@ -523,11 +523,16 @@ def test_a_death_is_written_to_the_log_at_a_level_play_shows(
     """
     body = body_of(path, signature, returns)
 
-    assert "UE_LOG(LogCataclysm, Log," in body, (
-        f"{signature} does not log at `Log` level. It has to say {what_it_says},"
-        " and `Verbose` is dropped in a play session, so anything below `Log`"
-        " means the next person asking why they died reads the save file, the"
-        " passive tree data and the class stat line instead. Issue #1101.")
+    # `Log` OR `Display`: both reach a play session's log. The player's death
+    # line moved to `Display` with issue #2749 (B1), ruled 2026-11-18, so it
+    # stands among the hit log's lines, which are at that level.
+    assert ("UE_LOG(LogCataclysm, Log," in body
+            or "UE_LOG(LogCataclysm, Display," in body), (
+        f"{signature} does not log at `Log` or `Display` level. It has to say"
+        f" {what_it_says}, and `Verbose` is dropped in a play session, so"
+        " anything below `Log` means the next person asking why they died reads"
+        " the save file, the passive tree data and the class stat line instead."
+        " Issue #1101.")
 
     assert phrase in body, (
         f"{signature} no longer says \"{phrase}\". That wording is what somebody"

@@ -825,6 +825,19 @@ void ACataclysmPlayerCharacter::BeginPlay()
 	// creature. `ACataclysmPlayerController` owns that.
 }
 
+void ACataclysmPlayerCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	// THE HIT LOG'S OPEN TOTALS ARE SAID, so leaving a level in the second after a burn ticked loses none of it. Issue
+	// #2749 (B1). The timer goes with the world.
+	SayHitLogLines(HitLog.All());
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(HitLogTimer);
+	}
+
+	Super::EndPlay(EndPlayReason);
+}
+
 void ACataclysmPlayerCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
@@ -1001,6 +1014,14 @@ void ACataclysmPlayerCharacter::OnClassResourceChanged(const FOnAttributeChangeD
 void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	const FCataclysmHitNotice& Notice)
 {
+	// A BLOW THIS CHARACTER TOOK GOES TO ITS HIT LOG FIRST, whoever dealt it, this character included: Echo Chamber's
+	// copy strikes its caster, and the test below ends this function for every blow dealt by somebody else. Issue
+	// #2749 (B1). The log changes nothing about the blow.
+	if (Notice.Target == this)
+	{
+		NoteBlowTakenInTheHitLog(Notice);
+	}
+
 	// THE BLOWS THIS CHARACTER DEALT, not the ones it took. The clock for those
 	// is `seconds_after_hit_taken` and it is stamped on whoever was hit.
 	if (Notice.Attacker != this)
@@ -1208,6 +1229,58 @@ void ACataclysmPlayerCharacter::OnSkillWasUsed(
 		}
 	}
 }
+
+void ACataclysmPlayerCharacter::NoteBlowTakenInTheHitLog(const FCataclysmHitNotice& Notice)
+{
+	const UAbilitySystemComponent* AbilitySystem = GetAbilitySystemComponent();
+	UWorld* World = GetWorld();
+	if (AbilitySystem == nullptr || World == nullptr)
+	{
+		return;
+	}
+
+	// THE HEALTH BEFORE THE BLOW, WHICH IS THE HEALTH NOW: `UCataclysmCombatEvents::NoteBlow` announces a blow before
+	// `UCataclysmVitalAttributeSet` writes it to health.
+	const float HealthBefore =
+		AbilitySystem->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+	const float MaxHealth =
+		AbilitySystem->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	SayHitLogLines(HitLog.Note(Notice, HealthBefore, MaxHealth, World->GetTimeSeconds()));
+
+	// AND A DAMAGE OVER TIME TOTAL IS SAID WHEN ITS SECOND RUNS OUT, by a timer that runs only while one is open, so a
+	// burn that stops is not left unsaid until the next blow. A quarter of a second, so a total is said at most that
+	// long after its second ends.
+	FTimerManager& Timers = World->GetTimerManager();
+	if (HitLog.HasOpenTotals() && !Timers.IsTimerActive(HitLogTimer))
+	{
+		Timers.SetTimer(HitLogTimer, this, &ACataclysmPlayerCharacter::SayHitLogTotalsDue, 0.25f, /*bLoop=*/true);
+	}
+}
+
+void ACataclysmPlayerCharacter::SayHitLogTotalsDue()
+{
+	UWorld* World = GetWorld();
+	if (World == nullptr)
+	{
+		return;
+	}
+	SayHitLogLines(HitLog.Due(World->GetTimeSeconds()));
+	if (!HitLog.HasOpenTotals())
+	{
+		World->GetTimerManager().ClearTimer(HitLogTimer);
+	}
+}
+
+void ACataclysmPlayerCharacter::SayHitLogLines(const TArray<FString>& Lines)
+{
+	// DISPLAY, AS B1 RULED: the level the play loop's lines use, which a play session's log keeps at the editor's
+	// default verbosity.
+	for (const FString& Line : Lines)
+	{
+		UE_LOG(LogCataclysm, Display, TEXT("%s"), *Line);
+	}
+}
+
 void ACataclysmPlayerCharacter::OnSomethingDied(
 	const FCataclysmDeathNotice& Notice)
 {
@@ -1785,7 +1858,8 @@ void ACataclysmPlayerCharacter::HandleDeath()
 	// `Verbose`, which is dropped. Working out the cause took reading the save
 	// file, the passive tree data and the class stat line.
 	//
-	// AT `Log` AND NOT `Verbose`, BECAUSE A PLAYER DYING IS NOT A DETAIL. It
+	// NOT AT `Verbose`, BECAUSE A PLAYER DYING IS NOT A DETAIL (`Display` since
+	// issue #2749; the paragraph below the next says why). It
 	// happens rarely enough to cost nothing, and it is the single line somebody
 	// reading a play session most needs.
 	//
@@ -1796,11 +1870,29 @@ void ACataclysmPlayerCharacter::HandleDeath()
 	//
 	// INSIDE THE ONCE-ONLY GUARD, unlike the save write above it, so a burn
 	// ticking on a corpse does not print a second death.
+	//
+	// AND IT NAMES WHAT KILLED, OR SAYS NOTHING DID, SINCE ISSUE #2749 (B1, Q2,
+	// ruled by the coordinating session on 2026-11-18). On 2026-11-18 a level 1
+	// character died three times on floor 1 and this line could not say what
+	// struck it. The hit log's damage over time totals are said first, so every
+	// blow before the death is above this line, and the timer that says them is
+	// stopped: the totals it would say are said here.
+	//
+	// AT `Display` SINCE THEN, NOT `Log`, the level the hit log's own lines use,
+	// so a reader showing those lines sees the death among them. Both levels
+	// reach a play session's log; `Verbose`, which issue #1101 moved this line
+	// off, does not.
+	const UWorld* DiedIn = GetWorld();
+	SayHitLogLines(HitLog.All());
+	if (DiedIn != nullptr)
+	{
+		DiedIn->GetTimerManager().ClearTimer(HitLogTimer);
+	}
 	if (const UAbilitySystemComponent* AbilitySystem = GetAbilitySystemComponent())
 	{
-		UE_LOG(LogCataclysm, Log,
+		UE_LOG(LogCataclysm, Display,
 			   TEXT("%s died at %.0f of %.0f health, owing %.0f health, with "
-					"%.0f class resource."),
+					"%.0f class resource; %s."),
 			   *GetName(),
 			   AbilitySystem->GetNumericAttribute(
 				   UCataclysmVitalAttributeSet::GetHealthAttribute()),
@@ -1809,7 +1901,8 @@ void ACataclysmPlayerCharacter::HandleDeath()
 			   AbilitySystem->GetNumericAttribute(
 				   UCataclysmClassResourceAttributeSet::GetHealthOwedAttribute()),
 			   AbilitySystem->GetNumericAttribute(
-				   UCataclysmClassResourceAttributeSet::GetClassResourceAttribute()));
+				   UCataclysmClassResourceAttributeSet::GetClassResourceAttribute()),
+			   *HitLog.DeathClause(DiedIn != nullptr ? DiedIn->GetTimeSeconds() : 0.0));
 	}
 
 	// AND A WORN ROW ON THE PLAYER'S DEATH FIRES, once per death, inside the
@@ -2064,9 +2157,10 @@ void ACataclysmPlayerCharacter::Revive()
 	{
 		const FCataclysmWhatDeathEnded Ended = Cataclysm->ClearWhatDeathEnds();
 
-		// AT `Log` AND NOT `Verbose`, like the death line in `HandleDeath` and for
-		// its reason: a respawn is rare, and what it cleared is what somebody
-		// reading a play session after a death needs to know.
+		// AT `Log` AND NOT `Verbose`, for the reason the death line in
+		// `HandleDeath` gives (that line is at `Display` since issue #2749): a
+		// respawn is rare, and what it cleared is what somebody reading a play
+		// session after a death needs to know.
 		UE_LOG(LogCataclysm, Log,
 			   TEXT("%s stood back up. The respawn removed %d timed effects, %d "
 					"of them cooldowns, and %d stacks, cleared %.0f health owed, "

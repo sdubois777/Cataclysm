@@ -118,6 +118,13 @@ struct CATACLYSM_API FCataclysmHitNotice
 	bool bConsequenceOfADeath = false;
 
 	/**
+	 * Whether the blow is one returned for a blow taken: a retaliation payment, a reflected melee hit, or a share of a
+	 * blocked blow paid back. Issue #2749 (B1). See `FCataclysmHitDelivery::bIsRetaliation`. Read by the player's hit
+	 * log (`FCataclysmHitLog`) only, so a reflected blow is not reported as an attack the creature made.
+	 */
+	bool bRetaliation = false;
+
+	/**
 	 * Whether the target emptied the blow because it has become immune to this attacker's damage. Ruled
 	 * 2026-10-12. Copied from `FCataclysmDamageResult::bRefusedByImmunityToAttacker`. The blow is still announced,
 	 * so every listener still hears of it; the player's on-hit rows read this and act on none of it.

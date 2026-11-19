@@ -10356,8 +10356,50 @@ bool FCataclysmTravelArriveTest::RunTest(const FString&)
 	const float PartDayBefore = Loaded && Loaded->Clock ? Loaded->Clock->PartialDay : -1.0f;
 	const float Rate = Drawn ? Drawn->WalkDaysPerFloor() : -1.0f;
 	const FString SubType = Drawn ? UCataclysmSurgeScheduler::SubTypeName(Drawn->SubType) : FString(TEXT("NONE"));
+
+	// AND ENTERING SAYS IT REPLACED THE FREE-PLAY FLOOR `StartPlay` BUILT, WITH ITS CREATURES COUNTED. Issue #2749
+	// (B8), ruled by the coordinating session on 2026-11-18: those creatures were logged as spawned and none is met.
+	int32 FreePlayStanding = 0;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Scene.Mode->FloorEnemies)
+	{
+		FreePlayStanding += IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy) ? 1 : 0;
+	}
+	struct FFreePlayReplacedLines : public FOutputDevice
+	{
+		FFreePlayReplacedLines() { if (GLog) { GLog->AddOutputDevice(this); } }
+		virtual ~FFreePlayReplacedLines() override { if (GLog) { GLog->RemoveOutputDevice(this); } }
+		virtual void Serialize(const TCHAR* Text, ELogVerbosity::Type, const FName& Category) override
+		{
+			const FString Line(Text);
+			if (Category == FName(TEXT("LogCataclysm")) && Line.Contains(TEXT("replaced the free-play floor")))
+			{
+				Lines.Add(Line);
+			}
+		}
+		// FLUSHED BEFORE IT IS READ: a line written off the game thread waits in the log until then. Issue #1522.
+		const TArray<FString>& Said()
+		{
+			if (GLog)
+			{
+				GLog->Flush();
+			}
+			return Lines;
+		}
+		TArray<FString> Lines;
+	};
+	FFreePlayReplacedLines Replaced;
+
 	const bool bEntered = Scene.Mode->EnterThePendingWalkIfReady();
 	const bool bAgain = Scene.Mode->EnterThePendingWalkIfReady();
+	const TArray<FString> ReplacedLines = Replaced.Said();
+	AddInfo(FString::Printf(TEXT("TRAVEL ARRIVE FREE-PLAY FLOOR: %d creature(s) standing before entering; said [%s]"),
+							FreePlayStanding, *FString::Join(ReplacedLines, TEXT(" | "))));
+	TestTrue(TEXT("CONTROL: the free-play floor StartPlay built had creatures standing"), FreePlayStanding > 0);
+	if (TestEqual(TEXT("entering says once that it replaced the free-play floor"), ReplacedLines.Num(), 1))
+	{
+		TestTrue(TEXT("with the count of its creatures"),
+				 ReplacedLines[0].Contains(FString::Printf(TEXT("removing its %d creature"), FreePlayStanding)));
+	}
 	const FString PotionsInside = PotionsOf(*Scene.Base.Character);
 	const ECataclysmSaveTrigger Last = Scene.Base.Writer->LastTrigger();
 	const UCataclysmEmpireRun* Run = Scene.Base.Instance->EmpireRun.Get();

@@ -2,6 +2,305 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-18 — Every blow the player takes is logged, the player's death line names the blow that killed, and the free-play floor a dungeon level builds on load is said to be thrown away (#2749 slice 1)
+
+**Affects:** `FCataclysmHitLog` (`game/Source/Cataclysm/Character/CataclysmHitLog.h`, `.cpp`, new);
+`ACataclysmPlayerCharacter::OnSomethingWasHit`, `HandleDeath`, `EndPlay` (new override) and three new private members
+(`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`, `.h`); `FCataclysmHitDelivery::bIsRetaliation` and
+`UCataclysmSkillEffects::RetaliationDataName` (`AbilitySystem/CataclysmSkillEffects.h`, `.cpp`);
+`FCataclysmHitNotice::bRetaliation` and `UCataclysmCombatEvents::NoteBlow` (`AbilitySystem/CataclysmCombatEvents.h`,
+`.cpp`); `UCataclysmRetaliation::Pay` (`AbilitySystem/CataclysmRetaliation.cpp`); the row that reflects a share of a
+blocked blow in `UCataclysmAbilitySystemComponent::ActOnEvent` (`AbilitySystem/CataclysmAbilitySystemComponent.cpp`);
+`ACataclysmDungeonGameMode::EnterThePendingWalkIfReady` (`Dungeon/CataclysmDungeonGameMode.cpp`). Tests:
+`CataclysmHitLogTests.cpp` (new), `CataclysmSaveLoadTests.cpp`, `CataclysmBlockReflectTests.cpp`, and
+`tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`. Issue
+[#2749](https://github.com/sdubois777/Cataclysm/issues/2749), slice 1. **Applied, compiled, run and proved in window
+hit-log-w1 at `5c5af734` (The window, below).**
+
+### SAID FIRST
+
+- **COMPILED, RUN AND PROVED, IN ONE WINDOW (hit-log-w1), AT `5c5af734`** on development `04fb305f1`. The window's
+  build was the rebased tree's first compile ("63 actions, 56 files compiled"). The seven groups alone each performed
+  their registered count, all succeeding; the whole Unreal suite performed the registered 4848, all succeeding, with 47
+  skipped halves and no test save left behind; Python (7585 passed, 9 skipped) and ruff passed; the six C++ guard
+  proofs all proved, each failing exactly the registered assertions, and each restored half passed. "The window",
+  below. Before that, the branch compiled before its first rebase, as one unity build and with each changed file
+  compiled alone, and once after it ("Compiled (phase 2)").
+- **WHAT DID NOT WORK.** The first attempt to compile did not run: the continuous integration runner held the build
+  tool's lock for all five tries. The first full Python run on the rebased branch failed one test,
+  `test_every_log_capture_in_the_tests_flushes_before_it_reads`: two of the log captures this slice added to the C++
+  tests read their lines without flushing the log first (issue #1522's rule). Both were corrected and the rebased tree
+  compiled again ("Python, phase 2", below).
+- **THE SURVEY'S THORNS FIGURES WERE WRONG, AND SO WAS ITS BOSS EXAMPLE.** Issue #2749 says 16 to 28 creatures carried
+  Thorns of Glass on each floor 1 the owner played, and names `CataclysmImpCharacter_56`, a Boss-rung Imp with four
+  modifiers. Counted only on the floors the player actually fought, the Thorns carriers were **4, 12 and 16** (dungeons
+  2, 0 and 6), and Boss-rung creatures 2, 1 and 2. The 12 Thorns carriers and the Boss Imp of the survey's count were on
+  the free-play floor described below, which nobody fights.
+- **A CREATURE'S NAMED ABILITY IS NOT NAMED.** The damage effect a creature's ability applies carries no ability name,
+  so its blow reads "melee attack", "ranged attack", "spell" or "attack". Accepted for this slice by the coordinating
+  session's approval of the plan.
+
+### The rulings, quoted
+
+**The coordinating session, 2026-11-18**, in issue #2749 (B1 and B8):
+
+> **B1 The hit log comes first.** A Display line in `LogCataclysm` for every blow the player takes that reaches health
+> or shield. It names the attacker and its rarity, the skill or "attack", the amount landed and the flags (critical,
+> reflected or retaliation, damage over time). The player's death line names the killing blow. Lines for damage over
+> time are summed per second per source, so they do not flood the log.
+
+> **B8 The repeated creatures:** read why creatures repeated across three dungeons, and fix it if it is a fault.
+
+**The coordinating session, 2026-11-18**, on this session's plan:
+
+- The plan "APPROVED as written, including the HIT: line's form, the "itself" and "nobody" attackers, the
+  damage-over-time one-second sums, the new bIsRetaliation mark on FCataclysmHitDelivery and FCataclysmHitNotice (set in
+  UCataclysmRetaliation::Pay and on the block-reflect row's blow), the ~6 Cataclysm.HitLog. tests and the four guard
+  proofs."
+- **Q1 (B8)**: "(a) IN THIS SLICE: a Log line when a walk's floor 1 replaces the free-play floor, with the count of
+  creatures removed unfought. (c) IS A FAULT AND IS RULED NOW, not filed: two runs' dungeons must differ, because the
+  design's dungeons are procedurally generated and a new character meeting the same dungeon 0 every run is not that. Do
+  it as its own slice in #2749 right after slice 1 (I will add it to the issue as B10)".
+- **Q2**: "HandleDeath's line, raised to Display and naming the killing blow (or saying no blow killed it). The PLAY
+  LOOP death line stays unchanged."
+- **Q3**: "APPROVED: log any blow with Landed above 0, total and the part that reached health; evaded and fully
+  mitigated blows are not logged."
+
+### Why the creatures repeated (B8)
+
+Read from the code and from the owner's play log of 2026-11-18 (`game/Saved/Logs/Cataclysm.log` in the main checkout).
+
+1. **A free-play floor is built and thrown away on every load of the dungeon level.** `ACataclysmDungeonGameMode::
+   StartPlay` builds a floor from the level's own seed (`DungeonSeed`, 1 unless `Cataclysm.DungeonSeed` is set) before
+   `EnterThePendingWalkIfReady` enters the walk; entering builds the walk's floor 1 in the same frame, and `GoToFloor`
+   clears the free-play floor's creatures (`UCataclysmFloorContents::ClearTheFloor`). In the owner's log each of the
+   three loads spawned the same 211 creatures before the run was put back, and none of those 211 names appears again
+   after the walk was entered. That is the "about half the creatures" the survey found repeated. **This slice makes the
+   log say so** (Q1 (a)).
+2. **Dungeon 0's own floor 1 is that same floor.** `FCataclysmDungeon::WalkSeed` is `max(1, DungeonId + 1)`
+   (`CataclysmEmpire/Empire/CataclysmSurge.cpp`), so dungeon 0's seed is 1, the free-play seed. In the log, dungeon 0's
+   walk floor is roll for roll the discarded floor: 294 spawn and modifier lines, no difference.
+3. **Every run's dungeon N gets the same seed**, because identifiers restart at 0 in each run. Ruled a fault (Q1 (c));
+   it is its own slice of #2749, B10, not this one. Whether the floor's layout also repeats was not checked: the layout
+   depends on the dungeon's type.
+
+### What changed
+
+- **One `HIT:` line for every blow the player's character takes that landed above nought** (Q3), at Display on
+  `LogCataclysm`, built by `FCataclysmHitLog` and said by the character, which notes each blow from
+  `ACataclysmPlayerCharacter::OnSomethingWasHit` when the blow's target is itself:
+
+  `HIT: took 114 from CataclysmBruteCharacter_3 (Boss), melee attack: 100 to health; critical; health 130 of 130 before it`
+
+  Who struck is the creature's object name, which the lines saying it spawned and naming its modifiers also use, and
+  its rarity's name; "itself" for a blow the character dealt itself (Echo Chamber's copy, `ApplyDirectDamage(Player,
+  Player, ...)`), "nobody" for a blow naming no attacker (the Masochist's converted damage). What struck is the skill's
+  name, the ailment of a tick ("burn", or "burn of Molten Cleave" when a skill applied it), or, for a blow with no skill,
+  "spell", "ranged attack", "melee attack" or "attack" from the announcement's own facts. The flags are critical,
+  blocked, reflected or retaliation, and damage over time. The health is read before the blow: `UCataclysmCombatEvents::
+  NoteBlow` announces a blow before `UCataclysmVitalAttributeSet` writes it to health.
+- **Damage over time is added up per attacker and ailment for one second**, one line each:
+  `HIT: took 27 from CataclysmImpCharacter_9 (Legendary), burn, 4 ticks within one second: 27 to health; damage over
+  time; health 60 of 130 before the first`. A timer on the character, every quarter of a second, runs only while a total
+  is open and says each total whose second has run out; a death and the end of play say every open total.
+- **The player's death line names the killing blow, or says no blow killed it** (Q2), and is at Display:
+  `CataclysmPlayerCharacter_0 died at 0 of 130 health, owing 0 health, with 0 class resource; the killing blow: 114 from
+  CataclysmBruteCharacter_3 (Boss), melee attack: 100 to health; critical.` A death no blow caused ends "; no blow
+  killed it: health reached zero another way (a cost, a debt or a direct write); the last blow taken was ..., 2.4 s
+  earlier". The killing blow is the last blow the log noted, when it came at the moment of the death and took at least
+  the health held before it. The PLAY LOOP death line is unchanged.
+- **A blow returned for a blow taken carries a mark to the announcement**: `FCataclysmHitDelivery::bIsRetaliation`,
+  stamped on the effect under `Cataclysm.Retaliation` (`UCataclysmSkillEffects::RetaliationDataName`), read by
+  `NoteBlow` into `FCataclysmHitNotice::bRetaliation`. Set by `UCataclysmRetaliation::Pay`, which pays the retaliation
+  stat (Thorns of Glass adds its 50% to a creature's: `UCataclysmEnemyModifiers`, `ThornsOfGlassRetaliationPercent`)
+  and a reflected melee hit, and by the row that reflects a share of a blocked blow. It changes nothing about how any
+  blow resolves. Without it a Thorns of Glass reflect would have been logged as an attack the creature made.
+- **Entering a walk says the free-play floor was thrown away** (B8, Q1 (a)), at Log, after the arrival's own line:
+  `Dungeon 2's floor 1 replaced the free-play floor this level built when it loaded, removing its 211 creatures before
+  anyone fought them. Each was logged as spawned; none of them is in this walk.` The count is the free-play floor's
+  standing creatures (`FloorEnemies`), taken before `EnterEmpireDungeon`.
+- **`tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`** required the player's death line at
+  exactly `Log`; it accepts `Log` or `Display`, both of which reach a play session's log (Python, phase 1, below).
+
+### Judgements of the writing session
+
+- **The words of every line**, within the form the plan sent and the coordinating session approved.
+- **Figures from ten up are whole numbers and smaller ones keep one decimal**, so a tick of 0.4 does not read "0".
+- **A quarter of a second for the totals' timer**, so a total is said at most that long after its second ends.
+- **The killing blow is decided from the hit log's own record**, not from `FCataclysmLastBlow` on the ability system,
+  which holds neither what landed nor the flags: the last blow noted, at the moment of the death, that took at least the
+  health held before it. A blow an Unholy Sigil held at one health meets that test and does not kill; a death at that
+  same moment that no blow caused would then be named for it. No such case is known to happen.
+- **The free-play floor's line counts creatures standing**, not every actor `ClearTheFloor` removes, because creatures
+  are what the spawn lines name.
+
+### Tests
+
+Six new tests in a new group, `Cataclysm.HitLog.` (`CataclysmHitLogTests.cpp`), and new assertions in two existing
+tests. The last four new ones put a real player character (its ability system on its player state, as
+`CataclysmDeathTests.cpp` builds one) and a real creature in a world and strike with `ApplyDirectDamage`, then read
+what `LogCataclysm` printed through an output device.
+
+| Test | What it checks |
+| :-- | :-- |
+| `Cataclysm.HitLog.TheLineSaysWhoWhatHowMuchAndTheFlags` | three whole lines word for word (a critical blow; a second of four burn ticks; a blocked returned blow with small figures); "nobody", "itself" and another actor's name; what struck, for a skill, a tick, a tick a skill applied, a tick naming no ailment, a spell, ranged, melee and plain |
+| `Cataclysm.HitLog.DamageOverTimeIsAddedUpPerSourceEachSecond` | with every moment given: ticks inside their second say nothing; a plain blow is said at once; a blow that landed nought says nothing; a total is said when its second has run and not before (CONTROL at 0.9 s); a tick after a total closed opens a new one; the end says every open total, oldest first |
+| `Cataclysm.HitLog.ACreaturesBlowOnThePlayerSaysOneLine` | a Boss-rung creature's blow says one line naming it and "(Boss)", ending "before it", at Display. CONTROL: the player's blow on the creature says none |
+| `Cataclysm.HitLog.AReturnedBlowIsMarkedAndAPlainOneIsNot` | `PayReflected`'s blow carries the mark and its line says "reflected or retaliation", naming the creature. CONTROL: the same creature's plain blow carries neither |
+| `Cataclysm.HitLog.TheDeathLineNamesTheKillingBlow` | a lethal blow: one death line, at Display, naming the creature's blow as the killing blow, after the blow's own line |
+| `Cataclysm.HitLog.ADeathNoBlowCausedSaysSo` | a blow that does not kill, then health written to nought: the death line says no blow killed it and names that blow as the last taken. CONTROL: no killing blow is named |
+| `Cataclysm.Travel.TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk`, existing | also: entering says once that it replaced the free-play floor, with the count of its standing creatures. CONTROL: that floor had creatures |
+| `Cataclysm.BlockReflect.AReflectPaysItsShareOfWhatTheBlockRemovedToTheAttacker`, existing | also: the reflected blow is announced with the mark, and the blocked blow without it (CONTROL) |
+
+### Python, phase 1
+
+| Break | Command | Printed | Named failure |
+| :-- | :-- | :-- | :-- |
+| The player's death line logged at `Verbose` (`UE_LOG(LogCataclysm, Display,` to `UE_LOG(LogCataclysm, Verbose,` in `HandleDeath`) | `python -m pytest tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py` | "PROVED: 1 failed, 56 passed in 0.16s \| restored: 57 passed in 0.11s"; `proved` True, `crashed` False | `test_a_death_is_written_to_the_log_at_a_level_play_shows[ACataclysmPlayerCharacter::HandleDeath]` |
+
+### Python, phase 2
+
+- **On the rebased branch at `bddabd4ab`, before the correction**: `python -u -m pytest -p no:cacheprovider
+  --junit-xml=...` printed "1 failed, 7567 passed, 9 skipped in 189.14s"; the JUnit file's `testsuite` said
+  `errors="0" failures="1" skipped="9" tests="7577"`. The failure was
+  `tools/tests/test_a_log_capture_in_the_tests_flushes_first.py::test_every_log_capture_in_the_tests_flushes_before_it_reads`:
+  "CataclysmHitLogTests.cpp: FHitLogCapture: `int32 IndexOf(const FString& Needle) const` reads ['Lines'] without
+  calling GLog->Flush() first" and "CataclysmSaveLoadTests.cpp: FFreePlayReplacedLines registers with GLog and no member
+  function reads what it keeps". `python -m ruff check . --extend-exclude .claude`: "All checks passed!".
+- **Corrected at `0982ffe23`**: `IndexOf` flushes before it reads, and the travel test's capture reads through a new
+  `Said()` that flushes. That file alone: "3 passed".
+
+### Registered before the run
+
+The base is window gold-2-w1's whole-suite engine log at `e4cb8b589`
+(`adoring-jennings-f8c84c/.claude/windows/gold2_suite_engine_e4cb8b58.log`, 4842 "Test Completed" lines; 4842
+performed, all succeeding, 47 skipped halves, 0 test saves left behind, as the coordinating session gave them), whose
+`game/` tree is this branch's base `04fb305f1` (`git diff --stat e4cb8b589 04fb305f1 -- game/` prints nothing). Group
+counts are its "Test Completed" lines whose test path begins with the prefix, ignoring case. Every prefix ends in a dot,
+and none is a case-insensitive string prefix of another of that log's 318 groups. **Registered first at 4840, on
+`da5783f4c`, against window tree-1b-w1's 4834 at `a3eddb1d1`; registered again here after the rebase onto gold's slice
+2, which added 8 tests to none of these groups.**
+
+| Figure | Registered |
+| :-- | :-- |
+| Whole Unreal suite | 4842 + 6 = **4848**, 47 skipped halves, 0 test saves left behind |
+| `Cataclysm.HitLog.` alone | **6**, a new group; no other group's name begins with it, or it with another's |
+| `Cataclysm.Travel.` alone | **9**, none added: the arrive test checks the free-play floor's line |
+| `Cataclysm.BlockReflect.` alone | **5**, none added: the reflect test checks the mark |
+| `Cataclysm.Retaliation.` alone | **11**, none added: `Pay` marks its blow |
+| `Cataclysm.Death.` alone | **30**, none added: the player's death line changed |
+| `Cataclysm.CombatEvents.` alone | **26**, none added: the hit announcement carries a new field |
+| `Cataclysm.PlayerListenersBoundOnce.` alone | **2**, none added: the player's hit listener notes blows it takes |
+
+Each proof's prefix is one whole test's name, which no other test's name begins with, so each is predicted at
+1 performed, 1 failed with the break in, and 1 performed, 1 succeeded with it out. The assertions are named by the
+words each test gives them.
+
+| Proof | Break | Test | Predicted with the break in |
+| :-- | :-- | :-- | :-- |
+| H1 | `Delivery.bIsRetaliation = true;` to `false` in `UCataclysmRetaliation::Pay` | `AReturnedBlowIsMarkedAndAPlainOneIsNot` | 2 assertions: "the returned blow carries the mark" and "the returned blow's line says so" (0 lines, not 1) |
+| H2 | `if (Notice.Target == this)` to `!=` in `OnSomethingWasHit`, the three lines as one anchor | `ACreaturesBlowOnThePlayerSaysOneLine` | 2 assertions: "one line for one blow taken" (0, not 1) and "CONTROL: a blow the player dealt says no line" (1, not 0) |
+| H3 | `>= WindowSeconds` to `>= 0.0` in `FCataclysmHitLog::Due` | `DamageOverTimeIsAddedUpPerSourceEachSecond` | 4 assertions: "ticks inside their second say nothing" (2, not 0), "a blow that is not damage over time is said at once, alone" (2, not 1), "the burn's second has run; the bleed's has not" (0, not 1), "the end says every open total, oldest first" (1, not 2) |
+| H4 | `LastBlowAt == Now` to `LastBlowAt < Now` in `FCataclysmHitLog::DeathClause` | `TheDeathLineNamesTheKillingBlow` | 1 assertion: "naming the creature's blow as the killing blow" (0, not 1) |
+| H5 | `Delivery.bIsRetaliation = true;` to `false` on the block-reflect row's blow in `ActOnEvent`, with the next line as one anchor | `AReflectPaysItsShareOfWhatTheBlockRemovedToTheAttacker` | 1 assertion: "marked as returned for a blow taken" |
+| H6 | the free-play count's `+= IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy) ? 1 : 0;` to `+= 0;` in `EnterThePendingWalkIfReady` | `TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk` | 1 assertion: "with the count of its creatures" |
+
+### Compiled (phase 2)
+
+Three builds through `tools/unreal_build.py build`, no lock taken (the coordinating session's go), each started only
+once no Unreal workflow run had been seen in progress or queued twice, two minutes apart. The scripts and their output
+are in this worktree's `.claude/windows/` (`wait_then_build.py`, `compile_h2749.py`, `h2749_build1b.out`,
+`h2749_compile.out`).
+
+| Build | When | "Build:" line |
+| :-- | :-- | :-- |
+| 0. The branch, first attempt | 16:57 to 17:02 | **Did not run.** Five tries a minute apart each failed in 0.24 s with `UnauthorizedAccessException` on the build tool's mutex: the continuous integration runner was compiling pull request #2750. Nothing compiled |
+| 1. The branch at `4fdcc19b7`, every file in its unity file (`git status` clean), this worktree's first build | 17:15:24 to 17:25:05 | "Build: Succeeded - 79 actions, 69 files compiled" |
+| 2. Each changed `.cpp` alone (`git read-tree origin/development`, `Makefile.bin` moved aside, built, `git reset -q` after) | 17:27:47 to 17:31:00, 193 s | "Build: Succeeded - 36 actions, 33 files compiled". The "[Adaptive Build] Excluded from Cataclysm unity file" line names all ten `.cpp` files this branch changes -- `CataclysmAbilitySystemComponent.cpp`, `CataclysmCombatEvents.cpp`, `CataclysmRetaliation.cpp`, `CataclysmSkillEffects.cpp`, `CataclysmHitLog.cpp`, `CataclysmPlayerCharacter.cpp`, `CataclysmDungeonGameMode.cpp`, `CataclysmBlockReflectTests.cpp`, `CataclysmHitLogTests.cpp`, `CataclysmSaveLoadTests.cpp` -- and six more, because `origin/development` had moved to `da5783f4c` (#2750) before the `read-tree`, so the index differed from HEAD in that merge's files too (`git status` listed 32): `CataclysmGameInstance.cpp`, `CataclysmSaveRecords.cpp`, `CataclysmSaveTriggers.cpp`, `CataclysmEmpirePointsBankTests.cpp`, `CataclysmGoldTests.cpp`, `CataclysmSaveRecordTests.cpp`. Each was compiled alone from this branch's own tree |
+| 3. The unity files again (`Makefile.bin` moved aside again; both moved copies deleted after) | 17:33:03 to 17:35:19, 136 s | "Build: Succeeded - 20 actions, 17 files compiled" |
+| 4. The rebased tree at `0982ffe23`, on development `da5783f4c`, with the two log captures corrected | 17:42:17 to 17:47:13 | "Build: Succeeded - 50 actions, 45 files compiled" |
+
+Each build's log held one compiler warning line, the engine's own: `MicrosoftPlatformMath.h(183,3): warning C4996:
+... CountBits for 64-bit values has been deprecated`. None came from this change.
+
+**Then rebased** onto `da5783f4c` as `feat/hit-log-2749-2` (the rebase moves pushed commits, so it is a new branch): no
+file is changed by both. Build 4 is the rebased tree's compile, after the correction in "Python, phase 2".
+
+**And rebased again** onto `04fb305f1`, gold's slice 2 (#2751), as `feat/hit-log-2749-3`. Two files are changed by
+both. `CataclysmPlayerCharacter.cpp` merged without a conflict: gold's lines are in the city upgrade console commands,
+far from this branch's. `docs/DECISIONS.md` conflicted at its top and was resolved with `tools/resolve_decisions_log.py
+resolve --first "Every blow the player takes"`: this entry was first written at `2898c4919` (17:47:47), gold's at its
+branch commit `707f5f19f` (15:03:14), so this one is the newer. `git lfs checkout` left 0 pointer files. **This tree is
+not compiled before the window; the window's build is its first compile.**
+
+### Review (phase 2)
+
+- **The diff read against the rulings.** Every line the plan named is there, and nothing else: no game rule, number or
+  data row changed. The returned-blow mark is read by the announcement only.
+- **Fixed numbers audited.** The figures in `TheLineSaysWhoWhatHowMuchAndTheFlags` and
+  `DamageOverTimeIsAddedUpPerSourceEachSecond` are inputs the tests give the line builder, not game data. The one figure
+  read from game data is a rarity's name: "(Boss)" is what `DT_EnemyRarities` calls rarity step 4, as the owner's log of
+  2026-11-18 prints it ("spawned as Boss (rarity step 4)"). The one-second total and the quarter-second timer are
+  judgements, above.
+- **A stale comment, not changed here.** `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, above its call to
+  `UCataclysmRetaliation::Pay`, still says retaliation is "NOT ITSELF A HIT" because "ReduceHealthDirectly writes to the
+  Health attribute". `Pay` deals its blow through `UCataclysmSkillEffects::ApplyDirectDamage` now, which is why the hit
+  announcement sees a reflect at all. Reported to the coordinating session, which ruled on 2026-11-18 that slice 2
+  corrects it, since slice 2 rewrites reflect.
+
+### The window
+
+Window **hit-log-w1**, `.claude/windows/run_h2749.py` in this worktree, started by `gate_h2749.py` once
+`prechecks_h2749.py` printed "PRECHECKS: ALL PASS", at `feat/hit-log-2749-3` `5c5af734` with a clean tree, on
+development `04fb305f1`. Every log below is kept beside the script.
+
+- **The pre-checks, 18:40:45**: development's latest CI and Unreal runs at `04fb305f1` completed with success; no run in
+  progress or queued; "The Unreal editor is free."; no build or editor process; no pull request open; no simulation
+  process; 12,336 MB of physical memory free (10,240 needed). **The lock**: "hit-log-w1 holds the Unreal editor." at
+  18:40:49, and "hit-log-w1 released the Unreal editor." at 19:15:58, after the last proof.
+- **The build**, ending 18:46:14: "Build: Succeeded - 63 actions, 56 files compiled", the rebased tree's first compile.
+- **The groups alone**, each "Tests: N tests performed, N succeeded, 0 failed" at its registered N:
+  `Cataclysm.HitLog.` 6, `Cataclysm.Travel.` 9, `Cataclysm.BlockReflect.` 5, `Cataclysm.Retaliation.` 11,
+  `Cataclysm.Death.` 30, `Cataclysm.CombatEvents.` 26, `Cataclysm.PlayerListenersBoundOnce.` 2.
+- **The whole Unreal suite**, ending 19:05:03: "Tests: 4848 tests performed, 4848 succeeded, 0 failed. 47 skipped part
+  of what they check"; "Test saves: 836 written and deleted, 0 left behind"; "Declared: 4848 tests in the tree at
+  5c5af7344; 4848 performed, gap 0; every declared test was reported by the run". Registered 4848, 47 and 0:
+  **match**. Engine log kept as `h2749_suite_engine_5c5af734.log`. Its 56 `LogModelContextProtocol` lines are the test
+  editor's own server starting up, none an error, the same 56 as window gold-2-w1's log: no outside client connected
+  (#2745).
+- **The lines as the game said them**, from the tests' own reports in that log:
+  - "HIT: took 5.0 from CataclysmEnemyCharacter_0 (Boss), attack: 5.0 to health; health 100 of 100 before it"
+  - "HIT: took 5.0 from CataclysmEnemyCharacter_0 (Legendary), attack: 5.0 to health; reflected or retaliation; health
+    95 of 100 before it", the returned blow; the two blows' marks "0 1"
+  - "CataclysmPlayerCharacter_0 died at 0 of 100 health, owing 0 health, with 0 class resource; the killing blow: 100
+    from CataclysmEnemyCharacter_0 (Common), attack: 100 to health."
+  - "... no blow killed it: health reached zero another way (a cost, a debt or a direct write); the last blow taken was
+    5.0 from CataclysmEnemyCharacter_0 (Common), attack: 5.0 to health, 0.0 s earlier."
+  - "HIT: took 10 from nobody, burn, 2 ticks within one second: 10 to health; damage over time; health 100 of 130 before
+    the first"
+  - "Dungeon 0's floor 1 replaced the free-play floor this level built when it loaded, removing its 211 creatures before
+    anyone fought them. Each was logged as spawned; none of them is in this walk." In the test, 211 creatures stood on
+    the free-play floor before entering, the same 211 the owner's log of 2026-11-18 shows for each load.
+- **Python**, ending 19:08:24: "7585 passed, 9 skipped in 196.25s"; JUnit `errors="0" failures="0" skipped="9"
+  tests="7594"`. **Ruff**: "All checks passed!".
+- **The proofs**, 19:09 to 19:15:57, each through `prove_cpp_guard`, its anchor matching once, the source hash the same
+  before and after, both halves' engine logs kept (`h2749_<P>_run1.log`, `h2749_<P>_run2.log`). Every one printed
+  "PROVED: with the break in: 1 tests performed, 0 succeeded, 1 failed: <test> | restored: 1 tests performed, 1
+  succeeded, 0 failed", `crashed` False in both halves, and failed exactly the registered assertions:
+
+| Proof | Named failure | The broken half's failed assertions, as the engine logged them |
+| :-- | :-- | :-- |
+| H1 | `AReturnedBlowIsMarkedAndAPlainOneIsNot` | "Expected 'the returned blow carries the mark' to be true."; "Expected 'the returned blow's line says so' to be 1, but it was 0." |
+| H2 | `ACreaturesBlowOnThePlayerSaysOneLine` | "Expected 'one line for one blow taken' to be 1, but it was 0."; "Expected 'CONTROL: a blow the player dealt says no line' to be 0, but it was 1." |
+| H3 | `DamageOverTimeIsAddedUpPerSourceEachSecond` | "Expected 'ticks inside their second say nothing' to be 0, but it was 2."; "Expected 'a blow that is not damage over time is said at once, alone' to be 1, but it was 2."; "Expected 'the burn's second has run; the bleed's has not' to be 1, but it was 0."; "Expected 'the end says every open total, oldest first' to be 2, but it was 1." |
+| H4 | `TheDeathLineNamesTheKillingBlow` | "Expected 'naming the creature's blow as the killing blow' to be 1, but it was 0." |
+| H5 | `AReflectPaysItsShareOfWhatTheBlockRemovedToTheAttacker` | "Expected 'marked as returned for a blow taken' to be true." |
+| H6 | `TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk` | "Expected 'with the count of its creatures' to be true." |
+
+Each restored half's engine log holds no `LogAutomationController: Error:` line.
+
+---
+
 ## 2026-11-18 — City upgrades cost gold: 10,000 at difficulty tier 1, scaled to the run's tier by the gold pile's scale, paid from the character's balance, the city screen showing each price and the balance (#2742, slice 2)
 
 **Affects:** the City Upgrades sheet of `docs/All_Things_Cataclysm.xlsx`, which gains Tier 1 Gold, Tier 2 Gold, Tier 3

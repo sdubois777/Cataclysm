@@ -222,6 +222,10 @@ float UCataclysmRetaliation::Pay(UAbilitySystemComponent* Defender,
 	Delivery.bCarriesNoWeaponSubType = true;
 	Delivery.bCannotLeech = true;
 
+	// AND IT SAYS WHAT IT IS: a blow returned for a blow taken, which the player's hit log names as such rather than as
+	// an attack the defender made. Issue #2749 (B1). It changes nothing about how the blow resolves.
+	Delivery.bIsRetaliation = true;
+
 	// AND ONE THING THE STRUCK CHARACTER MAY NOT DO TO IT, FOR A DEFENDER WHOSE
 	// ROWS SAY SO. Ruled 2026-10-12: "Retaliation damage cannot be reduced or
 	// mitigated by the attacker". Asked once for the whole payment, so every

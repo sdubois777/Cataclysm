@@ -6,6 +6,7 @@
 #include "GameplayTagContainer.h"
 #include "Character/CataclysmCharacterBase.h"
 #include "AbilitySystem/CataclysmAbilitySet.h"
+#include "Character/CataclysmHitLog.h"
 #include "CataclysmPlayerCharacter.generated.h"
 
 class UAnimSequence;
@@ -248,6 +249,9 @@ public:
 	 *
 	 * `hit_dealt` IS NOT `seconds_after_hit_taken`, which is the same word at
 	 * the opposite end of one blow: that one is stamped on whoever was hit.
+	 *
+	 * AND A BLOW THIS CHARACTER TOOK goes to its hit log, whoever dealt it.
+	 * Issue #2749 (B1). See `FCataclysmHitLog`.
 	 */
 	void OnSomethingWasHit(const FCataclysmHitNotice& Notice);
 
@@ -351,6 +355,10 @@ public:
 	virtual void OnRep_PlayerState() override;
 
 	virtual void BeginPlay() override;
+
+	/** Says the hit log's open damage over time totals, so the end of a level loses none. Issue #2749 (B1). */
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
 	virtual void Tick(float DeltaSeconds) override;
 
 	/**
@@ -1007,6 +1015,24 @@ private:
 
 	/** Counts down `RespawnDelaySeconds` from the moment of death. */
 	FTimerHandle RespawnTimer;
+
+	/**
+	 * The blows this character took, as the log says them. Issue #2749 (B1), ruled by the coordinating session on
+	 * 2026-11-18. See `FCataclysmHitLog`.
+	 */
+	FCataclysmHitLog HitLog;
+
+	/** Says the hit log's damage over time totals as each second runs out, while any is open. */
+	FTimerHandle HitLogTimer;
+
+	/** Notes a blow this character took in `HitLog` and says what it answers. Called by `OnSomethingWasHit`. */
+	void NoteBlowTakenInTheHitLog(const FCataclysmHitNotice& Notice);
+
+	/** The timer's step: says the totals that have run out, and stops the timer once none is open. */
+	void SayHitLogTotalsDue();
+
+	/** Says each line at Display on LogCataclysm. */
+	static void SayHitLogLines(const TArray<FString>& Lines);
 
 	/** Where to stand up again, chosen at death rather than at revival so a
 	 *  level with no player start still puts the character back where it fell
