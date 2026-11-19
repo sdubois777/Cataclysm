@@ -10943,6 +10943,9 @@ bool FCataclysmTravelMigrationTest::RunTest(const FString&)
 	// AND THE WALK SEED MASK OF 0 `Migrate_7_to_8` WRITES, because the chain runs on to version 8 since 2026-11-18
 	// (issue #2749, B10).
 	CataclysmSaveFixtures::AddTheRunsVersion8Defaults(*Expected);
+	// AND THE TREE'S EVENT COUNTS AT NOTHING AND A BOUGHT DAY OF 0 ON EVERY UPGRADE, which `Migrate_8_to_9` writes,
+	// because the chain runs on to version 9 since 2026-11-19 (issue #2741 slice 3b).
+	CataclysmSaveFixtures::AddTheRunsVersion9Defaults(*Expected);
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -10973,10 +10976,10 @@ bool FCataclysmTravelMigrationTest::RunTest(const FString&)
 }
 
 /**
- * `Run_v8.json` reads into the award, the clear and the days away it states (it read `Run_v6.json` until the run record
- * went to version 7 on 2026-11-18, issue #2742, and `Run_v7.json` until it went to version 8 the same day, issue #2749
- * B10, and the three hold the same values). Every value but one is not a default, so
- * each is read and not re-defaulted; THE ONE IS `bEndedInAClear`, false, because the run it describes last came back
+ * `Run_v9.json` reads into the award, the clear and the days away it states (it read `Run_v6.json` until the run record
+ * went to version 7 on 2026-11-18, issue #2742, `Run_v7.json` until it went to version 8 the same day, issue #2749
+ * B10, and `Run_v8.json` until it went to version 9 on 2026-11-19, issue #2741 slice 3b, and the four hold the same
+ * values). Every value but one is not a default, so each is read and not re-defaulted; THE ONE IS `bEndedInAClear`, false, because the run it describes last came back
  * from a death -- on day 103, at 15 days, felling cities 17 and 23, which the summary lists -- and a fixture describes a
  * state play reaches. The test of the return line reads a true one. Prints "TRAVEL FILE".
  */
@@ -10988,7 +10991,7 @@ bool FCataclysmTravelCommittedFileTest::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v8.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v9.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -10999,7 +11002,7 @@ bool FCataclysmTravelCommittedFileTest::RunTest(const FString&)
 		Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v8.json would not load: %s -- %s"), FCataclysmSaveStorage::Describe(Result),
+		AddError(FString::Printf(TEXT("Run_v9.json would not load: %s -- %s"), FCataclysmSaveStorage::Describe(Result),
 								 *Message));
 		return false;
 	}
@@ -11012,7 +11015,7 @@ bool FCataclysmTravelCommittedFileTest::RunTest(const FString&)
 							Away.bEndedInAClear ? TEXT("YES") : TEXT("no"), Away.Cities.Num(), Away.Fallen.Num(),
 							Away.Surges, Away.SurgeDungeons));
 
-	TestEqual(TEXT("it says it is version 8"), Read->SchemaVersion, 8);
+	TestEqual(TEXT("it says it is version 9"), Read->SchemaVersion, 9);
 	TestEqual(TEXT("the last award was 2.25 points"), Read->LastEmpirePointsAwarded, 2.25);
 	TestEqual(TEXT("the last clear on day 80"), Read->LastClearDay, 80);
 	TestEqual(TEXT("of the Horde dungeon on Bulwark (1,2)"), Read->LastClearDungeonName,

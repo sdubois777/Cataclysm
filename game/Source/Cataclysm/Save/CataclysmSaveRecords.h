@@ -1721,8 +1721,14 @@ public:
 	 * 8 SINCE 2026-11-18. The run carries its mask on every dungeon's walk seed, `WalkSeedMask` (issue #2749, B10), so
 	 * two runs' dungeons differ, and `Migrate_7_to_8` writes a mask of 0 into a run written at 7: the mask that gives
 	 * every dungeon the seed it had then, so that run's floors, Edicts and Corrupted Stalker roll stay as they were.
+	 *
+	 * 9 SINCE 2026-11-19. The run carries what the empire upgrade tree's event rules count (issue #2741 slice 3b): the
+	 * clears since the last surge, the cities reclaimed and whether the Last Stand has held, `ClearsSinceLastSurge` to
+	 * `bSanctuaryLastStandSpent`; and each city upgrade carries the day it was bought, `BoughtDay`. `Migrate_8_to_9`
+	 * writes 0, 0, false and a `BoughtDay` of 0 on every upgrade into a run written at 8: nothing counted, and every
+	 * upgrade held since the run began.
 	 */
-	static constexpr int32 SchemaVersionNow = 8;
+	static constexpr int32 SchemaVersionNow = 9;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
@@ -2172,6 +2178,21 @@ public:
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	int32 WalkSeedMask = 0;
+
+	// ---- THE EMPIRE UPGRADE TREE'S EVENT COUNTS, issue #2741 slice 3b. VERSION 9: a record written before them is at
+	// version 8, and `Migrate_8_to_9` writes 0, 0 and false into it. Each city upgrade's `BoughtDay` is in `Cities`. ----
+
+	/** `UCataclysmEmpireRun::ClearsSinceLastSurge`, which Global Vigilance reads. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 ClearsSinceLastSurge = 0;
+
+	/** `UCataclysmEmpireRun::CitiesReclaimed`, which Reclaimer's Resolve reads. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 CitiesReclaimed = 0;
+
+	/** `UCataclysmEmpireRun::bSanctuaryLastStandSpent`: whether Last Stand Protocols has held in this run. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	bool bSanctuaryLastStandSpent = false;
 };
 
 /**

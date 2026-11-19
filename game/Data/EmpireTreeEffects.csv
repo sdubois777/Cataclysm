@@ -31,3 +31,11 @@ basic_arch_t3f#1,basic_arch_t3f,0,ResolveDaysAll,1.0,0,,0.0
 basic_0000001a#1,basic_0000001a,0,ResolveDaysPerBranchStep,1.0,20,Explorer,15.0
 keystone_00000017#1,keystone_00000017,0,ResolveDaysBelowTenPercent,5.0,0,,0.0
 capstone_0000000p#1,capstone_0000000p,3,SurgeGapDays,20.0,0,,0.0
+keystone_0000001g#1,keystone_0000001g,0,RetakeFraction,0.75,0,,0.0
+basic_arch_t1f#1,basic_arch_t1f,0,OutpostDefenceRegeneration,0.03,0,,0.0
+keystone_00000014#1,keystone_00000014,0,LowestCityRestoresDefence,0.2,0,,0.0
+keystone_00000014#2,keystone_00000014,0,LowestCityRestoresPopulation,0.15,0,,0.0
+basic_00000015#1,basic_00000015,0,DamageTakenPerClearThisSurge,0.01,0,,0.15
+basic_arch_t4g#1,basic_arch_t4g,0,DamageTakenPerCityReclaimed,0.01,0,,0.15
+keystone_0000001f#1,keystone_0000001f,0,SanctuarySurvivesAt,1.0,0,,0.0
+basic_arch_t1e#1,basic_arch_t1e,0,UpgradeEffectAfterDays,0.02,0,,0.0

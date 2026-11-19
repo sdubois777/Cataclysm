@@ -416,14 +416,95 @@ float UCataclysmEmpireMap::TotalMaxPopulation() const
 // What the empire upgrade tree makes of a city -- issue #2741 slice 3a
 // ---------------------------------------------------------------------------
 
+namespace CataclysmEmpireMapEnduring
+{
+	/**
+	 * What Enduring Foundations adds to a city's maximum through its upgrades of one raised-maximum effect: for each held
+	 * long enough, the maximum its own value would give at the strengthened value over what it gives at its own. EXACT,
+	 * because `AddUpgrade` folds each such upgrade into the saved base as a factor of one plus its value. Issue #2741
+	 * slice 3b, Q6.
+	 */
+	float AgedMaximumFactor(const UCataclysmEmpireMap& Map, const FCataclysmCity& City,
+							ECataclysmCityUpgradeEffect Effect)
+	{
+		if (Map.TreeBonuses.UpgradeStrengthAfterDays <= 0.0f)
+		{
+			return 1.0f;
+		}
+		float Factor = 1.0f;
+		for (const FCataclysmCityUpgrade& Held : City.Upgrades)
+		{
+			if (Held.Effect == Effect && Map.HasBeenHeldLongEnough(Held))
+			{
+				Factor *= (1.0f + Map.UpgradeValueNow(Held)) / FMath::Max(KINDA_SMALL_NUMBER, 1.0f + Held.Value);
+			}
+		}
+		return Factor;
+	}
+}
+
 float UCataclysmEmpireMap::EffectiveMaxDefence(const FCataclysmCity& City) const
 {
-	return City.MaxDefence * TreeBonuses.MaxDefenceFactorFor(City.Tier, City.Ring(), CitiesWithADefensiveUpgrade());
+	// AND ENDURING FOUNDATIONS ON A RAISED-MAXIMUM UPGRADE HELD LONG ENOUGH, read here as the tree is, so a maximum it
+	// raises leaves what the city holds where it is (S1). Issue #2741 slice 3b.
+	return City.MaxDefence * TreeBonuses.MaxDefenceFactorFor(City.Tier, City.Ring(), CitiesWithADefensiveUpgrade())
+		* CataclysmEmpireMapEnduring::AgedMaximumFactor(*this, City, ECataclysmCityUpgradeEffect::MaxDefence);
 }
 
 float UCataclysmEmpireMap::EffectiveMaxPopulation(const FCataclysmCity& City) const
 {
-	return City.MaxPopulation * TreeBonuses.MaxPopulationFactorFor(City.Tier);
+	return City.MaxPopulation * TreeBonuses.MaxPopulationFactorFor(City.Tier)
+		* CataclysmEmpireMapEnduring::AgedMaximumFactor(*this, City, ECataclysmCityUpgradeEffect::MaxPopulation);
+}
+
+int32 UCataclysmEmpireMap::Today() const
+{
+	return TodayIs ? TodayIs() : 0;
+}
+
+bool UCataclysmEmpireMap::IsStrengthenedByEnduringFoundations(ECataclysmCityUpgradeEffect Effect)
+{
+	switch (Effect)
+	{
+	case ECataclysmCityUpgradeEffect::MaxDefence:
+	case ECataclysmCityUpgradeEffect::MaxPopulation:
+	case ECataclysmCityUpgradeEffect::ResistDefenceLoss:
+	case ECataclysmCityUpgradeEffect::ResistPopulationLoss:
+	case ECataclysmCityUpgradeEffect::HealDefenceEvery:
+	case ECataclysmCityUpgradeEffect::RecoverPopulationEvery:
+	case ECataclysmCityUpgradeEffect::RestoreDefenceOnClear:
+		return true;
+	default:
+		return false;
+	}
+}
+
+bool UCataclysmEmpireMap::HasBeenHeldLongEnough(const FCataclysmCityUpgrade& Upgrade) const
+{
+	return Today() - Upgrade.BoughtDay >= FCataclysmEmpireTreeBonuses::EnduringFoundationsDays;
+}
+
+float UCataclysmEmpireMap::UpgradeValueNow(const FCataclysmCityUpgrade& Upgrade) const
+{
+	if (TreeBonuses.UpgradeStrengthAfterDays > 0.0f && IsStrengthenedByEnduringFoundations(Upgrade.Effect)
+		&& HasBeenHeldLongEnough(Upgrade))
+	{
+		return Upgrade.Value * (1.0f + TreeBonuses.UpgradeStrengthAfterDays);
+	}
+	return Upgrade.Value;
+}
+
+float UCataclysmEmpireMap::UpgradeValueNowFor(const FCataclysmCity& City, ECataclysmCityUpgradeEffect Effect) const
+{
+	float Total = 0.0f;
+	for (const FCataclysmCityUpgrade& Held : City.Upgrades)
+	{
+		if (Held.Effect == Effect)
+		{
+			Total += UpgradeValueNow(Held);
+		}
+	}
+	return Total;
 }
 
 float UCataclysmEmpireMap::DefenceOf(const FCataclysmCity& City) const
@@ -509,6 +590,11 @@ TArray<int32> UCataclysmEmpireMap::AliveCities(bool bIncludePillar) const
 bool UCataclysmEmpireMap::Damage(int32 CityId, float DefencePoints,
 								 float PopulationPoints)
 {
+	// THE LAST STAND IS ARMED FOR THIS ONE CALL, and spent by it whether or not it is needed, before any return below.
+	// Issue #2741 slice 3b, Q3.
+	const int32 LastStandFor = LastStandArmedFor;
+	LastStandArmedFor = INDEX_NONE;
+
 	FCataclysmCity* City = FindMutable(CityId);
 	if (City == nullptr || City->bFallen)
 	{
@@ -519,13 +605,14 @@ bool UCataclysmEmpireMap::Damage(int32 CityId, float DefencePoints,
 	// damage" takes a quarter off what a dungeon takes. Clamped at 1 so a stack
 	// of them can at worst make the city untouchable rather than heal it; no
 	// combination in the sheet reaches 1, and a resistance that healed would be
-	// a silent reversal of what the upgrade says.
+	// a silent reversal of what the upgrade says. AS READ TODAY, so Enduring
+	// Foundations strengthens one held long enough (issue #2741 slice 3b).
 	const float DefenceResisted = FMath::Clamp(
-		City->UpgradeValueFor(ECataclysmCityUpgradeEffect::ResistDefenceLoss),
+		UpgradeValueNowFor(*City, ECataclysmCityUpgradeEffect::ResistDefenceLoss),
 		0.0f, 1.0f);
 
 	const float PopulationResisted = FMath::Clamp(
-		City->UpgradeValueFor(ECataclysmCityUpgradeEffect::ResistPopulationLoss),
+		UpgradeValueNowFor(*City, ECataclysmCityUpgradeEffect::ResistPopulationLoss),
 		0.0f, 1.0f);
 
 	// THE CITY'S MAXIMUM IS DELIBERATELY ABSENT FROM BOTH LINES. That is issue
@@ -546,12 +633,34 @@ bool UCataclysmEmpireMap::Damage(int32 CityId, float DefencePoints,
 	City->Population -= PopulationTaken;
 	City->Population = FMath::Max(0.0f, City->Population);
 
+	// LAST STAND PROTOCOLS: "Sanctuary defenses survive at 1 on first fatal dungeon resolution." The run armed it for
+	// this city and this call; the city keeps its defence and does not fall. Issue #2741 slice 3b.
+	if (City->Defence <= 0.0f && CityId == LastStandFor)
+	{
+		City->Defence = LastStandDefence;
+		bLastStandHeld = true;
+		return false;
+	}
+
 	if (City->Defence <= 0.0f)
 	{
 		return Fall(CityId);
 	}
 
 	return false;
+}
+
+void UCataclysmEmpireMap::ArmTheLastStand(int32 CityId, float SurviveAt)
+{
+	LastStandArmedFor = SurviveAt > 0.0f ? CityId : INDEX_NONE;
+	LastStandDefence = SurviveAt;
+}
+
+bool UCataclysmEmpireMap::TakeTheLastStandHeld()
+{
+	const bool bHeld = bLastStandHeld;
+	bLastStandHeld = false;
+	return bHeld;
 }
 
 bool UCataclysmEmpireMap::Bite(int32 CityId, float DefenceFraction,
@@ -744,9 +853,12 @@ bool UCataclysmEmpireMap::Retake(int32 CityId)
 		return false;
 	}
 
+	// THE ARCHITECT'S LEGACY: "Reclaiming a fallen city restores it to 75% of its original Population/Defense." The
+	// original is read as the maximum with the tree, as the half was (issue #2741 slice 3b).
+	const float Fraction = TreeBonuses.RetakeFraction > 0.0f ? TreeBonuses.RetakeFraction : RetakenFraction;
 	City->bFallen = false;
-	City->Defence = EffectiveMaxDefence(*City) * RetakenFraction;
-	City->Population = EffectiveMaxPopulation(*City) * RetakenFraction;
+	City->Defence = EffectiveMaxDefence(*City) * Fraction;
+	City->Population = EffectiveMaxPopulation(*City) * Fraction;
 
 	// A RETAKEN CITY'S VOID STACKS ARE CLEARED, as `Simulation._retake` clears
 	// them, ruled by the coordinating session on 2026-10-16. It fell with fewer

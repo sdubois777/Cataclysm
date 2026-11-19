@@ -2,6 +2,196 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-19 — The empire upgrade tree's seven rules that act at an event: a retake at 75%, two repairs on fixed run days, two damage reductions that count clears and reclaims, a Sanctuary that survives one fatal hit, and city upgrades that strengthen after 10 days; the run record goes to version 9 (#2741, slice 3b)
+
+**Affects:** `FCataclysmEmpireTreeBonuses` (`game/Source/CataclysmEmpire/Empire/CataclysmEmpireMap.h`: `RetakeFraction`,
+`OutpostRegeneration`, `LowestCityDefenceRestored`, `LowestCityPopulationRestored`, `ReductionPerClear`, `ClearPoints`,
+`ClearReductionCap`, `ReductionPerReclaim`, `ReclaimPoints`, `ReclaimReductionCap`, `SanctuarySurvivesAt`,
+`UpgradeStrengthAfterDays`, `CivilOrderIntervalDays`, `MasonsGuildIntervalDays`, `EnduringFoundationsDays`, new;
+`EventDamageFactorFor`, new, in `CataclysmEmpireTreeBonuses.cpp`); `UCataclysmEmpireMap` (`TodayIs`, `Today`,
+`IsStrengthenedByEnduringFoundations`, `HasBeenHeldLongEnough`, `UpgradeValueNow`, `UpgradeValueNowFor`,
+`ArmTheLastStand`, `TakeTheLastStandHeld`, new; `Retake`, `Damage`, `EffectiveMaxDefence` and `EffectiveMaxPopulation`
+read them); `UCataclysmEmpireRun` (`ClearsSinceLastSurge`, `CitiesReclaimed`, `bSanctuaryLastStandSpent`,
+`ArmTheLastStandFor`, `NoteTheLastStand`, `RunTreeIntervals`, new; `AdvanceDay`, `FireSurge`, `ClearDungeon`,
+`TreeDamageFactorsFor`, `RunCityUpgradeIntervals`, `BuyCityUpgrade` and `BeginForCharacter` changed);
+`FCataclysmCityUpgrade::BoughtDay`, new, `game/Source/CataclysmEmpire/Empire/CataclysmCityUpgrade.h`; `ECataclysmEmpireTreeEffect`, eight values,
+`game/Source/Cataclysm/Data/CataclysmDataRows.h`; `UCataclysmEmpireTree::CityBonusesFor`; the run record
+(`UCataclysmRunSave`, version 9, `Migrate_8_to_9`; `FCataclysmSaveGather::ProgressFrom`, `FCataclysmSaveApply::RunInto`);
+`game/Tests/SaveFixtures/Run_v9.json`, new, and its README; `tools/generate_datatables.py` (`EMPIRE_TREE_EFFECTS`,
+`EMPIRE_TREE_EFFECT_KINDS`) and `game/Data/EmpireTreeEffects.csv`, 40 rows; `game/README.md`. Tests:
+`game/Source/Cataclysm/Tests/CataclysmEmpireTreeEventsTests.cpp`, new, 14 in the new group
+`Cataclysm.EmpireTreeEvents.`; the version 9 helper `AddTheRunsVersion9Defaults` (`CataclysmSaveFixtures.h`) in the
+seven chain tests; the tests reading the committed run file move to `game/Tests/SaveFixtures/Run_v9.json`
+(`CataclysmSaveRecordTests.cpp`, `CataclysmDeathCostTests.cpp`, `CataclysmEarnedBossSaveTests.cpp`,
+`CataclysmSaveLoadTests.cpp`, `CataclysmWinningTheRunTests.cpp`, `CataclysmGoldTests.cpp`, `CataclysmWalkSeedTests.cpp`);
+`CataclysmSaveRunRestoreTests.cpp` compares the new fields; `CataclysmDataTableTests.cpp` pins 40 rows;
+`tools/tests/test_empire_tree_event_counts_are_saved.py`, new; `tools/tests/test_empire_tree_effects_match_their_texts.py`
+and `tools/tests/test_a_runs_walk_seed_mask.py`, changed. And the slice 3a entry's S2 sentence, corrected (below). Issue
+[#2741](https://github.com/sdubois777/Cataclysm/issues/2741), slice 3b.
+
+### SAID FIRST
+
+- **COMPILED, RUN AND PROVED IN ONE WINDOW (tree-3b-w1).** At `6b1eabc43` on development `ec8a225b4`:
+  - `DT_EmpireTreeEffects.uasset` was rebuilt at 40 rows by the DataTable asset generator and committed with its record
+    line. No other file changed.
+  - The written-out record version check, run before the lock, found the run, character and account records at 9, 9
+    and 4, and no test stating another version.
+  - The eighteen groups each passed alone at their registered counts.
+  - The whole Unreal suite performed the registered 4905, all succeeding, with 47 skipped halves and "836 written and
+    deleted, 0 left behind".
+  - Python passed, 7644 with 9 skipped, and ruff passed.
+  - The five C++ guard proofs each proved, failing exactly the registered tests with exactly the registered number of
+    assertions; each restored half passed 14 of 14. The three Python guard proofs were proved in phase 1.
+  - All three of phase 2's compiles succeeded.
+- **THE TREE'S CITY NODES ARE ALL BUILT**: slice 3a's 31 and these seven, 38 of the tree's nodes and options. Slices 4
+  and 5 build the rest.
+- **THE RUN RECORD IS AT VERSION 9.** A run saved before it loads with nothing counted and every city upgrade held since
+  its run began.
+- **ONE PLANNED ITEM WAS NOT DONE**: no play-loop checklist step. The seven rules act only at events the checklist's
+  walks do not reach -- a fallen city, run day 20 or 30, a Sanctuary's fatal hit -- so the automation tests cover them.
+  The coordinating session accepted that on 2026-11-19.
+- **A CORRECTION TO THE SLICE 3A ENTRY**: its S2 gave "resets every tier" to Global Vigilance. The words are Last Stand
+  Protocols'; Global Vigilance's are "Resets on new Surge". The sentence there is corrected and says so.
+
+### The rulings this slice builds on
+
+All from the coordinating session, 2026-11-19, on this session's plan, which put each as a question with a
+recommendation. **EVERY READING BELOW IS A JUDGEMENT** of that session and this one, not the design's, because each node's
+text leaves it open. The node texts fix each rule's shape -- a survival at 1, a reduction counted per clear and reset by
+a surge, a raised retake share, interval restores -- so no formula was invented and no other game's rule decides these
+readings; they are specific to this game's text.
+
+- **Q1, Global Vigilance**, "-1% damage taken by cities for each dungeon cleared in the current Surge cycle
+  (multiplicative). Resets on new Surge. 15% cap.", 10 points: -1% a clear **a point**, compounded, the 15% cap on the
+  node's whole -- read per point as slice 3a read Bastion Spirit, the only other multi-point node whose text lacks "per
+  point". Every kind of clear counts: ordinary, Quest and a fallen city's. Every surge resets the count: the opening one,
+  the clock's, the empty board's and a city's fall. The simulation keeps it at its cap, 0.85, in
+  `TREE_ARCHITECT_AS_DESIGNED`; the game counts it.
+- **Q2, Reclaimer's Resolve**, "Each reclaimed city permanently grants +1% Global Damage Reduction.", 10 points:
+  "permanently" is for the rest of the run, and no surge resets it -- not across runs. "Global Damage Reduction" is the
+  damage every city takes, as the older design document gave Sovereign's Might the same words "for all cities". -1% a
+  reclaimed city a point, compounded, **capped at 15% of the whole, a judgement**, Global Vigilance's own cap beside it.
+- **Q3, Last Stand Protocols**, "Sanctuary defenses survive at 1 on first fatal dungeon resolution. Resets every
+  tier.": once per run, across the empire, at the first ordinary resolve or Quest dungeon timer hit that would fell any
+  Sanctuary. A Siege's daily share and the tenth Void stack are not resolutions and still fell it. "Resets every tier" is
+  met by the flag being the run's: a run's difficulty tier is fixed (`UCataclysmEmpireRun::DifficultyTier`) and every
+  tier is a new run.
+- **Q4, when Civil Order and The Mason's Guild act**: on run days that are multiples of 30 and of 20, from day 0, with no
+  saved state. A city upgrade's interval counts from its buy, but a tree node is mostly held from a run's start; a point
+  bought mid-run acts at the next multiple, one early repair at most.
+- **Q5, The Mason's Guild's city**: the living Outpost or Bulwark with the lowest **share** of its effective maximum
+  defence -- lowest defence outright would nearly always be an Outpost, whose maximum is 1000 -- the lower id on a tie;
+  nothing when that city is full; the same city may be chosen again, as the older design document says.
+- **Q6, Enduring Foundations**, "City upgrades that have been active for 10+ days grant +2% to their base effect per
+  point.": an upgrade bought on day B is "active for 10+ days" once the run's day less B is 10 or more; its value is then
+  multiplied by one plus 2% a point. It reaches the percentage effects read after the buy -- the two raised maxima (as a
+  factor in the effective maximum), the two resistances, the two interval heals and the restore on a clear -- and not
+  the whole-number effects (the dungeon cap, more or fewer floors, fewer walk days), which have no 2% to take, nor the
+  one-time effects, which are spent at the buy. S1 holds: a maximum raised by age leaves what a city holds where it is.
+- **Q7, Civil Order**, "Outposts regenerate 3% of their current defense every 30 days per point.": 3% a point of what
+  each living Outpost holds, as written, to its effective maximum. It does little for a city that is low, which is the
+  text's own word.
+- **Q8**: one slice, because four of the rules share the version 9 bump.
+
+### Judgements of this session, each with what it rests on
+
+1. **The Last Stand is armed on the map for one `Damage` call, not passed into it.** The run arms it on the line before
+   each of the two resolution hits; `Damage` copies and clears it on its first lines, before any return, and leaves the
+   city at 1 instead of letting it fall. The two `Map->Damage(...)` call lines stay the single lines the Python port
+   tests read word for word. The coordinating session asked on 2026-11-19 whether any path could arm it and not reach
+   `Damage`, leaving it armed for a later hit such as a Siege's: none can. `ArmTheLastStand` has one caller,
+   `ArmTheLastStandFor`, called on lines 922 and 1013 of `CataclysmEmpireRun.cpp`, each followed on the next line by an
+   `if` whose left operand is `Map->Damage`, always evaluated. `tools/tests/test_empire_tree_event_counts_are_saved.py`
+   holds that each of the two lines is armed and no other `Map->Damage` call is.
+2. **A reclaim is counted when `ClearDungeon` retakes a city that was fallen and not erased**, exactly when `Retake`
+   succeeds, read before the call so `Map->Retake(CityId);` stays the statement two Python tests read.
+3. **Enduring Foundations on a raised maximum is an exact factor**: the strengthened value's raise over the bought one's,
+   because `AddUpgrade` folds each raise into the saved base as a factor of one plus its value.
+4. **The map asks the run for today**, through a function the run sets (`TodayIs`), as the day clock asks the run for
+   the tree's days; a map built on its own reads day 0.
+5. **The Mason's Guild and Civil Order run beside `RunCityUpgradeIntervals`**, before the day's assaults, for its
+   reason: a city one bite from falling is saved by a repair already due.
+
+### Registered before the run
+
+Sent to and accepted by the coordinating session on 2026-11-19, before either compile.
+
+- **Base: 4891**, measured by window tree-3a-w1 at `71a64f810`, whose `game/` is development `ec8a225b4`'s (`git diff
+  --stat 71a64f810 ec8a225b4 -- game/` prints nothing).
+- **The whole suite: 4905 performed, 4905 succeeded, 0 failed**: the base's 4891 and 14 new in
+  `Cataclysm.EmpireTreeEvents.`; 47 skipped halves, the base's; "Test saves: 836 written and deleted, 0 left behind", the
+  base's, because no new test writes a save slot.
+- **Each group alone**, counted from the base log on "Test Completed. Result={" lines and by distinct path, which agree:
+  `Cataclysm.EmpireTreeEvents.` 14 (new), `EmpireTreeCity.` 17, `EmpireMap.` 17, `EmpireRun.` 71, `DayClock.` 10,
+  `Surge.` 54, `CityUpgrade.` 15, `EmpireTree.` 24, `SaveApply.` 24, `SaveLoad.` 79, `SaveRecords.` 17, `WalkSeed.` 5,
+  `Gold.` 13, `DeathCost.` 9, `EarnedBossSave.` 3, `WinningTheRun.` 11, `ConsumptionDouble.` 15, `Data.` 7.
+- **The version 9 sweep, reads as well as writes**, as the coordinating session asked: the version constant and its
+  comment; `Migrate_8_to_9`, the chain's last step; the gather, the apply and `Begin`; the four tests that stated
+  "version 8" beside the committed run file, now 9 beside `Run_v9.json`; the gold test, the save record tests' list of
+  current files and six of their tests, and the walk seed test's control, now reading `Run_v9.json`; the seven chain
+  tests, now adding `AddTheRunsVersion9Defaults`; the restore test's compared values; the fixtures README's history
+  entry, table row and count line; and `tools/tests/test_a_runs_walk_seed_mask.py`, which pinned version 8 and its step
+  as the last.
+- **Five C++ guard proofs**, each narrowed to `Cataclysm.EmpireTreeEvents.`, 14 performed in each half; the restored
+  half 14 of 14:
+
+| Proof | File | The break | Predicted with it in |
+|---|---|---|---|
+| L1 | `CataclysmEmpireMap.cpp` | `Retake` uses the map's half whatever the tree | 13 succeeded, 1 failed: `TheArchitectsLegacyRetakesACityAtThreeQuarters` (2 assertions) |
+| L2 | `CataclysmEmpireRun.cpp` | the Last Stand is armed for the Pillar and never a Sanctuary | 12, 2: `LastStandProtocolsHoldsTheFirstFatalResolveOnASanctuary` (3), `TheLastStandHoldsAQuestTimerHitAndNotASiegeOrAnOutpost` (3) |
+| L3 | `CataclysmEmpireRun.cpp` | `FireSurge` does not reset the clear count | 13, 1: `GlobalVigilanceCountsTheClearsSinceTheLastSurge` (2) |
+| L4 | `CataclysmEmpireMap.cpp` | an upgrade is never strengthened | 13, 1: `EnduringFoundationsStrengthensAnUpgradeHeldTenDays` (3) |
+| L5 | `CataclysmEmpireRun.cpp` | The Mason's Guild gives a tie to the higher id | 13, 1: `TheMasonsGuildRestoresTheMostDamagedOutpostOrBulwarkEveryTwentyDays` (2) |
+
+- **The asset step**: `python tools/run_editor_python.py tools/generate_datatable_assets.py` rebuilds
+  `DT_EmpireTreeEffects.uasset` at 40 rows and changes `datatable_asset_sources.json`; those two are committed alone.
+- **Python before the window**: at `2a36369a8`, 7643 passed, 1 failed, 9 skipped; JUnit tests 7653, failures 1, skipped
+  9; ruff clean. The failure was `test_datatable_assets_are_current.py`, naming only `EmpireTreeEffects.csv`, until the
+  asset step. A first run also failed `tools/tests/test_unreal_pinned_row_counts.py`, because
+  `CataclysmDataTableTests.cpp` still pinned 32 rows; it pins 40 since `2a36369a8`.
+
+### The three Python guards, proved in phase 1
+
+Each through `tools/prove_guard.py`'s `break_and_run` on `tools/tests/test_empire_tree_event_counts_are_saved.py`,
+`proved` True, "1 failed, 6 passed | restored: 7 passed":
+
+- **Y1, the migration writes a bought day of 1**: `test_the_run_record_is_at_version_9_and_migrate_8_to_9_writes_nothing_counted`.
+- **Y2, a Quest dungeon's timer hit is not armed**: `test_the_last_stand_is_armed_before_the_two_resolution_hits_and_no_other`.
+- **Y3, a surge no longer resets the clear count**: `test_a_clear_counts_and_every_surge_resets_the_count`.
+
+### The window
+
+**tree-3b-w1, 2026-11-19, at `2a36369a8` and then `6b1eabc43`.** The pre-checks all passed at 07:12: development
+`ec8a225b4` with its CI and Unreal runs succeeded, no run in progress or queued, the lock free, no build or editor
+process, no open pull request, 11,837 MB free, no LFS pointer file. The recount of the seventeen existing groups from
+the base log matched every registered count. Then the written-out record version check, before the lock: "records: run
+9, character 9, account 4"; "VERSION SWEEP: 20 lines stating a version; NO MISMATCH". It had been shown to fail: in a
+scratch copy, a test reading `Run_v9.json` and stating version 8 made it report the mismatch and exit 1.
+
+- **The build**: "target already up to date, 0 actions, nothing compiled", after phase 2's three compiles: the branch
+  (56 files), each of the 19 changed `.cpp` files alone, and the unity files (9), the one warning `CountBits` in
+  `CataclysmAbilitySystemComponent.cpp`, which issue #2756 holds.
+- **The asset step** left exactly the two expected files changed, committed alone as `6b1eabc43` and pushed:
+  `DT_EmpireTreeEffects.uasset`, and `datatable_asset_sources.json`, `EmpireTreeEffects.csv` at 40 rows.
+- **Each group alone**: all eighteen at their registered counts, all succeeding.
+- **The whole suite**: "Tests: 4905 tests performed, 4905 succeeded, 0 failed. 47 skipped part of what they check";
+  "Test saves: 836 written and deleted, 0 left behind"; "Declared: 4905 tests in the tree at 6b1eabc43; 4905 performed,
+  gap 0".
+- **Python**: "7644 passed, 9 skipped"; JUnit tests 7653, failures 0, errors 0, skipped 9; ruff "All checks passed!".
+- **The proofs**, each with the registered tests failing in its broken half and 14 of 14 in its restored half:
+
+| Proof | With the break in | The failed assertions |
+|---|---|---|
+| L1 | 14 performed, 13 succeeded, 1 failed | `TheArchitectsLegacyRetakesACityAtThreeQuarters` 2 ("with it, 75% of 1000 defence", 750 expected, 500; "and 75% of its people", 3750 expected, 2500) |
+| L2 | 12, 2 | `LastStandProtocolsHoldsTheFirstFatalResolveOnASanctuary` 3 ("the first fatal resolve leaves the Sanctuary standing"; "at 1", 0; "and the run notes it spent"); `TheLastStandHoldsAQuestTimerHitAndNotASiegeOrAnOutpost` 3 ("a Quest dungeon's timer hit is held"; "at 1", 0; "and spends it") |
+| L3 | 13, 1 | `GlobalVigilanceCountsTheClearsSinceTheLastSurge` 2 ("a surge resets the count", 0 expected, 2; "and the whole hit is taken again", 1 expected, 0.85) |
+| L4 | 13, 1 | `EnduringFoundationsStrengthensAnUpgradeHeldTenDays` 3 ("held 10 days: the resistance is 30%", 0.25; "the maximum is the base's x1.24", 3720 expected, 3600; "a hit of 100 takes 70", 3530 expected, 3525) |
+| L5 | 13, 1 | `TheMasonsGuildRestoresTheMostDamagedOutpostOrBulwarkEveryTwentyDays` 2 ("a tie goes to the lower id", 0.7 expected, 0.5; "and not to the higher", 0.5 expected, 0.7) |
+
+No failure's span holds a "server/discover" line (#2745). The lock was released when the window ended.
+
+---
+
 ## 2026-11-19 — The empire upgrade tree's 31 city nodes act on the empire: maximum defence and population, the damage a city takes, and timer and surge days, each read where the number is read and never saved; a raised maximum leaves what a city holds where it is (#2741, slice 3a)
 
 **Affects:** `FCataclysmEmpireTreeBonuses` and `FCataclysmTreeDamageFactors`, new, in
@@ -71,7 +261,9 @@ All six from the coordinating session, 2026-11-18, on this session's plan.
 - **S2, the split: AGREED.** Slice 3a builds the 31 nodes whose effects are standing numbers the run already holds; slice
   3b builds the seven that act at an event and need run state (Civil Order, The Mason's Guild, The Architect's Legacy,
   Last Stand Protocols, Enduring Foundations, Global Vigilance, Reclaimer's Resolve) at run record version 9.
-  Reclaimer's Resolve's cap and Global Vigilance's "resets every tier" go into 3b's plan.
+  Reclaimer's Resolve's cap and Last Stand Protocols' "resets every tier" go into 3b's plan. (This line gave "resets
+  every tier" to Global Vigilance until slice 3b corrected it on 2026-11-19: the words are Last Stand Protocols', and
+  Global Vigilance's are "Resets on new Surge".)
 - **S3, Bastion Spirit's size: AGREED, +15 days in total.** "+1 Day to all dungeon Resolution Timers per 20 points spent
   in the Explorer tree", read once per whole 20 points, to at most 15 days. Read per point it would be +225 days at a
   full Explorer branch. The measurement and its tuning note are below.

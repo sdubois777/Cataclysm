@@ -186,6 +186,72 @@ struct CATACLYSMEMPIRE_API FCataclysmEmpireTreeBonuses
 	float SurgeGapDays = 0.0f;
 
 	// ---------------------------------------------------------------------
+	// Slice 3b: the rules that act at an event. Each reading is a judgement of the coordinating session's Q1 to Q7 of
+	// 2026-11-19, recorded in `docs/DECISIONS.md`.
+	// ---------------------------------------------------------------------
+
+	/**
+	 * The share of its maximum defence and population a retaken city comes back with: The Architect's Legacy, 0.75. 0 is
+	 * no node, and the map's own share applies (`UCataclysmEmpireMap::Retake`).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float RetakeFraction = 0.0f;
+
+	/**
+	 * The share of its CURRENT defence a living Outpost regains on every run day that is a multiple of
+	 * `CivilOrderIntervalDays`, to its maximum: Civil Order, 3% per point (Q4, Q7).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float OutpostRegeneration = 0.0f;
+
+	/**
+	 * The shares of its maxima the living Outpost or Bulwark with the lowest share of its maximum defence regains on every
+	 * run day that is a multiple of `MasonsGuildIntervalDays`: The Mason's Guild, 20% and 15% (Q4, Q5).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float LowestCityDefenceRestored = 0.0f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float LowestCityPopulationRestored = 0.0f;
+
+	/**
+	 * Global Vigilance: the share each dungeon cleared since the last surge takes off every city's damage, per point,
+	 * compounded; its points; and the most the whole may take off, 15% (Q1).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float ReductionPerClear = 0.0f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 ClearPoints = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float ClearReductionCap = 0.0f;
+
+	/** Reclaimer's Resolve: the same, for each city reclaimed in the run, with its own cap, 15% (Q2). */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float ReductionPerReclaim = 0.0f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 ReclaimPoints = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float ReclaimReductionCap = 0.0f;
+
+	/**
+	 * The defence a Sanctuary is left at by the run's first ordinary resolve or Quest timer hit that would fell one: Last
+	 * Stand Protocols, 1. 0 is no node (Q3).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float SanctuarySurvivesAt = 0.0f;
+
+	/**
+	 * How much stronger a city upgrade held `EnduringFoundationsDays` or more makes its effect: Enduring Foundations, 2%
+	 * per point, so 0.2 at ten points multiplies the upgrade's value by 1.2 (Q6).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float UpgradeStrengthAfterDays = 0.0f;
+
+	// ---------------------------------------------------------------------
 	// The words in the node texts that are rules rather than numbers
 	// ---------------------------------------------------------------------
 
@@ -200,6 +266,15 @@ struct CATACLYSMEMPIRE_API FCataclysmEmpireTreeBonuses
 
 	/** Martial Law's "At <10% City Health". */
 	static constexpr float MartialLawDefenceFraction = 0.1f;
+
+	/** Civil Order's "every 30 days": run days that are multiples of it, from day 0 (Q4). */
+	static constexpr int32 CivilOrderIntervalDays = 30;
+
+	/** The Mason's Guild's "Every 20 days", the same way (Q4). */
+	static constexpr int32 MasonsGuildIntervalDays = 20;
+
+	/** Enduring Foundations' "active for 10+ days": the run's day less the day the upgrade was bought (Q6). */
+	static constexpr int32 EnduringFoundationsDays = 10;
 
 	// ---------------------------------------------------------------------
 	// What a city gets
@@ -225,6 +300,12 @@ struct CATACLYSMEMPIRE_API FCataclysmEmpireTreeBonuses
 
 	/** The days added to the timer of a dungeon standing on a city of this tier, at this share of its defence. */
 	float ResolveDaysFor(ECataclysmCityTier Tier, float DefenceFraction) const;
+
+	/**
+	 * The factor Global Vigilance and Reclaimer's Resolve put on every city's damage, defence and population alike: each
+	 * compounded per point for each clear since the last surge, or each city reclaimed in the run, and held at its cap.
+	 */
+	float EventDamageFactorFor(int32 ClearsSinceLastSurge, int32 CitiesReclaimed) const;
 };
 
 /**
@@ -695,6 +776,20 @@ public:
 	FCataclysmEmpireTreeBonuses TreeBonuses;
 
 	/**
+	 * Today's number, asked of the run that holds this map: how long a city upgrade has been held, which Enduring
+	 * Foundations reads (issue #2741 slice 3b). Set by `UCataclysmEmpireRun::BeginForCharacter`. A map built on its own
+	 * holds none and reads day 0.
+	 */
+	TFunction<int32()> TodayIs;
+
+	/** The city `ArmTheLastStand` armed for the next `Damage` call, `INDEX_NONE` for none; and the defence it keeps. */
+	int32 LastStandArmedFor = INDEX_NONE;
+	float LastStandDefence = 0.0f;
+
+	/** Set when an armed Last Stand held, until `TakeTheLastStandHeld` reads it. */
+	bool bLastStandHeld = false;
+
+	/**
 	 * Lays out the 25 cities and links their lanes. Discards whatever was here
 	 * before, so a second call is a fresh empire rather than a doubled one.
 	 */
@@ -835,6 +930,32 @@ public:
 	/** Whether an upgrade raises maximum defence or resists defence loss: the reading of "defensive upgrade" (S5). */
 	static bool IsADefensiveUpgrade(const FCataclysmCityUpgrade& Upgrade);
 
+	// ----------------------------------------------------------------------
+	// Enduring Foundations -- issue #2741 slice 3b
+	// ----------------------------------------------------------------------
+
+	/** Today, as `TodayIs` answers it; day 0 when nothing does. */
+	int32 Today() const;
+
+	/**
+	 * Whether Enduring Foundations reaches an upgrade of this effect: the percentage effects read after the buy -- the
+	 * two raised maxima, the two resistances, the two interval heals, and the restore on a clear. NOT the whole-number
+	 * effects, which have no 2% to take, and not the one-time ones, which are spent at the buy (Q6).
+	 */
+	static bool IsStrengthenedByEnduringFoundations(ECataclysmCityUpgradeEffect Effect);
+
+	/** Whether a held upgrade has been held `EnduringFoundationsDays` or more today. */
+	bool HasBeenHeldLongEnough(const FCataclysmCityUpgrade& Upgrade) const;
+
+	/**
+	 * An upgrade's value as the game reads it today: its own, times one plus Enduring Foundations' strength once it has
+	 * been held long enough and is an effect the node reaches.
+	 */
+	float UpgradeValueNow(const FCataclysmCityUpgrade& Upgrade) const;
+
+	/** The sum of `UpgradeValueNow` over a city's upgrades of one effect: `FCataclysmCity::UpgradeValueFor`, today. */
+	float UpgradeValueNowFor(const FCataclysmCity& City, ECataclysmCityUpgradeEffect Effect) const;
+
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	int32 FallenCityCount() const;
 
@@ -882,6 +1003,20 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
 	bool Damage(int32 CityId, float DefencePoints, float PopulationPoints);
+
+	/**
+	 * Last Stand Protocols for the NEXT `Damage` call only: if that call would fell this city, the city is left at
+	 * `SurviveAt` defence instead and `TakeTheLastStandHeld` answers true once. Issue #2741 slice 3b, Q3.
+	 *
+	 * ARMED FOR ONE CALL AND SPENT BY IT, whether or not it was needed, so it cannot reach a later hit. The run arms it
+	 * before the two hits a dungeon's resolution deals -- an ordinary dungeon resolving and a Quest dungeon's timer --
+	 * and never before a Siege's daily share; and the tenth Void stack fells a city without calling `Damage`. ARMED
+	 * HERE AND NOT PASSED IN, so the two calls stay the single lines the port tests read.
+	 */
+	void ArmTheLastStand(int32 CityId, float SurviveAt);
+
+	/** Whether the Last Stand held since this was last asked; asking clears it. */
+	bool TakeTheLastStandHeld();
 
 	/**
 	 * The same, expressed as a SHARE OF THE CITY'S MAXIMUM.
@@ -999,7 +1134,8 @@ public:
 	/**
 	 * A city is retaken: the lane it was sealing closes again, and it comes back
 	 * with half its defence and half its people -- half of each maximum with the
-	 * empire upgrade tree, since issue #2741 slice 3a.
+	 * empire upgrade tree, since issue #2741 slice 3a, and three quarters with
+	 * The Architect's Legacy, since slice 3b (`TreeBonuses.RetakeFraction`).
 	 *
 	 * AND WITH NO VOID STACKS, since 2026-10-22: retaking a city clears them, as
 	 * `Simulation._retake` does, ruled by the coordinating session on

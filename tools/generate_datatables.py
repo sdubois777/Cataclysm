@@ -4047,20 +4047,27 @@ EMPIRE_TREE_EFFECT_KINDS = (
     "ResolveDaysAll", "ResolveDaysOutposts", "ResolveDaysPerBranchStep",
     "ResolveDaysBelowTenPercent",
     "SurgeGapDays",
+    # Slice 3b: the rules that act at an event.
+    "RetakeFraction", "OutpostDefenceRegeneration",
+    "LowestCityRestoresDefence", "LowestCityRestoresPopulation",
+    "DamageTakenPerClearThisSurge", "DamageTakenPerCityReclaimed",
+    "SanctuarySurvivesAt", "UpgradeEffectAfterDays",
 )
 
 #: WHAT EACH BUILT NODE OR OPTION OF THE EMPIRE TREE DOES, by name. Issue
 #: #2741 slice 3a: the 31 city nodes and options that act through numbers the
-#: run already saves. Slice 3b's seven event rules and slices 4 and 5 add
-#: theirs here.
+#: run already saves; slice 3b: the seven that act at an event. Slices 4 and 5
+#: add theirs here.
 #:
 #: EACH EFFECT IS (effect, per point) or (effect, per point, step points, step
 #: branch, cap). Per point is a fraction for a percentage and days for days; a
 #: reduction is the share it takes off, written positive. Every value is the
 #: node's own words, and `test_empire_tree_effects_match_their_texts.py` finds
-#: each one in its text. THE TWO CAPS ARE NOT IN ANY TEXT: the owner's ruling 2
-#: of 2026-11-18, "Cap each one", and the coordinating session's Q1, chosen in
-#: slice 3a from the simulation (S3, S4) and recorded as judgements.
+#: each one in its text. THREE OF THE FOUR CAPS ARE NOT IN ANY TEXT: Golden
+#: Age's and Bastion Spirit's are the owner's ruling 2 of 2026-11-18, "Cap each
+#: one", chosen in slice 3a from the simulation (S3, S4), and Reclaimer's
+#: Resolve's is the coordinating session's Q2 of 2026-11-19, the 15% Global
+#: Vigilance's own text states. Each is recorded as a judgement.
 #:
 #: READINGS, each a judgement of 2026-11-18 (S5): "Max Health" and "Defense" of
 #: a city are its maximum defence; "within 2 rings of the Pillar" is rings 0 to
@@ -4105,6 +4112,16 @@ EMPIRE_TREE_EFFECTS = {
     "Bastion Spirit": [("ResolveDaysPerBranchStep", 1.0, 20, "Explorer", 15.0)],
     "Martial Law": [("ResolveDaysBelowTenPercent", 5.0)],
     "The Flood Barrier": [("SurgeGapDays", 20.0)],
+    # Slice 3b: the rules that act at an event, each reading a judgement of the
+    # coordinating session's Q1 to Q7 of 2026-11-19 (`docs/DECISIONS.md`).
+    "The Architect's Legacy": [("RetakeFraction", 0.75)],
+    "Civil Order": [("OutpostDefenceRegeneration", 0.03)],
+    "The Mason's Guild": [("LowestCityRestoresDefence", 0.20),
+                          ("LowestCityRestoresPopulation", 0.15)],
+    "Global Vigilance": [("DamageTakenPerClearThisSurge", 0.01, 0, "", 0.15)],
+    "Reclaimer's Resolve": [("DamageTakenPerCityReclaimed", 0.01, 0, "", 0.15)],
+    "Last Stand Protocols": [("SanctuarySurvivesAt", 1.0)],
+    "Enduring Foundations": [("UpgradeEffectAfterDays", 0.02)],
 }
 
 

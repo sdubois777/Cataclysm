@@ -240,6 +240,38 @@ FCataclysmEmpireTreeBonuses UCataclysmEmpireTree::CityBonusesFor(const UDataTabl
 		case ECataclysmEmpireTreeEffect::SurgeGapDays:
 			Bonuses.SurgeGapDays += Total;
 			break;
+
+		// SLICE 3B, the rules that act at an event. A rule read where its event happens holds its figure here, and the
+		// two counted reductions their per-clear figure, points and cap apart, because the cap is on the whole and not
+		// on a point's share of it (Q1, Q2).
+		case ECataclysmEmpireTreeEffect::RetakeFraction:
+			Bonuses.RetakeFraction = FMath::Max(Bonuses.RetakeFraction, Row->PerPoint);
+			break;
+		case ECataclysmEmpireTreeEffect::OutpostDefenceRegeneration:
+			Bonuses.OutpostRegeneration += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::LowestCityRestoresDefence:
+			Bonuses.LowestCityDefenceRestored += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::LowestCityRestoresPopulation:
+			Bonuses.LowestCityPopulationRestored += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::DamageTakenPerClearThisSurge:
+			Bonuses.ReductionPerClear = Row->PerPoint;
+			Bonuses.ClearPoints += Points;
+			Bonuses.ClearReductionCap = Row->Cap;
+			break;
+		case ECataclysmEmpireTreeEffect::DamageTakenPerCityReclaimed:
+			Bonuses.ReductionPerReclaim = Row->PerPoint;
+			Bonuses.ReclaimPoints += Points;
+			Bonuses.ReclaimReductionCap = Row->Cap;
+			break;
+		case ECataclysmEmpireTreeEffect::SanctuarySurvivesAt:
+			Bonuses.SanctuarySurvivesAt = FMath::Max(Bonuses.SanctuarySurvivesAt, Row->PerPoint);
+			break;
+		case ECataclysmEmpireTreeEffect::UpgradeEffectAfterDays:
+			Bonuses.UpgradeStrengthAfterDays += Total;
+			break;
 		default:
 			break;
 		}

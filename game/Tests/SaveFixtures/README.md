@@ -657,6 +657,22 @@ followed, ruled 2026-11-01:
   that read `Run_v7.json` as the committed run file reads `Run_v8.json` now, and
   every test that runs an older run file through the whole chain adds the mask
   of 0 through `CataclysmSaveFixtures::AddTheRunsVersion8Defaults`.
+- **The run record went to version 9 on 2026-11-19**, because the empire upgrade
+  tree's event rules count what a run does (issue #2741 slice 3b): three fields
+  after `WalkSeedMask` -- `ClearsSinceLastSurge`, `CitiesReclaimed` and
+  `bSanctuaryLastStandSpent` -- and a `BoughtDay` on every city upgrade.
+  `Migrate_8_to_9` writes 0, 0, false and a `BoughtDay` of 0 on every upgrade
+  of every city into a version 8 file. `Run_v9.json` is `Run_v8.json` at
+  version 9 with `"ClearsSinceLastSurge": 3`, `"CitiesReclaimed": 1`,
+  `"bSanctuaryLastStandSpent": true` added and a `BoughtDay` of 101 and 64 on
+  its two upgrades, and nothing else changed: none of them the default, so the
+  test that reads it shows each is read. `Run_v8.json` is now a migration
+  input, not edited again:
+  `Cataclysm.EmpireTreeEvents.ARunFileFromVersion8MigratesWithNothingCounted`
+  runs it through the step and checks every other field is kept, every test
+  that read `Run_v8.json` as the committed run file reads `Run_v9.json` now,
+  and every test that runs an older run file through the whole chain adds what
+  the step writes through `CataclysmSaveFixtures::AddTheRunsVersion9Defaults`.
 - **A slip, recorded rather than undone, as `LastWrittenUtc` was.**
   `Run_v1.json` was edited thirteen times after saves could load
   (`78ad0fa81`, 2026-10-30), each time adding fields for #753's dungeon load
@@ -691,6 +707,7 @@ followed, ruled 2026-11-01:
 | `Run_v6.json` | The same run at version 6: version 5's contents, plus the last award of 2.25 empire points, the clear on day 80, and the summary of the days its last walk was away, days 84 to 118 |
 | `Run_v7.json` | The same run at version 7: version 6's contents, with a `Gold` on each ground item, and a second ground item that is a gold pile of 37 |
 | `Run_v8.json` | The same run at version 8: version 7's contents, plus its mask on its dungeons' walk seeds, 12345 |
+| `Run_v9.json` | The same run at version 9: version 8's contents, plus the empire upgrade tree's event counts -- 3 clears since the last surge, 1 city reclaimed, the Last Stand spent -- and the day each of its two city upgrades was bought, 101 and 64 |
 | `Example_v1.json` | The example record at version 1 |
 | `Example_v2.json` | The same record at version 2, after `Title` was renamed to `Label` |
 | `Example_v3.json` | The same record at version 3, after `TotalCopper` was split into `Gold` and `Copper` |
@@ -703,8 +720,8 @@ something.
 `UCataclysmSaveExampleRecord` exists only for these, because all three real
 records were at version 1 when it was written and version 1 is the first, so
 none of them had a migration to run. The character record has had eight since
-(version 9 since 2026-11-18), the run record seven (version 8 since
-2026-11-18), and the account record three (version 4 since 2026-11-18). Its
+(version 9 since 2026-11-18), the run record eight (version 9 since
+2026-11-19), and the account record three (version 4 since 2026-11-18). Its
 header says more.
 
 ## Two things to keep in mind when editing one

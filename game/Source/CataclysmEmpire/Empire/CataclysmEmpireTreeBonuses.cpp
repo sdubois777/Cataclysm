@@ -100,3 +100,26 @@ float FCataclysmEmpireTreeBonuses::ResolveDaysFor(ECataclysmCityTier Tier, float
 	}
 	return Days;
 }
+
+namespace CataclysmEmpireTreeBonuses
+{
+	/** What a reduction of `PerStack` a point, for `Stacks` of something, leaves of a hit, held at `Cap`. */
+	float KeptAfter(float PerStack, int32 Points, int32 Stacks, float Cap)
+	{
+		if (PerStack <= 0.0f || Points <= 0 || Stacks <= 0)
+		{
+			return 1.0f;
+		}
+		const float Kept = FMath::Pow(FMath::Max(0.0f, 1.0f - PerStack),
+									  static_cast<float>(Points) * static_cast<float>(Stacks));
+		return Cap > 0.0f ? FMath::Max(1.0f - Cap, Kept) : Kept;
+	}
+}
+
+float FCataclysmEmpireTreeBonuses::EventDamageFactorFor(int32 ClearsSinceLastSurge, int32 CitiesReclaimed) const
+{
+	// EACH NODE HELD AT ITS OWN CAP, and the two then multiplied, as every other reduction multiplies (S5): Global
+	// Vigilance's "15% cap" is its own text, and Reclaimer's Resolve's 15% is the coordinating session's Q2.
+	return CataclysmEmpireTreeBonuses::KeptAfter(ReductionPerClear, ClearPoints, ClearsSinceLastSurge, ClearReductionCap)
+		* CataclysmEmpireTreeBonuses::KeptAfter(ReductionPerReclaim, ReclaimPoints, CitiesReclaimed, ReclaimReductionCap);
+}

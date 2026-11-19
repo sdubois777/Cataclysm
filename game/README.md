@@ -227,6 +227,11 @@ by `git add` with no error and no warning. Guarded by
   module adds the bought nodes up to, and the map, the timers and the surge gap
   apply it where each number is read. None of it is saved: the saved cities,
   timers and next surge day hold the base, so a load cannot count it twice.
+  Since slice 3b the run also acts on the seven nodes that act at an event --
+  a retake, a run day, a clear, a reclaim, a Sanctuary's fatal hit, an upgrade's
+  age -- and what those count is saved, on the run record at version 9: the
+  clears since the last surge, the cities reclaimed, whether the Last Stand
+  has held, and the day each city upgrade was bought.
 
   **The layer knows which Cataclysms a campaign faces, and which one sent each
   dungeon.** `UCataclysmRoster` names the eight, draws the order a character adds
@@ -570,7 +575,7 @@ from `C:\Projects\PassiveTreeCreator`, and the game cannot read them directly,
 because `docs/` is not packaged. `EmpireTreeEffects.csv` is what each built node
 of that tree does, stated in the generator itself (`EMPIRE_TREE_EFFECTS`) against
 the node identifiers the tree file gives, and checked against each node's own
-words (issue #2741 slice 3a). The same generator writes all seven and the same
+words (issue #2741 slices 3a and 3b). The same generator writes all seven and the same
 `--check` compares them, so editing any of those CSVs by hand achieves nothing.
 
 ```bash
