@@ -29,13 +29,23 @@ four in the group `Cataclysm.EnemyBurn.`; three new in `CataclysmThornsOfGlassTe
 - **NOT YET COMPILED OR RUN IN UNREAL.** Phase 1 at `1009bfe7b`, on development `0b7b554d1`: the Python suite gives 1
   failed, 7,677 passed and 9 skipped, by its count line and by its JUnit file (7,687 tests, 1 failure, 0 errors); ruff
   is clean; the three Python guard proofs are proved as registered ("Phase 1's Python guard proofs", below).
+- **REBASED AGAIN ONTO DEVELOPMENT `055ac0254`**, where the forge (#2768) and the gear display slice (#2769) merged:
+  only this log conflicted, and nothing merged into a defaulted parameter in either direction ("The rebase onto the
+  forge and the gear display slice", below). Python on a trial of this rebase onto `622bc0243`, whose tree differs from
+  this branch's before this commit in this log alone: 1 failed, 7,713 passed and 9 skipped, by its count line and by its
+  JUnit file (7,723 tests, 1 failure, 0 errors); the one failure is the registered one,
+  `test_datatable_assets_are_current` naming `EnemyModifiers.csv` and `StatusEffects.csv`. ruff is clean.
+- **THE OWNER'S PLAYTEST OF 2026-11-19, ON A BUILD WITHOUT THIS SLICE**: five deaths, four ended by a strike-back from a
+  creature carrying Thorns of Glass and one by a Legendary Hellhound's critical hit; of 5,056 health lost, burn took
+  2,438 (48%) and strike-backs 2,361 (47%). This slice acts on the sources of at least 64% and at most 95% of it,
+  because 1,481 of the burn names no source ("The owner's playtest of 2026-11-19", below).
 - **THE REBASE ONTO THE RING RISE MERGED ONE LINE WRONG, WITHOUT A CONFLICT**: the Stalker's kept multiplier came through
   without its floor's ring, which compiles because the ring's parameter defaults to an Outpost. Fixed, with a guard in
   each suite and a third C++ proof registered ("The rebase onto the ring rise", below).
-- **THIS BRANCH HOLDS THE ONLY UNMERGED EDIT TO THE DESIGN WORKBOOK** (`9053ef4f1` on
-  `feat/enemy-burn-thorns-rate-2749-2`; it was `361740025` before the rebase, which moved it unchanged because
-  development had not touched the workbook), two sentences ruled verbatim, held on that branch until it merges. Nobody
-  else may edit the workbook until then: git cannot merge two edits of it.
+- **THIS BRANCH HOLDS THE ONLY UNMERGED EDIT TO THE DESIGN WORKBOOK** (`5c3f4da20` on
+  `feat/enemy-burn-thorns-rate-2749-3`; it was `361740025`, then `9053ef4f1`, before the two rebases, which moved it
+  unchanged because development had not touched the workbook), two sentences ruled verbatim, held on that branch until
+  it merges. Nobody else may edit the workbook until then: git cannot merge two edits of it.
 - **ONE PYTHON TEST FAILS ON THE BRANCH UNTIL THE WINDOW**, as in slice 2 (Q4 there):
   `test_datatable_assets_are_current`, because `EnemyModifiers.csv` and `StatusEffects.csv` changed and their DataTable
   assets are rebuilt only by the editor. The window rebuilds them and commits them alone with
@@ -172,6 +182,71 @@ assertion in `ACorruptedStalkersDamageOverTimeIsTheTableFigureTimesItsDamageMult
 Bulwark keeps 0.132 for its damage over time (with a control that it is not 0.06), and one in
 `tools/tests/test_enemy_damage_over_time_port.py` that the kept multiplier is called with `DifficultyTier` and `Ring`.
 
+### The owner's playtest of 2026-11-19, on a build without this slice
+
+From the owner's play log of that session (`game/Saved/Logs/Cataclysm.log` in the main checkout, read after it ended;
+the coordinating session quoted its totals first, and they were recounted from the log): 518 lines of damage taken, all
+read, and five deaths.
+
+| Source of the health lost | Health | Share |
+| :-- | --: | --: |
+| Burn | 2,438 | 48% |
+| Other damage over time | 8 | 0% |
+| A strike-back ("reflected or retaliation") | 2,361 | 47% |
+| A creature's or a floor hazard's hit | 249 | 5% |
+| All | 5,056 | |
+
+**THE BLOW THAT TOOK THE LAST HEALTH**, each death: a Legendary Hellhound's critical hit of 45 (dungeon 4, floor 2), and
+four strike-backs, each after at least two more from the same creature: a Boss Succubus's 42 and another Boss Succubus's
+8.2 (dungeon 8, floor 5, twice), a Boss Corrupted Sentinel's 28 (dungeon 15, floor 3) and a Herald Abyssal Warden's 38
+(dungeon 18, floor 4). A Legendary Brute's strike-back is the last line before the second death, but it took 0.0 at 0.0
+health, after the Succubus's 42 had taken the last 42.
+
+**WHICH MODIFIERS DEALT IT.** The log names each creature's modifiers when it is placed ("drew 2 modifiers: ..."), and
+each hit was matched to the latest such line for its creature's name:
+
+- **Strike-backs: 2,331 of the 2,361 came from creatures carrying Thorns of Glass**; the other 30 from creatures with no
+  such line (a Succubus 22, a Brute 8). Echoes of the Void, the only other modifier whose row strikes back, appears
+  nowhere in the log.
+- **Burn: 884 came from creatures carrying Hellfire Aura**, 180 of it from carriers also carrying Inferno Charge, whose
+  burning path deals direct hits credited to its creature and so is not in the burn; 73 from a Brute with no such line;
+  and **1,481 names no source ("from nobody"). THE LOG DOES NOT SAY WHAT THAT 1,481 IS.** Hellfire Aura is the only
+  creature modifier whose row applies burn. One explanation fits and is NOT checked, in the code or the log: an aura's
+  burn still ticking after its carrier was killed, when the carrier no longer exists to be named. The log has no line
+  for a creature's death to test it against.
+
+**SO THIS SLICE ACTS ON THE SOURCES OF AT LEAST 64% OF THE HEALTH LOST, AND AT MOST 95%; NOT A MEASURED 95%.** Thorns
+of Glass's 2,331 and Hellfire Aura's named 884 are 3,215 of 5,056. The 95% holds only if the 1,481 of unnamed burn and
+the 103 from creatures with no modifier line are those two modifiers' as well. "Acts on" is not "removes": Thorns of
+Glass still strikes back, at most once per its own attack interval, and Hellfire Aura still burns, at 9% of its
+carrier's weapon damage.
+
+### The rebase onto the forge and the gear display slice
+
+Rebased onto development `055ac0254`, where the Cataclysmic Forge (#2768) and the gear display slice (#2769) merged, as
+`feat/enemy-burn-thorns-rate-2749-3`, because the move needs a force push. **ONE CONFLICT, IN THIS LOG ALONE**: both sides wrote a first entry.
+It was resolved with `tools/resolve_decisions_log.py resolve --first Hellfire`, this entry first, because the commit
+that first wrote it is dated 11:09 (-0700) and the forge's and the display slice's first ones 10:17 and 09:45.
+
+Four files changed on both sides and merged without a conflict; each was read after the merge and holds each side's
+change once: `docs/Cataclysm_GDD_v2.md`, this log, `CataclysmSkillEffects.cpp` (the display slice split
+`DamageAgainstTypeNamed` out of `DamageAgainstTypeOf`; this branch multiplies a Stalker's damage over time in
+`ApplyDamageOverTime`) and `CataclysmPlayerCharacter.cpp` (the skill console command calls the saving `ChooseSkill` and
+`ForgetSkillChoice`, #2763; this branch says the outgoing hit line in `OnSomethingWasHit`).
+
+**NO CALL MERGED INTO A DEFAULTED PARAMETER, IN EITHER DIRECTION**, checked because the last rebase did exactly that
+("The rebase onto the ring rise", below). Every header line the two sides added that declares a parameter with a
+default was listed: the base side added two, `const TArray<FName>* Families = nullptr` on
+`UCataclysmItemComparison::ReadingOf` and on `Compare`, and this branch calls neither; this branch added none and changed
+no existing declaration (its four removed header lines are comment lines). The design workbook was not changed by the
+base side, so this branch's edit of it moved unchanged.
+
+**THE GROUP COUNTS DID NOT MOVE.** Recounted from the display slice's whole-suite engine log at `622bc0243`
+(`hitline_suite_engine_622bc024.log`: 4,947 performed, 4,947 distinct paths, all succeeding): `Cataclysm.EnemyBurn.`
+0, `Cataclysm.ThornsOfGlass.` 6, `Cataclysm.EnemyModifiers.` 57, `Cataclysm.Retaliation.` 11, `Cataclysm.Ailments.` 23,
+`Cataclysm.ConsumptionDouble.` 15, `Cataclysm.DungeonModifierEffects.ACorruptedStalker` 10, `Cataclysm.HitLog.` 6, the
+same as window ring-w1's.
+
 ### Phase 1's Python guard proofs
 
 Each through `tools/prove_guard.py`'s `break_and_run`, each registered before it ran, each PROVED with exactly its
@@ -189,16 +264,18 @@ which the window does first.
 
 ### Registered before the window
 
-At `feat/enemy-burn-thorns-rate-2749-2`'s head, on development `0b7b554d1`, and only once the coordinating session says
+**RE-REGISTERED AFTER THE REBASE ONTO `055ac0254`**, as the coordinating session asked on 2026-11-19. It was 4,930,
+counted against window ring-w1; the group counts did not move.
+
+At `feat/enemy-burn-thorns-rate-2749-3`'s head, on development `055ac0254`, and only once the coordinating session says
 the machine is free:
 
 - **The DataTable asset step, after the build:** `tools/run_editor_python.py tools/generate_datatable_assets.py` may
   change only `game/Content/Data/DT_EnemyModifiers.uasset`, `game/Content/Data/DT_StatusEffects.uasset` and
   `game/Data/datatable_asset_sources.json`; they are committed alone, and the tests run at that head. Any other file
   changing stops the window.
-- **Each group alone**, counted by a literal, case-insensitive prefix in the whole-suite engine log of window ring-w1's
-  second run (at `0c23e3dbb`, whose tree differs from `0b7b554d1` in `docs/DECISIONS.md` alone; 4,922 performed, none
-  failed), plus the tests added by name: `Cataclysm.EnemyBurn.` 4 (new), `Cataclysm.ThornsOfGlass.` 9 (6 and three
+- **Each group alone**, counted by a literal, case-insensitive prefix in the whole-suite engine log of the gear display
+  slice's window (`hitline_suite_engine_622bc024.log`, at `622bc0243`; 4,947 performed, none failed), plus the tests added by name: `Cataclysm.EnemyBurn.` 4 (new), `Cataclysm.ThornsOfGlass.` 9 (6 and three
   new), `Cataclysm.EnemyModifiers.` 57, `Cataclysm.Retaliation.` 11, `Cataclysm.Ailments.` 23,
   `Cataclysm.ConsumptionDouble.` 15, `Cataclysm.DungeonModifierEffects.ACorruptedStalker` 10 and `Cataclysm.HitLog.` 7
   (6 and one new).
@@ -212,9 +289,9 @@ the machine is free:
   and `Cataclysm.ThornsOfGlass.AStrikeBackIsMarkedReturnedAndARetaliatingPlayerDoesNotAnswerIt` move the world's clock past
   the creature's interval before their second hit; `Cataclysm.EnemyModifiers.AMedicWithABurningAuraBurnsNobody` gives its
   creature an attack damage of 20 before its health.
-- **The whole suite: 4,930 performed**, the 4,922 window ring-w1 measured and the eight this branch adds (four in
+- **The whole suite: 4,955 performed**, the 4,947 the gear display slice's window measured and the eight this branch adds (four in
   `Cataclysm.EnemyBurn.`, three in `Cataclysm.ThornsOfGlass.`, one in `Cataclysm.HitLog.`); 47 skipped halves; "Test
-  saves: 836 written and deleted, 0 left behind", as that log has them, since the new tests run in worlds with no game
+  saves: 850 written and deleted, 0 left behind", as that log has them, since the new tests run in worlds with no game
   instance and write no save.
 - **`Cataclysm.EnemyBurn.ATableBurnFromACreatureArrivesAtWhatTheDefendersStepsLeave`**: the first tick arrives at 23.40 if
   armour meets a tick, or 24.24 if not; a third figure is said as a third figure.
