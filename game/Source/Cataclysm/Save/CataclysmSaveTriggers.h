@@ -69,10 +69,14 @@ enum class ECataclysmSaveTrigger : uint8
 	 * writer writes that record. This said nothing raised it until then.
 	 *
 	 * SO DO GOLD PICKED UP INTO THE ACCOUNT (`UCataclysmDropPickup::BankGold`,
-	 * issue #2742), and A POINT BOUGHT, AN OPTION CHOSEN OR A RESPEC in the
-	 * empire upgrade tree (`UCataclysmGameInstance::BuyEmpireTreePoint`,
-	 * `ChooseEmpireTreeOption` and `RespecEmpireTree`, issue #2741 slice 1b; a
-	 * respec raises `EmpireTreeRespecced` as well, for the run record).
+	 * issue #2742), A CITY UPGRADE PAID FOR FROM THE ACCOUNT
+	 * (`UCataclysmCityUpgradePurchase::Buy`, issue #2742 slice 2, beside
+	 * `CityUpgradeBought`), and A POINT BOUGHT, AN OPTION CHOSEN OR A RESPEC in a
+	 * lethality mode's empire upgrade tree (`UCataclysmGameInstance::
+	 * NoteTheEmpireTreeChanged`, issue #2741 slices 1b and 1c; a respec raises
+	 * `EmpireTreeRespecced` as well, for the run record). A Solo Self-Found
+	 * character's own tree raises `OwnEmpireTreeChanged` instead: it has no
+	 * account record.
 	 * This said "Nothing else raises it yet -- there is no stash" until slice 1b;
 	 * gold had already made that untrue. Nothing fills the stash yet.
 	 */
@@ -183,8 +187,8 @@ enum class ECataclysmSaveTrigger : uint8
 	 * ASoloSelfFoundPointBoughtIsWrittenToItsOwnRecord` writes the run record first in the same frame and reads the point
 	 * back from the character record's slot. Asked by the coordinating session on 2026-11-18.
 	 *
-	 * NUMBERED 13 ON THIS BRANCH, AND 14 AFTER THE REBASE onto gold's slice 2, which takes 13 for `CityUpgradeBought` and
-	 * merges first (the coordinating session, 2026-11-18). Nothing persists the number.
+	 * FOURTEEN, NOT THIRTEEN: gold's slice 2 (#2742) took 13 for `CityUpgradeBought` and merged first, the coordinating
+	 * session's ruling of 2026-11-18. Nothing writes these numbers to disk.
 	 */
 	OwnEmpireTreeChanged = 14,
 };
@@ -246,8 +250,8 @@ public:
 	 *
 	 * THE INVENTORY AND DEATH, AND NOTHING ELSE -- and since then a new character (`CharacterCreated`, 2026-11-01),
 	 * a won run (`RunWon`, issue #1324 slice 6e, 2026-11-03), the hand-over before a level change (`LeavingTheLevel`,
-	 * issue #2733 slice 3) and a Solo Self-Found character's own empire points or tree (`OwnEmpireTreeChanged`, issue
-	 * #2741 slice 1c). What a character is carrying
+	 * issue #2733 slice 3), a city upgrade bought (`CityUpgradeBought`, issue #2742 slice 2) and a Solo Self-Found
+	 * character's own empire points or tree (`OwnEmpireTreeChanged`, issue #2741 slice 1c). What a character is carrying
 	 * lives in its own record rather than in the run, so an item picked up has
 	 * to reach that record; and a death has to be written whole, which means the
 	 * character as well as the floor it fell on.
