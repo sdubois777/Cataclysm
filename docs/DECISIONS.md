@@ -306,9 +306,11 @@ would then have passed for either quote.
 - **Registered**: the whole suite at 4905 + 7 = **4912**, against 4905 measured at `6b1eabc43` (slice 3b's window,
   merged as `development` `5b401cb87`, this branch's base); 47 skipped halves, as there; 0 test saves left behind.
   `Cataclysm.BuildSave.` 6 and `Cataclysm.PlayLoop.` 9 (8 measured in window level1-w1, and one new) alone; the
-  groups that spend or choose through the changed functions -- `Cataclysm.SaveTriggers.`, `Cataclysm.SkillAssignment.`,
-  `Cataclysm.CharacterSheet.`, `Cataclysm.Attributes.` and `Cataclysm.Passives.` -- alone at the counts the base log
-  gives, recounted from it before the window.
+  groups that spend or choose through the changed functions alone at their counts in the base's whole-suite engine
+  log (slice 3b's window, `t2741s3b_suite_engine_6b1eabc4.log`, 4905 "Test Completed" lines, every one a success),
+  none of them changed in count: `Cataclysm.SaveTriggers.` 6, `Cataclysm.SkillAssignment.` 16,
+  `Cataclysm.CharacterSheet.` 10, `Cataclysm.Attributes.` 21 and `Cataclysm.Passives.` 161. The same log counts
+  `Cataclysm.PlayLoop.` 8 and `Cataclysm.BuildSave.` 0.
 - **Python**: `tools/tests/test_a_build_change_is_saved.py`, new, 17: each act raises the write after its change; the
   five put-back functions and the save apply raise nothing; the skill screen and the console command call the
   player's acts; the trigger is 15, writes the character record, and is neither synchronous nor exempt from the
