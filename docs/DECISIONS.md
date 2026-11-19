@@ -34,8 +34,9 @@ of 2; the gold half of [#1264](https://github.com/sdubois777/Cataclysm/issues/12
 
 ### SAID FIRST
 
-- **NOT YET COMPILED OR RUN.** This is phase 1, written without compiling, as the coordinating session's go for it
-  said. Nothing here has been built or run in the engine; "The run" says so until it has.
+- **NOT YET RUN IN THE ENGINE.** Phase 1 was written without compiling, as the coordinating session's go for it
+  said. After the rebase onto the empire tree's slice 1b it was compiled, under "Compiled" below; nothing has run in
+  the engine, and "The run" says so until it has. What the window must show is registered below, before it.
 - **EVERY PRICE IS A JUDGEMENT, AND WHAT IT RESTS ON IS AN ESTIMATE.** One upgrade at difficulty tier 1 costs 10,000
   gold, which the slice 1 estimate puts at 0.7 to 1.4 twelve-floor walks. No walk has been measured. The coordinating
   session is asking the owner to report the gold their walks bring, through the PLAY LOOP line slice 1 added, and the
@@ -126,7 +127,81 @@ of 2; the gold half of [#1264](https://github.com/sdubois777/Cataclysm/issues/12
 
 ### THE RUN
 
-Not yet compiled or run.
+Not yet run in the engine.
+
+### COMPILED, AFTER THE REBASE
+
+Under the lock `gold-2-compile`, with the coordinating session's go, at `9c6237f53` on development `da5783f4c`, with
+no editor open:
+
+- **Each changed file on its own.** HEAD was moved to `da5783f4c` with `git reset --soft`, so `git status` reported
+  every change and UnrealBuildTool's adaptive non-unity build compiled each changed file under its own name: "Build:
+  Succeeded - 70 actions, 65 files compiled", no warning. The line names no file when that many compile, so the object
+  files were read instead: each of the fourteen changed `.cpp` files has its own, written between 17:12:25 and
+  17:13:13, inside that build.
+- **In unity**, HEAD back at `9c6237f53`. **The first unity build compiled nothing**: "Build: Succeeded - target
+  already up to date, 0 actions, nothing compiled". The build plan cached in
+  `game/Intermediate/Build/Win64/x64/CataclysmEditor/Development/Makefile.bin` still held the first build's working
+  set. With that file deleted: "Build: Succeeded - 12 actions, 7 files compiled: Module.Cataclysm.10.cpp,
+  Module.Cataclysm.11.cpp, Module.Cataclysm.12.cpp, Module.Cataclysm.13.cpp, Module.Cataclysm.16.cpp,
+  Module.Cataclysm.31.cpp, Module.Cataclysm.9.cpp", no warning, and the build tool's log excludes no file from a unity
+  blob. The eleven changed files in `Cataclysm` lie in those seven blobs, each blob's object written after the blob.
+  The `CataclysmEmpire` module has no unity blob at all (its intermediate folder holds only
+  `Module.CataclysmEmpire.gen.cpp`), so its three changed files compile on their own in every build, as they did in
+  the first.
+
+### REGISTERED BEFORE THE RUN
+
+Against the base the coordinating session named: **4834 performed, all succeeding, 47 skipped halves, no test save
+left behind**, measured in the window tree-1b-w1 at `a3eddb1d1`, whose engine log is
+`.claude/windows/t2741b_suite_engine_a3eddb1d.log` in that session's worktree. `a3eddb1d1` to `da5783f4c`, the
+development this branch is rebased onto, changes nothing under `game/`: `git diff --stat a3eddb1d1 da5783f4c -- game/`
+prints nothing.
+
+- **The whole Unreal suite: 4842 performed, all succeeding**, which is 4834 and the eight tests this branch adds: the
+  six of the new group `Cataclysm.CityUpgradePrice.`, `Cataclysm.CityUpgrade.ThePriceIsCheckedLastAndAgainstTheGoldHeld`
+  and `Cataclysm.CityScreen.ABesiegedCitysUpgradesAreGreyedAndSayWhy`. It removes none, and renames one,
+  `Cataclysm.CityUpgrade.AnUpgradeIsStillFreeAndImmediate`, to `AnUpgradeIsStillImmediate`. **47 skipped halves**,
+  since no test this branch adds or changes calls `CataclysmTestSkip::ReportSkippedHalf`. **No test save left
+  behind.**
+- **Each group this branch changes, or that calls what it changed, run alone, performs its registered count and all
+  succeed.** The groups are those of every test file that calls a function, type or trigger this branch changed. The
+  base is the group's "Test Completed" lines in that engine log, counted by prefix ignoring case, as the engine's filter
+  matches; no prefix below is a prefix of another group's name in that log.
+
+| Group | Base | Added by name | Registered |
+|---|---|---|---|
+| `Cataclysm.CityUpgradePrice.` | 0 | 6 | 6 |
+| `Cataclysm.CityUpgrade.` | 14 | 1 | 15 |
+| `Cataclysm.CityScreen.` | 15 | 1 | 16 |
+| `Cataclysm.SaveTriggers.` | 6 | 0 | 6 |
+| `Cataclysm.Data.` | 7 | 0 | 7 |
+| `Cataclysm.WalkFromTheScreen.` | 5 | 0 | 5 |
+| `Cataclysm.EmpireRun.` | 71 | 0 | 71 |
+| `Cataclysm.BossClearedWins.` | 2 | 0 | 2 |
+| `Cataclysm.EarnedBoss.` | 4 | 0 | 4 |
+| `Cataclysm.EmpirePoints.` | 16 | 0 | 16 |
+| `Cataclysm.PlayLoop.` | 8 | 0 | 8 |
+| `Cataclysm.EmpireTree.` | 20 | 0 | 20 |
+| `Cataclysm.Gold.` | 13 | 0 | 13 |
+
+- **The asset step** changes exactly `game/Content/Data/DT_CityUpgrades.uasset` and
+  `game/Data/datatable_asset_sources.json`, and those two are committed alone. That commit is the tested head.
+- **Python**: `python -m pytest` and `python -m ruff check .` pass, with the count taken from a JUnit file as well.
+  Before the asset step one test fails, as it should:
+  `tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+  naming `CityUpgrades.csv` alone. Measured at `9c6237f53`: 7584 passed, 9 skipped, 1 failed; the JUnit file 7594
+  tests, 1 failure, 0 errors, 9 skipped.
+- **The five guard proofs**, each through `tools/unreal_build.py`'s `prove_cpp_guard` with the prefix shown. Each
+  restored half passes every test its prefix selects.
+
+| Proof | The break | Prefix | The broken half |
+|---|---|---|---|
+| P1 | In `UCataclysmEmpireRun::WouldBuyCityUpgrade`, `if (GoldCost > 0 && GoldHeld < GoldCost)` becomes `if (GoldCost > 0 && GoldHeld < 0)`: the run never refuses for gold | `Cataclysm.CityUpgrade`, without the trailing dot on purpose: the engine's filter is a string prefix, so it selects `Cataclysm.CityUpgrade.` (15) and `Cataclysm.CityUpgradePrice.` (6), and no other group in the base log begins so | 21 performed, 18 succeeded, 3 failed: `ThePriceIsCheckedLastAndAgainstTheGoldHeld`; `TheCityScreenShowsEachPriceTheBalanceAndWhatIsMissing`, since the screen's "short of gold" is the run's answer; and `TooLittleGoldIsRefusedAndNothingIsTaken`. **The last is the least certain.** Its refusal still comes, from the balance, but through the error `UCataclysmCityUpgradePurchase::Buy` logs when the run said yes and the balance would not pay; the prediction rests on that logged error failing the test |
+| P2 | In `UCataclysmCityUpgradePurchase::Buy`, `if (Price > 0 && !UCataclysmGameInstance::SpendGoldFor(WorldContext, Price, bFromTheCharacter))` becomes `if (int64 Unspent = 0; Price > 0 && !UCataclysmGameInstance::GoldHeldBy(WorldContext, Unspent))`: the purchase asks whether there is a balance and takes nothing | `Cataclysm.CityUpgradePrice.` | 6 performed, 4 succeeded, 2 failed: `BuyingTakesThePriceFromTheModesAccountAndSavesIt` and `ASoloSelfFoundCharacterPaysFromItsOwnGold` |
+| P3 | In `Buy`, the line raising `CityUpgradeBought` becomes `(void)0;`; `AccountChanged` is still raised | `Cataclysm.CityUpgradePrice.` | 6 performed, 4 succeeded, 2 failed: `BuyingTakesThePriceFromTheModesAccountAndSavesIt`, whose last trigger is then `AccountChanged`, and `APurchaseInAFrameAlreadyWrittenStillReachesTheRunRecord`, whose run record read back holds no upgrade |
+| P4 | In `UCataclysmCityUpgradeMapping::PriceAt`, `GoldPerPileAtTier` in the product becomes `GoldPerPileAtTierOne`: every tier costs the tier 1 price | `Cataclysm.CityUpgradePrice.` | 6 performed, 4 succeeded, 2 failed: `ThePriceIsTheRowsTierOneGoldScaledByThePileColumn` and `TheCityScreenShowsEachPriceTheBalanceAndWhatIsMissing`, since at tier 2 25,000 is no longer short |
+| P5 | In `UCataclysmSaveTriggers::WritesEvenIfTheRunWasWrittenThisFrame`, `CityUpgradeBought` is taken out of the list | `Cataclysm.CityUpgradePrice.` | 6 performed, 5 succeeded, 1 failed: `APurchaseInAFrameAlreadyWrittenStillReachesTheRunRecord`. `BuyingTakesThePriceFromTheModesAccountAndSavesIt` passes, because nothing writes the run record earlier in its frame: `UCataclysmSaveWriter::BeginRun` writes nothing |
 
 ---
 
