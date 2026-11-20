@@ -4418,11 +4418,25 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonReplacementAt(const FVector& Loca
 	{
 		Minion->RecordExplosionRadius(Params.RadiusCm);
 		Minion->SummonedBy = this;
+		RecordTheSkillOn(Minion);
 		Minions.Add(Minion);
 		Minion->ReservedFervour = Reserve;
 		UCataclysmCommand::ClampFervourToSpendable(Self);
 	}
 	return Minion;
+}
+
+void UCataclysmSummonSkill::RecordTheSkillOn(ACataclysmMinion* Minion) const
+{
+	if (!Minion)
+	{
+		return;
+	}
+	// READ ONCE, WHEN IT IS MADE, as a ground zone's row and factor are when it is laid (`LeaveAZoneFor`). Issue #2764,
+	// slice 2b, by the owner's ruling of 2026-11-19 ("Yes, they scale too") and judgement 4: the factor a minion's blow
+	// is multiplied by is its skill's level at its summoning, and a level the skill reaches later reaches the next one.
+	Minion->SummoningSkillRow = UCataclysmSkillLevels::RowThatLevels(this);
+	Minion->LevelFactorOnCreatures = static_cast<float>(UCataclysmSkillLevels::LevelFactorOf(this));
 }
 
 ACataclysmMinion* UCataclysmSummonSkill::ReplaceLost(AActor* Commander,
@@ -4702,6 +4716,15 @@ bool UCataclysmSummonSkill::Possess()
 		{
 			Thrall->ReservedFervour = FervourReserveFor(Self, Params, SkillTags);
 		}
+		// AND THIS SKILL'S ROW AND LEVEL FACTOR, READ ONCE, AT THE TAKE. Issue #2764, slice 2b, by judgement 3 ("Subjugate's
+		// thralls credit Subjugate") and the owner's ruling of 2026-11-19 ("Yes, they scale too"): while it is commanded,
+		// what the thrall's blows take from a creature credits this row and is multiplied by this factor, in
+		// `UCataclysmSkillEffects::ApplyHit`, which every blow a thrall deals passes through.
+		if (ACataclysmEnemyCharacter* Taken = Cast<ACataclysmEnemyCharacter>(Target))
+		{
+			Taken->TakenBySkillRow = UCataclysmSkillLevels::RowThatLevels(this);
+			Taken->TakenLevelFactorOnCreatures = static_cast<float>(UCataclysmSkillLevels::LevelFactorOf(this));
+		}
 		UCataclysmCommand::ClampFervourToSpendable(Self);
 	}
 	return bTookIt;
@@ -4772,7 +4795,10 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 			// nothing else, so no attribute widens an explosion either. So this
 			// is a recorded gap rather than an oversight, and the line below is
 			// deliberate. Issue #895.
-			Oldest->Explode();
+			//
+			// AND IT IS THIS SKILL'S OWN EXPLOSION, so it credits the skill that summoned the oldest. Issue #2764,
+			// slice 2b, ruled 2026-11-20 (Q-B): see `ACataclysmMinion::Explode`.
+			Oldest->Explode(/*bSetOffByTheSummonCap=*/true);
 		}
 	}
 
@@ -4802,6 +4828,7 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 		// decides whether they are ever used.
 		Minion->RecordExplosionRadius(Params.RadiusCm);
 		Minion->SummonedBy = this;
+		RecordTheSkillOn(Minion);
 		Minions.Add(Minion);
 
 		// "EACH IMP RESERVES 10 FERVOUR WHILE IT IS OUT." Issue #1934.

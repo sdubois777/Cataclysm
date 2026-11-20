@@ -614,6 +614,118 @@ No proof's log and no suite log holds a "server/discover" line (#2745). The lock
 
 ---
 
+## 2026-11-20 — A skill earns experience from, and grows with its level through, the imps it summons and the thralls it takes (#2764, slice 2b)
+
+**Affects:** `ACataclysmMinion::SummoningSkillRow` and `LevelFactorOnCreatures`, new, read in `AttackTarget` and
+`Explode`, which takes a new flag, `bSetOffByTheSummonCap` (`game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and
+`.cpp`); `UCataclysmSummonSkill::RecordTheSkillOn`, new, called by `SummonOne` and `SummonReplacementAt`, and `Possess`,
+which records the thrall's row and factor (`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` and `.cpp`);
+`ACataclysmEnemyCharacter::TakenBySkillRow` and `TakenLevelFactorOnCreatures`, new
+(`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h`); `CataclysmSkillEffectsLevels::CommandedThrall` and
+`ThrallsLevelFactor`, new, read in `UCataclysmSkillEffects::ApplyHit`, and `RowToCredit`, which now takes the
+instigator (`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`); `UCataclysmSkillLevels::LevelFactorOf`,
+new, now also read by `DamageFactorForBlow` and by `UCataclysmSkillTemplate::LeaveAZoneFor`
+(`game/Source/Cataclysm/Character/CataclysmSkillLevels.h` and `.cpp`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp`); `docs/Cataclysm_GDD_v2.md` ("What a Skill Levels":
+the ailments and minions row, and "What earns a skill experience"); `docs/Play_Loop_Checklist.md` (a Staff character
+whose Summon Imp levels from its imps). Tests: five more in the group `Cataclysm.SkillLevelSources.`, in
+`game/Source/Cataclysm/Tests/CataclysmSkillLevelSourcesTests.cpp`; and
+`tools/tests/test_damage_over_time_names_its_skill.py`, whose list loses the two minion burns, which now name their
+row. Issue [#2764](https://github.com/sdubois777/Cataclysm/issues/2764).
+
+### SAID FIRST
+
+- **NOT COMPILED OR RUN YET.** Its window comes after the empire upgrade tree's slices 6a, 6b and 6c and issue #2781.
+- **ONE READING OF THE EXPLOSION RULING, STATED SO IT CAN BE OVERRULED.** The ruling says an imp's explosion "carries
+  that factor" because it is computed from the imp's already scaled blow. In the code it is computed from the type
+  row's figure (`OwnDamagePerHit`) and the summoner's minion damage, neither of which carries the factor; `AttackTarget`
+  applies the factor to the swing alone. So `Explode` multiplies its figure by the imp's factor itself, once, on a
+  creature, whatever set it off, and proof L13 is registered for that line.
+- **GAPS, BESIDE THE TETHER AND THE NECROSIS PAYOUT OF SLICE 2a.** An ailment a thrall's hit rolls from the creature's
+  own chances credits nothing (ruling Q-C below). A thrall's explosion at its death (`ThrallBurst`) credits nothing and
+  is not sized, being a passive's figure computed from the creature's own attack damage. And Subjugate's row says a
+  thrall "sets alight what it strikes", which nothing in the game builds: no code reads it, so there is no thrall burn
+  to credit.
+- **THE WAR DEPLOYABLES ARE LEFT OUT**, by the owner's rule of 2026-11-17 that War rows stay unbuilt: a Bolt Turret, a
+  Ballista and an Iron Fortress credit nothing.
+
+### The rulings
+
+- **The owner, 2026-11-19**, the question recorded in slice 2a's entry: "Yes, they scale too (Recommended)", described
+  as "Without this, Summon Imp levels up but its imps never hit harder because of it."
+- **The coordinating session's judgements, accepted 2026-11-19:** minions no skill made credit nothing, and thralls
+  credit Subjugate (3); the factor is read once when the minion is summoned (4).
+- **The coordinating session, 2026-11-20, on three readings of the code:**
+  - **Q-A, replacement imps:** "All four (Press-Ganged, Rekindled, the resummon wait, and minion_kill_spawns_minion)
+    are Summon Imp's imps. Each credits it and scales, with the factor read when it is made." Each is made by
+    `SummonReplacementAt`, which sets `SummonedBy`, holds a place under the skill's cap and reserves its Fervour.
+  - **Q-B, explosions, option (b):** "Only the cap's explosion credits." The cap's is Summon Imp's own row, "Summoning
+    a fourth destroys the oldest, which explodes for damage in a 3 meter radius"; one `minion_explodes_on_death` sets
+    off, and a thrall's `ThrallBurst`, is damage a passive adds on top, which judgement 2 says credits nothing. "Scaling
+    follows the figure ... no second factor is applied."
+  - **Q-C, a thrall's rolled ailments:** "They credit nothing in 2b. They come from the creature's own chances, not
+    from Subjugate."
+
+### The change
+
+- **AN IMP RECORDS ITS SKILL WHEN IT IS MADE.** `RecordTheSkillOn` sets the imp's `SummoningSkillRow`
+  (`RowThatLevels`) and `LevelFactorOnCreatures` (`LevelFactorOf`, the holder's level read now), in the two places
+  `SummonedBy` is set, so every imp Summon Imp makes carries them. A minion no skill made -- a risen imp, a Warhound,
+  Tyrant's Minion, a gadget, a trap -- keeps None and 1.
+- **ITS SWING** multiplies the type row's figure by the factor on a creature, in the base, under the summoner's minion
+  damage and the imp's own buffs, as a skill hit's factor sits under the increases; the blow credits the row. The burn
+  the swing sets credits the row and gets no second factor, being a share of the swing.
+- **ITS EXPLOSION** credits the row only when `SummonOne`'s cap set it off (`bSetOffByTheSummonCap`), and is multiplied
+  by the factor on a creature either way, as the reading above says; its burn credits what the explosion credits.
+- **A THRALL RECORDS ITS SKILL AT THE TAKE.** `Possess` sets `TakenBySkillRow` and `TakenLevelFactorOnCreatures` once
+  the creature is taken. Every blow a thrall deals -- its swing, its charge, its abilities, a Compel strike -- arrives at
+  `ApplyHit` with the thrall as the instigator, so there `ThrallsLevelFactor` multiplies the damage percentage on a
+  creature, in the base bucket beside the skill factor, and `RowToCredit` credits the thrall's row to a blow naming no
+  row of its own, while the creature is commanded.
+- **ONE LEVEL FACTOR READER.** `UCataclysmSkillLevels::LevelFactorOf` holds the calculation the zone, the summon, the
+  take and `DamageFactorForBlow` each need, which slice 2a had written out twice.
+
+### The tests and the proofs, registered
+
+`Cataclysm.SkillLevelSources.` gains five, to 19, each copying an existing test's set-up, named here. Every one plays on
+a player holding a Demonic Staff and its granted skills with their rows, as `Cataclysm.BasicReach`'s `FReachRig` equips
+a weapon, at character level 4 with a 150 Fervour pool:
+
+| Test | The set-up it copies |
+| :-- | :-- |
+| `ASummonedImpsBlowCreditsSummonImpAndIsScaledByItsLevel` | the summon of `Cataclysm.Passives.PressGangedAndRekindledRowsReplaceARealRitualistsLostImp` (`SummonOne` on the real character) and the swing of `Cataclysm.CombatEvents.AMinionsBlowPutsTheMinionInCombatAndNotItsSummoner`; one imp summoned at level 1, one at level 3, the first swinging again after the level |
+| `AMinionNoSkillMadeCreditsNothing` | the imp `Cataclysm.CombatEvents.AMinionsBlowPutsTheMinionInCombatAndNotItsSummoner` spawns directly, with its summoner holding Summon Imp at level 3 |
+| `AThrallsBlowCreditsSubjugateAndIsScaledByItsLevel` | the take of `Cataclysm.Command.SubjugateTakesAnEnemyTheBlowLeftBelowHalfHealth` (a creature hurt to 520 of 1,000), by `Possess` as the skill's activation calls it, and the blow of `Cataclysm.MinionGear.AThrallHitsHarderForItsCommandersIncreasedMinionDamage`, never a critical strike; one taken at level 1, one at level 3 |
+| `AKillIsSplitBetweenAHitSkillAndAMinionSkill` | `AKillIsSplitBetweenOneSkillsHitAndAnothersBurn` (slice 2a), with Compel's hit and a Summon Imp imp's swing in place of Molten Cleave's and Emberhurl's burn, through `HandleDeath` |
+| `TheSummonCapsExplosionCreditsSummonImpAndAPassivesDoesNot` | the explosion of `Cataclysm.MinionDeath.TheExplosionTheSummonCapSetsOffTakesTheSameStat`, by the real cap (a summon past three) for the cap's and by `Explode` as `HandleDeath` calls it for the passive's |
+
+C++ proofs, each with the prefix `Cataclysm.SkillLevelSources.`, numbered on from slice 2a's L7:
+
+| Proof | The break | Predicted with it in |
+| :-- | :-- | :-- |
+| L8 | `AttackTarget`'s `BlowDelivery.SkillRowToCredit = SummoningSkillRow;` removed | 2 failed: `ASummonedImpsBlowCreditsSummonImpAndIsScaledByItsLevel` (both swings' credit), and `AKillIsSplitBetweenAHitSkillAndAMinionSkill` (Summon Imp credited nothing, so the two paid fall short of the worth; each paid figure still matches what was credited) |
+| L9 | the imp's factor in `AttackTarget` divided by itself | 1 failed: `ASummonedImpsBlowCreditsSummonImpAndIsScaledByItsLevel`, on its level ratio (1.1166 expected, 1.0) |
+| L10 | `Possess`'s `Taken->TakenBySkillRow = ...` removed | 1 failed: `AThrallsBlowCreditsSubjugateAndIsScaledByItsLevel` (its row and both credits) |
+| L11 | `ApplyHit`'s `ThrallsLevelFactor` made to answer 1 | 1 failed: `AThrallsBlowCreditsSubjugateAndIsScaledByItsLevel`, on its level ratio |
+| L12 | `Explode`'s cause flag made to answer "the cap" whatever set it off | 1 failed: `TheSummonCapsExplosionCreditsSummonImpAndAPassivesDoesNot` (the passive's explosion credits a row) |
+| L13 | the explosion's factor divided by itself | 1 failed: `TheSummonCapsExplosionCreditsSummonImpAndAPassivesDoesNot`, on its level ratio; the passive's still equals the cap's, both unscaled |
+
+Restored, each must perform the group's count with none failed. The whole suite is registered from the newest measured
+total when the window is given, + 5 for these.
+
+The Python check now holds the imp's swing's burn and its explosion's burn among the calls that name a row, and its list
+of calls crediting nothing by rule no longer names either. Proved with `tools/prove_guard.py`'s `break_and_run` in this
+worktree, nothing else running, by dropping `/*SkillRowWithNoSkill=*/SummoningSkillRow` (and the two arguments before
+it) from the swing's `ApplyBurn` in `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp`, on 2026-11-20:
+
+```
+PROVED: 1 failed in 0.58s | restored: 1 passed in 0.39s
+named_failures: ('tools/tests/test_damage_over_time_names_its_skill.py::test_every_call_names_its_skill_or_is_listed_with_its_reason',)
+proved: True
+```
+
+---
+
 ## 2026-11-20 — The empire upgrade tree's Relentless Pursuit counts the clears since the last death, with the run record at version 11, and its four drop rules roll a kill's extra drops (#2741, slice 5b)
 
 **Affects:** `UCataclysmEmpireRun::ClearsSinceLastDeath`, raised in `ClearDungeon` and set to 0 in `NoteDeath` and

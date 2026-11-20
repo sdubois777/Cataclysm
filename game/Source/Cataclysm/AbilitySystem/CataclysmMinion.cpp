@@ -1560,7 +1560,13 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 		// attack_damage alone, because "Gadgets deal 20%-40% increased damage"
 		// is written on attack_damage and spell_damage both, and reading both
 		// would count one sentence twice; a machine's bolt is an attack.
-		float Own = OwnBlow;
+		//
+		// AND THE LEVEL OF THE SKILL THAT SUMMONED IT, ON A CREATURE, IN THE BASE. Issue #2764, slice 2b, by the owner's
+		// ruling of 2026-11-19 ("Yes, they scale too"): a level multiplies the skill's damage, and an imp's blow is its
+		// skill's damage, so the factor sits where a skill hit's sits, under the increases and the "more" multipliers.
+		// Read once at its summoning (`LevelFactorOnCreatures`); 1 for a minion no levelling skill made, and on anything
+		// that is not a creature, as a skill's blow on its own user keeps its figure.
+		float Own = OwnBlow * (Cast<const ACataclysmEnemyCharacter>(Target) ? LevelFactorOnCreatures : 1.0f);
 		if (IsDeployable())
 		{
 			if (const UCataclysmAbilitySystemComponent* Theirs =
@@ -1610,6 +1616,10 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 		// A ROW NAMING `Type.Deployable` ON `armor_penetration` IS NOT READ.
 		// The ruling names traps only, and no row is written that way today.
 		FCataclysmHitDelivery BlowDelivery = MinionDelivery(this, /*bIsArea=*/false);
+		// AND THE ROW OF THE SKILL THAT SUMMONED IT, WHICH WHAT THE BLOW TAKES FROM A CREATURE CREDITS. Issue #2764, slice
+		// 2b: a minion a levelling skill made earns that skill experience, as a ground zone earns the skill that left it.
+		// The struck creature's attribute set credits it, on a creature only. None for a minion no skill made.
+		BlowDelivery.SkillRowToCredit = SummoningSkillRow;
 		if (IsTrap())
 		{
 			if (const UCataclysmAbilitySystemComponent* NamingTraps =
@@ -1676,9 +1686,14 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 		// under the project owner's delegation, with the instigator change
 		// above: a burn a minion's swing applies is the minion's, or a minion's
 		// swing and the fire it starts would belong to different characters.
+		//
+		// AND IT CREDITS THE SKILL THAT SUMMONED THE MINION, AND IS NOT SIZED AGAIN. Issue #2764, slice 2b: the burn is a
+		// share of the blow just dealt, which already carries the level factor, so a second factor would count the level
+		// twice; its ticks credit the row as the blow did.
 		UCataclysmSkillEffects::ApplyBurn(this, Target, Dealt,
 										  /*bScalesWithInstigator=*/false,
-										  /*bBurnIsDesigned=*/true, /*DealtBy=*/this);
+										  /*bBurnIsDesigned=*/true, /*DealtBy=*/this, /*Skill=*/nullptr,
+										  /*SkillTagsWithNoSkill=*/nullptr, /*SkillRowWithNoSkill=*/SummoningSkillRow);
 	}
 
 	// AND A WARHOUND'S HIT TAUNTS THE ENEMY STRUCK, for its summoner's row's seconds. Warlord's Will's six-piece, ruled
@@ -1870,7 +1885,7 @@ void ACataclysmMinion::RecordExplosionRadius(float RadiusCm)
 	ExplosionRadiusCm = RadiusCm;
 }
 
-void ACataclysmMinion::Explode()
+void ACataclysmMinion::Explode(bool bSetOffByTheSummonCap)
 {
 	// WHAT IT IS WORTH IS ITS OWN BLOW, NOT ITS SUMMONER'S WEAPON. Issue
 	// #1515. `game/Data/MinionTypes.csv` states the share -- the owner's
@@ -1919,6 +1934,12 @@ void ACataclysmMinion::Explode()
 			GetWorld(), this, GetActorLocation(),
 			ExplosionRadiusCm * UCataclysmSecondSelf::AreaMultiplierFor(this));
 
+		// THE ROW THE EXPLOSION CREDITS: ITS SUMMONING SKILL'S WHEN THE CAP SET IT OFF, AND NONE WHEN A PASSIVE DID. Issue
+		// #2764, slice 2b, ruled 2026-11-20 (Q-B, option b): "Summoning a fourth destroys the oldest, which explodes for
+		// damage in a 3 meter radius" is Summon Imp's own row, so that explosion is the skill's effect; one
+		// `minion_explodes_on_death` sets off is damage a passive adds on top, which judgement 2 says credits nothing.
+		const FName CreditedRow = bSetOffByTheSummonCap ? SummoningSkillRow : NAME_None;
+
 		for (AActor* Target : Caught)
 		{
 			// AREA DAMAGE: an explosion swept a sphere. The melee attack
@@ -1936,14 +1957,20 @@ void ACataclysmMinion::Explode()
 			//
 			// AND THE MINION'S OWN BUFFS, as its swing reads them. Issue #1771,
 			// ruled 2026-09-30: an explosion is a hit the minion deals.
+			//
+			// AND ITS SUMMONING SKILL'S LEVEL, ON A CREATURE, WHATEVER SET IT OFF. Issue #2764, slice 2b, ruled
+			// 2026-11-20 (Q-B): "scaling follows the figure", and the figure is a share of this minion's own blow, which
+			// `AttackTarget` multiplies by the same factor. `OwnDamagePerHit` above is the type row's figure and carries
+			// no factor, so it is applied here, once.
 			const float Landed = UCataclysmSkillEffects::ModifiedDamage(
-				UCataclysmTargeting::AbilitySystemOf(this), Scaled, TypeTags,
+				UCataclysmTargeting::AbilitySystemOf(this),
+				Scaled * (Cast<const ACataclysmEnemyCharacter>(Target) ? LevelFactorOnCreatures : 1.0f), TypeTags,
 				/*SkillHealthCostPercent=*/-1.0f, /*MetresMovedBeforeBlow=*/-1.0f,
 				/*TargetDistanceMetres=*/-1.0f, /*bTargetIsStaggered=*/false, Target);
 			float Dealt = 0.0f;
-			UCataclysmSkillEffects::ApplyDirectDamage(
-				this, Target, Landed,
-				MinionDelivery(this, /*bIsArea=*/true));
+			FCataclysmHitDelivery Blast = MinionDelivery(this, /*bIsArea=*/true);
+			Blast.SkillRowToCredit = CreditedRow;
+			UCataclysmSkillEffects::ApplyDirectDamage(this, Target, Landed, Blast);
 			Dealt = Landed;
 			// Designed, for the reason the melee attack above records.
 			//
@@ -1952,12 +1979,16 @@ void ACataclysmMinion::Explode()
 			// evasion against area damage at all, so the test the melee attack
 			// above makes for issue #1156 could never fire here. A check that
 			// cannot fail is worse than no check, because it reads as one.
+			//
+			// AND THE BURN CREDITS WHAT THE EXPLOSION CREDITS, and is not sized again: it is a share of the explosion just
+			// dealt. Issue #2764, slice 2b.
 			if (bBurnsWhatItHits)
 			{
 				UCataclysmSkillEffects::ApplyBurn(
 					this, Target, Dealt,
 					/*bScalesWithInstigator=*/false,
-					/*bBurnIsDesigned=*/true, /*DealtBy=*/this);
+					/*bBurnIsDesigned=*/true, /*DealtBy=*/this, /*Skill=*/nullptr,
+					/*SkillTagsWithNoSkill=*/nullptr, /*SkillRowWithNoSkill=*/CreditedRow);
 			}
 		}
 

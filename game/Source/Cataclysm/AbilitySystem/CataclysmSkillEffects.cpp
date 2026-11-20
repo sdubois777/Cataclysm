@@ -838,6 +838,28 @@ float UCataclysmSkillEffects::ModifiedDamage(const UAbilitySystemComponent* Sour
 namespace CataclysmSkillEffectsLevels
 {
 	/**
+	 * `Instigator` when it is a creature somebody commands -- a thrall -- and null otherwise. Issue #2764, slice 2b. A
+	 * summoned minion is no creature of this class, and its own blow never comes through `ApplyHit`.
+	 */
+	const ACataclysmEnemyCharacter* CommandedThrall(const AActor* Instigator)
+	{
+		const ACataclysmEnemyCharacter* Thrall = Cast<const ACataclysmEnemyCharacter>(Instigator);
+		return Thrall && UCataclysmCommand::CommanderOf(Thrall) ? Thrall : nullptr;
+	}
+
+	/**
+	 * What a blow by `Instigator` on `Target` is multiplied by for the skill that took it as a thrall: its
+	 * `TakenLevelFactorOnCreatures`, read at the take, on a creature; 1 for everything else -- a blow that is no
+	 * commanded thrall's, and a thrall's blow on anything that is not a creature. Issue #2764, slice 2b, by the owner's
+	 * ruling of 2026-11-19 ("Yes, they scale too") and judgement 4.
+	 */
+	float ThrallsLevelFactor(const AActor* Instigator, const AActor* Target)
+	{
+		const ACataclysmEnemyCharacter* Thrall = CommandedThrall(Instigator);
+		return Thrall && Cast<const ACataclysmEnemyCharacter>(Target) ? Thrall->TakenLevelFactorOnCreatures : 1.0f;
+	}
+
+	/**
 	 * The skill row a blow on `Target` is credited to, so the creature's death can split its experience among the skills
 	 * that hurt it, or None. Issue #2764, slice 1: DIRECT HITS ONLY, as the owner ruled on 2026-11-19. A share struck at
 	 * an ally credits nothing; until slice 2a (below) a use a minion or gadget cast in the player's name (`CastBy` set)
@@ -858,13 +880,25 @@ namespace CataclysmSkillEffectsLevels
 	// was credited and a projectile-shaped one was not (F1). AND A BLOW WHOSE SKILL OBJECT HAS GONE is credited to the row
 	// it carries (`FCataclysmHitDelivery::SkillRowWithNoSkill`). Damage over time never reaches `ApplyHit`; its ticks
 	// credit their skill on their own effect (`ApplyDamageOverTime`).
-	FName RowToCredit(const AActor* Target, const FCataclysmHitDelivery& Arrived, bool bAShareOnAnAlly)
+	//
+	// SLICE 2b ADDED A THRALL'S BLOW, by the coordinating session's judgement 3 (accepted 2026-11-19): "Subjugate's
+	// thralls credit Subjugate". A thrall's blow names no skill of the player's -- it is the creature's own swing, charge
+	// or ability -- so a blow naming no row, dealt by a commanded thrall, is credited to the row of the skill that took it
+	// (`ACataclysmEnemyCharacter::TakenBySkillRow`, set at the take).
+	FName RowToCredit(const AActor* Instigator, const AActor* Target, const FCataclysmHitDelivery& Arrived,
+					  bool bAShareOnAnAlly)
 	{
 		if (bAShareOnAnAlly || Arrived.bIsDamageOverTime || !Cast<const ACataclysmEnemyCharacter>(Target))
 		{
 			return NAME_None;
 		}
-		return UCataclysmSkillLevels::RowOfBlow(Arrived.Skill.Get(), Arrived.SkillRowWithNoSkill);
+		const FName Row = UCataclysmSkillLevels::RowOfBlow(Arrived.Skill.Get(), Arrived.SkillRowWithNoSkill);
+		if (!Row.IsNone())
+		{
+			return Row;
+		}
+		const ACataclysmEnemyCharacter* Thrall = CommandedThrall(Instigator);
+		return Thrall ? Thrall->TakenBySkillRow : NAME_None;
 	}
 }
 
@@ -935,6 +969,13 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// a trap's late shot and a buried axe's leap are priced from the skill's percentage, so they scale with it (F3).
 	DamagePercent *= static_cast<float>(UCataclysmSkillLevels::DamageFactorFor(
 		Delivery.Skill.Get(), Delivery.SkillRowWithNoSkill, Instigator, Target));
+
+	// AND A THRALL'S BLOW ON A CREATURE IS WORTH THE LEVEL OF THE SKILL THAT TOOK IT. Issue #2764, slice 2b, by the
+	// owner's ruling of 2026-11-19 ("Yes, they scale too"): Subjugate's thrall is that skill's damage, so its blows grow
+	// with it, by the factor read once at the take. In the same base bucket, and HERE, because every blow a thrall deals
+	// -- its swing, its charge, its abilities -- arrives at this function with the thrall as the instigator. 1 for every
+	// other blow: the factor above already sized a skill's, and a thrall's blow names no skill of the player's.
+	DamagePercent *= CataclysmSkillEffectsLevels::ThrallsLevelFactor(Instigator, Target);
 
 	// A SKILL GADGET'S CAST IS PRICED AS THE GADGET'S, IN FIVE PARTS, ruled 2026-10-16 (S5) for "Scales off gadget
 	// damage". Its skill tags carry `Type.Deployable`, given by `ACataclysmMinion::CastPlayersSkillFromHere`, so the
@@ -1358,7 +1399,7 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		// AND THE ROW ITS SKILL IS CREDITED WITH, CARRIED ON THE BLOW, so the struck creature's attribute set credits
 		// what the blow dealt to health before a death is handled. Issue #2764, slice 1b: the credit made here, after
 		// `ApplyDirectDamage` returned, came after a killing blow's death had paid. See `RowToCredit`.
-		Arrived.SkillRowToCredit = CataclysmSkillEffectsLevels::RowToCredit(Target, Arrived, bAShareOnAnAlly);
+		Arrived.SkillRowToCredit = CataclysmSkillEffectsLevels::RowToCredit(Instigator, Target, Arrived, bAShareOnAnAlly);
 		return ApplyDirectDamage(Instigator, Target, Sent, Arrived, OutResolved)
 			? Sent : 0.0f;
 	}
@@ -1378,7 +1419,7 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// AND A GADGET'S OR A TRAP'S BLOW EARNS ITS SKILL EXPERIENCE, as the player's own blow does on the path above. Issue
 	// #2764, slice 2a: the design document's earning row shares a kill "among the skills that hurt it", and this cast is
 	// that skill's damage, so its skill is paid in full. Until slice 2a nothing was credited here.
-	Arrived.SkillRowToCredit = CataclysmSkillEffectsLevels::RowToCredit(Target, Arrived, bAShareOnAnAlly);
+	Arrived.SkillRowToCredit = CataclysmSkillEffectsLevels::RowToCredit(Instigator, Target, Arrived, bAShareOnAnAlly);
 	const bool bDealt = ApplyDirectDamage(Instigator, Target, Sent, Arrived, Result);
 	// A SKILL TRAP'S EVENT CARRIES WHAT ITS BLOW TOOK FROM HEALTH (traps layer 3, 2026-10-21), so a status row on it
 	// meets the owner's rule of a tenth (#917) with the blow's own figure: "Traps cause a bleed of 1-2 times normal

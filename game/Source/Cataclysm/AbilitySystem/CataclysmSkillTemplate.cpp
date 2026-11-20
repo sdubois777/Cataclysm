@@ -3682,11 +3682,7 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveAZoneFor(
 			// AND ITS ROW AND ITS LEVEL FACTOR, read now, while the skill is there. Issue #2764, slice 2a: every sweep
 			// credits the row and, on a creature, is multiplied by the factor (F2). See `ACataclysmGroundZone`.
 			Zone->SkillRowItWasLeftWith = UCataclysmSkillLevels::RowThatLevels(LeftBy);
-			const ACataclysmPlayerState* Holder = Zone->SkillRowItWasLeftWith.IsNone()
-				? nullptr : UCataclysmSkillLevels::PlayerHolding(LeftBy);
-			Zone->LevelFactorOnCreatures = Holder
-				? static_cast<float>(UCataclysmSkillLevels::DamageFactor(Holder->SkillLevelOf(Zone->SkillRowItWasLeftWith)))
-				: 1.0f;
+			Zone->LevelFactorOnCreatures = static_cast<float>(UCataclysmSkillLevels::LevelFactorOf(LeftBy));
 		}
 	}
 

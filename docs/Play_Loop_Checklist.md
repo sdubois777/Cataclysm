@@ -134,6 +134,10 @@ Choose a dungeon on **another** city than the one you will walk. This is how you
 
   `PLAY LOOP: skill Molten Cleave reached level 2, from level 1`
 
+  **On a Staff character, let Summon Imp's imps do the killing:** a creature its imps hurt pays Summon Imp by the share
+  of its health they removed, so Summon Imp's box fills and levels without the character striking at all, and the log
+  says `PLAY LOOP: skill Summon Imp reached level 2, from level 1`.
+
 ### 8. Take the last floor's stairs
 
 - **On screen:** back in the capital, with the map open. The map's status line shows the new day. Its second line says

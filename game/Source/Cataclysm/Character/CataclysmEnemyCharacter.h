@@ -496,6 +496,23 @@ public:
 	float GetCommanderHealthMultiplier() const { return CommanderHealthMultiplier; }
 
 	/**
+	 * The row of `game/Data/WeaponSkills.csv` of the skill that took this creature as a thrall, read at the take, or
+	 * None. Issue #2764, slice 2b, by the coordinating session's judgement 3 (accepted 2026-11-19): "Subjugate's thralls
+	 * credit Subjugate". Set by `UCataclysmSummonSkill::Possess` once the creature is taken; while it is commanded, what
+	 * its blows take from a creature credits this row (`CataclysmSkillEffectsLevels::RowToCredit`). None for a creature
+	 * no levelling skill took.
+	 */
+	FName TakenBySkillRow;
+
+	/**
+	 * What a thrall's blow on a creature is multiplied by: the level factor of the skill that took it
+	 * (`UCataclysmSkillLevels::DamageFactor`), READ ONCE AT THE TAKE, as a summoned minion's is at its summoning. Issue
+	 * #2764, slice 2b, by the owner's ruling of 2026-11-19 ("Yes, they scale too") and judgement 4. Applied in
+	 * `UCataclysmSkillEffects::ApplyHit` while the creature is commanded. 1 for a creature no levelling skill took.
+	 */
+	float TakenLevelFactorOnCreatures = 1.0f;
+
+	/**
 	 * What `SetAttackDamage` was last given: the creature's own attack damage, before its rarity's scale, the floor
 	 * rules' multipliers and any rule's addition. A save records it (#753, Group 2).
 	 */
