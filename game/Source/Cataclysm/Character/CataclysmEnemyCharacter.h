@@ -2023,8 +2023,40 @@ public:
 	 * every caller -- Tick, the Vengeful Wraiths rule, a test -- reach that
 	 * code rather than the base's, which the Brute's own write would then
 	 * undo. Issue #1515, found while building Ground Down.
+	 *
+	 * AND A COMMANDED CREATURE WALKS FROM ITS COMMANDER'S SPEED, since issue #2793: see `WalkSpeedBaseCmPerSecond`.
 	 */
 	virtual void RefreshWalkSpeed();
+
+	/**
+	 * The walking speed this creature's hastes and slows multiply, in centimetres a second: 1.25 times its commander's
+	 * speed while something commands it (`UCataclysmCommand::CommandedWalkSpeedCmPerSecond`), and otherwise
+	 * `UncommandedCmPerSecond` -- its designed speed, or for the Brute its chase or walk speed. Issue #2793, the
+	 * owner's ruling of 2026-11-20.
+	 *
+	 * IT RECORDS WHICH IT USED, in `bWalkSpeedFollowsACommander`. That is how `RefreshWalkSpeed` knows to put a
+	 * creature designed at nought back to nought when nobody commands it any more, and how a jog clip's rate knows to
+	 * follow the speed the creature walks at. PUBLIC SO A TEST CAN DRIVE IT.
+	 */
+	float WalkSpeedBaseCmPerSecond(float UncommandedCmPerSecond);
+
+	/**
+	 * A jog clip's play rate for the speed this creature walks at now. Untaken, `DesignedPlayRate` unchanged. While
+	 * something commands it, `DesignedPlayRate` scaled by its walking speed over `DesignedSpeedCmPerSecond` and clamped
+	 * to `MinimumPlayRate` and `MaximumPlayRate`. Issue #2793: a Hellhound thrall walking at 5.75 metres a second must
+	 * not play its jog at the rate that fits 7.5, or its feet slide.
+	 *
+	 * SCALED FROM THE DESIGNED RATE RATHER THAN WORKED OUT AGAIN, because each creature divides by its own clip's
+	 * authored speed and only it knows that figure; the designed rate already holds it, and the rate is in proportion
+	 * to the speed.
+	 */
+	float JogPlayRateAtItsWalkingSpeed(float DesignedPlayRate, float DesignedSpeedCmPerSecond,
+									   float MinimumPlayRate, float MaximumPlayRate) const;
+
+	/** Whether the walking speed last worked out came from a commander rather than this creature's own design.
+	 *  Written by `WalkSpeedBaseCmPerSecond`. Issue #2793. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bWalkSpeedFollowsACommander = false;
 
 	// ----------------------------------------------------------------------
 	// Phases

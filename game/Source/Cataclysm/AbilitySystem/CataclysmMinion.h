@@ -1626,6 +1626,29 @@ public:
 	 * walk toward.
 	 */
 	virtual bool StaysWhereItIsPut() const override { return bStaysWhereItIsPut; }
+
+	/**
+	 * Walk at 1.25 times its summoner's walking speed now, or at `UncommandedWalkSpeedCmPerSecond` when there is no
+	 * summoner to read. Nothing for a minion that stays where it is put. Issue #2793, the owner's ruling of 2026-11-20:
+	 * "Your minions movespeed should be equal to 1.25 of your own. That way they actually keep up."
+	 *
+	 * NO HASTE OR SLOW OF ITS OWN IS APPLIED, because none ever was: until this a summoned minion walked at its type's
+	 * speed, written once at the summoning. A thrall's own do apply; see `ACataclysmEnemyCharacter::RefreshWalkSpeed`.
+	 *
+	 * RUN EVERY FRAME BY `Tick` for a minion that walks, which is what makes it follow its summoner's buffs and slows.
+	 * PUBLIC SO A TEST CAN DRIVE IT WITHOUT TICKING A WORLD.
+	 */
+	void RefreshWalkSpeed();
+
+	/** `RefreshWalkSpeed`, every frame. Only a minion that walks ticks at all: `Spawn` enables it. Issue #2793. */
+	virtual void Tick(float DeltaSeconds) override;
+
+	/**
+	 * What it walks at with no summoner to read, in centimetres a second: its type row's move speed, written by
+	 * `Spawn`, or the class default for a minion spawned with no type. Issue #2793.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Minion")
+	float UncommandedWalkSpeedCmPerSecond = 0.0f;
 	virtual void AttackTarget(AActor* Target) override;
 
 	/**

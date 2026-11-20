@@ -1,6 +1,8 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Character/CataclysmEnemyCharacter.h"
+// For the walking speed a commanded creature takes from its commander. Issue #2793.
+#include "AbilitySystem/CataclysmCommand.h"
 #include "Cataclysm.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmMovement.h"
@@ -1280,10 +1282,25 @@ void ACataclysmEnemyCharacter::RefreshWalkSpeed()
 		return;
 	}
 
+	// A COMMANDED CREATURE WALKS FROM ITS COMMANDER'S SPEED, NOT ITS OWN. Issue #2793, the owner's ruling of
+	// 2026-11-20: every minion walks at 1.25 times the player's speed. Asked before the refusal below, because that
+	// refusal is what kept a Corrupted Sentinel the player had taken rooted where it stood: designed at nought, it was
+	// refused here and never given a speed, so the brain's order to follow moved it nowhere.
+	const bool bWasCommanded = bWalkSpeedFollowsACommander;
+	const float Base = WalkSpeedBaseCmPerSecond(DesignedWalkSpeedCmPerSecond);
+
 	// NOTHING TO SCALE UNTIL BeginPlay HAS READ THE DESIGNED FIGURE. Writing
 	// zero here would freeze every creature in place for a frame.
-	if (DesignedWalkSpeedCmPerSecond <= 0.0f)
+	//
+	// AND A CREATURE DESIGNED AT ZERO THAT NOBODY COMMANDS STAYS AT ZERO, and is put back to it when a commander had
+	// moved it, so a Sentinel that is nobody's any more roots again rather than walking on at its last commander's
+	// pace. Issue #2793.
+	if (Base <= 0.0f)
 	{
+		if (bWasCommanded)
+		{
+			Movement->MaxWalkSpeed = 0.0f;
+		}
 		return;
 	}
 
@@ -1292,8 +1309,10 @@ void ACataclysmEnemyCharacter::RefreshWalkSpeed()
 	//
 	// AND WHAT SLOWS ITS MOVEMENT ALONE, which `SpeedMultiplier` must not hold.
 	// See `AilmentWalkMultiplier`.
-	const float Wanted =
-		DesignedWalkSpeedCmPerSecond * SpeedMultiplier() * AilmentWalkMultiplier();
+	//
+	// A THRALL'S OWN HASTES AND SLOWS STILL APPLY, ON TOP OF ITS COMMANDER'S PACE, as ruled by the coordinating
+	// session on 2026-11-20: a Cripple on a thrall slows it, as it slowed it before. Issue #2793.
+	const float Wanted = Base * SpeedMultiplier() * AilmentWalkMultiplier();
 
 	// ONLY ON A CHANGE. Assigning the same float every frame is harmless, and
 	// checking first says out loud that this is a state that changes rarely
@@ -1308,6 +1327,26 @@ void ACataclysmEnemyCharacter::SetGuideWalkSpeed(float CmPerSecond)
 {
 	GuideWalkSpeedCmPerSecond = FMath::Max(0.0f, CmPerSecond);
 	RefreshWalkSpeed();
+}
+
+float ACataclysmEnemyCharacter::WalkSpeedBaseCmPerSecond(float UncommandedCmPerSecond)
+{
+	// NOUGHT FOR EVERY CREATURE NOBODY HAS TAKEN, so every one of them walks as it was designed. Issue #2793.
+	const float Commanded = UCataclysmCommand::CommandedWalkSpeedCmPerSecond(this);
+	bWalkSpeedFollowsACommander = Commanded > 0.0f;
+	return bWalkSpeedFollowsACommander ? Commanded : UncommandedCmPerSecond;
+}
+
+float ACataclysmEnemyCharacter::JogPlayRateAtItsWalkingSpeed(float DesignedPlayRate, float DesignedSpeedCmPerSecond,
+															 float MinimumPlayRate, float MaximumPlayRate) const
+{
+	const UCharacterMovementComponent* Movement = GetCharacterMovement();
+	if (!bWalkSpeedFollowsACommander || !Movement || DesignedSpeedCmPerSecond <= 0.0f)
+	{
+		return DesignedPlayRate;
+	}
+	return FMath::Clamp(DesignedPlayRate * Movement->MaxWalkSpeed / DesignedSpeedCmPerSecond,
+						MinimumPlayRate, MaximumPlayRate);
 }
 
 void ACataclysmEnemyCharacter::BeginCharge(const FVector& ToPoint,
@@ -2542,6 +2581,10 @@ void ACataclysmEnemyCharacter::BeginPlay()
 	// A CREATURE DESIGNED AT ZERO STAYS AT ZERO. The Corrupted Sentinel's
 	// designed speed really is 0.0, and 20% more of nothing is nothing, which is
 	// the right answer: an aura does not un-root a turret.
+	//
+	// A COMMANDER DOES, SINCE ISSUE #2793: a creature the player has taken walks at 1.25 times its commander's pace
+	// whatever it was designed at (`RefreshWalkSpeed`). This designed figure is left as it is, so everything that
+	// reads it -- the Echoes rule telling a creature that walks from one that cannot, among them -- reads the design.
 	if (const UCharacterMovementComponent* Movement = GetCharacterMovement())
 	{
 		DesignedWalkSpeedCmPerSecond = Movement->MaxWalkSpeed;

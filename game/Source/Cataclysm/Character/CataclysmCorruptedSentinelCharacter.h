@@ -18,8 +18,13 @@
  * **IT IS THE ONLY CREATURE IN THE ROSTER THAT CANNOT MOVE.** `move_speed` is
  * 0.0 and so is `chase_speed`. The design's one line about it is "Stationary
  * ranged. Forces the player to stay mobile", and everything else about the
- * creature follows: it has no walk clip, no roam radius, and the whole of its
- * threat is that the ground it covers is ground you cannot stand on.
+ * creature follows: it has no roam radius, and the whole of its threat is that
+ * the ground it covers is ground you cannot stand on.
+ *
+ * **UNLESS THE PLAYER HAS TAKEN IT**, since issue #2793. The owner's ruling of
+ * 2026-11-20 gives every minion 1.25 times the player's walking speed, a thrall
+ * included, so a Sentinel taken by Subjugate follows its commander, and jogs
+ * while it does (`JogAnimationName`). Nobody's Sentinel still never moves.
  *
  * **ITS BASIC ATTACK IS AN ENTRY IN `EnemyAbilities`, WHICH IS NEW HERE.** Every
  * other creature's basic attack is `MeleeReachCm` plus `AttackIntervalSeconds`
@@ -166,6 +171,12 @@ public:
 	 * chase runs and the movement component moves the pawn at zero. That is
 	 * wasted work rather than a defect, and it is the honest outcome: the
 	 * creature wants to close and cannot.
+	 *
+	 * A SENTINEL THE PLAYER HAS TAKEN IS NOT HELD TO IT. Its walking speed is
+	 * then 1.25 times its commander's (`UCataclysmCommand::
+	 * CommandedWalkSpeedCmPerSecond`), written by `RefreshWalkSpeed`; until issue
+	 * #2793 that function refused every creature designed at nought, so a taken
+	 * Sentinel was ordered to follow and moved nowhere. This figure stays nought.
 	 */
 	static constexpr float DesignedWalkSpeedCmPerSecond = 0.0f;
 
@@ -385,6 +396,23 @@ public:
 	 *  same reason and is the same 0.03 seconds. */
 	static const TCHAR* IdleAnimationName;
 
+	/** The STANDING jog, `Jog_Fwd_NonCombat`, which only a Sentinel the player has taken plays: nobody's never walks.
+	 *  Issue #2793. In the Paragon Minions siege folder beside the rooted clips, and not in
+	 *  `game/docs/enemy-source-assets.md`'s measured list until then. */
+	static const TCHAR* JogAnimationName;
+
+	/** Faster than this across the ground, in centimetres a second, and it is walking, so it jogs. The Imp's
+	 *  figure. Issue #2793. */
+	static constexpr float WalkingThresholdCmPerSecond = 10.0f;
+
+	/**
+	 * The rate the jog is played at: 1.0, UNMEASURED. Issue #2793, registered as unmeasured by the coordinating
+	 * session on 2026-11-20. Every other creature plays its jog at its walking speed over the clip's authored speed,
+	 * measured off the asset in the editor; this clip's authored speed has not been measured, which needs the editor
+	 * under the Unreal lock (`tools/probe_sentinel_animation.py`). Until it is, the feet may slide.
+	 */
+	static constexpr float UnmeasuredJogPlayRate = 1.0f;
+
 	/** The two rooted firing clips, both 2.40 seconds. **They are alternated**,
 	 *  which is what stops continuous fire reading as one clip looping --
 	 *  `game/docs/enemy-source-assets.md` said so before this creature was
@@ -447,6 +475,10 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	TObjectPtr<class UAnimSequence> IdleAnimation;
+
+	/** `JogAnimationName`, loaded with the rest. Null without the Paragon Minions pack. Issue #2793. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	TObjectPtr<class UAnimSequence> JogAnimation;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	TArray<TObjectPtr<class UAnimSequence>> FireAnimations;

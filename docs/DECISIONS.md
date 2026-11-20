@@ -310,6 +310,137 @@ The lock was released when the window ended.
 
 ---
 
+## 2026-11-20 — A Corrupted Sentinel the player has taken follows its commander, and every minion the player commands walks at 1.25 times the player's walking speed now (#2793)
+
+**Affects:** `UCataclysmCommand::CommandedWalkSpeedCmPerSecond` and `CommandedWalkSpeedShareOfCommander`
+(`game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h`, `.cpp`); `ACataclysmEnemyCharacter::RefreshWalkSpeed`,
+`WalkSpeedBaseCmPerSecond`, `JogPlayRateAtItsWalkingSpeed` and `bWalkSpeedFollowsACommander`
+(`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h`, `.cpp`); `ACataclysmBruteCharacter::ApplyChaseSpeed`;
+the jog play rate of the Imp, the Hellhound, the Succubus and the Abyssal Warden; `ACataclysmMinion::Tick`,
+`RefreshWalkSpeed` and `UncommandedWalkSpeedCmPerSecond` (`game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h`,
+`.cpp`); `ACataclysmCorruptedSentinelCharacter`'s jog (`JogAnimationName`, `JogAnimation`, `WalkingThresholdCmPerSecond`,
+`UnmeasuredJogPlayRate`); `docs/Cataclysm_GDD_v2.md` (a new "How fast a minion walks" and the Sentinel's exception);
+`game/docs/enemy-source-assets.md`. Tests: `game/Source/Cataclysm/Tests/CataclysmMinionFollowSpeedTests.cpp`, new, nine
+tests in the group `Cataclysm.MinionFollowSpeed.`. Issue #2793.
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN IN UNREAL.** Phase 1 was written without a compile, as ruled, on development `789bfd400`.
+  Its turn in the Unreal queue comes after #2787's branch A, #2791, #2790 and #2792. At that turn it is rebased, and
+  #2790's new guide speed field, which also goes into `RefreshWalkSpeed`, is read from that branch first; then it is
+  compiled three ways and run in the window registered below.
+- **THE SENTINEL'S JOG PLAYS AT 1.0, UNMEASURED**, as ruled. Its authored speed needs the editor under the lock, which
+  this slice does not otherwise need. Until it is measured the Sentinel's feet may slide as it walks.
+- **SOME MINIONS BECOME SLOWER THAN THEY WERE**, as the ruling "equal, not the faster of the two" means. Against a
+  player at a class's base speed (Default 4.0, Ravager 4.6, Ritualist 3.5 metres a second, so a minion pace of 5.0,
+  5.75 or 4.375): a Hellhound thrall from 7.5, an Imp thrall from 6.5, a chasing Brute thrall from 5.0 for a Ritualist,
+  and a summoned Mote from 5.5 for Default and Ritualist. The coordinating session tells the owner, who may change it to
+  the faster of the two.
+
+### The owner's words, and the rulings
+
+The owner, from the playtest of 2026-11-20: "Corrupted sentinels don't seem to follow you when subjugated. Your minions
+movespeed should be equal to 1.25 of your own. That way they actually keep up."
+
+The coordinating session ruled on 2026-11-20, on this slice's plan:
+
+- **EQUAL, NOT THE FASTER OF THE TWO.** "The owner's words are 'should be equal to 1.25 of your own', a single rule
+  tied to the player. Every commanded minion's base walk speed becomes 1.25 x the commander's live MaxWalkSpeed,
+  including thralls that are faster today."
+- **A THRALL'S OWN HASTES AND SLOWS** "still multiply on top of the 1.25 base". A Cripple on a thrall slows it, as it
+  did before. Summoned minions get no new multiplier path.
+- **THE SENTINEL'S JOG RATE**: "register 1.0 as UNMEASURED, said plainly in the entry and the test."
+- **NO `PlantedExit` OR `PlantedIntro` TRANSITION** for now, accepted as a judgement.
+
+### The cause of the Sentinel fault: its speed
+
+A Corrupted Sentinel is built at a walking speed of nought, as its design says ("Stationary ranged. Forces the player
+to stay mobile"). Subjugate changes its owner, its side, its health and nothing else. Its brain did order it to follow:
+`ACataclysmEnemyController::FollowCommander` issues a move to the commander, since the Sentinel does not stay where it
+is put. But `ACataclysmEnemyCharacter::RefreshWalkSpeed`, the one place a creature's walking speed is written, refused
+every creature designed at nought, so the movement component was told nought and the order moved it nowhere. The
+Sentinel also had one looping clip, its rooted pose, so a moving Sentinel would have slid in it. Its pack has a
+standing jog.
+
+### What changed
+
+- **One figure for every commanded creature.** `UCataclysmCommand::CommandedWalkSpeedCmPerSecond` is 1.25 times the
+  commander's movement component's `MaxWalkSpeed`, read now, for anything that has a commander (`CommanderOf`) and does
+  not stay where it is put; nought otherwise. The player writes its speed there after every modifier, so a minion
+  follows the player's buffs and slows. It is the figure `UCataclysmGroundZone::WalkSpeedOf` reads for a patch that
+  follows its owner.
+- **Thralls.** `RefreshWalkSpeed` takes that figure as its base while the creature is commanded, and its designed speed
+  otherwise, through `WalkSpeedBaseCmPerSecond`; its own hastes and slows still multiply it. The refusal of a creature
+  designed at nought now applies only to one nobody commands, and one a commander had moved is written back to nought.
+  The Brute writes its own walk in `ApplyChaseSpeed`, which overrides `RefreshWalkSpeed`, so it asks the same function,
+  chasing or walking. `DesignedWalkSpeedCmPerSecond` is not touched, so the Echoes rule that tells a creature that walks
+  from one that cannot still reads the design.
+- **Summoned minions.** A minion that walks now ticks, and each tick writes the commanded figure, or its type's speed
+  when it has nobody to read (`UncommandedWalkSpeedCmPerSecond`). A deployable does not tick and is given no pace.
+  Risen imps and necrosis imps are made by the same `Spawn`, with the Imp row.
+- **Jog play rates.** The Imp, the Hellhound, the Succubus and the Abyssal Warden played their jog at the rate fitted to
+  their designed speed. While commanded, the rate is that one scaled by the speed walked over the designed speed
+  (`JogPlayRateAtItsWalkingSpeed`), and put right on the clip already playing when the pace changes. A creature nobody
+  commands is unchanged.
+- **The Sentinel's jog.** `Jog_Fwd_NonCombat` while it walks faster than 10 cm/s, its rooted pose otherwise, at the
+  unmeasured 1.0.
+
+### Judgements of this slice
+
+- **The commander's figure is its movement component's `MaxWalkSpeed`**, not its movement speed stat, because the
+  component is where the player's every modifier ends up, Cripple and a channel included.
+- **A minion with no summoner to read walks at its type's speed**, which no shipped summon has. Its type's speed being
+  nought still marks a deployable, so `test_minion_stat_blocks.py`'s rule holds unchanged.
+- **The jog rate is scaled rather than worked out again**, because each creature divides by its own clip's authored
+  speed, which the designed rate already holds.
+
+### Tests
+
+`CataclysmMinionFollowSpeedTests.cpp`, nine, with a spawned player walking at its designed 400 cm/s, so the pace is
+500, written out as a figure in the test rather than worked out from the code's own share:
+
+| Test | What it checks |
+| :-- | :-- |
+| `ATakenSentinelWalksAtItsCommandersPaceAndNobodysStaysRooted` | the share is 1.25; a taken Sentinel walks at 500; CONTROL nobody's stays at 0; its design stays 0; once nobody commands it, it roots again |
+| `ATakenSentinelIsOrderedToFollowAndHasASpeedToFollowWith` | with nothing to fight it is ordered to follow, and has a speed above nought |
+| `EveryKindTheCommanderCommandsWalksAtOneAndAQuarterOfItsSpeed` | summoned Imp, Mote, Warhound, TyrantsMinion and an untyped minion; thrall Imp, Hellhound, Succubus, Abyssal Warden, Brute and Sentinel: each at 500 |
+| `ThePaceFollowsTheCommandersSpeedAsItChanges` | a summoned imp ticks; the player at 600 gives 750 and at 200 gives 250, for a summoned imp and a thrall |
+| `ADeployableStaysWhereItIsPutAndDoesNotTick` | CONTROL: a BoltTurret, a Ballista and a SpikeTrap are given no pace, no commanded figure, and do not tick |
+| `ACreatureNobodyHasTakenWalksAsItWasDesigned` | CONTROL: nobody's Imp 650, Hellhound 750, Brute 250 |
+| `AThrallsOwnSlowStillAppliesOnTopOfItsCommandersPace` | Ground Down's 15% on a thrall Imp gives 425 |
+| `ACommandedCreaturesJogRateFollowsTheSpeedItWalksAt` | a taken Imp's jog rate is its designed rate x 500 / 650; CONTROL nobody's Imp at exactly its designed rate; a taken Hellhound slower than its designed rate |
+| `ATakenSentinelJogsWhileItWalksAndStandsRootedWhenItStops` | the rate is the unmeasured 1.0; with the Paragon Minions pack, walking it plays the jog at 1.0 and stopped its rooted pose; without the pack it reports a skipped half |
+
+No automation test ticks a world, so walking itself is not measured; what the movement component is told to walk at,
+and the brain's order, are.
+
+### Registered before the window
+
+At the slice's turn, after its rebase and its three compiles, on the coordinating session's GO, under a lock of its own:
+
+| Step | Registered |
+| :-- | :-- |
+| Pre-checks | those of the earlier windows |
+| The build | succeeds; no asset step, because this slice changes no data table |
+| `Cataclysm.MinionFollowSpeed.` alone | 9 performed, 9 succeeded; in a worktree, `ATakenSentinelJogsWhileItWalksAndStandsRootedWhenItStops` reports a skipped half |
+| The whole suite | the newest measured total on the rebased base plus these 9, every one succeeding; skipped halves that base's count plus 1; the same test saves as that base, none left behind |
+| Python and ruff | every test passing, the JUnit file agreeing; ruff clean |
+
+Five C++ guard proofs through `prove_cpp_guard`, each with `test_prefix="Cataclysm.MinionFollowSpeed."`, predicted
+from the tests as written:
+
+| Proof | The break | Broken half: the tests that fail | Restored |
+| :-- | :-- | :-- | :-- |
+| P1 | in `CommandedWalkSpeedCmPerSecond`, `return Movement->MaxWalkSpeed * CommandedWalkSpeedShareOfCommander;` to `return Movement->MaxWalkSpeed;` | the taken-Sentinel test (500 against 400), every-kind (eleven rows), the pace-follows test (four figures), the thrall's-own-slow test (425 against 340) and the jog-rate test (its taken Imp's figure); 9 performed, 4 succeeded, 5 failed | 9 of 9 |
+| P2 | in `RefreshWalkSpeed`, the refusal of a creature designed at nought put back before the commanded base | the taken-Sentinel test, the Sentinel-ordered-to-follow test (its speed) and every-kind (the Sentinel's row); 9 performed, 6 succeeded, 3 failed | 9 of 9 |
+| P3 | in `ACataclysmMinion::RefreshWalkSpeed`, the commanded figure dropped, so it always walks at its type's speed | every-kind (the Imp, Mote, Warhound and TyrantsMinion rows; the untyped minion's default of 500 happens to equal the pace) and the pace-follows test (the summoned imp's two figures); 9 performed, 7 succeeded, 2 failed | 9 of 9 |
+| P4 | in `ApplyChaseSpeed`, the Brute's base back to its chase or walk speed | every-kind (the Brute's row, 250 against 500); 9 performed, 8 succeeded, 1 failed | 9 of 9 |
+| P5 | in `JogPlayRateAtItsWalkingSpeed`, the commanded rate back to the designed rate | the jog-rate test (the taken Imp's figure, its "slower", and the Hellhound's "slower"); 9 performed, 8 succeeded, 1 failed | 9 of 9 |
+
+In every broken half the controls (nobody's creatures, the deployables) pass.
+
+---
+
 ## 2026-11-20 — Vesselstep trades places by an exchange: the player and a commanded creature they can see each end where the other stood, and a creature behind a wall is not traded with (#2792)
 
 **Affects:** `UCataclysmCommand::ThingsCommandedInSightOf`, new

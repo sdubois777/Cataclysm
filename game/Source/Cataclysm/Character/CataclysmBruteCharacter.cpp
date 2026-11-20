@@ -346,7 +346,10 @@ void ACataclysmBruteCharacter::ApplyChaseSpeed()
 	// the designed figure straight over the base's scaled one every frame, so a
 	// Cripple, a Commander and a Vengeful Wraith's speed changed a Brute's
 	// attacks and never its walk.
-	const float Designed = IsChasing() ? ChaseSpeed : DesignedWalkSpeedCmPerSecond;
+	//
+	// AND FROM ITS COMMANDER'S PACE INSTEAD WHILE SOMETHING COMMANDS IT, chasing or walking alike. Issue #2793: this
+	// override replaces the base's `RefreshWalkSpeed`, so a Brute thrall reaches the owner's 1.25 here or nowhere.
+	const float Designed = WalkSpeedBaseCmPerSecond(IsChasing() ? ChaseSpeed : DesignedWalkSpeedCmPerSecond);
 	// AND WHAT SLOWS ITS MOVEMENT ALONE. Issue #1833, 2026-10-06. See
 	// `AilmentWalkMultiplier`: this is the second of the two places a creature's
 	// walk speed is written.

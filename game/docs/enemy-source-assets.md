@@ -635,7 +635,7 @@ was read a third time and every one matched. Everything below is new.
 
 | Animation | Length | Note |
 |---|:-:|---|
-| `Idle` | 7.40 | The STANDING idle. This creature never stands up, so nothing plays it |
+| `Idle` | 7.40 | The STANDING idle. Nothing plays it: nobody's Sentinel never stands up, and a taken one stands up only to jog |
 | `Death_A` | 0.63 | |
 | `Death_B` | 0.47 | |
 | `Death_C` | 0.47 | |
@@ -644,6 +644,15 @@ was read a third time and every one matched. Everything below is new.
 | `Death_F` | 0.47 | |
 | `Death_G` | 0.67 | |
 | `Death_H` | 0.77 | |
+
+**The pack also carries a standing jog, which a Sentinel the player has taken plays.** Issue #2793: every minion
+walks at 1.25 times the player's speed, a thrall included, so a taken Sentinel walks. Listed from the folder in the
+main checkout on 2026-11-20 and NOT MEASURED: `Jog_Fwd_NonCombat` (the one played, at an unmeasured rate of 1.0),
+`Jog_Fwd_Combat`, `Jog_Bwd_Combat`, `Jog_Left_Combat`, `Jog_Right_Combat`, `Jog_Fwd_Start`, `Jog_Fwd_Stop`,
+`Jog_Fwd_NonCombat_Uphill` and `Jog_Fwd_NonCombat_Downhill`, with `ShuffleInPlace`, `Stun`, `KnockUp`, the four
+unrooted hit reactions, `HitReact_Front_A`, `CoreVibration` and a `Blendspaces` folder. `PlantedExit` and `PlantedIntro`, above, are not played: the taken
+Sentinel goes between the rooted pose and the jog with no transition, a judgement of 2026-11-20. The jog's authored
+speed, which a play rate fitted to the walking speed needs, is for `tools/probe_sentinel_animation.py` in the editor.
 
 **Eight deaths, which is the most in the project.** The Brute ships one, the
 Abyssal Warden and the Hellhound two, the Imp five.

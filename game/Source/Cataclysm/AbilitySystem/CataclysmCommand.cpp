@@ -25,6 +25,9 @@
 // Cast<AController> in CommanderOf needs the whole type, not the forward
 // declaration Pawn.h carries.
 #include "GameFramework/Controller.h"
+// For a commanded creature's walking speed, read off its commander's movement component. Issue #2793.
+#include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "EngineUtils.h"
 #include "GameplayTagsManager.h"
 
@@ -286,6 +289,28 @@ AActor* UCataclysmCommand::CommanderOf(const AActor* Follower)
 	}
 
 	return Owner;
+}
+
+float UCataclysmCommand::CommandedWalkSpeedCmPerSecond(const AActor* Follower)
+{
+	// A DEPLOYED GADGET NEVER WALKS, COMMANDED OR NOT. A turret, a ballista and a trap stay where they are put, and
+	// `ACataclysmEnemyController::FollowCommander` refuses them before it asks who commands them; this refuses them
+	// in the same order, so nothing gives a gadget a speed.
+	const ACataclysmCharacterBase* Body = Cast<const ACataclysmCharacterBase>(Follower);
+	if (!Body || Body->StaysWhereItIsPut())
+	{
+		return 0.0f;
+	}
+
+	// NULL FOR EVERY ORDINARY MONSTER, which is what leaves every creature nobody has taken walking as it was designed.
+	const ACharacter* Commander = Cast<const ACharacter>(CommanderOf(Follower));
+	const UCharacterMovementComponent* Movement = Commander ? Commander->GetCharacterMovement() : nullptr;
+	if (!Movement || Movement->MaxWalkSpeed <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	return Movement->MaxWalkSpeed * CommandedWalkSpeedShareOfCommander;
 }
 
 FGameplayTag UCataclysmCommand::QuarryTag()
