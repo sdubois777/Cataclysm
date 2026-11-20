@@ -2306,6 +2306,39 @@ enum class ECataclysmEmpireTreeEffect : uint8
 	/** The chance a Boss or Cataclysm Boss drops one more gear item of Legendary or rarer, per whole ten floors added to
 	 *  the dungeon. */
 	BossLegendaryChancePerTenFloorsAdded,
+
+	// ---- Slice 6a: the gold a kill drops, and a city upgrade's price. The coordinating session's rulings of
+	// 2026-11-20 (G1 to G3, P1 to P3).
+
+	/** Increased gold a kill drops, per point: added into the one increase every "+X% Gold" adds to. */
+	GoldIncreased,
+
+	/** More gold a kill drops: its own multiplier, after the increase. */
+	GoldMore,
+
+	/** Increased gold a kill drops, per point, for each city not fallen. */
+	GoldPerStandingCity,
+
+	/** Increased gold a kill drops, per point, for each active Cataclysm type. */
+	GoldPerActiveType,
+
+	/** Increased gold a kill drops, per point, for each fallen city not erased. */
+	GoldPerFallenCity,
+
+	/** Increased gold a kill drops, per point, for each whole 10,000 citizens of the standing cities. */
+	GoldPerTenThousandCitizens,
+
+	/** Increased gold a kill drops, per point, for each whole 5 upgrades the standing cities hold. */
+	GoldPerFiveCityUpgrades,
+
+	/** A city upgrade's price reduced, per point: added into the one reduction, which is held at 75%. */
+	UpgradePriceReduced,
+
+	/** The same, for an upgrade bought on a city that holds none. */
+	FirstUpgradePriceReduced,
+
+	/** The same, for an upgrade bought on a city whose defence or population is below its maximum. */
+	DamagedCityUpgradePriceReduced,
 };
 
 /**

@@ -80,3 +80,15 @@ basic_expl_t1c#1,basic_expl_t1c,0,EliteExtraItemChance,0.03,0,,0.0
 basic_expl_t4g#1,basic_expl_t4g,0,ExtraMaterialChance,0.02,0,,0.0
 basic_0000004z#1,basic_0000004z,0,LowTierMaterialExtraChance,0.05,0,,0.0
 keystone_0000002p#1,keystone_0000002p,0,BossLegendaryChancePerTenFloorsAdded,0.05,0,,0.0
+basic_0000003q#1,basic_0000003q,0,GoldIncreased,0.05,0,,0.0
+basic_tres_t1f#1,basic_tres_t1f,0,GoldIncreased,0.03,0,,0.0
+capstone_0000000o#2,capstone_0000000o,3,GoldMore,0.5,0,,0.0
+basic_tres_t4c#1,basic_tres_t4c,0,GoldPerStandingCity,0.02,0,,0.0
+basic_tres_t3d#1,basic_tres_t3d,0,GoldPerActiveType,0.1,0,,0.0
+basic_tres_t3e#1,basic_tres_t3e,0,GoldPerFallenCity,0.05,0,,0.0
+basic_tres_t4g#1,basic_tres_t4g,0,GoldPerTenThousandCitizens,0.01,0,,0.0
+basic_tres_t2g#1,basic_tres_t2g,0,GoldPerFiveCityUpgrades,0.03,0,,0.0
+basic_0000003v#1,basic_0000003v,0,UpgradePriceReduced,0.03,0,,0.0
+keystone_00000013#1,keystone_00000013,0,UpgradePriceReduced,0.2,0,,0.0
+basic_0000003s#1,basic_0000003s,0,FirstUpgradePriceReduced,0.02,0,,0.0
+basic_tres_t2f#1,basic_tres_t2f,0,DamagedCityUpgradePriceReduced,0.04,0,,0.0

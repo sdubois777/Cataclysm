@@ -194,7 +194,8 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static TArray<FCataclysmCityUpgradeOffer> OffersFor(
-		const UCataclysmEmpireRun* Run, int32 CityId, int64 GoldHeld);
+		const UObject* WorldContext, const UCataclysmEmpireRun* Run,
+		int32 CityId, int64 GoldHeld);
 
 	/** The heading over the upgrades a city could buy now. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")

@@ -208,8 +208,8 @@ bool FCataclysmCityUpgradePriceByTierTest::RunTest(const FString&)
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
 	Run->Begin(/* InSeed */ 2742, ECataclysmSurgeMode::Static, /* LethalityRung */ 0);
 	Run->DifficultyTier = 3;
-	const int64 InTheRun = UCataclysmCityUpgradePurchase::PriceIn(Run, FName(Row));
-	const int64 NoRun = UCataclysmCityUpgradePurchase::PriceIn(nullptr, FName(Row));
+	const int64 InTheRun = UCataclysmCityUpgradePurchase::PriceIn(nullptr, Run, FName(Row), 0);
+	const int64 NoRun = UCataclysmCityUpgradePurchase::PriceIn(nullptr, nullptr, FName(Row), 0);
 
 	TArray<FString> Each;
 	for (const int64 Price : ByTier)
@@ -533,10 +533,10 @@ bool FCataclysmCityUpgradePriceScreenTest::RunTest(const FString&)
 		return false;
 	}
 
-	const TArray<FCataclysmCityUpgradeOffer> Rich = UCataclysmCityScreenLayout::OffersFor(Scene.Run, 0, 25000);
-	const TArray<FCataclysmCityUpgradeOffer> Poor = UCataclysmCityScreenLayout::OffersFor(Scene.Run, 0, 5000);
+	const TArray<FCataclysmCityUpgradeOffer> Rich = UCataclysmCityScreenLayout::OffersFor(Scene.World, Scene.Run, 0, 25000);
+	const TArray<FCataclysmCityUpgradeOffer> Poor = UCataclysmCityScreenLayout::OffersFor(Scene.World, Scene.Run, 0, 5000);
 	Scene.Run->DifficultyTier = 2;
-	const TArray<FCataclysmCityUpgradeOffer> TierTwo = UCataclysmCityScreenLayout::OffersFor(Scene.Run, 0, 25000);
+	const TArray<FCataclysmCityUpgradeOffer> TierTwo = UCataclysmCityScreenLayout::OffersFor(Scene.World, Scene.Run, 0, 25000);
 	Scene.Run->DifficultyTier = 1;
 	if (!TestEqual(TEXT("set-up: every upgrade is offered"), Rich.Num(), 24) || Poor.Num() != 24 || TierTwo.Num() != 24)
 	{
@@ -614,6 +614,80 @@ bool FCataclysmCityUpgradePriceScreenTest::RunTest(const FString&)
 	TestEqual(TEXT("and with no balance to name"), NoBalanceLine,
 			  FString::Printf(TEXT("bought 'Increase max defense by 20%%' on %s for 10,000 gold; no gold balance to "
 								   "hold it"), *CityName));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The empire upgrade tree's price nodes, issue #2741 slice 6a
+// ---------------------------------------------------------------------------
+
+/**
+ * THE PRICE SHOWN IS THE PRICE PAID, with the tree's price nodes bought (P1, P2): Municipal Bonds at 10 points (a 0.30
+ * reduction) and War Funding at 10 (0.20, on a city holding no upgrade) in the mode's account. City 0 holds none, so the
+ * city screen offers the row at 10,000 x 0.50 = 5,000; `PriceIn` answers the same; buying it takes 5,000 from the
+ * balance; and the next built upgrade on the same city, which now holds one, costs 10,000 x 0.70 = 7,000. Prints
+ * "TREE PRICE".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCityUpgradePriceTreeTest,
+	"Cataclysm.CityUpgradePrice.TheTreesPriceNodesMakeTheScreensPriceThePricePaid",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCityUpgradePriceTreeTest::RunTest(const FString&)
+{
+	using namespace CataclysmCityUpgradePriceTest;
+
+	FPriceScene Scene = MakeScene();
+	if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	Scene.Instance->BankGold(Scene.Partition, 25000);
+	UCataclysmAccountSave* Account = Scene.Instance->AccountFor(Scene.Partition);
+	if (!TestNotNull(TEXT("set-up: the mode's account"), Account))
+	{
+		return false;
+	}
+	Account->EmpireTree.Add(FName(TEXT("basic_0000003v")), 10);		// Municipal Bonds, -3% a point
+	Account->EmpireTree.Add(FName(TEXT("basic_0000003s")), 10);		// War Funding, -2% a point on a city's first
+
+	const FName RowName(Row);
+	const TArray<FCataclysmCityUpgradeOffer> Offers =
+		UCataclysmCityScreenLayout::OffersFor(Scene.World, Scene.Run, 0, Held(Scene.World));
+	const FCataclysmCityUpgradeOffer* Offer = Offers.FindByPredicate(
+		[&RowName](const FCataclysmCityUpgradeOffer& One) { return One.RowName == RowName; });
+	const int64 Shown = Offer != nullptr ? Offer->Price : -1;
+	const int64 Asked = UCataclysmCityUpgradePurchase::PriceIn(Scene.World, Scene.Run, RowName, 0);
+	const int64 Before = Held(Scene.World);
+	const ECataclysmCityUpgradeResult Result = UCataclysmCityUpgradePurchase::Buy(Scene.World, Scene.Run, 0, RowName);
+	const int64 After = Held(Scene.World);
+
+	// THE NEXT ONE ON THE SAME CITY: the first other upgrade the game has built.
+	FName NextRow;
+	for (const FName Name : UCataclysmCityUpgradeMapping::AllRowNames())
+	{
+		if (Name != RowName && UCataclysmCityUpgradeRules::IsBuilt(UCataclysmCityUpgradeMapping::MakeFromTable(Name).Effect))
+		{
+			NextRow = Name;
+			break;
+		}
+	}
+	const int64 Next = UCataclysmCityUpgradePurchase::PriceIn(Scene.World, Scene.Run, NextRow, 0);
+	AddInfo(FString::Printf(TEXT("TREE PRICE: shown %lld, asked %lld; %s with %lld held, %lld after; the next (%s) %lld"),
+							Shown, Asked, *UCataclysmCityUpgradeRules::ResultText(Result), Before, After,
+							*NextRow.ToString(), Next));
+
+	TestEqual(TEXT("the screen offers it at 5,000"), Shown, static_cast<int64>(5000));
+	TestEqual(TEXT("PriceIn answers the same"), Asked, Shown);
+	TestTrue(TEXT("it is bought"), Result == ECataclysmCityUpgradeResult::Bought);
+	TestEqual(TEXT("and the balance pays exactly the price shown"), Before - After, Shown);
+	TestFalse(TEXT("set-up: another built upgrade to price"), NextRow.IsNone());
+	TestEqual(TEXT("the next on the same city, which now holds one, is 7,000"), Next, static_cast<int64>(7000));
 	return true;
 }
 
