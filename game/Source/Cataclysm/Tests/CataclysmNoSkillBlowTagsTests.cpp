@@ -24,6 +24,8 @@
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
+// For the level a late axe is sized at, and the row its loss is credited to. Issue #2764, slice 2a.
+#include "Character/CataclysmSkillLevels.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
@@ -715,6 +717,110 @@ CATACLYSM_TEST(FCataclysmNoSkillBlowLeapHitTest,
 	TestTrue(TEXT("and it names no skill"), LeapHit.SkillName.IsNone());
 	TestFalse(TEXT("so the ranged hit row answers the leap's hit and resets the Special cooldown"),
 		Leaping.System->HasMatchingGameplayTag(SpecialCooldown));
+	return true;
+}
+
+// ==========================================================================
+// 3. A trap's rack axe landing after the trap's use has ended is credited to its skill and sized by its level
+// ==========================================================================
+
+/**
+ * Issue #2764, slice 2a. THE SET-UP IS test 1's, above, for its measure alone, twice: two Axe players 100 m apart, each
+ * with the Ultimate trap flag and an Ultimate trap 20 m north set off with no enemy, its whole rack of Butcher's Bill
+ * emptied with every axe in the air at the one enemy of 50,000 health 3 m east of it, so every axe lands after the
+ * trap's one-use grant is removed and names no skill object. One player's Butcher's Bill is at level 1, the other's at
+ * level 3. Every late axe carries the row it was fired with (`ACataclysmProjectile::FiringSkillRow`), so the level 3 axe
+ * is 1.0567 squared times the level 1 axe, and the whole of what each enemy took is credited to that row.
+ */
+CATACLYSM_TEST(FCataclysmSkillLevelSourcesLateRackAxeTest,
+	"Cataclysm.SkillLevelSources.ATrapsLateRackAxeIsCreditedToItsSkillAndSizedByItsLevel")
+{
+	using namespace CataclysmNoSkillBlowTagsTest;
+
+	FNoSkillBlowWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned at 100"), NeverCritical.Variable))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("set-up: the tags these tests name exist"), NoSkillBlowTagsExist()))
+	{
+		return false;
+	}
+	const FVector Home[2] = {FVector::ZeroVector, FVector(100.0f * M, 0.0f, 0.0f)};
+	FNoSkillBlowRig AtOne(World, Home[0]);
+	FNoSkillBlowRig AtThree(World, Home[1]);
+	if (!AtOne.HoldsARackATrapMayCast(*this) || !AtThree.HoldsARackATrapMayCast(*this))
+	{
+		return false;
+	}
+	// THE ULTIMATE'S ROW, read off the weapon's Ultimate, Butcher's Bill.
+	const FCataclysmWeaponSkill* Ultimate = AtOne.Slots->GetAvailableSkills().FindByPredicate(
+		[](const FCataclysmWeaponSkill& Skill) { return Skill.Slot == ECataclysmAbilitySlot::Ultimate; });
+	const FName Bill = Ultimate ? Ultimate->RowName : NAME_None;
+	ACataclysmPlayerState* OneState = Cast<ACataclysmPlayerState>(AtOne.System->GetOwner());
+	ACataclysmPlayerState* ThreeState = Cast<ACataclysmPlayerState>(AtThree.System->GetOwner());
+	if (!TestTrue(TEXT("set-up: the Ultimate's row, and each player's state"), !Bill.IsNone() && OneState && ThreeState))
+	{
+		return false;
+	}
+	OneState->SetLevelAndExperience(4, 0);
+	ThreeState->SetLevelAndExperience(4, 0);
+	ThreeState->SetSkillExperience(Bill, UCataclysmSkillLevels::ExperienceToReach(3));
+	AtOne.Holds({NoSkillBlowUltimateTrapFlag()});
+	AtThree.Holds({NoSkillBlowUltimateTrapFlag()});
+
+	const FVector TrapAt(0.0f, 20.0f * M, 0.0f);
+	const FVector TargetAt(3.0f * M, 20.0f * M, 0.0f);
+	ACataclysmEnemyCharacter* OneTarget = NoSkillBlowEnemy(World, Home[0] + TargetAt);
+	ACataclysmEnemyCharacter* ThreeTarget = NoSkillBlowEnemy(World, Home[1] + TargetAt);
+	if (!TestTrue(TEXT("set-up: each player's enemy"), OneTarget && ThreeTarget))
+	{
+		return false;
+	}
+	TSet<const ACataclysmProjectile*> Done;
+	const int32 OneCount = NoSkillBlowEmptyATrapsRack(*this, AtOne, Home[0] + TrapAt, TEXT("level 1"));
+	if (OneCount <= 0)
+	{
+		return false;
+	}
+	TestEqual(TEXT("set-up: every axe of the level 1 rack finished its flight"),
+		NoSkillBlowLandEveryProjectile(World, Done), OneCount);
+	const int32 ThreeCount = NoSkillBlowEmptyATrapsRack(*this, AtThree, Home[1] + TrapAt, TEXT("level 3"));
+	if (ThreeCount <= 0)
+	{
+		return false;
+	}
+	TestEqual(TEXT("set-up: every axe of the level 3 rack finished its flight"),
+		NoSkillBlowLandEveryProjectile(World, Done), ThreeCount);
+
+	const float OneTook = NoSkillBlowTakenFrom(OneTarget);
+	const float ThreeTook = NoSkillBlowTakenFrom(ThreeTarget);
+	const float OneAxe = OneTook / static_cast<float>(OneCount);
+	const float ThreeAxe = ThreeTook / static_cast<float>(ThreeCount);
+	const float* OneCredited = OneTarget->GetHealthRemovedBySkill().Find(Bill);
+	const float* ThreeCredited = ThreeTarget->GetHealthRemovedBySkill().Find(Bill);
+	AddInfo(FString::Printf(TEXT("LATE RACK AXE: %s; %d axes took %.3f at level 1 and %d took %.3f at level 3; one axe "
+								 "%.3f and %.3f (x%.4f); credited %.3f and %.3f"),
+							*Bill.ToString(), OneCount, OneTook, ThreeCount, ThreeTook, OneAxe, ThreeAxe,
+							OneAxe > 0.0f ? ThreeAxe / OneAxe : 0.0f, OneCredited ? *OneCredited : -1.0f,
+							ThreeCredited ? *ThreeCredited : -1.0f));
+	TestEqual(TEXT("set-up: the two racks are the same size"), ThreeCount, OneCount);
+	TestTrue(TEXT("set-up: the level 1 axes took something"), OneAxe > 0.0f);
+	TestEqual(TEXT("THE LEVEL 3 LATE AXE IS 1.0567 SQUARED TIMES THE LEVEL 1 AXE"), ThreeAxe / OneAxe,
+		static_cast<float>(UCataclysmSkillLevels::DamageFactor(3)), 1.0e-3f);
+	TestTrue(TEXT("each enemy's loss is credited to Butcher's Bill"), OneCredited && ThreeCredited);
+	if (OneCredited && ThreeCredited)
+	{
+		TestEqual(TEXT("THE WHOLE OF THE LEVEL 3 ENEMY'S LOSS IS CREDITED TO THE ROW"), *ThreeCredited, ThreeTook,
+			ThreeTook * 0.001f);
+		TestEqual(TEXT("as is the level 1 enemy's"), *OneCredited, OneTook, OneTook * 0.001f);
+	}
 	return true;
 }
 

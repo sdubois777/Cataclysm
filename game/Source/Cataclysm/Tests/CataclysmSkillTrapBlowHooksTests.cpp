@@ -24,6 +24,9 @@
 #include "GameFramework/PlayerController.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Player/CataclysmPlayerState.h"
+// For the skill level a trap's share is laid at, and the row its effect credits. Issue #2764, slice 2a.
+#include "AbilitySystem/CataclysmRuntimeEffect.h"
+#include "Character/CataclysmSkillLevels.h"
 #include "Tests/CataclysmTestWorld.h"
 
 /**
@@ -1113,6 +1116,97 @@ CATACLYSM_TEST(FCataclysmTrapBlowHookRearmedSlowTest,
 	TestEqual(TEXT("by the row's 25 per cent"), UCataclysmSkillEffects::StatedStrengthOn(RearmedSetter, Cripple), 25.0f,
 		0.01f);
 	TestEqual(TEXT("for the row's 3 seconds"), TrapBlowHookSecondsLeftOn(RearmedSetter, Cripple), 3.0f, 0.01f);
+	return true;
+}
+
+/**
+ * The trap's damage over time share credits the skill the trap cast, and is sized by that skill's level once: it is a
+ * share of the trap's blow, which was already priced at the level. Issue #2764, slice 2a. THE SET-UP IS
+ * `Cataclysm.Traps.TheDamageOverTimeRowLaysItsShareOverThreeSecondsOnTheEnemyThatSetTheTrapOffWhenTheBlowTookATenth`'s,
+ * above, for its row's player alone, twice: two players 100 m apart, each holding a Demonic Whip, the Heavy flag and the
+ * row at 50, one with Searing Lash at level 1 and one at level 3. Each share is half its blow, and the level 3 blow is
+ * 1.0567 squared times the level 1 blow, so the share grows by the factor once and not twice.
+ */
+CATACLYSM_TEST(FCataclysmSkillLevelSourcesTrapShareTest,
+	"Cataclysm.SkillLevelSources.TheTrapsDamageOverTimeShareIsCreditedAndSizedOnceNotTwice")
+{
+	using namespace CataclysmTrapBlowHookTest;
+
+	FTrapBlowHookWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned at 100"), NeverCritical.Variable))
+	{
+		return false;
+	}
+	const FGameplayTag Generic = TrapBlowHookGenericDot();
+	constexpr float Frail = 1500.0f;
+	const FVector LevelThreeHome(100.0f * M, 0.0f, 0.0f);
+	FTrapBlowHookRig AtOne(World, FVector::ZeroVector, TEXT("Whip"));
+	FTrapBlowHookRig AtThree(World, LevelThreeHome, TEXT("Whip"));
+	if (!TestTrue(TEXT("set-up: the Keyword.DoT.Generic tag exists"), Generic.IsValid())
+		|| !AtOne.IsUsable(*this, ECataclysmSkillShape::Strike) || !AtThree.IsUsable(*this, ECataclysmSkillShape::Strike))
+	{
+		return false;
+	}
+	// THE HEAVY'S ROW, read off the weapon's Heavy, Searing Lash.
+	const FName Lash = AtOne.HeavyRow()->RowName;
+	ACataclysmPlayerState* OneState = Cast<ACataclysmPlayerState>(AtOne.System->GetOwner());
+	ACataclysmPlayerState* ThreeState = Cast<ACataclysmPlayerState>(AtThree.System->GetOwner());
+	if (!TestTrue(TEXT("set-up: the Heavy's row, and each player's state"), !Lash.IsNone() && OneState && ThreeState))
+	{
+		return false;
+	}
+	OneState->SetLevelAndExperience(4, 0);
+	ThreeState->SetLevelAndExperience(4, 0);
+	ThreeState->SetSkillExperience(Lash, UCataclysmSkillLevels::ExperienceToReach(3));
+	const FTrapBlowHookStat OverTime = TrapBlowHookRow(ACataclysmMinion::TrapDamageOverTimeShareStat, 50.0f);
+	AtOne.Holds({TrapBlowHookHeavyFlag(), OverTime});
+	AtThree.Holds({TrapBlowHookHeavyFlag(), OverTime});
+
+	const FVector North(0.0f, 20.0f * M, 0.0f);
+	const FVector Near(2.5f * M, 0.0f, 0.0f);
+	ACataclysmEnemyCharacter* OneSetter = TrapBlowHookEnemy(World, North + Near, Frail);
+	ACataclysmEnemyCharacter* ThreeSetter = TrapBlowHookEnemy(World, LevelThreeHome + North + Near, Frail);
+	ACataclysmMinion* OneTrap = OneSetter ? TrapBlowHookPlaceTrap(*this, AtOne, North) : nullptr;
+	ACataclysmMinion* ThreeTrap = ThreeSetter ? TrapBlowHookPlaceTrap(*this, AtThree, LevelThreeHome + North) : nullptr;
+	if (!TestTrue(TEXT("set-up: each player's enemy and trap"), OneTrap && ThreeTrap))
+	{
+		return false;
+	}
+	TrapBlowHookPass(World, 1.25f);
+	TrapBlowHookStep(OneTrap);
+	TrapBlowHookStep(ThreeTrap);
+
+	const float OneBlow = TrapBlowHookTakenFrom(OneSetter, Frail);
+	const float ThreeBlow = TrapBlowHookTakenFrom(ThreeSetter, Frail);
+	const float OneShare = TrapBlowHookRemainingOn(OneSetter, Generic);
+	const float ThreeShare = TrapBlowHookRemainingOn(ThreeSetter, Generic);
+	FName ShareRow;
+	if (UAbilitySystemComponent* Its = ThreeSetter->GetAbilitySystemComponent())
+	{
+		const TArray<FActiveGameplayEffectHandle> Handles = Its->GetActiveEffects(
+			FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(FGameplayTagContainer(Generic)));
+		const FActiveGameplayEffect* Share = Handles.Num() == 1 ? Its->GetActiveGameplayEffect(Handles[0]) : nullptr;
+		const UCataclysmRuntimeEffect* Laid = Share ? Cast<UCataclysmRuntimeEffect>(Share->Spec.Def.Get()) : nullptr;
+		ShareRow = Laid ? Laid->SkillRowToCredit : NAME_None;
+	}
+
+	AddInfo(FString::Printf(TEXT("TRAP SHARE: %s; the blow took %.3f at level 1 and %.3f at level 3 (x%.4f); the share "
+								 "%.3f and %.3f (x%.4f); the share's row %s"),
+							*Lash.ToString(), OneBlow, ThreeBlow, OneBlow > 0.0f ? ThreeBlow / OneBlow : 0.0f, OneShare,
+							ThreeShare, OneShare > 0.0f ? ThreeShare / OneShare : 0.0f, *ShareRow.ToString()));
+	TestTrue(TEXT("set-up: each lash took a tenth or more of its enemy's 1,500"),
+			 OneBlow >= Frail / 10.0f && ThreeBlow >= Frail / 10.0f);
+	TestEqual(TEXT("set-up: the level 3 blow is 1.0567 squared times the level 1 blow"), ThreeBlow / OneBlow,
+			  static_cast<float>(UCataclysmSkillLevels::DamageFactor(3)), 1.0e-3f);
+	TestEqual(TEXT("THE LEVEL 3 SHARE IS HALF ITS BLOW, NO SECOND FACTOR"), ThreeShare, ThreeBlow * 0.5f, ThreeBlow * 0.001f);
+	TestEqual(TEXT("as the level 1 share is half its blow"), OneShare, OneBlow * 0.5f, OneBlow * 0.001f);
+	TestEqual(TEXT("THE SHARE CREDITS THE SKILL THE TRAP CAST"), ShareRow, Lash);
 	return true;
 }
 
