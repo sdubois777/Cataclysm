@@ -48,6 +48,8 @@
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmImpactEffect.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For the skill row a blow is credited to, read off its own effect before a death is handled. Issue #2764, slice 1b.
+#include "AbilitySystem/CataclysmRuntimeEffect.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmMinion.h"
 // For the Soul a minion's death leaves, Reaper's Embrace's six-piece.
@@ -1688,6 +1690,25 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						GetOwningAbilitySystemComponent()))
 			{
 				Cataclysm->RecordResolvedHit(Outcome);
+			}
+
+			// AND THE SKILL THAT DEALT THIS BLOW IS CREDITED WITH WHAT IT DEALT TO HEALTH, HERE: ONCE THE OUTCOME IS FIXED,
+			// AND BEFORE ANYTHING THIS BLOW SETS OFF CAN HANDLE A DEATH. Issue #2764, slice 1b. A creature's death splits
+			// its experience among the skills that hurt it by what each was credited, and the death is handled inside this
+			// function: by `NotifyIfHealthReachedZero` after the health write below, or earlier, by damage the blow's
+			// announcement sets off. Until slice 1b the credit was made after `ApplyDirectDamage` returned, so a killing
+			// blow was never in the split, and a kill in one hit paid its skill nothing. ONLY A BLOW `ApplyHit` NAMED A ROW
+			// FOR (`UCataclysmRuntimeEffect::SkillRowToCredit`): which blows those are is `CataclysmSkillEffectsLevels::
+			// RowToCredit`'s rule, unchanged. The figure is the one recorded just above, which the old credit read.
+			if (const UCataclysmRuntimeEffect* Laid = Cast<UCataclysmRuntimeEffect>(Data.EffectSpec.Def.Get()))
+			{
+				if (!Laid->SkillRowToCredit.IsNone() && Outcome.DealtToHealth > 0.0f)
+				{
+					if (ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(GetOwningActor()))
+					{
+						Creature->NoteHealthRemovedBySkill(Laid->SkillRowToCredit, Outcome.DealtToHealth);
+					}
+				}
 			}
 
 			// THE ENERGY SHIELD'S REFILL WAIT STARTS HERE. The design gives the

@@ -838,26 +838,27 @@ float UCataclysmSkillEffects::ModifiedDamage(const UAbilitySystemComponent* Sour
 namespace CataclysmSkillEffectsLevels
 {
 	/**
-	 * The health a blow removed, credited on the creature to the skill that dealt it, so the creature's death can split
-	 * its experience among the skills that hurt it. Issue #2764, slice 1: DIRECT HITS ONLY, as the owner ruled on
-	 * 2026-11-19. Damage over time, a share struck at an ally, and a use a minion or gadget cast in the player's name
-	 * (`CastBy` set) credit nothing here; minions and damage over time credit their skill in the second slice. The
-	 * basic attack and a creature's own blows name no skill that levels (`UCataclysmSkillLevels::RowThatLevels`).
+	 * The skill row a blow on `Target` is credited to, so the creature's death can split its experience among the skills
+	 * that hurt it, or None. Issue #2764, slice 1: DIRECT HITS ONLY, as the owner ruled on 2026-11-19. Damage over time, a
+	 * share struck at an ally, and a use a minion or gadget cast in the player's name (`CastBy` set) credit nothing here;
+	 * minions and damage over time credit their skill in the second slice. The basic attack and a creature's own blows
+	 * name no skill that levels (`UCataclysmSkillLevels::RowThatLevels`).
+	 *
+	 * ONLY THE ROW IS WORKED OUT HERE; THE CREDIT IS MADE BY THE STRUCK CREATURE'S ATTRIBUTE SET. Issue #2764, slice 1b.
+	 * The row rides on the blow (`FCataclysmHitDelivery::SkillRowToCredit`) and its effect, and the attribute set credits
+	 * what the blow dealt to health once its outcome is fixed and before a death is handled. Until slice 1b this was
+	 * `CreditTheSkill`, called after `ApplyDirectDamage` returned, and a blow that killed was credited after its death
+	 * had already paid the skills, so a kill in one hit paid its skill nothing. The eligibility is unchanged; the
+	 * credit's figure, the blow's `DealtToHealth` above nought, is checked where it is made.
 	 */
-	void CreditTheSkill(AActor* Target, const FCataclysmHitDelivery& Arrived, bool bAShareOnAnAlly,
-						const FCataclysmDamageResult& Result)
+	FName RowToCredit(const AActor* Target, const FCataclysmHitDelivery& Arrived, bool bAShareOnAnAlly)
 	{
 		if (bAShareOnAnAlly || Arrived.bIsDamageOverTime || !Arrived.CastBy.IsExplicitlyNull()
-			|| Result.DealtToHealth <= 0.0f)
+			|| !Cast<const ACataclysmEnemyCharacter>(Target))
 		{
-			return;
+			return NAME_None;
 		}
-		ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Target);
-		const FName Row = Enemy ? UCataclysmSkillLevels::RowThatLevels(Arrived.Skill.Get()) : NAME_None;
-		if (!Row.IsNone())
-		{
-			Enemy->NoteHealthRemovedBySkill(Row, Result.DealtToHealth);
-		}
+		return UCataclysmSkillLevels::RowThatLevels(Arrived.Skill.Get());
 	}
 }
 
@@ -1342,13 +1343,12 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	const ACataclysmMinion* const Machine = GadgetsPlayer ? SkillGadget : SkillTrap;
 	if (!MachinesPlayer || bAShareOnAnAlly || Arrived.bIsDamageOverTime)
 	{
-		// A RESULT EVEN WHEN THE CALLER ASKED FOR NONE, so the health the blow removed can be credited to its skill
-		// (issue #2764). `ApplyDirectDamage` fills one handed to it and does nothing else differently.
-		FCataclysmDamageResult PlainResult;
-		FCataclysmDamageResult* const Plain = OutResolved ? OutResolved : &PlainResult;
-		const bool bDealtPlain = ApplyDirectDamage(Instigator, Target, Sent, Arrived, Plain);
-		CataclysmSkillEffectsLevels::CreditTheSkill(Target, Arrived, bAShareOnAnAlly, *Plain);
-		return bDealtPlain ? Sent : 0.0f;
+		// AND THE ROW ITS SKILL IS CREDITED WITH, CARRIED ON THE BLOW, so the struck creature's attribute set credits
+		// what the blow dealt to health before a death is handled. Issue #2764, slice 1b: the credit made here, after
+		// `ApplyDirectDamage` returned, came after a killing blow's death had paid. See `RowToCredit`.
+		Arrived.SkillRowToCredit = CataclysmSkillEffectsLevels::RowToCredit(Target, Arrived, bAShareOnAnAlly);
+		return ApplyDirectDamage(Instigator, Target, Sent, Arrived, OutResolved)
+			? Sent : 0.0f;
 	}
 	// AND A LATE BLOW OF A TRAP ALREADY USED UP IS ANNOUNCED AS THE TRAP'S, with the tags it was kept with (ruled
 	// 2026-10-21, #2462), as a living trap's blow is below. A ZONE'S SWEEP NEVER REACHES HERE: it is dealt through
@@ -1520,8 +1520,11 @@ bool UCataclysmSkillEffects::ApplyDirectDamage(AActor* Instigator, AActor* Targe
 	// UCataclysmDamageCalculation::Resolve -- evasion, block, armor, resistance,
 	// flat reduction, mana, energy shield, health, in that order. Nothing here
 	// decides how much of it lands.
-	UGameplayEffect* Effect = MakeRuntimeEffect(TEXT("CataclysmSkillHit"));
+	UCataclysmRuntimeEffect* Effect = MakeRuntimeEffect(TEXT("CataclysmSkillHit"));
 	Effect->DurationPolicy = EGameplayEffectDurationType::Instant;
+	// AND THE SKILL ROW THIS BLOW IS CREDITED TO, on its own effect, for the struck creature's attribute set to credit
+	// before a death is handled. Issue #2764, slice 1b. None unless `ApplyHit` set it.
+	Effect->SkillRowToCredit = Delivery.SkillRowToCredit;
 
 	const int32 Index = Effect->Modifiers.Num();
 	Effect->Modifiers.SetNum(Index + 1);

@@ -771,6 +771,16 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	const FGameplayTagContainer* SkillTagsWithNoSkill = nullptr;
 
 	/**
+	 * The skill row this blow earns experience for, or None. Issue #2764, slice 1b. SET BY `UCataclysmSkillEffects::
+	 * ApplyHit` ALONE, for the blows its skill is credited with (`CataclysmSkillEffectsLevels::RowToCredit`), and None
+	 * for every other blow. `ApplyDirectDamage` copies it onto the blow's effect (`UCataclysmRuntimeEffect::
+	 * SkillRowToCredit`), and the struck creature's attribute set credits it there, once the blow's outcome is fixed
+	 * and BEFORE A DEATH IS HANDLED, so the blow that kills is in the death's split. Until slice 1b the credit came after
+	 * `ApplyDirectDamage` returned, when a killing blow's death had already paid. Not a UPROPERTY, as `Skill` is not.
+	 */
+	FName SkillRowToCredit;
+
+	/**
 	 * Whether this damage over time effect's figure was priced from its applier's own damage over time stats: set by
 	 * `UCataclysmSkillEffects::ApplyDamageOverTime` exactly when it asked `DamageOverTimeNumbers` with the applier,
 	 * which is `bScalesWithInstigator`, and the applier is not the target. Ruled 2026-10-23 (#2235, point 3 accepted):

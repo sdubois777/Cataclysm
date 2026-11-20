@@ -238,6 +238,87 @@ No proof's log holds a "server/discover" line (#2745). The lock was released whe
 
 ---
 
+## 2026-11-19 — A skill's killing blow is counted when the creature's death pays its skills: the credit is made before a death is handled (#2764, slice 1b)
+
+**Affects:** `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`
+(`game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp`), which now credits the skill;
+`UCataclysmSkillEffects::ApplyHit` and `ApplyDirectDamage` and `CataclysmSkillEffectsLevels::RowToCredit`, which
+replaces `CreditTheSkill` (`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`);
+`FCataclysmHitDelivery::SkillRowToCredit`, new (`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h`);
+`UCataclysmRuntimeEffect::SkillRowToCredit`, new (`game/Source/Cataclysm/AbilitySystem/CataclysmRuntimeEffect.h`).
+Test: `Cataclysm.SkillLevels.ASkillsKillingBlowIsCountedInTheDeathsSplit`, new
+(`game/Source/Cataclysm/Tests/CataclysmSkillLevelsTests.cpp`). Issue
+[#2764](https://github.com/sdubois777/Cataclysm/issues/2764).
+
+### SAID FIRST
+
+- **NOT COMPILED OR RUN YET.** The fault was read from the code, not measured, and the coordinating session confirmed it
+  from the same lines. The new test is predicted to fail on `development` as it stands; the registered proof's broken
+  half is that prediction.
+- **ONLY THE TIMING MOVES**, as the coordinating session ruled: the blows that earn a skill experience are exactly
+  slice 1's. Damage over time, rows carried after a skill has gone, gadgets and traps are slice 2a's.
+
+### The fault
+
+Found on 2026-11-19 while reading the code for slice 2a, in `development` `9cb64e1a5`, the build the owner is
+playtesting:
+
+1. `ApplyHit` credited the skill after the blow had been dealt: `ApplyDirectDamage(...)` and then
+   `CataclysmSkillEffectsLevels::CreditTheSkill(Target, Arrived, bAShareOnAnAlly, *Plain)`.
+2. But a blow kills inside `ApplyDirectDamage`. Its instant effect runs the struck creature's
+   `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, which writes health and calls `NotifyIfHealthReachedZero`.
+   That calls `Character->HandleDeath()` directly, with no timer.
+3. `ACataclysmEnemyCharacter::HandleDeath` pays the skills at once, `GrantSkillExperience(..., HealthRemovedBySkill,
+   ...)`.
+4. So the killing blow was added to `HealthRemovedBySkill` only after the death had paid. **A kill in one skill blow paid
+   that skill nothing, and every other kill left its last blow out**: three equal Molten Cleave blows paid Molten Cleave
+   two thirds of the creature's worth.
+
+Slice 1's tests did not see it. `ASkillsBlowOnACreatureIsScaledByItsLevelAndCreditedToIt` never kills, and
+`ACreaturesDeathPaysEachSkillItsShare` notes its 30 with `NoteHealthRemovedBySkill` directly and kills with
+`HandleDeath`. No test killed a creature with a skill's blow and read the payment.
+
+### The change
+
+- **`ApplyHit` works out the row and no longer credits.** `CataclysmSkillEffectsLevels::RowToCredit` answers the row
+  for exactly the blows `CreditTheSkill` credited: a skill's own blow, not a share struck at an ally, not damage over
+  time, not a use a minion or gadget cast in the player's name, on a creature, the row from `RowThatLevels`. `ApplyHit`
+  sets it on the blow's delivery (`FCataclysmHitDelivery::SkillRowToCredit`), and `ApplyDirectDamage` copies it onto
+  the blow's own effect (`UCataclysmRuntimeEffect::SkillRowToCredit`).
+- **The struck creature's attribute set credits the skill**, with the figure the blow dealt to health
+  (`DealtToHealth`, the one recorded by `RecordResolvedHit`, which `CreditTheSkill` read), for a blow whose effect names
+  a row and dealt something.
+- **WHERE: RIGHT AFTER THE BLOW'S OUTCOME IS RECORDED, NOT AFTER THE HEALTH WRITE.** The coordinating session asked for
+  "after the health write and before `NotifyIfHealthReachedZero`". The outcome is fixed earlier, and between it and the
+  write the blow is announced to its listeners (`UCataclysmCombatEvents::NoteBlow`, heard by the player character's
+  `OnSomethingWasHit` and the dungeon game mode's), so anything a listener does happens before the write. Crediting
+  where the outcome is recorded is before all of it, with the same figure. Whether a listener can deal damage there was
+  not checked; the earlier place is right either way.
+- **Matched to its own blow.** The row is read off the effect the attribute set is executing, so a blow dealt from
+  inside this one (an explosion at the death this blow causes) has its own effect and credits nothing unless its own
+  `ApplyHit` named a row.
+
+### The test and the proof, registered
+
+`Cataclysm.SkillLevels.ASkillsKillingBlowIsCountedInTheDeathsSplit`, new, the twelfth in the group. Two Bosses, so each
+is worth something wherever the sandbox's floor sits. One has 5 health and one Molten Cleave blow kills it from full.
+The other is given one and a half times that blow's whole figure, what it dealt to health plus its overkill, so its
+first blow leaves it alive and its second kills it. The blows cannot be critical, so every one has the same figure.
+Each creature lost its whole health to Molten Cleave, so each must pay the skill its whole worth. Its line,
+"KILLING BLOW: ...", prints both payments.
+
+**B1, the guard proof**, through `prove_cpp_guard` with the prefix `Cataclysm.SkillLevels.`: the credit block moved from
+after `RecordResolvedHit` to after `NotifyIfHealthReachedZero` in the health write, which is the order slice 1 had.
+**Predicted with it in:** 12 performed, 11 succeeded, 1 failed, `ASkillsKillingBlowIsCountedInTheDeathsSplit`, on its two
+payment assertions: "A KILL IN ONE SKILL BLOW PAYS THE SKILL THE CREATURE'S WHOLE WORTH" (the worth expected, 0 paid)
+and "AND A KILL IN TWO PAYS IT THE WHOLE WORTH" (the worth expected, two thirds of it paid). Every other test in the
+group passes, `ASkillsBlowOnACreatureIsScaledByItsLevelAndCreditedToIt` with the same figures as before (credited
+63.360, 70.749 and 63.360), because none of its blows kills. **Restored:** 12 of 12.
+
+The whole suite is registered from the newest measured total when the window is given, + 1.
+
+---
+
 ## 2026-11-19 — The simulation's Demonic Cataclysm lands its waves on the exposed front line, as the game's does, by the ruling on #1085 (#2749, Demonic front-line slice)
 
 **Affects:** `sim/cataclysm_sim/patterns.py` (`Pattern.ignores_frontier` deleted; Demonic's description and the comment
