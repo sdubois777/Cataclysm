@@ -695,6 +695,23 @@ followed, ruled 2026-11-01:
   that read `Run_v8.json` as the committed run file reads `Run_v9.json` now,
   and every test that runs an older run file through the whole chain adds what
   the step writes through `CataclysmSaveFixtures::AddTheRunsVersion9Defaults`.
+- **The run record went to version 10 on 2026-11-19**, because a Vengeful
+  Wraith came back from a load as an ordinary creature (issue #2725): a saved
+  creature says whether it is one, `bIsVengefulWraith`, after
+  `CarrionFeederOwnMaxHealth`. THE RUN RECORD'S 10, reached the same day as the
+  character record's own 10 above; each record counts its own versions.
+  `Migrate_9_to_10` writes false on every creature of the floor of a version 9
+  file -- nothing in it tells a wraith from another risen creature.
+  `Run_v10.json` is `Run_v9.json` at version 10 with `"bIsVengefulWraith": true`
+  on its first creature, the risen Brute that sees 30 times as far, and `false`
+  on its second, and nothing else changed: true is not the default, so the test
+  that reads it shows the field is read, and the false beside it shows each
+  creature keeps its own. `Run_v9.json` is now a migration input, not edited
+  again: `Cataclysm.SaveLoad.ARunFileFromVersion9MigratesWithNoWraith` runs it
+  through the step and checks every other field is kept, every test that read
+  `Run_v9.json` as the committed run file reads `Run_v10.json` now, and every
+  test that runs an older run file through the whole chain adds what the step
+  writes through `CataclysmSaveFixtures::AddTheRunsVersion10Defaults`.
 - **A slip, recorded rather than undone, as `LastWrittenUtc` was.**
   `Run_v1.json` was edited thirteen times after saves could load
   (`78ad0fa81`, 2026-10-30), each time adding fields for #753's dungeon load
@@ -721,6 +738,7 @@ followed, ruled 2026-11-01:
 | `Character_v7.json` | The same character at version 7: version 6's contents, plus its Cataclysm order seed, 975318642 |
 | `Character_v8.json` | The same character at version 8: version 7's contents, plus its own gold, 4321 |
 | `Character_v9.json` | The same character at version 9: version 8's contents, with its own empire upgrade points 12.75, a fraction, and its own tree, Structural Integrity at 3 |
+| `Character_v10.json` | The same character at version 10: version 9's contents, plus the experience of two skills, `War_Greatsword_Heavy` at 37810.5 and `Demonic_Greataxe_Ultimate` at 1234.25 |
 | `Run_v1.json` | A run record at version 1, on floor 6 of a dungeon, with a boss at part health and a common creature beside it |
 | `Run_v2.json` | The same run at version 2: version 1's contents, plus the corrupted double's hunt, standing |
 | `Run_v3.json` | The same run at version 3: version 2's contents, plus what the player's last death cost |
@@ -730,6 +748,7 @@ followed, ruled 2026-11-01:
 | `Run_v7.json` | The same run at version 7: version 6's contents, with a `Gold` on each ground item, and a second ground item that is a gold pile of 37 |
 | `Run_v8.json` | The same run at version 8: version 7's contents, plus its mask on its dungeons' walk seeds, 12345 |
 | `Run_v9.json` | The same run at version 9: version 8's contents, plus the empire upgrade tree's event counts -- 3 clears since the last surge, 1 city reclaimed, the Last Stand spent -- and the day each of its two city upgrades was bought, 101 and 64 |
+| `Run_v10.json` | The same run at version 10: version 9's contents, with its first creature saved as a Vengeful Wraith and its second as not one |
 | `Example_v1.json` | The example record at version 1 |
 | `Example_v2.json` | The same record at version 2, after `Title` was renamed to `Label` |
 | `Example_v3.json` | The same record at version 3, after `TotalCopper` was split into `Gold` and `Copper` |
@@ -741,8 +760,8 @@ something.
 
 `UCataclysmSaveExampleRecord` exists only for these, because all three real
 records were at version 1 when it was written and version 1 is the first, so
-none of them had a migration to run. The character record has had eight since
-(version 9 since 2026-11-18), the run record eight (version 9 since
+none of them had a migration to run. The character record has had nine since
+(version 10 since 2026-11-19), the run record nine (version 10 since
 2026-11-19), and the account record three (version 4 since 2026-11-18). Its
 header says more.
 

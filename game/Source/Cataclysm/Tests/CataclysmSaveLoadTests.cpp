@@ -5299,6 +5299,236 @@ bool FCataclysmSaveLoadFamishedTest::RunTest(const FString&)
 }
 
 /**
+ * A VENGEFUL WRAITH COMES BACK FROM A LOAD A WRAITH, AND A CREATURE DEAD RISING RAISED BESIDE IT DOES NOT. Issue #2725.
+ * One of floor 1's creatures is killed by the player on a dungeon carrying both rows, both rolls pinned to rise, so the
+ * one kill raises a wraith and a Dead Rising creature; the save is written and loaded into a new world. The wraith is
+ * found after the load by its saved sight, thirty times its kind's, which the load puts back whatever its role: it is
+ * in the rule's list again and marked a wraith, takes a tenth of every hit, holds its 20% increased damage as its own
+ * part, and still pays nothing. THE CONTROL is the Dead Rising creature: it comes back risen and paying nothing, as the
+ * wraith does, with none of the wraith's figures and outside the list, so the load tells the two apart by the saved
+ * field and not by `bRisenFromTheDead`, which both carry. Prints "LOAD VENGEFUL WRAITH".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadVengefulWraithTest,
+	"Cataclysm.SaveLoad.AVengefulWraithComesBackAWraithAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadVengefulWraithTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	FPinnedConsoleValue WraithRises(TEXT("Cataclysm.VengefulWraithRoll"), TEXT("0"));
+	FPinnedConsoleValue DeadRise(TEXT("Cataclysm.DeadRisingRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("set-up: the wraith roll can be pinned"), WraithRises.Variable)
+		|| !TestNotNull(TEXT("set-up: the Dead Rising roll can be pinned"), DeadRise.Variable))
+	{
+		return false;
+	}
+
+	// A CREATURE'S MULTIPLICATIVE DAMAGE REDUCTION, the attribute the wraith's 90 is written on.
+	const auto ReductionOf = [](const ACataclysmEnemyCharacter& Creature)
+	{
+		const UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(&Creature);
+		return Abilities
+			? Abilities->GetNumericAttribute(UCataclysmCombatAttributeSet::GetDamageReductionMoreAttribute())
+			: -1.0f;
+	};
+
+	return WithTheSeedPutBack(*this, [this, &ReductionOf]()
+	{
+		return ARoundTripOfRows(*this, {FName(Effects::VengefulWraithsKey), FName(Effects::DeadRisingKey)},
+			[this, &ReductionOf](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&,
+								 FPinnedDungeonSeed&)
+			{
+				ACataclysmEnemyCharacter* Victim = nullptr;
+				for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode.FloorEnemies)
+				{
+					if (!Victim && IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->PaysForItsDeath()
+						&& !Enemy->bRaisedByARule && !Enemy->bCannotBeHurt)
+					{
+						Victim = Enemy.Get();
+					}
+				}
+				if (!KillOnTheFloor(*this, Player, Victim, TEXT("a creature of floor 1")))
+				{
+					return false;
+				}
+				const TArray<ACataclysmEnemyCharacter*> Wraiths = Mode.VengefulWraithsStandingNow();
+				int32 DeadRisen = 0;
+				for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode.FloorEnemies)
+				{
+					DeadRisen += IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy) && Enemy->bRisenFromTheDead
+						&& !Enemy->bIsVengefulWraith ? 1 : 0;
+				}
+				return TestEqual(TEXT("set-up: the kill raised one wraith"), Wraiths.Num(), 1)
+					&& TestEqual(TEXT("set-up: with the row's reduction"), ReductionOf(*Wraiths[0]),
+								 Effects::VengefulWraithsDamageReductionMore, 0.01f)
+					&& TestEqual(TEXT("set-up: and one Dead Rising creature"), DeadRisen, 1);
+			},
+			[this, &ReductionOf](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter&, UWorld& World,
+								 const FCataclysmLoadReport& Report)
+			{
+				// THE TWO RISEN CREATURES, told apart by the sight the load puts back for any creature.
+				ACataclysmEnemyCharacter* Wraith = nullptr;
+				ACataclysmEnemyCharacter* Risen = nullptr;
+				int32 RisenCount = 0;
+				for (TActorIterator<ACataclysmEnemyCharacter> It(&World); It; ++It)
+				{
+					if (!IsValid(*It) || UCataclysmSkillEffects::IsDead(*It) || !It->bRisenFromTheDead)
+					{
+						continue;
+					}
+					++RisenCount;
+					if (FMath::IsNearlyEqual(It->SightRadiusMultiplier, Effects::VengefulWraithsSightMultiplier))
+					{
+						Wraith = *It;
+					}
+					else
+					{
+						Risen = *It;
+					}
+				}
+				const TArray<ACataclysmEnemyCharacter*> Wraiths = Mode.VengefulWraithsStandingNow();
+				AddInfo(FString::Printf(TEXT("LOAD VENGEFUL WRAITH: %s (%s); %d risen; %d in the list; the wraith %s, "
+											 "reduction %.1f, increase %.1f%%; the Dead Rising creature %s, reduction %.1f, "
+											 "increase %.1f%%"),
+										FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, RisenCount, Wraiths.Num(),
+										Wraith && Wraith->bIsVengefulWraith ? TEXT("marked") : TEXT("NOT MARKED"),
+										Wraith ? ReductionOf(*Wraith) : -1.0f,
+										Wraith ? Wraith->RuleDamagePartFrom(ACataclysmEnemyCharacter::VengefulWraithsDamageSource)
+													 .IncreasedPercent
+											   : -1.0f,
+										Risen && Risen->bIsVengefulWraith ? TEXT("MARKED") : TEXT("unmarked"),
+										Risen ? ReductionOf(*Risen) : -1.0f,
+										Risen ? Risen->RuleDamagePartFrom(ACataclysmEnemyCharacter::VengefulWraithsDamageSource)
+													.IncreasedPercent
+											  : -1.0f));
+				if (!TestEqual(TEXT("set-up: both risen creatures came back"), RisenCount, 2)
+					|| !TestNotNull(TEXT("set-up: the one that sees across the floor"), Wraith)
+					|| !TestNotNull(TEXT("set-up: and the one that does not"), Risen))
+				{
+					return;
+				}
+				TestTrue(TEXT("the wraith is in the rule's list again"), Wraiths.Contains(Wraith));
+				TestTrue(TEXT("and marked a wraith"), Wraith->bIsVengefulWraith);
+				TestEqual(TEXT("it takes a tenth of every hit"), ReductionOf(*Wraith),
+						  Effects::VengefulWraithsDamageReductionMore, 0.01f);
+				TestEqual(TEXT("its 20% increased damage is its own part"),
+						  Wraith->RuleDamagePartFrom(ACataclysmEnemyCharacter::VengefulWraithsDamageSource).IncreasedPercent,
+						  Effects::VengefulWraithsIncreasePercent, 0.01f);
+				TestFalse(TEXT("and it still pays nothing"), Wraith->PaysForItsDeath());
+				TestFalse(TEXT("CONTROL: the Dead Rising creature is not in the list"), Wraiths.Contains(Risen));
+				TestFalse(TEXT("CONTROL: nor marked a wraith"), Risen->bIsVengefulWraith);
+				TestEqual(TEXT("CONTROL: it takes every hit in full"), ReductionOf(*Risen), 0.0f, 0.01f);
+				TestEqual(TEXT("CONTROL: with no wraith's increase"),
+						  Risen->RuleDamagePartFrom(ACataclysmEnemyCharacter::VengefulWraithsDamageSource).IncreasedPercent,
+						  0.0f, 0.01f);
+				TestFalse(TEXT("CONTROL: and it pays nothing, as a risen creature"), Risen->PaysForItsDeath());
+			});
+	});
+}
+
+/**
+ * `Run_v9.json`, written before a saved creature said whether it is a Vengeful Wraith, migrates to no wraith: a
+ * `bIsVengefulWraith` of false on both its creatures, with every other field kept. CONTROL: `Run_v10.json`, the same
+ * run at version 10, reads true on its first creature, the risen Brute that sees 30 times as far, and false on its
+ * second. Issue #2725. Prints "WRAITH MIGRATED".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadWraithMigrationTest,
+	"Cataclysm.SaveLoad.ARunFileFromVersion9MigratesWithNoWraith",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
+{
+	FString Text;
+	FString CurrentText;
+	FString Reason;
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v9.json"), Text, Reason)
+		|| !CataclysmSaveFixtures::Read(TEXT("Run_v10.json"), CurrentText, Reason))
+	{
+		AddError(Reason);
+		return false;
+	}
+	const TSharedPtr<FJsonObject> Stepped = CataclysmSaveFixtures::Parse(Text);
+	if (!TestTrue(TEXT("set-up: Run_v9.json is a JSON object"), Stepped.IsValid()))
+	{
+		return false;
+	}
+	FString StepMessage;
+	const ECataclysmSaveMigrationResult Stepping = FCataclysmSaveMigration::Migrate(
+		GetDefault<UCataclysmRunSave>()->MigrationSteps(), UCataclysmRunSave::SchemaVersionNow, Stepped.ToSharedRef(),
+		StepMessage);
+
+	// WHAT THE STEP WROTE, read off the stepped object: false on each creature of the floor.
+	int32 WrittenFalse = 0;
+	const TSharedPtr<FJsonObject>* Floor = nullptr;
+	const TArray<TSharedPtr<FJsonValue>>* Creatures = nullptr;
+	if (Stepped->TryGetObjectField(TEXT("Floor"), Floor) && Floor != nullptr && Floor->IsValid()
+		&& (*Floor)->TryGetArrayField(TEXT("Creatures"), Creatures) && Creatures != nullptr)
+	{
+		for (const TSharedPtr<FJsonValue>& Entry : *Creatures)
+		{
+			const TSharedPtr<FJsonObject>* Creature = nullptr;
+			bool bWraith = true;
+			if (Entry.IsValid() && Entry->TryGetObject(Creature) && Creature != nullptr && Creature->IsValid()
+				&& (*Creature)->TryGetBoolField(TEXT("bIsVengefulWraith"), bWraith) && !bWraith)
+			{
+				++WrittenFalse;
+			}
+		}
+	}
+
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	const UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(FCataclysmSaveStorage::FromJson(
+		Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
+	FString CurrentMessage;
+	const UCataclysmRunSave* Current = Cast<UCataclysmRunSave>(FCataclysmSaveStorage::FromJson(
+		CurrentText, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, CurrentMessage));
+	if (!TestNotNull(TEXT("Run_v9.json loads"), Read) || !TestNotNull(TEXT("Run_v10.json loads"), Current))
+	{
+		AddError(Message + TEXT(" | ") + CurrentMessage);
+		return false;
+	}
+
+	// AND NOTHING ELSE MOVED: the version 9 file at the current version with what the step writes, compared with what
+	// the record writes back.
+	const TSharedPtr<FJsonObject> Expected = CataclysmSaveFixtures::Parse(Text);
+	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmRunSave::SchemaVersionNow);
+	CataclysmSaveFixtures::AddTheRunsVersion10Defaults(*Expected);
+	FString Rewritten;
+	FString Error;
+	FString Where;
+	const bool bSame = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error)
+		&& CataclysmSaveFixtures::SameObject(Expected, CataclysmSaveFixtures::Parse(Rewritten), Where);
+
+	// EACH CREATURE'S FLAG IN ORDER, 1 for a wraith and 0 for none.
+	const auto Flags = [](const UCataclysmRunSave& Run)
+	{
+		FString Out;
+		for (const FCataclysmSavedCreature& One : Run.Floor.Creatures)
+		{
+			Out += One.bIsVengefulWraith ? TEXT("1") : TEXT("0");
+		}
+		return Out;
+	};
+
+	AddInfo(FString::Printf(TEXT("WRAITH MIGRATED: the step %d (%s); false written on %d creature(s); the record at "
+								 "version %d with flags %s; Run_v10.json flags %s; the rest %s"),
+							static_cast<int32>(Stepping), *StepMessage, WrittenFalse, Read->SchemaVersion, *Flags(*Read),
+							*Flags(*Current), bSame ? TEXT("kept") : *Where));
+	TestEqual(TEXT("the chain migrates the version 9 file"), static_cast<int32>(Stepping),
+			  static_cast<int32>(ECataclysmSaveMigrationResult::Migrated));
+	TestEqual(TEXT("the step writes false on both creatures"), WrittenFalse, 2);
+	TestEqual(TEXT("it arrives at the current version"), Read->SchemaVersion, UCataclysmRunSave::SchemaVersionNow);
+	TestEqual(TEXT("and neither creature is a wraith"), Flags(*Read), FString(TEXT("00")));
+	TestTrue(TEXT("and every other field is kept"), bSame);
+	TestEqual(TEXT("CONTROL: Run_v10.json's first creature is a wraith and its second is not"), Flags(*Current),
+			  FString(TEXT("10")));
+	return true;
+}
+
+/**
  * A creature that ate two drops and holds three souls, saved, restored, then raised a rung by Volatile Evolution, carries
  * each health share exactly once: its maximum is the new rung's own maximum, rebuilt from the starting maximum it was
  * saved with, times Famished Beasts' multiplier for two drops, plus Soul Harvest's health for three souls on that. Issue
@@ -10946,6 +11176,9 @@ bool FCataclysmTravelMigrationTest::RunTest(const FString&)
 	// AND THE TREE'S EVENT COUNTS AT NOTHING AND A BOUGHT DAY OF 0 ON EVERY UPGRADE, which `Migrate_8_to_9` writes,
 	// because the chain runs on to version 9 since 2026-11-19 (issue #2741 slice 3b).
 	CataclysmSaveFixtures::AddTheRunsVersion9Defaults(*Expected);
+	// AND A `bIsVengefulWraith` OF FALSE ON EVERY SAVED CREATURE, which `Migrate_9_to_10` writes, because
+	// the chain runs on to run record version 10 since 2026-11-19 (issue #2725).
+	CataclysmSaveFixtures::AddTheRunsVersion10Defaults(*Expected);
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -10976,10 +11209,10 @@ bool FCataclysmTravelMigrationTest::RunTest(const FString&)
 }
 
 /**
- * `Run_v9.json` reads into the award, the clear and the days away it states (it read `Run_v6.json` until the run record
+ * `Run_v10.json` reads into the award, the clear and the days away it states (it read `Run_v6.json` until the run record
  * went to version 7 on 2026-11-18, issue #2742, `Run_v7.json` until it went to version 8 the same day, issue #2749
- * B10, and `Run_v8.json` until it went to version 9 on 2026-11-19, issue #2741 slice 3b, and the four hold the same
- * values). Every value but one is not a default, so each is read and not re-defaulted; THE ONE IS `bEndedInAClear`, false, because the run it describes last came back
+ * B10, `Run_v8.json` until it went to version 9 on 2026-11-19, issue #2741 slice 3b, and `Run_v9.json` until it went
+ * to version 10 the same day, issue #2725, and the five hold the same values). Every value but one is not a default, so each is read and not re-defaulted; THE ONE IS `bEndedInAClear`, false, because the run it describes last came back
  * from a death -- on day 103, at 15 days, felling cities 17 and 23, which the summary lists -- and a fixture describes a
  * state play reaches. The test of the return line reads a true one. Prints "TRAVEL FILE".
  */
@@ -10991,7 +11224,7 @@ bool FCataclysmTravelCommittedFileTest::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v9.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v10.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -11002,7 +11235,7 @@ bool FCataclysmTravelCommittedFileTest::RunTest(const FString&)
 		Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v9.json would not load: %s -- %s"), FCataclysmSaveStorage::Describe(Result),
+		AddError(FString::Printf(TEXT("Run_v10.json would not load: %s -- %s"), FCataclysmSaveStorage::Describe(Result),
 								 *Message));
 		return false;
 	}
@@ -11015,7 +11248,7 @@ bool FCataclysmTravelCommittedFileTest::RunTest(const FString&)
 							Away.bEndedInAClear ? TEXT("YES") : TEXT("no"), Away.Cities.Num(), Away.Fallen.Num(),
 							Away.Surges, Away.SurgeDungeons));
 
-	TestEqual(TEXT("it says it is version 9"), Read->SchemaVersion, 9);
+	TestEqual(TEXT("it says it is version 10"), Read->SchemaVersion, 10);
 	TestEqual(TEXT("the last award was 2.25 points"), Read->LastEmpirePointsAwarded, 2.25);
 	TestEqual(TEXT("the last clear on day 80"), Read->LastClearDay, 80);
 	TestEqual(TEXT("of the Horde dungeon on Bulwark (1,2)"), Read->LastClearDungeonName,

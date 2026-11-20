@@ -311,6 +311,22 @@ struct CATACLYSM_API FCataclysmSavedCreature
 	/** A Carrion Feast feeder's own maximum health, before the carcasses eaten strengthened it. Issue #753, 3d-3b. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	float CarrionFeederOwnMaxHealth = 0.0f;
+
+	/**
+	 * WHETHER IT IS A VENGEFUL WRAITH, written by `ACataclysmDungeonGameMode::CreatureRolesInto` for a creature in the
+	 * rule's list that carries `ACataclysmEnemyCharacter::bIsVengefulWraith`, and put back by `RestoreCreatureRoles`,
+	 * which puts it in the list again and writes the row's figures again: a tenth of every hit, its 20% increased
+	 * damage as its own part, its two speeds and its sight. Issue #2725. Until then a wraith came back from a load as
+	 * an ordinary risen creature of its kind: it paid nothing and saw as far, and took every hit in full, hit 20% less
+	 * hard and moved at its kind's speed.
+	 *
+	 * RUN RECORD VERSION 10, the run record's own number and not the character record's: a field added to a record
+	 * takes a version (the fixtures README, 2026-11-02), and the creature is inside the run record. `Migrate_9_to_10`
+	 * writes false on every saved creature of a run written at 9, because nothing in an older file tells a wraith from
+	 * another creature a rule raised; such a wraith comes back as one did before this field.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bIsVengefulWraith = false;
 };
 
 /**
@@ -1757,8 +1773,13 @@ public:
 	 * `bSanctuaryLastStandSpent`; and each city upgrade carries the day it was bought, `BoughtDay`. `Migrate_8_to_9`
 	 * writes 0, 0, false and a `BoughtDay` of 0 on every upgrade into a run written at 8: nothing counted, and every
 	 * upgrade held since the run began.
+	 *
+	 * 10 SINCE 2026-11-19. A saved creature says whether it is a Vengeful Wraith, `bIsVengefulWraith` (issue #2725),
+	 * and `Migrate_9_to_10` writes false on every saved creature of a run written at 9: nothing in it tells a wraith
+	 * from another risen creature. THE RUN RECORD'S 10, not the character record's, which reached its own 10 on the
+	 * same day for skill levels (issue #2764); the two numbers are each record's own.
 	 */
-	static constexpr int32 SchemaVersionNow = 9;
+	static constexpr int32 SchemaVersionNow = 10;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }

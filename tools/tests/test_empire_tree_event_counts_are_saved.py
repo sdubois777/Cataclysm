@@ -16,8 +16,8 @@ WHAT IS CHECKED:
 
   1. `Run_v9.json` is `Run_v8.json` at version 9 with the three counts and a `BoughtDay` on every upgrade, none of them
      the default, and nothing else changed;
-  2. the run record is at version 9, and `Migrate_8_to_9` writes the three defaults and a `BoughtDay` of 0 on every
-     upgrade and is the chain's last step;
+  2. the run record is at version 9 or later, and `Migrate_8_to_9` writes the three defaults and a `BoughtDay` of 0
+     on every upgrade and is in the chain (its last step until the run record went to version 10, issue #2725);
   3. the save gathers and applies the three counts, and `Begin` starts them again;
   4. a clear raises the clear count beside `DungeonsCleared`, and `FireSurge`, which every surge goes through, sets it
      to 0 after `RecordSurge`;
@@ -111,11 +111,12 @@ def test_run_v9_is_run_v8_with_the_counts_and_bought_days_none_of_them_the_defau
 
 
 def test_the_run_record_is_at_version_9_and_migrate_8_to_9_writes_nothing_counted() -> None:
-    """Version 9, and a last step from 8 that writes the three defaults and a bought day of 0 on every upgrade."""
+    """Version 9 or later, and a step from 8 that writes the three defaults and a bought day of 0 on every upgrade,
+    in the chain. Not the last since the run record went to version 10 (issue #2725)."""
     header = code(SAVE / "CataclysmSaveRecords.h")
     run_class = header.split("class CATACLYSM_API UCataclysmRunSave")[1]
     version = re.search(r"static constexpr int32 SchemaVersionNow = (\d+);", run_class)
-    assert version is not None and int(version.group(1)) == 9, "the run record is not at version 9"
+    assert version is not None and int(version.group(1)) >= 9, "the run record is below version 9"
     for name in COUNTS:
         assert re.search(rf"\b{name}\s*=", run_class), f"the run record does not carry {name}"
     assert re.search(r"\bint32\s+BoughtDay\s*=\s*0\s*;", code(EMPIRE / "CataclysmCityUpgrade.h")), (
@@ -132,7 +133,7 @@ def test_the_run_record_is_at_version_9_and_migrate_8_to_9_writes_nothing_counte
 
     chain = body(migrations, "const FCataclysmSaveMigrationStep RunSteps[] =", "the run record's chain")
     steps = re.findall(r"\{\s*(\d+)\s*,\s*TEXT\(\"(Migrate_\d+_to_\d+)\"\)", chain)
-    assert steps and steps[-1] == ("8", "Migrate_8_to_9"), f"the run record's last step is {steps[-1:]}"
+    assert ("8", "Migrate_8_to_9") in steps, f"the run record's chain has no step from 8: {steps}"
 
 
 def test_the_save_carries_the_counts_and_begin_starts_them_again() -> None:

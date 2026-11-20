@@ -331,6 +331,16 @@ public:
 	bool LayWhatALandedShotCarries(AActor* Firer, AActor* Target, float Dealt) const;
 
 	/**
+	 * Pay this slot's mana on hit into `AbilitySystem`: what `ApplyManaOnHit` pays its own caster, for a contact that
+	 * never passes through `HitTargets`. Issue #2722, approved by the coordinating session on 2026-11-19: a ranged basic
+	 * attack's shot lands through `ACataclysmProjectile::HitOne`, so the design's "returns 6 mana each time it lands"
+	 * paid nothing for a Wand, Crossbow, Staff or Two-Handed Crossbow. THE FIRER'S ABILITY SYSTEM IS PASSED IN, as the
+	 * Fervour beside the call reads it, because a shot lands after its use has ended. Nothing for a slot with no mana on
+	 * hit, which is every slot but the basic attack, and nothing while mana on hit is removed.
+	 */
+	void PayManaOnHitTo(UAbilitySystemComponent* AbilitySystem) const;
+
+	/**
 	 * How far the character had moved since its own last attack when this skill
 	 * was last used, in metres. Issue #41, slice 2.
 	 *
