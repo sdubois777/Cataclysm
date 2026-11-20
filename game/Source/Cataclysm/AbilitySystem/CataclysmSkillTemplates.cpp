@@ -7,6 +7,8 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmMovement.h"
+// The bodies a trade fits into each other's places. Issue #2792.
+#include "Components/PrimitiveComponent.h"
 // For the allies inside a point-blank skill's area, struck for a share of its blow. Ruled 2026-10-15.
 #include "AbilitySystem/CataclysmAreaShareOnAllies.h"
 #include "AbilitySystem/CataclysmDeployableSelfBlast.h"
@@ -3117,6 +3119,57 @@ float UCataclysmMovementSkill::WornRowStat(const TCHAR* RiderStat) const
 	return Asking ? Asking->StatForSkill(FName(RiderStat), SkillTags, 0.0f) : 0.0f;
 }
 
+bool UCataclysmMovementSkill::ChooseTradePartner(AActor* Self, AActor*& OutPartner, FVector& OutSelfTo,
+												 FVector& OutPartnerTo) const
+{
+	UWorld* World = Self ? Self->GetWorld() : nullptr;
+	UPrimitiveComponent* SelfBody = Self ? Cast<UPrimitiveComponent>(Self->GetRootComponent()) : nullptr;
+	if (!World || !SelfBody)
+	{
+		return false;
+	}
+
+	const FVector Here = Self->GetActorLocation();
+	for (AActor* Partner : UCataclysmCommand::ThingsCommandedInSightOf(Self, ScaledRangeCm()))
+	{
+		UPrimitiveComponent* PartnerBody = Cast<UPrimitiveComponent>(Partner->GetRootComponent());
+		if (!PartnerBody)
+		{
+			continue;
+		}
+
+		// EACH IN THE OTHER'S SPOT, AT ITS OWN HEIGHT. See the trade in `ActivateAbility`.
+		const FVector There = Partner->GetActorLocation();
+		FVector SelfTo(There.X, There.Y, Here.Z);
+		FVector PartnerTo(Here.X, Here.Y, There.Z);
+
+		// EACH LEAVES THE OTHER OUT OF ITS FIT, and what either already ignored is left as it was.
+		const bool bSelfIgnoredIt = SelfBody->GetMoveIgnoreActors().Contains(Partner);
+		const bool bItIgnoredSelf = PartnerBody->GetMoveIgnoreActors().Contains(Self);
+		SelfBody->IgnoreActorWhenMoving(Partner, true);
+		PartnerBody->IgnoreActorWhenMoving(Self, true);
+		const bool bBothFit = World->FindTeleportSpot(Self, SelfTo, Self->GetActorRotation())
+			&& World->FindTeleportSpot(Partner, PartnerTo, Partner->GetActorRotation());
+		if (!bSelfIgnoredIt)
+		{
+			SelfBody->IgnoreActorWhenMoving(Partner, false);
+		}
+		if (!bItIgnoredSelf)
+		{
+			PartnerBody->IgnoreActorWhenMoving(Self, false);
+		}
+
+		if (bBothFit)
+		{
+			OutPartner = Partner;
+			OutSelfTo = SelfTo;
+			OutPartnerTo = PartnerTo;
+			return true;
+		}
+	}
+	return false;
+}
+
 bool UCataclysmMovementSkill::RolledDirection(FVector& OutDirection) const
 {
 	if (WornRowStat(RandomDirectionStat) <= 0.0f)
@@ -3384,6 +3437,25 @@ void UCataclysmMovementSkill::ActivateAbility(
 		}
 	}
 
+	// A TRADE CHOOSES WHO IT TRADES WITH BEFORE IT IS PAID FOR, for the reason a refused return above costs
+	// nothing. `CanActivateAbility` has already asked whether the character commands anything it can see within
+	// range; this also asks whether the two FIT in each other's places, which needs both bodies and is asked once,
+	// here. Issue #2792.
+	AActor* TradePartner = nullptr;
+	FVector TradeSelfTo = FVector::ZeroVector;
+	FVector TradePartnerTo = FVector::ZeroVector;
+	if (Params.MovementMode == ECataclysmMovementMode::Swap
+		&& !ChooseTradePartner(Avatar(), TradePartner, TradeSelfTo, TradePartnerTo))
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' commands nothing it can see within %.0fcm that fits in its place, so there was nothing "
+				 "to trade places with and nothing was spent."),
+			*SkillName, ScaledRangeCm());
+
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
+	}
+
 	if (!CommitAndBegin(Handle, ActorInfo, ActivationInfo))
 	{
 		return;
@@ -3549,52 +3621,43 @@ void UCataclysmMovementSkill::ActivateAbility(
 	// SENDS IT BACK. The Staff's Vesselstep: "trade places with a creature you
 	// command up to 14 meters away."
 	//
-	// THE NEAREST ONE, because `ThingsCommandedBy` answers nearest first and the
-	// row does not say which creature. "Up to 14 meters" is the range, so
-	// anything further away is not a candidate at all.
+	// WHICH CREATURE, AND WHERE EACH OF THE TWO STANDS, WAS DECIDED BEFORE THE CAST WAS PAID FOR, by
+	// `ChooseTradePartner`: the nearest the caster commands and can see within range, for which both fit. "Up to
+	// 14 meters" is the range, so anything further away is not a candidate at all.
 	//
-	// THE CREATURE IS MOVED HERE AND THE CASTER IS MOVED BELOW, which is the one
-	// place these two lines could disagree: `Start` is read before this and the
-	// caster's own move happens after, so the creature goes to where the caster
-	// WAS rather than to where it ends up. Doing both here would put them in the
-	// same place.
+	// AN EXCHANGE, NOT TWO JOURNEYS. Issue #2792. Until 2026-11-20 each body was moved by a swept move, the creature
+	// first: its capsule stopped against the caster's, 72 cm from where the caster stood, and the caster's own
+	// move then started against the creature and went nowhere. So the creature landed beside the player and the
+	// player stayed put, which is what the owner saw ("Vesselstep doesn't actually trade places"). Both are now
+	// put in place unswept, as the random teleport puts a character: the fit was asked, and a swept move would stop
+	// at whatever stands between the two points, which an exchange does not cross. A wall is not crossed either,
+	// because a creature behind one is not a candidate.
 	//
-	// AT THE CASTER'S OWN HEIGHT, the arrangement every other arrival in this
-	// file uses: taking the other body's height drops one of them through the
-	// floor when the two stand at different levels.
+	// THE CREATURE IS MOVED HERE AND THE CASTER IS MOVED BELOW, where every movement mode moves it, so the enemies
+	// at both ends and the ground at the point left are found before the caster arrives, as for a blink.
+	//
+	// AT EACH ONE'S OWN HEIGHT, the arrangement every other arrival in this file uses: taking the other body's
+	// height drops one of them through the floor when the two are of different sizes.
+	FVector PartnerWas = FVector::ZeroVector;
 	if (Params.MovementMode == ECataclysmMovementMode::Swap)
 	{
-		const TArray<AActor*> Commanded =
-			UCataclysmCommand::ThingsCommandedBy(Self, ScaledRangeCm());
-		if (Commanded.IsEmpty())
+		// CHOSEN IN THIS FRAME, BEFORE THE COST, so only something the payment itself did could have destroyed it.
+		// Then there is nobody to trade with, and nothing moves.
+		if (!IsValid(TradePartner))
 		{
-			// A TRADE WITH NOBODY IS NOT A MOVE. Every other movement mode has
-			// somewhere to go when it finds nothing -- the aimed point -- and
-			// this one does not: "trade places with a creature you command" says
-			// the destination IS the creature, so with none there is no
-			// destination. Refused rather than blinking to the cursor, which
-			// would be a different skill.
-			UE_LOG(LogCataclysm, Verbose,
-				TEXT("'%s' commands nothing within %.0fcm, so there was nothing "
-					 "to trade places with."),
-				*SkillName, ScaledRangeCm());
-
 			EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 			return;
 		}
 
-		AActor* Partner = Commanded[0];
-		End = FVector(Partner->GetActorLocation().X,
-					  Partner->GetActorLocation().Y, Start.Z);
-
-		const FVector PartnerWas = Partner->GetActorLocation();
-		UCataclysmMovement::MoveWithoutSticking(
-			Partner, FVector(Start.X, Start.Y, Partner->GetActorLocation().Z) - Partner->GetActorLocation());
+		End = TradeSelfTo;
+		PartnerWas = TradePartner->GetActorLocation();
+		TradePartner->TeleportTo(TradePartnerTo, TradePartner->GetActorRotation(), /*bIsATest=*/false,
+								  /*bNoCheck=*/true);
 
 		// A TRADE IS AN INSTANT RELOCATION FOR BOTH OF THEM, so neither's walked ground counts it. Issue #2388.
-		UCataclysmMovement::NoteRelocatedInstantly(Partner, PartnerWas);
+		UCataclysmMovement::NoteRelocatedInstantly(TradePartner, PartnerWas);
 
-		SwappedWith = Partner;
+		SwappedWith = TradePartner;
 	}
 
 	TArray<AActor*> Targets;
@@ -3680,8 +3743,29 @@ void UCataclysmMovementSkill::ActivateAbility(
 	// character inside it, AND NOT REFUSED FOR STARTING ON THE FLOOR, issues #2203
 	// and #2505: a blink in the frame the player is placed moved 0 cm.
 	const FVector SelfWas = Self->GetActorLocation();
-	UCataclysmMovement::MoveWithoutSticking(Self, End - Self->GetActorLocation());
+	if (Params.MovementMode == ECataclysmMovementMode::Swap)
+	{
+		// THE CASTER'S HALF OF THE EXCHANGE: unswept, and unchecked because `ChooseTradePartner` asked the fit.
+		// Issue #2792.
+		Self->TeleportTo(End, Self->GetActorRotation(), /*bIsATest=*/false, /*bNoCheck=*/true);
+	}
+	else
+	{
+		UCataclysmMovement::MoveWithoutSticking(Self, End - Self->GetActorLocation());
+	}
 	ArrivedAt = Self->GetActorLocation();
+
+	// AND A TRADE SAYS WHO WENT WHERE, so a playtest's log shows whether the two exchanged places. Issue #2792:
+	// the owner's log held a cost line for each of 18 casts and nothing that said where anyone ended.
+	if (Params.MovementMode == ECataclysmMovementMode::Swap && SwappedWith)
+	{
+		const FVector PartnerNow = SwappedWith->GetActorLocation();
+		UE_LOG(LogCataclysm, Display,
+			TEXT("%s traded places with %s: %s from (%.0f, %.0f) to (%.0f, %.0f), %s from (%.0f, %.0f) to "
+				 "(%.0f, %.0f)."),
+			*SkillName, *GetNameSafe(SwappedWith), *GetNameSafe(Self), SelfWas.X, SelfWas.Y, ArrivedAt.X,
+			ArrivedAt.Y, *GetNameSafe(SwappedWith), PartnerWas.X, PartnerWas.Y, PartnerNow.X, PartnerNow.Y);
+	}
 
 	// A BLINK, A TRADE AND A RETURN ARE INSTANT RELOCATIONS; A LEAP AND A CHARGE TRAVEL, and stay counted as
 	// ground moved, which is the 2026-09-12 judgement that a movement skill that travels is movement. Issue #2388.

@@ -15,6 +15,9 @@
 #include "Cataclysm.h"
 #include "Character/CataclysmCharacterBase.h"
 #include "Character/CataclysmEnemyCharacter.h"
+// The line of sight `ThingsCommandedInSightOf` traces. Issue #2792.
+#include "CollisionQueryParams.h"
+#include "Engine/World.h"
 // For a minion type row's ThreatPercent, which decides which minion
 // draws a nearby enemy off its summoner. Issue #1515.
 #include "Data/CataclysmDataRows.h"
@@ -215,6 +218,32 @@ TArray<AActor*> UCataclysmCommand::ThingsCommandedBy(const AActor* Commander,
 	});
 
 	return Found;
+}
+
+TArray<AActor*> UCataclysmCommand::ThingsCommandedInSightOf(const AActor* Commander, float WithinCm)
+{
+	TArray<AActor*> Seen = ThingsCommandedBy(Commander, WithinCm);
+
+	// `ThingsCommandedBy` ANSWERS EMPTY WITHOUT A COMMANDER OR A WORLD, so a list with anything in it has both.
+	if (Seen.IsEmpty())
+	{
+		return Seen;
+	}
+	const UWorld* World = Commander->GetWorld();
+	const FVector From = Commander->GetActorLocation();
+
+	// FROM MIDDLE TO MIDDLE, ON THE VISIBILITY CHANNEL, WITH THE TWO BODIES LEFT OUT. The header says what blocks
+	// the channel and what does not. `RemoveAll` keeps the order of what is left, so the nearest is still first.
+	Seen.RemoveAll([World, Commander, &From](const AActor* Follower)
+	{
+		FCollisionQueryParams Query(SCENE_QUERY_STAT(CataclysmCommandedInSight), /*bInTraceComplex=*/false,
+									Commander);
+		Query.AddIgnoredActor(Follower);
+		FHitResult Blocked;
+		return World->LineTraceSingleByChannel(Blocked, From, Follower->GetActorLocation(), ECC_Visibility, Query);
+	});
+
+	return Seen;
 }
 
 AActor* UCataclysmCommand::CommanderOf(const AActor* Follower)

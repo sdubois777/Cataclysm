@@ -70,6 +70,23 @@ public:
 											 float WithinCm = 0.0f);
 
 	/**
+	 * Of `ThingsCommandedBy(Commander, WithinCm)`, the ones the commander can see: nothing that blocks the
+	 * visibility channel lies on the straight line from the commander's middle to the creature's. Nearest first, as
+	 * that list is. Issue #2792.
+	 *
+	 * FOR VESSELSTEP, whose trade is an exchange of places and so crosses whatever stands between the two. A wall or
+	 * a pillar blocks the channel, so a creature behind one is left out, and a trade cannot carry the player past a
+	 * wall by leaving a creature on its far side. The coordinating session's judgement, 2026-11-20: "up to 14
+	 * meters away" does not say through walls, and the dungeon is to have gates and gated shortcuts.
+	 *
+	 * WHAT DOES NOT BLOCK IT, by the engine's collision profiles (`BaseEngine.ini`): a character, because the
+	 * `Pawn` profile of its capsule and the `CharacterMesh` profile of its mesh both ignore the visibility channel,
+	 * so a creature standing between is no cover; and a pit's blocker, whose profile `InvisibleWall` ignores it
+	 * too, so a creature across a pit can be seen. The floor's walls and pillars use `BlockAll`, which blocks it.
+	 */
+	static TArray<AActor*> ThingsCommandedInSightOf(const AActor* Commander, float WithinCm);
+
+	/**
 	 * Of everything this character commands, the one with the least health
 	 * remaining, in points; null if it commands nothing alive. Issue #1515,
 	 * Sacrificial Ward: "destroys the minion with the least health remaining".
