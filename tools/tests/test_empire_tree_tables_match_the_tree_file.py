@@ -286,7 +286,7 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
     figures move with it. Gold gained its system in #2742: slice 6 of #2741
     (2026-11-20) split the 303 points "gold" and "upgrade cost" held into the
     reason each node really waits on: 189 of them the gold rules slice 6 builds,
-    92 of those built in slice 6a and 97 left for 6b."""
+    92 of those built in slice 6a, 42 in 6b, and 55 left for 6c."""
     points = collections.Counter()
     options = collections.Counter()
     for row in node_rows.values():
@@ -301,15 +301,15 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
                or f"slice {gen.EMPIRE_TREE_BUILT[name]}"] += int(row["MaxPoints"])
 
     assert dict(points) == {
-        "slice 3": 315, "slice 4": 162, "slice 5": 152, "slice 6": 92,
-        "gold rules": 97, "treasurer upgrade": 17, "gold ruling": 20,
+        "slice 3": 315, "slice 4": 162, "slice 5": 152, "slice 6": 134,
+        "gold rules": 55, "treasurer upgrade": 17, "gold ruling": 20,
         "market": 44, "gold cap": 5, "gold cap and death loss": 20,
         "build time": 5, "fee figure": 2, "cap figure": 1, "crafting": 278,
         "population growth": 10, "loot chest": 8, "bonus dungeon": 8,
         "stash": 3, "modifier reroll": 3, "loot filter": 1,
         "destroy upgrade": 1,
     }
-    assert sum(points[f"slice {n}"] for n in (3, 4, 5, 6)) == 721
+    assert sum(points[f"slice {n}"] for n in (3, 4, 5, 6)) == 763
     assert dict(options) == {"slice 3": 3, "slice 4": 4, "slice 5": 1,
                              "crafting": 2, "slice 6": 1, "prowess ruling": 1}
 

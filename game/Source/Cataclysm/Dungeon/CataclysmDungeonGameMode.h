@@ -926,6 +926,26 @@ public:
 	static FCataclysmCityDungeonRewards CityRewardsIn(UWorld* World);
 
 	/**
+	 * What the empire upgrade tree pays at the clear of the bound dungeon, worked out now (`UCataclysmEmpireTree::
+	 * ClearPayFor`). Issue #2741 slice 6b. ASKED BEFORE `UCataclysmEmpireRun::ClearDungeon`, which takes the dungeon
+	 * and its floors off the map. Nothing with no run or no dungeon bound.
+	 */
+	FCataclysmEmpireTreeClearPay EmpireTreeClearPayHere() const;
+
+	/** Puts the tree's pay at a clear into the balance of the character playing, and raises the saves a gold pickup
+	 *  raises. Issue #2741 slice 6b. Nothing for a pay of none. */
+	void PayTheTreesClearGold(const FCataclysmEmpireTreeClearPay& Pay);
+
+	/** The gold this walk's kills dropped, and the gold picked up in it (Cleanup Crew, slice 6b B3). Saved in the walk
+	 *  record; set to 0 as a walk begins. */
+	int64 GoldDroppedThisWalk = 0;
+	int64 GoldPickedUpThisWalk = 0;
+
+	/** Counts gold put on the floor, or picked up, in this world's dungeon walk; nothing in a world without one. */
+	static void NoteGoldDroppedIn(UWorld* World, int64 Gold);
+	static void NoteGoldPickedUpIn(UWorld* World, int64 Gold);
+
+	/**
 	 * The player bonuses to use when there is no game instance to ask, for the reason `SetEmpireRunForTests` gives: a
 	 * world built by `UWorld::CreateWorld` has no game instance of this project's class, so without this every test of
 	 * the tree on a floor would be a test of the case with no tree. Issue #2741 slice 5a.

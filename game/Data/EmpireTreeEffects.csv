@@ -91,3 +91,8 @@ basic_tres_t2g#1,basic_tres_t2g,0,GoldPerFiveCityUpgrades,0.03,0,,0.0
 basic_0000003v#1,basic_0000003v,0,UpgradePriceReduced,0.03,0,,0.0
 keystone_00000013#1,keystone_00000013,0,UpgradePriceReduced,0.2,0,,0.0
 basic_0000003s#1,basic_0000003s,0,FirstUpgradePriceReduced,0.02,0,,0.0
+basic_tres_t2f#1,basic_tres_t2f,0,SurgeDamagedCityUpgradePriceReduced,0.04,0,,0.0
+keystone_00000049#1,keystone_00000049,0,GoldDoubledBelowHalfPopulation,1.0,0,,0.0
+keystone_0000003t#1,keystone_0000003t,0,UnpickedGoldShareAtClear,0.1,0,,0.0
+basic_0000003z#1,basic_0000003z,0,GoldPerFloorAtClear,50.0,0,,0.0
+basic_tres_t2c#1,basic_tres_t2c,0,ClearPayoutIncreased,0.1,0,,0.0

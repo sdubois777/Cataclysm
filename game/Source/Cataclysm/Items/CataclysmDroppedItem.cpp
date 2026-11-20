@@ -17,6 +17,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmInventoryComponent.h"
+#include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Dungeon/CataclysmEnemyScore.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmPlayLoopLog.h"
@@ -445,6 +446,9 @@ int64 UCataclysmDropPickup::BankGold(UWorld* World, const TArray<ACataclysmDropp
 	{
 		Instance->GoldPickedUpThisWalk += Total;
 	}
+
+	// AND FOR CLEANUP CREW, in the walk's own saved count (issue #2741 slice 6b, B3).
+	ACataclysmDungeonGameMode::NoteGoldPickedUpIn(World, Total);
 
 	// AND THE RECORDS ARE WRITTEN, once for every pile taken together. THE ACCOUNT RECORD when the gold went there.
 	// THE RUN AND CHARACTER RECORDS ALWAYS, through `InventoryChanged`, as an item picked up writes them: the run
@@ -897,6 +901,9 @@ int32 UCataclysmDropSpawner::SpawnGoldFor(UWorld* World, int32 EnemyRarityStep, 
 		if (PutOnTheFloor(World, At + GoldScatterOffset(Index, Count), FCataclysmItem(), NAME_None, 0, Amount))
 		{
 			++Placed;
+
+			// COUNTED FOR CLEANUP CREW, the gold a walk's kills dropped (issue #2741 slice 6b, B3).
+			ACataclysmDungeonGameMode::NoteGoldDroppedIn(World, Amount);
 		}
 	}
 	return Placed;

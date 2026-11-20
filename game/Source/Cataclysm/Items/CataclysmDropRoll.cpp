@@ -528,6 +528,18 @@ float UCataclysmDropRoll::ExpectedGoldDrops(const UDataTable* EnemyDropTable, FN
 	return Row ? FMath::Max(0.0f, Row->GoldDrops) : 0.0f;
 }
 
+double UCataclysmDropRoll::GoldScaleFor(int32 DifficultyTier)
+{
+	const UDataTable* GoldTable = LoadGoldTable();
+	const FCataclysmGoldRow* AtTier = GoldRow(GoldTable, DifficultyTier);
+	const FCataclysmGoldRow* AtTierOne = GoldRow(GoldTable, 1);
+	if (AtTier == nullptr || AtTierOne == nullptr || AtTierOne->GoldPerPile <= 0.0f || AtTier->GoldPerPile <= 0.0f)
+	{
+		return 1.0;
+	}
+	return static_cast<double>(AtTier->GoldPerPile) / static_cast<double>(AtTierOne->GoldPerPile);
+}
+
 const FCataclysmGoldRow* UCataclysmDropRoll::GoldRow(const UDataTable* GoldTable, int32 DifficultyTier)
 {
 	if (!GoldTable)
