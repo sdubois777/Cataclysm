@@ -636,16 +636,19 @@ row. Issue [#2764](https://github.com/sdubois777/Cataclysm/issues/2764).
 ### SAID FIRST
 
 - **NOT COMPILED OR RUN YET.** Its window comes after the empire upgrade tree's slices 6a, 6b and 6c and issue #2781.
-- **ONE READING OF THE EXPLOSION RULING, STATED SO IT CAN BE OVERRULED.** The ruling says an imp's explosion "carries
-  that factor" because it is computed from the imp's already scaled blow. In the code it is computed from the type
-  row's figure (`OwnDamagePerHit`) and the summoner's minion damage, neither of which carries the factor; `AttackTarget`
-  applies the factor to the swing alone. So `Explode` multiplies its figure by the imp's factor itself, once, on a
-  creature, whatever set it off, and proof L13 is registered for that line.
+- **THE EXPLOSION RULING STATED A FACT ABOUT THE CODE THAT WAS NOT TRUE, AND THE CODE WAS CHANGED TO MAKE ITS
+  OUTCOME TRUE.** The ruling (Q-B, below): "Scaling follows the figure: an explosion computed from the imp's own
+  (already scaled) blow carries that factor, and no second factor is applied." The finding, on reading the code:
+  `Explode` computes its figure from the type row's (`OwnDamagePerHit`) and the summoner's minion damage, neither of
+  which carries the factor, because `AttackTarget` applies the factor to the swing alone. So `Explode` multiplies its
+  figure by the imp's factor itself, once, on a creature, whatever set it off, and proof L13 is registered for that
+  line. The coordinating session accepted it on 2026-11-20: "The intent was that the explosion, 'three of the imp's own
+  blows' by the #340 ruling, scales as those blows do. Credit stays with the cap's explosion alone."
 - **GAPS, BESIDE THE TETHER AND THE NECROSIS PAYOUT OF SLICE 2a.** An ailment a thrall's hit rolls from the creature's
   own chances credits nothing (ruling Q-C below). A thrall's explosion at its death (`ThrallBurst`) credits nothing and
   is not sized, being a passive's figure computed from the creature's own attack damage. And Subjugate's row says a
   thrall "sets alight what it strikes", which nothing in the game builds: no code reads it, so there is no thrall burn
-  to credit.
+  to credit (issue [#2784](https://github.com/sdubois777/Cataclysm/issues/2784)).
 - **THE WAR DEPLOYABLES ARE LEFT OUT**, by the owner's rule of 2026-11-17 that War rows stay unbuilt: a Bolt Turret, a
   Ballista and an Iron Fortress credit nothing.
 
