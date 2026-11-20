@@ -917,9 +917,10 @@ is added or changed. Issue #2756; the plan was accepted by the coordinating sess
   coordinating session allowed no compile.
 - **REBASED ON 2026-11-20 ONTO DEVELOPMENT `9772aea2a`, AS `fix/countbits-of-a-32-bit-value-2`.** The first branch,
   from `055ac0254`, was pushed, so its rebase goes to a new name rather than a force push. The code change applied
-  without a conflict; this entry conflicted at the top of this file and is placed by when it was first written
-  (2026-11-19 15:28), below the MCP server entry (15:49) and above the C-opens entry (14:59). The whole-suite figures
-  under "Registered before the run" were registered again from the newest window's log.
+  without a conflict; this entry conflicted at the top of this file and is placed by the author date of the commit
+  that wrote it (2026-11-19 15:28, `96a9b2466`), below the MCP server entry (15:49, `aab0baca4`) and above the C-opens
+  entry (14:59, `95481c917`), each date that of the branch commit that wrote the entry. The whole-suite figures under
+  "Registered before the run" were registered again from the newest window's log.
 - **THE CHANGE.** `State.LeechPoolsInFlight = FMath::CountBits(static_cast<uint64>(PoolsSeen));` becomes
   `State.LeechPoolsInFlight = FMath::CountBits(PoolsSeen);`. `PoolsSeen` is a `uint32` with one bit for each pool
   being leeched into (`ECataclysmLeechPool`: health, mana, energy shield), so at most three bits are set and the cast
