@@ -2256,6 +2256,40 @@ enum class ECataclysmEmpireTreeEffect : uint8
 
 	/** More empire upgrade points from a clear, per point. */
 	EmpirePointsFromClears,
+
+	// Slice 5a: the player inside a dungeon. Issue #2741. Read by `UCataclysmEmpireTree::PlayerBonusesFor`, not by
+	// `CityBonusesFor`; every share is a fraction, and magic find becomes a flat number of percentage points.
+
+	/** Magic find, and loot quantity as an increase, per point; movement speed inside a dungeon, an increase. */
+	MagicFindAdded,
+	LootQuantityIncreased,
+	MovementSpeedInDungeons,
+
+	/** Loot quantity per point for each active Cataclysm type; for each whole two days, and each whole day, a dungeon's
+	 *  walk is shorter than its default, each to a cap. */
+	LootQuantityPerActiveType,
+	LootQuantityPerTwoDaysRemoved,
+	LootQuantityPerDayRemoved,
+
+	/** Magic find per point: for each floor removed from a dungeon's default depth; each distinct modifier on the floor
+	 *  being walked; each floor cleared in this dungeon; each whole five dungeons cleared this run. */
+	MagicFindPerFloorRemoved,
+	MagicFindPerModifierActive,
+	MagicFindPerFloorCleared,
+	MagicFindPerFiveClears,
+
+	/** Loot quantity and magic find for each standing city holding a bought Explorer city upgrade. */
+	LootQuantityPerExplorerCity,
+	MagicFindPerExplorerCity,
+
+	/** Loot quantity for whole steps of a branch's points, to a cap. */
+	LootQuantityPerBranchStep,
+
+	/** The Explorer branch's loot figures doubled while a dungeon's walk is this many days and was longer by default. */
+	ExplorerLootDoubledAtOneDay,
+
+	/** Attack and spell damage inside a dungeon, an increase, per point for each dungeon kind defeated this run. */
+	DamagePerKindDefeated,
 };
 
 /**

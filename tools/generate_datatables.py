@@ -4058,24 +4058,36 @@ EMPIRE_TREE_EFFECT_KINDS = (
     "WalkDaysFewerOnFallenCities", "WalkDaysFewerPerFloorCleared",
     "WalkOneDayWithinDaysOfFalling", "FloorsAdded", "FloorsAddedPerActiveType",
     "FloorsPerBranchStep", "RemoveAnotherDungeonChance", "EmpirePointsFromClears",
+    # Slice 5a: the player's magic find, loot quantity, movement speed and
+    # damage, inside a dungeon.
+    "MagicFindAdded", "LootQuantityIncreased", "MovementSpeedInDungeons",
+    "LootQuantityPerActiveType", "LootQuantityPerTwoDaysRemoved",
+    "LootQuantityPerDayRemoved", "MagicFindPerFloorRemoved",
+    "MagicFindPerModifierActive", "MagicFindPerFloorCleared",
+    "MagicFindPerFiveClears", "LootQuantityPerExplorerCity",
+    "MagicFindPerExplorerCity", "LootQuantityPerBranchStep",
+    "ExplorerLootDoubledAtOneDay", "DamagePerKindDefeated",
 )
 
 #: WHAT EACH BUILT NODE OR OPTION OF THE EMPIRE TREE DOES, by name. Issue
 #: #2741 slice 3a: the 31 city nodes and options that act through numbers the
-#: run already saves; slice 3b: the seven that act at an event. Slices 4 and 5
-#: add theirs here.
+#: run already saves; slice 3b: the seven that act at an event; slice 4 the
+#: nineteen of a dungeon's walk and depth; slice 5a the fifteen of the player's
+#: stats inside a dungeon. Slice 5b adds its five here.
 #:
 #: EACH EFFECT IS (effect, per point) or (effect, per point, step points, step
 #: branch, cap). Per point is a fraction for a percentage and days for days; a
 #: reduction is the share it takes off, written positive. Every value is the
 #: node's own words, and `test_empire_tree_effects_match_their_texts.py` finds
-#: each one in its text. FOUR OF THE SIX CAPS ARE NOT IN ANY TEXT: Golden
+#: each one in its text. FIVE OF THE NINE CAPS ARE NOT IN ANY TEXT: Golden
 #: Age's and Bastion Spirit's are the owner's ruling 2 of 2026-11-18, "Cap each
 #: one", chosen in slice 3a from the simulation (S3, S4); Reclaimer's
 #: Resolve's is the coordinating session's Q2 of 2026-11-19, the 15% Global
-#: Vigilance's own text states; and Architectural Insight's +10 floors is its
-#: W4 of 2026-11-19, under ruling 2. Global Vigilance's 15% and Sovereign's
-#: Haste's 30 are in their texts. Each is recorded as a judgement.
+#: Vigilance's own text states; Architectural Insight's +10 floors is its
+#: W4 of 2026-11-19, under ruling 2; and Temporal Efficiency's +50% is its D3
+#: of 2026-11-19, under ruling 2, the cap Efficiency Premium's text states.
+#: Global Vigilance's 15%, Sovereign's Haste's 30, Speed Runner's 100% and
+#: Efficiency Premium's 50% are in their texts. Each is recorded as a judgement.
 #:
 #: READINGS, each a judgement of 2026-11-18 (S5): "Max Health" and "Defense" of
 #: a city are its maximum defence; "within 2 rings of the Pillar" is rings 0 to
@@ -4155,6 +4167,28 @@ EMPIRE_TREE_EFFECTS = {
     # A clear.
     "The Warlord": [("RemoveAnotherDungeonChance", 0.15)],
     "Veteran's Edge": [("EmpirePointsFromClears", 0.03)],
+    # Slice 5a: the player inside a dungeon, each reading a judgement of the
+    # coordinating session's D1 to D4 of 2026-11-19 (`docs/DECISIONS.md`).
+    # Magic find is a flat number of percentage points, because its base is
+    # nought; loot quantity, movement speed and damage are increases.
+    "Eyes of the Empire": [("MagicFindAdded", 0.05)],
+    "Bounty": [("LootQuantityIncreased", 0.05)],
+    "The Hoarder": [("MagicFindAdded", 0.25), ("LootQuantityIncreased", 1.00)],
+    "Pathfinding": [("MovementSpeedInDungeons", 0.02)],
+    "Spoils of War": [("LootQuantityPerActiveType", 0.02)],
+    # Days removed from the walk: whole steps of two days, and whole days (C3).
+    "Speed Runner": [("LootQuantityPerTwoDaysRemoved", 0.05, 0, "", 1.00)],
+    "Efficiency Premium": [("LootQuantityPerDayRemoved", 0.05, 0, "", 0.50)],
+    "Quality over Quantity": [("MagicFindPerFloorRemoved", 0.02)],
+    "Dungeon Expertise": [("MagicFindPerModifierActive", 0.04)],
+    "Manifest Wealth": [("MagicFindPerFloorCleared", 0.01)],
+    "Dungeon Legend": [("MagicFindPerFiveClears", 0.01)],
+    "The Cartographer's Blessing": [("LootQuantityPerExplorerCity", 0.05),
+                                    ("MagicFindPerExplorerCity", 0.05)],
+    "Temporal Efficiency": [("LootQuantityPerBranchStep", 0.10, 5, "Artisan", 0.50)],
+    # The walk of one day it asks for; the doubling is in C++.
+    "One-Day Specialist": [("ExplorerLootDoubledAtOneDay", 1.0)],
+    "Dungeon Mastery": [("DamagePerKindDefeated", 0.03)],
 }
 
 

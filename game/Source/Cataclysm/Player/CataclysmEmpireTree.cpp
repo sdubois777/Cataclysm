@@ -1,8 +1,11 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Player/CataclysmEmpireTree.h"
+#include "Data/CataclysmCityUpgradeMapping.h"
 #include "Data/CataclysmDataRows.h"
 #include "DayClock/CataclysmDayClock.h"
+#include "Empire/CataclysmEmpireRun.h"
+#include "Empire/CataclysmSurge.h"
 #include "Engine/DataTable.h"
 
 const FString UCataclysmEmpireTree::CentreBranch = TEXT("Centre");
@@ -124,6 +127,39 @@ const UDataTable* UCataclysmEmpireTree::LoadEffectTable()
 // What the city nodes add up to -- issue #2741 slice 3a
 // ---------------------------------------------------------------------------
 
+// WHAT ONE ROW OF THE EFFECT TABLE IS WORTH, read the same way by `CityBonusesFor` and `PlayerBonusesFor`. A named
+// namespace for the unity build's sake, as the one above.
+namespace CataclysmEmpireTreeEffectRows
+{
+	/** A node's points, or one for an option that is chosen and whose capstone's point is bought. */
+	int32 PointsFor(const FCataclysmEmpireTreeEffectRow& Row, const FCataclysmPassiveAllocation& Allocation)
+	{
+		const FName Node(*Row.Node);
+		const int32 Held = Allocation.PointsIn(Node);
+		return Row.Option == 0
+			? Held
+			: (Held > 0 && Allocation.ChosenOptionIn(Node) == Row.Option ? 1 : 0);
+	}
+
+	/** The total, for an effect that adds: per point, times whole steps of another branch where it counts them (C3),
+	 *  held at the cap where there is one. */
+	float TotalFor(const UDataTable* NodeTable, const FCataclysmEmpireTreeEffectRow& Row,
+				   const FCataclysmPassiveAllocation& Allocation, int32 Points)
+	{
+		float Total = Row.PerPoint * static_cast<float>(Points);
+		if (Row.StepPoints > 0)
+		{
+			Total *= static_cast<float>(
+				UCataclysmEmpireTree::SpentInBranch(NodeTable, Allocation, Row.StepBranch) / Row.StepPoints);
+		}
+		if (Row.Cap > 0.0f)
+		{
+			Total = FMath::Min(Total, Row.Cap);
+		}
+		return Total;
+	}
+}
+
 FCataclysmEmpireTreeBonuses UCataclysmEmpireTree::CityBonusesFor(const UDataTable* NodeTable,
 																 const UDataTable* EffectTable,
 																 const FCataclysmPassiveAllocation& Allocation)
@@ -142,28 +178,14 @@ FCataclysmEmpireTreeBonuses UCataclysmEmpireTree::CityBonusesFor(const UDataTabl
 			continue;
 		}
 
-		// A NODE'S POINTS, OR ONE FOR AN OPTION THAT IS CHOSEN AND WHOSE CAPSTONE'S POINT IS BOUGHT.
-		const FName Node(*Row->Node);
-		const int32 Held = Allocation.PointsIn(Node);
-		const int32 Points = Row->Option == 0
-			? Held
-			: (Held > 0 && Allocation.ChosenOptionIn(Node) == Row->Option ? 1 : 0);
+		const int32 Points = CataclysmEmpireTreeEffectRows::PointsFor(*Row, Allocation);
 		if (Points <= 0)
 		{
 			continue;
 		}
 
-		// THE TOTAL, FOR AN EFFECT THAT ADDS: per point, times whole steps of another branch where it counts them (C3),
-		// held at the cap where there is one. A compounded effect below reads `PerPoint` and `Points` instead.
-		float Total = Row->PerPoint * static_cast<float>(Points);
-		if (Row->StepPoints > 0)
-		{
-			Total *= static_cast<float>(SpentInBranch(NodeTable, Allocation, Row->StepBranch) / Row->StepPoints);
-		}
-		if (Row->Cap > 0.0f)
-		{
-			Total = FMath::Min(Total, Row->Cap);
-		}
+		// A COMPOUNDED EFFECT BELOW READS `PerPoint` AND `Points` RATHER THAN THE TOTAL.
+		const float Total = CataclysmEmpireTreeEffectRows::TotalFor(NodeTable, *Row, Allocation, Points);
 		const float Kept = FMath::Pow(FMath::Max(0.0f, 1.0f - Row->PerPoint), static_cast<float>(Points));
 
 		switch (Row->Effect)
@@ -318,6 +340,243 @@ FCataclysmEmpireTreeBonuses UCataclysmEmpireTree::CityBonusesFor(const UDataTabl
 		}
 	}
 	return Bonuses;
+}
+
+FCataclysmEmpireTreePlayerBonuses UCataclysmEmpireTree::PlayerBonusesFor(const UDataTable* NodeTable,
+																	   const UDataTable* EffectTable,
+																	   const FCataclysmPassiveAllocation& Allocation)
+{
+	FCataclysmEmpireTreePlayerBonuses Bonuses;
+	if (!NodeTable || !EffectTable)
+	{
+		return Bonuses;
+	}
+
+	for (const TPair<FName, uint8*>& Pair : EffectTable->GetRowMap())
+	{
+		const FCataclysmEmpireTreeEffectRow* Row = reinterpret_cast<const FCataclysmEmpireTreeEffectRow*>(Pair.Value);
+		if (!Row)
+		{
+			continue;
+		}
+		const int32 Points = CataclysmEmpireTreeEffectRows::PointsFor(*Row, Allocation);
+		if (Points <= 0)
+		{
+			continue;
+		}
+		const float Total = CataclysmEmpireTreeEffectRows::TotalFor(NodeTable, *Row, Allocation, Points);
+
+		// THE EXPLORER BRANCH'S FLAT FIGURES APART FROM EVERY OTHER'S, for One-Day Specialist. Read from the node table
+		// rather than named: The Hoarder is a centre capstone's option, and that is why it is not doubled.
+		const bool bExplorer = BranchOf(NodeTable, FName(*Row->Node)) == TEXT("Explorer");
+
+		switch (Row->Effect)
+		{
+		case ECataclysmEmpireTreeEffect::MagicFindAdded:
+			(bExplorer ? Bonuses.ExplorerMagicFind : Bonuses.MagicFind) += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::LootQuantityIncreased:
+		case ECataclysmEmpireTreeEffect::LootQuantityPerBranchStep:
+			(bExplorer ? Bonuses.ExplorerLootQuantity : Bonuses.LootQuantity) += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::MovementSpeedInDungeons:
+			Bonuses.MovementSpeed += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::LootQuantityPerActiveType:
+			Bonuses.LootQuantityPerActiveType += Total;
+			break;
+
+		// THE CAP IS ON WHAT THE DAYS BRING, so the figure a step is held without it and the cap beside it.
+		case ECataclysmEmpireTreeEffect::LootQuantityPerTwoDaysRemoved:
+			Bonuses.LootQuantityPerTwoDaysRemoved += Row->PerPoint * static_cast<float>(Points);
+			Bonuses.TwoDaysRemovedCap = Row->Cap;
+			break;
+		case ECataclysmEmpireTreeEffect::LootQuantityPerDayRemoved:
+			Bonuses.LootQuantityPerDayRemoved += Row->PerPoint * static_cast<float>(Points);
+			Bonuses.DayRemovedCap = Row->Cap;
+			break;
+
+		case ECataclysmEmpireTreeEffect::MagicFindPerFloorRemoved:
+			Bonuses.MagicFindPerFloorRemoved += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::MagicFindPerModifierActive:
+			Bonuses.MagicFindPerModifierActive += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::MagicFindPerFloorCleared:
+			Bonuses.MagicFindPerFloorCleared += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::MagicFindPerFiveClears:
+			Bonuses.MagicFindPerFiveClears += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::LootQuantityPerExplorerCity:
+			Bonuses.LootQuantityPerExplorerCity += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::MagicFindPerExplorerCity:
+			Bonuses.MagicFindPerExplorerCity += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::ExplorerLootDoubledAtOneDay:
+			Bonuses.ExplorerLootDoubledAtWalkDays = FMath::RoundToInt(Row->PerPoint);
+			break;
+		case ECataclysmEmpireTreeEffect::DamagePerKindDefeated:
+			Bonuses.DamagePerKindDefeated += Total;
+			break;
+		default:
+			break;
+		}
+	}
+	return Bonuses;
+}
+
+FCataclysmEmpireTreeDungeonState UCataclysmEmpireTree::DungeonStateFor(const UCataclysmEmpireRun& Run,
+																	   const FCataclysmDungeon& Dungeon,
+																	   const TArray<FName>& FloorModifiers,
+																	   int32 FloorNumber)
+{
+	FCataclysmEmpireTreeDungeonState State;
+	State.ActiveTypes = Run.ActiveCataclysms.Num();
+
+	// THE DEFAULT WALK IS THE STARTING RATE, ONE FLOOR A DAY, OVER THE FLOORS THE DUNGEON HAS -- the city's and the
+	// tree's included, as the #1390 analysis counted "days under default run time" -- and a Cow Level's double, which
+	// the surge scheduler sets and nothing reduces. The walk is what the game charges.
+	const bool bCowLevel = Dungeon.SubType == ECataclysmDungeonSubType::CowLevel;
+	State.DefaultWalkDays = static_cast<float>(FMath::Max(1, Dungeon.Floors))
+		* (bCowLevel ? UCataclysmSurgeScheduler::CowLevelWalkMultiplier : 1.0f);
+	State.WalkDays = Run.EffectiveWalkDaysFor(Dungeon);
+
+	// THE DEFAULT DEPTH IS THE DEPTH BEFORE CITY UPGRADES AND THE TREE, from fields every kind already saves.
+	int32 DefaultFloors = Dungeon.Floors - Dungeon.UpgradeFloors;
+	if (Dungeon.Type == ECataclysmDungeonType::FallenCity)
+	{
+		DefaultFloors = FMath::Max(Dungeon.Bosses,
+			UCataclysmSurgeScheduler::SpecFor(ECataclysmDungeonType::FallenCity, Dungeon.CityTier).LeastFloors);
+	}
+	else if (Dungeon.Type == ECataclysmDungeonType::Cataclysm)
+	{
+		DefaultFloors = FMath::Max(1, Run.CataclysmDungeonBaseFloors
+			+ Run.BasicDungeonsCleared * UCataclysmSurgeScheduler::CataclysmFloorsPerOrdinaryDungeon);
+	}
+	State.FloorsRemoved = FMath::Max(0, DefaultFloors - Dungeon.Floors);
+
+	TSet<FName> Distinct;
+	Distinct.Append(FloorModifiers);
+	State.ModifiersActive = Distinct.Num();
+	State.FloorsCleared = FMath::Max(0, FloorNumber - 1);
+	State.DungeonsCleared = Run.DungeonsCleared;
+
+	// THE FOUR KINDS: three counted where a clear is counted, and the Fallen City clears as what is left over of every
+	// clear. `bWon` is the boss's, and a won run is followed by the next run at once.
+	const int32 Won = Run.bWon ? 1 : 0;
+	const int32 FallenCityClears = Run.DungeonsCleared - Run.BasicDungeonsCleared - Run.QuestObjectives - Won;
+	State.KindsDefeated = (Run.BasicDungeonsCleared > 0 ? 1 : 0) + (Run.QuestObjectives > 0 ? 1 : 0)
+		+ (FallenCityClears > 0 ? 1 : 0) + Won;
+
+	if (Run.Map)
+	{
+		for (const FCataclysmCity& City : Run.Map->Cities)
+		{
+			if (City.bFallen)
+			{
+				continue;
+			}
+			for (const FCataclysmCityUpgrade& Upgrade : City.Upgrades)
+			{
+				if (UCataclysmCityUpgradeMapping::BranchFor(Upgrade.RowName) == TEXT("Explorer"))
+				{
+					++State.ExplorerCities;
+					break;
+				}
+			}
+		}
+	}
+	return State;
+}
+
+bool UCataclysmEmpireTree::DoublesExplorerLoot(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
+											   const FCataclysmEmpireTreeDungeonState& State)
+{
+	// "IF RUN TIME REDUCED TO 1-DAY MINIMUM": the walk at its days, from a default that was longer. A dungeon of one
+	// floor walks in one day with no reduction at all, and that is not a run time reduced.
+	const float Days = static_cast<float>(Bonuses.ExplorerLootDoubledAtWalkDays);
+	return Bonuses.ExplorerLootDoubledAtWalkDays > 0
+		&& State.WalkDays <= Days + KINDA_SMALL_NUMBER
+		&& State.DefaultWalkDays > Days + KINDA_SMALL_NUMBER;
+}
+
+float UCataclysmEmpireTree::MagicFindFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
+										 const FCataclysmEmpireTreeDungeonState& State)
+{
+	const float Explorer = Bonuses.ExplorerMagicFind
+		+ Bonuses.MagicFindPerFloorRemoved * static_cast<float>(State.FloorsRemoved)
+		+ Bonuses.MagicFindPerModifierActive * static_cast<float>(State.ModifiersActive)
+		+ Bonuses.MagicFindPerFloorCleared * static_cast<float>(State.FloorsCleared)
+		+ Bonuses.MagicFindPerFiveClears * static_cast<float>(State.DungeonsCleared / DungeonLegendClearsAStep)
+		+ Bonuses.MagicFindPerExplorerCity * static_cast<float>(State.ExplorerCities);
+	const float Doubled = DoublesExplorerLoot(Bonuses, State) ? OneDaySpecialistFactor : 1.0f;
+
+	// PERCENTAGE POINTS: a share of 0.05 is 5 magic find.
+	return 100.0f * (Bonuses.MagicFind + Explorer * Doubled);
+}
+
+float UCataclysmEmpireTree::LootQuantityFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
+											const FCataclysmEmpireTreeDungeonState& State)
+{
+	// WHOLE DAYS AND WHOLE STEPS OF TWO DAYS (C3), never fewer than none.
+	const int32 DaysRemoved = FMath::Max(0, FMath::FloorToInt(State.DefaultWalkDays - State.WalkDays + KINDA_SMALL_NUMBER));
+	float SpeedRunner = Bonuses.LootQuantityPerTwoDaysRemoved * static_cast<float>(DaysRemoved / SpeedRunnerDaysAStep);
+	if (Bonuses.TwoDaysRemovedCap > 0.0f)
+	{
+		SpeedRunner = FMath::Min(SpeedRunner, Bonuses.TwoDaysRemovedCap);
+	}
+	float EfficiencyPremium = Bonuses.LootQuantityPerDayRemoved * static_cast<float>(DaysRemoved);
+	if (Bonuses.DayRemovedCap > 0.0f)
+	{
+		EfficiencyPremium = FMath::Min(EfficiencyPremium, Bonuses.DayRemovedCap);
+	}
+
+	const float Explorer = Bonuses.ExplorerLootQuantity
+		+ Bonuses.LootQuantityPerActiveType * static_cast<float>(State.ActiveTypes)
+		+ SpeedRunner + EfficiencyPremium
+		+ Bonuses.LootQuantityPerExplorerCity * static_cast<float>(State.ExplorerCities);
+	const float Doubled = DoublesExplorerLoot(Bonuses, State) ? OneDaySpecialistFactor : 1.0f;
+	return 100.0f * (Bonuses.LootQuantity + Explorer * Doubled);
+}
+
+float UCataclysmEmpireTree::MovementSpeedFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses)
+{
+	return 100.0f * Bonuses.MovementSpeed;
+}
+
+float UCataclysmEmpireTree::DamageFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
+									  const FCataclysmEmpireTreeDungeonState& State)
+{
+	// PER POINT AND PER KIND, NO CAP: the four kinds are its limit (D2).
+	return 100.0f * Bonuses.DamagePerKindDefeated * static_cast<float>(State.KindsDefeated);
+}
+
+TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmEmpireTree::PlayerStatModifiersFor(
+	const FCataclysmEmpireTreePlayerBonuses& Bonuses, const FCataclysmEmpireTreeDungeonState& State)
+{
+	TMap<FName, TArray<FCataclysmStatModifier>> Modifiers;
+	auto Add = [&Modifiers](const TCHAR* Stat, ECataclysmStatBucket Bucket, float Value)
+	{
+		if (FMath::IsNearlyZero(Value))
+		{
+			return;
+		}
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = Bucket;
+		Modifier.Source = ECataclysmModifierSource::EmpireTree;
+		Modifier.Value = Value;
+		Modifiers.FindOrAdd(FName(Stat)).Add(Modifier);
+	};
+
+	Add(TEXT("magic_find"), ECataclysmStatBucket::Flat, MagicFindFor(Bonuses, State));
+	Add(TEXT("loot_quantity"), ECataclysmStatBucket::Increased, LootQuantityFor(Bonuses, State));
+	Add(TEXT("movement_speed"), ECataclysmStatBucket::Increased, MovementSpeedFor(Bonuses));
+	const float Damage = DamageFor(Bonuses, State);
+	Add(TEXT("attack_damage"), ECataclysmStatBucket::Increased, Damage);
+	Add(TEXT("spell_damage"), ECataclysmStatBucket::Increased, Damage);
+	return Modifiers;
 }
 
 TArray<FString> UCataclysmEmpireTree::BranchNames()
