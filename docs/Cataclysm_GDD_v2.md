@@ -216,7 +216,7 @@ The following are default controls. Players with multiple damage types can map m
 | Mouse wheel | Camera distance |
 | Left stick | Directional movement |
 | I | Open and close the carried inventory |
-| C | Open and close the character creator |
+| C | Open and close the character sheet: every stat the character has, and the attributes to spend points into |
 | P | Open and close the passive class tree |
 | K | Open and close the skill choice screen: which skill from the pool goes on which key |
 | M | Open and close the empire map: every city, what is standing on it, and how long until the next wave |
@@ -247,7 +247,7 @@ WASD moves the character, so the Support ability moves off W to 1. The left mous
 | Mouse wheel | Camera distance |
 | Left stick | Directional movement |
 | I | Open and close the carried inventory |
-| C | Open and close the character creator |
+| C | Open and close the character sheet: every stat the character has, and the attributes to spend points into |
 | P | Open and close the passive class tree |
 | K | Open and close the skill choice screen: which skill from the pool goes on which key |
 | M | Open and close the empire map: every city, what is standing on it, and how long until the next wave |
@@ -1088,6 +1088,8 @@ Points come from levelling, from the Maw, and from gear. The gear source is a pe
   
 
 ### **The Character Sheet**
+
+**C opens and closes it, in both control schemes**, where Path of Exile, Last Epoch and Diablo IV put the character screen. The project owner ruled this on 2026-11-19; C opened the character creator until then, and the creator now has no key, because new characters are made from the front end's New character screen.
 
 A character has 46 stats, grouped the way the gameplay tag list groups its Stat tags.
 

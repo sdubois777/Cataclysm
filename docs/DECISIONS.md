@@ -376,6 +376,159 @@ they are here, and ran in the copy, which has none.
 
 ---
 
+## 2026-11-19 — C opens the character sheet in both control schemes, and the character creator has no key (#2770)
+
+**Affects:** `tools/generate_input_assets.py` (`NATIVE_ACTIONS`: `IA_ToggleCharacterSheet` in place of
+`IA_ToggleCharacterCreation`; `MOUSE_MAPPINGS` and `KEYBOARD_MAPPINGS`: C maps it);
+`CataclysmInputActionNames::ToggleCharacterSheet` in place of `ToggleCharacterCreation`
+(`game/Source/Cataclysm/Input/CataclysmInputConfig.h`); `ACataclysmPlayerController::SetupInputComponent` and
+`Input_ToggleCharacterSheet`, new, in place of `Input_ToggleCharacterCreation`
+(`game/Source/Cataclysm/Player/CataclysmPlayerController.h` and `.cpp`); the help texts of `Cataclysm.CharacterSheet`
+and `Cataclysm.CharacterCreation` (`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`); comments in
+`CataclysmCharacterSheetWidget.h`, `CataclysmCityScreenWidget.h` and `CataclysmPotions.cpp` that said the sheet had no
+key or that C opened the creator; `docs/Cataclysm_GDD_v2.md` (both control tables, and "The Character Sheet");
+`docs/Play_Loop_Checklist.md` (steps 14 and 15); `game/README.md` (the row for `game/Content/Input/`: nineteen input
+actions, not ten). Tests: `Cataclysm.Input.TheCharacterSheetIsOnCInBothSchemes`, new;
+`Cataclysm.Input.ConfigListsEverySlotAndNativeAction`, `Cataclysm.Input.MappingContextsCoverEveryActionWithoutCollisions`
+and `Cataclysm.Input.TheEmpireMapIsOnMInBothSchemes`, changed (`game/Source/Cataclysm/Tests/CataclysmInputTests.cpp`);
+`tools/tests/test_the_empire_map_key_reaches_its_command.py`, `tools/tests/test_controls_table_matches_the_input_assets.py`
+and `tools/tests/test_game_readme_is_true.py`, changed. The input assets `IA_ToggleCharacterSheet` (new),
+`DA_InputConfig`, `IMC_MouseMovement` and `IMC_KeyboardMovement` were regenerated, and `IA_ToggleCharacterCreation`
+deleted, by window ckey-w1's asset step, in commit `e8bd90fdf`. Issue [#2770](https://github.com/sdubois777/Cataclysm/issues/2770).
+
+### SAID FIRST
+
+- **COMPILED, AND THE INPUT ASSETS REGENERATED, IN WINDOW ckey-w1** ("Window ckey-w1", below), where every check
+  passed. Before the asset step, with the old assets, `Cataclysm.Input.` failed exactly the three tests registered as
+  the asset half's proof (O1); after it, all nine passed.
+- **NO TEST CAN PRESS C.** A world built by `UWorld::CreateWorld` has no local player, so
+  `ACataclysmPlayerController::SetupInputComponent` binds nothing there and `CreateWidget` makes no screen, as
+  `Cataclysm.Input.TheEmpireMapIsOnMInBothSchemes` records for the M key. The Python tests read the chain from the key to the function the console command
+  calls; the owner's press of C at step 14 of `docs/Play_Loop_Checklist.md` is the test of the screen opening.
+
+### The ruling
+
+The project owner, 2026-11-19, issue #2770's body: option **"C opens the sheet"**. C opens the character sheet in both
+control schemes, as in Diablo, Path of Exile and Last Epoch; the creator stays reachable from the front end's New
+character screen and from its console command `Cataclysm.CharacterCreation`.
+
+The coordinating session accepted the plan and its judgements the same day: the creator's action is removed rather than
+left with no key; `tools/tests/test_the_empire_map_key_reaches_its_command.py` keeps its name, because this log cites
+it; the empire map test's body becomes a helper both key tests call; the README's count is corrected in this change; O1
+is the asset half's proof and no C++ break is run.
+
+- **THE CREATOR'S ACTION IS REMOVED, NOT LEFT WITHOUT A KEY.** An action no key reaches fails
+  `tools/tests/test_native_input_actions_match_the_engine.py::test_every_native_action_is_on_a_key_somewhere`, and
+  loosening that guard would be the wrong change. `ACataclysmPlayerController::ToggleCharacterCreation` stays, for its
+  console command. The front end's New character screen is `UCataclysmNewCharacterWidget`, a different screen, and does
+  not come through the controller.
+- **THE PARKED COMMIT 288b45cc4 PUT THE SHEET ON Y**, only because the design's tables gave C to the creator; its shape
+  is reused here with C.
+- **WHAT ELSE NAMED THE OLD ACTION.** In the main checkout, outside the Paragon folders, `IA_ToggleCharacterCreation`
+  appears in four content files: itself, `DA_InputConfig`, `IMC_MouseMovement` and `IMC_KeyboardMovement`. The
+  generator rewrites the last three, so deleting the old action after a generator run leaves nothing pointing at a
+  missing asset.
+
+### The research
+
+**Read**, 2026-11-19:
+
+- Path of Exile: magicgameworld.com, "Path of Exile PC Keyboard Controls & Shortcuts" (2021): "Character Screen: C",
+  "Inventory: I", "Passive Skill Tree: P".
+- Last Epoch: forum.lastepoch.com/t/community-game-guide/26057/3 (2020): the character sheet is "opened using the [C]
+  key by default".
+- Diablo IV: diablo4.wiki.fextralife.com/Controls: "Character Panel", "C / I", one panel for the character and the
+  inventory.
+
+**Failed or silent**: pathofexile.fandom.com/wiki/Character_screen (HTTP 402); mobalytics.gg/poe-2/guides/hotkeys (403);
+poedb.tw/us/HelpfulTips names no key; gamepressure.com's Path of Exile and Diablo IV controls pages give the keys only
+in images, which were not read.
+
+**What the research settles**: C is where the three games put the character screen. **What it does not**: which key
+the creator should have, if any; that is the owner's ruling.
+
+### The tests, and the count registered by name
+
+- **`Cataclysm.Input.TheCharacterSheetIsOnCInBothSchemes`, new**: in both contexts the sheet's action is on one key,
+  that key is C, and C carries nothing else.
+- **`Cataclysm.Input.TheEmpireMapIsOnMInBothSchemes`**: its body is now `CataclysmInputTest::ExpectTheScreenOnItsKeyInBothSchemes`,
+  which the new test calls too; the same assertions in the same words.
+- **`Cataclysm.Input.ConfigListsEverySlotAndNativeAction`**: lists `ToggleCharacterSheet` in place of
+  `ToggleCharacterCreation`, still thirteen, and asserts the config has no action named `ToggleCharacterCreation`.
+- **`Cataclysm.Input.MappingContextsCoverEveryActionWithoutCollisions`**: the sheet's action is required in both
+  contexts.
+- **Registered**: the whole suite **4956**: 4955, measured by the burn and Thorns-rate window at `f1ec9e61b` (its
+  `game/` tree differs from `development` `2869846bc`'s only by seven comment lines in
+  `game/Config/DefaultEditorPerProjectUserSettings.ini`), + 1. `Cataclysm.Input.` alone 9: that run performed 8,
+  and one is new. `Cataclysm.CharacterSheet.` 10 and `Cataclysm.Creation.` 14, the counts that run performed,
+  unchanged here. The base is `development` `2869846bc`.
+- **Python, +7**: `test_the_empire_map_key_reaches_its_command.py` gains the "character sheet" row (5 parametrised
+  cases) and `test_the_character_creator_has_no_key_and_its_command_still_opens_it`; `test_game_readme_is_true.py` gains
+  `test_the_readme_states_the_right_number_of_input_actions`, which reads the count from the generator.
+  `test_controls_table_matches_the_input_assets.py` reads "Open and close the character sheet" in place of the creator's
+  phrase, with no change in count.
+
+### Guard proofs
+
+Python, run 2026-11-19 with `tools/prove_guard.break_and_run` before commit; each PROVED, failing on exactly the tests
+named with the break in and passing with it out:
+
+| Proof | The break | Failed with it in |
+| :-- | :-- | :-- |
+| P1 | the mouse scheme's sheet row moved from C to V | `test_each_scheme_puts_the_screen_on_its_ruled_key_and_nothing_else_there[character sheet-MOUSE_MAPPINGS]`; `test_the_document_lists_every_binding_that_is_built[Scheme 1: mouse movement-MOUSE_MAPPINGS]`; `test_the_document_invents_no_binding[Scheme 1: mouse movement-MOUSE_MAPPINGS]` |
+| P2 | the sheet's `BindNativeAction` removed | `test_the_controller_binds_the_key_to_its_handler[character sheet]` |
+| P3 | `Input_ToggleCharacterSheet` calls `ToggleCharacterCreation` | `test_the_handler_calls_the_toggle_and_nothing_else[character sheet]` |
+| P4 | `Cataclysm.CharacterCreation` no longer calls `ToggleCharacterCreation` | `test_the_character_creator_has_no_key_and_its_command_still_opens_it` |
+
+The asset half, registered for the window as an observation rather than a break (O1): with this branch built and the
+input assets **not yet regenerated**, `Cataclysm.Input.` alone performs 9, of which 3 fail --
+`ConfigListsEverySlotAndNativeAction`, `MappingContextsCoverEveryActionWithoutCollisions` and
+`TheCharacterSheetIsOnCInBothSchemes` -- and 6 succeed; after the asset step, 9 of 9. No C++ break proof is run: breaking
+the action's name in `CataclysmInputConfig.h` would rebuild a widely included header twice to show what O1 shows.
+
+### The window's asset step, registered
+
+After the build and O1: `python tools/run_editor_python.py tools/generate_input_assets.py`; then
+`git rm game/Content/Input/Actions/IA_ToggleCharacterCreation.uasset`, only after the generator has saved the three
+assets that named it; stage by name `game/Content/Input/Actions/IA_ToggleCharacterSheet.uasset` (new; checked in the
+window to be an LFS object), `game/Content/Input/DA_InputConfig.uasset`, `game/Content/Input/IMC_MouseMovement.uasset`
+and `game/Content/Input/IMC_KeyboardMovement.uasset`; restore the other eighteen actions and
+`game/Content/Maps/L_Sandbox.umap`, which every generator run writes again with new bytes and whose properties this
+change does not touch; commit. Allowed to change during the run: anything under `game/Content/Input`, and
+`L_Sandbox.umap`.
+
+### Window ckey-w1
+
+**THE COMPILES**, at `85d3d0dc2` on 2026-11-19, 18:37 to 18:45, under the lock ckey-compile and before the window, all
+succeeding: the branch as committed (51 actions, 46 files, more than this change touches because this worktree was last
+built on an older base); each changed file compiled alone (the build tool excluded seven from the unity files -- the four
+`.cpp` files this branch changes and `CataclysmInputConfig.cpp`, `CataclysmCharacterSheetWidget.cpp` and
+`CataclysmCityScreenWidget.cpp`, whose headers it changes; 16 actions, 13 files, no warning); and the unity files again
+(9 actions, 6 files, no warning). **ONE WARNING IN THE FIRST, NOT FROM THIS CHANGE**: C4996, "CountBits for 64-bit values
+has been deprecated", printed from the engine's `MicrosoftPlatformMath.h` and triggered by
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` line 1315, which the build log's next note
+names. It is issue #2756; this branch does not change that file.
+
+**THE WINDOW**, lock ckey-w1, 18:45 to 19:09, started by `run_ck.py` with no console window once the pre-checks all
+passed (development `2869846bc` with its CI and Unreal runs passed, no run in progress or queued, the lock free, no build
+or editor process, no open pull request, 13,796 MB free, no Git LFS pointer in the worktree):
+
+| Check | Registered | Measured |
+| :-- | :-- | :-- |
+| The build | -- | Target already up to date, nothing compiled |
+| O1: `Cataclysm.Input.` alone, before the asset step | 9 performed; 3 failed, `ConfigListsEverySlotAndNativeAction`, `MappingContextsCoverEveryActionWithoutCollisions` and `TheCharacterSheetIsOnCInBothSchemes`; 6 succeeded | Exactly that |
+| The asset step | `IA_ToggleCharacterSheet.uasset` new; `DA_InputConfig`, `IMC_MouseMovement` and `IMC_KeyboardMovement` changed; `IA_ToggleCharacterCreation.uasset` removed; everything else the generator rewrote restored | The generator rewrote 23 files and left the old action untouched; 19 were restored (the other eighteen actions and `L_Sandbox.umap`); none of the three changed assets holds the name `IA_ToggleCharacterCreation`; committed alone as `e8bd90fdf`, with the old action removed by `git rm` and each kept asset a Git LFS object; afterwards no `.uasset` or `.umap` file in `game/Content` holds that name; pushed with its LFS objects. Every test below ran at `e8bd90fdf` |
+| Each group alone | `Cataclysm.Input.` 9, `Cataclysm.CharacterSheet.` 10, `Cataclysm.Creation.` 14 | 9, 10 and 14 performed, every one succeeded |
+| The whole suite | 4,956; 47 skipped halves | 4,956 performed, 4,956 succeeded; 47 skipped halves; "850 written and deleted, 0 left behind"; 4,956 declared, gap 0 |
+| Python and ruff | Every test passing | 7,725 passed, 9 skipped; the JUnit file 7,734 tests, 0 failures, 0 errors; ruff clean |
+| Proofs | None in the window; P1 to P4 run before commit | None run |
+
+**O1 HELD IN BOTH DIRECTIONS**: built with the old assets, the three tests that read the assets failed; with the assets
+generated, the same nine passed. **THE KEY PRESS ITSELF IS STILL UNTESTED BY ANY RUN**, as "SAID FIRST" says: the
+owner's press of C at step 14 of `docs/Play_Loop_Checklist.md` is that test.
+
+---
+
 ## 2026-11-19 — Hellfire Aura burns for 9% of its carrier's weapon damage, a Corrupted Stalker's flat damage over time takes the multiplier its hits carry, Thorns of Glass strikes back at most once per its own attack interval, and the log says every blow the player deals (#2749, enemy burn slice)
 
 **Affects:** `UCataclysmEnemyModifiers` (`game/Source/Cataclysm/Character/CataclysmEnemyModifiers.h`, `.cpp`:
