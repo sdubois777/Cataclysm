@@ -756,19 +756,6 @@ namespace CataclysmSkillLevelSourcesTest
 	 * no block, as `Cataclysm.CombatEvents.AMinionsBlowPutsTheMinionInCombatAndNotItsSummoner` sets its creature, and no
 	 * armour, so two blows' figures compare as they were dealt. 50,000 health unless a test says otherwise.
 	 */
-	ACataclysmEnemyCharacter* SourcesStruckCreature(UWorld* World, const FVector& Where);
-
-	/**
-	 * How far a figure measured as a creature's health lost may be from a figure it is compared with: 0.01.
-	 *
-	 * A HEALTH LOST ON A STRUCK CREATURE IS THE DIFFERENCE OF TWO FLOATS NEAR 50,000, and a float there moves in steps of
-	 * 1/256, about 0.0039, so the difference is good to about 0.0039 whatever the blow was. Window skills-2b-w1
-	 * (2026-11-20) measured a level 3 imp's swing as 58.621094 against the 58.622284 credited for it, and a thrall's as
-	 * 111.660156 against 111.661491, each outside the 0.001 these comparisons first allowed. 0.01 allows that and a
-	 * credit's own rounding; a ratio of two such figures is good to about 0.0002 and keeps 0.001.
-	 */
-	constexpr float SourcesTookTolerance = 1.0e-2f;
-
 	ACataclysmEnemyCharacter* SourcesStruckCreature(UWorld* World, const FVector& Where)
 	{
 		ACataclysmEnemyCharacter* Made = World->SpawnActor<ACataclysmEnemyCharacter>(Where, FRotator::ZeroRotator);
@@ -883,12 +870,10 @@ bool FCataclysmSkillLevelSourcesImpBlowTest::RunTest(const FString&)
 	TestEqual(TEXT("AN IMP SUMMON IMP SUMMONED CARRIES ITS ROW"), First->SummoningSkillRow, SourcesSummonImp);
 	TestEqual(TEXT("THE LEVEL 3 IMP'S SWING IS 1.0567 SQUARED TIMES THE LEVEL 1 IMP'S"), TookAtThree / TookAtOne,
 			  static_cast<float>(Levels::DamageFactor(3)), 1.0e-3f);
-	TestEqual(TEXT("AN IMP SUMMONED BEFORE THE LEVEL KEEPS THE FACTOR IT WAS SUMMONED WITH"), TookLater, TookAtOne,
-			  SourcesTookTolerance);
+	TestEqual(TEXT("AN IMP SUMMONED BEFORE THE LEVEL KEEPS THE FACTOR IT WAS SUMMONED WITH"), TookLater, TookAtOne, 1.0e-3f);
 	TestEqual(TEXT("THE LEVEL 1 IMP'S SWING IS CREDITED TO SUMMON IMP"), SourcesCreditedTo(AtOne, SourcesSummonImp),
-			  TookAtOne, SourcesTookTolerance);
-	TestEqual(TEXT("AND THE LEVEL 3 IMP'S"), SourcesCreditedTo(AtThree, SourcesSummonImp), TookAtThree,
-			  SourcesTookTolerance);
+			  TookAtOne, 1.0e-3f);
+	TestEqual(TEXT("AND THE LEVEL 3 IMP'S"), SourcesCreditedTo(AtThree, SourcesSummonImp), TookAtThree, 1.0e-3f);
 	return true;
 }
 
@@ -1010,9 +995,8 @@ bool FCataclysmSkillLevelSourcesThrallTest::RunTest(const FString&)
 	TestEqual(TEXT("THE LEVEL 3 THRALL'S BLOW IS 1.0567 SQUARED TIMES THE LEVEL 1 THRALL'S"), TookByThree / TookByOne,
 			  static_cast<float>(Levels::DamageFactor(3)), 1.0e-3f);
 	TestEqual(TEXT("THE LEVEL 1 THRALL'S BLOW IS CREDITED TO SUBJUGATE"), SourcesCreditedTo(StruckByOne, SourcesSubjugate),
-			  TookByOne, SourcesTookTolerance);
-	TestEqual(TEXT("AND THE LEVEL 3 THRALL'S"), SourcesCreditedTo(StruckByThree, SourcesSubjugate), TookByThree,
-			  SourcesTookTolerance);
+			  TookByOne, 1.0e-3f);
+	TestEqual(TEXT("AND THE LEVEL 3 THRALL'S"), SourcesCreditedTo(StruckByThree, SourcesSubjugate), TookByThree, 1.0e-3f);
 	return true;
 }
 
@@ -1186,12 +1170,11 @@ bool FCataclysmSkillLevelSourcesCapExplosionTest::RunTest(const FString&)
 	TestTrue(TEXT("set-up: the cap's explosions and the passive's took health"),
 			 CapAtOne > 0.0f && CapAtThree > 0.0f && TookByThePassive > 0.0f);
 	TestEqual(TEXT("THE CAP'S EXPLOSIONS ARE CREDITED TO SUMMON IMP"), SourcesCreditedTo(Near, SourcesSummonImp), NearLost,
-			  SourcesTookTolerance);
+			  1.0e-2f);
 	TestEqual(TEXT("THE PASSIVE'S EXPLOSION CREDITS NOTHING"), Far->GetHealthRemovedBySkill().Num(), 0);
 	TestEqual(TEXT("A LEVEL 3 IMP'S EXPLOSION IS 1.0567 SQUARED TIMES A LEVEL 1 IMP'S"), CapAtThree / CapAtOne,
 			  static_cast<float>(Levels::DamageFactor(3)), 1.0e-3f);
-	TestEqual(TEXT("AND THE PASSIVE'S IS SIZED BY ITS IMP'S LEVEL AS THE CAP'S IS"), TookByThePassive, CapAtThree,
-			  SourcesTookTolerance);
+	TestEqual(TEXT("AND THE PASSIVE'S IS SIZED BY ITS IMP'S LEVEL AS THE CAP'S IS"), TookByThePassive, CapAtThree, 1.0e-2f);
 	return true;
 }
 
