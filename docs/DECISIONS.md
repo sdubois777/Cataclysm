@@ -239,7 +239,10 @@ and `tools/tests/test_every_minion_kind_reserves_fervour.py`, new. Issue
 - **THE RITUALIST'S FIRST NODE'S SENTENCE IS NOT CHANGED HERE.** It still says nothing of the reserve. The accepted
   interim sentence lives in `docs/Ritualist_Class_Tree_Final.json`, and changing it regenerates
   `game/Data/PassiveNodes.csv`, which needs the DataTable assets rebuilt in the editor before the Python suite passes.
-  Branch B, which rebuilds assets anyway, rewords it.
+  Branch B, which rebuilds assets anyway, gives it its reserve clause. Ruled by the coordinating session on
+  2026-11-20: until then the sentence omits the reserve but says nothing untrue, because its cap clause ("if you hold
+  fewer imps than Summon Imp allows at once") stays true until branch B removes the cap, so an asset rebuild in this
+  branch is not worth its cost.
 - **THE COUNT CAPS STAND IN THIS BRANCH.** The owner's ruling of the same day removes every count cap on a kind that
   reserves; branch B does that, with Summon Imp's eviction and its explosion, and converts the five cap-raising stats.
 - **THE WAR GADGETS ARE LEFT OUT**, by the owner's rule that War rows stay unbuilt: issue #1934 holds their reserve.
