@@ -730,6 +730,168 @@ and the killing blow was not. The broken half's own line says so: "one blow ... 
 
 ---
 
+## 2026-11-19 — Every random stream the game derives from another seed takes it from one mix, so no two streams of a floor, a creature or a run are a fixed distance apart (#2749, seeding slice)
+
+**Affects:** `CataclysmSeedMix::Mix` and `Finalise`, new (`game/Source/CataclysmEmpire/Empire/CataclysmSeedMix.h`,
+header only); `ACataclysmDungeonGameMode` (`RaritySeedForPlacementOn` and `ModifierSeedForPlacementOn`, new pure
+statics; `RarityStreamForPlacement`, `ModifierSeedForPlacement`, `StepGatedShortcuts`, `PlaceTheHoards`, Pandora's
+Box's seeds, `RaiseTheCorruptedStalker` and `NoteDeathForInfestedHoard`); `CataclysmDungeonModifier.cpp` (the
+Corrupted Stalker roll, the Edict, the left Edict); `UCataclysmEmpireRun` (The Warlord's roll; the run's Cataclysm and
+modifier streams); `UCataclysmRoster::MixedSeed`'s comments (`CataclysmRoster.h`, `.cpp`); the nine streams seeded from
+an identity and the clock (`CataclysmEnemyCharacter.cpp` three, `CataclysmEnemyModifiers.cpp`,
+`CataclysmGatekeeperCharacter.cpp`, `CataclysmImpCharacter.cpp`, `CataclysmPlayerCharacter.cpp`,
+`CataclysmGameMode.cpp`, and `NoteDeathForInfestedHoard` above); `game/README.md`; and, a comment only, the "WHAT IS NOT
+PORTED" bullet on the Demonic Cataclysm's Rifts in `game/Source/CataclysmEmpire/Empire/CataclysmSurge.h`. Tests:
+`Cataclysm.Seeding.` (`game/Source/Cataclysm/Tests/CataclysmSeedingTests.cpp`, new, three);
+`tools/tests/test_placement_seed_mix_port.py`, new (four); `sim/analyse_placement_seeds.py`, new, with four checks in
+`sim/tests/test_analysis_scripts.py`; `tools/tests/test_empire_tree_walk_and_depth.py` and
+`tools/tests/test_game_readme_is_true.py`. Issue #2749; the plan was approved by the coordinating session on
+2026-11-19.
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN IN UNREAL.** Phase 1 was written without a compile, as ruled, at `31a879a99` on
+  `0b7b554d1`. The slice waits its turn in the Unreal queue. At that turn it is rebased onto the development of the
+  time (onto a new branch name ending -2 if the rebase needs a force push), compiled three ways, and run in the
+  diagnostic window registered below.
+- **THE DIAGNOSTIC WINDOW PROVES NOTHING ABOUT THE FIX, AND ITS FAILURES ARE EXPECTED** (ruled Q2, below). Changing how
+  22 streams are seeded changes what they draw, so any test that pins a draw from one of them moves. The window lists
+  those tests by name, from evidence. The real window comes after the commit that corrects them, registers each moved
+  test by name, and carries the C++ guard proof.
+- **THE GAME'S SURGE HEADER IS CORRECTED HERE, A COMMENT ONLY**, as ruled on the Demonic front-line slice (Q4 there):
+  `CataclysmSurge.h`'s bullet called the Demonic Cataclysm's Rifts "the one pattern the vertical slice would actually
+  use", which the ruling on [#1085](https://github.com/sdubois777/Cataclysm/issues/1085) contradicts. It now says the
+  Rifts are the Hell on Earth quest mechanic (#51), not how a Demonic wave lands, and that `PickTargets` lands every
+  sender's slots on the exposed frontier. It names the simulation's `patterns._demonic`, whose comment says the same
+  only from the Demonic front-line slice (pull request #2774) on; this branch's base, `0b7b554d1`, is older than that.
+  The rebase at this slice's turn brings it in, and is checked for it.
+
+### The fault
+
+`FRandomStream` is a linear congruential generator: each draw sets `Seed = Seed * 196314165 + 907633515` and takes a
+fraction from the top 23 bits. Two streams whose seeds differ by a constant draw fractions that differ by a constant,
+draw by draw. Since #2669 a floor creature's rarity stream was seeded `FloorSeed ^ (0x72720000 + Index)` and its
+modifier stream `FloorSeed ^ (0x6D6D0000 + Index)`: both salts' low 16 bits are nought, so on one floor the two seeds
+differ by a constant and each creature's first modifier fraction is its rarity fraction plus a constant. Every Elite
+rolled a rarity fraction in the same fifth of the line, so every Elite's first modifier fell in a band of about 3.6
+adjacent rows of the 18-row sorted pool. The project owner's floor 1 log of 2026-11-19 shows it: 48 Elites drew 4
+modifiers, Thorns 15, Relentless 15, Shielder 15 and Phasewalker 3.
+
+**Replayed in Python**, `sim/analyse_placement_seeds.py`: UE 5.8's `FRandomStream` exactly (read from
+`RandomStream.h`), `RollRarityStep` over `EnemyRarities.csv`, and the first modifier draw over `PoolFor`'s pool, sorted
+as the game sorts it, ignoring case. 2,000 floors of 250 placements, Demonic, the game's seeds against the planned mix:
+
+| | The game's seeds | The planned mix |
+| :-- | :-- | :-- |
+| Floors whose Elites all lie in a band of 5 or fewer adjacent rows | 2,000 of 2,000 | 0 |
+| Distinct first modifiers a floor, median (range) | 5 (4 to 5) | 17 (13 to 18) |
+| Share of a floor's Elites carrying its commonest modifier, median | 29% | 12% |
+| Neighbouring placements both Elite (independent draws at the Elite weight: 4%) | 11.6% | 4.0% |
+| Each modifier's share over all floors | within 2 points of uniform | within 2 points of uniform |
+
+The fault is clustering within a floor, not the overall rate: Thorns is 5.7% over all floors against a uniform 5.6%.
+Every other Cataclysm behaves the same; Death's larger pool is in a band on 1,805 of 2,000 floors.
+
+### The rulings
+
+The coordinating session, 2026-11-19, on the finding: "The correlated seeding is a FAULT, not a design choice, so you do
+not need to bring it to the owner. Rulings: (1) fix it as its own slice right after the ring rise merges, before the
+burn work is built (planning A can continue). Seed each per-creature stream so that two streams of one creature are not
+a fixed offset apart under Unreal's generator: hash the floor seed, salt and index together rather than XOR with a salt
+whose low 16 bits are zero. (2) Sweep every other place that seeds an FRandomStream with seed XOR (salt + index), or
+with any salt whose low bits are zero, and fix them in the same slice. (3) Add a test that measures it: on one floor,
+the Elites' first modifier draws are not confined to a band of the pool. (4) Expect seeded tests that pin particular
+draws to move, and register each by name."
+
+On the plan, the same day:
+
+- "Q1 YES, include the nine clock-seeded streams (GetUniqueID() ^ clock*1000 ^ salt). Same fault class, so it goes in
+  the same slice: a class of error is fixed across the code, not one instance at a time. Seed them through the same
+  mixing function. Leave MixedSeed, OrderFor and WalkSeedMask as you recommend, and record why."
+- "Q2 YES, one diagnostic whole-suite window (no proofs) after phase 1 to list the tests that move, from evidence.
+  Register it in the entry as diagnostic: its failures are expected, and it proves nothing about the fix. The real
+  window then registers each moved test by name."
+
+On phase 1's question: "YES. Seed the run's Cataclysm stream and its modifier stream (CataclysmEmpireRun.cpp:217 and
+:223) through the planned mix in this slice. It is the same class of fault, and the class is fixed across the code.
+Correct MixedSeed's comment so it no longer claims the salt-before-multiply prevents this, and say what MixedSeed is
+still used for and why that use is safe (OrderFor's one draw per character). Loaded runs keep their draws because the
+save stores each stream's state; say so, and add one assertion that a run loaded from a committed fixture draws the
+same next Cataclysm as before the change."
+
+On the Demonic front-line slice, Q4: "Do not leave a comment that contradicts the #1085 ruling with nothing to fix it.
+Correct CataclysmSurge.h lines 660 to 663 in YOUR SEEDING SLICE, which is C++ in the same module and is compiled and
+windowed anyway. Name it in both entries. No issue."
+
+**THE MIX IS A JUDGEMENT, NOT A RULE ANOTHER GAME STATES**, and no genre research applies: this is how the game derives
+one random seed from another, not a game formula. The seed, the salt and the index are each multiplied by an odd
+constant and summed, and the sum goes through the finaliser `FCataclysmFloorGenerator::SeedForFloor` already ends with,
+so changing any input changes about half the output's bits. Nought becomes 1, because a nought seed means "draw from
+the clock" to the callers that take one.
+
+### What changed
+
+All 22 streams the sweep found take their seed from `CataclysmSeedMix::Mix`:
+
+| Kind | Streams | Seeded until now |
+| :-- | :-- | :-- |
+| A floor seed XOR (salt + index) | a placement's rarity; its modifiers (the floor's salt and the dark floor's); the gated shortcuts' drops; Luxury Hoarders' hoards; Pandora's Box, one a box | `Plan.Seed ^ (Salt + Index)` |
+| One seed XOR a salt | the Corrupted Stalker's Choice (index 0) and its build (index 1) | `ChooseSeed() ^ Salt`, `Plan.Seed ^ Salt` |
+| A linear mix, per dungeon | whether a dungeon carries the Stalker (the walk seed as the index); the Edict; the left Edict (the day as the index); The Warlord's roll | `UCataclysmRoster::MixedSeed` |
+| An identity XOR the clock (the clock as the index; the three with no salt got literal ones) | a creature's drop draw at death and its death animation, the modifier draw's clock fallback, Phasewalker's phase, the Gatekeeper's call, the Imp's rend, the player's death animation, an unbound walk's and the sandbox's rarity roll, Infested Hoard | `GetUniqueID() ^ clock * 1000 [^ salt]` |
+| A linear mix, per run | the run's Cataclysm stream and its modifier stream | `MixedSeed(InSeed, 2)`, `MixedSeed(InSeed, 3)` |
+
+**LEFT, AS RULED, AND WHY.** `UCataclysmRoster::MixedSeed` and `OrderFor`: one draw a character, from a seed drawn
+from the clock, so nothing structured goes in; changing `MixedSeed` would also move the Unreal tests whose seeds were
+chosen for their orders. Its comments now say it is linear, that putting the salt in before the multiply does not
+separate two salts, and that `OrderFor` is its one stream. `WalkSeedMask`, one a run from a clock seed, and the run's
+Stalker seed reach a stream only through `Mix` or `SeedForFloor`. `UCataclysmEmpireRun::Stream`, the run's seed itself,
+and the restores from a save are left. **SOUND AND LEFT**: 20 streams seeded through `SeedForFloor`, a nested
+`SeedForFloor`, or `HashCombine`. **OUT OF SCOPE**: `CataclysmClothStress::SpawnBatch`, which nothing outside the tests
+calls.
+
+**A LOADED RUN KEEPS ITS DRAWS**: the save stores each stream's current state (`FCataclysmSaveGather` writes
+`GetCurrentSeed()`; `FCataclysmSaveApply::RunInto` puts it back), and Pandora's Box's seeds are not saved (nothing under
+`Save/` names them), so no save moves.
+
+### Measured in Python at phase 1
+
+At `31a879a99`: "7,677 passed, 9 skipped", the JUnit file agreeing; ruff clean; `tools/check_resolved_cpp.py` 12 files,
+0 complaints. Three Python guard proofs, Q1 to Q3, each proved on its registered test. Two existing Python tests moved
+because of the ruled change, as expected: `test_empire_tree_walk_and_depth.py` pinned The Warlord's old seed line, and
+`test_game_readme_is_true.py` needed `game/README.md` to name the new header.
+
+### Registered before the diagnostic window
+
+The window runs when the coordinating session gives this slice its turn, under the Unreal lock `seed-diag`, from
+scripts `.claude/windows/make_seed_window.py` writes (pre-checks, a gate started with `CREATE_NO_WINDOW |
+CREATE_NEW_PROCESS_GROUP`, the runner, and a waiter). Before it, at the rebased head: the three compiles (the branch;
+each changed `.cpp` alone; the unity files again), on the coordinating session's GO; `git lfs checkout`; every call to a
+function that gained a defaulted parameter since `0b7b554d1` checked; the replay run again on the rebased tables, and
+the figures below confirmed or registered again.
+
+| Step | Registered |
+| :-- | :-- |
+| Pre-checks, those of the earlier windows' scripts | development's latest CI and Unreal runs passed; no Unreal run in progress or queued; the lock free; no build or editor process; no pull request open in the repository; at least 10,240 MB of physical memory free; and no simulation process (`experiments.py` and the like) running |
+| The build | succeeds; no asset step, because the slice changes no data table |
+| `Cataclysm.Seeding.` alone | 3 performed, 3 succeeded. Its information lines: "SEEDING BAND: the mix: fewest distinct 15, narrowest band 16", the old formula at most 5 distinct and a band of at most 5; "SEEDING NEIGHBOURS: both Elite" about 0.0454 with the mix and 0.1229 with the old formula (the replay's 4.54% and 12.29%; the engine prints four decimals); "SEEDING LOADED RUN: next ECataclysmType::Demonic, then ECataclysmType::War". These are the replay's figures on the tests' own 20 floor seeds and the committed `Run_v9.json` |
+| The whole suite | the newest whole-suite total measured on the base this branch is rebased onto, plus these 3, performed; the same test saves as that base, none left behind. **FAILURES EXPECTED, AND NOT COUNTED AGAINST THE SLICE**: every failed test is listed with each error line between its `BeginEvents` and `EndEvents`, and the window counts "server/discover" and "ConsoleCtrl" lines, so a failure from outside the game is told apart |
+| Python and ruff | every test passing, the JUnit file agreeing; ruff clean |
+| Proofs | none, as ruled |
+
+**WHERE THE MOVED TESTS ARE EXPECTED, A LIST OF CANDIDATES AND NOT A PREDICTION OF WHICH FAIL**: tests that pin a floor
+creature's rarity or modifiers from a fixed floor seed, and the seeded Pandora's Box, Luxury Hoarders, gated shortcut,
+Corrupted Stalker, Edict and The Warlord tests, and the empire run, roster and surge tests that pin the run's Cataclysm
+or modifier draws from a fixed run seed. A test that sets `ModifierSeedForTests` or `RarityRollSeed` keeps its draws:
+`DrawModifiersForRarity`'s own stream from a given seed is unchanged.
+
+**AFTER THE DIAGNOSTIC WINDOW**: a commit that corrects each moved test, each named in this entry with what it pinned
+and what it now draws; then a window registered test by test, with one C++ guard proof through `prove_cpp_guard`:
+`CataclysmSeedMix::Mix` broken back to `Seed ^ (Salt + Index)` must fail the band test's two assertions on the mix and
+leave its two controls passing.
+
+---
+
 ## 2026-11-19 — The simulation's Demonic Cataclysm lands its waves on the exposed front line, as the game's does, by the ruling on #1085 (#2749, Demonic front-line slice)
 
 **Affects:** `sim/cataclysm_sim/patterns.py` (`Pattern.ignores_frontier` deleted; Demonic's description and the comment
