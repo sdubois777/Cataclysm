@@ -762,9 +762,9 @@ PORTED" bullet on the Demonic Cataclysm's Rifts in `game/Source/CataclysmEmpire/
   `CataclysmSurge.h`'s bullet called the Demonic Cataclysm's Rifts "the one pattern the vertical slice would actually
   use", which the ruling on [#1085](https://github.com/sdubois777/Cataclysm/issues/1085) contradicts. It now says the
   Rifts are the Hell on Earth quest mechanic (#51), not how a Demonic wave lands, and that `PickTargets` lands every
-  sender's slots on the exposed frontier. It names the simulation's `patterns._demonic`, whose comment says the same
-  only from the Demonic front-line slice (pull request #2774) on; this branch's base, `0b7b554d1`, is older than that.
-  The rebase at this slice's turn brings it in, and is checked for it.
+  sender's slots on the exposed frontier. It names the simulation's `patterns._demonic`, whose comment came with
+  the Demonic front-line slice (pull request #2774); the rebase onto `e583b0788` brought it in, and the two agree
+  (below, at the rebase).
 
 ### The fault
 
@@ -861,6 +861,39 @@ At `31a879a99`: "7,677 passed, 9 skipped", the JUnit file agreeing; ruff clean; 
 because of the ruled change, as expected: `test_empire_tree_walk_and_depth.py` pinned The Warlord's old seed line, and
 `test_game_readme_is_true.py` needed `game/README.md` to name the new header.
 
+### At the rebase onto `e583b0788`, 2026-11-20
+
+Rebased onto development `e583b0788` as `feat/placement-seeds-2749-2`, because a rebase of the pushed branch needs a
+force push; `feat/placement-seeds-2749` stays at `abac0adf5`. Development had merged twelve pull requests since
+`0b7b554d1`: #2767, #2768, #2769 and #2771 to #2779.
+
+- **Two conflicts, each resolved by keeping both sides.** `sim/tests/test_analysis_scripts.py`: the enemy burn slice's
+  script and this slice's are both in the list of scripts, with both sections, the enemy burn one first.
+  `docs/DECISIONS.md`: this entry stands below the killing-blow entry (#2777, first written at 05:02 UTC on 2026-11-20)
+  and above the Demonic front-line entry (#2774, 02:06 UTC), because it was first written at 02:53 UTC (`abac0adf5`);
+  the tree 5a entry was first written at 05:34 UTC. The C++ commit applied with its patch unchanged. Development's hunks
+  in the five C++ files both change are far from this slice's and seed nothing: the wraith's restore, the tree's player
+  modifiers, the burn and Thorns changes. `tools/check_resolved_cpp.py` on this branch's C++ files: "15 files read, 0
+  with complaints".
+- **Defaulted parameters.** Development gave one parameter a default, `const TArray<FName>* Families = nullptr`, on
+  `ReadingOf` and `Compare` in `CataclysmItemComparison.h`. This branch calls neither, and gives no parameter a default.
+- **No new derived stream.** Development's only new `FRandomStream`s are two of seed 7 in `CataclysmEnemyBurnTests.cpp`,
+  so the 22 streams above are still every stream the game derives from another seed.
+- **The surge header against `patterns._demonic`.** Both quote "without needing a direct path", call the Rifts the Hell
+  on Earth mechanic of #51 and not how a Demonic wave lands, cite the ruling on #1085 of 2026-09-14, and say a Demonic
+  wave keeps the lane rule. They agree.
+- **The replay.** `EnemyRarities.csv` is unchanged, and `EnemyModifiers.csv` changed only Thorns of Glass's description,
+  so the pool's rows and their order are the same. The 2,000-floor run printed the same bytes as before the rebase. On
+  the tests' own 20 floor seeds it gives the figures registered below again: fewest distinct 15, narrowest band 16, the
+  old formula at most 5 distinct and a band of at most 5, both Elite 0.0454 with the mix and 0.1229 with the old formula.
+- **ONE PYTHON TEST FAILED, AND THIS SLICE CAUSED IT.** The suite at the rebased head `1f6997547` printed "1 failed, 7768
+  passed, 9 skipped", the JUnit file agreeing (7,778 tests, 1 failure, 9 skipped). The failure was
+  `test_every_chain_test_adds_version_10_and_only_the_migration_reads_run_v9`, which the wraith save slice (#2725) added:
+  since the run record went to version 10, only the migration test may read `Run_v9.json`, and this slice's loaded-run
+  test read it. It reads `Run_v10.json` now. The two files hold the same stream state, 1357924680, and the same four
+  Cataclysms; they differ only in the version and two creatures' wraith flags, so its registered "Demonic, then War"
+  stands. Ruff clean.
+
 ### Registered before the diagnostic window
 
 The window runs when the coordinating session gives this slice its turn, under the Unreal lock `seed-diag`, from
@@ -874,7 +907,7 @@ the figures below confirmed or registered again.
 | :-- | :-- |
 | Pre-checks, those of the earlier windows' scripts | development's latest CI and Unreal runs passed; no Unreal run in progress or queued; the lock free; no build or editor process; no pull request open in the repository; at least 10,240 MB of physical memory free; and no simulation process (`experiments.py` and the like) running |
 | The build | succeeds; no asset step, because the slice changes no data table |
-| `Cataclysm.Seeding.` alone | 3 performed, 3 succeeded. Its information lines: "SEEDING BAND: the mix: fewest distinct 15, narrowest band 16", the old formula at most 5 distinct and a band of at most 5; "SEEDING NEIGHBOURS: both Elite" about 0.0454 with the mix and 0.1229 with the old formula (the replay's 4.54% and 12.29%; the engine prints four decimals); "SEEDING LOADED RUN: next ECataclysmType::Demonic, then ECataclysmType::War". These are the replay's figures on the tests' own 20 floor seeds and the committed `Run_v9.json` |
+| `Cataclysm.Seeding.` alone | 3 performed, 3 succeeded. Its information lines: "SEEDING BAND: the mix: fewest distinct 15, narrowest band 16", the old formula at most 5 distinct and a band of at most 5; "SEEDING NEIGHBOURS: both Elite" about 0.0454 with the mix and 0.1229 with the old formula (the replay's 4.54% and 12.29%; the engine prints four decimals); "SEEDING LOADED RUN: next ECataclysmType::Demonic, then ECataclysmType::War". These are the replay's figures on the tests' own 20 floor seeds and the committed `Run_v10.json` |
 | The whole suite | the newest whole-suite total measured on the base this branch is rebased onto, plus these 3, performed; the same test saves as that base, none left behind. **FAILURES EXPECTED, AND NOT COUNTED AGAINST THE SLICE**: every failed test is listed with each error line between its `BeginEvents` and `EndEvents`, and the window counts "server/discover" and "ConsoleCtrl" lines, so a failure from outside the game is told apart |
 | Python and ruff | every test passing, the JUnit file agreeing; ruff clean |
 | Proofs | none, as ruled |
