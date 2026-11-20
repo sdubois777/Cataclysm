@@ -3745,9 +3745,6 @@ EMPIRE_TREE_SYSTEMS = {
     # with one is built in a later slice of #2741.
     "treasurer upgrade": ("its Treasurer city upgrade rules, which are not built "
                           "yet (issue #2741)"),
-    # Global Credit and Sovereign Loans: the owner allowed a gold debt only through
-    # the tree's own options for one (2026-11-20); slice 6e builds it.
-    "gold debt": "a gold debt, which is not built yet (issue #2741)",
     "market": "a market, which the game does not have",
     "gold cap": "a gold cap, which the game does not have",
     "gold cap and death loss": ("a gold cap and a gold loss on death, which the "
@@ -3837,6 +3834,8 @@ EMPIRE_TREE_BUILT = {
     "Pax Imperialis": 6, "Wealth Interest": 6,
     # Treasury, slice 6d: the owner's rulings of 2026-11-20 (D8, D9).
     "Treasury Guard": 6, "Tax Collection": 6,
+    # Treasury, slice 6e: the gold debt the owner allowed through them (D1 to D7).
+    "Global Credit": 6, "Sovereign Loans": 6,
     # The centre: a tier milestone's option, the gold a kill drops.
     "The Midas Touch": 6,
     # Artisan: crafting materials already drop.
@@ -3865,12 +3864,10 @@ EMPIRE_TREE_REFUSED = {
     "Auto-Loot": "loot filter",
     # Treasury. Slice 6 built every node its gold rules reach (6a eleven, 6b
     # five, 6c five, 6d two, 2026-11-20). R1 to R4 wait on their Treasurer rules
-    # (#2781 made the city upgrades buyable); Global Credit and Sovereign Loans on
-    # the debt the owner allowed through them, slice 6e; the rest on what their
-    # text needs and the game lacks.
+    # (#2781 made the city upgrades buyable); the rest on what their text needs
+    # and the game lacks.
     "Commercial Hubs": "treasurer upgrade", "Economic Zones": "treasurer upgrade",
     "Trade Routes": "treasurer upgrade", "The Golden Touch": "treasurer upgrade",
-    "Global Credit": "gold debt", "Sovereign Loans": "gold debt",
     "Black Market": "market", "Master Trader": "market",
     "Merchant Guild": "market", "Thrifty": "market",
     "Surplus Storage": "gold cap", "War Chest": "gold cap and death loss",
@@ -4123,6 +4120,8 @@ EMPIRE_TREE_EFFECT_KINDS = (
     "GoldInterestEveryTwentyDays",
     # Slice 6d: Treasury Guard and Tax Collection.
     "DamageTakenPerFiftyThousandGold", "GoldShareOfPopulationEveryTenDays",
+    # Slice 6e: Global Credit and Sovereign Loans.
+    "UpgradeShortfallAllowed", "UpgradeShortfallAllowedRepaidDaily",
 )
 
 #: WHAT EACH BUILT NODE OR OPTION OF THE EMPIRE TREE DOES, by name. Issue
@@ -4308,6 +4307,15 @@ EMPIRE_TREE_EFFECTS = {
     # in C++.
     "Treasury Guard": [("DamageTakenPerFiftyThousandGold", 0.01, 0, "", 0.20)],
     "Tax Collection": [("GoldShareOfPopulationEveryTenDays", 0.02)],
+    # Slice 6e, the owner's ruling of 2026-11-20, "no gold debt unless there's an
+    # option for it in the empire tree": GLOBAL CREDIT lets a city upgrade be
+    # short by 5% a point of its price and SOVEREIGN LOANS by 20% a point, one
+    # allowance and one debt, the whole balance taken and the rest owed, nothing
+    # more on credit until it is paid (D2); gold picked up pays it down first
+    # (D3), and with Sovereign Loans a tenth of it a day (D4). No cap: built as
+    # written, tuned later.
+    "Global Credit": [("UpgradeShortfallAllowed", 0.05)],
+    "Sovereign Loans": [("UpgradeShortfallAllowedRepaidDaily", 0.20)],
 }
 
 

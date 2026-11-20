@@ -288,7 +288,7 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
     reason each node really waits on: 189 of them the gold rules slice 6 builds,
     92 of those built in slice 6a, 42 in 6b and 47 in 6c. The owner's rulings
     of 2026-11-20 built Treasury Guard's 10 and Tax Collection's 8 in 6d, and
-    Global Credit's and Sovereign Loans' 10 wait on the debt, slice 6e."""
+    Global Credit's and Sovereign Loans' 10 with the debt in 6e."""
     points = collections.Counter()
     options = collections.Counter()
     for row in node_rows.values():
@@ -303,15 +303,15 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
                or f"slice {gen.EMPIRE_TREE_BUILT[name]}"] += int(row["MaxPoints"])
 
     assert dict(points) == {
-        "slice 3": 315, "slice 4": 162, "slice 5": 152, "slice 6": 199,
-        "treasurer upgrade": 17, "gold debt": 10,
+        "slice 3": 315, "slice 4": 162, "slice 5": 152, "slice 6": 209,
+        "treasurer upgrade": 17,
         "market": 44, "gold cap": 5, "gold cap and death loss": 20,
         "build time": 5, "fee figure": 2, "cap figure": 1, "crafting": 278,
         "population growth": 10, "loot chest": 8, "bonus dungeon": 8,
         "stash": 3, "modifier reroll": 3, "loot filter": 1,
         "destroy upgrade": 1,
     }
-    assert sum(points[f"slice {n}"] for n in (3, 4, 5, 6)) == 828
+    assert sum(points[f"slice {n}"] for n in (3, 4, 5, 6)) == 838
     assert dict(options) == {"slice 3": 3, "slice 4": 4, "slice 5": 1,
                              "crafting": 2, "slice 6": 1, "prowess ruling": 1}
 
@@ -331,6 +331,9 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
     # The owner's rulings of 2026-11-20, relayed by the coordinating session.
     ("Treasury Guard", 6),      # "1. to your cities" (D9)
     ("Tax Collection", 6),      # "we can adjust the gold prices ... later" (D8)
+    # "no gold debt unless there's an option for it in the empire tree": these two.
+    ("Global Credit", 6),       # D2, D3
+    ("Sovereign Loans", 6),     # D2, D4
 ])
 def test_a_ruled_node_is_built_in_its_slice(name, slice_) -> None:
     assert gen.EMPIRE_TREE_BUILT.get(name) == slice_
@@ -349,10 +352,6 @@ def test_a_ruled_node_is_built_in_its_slice(name, slice_) -> None:
     ("Commercial Hubs", "treasurer upgrade"),  # R1
     ("Trade Routes", "treasurer upgrade"),    # R3
     ("The Golden Touch", "treasurer upgrade"),  # R4
-    # The owner: "no gold debt unless there's an option for it in the empire
-    # tree" (2026-11-20). These two are those options; slice 6e builds the debt.
-    ("Global Credit", "gold debt"),           # R8
-    ("Sovereign Loans", "gold debt"),         # R9
 ])
 def test_a_ruled_node_is_refused_for_its_reason(name, system) -> None:
     assert gen.EMPIRE_TREE_REFUSED.get(name) == system

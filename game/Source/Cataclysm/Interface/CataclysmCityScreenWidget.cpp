@@ -208,7 +208,7 @@ void UCataclysmCityScreenWidget::HandleOfferClicked(FName Value)
 	// underneath the screen -- it fell, or another slot was spent -- and a
 	// player who pressed a button and saw nothing happen would reasonably think
 	// the screen was broken.
-	Refusal = UCataclysmCityUpgradePurchase::RefusalText(Result, Price, Held);
+	Refusal = UCataclysmCityUpgradePurchase::RefusalTextIn(this, Result, Price, Held);
 
 	Refresh();
 }

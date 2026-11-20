@@ -246,7 +246,7 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// slice 5b's five (5), of slice 6a's eleven gold and price nodes (11), of slice 6b's five (5) and of slice 6c's five
 	// (5). It was 32 until slice 3b, 40 until slice
 	// 4, 59 until slice 5a, 76 until slice 5b, 81 until slice 6a, 92 until slice 6b and 97 until slice 6c.
-	CHECK_TABLE(FCataclysmEmpireTreeEffectRow,  "EmpireTreeEffects.csv",     104)
+	CHECK_TABLE(FCataclysmEmpireTreeEffectRow,  "EmpireTreeEffects.csv",     106)
 	// 24 of the 293 nodes have an authored effect, and the small share is the
 	// point rather than a shortfall to be fixed by typing: most nodes are not
 	// stat modifiers under any authoring scheme. Issue #939 measures the gap.

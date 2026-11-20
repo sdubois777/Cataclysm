@@ -129,8 +129,12 @@ SLICE_6C = {"The Gilded Path", "Venture Capital", "Imperial Reserve", "Pax Imper
             "Wealth Interest"}
 
 #: SLICE 6D'S TWO, the owner's rulings of 2026-11-20 relayed by the coordinating
-#: session (D8, D9). Global Credit and Sovereign Loans are slice 6e's debt.
+#: session (D8, D9).
 SLICE_6D = {"Treasury Guard", "Tax Collection"}
+
+#: SLICE 6E'S TWO, the gold debt the owner allowed through them the same day
+#: (D1 to D7), on account record version 5 and character record version 11.
+SLICE_6E = {"Global Credit", "Sovereign Loans"}
 
 DAY_EFFECTS = {"ResolveDaysAll", "ResolveDaysOutposts", "ResolveDaysPerBranchStep",
                "ResolveDaysBelowTenPercent", "SurgeGapDays", "WalkDaysFewerWhenAlone",
@@ -197,11 +201,11 @@ def test_the_effect_names_agree_with_the_cpp_enum() -> None:
         f"{list(gen.EMPIRE_TREE_EFFECT_KINDS)}; they must be the same names in the same order")
 
 
-def test_exactly_the_100_nodes_of_slices_3a_3b_4_5a_5b_6a_6b_6c_and_6d_act() -> None:
+def test_exactly_the_102_nodes_of_slices_3a_3b_4_5a_5b_6a_6b_6c_6d_and_6e_act() -> None:
     named = set(gen.EMPIRE_TREE_EFFECTS)
     assert len(SLICE_3A) == 31 and len(SLICE_3B) == 7 and len(SLICE_4) == 19 and len(SLICE_5A) == 15
     assert len(SLICE_5B) == 5 and len(SLICE_6A) == 11 and len(SLICE_6B) == 5 and len(SLICE_6C) == 5
-    assert len(SLICE_6D) == 2
+    assert len(SLICE_6D) == 2 and len(SLICE_6E) == 2
     assert not SLICE_3A & SLICE_3B and not (SLICE_3A | SLICE_3B) & SLICE_4
     assert not (SLICE_3A | SLICE_3B | SLICE_4) & SLICE_5A
     assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A) & SLICE_5B
@@ -209,7 +213,9 @@ def test_exactly_the_100_nodes_of_slices_3a_3b_4_5a_5b_6a_6b_6c_and_6d_act() -> 
     assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A) & SLICE_6B
     assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B) & SLICE_6C
     assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C) & SLICE_6D
-    built = SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
+    assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D) & SLICE_6E
+    built = (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
+             | SLICE_6E)
     assert named == built, (
         f"EMPIRE_TREE_EFFECTS names {sorted(named - built)} beyond slice 3 and "
         f"leaves out {sorted(built - named)}")
@@ -219,7 +225,8 @@ def test_exactly_the_100_nodes_of_slices_3a_3b_4_5a_5b_6a_6b_6c_and_6d_act() -> 
         "every slice 4 node with an effect is one EMPIRE_TREE_BUILT gives to slice 4")
     assert all(gen.EMPIRE_TREE_BUILT.get(name) == 5 for name in SLICE_5A | SLICE_5B), (
         "every slice 5a node with an effect is one EMPIRE_TREE_BUILT gives to slice 5")
-    assert all(gen.EMPIRE_TREE_BUILT.get(name) == 6 for name in SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D), (
+    assert all(gen.EMPIRE_TREE_BUILT.get(name) == 6
+               for name in SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D | SLICE_6E), (
         "every slice 6a node with an effect is one EMPIRE_TREE_BUILT gives to slice 6")
 
 

@@ -232,17 +232,20 @@ def test_the_empire_layer_is_told_the_price_and_the_gold_and_checks_the_price_la
 def test_one_function_charges_and_takes_the_gold_before_the_run_records_the_upgrade() -> None:
     charging = sorted(path.relative_to(SOURCE).as_posix() for path in SOURCE.rglob("*.cpp")
                       if "/Tests/" not in path.as_posix()
-                      and "SpendGoldFor(" in squeeze(strip_comments(path.read_bytes().decode("utf-8")))
+                      and any(spend in squeeze(strip_comments(path.read_bytes().decode("utf-8")))
+                              for spend in ("SpendGoldFor(", "SpendGoldOnCreditFor("))
                       and not path.name.endswith("CataclysmGameInstance.cpp"))
     assert charging == ["Cataclysm/Player/CataclysmCityUpgradePurchase.cpp"], (
         f"gold is spent in {charging}; UCataclysmCityUpgradePurchase::Buy is the one place that charges")
     buy = body("Cataclysm/Player/CataclysmCityUpgradePurchase.cpp",
                "ECataclysmCityUpgradeResult UCataclysmCityUpgradePurchase::Buy(")
-    asked = buy.find("Run->WouldBuyCityUpgrade(CityId, Upgrade, Price, Held)")
+    # THE CREDIT COUNTS AS GOLD HELD for both of the run's questions since issue #2741 slice 6e (D2).
+    asked = buy.find("Run->WouldBuyCityUpgrade(CityId, Upgrade, Price, Held + Credit)")
     spent = buy.find("UCataclysmGameInstance::SpendGoldFor(WorldContext, Price, bFromTheCharacter)")
-    # WITH THE DAYS IT TAKES TO BUILD since issue #2825 (`tools/tests/test_city_upgrades_take_days_to_build.py`).
-    bought = buy.find("Run->BuyCityUpgrade(CityId, Upgrade, Price, Held, Days)")
-    assert -1 not in (asked, spent, bought) and asked < spent < bought, (
+    # WITH THE DAYS IT TAKES TO BUILD since issue #2825, with the credit since slice 6e (`tools/tests/test_city_upgrades_take_days_to_build.py`).
+    on_credit = buy.find("UCataclysmGameInstance::SpendGoldOnCreditFor(")
+    bought = buy.find("Run->BuyCityUpgrade(CityId, Upgrade, Price, Held + Credit, Days)")
+    assert -1 not in (asked, spent, on_credit, bought) and asked < min(spent, on_credit) and max(spent, on_credit) < bought, (
         "Buy does not ask the run, then take the gold, then have the run record the upgrade, in that order; an upgrade "
         "could be held unpaid")
 

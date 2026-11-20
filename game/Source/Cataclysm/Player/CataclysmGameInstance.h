@@ -442,8 +442,59 @@ public:
 	static bool SpendGoldFor(const UObject* WorldContext, int64 Gold, bool& bOutFromTheCharacter);
 
 	/**
-	 * The balance as every screen shows it: "1,234 gold". Empty when `GoldHeldBy` has no balance to read, so a screen
-	 * shows nothing rather than a 0 that is not true.
+	 * What the character playing owes, and the part of it Sovereign Loans takes each day. Issue #2741 slice 6e (D1):
+	 * the owner's ruling of 2026-11-20, "no gold debt unless there's an option for it in the empire tree" -- Global
+	 * Credit and Sovereign Loans are those options. Kept beside the balance `GoldHeldBy` reads: a Solo Self-Found
+	 * character's on its player state and in its character record (version 11), every other character's in its
+	 * lethality mode's account record (version 5). THE BALANCE ITSELF NEVER GOES BELOW NOUGHT.
+	 *
+	 * @return false, with both 0, where `GoldHeldBy` has no balance
+	 */
+	static bool GoldOwedBy(const UObject* WorldContext, int64& OutOwed, int64& OutEachDay);
+
+	/**
+	 * Takes a price the balance cannot cover on credit (D2): THE WHOLE BALANCE, AND THE REST OWED. Only while nothing is
+	 * owed, and only when the rest is no more than `Allowance`. With `bRepaidDaily` -- Sovereign Loans held at the
+	 * purchase (D4) -- a tenth of the debt, rounded up, is saved as the part taken each day. A price the balance covers
+	 * is `SpendGoldFor`'s. IT DOES NOT WRITE THE RECORD: `UCataclysmCityUpgradePurchase::Buy` raises the saves.
+	 *
+	 * @param OutOwed  the debt made, or 0
+	 * @return false, and nothing taken or owed, otherwise
+	 */
+	static bool SpendGoldOnCreditFor(const UObject* WorldContext, int64 Price, int64 Allowance, bool bRepaidDaily,
+									 bool& bOutFromTheCharacter, int64& OutOwed);
+
+	/**
+	 * Undoes `SpendGoldOnCreditFor`: gives `Taken` back to the balance and forgives `Owed` of the debt. A guard for a run
+	 * that refuses an upgrade after its price was taken, as `AddGoldFor` gives back a price paid in full.
+	 */
+	static bool UndoCreditFor(const UObject* WorldContext, int64 Taken, int64 Owed);
+
+	/**
+	 * Adds gold picked up from the floor to the balance `GoldHeldBy` reads, PAYING A DEBT DOWN FIRST (D3): Global
+	 * Credit's own words, "Debt repaid from next gold drops", and the coordinating session's "paid down first by every
+	 * gold pickup". The debt, or `Gold` if less, is paid and the rest goes into the balance, together, so nothing is
+	 * paid that is not picked up. The day's income and a clear's payout are not drops, and go through `AddGoldFor`.
+	 *
+	 * @param OutRepaid  how much of `Gold` paid the debt down
+	 * @return false, and nothing paid or added, for an amount of zero or less or where `GoldHeldBy` has no balance
+	 */
+	static bool AddPickedUpGoldFor(const UObject* WorldContext, int64 Gold, bool& bOutIntoTheCharacter,
+								   int64& OutRepaid);
+
+	/**
+	 * Takes the day's part of a debt from the balance (D4): the part saved at the purchase, or the debt or the balance if
+	 * either is less, and nothing when no part was saved. No penalty for a balance that cannot pay it all. IT DOES NOT
+	 * WRITE THE RECORD: the day's hook raises the saves.
+	 *
+	 * @return what was paid
+	 */
+	static int64 RepayTheDaysPartFor(const UObject* WorldContext, bool& bOutFromTheCharacter);
+
+	/**
+	 * The balance as every screen shows it: "1,234 gold", and while a debt is open "0 gold, 2,500 owed" (issue #2741
+	 * slice 6e, D6). Empty when `GoldHeldBy` has no balance to read, so a screen shows nothing rather than a 0 that is
+	 * not true.
 	 */
 	static FString GoldBalanceText(const UObject* WorldContext);
 

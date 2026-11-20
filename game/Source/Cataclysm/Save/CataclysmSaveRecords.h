@@ -1048,6 +1048,11 @@ struct CATACLYSM_API FCataclysmSavedFloor
  * buying rules were written (`UCataclysmEmpireTree`). The banked points are here because the game banks them: a
  * defeated dungeon's award, since issue #52's first slice.
  *
+ * VERSION 5 SINCE 2026-11-20. The account holds a gold debt beside its balance (`GoldOwed`, `GoldOwedEachDay`, issue
+ * #2741 slice 6e): the owner ruled that day, "no gold debt unless there's an option for it in the empire tree", and
+ * Global Credit and Sovereign Loans are those options. `Migrate_4_to_5` writes nothing owed into an account written at
+ * 4: nothing could be bought on credit before the fields existed.
+ *
  * VERSION 4 SINCE 2026-11-18. The account holds what its empire upgrade tree has bought (`EmpireTree`, issue #2741
  * slice 1b), and `Migrate_3_to_4` writes an empty tree into an account written at 3: nothing could be bought before the
  * field existed. The coordinating session gave gold version 3 and the tree version 4 the same day.
@@ -1069,7 +1074,7 @@ class CATACLYSM_API UCataclysmAccountSave : public UCataclysmSaveRecord
 
 public:
 	static const FName TypeName;
-	static constexpr int32 SchemaVersionNow = 4;
+	static constexpr int32 SchemaVersionNow = 5;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
@@ -1113,6 +1118,20 @@ public:
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	int64 Gold = 0;
+
+	/**
+	 * The gold the partition owes for a city upgrade bought on credit, and the part of it taken from `Gold` each day
+	 * that passes. Issue #2741 slice 6e, the owner's ruling of 2026-11-20 ("no gold debt unless there's an option for it
+	 * in the empire tree"): only Global Credit and Sovereign Loans make a debt, `Gold` never goes below nought, and the
+	 * debt is paid down first by gold picked up from the floor (D3) and, with Sovereign Loans, by a tenth of it a day
+	 * (D4). `UCataclysmGameInstance::GoldOwedBy` reads them. A Solo Self-Found character's are in its character record.
+	 * RECORD VERSION 5.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int64 GoldOwed = 0;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int64 GoldOwedEachDay = 0;
 
 	/**
 	 * What the partition's empire upgrade tree has bought: each node's points, and which option each centre capstone
@@ -1305,6 +1324,10 @@ public:
 	static const FName TypeName;
 
 	/**
+	 * 11 SINCE 2026-11-20. A Solo Self-Found character holds its own gold debt beside its own gold (`GoldOwed`,
+	 * `GoldOwedEachDay`, issue #2741 slice 6e), as the account record does at its version 5. `Migrate_10_to_11` writes
+	 * nothing owed: nothing could be bought on credit before.
+	 *
 	 * 10 SINCE 2026-11-19. A skill levels as it is used (issue #2764, ruled by the project owner that day): each skill's
 	 * total experience is kept, by skill row, in `SkillExperience`, and its level is worked out from it and the
 	 * character's level on load. `Migrate_9_to_10` writes an empty list: no skill had earned any before.
@@ -1344,7 +1367,7 @@ public:
 	 * when attribute allocation became something the running game produces, so
 	 * a character written before that has no such field at all. Issue #50.
 	 */
-	static constexpr int32 SchemaVersionNow = 10;
+	static constexpr int32 SchemaVersionNow = 11;
 
 	/**
 	 * The Cataclysm order seed a character's identifier gives: what `Migrate_6_to_7` writes into a character written
@@ -1446,6 +1469,17 @@ public:
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	int64 Gold = 0;
+
+	/**
+	 * A Solo Self-Found character's own gold debt, and the part of it taken each day: `UCataclysmAccountSave::GoldOwed`
+	 * and `GoldOwedEachDay` for a character whose gold is its own. Issue #2741 slice 6e;
+	 * `ACataclysmPlayerState::GetOwnGoldOwed`. ZERO AND UNUSED FOR EVERY OTHER CHARACTER. VERSION 11.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int64 GoldOwed = 0;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int64 GoldOwedEachDay = 0;
 
 	/**
 	 * When the save writer last wrote this record, in UTC, as ISO 8601 text; empty in a record written before the

@@ -8,6 +8,7 @@
 #include "Empire/CataclysmEmpireMap.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmSurge.h"
+#include "Items/CataclysmDroppedItem.h"
 #include "Player/CataclysmCityUpgradePurchase.h"
 #include "Player/CataclysmGameInstance.h"
 
@@ -357,8 +358,14 @@ TArray<FCataclysmCityUpgradeOffer> UCataclysmCityScreenLayout::OffersFor(
 		// and with the empire upgrade tree's price nodes (#2741 slice 6a).
 		Offer.Price = UCataclysmCityUpgradePurchase::PriceIn(
 			WorldContext, Run, RowName, CityId);
-		const ECataclysmCityUpgradeResult Result =
-			Run->WouldBuyCityUpgrade(CityId, Upgrade, Offer.Price, GoldHeld);
+
+		// AND THE CREDIT THE TREE GIVES, counted as gold held as `Buy` counts
+		// it (#2741 slice 6e, D2), so an offer the credit covers is buyable.
+		const int64 Credit = GoldHeld < Offer.Price
+			? UCataclysmCityUpgradePurchase::CreditIn(WorldContext, Offer.Price)
+			: 0;
+		const ECataclysmCityUpgradeResult Result = Run->WouldBuyCityUpgrade(
+			CityId, Upgrade, Offer.Price, GoldHeld + Credit);
 
 		Offer.bCanBuy = Result == ECataclysmCityUpgradeResult::Bought;
 		Offer.bShortOfGold = Result == ECataclysmCityUpgradeResult::NotEnoughGold;
@@ -366,8 +373,11 @@ TArray<FCataclysmCityUpgradeOffer> UCataclysmCityScreenLayout::OffersFor(
 		// AND THE DAYS, AND WHETHER ANOTHER BUILD IS WHAT STOPS IT, since issue #2825.
 		Offer.BuildDays = UCataclysmCityUpgradePurchase::BuildDaysIn(WorldContext, Run, RowName, CityId);
 		Offer.bWaitsOnABuild = Result == ECataclysmCityUpgradeResult::BuildUnderWay;
-		Offer.Refusal = UCataclysmCityUpgradePurchase::RefusalText(
-			Result, Offer.Price, GoldHeld);
+		Offer.OwedIfBought = Offer.bCanBuy && Offer.Price > GoldHeld
+			? Offer.Price - GoldHeld
+			: 0;
+		Offer.Refusal = UCataclysmCityUpgradePurchase::RefusalTextIn(
+			WorldContext, Result, Offer.Price, GoldHeld);
 
 		Offers.Add(Offer);
 	}
@@ -422,6 +432,17 @@ FString UCataclysmCityScreenLayout::ButtonTextFor(
 	const FString Days = Offer.BuildDays > 0
 		? UCataclysmCityUpgradePurchase::BuildDaysText(Offer.BuildDays)
 		: FString();
+
+	// BOUGHT ON CREDIT, and what it would leave owed (#2741 slice 6e, D6), then the days to build (issue #2825):
+	// "10,000 gold on credit, 1,000 owed, 6 days to build".
+	if (Offer.OwedIfBought > 0)
+	{
+		const FString OnCredit = FString::Printf(
+			TEXT("%s  --  %s on credit, %s owed"), *Text,
+			*UCataclysmCityUpgradePurchase::PriceText(Offer.Price),
+			*ACataclysmDroppedItem::GoldAmountText(Offer.OwedIfBought));
+		return Days.IsEmpty() ? OnCredit : FString::Printf(TEXT("%s, %s"), *OnCredit, *Days);
+	}
 	if (Offer.Price > 0)
 	{
 		const FString Price = UCataclysmCityUpgradePurchase::PriceText(Offer.Price);

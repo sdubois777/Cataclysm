@@ -70,7 +70,7 @@ namespace CataclysmSaveFixtures
 	 */
 	inline constexpr int32 FixtureIdentifiersOrderSeed = 1412640493;
 
-	/** The seed `Character_v7.json` to `Character_v10.json` state: not the one their identifier gives, so a seed
+	/** The seed `Character_v7.json` to `Character_v11.json` state: not the one their identifier gives, so a seed
 	 *  re-derived on load cannot pass. */
 	inline constexpr int32 CommittedCharacterOrderSeed = 975318642;
 
@@ -328,6 +328,28 @@ namespace CataclysmSaveFixtures
 	inline void AddTheCharactersVersion10Defaults(FJsonObject& Expected)
 	{
 		Expected.SetArrayField(TEXT("SkillExperience"), TArray<TSharedPtr<FJsonValue>>());
+	}
+
+	/**
+	 * What `Migrate_4_to_5` writes into an account file written before version 5, and so what the account record writes
+	 * back for one: nothing owed, `"GoldOwed": 0, "GoldOwedEachDay": 0`. Issue #2741 slice 6e, 2026-11-20. ONE COPY,
+	 * for every test that runs an older account file through the whole chain.
+	 */
+	inline void AddTheAccountsVersion5Defaults(FJsonObject& Expected)
+	{
+		Expected.SetNumberField(TEXT("GoldOwed"), 0.0);
+		Expected.SetNumberField(TEXT("GoldOwedEachDay"), 0.0);
+	}
+
+	/**
+	 * What `Migrate_10_to_11` writes into a character file written before version 11, and so what the character record
+	 * writes back for one: nothing owed, as the account's version 5. Issue #2741 slice 6e, 2026-11-20. ONE COPY, for
+	 * every test that runs an older character file through the whole chain.
+	 */
+	inline void AddTheCharactersVersion11Defaults(FJsonObject& Expected)
+	{
+		Expected.SetNumberField(TEXT("GoldOwed"), 0.0);
+		Expected.SetNumberField(TEXT("GoldOwedEachDay"), 0.0);
 	}
 
 	inline TSharedPtr<FJsonObject> Parse(const FString& Text)

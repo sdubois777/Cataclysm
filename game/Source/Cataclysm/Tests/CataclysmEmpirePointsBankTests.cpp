@@ -789,6 +789,7 @@ bool FCataclysmEmpirePointsAccountV1MigratesTest::RunTest(const FString&)
 	Expected->SetNumberField(TEXT("Gold"), 0);
 	// AND THE EMPTY TREE `Migrate_3_to_4` WRITES, because it runs on to version 4 since the same day (issue #2741).
 	CataclysmSaveFixtures::AddTheAccountsVersion4Defaults(*Expected);
+	CataclysmSaveFixtures::AddTheAccountsVersion5Defaults(*Expected); // And 5, #2741 slice 6e: no debt.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -811,7 +812,7 @@ bool FCataclysmEmpirePointsAccountV1MigratesTest::RunTest(const FString&)
 }
 
 /**
- * `Account_v4.json`, the committed account file, reads a fraction of a point, 37.625, into the record: the double is
+ * `Account_v5.json`, the committed account file, reads a fraction of a point, 37.625, into the record: the double is
  * read and not an integer field. Prints "ACCOUNT FILE". It read `Account_v2.json` until the account record went to
  * version 3 on 2026-11-18 (issue #2742), and `Account_v3.json` until it went to version 4 the same day (issue #2741
  * slice 1b); each holds the same points.
@@ -824,7 +825,7 @@ bool FCataclysmEmpirePointsAccountV2ReadsTest::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Account_v4.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Account_v5.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -836,7 +837,7 @@ bool FCataclysmEmpirePointsAccountV2ReadsTest::RunTest(const FString&)
 		Text, UCataclysmAccountSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Account_v4.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Account_v5.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}

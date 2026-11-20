@@ -3,8 +3,8 @@
 WHY THIS EXISTS. Issue #2741 slice 6d, the owner's rulings of 2026-11-20 relayed by the coordinating session: Treasury
 Guard reduces every city's damage from the gold held ("1. to your cities"), held at its own cap and multiplied with
 Imperial Reserve (D9); Tax Collection pays a share of the standing cities' citizens every tenth day, scaled to the tier
-and raised as Pax Imperialis is (D8). Global Credit and Sovereign Loans wait on the debt the owner allowed through them,
-slice 6e.
+and raised as Pax Imperialis is (D8). Global Credit and Sovereign Loans, the debt the owner allowed through them, are
+slice 6e's, in `tools/tests/test_empire_tree_credit.py`.
 
 WHY IT IS CHECKED FROM PYTHON. Continuous integration compiles no C++, so the `Cataclysm.EmpireTreeTreasury.`
 automation tests never run on a pull request; and the day hook's log line is where no automation test reaches.
@@ -17,7 +17,7 @@ WHAT IS CHECKED:
   4. Tax Collection is paid on every tenth day from the standing cities' citizens, scaled and raised, and is part of
      the day's total;
   5. the day hook's log names Tax Collection's share;
-  6. Global Credit and Sovereign Loans wait on the debt, and no node waits on a ruling any more.
+  6. no node waits on a ruling any more.
 """
 
 from __future__ import annotations
@@ -133,9 +133,7 @@ def test_the_day_hook_logs_tax_collections_share() -> None:
         "the day hook's log line does not say what Tax Collection paid")
 
 
-def test_the_debt_nodes_wait_on_the_debt_and_none_on_a_ruling() -> None:
-    assert gen.EMPIRE_TREE_REFUSED.get("Global Credit") == "gold debt"
-    assert gen.EMPIRE_TREE_REFUSED.get("Sovereign Loans") == "gold debt"
+def test_the_two_are_built_and_no_node_waits_on_a_ruling() -> None:
     assert gen.EMPIRE_TREE_BUILT.get("Treasury Guard") == 6 and gen.EMPIRE_TREE_BUILT.get("Tax Collection") == 6
     assert "gold ruling" not in gen.EMPIRE_TREE_SYSTEMS and "gold ruling" not in gen.EMPIRE_TREE_REFUSED.values(), (
         "a node still says it waits on a ruling the owner made on 2026-11-20")

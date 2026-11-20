@@ -112,7 +112,8 @@ def test_the_purchase_passes_the_days_and_the_run_puts_a_build_on_the_list() -> 
     buy = body(purchase, "ECataclysmCityUpgradeResult UCataclysmCityUpgradePurchase::Buy(", "the purchase")
     assert "const int32 Days = BuildDaysIn(WorldContext, Run, RowName, CityId);" in buy, (
         "Buy does not ask BuildDaysIn for the days, so the days shown and the days counted could differ")
-    assert "Run->BuyCityUpgrade(CityId, Upgrade, Price, Held, Days)" in buy, (
+    # THE CREDIT COUNTS AS GOLD HELD as well, since issue #2741 slice 6e (D2).
+    assert "Run->BuyCityUpgrade(CityId, Upgrade, Price, Held + Credit, Days)" in buy, (
         "Buy does not pass the days to the run, so every upgrade the game sells would be finished at once")
     days_in = body(purchase, "int32 UCataclysmCityUpgradePurchase::BuildDaysIn(", "the purchase")
     assert "UCataclysmCityUpgradeRules::BuildDaysFor(" in days_in, "BuildDaysIn does not read the tier's days"

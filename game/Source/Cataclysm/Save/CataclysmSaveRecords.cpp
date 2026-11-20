@@ -382,6 +382,28 @@ namespace CataclysmCharacterSaveMigration
 	}
 
 	/**
+	 * A record written before a debt could be owed owes nothing. Issue #2741 slice 6e, 2026-11-20: `GoldOwed` and
+	 * `GoldOwedEachDay` arrived with Global Credit and Sovereign Loans, the only way to owe gold, so the migrated file
+	 * states a debt of 0 -- written out, for the character record's `Migrate_3_to_4` reason. A KEY ALREADY HOLDING A
+	 * NUMBER IS KEPT, and one holding anything else is refused rather than read as 0, as the gold's own step refuses.
+	 */
+	bool Migrate_10_to_11(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		for (const TCHAR* Key : { TEXT("GoldOwed"), TEXT("GoldOwedEachDay") })
+		{
+			double Held = 0.0;
+			if (Record->HasField(Key) && !Record->TryGetNumberField(Key, Held))
+			{
+				OutError = FString::Printf(TEXT("%s holds something that is not a number"), Key);
+				return false;
+			}
+			Record->SetNumberField(Key, Held); // A migration's: the debt, written out.
+		}
+		return true;
+	}
+
+	/**
 	 * The chain, newest step last.
 	 *
 	 * The order is for a reader rather than for the machinery, which looks a
@@ -398,6 +420,7 @@ namespace CataclysmCharacterSaveMigration
 		{ 7, TEXT("Migrate_7_to_8"), &Migrate_7_to_8 },
 		{ 8, TEXT("Migrate_8_to_9"), &Migrate_8_to_9 },
 		{ 9, TEXT("Migrate_9_to_10"), &Migrate_9_to_10 },
+		{ 10, TEXT("Migrate_10_to_11"), &Migrate_10_to_11 },
 	};
 }
 
@@ -834,11 +857,34 @@ namespace CataclysmAccountSaveMigration
 		return true;
 	}
 
+	/**
+	 * A record written before a debt could be owed owes nothing. Issue #2741 slice 6e, 2026-11-20: `GoldOwed` and
+	 * `GoldOwedEachDay` arrived with Global Credit and Sovereign Loans, the only way to owe gold, so the migrated file
+	 * states a debt of 0 -- written out, for the character record's `Migrate_3_to_4` reason. A KEY ALREADY HOLDING A
+	 * NUMBER IS KEPT, and one holding anything else is refused rather than read as 0, as the gold's own step refuses.
+	 */
+	bool Migrate_4_to_5(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		for (const TCHAR* Key : { TEXT("GoldOwed"), TEXT("GoldOwedEachDay") })
+		{
+			double Held = 0.0;
+			if (Record->HasField(Key) && !Record->TryGetNumberField(Key, Held))
+			{
+				OutError = FString::Printf(TEXT("%s holds something that is not a number"), Key);
+				return false;
+			}
+			Record->SetNumberField(Key, Held); // A migration's: the debt, written out.
+		}
+		return true;
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep AccountSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
 		{ 2, TEXT("Migrate_2_to_3"), &Migrate_2_to_3 },
 		{ 3, TEXT("Migrate_3_to_4"), &Migrate_3_to_4 },
+		{ 4, TEXT("Migrate_4_to_5"), &Migrate_4_to_5 },
 	};
 }
 

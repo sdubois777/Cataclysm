@@ -579,6 +579,8 @@ bool FCataclysmSaveGather::CharacterFrom(const ACataclysmPlayerCharacter& Charac
 		Record.bMarkedByConsumption = State->IsMarkedByConsumption(); // A save's: the Consumption mark. Issue #2688.
 		Record.ConsumptionBuild = State->ConsumptionBuild(); // A save's: the build captured at the crossing (O4).
 		Record.Gold = State->GetOwnGold(); // A save's: a Solo Self-Found character's own gold, 0 for any other. #2742.
+		Record.GoldOwed = State->GetOwnGoldOwed(); // A save's: its own debt (#2741 slice 6e), 0 for any other.
+		Record.GoldOwedEachDay = State->GetOwnGoldOwedEachDay(); // And the part taken each day.
 		// AND ITS OWN EMPIRE UPGRADE POINTS AND TREE, 0 and empty for any other character. Issue #2741 slice 1c.
 		Record.PrivateEmpireUpgradePoints = State->GetOwnEmpireUpgradePoints(); // A save's: its own bank.
 		Record.PrivateEmpireTree = State->GetOwnEmpireTree(); // A save's: its own tree.
