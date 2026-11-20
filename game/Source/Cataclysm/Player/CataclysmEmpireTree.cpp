@@ -439,7 +439,7 @@ FCataclysmEmpireTreePlayerBonuses UCataclysmEmpireTree::PlayerBonusesFor(const U
 			Bonuses.BossLegendaryChancePerTenFloorsAdded += Total;
 			break;
 
-		// SLICE 6A. The gold a kill drops (G1 to G3) and a city upgrade's price (P1 to P3).
+		// SLICE 6A. The gold a kill drops (G1 to G3) and a city upgrade's price (P1, P2).
 		case ECataclysmEmpireTreeEffect::GoldIncreased:
 			Bonuses.GoldIncreased += Total;
 			break;
@@ -466,9 +466,6 @@ FCataclysmEmpireTreePlayerBonuses UCataclysmEmpireTree::PlayerBonusesFor(const U
 			break;
 		case ECataclysmEmpireTreeEffect::FirstUpgradePriceReduced:
 			Bonuses.FirstUpgradePriceReduced += Total;
-			break;
-		case ECataclysmEmpireTreeEffect::DamagedCityUpgradePriceReduced:
-			Bonuses.DamagedCityUpgradePriceReduced += Total;
 			break;
 		default:
 			break;
@@ -668,17 +665,12 @@ float UCataclysmEmpireTree::UpgradePriceFactorFor(const FCataclysmEmpireTreePlay
 	}
 
 	// THE REDUCTIONS ADD (P1), as every "reduced" does in the design's pipeline. WAR FUNDING'S IS FOR A CITY HOLDING NO
-	// UPGRADE (P2). PRICE CONTROLS' IS FOR A CITY BELOW ITS MAXIMUM NOW (P3), read as the city screen shows it, so a
-	// maximum the tree has raised counts until the city fills it (`DefenceOf`'s rule).
+	// UPGRADE (P2). Price Controls' "Cities that have taken Surge damage" is slice 6b's, from a saved flag: the reading
+	// "below its maximum now" (P3) was withdrawn, because a maximum the tree raises leaves every full city below it.
 	float Reduced = Bonuses.UpgradePriceReduced;
 	if (City->Upgrades.Num() == 0)
 	{
 		Reduced += Bonuses.FirstUpgradePriceReduced;
-	}
-	if (Map->DefenceOf(*City) < Map->EffectiveMaxDefence(*City)
-		|| Map->PopulationOf(*City) < Map->EffectiveMaxPopulation(*City))
-	{
-		Reduced += Bonuses.DamagedCityUpgradePriceReduced;
 	}
 	return 1.0f - FMath::Clamp(Reduced, 0.0f, UpgradePriceReductionCap);
 }

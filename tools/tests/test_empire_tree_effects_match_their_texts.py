@@ -3,7 +3,7 @@
 WHY THIS EXISTS. Issue #2741 slice 3a makes 31 nodes and capstone options act on the
 empire's cities, slice 3b seven more that act at an event, slice 4 nineteen
 for a dungeon's walk and depth and for a clear, slice 5a fifteen for the
-player inside a dungeon, slice 5b five more, and slice 6a twelve for the gold a
+player inside a dungeon, slice 5b five more, and slice 6a eleven for the gold a
 kill drops and a city upgrade's price. What each one does is stated once, in `EMPIRE_TREE_EFFECTS` in
 `tools/generate_datatables.py`, which becomes `game/Data/EmpireTreeEffects.csv`
 and `DT_EmpireTreeEffects`, which `UCataclysmEmpireTree::CityBonusesFor` and
@@ -15,7 +15,7 @@ WHAT IS CHECKED:
   the effect names           the generator's list and the C++ enum agree
   which nodes act            exactly the 31 slice 3a builds, the seven of
                              slice 3b, the nineteen of slice 4, the fifteen of
-                             slice 5a, the five of slice 5b and the twelve of
+                             slice 5a, the five of slice 5b and the eleven of
                              slice 6a
   every value                found in its own node's or option's text
   the nine caps              Golden Age +40% and Bastion Spirit +15 days, the
@@ -111,11 +111,12 @@ SLICE_5A = {"Eyes of the Empire", "Bounty", "The Hoarder", "Pathfinding", "Spoil
 SLICE_5B = {"Relentless Pursuit", "Opportunistic Looting", "Plunderer's Eye", "Scavenger",
             "The High Roller"}
 
-#: SLICE 6A'S TWELVE, the gold a kill drops and a city upgrade's price: the
-#: coordinating session's G1 to G3 and P1 to P3 of 2026-11-20.
+#: SLICE 6A'S ELEVEN, the gold a kill drops and a city upgrade's price: the
+#: coordinating session's G1 to G3, P1 and P2 of 2026-11-20. Price Controls is
+#: 6b's: its P3 reading was withdrawn the same day.
 SLICE_6A = {"Coinage", "Minting Rights", "The Midas Touch", "Untouchable Wealth",
             "Wartime Economy", "Profiteering", "Prosperity Index", "Fiscal Policy",
-            "Municipal Bonds", "Public Works", "War Funding", "Price Controls"}
+            "Municipal Bonds", "Public Works", "War Funding"}
 
 DAY_EFFECTS = {"ResolveDaysAll", "ResolveDaysOutposts", "ResolveDaysPerBranchStep",
                "ResolveDaysBelowTenPercent", "SurgeGapDays", "WalkDaysFewerWhenAlone",
@@ -176,10 +177,10 @@ def test_the_effect_names_agree_with_the_cpp_enum() -> None:
         f"{list(gen.EMPIRE_TREE_EFFECT_KINDS)}; they must be the same names in the same order")
 
 
-def test_exactly_the_89_nodes_of_slices_3a_3b_4_5a_5b_and_6a_act() -> None:
+def test_exactly_the_88_nodes_of_slices_3a_3b_4_5a_5b_and_6a_act() -> None:
     named = set(gen.EMPIRE_TREE_EFFECTS)
     assert len(SLICE_3A) == 31 and len(SLICE_3B) == 7 and len(SLICE_4) == 19 and len(SLICE_5A) == 15
-    assert len(SLICE_5B) == 5 and len(SLICE_6A) == 12
+    assert len(SLICE_5B) == 5 and len(SLICE_6A) == 11
     assert not SLICE_3A & SLICE_3B and not (SLICE_3A | SLICE_3B) & SLICE_4
     assert not (SLICE_3A | SLICE_3B | SLICE_4) & SLICE_5A
     assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A) & SLICE_5B

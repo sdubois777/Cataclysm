@@ -1,8 +1,9 @@
 """The empire upgrade tree's slice 6a: the gold a kill drops and a city upgrade's price, and no false word about gold.
 
 WHY THIS EXISTS. Issue #2741 slice 6a, the coordinating session's rulings of 2026-11-20. Gold has been a system the game
-has since #2742, so the 41 nodes the tree refused for gold now say what they really wait on, and twelve of them act:
-eight raise the gold a kill drops (G1 to G3) and four lower a city upgrade's price (P1 to P3).
+has since #2742, so the 41 nodes the tree refused for gold now say what they really wait on, and eleven of them act:
+eight raise the gold a kill drops (G1 to G3) and three lower a city upgrade's price (P1, P2). Price Controls is 6b's:
+its P3 reading, "below its maximum now", was withdrawn the same day.
 
 WHY IT IS CHECKED FROM PYTHON. Continuous integration compiles no C++, so the `Cataclysm.EmpireTreeGold.` automation
 tests never run on a pull request. And the wiring is where no automation test reaches: a kill's own call, and the one
@@ -11,7 +12,7 @@ price function every screen and the purchase share.
 WHAT IS CHECKED:
 
   1. no node's refusal and no comment in the game's source says the game has no gold, or that a city upgrade is free;
-  2. the nodes still refused for their gold rules are exactly slice 6b's ten;
+  2. the nodes still refused for their gold rules are exactly slice 6b's eleven;
   3. a kill passes its drop rules' gold multiplier to `SpawnGoldFor`, which multiplies each pile after its draws and
      leaves it as rolled at exactly 1; and the drop rules carry `GoldMultiplierFor`;
   4. the steps C++ counts in are the nodes' own words, and the price cap is the ruling's 75%;
@@ -38,10 +39,11 @@ sys.path.insert(0, str(REPO_ROOT / "tools"))
 
 import generate_datatables as gen  # noqa: E402
 
-#: SLICE 6B'S TEN, the nodes still waiting on their gold rules: gold held, income on the day clock, the payouts at a
-#: clear, and Stimulus Package's saved state.
+#: SLICE 6B'S ELEVEN, the nodes still waiting on their gold rules: gold held, income on the day clock, the payouts at a
+#: clear, and the two that need saved state, Stimulus Package and Price Controls.
 SLICE_6B = {"The Gilded Path", "Venture Capital", "Imperial Reserve", "Tax Collection", "Pax Imperialis",
-            "Wealth Interest", "Salvage Rights", "Investment Funds", "Cleanup Crew", "Stimulus Package"}
+            "Wealth Interest", "Salvage Rights", "Investment Funds", "Cleanup Crew", "Stimulus Package",
+            "Price Controls"}
 
 #: WORDS NO SCREEN OR COMMENT MAY SAY ANY MORE, each true until #2742 and false since.
 FALSE_GOLD = ("gold, which the game does not have yet", "free and immediate today", "and there is no gold",
@@ -81,7 +83,7 @@ def test_nothing_the_game_shows_or_says_claims_there_is_no_gold() -> None:
     assert not said, "a source file still says the game has no gold:\n" + "\n".join(said)
 
 
-def test_the_nodes_still_waiting_on_their_gold_rules_are_slice_6bs_ten() -> None:
+def test_the_nodes_still_waiting_on_their_gold_rules_are_slice_6bs_eleven() -> None:
     waiting = {name for name, system in gen.EMPIRE_TREE_REFUSED.items() if system == "gold rules"}
     assert waiting == SLICE_6B, (sorted(waiting - SLICE_6B), sorted(SLICE_6B - waiting))
     assert not set(gen.EMPIRE_TREE_REFUSED.values()) & {"gold", "upgrade cost"}, (

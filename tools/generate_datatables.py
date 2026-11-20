@@ -3815,11 +3815,12 @@ EMPIRE_TREE_BUILT = {
     # Treasury: the one node about people rather than gold.
     "Golden Age": 3,
     # Treasury, slice 6a: the gold a kill drops (G1 to G3) and a city upgrade's
-    # price (P1 to P3), the coordinating session's rulings of 2026-11-20.
+    # price (P1, P2), the coordinating session's rulings of 2026-11-20. Price
+    # Controls is 6b's: its P3 reading was withdrawn the same day.
     "Coinage": 6, "Minting Rights": 6, "Untouchable Wealth": 6,
     "Wartime Economy": 6, "Profiteering": 6, "Prosperity Index": 6,
     "Fiscal Policy": 6, "Municipal Bonds": 6, "Public Works": 6,
-    "War Funding": 6, "Price Controls": 6,
+    "War Funding": 6,
     # The centre: a tier milestone's option, the gold a kill drops.
     "The Midas Touch": 6,
     # Artisan: crafting materials already drop.
@@ -3846,9 +3847,13 @@ EMPIRE_TREE_REFUSED = {
     "Field Depot II": "stash", "Field Depot III": "stash",
     "Gamble": "modifier reroll", "Scout Parties": "bonus dungeon",
     "Auto-Loot": "loot filter",
-    # Treasury. Slice 6b builds the "gold rules" nodes (slice 6a built twelve,
+    # Treasury. Slice 6b builds the "gold rules" nodes (slice 6a built eleven,
     # 2026-11-20); R1 to R4 wait on a Treasurer city upgrade (#2781), R7 to R9
     # on the owner, and the rest on what their text needs and the game lacks.
+    # PRICE CONTROLS IS 6B'S: "Cities that have taken Surge damage" needs a saved
+    # flag set where a Surge's bite lands (the coordinating session withdrew the
+    # P3 reading, "below its maximum now", on 2026-11-20).
+    "Price Controls": "gold rules",
     "Stimulus Package": "gold rules", "The Gilded Path": "gold rules",
     "Venture Capital": "gold rules", "Imperial Reserve": "gold rules",
     "Tax Collection": "gold rules", "Pax Imperialis": "gold rules",
@@ -4101,7 +4106,6 @@ EMPIRE_TREE_EFFECT_KINDS = (
     "GoldIncreased", "GoldMore", "GoldPerStandingCity", "GoldPerActiveType",
     "GoldPerFallenCity", "GoldPerTenThousandCitizens", "GoldPerFiveCityUpgrades",
     "UpgradePriceReduced", "FirstUpgradePriceReduced",
-    "DamagedCityUpgradePriceReduced",
 )
 
 #: WHAT EACH BUILT NODE OR OPTION OF THE EMPIRE TREE DOES, by name. Issue
@@ -4251,13 +4255,11 @@ EMPIRE_TREE_EFFECTS = {
     "Profiteering": [("GoldPerFallenCity", 0.05)],
     "Prosperity Index": [("GoldPerTenThousandCitizens", 0.01)],
     "Fiscal Policy": [("GoldPerFiveCityUpgrades", 0.03)],
-    # A CITY UPGRADE'S PRICE (P1 to P3): the reductions add, and C++ holds their
-    # sum at 75%; War Funding's is for a city holding no upgrade, and Price
-    # Controls' for a city whose defence or population is below its maximum.
+    # A CITY UPGRADE'S PRICE (P1, P2): the reductions add, and C++ holds their
+    # sum at 75%; War Funding's is for a city holding no upgrade.
     "Municipal Bonds": [("UpgradePriceReduced", 0.03)],
     "Public Works": [("UpgradePriceReduced", 0.20)],
     "War Funding": [("FirstUpgradePriceReduced", 0.02)],
-    "Price Controls": [("DamagedCityUpgradePriceReduced", 0.04)],
 }
 
 

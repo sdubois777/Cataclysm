@@ -93,8 +93,8 @@ struct CATACLYSM_API FCataclysmEmpireTreePlayerBonuses
 	 *  more gear item of Legendary or rarer. An Explorer chance. */
 	float BossLegendaryChancePerTenFloorsAdded = 0.0f;
 
-	// ---- Slice 6a: the gold a kill drops, and a city upgrade's price. The coordinating session's G1 to G3 and P1 to
-	// P3 of 2026-11-20. ----
+	// ---- Slice 6a: the gold a kill drops, and a city upgrade's price. The coordinating session's G1 to G3, P1 and P2
+	// of 2026-11-20. ----
 
 	/** Coinage's and Minting Rights' increase to the gold a kill drops, added (G1). */
 	float GoldIncreased = 0.0f;
@@ -111,12 +111,11 @@ struct CATACLYSM_API FCataclysmEmpireTreePlayerBonuses
 	float GoldPerTenThousandCitizens = 0.0f;
 	float GoldPerFiveCityUpgrades = 0.0f;
 
-	/** Municipal Bonds' and Public Works' reduction of every city upgrade's price; War Funding's for an upgrade bought on
-	 *  a city that holds none (P2); Price Controls' for one bought on a city whose defence or population is below its
-	 *  maximum (P3). They add, held at `UpgradePriceReductionCap` (P1). */
+	/** Municipal Bonds' and Public Works' reduction of every city upgrade's price, and War Funding's for an upgrade
+	 *  bought on a city that holds none (P2). They add, held at `UpgradePriceReductionCap` (P1). Price Controls is
+	 *  slice 6b's (its P3 reading was withdrawn). */
 	float UpgradePriceReduced = 0.0f;
 	float FirstUpgradePriceReduced = 0.0f;
-	float DamagedCityUpgradePriceReduced = 0.0f;
 };
 
 /**
@@ -309,10 +308,10 @@ public:
 	static constexpr int32 FiscalPolicyUpgradesAStep = 5;
 
 	/**
-	 * THE MOST A CITY UPGRADE'S PRICE IS REDUCED BY, so a price never falls below a quarter. The four reductions add, as
-	 * every "reduced" does in the design's pipeline, and at full points they reach 125%. THE COORDINATING SESSION'S P1
-	 * OF 2026-11-20, A JUDGEMENT under the owner's delegation of unstated numbers; 75% is also the cap on the player's
-	 * damage reduction.
+	 * THE MOST A CITY UPGRADE'S PRICE IS REDUCED BY, so a price never falls below a quarter. The reductions add, as every
+	 * "reduced" does in the design's pipeline, and at full points they reach 85% (Municipal Bonds 45%, Public Works 20%,
+	 * War Funding 20%). THE COORDINATING SESSION'S P1 OF 2026-11-20, A JUDGEMENT under the owner's delegation of
+	 * unstated numbers; 75% is also the cap on the player's damage reduction.
 	 */
 	static constexpr float UpgradePriceReductionCap = 0.75f;
 
@@ -387,10 +386,9 @@ public:
 								   const FCataclysmEmpireTreeDungeonState& State);
 
 	/**
-	 * What a city upgrade's price is multiplied by on this city. Issue #2741 slice 6a (P1 to P3): one less Municipal
-	 * Bonds' and Public Works' reduction, War Funding's when the city holds no upgrade, and Price Controls' when its
-	 * defence or population as the game reads them (`UCataclysmEmpireMap::DefenceOf`, `PopulationOf`) is below its
-	 * maximum, the sum held at `UpgradePriceReductionCap`. Exactly 1 with no price node, or with no map or city.
+	 * What a city upgrade's price is multiplied by on this city. Issue #2741 slice 6a (P1, P2): one less Municipal
+	 * Bonds' and Public Works' reduction and War Funding's when the city holds no upgrade, the sum held at
+	 * `UpgradePriceReductionCap`. Exactly 1 with no price node, or with no map or city.
 	 */
 	static float UpgradePriceFactorFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses, const UCataclysmEmpireMap* Map,
 									   int32 CityId);
