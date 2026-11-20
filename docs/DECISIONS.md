@@ -2,6 +2,242 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-19 — The empire upgrade tree's player nodes act inside a dungeon: magic find, loot quantity, movement speed and damage from fifteen nodes, doubled for the Explorer branch's loot at a one-day walk (#2741, slice 5a)
+
+**Affects:** `game/Source/Cataclysm/Player/CataclysmEmpireTree.h` and `.cpp` (`FCataclysmEmpireTreePlayerBonuses` and
+`FCataclysmEmpireTreeDungeonState`, new; `UCataclysmEmpireTree::PlayerBonusesFor`, `DungeonStateFor`,
+`DoublesExplorerLoot`, `MagicFindFor`, `LootQuantityFor`, `MovementSpeedFor`, `DamageFor` and `PlayerStatModifiersFor`,
+new; `SpeedRunnerDaysAStep`, `DungeonLegendClearsAStep` and `OneDaySpecialistFactor`, new; the helper namespace
+`CataclysmEmpireTreeEffectRows`, shared with `CityBonusesFor`); `ECataclysmModifierSource::EmpireTree`, new, which cannot
+grant More (`game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`);
+`UCataclysmAbilitySystemComponent::SetEmpireTreeStatModifiers` and `GetEmpireTreeStatModifiers`, new
+(`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h`); `UCataclysmEquipmentComponent::RefreshAttributes`
+gathers them (`game/Source/Cataclysm/Items/CataclysmEquipmentComponent.cpp`); `ACataclysmDungeonGameMode::
+EmpireTreeStatModifiersHere`, `EmpireTreePlayerBonusesHere` and `SetEmpireTreePlayerBonusesForTests`, new, and
+`ApplyFloorRulesTo`, which writes the tree's lines before the character is applied
+(`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp`); `UCataclysmGameInstance::
+EmpireTreePlayerBonusesFor`, new (`game/Source/Cataclysm/Player/CataclysmGameInstance.h` and `.cpp`);
+`ECataclysmEmpireTreeEffect`, fifteen values (`game/Source/Cataclysm/Data/CataclysmDataRows.h`);
+`tools/generate_datatables.py` (`EMPIRE_TREE_EFFECTS`, `EMPIRE_TREE_EFFECT_KINDS`), `game/Data/EmpireTreeEffects.csv`, 76
+rows, and `game/Content/Data/DT_EmpireTreeEffects.uasset`; Speed Runner's text in
+`docs/Empire_Development_Tree_Final.json`, `game/Data/EmpireTreeNodes.csv` and
+`game/Content/Data/DT_EmpireTreeNodes.uasset`; `sim/analyse_explorer_rate.py` and `sim/analyse_explorer_shape.py` (the
+text, and whole two-day steps in the first). Tests: `game/Source/Cataclysm/Tests/CataclysmEmpireTreeLootTests.cpp`, new,
+10 in the new group `Cataclysm.EmpireTreeLoot.`; `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` pins 76 rows;
+`tools/tests/test_empire_tree_player_nodes.py`, new (4); `tools/tests/test_empire_tree_effects_match_their_texts.py`,
+changed. Issues [#2741](https://github.com/sdubois777/Cataclysm/issues/2741), slice 5a, and
+[#1428](https://github.com/sdubois777/Cataclysm/issues/1428).
+
+### SAID FIRST
+
+- **COMPILED, RUN AND PROVED IN ONE WINDOW (tree-5a-w1).** At `98c14b391` and then `11affe009`, on development
+  `9cb64e1a5`:
+  - `DT_EmpireTreeEffects.uasset` (76 rows) and `DT_EmpireTreeNodes.uasset` (Speed Runner's text) were rebuilt by the
+    DataTable asset generator and committed with their record lines. No other file changed.
+  - The written-out record version check found the run, character and account records at 9, 10 and 4, and no test
+    stating another version; one line is allowed by a rule added for it (below).
+  - The fifteen groups each passed alone at their registered counts.
+  - The whole Unreal suite performed the registered 4978, all succeeding, with 47 skipped halves and "850 written and
+    deleted, 0 left behind".
+  - Python passed, 7751 with 9 skipped, and ruff passed.
+  - The five C++ guard proofs each proved, failing exactly the registered test with exactly the registered number of
+    assertions; each restored half passed 10 of 10. The four Python guard proofs were proved in phase 1.
+  - All three of phase 2's compiles succeeded.
+- **EVERY BONUS EXISTS ONLY INSIDE A DUNGEON, AND ONLY AS FLAT AND INCREASED LINES.** The dungeon game mode works the
+  tree's lines out from the run each time it applies a floor's rules, and puts them on the character in a map of their
+  own, beside the floor's modifiers; with no dungeon bound the map is empty, so leaving takes them off. The source,
+  `EmpireTree`, cannot grant a More multiplier. The drop roll already reads the `MagicFind` and `LootQuantity`
+  attributes, so the roll itself is unchanged.
+- **MAGIC FIND FROM THE TREE IS FLAT; LOOT QUANTITY IS AN INCREASE.** Magic find has a baseline of 0, so an increase on
+  it would scale nothing; loot quantity has a baseline of 100, and "Every source of loot quantity is an increase"
+  (`docs/Cataclysm_GDD_v2.md`, "Loot quantity has a baseline of 100% for the same reason"). "+5% Magic Find" is 5 points
+  of flat magic find, as the affix, the gem and the dungeon rules give it.
+- **#1428 IS ANSWERED BY REWORDING SPEED RUNNER**: "+5% bonus Loot Quantity per 2 full days under default run time per
+  point (cap 100%)", in the tree file, the generated node table and asset, and the two simulation scripts that quote it.
+  Its count was already whole steps by ruling C3. #1428 is closed when this slice merges.
+- **NO SIMULATION CHANGE.** The campaign model has no loot and no player statistics for these nodes to reach.
+
+### The rulings this slice builds on
+
+From slice 1a: **C3** (a bonus "per N points" or "per 2 days" counts whole steps, rounded down), **C5** (a multi-point
+node's amount is per point unless its text says it is a total), **Q7** (Dungeon Mastery counts the design's four
+dungeon types this run; "damage" is attack and spell damage), **Q9** (Manifest Wealth is built as written, the drop
+roll's soft cap bounding it, its size recorded then). From the coordinating session on this slice's plan, 2026-11-19,
+**EACH A JUDGEMENT** of that session and this one, since the node texts leave them open:
+
+- **D1, the split.** 5a is the fifteen stat nodes, with no save change; 5b is Relentless Pursuit (a run record field)
+  and the four drop rules.
+- **D2, Dungeon Mastery is per point:** +3% increased attack and spell damage x points x dungeon kinds defeated this run,
+  +120% with 10 points and all four kinds, and no cap, because the four kinds are its limit. Why: slices 3b and 4 read
+  every multi-point node per point (C5); the increased bucket is additive, and +120% is about one top-tier "Increased
+  damage" affix (125%). **Q7's "+12%" was the one-point figure.** The fourth kind, the Cataclysm boss, is almost never
+  counted, because clearing it begins the next run at once; so +90% is what a player reaches in practice.
+- **D3, Temporal Efficiency's cap is +50% in total**, the cap Efficiency Premium, its sibling one-point Explorer
+  keystone, states in its own text. Nothing can measure it: the simulation has no loot. Today only Scavenger's 10
+  Artisan points can be bought, so +20% is the most it reaches.
+- **D4, Speed Runner's text is reworded "per 2 full days"** and #1428 closed with this slice (above).
+
+### The readings, each a judgement of this session unless a ruling is cited
+
+| Node | Reading | Size at full points |
+| :-- | :-- | :-- |
+| Eyes of the Empire | flat magic find, 5 a point (C5) | +50 |
+| Bounty | increased loot quantity, 5% a point | +75% |
+| The Hoarder (centre) | flat 25 magic find and increased loot quantity 100% | +25, +100% |
+| Pathfinding | increased movement speed, 2% a point, in dungeons only | +20% |
+| Spoils of War | 2% loot quantity x points x active Cataclysm types | +16% at tier 1 to +128% at tier 8 |
+| Speed Runner | 5% x points per whole 2 days removed (C3), cap 100% (its text) | the cap at 4 days removed |
+| Efficiency Premium | 5% per whole day removed, cap 50% (its text) | the cap at 10 days removed |
+| Quality over Quantity | flat 2 magic find per floor removed from the default depth | uncapped (1 point) |
+| Dungeon Expertise | flat 4 magic find x points per distinct modifier in force on the floor being walked | +40 a modifier |
+| Manifest Wealth | flat 1 magic find x points per floor cleared in this dungeon (Q9: as written) | +25 a floor |
+| Dungeon Legend | flat 1 magic find x points per whole 5 dungeons cleared this run (C3) | +10 per 5 clears |
+| The Cartographer's Blessing | +5% loot quantity and +5 flat magic find per standing city with a bought Explorer upgrade | +5% and +5 a city |
+| Temporal Efficiency | 10% loot quantity per whole 5 Artisan points (C3), cap 50% (D3) | +20% today |
+| Dungeon Mastery | increased attack and spell damage, 3% x points x kinds defeated this run (D2) | +120% |
+| One-Day Specialist | doubles every magic find and loot quantity figure from an Explorer-branch node, after its caps | x2 |
+
+- **"Days removed from default run time"** is the dungeon's floors x its starting days a floor (1; 2 for a Cow Level)
+  less `UCataclysmEmpireRun::EffectiveWalkDaysFor`, at least 0, in whole days. "Floors" includes floors the city and
+  the tree added, as the #1390 analysis counted them, so a city's walk upgrade and every walk node remove days.
+- **"Default depth"** is the depth before city upgrades and the tree: a Basic or Quest dungeon's `Floors -
+  UpgradeFloors`; a Fallen City dungeon's `max(Bosses, LeastFloors)` from the surge scheduler's spec for its city tier;
+  the boss dungeon's base floors plus its floors for each Basic dungeon cleared. Floors removed are the default less
+  the floors now, at least 0. A Hollow's own shrinking is not counted: the player did not remove it.
+- **"Floors cleared in the current dungeon"** is the floor number less 1, which is saved. A "Those in the Dark" fall's
+  skipped floors count as cleared.
+- **"Unique dungeons cleared this run"** is the run's clears: a dungeon's id is never reused, so every clear is a
+  different dungeon.
+- **"Dungeon types defeated"** counts Basic, Quest and the boss from their own clear counts, and Fallen City as the
+  run's clears less those three, because it has no count of its own.
+- **"A city with an Explorer city upgrade"** is a standing city with a bought upgrade whose row is in the Explorer
+  branch (`UCataclysmCityUpgradeMapping::BranchFor`); a fallen city keeps its upgrades but is not counted.
+- **"Run time reduced to 1-Day minimum"** is a walk of one day where the default run time is more than one day; The
+  Last Stand option counts. **"Explorer loot modifiers"** are the magic find and loot quantity figures of Explorer-branch
+  nodes; not The Hoarder (centre), and not Pathfinding or Dungeon Mastery, which are not loot.
+
+### Measured: Manifest Wealth's size (Q9)
+
+Manifest Wealth at its 25 points adds 25 flat magic find for each floor cleared in the dungeon being walked. The drop
+roll bends the magic find it is given by `magic find x 400 / (magic find + 400)`
+(`UCataclysmDropRoll::EffectiveMagicFind`, `MagicFindCeiling` 400), so the figure that reaches the roll never passes 400.
+The node alone, on a dungeon's last floor, with no other magic find:
+
+| Dungeon floors | Floors cleared | Manifest Wealth's magic find | What reaches the roll |
+|---|---|---|---|
+| 10 | 9 | 225 | 144.0 |
+| 25 | 24 | 600 | 240.0 |
+| 50 | 49 | 1,225 | 301.5 |
+| 100 | 99 | 2,475 | 344.3 |
+
+Arithmetic, not a simulation: the campaign model has no loot. The enemy row's own magic find is added before the bend,
+so on a real kill the node's share of the bent figure is smaller than the last column.
+
+### Research, and what it settles
+
+The design settles the shapes: loot quantity is a percentage with a baseline of 100 that every source increases, and
+"the Explorer branch of the empire tree" feeds it (`docs/Cataclysm_GDD_v2.md`, "Loot quantity multiplies it"); magic
+find is an added percentage with a baseline of 0 ("Magic find is not the same shape, and its baseline is zero"). The
+three-bucket pipeline is the 2026-08 research decision. Diablo III's Nephalem Valor, magic find that stacks during play
+to a cap, is a precedent for Manifest Wealth growing inside a dungeon; its wiki page refused the fetch (403), so nothing
+is quoted from it. Every reading above, D2 and D3 are judgements no source settles.
+
+### Judgements of this session, each with what it rests on
+
+1. **A map of the tree's own, not the floor's**, so the source is not labelled a dungeon rule and a test can read the
+   tree's lines alone.
+2. **The bonuses are read from the tree each time a floor's rules are applied**, through the game instance, and nothing
+   is kept between applies: the tree cannot change during a walk (`EmpireTreeChangeRefusal`), so only the dungeon and
+   the floor move the result. A test hands the game mode its own bonuses (`SetEmpireTreePlayerBonusesForTests`).
+3. **One-Day Specialist doubles after the caps**, so Speed Runner and Efficiency Premium reach twice their caps at a
+   one-day walk; "all Explorer loot modifiers doubled" is read as their results doubled.
+
+### Registered before the run
+
+Sent to and accepted by the coordinating session on 2026-11-19, before the window, and registered again after
+each of two rebases.
+
+- **Base: 4968**, measured by window skills-w2 at `188857e9b`, whose `game/` is development `9cb64e1a5`'s (`git diff
+  --stat 188857e9b 9cb64e1a5 -- game/` prints nothing). The first registration, 4919 + 10 = 4929 on development
+  `a96b2cead`, was replaced when the branch was rebased onto `8fe967f71` and then onto `9cb64e1a5` (#2764's merge).
+  Both rebases were clean and left the commit's patch identical (`git range-diff` marks it "="), and no function the
+  slice calls gained a defaulted parameter on development in between.
+- **The whole suite: 4978 performed, 4978 succeeded, 0 failed**: the base's 4968 and 10 new in
+  `Cataclysm.EmpireTreeLoot.`; 47 skipped halves, the base's; "Test saves: 850 written and deleted, 0 left behind", the
+  base's, because no new test writes a save slot.
+- **Each group alone**, counted from the base log on "Test Completed. Result={" lines and by distinct path, which agree:
+  `Cataclysm.EmpireTreeLoot.` 10 (new), `EmpireTree.` 24, `EmpireTreeWalk.` 14, `EmpireTreeCity.` 17,
+  `EmpireTreeEvents.` 14, `EmpireTreeScreen.` 10, `Data.` 7, `Drop.` 30, `DropPickup.` 20, `Player.` 20,
+  `StatPipeline.` 51, `Equipment.` 30, `CharacterSheet.` 10, `DungeonMode.` 46, and `DungeonModifierEffects.` 773, run
+  alone by the coordinating session's ruling because the path that applies a floor's rules changed.
+- **The written-out record version check** wants the run, character and account records at 9, 10 and 4: #2764 moved the
+  character record. **It gained one rule**: a test may state its record's current version when it reads that record's
+  file one version below and migrates it. Without the rule it reported #2764's migration test
+  (`CataclysmSkillLevelsTests.cpp`, which migrates `Character_v9.json` "to version 10") as a mismatch. With the run
+  record wanted at 10, the check with the rule still fails. The coordinating session accepted the rule with that control.
+- **Five C++ guard proofs**, each narrowed to `Cataclysm.EmpireTreeLoot.`, 10 performed in each half; the restored half
+  10 of 10:
+
+| Proof | File | The break | Predicted with it in |
+|---|---|---|---|
+| N1 | `CataclysmDungeonGameMode.cpp` | the game mode puts an empty map of the tree's lines on the character | 9 succeeded, 1 failed: `TheGameModePutsTheTreeOnTheCharacterInsideADungeonOnly` (7 assertions) |
+| N2 | `CataclysmEquipmentComponent.cpp` | the equipment refresh does not gather the tree's lines | 9, 1: the same test (7) |
+| N3 | `CataclysmEmpireTree.cpp` | One-Day Specialist doubles The Hoarder's magic find too | 9, 1: `OneDaySpecialistDoublesOnlyTheExplorerLoot` (1) |
+| N4 | `CataclysmEmpireTree.cpp` | Speed Runner counts exact halves of two days | 9, 1: `LootQuantityCountsWholeDaysRemovedToEachCap` (1) |
+| N5 | `CataclysmEmpireTree.cpp` | a Fallen City's default depth is its bosses alone | 9, 1: `TheDungeonsStateIsReadFromTheRun` (1) |
+
+- **The asset step**: `python tools/run_editor_python.py tools/generate_datatable_assets.py` rebuilds
+  `DT_EmpireTreeEffects.uasset` and `DT_EmpireTreeNodes.uasset` and changes `datatable_asset_sources.json`; those three
+  are committed alone.
+- **Python before the window**: at `98c14b391`, 7750 passed, 1 failed, 9 skipped; JUnit tests 7760, failures 1, errors
+  0, skipped 9; ruff clean. The failure was `test_datatable_assets_are_current.py`, naming only `EmpireTreeEffects.csv`
+  and `EmpireTreeNodes.csv`, until the asset step.
+
+### The four Python guards, proved in phase 1
+
+Each through `tools/prove_guard.py`'s `break_and_run`, running `tools/tests/test_empire_tree_player_nodes.py` and
+`tools/tests/test_empire_tree_effects_match_their_texts.py`; each `proved` True, the restored half "11 passed":
+
+- **Z1, Speed Runner's step in C++ becomes 3 days**: 1 failed, `test_the_three_counted_words_are_in_their_nodes_texts`.
+- **Z2, `PlayerBonusesFor` stops reading Dungeon Legend**: 1 failed, `test_every_effect_kind_has_exactly_one_reader`.
+- **Z3, Temporal Efficiency's cap becomes 40%**: 2 failed, `test_the_effect_table_is_what_the_generator_writes` and
+  `test_the_nine_caps_are_the_rulings_and_nothing_else_is_capped`.
+- **Z4, the tree file says "per 2 days" again**: 2 failed, `test_the_three_counted_words_are_in_their_nodes_texts` and
+  `test_speed_runner_says_full_days_and_nothing_says_per_2_days`.
+
+### The window
+
+**tree-5a-w1, 2026-11-19, 21:47 to 22:28, at `98c14b391` and then `11affe009`.** Phase 2's three compiles, under
+the lock from 21:36 to 21:45, succeeded: the branch (46 files), each of the 8 changed `.cpp` files alone (20 files), and
+the unity files (12), each with the one warning `CountBits` from `CataclysmAbilitySystemComponent.cpp` line 1315, which
+issue #2756 holds; that file recompiled because this slice changed its header. The window's gate found every pre-check
+passing at 21:47: development `9cb64e1a5` with its CI and Unreal runs succeeded, no run in progress or queued, the lock
+free, no build or editor process, no open pull request, no simulation process, 12,306 MB free, no LFS pointer file.
+The recount of the fourteen existing groups from the base log matched every registered count, and the written-out
+version check found "22 lines stating a version; NO MISMATCH".
+
+- **The build**: "target already up to date, 0 actions, nothing compiled".
+- **The asset step** left exactly the three expected files changed, committed alone as `11affe009` and pushed:
+  `DT_EmpireTreeEffects.uasset`, `DT_EmpireTreeNodes.uasset` and `datatable_asset_sources.json`.
+- **Each group alone**: all fifteen at their registered counts, all succeeding.
+- **The whole suite**: "Tests: 4978 tests performed, 4978 succeeded, 0 failed. 47 skipped part of what they check";
+  "Test saves: 850 written and deleted, 0 left behind"; "Declared: 4978 tests in the tree at 11affe009; 4978 performed,
+  gap 0".
+- **Python**: "7751 passed, 9 skipped"; JUnit tests 7760, failures 0, errors 0, skipped 9; ruff "All checks passed!".
+- **The proofs**, each with the registered test failing in its broken half and 10 of 10 in its restored half:
+
+| Proof | With the break in | The failed assertions |
+|---|---|---|
+| N1 | 10 performed, 9 succeeded, 1 failed | `TheGameModePutsTheTreeOnTheCharacterInsideADungeonOnly` 7: "floor 1: 50 magic find" (0), "floor 1: loot quantity 175" (100), "floor 1: 20% more movement speed" (4.6, expected 5.52), "the drop roll reads the 50" (0), "and the 175" (100), "still 50 after a refresh made for another reason" (0), "floor 3: two floors cleared add 50" (0, expected 100) |
+| N2 | 10, 9, 1 | the same test and the same 7 assertions with the same values |
+| N3 | 10, 9, 1 | `OneDaySpecialistDoublesOnlyTheExplorerLoot` 1: "25 + 2 x 50 magic find" (150, expected 125) |
+| N4 | 10, 9, 1 | `LootQuantityCountsWholeDaysRemovedToEachCap` 1: "3.5 days removed: 3 whole, +50% and +15%" (90, expected 65) |
+| N5 | 10, 9, 1 | `TheDungeonsStateIsReadFromTheRun` 1: "Fallen City one floor below its tier's least: 1 removed" (0, expected 1) |
+
+No proof's log holds a "server/discover" line (#2745). The lock was released when the window ended.
+
+---
+
 ## 2026-11-19 — The simulation's Demonic Cataclysm lands its waves on the exposed front line, as the game's does, by the ruling on #1085 (#2749, Demonic front-line slice)
 
 **Affects:** `sim/cataclysm_sim/patterns.py` (`Pattern.ignores_frontier` deleted; Demonic's description and the comment
