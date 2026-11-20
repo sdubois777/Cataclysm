@@ -296,7 +296,10 @@ Slice 1's tests did not see it. `ASkillsBlowOnACreatureIsScaledByItsLevelAndCred
   not checked; the earlier place is right either way.
 - **Matched to its own blow.** The row is read off the effect the attribute set is executing, so a blow dealt from
   inside this one (an explosion at the death this blow causes) has its own effect and credits nothing unless its own
-  `ApplyHit` named a row.
+  `ApplyHit` named a row. **And a row cannot carry over from one blow to the next**: `MakeRuntimeEffect` builds a new
+  `UCataclysmRuntimeEffect` on every call (`NewObject` with `MakeUniqueObjectName`), so a skill's blow and a basic
+  attack's after it never share an effect. That is why the row is safe on the effect. The coordinating session
+  checked this when it accepted the change.
 
 ### The test and the proof, registered
 
