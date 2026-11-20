@@ -750,11 +750,11 @@ PORTED" bullet on the Demonic Cataclysm's Rifts in `game/Source/CataclysmEmpire/
 
 ### SAID FIRST
 
-- **COMPILED, AND RUN ONCE IN THE DIAGNOSTIC WINDOW, WHERE ONE OF THIS SLICE'S OWN NEW TESTS FAILED ITS SET-UP.**
-  Phase 1 was written without a compile, as ruled, at `31a879a99` on `0b7b554d1`. It was rebased twice, onto
-  `e583b0788` as `-2` and onto `3d0193bfa` as `-3`, and at its turn compiled three ways at `6e4ca7d41` with no
-  warning. The diagnostic window then ran 5,001 tests and 5,000 passed; the loaded-run test could not load its
-  fixture, and is corrected below and compiled again.
+- **COMPILED, AND PROVED IN THE PROOF WINDOW seed-w1.** Phase 1 was written without a compile, as ruled, at
+  `31a879a99` on `0b7b554d1`. It was rebased twice, onto `e583b0788` as `-2` and onto `3d0193bfa` as `-3`, and at
+  its turn compiled three ways at `6e4ca7d41` with no warning. The diagnostic window then ran 5,001 tests and 5,000
+  passed: one of this slice's own new tests, the loaded-run test, could not load its fixture. It is corrected below
+  and compiled again, and the proof window then passed all 5,001 and proved M1, the old formula put back in the mix.
 - **THE DIAGNOSTIC WINDOW PROVES NOTHING ABOUT THE FIX, AND ITS FAILURES ARE EXPECTED** (ruled Q2, below). Changing how
   22 streams are seeded changes what they draw, so any test that pins a draw from one of them moves. The window lists
   those tests by name, from evidence. The real window comes after the commit that corrects them, registers each moved
@@ -1057,6 +1057,33 @@ whose rarity seeds is nought:
 
 The plan above named only the band test's two assertions. The neighbour test's also fails, because its rarity seeds
 come through the same mix.
+
+### The proof window seed-w1, 2026-11-20
+
+Run at `e13f98e77` on the coordinating session's GO, under the lock `seed-w1`, from 04:41:12, the pre-checks all passing
+with 11,960 MB free. Everything printed what was registered.
+
+- **The build**: "target already up to date, 0 actions, nothing compiled", because the second round's unity build had
+  built the same `game/` tree.
+- **`Cataclysm.Seeding.` alone**: "3 tests performed, 3 succeeded, 0 failed", printing "SEEDING BAND: the mix: fewest
+  distinct 15, narrowest band 16; the old formula: most distinct 5, widest band 5; fewest Elites on a floor 41",
+  "SEEDING NEIGHBOURS: both Elite 0.0454 with the mix, 0.1229 with the old formula" and "SEEDING LOADED RUN: next
+  ECataclysmType::Demonic, then ECataclysmType::War".
+- **The whole suite**: "5001 tests performed, 5001 succeeded, 0 failed", 47 skipped part of what they check; "Test
+  saves: 852 written and deleted, 0 left behind"; "Declared: 5001 tests in the tree at e13f98e77; 5001 performed, gap
+  0". No line named "server/discover" or "ConsoleCtrl". Memory peaked at 9,100 MB.
+- **Python**: "7776 passed, 9 skipped", the JUnit file agreeing (7,785 tests, no failure, 9 skipped); ruff clean.
+- **M1 PROVED**: "PROVED: with the break in: 3 tests performed, 1 succeeded, 2 failed:
+  AFloorsElitesDrawTheirFirstModifiersFromAcrossThePoolAndNotFromABand,
+  NeighbouringPlacementsAreBothEliteAboutAsOftenAsIndependentDrawsWouldBe | restored: 3 tests performed, 3 succeeded, 0
+  failed". The anchor matched once, the source hash was the same before and after, and nothing crashed. The broken
+  half's engine log, kept as `seed_M1_run1.log`, holds the predicted lines: "SEEDING BAND: the mix: fewest distinct 4,
+  narrowest band 4; the old formula: most distinct 5, widest band 5; fewest Elites on a floor 47", with the two failed
+  assertions "every floor's Elites carry at least 12 distinct first modifiers" and "no floor's Elites lie in a band of 5
+  adjacent rows or fewer"; "SEEDING NEIGHBOURS: both Elite 0.1229 with the mix, 0.1229 with the old formula", with the
+  one failed assertion "neighbouring placements are both Elite under 6% of the time"; and the loaded-run test passing
+  with "next ECataclysmType::Demonic, then ECataclysmType::War". The restored half printed the registered lines again.
+- The lock was released, and the tracked tree was clean at `e13f98e77`.
 
 ---
 
