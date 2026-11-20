@@ -174,6 +174,10 @@ HOOKS = {
                 "what the creature dropped",
             "UCataclysmDropSpawner::SpawnGoldFor":
                 "the gold piles the creature dropped, after its items, issue #2742",
+            "UCataclysmDropSpawner::SpawnTheTreesExtraDropsFor":
+                "the empire upgrade tree's extra drops, after the gold: an Elite's one more "
+                "item, any kill's one more material, a boss's Legendary or rarer item, "
+                "issue #2741 slice 5b",
             "UCataclysmHealthDebt::ClearOnKill":
                 "a kill clearing what the killer owes, issue #997",
             "UCataclysmStacks::NoteEnemyKilled":

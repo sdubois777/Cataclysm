@@ -4067,25 +4067,31 @@ EMPIRE_TREE_EFFECT_KINDS = (
     "MagicFindPerFiveClears", "LootQuantityPerExplorerCity",
     "MagicFindPerExplorerCity", "LootQuantityPerBranchStep",
     "ExplorerLootDoubledAtOneDay", "DamagePerKindDefeated",
+    # Slice 5b: Relentless Pursuit's clears in a row, and the four chances a
+    # kill rolls for an extra drop.
+    "LootQuantityPerCleanClear", "EliteExtraItemChance", "ExtraMaterialChance",
+    "LowTierMaterialExtraChance", "BossLegendaryChancePerTenFloorsAdded",
 )
 
 #: WHAT EACH BUILT NODE OR OPTION OF THE EMPIRE TREE DOES, by name. Issue
 #: #2741 slice 3a: the 31 city nodes and options that act through numbers the
 #: run already saves; slice 3b: the seven that act at an event; slice 4 the
 #: nineteen of a dungeon's walk and depth; slice 5a the fifteen of the player's
-#: stats inside a dungeon. Slice 5b adds its five here.
+#: stats inside a dungeon; slice 5b Relentless Pursuit and the four drop rules.
 #:
 #: EACH EFFECT IS (effect, per point) or (effect, per point, step points, step
 #: branch, cap). Per point is a fraction for a percentage and days for days; a
 #: reduction is the share it takes off, written positive. Every value is the
 #: node's own words, and `test_empire_tree_effects_match_their_texts.py` finds
-#: each one in its text. FIVE OF THE NINE CAPS ARE NOT IN ANY TEXT: Golden
+#: each one in its text. SIX OF THE TEN CAPS ARE NOT IN ANY TEXT: Golden
 #: Age's and Bastion Spirit's are the owner's ruling 2 of 2026-11-18, "Cap each
 #: one", chosen in slice 3a from the simulation (S3, S4); Reclaimer's
 #: Resolve's is the coordinating session's Q2 of 2026-11-19, the 15% Global
 #: Vigilance's own text states; Architectural Insight's +10 floors is its
 #: W4 of 2026-11-19, under ruling 2; and Temporal Efficiency's +50% is its D3
-#: of 2026-11-19, under ruling 2, the cap Efficiency Premium's text states.
+#: of 2026-11-19, under ruling 2, the cap Efficiency Premium's text states;
+#: and Relentless Pursuit's +100% is its D5 of 2026-11-19, under ruling Q9,
+#: sized as #1390 sized Speed Runner's.
 #: Global Vigilance's 15%, Sovereign's Haste's 30, Speed Runner's 100% and
 #: Efficiency Premium's 50% are in their texts. Each is recorded as a judgement.
 #:
@@ -4189,6 +4195,16 @@ EMPIRE_TREE_EFFECTS = {
     # The walk of one day it asks for; the doubling is in C++.
     "One-Day Specialist": [("ExplorerLootDoubledAtOneDay", 1.0)],
     "Dungeon Mastery": [("DamagePerKindDefeated", 0.03)],
+    # Slice 5b, each reading a judgement of the coordinating session's D5, D6
+    # and E1 to E4 of 2026-11-19 (`docs/DECISIONS.md`). Relentless Pursuit
+    # counts the clears since the last death, to a cap (D5); the four drop
+    # rules are chances a kill rolls, each held at 100% in C++.
+    "Relentless Pursuit": [("LootQuantityPerCleanClear", 0.05, 0, "", 1.00)],
+    "Opportunistic Looting": [("EliteExtraItemChance", 0.03)],
+    "Plunderer's Eye": [("ExtraMaterialChance", 0.02)],
+    "Scavenger": [("LowTierMaterialExtraChance", 0.05)],
+    # Per whole 10 floors added to the dungeon; the step is in C++.
+    "The High Roller": [("BossLegendaryChancePerTenFloorsAdded", 0.05)],
 }
 
 

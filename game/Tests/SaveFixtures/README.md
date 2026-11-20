@@ -712,6 +712,26 @@ followed, ruled 2026-11-01:
   `Run_v9.json` as the committed run file reads `Run_v10.json` now, and every
   test that runs an older run file through the whole chain adds what the step
   writes through `CataclysmSaveFixtures::AddTheRunsVersion10Defaults`.
+- **The run record went to version 11 on 2026-11-20**, because the empire
+  upgrade tree's Relentless Pursuit counts the dungeons cleared since the last
+  death (issue #2741 slice 5b): one field after `bSanctuaryLastStandSpent`,
+  `ClearsSinceLastDeath`. `Migrate_10_to_11` writes into a version 10 file the
+  run's own `DungeonsCleared` when it records no death -- an empty or missing
+  `LastDeathDungeonName` -- and 0 when it records one, because the clears
+  after a death cannot be told from those before it. `Run_v11.json` is
+  `Run_v10.json` at version 11 with `"ClearsSinceLastDeath": 5` added and
+  nothing else changed: 5 is not the default, and not the 0 the step writes
+  for this run, which records a death on day 103, so the test that reads it
+  shows the field is read. As at version 9, it is a value this run's play
+  does not give -- its last clear, on day 80, came before that death -- kept
+  so that the file differs from version 10 in this field only.
+  `Run_v10.json` is now a migration input, not edited again:
+  `Cataclysm.EmpireTreeDrops.ARunFileFromVersion10MigratesWithTheClearsItCanProve`
+  runs it through the step and checks every other field is kept, every test
+  that read `Run_v10.json` as the committed run file reads `Run_v11.json`
+  now, and every test that runs an older run file through the whole chain
+  adds what the step writes through
+  `CataclysmSaveFixtures::AddTheRunsVersion11Defaults`.
 - **A slip, recorded rather than undone, as `LastWrittenUtc` was.**
   `Run_v1.json` was edited thirteen times after saves could load
   (`78ad0fa81`, 2026-10-30), each time adding fields for #753's dungeon load
@@ -749,6 +769,7 @@ followed, ruled 2026-11-01:
 | `Run_v8.json` | The same run at version 8: version 7's contents, plus its mask on its dungeons' walk seeds, 12345 |
 | `Run_v9.json` | The same run at version 9: version 8's contents, plus the empire upgrade tree's event counts -- 3 clears since the last surge, 1 city reclaimed, the Last Stand spent -- and the day each of its two city upgrades was bought, 101 and 64 |
 | `Run_v10.json` | The same run at version 10: version 9's contents, with its first creature saved as a Vengeful Wraith and its second as not one |
+| `Run_v11.json` | The same run at version 11: version 10's contents, plus 5 dungeons cleared since the last death |
 | `Example_v1.json` | The example record at version 1 |
 | `Example_v2.json` | The same record at version 2, after `Title` was renamed to `Label` |
 | `Example_v3.json` | The same record at version 3, after `TotalCopper` was split into `Gold` and `Copper` |
@@ -761,8 +782,8 @@ something.
 `UCataclysmSaveExampleRecord` exists only for these, because all three real
 records were at version 1 when it was written and version 1 is the first, so
 none of them had a migration to run. The character record has had nine since
-(version 10 since 2026-11-19), the run record nine (version 10 since
-2026-11-19), and the account record three (version 4 since 2026-11-18). Its
+(version 10 since 2026-11-19), the run record ten (version 11 since
+2026-11-20), and the account record three (version 4 since 2026-11-18). Its
 header says more.
 
 ## Two things to keep in mind when editing one

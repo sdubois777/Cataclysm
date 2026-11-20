@@ -1778,8 +1778,13 @@ public:
 	 * and `Migrate_9_to_10` writes false on every saved creature of a run written at 9: nothing in it tells a wraith
 	 * from another risen creature. THE RUN RECORD'S 10, not the character record's, which reached its own 10 on the
 	 * same day for skill levels (issue #2764); the two numbers are each record's own.
+	 *
+	 * 11 SINCE 2026-11-20. The run carries the dungeons cleared since the character last died, `ClearsSinceLastDeath`
+	 * (issue #2741 slice 5b, Relentless Pursuit), and `Migrate_10_to_11` writes into a run written at 10 the run's own
+	 * `DungeonsCleared` when it records no death (an empty `LastDeathDungeonName`), every clear having been made
+	 * without dying, and 0 when it records one, because the clears after it cannot be told from the clears before.
 	 */
-	static constexpr int32 SchemaVersionNow = 10;
+	static constexpr int32 SchemaVersionNow = 11;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
@@ -2244,6 +2249,13 @@ public:
 	/** `UCataclysmEmpireRun::bSanctuaryLastStandSpent`: whether Last Stand Protocols has held in this run. */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	bool bSanctuaryLastStandSpent = false;
+
+	// ---- RELENTLESS PURSUIT'S CLEARS IN A ROW, issue #2741 slice 5b. RUN RECORD VERSION 11: a record written before it is
+	// at version 10, and `Migrate_10_to_11` writes the run's clears into it when it records no death, else 0. ----
+
+	/** `UCataclysmEmpireRun::ClearsSinceLastDeath`, which Relentless Pursuit reads. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 ClearsSinceLastDeath = 0;
 };
 
 /**

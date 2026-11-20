@@ -5430,8 +5430,8 @@ bool FCataclysmSaveLoadVengefulWraithTest::RunTest(const FString&)
 
 /**
  * `Run_v9.json`, written before a saved creature said whether it is a Vengeful Wraith, migrates to no wraith: a
- * `bIsVengefulWraith` of false on both its creatures, with every other field kept. CONTROL: `Run_v10.json`, the same
- * run at version 10, reads true on its first creature, the risen Brute that sees 30 times as far, and false on its
+ * `bIsVengefulWraith` of false on both its creatures, with every other field kept. CONTROL: the committed run file,
+ * `Run_v11.json` since the run record went to version 11 (issue #2741 slice 5b), reads true on its first creature, the risen Brute that sees 30 times as far, and false on its
  * second. Issue #2725. Prints "WRAITH MIGRATED".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadWraithMigrationTest,
@@ -5444,7 +5444,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	FString CurrentText;
 	FString Reason;
 	if (!CataclysmSaveFixtures::Read(TEXT("Run_v9.json"), Text, Reason)
-		|| !CataclysmSaveFixtures::Read(TEXT("Run_v10.json"), CurrentText, Reason))
+		|| !CataclysmSaveFixtures::Read(TEXT("Run_v11.json"), CurrentText, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -5485,7 +5485,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	FString CurrentMessage;
 	const UCataclysmRunSave* Current = Cast<UCataclysmRunSave>(FCataclysmSaveStorage::FromJson(
 		CurrentText, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, CurrentMessage));
-	if (!TestNotNull(TEXT("Run_v9.json loads"), Read) || !TestNotNull(TEXT("Run_v10.json loads"), Current))
+	if (!TestNotNull(TEXT("Run_v9.json loads"), Read) || !TestNotNull(TEXT("Run_v11.json loads"), Current))
 	{
 		AddError(Message + TEXT(" | ") + CurrentMessage);
 		return false;
@@ -5496,6 +5496,9 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	const TSharedPtr<FJsonObject> Expected = CataclysmSaveFixtures::Parse(Text);
 	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmRunSave::SchemaVersionNow);
 	CataclysmSaveFixtures::AddTheRunsVersion10Defaults(*Expected);
+	// AND THE CLEARS SINCE THE LAST DEATH `Migrate_10_to_11` WRITES, because the chain runs on to run record
+	// version 11 since 2026-11-20 (issue #2741 slice 5b).
+	CataclysmSaveFixtures::AddTheRunsVersion11Defaults(*Expected);
 	FString Rewritten;
 	FString Error;
 	FString Where;
@@ -5514,7 +5517,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	};
 
 	AddInfo(FString::Printf(TEXT("WRAITH MIGRATED: the step %d (%s); false written on %d creature(s); the record at "
-								 "version %d with flags %s; Run_v10.json flags %s; the rest %s"),
+								 "version %d with flags %s; Run_v11.json flags %s; the rest %s"),
 							static_cast<int32>(Stepping), *StepMessage, WrittenFalse, Read->SchemaVersion, *Flags(*Read),
 							*Flags(*Current), bSame ? TEXT("kept") : *Where));
 	TestEqual(TEXT("the chain migrates the version 9 file"), static_cast<int32>(Stepping),
@@ -5523,7 +5526,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	TestEqual(TEXT("it arrives at the current version"), Read->SchemaVersion, UCataclysmRunSave::SchemaVersionNow);
 	TestEqual(TEXT("and neither creature is a wraith"), Flags(*Read), FString(TEXT("00")));
 	TestTrue(TEXT("and every other field is kept"), bSame);
-	TestEqual(TEXT("CONTROL: Run_v10.json's first creature is a wraith and its second is not"), Flags(*Current),
+	TestEqual(TEXT("CONTROL: Run_v11.json's first creature is a wraith and its second is not"), Flags(*Current),
 			  FString(TEXT("10")));
 	return true;
 }
@@ -11179,6 +11182,9 @@ bool FCataclysmTravelMigrationTest::RunTest(const FString&)
 	// AND A `bIsVengefulWraith` OF FALSE ON EVERY SAVED CREATURE, which `Migrate_9_to_10` writes, because
 	// the chain runs on to run record version 10 since 2026-11-19 (issue #2725).
 	CataclysmSaveFixtures::AddTheRunsVersion10Defaults(*Expected);
+	// AND THE CLEARS SINCE THE LAST DEATH `Migrate_10_to_11` WRITES, because the chain runs on to run record
+	// version 11 since 2026-11-20 (issue #2741 slice 5b).
+	CataclysmSaveFixtures::AddTheRunsVersion11Defaults(*Expected);
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -11209,10 +11215,11 @@ bool FCataclysmTravelMigrationTest::RunTest(const FString&)
 }
 
 /**
- * `Run_v10.json` reads into the award, the clear and the days away it states (it read `Run_v6.json` until the run record
+ * `Run_v11.json` reads into the award, the clear and the days away it states (it read `Run_v6.json` until the run record
  * went to version 7 on 2026-11-18, issue #2742, `Run_v7.json` until it went to version 8 the same day, issue #2749
  * B10, `Run_v8.json` until it went to version 9 on 2026-11-19, issue #2741 slice 3b, and `Run_v9.json` until it went
- * to version 10 the same day, issue #2725, and the five hold the same values). Every value but one is not a default, so each is read and not re-defaulted; THE ONE IS `bEndedInAClear`, false, because the run it describes last came back
+ * to version 10 the same day, issue #2725, and `Run_v10.json` until it went to version 11 on 2026-11-20, issue #2741
+ * slice 5b, and the six hold the same values). Every value but one is not a default, so each is read and not re-defaulted; THE ONE IS `bEndedInAClear`, false, because the run it describes last came back
  * from a death -- on day 103, at 15 days, felling cities 17 and 23, which the summary lists -- and a fixture describes a
  * state play reaches. The test of the return line reads a true one. Prints "TRAVEL FILE".
  */
@@ -11224,7 +11231,7 @@ bool FCataclysmTravelCommittedFileTest::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v10.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v11.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -11235,7 +11242,7 @@ bool FCataclysmTravelCommittedFileTest::RunTest(const FString&)
 		Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v10.json would not load: %s -- %s"), FCataclysmSaveStorage::Describe(Result),
+		AddError(FString::Printf(TEXT("Run_v11.json would not load: %s -- %s"), FCataclysmSaveStorage::Describe(Result),
 								 *Message));
 		return false;
 	}
@@ -11248,7 +11255,7 @@ bool FCataclysmTravelCommittedFileTest::RunTest(const FString&)
 							Away.bEndedInAClear ? TEXT("YES") : TEXT("no"), Away.Cities.Num(), Away.Fallen.Num(),
 							Away.Surges, Away.SurgeDungeons));
 
-	TestEqual(TEXT("it says it is version 10"), Read->SchemaVersion, 10);
+	TestEqual(TEXT("it says it is version 11"), Read->SchemaVersion, 11);
 	TestEqual(TEXT("the last award was 2.25 points"), Read->LastEmpirePointsAwarded, 2.25);
 	TestEqual(TEXT("the last clear on day 80"), Read->LastClearDay, 80);
 	TestEqual(TEXT("of the Horde dungeon on Bulwark (1,2)"), Read->LastClearDungeonName,

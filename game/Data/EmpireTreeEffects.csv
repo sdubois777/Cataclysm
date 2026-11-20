@@ -75,3 +75,8 @@ capstone_0000002y#2,capstone_0000002y,0,MagicFindPerExplorerCity,0.05,0,,0.0
 keystone_0000002o#1,keystone_0000002o,0,LootQuantityPerBranchStep,0.1,5,Artisan,0.5
 keystone_0000002w#1,keystone_0000002w,0,ExplorerLootDoubledAtOneDay,1.0,0,,0.0
 basic_expl_t2f#1,basic_expl_t2f,0,DamagePerKindDefeated,0.03,0,,0.0
+basic_expl_t3c#1,basic_expl_t3c,0,LootQuantityPerCleanClear,0.05,0,,1.0
+basic_expl_t1c#1,basic_expl_t1c,0,EliteExtraItemChance,0.03,0,,0.0
+basic_expl_t4g#1,basic_expl_t4g,0,ExtraMaterialChance,0.02,0,,0.0
+basic_0000004z#1,basic_0000004z,0,LowTierMaterialExtraChance,0.05,0,,0.0
+keystone_0000002p#1,keystone_0000002p,0,BossLegendaryChancePerTenFloorsAdded,0.05,0,,0.0

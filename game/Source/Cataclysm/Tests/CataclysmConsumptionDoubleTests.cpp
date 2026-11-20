@@ -902,6 +902,9 @@ bool FCataclysmConsumptionDoubleRunMigrationTest::RunTest(const FString& Paramet
 	// AND A `bIsVengefulWraith` OF FALSE ON EVERY SAVED CREATURE, which `Migrate_9_to_10` writes, because
 	// the chain runs on to run record version 10 since 2026-11-19 (issue #2725).
 	CataclysmSaveFixtures::AddTheRunsVersion10Defaults(*Expected);
+	// AND THE CLEARS SINCE THE LAST DEATH `Migrate_10_to_11` WRITES, because the chain runs on to run record
+	// version 11 since 2026-11-20 (issue #2741 slice 5b).
+	CataclysmSaveFixtures::AddTheRunsVersion11Defaults(*Expected);
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);

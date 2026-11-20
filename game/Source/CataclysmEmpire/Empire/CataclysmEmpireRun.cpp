@@ -165,6 +165,9 @@ void UCataclysmEmpireRun::BeginForCharacter(int32 InSeed, int32 InCataclysmOrder
 	CitiesReclaimed = 0;
 	bSanctuaryLastStandSpent = false;
 
+	// AND RELENTLESS PURSUIT'S CLEARS IN A ROW: a new run has cleared nothing yet. Issue #2741 slice 5b (D5).
+	ClearsSinceLastDeath = 0;
+
 	// AND NO DEFEAT HAS AWARDED ANYTHING IN THIS RUN YET. Issue #52.
 	LastEmpirePointsAwarded = 0.0;
 
@@ -1789,6 +1792,9 @@ bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)
 	// AND GLOBAL VIGILANCE'S COUNT, every kind as `DungeonsCleared` counts every kind (Q1). Issue #2741 slice 3b.
 	++ClearsSinceLastSurge;
 
+	// AND RELENTLESS PURSUIT'S, every kind too, until the next death the run notes (D5). Issue #2741 slice 5b.
+	++ClearsSinceLastDeath;
+
 	// ORDINARY DUNGEONS ONLY, WHICH IS A DIFFERENT NUMBER AND NOT A SUBSET
 	// KEPT FOR CONVENIENCE. `docs/Cataclysm_GDD_v2.md` section VIII: "Every
 	// **ordinary** dungeon defeated adds one floor to the Cataclysm boss
@@ -2461,6 +2467,9 @@ void UCataclysmEmpireRun::NoteDeath(int32 Day, const FString& DungeonName, int32
 	LastDeathWalkDays = WalkDays;
 	LastDeathDaysCost = DaysCost;
 	LastDeathFallenCityIds = FallenCityIds;
+
+	// AND RELENTLESS PURSUIT'S CLEARS IN A ROW END HERE, at every death the run hears of (D5). Issue #2741 slice 5b.
+	ClearsSinceLastDeath = 0;
 }
 
 // ---------------------------------------------------------------------------
