@@ -711,8 +711,12 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 	FCataclysmDamageResult Resolved;
 	const float Dealt = UCataclysmSkillEffects::ApplyHit(
 		Firer, Target, Percent, SkillTags, Delivery, &Resolved);
+	// THE FIRST LANDING OF ITS WHOLE USE, asked before the record below takes this one in. Issue #2722: mana on hit is
+	// paid there and at no other contact. See `bPaidManaOnHit`.
+	bool bFirstLandingOfItsUse = false;
 	if (Dealt > 0.0f && !Resolved.bEvaded)
 	{
+		bFirstLandingOfItsUse = !bPaidManaOnHit && (!LandedOnInItsUse.IsValid() || LandedOnInItsUse->Num() == 0);
 		++LandedContacts;
 
 		// AND THE OTHER PROJECTILES OF ITS USE ARE TOLD, so none of them strikes this enemy. Ruled 2026-10-12. The
@@ -808,6 +812,21 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 					if (Firing->LayWhatALandedShotCarries(Firer, Target, Dealt))
 					{
 						PinnedAlongItsFlight.AddUnique(Target);
+					}
+
+					// AND THE FIRING SLOT'S MANA ON HIT, TO THE FIRER, AT THE FIRST LANDING OF THE USE. Issue #2722,
+					// approved by the coordinating session on 2026-11-19: "The basic attack returns 6 mana each time it
+					// lands" (`docs/Cataclysm_GDD_v2.md`) names no weapon, and until then a Wand's, a Crossbow's, a
+					// Staff's and a Two-Handed Crossbow's shot paid nothing, because this contact never passes through
+					// `HitTargets`, which pays every other landed use. By the test above: landed, and carrying damage, as
+					// `HitTargets` pays only a use whose total is above nought. A blow armour stopped dead still pays,
+					// because landing is the test and not damage taken. Inert for every slot but the basic attack, whose
+					// slot alone states a figure (`SkillSlots.csv`). PAID TO THE FIRER'S OWN ABILITY SYSTEM, as the
+					// Fervour above is, because the shot lands after its use has ended.
+					if (bFirstLandingOfItsUse)
+					{
+						bPaidManaOnHit = true;
+						Firing->PayManaOnHitTo(UCataclysmTargeting::AbilitySystemOf(Firer));
 					}
 				}
 			}

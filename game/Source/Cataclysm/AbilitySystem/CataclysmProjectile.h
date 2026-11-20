@@ -562,6 +562,15 @@ public:
 	TSharedPtr<TMap<TWeakObjectPtr<AActor>, int32>> LandedOnInItsUse;
 
 	/**
+	 * Whether this projectile has paid its firing slot's mana on hit. Issue #2722: a ranged basic attack's shot pays
+	 * the design's "6 mana each time it lands" at the FIRST LANDING OF ITS WHOLE USE, and no other contact pays it: not
+	 * a second enemy a pierce or a glance reaches, not a second enemy in its own blast (whose contacts each start from
+	 * the same `LandedContacts`), and not another projectile of a use a row of the user's fired several of, which reads
+	 * `LandedOnInItsUse` already holding the first landing. Per use, as `HitTargets` pays a swing that strikes five.
+	 */
+	bool bPaidManaOnHit = false;
+
+	/**
 	 * Where the use that fired this was cast from, when that was not its firer's own place: read while
 	 * `bStrikesFromAPoint` is set. Ruled 2026-10-14, for a gadget's copy of its summoner's skill: the firer is the
 	 * summoner and the shot leaves the gadget. Set by `UCataclysmProjectileSkill` just after `Fire`. Only whether a

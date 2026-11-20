@@ -2907,6 +2907,12 @@ public:
 	/** Famished Beasts, for the panel and tests: the drops eaten on this floor. Issues #1820 and #41. */
 	int32 FamishedBeastsDropsEatenNow() const { return FamishedBeastsFloor == FloorNumber ? FamishedBeastsDropsEaten : 0; }
 
+	/**
+	 * Vengeful Wraiths, for tests: the living creatures in the rule's list, the list a rung change asks before it puts a
+	 * wraith's figures back. A load puts a saved wraith back into it since issue #2725.
+	 */
+	TArray<ACataclysmEnemyCharacter*> VengefulWraithsStandingNow() const;
+
 	/** The elite a Blood Bond holds on this floor, or null. For the floor panel and tests. */
 	ACataclysmEnemyCharacter* BloodBondedOnTheFloor() const { return BloodBonded.Get(); }
 

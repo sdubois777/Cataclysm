@@ -1261,6 +1261,9 @@ bool FCataclysmWinningTheRunMigrationTest::RunTest(const FString& Parameters)
 	// AND THE TREE'S EVENT COUNTS AT NOTHING AND A BOUGHT DAY OF 0 ON EVERY UPGRADE, which `Migrate_8_to_9` writes,
 	// because the chain runs on to version 9 since 2026-11-19 (issue #2741 slice 3b).
 	CataclysmSaveFixtures::AddTheRunsVersion9Defaults(*Expected);
+	// AND A `bIsVengefulWraith` OF FALSE ON EVERY SAVED CREATURE, which `Migrate_9_to_10` writes, because
+	// the chain runs on to run record version 10 since 2026-11-19 (issue #2725).
+	CataclysmSaveFixtures::AddTheRunsVersion10Defaults(*Expected);
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -1292,17 +1295,18 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWinningTheRunCommittedFileTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * `Run_v9.json` reads into the four values it states, none of them a default, so each is read and not re-defaulted. It
+ * `Run_v10.json` reads into the four values it states, none of them a default, so each is read and not re-defaulted. It
  * read `Run_v5.json` until the run record went to version 6 on 2026-11-17 (issue #2733 slice 3), `Run_v6.json` until it
  * went to version 7 on 2026-11-18 (issue #2742), `Run_v7.json` until it went to version 8 the same day (issue #2749,
- * B10), and `Run_v8.json` until it went to version 9 on 2026-11-19 (issue #2741 slice 3b).
+ * B10), `Run_v8.json` until it went to version 9 on 2026-11-19 (issue #2741 slice 3b), and `Run_v9.json` until it
+ * went to version 10 the same day (issue #2725).
  * Prints "WIN FILE".
  */
 bool FCataclysmWinningTheRunCommittedFileTest::RunTest(const FString& Parameters)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v9.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v10.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1313,7 +1317,7 @@ bool FCataclysmWinningTheRunCommittedFileTest::RunTest(const FString& Parameters
 		Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v9.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Run_v10.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
@@ -1322,7 +1326,7 @@ bool FCataclysmWinningTheRunCommittedFileTest::RunTest(const FString& Parameters
 							Read->SchemaVersion, Read->LastRunWonDay, Read->LastRunWonTier,
 							static_cast<int32>(Read->LastRunWonCataclysm), Read->LastRunWonPassivePoints));
 
-	TestEqual(TEXT("it says it is version 9"), Read->SchemaVersion, 9);
+	TestEqual(TEXT("it says it is version 10"), Read->SchemaVersion, 10);
 	TestEqual(TEXT("the run before it was won on day 381"), Read->LastRunWonDay, 381);
 	TestEqual(TEXT("at tier 3"), Read->LastRunWonTier, 3);
 	TestEqual(TEXT("against War"), static_cast<int32>(Read->LastRunWonCataclysm),

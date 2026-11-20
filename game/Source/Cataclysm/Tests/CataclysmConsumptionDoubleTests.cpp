@@ -899,6 +899,9 @@ bool FCataclysmConsumptionDoubleRunMigrationTest::RunTest(const FString& Paramet
 	// AND THE TREE'S EVENT COUNTS AT NOTHING AND A BOUGHT DAY OF 0 ON EVERY UPGRADE, which `Migrate_8_to_9` writes,
 	// because the chain runs on to version 9 since 2026-11-19 (issue #2741 slice 3b).
 	CataclysmSaveFixtures::AddTheRunsVersion9Defaults(*Expected);
+	// AND A `bIsVengefulWraith` OF FALSE ON EVERY SAVED CREATURE, which `Migrate_9_to_10` writes, because
+	// the chain runs on to run record version 10 since 2026-11-19 (issue #2725).
+	CataclysmSaveFixtures::AddTheRunsVersion10Defaults(*Expected);
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);

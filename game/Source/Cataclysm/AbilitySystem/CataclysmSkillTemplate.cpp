@@ -2806,15 +2806,18 @@ float UCataclysmSkillTemplate::StrikeTheWearerInItsDeployablesBlast(AActor* Wear
 
 void UCataclysmSkillTemplate::ApplyManaOnHit() const
 {
+	const FGameplayAbilityActorInfo* Info = GetCurrentActorInfo();
+	PayManaOnHitTo(Info ? Info->AbilitySystemComponent.Get() : nullptr);
+}
+
+void UCataclysmSkillTemplate::PayManaOnHitTo(UAbilitySystemComponent* AbilitySystem) const
+{
 	const float Gained = GetManaOnHit();
 	if (Gained <= 0.0f)
 	{
 		return;
 	}
 
-	const FGameplayAbilityActorInfo* Info = GetCurrentActorInfo();
-	UAbilitySystemComponent* AbilitySystem =
-		Info ? Info->AbilitySystemComponent.Get() : nullptr;
 	if (!AbilitySystem)
 	{
 		return;

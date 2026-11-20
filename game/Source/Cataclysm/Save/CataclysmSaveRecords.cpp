@@ -615,6 +615,33 @@ namespace CataclysmRunSaveMigration
 		return true;
 	}
 
+	/**
+	 * A run written before a saved creature said whether it is a Vengeful Wraith says of none of its creatures that it
+	 * is one. Issue #2725, approved by the coordinating session on 2026-11-19. Written out, for `Migrate_1_to_2`'s
+	 * reason, as a `bIsVengefulWraith` of false on every creature the floor's `Creatures` holds: nothing in the older
+	 * file tells a wraith from another creature a rule raised, so such a wraith comes back as one did before the field.
+	 * A floor with no array, or an entry that is not an object, is left as it is, for `Migrate_6_to_7`'s reason.
+	 */
+	bool Migrate_9_to_10(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		const TSharedPtr<FJsonObject>* Floor = nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* Creatures = nullptr;
+		if (Record->TryGetObjectField(TEXT("Floor"), Floor) && Floor && Floor->IsValid()
+			&& (*Floor)->TryGetArrayField(TEXT("Creatures"), Creatures) && Creatures)
+		{
+			for (const TSharedPtr<FJsonValue>& Entry : *Creatures)
+			{
+				const TSharedPtr<FJsonObject>* Creature = nullptr;
+				if (Entry.IsValid() && Entry->TryGetObject(Creature) && Creature && Creature->IsValid())
+				{
+					(*Creature)->SetBoolField(TEXT("bIsVengefulWraith"), false); // A migration's: no wraith, written out.
+				}
+			}
+		}
+		return true;
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep RunSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
@@ -625,6 +652,7 @@ namespace CataclysmRunSaveMigration
 		{ 6, TEXT("Migrate_6_to_7"), &Migrate_6_to_7 },
 		{ 7, TEXT("Migrate_7_to_8"), &Migrate_7_to_8 },
 		{ 8, TEXT("Migrate_8_to_9"), &Migrate_8_to_9 },
+		{ 9, TEXT("Migrate_9_to_10"), &Migrate_9_to_10 },
 	};
 }
 

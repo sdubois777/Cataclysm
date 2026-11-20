@@ -4008,6 +4008,20 @@ TArray<int32> ACataclysmDungeonGameMode::EchoAttacksRecordedThisFloor() const
 	return Attacks;
 }
 
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::VengefulWraithsStandingNow() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : VengefulWraiths)
+	{
+		ACataclysmEnemyCharacter* Wraith = One.Get();
+		if (IsValid(Wraith) && !UCataclysmSkillEffects::IsDead(Wraith))
+		{
+			Standing.Add(Wraith);
+		}
+	}
+	return Standing;
+}
+
 TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::EchoesStandingNow() const
 {
 	TArray<ACataclysmEnemyCharacter*> Standing;
@@ -16142,6 +16156,18 @@ void ACataclysmDungeonGameMode::RestoreCreatureRoles(ACataclysmEnemyCharacter& C
 		Creature.SetGrimTotemsDamageMultiplier(Saved.GrimTotemsDamageMultiplier);
 	}
 
+	// AND A VENGEFUL WRAITH, BACK IN THE RULE'S LIST AND GIVEN THE ROW'S FIGURES AGAIN: a tenth of every hit, its 20%
+	// increased damage as its own part, its two speeds and its sight. Issue #2725. In the list first, because
+	// `ApplyVengefulWraithFigures` writes nothing for a creature outside it, and because a later rung change (Volatile
+	// Evolution, Blood-Forged Champions) puts the figures back only for a creature in it. The saved attack damage is the
+	// creature's own (`FCataclysmSavedCreature::AttackDamage`), so the increase is not counted twice. The floor panel's
+	// "N wraith(s) risen" is a count of this floor's risings and is not saved, as Blood-Forged Champions' is not.
+	if (Saved.bIsVengefulWraith)
+	{
+		VengefulWraiths.Add(&Creature); // A load's: a saved wraith.
+		ApplyVengefulWraithFigures(&Creature);
+	}
+
 	// AND A CREATURE A RULE RAISED IN PLAY, BACK IN THAT RULE, since Group 3d-3a (Q5 of 3d, ruled 2026-10-31). Raised by
 	// a rule by both marks, as `BringCreaturesNear` raises it, so the stairs' seal and the clear do not count it, as they
 	// did not before the save; on the floor's list, where the load put it and `BringCreaturesNear` puts one; paying for
@@ -16399,6 +16425,10 @@ void ACataclysmDungeonGameMode::CreatureRolesInto(const ACataclysmEnemyCharacter
 		}
 	}
 	Record.GrimTotemsDamageMultiplier = Creature.DamageMultiplierFrom(ACataclysmEnemyCharacter::GrimTotemsDamageSource);
+
+	// A VENGEFUL WRAITH: one in the rule's list carrying the rule's mark, as the Plaguebearer above is the rule's
+	// bearer only while the rule holds it. Issue #2725.
+	Record.bIsVengefulWraith = Creature.bIsVengefulWraith && VengefulWraiths.Contains(Mutable);
 
 	// 3d-3b: a Carrion Feast feeder's own maximum health.
 	const int32 AsFeeder = CarrionFeeders.IndexOfByPredicate(
