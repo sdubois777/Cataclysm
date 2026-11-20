@@ -37,6 +37,7 @@ import unreal_build  # noqa: E402
 from unreal_build import (  # noqa: E402
     BuildDidNothing,
     BuildOutcome,
+    MCP_NOT_STARTED,
     TestOutcome,
     exit_code_for,
     module_of,
@@ -728,6 +729,10 @@ def test_the_test_prefix_and_target_can_be_chosen() -> None:
 #: tests in `test_the_test_run_reports_its_save_slots.py`. Issue #2673.
 CLEAN_SAVES = "Test saves: 3 written and deleted, 0 left behind"
 
+#: No MCP server started, for the same reason: the MCP check has its own tests in
+#: `test_the_test_editor_starts_no_mcp_server.py`. Issue #2745.
+NO_MCP = MCP_NOT_STARTED
+
 
 def test_a_run_that_read_no_results_is_a_failure() -> None:
     """Nothing ran is not the same as nothing failed.
@@ -737,8 +742,8 @@ def test_a_run_that_read_no_results_is_a_failure() -> None:
     issue #436 one level further in, and reporting it as a pass would be the
     same mistake in a different place.
     """
-    assert exit_code_for(TestOutcome(None, (), ()), CLEAN_SAVES) != 0
-    assert exit_code_for(None, CLEAN_SAVES) != 0
+    assert exit_code_for(TestOutcome(None, (), ()), CLEAN_SAVES, NO_MCP) != 0
+    assert exit_code_for(None, CLEAN_SAVES, NO_MCP) != 0
 
 
 def test_a_run_that_performed_zero_tests_is_a_failure() -> None:
@@ -747,15 +752,15 @@ def test_a_run_that_performed_zero_tests_is_a_failure() -> None:
     A test prefix that matches nothing produces this: the run is real, the log
     is readable, and no test was executed.
     """
-    assert exit_code_for(TestOutcome(0, (), ()), CLEAN_SAVES) != 0
+    assert exit_code_for(TestOutcome(0, (), ()), CLEAN_SAVES, NO_MCP) != 0
 
 
 def test_a_failing_test_is_a_failure() -> None:
-    assert exit_code_for(TestOutcome(3, ("a", "b"), ("c",)), CLEAN_SAVES) != 0
+    assert exit_code_for(TestOutcome(3, ("a", "b"), ("c",)), CLEAN_SAVES, NO_MCP) != 0
 
 
 def test_a_clean_run_is_the_only_success() -> None:
-    assert exit_code_for(TestOutcome(3, ("a", "b", "c"), ()), CLEAN_SAVES) == 0
+    assert exit_code_for(TestOutcome(3, ("a", "b", "c"), ()), CLEAN_SAVES, NO_MCP) == 0
 
 
 def test_a_refused_registration_is_a_failure() -> None:
@@ -772,7 +777,7 @@ def test_a_refused_registration_is_a_failure() -> None:
     test.
     """
     assert exit_code_for(
-        TestOutcome(3, ("a", "b", "c"), (), (), ("FSomeTest",)), CLEAN_SAVES) != 0
+        TestOutcome(3, ("a", "b", "c"), (), (), ("FSomeTest",)), CLEAN_SAVES, NO_MCP) != 0
 
 
 def test_a_skipped_half_is_still_not_a_failure() -> None:
@@ -784,7 +789,7 @@ def test_a_skipped_half_is_still_not_a_failure() -> None:
     information at all.
     """
     assert exit_code_for(
-        TestOutcome(3, ("a", "b", "c"), (), ("Cataclysm.Brute.Whatever",)), CLEAN_SAVES) == 0
+        TestOutcome(3, ("a", "b", "c"), (), ("Cataclysm.Brute.Whatever",)), CLEAN_SAVES, NO_MCP) == 0
 
 
 # ---------------------------------------------------------------------------

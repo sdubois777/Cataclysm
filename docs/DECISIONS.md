@@ -2,6 +2,125 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-19 — The editors the tools start keep the engine's MCP server off, and the tests command fails a run whose editor started it, so a Claude session that connects during a window can no longer fail a test (#2745)
+
+**Affects:** `tools/unreal_build.py`: `MCP_SERVER_OFF`, `MCP_SERVER_STARTED`, `MCP_NOT_STARTED`, `mcp_server_line` and
+`mcp_failure`, new; `run_automation_tests` passes `MCP_SERVER_OFF`; `exit_code_for` takes the run's MCP line as a third,
+required argument; `main` prints it after the "Test saves:" line. `tools/run_editor_python.py`: `run` passes
+`MCP_SERVER_OFF`. `game/Config/DefaultEditorPerProjectUserSettings.ini`: a comment only. Tests:
+`tools/tests/test_the_test_editor_starts_no_mcp_server.py`, new (four); `test_the_test_run_reports_its_save_slots.py`
+(nine calls) and `test_unreal_build.py` (seven) pass the new argument to `exit_code_for`. Issue #2745; the plan was
+approved by the coordinating session on 2026-11-19.
+
+### SAID FIRST
+
+- **RUN IN WINDOW mcp-w1 WITH EVERY REGISTERED FIGURE MET.** Written and measured in Python first, when that the
+  override keeps the server off was known only by reading the engine's source; run at `aab0baca4` on 2026-11-19, under
+  "Measured in window mcp-w1", below. The window also reproduced the failure of issue #2745 on purpose, with one POST.
+- **WHY.** `game/Config/DefaultEditorPerProjectUserSettings.ini` sets `bAutoStartServer=True`, so every editor process
+  started the Model Context Protocol server on port 8000, the test editor included: window hitline-w1's whole-suite log
+  reads "LogModelContextProtocol: Starting MCP server on port 8000 (override with -ModelContextProtocolPort=N)." and
+  "LogHttpListener: Created new HttpListener on 127.0.0.1:8000". A Claude session that connected to it during a run made
+  the server log `LogModelContextProtocol: Error: Call to unknown method "server/discover"`, and the engine counted that
+  Error against whichever test was running. Window `empire-tree-1a-w1` (2026-11-18) lost
+  `UnstableDimensionsImposesNoRealityOnTheFirstFloor` that way, and window `enchant-tp` (2026-10-21)
+  `APlayersThrallLosesThePlaguebearersBonus`.
+- **THE PLUGIN HAS NO SWITCH THAT TURNS ITS SERVER OFF.** `UE::ModelContextProtocol::ShouldAutoStartServer`
+  (`Engine/Plugins/Experimental/ModelContextProtocol/.../ModelContextProtocolSettings.cpp`) returns true for
+  `-ModelContextProtocolStartServer` and otherwise returns the setting. `MCP_SERVER_OFF` is the engine's general override,
+  `-ini:EditorPerProjectUserSettings:[/Script/ModelContextProtocolEngine.ModelContextProtocolSettings]:bAutoStartServer=False`,
+  parsed by `FConfigFile::OverrideFromCommandline` (ConfigCacheIni.cpp) and applied by `FConfigContext` after the saved
+  per-user layer (ConfigContext.cpp, lines 1370 to 1375), so it wins over the project's file and over anything in
+  `game/Saved/Config`. It is compiled into any build that is not Shipping (`ALLOW_INI_OVERRIDE_FROM_COMMANDLINE`,
+  ConfigCacheIni.h line 57); the editor is a Development build.
+- **BOTH EDITORS THE TOOLS START.** The test editor (`run_automation_tests`, and every guard proof through it) and the
+  editor `run_editor_python.py` starts for the generators, which started the server too: the forge's asset run of
+  2026-11-19 logged "Starting MCP server on port 8000". The editor the owner opens is not started by these tools and
+  keeps the setting.
+- **THE TESTS COMMAND FAILS A RUN WHOSE EDITOR STARTED THE SERVER**, though every test passed, and prints "MCP server:
+  started on port N" or "MCP server: not started (no start-up line in the log)" after the "Test saves:" line. It reads
+  the plugin's own start-up line. Like the save check, it reads nothing a guard proof reads: `prove_cpp_guard` judges its
+  halves on `TestOutcome` alone. `exit_code_for`'s new argument has no default, as the save line has none, so the 16
+  existing calls in the two test files above now pass `MCP_NOT_STARTED`.
+- **IF THE OVERRIDE DOES NOT TAKE**, as V1 would show, the fallback is `-ModelContextProtocolPort=<an unused port>`, which
+  the plugin reads (`GetServerPortNumber`) but which leaves a server running on that port.
+- **A CHANGE FROM THE APPROVED PLAN, SAID HERE.** The plan required V1's log to hold the engine's line "Branch
+  EditorPerProjectUserSettings had commandline override(s)". By reading ConfigContext.cpp (lines 1118 to 1123), that line
+  is printed only when the file's branch was loaded in NoReplay mode, so its absence would not show that the override was
+  ignored. It is reported, not required.
+
+### Registered before the run
+
+**No build.** This branch changes no C++: its `game/Source` is `055ac0254`'s, the same as `622bc0243`'s
+(`git diff --stat 622bc0243 HEAD -- game/Source` prints nothing), which window hitline-w1 built last in this worktree.
+The window runs with `--no-build`, and the pre-checks check that diff again. The window script is
+`.claude/windows/run_mcp.py` in this session's worktree, lock `mcp-w1`.
+
+- **V1.** `python tools/unreal_build.py tests --no-build --prefix Cataclysm.Enchantments.TheLeechPoolsScale`: "1 tests
+  performed, 1 succeeded, 0 failed"; "MCP server: not started (no start-up line in the log)"; exit 0. The engine log's
+  "Command Line:" line holds `MCP_SERVER_OFF`, and the log holds no "Starting MCP server" line and no "Created new
+  HttpListener" line. If the server started, the window stops before V2.
+- **V2, the failure of issue #2745 reproduced, both halves.** Each half runs the 366 `Cataclysm.Enchantments.` tests (366
+  "Test Completed" lines with that path in window hitline-w1's whole-suite log). Once the engine log shows the first
+  "Test Started" line of that group, the script sends one JSON-RPC POST, method "server/discover", to
+  `http://127.0.0.1:8000/mcp`, this machine's own editor.
+
+| Half | The editor started with | Predicted |
+|---|---|---|
+| Base | development's command, without `MCP_SERVER_OFF` | the POST is answered; the log holds `LogModelContextProtocol: Error: Call to unknown method "server/discover"`; 366 performed, 1 failed (the test running when it was logged) |
+| Fixed | `run_automation_tests`, with `MCP_SERVER_OFF` | the POST is refused (nothing listens on port 8000); no such line; 366 performed, 366 succeeded |
+
+**Not known until it runs**: whether one POST with no MCP `initialize` before it gives that exact Error line. If the base
+half does not reproduce it, that is said here plainly, and V1 with the log check stays the evidence.
+
+### Measured in window mcp-w1
+
+At `aab0baca4`, lock mcp-w1, 16:21 to 16:24 local time on 2026-11-19, started through a launcher that gives the
+runner no console window; the pre-checks all passed, the ninth reading `git diff --stat 622bc0243 HEAD -- game/Source`
+as empty. No build. The engine logs are kept in `.claude/windows/` in this session's worktree (`mcp_V1_engine.log`,
+`mcp_V2 base_engine.log`, `mcp_V2 fixed_engine.log`).
+
+**V1**: "Tests: 1 tests performed, 1 succeeded, 0 failed"; "Test saves: 0 written and deleted, 0 left behind"; "MCP
+server: not started (no start-up line in the log)"; exit 0. The engine log's command line ends `-log
+-ini:EditorPerProjectUserSettings:[/Script/ModelContextProtocolEngine.ModelContextProtocolSettings]:bAutoStartServer=False`,
+and the log holds 0 "Starting MCP server" lines and 0 "Created new HttpListener" lines. It holds 0 "Branch
+EditorPerProjectUserSettings had commandline override(s)" lines, reported and not required, as said first above.
+
+**V2**, each half running the 366 `Cataclysm.Enchantments.` tests, the POST sent once the group's first test,
+`AUseOfASkillSpendsEveryOneAndCastsItAgainADrawnNumberOfTimesAtFullDamage`, had started:
+
+| Half | The POST | The log | Tests |
+|---|---|---|---|
+| Base, development's command | sent 14.7 s after the editor started; answered HTTP 400, a JSON-RPC error of code -32601, "Call to unknown method \"server/discover\"" | "Starting MCP server on port 8000" and "Created new HttpListener on 127.0.0.1:8000"; `LogModelContextProtocol: Error: Call to unknown method "server/discover"` at 23:22:13.982 UTC, echoed by the automation controller | 366 performed, 365 succeeded, 1 failed: `AUseOfASkillSpendsEveryOneAndCastsItAgainADrawnNumberOfTimesAtFullDamage` |
+| Fixed, `run_automation_tests` | sent 16.3 s after the editor started; refused, `ConnectionRefusedError` 10061 | the switch on the command line; no "Starting MCP server", no "Created new HttpListener", no unknown-method line | 366 performed, 366 succeeded, 0 failed |
+
+**THE FAILURE OF ISSUE #2745 IS REPRODUCED, AND THE SWITCH REMOVES IT.** The one POST, with no MCP `initialize` before
+it, gave the exact Error line of both earlier windows, and the test running at that moment failed with no other Error
+line between its "Test Started" and "Test Completed" lines; the same test passed in the fixed half. The fixed half's log
+holds two Error lines, both at start-up before any test, the engine's own about `GameFeatureData` asset-manager rules;
+the base half's holds the same two. Each half's "Test saves:" line reads "0 written and deleted, 0 left behind".
+
+### Python, measured
+
+At `d14b3c6ea`, the code and its tests committed: "7708 passed, 9 skipped in 311.20s (0:05:11)"; the JUnit file: tests 7717, failures 0, errors 0, skipped 9. ruff: "All checks passed!".
+
+**Three Python guard proofs**, through `tools/prove_guard.py`'s `break_and_run`, in a git worktree copy of `d14b3c6ea`,
+each command `pytest` over the five files that read the changed functions
+(`test_the_test_editor_starts_no_mcp_server.py`, `test_the_test_run_reports_its_save_slots.py`, `test_unreal_build.py`,
+`test_run_editor_python.py`, `test_unreal_build_held_log.py`). Each PROVED.
+
+| Proof | The break | Named failures | Restored |
+|---|---|---|---|
+| G1 | In `run_automation_tests`, `MCP_SERVER_OFF],` becomes `],` | `test_the_automation_run_starts_its_editor_with_the_mcp_server_off` (1 failed, 160 passed) | 161 passed |
+| G2 | In `run_editor_python.run`, the same | `test_the_editor_python_run_starts_its_editor_with_the_mcp_server_off` (1 failed, 160 passed) | 161 passed |
+| G3 | `MCP_SERVER_STARTED`'s "Starting MCP server on port" becomes "Starting MCP serverX on port" | `test_the_plugins_start_up_line_is_read_and_its_absence_is_said`, `test_a_run_whose_editor_started_the_server_fails_though_every_test_passed` (2 failed, 159 passed) | 161 passed |
+
+The same five files in this session's worktree read "160 passed, 1 skipped": the test at `test_run_editor_python.py`
+line 202 skips where the editor modules are built ("this checkout has its modules built, so nothing is missing"), as
+they are here, and ran in the copy, which has none.
+
+---
+
 ## 2026-11-19 — The Cataclysmic Forge raises an item one gear level with two stones of that level, 25 residue and a day per craft plus the residue's time penalty, and combines two stones into one of the next; its screen opens from the empire map; "Gear Leveling" now counts two stones per level
 
 **Affects:** `UCataclysmForge`, new (`game/Source/Cataclysm/Items/CataclysmForge.h` and `.cpp`: the rules);

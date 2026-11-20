@@ -101,6 +101,27 @@ ENGINE_ROOT = pathlib.Path(os.environ.get("UE_ROOT", r"C:\Program Files\Epic Gam
 BUILD_BATCH_FILE = ENGINE_ROOT / "Engine" / "Build" / "BatchFiles" / "Build.bat"
 EDITOR_CMD = ENGINE_ROOT / "Engine" / "Binaries" / "Win64" / "UnrealEditor-Cmd.exe"
 
+#: THE COMMAND-LINE SETTING THAT KEEPS THE ENGINE'S MCP SERVER OFF in every editor these tools start: the automation
+#: run here (and through it every guard proof) and `run_editor_python.py`'s. Issue #2745.
+#:
+#: `game/Config/DefaultEditorPerProjectUserSettings.ini` sets `bAutoStartServer=True`, so every editor process starts
+#: the Model Context Protocol server on port 8000. A Claude session that connects to it while tests run makes the
+#: server log `LogModelContextProtocol: Error: Call to unknown method "server/discover"`, and the engine counts that
+#: Error against whichever test is running: windows `enchant-tp` (2026-10-21) and `empire-tree-1a-w1` (2026-11-18)
+#: each lost a test that way.
+#:
+#: THE PLUGIN HAS NO SWITCH THAT TURNS THE SERVER OFF. `ShouldAutoStartServer` (the plugin's
+#: ModelContextProtocolSettings.cpp) takes `-ModelContextProtocolStartServer` to turn it on and otherwise reads the
+#: setting. This is the engine's general override instead, `-ini:<IniName>:[<Section>]:<Key>=<Value>`
+#: (`FConfigFile::OverrideFromCommandline`, ConfigCacheIni.cpp), which, by reading `FConfigContext` (ConfigContext.cpp,
+#: about line 1372), is applied after the saved per-user layer, so it wins over the project's file and over anything in
+#: `game/Saved/Config`. The editor the owner opens is not started by these tools and keeps the setting.
+#:
+#: `mcp_server_line` reads whether a run's editor started the server anyway, and `mcp_failure` fails the `tests`
+#: command when it did.
+MCP_SERVER_OFF = ("-ini:EditorPerProjectUserSettings:"
+                  "[/Script/ModelContextProtocolEngine.ModelContextProtocolSettings]:bAutoStartServer=False")
+
 DEFAULT_TARGET = "CataclysmEditor"
 DEFAULT_PLATFORM = "Win64"
 DEFAULT_CONFIGURATION = "Development"
@@ -182,6 +203,14 @@ TEST_STARTED = "Test Started. Name={"
 #: That line's parts: N, M, and the names after M, which the C++ writes only when M > 0 -- the first ten, then
 #: "and K more" (`FCataclysmTestSaves::SummaryLine`). Read by `saves_failure`. Issue #2673.
 TEST_SAVES_PARTS = re.compile(r"Test saves: (\d+) written and deleted, (\d+) left behind(?:: (.+))?")
+
+#: The engine's MCP plugin's own line as it starts its server, capturing the port: "LogModelContextProtocol: Starting
+#: MCP server on port 8000 (override with -ModelContextProtocolPort=N)." (window hitline-w1's whole-suite log,
+#: 2026-11-19, and every window log before `MCP_SERVER_OFF`). Read by `mcp_server_line`. Issue #2745.
+MCP_SERVER_STARTED = re.compile(r"LogModelContextProtocol: Starting MCP server on port (\d+)")
+
+#: What `mcp_server_line` says for a log with no such line.
+MCP_NOT_STARTED = "MCP server: not started (no start-up line in the log)"
 
 #: The engine refusing to register a test, capturing the C++ class name.
 #:
@@ -986,7 +1015,9 @@ def run_automation_tests(prefix: str = "Cataclysm",
         [str(EDITOR_CMD), str(PROJECT_FILE),
          f"-ExecCmds=Automation RunTests {prefix}",
          "-unattended", "-nopause", "-nosplash", "-nullrhi",
-         "-testexit=Automation Test Queue Empty", "-log"],
+         "-testexit=Automation Test Queue Empty", "-log",
+         # NO MCP SERVER IN THE TEST EDITOR, so no Claude session can connect to it and fail a test. Issue #2745.
+         MCP_SERVER_OFF],
         capture_output=True, text=True, cwd=GAME_DIR, timeout=timeout, check=False)
 
     if not TEST_LOG.is_file():
@@ -1532,8 +1563,35 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
     return parser.parse_args(normalised)
 
 
-def exit_code_for(tests: TestOutcome | None, saves_line: str) -> int:
-    """0 only when tests actually ran, every one of them passed, and they left no save slot behind.
+def mcp_server_line(text: str) -> str:
+    """Whether the run's editor started the engine's MCP server: "MCP server: started on port N", from the plugin's own
+    start-up line (`MCP_SERVER_STARTED`), or `MCP_NOT_STARTED`. Issue #2745.
+
+    READ FROM THE WHOLE LOG. The plugin starts its server once, as the editor finishes starting and before any test.
+    """
+    found = MCP_SERVER_STARTED.search(text)
+    return f"MCP server: started on port {found.group(1)}" if found else MCP_NOT_STARTED
+
+
+def mcp_failure(mcp_line: str) -> str | None:
+    """Why the MCP server fails the `tests` command, or None when it does not. Issue #2745.
+
+    `mcp_line` is what `mcp_server_line` returned for the run's log. A STARTED SERVER FAILS THE RUN THOUGH EVERY TEST
+    PASSED: while it listened, a Claude session that connected would have failed whichever test was running, so the
+    pass holds only because none connected. `MCP_SERVER_OFF` keeps it from starting; this says when it did not.
+
+    THIS READS NOTHING A GUARD PROOF READS, like `saves_failure`: only `exit_code_for`, which only `main` calls, uses it.
+    """
+    if mcp_line == MCP_NOT_STARTED:
+        return None
+    return (f"FAILED: the test editor started the engine's MCP server ({mcp_line.removeprefix('MCP server: ')}), so a "
+            "Claude session that connected during the run would have failed whichever test was running. The editor "
+            f"is started with {MCP_SERVER_OFF} to prevent that. Issue #2745.")
+
+
+def exit_code_for(tests: TestOutcome | None, saves_line: str, mcp_line: str) -> int:
+    """0 only when tests actually ran, every one of them passed, they left no save slot behind, and the editor did not
+    start the engine's MCP server.
 
     NOTHING RAN IS A FAILURE, NOT A PASS, and that is the whole point of this
     function. `TestOutcome(None, (), ())` is what comes back when the log could
@@ -1545,6 +1603,9 @@ def exit_code_for(tests: TestOutcome | None, saves_line: str) -> int:
     `saves_line` is the run's "Test saves:" line as `test_saves_line` read it.
     REQUIRED, NOT DEFAULTED, so no caller can skip the save check by leaving it
     out. `saves_failure` says when it fails the run. Issue #2673.
+
+    `mcp_line` is the run's "MCP server:" line as `mcp_server_line` read it, REQUIRED for the same reason. `mcp_failure`
+    says when it fails the run. Issue #2745.
     """
     if tests is None or tests.performed is None or tests.performed == 0:
         return 1
@@ -1592,7 +1653,12 @@ def exit_code_for(tests: TestOutcome | None, saves_line: str) -> int:
     # w129B showed it over the whole suite. Last, because every reason above
     # says more about the run than this one does. The same category as a
     # refused registration: every test passed and the run still is not clean.
-    return 1 if saves_failure(tests, saves_line) else 0
+    if saves_failure(tests, saves_line):
+        return 1
+
+    # AN MCP SERVER THE TEST EDITOR STARTED FAILS THE RUN THOUGH EVERY TEST PASSED. Issue #2745: while it listened, a
+    # Claude session that connected would have failed a test. The same category as the save check above.
+    return 1 if mcp_failure(mcp_line) else 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -1648,14 +1714,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"Tests: {tests.summary}")
     # WHAT THE TESTS' SAVE SLOTS CAME TO, beside the result. Read again from the log the run left, as
     # `run_automation_tests` read it. Printed since #2658; part of the exit code since #2673 (`saves_failure`).
-    saves_line = test_saves_line(TEST_LOG.read_text(encoding="utf-8", errors="replace") if TEST_LOG.is_file() else "")
+    log_text = TEST_LOG.read_text(encoding="utf-8", errors="replace") if TEST_LOG.is_file() else ""
+    saves_line = test_saves_line(log_text)
     print(saves_line)
+    # WHETHER THE TEST EDITOR STARTED THE ENGINE'S MCP SERVER, which `MCP_SERVER_OFF` keeps off. Issue #2745.
+    mcp_line = mcp_server_line(log_text)
+    print(mcp_line)
     # THE INPUTS BESIDE THE ANSWER. Issue #1707. A prefix narrows the run and not
     # the tree, so with a prefix the gap is the tests outside it and the line
     # still says what the whole tree declares; the names are the useful part.
     print(declared_line(tests, declared_tests(), current_commit()))
 
-    code = exit_code_for(tests, saves_line)
+    code = exit_code_for(tests, saves_line, mcp_line)
 
     # THE CONDITION USED TO BE "NON-ZERO AND NOTHING FAILED", which was the same
     # thing as "no results were read" until a refused registration became a
@@ -1675,6 +1745,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     failure = saves_failure(tests, saves_line)
     if failure:
         print(failure)
+    # LAST, as in `exit_code_for`. Issue #2745.
+    started = mcp_failure(mcp_line)
+    if started:
+        print(started)
     return code
 
 
