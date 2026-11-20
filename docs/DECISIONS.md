@@ -310,6 +310,112 @@ The lock was released when the window ended.
 
 ---
 
+## 2026-11-20 — Vesselstep trades places by an exchange: the player and a commanded creature they can see each end where the other stood, and a creature behind a wall is not traded with (#2792)
+
+**Affects:** `UCataclysmCommand::ThingsCommandedInSightOf`, new
+(`game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h` and `.cpp`); `UCataclysmSkillTemplate::CanActivateAbility`
+(`CataclysmSkillTemplate.cpp`), whose refusal of a trade with nobody now asks it;
+`UCataclysmMovementSkill::ChooseTradePartner`, new, and `UCataclysmMovementSkill::ActivateAbility`'s `Swap` branch and
+its move of the caster (`CataclysmSkillTemplates.h` and `.cpp`). Tests: four, new, in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`. Issue #2792, from the owner's playtest of
+2026-11-20: "Vesselstep doesn't actually trade places." The plan was accepted by the coordinating session on 2026-11-20.
+
+### SAID FIRST
+
+- **NOT YET COMPILED OR RUN IN THE ENGINE.** The cause below was found by reading the code, and the four tests are the
+  run that will show it. What the run must show is under "Registered before the run".
+- **THE CAUSE, BY READING.** Each body was moved by `UCataclysmMovement::MoveWithoutSticking`, a SWEPT move, the
+  creature first. The player's capsule (radius 42 cm) and a summoned imp's (`ACataclysmMinion`, radius 30 cm) are both
+  pawns, and pawns block pawns. So the imp's move toward the player's spot stopped when the two capsules touched, 72 cm
+  from where the player stood, on the line between them; and the player's move toward the imp's old spot then began with
+  the imp in the way and went about 0 cm. The imp landed beside the player and the player stayed where they were. A
+  creature standing between the two stopped either move as well.
+- **WHY NO TEST SAW IT.** `Cataclysm.Command.AVesselstepTradesPlacesWithACommandedCreature` trades a bare actor whose
+  sphere is set to overlap every channel, so it blocks nothing and neither sweep was ever stopped. The new tests use
+  the real player on a real dungeon floor, beside the tests of issues #2203 and #2505.
+- **THE OWNER'S LOG.** 18 casts of Vesselstep on 2026-11-20, each with its cost line. A cost line is written only after
+  `CanActivateAbility` passed, so a commanded creature was within 14 m each time. The log said nothing about where
+  anyone ended, which is why each trade now logs one Display line: "Vesselstep traded places with <creature>: <player>
+  from (x, y) to (x, y), <creature> from (x, y) to (x, y)."
+
+### What changed
+
+- **A TRADE IS AN EXCHANGE.** Before the cast is paid for, `ChooseTradePartner` takes the nearest creature the player
+  commands and can see within the skill's range for which both fit: the player in the creature's spot and the creature
+  in the player's, each at its own height, each fitted by `UWorld::FindTeleportSpot` while ignoring the other body
+  (`IgnoreActorWhenMoving`, which the fit reads, and which is put back as it was). Both are then put in place with
+  `TeleportTo(..., bNoCheck=true)`, unswept, as `UCataclysmAbilitySystemComponent`'s random teleport puts a character.
+  A creature that does not fit is passed over for the next nearest; with none, the cast ends before anything is spent.
+- **ONLY A CREATURE THE PLAYER CAN SEE. A JUDGEMENT, the coordinating session's, 2026-11-20:** an exchange crosses
+  whatever stands between the two, so with a creature behind a wall it would carry the player through the wall, and a
+  closed gate could be passed by leaving an imp on its far side; "up to 14 meters away" does not say through walls.
+  `ThingsCommandedInSightOf` traces the visibility channel from the player's middle to the creature's. By the engine's
+  collision profiles, the floor's walls and pillars (`BlockAll`) block it; characters (`Pawn`, `CharacterMesh`) and a
+  pit's blocker (`InvisibleWall`) do not. A partner out of sight is skipped and the next nearest tried.
+- **WITH NO COMMANDED CREATURE IN SIGHT AND RANGE, THE PRESS IS REFUSED**, in `CanActivateAbility`, before any mana or
+  cooldown: kept as it was, ruled by the coordinating session. The row says the destination is the creature; moving
+  anywhere else would be another skill.
+- **UNCHANGED:** Hellfire at both ends (the enemies within 3 m of the point left and of the point reached), the burning
+  ground left at the point left and at the point reached, and both bodies' notes that they were relocated at once
+  (issue #2388).
+- **NO GENRE RESEARCH.** The row states the mechanic; the line-of-sight rule is a judgement and is labelled as one.
+
+### Seen in passing, not changed
+
+The blink (`Mode=Blink`, Emberstep) and the return (`Mode=Recall`) also move the player by the same swept move, so a
+creature in the path stops them, not only a wall. The coordinating session's decision of 2026-11-20: no issue now. The
+ruling on issues #2203 and #2505 made those moves swept so that a wall stops them; whether a creature should is not
+reported as a problem, and becomes an issue if the owner reports it.
+
+### Registered before the run
+
+The base is window skills-2b-w2, run at `bbf9340a6`, whose `game/` tree is `789bfd400`'s, this branch's base (`git diff
+--stat bbf9340a6 789bfd400 -- game/` prints nothing). Its output, `.claude/windows/sl2b_run.out` and
+`sl2b_suite_bbf9340a.log` in the worktree `sharp-meitner-246682`, reads "Tests: 5041 tests performed, 5041 succeeded, 0
+failed. 47 skipped part of what they check", "Test saves: 852 written and deleted, 0 left behind", and "alone
+Cataclysm.Command.: Tests: 22 tests performed, 22 succeeded, 0 failed". **Three windows come before this one, so the
+whole-suite and group figures are registered again from the newest window's log at the machine turn**; what is added
+to them is fixed here.
+
+- **The three compiles** -- the branch as committed, the build plan moved aside first; each changed `.cpp` alone, the
+  index read from the base (`CataclysmCommand.cpp`, `CataclysmSkillTemplate.cpp`, `CataclysmSkillTemplates.cpp` and
+  `CataclysmDungeonModifierEffectsTests.cpp`); the unity files again -- each succeed with no warning or error line.
+- **The four new tests, each alone by its own name, and the old one:** 1 performed, 1 succeeded, for each of
+  `Cataclysm.Command.VesselstepPutsThePlayerAndTheImpEachWhereTheOtherStood`,
+  `Cataclysm.Command.VesselstepTradesPlacesEvenWithACreatureStandingBetweenThem`,
+  `Cataclysm.Command.VesselstepLeavesBothEndsOfTheTradeBurning`,
+  `Cataclysm.Command.VesselstepDoesNotTradeWithAnImpBehindAWall` and the bare-actor
+  `Cataclysm.Command.AVesselstepTradesPlacesWithACommandedCreature`, unchanged.
+- **The group `Cataclysm.Command.`:** the base's count plus 4, all succeeding; 26 at skills-2b-w2's base.
+- **The whole suite:** the base's total plus 4, all succeeding, 47 skipped halves (5045 at skills-2b-w2's base), and
+  "Test saves:" the base's count plus 4, 0 left behind (856 at that base). EACH NEW TEST WRITES ONE SAVE, as each test
+  that stands the player on a plain floor does in that base log:
+  `ThePlayersMovementSkillMovesThemFromWhereTheFloorStoodThem`,
+  `AKnockbackMovesACreatureStandingOnTheFloorItsWholeDistance` and `ATetherDragsBothEndsBackOnAFloor` each write 1. No
+  other test's share differs from the base log's.
+- **Each new test's "VESSELSTEP ON A FLOOR" line** says where each body ended and how far above the floor, and how many
+  burning grounds lie near each end. Those figures are reported, not registered.
+- **Four guard proofs**, through `tools/unreal_build.py`'s `prove_cpp_guard`, each with the prefix
+  `Cataclysm.Command.Vesselstep`, which selects the four new tests and not the bare-actor one, whose name begins
+  "AVesselstep":
+
+| Proof | The break | The broken half | Restored |
+|---|---|---|---|
+| P1 | The creature is moved by the swept move again: its `TeleportTo` becomes `UCataclysmMovement::MoveWithoutSticking` toward its spot | 4 performed, 2 succeeded, 2 failed: `VesselstepPutsThePlayerAndTheImpEachWhereTheOtherStood` and `VesselstepTradesPlacesEvenWithACreatureStandingBetweenThem`, each on "and the imp is where the player stood". The creature's sweep stops against the player, who has not moved yet, or against the creature between them | 4 of 4 |
+| P2 | The player is moved by the swept move again: its `TeleportTo` becomes `MoveWithoutSticking` toward its spot | `VesselstepTradesPlacesEvenWithACreatureStandingBetweenThem` fails on "the player is where the imp stood": the creature between stops the player. THE OTHER THREE ARE NOT PREDICTED: the player's sweep then starts inside the imp's capsule, which the movement component pushes it out of by a distance not known by reading. Their results are reported | 4 of 4 |
+| P3 | Each body's fit counts the other: the two `IgnoreActorWhenMoving(..., true)` lines become `(void)0;` | `VesselstepPutsThePlayerAndTheImpEachWhereTheOtherStood` fails: the fit moves each spot off the other body, or refuses it. The other three are reported | 4 of 4 |
+| P4 | The line of sight is traced from the player to the player (`From` in place of the creature's location), so it never meets a wall | 4 performed, 3 succeeded, 1 failed: `VesselstepDoesNotTradeWithAnImpBehindAWall` (the press goes off and both bodies move) | 4 of 4 |
+
+**The window scripts** are in `.claude/windows/` in this session's worktree: `compile_vesselstep.py`,
+`run_vesselstep.py` (lock `vesselstep-w1`), `prove_vesselstep.py` and `prechecks_vesselstep.py`.
+
+### Python, measured
+
+Not yet measured at the commit that registers this entry; the whole Python suite runs on that commit, and its
+counts are recorded here in the commit after it.
+
+---
+
 ## 2026-11-20 — Five of the empire upgrade tree's gold nodes act on run record version 12: Price Controls, Stimulus Package, Cleanup Crew, Salvage Rights and Investment Funds (#2741, slice 6b)
 
 **Affects:** `FCataclysmCity::bTookSurgeDamage`, new, set in `UCataclysmEmpireMap::Damage`
