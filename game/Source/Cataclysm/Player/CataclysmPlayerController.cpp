@@ -256,9 +256,12 @@ void ACataclysmPlayerController::SetupInputComponent()
 	Input->BindNativeAction(Config, Names::ToggleInventory, ETriggerEvent::Started,
 		this, &ACataclysmPlayerController::Input_ToggleInventory);
 
-	Input->BindNativeAction(Config, Names::ToggleCharacterCreation,
+	// The character sheet on C, ruled by the project owner on 2026-11-19. C
+	// opened the character creator until then; the creator has no key now.
+	// Issue #2770.
+	Input->BindNativeAction(Config, Names::ToggleCharacterSheet,
 		ETriggerEvent::Started, this,
-		&ACataclysmPlayerController::Input_ToggleCharacterCreation);
+		&ACataclysmPlayerController::Input_ToggleCharacterSheet);
 
 	Input->BindNativeAction(Config, Names::TogglePassiveTree,
 		ETriggerEvent::Started, this,
@@ -741,11 +744,6 @@ void ACataclysmPlayerController::Input_ToggleInventory()
 	InventoryScreen->AddToViewport();
 }
 
-void ACataclysmPlayerController::Input_ToggleCharacterCreation()
-{
-	ToggleCharacterCreation();
-}
-
 void ACataclysmPlayerController::ToggleCharacterCreation()
 {
 	if (!CharacterCreationScreen)
@@ -753,8 +751,9 @@ void ACataclysmPlayerController::ToggleCharacterCreation()
 		// LOADED SYNCHRONOUSLY, WHICH IS SAFE HERE AND WOULD NOT BE IN A DRAW
 		// PASS. `KeyForAbilitySlot` below deliberately uses `Get` rather than
 		// `LoadSynchronous` because it runs while the heads-up display is
-		// drawing. This runs once, from a key press, at a moment when the
-		// player has asked to see a screen and is waiting for one.
+		// drawing. This runs once, from `Cataclysm.CharacterCreation` (a key
+		// press until issue #2770 gave C to the character sheet), at a moment
+		// when the player has asked to see a screen and is waiting for one.
 		UClass* ScreenClass = CharacterCreationScreenClass.LoadSynchronous();
 		if (!ScreenClass)
 		{
@@ -771,8 +770,8 @@ void ACataclysmPlayerController::ToggleCharacterCreation()
 		if (!CharacterCreationScreen)
 		{
 			UE_LOG(LogCataclysm, Error,
-				   TEXT("The character creator could not be created, so the key "
-						"that opens it does nothing."));
+				   TEXT("The character creator could not be created, so the "
+						"command that opens it does nothing."));
 			return;
 		}
 	}
@@ -963,6 +962,11 @@ bool ACataclysmPlayerController::OpenEmpireMap()
 	return EmpireMapScreen->IsInViewport();
 }
 
+void ACataclysmPlayerController::Input_ToggleCharacterSheet()
+{
+	ToggleCharacterSheet();
+}
+
 void ACataclysmPlayerController::ToggleCharacterSheet()
 {
 	if (!CharacterSheetScreen)
@@ -984,7 +988,7 @@ void ACataclysmPlayerController::ToggleCharacterSheet()
 		{
 			UE_LOG(LogCataclysm, Error,
 				   TEXT("The character sheet could not be created, so the "
-						"command that opens it does nothing."));
+						"key and the command that open it do nothing."));
 			return;
 		}
 	}

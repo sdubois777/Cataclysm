@@ -552,6 +552,35 @@ def test_the_readme_states_the_right_number_of_tables_not_from_the_workbook() ->
         f"than the design workbook. It should say: {expected}")
 
 
+INPUT_GENERATOR = REPO_ROOT / "tools" / "generate_input_assets.py"
+
+
+def input_action_count() -> int:
+    """Every Input Action asset `tools/generate_input_assets.py` writes.
+
+    The native actions, which the controller binds by name, and the ability
+    actions, which it binds by slot. Each row of either list is one asset in
+    `Content/Input/Actions/`.
+    """
+    return (len(_assignment(INPUT_GENERATOR, "NATIVE_ACTIONS").elts)
+            + len(_assignment(INPUT_GENERATOR, "ABILITY_ACTIONS").elts))
+
+
+def test_the_readme_states_the_right_number_of_input_actions() -> None:
+    """The `Content/Input/` row, read out of the input generator. Issue #2770.
+
+    IT SAID "TEN" WHILE THE GENERATOR BUILT NINETEEN. Issue #2770, which
+    swapped the character creator's action for the character sheet's and so
+    left the number where it was, is the change that noticed.
+    """
+    expected = (f"The Enhanced Input mapping contexts, "
+                f"{NUMBER_WORDS[input_action_count()]} input actions and the "
+                f"input config data asset.")
+    assert expected in readme_text(), (
+        f"game/README.md does not describe Content/Input/ as it now is. It "
+        f"should say: {expected}")
+
+
 def test_the_readme_does_not_tell_the_reader_to_restore_untouched_assets() -> None:
     """The instruction that was wrong rather than merely stale. Issue #449.
 

@@ -87,7 +87,9 @@ ACTION_PHRASE_TO_INPUT_ACTION = {
     "Camera distance": "IA_Zoom",
     "Directional movement": "IA_Move",
     "Open and close the carried inventory": "IA_ToggleInventory",
-    "Open and close the character creator": "IA_ToggleCharacterCreation",
+    # The character sheet on C, ruled by the project owner on 2026-11-19, issue
+    # #2770. C opened the character creator until then, which has no key now.
+    "Open and close the character sheet": "IA_ToggleCharacterSheet",
     "Open and close the passive class tree": "IA_TogglePassiveTree",
     # The skill-choice screen, issue #837 layer 4.
     "Open and close the skill choice screen": "IA_ToggleSkillAssignment",

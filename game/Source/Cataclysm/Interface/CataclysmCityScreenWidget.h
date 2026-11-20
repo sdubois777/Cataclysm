@@ -54,9 +54,11 @@ class UTextBlock;
  *     refused and the refusal line says why: there is no travel between the
  *     empire and a dungeon level. Issue #48. `FCataclysmWalkFromTheScreen`
  *     holds the words and the refusals.
- *   - **It has no key of its own**, for the reason the empire overview and the
- *     character sheet have none: the input assets are generated in the editor
- *     and adding a binding is a separate change from building a screen.
+ *   - **It has no key of its own**: a key would have to choose a city, and
+ *     clicking one on the empire overview, which M opens, is how a city is
+ *     chosen. This line used to give the reason the empire overview and the
+ *     character sheet had none; M opens the one since 2026-11-17 and C the other
+ *     since 2026-11-19 (issue #2770).
  */
 UCLASS()
 class CATACLYSM_API UCataclysmCityScreenWidget : public UUserWidget

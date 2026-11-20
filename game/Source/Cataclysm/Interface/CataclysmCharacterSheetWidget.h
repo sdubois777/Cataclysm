@@ -62,10 +62,11 @@ class UTextBlock;
  *   - **It cannot take a point back.** Respeccing is the Trainer's job in the
  *     capital, which does not exist. `ACataclysmPlayerState::ResetAttributePoints`
  *     is what it will call. Issue #48.
- *   - **It has no key of its own.** `Cataclysm.CharacterSheet` opens it. The
- *     input assets are generated in the editor and adding a binding to them is a
- *     separate change from building a screen, which is the same reason the
- *     empire overview has no key.
+ *
+ * C opens and closes it, in both control schemes, since 2026-11-19 (ruled by the
+ * project owner, issue #2770), and so does `Cataclysm.CharacterSheet`; both call
+ * `ACataclysmPlayerController::ToggleCharacterSheet`. Until then only the
+ * console command reached it.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmCharacterSheetWidget : public UUserWidget

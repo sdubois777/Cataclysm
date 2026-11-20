@@ -80,15 +80,18 @@ namespace CataclysmInputActionNames
 	inline const FName ToggleInventory = FName(TEXT("ToggleInventory"));
 
 	/**
-	 * Open and close the character creator. Tapped, not held.
+	 * Open and close the character sheet: every stat the character has, and the attributes to spend points into.
+	 * Tapped, not held. Ruled by the project owner on 2026-11-19, issue #2770: "C opens the sheet".
 	 *
-	 * ONE ACTION FOR BOTH DIRECTIONS, for the reason above. C by
-	 * default, which is where Diablo, Path of Exile and Last Epoch all
-	 * put the character screen, and free in both control schemes.
-	 * Issue #50.
+	 * ONE ACTION FOR BOTH DIRECTIONS, for the reason above. C by default, in both control schemes, where Path of Exile,
+	 * Last Epoch and Diablo IV put the character screen. `ACataclysmPlayerController::ToggleCharacterSheet` is what a
+	 * press calls, the same function `Cataclysm.CharacterSheet` calls.
+	 *
+	 * C OPENED THE CHARACTER CREATOR UNTIL THEN, through an action named `ToggleCharacterCreation` (issue #50). That
+	 * action is gone: the creator has no key, and is reached from the front end's New character screen and from
+	 * `Cataclysm.CharacterCreation`.
 	 */
-	inline const FName ToggleCharacterCreation =
-		FName(TEXT("ToggleCharacterCreation"));
+	inline const FName ToggleCharacterSheet = FName(TEXT("ToggleCharacterSheet"));
 
 	/**
 	 * Open and close the passive class tree. Tapped, not held.

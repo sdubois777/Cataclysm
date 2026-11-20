@@ -4023,7 +4023,9 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowLevel(
 // Character creation
 //
 // THE SCREEN IS THE WAY THIS IS MEANT TO BE DRIVEN. `Cataclysm.CharacterCreation`
-// opens it, and the C key does the same thing without the console. These two
+// opens it. It has no key since 2026-11-19, when the project owner gave C to the
+// character sheet (issue #2770); new characters are made from the front end's
+// New character screen, which is a different screen. These two
 // commands exist beside it for the reason every other console command in this
 // file exists: an automation test and a person checking one thing quickly both
 // need a way in that does not involve a mouse, and the screen's own logic is the
@@ -4146,8 +4148,9 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowCreation(
 
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmCharacterCreation(
 	TEXT("Cataclysm.CharacterCreation"),
-	TEXT("Open or close the character creation screen. The C key does the same "
-		 "thing, once the input assets have been generated."),
+	TEXT("Open or close the character creation screen. It has no key: C opens "
+		 "the character sheet, and new characters are made from the front end's "
+		 "New character screen."),
 	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
 		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 		{
@@ -4162,8 +4165,9 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmCharacterCreati
 				return;
 			}
 
-			// THE SAME FUNCTION THE KEY CALLS, rather than a second copy of
-			// opening a screen. Whatever the key does, this does.
+			// THE CONTROLLER'S FUNCTION, rather than a second copy of opening a
+			// screen. C called it too until issue #2770 gave C to the
+			// character sheet; this command is now its only caller.
 			Controller->ToggleCharacterCreation();
 		}));
 
@@ -5221,8 +5225,8 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEmpireTree(
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmCharacterSheet(
 	TEXT("Cataclysm.CharacterSheet"),
 	TEXT("Open or close the character sheet: every stat the character has, and "
-		 "the eight attributes, which points can be spent into from it. It has "
-		 "no key of its own yet."),
+		 "the eight attributes, which points can be spent into from it. C opens "
+		 "it too."),
 	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
 		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 		{
