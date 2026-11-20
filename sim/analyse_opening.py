@@ -55,11 +55,30 @@ end of tier 1 four times gentler. Section 4 fights the level 20 Ravager's own
 reference dungeon at both scales, and level 20, 30 and 40 Ravagers through the
 deepest dungeons the first three surges make.
 
+RE-MEASURED SINCE DEMONIC FOLLOWS THE FRONT LINE (2026-11-19, the next slice of
+issue #2749), at the same 300 seeds and 20 deepest. Until then a Demonic first
+surge put some dungeons on Bulwarks and Sanctuaries, which the game never does,
+and every figure above was measured that way. Now the first surge makes 3,171
+Outpost ordinary dungeons; full clears are 359,699, 503,020 and 540,646 at 5, 7
+and 8 floors, and the levels above move by at most a point of their shares. The
+scale table keeps its shape: 0.05 passes all 3,171 at a quarter's, a half's
+and every kill, 0.055 at a quarter's still leaves 56 under 10% health (3,115),
+and 0.06 at a half's still leaves 63 (3,108), so 0.05 is still the largest step
+of 0.01 that passes. SECTION 4 MOVED: the 20 deepest ordinary dungeons of the
+first three surges were 33 to 39 floors, all of them Demonic dungeons behind the
+line; they are now 16, and the Quest ones 45 to 48 against 46 to 49. At 0.05 a
+level 20 to 40 Ravager ends them with 80% to 93% of its health, against 79% to
+93%; at 0.20 a level 20 one now wins all 20 ordinary and all 20 Quest ones,
+against 17 of 20 of each. `.claude/windows/demonic/opening_before.out` and
+`opening_after.out`, in the worktree that made the change, are both runs.
+
 THE RING SLICE, sections 5 and 6. The project owner ruled on 2026-11-19 that tier
 1 creature damage rises by city ring: Outposts stay at 0.05, Bulwark and
 Sanctuary dungeons hit harder. Section 5 runs tier 1 campaigns under every
-policy, with Demonic following the front line as the game's does (the shipped
-simulation's does not yet), logs every dungeon cleared and the level the
+policy, with Demonic following the front line as the game's does (through a
+helper in the pack test when this was measured; the simulation's own rule since
+the next slice of issue #2749, which gives the same clears), logs every dungeon
+cleared and the level the
 character held when it entered, and walks each again on its ring at each scale.
 Measured 2026-11-19 on seeds 0 to 59 (17,925 clears) in 426 seconds with the
 first sections at full size; the largest step of 0.01 at which none of a ring's
@@ -341,7 +360,7 @@ def section_five() -> dict:
     out: dict = {"clears": len(clears)}
     print(f"  {len(clears)} clears in the tier 1 campaigns of seeds {seeds.start} to {seeds.stop - 1} under each of the")
     print("  simulation's policies, the character banking half of each floor's experience, with Demonic following the")
-    print("  front line as the game's does (the shipped simulation's does not yet; issue #2749's next slice).")
+    print("  front line as the game's does (the simulation's own rule since issue #2749; the fit used a helper for it).")
     print()
     print("  ring       | type        | clears | level at entry: 10th, median, 90th, lowest | floors, median")
     print("  " + "-" * 92)

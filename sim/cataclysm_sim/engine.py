@@ -347,9 +347,11 @@ class Simulation:
         # HOW MANY comes from the difficulty tier and WHICH ONES from this
         # campaign's character. Both were fixed before issue #1338: the count
         # was 1 whatever the tier, and the set was always the first N of a
-        # tuple beginning with Demonic -- the one Cataclysm of the eight that
-        # ignores the frontier, so every lane-based figure this model has ever
-        # produced was measured against the one that does not respect lanes.
+        # tuple beginning with Demonic -- then the one Cataclysm of the eight
+        # this model let ignore the frontier, so every lane-based figure it had
+        # produced was measured against the one that did not respect lanes.
+        # Since 2026-11-19 (#2749) Demonic follows the front line as the game's
+        # does; see `patterns._demonic`.
         # `cataclysm_order_for` explains why the seed is the character.
         self.active_types = active_cataclysms_for(cfg, seed)
         self.modifier_pool = pool_for(self.active_types)
@@ -795,9 +797,11 @@ class Simulation:
             ctype = self.active_types[idx]
             pat = pats[idx]
 
-            pool = (self.empire.alive_cities() if pat.ignores_frontier
-                    else targets)
-            pool = [c for c in pool if c.cid != self.empire.pillar_id]
+            # EVERY CATACLYSM DRAWS FROM THE EXPOSED FRONT LINE, Demonic
+            # included since 2026-11-19 (#2749, the ruling on #1085), as the
+            # game's `UCataclysmSurgeScheduler` does for every sender. Until
+            # then Demonic drew from every standing city, sealed ones included.
+            pool = [c for c in targets if c.cid != self.empire.pillar_id]
             if not pool:
                 continue
             w = [max(0.0, pat.weight(self.empire, c)) for c in pool]
