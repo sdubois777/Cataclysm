@@ -2,6 +2,186 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-19 — The simulation's Demonic Cataclysm lands its waves on the exposed front line, as the game's does, by the ruling on #1085 (#2749, Demonic front-line slice)
+
+**Affects:** `sim/cataclysm_sim/patterns.py` (`Pattern.ignores_frontier` deleted; Demonic's description and the comment
+on `_demonic`); `sim/cataclysm_sim/engine.py` (`Simulation.trigger_surge` draws every Cataclysm's dungeons from the
+exposed front line; a comment in `__init__`); `sim/cataclysm_sim/policies.py` (`siege_urgency`'s median walk, slack and
+day shares); `sim/cataclysm_sim/config.py` (the comment on `siege_damage_growth_per_day`); `sim/analyse_opening.py`
+(docstring and one printed line); `sim/README.md` and `docs/Cataclysm_GDD_v2.md` (one sentence each, now past tense).
+Tests: `sim/tests/test_every_cataclysm_lands_on_the_front_line.py`, new (ten);
+`sim/tests/test_the_siege_prose_in_policies_is_true.py` (`SANCTUARY_TOLERANCE_DAYS` and `TOLERANCE_DAYS`, new; the
+quoted shares and comments); `tools/tests/test_the_starting_character_survives_a_pack.py` (`game_front_line` deleted;
+comments); `sim/tests/test_the_cataclysms_drawn_belong_to_the_character.py` (docstrings). Python only. Issue #2749;
+the coordinating session made this the slice after the ring slice (R6 of that entry) and approved its plan on
+2026-11-19.
+
+### SAID FIRST
+
+- **NOT YET RUN: THE PYTHON SUITE AND THE TWO GUARD PROOFS ARE REGISTERED BELOW, BEFORE THEY RUN** ("Registered
+  before the run").
+- **`experiments.py` HAS NOT BEEN RUN, BEFORE OR AFTER.** Both runs wait for a gap of about 40 minutes with no window,
+  which the coordinating session will name; the design is under "experiments.py, before and after".
+- **THE SANCTUARY'S MEDIAN WALK HAS A TOLERANCE OF ITS OWN, 6 DAYS, AND THE BULWARK KEEPS 1 DAY WITH ONE BLOCK OF TEN
+  TWO DAYS OFF.** This change moves most Sanctuary dungeons off the map, 8,625 to 1,106 in 10,000 campaigns, so the
+  prose test's 320 campaigns hold 19 to 51 of them. Ruled by the coordinating session (Q1, below). Ten blocks of 320
+  gave Bulwark medians of 24 to 27 against 25; the test reads seeds 0 to 319, which give 25.
+- **AN EARLIER MEASUREMENT MOVES WITH THIS ONE.** The opening entry's "added measurement" (2026-11-19, issue #2749,
+  B9) fought level 20 to 40 Ravagers through "the deepest dungeons the first three surges make": 33 to 39 floors, and
+  every one of them was a Demonic dungeon behind the front line, which the game never makes. Following the line, they
+  are 16 floors: at 0.05 the Ravagers end them with 80% to 93% of their health, against 79% to 93%, and at 0.20 a level
+  20 one wins all 20 ordinary and all 20 Quest ones, against 17 of 20 of each. The ruled scales do not move: tier 1's
+  0.05 is still the largest step of 0.01 that passes the opening, and the ring figures were fitted with the front line
+  already followed (the ring control, below).
+- **THE GAME'S OWN HEADER STILL CONTRADICTS THE RULING, AND THIS SLICE DOES NOT CHANGE IT.**
+  `game/Source/CataclysmEmpire/Empire/CataclysmSurge.h` lines 660 to 663 list "The Demonic Cataclysm's rifts, which
+  ignore the frontier entirely" as "the one pattern the vertical slice would actually use". The coordinating session
+  ruled (Q4) that the seeding slice of issue #2749, which is C++ in the same module and is compiled and run in a window
+  anyway, corrects it, and that both entries name it. No issue.
+
+### The ruling
+
+The ruling on [#1085](https://github.com/sdubois777/Cataclysm/issues/1085), 2026-09-14, relayed under the owner's
+delegation of that date: "the vertical slice's Demonic wave does not ignore the empire map's lane rule. The generic
+frontier pattern the scheduler already ports stays; the GDD's Demonic quest mechanic stays a Demonic-only mechanic and
+is not the general surge rule."
+
+The coordinating session, R6 of the ring slice: "The game's ruling on #1085 already answers what the simulation should
+do, so it is a fix, not a question. After this slice merges, make it your next slice: the simulation's Demonic follows
+the front line as the game does, Python only, with experiments.py before and after quoted."
+
+On this slice's plan, 2026-11-19:
+
+- "Q1: YES, a measured tolerance of its own for the Sanctuary, 6 days, recorded with the ten-block measurement (19 to
+  51 dungeons a block, medians 37.5 to 46), following the Pillar's precedent. The reason to state: this slice moves most
+  Sanctuary dungeons off the map, from 8,625 to 1,106 in 10,000 campaigns, so 320 campaigns hold too few for 1 day. The
+  tolerance is not widened to hide a change. Keep Bulwark at 1 day."
+- "Q2: YES, delete ignores_frontier, since nothing would set it; the rifts belong to #51."
+- "Q3: YES, past tense for the simulation statement at docs/Cataclysm_GDD_v2.md line 398 only; leave the Rift text
+  alone."
+- "Q4: Do not leave a comment that contradicts the #1085 ruling with nothing to fix it. Correct CataclysmSurge.h lines
+  660 to 663 in YOUR SEEDING SLICE, which is C++ in the same module and is compiled and windowed anyway. Name it in both
+  entries. No issue."
+
+No genre research: this changes no formula and adds no mechanic. It makes the model do what a ruling already says the
+game does.
+
+### Where the simulation differed from the game, and what is left
+
+The game: `UCataclysmSurgeScheduler` draws every dungeon of a wave from `UCataclysmEmpireMap::ExposedCities` (the
+exposed front line, the Pillar left out), weighted by tier, 5 / 3 / 1.5 / 0 (`TargetWeightFor`), whichever Cataclysm
+sent it; the Void's slots also weigh by its stacks (`TargetWeightForSender`).
+
+The simulation, until this change: every Cataclysm drew from `Empire.exposed_cities()` except Demonic, whose pattern
+set `ignores_frontier=True`, so `Simulation.trigger_surge` drew its dungeons from `alive_cities()` -- every standing
+city but the Pillar, sealed ones included. That was the one difference in where a Demonic dungeon lands: Demonic's
+weight, `_demonic`, is already the tier weight 5 / 3 / 1.5 / 0.
+
+Left as they are, and not Demonic's alone: the simulation weights which Cataclysm sends each dungeon by its
+`count_mult` (Demonic's 0.9) and sizes a wave by the active ones' total, while the game draws the sender evenly
+(`UCataclysmEmpireRun::RollCataclysm`); and no Cataclysm's `floors_mult` is ported (Demonic's is 1.0, which changes
+nothing). Both are issue #53, for all eight. The Rift mechanic itself is issue #51 and is not modelled.
+
+### What changed
+
+- `Simulation.trigger_surge` draws every Cataclysm's dungeons from the exposed targets it already computed.
+- `Pattern.ignores_frontier` is deleted (Q2): no pattern would set it.
+- `game_front_line`, the helper in the pack test that made Demonic follow the line while the ring campaigns ran, is
+  deleted: the simulation now does it itself.
+- The figures `siege_urgency` states, and the copies of them, are re-measured (below), and the Sanctuary's tolerance
+  is ruled (Q1).
+- Five present-tense statements that Demonic ignores the frontier are now past tense.
+
+### Measured
+
+Every script and output is in `.claude/windows/demonic/` in the worktree that made the change.
+
+**The first wave, seeds 0 to 299, tier 1** (`first_surge.py`). Demonic is the one active Cataclysm in 36 seeds. Before,
+134 of its 396 first-wave dungeons landed on a Bulwark (96 ordinary, 13 Quest) or a Sanctuary (20 and 5); after, all
+396 land on Outposts (349 ordinary, 47 Quest). The first-wave Outpost ordinary dungeons the pack test walks go from
+3,057 to 3,171: 114 more, not 116, because the draws after the first moved city differ. **THE PLAN SENT TO THE
+COORDINATING SESSION SAID 121 OF 396; THE SAME OUTPUT SAYS 134**, 396 less the 235 ordinary and 27 Quest on Outposts.
+
+**The median walk `siege_urgency` states**, 10,000 campaigns, seeds 0 to 9999, by the prose test's own settings and
+recorder (`median_walks.py`, `walks_after.py`):
+
+| | Dungeons | Outpost | Bulwark | Sanctuary | Pillar | Slack (Outpost / Bulwark / Sanctuary) |
+| :-- | --: | :-- | :-- | :-- | :-- | :-- |
+| Before (reproduces the stated figures) | 707,221 | 9 (641,381) | 23 (47,108) | 35 (8,625) | 125 (10,107) | 16 / 16 / 20 |
+| After | 708,009 | 9 (679,441) | 25 (17,390) | 40 (1,106) | 125 (10,072) | 16 / 14 / 15 |
+
+Against a median walk of 9 / 25 / 40 days, the slack is sixteen, fourteen and fifteen days. After the change, 46.99%
+of Outpost dungeons walk in 8 days or fewer and 55.83% in 9 or fewer; day 9 holds 8.85% of walks against 11.87% on day
+8 and 10.74% on day 10 (before: 46.72%, 55.31%, and 8.59% against 11.77% and 10.51%).
+
+Ten disjoint blocks of 320 campaigns after the change (seeds 0 to 3199, `walk_blocks.py`): 22,374 to 23,510 dungeons a
+block; Outpost medians 9 in every block; Bulwark 24 to 27; Sanctuary 37.5 to 46, on 19 to 51 dungeons a block; Pillar
+122 to 127.5. Ten blocks of 1,000 gave Sanctuary medians of 39 to 43. The prose test reads seeds 0 to 319: 22,566
+dungeons, medians 9 / 25 / 44.5 / 127.
+
+**The opening analysis**, `sim/analyse_opening.py` at 300 seeds and the 20 deepest, before (a `git archive` copy of
+`2869846bc`) and after (`opening_before.out`, `opening_after.out`):
+
+| | Before | After |
+| :-- | :-- | :-- |
+| First-wave Outpost ordinary dungeons | 3,057 | 3,171 |
+| Full clear, median, at 5 / 7 / 8 floors | 353,256 / 499,119 / 530,341 | 359,699 / 503,020 / 540,646 |
+| 0.05, every floor won and 10% left, at a quarter's, a half's and every kill | all 3,057 | all 3,171 |
+| 0.055 at a quarter's kills, 10% left | 3,001 of 3,057 | 3,115 of 3,171 |
+| 0.06 at a half's kills, 10% left | 2,994 of 3,057 | 3,108 of 3,171 |
+| The 20 deepest ordinary / Quest dungeons of the first three surges | 33 to 39 / 46 to 49 floors | 16 / 45 to 48 floors |
+| A level 20 Ravager at 0.20 through them, ordinary and Quest | 17 of 20 and 17 of 20 | 20 of 20 and 20 of 20 |
+| Levels 20 to 40 at 0.05, health left on the last floor, the lowest least to the highest median | 79% to 93% | 80% to 93% |
+
+**THE RING CONTROL: EXACTLY EQUAL.** `campaign_clears` on seeds 0 to 14, every policy, the old code with
+`game_front_line` on (`2869846bc`, nothing uncommitted) against the new code without it: 4,654 clears from 135
+campaigns each, and the two lists equal element by element (`ring_control.py`, `ring_control_before.json`,
+`ring_control_after.json`). The ring figures 0.05 / 0.11 / 0.13 / 0.10 were fitted on the same campaigns, so they do
+not move.
+
+**The whole Python suite with only Demonic's `ignores_frontier=True` removed**, before anything else was written (a
+probe, undone after): "2 failed, 7716 passed, 9 skipped in 330.46s"; the JUnit file 7,727 tests, 2 failures. Both were
+`test_the_siege_prose_in_policies_is_true.py::TestTheMedianWalkTheProseStates::test_it_is_within_a_day_of_a_fresh_measurement`,
+[Bulwark] "says the median walk to a Bulwark is 23 days; 320 campaigns ... give 25.0" and [Sanctuary] "... 35 days;
+... give 44.5". That file passed on unchanged development: "19 passed".
+
+### Registered before the run
+
+- **The Python suite**: 7,737 tests, 7,728 passed, 9 skipped, 0 failed, by the count line and by the JUnit file. That is
+  the probe's 7,727 and the new file's ten. ruff: "All checks passed!".
+- **The ring control, at the commit**: equal to `ring_control_before.json`, 4,654 clears.
+- **P1, the old defect back**: `sim/cataclysm_sim/engine.py`, the line
+  `pool = [c for c in targets if c.cid != self.empire.pillar_id]` made to draw Demonic's pool from
+  `self.empire.alive_cities()` and every other Cataclysm's from `targets`; run
+  `python -m pytest sim/tests/test_every_cataclysm_lands_on_the_front_line.py` through `tools/prove_guard.py`. Predicted
+  named failures, three: `test_the_first_wave_of_each_cataclysm_alone_lands_only_on_the_front_line[Demonic]`,
+  `test_a_demonic_wave_reaches_a_bulwark_once_its_lane_opens_and_no_sealed_one` and
+  `test_every_wave_dungeon_of_a_tier_8_campaign_stands_on_the_front_line`; the other seven Cataclysms' first-wave cases
+  pass. Restored: 10 passed.
+- **P2, every Cataclysm behind the line**: the same line made to draw every Cataclysm's pool from
+  `self.empire.alive_cities()`. Predicted named failures, all ten: the eight first-wave cases, because each one's
+  weight gives a sealed city a share (the set-up assertion each makes), and the other two as in P1. Restored: 10
+  passed.
+
+### experiments.py, before and after
+
+Not yet run (SAID FIRST). The design, approved with the plan:
+
+- Each run from its own `git archive` copy of `sim/`: before from `2869846bc`, after from this branch's committed head,
+  so no edit in a worktree can reach a run. `experiments.py` reads nothing outside `sim/`.
+- Both with `python -u experiments.py`, at the same time, in one gap the coordinating session names: one core each,
+  about 20 to 40 minutes. The seeds are fixed and `sim/tests/test_engine.py` asserts that the same seed gives the same
+  result, so every difference between the two reports is this change.
+- Quoted here: each run's last line, "Done. N campaigns run." (31,820 or 33,920 shows whether calibration chose a
+  different wave size); section 0's "BEST STATIC BASELINE" line; section 1's `triage` row and the policies' spread;
+  section 7 at tiers 1 and 8; section 8's win rates by active count; and how many lines of the two reports differ.
+- A PREDICTION, A JUDGEMENT AND NOT A MEASUREMENT: tier 1 cells move little, because Demonic is the one active
+  Cataclysm in about 1 campaign in 8 (36 of seeds 0 to 299); tier 8 has Demonic in every campaign, but it sends about
+  11% of a wave (0.9 of a `count_mult` total of 8.3). If calibration chooses differently, everything after section 0
+  moves for that reason.
+
+---
+
 ## 2026-11-19 — The editors the tools start keep the engine's MCP server off, and the tests command fails a run whose editor started it, so a Claude session that connects during a window can no longer fail a test (#2745)
 
 **Affects:** `tools/unreal_build.py`: `MCP_SERVER_OFF`, `MCP_SERVER_STARTED`, `MCP_NOT_STARTED`, `mcp_server_line` and
@@ -148141,6 +148321,13 @@ any dose: 70 days against a median walk of 123.
 > 9 / 23 / 35 days, the slack is sixteen, sixteen and twenty days. It was 14 / 23 /
 > 35 and eleven, sixteen and twenty, measured on 2026-10-18. The Pillar's median is
 > 125, against 123.
+
+> **Re-measured on 2026-11-19, again**, after the simulation's Demonic Cataclysm
+> began landing its waves on the exposed front line as the game's does (issue
+> #2749, the ruling on #1085), over 10,000 campaigns (seeds 0 to 9999, 708,009
+> dungeons) by the prose test's own method: Against a median walk of 9 / 25 / 40
+> days, the slack is sixteen, fourteen and fifteen days. It was 9 / 23 / 35 and
+> sixteen, sixteen and twenty earlier that day. The Pillar's median is still 125.
 
 ### The other six sub-types took the 7.5 in proportion, rounded to one decimal
 
