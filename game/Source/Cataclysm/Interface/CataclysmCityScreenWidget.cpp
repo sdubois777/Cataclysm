@@ -148,7 +148,7 @@ void UCataclysmCityScreenWidget::BuildOfferButtons()
 
 	for (const FCataclysmCityUpgradeOffer& Offer :
 		 UCataclysmCityScreenLayout::OffersFor(
-			 Run, CityId, UCataclysmCityUpgradePurchase::GoldHeldIn(this)))
+			 this, Run, CityId, UCataclysmCityUpgradePurchase::GoldHeldIn(this)))
 	{
 		// ONLY WHAT CAN BE BOUGHT GETS A BUTTON. What the city already has is a
 		// row under "What this city has", and what does nothing yet is a row in
@@ -197,7 +197,7 @@ void UCataclysmCityScreenWidget::HandleOfferClicked(FName Value)
 	// BOUGHT WITH GOLD, since issue #2742's second slice: the price at the
 	// run's tier is taken from the character's balance and the saves raised,
 	// all in `UCataclysmCityUpgradePurchase::Buy`, the one place that charges.
-	const int64 Price = UCataclysmCityUpgradePurchase::PriceIn(Run, Value);
+	const int64 Price = UCataclysmCityUpgradePurchase::PriceIn(this, Run, Value, CityId);
 	const int64 Held = UCataclysmCityUpgradePurchase::GoldHeldIn(this);
 	const ECataclysmCityUpgradeResult Result =
 		UCataclysmCityUpgradePurchase::Buy(this, Run, CityId, Value);
@@ -282,7 +282,7 @@ void UCataclysmCityScreenWidget::WriteDetailRows()
 
 	for (const FCataclysmCityUpgradeOffer& Offer :
 		 UCataclysmCityScreenLayout::OffersFor(
-			 Run, CityId, UCataclysmCityUpgradePurchase::GoldHeldIn(this)))
+			 this, Run, CityId, UCataclysmCityUpgradePurchase::GoldHeldIn(this)))
 	{
 		if (!Offer.bCanBuy && !Offer.bHeld
 			&& !UCataclysmCityUpgradeRules::IsBuilt(Offer.EffectKind))

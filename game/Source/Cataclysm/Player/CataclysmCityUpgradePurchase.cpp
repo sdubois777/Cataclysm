@@ -8,16 +8,25 @@
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "Items/CataclysmDroppedItem.h"
+#include "Player/CataclysmEmpireTree.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmGameMode.h"
 #include "Player/CataclysmPlayLoopLog.h"
 #include "Save/CataclysmSaveTriggers.h"
 #include "Save/CataclysmSaveWriter.h"
 
-int64 UCataclysmCityUpgradePurchase::PriceIn(const UCataclysmEmpireRun* Run, FName RowName)
+int64 UCataclysmCityUpgradePurchase::PriceIn(const UObject* WorldContext, const UCataclysmEmpireRun* Run, FName RowName,
+											 int32 CityId)
 {
 	const int32 Tier = Run != nullptr ? Run->DifficultyTier : ACataclysmGameMode::LowestDifficultyTier;
-	return UCataclysmCityUpgradeMapping::PriceFor(RowName, Tier);
+	const int64 TiersPrice = UCataclysmCityUpgradeMapping::PriceFor(RowName, Tier);
+
+	// THE TREE'S PRICE NODES ON THIS CITY (slice 6a). A factor of exactly 1 leaves the tier's price as it is.
+	const float Factor = UCataclysmEmpireTree::UpgradePriceFactorFor(
+		UCataclysmGameInstance::EmpireTreePlayerBonusesFor(WorldContext), Run != nullptr ? Run->Map.Get() : nullptr,
+		CityId);
+	return Factor == 1.0f ? TiersPrice
+						  : static_cast<int64>(FMath::RoundToDouble(static_cast<double>(TiersPrice) * Factor));
 }
 
 int64 UCataclysmCityUpgradePurchase::GoldHeldIn(const UObject* WorldContext)
@@ -35,7 +44,7 @@ ECataclysmCityUpgradeResult UCataclysmCityUpgradePurchase::Buy(const UObject* Wo
 	}
 
 	const FCataclysmCityUpgrade Upgrade = UCataclysmCityUpgradeMapping::MakeFromTable(RowName);
-	const int64 Price = PriceIn(Run, RowName);
+	const int64 Price = PriceIn(WorldContext, Run, RowName, CityId);
 	const int64 Held = GoldHeldIn(WorldContext);
 
 	// THE RUN'S QUESTION FIRST, so nothing is taken for a purchase it would refuse.

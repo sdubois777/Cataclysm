@@ -335,7 +335,8 @@ void ACataclysmEnemyCharacter::HandleDeath()
 			// Solo Self-Found character's kills drop gold for its own balance. Issue #2742.
 			if (UCataclysmDropSpawner::GoldDropsIn(World))
 			{
-				UCataclysmDropSpawner::SpawnGoldFor(World, RarityStepItPaysAs(), GetActorLocation(), Stream);
+				UCataclysmDropSpawner::SpawnGoldFor(World, RarityStepItPaysAs(), GetActorLocation(), Stream,
+													TreeDrops.GoldMultiplier);
 			}
 
 			// AND THE TREE'S EXTRA DROPS AFTER THE GOLD, so every draw above is as it was, and a kill with none of the

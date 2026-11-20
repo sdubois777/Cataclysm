@@ -80,7 +80,7 @@ namespace CataclysmCityScreenTest
 	TArray<FCataclysmCityUpgradeOffer> Offers(const UCataclysmEmpireRun* Run,
 											  int32 CityId)
 	{
-		return UCataclysmCityScreenLayout::OffersFor(Run, CityId, PlentyOfGold);
+		return UCataclysmCityScreenLayout::OffersFor(nullptr, Run, CityId, PlentyOfGold);
 	}
 
 	int32 CountBuyable(const TArray<FCataclysmCityUpgradeOffer>& List)

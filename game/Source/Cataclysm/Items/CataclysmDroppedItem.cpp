@@ -844,7 +844,7 @@ FVector UCataclysmDropSpawner::GoldScatterOffset(int32 Index, int32 Count)
 }
 
 int32 UCataclysmDropSpawner::SpawnGoldFor(UWorld* World, int32 EnemyRarityStep, const FVector& At,
-										  FRandomStream& Stream)
+										  FRandomStream& Stream, float GoldMultiplier)
 {
 	if (World == nullptr)
 	{
@@ -881,11 +881,16 @@ int32 UCataclysmDropSpawner::SpawnGoldFor(UWorld* World, int32 EnemyRarityStep, 
 	int32 Placed = 0;
 	for (int32 Index = 0; Index < Count; ++Index)
 	{
-		const int32 Amount = UCataclysmDropRoll::RollGoldPile(GoldTable, DifficultyTier, Floor, Stream);
-		if (Amount <= 0)
+		const int32 Rolled = UCataclysmDropRoll::RollGoldPile(GoldTable, DifficultyTier, Floor, Stream);
+		if (Rolled <= 0)
 		{
 			continue;
 		}
+
+		// THE TREE'S GOLD NODES, AFTER THE PILE'S DRAWS (slice 6a): a multiplier of exactly 1 leaves the amount as rolled.
+		const int32 Amount = GoldMultiplier == 1.0f
+			? Rolled
+			: FMath::Max(1, FMath::RoundToInt32(static_cast<double>(Rolled) * FMath::Max(0.0f, GoldMultiplier)));
 		if (PutOnTheFloor(World, At + GoldScatterOffset(Index, Count), FCataclysmItem(), NAME_None, 0, Amount))
 		{
 			++Placed;

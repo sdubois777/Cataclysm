@@ -277,7 +277,8 @@ TArray<FString> UCataclysmCityScreenLayout::HeldLinesFor(
 }
 
 TArray<FCataclysmCityUpgradeOffer> UCataclysmCityScreenLayout::OffersFor(
-	const UCataclysmEmpireRun* Run, int32 CityId, int64 GoldHeld)
+	const UObject* WorldContext, const UCataclysmEmpireRun* Run, int32 CityId,
+	int64 GoldHeld)
 {
 	TArray<FCataclysmCityUpgradeOffer> Offers;
 
@@ -303,8 +304,10 @@ TArray<FCataclysmCityUpgradeOffer> UCataclysmCityScreenLayout::OffersFor(
 		// the screen and the purchase drifting apart: every rule about slots,
 		// duplicates, fallen cities, unbuilt effects and, since issue #2742's
 		// second slice, the price against the gold held lives there. Asked with
-		// the price `UCataclysmCityUpgradePurchase::Buy` charges.
-		Offer.Price = UCataclysmCityUpgradePurchase::PriceIn(Run, RowName);
+		// the price `UCataclysmCityUpgradePurchase::Buy` charges, on this city
+		// and with the empire upgrade tree's price nodes (#2741 slice 6a).
+		Offer.Price = UCataclysmCityUpgradePurchase::PriceIn(
+			WorldContext, Run, RowName, CityId);
 		const ECataclysmCityUpgradeResult Result =
 			Run->WouldBuyCityUpgrade(CityId, Upgrade, Offer.Price, GoldHeld);
 

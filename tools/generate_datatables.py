@@ -3765,8 +3765,9 @@ EMPIRE_TREE_SYSTEMS = {
 
 #: EVERY NODE AND EVERY CENTRE CAPSTONE OPTION THE GAME WILL BUILD IN #2741, by
 #: name, with the slice that makes it act: 3 for the city numbers, 4 for a
-#: dungeon's walk and depth, 5 for the player's loot and movement. Until its
-#: slice lands a node here can be bought and does nothing.
+#: dungeon's walk and depth, 5 for the player's loot and movement, 6 for gold
+#: (slice 6a, 2026-11-20: the gold a kill drops and a city upgrade's price).
+#: Until its slice lands a node here can be bought and does nothing.
 #:
 #: TOGETHER WITH `EMPIRE_TREE_REFUSED` IT NAMES EVERY NODE AND OPTION, AND
 #: `empire_tree_nodes` REFUSES A NAME IN NEITHER OR IN BOTH. A node added to the
@@ -3813,6 +3814,14 @@ EMPIRE_TREE_BUILT = {
     "The Cartographer's Blessing": 5,
     # Treasury: the one node about people rather than gold.
     "Golden Age": 3,
+    # Treasury, slice 6a: the gold a kill drops (G1 to G3) and a city upgrade's
+    # price (P1 to P3), the coordinating session's rulings of 2026-11-20.
+    "Coinage": 6, "Minting Rights": 6, "Untouchable Wealth": 6,
+    "Wartime Economy": 6, "Profiteering": 6, "Prosperity Index": 6,
+    "Fiscal Policy": 6, "Municipal Bonds": 6, "Public Works": 6,
+    "War Funding": 6, "Price Controls": 6,
+    # The centre: a tier milestone's option, the gold a kill drops.
+    "The Midas Touch": 6,
     # Artisan: crafting materials already drop.
     "Scavenger": 5,
 }
@@ -3827,29 +3836,24 @@ EMPIRE_TREE_BUILT = {
 EMPIRE_TREE_REFUSED = {
     # The four tier-milestone capstones' options.
     "The Soul Forge": "crafting", "The Master Tinkerer": "crafting",
-    "The Midas Touch": "gold rules", "Imperial Prowess": "prowess ruling",
+    "Imperial Prowess": "prowess ruling",
     # Architect.
     "Scaffolding": "build time", "Rapid Renovation": "build time",
-    "Public Works": "gold rules", "Scorched Earth": "destroy upgrade",
+    "Scorched Earth": "destroy upgrade",
     "Civic Pride": "population growth",
     # Explorer.
     "Supply Caches": "loot chest", "Field Depot I": "stash",
     "Field Depot II": "stash", "Field Depot III": "stash",
     "Gamble": "modifier reroll", "Scout Parties": "bonus dungeon",
     "Auto-Loot": "loot filter",
-    # Treasury. Slice 6 (2026-11-20) builds the "gold rules" nodes; R1 to R4 wait
-    # on a Treasurer city upgrade (#2781), R7 to R9 on the owner, and the rest on
-    # what their text needs and the game lacks.
-    "Coinage": "gold rules", "Minting Rights": "gold rules",
-    "Untouchable Wealth": "gold rules", "Wartime Economy": "gold rules",
-    "Profiteering": "gold rules", "Prosperity Index": "gold rules",
-    "Fiscal Policy": "gold rules", "Stimulus Package": "gold rules",
-    "The Gilded Path": "gold rules", "Venture Capital": "gold rules",
-    "Imperial Reserve": "gold rules", "Tax Collection": "gold rules",
-    "Pax Imperialis": "gold rules", "Wealth Interest": "gold rules",
-    "Salvage Rights": "gold rules", "Investment Funds": "gold rules",
-    "Cleanup Crew": "gold rules", "Municipal Bonds": "gold rules",
-    "War Funding": "gold rules", "Price Controls": "gold rules",
+    # Treasury. Slice 6b builds the "gold rules" nodes (slice 6a built twelve,
+    # 2026-11-20); R1 to R4 wait on a Treasurer city upgrade (#2781), R7 to R9
+    # on the owner, and the rest on what their text needs and the game lacks.
+    "Stimulus Package": "gold rules", "The Gilded Path": "gold rules",
+    "Venture Capital": "gold rules", "Imperial Reserve": "gold rules",
+    "Tax Collection": "gold rules", "Pax Imperialis": "gold rules",
+    "Wealth Interest": "gold rules", "Salvage Rights": "gold rules",
+    "Investment Funds": "gold rules", "Cleanup Crew": "gold rules",
     "Commercial Hubs": "treasurer upgrade", "Economic Zones": "treasurer upgrade",
     "Trade Routes": "treasurer upgrade", "The Golden Touch": "treasurer upgrade",
     "Treasury Guard": "gold ruling", "Global Credit": "gold ruling",
@@ -4093,6 +4097,11 @@ EMPIRE_TREE_EFFECT_KINDS = (
     # kill rolls for an extra drop.
     "LootQuantityPerCleanClear", "EliteExtraItemChance", "ExtraMaterialChance",
     "LowTierMaterialExtraChance", "BossLegendaryChancePerTenFloorsAdded",
+    # Slice 6a: the gold a kill drops, and a city upgrade's price.
+    "GoldIncreased", "GoldMore", "GoldPerStandingCity", "GoldPerActiveType",
+    "GoldPerFallenCity", "GoldPerTenThousandCitizens", "GoldPerFiveCityUpgrades",
+    "UpgradePriceReduced", "FirstUpgradePriceReduced",
+    "DamagedCityUpgradePriceReduced",
 )
 
 #: WHAT EACH BUILT NODE OR OPTION OF THE EMPIRE TREE DOES, by name. Issue
@@ -4227,6 +4236,28 @@ EMPIRE_TREE_EFFECTS = {
     "Scavenger": [("LowTierMaterialExtraChance", 0.05)],
     # Per whole 10 floors added to the dungeon; the step is in C++.
     "The High Roller": [("BossLegendaryChancePerTenFloorsAdded", 0.05)],
+    # Slice 6a, the coordinating session's rulings of 2026-11-20. THE GOLD A KILL
+    # DROPS (G1, the design's pipeline): every "+X% Gold" adds into one increase
+    # and The Midas Touch's "50% more" is its own multiplier; each reaches the
+    # gold its own words name (G2), and in 6a that is a kill's. The counts (G3)
+    # are worked out in C++: cities not fallen, fallen cities not erased, the
+    # active Cataclysm types, each whole 10,000 citizens and each whole 5
+    # upgrades held by standing cities.
+    "Coinage": [("GoldIncreased", 0.05)],
+    "Minting Rights": [("GoldIncreased", 0.03)],
+    "The Midas Touch": [("GoldMore", 0.50)],
+    "Untouchable Wealth": [("GoldPerStandingCity", 0.02)],
+    "Wartime Economy": [("GoldPerActiveType", 0.10)],
+    "Profiteering": [("GoldPerFallenCity", 0.05)],
+    "Prosperity Index": [("GoldPerTenThousandCitizens", 0.01)],
+    "Fiscal Policy": [("GoldPerFiveCityUpgrades", 0.03)],
+    # A CITY UPGRADE'S PRICE (P1 to P3): the reductions add, and C++ holds their
+    # sum at 75%; War Funding's is for a city holding no upgrade, and Price
+    # Controls' for a city whose defence or population is below its maximum.
+    "Municipal Bonds": [("UpgradePriceReduced", 0.03)],
+    "Public Works": [("UpgradePriceReduced", 0.20)],
+    "War Funding": [("FirstUpgradePriceReduced", 0.02)],
+    "Price Controls": [("DamagedCityUpgradePriceReduced", 0.04)],
 }
 
 
