@@ -347,9 +347,10 @@ the draws a population of players would meet.
 **EVERY CAMPAIGN FIGURE MEASURED BELOW TIER 8 BEFORE 2026-09-06 IS STALE.**
 Until #1338 the count was a flat 1 whatever the tier, and the set was the first
 N of a fixed tuple, so every campaign the model ever ran faced Demonic and
-nothing else. Demonic is the only one of the eight that ignores the frontier, so
-every lane-based and frontier-pressure figure was measured against the one
-Cataclysm that does not respect lanes. Measured on #1338 at 250 campaigns per
+nothing else. Demonic was then the only one of the eight the model let ignore
+the frontier, so every lane-based and frontier-pressure figure was measured
+against the one Cataclysm that did not respect lanes. (Since 2026-11-19, issue
+#2749, it follows the front line as the game's does, by the ruling on #1085.) Measured on #1338 at 250 campaigns per
 cell, tier 1, the `triage` policy, at surge size 4 -- the raw `TuningConfig`
 default, not the calibrated 5 this report uses: which Cataclysm is active swings
 the win rate by 13.6 points and flips the ordering between empire tree branches.

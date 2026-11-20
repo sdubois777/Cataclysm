@@ -30,7 +30,10 @@ on either side of a boundary at random. (This said 45% at 12 days and 50% at 13
 until issue #1389, figures from when the stated median was 13.) A guard demanding an exact median would fail on an unrelated
 change to the random stream and teach the next reader to widen it until it
 stopped complaining. So this measures, allows one day, and separately checks
-that the distribution really is flat enough to deserve that.
+that the distribution really is flat enough to deserve that. THE PILLAR AND,
+SINCE 2026-11-19, THE SANCTUARY ARE ALLOWED MORE, each by a tolerance measured
+from how few dungeons these campaigns put there: `PILLAR_TOLERANCE_DAYS` and
+`SANCTUARY_TOLERANCE_DAYS`.
 
 WHAT IS EXACT HERE, AND IS ASSERTED EXACTLY. That a Pillar Siege can never be
 answered. A surge cannot target the Pillar, so the only dungeons that spawn
@@ -125,6 +128,9 @@ REPORT_SETTINGS = dict(
 #: Campaigns the re-measurement runs. Chosen from evidence rather than taste:
 #: over ten disjoint blocks of this size the median never strayed more than one
 #: day from the 10,000-campaign answer on an Outpost, a Bulwark or a Sanctuary.
+#: THAT HELD UNTIL DEMONIC FOLLOWED THE FRONT LINE (2026-11-19, issue #2749),
+#: and no longer holds for the Bulwark or the Sanctuary: see the last paragraph
+#: and `SANCTUARY_TOLERANCE_DAYS`.
 #: It was 200 until issue #1432: with a city's fall no longer firing a surge
 #: inside the minimum gap, 200 campaigns made 17,509 dungeons, under the
 #: 20,000 the `made` fixture demands. Ten blocks of 250 on 2026-09-16 made
@@ -148,6 +154,18 @@ REPORT_SETTINGS = dict(
 #: 23 for the Bulwark, 34 to 36 for the Sanctuary and 123 to 127 for the Pillar,
 #: against a 10,000-campaign answer of 9 / 23 / 35 / 125. None is outside its
 #: tolerance. Seeds 0 to 319 give 22,725 dungeons.
+#:
+#: SINCE DEMONIC FOLLOWS THE FRONT LINE (2026-11-19, issue #2749, the ruling on
+#: #1085) far fewer dungeons reach the inner rings: 17,390 Bulwark and 1,106
+#: Sanctuary dungeons in 10,000 campaigns, against 47,108 and 8,625. Ten
+#: disjoint blocks of 320 (seeds 0 to 3199) made 22,374 to 23,510 dungeons
+#: each, with medians of 9 for the Outpost in every block, 24 to 27 for the
+#: Bulwark, 37.5 to 46 for the Sanctuary on 19 to 51 dungeons a block, and 122
+#: to 127.5 for the Pillar, against a 10,000-campaign answer of 9 / 25 / 40 /
+#: 125. ONE BULWARK BLOCK OF THE TEN, seeds 1920 to 2239, IS TWO DAYS OFF, at
+#: 27, outside the day this file allows; the seeds it reads, 0 to 319, give 25,
+#: and the Bulwark keeps its one day, as the coordinating session ruled that
+#: day. Seeds 0 to 319 give 22,566 dungeons.
 CAMPAIGNS = 320
 
 #: How far a measured median may sit from the stated one. See the module
@@ -163,6 +181,21 @@ WALK_TOLERANCE_DAYS = 1
 #: 126.5 against a 10,000-campaign answer of 123, so four is what was measured
 #: rather than what was convenient.
 PILLAR_TOLERANCE_DAYS = 4
+
+#: The Sanctuary's own tolerance, since Demonic follows the front line
+#: (2026-11-19, issue #2749). That change moved most Sanctuary dungeons off the
+#: map, 8,625 to 1,106 in 10,000 campaigns, so this file's 320 campaigns hold
+#: 19 to 51 of them and their median ran 37.5 to 46 over ten disjoint blocks
+#: (seeds 0 to 3199) against a 10,000-campaign answer of 40. Six is the largest
+#: of those gaps, measured, as the Pillar's four is; the coordinating session
+#: ruled it that day, following the Pillar's precedent. It is not widened to
+#: hide a change: the 10,000-campaign figure the prose states moved from 35 to
+#: 40 and the prose says so.
+SANCTUARY_TOLERANCE_DAYS = 6
+
+#: The tolerance each size is held to.
+TOLERANCE_DAYS = {CityTier.OUTPOST: WALK_TOLERANCE_DAYS, CityTier.BULWARK: WALK_TOLERANCE_DAYS,
+                  CityTier.SANCTUARY: SANCTUARY_TOLERANCE_DAYS, CityTier.PILLAR: PILLAR_TOLERANCE_DAYS}
 
 
 def report_config() -> TuningConfig:
@@ -270,7 +303,8 @@ def walks(made, tier: CityTier) -> list[int]:
 #: and day 15 6.76%: a ratio of 1.22. On 2026-11-19, with an Outpost's ordinary
 #: dungeons 5 to 10 floors (issue #2749), the median day 9 holds 8.94%, day 8
 #: 11.30% and day 10 10.91%: a ratio of 0.81, a dip rather than a spike, which
-#: this limit allows.
+#: this limit allows. With Demonic following the front line, the same day,
+#: 9.13% against 11.43% and 10.93%: 0.82.
 MEDIAN_DAY_SPIKE_LIMIT = 2.0
 
 
@@ -365,8 +399,7 @@ class TestTheMedianWalkTheProseStates:
     def test_it_is_within_a_day_of_a_fresh_measurement(self, made, tier):
         stated = stated_walks()[tier]
         measured = statistics.median(walks(made, tier))
-        allowed = (PILLAR_TOLERANCE_DAYS if tier is CityTier.PILLAR
-                   else WALK_TOLERANCE_DAYS)
+        allowed = TOLERANCE_DAYS[tier]
         assert abs(measured - stated) <= allowed, (
             f"`siege_urgency` says the median walk to a {tier.value} is "
             f"{stated} days; {CAMPAIGNS} campaigns at the settings it names "
@@ -424,10 +457,11 @@ class TestTheMedianWalkTheProseStates:
             "there makes the median a stable number, and the one-day tolerance "
             "should then tighten rather than this limit widen. Issue #1389.")
         says(DOC_URGENCY,
-             "46.72% of Outpost dungeons walk in 8 days or fewer and 55.31% in "
+             "46.99% of Outpost dungeons walk in 8 days or fewer and 55.83% in "
              "9 or fewer",
              "Those are the shares from the 10,000-campaign measurement of "
-             "2026-11-19, with an Outpost's ordinary dungeons 5 to 10 floors.")
+             "2026-11-19, with an Outpost's ordinary dungeons 5 to 10 floors "
+             "and Demonic following the front line.")
 
     def test_a_spike_on_the_median_day_is_what_the_check_rejects(self):
         """THE CONTROL. The same helper over walk lists built by hand: a flat

@@ -601,8 +601,10 @@ KILL_SHARE = 0.5
 #: The least share of its health the character ends the last floor with.
 LEAST_HEALTH_LEFT = 0.10
 
-#: The simulation's seeds whose first surge's dungeons are walked: every one of them, 3,057 dungeons of 3 to 16 floors,
-#: every sub-type a surge rolls and modifier scores from 5 to 50. The damage scale was fitted on the same seeds.
+#: The simulation's seeds whose first surge's dungeons are walked: every one of them, every sub-type a surge rolls and
+#: modifier scores from 5 to 50. The damage scale was fitted on the same seeds, when they made 3,057 Outpost ordinary
+#: dungeons; since Demonic follows the front line (2026-11-19, issue #2749) they make 3,171, because a Demonic first
+#: wave, which put 134 of its 396 dungeons on a Bulwark or a Sanctuary, now lands all of them on Outposts.
 FIRST_SURGE_SEEDS = range(300)
 
 #: The damage scale tier 1 had until issue #2749, which the control below must lose with.
@@ -700,7 +702,8 @@ def model() -> dict:
 @pytest.fixture(scope="module")
 def surge_dungeons() -> list:
     dungeons = first_surge_dungeons()
-    assert len(dungeons) > 2000, f"only {len(dungeons)} first-surge Outpost dungeons; the set this was fitted on had 3,057"
+    assert len(dungeons) > 2000, (f"only {len(dungeons)} first-surge Outpost dungeons; the set this was fitted on had "
+                                  "3,057, and 3,171 since Demonic follows the front line")
     return dungeons
 
 
@@ -758,30 +761,16 @@ def test_a_new_character_gains_at_least_three_levels_over_a_first_dungeon_of_sev
 # experience model or the campaigns move.
 #
 # THE CAMPAIGNS RUN WITH DEMONIC FOLLOWING THE FRONT LINE, AS THE GAME'S DOES. The game's surge targets the exposed
-# front line for every Cataclysm, ruled for Demonic on 2026-09-14 (issue #1085); the simulation's Demonic still ignores
-# it, which would put level 1 characters into Bulwark dungeons the game never sends them to. Making the simulation
-# follow the ruling is the next slice of issue #2749, after which `game_front_line` is no longer needed.
+# front line for every Cataclysm, ruled for Demonic on 2026-09-14 (issue #1085). The figures were fitted while the
+# simulation's Demonic still ignored it, through a helper here, `game_front_line`, that made it follow the line while
+# the campaigns ran. Since the next slice of issue #2749 the simulation follows the ruling itself and the helper is
+# gone; the clears these campaigns give were compared, seeds 0 to 14, and are the same list.
 
 #: The seeds of each policy's tier 1 campaigns the guard walks. The fit used 0 to 59 and was checked on 60 to 119.
 RING_GUARD_SEEDS = range(15)
 
 #: The simulation's dungeon type -> the name `scoring` and `enemy_stats` take.
 SCORING_TYPE = {"Basic": "Basic", "Quest": "Quest", "FallenCity": "Fallen City", "Cataclysm": "Cataclysm"}
-
-
-@contextlib.contextmanager
-def game_front_line():
-    """The simulation's Demonic set to target only the exposed front line, as the game's does, while the block runs."""
-    import dataclasses
-
-    from cataclysm_sim import patterns
-
-    shipped = patterns.PATTERNS["Demonic"]
-    patterns.PATTERNS["Demonic"] = dataclasses.replace(shipped, ignores_frontier=False)
-    try:
-        yield
-    finally:
-        patterns.PATTERNS["Demonic"] = shipped
 
 
 class Clear:
@@ -814,20 +803,19 @@ def campaign_clears(model, seeds=RING_GUARD_SEEDS, kill_share=KILL_SHARE, tier=1
                 self.cleared_in_order.append((dungeon, city.tier.value if city is not None else None))
 
     out = []
-    with game_front_line():
-        for name, policy in policies.ALL.items():
-            for seed in seeds:
-                sim = Logged(TuningConfig(tier=tier), seed)
-                sim.cleared_in_order = []
-                sim.run(policy)
-                banked = banked_at_start
-                for dungeon, standing_on in sim.cleared_in_order:
-                    clear = Clear(name, seed, dungeon, banked, standing_on)
-                    out.append(clear)
-                    banked += kill_share * sum(
-                        floor_experience(model, clear.subtype, clear.floors, floor, clear.modifier_score,
-                                         clear.dungeon_type, tier) for floor in range(1, clear.floors + 1))
-                    clear.banked_after = banked
+    for name, policy in policies.ALL.items():
+        for seed in seeds:
+            sim = Logged(TuningConfig(tier=tier), seed)
+            sim.cleared_in_order = []
+            sim.run(policy)
+            banked = banked_at_start
+            for dungeon, standing_on in sim.cleared_in_order:
+                clear = Clear(name, seed, dungeon, banked, standing_on)
+                out.append(clear)
+                banked += kill_share * sum(
+                    floor_experience(model, clear.subtype, clear.floors, floor, clear.modifier_score,
+                                     clear.dungeon_type, tier) for floor in range(1, clear.floors + 1))
+                clear.banked_after = banked
     return out
 
 

@@ -25,8 +25,11 @@ class Pattern:
     count_mult: float = 1.0
     # Relative depth of the dungeons it spawns.
     floors_mult: float = 1.0
-    # Rifts open behind the front line -- the frontier rule does not apply.
-    ignores_frontier: bool = False
+    #: NO PATTERN LANDS BEHIND THE FRONT LINE, since 2026-11-19 (#2749). Every
+    #: Cataclysm's wave draws from `Empire.exposed_cities`, as the game's
+    #: `UCataclysmSurgeScheduler` does for every sender. Demonic alone had an
+    #: `ignores_frontier` field set until then, and it was deleted rather than
+    #: left false, because nothing would set it: see `_demonic`.
     # Cities lost to this Cataclysm can never be reclaimed.
     #: Its ordinary dungeons add void stacks instead of damage, and ten erase a
     #: city (`Simulation._adds_void_stacks`). Until 2026-10-18 this marked every
@@ -54,8 +57,17 @@ def _death(e: Empire, c: City) -> float:
 
 
 # --- Demonic ----------------------------------------------------------------
-# "Infernal Rifts tear open across the map, spawning dungeons without needing a
-# direct path." Lanes do not protect you.
+# THE FRONT LINE, BY TIER, AS THE GAME'S DOES, since 2026-11-19 (#2749). The
+# design document's Demonic quest mechanic -- "Infernal Rifts tear open across
+# the map, spawning dungeons without needing a direct path" -- is the Hell on
+# Earth mechanic, issue #51, and not how a Demonic wave lands. The ruling on
+# issue #1085, 2026-09-14: "the vertical slice's Demonic wave does not ignore
+# the empire map's lane rule. The generic frontier pattern the scheduler already
+# ports stays; the GDD's Demonic quest mechanic stays a Demonic-only mechanic
+# and is not the general surge rule." Until 2026-11-19 this pattern drew from
+# every standing city, sealed ones included, so it put dungeons on Bulwarks and
+# Sanctuaries no other Cataclysm and no game wave could reach; nothing here
+# models the Rifts.
 def _demonic(e: Empire, c: City) -> float:
     return _tier_weight(c)
 
@@ -128,8 +140,8 @@ PATTERNS: dict[str, Pattern] = {
         "Death", "swarms the rim with shallow dungeons, then funnels into breaches",
         count_mult=1.8, floors_mult=0.55, weight=_death),
     "Demonic": Pattern(
-        "Demonic", "Rifts open behind the front line -- ignores lanes entirely",
-        count_mult=0.9, floors_mult=1.0, ignores_frontier=True, weight=_demonic),
+        "Demonic", "uniform pressure on the front line, weighted by tier; its Rifts are not modelled",
+        count_mult=0.9, floors_mult=1.0, weight=_demonic),
     "War": Pattern(
         "War", "attacks the strongest standing city rather than the weakest",
         count_mult=1.0, floors_mult=1.15, weight=_war),

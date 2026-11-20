@@ -10,10 +10,11 @@ the tier and leaves the count alone, produced every one of its figures -- at
 every tier -- against a single Cataclysm.
 
 `engine.Simulation` then took `CATACLYSM_ROSTER[:count]`, a fixed tuple whose
-first entry is Demonic. So that single Cataclysm was always Demonic, which is
-the only one of the eight that ignores the frontier: every lane-based policy
-figure this model has produced was measured against the one Cataclysm that does
-not respect lanes. Measured on the issue, at 250 campaigns per cell at tier 1:
+first entry is Demonic. So that single Cataclysm was always Demonic, which was
+then the only one of the eight the model let ignore the frontier: every
+lane-based policy figure this model had produced was measured against the one
+Cataclysm that did not respect lanes. (Since 2026-11-19, issue #2749, Demonic
+follows the front line as the game's does.) Measured on the issue, at 250 campaigns per cell at tier 1:
 which Cataclysm is active swings the win rate by 13.6 points against a 4.5 point
 noise floor, and it flips the ordering between empire tree branches.
 
@@ -173,8 +174,8 @@ class TestWhichCataclysmsAreDrawnActuallyVaries:
 
     def test_every_cataclysm_can_be_the_one_a_character_starts_against(self):
         """Not merely that the set varies -- that nothing is pinned. Demonic
-        was first for every campaign this model ever ran, and Demonic is the
-        only one of the eight that ignores the frontier."""
+        was first for every campaign this model ever ran, and Demonic was
+        then the only one of the eight the model let ignore the frontier."""
         firsts = {cataclysm_order_for(TuningConfig(), s)[0] for s in range(400)}
         assert firsts == set(ROSTER), (
             f"these Cataclysms never come first in 400 draws: "
@@ -236,9 +237,10 @@ class TestCampaignsStillRun:
         assert result.survived_days > 0
 
     def test_every_cataclysm_can_be_played_as_the_only_active_one(self):
-        """`patterns.py` gives four of the eight a rule of their own -- Demonic
-        ignores the frontier, War hits the strongest city, Void erases cities,
-        and Celestial sends few deep dungeons. Before #1338 only Demonic was
+        """`patterns.py` gave four of the eight a rule of their own -- Demonic
+        ignored the frontier (until 2026-11-19, issue #2749), War hits the
+        strongest city, Void erases cities, and Celestial sends few deep
+        dungeons. Before #1338 only Demonic was
         ever reached by a campaign, so the other three rules ran in no
         measurement this project has on record."""
         played = set()
