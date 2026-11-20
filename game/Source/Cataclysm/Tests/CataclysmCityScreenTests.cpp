@@ -436,16 +436,16 @@ bool FCataclysmCityScreenOffersTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// FOURTEEN, WHICH IS WHAT THE RULES SAY IS BUILT. Read from the rules as well
+	// NINETEEN SINCE ISSUE #2781, WHICH IS WHAT THE RULES SAY IS BUILT. Read from the rules as well
 	// as written out, so the two cannot part company and neither can drift
 	// unnoticed.
 	TestEqual(TEXT("a fresh city can buy every built upgrade"),
 			  CountBuyable(List),
 			  UCataclysmCityUpgradeRules::BuiltEffectCount());
 
-	TestEqual(TEXT("which is fourteen"), CountBuyable(List), 14);
+	TestEqual(TEXT("which is nineteen"), CountBuyable(List), 19);
 
-	// AND THE OTHER TEN SAY WHY NOT, in the same words the console command
+	// AND THE OTHER FIVE SAY WHY NOT, in the same words the console command
 	// and a refused purchase use.
 	int32 NotBuilt = 0;
 
@@ -468,9 +468,9 @@ bool FCataclysmCityScreenOffersTest::RunTest(const FString& Parameters)
 					  ECataclysmCityUpgradeResult::EffectNotBuiltYet));
 	}
 
-	TestEqual(TEXT("ten do nothing yet"), NotBuilt, 10);
+	TestEqual(TEXT("five do nothing yet"), NotBuilt, 5);
 
-	// FOURTEEN AND TEN ARE ALL TWENTY-FOUR. Without this a count could drift
+	// NINETEEN AND FIVE ARE ALL TWENTY-FOUR. Without this a count could drift
 	// in both directions at once and neither figure above would notice.
 	TestEqual(TEXT("and the two counts are the whole sheet"),
 			  CountBuyable(List) + NotBuilt, 24);
@@ -487,9 +487,9 @@ bool FCataclysmCityScreenOffersTest::RunTest(const FString& Parameters)
 	// AND THE HEADING OVER THE UNBUILT ONES COUNTS THEM AND SAYS WHY THEY ARE
 	// THERE, because a block of greyed rows with no explanation reads as a
 	// broken screen.
-	const FString Heading = UCataclysmCityScreenLayout::NotBuiltHeading(10);
+	const FString Heading = UCataclysmCityScreenLayout::NotBuiltHeading(5);
 
-	TestTrue(TEXT("the heading counts them"), Heading.Contains(TEXT("10")));
+	TestTrue(TEXT("the heading counts them"), Heading.Contains(TEXT("5")));
 	TestTrue(TEXT("and says they do nothing yet"),
 			 Heading.Contains(TEXT("do nothing yet")));
 

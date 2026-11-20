@@ -602,7 +602,8 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 										   int32 GearCountGiven,
 										   int32 MaterialCountGiven,
 										   float LowTierMaterialExtraChance,
-										   ECataclysmRarity LowestRarity)
+										   ECataclysmRarity LowestRarity,
+										   float MaterialsMore)
 {
 	if (!World)
 	{
@@ -656,11 +657,13 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 		: UCataclysmDropRoll::RollDropCount(
 			  UCataclysmDropRoll::ExpectedGearDrops(Drops, EnemyRarity, LootQuantity),
 			  Stream);
+	// A CITY'S "MORE CRAFTING MATERIALS" (issue #2781, X2) is the material roll's alone, given as a loot quantity, which
+	// the expected count is in proportion to. Exactly 1 leaves the figure as it was.
 	const int32 MaterialCount = MaterialCountGiven >= 0
 		? MaterialCountGiven
 		: UCataclysmDropRoll::RollDropCount(
 			  UCataclysmDropRoll::ExpectedMaterialDrops(Drops, EnemyRarity,
-													   LootQuantity),
+													   LootQuantity * FMath::Max(0.0f, MaterialsMore)),
 			  Stream);
 	const int32 Total = Count + MaterialCount;
 	if (Total <= 0)

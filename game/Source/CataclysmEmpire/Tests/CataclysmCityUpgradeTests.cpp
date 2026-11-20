@@ -213,6 +213,12 @@ bool FCataclysmCityUpgradeWhichAreBuiltTest::RunTest(const FString& Parameters)
 		ECataclysmCityUpgradeEffect::DungeonWalkDaysFewer,
 		ECataclysmCityUpgradeEffect::DungeonFloorsMore,
 		ECataclysmCityUpgradeEffect::DungeonFloorsFewer,
+		// The five a kill in a dungeon standing on the city reads, issue #2781.
+		ECataclysmCityUpgradeEffect::DungeonExperience,
+		ECataclysmCityUpgradeEffect::DungeonMagicFind,
+		ECataclysmCityUpgradeEffect::DungeonGold,
+		ECataclysmCityUpgradeEffect::DungeonLoot,
+		ECataclysmCityUpgradeEffect::DungeonCraftingMaterials,
 	};
 
 	// THE TWO EXPLORER UPGRADES ABOUT SPEED ARE DIFFERENT UPGRADES, and this is
@@ -239,8 +245,8 @@ bool FCataclysmCityUpgradeWhichAreBuiltTest::RunTest(const FString& Parameters)
 				  UCataclysmCityUpgradeRules::IsBuilt(Effect), bShouldBeBuilt);
 	}
 
-	TestEqual(TEXT("which is fourteen of the twenty-four"),
-			  UCataclysmCityUpgradeRules::BuiltEffectCount(), 14);
+	TestEqual(TEXT("which is nineteen of the twenty-four"),
+			  UCataclysmCityUpgradeRules::BuiltEffectCount(), 19);
 
 	// `None` IS NOT AN UPGRADE and must never be buildable, or a
 	// default-constructed struct would buy something.
