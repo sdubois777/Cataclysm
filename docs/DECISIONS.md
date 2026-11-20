@@ -306,9 +306,9 @@ Unreal build or test has run, and no C++ guard proof.**
 
 ### SAID FIRST
 
-- **COMPILED, AND WINDOW skills-w1 FAILED TWO OF THIS CHANGE'S OWN TESTS** ("Window skills-w1", below). Both were
-  faults in the tests, not in the game code, and are corrected; window skills-w2 is registered below. No C++ proof has
-  run yet. The three Python guard proofs ran and proved (below).
+- **COMPILED AND TESTED.** Window skills-w1 failed two of this change's own tests, on faults in the tests and not in the
+  game code ("Window skills-w1", below). They were corrected, and window skills-w2 passed every check and proved K1 to
+  K4 ("Window skills-w2", below). The three Python guard proofs ran and proved before commit.
 - **IN A FIRST DUNGEON A SKILL GAINS LITTLE, AND THE OWNER CHOSE THAT PACE.** Measured, `sim/analyse_opening.py`
   section 7 at its smoke size (seeds 0 to 19): 106 first-surge Outpost dungeons of 5 to 8 floors; 94 of them end with
   the character at level 4 and its Heavy at skill level 3, a factor of 1.117, while the floors' median Common Imp health
@@ -543,7 +543,11 @@ not: none of them breaks a line either test needs, and none names either test.
 As the coordinating session approved it, at the commit carrying the correction. **NO SEPARATE THREE-BUILD COMPILE**:
 the change since `3077b2c42` is one test file and one header comment, so the window's own build compiles it, and a build
 that fails stops the window at its first step. The approval was given before the test file gained its one new include,
-`Save/CataclysmSaveApply.h`, and was asked again for that.
+`Save/CataclysmSaveApply.h`, and was asked again for that. **The coordinating session kept it, for three reasons**: a
+file compiled alone fails when it is missing an include it had from a neighbour in its unity file, and adding one cannot
+cause that; the header is self-contained, because `CataclysmSaveApply.cpp` includes it first and compiles on its own;
+and the one other way it could break, a name clash with the test file or a file in its unity file, would stop the window
+at its build, before any test ran.
 
 1. `Cataclysm.SkillLevels.` alone: 11 of 11. The fifteen other groups passed at their counts in skills-w1 at
    `3077b2c42` and are not run alone again.
@@ -555,6 +559,39 @@ The corrected save test's information line is predicted to read "with no version
 refused it -- ... the record says it is version 0; the first real version is 1)", then "at version 10 read back yes
 (read -- ), 2 entries; loaded through CharacterInto yes (); Molten Cleave 37810.50, the Greatsword's Ultimate
 1234.25".
+
+### Window skills-w2
+
+At `188857e9b`, lock skills-w2, 2026-11-19, 20:35 to 21:04, started by `gate_sk2.py` with no console window once the
+pre-checks passed, at their first reading. No separate compile, as registered above; the window's own build compiled the
+change: "Build: Succeeded - 16 actions, 13 files compiled".
+
+| Check | Registered | Measured |
+| :-- | :-- | :-- |
+| `Cataclysm.SkillLevels.` alone | 11 | 11 performed, 11 succeeded |
+| The whole suite | 4,968; 47 skipped halves; 0 test saves left | 4,968 performed, 4,968 succeeded; 47 skipped halves; "850 written and deleted, 0 left behind"; 4,968 declared, gap 0; "MCP server: not started" |
+| Python and ruff | 7,737 passed, 9 skipped | 7,737 passed, 9 skipped; the JUnit file 7,746 tests, 0 failures, 0 errors; ruff clean |
+| The proofs | K1 to K4 | Each PROVED, below |
+
+**THE CAUSE OF skills-w1's SAVE FAILURE IS NOW MEASURED**, as predicted, in the corrected test's line: "SKILLS SAVED:
+gathered yes, 2 entries; with no version read back NO (the migration chain refused it -- a Character record was refused:
+the schema version is below the first real one -- the record says it is version 0; the first real version is 1); at
+version 10 read back yes (read -- ), 2 entries; loaded through CharacterInto yes (); Molten Cleave 37810.50, the
+Greatsword's Ultimate 1234.25". A record holding skill experience, at the version the writer gives it, reads back and
+loads through the game's own load with each skill's experience put back.
+
+**THE PROOFS**, through `prove_cpp_guard` with each half's engine log kept (`.claude/windows/sk_K<n>_run<1|2>.log` in
+this worktree), each with the prefix `Cataclysm.SkillLevels.`, each PROVED on exactly its registered test and its
+registered assertions:
+
+| Proof | Broken half | Its failed assertions | Restored half |
+| :-- | :-- | :-- | :-- |
+| K1, the level factor removed | 11 performed, 1 failed: `ASkillsBlowOnACreatureIsScaledByItsLevelAndCreditedToIt` | One: "LEVEL 3 SENDS 1.0567 SQUARED TIMES LEVEL 1, in the base bucket", 1.116615 expected, 1.000000 | 11 of 11 |
+| K2, the credit removed | 11 performed, 1 failed: `ASkillsBlowOnACreatureIsScaledByItsLevelAndCreditedToIt` | Two: "THE HEALTH THE BLOW TOOK IS CREDITED TO MOLTEN CLEAVE", 63.360001 expected, 0; "and the levelled blow's too", 70.748718 expected, 0 | 11 of 11 |
+| K3, the kill's grant removed | 11 performed, 1 failed: `ACreaturesDeathPaysEachSkillItsShare` | One: "A KILL PAYS MOLTEN CLEAVE THE SHARE OF THE CREATURE'S HEALTH IT REMOVED: 30%", 140.4 expected, 0 | 11 of 11 |
+| K4, the migration's empty list removed | 11 performed, 1 failed: `ACharacterFromBeforeSkillLevelsMigratesWithNoSkillExperience` | One: "GAINING AN EMPTY LIST OF SKILL EXPERIENCE, written out"; "and every other field" passed, as predicted | 11 of 11 |
+
+No log of the run holds a "server/discover" or a "ConsoleCtrl" line.
 
 ---
 
