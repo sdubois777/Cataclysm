@@ -2382,6 +2382,15 @@ enum class ECataclysmEmpireTreeEffect : uint8
 	/** The share of the gold held paid as interest every 20th day, per point, to a tier 1 cap a payment (Wealth
 	 *  Interest, B8). */
 	GoldInterestEveryTwentyDays,
+
+	// ---- Slice 6d: the owner's rulings of 2026-11-20 on Treasury Guard and Tax Collection.
+
+	/** Every city's damage reduced, per point, for each whole 50,000 tier 1 gold held, compounded, to its own cap
+	 *  (Treasury Guard, D9). */
+	DamageTakenPerFiftyThousandGold,
+
+	/** The share of the standing cities' citizens paid as tier 1 gold every 10th day, per point (Tax Collection, D8). */
+	GoldShareOfPopulationEveryTenDays,
 };
 
 /**

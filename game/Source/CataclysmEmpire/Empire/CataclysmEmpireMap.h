@@ -251,6 +251,20 @@ struct CATACLYSMEMPIRE_API FCataclysmEmpireTreeBonuses
 	/** Imperial Reserve's "per 100,000 Gold in Treasury", in tier 1 gold (R10). */
 	static constexpr int32 ImperialReserveGoldAStep = 100000;
 
+	/** Treasury Guard: the same, for each whole 50,000 tier 1 gold held, with its own cap, 20% (its text). Issue #2741
+	 *  slice 6d, the owner's ruling of 2026-11-20 ("to your cities"); held apart from Imperial Reserve's (D9). */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float ReductionPerHeldGoldStep = 0.0f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 HeldGoldStepPoints = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float HeldGoldReductionCap = 0.0f;
+
+	/** Treasury Guard's "per 50,000 Gold currently held", in tier 1 gold (R10). */
+	static constexpr int32 TreasuryGuardGoldAStep = 50000;
+
 	/**
 	 * The defence a Sanctuary is left at by the run's first ordinary resolve or Quest timer hit that would fell one: Last
 	 * Stand Protocols, 1. 0 is no node (Q3).
@@ -386,9 +400,10 @@ struct CATACLYSMEMPIRE_API FCataclysmEmpireTreeBonuses
 	float EventDamageFactorFor(int32 ClearsSinceLastSurge, int32 CitiesReclaimed) const;
 
 	/**
-	 * The factor Imperial Reserve puts on every city's damage, defence and population alike, from the gold held, in tier
-	 * 1 gold (R10): compounded per point for each whole 100,000 and held at its cap, as Reclaimer's Resolve is. Issue
-	 * #2741 slice 6c (B7). Exactly 1 with no point or under one step.
+	 * The factor Imperial Reserve and Treasury Guard put on every city's damage, defence and population alike, from the
+	 * gold held, in tier 1 gold (R10): each compounded per point for each whole step of its own (100,000 and 50,000) and
+	 * held at its own cap, as Reclaimer's Resolve is, and the two then multiplied. Issue #2741 slices 6c (B7) and 6d
+	 * (D9). Exactly 1 with no point or under one step of either.
 	 */
 	float GoldDamageFactorFor(double GoldHeldAtTierOne) const;
 
