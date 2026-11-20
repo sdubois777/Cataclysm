@@ -869,12 +869,12 @@ force push; `feat/placement-seeds-2749` stays at `abac0adf5`. Development had me
 
 - **Two conflicts, each resolved by keeping both sides.** `sim/tests/test_analysis_scripts.py`: the enemy burn slice's
   script and this slice's are both in the list of scripts, with both sections, the enemy burn one first.
-  `docs/DECISIONS.md`: this entry stands below the killing-blow entry (#2777, first written at 05:02 UTC on 2026-11-20)
-  and above the Demonic front-line entry (#2774, 02:06 UTC), because it was first written at 02:53 UTC (`abac0adf5`);
-  the tree 5a entry was first written at 05:34 UTC. The C++ commit applied with its patch unchanged. Development's hunks
-  in the five C++ files both change are far from this slice's and seed nothing: the wraith's restore, the tree's player
-  modifiers, the burn and Thorns changes. `tools/check_resolved_cpp.py` on this branch's C++ files: "15 files read, 0
-  with complaints".
+  `docs/DECISIONS.md`: entries of one day go by the author date of the branch commit that wrote each one. This entry's
+  is 02:53 UTC on 2026-11-20 (`abac0adf5`), so it stands below the killing-blow entry (#2777, 05:02 UTC) and above the
+  Demonic front-line entry (#2774, 02:06 UTC); the tree 5a entry's is 05:34 UTC. The C++ commit applied with its patch
+  unchanged. Development's hunks in the five C++ files both change are far from this slice's and seed nothing: the
+  wraith's restore, the tree's player modifiers, the burn and Thorns changes. `tools/check_resolved_cpp.py` on this
+  branch's C++ files: "15 files read, 0 with complaints".
 - **Defaulted parameters.** Development gave one parameter a default, `const TArray<FName>* Families = nullptr`, on
   `ReadingOf` and `Compare` in `CataclysmItemComparison.h`. This branch calls neither, and gives no parameter a default.
 - **No new derived stream.** Development's only new `FRandomStream`s are two of seed 7 in `CataclysmEnemyBurnTests.cpp`,
