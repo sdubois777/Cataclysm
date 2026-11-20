@@ -295,6 +295,13 @@ FCataclysmEmpireTreeBonuses UCataclysmEmpireTree::CityBonusesFor(const UDataTabl
 			Bonuses.GoldStepPoints += Points;
 			Bonuses.GoldReductionCap = Row->Cap;
 			break;
+
+		// SLICE 6D. Treasury Guard, the same for each whole 50,000, held at its own cap (D9).
+		case ECataclysmEmpireTreeEffect::DamageTakenPerFiftyThousandGold:
+			Bonuses.ReductionPerHeldGoldStep = Row->PerPoint;
+			Bonuses.HeldGoldStepPoints += Points;
+			Bonuses.HeldGoldReductionCap = Row->Cap;
+			break;
 		case ECataclysmEmpireTreeEffect::SanctuarySurvivesAt:
 			Bonuses.SanctuarySurvivesAt = FMath::Max(Bonuses.SanctuarySurvivesAt, Row->PerPoint);
 			break;
@@ -506,6 +513,11 @@ FCataclysmEmpireTreePlayerBonuses UCataclysmEmpireTree::PlayerBonusesFor(const U
 		case ECataclysmEmpireTreeEffect::GoldInterestEveryTwentyDays:
 			Bonuses.GoldInterestEveryTwentyDays += Row->PerPoint * static_cast<float>(Points);
 			Bonuses.GoldInterestCap = Row->Cap;
+			break;
+
+		// SLICE 6D. Tax Collection (D8).
+		case ECataclysmEmpireTreeEffect::GoldShareOfPopulationEveryTenDays:
+			Bonuses.GoldShareOfPopulationEveryTenDays += Total;
 			break;
 		default:
 			break;
@@ -744,6 +756,14 @@ FCataclysmEmpireTreeDailyIncome UCataclysmEmpireTree::DailyIncomeFor(const FCata
 			Interest = FMath::Min(Interest, static_cast<double>(Bonuses.GoldInterestCap) * Scale);
 		}
 		Income.Interest = FMath::RoundToInt64(Interest * Raised);
+	}
+
+	// TAX COLLECTION, EVERY 10TH DAY (slice 6d, D8): its share of the standing cities' citizens, the count Pax
+	// Imperialis reads, as tier 1 gold, and then raised as Pax is.
+	if (Bonuses.GoldShareOfPopulationEveryTenDays > 0.0f && Day > 0 && Day % TaxCollectionDaysAStep == 0)
+	{
+		Income.Tax = FMath::RoundToInt64(static_cast<double>(Bonuses.GoldShareOfPopulationEveryTenDays)
+										 * static_cast<double>(FMath::Max(0.0f, State.Citizens)) * Scale * Raised);
 	}
 	return Income;
 }
