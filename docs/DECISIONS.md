@@ -399,7 +399,9 @@ argument. Issue [#2764](https://github.com/sdubois777/Cataclysm/issues/2764).
 
 ### SAID FIRST
 
-- **NOT COMPILED OR RUN YET.** Its window comes after four other changes in the machine's queue.
+- **COMPILED AND TESTED, AND ALL SEVEN PROOFS PROVED** ("Window skills-2a-w1", below), at `f1624b281` on `development`
+  `db08b79fc`. The compile of each changed file alone failed once first, in one new test file that named a type it did
+  not include; that was found by that build and fixed with one line before the window.
 - **NO TEST DRIVES A TETHER OR THE NECROSIS PAYOUT.** The tether hands its row to `ApplyBurn`, a call the Python check
   reads; the necrosis payout copies the row of the necrosis that ended, and nothing checks that but reading it. No test
   lets a late axe's or a leap's burn tick either: the tests that drive them never move the clock, as the tests they copy
@@ -528,6 +530,82 @@ PROVED: 1 failed in 0.48s | restored: 1 passed in 0.41s
 named_failures: ['tools/tests/test_damage_over_time_names_its_skill.py::test_every_call_names_its_skill_or_is_listed_with_its_reason']
 proved: True
 ```
+
+**Registered for the window**, on 2026-11-20 at `f1624b281`: the eight groups alone, `Cataclysm.SkillLevelSources.` 14,
+`Cataclysm.SkillLevels.` 12, `Cataclysm.SkillGadgets.` 22, `Cataclysm.Traps.` 60, `Cataclysm.NoSkillBlowTags.` 2,
+`Cataclysm.BuriedWeaponKills.` 3, `Cataclysm.RemainingDamage.` 9 and `Cataclysm.Ailments.` 23, the six after
+`SkillLevels.` at the coordinating session's order; the whole suite, 5,015 with 47 skipped halves and 0 test saves left
+behind: 5,001 measured by the seeding fix's window seed-w1 at `e13f98e77` ("5001 tests performed, 5001 succeeded, 0
+failed"), whose `game/` tree is `development` `db08b79fc`'s, this change's base, + 14; and L1 to L7 as predicted above.
+Every group but the new one was counted from seed-w1's kept engine log, and each matched its count at slice 1b's window.
+
+### Window skills-2a-w1
+
+**THE COMPILES**, under the lock skills-2a-compile and before the window, in two attempts on 2026-11-20:
+
+| Attempt | The branch as committed | Each changed file alone | The unity files again |
+| :-- | :-- | :-- | :-- |
+| `e437ec266`, 05:33 to 05:41 | Succeeded: 65 actions, 58 files, no warning | **FAILED**: the build tool excluded the 16 changed `.cpp` files from the unity files and compiled each. All 16 errors were in `CataclysmSkillLevelSourcesTests.cpp`, which names `FCataclysmDamageResult` and included only `CataclysmSkillEffects.h`, where it is forward-declared; in its unity file the definition had come through a neighbour | Not run |
+| `f1624b281`, 05:48 to 05:51 | Succeeded: 13 actions, 10 files, no warning | Succeeded: 14 actions, `CataclysmSkillLevelSourcesTests.cpp` alone and 10 unity files, no warning | Succeeded: 13 actions, 10 files, no warning |
+
+`f1624b281` adds one line to that test file, `#include "AbilitySystem/CataclysmDamageCalculation.h"`, the header that
+defines the struct, and changes nothing else. The coordinating session's ruling, 2026-11-20: "The compiles are accepted
+as two attempts taken together: every changed .cpp compiled alone, 15 files at e437ec266 and the test file at f1624b281,
+with byte-identical sources between them."
+
+**THE WINDOW**, lock skills-2a-w1, 05:53 to 06:24, started by `gate_sl.py` with no console window once the pre-checks
+passed, at their first reading:
+
+| Check | Registered | Measured |
+| :-- | :-- | :-- |
+| The build | -- | Target already up to date, nothing compiled |
+| The eight groups alone | The counts above | Each performed and succeeded its count, 0 failed: 14, 12, 22, 60, 2, 3, 9 and 23 |
+| The whole suite | 5,015; 47 skipped halves; 0 test saves left | 5,015 performed, 5,015 succeeded; 47 skipped halves; "852 written and deleted, 0 left behind"; 5,015 declared, gap 0; "MCP server: not started" |
+| Python and ruff | Every test passing | 7,777 passed, 9 skipped; the JUnit file 7,786 tests, 0 failures, 0 errors; ruff clean |
+| L1 to L7 | As predicted above | All seven PROVED, below |
+
+**THE NEW TESTS' LINES**, in the whole suite, level 1 against level 3 where a test measures both (`DamageFactor(3)` is
+1.1166):
+
+- "SKILL BURN: tick at level 1 10.0000, at level 3 11.1661 (x1.1166); row Demonic_Greataxe_Heavy; credited 33.000"
+- "CARRIED ROW BURN: tick 11.1661 with the row, 10.0000 with neither (x1.1166); rows Demonic_Greataxe_Heavy and None;
+  credited 36.848"
+- "NO ROW: the basic attack's burn ticks 10.0000 and 10.0000 with a skill at level 1 and 3, row None; an unscaled copy's
+  row None; rows credited 0"
+- "SKILL SPLINTER: row Demonic_Greataxe_Heavy; lost 3.2638 at level 1 and 3.2638 at level 3; credited 3.2638"
+- "LATE BLOW: sent 57.600 at level 1 and 64.317 at level 3 (x1.1166); credited 63.360 of 63.360"
+- "CAST BY: sent 57.600, took 63.360, credited 63.360"
+- "BURN KILL: worth 468; killed yes; paid 468.000"
+- "SKILL BURST: 1 burst; credited 11.000 by the ticks before, then 44.000 by the burst, which took 44.000"
+- "HIT AND BURN: worth 468; the hit took 63.360 of 78.360; credited 63.360 to Molten Cleave and 15.000 to Emberhurl;
+  killed yes; Molten Cleave paid 378.413, Emberhurl 89.587, together 468.000"
+- "GADGET CAST: Demonic_Whip_Heavy; took 275.000; credited 275.000; deployable_hit 1"
+- "ZONE AFTER ITS SKILL: row Demonic_Greataxe_Heavy, factor 1.1166, skill object there no; sweeps took 45.926, 45.926
+  at factor 1 and 51.281 at the laid factor (x1.1166); credited 143.131 of 143.133"
+- "TRAP SHARE: Demonic_Whip_Heavy; the blow took 275.000 at level 1 and 307.069 at level 3 (x1.1166); the share 137.500
+  and 153.535 (x1.1166); the share's row Demonic_Whip_Heavy"
+- "LATE RACK AXE: Demonic_Axe_Ultimate; 30 axes took 461.953 at level 1 and 30 took 515.859 at level 3; one axe 15.398
+  and 17.195 (x1.1167); credited 462.000 and 515.876"
+- "LEAP: Demonic_Axe_Special; the leap took 110.000 at level 1 and 122.828 at level 3 (x1.1166); credited 110.000 and
+  122.828; the hosts took 0.000 and 0.000"
+
+**THE PROOFS**, each through `prove_cpp_guard` with each half's engine log kept (`.claude/windows/sl_L<n>_run<1|2>.log`
+in this worktree), prefix `Cataclysm.SkillLevelSources.`, all PROVED, each failing exactly the tests predicted for it,
+for the reason predicted:
+
+| Proof | Broken half | Its failed assertions | Restored half |
+| :-- | :-- | :-- | :-- |
+| L1 | 14 performed, 8 succeeded, 6 failed | `ASkillsBurn...` and `ABurnLaidWithACarriedRow...`: the row None, not Demonic_Greataxe_Heavy, and nothing credited. `AKillByASkillsBurn...`: paid 0 of 468. `ABurstOfAnAilments...`: its set-up check that the ticks before the burst credited something, and the burst credited 0 of 44. `AKillIsSplit...`: Emberhurl not credited what its ticks took, and the two paid 378.413 of 468. `TheTrapsDamageOverTimeShare...`: the share's row None, not Demonic_Whip_Heavy | 14 of 14 |
+| L2 | 14 performed, 12 succeeded, 2 failed | `ASkillsBurn...` and `ABurnLaidWithACarriedRow...`: the level ratio 1.000000, 1.116615 expected | 14 of 14 |
+| L3 | 14 performed, 13 succeeded, 1 failed | `AGroundZonesSweep...`: a sweep at the laid factor against one at 1, 1.000000, 1.116615 expected | 14 of 14 |
+| L4 | 14 performed, 10 succeeded, 4 failed | `ABlowWhoseSkillHasGone...`, `ABurnLaidWithACarriedRow...`, `ATrapsLateRackAxe...` and `ABuriedWeaponsLeap...`: each its level ratio, 1.000000, 1.116615 expected | 14 of 14 |
+| L5 | 14 performed, 13 succeeded, 1 failed | `AVoidSplinter...`: the row None, and not credited | 14 of 14 |
+| L6 | 14 performed, 12 succeeded, 2 failed | `ABlowCastInThePlayersName...`: credited 0 of 63.36. `ATrapsLateRackAxe...`: "each enemy's loss is credited to Butcher's Bill" false | 14 of 14 |
+| L7 | 14 performed, 12 succeeded, 2 failed | `AGadgetsCast...`: no credit found. `ATrapsLateRackAxe...`: the same Butcher's Bill assertion | 14 of 14 |
+
+Each proof's anchor matched once, the source hash was the same before and after it, and neither half crashed. Apart
+from its failed assertions, each broken half's log holds only the two GameFeatureData asset-manager error lines that the
+passing runs log too. No log of the window holds a "server/discover" or a "ConsoleCtrl" line.
 
 ---
 
