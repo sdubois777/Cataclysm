@@ -467,6 +467,23 @@ FCataclysmEmpireTreePlayerBonuses UCataclysmEmpireTree::PlayerBonusesFor(const U
 		case ECataclysmEmpireTreeEffect::FirstUpgradePriceReduced:
 			Bonuses.FirstUpgradePriceReduced += Total;
 			break;
+
+		// SLICE 6B. The run record's five (B1 to B5).
+		case ECataclysmEmpireTreeEffect::SurgeDamagedCityUpgradePriceReduced:
+			Bonuses.SurgeDamagedCityUpgradePriceReduced += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::GoldDoubledBelowHalfPopulation:
+			Bonuses.GoldDoubledBelowHalfPopulation += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::UnpickedGoldShareAtClear:
+			Bonuses.UnpickedGoldShareAtClear += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::GoldPerFloorAtClear:
+			Bonuses.GoldPerFloorAtClear += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::ClearPayoutIncreased:
+			Bonuses.ClearPayoutIncreased += Total;
+			break;
 		default:
 			break;
 		}
@@ -539,6 +556,9 @@ FCataclysmEmpireTreeDungeonState UCataclysmEmpireTree::DungeonStateFor(const UCa
 			++State.StandingCities;
 			State.StandingCityUpgrades += City.Upgrades.Num();
 		}
+
+		// AND STIMULUS PACKAGE'S FLAG, the run's (slice 6b, B2).
+		State.bPopulationBelowHalf = Run.bPopulationFellBelowHalf;
 
 		for (const FCataclysmCity& City : Run.Map->Cities)
 		{
@@ -652,7 +672,45 @@ float UCataclysmEmpireTree::GoldMultiplierFor(const FCataclysmEmpireTreePlayerBo
 		+ Bonuses.GoldPerFallenCity * static_cast<float>(FMath::Max(0, State.FallenCitiesNotErased))
 		+ Bonuses.GoldPerTenThousandCitizens * CitizenSteps
 		+ Bonuses.GoldPerFiveCityUpgrades * UpgradeSteps;
-	return (1.0f + FMath::Max(0.0f, Increased)) * (1.0f + FMath::Max(0.0f, Bonuses.GoldMore));
+	// STIMULUS PACKAGE'S "DOUBLED" IS A "MORE" OF ITS OWN (G1, B2), while the run's population has fallen below half.
+	const float Stimulus = State.bPopulationBelowHalf ? FMath::Max(0.0f, Bonuses.GoldDoubledBelowHalfPopulation) : 0.0f;
+	return (1.0f + FMath::Max(0.0f, Increased)) * (1.0f + FMath::Max(0.0f, Bonuses.GoldMore)) * (1.0f + Stimulus);
+}
+
+FCataclysmEmpireTreeClearPay UCataclysmEmpireTree::ClearPayFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
+															   const FCataclysmEmpireTreeDungeonState& State,
+															   int32 Floors, double GoldScale, int64 GoldDropped,
+															   int64 GoldPickedUp)
+{
+	FCataclysmEmpireTreeClearPay Pay;
+
+	// SALVAGE RIGHTS (B4), RAISED BY INVESTMENT FUNDS (B5) AND THE INCREASES G2 SENDS TO A PAYOUT: those "from
+	// dungeons" (Wartime Economy, Profiteering) and "from all sources" or "all Gold generation" (Untouchable Wealth,
+	// Fiscal Policy, Prosperity Index). Not Coinage, Minting Rights, The Midas Touch or Stimulus Package: a kill's.
+	if (Bonuses.GoldPerFloorAtClear > 0.0f && Floors > 0)
+	{
+		const float CitizenSteps = FMath::FloorToFloat(FMath::Max(0.0f, State.Citizens)
+													   / static_cast<float>(ProsperityCitizensAStep));
+		const float UpgradeSteps =
+			static_cast<float>(FMath::Max(0, State.StandingCityUpgrades) / FiscalPolicyUpgradesAStep);
+		const float Increased = Bonuses.ClearPayoutIncreased
+			+ Bonuses.GoldPerActiveType * static_cast<float>(FMath::Max(0, State.ActiveTypes))
+			+ Bonuses.GoldPerFallenCity * static_cast<float>(FMath::Max(0, State.FallenCitiesNotErased))
+			+ Bonuses.GoldPerStandingCity * static_cast<float>(FMath::Max(0, State.StandingCities))
+			+ Bonuses.GoldPerFiveCityUpgrades * UpgradeSteps
+			+ Bonuses.GoldPerTenThousandCitizens * CitizenSteps;
+		Pay.Salvage = FMath::RoundToInt64(static_cast<double>(Bonuses.GoldPerFloorAtClear) * Floors
+										  * FMath::Max(0.0, GoldScale) * (1.0 + FMath::Max(0.0f, Increased)));
+	}
+
+	// CLEANUP CREW (B3): a tenth of the gold left lying, rounded down, and multiplied by nothing.
+	if (Bonuses.UnpickedGoldShareAtClear > 0.0f)
+	{
+		const int64 LeftLying = FMath::Max<int64>(0, GoldDropped - GoldPickedUp);
+		Pay.Cleanup = static_cast<int64>(
+			FMath::FloorToDouble(static_cast<double>(LeftLying) * static_cast<double>(Bonuses.UnpickedGoldShareAtClear)));
+	}
+	return Pay;
 }
 
 float UCataclysmEmpireTree::UpgradePriceFactorFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
@@ -671,6 +729,13 @@ float UCataclysmEmpireTree::UpgradePriceFactorFor(const FCataclysmEmpireTreePlay
 	if (City->Upgrades.Num() == 0)
 	{
 		Reduced += Bonuses.FirstUpgradePriceReduced;
+	}
+
+	// PRICE CONTROLS (slice 6b, B1): a city a dungeon has damaged this run, by the mark `UCataclysmEmpireMap::Damage`
+	// sets.
+	if (City->bTookSurgeDamage)
+	{
+		Reduced += Bonuses.SurgeDamagedCityUpgradePriceReduced;
 	}
 	return 1.0f - FMath::Clamp(Reduced, 0.0f, UpgradePriceReductionCap);
 }

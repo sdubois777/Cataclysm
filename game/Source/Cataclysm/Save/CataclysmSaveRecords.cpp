@@ -665,6 +665,38 @@ namespace CataclysmRunSaveMigration
 		return true;
 	}
 
+	/**
+	 * Version 11 to 12, issue #2741 slice 6b: no city marked as damaged, the run's population not fallen below half, and
+	 * no gold counted in the walk. THE RECORD CANNOT PROVE A CITY'S PAST DAMAGE (B1): a city below its saved maximum may
+	 * be one whose maximum the tree raised (S1), so every city starts unmarked and the next bite marks it. The run's
+	 * flag compares against an effective maximum that depends on the tree, which the record does not hold, so the next
+	 * day's check sets it (B2). A walk resumed from the record counts its gold from the load (B3).
+	 */
+	bool Migrate_11_to_12(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		Record->SetBoolField(TEXT("bPopulationFellBelowHalf"), false); // A migration's: not proven.
+		const TArray<TSharedPtr<FJsonValue>>* Cities = nullptr;
+		if (Record->TryGetArrayField(TEXT("Cities"), Cities) && Cities)
+		{
+			for (const TSharedPtr<FJsonValue>& CityEntry : *Cities)
+			{
+				const TSharedPtr<FJsonObject>* City = nullptr;
+				if (CityEntry.IsValid() && CityEntry->TryGetObject(City) && City && City->IsValid())
+				{
+					(*City)->SetBoolField(TEXT("bTookSurgeDamage"), false); // A migration's: not proven.
+				}
+			}
+		}
+		const TSharedPtr<FJsonObject>* Walk = nullptr;
+		if (Record->TryGetObjectField(TEXT("Walk"), Walk) && Walk && Walk->IsValid())
+		{
+			(*Walk)->SetNumberField(TEXT("GoldDroppedThisWalk"), 0); // A migration's: counted from the load.
+			(*Walk)->SetNumberField(TEXT("GoldPickedUpThisWalk"), 0);
+		}
+		return true;
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep RunSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
@@ -677,6 +709,7 @@ namespace CataclysmRunSaveMigration
 		{ 8, TEXT("Migrate_8_to_9"), &Migrate_8_to_9 },
 		{ 9, TEXT("Migrate_9_to_10"), &Migrate_9_to_10 },
 		{ 10, TEXT("Migrate_10_to_11"), &Migrate_10_to_11 },
+		{ 11, TEXT("Migrate_11_to_12"), &Migrate_11_to_12 },
 	};
 }
 

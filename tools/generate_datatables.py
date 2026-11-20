@@ -3823,6 +3823,9 @@ EMPIRE_TREE_BUILT = {
     "Wartime Economy": 6, "Profiteering": 6, "Prosperity Index": 6,
     "Fiscal Policy": 6, "Municipal Bonds": 6, "Public Works": 6,
     "War Funding": 6,
+    # Treasury, slice 6b: the run record's five (B1 to B5, 2026-11-20).
+    "Price Controls": 6, "Stimulus Package": 6, "Cleanup Crew": 6,
+    "Salvage Rights": 6, "Investment Funds": 6,
     # The centre: a tier milestone's option, the gold a kill drops.
     "The Midas Touch": 6,
     # Artisan: crafting materials already drop.
@@ -3849,18 +3852,14 @@ EMPIRE_TREE_REFUSED = {
     "Field Depot II": "stash", "Field Depot III": "stash",
     "Gamble": "modifier reroll", "Scout Parties": "bonus dungeon",
     "Auto-Loot": "loot filter",
-    # Treasury. Slice 6b builds the "gold rules" nodes (slice 6a built eleven,
-    # 2026-11-20); R1 to R4 wait on a Treasurer city upgrade (#2781), R7 to R9
-    # on the owner, and the rest on what their text needs and the game lacks.
-    # PRICE CONTROLS IS 6B'S: "Cities that have taken Surge damage" needs a saved
-    # flag set where a Surge's bite lands (the coordinating session withdrew the
-    # P3 reading, "below its maximum now", on 2026-11-20).
-    "Price Controls": "gold rules",
-    "Stimulus Package": "gold rules", "The Gilded Path": "gold rules",
-    "Venture Capital": "gold rules", "Imperial Reserve": "gold rules",
-    "Tax Collection": "gold rules", "Pax Imperialis": "gold rules",
-    "Wealth Interest": "gold rules", "Salvage Rights": "gold rules",
-    "Investment Funds": "gold rules", "Cleanup Crew": "gold rules",
+    # Treasury. Slice 6c builds the "gold rules" nodes left (slice 6a built
+    # eleven and 6b five, 2026-11-20): the six that need the gold balance inside
+    # the empire layer. R1 to R4 wait on their Treasurer rules (#2781 made the
+    # city upgrades buyable), R7 to R9 on the owner, and the rest on what their
+    # text needs and the game lacks.
+    "The Gilded Path": "gold rules", "Venture Capital": "gold rules",
+    "Imperial Reserve": "gold rules", "Tax Collection": "gold rules",
+    "Pax Imperialis": "gold rules", "Wealth Interest": "gold rules",
     "Commercial Hubs": "treasurer upgrade", "Economic Zones": "treasurer upgrade",
     "Trade Routes": "treasurer upgrade", "The Golden Touch": "treasurer upgrade",
     "Treasury Guard": "gold ruling", "Global Credit": "gold ruling",
@@ -4108,6 +4107,9 @@ EMPIRE_TREE_EFFECT_KINDS = (
     "GoldIncreased", "GoldMore", "GoldPerStandingCity", "GoldPerActiveType",
     "GoldPerFallenCity", "GoldPerTenThousandCitizens", "GoldPerFiveCityUpgrades",
     "UpgradePriceReduced", "FirstUpgradePriceReduced",
+    # Slice 6b: the run record's five.
+    "SurgeDamagedCityUpgradePriceReduced", "GoldDoubledBelowHalfPopulation",
+    "UnpickedGoldShareAtClear", "GoldPerFloorAtClear", "ClearPayoutIncreased",
 )
 
 #: WHAT EACH BUILT NODE OR OPTION OF THE EMPIRE TREE DOES, by name. Issue
@@ -4262,6 +4264,17 @@ EMPIRE_TREE_EFFECTS = {
     "Municipal Bonds": [("UpgradePriceReduced", 0.03)],
     "Public Works": [("UpgradePriceReduced", 0.20)],
     "War Funding": [("FirstUpgradePriceReduced", 0.02)],
+    # Slice 6b, the coordinating session's B1 to B5 of 2026-11-20. PRICE CONTROLS
+    # reads a city's saved mark of Surge damage (B1); STIMULUS PACKAGE doubles a
+    # kill's gold while the run's population has fallen below half (B2, its own
+    # "more"); CLEANUP CREW pays a tenth of the walk's gold left lying at a clear
+    # (B3); SALVAGE RIGHTS pays 50 tier 1 gold a point for every floor at a clear,
+    # scaled to the tier (B4, R10); INVESTMENT FUNDS raises that payout (B5).
+    "Price Controls": [("SurgeDamagedCityUpgradePriceReduced", 0.04)],
+    "Stimulus Package": [("GoldDoubledBelowHalfPopulation", 1.0)],
+    "Cleanup Crew": [("UnpickedGoldShareAtClear", 0.10)],
+    "Salvage Rights": [("GoldPerFloorAtClear", 50.0)],
+    "Investment Funds": [("ClearPayoutIncreased", 0.10)],
 }
 
 

@@ -659,6 +659,23 @@ public:
 	int32 ClearsSinceLastDeath = 0;
 
 	/**
+	 * WHETHER THE EMPIRE'S POPULATION HAS FALLEN BELOW HALF ITS MAXIMUM SINCE A CITY WAS LAST RECLAIMED, which Stimulus
+	 * Package's "Gold drops doubled until you reclaim a city" reads. Issue #2741 slice 6b, the coordinating session's B2
+	 * of 2026-11-20: set after each day's resolutions and after a death's, whenever `UCataclysmEmpireMap::
+	 * TotalPopulation` is below half of `TotalMaxPopulation` (`NotePopulationAgainstHalf`); cleared when `ClearDungeon`
+	 * reclaims a city, and set again at the next check if the population is still below half. A fact of the run, kept
+	 * whether or not the node is bought, so a point bought later reads the run as it is.
+	 *
+	 * SAVED, RUN RECORD VERSION 12. `Migrate_11_to_12` writes false: the effective maximum depends on the tree, which
+	 * the record does not hold, so an older run is set by its next day's check.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bPopulationFellBelowHalf = false;
+
+	/** Sets `bPopulationFellBelowHalf` when the population stands below half its maximum now. Never clears it. */
+	void NotePopulationAgainstHalf();
+
+	/**
 	 * Arms Last Stand Protocols on the map for the next hit, when the tree holds it, it has not held this run, and the
 	 * city is a living Sanctuary. Called before the two hits a dungeon's resolution deals and no other (Q3).
 	 */

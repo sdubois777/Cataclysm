@@ -2336,6 +2336,24 @@ enum class ECataclysmEmpireTreeEffect : uint8
 
 	/** The same, for an upgrade bought on a city that holds none. */
 	FirstUpgradePriceReduced,
+
+	// ---- Slice 6b: the run record's five. The coordinating session's B1 to B5 of 2026-11-20.
+
+	/** The same, for an upgrade bought on a city a dungeon has damaged this run (Price Controls, B1). */
+	SurgeDamagedCityUpgradePriceReduced,
+
+	/** More gold a kill drops while the run's population has fallen below half since the last reclaim (Stimulus
+	 *  Package, B2): 1 is doubled. */
+	GoldDoubledBelowHalfPopulation,
+
+	/** The share of the gold a walk dropped and did not pick up, paid at its clear (Cleanup Crew, B3). */
+	UnpickedGoldShareAtClear,
+
+	/** Tier 1 gold per point for every floor of a dungeon cleared, paid at its clear (Salvage Rights, B4). */
+	GoldPerFloorAtClear,
+
+	/** Increased gold paid at a clear, per point (Investment Funds, B5). */
+	ClearPayoutIncreased,
 };
 
 /**

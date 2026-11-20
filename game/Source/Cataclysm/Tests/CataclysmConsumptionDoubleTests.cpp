@@ -905,6 +905,7 @@ bool FCataclysmConsumptionDoubleRunMigrationTest::RunTest(const FString& Paramet
 	// AND THE CLEARS SINCE THE LAST DEATH `Migrate_10_to_11` WRITES, because the chain runs on to run record
 	// version 11 since 2026-11-20 (issue #2741 slice 5b).
 	CataclysmSaveFixtures::AddTheRunsVersion11Defaults(*Expected);
+	CataclysmSaveFixtures::AddTheRunsVersion12Defaults(*Expected);
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);

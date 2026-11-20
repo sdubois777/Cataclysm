@@ -168,6 +168,9 @@ void UCataclysmEmpireRun::BeginForCharacter(int32 InSeed, int32 InCataclysmOrder
 	// AND RELENTLESS PURSUIT'S CLEARS IN A ROW: a new run has cleared nothing yet. Issue #2741 slice 5b (D5).
 	ClearsSinceLastDeath = 0;
 
+	// AND STIMULUS PACKAGE'S FLAG: a new run's population has not fallen. Issue #2741 slice 6b (B2).
+	bPopulationFellBelowHalf = false;
+
 	// AND NO DEFEAT HAS AWARDED ANYTHING IN THIS RUN YET. Issue #52.
 	LastEmpirePointsAwarded = 0.0;
 
@@ -571,6 +574,9 @@ FCataclysmDayReport UCataclysmEmpireRun::AdvanceDay()
 	{
 		ResolveDungeon(DungeonId, Report);
 	}
+
+	// AND STIMULUS PACKAGE'S CHECK, AFTER THE DAY'S BITES (issue #2741 slice 6b, B2).
+	NotePopulationAgainstHalf();
 
 	Report.bPillarExposed = Map->IsPillarExposed();
 
@@ -1859,6 +1865,10 @@ bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)
 		if (bCanBeReclaimed)
 		{
 			++CitiesReclaimed;
+
+			// STIMULUS PACKAGE'S "UNTIL YOU RECLAIM A CITY" (issue #2741 slice 6b, B2): the next check sets it again if
+			// the population is still below half.
+			bPopulationFellBelowHalf = false;
 		}
 	}
 
@@ -2344,6 +2354,9 @@ FCataclysmDayReport UCataclysmEmpireRun::ResolveDungeonOnDeath(int32 DungeonId)
 	// `CityFell` removes every dungeon standing on it from `Dungeons`, this one
 	// included, so the pointer may no longer point at anything.
 	ResolveDungeon(DungeonId, Report);
+
+	// AND STIMULUS PACKAGE'S CHECK, AFTER THE DEATH'S BITE (issue #2741 slice 6b, B2).
+	NotePopulationAgainstHalf();
 
 	// THE REFILL, KEPT FOR THE ONE CASE IT STILL SERVES. Since 2026-10-13 an
 	// ordinary dungeon that hits its city leaves the map inside
@@ -2861,4 +2874,14 @@ FString UCataclysmEmpireRun::Describe() const
 	}
 
 	return FString::Join(Lines, TEXT("\n"));
+}
+
+void UCataclysmEmpireRun::NotePopulationAgainstHalf()
+{
+	// BELOW HALF NOW SETS IT; NOTHING HERE CLEARS IT (B2): a reclaim does, in `ClearDungeon`.
+	const float Most = Map ? Map->TotalMaxPopulation() : 0.0f;
+	if (Most > 0.0f && Map->TotalPopulation() < 0.5f * Most)
+	{
+		bPopulationFellBelowHalf = true;
+	}
 }

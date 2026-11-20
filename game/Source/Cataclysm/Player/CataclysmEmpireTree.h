@@ -116,6 +116,21 @@ struct CATACLYSM_API FCataclysmEmpireTreePlayerBonuses
 	 *  slice 6b's (its P3 reading was withdrawn). */
 	float UpgradePriceReduced = 0.0f;
 	float FirstUpgradePriceReduced = 0.0f;
+
+	// ---- Slice 6b, the coordinating session's B1 to B5 of 2026-11-20. ----
+
+	/** Price Controls' reduction for an upgrade bought on a city a dungeon has damaged this run (B1). */
+	float SurgeDamagedCityUpgradePriceReduced = 0.0f;
+
+	/** Stimulus Package's "Gold drops doubled": 1 while the run's population has fallen below half (B2). */
+	float GoldDoubledBelowHalfPopulation = 0.0f;
+
+	/** Cleanup Crew's share of the walk's gold left lying, paid at a clear (B3). */
+	float UnpickedGoldShareAtClear = 0.0f;
+
+	/** Salvage Rights' tier 1 gold for every floor cleared, paid at a clear (B4); Investment Funds' increase of it (B5). */
+	float GoldPerFloorAtClear = 0.0f;
+	float ClearPayoutIncreased = 0.0f;
 };
 
 /**
@@ -165,6 +180,24 @@ struct CATACLYSM_API FCataclysmEmpireTreeDungeonState
 	int32 FallenCitiesNotErased = 0;
 	float Citizens = 0.0f;
 	int32 StandingCityUpgrades = 0;
+
+	/** `UCataclysmEmpireRun::bPopulationFellBelowHalf`, which Stimulus Package reads. Slice 6b (B2). */
+	bool bPopulationBelowHalf = false;
+};
+
+/**
+ * What the empire upgrade tree pays at a dungeon's clear, in gold. Issue #2741 slice 6b, the coordinating session's B3
+ * and B4 of 2026-11-20: Cleanup Crew's tenth of the walk's gold left lying, and Salvage Rights' gold for every floor,
+ * scaled to the tier (R10) and raised by Investment Funds and the increases G2 sends to a payout. Worked out by
+ * `UCataclysmEmpireTree::ClearPayFor` before the clear removes the dungeon, and paid by
+ * `ACataclysmDungeonGameMode::ClearEmpireDungeon` once the clear stands.
+ */
+struct CATACLYSM_API FCataclysmEmpireTreeClearPay
+{
+	int64 Salvage = 0;
+	int64 Cleanup = 0;
+
+	int64 Total() const { return Salvage + Cleanup; }
 };
 
 /**
@@ -309,8 +342,8 @@ public:
 
 	/**
 	 * THE MOST A CITY UPGRADE'S PRICE IS REDUCED BY, so a price never falls below a quarter. The reductions add, as every
-	 * "reduced" does in the design's pipeline, and at full points they reach 85% (Municipal Bonds 45%, Public Works 20%,
-	 * War Funding 20%). THE COORDINATING SESSION'S P1 OF 2026-11-20, A JUDGEMENT under the owner's delegation of
+	 * "reduced" does in the design's pipeline, and at full points they reach 125% (Municipal Bonds 45%, Public Works 20%,
+	 * War Funding 20%, and slice 6b's Price Controls 40%). THE COORDINATING SESSION'S P1 OF 2026-11-20, A JUDGEMENT under the owner's delegation of
 	 * unstated numbers; 75% is also the cap on the player's damage reduction.
 	 */
 	static constexpr float UpgradePriceReductionCap = 0.75f;
@@ -387,11 +420,24 @@ public:
 
 	/**
 	 * What a city upgrade's price is multiplied by on this city. Issue #2741 slice 6a (P1, P2): one less Municipal
-	 * Bonds' and Public Works' reduction and War Funding's when the city holds no upgrade, the sum held at
+	 * Bonds' and Public Works' reduction, War Funding's when the city holds no upgrade, and slice 6b's Price Controls'
+	 * when a dungeon has damaged the city this run (`FCataclysmCity::bTookSurgeDamage`, B1), the sum held at
 	 * `UpgradePriceReductionCap`. Exactly 1 with no price node, or with no map or city.
 	 */
 	static float UpgradePriceFactorFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses, const UCataclysmEmpireMap* Map,
 									   int32 CityId);
+
+	/**
+	 * What the tree pays at the clear of a dungeon of `Floors` floors. Issue #2741 slice 6b. SALVAGE RIGHTS (B4): its
+	 * tier 1 gold a point for every floor, times `GoldScale` (R10: the tier's gold pile over tier 1's), times one plus
+	 * Investment Funds' increase (B5) and the "from dungeons" and "all sources" increases (G2: Wartime Economy,
+	 * Profiteering, Untouchable Wealth, Fiscal Policy, Prosperity Index); The Midas Touch and Stimulus Package are a
+	 * kill's alone. CLEANUP CREW (B3): its share of the gold dropped less the gold picked up, rounded down, and nothing
+	 * multiplies it, because the piles already were.
+	 */
+	static FCataclysmEmpireTreeClearPay ClearPayFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
+													const FCataclysmEmpireTreeDungeonState& State, int32 Floors,
+													double GoldScale, int64 GoldDropped, int64 GoldPickedUp);
 
 	/** The four branches, in the order the source file's metadata names them, and then the centre. */
 	static TArray<FString> BranchNames();

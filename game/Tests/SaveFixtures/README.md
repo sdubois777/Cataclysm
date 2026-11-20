@@ -732,6 +732,25 @@ followed, ruled 2026-11-01:
   now, and every test that runs an older run file through the whole chain
   adds what the step writes through
   `CataclysmSaveFixtures::AddTheRunsVersion11Defaults`.
+- **The run record went to version 12 on 2026-11-20**, for three of the empire
+  upgrade tree's gold nodes (issue #2741 slice 6b): each city's
+  `bTookSurgeDamage` (Price Controls), the run's `bPopulationFellBelowHalf`
+  (Stimulus Package), and the walk's `GoldDroppedThisWalk` and
+  `GoldPickedUpThisWalk` (Cleanup Crew). `Migrate_11_to_12` writes false on
+  every city, false on the run and 0 and 0 on the walk: the record cannot
+  prove a city's past damage (a city below its maximum may be one whose
+  maximum the tree raised), the run's flag compares against a maximum that
+  depends on the tree, which the record does not hold, and a walk resumed
+  from it counts its gold from the load. `Run_v12.json` is `Run_v11.json` at
+  version 12 with its first city marked as damaged and its second not, the
+  run's flag set, and the walk holding 1234 gold dropped and 1000 picked up:
+  none of these is the default or what the step writes, so the test that
+  reads it shows each field is read. `Run_v11.json` is now a migration input,
+  not edited again: `Cataclysm.EmpireTreeClearGold.ARunFileFromVersion11MigratesUnmarkedAndUncounted`
+  runs it through the step, every test that read `Run_v11.json` as the
+  committed run file reads `Run_v12.json` now, and every test that runs an
+  older run file through the whole chain adds what the step writes through
+  `CataclysmSaveFixtures::AddTheRunsVersion12Defaults`.
 - **A slip, recorded rather than undone, as `LastWrittenUtc` was.**
   `Run_v1.json` was edited thirteen times after saves could load
   (`78ad0fa81`, 2026-10-30), each time adding fields for #753's dungeon load
@@ -770,6 +789,7 @@ followed, ruled 2026-11-01:
 | `Run_v9.json` | The same run at version 9: version 8's contents, plus the empire upgrade tree's event counts -- 3 clears since the last surge, 1 city reclaimed, the Last Stand spent -- and the day each of its two city upgrades was bought, 101 and 64 |
 | `Run_v10.json` | The same run at version 10: version 9's contents, with its first creature saved as a Vengeful Wraith and its second as not one |
 | `Run_v11.json` | The same run at version 11: version 10's contents, plus 5 dungeons cleared since the last death |
+| `Run_v12.json` | The same run at version 12: version 11's contents, plus its first city marked as damaged by a dungeon, the run's population marked as fallen below half, and the walk's 1234 gold dropped and 1000 picked up |
 | `Example_v1.json` | The example record at version 1 |
 | `Example_v2.json` | The same record at version 2, after `Title` was renamed to `Label` |
 | `Example_v3.json` | The same record at version 3, after `TotalCopper` was split into `Gold` and `Copper` |
@@ -782,7 +802,7 @@ something.
 `UCataclysmSaveExampleRecord` exists only for these, because all three real
 records were at version 1 when it was written and version 1 is the first, so
 none of them had a migration to run. The character record has had nine since
-(version 10 since 2026-11-19), the run record ten (version 11 since
+(version 10 since 2026-11-19), the run record eleven (version 12 since
 2026-11-20), and the account record three (version 4 since 2026-11-18). Its
 header says more.
 

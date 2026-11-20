@@ -1032,6 +1032,13 @@ public:
 	 *  otherwise drop, so 100 leaves it unchanged. */
 	static constexpr float BaselineLootQuantity = 100.0f;
 
+	/**
+	 * The tier's gold pile over tier 1's, the scale every tier 1 gold figure follows (the coordinating session's R10 of
+	 * 2026-11-20, from the design's rule for a city upgrade's price). 1 at tier 1, and 1 when the gold table or a row
+	 * is missing, after the table's loader has said why. Issue #2741 slice 6b.
+	 */
+	static double GoldScaleFor(int32 DifficultyTier);
+
 	static const TCHAR* EnemyDropTableAssetPath;
 	static const TCHAR* MaterialTierTableAssetPath;
 	static const TCHAR* CraftingMaterialTableAssetPath;
