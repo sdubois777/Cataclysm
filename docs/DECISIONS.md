@@ -750,10 +750,9 @@ PORTED" bullet on the Demonic Cataclysm's Rifts in `game/Source/CataclysmEmpire/
 
 ### SAID FIRST
 
-- **NOT COMPILED AND NOT RUN IN UNREAL.** Phase 1 was written without a compile, as ruled, at `31a879a99` on
-  `0b7b554d1`. The slice waits its turn in the Unreal queue. At that turn it is rebased onto the development of the
-  time (onto a new branch name ending -2 if the rebase needs a force push), compiled three ways, and run in the
-  diagnostic window registered below.
+- **COMPILED, NOT YET RUN IN UNREAL.** Phase 1 was written without a compile, as ruled, at `31a879a99` on
+  `0b7b554d1`. It was rebased twice, onto `e583b0788` as `-2` and onto `3d0193bfa` as `-3`, and at its turn compiled
+  three ways at `6e4ca7d41` with no warning (below). The diagnostic window registered below has not run.
 - **THE DIAGNOSTIC WINDOW PROVES NOTHING ABOUT THE FIX, AND ITS FAILURES ARE EXPECTED** (ruled Q2, below). Changing how
   22 streams are seeded changes what they draw, so any test that pins a draw from one of them moves. The window lists
   those tests by name, from evidence. The real window comes after the commit that corrects them, registers each moved
@@ -927,6 +926,22 @@ Rebased again, onto development `3d0193bfa` (the empire upgrade tree's slice 5b,
   development's `3d0193bfa`, so this slice's diagnostic window registers 5,001.
 - **Python and ruff.** At `9638168d7`, the commit that moves the test to `Run_v11.json`: "7776 passed, 9 skipped",
   the JUnit file agreeing (7,785 tests, no failure, 9 skipped). Ruff clean.
+
+### Compiled at `6e4ca7d41`, 2026-11-20
+
+On the coordinating session's GO, under the Unreal lock `seed-compile`, taken once the machine read free twice a minute
+apart (no GitHub run in progress or queued, no editor or build process, 11,928 MB free) and released when the third
+build ended. Scripts `.claude/windows/gate_compile_seed.py` and `compile_seed.py`. `Makefile.bin` was moved aside
+before each build, because this branch adds `CataclysmSeedingTests.cpp` and the worktree's build plan predated it.
+
+| Build | Printed | What it compiled |
+| :-- | :-- | :-- |
+| 1, the branch as committed | "Build: Succeeded - 65 actions, 58 files compiled", 359 s | the eight changed `Cataclysm` files inside their unity files (`Module.Cataclysm.8`, `.9`, `.13`, `.33` and `.40`), each compiled; the three changed `CataclysmEmpire` files alone, as that module compiles every file |
+| 2, each changed file alone (`git read-tree 3d0193bfa`) | "Build: Succeeded - 23 actions, 18 files compiled", 125 s | "[Adaptive Build] Excluded from Cataclysm unity file" named all eight changed `Cataclysm` files, and each has its own compile line; the `CataclysmEmpire` files were current from build 1 |
+| 3, the unity files again | "Build: Succeeded - 15 actions, 10 files compiled: Module.Cataclysm.13.cpp, Module.Cataclysm.33.cpp, Module.Cataclysm.40.cpp, ...", 90 s | the five unity files that hold the eight changed files, each compiled |
+
+No compiler warning or error line in any of the three builds' logs. The tracked tree was clean and `HEAD` was
+`6e4ca7d41` afterwards.
 
 ### Registered before the diagnostic window
 
