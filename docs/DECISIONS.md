@@ -138,14 +138,14 @@ actions, not ten). Tests: `Cataclysm.Input.TheCharacterSheetIsOnCInBothSchemes`,
 and `Cataclysm.Input.TheEmpireMapIsOnMInBothSchemes`, changed (`game/Source/Cataclysm/Tests/CataclysmInputTests.cpp`);
 `tools/tests/test_the_empire_map_key_reaches_its_command.py`, `tools/tests/test_controls_table_matches_the_input_assets.py`
 and `tools/tests/test_game_readme_is_true.py`, changed. The input assets `IA_ToggleCharacterSheet` (new),
-`DA_InputConfig`, `IMC_MouseMovement` and `IMC_KeyboardMovement` are regenerated, and `IA_ToggleCharacterCreation` is
-deleted, by the window's asset step. Issue [#2770](https://github.com/sdubois777/Cataclysm/issues/2770).
+`DA_InputConfig`, `IMC_MouseMovement` and `IMC_KeyboardMovement` were regenerated, and `IA_ToggleCharacterCreation`
+deleted, by window ckey-w1's asset step, in commit `e8bd90fdf`. Issue [#2770](https://github.com/sdubois777/Cataclysm/issues/2770).
 
 ### SAID FIRST
 
-- **NOT COMPILED, AND THE INPUT ASSETS ARE NOT REGENERATED YET.** Both wait for a window, which the coordinating session
-  starts once the owner has finished playtesting. Until the asset step runs, the generated assets still put C on the
-  creator's action, and `Cataclysm.Input.` fails three tests: that is registered below as the asset half's proof (O1).
+- **COMPILED, AND THE INPUT ASSETS REGENERATED, IN WINDOW ckey-w1** ("Window ckey-w1", below), where every check
+  passed. Before the asset step, with the old assets, `Cataclysm.Input.` failed exactly the three tests registered as
+  the asset half's proof (O1); after it, all nine passed.
 - **NO TEST CAN PRESS C.** A world built by `UWorld::CreateWorld` has no local player, so
   `ACataclysmPlayerController::SetupInputComponent` binds nothing there and `CreateWidget` makes no screen, as
   `Cataclysm.Input.TheEmpireMapIsOnMInBothSchemes` records for the M key. The Python tests read the chain from the key to the function the console command
@@ -241,6 +241,36 @@ and `game/Content/Input/IMC_KeyboardMovement.uasset`; restore the other eighteen
 `game/Content/Maps/L_Sandbox.umap`, which every generator run writes again with new bytes and whose properties this
 change does not touch; commit. Allowed to change during the run: anything under `game/Content/Input`, and
 `L_Sandbox.umap`.
+
+### Window ckey-w1
+
+**THE COMPILES**, at `85d3d0dc2` on 2026-11-19, 18:37 to 18:45, under the lock ckey-compile and before the window, all
+succeeding: the branch as committed (51 actions, 46 files, more than this change touches because this worktree was last
+built on an older base); each changed file compiled alone (the build tool excluded seven from the unity files -- the four
+`.cpp` files this branch changes and `CataclysmInputConfig.cpp`, `CataclysmCharacterSheetWidget.cpp` and
+`CataclysmCityScreenWidget.cpp`, whose headers it changes; 16 actions, 13 files, no warning); and the unity files again
+(9 actions, 6 files, no warning). **ONE WARNING IN THE FIRST, NOT FROM THIS CHANGE**: C4996, "CountBits for 64-bit values
+has been deprecated", printed from the engine's `MicrosoftPlatformMath.h` and triggered by
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` line 1315, which the build log's next note
+names. It is issue #2756; this branch does not change that file.
+
+**THE WINDOW**, lock ckey-w1, 18:45 to 19:09, started by `run_ck.py` with no console window once the pre-checks all
+passed (development `2869846bc` with its CI and Unreal runs passed, no run in progress or queued, the lock free, no build
+or editor process, no open pull request, 13,796 MB free, no Git LFS pointer in the worktree):
+
+| Check | Registered | Measured |
+| :-- | :-- | :-- |
+| The build | -- | Target already up to date, nothing compiled |
+| O1: `Cataclysm.Input.` alone, before the asset step | 9 performed; 3 failed, `ConfigListsEverySlotAndNativeAction`, `MappingContextsCoverEveryActionWithoutCollisions` and `TheCharacterSheetIsOnCInBothSchemes`; 6 succeeded | Exactly that |
+| The asset step | `IA_ToggleCharacterSheet.uasset` new; `DA_InputConfig`, `IMC_MouseMovement` and `IMC_KeyboardMovement` changed; `IA_ToggleCharacterCreation.uasset` removed; everything else the generator rewrote restored | The generator rewrote 23 files and left the old action untouched; 19 were restored (the other eighteen actions and `L_Sandbox.umap`); none of the three changed assets holds the name `IA_ToggleCharacterCreation`; committed alone as `e8bd90fdf`, with the old action removed by `git rm` and each kept asset a Git LFS object; afterwards no `.uasset` or `.umap` file in `game/Content` holds that name; pushed with its LFS objects. Every test below ran at `e8bd90fdf` |
+| Each group alone | `Cataclysm.Input.` 9, `Cataclysm.CharacterSheet.` 10, `Cataclysm.Creation.` 14 | 9, 10 and 14 performed, every one succeeded |
+| The whole suite | 4,956; 47 skipped halves | 4,956 performed, 4,956 succeeded; 47 skipped halves; "850 written and deleted, 0 left behind"; 4,956 declared, gap 0 |
+| Python and ruff | Every test passing | 7,725 passed, 9 skipped; the JUnit file 7,734 tests, 0 failures, 0 errors; ruff clean |
+| Proofs | None in the window; P1 to P4 run before commit | None run |
+
+**O1 HELD IN BOTH DIRECTIONS**: built with the old assets, the three tests that read the assets failed; with the assets
+generated, the same nine passed. **THE KEY PRESS ITSELF IS STILL UNTESTED BY ANY RUN**, as "SAID FIRST" says: the
+owner's press of C at step 14 of `docs/Play_Loop_Checklist.md` is that test.
 
 ---
 
