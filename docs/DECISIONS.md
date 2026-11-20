@@ -2,6 +2,218 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-20 — The five city upgrades that change what a kill pays act in a dungeon standing on the city: experience, magic find, gold, loot and crafting materials (#2781)
+
+**Affects:** `FCataclysmCityDungeonRewards`, new, `UCataclysmCityUpgradeRules::DungeonRewardsOf`, new, and
+`UCataclysmCityUpgradeRules::IsBuilt`, now true for the five (`game/Source/CataclysmEmpire/Empire/CataclysmCityUpgrade.h`
+and `.cpp`); `ACataclysmDungeonGameMode::CityRewardsHere` and `CityRewardsIn`, new
+(`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp`); `ACataclysmEnemyCharacter::HandleDeath`
+(`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp`); `UCataclysmDropSpawner::SpawnDropsFor`, a trailing
+parameter (`game/Source/Cataclysm/Items/CataclysmDroppedItem.h` and `.cpp`); comments that counted the upgrades the game
+had not built, fourteen and now five, in `game/Source/Cataclysm/Interface/CataclysmCityScreenLayout.h`,
+`game/Source/Cataclysm/Interface/CataclysmCityScreenWidget.h` and `.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` and `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`;
+`tools/generate_datatables.py` and `game/Data/EmpireTreeNodes.csv`, the Treasurer nodes' reason, and
+`game/Content/Data/DT_EmpireTreeNodes.uasset` with `game/Data/datatable_asset_sources.json`. Tests:
+`game/Source/Cataclysm/Tests/CataclysmCityDungeonRewardsTests.cpp`, new, 5 in the new group `Cataclysm.CityDungeonRewards.`;
+`game/Source/Cataclysm/Tests/CataclysmCityScreenTests.cpp` and `game/Source/CataclysmEmpire/Tests/CataclysmCityUpgradeTests.cpp`,
+the count of buildable upgrades 14 to 19; `tools/tests/test_city_upgrade_dungeon_rewards.py`, new;
+`tools/tests/test_empire_tree_gold_nodes.py`, changed. Issue [#2781](https://github.com/sdubois777/Cataclysm/issues/2781).
+
+### SAID FIRST
+
+- **THE FIRST WINDOW, tree-2781-w1, FAILED THREE TESTS**, every one an existing test whose expected figure phase 1
+  did not move with the change; the section on it below gives them. **Phase 1 moved the counts that said 14, but not
+  the numbers derived from 14, nor an example that relied on an effect staying unbuilt.** The three were corrected in
+  `e54c29626`, two test files and nothing else.
+- **COMPILED, RUN AND PROVED IN THE SECOND WINDOW (tree-2781-w2)**, at `e54c29626` on development `8d73242df`:
+  - all three of phase 2's compiles succeeded with no warning;
+  - the written-out record version check found the run, character and account records at 11, 10 and 4, unchanged, and
+    no test stating another version;
+  - the asset step ran in the first window, rebuilding `DT_EmpireTreeNodes.uasset` and committing it with its sources
+    file alone as `72ded5301`; the second window skipped the step, and `tools/tests/test_datatable_assets_are_current.py`
+    in its Python run checked the committed asset against its CSV, which `e54c29626` does not change;
+  - the fourteen groups each passed alone at their registered counts;
+  - the whole Unreal suite performed the registered 5027, all succeeding, with 47 skipped halves and "852 written and
+    deleted, 0 left behind";
+  - Python passed, 7793 with 9 skipped, and ruff passed;
+  - the six C++ guard proofs each proved, failing exactly the registered tests and assertions. The seven Python guard
+    proofs were proved in phase 1.
+- **19 OF THE 24 CITY UPGRADES CAN BE BOUGHT**: these five join the fourteen before them. Each was refused for its
+  wiring alone: nothing read a dungeon's city at a kill.
+- **A KILL IN A DUNGEON ON A CITY HOLDING NONE OF THE FIVE PAYS EXACTLY WHAT IT PAID BEFORE.** The rewards are asked
+  before the kill's paying branch and asking draws nothing from its random stream; every figure of no upgrade is
+  exactly 1 or 0.
+- **THE TREASURER NODES' REASON IS TRUE AGAIN.** Commercial Hubs, Economic Zones, Trade Routes and The Golden Touch said
+  they waited on "a Treasurer city upgrade, which cannot be bought yet". Now that one can be bought, they say they wait
+  on "its Treasurer city upgrade rules, which are not built yet (issue #2741)". The coordinating session judged that
+  correcting the reason in this same change was right, because the screen must not say something the change makes
+  false.
+
+### The rulings this change builds on
+
+From the coordinating session when it opened #2781, 2026-11-20:
+
+1. **"2x more experience" doubles the creature's experience figure**, and a skill's experience follows it. The design
+   document's Earning row: a skill's experience is a share of "the same figure the character is granted".
+2. **"More" is a separate multiplier** for experience, gold, loot and crafting materials, and **"increased" magic find
+   adds** to the other increases. This is the design's three-bucket pipeline.
+3. **Only the tier 1 figure applies.**
+4. **Each effect applies to kills in a dungeon standing on the city that holds the upgrade.**
+
+And the readings accepted the same day, **EACH A JUDGEMENT**:
+
+- **X1, a fallen city's upgrades pay nothing**, and pay again once it is reclaimed. **THE DESIGN DOCUMENT IS SILENT** on
+  what a fallen city keeps of its upgrades: the coordinating session searched it and found no rule. **THE PRECEDENT
+  DECIDED IT**: Fiscal Policy (#2741 slice 6a, G3) and The Cartographer's Blessing count standing cities only.
+  `Cataclysm.CityDungeonRewards.AFallenCitysUpgradesGiveNothingUntilItIsReclaimed` is the control asked for: a dungeon on
+  a fallen city whose upgrades include all five gets none of them.
+- **X2, "more loot" multiplies the kill's loot quantity**, so its gear and its materials; **"more crafting materials"
+  multiplies only the ordinary material roll**, not Plunderer's Eye's chance of an extra one.
+- **X3, the magic find is ten points**, added to the kill's magic find before anything rolls.
+- **X4, the creature's figure is doubled before `ExperienceAfterGain`**, for the character's grant and the skills'.
+- **X5, the gold's 1.25 multiplies the empire tree's gold multiplier** (#2741 slice 6a) as a separate "more".
+- **X6, only a kill that pays** gets any of them.
+
+### Registered before the run
+
+Sent to and accepted by the coordinating session on 2026-11-20, before the compiles, and restated when #2741 slice 6a
+merged.
+
+- **Base: 5022**, measured by window tree-6a-w1 at `33b5391d8`, whose `game/` is development `8d73242df`'s (`git diff
+  33b5391d8 8d73242df -- game/` prints nothing). The change was written on #2741 slice 6a's head `26944c158` as
+  `feat/city-upgrade-dungeon-rewards`. It moved with 6a, onto the seeding fix (#2782) and then #2764 slice 2a's
+  merge, and finally onto `8d73242df` as `feat/city-upgrade-dungeon-rewards-2`.
+  - The rebase onto the seeding fix met one conflict, in `HandleDeath`: this change's block asking the city for its
+    rewards sits just above the line seeding the kill's random stream, which the seeding fix rewrote. Both were
+    kept, the rewards first.
+  - The later rebases were clean, and the last left the patch identical (`git patch-id --stable` 386a91b7d36a before
+    and after).
+  - The fourteen groups' counts were recounted from tree-6a-w1's log, each matching.
+- **The whole suite: 5027 performed, 5027 succeeded, 0 failed**: the base's 5022 and 5 new in
+  `Cataclysm.CityDungeonRewards.`; 47 skipped halves, the base's; no test save left behind.
+- **Each group alone**, counted from the base log on "Test Completed. Result={" lines and by distinct path, which agree:
+  `Cataclysm.CityDungeonRewards.` 5 (new), `CityScreen.` 16, `CityUpgrade.` 15, `CityUpgradePrice.` 7, `EmpireTreeGold.` 6,
+  `Gold.` 13, `Drop.` 30, `DungeonMode.` 46, `EmpireTree.` 24, `EmpireTreeScreen.` 10, `EmpireTreeDrops.` 13,
+  `Experience.` 11, `SkillLevels.` 12, `DeathRewards.` 4. `CityScreen.` and `CityUpgrade.` keep their counts while
+  their tests' figure for the buildable upgrades moves from 14 to 19.
+- **An asset step**: `tools/generate_datatable_assets.py` rebuilds `game/Content/Data/DT_EmpireTreeNodes.uasset` and
+  rewrites `game/Data/datatable_asset_sources.json`; those two files and no other are committed and pushed before the
+  tests run, and that commit is the tested head. `CityUpgrades.csv` is unchanged.
+- **Six C++ guard proofs**, each narrowed to `Cataclysm.CityDungeonRewards.` (5 tests), the restored half passing every
+  test it ran. **THE GEAR ROLL'S CASE IS LEFT TO PYTHON'S W6**: a break that gives the gear roll the materials figure
+  changes how many gear items are rolled, which moves the random stream for everything after, so its failing
+  assertions cannot be predicted.
+
+| Proof | File | The break | Predicted with it in |
+|---|---|---|---|
+| U1 | `CataclysmCityUpgrade.cpp` | the magic find added as the row's fraction, not 100 times it | 5 performed, 2 succeeded, 3 failed: `EachUpgradeGivesItsTierOneFigure` 1 ("the five"), `TheBoundDungeonsCityGivesThemAndAnotherCityDoesNot` 2 (on the city; through the world), `AFallenCitysUpgradesGiveNothingUntilItIsReclaimed` 1 ("all five again") |
+| U2 | `CataclysmDungeonGameMode.cpp` | a fallen city's upgrades pay | 5, 4, 1: `AFallenCitysUpgradesGiveNothingUntilItIsReclaimed`, 1 assertion ("a dungeon on the fallen city: none of them") |
+| U3 | `CataclysmDungeonGameMode.cpp` | city 0's upgrades for any dungeon | 5, 4, 1: `TheBoundDungeonsCityGivesThemAndAnotherCityDoesNot`, 1 assertion ("a dungeon on a city holding none: nothing") |
+| U4 | `CataclysmDroppedItem.cpp` | the material roll leaves out the materials figure | 5, 4, 1: `MoreMaterialsIsTheMaterialRollsAloneAndOneRollsAsBefore`, 1 assertion ("and the materials are more") |
+| U6 | `CataclysmCityUpgrade.cpp` | the gold upgrade is not built | 5, 4, 1: `TheFiveCanBeBoughtOnACity`, 1 assertion ("all five can be bought": 4) |
+| U7 | `CataclysmCityUpgrade.h` | the experience figure ignores the "more" | 5, 4, 1: `EachUpgradeGivesItsTierOneFigure`, 1 assertion ("experience 137 at x2: 274": 137) |
+
+- **Python before the window**: at `25fb126aa`, on #2741 slice 6a's head, 7782 passed, 1 failed, 9 skipped; JUnit tests
+  7792, failures 1, errors 0, skipped 9; ruff clean. The one failure was expected and is the asset step's to clear:
+  `tools/tests/test_datatable_assets_are_current.py` names `EmpireTreeNodes.csv` as newer than its asset.
+
+### The seven Python guards, proved in phase 1
+
+Each through `tools/prove_guard.py`'s `break_and_run` on `tools/tests/test_city_upgrade_dungeon_rewards.py` and its
+neighbours, `proved` True, the broken half "1 failed, 9 passed" and the restored half "10 passed":
+
+- **W1, the gold upgrade is not built**: `test_the_five_are_built_and_the_table_states_their_figures`.
+- **W2, a fallen city's upgrades pay**: `test_every_more_multiplies_the_magic_find_adds_and_a_fallen_city_gives_nothing`.
+- **W3, the kill gives its drop roll no materials figure; W4, the kill's gold leaves out the city's; W5, the skills'
+  grant leaves out the city's experience**: `test_a_kill_takes_the_city_rewards_before_it_rolls_and_in_each_grant`.
+- **W6, the gear roll takes the materials figure too**: `test_the_drop_roll_gives_the_materials_figure_to_the_material_roll_alone`.
+- **W7, a refusal says a Treasurer upgrade cannot be bought again**:
+  `test_no_refusal_says_a_treasurer_city_upgrade_cannot_be_bought`.
+
+### The first window, which failed
+
+**tree-2781-w1, 2026-11-20, 08:45 to about 09:13, at `72ded5301`.** Phase 2's three compiles ran under the lock
+tree-2781-compile from 08:35 to 08:44, after development's CI and Unreal runs for #2785's merge and the coordinating
+session's rebuild of the main checkout had finished: the branch (57 files), each changed `.cpp` file alone (19 files),
+and the unity files (11). None printed a warning. The window's gate found every pre-check passing at 08:45, the recount
+matched every group, and the written-out version check found "26 lines stating a version; NO MISMATCH".
+
+- **The build**: "target already up to date, 0 actions, nothing compiled".
+- **The asset step**: `tools/generate_datatable_assets.py` left exactly `game/Content/Data/DT_EmpireTreeNodes.uasset`
+  and `game/Data/datatable_asset_sources.json` changed; the two were committed alone as `72ded5301` on `9ae847d8e` and
+  pushed.
+- **Each group alone**: "12 of 14 passed; FAILED: Cataclysm.CityScreen., Cataclysm.CityUpgrade.". `CityScreen.`
+  performed 16, 14 succeeding; `CityUpgrade.` 15, 14 succeeding. The other twelve passed at their registered counts.
+- **The whole suite**: "Tests: 5027 tests performed, 5024 succeeded, 3 failed: AFullCityOffersNothingAndSaysWhy,
+  AnUpgradeAlreadyBoughtIsListedRatherThanOfferedAgain, EveryRefusalSaysWhichOneItIs. 47 skipped part of what they
+  check"; "Test saves: 852 written and deleted, 0 left behind"; "Declared: 5027 tests in the tree at 72ded5301; 5027
+  performed, gap 0".
+- **Python**: "7793 passed, 9 skipped"; JUnit tests 7802, failures 0, errors 0, skipped 9; ruff "All checks passed!".
+- **The proofs were not run**: "STOPPED before the proofs: the whole suite did not pass its registered total".
+
+**THE THREE FAILURES, each an expected figure phase 1 did not move:**
+
+- `Cataclysm.CityScreen.AnUpgradeAlreadyBoughtIsListedRatherThanOfferedAgain`: "Expected 'one fewer can be bought' to
+  be 13, but it was 18". The old 14 less one; with 19 buildable it is 18.
+- `Cataclysm.CityScreen.AFullCityOffersNothingAndSaysWhy`: "Expected 'the eleven built upgrades it did not buy say so'
+  to be 11, but it was 16": 19 built less the three bought.
+- `Cataclysm.CityUpgrade.EveryRefusalSaysWhichOneItIs`: "an effect that is not built is refused: The two values are not
+  equal" and "Expected 'and buying it changed nothing' to be 0, but it was 1". Its example of an effect that is not
+  built was the dungeon gold upgrade, which this change built.
+
+**Phase 1 moved the counts that said 14, but not the numbers derived from 14, nor an example that relied on an effect
+staying unbuilt.** No Python test reads these figures and phase 1 compiles nothing, so only a window could find them.
+`e54c29626` sets 18 and 16, makes the refusal's example a Horde sub-type chance -- nothing rolls a dungeon sub-type
+(issue #41) -- and takes the old counts out of two file comments that gave them. The lock was released when the window
+ended.
+
+### The second window
+
+**tree-2781-w2, 2026-11-20, 09:16 to 10:04, at `e54c29626`.** **NO SEPARATE COMPILES BEFORE IT**, by the
+coordinating session's ruling, for the reason it gave for window skills-w2: `e54c29626` changes two test files' bodies
+and comments only, with no `#include` line added or removed; `ECataclysmCityUpgradeEffect::SubTypeChanceHorde` is
+declared in `game/Source/CataclysmEmpire/Empire/CataclysmCityUpgrade.h`, which the test already reaches; and the
+window's own build compiles the committed tree, so a clash would have stopped it at its first step. **THE ASSET STEP
+WAS SKIPPED**, its commit `72ded5301` already on the branch; `tools/tests/test_datatable_assets_are_current.py` in the
+window's Python run checked the committed asset against its CSV. The gate found every pre-check passing at 09:16 and
+the recount matched every group.
+
+- **The build**: "Build: Succeeded - 7 actions, 2 files compiled: CataclysmCityUpgradeTests.cpp,
+  Module.Cataclysm.16.cpp", the two test files `e54c29626` changed, with no error.
+- **Each group alone**: all fourteen at their registered counts, all succeeding.
+- **The whole suite**: "Tests: 5027 tests performed, 5027 succeeded, 0 failed. 47 skipped part of what they check";
+  "Test saves: 852 written and deleted, 0 left behind"; "Declared: 5027 tests in the tree at e54c29626; 5027
+  performed, gap 0".
+- **Python**: "7793 passed, 9 skipped"; JUnit tests 7802, failures 0, errors 0, skipped 9, among the passes
+  `tools/tests/test_datatable_assets_are_current.py`; ruff "All checks passed!".
+- **What the new tests printed**: "REWARDS EACH: the five give experience x2.00, magic find +10.0, gold x1.25, loot
+  x1.25, materials x1.25; the gold one alone experience x1.00, magic find +0.0, gold x1.25, loot x1.00, materials
+  x1.00; the Architect one experience x1.00, magic find +0.0, gold x1.00, loot x1.00, materials x1.00; experience 137
+  becomes 274, and 137 with nothing"; "REWARDS BOUND: none bound experience x1.00 ...; on city 0 experience x2.00,
+  magic find +10.0, gold x1.25, loot x1.25, materials x1.25; through the world experience x2.00, magic find
+  +10.0, gold x1.25, loot x1.25, materials x1.25; on city 1 experience x1.00,
+  magic find +0.0, gold x1.00, loot x1.00, materials x1.00"; "REWARDS FALLEN: fallen, holding 5 upgrades, experience
+  x1.00, magic find +0.0, gold x1.00, loot x1.00, materials x1.00; reclaimed experience x2.00, magic find +10.0, gold
+  x1.25, loot x1.25, materials x1.25"; "REWARDS MATERIALS: named none 15 gear and 18 materials; at 1 15 and 18; at 20
+  15 and 276; the streams at none and 1 end at -1742066711 and -1742066711"; "REWARDS OFFERED:" each of the five
+  "buyable".
+- **The proofs**, each failing exactly its registered tests in its broken half with exactly the registered
+  assertions, and its restored half passing every test it ran, "5 tests performed, 5 succeeded":
+
+| Proof | With the break in | The failed assertions |
+|---|---|---|
+| U1 | 5 performed, 2 succeeded, 3 failed | `EachUpgradeGivesItsTierOneFigure` 1: "the five: x2.00, +10, x1.25, x1.25, x1.25"; `TheBoundDungeonsCityGivesThemAndAnotherCityDoesNot` 2: "a dungeon on the city holding them: the five", "and through the world, as a kill asks"; `AFallenCitysUpgradesGiveNothingUntilItIsReclaimed` 1: "and once it is reclaimed: all five again" |
+| U2 | 5, 4, 1 | `AFallenCitysUpgradesGiveNothingUntilItIsReclaimed` 1: "a dungeon on the fallen city: none of them" |
+| U3 | 5, 4, 1 | `TheBoundDungeonsCityGivesThemAndAnotherCityDoesNot` 1: "a dungeon on a city holding none: nothing" |
+| U4 | 5, 4, 1 | `MoreMaterialsIsTheMaterialRollsAloneAndOneRollsAsBefore` 1: "and the materials are more" |
+| U6 | 5, 4, 1 | `TheFiveCanBeBoughtOnACity` 1: "all five can be bought" (4) |
+| U7 | 5, 4, 1 | `EachUpgradeGivesItsTierOneFigure` 1: "experience 137 at x2: 274" (137) |
+
+No proof's log and no suite log holds a "server/discover" line (#2745). The lock was released when the window ended.
+
+---
+
 ## 2026-11-20 — Eleven of the empire upgrade tree's gold nodes act: eight raise the gold a kill drops and three lower a city upgrade's price, and every node held back by gold names what it really waits on (#2741, slice 6a)
 
 **Affects:** `FCataclysmEmpireTreeDropRules::GoldMultiplier`, `UCataclysmEmpireTree::GoldMultiplierFor`,
