@@ -895,6 +895,37 @@ force push; `feat/placement-seeds-2749` stays at `abac0adf5`. Development had me
   stands. At `c536fbc72`, the commit that makes that change, the suite printed "7769 passed, 9 skipped", the JUnit
   file agreeing (7,778 tests, no failure, 9 skipped). Ruff clean.
 
+### At the rebase onto `3d0193bfa`, 2026-11-20
+
+Rebased again, onto development `3d0193bfa` (the empire upgrade tree's slice 5b, pull request #2780), as
+`feat/placement-seeds-2749-3`; `feat/placement-seeds-2749-2` stays at `eb6213e9c`.
+
+- **One conflict, in C++, resolved by hand to keep both sides.** In `ACataclysmEnemyCharacter::HandleDeath`, tree 5b
+  added the empire upgrade tree's drop-rules lookup directly below the line that seeds the death's stream, which this
+  slice changes. The resolution keeps this slice's seed, `CataclysmSeedMix::Mix(identity, 0x6472, clock)`, and tree
+  5b's lookup below it unchanged. `tools/check_resolved_cpp.py` on the file: "1 files read, 0 with complaints". The
+  rest applied cleanly. In `docs/DECISIONS.md` tree 5b's entry is dated 2026-11-20 and stands first, and this entry
+  keeps its place.
+- **The loaded-run test reads `Run_v11.json`.** Tree 5b took the run record to version 11 and added
+  `test_every_chain_test_adds_version_11_and_only_the_migration_reads_run_v10`. `Run_v11.json` differs from
+  `Run_v10.json` only in its version and `ClearsSinceLastDeath` (5): the stream state, 1357924680, and the four
+  Cataclysms are the same, so "Demonic, then War" stands.
+- **Tree 5b's drop code.** The tree's drop rules are looked up before the paying branch and draw nothing.
+  `SpawnTheTreesExtraDropsFor` draws from the death's stream after the gold. This slice changes that stream's starting
+  seed, which was the creature's identity XOR the clock and so no more predictable before than after, and not the order
+  of the draws on it. Tree 5b's tests hand the spawner fixed streams (seeds 2741 and 4321), which the mix does not
+  reach. Its changes to `CataclysmEmpireRun.cpp` are counters and draw from no stream. It adds no stream derived from
+  another seed.
+- **Defaulted parameters.** Tree 5b gave new parameters defaults in `CataclysmDropRoll.h` (`LowestRarity`) and
+  `CataclysmDroppedItem.h` (`LowTierMaterialExtraChance` and `LowestRarity`), on the drop-roll and drop-spawner
+  functions. No line this branch adds calls any of them; its hunks beside those calls change only the line that makes
+  the stream. This branch gives no parameter a default.
+- **The replay.** Neither table changed. The 2,000-floor run printed the same bytes again, and the tests' 20 floor seeds
+  give the figures registered below again.
+- **The whole suite's registration is now a number.** The window tree-5b-w1 measured "4998 tests performed, 4998
+  succeeded, 0 failed" and "Test saves: 852 written and deleted, 0 left behind" at `ff89528e8`, whose `game/` tree is
+  development's `3d0193bfa`, so this slice's diagnostic window registers 5,001.
+
 ### Registered before the diagnostic window
 
 The window runs when the coordinating session gives this slice its turn, under the Unreal lock `seed-diag`, from
@@ -908,8 +939,8 @@ the figures below confirmed or registered again.
 | :-- | :-- |
 | Pre-checks, those of the earlier windows' scripts | development's latest CI and Unreal runs passed; no Unreal run in progress or queued; the lock free; no build or editor process; no pull request open in the repository; at least 10,240 MB of physical memory free; and no simulation process (`experiments.py` and the like) running |
 | The build | succeeds; no asset step, because the slice changes no data table |
-| `Cataclysm.Seeding.` alone | 3 performed, 3 succeeded. Its information lines: "SEEDING BAND: the mix: fewest distinct 15, narrowest band 16", the old formula at most 5 distinct and a band of at most 5; "SEEDING NEIGHBOURS: both Elite" about 0.0454 with the mix and 0.1229 with the old formula (the replay's 4.54% and 12.29%; the engine prints four decimals); "SEEDING LOADED RUN: next ECataclysmType::Demonic, then ECataclysmType::War". These are the replay's figures on the tests' own 20 floor seeds and the committed `Run_v10.json` |
-| The whole suite | the newest whole-suite total measured on the base this branch is rebased onto, plus these 3, performed; the same test saves as that base, none left behind. **FAILURES EXPECTED, AND NOT COUNTED AGAINST THE SLICE**: every failed test is listed with each error line between its `BeginEvents` and `EndEvents`, and the window counts "server/discover" and "ConsoleCtrl" lines, so a failure from outside the game is told apart |
+| `Cataclysm.Seeding.` alone | 3 performed, 3 succeeded. Its information lines: "SEEDING BAND: the mix: fewest distinct 15, narrowest band 16", the old formula at most 5 distinct and a band of at most 5; "SEEDING NEIGHBOURS: both Elite" about 0.0454 with the mix and 0.1229 with the old formula (the replay's 4.54% and 12.29%; the engine prints four decimals); "SEEDING LOADED RUN: next ECataclysmType::Demonic, then ECataclysmType::War". These are the replay's figures on the tests' own 20 floor seeds and the committed `Run_v11.json` |
+| The whole suite | 5,001 performed: the 4,998 the window tree-5b-w1 measured at `ff89528e8`, whose `game/` tree is development's `3d0193bfa`, plus these 3; 852 test saves written and deleted, as in that run, none left behind. **FAILURES EXPECTED, AND NOT COUNTED AGAINST THE SLICE**: every failed test is listed with each error line between its `BeginEvents` and `EndEvents`, and the window counts "server/discover" and "ConsoleCtrl" lines, so a failure from outside the game is told apart |
 | Python and ruff | every test passing, the JUnit file agreeing; ruff clean |
 | Proofs | none, as ruled |
 
