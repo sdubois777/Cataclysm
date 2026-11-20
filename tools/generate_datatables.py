@@ -3745,11 +3745,8 @@ EMPIRE_TREE_SYSTEMS = {
     # with one is built in a later slice of #2741.
     "treasurer upgrade": ("its Treasurer city upgrade rules, which are not built "
                           "yet (issue #2741)"),
-    # Tax Collection and Treasury Guard: the owner ruled on both on 2026-11-20,
-    # after slice 6c was written; slice 6d builds them.
-    "gold rules": "its gold rules, which are not built yet (issue #2741)",
     # Global Credit and Sovereign Loans: the owner allowed a gold debt only through
-    # the tree's own options for one (2026-11-20); a later slice builds it.
+    # the tree's own options for one (2026-11-20); slice 6e builds it.
     "gold debt": "a gold debt, which is not built yet (issue #2741)",
     "market": "a market, which the game does not have",
     "gold cap": "a gold cap, which the game does not have",
@@ -3838,6 +3835,8 @@ EMPIRE_TREE_BUILT = {
     # Treasury, slice 6c: the gold held and the day's income (B6 to B8).
     "The Gilded Path": 6, "Venture Capital": 6, "Imperial Reserve": 6,
     "Pax Imperialis": 6, "Wealth Interest": 6,
+    # Treasury, slice 6d: the owner's rulings of 2026-11-20 (D8, D9).
+    "Treasury Guard": 6, "Tax Collection": 6,
     # The centre: a tier milestone's option, the gold a kill drops.
     "The Midas Touch": 6,
     # Artisan: crafting materials already drop.
@@ -3864,18 +3863,14 @@ EMPIRE_TREE_REFUSED = {
     "Field Depot II": "stash", "Field Depot III": "stash",
     "Gamble": "modifier reroll", "Scout Parties": "bonus dungeon",
     "Auto-Loot": "loot filter",
-    # Treasury. Slice 6 builds the nodes its gold rules reach (6a eleven, 6b five,
-    # 6c five, 2026-11-20). R1 to R4 wait on their Treasurer rules (#2781 made the
-    # city upgrades buyable). The owner ruled on R7 to R9 and Tax Collection on
-    # 2026-11-20, after this slice was written: Tax Collection and Treasury Guard
-    # wait on their gold rules, Global Credit and Sovereign Loans on the gold debt
-    # the owner allowed through them. The rest wait on what their text needs and
-    # the game lacks.
-    "Tax Collection": "gold rules",
+    # Treasury. Slice 6 built every node its gold rules reach (6a eleven, 6b
+    # five, 6c five, 6d two, 2026-11-20). R1 to R4 wait on their Treasurer rules
+    # (#2781 made the city upgrades buyable); Global Credit and Sovereign Loans on
+    # the debt the owner allowed through them, slice 6e; the rest on what their
+    # text needs and the game lacks.
     "Commercial Hubs": "treasurer upgrade", "Economic Zones": "treasurer upgrade",
     "Trade Routes": "treasurer upgrade", "The Golden Touch": "treasurer upgrade",
-    "Treasury Guard": "gold rules", "Global Credit": "gold debt",
-    "Sovereign Loans": "gold debt",
+    "Global Credit": "gold debt", "Sovereign Loans": "gold debt",
     "Black Market": "market", "Master Trader": "market",
     "Merchant Guild": "market", "Thrifty": "market",
     "Surplus Storage": "gold cap", "War Chest": "gold cap and death loss",
@@ -4126,6 +4121,8 @@ EMPIRE_TREE_EFFECT_KINDS = (
     "MagicFindPerTenThousandGoldHeld", "MagicFindPerFiftyThousandGoldHeld",
     "DamageTakenPerHundredThousandGold", "GoldPerThousandCitizensDaily",
     "GoldInterestEveryTwentyDays",
+    # Slice 6d: Treasury Guard and Tax Collection.
+    "DamageTakenPerFiftyThousandGold", "GoldShareOfPopulationEveryTenDays",
 )
 
 #: WHAT EACH BUILT NODE OR OPTION OF THE EMPIRE TREE DOES, by name. Issue
@@ -4303,6 +4300,14 @@ EMPIRE_TREE_EFFECTS = {
     "Imperial Reserve": [("DamageTakenPerHundredThousandGold", 0.01, 0, "", 0.25)],
     "Pax Imperialis": [("GoldPerThousandCitizensDaily", 5.0)],
     "Wealth Interest": [("GoldInterestEveryTwentyDays", 0.005, 0, "", 5000.0)],
+    # Slice 6d, the owner's rulings of 2026-11-20, relayed by the coordinating
+    # session. TREASURY GUARD reduces every city's damage ("1. to your cities")
+    # for each whole 50,000 tier 1 gold held, compounded, held at its own 20% and
+    # multiplied with Imperial Reserve (D9); TAX COLLECTION pays 2% a point of the
+    # standing cities' citizens as tier 1 gold every 10th day (D8). The steps are
+    # in C++.
+    "Treasury Guard": [("DamageTakenPerFiftyThousandGold", 0.01, 0, "", 0.20)],
+    "Tax Collection": [("GoldShareOfPopulationEveryTenDays", 0.02)],
 }
 
 

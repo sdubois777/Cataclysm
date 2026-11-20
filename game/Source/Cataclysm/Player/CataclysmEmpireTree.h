@@ -145,6 +145,11 @@ struct CATACLYSM_API FCataclysmEmpireTreePlayerBonuses
 	float GoldPerThousandCitizensDaily = 0.0f;
 	float GoldInterestEveryTwentyDays = 0.0f;
 	float GoldInterestCap = 0.0f;
+
+	// ---- Slice 6d, the owner's ruling of 2026-11-20 on Tax Collection (D8). ----
+
+	/** Tax Collection's share of the standing cities' citizens, paid as tier 1 gold every 10th day. */
+	float GoldShareOfPopulationEveryTenDays = 0.0f;
 };
 
 /**
@@ -206,15 +211,17 @@ struct CATACLYSM_API FCataclysmEmpireTreeDungeonState
 
 /**
  * What the empire upgrade tree pays on a day that passes, in gold. Issue #2741 slice 6c, the coordinating session's B8
- * of 2026-11-20: Pax Imperialis every day, Wealth Interest every 20th. Worked out by `UCataclysmEmpireTree::
- * DailyIncomeFor` and paid by the game instance through `UCataclysmEmpireRun::OnDayPassed`.
+ * of 2026-11-20: Pax Imperialis every day, Wealth Interest every 20th; and slice 6d's Tax Collection every 10th (D8).
+ * Worked out by `UCataclysmEmpireTree::DailyIncomeFor` and paid by the game instance through
+ * `UCataclysmEmpireRun::OnDayPassed`.
  */
 struct CATACLYSM_API FCataclysmEmpireTreeDailyIncome
 {
 	int64 Pax = 0;
 	int64 Interest = 0;
+	int64 Tax = 0;
 
-	int64 Total() const { return Pax + Interest; }
+	int64 Total() const { return Pax + Interest + Tax; }
 };
 
 /**
@@ -384,6 +391,10 @@ public:
 	static constexpr int32 PaxCitizensAStep = 1000;
 	static constexpr int32 WealthInterestDaysAStep = 20;
 
+	/** And slice 6d's: Tax Collection's "Every 10 days". `tools/tests/test_empire_tree_treasury_and_tax.py` finds it in
+	 *  the node's text. */
+	static constexpr int32 TaxCollectionDaysAStep = 10;
+
 	/**
 	 * THE MOST A CITY UPGRADE'S PRICE IS REDUCED BY, so a price never falls below a quarter. The reductions add, as every
 	 * "reduced" does in the design's pipeline, and at full points they reach 125% (Municipal Bonds 45%, Public Works 20%,
@@ -496,9 +507,10 @@ public:
 
 	/**
 	 * What the tree pays on day `Day` (B8): Pax Imperialis' gold a day for each whole 1,000 citizens of the standing
-	 * cities, and on every 20th day Wealth Interest's share of the gold held, held at its cap; each in tier 1 gold
-	 * times `GoldScale` (R10), and then raised by the "all sources" increases G2 sends to income (Untouchable Wealth,
-	 * Fiscal Policy, Prosperity Index). Rounded to whole gold.
+	 * cities, on every 20th day Wealth Interest's share of the gold held, held at its cap, and on every 10th day Tax
+	 * Collection's share of the standing cities' citizens (slice 6d, D8); each in tier 1 gold times `GoldScale` (R10),
+	 * and then raised by the "all sources" increases G2 sends to income (Untouchable Wealth, Fiscal Policy, Prosperity
+	 * Index). Rounded to whole gold.
 	 */
 	static FCataclysmEmpireTreeDailyIncome DailyIncomeFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
 														  const FCataclysmEmpireTreeDungeonState& State, int32 Day,
