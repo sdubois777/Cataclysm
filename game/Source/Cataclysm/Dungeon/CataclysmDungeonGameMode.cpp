@@ -6304,6 +6304,9 @@ void ACataclysmDungeonGameMode::PlaceTheGuide()
 	CreaturesRaisedByARule.Add(Guide);
 	Guide->bGuidesThePlayerForTheFloorRule = true;
 	Guide->GuideDestination = CurrentFloor->ExitWorld();
+	// AT ITS SHARE OF THE PLAYER'S DEFAULT WALK UNTIL THE FIRST STEP READS THE PLAYER'S OWN. Issue #2790.
+	Guide->SetGuideWalkSpeed(ACataclysmPlayerCharacter::DefaultWalkSpeedCmPerSecond
+							 * Effects::DemonicGuideWalkShareOfPlayer);
 	DemonicGuide = Guide;
 	UE_LOG(LogCataclysm, Log, TEXT("Demonic Guide: %s at floor %d's entrance"), *Guide->GetName(), FloorNumber);
 	RefreshFloorModifierPanel();
@@ -6774,9 +6777,18 @@ void ACataclysmDungeonGameMode::StepDemonicGuide(
 		const FVector At = Guide->GetActorLocation();
 		const float Apart = FVector::Dist2D(Player->GetActorLocation(), At);
 		bBeyond = Apart > Effects::DemonicGuideChainCm;
-		bWaits = Apart > Effects::DemonicGuideWaitsBeyondCm;
+		// ONCE IT WAITS, IT WAITS UNTIL THE PLAYER IS BACK INSIDE ITS CHAIN, so a player who stopped is never left to
+		// chase it from outside the chain. It starts waiting beyond 15 m, as ruled in 2026-09. Issue #2790.
+		bWaits = Apart > Effects::DemonicGuideWaitsBeyondCm || (Guide->bGuideWaits && bBeyond);
 		Guide->GuideDestination = CurrentFloor->ExitWorld();
 		Guide->bGuideWaits = bWaits;
+
+		// AND IT WALKS AT ITS SHARE OF THE PLAYER'S OWN WALK SPEED, read now, so a faster or a slowed player has a
+		// faster or a slower guide. Issue #2790.
+		if (const UCharacterMovementComponent* PlayerMovement = Player->GetCharacterMovement())
+		{
+			Guide->SetGuideWalkSpeed(PlayerMovement->MaxWalkSpeed * Effects::DemonicGuideWalkShareOfPlayer);
+		}
 
 		// THE CHAIN, DRAWN AGAIN AROUND THE GUIDE once it has moved from where it was drawn. It does nothing itself.
 		ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);

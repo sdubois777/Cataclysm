@@ -1269,6 +1269,17 @@ void ACataclysmEnemyCharacter::RefreshWalkSpeed()
 		return;
 	}
 
+	// A FLOOR RULE'S GUIDE WALKS AT THE SPEED THE RULE GIVES IT, its share of the player's own, and nothing on the
+	// floor or the creature moves it. Issue #2790. A creature that is not a guide, or a guide not given one yet, goes on.
+	if (bGuidesThePlayerForTheFloorRule && GuideWalkSpeedCmPerSecond > 0.0f)
+	{
+		if (!FMath::IsNearlyEqual(Movement->MaxWalkSpeed, GuideWalkSpeedCmPerSecond))
+		{
+			Movement->MaxWalkSpeed = GuideWalkSpeedCmPerSecond;
+		}
+		return;
+	}
+
 	// NOTHING TO SCALE UNTIL BeginPlay HAS READ THE DESIGNED FIGURE. Writing
 	// zero here would freeze every creature in place for a frame.
 	if (DesignedWalkSpeedCmPerSecond <= 0.0f)
@@ -1291,6 +1302,12 @@ void ACataclysmEnemyCharacter::RefreshWalkSpeed()
 	{
 		Movement->MaxWalkSpeed = Wanted;
 	}
+}
+
+void ACataclysmEnemyCharacter::SetGuideWalkSpeed(float CmPerSecond)
+{
+	GuideWalkSpeedCmPerSecond = FMath::Max(0.0f, CmPerSecond);
+	RefreshWalkSpeed();
 }
 
 void ACataclysmEnemyCharacter::BeginCharge(const FVector& ToPoint,
