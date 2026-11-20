@@ -89,8 +89,9 @@ struct CATACLYSM_API FCataclysmSkillBarSlot
 	float ManaCost = 0.0f;
 
 	/**
-	 * The skill's level, or 0 for a skill that does not level: the basic attack, an empty box, a skill that is not the
-	 * player's. Issue #2764: the box shows it in its corner, with a thin bar of the experience into it along its foot.
+	 * The skill's level, or 0 for a box whose skill does not level: an empty box, or a skill that is not the player's.
+	 * The bar has no box for the basic attack (`SlotsShown`), which does not level. Issue #2764: the box shows its level
+	 * in its corner, with a thin bar of the experience into it along its foot.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
 	int32 SkillLevel = 0;

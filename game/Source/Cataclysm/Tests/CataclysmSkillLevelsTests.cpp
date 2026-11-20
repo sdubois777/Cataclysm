@@ -21,6 +21,7 @@
 #include "Interface/CataclysmSkillBar.h"
 #include "Misc/ScopeExit.h"
 #include "Player/CataclysmPlayerState.h"
+#include "Save/CataclysmSaveApply.h"
 #include "Save/CataclysmSaveGather.h"
 #include "Save/CataclysmSaveMigration.h"
 #include "Save/CataclysmSaveRecords.h"
@@ -550,8 +551,25 @@ bool FCataclysmSkillLevelsSaveTest::RunTest(const FString&)
 			Player.World->DestroyWorld(/*bInformEngineOfWorld=*/false);
 		}
 	};
-	ACataclysmPlayerState* Restored = Player.World ? Player.World->SpawnActor<ACataclysmPlayerState>() : nullptr;
-	if (!TestTrue(TEXT("set-up: a possessed player and a second player state"), Player.IsUsable() && Restored))
+	// THE PLAYER THE RECORD IS LOADED INTO: a second possessed player in the same world, as the character restore tests
+	// load into one, so the record goes back through the game's own load, `FCataclysmSaveApply::CharacterInto`, and its
+	// `RestoreSkillExperience` line. Before window skills-w2 this test called `RestoreSkillExperience` itself, and no
+	// test loaded a record holding skill experience through `CharacterInto`.
+	FSkillLevelsPlayer Loaded;
+	Loaded.World = Player.World;
+	if (Player.World)
+	{
+		Loaded.State = Player.World->SpawnActor<ACataclysmPlayerState>();
+		APlayerController* Controller = Player.World->SpawnActor<APlayerController>();
+		Loaded.Character = Player.World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+		if (Loaded.State && Controller && Loaded.Character)
+		{
+			Controller->SetPlayerState(Loaded.State);
+			Controller->Possess(Loaded.Character);
+			Loaded.Abilities = Loaded.Character->GetAbilitySystemComponent();
+		}
+	}
+	if (!TestTrue(TEXT("set-up: two possessed players"), Player.IsUsable() && Loaded.IsUsable()))
 	{
 		return false;
 	}
@@ -561,6 +579,24 @@ bool FCataclysmSkillLevelsSaveTest::RunTest(const FString&)
 
 	UCataclysmCharacterSave* Record = NewObject<UCataclysmCharacterSave>();
 	const bool bGathered = FCataclysmSaveGather::CharacterFrom(*Player.Character, *Record);
+
+	// CONTROL: THE SAME RECORD WITH NO VERSION IS REFUSED. `CharacterFrom` does not set the version, and a record
+	// nobody gave one is version 0, which `FCataclysmSaveMigration::Migrate` refuses ("the first real version is 1").
+	// Window skills-w1 (2026-11-19) ran this test without the line below, and the read came back null for that reason;
+	// this keeps the cause measured.
+	FString Unversioned;
+	FString UnversionedError;
+	const bool bWroteUnversioned = FCataclysmSaveStorage::ToJson(Record, Unversioned, UnversionedError);
+	ECataclysmSaveLoadResult UnversionedResult = ECataclysmSaveLoadResult::NotValidJson;
+	FString UnversionedMessage;
+	const UCataclysmSaveRecord* ReadUnversioned = bWroteUnversioned
+		? FCataclysmSaveStorage::FromJson(Unversioned, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(),
+										  UnversionedResult, UnversionedMessage)
+		: nullptr;
+
+	// THE VERSION THE SAVE WRITER GIVES EVERY CHARACTER RECORD, before it gathers
+	// (`UCataclysmSaveWriter::WriteTheCharacterRecord`), the one place the game makes a character record to write.
+	Record->SchemaVersion = UCataclysmCharacterSave::SchemaVersionNow;
 	FString Json;
 	FString Error;
 	const bool bWritten = FCataclysmSaveStorage::ToJson(Record, Json, Error);
@@ -568,24 +604,41 @@ bool FCataclysmSkillLevelsSaveTest::RunTest(const FString&)
 	FString Message;
 	const UCataclysmCharacterSave* Read = bWritten ? Cast<UCataclysmCharacterSave>(FCataclysmSaveStorage::FromJson(
 		Json, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message)) : nullptr;
-	if (Read)
-	{
-		Restored->RestoreSkillExperience(Read->SkillExperience);
-	}
+	int32 SkillsRefused = 0;
+	FString Why;
+	const bool bPutBack = Read && FCataclysmSaveApply::CharacterInto(*Read, *Loaded.Character, SkillsRefused, Why);
 
-	AddInfo(FString::Printf(TEXT("SKILLS SAVED: gathered %s, %d entries; read back %s; Molten Cleave %.2f, the Greatsword's "
-								 "Ultimate %.2f"),
+	AddInfo(FString::Printf(TEXT("SKILLS SAVED: gathered %s, %d entries; with no version read back %s (%s -- %s); at "
+								 "version %d read back %s (%s -- %s), %d entries; loaded through CharacterInto %s (%s); "
+								 "Molten Cleave %.2f, the Greatsword's Ultimate %.2f"),
 							bGathered ? TEXT("yes") : TEXT("NO"), Record->SkillExperience.Num(),
-							Read ? TEXT("yes") : TEXT("NO"), Restored->GetSkillExperience(MoltenCleave),
-							Restored->GetSkillExperience(Away)));
-	TestTrue(TEXT("set-up: the record was gathered and written"), bGathered && bWritten);
+							ReadUnversioned ? TEXT("yes") : TEXT("NO"), FCataclysmSaveStorage::Describe(UnversionedResult),
+							*UnversionedMessage, Record->SchemaVersion, Read ? TEXT("yes") : TEXT("NO"),
+							FCataclysmSaveStorage::Describe(Result), *Message, Read ? Read->SkillExperience.Num() : -1,
+							bPutBack ? TEXT("yes") : TEXT("NO"), *Why, Loaded.State->GetSkillExperience(MoltenCleave),
+							Loaded.State->GetSkillExperience(Away)));
+	TestTrue(TEXT("set-up: the record was gathered and written, with and without its version"),
+			 bGathered && bWritten && bWroteUnversioned);
 	TestEqual(TEXT("THE RECORD HOLDS BOTH SKILLS"), Record->SkillExperience.Num(), 2);
-	if (!TestNotNull(TEXT("and reads back"), Read))
+	TestNull(TEXT("CONTROL: WITH NO VERSION IT IS REFUSED, as in window skills-w1"), ReadUnversioned);
+	TestEqual(TEXT("by the version check"), static_cast<int32>(UnversionedResult),
+			  static_cast<int32>(ECataclysmSaveLoadResult::MigrationRefusedIt));
+	if (!TestNotNull(*FString::Printf(TEXT("AT THE WRITER'S VERSION IT READS BACK (%s -- %s)"),
+									  FCataclysmSaveStorage::Describe(Result), *Message),
+					 Read))
 	{
 		return false;
 	}
-	TestEqual(TEXT("PUT BACK, MOLTEN CLEAVE'S FRACTION"), Restored->GetSkillExperience(MoltenCleave), 37810.5);
-	TestEqual(TEXT("AND THE SKILL WHOSE WEAPON IS OFF, KEPT"), Restored->GetSkillExperience(Away), 1234.25);
+	TestEqual(TEXT("as a record of this version, not migrated"), static_cast<int32>(Result),
+			  static_cast<int32>(ECataclysmSaveLoadResult::Loaded));
+	TestEqual(TEXT("holding both skills"), Read->SkillExperience.Num(), 2);
+	if (!TestTrue(*FString::Printf(TEXT("LOADED THROUGH THE GAME'S LOAD, FCataclysmSaveApply::CharacterInto (%s)"), *Why),
+				  bPutBack))
+	{
+		return false;
+	}
+	TestEqual(TEXT("PUT BACK, MOLTEN CLEAVE'S FRACTION"), Loaded.State->GetSkillExperience(MoltenCleave), 37810.5);
+	TestEqual(TEXT("AND THE SKILL WHOSE WEAPON IS OFF, KEPT"), Loaded.State->GetSkillExperience(Away), 1234.25);
 	return true;
 }
 
@@ -627,7 +680,10 @@ bool FCataclysmSkillLevelsBarTest::RunTest(const FString&)
 							HeavyLater ? HeavyLater->SkillLevel : -1, HeavyLater ? *HeavyLater->SkillLevelText : TEXT("-"),
 							HeavyLater ? HeavyLater->SkillLevelFraction : -1.0f,
 							BasicLater ? BasicLater->SkillLevel : -1, BasicLater ? *BasicLater->SkillLevelText : TEXT("-")));
-	if (!TestTrue(TEXT("set-up: the bar has a Heavy box and a basic attack's box"), HeavyFresh && HeavyLater && BasicLater))
+	// THE BAR HAS NO BOX FOR THE BASIC ATTACK, by design since the bar was added (#801): `UCataclysmSkillBar::SlotsShown`
+	// lists the six slots a player presses. Window skills-w1 (2026-11-19) ran this test asking for one, and its set-up
+	// failed on that; the basic attack's half is asserted below as the box's absence.
+	if (!TestTrue(TEXT("set-up: the bar has a Heavy box"), HeavyFresh && HeavyLater))
 	{
 		return false;
 	}
@@ -635,8 +691,7 @@ bool FCataclysmSkillLevelsBarTest::RunTest(const FString&)
 	TestEqual(TEXT("in words"), HeavyFresh->SkillLevelText, FString(TEXT("Level 1: 0.0%")));
 	TestEqual(TEXT("AT LEVEL 3'S EXPERIENCE AND CHARACTER LEVEL 4, LEVEL 3"), HeavyLater->SkillLevel, 3);
 	TestEqual(TEXT("with an empty bar into it"), HeavyLater->SkillLevelFraction, 0.0f);
-	TestEqual(TEXT("THE BASIC ATTACK SHOWS NO LEVEL"), BasicLater->SkillLevel, 0);
-	TestTrue(TEXT("and no words"), BasicLater->SkillLevelText.IsEmpty());
+	TestNull(TEXT("THE BASIC ATTACK HAS NO BOX ON THE BAR, so it shows no level"), BasicLater);
 	TestTrue(TEXT("THE POP-UP SAYS THE LEVEL UNDER THE NAME"),
 			 UCataclysmSkillBar::PopupLinesFor(*HeavyLater).Num() > 1
 				 && UCataclysmSkillBar::PopupLinesFor(*HeavyLater)[1] == HeavyLater->SkillLevelText);

@@ -306,8 +306,9 @@ Unreal build or test has run, and no C++ guard proof.**
 
 ### SAID FIRST
 
-- **WRITTEN, NOT COMPILED.** The coordinating session gives the compile and the window; the machine's queue is ahead.
-  The three Python guard proofs ran and proved (below).
+- **COMPILED, AND WINDOW skills-w1 FAILED TWO OF THIS CHANGE'S OWN TESTS** ("Window skills-w1", below). Both were
+  faults in the tests, not in the game code, and are corrected; window skills-w2 is registered below. No C++ proof has
+  run yet. The three Python guard proofs ran and proved (below).
 - **IN A FIRST DUNGEON A SKILL GAINS LITTLE, AND THE OWNER CHOSE THAT PACE.** Measured, `sim/analyse_opening.py`
   section 7 at its smoke size (seeds 0 to 19): 106 first-surge Outpost dungeons of 5 to 8 floors; 94 of them end with
   the character at level 4 and its Heavy at skill level 3, a factor of 1.117, while the floors' median Common Imp health
@@ -457,6 +458,103 @@ C++, registered for the window, each with the prefix `Cataclysm.SkillLevels.` (1
 | K4 | `Migrate_9_to_10`'s `SetArrayField` line removed | 10 succeeded, 1 failed: `ACharacterFromBeforeSkillLevelsMigratesWithNoSkillExperience`, on "GAINING AN EMPTY LIST OF SKILL EXPERIENCE, written out"; the record read back still holds an empty list, its default, so "and every other field" passes |
 
 Restored, each must perform 11 with none failed.
+
+### Window skills-w1
+
+**THE COMPILES**, at `3077b2c42` on 2026-11-19, 19:35 to 19:45, under the lock skills-compile and before the window,
+all succeeding: the branch as committed (51 actions, 46 files); each changed file compiled alone (the build tool
+excluded 21 files from the unity files; 39 actions, 36 files, no warning); and the unity files again (18 actions, 15
+files, no warning). **ONE WARNING IN THE FIRST, NOT FROM THIS CHANGE**: C4996, "CountBits for 64-bit values has been
+deprecated", triggered by `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` line 1315, which
+the build log's next note names. It is issue #2756; this branch does not change that file.
+
+**THE WINDOW**, lock skills-w1, 19:48 to 20:17, started by `gate_sk.py` with no console window once the pre-checks
+passed, at their first reading (development `ecde2edee` with its CI and Unreal runs passed, no run in progress or
+queued, the lock free, no build or editor process, no open pull request, no simulation process, no Git LFS pointer):
+
+| Check | Registered | Measured |
+| :-- | :-- | :-- |
+| The build | -- | Target already up to date, nothing compiled |
+| `Cataclysm.SkillLevels.` alone | 11 | **11 performed, 9 succeeded, 2 failed**: `SkillExperienceIsGatheredIntoTheCharacterRecordAndPutBack` and `TheSkillBarShowsEachSkillsLevelAndNotTheBasicAttacks` |
+| The fifteen other groups alone | At their counts | Each passed at its count: `Cataclysm.PlayLoop.` 12, `Cataclysm.HitLog.` 7, `Cataclysm.SaveRecords.` 17, `Cataclysm.SkillBar.` 22, `Cataclysm.SkillChoiceScreen.` 8, `Cataclysm.SkillAssignment.` 16, `Cataclysm.CataclysmDraw.` 6, `Cataclysm.Gold.` 13, `Cataclysm.ConsumptionDouble.` 15, `Cataclysm.ConsumptionMark.` 6, `Cataclysm.EmpireTree.` 24, `Cataclysm.CharacterLevel.` 9, `Cataclysm.EnemyScore.` 12, `Cataclysm.SaveLoad.` 79, `Cataclysm.Skills.` 284 |
+| The whole suite | 4,968; 47 skipped halves | 4,968 performed, 4,966 succeeded, 2 failed (the same two); 47 skipped halves; "850 written and deleted, 0 left behind"; 4,968 declared, gap 0; "MCP server: not started" |
+| Python and ruff | Every test passing | 7,737 passed, 9 skipped; the JUnit file 7,746 tests, 0 failures, 0 errors; ruff clean |
+| The proofs | K1 to K4 | None run: the runner runs no proof once a test has failed, because the correction moves the head |
+
+No span of the run holds a "server/discover" or a "ConsoleCtrl" line.
+
+**WHAT THE OTHER NEW TESTS PRINTED**, in the whole suite, as designed: "SKILL BLOW: level 1 sent 57.600, took 63.360
+from health; level 3 sent 64.317 (x1.1166); level 1 again sent 57.600; credited 63.360, 70.749 and 63.360"; "NOT
+LEVELLED: the basic attack (row None) sent 57.600 and 57.600, credited 0 row(s); on the user Molten Cleave sent 57.600
+at level 1 and 57.600 at level 3"; "SKILL FACTORS: level 1 1.0000, 2 1.0567, 3 1.1166, 5 1.2468, 10 1.6427, 20
+2.8516"; "DEATH PAYS SKILLS: worth 468, maximum health 100.0, Molten Cleave removed 30.0, paid 140.400; after a
+creature no skill touched, 140.400"; "KILL SPLIT: 60 and 30 of 100 -> 600.0 and 300.0; healed, 150 and 50 of 100 ->
+750.0 and 250.0".
+
+**BOTH FAILURES WERE FAULTS IN THE TESTS, NOT IN THE GAME CODE. NEITHER TEST HAD RUN BEFORE THIS WINDOW**: the branch
+was first compiled for it, and no window log in any worktree names either test. The rebase onto `ecde2edee` changed
+nothing either depends on: it did not touch `CataclysmSkillBar.cpp`, and under `game/Source/Cataclysm/Save/` it changed
+only `CataclysmSaveTriggers.h` and `.cpp`.
+
+- **`SkillExperienceIsGatheredIntoTheCharacterRecordAndPutBack`**: "Expected 'and reads back' to be not null", and its
+  information line, "SKILLS SAVED: gathered yes, 2 entries; read back NO". **THE WRONG ASSUMPTION: that gathering a
+  character into a new record gives the record its version.** It does not. `FCataclysmSaveGather::CharacterFrom` leaves
+  `SchemaVersion` alone, and `UCataclysmSaveWriter::WriteTheCharacterRecord` -- the one place the game makes a character
+  record to write, the only `NewObject<UCataclysmCharacterSave>` outside the tests -- sets it to
+  `UCataclysmCharacterSave::SchemaVersionNow` before it gathers. The test made its record with `NewObject` and never
+  set it, so `FCataclysmSaveStorage::ToJson`, which writes the field as the record holds it, wrote version 0; and
+  `FCataclysmSaveMigration::Migrate` refuses a version below 1 ("the record says it is version 0; the first real
+  version is 1"), before any migration step, so `Migrate_9_to_10` was never reached. **READ FROM THE CODE, NOT
+  MEASURED**: the test did not print the reader's result or message. **A RECORD THIS BUILD WRITES DOES READ BACK**: in
+  the same run `Cataclysm.CataclysmDraw.TheCommittedCharacterFileKeepsItsSeedThroughARoundTrip` read
+  `Character_v10.json`, which holds two skill entries, wrote it with `ToJson` and read it back ("DRAW FILE: version 10,
+  seed 975318642, the identifier's 1412640493; written and read back: 975318642"). That test does not check the skill
+  entries; the corrected test does. The line "SKILLS MIGRATED: ... a word 6 (Migrate_9_to_10 failed: SkillExperience
+  holds something that is not a list)" in the same run is the migration test's third case, which writes a word on
+  purpose and expects the refusal; that test passed.
+- **`TheSkillBarShowsEachSkillsLevelAndNotTheBasicAttacks`**: "Expected 'set-up: the bar has a Heavy box and a basic
+  attack's box' to be true", and its information line, "the Heavy box 1 'Level 1: 0.0%', then 3 'Level 3: 0.0%' 0.000;
+  the basic attack's -1 '-'". **THE WRONG ASSUMPTION: that the bar has a box for the basic attack.** It has none, by
+  design since the bar was added on 2026-08-21 (#801): `UCataclysmSkillBar::SlotsShown` lists the six slots a player
+  presses. The Heavy box's figures are the ones the test expects.
+
+**CORRECTED** (`game/Source/Cataclysm/Tests/CataclysmSkillLevelsTests.cpp` and two statements this change made):
+
+- the save test sets `SchemaVersion` as the writer does, and prints the reader's result and message with it and without
+  it; a control writes the same record with no version and asserts it is refused by the version check
+  (`MigrationRefusedIt`), and the versioned record must load as `Loaded`, holding both skills;
+- **AND IT LOADS THE RECORD THROUGH THE GAME'S OWN LOAD**, as the coordinating session asked: into a second possessed
+  player in the same world, through `FCataclysmSaveApply::CharacterInto`, whose `RestoreSkillExperience` line is where a
+  real load puts skill experience back, and each skill's experience must come back on that player. It called
+  `RestoreSkillExperience` on a bare player state before. **No test checked what that line puts back until now**: the
+  character restore, gold, empire tree and consumption tests all call `CharacterInto` and so run the line, but none of
+  them asserts any skill experience, and no test file but this change's calls `SetSkillExperience`. It needs one new
+  include in the test file, `Save/CataclysmSaveApply.h`;
+- the bar test asks only for the Heavy box, and asserts the bar has no box for the basic attack;
+- `game/Source/Cataclysm/Interface/CataclysmSkillBar.h`: the comment on `FCataclysmSkillBarSlot::SkillLevel` listed
+  "the basic attack" among the boxes at level 0, and now says the bar has no box for it;
+- `docs/Play_Loop_Checklist.md` said the basic attack "shows neither", and now says the bar has no box for it.
+
+No game code changed. The test count does not change (11 in `Cataclysm.SkillLevels.`, 4,968 in all), and K1 to K4 do
+not: none of them breaks a line either test needs, and none names either test.
+
+### Registered for window skills-w2
+
+As the coordinating session approved it, at the commit carrying the correction. **NO SEPARATE THREE-BUILD COMPILE**:
+the change since `3077b2c42` is one test file and one header comment, so the window's own build compiles it, and a build
+that fails stops the window at its first step. The approval was given before the test file gained its one new include,
+`Save/CataclysmSaveApply.h`, and was asked again for that.
+
+1. `Cataclysm.SkillLevels.` alone: 11 of 11. The fifteen other groups passed at their counts in skills-w1 at
+   `3077b2c42` and are not run alone again.
+2. The whole suite: 4,968, with 47 skipped halves and 0 test saves left behind.
+3. Python with a JUnit file (7,737 passed, 9 skipped), and ruff.
+4. K1 to K4, as registered under "Guard proofs".
+
+The corrected save test's information line is predicted to read "with no version read back NO (the migration chain
+refused it -- ... the record says it is version 0; the first real version is 1)", then "at version 10 read back yes
+(read -- ), 2 entries; loaded through CharacterInto yes (); Molten Cleave 37810.50, the Greatsword's Ultimate
+1234.25".
 
 ---
 
