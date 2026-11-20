@@ -911,9 +911,10 @@ is added or changed. Issue #2756; the plan was accepted by the coordinating sess
 
 ### SAID FIRST
 
-- **NOT YET COMPILED OR RUN IN THE ENGINE.** Written while the owner played from the main checkout, when the
-  coordinating session allowed no compile; the machine turn comes after skill levelling. What the run must show is
-  under "Registered before the run", below.
+- **COMPILED, AND RUN IN WINDOW countbits-w1 ON 2026-11-20 AT `80ae5e2db`, WITH EVERY REGISTERED FIGURE MET.** The
+  three compiles printed no warning or error line, so no C4996; the tests alone, the whole suite and the proof P1
+  are under "Measured", below. The entry was written while the owner played from the main checkout, when the
+  coordinating session allowed no compile.
 - **REBASED ON 2026-11-20 ONTO DEVELOPMENT `9772aea2a`, AS `fix/countbits-of-a-32-bit-value-2`.** The first branch,
   from `055ac0254`, was pushed, so its rebase goes to a new name rather than a force push. The code change applied
   without a conflict; this entry conflicted at the top of this file and is placed by when it was first written
@@ -1002,12 +1003,50 @@ window's log before it starts.**
 The Starvation test would fail under the same break by reading its code (10 and 15 expected, 5 read), but P1's prefix
 does not select it, so the proof does not show that.
 
+### Measured: the three compiles and window countbits-w1
+
+Both at `80ae5e2db`, on 2026-11-20. The scripts are `compile_countbits.py` and `run_countbits.py` in
+`.claude/windows/` in this session's worktree, and every output and log named below is kept beside them.
+
+**The three compiles**, 01:23:36 to 01:29:28 local time, lock `countbits-compile`; output `countbits_compile.out`, and
+each build tool log as `countbits_build_<build>_ubt.log`. "Warning or error lines" counts the lines holding "warning C"
+or ": error", as registered. The one line in build 1's log holding the word "warning" at all is the header tool's
+command, with its `-WarningsAsErrors` switch.
+
+| Build | Result | Compiled | Warning or error lines |
+|---|---|---|---|
+| 1, the branch, the build plan moved aside | Succeeded, 51 actions | 46 files, among them `Module.Cataclysm.2.cpp`, the unity file that holds `CataclysmAbilitySystemComponent.cpp` | 0; no C4996 |
+| 2, the changed file alone, the index read from `9772aea2a` | Succeeded, 5 actions | `CataclysmAbilitySystemComponent.cpp` ("[Adaptive Build] Excluded from Cataclysm unity file: CataclysmAbilitySystemComponent.cpp") and `Module.Cataclysm.2.cpp` | 0 |
+| 3, the unity files again | Succeeded, 4 actions | `Module.Cataclysm.2.cpp` | 0 |
+
+**Window countbits-w1**, 01:31 to 01:55 local time, lock `countbits-w1`; output `countbits_w1_run.out`. The pre-checks
+all passed at 01:30:59 (`countbits_prechecks.out`: 12,497 MB free, no workflow run in progress or queued, no pull
+request open, no build or editor process, no LFS pointer among the assets). The window's build: "target already up to
+date, 0 actions, nothing compiled".
+
+| Registered | Measured |
+|---|---|
+| `Cataclysm.Enchantments.TheLeechPoolsScale` alone: 1 performed, 1 succeeded | "Tests: 1 tests performed, 1 succeeded, 0 failed" |
+| `Cataclysm.Enchantments.StarvationsSixPieces` alone: 1 performed, 1 succeeded | "Tests: 1 tests performed, 1 succeeded, 0 failed" |
+| The whole suite: 4985 performed, all succeeding, 47 skipped halves | "Tests: 4985 tests performed, 4985 succeeded, 0 failed. 47 skipped part of what they check"; "Declared: 4985 tests in the tree at 80ae5e2db; 4985 performed, gap 0" |
+| "Test saves: 852 written and deleted, 0 left behind", each test's share as in the base log | "Test saves: 852 written and deleted, 0 left behind"; against the base: "a rise of 0", and no test's share differs |
+| P1: 1 performed, 0 succeeded, 1 failed, `TheLeechPoolsScaleCountsEachPoolBeingLeechedIntoOnceAndAtMostThree` (10, 15 and 10 expected; 5 read for each); restored, 1 of 1 | PROVED. With the break in: "1 tests performed, 0 succeeded, 1 failed", that test named; its three failed assertions read "Expected 'health and mana are two pools: 10' to be 10.000000, but it was 5.000000", "Expected 'all three pools, one of them twice: 15' to be 15.000000, but it was 5.000000" and "Expected 'payments into all three, and no energy shield: 10, and the full pools still count' to be 10.000000, but it was 5.000000". Restored: "1 tests performed, 1 succeeded, 0 failed". The source hash was the same before and after the proof |
+
+Each of the three test runs printed "MCP server: not started (no start-up line in the log)". The whole suite's engine
+log is kept as `countbits_suite_engine_80ae5e2d.log`, and P1's two halves as `countbits_P1_run1.log` and
+`countbits_P1_run2.log`. The restored half's only Error lines are the two the editor prints at start-up about
+`GameFeatureData`, which the broken half printed too.
+
 ### Python, measured
 
 **After the rebase**, at `34f9b9c38`, the change and this entry committed: "7760 passed, 9 skipped in 305.44s
 (0:05:05)"; the JUnit file: tests 7769, failures 0, errors 0, skipped 9. ruff: "All checks passed!". The same counts
 as window fix-2725-w1's at `31002c802` ("7760 passed, 9 skipped in 312.42s"), whose tree differs from `9772aea2a`'s
 only in `docs/DECISIONS.md`, as expected: this branch adds and removes no Python test.
+
+In window countbits-w1, at `80ae5e2db`: "7760 passed, 9 skipped in 300.88s (0:05:00)"; the JUnit file: tests 7769,
+failures 0, errors 0, skipped 9 (`countbits_python_80ae5e2d.log`, `countbits_junit_80ae5e2d.xml`). ruff: "All
+checks passed!".
 
 Before the rebase, at `96a9b2466`: "7704 passed, 9 skipped in 399.95s (0:06:39)"; the JUnit file: tests 7713,
 failures 0, errors 0, skipped 9. The same counts as at the display slice's `8b03a4bed`.
