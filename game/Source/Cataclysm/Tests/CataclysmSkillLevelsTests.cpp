@@ -596,6 +596,7 @@ bool FCataclysmSkillLevelsMigrationTest::RunTest(const FString&)
 	const TSharedPtr<FJsonObject> Expected = CataclysmSaveFixtures::Parse(Text);
 	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmCharacterSave::SchemaVersionNow);
 	CataclysmSaveFixtures::AddTheCharactersVersion10Defaults(*Expected);
+	CataclysmSaveFixtures::AddTheCharactersVersion11Defaults(*Expected); // And 11, #2741 slice 6e: no debt.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -619,7 +620,7 @@ bool FCataclysmSkillLevelsMigrationTest::RunTest(const FString&)
 				 static_cast<int32>(ECataclysmSaveMigrationResult::Migrated));
 	TestEqual(TEXT("Character_v9.json is migrated"), static_cast<int32>(Result),
 			  static_cast<int32>(ECataclysmSaveLoadResult::Migrated));
-	TestEqual(TEXT("to version 10"), Read->SchemaVersion, 10);
+	TestEqual(TEXT("to the record's version, 11 since issue #2741 slice 6e"), Read->SchemaVersion, 11);
 	TestEqual(TEXT("holding no skill experience"), Read->SkillExperience.Num(), 0);
 	TestTrue(TEXT("and every other field"), bSame);
 	return true;

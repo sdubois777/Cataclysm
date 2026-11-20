@@ -4965,7 +4965,7 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmBuyCityUpgrade(
 				Result == ECataclysmCityUpgradeResult::Bought
 					? FString::Printf(TEXT("Bought for %s."),
 									  *UCataclysmCityUpgradePurchase::PriceText(Price))
-					: UCataclysmCityUpgradePurchase::RefusalText(Result, Price, Held);
+					: UCataclysmCityUpgradePurchase::RefusalTextIn(World, Result, Price, Held);
 			Ar.Logf(TEXT("%s"), *Said);
 
 			if (Result == ECataclysmCityUpgradeResult::Bought)

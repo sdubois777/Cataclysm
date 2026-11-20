@@ -35,6 +35,26 @@ int64 UCataclysmCityUpgradePurchase::GoldHeldIn(const UObject* WorldContext)
 	return UCataclysmGameInstance::GoldHeldBy(WorldContext, Held) ? Held : 0;
 }
 
+int64 UCataclysmCityUpgradePurchase::CreditIn(const UObject* WorldContext, int64 Price)
+{
+	// NOTHING MORE ON CREDIT UNTIL THE DEBT IS PAID (the owner's ruling of 2026-11-20, relayed).
+	int64 Owed = 0;
+	int64 EachDay = 0;
+	if (Price <= 0 || !UCataclysmGameInstance::GoldOwedBy(WorldContext, Owed, EachDay) || Owed > 0)
+	{
+		return 0;
+	}
+	return UCataclysmEmpireTree::UpgradeCreditFor(UCataclysmGameInstance::EmpireTreePlayerBonusesFor(WorldContext),
+												  Price);
+}
+
+int64 UCataclysmCityUpgradePurchase::GoldOwedIn(const UObject* WorldContext)
+{
+	int64 Owed = 0;
+	int64 EachDay = 0;
+	return UCataclysmGameInstance::GoldOwedBy(WorldContext, Owed, EachDay) ? Owed : 0;
+}
+
 ECataclysmCityUpgradeResult UCataclysmCityUpgradePurchase::Buy(const UObject* WorldContext, UCataclysmEmpireRun* Run,
 																int32 CityId, FName RowName)
 {
@@ -46,18 +66,30 @@ ECataclysmCityUpgradeResult UCataclysmCityUpgradePurchase::Buy(const UObject* Wo
 	const FCataclysmCityUpgrade Upgrade = UCataclysmCityUpgradeMapping::MakeFromTable(RowName);
 	const int64 Price = PriceIn(WorldContext, Run, RowName, CityId);
 	const int64 Held = GoldHeldIn(WorldContext);
+	const bool bOnCredit = Price > Held;
+	const int64 Credit = bOnCredit ? CreditIn(WorldContext, Price) : 0;
 
-	// THE RUN'S QUESTION FIRST, so nothing is taken for a purchase it would refuse.
-	const ECataclysmCityUpgradeResult Asked = Run->WouldBuyCityUpgrade(CityId, Upgrade, Price, Held);
+	// THE RUN'S QUESTION FIRST, so nothing is taken for a purchase it would refuse. The credit the tree gives counts as
+	// gold held for it (slice 6e, D2), as the city screen asks it.
+	const ECataclysmCityUpgradeResult Asked = Run->WouldBuyCityUpgrade(CityId, Upgrade, Price, Held + Credit);
 	if (Asked != ECataclysmCityUpgradeResult::Bought)
 	{
 		return Asked;
 	}
 
 	// THE GOLD BEFORE THE UPGRADE, so an upgrade is never held unpaid. All or nothing: a balance that holds less is
-	// left as it was, which the question above has just ruled out.
+	// left as it was, which the question above has just ruled out. ON CREDIT the whole balance is taken and the rest
+	// owed (D2), repaid by day when Sovereign Loans is held (D4).
 	bool bFromTheCharacter = false;
-	if (Price > 0 && !UCataclysmGameInstance::SpendGoldFor(WorldContext, Price, bFromTheCharacter))
+	int64 Owed = 0;
+	const bool bPaid = Price <= 0
+		|| (bOnCredit ? UCataclysmGameInstance::SpendGoldOnCreditFor(
+							WorldContext, Price, Credit,
+							UCataclysmEmpireTree::RepaidDailyFor(
+								UCataclysmGameInstance::EmpireTreePlayerBonusesFor(WorldContext)),
+							bFromTheCharacter, Owed)
+					  : UCataclysmGameInstance::SpendGoldFor(WorldContext, Price, bFromTheCharacter));
+	if (!bPaid)
 	{
 		UE_LOG(LogCataclysm, Error,
 			   TEXT("City upgrade %s on city %d: the run would sell it for %lld gold against %lld held, and the "
@@ -66,12 +98,17 @@ ECataclysmCityUpgradeResult UCataclysmCityUpgradePurchase::Buy(const UObject* Wo
 		return ECataclysmCityUpgradeResult::NotEnoughGold;
 	}
 
-	const ECataclysmCityUpgradeResult Result = Run->BuyCityUpgrade(CityId, Upgrade, Price, Held);
+	const ECataclysmCityUpgradeResult Result = Run->BuyCityUpgrade(CityId, Upgrade, Price, Held + Credit);
 	if (Result != ECataclysmCityUpgradeResult::Bought)
 	{
-		// GIVEN BACK, a guard: the run refuses only what it refused a moment ago, above.
+		// GIVEN BACK, a guard: the run refuses only what it refused a moment ago, above. On credit, the balance taken is
+		// given back and the debt made is forgiven.
 		bool bIntoTheCharacter = false;
-		if (Price > 0)
+		if (Price > 0 && Owed > 0)
+		{
+			UCataclysmGameInstance::UndoCreditFor(WorldContext, Price - Owed, Owed);
+		}
+		else if (Price > 0)
 		{
 			UCataclysmGameInstance::AddGoldFor(WorldContext, Price, bIntoTheCharacter);
 		}
@@ -120,4 +157,25 @@ FString UCataclysmCityUpgradePurchase::RefusalText(ECataclysmCityUpgradeResult R
 							   *ACataclysmDroppedItem::GoldAmountText(FMath::Max<int64>(0, Price - Held)));
 	}
 	return UCataclysmCityUpgradeRules::ResultText(Result);
+}
+
+FString UCataclysmCityUpgradePurchase::RefusalTextIn(const UObject* WorldContext, ECataclysmCityUpgradeResult Result,
+													 int64 Price, int64 Held)
+{
+	if (Result != ECataclysmCityUpgradeResult::NotEnoughGold)
+	{
+		return RefusalText(Result, Price, Held);
+	}
+
+	// WHAT IS MISSING BEYOND THE CREDIT, and A DEBT NAMED when it is what stops the credit (D6). A debt with neither
+	// credit node held -- refunded since (D7) -- stops nothing a node would give, so it is not named.
+	const FString Short = RefusalText(Result, Price, Held + CreditIn(WorldContext, Price));
+	const int64 Owed = GoldOwedIn(WorldContext);
+	if (Owed <= 0
+		|| !UCataclysmEmpireTree::AllowsUpgradeCredit(UCataclysmGameInstance::EmpireTreePlayerBonusesFor(WorldContext)))
+	{
+		return Short;
+	}
+	return FString::Printf(TEXT("%s, and no more credit until the %s owed is paid."), *Short.LeftChop(1),
+						   *ACataclysmDroppedItem::GoldAmountText(Owed));
 }

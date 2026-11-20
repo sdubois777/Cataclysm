@@ -137,7 +137,7 @@ namespace CataclysmSaveRecordTest
 			// ACCOUNT WAS AT v2 FROM 2026-11-03, when its banked empire upgrade
 			// points became a double so a fraction of a point is kept (issue #52);
 			// Account_v1.json is a migration input now.
-			{ UCataclysmAccountSave::StaticClass(),   TEXT("Account_v4.json") },
+			{ UCataclysmAccountSave::StaticClass(),   TEXT("Account_v5.json") },
 			// RUN IS AT v11 SINCE 2026-11-20, when a run came to carry the dungeons cleared
 			// since the last death (issue #2741 slice 5b); Run_v10.json is a migration input now.
 			// RUN WAS AT v10 FROM 2026-11-19, when a saved creature came to say whether it
@@ -186,7 +186,7 @@ namespace CataclysmSaveRecordTest
 			// THIS LIST IS THE CURRENT SHAPE OF EACH RECORD, and an out-of-date
 			// file here would leave the completeness check below comparing a
 			// record against a fixture that no longer describes it. Issue #50.
-			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v10.json") },
+			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v11.json") },
 			{ UCataclysmRunSave::StaticClass(),       TEXT("Run_v12.json") },
 		};
 	}
@@ -630,7 +630,7 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v10.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v11.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -643,14 +643,14 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v10.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v11.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
 
-	// 10 SINCE `Character_v10.json` BECAME THE COMMITTED FILE (issue #2764); it was 9 from issue #2741 slice 1c, 8
-	// until then.
-	TestEqual(TEXT("it says it is version 10"), Read->SchemaVersion, 10);
+	// 11 SINCE `Character_v11.json` BECAME THE COMMITTED FILE (issue #2741 slice 6e); it was 10 from issue #2764, 9
+	// from issue #2741 slice 1c, 8 until then.
+	TestEqual(TEXT("it says it is version 11"), Read->SchemaVersion, 11);
 	// THE SEED THE FILE STATES, NOT THE ONE ITS IDENTIFIER GIVES, so a seed re-derived on load cannot pass. #1324 6a.
 	TestEqual(TEXT("the Cataclysm order seed in the file"), Read->CataclysmOrderSeed,
 		CataclysmSaveFixtures::CommittedCharacterOrderSeed);
@@ -900,6 +900,7 @@ bool FCataclysmSaveCharacterV3Migrates::RunTest(const FString&)
 	Expected->SetNumberField(TEXT("Gold"), 0); // And 8, issue #2742: no gold of its own.
 	CataclysmSaveFixtures::AddTheCharactersVersion9Defaults(*Expected); // And 9, issue #2741 slice 1c: its own tree.
 	CataclysmSaveFixtures::AddTheCharactersVersion10Defaults(*Expected); // And 10, issue #2764: no skill experience.
+	CataclysmSaveFixtures::AddTheCharactersVersion11Defaults(*Expected); // And 11, #2741 slice 6e: no debt.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -1447,7 +1448,7 @@ bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v10.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v11.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1459,7 +1460,7 @@ bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
 		Text, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v10.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v11.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}

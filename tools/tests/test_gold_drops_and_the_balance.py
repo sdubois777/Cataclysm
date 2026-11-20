@@ -237,7 +237,8 @@ def test_one_function_says_which_balance_a_character_has() -> None:
      "UCataclysmGameInstance::GoldHeldBy(WorldContext, Held)"),
     ("Items/CataclysmDroppedItem.cpp",
      "int64 UCataclysmDropPickup::BankGold(UWorld* World, const TArray<ACataclysmDroppedItem*>& Piles)",
-     "UCataclysmGameInstance::AddGoldFor(World, Total, bIntoTheCharacter)"),
+     # Since issue #2741 slice 6e the pickup pays a debt down first, in the one function beside AddGoldFor that does.
+     "UCataclysmGameInstance::AddPickedUpGoldFor(World, Total, bIntoTheCharacter, Repaid)"),
 ], ids=["map line", "play loop line", "pickup"])
 def test_every_reader_of_the_balance_goes_through_the_one_function(relative: str, signature: str, reads: str) -> None:
     assert reads in body(relative, signature), (

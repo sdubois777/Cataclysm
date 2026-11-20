@@ -2383,6 +2383,14 @@ enum class ECataclysmEmpireTreeEffect : uint8
 
 	/** The share of the standing cities' citizens paid as tier 1 gold every 10th day, per point (Tax Collection, D8). */
 	GoldShareOfPopulationEveryTenDays,
+
+	// ---- Slice 6e: the gold debt the owner allowed through the tree's own options for one, 2026-11-20.
+
+	/** The share of a city upgrade's price that may be owed, per point (Global Credit, D2). */
+	UpgradeShortfallAllowed,
+
+	/** The same, repaid by a tenth a day (Sovereign Loans, D2, D4). */
+	UpgradeShortfallAllowedRepaidDaily,
 };
 
 /**

@@ -519,6 +519,14 @@ FCataclysmEmpireTreePlayerBonuses UCataclysmEmpireTree::PlayerBonusesFor(const U
 		case ECataclysmEmpireTreeEffect::GoldShareOfPopulationEveryTenDays:
 			Bonuses.GoldShareOfPopulationEveryTenDays += Total;
 			break;
+
+		// SLICE 6E. Global Credit and Sovereign Loans (D2, D4).
+		case ECataclysmEmpireTreeEffect::UpgradeShortfallAllowed:
+			Bonuses.UpgradeShortfallAllowed += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::UpgradeShortfallAllowedRepaidDaily:
+			Bonuses.UpgradeShortfallAllowedRepaidDaily += Total;
+			break;
 		default:
 			break;
 		}
@@ -848,6 +856,29 @@ float UCataclysmEmpireTree::UpgradePriceFactorFor(const FCataclysmEmpireTreePlay
 		Reduced += Bonuses.SurgeDamagedCityUpgradePriceReduced;
 	}
 	return 1.0f - FMath::Clamp(Reduced, 0.0f, UpgradePriceReductionCap);
+}
+
+int64 UCataclysmEmpireTree::UpgradeCreditFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses, int64 Price)
+{
+	// THE TWO SHARES ADD (D2), as two "up to X% of the cost" of one price do; the price itself is the most one can be
+	// short by.
+	const double Share = static_cast<double>(FMath::Max(0.0f, Bonuses.UpgradeShortfallAllowed))
+		+ static_cast<double>(FMath::Max(0.0f, Bonuses.UpgradeShortfallAllowedRepaidDaily));
+	if (Price <= 0 || Share <= 0.0)
+	{
+		return 0;
+	}
+	return FMath::Min(Price, static_cast<int64>(FMath::FloorToDouble(static_cast<double>(Price) * Share)));
+}
+
+bool UCataclysmEmpireTree::AllowsUpgradeCredit(const FCataclysmEmpireTreePlayerBonuses& Bonuses)
+{
+	return Bonuses.UpgradeShortfallAllowed > 0.0f || Bonuses.UpgradeShortfallAllowedRepaidDaily > 0.0f;
+}
+
+bool UCataclysmEmpireTree::RepaidDailyFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses)
+{
+	return Bonuses.UpgradeShortfallAllowedRepaidDaily > 0.0f;
 }
 
 float UCataclysmEmpireTree::MovementSpeedFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses)

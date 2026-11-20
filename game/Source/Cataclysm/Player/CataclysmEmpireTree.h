@@ -150,6 +150,12 @@ struct CATACLYSM_API FCataclysmEmpireTreePlayerBonuses
 
 	/** Tax Collection's share of the standing cities' citizens, paid as tier 1 gold every 10th day. */
 	float GoldShareOfPopulationEveryTenDays = 0.0f;
+
+	// ---- Slice 6e, the owner's ruling of 2026-11-20 on Global Credit and Sovereign Loans (D2, D4). ----
+
+	/** Global Credit's share of a city upgrade's price that may be owed, and Sovereign Loans' share, repaid by day. */
+	float UpgradeShortfallAllowed = 0.0f;
+	float UpgradeShortfallAllowedRepaidDaily = 0.0f;
 };
 
 /**
@@ -395,6 +401,10 @@ public:
 	 *  the node's text. */
 	static constexpr int32 TaxCollectionDaysAStep = 10;
 
+	/** And slice 6e's: Sovereign Loans' "repaid automatically over 10 days", a tenth of the debt a day (D4).
+	 *  `tools/tests/test_empire_tree_credit.py` finds it in the node's text. */
+	static constexpr int32 SovereignLoansDays = 10;
+
 	/**
 	 * THE MOST A CITY UPGRADE'S PRICE IS REDUCED BY, so a price never falls below a quarter. The reductions add, as every
 	 * "reduced" does in the design's pipeline, and at full points they reach 125% (Municipal Bonds 45%, Public Works 20%,
@@ -481,6 +491,19 @@ public:
 	 */
 	static float UpgradePriceFactorFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses, const UCataclysmEmpireMap* Map,
 									   int32 CityId);
+
+	/**
+	 * The gold a city upgrade of this price may be short by, owed (issue #2741 slice 6e, D2): Global Credit's and
+	 * Sovereign Loans' shares a point of the price, added, rounded down and never more than the price itself -- a
+	 * shortfall cannot be larger than the price, so that is arithmetic and not a cap. 0 with neither node.
+	 */
+	static int64 UpgradeCreditFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses, int64 Price);
+
+	/** Whether either credit node is held, so a debt can be the reason no more credit is given. */
+	static bool AllowsUpgradeCredit(const FCataclysmEmpireTreePlayerBonuses& Bonuses);
+
+	/** Whether a debt made now is repaid by day: Sovereign Loans held at the purchase (D4). */
+	static bool RepaidDailyFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses);
 
 	/**
 	 * What the tree pays at the clear of a dungeon of `Floors` floors. Issue #2741 slice 6b. SALVAGE RIGHTS (B4): its
