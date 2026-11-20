@@ -252,9 +252,9 @@ Test: `Cataclysm.SkillLevels.ASkillsKillingBlowIsCountedInTheDeathsSplit`, new
 
 ### SAID FIRST
 
-- **NOT COMPILED OR RUN YET.** The fault was read from the code, not measured, and the coordinating session confirmed it
-  from the same lines. The new test is predicted to fail on `development` as it stands; the registered proof's broken
-  half is that prediction.
+- **COMPILED AND TESTED, AND THE FAULT IS MEASURED** ("Window skills-1b-w1", below). With this change, a kill in one
+  Molten Cleave blow and a kill in two each paid the skill the creature's whole worth, 468. B1's broken half puts the
+  credit back in slice 1's order, and there the same kills paid 0 and 312: the fault, measured.
 - **ONLY THE TIMING MOVES**, as the coordinating session ruled: the blows that earn a skill experience are exactly
   slice 1's. Damage over time, rows carried after a skill has gone, gadgets and traps are slice 2a's.
 
@@ -321,6 +321,42 @@ group passes, `ASkillsBlowOnACreatureIsScaledByItsLevelAndCreditedToIt` with the
 **Registered for the window**: `Cataclysm.SkillLevels.` alone, 12; the whole suite, 4,979 with 47 skipped halves and
 0 test saves left behind: 4,978 measured by window tree-5a-w1 at `11affe009` ("4978 tests performed, 4978 succeeded, 0
 failed"), whose `game/` tree is `development` `82929a51e`'s, this change's base, + 1; and B1 as predicted above.
+
+### Window skills-1b-w1
+
+**THE COMPILES**, at `5f3fd9798` on 2026-11-19, 22:52 to 22:58, under the lock skills-1b-compile and before the window,
+all succeeding: the branch as committed (51 actions, 46 files); each changed file compiled alone (the build tool excluded
+exactly `CataclysmSkillEffects.cpp`, `CataclysmVitalAttributeSet.cpp` and `CataclysmSkillLevelsTests.cpp` from the unity
+files; 9 actions, 6 files, no warning); and the unity files again (6 actions, 3 files, no warning). One warning in the
+first, not from this change: the C4996 "CountBits for 64-bit values has been deprecated", triggered by
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` line 1315 (issue #2756), which this branch
+does not change.
+
+**THE WINDOW**, lock skills-1b-w1, 22:59 to 23:22, started by `gate_kb.py` with no console window once the pre-checks
+passed, at their first reading:
+
+| Check | Registered | Measured |
+| :-- | :-- | :-- |
+| The build | -- | Target already up to date, nothing compiled |
+| `Cataclysm.SkillLevels.` alone | 12 | 12 performed, 12 succeeded |
+| The whole suite | 4,979; 47 skipped halves; 0 test saves left | 4,979 performed, 4,979 succeeded; 47 skipped halves; "850 written and deleted, 0 left behind"; 4,979 declared, gap 0; "MCP server: not started" |
+| Python and ruff | Every test passing | 7,751 passed, 9 skipped; the JUnit file 7,760 tests, 0 failures, 0 errors; ruff clean |
+| B1 | Proved on the new test's two payment assertions | PROVED, below |
+
+**THE NEW TEST'S LINE**, in the whole suite: "KILLING BLOW: worth 468; one blow on 5.0 health dealt 5.000 (whole 63.360),
+killed yes, paid 468.000; two blows on 95.040 health dealt 63.360 and 31.680, killed yes, paid 468.000". Slice 1's own
+figures did not move: "credited 63.360, 70.749 and 63.360" and "Molten Cleave removed 30.0, paid 140.400".
+
+**B1**, through `prove_cpp_guard` with each half's engine log kept (`.claude/windows/kb_B1_run<1|2>.log` in this
+worktree), prefix `Cataclysm.SkillLevels.`, PROVED:
+
+| Broken half | Its failed assertions | Restored half |
+| :-- | :-- | :-- |
+| 12 performed, 11 succeeded, 1 failed: `ASkillsKillingBlowIsCountedInTheDeathsSplit` | Two: "A KILL IN ONE SKILL BLOW PAYS THE SKILL THE CREATURE'S WHOLE WORTH", 468 expected, 0; "AND A KILL IN TWO PAYS IT THE WHOLE WORTH, the killing blow's share included", 468 expected, 312 | 12 of 12 |
+
+**312 IS TWO THIRDS OF 468**: in slice 1's order the first of the two equal 63.36 blows on 95.04 health was credited
+and the killing blow was not. The broken half's own line says so: "one blow ... paid 0.000; two blows ... paid
+312.000". No log of the run holds a "server/discover" or a "ConsoleCtrl" line.
 
 ---
 
