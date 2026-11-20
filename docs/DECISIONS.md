@@ -892,7 +892,8 @@ force push; `feat/placement-seeds-2749` stays at `abac0adf5`. Development had me
   since the run record went to version 10, only the migration test may read `Run_v9.json`, and this slice's loaded-run
   test read it. It reads `Run_v10.json` now. The two files hold the same stream state, 1357924680, and the same four
   Cataclysms; they differ only in the version and two creatures' wraith flags, so its registered "Demonic, then War"
-  stands. Ruff clean.
+  stands. At `c536fbc72`, the commit that makes that change, the suite printed "7769 passed, 9 skipped", the JUnit
+  file agreeing (7,778 tests, no failure, 9 skipped). Ruff clean.
 
 ### Registered before the diagnostic window
 
