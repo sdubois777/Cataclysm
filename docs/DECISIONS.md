@@ -25,8 +25,14 @@ the coordinating session made this the slice after the ring slice (R6 of that en
   "7728 passed, 9 skipped", the JUnit file 7,737 tests, 0 failures, 0 errors ("Results", below).
 - **BOTH GUARD PROOFS PROVED EXACTLY AS REGISTERED**, and the ring control is exactly equal at `e1888b217`
   ("Results", below).
-- **`experiments.py` HAS NOT BEEN RUN, BEFORE OR AFTER.** Both runs wait for a gap of about 40 minutes with no window,
-  which the coordinating session will name; the design is under "experiments.py, before and after".
+- **`experiments.py` RAN BEFORE AND AFTER, AND MOST OF THE TIER 1 WIN RATES DID NOT MOVE; SOME HIGHER-TIER CELLS MOVED
+  BY UP TO 10 POINTS.** Both ran at once from `git archive` copies, 19:21:16 to 19:44:45 on 2026-11-19, in the gap the
+  coordinating session named. Each ended "Done. 39,240 campaigns run.", so calibration chose the same wave size. The
+  calibrated cell's win rate is 56% in both; its campaigns are shorter, 563 days to 536. The largest move quoted is
+  section 8's fixed tree at six active Cataclysms, 18% to 8%. **A SINGLE CELL'S MOVE IS NOT THE CHANGE'S EFFECT
+  ALONE**: the seeds are the same, but a campaign whose Demonic dungeon lands on another city draws differently from
+  then on, so where Demonic is active a cell moves by the change and by different random draws together
+  ("experiments.py, before and after", below).
 - **THE SANCTUARY'S MEDIAN WALK HAS A TOLERANCE OF ITS OWN, 6 DAYS, AND THE BULWARK KEEPS 1 DAY WITH ONE BLOCK OF TEN
   TWO DAYS OFF.** This change moves most Sanctuary dungeons off the map, 8,625 to 1,106 in 10,000 campaigns, so the
   prose test's 320 campaigns hold 19 to 51 of them. Ruled by the coordinating session (Q1, below). Ten blocks of 320
@@ -198,7 +204,40 @@ Both runs' output and JUnit files are `.claude/windows/demonic/suite_e1888b217.*
 
 ### experiments.py, before and after
 
-Not yet run (SAID FIRST). The design, approved with the plan:
+Run 2026-11-19, 19:21:16 to 19:44:45, both at once in the gap the coordinating session named, each started with
+`CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP` (`run_experiments.py`). Before: a `git archive` copy of `2869846bc`
+(process 98108); after: one of `c68f37a7f` (process 104764). Both exited 0. The reports are
+`.claude/windows/demonic/demonic_experiments_before.out` and `_after.out`, and `compare_experiments.py` extracts the
+lines below.
+
+| What | Before | After |
+| :-- | :-- | :-- |
+| Last line | "Done. 39,240 campaigns run." | "Done. 39,240 campaigns run." |
+| Section 0, BEST STATIC BASELINE | "ratio 1.6, surge every 120d x5" | the same |
+| Its result | "56% win, 44% loss, 0% stalemate, 28% triage, 2% idle, final power 252"; 563 days | "56% win, 44% loss, 0% stalemate, 28% triage, 2% idle, final power 243"; 536 days |
+| Section 1, `triage` (first block) | 581 days, 53% won, 47% lost, 1.6 cities lost | 556 days, 53% won, 47% lost, 1.6 cities lost |
+| Section 1, policy spread (first block) | 44 points of win rate | 41 |
+| Section 1, `triage` (second block, the forge settings) | 597 days, 46% won, 54% lost, 1.5 cities lost | 565 days, 45% won, 55% lost, 1.5 cities lost |
+| Section 1, policy spread (second block) | 40 points | 36 |
+| Section 7, 5 a surge, tier 1, No tree | 47% won, 53% lost | 46% won, 54% lost |
+| Section 7, 5 a surge, tier 8, Explorer via floors (-25 floors), the top preset in both | 25% won, -51 | 17% won, -67 |
+| Section 7, 7 a surge, tier 8, Explorer via floors (-25 floors), the top preset in both | 17% won, -65 | 25% won, -51 |
+| Section 7, 7 a surge, tier 8, Architect maxed | 45% of campaigns without a result; ranked first | 53%; left out of the order, as at 5 a surge |
+| Section 7's last line | "The ordering holds at NO tier once the surge size moves." | the same |
+| Section 8, win% with no tree / the fixed tree, at 1, 2, 3, 4, 6 and 8 active | 38/34, 38/39, 20/39, 18/30, 4/18, 1/2 | 42/36, 42/44, 21/38, 20/26, 3/8, 0/1 |
+| Lines that differ | 167 lines only in the before report, of 554 | 183 only in the after report, of 570 |
+
+**WHAT THIS SHOWS AND WHAT IT DOES NOT.** Calibration's choice, the tier 1 win rates of sections 0 and 1, and the
+report's two conclusions about the empire tree (no preset beats no tree at tier 1 at the calibrated size; the ordering
+holds at no tier once the surge size moves) are the same before and after. Campaigns are shorter at tier 1, by 25 to
+32 days in the rows above. At higher tiers single cells move by up to 10 points in either direction: the same preset
+fell 8 points at 5 a surge and rose 8 at 7 a surge. **THIS RUN CANNOT SAY HOW MUCH OF A SINGLE CELL'S MOVE THE CHANGE
+CAUSED ON AVERAGE**: the seeds are fixed and the runs are deterministic, so every difference was caused by the change,
+but once a campaign's Demonic dungeon lands on a different city its later draws differ, so in every campaign with
+Demonic active (every one at tier 8) the two runs follow different random draws from that point, and a cell of 120 or
+150 campaigns moves by the change and by those draws together.
+
+The design, approved with the plan:
 
 - Each run from its own `git archive` copy of `sim/`: before from `2869846bc`, after from this branch's committed head,
   so no edit in a worktree can reach a run. `experiments.py` reads nothing outside `sim/`.
@@ -208,10 +247,13 @@ Not yet run (SAID FIRST). The design, approved with the plan:
 - Quoted here: each run's last line, "Done. N campaigns run." (31,820 or 33,920 shows whether calibration chose a
   different wave size); section 0's "BEST STATIC BASELINE" line; section 1's `triage` row and the policies' spread;
   section 7 at tiers 1 and 8; section 8's win rates by active count; and how many lines of the two reports differ.
-- A PREDICTION, A JUDGEMENT AND NOT A MEASUREMENT: tier 1 cells move little, because Demonic is the one active
-  Cataclysm in about 1 campaign in 8 (36 of seeds 0 to 299); tier 8 has Demonic in every campaign, but it sends about
-  11% of a wave (0.9 of a `count_mult` total of 8.3). If calibration chooses differently, everything after section 0
-  moves for that reason.
+- A PREDICTION, A JUDGEMENT AND NOT A MEASUREMENT, written before the run and kept as written: tier 1 cells move
+  little, because Demonic is the one active Cataclysm in about 1 campaign in 8 (36 of seeds 0 to 299); tier 8 has
+  Demonic in every campaign, but it sends about 11% of a wave (0.9 of a `count_mult` total of 8.3). If calibration
+  chooses differently, everything after section 0 moves for that reason.
+- HOW IT HELD: calibration chose the same, and tier 1 win rates moved by 0 to 4 points in the rows quoted; the
+  prediction did not foresee tier 1 campaigns shortening by 25 to 32 days, or higher-tier cells moving by up to 10
+  points.
 
 ---
 
