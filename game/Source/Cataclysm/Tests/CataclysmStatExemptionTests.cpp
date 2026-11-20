@@ -436,7 +436,7 @@ namespace CataclysmStatExemptionTest
 			return -1;
 		}
 		Skill->Params = UCataclysmSkillShapes::ParseParams(
-			TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Minions=Imp:1"));
+			TEXT("Count=1; Duration=20; Radius=3; Minions=Imp:1"));
 
 		TMap<FName, FCataclysmStatInputs> Inputs;
 		for (const TPair<FName, float>& Stat : Stats)
@@ -10009,7 +10009,7 @@ namespace CataclysmStatExemptionTest
 		}
 		Skill->SkillName = TEXT("Summon Imp");
 		Skill->Params = UCataclysmSkillShapes::ParseParams(
-			TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Minions=Imp:1"));
+			TEXT("Count=1; Duration=20; Radius=3; Minions=Imp:1"));
 
 		ACataclysmMinion* Unflagged = UCataclysmSummonSkill::SpawnOneAtAKill(Summoner.Actor, FVector(2 * M, 0, 0));
 		Test.TestNull(TEXT("control: with no such stat a kill spawns nothing"), Unflagged);
@@ -10323,14 +10323,14 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
-	 * `trap_cap_bonus` and `traps_do_not_expire`, read off the player with `Type.Trap` by
-	 * `ACataclysmMinion::SkillTrapsMostFor` and `SkillTrapsDoNotExpireFor`, which a placing and the skill bar ask. Ruled
-	 * 2026-10-21 (traps layer 3, M1, M2). ONE FIGHTER. THE CONTROL IS THE SAME FIGHTER BEFORE THE STAT IS GRANTED: a cap
-	 * of five, or a trap that expires. Granted at a flat 3, a cap of eight; at a flat 1, no expiry.
+	 * `traps_do_not_expire`, read off the player with `Type.Trap` by `ACataclysmMinion::SkillTrapsDoNotExpireFor`, which
+	 * a placing asks. Ruled 2026-10-21 (traps layer 3, M2). ONE FIGHTER. THE CONTROL IS THE SAME FIGHTER BEFORE THE STAT
+	 * IS GRANTED: a trap that expires. Granted at a flat 1, no expiry. Its sibling `trap_cap_bonus` (M1) went with the
+	 * trap cap in branch B of issue #2787; `minion_reserve_percent_less` took its row and has its own probe.
 	 *
-	 * WHAT THIS DOES NOT REACH. A trap placed under them, the oldest destroyed and the bar's words: `Cataclysm.Traps.`.
+	 * WHAT THIS DOES NOT REACH. A trap placed under it: `Cataclysm.Traps.`.
 	 */
-	void ProbeTrapCapAndExpiry(FAutomationTestBase& Test, bool bCap)
+	void ProbeTrapExpiry(FAutomationTestBase& Test)
 	{
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 		if (!Test.TestNotNull(TEXT("a world"), World))
@@ -10340,20 +10340,37 @@ namespace CataclysmStatExemptionTest
 		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
-		if (bCap)
-		{
-			Test.TestEqual(TEXT("control: with no trap_cap_bonus the most traps standing is the ruled five"),
-						   ACataclysmMinion::SkillTrapsMostFor(Fighter.Actor), 5);
-			GrantFlat(Fighter.Actor, ACataclysmMinion::TrapCapBonusStat, 3.0f);
-			Test.TestEqual(TEXT("with trap_cap_bonus at 3 it is eight, so SkillTrapsMostFor really reads it"),
-						   ACataclysmMinion::SkillTrapsMostFor(Fighter.Actor), 8);
-			return;
-		}
 		Test.TestFalse(TEXT("control: with no traps_do_not_expire a trap placed now expires"),
 					   ACataclysmMinion::SkillTrapsDoNotExpireFor(Fighter.Actor));
 		GrantFlat(Fighter.Actor, ACataclysmMinion::TrapsDoNotExpireStat, 1.0f);
 		Test.TestTrue(TEXT("with traps_do_not_expire at 1 it does not, so SkillTrapsDoNotExpireFor really reads it"),
 					  ACataclysmMinion::SkillTrapsDoNotExpireFor(Fighter.Actor));
+	}
+
+	/**
+	 * `minion_reserve_percent_less`, read by `UCataclysmCommand::ReserveFor` with the kind's tags, which every minion,
+	 * gadget and trap the player makes asks for its reserve. Issue #2787, branch B: it replaced `minion_cap_bonus` and
+	 * `trap_cap_bonus` when the owner's ruling of 2026-11-20 removed the count caps. ONE FIGHTER. THE CONTROL IS THE SAME
+	 * FIGHTER BEFORE THE STAT IS GRANTED: an imp's stated 10 is reserved whole. Granted at a flat 50, it is 5.
+	 *
+	 * WHAT THIS DOES NOT REACH. A minion made under it, the tags a row requires and the floor: `Cataclysm.NoCaps.`.
+	 */
+	void ProbeReservePercentLess(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		const FGameplayTagContainer ImpTags = ACataclysmMinion::TagsOfType(TEXT("Imp"));
+		Test.TestEqual(TEXT("control: with no minion_reserve_percent_less an imp reserves its 10"),
+					   UCataclysmCommand::ReserveFor(Fighter.Actor, 10.0f, ImpTags), 10.0f, 0.0001f);
+		GrantFlat(Fighter.Actor, UCataclysmCommand::MinionReservePercentLessStat, 50.0f);
+		Test.TestEqual(TEXT("with minion_reserve_percent_less at 50 it is 5, so ReserveFor really reads it"),
+					   UCataclysmCommand::ReserveFor(Fighter.Actor, 10.0f, ImpTags), 5.0f, 0.0001f);
 	}
 
 	/**
@@ -10728,8 +10745,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("skill_slot_is_a_trap"), &ProbeSkillSlotIsATrap},
 			{TEXT("trap_arming_speed"), [](FAutomationTestBase& Test) { ProbeTrapIncrease(Test, /*bArming=*/true); }},
 			{TEXT("trap_trigger_radius"), [](FAutomationTestBase& Test) { ProbeTrapIncrease(Test, /*bArming=*/false); }},
-			{TEXT("trap_cap_bonus"), [](FAutomationTestBase& Test) { ProbeTrapCapAndExpiry(Test, /*bCap=*/true); }},
-			{TEXT("traps_do_not_expire"), [](FAutomationTestBase& Test) { ProbeTrapCapAndExpiry(Test, /*bCap=*/false); }},
+			{TEXT("minion_reserve_percent_less"), &ProbeReservePercentLess},
+			{TEXT("traps_do_not_expire"), &ProbeTrapExpiry},
 			{TEXT("trap_rearm_chance"),
 			 [](FAutomationTestBase& Test) { ProbeTrapBlowHook(Test, ACataclysmMinion::TrapRearmChanceStat); }},
 			{TEXT("trap_damage_to_triggering_enemy"),

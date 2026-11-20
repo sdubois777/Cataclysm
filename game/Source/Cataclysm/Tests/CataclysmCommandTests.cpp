@@ -555,222 +555,6 @@ bool FCataclysmDominionRaisesTheThresholdTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSwarmRaisesTheImpCapTest,
-	"Cataclysm.Command.TheSwarmKeepsMoreImpsAliveAndLeavesAnUncappedSummonAlone",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-/**
- * `Ritualist_keystone_b_kA` The Swarm: "Each skill that limits how many of its
- * minions may be active allows 2 more." Issue #1718. Summon Imp states a cap of
- * 3, so with the keystone it allows 5.
- *
- * COUNTED BY WHAT IS ALIVE AFTER MORE CASTS THAN THE CAP ALLOWS. At its cap
- * `SummonOne` destroys the oldest rather than refusing, so five casts leave
- * three imps at the ordinary cap and five with the keystone. That is the whole
- * observable behaviour of a cap.
- *
- * AND THE HALF THAT MATTERS MORE: A SUMMON THAT STATES NO CAP MUST STAY
- * UNCAPPED. Of the 403 rows in `game/Data/WeaponSkills.csv`, only Summon Imp's
- * states a cap (measured 2026-09-16), and every read site treats a cap of zero
- * as "no limit". A bonus added whether or not the row states a cap would give
- * every other summon and deployable a cap of two -- and would cap thralls,
- * fighting Crowned on the same character. The second half of this test is that
- * failure, written down.
- */
-bool FCataclysmSwarmRaisesTheImpCapTest::RunTest(const FString&)
-{
-	using namespace CataclysmCommandTest;
-
-	UWorld* World = MakeWorldThatHasBegunPlay();
-	ON_SCOPE_EXIT { World->DestroyWorld(false); };
-
-	// THE SHIPPED ROW'S OWN FIGURES. Summon Imp states a cap of three and names
-	// what it summons, which is how the bonus knows this skill is its subject.
-	const TCHAR* const ImpRow =
-		TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Minions=Imp:1; "
-			 "FervourReserve=10");
-
-	// AND A SUMMON THAT STATES NO CAP, which is the ordinary case.
-	const TCHAR* const UncappedRow =
-		TEXT("Count=1; Duration=20; Radius=3; Minions=Imp:1");
-
-	constexpr int32 Casts = 5;
-
-	// FERVOUR FOR EVERY CAST, AND THE POOL IS NOTHING ELSE HERE. Issue #1478: the
-	// Ultimate slot costs 50 Fervour, and this caster's pool is also its
-	// Fervour, so five casts need 250. Each imp here reserves 10 (issue #1934),
-	// and four imps' 40 fits in 250 with room left, so the pool's size decides
-	// only what can be paid.
-	constexpr float PoolForEveryCast = 50.0f * Casts;
-
-	const auto SummonRepeatedly = [&](FScopedCaster& Caster, const TCHAR* Row)
-	{
-		UCataclysmSummonSkill* Skill = GrantSkill<UCataclysmSummonSkill>(
-			Caster, ECataclysmAbilitySlot::Ultimate, Row, TEXT("Summon Imp"));
-		if (!Skill)
-		{
-			AddError(TEXT("Could not grant Summon Imp."));
-			return -1;
-		}
-
-		// THE SLOT'S COOLDOWN IS TURNED OFF, AND WITHOUT THIS THE TEST MEASURES
-		// NOTHING. A cap is only visible across several casts, and the cooldown
-		// is not the row's -- `GetBaseCooldown` reads the ULTIMATE SLOT's own
-		// number from the generated table, so a row stating no cooldown still
-		// gets one. Measured 2026-09-14: five casts committed once and left one
-		// imp, and this test read that as a cap of one.
-		// `CataclysmSkillNumbersTests.cpp:135` is the existing use of this field.
-		Skill->CooldownOverride = 0.0f;
-
-		for (int32 Cast = 0; Cast < Casts; ++Cast)
-		{
-			// EVERY CAST IS ASSERTED RATHER THAN ATTEMPTED. A refused activation
-			// leaves a smaller number of minions alive, which is indistinguishable
-			// from a smaller cap -- which is exactly what this test is reading.
-			if (!TestTrue(*FString::Printf(
-					TEXT("cast %d of %d fires"), Cast + 1, Casts),
-					Activate(Caster, Skill)))
-			{
-				return -1;
-			}
-		}
-		return UCataclysmCommand::ThingsCommandedBy(Caster.Actor).Num();
-	};
-
-	// --- THE CONTROL: THE ROW'S OWN CAP OF THREE ----------------------------
-	FScopedCaster Plain(World, FVector::ZeroVector, PoolForEveryCast);
-	const int32 PlainAlive = SummonRepeatedly(Plain, ImpRow);
-
-	// THE STATE THIS TEST BUILT, ASSERTED BEFORE ANY VERDICT. If the casts did
-	// not summon at all -- a cooldown, a cost, a refusal -- the counts below
-	// would agree for a reason that has nothing to do with the cap.
-	if (!TestEqual(TEXT("five casts leave three imps at the row's own cap"),
-				   PlainAlive, 3))
-	{
-		return false;
-	}
-
-	// --- WITH THE KEYSTONE: FIVE -------------------------------------------
-	FScopedCaster Swarming(World, FVector(0, 30 * M, 0), PoolForEveryCast);
-	Swarming.Set(UCataclysmCombatAttributeSet::GetMinionCapBonusAttribute(),
-				 2.0f);
-	TestEqual(TEXT("and five with The Swarm"),
-			  SummonRepeatedly(Swarming, ImpRow), 5);
-
-	// --- AND A SUMMON STATING NO CAP IS STILL UNCAPPED ----------------------
-	//
-	// THE HALF A BUILD ADDING THE BONUS TO THE FIGURE WOULD FAIL. It would read
-	// two here rather than five.
-	FScopedCaster Uncapped(World, FVector(0, 60 * M, 0), PoolForEveryCast);
-	Uncapped.Set(UCataclysmCombatAttributeSet::GetMinionCapBonusAttribute(),
-				 2.0f);
-	TestEqual(TEXT("a summon stating no cap keeps every one it made"),
-			  SummonRepeatedly(Uncapped, UncappedRow), Casts);
-
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSwarmRaisesADeployableCapTest,
-	"Cataclysm.Command.TheSwarmLetsADeployableThatStatesACapPlaceTwoMore",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-/**
- * `Ritualist_keystone_b_kA` The Swarm: "Each skill that limits how many of its
- * minions may be active allows 2 more." Issue #1718, as the owner reworded the
- * node on 2026-09-16.
- *
- * THE HALF OF THAT DECISION THE TEST ABOVE CANNOT SEE. Until it, the bonus
- * reached only a row whose `Minions` parameter named an imp. The test above
- * summons imps, so it passes either way. This one deploys bolt turrets, which
- * are not imps, through the deployable skill's own cap.
- *
- * A ROW WRITTEN HERE, BECAUSE NO SHIPPED ROW WOULD DO. Summon Imp's is the only
- * row in `game/Data/WeaponSkills.csv` that states a cap. This one is Bolt
- * Turret's own parameters without its bleed, with a cap of one added, and each
- * activation places one turret. A deployable at its cap places nothing more
- * rather than replacing
- * its oldest, so three activations leave one turret at the row's own cap and
- * three with the keystone.
- */
-bool FCataclysmSwarmRaisesADeployableCapTest::RunTest(const FString&)
-{
-	using namespace CataclysmCommandTest;
-
-	UWorld* World = MakeWorldThatHasBegunPlay();
-	ON_SCOPE_EXIT { World->DestroyWorld(false); };
-
-	const TCHAR* const TurretRow =
-		TEXT("Count=1; MaxActive=1; Duration=5; Minions=BoltTurret:1; "
-			 "FervourReserve=5");
-
-	constexpr int32 Activations = 3;
-
-	// HOW MANY TURRETS THE CASTER COMMANDS AFTER THREE ACTIVATIONS, or -1 when
-	// an activation did not fire or something other than a turret went down.
-	const auto DeployRepeatedly = [&](FScopedCaster& Caster) -> int32
-	{
-		UCataclysmDeployableSkill* Skill = GrantSkill<UCataclysmDeployableSkill>(
-			Caster, ECataclysmAbilitySlot::Ultimate, TurretRow,
-			TEXT("Bolt Turret"));
-		if (!Skill)
-		{
-			AddError(TEXT("Could not grant Bolt Turret."));
-			return -1;
-		}
-
-		// THE SLOT'S COOLDOWN IS TURNED OFF, for the reason the test above gives:
-		// without it only the first activation fires, and one turret would read
-		// as a cap of one whatever the bonus did.
-		Skill->CooldownOverride = 0.0f;
-
-		for (int32 Attempt = 0; Attempt < Activations; ++Attempt)
-		{
-			if (!TestTrue(*FString::Printf(
-					TEXT("activation %d of %d fires"), Attempt + 1, Activations),
-					Activate(Caster, Skill)))
-			{
-				return -1;
-			}
-		}
-
-		// WHAT WENT DOWN IS ASSERTED RATHER THAN ASSUMED. A count of imps here
-		// would make this a second copy of the test above.
-		const TArray<AActor*> Commanded =
-			UCataclysmCommand::ThingsCommandedBy(Caster.Actor);
-		for (const AActor* Thing : Commanded)
-		{
-			const ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Thing);
-			if (!TestTrue(TEXT("everything commanded is a bolt turret"),
-						  Minion && Minion->TypeName == TEXT("BoltTurret")))
-			{
-				return -1;
-			}
-		}
-		return Commanded.Num();
-	};
-
-	// --- THE CONTROL: THE ROW'S OWN CAP OF ONE -----------------------------
-	FScopedCaster Plain(World, FVector::ZeroVector);
-
-	// THE STATE THIS TEST BUILT, ASSERTED BEFORE ANY VERDICT, as in the test
-	// above: activations that placed nothing would agree with any cap.
-	if (!TestEqual(TEXT("three activations leave one turret at the row's own "
-						"cap"),
-				   DeployRepeatedly(Plain), 1))
-	{
-		return false;
-	}
-
-	// --- WITH THE KEYSTONE: THREE -------------------------------------------
-	FScopedCaster Swarming(World, FVector(0, 30 * M, 0));
-	Swarming.Set(UCataclysmCombatAttributeSet::GetMinionCapBonusAttribute(),
-				 2.0f);
-	TestEqual(TEXT("and three with The Swarm, although none of them is an imp"),
-			  DeployRepeatedly(Swarming), 3);
-
-	return true;
-}
-
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCrownedLowersTheReserveTest,
 	"Cataclysm.Command.CrownedTakesAThrallThePoolWouldOtherwiseRefuse",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -2442,7 +2226,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionDeathWithoutTheStatTest,
  *
  * THE BODY IS HALF OF WHAT THIS HOLDS. `Explode` destroys the actor, so a death
  * that exploded when it should not would show twice over: an enemy that lost
- * health, and a corpse no longer there for the summon cap to count.
+ * health, and a corpse no longer there.
  *
  * THE MINION IS STILL TOLD WHAT ITS EXPLOSION WOULD BE, because the summoning
  * skill always tells it. What is missing here is the keystone, which is the only
@@ -2563,72 +2347,6 @@ bool FCataclysmMinionDeathExplosionDamageTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionCapExplosionDamageTest,
-	"Cataclysm.MinionDeath.TheExplosionTheSummonCapSetsOffTakesTheSameStat",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-/**
- * The stat is on the explosion rather than on the death, so the explosion the
- * summon cap sets off takes it too. Volatile's sentence names "the explosion a
- * minion leaves" and not what caused it.
- *
- * NO FLAG ON EITHER SUMMONER, DELIBERATELY. That is what separates the two
- * places the multiplier could have been put: a build that scaled the damage in
- * the death path would pass the case above and fail this one.
- *
- * `Explode` IS CALLED THE WAY THE CAP CALLS IT, at
- * `CataclysmSkillTemplates.cpp:3455`, with the skill's stated radius and damage.
- * What this does not drive is the cap's own counting: that needs a granted row
- * and four casts against one cooldown, and `Cataclysm.Command.` holds the cap's
- * behaviour. So this case is about the arithmetic of the explosion.
- */
-bool FCataclysmMinionCapExplosionDamageTest::RunTest(const FString&)
-{
-	using namespace CataclysmCommandTest;
-	using namespace CataclysmMinionDeathTest;
-
-	UWorld* World = MakeWorldThatHasBegunPlay();
-	if (!TestNotNull(TEXT("a world"), World))
-	{
-		return false;
-	}
-	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
-
-	FScopedCaster Plain(World, FVector::ZeroVector);
-	SwingsFor(Plain, 1000.0f);
-	FScopedCaster PlainTarget(World, FVector(11 * M, 0, 0));
-
-	FScopedCaster Raised(World, FVector(0, 50 * M, 0));
-	SwingsFor(Raised, 1000.0f);
-	GiveStats(Raised, {{TEXT("minion_explosion_damage"),
-						ECataclysmStatBucket::Increased, 50.0f}});
-	FScopedCaster RaisedTarget(World, FVector(11 * M, 50 * M, 0));
-
-	ACataclysmMinion* PlainImp = SummonTold(Plain, FVector(10 * M, 0, 0));
-	ACataclysmMinion* RaisedImp =
-		SummonTold(Raised, FVector(10 * M, 50 * M, 0));
-	if (!TestNotNull(TEXT("an imp for the control"), PlainImp)
-		|| !TestNotNull(TEXT("and one for the stat"), RaisedImp))
-	{
-		return false;
-	}
-
-	const float PlainBefore = HealthOf(PlainTarget);
-	const float RaisedBefore = HealthOf(RaisedTarget);
-
-	PlainImp->Explode();
-	RaisedImp->Explode();
-
-	TestEqual(TEXT("the control explosion deals the imp's own figure"),
-			  PlainBefore - HealthOf(PlainTarget), ImpExplosionDamage(), 0.1f);
-	TestEqual(TEXT("and +50% explosion damage deals half as much again"),
-			  RaisedBefore - HealthOf(RaisedTarget),
-			  ImpExplosionDamage() * 1.5f, 0.1f);
-	TestFalse(TEXT("an explosion destroys the minion whatever set it off"),
-			  IsValid(PlainImp));
-	return true;
-}
-
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionDeathStillPaysFervourTest,
 	"Cataclysm.MinionDeath.AnExplodingMinionLeavesNoBodyAndStillPaysItsSummoner",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -2732,7 +2450,7 @@ bool FCataclysmSummonTellsItsMinionTest::RunTest(const FString&)
 	// for a reason that has nothing to do with the explosion.
 	UCataclysmSummonSkill* Skill = GrantSkill<UCataclysmSummonSkill>(
 		Caster, ECataclysmAbilitySlot::Special,
-		TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Burn=1; Minions=Imp:1"),
+		TEXT("Count=1; Duration=20; Radius=3; Burn=1; Minions=Imp:1"),
 		TEXT("Summon Imp"));
 	if (!Skill)
 	{
@@ -3326,12 +3044,15 @@ bool FCataclysmVeilReadsItsOwnRowsTest::RunTest(const FString&)
 
 // ---------------------------------------------------------------------------
 // A lost minion replaced: Press-Ganged and Rekindled. Issue #1515. And a dead
-// minion no longer holding a place under the summon cap. Issue #1957.
+// minion no longer holding its reserve. Issue #1957.
 // ---------------------------------------------------------------------------
 
 namespace CataclysmReplacementTest
 {
-	/** Summon Imp's own figures: three at once, twenty seconds, three metres. */
+	/**
+	 * Summon Imp's own figures, twenty seconds and three metres, less the Fervour it reserves, which a test that
+	 * needs it states on `Params.FervourReserve`. No count cap: issue #2787 removed Summon Imp's three.
+	 */
 	UCataclysmSummonSkill* GrantSummon(CataclysmCommandTest::FScopedCaster& Who)
 	{
 		const FGameplayAbilitySpecHandle Handle = Who.AbilitySystem->GiveAbilityInSlot(
@@ -3345,7 +3066,7 @@ namespace CataclysmReplacementTest
 		{
 			Skill->SkillName = TEXT("Summon Imp");
 			Skill->Params = UCataclysmSkillShapes::ParseParams(
-				TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Minions=Imp:1"));
+				TEXT("Count=1; Duration=20; Radius=3; Minions=Imp:1"));
 		}
 		return Skill;
 	}
@@ -3462,7 +3183,7 @@ bool FCataclysmPressGangedTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRekindledTest,
-	"Cataclysm.MinionDeath.RekindledReplacesAnExplodedMinionButNotACapEviction",
+	"Cataclysm.MinionDeath.RekindledReplacesAnExplodedMinionWhereItStood",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
@@ -3471,10 +3192,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRekindledTest,
  * "When a minion explodes a new minion is summoned where it stood, no more than
  * once every 5 seconds."
  *
- * THE CAP'S EVICTION FIRST, while the clock is ready, so a replacement there
- * could not be hidden by the wait: ruled 2026-09-23, an eviction is the summon's
- * own price for a slot and is not replaced. THEN AN EXPLOSION ON DEATH, which
- * is, and which spends the clock.
+ * AN EXPLOSION ON DEATH, which is replaced and spends the clock. This test also
+ * checked that the summon cap's eviction was not replaced (ruled 2026-09-23)
+ * until issue #2787 removed the cap and its eviction with it, so three imps
+ * stand here only to show the replacement keeps the count.
  */
 bool FCataclysmRekindledTest::RunTest(const FString&)
 {
@@ -3500,16 +3221,17 @@ bool FCataclysmRekindledTest::RunTest(const FString&)
 						 {UCataclysmSummonSkill::ReplacedOnExplosionStat,
 						  ECataclysmStatBucket::Flat, 5.0f}});
 
-	// THE CAP'S EVICTION: three, then a fourth that explodes the oldest.
-	ACataclysmMinion* Oldest = SummonAt(Skill, FVector(3 * M, 0, 0));
+	// THREE IMPS, AND REKINDLED'S CLOCK READY, asserted so the spending below is
+	// this explosion's and nothing earlier's.
+	SummonAt(Skill, FVector(3 * M, 0, 0));
 	SummonAt(Skill, FVector(3 * M, 1 * M, 0));
 	SummonAt(Skill, FVector(3 * M, 2 * M, 0));
-	SummonAt(Skill, FVector(3 * M, 3 * M, 0));
-	TestFalse(TEXT("the fourth summon exploded the oldest"), IsValid(Oldest));
-	TestEqual(TEXT("and no replacement took the count above three"),
-			  Skill->LivingMinionCount(), 3);
-	TestTrue(TEXT("nor spent Rekindled's clock"),
-			 Summoner.AbilitySystem->MayReplaceMinion(/*bForExplosion=*/true));
+	if (!TestEqual(TEXT("set-up: three imps"), Skill->LivingMinionCount(), 3)
+		|| !TestTrue(TEXT("set-up: Rekindled's clock is ready"),
+					 Summoner.AbilitySystem->MayReplaceMinion(/*bForExplosion=*/true)))
+	{
+		return false;
+	}
 
 	// AN EXPLOSION ON DEATH: replaced where it stood.
 	const FVector Where(8 * M, 0, 0);
@@ -3533,7 +3255,7 @@ bool FCataclysmRekindledTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOneLossOneReplacementTest,
-	"Cataclysm.MinionDeath.ALossIsReplacedOnceAndAThrallAtTheCapIsNotReplaced",
+	"Cataclysm.MinionDeath.ALossIsReplacedOnceAndAThrallThePoolCannotReplaceIsNotReplaced",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
@@ -3544,8 +3266,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOneLossOneReplacementTest,
  * clock is spent.
  *
  * A THRALL IS A MINION FOR PRESS-GANGED, and is replaced by the summon skill's
- * kind where it fell. AT THE CAP a replacement is not made and its clock is
- * not spent, ruled the same day.
+ * kind where it fell. A replacement that is not made does not spend its clock,
+ * ruled the same day. Until issue #2787 that was a replacement at the summon
+ * cap; with the caps gone it is one the pool cannot hold the reserve of
+ * (`SummonReplacementAt`, ruled 2026-09-30).
  */
 bool FCataclysmOneLossOneReplacementTest::RunTest(const FString&)
 {
@@ -3606,38 +3330,40 @@ bool FCataclysmOneLossOneReplacementTest::RunTest(const FString&)
 			 ForTheThrall
 				 && FVector::Dist(ForTheThrall->GetActorLocation(), Where) < 1.0f);
 
-	// A THRALL AT THE CAP: not replaced, and the clock not spent.
+	// A THRALL WHOSE REPLACEMENT THE POOL CANNOT HOLD: not replaced, and the
+	// clock not spent. The imps above reserve nothing, so the skill states 10 from
+	// here and the pool is lowered to 5, below one imp's reserve.
 	CataclysmTestWorld::RunClock(World, 10.1f);
-	while (Skill->LivingMinionCount() < 3)
-	{
-		SummonAt(Skill, FVector(6 * M, Skill->LivingMinionCount() * M, 0));
-	}
+	Skill->Params.FervourReserve = 10.0f;
+	Summoner.Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 5.0f);
 	FScopedCreature Second(World, FVector(12 * M, 0, 0));
 	if (!TestTrue(TEXT("a second thrall is taken"),
 			UCataclysmCommand::Subjugate(Summoner.Actor, Second.Actor)))
 	{
 		return false;
 	}
+	const int32 BeforeSecond = Skill->LivingMinionCount();
 	Second.SetHealthTo(0.0f);
-	TestEqual(TEXT("at the cap a dead thrall is not replaced"),
-			  Skill->LivingMinionCount(), 3);
+	TestEqual(TEXT("a dead thrall is not replaced when the pool cannot hold the imp's reserve"),
+			  Skill->LivingMinionCount(), BeforeSecond);
 	TestTrue(TEXT("and Press-Ganged's clock is not spent"),
 			 Summoner.AbilitySystem->MayReplaceMinion(/*bForExplosion=*/false));
 	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeadMinionFreesItsPlaceTest,
-	"Cataclysm.MinionDeath.ADeadMinionNoLongerHoldsAPlaceUnderTheSummonCap",
+	"Cataclysm.MinionDeath.ADeadMinionNoLongerHoldsItsReserveWhileItsBodyStays",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * Issue #1957. A dead minion's body stays in the level until its lifespan ends,
- * and until this change it went on counting toward the cap: a summon at the cap
- * then exploded the oldest minion, alive, while the corpse kept its place.
+ * Issue #1957. A dead minion's body stays in the level for a moment, and until
+ * that issue it went on counting toward the summon cap: a summon at the cap then
+ * exploded the oldest minion, alive, while the corpse kept its place.
  *
- * THREE IMPS, THE YOUNGEST KILLED, with no keystone and no explosion, so its
- * body stays. The skill counts two, and a summon takes the free place without
- * touching the oldest.
+ * THE POOL IS THE LIMIT SINCE ISSUE #2787 removed the cap, so this reads the
+ * same fault there: three imps reserving 10 each fill a pool of 30, the youngest
+ * is killed with no keystone and no explosion, so its body stays, and the skill
+ * counts two living, holds 20, and a summon fits without touching the oldest.
  */
 bool FCataclysmDeadMinionFreesItsPlaceTest::RunTest(const FString&)
 {
@@ -3652,29 +3378,34 @@ bool FCataclysmDeadMinionFreesItsPlaceTest::RunTest(const FString&)
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
-	FScopedCaster Summoner(World, FVector::ZeroVector);
+	FScopedCaster Summoner(World, FVector::ZeroVector, /*Pool=*/30.0f);
 	UCataclysmSummonSkill* Skill = GrantSummon(Summoner);
 	if (!TestNotNull(TEXT("a summon skill"), Skill))
 	{
 		return false;
 	}
+	Skill->Params.FervourReserve = 10.0f;
 
 	ACataclysmMinion* Oldest = SummonAt(Skill, FVector(3 * M, 0, 0));
 	SummonAt(Skill, FVector(3 * M, 1 * M, 0));
 	ACataclysmMinion* Youngest = SummonAt(Skill, FVector(3 * M, 2 * M, 0));
-	if (!TestNotNull(TEXT("three imps"), Youngest))
+	if (!TestNotNull(TEXT("three imps"), Youngest)
+		|| !TestEqual(TEXT("set-up: they fill the pool of 30"),
+					  UCataclysmCommand::ReservedFervourOf(Summoner.Actor), 30.0f, 0.001f))
 	{
 		return false;
 	}
 	Kill(Youngest);
 	// FOR HALF A SECOND, since issue #1528, which is long enough for this to
-	// read a dead body the cap must not count.
+	// read a dead body the reserve must not count.
 	TestTrue(TEXT("the youngest's body stays in the level"), IsValid(Youngest));
 	TestEqual(TEXT("but the skill counts two living"), Skill->LivingMinionCount(),
 			  2);
+	TestEqual(TEXT("and the pool holds their 20"),
+			  UCataclysmCommand::ReservedFervourOf(Summoner.Actor), 20.0f, 0.001f);
 
 	SummonAt(Skill, FVector(3 * M, 3 * M, 0));
-	TestTrue(TEXT("a summon takes the free place and the oldest lives"),
+	TestTrue(TEXT("a summon takes the freed reserve and the oldest lives"),
 			 IsValid(Oldest) && !UCataclysmSkillEffects::IsDead(Oldest));
 	TestEqual(TEXT("with three living"), Skill->LivingMinionCount(), 3);
 	return true;
@@ -3879,7 +3610,7 @@ bool FCataclysmSharedRuinThrallTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShippedDeployableCapsTest,
-	"Cataclysm.Command.TheShippedDeployablesStateCapsAndABonusRaisesTheBoltTurrets",
+	"Cataclysm.Command.TheShippedDeployablesStateCapsAndThreeActivationsLeaveOneBoltTurret",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
@@ -3889,10 +3620,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShippedDeployableCapsTest,
  * Bolt Turret states 1, Ballista 2 and Iron Fortress 5, one set.
  *
  * Then the Bolt Turret row as shipped, with its cooldown turned off so every
- * activation fires: three activations leave one turret at its cap, and three
- * with a cap bonus of 3 -- what "Add +1-3 to your max deployable count" grants
- * at the top of its range, which the test beside the enchantment rows shows
- * reaching a deployable's tags.
+ * activation fires: three activations leave one turret at its cap.
+ *
+ * THE WAR DEPLOYABLES KEEP THEIR CAPS. Issue #2787 removed every count cap on
+ * what reserves the class resource, and these reserve nothing until issue #1934
+ * reaches the War tree. The half of this test where a cap bonus of 3 left three
+ * turrets went with the bonus: "Add 1-3 to your max deployable count" became
+ * "Your deployables reserve 15%-30% less Fervour".
  */
 bool FCataclysmShippedDeployableCapsTest::RunTest(const FString&)
 {
@@ -3943,9 +3677,6 @@ bool FCataclysmShippedDeployableCapsTest::RunTest(const FString&)
 	FScopedCaster Plain(World, FVector::ZeroVector);
 	TestEqual(TEXT("three activations leave one turret at the shipped cap"),
 		TurretsAfterThree(Plain), 1);
-	FScopedCaster Raised(World, FVector(0, 30 * M, 0));
-	Raised.Set(UCataclysmCombatAttributeSet::GetMinionCapBonusAttribute(), 3.0f);
-	TestEqual(TEXT("and three with a cap bonus of 3"), TurretsAfterThree(Raised), 3);
 	return true;
 }
 
@@ -4160,55 +3891,6 @@ bool FCataclysmAFullPoolRefusesAnImpTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAnEvictedImpFreesItsReserveTest,
-	"Cataclysm.FervourReserve.AtTheCapTheOldestImpsReserveIsFreedBeforeTheCheck",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-/**
- * At its own cap, Summon Imp removes the oldest imp, and that imp's reserve is
- * counted as freed before the new one is checked, ruled 2026-09-30. A pool of
- * 30 with three imps out is full; the fourth press still replaces the oldest.
- */
-bool FCataclysmAnEvictedImpFreesItsReserveTest::RunTest(const FString&)
-{
-	using namespace CataclysmFervourReserveTest;
-
-	UWorld* World = MakeWorldThatHasBegunPlay();
-	ON_SCOPE_EXIT { World->DestroyWorld(false); };
-
-	FScopedCaster Caster(World, FVector::ZeroVector, /*Pool=*/30.0f);
-	UCataclysmSummonSkill* Skill = GrantImps(Caster,
-		TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Minions=Imp:1; "
-			 "FervourReserve=10"));
-	if (!Skill)
-	{
-		AddError(TEXT("Could not grant Summon Imp."));
-		return false;
-	}
-
-	Activate(Caster, Skill);
-	const TArray<AActor*> First = UCataclysmCommand::ThingsCommandedBy(Caster.Actor);
-	if (!TestEqual(TEXT("the first press makes one imp"), First.Num(), 1))
-	{
-		return false;
-	}
-	const TWeakObjectPtr<AActor> Oldest = First[0];
-
-	Activate(Caster, Skill);
-	Activate(Caster, Skill);
-	TestEqual(TEXT("three imps fill the pool of 30"),
-		UCataclysmCommand::ReservedFervourOf(Caster.Actor), 30.0f, 0.001f);
-
-	Activate(Caster, Skill);
-	TestFalse(TEXT("the fourth press removes the oldest imp"),
-		Oldest.IsValid() && !Oldest->IsActorBeingDestroyed());
-	TestEqual(TEXT("and three imps are still out"),
-		UCataclysmCommand::ThingsCommandedBy(Caster.Actor).Num(), 3);
-	TestEqual(TEXT("reserving the same 30"),
-		UCataclysmCommand::ReservedFervourOf(Caster.Actor), 30.0f, 0.001f);
-	return true;
-}
-
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmImpsCountTowardTheThrallCapTest,
 	"Cataclysm.FervourReserve.ImpsAndThrallsShareOnePool",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -4393,12 +4075,16 @@ bool FCataclysmResummonNeedsTheRowTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmResummonCapTest,
-	"Cataclysm.Resummon.NoRoomUnderTheCapWhenTheWaitEndsMeansNoMinionThenOrLater",
+	"Cataclysm.Resummon.NoRoomInThePoolWhenTheWaitEndsMeansNoMinionThenOrLater",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * The cap of three is filled again during the wait: when the wait ends nothing
- * comes back, and nothing does later when room opens. Cancelled, not put off.
+ * The pool is filled again during the wait: when the wait ends nothing comes
+ * back, and nothing does later when room opens. Cancelled, not put off.
+ *
+ * THE POOL AND NOT A CAP SINCE ISSUE #2787, which removed Summon Imp's cap of
+ * three; this test filled that cap until then. Three imps reserving 10 each
+ * fill a pool of 30 here, as the three once filled the cap.
  */
 bool FCataclysmResummonCapTest::RunTest(const FString&)
 {
@@ -4410,12 +4096,13 @@ bool FCataclysmResummonCapTest::RunTest(const FString&)
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
-	FScopedCaster Summoner(World, FVector::ZeroVector);
+	FScopedCaster Summoner(World, FVector::ZeroVector, /*Pool=*/30.0f);
 	UCataclysmSummonSkill* Skill = GrantSummon(Summoner);
 	if (!TestNotNull(TEXT("a summon skill"), Skill))
 	{
 		return false;
 	}
+	Skill->Params.FervourReserve = 10.0f;
 	GiveStats(Summoner, {{UCataclysmSummonSkill::ResummonedAfterSecondsStat,
 						  ECataclysmStatBucket::Flat, 4.0f}});
 	ACataclysmMinion* Lost = SummonAt(Skill, FVector(5 * M, 0, 0));
@@ -4429,14 +4116,16 @@ bool FCataclysmResummonCapTest::RunTest(const FString&)
 	Kill(Lost);
 	TestEqual(TEXT("set-up: one wait is running"), WaitsRunning(Summoner), 1);
 	ACataclysmMinion* Filler = SummonAt(Skill, FVector(5 * M, 6 * M, 0));
-	if (!TestNotNull(TEXT("a summon fills the cap again"), Filler)
-		|| !TestEqual(TEXT("set-up: three are held again"), Skill->LivingMinionCount(), 3))
+	if (!TestNotNull(TEXT("a summon fills the pool again"), Filler)
+		|| !TestEqual(TEXT("set-up: three are held again"), Skill->LivingMinionCount(), 3)
+		|| !TestEqual(TEXT("set-up: reserving the whole 30"),
+					  UCataclysmCommand::ReservedFervourOf(Summoner.Actor), 30.0f, 0.001f))
 	{
 		return false;
 	}
 
 	CataclysmTestWorld::RunClock(World, 4.1f);
-	TestEqual(TEXT("the wait ended with the cap full, so three are held, not four"),
+	TestEqual(TEXT("the wait ended with the pool full, so three are held, not four"),
 		Skill->LivingMinionCount(), 3);
 
 	// ROOM OPENS WITHOUT A DEATH, so no new wait begins: the filler is removed.
@@ -4563,7 +4252,7 @@ bool FCataclysmResummonDeathClearsTest::RunTest(const FString&)
 	}
 	Skill->SkillName = TEXT("Summon Imp");
 	Skill->Params = UCataclysmSkillShapes::ParseParams(
-		TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Minions=Imp:1"));
+		TEXT("Count=1; Duration=20; Radius=3; Minions=Imp:1"));
 
 	ACataclysmMinion* First = SummonAt(Skill, FVector(5 * M, 0, 0));
 	if (!TestNotNull(TEXT("an imp"), First))

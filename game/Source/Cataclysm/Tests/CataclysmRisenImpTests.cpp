@@ -52,8 +52,7 @@ namespace CataclysmRisenImpTest
 {
 	constexpr float M = 100.0f;
 
-	/** Summon Imp's figures in `game/Data/WeaponSkills.csv`. */
-	constexpr int32 ImpCap = 3;
+	/** Summon Imp's lifetime in `game/Data/WeaponSkills.csv`. Its cap of three went with issue #2787, branch B. */
 	constexpr float ImpLifetimeSeconds = 20.0f;
 
 	/** Someone who can lay a curse, hold the rule, and command imps. */
@@ -197,24 +196,6 @@ namespace CataclysmRisenImpTest
 			ACataclysmMinion::Spawn(Curser.Actor, FVector(-10 * M, Index * 2 * M, 0),
 									60.0f, /*bBurns=*/false, TEXT("Imp"));
 		}
-	}
-
-	/** Summon Imp, granted with its shipped parameters. */
-	UCataclysmSummonSkill* GrantSummonImp(FScopedCurser& Who)
-	{
-		const FGameplayAbilitySpecHandle Handle = Who.AbilitySystem->GiveAbilityInSlot(
-			UCataclysmSummonSkill::StaticClass(), ECataclysmAbilitySlot::Special,
-			/*Level=*/100, Who.Actor);
-		FGameplayAbilitySpec* Spec = Who.AbilitySystem->FindAbilitySpecFromHandle(Handle);
-		UCataclysmSummonSkill* Skill =
-			Spec ? Cast<UCataclysmSummonSkill>(Spec->GetPrimaryInstance()) : nullptr;
-		if (Skill)
-		{
-			Skill->SkillName = TEXT("Summon Imp");
-			Skill->Params = UCataclysmSkillShapes::ParseParams(
-				TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Burn=1; Minions=Imp:1"));
-		}
-		return Skill;
 	}
 }
 
@@ -437,103 +418,6 @@ bool FCataclysmRisenImpWithoutTheRuleTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRisenImpAtTheCapTest,
-	"Cataclysm.RisenImps.NothingRisesWhileYouHoldSummonImpsCap",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-/**
- * "If you hold fewer imps than Summon Imp allows at once." At three, nothing
- * rises, and nothing already held is destroyed to make room: that is what a
- * press of Summon Imp does, not a death.
- */
-bool FCataclysmRisenImpAtTheCapTest::RunTest(const FString&)
-{
-	using namespace CataclysmRisenImpTest;
-
-	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
-	if (!TestNotNull(TEXT("a world"), World))
-	{
-		return false;
-	}
-	ON_SCOPE_EXIT { World->DestroyWorld(false); };
-
-	FScopedCurser Ritualist(World, FVector::ZeroVector);
-	Ritualist.HoldTheRule();
-	GiveImps(Ritualist, ImpCap - 1);
-
-	FScopedCreature First(World, FVector(5 * M, 0, 0));
-	FScopedCreature Second(World, FVector(5 * M, 5 * M, 0));
-	if (!Curse(*this, Ritualist.Actor, First.Actor, TEXT("Status.Debuff.Shred"))
-		|| !Curse(*this, Ritualist.Actor, Second.Actor, TEXT("Status.Debuff.Shred")))
-	{
-		return false;
-	}
-
-	First.Die();
-	const TArray<ACataclysmMinion*> AtTheCap = Ritualist.Imps();
-	if (!TestEqual(TEXT("below the cap, an imp rises, making three"),
-				   AtTheCap.Num(), ImpCap))
-	{
-		return false;
-	}
-
-	Second.Die();
-	TestEqual(TEXT("at the cap, nothing more rises"), Ritualist.Imps().Num(), ImpCap);
-	for (ACataclysmMinion* Held : AtTheCap)
-	{
-		TestTrue(TEXT("and every imp held before is still there"), IsValid(Held));
-	}
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRisenImpSwarmTest,
-	"Cataclysm.RisenImps.TheSwarmRaisesTheCapForRisenImpsToo",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-/**
- * The cap is Summon Imp's EFFECTIVE maximum. The Swarm's +2 lets a Ritualist
- * holding three raise a fourth, and one holding five raise nothing.
- */
-bool FCataclysmRisenImpSwarmTest::RunTest(const FString&)
-{
-	using namespace CataclysmRisenImpTest;
-
-	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
-	if (!TestNotNull(TEXT("a world"), World))
-	{
-		return false;
-	}
-	ON_SCOPE_EXIT { World->DestroyWorld(false); };
-
-	FScopedCurser Ritualist(World, FVector::ZeroVector);
-	Ritualist.HoldTheRule();
-	Ritualist.Set(UCataclysmCombatAttributeSet::GetMinionCapBonusAttribute(), 2.0f);
-	GiveImps(Ritualist, ImpCap);
-
-	FScopedCreature First(World, FVector(5 * M, 0, 0));
-	if (!Curse(*this, Ritualist.Actor, First.Actor, TEXT("Status.Debuff.Shred")))
-	{
-		return false;
-	}
-	First.Die();
-	TestEqual(TEXT("holding three under The Swarm, an imp rises"),
-			  Ritualist.Imps().Num(), ImpCap + 1);
-
-	GiveImps(Ritualist, 1);
-	if (!TestEqual(TEXT("set-up: five are held"), Ritualist.Imps().Num(), ImpCap + 2))
-	{
-		return false;
-	}
-	FScopedCreature Second(World, FVector(5 * M, 5 * M, 0));
-	if (!Curse(*this, Ritualist.Actor, Second.Actor, TEXT("Status.Debuff.Shred")))
-	{
-		return false;
-	}
-	Second.Die();
-	TestEqual(TEXT("and holding five, nothing rises"), Ritualist.Imps().Num(), ImpCap + 2);
-	return true;
-}
-
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRisenImpRefreshTest,
 	"Cataclysm.RisenImps.ACreatureRefreshingYourCurseLeavesItYours",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -617,66 +501,6 @@ bool FCataclysmRisenImpLabelTest::RunTest(const FString&)
 	Risen->RisenAtSeconds -= UCataclysmRisenImps::RisenLabelSeconds + 0.1f;
 	TestFalse(TEXT("and two seconds after it rose, the label is gone"),
 			  UCataclysmCombatOverlay::StatusLineFor(Risen).Contains(TEXT("Risen")));
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRisenImpEvictedTest,
-	"Cataclysm.RisenImps.SummoningAtTheCapDestroysARisenImpWhenItIsTheOldest",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-/**
- * One cap for every imp, ruled 2026-09-27 as reading (B). An imp that rose
- * first, then two from Summon Imp, fill the cap; the next press of Summon Imp
- * destroys the oldest, which is the risen one and is in no skill's list.
- */
-bool FCataclysmRisenImpEvictedTest::RunTest(const FString&)
-{
-	using namespace CataclysmRisenImpTest;
-
-	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
-	if (!TestNotNull(TEXT("a world"), World))
-	{
-		return false;
-	}
-	ON_SCOPE_EXIT { World->DestroyWorld(false); };
-
-	FScopedCurser Ritualist(World, FVector::ZeroVector);
-	Ritualist.HoldTheRule();
-	UCataclysmSummonSkill* Summon = GrantSummonImp(Ritualist);
-	if (!TestNotNull(TEXT("set-up: Summon Imp is granted"), Summon))
-	{
-		return false;
-	}
-
-	FScopedCreature Victim(World, FVector(5 * M, 0, 0));
-	if (!Curse(*this, Ritualist.Actor, Victim.Actor, TEXT("Status.Debuff.Shred")))
-	{
-		return false;
-	}
-	Victim.Die();
-	const TArray<ACataclysmMinion*> Risen = Ritualist.Imps();
-	if (!TestEqual(TEXT("set-up: one imp rose"), Risen.Num(), 1))
-	{
-		return false;
-	}
-	ACataclysmMinion* Oldest = Risen[0];
-
-	Summon->SummonOne();
-	Summon->SummonOne();
-	if (!TestEqual(TEXT("set-up: the risen imp and two summoned fill the cap"),
-				   Ritualist.Imps().Num(), ImpCap)
-		|| !TestTrue(TEXT("set-up: the risen imp is still there"), IsValid(Oldest)))
-	{
-		return false;
-	}
-
-	Summon->SummonOne();
-	TestFalse(TEXT("a fourth press destroys the oldest imp, the risen one"),
-			  IsValid(Oldest));
-	TestEqual(TEXT("and three imps are held, all Summon Imp's"),
-			  Ritualist.Imps().Num(), ImpCap);
-	TestEqual(TEXT("so the skill's own list holds three"), Summon->LivingMinionCount(),
-			  ImpCap);
 	return true;
 }
 
@@ -777,7 +601,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNecrosisRiseTest,
  * "Enemies killed by necrosis rise as temporary minions for 5-10 seconds". Issue
  * #1833 group E part 4b. A REAL PLAYER, because the rule is called from the
  * player's own handling of a death: its necrosis tick kills a creature, and an
- * imp stands where the creature fell, for the row's seconds, outside every cap.
+ * imp stands where the creature fell, for the row's seconds.
  */
 bool FCataclysmNecrosisRiseTest::RunTest(const FString&)
 {
@@ -819,7 +643,6 @@ bool FCataclysmNecrosisRiseTest::RunTest(const FString&)
 	TestTrue(TEXT("it stands where the creature fell"),
 		FVector::Dist2D(Imp->GetActorLocation(), Victim->GetActorLocation()) < 1.0f);
 	TestEqual(TEXT("it lasts the row's 10 seconds"), Imp->GetLifeSpan(), 10.0f, 0.01f);
-	TestTrue(TEXT("and holds no place under a summon cap"), Imp->bOutsideSummonCaps);
 	return true;
 }
 
@@ -886,13 +709,17 @@ bool FCataclysmNecrosisRiseNeedsTheRowTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNecrosisRiseOutsideCapsTest,
-	"Cataclysm.NecrosisRise.ARisenImpHoldsNoPlaceUnderSummonImpsCapAndAnAllyRaisesNothing",
+	"Cataclysm.NecrosisRise.ANecrosisImpRisesBesideThreeImpsAndAnAllyRaisesNothing",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * The rule asked directly, on a character already holding Summon Imp's cap of
- * three: an imp still rises, the cap count stays at three, and a fourth summon
- * is not what destroys it. A victim that was the character's own raises nothing.
+ * The rule asked directly, on a character already holding three imps: an imp still rises, beside them, and a victim
+ * that was the character's own raises nothing.
+ *
+ * IT ROSE HERE OUTSIDE SUMMON IMP'S CAP OF THREE, holding no place under it, until branch B of issue #2787: the owner's
+ * ruling of 2026-11-20 removed every count cap on what reserves the class resource, so there is no cap for it to stand
+ * outside, and the half of this test where a summon at the cap destroyed the oldest summoned imp and never the risen
+ * one went with the eviction.
  */
 bool FCataclysmNecrosisRiseOutsideCapsTest::RunTest(const FString&)
 {
@@ -904,10 +731,11 @@ bool FCataclysmNecrosisRiseOutsideCapsTest::RunTest(const FString&)
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
+	constexpr int32 HeldBefore = 3;
 	FScopedCurser Holder(World, FVector::ZeroVector);
 	HoldTheRow(Holder.AbilitySystem, 5.0f);
-	GiveImps(Holder, ImpCap);
-	if (!TestEqual(TEXT("set-up: three imps are held"), Holder.Imps().Num(), ImpCap))
+	GiveImps(Holder, HeldBefore);
+	if (!TestEqual(TEXT("set-up: three imps are held"), Holder.Imps().Num(), HeldBefore))
 	{
 		return false;
 	}
@@ -932,44 +760,19 @@ bool FCataclysmNecrosisRiseOutsideCapsTest::RunTest(const FString&)
 	FScopedCreature Victim(World, FVector(5 * M, 0, 0));
 	ACataclysmMinion* Risen = UCataclysmRisenImps::RiseOnNecrosisKill(
 		Holder.Actor, Victim.Actor, Victim.Actor->GetActorLocation(), &Killing);
-	if (!TestNotNull(TEXT("an imp rises with the cap full"), Risen))
+	if (!TestNotNull(TEXT("an imp rises beside the three"), Risen))
 	{
 		return false;
 	}
 	TestEqual(TEXT("it lasts the row's 5 seconds"), Risen->GetLifeSpan(), 5.0f, 0.01f);
-	TestEqual(TEXT("the cap count is still three"), Holder.Imps().Num(), ImpCap);
-	TestEqual(TEXT("and four minions stand"), MinionsInTheWorld(World), ImpCap + 1);
+	TestEqual(TEXT("four imps are held"), Holder.Imps().Num(), HeldBefore + 1);
+	TestEqual(TEXT("and four minions stand"), MinionsInTheWorld(World), HeldBefore + 1);
 
 	FGameplayTagContainer NotNecrosis;
 	NotNecrosis.AddTag(Ailment(TEXT("Keyword.DoT.Bleed")));
 	TestNull(TEXT("killing tags naming Bleed raise nothing"),
 		UCataclysmRisenImps::RiseOnNecrosisKill(
 			Holder.Actor, Victim.Actor, Victim.Actor->GetActorLocation(), &NotNecrosis));
-
-	// AND IT TAKES NO SUMMON IMP SLOT. A second character holds two imps and one
-	// risen by necrosis: Summon Imp still summons its third, and a summon at the
-	// cap destroys the oldest summoned imp, never the risen one.
-	FScopedCurser Summoner(World, FVector(0, 30 * M, 0));
-	HoldTheRow(Summoner.AbilitySystem, 5.0f);
-	UCataclysmSummonSkill* Skill = GrantSummonImp(Summoner);
-	if (!TestNotNull(TEXT("a summon skill"), Skill) || !TestNotNull(TEXT("a first imp"), Skill->SummonOne())
-		|| !TestNotNull(TEXT("a second imp"), Skill->SummonOne()))
-	{
-		return false;
-	}
-	FScopedCreature Second(World, FVector(5 * M, 30 * M, 0));
-	ACataclysmMinion* AlsoRisen = UCataclysmRisenImps::RiseOnNecrosisKill(
-		Summoner.Actor, Second.Actor, Second.Actor->GetActorLocation(), &Killing);
-	if (!TestNotNull(TEXT("an imp rises beside two summoned"), AlsoRisen))
-	{
-		return false;
-	}
-	TestNotNull(TEXT("Summon Imp still summons its third"), Skill->SummonOne());
-	TestEqual(TEXT("three are under the cap"), Summoner.Imps().Num(), ImpCap);
-	TestNotNull(TEXT("and a summon at the cap goes through"), Skill->SummonOne());
-	TestEqual(TEXT("three are still under the cap"), Summoner.Imps().Num(), ImpCap);
-	TestTrue(TEXT("and the risen imp was not what it destroyed"),
-		IsValid(AlsoRisen) && !UCataclysmSkillEffects::IsDead(AlsoRisen));
 	return true;
 }
 

@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmCommand.h"
@@ -344,7 +345,10 @@ namespace CataclysmSetBonusReaperTenTest
 		return Grant;
 	}
 
-	/** A summon skill granted to the scene's player in `InSlot`, summoning `Kind`, up to 3 at once. */
+	/**
+	 * A summon skill granted to the scene's player in `InSlot`, summoning `Kind`, reserving nothing unless a test states
+	 * `Params.FervourReserve`. No count cap: issue #2787's branch B removed Summon Imp's three.
+	 */
 	UCataclysmSummonSkill* GrantReaperCullSummon(const FReaperCullScene& Scene, const TCHAR* Kind,
 												 ECataclysmAbilitySlot InSlot)
 	{
@@ -356,7 +360,7 @@ namespace CataclysmSetBonusReaperTenTest
 		{
 			Made->SkillName = FString::Printf(TEXT("Summon %s"), Kind);
 			Made->Params = UCataclysmSkillShapes::ParseParams(
-				*FString::Printf(TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Minions=%s:1"), Kind));
+				*FString::Printf(TEXT("Count=1; Duration=20; Radius=3; Minions=%s:1"), Kind));
 		}
 		return Made;
 	}
@@ -703,7 +707,7 @@ bool FCataclysmReaperTenKillCreditTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmReaperTenSpawnTest,
-	"Cataclysm.SetBonus.Reaper10.AKillSpawnsOneFreeMinionOfTheFirstSummonSkillWhereTheEnemyDiedAndNoneAtTheCapOrWithoutOne",
+	"Cataclysm.SetBonus.Reaper10.AKillSpawnsOneFreeMinionOfTheFirstSummonSkillWhereTheEnemyDiedAndNoneWithoutRoomOrWithoutOne",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
@@ -711,8 +715,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmReaperTenSpawnTest,
  *
  * THE CONTROL IS READ FIRST: before any kill the player commands no minion. A kill by the blow itself spawns one imp
  * where the creature died, of Summon Imp and not of Summon Mote, and the player's mana is as it was. A cull's kill
- * spawns a second imp (C5: the cull's own kills included). With the imps at Summon Imp's cap of 3, a kill spawns none,
- * and none of the three is gone.
+ * spawns a second imp (C5: the cull's own kills included). With no room in the pool for another imp's reserve, a kill
+ * spawns none, and none of the two is gone. That was Summon Imp's cap of 3 until branch B of issue #2787, when the
+ * owner's ruling of 2026-11-20 removed every count cap on what reserves the class resource.
  *
  * "FIRST" IS THE GRANT ORDER: a second player granted Summon Mote first and Summon Imp second spawns a mote. And a third
  * player, wearing the same rows and holding no summon skill, spawns nothing at its kill.
@@ -800,37 +805,33 @@ bool FCataclysmReaperTenSpawnTest::RunTest(const FString&)
 	TestTrue(TEXT("set-up: the creature was culled"), ReaperCullIsGone(Culled));
 	TestEqual(TEXT("the cull's kill spawned a second imp"), Imps->LivingMinionCount(), 2);
 
-	// AT THE CAP: none spawned, none gone.
-	const int32 Cap = UCataclysmSummonSkill::CapFor(Scene.Player, Imps->Params, Imps->SkillTags);
-	while (Cap > 0 && Imps->LivingMinionCount() < Cap)
-	{
-		if (!Imps->SummonReplacementAt(Scene.Player->GetActorLocation() + FVector(-3 * M * Imps->LivingMinionCount(),
-																					 3 * M, 0)))
-		{
-			break;
-		}
-	}
-	const TArray<ACataclysmMinion*> AtTheCap = ReaperCullMinionsOf(Scene.Player);
-	if (!TestEqual(TEXT("set-up: Summon Imp is at its cap of 3"), Imps->LivingMinionCount(), 3)
-		|| !TestEqual(TEXT("set-up: Summon Imp's cap is 3"), Cap, 3))
+	// WITH NO ROOM IN THE POOL: none spawned, none gone. The two imps reserve nothing, so the skill states 10 from here
+	// and the pool is set to 5, too small for one more.
+	Imps->Params.FervourReserve = 10.0f;
+	Scene.System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 5.0f);
+	const TArray<ACataclysmMinion*> Standing = ReaperCullMinionsOf(Scene.Player);
+	if (!TestEqual(TEXT("set-up: two imps stand"), Standing.Num(), 2)
+		|| !TestFalse(TEXT("set-up: the pool cannot hold another imp's 10"),
+					  UCataclysmCommand::HasRoomToReserve(Scene.Player, 10.0f)))
 	{
 		return false;
 	}
-	ACataclysmEnemyCharacter* AtCapKill = ReaperCullCreature(World, FVector(12 * M, 0, 0));
-	if (!TestNotNull(TEXT("set-up: a creature to kill at the cap"), AtCapKill))
+	ACataclysmEnemyCharacter* NoRoomKill = ReaperCullCreature(World, FVector(12 * M, 0, 0));
+	if (!TestNotNull(TEXT("set-up: a creature to kill with no room"), NoRoomKill))
 	{
 		return false;
 	}
-	ReaperCullHold(AtCapKill, StackedTaken / 2.0f);
-	ReaperCullBlow(Scene, AtCapKill, Swing);
-	TestTrue(TEXT("set-up: the blow killed it"), ReaperCullIsGone(AtCapKill));
-	TestEqual(TEXT("at the cap a kill spawns none"), ReaperCullMinionsOf(Scene.Player).Num(), AtTheCap.Num());
+	ReaperCullHold(NoRoomKill, StackedTaken / 2.0f);
+	ReaperCullBlow(Scene, NoRoomKill, Swing);
+	TestTrue(TEXT("set-up: the blow killed it"), ReaperCullIsGone(NoRoomKill));
+	TestEqual(TEXT("with no room in the pool a kill spawns none"), ReaperCullMinionsOf(Scene.Player).Num(),
+			  Standing.Num());
 	bool bNoneGone = true;
-	for (const ACataclysmMinion* Each : AtTheCap)
+	for (const ACataclysmMinion* Each : Standing)
 	{
 		bNoneGone = bNoneGone && IsValid(Each) && !UCataclysmSkillEffects::IsDead(Each);
 	}
-	TestTrue(TEXT("and none of the three is evicted"), bNoneGone);
+	TestTrue(TEXT("and none of the two is gone"), bNoneGone);
 
 	// "FIRST" IS THE GRANT ORDER.
 	UCataclysmStrikeSkill* MoteSwing = ReaperCullSkill(MoteFirst.Player, TEXT("Test Swing"), TEXT("Type.Strike"));
@@ -857,13 +858,16 @@ bool FCataclysmReaperTenSpawnTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmReaperTenOrdinaryMinionTest,
-	"Cataclysm.SetBonus.Reaper10.ASpawnedMinionCountsInsideItsSkillsCapAndLeavesASoulWhenItDies",
+	"Cataclysm.SetBonus.Reaper10.ASpawnedMinionIsAnOrdinaryMinionOfItsSkillAndLeavesASoulWhenItDies",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
  * C7, and the six-piece's rule. A kill spawns an imp of Summon Imp: it is in the skill's own list, counted among the
- * minions sharing its cap, and its summoner is the player. THE CONTROL IS READ FIRST: before it dies no Soul lies
- * anywhere. Killed, it leaves one Soul, the player's, where it died.
+ * player's imps, reserving what the skill states, and its summoner is the player. THE CONTROL IS READ FIRST: before it
+ * dies no Soul lies anywhere. Killed, it leaves one Soul, the player's, where it died.
+ *
+ * "COUNTED AMONG THE PLAYER'S IMPS" WAS "INSIDE ITS SKILL'S CAP" until branch B of issue #2787 removed every count cap
+ * on what reserves the class resource; an ordinary minion of the skill now holds the skill's reserve instead.
  *
  * STANDING: the player at the origin; the creature 4 m along +X, so the imp stands there; the far creature 30 m along +Y.
  */
@@ -892,6 +896,8 @@ bool FCataclysmReaperTenOrdinaryMinionTest::RunTest(const FString&)
 	}
 	UCataclysmStrikeSkill* Swing = ReaperCullSkill(Scene.Player, TEXT("Test Swing"), TEXT("Type.Strike"));
 	const float Taken = ReaperCullTaken(Scene, Far, Swing);
+	Imps->Params.FervourReserve = 10.0f;
+	Scene.System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 100.0f);
 	ReaperCullHold(Frail, Taken / 2.0f);
 	ReaperCullBlow(Scene, Frail, Swing);
 	const TArray<ACataclysmMinion*> Spawned = ReaperCullMinionsOf(Scene.Player);
@@ -903,10 +909,10 @@ bool FCataclysmReaperTenOrdinaryMinionTest::RunTest(const FString&)
 	ACataclysmMinion* Imp = Spawned[0];
 	TestTrue(TEXT("it is in Summon Imp's own list"),
 			 Imps->Minions.ContainsByPredicate([Imp](const TObjectPtr<ACataclysmMinion>& Each) { return Each.Get() == Imp; }));
-	TestTrue(TEXT("it is counted among the minions sharing Summon Imp's cap"),
-			 Imps->MinionsSharingTheCap().Contains(Imp));
+	TestTrue(TEXT("it is counted among the player's imps"),
+			 UCataclysmCommand::MinionsOfTypeCommandedBy(Scene.Player, TEXT("Imp")).Contains(Imp));
+	TestEqual(TEXT("it reserves the 10 its skill states"), Imp->ReservedFervour, 10.0f, 0.001f);
 	TestTrue(TEXT("its summoner is the player"), Imp->Summoner.Get() == Scene.Player);
-	TestFalse(TEXT("it holds a place under the summon caps"), Imp->bOutsideSummonCaps);
 
 	int32 SoulsBefore = 0;
 	for (TActorIterator<ACataclysmReaperSoul> It(World); It; ++It)

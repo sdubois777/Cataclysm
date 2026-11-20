@@ -11023,24 +11023,29 @@ bool FCataclysmPassiveCrownedOnARealCharacterTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveSwarmOnARealCharacterTest,
-	"Cataclysm.Passives.TheSwarmRaisesARealRitualistsMinionCap",
+	"Cataclysm.Passives.TheSwarmLowersARealRitualistsImpReserveByTwelvePercent",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * `Ritualist_keystone_b_kA` The Swarm on a real character. Issue #1718.
+ * `Ritualist_keystone_b_kA` The Swarm on a real character. Issue #1718, and issue
+ * #2787's branch B.
  *
- * "Each skill that limits how many of its minions may be active allows 2 more."
+ * "Your minions reserve 12% less Fervour."
  *
- * THE ROW HOLDS 2, WHICH IS ADDED TO THE CAP A SKILL'S OWN ROW STATES. Summon
- * Imp's is 3, so 5. Every read site treats a cap of zero as no limit at all,
- * so a stat holding a cap itself would hand a skill designed to have none a
- * cap of two.
+ * IT WAS "Each skill that limits how many of its minions may be active allows 2
+ * more", flat 2 on `minion_cap_bonus`, until the owner's ruling of 2026-11-20
+ * removed the count caps and made what raised them a smaller reserve instead.
+ * Sized to let the player hold about as many more as the old 2 did: imps at 10 on
+ * a Ritualist's 150 are fifteen, and 2 / (15 + 2) is about 12 percent, a
+ * judgement of issue #2787.
+ *
+ * THE ROW HOLDS 12, untagged, so it reaches every kind. Read where the reserve is
+ * read, `UCataclysmCommand::ReserveFor` with an imp's tags: an imp's 10 is 8.8.
  */
 bool FCataclysmPassiveSwarmOnARealCharacterTest::RunTest(const FString&)
 {
 	using namespace CataclysmPassiveTest;
 	using namespace CataclysmFourRowTest;
-	using Combat = UCataclysmCombatAttributeSet;
 
 	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
 	if (!TestTrue(TEXT("the class console variable exists"),
@@ -11070,39 +11075,33 @@ bool FCataclysmPassiveSwarmOnARealCharacterTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	TestEqual(TEXT("and it is the bonus to how many minions may be active"),
-			  Effects[0]->Stat, FString(TEXT("minion_cap_bonus")));
+	TestEqual(TEXT("and it is the percent less a minion reserves"),
+			  Effects[0]->Stat, FString(UCataclysmCommand::MinionReservePercentLessStat));
 	TestEqual(TEXT("stated as a flat amount"), Effects[0]->ValueKind,
 			  FString(TEXT("flat")));
-	TestEqual(TEXT("of two"), Effects[0]->ValuePerPoint, 2.0f);
+	TestEqual(TEXT("of twelve"), Effects[0]->ValuePerPoint, 12.0f);
 	TestEqual(TEXT("and carrying no condition"),
 			  Effects[0]->Condition, FString());
 
-	const FGameplayAttribute Bonus = Combat::GetMinionCapBonusAttribute();
+	const FGameplayTagContainer ImpTags = ACataclysmMinion::TagsOfType(TEXT("Imp"));
+	const auto ImpReserve = [&Player, &ImpTags]()
+	{
+		return UCataclysmCommand::ReserveFor(Player.Character, 10.0f, ImpTags);
+	};
 
 	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
-	TestEqual(TEXT("an unspent Ritualist gets no extra minions"),
-			  Player.AbilitySystem->GetNumericAttribute(Bonus), 0.0f, 0.001f);
+	TestEqual(TEXT("an unspent Ritualist's imp reserves its whole 10"), ImpReserve(), 10.0f, 0.001f);
 
 	FCataclysmPassiveAllocation Allocation;
 	Allocation.Add(Node, 1);
 	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
 	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
-
-	TestEqual(TEXT("taking The Swarm is worth two more minions"),
-			  Player.AbilitySystem->GetNumericAttribute(Bonus), 2.0f, 0.001f);
-
-	// AND TWO IS THE "2 MORE" THE NODE STATES, which takes Summon Imp's own three
-	// to five.
-	TestEqual(TEXT("which with Summon Imp's own 3 allows 5"),
-			  3.0f + Player.AbilitySystem->GetNumericAttribute(Bonus), 5.0f,
-			  0.001f);
+	TestEqual(TEXT("taking The Swarm makes it 8.8"), ImpReserve(), 8.8f, 0.001f);
 
 	Player.State->SetPassiveAllocation(FCataclysmPassiveAllocation(),
 									   TArray<FName>());
 	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
-	TestEqual(TEXT("and giving the point back puts the cap back"),
-			  Player.AbilitySystem->GetNumericAttribute(Bonus), 0.0f, 0.001f);
+	TestEqual(TEXT("and giving the point back makes it 10 again"), ImpReserve(), 10.0f, 0.001f);
 
 	return true;
 }
@@ -18571,7 +18570,7 @@ bool FCataclysmPassiveReplacementRowsTest::RunTest(const FString&)
 		return false;
 	}
 	Skill->Params = UCataclysmSkillShapes::ParseParams(
-		TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Minions=Imp:1"));
+		TEXT("Count=1; Duration=20; Radius=3; Minions=Imp:1"));
 
 	const auto Spend = [&Player](const TArray<FName>& Nodes)
 	{
@@ -21239,7 +21238,7 @@ namespace CataclysmPartialClauseTest
 				return false;
 			}
 			Skill->Params = UCataclysmSkillShapes::ParseParams(
-				TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Minions=Imp:1"));
+				TEXT("Count=1; Duration=20; Radius=3; Minions=Imp:1"));
 			return true;
 		}
 

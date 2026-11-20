@@ -10004,79 +10004,160 @@ def shipped_positive_sentence(name: str) -> str:
     return match[0]["Effect"]
 
 
-class TestTheTrapCapBonusAndTheNoExpireFlag(GadgetRowsOnAMadeUpSheet):
-    """`trap_cap_bonus` and `traps_do_not_expire`, ruled 2026-10-21 (traps
-    layer 3, M1, M2) and built ahead of their rows, for "Your trap skills get
-    +1-6 to max trap count" and "Traps do not expire, they remain armed until
-    triggered". Each is a flat figure asked off the player with `Type.Trap`
-    alone. The rows are the enchantment session's; this shows the generator
-    carries the shape the readers take and refuses the shapes they would read
-    as nothing."""
+class TestTheNoExpireFlag(GadgetRowsOnAMadeUpSheet):
+    """`traps_do_not_expire`, ruled 2026-10-21 (traps layer 3, M2) and built
+    ahead of its row, for "Traps do not expire, they remain armed until
+    triggered": a flat figure asked off the player with `Type.Trap` alone. This
+    shows the generator carries the shape the reader takes and refuses the
+    shapes it would read as nothing.
+
+    ITS SIBLING `trap_cap_bonus` (M1) WENT WITH THE TRAP CAP in issue #2787's
+    branch B; `TestTheReservePercentage` below holds what replaced it."""
 
     TAG = "Type.Trap"
-    CAP = ("Your trap skills get +1-6 to max trap count",
-           {"Stat": "trap_cap_bonus", "Value Kind": "flat", "Value Low": 1,
-            "Value High": 6, "Required Tags": "Type.Trap"})
     EXPIRY = ("Positive_Traps_do_not_expire_they_remain_armed_until_tr",
               {"Stat": "traps_do_not_expire", "Value Kind": "flat", "Value Low": 1,
                "Value High": 1, "Required Tags": "Type.Trap"})
 
     def refusals(self, rows):
-        return gen.refuse_a_trap_cap_or_expiry_row_the_game_cannot_read(
+        return gen.refuse_a_trap_expiry_row_the_game_cannot_read(
             "EnchantmentEffects", rows)
 
-    def test_each_rows_shape_is_carried_through_and_is_not_refused(self, tmp_path):
-        for words, row in ((self.CAP[0], self.CAP[1]),
-                           (shipped_positive_sentence(self.EXPIRY[0]), self.EXPIRY[1])):
-            out = self.out(tmp_path, words, [row])
-            assert [(each["Stat"], each["ValueKind"], each["ValueLow"],
-                     each["ValueHigh"], each["RequiredTags"], each["Action"])
-                    for each in out] == [
-                (row["Stat"], "flat", float(row["Value Low"]),
-                 float(row["Value High"]), "Type.Trap", "")], row["Stat"]
-            assert self.refusals(out) == [], row["Stat"]
-            assert self.validation(out) == [], row["Stat"]
+    def test_the_rows_shape_is_carried_through_and_is_not_refused(self, tmp_path):
+        row = self.EXPIRY[1]
+        out = self.out(tmp_path, shipped_positive_sentence(self.EXPIRY[0]), [row])
+        assert [(each["Stat"], each["ValueKind"], each["ValueLow"],
+                 each["ValueHigh"], each["RequiredTags"], each["Action"])
+                for each in out] == [
+            (row["Stat"], "flat", 1.0, 1.0, "Type.Trap", "")]
+        assert self.refusals(out) == []
+        assert self.validation(out) == []
 
-    def test_both_are_stats_with_no_attribute_named_as_the_engine_names_them(self):
-        """THE CONTROL is a made-up name on no list."""
-        for stat in (gen.TRAP_CAP_BONUS_STAT, gen.TRAPS_DO_NOT_EXPIRE_STAT):
-            assert stat in gen.stats_with_no_attribute(), stat
-        assert "trap_cap_bonuses" not in gen.stats_with_no_attribute()
+    def test_it_is_a_stat_with_no_attribute_named_as_the_engine_names_it(self):
+        """THE CONTROL is a made-up name on no list. AND THE CAP BONUS IS
+        GONE from the list, with the trap cap it raised."""
+        assert gen.TRAPS_DO_NOT_EXPIRE_STAT in gen.stats_with_no_attribute()
+        assert "traps_do_not_expires" not in gen.stats_with_no_attribute()
+        assert "trap_cap_bonus" not in gen.stats_with_no_attribute()
         engine = self.names_in_the_engine()
-        assert engine["TrapCapBonusStat"] == gen.TRAP_CAP_BONUS_STAT
         assert engine["TrapsDoNotExpireStat"] == gen.TRAPS_DO_NOT_EXPIRE_STAT
+        assert "TrapCapBonusStat" not in engine
 
     def test_every_shape_the_game_would_read_as_nothing_is_refused(self):
-        cap = {"Name": "X#1", "Stat": "trap_cap_bonus", "ValueKind": "flat",
-               "ValueLow": 1.0, "ValueHigh": 6.0, "RequiredTags": "Type.Trap"}
-        flag = dict(cap, Stat="traps_do_not_expire", ValueHigh=1.0)
-        for row in (cap, flag):
-            assert self.refusals([row]) == [], row["Stat"]
-            assert self.refusals([dict(row, RequiredTags="")]) == [], row["Stat"]
-        for row, change, said in (
-                (cap, {"ValueKind": "increased"}, "value kind 'increased'"),
-                (cap, {"RequiredTags": "Type.Deployable"},
-                 "under the required tags 'Type.Deployable'"),
-                (cap, {"Action": "strike_target"}, "with the action 'strike_target'"),
-                (cap, {"ValueLow": 0.0}, "whole number of traps from 1"),
-                (cap, {"ValueHigh": 2.5}, "whole number of traps from 1"),
-                (cap, {"ValueHigh": 21.0}, "whole number of traps from 1"),
-                (flag, {"ValueKind": "more"}, "value kind 'more'"),
-                (flag, {"RequiredTags": "Slot.Heavy"}, "under the required tags 'Slot.Heavy'"),
-                (flag, {"ValueHigh": 2.0}, "states 1 and nothing else")):
-            problems = self.refusals([dict(row, **change)])
+        flag = {"Name": "X#1", "Stat": "traps_do_not_expire", "ValueKind": "flat",
+                "ValueLow": 1.0, "ValueHigh": 1.0, "RequiredTags": "Type.Trap"}
+        assert self.refusals([flag]) == []
+        assert self.refusals([dict(flag, RequiredTags="")]) == []
+        for change, said in (
+                ({"ValueKind": "more"}, "value kind 'more'"),
+                ({"RequiredTags": "Slot.Heavy"}, "under the required tags 'Slot.Heavy'"),
+                ({"Action": "strike_target"}, "with the action 'strike_target'"),
+                ({"ValueHigh": 2.0}, "states 1 and nothing else")):
+            problems = self.refusals([dict(flag, **change)])
             assert len(problems) == 1, (change, problems)
             assert said in problems[0], (change, problems)
-        other = dict(cap, Stat="minion_cap_bonus", ValueKind="increased")
+        other = dict(flag, Stat="minion_reserve_percent_less", ValueKind="increased")
         assert self.refusals([other]) == []
 
     def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
         """A wrong row is refused by the generator's check of the finished
         sheet, not only by the function called by hand. THE CONTROL is the
         right row, refused by nothing above."""
-        out = self.out(tmp_path, self.CAP[0], [dict(self.CAP[1], **{"Value Kind": "increased"})])
+        out = self.out(tmp_path, shipped_positive_sentence(self.EXPIRY[0]),
+                       [dict(self.EXPIRY[1], **{"Value Kind": "increased"})])
         problems = self.validation(out)
-        assert any("trap_cap_bonus" in problem and "'increased'" in problem
+        assert any("traps_do_not_expire" in problem and "'increased'" in problem
+                   for problem in problems), problems
+
+
+class TestTheReservePercentage(GadgetRowsOnAMadeUpSheet):
+    """`minion_reserve_percent_less`, issue #2787's branch B: what raised a
+    count cap lowers the reserve instead, by the owner's ruling of 2026-11-20.
+    A flat figure asked by `UCataclysmCommand::ReserveFor` with the kind's
+    tags; a negative figure is a reserve that is larger. The four enchantment
+    rows' shapes, as the workbook will hold them at branch B's turn: the
+    sentences are written here, so this does not wait for that turn."""
+
+    TAG = "Type.Trap"
+    ROWS = (
+        ("Your minions reserve 15%-30% less Fervour",
+         {"Stat": "minion_reserve_percent_less", "Value Kind": "flat", "Value Low": 15,
+          "Value High": 30, "Required Tags": None}),
+        ("Your minions reserve 25%-65% more Fervour",
+         {"Stat": "minion_reserve_percent_less", "Value Kind": "flat", "Value Low": -25,
+          "Value High": -65, "Required Tags": None}),
+        ("Your deployables reserve 15%-30% less Fervour",
+         {"Stat": "minion_reserve_percent_less", "Value Kind": "flat", "Value Low": 15,
+          "Value High": 30, "Required Tags": "Type.Deployable"}),
+        ("Your traps reserve 5%-25% less Fervour",
+         {"Stat": "minion_reserve_percent_less", "Value Kind": "flat", "Value Low": 5,
+          "Value High": 25, "Required Tags": "Type.Trap"}),
+    )
+
+    def refusals(self, rows):
+        return gen.refuse_a_reserve_percent_row_the_game_cannot_read(
+            "EnchantmentEffects", rows)
+
+    def validation(self, rows):
+        """Told that both tags a row may require are tags the game has."""
+        return gen.validate_enchantment_effects(
+            {"EnchantmentEffects": rows}, {"Type.Deployable", "Type.Trap"})
+
+    def test_each_rows_shape_is_carried_through_and_is_not_refused(self, tmp_path):
+        for words, row in self.ROWS:
+            out = self.out(tmp_path, words, [row])
+            assert [(each["Stat"], each["ValueKind"], each["ValueLow"],
+                     each["ValueHigh"], each["RequiredTags"], each["Action"])
+                    for each in out] == [
+                (row["Stat"], "flat", float(row["Value Low"]), float(row["Value High"]),
+                 row["Required Tags"] or "", "")], words
+            assert self.refusals(out) == [], words
+            assert self.validation(out) == [], words
+
+    def test_it_is_a_stat_with_no_attribute_named_as_the_engine_names_it(self):
+        """THE CONTROL is a made-up name on no list. AND THE MINION CAP BONUS
+        IS GONE from the attribute table, with the count caps it raised."""
+        import re
+        assert gen.MINION_RESERVE_PERCENT_LESS_STAT in gen.stats_with_no_attribute()
+        assert "minion_reserve_percent_lesser" not in gen.stats_with_no_attribute()
+        source = (gen.PLAYER_CLASS_STATS_CPP.parents[1] / "AbilitySystem"
+                  / "CataclysmCommand.cpp").read_text(encoding="utf-8")
+        named = dict(re.findall(
+            r'UCataclysmCommand::(\w+Stat)\s*=\s*\n?\s*TEXT\("([^"]+)"\)', source))
+        assert named["MinionReservePercentLessStat"] == gen.MINION_RESERVE_PERCENT_LESS_STAT
+        assert "MinionCapBonusStat" not in named
+        assert "minion_cap_bonus" not in gen.PLAYER_CLASS_STATS_CPP.read_text(encoding="utf-8")
+
+    def test_every_shape_the_game_would_read_as_nothing_is_refused(self):
+        less = {"Name": "X#1", "Stat": "minion_reserve_percent_less", "ValueKind": "flat",
+                "ValueLow": 15.0, "ValueHigh": 30.0, "RequiredTags": ""}
+        more = dict(less, ValueLow=-25.0, ValueHigh=-65.0)
+        for row in (less, more):
+            for tags in ("", "Type.Deployable", "Type.Trap"):
+                assert self.refusals([dict(row, RequiredTags=tags)]) == [], (row, tags)
+        assert self.refusals([dict(less, ValueLow=100.0, ValueHigh=100.0)]) == []
+        for row, change, said in (
+                (less, {"ValueKind": "increased"}, "value kind 'increased'"),
+                (less, {"RequiredTags": "Type.Summon"}, "under the required tags 'Type.Summon'"),
+                (less, {"Action": "strike_target"}, "with the action 'strike_target'"),
+                (less, {"ValueLow": 0.0}, "other than nought"),
+                (less, {"ValueHigh": 101.0}, "at most 100 either way"),
+                (more, {"ValueHigh": -101.0}, "at most 100 either way"),
+                (less, {"ValueLow": -15.0}, "both ends have one sign")):
+            problems = self.refusals([dict(row, **change)])
+            assert len(problems) == 1, (change, problems)
+            assert said in problems[0], (change, problems)
+        other = dict(less, Stat="traps_do_not_expire", ValueKind="increased")
+        assert self.refusals([other]) == []
+
+    def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
+        """A wrong row is refused by the generator's check of the finished
+        sheet, not only by the function called by hand. THE CONTROL is the
+        right row, refused by nothing above."""
+        words, row = self.ROWS[3]
+        out = self.out(tmp_path, words, [dict(row, **{"Value Kind": "increased"})])
+        problems = self.validation(out)
+        assert any("minion_reserve_percent_less" in problem and "'increased'" in problem
                    for problem in problems), problems
 
 
@@ -10293,7 +10374,7 @@ class TestTheFiveHooksOnATrapsOwnBlow(GadgetRowsOnAMadeUpSheet):
             problems = self.refusals([dict(row, **change)])
             assert len(problems) == 1, (change, problems)
             assert said in problems[0], (change, problems)
-        other = dict(rearm, Stat="trap_cap_bonus")
+        other = dict(rearm, Stat="traps_do_not_expire")
         assert self.refusals([other]) == []
 
     def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
@@ -10576,7 +10657,7 @@ class TestAGadgetsShotAtATrapsEnemyAndATrapsPull(GadgetRowsOnAMadeUpSheet):
             problems = refusals("EnchantmentEffects", [dict(pull, **change)])
             assert len(problems) == 1, (change, problems)
             assert said in problems[0], (change, problems)
-        assert refusals("EnchantmentEffects", [dict(pull, Stat="trap_cap_bonus")]) == []
+        assert refusals("EnchantmentEffects", [dict(pull, Stat="traps_do_not_expire")]) == []
         words, cells = self.row("P216")
         out = self.out(tmp_path, words, [dict(cells, **{"Value Kind": "increased"})])
         assert any("trap_pull_radius" in problem and "'increased'" in problem
@@ -10663,7 +10744,7 @@ class TestTheDamageTypesCarriedRow(GadgetRowsOnAMadeUpSheet):
             problems = self.refusals([dict(right, **change)])
             assert len(problems) == 1, (change, problems)
             assert said in problems[0], (change, problems)
-        assert self.refusals([dict(right, Stat="trap_cap_bonus", ValueKind="increased")]) == []
+        assert self.refusals([dict(right, Stat="traps_do_not_expire", ValueKind="increased")]) == []
 
     def test_the_whole_sheets_validation_runs_the_check(self, tmp_path):
         """A wrong row is refused by the generator's check of the finished

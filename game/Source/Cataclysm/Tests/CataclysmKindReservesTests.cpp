@@ -11,6 +11,8 @@
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmRisenImps.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
+#include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -35,14 +37,23 @@
  * reserved before and are tested in `Cataclysm.FervourReserve.`.
  *
  * WHAT IS CHECKED, through the function each kind is made by: each holds its figure back the moment it exists and the
- * spendable Fervour is cut at once; each is refused, with nothing made, when the pool cannot hold it; a refresh or a
- * gadget's move holds nothing more; Crowned takes 5 off every kind, never below 1; nothing is held once everything is
- * gone; and the resource bar is drawn for a character that reserves anything, generator or not.
+ * spendable Fervour is cut at once; each is refused, with nothing made, when the pool cannot hold it; a second Warhound,
+ * Tyrant's Minion or trap stands beside the first and reserves again, and a gadget's move holds nothing more; Crowned
+ * takes 5 off every kind, never below 1; nothing is held once everything is gone; and the resource bar is drawn for a
+ * character that reserves anything, generator or not.
+ *
+ * BRANCH B OF ISSUE #2787 CHANGED THREE OF THEM. The owner's ruling of 2026-11-20 removed every count cap on what reserves
+ * the class resource, so tests 5, 6 and 8 no longer read a refresh of the one Warhound or Tyrant's Minion standing, or
+ * the trap cap of five; they read a second standing beside the first, and the pool refusing the one after it fills.
  *
  * THE PLAYER IS A POSSESSED PLAYER CHARACTER WITH ITS PLAYER STATE, so its pool is the real class resource set. The
  * stats that switch each kind on are written by hand, a stat line per call replacing the last, as an item or a node
  * would build it. Nothing waits on a tick. Registered under `Cataclysm.KindReserves.`, which no other group's name
  * begins with.
+ *
+ * AND `Cataclysm.NoCaps.`, BRANCH B'S GROUP, at the end of this file because it reads the same player: no count caps on
+ * what reserves the class resource (a fourth imp, a risen imp beside three), and the percentage that replaced the cap
+ * bonuses, `UCataclysmCommand::MinionReservePercentLessStat`, at each end it can take, added across rows and floored.
  */
 namespace CataclysmKindReservesTest
 {
@@ -386,14 +397,18 @@ bool FCataclysmKindReservesNecrosisImpTest::RunTest(const FString&)
 }
 
 // ==========================================================================
-// 5. A Warhound reserves 5, a refresh holds nothing more, and a full pool summons none
+// 5. A Warhound reserves 5, a second reserves 5 more, and a full pool summons none
 // ==========================================================================
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKindReservesWarhoundTest,
-	"Cataclysm.KindReserves.AWarhoundReservesFiveARefreshHoldsNothingMoreAndAFullPoolSummonsNone",
+	"Cataclysm.KindReserves.AWarhoundReservesFiveASecondReservesFiveMoreAndAFullPoolSummonsNone",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-/** Warlord's Will's six-piece Warhound. A second summon refreshes the one standing (Q3) and reserves nothing more. */
+/**
+ * Warlord's Will's six-piece Warhound. A second summon makes a second Warhound beside the first, reserving 5 more: the
+ * owner's ruling of 2026-11-20 removed every count cap on what reserves the class resource, and with it the one Warhound
+ * at most and the refresh a second summon made (Q3, 2026-10-18).
+ */
 bool FCataclysmKindReservesWarhoundTest::RunTest(const FString&)
 {
 	using namespace CataclysmKindReservesTest;
@@ -420,8 +435,10 @@ bool FCataclysmKindReservesWarhoundTest::RunTest(const FString&)
 	TestEqual(TEXT("which reserves 5"), KindReserveOf(Hound), ACataclysmMinion::WarhoundFervourReserve, 0.001f);
 	TestEqual(TEXT("so 95 can be spent"), Player.Spendable(), 95.0f, 0.001f);
 
-	TestTrue(TEXT("a second summon refreshes the one standing"), ACataclysmMinion::SummonWarhound(Player.Character) == Hound);
-	TestEqual(TEXT("and still 5 is held"), Player.Reserved(), 5.0f, 0.001f);
+	const ACataclysmMinion* Second = ACataclysmMinion::SummonWarhound(Player.Character);
+	TestTrue(TEXT("a second summon makes a second Warhound"), Second && Second != Hound);
+	TestEqual(TEXT("so two are commanded"), Player.Commanded(), 2);
+	TestEqual(TEXT("holding 10"), Player.Reserved(), 2.0f * ACataclysmMinion::WarhoundFervourReserve, 0.001f);
 
 	TestNull(TEXT("a pool of 4 summons none"), ACataclysmMinion::SummonWarhound(Small.Character));
 	TestEqual(TEXT("and commands nothing"), Small.Commanded(), 0);
@@ -429,14 +446,17 @@ bool FCataclysmKindReservesWarhoundTest::RunTest(const FString&)
 }
 
 // ==========================================================================
-// 6. A Tyrant's Minion reserves 10, a refresh holds nothing more, and a full pool summons none
+// 6. A Tyrant's Minion reserves 10, a second reserves 10 more, and a full pool summons none
 // ==========================================================================
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKindReservesTyrantsMinionTest,
-	"Cataclysm.KindReserves.ATyrantsMinionReservesTenARefreshHoldsNothingMoreAndAFullPoolSummonsNone",
+	"Cataclysm.KindReserves.ATyrantsMinionReservesTenASecondReservesTenMoreAndAFullPoolSummonsNone",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-/** Tyrant's Chains' six-piece minion. A second summon refreshes the one standing (ruling #3) and reserves nothing more. */
+/**
+ * Tyrant's Chains' six-piece minion. A second summon makes a second beside the first, reserving 10 more: the owner's
+ * ruling of 2026-11-20 replaced their ruling #3 of 2026-10-17, one Tyrant's Minion at most and a refresh.
+ */
 bool FCataclysmKindReservesTyrantsMinionTest::RunTest(const FString&)
 {
 	using namespace CataclysmKindReservesTest;
@@ -465,9 +485,10 @@ bool FCataclysmKindReservesTyrantsMinionTest::RunTest(const FString&)
 	TestEqual(TEXT("which reserves 10"), KindReserveOf(Tyrants), ACataclysmMinion::TyrantsMinionFervourReserve, 0.001f);
 	TestEqual(TEXT("so 90 can be spent"), Player.Spendable(), 90.0f, 0.001f);
 
-	TestTrue(TEXT("a second summon refreshes the one standing"),
-		ACataclysmMinion::SummonTyrantsMinion(Player.Character, false, Where) == Tyrants);
-	TestEqual(TEXT("and still 10 is held"), Player.Reserved(), 10.0f, 0.001f);
+	const ACataclysmMinion* Second = ACataclysmMinion::SummonTyrantsMinion(Player.Character, false, Where);
+	TestTrue(TEXT("a second summon makes a second Tyrant's Minion"), Second && Second != Tyrants);
+	TestEqual(TEXT("so two are commanded"), Player.Commanded(), 2);
+	TestEqual(TEXT("holding 20"), Player.Reserved(), 2.0f * ACataclysmMinion::TyrantsMinionFervourReserve, 0.001f);
 
 	TestNull(TEXT("a pool of 9 summons none"),
 		ACataclysmMinion::SummonTyrantsMinion(Small.Character, false, FVector(4 * KindM, 40 * KindM, 0)));
@@ -530,17 +551,18 @@ bool FCataclysmKindReservesSkillGadgetTest::RunTest(const FString&)
 }
 
 // ==========================================================================
-// 8. A skill trap reserves 5; over the cap the oldest's share is freed before the new one is asked to fit
+// 8. A skill trap reserves 5; a sixth stands while the pool has room, and the next is refused
 // ==========================================================================
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKindReservesSkillTrapTest,
-	"Cataclysm.KindReserves.ASkillTrapReservesFiveAndOverTheCapTheOldestsShareIsFreedFirst",
+	"Cataclysm.KindReserves.ASkillTrapReservesFiveASixthStandsWhileThePoolHasRoomAndTheNextIsRefused",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * A pool of exactly 25 holds five traps at 5. A sixth is over the cap of five (T6), which destroys the oldest, and that
- * one's 5 is counted as freed before the sixth is asked to fit, as an evicted imp's is (ruled 2026-09-30): so the sixth
- * is placed. A pool of 9 below the cap holds one and refuses a second, which frees nothing.
+ * A pool of exactly 30 holds six traps at 5. Until branch B of issue #2787 a sixth was over the cap of five (T6, a
+ * judgement of 2026-10-19) and destroyed the oldest; the owner's ruling of 2026-11-20 removed every count cap on what
+ * reserves the class resource, so the sixth stands beside the other five and the oldest with them. The seventh does not
+ * fit, is refused, and destroys nothing.
  */
 bool FCataclysmKindReservesSkillTrapTest::RunTest(const FString&)
 {
@@ -550,15 +572,12 @@ bool FCataclysmKindReservesSkillTrapTest::RunTest(const FString&)
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
 	FKindPlayer Full(World, FVector::ZeroVector);
-	FKindPlayer Small(World, FVector(0, 40 * KindM, 0));
-	if (!TestTrue(TEXT("set-up: two possessed players"), Full.IsUsable() && Small.IsUsable()))
+	if (!TestTrue(TEXT("set-up: a possessed player"), Full.IsUsable()))
 	{
 		return false;
 	}
 	Full.Holds({});
-	Full.Pool(25.0f);
-	Small.Holds({});
-	Small.Pool(9.0f);
+	Full.Pool(30.0f);
 
 	const ECataclysmAbilitySlot Heavy = ECataclysmAbilitySlot::Heavy;
 	ACataclysmMinion* Oldest = ACataclysmMinion::PlaceSkillTrap(Full.Character, Heavy, FVector(3 * KindM, 0, 0));
@@ -573,22 +592,22 @@ bool FCataclysmKindReservesSkillTrapTest::RunTest(const FString&)
 		ACataclysmMinion::PlaceSkillTrap(Full.Character, Heavy, FVector(3 * KindM, Index * 2 * KindM, 0));
 	}
 	if (!TestEqual(TEXT("set-up: five traps stand"), ACataclysmMinion::SkillTrapsOf(Full.Character).Num(), 5)
-		|| !TestEqual(TEXT("set-up: holding the whole pool of 25"), Full.Reserved(), 25.0f, 0.001f))
+		|| !TestEqual(TEXT("set-up: holding 25 of the pool of 30"), Full.Reserved(), 25.0f, 0.001f))
 	{
 		return false;
 	}
 
-	TestNotNull(TEXT("a sixth, over the cap, is placed: the oldest's 5 is freed first"),
+	TestNotNull(TEXT("a sixth is placed"),
 		ACataclysmMinion::PlaceSkillTrap(Full.Character, Heavy, FVector(3 * KindM, 10 * 2 * KindM, 0)));
-	TestFalse(TEXT("and the oldest is gone"), OldestHeld.IsValid() && !OldestHeld->IsActorBeingDestroyed());
-	TestEqual(TEXT("five still stand"), ACataclysmMinion::SkillTrapsOf(Full.Character).Num(), 5);
-	TestEqual(TEXT("holding the same 25"), Full.Reserved(), 25.0f, 0.001f);
+	TestTrue(TEXT("and the oldest still stands"), OldestHeld.IsValid() && !OldestHeld->IsActorBeingDestroyed());
+	TestEqual(TEXT("so six stand"), ACataclysmMinion::SkillTrapsOf(Full.Character).Num(), 6);
+	TestEqual(TEXT("holding the whole 30"), Full.Reserved(), 30.0f, 0.001f);
 
-	TestNotNull(TEXT("a pool of 9 places one trap"),
-		ACataclysmMinion::PlaceSkillTrap(Small.Character, Heavy, FVector(3 * KindM, 40 * KindM, 0)));
-	TestNull(TEXT("and refuses a second, which frees nothing"),
-		ACataclysmMinion::PlaceSkillTrap(Small.Character, Heavy, FVector(5 * KindM, 40 * KindM, 0)));
-	TestEqual(TEXT("so one stands"), ACataclysmMinion::SkillTrapsOf(Small.Character).Num(), 1);
+	TestNull(TEXT("a seventh does not fit and is refused"),
+		ACataclysmMinion::PlaceSkillTrap(Full.Character, Heavy, FVector(3 * KindM, 12 * 2 * KindM, 0)));
+	TestTrue(TEXT("destroying nothing: the oldest still stands"),
+		OldestHeld.IsValid() && !OldestHeld->IsActorBeingDestroyed());
+	TestEqual(TEXT("and six stand"), ACataclysmMinion::SkillTrapsOf(Full.Character).Num(), 6);
 	return true;
 }
 
@@ -781,6 +800,324 @@ bool FCataclysmKindReservesBarTest::RunTest(const FString&)
 	Trap->Destroy();
 	TestFalse(TEXT("with the trap gone, no bar is drawn again"),
 		UCataclysmCombatOverlay::FervourOf(Player.Character, Fervour, Spendable));
+	return true;
+}
+
+// ==========================================================================
+// Cataclysm.NoCaps. Branch B of issue #2787: no count caps, and the reserve percentage that replaced the cap bonuses
+// ==========================================================================
+
+namespace CataclysmNoCapsTest
+{
+	using namespace CataclysmKindReservesTest;
+
+	/** Summon Imp's shipped row since branch B: no `MaxActive`, a reserve of 10. */
+	const TCHAR* const NoCapsImpRow = TEXT("Count=1; Duration=20; Radius=3; Minions=Imp:1; FervourReserve=10");
+
+	/** Summon Imp granted in the Special slot of `Player`, with that row, or null. */
+	UCataclysmSummonSkill* NoCapsGrantImps(const FKindPlayer& Player)
+	{
+		const FGameplayAbilitySpecHandle Handle = Player.System->GiveAbilityInSlot(
+			UCataclysmSummonSkill::StaticClass(), ECataclysmAbilitySlot::Special, /*Level=*/1, Player.Character);
+		FGameplayAbilitySpec* Spec = Player.System->FindAbilitySpecFromHandle(Handle);
+		UCataclysmSummonSkill* Skill = Spec ? Cast<UCataclysmSummonSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (Skill)
+		{
+			Skill->SkillName = TEXT("Summon Imp");
+			Skill->Params = UCataclysmSkillShapes::ParseParams(NoCapsImpRow);
+			Skill->SkillTags = ACataclysmMinion::TagsOfType(TEXT("Imp"));
+		}
+		return Skill;
+	}
+
+	/** The reserve percentage as one flat row, untagged or requiring `Tag`. */
+	FKindStat PercentLess(float Value, const TCHAR* Tag = nullptr)
+	{
+		return FKindStat{UCataclysmCommand::MinionReservePercentLessStat, Value, Tag};
+	}
+
+	/** What one of a kind reserves for `Player`, stated `Stated`, with the tags its minion type row carries. */
+	float ReserveOfType(const FKindPlayer& Player, float Stated, const TCHAR* Type)
+	{
+		return UCataclysmCommand::ReserveFor(Player.Character, Stated, ACataclysmMinion::TagsOfType(Type));
+	}
+}
+
+// ==========================================================================
+// N1. A fourth imp is summoned beside three, and the pool refuses the one that does not fit
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNoCapsFourthImpTest,
+	"Cataclysm.NoCaps.AFourthImpIsSummonedBesideThreeAndThePoolRefusesTheOneThatDoesNotFit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Until branch B, "Up to 3 imps may be active at once. Summoning a fourth destroys the oldest, which explodes"; the
+ * owner's rulings of 2026-11-20 removed the cap and dropped that sentence with it. A pool of 45 holds four imps at 10:
+ * the fourth press makes a fourth and destroys nothing, and the fifth, which would need 50, makes nothing and destroys
+ * nothing. Summoned through `SummonOne`, the call a press makes, so no cooldown or cost stands between the presses.
+ */
+bool FCataclysmNoCapsFourthImpTest::RunTest(const FString&)
+{
+	using namespace CataclysmNoCapsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FKindPlayer Player(World, FVector::ZeroVector);
+	if (!TestTrue(TEXT("set-up: a possessed player"), Player.IsUsable()))
+	{
+		return false;
+	}
+	Player.Holds({});
+	Player.Pool(45.0f);
+	UCataclysmSummonSkill* Skill = NoCapsGrantImps(Player);
+	if (!TestNotNull(TEXT("set-up: Summon Imp is granted"), Skill))
+	{
+		return false;
+	}
+
+	const TWeakObjectPtr<ACataclysmMinion> First = Skill->SummonOne();
+	Skill->SummonOne();
+	Skill->SummonOne();
+	if (!TestTrue(TEXT("set-up: the first imp stands"), First.IsValid())
+		|| !TestEqual(TEXT("set-up: three imps stand"), Skill->LivingMinionCount(), 3))
+	{
+		return false;
+	}
+
+	TestNotNull(TEXT("a fourth press makes a fourth imp"), Skill->SummonOne());
+	TestEqual(TEXT("so four stand"), Skill->LivingMinionCount(), 4);
+	TestTrue(TEXT("and the first was not destroyed to make room"),
+		First.IsValid() && !First->IsActorBeingDestroyed());
+	TestEqual(TEXT("holding 40"), Player.Reserved(), 40.0f, 0.001f);
+
+	TestNull(TEXT("a fifth, needing 50 of a pool of 45, is refused"), Skill->SummonOne());
+	TestEqual(TEXT("so four still stand"), Skill->LivingMinionCount(), 4);
+	TestTrue(TEXT("and the first still stands"), First.IsValid() && !First->IsActorBeingDestroyed());
+	return true;
+}
+
+// ==========================================================================
+// N2. A risen imp rises beside three imps already standing
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNoCapsRisenImpTest,
+	"Cataclysm.NoCaps.ARisenImpRisesBesideThreeImpsAlreadyStanding",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The risen imps shared Summon Imp's cap of three (ruled 2026-09-27), so with three imps standing an enemy dying cursed
+ * raised nothing. With the caps gone it rises beside them, reserving Summon Imp's 10. The three are spawned directly,
+ * which reserves nothing (`Cataclysm.FervourReserve.AMinionSpawnedDirectlyReservesNothing`), so the 10 held is the
+ * risen imp's alone.
+ */
+bool FCataclysmNoCapsRisenImpTest::RunTest(const FString&)
+{
+	using namespace CataclysmNoCapsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FKindPlayer Player(World, FVector::ZeroVector);
+	if (!TestTrue(TEXT("set-up: a possessed player"), Player.IsUsable()))
+	{
+		return false;
+	}
+	Player.Holds({KindRisesOnCursedDeath});
+	Player.Pool(100.0f);
+	for (int32 Index = 0; Index < 3; ++Index)
+	{
+		ACataclysmMinion::Spawn(Player.Character, FVector(2 * KindM, Index * KindM, 0), /*Lifetime=*/60.0f,
+			/*bBurns=*/false, TEXT("Imp"));
+	}
+	if (!TestEqual(TEXT("set-up: three imps stand"),
+			UCataclysmCommand::MinionsOfTypeCommandedBy(Player.Character, TEXT("Imp")).Num(), 3)
+		|| !TestEqual(TEXT("set-up: reserving nothing"), Player.Reserved(), 0.0f, 0.001f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("an enemy dying cursed rises as a fourth imp"),
+		KindCursedDeath(*this, World, Player, FVector(6 * KindM, 0, 0)), 4);
+	TestEqual(TEXT("reserving Summon Imp's 10"), Player.Reserved(), 10.0f, 0.001f);
+	return true;
+}
+
+// ==========================================================================
+// N3. A percent less takes its share off what a kind reserves, after Crowned's points
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNoCapsPercentLessTest,
+	"Cataclysm.NoCaps.APercentLessTakesItsShareOffWhatAKindReservesAfterCrowned",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Swarm's "Your minions reserve 12% less Fervour" takes an imp's 10 to 8.8, and a summoned imp holds that. The
+ * minion enchantment's two ends, 15 and 30, take it to 8.5 and 7. With Crowned's 5 points as well, the points come off
+ * first and the percentage second, a judgement of issue #2787: 30% less of 5 is 3.5, where the other order would be 2.
+ */
+bool FCataclysmNoCapsPercentLessTest::RunTest(const FString&)
+{
+	using namespace CataclysmNoCapsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FKindPlayer Player(World, FVector::ZeroVector);
+	if (!TestTrue(TEXT("set-up: a possessed player"), Player.IsUsable()))
+	{
+		return false;
+	}
+	Player.Holds({});
+	Player.Pool(100.0f);
+	TestEqual(TEXT("control: with nothing held an imp reserves its 10"), ReserveOfType(Player, 10.0f, TEXT("Imp")),
+		10.0f, 0.001f);
+
+	Player.Holds({PercentLess(12.0f)});
+	TestEqual(TEXT("The Swarm's 12% less makes it 8.8"), ReserveOfType(Player, 10.0f, TEXT("Imp")), 8.8f, 0.001f);
+	UCataclysmSummonSkill* Skill = NoCapsGrantImps(Player);
+	if (!TestNotNull(TEXT("set-up: Summon Imp is granted"), Skill))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and a summoned imp holds 8.8"), KindReserveOf(Skill->SummonOne()), 8.8f, 0.001f);
+
+	Player.Holds({PercentLess(15.0f)});
+	TestEqual(TEXT("the enchantment's low end, 15% less, makes it 8.5"), ReserveOfType(Player, 10.0f, TEXT("Imp")),
+		8.5f, 0.001f);
+	Player.Holds({PercentLess(30.0f)});
+	TestEqual(TEXT("its high end, 30% less, makes it 7"), ReserveOfType(Player, 10.0f, TEXT("Imp")), 7.0f, 0.001f);
+
+	Player.Holds({KindCrowned, PercentLess(30.0f)});
+	TestEqual(TEXT("with Crowned, 5 points off first and then 30% less: 3.5"),
+		ReserveOfType(Player, 10.0f, TEXT("Imp")), 3.5f, 0.001f);
+	return true;
+}
+
+// ==========================================================================
+// N4. A percent more raises what a kind reserves
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNoCapsPercentMoreTest,
+	"Cataclysm.NoCaps.APercentMoreRaisesWhatAKindReserves",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your minions reserve 25%-65% more Fervour", the negative enchantment, is the stat at minus 25 to minus 65: an imp's
+ * 10 becomes 12.5 at one end and 16.5 at the other, and at 25% more a pool of 30 holds two imps where it held three.
+ */
+bool FCataclysmNoCapsPercentMoreTest::RunTest(const FString&)
+{
+	using namespace CataclysmNoCapsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FKindPlayer Player(World, FVector::ZeroVector);
+	if (!TestTrue(TEXT("set-up: a possessed player"), Player.IsUsable()))
+	{
+		return false;
+	}
+	Player.Holds({PercentLess(-25.0f)});
+	Player.Pool(30.0f);
+	TestEqual(TEXT("25% more makes an imp's 10 into 12.5"), ReserveOfType(Player, 10.0f, TEXT("Imp")), 12.5f, 0.001f);
+	Player.Holds({PercentLess(-65.0f)});
+	TestEqual(TEXT("65% more makes it 16.5"), ReserveOfType(Player, 10.0f, TEXT("Imp")), 16.5f, 0.001f);
+
+	Player.Holds({PercentLess(-25.0f)});
+	UCataclysmSummonSkill* Skill = NoCapsGrantImps(Player);
+	if (!TestNotNull(TEXT("set-up: Summon Imp is granted"), Skill))
+	{
+		return false;
+	}
+	Skill->SummonOne();
+	Skill->SummonOne();
+	TestNull(TEXT("at 25% more a pool of 30 refuses a third imp"), Skill->SummonOne());
+	TestEqual(TEXT("so two stand, holding 25"), Player.Reserved(), 25.0f, 0.001f);
+	return true;
+}
+
+// ==========================================================================
+// N5. Every percentage reaching a kind adds into one figure, and a tagged row reaches only its kinds
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNoCapsPercentagesAddTest,
+	"Cataclysm.NoCaps.EveryPercentReachingAKindAddsIntoOneFigureAndATaggedRowReachesOnlyItsKinds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Three rows at once: 15% less untagged (the minion enchantment), 30% less requiring `Type.Deployable` (the deployable
+ * one) and 25% less requiring `Type.Trap` (the trap one). `game/Data/MinionTypes.csv` tags an imp neither, a skill
+ * gadget `Type.Deployable`, and a skill trap both. So an imp takes 15%, 10 to 8.5; a gadget 45%, 15 to 8.25; and a trap
+ * 70%, 5 to 1.5. The gadget and the trap are placed, so what they hold is read from what was made.
+ */
+bool FCataclysmNoCapsPercentagesAddTest::RunTest(const FString&)
+{
+	using namespace CataclysmNoCapsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FKindPlayer Player(World, FVector::ZeroVector);
+	if (!TestTrue(TEXT("set-up: a possessed player"), Player.IsUsable()))
+	{
+		return false;
+	}
+	Player.Holds({PercentLess(15.0f), PercentLess(30.0f, TEXT("Type.Deployable")), PercentLess(25.0f, TEXT("Type.Trap"))});
+	Player.Pool(100.0f);
+
+	TestEqual(TEXT("an imp takes the untagged 15% only: 8.5"), ReserveOfType(Player, 10.0f, TEXT("Imp")), 8.5f, 0.001f);
+	TestEqual(TEXT("a skill gadget takes 15% and the deployables' 30%: 8.25"),
+		KindReserveOf(ACataclysmMinion::PlaceSkillGadget(Player.Character, ECataclysmAbilitySlot::Heavy,
+			FVector(4 * KindM, 0, 0))), 8.25f, 0.001f);
+	TestEqual(TEXT("a skill trap takes all three, 70%: 1.5"),
+		KindReserveOf(ACataclysmMinion::PlaceSkillTrap(Player.Character, ECataclysmAbilitySlot::Heavy,
+			FVector(0, 4 * KindM, 0))), 1.5f, 0.001f);
+	return true;
+}
+
+// ==========================================================================
+// N6. No reduction takes a reserve below one point
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNoCapsFloorTest,
+	"Cataclysm.NoCaps.NoReductionTakesAReserveBelowOnePoint",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The floor is Crowned's own "never less than 1", `UCataclysmCommand::SmallestMinionReserve`. 80% less of a trap's 5
+ * is exactly 1, the control; 90% less would be 0.5 and is 1; Crowned's 5 points with 100% less would be nothing and is
+ * 1; and 150% less, a negative share, is 1 as well rather than a reserve below nothing.
+ */
+bool FCataclysmNoCapsFloorTest::RunTest(const FString&)
+{
+	using namespace CataclysmNoCapsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FKindPlayer Player(World, FVector::ZeroVector);
+	if (!TestTrue(TEXT("set-up: a possessed player"), Player.IsUsable()))
+	{
+		return false;
+	}
+	Player.Holds({});
+	Player.Pool(100.0f);
+
+	Player.Holds({PercentLess(80.0f)});
+	TestEqual(TEXT("control: 80% less of a trap's 5 is 1 without the floor"),
+		ReserveOfType(Player, ACataclysmMinion::SkillTrapFervourReserve, TEXT("SkillTrap")), 1.0f, 0.001f);
+	Player.Holds({PercentLess(90.0f)});
+	TestEqual(TEXT("90% less of a trap's 5 would be 0.5 and is 1"),
+		ReserveOfType(Player, ACataclysmMinion::SkillTrapFervourReserve, TEXT("SkillTrap")),
+		UCataclysmCommand::SmallestMinionReserve, 0.001f);
+	Player.Holds({KindCrowned, PercentLess(100.0f)});
+	TestEqual(TEXT("Crowned and 100% less would leave an imp nothing and leave 1"),
+		ReserveOfType(Player, 10.0f, TEXT("Imp")), UCataclysmCommand::SmallestMinionReserve, 0.001f);
+	Player.Holds({PercentLess(150.0f)});
+	TestEqual(TEXT("150% less is 1, not a reserve below nothing"),
+		ReserveOfType(Player, 10.0f, TEXT("Imp")), UCataclysmCommand::SmallestMinionReserve, 0.001f);
 	return true;
 }
 
