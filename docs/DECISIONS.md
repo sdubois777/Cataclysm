@@ -151,6 +151,11 @@ four in the group `Cataclysm.EnemyBurn.`; three new in `CataclysmThornsOfGlassTe
   tests and assertions. The other seven groups passed alone at their counts in window burn-w1 at `4e9bc42af` and were not
   run again, as the coordinating session ruled; this head differs from that one only in `CataclysmEnemyBurnTests.cpp`
   and this log ("Window burn-w2", below).
+- **DEVELOPMENT `b28cb32e8` WAS MERGED IN AFTER WINDOW burn-w2, AND NEEDED NO NEW WINDOW** (merge `410631a5a`, as the
+  coordinating session asked, so the pull request stayed open): it brings #2771, which changes no C++ and no
+  content -- `tools/unreal_build.py`, `tools/run_editor_python.py`, their tests, this log, and seven comment lines
+  in `game/Config/DefaultEditorPerProjectUserSettings.ini`. The one conflict was this log, both sides adding a
+  first entry; #2771's, first written at 15:49, stays above this one, first written at 11:09.
 - **WINDOW burn-w1 FAILED ONE ASSERTION, IN THE TEST'S MEASUREMENT** (at `4e9bc42af`, 2026-11-19): the Stalker's
   Void Splinter tick LANDED 98.33 against 1% of the player's health read before the clock ran, while the Stalker, a live
   creature, struck that player during it, and while a share tick also passes the player's defences. Everything else
