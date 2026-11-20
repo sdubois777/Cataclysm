@@ -510,6 +510,18 @@ struct CATACLYSMEMPIRE_API FCataclysmCity
 	bool bErased = false;
 
 	/**
+	 * WHETHER A DUNGEON HAS DAMAGED THIS CITY IN THIS RUN, which Price Controls' "Cities that have taken Surge damage"
+	 * reads. Issue #2741 slice 6b, the coordinating session's B1 of 2026-11-20. Set by `UCataclysmEmpireMap::Damage`
+	 * whenever the city loses defence or population, and every caller of it is a dungeon's damage (C4: an ordinary
+	 * resolve, a Quest dungeon's timer and a Siege's daily share); never cleared within the run, and a new run builds
+	 * a new map. RUN RECORD VERSION 12: `Migrate_11_to_12` writes false on every city of an older run, because the
+	 * record cannot prove past damage -- a city below its maximum may be one whose maximum the tree raised (S1), which
+	 * is why the reading "below its maximum now" was withdrawn.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bTookSurgeDamage = false;
+
+	/**
 	 * How many Void stacks this city carries. Ten erase it.
 	 *
 	 * A PORT OF `world.City.void_stacks`, since 2026-10-22. An ordinary dungeon

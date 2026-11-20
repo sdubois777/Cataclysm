@@ -2,6 +2,204 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-20 — Five of the empire upgrade tree's gold nodes act on run record version 12: Price Controls, Stimulus Package, Cleanup Crew, Salvage Rights and Investment Funds (#2741, slice 6b)
+
+**Affects:** `FCataclysmCity::bTookSurgeDamage`, new, set in `UCataclysmEmpireMap::Damage`
+(`game/Source/CataclysmEmpire/Empire/CataclysmEmpireMap.h` and `.cpp`); `UCataclysmEmpireRun::bPopulationFellBelowHalf`
+and `NotePopulationAgainstHalf`, new (`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h` and `.cpp`);
+`UCataclysmRunSave` at `SchemaVersionNow` 12 with the run's flag and the walk's `GoldDroppedThisWalk` and
+`GoldPickedUpThisWalk` (`game/Source/Cataclysm/Save/CataclysmSaveRecords.h`), `Migrate_11_to_12`
+(`game/Source/Cataclysm/Save/CataclysmSaveRecords.cpp`), and their gather and apply
+(`game/Source/Cataclysm/Save/CataclysmSaveGather.cpp`, `game/Source/Cataclysm/Save/CataclysmSaveApply.cpp`);
+`UCataclysmEmpireTree::ClearPayFor` and `FCataclysmEmpireTreeClearPay`, new, `UpgradePriceFactorFor` and the drop rules'
+gold multiplier (`game/Source/Cataclysm/Player/CataclysmEmpireTree.h` and `.cpp`); `UCataclysmDropRoll::GoldScaleFor`,
+new (`game/Source/Cataclysm/Items/CataclysmDropRoll.h` and `.cpp`); the gold dropped and picked up in a walk
+(`game/Source/Cataclysm/Items/CataclysmDroppedItem.cpp`); `ACataclysmDungeonGameMode::EmpireTreeClearPayHere`,
+`PayTheTreesClearGold`, `NoteGoldDroppedIn` and `NoteGoldPickedUpIn`, new, and the walk's two counts
+(`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp`); `ECataclysmEmpireTreeEffect`, five values
+(`game/Source/Cataclysm/Data/CataclysmDataRows.h`); `tools/generate_datatables.py`, `game/Data/EmpireTreeNodes.csv`,
+`game/Data/EmpireTreeEffects.csv`, 97 rows, `game/Content/Data/DT_EmpireTreeNodes.uasset`,
+`game/Content/Data/DT_EmpireTreeEffects.uasset` and `game/Data/datatable_asset_sources.json`;
+`game/Tests/SaveFixtures/Run_v12.json`, new, and `game/Tests/SaveFixtures/README.md`. Tests:
+`game/Source/Cataclysm/Tests/CataclysmEmpireTreeClearGoldTests.cpp`, new, 9 in the new group
+`Cataclysm.EmpireTreeClearGold.`; the run record's version moved in `CataclysmConsumptionDoubleTests.cpp`,
+`CataclysmDeathCostTests.cpp`, `CataclysmEarnedBossSaveTests.cpp`, `CataclysmEmpireTreeDropsTests.cpp`,
+`CataclysmEmpireTreeEventsTests.cpp`, `CataclysmGoldTests.cpp`, `CataclysmSaveLoadTests.cpp`,
+`CataclysmSaveRecordTests.cpp`, `CataclysmSeedingTests.cpp`, `CataclysmWalkSeedTests.cpp` and
+`CataclysmWinningTheRunTests.cpp`, and `AddTheRunsVersion12Defaults` in `CataclysmSaveFixtures.h`, all in
+`game/Source/Cataclysm/Tests/`; `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` pins 97 rows;
+`tools/tests/test_empire_tree_clear_gold.py`, new; `tools/tests/test_empire_tree_effects_match_their_texts.py`,
+`tools/tests/test_empire_tree_gold_nodes.py` and `tools/tests/test_empire_tree_tables_match_the_tree_file.py`, changed.
+Issue [#2741](https://github.com/sdubois777/Cataclysm/issues/2741), slice 6b.
+
+### SAID FIRST
+
+- **COMPILED, RUN AND PROVED IN ONE WINDOW (tree-6b-w1)**, at `9483c2a10` on development `5c76c42f7`:
+  - all three of phase 2's compiles succeeded with no warning;
+  - the written-out record version check found the run, character and account records at 12, 10 and 4, and no test
+    stating another version;
+  - the asset step rebuilt `DT_EmpireTreeNodes.uasset` and `DT_EmpireTreeEffects.uasset`, 97 rows, and committed them
+    with their sources file alone;
+  - the twenty-two groups each passed alone at their registered counts;
+  - the whole Unreal suite performed the registered 5036, all succeeding, with 47 skipped halves and "852 written and
+    deleted, 0 left behind";
+  - Python passed, 7799 with 9 skipped, and ruff passed;
+  - the nine C++ guard proofs each proved, failing exactly the registered test with exactly the registered number of
+    assertions. **ONE PREDICTED VALUE WAS WRONG**: T7 was registered to read -10 and read -11; the section on the window
+    gives the reason. The eight Python guard proofs were proved in phase 1.
+- **WITH THIS SLICE, 93 OF THE TREE'S NODES ACT**: slices 3a, 3b, 4, 5a, 5b, 6a and these five. They are every name in
+  `EMPIRE_TREE_BUILT` (`tools/generate_datatables.py`); the other 74 nodes and options are shown and cannot be bought.
+- **THE RUN RECORD IS AT VERSION 12**, for three saved figures: a city's mark that it has taken Surge damage this run,
+  the run's flag that its population fell below half, and the walk's gold dropped and picked up.
+- **A TEST THE SEEDING FIX (#2782) ADDED MOVED WITH THE RUN RECORD.**
+  `Cataclysm.Seeding.ARunLoadedFromTheCommittedFixtureDrawsTheCataclysmsItsSavedStreamGives` read `Run_v11.json`, and this
+  slice's `tools/tests/test_empire_tree_clear_gold.py` holds that only the migration test reads it once the record is
+  at 12; the check failed on it when the slice was rebased onto the seeding fix. It reads `Run_v12.json` now, as it
+  followed each version before, and **ITS EXPECTED DRAWS STAND** -- Demonic, then War -- because `Run_v12.json` holds
+  the same Cataclysm stream state, 1357924680, and the same four active Cataclysms as `Run_v11.json`. The coordinating
+  session accepted it, and added `Cataclysm.Seeding.` to the groups run alone.
+
+### The rulings this slice builds on
+
+From the coordinating session on slice 6's plan, 2026-11-20:
+
+- **P3, Price Controls' "Cities that have taken Surge damage", was first ruled into slice 6a** as a city below its
+  maximum now, and **withdrawn** when this session's measurement showed a node raising a city's maximum leaves every
+  full city below it. **B1** replaced it: a city is marked when a Surge's damage lands on it, in
+  `UCataclysmEmpireMap::Damage`, whenever it loses defence or population, and the mark is saved.
+- **B1's migration writes no mark**: `Migrate_11_to_12` marks no city, because the record cannot prove past damage --
+  "below its saved maximum" is not proof of a bite, which is the reason P3 was withdrawn. A city written at 11 is
+  marked by its next bite.
+- **B2, Stimulus Package**: the run's flag is set after each day's resolutions and after a death's when the total
+  population is below half its maximum, and cleared when a city is reclaimed; while set, a kill's gold is doubled as
+  its own "more". **Its migration writes false, a deviation from this session's own proposal** to work it out from the
+  saved totals: the maximum depends on the tree's bonuses, which the record does not hold. The coordinating session
+  confirmed it.
+- **B3, Cleanup Crew** (R6): at a clear, 10% of the gold dropped in that walk less the gold picked up, rounded down,
+  goes into the balance, multiplied by nothing, because the piles already were; nothing at a death. The two counts are
+  the walk's, saved, and migrate as 0 and 0.
+- **B4, Salvage Rights**: 50 gold a point for every floor of the dungeon cleared, times the tier's gold scale (R10:
+  the tier's gold pile over tier 1's), raised by the "from dungeons" and "all sources" increases G2 sends to a payout;
+  not by The Midas Touch or Stimulus Package, which are a kill's. **The floors are read before `ClearDungeon` removes
+  the dungeon**, and a test holds that order.
+- **B5, Investment Funds** (R5): +10% a point, added into the same payout increase. Without Salvage Rights there is no
+  payout for it to raise.
+- **R10**: every gold amount a node names is a tier 1 figure scaled as a gold pile is.
+
+### Registered before the run
+
+Sent to and accepted by the coordinating session on 2026-11-20, before the compiles, and restated after #2781 merged.
+
+- **Base: 5027**, measured by window tree-2781-w2 at `e54c29626`, whose `game/` is development `5c76c42f7`'s (`git diff
+  e54c29626 5c76c42f7 -- game/` prints nothing). The slice was written on #2781's first head as
+  `feat/empire-tree-6b-gold` and moved with the stack onto the seeding fix, #2764 slice 2a's merge and finally
+  `5c76c42f7` as `feat/empire-tree-6b-gold-2`. The last rebase was clean and left each of the three commits' patches
+  identical (`git patch-id --stable` 5fb71f844ecf, 538dc6910587 and 3a68c6b7ec33 before and after).
+- **The whole suite: 5036 performed, 5036 succeeded, 0 failed**: the base's 5027 and 9 new in
+  `Cataclysm.EmpireTreeClearGold.`; 47 skipped halves, the base's; no test save left behind.
+- **Each group alone**, counted from the base log on "Test Completed. Result={" lines and by distinct path, which agree:
+  `Cataclysm.EmpireTreeClearGold.` 9 (new); the empire layer, `EmpireMap.` 17, `EmpireRun.` 71, `EmpireTreeEvents.` 14,
+  `EmpireTreeCity.` 17; `EmpireTreeGold.` 6, `CityUpgradePrice.` 7; `Gold.` 13, `DropPickup.` 20, `Drop.` 30,
+  `DungeonMode.` 46, `Data.` 7, `EmpireTreeDrops.` 13; the version 12 sweep, `SaveLoad.` 81, `SaveRecords.` 17,
+  `Travel.` 9, `DeathCost.` 9, `EarnedBossSave.` 3, `WinningTheRun.` 11, `WalkSeed.` 5, `ConsumptionDouble.` 15; and
+  `Seeding.` 3, as ruled.
+- **The written-out record version check** wants the run record at 12, the character record at 10 and the account
+  record at 4.
+- **An asset step**: `tools/generate_datatable_assets.py` rebuilds `game/Content/Data/DT_EmpireTreeNodes.uasset` and
+  `game/Content/Data/DT_EmpireTreeEffects.uasset`, 97 rows, and rewrites `game/Data/datatable_asset_sources.json`; those
+  three files and no other are committed and pushed before the tests run, and that commit is the tested head.
+- **Before the window**, #2781's first window's lesson was checked: no Unreal test outside this slice's group names one
+  of the five nodes, by name or by row identifier, as an example of a refused node, and none states a count of built
+  nodes this slice moves.
+- **Nine C++ guard proofs**, each narrowed to `Cataclysm.EmpireTreeClearGold.` (9 tests), each predicted at 9 performed,
+  8 succeeded and 1 failed, the restored half passing every test it ran:
+
+| Proof | The break | Predicted failing test and assertions |
+|---|---|---|
+| T1 | a bite no longer marks its city | `ADungeonsBiteMarksTheCityAndPriceControlsReadsTheMark`, 2 |
+| T2 | the price factor ignores the mark | the same test, 1 (1.00 against 0.60) |
+| T3 | a reclaim leaves the flag set | `TheRunNotesPopulationBelowHalfAndAReclaimEndsIt`, 2 |
+| T4 | `AdvanceDay` does not check the population | the same test, 2 |
+| T5 | Stimulus applies without the flag | `StimulusDoublesKillGoldOnlyWhileTheRunIsBelowHalf`, 1 ("the node without the flag: 1", 2.00) |
+| T6 | Investment Funds left out of the payout | `TheClearPaysSalvageByFloorsAndScaleAndATenthOfTheGoldLeft`, 2 (46,800; 46,823) |
+| T7 | Cleanup Crew's share not held at nothing | the same test, 1 (-10) |
+| T8 | the migration marks every city | `ARunFileFromVersion11MigratesUnmarkedAndUncounted`, 3 |
+| T9 | the walk does not restore its gold dropped | `TheWalksGoldIsSavedAndRestoredWithTheWalk`, 1 ("and restores 1234", 0) |
+
+- **Python before the window**: at `b39a5f063` 7787 passed, 2 failed, 9 skipped; JUnit tests 7798, failures 2. One
+  failure was the asset step's to clear, `tools/tests/test_datatable_assets_are_current.py`; the other was the Python
+  pin of the effect table, still at 92 rows, which `db4c5e631` set to 97. The seeding test's move was checked on the
+  whole stack rebased onto the development holding #2764 slice 2a (`535d38f31`), at slice 6c's head `6e8130997`: JUnit
+  tests 7814, failures 1, the asset step's.
+
+### The eight Python guards, proved in phase 1
+
+Each through `tools/prove_guard.py`'s `break_and_run` on `tools/tests/test_empire_tree_clear_gold.py` and its
+neighbours, `proved` True:
+
+- **K1, `Run_v12.json`'s flag is the default**: `test_run_v12_is_run_v11_with_the_marks_the_flag_and_the_walks_gold`.
+- **K2, `Migrate_11_to_12` marks every city, and K3, the apply leaves the city's mark out**:
+  `test_the_run_record_is_at_version_12_and_migrate_11_to_12_writes_nothing_proven`.
+- **K4, a bite no longer marks its city, and K5, a reclaim leaves the flag set**:
+  `test_a_bite_marks_its_city_and_the_flag_is_checked_after_bites_and_cleared_at_a_reclaim`.
+- **K6, the pay is worked out after the clear**:
+  `test_the_clear_works_the_pay_out_before_it_removes_the_dungeon_and_pays_once_it_stands`.
+- **K7, the walk does not restore its gold dropped**: `test_the_walk_counts_its_gold_from_nought_and_saves_it`.
+- **K8, the gold test's chain stops at version 11**:
+  `test_every_chain_test_adds_version_12_and_only_the_migration_reads_run_v11`. The same check found the seeding test.
+
+### The window
+
+**tree-6b-w1, 2026-11-20, 10:46 to 11:30, at `9483c2a10`.** Phase 2's three compiles ran under the lock
+tree-6b-compile from 10:33 to 10:45, after development's CI and Unreal runs for #2786's merge and the coordinating
+session's rebuild of the main checkout had finished: the branch (56 files), each changed `.cpp` file alone (37 files),
+and the unity files (17). None printed a warning. The window's gate found every pre-check passing at 10:46, the recount
+matched every group, and the written-out version check found "28 lines stating a version; NO MISMATCH".
+
+- **The build**: "target already up to date, 0 actions, nothing compiled".
+- **The asset step**: `tools/generate_datatable_assets.py` left exactly `game/Content/Data/DT_EmpireTreeEffects.uasset`,
+  `game/Content/Data/DT_EmpireTreeNodes.uasset` and `game/Data/datatable_asset_sources.json` changed; the three were
+  committed alone as `9483c2a10` on `0f07bb8bd` and pushed, and that is the tested head.
+- **Each group alone**: all twenty-two at their registered counts, all succeeding, `Cataclysm.Seeding.` 3 of 3 among them.
+- **The whole suite**: "Tests: 5036 tests performed, 5036 succeeded, 0 failed. 47 skipped part of what they check";
+  "Test saves: 852 written and deleted, 0 left behind"; "Declared: 5036 tests in the tree at 9483c2a10; 5036
+  performed, gap 0".
+- **Python**: "7799 passed, 9 skipped"; JUnit tests 7808, failures 0, errors 0, skipped 9; ruff "All checks passed!".
+  Phase 1's failure, `tools/tests/test_datatable_assets_are_current.py`, passes with the assets rebuilt.
+- **What the new tests printed**: "CLEAR GOLD TABLE: price 0.40, stimulus 1.00, cleanup 0.10, salvage 1000 a floor,
+  investment 1.00"; "CLEAR GOLD MARK: bitten marked 0.60; hit for nothing unmarked 1.00; lowered with no bite unmarked
+  1.00"; "GOLD STIMULUS FLAG: at first clear; below half set; back at full still set; reclaimed yes, then clear; full
+  again clear"; "CLEAR GOLD STIMULUS: with the flag 2.00, without 1.00, no node 1.00; the clear pays 500 with the flag
+  and 500 without"; "CLEAR GOLD PAY: salvage 82800, cleanup 23, total 82823; more picked up than dropped 0; no node 0";
+  "CLEAR GOLD SCALE: tier 1 1.00, tier 2 3.00, tier 8 30.00"; "CLEAR GOLD WALK: saved 1234 dropped and 1000 picked up;
+  restored 1234 and 1000"; "CLEAR GOLD SAVED: loaded yes; city 2 marked, city 3 unmarked; the flag set"; "CLEAR GOLD
+  MIGRATED: version 12; cities unmarked unmarked; flag clear; walk 0 and 0; the rest kept; Run_v12.json cities marked
+  unmarked, flag set, walk 1234 and 1000".
+- **The proofs**, each 9 performed, 8 succeeded, 1 failed with the break in, failing exactly its registered test, and
+  9 performed, 9 succeeded with it restored:
+
+| Proof | The failed assertions |
+|---|---|
+| T1 | `ADungeonsBiteMarksTheCityAndPriceControlsReadsTheMark` 2: "a bite that takes defence marks the city"; "Price Controls on the bitten city: 0.60" (1.00) |
+| T2 | the same test, 1: "Price Controls on the bitten city: 0.60" (1.00) |
+| T3 | `TheRunNotesPopulationBelowHalfAndAReclaimEndsIt` 2: "the reclaim clears it"; "and at full the next check leaves it clear" |
+| T4 | the same test, 2: "a day with every city at a tenth sets it"; "the population back at full does not clear it" |
+| T5 | `StimulusDoublesKillGoldOnlyWhileTheRunIsBelowHalf` 1: "the node without the flag: 1" (2.00) |
+| T6 | `TheClearPaysSalvageByFloorsAndScaleAndATenthOfTheGoldLeft` 2: "Salvage Rights: 82,800" (46800); "together: 82,823" (46823) |
+| T7 | the same test, 1: "more picked up than dropped: nothing" **(-11, REGISTERED AS -10)** |
+| T8 | `ARunFileFromVersion11MigratesUnmarkedAndUncounted` 3: "its first city unmarked"; "and its second"; "and every other field is kept" |
+| T9 | `TheWalksGoldIsSavedAndRestoredWithTheWalk` 1: "and restores 1234" (0) |
+
+**T7'S VALUE WAS PREDICTED WRONG, AND WHY.** The test asks for the pay with 900 gold dropped and 1000 picked up, a
+difference of -100. `ClearPayFor` works out Cleanup Crew's share as `FloorToDouble(LeftLying x UnpickedGoldShareAtClear)`.
+The share is the float 0.10f, stored as 0.100000001490116, so with the floor at nothing removed the product is
+-10.0000001, and rounding it down gives -11. The registration took the product as exactly -10. The failing test and its
+one assertion were as registered; only the value read was not.
+
+No proof's log and no suite log holds a "server/discover" line (#2745). The lock was released when the window ended.
+
+---
+
 ## 2026-11-20 — The five city upgrades that change what a kill pays act in a dungeon standing on the city: experience, magic find, gold, loot and crafting materials (#2781)
 
 **Affects:** `FCataclysmCityDungeonRewards`, new, `UCataclysmCityUpgradeRules::DungeonRewardsOf`, new, and

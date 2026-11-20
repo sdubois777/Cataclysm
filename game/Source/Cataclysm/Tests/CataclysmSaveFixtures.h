@@ -227,6 +227,35 @@ namespace CataclysmSaveFixtures
 	}
 
 	/**
+	 * What `Migrate_11_to_12` writes into a run file written before version 12, and so what a test that runs an older
+	 * run file through the chain adds before comparing: no city marked as damaged, the run's population not fallen below
+	 * half, and no gold counted in the walk. Issue #2741 slice 6b, 2026-11-20. THE RUN RECORD'S 12. ONE COPY, beside the
+	 * version 11 one and for the same callers.
+	 */
+	inline void AddTheRunsVersion12Defaults(FJsonObject& Expected)
+	{
+		Expected.SetBoolField(TEXT("bPopulationFellBelowHalf"), false);
+		const TArray<TSharedPtr<FJsonValue>>* Cities = nullptr;
+		if (Expected.TryGetArrayField(TEXT("Cities"), Cities) && Cities)
+		{
+			for (const TSharedPtr<FJsonValue>& CityEntry : *Cities)
+			{
+				const TSharedPtr<FJsonObject>* City = nullptr;
+				if (CityEntry.IsValid() && CityEntry->TryGetObject(City) && City && City->IsValid())
+				{
+					(*City)->SetBoolField(TEXT("bTookSurgeDamage"), false);
+				}
+			}
+		}
+		const TSharedPtr<FJsonObject>* Walk = nullptr;
+		if (Expected.TryGetObjectField(TEXT("Walk"), Walk) && Walk && Walk->IsValid())
+		{
+			(*Walk)->SetNumberField(TEXT("GoldDroppedThisWalk"), 0);
+			(*Walk)->SetNumberField(TEXT("GoldPickedUpThisWalk"), 0);
+		}
+	}
+
+	/**
 	 * What `Migrate_3_to_4` writes into an account file written before version 4, and so what the account record
 	 * writes back for one: an empty empire upgrade tree, `"EmpireTree": { "Nodes": [] }`. Issue #2741 slice 1b,
 	 * 2026-11-18. ONE COPY, for every test that runs an older account file through the whole chain.

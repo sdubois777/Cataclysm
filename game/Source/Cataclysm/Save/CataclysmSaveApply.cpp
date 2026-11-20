@@ -579,6 +579,7 @@ bool FCataclysmSaveApply::RunInto(const UCataclysmRunSave& Record, UCataclysmEmp
 		City->bFallen = Saved.bFallen;
 		City->bDoomed = Saved.bDoomed;
 		City->bErased = Saved.bErased;
+		City->bTookSurgeDamage = Saved.bTookSurgeDamage;
 		City->VoidStacks = Saved.VoidStacks;
 		City->LeftEdict = Saved.LeftEdict;
 		City->LeftEdictUntilDay = Saved.LeftEdictUntilDay;
@@ -624,6 +625,7 @@ bool FCataclysmSaveApply::RunInto(const UCataclysmRunSave& Record, UCataclysmEmp
 	Run.bSanctuaryLastStandSpent = Record.bSanctuaryLastStandSpent;
 	// AND RELENTLESS PURSUIT'S CLEARS IN A ROW, run record version 11. Issue #2741 slice 5b.
 	Run.ClearsSinceLastDeath = Record.ClearsSinceLastDeath;
+	Run.bPopulationFellBelowHalf = Record.bPopulationFellBelowHalf;
 	Run.NextDungeonId = Record.NextDungeonId;
 	Run.LastHitDay = Record.LastHitDay;
 	Run.LastHitCityId = Record.LastHitCityId;
