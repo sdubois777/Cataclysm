@@ -65,7 +65,7 @@
       "asset": "DT_EmpireTreeNodes",
       "csv": "EmpireTreeNodes.csv",
       "rows": 159,
-      "csv_sha256": "754ab4a009d5b8cbbbe0373b6898a0e688401b7f22f13e3942d9dc19afe6adaa"
+      "csv_sha256": "2dc338ef6033a16692e288aac825e8456a6ed8c592d3849d47ed00f9e3232916"
     },
     {
       "asset": "DT_EnchantmentEffects",

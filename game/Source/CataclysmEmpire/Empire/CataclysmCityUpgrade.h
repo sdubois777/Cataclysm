@@ -140,11 +140,10 @@ enum class ECataclysmCityUpgradeEffect : uint8
 	SubTypeChanceVolatile		= 18,
 
 	// ----------------------------------------------------------------------
-	// Treasurer and Artisan. NOT BUILT. Each changes what a walk of a dungeon
-	// standing on this city pays, and in this layer an empire dungeon is a timer
-	// and a bite. Walking one is the dungeon level's, where kills drop
-	// experience, loot, materials and, since issue #2742's first slice, gold;
-	// nothing there reads these effects yet. Issue #2781 builds them.
+	// Treasurer and Artisan. BUILT SINCE ISSUE #2781. Each changes what a walk
+	// of a dungeon standing on this city pays, and in this layer an empire
+	// dungeon is a timer and a bite. Walking one is the dungeon level's, where a
+	// kill reads them through `UCataclysmCityUpgradeRules::DungeonRewardsOf`.
 	// ----------------------------------------------------------------------
 
 	/** Multiplier. Dungeons here grant that many times the experience. */
@@ -355,6 +354,50 @@ struct CATACLYSMEMPIRE_API FCataclysmCityUpgrade
 };
 
 /**
+ * WHAT THE UPGRADES A CITY HOLDS GIVE A KILL IN A DUNGEON STANDING ON IT. Issue #2781, the coordinating session's
+ * rulings of 2026-11-20: the four Treasurer upgrades and the Artisan one, each at its tier 1 figure (ruling 3); every
+ * "more" a multiplier of its own and the "increased" magic find added to the kill's other magic find (ruling 2); and
+ * each for kills in a dungeon standing on the city that holds it (ruling 4). Worked out by
+ * `UCataclysmCityUpgradeRules::DungeonRewardsOf` and read at a kill through
+ * `ACataclysmDungeonGameMode::CityRewardsIn`. THE DEFAULT GIVES NOTHING: every multiplier exactly 1, so a kill with
+ * none draws its stream as it did.
+ */
+struct CATACLYSMEMPIRE_API FCataclysmCityDungeonRewards
+{
+	/** "Dungeons here provide 2x more experience": the creature's experience figure is multiplied, and skill experience
+	 *  follows it (ruling 1). */
+	float ExperienceMore = 1.0f;
+
+	/** "Dungeons here have 10% increased magic find": percentage points added to the kill's magic find. */
+	float MagicFindIncreased = 0.0f;
+
+	/** "Dungeons here drop 25% more gold": each gold pile, after the empire tree's gold multiplier. */
+	float GoldMore = 1.0f;
+
+	/** "Dungeons here drop 25% more loot": the kill's loot quantity, so its gear and its materials. */
+	float LootMore = 1.0f;
+
+	/** "Dungeons here drop 25% more crafting materials": the kill's ordinary material roll only. */
+	float MaterialsMore = 1.0f;
+
+	/** The creature's experience figure after this city's "more" (ruling 1, X4): the figure itself when there is none,
+	 *  so a kill elsewhere grants exactly what it did. */
+	int32 ExperienceFrom(int32 Score) const
+	{
+		return ExperienceMore == 1.0f
+			? Score
+			: FMath::RoundToInt32(static_cast<double>(Score) * FMath::Max(0.0f, ExperienceMore));
+	}
+
+	/** Whether any figure differs from giving nothing. */
+	bool GivesAnything() const
+	{
+		return ExperienceMore != 1.0f || MagicFindIncreased != 0.0f || GoldMore != 1.0f || LootMore != 1.0f
+			|| MaterialsMore != 1.0f;
+	}
+};
+
+/**
  * The rules a city upgrade obeys: how many a city may hold, which effects are
  * built, and what one costs.
  *
@@ -447,14 +490,20 @@ public:
 	/**
 	 * Whether the empire layer actually acts on this effect.
 	 *
-	 * THE ONE PLACE THAT KNOWS. Ten of the 24 are built and fourteen are not,
-	 * and every one of the fourteen is waiting on a system that does not exist:
-	 * a dungeon sub-type roll, a dungeon that grants rewards, gold, or an
-	 * upgrade tier above one. `ECataclysmCityUpgradeEffect` names what each is
-	 * waiting for, beside the value.
+	 * THE ONE PLACE THAT KNOWS. Nineteen of the 24 are built since issue #2781
+	 * and five are not, each waiting on a system that does not exist: a dungeon
+	 * sub-type roll, or an upgrade tier above one. `ECataclysmCityUpgradeEffect`
+	 * names what each is waiting for, beside the value.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static bool IsBuilt(ECataclysmCityUpgradeEffect Effect);
+
+	/**
+	 * What these upgrades give a kill in a dungeon standing on the city that holds them. Issue #2781: the five
+	 * dungeon-reward effects at each upgrade's own figure, which is its tier 1 one (ruling 3); every other effect gives
+	 * nothing here. The caller passes a fallen city's upgrades as none.
+	 */
+	static FCataclysmCityDungeonRewards DungeonRewardsOf(const TArray<FCataclysmCityUpgrade>& Upgrades);
 
 	/** How many of the 24 effects are built. Read by the tests, so a change to
 	 *  `IsBuilt` has to be a deliberate one. */

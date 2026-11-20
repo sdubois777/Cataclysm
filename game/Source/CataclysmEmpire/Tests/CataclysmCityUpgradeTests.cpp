@@ -8,8 +8,8 @@
 #include "Empire/CataclysmEmpireRun.h"
 
 /**
- * Tests for city upgrades: the slots, what a purchase refuses, and what each of
- * the ten built effects does.
+ * Tests for city upgrades: the slots, what a purchase refuses, and what the
+ * built effects do.
  *
  * WHAT THESE PIN AND WHAT `Cataclysm.CityUpgrade.EveryRowOfTheTableMapsToAnEffect`
  * PINS. These check behaviour: that a slot is spent, that a duplicate is
@@ -213,6 +213,12 @@ bool FCataclysmCityUpgradeWhichAreBuiltTest::RunTest(const FString& Parameters)
 		ECataclysmCityUpgradeEffect::DungeonWalkDaysFewer,
 		ECataclysmCityUpgradeEffect::DungeonFloorsMore,
 		ECataclysmCityUpgradeEffect::DungeonFloorsFewer,
+		// The five a kill in a dungeon standing on the city reads, issue #2781.
+		ECataclysmCityUpgradeEffect::DungeonExperience,
+		ECataclysmCityUpgradeEffect::DungeonMagicFind,
+		ECataclysmCityUpgradeEffect::DungeonGold,
+		ECataclysmCityUpgradeEffect::DungeonLoot,
+		ECataclysmCityUpgradeEffect::DungeonCraftingMaterials,
 	};
 
 	// THE TWO EXPLORER UPGRADES ABOUT SPEED ARE DIFFERENT UPGRADES, and this is
@@ -239,8 +245,8 @@ bool FCataclysmCityUpgradeWhichAreBuiltTest::RunTest(const FString& Parameters)
 				  UCataclysmCityUpgradeRules::IsBuilt(Effect), bShouldBeBuilt);
 	}
 
-	TestEqual(TEXT("which is fourteen of the twenty-four"),
-			  UCataclysmCityUpgradeRules::BuiltEffectCount(), 14);
+	TestEqual(TEXT("which is nineteen of the twenty-four"),
+			  UCataclysmCityUpgradeRules::BuiltEffectCount(), 19);
 
 	// `None` IS NOT AN UPGRADE and must never be buildable, or a
 	// default-constructed struct would buy something.
@@ -283,14 +289,15 @@ bool FCataclysmCityUpgradeRefusalsTest::RunTest(const FString& Parameters)
 			  Run->BuyCityUpgrade(99, Resist),
 			  ECataclysmCityUpgradeResult::NoSuchCity);
 
-	// AN EFFECT THAT DOES NOTHING IS REFUSED RATHER THAN SOLD. Eleven of the
-	// twenty-four are waiting on a system that does not exist or on a decision,
-	// and a slot spent on one would buy the player nothing at all.
+	// AN EFFECT THAT DOES NOTHING IS REFUSED RATHER THAN SOLD. Five of the
+	// twenty-four are waiting on a system that does not exist, and a slot spent
+	// on one would buy the player nothing at all.
 	//
-	// GOLD, BECAUSE NOTHING IN THIS GAME HOLDS ANY. This used to name the
-	// dungeon cap, which was not built when this test was written and is now.
+	// A HORDE SUB-TYPE'S CHANCE, BECAUSE NOTHING ROLLS A DUNGEON SUB-TYPE (issue
+	// #41). This named the dungeon cap until it was built, and then the dungeon
+	// gold upgrade until issue #2781 built it.
 	const FCataclysmCityUpgrade NotBuilt =
-		Make(ECataclysmCityUpgradeEffect::DungeonGold, 0.25f, TEXT("Gold"));
+		Make(ECataclysmCityUpgradeEffect::SubTypeChanceHorde, 0.25f, TEXT("Horde"));
 
 	TestEqual(TEXT("an effect that is not built is refused"),
 			  Run->BuyCityUpgrade(0, NotBuilt),

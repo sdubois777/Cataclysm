@@ -4878,7 +4878,7 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmCityUpgrades(
 						Held.Value);
 			}
 
-			// WHAT IT COULD BUY, AND WHAT IT COULD NOT, because fourteen of the
+			// WHAT IT COULD BUY, AND WHAT IT COULD NOT, because five of the
 			// twenty-four upgrades are waiting on a system that does not exist
 			// and a person reading this needs to see which.
 			for (const FName RowName : UCataclysmCityUpgradeMapping::AllRowNames())

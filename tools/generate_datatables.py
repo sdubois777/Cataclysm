@@ -3737,8 +3737,10 @@ EMPIRE_BRANCH_CAPSTONE_THRESHOLD = 200
 #: day; `docs/DECISIONS.md` has them.
 EMPIRE_TREE_SYSTEMS = {
     "gold rules": "its gold rules, which are not built yet (issue #2741)",
-    "treasurer upgrade": ("a Treasurer city upgrade, which cannot be bought yet "
-                          "(issue #2781)"),
+    # A Treasurer city upgrade can be bought since issue #2781; what R1 to R4 do
+    # with one is built in a later slice of #2741.
+    "treasurer upgrade": ("its Treasurer city upgrade rules, which are not built "
+                          "yet (issue #2741)"),
     "gold ruling": "a ruling on what it does, which the owner has not made",
     "market": "a market, which the game does not have",
     "gold cap": "a gold cap, which the game does not have",
