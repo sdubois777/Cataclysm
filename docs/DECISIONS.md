@@ -925,6 +925,8 @@ Rebased again, onto development `3d0193bfa` (the empire upgrade tree's slice 5b,
 - **The whole suite's registration is now a number.** The window tree-5b-w1 measured "4998 tests performed, 4998
   succeeded, 0 failed" and "Test saves: 852 written and deleted, 0 left behind" at `ff89528e8`, whose `game/` tree is
   development's `3d0193bfa`, so this slice's diagnostic window registers 5,001.
+- **Python and ruff.** At `9638168d7`, the commit that moves the test to `Run_v11.json`: "7776 passed, 9 skipped",
+  the JUnit file agreeing (7,785 tests, no failure, 9 skipped). Ruff clean.
 
 ### Registered before the diagnostic window
 
