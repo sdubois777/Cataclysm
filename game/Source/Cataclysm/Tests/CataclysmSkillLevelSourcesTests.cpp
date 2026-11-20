@@ -754,14 +754,20 @@ namespace CataclysmSkillLevelSourcesTest
 	/**
 	 * A creature to be struck, with nothing between a blow and its health but the blow's own resolution: no evasion and
 	 * no block, as `Cataclysm.CombatEvents.AMinionsBlowPutsTheMinionInCombatAndNotItsSummoner` sets its creature, and no
-	 * armour, so two blows' figures compare as they were dealt. 50,000 health unless a test says otherwise.
+	 * armour, so two blows' figures compare as they were dealt. 2,000 health unless a test says otherwise.
+	 *
+	 * 2,000 AND NOT MORE, BECAUSE A BLOW IS READ AS THE DIFFERENCE OF TWO HEALTH READINGS. A float near 2,000 moves
+	 * in steps of 1/8192, about 0.00012, eight times inside the 0.001 the comparisons allow. This was 50,000 until
+	 * window skills-2b-w1 (2026-11-20), where a float moves in steps of 1/256, about 0.0039, and a level 3 imp's swing
+	 * read 58.621094 against the 58.622284 credited for it; a thrall's read 111.660156 against 111.661491. The most
+	 * any test here deals to one such creature is 648 (two of the cap's explosions), so it stays alive.
 	 */
 	ACataclysmEnemyCharacter* SourcesStruckCreature(UWorld* World, const FVector& Where)
 	{
 		ACataclysmEnemyCharacter* Made = World->SpawnActor<ACataclysmEnemyCharacter>(Where, FRotator::ZeroRotator);
 		if (Made)
 		{
-			Made->SetHealth(50'000.0f);
+			Made->SetHealth(2'000.0f);
 			Made->SetArmour(0.0f);
 			UAbilitySystemComponent* System = Made->GetAbilitySystemComponent();
 			System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
