@@ -760,7 +760,8 @@ namespace CataclysmSkillLevelSourcesTest
 	 * in steps of 1/8192, about 0.00012, eight times inside the 0.001 the comparisons allow. This was 50,000 until
 	 * window skills-2b-w1 (2026-11-20), where a float moves in steps of 1/256, about 0.0039, and a level 3 imp's swing
 	 * read 58.621094 against the 58.622284 credited for it; a thrall's read 111.660156 against 111.661491. The most
-	 * any test here deals to one such creature is 648 (two of the cap's explosions), so it stays alive.
+	 * any test here dealt to one such creature was 648, two of the summon cap's explosions, until issue #2787's
+	 * branch B removed the cap; that test now explodes one imp beside each of its creatures, so each stays alive.
 	 */
 	ACataclysmEnemyCharacter* SourcesStruckCreature(UWorld* World, const FVector& Where)
 	{
@@ -1097,20 +1098,19 @@ bool FCataclysmSkillLevelSourcesHitAndImpTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillLevelSourcesCapExplosionTest,
-	"Cataclysm.SkillLevelSources.TheSummonCapsExplosionCreditsSummonImpAndAPassivesDoesNot",
+	"Cataclysm.SkillLevelSources.AMinionsExplosionCreditsNothingAndIsSizedByTheLevelItWasSummonedAt",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * The explosion the summon cap sets off credits Summon Imp, and one a passive sets off credits nothing; both are sized
- * by the level the imp was summoned at. Issue #2764, slice 2b, ruled 2026-11-20 (Q-B, option b): "Summoning a fourth
- * destroys the oldest, which explodes for damage in a 3 meter radius" is Summon Imp's own row, while
- * `minion_explodes_on_death` is a passive's, and judgement 2 says damage a passive adds credits nothing; "scaling follows
- * the figure", a share of the imp's own blow. The explosions are dealt by `Explode`, with the summoning skill's stated
- * radius, as `Cataclysm.MinionDeath.TheExplosionTheSummonCapSetsOffTakesTheSameStat` deals them: the cap's by the cap
- * itself, a summon past three destroying the oldest, and the passive's by the call `HandleDeath` makes under
- * `minion_explodes_on_death`. Three imps are summoned at level 1 and the skill raised to level 3; the fourth summon
- * destroys a level 1 imp, the fifth and sixth the other two, and the seventh the level 3 imp the fourth made. The fifth's
- * imp, at level 3, is then moved beside a second creature and explodes as the passive explodes it.
+ * An imp's explosion, which a passive sets off (`minion_explodes_on_death`), credits nothing, and it is sized by the
+ * level the imp was summoned at. Issue #2764, slice 2b, ruled 2026-11-20 (Q-B, option b): judgement 2 says damage a
+ * passive adds credits nothing; "scaling follows the figure", a share of the imp's own blow. The explosion is dealt by
+ * `Explode`, the call `HandleDeath` makes under `minion_explodes_on_death`. One imp is summoned at level 1 and, with the
+ * skill raised to level 3, another at level 3; each is moved beside a creature of its own and explodes there.
+ *
+ * THIS TEST ALSO CHECKED THE SUMMON CAP'S EXPLOSION, CREDITED TO SUMMON IMP, until issue #2787's branch B: the owner's
+ * ruling of 2026-11-20 dropped "Summoning a fourth destroys the oldest, which explodes for damage in a 3 meter radius"
+ * with the cap ("Drop it with the cap"), so every minion explosion credits nothing now, and this keeps the passive's half.
  */
 bool FCataclysmSkillLevelSourcesCapExplosionTest::RunTest(const FString&)
 {
@@ -1125,62 +1125,41 @@ bool FCataclysmSkillLevelSourcesCapExplosionTest::RunTest(const FString&)
 
 	FSourcesPlayer Player = SourcesStaffPlayerIn(World, FVector::ZeroVector);
 	UCataclysmSummonSkill* Summon = Player.IsUsable() ? SourcesSummonSkillOfRow(Player.Abilities, SourcesSummonImp) : nullptr;
-	// THE NEAR CREATURE WITHIN THE 3 M EVERY IMP SUMMONED HERE EXPLODES OVER: the summon is not activated, so each imp
-	// is made where the player stands. The far one past every such explosion's reach.
-	ACataclysmEnemyCharacter* Near = SourcesStruckCreature(World, FVector(2.0f * SourcesM, 0.0f, 0.0f));
-	ACataclysmEnemyCharacter* Far = SourcesStruckCreature(World, FVector(30.0f * SourcesM, 0.0f, 0.0f));
+	// TWO CREATURES 30 M OUT, ONE ALONG X AND ONE ALONG Y, past the 3 m of an explosion at the player's feet, where the
+	// summon makes each imp: it is not activated.
+	ACataclysmEnemyCharacter* ByTheFirst = SourcesStruckCreature(World, FVector(30.0f * SourcesM, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* ByTheSecond = SourcesStruckCreature(World, FVector(0.0f, 30.0f * SourcesM, 0.0f));
 	if (!TestTrue(TEXT("set-up: a possessed player holding the Staff's Summon Imp, and two creatures"),
-				  Summon && Near && Far))
+				  Summon && ByTheFirst && ByTheSecond))
 	{
 		return false;
 	}
-	const float NearAtStart = SourcesHealthOf(Near);
-	for (int32 Each = 0; Each < 3; ++Each)
-	{
-		if (!TestNotNull(TEXT("set-up: an imp summoned at level 1"), Summon->SummonOne()))
-		{
-			return false;
-		}
-	}
+	ACataclysmMinion* AtOne = Summon->SummonOne();
 	Player.State->SetSkillExperience(SourcesSummonImp, Levels::ExperienceToReach(3));
-	ACataclysmMinion* Made = nullptr;
-	const auto SummonPastTheCap = [&Made, Summon, Near]()
-	{
-		const float Before = SourcesHealthOf(Near);
-		Made = Summon->SummonOne();
-		return Before - SourcesHealthOf(Near);
-	};
-	const float CapAtOne = SummonPastTheCap(); // the fourth: the first level 1 imp explodes
-	SummonPastTheCap(); // the fifth: the second
-	ACataclysmMinion* Fifth = Made;
-	SummonPastTheCap(); // the sixth: the third
-	const float CapAtThree = SummonPastTheCap(); // the seventh: the level 3 imp the fourth made
-	if (!TestTrue(TEXT("set-up: every summon past the cap made an imp, and the fifth's is still there"),
-				  Made && IsValid(Fifth)))
+	ACataclysmMinion* AtThree = Summon->SummonOne();
+	if (!TestTrue(TEXT("set-up: an imp summoned at level 1, and one at level 3"), AtOne && AtThree))
 	{
 		return false;
 	}
-	const float NearLost = NearAtStart - SourcesHealthOf(Near);
+	const auto ExplodeBeside = [](ACataclysmMinion* Imp, ACataclysmEnemyCharacter* Creature, const FVector& At)
+	{
+		const float Before = SourcesHealthOf(Creature);
+		Imp->SetActorLocation(At);
+		Imp->Explode();
+		return Before - SourcesHealthOf(Creature);
+	};
+	const float TookAtOne = ExplodeBeside(AtOne, ByTheFirst, FVector(29.0f * SourcesM, 0.0f, 0.0f));
+	const float TookAtThree = ExplodeBeside(AtThree, ByTheSecond, FVector(0.0f, 29.0f * SourcesM, 0.0f));
 
-	Fifth->SetActorLocation(FVector(29.0f * SourcesM, 0.0f, 0.0f));
-	const float FarBefore = SourcesHealthOf(Far);
-	Fifth->Explode();
-	const float TookByThePassive = FarBefore - SourcesHealthOf(Far);
-
-	AddInfo(FString::Printf(TEXT("CAP EXPLOSION: a level 1 imp's took %.3f and a level 3 imp's %.3f (x%.4f); the near "
-								 "creature lost %.3f and Summon Imp was credited %.3f; the passive's took %.3f and %d rows "
-								 "were credited"),
-							CapAtOne, CapAtThree, CapAtOne > 0.0f ? CapAtThree / CapAtOne : 0.0f, NearLost,
-							SourcesCreditedTo(Near, SourcesSummonImp), TookByThePassive,
-							Far->GetHealthRemovedBySkill().Num()));
-	TestTrue(TEXT("set-up: the cap's explosions and the passive's took health"),
-			 CapAtOne > 0.0f && CapAtThree > 0.0f && TookByThePassive > 0.0f);
-	TestEqual(TEXT("THE CAP'S EXPLOSIONS ARE CREDITED TO SUMMON IMP"), SourcesCreditedTo(Near, SourcesSummonImp), NearLost,
-			  1.0e-2f);
-	TestEqual(TEXT("THE PASSIVE'S EXPLOSION CREDITS NOTHING"), Far->GetHealthRemovedBySkill().Num(), 0);
-	TestEqual(TEXT("A LEVEL 3 IMP'S EXPLOSION IS 1.0567 SQUARED TIMES A LEVEL 1 IMP'S"), CapAtThree / CapAtOne,
+	AddInfo(FString::Printf(TEXT("MINION EXPLOSION: a level 1 imp's took %.3f and a level 3 imp's %.3f (x%.4f); %d and %d "
+								 "rows were credited"),
+							TookAtOne, TookAtThree, TookAtOne > 0.0f ? TookAtThree / TookAtOne : 0.0f,
+							ByTheFirst->GetHealthRemovedBySkill().Num(), ByTheSecond->GetHealthRemovedBySkill().Num()));
+	TestTrue(TEXT("set-up: both explosions took health"), TookAtOne > 0.0f && TookAtThree > 0.0f);
+	TestEqual(TEXT("THE LEVEL 1 IMP'S EXPLOSION CREDITS NOTHING"), ByTheFirst->GetHealthRemovedBySkill().Num(), 0);
+	TestEqual(TEXT("AND NEITHER DOES THE LEVEL 3 IMP'S"), ByTheSecond->GetHealthRemovedBySkill().Num(), 0);
+	TestEqual(TEXT("A LEVEL 3 IMP'S EXPLOSION IS 1.0567 SQUARED TIMES A LEVEL 1 IMP'S"), TookAtThree / TookAtOne,
 			  static_cast<float>(Levels::DamageFactor(3)), 1.0e-3f);
-	TestEqual(TEXT("AND THE PASSIVE'S IS SIZED BY ITS IMP'S LEVEL AS THE CAP'S IS"), TookByThePassive, CapAtThree, 1.0e-2f);
 	return true;
 }
 

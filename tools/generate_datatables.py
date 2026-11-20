@@ -5258,10 +5258,11 @@ SCALES = {
     # COUNTED WHOLE THE WAY A DEBUFF AND A STACK ARE, because a minion is a
     # whole thing: there is nothing to divide and nothing to round.
     #
-    # THE UPPER BOUND IS A JUDGEMENT IN THE SHAPE THE COUNTS ABOVE USE. What
-    # actually caps an army is the Fervour pool -- a thrall reserves 30 against
-    # the Ritualist's 150, so five -- plus the three imps `MaxActive` allows.
-    # Ten is past any army the game can currently field.
+    # THE UPPER BOUND IS A JUDGEMENT IN THE SHAPE THE COUNTS ABOVE USE, on the
+    # step a row states. What caps an army is the Fervour pool alone since
+    # issue #2787 removed every count cap on what reserves it: a thrall
+    # reserves 30 and an imp 10 against the Ritualist's 150. A step of ten
+    # minions stays a sanity limit on what a row may state.
     "minions_held": (0.0, 10.0, "a number of minions"),
 
     # "for each enemy within 4 metres of you" is `enemies_in_reach` with a
@@ -13121,45 +13122,37 @@ def refuse_a_trap_increase_row_the_game_cannot_read(
     return problems
 
 
-#: The trap cap bonus and the no-expire flag, ruled 2026-10-21 by the
-#: coordinating session (traps layer 3, M1, M2): "Your trap skills get +1-6 to
-#: max trap count" and "Traps do not expire, they remain armed until
-#: triggered". Each is asked as a FLAT figure off the player, with `Type.Trap`
-#: alone, by `ACataclysmMinion::SkillTrapsMostFor` and
-#: `SkillTrapsDoNotExpireFor`, whose names `TrapCapBonusStat` and
-#: `TrapsDoNotExpireStat` hold. The cap is ONE CAP ACROSS EVERY CONVERTED SLOT,
-#: five and the bonus (M1 (a)); the flag leaves a trap placed while it is held
-#: with no life span (M2 (a)).
-TRAP_CAP_BONUS_STAT = "trap_cap_bonus"
+#: The no-expire flag, ruled 2026-10-21 by the coordinating session (traps
+#: layer 3, M2): "Traps do not expire, they remain armed until triggered". It
+#: is asked as a FLAT figure off the player, with `Type.Trap` alone, by
+#: `ACataclysmMinion::SkillTrapsDoNotExpireFor`, whose name
+#: `TrapsDoNotExpireStat` holds; it leaves a trap placed while it is held with
+#: no life span (M2 (a)). ITS SIBLING, THE TRAP CAP BONUS (M1), WENT WITH THE
+#: TRAP CAP in issue #2787's branch B, when the owner's ruling of 2026-11-20
+#: removed every count cap on what reserves the class resource; "Your trap
+#: skills get +1-6 to max trap count" became "Your traps reserve 5%-25% less
+#: Fervour", on `MINION_RESERVE_PERCENT_LESS_STAT` below.
 TRAPS_DO_NOT_EXPIRE_STAT = "traps_do_not_expire"
 
-#: The Required Tags a row on either may state: none, or the trap's own tag,
-#: the one tag both are asked with.
-TRAP_CAP_AND_EXPIRY_REQUIRED_TAGS = frozenset({"", "Type.Trap"})
-
-#: The most a row may add to the cap of five. A bound for typing mistakes, as
-#: `MAX_STATUS_SIZE` is; the one sentence is 1 to 6.
-MAX_TRAP_CAP_BONUS = 20
+#: The Required Tags a row on it may state: none, or the trap's own tag, the one
+#: tag it is asked with.
+TRAP_EXPIRY_REQUIRED_TAGS = frozenset({"", "Type.Trap"})
 
 
-def refuse_a_trap_cap_or_expiry_row_the_game_cannot_read(
+def refuse_a_trap_expiry_row_the_game_cannot_read(
         sheet: str, rows: list[dict]) -> list[str]:
-    """A row on `TRAP_CAP_BONUS_STAT` or `TRAPS_DO_NOT_EXPIRE_STAT` is one its
-    reader adds.
+    """A row on `TRAPS_DO_NOT_EXPIRE_STAT` is one its reader adds.
 
-    BOTH ARE READ AS A FLAT FIGURE, so any other kind works on a base of nought
+    IT IS READ AS A FLAT FIGURE, so any other kind works on a base of nought
     and changes NOTHING; a tag but none or `Type.Trap` matches no trap; an
-    action is not a stat line. THE CAP BONUS IS A WHOLE NUMBER OF TRAPS at each
-    end, from 1 to `MAX_TRAP_CAP_BONUS`, since the game rounds what it rolls;
-    THE FLAG STATES 1 AND NOTHING ELSE. A CONDITION OR A SCALE IS REFUSED
-    ELSEWHERE, as on every stat not on those checks' lists. A PASSIVE NODE'S
-    ROW IS LEFT ALONE.
+    action is not a stat line. THE FLAG STATES 1 AND NOTHING ELSE. A CONDITION
+    OR A SCALE IS REFUSED ELSEWHERE, as on every stat not on those checks'
+    lists. A PASSIVE NODE'S ROW IS LEFT ALONE.
     """
     problems = []
     for row in rows:
         stat = str(row.get("Stat") or "").strip()
-        if stat not in (TRAP_CAP_BONUS_STAT, TRAPS_DO_NOT_EXPIRE_STAT) \
-                or "Node" in row:
+        if stat != TRAPS_DO_NOT_EXPIRE_STAT or "Node" in row:
             continue
         who = f"{sheet}/{row['Name']}"
         kind = str(row.get("ValueKind") or "").strip().lower()
@@ -13170,7 +13163,7 @@ def refuse_a_trap_cap_or_expiry_row_the_game_cannot_read(
                 f"'flat'; any other kind works on a base of nought and "
                 f"changes NOTHING.")
         tags = str(row.get("RequiredTags") or "").strip()
-        if tags not in TRAP_CAP_AND_EXPIRY_REQUIRED_TAGS:
+        if tags not in TRAP_EXPIRY_REQUIRED_TAGS:
             problems.append(
                 f"{who}: states {stat!r} under the required tags {tags!r}. "
                 f"The game asks with 'Type.Trap' alone, so the row requires "
@@ -13183,16 +13176,85 @@ def refuse_a_trap_cap_or_expiry_row_the_game_cannot_read(
                 f"one.")
         for column in ("ValueLow", "ValueHigh"):
             value = float(row.get(column) or 0.0)
-            if stat == TRAPS_DO_NOT_EXPIRE_STAT and value != 1.0:
+            if value != 1.0:
                 problems.append(
                     f"{who}: states {value:g} on {stat!r}, and a row on this "
                     f"flag states 1 and nothing else.")
-            if stat == TRAP_CAP_BONUS_STAT and not (
-                    value == int(value) and 1 <= value <= MAX_TRAP_CAP_BONUS):
+    return problems
+
+
+#: How many percent LESS one minion, gadget or trap reserves; a negative
+#: figure is that many percent MORE. Issue #2787, branch B, from the owner's
+#: ruling of 2026-11-20 that what raised a count cap lowers the reserve instead
+#: ("Lower the reserve instead"). Asked as a FLAT figure by
+#: `UCataclysmCommand::ReserveFor` with the kind's tags, whose name
+#: `MinionReservePercentLessStat` holds, the rows reaching one kind adding into
+#: one figure: reserve = max(1, (stated - Crowned) x (1 - net / 100)).
+MINION_RESERVE_PERCENT_LESS_STAT = "minion_reserve_percent_less"
+
+#: The Required Tags a row on it may state: none, for every kind ("Your
+#: minions"); `Type.Deployable`, a skill gadget and a skill trap ("Your
+#: deployables"); or `Type.Trap`, a skill trap alone ("Your traps"). Those are
+#: the tags `game/Data/MinionTypes.csv` gives the kinds that reserve.
+MINION_RESERVE_PERCENT_REQUIRED_TAGS = frozenset({"", "Type.Deployable", "Type.Trap"})
+
+#: The most a row may state either way, in per cent. A bound for typing
+#: mistakes, as `MAX_STATUS_SIZE` is: the sentences say 5 to 30 less and 25 to
+#: 65 more, and a hundred less is already the floor of one point.
+MAX_MINION_RESERVE_PERCENT = 100.0
+
+
+def refuse_a_reserve_percent_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on `MINION_RESERVE_PERCENT_LESS_STAT` is one its reader adds.
+
+    IT IS READ AS A FLAT FIGURE, so any other kind works on a base of nought
+    and changes NOTHING; a tag but none, `Type.Deployable` or `Type.Trap`
+    matches no kind that reserves; an action is not a stat line. EACH END IS A
+    PERCENTAGE OTHER THAN NOUGHT AND NO FURTHER FROM IT THAN
+    `MAX_MINION_RESERVE_PERCENT`, AND BOTH ENDS HAVE ONE SIGN: a row is less or
+    more, and a roll between a less and a more would cross nought. A CONDITION
+    OR A SCALE IS REFUSED ELSEWHERE. A PASSIVE NODE'S ROW IS LEFT ALONE, as the
+    trap rows' are.
+    """
+    problems = []
+    for row in rows:
+        stat = str(row.get("Stat") or "").strip()
+        if stat != MINION_RESERVE_PERCENT_LESS_STAT or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        if kind != "flat":
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The "
+                f"game reads the flat figure itself, so the row must be "
+                f"'flat'; any other kind works on a base of nought and "
+                f"changes NOTHING.")
+        tags = str(row.get("RequiredTags") or "").strip()
+        if tags not in MINION_RESERVE_PERCENT_REQUIRED_TAGS:
+            problems.append(
+                f"{who}: states {stat!r} under the required tags {tags!r}. "
+                f"The game asks with the tags of the kind that reserves, so "
+                f"the row requires nothing, 'Type.Deployable' or 'Type.Trap'; "
+                f"any other tag matches no kind that reserves.")
+        action = str(row.get("Action") or "").strip()
+        if action:
+            problems.append(
+                f"{who}: states {stat!r} with the action {action!r}. This is "
+                f"a stat line the game asks for, and an action row is not "
+                f"one.")
+        ends = [float(row.get(column) or 0.0) for column in ("ValueLow", "ValueHigh")]
+        for value in ends:
+            if value == 0.0 or abs(value) > MAX_MINION_RESERVE_PERCENT:
                 problems.append(
-                    f"{who}: states {value:g} on {stat!r}. A bonus to the trap "
-                    f"cap is a whole number of traps from 1 to "
-                    f"{MAX_TRAP_CAP_BONUS}.")
+                    f"{who}: states {value:g} on {stat!r}. A reserve "
+                    f"percentage is other than nought and at most "
+                    f"{MAX_MINION_RESERVE_PERCENT:g} either way.")
+        if ends[0] * ends[1] < 0.0:
+            problems.append(
+                f"{who}: states {ends[0]:g} to {ends[1]:g} on {stat!r}. A row "
+                f"is a reserve that is less or one that is more, so both ends "
+                f"have one sign.")
     return problems
 
 
@@ -13314,7 +13376,7 @@ TRAP_BLOW_STAT_KINDS = {
 TRAP_BLOW_STAT_REQUIRED_TAGS = frozenset({"", "Type.Trap"})
 
 #: The most each may state, in per cent. A chance is at most 100; the three
-#: others are bounds for typing mistakes, as `MAX_TRAP_CAP_BONUS` is: the
+#: others are bounds for typing mistakes, as `MAX_STATUS_SIZE` is: the
 #: sentences say 200, 10 and 50.
 TRAP_BLOW_STAT_MOST = {
     TRAP_REARM_CHANCE_STAT: 100.0,
@@ -14168,9 +14230,13 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
         "EnchantmentEffects", effects))
     problems.extend(refuse_a_trap_increase_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
-    # AND THE TRAP CAP BONUS AND THE NO-EXPIRE FLAG ARE FLAT, REQUIRING NOTHING
-    # OR `Type.Trap`, A WHOLE BONUS AND A FLAG OF 1. Ruled 2026-10-21 (M1, M2).
-    problems.extend(refuse_a_trap_cap_or_expiry_row_the_game_cannot_read(
+    # AND THE NO-EXPIRE FLAG IS FLAT, REQUIRING NOTHING OR `Type.Trap`, A FLAG
+    # OF 1. Ruled 2026-10-21 (M2).
+    problems.extend(refuse_a_trap_expiry_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+    # AND THE RESERVE PERCENTAGE IS FLAT, REQUIRING NOTHING, `Type.Deployable`
+    # OR `Type.Trap`, WITHIN ITS BOUND AND OF ONE SIGN. Issue #2787, branch B.
+    problems.extend(refuse_a_reserve_percent_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
     # AND THE FOUR STATS OF A TRAP'S BLOW EACH STATE THEIR ONE KIND, REQUIRING
     # NOTHING OR `Type.Trap`, WITHIN THEIR BOUNDS. Ruled 2026-10-21 (F1 to F9).
@@ -14788,6 +14854,38 @@ def validate_minion_references(tables: dict[str, list[dict]]) -> list[str]:
     return problems
 
 
+def refuse_a_count_cap_on_a_summon(tables: dict[str, list[dict]]) -> list[str]:
+    """A Summon row states no `MaxActive` unless it states an `Interval` too.
+
+    ISSUE #2787, BRANCH B, from the owner's ruling of 2026-11-20: nothing that
+    reserves the class resource has a count cap ("that's limiting on its
+    own"), so the reserve is the only limit on how many of a kind stand.
+    Summon Imp's `MaxActive=3` was the one a Summon row stated, and
+    `UCataclysmSummonSkill::SummonOne` reads none since. A cap written back
+    onto a Summon row would be read by nothing and say something untrue, so it
+    is refused here rather than shipped.
+
+    A ROW WITH AN `Interval` IS LEFT ALONE: that is Open the Rift's pattern, a
+    spawn every Interval over the skill's Duration, where `SpawnTick` reads
+    `MaxActive` as how many one cast makes in all. A `Deployable` is left alone
+    too: the War deployables keep their caps under the no-War rule until issue
+    #1934.
+    """
+    problems = []
+    for row in tables.get("WeaponSkills") or []:
+        if row.get("Shape") != "Summon" or not row.get("ShapeParams"):
+            continue
+        where = f"WeaponSkills/{row['Name']}"
+        params = parse_shape_params(row["ShapeParams"], row["Shape"], where)
+        if "MaxActive" in params and "Interval" not in params:
+            problems.append(
+                f"{where}: is a Summon stating MaxActive={params['MaxActive']} "
+                "and no Interval. Nothing that reserves the class resource has "
+                "a count cap (issue #2787): the reserve is the limit, and "
+                "nothing in the game reads this one. Remove it.")
+    return problems
+
+
 #: The two shapes that put a creature of their own in the world. Issue #1515.
 #:
 #: READ OFF THE DATA RATHER THAN GUESSED: `Summon` is Summon Imp and Open the
@@ -15224,6 +15322,7 @@ def main(argv: list[str] | None = None) -> int:
                 + validate_weapon_tags(tables, declared_tags(book))
                 + validate_skill_effects(tables)
                 + validate_minion_references(tables)
+                + refuse_a_count_cap_on_a_summon(tables)
                 + validate_targeted_shapes_state_a_radius(tables)
                 + validate_hybrid_parts(tables)
                 + validate_affix_percent_agrees(tables)

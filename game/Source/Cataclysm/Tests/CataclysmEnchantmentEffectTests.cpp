@@ -7393,29 +7393,33 @@ bool FCataclysmFervourDecayRowTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionCountRowTest,
-	"Cataclysm.Enchantments.TheMinionCountRowTakes4FromTheCapBonus",
+	"Cataclysm.Enchantments.TheMinionReserveMoreRowMakesTheReservePercentMinus65",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * "Minus 2-4 to your max minion count", at 4. Issue #1833, the rows-only batch.
+ * "Your minions reserve 25%-65% more Fervour", at 65. Issue #2787, branch B: the
+ * owner's ruling of 2026-11-20 turned "Minus 2-4 to your max minion count"
+ * (issue #1833, the rows-only batch) into a reserve that is larger, when the
+ * count caps went.
  *
- * READ THE WAY THE CAP READS IT, through `StatForSkill`, which is what
- * `MinionCapFor` in CataclysmSkillTemplates.cpp asks. The floor of one minion
- * that function applies is not reached from here: it is file-local and runs only
- * when a summoning skill is cast.
+ * READ THE WAY THE RESERVE READS IT, through `StatForSkill` with no attribute
+ * and nought as the fallback, which is what `UCataclysmCommand::ReserveFor` asks:
+ * minus 65 percent less is 65 percent more, so an imp's 10 would be 16.5
+ * (`Cataclysm.NoCaps.APercentMoreRaisesWhatAKindReserves` holds that arithmetic).
  */
 bool FCataclysmMinionCountRowTest::RunTest(const FString&)
 {
 	using CataclysmRowsOnlyTest::FWorn;
-	FWorn Worn(TEXT("Negative_Minus_2_4_to_your_max_minion_count"), false);
+	FWorn Worn(TEXT("Negative_Your_minions_reserve_25_65_more_Fervour"), false);
 	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
 	{
 		return false;
 	}
-	TestEqual(TEXT("the cap bonus is minus four"),
-		Worn.ASC()->StatForSkill(FName(UCataclysmCommand::MinionCapBonusStat),
+	TestEqual(TEXT("the reserve percentage is minus 65. If not, DT_EnchantmentEffects may be older than the rows: run "
+				   "tools/generate_datatable_assets.py"),
+		Worn.ASC()->StatForSkill(FName(UCataclysmCommand::MinionReservePercentLessStat),
 								 FGameplayTagContainer(), 0.0f),
-		-4.0f, 0.0001f);
+		-65.0f, 0.0001f);
 	return true;
 }
 
@@ -8783,13 +8787,15 @@ bool FCataclysmGadgetBodyRowsTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeployableCapRowTest,
-	"Cataclysm.Enchantments.TheDeployableCapRowRaisesTheCapOfDeployablesOnly",
+	"Cataclysm.Enchantments.TheDeployableReserveRowLowersWhatDeployablesReserveOnly",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * Issue #1833, the deployable cap. "Add +1-3 to your max deployable count", at
- * 3: minion_cap_bonus 3 for a skill tagged Type.Deployable, and nothing for a
- * summon, whose tags do not name it -- so Summon Imp keeps its cap of 3.
+ * "Your deployables reserve 15%-30% less Fervour", at 30: the reserve percentage
+ * 30 for a skill tagged Type.Deployable, and nothing for a summon, whose tags do
+ * not name it. Issue #2787, branch B: until the owner's ruling of 2026-11-20 the
+ * row was issue #1833's "Add 1-3 to your max deployable count", and the count
+ * caps went with it.
  */
 bool FCataclysmDeployableCapRowTest::RunTest(const FString&)
 {
@@ -8805,23 +8811,21 @@ bool FCataclysmDeployableCapRowTest::RunTest(const FString&)
 	FCataclysmItem AlsoRemoved;
 	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
 	Wearer.Equipment->Equip(
-		Carrying(TEXT("Head_Helm"), TEXT("Positive_Add_1_3_to_your_max_deployable_count"),
+		Carrying(TEXT("Head_Helm"), TEXT("Positive_Your_deployables_reserve_15_30_less_Fervour"),
 				 DrawbackWithNoEffect),
 		Removed, AlsoRemoved, Slot);
 	Wearer.Equipment->RefreshAttributes(Wearer.AbilitySystem);
-	const float Attribute = Wearer.AbilitySystem->GetNumericAttribute(
-		UCataclysmCombatAttributeSet::GetMinionCapBonusAttribute());
-	const auto Bonus = [&Wearer, Attribute](const TCHAR* Tags)
+	const auto Percent = [&Wearer](const TCHAR* Tags)
 	{
 		return Wearer.AbilitySystem->StatForSkill(
-			FName(UCataclysmCommand::MinionCapBonusStat),
-			UCataclysmSkillShapes::TagsFromCell(Tags), Attribute);
+			FName(UCataclysmCommand::MinionReservePercentLessStat),
+			UCataclysmSkillShapes::TagsFromCell(Tags), 0.0f);
 	};
-	TestEqual(TEXT("a deployable skill's cap rises by 3. If not, DT_EnchantmentEffects may "
+	TestEqual(TEXT("a deployable reserves 30% less. If not, DT_EnchantmentEffects may "
 				   "be older than the rows: run tools/generate_datatable_assets.py"),
-		Bonus(TEXT("Type.Deployable, Type.Minion")), 3.0f, 0.001f);
-	TestEqual(TEXT("and a summon's by nothing"),
-		Bonus(TEXT("Type.Minion, Type.Summon")), 0.0f, 0.001f);
+		Percent(TEXT("Type.Deployable, Type.Minion")), 30.0f, 0.001f);
+	TestEqual(TEXT("and a summon nothing less"),
+		Percent(TEXT("Type.Minion, Type.Summon")), 0.0f, 0.001f);
 	return true;
 }
 
@@ -13635,7 +13639,7 @@ bool FCataclysmResummonRowTest::RunTest(const FString&)
 	}
 	Skill->SkillName = TEXT("Summon Imp");
 	Skill->Params = UCataclysmSkillShapes::ParseParams(
-		TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Minions=Imp:1"));
+		TEXT("Count=1; Duration=20; Radius=3; Minions=Imp:1"));
 	ACataclysmMinion* First = Skill->SummonOne();
 	if (!TestNotNull(TEXT("an imp"), First))
 	{
@@ -28449,16 +28453,20 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTrapLayerThreeRowsTest,
  * Traps layer 3, ruled 2026-10-21 (M1-M6, R1-R3, and the owner on the slow): eight sentences, nine rows. WORN by real
  * players, one sentence each, against a CONTROL wearing a benefit with no effect, each with the same drawback with no
  * effect. For each, the test asks the one read or worn action its row reaches: the arming and trigger-radius increases
- * and the cap and no-expire reads through `ACataclysmMinion`'s own helpers, and the slow, the sized bleed and the two
- * own-stack grants as worn actions. What each then does in play is `Cataclysm.Traps.`'s. EIGHT assertions on the cases,
- * one per worn sentence, so on assets built before the rows it fails eight times, and only there.
+ * and the reserve and no-expire reads, and the slow, the sized bleed and the two own-stack grants as worn actions. What
+ * each then does in play is `Cataclysm.Traps.`'s. EIGHT assertions on the cases, one per worn sentence, so on assets
+ * built before the rows it fails eight times, and only there.
+ *
+ * THE TRAP-COUNT ROW IS THE TRAP-RESERVE ROW SINCE BRANCH B OF ISSUE #2787: "Your trap skills get +1-6 to max trap
+ * count" became "Your traps reserve 5%-25% less Fervour" when the owner's ruling of 2026-11-20 removed the trap cap, so
+ * its case asks what a trap reserves, through `UCataclysmCommand::ReserveFor` with a trap's own tags.
  */
 bool FCataclysmTrapLayerThreeRowsTest::RunTest(const FString&)
 {
 	using namespace CataclysmEnchantmentEffectTest;
 	const TCHAR* Arming = TEXT("Positive_Traps_arm_30_60_faster");
 	const TCHAR* Radius = TEXT("Positive_Traps_have_30_50_increased_trigger_radius");
-	const TCHAR* Cap = TEXT("Positive_Your_trap_skills_get_1_6_to_max_trap_count");
+	const TCHAR* Cap = TEXT("Positive_Your_traps_reserve_5_25_less_Fervour");
 	const TCHAR* NoExpiry = TEXT("Positive_Traps_do_not_expire_they_remain_armed_until_tr");
 	const TCHAR* Slow = TEXT("Positive_Traps_apply_a_20_35_slow_to_triggered_enemies");
 	const TCHAR* Bleed = TEXT("Positive_Traps_cause_a_bleed_of_1_2_times_normal_strength");
@@ -28516,8 +28524,10 @@ bool FCataclysmTrapLayerThreeRowsTest::RunTest(const FString&)
 			  Control.ASC->IncreasesForStat(FName(ACataclysmMinion::TrapArmingSpeedStat), TrapTags), 0.0f, 0.001f);
 	TestEqual(TEXT("control: no trigger-radius increase on a trap"),
 			  Control.ASC->IncreasesForStat(FName(ACataclysmMinion::TrapTriggerRadiusStat), TrapTags), 0.0f, 0.001f);
-	TestEqual(TEXT("control: the cap is the ruled 5"), ACataclysmMinion::SkillTrapsMostFor(Control.Character),
-			  ACataclysmMinion::SkillTrapsMostPerPlayer);
+	const FGameplayTagContainer AsATrap = ACataclysmMinion::TagsOfType(ACataclysmMinion::SkillTrapTypeName);
+	TestEqual(TEXT("control: a trap reserves its 5"),
+			  UCataclysmCommand::ReserveFor(Control.Character, ACataclysmMinion::SkillTrapFervourReserve, AsATrap),
+			  ACataclysmMinion::SkillTrapFervourReserve, 0.001f);
 	TestFalse(TEXT("control: traps expire"), ACataclysmMinion::SkillTrapsDoNotExpireFor(Control.Character));
 	TestEqual(TEXT("control: no trap slow"), CountActions(Control, IsSlow), 0);
 	TestEqual(TEXT("control: no sized bleed"), CountActions(Control, IsSizedBleed), 0);
@@ -28529,8 +28539,9 @@ bool FCataclysmTrapLayerThreeRowsTest::RunTest(const FString&)
 			 ArmingWearer.ASC->IncreasesForStat(FName(ACataclysmMinion::TrapArmingSpeedStat), TrapTags) > 0.0f);
 	TestTrue(TEXT("wearing the trigger-radius row, a trap's trigger radius is increased.") + Stale,
 			 RadiusWearer.ASC->IncreasesForStat(FName(ACataclysmMinion::TrapTriggerRadiusStat), TrapTags) > 0.0f);
-	TestTrue(TEXT("wearing the trap-count row, the cap is above the ruled 5.") + Stale,
-			 ACataclysmMinion::SkillTrapsMostFor(CapWearer.Character) > ACataclysmMinion::SkillTrapsMostPerPlayer);
+	TestTrue(TEXT("wearing the trap-reserve row, a trap reserves less than its 5.") + Stale,
+			 UCataclysmCommand::ReserveFor(CapWearer.Character, ACataclysmMinion::SkillTrapFervourReserve, AsATrap)
+				 < ACataclysmMinion::SkillTrapFervourReserve);
 	TestTrue(TEXT("wearing 'Traps do not expire', traps do not expire.") + Stale,
 			 ACataclysmMinion::SkillTrapsDoNotExpireFor(NoExpiryWearer.Character));
 	TestEqual(TEXT("wearing the slow row, one trap slow on trap_triggered.") + Stale, CountActions(SlowWearer, IsSlow), 1);
