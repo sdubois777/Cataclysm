@@ -178,12 +178,12 @@ struct CATACLYSM_API FCataclysmSkillBarSlot
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
 	bool bSkillTrapCastsNothing = false;
 
-	/** The player's skill traps standing, across every converted slot, and the most that may stand (T6). */
+	/**
+	 * The player's skill traps standing, across every converted slot. No most: issue #2787 removed T6's cap of five,
+	 * and the class resource's reserve is the only limit.
+	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
 	int32 SkillTrapsStanding = 0;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
-	int32 SkillTrapsMost = 0;
 };
 
 /**
@@ -423,7 +423,7 @@ public:
 
 	/**
 	 * The words over a box converted into a skill trap, or empty for any other box: "Trap casts nothing" when its trap
-	 * can never cast the slot's skill (T8), and otherwise the traps standing over the most, "Traps 2/5" (M7). Drawn where
+	 * can never cast the slot's skill (T8), and otherwise the traps standing, "Traps 2" (M7; no most since #2787). Drawn where
 	 * the Fervour line goes, above it when that line is drawn too, because a trap's press may be short of Fervour.
 	 */
 	static FString SkillTrapTextFor(const FCataclysmSkillBarSlot& Slot);
@@ -444,13 +444,12 @@ public:
 	/**
 	 * The line above the bar for the basic attack's TRAP, or empty while the basic attack is not converted into one.
 	 * Ruled 2026-10-21 (traps layer 2, L2: "swept on the box"), the basic gadget's line made over for a trap, because the
-	 * bar draws no box for the basic attack: "Basic trap 0.4s, traps 1/5", the seconds until the next click may place one
-	 * written as a box writes its wait (`CooldownTextFor`), which is the sweep; "Basic trap ready, traps 1/5" when it
+	 * bar draws no box for the basic attack: "Basic trap 0.4s, traps 1", the seconds until the next click may place one
+	 * written as a box writes its wait (`CooldownTextFor`), which is the sweep; "Basic trap ready, traps 1" when it
 	 * may; and "Basic trap casts nothing" when the held weapon's basic attack can never be cast by a trap, or the player
-	 * never swings and so never places one (T8). The traps are every slot's, as a box counts them (T6).
+	 * never swings and so never places one (T8). The traps are every slot's, as a box counts them, with no most (#2787).
 	 */
-	static FString BasicTrapTextFor(bool bConverted, bool bCastsNothing, float RemainingSeconds, int32 TrapsStanding,
-									int32 TrapsMost);
+	static FString BasicTrapTextFor(bool bConverted, bool bCastsNothing, float RemainingSeconds, int32 TrapsStanding);
 
 	/** `BasicTrapTextFor`, read off a player. Empty for anything but a player whose basic attack is a trap's. */
 	static FString BasicTrapTextOf(const AActor* Player);

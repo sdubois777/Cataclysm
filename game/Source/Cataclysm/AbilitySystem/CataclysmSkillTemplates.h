@@ -1679,12 +1679,11 @@ private:
  * Spawns minions that fight for the caster.
  *
  * TWO PATTERNS, AND BOTH DESIGNED SKILLS USE ONE EACH. Summon Imp spawns Count
- * at once and holds MaxActive, destroying the oldest when a new one would exceed
- * the cap -- "summoning a fourth destroys the oldest, which explodes for damage
- * in a 3 meter radius". Open the Rift has a Duration and an Interval, so it
- * spawns one every Interval up to MaxActive, burns the ground it stands on for
- * that whole time, and at the end deals FinalHitPercent and destroys what it
- * made.
+ * at once, and as many may stand as the class resource's reserve allows: issue
+ * #2787 removed its cap of three and "summoning a fourth destroys the oldest".
+ * Open the Rift has a Duration and an Interval, so it spawns one every Interval
+ * up to MaxActive in all, burns the ground it stands on for that whole time, and
+ * at the end deals FinalHitPercent and destroys what it made.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmSummonSkill : public UCataclysmSkillTemplate
@@ -1721,41 +1720,18 @@ public:
 							const FGameplayAbilityActivationInfo ActivationInfo,
 							bool bReplicateEndAbility, bool bWasCancelled) override;
 
-	/** Spawn one. Public so a test can drive the cap without waiting. */
+	/** Spawn one, if the pool holds its reserve. Public so a test can summon without waiting. */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
 	ACataclysmMinion* SummonOne();
 
 	/**
 	 * Minions this ability instance is holding, oldest first.
 	 *
-	 * ON THE ABILITY INSTANCE, WHICH IS WHY IT WORKS. The base class instances
-	 * per actor, so one instance stands for one character's Summon Imp across
-	 * every use of it, and the cap is per character rather than per press.
+	 * ON THE ABILITY INSTANCE. The base class instances per actor, so one
+	 * instance stands for one character's Summon Imp across every use of it.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	TArray<TObjectPtr<ACataclysmMinion>> Minions;
-
-	/**
-	 * Every living minion that counts against this skill's cap, oldest first:
-	 * its own, and every other minion of the same type its summoner commands.
-	 * Issue #1479.
-	 *
-	 * SHARED WITH THE RITUALIST'S RISEN IMPS, ruled 2026-09-27 under the
-	 * owner's delegation. A risen imp is in no skill's list, and "up to 3 imps
-	 * may be active at once" counts it. This skill's own list is included as
-	 * well, so a minion whose type row failed to load still counts here as it
-	 * did before.
-	 */
-	TArray<ACataclysmMinion*> MinionsSharingTheCap();
-
-	/**
-	 * How many minions a skill with these parameters may keep active at once
-	 * for this summoner, with every passive that changes it; zero for no cap.
-	 * Issue #1479: the risen imps read Summon Imp's figure through this, so
-	 * The Swarm and the minion-count enchantments reach them as well.
-	 */
-	static int32 CapFor(const AActor* Summoner, const FCataclysmSkillShapeParams& SkillParams,
-						const FGameplayTagContainer& SummonTags);
 
 	/**
 	 * Strike one enemy and take it if the blow left it weak enough.
@@ -1810,10 +1786,10 @@ public:
 	 * Summon one minion of this skill's kind at `Location`, at no cost, for a
 	 * minion that was lost. Issue #1515: Press-Ganged and Rekindled.
 	 *
-	 * NEVER ABOVE THE CAP AND NEVER BY EVICTING, ruled 2026-09-23 under the
-	 * owner's delegation. At the cap it makes nothing and returns null, where
-	 * `SummonOne` would explode the oldest to make room. The count is the living
-	 * one `LivingMinionCount` gives, so the minion just lost has already left it.
+	 * NEVER BY EVICTING, ruled 2026-09-23 under the owner's delegation. When the
+	 * pool cannot hold its reserve it makes nothing and returns null; the minion
+	 * just lost has already left the reserve's total. (It also refused at a count
+	 * cap until issue #2787 removed the caps.)
 	 */
 	ACataclysmMinion* SummonReplacementAt(const FVector& Location);
 
@@ -1902,9 +1878,9 @@ public:
 	/**
 	 * Spawn one minion of `Killer`'s first summon skill at `Where`, for a kill of its, when `KillSpawnsMinionStat` is
 	 * held. Called by `ACataclysmPlayerCharacter::OnSomethingDied` for exactly the kills that raise its `kill` event.
-	 * THROUGH `SummonReplacementAt`, SO FREE, NEVER ABOVE THE CAP AND NEVER BY EVICTING (C6): at the cap, or with no
-	 * room to reserve what the skill reserves, nothing is spawned. AN ORDINARY MINION OF THAT SKILL, IN ITS LIST AND
-	 * INSIDE ITS CAP (C7). Nothing for a killer that is dead or holds no summon skill.
+	 * THROUGH `SummonReplacementAt`, SO FREE AND NEVER BY EVICTING (C6): with no room to reserve what the skill
+	 * reserves, nothing is spawned. AN ORDINARY MINION OF THAT SKILL, IN ITS LIST AND RESERVING ITS FIGURE (C7; its
+	 * place inside a count cap went with the caps, #2787). Nothing for a killer that is dead or holds no summon skill.
 	 *
 	 * @return the minion spawned, or null
 	 */

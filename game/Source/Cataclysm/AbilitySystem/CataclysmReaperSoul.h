@@ -17,8 +17,8 @@ class UWorld;
  * LEFT BY THE COMMANDER'S DEATH HOOK, `UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero`, for exactly the deaths
  * that hook answers (R1): a minion's or thrall's health reaching nought by a blow, a tick or a direct write, a gadget
  * or deployable killed, a minion Sacrificial Ward spends, and a Tyrant's Minion's and a Warhound's own. A lifetime
- * running out writes no health and reaches none of it, so it leaves no Soul; nor does a minion the summon cap
- * destroys. Only where the commander holds `MinionDeathLeavesSoulStat` above nought.
+ * running out writes no health and reaches none of it, so it leaves no Soul; nor does a minion destroyed without
+ * being killed. Only where the commander holds `MinionDeathLeavesSoulStat` above nought.
  *
  * TAKEN ONLY BY THE COMMANDER WHOSE MINION LEFT IT (R2), while alive, by walking within `PickUpReachCm` of it along the
  * floor (R3), looked for every frame by the player controller's pass beside the material pick-up (R4). Taking it

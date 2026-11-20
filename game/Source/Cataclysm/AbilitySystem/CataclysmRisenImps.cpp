@@ -91,21 +91,12 @@ ACataclysmMinion* UCataclysmRisenImps::RiseOnDeath(AActor* Dying)
 		return nullptr;
 	}
 
-	// ONE CAP FOR EVERY IMP, Summon Imp's effective one. Issue #1479.
 	const FString Type = SummonImp->Params.Minions[0].Type;
-	const int32 Cap = UCataclysmSummonSkill::CapFor(Curser, SummonImp->Params, SummonImp->Tags);
-	const int32 Held = UCataclysmCommand::MinionsOfTypeCommandedBy(Curser, Type).Num();
-	if (Cap > 0 && Held >= Cap)
-	{
-		UE_LOG(LogCataclysm, Verbose,
-			TEXT("'%s' died cursed by '%s', who holds %d of %d imps, so nothing rose."),
-			*GetNameSafe(Dying), *Curser->GetName(), Held, Cap);
-		return nullptr;
-	}
 
-	// AND THE POOL MUST HOLD ITS RESERVE, Summon Imp's from Summon Imp's row, after Crowned. Issue #2787, the owner's
-	// ruling of 2026-11-20 that every minion reserves. When it cannot, nothing rises and nothing is destroyed, as at
-	// the cap.
+	// THE POOL MUST HOLD ITS RESERVE, Summon Imp's from Summon Imp's row, after Crowned, AND THAT IS THE ONLY LIMIT on
+	// how many rise. Issue #2787, the owner's rulings of 2026-11-20: every minion reserves, and nothing that reserves
+	// has a count cap, so the cap risen imps shared with Summon Imp (#1479) is gone. When the pool cannot hold it,
+	// nothing rises and nothing is destroyed.
 	const float Reserve =
 		UCataclysmCommand::ReserveFor(Curser, SummonImp->Params.FervourReserve, SummonImp->Tags);
 	if (!UCataclysmCommand::HasRoomToReserve(Curser, Reserve))
@@ -174,7 +165,7 @@ ACataclysmMinion* UCataclysmRisenImps::RiseOnNecrosisKill(
 	}
 
 	// AND THE POOL MUST HOLD ITS OWN RESERVE, issue #2787: not Summon Imp's 10, since it lasts 5-10 seconds against
-	// Summon Imp's 20 and holds no place under its cap. When it cannot, nothing rises.
+	// Summon Imp's 20. When it cannot, nothing rises.
 	const FString Type = SummonImp->Params.Minions[0].Type;
 	const float Reserve = UCataclysmCommand::ReserveFor(
 		Killer, NecrosisImpFervourReserve, ACataclysmMinion::TagsOfType(Type));
@@ -191,7 +182,6 @@ ACataclysmMinion* UCataclysmRisenImps::RiseOnNecrosisKill(
 		Killer, Where, Seconds, SummonImp->Params.bBurns, Type);
 	if (Imp)
 	{
-		Imp->bOutsideSummonCaps = true;
 		Imp->RecordExplosionRadius(SummonImp->Params.RadiusCm);
 		if (const UWorld* World = Imp->GetWorld())
 		{

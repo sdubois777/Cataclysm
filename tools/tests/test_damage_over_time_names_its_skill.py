@@ -47,9 +47,12 @@ _SPREAD = "a spread copy of a running ailment: judgement 2, a copy credits nothi
 _OWN_EFFECT = "the function that lays the effect; it sets the row on the effect itself (`Effect->SkillRowToCredit`)"
 _FLOOR = "a dungeon floor's own hazard, dealt in the floor's name: no skill deals it"
 _CREATURE = "a creature's or a dungeon rule's damage, not the player's: no skill deals it"
+_EXPLOSION = ("a minion's explosion's burn: every explosion is one a passive sets off, which credits nothing "
+              "(judgement 2), since issue #2787 removed Summon Imp's cap explosion, the one that credited the skill")
 
 #: The calls that name neither a skill nor a row, by rule, each with its reason.
 CREDITS_NOTHING_BY_RULE: dict[tuple[str, str, str, int], str] = {
+    ("AbilitySystem/CataclysmMinion.cpp", "ACataclysmMinion::Explode", "ApplyBurn", 0): _EXPLOSION,
     ("AbilitySystem/CataclysmAbilitySystemComponent.cpp", "UCataclysmAbilitySystemComponent::ApplyStatusToTheWearer",
      "UCataclysmAilments::Apply", 0): _WORN_ROW + "; laid on its own wearer",
     ("AbilitySystem/CataclysmAbilitySystemComponent.cpp", "UCataclysmAbilitySystemComponent::ApplyStatusToTheWearer",
