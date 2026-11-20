@@ -362,4 +362,20 @@ bool FCataclysmPlayLoopGearTextTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlayLoopSkillLevelTextTest,
+	"Cataclysm.PlayLoop.TheSkillLevelLineSaysTheSkillAndBothLevels",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlayLoopSkillLevelTextTest::RunTest(const FString&)
+{
+	// Issue #2764: one line for each skill level gained, from a kill's share or from a character level that let a
+	// skill's kept experience through. The skill by its name, the level reached, the level it came from.
+	using Log = FCataclysmPlayLoopLog;
+	TestEqual(TEXT("one level"), Log::SkillLevelLine(TEXT("Molten Cleave"), 2, 3),
+			  FString(TEXT("skill Molten Cleave reached level 3, from level 2")));
+	TestEqual(TEXT("several at once name where it started"), Log::SkillLevelLine(TEXT("Pyroclasm"), 1, 4),
+			  FString(TEXT("skill Pyroclasm reached level 4, from level 1")));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

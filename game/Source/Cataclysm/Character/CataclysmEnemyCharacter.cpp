@@ -362,6 +362,13 @@ void ACataclysmEnemyCharacter::HandleDeath()
 			{
 				State->GrantExperience(State->ExperienceAfterGain(UCataclysmEnemyScore::ScoreFor(
 					UCataclysmEnemyScore::FloorIn(World), RarityStepItPaysAs())));
+
+				// AND THE SAME EXPERIENCE TO THE SKILLS THAT HURT IT, by the share of its health each removed. Issue
+				// #2764, ruled 2026-11-19. The character's own grant above is unchanged; a creature no levelling skill
+				// touched -- killed by the basic attack alone -- gives its skills nothing.
+				State->GrantSkillExperience(State->ExperienceAfterGain(UCataclysmEnemyScore::ScoreFor(
+												UCataclysmEnemyScore::FloorIn(World), RarityStepItPaysAs())),
+											HealthRemovedBySkill, MaxHealthForTheSkillSplit());
 			}
 
 			// AND A KILL CLEARS WHAT THE KILLER OWES. Issue #997. The
@@ -2512,4 +2519,19 @@ void ACataclysmEnemyCharacter::InitAbilityActorInfo()
 		GrantedHandles.TakeFromAbilitySystem(AbilitySystemComponent);
 		StartingAbilitySet->GiveToAbilitySystem(AbilitySystemComponent, &GrantedHandles, this);
 	}
+}
+
+void ACataclysmEnemyCharacter::NoteHealthRemovedBySkill(FName SkillRow, float Amount)
+{
+	if (SkillRow.IsNone() || Amount <= 0.0f)
+	{
+		return;
+	}
+	HealthRemovedBySkill.FindOrAdd(SkillRow) += Amount;
+}
+
+float ACataclysmEnemyCharacter::MaxHealthForTheSkillSplit() const
+{
+	const UAbilitySystemComponent* System = GetAbilitySystemComponent();
+	return System ? System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) : 0.0f;
 }

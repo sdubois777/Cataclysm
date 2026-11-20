@@ -560,6 +560,18 @@ void ACataclysmHUD::DrawSkillBar()
 							At.Y + Size - SkillBarChargesInsetPx, SkillBarKeyScale);
 		}
 
+		// THE SKILL'S LEVEL IN THE TOP LEFT CORNER, AND A THIN BAR OF THE EXPERIENCE INTO IT ALONG THE FOOT, for a skill
+		// that levels. Issue #2764. The bar is the character's own experience bar's colour, so the two read as one kind
+		// of thing; the pop-up says the level in words.
+		if (Box.SkillLevel > 0)
+		{
+			DrawTextCentred(FString::FromInt(Box.SkillLevel), Ink, At.X + SkillBarLevelInsetPx,
+							At.Y + SkillBarKeyInsetPx, SkillBarKeyScale);
+			DrawRect(UCataclysmCombatOverlay::ColourFromHex(UCataclysmExperienceBar::FillHex), At.X,
+					 At.Y + Size - SkillBarLevelBarPx, Size * FMath::Clamp(Box.SkillLevelFraction, 0.0f, 1.0f),
+					 SkillBarLevelBarPx);
+		}
+
 		const FString Name = UCataclysmSkillBar::ShortNameFor(Box.Name);
 		if (!Name.IsEmpty())
 		{

@@ -748,6 +748,7 @@ bool FCataclysmGoldCharacterMigrationTest::RunTest(const FString&)
 	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmCharacterSave::SchemaVersionNow);
 	Expected->SetNumberField(TEXT("Gold"), 0);
 	CataclysmSaveFixtures::AddTheCharactersVersion9Defaults(*Expected); // And 9, issue #2741 slice 1c: its own tree.
+	CataclysmSaveFixtures::AddTheCharactersVersion10Defaults(*Expected); // And 10, issue #2764: no skill experience.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -998,10 +999,11 @@ bool FCataclysmGoldAccountMigrationTest::RunTest(const FString&)
 
 /**
  * The committed files hold their gold: `Account_v4.json` reads 1234567 into the balance and is read rather than
- * migrated, `Character_v9.json` reads 4321 into the character's own, and `Run_v9.json` restores a pile of 37 beside its
+ * migrated, `Character_v10.json` reads 4321 into the character's own, and `Run_v9.json` restores a pile of 37 beside its
  * piece of gear. Prints "FILES". The account file was `Account_v3.json` until the account record went to version 4 on
  * 2026-11-18 (issue #2741 slice 1b); `Account_v4.json` holds the same gold. The character file was `Character_v8.json`
- * until the character record went to version 9 the same day (issue #2741 slice 1c); `Character_v9.json` holds the same.
+ * until the character record went to version 9 the same day (issue #2741 slice 1c); `Character_v9.json`, and since
+ * 2026-11-19 `Character_v10.json` (issue #2764), hold the same.
  * The run file was `Run_v7.json` until the run record went to version 8 the same day (issue #2749, B10), and
  * `Run_v8.json` until it went to version 9 on 2026-11-19 (issue #2741 slice 3b), each with the same pile.
  */
@@ -1017,7 +1019,7 @@ bool FCataclysmGoldCommittedFilesTest::RunTest(const FString&)
 	FString Reason;
 	if (!CataclysmSaveFixtures::Read(TEXT("Account_v4.json"), AccountText, Reason)
 		|| !CataclysmSaveFixtures::Read(TEXT("Run_v9.json"), RunText, Reason)
-		|| !CataclysmSaveFixtures::Read(TEXT("Character_v9.json"), CharacterText, Reason))
+		|| !CataclysmSaveFixtures::Read(TEXT("Character_v10.json"), CharacterText, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1034,7 +1036,7 @@ bool FCataclysmGoldCommittedFilesTest::RunTest(const FString&)
 	const UCataclysmCharacterSave* Character = Cast<UCataclysmCharacterSave>(FCataclysmSaveStorage::FromJson(
 		CharacterText, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), CharacterResult, Message));
 	if (!TestNotNull(TEXT("Account_v4.json loads"), Account) || !TestNotNull(TEXT("Run_v9.json loads"), Run)
-		|| !TestNotNull(TEXT("Character_v9.json loads"), Character))
+		|| !TestNotNull(TEXT("Character_v10.json loads"), Character))
 	{
 		return false;
 	}

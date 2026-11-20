@@ -41,6 +41,13 @@ public:
 	FString SkillName;
 
 	/**
+	 * The row of `game/Data/WeaponSkills.csv` this skill was made from, which its experience and level are kept under
+	 * (`ACataclysmPlayerState::GetSkillExperience`). None on a skill no row stamped. Issue #2764.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	FName SkillRow;
+
+	/**
 	 * Where Follow Through's free repeat is aimed: the nearest living enemy in
 	 * reach when it was made. Issue #1515. `AimPoint` answers this instead of
 	 * the cursor while `bFreeRepeat` is set, ruled 2026-09-24, so the repeat

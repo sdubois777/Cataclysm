@@ -182,7 +182,7 @@ namespace CataclysmSaveRecordTest
 			// THIS LIST IS THE CURRENT SHAPE OF EACH RECORD, and an out-of-date
 			// file here would leave the completeness check below comparing a
 			// record against a fixture that no longer describes it. Issue #50.
-			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v9.json") },
+			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v10.json") },
 			{ UCataclysmRunSave::StaticClass(),       TEXT("Run_v9.json") },
 		};
 	}
@@ -626,7 +626,7 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v9.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v10.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -639,13 +639,14 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v9.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v10.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
 
-	// 9 SINCE `Character_v9.json` BECAME THE COMMITTED FILE (issue #2741 slice 1c); it was 8 until then.
-	TestEqual(TEXT("it says it is version 9"), Read->SchemaVersion, 9);
+	// 10 SINCE `Character_v10.json` BECAME THE COMMITTED FILE (issue #2764); it was 9 from issue #2741 slice 1c, 8
+	// until then.
+	TestEqual(TEXT("it says it is version 10"), Read->SchemaVersion, 10);
 	// THE SEED THE FILE STATES, NOT THE ONE ITS IDENTIFIER GIVES, so a seed re-derived on load cannot pass. #1324 6a.
 	TestEqual(TEXT("the Cataclysm order seed in the file"), Read->CataclysmOrderSeed,
 		CataclysmSaveFixtures::CommittedCharacterOrderSeed);
@@ -734,6 +735,16 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 		Read->PrivateEmpireUpgradePoints == 12.75);
 	TestEqual(TEXT("and its private tree's one node"),
 		Read->PrivateEmpireTree.PointsIn(FName(TEXT("basic_0000000w"))), 3);
+	// ITS SKILLS' EXPERIENCE, TWO ENTRIES AND FRACTIONS, which play does not give it either. Version 10 (issue #2764)
+	// put them in the file so a reader putting back the empty default is caught; the fixtures README says so.
+	const FCataclysmSkillExperience* Greatsword = Read->SkillExperience.FindByPredicate(
+		[](const FCataclysmSkillExperience& Each) { return Each.SkillRow == FName(TEXT("War_Greatsword_Heavy")); });
+	const FCataclysmSkillExperience* Greataxe = Read->SkillExperience.FindByPredicate(
+		[](const FCataclysmSkillExperience& Each) { return Each.SkillRow == FName(TEXT("Demonic_Greataxe_Ultimate")); });
+	TestEqual(TEXT("two skills' experience"), Read->SkillExperience.Num(), 2);
+	TestTrue(TEXT("the Greatsword's Heavy at 37810.5, a fraction"), Greatsword && Greatsword->Experience == 37810.5);
+	TestTrue(TEXT("and the Greataxe's Ultimate, whose weapon is off, at 1234.25"),
+		Greataxe && Greataxe->Experience == 1234.25);
 
 	// THE ATTRIBUTE ALLOCATION, which the v2 fixture is the reason for. Issue
 	// #50. Read field by field rather than only as a total, because a reader
@@ -884,6 +895,7 @@ bool FCataclysmSaveCharacterV3Migrates::RunTest(const FString&)
 	Expected->SetNumberField(TEXT("CataclysmOrderSeed"), CataclysmSaveFixtures::FixtureIdentifiersOrderSeed); // And 7.
 	Expected->SetNumberField(TEXT("Gold"), 0); // And 8, issue #2742: no gold of its own.
 	CataclysmSaveFixtures::AddTheCharactersVersion9Defaults(*Expected); // And 9, issue #2741 slice 1c: its own tree.
+	CataclysmSaveFixtures::AddTheCharactersVersion10Defaults(*Expected); // And 10, issue #2764: no skill experience.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -1431,7 +1443,7 @@ bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v9.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v10.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1443,7 +1455,7 @@ bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
 		Text, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v9.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v10.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}

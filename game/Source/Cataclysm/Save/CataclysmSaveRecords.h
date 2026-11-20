@@ -1139,6 +1139,23 @@ public:
  * writes an enum by its name -- "Weapon1" -- so a named slot survives both.
  * Ruled 2026-09-24.
  */
+/**
+ * One skill's experience, as the character record keeps it: the row of `game/Data/WeaponSkills.csv` the skill was made
+ * from, and the total experience it has earned. Issue #2764. A double, because a kill's experience is split among the
+ * skills that hurt it by the share each removed, and the shares are fractions.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSkillExperience
+{
+	GENERATED_BODY()
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FName SkillRow;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	double Experience = 0.0;
+};
+
 USTRUCT(BlueprintType)
 struct CATACLYSM_API FCataclysmWornItem
 {
@@ -1264,6 +1281,10 @@ public:
 	static const FName TypeName;
 
 	/**
+	 * 10 SINCE 2026-11-19. A skill levels as it is used (issue #2764, ruled by the project owner that day): each skill's
+	 * total experience is kept, by skill row, in `SkillExperience`, and its level is worked out from it and the
+	 * character's level on load. `Migrate_9_to_10` writes an empty list: no skill had earned any before.
+	 *
 	 * 9 SINCE 2026-11-18. A Solo Self-Found character banks and spends its own empire upgrade points (issue #2741 slice
 	 * 1c): the owner reversed the coordinating session's C8 that day ("Include them"). `PrivateEmpireUpgradePoints` was a
 	 * whole number and is a double, because an award is a fraction, as the account record's bank became at its version 2;
@@ -1299,7 +1320,7 @@ public:
 	 * when attribute allocation became something the running game produces, so
 	 * a character written before that has no such field at all. Issue #50.
 	 */
-	static constexpr int32 SchemaVersionNow = 9;
+	static constexpr int32 SchemaVersionNow = 10;
 
 	/**
 	 * The Cataclysm order seed a character's identifier gives: what `Migrate_6_to_7` writes into a character written
@@ -1635,6 +1656,15 @@ public:
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	TArray<FCataclysmSkillChoice> SkillAssignment;
+
+	/**
+	 * Each skill's total experience, by skill row: `ACataclysmPlayerState::GetSkillExperienceRecord`. Issue #2764,
+	 * version 10. THE TOTAL AND NOT THE LEVEL, because the level is the experience read against the character's level
+	 * (`UCataclysmSkillLevels::LevelFor`), and a level saved beside it could disagree with both. A skill whose weapon is
+	 * off keeps its entry, as its choice is kept, for when the weapon returns. One entry per row, in no set order.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<FCataclysmSkillExperience> SkillExperience;
 };
 
 /**

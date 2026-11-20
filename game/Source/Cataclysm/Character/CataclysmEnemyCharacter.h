@@ -1866,6 +1866,24 @@ public:
 	bool PaysForItsDeath() const { return !bRisenFromTheDead && !bDiesUnpaid; }
 
 	/**
+	 * Credits `Amount` of health removed from this creature to the player's skill of row `SkillRow`, so its death can
+	 * split its experience among the skills that hurt it (`ACataclysmPlayerState::GrantSkillExperience`). Issue #2764.
+	 * Called by `UCataclysmSkillEffects::ApplyHit` for a levelling skill's direct hit; nothing at or below zero, and no
+	 * row, is recorded.
+	 */
+	void NoteHealthRemovedBySkill(FName SkillRow, float Amount);
+
+	/** The health each of the player's skills has removed from this creature, by skill row. Issue #2764. */
+	const TMap<FName, float>& GetHealthRemovedBySkill() const { return HealthRemovedBySkill; }
+
+	/**
+	 * The health the experience split is measured against: the creature's maximum health now. Issue #2764. A creature
+	 * that healed may have lost more than this in all, and the split then measures against the larger of the two, so the
+	 * skills' shares never pass the whole kill.
+	 */
+	float MaxHealthForTheSkillSplit() const;
+
+	/**
 	 * What being a wraith does to this creature's movement and attack speed.
 	 *
 	 * HERE AND NOT WRITTEN ONTO TWO ATTRIBUTES, and that was measured rather than chosen.
@@ -2553,6 +2571,9 @@ protected:
 	static constexpr float LongestChargeStepCm = 75.0f;
 
 private:
+	/** See `GetHealthRemovedBySkill`. Issue #2764. */
+	TMap<FName, float> HealthRemovedBySkill;
+
 	/** What the waiting ordinary blow will strike. Weak, so a target destroyed
 	 *  in the gap is simply not hit. Issue #783. */
 	TWeakObjectPtr<AActor> PendingBasicAttackTarget;

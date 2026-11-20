@@ -80,6 +80,7 @@ void UCataclysmWeaponSkills::StampOnto(UCataclysmSkillTemplate& Template,
 									   const FCataclysmWeaponSkill& Skill)
 {
 	Template.SkillName = Skill.Name;
+	Template.SkillRow = Skill.RowName; // The row its experience and level are kept under. Issue #2764.
 	Template.SkillDescription = Skill.Description;
 	Template.Params = Skill.Params;
 	Template.SkillTags = Skill.Tags;

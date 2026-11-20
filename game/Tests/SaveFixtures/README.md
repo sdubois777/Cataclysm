@@ -643,6 +643,28 @@ followed, ruled 2026-11-01:
   read it as the committed character file reads `Character_v9.json`, and every
   test that runs an older character file through the whole chain adds what the
   step writes through `CataclysmSaveFixtures::AddTheCharactersVersion9Defaults`.
+- **The character record went to version 10 on 2026-11-19**, because a skill
+  levels as it is used (issue #2764, ruled by the project owner that day): each
+  skill's total experience is kept, by skill row, in `SkillExperience`, after
+  `SkillAssignment`, and its level is read from it and the character's level.
+  `Migrate_9_to_10` writes an empty list into a version 9 file -- no skill had
+  earned any -- keeps a list already there, and refuses a key holding anything
+  but a list. `Character_v10.json` is `Character_v9.json` at version 10 with two
+  entries added and nothing else changed: `War_Greatsword_Heavy` at 37810.5,
+  half a point above the 37,810 skill level 3 costs, so the character's level 42
+  reads it as level 3; and `Demonic_Greataxe_Ultimate` at 1234.25, a skill whose
+  weapon the character does not wear, kept at level 1 as a choice is kept.
+  **Two entries and fractions, not an empty list**, because empty is the default
+  and the migration's value, and a fraction shows the double is read. As at
+  version 9, these are values play does not give this character -- its
+  Greatsword's War skills deal no damage yet, so they earn nothing -- kept so
+  that the file differs from version 9 in this field only.
+  `Character_v9.json` is now a migration input, not edited again;
+  `Cataclysm.SkillLevels.ACharacterFromBeforeSkillLevelsMigratesWithNoSkillExperience`
+  runs it through the step and checks every other field is kept, every test that
+  read it as the committed character file reads `Character_v10.json`, and every
+  test that runs an older character file through the whole chain adds what the
+  step writes through `CataclysmSaveFixtures::AddTheCharactersVersion10Defaults`.
 - **The run record went to version 8 on 2026-11-18**, because each run has its
   own mask on its dungeons' walk seeds (issue #2749, B10): until then every
   run's dungeon N walked the same floors. One field, `WalkSeedMask`, after

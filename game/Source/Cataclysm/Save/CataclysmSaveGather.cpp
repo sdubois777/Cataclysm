@@ -604,6 +604,10 @@ bool FCataclysmSaveGather::CharacterFrom(const ACataclysmPlayerCharacter& Charac
 		// AND THE CHOSEN SKILLS, since issue #837 layer 3 (Q6: one field, no version bump). UNCONDITIONALLY, for the
 		// passive tree's reason: an empty list means exactly "nothing chosen", the default fill.
 		Record.SkillAssignment = State->GetSkillAssignment();
+
+		// AND EACH SKILL'S TOTAL EXPERIENCE, since issue #2764 (version 10). UNCONDITIONALLY, as above: an empty list
+		// means every skill stands at level 1. The levels are not written: they are read from these on load.
+		Record.SkillExperience = State->GetSkillExperienceRecord();
 	}
 
 	// EVERY OTHER FIELD IS LEFT ALONE RATHER THAN ZEROED. The residue and a Solo

@@ -529,6 +529,327 @@ owner's press of C at step 14 of `docs/Play_Loop_Checklist.md` is that test.
 
 ---
 
+## 2026-11-19 — A skill levels as it is used, up to level 20: a creature's experience is shared at its death among the skills that hurt it, each level multiplies the skill's damage percentage by 1.0567, and the character record goes to version 10 (#2764, slice 1)
+
+**Affects:** `UCataclysmSkillLevels`, new (`game/Source/Cataclysm/Character/CataclysmSkillLevels.h` and `.cpp`): the
+price, the cap, the damage factor, the bar's fraction and words, and which blow levels a skill;
+`UCataclysmSkillTemplate::SkillRow`, new, stamped by `UCataclysmWeaponSkills::StampOnto` (`CataclysmSkillTemplate.h`,
+`CataclysmWeaponSkills.cpp`); `UCataclysmSkillEffects::ApplyHit` scales a levelled skill's blow on a creature and
+credits the health it removed (`CataclysmSkillEffects.cpp`); `ACataclysmEnemyCharacter::NoteHealthRemovedBySkill`,
+`GetHealthRemovedBySkill` and `MaxHealthForTheSkillSplit`, new, and `HandleDeath`'s grant (`CataclysmEnemyCharacter.h`
+and `.cpp`); `ACataclysmPlayerState::GetSkillExperience`, `SkillLevelOf`, `GrantSkillExperience`,
+`GetSkillExperienceRecord`, `RestoreSkillExperience`, `SetSkillExperience`, `SkillLevelsNow`, `SaySkillLevelsGained`
+and `SkillNameOf`, new, and `GrantExperience` (`CataclysmPlayerState.h` and `.cpp`);
+`FCataclysmPlayLoopLog::SkillLevelLine`, new (`CataclysmPlayLoopLog.h` and `.cpp`); `FCataclysmSkillBarSlot`'s
+`SkillLevel`, `SkillLevelFraction` and `SkillLevelText`, new, `UCataclysmSkillBar::Read` and `PopupLinesFor`
+(`CataclysmSkillBar.h` and `.cpp`); `ACataclysmHUD::DrawSkillBar` (`CataclysmHUD.h` and `.cpp`);
+`UCataclysmSkillAssignmentWidget::DescribePoolButton` (`CataclysmSkillAssignmentWidget.cpp`); the character record
+(`UCataclysmCharacterSave`, version 10, `SkillExperience`, `FCataclysmSkillExperience`, `Migrate_9_to_10`, in
+`CataclysmSaveRecords.h` and `.cpp`; `FCataclysmSaveGather::CharacterFrom`, `FCataclysmSaveApply::CharacterInto`);
+`game/Tests/SaveFixtures/Character_v10.json`, new, and its README; `sim/cataclysm_sim/skill_levels.py`, new;
+`sim/analyse_opening.py` (section 7, new); `tools/tests/test_the_starting_character_survives_a_pack.py` (`fight`'s
+`slot_factor` and `dealt`, passed by no test there); `docs/Cataclysm_GDD_v2.md` ("Skill Acquisition" twice, "What a
+Skill Is Worth", and "What a Skill Levels", new); `docs/Save_System_Design.md`; `docs/Play_Loop_Checklist.md` (step 7).
+Tests: `game/Source/Cataclysm/Tests/CataclysmSkillLevelsTests.cpp`, new, 11 in the new group `Cataclysm.SkillLevels.`;
+`Cataclysm.PlayLoop.TheSkillLevelLineSaysTheSkillAndBothLevels`, new; the version 10 helper
+`AddTheCharactersVersion10Defaults` (`CataclysmSaveFixtures.h`) in the six chain tests; the tests reading the committed
+character file move to `game/Tests/SaveFixtures/Character_v10.json` (`CataclysmSaveRecordTests.cpp`, `CataclysmCataclysmDrawTests.cpp`,
+`CataclysmGoldTests.cpp`); `tools/tests/test_skill_levels_port.py` and `sim/tests/test_skill_levels.py`, new;
+`tools/tests/test_the_play_loop_is_logged_at_each_step.py` and `tools/tests/test_empire_tree_on_the_account_record.py`,
+changed. Issue [#2764](https://github.com/sdubois777/Cataclysm/issues/2764), slice 1. **Written and not compiled: no
+Unreal build or test has run, and no C++ guard proof.**
+
+### SAID FIRST
+
+- **COMPILED AND TESTED.** Window skills-w1 failed two of this change's own tests, on faults in the tests and not in the
+  game code ("Window skills-w1", below). They were corrected, and window skills-w2 passed every check and proved K1 to
+  K4 ("Window skills-w2", below). The three Python guard proofs ran and proved before commit.
+- **IN A FIRST DUNGEON A SKILL GAINS LITTLE, AND THE OWNER CHOSE THAT PACE.** Measured, `sim/analyse_opening.py`
+  section 7 at its smoke size (seeds 0 to 19): 106 first-surge Outpost dungeons of 5 to 8 floors; 94 of them end with
+  the character at level 4 and its Heavy at skill level 3, a factor of 1.117, while the floors' median Common Imp health
+  goes from 18.1 on floor 1 to 70.7 on floor 8. The plan's own run at seeds 0 to 99 gave 435 of 494 at the same pair.
+  The opening's damage growth comes from gear; whether gear reaches a new character is another session's question.
+- **THE END-GAME RISE IS ACCEPTED, AND THE DAMAGE TARGET DOES NOT MOVE.** A skill at level 20 deals 2.85 times its
+  stated figure: a Heavy's 250% is 712% and an Ultimate's 400% is 1,140%, at tier 8 11,974 and 19,160 per hit. The
+  basic attack does not level, and the Damage Target and every affix are fitted to it. "What a Skill Is Worth" says so.
+- **THIS SLICE COUNTS DIRECT HITS ONLY**, as ruled: a blow that names its skill (`FCataclysmHitDelivery::Skill`) -- a
+  strike, a fired projectile, a thrown axe, a zone's blast. Damage over time, minions, gadgets and traps credit their
+  skill in the second slice, and a buried weapon's blow, which names no skill, is neither scaled nor credited until then.
+- **THE BASIC ATTACK CARRIES NO SKILL ROW**: `UCataclysmWeaponSkills::BasicAttackFor` builds it from the weapon's base,
+  not from a row of the skill matrix, so it can never earn or level. The check on its designed slot in
+  `UCataclysmSkillLevels::RowThatLevels` is a second guard for a basic attack ever given a row, and no test can make it
+  fire today, so no proof is registered for it. The test
+  `Cataclysm.SkillLevels.TheBasicAttackAndABlowOnTheUserAreNeitherScaledNorCredited` asserts the missing row.
+- **A SKILL'S EXPERIENCE REACHES THE DISK WITH THE CHARACTER RECORD'S NEXT WRITE**: an item or gold picked up, a death,
+  a trip between levels, a city upgrade, or a change to the build (#2763). The known limit #2763 recorded for the
+  character's experience is the same for a skill's.
+
+### The rulings
+
+The plan went to the coordinating session on 2026-11-19, and the owner answered its four questions the same day
+(issue #2764's body):
+
+- "QA: Genre pace + check gear": build skill levels at Path of Exile's pace; whether gear drops and upgrade stones reach
+  a new character is investigated separately.
+- "QB: 2.85x, like PoE Cleave": each level multiplies the skill's damage percentage by 1.0567, level 20 = 2.85x level 1.
+  The end-game power increase (Heavy 250% to 712% at level 20) is accepted with this choice; state it in the entry and
+  the design document.
+- "QC: No, skills only": the basic attack does not level and earns no skill experience.
+- "QD: Second slice": the first slice counts direct hits only; damage over time and minions crediting their source
+  skill is a second slice.
+
+And the coordinating session accepted the rest as judgements: "experience split at death by share of health removed;
+price 0.25 x the character's experience to Path of Exile's paired level, capped by the character's paired level with
+the excess kept; cap 20; the factor in the base bucket; mana cost unchanged; non-damaging supports do not level; the
+character record goes to version 10 with (skill name, total experience); the skill bar and assignment screen show the
+level; a PLAY LOOP line on a skill level gained." The skill is named by its row of `game/Data/WeaponSkills.csv`, which
+the screen shows by its name.
+
+### The research
+
+**Read**, 2026-11-19: poedb.tw/us/Fireball and /us/Cleave (each gem level's required character level, mana and damage:
+Cleave 179.4% of base damage at gem level 1, 222.1% at 5, 294.3% at 10, 388.7% at 15, 511.2% at 20; Fireball 9-14 to
+1883-2825 fire damage, mana 5 to 20); classic.battle.net/diablo2exp/skills/basics.shtml, sorceress-fire.shtml (Fire Bolt
+3-6 at level 1 to 45-60 at 20, 2.5 mana at every level) and barbarian-combatskills.shtml (Bash, +50% damage at level 1
+to +145% at 20, 2 mana); maxroll.gg/last-epoch/resources/passives-and-skills and /experience-guide (specialised skills
+earn "the same way as character levels", cap 20 "reached around level 75", a level gives a point in that skill's tree);
+oldschool.runescape.wiki/w/Combat, /w/Experience and /w/Maximum_melee_hit ("4 experience per damage", cap 99, Strength
+raising maximum hit); the PlanetDungeonSiege numbers page on gamespy-archives.quaddicted.com (each hit pays
+"(damage / max_hitpoints) x exp_value" to the skill that dealt it); skyrim.wiki.fextralife.com/Skills and /Leveling (a
+Destruction spell must "do damage for the skill to gain experience").
+
+**Failed**: en.uesp.net Leveling, One-handed and Destruction (HTTP 403); support.lastepoch.com (403); www.poewiki.net
+(a bot check); pathofexile.fandom.com (402); two maxroll.gg Path of Exile gem pages (404); skyrim.wiki.fextralife.com/
+One-Handed (404); www.ign.com (refused by the fetch tool). **Not found anywhere readable**: Path of Exile's share of
+character experience a gem receives, and Skyrim's experience per use and cost per level.
+
+**What the research settles**: experience earned by damage dealt (Dungeon Siege, RuneScape, Skyrim's Destruction); a cap
+of 20 (Path of Exile, Diablo II, Last Epoch); a skill's level multiplying its own percentage of weapon damage (Path of
+Exile's Cleave, Diablo II's Bash); a skill's level paired with the character's (Path of Exile's required level, Last
+Epoch's "around level 75"). **What is a judgement**: Cleave's 2.85 over Bash's 1.63 (the owner's choice); the price's
+0.25; paying at the death rather than at each hit, so a creature that heals pays no more than its kill; the basic
+attack not levelling (the owner's choice); a skill that deals no damage not levelling; the mana cost staying on the
+character's level; and a skill keeping its experience when its weapon is off.
+
+### The version 10 sweep
+
+`UCataclysmCharacterSave::SchemaVersionNow` 9 to 10, with `Migrate_9_to_10` writing an empty `SkillExperience`, keeping
+a list already there and refusing anything else. Every read and write of the character record's version in the game
+uses that constant (`CataclysmSaveLoad.cpp`, `CataclysmSaveWriter.cpp`). Every test that states the committed character
+file's version as a number, or reads it, moves to `Character_v10.json` and 10:
+`Cataclysm.SaveRecords.TheCommittedCharacterFileReadsIntoTheValuesItStates` (and its committed-file list and the
+worn-gear test), the Cataclysm draw's seed test and the gold test. Every test that runs an older character file through the whole chain adds
+`AddTheCharactersVersion10Defaults`: the six in `CataclysmCataclysmDrawTests.cpp`, `CataclysmConsumptionDoubleTests.cpp`,
+`CataclysmConsumptionMarkTests.cpp`, `CataclysmEmpireTreeOwnTests.cpp`, `CataclysmGoldTests.cpp` and
+`CataclysmSaveRecordTests.cpp`. `tools/tests/test_empire_tree_on_the_account_record.py` reads `Character_v10.json`. The
+three tests that state "version 9" and were not moved read `Run_v9.json`, the run record, which stays at 9.
+
+### The rebase onto the forge, the gear display, the burn slice and the C key
+
+Rebased onto `development` `ecde2edee` on 2026-11-19, as `feat/skills-level-by-use-2`. Eight files conflicted, and each
+keeps both sides:
+
+- `CataclysmSkillEffects.cpp`: two includes, the Corrupted Stalker's (#2749) and `Character/CataclysmSkillLevels.h`.
+  The level factor and the credit merged without a conflict and are where they were: the factor on `DamagePercent`
+  before the pricing, and the credit after `ApplyDirectDamage`.
+- `CataclysmPlayLoopLog.h` and `.cpp`, and `CataclysmPlayLoopTests.cpp`: the forge's and the gear display's additions,
+  then the skill level line and its test. The two sides shared a comment's opening `/**` in the header and the closing
+  `}` of a function or test in the other two, so each side is written whole rather than joined at the shared lines.
+- `tools/tests/test_the_play_loop_is_logged_at_each_step.py`: twenty-five places, the skill level line the twenty-fifth.
+- `tools/tests/test_the_starting_character_survives_a_pack.py`: `fight` takes the burn slice's `burn_per_second` and this
+  branch's `slot_factor` and `dealt`, and its docstring describes all three.
+- `docs/Play_Loop_Checklist.md` step 7: the gear bullets, then the skill bar's.
+- This log: this entry between the C key's and the burn slice's, by the time each was first written (12:36:43 here,
+  14:59:42 and 11:09:10 there).
+
+`python tools/check_resolved_cpp.py --changed` printed "29 files read, 0 with complaints".
+
+### The tests, and the count registered by name
+
+- **`Cataclysm.SkillLevels.`, new, 11**: `ThePriceOfALevelIsAQuarterOfTheCharactersClimbToItsPairedLevel`,
+  `ASkillIsCappedByTheCharactersLevelAndKeepsItsExperience`,
+  `EachLevelMultipliesTheDamagePercentageAndLevelTwentyIsTwoPointEightFiveTimesLevelOne`,
+  `TheBarsWordsSayTheLevelAndTheShareEarnedRoundedDown`, `AKillIsSharedAmongTheSkillsByTheHealthEachRemoved`,
+  `ASkillsBlowOnACreatureIsScaledByItsLevelAndCreditedToIt`,
+  `TheBasicAttackAndABlowOnTheUserAreNeitherScaledNorCredited`, `ACreaturesDeathPaysEachSkillItsShare`,
+  `ACharacterFromBeforeSkillLevelsMigratesWithNoSkillExperience`,
+  `SkillExperienceIsGatheredIntoTheCharacterRecordAndPutBack` and
+  `TheSkillBarShowsEachSkillsLevelAndNotTheBasicAttacks`.
+- **`Cataclysm.PlayLoop.TheSkillLevelLineSaysTheSkillAndBothLevels`**, new.
+- **Registered**: the whole suite at 4956 + 12 = **4968**, against 4956 measured by window ckey-w1 at `e8bd90fdf`,
+  whose `game/` is `development` `ecde2edee`'s, this branch's base since the rebase below; 47 skipped halves; 0 test
+  saves left behind. Each group alone, the base counts from that window's whole-suite log (`ck_suite_engine_e8bd90fd.log`,
+  4956 unique "Test Completed" paths, every one a success), by prefix, ignoring case: `Cataclysm.SkillLevels.` 11, all
+  new; `Cataclysm.PlayLoop.` 12, 11 and one new (two of the eleven are in `CataclysmSaveLoadTests.cpp`);
+  `Cataclysm.HitLog.` 7, added to the groups at this rebase, because its outgoing hit line test deals a skill's blow on a
+  creature, which is where the level factor and the credit act; and, unchanged in count, `Cataclysm.SaveRecords.` 17,
+  `Cataclysm.SkillBar.` 22, `Cataclysm.SkillChoiceScreen.` 8, `Cataclysm.SkillAssignment.` 16, `Cataclysm.CataclysmDraw.`
+  6, `Cataclysm.Gold.` 13, `Cataclysm.ConsumptionDouble.` 15, `Cataclysm.ConsumptionMark.` 6, `Cataclysm.EmpireTree.` 24,
+  `Cataclysm.CharacterLevel.` 9, `Cataclysm.EnemyScore.` 12, `Cataclysm.SaveLoad.` 79 and `Cataclysm.Skills.` 284. None
+  of the twelve new names is in that log. First registered at 4929 + 12 = 4941 on `1bf6611c5`, before the rebase.
+- **Python**: `tools/tests/test_skill_levels_port.py`, new, 7: every constant and the paired levels equal to the copy,
+  the price's shape, and 2.85 at level 20; `sim/tests/test_skill_levels.py`, new, 4: the copy's price, cap, keeping and
+  split. `test_the_play_loop_is_logged_at_each_step.py` checks the player state says the skill level line, and the
+  checklist quotes it.
+
+### Guard proofs
+
+Python, run 2026-11-19 with `tools/prove_guard.break_and_run` before commit; each PROVED, failing on the one test named
+with the break in and passing with it out:
+
+| Proof | The break | Failed with it in |
+| :-- | :-- | :-- |
+| P1 | the C++ `DamageFactorPerLevel` 1.0567 made 1.0600 | `test_each_constant_is_the_same[DamageFactorPerLevel-DAMAGE_FACTOR_PER_LEVEL]` |
+| P2 | `SaySkillLevelsGained`'s PLAY LOOP line removed | `test_each_step_of_the_loop_says_its_line[SkillLevelLine]` |
+| P3 | the checklist stops quoting the skill level line | `test_the_checklist_quotes_every_line_the_game_says` |
+
+C++, registered for the window, each with the prefix `Cataclysm.SkillLevels.` (11 tests):
+
+| Proof | The break | Predicted with it in |
+| :-- | :-- | :-- |
+| K1 | `ApplyHit`'s `DamagePercent *= ... DamageFactorForBlow(...)` line removed | 10 succeeded, 1 failed: `ASkillsBlowOnACreatureIsScaledByItsLevelAndCreditedToIt`, on "LEVEL 3 SENDS 1.0567 SQUARED TIMES LEVEL 1" (1.1166 expected, 1.0) |
+| K2 | the `CreditTheSkill` call in `ApplyHit` removed | 10 succeeded, 1 failed: `ASkillsBlowOnACreatureIsScaledByItsLevelAndCreditedToIt`, on "THE HEALTH THE BLOW TOOK IS CREDITED TO MOLTEN CLEAVE" and "and the levelled blow's too" (0 where the health taken) |
+| K3 | `HandleDeath`'s `GrantSkillExperience` call removed | 10 succeeded, 1 failed: `ACreaturesDeathPaysEachSkillItsShare`, on "A KILL PAYS MOLTEN CLEAVE THE SHARE ..." (0.3 of the worth expected, 0) |
+| K4 | `Migrate_9_to_10`'s `SetArrayField` line removed | 10 succeeded, 1 failed: `ACharacterFromBeforeSkillLevelsMigratesWithNoSkillExperience`, on "GAINING AN EMPTY LIST OF SKILL EXPERIENCE, written out"; the record read back still holds an empty list, its default, so "and every other field" passes |
+
+Restored, each must perform 11 with none failed.
+
+### Window skills-w1
+
+**THE COMPILES**, at `3077b2c42` on 2026-11-19, 19:35 to 19:45, under the lock skills-compile and before the window,
+all succeeding: the branch as committed (51 actions, 46 files); each changed file compiled alone (the build tool
+excluded 21 files from the unity files; 39 actions, 36 files, no warning); and the unity files again (18 actions, 15
+files, no warning). **ONE WARNING IN THE FIRST, NOT FROM THIS CHANGE**: C4996, "CountBits for 64-bit values has been
+deprecated", triggered by `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` line 1315, which
+the build log's next note names. It is issue #2756; this branch does not change that file.
+
+**THE WINDOW**, lock skills-w1, 19:48 to 20:17, started by `gate_sk.py` with no console window once the pre-checks
+passed, at their first reading (development `ecde2edee` with its CI and Unreal runs passed, no run in progress or
+queued, the lock free, no build or editor process, no open pull request, no simulation process, no Git LFS pointer):
+
+| Check | Registered | Measured |
+| :-- | :-- | :-- |
+| The build | -- | Target already up to date, nothing compiled |
+| `Cataclysm.SkillLevels.` alone | 11 | **11 performed, 9 succeeded, 2 failed**: `SkillExperienceIsGatheredIntoTheCharacterRecordAndPutBack` and `TheSkillBarShowsEachSkillsLevelAndNotTheBasicAttacks` |
+| The fifteen other groups alone | At their counts | Each passed at its count: `Cataclysm.PlayLoop.` 12, `Cataclysm.HitLog.` 7, `Cataclysm.SaveRecords.` 17, `Cataclysm.SkillBar.` 22, `Cataclysm.SkillChoiceScreen.` 8, `Cataclysm.SkillAssignment.` 16, `Cataclysm.CataclysmDraw.` 6, `Cataclysm.Gold.` 13, `Cataclysm.ConsumptionDouble.` 15, `Cataclysm.ConsumptionMark.` 6, `Cataclysm.EmpireTree.` 24, `Cataclysm.CharacterLevel.` 9, `Cataclysm.EnemyScore.` 12, `Cataclysm.SaveLoad.` 79, `Cataclysm.Skills.` 284 |
+| The whole suite | 4,968; 47 skipped halves | 4,968 performed, 4,966 succeeded, 2 failed (the same two); 47 skipped halves; "850 written and deleted, 0 left behind"; 4,968 declared, gap 0; "MCP server: not started" |
+| Python and ruff | Every test passing | 7,737 passed, 9 skipped; the JUnit file 7,746 tests, 0 failures, 0 errors; ruff clean |
+| The proofs | K1 to K4 | None run: the runner runs no proof once a test has failed, because the correction moves the head |
+
+No span of the run holds a "server/discover" or a "ConsoleCtrl" line.
+
+**WHAT THE OTHER NEW TESTS PRINTED**, in the whole suite, as designed: "SKILL BLOW: level 1 sent 57.600, took 63.360
+from health; level 3 sent 64.317 (x1.1166); level 1 again sent 57.600; credited 63.360, 70.749 and 63.360"; "NOT
+LEVELLED: the basic attack (row None) sent 57.600 and 57.600, credited 0 row(s); on the user Molten Cleave sent 57.600
+at level 1 and 57.600 at level 3"; "SKILL FACTORS: level 1 1.0000, 2 1.0567, 3 1.1166, 5 1.2468, 10 1.6427, 20
+2.8516"; "DEATH PAYS SKILLS: worth 468, maximum health 100.0, Molten Cleave removed 30.0, paid 140.400; after a
+creature no skill touched, 140.400"; "KILL SPLIT: 60 and 30 of 100 -> 600.0 and 300.0; healed, 150 and 50 of 100 ->
+750.0 and 250.0".
+
+**BOTH FAILURES WERE FAULTS IN THE TESTS, NOT IN THE GAME CODE. NEITHER TEST HAD RUN BEFORE THIS WINDOW**: the branch
+was first compiled for it, and no window log in any worktree names either test. The rebase onto `ecde2edee` changed
+nothing either depends on: it did not touch `CataclysmSkillBar.cpp`, and under `game/Source/Cataclysm/Save/` it changed
+only `CataclysmSaveTriggers.h` and `.cpp`.
+
+- **`SkillExperienceIsGatheredIntoTheCharacterRecordAndPutBack`**: "Expected 'and reads back' to be not null", and its
+  information line, "SKILLS SAVED: gathered yes, 2 entries; read back NO". **THE WRONG ASSUMPTION: that gathering a
+  character into a new record gives the record its version.** It does not. `FCataclysmSaveGather::CharacterFrom` leaves
+  `SchemaVersion` alone, and `UCataclysmSaveWriter::WriteTheCharacterRecord` -- the one place the game makes a character
+  record to write, the only `NewObject<UCataclysmCharacterSave>` outside the tests -- sets it to
+  `UCataclysmCharacterSave::SchemaVersionNow` before it gathers. The test made its record with `NewObject` and never
+  set it, so `FCataclysmSaveStorage::ToJson`, which writes the field as the record holds it, wrote version 0; and
+  `FCataclysmSaveMigration::Migrate` refuses a version below 1 ("the record says it is version 0; the first real
+  version is 1"), before any migration step, so `Migrate_9_to_10` was never reached. **READ FROM THE CODE, NOT
+  MEASURED**: the test did not print the reader's result or message. **A RECORD THIS BUILD WRITES DOES READ BACK**: in
+  the same run `Cataclysm.CataclysmDraw.TheCommittedCharacterFileKeepsItsSeedThroughARoundTrip` read
+  `Character_v10.json`, which holds two skill entries, wrote it with `ToJson` and read it back ("DRAW FILE: version 10,
+  seed 975318642, the identifier's 1412640493; written and read back: 975318642"). That test does not check the skill
+  entries; the corrected test does. The line "SKILLS MIGRATED: ... a word 6 (Migrate_9_to_10 failed: SkillExperience
+  holds something that is not a list)" in the same run is the migration test's third case, which writes a word on
+  purpose and expects the refusal; that test passed.
+- **`TheSkillBarShowsEachSkillsLevelAndNotTheBasicAttacks`**: "Expected 'set-up: the bar has a Heavy box and a basic
+  attack's box' to be true", and its information line, "the Heavy box 1 'Level 1: 0.0%', then 3 'Level 3: 0.0%' 0.000;
+  the basic attack's -1 '-'". **THE WRONG ASSUMPTION: that the bar has a box for the basic attack.** It has none, by
+  design since the bar was added on 2026-08-21 (#801): `UCataclysmSkillBar::SlotsShown` lists the six slots a player
+  presses. The Heavy box's figures are the ones the test expects.
+
+**CORRECTED** (`game/Source/Cataclysm/Tests/CataclysmSkillLevelsTests.cpp` and two statements this change made):
+
+- the save test sets `SchemaVersion` as the writer does, and prints the reader's result and message with it and without
+  it; a control writes the same record with no version and asserts it is refused by the version check
+  (`MigrationRefusedIt`), and the versioned record must load as `Loaded`, holding both skills;
+- **AND IT LOADS THE RECORD THROUGH THE GAME'S OWN LOAD**, as the coordinating session asked: into a second possessed
+  player in the same world, through `FCataclysmSaveApply::CharacterInto`, whose `RestoreSkillExperience` line is where a
+  real load puts skill experience back, and each skill's experience must come back on that player. It called
+  `RestoreSkillExperience` on a bare player state before. **No test checked what that line puts back until now**: the
+  character restore, gold, empire tree and consumption tests all call `CharacterInto` and so run the line, but none of
+  them asserts any skill experience, and no test file but this change's calls `SetSkillExperience`. It needs one new
+  include in the test file, `Save/CataclysmSaveApply.h`;
+- the bar test asks only for the Heavy box, and asserts the bar has no box for the basic attack;
+- `game/Source/Cataclysm/Interface/CataclysmSkillBar.h`: the comment on `FCataclysmSkillBarSlot::SkillLevel` listed
+  "the basic attack" among the boxes at level 0, and now says the bar has no box for it;
+- `docs/Play_Loop_Checklist.md` said the basic attack "shows neither", and now says the bar has no box for it.
+
+No game code changed. The test count does not change (11 in `Cataclysm.SkillLevels.`, 4,968 in all), and K1 to K4 do
+not: none of them breaks a line either test needs, and none names either test.
+
+### Registered for window skills-w2
+
+As the coordinating session approved it, at the commit carrying the correction. **NO SEPARATE THREE-BUILD COMPILE**:
+the change since `3077b2c42` is one test file and one header comment, so the window's own build compiles it, and a build
+that fails stops the window at its first step. The approval was given before the test file gained its one new include,
+`Save/CataclysmSaveApply.h`, and was asked again for that. **The coordinating session kept it, for three reasons**: a
+file compiled alone fails when it is missing an include it had from a neighbour in its unity file, and adding one cannot
+cause that; the header is self-contained, because `CataclysmSaveApply.cpp` includes it first and compiles on its own;
+and the one other way it could break, a name clash with the test file or a file in its unity file, would stop the window
+at its build, before any test ran.
+
+1. `Cataclysm.SkillLevels.` alone: 11 of 11. The fifteen other groups passed at their counts in skills-w1 at
+   `3077b2c42` and are not run alone again.
+2. The whole suite: 4,968, with 47 skipped halves and 0 test saves left behind.
+3. Python with a JUnit file (7,737 passed, 9 skipped), and ruff.
+4. K1 to K4, as registered under "Guard proofs".
+
+The corrected save test's information line is predicted to read "with no version read back NO (the migration chain
+refused it -- ... the record says it is version 0; the first real version is 1)", then "at version 10 read back yes
+(read -- ), 2 entries; loaded through CharacterInto yes (); Molten Cleave 37810.50, the Greatsword's Ultimate
+1234.25".
+
+### Window skills-w2
+
+At `188857e9b`, lock skills-w2, 2026-11-19, 20:35 to 21:04, started by `gate_sk2.py` with no console window once the
+pre-checks passed, at their first reading. No separate compile, as registered above; the window's own build compiled the
+change: "Build: Succeeded - 16 actions, 13 files compiled".
+
+| Check | Registered | Measured |
+| :-- | :-- | :-- |
+| `Cataclysm.SkillLevels.` alone | 11 | 11 performed, 11 succeeded |
+| The whole suite | 4,968; 47 skipped halves; 0 test saves left | 4,968 performed, 4,968 succeeded; 47 skipped halves; "850 written and deleted, 0 left behind"; 4,968 declared, gap 0; "MCP server: not started" |
+| Python and ruff | 7,737 passed, 9 skipped | 7,737 passed, 9 skipped; the JUnit file 7,746 tests, 0 failures, 0 errors; ruff clean |
+| The proofs | K1 to K4 | Each PROVED, below |
+
+**THE CAUSE OF skills-w1's SAVE FAILURE IS NOW MEASURED**, as predicted, in the corrected test's line: "SKILLS SAVED:
+gathered yes, 2 entries; with no version read back NO (the migration chain refused it -- a Character record was refused:
+the schema version is below the first real one -- the record says it is version 0; the first real version is 1); at
+version 10 read back yes (read -- ), 2 entries; loaded through CharacterInto yes (); Molten Cleave 37810.50, the
+Greatsword's Ultimate 1234.25". A record holding skill experience, at the version the writer gives it, reads back and
+loads through the game's own load with each skill's experience put back.
+
+**THE PROOFS**, through `prove_cpp_guard` with each half's engine log kept (`.claude/windows/sk_K<n>_run<1|2>.log` in
+this worktree), each with the prefix `Cataclysm.SkillLevels.`, each PROVED on exactly its registered test and its
+registered assertions:
+
+| Proof | Broken half | Its failed assertions | Restored half |
+| :-- | :-- | :-- | :-- |
+| K1, the level factor removed | 11 performed, 1 failed: `ASkillsBlowOnACreatureIsScaledByItsLevelAndCreditedToIt` | One: "LEVEL 3 SENDS 1.0567 SQUARED TIMES LEVEL 1, in the base bucket", 1.116615 expected, 1.000000 | 11 of 11 |
+| K2, the credit removed | 11 performed, 1 failed: `ASkillsBlowOnACreatureIsScaledByItsLevelAndCreditedToIt` | Two: "THE HEALTH THE BLOW TOOK IS CREDITED TO MOLTEN CLEAVE", 63.360001 expected, 0; "and the levelled blow's too", 70.748718 expected, 0 | 11 of 11 |
+| K3, the kill's grant removed | 11 performed, 1 failed: `ACreaturesDeathPaysEachSkillItsShare` | One: "A KILL PAYS MOLTEN CLEAVE THE SHARE OF THE CREATURE'S HEALTH IT REMOVED: 30%", 140.4 expected, 0 | 11 of 11 |
+| K4, the migration's empty list removed | 11 performed, 1 failed: `ACharacterFromBeforeSkillLevelsMigratesWithNoSkillExperience` | One: "GAINING AN EMPTY LIST OF SKILL EXPERIENCE, written out"; "and every other field" passed, as predicted | 11 of 11 |
+
+No log of the run holds a "server/discover" or a "ConsoleCtrl" line.
+
+---
+
 ## 2026-11-19 — Hellfire Aura burns for 9% of its carrier's weapon damage, a Corrupted Stalker's flat damage over time takes the multiplier its hits carry, Thorns of Glass strikes back at most once per its own attack interval, and the log says every blow the player deals (#2749, enemy burn slice)
 
 **Affects:** `UCataclysmEnemyModifiers` (`game/Source/Cataclysm/Character/CataclysmEnemyModifiers.h`, `.cpp`:

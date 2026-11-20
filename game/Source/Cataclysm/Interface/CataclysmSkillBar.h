@@ -89,6 +89,22 @@ struct CATACLYSM_API FCataclysmSkillBarSlot
 	float ManaCost = 0.0f;
 
 	/**
+	 * The skill's level, or 0 for a box whose skill does not level: an empty box, or a skill that is not the player's.
+	 * The bar has no box for the basic attack (`SlotsShown`), which does not level. Issue #2764: the box shows its level
+	 * in its corner, with a thin bar of the experience into it along its foot.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
+	int32 SkillLevel = 0;
+
+	/** How full the skill's level bar is, from 0 to 1 (`UCataclysmSkillLevels::FractionFor`). Issue #2764. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
+	float SkillLevelFraction = 0.0f;
+
+	/** The skill's level in words for the pop-up, "Level 3: 45.2%" (`UCataclysmSkillLevels::TextFor`). Issue #2764. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
+	FString SkillLevelText;
+
+	/**
 	 * Whether the character has the mana for it.
 	 *
 	 * THIS IS THE ONE THAT ALREADY COST SOMEBODY AN EVENING. Issue #653 was

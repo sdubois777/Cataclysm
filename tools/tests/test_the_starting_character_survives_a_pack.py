@@ -340,7 +340,8 @@ def share_of_a_tick_taken(lines, constants, class_name: str, level: int) -> floa
 
 
 def fight(class_name: str, level: int, *, lines, constants, slots, weapon,
-          tier: int = 1, use_skills: bool = True, burn_per_second: float = 0.0) -> dict:
+          tier: int = 1, use_skills: bool = True, burn_per_second: float = 0.0,
+          slot_factor: dict | None = None, dealt: dict | None = None) -> dict:
     """Ten Imps against one character. Returns who won and how long it took.
 
     Everything after `level` is keyword-only, because `lines`, `constants`,
@@ -351,6 +352,10 @@ def fight(class_name: str, level: int, *, lines, constants, slots, weapon,
     `burn_per_second` IS A BURN TICKING ONCE A SECOND FOR THE WHOLE FIGHT, before the character's defences: a Hellfire
     Aura the character stands in throughout (issue #2749's enemy burn slice). Nought by default, which is the fight
     every caller had before.
+
+    FOR THE SKILL-LEVEL MEASUREMENT (issue #2764, `sim/analyse_opening.py` section 5), and for nothing this file
+    asserts: `slot_factor` multiplies a rotation slot's blow by its skill level's factor, and `dealt`, when given,
+    gathers the health each slot removed. Neither is passed by any test here, so the guard fights as it did.
     """
     def line(name: str) -> float:
         return stat(lines, constants, class_name, name, level)
@@ -374,10 +379,12 @@ def fight(class_name: str, level: int, *, lines, constants, slots, weapon,
     swing_gap = 1.0 / weapon["speed"]
     tick = burn_per_second * share_of_a_tick_taken(lines, constants, class_name, level)
 
-    def strike(amount: float) -> None:
+    def strike(amount: float, slot: str = "Basic") -> None:
         nonlocal health
         for index, remaining in enumerate(imps):
             if remaining > 0.0:
+                if dealt is not None:
+                    dealt[slot] = dealt.get(slot, 0.0) + min(remaining, amount)
                 imps[index] = max(0.0, remaining - amount)
                 health = min(max_health, health + amount * leech)
                 return
@@ -398,7 +405,7 @@ def fight(class_name: str, level: int, *, lines, constants, slots, weapon,
             for slot in ROTATION:
                 spec = slots.get(slot)
                 if spec and elapsed >= ready[slot] and mana >= spec["mana"]:
-                    strike(weapon["damage"] * spec["damage"])
+                    strike(weapon["damage"] * spec["damage"] * (slot_factor or {}).get(slot, 1.0), slot)
                     mana -= spec["mana"]
                     ready[slot] = elapsed + spec["cooldown"]
                     break

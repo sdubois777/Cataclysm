@@ -336,6 +336,7 @@ def main() -> dict:
 
     results["rings"] = section_five()
     results["tier_gain"] = section_six()
+    results["skill_levels"] = section_seven()
     print(f"Done in {time.time() - started:.0f} seconds.")
     return results
 
@@ -453,6 +454,71 @@ def section_six() -> dict:
     print("  Only campaigns that cleared something count; each tier is entered at the median end of the one before.")
     print()
     return out
+
+
+def section_seven() -> dict:
+    """Skill levels over a first Outpost dungeon of 5 to 8 floors, issue #2764: the pack fight with each rotation slot
+    counted, its share of the damage paid in experience at half each floor's kills and split by the health each slot
+    removed, its level from `cataclysm_sim.skill_levels`, and its blows multiplied by that level's factor on the next
+    floor. The basic attack does not level. This is the measurement the plan quoted: the skill levels reached, and what
+    they do to a fight whose creatures' health rises about four times over the floors."""
+    from cataclysm_sim import enemy_stats as es
+    from cataclysm_sim import skill_levels as sl
+
+    print("7. SKILL LEVELS OVER A FIRST DUNGEON OF 5 TO 8 FLOORS (issue #2764)")
+    print()
+    total = MODEL["whole_total_to_reach"]
+    dungeons = [d for d in PACK.first_surge_dungeons(range(SEEDS)) if 5 <= d.floors <= 8]
+    ends = collections.Counter()
+    shares = collections.defaultdict(list)
+    by_floor = collections.defaultdict(lambda: collections.defaultdict(list))
+    for dungeon in dungeons:
+        banked = 0.0
+        earned: dict = {}
+        for floor in range(1, dungeon.floors + 1):
+            level = PACK.level_for(banked, MODEL)
+            skill_level = {slot: sl.level_for(earned.get(slot, 0.0), level, total) for slot in PACK.ROTATION}
+            factors = {slot: sl.damage_factor(skill_level[slot]) for slot in PACK.ROTATION}
+            imp = es.strength_on_floor("Common", 1, "Basic", dungeon.subtype, dungeon.floors, floor,
+                                       dungeon.modifier_score, kind="Imp")
+            dealt: dict = {}
+            fought = PACK.fight(CLASS, level=level, lines=LINES, slots=SLOTS, weapon=WEAPON, slot_factor=factors,
+                                dealt=dealt, constants=dict(CONSTANTS, imp_health=str(imp.health),
+                                                            imp_damage=str(imp.damage_per_hit)))
+            whole = sum(dealt.values())
+            for slot, amount in dealt.items():
+                shares[slot].append(amount / whole if whole else 0.0)
+            pay = PACK.KILL_SHARE * PACK.floor_experience(MODEL, dungeon.subtype, dungeon.floors, floor,
+                                                          dungeon.modifier_score)
+            for slot, gain in sl.split_a_kill(pay, {s: dealt.get(s, 0.0) for s in PACK.ROTATION}, whole).items():
+                earned[slot] = earned.get(slot, 0.0) + gain
+            row = by_floor[floor]
+            row["level"].append(level)
+            row["heavy"].append(skill_level["Heavy"])
+            row["factor"].append(factors["Heavy"])
+            row["seconds"].append(fought["seconds"])
+            row["imp"].append(imp.health)
+            banked += pay
+        end_level = PACK.level_for(banked, MODEL)
+        ends[(end_level, sl.level_for(earned.get("Heavy", 0.0), end_level, total))] += 1
+
+    print(f"  {len(dungeons)} first-surge Outpost dungeons of 5 to 8 floors, seeds 0 to {SEEDS - 1}.")
+    print("  damage share by slot, median: " + ", ".join(
+        f"{slot} {statistics.median(values):.0%}" for slot, values in sorted(shares.items())))
+    print("  at the end, (character level, Heavy skill level): " + ", ".join(
+        f"{key}: {count}" for key, count in sorted(ends.items())))
+    print()
+    print("  floor | Imp health | character level | Heavy level | Heavy factor | pack fight, seconds (medians)")
+    print("  " + "-" * 88)
+    for floor in sorted(by_floor):
+        row = by_floor[floor]
+        print(f"  {floor:>5} | {statistics.median(row['imp']):>10.1f} | {statistics.median(row['level']):>15} | "
+              f"{statistics.median(row['heavy']):>11} | {statistics.median(row['factor']):>12.3f} | "
+              f"{statistics.median(row['seconds']):.1f}")
+    print()
+    print("  The basic attack does not level. No gear but the gear-level-0 Greataxe, as in the pack test.")
+    print()
+    return {"dungeons": len(dungeons), "ends": ends}
 
 
 def _spread(counter: collections.Counter) -> str:

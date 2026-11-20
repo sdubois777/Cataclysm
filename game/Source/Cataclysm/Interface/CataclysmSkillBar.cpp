@@ -16,6 +16,9 @@
 #include "HAL/IConsoleManager.h"
 #include "Interface/CataclysmCombatOverlay.h"
 #include "Player/CataclysmPlayerController.h"
+// For each box's skill level. Issue #2764.
+#include "Character/CataclysmSkillLevels.h"
+#include "Player/CataclysmPlayerState.h"
 
 const TCHAR* UCataclysmSkillBar::ReadyHex = TEXT("2A2E38FF");
 const TCHAR* UCataclysmSkillBar::CoolingHex = TEXT("0A0C10C8");
@@ -150,6 +153,11 @@ TArray<FString> UCataclysmSkillBar::PopupLinesFor(const FCataclysmSkillBarSlot& 
 		return Lines;
 	}
 	Lines.Add(Slot.Name);
+	// AND ITS LEVEL UNDER THE NAME, for a skill that levels. Issue #2764.
+	if (!Slot.SkillLevelText.IsEmpty())
+	{
+		Lines.Add(Slot.SkillLevelText);
+	}
 
 	TArray<FString> Words;
 	Slot.Description.ParseIntoArrayWS(Words);
@@ -666,6 +674,17 @@ TArray<FCataclysmSkillBarSlot> UCataclysmSkillBar::Read(const AActor* Player)
 		// `GetManaCost` would show a price the cast does not charge -- and would
 		// grey out a skill a row had made free.
 		Box.ManaCost = Ability->ManaCostFor(Abilities);
+
+		// AND ITS LEVEL, for a skill that levels: the player's own skill, not its basic attack. Issue #2764.
+		const FName LevelledRow = UCataclysmSkillLevels::RowThatLevels(Ability);
+		if (const ACataclysmPlayerState* Holder = LevelledRow.IsNone() ? nullptr
+																		: UCataclysmSkillLevels::PlayerHolding(Ability))
+		{
+			const double Earned = Holder->GetSkillExperience(LevelledRow);
+			Box.SkillLevel = Holder->SkillLevelOf(LevelledRow);
+			Box.SkillLevelFraction = UCataclysmSkillLevels::FractionFor(Earned, Holder->GetCharacterLevel());
+			Box.SkillLevelText = UCataclysmSkillLevels::TextFor(Earned, Holder->GetCharacterLevel());
+		}
 
 		// `CanAfford` says why a character with no pool to read yet can afford
 		// everything, which is issue #653.
