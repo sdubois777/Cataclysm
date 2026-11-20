@@ -4,10 +4,16 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmRuntimeEffect.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
+#include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -17,6 +23,7 @@
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "GameplayTagsManager.h"
+#include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Misc/ScopeExit.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestWorld.h"
@@ -676,6 +683,504 @@ bool FCataclysmSkillLevelSourcesHitAndBurnTest::RunTest(const FString&)
 			  static_cast<double>(Worth) * CreditedHeavy / Over, 1.0e-2);
 	TestEqual(TEXT("EMBERHURL IS PAID ITS SHARE"), PaidSpecial, static_cast<double>(Worth) * CreditedSpecial / Over, 1.0e-2);
 	TestEqual(TEXT("AND THE TWO ADD UP TO THE WHOLE WORTH"), PaidHeavy + PaidSpecial, static_cast<double>(Worth), 1.0e-2);
+	return true;
+}
+
+// ==========================================================================
+// Slice 2b: the minions a skill summons and the thralls it takes. Issue #2764.
+// ==========================================================================
+
+namespace CataclysmSkillLevelSourcesTest
+{
+	const FName SourcesSummonImp(TEXT("Demonic_Staff_Special")); // the Staff's Special
+	const FName SourcesSubjugate(TEXT("Demonic_Staff_Ultimate")); // the Staff's Ultimate
+	const FName SourcesCompel(TEXT("Demonic_Staff_Heavy")); // the Staff's Heavy
+	constexpr float SourcesM = 100.0f;
+
+	/**
+	 * A possessed player at `Where` in `World` holding a Demonic Staff and the skills it grants, each with its row, as
+	 * `Cataclysm.BasicReach`'s `FReachRig` equips a weapon (`CataclysmBasicReachTests.cpp`), with that rig's figures; at
+	 * character level 4, so a skill can reach level 3; and a pool of 150 Fervour, a Ritualist's, for what Summon Imp and
+	 * Subjugate reserve.
+	 */
+	FSourcesPlayer SourcesStaffPlayerIn(UWorld* World, const FVector& Where)
+	{
+		FSourcesPlayer Out;
+		Out.World = World;
+		Out.State = World->SpawnActor<ACataclysmPlayerState>();
+		APlayerController* Controller = World->SpawnActor<APlayerController>();
+		ACataclysmPlayerCharacter* Character = World->SpawnActor<ACataclysmPlayerCharacter>(Where, FRotator::ZeroRotator);
+		if (!Out.State || !Controller || !Character)
+		{
+			return Out;
+		}
+		Controller->SetPlayerState(Out.State);
+		Controller->Possess(Character);
+		UCataclysmAbilitySystemComponent* System = Out.State->GetCataclysmAbilitySystemComponent();
+		UCataclysmWeaponSlotsComponent* Slots = Character->FindComponentByClass<UCataclysmWeaponSlotsComponent>();
+		if (!System || !Slots)
+		{
+			return Out;
+		}
+		Slots->SetDamageType(TEXT("Demonic"));
+		Slots->EquipWeaponType(TEXT("Staff"));
+		System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+		System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 10000.0f);
+		System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 10000.0f);
+		System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 1000.0f);
+		System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
+		System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 150.0f);
+		System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 150.0f);
+		Out.State->SetLevelAndExperience(4, 0);
+		Out.Character = Character;
+		Out.Abilities = System;
+		return Out;
+	}
+
+	/** The player's summon skill whose row is `Row`, or null: Summon Imp or Subjugate. */
+	UCataclysmSummonSkill* SourcesSummonSkillOfRow(UAbilitySystemComponent* Abilities, FName Row)
+	{
+		for (const FGameplayAbilitySpec& Spec : Abilities->GetActivatableAbilities())
+		{
+			UCataclysmSummonSkill* Skill = Cast<UCataclysmSummonSkill>(Spec.GetPrimaryInstance());
+			if (Skill && Skill->SkillRow == Row)
+			{
+				return Skill;
+			}
+		}
+		return nullptr;
+	}
+
+	/**
+	 * A creature to be struck, with nothing between a blow and its health but the blow's own resolution: no evasion and
+	 * no block, as `Cataclysm.CombatEvents.AMinionsBlowPutsTheMinionInCombatAndNotItsSummoner` sets its creature, and no
+	 * armour, so two blows' figures compare as they were dealt. 2,000 health unless a test says otherwise.
+	 *
+	 * 2,000 AND NOT MORE, BECAUSE A BLOW IS READ AS THE DIFFERENCE OF TWO HEALTH READINGS. A float near 2,000 moves
+	 * in steps of 1/8192, about 0.00012, eight times inside the 0.001 the comparisons allow. This was 50,000 until
+	 * window skills-2b-w1 (2026-11-20), where a float moves in steps of 1/256, about 0.0039, and a level 3 imp's swing
+	 * read 58.621094 against the 58.622284 credited for it; a thrall's read 111.660156 against 111.661491. The most
+	 * any test here deals to one such creature is 648 (two of the cap's explosions), so it stays alive.
+	 */
+	ACataclysmEnemyCharacter* SourcesStruckCreature(UWorld* World, const FVector& Where)
+	{
+		ACataclysmEnemyCharacter* Made = World->SpawnActor<ACataclysmEnemyCharacter>(Where, FRotator::ZeroRotator);
+		if (Made)
+		{
+			Made->SetHealth(2'000.0f);
+			Made->SetArmour(0.0f);
+			UAbilitySystemComponent* System = Made->GetAbilitySystemComponent();
+			System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+			System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+		}
+		return Made;
+	}
+
+	/** A creature's health now. */
+	float SourcesHealthOf(const ACataclysmEnemyCharacter* Creature)
+	{
+		return Creature->GetAbilitySystemComponent()->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+	}
+
+	/** What one swing of `Imp` took from `Creature`, as the combat event test above deals it (`AttackTarget`). */
+	float SourcesSwingOf(ACataclysmMinion* Imp, ACataclysmEnemyCharacter* Creature)
+	{
+		const float Before = SourcesHealthOf(Creature);
+		Imp->AttackTarget(Creature);
+		return Before - SourcesHealthOf(Creature);
+	}
+
+	/** What one blow by `Striker` at 100% of its own damage took from `Creature`, as the thrall gear test's `BlowFrom`. */
+	float SourcesBlowFrom(AActor* Striker, ACataclysmEnemyCharacter* Creature)
+	{
+		const float Before = SourcesHealthOf(Creature);
+		UCataclysmSkillEffects::ApplyHit(Striker, Creature, 100.0f);
+		return Before - SourcesHealthOf(Creature);
+	}
+
+	/**
+	 * A creature at Common with the thrall gear test's figures (`Cataclysm.MinionGear.
+	 * AThrallHitsHarderForItsCommandersIncreasedMinionDamage`): 1,000 health and 100 attack damage; then hurt to 520, as
+	 * `Cataclysm.Command.SubjugateTakesAnEnemyTheBlowLeftBelowHalfHealth` hurts its creature, so Subjugate's own blow
+	 * carries it under half.
+	 */
+	ACataclysmEnemyCharacter* SourcesCreatureToTake(UWorld* World, const FVector& Where)
+	{
+		ACataclysmEnemyCharacter* Made = World->SpawnActor<ACataclysmEnemyCharacter>(Where, FRotator::ZeroRotator);
+		if (Made)
+		{
+			Made->SetHealth(1'000.0f);
+			Made->SetAttackDamage(100.0f);
+			Made->GetAbilitySystemComponent()->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(),
+																	  520.0f);
+		}
+		return Made;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillLevelSourcesImpBlowTest,
+	"Cataclysm.SkillLevelSources.ASummonedImpsBlowCreditsSummonImpAndIsScaledByItsLevel",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * An imp Summon Imp summons credits the skill with what its swing takes, and its swing grows with the skill's level,
+ * READ ONCE WHEN IT WAS SUMMONED: the owner's ruling of 2026-11-19, "Yes, they scale too", and judgement 4. Issue
+ * #2764, slice 2b. The imps are summoned on the real character as
+ * `Cataclysm.Passives.PressGangedAndRekindledRowsReplaceARealRitualistsLostImp` summons one (`SummonOne`), from the
+ * Staff's own granted Summon Imp with its row; each swing is dealt as
+ * `Cataclysm.CombatEvents.AMinionsBlowPutsTheMinionInCombatAndNotItsSummoner` deals it. The first imp is summoned at
+ * level 1, the skill raised to level 3, and a second summoned: the second's swing takes 1.0567 squared times the
+ * first's, and the first's next swing, after the level, takes what its first did.
+ */
+bool FCataclysmSkillLevelSourcesImpBlowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillLevelSourcesTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FSourcesPlayer Player = SourcesStaffPlayerIn(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Summon = Player.IsUsable() ? SourcesSummonSkillOfRow(Player.Abilities, SourcesSummonImp) : nullptr;
+	ACataclysmEnemyCharacter* AtOne = SourcesStruckCreature(World, FVector(3.0f * SourcesM, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* AtThree = SourcesStruckCreature(World, FVector(6.0f * SourcesM, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Later = SourcesStruckCreature(World, FVector(9.0f * SourcesM, 0.0f, 0.0f));
+	if (!TestTrue(TEXT("set-up: a possessed player holding the Staff's Summon Imp, and three creatures. If the skill is "
+					   "missing, DT_WeaponSkills may be older than game/Data/WeaponSkills.csv"),
+				  Summon && AtOne && AtThree && Later))
+	{
+		return false;
+	}
+
+	ACataclysmMinion* First = Summon->SummonOne();
+	Player.State->SetSkillExperience(SourcesSummonImp, Levels::ExperienceToReach(3));
+	ACataclysmMinion* Second = Summon->SummonOne();
+	if (!TestTrue(TEXT("set-up: two imps summoned"), First && Second))
+	{
+		return false;
+	}
+	const float TookAtOne = SourcesSwingOf(First, AtOne);
+	const float TookAtThree = SourcesSwingOf(Second, AtThree);
+	const float TookLater = SourcesSwingOf(First, Later);
+
+	AddInfo(FString::Printf(TEXT("IMP BLOW: rows %s and %s; factors %.4f and %.4f; a swing took %.3f at level 1 and %.3f at "
+								 "level 3 (x%.4f); the first imp's after the level %.3f; credited %.3f and %.3f"),
+							*First->SummoningSkillRow.ToString(), *Second->SummoningSkillRow.ToString(),
+							First->LevelFactorOnCreatures, Second->LevelFactorOnCreatures, TookAtOne, TookAtThree,
+							TookAtOne > 0.0f ? TookAtThree / TookAtOne : 0.0f, TookLater,
+							SourcesCreditedTo(AtOne, SourcesSummonImp), SourcesCreditedTo(AtThree, SourcesSummonImp)));
+	TestTrue(TEXT("set-up: each swing took health"), TookAtOne > 0.0f && TookAtThree > 0.0f && TookLater > 0.0f);
+	TestEqual(TEXT("AN IMP SUMMON IMP SUMMONED CARRIES ITS ROW"), First->SummoningSkillRow, SourcesSummonImp);
+	TestEqual(TEXT("THE LEVEL 3 IMP'S SWING IS 1.0567 SQUARED TIMES THE LEVEL 1 IMP'S"), TookAtThree / TookAtOne,
+			  static_cast<float>(Levels::DamageFactor(3)), 1.0e-3f);
+	TestEqual(TEXT("AN IMP SUMMONED BEFORE THE LEVEL KEEPS THE FACTOR IT WAS SUMMONED WITH"), TookLater, TookAtOne, 1.0e-3f);
+	TestEqual(TEXT("THE LEVEL 1 IMP'S SWING IS CREDITED TO SUMMON IMP"), SourcesCreditedTo(AtOne, SourcesSummonImp),
+			  TookAtOne, 1.0e-3f);
+	TestEqual(TEXT("AND THE LEVEL 3 IMP'S"), SourcesCreditedTo(AtThree, SourcesSummonImp), TookAtThree, 1.0e-3f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillLevelSourcesUnmadeMinionTest,
+	"Cataclysm.SkillLevelSources.AMinionNoSkillMadeCreditsNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A minion no skill made credits nothing and keeps factor 1, though its summoner holds Summon Imp at level 3: the
+ * coordinating session's judgement 3 (accepted 2026-11-19), "minions no skill made credit nothing". Issue #2764, slice
+ * 2b. The imp is spawned directly, as `Cataclysm.CombatEvents.AMinionsBlowPutsTheMinionInCombatAndNotItsSummoner`
+ * spawns its imp: the way a risen imp, a Warhound or Tyrant's Minion is made, with no summon skill behind it.
+ */
+bool FCataclysmSkillLevelSourcesUnmadeMinionTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillLevelSourcesTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FSourcesPlayer Player = SourcesStaffPlayerIn(World, FVector::ZeroVector);
+	ACataclysmEnemyCharacter* Struck = SourcesStruckCreature(World, FVector(4.0f * SourcesM, 0.0f, 0.0f));
+	if (!TestTrue(TEXT("set-up: a possessed player holding a Staff, and a creature"),
+				  Player.IsUsable() && SourcesSummonSkillOfRow(Player.Abilities, SourcesSummonImp) && Struck))
+	{
+		return false;
+	}
+	Player.State->SetSkillExperience(SourcesSummonImp, Levels::ExperienceToReach(3));
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(Player.Character, FVector(3.0f * SourcesM, 0.0f, 0.0f),
+													/*Lifetime=*/20.0f, /*bBurns=*/false, /*TypeName=*/TEXT("Imp"));
+	if (!TestNotNull(TEXT("set-up: an imp spawned with no skill"), Imp))
+	{
+		return false;
+	}
+	const float Took = SourcesSwingOf(Imp, Struck);
+
+	AddInfo(FString::Printf(TEXT("UNMADE MINION: row %s, factor %.4f; its swing took %.3f; rows credited %d"),
+							*Imp->SummoningSkillRow.ToString(), Imp->LevelFactorOnCreatures, Took,
+							Struck->GetHealthRemovedBySkill().Num()));
+	TestTrue(TEXT("set-up: its swing took health"), Took > 0.0f);
+	TestTrue(TEXT("A MINION NO SKILL MADE CARRIES NO ROW"), Imp->SummoningSkillRow.IsNone());
+	TestEqual(TEXT("AND NO LEVEL FACTOR"), Imp->LevelFactorOnCreatures, 1.0f);
+	TestEqual(TEXT("AND ITS SWING CREDITS NO SKILL"), Struck->GetHealthRemovedBySkill().Num(), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillLevelSourcesThrallTest,
+	"Cataclysm.SkillLevelSources.AThrallsBlowCreditsSubjugateAndIsScaledByItsLevel",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A thrall Subjugate took credits the skill with what its blows take from a creature, and its blows grow with the
+ * skill's level, read once at the take: judgement 3, "Subjugate's thralls credit Subjugate", and the owner's ruling of
+ * 2026-11-19. Issue #2764, slice 2b. Each creature is taken as
+ * `Cataclysm.Command.SubjugateTakesAnEnemyTheBlowLeftBelowHalfHealth` takes its wounded one -- hurt to 520 of 1,000,
+ * so the skill's own blow carries it under half -- by the Staff's own Subjugate with its row, calling `Possess` as the
+ * skill's activation does; each thrall's blow is struck as
+ * `Cataclysm.MinionGear.AThrallHitsHarderForItsCommandersIncreasedMinionDamage` strikes it, never a critical strike.
+ * The first is taken at level 1, the skill raised to level 3, and a second taken; then each strikes a creature of its
+ * own. The second's blow takes 1.0567 squared times the first's, the first keeping its level 1 factor after the level.
+ */
+bool FCataclysmSkillLevelSourcesThrallTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillLevelSourcesTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FSourcesPlayer Player = SourcesStaffPlayerIn(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Take = Player.IsUsable() ? SourcesSummonSkillOfRow(Player.Abilities, SourcesSubjugate) : nullptr;
+	ACataclysmEnemyCharacter* TakenAtOne = SourcesCreatureToTake(World, FVector(3.0f * SourcesM, 0.0f, 0.0f));
+	if (!TestTrue(TEXT("set-up: a possessed player holding the Staff's Subjugate, and a wounded creature"),
+				  Take && TakenAtOne))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("set-up: Subjugate takes the first creature"), Take->Possess()))
+	{
+		return false;
+	}
+	Player.State->SetSkillExperience(SourcesSubjugate, Levels::ExperienceToReach(3));
+	// THE SECOND CREATURE ONLY NOW, so the first take had one enemy within the skill's range to choose.
+	ACataclysmEnemyCharacter* TakenAtThree = SourcesCreatureToTake(World, FVector(0.0f, 3.0f * SourcesM, 0.0f));
+	if (!TestTrue(TEXT("set-up: Subjugate takes the second creature"), TakenAtThree && Take->Possess()))
+	{
+		return false;
+	}
+	// AND THE CREATURES THEY STRIKE, past the skill's 15 m, after both takes.
+	ACataclysmEnemyCharacter* StruckByOne = SourcesStruckCreature(World, FVector(40.0f * SourcesM, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* StruckByThree = SourcesStruckCreature(World, FVector(60.0f * SourcesM, 0.0f, 0.0f));
+	if (!TestTrue(TEXT("set-up: two creatures to strike"), StruckByOne && StruckByThree))
+	{
+		return false;
+	}
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	const float TookByOne = SourcesBlowFrom(TakenAtOne, StruckByOne);
+	const float TookByThree = SourcesBlowFrom(TakenAtThree, StruckByThree);
+
+	AddInfo(FString::Printf(TEXT("THRALL BLOW: rows %s and %s; factors %.4f and %.4f; a blow took %.3f at level 1 and %.3f "
+								 "at level 3 (x%.4f); credited %.3f and %.3f"),
+							*TakenAtOne->TakenBySkillRow.ToString(), *TakenAtThree->TakenBySkillRow.ToString(),
+							TakenAtOne->TakenLevelFactorOnCreatures, TakenAtThree->TakenLevelFactorOnCreatures, TookByOne,
+							TookByThree, TookByOne > 0.0f ? TookByThree / TookByOne : 0.0f,
+							SourcesCreditedTo(StruckByOne, SourcesSubjugate),
+							SourcesCreditedTo(StruckByThree, SourcesSubjugate)));
+	TestTrue(TEXT("set-up: both are commanded by the player"),
+			 UCataclysmCommand::CommanderOf(TakenAtOne) == Player.Character
+				 && UCataclysmCommand::CommanderOf(TakenAtThree) == Player.Character);
+	TestTrue(TEXT("set-up: each blow took health"), TookByOne > 0.0f && TookByThree > 0.0f);
+	TestEqual(TEXT("A THRALL SUBJUGATE TOOK CARRIES ITS ROW"), TakenAtOne->TakenBySkillRow, SourcesSubjugate);
+	TestEqual(TEXT("THE LEVEL 3 THRALL'S BLOW IS 1.0567 SQUARED TIMES THE LEVEL 1 THRALL'S"), TookByThree / TookByOne,
+			  static_cast<float>(Levels::DamageFactor(3)), 1.0e-3f);
+	TestEqual(TEXT("THE LEVEL 1 THRALL'S BLOW IS CREDITED TO SUBJUGATE"), SourcesCreditedTo(StruckByOne, SourcesSubjugate),
+			  TookByOne, 1.0e-3f);
+	TestEqual(TEXT("AND THE LEVEL 3 THRALL'S"), SourcesCreditedTo(StruckByThree, SourcesSubjugate), TookByThree, 1.0e-3f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillLevelSourcesHitAndImpTest,
+	"Cataclysm.SkillLevelSources.AKillIsSplitBetweenAHitSkillAndAMinionSkill",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A creature hurt by one skill's hit and killed by another skill's imp pays each skill its share of the creature's
+ * health, end to end through `ACataclysmEnemyCharacter::HandleDeath`. Issue #2764, slice 2b. The shape of
+ * `AKillIsSplitBetweenOneSkillsHitAndAnothersBurn` above, with the Staff's Compel striking as Molten Cleave strikes
+ * there and Summon Imp's imp, summoned and swinging as `ASummonedImpsBlowCreditsSummonImpAndIsScaledByItsLevel` does,
+ * in place of the burn. Both creatures are Bosses, so the kill is worth something; the second is given W + 15 health, W
+ * being the hit's figure on the first, so Compel's hit leaves it 15 and the imp's swing takes the rest.
+ */
+bool FCataclysmSkillLevelSourcesHitAndImpTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillLevelSourcesTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FSourcesPlayer Player = SourcesStaffPlayerIn(World, FVector::ZeroVector);
+	const UCataclysmSkillTemplate* Heavy = Player.IsUsable() ? SourcesSkillOfRow(Player.Abilities, SourcesCompel) : nullptr;
+	UCataclysmSummonSkill* Summon = Player.IsUsable() ? SourcesSummonSkillOfRow(Player.Abilities, SourcesSummonImp) : nullptr;
+	ACataclysmEnemyCharacter* Measure = SourcesStruckCreature(World, FVector(3.0f * SourcesM, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Split = SourcesStruckCreature(World, FVector(6.0f * SourcesM, 0.0f, 0.0f));
+	ACataclysmMinion* Imp = Summon ? Summon->SummonOne() : nullptr;
+	if (!TestTrue(TEXT("set-up: a possessed player holding the Staff's Compel and Summon Imp, an imp, and two creatures"),
+				  Heavy && Imp && Measure && Split))
+	{
+		return false;
+	}
+	const auto StrikeOnce = [&Player, Heavy](ACataclysmEnemyCharacter* Target, FCataclysmDamageResult& Out)
+	{
+		FCataclysmHitDelivery Delivery;
+		Delivery.Skill = Heavy;
+		Delivery.bCannotCriticallyStrike = true;
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Target, 100.0f, FGameplayTagContainer(), Delivery, &Out);
+	};
+	// BOSSES, as the death tests make them. The rarity first, because it sets the creature's starting figures again;
+	// then no evasion, block or armour once more, and the health.
+	constexpr int32 BossStep = 4;
+	const int32 Worth = UCataclysmEnemyScore::ScoreFor(UCataclysmEnemyScore::FloorIn(World), BossStep);
+	for (ACataclysmEnemyCharacter* Boss : {Measure, Split})
+	{
+		Boss->SetRarityStep(BossStep);
+		Boss->SetArmour(0.0f);
+		UAbilitySystemComponent* System = Boss->GetAbilitySystemComponent();
+		System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+	}
+	FCataclysmDamageResult Measured;
+	StrikeOnce(Measure, Measured);
+	const float Hit = Measured.DealtToHealth;
+	constexpr float Left = 15.0f;
+	UAbilitySystemComponent* SplitsSystem = Split->GetAbilitySystemComponent();
+	SplitsSystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), Hit + Left);
+	SplitsSystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Hit + Left);
+
+	FCataclysmDamageResult Struck;
+	StrikeOnce(Split, Struck);
+	const bool bAliveAfterTheHit = !UCataclysmSkillEffects::IsDead(Split);
+	Imp->AttackTarget(Split);
+	const bool bKilled = UCataclysmSkillEffects::IsDead(Split);
+	const double PaidHeavy = Player.State->GetSkillExperience(SourcesCompel);
+	const double PaidImp = Player.State->GetSkillExperience(SourcesSummonImp);
+	// THE EXPECTED SPLIT FROM WHAT EACH SKILL WAS CREDITED, as `ACataclysmPlayerState::GrantSkillExperience` splits it.
+	const double CreditedHeavy = SourcesCreditedTo(Split, SourcesCompel);
+	const double CreditedImp = SourcesCreditedTo(Split, SourcesSummonImp);
+	const double Over = FMath::Max(static_cast<double>(Hit + Left), CreditedHeavy + CreditedImp);
+
+	AddInfo(FString::Printf(TEXT("HIT AND IMP: worth %d; the hit took %.3f of %.3f; credited %.3f to Compel and %.3f to "
+								 "Summon Imp; killed %s; Compel paid %.3f, Summon Imp %.3f, together %.3f"),
+							Worth, Struck.DealtToHealth, Hit + Left, CreditedHeavy, CreditedImp,
+							bKilled ? TEXT("yes") : TEXT("NO"), PaidHeavy, PaidImp, PaidHeavy + PaidImp));
+	TestTrue(TEXT("set-up: a Boss is worth something here, and the hit has a figure"), Worth > 0 && Hit > 0.0f);
+	TestEqual(TEXT("set-up: the hit took the same on the second Boss"), Struck.DealtToHealth, Hit, 1.0e-3f);
+	TestTrue(TEXT("set-up: the hit left it alive, and the imp's swing killed it"), bAliveAfterTheHit && bKilled);
+	TestEqual(TEXT("COMPEL WAS CREDITED ITS HIT"), CreditedHeavy, static_cast<double>(Hit), 1.0e-3);
+	TestTrue(TEXT("SUMMON IMP WAS CREDITED WHAT ITS IMP'S KILLING SWING TOOK"),
+			 CreditedImp >= static_cast<double>(Left) - 1.0e-3);
+	TestEqual(TEXT("COMPEL IS PAID ITS SHARE OF THE WORTH"), PaidHeavy, static_cast<double>(Worth) * CreditedHeavy / Over,
+			  1.0e-2);
+	TestEqual(TEXT("SUMMON IMP IS PAID ITS SHARE"), PaidImp, static_cast<double>(Worth) * CreditedImp / Over, 1.0e-2);
+	TestEqual(TEXT("AND THE TWO ADD UP TO THE WHOLE WORTH"), PaidHeavy + PaidImp, static_cast<double>(Worth), 1.0e-2);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillLevelSourcesCapExplosionTest,
+	"Cataclysm.SkillLevelSources.TheSummonCapsExplosionCreditsSummonImpAndAPassivesDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The explosion the summon cap sets off credits Summon Imp, and one a passive sets off credits nothing; both are sized
+ * by the level the imp was summoned at. Issue #2764, slice 2b, ruled 2026-11-20 (Q-B, option b): "Summoning a fourth
+ * destroys the oldest, which explodes for damage in a 3 meter radius" is Summon Imp's own row, while
+ * `minion_explodes_on_death` is a passive's, and judgement 2 says damage a passive adds credits nothing; "scaling follows
+ * the figure", a share of the imp's own blow. The explosions are dealt by `Explode`, with the summoning skill's stated
+ * radius, as `Cataclysm.MinionDeath.TheExplosionTheSummonCapSetsOffTakesTheSameStat` deals them: the cap's by the cap
+ * itself, a summon past three destroying the oldest, and the passive's by the call `HandleDeath` makes under
+ * `minion_explodes_on_death`. Three imps are summoned at level 1 and the skill raised to level 3; the fourth summon
+ * destroys a level 1 imp, the fifth and sixth the other two, and the seventh the level 3 imp the fourth made. The fifth's
+ * imp, at level 3, is then moved beside a second creature and explodes as the passive explodes it.
+ */
+bool FCataclysmSkillLevelSourcesCapExplosionTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillLevelSourcesTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FSourcesPlayer Player = SourcesStaffPlayerIn(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Summon = Player.IsUsable() ? SourcesSummonSkillOfRow(Player.Abilities, SourcesSummonImp) : nullptr;
+	// THE NEAR CREATURE WITHIN THE 3 M EVERY IMP SUMMONED HERE EXPLODES OVER: the summon is not activated, so each imp
+	// is made where the player stands. The far one past every such explosion's reach.
+	ACataclysmEnemyCharacter* Near = SourcesStruckCreature(World, FVector(2.0f * SourcesM, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Far = SourcesStruckCreature(World, FVector(30.0f * SourcesM, 0.0f, 0.0f));
+	if (!TestTrue(TEXT("set-up: a possessed player holding the Staff's Summon Imp, and two creatures"),
+				  Summon && Near && Far))
+	{
+		return false;
+	}
+	const float NearAtStart = SourcesHealthOf(Near);
+	for (int32 Each = 0; Each < 3; ++Each)
+	{
+		if (!TestNotNull(TEXT("set-up: an imp summoned at level 1"), Summon->SummonOne()))
+		{
+			return false;
+		}
+	}
+	Player.State->SetSkillExperience(SourcesSummonImp, Levels::ExperienceToReach(3));
+	ACataclysmMinion* Made = nullptr;
+	const auto SummonPastTheCap = [&Made, Summon, Near]()
+	{
+		const float Before = SourcesHealthOf(Near);
+		Made = Summon->SummonOne();
+		return Before - SourcesHealthOf(Near);
+	};
+	const float CapAtOne = SummonPastTheCap(); // the fourth: the first level 1 imp explodes
+	SummonPastTheCap(); // the fifth: the second
+	ACataclysmMinion* Fifth = Made;
+	SummonPastTheCap(); // the sixth: the third
+	const float CapAtThree = SummonPastTheCap(); // the seventh: the level 3 imp the fourth made
+	if (!TestTrue(TEXT("set-up: every summon past the cap made an imp, and the fifth's is still there"),
+				  Made && IsValid(Fifth)))
+	{
+		return false;
+	}
+	const float NearLost = NearAtStart - SourcesHealthOf(Near);
+
+	Fifth->SetActorLocation(FVector(29.0f * SourcesM, 0.0f, 0.0f));
+	const float FarBefore = SourcesHealthOf(Far);
+	Fifth->Explode();
+	const float TookByThePassive = FarBefore - SourcesHealthOf(Far);
+
+	AddInfo(FString::Printf(TEXT("CAP EXPLOSION: a level 1 imp's took %.3f and a level 3 imp's %.3f (x%.4f); the near "
+								 "creature lost %.3f and Summon Imp was credited %.3f; the passive's took %.3f and %d rows "
+								 "were credited"),
+							CapAtOne, CapAtThree, CapAtOne > 0.0f ? CapAtThree / CapAtOne : 0.0f, NearLost,
+							SourcesCreditedTo(Near, SourcesSummonImp), TookByThePassive,
+							Far->GetHealthRemovedBySkill().Num()));
+	TestTrue(TEXT("set-up: the cap's explosions and the passive's took health"),
+			 CapAtOne > 0.0f && CapAtThree > 0.0f && TookByThePassive > 0.0f);
+	TestEqual(TEXT("THE CAP'S EXPLOSIONS ARE CREDITED TO SUMMON IMP"), SourcesCreditedTo(Near, SourcesSummonImp), NearLost,
+			  1.0e-2f);
+	TestEqual(TEXT("THE PASSIVE'S EXPLOSION CREDITS NOTHING"), Far->GetHealthRemovedBySkill().Num(), 0);
+	TestEqual(TEXT("A LEVEL 3 IMP'S EXPLOSION IS 1.0567 SQUARED TIMES A LEVEL 1 IMP'S"), CapAtThree / CapAtOne,
+			  static_cast<float>(Levels::DamageFactor(3)), 1.0e-3f);
+	TestEqual(TEXT("AND THE PASSIVE'S IS SIZED BY ITS IMP'S LEVEL AS THE CAP'S IS"), TookByThePassive, CapAtThree, 1.0e-2f);
 	return true;
 }
 

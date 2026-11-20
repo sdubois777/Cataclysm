@@ -870,9 +870,17 @@ public:
 	 * ITS BLOW AS DEALT, SINCE ISSUE #340: the summoner's minion damage for this
 	 * minion's type tags, read once with no target, multiplies it. Ruled
 	 * 2026-11-02; the definition has the reasoning.
+	 *
+	 * @param bSetOffByTheSummonCap  true only where the summon cap destroys the
+	 *        oldest (`UCataclysmSummonSkill::SummonOne`). Issue #2764, slice 2b,
+	 *        ruled 2026-11-20 (Q-B, option b): that explosion is Summon Imp's own
+	 *        row's, so it credits the skill that summoned this minion; one a
+	 *        passive sets off -- `minion_explodes_on_death` -- credits nothing, by
+	 *        judgement 2. Both are sized by the summoning skill's level, the
+	 *        figure being a share of this minion's own blow.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Minion")
-	void Explode();
+	void Explode(bool bSetOffByTheSummonCap = false);
 
 	/**
 	 * The share of the dying creature's own maximum health its death deals,
@@ -1635,6 +1643,23 @@ public:
 	 * summoner and can go before the minion does.
 	 */
 	TWeakObjectPtr<UCataclysmSummonSkill> SummonedBy;
+
+	/**
+	 * The row of `game/Data/WeaponSkills.csv` of the summon skill that made this minion, read when it was made, or None.
+	 * Issue #2764, slice 2b, by the owner's ruling of 2026-11-19 ("Yes, they scale too"): a minion a levelling skill
+	 * summons credits that skill with what its blows take from a creature (`FCataclysmHitDelivery::SkillRowToCredit`),
+	 * as a ground zone credits the skill that left it. KEPT AS A ROW, NOT READ OFF `SummonedBy`, because the skill can go
+	 * before the minion does. None for a minion no skill made -- a risen imp, a Warhound, Tyrant's Minion, a gadget or a
+	 * trap -- which credits nothing (the coordinating session's judgement 3, accepted 2026-11-19).
+	 */
+	FName SummoningSkillRow;
+
+	/**
+	 * What this minion's own blow is multiplied by on a creature: its summoning skill's level factor
+	 * (`UCataclysmSkillLevels::DamageFactor`), READ ONCE WHEN IT WAS MADE, as a ground zone's is when it is laid. Issue
+	 * #2764, slice 2b, by judgement 4 (accepted 2026-11-19). 1 for a minion no levelling skill made.
+	 */
+	float LevelFactorOnCreatures = 1.0f;
 	//~ End
 
 protected:

@@ -103,6 +103,13 @@ public:
 	static double DamageFactorForBlow(const UGameplayAbility* Ability, const AActor* Target);
 
 	/**
+	 * `Ability`'s level factor, whatever it strikes: `DamageFactor` of its holder's level in its row
+	 * (`RowThatLevels`), and 1 for a skill no row levels or no player holds. Issue #2764, slice 2b: read once, when a
+	 * ground zone is laid, a minion summoned or a thrall taken, and kept on it for its blows on creatures.
+	 */
+	static double LevelFactorOf(const UGameplayAbility* Ability);
+
+	/**
 	 * The row a blow or an effect earns experience for and is scaled by: `RowThatLevels(Ability)` while the skill object
 	 * is there, and otherwise `RowWithNoSkill`, the row captured from it while it was, which a projectile, a ground zone,
 	 * a buried weapon or a trap's damage over time carries after a one-use grant has been removed. Issue #2764, slice 2a.

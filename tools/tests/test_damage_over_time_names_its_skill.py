@@ -44,7 +44,6 @@ DAMAGE_OVER_TIME_DELIVERY = "ApplyDirectDamage with bIsDamageOverTime"
 _WORN_ROW = ("a worn row's status, not a skill's: damage a passive, a worn row or a set bonus adds credits nothing "
              "(the coordinating session's judgement 2, 2026-11-19)")
 _SPREAD = "a spread copy of a running ailment: judgement 2, a copy credits nothing"
-_MINION = "a minion's own burn: minions credit their summoning skill in slice 2b, and nothing before it"
 _OWN_EFFECT = "the function that lays the effect; it sets the row on the effect itself (`Effect->SkillRowToCredit`)"
 _FLOOR = "a dungeon floor's own hazard, dealt in the floor's name: no skill deals it"
 _CREATURE = "a creature's or a dungeon rule's damage, not the player's: no skill deals it"
@@ -67,8 +66,6 @@ CREDITS_NOTHING_BY_RULE: dict[tuple[str, str, str, int], str] = {
         _SPREAD,
     ("AbilitySystem/CataclysmDamageConversion.cpp", "UCataclysmDamageConversion::ConvertIfActive",
      "ApplyDamageOverTime", 0): "damage the player takes, converted into a bleed on the player: no skill of theirs deals it",
-    ("AbilitySystem/CataclysmMinion.cpp", "ACataclysmMinion::AttackTarget", "ApplyBurn", 0): _MINION,
-    ("AbilitySystem/CataclysmMinion.cpp", "ACataclysmMinion::Explode", "ApplyBurn", 0): _MINION,
     ("AbilitySystem/CataclysmSkillEffects.cpp", "UCataclysmSkillEffects::ApplyDamageOverTime",
      DAMAGE_OVER_TIME_DELIVERY, 0): _OWN_EFFECT,
     ("AbilitySystem/CataclysmSkillEffects.cpp", "UCataclysmSkillEffects::ApplyShareOfHealthOverTime",

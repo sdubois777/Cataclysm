@@ -1914,6 +1914,14 @@ private:
 	void SpawnTick();
 	void Collapse();
 
+	/**
+	 * Record this skill's row and its level factor on a minion it has just made (`ACataclysmMinion::SummoningSkillRow`
+	 * and `LevelFactorOnCreatures`), read now, once. Issue #2764, slice 2b. Called by `SummonOne` and
+	 * `SummonReplacementAt`, the two places `SummonedBy` is set, so every minion this skill makes -- a replacement, a
+	 * re-summon and a spawn at a kill included -- credits it and grows with it. None and 1 for a skill no row levels.
+	 */
+	void RecordTheSkillOn(ACataclysmMinion* Minion) const;
+
 	/** Fixed at activation: a rift does not follow the cursor. */
 	FVector RiftLocation = FVector::ZeroVector;
 

@@ -126,6 +126,11 @@ double UCataclysmSkillLevels::DamageFactorForBlow(const UGameplayAbility* Abilit
 	{
 		return 1.0;
 	}
+	return LevelFactorOf(Ability);
+}
+
+double UCataclysmSkillLevels::LevelFactorOf(const UGameplayAbility* Ability)
+{
 	const FName Row = RowThatLevels(Ability);
 	const ACataclysmPlayerState* Holder = Row.IsNone() ? nullptr : PlayerHolding(Ability);
 	return Holder ? DamageFactor(Holder->SkillLevelOf(Row)) : 1.0;

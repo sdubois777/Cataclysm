@@ -614,6 +614,207 @@ No proof's log and no suite log holds a "server/discover" line (#2745). The lock
 
 ---
 
+## 2026-11-20 — A skill earns experience from, and grows with its level through, the imps it summons and the thralls it takes (#2764, slice 2b)
+
+**Affects:** `ACataclysmMinion::SummoningSkillRow` and `LevelFactorOnCreatures`, new, read in `AttackTarget` and
+`Explode`, which takes a new flag, `bSetOffByTheSummonCap` (`game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and
+`.cpp`); `UCataclysmSummonSkill::RecordTheSkillOn`, new, called by `SummonOne` and `SummonReplacementAt`, and `Possess`,
+which records the thrall's row and factor (`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` and `.cpp`);
+`ACataclysmEnemyCharacter::TakenBySkillRow` and `TakenLevelFactorOnCreatures`, new
+(`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h`); `CataclysmSkillEffectsLevels::CommandedThrall` and
+`ThrallsLevelFactor`, new, read in `UCataclysmSkillEffects::ApplyHit`, and `RowToCredit`, which now takes the
+instigator (`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`); `UCataclysmSkillLevels::LevelFactorOf`,
+new, now also read by `DamageFactorForBlow` and by `UCataclysmSkillTemplate::LeaveAZoneFor`
+(`game/Source/Cataclysm/Character/CataclysmSkillLevels.h` and `.cpp`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp`); `docs/Cataclysm_GDD_v2.md` ("What a Skill Levels":
+the ailments and minions row, and "What earns a skill experience"); `docs/Play_Loop_Checklist.md` (a Staff character
+whose Summon Imp levels from its imps). Tests: five more in the group `Cataclysm.SkillLevelSources.`, in
+`game/Source/Cataclysm/Tests/CataclysmSkillLevelSourcesTests.cpp`; and
+`tools/tests/test_damage_over_time_names_its_skill.py`, whose list loses the two minion burns, which now name their
+row. Issue [#2764](https://github.com/sdubois777/Cataclysm/issues/2764).
+
+### SAID FIRST
+
+- **COMPILED AND RUN; THE SECOND WINDOW PASSED EVERYTHING.** At `bbf9340a6` on development `27a995d60`, window
+  skills-2b-w2: the eight groups alone at their registered counts, the whole suite "5041 tests performed, 5041
+  succeeded, 0 failed", Python 7799 passed and 9 skipped, ruff clean, and proofs L8 to L13 all PROVED, each failing
+  exactly its registered tests. The window record is at the end of this entry.
+- **THE FIRST WINDOW FAILED TWO OF THESE TESTS, ON THE TESTS' OWN ROUNDING.** skills-2b-w1, at `f2b548152`:
+  `ASummonedImpsBlowCreditsSummonImpAndIsScaledByItsLevel` and `AThrallsBlowCreditsSubjugateAndIsScaledByItsLevel`.
+  The game was right; the tests read a blow as the difference of two health readings on a creature of 50,000 health,
+  where a float moves in steps of 1/256 (about 0.0039), and compared it within 0.001. The struck creature now has
+  2,000 health, where the step is 1/8192 (about 0.00012). This repeated a lesson already in the project's notes, "a
+  delta of two large floats cannot resolve a small tolerance", whose fix is the one made: change the measurement,
+  not the tolerance.
+- **ONE COMMIT DID NOT CONTAIN WHAT ITS MESSAGE SAID.** `372505551` says it lowers the creature's health; it only
+  undid `a056a9eaa`'s wider tolerance. The health edit was made after `git revert --no-commit` and never staged, and
+  the read-back compared the commit with the working file (`git diff <commit> -- <file>`) rather than with another
+  commit. The coordinating session found it with `git diff --stat f2b548152 372505551`, which printed nothing;
+  `bbf9340a6` carries the change. A read-back of a commit compares two commits, `git diff <a> <b>`, never a commit
+  with the working tree.
+- **THE EXPLOSION RULING STATED A FACT ABOUT THE CODE THAT WAS NOT TRUE, AND THE CODE WAS CHANGED TO MAKE ITS
+  OUTCOME TRUE.** The ruling (Q-B, below): "Scaling follows the figure: an explosion computed from the imp's own
+  (already scaled) blow carries that factor, and no second factor is applied." The finding, on reading the code:
+  `Explode` computes its figure from the type row's (`OwnDamagePerHit`) and the summoner's minion damage, neither of
+  which carries the factor, because `AttackTarget` applies the factor to the swing alone. So `Explode` multiplies its
+  figure by the imp's factor itself, once, on a creature, whatever set it off, and proof L13 is registered for that
+  line. The coordinating session accepted it on 2026-11-20: "The intent was that the explosion, 'three of the imp's own
+  blows' by the #340 ruling, scales as those blows do. Credit stays with the cap's explosion alone."
+- **GAPS, BESIDE THE TETHER AND THE NECROSIS PAYOUT OF SLICE 2a.** An ailment a thrall's hit rolls from the creature's
+  own chances credits nothing (ruling Q-C below). A thrall's explosion at its death (`ThrallBurst`) credits nothing and
+  is not sized, being a passive's figure computed from the creature's own attack damage. And Subjugate's row says a
+  thrall "sets alight what it strikes", which nothing in the game builds: no code reads it, so there is no thrall burn
+  to credit (issue [#2784](https://github.com/sdubois777/Cataclysm/issues/2784)).
+- **THE WAR DEPLOYABLES ARE LEFT OUT**, by the owner's rule of 2026-11-17 that War rows stay unbuilt: a Bolt Turret, a
+  Ballista and an Iron Fortress credit nothing.
+
+### The rulings
+
+- **The owner, 2026-11-19**, the question recorded in slice 2a's entry: "Yes, they scale too (Recommended)", described
+  as "Without this, Summon Imp levels up but its imps never hit harder because of it."
+- **The coordinating session's judgements, accepted 2026-11-19:** minions no skill made credit nothing, and thralls
+  credit Subjugate (3); the factor is read once when the minion is summoned (4).
+- **The coordinating session, 2026-11-20, on three readings of the code:**
+  - **Q-A, replacement imps:** "All four (Press-Ganged, Rekindled, the resummon wait, and minion_kill_spawns_minion)
+    are Summon Imp's imps. Each credits it and scales, with the factor read when it is made." Each is made by
+    `SummonReplacementAt`, which sets `SummonedBy`, holds a place under the skill's cap and reserves its Fervour.
+  - **Q-B, explosions, option (b):** "Only the cap's explosion credits." The cap's is Summon Imp's own row, "Summoning
+    a fourth destroys the oldest, which explodes for damage in a 3 meter radius"; one `minion_explodes_on_death` sets
+    off, and a thrall's `ThrallBurst`, is damage a passive adds on top, which judgement 2 says credits nothing. "Scaling
+    follows the figure ... no second factor is applied."
+  - **Q-C, a thrall's rolled ailments:** "They credit nothing in 2b. They come from the creature's own chances, not
+    from Subjugate."
+
+### The change
+
+- **AN IMP RECORDS ITS SKILL WHEN IT IS MADE.** `RecordTheSkillOn` sets the imp's `SummoningSkillRow`
+  (`RowThatLevels`) and `LevelFactorOnCreatures` (`LevelFactorOf`, the holder's level read now), in the two places
+  `SummonedBy` is set, so every imp Summon Imp makes carries them. A minion no skill made -- a risen imp, a Warhound,
+  Tyrant's Minion, a gadget, a trap -- keeps None and 1.
+- **ITS SWING** multiplies the type row's figure by the factor on a creature, in the base, under the summoner's minion
+  damage and the imp's own buffs, as a skill hit's factor sits under the increases; the blow credits the row. The burn
+  the swing sets credits the row and gets no second factor, being a share of the swing.
+- **ITS EXPLOSION** credits the row only when `SummonOne`'s cap set it off (`bSetOffByTheSummonCap`), and is multiplied
+  by the factor on a creature either way, as the reading above says; its burn credits what the explosion credits.
+- **A THRALL RECORDS ITS SKILL AT THE TAKE.** `Possess` sets `TakenBySkillRow` and `TakenLevelFactorOnCreatures` once
+  the creature is taken. Every blow a thrall deals -- its swing, its charge, its abilities, a Compel strike -- arrives at
+  `ApplyHit` with the thrall as the instigator, so there `ThrallsLevelFactor` multiplies the damage percentage on a
+  creature, in the base bucket beside the skill factor, and `RowToCredit` credits the thrall's row to a blow naming no
+  row of its own, while the creature is commanded.
+- **ONE LEVEL FACTOR READER.** `UCataclysmSkillLevels::LevelFactorOf` holds the calculation the zone, the summon, the
+  take and `DamageFactorForBlow` each need, which slice 2a had written out twice.
+
+### The tests and the proofs, registered
+
+`Cataclysm.SkillLevelSources.` gains five, to 19, each copying an existing test's set-up, named here. Every one plays on
+a player holding a Demonic Staff and its granted skills with their rows, as `Cataclysm.BasicReach`'s `FReachRig` equips
+a weapon, at character level 4 with a 150 Fervour pool:
+
+| Test | The set-up it copies |
+| :-- | :-- |
+| `ASummonedImpsBlowCreditsSummonImpAndIsScaledByItsLevel` | the summon of `Cataclysm.Passives.PressGangedAndRekindledRowsReplaceARealRitualistsLostImp` (`SummonOne` on the real character) and the swing of `Cataclysm.CombatEvents.AMinionsBlowPutsTheMinionInCombatAndNotItsSummoner`; one imp summoned at level 1, one at level 3, the first swinging again after the level |
+| `AMinionNoSkillMadeCreditsNothing` | the imp `Cataclysm.CombatEvents.AMinionsBlowPutsTheMinionInCombatAndNotItsSummoner` spawns directly, with its summoner holding Summon Imp at level 3 |
+| `AThrallsBlowCreditsSubjugateAndIsScaledByItsLevel` | the take of `Cataclysm.Command.SubjugateTakesAnEnemyTheBlowLeftBelowHalfHealth` (a creature hurt to 520 of 1,000), by `Possess` as the skill's activation calls it, and the blow of `Cataclysm.MinionGear.AThrallHitsHarderForItsCommandersIncreasedMinionDamage`, never a critical strike; one taken at level 1, one at level 3 |
+| `AKillIsSplitBetweenAHitSkillAndAMinionSkill` | `AKillIsSplitBetweenOneSkillsHitAndAnothersBurn` (slice 2a), with Compel's hit and a Summon Imp imp's swing in place of Molten Cleave's and Emberhurl's burn, through `HandleDeath` |
+| `TheSummonCapsExplosionCreditsSummonImpAndAPassivesDoesNot` | the explosion of `Cataclysm.MinionDeath.TheExplosionTheSummonCapSetsOffTakesTheSameStat`, by the real cap (a summon past three) for the cap's and by `Explode` as `HandleDeath` calls it for the passive's |
+
+C++ proofs, each with the prefix `Cataclysm.SkillLevelSources.`, numbered on from slice 2a's L7:
+
+| Proof | The break | Predicted with it in |
+| :-- | :-- | :-- |
+| L8 | `AttackTarget`'s `BlowDelivery.SkillRowToCredit = SummoningSkillRow;` removed | 2 failed: `ASummonedImpsBlowCreditsSummonImpAndIsScaledByItsLevel` (both swings' credit), and `AKillIsSplitBetweenAHitSkillAndAMinionSkill` (Summon Imp credited nothing, so the two paid fall short of the worth; each paid figure still matches what was credited) |
+| L9 | the imp's factor in `AttackTarget` divided by itself | 1 failed: `ASummonedImpsBlowCreditsSummonImpAndIsScaledByItsLevel`, on its level ratio (1.1166 expected, 1.0) |
+| L10 | `Possess`'s `Taken->TakenBySkillRow = ...` removed | 1 failed: `AThrallsBlowCreditsSubjugateAndIsScaledByItsLevel` (its row and both credits) |
+| L11 | `ApplyHit`'s `ThrallsLevelFactor` made to answer 1 | 1 failed: `AThrallsBlowCreditsSubjugateAndIsScaledByItsLevel`, on its level ratio |
+| L12 | `Explode`'s cause flag made to answer "the cap" whatever set it off | 1 failed: `TheSummonCapsExplosionCreditsSummonImpAndAPassivesDoesNot` (the passive's explosion credits a row) |
+| L13 | the explosion's factor divided by itself | 1 failed: `TheSummonCapsExplosionCreditsSummonImpAndAPassivesDoesNot`, on its level ratio; the passive's still equals the cap's, both unscaled |
+
+Restored, each must perform the group's count with none failed. The whole suite is registered from the newest measured
+total when the window is given, + 5 for these.
+
+The Python check now holds the imp's swing's burn and its explosion's burn among the calls that name a row, and its list
+of calls crediting nothing by rule no longer names either. Proved with `tools/prove_guard.py`'s `break_and_run` in this
+worktree, nothing else running, by dropping `/*SkillRowWithNoSkill=*/SummoningSkillRow` (and the two arguments before
+it) from the swing's `ApplyBurn` in `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp`, on 2026-11-20:
+
+```
+PROVED: 1 failed in 0.58s | restored: 1 passed in 0.39s
+named_failures: ('tools/tests/test_damage_over_time_names_its_skill.py::test_every_call_names_its_skill_or_is_listed_with_its_reason',)
+proved: True
+```
+
+### The windows
+
+**The compiles, at `f2b548152`** (lock skills-2b-compile, 2026-11-20, 12:01 to 12:09): the branch as committed,
+"Succeeded - 66 actions, 59 files compiled"; each changed file alone, "Succeeded - 16 actions, 13 files compiled",
+the build tool naming `CataclysmMinion.cpp`, `CataclysmSkillEffects.cpp`, `CataclysmSkillTemplate.cpp`,
+`CataclysmSkillTemplates.cpp`, `CataclysmEnemyCharacter.cpp`, `CataclysmSkillLevels.cpp` and
+`CataclysmSkillLevelSourcesTests.cpp` as excluded from the unity file; and the unity build again, "Succeeded - 9
+actions, 6 files compiled". 0 compiler warning or error lines in each.
+
+**Before the compiles:** the rebase onto `27a995d60` left slice 2b's changes outside this file byte for byte as they
+were (equal patch IDs). Since the old base, `SpawnDropsFor` and `SpawnGoldFor` had gained defaulted parameters;
+neither branch's lines call either, and the new base changed none of slice 2b's ten source files.
+
+**skills-2b-w1, at `f2b548152`, did not pass:** "19 tests performed, 17 succeeded, 2 failed" for
+`Cataclysm.SkillLevelSources.`, every other group at its count, and the whole suite "5041 tests performed, 5039
+succeeded, 2 failed". The two failures read: "Expected 'AND THE LEVEL 3 IMP'S' to be 58.621094, but it was 58.622284
+and outside tolerance 0.001000" and "Expected 'AND THE LEVEL 3 THRALL'S' to be 111.660156, but it was 111.661491
+and outside tolerance 0.001000". No proof ran.
+
+**The second window ran without the three separate compiles**, by the coordinating session's ruling: `bbf9340a6`
+changes one test helper's number and its comment, with no `#include`, so the window's own build compiles it and a
+problem stops the window at its first step, as for skills-w2 and tree-2781-w2. That build: "Succeeded - 4 actions,
+1 file compiled: Module.Cataclysm.35.cpp".
+
+**skills-2b-w2, at `bbf9340a6`** (12:47 to 13:20), every line measured:
+
+| Run | Result |
+| :-- | :-- |
+| `Cataclysm.SkillLevelSources.` alone | 19 performed, 19 succeeded, 0 failed |
+| `Cataclysm.SkillLevels.` alone | 12, 12, 0 |
+| `Cataclysm.Command.` alone | 22, 22, 0 |
+| `Cataclysm.MinionDeath.` alone | 19, 19, 0 |
+| `Cataclysm.FervourReserve.` alone | 5, 5, 0 |
+| `Cataclysm.RisenImps.` alone | 11, 11, 0 |
+| `Cataclysm.SecondSelf.` alone | 6, 6, 0 |
+| `Cataclysm.Resummon.` alone | 6, 6, 0 |
+| The whole suite | "5041 tests performed, 5041 succeeded, 0 failed. 47 skipped part of what they check"; "Test saves: 852 written and deleted, 0 left behind"; "Declared: 5041 tests in the tree at bbf9340a6; 5041 performed, gap 0" |
+| Python | "7799 passed, 9 skipped"; JUnit tests 7808, failures 0, errors 0, skipped 9 |
+| Ruff | "All checks passed!" |
+
+The base was the empire tree's slice 6b window, tree-6b-w1, measured "5036 tests performed, 5036 succeeded" at
+`9483c2a10`; every group above was counted from its kept engine log, and the whole suite registered as 5036 + 5.
+
+**What the new tests measured**, from their own lines in the suite's log: a level 1 imp's swing took 52.500 and a
+level 3 imp's 58.622 (x1.1166), each credited to Summon Imp in full, and the first imp swung for 52.500 again after
+the level; a thrall's blow took 100.000 at level 1 and 111.661 at level 3, each credited to Subjugate; a minion no
+skill made carried no row and credited none; a kill worth 468 split 406.957 to Compel and 61.043 to Summon Imp; and
+the cap's explosions took 157.500 at level 1 and 175.867 at level 3, the near creature losing 648.367 and Summon Imp
+credited 648.367, while the passive's took 175.867 and credited no row.
+
+**The proofs**, each with the prefix `Cataclysm.SkillLevelSources.`, each failing exactly its registered tests with
+the break in and passing all 19 restored:
+
+| Proof | With the break in |
+| :-- | :-- |
+| L8 | 2 failed: `AKillIsSplitBetweenAHitSkillAndAMinionSkill`, `ASummonedImpsBlowCreditsSummonImpAndIsScaledByItsLevel` |
+| L9 | 1 failed: `ASummonedImpsBlowCreditsSummonImpAndIsScaledByItsLevel` |
+| L10 | 1 failed: `AThrallsBlowCreditsSubjugateAndIsScaledByItsLevel` |
+| L11 | 1 failed: `AThrallsBlowCreditsSubjugateAndIsScaledByItsLevel` |
+| L12 | 1 failed: `TheSummonCapsExplosionCreditsSummonImpAndAPassivesDoesNot` |
+| L13 | 1 failed: `TheSummonCapsExplosionCreditsSummonImpAndAPassivesDoesNot` |
+
+No log of the window, its eight groups or its twelve proof halves holds a "server/discover" line (#2745). The lock
+was released when the window ended.
+
+**Slice 2a's tests in the same file cannot fail this way today.** Its two comparisons of a health drop, the Void
+Splinter test's and the burst's, measure a default enemy of about 326 health (its 1% share read "lost 3.2638"),
+where a float moves in steps of about 0.00003; its other 0.001 comparisons read the blow's own resolved figure. They
+would become fragile only if a default enemy's health rose above about 4,096, where the step reaches 0.0005.
+
+---
+
 ## 2026-11-20 — The empire upgrade tree's Relentless Pursuit counts the clears since the last death, with the run record at version 11, and its four drop rules roll a kill's extra drops (#2741, slice 5b)
 
 **Affects:** `UCataclysmEmpireRun::ClearsSinceLastDeath`, raised in `ClearDungeon` and set to 0 in `NoteDeath` and
