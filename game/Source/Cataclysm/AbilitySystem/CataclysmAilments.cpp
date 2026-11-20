@@ -617,7 +617,8 @@ namespace
 bool UCataclysmAilments::Apply(AActor* Instigator, AActor* Target,
 							   const FCataclysmAilmentKind& Kind, float Magnitude,
 							   const UGameplayAbility* Skill, FName DamageType,
-							   float Seconds, const FGameplayTagContainer* SkillTagsWithNoSkill)
+							   float Seconds, const FGameplayTagContainer* SkillTagsWithNoSkill,
+							   FName SkillRowWithNoSkill)
 {
 	if (Kind.Shape == EShape::Stun)
 	{
@@ -653,7 +654,7 @@ bool UCataclysmAilments::Apply(AActor* Instigator, AActor* Target,
 				Row.FlatDamagePerTick * Scale, Row.DurationSeconds, Tag,
 				/*bScalesWithInstigator=*/true,
 				/*DealtBy=*/nullptr, Skill, DamageType,
-				/*bIsConvertedDamage=*/false, SkillTagsWithNoSkill);
+				/*bIsConvertedDamage=*/false, SkillTagsWithNoSkill, SkillRowWithNoSkill);
 
 	case EShape::StrongerWithMagnitude:
 		// NO DAMAGE TYPE, so it cuts the one generic resistance an enemy holds,
@@ -721,8 +722,10 @@ bool UCataclysmAilments::Apply(AActor* Instigator, AActor* Target,
 		// table says magnitude scales Void Splinter's damage, and the owner's
 		// answer on #915 keeps that. The row states a percent and the applier
 		// takes a fraction.
+		// AND THE SKILL AND ITS ROW, so each tick credits the skill that laid it. Issue #2764, slice 2a (F4).
 		return UCataclysmSkillEffects::ApplyShareOfHealthOverTime(Instigator, Target,
-			Row.PercentOfCurrentHealth / 100.0f * Scale, Row.DurationSeconds, Tag);
+			Row.PercentOfCurrentHealth / 100.0f * Scale, Row.DurationSeconds, Tag,
+			/*bScalesWithInstigator=*/true, Skill, SkillRowWithNoSkill);
 
 	default:
 		return false;

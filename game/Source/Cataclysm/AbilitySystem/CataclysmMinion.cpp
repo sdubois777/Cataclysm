@@ -2883,7 +2883,7 @@ float ACataclysmMinion::SkillTrapShareAsDamageOverTimeFor(const AActor* Player)
 	return FMath::Max(0.0f, SkillTrapFigureOf(Player, TrapDamageOverTimeShareStat));
 }
 
-bool ACataclysmMinion::LaySkillTrapsDamageOverTime(AActor* Player, AActor* Struck, float DealtToHealth)
+bool ACataclysmMinion::LaySkillTrapsDamageOverTime(AActor* Player, AActor* Struck, float DealtToHealth, FName SkillRow)
 {
 	// A GENERIC DAMAGE OVER TIME AND NOT AN AILMENT (F9): its own tag, so a second blow lays over it as every damage over
 	// time does, the stronger a second replacing it and a weaker refreshing its time, and it never stacks.
@@ -2907,8 +2907,13 @@ bool ACataclysmMinion::LaySkillTrapsDamageOverTime(AActor* Player, AActor* Struc
 	// sentence states its time. The target's own resistances and duration rows still meet it, as every tick.
 	const float Whole = DealtToHealth * SharePercent / 100.0f;
 	const float Ticks = SkillTrapDamageOverTimeSeconds / UCataclysmSkillEffects::BaseSecondsPerTick;
+	// AND THE TRAP'S SKILL'S ROW, so each tick credits that skill (issue #2764, slice 2a). NO LEVEL FACTOR: unscaled by
+	// its instigator, and its figure is a share of the trap's blow, which was already priced at the skill's level.
 	return UCataclysmSkillEffects::ApplyDamageOverTime(Player, Struck, Whole / Ticks, SkillTrapDamageOverTimeSeconds,
-													   Generic, /*bScalesWithInstigator=*/false);
+													   Generic, /*bScalesWithInstigator=*/false,
+													   /*DealtBy=*/nullptr, /*Skill=*/nullptr,
+													   /*DamageType=*/NAME_None, /*bIsConvertedDamage=*/false,
+													   /*SkillTagsWithNoSkill=*/nullptr, /*SkillRowWithNoSkill=*/SkillRow);
 }
 
 // ==========================================================================

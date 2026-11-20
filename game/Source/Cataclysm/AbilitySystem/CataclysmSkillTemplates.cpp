@@ -2,6 +2,8 @@
 
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
+// For a buried axe's row, captured when it is thrown. Issue #2764, slice 2a.
+#include "Character/CataclysmSkillLevels.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmMovement.h"
@@ -2153,9 +2155,11 @@ int32 UCataclysmProjectileSkill::BuryInStruck(const TArray<AActor*>& Struck)
 		// gadget stands. Ruled 2026-10-16, stack 2 (P5). THE WEAK POINTER ITSELF, NOT `Get`: a shot is buried when it
 		// finishes, after a skill trap that cast it is used up, and only the identity still names that trap (ruled
 		// 2026-10-21, #2462).
+		// AND THE SKILL'S ROW, read now, while the skill is there, for every later leap. Issue #2764, slice 2a.
 		if (UCataclysmBuriedWeapon::BuryIn(Target, Self, Params.OnDeathRangeCm,
 										   GetDamagePercent(), SkillTags,
-										   Params.bBurns, FreeRepeatCastBy))
+										   Params.bBurns, FreeRepeatCastBy,
+										   UCataclysmSkillLevels::RowThatLevels(this)))
 		{
 			++Buried;
 		}

@@ -766,6 +766,14 @@ private:
 	 */
 	TWeakObjectPtr<const UGameplayAbility> FiringSkill;
 
+	/**
+	 * The row of the skill that fired it, captured when it was fired, or None. Issue #2764, slice 2a. Its blows carry it
+	 * (`FCataclysmHitDelivery::SkillRowWithNoSkill`) and so do its burn and its stated ailment, so a shot that lands after
+	 * its firing skill's one-use grant was removed -- a trap's rack axe, a gadget's last bolt -- still scales by that
+	 * skill's level and credits it, as the shot did while the grant lived (F3). None for a shot no levelling skill fired.
+	 */
+	FName FiringSkillRow;
+
 	/** Whether it sets what it hits alight. */
 	bool bBurns = false;
 

@@ -53,6 +53,9 @@
 #include "AbilitySystemComponent.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmCharacterBase.h"
+// For a ground zone's skill row and level factor, read when it is laid. Issue #2764, slice 2a.
+#include "Character/CataclysmSkillLevels.h"
+#include "Player/CataclysmPlayerState.h"
 // For the Angelic Wardens a payment under the Edict of Abstinence wakes. 2026-10-23, G7c.
 #include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Engine/World.h"
@@ -3676,6 +3679,14 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveAZoneFor(
 		if (LeftBy)
 		{
 			Zone->SkillTagsItWasLeftWith = SkillTags;
+			// AND ITS ROW AND ITS LEVEL FACTOR, read now, while the skill is there. Issue #2764, slice 2a: every sweep
+			// credits the row and, on a creature, is multiplied by the factor (F2). See `ACataclysmGroundZone`.
+			Zone->SkillRowItWasLeftWith = UCataclysmSkillLevels::RowThatLevels(LeftBy);
+			const ACataclysmPlayerState* Holder = Zone->SkillRowItWasLeftWith.IsNone()
+				? nullptr : UCataclysmSkillLevels::PlayerHolding(LeftBy);
+			Zone->LevelFactorOnCreatures = Holder
+				? static_cast<float>(UCataclysmSkillLevels::DamageFactor(Holder->SkillLevelOf(Zone->SkillRowItWasLeftWith)))
+				: 1.0f;
 		}
 	}
 

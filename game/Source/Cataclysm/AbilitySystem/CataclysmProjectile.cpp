@@ -11,6 +11,8 @@
 #include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmDeployableSelfBlast.h"
+// For the firing skill's row, captured when the shot is fired. Issue #2764, slice 2a.
+#include "Character/CataclysmSkillLevels.h"
 // For the Fervour each enemy a shot lands on earns. Issue #1515.
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
@@ -285,6 +287,8 @@ ACataclysmProjectile* ACataclysmProjectile::Fire(
 	Projectile->CritChancePercent = InCritChancePercent;
 	Projectile->SkillHealthCostPercent = InSkillHealthCostPercent;
 	Projectile->FiringSkill = InFiringSkill;
+	// AND ITS ROW, read now, while the skill is there. Issue #2764, slice 2a: see `FiringSkillRow`.
+	Projectile->FiringSkillRow = UCataclysmSkillLevels::RowThatLevels(InFiringSkill);
 
 	// AND WHAT THAT USE SPENT FROM NEXT-USE CHARGES, copied now for the reason
 	// the figures above are: the next use writes the skill's own copy before
@@ -659,6 +663,8 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 
 	// AND THE SKILL THAT FIRED IT, kept since it was fired. Issue #41, slice 4.
 	Delivery.Skill = FiringSkill;
+	// AND ITS ROW, for when that skill has gone. Issue #2764, slice 2a.
+	Delivery.SkillRowWithNoSkill = FiringSkillRow;
 
 	// AND THE ACTOR ITS USE WAS CAST FROM, which outlives the use: a skill gadget's shot landing after its one-use
 	// grant has ended is still priced as the gadget's. Ruled 2026-10-16, stack 2.
@@ -761,7 +767,8 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 											  /*bBurnIsDesigned=*/true,
 											  /*DealtBy=*/nullptr,
 											  /*Skill=*/FiringSkill.Get(),
-											  /*SkillTagsWithNoSkill=*/FiringSkill.IsStale() ? &SkillTags : nullptr);
+											  /*SkillTagsWithNoSkill=*/FiringSkill.IsStale() ? &SkillTags : nullptr,
+											  /*SkillRowWithNoSkill=*/FiringSkillRow);
 		}
 
 		// AND THE AILMENT THE FIRING ROW STATES, BY THE BURN'S OWN RULE: landed, and carrying damage. Issue #2580,
@@ -771,7 +778,9 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 		{
 			if (const FCataclysmAilmentKind* Kind = UCataclysmAilments::KindNamedInASkillRow(StatedAilment))
 			{
-				UCataclysmAilments::Apply(Firer, Target, *Kind, /*Magnitude=*/1.0f, FiringSkill.Get());
+				UCataclysmAilments::Apply(Firer, Target, *Kind, /*Magnitude=*/1.0f, FiringSkill.Get(),
+					/*DamageType=*/NAME_None, /*Seconds=*/0.0f, /*SkillTagsWithNoSkill=*/nullptr,
+					/*SkillRowWithNoSkill=*/FiringSkillRow);
 			}
 		}
 
@@ -853,6 +862,7 @@ void ACataclysmProjectile::StrikeTheWearerInItsBlast(AActor* Wearer, int32 Conta
 	Delivery.CritChancePercent = CritChancePercent;
 	Delivery.SkillHealthCostPercent = SkillHealthCostPercent;
 	Delivery.Skill = FiringSkill;
+	Delivery.SkillRowWithNoSkill = FiringSkillRow;
 	Delivery.CastBy = CastBy;
 	Delivery.SkillTagsWithNoSkill = FiringSkill.IsStale() ? &SkillTags : nullptr;
 	Delivery.bStruckFromAPoint = bStrikesFromAPoint;

@@ -1377,7 +1377,8 @@ public:
 	 * trap off, on `Struck` as a generic damage over time over `SkillTrapDamageOverTimeSeconds`, when the blow took a
 	 * tenth of its maximum health. Whether anything was laid or refreshed. Asked by `UCataclysmSkillEffects::ApplyHit`.
 	 */
-	static bool LaySkillTrapsDamageOverTime(AActor* Player, AActor* Struck, float DealtToHealth);
+	static bool LaySkillTrapsDamageOverTime(AActor* Player, AActor* Struck, float DealtToHealth,
+											FName SkillRow = NAME_None);
 
 	/** Whether this trigger's share of its enemy's maximum health has been added, by its first blow on it. */
 	mutable bool bSkillTrapGaveItsEnemysHealthShare = false;

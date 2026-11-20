@@ -425,6 +425,23 @@ public:
 	FGameplayTagContainer SkillTagsItWasLeftWith;
 
 	/**
+	 * The row of the skill that left the zone, captured when it was laid, or None. Issue #2764, slice 2a. Every sweep
+	 * credits it (`FCataclysmHitDelivery::SkillRowToCredit`) and the zone's own ailment carries it
+	 * (`SkillRowWithNoSkill`), so they credit that skill with what they take from a creature's health even after a
+	 * one-use grant -- a gadget's or a trap's cast -- has been removed. None for a zone no levelling skill left.
+	 */
+	FName SkillRowItWasLeftWith;
+
+	/**
+	 * What every sweep multiplies its figure by on a creature: the leaving skill's level factor, read once when the zone
+	 * was laid, and 1 for a zone no levelling skill left. Issue #2764, slice 2a (F2), by the design document's row "What
+	 * a level does: Multiplies the skill's damage percentage by 1.0567": a skill's ground is priced from its percentage,
+	 * as its hit is. APPLIED AT EACH SWEEP, NOT KEPT IN `DamagePerTick`, because the planted sword's `GrowHotter`
+	 * rewrites that figure once a second.
+	 */
+	float LevelFactorOnCreatures = 1.0f;
+
+	/**
 	 * The floor rule this zone burns for, or None. Issue #2074. Zones of one rule that
 	 * overlap burn a target once a second between them, not once each; see
 	 * `ACataclysmFloorHazardSource::MayBurn`. Set by the dungeon game mode on the zones that

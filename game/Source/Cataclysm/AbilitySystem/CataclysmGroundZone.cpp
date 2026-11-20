@@ -6,6 +6,8 @@
 #include "AbilitySystem/CataclysmGroundEffect.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+// For a sweep's level factor, which multiplies it on a creature only. Issue #2764, slice 2a.
+#include "Character/CataclysmEnemyCharacter.h"
 #include "Cataclysm.h"
 // For the skill that left it, which every sweep's blow carries. Issue #1585.
 #include "Abilities/GameplayAbility.h"
@@ -462,6 +464,10 @@ void ACataclysmGroundZone::Sweep()
 		// AND THE SKILL THAT LEFT IT, when one did, so the hit notice names it and a kill carries its tags to the
 		// killer's rows. Issue #1585, ruled 2026-11-01. It only names: `ApplyDirectDamage` reads it for the context.
 		Delivery.Skill = SkillThatLeftIt;
+		// AND THE ROW EVERY SWEEP CREDITS, captured when the zone was laid, so a sweep credits its skill with what it takes
+		// from a creature's health, the skill object there or not. Issue #2764, slice 2a. None for a zone no levelling
+		// skill left.
+		Delivery.SkillRowToCredit = SkillRowItWasLeftWith;
 		// AND, WHEN THAT SKILL HAS GONE, THE TAGS IT LEFT THE ZONE WITH, so the hit and a kill still carry them, with no
 		// skill name: the one-use grant `UCataclysmTriggeredSkill::Trigger` makes, removed after the use. Issue #2683,
 		// as a projectile whose firing skill has gone does (#2475). Identity only. Null while the skill is there, and
@@ -479,10 +485,13 @@ void ACataclysmGroundZone::Sweep()
 			// THE FIRST SWEEP MAY DEAL ITS OWN FIGURE. Issue #1686. `TicksElapsed`
 			// is still nought during it, because it moves after the sweep.
 			// AND MORE FOR EACH ENEMY THIS SWEEP FOUND INSIDE, when a row says so. Ruled 2026-10-06.
+			// AND THE LEAVING SKILL'S LEVEL ON A CREATURE, read once at laying (`LevelFactorOnCreatures`). Issue #2764,
+			// slice 2a (F2).
 			const float ThisSweep = (TicksElapsed == 0 && FirstSweepDamage >= 0.0f
 				? FirstSweepDamage
 				: DamagePerTick)
-				* (1.0f + FMath::Max(0.0f, MorePerEnemyInsidePercent) * Inside.Num() / 100.0f);
+				* (1.0f + FMath::Max(0.0f, MorePerEnemyInsidePercent) * Inside.Num() / 100.0f)
+				* (Cast<ACataclysmEnemyCharacter>(Target) ? LevelFactorOnCreatures : 1.0f);
 			UCataclysmSkillEffects::ApplyDirectDamage(Source, Target,
 													  ThisSweep, Delivery);
 		}
@@ -540,7 +549,8 @@ void ACataclysmGroundZone::Sweep()
 			{
 				UCataclysmAilments::Apply(Source, Target, *Kind, /*Magnitude=*/1.0f,
 					/*Skill=*/nullptr, /*DamageType=*/NAME_None, /*Seconds=*/0.0f,
-					/*SkillTagsWithNoSkill=*/SkillTagsItWasLeftWith.IsEmpty() ? nullptr : &SkillTagsItWasLeftWith);
+					/*SkillTagsWithNoSkill=*/SkillTagsItWasLeftWith.IsEmpty() ? nullptr : &SkillTagsItWasLeftWith,
+					/*SkillRowWithNoSkill=*/SkillRowItWasLeftWith);
 			}
 		}
 	};
