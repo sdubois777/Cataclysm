@@ -2308,7 +2308,7 @@ enum class ECataclysmEmpireTreeEffect : uint8
 	BossLegendaryChancePerTenFloorsAdded,
 
 	// ---- Slice 6a: the gold a kill drops, and a city upgrade's price. The coordinating session's rulings of
-	// 2026-11-20 (G1 to G3, P1 to P3).
+	// 2026-11-20 (G1 to G3, P1, P2).
 
 	/** Increased gold a kill drops, per point: added into the one increase every "+X% Gold" adds to. */
 	GoldIncreased,
@@ -2336,9 +2336,6 @@ enum class ECataclysmEmpireTreeEffect : uint8
 
 	/** The same, for an upgrade bought on a city that holds none. */
 	FirstUpgradePriceReduced,
-
-	/** The same, for an upgrade bought on a city whose defence or population is below its maximum. */
-	DamagedCityUpgradePriceReduced,
 };
 
 /**

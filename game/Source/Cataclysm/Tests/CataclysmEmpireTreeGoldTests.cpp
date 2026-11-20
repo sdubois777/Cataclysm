@@ -17,7 +17,7 @@
 
 /**
  * The empire upgrade tree's slice 6a: the gold a kill drops and a city upgrade's price. Issue #2741, the coordinating
- * session's rulings G1 to G3 and P1 to P3 of 2026-11-20.
+ * session's rulings G1 to G3, P1 and P2 of 2026-11-20.
  *
  *   Coinage                +5% gold a point; Minting Rights +3% a point: one increase (G1)
  *   The Midas Touch        "50% more": its own multiplier after the increase (G1)
@@ -28,9 +28,9 @@
  *   Fiscal Policy          +3% a point for each whole 5 upgrades the standing cities hold (G3)
  *   Municipal Bonds        -3% a point on every city upgrade's price; Public Works -20% (P1)
  *   War Funding            -2% a point on an upgrade bought on a city holding none (P2)
- *   Price Controls         -4% a point on one bought on a city below its maximum now (P3)
  *
- * The four price reductions add and are held at 75% (P1, a judgement). The gold multiplier is applied to each pile's
+ * The price reductions add and are held at 75% (P1, a judgement). PRICE CONTROLS IS SLICE 6B'S: its P3 reading, "below
+ * its maximum now", was withdrawn on 2026-11-20, because a maximum the tree raises leaves every full city below it. The gold multiplier is applied to each pile's
  * amount after the pile's own draws, so it draws nothing. `Cataclysm.EmpireTreeGold.` IS A NEW GROUP and selects
  * these and nothing else; the screen-and-purchase test is in `Cataclysm.CityUpgradePrice.`, beside its scene.
  *
@@ -49,10 +49,9 @@ namespace CataclysmEmpireTreeGoldTest
 	const FName MunicipalBonds(TEXT("basic_0000003v"));			// -3% a point, 15 points
 	const FName PublicWorks(TEXT("keystone_00000013"));			// -20%, a keystone
 	const FName WarFunding(TEXT("basic_0000003s"));				// -2% a point, a city's first upgrade, 10 points
-	const FName PriceControls(TEXT("basic_tres_t2f"));			// -4% a point, a city below its maximum, 10 points
 	const FName Vanguard(TEXT("capstone_0000000o"));			// 100: option 3, The Midas Touch, 50% more
 
-	/** Every one of the twelve at its full points, The Midas Touch chosen. */
+	/** Every one of the eleven at its full points, The Midas Touch chosen. */
 	FCataclysmPassiveAllocation EveryGoldNode()
 	{
 		FCataclysmPassiveAllocation Tree;
@@ -66,7 +65,6 @@ namespace CataclysmEmpireTreeGoldTest
 		Tree.Add(MunicipalBonds, 15);
 		Tree.Add(PublicWorks, 1);
 		Tree.Add(WarFunding, 10);
-		Tree.Add(PriceControls, 10);
 		Tree.Add(Vanguard, 1);
 		Tree.SetChosenOption(Vanguard, 3);
 		return Tree;
@@ -122,12 +120,12 @@ namespace CataclysmEmpireTreeGoldTest
 // ---------------------------------------------------------------------------
 
 /**
- * Every one of the twelve at full points adds up as its row says: the increase 0.74 (Coinage's 0.50 and Minting Rights'
- * 0.24), the Midas Touch's 0.50 "more", the four counted figures 0.20, 1.00, 0.50, 0.10 and 0.24, and the price
- * reductions 0.65 (Municipal Bonds' 0.45 and Public Works' 0.20), 0.20 and 0.40. Prints "GOLD TABLE".
+ * Every one of the eleven at full points adds up as its row says: the increase 0.74 (Coinage's 0.50 and Minting Rights'
+ * 0.24), the Midas Touch's 0.50 "more", the five counted figures 0.20, 1.00, 0.50, 0.10 and 0.24, and the price
+ * reductions 0.65 (Municipal Bonds' 0.45 and Public Works' 0.20) and 0.20. Prints "GOLD TABLE".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeGoldRowsTest,
-	"Cataclysm.EmpireTreeGold.TheTwelveNodesAddUpFromTheirRows",
+	"Cataclysm.EmpireTreeGold.TheElevenNodesAddUpFromTheirRows",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmEmpireTreeGoldRowsTest::RunTest(const FString&)
@@ -143,10 +141,10 @@ bool FCataclysmEmpireTreeGoldRowsTest::RunTest(const FString&)
 	const FCataclysmEmpireTreePlayerBonuses All = GoldBonusesOf(EveryGoldNode());
 	const FCataclysmEmpireTreePlayerBonuses None = GoldBonusesOf(FCataclysmPassiveAllocation());
 	AddInfo(FString::Printf(TEXT("GOLD TABLE: increased %.2f, more %.2f; per city %.2f, per type %.2f, per fallen %.2f, "
-								 "per 10,000 %.2f, per 5 upgrades %.2f; price %.2f, first %.2f, damaged %.2f"),
+								 "per 10,000 %.2f, per 5 upgrades %.2f; price %.2f, first %.2f"),
 							All.GoldIncreased, All.GoldMore, All.GoldPerStandingCity, All.GoldPerActiveType,
 							All.GoldPerFallenCity, All.GoldPerTenThousandCitizens, All.GoldPerFiveCityUpgrades,
-							All.UpgradePriceReduced, All.FirstUpgradePriceReduced, All.DamagedCityUpgradePriceReduced));
+							All.UpgradePriceReduced, All.FirstUpgradePriceReduced));
 
 	TestEqual(TEXT("Coinage and Minting Rights: 0.74"), All.GoldIncreased, 0.74f, 1.0e-4f);
 	TestEqual(TEXT("The Midas Touch: 0.50 more"), All.GoldMore, 0.50f, 1.0e-4f);
@@ -157,7 +155,6 @@ bool FCataclysmEmpireTreeGoldRowsTest::RunTest(const FString&)
 	TestEqual(TEXT("Fiscal Policy: 0.24 a 5 upgrades"), All.GoldPerFiveCityUpgrades, 0.24f, 1.0e-4f);
 	TestEqual(TEXT("Municipal Bonds and Public Works: 0.65"), All.UpgradePriceReduced, 0.65f, 1.0e-4f);
 	TestEqual(TEXT("War Funding: 0.20"), All.FirstUpgradePriceReduced, 0.20f, 1.0e-4f);
-	TestEqual(TEXT("Price Controls: 0.40"), All.DamagedCityUpgradePriceReduced, 0.40f, 1.0e-4f);
 	TestEqual(TEXT("and an empty tree gives no increase"), None.GoldIncreased, 0.0f);
 	TestEqual(TEXT("no more"), None.GoldMore, 0.0f);
 	TestEqual(TEXT("and no price reduction"), None.UpgradePriceReduced, 0.0f);
@@ -370,10 +367,10 @@ bool FCataclysmEmpireTreeGoldNoneTest::RunTest(const FString&)
 // ---------------------------------------------------------------------------
 
 /**
- * The price factor on a city (P1 to P3): 0.70 for a 0.30 reduction on a full city that holds an upgrade; 0.50 with War
- * Funding's 0.20 on a city that holds none; 0.60 with Price Controls' 0.10 on a city whose defence, or whose population,
- * is below its maximum; every reduction at full points, 1.25 in all, held at 0.75, so a quarter; exactly 1 with no
- * node, no map or no such city. Prints "GOLD PRICE".
+ * The price factor on a city (P1, P2): 0.70 for a 0.30 reduction on a city that holds an upgrade; 0.50 with War
+ * Funding's 0.20 on a city that holds none; every reduction at full points on a city that holds none, 0.85 in all, held
+ * at 0.75, so a quarter; on one that holds an upgrade 0.65, below the cap, so 0.35; exactly 1 with no node, no map or no
+ * such city. Prints "GOLD PRICE".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeGoldPriceTest,
 	"Cataclysm.EmpireTreeGold.ThePriceFallsByTheReductionsHeldAtThreeQuarters",
@@ -384,51 +381,36 @@ bool FCataclysmEmpireTreeGoldPriceTest::RunTest(const FString&)
 	using namespace CataclysmEmpireTreeGoldTest;
 
 	UCataclysmEmpireRun* Run = QuietGoldRun(2741);
-	if (!TestTrue(TEXT("set-up: a run with a map"), Run->Map != nullptr && Run->Map->Cities.Num() > 5))
+	if (!TestTrue(TEXT("set-up: a run with a map"), Run->Map != nullptr && Run->Map->Cities.Num() > 2))
 	{
 		return false;
 	}
 	UCataclysmEmpireMap* Map = Run->Map;
 	FCataclysmCity& Holding = Map->Cities[0];
 	FCataclysmCity& Bare = Map->Cities[1];
-	FCataclysmCity& Breached = Map->Cities[2];
-	FCataclysmCity& Emptied = Map->Cities[3];
 	Holding.Upgrades.AddDefaulted(1);
-	Breached.Upgrades.AddDefaulted(1);
-	Emptied.Upgrades.AddDefaulted(1);
-	const bool bFull = Map->DefenceOf(Holding) >= Map->EffectiveMaxDefence(Holding)
-		&& Map->PopulationOf(Holding) >= Map->EffectiveMaxPopulation(Holding)
-		&& Map->DefenceOf(Bare) >= Map->EffectiveMaxDefence(Bare)
-		&& Map->PopulationOf(Bare) >= Map->EffectiveMaxPopulation(Bare);
-	Breached.Defence = Map->EffectiveMaxDefence(Breached) - 1.0f;
-	Emptied.Population = Map->EffectiveMaxPopulation(Emptied) - 1.0f;
+	Bare.Upgrades.Empty();
 
 	FCataclysmEmpireTreePlayerBonuses Some;
 	Some.UpgradePriceReduced = 0.30f;
 	Some.FirstUpgradePriceReduced = 0.20f;
-	Some.DamagedCityUpgradePriceReduced = 0.10f;
 	const FCataclysmEmpireTreePlayerBonuses All = GoldBonusesOf(EveryGoldNode());
 
 	const float OnHolding = UCataclysmEmpireTree::UpgradePriceFactorFor(Some, Map, Holding.CityId);
 	const float OnBare = UCataclysmEmpireTree::UpgradePriceFactorFor(Some, Map, Bare.CityId);
-	const float OnBreached = UCataclysmEmpireTree::UpgradePriceFactorFor(Some, Map, Breached.CityId);
-	const float OnEmptied = UCataclysmEmpireTree::UpgradePriceFactorFor(Some, Map, Emptied.CityId);
 	const float Capped = UCataclysmEmpireTree::UpgradePriceFactorFor(All, Map, Bare.CityId);
-	const float CappedBreached = UCataclysmEmpireTree::UpgradePriceFactorFor(All, Map, Breached.CityId);
+	const float BelowTheCap = UCataclysmEmpireTree::UpgradePriceFactorFor(All, Map, Holding.CityId);
 	const float NoNode = UCataclysmEmpireTree::UpgradePriceFactorFor(FCataclysmEmpireTreePlayerBonuses(), Map, Bare.CityId);
 	const float NoMap = UCataclysmEmpireTree::UpgradePriceFactorFor(All, nullptr, Bare.CityId);
 	const float NoCity = UCataclysmEmpireTree::UpgradePriceFactorFor(All, Map, 9999);
-	AddInfo(FString::Printf(TEXT("GOLD PRICE: holding %.2f, bare %.2f, defence down %.2f, population down %.2f; every "
-								 "node %.2f bare and %.2f defence down; none %.2f, no map %.2f, no city %.2f"),
-							OnHolding, OnBare, OnBreached, OnEmptied, Capped, CappedBreached, NoNode, NoMap, NoCity));
+	AddInfo(FString::Printf(TEXT("GOLD PRICE: holding %.2f, bare %.2f; every node %.2f bare and %.2f holding; none %.2f, "
+								 "no map %.2f, no city %.2f"),
+							OnHolding, OnBare, Capped, BelowTheCap, NoNode, NoMap, NoCity));
 
-	TestTrue(TEXT("set-up: cities 0 and 1 are full"), bFull);
-	TestEqual(TEXT("a full city that holds an upgrade: 0.70"), OnHolding, 0.70f, 1.0e-4f);
+	TestEqual(TEXT("a city that holds an upgrade: 0.70"), OnHolding, 0.70f, 1.0e-4f);
 	TestEqual(TEXT("War Funding on a city that holds none: 0.50"), OnBare, 0.50f, 1.0e-4f);
-	TestEqual(TEXT("Price Controls on a city whose defence is below its maximum: 0.60"), OnBreached, 0.60f, 1.0e-4f);
-	TestEqual(TEXT("and one whose population is: 0.60"), OnEmptied, 0.60f, 1.0e-4f);
-	TestEqual(TEXT("every node on a bare city, 0.85, held at 0.75: a quarter"), Capped, 0.25f, 1.0e-4f);
-	TestEqual(TEXT("every node on a city below its maximum, 1.05: a quarter"), CappedBreached, 0.25f, 1.0e-4f);
+	TestEqual(TEXT("every node on a city holding none, 0.85, held at 0.75: a quarter"), Capped, 0.25f, 1.0e-4f);
+	TestEqual(TEXT("every node on a city holding one, 0.65, below the cap: 0.35"), BelowTheCap, 0.35f, 1.0e-4f);
 	TestEqual(TEXT("no price node: exactly 1"), NoNode, 1.0f);
 	TestEqual(TEXT("no map: exactly 1"), NoMap, 1.0f);
 	TestEqual(TEXT("no such city: exactly 1"), NoCity, 1.0f);
