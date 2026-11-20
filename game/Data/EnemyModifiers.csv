@@ -78,4 +78,4 @@ Generic_Phasewalker,Generic,Phasewalker,Teleport short distances every few secon
 Generic_Titanic_Resolve,Generic,Titanic Resolve,50% more health.
 Generic_Perfect_Aim,Generic,Perfect Aim,Attacks cannot be dodged.
 Generic_Overpowered,Generic,Overpowered,Always crits
-Generic_Thorns_of_Glass,Generic,Thorns of Glass,"Strikes back at whatever hits it, once per hit, for its own attack damage."
+Generic_Thorns_of_Glass,Generic,Thorns of Glass,"Strikes back at whatever hits it, at most once per its own attack interval, for its own attack damage."

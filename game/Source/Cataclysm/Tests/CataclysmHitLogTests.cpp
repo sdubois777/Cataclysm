@@ -26,8 +26,9 @@
  * Issue #2749 slice 1, ruled by the coordinating session on 2026-11-18 (B1, Q2, Q3). See `FCataclysmHitLog`.
  *
  * THE FIRST TWO NEED NO WORLD: they read the words and the one-second totals straight off `FCataclysmHitLog`. The other
- * four put a real player character and a real creature in a world, strike with `UCataclysmSkillEffects::ApplyDirectDamage`
- * as the game does, and read what `LogCataclysm` printed.
+ * five put a real player character and a real creature in a world, strike with `UCataclysmSkillEffects::ApplyDirectDamage`
+ * as the game does, and read what `LogCataclysm` printed. The last of them is the line of a blow the player DEALS,
+ * issue #2749, ruled by the coordinating session on 2026-11-19.
  */
 namespace CataclysmHitLogTest
 {
@@ -342,7 +343,7 @@ CATACLYSM_HIT_LOG_TEST(FCataclysmHitLogOneLineTest,
 		TestTrue(TEXT("with the health before it"), Taken[0].Key.EndsWith(TEXT("before it")));
 		TestEqual(TEXT("at Display"), static_cast<int32>(Taken[0].Value), static_cast<int32>(ELogVerbosity::Display));
 	}
-	TestEqual(TEXT("CONTROL: a blow the player dealt says no line"), AfterDealing.Num(), Taken.Num());
+	TestEqual(TEXT("CONTROL: a blow the player dealt says no line of a blow taken"), AfterDealing.Num(), Taken.Num());
 	return true;
 }
 
@@ -501,6 +502,111 @@ CATACLYSM_HIT_LOG_TEST(FCataclysmHitLogNoBlowTest,
 	TestEqual(TEXT("one death line"), Deaths.Num(), 1);
 	TestEqual(TEXT("saying no blow killed it, and naming the last blow taken"), Said.Num(), 1);
 	TestEqual(TEXT("CONTROL: it names no killing blow"), Capture.Holding({TEXT("the killing blow: ")}).Num(), 0);
+	return true;
+}
+
+/**
+ * A blow the player deals says one HIT OUT line at Display: what struck, on which creature with its rarity, what was
+ * sent and what reached health. Issue #2749, ruled by the coordinating session on 2026-11-19. CONTROLS: a damage over
+ * time tick the player lays says none, and a creature's blow on the player says none. THEN THE WORDS of a critical, an
+ * evaded, a blocked and a returned blow, from notices, because a world rolls those and this file pins no roll.
+ */
+CATACLYSM_HIT_LOG_TEST(FCataclysmHitLogOutgoingTest,
+	"Cataclysm.HitLog.ABlowThePlayerDealsIsSaidWithWhatWasSentAndWhatLanded")
+{
+	using namespace CataclysmHitLogTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerCharacter* Player = SpawnHitLogPlayer(World);
+	ACataclysmEnemyCharacter* Creature = SpawnHitLogCreature(World, /*RarityStep=*/4);
+	if (!TestNotNull(TEXT("a player"), Player) || !TestNotNull(TEXT("a creature"), Creature))
+	{
+		return false;
+	}
+
+	// A FIGURE AS THE LINE SAYS IT: whole from ten up, one decimal below.
+	auto Figure = [](float Value)
+	{
+		return FMath::Abs(Value) >= 10.0f ? FString::Printf(TEXT("%.0f"), Value) : FString::Printf(TEXT("%.1f"), Value);
+	};
+
+	FHitLogCapture Capture;
+	const float CreatureBefore = HitLogHealthOf(Creature);
+	UCataclysmSkillEffects::ApplyDirectDamage(Player, Creature, 40.0f);
+	const float CreatureAfterTheBlow = HitLogHealthOf(Creature);
+	const TArray<TPair<FString, ELogVerbosity::Type>> Dealt = Capture.Holding({TEXT("HIT OUT: ")});
+
+	// CONTROL: a tick the player lays says no line. Five a tick for two seconds, not scaled by the player. A creature
+	// regenerates no health without a modifier, so its health falling is the ticks landing.
+	UCataclysmSkillEffects::ApplyDamageOverTime(Player, Creature, 5.0f, 2.0f, UCataclysmSkillEffects::BurnTag(),
+												/*bScalesWithInstigator=*/false);
+	CataclysmTestWorld::RunClock(World, 1.1f);
+	const float CreatureAfterTheTicks = HitLogHealthOf(Creature);
+	const int32 AfterTheTicks = Capture.Holding({TEXT("HIT OUT: ")}).Num();
+
+	// CONTROL: a creature's blow on the player says no outgoing line. It says a line of a blow taken.
+	UCataclysmSkillEffects::ApplyDirectDamage(Creature, Player, 5.0f);
+	const int32 AfterTaking = Capture.Holding({TEXT("HIT OUT: ")}).Num();
+	const int32 TakenLines = Capture.Holding({TEXT("HIT: took ")}).Num();
+
+	const float ToHealth = CreatureBefore - CreatureAfterTheBlow;
+	AddInfo(FString::Printf(TEXT("HIT LOG OUTGOING: creature health %.1f, %.1f after the blow, %.1f after the ticks; "
+								 "line [%s]"),
+							CreatureBefore, CreatureAfterTheBlow, CreatureAfterTheTicks,
+							Dealt.Num() > 0 ? *Dealt[0].Key : TEXT("none")));
+
+	TestTrue(TEXT("set-up: the blow reached the creature"), ToHealth > 0.0f);
+	if (TestEqual(TEXT("one line for one blow dealt"), Dealt.Num(), 1))
+	{
+		const FString& Line = Dealt[0].Key;
+		TestTrue(TEXT("naming the creature and its rarity, and the forty sent"),
+				 Line.Contains(FString::Printf(TEXT(" on %s (Boss): sent 40, landed "), *Creature->GetName())));
+		TestTrue(TEXT("with what reached its health"),
+				 Line.Contains(FString::Printf(TEXT(", %s to health"), *Figure(ToHealth))));
+		TestEqual(TEXT("at Display"), static_cast<int32>(Dealt[0].Value), static_cast<int32>(ELogVerbosity::Display));
+	}
+	TestTrue(TEXT("set-up: the ticks reached the creature"), CreatureAfterTheTicks < CreatureAfterTheBlow);
+	TestEqual(TEXT("CONTROL: a tick the player lays says no outgoing line"), AfterTheTicks, Dealt.Num());
+	TestTrue(TEXT("set-up: the creature's blow said a line of a blow taken"), TakenLines >= 1);
+	TestEqual(TEXT("CONTROL: a creature's blow on the player says no outgoing line"), AfterTaking, Dealt.Num());
+
+	// THE WORDS, from notices on the same creature.
+	const FString On = FString::Printf(TEXT("HIT OUT: Molten Cleave on %s (Boss): "), *Creature->GetName());
+	FCataclysmHitNotice Notice;
+	Notice.Attacker = Player;
+	Notice.Target = Creature;
+	Notice.SkillName = FName(TEXT("Molten Cleave"));
+	Notice.Sent = 158.0f;
+	Notice.Landed = 310.0f;
+	Notice.DealtToHealth = 290.0f;
+	Notice.bCritical = true;
+	TestEqual(TEXT("a critical blow, which can land more than was sent"), FCataclysmHitLog::OutgoingLine(Notice),
+			  On + TEXT("sent 158, landed 310, 290 to health; critical"));
+
+	FCataclysmHitNotice Evaded = Notice;
+	Evaded.Landed = 0.0f;
+	Evaded.DealtToHealth = 0.0f;
+	Evaded.bCritical = false;
+	Evaded.bEvaded = true;
+	TestEqual(TEXT("an evaded blow"), FCataclysmHitLog::OutgoingLine(Evaded), On + TEXT("sent 158, evaded"));
+
+	FCataclysmHitNotice Returned;
+	Returned.Attacker = Player;
+	Returned.Target = Creature;
+	Returned.Sent = 6.5f;
+	Returned.Landed = 3.2f;
+	Returned.bBlocked = true;
+	Returned.bRetaliation = true;
+	TestEqual(TEXT("a returned blow the creature blocked, with no skill"), FCataclysmHitLog::OutgoingLine(Returned),
+			  FString::Printf(TEXT("HIT OUT: attack on %s (Boss): sent 6.5, landed 3.2, 0.0 to health; blocked; "
+								   "reflected or retaliation"),
+							  *Creature->GetName()));
 	return true;
 }
 

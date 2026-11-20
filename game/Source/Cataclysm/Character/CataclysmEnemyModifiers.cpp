@@ -589,6 +589,14 @@ int32 UCataclysmEnemyModifiers::AuraStep(AActor* Character, float StepSeconds)
 		Starving = UCataclysmSkillEffects::NumbersForEffectTag(StarvingTag);
 	}
 
+	// AND HELLFIRE AURA'S BURN ROW, for its duration: `DoT_Burn`, four seconds. Its per-tick figure is the carrier's
+	// own since issue #2749's enemy burn slice; see `HellfireAuraBurnPerTick`.
+	FCataclysmStatusEffectNumbers Burn;
+	if (bBurns)
+	{
+		Burn = UCataclysmSkillEffects::BurnNumbers();
+	}
+
 	for (AActor* Target : Caught)
 	{
 		bool bAnythingLanded = false;
@@ -600,12 +608,21 @@ int32 UCataclysmEnemyModifiers::AuraStep(AActor* Character, float StepSeconds)
 		// it. So there is no hit to measure a threshold against and none is
 		// wanted -- an aura that only caught a player who had just been hit hard
 		// would not be an aura.
-		if (bBurns
-			&& UCataclysmSkillEffects::ApplyBurn(Enemy, Target, /*HitDamage=*/0.0f,
-												 /*bScalesWithInstigator=*/true,
-												 /*bBurnIsDesigned=*/true))
+		//
+		// SIZED FROM THE CARRIER SINCE ISSUE #2749'S ENEMY BURN SLICE, NOT THE TABLE'S 25: a tick is
+		// `HellfireAuraBurnPerTick` of the carrier's weapon damage, so the burn grows with the tier, ring, floor, rarity
+		// and kind its hits already carry. Ruled by the coordinating session on 2026-11-19; see the constant. The
+		// table's row still gives the duration and the one stack, and the burn still skips the threshold, as above.
+		if (bBurns && Burn.bUsable)
 		{
-			bAnythingLanded = true;
+			const float PerTick = HellfireAuraBurnPerTick(
+				UCataclysmSkillEffects::WeaponDamageOf(UCataclysmTargeting::AbilitySystemOf(Enemy)));
+			if (UCataclysmSkillEffects::ApplyDamageOverTime(Enemy, Target, PerTick, Burn.DurationSeconds,
+															UCataclysmSkillEffects::BurnTag(),
+															/*bScalesWithInstigator=*/true))
+			{
+				bAnythingLanded = true;
+			}
 		}
 
 		// AND THE RESISTANCE CUT, THROUGH THE SHARED NAMED-EFFECT PATH. That
@@ -1342,6 +1359,11 @@ int32 UCataclysmEnemyModifiers::HealAlliesPulse(AActor* Character)
 	}
 
 	return Healed;
+}
+
+float UCataclysmEnemyModifiers::HellfireAuraBurnPerTick(float CarrierWeaponDamage)
+{
+	return FMath::Max(0.0f, CarrierWeaponDamage) * HellfireAuraBurnShareOfWeaponDamage;
 }
 
 bool UCataclysmEnemyModifiers::AuraPulseIsDue(float SecondsSinceLastPulse)

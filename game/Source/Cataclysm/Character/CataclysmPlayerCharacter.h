@@ -251,7 +251,8 @@ public:
 	 * the opposite end of one blow: that one is stamped on whoever was hit.
 	 *
 	 * AND A BLOW THIS CHARACTER TOOK goes to its hit log, whoever dealt it.
-	 * Issue #2749 (B1). See `FCataclysmHitLog`.
+	 * Issue #2749 (B1). See `FCataclysmHitLog`. So does every blow credited to
+	 * it that is not damage over time, as an outgoing line (#2749, 2026-11-19).
 	 */
 	void OnSomethingWasHit(const FCataclysmHitNotice& Notice);
 

@@ -50,6 +50,8 @@
 // For the boss check in ApplyStun: boss-ness lives on the enemy as its rarity
 // step, so rule three has to ask the enemy class. Issue #395.
 #include "Character/CataclysmEnemyCharacter.h"
+// For a Corrupted Stalker's damage over time, which takes the multiplier its hits carry. Issue #2749.
+#include "Character/CataclysmCorruptedStalkerCharacter.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 #include "GameplayEffect.h"
@@ -2636,8 +2638,19 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	const bool bCastByAMinion = CastFor && !CastFor->FreeRepeatCastBy.IsExplicitlyNull();
 	const float KeptUnderTheCurse = bScalesWithInstigator && Instigator != Target
 		&& !bCastByAMinion ? KeptUnderWitheredTouch(Instigator) : 1.0f;
+	// AND A CORRUPTED STALKER'S, BY THE MULTIPLIER ITS HITS CARRY. Issue #2749's enemy burn slice, ruled by the
+	// coordinating session on 2026-11-19: its kit's damage over time is the player's table figure times the damage
+	// multiplier its build applied, as its hits are. Not for converted damage, which arrives from a hit that already
+	// carried it. One for every other applier, the corrupted double included (it carries no multiplier). FLAT FIGURES
+	// ONLY: a share of the target's health -- Void Splinter -- is laid by `ApplyShareOfHealthOverTime`, which does not
+	// come through here and takes no multiplier, as the coordinating session ruled on 2026-11-19 ("A share of the
+	// target's health already sizes itself to the target").
+	const ACataclysmCorruptedStalkerCharacter* const AppliedByAStalker =
+		Cast<ACataclysmCorruptedStalkerCharacter>(Instigator);
+	const float StalkersShare = AppliedByAStalker != nullptr && Instigator != Target && !bIsConvertedDamage
+		? AppliedByAStalker->DamageOverTimeMultiplier() : 1.0f;
 	const FCataclysmDamageOverTimeNumbers Numbers = DamageOverTimeNumbers(
-		bScalesWithInstigator ? Source : nullptr, DamagePerTick * KeptUnderTheCurse,
+		bScalesWithInstigator ? Source : nullptr, DamagePerTick * KeptUnderTheCurse * StalkersShare,
 		DurationSeconds, AskedWith);
 	if (!Numbers.bUsable)
 	{
