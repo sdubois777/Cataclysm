@@ -365,6 +365,14 @@ INVENTORY = {
         'character and not of any skill, and no blow is in hand: the '
         'question is asked while a creature chooses whom to attack, '
         'before anything is thrown',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmCommand.cpp',
+     'FName(MinionReserveReductionStat), Tags, Theirs->GetNumericAttribute(Stat)'):
+        "Crowned's reduction of what one minion, gadget or trap reserves, "
+        "asked with the making skill's tags or the kind's type row tags so a "
+        'row scoped to a keyword reaches only what it names, with the '
+        'attribute as the fallback; no blow is in hand, because it is asked '
+        'when the thing is made. Issue #2787 moved it here from the skill '
+        "templates' FervourReserveFor so minions no skill makes ask it too",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmAilments.cpp',
      'FName(Kind.Stat), SkillTags, FromAttribute, SkillHealthCostPercent'):
         "an ailment's chance and magnitude, asked with the skill's tags "

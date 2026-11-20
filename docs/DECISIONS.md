@@ -200,6 +200,141 @@ No proof's log and no suite log holds a "server/discover" line (#2745). The lock
 
 ---
 
+## 2026-11-20 — Every minion, gadget and trap the player makes holds part of the class resource back, by kind, and the resource bar shows it (#2787, branch A)
+
+**Affects:** `UCataclysmCommand::ReserveFor` and `HoldReserve`, new; `ReserveFor` now does the Crowned arithmetic that
+`FervourReserveFor` in `CataclysmSkillTemplates.cpp` did, and that function calls it
+(`game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h` and `.cpp`); `UCataclysmRisenImps::RiseOnDeath` and
+`RiseOnNecrosisKill`, and `NecrosisImpFervourReserve`, new (`CataclysmRisenImps.h` and `.cpp`);
+`ACataclysmMinion::SummonWarhound`, `SummonTyrantsMinion`, `PlaceSkillGadget` and `PlaceSkillTrap`, with
+`WarhoundFervourReserve`, `TyrantsMinionFervourReserve`, `SkillGadgetFervourReserve`, `SkillTrapFervourReserve` and
+`TagsOfType`, new (`CataclysmMinion.h` and `.cpp`); `UCataclysmCombatOverlay::FervourOf`, which now also answers true
+for a character that reserves anything (`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp`, and the
+comment in `CataclysmHUD.cpp`); comments in `CataclysmCharacterBase.h` and `CataclysmCombatAttributeSet.h`;
+`docs/Cataclysm_GDD_v2.md` (the paragraph "Every minion, gadget and trap the player makes reserves Fervour", formerly
+"Minion and gadget skills reserve Fervour", now with a table by kind); `docs/Play_Loop_Checklist.md` (what a
+Ritualist sees on the Fervour bar when a cursed enemy rises). Tests: twelve new in the group
+`Cataclysm.KindReserves.`, in `game/Source/Cataclysm/Tests/CataclysmKindReservesTests.cpp`; one renamed,
+`Cataclysm.FervourReserve.AMinionSpawnedDirectlyReservesNothing`, formerly `...AMinionMadeWithoutASkillReservesNothing`;
+one set-up changed, `Cataclysm.SetBonus.Tyrant10.TheCastCostsNothingWaitsForAndStartsNoCooldownAndRaisesNoSkillOrAttackUse`;
+and `tools/tests/test_every_minion_kind_reserves_fervour.py`, new. Issue
+[#2787](https://github.com/sdubois777/Cataclysm/issues/2787).
+
+### SAID FIRST
+
+- **NOT COMPILED OR RUN IN UNREAL YET.** Its window comes after slice 2b's (#2764).
+- **THE OWNER'S REPORT AND WHAT CAUSED IT.** The owner, 2026-11-20: "i've noticed the minions I create as a Ritualist
+  aren't holding my special resource in reserve, which they should be. All gadgets/traps/minions should hold some
+  reserve. This amount should be different based on what is being used, but they all should reserve some." The play
+  session's log (`game/Saved/Logs/Cataclysm.log` in the main checkout, 07:49 to 08:10) names only Greataxe skills and
+  the Conflagration aura, whose Shred is a `Status.Debuff.*` and so a curse to the Ritualist's starting node; the owner
+  then confirmed: "they're the risen imps from the first node in the ritualist tree". A risen imp reserved nothing, by
+  design. Summon Imp's own reserve of 10 worked: its five tests in `Cataclysm.FervourReserve.` passed in slice 2a's
+  window that morning.
+- **THIS REPLACES TWO RULINGS.** The 2026-09-27 entry's row "A risen imp reserves no Fervour. The ruling that a summon
+  needs unreserved Fervour governs skills that state a `FervourReserve`, and this is not a skill." And the 2026-09-30
+  entry's row "Risen imps, and minions other systems spawn directly | Reserve nothing. No skill stated a reserve for
+  them." A minion spawned by a bare `ACataclysmMinion::Spawn` call still reserves nothing; nothing in play makes one
+  that way.
+- **THE RITUALIST'S FIRST NODE'S SENTENCE IS NOT CHANGED HERE.** It still says nothing of the reserve. The accepted
+  interim sentence lives in `docs/Ritualist_Class_Tree_Final.json`, and changing it regenerates
+  `game/Data/PassiveNodes.csv`, which needs the DataTable assets rebuilt in the editor before the Python suite passes.
+  Branch B, which rebuilds assets anyway, rewords it.
+- **THE COUNT CAPS STAND IN THIS BRANCH.** The owner's ruling of the same day removes every count cap on a kind that
+  reserves; branch B does that, with Summon Imp's eviction and its explosion, and converts the five cap-raising stats.
+- **THE WAR GADGETS ARE LEFT OUT**, by the owner's rule that War rows stay unbuilt: issue #1934 holds their reserve.
+
+### The rulings
+
+The coordinating session, 2026-11-20, under the owner's delegation of unstated numbers:
+
+- **The figures:** a risen imp 10, from Summon Imp's row; an imp a necrosis kill raises 5; a Warhound 5; a Tyrant's
+  Minion 10; a skill gadget 15; a skill trap 5. A thrall's 30 and a summoned imp's 10 are unchanged.
+- **The skill gadget at 15**, although four gadgets on a pool of 100 leave 40, less than an Ultimate's 50: "how many
+  gadgets to hold against an Ultimate's cost is the player's choice, which is the trade the owner's rule creates and
+  the 2026-09-30 entry accepted for thralls."
+- **Refused when full:** "Nothing is made when the pool cannot hold its reserve, as Summon Imp already does, and
+  nothing is destroyed."
+- **A refresh or a move adds no second reserve**: a Warhound or a Tyrant's Minion refreshed while it stands, a skill
+  gadget moved by its slot's press.
+- **Crowned applies to every kind, never below 1.**
+- **The bar shows for a reserve OR a generator.**
+- **The figures are constants beside each kind's judgement numbers**, not a column of the workbook's Minion Types
+  sheet, "for now".
+- **Over the skill-trap cap**, the evicted trap's share is freed before the new one is asked to fit, as an evicted
+  imp's is (2026-09-30), until branch B removes the cap.
+
+### The change
+
+- **One function sizes every kind's reserve:** `UCataclysmCommand::ReserveFor(Commander, Stated, Tags)` returns the
+  stated figure less Crowned's `minion_reserve_reduction`, floored at 1, and zero unchanged. `FervourReserveFor` in the
+  skill templates passes it a row's figure; each maker below passes its kind's.
+- **Each maker asks `HasRoomToReserve` before it makes anything** and returns null when the pool cannot hold it, with
+  the reason logged; once the thing exists, `HoldReserve` records the figure on it and cuts the commander's Fervour to
+  what is left spendable. The makers: `RiseOnDeath` (Summon Imp's row's figure, asked with Summon Imp's tags),
+  `RiseOnNecrosisKill`, `SummonWarhound`, `SummonTyrantsMinion` (each after its refresh of one standing, so a refresh
+  holds nothing more), `PlaceSkillGadget` (which a press reaches only when the slot has no gadget standing, so a move
+  holds nothing more) and `PlaceSkillTrap` (with the traps the cap is about to destroy counted as freed).
+- **A kind's tags are read before the spawn**, by `ACataclysmMinion::TagsOfType`, because the pool must have room
+  before anything exists. `Spawn` reads a new minion's tags through the same function.
+- **The bar.** `UCataclysmCombatOverlay::FervourOf` refused a character with no generator, so a character holding a
+  skill trap and no generator would have reserved Fervour and seen no bar at all. It now answers true for a generator
+  or for anything reserved.
+
+### Why these figures: what the genre does
+
+Fetched 2026-11-20, game text from poedb.tw and poe2db.tw unless a guide is named.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile 2 | [poe2db, Skeletal Warrior](https://poe2db.tw/us/Skeletal_Warrior), [Skeletal Arsonist](https://poe2db.tw/us/Skeletal_Arsonist), [Skeletal Brute](https://poe2db.tw/us/Skeletal_Brute) | "Reservation: (60—20) Spirit", "(90—39)", "(165—48)": a permanent minion reserves, and the stronger reserves more |
+| Path of Exile 2 | [poe2db, Raise Zombie](https://poe2db.tw/us/Raise_Zombie), [Unearth](https://poe2db.tw/us/Unearth) | "Zombie duration is 20 seconds" and "Bone Construct duration is 15 seconds", each paid in mana with no reservation |
+| Path of Exile 2 | [poe2db, Ancestral Bond](https://poe2db.tw/us/Ancestral_Bond) | "Totems reserve 75 Spirit each" |
+| Path of Exile 2 | [Maxroll, Spirit guide](https://maxroll.gg/poe2/resources/spirit-guide) | "temporary Minions have no Spirit requirement, permanent Minions do reserve some"; a character can reach 100 Spirit from the campaign |
+| Path of Exile 1 | [poedb, Summon Skitterbots](https://poedb.tw/us/Summon_Skitterbots), [Herald of Purity](https://poedb.tw/us/Herald_of_Purity) | "Reservation: 35% Mana" and "25% Mana"; the herald's sentinels, "Maximum 4", reserve nothing of their own |
+| Path of Exile 1 | [poedb, Summon Reaper](https://poedb.tw/us/Summon_Reaper), [Summon Skeletons](https://poedb.tw/us/Summon_Skeletons) | paid in mana, "Cost: (15—28) Mana" and "(5—16)", no reservation |
+| Last Epoch | Icy Veins and Maxroll Necromancer guides, AS QUOTED BY A WEB SEARCH; the pages themselves were not read | Skeletal Mage 21 mana, limit 3; Wraith 20 mana, limit 6: no reservation |
+| Diablo IV | Maxroll's Book of the Dead guide, AS QUOTED BY A WEB SEARCH | minions unlocked free; no reservation found |
+| Torchlight Infinite | Maxroll and community guides, AS QUOTED BY A WEB SEARCH | summons "seal" mana as auras do; no figures found |
+
+**What the research settles:** a game that reserves sizes the figure by how strong the thing is (Path of Exile 2's
+strongest skeleton reserves 2.75 times its weakest at gem level 1), and reserves for what persists. **What it does not
+settle, and the owner's ruling decides instead:** those games reserve nothing for temporary minions, and the owner
+ruled that every kind reserves some. So the shortest-lived kinds get the smallest figure rather than none.
+
+**The judgement**, on the 2026-09-09 entry's rule that "the sizes follow how permanent and how strong the thing is":
+
+| Kind | Stands | Reserve | Why |
+| :-- | :-- | --: | :-- |
+| Risen imp | 20 s | 10 | the same creature as Summon Imp's, read from its row |
+| Necrosis imp | 5-10 s | 5 | the same creature, half the time or less |
+| Warhound | 10 s | 5 | half an imp's time, from a chance on a blow taken |
+| Tyrant's Minion | 10 s | 10 | half an imp's time, about three times an imp's blow |
+| Skill gadget | until the floor is cleared or it is killed | 15 | half a thrall's 30: as long-lived, but fixed in place and one skill |
+| Skill trap | 20 s, one cast | 5 | the War gadgets' 5 |
+
+**Measured against the Ritualist's army:** a pool of 150 holds three imps and four thralls whether the imps are summoned
+or risen, as before, since both reserve 10.
+
+### Tests
+
+- **Twelve new, group `Cataclysm.KindReserves.`:** a risen imp reserves Summon Imp's 10 at once and frees it when it
+  dies; a pool that cannot hold a risen imp raises none (control: a pool that can); under Crowned a risen imp reserves
+  5; a necrosis imp reserves 5 and a full pool raises none; a Warhound and a Tyrant's Minion each reserve their figure,
+  a refresh holds nothing more and a full pool summons none; a skill gadget reserves 15 and a second press moves it and
+  holds nothing more; a skill trap reserves 5 and over the cap the oldest's share is freed first; a full pool refuses a
+  skill gadget (control: a pool that holds two); Crowned takes 5 off every kind, never below 1; with every kind gone,
+  nothing is held; and the bar is drawn for a reserve with no generator and not with neither.
+- **One renamed**, because its name became untrue: `Cataclysm.FervourReserve.AMinionSpawnedDirectlyReservesNothing`.
+- **One set-up changed:** the Tyrant's Chains ten-piece's cast test sets a maximum of 100 plus the Tyrant's Minion's 10,
+  because the minion stands before the pool is filled and a maximum of 100 would leave 90 to hold.
+- **`tools/tests/test_every_minion_kind_reserves_fervour.py`, 13 tests:** the design document's table names exactly the
+  six kinds, each figure in it is the one the game uses (Summon Imp's row for the risen imp), and every figure is above
+  zero. Proved with `tools/prove_guard.py`: the Warhound's constant changed from 5 to 6 failed
+  `test_each_kinds_figure_is_the_one_the_game_uses[Warhound]` and nothing else, and the restored file passed all 13.
+
+---
+
 ## 2026-11-20 — The five city upgrades that change what a kill pays act in a dungeon standing on the city: experience, magic find, gold, loot and crafting materials (#2781)
 
 **Affects:** `FCataclysmCityDungeonRewards`, new, `UCataclysmCityUpgradeRules::DungeonRewardsOf`, new, and

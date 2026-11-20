@@ -138,6 +138,10 @@ Choose a dungeon on **another** city than the one you will walk. This is how you
   of its health they removed, so Summon Imp's box fills and levels without the character striking at all, and the log
   says `PLAY LOOP: skill Summon Imp reached level 2, from level 1`.
 
+  **On a Ritualist holding the tree's first node, watch the Fervour bar when a cursed enemy rises as an imp:** the
+  bar's right-hand end turns dark and reads `10 reserved` with one imp standing and `20 reserved` with two, and the
+  bar's fill stops where that section begins. When an imp's 20 seconds run out, its 10 goes. Issue #2787.
+
 ### 8. Take the last floor's stairs
 
 - **On screen:** back in the capital, with the map open. The map's status line shows the new day. Its second line says

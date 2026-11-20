@@ -4,6 +4,8 @@
 #include "AbilitySystem/CataclysmSecondSelf.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+// For Crowned's attribute, which `ReserveFor` falls back to. Issue #2787.
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -833,6 +835,43 @@ void UCataclysmCommand::ClampFervourToSpendable(const AActor* Commander)
 		AbilitySystem->SetNumericAttributeBase(
 			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), Spendable);
 	}
+}
+
+float UCataclysmCommand::ReserveFor(const AActor* Commander, float Stated,
+									const FGameplayTagContainer& Tags)
+{
+	if (Stated <= 0.0f)
+	{
+		return Stated;
+	}
+
+	// CROWNED'S REDUCTION, read as `FervourReserveFor` in CataclysmSkillTemplates.cpp
+	// read it before issue #2787 moved it here: the pipeline's figure with the
+	// attribute as the fallback, and the attribute only when the component holds
+	// its set, because reading one it does not hold raises an engine ensure.
+	float Reduction = 0.0f;
+	const FGameplayAttribute Stat = UCataclysmCombatAttributeSet::GetMinionReserveReductionAttribute();
+	if (const UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Commander)))
+	{
+		if (Theirs->HasAttributeSetForAttribute(Stat))
+		{
+			Reduction = Theirs->StatForSkill(FName(MinionReserveReductionStat), Tags,
+											 Theirs->GetNumericAttribute(Stat));
+		}
+	}
+	return FMath::Max(SmallestMinionReserve, Stated - Reduction);
+}
+
+void UCataclysmCommand::HoldReserve(const AActor* Commander, ACataclysmCharacterBase* Follower,
+									float Reserve)
+{
+	if (!IsValid(Follower))
+	{
+		return;
+	}
+	Follower->ReservedFervour = Reserve;
+	ClampFervourToSpendable(Commander);
 }
 
 bool UCataclysmCommand::Subjugate(AActor* Commander, AActor* Enemy)

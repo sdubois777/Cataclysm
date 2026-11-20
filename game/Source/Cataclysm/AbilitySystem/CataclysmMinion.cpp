@@ -356,6 +356,34 @@ const FCataclysmMinionTypeRow* ACataclysmMinion::FindType(
 	return Found;
 }
 
+namespace
+{
+	/** A type row's comma-separated Tags column as tags, leaving out any name that is not a registered tag. */
+	FGameplayTagContainer MinionTypeRowTags(const FCataclysmMinionTypeRow& Type)
+	{
+		FGameplayTagContainer Tags;
+		TArray<FString> Named;
+		Type.Tags.ParseIntoArray(Named, TEXT(","), /*InCullEmpty=*/true);
+		for (FString& Each : Named)
+		{
+			Each.TrimStartAndEndInline();
+			const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(
+				FName(*Each), /*ErrorIfNotFound=*/false);
+			if (Tag.IsValid())
+			{
+				Tags.AddTag(Tag);
+			}
+		}
+		return Tags;
+	}
+}
+
+FGameplayTagContainer ACataclysmMinion::TagsOfType(const FString& InTypeName)
+{
+	const FCataclysmMinionTypeRow* Type = FindType(LoadTypeTable(), InTypeName);
+	return Type ? MinionTypeRowTags(*Type) : FGameplayTagContainer();
+}
+
 FCataclysmHitDelivery ACataclysmMinion::OwnBlowDelivery(AActor* Follower)
 {
 	return MinionDelivery(Follower, /*bIsArea=*/false);
@@ -844,6 +872,17 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillGadget(AActor* Player, ECataclysmA
 		return nullptr;
 	}
 
+	// AND THE POOL MUST HOLD ITS RESERVE, issue #2787: when it cannot, the press places nothing. Asked only for a new
+	// gadget; a press that MOVES the slot's standing one never reaches this function.
+	const float Reserve = UCataclysmCommand::ReserveFor(Player, SkillGadgetFervourReserve, TagsOfType(SkillGadgetTypeName));
+	if (!UCataclysmCommand::HasRoomToReserve(Player, Reserve))
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("%s has no room in its pool for a skill gadget reserving %.0f Fervour, so none was placed."),
+			*Player->GetName(), Reserve);
+		return nullptr;
+	}
+
 	// A LIFETIME OF A SECOND, TAKEN AWAY AT ONCE BELOW. `Spawn` refuses nought, and the engine's `SetLifeSpan(0)` is
 	// "never expires", which is S8's "no lifespan".
 	ACataclysmMinion* Placed =
@@ -866,6 +905,7 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillGadget(AActor* Player, ECataclysmA
 	Placed->bOutsideSummonCaps = true;
 	Placed->SkillGadgetSlot = Slot;
 	Placed->SkillGadgetPlacedAtSeconds = Placed->GetWorld()->GetTimeSeconds();
+	UCataclysmCommand::HoldReserve(Player, Placed, Reserve);
 	return Placed;
 }
 
@@ -1275,19 +1315,9 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 		Minion->bIsMachine = Type->Family.Equals(TEXT("Machine"), ESearchCase::IgnoreCase);
 
 		// ITS TYPE ROW'S TAGS, which every summoner lookup below is asked with.
-		// Issue #1833, deployable Part 1.
-		TArray<FString> Named;
-		Type->Tags.ParseIntoArray(Named, TEXT(","), /*InCullEmpty=*/true);
-		for (FString& Each : Named)
-		{
-			Each.TrimStartAndEndInline();
-			const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(
-				FName(*Each), /*ErrorIfNotFound=*/false);
-			if (Tag.IsValid())
-			{
-				Minion->TypeTags.AddTag(Tag);
-			}
-		}
+		// Issue #1833, deployable Part 1. Read by the same function its reserve
+		// is asked with before the spawn, issue #2787.
+		Minion->TypeTags = MinionTypeRowTags(*Type);
 		// AND LENGTHENED BY THE SUMMONER'S `minion_range`, asked with this
 		// minion's type tags so "Gadgets have 20%-40% increased attack range"
 		// reaches a machine and not an imp. Issue #1833, ruled 2026-09-30.
@@ -2197,6 +2227,18 @@ ACataclysmMinion* ACataclysmMinion::SummonTyrantsMinion(AActor* Commander, bool 
 		return Standing;
 	}
 
+	// AND THE POOL MUST HOLD ITS RESERVE, issue #2787: when it cannot, none is summoned. The lost one is dead, so its
+	// own reserve has already left the total.
+	const float Reserve = UCataclysmCommand::ReserveFor(
+		Commander, TyrantsMinionFervourReserve, TagsOfType(TyrantsMinionTypeName));
+	if (!UCataclysmCommand::HasRoomToReserve(Commander, Reserve))
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("%s has no room in its pool for a Tyrant's Minion reserving %.0f Fervour, so none was summoned."),
+			*Commander->GetName(), Reserve);
+		return nullptr;
+	}
+
 	// WHERE THE LOST ONE STOOD, a judgement: the sentence says only that it is summoned. Told no explosion radius,
 	// as no summon skill made it, so Every One Bursts does not explode it; Shared Ruin's blast and this bonus's do.
 	ACataclysmMinion* Made = Spawn(Commander, Where, Seconds, /*bBurns=*/false, FString(TyrantsMinionTypeName));
@@ -2205,6 +2247,7 @@ ACataclysmMinion* ACataclysmMinion::SummonTyrantsMinion(AActor* Commander, bool 
 		// OUTSIDE EVERY SUMMON CAP, Q4, as a necrosis-risen imp and a skill gadget are.
 		Made->bOutsideSummonCaps = true;
 		Made->bIsTyrantsMinion = true;
+		UCataclysmCommand::HoldReserve(Commander, Made, Reserve);
 	}
 	return Made;
 }
@@ -2279,6 +2322,16 @@ ACataclysmMinion* ACataclysmMinion::SummonWarhound(AActor* Summoner)
 		return Standing;
 	}
 
+	// AND THE POOL MUST HOLD ITS RESERVE, issue #2787: when it cannot, none is summoned.
+	const float Reserve = UCataclysmCommand::ReserveFor(Summoner, WarhoundFervourReserve, TagsOfType(WarhoundTypeName));
+	if (!UCataclysmCommand::HasRoomToReserve(Summoner, Reserve))
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("%s has no room in its pool for a Warhound reserving %.0f Fervour, so none was summoned."),
+			*Summoner->GetName(), Reserve);
+		return nullptr;
+	}
+
 	// WHERE A RE-SUMMONED MINION APPEARS, in front of its summoner: a judgement, since the sentence names no place and
 	// no minion has died where it could stand. Told no explosion radius, as no summon skill made it.
 	const FVector Where = Summoner->GetActorLocation()
@@ -2289,6 +2342,7 @@ ACataclysmMinion* ACataclysmMinion::SummonWarhound(AActor* Summoner)
 		// OUTSIDE EVERY SUMMON CAP (Q3), as a Tyrant's Minion is.
 		Made->bOutsideSummonCaps = true;
 		Made->bIsWarhound = true;
+		UCataclysmCommand::HoldReserve(Summoner, Made, Reserve);
 	}
 	return Made;
 }
@@ -2580,6 +2634,27 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbi
 		return nullptr;
 	}
 
+	// AND THE POOL MUST HOLD ITS RESERVE, issue #2787, WITH THE TRAPS THE CAP IS ABOUT TO DESTROY COUNTED AS FREED,
+	// as Summon Imp counts its evicted oldest (ruled 2026-09-30). When it cannot, nothing is placed and nothing is
+	// destroyed, and the press pays nothing: `PressOfASkillTrapSlot` pays only for a trap placed.
+	const float Reserve = UCataclysmCommand::ReserveFor(Player, SkillTrapFervourReserve, TagsOfType(SkillTrapTypeName));
+	{
+		const TArray<ACataclysmMinion*> AboutToGo = SkillTrapsOf(Player);
+		const int32 Evicted = FMath::Max(0, AboutToGo.Num() - SkillTrapsMostFor(Player) + 1);
+		float Freed = 0.0f;
+		for (int32 Index = 0; Index < Evicted && Index < AboutToGo.Num(); ++Index)
+		{
+			Freed += AboutToGo[Index]->ReservedFervour;
+		}
+		if (!UCataclysmCommand::HasRoomToReserve(Player, Reserve, Freed))
+		{
+			UE_LOG(LogCataclysm, Verbose,
+				TEXT("%s has no room in its pool for a skill trap reserving %.0f Fervour, so none was placed."),
+				*Player->GetName(), Reserve);
+			return nullptr;
+		}
+	}
+
 	// ITS 20 S (T4), lengthened by `Spawn` with the summoner's `minion_duration` rows naming its tags: "Traps last
 	// 50%-100% longer before expiring". THE LIFESPAN IS THE EXPIRY: the engine destroys the actor, and no trigger runs.
 	ACataclysmMinion* Placed =
@@ -2620,6 +2695,8 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbi
 		Placed->GetGameTimeSinceCreation() + SkillTrapArmingSecondsFor(Player, Placed->TypeTags);
 	Placed->bSkillTrapArmed = false;
 	Placed->ShowSkillTrapTint();
+	// ITS RESERVE, ONCE THE EVICTED ARE GONE, so the cut to the spendable Fervour reads the total without them.
+	UCataclysmCommand::HoldReserve(Player, Placed, Reserve);
 
 	// AND THE PLAYER IS TOLD, with the trap's tags, for a row on placing a trap (M2).
 	if (UCataclysmAbilitySystemComponent* Theirs =

@@ -584,9 +584,10 @@ public:
 	 * read site subtracts it: every attribute in this set is floored at zero,
 	 * so a negative bonus would be stored as zero.
 	 *
-	 * IT REACHES EVERY SKILL THAT STATES A RESERVE, and a thrall's and an imp's
-	 * reserves are read today; a gadget's is not, which is issue #1934's
-	 * remaining half. See `FervourReserveFor` in `CataclysmSkillTemplates.cpp`.
+	 * IT REACHES EVERY KIND THAT RESERVES: thralls, imps and, since issue #2787,
+	 * every minion, gadget and trap no skill makes. A War gadget's reserve is not
+	 * read yet, which is issue #1934's remaining half. See
+	 * `UCataclysmCommand::ReserveFor`.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Minions", ReplicatedUsing = OnRep_MinionReserveReduction)
 	FGameplayAttributeData MinionReserveReduction;

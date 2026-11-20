@@ -4246,12 +4246,15 @@ bool FCataclysmImpsCountTowardTheThrallCapTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmADirectMinionReservesNothingTest,
-	"Cataclysm.FervourReserve.AMinionMadeWithoutASkillReservesNothing",
+	"Cataclysm.FervourReserve.AMinionSpawnedDirectlyReservesNothing",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * Risen imps and minions spawned directly by other systems reserve nothing,
- * ruled 2026-09-30: no skill stated a reserve for them.
+ * A minion made by a bare `ACataclysmMinion::Spawn` call reserves nothing: the
+ * reserve is recorded by whatever made it, and `Spawn` alone records none.
+ * Until issue #2787 this said risen imps reserve nothing too, by the ruling of
+ * 2026-09-30; the owner's ruling of 2026-11-20 gave every maker in play a
+ * reserve, and `Cataclysm.KindReserves.` tests each one.
  */
 bool FCataclysmADirectMinionReservesNothingTest::RunTest(const FString&)
 {
