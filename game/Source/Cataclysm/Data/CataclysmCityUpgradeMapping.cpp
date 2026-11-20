@@ -69,7 +69,7 @@ namespace
 			{ TEXT("Explorer_Increases_the_chance_of_dungeons_on_thie"),
 			  ECataclysmCityUpgradeEffect::SubTypeChanceVolatile },
 
-			// Treasurer and Artisan. Issues #41 and #1264.
+			// Treasurer and Artisan. Not built yet: issue #2781.
 			{ TEXT("Treasurer_Dungeons_here_provide_2x_more_experience"),
 			  ECataclysmCityUpgradeEffect::DungeonExperience },
 			{ TEXT("Treasurer_Dungeons_here_have_10_increased_magic_f"),

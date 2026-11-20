@@ -3728,10 +3728,26 @@ EMPIRE_BRANCH_CAPSTONE_THRESHOLD = 200
 #: shown but cannot be bought until their system is built, as unbuilt city
 #: upgrades are refused today." Each clause names the system and, where there is
 #: one, the issue that builds it.
+#:
+#: GOLD IS A SYSTEM THE GAME HAS SINCE ISSUE #2742 (closed 2026-11-19): kills
+#: drop it, the character holds a balance, and a city upgrade costs it. So
+#: neither "gold" nor "a gold cost for city upgrades" is a reason any more, and
+#: slice 6 (2026-11-20) gave each node those two held the reason it really
+#: waits on, or built it. The coordinating session's rulings R1 to R10 of that
+#: day; `docs/DECISIONS.md` has them.
 EMPIRE_TREE_SYSTEMS = {
-    "gold": "gold, which the game does not have yet (issue #2742)",
-    "upgrade cost": ("a gold cost for city upgrades, which are free and "
-                     "immediate today (issue #1264)"),
+    "gold rules": "its gold rules, which are not built yet (issue #2741)",
+    "treasurer upgrade": ("a Treasurer city upgrade, which cannot be bought yet "
+                          "(issue #2781)"),
+    "gold ruling": "a ruling on what it does, which the owner has not made",
+    "market": "a market, which the game does not have",
+    "gold cap": "a gold cap, which the game does not have",
+    "gold cap and death loss": ("a gold cap and a gold loss on death, which the "
+                                "game does not have"),
+    "build time": ("a build time for city upgrades, which is zero by the "
+                   "owner's ruling of 2026-11-18 (issue #1264)"),
+    "fee figure": "a figure for its gold fee, which the design does not state",
+    "cap figure": "a figure for its cap, which the design does not state",
     "crafting": "crafting, which the game does not have yet (issue #47)",
     "population growth": ("a population growth rate, which the design does "
                           "not define"),
@@ -3811,33 +3827,39 @@ EMPIRE_TREE_BUILT = {
 EMPIRE_TREE_REFUSED = {
     # The four tier-milestone capstones' options.
     "The Soul Forge": "crafting", "The Master Tinkerer": "crafting",
-    "The Midas Touch": "gold", "Imperial Prowess": "prowess ruling",
+    "The Midas Touch": "gold rules", "Imperial Prowess": "prowess ruling",
     # Architect.
-    "Scaffolding": "upgrade cost", "Rapid Renovation": "upgrade cost",
-    "Public Works": "upgrade cost", "Scorched Earth": "destroy upgrade",
+    "Scaffolding": "build time", "Rapid Renovation": "build time",
+    "Public Works": "gold rules", "Scorched Earth": "destroy upgrade",
     "Civic Pride": "population growth",
     # Explorer.
     "Supply Caches": "loot chest", "Field Depot I": "stash",
     "Field Depot II": "stash", "Field Depot III": "stash",
     "Gamble": "modifier reroll", "Scout Parties": "bonus dungeon",
     "Auto-Loot": "loot filter",
-    # Treasury.
-    "Coinage": "gold", "Master Trader": "gold", "War Funding": "upgrade cost",
-    "Tax Collection": "gold", "Merchant Guild": "gold", "Minting Rights": "gold",
-    "Trade Routes": "gold", "Cleanup Crew": "gold",
-    "Municipal Bonds": "upgrade cost", "Global Credit": "upgrade cost",
-    "Investment Funds": "gold", "Economic Zones": "gold",
-    "Surplus Storage": "gold", "Price Controls": "upgrade cost",
-    "Fiscal Policy": "gold", "Commercial Hubs": "gold",
-    "Rapid Funding": "upgrade cost", "Salvage Rights": "gold", "Thrifty": "gold",
-    "Wealth Interest": "gold", "Wartime Economy": "gold", "Profiteering": "gold",
-    "Venture Capital": "gold", "Bribery": "gold", "Black Market": "gold",
-    "Reinvestment": "upgrade cost", "Imperial Reserve": "gold",
-    "Untouchable Wealth": "gold", "War Chest": "gold", "Treasury Guard": "gold",
-    "Sovereign Loans": "upgrade cost", "Prosperity Index": "gold",
-    "Economic Bailout": "gold", "The Gilded Path": "gold",
-    "Stimulus Package": "gold", "Pax Imperialis": "gold",
-    "The Golden Touch": "gold",
+    # Treasury. Slice 6 (2026-11-20) builds the "gold rules" nodes; R1 to R4 wait
+    # on a Treasurer city upgrade (#2781), R7 to R9 on the owner, and the rest on
+    # what their text needs and the game lacks.
+    "Coinage": "gold rules", "Minting Rights": "gold rules",
+    "Untouchable Wealth": "gold rules", "Wartime Economy": "gold rules",
+    "Profiteering": "gold rules", "Prosperity Index": "gold rules",
+    "Fiscal Policy": "gold rules", "Stimulus Package": "gold rules",
+    "The Gilded Path": "gold rules", "Venture Capital": "gold rules",
+    "Imperial Reserve": "gold rules", "Tax Collection": "gold rules",
+    "Pax Imperialis": "gold rules", "Wealth Interest": "gold rules",
+    "Salvage Rights": "gold rules", "Investment Funds": "gold rules",
+    "Cleanup Crew": "gold rules", "Municipal Bonds": "gold rules",
+    "War Funding": "gold rules", "Price Controls": "gold rules",
+    "Commercial Hubs": "treasurer upgrade", "Economic Zones": "treasurer upgrade",
+    "Trade Routes": "treasurer upgrade", "The Golden Touch": "treasurer upgrade",
+    "Treasury Guard": "gold ruling", "Global Credit": "gold ruling",
+    "Sovereign Loans": "gold ruling",
+    "Black Market": "market", "Master Trader": "market",
+    "Merchant Guild": "market", "Thrifty": "market",
+    "Surplus Storage": "gold cap", "War Chest": "gold cap and death loss",
+    "Rapid Funding": "build time",
+    "Bribery": "fee figure", "Economic Bailout": "fee figure",
+    "Reinvestment": "cap figure",
     # Artisan.
     "Apprentice Smith": "crafting", "Material Conservation": "crafting",
     "Rough Draft": "crafting", "Tool Maintenance": "crafting",

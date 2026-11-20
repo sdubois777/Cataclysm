@@ -144,7 +144,7 @@ enum class ECataclysmCityUpgradeEffect : uint8
 	// standing on this city pays, and in this layer an empire dungeon is a timer
 	// and a bite. Walking one is the dungeon level's, where kills drop
 	// experience, loot, materials and, since issue #2742's first slice, gold;
-	// nothing there reads these effects yet. Issue #41 is the dungeon runtime.
+	// nothing there reads these effects yet. Issue #2781 builds them.
 	// ----------------------------------------------------------------------
 
 	/** Multiplier. Dungeons here grant that many times the experience. */
