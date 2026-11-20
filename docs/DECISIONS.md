@@ -1004,9 +1004,13 @@ does not select it, so the proof does not show that.
 
 ### Python, measured
 
-At `96a9b2466`, the change and this entry committed: "7704 passed, 9 skipped in 399.95s (0:06:39)"; the JUnit file:
-tests 7713, failures 0, errors 0, skipped 9. ruff: "All checks passed!". The same counts as at the display slice's
-`8b03a4bed`, as expected: this branch adds and removes no Python test.
+**After the rebase**, at `34f9b9c38`, the change and this entry committed: "7760 passed, 9 skipped in 305.44s
+(0:05:05)"; the JUnit file: tests 7769, failures 0, errors 0, skipped 9. ruff: "All checks passed!". The same counts
+as window fix-2725-w1's at `31002c802` ("7760 passed, 9 skipped in 312.42s"), whose tree differs from `9772aea2a`'s
+only in `docs/DECISIONS.md`, as expected: this branch adds and removes no Python test.
+
+Before the rebase, at `96a9b2466`: "7704 passed, 9 skipped in 399.95s (0:06:39)"; the JUnit file: tests 7713,
+failures 0, errors 0, skipped 9. The same counts as at the display slice's `8b03a4bed`.
 
 ---
 
