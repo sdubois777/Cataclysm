@@ -2,6 +2,207 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-20 — The empire upgrade tree's Relentless Pursuit counts the clears since the last death, with the run record at version 11, and its four drop rules roll a kill's extra drops (#2741, slice 5b)
+
+**Affects:** `UCataclysmEmpireRun::ClearsSinceLastDeath`, raised in `ClearDungeon` and set to 0 in `NoteDeath` and
+`BeginForCharacter` (`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h` and `.cpp`);
+`UCataclysmRunSave::ClearsSinceLastDeath` and `SchemaVersionNow` 11 (`game/Source/Cataclysm/Save/CataclysmSaveRecords.h`),
+`Migrate_10_to_11` (`game/Source/Cataclysm/Save/CataclysmSaveRecords.cpp`), and its gather and apply
+(`game/Source/Cataclysm/Save/CataclysmSaveGather.cpp`, `game/Source/Cataclysm/Save/CataclysmSaveApply.cpp`);
+`FCataclysmEmpireTreeDropRules`, new, `UCataclysmEmpireTree::DropRulesFor` and `HighRollerFloorsAStep`, new, and the
+player bonuses' and dungeon state's slice 5b fields (`game/Source/Cataclysm/Player/CataclysmEmpireTree.h` and `.cpp`);
+`ACataclysmDungeonGameMode::EmpireTreeDropRulesHere` and `EmpireTreeDropRulesIn`, new
+(`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp`); `UCataclysmDropSpawner::SpawnTheTreesExtraDropsFor`,
+new, and `SpawnDropsFor` and `SpawnMaterialsFor`, each a trailing parameter (`game/Source/Cataclysm/Items/CataclysmDroppedItem.h`
+and `.cpp`); `UCataclysmDropRoll::RollRarityAtLeast`, new, and `RollItem`, a trailing parameter
+(`game/Source/Cataclysm/Items/CataclysmDropRoll.h` and `.cpp`); `ACataclysmEnemyCharacter::HandleDeath`
+(`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp`); `ECataclysmEmpireTreeEffect`, five values
+(`game/Source/Cataclysm/Data/CataclysmDataRows.h`); `tools/generate_datatables.py`, `game/Data/EmpireTreeEffects.csv`, 81
+rows, and `game/Content/Data/DT_EmpireTreeEffects.uasset`; `game/Tests/SaveFixtures/Run_v11.json`, new, and
+`game/Tests/SaveFixtures/README.md`. Tests: `game/Source/Cataclysm/Tests/CataclysmEmpireTreeDropsTests.cpp`, new, 13 in the
+new group `Cataclysm.EmpireTreeDrops.`; the run record's version moved in `CataclysmConsumptionDoubleTests.cpp`,
+`CataclysmDeathCostTests.cpp`, `CataclysmEarnedBossSaveTests.cpp`, `CataclysmEmpireTreeEventsTests.cpp`,
+`CataclysmGoldTests.cpp`, `CataclysmSaveLoadTests.cpp`, `CataclysmSaveRecordTests.cpp`, `CataclysmWalkSeedTests.cpp` and
+`CataclysmWinningTheRunTests.cpp`, and `AddTheRunsVersion11Defaults` in `CataclysmSaveFixtures.h`, all in
+`game/Source/Cataclysm/Tests/`; `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` pins 81 rows;
+`tools/tests/test_empire_tree_drop_nodes.py`, new; `tools/tests/test_empire_tree_effects_match_their_texts.py`,
+`tools/tests/test_empire_tree_player_nodes.py` and `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`,
+changed. Issue [#2741](https://github.com/sdubois777/Cataclysm/issues/2741), slice 5b.
+
+### SAID FIRST
+
+- **COMPILED, RUN AND PROVED IN ONE WINDOW (tree-5b-w1)**, at `ff89528e8` on development `e583b0788`:
+  - all three of phase 2's compiles succeeded with no warning, and the first, which compiled the unity file holding
+    `CataclysmAbilitySystemComponent.cpp`, printed no C4996 `CountBits` warning, as the coordinating session registered
+    after #2756 merged;
+  - the written-out record version check found the run, character and account records at 11, 10 and 4, and no test
+    stating another version;
+  - the asset step rebuilt `DT_EmpireTreeEffects.uasset` with its 81 rows and committed it with its sources file alone;
+  - the eighteen groups each passed alone at their registered counts;
+  - the whole Unreal suite performed the registered 4998, all succeeding, with 47 skipped halves and "852 written and
+    deleted, 0 left behind";
+  - Python passed, 7767 with 9 skipped, and ruff passed;
+  - the eight C++ guard proofs each proved, failing exactly the registered test. **ONE PREDICTION WAS ONE ASSERTION
+    SHORT**: Q5 was registered to fail 2 assertions and failed 3. The third is the test's closing "and nothing lies on
+    the floor", which counts over all its cases the same extra drop its per-case check counts; the registration missed
+    it. The six Python guard proofs were proved in phase 1.
+- **WITH THIS SLICE, 77 OF THE TREE'S NODES ACT**: slices 3a, 3b, 4, 5a and these five. They are every name in
+  `EMPIRE_TREE_BUILT` (`tools/generate_datatables.py`); the other 90 nodes and options are shown and cannot be bought.
+- **A KILL WITH NONE OF THESE NODES ROLLS EXACTLY WHAT IT ROLLED BEFORE.** Every chance is rolled only above nought and
+  only for the rungs it names, and the three extra drops are rolled after the gold; so a kill's stream is drawn as it
+  was until a node is bought. `Cataclysm.EmpireTreeDrops.AChanceOfNoughtOrARungNotNamedDrawsNothingFromTheStream` holds
+  it.
+- **THE RUN RECORD IS AT VERSION 11**, its own number; the character record is at its own 10 (issue #2764).
+
+### The rulings this slice builds on
+
+From the coordinating session on slice 5's plan and slice 5b's, 2026-11-19, **EACH A JUDGEMENT**, since the node texts
+leave them open:
+
+- **D5, Relentless Pursuit**, "+5% Loot Quantity for each dungeon cleared without dying per point", reads the clears in a
+  row since the last death this run: a death ends the walk it happened on, so every clear is "without dying" and only a
+  streak gives the words a meaning. The other reading, "no death this run", would make one death cost the node for the
+  rest of the run. A new run counter, set to 0 where a death is noted and by a new run, at run record version 11. **Cap
+  +100%** (Q9), sized as #1390 sized Speed Runner, beside Bounty's +75% and The Hoarder's +100%; nothing can measure it,
+  the simulation having no loot. An Explorer figure, so One-Day Specialist doubles it after its cap.
+- **D6, the four drop rules.** "Elite enemies" is the rung named Elite only, not every rung above Common. "An additional
+  item" is one more gear item rolled as that kill's others, a flat chance per kill not multiplied by loot quantity.
+  Plunderer's Eye is the same for one more crafting material from any rung. The High Roller: a kill paying as Boss or
+  Cataclysm Boss rolls 5% for each whole ten floors added (C3), held at 100%, for one more gear item whose rarity is
+  Legendary or rarer. The three Explorer chances are doubled by One-Day Specialist.
+- **E1, Scavenger reaches kills only**, read in `HandleDeath` with the other three; a dungeon rule's reward of drops is
+  not a kill.
+- **E2, Scavenger's second material is the same drop holding two**, not a second drop on the floor: the design halved
+  material drops on 2026-08-23 because the floor was cluttered, and the expected quantity is the same.
+- **E3, a death in the Cataclysm boss dungeon does not end the count**: the run does not note that death, by the ruling
+  that left that dungeon's deaths to issue #43, and clearing the boss begins the next run, which starts it again.
+- **E4, no simulation change**: `sim/cataclysm_sim/loot.py` mirrors the drop roll's figures, and The High Roller's draw is
+  a renormalization of shares it already has.
+
+### Judgements of this session, accepted by the coordinating session on 2026-11-20, each a judgement
+
+1. **Plunderer's Eye's extra material also gets Scavenger's chance**: it is a crafting material a kill drops.
+2. **An extra drop lands where the Infested Hoard's extra drop does** (`ScatterOffset(0, 1)`, on the corpse), so it can
+   lie on top of a kill's lone ordinary drop.
+3. **The High Roller's rarity is the ordinary roll's own shares from Legendary up, renormalized**, one draw
+   (`UCataclysmDropRoll::RollRarityAtLeast`), so among the rungs it can reach each is as likely against the others as the
+   ordinary roll makes it; **and Legendary itself when no rung from Legendary up has a share at the tier**, the one answer
+   the words leave.
+
+And four readings no one else had to make: "floors added to a dungeon" is the dungeon's floors less its default depth,
+at least none, the mirror of slice 5a's floors removed; `Migrate_10_to_11` writes the run's own `DungeonsCleared` when the
+record shows no death (an empty or missing `LastDeathDungeonName`), every clear having been made without dying, and 0 when
+it shows one, because the clears after a death cannot be told from those before; the kill asks for the rules just before
+its paying branch, which `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` holds to opening with the drop roll,
+and asking draws nothing; and Scavenger's "T3 and below" is tiers 1 to 3 of the five, commonest first.
+
+### Registered before the run
+
+Sent to and accepted by the coordinating session on 2026-11-20, before the compiles, and restated by it after #2756
+merged.
+
+- **Base: 4985**, measured by window fix-2725-w1 at `31002c802`, whose `game/` is development `9772aea2a`'s (`git diff
+  --stat 31002c802 9772aea2a -- game/` prints nothing). The slice was written on `9772aea2a` and moved onto `e583b0788`
+  with `git rebase --onto e583b0788 9772aea2a` once #2756 merged, as `feat/empire-tree-5b-drops-2`, because the first
+  branch was already pushed. The rebase was clean and left the commit's patch identical (`git patch-id` 9f7cafe9d1d7 for
+  both `9aa02db99` and `ffca128e0`), and the two heads' trees differ by exactly #2756's own diff. #2756 changes one line
+  of `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` and adds no test, so the base's counts
+  hold (the coordinating session's window countbits-w1 measured 4985 at `80ae5e2db`).
+- **The whole suite: 4998 performed, 4998 succeeded, 0 failed**: the base's 4985 and 13 new in
+  `Cataclysm.EmpireTreeDrops.`; 47 skipped halves, the base's; no test save left behind.
+- **Each group alone**, counted from the base log on "Test Completed. Result={" lines and by distinct path, which agree,
+  plus what the slice adds (all 13 in the new group): `Cataclysm.EmpireTreeDrops.` 13 (new), `EmpireTreeLoot.` 10,
+  `EmpireTree.` 24, `EmpireTreeEvents.` 14, `EmpireRun.` 71, `Drop.` 30, `DropPickup.` 20, `Data.` 7, `DungeonMode.` 46,
+  `SaveLoad.` 81, `SaveRecords.` 17, `Travel.` 9, `DeathCost.` 9, `EarnedBossSave.` 3, `WinningTheRun.` 11, `Gold.` 13,
+  `WalkSeed.` 5, `ConsumptionDouble.` 15.
+- **An asset step**: `tools/generate_datatable_assets.py` rebuilds `game/Content/Data/DT_EmpireTreeEffects.uasset`, 81
+  rows, and rewrites `game/Data/datatable_asset_sources.json`; those two files and no other are committed and pushed
+  before the tests run, and that commit is the tested head.
+- **Added by the coordinating session after #2756 merged: build 1 prints no C4996 `CountBits` warning.** #2756 removed it
+  from development, so any warning in this slice's builds is new.
+- **Eight C++ guard proofs**, each narrowed to `Cataclysm.EmpireTreeDrops.` (13 tests) or, for Q6, to its one test, the
+  restored half passing every test it ran:
+
+| Proof | File | The break | Predicted with it in |
+|---|---|---|---|
+| Q1 | `CataclysmEmpireRun.cpp` | a clear does not raise the count | 13 performed, 12 succeeded, 1 failed: `TheCleanClearCountRisesWithClearsAndEndsAtADeathAndANewRun`, 2 assertions ("two clears: 2", "another clear: 1") |
+| Q2 | `CataclysmEmpireRun.cpp` | a noted death does not end the count | 13, 12, 1: the same test, 2 assertions ("a death noted: 0", "another clear: 1") |
+| Q3 | `CataclysmEmpireTree.cpp` | Relentless Pursuit is not capped | 13, 12, 1: `RelentlessPursuitCountsTheClearsSinceTheLastDeathToItsCap`, 2 assertions (seven clears 140, expected 100; doubled 280, expected 200) |
+| Q4 | `CataclysmEmpireTree.cpp` | One-Day Specialist doubles Scavenger too | 13, 12, 1: `TheFourChancesAreDoubledAtOneDayWhereExplorerAndHeldAtOne`, 1 assertion ("Scavenger is Artisan and stays 0.50": 1.00) |
+| Q5 | `CataclysmDroppedItem.cpp` | Opportunistic Looting reaches every rung above Common | 13, 12, 1: `AChanceOfNoughtOrARungNotNamedDrawsNothingFromTheStream`, 2 assertions (the Herald: 1 spawned, and the stream drawn from) |
+| Q6 | `CataclysmDropRoll.cpp` | The High Roller's roll is the ordinary roll | the rarity test alone, 1 performed, 1 failed, on at least "none below Legendary", and on the share of each rung whose share from Legendary up is more than 0.03 away from the ordinary roll's |
+| Q7 | `CataclysmDroppedItem.cpp` | Scavenger reaches every tier | 13, 12, 1: `ScavengerMakesEachLowTierMaterialAStackOfTwo`, 1 assertion ("and none of tier 4 or 5 is") |
+| Q8 | `CataclysmSaveRecords.cpp` | `Migrate_10_to_11` reads the death the wrong way round | 13, 12, 1: `ARunFileFromVersion10MigratesWithTheClearsItCanProve`, 4 assertions |
+
+- **Python before the window**: at `9aa02db99`, whose tree is `ffca128e0`'s less #2756's diff, 7766 passed, 1 failed, 9
+  skipped; JUnit tests 7776, failures 1, errors 0, skipped 9; ruff clean. The one failure was expected and is the asset
+  step's to clear: `tools/tests/test_datatable_assets_are_current.py` names `EmpireTreeEffects.csv` as newer than its
+  asset until the window rebuilds it.
+
+### The six Python guards, proved in phase 1
+
+Each through `tools/prove_guard.py`'s `break_and_run` on the slice's three Python test files, `proved` True, the
+restored half "17 passed":
+
+- **Y1, `Run_v11.json`'s count is the default, 0**: `test_run_v11_is_run_v10_with_the_clears_since_the_last_death`.
+- **Y2, a noted death does not end the clears in a row**: `test_the_count_is_saved_raised_by_a_clear_and_ended_by_a_death_and_a_new_run_only`.
+- **Y3, the kill's own drops are not given Scavenger's chance**: `test_a_kill_passes_scavengers_chance_and_rolls_the_extra_drops_after_its_gold`.
+- **Y4, the gold test's chain stops at version 10**: `test_every_chain_test_adds_version_11_and_only_the_migration_reads_run_v10`.
+- **Y5, The High Roller's step in C++ becomes 5 floors**: `test_the_three_counted_words_are_in_their_nodes_texts`.
+- **Y6, Relentless Pursuit's cap becomes 80%**: `test_the_ten_caps_are_the_rulings_and_nothing_else_is_capped`, and
+  `test_the_effect_table_is_what_the_generator_writes` with it, since the committed table no longer matches the
+  generator; the broken half "2 failed, 15 passed". Y1 to Y5 each "1 failed, 16 passed".
+
+### The window
+
+**tree-5b-w1, 2026-11-20, 02:38 to 03:16, at `ff89528e8`.** Phase 2's three compiles ran under the lock
+tree-5b-compile from 02:26 to 02:37, after development's CI and Unreal runs for #2756's merge had finished: the branch
+(52 files), each of the 20 changed `.cpp` files alone (36 files), and the unity files (17). None printed a warning.
+Build 1 compiled `Module.Cataclysm.2.cpp`, the unity file holding `CataclysmAbilitySystemComponent.cpp`, and its build
+tool log holds no C4996 line and no `CountBits` line; builds 2 and 3 did not compile that file, so they show nothing
+about it. The compile script's check was shown first to say "NOT MET" on window fix-2725-w1's build 1 log, which holds
+the warning. The window's gate found every pre-check passing at 02:38: development `e583b0788` with its CI and Unreal
+runs succeeded, no run in progress or queued, the lock free, no build or editor process, no open pull request, no
+simulation process, 12,169 MB free, no LFS pointer file. The recount matched every group, and the written-out version
+check found "26 lines stating a version; NO MISMATCH".
+
+- **The build**: "target already up to date, 0 actions, nothing compiled".
+- **The asset step**: `tools/generate_datatable_assets.py` left exactly `game/Content/Data/DT_EmpireTreeEffects.uasset`
+  and `game/Data/datatable_asset_sources.json` changed; the two were committed alone as `ff89528e8` on `ffca128e0` and
+  pushed, and that is the tested head.
+- **Each group alone**: all eighteen at their registered counts, all succeeding.
+- **The whole suite**: "Tests: 4998 tests performed, 4998 succeeded, 0 failed. 47 skipped part of what they check";
+  "Test saves: 852 written and deleted, 0 left behind"; "Declared: 4998 tests in the tree at ff89528e8; 4998 performed,
+  gap 0".
+- **Python**: "7767 passed, 9 skipped"; JUnit tests 7776, failures 0, errors 0, skipped 9; ruff "All checks passed!".
+  Phase 1's one failure, `tools/tests/test_datatable_assets_are_current.py`, passes with the asset rebuilt.
+- **What the new tests printed**: "DROPS TABLE: per clean clear 0.50 to 1.00, Elite 0.24, material 0.20, low tier 0.50,
+  boss per ten floors 0.05"; "DROPS BOUND: here Elite 0.24 boss 0.10; through the world Elite 0.24 boss 0.10"; "CLEAN
+  CLEARS: 2 after two clears, 0 after a death (run clears 2), 1 after another, 0 in a new run"; "CLEAN CLEARS SAVED: the
+  file holds 4 yes; loaded yes with 4"; "CLEAN CLEARS MIGRATED: ... with the death 0 at version 11; with none 14 of 14
+  clears; Run_v11.json 5; the rest kept"; "ELITE EXTRA: the Elite 1 spawned, 1 gear and 0 materials; the Common 0, the
+  stream untouched"; "MATERIAL EXTRA: 1 spawned, 0 gear and 1 materials"; "SCAVENGER: at 1, tier 3 or below 223 of two
+  and 0 of one, above 0 of two and 77 of one; at 0, 0, 221, 0, 79"; "HIGH ROLLER: rung 4 drawn 0.806, the ordinary
+  roll's share from Legendary up 0.801", rung 5 0.156 against 0.160, rung 6 0.033 against 0.032, rung 7 0.005 against
+  0.006; "BOSS EXTRA: 1 spawned, 1 gear, rarity 4".
+- **The proofs**, each failing exactly its registered test in its broken half, and its restored half passing every
+  test it ran:
+
+| Proof | With the break in | The failed assertions |
+|---|---|---|
+| Q1 | 13 performed, 12 succeeded, 1 failed | `TheCleanClearCountRisesWithClearsAndEndsAtADeathAndANewRun` 2: "two clears: 2" (0), "another clear: 1" (0) |
+| Q2 | 13, 12, 1 | the same test, 2: "a death noted: 0" (2), "another clear: 1" (3) |
+| Q3 | 13, 12, 1 | `RelentlessPursuitCountsTheClearsSinceTheLastDeathToItsCap` 2: "seven: still +100%, the cap" (140), "seven at a one-day walk from ten: +200%, doubled after the cap" (280) |
+| Q4 | 13, 12, 1 | `TheFourChancesAreDoubledAtOneDayWhereExplorerAndHeldAtOne` 1: "Scavenger is Artisan and stays 0.50" (1.00) |
+| Q5 | 13, 12, 1 | `AChanceOfNoughtOrARungNotNamedDrawsNothingFromTheStream` **3, ONE MORE THAN REGISTERED**: "Opportunistic Looting on a Herald: nothing spawned" (1), "... nothing drawn" (the stream moved), "and nothing lies on the floor" (1) |
+| Q6 | 1, 0, 1 | `TheHighRollersRarityIsLegendaryOrRarerInTheOrdinaryRollsShares` 4: "none below Legendary" (3978 of the draws), and rungs 4, 5 and 6 in their shares (0.0045 against 0.801, 0.00025 against 0.160, 0.00075 against 0.032); rung 7, 0.006 from its share, is within the 0.03 |
+| Q7 | 13, 12, 1 | `ScavengerMakesEachLowTierMaterialAStackOfTwo` 1: "and none of tier 4 or 5 is" (74) |
+| Q8 | 13, 12, 1 | `ARunFileFromVersion10MigratesWithTheClearsItCanProve` 4: "the step writes a count of 0 for a run that records a death", "with the death: 0" (14), "with no death: every one of the run's 14 clears" (0), "and every other field is kept" |
+
+No proof's log holds a "server/discover" line (#2745). The lock was released when the window ended.
+
+---
+
 ## 2026-11-20 — A Vengeful Wraith is saved and loaded as a wraith, with the run record at version 10, and a ranged basic attack restores its mana when its shot lands, once per use (#2725, #2722)
 
 **Affects:** `FCataclysmSavedCreature::bIsVengefulWraith` and `UCataclysmRunSave::SchemaVersionNow` 10

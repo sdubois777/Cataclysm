@@ -506,6 +506,22 @@ public:
 									   int32 DifficultyTier, float MagicFind,
 									   FRandomStream& Stream);
 
+	/**
+	 * The rarity one drop rolls when it can be no lower than `Lowest`: the
+	 * ordinary roll's own shares (`RarityDistribution`) for `Lowest` and every
+	 * rung above it, renormalized to one, and one draw over them. So among the
+	 * rungs it can reach, each is as likely against the others as the ordinary
+	 * roll makes it. The High Roller's "extra Legendary+ item", issue #2741 slice
+	 * 5b (D6). `Lowest` itself when every rung from it up has no share at this
+	 * tier, the one answer the words leave.
+	 *
+	 * Everyday is the ordinary roll, `RollRarity`, with no extra draw.
+	 */
+	static ECataclysmRarity RollRarityAtLeast(const UDataTable* GearRarityTable,
+											  int32 DifficultyTier, float MagicFind,
+											  ECataclysmRarity Lowest,
+											  FRandomStream& Stream);
+
 	// -----------------------------------------------------------------------
 	// How many sockets it has
 	// -----------------------------------------------------------------------
@@ -989,6 +1005,9 @@ public:
 	 * @param EnchantmentEffectTable  read only for `DamageTypesCarriedStat`
 	 *        rows; null draws no damage types for them, which is what every
 	 *        caller but the drop spawner passes
+	 * @param LowestRarity  the lowest rarity it may roll, through
+	 *        `RollRarityAtLeast`; Everyday, every caller but The High Roller's,
+	 *        is the ordinary roll and draws exactly what it drew before
 	 * @return false when a table is missing or the pool cannot fill the item
 	 */
 	static bool RollItem(const UDataTable* BaseTable,
@@ -1002,7 +1021,8 @@ public:
 						 const FString& Slot, int32 DifficultyTier,
 						 float MagicFind, FRandomStream& Stream,
 						 FCataclysmItem& OutItem, bool bChaoticTiers = false,
-						 const UDataTable* EnchantmentEffectTable = nullptr);
+						 const UDataTable* EnchantmentEffectTable = nullptr,
+						 ECataclysmRarity LowestRarity = ECataclysmRarity::Everyday);
 
 	// -----------------------------------------------------------------------
 	// What a kill drops

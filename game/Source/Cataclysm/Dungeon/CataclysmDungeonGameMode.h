@@ -901,6 +901,19 @@ public:
 	FCataclysmEmpireTreePlayerBonuses EmpireTreePlayerBonusesHere() const;
 
 	/**
+	 * The empire upgrade tree's four drop chances for a kill on the floor being walked (`UCataclysmEmpireTree::
+	 * DropRulesFor`). Issue #2741 slice 5b. None with no run or no dungeon bound, as `EmpireTreeStatModifiersHere` gives
+	 * none: the drop rules act inside a dungeon of the empire and nowhere else.
+	 */
+	FCataclysmEmpireTreeDropRules EmpireTreeDropRulesHere() const;
+
+	/**
+	 * The same, for a kill in this world: the dungeon game mode found as `InWorld` finds it, or none in a world without
+	 * one. What `ACataclysmEnemyCharacter::HandleDeath` asks. Issue #2741 slice 5b.
+	 */
+	static FCataclysmEmpireTreeDropRules EmpireTreeDropRulesIn(UWorld* World);
+
+	/**
 	 * The player bonuses to use when there is no game instance to ask, for the reason `SetEmpireRunForTests` gives: a
 	 * world built by `UWorld::CreateWorld` has no game instance of this project's class, so without this every test of
 	 * the tree on a floor would be a test of the case with no tree. Issue #2741 slice 5a.

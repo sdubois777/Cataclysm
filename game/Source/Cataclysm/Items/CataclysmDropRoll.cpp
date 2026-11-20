@@ -839,6 +839,46 @@ ECataclysmRarity UCataclysmDropRoll::RollRarity(const UDataTable* GearRarityTabl
 	return ECataclysmRarity::Everyday;
 }
 
+ECataclysmRarity UCataclysmDropRoll::RollRarityAtLeast(const UDataTable* GearRarityTable,
+													   int32 DifficultyTier,
+													   float MagicFind,
+													   ECataclysmRarity Lowest,
+													   FRandomStream& Stream)
+{
+	const int32 From = LadderIndex(Lowest);
+	if (From <= 0)
+	{
+		return RollRarity(GearRarityTable, DifficultyTier, MagicFind, Stream);
+	}
+
+	// THE ORDINARY ROLL'S SHARES, FROM `Lowest` UP, renormalized: the roll conditioned on reaching `Lowest`. Issue #2741
+	// slice 5b (D6).
+	TArray<float> Shares;
+	RarityDistribution(GearRarityTable, DifficultyTier, MagicFind, Shares);
+	float Reachable = 0.0f;
+	for (int32 Rung = From; Rung < Shares.Num(); ++Rung)
+	{
+		Reachable += Shares[Rung];
+	}
+	if (Reachable <= 0.0f)
+	{
+		return Lowest;
+	}
+
+	// ONE DRAW, rarest last: the rung whose running share first passes it.
+	const float Draw = Stream.FRand() * Reachable;
+	float Running = 0.0f;
+	for (int32 Rung = From; Rung < Shares.Num(); ++Rung)
+	{
+		Running += Shares[Rung];
+		if (Draw < Running)
+		{
+			return RarityAt(Rung);
+		}
+	}
+	return RarityAt(Shares.Num() - 1);
+}
+
 // ---------------------------------------------------------------------------
 // How many sockets it has
 // ---------------------------------------------------------------------------
@@ -2120,7 +2160,8 @@ bool UCataclysmDropRoll::RollItem(const UDataTable* BaseTable,
 								  const FString& Slot, int32 DifficultyTier,
 								  float MagicFind, FRandomStream& Stream,
 								  FCataclysmItem& OutItem, bool bChaoticTiers,
-								  const UDataTable* EnchantmentEffectTable)
+								  const UDataTable* EnchantmentEffectTable,
+								  ECataclysmRarity LowestRarity)
 {
 	OutItem = FCataclysmItem();
 
@@ -2140,9 +2181,11 @@ bool UCataclysmDropRoll::RollItem(const UDataTable* BaseTable,
 		return false;
 	}
 
-	// THE RARITY IS ROLLED FIRST AND THE CONTENTS FOLLOW FROM IT.
-	const ECataclysmRarity Rarity =
-		RollRarity(GearRarityTable, DifficultyTier, MagicFind, Stream);
+	// THE RARITY IS ROLLED FIRST AND THE CONTENTS FOLLOW FROM IT. From a lowest rarity when one is given, which only The
+	// High Roller's extra item gives (issue #2741 slice 5b); everything after takes the rarity as it does for any drop.
+	const ECataclysmRarity Rarity = LowestRarity == ECataclysmRarity::Everyday
+		? RollRarity(GearRarityTable, DifficultyTier, MagicFind, Stream)
+		: RollRarityAtLeast(GearRarityTable, DifficultyTier, MagicFind, LowestRarity, Stream);
 
 	OutItem.Base = Base;
 	OutItem.GearLevel = GearLevelGateFor(GearRarityTable, Rarity);

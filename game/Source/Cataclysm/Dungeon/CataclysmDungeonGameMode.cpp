@@ -15557,6 +15557,28 @@ TMap<FName, TArray<FCataclysmStatModifier>> ACataclysmDungeonGameMode::EmpireTre
 		UCataclysmEmpireTree::DungeonStateFor(*Run, *Dungeon, FloorBrief.Modifiers, FloorNumber));
 }
 
+FCataclysmEmpireTreeDropRules ACataclysmDungeonGameMode::EmpireTreeDropRulesHere() const
+{
+	const UCataclysmEmpireRun* Run = EmpireRun();
+	const FCataclysmDungeon* Dungeon = BoundDungeon();
+	if (!Run || !Dungeon)
+	{
+		return FCataclysmEmpireTreeDropRules();
+	}
+
+	// THE SAME STATE THE STAT LINES ARE WORKED OUT FROM, for the floor being walked: the floors added and the one-day
+	// walk are the dungeon's, and they do not move during a walk.
+	return UCataclysmEmpireTree::DropRulesFor(
+		EmpireTreePlayerBonusesHere(),
+		UCataclysmEmpireTree::DungeonStateFor(*Run, *Dungeon, FloorBrief.Modifiers, FloorNumber));
+}
+
+FCataclysmEmpireTreeDropRules ACataclysmDungeonGameMode::EmpireTreeDropRulesIn(UWorld* World)
+{
+	const ACataclysmDungeonGameMode* Mode = InWorld(World);
+	return Mode ? Mode->EmpireTreeDropRulesHere() : FCataclysmEmpireTreeDropRules();
+}
+
 UCataclysmEmpireRun* ACataclysmDungeonGameMode::EmpireRun() const
 {
 	// THE GAME'S OWN RUN FIRST, ALWAYS. The test seam is only reached when there

@@ -311,13 +311,20 @@ void ACataclysmEnemyCharacter::HandleDeath()
 
 		FRandomStream Stream(GetUniqueID()
 			^ static_cast<int32>(World->GetTimeSeconds() * 1000.0f));
+
+		// THE EMPIRE UPGRADE TREE'S DROP RULES FOR THIS FLOOR, none outside a dungeon of the empire. Issue #2741 slice 5b:
+		// Scavenger's chance reaches the kill's own materials below; the other three are rolled after the gold. Asked
+		// before the paying branch and drawing nothing from the stream, so a kill that pays nothing is as it was.
+		const FCataclysmEmpireTreeDropRules TreeDrops = ACataclysmDungeonGameMode::EmpireTreeDropRulesIn(World);
+
 		// THE RUNG IT PAYS AS, which is its own unless a subclass says otherwise, and its random gear as that rung's
 		// unless a subclass gives a count; then what it wore. Issue #1308; see `RarityStepItPaysAs`.
 		if (bPays)
 		{
 			UCataclysmDropSpawner::SpawnDropsFor(
 				World, RarityStepItPaysAs(), MagicFind, LootQuantity, GetActorLocation(),
-				Stream, /*bMarked=*/bRaisedByARule, /*bInfested=*/false, RandomGearDropsGiven());
+				Stream, /*bMarked=*/bRaisedByARule, /*bInfested=*/false, RandomGearDropsGiven(),
+				/*MaterialCountGiven=*/-1, TreeDrops.LowTierMaterialExtraChance);
 			DropWhatItWore(World, GetActorLocation(), Stream);
 
 			// AND ITS GOLD, LAST, so the piles draw on the stream after every item and leave each item as it was. The
@@ -328,6 +335,14 @@ void ACataclysmEnemyCharacter::HandleDeath()
 			{
 				UCataclysmDropSpawner::SpawnGoldFor(World, RarityStepItPaysAs(), GetActorLocation(), Stream);
 			}
+
+			// AND THE TREE'S EXTRA DROPS AFTER THE GOLD, so every draw above is as it was, and a kill with none of the
+			// nodes bought draws nothing more. At the rung it pays as, as everything above is. Issue #2741 slice 5b.
+			static_assert(UCataclysmDropSpawner::FirstBossRarityStep == FirstBossRarityStep,
+						  "The High Roller's boss rungs are no longer the rungs IsBoss calls a boss");
+			UCataclysmDropSpawner::SpawnTheTreesExtraDropsFor(World, RarityStepItPaysAs(), MagicFind, LootQuantity,
+															  GetActorLocation(), Stream, TreeDrops,
+															  /*bMarked=*/bRaisedByARule);
 		}
 
 		// AND THE EXPERIENCE, which is this creature's Enemy Score. Issue #926.

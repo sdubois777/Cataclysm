@@ -644,6 +644,21 @@ public:
 	bool bSanctuaryLastStandSpent = false;
 
 	/**
+	 * Dungeons of every kind cleared since the character last died in this run, which Relentless Pursuit reads: "+5% Loot
+	 * Quantity for each dungeon cleared without dying". Issue #2741 slice 5b, the coordinating session's D5 of
+	 * 2026-11-19: a death ends the walk it happened on, so every clear is "without dying" and only a run of clears in a
+	 * row gives the words a meaning. Raised in `ClearDungeon` beside `DungeonsCleared`; set to 0 by `NoteDeath`, which
+	 * every death the run hears of goes through, and by `BeginForCharacter`.
+	 *
+	 * A DEATH IN THE CATACLYSM BOSS DUNGEON DOES NOT END IT (E3): the run does not note that death, by the ruling that
+	 * left that dungeon's deaths to issue #43, and clearing the boss begins the next run, which starts it again.
+	 *
+	 * SAVED, RUN RECORD VERSION 11, because no other count can say it: the run keeps its last death, not a history.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 ClearsSinceLastDeath = 0;
+
+	/**
 	 * Arms Last Stand Protocols on the map for the next hit, when the tree holds it, it has not held this run, and the
 	 * city is a living Sanctuary. Called before the two hits a dungeon's resolution deals and no other (Q3).
 	 */

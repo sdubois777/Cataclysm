@@ -53,7 +53,7 @@ GROWING_KINDS = {"LootQuantityPerActiveType", "LootQuantityPerTwoDaysRemoved",
                  "LootQuantityPerDayRemoved", "MagicFindPerFloorRemoved",
                  "MagicFindPerModifierActive", "MagicFindPerFloorCleared",
                  "MagicFindPerFiveClears", "LootQuantityPerExplorerCity",
-                 "MagicFindPerExplorerCity"}
+                 "MagicFindPerExplorerCity", "LootQuantityPerCleanClear"}
 
 
 def texts() -> dict[str, str]:
@@ -98,6 +98,9 @@ def test_the_three_counted_words_are_in_their_nodes_texts() -> None:
     assert f"per {days} full days" in words["Speed Runner"], (days, words["Speed Runner"])
     assert f"per {clears} unique dungeons" in words["Dungeon Legend"], (clears, words["Dungeon Legend"])
     assert factor == 2.0 and "doubled" in words["One-Day Specialist"], (factor, words["One-Day Specialist"])
+    # AND SLICE 5B'S: The High Roller's "For every 10 floors added".
+    floors = constant("HighRollerFloorsAStep")
+    assert f"For every {floors} floors added" in words["The High Roller"], (floors, words["The High Roller"])
 
 
 def test_every_effect_kind_has_exactly_one_reader() -> None:
@@ -119,8 +122,9 @@ def test_every_growing_figure_belongs_to_an_explorer_node() -> None:
         branch = {row["NodeName"]: row["Branch"] for row in csv.DictReader(handle)}
     growing = {name for name, effects in gen.EMPIRE_TREE_EFFECTS.items()
                for effect in effects if effect[0] in GROWING_KINDS}
-    # THE CONTROL: nine kinds, eight nodes (The Cartographer's Blessing carries two).
-    assert len(growing) == 8, sorted(growing)
+    # THE CONTROL: ten kinds, nine nodes (The Cartographer's Blessing carries two); Relentless Pursuit's since
+    # slice 5b.
+    assert len(growing) == 9, sorted(growing)
     outside = sorted(name for name in growing if branch.get(name) != "Explorer")
     assert not outside, (
         f"{outside} grow with the dungeon and are not Explorer nodes, so One-Day Specialist "

@@ -2290,6 +2290,22 @@ enum class ECataclysmEmpireTreeEffect : uint8
 
 	/** Attack and spell damage inside a dungeon, an increase, per point for each dungeon kind defeated this run. */
 	DamagePerKindDefeated,
+
+	// Slice 5b: Relentless Pursuit and the four drop rules. Issue #2741. Read by `UCataclysmEmpireTree::PlayerBonusesFor`.
+
+	/** Loot quantity per point for each dungeon cleared since the last death, to a cap. */
+	LootQuantityPerCleanClear,
+
+	/** The chance per point a kill rolls for one more drop: an Elite's gear item; any creature's crafting material. */
+	EliteExtraItemChance,
+	ExtraMaterialChance,
+
+	/** The chance per point a tier 1 to 3 crafting material a kill drops is a stack of two. */
+	LowTierMaterialExtraChance,
+
+	/** The chance a Boss or Cataclysm Boss drops one more gear item of Legendary or rarer, per whole ten floors added to
+	 *  the dungeon. */
+	BossLegendaryChancePerTenFloorsAdded,
 };
 
 /**

@@ -420,6 +420,24 @@ FCataclysmEmpireTreePlayerBonuses UCataclysmEmpireTree::PlayerBonusesFor(const U
 		case ECataclysmEmpireTreeEffect::DamagePerKindDefeated:
 			Bonuses.DamagePerKindDefeated += Total;
 			break;
+
+		// SLICE 5B. Relentless Pursuit's cap is on what the clears bring, so it is held beside the figure (D5).
+		case ECataclysmEmpireTreeEffect::LootQuantityPerCleanClear:
+			Bonuses.LootQuantityPerCleanClear += Row->PerPoint * static_cast<float>(Points);
+			Bonuses.CleanClearCap = Row->Cap;
+			break;
+		case ECataclysmEmpireTreeEffect::EliteExtraItemChance:
+			Bonuses.EliteExtraItemChance += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::ExtraMaterialChance:
+			Bonuses.ExtraMaterialChance += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::LowTierMaterialExtraChance:
+			Bonuses.LowTierMaterialExtraChance += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::BossLegendaryChancePerTenFloorsAdded:
+			Bonuses.BossLegendaryChancePerTenFloorsAdded += Total;
+			break;
 		default:
 			break;
 		}
@@ -457,11 +475,18 @@ FCataclysmEmpireTreeDungeonState UCataclysmEmpireTree::DungeonStateFor(const UCa
 	}
 	State.FloorsRemoved = FMath::Max(0, DefaultFloors - Dungeon.Floors);
 
+	// AND THE FLOORS ADDED, THE OTHER SIDE OF THE SAME DEFAULT, which The High Roller counts (slice 5b, D6): the city's
+	// and the tree's floors beyond the default depth, net, as `UpgradeFloors` records them.
+	State.FloorsAdded = FMath::Max(0, Dungeon.Floors - DefaultFloors);
+
 	TSet<FName> Distinct;
 	Distinct.Append(FloorModifiers);
 	State.ModifiersActive = Distinct.Num();
 	State.FloorsCleared = FMath::Max(0, FloorNumber - 1);
 	State.DungeonsCleared = Run.DungeonsCleared;
+
+	// AND THE CLEARS SINCE THE LAST DEATH, which Relentless Pursuit counts (slice 5b, D5).
+	State.ClearsSinceLastDeath = Run.ClearsSinceLastDeath;
 
 	// THE FOUR KINDS: three counted where a clear is counted, and the Fallen City clears as what is left over of every
 	// clear. `bWon` is the boss's, and a won run is followed by the next run at once.
@@ -533,12 +558,38 @@ float UCataclysmEmpireTree::LootQuantityFor(const FCataclysmEmpireTreePlayerBonu
 		EfficiencyPremium = FMath::Min(EfficiencyPremium, Bonuses.DayRemovedCap);
 	}
 
+	// RELENTLESS PURSUIT, per clear since the last death, to its cap (slice 5b, D5). An Explorer figure, so it is doubled
+	// below after its cap, as Speed Runner is.
+	float RelentlessPursuit = Bonuses.LootQuantityPerCleanClear * static_cast<float>(State.ClearsSinceLastDeath);
+	if (Bonuses.CleanClearCap > 0.0f)
+	{
+		RelentlessPursuit = FMath::Min(RelentlessPursuit, Bonuses.CleanClearCap);
+	}
+
 	const float Explorer = Bonuses.ExplorerLootQuantity
 		+ Bonuses.LootQuantityPerActiveType * static_cast<float>(State.ActiveTypes)
 		+ SpeedRunner + EfficiencyPremium
-		+ Bonuses.LootQuantityPerExplorerCity * static_cast<float>(State.ExplorerCities);
+		+ Bonuses.LootQuantityPerExplorerCity * static_cast<float>(State.ExplorerCities)
+		+ RelentlessPursuit;
 	const float Doubled = DoublesExplorerLoot(Bonuses, State) ? OneDaySpecialistFactor : 1.0f;
 	return 100.0f * (Bonuses.LootQuantity + Explorer * Doubled);
+}
+
+FCataclysmEmpireTreeDropRules UCataclysmEmpireTree::DropRulesFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
+																 const FCataclysmEmpireTreeDungeonState& State)
+{
+	// THE THREE EXPLORER CHANCES ARE THE BRANCH'S LOOT FIGURES, so One-Day Specialist doubles them where it doubles the
+	// rest (D6); Scavenger is an Artisan node and is not doubled. THE HIGH ROLLER COUNTS WHOLE STEPS OF TEN FLOORS (C3).
+	const float Doubled = DoublesExplorerLoot(Bonuses, State) ? OneDaySpecialistFactor : 1.0f;
+	const float Steps = static_cast<float>(State.FloorsAdded / HighRollerFloorsAStep);
+
+	// EVERY CHANCE HELD AT ONE: a chance is a share of kills, and no node says a kill drops two.
+	FCataclysmEmpireTreeDropRules Rules;
+	Rules.EliteExtraItemChance = FMath::Clamp(Bonuses.EliteExtraItemChance * Doubled, 0.0f, 1.0f);
+	Rules.ExtraMaterialChance = FMath::Clamp(Bonuses.ExtraMaterialChance * Doubled, 0.0f, 1.0f);
+	Rules.LowTierMaterialExtraChance = FMath::Clamp(Bonuses.LowTierMaterialExtraChance, 0.0f, 1.0f);
+	Rules.BossLegendaryChance = FMath::Clamp(Bonuses.BossLegendaryChancePerTenFloorsAdded * Steps * Doubled, 0.0f, 1.0f);
+	return Rules;
 }
 
 float UCataclysmEmpireTree::MovementSpeedFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses)

@@ -4,6 +4,7 @@
 #include "Cataclysm.h"
 #include "Data/CataclysmDataRows.h"
 #include "Player/CataclysmGameMode.h"
+#include "Player/CataclysmEmpireTree.h"
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -599,7 +600,9 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 										   FRandomStream& Stream,
 										   bool bMarked, bool bInfested,
 										   int32 GearCountGiven,
-										   int32 MaterialCountGiven)
+										   int32 MaterialCountGiven,
+										   float LowTierMaterialExtraChance,
+										   ECataclysmRarity LowestRarity)
 {
 	if (!World)
 	{
@@ -705,7 +708,7 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 										  PositiveEnchantments,
 										  NegativeEnchantments, Slot,
 										  DifficultyTier, Together, Stream, Item,
-										  bChaotic, EnchantmentEffects))
+										  bChaotic, EnchantmentEffects, LowestRarity))
 		{
 			// RollItem has already said why. One item failing to roll is not a
 			// reason to drop the rest on the floor unspawned.
@@ -754,7 +757,7 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 	// material on top of the item after it.
 	Spawned += SpawnMaterialsFor(World, EnemyRarity, Together, At, MaterialCount,
 								 Count, Total, DifficultyTier, Stream, bMarked,
-								 bInfested);
+								 bInfested, LowTierMaterialExtraChance);
 
 	return Spawned;
 }
@@ -785,6 +788,41 @@ int32 UCataclysmDropSpawner::SpawnOneInfestedDropFor(UWorld* World, int32 EnemyR
 						 /*bMarked=*/false, /*bInfested=*/true,
 						 /*GearCountGiven=*/bGear ? 1 : 0,
 						 /*MaterialCountGiven=*/bGear ? 0 : 1);
+}
+
+int32 UCataclysmDropSpawner::SpawnTheTreesExtraDropsFor(UWorld* World, int32 EnemyRarityStep, float MagicFind,
+														float LootQuantity, const FVector& At, FRandomStream& Stream,
+														const FCataclysmEmpireTreeDropRules& Rules, bool bMarked)
+{
+	if (!World)
+	{
+		return 0;
+	}
+
+	// EACH CHANCE ROLLED ONLY ABOVE NOUGHT AND ONLY FOR ITS RUNGS, so a node not bought, or a rung it does not name,
+	// draws nothing from the stream. In the order the header lists them. See the header for the readings.
+	int32 Spawned = 0;
+	if (Rules.EliteExtraItemChance > 0.0f && EnemyRarityStep == EliteRarityStep
+		&& Stream.FRand() < Rules.EliteExtraItemChance)
+	{
+		Spawned += SpawnDropsFor(World, EnemyRarityStep, MagicFind, LootQuantity, At, Stream, bMarked,
+								 /*bInfested=*/false, /*GearCountGiven=*/1, /*MaterialCountGiven=*/0,
+								 Rules.LowTierMaterialExtraChance);
+	}
+	if (Rules.ExtraMaterialChance > 0.0f && Stream.FRand() < Rules.ExtraMaterialChance)
+	{
+		Spawned += SpawnDropsFor(World, EnemyRarityStep, MagicFind, LootQuantity, At, Stream, bMarked,
+								 /*bInfested=*/false, /*GearCountGiven=*/0, /*MaterialCountGiven=*/1,
+								 Rules.LowTierMaterialExtraChance);
+	}
+	if (Rules.BossLegendaryChance > 0.0f && EnemyRarityStep >= FirstBossRarityStep
+		&& Stream.FRand() < Rules.BossLegendaryChance)
+	{
+		Spawned += SpawnDropsFor(World, EnemyRarityStep, MagicFind, LootQuantity, At, Stream, bMarked,
+								 /*bInfested=*/false, /*GearCountGiven=*/1, /*MaterialCountGiven=*/0,
+								 Rules.LowTierMaterialExtraChance, ECataclysmRarity::Legendary);
+	}
+	return Spawned;
 }
 
 bool UCataclysmDropSpawner::GoldDropsIn(const UWorld* World)
@@ -863,7 +901,8 @@ int32 UCataclysmDropSpawner::SpawnMaterialsFor(UWorld* World, FName EnemyRarity,
 											   int32 TotalDrops,
 											   int32 DifficultyTier,
 											   FRandomStream& Stream,
-											   bool bMarked, bool bInfested)
+											   bool bMarked, bool bInfested,
+											   float LowTierMaterialExtraChance)
 {
 	if (!World || Count <= 0)
 	{
@@ -892,6 +931,16 @@ int32 UCataclysmDropSpawner::SpawnMaterialsFor(UWorld* World, FName EnemyRarity,
 			continue;
 		}
 
+		// SCAVENGER: a material of tier 3 or below is two of it, at its chance.
+		// Rolled only above nought, before the drop is made, so a kill without the
+		// node draws what it drew before. Issue #2741 slice 5b (E2).
+		int32 Quantity = 1;
+		if (LowTierMaterialExtraChance > 0.0f && Tier <= ScavengerHighestTier
+			&& Stream.FRand() < LowTierMaterialExtraChance)
+		{
+			Quantity = 2;
+		}
+
 		FActorSpawnParameters Parameters;
 		Parameters.SpawnCollisionHandlingOverride =
 			ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
@@ -912,8 +961,12 @@ int32 UCataclysmDropSpawner::SpawnMaterialsFor(UWorld* World, FName EnemyRarity,
 		// ONE PER DROP, NOT A STACK ON THE FLOOR. Each roll is one material, and
 		// they stack when they are picked up rather than where they lie -- so a
 		// player can see how many fell and can leave some.
+		//
+		// EXCEPT SCAVENGER'S SECOND, which is the same drop holding two (E2): the
+		// design halved material drops on 2026-08-23 because the floor was
+		// cluttered, and two on one drop is the same quantity on half the floor.
 		Drop->Material = Material;
-		Drop->MaterialQuantity = 1;
+		Drop->MaterialQuantity = Quantity;
 		Drop->bDroppedByARaisedCreature = bMarked;
 		Drop->bInfested = bInfested;
 		Drop->MaterialTier = Tier;

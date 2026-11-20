@@ -622,6 +622,8 @@ bool FCataclysmSaveApply::RunInto(const UCataclysmRunSave& Record, UCataclysmEmp
 	Run.ClearsSinceLastSurge = Record.ClearsSinceLastSurge;
 	Run.CitiesReclaimed = Record.CitiesReclaimed;
 	Run.bSanctuaryLastStandSpent = Record.bSanctuaryLastStandSpent;
+	// AND RELENTLESS PURSUIT'S CLEARS IN A ROW, run record version 11. Issue #2741 slice 5b.
+	Run.ClearsSinceLastDeath = Record.ClearsSinceLastDeath;
 	Run.NextDungeonId = Record.NextDungeonId;
 	Run.LastHitDay = Record.LastHitDay;
 	Run.LastHitCityId = Record.LastHitCityId;

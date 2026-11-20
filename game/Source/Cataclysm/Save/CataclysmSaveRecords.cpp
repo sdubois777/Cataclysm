@@ -642,6 +642,29 @@ namespace CataclysmRunSaveMigration
 		return true;
 	}
 
+	/**
+	 * A run written before it counted the dungeons cleared since the last death gets the count it can prove. Issue #2741
+	 * slice 5b, the coordinating session's D5 of 2026-11-19: with no death recorded -- an empty or missing
+	 * `LastDeathDungeonName`, which a new run empties -- every clear of the run was made without dying, so the count is
+	 * the run's `DungeonsCleared`; with one recorded, the clears after it cannot be told from those before, so it is 0.
+	 * Written out, for `Migrate_1_to_2`'s reason. A `DungeonsCleared` that is not a number is read as 0, for
+	 * `Migrate_6_to_7`'s reason: the read that follows refuses a malformed record.
+	 */
+	bool Migrate_10_to_11(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		FString DeathDungeon;
+		const bool bDiedThisRun = Record->TryGetStringField(TEXT("LastDeathDungeonName"), DeathDungeon)
+			&& !DeathDungeon.IsEmpty();
+		double Cleared = 0.0;
+		if (bDiedThisRun || !Record->TryGetNumberField(TEXT("DungeonsCleared"), Cleared))
+		{
+			Cleared = 0.0;
+		}
+		Record->SetNumberField(TEXT("ClearsSinceLastDeath"), Cleared); // A migration's: the clears it can prove.
+		return true;
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep RunSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
@@ -653,6 +676,7 @@ namespace CataclysmRunSaveMigration
 		{ 7, TEXT("Migrate_7_to_8"), &Migrate_7_to_8 },
 		{ 8, TEXT("Migrate_8_to_9"), &Migrate_8_to_9 },
 		{ 9, TEXT("Migrate_9_to_10"), &Migrate_9_to_10 },
+		{ 10, TEXT("Migrate_10_to_11"), &Migrate_10_to_11 },
 	};
 }
 

@@ -97,12 +97,17 @@ SLICE_4 = {"Pacing", "Overclock", "Temporal Mastery", "Fleet Footed", "Tactical 
            "Architectural Insight", "The Warlord", "Veteran's Edge"}
 
 #: SLICE 5A'S FIFTEEN, the player inside a dungeon: the coordinating session's
-#: D1 to D4 of 2026-11-19. Slice 5b's five -- Relentless Pursuit and the four
-#: drop rules -- follow at run record version 10.
+#: D1 to D4 of 2026-11-19.
 SLICE_5A = {"Eyes of the Empire", "Bounty", "The Hoarder", "Pathfinding", "Spoils of War",
             "Speed Runner", "Efficiency Premium", "Quality over Quantity", "Dungeon Expertise",
             "Manifest Wealth", "Dungeon Legend", "The Cartographer's Blessing",
             "Temporal Efficiency", "One-Day Specialist", "Dungeon Mastery"}
+
+#: SLICE 5B'S FIVE, Relentless Pursuit and the four drop rules: the
+#: coordinating session's D5, D6 and E1 to E4 of 2026-11-19, at run record
+#: version 11.
+SLICE_5B = {"Relentless Pursuit", "Opportunistic Looting", "Plunderer's Eye", "Scavenger",
+            "The High Roller"}
 
 DAY_EFFECTS = {"ResolveDaysAll", "ResolveDaysOutposts", "ResolveDaysPerBranchStep",
                "ResolveDaysBelowTenPercent", "SurgeGapDays", "WalkDaysFewerWhenAlone",
@@ -163,12 +168,14 @@ def test_the_effect_names_agree_with_the_cpp_enum() -> None:
         f"{list(gen.EMPIRE_TREE_EFFECT_KINDS)}; they must be the same names in the same order")
 
 
-def test_exactly_the_72_nodes_of_slices_3a_3b_4_and_5a_act() -> None:
+def test_exactly_the_77_nodes_of_slices_3a_3b_4_5a_and_5b_act() -> None:
     named = set(gen.EMPIRE_TREE_EFFECTS)
     assert len(SLICE_3A) == 31 and len(SLICE_3B) == 7 and len(SLICE_4) == 19 and len(SLICE_5A) == 15
+    assert len(SLICE_5B) == 5
     assert not SLICE_3A & SLICE_3B and not (SLICE_3A | SLICE_3B) & SLICE_4
     assert not (SLICE_3A | SLICE_3B | SLICE_4) & SLICE_5A
-    built = SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A
+    assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A) & SLICE_5B
+    built = SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B
     assert named == built, (
         f"EMPIRE_TREE_EFFECTS names {sorted(named - built)} beyond slice 3 and "
         f"leaves out {sorted(built - named)}")
@@ -176,7 +183,7 @@ def test_exactly_the_72_nodes_of_slices_3a_3b_4_and_5a_act() -> None:
         "every slice 3 node with an effect is one EMPIRE_TREE_BUILT gives to slice 3")
     assert all(gen.EMPIRE_TREE_BUILT.get(name) == 4 for name in SLICE_4), (
         "every slice 4 node with an effect is one EMPIRE_TREE_BUILT gives to slice 4")
-    assert all(gen.EMPIRE_TREE_BUILT.get(name) == 5 for name in SLICE_5A), (
+    assert all(gen.EMPIRE_TREE_BUILT.get(name) == 5 for name in SLICE_5A | SLICE_5B), (
         "every slice 5a node with an effect is one EMPIRE_TREE_BUILT gives to slice 5")
 
 
@@ -214,7 +221,7 @@ def test_every_value_is_in_its_own_words(texts) -> None:
     assert not wrong, "\n".join(wrong)
 
 
-def test_the_nine_caps_are_the_rulings_and_nothing_else_is_capped(texts) -> None:
+def test_the_ten_caps_are_the_rulings_and_nothing_else_is_capped(texts) -> None:
     caps = {name: effect[4]
             for name, effects in gen.EMPIRE_TREE_EFFECTS.items()
             for effect in effects if len(effect) > 4 and effect[4]}
@@ -224,11 +231,12 @@ def test_the_nine_caps_are_the_rulings_and_nothing_else_is_capped(texts) -> None
     # Haste's own "(Max of -30 floors)", read as 30 days (W8). Slice 5a: Speed
     # Runner's own "cap 100%", Efficiency Premium's own "cap 50%", and D3 of
     # 2026-11-19: Temporal Efficiency +50% in total, Efficiency Premium's figure.
+    # Slice 5b, D5 of 2026-11-19: Relentless Pursuit +100% in total.
     assert caps == {"Golden Age": 0.40, "Bastion Spirit": 15.0,
                     "Global Vigilance": 0.15, "Reclaimer's Resolve": 0.15,
                     "Architectural Insight": 10.0, "Sovereign's Haste": 30.0,
                     "Speed Runner": 1.00, "Efficiency Premium": 0.50,
-                    "Temporal Efficiency": 0.50}, caps
+                    "Temporal Efficiency": 0.50, "Relentless Pursuit": 1.00}, caps
     assert "15% cap" in texts["Global Vigilance"]
     assert "Max of -30" in texts["Sovereign's Haste"]
     assert "cap 100%" in texts["Speed Runner"]

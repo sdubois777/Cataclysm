@@ -208,6 +208,25 @@ namespace CataclysmSaveFixtures
 	}
 
 	/**
+	 * What `Migrate_10_to_11` writes into a run file written before version 11, and so what the run record writes
+	 * back for one: the run's own `DungeonsCleared` as `ClearsSinceLastDeath` when it records no death (an empty or
+	 * missing `LastDeathDungeonName`), else 0. Issue #2741 slice 5b, 2026-11-20. THE RUN RECORD'S 11. ONE COPY, beside
+	 * the version 10 one and for the same callers.
+	 */
+	inline void AddTheRunsVersion11Defaults(FJsonObject& Expected)
+	{
+		FString DeathDungeon;
+		const bool bDiedThisRun = Expected.TryGetStringField(TEXT("LastDeathDungeonName"), DeathDungeon)
+			&& !DeathDungeon.IsEmpty();
+		double Cleared = 0.0;
+		if (bDiedThisRun || !Expected.TryGetNumberField(TEXT("DungeonsCleared"), Cleared))
+		{
+			Cleared = 0.0;
+		}
+		Expected.SetNumberField(TEXT("ClearsSinceLastDeath"), Cleared);
+	}
+
+	/**
 	 * What `Migrate_3_to_4` writes into an account file written before version 4, and so what the account record
 	 * writes back for one: an empty empire upgrade tree, `"EmpireTree": { "Nodes": [] }`. Issue #2741 slice 1b,
 	 * 2026-11-18. ONE COPY, for every test that runs an older account file through the whole chain.

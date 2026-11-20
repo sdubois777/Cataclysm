@@ -58,8 +58,8 @@
     {
       "asset": "DT_EmpireTreeEffects",
       "csv": "EmpireTreeEffects.csv",
-      "rows": 76,
-      "csv_sha256": "2c810a6c351ec2c6dffda9d83f511f59b894068629bd229cec9708727d53e7e0"
+      "rows": 81,
+      "csv_sha256": "d4828bea80c4be2fb47cb9780e11ee9ad4a30091a1e74c015a6ffc41a26a345b"
     },
     {
       "asset": "DT_EmpireTreeNodes",

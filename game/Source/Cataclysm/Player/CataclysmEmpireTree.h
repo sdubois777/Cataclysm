@@ -71,6 +71,27 @@ struct CATACLYSM_API FCataclysmEmpireTreePlayerBonuses
 
 	/** Increased attack and spell damage, inside a dungeon, for each dungeon kind defeated this run: Dungeon Mastery. */
 	float DamagePerKindDefeated = 0.0f;
+
+	// ---- Slice 5b: Relentless Pursuit and the four drop rules. Issue #2741, the coordinating session's D5 and D6. ----
+
+	/** Relentless Pursuit's loot quantity for each dungeon cleared since the last death, and its cap on what they bring
+	 *  (D5: +100%), held beside it as Speed Runner's is. An Explorer figure, so One-Day Specialist doubles it after the
+	 *  cap. */
+	float LootQuantityPerCleanClear = 0.0f;
+	float CleanClearCap = 0.0f;
+
+	/** Opportunistic Looting's chance for an Elite's kill to drop one more gear item, and Plunderer's Eye's for any kill
+	 *  to drop one more crafting material: Explorer chances, doubled by One-Day Specialist. */
+	float EliteExtraItemChance = 0.0f;
+	float ExtraMaterialChance = 0.0f;
+
+	/** Scavenger's chance for each tier 1 to 3 crafting material a kill drops to be a stack of two. An Artisan node, so
+	 *  One-Day Specialist does not double it. */
+	float LowTierMaterialExtraChance = 0.0f;
+
+	/** The High Roller's chance, for each whole ten floors added to the dungeon, of a Boss or Cataclysm Boss dropping one
+	 *  more gear item of Legendary or rarer. An Explorer chance. */
+	float BossLegendaryChancePerTenFloorsAdded = 0.0f;
 };
 
 /**
@@ -104,6 +125,14 @@ struct CATACLYSM_API FCataclysmEmpireTreeDungeonState
 
 	/** Of the four dungeon kinds -- Basic, Quest, Fallen City, Cataclysm -- how many have been defeated this run. */
 	int32 KindsDefeated = 0;
+
+	/** Dungeons cleared since the character last died in this run (`UCataclysmEmpireRun::ClearsSinceLastDeath`), which
+	 *  Relentless Pursuit counts. Slice 5b. */
+	int32 ClearsSinceLastDeath = 0;
+
+	/** Floors the dungeon has beyond its default depth, never fewer than none: the mirror of `FloorsRemoved`, and what
+	 *  The High Roller counts "floors added to a dungeon" as. Slice 5b. */
+	int32 FloorsAdded = 0;
 };
 
 /**
@@ -138,6 +167,34 @@ struct CATACLYSM_API FCataclysmEmpireTreeDungeonState
  * (slice 5a), which the dungeon game mode puts on the character. Where the allocation is kept -- the account record of
  * the lethality mode, or a Solo Self-Found character's own -- is slices 1b and 1c.
  */
+/**
+ * The four chances the empire upgrade tree's drop rules give a kill in the dungeon being walked, each a share from 0 to
+ * 1 and held at 1. Issue #2741 slice 5b, each reading the coordinating session's D6 and E1 of 2026-11-19. Worked out by
+ * `UCataclysmEmpireTree::DropRulesFor`, read at a kill through `ACataclysmDungeonGameMode::EmpireTreeDropRulesIn`, and
+ * rolled by `UCataclysmDropSpawner::SpawnTheTreesExtraDropsFor` and the material roll. All nought, the default, rolls
+ * nothing and draws nothing from the kill's stream.
+ */
+struct CATACLYSM_API FCataclysmEmpireTreeDropRules
+{
+	/** Opportunistic Looting: an Elite's kill drops one more gear item, rolled as its others. */
+	float EliteExtraItemChance = 0.0f;
+
+	/** Plunderer's Eye: any kill drops one more crafting material. */
+	float ExtraMaterialChance = 0.0f;
+
+	/** Scavenger: each tier 1 to 3 crafting material the kill drops is a stack of two. */
+	float LowTierMaterialExtraChance = 0.0f;
+
+	/** The High Roller: a Boss's or Cataclysm Boss's kill drops one more gear item of Legendary or rarer. */
+	float BossLegendaryChance = 0.0f;
+
+	bool RollsAnything() const
+	{
+		return EliteExtraItemChance > 0.0f || ExtraMaterialChance > 0.0f || LowTierMaterialExtraChance > 0.0f
+			|| BossLegendaryChance > 0.0f;
+	}
+};
+
 UCLASS()
 class CATACLYSM_API UCataclysmEmpireTree : public UBlueprintFunctionLibrary
 {
@@ -202,6 +259,9 @@ public:
 	static constexpr int32 DungeonLegendClearsAStep = 5;
 	static constexpr float OneDaySpecialistFactor = 2.0f;
 
+	/** And slice 5b's: The High Roller's "For every 10 floors added to a dungeon", counted in whole steps (C3). */
+	static constexpr int32 HighRollerFloorsAStep = 10;
+
 	/**
 	 * What an allocation's bought player nodes add up to. Issue #2741 slice 5a. The same pass over the effect table as
 	 * `CityBonusesFor`, reading the rows that one leaves alone: a node's points from the allocation, an option's one
@@ -224,6 +284,8 @@ public:
 	 *   floors cleared       the floor number less one
 	 *   kinds defeated       Basic, Quest and Cataclysm from their own counts; Fallen City as the clears left over
 	 *   Explorer cities      standing cities holding an upgrade whose row is in the Explorer branch
+	 *   floors added         the floors beyond the default depth, at least none (slice 5b, The High Roller)
+	 *   clean clears         the run's `ClearsSinceLastDeath` (slice 5b, Relentless Pursuit)
 	 *
 	 * @param FloorModifiers  the modifiers on the floor being walked, counted once each
 	 * @param FloorNumber     the floor being walked, counted from 1
@@ -252,6 +314,15 @@ public:
 	 */
 	static TMap<FName, TArray<FCataclysmStatModifier>> PlayerStatModifiersFor(
 		const FCataclysmEmpireTreePlayerBonuses& Bonuses, const FCataclysmEmpireTreeDungeonState& State);
+
+	/**
+	 * The four chances the drop rules give a kill here. Issue #2741 slice 5b (D6): Opportunistic Looting's and
+	 * Plunderer's Eye's per point; Scavenger's per point; The High Roller's for each whole ten floors added (C3). The
+	 * three Explorer chances are doubled by One-Day Specialist where it doubles the branch's loot figures, and every
+	 * chance is held at 1.
+	 */
+	static FCataclysmEmpireTreeDropRules DropRulesFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
+													  const FCataclysmEmpireTreeDungeonState& State);
 
 	/** The four branches, in the order the source file's metadata names them, and then the centre. */
 	static TArray<FString> BranchNames();

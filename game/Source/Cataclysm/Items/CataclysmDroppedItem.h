@@ -8,6 +8,8 @@
 #include "Math/Box2D.h"
 #include "CataclysmDroppedItem.generated.h"
 
+struct FCataclysmEmpireTreeDropRules;
+
 class UCataclysmInventoryComponent;
 class UDataTable;
 class UWorld;
@@ -309,13 +311,49 @@ public:
 	 *            That is the same limitation the telegraph markers have, which
 	 *            is issue #690.
 	 *
+	 * @param LowTierMaterialExtraChance  Scavenger's chance for each tier 1 to 3
+	 *            material to be a stack of two (`SpawnMaterialsFor`); nought, every
+	 *            caller's but a kill's, rolls nothing
+	 * @param LowestRarity  the lowest rarity its gear may roll (`RollItem`);
+	 *            Everyday, every caller's but The High Roller's, is the
+	 *            ordinary roll
+	 *
 	 * @return how many actors were spawned
 	 */
 	static int32 SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 							   float MagicFind, float LootQuantity,
 							   const FVector& At, FRandomStream& Stream,
 							   bool bMarked = false, bool bInfested = false,
-							   int32 GearCountGiven = -1, int32 MaterialCountGiven = -1);
+							   int32 GearCountGiven = -1, int32 MaterialCountGiven = -1,
+							   float LowTierMaterialExtraChance = 0.0f,
+							   ECataclysmRarity LowestRarity = ECataclysmRarity::Everyday);
+
+	/** The rung named Elite, which Opportunistic Looting asks for; and the first boss rung, as
+	 *  `ACataclysmEnemyCharacter::IsBoss` reads it, which The High Roller asks for. Issue #2741 slice 5b. */
+	static constexpr int32 EliteRarityStep = 1;
+	static constexpr int32 FirstBossRarityStep = 4;
+
+	/** The highest crafting material tier Scavenger's "T3 and below" reaches, tiers counted 1 to 5, commonest first. */
+	static constexpr int32 ScavengerHighestTier = 3;
+
+	/**
+	 * The empire upgrade tree's extra drops for one kill, rolled after everything else the kill drops so every draw
+	 * before them is as it was. Issue #2741 slice 5b, each reading the coordinating session's D6 and E1 of 2026-11-19:
+	 *
+	 *   Opportunistic Looting  an Elite (the rung named Elite, no other) drops one more gear item, rolled as its others
+	 *   Plunderer's Eye        any kill drops one more crafting material
+	 *   The High Roller        a Boss or Cataclysm Boss drops one more gear item of Legendary or rarer
+	 *
+	 * EACH THROUGH `SpawnDropsFor` WITH ITS COUNT GIVEN, as The Infested Hoard's one extra drop is, so the item, its
+	 * rarity, its name and its colour are made as any drop's are; Scavenger's chance reaches the extra material too. A
+	 * chance of nought draws nothing from the stream, so a kill with none of these nodes bought rolls exactly what it
+	 * rolled before. KILLS ONLY (E1): a dungeon rule's reward of drops is not a kill and does not reach here.
+	 *
+	 * @return how many actors were spawned
+	 */
+	static int32 SpawnTheTreesExtraDropsFor(UWorld* World, int32 EnemyRarityStep, float MagicFind, float LootQuantity,
+											const FVector& At, FRandomStream& Stream,
+											const FCataclysmEmpireTreeDropRules& Rules, bool bMarked = false);
 
 	/**
 	 * The Infested Hoard's one extra drop: exactly one, gear or a crafting material in the ratio of the creature's
@@ -430,6 +468,11 @@ public:
 	 *                           is what sets the circle's size
 	 * @param DifficultyTier     which of the eight tiers is being played, which
 	 *                           caps the upgrade stones this may drop
+	 * @param LowTierMaterialExtraChance  Scavenger's chance for each material of
+	 *                           tier 1 to 3 to be a stack of two (E2): the same
+	 *                           drop holding two, not a second drop on the floor.
+	 *                           Rolled only above nought, so nothing else draws
+	 *                           differently
 	 *
 	 * @return how many actors were spawned
 	 */
@@ -438,7 +481,8 @@ public:
 								   int32 Count, int32 AlreadyOnTheFloor,
 								   int32 TotalDrops, int32 DifficultyTier,
 								   FRandomStream& Stream, bool bMarked = false,
-								   bool bInfested = false);
+								   bool bInfested = false,
+								   float LowTierMaterialExtraChance = 0.0f);
 };
 
 /**
