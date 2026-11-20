@@ -535,4 +535,147 @@ bool FCataclysmSkillLevelSourcesBurnKillTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillLevelSourcesBurstTest,
+	"Cataclysm.SkillLevelSources.ABurstOfAnAilmentsRemainingDamageIsCreditedToItsSkill",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * An ailment's remaining damage paid at once credits the skill that laid it, as its ticks would have (the coordinating
+ * session's judgement 2). The burn is laid as `ASkillsBurnIsCreditedToItAndSizedByItsLevel` lays it; the burst is
+ * dealt as `Cataclysm.RemainingDamage.AfterRealTicksTheBurstDealsWhatIsLeftAndEndsTheEffect` deals it
+ * (`CataclysmRemainingDamageTests.cpp`), with the owner the effect's instigator, the player character.
+ */
+bool FCataclysmSkillLevelSourcesBurstTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillLevelSourcesTest;
+
+	FSourcesPlayer Player = MakeSourcesPlayer();
+	ON_SCOPE_EXIT
+	{
+		if (Player.World)
+		{
+			Player.World->DestroyWorld(/*bInformEngineOfWorld=*/false);
+		}
+	};
+	const UCataclysmSkillTemplate* Heavy = Player.IsUsable() ? SourcesSkillOfRow(Player.Abilities, SourcesMoltenCleave) : nullptr;
+	ACataclysmEnemyCharacter* Burnt = Player.World ? SourcesCreature(Player.World, 300.0f) : nullptr;
+	if (!TestTrue(TEXT("set-up: a possessed player holding Molten Cleave, and a creature"), Heavy && Burnt))
+	{
+		return false;
+	}
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	Player.State->SetLevelAndExperience(4, 0);
+	const auto HealthOf = [](ACataclysmEnemyCharacter* Creature)
+	{
+		return Creature->GetAbilitySystemComponent()->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+	};
+
+	const bool bLaid = UCataclysmSkillEffects::ApplyDamageOverTime(Player.Character, Burnt, 10.0f, 5.0f, Burn,
+		/*bScalesWithInstigator=*/true, /*DealtBy=*/nullptr, Heavy);
+	CataclysmTestWorld::RunClock(Player.World, 1.5f);
+	const float CreditedBefore = SourcesCreditedTo(Burnt, SourcesMoltenCleave);
+	const float HealthBefore = HealthOf(Burnt);
+	const int32 Burst = UCataclysmSkillEffects::DealRemainingDamageOverTime(Player.Character, Burnt, 100.0f, Burn,
+		/*bEndEach=*/true);
+	const float TookByTheBurst = HealthBefore - HealthOf(Burnt);
+	const float CreditedByTheBurst = SourcesCreditedTo(Burnt, SourcesMoltenCleave) - CreditedBefore;
+
+	AddInfo(FString::Printf(TEXT("SKILL BURST: %d burst; credited %.3f by the ticks before, then %.3f by the burst, which "
+								 "took %.3f"),
+							Burst, CreditedBefore, CreditedByTheBurst, TookByTheBurst));
+	TestTrue(TEXT("set-up: the burn was laid, ticked, and one effect burst"), bLaid && CreditedBefore > 0.0f && Burst == 1);
+	TestTrue(TEXT("set-up: the burst took health"), TookByTheBurst > 0.0f);
+	TestEqual(TEXT("THE BURST CREDITS THE BURN'S SKILL WITH WHAT IT TOOK"), CreditedByTheBurst, TookByTheBurst, 1.0e-3f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillLevelSourcesHitAndBurnTest,
+	"Cataclysm.SkillLevelSources.AKillIsSplitBetweenOneSkillsHitAndAnothersBurn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A creature hurt by one skill's hit and killed by another's burn pays each skill its share of the creature's health,
+ * end to end through `ACataclysmEnemyCharacter::HandleDeath`: the shape of the fault slice 1b fixed, with a tick as the
+ * killing blow. The hit is struck as `Cataclysm.SkillLevels.ASkillsKillingBlowIsCountedInTheDeathsSplit` strikes it (no
+ * critical); the burn kills as `AKillByASkillsBurnPaysTheSkill` kills. A first creature measures the hit's figure, W; the
+ * second, a Boss so it is worth something, is given W + 15 health, so Molten Cleave's hit leaves it 15 and Emberhurl's
+ * burn takes the rest. Molten Cleave's share is W / (W + 15) of the worth and Emberhurl's 15 / (W + 15).
+ */
+bool FCataclysmSkillLevelSourcesHitAndBurnTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillLevelSourcesTest;
+
+	FSourcesPlayer Player = MakeSourcesPlayer();
+	ON_SCOPE_EXIT
+	{
+		if (Player.World)
+		{
+			Player.World->DestroyWorld(/*bInformEngineOfWorld=*/false);
+		}
+	};
+	const FName EmberhurlRow(TEXT("Demonic_Greataxe_Special"));
+	const UCataclysmSkillTemplate* Heavy = Player.IsUsable() ? SourcesSkillOfRow(Player.Abilities, SourcesMoltenCleave) : nullptr;
+	const UCataclysmSkillTemplate* Special = Player.IsUsable() ? SourcesSkillOfRow(Player.Abilities, EmberhurlRow) : nullptr;
+	ACataclysmEnemyCharacter* Measure = Player.World ? SourcesCreature(Player.World, 300.0f) : nullptr;
+	ACataclysmEnemyCharacter* Split = Player.World ? SourcesCreature(Player.World, 600.0f) : nullptr;
+	UAbilitySystemComponent* SplitsSystem = Split ? Split->GetAbilitySystemComponent() : nullptr;
+	if (!TestTrue(TEXT("set-up: a possessed player holding Molten Cleave and Emberhurl, and two creatures"),
+				  Heavy && Special && Measure && SplitsSystem))
+	{
+		return false;
+	}
+	const auto StrikeOnce = [&Player, Heavy](ACataclysmEnemyCharacter* Target, FCataclysmDamageResult& Out)
+	{
+		FCataclysmHitDelivery Delivery;
+		Delivery.Skill = Heavy;
+		Delivery.bCannotCriticallyStrike = true;
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Target, 100.0f, FGameplayTagContainer(), Delivery, &Out);
+	};
+
+	// A BOSS, as the death tests make one. The rarity first, then the health, because the rarity sets the creature's
+	// starting figures again; and both creatures are Bosses, so the hit's figure on one is its figure on the other.
+	constexpr int32 BossStep = 4;
+	const int32 Worth = UCataclysmEnemyScore::ScoreFor(UCataclysmEnemyScore::FloorIn(Player.World), BossStep);
+	Measure->SetRarityStep(BossStep);
+	Split->SetRarityStep(BossStep);
+	FCataclysmDamageResult Measured;
+	StrikeOnce(Measure, Measured);
+	const float Hit = Measured.DealtToHealth;
+	constexpr float Left = 15.0f;
+	SplitsSystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), Hit + Left);
+	SplitsSystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Hit + Left);
+
+	FCataclysmDamageResult Struck;
+	StrikeOnce(Split, Struck);
+	const bool bAliveAfterTheHit = !UCataclysmSkillEffects::IsDead(Split);
+	const bool bLaid = UCataclysmSkillEffects::ApplyDamageOverTime(Player.Character, Split, 10.0f, 5.0f,
+		UCataclysmSkillEffects::BurnTag(), /*bScalesWithInstigator=*/true, /*DealtBy=*/nullptr, Special);
+	CataclysmTestWorld::RunClock(Player.World, 5.5f);
+	const bool bKilled = UCataclysmSkillEffects::IsDead(Split);
+	const double PaidHeavy = Player.State->GetSkillExperience(SourcesMoltenCleave);
+	const double PaidSpecial = Player.State->GetSkillExperience(EmberhurlRow);
+	// THE EXPECTED SPLIT FROM WHAT EACH SKILL WAS CREDITED, as `ACataclysmPlayerState::GrantSkillExperience` splits it:
+	// each credit over the larger of the maximum health and all that was credited. So health regained during the burn,
+	// which its ticks then took again, moves the expected figures with the paid ones.
+	const double CreditedHeavy = SourcesCreditedTo(Split, SourcesMoltenCleave);
+	const double CreditedSpecial = SourcesCreditedTo(Split, EmberhurlRow);
+	const double Over = FMath::Max(static_cast<double>(Hit + Left), CreditedHeavy + CreditedSpecial);
+
+	AddInfo(FString::Printf(TEXT("HIT AND BURN: worth %d; the hit took %.3f of %.3f; credited %.3f to Molten Cleave and "
+								 "%.3f to Emberhurl; killed %s; Molten Cleave paid %.3f, Emberhurl %.3f, together %.3f"),
+							Worth, Struck.DealtToHealth, Hit + Left, CreditedHeavy, CreditedSpecial,
+							bKilled ? TEXT("yes") : TEXT("NO"), PaidHeavy, PaidSpecial, PaidHeavy + PaidSpecial));
+	TestTrue(TEXT("set-up: a Boss is worth something here, and the hit has a figure"), Worth > 0 && Hit > 0.0f);
+	TestEqual(TEXT("set-up: the hit took the same on the second Boss"), Struck.DealtToHealth, Hit, 1.0e-3f);
+	TestTrue(TEXT("set-up: the hit left it alive, and the burn was laid and killed it"), bAliveAfterTheHit && bLaid && bKilled);
+	TestEqual(TEXT("MOLTEN CLEAVE WAS CREDITED ITS HIT"), CreditedHeavy, static_cast<double>(Hit), 1.0e-3);
+	TestTrue(TEXT("EMBERHURL WAS CREDITED ALL ITS TICKS TOOK, THE KILLING TICK INCLUDED"),
+			 CreditedSpecial >= static_cast<double>(Left) - 1.0e-3);
+	TestEqual(TEXT("MOLTEN CLEAVE IS PAID ITS SHARE OF THE WORTH"), PaidHeavy,
+			  static_cast<double>(Worth) * CreditedHeavy / Over, 1.0e-2);
+	TestEqual(TEXT("EMBERHURL IS PAID ITS SHARE"), PaidSpecial, static_cast<double>(Worth) * CreditedSpecial / Over, 1.0e-2);
+	TestEqual(TEXT("AND THE TWO ADD UP TO THE WHOLE WORTH"), PaidHeavy + PaidSpecial, static_cast<double>(Worth), 1.0e-2);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
