@@ -580,7 +580,9 @@ def test_a_used_up_traps_late_blows_are_found_by_its_identity_where_they_are_pri
     assert "Buried->Caster.Get()" in buried
     assert "CastBy.Get()" not in buried
     templates = code_of(SOURCE.parent / "CataclysmSkillTemplates.cpp")
-    assert re.search(r"Params\.bBurns, FreeRepeatCastBy\)\)", templates)
+    # THE TRAP'S IDENTITY IS STILL HANDED TO THE BURIED AXE, and since issue #2764 slice 2a the throwing skill's row after
+    # it, so a leap scales by that skill's level and credits it.
+    assert re.search(r"Params\.bBurns, FreeRepeatCastBy,\s*UCataclysmSkillLevels::RowThatLevels\(this\)\)\)", templates)
     engine = code_of(SOURCE)
     assert "SpentSkillTraps.Empty();" in engine
 

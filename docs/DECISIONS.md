@@ -372,6 +372,132 @@ No proof's log holds a "server/discover" line (#2745). The lock was released whe
 
 ---
 
+## 2026-11-19 — A skill earns experience from, and grows with its level through, its burns, ailments, ground, tether, late shots and buried axe, and a gadget's or trap's cast of it (#2764, slice 2a)
+
+**Affects:** `UCataclysmSkillLevels::RowOfBlow`, `PlayerOf`, `DamageFactorForRow` and `DamageFactorFor`, new
+(`game/Source/Cataclysm/Character/CataclysmSkillLevels.h` and `.cpp`); `FCataclysmHitDelivery::SkillRowWithNoSkill`, new,
+and the carried row on `ApplyBurn`, `ApplyDamageOverTime` and `ApplyShareOfHealthOverTime`
+(`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp`, which also hold `RowToCredit`, the level
+factor in `ApplyHit` and `ApplyDamageOverTime`, the credit of a gadget's or trap's cast, and the row the remaining-damage
+burst and the necrosis payout keep); `UCataclysmAilments::Apply`
+(`game/Source/Cataclysm/AbilitySystem/CataclysmAilments.h` and `.cpp`); `ACataclysmGroundZone::SkillRowItWasLeftWith`
+and `LevelFactorOnCreatures`, new (`game/Source/Cataclysm/AbilitySystem/CataclysmGroundZone.h` and `.cpp`, set in
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp`); `ACataclysmProjectile::FiringSkillRow`, new
+(`game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.h` and `.cpp`); `UCataclysmBuriedWeapon::SkillRow`, new
+(`game/Source/Cataclysm/AbilitySystem/CataclysmBuriedWeapon.h` and `.cpp`, set in
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp`); `ACataclysmTether::SkillRowItWasBoundWith`, new
+(`game/Source/Cataclysm/AbilitySystem/CataclysmTether.h` and `.cpp`); `ACataclysmMinion::LaySkillTrapsDamageOverTime`
+(`game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp`); `docs/Cataclysm_GDD_v2.md` ("What a Skill Levels":
+a row for ailments and minions, and "What earns a skill experience" in place of "What this first slice counts"). Tests:
+the group `Cataclysm.SkillLevelSources.`, new, seven tests (`game/Source/Cataclysm/Tests/CataclysmSkillLevelSourcesTests.cpp`).
+Issue [#2764](https://github.com/sdubois777/Cataclysm/issues/2764).
+
+### SAID FIRST
+
+- **NOT COMPILED OR RUN YET.** Its window comes after four other changes in the machine's queue.
+- **SEVEN TESTS, NOT THE TWELVE THE PLAN NAMED FOR 2a.** They test every new mechanism through the functions every such
+  effect is laid by -- `ApplyDamageOverTime`, `ApplyShareOfHealthOverTime`, `ApplyHit` -- rather than by building a
+  gadget, a trap, a ground zone or a Harrower axe, whose set-up could not be checked without the editor. So **NO TEST
+  YET DRIVES A REAL GROUND ZONE'S SWEEP, A REAL BURIED AXE'S LEAP, A REAL GADGET'S OR TRAP'S CAST, OR A REAL
+  REMAINING-DAMAGE BURST.** Each of those passes the row to one of the three functions the tests do drive, which the
+  coordinating session can judge from the diff, and a test that builds each can follow once a window can iterate on it.
+- **THE PYTHON TEXT TEST OVER EVERY CALL THAT STARTS DAMAGE OVER TIME IS NOT WRITTEN YET.** It was accepted in the plan.
+- **MINIONS ARE SLICE 2b**: Summon Imp's imps and Subjugate's thralls neither credit nor scale yet. The War deployables
+  are left out by the owner's rule of 2026-11-17 that War rows stay unbuilt, and credit nothing until War is built.
+
+### The rulings
+
+- **The owner, 2026-11-19, relayed by the coordinating session.** The question as asked: "Skill levels, part 2: burns,
+  poisons, bleeds and minions will now earn experience for the skill that caused them. When that skill levels up, should
+  those effects also hit harder? Direct hits already grow up to 2.85x by level 20, and ground zones and traps scale too,
+  because the design says a level multiplies the skill's damage percentage. Burns and minions use flat figures, so the
+  design doesn't cover them." Chosen: "Yes, they scale too (Recommended)", described as "Path of Exile's way. A burn,
+  poison or minion skill grows up to 2.85x at level 20, the same as a hit skill. Without this, Summon Imp levels up but
+  its imps never hit harder because of it. The basic attack's ailments still don't scale." Rejected: "Only earn
+  experience".
+- **By the design document**, as the coordinating session read it: the row "What a level does: Multiplies the skill's
+  damage percentage by 1.0567" makes everything priced from the skill's percentage scale already -- a ground zone's sweep
+  (F2), a gadget's or trap's late blow (F3), a buried axe's leap, a gadget's copy of the last skill. The earning row,
+  experience "shared among the skills that hurt it, by the share of its health each removed", makes a gadget's or a
+  trap's cast pay the skill FULL experience.
+- **The coordinating session's judgements, accepted 2026-11-19:** the skill's row travels with its damage, so it credits
+  and scales after the skill object has gone (1); damage a passive, a worn row or a set bonus adds on top -- a spread
+  copy, the explosion when an ailment ends, Chorus, retaliation -- credits nothing, while an ailment's own remaining
+  damage paid early, a burst or the necrosis payout, credits its skill (2); minions no skill made credit nothing, and
+  thralls credit Subjugate (3, in 2b); a tick credits the resolved health figure, and the factor is read once when the
+  effect is laid (4); the War deployables are left out (5).
+- **The four findings folded in**: F1, a use cast in the player's name was credited when strike-shaped and not when
+  projectile-shaped, now credited either way; F2, a zone's ground was not sized by the level its blast was; F3, a
+  gadget's or trap's late blow lost the level its cast had; F4, Void Splinter dropped its skill.
+
+### The research
+
+Re-read on 2026-11-19 from these pages; the plan's summary had been gathered by a research agent.
+
+- **Experience**: runescape.wiki/w/Combat_experience (served as /w/Experience): "Experience awarded is based on the
+  percentage of damage dealt to your enemy", as slice 1 pays. runescape.wiki/w/Necromancy_training: reflected damage
+  "does not count for Necromancy experience", nor poison from Cinderbane gloves "(or other sources)".
+  oldschool.runescape.wiki/w/Poison: poison damage gives no combat experience. oldschool.runescape.wiki/w/
+  Dwarf_multicannon: the cannon "yields 2 Ranged experience per damage", against 4 for a ranged attack. The
+  PlanetDungeonSiege numbers page (Dungeon Siege 1): a summoned creature earns experience for its summoner's skill when
+  its attack damages the enemy. skyrim.wiki.fextralife.com/Leveling: Conjuration rises from a raised minion only when it
+  "engages in combat", and Destruction from runes only when they are triggered.
+- **Scaling**: poedb.tw/us/Caustic_Arrow: the caustic ground deals 8.8, 156.4 and 1,927.1 chaos a second at gem levels 1,
+  10 and 20, while the hit goes from 55% to 64.4%. poedb.tw/us/Raise_Spectre: the spectre is level 28, 50 and 70 at gem
+  levels 1, 10 and 20. poedb.tw/us/Fire_Trap: the burning ground deals 27.7 and 2,566 fire a second at gem levels 1 and
+  20. maxroll.gg/last-epoch/resources/damage-explained: "There is currently no way of increasing Base Damage for
+  Ailments"; minions gain 0.6% Minion Power per character level from level 26, 45% at level 100.
+- **Corrections to the plan's summary**: Last Epoch's minions gain 0.6% a character level, not 0.8%; RuneScape paying at
+  the death, and its cannon, coil and cyclone earning nothing, came only from a summary of the pages and are not recorded.
+- **What the research settles**: crediting damage over time and minions is the owner's ruling, against RuneScape's
+  practice; scaling them follows Path of Exile, against Last Epoch and RuneScape, by the owner's choice.
+
+### The change
+
+- **THE ROW TRAVELS WITH THE DAMAGE.** `RowThatLevels` needs the skill object, and a one-use grant -- a gadget's or a
+  trap's cast -- is removed after its use while its shot, its ground and its axe go on. So the row is captured while the
+  skill is there and carried beside the tags that were already carried for the same reason: on a blow
+  (`FCataclysmHitDelivery::SkillRowWithNoSkill`), on a projectile (`FiringSkillRow`), a ground zone
+  (`SkillRowItWasLeftWith`), a buried axe (`SkillRow`), a tether (`SkillRowItWasBoundWith`), and through `ApplyBurn`,
+  `ApplyDamageOverTime`, `ApplyShareOfHealthOverTime` and `UCataclysmAilments::Apply`. `RowOfBlow` reads the skill's own
+  row while it is there and the carried one otherwise.
+- **THE CREDIT IS MADE WHERE SLICE 1b MADE IT**, in the struck creature's attribute set before a death is handled, from
+  the effect's `SkillRowToCredit`. 2a sets that row on more effects: every damage-over-time effect a levelling skill lays
+  (so every tick credits), Void Splinter's, every ground zone's sweep, the remaining-damage burst and the necrosis payout
+  (copied from the effect they end), and a gadget's or a trap's cast. `RowToCredit` no longer refuses a blow cast in the
+  player's name (F1).
+- **THE LEVEL FACTOR**: `ApplyHit` reads `DamageFactorFor`, which keeps the skill object's factor and otherwise reads the
+  carried row's on the player the instigator acts for (F3, the buried axe). A ground zone keeps its leaving skill's
+  factor and multiplies each sweep by it on a creature (F2); not in `DamagePerTick`, which the planted sword's
+  `GrowHotter` rewrites. `ApplyDamageOverTime` multiplies a skill's ailment's tick by its level factor, read once when
+  laid, for an effect scaled by its applier and laid on another character, as the Withered Touch curse is -- not a spread
+  copy, not the trap's share (a share of a blow already scaled), not a minion's burn, not converted damage. Void Splinter
+  is credited and not multiplied.
+
+### The tests and the proofs, registered
+
+`Cataclysm.SkillLevelSources.`, new, 7: `ASkillsBurnIsCreditedToItAndSizedByItsLevel`,
+`ABurnLaidWithACarriedRowIsCreditedAndSized`, `TheBasicAttacksBurnAndAnUnscaledCopyCarryNoRow`,
+`AVoidSplinterFromASkillIsCreditedAndNotSized`, `ABlowWhoseSkillHasGoneIsSizedAndCreditedByItsRow`,
+`ABlowCastInThePlayersNameIsCredited` and `AKillByASkillsBurnPaysTheSkill`. The figures the burn tests compare are the
+running effects' own ticks, before the creature's defences, so nothing but the level differs. `Cataclysm.SkillLevels.`
+stays at 12.
+
+C++ proofs, each with the prefix `Cataclysm.SkillLevelSources.` (7 tests), registered for the window:
+
+| Proof | The break | Predicted with it in |
+| :-- | :-- | :-- |
+| L1 | `ApplyDamageOverTime`'s `Effect->SkillRowToCredit = ...` removed | 3 failed: `ASkillsBurnIsCreditedToItAndSizedByItsLevel` (its row and its credit), `ABurnLaidWithACarriedRowIsCreditedAndSized` (its row and its credit), `AKillByASkillsBurnPaysTheSkill` (paid 0) |
+| L2 | the `* SkillsLevel` factor in `ApplyDamageOverTime` removed | 2 failed: the same two burn tests, on their level ratio (1.1166 expected, 1.0) |
+| L4 | `DamageFactorFor`'s carried-row branch made to answer 1 | 2 failed: `ABlowWhoseSkillHasGoneIsSizedAndCreditedByItsRow` and `ABurnLaidWithACarriedRowIsCreditedAndSized`, on their level ratio |
+| L5 | `ApplyShareOfHealthOverTime`'s `Effect->SkillRowToCredit = ...` removed | 1 failed: `AVoidSplinterFromASkillIsCreditedAndNotSized` (its row and its credit) |
+| L6 | `RowToCredit`'s refusal of a blow with `CastBy` set put back | 1 failed: `ABlowCastInThePlayersNameIsCredited` |
+
+Restored, each must perform 7 with none failed. The whole suite is registered from the newest measured total when the
+window is given, + 7.
+
+---
+
 ## 2026-11-19 — The empire upgrade tree's player nodes act inside a dungeon: magic find, loot quantity, movement speed and damage from fifteen nodes, doubled for the Explorer branch's loot at a one-day walk (#2741, slice 5a)
 
 **Affects:** `game/Source/Cataclysm/Player/CataclysmEmpireTree.h` and `.cpp` (`FCataclysmEmpireTreePlayerBonuses` and
