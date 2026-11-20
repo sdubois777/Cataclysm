@@ -411,8 +411,15 @@ to them is fixed here.
 
 ### Python, measured
 
-Not yet measured at the commit that registers this entry; the whole Python suite runs on that commit, and its
-counts are recorded here in the commit after it.
+At `8905d301b`, the code, its tests and this entry committed: "7799 passed, 9 skipped in 337.09s (0:05:37)"; the
+JUnit file: tests 7808, failures 0, errors 0, skipped 9. ruff: "All checks passed!". This branch adds no Python test.
+
+**ONE PYTHON CHECK HAD TO MOVE, AND MOVED.** The first run, at `e0b08060c`, read "1 failed, 7798 passed, 9 skipped":
+`test_the_check_reads_the_game_and_finds_the_helper` in
+`tools/tests/test_swept_moves_go_through_the_one_that_does_not_stick.py` asserts that at least eight call sites call
+`UCataclysmMovement::MoveWithoutSticking`, as a check that it read the game's source, and it read 7. Vesselstep's
+trade was one of the eight and no longer sweeps. Its floor is now seven, with that reason in its docstring
+(`fb6d1b5c6`).
 
 ---
 
