@@ -18,8 +18,13 @@ the coordinating session made this the slice after the ring slice (R6 of that en
 
 ### SAID FIRST
 
-- **NOT YET RUN: THE PYTHON SUITE AND THE TWO GUARD PROOFS ARE REGISTERED BELOW, BEFORE THEY RUN** ("Registered
-  before the run").
+- **THE FIRST SUITE RUN, AT `e1888b217`, FAILED ONE TEST THAT WAS NOT REGISTERED, AND IT WAS THIS ENTRY'S**: "1 failed,
+  7727 passed, 9 skipped". `test_no_file_cites_the_design_document_by_line_number` found the design document cited
+  by line number, in the quotation of the Q3 ruling below. The quotation now names the paragraph instead. The
+  simulation's tests all passed. The suite is run again at the head that corrects it ("The Python suite at
+  `e1888b217`", below).
+- **BOTH GUARD PROOFS PROVED EXACTLY AS REGISTERED**, and the ring control is exactly equal at `e1888b217`
+  ("Results", below).
 - **`experiments.py` HAS NOT BEEN RUN, BEFORE OR AFTER.** Both runs wait for a gap of about 40 minutes with no window,
   which the coordinating session will name; the design is under "experiments.py, before and after".
 - **THE SANCTUARY'S MEDIAN WALK HAS A TOLERANCE OF ITS OWN, 6 DAYS, AND THE BULWARK KEEPS 1 DAY WITH ONE BLOCK OF TEN
@@ -57,8 +62,10 @@ On this slice's plan, 2026-11-19:
   Sanctuary dungeons off the map, from 8,625 to 1,106 in 10,000 campaigns, so 320 campaigns hold too few for 1 day. The
   tolerance is not widened to hide a change. Keep Bulwark at 1 day."
 - "Q2: YES, delete ignores_frontier, since nothing would set it; the rifts belong to #51."
-- "Q3: YES, past tense for the simulation statement at docs/Cataclysm_GDD_v2.md line 398 only; leave the Rift text
-  alone."
+- "Q3: YES, past tense for the simulation statement at [the design document's paragraph that opens "The first three
+  rows were measured against one Cataclysm, and it was always Demonic."] only; leave the Rift text alone." The bracket
+  replaces the line number the ruling gave, because `tools/tests/test_the_design_document_is_cited_by_name.py` fails
+  any file that cites the design document by line (below, "The Python suite at `e1888b217`").
 - "Q4: Do not leave a comment that contradicts the #1085 ruling with nothing to fix it. Correct CataclysmSurge.h lines
   660 to 663 in YOUR SEEDING SLICE, which is C++ in the same module and is compiled and windowed anyway. Name it in both
   entries. No issue."
@@ -162,6 +169,29 @@ probe, undone after): "2 failed, 7716 passed, 9 skipped in 330.46s"; the JUnit f
   `self.empire.alive_cities()`. Predicted named failures, all ten: the eight first-wave cases, because each one's
   weight gives a sealed city a share (the set-up assertion each makes), and the other two as in P1. Restored: 10
   passed.
+
+### Results
+
+**The two guard proofs**, at `e1888b217` through `tools/prove_guard.py` (`.claude/windows/demonic/prove_demonic.py`,
+`prove_demonic.out` and `prove_demonic_P2.out`), each with `proved` True and its named failures exactly the registered
+set, nothing missing and nothing unexpected:
+
+| Proof | Broken half | Restored half |
+| :-- | :-- | :-- |
+| P1, Demonic alone behind the line | "3 failed, 7 passed": the `[Demonic]` first-wave case, the opened-Bulwark test and the tier 8 campaign test | "10 passed" |
+| P2, every Cataclysm behind the line | "10 failed": the eight first-wave cases and the same two | "10 passed" |
+
+P1 is the defect this change removes, put back exactly; P2 shows each of the other seven would be caught too.
+
+**The ring control at `e1888b217`**, nothing uncommitted: 4,654 clears from 135 campaigns, equal element by element
+to the old code's (`ring_control_e1888b217.json`).
+
+**The Python suite at `e1888b217`**: "1 failed, 7727 passed, 9 skipped in 309.53s"; the JUnit file 7,737 tests, 1
+failure, 0 errors, 9 skipped. The registered 7,737 tests matched; the registered 7,728 passed did not. The failure was
+`tools/tests/test_the_design_document_is_cited_by_name.py::test_no_file_cites_the_design_document_by_line_number`:
+"1 place(s) cite the design document by line number", at `docs/DECISIONS.md` line 60, where the quotation of Q3 in
+this entry gave the design document's file name and a line number. Written for this commit; nothing in the simulation. ruff: "All checks passed!".
+**THE RUN AT THE CORRECTING HEAD IS NOT YET RECORDED HERE.**
 
 ### experiments.py, before and after
 
