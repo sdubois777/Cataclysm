@@ -914,11 +914,17 @@ is added or changed. Issue #2756; the plan was accepted by the coordinating sess
 - **NOT YET COMPILED OR RUN IN THE ENGINE.** Written while the owner played from the main checkout, when the
   coordinating session allowed no compile; the machine turn comes after skill levelling. What the run must show is
   under "Registered before the run", below.
+- **REBASED ON 2026-11-20 ONTO DEVELOPMENT `9772aea2a`, AS `fix/countbits-of-a-32-bit-value-2`.** The first branch,
+  from `055ac0254`, was pushed, so its rebase goes to a new name rather than a force push. The code change applied
+  without a conflict; this entry conflicted at the top of this file and is placed by when it was first written
+  (2026-11-19 15:28), below the MCP server entry (15:49) and above the C-opens entry (14:59). The whole-suite figures
+  under "Registered before the run" were registered again from the newest window's log.
 - **THE CHANGE.** `State.LeechPoolsInFlight = FMath::CountBits(static_cast<uint64>(PoolsSeen));` becomes
   `State.LeechPoolsInFlight = FMath::CountBits(PoolsSeen);`. `PoolsSeen` is a `uint32` with one bit for each pool
   being leeched into (`ECataclysmLeechPool`: health, mana, energy shield), so at most three bits are set and the cast
   to 64 bits added nothing. It is the only `CountBits` call in `game/Source`: a search for `CountBits` there finds this
-  line alone.
+  line alone, at `055ac0254` and again at `9772aea2a` (`git grep -n CountBits 9772aea2a -- game/Source`: line 1315
+  only). With this branch's three-line comment above it, the call is line 1318.
 - **WHAT THE ENGINE OFFERS.** Unreal Engine 5.8's `MicrosoftPlatformMath.h` has three: `CountBits(uint32)` at line
   155, not deprecated; `CountBits64(uint64)` at line 167; and a template `CountBits(T)` for an integer wider than four
   bytes, lines 179 to 185, whose `UE_STATIC_DEPRECATE(5.8, sizeof(T) > 4, ...)` at line 183 prints the warning and
@@ -931,6 +937,13 @@ is added or changed. Issue #2756; the plan was accepted by the coordinating sess
   release, otherwise your project will no longer compile.", followed by
   "CataclysmAbilitySystemComponent.cpp(1315,36): note: see reference to function template instantiation 'int32
   FMicrosoftPlatformMathBase::CountBits<uint64>(T)' being compiled".
+- **THE WARNING, AT THE NEW BASE.** Development still prints it. Window fix-2725-w1's first compile, at `31002c802`,
+  whose `game/` tree is `9772aea2a`'s, printed the same warning and the same note,
+  "CataclysmAbilitySystemComponent.cpp(1315,36): note: see reference to function template instantiation 'int32
+  FMicrosoftPlatformMathBase::CountBits<uint64>(T)' being compiled", while compiling `Module.Cataclysm.2.cpp`; its
+  build tool log is `.claude/windows/t2725_build_1_branch_ubt.log` in the worktree `laughing-curran-69e4bb`. Line
+  1315, column 36, at `9772aea2a` is the `CountBits` of the line this branch changes. That warning is the only line
+  holding "warning C" or ": error" in that log.
 - **EARLIER ENTRIES CALLED THE WARNING "THE ENGINE'S OWN", AND ARE LEFT AS WRITTEN**, as the coordinating session
   ruled. The line that triggered it was this project's. These say "the engine's own":
   - 2026-11-18, "Each run masks its dungeons' walk seeds ..." (#2749, B10), twice;
@@ -947,26 +960,37 @@ is added or changed. Issue #2756; the plan was accepted by the coordinating sess
 
 ### Registered before the run
 
-The base is window hitline-w1, run at `622bc0243`, whose `game/` tree is `055ac0254`'s (`git diff --stat 622bc0243
-055ac0254 -- game/` prints nothing); its engine log, `.claude/windows/hitline_suite_engine_622bc024.log` in this
-session's worktree, reads "Tests: 4947 tests performed, 4947 succeeded, 0 failed. 47 skipped part of what they check"
-and "Test saves: 850 written and deleted, 0 left behind". This branch adds no test and removes none. **If
-development's `game/` tree moves before the window runs, the whole-suite figures are registered again from the newest
+**Registered again on 2026-11-20, after the rebase.** The base is window fix-2725-w1, run at `31002c802`, whose `game/`
+tree is `9772aea2a`'s (`git diff --stat 31002c802 9772aea2a -- game/` prints nothing). Its `tests` command's output,
+`.claude/windows/t2725_suite_31002c80.log` in the worktree `laughing-curran-69e4bb`, reads "Tests: 4985 tests
+performed, 4985 succeeded, 0 failed. 47 skipped part of what they check" and "Test saves: 852 written and deleted, 0
+left behind". Its engine log there, `t2725_suite_engine_31002c80.log`, holds 4985 "Test Completed" lines. The
+"Test saves:" and "Test Completed" lines of that log are copied, in their order, to
+`.claude/windows/t2725_base_saves_and_completed_31002c80.log` in this session's worktree, because the window compares
+each test's share of the saves with them and that worktree may be deleted when its branch merges; read the same way,
+the whole log and the copy give the same 4985 shares and the same total, 852. This branch adds no test and removes
+none. Until the rebase the base was window hitline-w1 at `622bc0243` (4947 performed, 850 saves). **If development's
+`game/` tree moves again before the window runs, the whole-suite figures are registered again from the newest
 window's log before it starts.**
 
 - **The three compiles** -- the branch as committed, the build plan moved aside first; the changed file alone, the
-  index read from `055ac0254`; the unity files again -- each succeed with **NO WARNING OR ERROR LINE IN ANY OF THE
-  THREE**. Each of them compiles `CataclysmAbilitySystemComponent.cpp`, in its unity file or alone, so each would print
-  the warning if the call still chose the deprecated template.
+  index read from `9772aea2a`; the unity files again -- each succeed with **NO WARNING OR ERROR LINE IN ANY OF THE
+  THREE**, and so in particular no C4996 `CountBits` warning in the first, where development's own build printed it
+  as its only warning or error line. Each of them compiles `CataclysmAbilitySystemComponent.cpp`, in its unity file
+  or alone, so each would print the warning if the call still chose the deprecated template.
 - **Each of the two tests that read the count, run alone by its own prefix, performs 1 and succeeds 1.** Each prefix
-  selects exactly one name in the base log's list of tests.
+  selects exactly one name in the base log's list of tests: recounted in fix-2725-w1's engine log, ignoring case,
+  the two prefixes together select 2 of its 4985 "Test Completed" lines, one each. At `9772aea2a` one row carries the
+  scale that reads the count, `leech_pools_in_flight` (`PerLeechPoolInFlight`): Starvation's six-piece row, line 536
+  of `game/Data/EnchantmentEffects.csv`. The tests in `game/Source` name the scale in the first test below only, and
+  that row in the second only.
 
 | Prefix | The test | What it reads |
 |---|---|---|
 | `Cataclysm.Enchantments.TheLeechPoolsScale` | `TheLeechPoolsScaleCountsEachPoolBeingLeechedIntoOnceAndAtMostThree` | a damage reduction of 5 per pool: 0, 5, 10, 15, 5 and 10 for no payment, two into health, health and mana, all three with health twice, one with nothing left to pay, and all three with no energy shield |
 | `Cataclysm.Enchantments.StarvationsSixPieces` | `StarvationsSixPiecesGiveFiveDamageReductionForEachPoolBeingLeechedInto` | the Starvation six-piece row from the built table: 5 for each pool the wearer has and is leeching into |
 
-- **The whole suite**: **4947** performed (4947 + 0), all succeeding, 47 skipped halves, and "Test saves: 850 written
+- **The whole suite**: **4985** performed (4985 + 0), all succeeding, 47 skipped halves, and "Test saves: 852 written
   and deleted, 0 left behind", each test's share compared with its share in the base log, and any difference named by
   the test that makes it.
 - **One guard proof**, through `tools/unreal_build.py`'s `prove_cpp_guard`:
