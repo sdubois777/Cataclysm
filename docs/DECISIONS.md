@@ -750,13 +750,17 @@ PORTED" bullet on the Demonic Cataclysm's Rifts in `game/Source/CataclysmEmpire/
 
 ### SAID FIRST
 
-- **COMPILED, NOT YET RUN IN UNREAL.** Phase 1 was written without a compile, as ruled, at `31a879a99` on
-  `0b7b554d1`. It was rebased twice, onto `e583b0788` as `-2` and onto `3d0193bfa` as `-3`, and at its turn compiled
-  three ways at `6e4ca7d41` with no warning (below). The diagnostic window registered below has not run.
+- **COMPILED, AND RUN ONCE IN THE DIAGNOSTIC WINDOW, WHERE ONE OF THIS SLICE'S OWN NEW TESTS FAILED ITS SET-UP.**
+  Phase 1 was written without a compile, as ruled, at `31a879a99` on `0b7b554d1`. It was rebased twice, onto
+  `e583b0788` as `-2` and onto `3d0193bfa` as `-3`, and at its turn compiled three ways at `6e4ca7d41` with no
+  warning. The diagnostic window then ran 5,001 tests and 5,000 passed; the loaded-run test could not load its
+  fixture, and is corrected below, not yet compiled.
 - **THE DIAGNOSTIC WINDOW PROVES NOTHING ABOUT THE FIX, AND ITS FAILURES ARE EXPECTED** (ruled Q2, below). Changing how
   22 streams are seeded changes what they draw, so any test that pins a draw from one of them moves. The window lists
   those tests by name, from evidence. The real window comes after the commit that corrects them, registers each moved
   test by name, and carries the C++ guard proof.
+  **MEASURED: THE LIST OF MOVED TESTS IS EMPTY.** The 4,998 tests the base passed all passed again under the mix;
+  the one failure was this slice's own set-up (below).
 - **THE GAME'S SURGE HEADER IS CORRECTED HERE, A COMMENT ONLY**, as ruled on the Demonic front-line slice (Q4 there):
   `CataclysmSurge.h`'s bullet called the Demonic Cataclysm's Rifts "the one pattern the vertical slice would actually
   use", which the ruling on [#1085](https://github.com/sdubois777/Cataclysm/issues/1085) contradicts. It now says the
@@ -971,6 +975,73 @@ or modifier draws from a fixed run seed. A test that sets `ModifierSeedForTests`
 and what it now draws; then a window registered test by test, with one C++ guard proof through `prove_cpp_guard`:
 `CataclysmSeedMix::Mix` broken back to `Seed ^ (Salt + Index)` must fail the band test's two assertions on the mix and
 leave its two controls passing.
+
+### The diagnostic window seed-diag, 2026-11-20
+
+Run at `d3c662227` on the coordinating session's GO, under the lock `seed-diag`, from 03:59:57. The pre-checks all
+passed, with 11,638 MB free. The build printed "target already up to date, 0 actions, nothing compiled", because the
+compile's unity build had built the same `game/` tree.
+
+- **`Cataclysm.Seeding.` alone**: "3 tests performed, 2 succeeded, 1 failed:
+  ARunLoadedFromTheCommittedFixtureDrawsTheCataclysmsItsSavedStreamGives". The other two printed the registered figures
+  exactly: "SEEDING BAND: the mix: fewest distinct 15, narrowest band 16; the old formula: most distinct 5, widest band
+  5; fewest Elites on a floor 41" and "SEEDING NEIGHBOURS: both Elite 0.0454 with the mix, 0.1229 with the old formula".
+- **The whole suite**: "5001 tests performed, 5000 succeeded, 1 failed", the same test; 47 skipped part of what they
+  check, as registered; "Test saves: 852 written and deleted, 0 left behind"; "Declared: 5001 tests in the tree at
+  d3c662227; 5001 performed, gap 0". Memory peaked at 9,115 MB.
+- **THE LIST OF MOVED TESTS IS EMPTY.** The 4,998 tests the base passed all passed again under the mix, so no test on
+  the list of candidates above failed, and there is no moved test to correct.
+- **THE ONE FAILURE IS THIS SLICE'S OWN SET-UP**: "Expected 'set-up: and into a run (the record holds 2 cities and the
+  map has 25)' to be true." `FCataclysmSaveApply::RunInto` refuses, before touching the run, any record that does not
+  hold every one of the map's 25 cities, and the committed run fixtures hold two. No other test puts a fixture through
+  `RunInto`; they gather a record from a begun run. The failure measured nothing about the mix.
+- No line named "server/discover" or "ConsoleCtrl". Python printed "7776 passed, 9 skipped", the JUnit file agreeing
+  (7,785 tests, no failure, 9 skipped); ruff clean. The lock was released.
+
+### Corrected after it: the loaded-run test's set-up
+
+`CataclysmSeedingTests.cpp`, that test only. It still reads `Run_v11.json`, and asserts the file holds two cities. It
+then gives the record a whole map with `FCataclysmSaveGather::CitiesFrom` from a fresh run (`Begin(2749)`) before
+`RunInto`; the file includes `Save/CataclysmSaveGather.h` itself. The Cataclysm stream reads no city; every other
+field, the stream's state and the four Cataclysms among them, is the fixture's; and the fixture's one dungeon stands on
+city 7, which a whole map has. `RunInto`'s two other refusals, a city out of its place and a dungeon without exactly
+one timer, do not apply to it. Each call's result is now taken before its message is formatted, so the message carries
+`RunInto`'s reason: the window showed MSVC making the call first, but C++ does not fix the order a function's arguments
+are evaluated in. The assertions are unchanged: the stream's state 1357924680, then Demonic, then War.
+
+### Registered before the proof window
+
+The proof window runs after the corrected test is compiled three ways, on the coordinating session's GO, under a lock of
+its own, from scripts generated as the diagnostic window's were.
+
+| Step | Registered |
+| :-- | :-- |
+| Pre-checks | those of the diagnostic window |
+| The build | succeeds; no asset step |
+| `Cataclysm.Seeding.` alone | 3 performed, 3 succeeded, printing "SEEDING BAND: the mix: fewest distinct 15, narrowest band 16; the old formula: most distinct 5, widest band 5; fewest Elites on a floor 41", "SEEDING NEIGHBOURS: both Elite 0.0454 with the mix, 0.1229 with the old formula" and "SEEDING LOADED RUN: next ECataclysmType::Demonic, then ECataclysmType::War" |
+| The whole suite | 5,001 performed, 5,001 succeeded, 0 failed; 47 skipped part of what they check; 852 test saves written and deleted, none left behind; no line naming "server/discover" or "ConsoleCtrl" |
+| Python and ruff | every test passing, the JUnit file agreeing; ruff clean |
+| The guard proof | as below |
+
+**THE GUARD PROOF**, through `prove_cpp_guard` with `test_prefix="Cataclysm.Seeding."`. The break, in
+`CataclysmSeedMix.h`: the two statements of `Mix` that compute `Summed` and `Mixed` become
+`const int32 Mixed = Seed ^ (Salt + Index);`, the formula the game used before this slice. `Mix`'s never-nought line
+stays, and no local is left unused. The header's neighbours `CataclysmEmpireRun.cpp`, `CataclysmRoster.cpp` and
+`CataclysmDungeonModifier.cpp` include it, which is what the tool reads as the header compiled.
+
+Predicted from `sim/analyse_placement_seeds.py`'s replay of exactly that formula on the tests' 20 floor seeds, none of
+whose rarity seeds is nought:
+
+- **Broken**: 3 performed, 1 succeeded, 2 failed; `named_failures` the band test and the neighbour test. The band test
+  fails "every floor's Elites carry at least 12 distinct first modifiers" and "no floor's Elites lie in a band of 5
+  adjacent rows or fewer", and prints "the mix: fewest distinct 4, narrowest band 4; the old formula: most distinct 5,
+  widest band 5; fewest Elites on a floor 47". The neighbour test fails "neighbouring placements are both Elite under 6%
+  of the time", and prints "both Elite 0.1229 with the mix, 0.1229 with the old formula". Both controls pass. The
+  loaded-run test passes, because a loaded run's stream is its saved state.
+- **Restored**: 3 performed, 3 succeeded, and `proved` true.
+
+The plan above named only the band test's two assertions. The neighbour test's also fails, because its rarity seeds
+come through the same mix.
 
 ---
 

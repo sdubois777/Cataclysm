@@ -13,6 +13,7 @@
 #include "Empire/CataclysmSeedMix.h"
 #include "Engine/DataTable.h"
 #include "Save/CataclysmSaveApply.h"
+#include "Save/CataclysmSaveGather.h"
 #include "Save/CataclysmSaveRecords.h"
 #include "Save/CataclysmSaveStorage.h"
 #include "Tests/CataclysmSaveFixtures.h"
@@ -253,12 +254,27 @@ CATACLYSM_SEEDING_TEST(FCataclysmSeedingLoadedRunTest,
 	}
 	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
 	FString Why;
-	const UCataclysmRunSave* Record = Cast<UCataclysmRunSave>(FCataclysmSaveStorage::FromJson(
+	UCataclysmRunSave* Record = Cast<UCataclysmRunSave>(FCataclysmSaveStorage::FromJson(
 		Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Why));
+	if (!TestNotNull(TEXT("set-up: the fixture reads into a run record"), Record))
+	{
+		AddError(Why);
+		return false;
+	}
+
+	// THE WHOLE MAP, FROM A FRESH RUN, because `RunInto` puts back only a record of every city and the fixture holds two:
+	// the diagnostic window seed-diag (2026-11-20) failed this set-up with "the record holds 2 cities and the map has
+	// 25". Nothing the Cataclysm stream draws reads a city, and every other field, the stream's state and the active
+	// Cataclysms among them, is the fixture's. The fixture's one dungeon stands on city 7, which a whole map has.
+	UCataclysmEmpireRun* Fresh = NewObject<UCataclysmEmpireRun>();
+	Fresh->Begin(2749);
+	TestEqual(TEXT("set-up: the fixture holds two cities"), Record->Cities.Num(), 2);
 	UCataclysmEmpireRun* Loaded = NewObject<UCataclysmEmpireRun>();
-	if (!TestNotNull(TEXT("set-up: the fixture reads into a run record"), Record)
-		|| !TestTrue(FString::Printf(TEXT("set-up: and into a run (%s)"), *Why),
-					 FCataclysmSaveApply::RunInto(*Record, *Loaded, Why)))
+	// Each call made before its message is written, so the message carries `RunInto`'s reason.
+	const bool bGathered = FCataclysmSaveGather::CitiesFrom(*Fresh, *Record);
+	const bool bLoaded = bGathered && FCataclysmSaveApply::RunInto(*Record, *Loaded, Why);
+	if (!TestTrue(TEXT("set-up: a fresh run's cities are gathered into the record"), bGathered)
+		|| !TestTrue(FString::Printf(TEXT("set-up: and into a run (%s)"), *Why), bLoaded))
 	{
 		return false;
 	}
