@@ -21,8 +21,8 @@ the coordinating session made this the slice after the ring slice (R6 of that en
 - **THE FIRST SUITE RUN, AT `e1888b217`, FAILED ONE TEST THAT WAS NOT REGISTERED, AND IT WAS THIS ENTRY'S**: "1 failed,
   7727 passed, 9 skipped". `test_no_file_cites_the_design_document_by_line_number` found the design document cited
   by line number, in the quotation of the Q3 ruling below. The quotation now names the paragraph instead. The
-  simulation's tests all passed. The suite is run again at the head that corrects it ("The Python suite at
-  `e1888b217`", below).
+  simulation's tests all passed. **RUN AGAIN AT `84a5d222a`, WHICH CORRECTS IT, THE SUITE MATCHED THE REGISTRATION**:
+  "7728 passed, 9 skipped", the JUnit file 7,737 tests, 0 failures, 0 errors ("Results", below).
 - **BOTH GUARD PROOFS PROVED EXACTLY AS REGISTERED**, and the ring control is exactly equal at `e1888b217`
   ("Results", below).
 - **`experiments.py` HAS NOT BEEN RUN, BEFORE OR AFTER.** Both runs wait for a gap of about 40 minutes with no window,
@@ -191,7 +191,10 @@ failure, 0 errors, 9 skipped. The registered 7,737 tests matched; the registered
 `tools/tests/test_the_design_document_is_cited_by_name.py::test_no_file_cites_the_design_document_by_line_number`:
 "1 place(s) cite the design document by line number", at `docs/DECISIONS.md` line 60, where the quotation of Q3 in
 this entry gave the design document's file name and a line number. Written for this commit; nothing in the simulation. ruff: "All checks passed!".
-**THE RUN AT THE CORRECTING HEAD IS NOT YET RECORDED HERE.**
+
+**The Python suite at `84a5d222a`**, the head that corrects the quotation, nothing uncommitted: "7728 passed, 9 skipped
+in 321.48s"; the JUnit file 7,737 tests, 0 failures, 0 errors, 9 skipped. As registered. ruff: "All checks passed!".
+Both runs' output and JUnit files are `.claude/windows/demonic/suite_e1888b217.*` and `suite_84a5d222a.*`.
 
 ### experiments.py, before and after
 
