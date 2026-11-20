@@ -202,9 +202,11 @@ the creator should have, if any; that is the owner's ruling.
   `ToggleCharacterCreation`, still thirteen, and asserts the config has no action named `ToggleCharacterCreation`.
 - **`Cataclysm.Input.MappingContextsCoverEveryActionWithoutCollisions`**: the sheet's action is required in both
   contexts.
-- **Registered**: the whole suite at the base's last measured total + 1; `Cataclysm.Input.` alone 9, 8 and one new;
-  `Cataclysm.CharacterSheet.` 10 and `Cataclysm.Creation.` 14, unchanged in count. The base is `development`
-  `8c019826a`, and the coordinating session re-registers from the newest measured total after the rebase onto #2769.
+- **Registered**: the whole suite **4956**: 4955, measured by the burn and Thorns-rate window at `f1ec9e61b` (its
+  `game/` tree differs from `development` `2869846bc`'s only by seven comment lines in
+  `game/Config/DefaultEditorPerProjectUserSettings.ini`), + 1. `Cataclysm.Input.` alone 9: that run performed 8,
+  and one is new. `Cataclysm.CharacterSheet.` 10 and `Cataclysm.Creation.` 14, the counts that run performed,
+  unchanged here. The base is `development` `2869846bc`.
 - **Python, +7**: `test_the_empire_map_key_reaches_its_command.py` gains the "character sheet" row (5 parametrised
   cases) and `test_the_character_creator_has_no_key_and_its_command_still_opens_it`; `test_game_readme_is_true.py` gains
   `test_the_readme_states_the_right_number_of_input_actions`, which reads the count from the generator.
