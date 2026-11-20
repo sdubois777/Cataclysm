@@ -21,6 +21,8 @@
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
+// For the level a leap is sized at, and the row its loss is credited to. Issue #2764, slice 2a.
+#include "Character/CataclysmSkillLevels.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
@@ -707,6 +709,103 @@ CATACLYSM_TEST(FCataclysmLeapKillRangedNotMeleeTest,
 	TestTrue(TEXT("among them Type.Ranged, the throwing skill's"), LeapKill.SkillTags.HasTag(Ranged));
 	TestTrue(TEXT("and Slot.Special, the throwing skill's slot"), LeapKill.SkillTags.HasTag(Slot));
 	TestTrue(TEXT("and it names no skill, the leap carrying tags and no skill object"), LeapKill.SkillName.IsNone());
+	return true;
+}
+
+// ==========================================================================
+// 4. A buried weapon's leap is credited to its throwing skill and sized by its level
+// ==========================================================================
+
+/**
+ * Issue #2764, slice 2a. THE SET-UP IS test 1's, above, for its leaping player alone, twice: two Axe players 100 m apart,
+ * each burying an axe with Harrower's tags in a host 20 m north and making it leap at the enemy 4 m east of the host, the
+ * nearest living enemy to it, here of 50,000 health so the leap is read from what it took. EACH AXE IS BURIED WITH
+ * HARROWER'S ROW, as `UCataclysmProjectileSkill::BuryInStruck` now buries it, and the leap names no skill object. One
+ * player's Harrower is at level 1, the other's at level 3, so the level 3 leap is 1.0567 squared times the level 1 leap,
+ * and the whole of what each enemy took is credited to Harrower's row.
+ */
+CATACLYSM_TEST(FCataclysmSkillLevelSourcesLeapTest,
+	"Cataclysm.SkillLevelSources.ABuriedWeaponsLeapIsCreditedToItsThrowingSkillAndSizedByItsLevel")
+{
+	using namespace CataclysmLeapKillTest;
+
+	FLeapKillWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned at 100"), NeverCritical.Variable))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("set-up: Harrower's tags exist"), LeapKillHarrowerTagsExist()))
+	{
+		return false;
+	}
+	const FVector ThreeHome(100.0f * M, 0.0f, 0.0f);
+	FLeapKillRig AtOne(World, FVector::ZeroVector, TEXT("Axe"));
+	FLeapKillRig AtThree(World, ThreeHome, TEXT("Axe"));
+	if (!AtOne.IsMade(*this) || !AtThree.IsMade(*this))
+	{
+		return false;
+	}
+	// THE SPECIAL'S ROW, read off the weapon's Special, Harrower.
+	const FCataclysmWeaponSkill* Special = AtOne.Slots->GetAvailableSkills().FindByPredicate(
+		[](const FCataclysmWeaponSkill& Skill) { return Skill.Slot == ECataclysmAbilitySlot::Special; });
+	const FName Harrower = Special ? Special->RowName : NAME_None;
+	ACataclysmPlayerState* OneState = Cast<ACataclysmPlayerState>(AtOne.System->GetOwner());
+	ACataclysmPlayerState* ThreeState = Cast<ACataclysmPlayerState>(AtThree.System->GetOwner());
+	if (!TestTrue(TEXT("set-up: the Special's row, and each player's state"), !Harrower.IsNone() && OneState && ThreeState))
+	{
+		return false;
+	}
+	OneState->SetLevelAndExperience(4, 0);
+	ThreeState->SetLevelAndExperience(4, 0);
+	ThreeState->SetSkillExperience(Harrower, UCataclysmSkillLevels::ExperienceToReach(3));
+
+	const FVector North(0.0f, 20.0f * M, 0.0f);
+	const FVector East(4.0f * M, 0.0f, 0.0f);
+	ACataclysmEnemyCharacter* OneHost = LeapKillEnemy(World, North);
+	ACataclysmEnemyCharacter* OneTarget = LeapKillEnemy(World, North + East);
+	ACataclysmEnemyCharacter* ThreeHost = LeapKillEnemy(World, ThreeHome + North);
+	ACataclysmEnemyCharacter* ThreeTarget = LeapKillEnemy(World, ThreeHome + North + East);
+	if (!TestTrue(TEXT("set-up: each player's host and enemy"), OneHost && OneTarget && ThreeHost && ThreeTarget))
+	{
+		return false;
+	}
+	if (!TestNotNull(TEXT("set-up: the level 1 axe is buried with Harrower's tags and row"),
+			UCataclysmBuriedWeapon::BuryIn(OneHost, AtOne.Player, 10.0f * M, 100.0f, LeapKillHarrowerTags(false),
+										   /*bInBurns=*/false, TWeakObjectPtr<AActor>(), Harrower))
+		|| !TestNotNull(TEXT("set-up: and the level 3 axe"),
+			UCataclysmBuriedWeapon::BuryIn(ThreeHost, AtThree.Player, 10.0f * M, 100.0f, LeapKillHarrowerTags(false),
+										   /*bInBurns=*/false, TWeakObjectPtr<AActor>(), Harrower)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("set-up: the level 1 axe leaps from its host"), UCataclysmBuriedWeapon::LeapFromDying(OneHost));
+	TestTrue(TEXT("set-up: and the level 3 axe from its"), UCataclysmBuriedWeapon::LeapFromDying(ThreeHost));
+
+	const float OneTook = LeapKillTakenFrom(OneTarget);
+	const float ThreeTook = LeapKillTakenFrom(ThreeTarget);
+	const float* OneCredited = OneTarget->GetHealthRemovedBySkill().Find(Harrower);
+	const float* ThreeCredited = ThreeTarget->GetHealthRemovedBySkill().Find(Harrower);
+	AddInfo(FString::Printf(TEXT("LEAP: %s; the leap took %.3f at level 1 and %.3f at level 3 (x%.4f); credited %.3f and "
+								 "%.3f; the hosts took %.3f and %.3f"),
+							*Harrower.ToString(), OneTook, ThreeTook, OneTook > 0.0f ? ThreeTook / OneTook : 0.0f,
+							OneCredited ? *OneCredited : -1.0f, ThreeCredited ? *ThreeCredited : -1.0f,
+							LeapKillTakenFrom(OneHost), LeapKillTakenFrom(ThreeHost)));
+	TestTrue(TEXT("set-up: the level 1 leap took something"), OneTook > 0.0f);
+	TestEqual(TEXT("THE LEVEL 3 LEAP IS 1.0567 SQUARED TIMES THE LEVEL 1 LEAP"), ThreeTook / OneTook,
+		static_cast<float>(UCataclysmSkillLevels::DamageFactor(3)), 1.0e-3f);
+	TestTrue(TEXT("each enemy's loss is credited to Harrower"), OneCredited && ThreeCredited);
+	if (OneCredited && ThreeCredited)
+	{
+		TestEqual(TEXT("THE WHOLE OF THE LEVEL 3 ENEMY'S LOSS IS CREDITED TO HARROWER'S ROW"), *ThreeCredited, ThreeTook,
+			ThreeTook * 0.001f);
+		TestEqual(TEXT("as is the level 1 enemy's"), *OneCredited, OneTook, OneTook * 0.001f);
+	}
 	return true;
 }
 

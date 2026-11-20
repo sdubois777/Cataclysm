@@ -3,6 +3,8 @@
 #include "Character/CataclysmSkillLevels.h"
 
 #include "AbilitySystem/CataclysmSkillTemplate.h"
+// For the ability system an instigator acts through, to find the player a carried row belongs to. Slice 2a.
+#include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -127,4 +129,38 @@ double UCataclysmSkillLevels::DamageFactorForBlow(const UGameplayAbility* Abilit
 	const FName Row = RowThatLevels(Ability);
 	const ACataclysmPlayerState* Holder = Row.IsNone() ? nullptr : PlayerHolding(Ability);
 	return Holder ? DamageFactor(Holder->SkillLevelOf(Row)) : 1.0;
+}
+
+FName UCataclysmSkillLevels::RowOfBlow(const UGameplayAbility* Ability, FName RowWithNoSkill)
+{
+	const FName Named = RowThatLevels(Ability);
+	return Named.IsNone() ? RowWithNoSkill : Named;
+}
+
+const ACataclysmPlayerState* UCataclysmSkillLevels::PlayerOf(const AActor* Instigator)
+{
+	// THE PLAYER'S ABILITY SYSTEM BELONGS TO ITS PLAYER STATE, whether the pawn or the state is handed in.
+	const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Instigator);
+	return System ? Cast<const ACataclysmPlayerState>(System->GetOwner()) : nullptr;
+}
+
+double UCataclysmSkillLevels::DamageFactorForRow(FName Row, const ACataclysmPlayerState* Holder, const AActor* Target)
+{
+	// ON A CREATURE ONLY, as `DamageFactorForBlow` is.
+	if (Row.IsNone() || !Holder || !Cast<const ACataclysmEnemyCharacter>(Target))
+	{
+		return 1.0;
+	}
+	return DamageFactor(Holder->SkillLevelOf(Row));
+}
+
+double UCataclysmSkillLevels::DamageFactorFor(const UGameplayAbility* Ability, FName RowWithNoSkill,
+											  const AActor* Instigator, const AActor* Target)
+{
+	// THE SKILL OBJECT FIRST, exactly as slice 1 read it, so a blow whose skill is there keeps its figure.
+	if (!RowThatLevels(Ability).IsNone())
+	{
+		return DamageFactorForBlow(Ability, Target);
+	}
+	return DamageFactorForRow(RowWithNoSkill, PlayerOf(Instigator), Target);
 }

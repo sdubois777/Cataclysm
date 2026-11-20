@@ -1502,4 +1502,62 @@ CATACLYSM_TEST(FCataclysmSkillGadgetStunnedPlayerTest,
 	return true;
 }
 
+/**
+ * A skill gadget's cast earns the skill it casts experience, in full. Issue #2764, slice 2a: the design document's
+ * earning row shares a kill "among the skills that hurt it", and the gadget's cast is that skill's damage; until slice 2a
+ * nothing was credited in `ApplyHit`'s branch for a machine's blow. THE SET-UP IS
+ * `Cataclysm.SkillGadgets.TheFlatMaximumHealthRowAppliesAndTheCastRaisesDeployableHit`'s, above, without its maximum
+ * health row and its control: the Demonic Whip's Searing Lash made a gadget, placed, and stepped once. `deployable_hit`
+ * is raised only in that branch, so its count shows the blow went through it. Searing Lash's burn is laid by the cast and
+ * has not ticked, so what the enemy lost is the cast's blow.
+ */
+CATACLYSM_TEST(FCataclysmSkillLevelSourcesGadgetTest,
+	"Cataclysm.SkillLevelSources.AGadgetsCastIsCreditedToTheSkillItCasts")
+{
+	using namespace CataclysmSkillGadgetTest;
+
+	const FGadgetTestCritRoll NeverCritical(100.0f);
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned to 100, so no blow here critically strikes"),
+			NeverCritical.Variable))
+	{
+		return false;
+	}
+	FGadgetTestWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	FGadgetTestRig Rig(World, FVector::ZeroVector);
+	FCataclysmWeaponSkill Lash;
+	if (!Rig.IsUsable(*this) || !Rig.HeldRow(ECataclysmAbilitySlot::Heavy, Lash))
+	{
+		return false;
+	}
+	Rig.Holds({ConvertsSlot(TEXT("Slot.Heavy"))});
+	FGadgetTestEventCount DeployableHits(Rig.System, TEXT("deployable_hit"));
+
+	const FVector At(0.0f, 20.0f * M, 0.0f);
+	ACataclysmMinion* Gadget = GadgetTestPlace(*this, Rig, ECataclysmAbilitySlot::Heavy, At);
+	ACataclysmEnemyCharacter* Target = GadgetTestEnemy(World, At + FVector(3.0f * M, 0.0f, 0.0f));
+	if (!Gadget || !TestNotNull(TEXT("set-up: an enemy beside the gadget"), Target))
+	{
+		return false;
+	}
+	GadgetTestStep(Gadget);
+	const float Took = 50000.0f - GadgetTestHealthOf(Target);
+	const float* Credited = Target->GetHealthRemovedBySkill().Find(Lash.RowName);
+
+	AddInfo(FString::Printf(TEXT("GADGET CAST: %s; took %.3f; credited %.3f; deployable_hit %d"), *Lash.RowName.ToString(),
+							Took, Credited ? *Credited : 0.0f, DeployableHits.Count));
+	TestTrue(TEXT("set-up: the gadget's one cast struck through the machines' branch"),
+			 DeployableHits.Count == 1 && Took > 0.0f && !Lash.RowName.IsNone());
+	TestNotNull(TEXT("A GADGET'S CAST CREDITS THE SKILL IT CASTS"), Credited);
+	if (Credited)
+	{
+		TestEqual(TEXT("with what its blow took"), *Credited, Took, 0.01f);
+	}
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

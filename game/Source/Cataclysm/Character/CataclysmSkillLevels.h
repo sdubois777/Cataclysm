@@ -101,4 +101,29 @@ public:
 	 * or anything not a creature keeps its stated figure.
 	 */
 	static double DamageFactorForBlow(const UGameplayAbility* Ability, const AActor* Target);
+
+	/**
+	 * The row a blow or an effect earns experience for and is scaled by: `RowThatLevels(Ability)` while the skill object
+	 * is there, and otherwise `RowWithNoSkill`, the row captured from it while it was, which a projectile, a ground zone,
+	 * a buried weapon or a trap's damage over time carries after a one-use grant has been removed. Issue #2764, slice 2a.
+	 * None for a blow no levelling skill dealt.
+	 */
+	static FName RowOfBlow(const UGameplayAbility* Ability, FName RowWithNoSkill);
+
+	/** The player state whose ability system `Instigator` acts through, or null: a creature, a prop, nothing. */
+	static const ACataclysmPlayerState* PlayerOf(const AActor* Instigator);
+
+	/**
+	 * What a blow or an effect of `Row`, held by `Holder`, multiplies its figure by on `Target`: the row's level factor
+	 * on a creature, 1 otherwise or with no row or holder. Issue #2764, slice 2a.
+	 */
+	static double DamageFactorForRow(FName Row, const ACataclysmPlayerState* Holder, const AActor* Target);
+
+	/**
+	 * `DamageFactorForBlow` for a blow whose skill object may have gone: the skill's own factor while it is there, and
+	 * otherwise the carried row's, read on the player `Instigator` acts for. Issue #2764, slice 2a: a gadget's or a
+	 * trap's late blow, a buried axe's leap, keep the level the cast had.
+	 */
+	static double DamageFactorFor(const UGameplayAbility* Ability, FName RowWithNoSkill, const AActor* Instigator,
+								  const AActor* Target);
 };

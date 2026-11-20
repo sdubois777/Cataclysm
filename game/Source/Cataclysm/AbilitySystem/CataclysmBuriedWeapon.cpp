@@ -14,7 +14,7 @@
 
 UCataclysmBuriedWeapon* UCataclysmBuriedWeapon::BuryIn(
 	AActor* Target, AActor* Caster, float RangeCm, float InDamagePercent,
-	const FGameplayTagContainer& InSkillTags, bool bInBurns, const TWeakObjectPtr<AActor>& InCastBy)
+	const FGameplayTagContainer& InSkillTags, bool bInBurns, const TWeakObjectPtr<AActor>& InCastBy, FName InSkillRow)
 {
 	if (!IsValid(Target) || RangeCm <= 0.0f)
 	{
@@ -42,6 +42,7 @@ UCataclysmBuriedWeapon* UCataclysmBuriedWeapon::BuryIn(
 	Buried->bBurns = bInBurns;
 	Buried->Caster = Caster;
 	Buried->CastBy = InCastBy;
+	Buried->SkillRow = InSkillRow;
 	return Buried;
 }
 
@@ -99,6 +100,8 @@ bool UCataclysmBuriedWeapon::LeapFromDying(AActor* Dying)
 	// N2 (a)). The skill object may be long gone, so the tags kept here are named rather than the skill. A player's own
 	// axe and a trap's alike; melee or ranged was already read from these tags by `ApplyHit` (N3 (a)).
 	Delivery.SkillTagsWithNoSkill = &Buried->SkillTags;
+	// AND THE THROWING SKILL'S ROW, so the leap scales by that skill's level and credits it. Issue #2764, slice 2a.
+	Delivery.SkillRowWithNoSkill = Buried->SkillRow;
 
 	FCataclysmDamageResult Resolved;
 	const float Dealt = UCataclysmSkillEffects::ApplyHit(
@@ -128,7 +131,8 @@ bool UCataclysmBuriedWeapon::LeapFromDying(AActor* Dying)
 										  /*bBurnIsDesigned=*/true,
 										  /*DealtBy=*/nullptr,
 										  /*Skill=*/nullptr,
-										  /*SkillTagsWithNoSkill=*/&Buried->SkillTags);
+										  /*SkillTagsWithNoSkill=*/&Buried->SkillTags,
+										  /*SkillRowWithNoSkill=*/Buried->SkillRow);
 	}
 
 	// AND THE FERVOUR THE LANDING EARNS WHOEVER THREW THE AXE. Issue #1515, the
@@ -157,7 +161,7 @@ bool UCataclysmBuriedWeapon::LeapFromDying(AActor* Dying)
 	UCataclysmBuriedWeapon* Moved = BuryIn(NextHost, Credited, Buried->RangeCm,
 										  Buried->DamagePercent,
 										  Buried->SkillTags, Buried->bBurns,
-										  Buried->CastBy);
+										  Buried->CastBy, Buried->SkillRow);
 	if (Moved)
 	{
 		Moved->Leaps = Buried->Leaps + 1;

@@ -364,13 +364,17 @@ public:
 	 *                   and no skill name (ruled 2026-11-01, J2). Handed to
 	 *                   `UCataclysmSkillEffects::ApplyDamageOverTime`, which keeps them as identity only. Issue #2683.
 	 *                   The other shapes do not read it
+	 * @param SkillRowWithNoSkill  the row of that skill, captured while it was there, for the same ailments: handed to
+	 *                   `ApplyDamageOverTime` and to `ApplyShareOfHealthOverTime`, which credit each tick to it, and
+	 *                   the first scales the ticks by its level. Issue #2764, slice 2a
 	 * @return whether anything was applied
 	 */
 	static bool Apply(AActor* Instigator, AActor* Target,
 					  const FCataclysmAilmentKind& Kind, float Magnitude,
 					  const UGameplayAbility* Skill = nullptr,
 					  FName DamageType = NAME_None, float Seconds = 0.0f,
-					  const FGameplayTagContainer* SkillTagsWithNoSkill = nullptr);
+					  const FGameplayTagContainer* SkillTagsWithNoSkill = nullptr,
+					  FName SkillRowWithNoSkill = NAME_None);
 
 	/**
 	 * Lay Cripple's slow on `Target` AT A STATED STRENGTH, in per cent (30 is 30% slower), for `Seconds`. Ruled

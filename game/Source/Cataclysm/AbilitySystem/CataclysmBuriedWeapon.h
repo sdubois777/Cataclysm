@@ -54,13 +54,16 @@ public:
 	 *                        POINTER KEPT AS IT CAME, so a skill trap already used up is still named by its identity
 	 *                        (ruled 2026-10-21, #2462): its `Get` answers null, and the identity is what the trap's
 	 *                        player finds its used-up trap by.
+	 * @param InSkillRow      the throwing skill's row, captured while it was there, or None. Issue #2764, slice 2a:
+	 *                        every leap and its burn carry it, so they scale by that skill's level and credit it
 	 * @return the component, or null if the creature cannot take one
 	 */
 	static UCataclysmBuriedWeapon* BuryIn(AActor* Target, AActor* Caster,
 										  float RangeCm, float InDamagePercent,
 										  const FGameplayTagContainer& InSkillTags,
 										  bool bInBurns,
-										  const TWeakObjectPtr<AActor>& InCastBy = TWeakObjectPtr<AActor>());
+										  const TWeakObjectPtr<AActor>& InCastBy = TWeakObjectPtr<AActor>(),
+										  FName InSkillRow = NAME_None);
 
 	/**
 	 * Tear free of a dying creature and bury in the nearest living enemy.
@@ -110,4 +113,14 @@ public:
 	 */
 	UPROPERTY()
 	TWeakObjectPtr<AActor> CastBy;
+
+	/**
+	 * The throwing skill's row, captured when it was thrown, or None. Issue #2764, slice 2a. Each leap's blow carries it
+	 * (`FCataclysmHitDelivery::SkillRowWithNoSkill`), and so does the leap's burn, so a leap is priced at that skill's
+	 * level -- its figure is the skill's own percentage, which the design document's row "What a level does" multiplies
+	 * -- and credits that skill with what it takes from a creature's health. The skill object is not kept: the leap
+	 * names the skill's tags only, as ruled 2026-10-22 (#2465, N1, N2), and the row is all the level needs.
+	 */
+	UPROPERTY()
+	FName SkillRow;
 };

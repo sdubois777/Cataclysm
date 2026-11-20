@@ -372,6 +372,243 @@ No proof's log holds a "server/discover" line (#2745). The lock was released whe
 
 ---
 
+## 2026-11-19 — A skill earns experience from, and grows with its level through, its burns, ailments, ground, tether, late shots and buried axe, and a gadget's or trap's cast of it (#2764, slice 2a)
+
+**Affects:** `UCataclysmSkillLevels::RowOfBlow`, `PlayerOf`, `DamageFactorForRow` and `DamageFactorFor`, new
+(`game/Source/Cataclysm/Character/CataclysmSkillLevels.h` and `.cpp`); `FCataclysmHitDelivery::SkillRowWithNoSkill`, new,
+and the carried row on `ApplyBurn`, `ApplyDamageOverTime` and `ApplyShareOfHealthOverTime`
+(`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp`, which also hold `RowToCredit`, the level
+factor in `ApplyHit` and `ApplyDamageOverTime`, the credit of a gadget's or trap's cast, and the row the remaining-damage
+burst and the necrosis payout keep); `UCataclysmAilments::Apply`
+(`game/Source/Cataclysm/AbilitySystem/CataclysmAilments.h` and `.cpp`); `ACataclysmGroundZone::SkillRowItWasLeftWith`
+and `LevelFactorOnCreatures`, new (`game/Source/Cataclysm/AbilitySystem/CataclysmGroundZone.h` and `.cpp`, set in
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp`); `ACataclysmProjectile::FiringSkillRow`, new
+(`game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.h` and `.cpp`); `UCataclysmBuriedWeapon::SkillRow`, new
+(`game/Source/Cataclysm/AbilitySystem/CataclysmBuriedWeapon.h` and `.cpp`, set in
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp`); `ACataclysmTether::SkillRowItWasBoundWith`, new
+(`game/Source/Cataclysm/AbilitySystem/CataclysmTether.h` and `.cpp`); `ACataclysmMinion::LaySkillTrapsDamageOverTime`
+(`game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp`); `docs/Cataclysm_GDD_v2.md` ("What a Skill Levels":
+a row for ailments and minions, and "What earns a skill experience" in place of "What this first slice counts"). Tests:
+the group `Cataclysm.SkillLevelSources.`, new, fourteen tests: nine in
+`game/Source/Cataclysm/Tests/CataclysmSkillLevelSourcesTests.cpp`, and one each in `CataclysmSkillGadgetTests.cpp`,
+`CataclysmSkillTrapSelfBlastTests.cpp`, `CataclysmSkillTrapBlowHooksTests.cpp`, `CataclysmNoSkillBlowTagsTests.cpp` and
+`CataclysmBuriedWeaponKillTests.cpp` in the same directory, beside the test whose set-up each copies;
+`tools/tests/test_damage_over_time_names_its_skill.py`, new; and
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py`, whose pattern now reads the buried axe's new
+argument. Issue [#2764](https://github.com/sdubois777/Cataclysm/issues/2764).
+
+### SAID FIRST
+
+- **COMPILED AND TESTED, AND ALL SEVEN PROOFS PROVED** ("Window skills-2a-w1", below), at `f1624b281` on `development`
+  `db08b79fc`. The compile of each changed file alone failed once first, in one new test file that named a type it did
+  not include; that was found by that build and fixed with one line before the window.
+- **NO TEST DRIVES A TETHER OR THE NECROSIS PAYOUT.** The tether hands its row to `ApplyBurn`, a call the Python check
+  reads; the necrosis payout copies the row of the necrosis that ended, and nothing checks that but reading it. No test
+  lets a late axe's or a leap's burn tick either: the tests that drive them never move the clock, as the tests they copy
+  never do.
+- **MINIONS ARE SLICE 2b**: Summon Imp's imps and Subjugate's thralls neither credit nor scale yet. The War deployables
+  are left out by the owner's rule of 2026-11-17 that War rows stay unbuilt, and credit nothing until War is built.
+
+### The rulings
+
+- **The owner, 2026-11-19, relayed by the coordinating session.** The question as asked: "Skill levels, part 2: burns,
+  poisons, bleeds and minions will now earn experience for the skill that caused them. When that skill levels up, should
+  those effects also hit harder? Direct hits already grow up to 2.85x by level 20, and ground zones and traps scale too,
+  because the design says a level multiplies the skill's damage percentage. Burns and minions use flat figures, so the
+  design doesn't cover them." Chosen: "Yes, they scale too (Recommended)", described as "Path of Exile's way. A burn,
+  poison or minion skill grows up to 2.85x at level 20, the same as a hit skill. Without this, Summon Imp levels up but
+  its imps never hit harder because of it. The basic attack's ailments still don't scale." Rejected: "Only earn
+  experience".
+- **By the design document**, as the coordinating session read it: the row "What a level does: Multiplies the skill's
+  damage percentage by 1.0567" makes everything priced from the skill's percentage scale already -- a ground zone's sweep
+  (F2), a gadget's or trap's late blow (F3), a buried axe's leap, a gadget's copy of the last skill. The earning row,
+  experience "shared among the skills that hurt it, by the share of its health each removed", makes a gadget's or a
+  trap's cast pay the skill FULL experience.
+- **The coordinating session's judgements, accepted 2026-11-19:** the skill's row travels with its damage, so it credits
+  and scales after the skill object has gone (1); damage a passive, a worn row or a set bonus adds on top -- a spread
+  copy, the explosion when an ailment ends, Chorus, retaliation -- credits nothing, while an ailment's own remaining
+  damage paid early, a burst or the necrosis payout, credits its skill (2); minions no skill made credit nothing, and
+  thralls credit Subjugate (3, in 2b); a tick credits the resolved health figure, and the factor is read once when the
+  effect is laid (4); the War deployables are left out (5).
+- **The four findings folded in**: F1, a use cast in the player's name was credited when strike-shaped and not when
+  projectile-shaped, now credited either way; F2, a zone's ground was not sized by the level its blast was; F3, a
+  gadget's or trap's late blow lost the level its cast had; F4, Void Splinter dropped its skill.
+
+### The research
+
+Re-read on 2026-11-19 from these pages; the plan's summary had been gathered by a research agent.
+
+- **Experience**: runescape.wiki/w/Combat_experience (served as /w/Experience): "Experience awarded is based on the
+  percentage of damage dealt to your enemy", as slice 1 pays. runescape.wiki/w/Necromancy_training: reflected damage
+  "does not count for Necromancy experience", nor poison from Cinderbane gloves "(or other sources)".
+  oldschool.runescape.wiki/w/Poison: poison damage gives no combat experience. oldschool.runescape.wiki/w/
+  Dwarf_multicannon: the cannon "yields 2 Ranged experience per damage", against 4 for a ranged attack. The
+  PlanetDungeonSiege numbers page (Dungeon Siege 1): a summoned creature earns experience for its summoner's skill when
+  its attack damages the enemy. skyrim.wiki.fextralife.com/Leveling: Conjuration rises from a raised minion only when it
+  "engages in combat", and Destruction from runes only when they are triggered.
+- **Scaling**: poedb.tw/us/Caustic_Arrow: the caustic ground deals 8.8, 156.4 and 1,927.1 chaos a second at gem levels 1,
+  10 and 20, while the hit goes from 55% to 64.4%. poedb.tw/us/Raise_Spectre: the spectre is level 28, 50 and 70 at gem
+  levels 1, 10 and 20. poedb.tw/us/Fire_Trap: the burning ground deals 27.7 and 2,566 fire a second at gem levels 1 and
+  20. maxroll.gg/last-epoch/resources/damage-explained: "There is currently no way of increasing Base Damage for
+  Ailments"; minions gain 0.6% Minion Power per character level from level 26, 45% at level 100.
+- **Corrections to the plan's summary**: Last Epoch's minions gain 0.6% a character level, not 0.8%; RuneScape paying at
+  the death, and its cannon, coil and cyclone earning nothing, came only from a summary of the pages and are not recorded.
+- **What the research settles**: crediting damage over time and minions is the owner's ruling, against RuneScape's
+  practice; scaling them follows Path of Exile, against Last Epoch and RuneScape, by the owner's choice.
+
+### The change
+
+- **THE ROW TRAVELS WITH THE DAMAGE.** `RowThatLevels` needs the skill object, and a one-use grant -- a gadget's or a
+  trap's cast -- is removed after its use while its shot, its ground and its axe go on. So the row is captured while the
+  skill is there and carried beside the tags that were already carried for the same reason: on a blow
+  (`FCataclysmHitDelivery::SkillRowWithNoSkill`), on a projectile (`FiringSkillRow`), a ground zone
+  (`SkillRowItWasLeftWith`), a buried axe (`SkillRow`), a tether (`SkillRowItWasBoundWith`), and through `ApplyBurn`,
+  `ApplyDamageOverTime`, `ApplyShareOfHealthOverTime` and `UCataclysmAilments::Apply`. `RowOfBlow` reads the skill's own
+  row while it is there and the carried one otherwise.
+- **THE CREDIT IS MADE WHERE SLICE 1b MADE IT**, in the struck creature's attribute set before a death is handled, from
+  the effect's `SkillRowToCredit`. 2a sets that row on more effects: every damage-over-time effect a levelling skill lays
+  (so every tick credits), Void Splinter's, every ground zone's sweep, the remaining-damage burst and the necrosis payout
+  (copied from the effect they end), and a gadget's or a trap's cast. `RowToCredit` no longer refuses a blow cast in the
+  player's name (F1).
+- **THE LEVEL FACTOR**: `ApplyHit` reads `DamageFactorFor`, which keeps the skill object's factor and otherwise reads the
+  carried row's on the player the instigator acts for (F3, the buried axe). A ground zone keeps its leaving skill's
+  factor and multiplies each sweep by it on a creature (F2); not in `DamagePerTick`, which the planted sword's
+  `GrowHotter` rewrites. `ApplyDamageOverTime` multiplies a skill's ailment's tick by its level factor, read once when
+  laid, for an effect scaled by its applier and laid on another character, as the Withered Touch curse is -- not a spread
+  copy, not the trap's share (a share of a blow already scaled), not a minion's burn, not converted damage. Void Splinter
+  is credited and not multiplied.
+
+### The tests and the proofs, registered
+
+`Cataclysm.SkillLevelSources.`, new, 14. Seven drive the functions every such effect is laid by:
+`ASkillsBurnIsCreditedToItAndSizedByItsLevel`, `ABurnLaidWithACarriedRowIsCreditedAndSized`,
+`TheBasicAttacksBurnAndAnUnscaledCopyCarryNoRow`, `AVoidSplinterFromASkillIsCreditedAndNotSized`,
+`ABlowWhoseSkillHasGoneIsSizedAndCreditedByItsRow`, `ABlowCastInThePlayersNameIsCredited` and
+`AKillByASkillsBurnPaysTheSkill`. The figures the burn tests compare are the running effects' own ticks, before the
+creature's defences, so nothing but the level differs. The other seven were added on 2026-11-20, at the coordinating
+session's order, and each copies an existing test's set-up, named here:
+
+| Test | Its file | The set-up it copies |
+| :-- | :-- | :-- |
+| `ABurstOfAnAilmentsRemainingDamageIsCreditedToItsSkill` | `CataclysmSkillLevelSourcesTests.cpp` | the burst of `Cataclysm.RemainingDamage.AfterRealTicksTheBurstDealsWhatIsLeftAndEndsTheEffect`, on a burn laid as `ASkillsBurnIsCreditedToItAndSizedByItsLevel` lays it |
+| `AKillIsSplitBetweenOneSkillsHitAndAnothersBurn` | `CataclysmSkillLevelSourcesTests.cpp` | the hit of `Cataclysm.SkillLevels.ASkillsKillingBlowIsCountedInTheDeathsSplit` and the kill of `AKillByASkillsBurnPaysTheSkill`: Molten Cleave's hit leaves a Boss 15 health and Emberhurl's burn kills it, through `HandleDeath` |
+| `AGadgetsCastIsCreditedToTheSkillItCasts` | `CataclysmSkillGadgetTests.cpp` | `Cataclysm.SkillGadgets.TheFlatMaximumHealthRowAppliesAndTheCastRaisesDeployableHit`, without its maximum health row and its control |
+| `AGroundZonesSweepIsCreditedAndSizedAfterItsSkillHasGone` | `CataclysmSkillTrapSelfBlastTests.cpp` | `Cataclysm.Traps.ATrapsZoneSweepBurnsAnEnemyInItAndNeverStrikesItsSelfBlastWearerStandingInIt`, without its drawback |
+| `TheTrapsDamageOverTimeShareIsCreditedAndSizedOnceNotTwice` | `CataclysmSkillTrapBlowHooksTests.cpp` | `Cataclysm.Traps.TheDamageOverTimeRowLaysItsShareOverThreeSecondsOnTheEnemyThatSetTheTrapOffWhenTheBlowTookATenth`, its row's player twice, at level 1 and level 3 |
+| `ATrapsLateRackAxeIsCreditedToItsSkillAndSizedByItsLevel` | `CataclysmNoSkillBlowTagsTests.cpp` | `Cataclysm.NoSkillBlowTags.ATrapsRackAxeLandingAfterItsUseHasEndedCarriesTheRacksTagsAndItsKillExplodes`, its measure twice, at level 1 and level 3 |
+| `ABuriedWeaponsLeapIsCreditedToItsThrowingSkillAndSizedByItsLevel` | `CataclysmBuriedWeaponKillTests.cpp` | `Cataclysm.BuriedWeaponKills.APlayersOwnHarrowerLeapKillRefundsTheSpecialCooldownByTheRangedKillRowAndASkilllessBlowsKillDoesNot`, its leaping player twice, at level 1 and level 3, the leap's enemy of 50,000 health |
+
+`Cataclysm.SkillLevels.` stays at 12.
+
+C++ proofs, each with the prefix `Cataclysm.SkillLevelSources.` (14 tests), registered for the window. **L3 AND L7 ARE
+NEW ON 2026-11-20**: none of the first five breaks reaches the zone's level factor or the credit on `ApplyHit`'s branch
+for a gadget's or a trap's blow, which three of the new tests drive.
+
+| Proof | The break | Predicted with it in |
+| :-- | :-- | :-- |
+| L1 | `ApplyDamageOverTime`'s `Effect->SkillRowToCredit = ...` removed | 6 failed: `ASkillsBurnIsCreditedToItAndSizedByItsLevel` (its row and its credit), `ABurnLaidWithACarriedRowIsCreditedAndSized` (its row and its credit), `AKillByASkillsBurnPaysTheSkill` (paid 0), `ABurstOfAnAilmentsRemainingDamageIsCreditedToItsSkill` (nothing credited by the ticks before the burst, nor by the burst, which copies the ended effect's row), `AKillIsSplitBetweenOneSkillsHitAndAnothersBurn` (Emberhurl credited nothing, so the two paid fall short of the worth; each paid figure still matches what was credited), `TheTrapsDamageOverTimeShareIsCreditedAndSizedOnceNotTwice` (the share's row) |
+| L2 | the `* SkillsLevel` factor in `ApplyDamageOverTime` removed | 2 failed: `ASkillsBurnIsCreditedToItAndSizedByItsLevel` and `ABurnLaidWithACarriedRowIsCreditedAndSized`, on their level ratio (1.1166 expected, 1.0). The trap's share is laid unscaled by its instigator, so the factor is 1 there with or without the break |
+| L3 | the zone's sweep multiplied by 1 in place of `LevelFactorOnCreatures` | 1 failed: `AGroundZonesSweepIsCreditedAndSizedAfterItsSkillHasGone`, on the third sweep against the second (1.1166 expected, 1.0) |
+| L4 | `DamageFactorFor`'s carried-row branch made to answer 1 | 4 failed, each on its level ratio: `ABlowWhoseSkillHasGoneIsSizedAndCreditedByItsRow`, `ABurnLaidWithACarriedRowIsCreditedAndSized`, `ATrapsLateRackAxeIsCreditedToItsSkillAndSizedByItsLevel` and `ABuriedWeaponsLeapIsCreditedToItsThrowingSkillAndSizedByItsLevel` |
+| L5 | `ApplyShareOfHealthOverTime`'s `Effect->SkillRowToCredit = ...` removed | 1 failed: `AVoidSplinterFromASkillIsCreditedAndNotSized` (its row and its credit) |
+| L6 | `RowToCredit`'s refusal of a blow with `CastBy` set put back | 2 failed: `ABlowCastInThePlayersNameIsCredited`, and `ATrapsLateRackAxeIsCreditedToItsSkillAndSizedByItsLevel` (no loss credited: a late axe names its trap in `CastBy`). A strike's blow and the leap name none |
+| L7 | `ApplyHit`'s `Arrived.SkillRowToCredit = ...` on the gadget's and trap's branch removed | 2 failed: `AGadgetsCastIsCreditedToTheSkillItCasts` and `ATrapsLateRackAxeIsCreditedToItsSkillAndSizedByItsLevel` (no loss credited: a used-up trap's late axe is priced on that branch) |
+
+Restored, each must perform 14 with none failed. The whole suite is registered from the newest measured total when the
+window is given, + 14.
+
+The Python check, `tools/tests/test_damage_over_time_names_its_skill.py`, reads every call in the game's source to
+`ApplyDamageOverTime`, `ApplyShareOfHealthOverTime`, `ApplyBurn`, `UCataclysmAilments::Apply`,
+`LaySkillTrapsDamageOverTime` and `UCataclysmBuriedWeapon::BuryIn`, and every function handing `ApplyDirectDamage` a
+damage-over-time delivery: 44 calls, 20 naming a skill or a row and 24 listed with the rule by which each credits
+nothing. Proved with `tools/prove_guard.py`'s `break_and_run` in this worktree, nothing else running, by dropping
+`/*SkillRowWithNoSkill=*/SkillRowItWasLeftWith` from the ground zone's ailment call in
+`game/Source/Cataclysm/AbilitySystem/CataclysmGroundZone.cpp`, re-run on 2026-11-20:
+
+```
+PROVED: 1 failed in 0.48s | restored: 1 passed in 0.41s
+named_failures: ['tools/tests/test_damage_over_time_names_its_skill.py::test_every_call_names_its_skill_or_is_listed_with_its_reason']
+proved: True
+```
+
+**Registered for the window**, on 2026-11-20 at `f1624b281`: the eight groups alone, `Cataclysm.SkillLevelSources.` 14,
+`Cataclysm.SkillLevels.` 12, `Cataclysm.SkillGadgets.` 22, `Cataclysm.Traps.` 60, `Cataclysm.NoSkillBlowTags.` 2,
+`Cataclysm.BuriedWeaponKills.` 3, `Cataclysm.RemainingDamage.` 9 and `Cataclysm.Ailments.` 23, the six after
+`SkillLevels.` at the coordinating session's order; the whole suite, 5,015 with 47 skipped halves and 0 test saves left
+behind: 5,001 measured by the seeding fix's window seed-w1 at `e13f98e77` ("5001 tests performed, 5001 succeeded, 0
+failed"), whose `game/` tree is `development` `db08b79fc`'s, this change's base, + 14; and L1 to L7 as predicted above.
+Every group but the new one was counted from seed-w1's kept engine log, and each matched its count at slice 1b's window.
+
+### Window skills-2a-w1
+
+**THE COMPILES**, under the lock skills-2a-compile and before the window, in two attempts on 2026-11-20:
+
+| Attempt | The branch as committed | Each changed file alone | The unity files again |
+| :-- | :-- | :-- | :-- |
+| `e437ec266`, 05:33 to 05:41 | Succeeded: 65 actions, 58 files, no warning | **FAILED**: the build tool excluded the 16 changed `.cpp` files from the unity files and compiled each. All 16 errors were in `CataclysmSkillLevelSourcesTests.cpp`, which names `FCataclysmDamageResult` and included only `CataclysmSkillEffects.h`, where it is forward-declared; in its unity file the definition had come through a neighbour | Not run |
+| `f1624b281`, 05:48 to 05:51 | Succeeded: 13 actions, 10 files, no warning | Succeeded: 14 actions, `CataclysmSkillLevelSourcesTests.cpp` alone and 10 unity files, no warning | Succeeded: 13 actions, 10 files, no warning |
+
+`f1624b281` adds one line to that test file, `#include "AbilitySystem/CataclysmDamageCalculation.h"`, the header that
+defines the struct, and changes nothing else. The coordinating session's ruling, 2026-11-20: "The compiles are accepted
+as two attempts taken together: every changed .cpp compiled alone, 15 files at e437ec266 and the test file at f1624b281,
+with byte-identical sources between them."
+
+**THE WINDOW**, lock skills-2a-w1, 05:53 to 06:24, started by `gate_sl.py` with no console window once the pre-checks
+passed, at their first reading:
+
+| Check | Registered | Measured |
+| :-- | :-- | :-- |
+| The build | -- | Target already up to date, nothing compiled |
+| The eight groups alone | The counts above | Each performed and succeeded its count, 0 failed: 14, 12, 22, 60, 2, 3, 9 and 23 |
+| The whole suite | 5,015; 47 skipped halves; 0 test saves left | 5,015 performed, 5,015 succeeded; 47 skipped halves; "852 written and deleted, 0 left behind"; 5,015 declared, gap 0; "MCP server: not started" |
+| Python and ruff | Every test passing | 7,777 passed, 9 skipped; the JUnit file 7,786 tests, 0 failures, 0 errors; ruff clean |
+| L1 to L7 | As predicted above | All seven PROVED, below |
+
+**THE NEW TESTS' LINES**, in the whole suite, level 1 against level 3 where a test measures both (`DamageFactor(3)` is
+1.1166):
+
+- "SKILL BURN: tick at level 1 10.0000, at level 3 11.1661 (x1.1166); row Demonic_Greataxe_Heavy; credited 33.000"
+- "CARRIED ROW BURN: tick 11.1661 with the row, 10.0000 with neither (x1.1166); rows Demonic_Greataxe_Heavy and None;
+  credited 36.848"
+- "NO ROW: the basic attack's burn ticks 10.0000 and 10.0000 with a skill at level 1 and 3, row None; an unscaled copy's
+  row None; rows credited 0"
+- "SKILL SPLINTER: row Demonic_Greataxe_Heavy; lost 3.2638 at level 1 and 3.2638 at level 3; credited 3.2638"
+- "LATE BLOW: sent 57.600 at level 1 and 64.317 at level 3 (x1.1166); credited 63.360 of 63.360"
+- "CAST BY: sent 57.600, took 63.360, credited 63.360"
+- "BURN KILL: worth 468; killed yes; paid 468.000"
+- "SKILL BURST: 1 burst; credited 11.000 by the ticks before, then 44.000 by the burst, which took 44.000"
+- "HIT AND BURN: worth 468; the hit took 63.360 of 78.360; credited 63.360 to Molten Cleave and 15.000 to Emberhurl;
+  killed yes; Molten Cleave paid 378.413, Emberhurl 89.587, together 468.000"
+- "GADGET CAST: Demonic_Whip_Heavy; took 275.000; credited 275.000; deployable_hit 1"
+- "ZONE AFTER ITS SKILL: row Demonic_Greataxe_Heavy, factor 1.1166, skill object there no; sweeps took 45.926, 45.926
+  at factor 1 and 51.281 at the laid factor (x1.1166); credited 143.131 of 143.133"
+- "TRAP SHARE: Demonic_Whip_Heavy; the blow took 275.000 at level 1 and 307.069 at level 3 (x1.1166); the share 137.500
+  and 153.535 (x1.1166); the share's row Demonic_Whip_Heavy"
+- "LATE RACK AXE: Demonic_Axe_Ultimate; 30 axes took 461.953 at level 1 and 30 took 515.859 at level 3; one axe 15.398
+  and 17.195 (x1.1167); credited 462.000 and 515.876"
+- "LEAP: Demonic_Axe_Special; the leap took 110.000 at level 1 and 122.828 at level 3 (x1.1166); credited 110.000 and
+  122.828; the hosts took 0.000 and 0.000"
+
+**THE PROOFS**, each through `prove_cpp_guard` with each half's engine log kept (`.claude/windows/sl_L<n>_run<1|2>.log`
+in this worktree), prefix `Cataclysm.SkillLevelSources.`, all PROVED, each failing exactly the tests predicted for it,
+for the reason predicted:
+
+| Proof | Broken half | Its failed assertions | Restored half |
+| :-- | :-- | :-- | :-- |
+| L1 | 14 performed, 8 succeeded, 6 failed | `ASkillsBurn...` and `ABurnLaidWithACarriedRow...`: the row None, not Demonic_Greataxe_Heavy, and nothing credited. `AKillByASkillsBurn...`: paid 0 of 468. `ABurstOfAnAilments...`: its set-up check that the ticks before the burst credited something, and the burst credited 0 of 44. `AKillIsSplit...`: Emberhurl not credited what its ticks took, and the two paid 378.413 of 468. `TheTrapsDamageOverTimeShare...`: the share's row None, not Demonic_Whip_Heavy | 14 of 14 |
+| L2 | 14 performed, 12 succeeded, 2 failed | `ASkillsBurn...` and `ABurnLaidWithACarriedRow...`: the level ratio 1.000000, 1.116615 expected | 14 of 14 |
+| L3 | 14 performed, 13 succeeded, 1 failed | `AGroundZonesSweep...`: a sweep at the laid factor against one at 1, 1.000000, 1.116615 expected | 14 of 14 |
+| L4 | 14 performed, 10 succeeded, 4 failed | `ABlowWhoseSkillHasGone...`, `ABurnLaidWithACarriedRow...`, `ATrapsLateRackAxe...` and `ABuriedWeaponsLeap...`: each its level ratio, 1.000000, 1.116615 expected | 14 of 14 |
+| L5 | 14 performed, 13 succeeded, 1 failed | `AVoidSplinter...`: the row None, and not credited | 14 of 14 |
+| L6 | 14 performed, 12 succeeded, 2 failed | `ABlowCastInThePlayersName...`: credited 0 of 63.36. `ATrapsLateRackAxe...`: "each enemy's loss is credited to Butcher's Bill" false | 14 of 14 |
+| L7 | 14 performed, 12 succeeded, 2 failed | `AGadgetsCast...`: no credit found. `ATrapsLateRackAxe...`: the same Butcher's Bill assertion | 14 of 14 |
+
+Each proof's anchor matched once, the source hash was the same before and after it, and neither half crashed. Apart
+from its failed assertions, each broken half's log holds only the two GameFeatureData asset-manager error lines that the
+passing runs log too. No log of the window holds a "server/discover" or a "ConsoleCtrl" line.
+
+---
+
 ## 2026-11-19 — The empire upgrade tree's player nodes act inside a dungeon: magic find, loot quantity, movement speed and damage from fifteen nodes, doubled for the Explorer branch's loot at a one-day walk (#2741, slice 5a)
 
 **Affects:** `game/Source/Cataclysm/Player/CataclysmEmpireTree.h` and `.cpp` (`FCataclysmEmpireTreePlayerBonuses` and

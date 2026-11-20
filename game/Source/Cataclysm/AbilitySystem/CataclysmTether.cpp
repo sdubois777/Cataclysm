@@ -7,6 +7,8 @@
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmEnemyCharacter.h"
+// For the binding skill's row, captured when the line is bound. Issue #2764, slice 2a.
+#include "Character/CataclysmSkillLevels.h"
 #include "Cataclysm.h"
 // For the skill that bound it, which every burn the line lays carries. Issue #1585.
 #include "Abilities/GameplayAbility.h"
@@ -81,6 +83,8 @@ ACataclysmTether* ACataclysmTether::Bind(AActor* Caster,
 
 	Line->Caster = Caster;
 	Line->SkillThatBoundIt = BoundBy;
+	// AND ITS ROW, read now, while the skill is there. Issue #2764, slice 2a.
+	Line->SkillRowItWasBoundWith = UCataclysmSkillLevels::RowThatLevels(BoundBy);
 	// AND ITS TAGS, for when it has gone. Issue #2683.
 	if (const UCataclysmSkillTemplate* Binding = Cast<UCataclysmSkillTemplate>(BoundBy))
 	{
@@ -244,7 +248,8 @@ void ACataclysmTether::Check()
 											  /*DealtBy=*/nullptr,
 											  /*Skill=*/SkillThatBoundIt.Get(),
 											  /*SkillTagsWithNoSkill=*/bSkillHasGone
-												  ? &SkillTagsItWasBoundWith : nullptr))
+												  ? &SkillTagsItWasBoundWith : nullptr,
+											  /*SkillRowWithNoSkill=*/SkillRowItWasBoundWith))
 		{
 			++LastCheckLit;
 		}

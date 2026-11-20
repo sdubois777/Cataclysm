@@ -781,6 +781,17 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	FName SkillRowToCredit;
 
 	/**
+	 * The row of the skill this blow is a blow of, captured while the skill object was there, FOR A BLOW WHOSE SKILL
+	 * OBJECT MAY HAVE GONE: a projectile's (`ACataclysmProjectile::FiringSkillRow`), a ground zone's sweep
+	 * (`ACataclysmGroundZone::SkillRowItWasLeftWith`), a buried weapon's leap. Issue #2764, slice 2a. The row beside
+	 * `SkillTagsWithNoSkill`, and for the same reason: a one-use grant -- a skill gadget's or a trap's cast -- is removed
+	 * after the use, while its shot, its ground and its axe go on. `ApplyHit` reads it, through `UCataclysmSkillLevels::
+	 * DamageFactorFor` and `RowOfBlow`, only when `Skill` names no levelling skill, so a blow whose skill is there is
+	 * scaled and credited by the skill as before. None for every other blow. Not a UPROPERTY, as `Skill` is not.
+	 */
+	FName SkillRowWithNoSkill;
+
+	/**
 	 * Whether this damage over time effect's figure was priced from its applier's own damage over time stats: set by
 	 * `UCataclysmSkillEffects::ApplyDamageOverTime` exactly when it asked `DamageOverTimeNumbers` with the applier,
 	 * which is `bScalesWithInstigator`, and the applier is not the target. Ruled 2026-10-23 (#2235, point 3 accepted):
@@ -1379,6 +1390,8 @@ public:
 	 * @param SkillTagsWithNoSkill  the tags of the skill the burn is a burn of, when no skill object is handed in: a
 	 *                 buried weapon's, and a tether's or a projectile's whose skill has gone. Kept on the effect for
 	 *                 its ticks' kills, and IDENTITY ONLY; see `ApplyDamageOverTime`. Issue #2683
+	 * @param SkillRowWithNoSkill  the row of that skill, captured while it was there, for the same blows; handed to
+	 *                 `ApplyDamageOverTime`, which credits and scales the burn by it. Issue #2764, slice 2a
 	 * @return whether a burn was applied
 	 */
 	static bool ApplyBurn(AActor* Instigator, AActor* Target, float HitDamage,
@@ -1386,7 +1399,8 @@ public:
 						  bool bBurnIsDesigned = false,
 						  AActor* DealtBy = nullptr,
 						  const UGameplayAbility* Skill = nullptr,
-						  const FGameplayTagContainer* SkillTagsWithNoSkill = nullptr);
+						  const FGameplayTagContainer* SkillTagsWithNoSkill = nullptr,
+						  FName SkillRowWithNoSkill = NAME_None);
 
 	/**
 	 * A percentage-of-normal stat read as a plain multiplier.
@@ -1851,6 +1865,11 @@ public:
 	 *                     names them. When null, the tags of `Skill` are kept there instead, so a burn whose skill
 	 *                     goes mid-burn keeps them. IDENTITY ONLY, ruled 2026-11-01 (J1): nothing that prices the
 	 *                     effect reads them, and only `Skill` reaches the caster's stats
+	 * @param SkillRowWithNoSkill  the row of the skill this effect's ticks are ticks of, captured while it was there,
+	 *                     for an effect laid when its skill object may have gone: a trap's damage over time share, a
+	 *                     projectile's, a buried weapon's or a zone's burn. Issue #2764, slice 2a. With `Skill`, it
+	 *                     names the row each tick credits (`UCataclysmRuntimeEffect::SkillRowToCredit`) and the row
+	 *                     whose level factor sizes the ticks, read once here, by the owner's ruling of 2026-11-19
 	 */
 	static bool ApplyDamageOverTime(AActor* Instigator, AActor* Target,
 									float DamagePerTick, float DurationSeconds,
@@ -1860,7 +1879,8 @@ public:
 									const UGameplayAbility* Skill = nullptr,
 									FName DamageType = NAME_None,
 									bool bIsConvertedDamage = false,
-									const FGameplayTagContainer* SkillTagsWithNoSkill = nullptr);
+									const FGameplayTagContainer* SkillTagsWithNoSkill = nullptr,
+									FName SkillRowWithNoSkill = NAME_None);
 
 	/**
 	 * Apply a share of the target's current health as damage over time. Void
@@ -1895,7 +1915,9 @@ public:
 	static bool ApplyShareOfHealthOverTime(AActor* Instigator, AActor* Target,
 										   float SharePerTick, float DurationSeconds,
 										   const FGameplayTag& EffectTag,
-										   bool bScalesWithInstigator = true);
+										   bool bScalesWithInstigator = true,
+										   const UGameplayAbility* Skill = nullptr,
+										   FName SkillRowWithNoSkill = NAME_None);
 
 	/**
 	 * Above nought, every damage over time effect this character applies also

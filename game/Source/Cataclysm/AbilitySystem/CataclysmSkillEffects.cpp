@@ -839,10 +839,10 @@ namespace CataclysmSkillEffectsLevels
 {
 	/**
 	 * The skill row a blow on `Target` is credited to, so the creature's death can split its experience among the skills
-	 * that hurt it, or None. Issue #2764, slice 1: DIRECT HITS ONLY, as the owner ruled on 2026-11-19. Damage over time, a
-	 * share struck at an ally, and a use a minion or gadget cast in the player's name (`CastBy` set) credit nothing here;
-	 * minions and damage over time credit their skill in the second slice. The basic attack and a creature's own blows
-	 * name no skill that levels (`UCataclysmSkillLevels::RowThatLevels`).
+	 * that hurt it, or None. Issue #2764, slice 1: DIRECT HITS ONLY, as the owner ruled on 2026-11-19. A share struck at
+	 * an ally credits nothing; until slice 2a (below) a use a minion or gadget cast in the player's name (`CastBy` set)
+	 * credited nothing either. The basic attack and a creature's own blows name no skill that levels
+	 * (`UCataclysmSkillLevels::RowThatLevels`).
 	 *
 	 * ONLY THE ROW IS WORKED OUT HERE; THE CREDIT IS MADE BY THE STRUCK CREATURE'S ATTRIBUTE SET. Issue #2764, slice 1b.
 	 * The row rides on the blow (`FCataclysmHitDelivery::SkillRowToCredit`) and its effect, and the attribute set credits
@@ -851,14 +851,20 @@ namespace CataclysmSkillEffectsLevels
 	 * had already paid the skills, so a kill in one hit paid its skill nothing. The eligibility is unchanged; the
 	 * credit's figure, the blow's `DealtToHealth` above nought, is checked where it is made.
 	 */
+	//
+	// SLICE 2a WIDENED IT, as the coordinating session accepted on 2026-11-19. A USE A GADGET, A TRAP OR A MINION CAST IN
+	// THE PLAYER'S NAME IS CREDITED: the design document's earning row shares a kill "among the skills that hurt it", and a
+	// gadget's or a trap's cast is that skill's damage (full experience, by that row). Until slice 2a a strike-shaped copy
+	// was credited and a projectile-shaped one was not (F1). AND A BLOW WHOSE SKILL OBJECT HAS GONE is credited to the row
+	// it carries (`FCataclysmHitDelivery::SkillRowWithNoSkill`). Damage over time never reaches `ApplyHit`; its ticks
+	// credit their skill on their own effect (`ApplyDamageOverTime`).
 	FName RowToCredit(const AActor* Target, const FCataclysmHitDelivery& Arrived, bool bAShareOnAnAlly)
 	{
-		if (bAShareOnAnAlly || Arrived.bIsDamageOverTime || !Arrived.CastBy.IsExplicitlyNull()
-			|| !Cast<const ACataclysmEnemyCharacter>(Target))
+		if (bAShareOnAnAlly || Arrived.bIsDamageOverTime || !Cast<const ACataclysmEnemyCharacter>(Target))
 		{
 			return NAME_None;
 		}
-		return UCataclysmSkillLevels::RowThatLevels(Arrived.Skill.Get());
+		return UCataclysmSkillLevels::RowOfBlow(Arrived.Skill.Get(), Arrived.SkillRowWithNoSkill);
 	}
 }
 
@@ -922,7 +928,13 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// every blow that names its skill (`Delivery.Skill`): a strike, a fired projectile, a thrown axe, a zone's blast. A
 	// creature's blow, the basic attack, a blow on the skill's own user and a blow that names no skill keep the stated
 	// figure (`UCataclysmSkillLevels::DamageFactorForBlow`).
-	DamagePercent *= static_cast<float>(UCataclysmSkillLevels::DamageFactorForBlow(Delivery.Skill.Get(), Target));
+	//
+	// AND A BLOW WHOSE SKILL OBJECT HAS GONE KEEPS THE LEVEL ITS CAST HAD, read from the row it carries
+	// (`FCataclysmHitDelivery::SkillRowWithNoSkill`) on the player the instigator acts for. Issue #2764, slice 2a, ruled
+	// by the design document's row "What a level does: Multiplies the skill's damage percentage by 1.0567": a gadget's or
+	// a trap's late shot and a buried axe's leap are priced from the skill's percentage, so they scale with it (F3).
+	DamagePercent *= static_cast<float>(UCataclysmSkillLevels::DamageFactorFor(
+		Delivery.Skill.Get(), Delivery.SkillRowWithNoSkill, Instigator, Target));
 
 	// A SKILL GADGET'S CAST IS PRICED AS THE GADGET'S, IN FIVE PARTS, ruled 2026-10-16 (S5) for "Scales off gadget
 	// damage". Its skill tags carry `Type.Deployable`, given by `ACataclysmMinion::CastPlayersSkillFromHere`, so the
@@ -1363,8 +1375,10 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	}
 	FCataclysmDamageResult OwnResult;
 	FCataclysmDamageResult* const Result = OutResolved ? OutResolved : &OwnResult;
-	// NO SKILL EXPERIENCE FOR A GADGET'S OR A TRAP'S BLOW: machines credit their skill with minions, in issue #2764's
-	// second slice. The player's own blows are credited on the path above.
+	// AND A GADGET'S OR A TRAP'S BLOW EARNS ITS SKILL EXPERIENCE, as the player's own blow does on the path above. Issue
+	// #2764, slice 2a: the design document's earning row shares a kill "among the skills that hurt it", and this cast is
+	// that skill's damage, so its skill is paid in full. Until slice 2a nothing was credited here.
+	Arrived.SkillRowToCredit = CataclysmSkillEffectsLevels::RowToCredit(Target, Arrived, bAShareOnAnAlly);
 	const bool bDealt = ApplyDirectDamage(Instigator, Target, Sent, Arrived, Result);
 	// A SKILL TRAP'S EVENT CARRIES WHAT ITS BLOW TOOK FROM HEALTH (traps layer 3, 2026-10-21), so a status row on it
 	// meets the owner's rule of a tenth (#917) with the blow's own figure: "Traps cause a bleed of 1-2 times normal
@@ -1392,7 +1406,8 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// that set the trap off and no other, when the blow took a tenth of its maximum health.
 	if (bOnTrapsTriggeringEnemy && bDealt)
 	{
-		ACataclysmMinion::LaySkillTrapsDamageOverTime(Instigator, Target, Result->DealtToHealth);
+		ACataclysmMinion::LaySkillTrapsDamageOverTime(Instigator, Target, Result->DealtToHealth,
+			UCataclysmSkillLevels::RowOfBlow(Arrived.Skill.Get(), Arrived.SkillRowWithNoSkill));
 	}
 	MachinesPlayer->ActOnEvent(FName(TEXT("deployable_hit")), &GadgetsTags, TrapsBlowDealt,
 							  /*bLanded=*/!Result->bEvaded && !Result->bRefusedByImmunityToAttacker, Target);
@@ -1900,8 +1915,14 @@ namespace
 
 		const float Seconds = UCataclysmDebuffs::NecrosisDeniedHealingSeconds;
 		const float Period = UCataclysmSkillEffects::BaseSecondsPerTick;
-		UGameplayEffect* Effect = MakeRuntimeEffect(TEXT("CataclysmNecrosisDeniedHealing"));
+		UCataclysmRuntimeEffect* Effect = MakeRuntimeEffect(TEXT("CataclysmNecrosisDeniedHealing"));
 		Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
+		// AND THE ROW THE ENDED NECROSIS CREDITED, which the payout credits: it is that ailment's own damage, paid when it
+		// ends. Issue #2764, slice 2a (judgement 2). None when the necrosis credited nothing.
+		if (const UCataclysmRuntimeEffect* Ended = Cast<UCataclysmRuntimeEffect>(Removal.ActiveEffect->Spec.Def.Get()))
+		{
+			Effect->SkillRowToCredit = Ended->SkillRowToCredit;
+		}
 		Effect->DurationMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(Seconds));
 		Effect->Period = FScalableFloat(Period);
 		// THE FIRST TICK A SECOND AFTER THE NECROSIS ENDS, as every damage over time's first tick lands.
@@ -2583,7 +2604,8 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	AActor* Instigator, AActor* Target, float DamagePerTick,
 	float DurationSeconds, const FGameplayTag& EffectTag,
 	bool bScalesWithInstigator, AActor* DealtBy, const UGameplayAbility* Skill,
-	FName DamageType, bool bIsConvertedDamage, const FGameplayTagContainer* SkillTagsWithNoSkill)
+	FName DamageType, bool bIsConvertedDamage, const FGameplayTagContainer* SkillTagsWithNoSkill,
+	FName SkillRowWithNoSkill)
 {
 	if (DamagePerTick <= 0.0f || DurationSeconds <= 0.0f)
 	{
@@ -2695,8 +2717,17 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 		Cast<ACataclysmCorruptedStalkerCharacter>(Instigator);
 	const float StalkersShare = AppliedByAStalker != nullptr && Instigator != Target && !bIsConvertedDamage
 		? AppliedByAStalker->DamageOverTimeMultiplier() : 1.0f;
+	// AND THE APPLYING SKILL'S LEVEL. Issue #2764, slice 2a, the owner's ruling of 2026-11-19: "Yes, they scale too
+	// (Recommended)" -- a burn, poison or bleed a skill applies grows by that skill's level factor, as its hit does, up to
+	// 2.85 times at level 20. READ ONCE, HERE, as the applier's other stats are. Only for an effect scaled by its applier
+	// and laid on another character, as the curse above: not a spread copy, not the trap's share (a share of a blow
+	// already scaled, so no second factor), not a minion's burn, not converted damage. On a creature only, and 1 for the
+	// basic attack, which carries no row. Void Splinter is a share of health and does not come through here.
+	const float SkillsLevel = bScalesWithInstigator && Instigator != Target
+		? static_cast<float>(UCataclysmSkillLevels::DamageFactorFor(Skill, SkillRowWithNoSkill, Instigator, Target))
+		: 1.0f;
 	const FCataclysmDamageOverTimeNumbers Numbers = DamageOverTimeNumbers(
-		bScalesWithInstigator ? Source : nullptr, DamagePerTick * KeptUnderTheCurse * StalkersShare,
+		bScalesWithInstigator ? Source : nullptr, DamagePerTick * KeptUnderTheCurse * StalkersShare * SkillsLevel,
 		DurationSeconds, AskedWith);
 	if (!Numbers.bUsable)
 	{
@@ -2962,6 +2993,12 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	{
 		Effect->SkillTagsWithNoSkill = Laying->SkillTags;
 	}
+	// AND THE ROW EACH TICK CREDITS, on the effect every tick is executed from, so the struck creature's attribute set
+	// credits the skill with what each tick deals to health, before a death is handled (issue #2764, slices 1b and 2a).
+	// The skill's own row while it is there, otherwise the row handed in: the trap's share, a projectile's, a buried
+	// weapon's or a zone's burn whose skill has gone. None for a spread copy, a minion's burn, converted damage and
+	// anything no levelling skill laid, which credit nothing; the basic attack carries no row.
+	Effect->SkillRowToCredit = UCataclysmSkillLevels::RowOfBlow(Skill, SkillRowWithNoSkill);
 	// AND THE TARGET'S OWN STAT DECIDES HOW LONG IT REALLY LASTS, after the
 	// attacker's three stats above have decided what it deals and how often.
 	// Issue #1033. The other path is `ApplyTagForDuration`; both call this so
@@ -3131,7 +3168,8 @@ float UCataclysmSkillEffects::ShareOfHealthRoomLeft(float Health, float MaxHealt
 
 bool UCataclysmSkillEffects::ApplyShareOfHealthOverTime(
 	AActor* Instigator, AActor* Target, float SharePerTick,
-	float DurationSeconds, const FGameplayTag& EffectTag, bool bScalesWithInstigator)
+	float DurationSeconds, const FGameplayTag& EffectTag, bool bScalesWithInstigator,
+	const UGameplayAbility* Skill, FName SkillRowWithNoSkill)
 {
 	if (SharePerTick <= 0.0f || DurationSeconds <= 0.0f || !EffectTag.IsValid())
 	{
@@ -3284,9 +3322,14 @@ bool UCataclysmSkillEffects::ApplyShareOfHealthOverTime(
 		return true;
 	}
 
-	UGameplayEffect* Effect = MakeRuntimeEffect(
+	UCataclysmRuntimeEffect* Effect = MakeRuntimeEffect(
 		FString::Printf(TEXT("CataclysmShareOfHealth_%s"), *EffectTag.ToString()));
 	Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
+	// AND THE ROW EACH TICK CREDITS, as `ApplyDamageOverTime` keeps it. Issue #2764, slice 2a: Void Splinter a skill laid
+	// credits that skill with what it takes from a creature's health (F4: until then its skill was dropped here). CREDIT
+	// ONLY, NOT SCALED: it is a share of the target's current health, which already sizes itself to the target, and the
+	// owner's ruling on levels covers flat figures.
+	Effect->SkillRowToCredit = UCataclysmSkillLevels::RowOfBlow(Skill, SkillRowWithNoSkill);
 	Effect->DurationMagnitude =
 		FGameplayEffectModifierMagnitude(FScalableFloat(OnTarget));
 	Effect->Period = FScalableFloat(SecondsPerTick);
@@ -3308,6 +3351,11 @@ bool UCataclysmSkillEffects::ApplyShareOfHealthOverTime(
 
 	FGameplayEffectContextHandle Context = Source->MakeEffectContext();
 	Context.AddInstigator(Instigator, Instigator);
+	// AND THE SKILL THAT LAID IT, so each tick's notice can name it, as `ApplyDamageOverTime` does. Slice 2a (F4).
+	if (Skill)
+	{
+		Context.SetAbility(Skill);
+	}
 	FCataclysmHitDelivery Delivery;
 	Delivery.bIsDamageOverTime = true;
 	Delivery.ShareOfCurrentHealth = SharePerTick;
@@ -3614,6 +3662,8 @@ int32 UCataclysmSkillEffects::DealRemainingDamageOverTime(const AActor* Owner, A
 		FGameplayTagContainer AssetTags;
 		FGameplayTagContainer GrantedTags;
 		float Amount = 0.0f;
+		// The row the running effect credited, so the remaining damage paid at once credits the same skill. Slice 2a.
+		FName SkillRowToCredit;
 	};
 	TArray<FBurst> Bursts;
 	TArray<FActiveGameplayEffectHandle> SpentBleeds;
@@ -3648,6 +3698,12 @@ int32 UCataclysmSkillEffects::DealRemainingDamageOverTime(const AActor* Owner, A
 		Burst.Handle = Handle;
 		Burst.Context = Active->Spec.GetContext();
 		Active->Spec.GetAllAssetTags(Burst.AssetTags);
+		// AND THE ROW ITS TICKS CREDITED, which the burst credits: it is the damage those ticks would have dealt. Issue
+		// #2764, slice 2a, ruled by the coordinating session (judgement 2).
+		if (const UCataclysmRuntimeEffect* Running = Cast<UCataclysmRuntimeEffect>(Active->Spec.Def.Get()))
+		{
+			Burst.SkillRowToCredit = Running->SkillRowToCredit;
+		}
 		Bursts.Add(MoveTemp(Burst));
 	}
 
@@ -3663,8 +3719,9 @@ int32 UCataclysmSkillEffects::DealRemainingDamageOverTime(const AActor* Owner, A
 			Defender->RemoveActiveGameplayEffect(Burst.Handle);
 		}
 
-		UGameplayEffect* Effect = MakeRuntimeEffect(TEXT("CataclysmRemainingDamageOverTime"));
+		UCataclysmRuntimeEffect* Effect = MakeRuntimeEffect(TEXT("CataclysmRemainingDamageOverTime"));
 		Effect->DurationPolicy = EGameplayEffectDurationType::Instant;
+		Effect->SkillRowToCredit = Burst.SkillRowToCredit;
 		const int32 Index = Effect->Modifiers.Num();
 		Effect->Modifiers.SetNum(Index + 1);
 		FGameplayModifierInfo& Modifier = Effect->Modifiers[Index];
@@ -3697,7 +3754,8 @@ bool UCataclysmSkillEffects::ApplyBurn(AActor* Instigator, AActor* Target,
 									   bool bScalesWithInstigator,
 									   bool bBurnIsDesigned, AActor* DealtBy,
 									   const UGameplayAbility* Skill,
-									   const FGameplayTagContainer* SkillTagsWithNoSkill)
+									   const FGameplayTagContainer* SkillTagsWithNoSkill,
+									   FName SkillRowWithNoSkill)
 {
 	const FCataclysmStatusEffectNumbers Burn = BurnNumbers();
 	if (!Burn.bUsable)
@@ -3759,7 +3817,7 @@ bool UCataclysmSkillEffects::ApplyBurn(AActor* Instigator, AActor* Target,
 							   Burn.DamagePerTickAgainst(HitDamage),
 							   Burn.DurationSeconds, BurnTag(),
 							   bScalesWithInstigator, DealtBy, Skill, /*DamageType=*/NAME_None,
-							   /*bIsConvertedDamage=*/false, SkillTagsWithNoSkill);
+							   /*bIsConvertedDamage=*/false, SkillTagsWithNoSkill, SkillRowWithNoSkill);
 }
 
 FGameplayTag UCataclysmSkillEffects::StunnedTag()

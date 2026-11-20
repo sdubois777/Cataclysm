@@ -26,6 +26,8 @@
 #include "GameFramework/PlayerController.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Player/CataclysmPlayerState.h"
+// For a skill level a zone is laid at, slice 2a of issue #2764.
+#include "Character/CataclysmSkillLevels.h"
 #include "Tests/CataclysmTestWorld.h"
 
 /**
@@ -1077,6 +1079,103 @@ CATACLYSM_TEST(FCataclysmTrapSelfBlastHeldBackSwingTest,
 	TestTrue(*FString::Printf(TEXT("the used-up trap's held-back swing struck the wearer inside its ring (L-1): %.2f lost"),
 							  Inside.Lost()),
 		Inside.Lost() > 0.0f);
+	return true;
+}
+
+/**
+ * A ground zone a skill left credits that skill with every sweep and is sized by its level, read once when it was laid,
+ * though the skill object that left it has gone. Issue #2764, slice 2a (F2): the zone is priced from the skill's own
+ * percentage, which the design document's row "What a level does" multiplies. THE SET-UP IS
+ * `Cataclysm.Traps.ATrapsZoneSweepBurnsAnEnemyInItAndNeverStrikesItsSelfBlastWearerStandingInIt`'s, above, without its
+ * drawback: a Heavy trap casts the Greataxe's Molten Cleave as a one-use grant, which is removed when the cast ends, and
+ * the cleave leaves a zone an enemy stands in. Molten Cleave is at level 3 when the trap fires. Three sweeps by hand: one
+ * and two with the zone's factor set to 1, three with the factor it was laid with, so the third takes 1.0567 squared
+ * times the second.
+ */
+CATACLYSM_TEST(FCataclysmSkillLevelSourcesZoneTest,
+	"Cataclysm.SkillLevelSources.AGroundZonesSweepIsCreditedAndSizedAfterItsSkillHasGone")
+{
+	using namespace CataclysmTrapSelfBlastTest;
+
+	FTrapSelfBlastWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned at 100"), NeverCritical.Variable))
+	{
+		return false;
+	}
+	FTrapSelfBlastRig Wearer(World, FVector::ZeroVector, TEXT("Greataxe"));
+	if (!Wearer.IsUsable(*this, ECataclysmAbilitySlot::Heavy, ECataclysmSkillShape::Strike))
+	{
+		return false;
+	}
+	const FCataclysmWeaponSkill* Cleave = Wearer.HeldRow(ECataclysmAbilitySlot::Heavy);
+	ACataclysmPlayerState* State = Cast<ACataclysmPlayerState>(Wearer.System->GetOwner());
+	if (!TestTrue(TEXT("set-up: the greataxe's Heavy is a Strike that leaves ground, and the player has a state"),
+			Cleave && Cleave->Params.LeavesGround() && State))
+	{
+		return false;
+	}
+	Wearer.Holds({TrapSelfBlastTrapFlag(TEXT("Slot.Heavy"))});
+	State->SetLevelAndExperience(4, 0);
+	State->SetSkillExperience(Cleave->RowName, UCataclysmSkillLevels::ExperienceToReach(3));
+
+	const FVector North(0.0f, 20.0f * M, 0.0f);
+	ACataclysmEnemyCharacter* Setter = TrapSelfBlastEnemy(World, North + FVector(2.5f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* OnTheGround = TrapSelfBlastEnemy(World, North + FVector(-3.8f * M, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("set-up: the trap's enemy"), Setter)
+		|| !TestNotNull(TEXT("set-up: the enemy on the ground"), OnTheGround))
+	{
+		return false;
+	}
+	ACataclysmMinion* Trap = TrapSelfBlastPlaceTrap(*this, Wearer, ECataclysmAbilitySlot::Heavy, North);
+	if (!Trap)
+	{
+		return false;
+	}
+	TrapSelfBlastPass(World, 1.25f);
+	TrapSelfBlastStep(Trap);
+	const TArray<ACataclysmGroundZone*> Zones = TrapSelfBlastZonesOf(World, Wearer.Player);
+	if (!TestEqual(TEXT("set-up: the cleave left one zone"), Zones.Num(), 1))
+	{
+		return false;
+	}
+	ACataclysmGroundZone* Zone = Zones[0];
+	const float LaidWith = Zone->LevelFactorOnCreatures;
+
+	// THE SWEEPS: two at factor 1, the first of which may deal a first sweep's own figure, then one at the laid factor.
+	Zone->LevelFactorOnCreatures = 1.0f;
+	Zone->Sweep();
+	const float AfterFirst = TrapSelfBlastTakenFrom(OnTheGround);
+	Zone->Sweep();
+	const float AtOne = TrapSelfBlastTakenFrom(OnTheGround) - AfterFirst;
+	Zone->LevelFactorOnCreatures = LaidWith;
+	Zone->Sweep();
+	const float AtLaid = TrapSelfBlastTakenFrom(OnTheGround) - AfterFirst - AtOne;
+	const float* Credited = OnTheGround->GetHealthRemovedBySkill().Find(Cleave->RowName);
+
+	AddInfo(FString::Printf(TEXT("ZONE AFTER ITS SKILL: row %s, factor %.4f, skill object there %s; sweeps took %.3f, %.3f "
+								 "at factor 1 and %.3f at the laid factor (x%.4f); credited %.3f of %.3f"),
+							*Zone->SkillRowItWasLeftWith.ToString(), LaidWith,
+							Zone->SkillThatLeftIt.IsValid() ? TEXT("yes") : TEXT("no"), AfterFirst, AtOne, AtLaid,
+							AtOne > 0.0f ? AtLaid / AtOne : 0.0f, Credited ? *Credited : 0.0f,
+							TrapSelfBlastTakenFrom(OnTheGround)));
+	TestTrue(TEXT("set-up: the sweeps took health"), AtOne > 0.0f);
+	TestFalse(TEXT("set-up: the one-use grant that left the zone has gone"), Zone->SkillThatLeftIt.IsValid());
+	TestEqual(TEXT("THE ZONE KEPT MOLTEN CLEAVE'S ROW"), Zone->SkillRowItWasLeftWith, Cleave->RowName);
+	TestEqual(TEXT("AND THE LEVEL 3 FACTOR IT WAS LAID WITH"), LaidWith,
+			  static_cast<float>(UCataclysmSkillLevels::DamageFactor(3)), 1.0e-4f);
+	TestEqual(TEXT("A SWEEP AT THAT FACTOR TAKES IT TIMES A SWEEP AT 1"), AtLaid / AtOne,
+			  static_cast<float>(UCataclysmSkillLevels::DamageFactor(3)), 1.0e-3f);
+	TestNotNull(TEXT("AND EVERY SWEEP CREDITED MOLTEN CLEAVE"), Credited);
+	if (Credited)
+	{
+		TestEqual(TEXT("with all the sweeps took"), *Credited, TrapSelfBlastTakenFrom(OnTheGround), 0.01f);
+	}
 	return true;
 }
 

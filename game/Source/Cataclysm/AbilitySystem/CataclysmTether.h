@@ -160,6 +160,12 @@ private:
 	 */
 	FGameplayTagContainer SkillTagsItWasBoundWith;
 
+	/**
+	 * The row of the skill that bound the line, captured by `Bind`, or None. Issue #2764, slice 2a. Handed to the burn
+	 * the line lays, so the burn credits that skill and is sized by its level even after the skill has gone.
+	 */
+	FName SkillRowItWasBoundWith;
+
 	/** How far apart the two ends may get. `TetherLength`. */
 	float MaxSeparationCm = 0.0f;
 
