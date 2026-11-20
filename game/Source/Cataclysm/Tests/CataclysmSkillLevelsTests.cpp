@@ -444,6 +444,96 @@ bool FCataclysmSkillLevelsDeathTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillLevelsKillingBlowTest,
+	"Cataclysm.SkillLevels.ASkillsKillingBlowIsCountedInTheDeathsSplit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A creature a skill kills pays that skill for the blow that killed it. Issue #2764, slice 1b. Until then the credit was
+ * made after the blow had been dealt, and the blow's death -- handled inside the health write -- had already paid, so a
+ * kill in one hit paid its skill nothing and every other kill left its last blow out. Two Bosses, so they are worth
+ * something here. The first has 5 health, and one Molten Cleave blow kills it from full. The second is given one and a
+ * half times that blow's whole figure (what it dealt to health plus its overkill): the first blow leaves it alive, the
+ * second kills it. Each has lost its whole health to Molten Cleave, so each pays the skill its whole worth. The blows
+ * cannot be critical, so every one has the same figure.
+ */
+bool FCataclysmSkillLevelsKillingBlowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillLevelsTest;
+
+	FSkillLevelsPlayer Player = MakeSkillLevelsPlayer();
+	ON_SCOPE_EXIT
+	{
+		if (Player.World)
+		{
+			Player.World->DestroyWorld(/*bInformEngineOfWorld=*/false);
+		}
+	};
+	const UCataclysmSkillTemplate* Heavy = Player.IsUsable() ? SkillOfRow(Player.Abilities, MoltenCleave) : nullptr;
+	ACataclysmEnemyCharacter* OneBlow = Player.World ? SpawnCreature(Player.World, 300.0f) : nullptr;
+	ACataclysmEnemyCharacter* TwoBlows = Player.World ? SpawnCreature(Player.World, 600.0f) : nullptr;
+	UAbilitySystemComponent* OneBlowsSystem = OneBlow ? OneBlow->GetAbilitySystemComponent() : nullptr;
+	UAbilitySystemComponent* TwoBlowsSystem = TwoBlows ? TwoBlows->GetAbilitySystemComponent() : nullptr;
+	if (!TestTrue(TEXT("set-up: a possessed player holding Molten Cleave, and two creatures"),
+				  Heavy && OneBlowsSystem && TwoBlowsSystem))
+	{
+		return false;
+	}
+	const auto SetHealth = [](UAbilitySystemComponent* System, float Health)
+	{
+		System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), Health);
+		System->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Health);
+	};
+	const auto StrikeOnce = [&Player, Heavy](AActor* Target, FCataclysmDamageResult& OutResult)
+	{
+		FCataclysmHitDelivery Delivery;
+		Delivery.Skill = Heavy;
+		Delivery.bCannotCriticallyStrike = true;
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Target, 100.0f, FGameplayTagContainer(), Delivery, &OutResult);
+	};
+
+	// BOSSES, as the death test makes one: worth something wherever the sandbox's floor sits. The rarity first, then the
+	// health, because the rarity sets the creature's starting figures again.
+	constexpr int32 BossStep = 4;
+	const int32 Worth = UCataclysmEnemyScore::ScoreFor(UCataclysmEnemyScore::FloorIn(Player.World), BossStep);
+	OneBlow->SetRarityStep(BossStep);
+	TwoBlows->SetRarityStep(BossStep);
+	constexpr float SmallHealth = 5.0f;
+	SetHealth(OneBlowsSystem, SmallHealth);
+
+	FCataclysmDamageResult Killing;
+	StrikeOnce(OneBlow, Killing);
+	const bool bOneBlowKilled = UCataclysmSkillEffects::IsDead(OneBlow);
+	const double PaidForOne = Player.State->GetSkillExperience(MoltenCleave);
+
+	// THE SECOND CREATURE'S HEALTH, ONE AND A HALF BLOWS, from the first blow's whole figure.
+	const float WholeBlow = Killing.DealtToHealth + Killing.Overkill;
+	const float TwoBlowsHealth = 1.5f * WholeBlow;
+	SetHealth(TwoBlowsSystem, TwoBlowsHealth);
+	FCataclysmDamageResult FirstOfTwo;
+	StrikeOnce(TwoBlows, FirstOfTwo);
+	const bool bAliveAfterTheFirst = !UCataclysmSkillEffects::IsDead(TwoBlows);
+	FCataclysmDamageResult SecondOfTwo;
+	StrikeOnce(TwoBlows, SecondOfTwo);
+	const bool bTwoBlowsKilled = UCataclysmSkillEffects::IsDead(TwoBlows);
+	const double PaidForTwo = Player.State->GetSkillExperience(MoltenCleave) - PaidForOne;
+
+	AddInfo(FString::Printf(TEXT("KILLING BLOW: worth %d; one blow on %.1f health dealt %.3f (whole %.3f), killed %s, paid "
+								 "%.3f; two blows on %.3f health dealt %.3f and %.3f, killed %s, paid %.3f"),
+							Worth, SmallHealth, Killing.DealtToHealth, WholeBlow, bOneBlowKilled ? TEXT("yes") : TEXT("NO"),
+							PaidForOne, TwoBlowsHealth, FirstOfTwo.DealtToHealth, SecondOfTwo.DealtToHealth,
+							bTwoBlowsKilled ? TEXT("yes") : TEXT("NO"), PaidForTwo));
+	TestTrue(TEXT("set-up: a Boss is worth something here, and the blow has a figure"), Worth > 0 && WholeBlow > SmallHealth);
+	TestTrue(TEXT("set-up: one blow killed the small creature"), bOneBlowKilled);
+	TestTrue(TEXT("set-up: the other lived through the first blow and died to the second"),
+			 bAliveAfterTheFirst && bTwoBlowsKilled);
+	TestEqual(TEXT("A KILL IN ONE SKILL BLOW PAYS THE SKILL THE CREATURE'S WHOLE WORTH"), PaidForOne,
+			  static_cast<double>(Worth), 1.0e-3);
+	TestEqual(TEXT("AND A KILL IN TWO PAYS IT THE WHOLE WORTH, the killing blow's share included"), PaidForTwo,
+			  static_cast<double>(Worth), 1.0e-3);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillLevelsMigrationTest,
 	"Cataclysm.SkillLevels.ACharacterFromBeforeSkillLevelsMigratesWithNoSkillExperience",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

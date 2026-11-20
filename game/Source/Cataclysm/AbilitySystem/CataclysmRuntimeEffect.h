@@ -11,7 +11,8 @@
  * A gameplay effect built at run time by `UCataclysmSkillEffects`, for one application. Issue #2683.
  *
  * EVERY EFFECT `MakeRuntimeEffect` BUILDS IS ONE OF THESE, and it is an ordinary `UGameplayEffect` in everything but
- * the one field below: it adds no behaviour and overrides nothing. The engine stacks effects by comparing `Spec.Def`
+ * the two fields below: it adds no behaviour and overrides nothing. The second, `SkillRowToCredit`, was added for issue
+ * #2764, slice 1b. The engine stacks effects by comparing `Spec.Def`
  * pointers, not classes. Searched 2026-11-01: no code in `game/Source` asks a running effect's class -- no
  * `FGameplayEffectQuery::EffectDefinition`, no removal or count by effect class. The whole automation suite is the
  * check that nothing else changed (ruling J4).
@@ -44,4 +45,15 @@ public:
 	 */
 	UPROPERTY(Transient)
 	FGameplayTagContainer SkillTagsWithNoSkill;
+
+	/**
+	 * The skill row the blow this effect deals earns experience for, or None. Issue #2764, slice 1b. Written by
+	 * `UCataclysmSkillEffects::ApplyDirectDamage` from `FCataclysmHitDelivery::SkillRowToCredit`, which `ApplyHit` sets
+	 * for a blow its skill is credited with, and read by the struck creature's `UCataclysmVitalAttributeSet`, which
+	 * credits the skill with what the blow dealt to health once the outcome is fixed and before a death is handled. A
+	 * field of the effect, as `SkillTagsWithNoSkill` is, because the attribute set reads the spec it executes, and the
+	 * effect is matched to its own blow: a blow dealt from inside this one has its own effect and its own row.
+	 */
+	UPROPERTY(Transient)
+	FName SkillRowToCredit;
 };
