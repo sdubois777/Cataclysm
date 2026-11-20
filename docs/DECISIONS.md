@@ -388,6 +388,26 @@ worn-gear test), the Cataclysm draw's seed test and the gold test. Every test th
 `CataclysmSaveRecordTests.cpp`. `tools/tests/test_empire_tree_on_the_account_record.py` reads `Character_v10.json`. The
 three tests that state "version 9" and were not moved read `Run_v9.json`, the run record, which stays at 9.
 
+### The rebase onto the forge, the gear display, the burn slice and the C key
+
+Rebased onto `development` `ecde2edee` on 2026-11-19, as `feat/skills-level-by-use-2`. Eight files conflicted, and each
+keeps both sides:
+
+- `CataclysmSkillEffects.cpp`: two includes, the Corrupted Stalker's (#2749) and `Character/CataclysmSkillLevels.h`.
+  The level factor and the credit merged without a conflict and are where they were: the factor on `DamagePercent`
+  before the pricing, and the credit after `ApplyDirectDamage`.
+- `CataclysmPlayLoopLog.h` and `.cpp`, and `CataclysmPlayLoopTests.cpp`: the forge's and the gear display's additions,
+  then the skill level line and its test. The two sides shared a comment's opening `/**` in the header and the closing
+  `}` of a function or test in the other two, so each side is written whole rather than joined at the shared lines.
+- `tools/tests/test_the_play_loop_is_logged_at_each_step.py`: twenty-five places, the skill level line the twenty-fifth.
+- `tools/tests/test_the_starting_character_survives_a_pack.py`: `fight` takes the burn slice's `burn_per_second` and this
+  branch's `slot_factor` and `dealt`, and its docstring describes all three.
+- `docs/Play_Loop_Checklist.md` step 7: the gear bullets, then the skill bar's.
+- This log: this entry between the C key's and the burn slice's, by the time each was first written (12:36:43 here,
+  14:59:42 and 11:09:10 there).
+
+`python tools/check_resolved_cpp.py --changed` printed "29 files read, 0 with complaints".
+
 ### The tests, and the count registered by name
 
 - **`Cataclysm.SkillLevels.`, new, 11**: `ThePriceOfALevelIsAQuarterOfTheCharactersClimbToItsPairedLevel`,
@@ -400,15 +420,17 @@ three tests that state "version 9" and were not moved read `Run_v9.json`, the ru
   `SkillExperienceIsGatheredIntoTheCharacterRecordAndPutBack` and
   `TheSkillBarShowsEachSkillsLevelAndNotTheBasicAttacks`.
 - **`Cataclysm.PlayLoop.TheSkillLevelLineSaysTheSkillAndBothLevels`**, new.
-- **Registered**: the whole suite at 4929 + 12 = **4941**, against 4929 measured by window buildsave-w1 at `4a55d2fa`,
-  whose `game/` is `development` `1bf6611c5`'s, this branch's base; 47 skipped halves; 0 test saves left behind. Each
-  group alone, the base counts from that window's whole-suite log (`bs_suite_engine_4a55d2fa.log`, 4929 "Test Completed"
-  lines, every one a success): `Cataclysm.SkillLevels.` 11, all new; `Cataclysm.PlayLoop.` 10, 9 and one new; and,
-  unchanged in count, `Cataclysm.SaveRecords.` 17, `Cataclysm.SkillBar.` 22, `Cataclysm.SkillChoiceScreen.` 8,
-  `Cataclysm.SkillAssignment.` 16, `Cataclysm.CataclysmDraw.` 6, `Cataclysm.Gold.` 13, `Cataclysm.ConsumptionDouble.` 15,
-  `Cataclysm.ConsumptionMark.` 6, `Cataclysm.EmpireTree.` 24, `Cataclysm.CharacterLevel.` 9, `Cataclysm.EnemyScore.` 12,
-  `Cataclysm.SaveLoad.` 79 and `Cataclysm.Skills.` 284. The machine's queue merges other changes first; the base and
-  these counts are taken again after the rebase.
+- **Registered**: the whole suite at 4956 + 12 = **4968**, against 4956 measured by window ckey-w1 at `e8bd90fdf`,
+  whose `game/` is `development` `ecde2edee`'s, this branch's base since the rebase below; 47 skipped halves; 0 test
+  saves left behind. Each group alone, the base counts from that window's whole-suite log (`ck_suite_engine_e8bd90fd.log`,
+  4956 unique "Test Completed" paths, every one a success), by prefix, ignoring case: `Cataclysm.SkillLevels.` 11, all
+  new; `Cataclysm.PlayLoop.` 12, 11 and one new (two of the eleven are in `CataclysmSaveLoadTests.cpp`);
+  `Cataclysm.HitLog.` 7, added to the groups at this rebase, because its outgoing hit line test deals a skill's blow on a
+  creature, which is where the level factor and the credit act; and, unchanged in count, `Cataclysm.SaveRecords.` 17,
+  `Cataclysm.SkillBar.` 22, `Cataclysm.SkillChoiceScreen.` 8, `Cataclysm.SkillAssignment.` 16, `Cataclysm.CataclysmDraw.`
+  6, `Cataclysm.Gold.` 13, `Cataclysm.ConsumptionDouble.` 15, `Cataclysm.ConsumptionMark.` 6, `Cataclysm.EmpireTree.` 24,
+  `Cataclysm.CharacterLevel.` 9, `Cataclysm.EnemyScore.` 12, `Cataclysm.SaveLoad.` 79 and `Cataclysm.Skills.` 284. None
+  of the twelve new names is in that log. First registered at 4929 + 12 = 4941 on `1bf6611c5`, before the rebase.
 - **Python**: `tools/tests/test_skill_levels_port.py`, new, 7: every constant and the paired levels equal to the copy,
   the price's shape, and 2.85 at level 20; `sim/tests/test_skill_levels.py`, new, 4: the copy's price, cap, keeping and
   split. `test_the_play_loop_is_logged_at_each_step.py` checks the player state says the skill level line, and the
