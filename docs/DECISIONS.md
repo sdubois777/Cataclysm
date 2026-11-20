@@ -2,6 +2,175 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-20 — A Vengeful Wraith is saved and loaded as a wraith, with the run record at version 10, and a ranged basic attack restores its mana when its shot lands, once per use (#2725, #2722)
+
+**Affects:** `FCataclysmSavedCreature::bIsVengefulWraith` and `UCataclysmRunSave::SchemaVersionNow` 10
+(`game/Source/Cataclysm/Save/CataclysmSaveRecords.h`); `Migrate_9_to_10` in the run record's chain
+(`game/Source/Cataclysm/Save/CataclysmSaveRecords.cpp`); `ACataclysmDungeonGameMode::CreatureRolesInto` and
+`RestoreCreatureRoles`, changed, and `VengefulWraithsStandingNow`, new (`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`
+and `.cpp`); `UCataclysmSkillTemplate::PayManaOnHitTo`, new, and `ApplyManaOnHit`, which calls it
+(`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.h` and `.cpp`); `ACataclysmProjectile::HitOne` and
+`bPaidManaOnHit` (`game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.h` and `.cpp`);
+`game/Tests/SaveFixtures/Run_v10.json`, new, and `game/Tests/SaveFixtures/README.md`. Tests:
+`game/Source/Cataclysm/Tests/CataclysmRangedManaOnHitTests.cpp`, new, 4 in the new group `Cataclysm.RangedManaOnHit.`;
+`game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp`, 2 new in `Cataclysm.SaveLoad.`;
+`game/Source/Cataclysm/Tests/CataclysmSaveFixtures.h` (`AddTheRunsVersion10Defaults`, new); the run record's version
+moved in `CataclysmConsumptionDoubleTests.cpp`, `CataclysmDeathCostTests.cpp`, `CataclysmEarnedBossSaveTests.cpp`,
+`CataclysmEmpireTreeEventsTests.cpp`, `CataclysmGoldTests.cpp`, `CataclysmSaveRecordTests.cpp`, `CataclysmWalkSeedTests.cpp`
+and `CataclysmWinningTheRunTests.cpp`, all in `game/Source/Cataclysm/Tests/`; `tools/tests/test_a_vengeful_wraith_is_saved_as_one.py`
+and `tools/tests/test_a_ranged_basic_attack_restores_mana.py`, new; `tools/tests/test_empire_tree_event_counts_are_saved.py`,
+changed. Issues [#2725](https://github.com/sdubois777/Cataclysm/issues/2725) and
+[#2722](https://github.com/sdubois777/Cataclysm/issues/2722).
+
+### SAID FIRST
+
+- **COMPILED, RUN AND PROVED IN ONE WINDOW (fix-2725-w1)**, at `31002c802` on development `ed3492165`:
+  - all three of phase 2's compiles succeeded;
+  - the written-out record version check found the run, character and account records at 10, 10 and 4, and no test
+    stating another version;
+  - the seventeen groups each passed alone at their registered counts;
+  - the whole Unreal suite performed the registered 4985, all succeeding, with 47 skipped halves and "852 written and
+    deleted, 0 left behind";
+  - Python passed, 7760 with 9 skipped, and ruff passed;
+  - the six C++ guard proofs each proved, failing exactly the registered tests on exactly the registered assertions;
+    the five Python guard proofs were proved in phase 1.
+- **ONE WINDOW, TWO ISSUES**, as the coordinating session ordered on 2026-11-19: each has its own tests, proofs and
+  section below.
+- **THE RUN RECORD IS AT VERSION 10, ITS OWN NUMBER.** The character record reached its own version 10 the same day
+  for skill levels (issue #2764). The two numbers belong to two records and say nothing about each other.
+
+### #2725: a Vengeful Wraith is saved as one
+
+**THE FAULT.** A saved creature carried no field saying it was a Vengeful Wraith, and
+`ACataclysmDungeonGameMode::RestoreCreatureRoles` put back every other rule creature's role and none for a wraith. A
+wraith was saved as one of the floor's creatures, so after a load it paid nothing and saw across the floor, both of
+which the record already kept, but took every hit in full instead of a tenth, hit 20% less hard, moved at its kind's
+speed, and was not in the rule's list, so a later rung change (Volatile Evolution, Blood-Forged Champions) did not put
+its figures back either.
+
+**THE CHANGE, APPROVED BY THE COORDINATING SESSION ON 2026-11-19.**
+- `FCataclysmSavedCreature::bIsVengefulWraith`, written by `CreatureRolesInto` for a creature carrying the mark that is
+  in the rule's list, as the Plaguebearer's mark is written only for the rule's bearer.
+- `RestoreCreatureRoles` puts a saved wraith in the list FIRST and then calls `ApplyVengefulWraithFigures`, which writes
+  nothing for a creature outside it. The saved attack damage is the creature's own, so the 20% part is not counted twice.
+- **RUN RECORD VERSION 10**, because a field added to a record takes a version (the fixtures README since 2026-11-02).
+  `Migrate_9_to_10` writes false on every creature of the floor: nothing in a version 9 file tells a wraith from another
+  risen creature, so such a wraith comes back as one did before. `Run_v10.json` is `Run_v9.json` at version 10 with its
+  first creature a wraith and its second not; every test that read `Run_v9.json` as the committed run file reads
+  `Run_v10.json`, and every test that runs an older run file through the chain adds `AddTheRunsVersion10Defaults`.
+- **NOT FIXED, KNOWN:** the floor panel's "N wraith(s) risen" is a count of this floor's risings and is not saved, as
+  Blood-Forged Champions' count is not; after a load it reads 0 until the next wraith rises.
+- **ALSO CORRECTED, IN THE SAME README:** #2764 had left the character record's migration count at "eight (version 9)"
+  and no table row for `Character_v10.json`; both now say what is committed.
+
+### #2722: a ranged basic attack restores its mana when its shot lands
+
+**THE DESIGN HAD ALREADY DECIDED IT.** `docs/Cataclysm_GDD_v2.md`, under "The Basic Attack Restores Mana, and This Is
+Not a Generator": "The basic attack returns 6 mana each time it lands. At a typical 1.3 attacks per second that is about
+8 mana per second while fighting." It names no weapon, and the simulation's `Character.mana_income` counts the same
+income for every character. The game paid it only through `UCataclysmSkillTemplate::HitTargets`, and the four ranged
+basic attacks -- the Wand's, the Crossbow's, the Staff's and the Two-Handed Crossbow's, each one shot with a speed in
+`game/Data/ItemBases.csv` -- land through `ACataclysmProjectile::HitOne`, which never passes through it.
+
+**THE CHANGE.** `HitOne` pays the firing slot's mana on hit through `PayManaOnHitTo`, the function `ApplyManaOnHit`
+now calls too, to the firer's own ability system, because the shot lands after its use has ended. It pays when the
+shot landed (not evaded) carrying damage, as `HitTargets` pays only a use whose total is above nought; a blow armour
+stopped dead still pays. Only the basic attack's slot states a mana on hit (`game/Data/SkillSlots.csv`), so every other
+skill's shot pays nothing.
+
+**ONCE PER USE, A RULING THAT REPLACES THE APPROVED PLAN.** The plan approved on 2026-11-19 said once per projectile.
+The coordinating session ruled once per use the same night: the design's sentence counts landings of the attack, a
+use, and `HitTargets` already pays once per landed use, so a swing that strikes five pays once. Once per projectile would
+pay a use with two added projectiles (a `projectile_count` row of the user's, ruled 2026-10-12) 18 instead of 6. The two
+readings agree for every use of one projectile, which is every basic attack without such a row. The shot pays at the
+first landing of its whole use: a projectile's own `bPaidManaOnHit`, and the record the projectiles of one use share,
+`LandedOnInItsUse`, read before it takes this landing in. So a second enemy a pierce or a glance reaches does not pay,
+nor a second enemy in the shot's own blast, whose contacts each start from the same landing count, nor another
+projectile of the use.
+
+**NO SIMULATION CHANGE**, approved: the model already pays every character's basic attack.
+
+### Registered before the run
+
+Sent to and accepted by the coordinating session on 2026-11-19, before the compiles.
+
+- **Base: 4979**, measured by window skills-1b-w1 at `5f3fd9798`, whose `game/` is development `ed3492165`'s (`git diff
+  --stat 5f3fd9798 ed3492165 -- game/` prints nothing). The branch was written on `b25372d5b`, slice 5a's head, and
+  moved onto `ed3492165` with `git rebase --onto origin/development b25372d5b`, because #2776 was squash-merged; the
+  rebase was clean and left the commit's patch identical, and no function the slice calls gained a defaulted parameter.
+- **The whole suite: 4985 performed, 4985 succeeded, 0 failed**: the base's 4979, 4 new in `Cataclysm.RangedManaOnHit.`
+  and 2 new in `Cataclysm.SaveLoad.`; 47 skipped halves, the base's.
+- **Each group alone**, counted from the base log on "Test Completed. Result={" lines and by distinct path, which agree,
+  plus what the slice adds: `Cataclysm.RangedManaOnHit.` 4 (new), `SaveLoad.` 81 (79 and 2), `SaveRecords.` 17,
+  `Travel.` 9, `DeathCost.` 9, `EarnedBossSave.` 3, `WinningTheRun.` 11, `Gold.` 13, `WalkSeed.` 5, `EmpireTreeEvents.` 14,
+  `ConsumptionDouble.` 15, `RuleDamageParts.` 11, `BasicAttack.` 11, `StalkerKit.` 13, `ProjectileRange.` 7,
+  `ProjectileCount.` 6, `Skills.` 284. No DataTable changed, so the window had no asset step.
+- **Six C++ guard proofs**, the restored half passing every test it ran:
+
+| Proof | File | The break | Predicted with it in |
+|---|---|---|---|
+| P1 | `CataclysmDungeonGameMode.cpp` | `CreatureRolesInto` writes the mark false | the round-trip test, 1 performed, 1 failed, on 4 assertions: in the list, marked, the reduction, the increase |
+| P2 | `CataclysmDungeonGameMode.cpp` | the load asks for the figures before the wraith is in the list | the same, on 3 assertions; "in the rule's list again" passes |
+| P3 | `CataclysmSaveRecords.cpp` | `Migrate_9_to_10` writes true | the migration test, 1 performed, 1 failed, on 3 assertions |
+| P4 | `CataclysmProjectile.cpp` | `HitOne` pays nothing | `Cataclysm.RangedManaOnHit.`, 4 performed, 4 failed, 1 assertion each |
+| P5 | `CataclysmProjectile.cpp` | every landing pays | 4 performed, 2 failed: the pierce (12) and the three projectiles (18) |
+| P6 | `CataclysmProjectile.cpp` | once per projectile, the plan's first reading | 4 performed, 1 failed: the three projectiles (18) |
+
+- **Python before the window**: at `31002c802`, 7760 passed, 9 skipped; JUnit tests 7769, failures 0, errors 0, skipped 9;
+  ruff clean.
+
+### The five Python guards, proved in phase 1
+
+Each through `tools/prove_guard.py`'s `break_and_run` on the slice's two Python test files, `proved` True, the broken
+half "1 failed, 8 passed" and the restored half "9 passed":
+
+- **Z1, `Run_v10.json`'s second creature is a wraith too**: `test_run_v10_is_run_v9_with_the_first_creature_a_wraith_and_nothing_else_changed`.
+- **Z2, the load asks for the figures before the list**: `test_the_game_mode_writes_the_mark_and_puts_a_saved_wraith_back_in_the_list_first`.
+- **Z3, the run record's chain has no step from 9**: `test_the_run_record_is_at_version_10_and_migrate_9_to_10_writes_no_wraith`.
+  **ITS FIRST BREAK WAS WIDER THAN ITS TARGET**: the character record's chain holds an identical "step from 9" line
+  since #2764, and a replace of that line removed both. It was narrowed to the run chain's line alone, removed exactly
+  one line, and proved when run again by itself.
+- **Z4, the gold test's chain stops at version 9**: `test_every_chain_test_adds_version_10_and_only_the_migration_reads_run_v9`.
+- **Z5, a shot's first landing counts any landing of its use**: `test_a_landed_shot_pays_once_per_use_to_its_firer`.
+
+### The window
+
+**fix-2725-w1, 2026-11-20, 00:05 to 00:43, at `31002c802`.** Phase 2's three compiles ran under the lock from 23:53
+to 00:04, after the coordinating session's rebuild of the main checkout had released it: the branch (46 files), each of
+the 14 changed `.cpp` files alone (29 files), and the unity files (15). Build 1's one warning is `CountBits` from
+`CataclysmAbilitySystemComponent.cpp` line 1315, which this slice does not change and issue #2756 holds; builds 2 and 3
+had none. The window's gate found every pre-check passing at 00:05: development `ed3492165` with its CI and Unreal runs
+succeeded, no run in progress or queued, the lock free, no build or editor process, no open pull request, no
+simulation process, enough memory, no LFS pointer file. The recount matched every group, and the written-out version
+check found "24 lines stating a version; NO MISMATCH".
+
+- **The build**: "target already up to date, 0 actions, nothing compiled".
+- **Each group alone**: all seventeen at their registered counts, all succeeding.
+- **The whole suite**: "Tests: 4985 tests performed, 4985 succeeded, 0 failed. 47 skipped part of what they check";
+  "Test saves: 852 written and deleted, 0 left behind"; "Declared: 4985 tests in the tree at 31002c802; 4985 performed,
+  gap 0".
+- **Python**: "7760 passed, 9 skipped"; JUnit tests 7769, failures 0, errors 0, skipped 9; ruff "All checks passed!".
+- **What the new tests printed**: "LOAD VENGEFUL WRAITH: ... 2 risen; 1 in the list; the wraith marked, reduction 90.0,
+  increase 20.0%; the Dead Rising creature unmarked, reduction 0.0, increase 0.0%"; "WRAITH MIGRATED: ... false written
+  on 2 creature(s); the record at version 10 with flags 00; Run_v10.json flags 10; the rest kept"; "RANGED MANA: the
+  slot's figure 6.00; in the air 0.00 mana", then "landed, 6.00 mana"; "RANGED MANA PIERCE: 6.00 mana"; "RANGED MANA
+  THREE: 3 of 3 hurt; 6.00 mana".
+- **The proofs**, each failing exactly its registered tests in its broken half, and its restored half passing every
+  test it ran:
+
+| Proof | With the break in | The failed assertions |
+|---|---|---|
+| P1 | 1 performed, 0 succeeded, 1 failed | `AVengefulWraithComesBackAWraithAfterALoad` 4: "the wraith is in the rule's list again", "and marked a wraith", "it takes a tenth of every hit" (0, expected 90), "its 20% increased damage is its own part" (0, expected 20) |
+| P2 | 1, 0, 1 | the same test, 3: "and marked a wraith", the reduction (0) and the increase (0) |
+| P3 | 1, 0, 1 | `ARunFileFromVersion9MigratesWithNoWraith` 3: "the step writes false on both creatures" (0, expected 2), "and neither creature is a wraith" ("11", expected "00"), "and every other field is kept" |
+| P4 | 4, 0, 4 | one each, the caster's mana 0 where 6 was expected: `AWandsBasicAttackRestoresItsManaWhenItLandsAndNotBefore`, `AnEvadedShotRestoresNoMana` (its CONTROL), `AShotThroughTwoEnemiesRestoresItsManaOnce`, `AUseOfThreeProjectilesRestoresItsManaOnce` |
+| P5 | 4, 2, 2 | `AShotThroughTwoEnemiesRestoresItsManaOnce` (12, expected 6) and `AUseOfThreeProjectilesRestoresItsManaOnce` (18, expected 6) |
+| P6 | 4, 3, 1 | `AUseOfThreeProjectilesRestoresItsManaOnce` (18, expected 6) |
+
+No proof's log holds a "server/discover" line (#2745). The lock was released when the window ended.
+
+---
+
 ## 2026-11-19 — The empire upgrade tree's player nodes act inside a dungeon: magic find, loot quantity, movement speed and damage from fifteen nodes, doubled for the Explorer branch's loot at a one-day walk (#2741, slice 5a)
 
 **Affects:** `game/Source/Cataclysm/Player/CataclysmEmpireTree.h` and `.cpp` (`FCataclysmEmpireTreePlayerBonuses` and
