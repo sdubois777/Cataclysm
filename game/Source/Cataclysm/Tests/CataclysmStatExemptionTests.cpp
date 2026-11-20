@@ -6371,6 +6371,13 @@ namespace CataclysmStatExemptionTest
 		Killing.AddTag(UGameplayTagsManager::Get().RequestGameplayTag(
 			FName(TEXT("Keyword.DoT.Necrosis")), /*ErrorIfNotFound=*/false));
 
+		// A CLASS RESOURCE POOL OF 100 FOR THE KILLER, because the imp a necrosis kill raises holds 5 of it back since
+		// issue #2787 (branch A), and this fighter carries no pool: without one the imp was refused for room, not for
+		// the stat, in window reserves-a-w1. The control below still raises nothing, for want of the stat.
+		Killer.AbilitySystem->AddAttributeSetSubobject(NewObject<UCataclysmClassResourceAttributeSet>(Killer.Actor));
+		Killer.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 100.0f);
+
 		Test.TestNull(TEXT("without the stat nothing rises"),
 			UCataclysmRisenImps::RiseOnNecrosisKill(
 				Killer.Actor, Victim.Actor, FVector(300.0f, 0.0f, 0.0f), &Killing));

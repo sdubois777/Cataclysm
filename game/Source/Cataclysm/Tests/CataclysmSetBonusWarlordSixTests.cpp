@@ -154,6 +154,15 @@ namespace CataclysmSetBonusWarlordSixTest
 			Actor->SetArmour(0.0f);
 			AbilitySystem = Cast<UCataclysmAbilitySystemComponent>(Actor->GetAbilitySystemComponent());
 			check(AbilitySystem);
+			// A CLASS RESOURCE POOL OF 150, because a Warhound holds 5 of it back since issue #2787 (branch A) and a
+			// creature carries no pool of its own: without one, every summon was refused for room in window
+			// reserves-a-w1. A player wearing the set has its pool.
+			if (!AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>())
+			{
+				AbilitySystem->AddAttributeSetSubobject(NewObject<UCataclysmClassResourceAttributeSet>(Actor));
+			}
+			Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 150.0f);
+			Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 150.0f);
 			Set(Combat::GetEvasionAttribute(), 0.0f);
 			Set(Combat::GetBlockChanceAttribute(), 0.0f);
 			Set(Combat::GetCrowdControlResistanceAttribute(), 0.0f);
