@@ -318,7 +318,9 @@ and "AND A KILL IN TWO PAYS IT THE WHOLE WORTH" (the worth expected, two thirds 
 group passes, `ASkillsBlowOnACreatureIsScaledByItsLevelAndCreditedToIt` with the same figures as before (credited
 63.360, 70.749 and 63.360), because none of its blows kills. **Restored:** 12 of 12.
 
-The whole suite is registered from the newest measured total when the window is given, + 1.
+**Registered for the window**: `Cataclysm.SkillLevels.` alone, 12; the whole suite, 4,979 with 47 skipped halves and
+0 test saves left behind: 4,978 measured by window tree-5a-w1 at `11affe009` ("4978 tests performed, 4978 succeeded, 0
+failed"), whose `game/` tree is `development` `82929a51e`'s, this change's base, + 1; and B1 as predicted above.
 
 ---
 
