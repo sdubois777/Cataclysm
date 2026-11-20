@@ -392,9 +392,15 @@ public:
 	 *
 	 * ON A RING OF ITS OWN, `GoldScatterOffset`, so a pile does not land on the spot a lone item takes.
 	 *
+	 * THE EMPIRE UPGRADE TREE'S GOLD NODES MULTIPLY EACH PILE'S AMOUNT, `GoldMultiplier`, issue #2741 slice 6a (G1):
+	 * after the pile's own draws, rounded to whole gold and never below 1. So the multiplier draws nothing, a kill with
+	 * no gold node (a multiplier of exactly 1) drops what it dropped before, and the piles' count and places are the
+	 * same whatever it is. `UCataclysmEmpireTree::GoldMultiplierFor` works it out.
+	 *
 	 * @return how many piles were placed
 	 */
-	static int32 SpawnGoldFor(UWorld* World, int32 EnemyRarityStep, const FVector& At, FRandomStream& Stream);
+	static int32 SpawnGoldFor(UWorld* World, int32 EnemyRarityStep, const FVector& At, FRandomStream& Stream,
+							  float GoldMultiplier = 1.0f);
 
 	/**
 	 * Where one of a kill's gold piles lands, relative to the corpse: a ring one step wider than `ScatterOffset` gives

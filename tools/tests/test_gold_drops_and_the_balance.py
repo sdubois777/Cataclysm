@@ -188,7 +188,9 @@ def test_a_paid_death_drops_gold_after_its_items_and_only_where_gold_drops() -> 
     paid = "if (bPays) {"
     assert death.count(paid) >= 1, "the death no longer gates its drops on bPays"
     block = braced_from(death, death.index(paid), "the paid death")
-    spawn = "UCataclysmDropSpawner::SpawnGoldFor(World, RarityStepItPaysAs(), GetActorLocation(), Stream);"
+    # THE CALL'S OPENING, since #2741 slice 6a passes the empire upgrade tree's gold multiplier after `Stream`;
+    # `tools/tests/test_empire_tree_gold_nodes.py` holds that argument.
+    spawn = "UCataclysmDropSpawner::SpawnGoldFor(World, RarityStepItPaysAs(), GetActorLocation(), Stream,"
     gate = "if (UCataclysmDropSpawner::GoldDropsIn(World))"
     worn = "DropWhatItWore(World, GetActorLocation(), Stream);"
     for piece in (spawn, gate, worn):

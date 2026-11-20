@@ -32,8 +32,14 @@ public:
 	 * What the upgrade costs in this run: `UCataclysmCityUpgradeMapping::PriceFor` at the run's difficulty tier, the
 	 * tier every level of the run copies (`ACataclysmGameMode::TakeTheRunsTier`), so a price follows the same tier the
 	 * gold drops follow. Tier 1 with no run.
+	 *
+	 * AND ON THIS CITY, WITH THE EMPIRE UPGRADE TREE'S PRICE NODES, issue #2741 slice 6a (P1 to P3): the price times
+	 * `UCataclysmEmpireTree::UpgradePriceFactorFor`, from the tree the character playing holds
+	 * (`UCataclysmGameInstance::EmpireTreePlayerBonusesFor`), rounded to whole gold. THE ONE PRICE: the city screen's
+	 * offers, `Buy` and the console command all ask this, so the price shown is the price paid. No context, no tree
+	 * held, or no such city: the tier's price.
 	 */
-	static int64 PriceIn(const UCataclysmEmpireRun* Run, FName RowName);
+	static int64 PriceIn(const UObject* WorldContext, const UCataclysmEmpireRun* Run, FName RowName, int32 CityId);
 
 	/**
 	 * The gold the character playing holds (`UCataclysmGameInstance::GoldHeldBy`), or 0 when it has no balance. What

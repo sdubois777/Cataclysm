@@ -202,8 +202,11 @@ def test_the_price_is_scaled_by_the_pile_column_the_gold_drops_read() -> None:
     assert "UCataclysmDropRoll::GoldRow(GoldTable, 1)" in price, "the price is not scaled against tier 1's pile"
     assert "PriceAt(Row->Tier1Gold, AtTier->GoldPerPile, AtTierOne->GoldPerPile)" in price, (
         "the price is not the row's tier 1 gold times the pile at the tier over the pile at tier 1")
+    # SINCE #2741 SLICE 6A THE PRICE IS ASKED ON A CITY WITH THE TREE'S PRICE NODES, so it takes a context and a city;
+    # `tools/tests/test_empire_tree_gold_nodes.py` holds what it does with them.
     purchase = body("Cataclysm/Player/CataclysmCityUpgradePurchase.cpp",
-                    "int64 UCataclysmCityUpgradePurchase::PriceIn(const UCataclysmEmpireRun* Run, FName RowName)")
+                    "int64 UCataclysmCityUpgradePurchase::PriceIn(const UObject* WorldContext, "
+                    "const UCataclysmEmpireRun* Run, FName RowName,")
     assert "Run->DifficultyTier" in purchase, "a purchase is not priced at the run's own difficulty tier"
 
 

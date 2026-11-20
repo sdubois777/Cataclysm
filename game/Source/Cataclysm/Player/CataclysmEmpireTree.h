@@ -92,6 +92,30 @@ struct CATACLYSM_API FCataclysmEmpireTreePlayerBonuses
 	/** The High Roller's chance, for each whole ten floors added to the dungeon, of a Boss or Cataclysm Boss dropping one
 	 *  more gear item of Legendary or rarer. An Explorer chance. */
 	float BossLegendaryChancePerTenFloorsAdded = 0.0f;
+
+	// ---- Slice 6a: the gold a kill drops, and a city upgrade's price. The coordinating session's G1 to G3, P1 and P2
+	// of 2026-11-20. ----
+
+	/** Coinage's and Minting Rights' increase to the gold a kill drops, added (G1). */
+	float GoldIncreased = 0.0f;
+
+	/** The Midas Touch's "50% more": a multiplier of its own, after the increase (G1). */
+	float GoldMore = 0.0f;
+
+	/** Untouchable Wealth's increase for each city not fallen; Wartime Economy's for each active Cataclysm type;
+	 *  Profiteering's for each fallen city not erased; Prosperity Index's for each whole 10,000 citizens of the standing
+	 *  cities; Fiscal Policy's for each whole 5 upgrades they hold (G3). Each added into the one increase. */
+	float GoldPerStandingCity = 0.0f;
+	float GoldPerActiveType = 0.0f;
+	float GoldPerFallenCity = 0.0f;
+	float GoldPerTenThousandCitizens = 0.0f;
+	float GoldPerFiveCityUpgrades = 0.0f;
+
+	/** Municipal Bonds' and Public Works' reduction of every city upgrade's price, and War Funding's for an upgrade
+	 *  bought on a city that holds none (P2). They add, held at `UpgradePriceReductionCap` (P1). Price Controls is
+	 *  slice 6b's (its P3 reading was withdrawn). */
+	float UpgradePriceReduced = 0.0f;
+	float FirstUpgradePriceReduced = 0.0f;
 };
 
 /**
@@ -133,6 +157,14 @@ struct CATACLYSM_API FCataclysmEmpireTreeDungeonState
 	/** Floors the dungeon has beyond its default depth, never fewer than none: the mirror of `FloorsRemoved`, and what
 	 *  The High Roller counts "floors added to a dungeon" as. Slice 5b. */
 	int32 FloorsAdded = 0;
+
+	/** Slice 6a's counts over the empire's cities (G3): those not fallen; those fallen and not erased, which can still
+	 *  be reclaimed; the citizens of the standing cities, as `UCataclysmEmpireMap::TotalPopulation` counts them; and the
+	 *  upgrades the standing cities hold. */
+	int32 StandingCities = 0;
+	int32 FallenCitiesNotErased = 0;
+	float Citizens = 0.0f;
+	int32 StandingCityUpgrades = 0;
 };
 
 /**
@@ -187,6 +219,13 @@ struct CATACLYSM_API FCataclysmEmpireTreeDropRules
 
 	/** The High Roller: a Boss's or Cataclysm Boss's kill drops one more gear item of Legendary or rarer. */
 	float BossLegendaryChance = 0.0f;
+
+	/**
+	 * WHAT EACH GOLD PILE THE KILL DROPS IS MULTIPLIED BY, slice 6a (G1): one plus every increase, times one plus The
+	 * Midas Touch's "more". Exactly 1 with no gold node, and never a roll: `UCataclysmDropSpawner::SpawnGoldFor`
+	 * multiplies each pile's amount after the pile's own draws, so it draws nothing and `RollsAnything` leaves it out.
+	 */
+	float GoldMultiplier = 1.0f;
 
 	bool RollsAnything() const
 	{
@@ -262,6 +301,20 @@ public:
 	/** And slice 5b's: The High Roller's "For every 10 floors added to a dungeon", counted in whole steps (C3). */
 	static constexpr int32 HighRollerFloorsAStep = 10;
 
+	/** And slice 6a's: Prosperity Index's "for every 10,000 citizens" and Fiscal Policy's "for every 5 active City
+	 *  upgrades", each counted in whole steps (G3). `tools/tests/test_empire_tree_gold_nodes.py` finds both in the
+	 *  nodes' texts. */
+	static constexpr int32 ProsperityCitizensAStep = 10000;
+	static constexpr int32 FiscalPolicyUpgradesAStep = 5;
+
+	/**
+	 * THE MOST A CITY UPGRADE'S PRICE IS REDUCED BY, so a price never falls below a quarter. The reductions add, as every
+	 * "reduced" does in the design's pipeline, and at full points they reach 85% (Municipal Bonds 45%, Public Works 20%,
+	 * War Funding 20%). THE COORDINATING SESSION'S P1 OF 2026-11-20, A JUDGEMENT under the owner's delegation of
+	 * unstated numbers; 75% is also the cap on the player's damage reduction.
+	 */
+	static constexpr float UpgradePriceReductionCap = 0.75f;
+
 	/**
 	 * What an allocation's bought player nodes add up to. Issue #2741 slice 5a. The same pass over the effect table as
 	 * `CityBonusesFor`, reading the rows that one leaves alone: a node's points from the allocation, an option's one
@@ -323,6 +376,22 @@ public:
 	 */
 	static FCataclysmEmpireTreeDropRules DropRulesFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
 													  const FCataclysmEmpireTreeDungeonState& State);
+
+	/**
+	 * What a kill's gold piles are multiplied by. Issue #2741 slice 6a (G1 to G3): one plus Coinage's and Minting
+	 * Rights' increase and the four counted increases, times one plus The Midas Touch's "more". Exactly 1 with no gold
+	 * node. `DropRulesFor` puts it in the rules a kill reads.
+	 */
+	static float GoldMultiplierFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
+								   const FCataclysmEmpireTreeDungeonState& State);
+
+	/**
+	 * What a city upgrade's price is multiplied by on this city. Issue #2741 slice 6a (P1, P2): one less Municipal
+	 * Bonds' and Public Works' reduction and War Funding's when the city holds no upgrade, the sum held at
+	 * `UpgradePriceReductionCap`. Exactly 1 with no price node, or with no map or city.
+	 */
+	static float UpgradePriceFactorFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses, const UCataclysmEmpireMap* Map,
+									   int32 CityId);
 
 	/** The four branches, in the order the source file's metadata names them, and then the centre. */
 	static TArray<FString> BranchNames();

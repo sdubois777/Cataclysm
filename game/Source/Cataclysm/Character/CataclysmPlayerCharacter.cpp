@@ -4905,7 +4905,7 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmCityUpgrades(
 						*UCataclysmCityUpgradeRules::EffectName(Upgrade.Effect),
 						Upgrade.Value,
 						*UCataclysmCityUpgradePurchase::PriceText(
-							UCataclysmCityUpgradePurchase::PriceIn(Run, RowName)));
+							UCataclysmCityUpgradePurchase::PriceIn(World, Run, RowName, City->CityId)));
 			}
 		}));
 
@@ -4956,7 +4956,7 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmBuyCityUpgrade(
 
 			// BOUGHT AS THE CITY SCREEN BUYS, with the character's gold, since
 			// issue #2742's second slice.
-			const int64 Price = UCataclysmCityUpgradePurchase::PriceIn(Run, RowName);
+			const int64 Price = UCataclysmCityUpgradePurchase::PriceIn(World, Run, RowName, CityId);
 			const int64 Held = UCataclysmCityUpgradePurchase::GoldHeldIn(World);
 			const ECataclysmCityUpgradeResult Result =
 				UCataclysmCityUpgradePurchase::Buy(World, Run, CityId, RowName);

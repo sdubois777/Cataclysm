@@ -44,9 +44,10 @@ class UTextBlock;
  *   - **It cannot sell an upgrade back.** Nothing in the design says a slot can
  *     be freed, and a one-time upgrade has already fired, so there is nothing to
  *     undo.
- *   - **It shows no price and no build time.** A city upgrade is free and
- *     immediate because neither number is designed and there is no gold. Issue
- *     #1264.
+ *   - **It shows no build time.** A city upgrade is immediate: the owner ruled
+ *     on 2026-11-18 that upgrades stay instant and build days come later
+ *     (issue #1264). Each upgrade's gold price and the balance are shown since
+ *     issue #2742's second slice.
  *   - **It walks a dungeon only from a dungeon level.** Each dungeon line has a
  *     Walk button under it, since issue #2715, and a press calls
  *     `ACataclysmDungeonGameMode::EnterEmpireDungeon` and closes the empire

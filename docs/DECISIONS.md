@@ -2,6 +2,208 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-20 — Eleven of the empire upgrade tree's gold nodes act: eight raise the gold a kill drops and three lower a city upgrade's price, and every node held back by gold names what it really waits on (#2741, slice 6a)
+
+**Affects:** `FCataclysmEmpireTreeDropRules::GoldMultiplier`, `UCataclysmEmpireTree::GoldMultiplierFor`,
+`UpgradePriceFactorFor`, `UpgradePriceReductionCap`, `ProsperityCitizensAStep` and `FiscalPolicyUpgradesAStep`, new, and
+the player bonuses' and dungeon state's slice 6a fields (`game/Source/Cataclysm/Player/CataclysmEmpireTree.h` and
+`.cpp`); `UCataclysmDropSpawner::SpawnGoldFor`, a trailing parameter (`game/Source/Cataclysm/Items/CataclysmDroppedItem.h`
+and `.cpp`); `ACataclysmEnemyCharacter::HandleDeath` (`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp`);
+`UCataclysmCityUpgradePurchase::PriceIn`, which now takes a world context and the city
+(`game/Source/Cataclysm/Player/CataclysmCityUpgradePurchase.h` and `.cpp`); `UCataclysmCityScreenLayout::OffersFor`
+(`game/Source/Cataclysm/Interface/CataclysmCityScreenLayout.h` and `.cpp`) and its callers in
+`game/Source/Cataclysm/Interface/CataclysmCityScreenWidget.cpp` and `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`;
+`ECataclysmEmpireTreeEffect`, nine values (`game/Source/Cataclysm/Data/CataclysmDataRows.h`); comments that said the game
+has no gold, in `game/Source/CataclysmEmpire/Empire/CataclysmCityUpgrade.h` and `.cpp`,
+`game/Source/Cataclysm/Interface/CataclysmCityScreenWidget.h`, `game/Source/Cataclysm/Data/CataclysmCityUpgradeMapping.cpp`
+and `game/Source/Cataclysm/Data/CataclysmDataRows.h`; `tools/generate_datatables.py`, `game/Data/EmpireTreeNodes.csv`,
+`game/Data/EmpireTreeEffects.csv`, 92 rows, `game/Content/Data/DT_EmpireTreeNodes.uasset`,
+`game/Content/Data/DT_EmpireTreeEffects.uasset` and `game/Data/datatable_asset_sources.json`. Tests:
+`game/Source/Cataclysm/Tests/CataclysmEmpireTreeGoldTests.cpp`, new, 6 in the new group `Cataclysm.EmpireTreeGold.`;
+`TheTreesPriceNodesMakeTheScreensPriceThePricePaid`, new in `game/Source/Cataclysm/Tests/CataclysmCityUpgradePriceTests.cpp`;
+`game/Source/Cataclysm/Tests/CataclysmCityScreenTests.cpp` and `game/Source/Cataclysm/Tests/CataclysmEmpireTreeTests.cpp`,
+changed; `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` pins 92 rows; `tools/tests/test_empire_tree_gold_nodes.py`,
+new; `tools/tests/test_empire_tree_effects_match_their_texts.py`, `tools/tests/test_empire_tree_tables_match_the_tree_file.py`,
+`tools/tests/test_city_upgrades_cost_gold.py` and `tools/tests/test_gold_drops_and_the_balance.py`, changed. Issue
+[#2741](https://github.com/sdubois777/Cataclysm/issues/2741), slice 6a.
+
+### SAID FIRST
+
+- **COMPILED, RUN AND PROVED IN ONE WINDOW (tree-6a-w1)**, at `33b5391d8` on development `535d38f31`:
+  - all three of phase 2's compiles succeeded with no warning;
+  - the written-out record version check found the run, character and account records at 11, 10 and 4, unchanged, and
+    no test stating another version;
+  - the asset step rebuilt `DT_EmpireTreeNodes.uasset` and `DT_EmpireTreeEffects.uasset`, 92 rows, and committed them
+    with their sources file alone;
+  - the fifteen groups each passed alone at their registered counts;
+  - the whole Unreal suite performed the registered 5022, all succeeding, with 47 skipped halves and "852 written
+    and deleted, 0 left behind";
+  - Python passed, 7788 with 9 skipped, and ruff passed;
+  - the eight C++ guard proofs each proved, failing exactly the registered test and exactly the registered
+    assertions. The seven Python guard proofs were proved in phase 1.
+- **WITH THIS SLICE, 88 OF THE TREE'S NODES ACT**: slices 3a, 3b, 4, 5a, 5b and these eleven. They are every name in
+  `EMPIRE_TREE_BUILT` (`tools/generate_datatables.py`); the other 79 nodes and options are shown and cannot be bought.
+- **NOTHING THE GAME SHOWS SAYS THERE IS NO GOLD.** Gold is a system since issue #2742 (closed 2026-11-19): kills drop
+  it, the character holds a balance, and a city upgrade costs it. 31 nodes said they waited on "gold, which the game does
+  not have yet" and 10 on "a gold cost for city upgrades, which are free and immediate today"; each now names what it
+  really waits on, or is built. Five code comments that said the same were corrected with them.
+- **A KILL WITH NO GOLD NODE DROPS EXACTLY WHAT IT DROPPED BEFORE.** The multiplier is applied to each pile after the
+  pile's draws, so the random stream is drawn as it was, and a multiplier of exactly 1 leaves the amount untouched.
+  `Cataclysm.EmpireTreeGold.AKillWithNoGoldNodeDrawsTheSameStreamAndDropsTheSameGold` holds it.
+- **PRICE CONTROLS IS NOT IN THIS SLICE.** It was ruled into it and moved to slice 6b the same day; the section on P3
+  below says why.
+
+### The rulings this slice builds on
+
+From the coordinating session on slice 6's plan, 2026-11-20:
+
+- **G1, the gold a kill drops goes through the design's three-bucket pipeline**: every "+X% Gold" adds into one increase,
+  and The Midas Touch's "50% more" is its own multiplier. **THE DESIGN DOCUMENT SETTLES THIS; IT IS NOT A JUDGEMENT.**
+  The multiplier is (1 + the increases) × (1 + Midas Touch's more).
+- **G2, each node reaches the gold its own words name.** In this slice that is the gold a kill drops; the gold held, the
+  day's income and the payouts at a clear are slices 6b's and 6c's.
+- **G3, the counts, EACH A JUDGEMENT**: Untouchable Wealth counts cities not fallen; Profiteering counts fallen cities not
+  erased, the ones that can still be reclaimed; Prosperity Index counts each whole 10,000 citizens over standing cities;
+  Fiscal Policy counts each whole 5 upgrades held by standing cities; Wartime Economy counts slice 5a's active Cataclysm
+  types.
+- **P1, the price reductions add and are held at 75%**, so a price is never below a quarter. **A JUDGEMENT** under the
+  owner's delegation of numbers the design leaves unstated; 75% is also the cap on the player's damage reduction.
+- **P2, "your first upgrade in a city" is an upgrade bought on a city holding none.**
+- **P3, Price Controls' "Cities that have taken Surge damage", WAS RULED AND THEN WITHDRAWN.** It was first ruled as a
+  city whose defence or population is below its maximum now, with no saved flag. This session's measurement showed that
+  reading wrong: a node that raises a city's maximum leaves every full city "below its maximum", so every city would get
+  up to 40% off with no Surge damage at all. The coordinating session withdrew P3 and moved Price Controls to slice 6b,
+  where a saved flag is set when a Surge's damage lands on the city (run record version 12). Until then it is refused
+  with "its gold rules, which are not built yet (issue #2741)".
+- **R1 to R4, Commercial Hubs, Economic Zones, Trade Routes and The Golden Touch, wait on a Treasurer city upgrade**,
+  which could not be bought when this slice was written; they read a Treasurer upgrade on the dungeon's city or over the
+  standing cities, by The Cartographer's Blessing's precedent. Issue #2781 builds those upgrades.
+- **R7 to R9, Treasury Guard, Global Credit and Sovereign Loans, wait on the owner's ruling** of what they do.
+- **R10, every gold amount a node names is a tier 1 figure scaled as a gold pile is**: no node built here names an
+  amount, so it governs slices 6b and 6c.
+
+### Judgements of this session, in the plan the coordinating session accepted on 2026-11-20, each a judgement
+
+1. **Each pile is multiplied after its draws**, so a kill draws the same stream with or without a gold node.
+2. **The price is reduced in one place, `UCataclysmCityUpgradePurchase::PriceIn`**, which the city screen's offers, the
+   console and the purchase all ask, so the price shown is the price paid.
+   `Cataclysm.CityUpgradePrice.TheTreesPriceNodesMakeTheScreensPriceThePricePaid` holds it, as the coordinating session
+   asked.
+3. **The reason texts name the system each node waits on**: its gold rules (slice 6b's and 6c's nodes), a Treasurer
+   city upgrade, a ruling from the owner, a market, a gold cap, a gold cap and a gold loss on death, a build time for
+   city upgrades (zero by the owner's ruling of 2026-11-18, issue #1264), or a figure the design does not state for a
+   fee or a cap.
+
+And one reading no one else had to make: a multiplied pile is rounded to the nearest whole gold
+(`FMath::RoundToInt32`) and is never below 1, and a multiplier of exactly 1 is not applied at all, so the amount cannot
+move by a rounding.
+
+### Registered before the run
+
+Sent to and accepted by the coordinating session on 2026-11-20, before the compiles, and restated after the seeding fix
+(#2782) and #2764 slice 2a (#2783) merged.
+
+- **Base: 5015**, measured by window skills-2a-w1 at `f1624b281`, whose `game/` is development `535d38f31`'s (`git diff
+  f1624b281 535d38f31 -- game/` prints nothing). The slice was written on `3d0193bfa` as `feat/empire-tree-6a-gold` and
+  moved onto `db08b79fc` and then `535d38f31` as `feat/empire-tree-6a-gold-2`, because the first branch was already
+  pushed. Both rebases were clean and left each of the three commits' patches identical (`git patch-id --stable`
+  99e6aaa09446, 116b8c9ecf6c and 3accc7076eee before and after). The fifteen groups count the same in that base as in
+  slice 5b's window's 4998; the 17 tests between are `Cataclysm.Seeding.` (3) and `Cataclysm.SkillLevelSources.` (14).
+- **The whole suite: 5022 performed, 5022 succeeded, 0 failed**: the base's 5015, 6 new in `Cataclysm.EmpireTreeGold.`
+  and 1 in `Cataclysm.CityUpgradePrice.`; 47 skipped halves, the base's; no test save left behind.
+- **Each group alone**, counted from the base log on "Test Completed. Result={" lines and by distinct path, which agree,
+  plus what the slice adds: `Cataclysm.EmpireTreeGold.` 6 (new), `CityUpgradePrice.` 7 (6 + 1), `CityScreen.` 16,
+  `EmpireTree.` 24, `EmpireTreeScreen.` 10, `Gold.` 13, `EmpireTreeDrops.` 13, `EmpireTreeLoot.` 10, `EmpireTreeCity.` 17,
+  `EmpireTreeWalk.` 14, `Data.` 7, `Drop.` 30, `DropPickup.` 20, `DungeonMode.` 46, `CityUpgrade.` 15.
+- **An asset step**: `tools/generate_datatable_assets.py` rebuilds `game/Content/Data/DT_EmpireTreeNodes.uasset` and
+  `game/Content/Data/DT_EmpireTreeEffects.uasset`, 92 rows, and rewrites `game/Data/datatable_asset_sources.json`; those
+  three files and no other are committed and pushed before the tests run, and that commit is the tested head.
+- **Eight C++ guard proofs**, each narrowed to `Cataclysm.EmpireTreeGold.` (6 tests) or `Cataclysm.CityUpgradePrice.` (7),
+  the restored half passing every test it ran:
+
+| Proof | File | The break | Predicted with it in |
+|---|---|---|---|
+| V1 | `CataclysmDroppedItem.cpp` | the spawner leaves every pile as rolled | 6 performed, 5 succeeded, 1 failed: `AKillsGoldPilesAreMultipliedAfterTheirDraws`, 1 assertion ("each pile is 2.5 times the one rolled, to whole gold") |
+| V3 | `CataclysmEmpireTree.cpp` | The Midas Touch's "more" is added into the increase | 6, 5, 1: `TheGoldMultiplierIsTheIncreaseTimesTheMore`, 2 assertions (18.63 read 12.92; 16.11 read 11.24) |
+| V4 | `CataclysmEmpireTree.cpp` | Prosperity Index counts a part of a step | 6, 5, 1: the same test, 2 assertions (18.63 read 18.705; 16.11 read 16.26) |
+| V5 | `CataclysmEmpireTree.cpp` | Profiteering counts an erased city | 6, 5, 1: `TheCountsAreTheRunsCities`, 1 assertion ("2 fallen that can be reclaimed" read 3) |
+| V6 | `CataclysmEmpireTree.cpp` | no cap on the price reductions | 6, 5, 1: `ThePriceFallsByTheReductionsHeldAtThreeQuarters`, 1 assertion (a quarter on the city holding none, read 0.15) |
+| V7 | `CataclysmEmpireTree.cpp` | War Funding on every city | 6, 5, 1: the same test, 2 assertions (0.70 read 0.50; 0.35 read 0.25, the cap) |
+| V8 | `CataclysmCityUpgradePurchase.cpp` | the price ignores the tree | 7, 6, 1: `TheTreesPriceNodesMakeTheScreensPriceThePricePaid`, 2 assertions (5,000 read 10,000; 7,000 read 10,000) |
+| V9 | `CataclysmCityScreenLayout.cpp` | the screen shows the tier's price while the purchase charges the tree's | 7, 6, 1: the same test, 3 assertions (5,000 read 10,000; `PriceIn`'s 5,000 against 10,000; the 5,000 paid against 10,000 shown) |
+
+- **Python before the window**: at `26944c158`, on `3d0193bfa`, 7777 passed, 1 failed, 9 skipped; JUnit tests 7787,
+  failures 1, errors 0, skipped 9. On a trial merge of `682551f99` with slice 2a's `f1624b281`, whose files differ from
+  `682551f99`'s only in `docs/DECISIONS.md`: JUnit tests 7797, failures 1, errors 0, skipped 9. Ruff clean. The one
+  failure was expected and is the asset step's to clear: `tools/tests/test_datatable_assets_are_current.py` names
+  `EmpireTreeEffects.csv` and `EmpireTreeNodes.csv` as newer than their assets until the window rebuilds them.
+
+### The seven Python guards, proved in phase 1
+
+Each through `tools/prove_guard.py`'s `break_and_run` on `tools/tests/test_empire_tree_gold_nodes.py`,
+`tools/tests/test_empire_tree_tables_match_the_tree_file.py` and `tools/tests/test_empire_tree_effects_match_their_texts.py`,
+`proved` True, the restored half "59 passed", at `26944c158`:
+
+- **Z1, the kill passes no multiplier to `SpawnGoldFor`**, and **Z2, the drop rules leave the multiplier at 1**:
+  `test_a_kill_multiplies_its_gold_after_the_draws_and_the_rules_carry_the_figure`.
+- **Z3, a node's reason says the game has no gold again**: `test_nothing_the_game_shows_or_says_claims_there_is_no_gold`,
+  and with it `test_the_tables_are_the_generators_output` and
+  `test_a_refused_node_says_what_it_waits_on_and_a_built_one_says_nothing`, since the committed table no longer matches
+  the generator; the broken half "3 failed, 56 passed".
+- **Z4, a code comment says there is no gold again**: `test_nothing_the_game_shows_or_says_claims_there_is_no_gold`.
+- **Z5, the purchase charges city 0's price on every city**: `test_there_is_one_price_and_every_screen_and_the_purchase_ask_it`.
+- **Z6, the price cap becomes 80%**, and **Z7, Prosperity Index's step becomes 1,000 citizens**:
+  `test_the_steps_are_the_nodes_words_and_the_price_cap_is_the_ruling`.
+
+Z1, Z2 and Z4 to Z7 each "1 failed, 58 passed".
+
+### The window
+
+**tree-6a-w1, 2026-11-20, 07:08 to 07:44, at `33b5391d8`.** Phase 2's three compiles ran under the lock
+tree-6a-compile from 06:57 to 07:06, after development's CI and Unreal runs for #2783's merge and the coordinating
+session's rebuild of the main checkout had finished: the branch (61 files), each changed `.cpp` file alone (23 files),
+and the unity files (10). None printed a warning. The window's gate found every pre-check passing at 07:08: development
+`535d38f31` with its CI and Unreal runs succeeded, no run in progress or queued, the lock free, no build or editor
+process, no open pull request, no simulation process, 11,777 MB free, no LFS pointer file. The recount matched every
+group, and the written-out version check found "26 lines stating a version; NO MISMATCH".
+
+- **The build**: "target already up to date, 0 actions, nothing compiled".
+- **The asset step**: `tools/generate_datatable_assets.py` left exactly `game/Content/Data/DT_EmpireTreeEffects.uasset`,
+  `game/Content/Data/DT_EmpireTreeNodes.uasset` and `game/Data/datatable_asset_sources.json` changed; the three were
+  committed alone as `33b5391d8` on `682551f99` and pushed, and that is the tested head.
+- **Each group alone**: all fifteen at their registered counts, all succeeding.
+- **The whole suite**: "Tests: 5022 tests performed, 5022 succeeded, 0 failed. 47 skipped part of what they check";
+  "Test saves: 852 written and deleted, 0 left behind"; "Declared: 5022 tests in the tree at 33b5391d8; 5022
+  performed, gap 0".
+- **Python**: "7788 passed, 9 skipped"; JUnit tests 7797, failures 0, errors 0, skipped 9; ruff "All checks passed!".
+  Phase 1's one failure, `tools/tests/test_datatable_assets_are_current.py`, passes with the assets rebuilt.
+- **What the new tests printed**: "GOLD TABLE: increased 0.74, more 0.50; per city 0.20, per type 1.00, per fallen
+  0.50, per 10,000 0.10, per 5 upgrades 0.24; price 0.65, first 0.20"; "GOLD MULTIPLIER: 18.6300 with every node;
+  16.1100 below a step; 1.0000 with none; the rules carry 18.6300 and roll nothing"; "GOLD COUNTS: 22 standing, 2
+  fallen not erased, 580000 citizens (the map's 580000), 5 upgrades"; "GOLD PILES: 9 at 1 and 9 at 2.5; 8->20 9->23
+  9->23 9->23 10->25 11->28 11->28 12->30 12->30; the streams end at -866505306 and -866505306"; "GOLD NONE: the
+  empty tree's multiplier 1.0000; 9 piles holding 91 named none, 9 piles holding 91 with the empty tree; the streams
+  end at -866505306 and -866505306"; "GOLD PRICE: holding 0.70, bare 0.50; every node 0.25 bare and 0.35 holding;
+  none 1.00, no map 1.00, no city 1.00"; "TREE PRICE: shown 5000, asked 5000; Bought. with 25000 held, 20000 after;
+  the next (Architect_Increase_max_population_by_20) 7000".
+- **The proofs**, each failing exactly its registered test in its broken half with exactly the registered
+  assertions, and its restored half passing every test it ran:
+
+| Proof | With the break in | The failed assertions |
+|---|---|---|
+| V1 | 6 performed, 5 succeeded, 1 failed | `AKillsGoldPilesAreMultipliedAfterTheirDraws` 1: "each pile is 2.5 times the one rolled, to whole gold" (9 piles not) |
+| V3 | 6, 5, 1 | `TheGoldMultiplierIsTheIncreaseTimesTheMore` 2: "(1 + 11.42) x 1.5 = 18.63" (12.92), "9,999 citizens and 4 upgrades are no step: (1 + 9.74) x 1.5 = 16.11" (11.24) |
+| V4 | 6, 5, 1 | the same test, 2: 18.63 (18.705), 16.11 (16.26) |
+| V5 | 6, 5, 1 | `TheCountsAreTheRunsCities` 1: "2 fallen that can be reclaimed" (3) |
+| V6 | 6, 5, 1 | `ThePriceFallsByTheReductionsHeldAtThreeQuarters` 1: "every node on a city holding none, 0.85, held at 0.75: a quarter" (0.15) |
+| V7 | 6, 5, 1 | the same test, 2: "a city that holds an upgrade: 0.70" (0.50), "every node on a city holding one, 0.65, below the cap: 0.35" (0.25) |
+| V8 | 7, 6, 1 | `TheTreesPriceNodesMakeTheScreensPriceThePricePaid` 2: "the screen offers it at 5,000" (10,000), "the next on the same city, which now holds one, is 7,000" (10,000) |
+| V9 | 7, 6, 1 | the same test, 3: "the screen offers it at 5,000" (10,000), "PriceIn answers the same" (5,000 against the screen's 10,000), "and the balance pays exactly the price shown" (5,000 against 10,000) |
+
+No proof's log and no suite log holds a "server/discover" line (#2745). The lock was released when the window ended.
+
+---
+
 ## 2026-11-20 — The empire upgrade tree's Relentless Pursuit counts the clears since the last death, with the run record at version 11, and its four drop rules roll a kill's extra drops (#2741, slice 5b)
 
 **Affects:** `UCataclysmEmpireRun::ClearsSinceLastDeath`, raised in `ClearDungeon` and set to 0 in `NoteDeath` and

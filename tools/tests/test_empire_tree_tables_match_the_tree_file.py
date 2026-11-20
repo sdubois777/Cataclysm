@@ -276,14 +276,17 @@ def test_every_system_named_is_one_some_node_waits_on() -> None:
     assert set(gen.EMPIRE_TREE_REFUSED.values()) == set(gen.EMPIRE_TREE_SYSTEMS)
 
 
-def test_a_built_node_names_one_of_the_three_slices_that_make_it_act() -> None:
-    assert set(gen.EMPIRE_TREE_BUILT.values()) == {3, 4, 5}
+def test_a_built_node_names_one_of_the_four_slices_that_make_it_act() -> None:
+    assert set(gen.EMPIRE_TREE_BUILT.values()) == {3, 4, 5, 6}
 
 
 def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> None:
     """Pinned so that moving a node between the lists is a decision a reviewer
-    sees. A node that gains its system, gold above all (#2742), moves out of the
-    refused list and these figures move with it."""
+    sees. A node that gains its system moves out of the refused list and these
+    figures move with it. Gold gained its system in #2742: slice 6 of #2741
+    (2026-11-20) split the 303 points "gold" and "upgrade cost" held into the
+    reason each node really waits on: 189 of them the gold rules slice 6 builds,
+    92 of those built in slice 6a and 97 left for 6b."""
     points = collections.Counter()
     options = collections.Counter()
     for row in node_rows.values():
@@ -298,15 +301,17 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
                or f"slice {gen.EMPIRE_TREE_BUILT[name]}"] += int(row["MaxPoints"])
 
     assert dict(points) == {
-        "slice 3": 315, "slice 4": 162, "slice 5": 152,
-        "gold": 251, "upgrade cost": 52, "crafting": 278,
+        "slice 3": 315, "slice 4": 162, "slice 5": 152, "slice 6": 92,
+        "gold rules": 97, "treasurer upgrade": 17, "gold ruling": 20,
+        "market": 44, "gold cap": 5, "gold cap and death loss": 20,
+        "build time": 5, "fee figure": 2, "cap figure": 1, "crafting": 278,
         "population growth": 10, "loot chest": 8, "bonus dungeon": 8,
         "stash": 3, "modifier reroll": 3, "loot filter": 1,
         "destroy upgrade": 1,
     }
-    assert sum(points[f"slice {n}"] for n in (3, 4, 5)) == 629
+    assert sum(points[f"slice {n}"] for n in (3, 4, 5, 6)) == 721
     assert dict(options) == {"slice 3": 3, "slice 4": 4, "slice 5": 1,
-                             "crafting": 2, "gold": 1, "prowess ruling": 1}
+                             "crafting": 2, "slice 6": 1, "prowess ruling": 1}
 
 
 @pytest.mark.parametrize("name, slice_", [
@@ -334,7 +339,14 @@ def test_a_ruled_node_is_built_in_its_slice(name, slice_) -> None:
     ("Field Depot I", "stash"),               # Q4
     ("Field Depot II", "stash"),
     ("Field Depot III", "stash"),
-    ("Economic Zones", "gold"),               # gold waits on #2742
+    # Slice 6, the coordinating session's rulings of 2026-11-20.
+    ("Economic Zones", "treasurer upgrade"),  # R2: a Treasurer city upgrade (#2781)
+    ("Commercial Hubs", "treasurer upgrade"),  # R1
+    ("Trade Routes", "treasurer upgrade"),    # R3
+    ("The Golden Touch", "treasurer upgrade"),  # R4
+    ("Treasury Guard", "gold ruling"),        # R7: the owner's question
+    ("Global Credit", "gold ruling"),         # R8
+    ("Sovereign Loans", "gold ruling"),       # R9
 ])
 def test_a_ruled_node_is_refused_for_its_reason(name, system) -> None:
     assert gen.EMPIRE_TREE_REFUSED.get(name) == system
@@ -347,7 +359,7 @@ def test_a_name_in_neither_list_stops_generation(monkeypatch) -> None:
 
 
 def test_a_name_in_both_lists_stops_generation(monkeypatch) -> None:
-    monkeypatch.setitem(gen.EMPIRE_TREE_REFUSED, "Foundation", "gold")
+    monkeypatch.setitem(gen.EMPIRE_TREE_REFUSED, "Foundation", "market")
     with pytest.raises(gen.DataError, match="'Foundation' is in both"):
         gen.empire_tree_nodes()
 

@@ -438,6 +438,35 @@ FCataclysmEmpireTreePlayerBonuses UCataclysmEmpireTree::PlayerBonusesFor(const U
 		case ECataclysmEmpireTreeEffect::BossLegendaryChancePerTenFloorsAdded:
 			Bonuses.BossLegendaryChancePerTenFloorsAdded += Total;
 			break;
+
+		// SLICE 6A. The gold a kill drops (G1 to G3) and a city upgrade's price (P1, P2).
+		case ECataclysmEmpireTreeEffect::GoldIncreased:
+			Bonuses.GoldIncreased += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::GoldMore:
+			Bonuses.GoldMore += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::GoldPerStandingCity:
+			Bonuses.GoldPerStandingCity += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::GoldPerActiveType:
+			Bonuses.GoldPerActiveType += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::GoldPerFallenCity:
+			Bonuses.GoldPerFallenCity += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::GoldPerTenThousandCitizens:
+			Bonuses.GoldPerTenThousandCitizens += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::GoldPerFiveCityUpgrades:
+			Bonuses.GoldPerFiveCityUpgrades += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::UpgradePriceReduced:
+			Bonuses.UpgradePriceReduced += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::FirstUpgradePriceReduced:
+			Bonuses.FirstUpgradePriceReduced += Total;
+			break;
 		default:
 			break;
 		}
@@ -497,6 +526,20 @@ FCataclysmEmpireTreeDungeonState UCataclysmEmpireTree::DungeonStateFor(const UCa
 
 	if (Run.Map)
 	{
+		// SLICE 6A'S COUNTS (G3): the cities not fallen, the fallen ones that can still be reclaimed, the citizens of the
+		// standing cities as the map totals them, and the upgrades the standing cities hold.
+		State.Citizens = Run.Map->TotalPopulation();
+		for (const FCataclysmCity& City : Run.Map->Cities)
+		{
+			if (City.bFallen)
+			{
+				State.FallenCitiesNotErased += City.bErased ? 0 : 1;
+				continue;
+			}
+			++State.StandingCities;
+			State.StandingCityUpgrades += City.Upgrades.Num();
+		}
+
 		for (const FCataclysmCity& City : Run.Map->Cities)
 		{
 			if (City.bFallen)
@@ -589,7 +632,47 @@ FCataclysmEmpireTreeDropRules UCataclysmEmpireTree::DropRulesFor(const FCataclys
 	Rules.ExtraMaterialChance = FMath::Clamp(Bonuses.ExtraMaterialChance * Doubled, 0.0f, 1.0f);
 	Rules.LowTierMaterialExtraChance = FMath::Clamp(Bonuses.LowTierMaterialExtraChance, 0.0f, 1.0f);
 	Rules.BossLegendaryChance = FMath::Clamp(Bonuses.BossLegendaryChancePerTenFloorsAdded * Steps * Doubled, 0.0f, 1.0f);
+
+	// AND WHAT THE KILL'S GOLD PILES ARE MULTIPLIED BY (slice 6a), which draws nothing.
+	Rules.GoldMultiplier = GoldMultiplierFor(Bonuses, State);
 	return Rules;
+}
+
+float UCataclysmEmpireTree::GoldMultiplierFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
+											  const FCataclysmEmpireTreeDungeonState& State)
+{
+	// THE DESIGN'S PIPELINE (G1): every "+X% Gold" adds into one increase, and "more" is its own multiplier after it.
+	// THE COUNTS ARE WHOLE STEPS (G3): each whole 10,000 citizens and each whole 5 upgrades.
+	const float CitizenSteps = FMath::FloorToFloat(FMath::Max(0.0f, State.Citizens)
+												   / static_cast<float>(ProsperityCitizensAStep));
+	const float UpgradeSteps = static_cast<float>(FMath::Max(0, State.StandingCityUpgrades) / FiscalPolicyUpgradesAStep);
+	const float Increased = Bonuses.GoldIncreased
+		+ Bonuses.GoldPerStandingCity * static_cast<float>(FMath::Max(0, State.StandingCities))
+		+ Bonuses.GoldPerActiveType * static_cast<float>(FMath::Max(0, State.ActiveTypes))
+		+ Bonuses.GoldPerFallenCity * static_cast<float>(FMath::Max(0, State.FallenCitiesNotErased))
+		+ Bonuses.GoldPerTenThousandCitizens * CitizenSteps
+		+ Bonuses.GoldPerFiveCityUpgrades * UpgradeSteps;
+	return (1.0f + FMath::Max(0.0f, Increased)) * (1.0f + FMath::Max(0.0f, Bonuses.GoldMore));
+}
+
+float UCataclysmEmpireTree::UpgradePriceFactorFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
+												  const UCataclysmEmpireMap* Map, int32 CityId)
+{
+	const FCataclysmCity* City = Map ? Map->Find(CityId) : nullptr;
+	if (!City)
+	{
+		return 1.0f;
+	}
+
+	// THE REDUCTIONS ADD (P1), as every "reduced" does in the design's pipeline. WAR FUNDING'S IS FOR A CITY HOLDING NO
+	// UPGRADE (P2). Price Controls' "Cities that have taken Surge damage" is slice 6b's, from a saved flag: the reading
+	// "below its maximum now" (P3) was withdrawn, because a maximum the tree raises leaves every full city below it.
+	float Reduced = Bonuses.UpgradePriceReduced;
+	if (City->Upgrades.Num() == 0)
+	{
+		Reduced += Bonuses.FirstUpgradePriceReduced;
+	}
+	return 1.0f - FMath::Clamp(Reduced, 0.0f, UpgradePriceReductionCap);
 }
 
 float UCataclysmEmpireTree::MovementSpeedFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses)
