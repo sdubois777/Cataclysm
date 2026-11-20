@@ -14,6 +14,7 @@
 #include "Engine/World.h"
 #include "Items/CataclysmDroppedItem.h"
 #include "Misc/DateTime.h"
+#include "Items/CataclysmDropRoll.h"
 #include "Player/CataclysmEmpireTree.h"
 #include "Player/CataclysmGameMode.h"
 #include "Player/CataclysmPlayLoopLog.h"
@@ -101,6 +102,7 @@ UCataclysmEmpireRun* UCataclysmGameInstance::BeginACharactersEmpireRun(
 	// as the modifier table is handed over before for the same kind of reason. `this` is the world context, as above: a
 	// run begun before anyone is playing has no tree to read and begins with none. Issue #2741 slice 3a.
 	EmpireRun->SetTreeBonuses(EmpireTreeBonusesFor(this));
+	WireTheRunToTheBalance(this, EmpireRun);
 
 	EmpireRun->BeginForCharacter(Seed, CataclysmOrderSeed, Mode, LethalityRung, Tier);
 
@@ -502,11 +504,61 @@ FCataclysmEmpireTreePlayerBonuses UCataclysmGameInstance::EmpireTreePlayerBonuse
 												  UCataclysmEmpireTree::LoadEffectTable(), *Held.Allocation);
 }
 
+void UCataclysmGameInstance::WireTheRunToTheBalance(const UObject* WorldContext, UCataclysmEmpireRun* Run)
+{
+	UCataclysmGameInstance* Instance = In(WorldContext);
+	if (Run == nullptr || Instance == nullptr)
+	{
+		return;
+	}
+	const TWeakObjectPtr<UCataclysmGameInstance> Weak(Instance);
+
+	// THE GOLD HELD, IN TIER 1 GOLD (R10), asked whenever a dungeon damages a city (B7).
+	Run->GoldHeldAtTierOne = [Weak, WeakRun = TWeakObjectPtr<UCataclysmEmpireRun>(Run)]() -> double
+	{
+		int64 Held = 0;
+		if (!Weak.IsValid() || !WeakRun.IsValid() || !GoldHeldBy(Weak.Get(), Held))
+		{
+			return 0.0;
+		}
+		return static_cast<double>(Held) / FMath::Max(1.0e-6, UCataclysmDropRoll::GoldScaleFor(WeakRun->DifficultyTier));
+	};
+
+	// AND THE DAY'S INCOME, paid into the balance of the character playing, with the saves a gold pickup raises (B8).
+	Run->OnDayPassed = [Weak](UCataclysmEmpireRun& DayRun, int32 Day)
+	{
+		UCataclysmGameInstance* Paying = Weak.Get();
+		if (Paying == nullptr)
+		{
+			return;
+		}
+		int64 Held = 0;
+		GoldHeldBy(Paying, Held);
+		const FCataclysmEmpireTreeDailyIncome Income = UCataclysmEmpireTree::DailyIncomeFor(
+			EmpireTreePlayerBonusesFor(Paying), UCataclysmEmpireTree::EmpireStateFor(DayRun), Day, Held,
+			UCataclysmDropRoll::GoldScaleFor(DayRun.DifficultyTier));
+		bool bIntoTheCharacter = false;
+		if (Income.Total() <= 0 || !AddGoldFor(Paying, Income.Total(), bIntoTheCharacter))
+		{
+			return;
+		}
+		UWorld* World = Paying->GetWorld();
+		if (!bIntoTheCharacter)
+		{
+			UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::AccountChanged);
+		}
+		UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::InventoryChanged);
+		UE_LOG(LogCataclysm, Log, TEXT("Day %d: the empire upgrade tree paid %lld gold (Pax Imperialis %lld, Wealth "
+									   "Interest %lld)."), Day, Income.Total(), Income.Pax, Income.Interest);
+	};
+}
+
 void UCataclysmGameInstance::RefreshEmpireTreeBonuses(const UObject* WorldContext)
 {
 	if (UCataclysmEmpireRun* Run = EmpireRunFor(WorldContext, /*bStartIfNone*/ false))
 	{
 		Run->SetTreeBonuses(EmpireTreeBonusesFor(WorldContext));
+		WireTheRunToTheBalance(WorldContext, Run);
 	}
 }
 

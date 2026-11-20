@@ -328,6 +328,9 @@ void ACataclysmEnemyCharacter::HandleDeath()
 		// before the paying branch and drawing nothing from the stream, so a kill that pays nothing is as it was.
 		const FCataclysmEmpireTreeDropRules TreeDrops = ACataclysmDungeonGameMode::EmpireTreeDropRulesIn(World);
 
+		// AND THE MAGIC FIND THE GOLD HELD GIVES (issue #2741 slice 6c, B6): The Gilded Path and Venture Capital, added.
+		MagicFind += TreeDrops.MagicFindFromGold;
+
 		// THE RUNG IT PAYS AS, which is its own unless a subclass says otherwise, and its random gear as that rung's
 		// unless a subclass gives a count; then what it wore. Issue #1308; see `RarityStepItPaysAs`.
 		if (bPays)

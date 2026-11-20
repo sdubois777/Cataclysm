@@ -124,6 +124,15 @@ float FCataclysmEmpireTreeBonuses::EventDamageFactorFor(int32 ClearsSinceLastSur
 		* CataclysmEmpireTreeBonuses::KeptAfter(ReductionPerReclaim, ReclaimPoints, CitiesReclaimed, ReclaimReductionCap);
 }
 
+float FCataclysmEmpireTreeBonuses::GoldDamageFactorFor(double GoldHeldAtTierOne) const
+{
+	// WHOLE STEPS OF 100,000 TIER 1 GOLD, compounded per point and held at the node's 25% (B7), as `KeptAfter` holds
+	// Reclaimer's Resolve.
+	const int32 Steps = static_cast<int32>(FMath::Min(
+		FMath::Max(0.0, GoldHeldAtTierOne) / static_cast<double>(ImperialReserveGoldAStep), 1000000.0));
+	return CataclysmEmpireTreeBonuses::KeptAfter(ReductionPerGoldStep, GoldStepPoints, Steps, GoldReductionCap);
+}
+
 bool FCataclysmEmpireTreeBonuses::ReachesTheWalk() const
 {
 	return WalkTimeFactor != 1.0f || HalveWalkAboveFloors > 0 || WalkDaysFewer > 0.0f || WalkDaysFewerWhenAlone > 0.0f
