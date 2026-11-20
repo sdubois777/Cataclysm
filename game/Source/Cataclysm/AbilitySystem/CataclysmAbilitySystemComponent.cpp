@@ -1312,7 +1312,10 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 			PoolsSeen |= 1u << static_cast<uint32>(Payment.Pool);
 		}
 	}
-	State.LeechPoolsInFlight = FMath::CountBits(static_cast<uint64>(PoolsSeen));
+	// THE 32-BIT OVERLOAD, since `PoolsSeen` is a uint32. Unreal Engine 5.8
+	// deprecated `CountBits` of a 64-bit value (warning C4996), which this line
+	// called through a cast until issue #2756.
+	State.LeechPoolsInFlight = FMath::CountBits(PoolsSeen);
 
 	// AND HOW LONG THAT HAS GONE ON WITHOUT A BREAK. Ruled 2026-10-07.
 	State.SecondsLeeching = SecondsLeeching();

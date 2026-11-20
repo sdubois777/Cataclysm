@@ -903,6 +903,157 @@ they are here, and ran in the copy, which has none.
 
 ---
 
+## 2026-11-19 — The count of pools being leeched into calls `FMath::CountBits` on its 32-bit value, so the build no longer prints the warning C4996 that Unreal Engine 5.8 gives for a 64-bit one (#2756)
+
+**Affects:** `UCataclysmAbilitySystemComponent::CurrentConditions`
+(`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`): one line, and a comment above it. No test
+is added or changed. Issue #2756; the plan was accepted by the coordinating session on 2026-11-19.
+
+### SAID FIRST
+
+- **COMPILED, AND RUN IN WINDOW countbits-w1 ON 2026-11-20 AT `80ae5e2db`, WITH EVERY REGISTERED FIGURE MET.** The
+  three compiles printed no warning or error line, so no C4996; the tests alone, the whole suite and the proof P1
+  are under "Measured", below. The entry was written while the owner played from the main checkout, when the
+  coordinating session allowed no compile.
+- **REBASED ON 2026-11-20 ONTO DEVELOPMENT `9772aea2a`, AS `fix/countbits-of-a-32-bit-value-2`.** The first branch,
+  from `055ac0254`, was pushed, so its rebase goes to a new name rather than a force push. The code change applied
+  without a conflict; this entry conflicted at the top of this file and is placed by the author date of the commit
+  that wrote it (2026-11-19 15:28, `96a9b2466`), below the MCP server entry (15:49, `aab0baca4`) and above the C-opens
+  entry (14:59, `95481c917`), each date that of the branch commit that wrote the entry. The whole-suite figures under
+  "Registered before the run" were registered again from the newest window's log.
+- **THE CHANGE.** `State.LeechPoolsInFlight = FMath::CountBits(static_cast<uint64>(PoolsSeen));` becomes
+  `State.LeechPoolsInFlight = FMath::CountBits(PoolsSeen);`. `PoolsSeen` is a `uint32` with one bit for each pool
+  being leeched into (`ECataclysmLeechPool`: health, mana, energy shield), so at most three bits are set and the cast
+  to 64 bits added nothing. It is the only `CountBits` call in `game/Source`: a search for `CountBits` there finds this
+  line alone, at `055ac0254` and again at `9772aea2a` (`git grep -n CountBits 9772aea2a -- game/Source`: line 1315
+  only). With this branch's three-line comment above it, the call is line 1318.
+- **WHAT THE ENGINE OFFERS.** Unreal Engine 5.8's `MicrosoftPlatformMath.h` has three: `CountBits(uint32)` at line
+  155, not deprecated; `CountBits64(uint64)` at line 167; and a template `CountBits(T)` for an integer wider than four
+  bytes, lines 179 to 185, whose `UE_STATIC_DEPRECATE(5.8, sizeof(T) > 4, ...)` at line 183 prints the warning and
+  which then calls `CountBits64`. A `uint32` argument chooses the first, which counts the same bits.
+  `GenericPlatformMath.h` has the same three, at lines 1149, 1158 and 1169.
+- **THE WARNING, BEFORE.** The first of the display slice's three compiles (#2769), whose build tool log is
+  `.claude/windows/hitline_build_1_branch_ubt.log` in this session's worktree, printed it while compiling
+  `Module.Cataclysm.2.cpp`: "MicrosoftPlatformMath.h(183,3): warning C4996: ... CountBits for 64-bit values has been
+  deprecated, please use CountBits64 instead. - Please update your code to the new API before upgrading to the next
+  release, otherwise your project will no longer compile.", followed by
+  "CataclysmAbilitySystemComponent.cpp(1315,36): note: see reference to function template instantiation 'int32
+  FMicrosoftPlatformMathBase::CountBits<uint64>(T)' being compiled".
+- **THE WARNING, AT THE NEW BASE.** Development still prints it. Window fix-2725-w1's first compile, at `31002c802`,
+  whose `game/` tree is `9772aea2a`'s, printed the same warning and the same note,
+  "CataclysmAbilitySystemComponent.cpp(1315,36): note: see reference to function template instantiation 'int32
+  FMicrosoftPlatformMathBase::CountBits<uint64>(T)' being compiled", while compiling `Module.Cataclysm.2.cpp`; its
+  build tool log is `.claude/windows/t2725_build_1_branch_ubt.log` in the worktree `laughing-curran-69e4bb`. Line
+  1315, column 36, at `9772aea2a` is the `CountBits` of the line this branch changes. That warning is the only line
+  holding "warning C" or ": error" in that log.
+- **EARLIER ENTRIES CALLED THE WARNING "THE ENGINE'S OWN", AND ARE LEFT AS WRITTEN**, as the coordinating session
+  ruled. The line that triggered it was this project's. These say "the engine's own":
+  - 2026-11-18, "Each run masks its dungeons' walk seeds ..." (#2749, B10), twice;
+  - 2026-11-18, "Every blow the player takes is logged ..." (#2749 slice 1), which adds "None came from this change":
+    true of that change, but the call was this project's;
+  - 2026-11-18, "The capital's Walk takes the character to the dungeon ..." (#2733, slice 3).
+
+  The display slice's entry (#2769) said the same and was corrected before it merged. Three more, all 2026-11-18 --
+  #2741 slice 1b, #2741 slice 1c and #2744 -- say the warning was raised "in an engine header" and was "not this
+  branch's", without naming the line that triggers it. The other entries that mention it name
+  `CataclysmAbilitySystemComponent.cpp` line 1315.
+- **NO PYTHON CHECK**, as the coordinating session ruled. No file under `tools/` or `sim/` names `CountBits`,
+  `PoolsSeen` or `LeechPoolsInFlight`; the two engine tests below read the count.
+
+### Registered before the run
+
+**Registered again on 2026-11-20, after the rebase.** The base is window fix-2725-w1, run at `31002c802`, whose `game/`
+tree is `9772aea2a`'s (`git diff --stat 31002c802 9772aea2a -- game/` prints nothing). Its `tests` command's output,
+`.claude/windows/t2725_suite_31002c80.log` in the worktree `laughing-curran-69e4bb`, reads "Tests: 4985 tests
+performed, 4985 succeeded, 0 failed. 47 skipped part of what they check" and "Test saves: 852 written and deleted, 0
+left behind". Its engine log there, `t2725_suite_engine_31002c80.log`, holds 4985 "Test Completed" lines. The
+"Test saves:" and "Test Completed" lines of that log are copied, in their order, to
+`.claude/windows/t2725_base_saves_and_completed_31002c80.log` in this session's worktree, because the window compares
+each test's share of the saves with them and that worktree may be deleted when its branch merges; read the same way,
+the whole log and the copy give the same 4985 shares and the same total, 852. This branch adds no test and removes
+none. Until the rebase the base was window hitline-w1 at `622bc0243` (4947 performed, 850 saves). **If development's
+`game/` tree moves again before the window runs, the whole-suite figures are registered again from the newest
+window's log before it starts.**
+
+- **The three compiles** -- the branch as committed, the build plan moved aside first; the changed file alone, the
+  index read from `9772aea2a`; the unity files again -- each succeed with **NO WARNING OR ERROR LINE IN ANY OF THE
+  THREE**, and so in particular no C4996 `CountBits` warning in the first, where development's own build printed it
+  as its only warning or error line. Each of them compiles `CataclysmAbilitySystemComponent.cpp`, in its unity file
+  or alone, so each would print the warning if the call still chose the deprecated template.
+- **Each of the two tests that read the count, run alone by its own prefix, performs 1 and succeeds 1.** Each prefix
+  selects exactly one name in the base log's list of tests: recounted in fix-2725-w1's engine log, ignoring case,
+  the two prefixes together select 2 of its 4985 "Test Completed" lines, one each. At `9772aea2a` one row carries the
+  scale that reads the count, `leech_pools_in_flight` (`PerLeechPoolInFlight`): Starvation's six-piece row, line 536
+  of `game/Data/EnchantmentEffects.csv`. The tests in `game/Source` name the scale in the first test below only, and
+  that row in the second only.
+
+| Prefix | The test | What it reads |
+|---|---|---|
+| `Cataclysm.Enchantments.TheLeechPoolsScale` | `TheLeechPoolsScaleCountsEachPoolBeingLeechedIntoOnceAndAtMostThree` | a damage reduction of 5 per pool: 0, 5, 10, 15, 5 and 10 for no payment, two into health, health and mana, all three with health twice, one with nothing left to pay, and all three with no energy shield |
+| `Cataclysm.Enchantments.StarvationsSixPieces` | `StarvationsSixPiecesGiveFiveDamageReductionForEachPoolBeingLeechedInto` | the Starvation six-piece row from the built table: 5 for each pool the wearer has and is leeching into |
+
+- **The whole suite**: **4985** performed (4985 + 0), all succeeding, 47 skipped halves, and "Test saves: 852 written
+  and deleted, 0 left behind", each test's share compared with its share in the base log, and any difference named by
+  the test that makes it.
+- **One guard proof**, through `tools/unreal_build.py`'s `prove_cpp_guard`:
+
+| Proof | The break | Prefix | The broken half | Restored |
+|---|---|---|---|---|
+| P1 | `FMath::CountBits(PoolsSeen)` becomes `(PoolsSeen != 0 ? 1 : 0)`: any number of pools counts as one | `Cataclysm.Enchantments.TheLeechPoolsScale` | 1 performed, 0 succeeded, 1 failed: `TheLeechPoolsScaleCountsEachPoolBeingLeechedIntoOnceAndAtMostThree` (10, 15 and 10 expected; 5 read for each) | 1 of 1 |
+
+The Starvation test would fail under the same break by reading its code (10 and 15 expected, 5 read), but P1's prefix
+does not select it, so the proof does not show that.
+
+### Measured: the three compiles and window countbits-w1
+
+Both at `80ae5e2db`, on 2026-11-20. The scripts are `compile_countbits.py` and `run_countbits.py` in
+`.claude/windows/` in this session's worktree, and every output and log named below is kept beside them.
+
+**The three compiles**, 01:23:36 to 01:29:28 local time, lock `countbits-compile`; output `countbits_compile.out`, and
+each build tool log as `countbits_build_<build>_ubt.log`. "Warning or error lines" counts the lines holding "warning C"
+or ": error", as registered. The one line in build 1's log holding the word "warning" at all is the header tool's
+command, with its `-WarningsAsErrors` switch.
+
+| Build | Result | Compiled | Warning or error lines |
+|---|---|---|---|
+| 1, the branch, the build plan moved aside | Succeeded, 51 actions | 46 files, among them `Module.Cataclysm.2.cpp`, the unity file that holds `CataclysmAbilitySystemComponent.cpp` | 0; no C4996 |
+| 2, the changed file alone, the index read from `9772aea2a` | Succeeded, 5 actions | `CataclysmAbilitySystemComponent.cpp` ("[Adaptive Build] Excluded from Cataclysm unity file: CataclysmAbilitySystemComponent.cpp") and `Module.Cataclysm.2.cpp` | 0 |
+| 3, the unity files again | Succeeded, 4 actions | `Module.Cataclysm.2.cpp` | 0 |
+
+**Window countbits-w1**, 01:31 to 01:55 local time, lock `countbits-w1`; output `countbits_w1_run.out`. The pre-checks
+all passed at 01:30:59 (`countbits_prechecks.out`: 12,497 MB free, no workflow run in progress or queued, no pull
+request open, no build or editor process, no LFS pointer among the assets). The window's build: "target already up to
+date, 0 actions, nothing compiled".
+
+| Registered | Measured |
+|---|---|
+| `Cataclysm.Enchantments.TheLeechPoolsScale` alone: 1 performed, 1 succeeded | "Tests: 1 tests performed, 1 succeeded, 0 failed" |
+| `Cataclysm.Enchantments.StarvationsSixPieces` alone: 1 performed, 1 succeeded | "Tests: 1 tests performed, 1 succeeded, 0 failed" |
+| The whole suite: 4985 performed, all succeeding, 47 skipped halves | "Tests: 4985 tests performed, 4985 succeeded, 0 failed. 47 skipped part of what they check"; "Declared: 4985 tests in the tree at 80ae5e2db; 4985 performed, gap 0" |
+| "Test saves: 852 written and deleted, 0 left behind", each test's share as in the base log | "Test saves: 852 written and deleted, 0 left behind"; against the base: "a rise of 0", and no test's share differs |
+| P1: 1 performed, 0 succeeded, 1 failed, `TheLeechPoolsScaleCountsEachPoolBeingLeechedIntoOnceAndAtMostThree` (10, 15 and 10 expected; 5 read for each); restored, 1 of 1 | PROVED. With the break in: "1 tests performed, 0 succeeded, 1 failed", that test named; its three failed assertions read "Expected 'health and mana are two pools: 10' to be 10.000000, but it was 5.000000", "Expected 'all three pools, one of them twice: 15' to be 15.000000, but it was 5.000000" and "Expected 'payments into all three, and no energy shield: 10, and the full pools still count' to be 10.000000, but it was 5.000000". Restored: "1 tests performed, 1 succeeded, 0 failed". The source hash was the same before and after the proof |
+
+Each of the three test runs printed "MCP server: not started (no start-up line in the log)". The whole suite's engine
+log is kept as `countbits_suite_engine_80ae5e2d.log`, and P1's two halves as `countbits_P1_run1.log` and
+`countbits_P1_run2.log`. The restored half's only Error lines are the two the editor prints at start-up about
+`GameFeatureData`, which the broken half printed too.
+
+### Python, measured
+
+**After the rebase**, at `34f9b9c38`, the change and this entry committed: "7760 passed, 9 skipped in 305.44s
+(0:05:05)"; the JUnit file: tests 7769, failures 0, errors 0, skipped 9. ruff: "All checks passed!". The same counts
+as window fix-2725-w1's at `31002c802` ("7760 passed, 9 skipped in 312.42s"), whose tree differs from `9772aea2a`'s
+only in `docs/DECISIONS.md`, as expected: this branch adds and removes no Python test.
+
+In window countbits-w1, at `80ae5e2db`: "7760 passed, 9 skipped in 300.88s (0:05:00)"; the JUnit file: tests 7769,
+failures 0, errors 0, skipped 9 (`countbits_python_80ae5e2d.log`, `countbits_junit_80ae5e2d.xml`). ruff: "All
+checks passed!".
+
+Before the rebase, at `96a9b2466`: "7704 passed, 9 skipped in 399.95s (0:06:39)"; the JUnit file: tests 7713,
+failures 0, errors 0, skipped 9. The same counts as at the display slice's `8b03a4bed`.
+
+---
+
 ## 2026-11-19 — C opens the character sheet in both control schemes, and the character creator has no key (#2770)
 
 **Affects:** `tools/generate_input_assets.py` (`NATIVE_ACTIONS`: `IA_ToggleCharacterSheet` in place of
