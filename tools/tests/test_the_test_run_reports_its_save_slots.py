@@ -65,7 +65,7 @@ def test_start_up_lines_alone_count_as_missing_when_tests_were_performed() -> No
     line = unreal_build.test_saves_line(START_UP + STARTED + EXITING)
     assert line.startswith("Test saves: (no line in the log"), line
     assert unreal_build.saves_failure(PASSED, line) is not None
-    assert unreal_build.exit_code_for(PASSED, line) != 0
+    assert unreal_build.exit_code_for(PASSED, line, NO_MCP) != 0
 
 
 def test_the_line_after_the_last_test_started_is_the_one_read() -> None:
@@ -86,7 +86,7 @@ def test_a_lost_exit_line_passes_when_the_last_tests_line_is_there() -> None:
         + EXITING)
     assert line == "Test saves: 1 written and deleted, 0 left behind"
     assert unreal_build.saves_failure(PASSED, line) is None
-    assert unreal_build.exit_code_for(PASSED, line) == 0
+    assert unreal_build.exit_code_for(PASSED, line, NO_MCP) == 0
 
 
 def test_the_log_line_the_cpp_writes_matches_what_the_wrapper_reads() -> None:
@@ -112,15 +112,17 @@ PASSED = TestOutcome(3, ("a", "b", "c"), ())
 CLEAN = "Test saves: 7 written and deleted, 0 left behind"
 LEFT_TWO = "Test saves: 1520 written and deleted, 2 left behind: Run_A, Run_B"
 MISSING = unreal_build.test_saves_line("")
+#: No MCP server started, so the save check alone decides below. Issue #2745.
+NO_MCP = unreal_build.MCP_NOT_STARTED
 
 
 def test_nothing_left_behind_passes() -> None:
     assert unreal_build.saves_failure(PASSED, CLEAN) is None
-    assert unreal_build.exit_code_for(PASSED, CLEAN) == 0
+    assert unreal_build.exit_code_for(PASSED, CLEAN, NO_MCP) == 0
 
 
 def test_slots_left_behind_fail_the_run_and_are_named() -> None:
-    assert unreal_build.exit_code_for(PASSED, LEFT_TWO) == 1
+    assert unreal_build.exit_code_for(PASSED, LEFT_TWO, NO_MCP) == 1
     message = unreal_build.saves_failure(PASSED, LEFT_TWO)
     assert message is not None
     assert "2 save slots behind" in message, message
@@ -129,7 +131,7 @@ def test_slots_left_behind_fail_the_run_and_are_named() -> None:
 
 def test_one_slot_left_behind_is_said_in_the_singular_and_fails() -> None:
     line = "Test saves: 9 written and deleted, 1 left behind: Run_C"
-    assert unreal_build.exit_code_for(PASSED, line) == 1
+    assert unreal_build.exit_code_for(PASSED, line, NO_MCP) == 1
     message = unreal_build.saves_failure(PASSED, line)
     assert message is not None and "1 save slot behind" in message and "Run_C" in message, message
 
@@ -137,13 +139,13 @@ def test_one_slot_left_behind_is_said_in_the_singular_and_fails() -> None:
 def test_more_than_ten_left_behind_quotes_the_count_of_the_rest() -> None:
     names = ", ".join(f"Run_{index}" for index in range(10))
     line = f"Test saves: 40 written and deleted, 15 left behind: {names} and 5 more"
-    assert unreal_build.exit_code_for(PASSED, line) == 1
+    assert unreal_build.exit_code_for(PASSED, line, NO_MCP) == 1
     message = unreal_build.saves_failure(PASSED, line)
     assert message is not None and f"{names} and 5 more" in message, message
 
 
 def test_a_missing_line_fails_a_run_that_performed_tests() -> None:
-    assert unreal_build.exit_code_for(PASSED, MISSING) == 1
+    assert unreal_build.exit_code_for(PASSED, MISSING, NO_MCP) == 1
     message = unreal_build.saves_failure(PASSED, MISSING)
     assert message is not None
     assert "the clean-up's summary was not logged" in message, message
@@ -155,13 +157,13 @@ def test_a_missing_line_fails_a_run_that_performed_tests() -> None:
 def test_a_missing_line_adds_nothing_to_a_run_that_performed_no_tests(tests) -> None:
     """The run fails for its own reason, and the save check says nothing over it: with no test started, nothing took
     the folder and nothing could log the line."""
-    assert unreal_build.exit_code_for(tests, MISSING) == 1
+    assert unreal_build.exit_code_for(tests, MISSING, NO_MCP) == 1
     assert unreal_build.saves_failure(tests, MISSING) is None
 
 
 def test_a_failing_test_with_slots_left_still_fails_and_still_names_them() -> None:
     failing = TestOutcome(3, ("a", "b"), ("c",))
-    assert unreal_build.exit_code_for(failing, LEFT_TWO) == 1
+    assert unreal_build.exit_code_for(failing, LEFT_TWO, NO_MCP) == 1
     assert "Run_A, Run_B" in (unreal_build.saves_failure(failing, LEFT_TWO) or "")
 
 
