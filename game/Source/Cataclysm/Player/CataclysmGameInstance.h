@@ -515,6 +515,15 @@ public:
 	static void RefreshEmpireTreeBonuses(const UObject* WorldContext);
 
 	/**
+	 * Gives the run what the empire layer needs of the gold balance, which it cannot reach itself: the gold held in tier
+	 * 1 gold, which Imperial Reserve reads (`UCataclysmEmpireRun::GoldHeldAtTierOne`, B7), and the day's hook through
+	 * which Pax Imperialis and Wealth Interest pay into the balance (`OnDayPassed`, B8). Issue #2741 slice 6c. Called
+	 * where a run is given its tree: as it begins and by `RefreshEmpireTreeBonuses`, which a load calls. Nothing for no
+	 * game instance of this project's.
+	 */
+	static void WireTheRunToTheBalance(const UObject* WorldContext, UCataclysmEmpireRun* Run);
+
+	/**
 	 * Puts one point into a node of the tree `EmpireTreeHeldBy` reads, paid from its bank, and has the record written.
 	 * Issue #2741 slice 1b.
 	 *

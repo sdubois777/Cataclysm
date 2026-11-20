@@ -123,6 +123,11 @@ SLICE_6A = {"Coinage", "Minting Rights", "The Midas Touch", "Untouchable Wealth"
 SLICE_6B = {"Price Controls", "Stimulus Package", "Cleanup Crew", "Salvage Rights",
             "Investment Funds"}
 
+#: SLICE 6C'S FIVE, the gold held and the day's income: the coordinating
+#: session's B6 to B8 of 2026-11-20. Tax Collection waits on the owner.
+SLICE_6C = {"The Gilded Path", "Venture Capital", "Imperial Reserve", "Pax Imperialis",
+            "Wealth Interest"}
+
 DAY_EFFECTS = {"ResolveDaysAll", "ResolveDaysOutposts", "ResolveDaysPerBranchStep",
                "ResolveDaysBelowTenPercent", "SurgeGapDays", "WalkDaysFewerWhenAlone",
                "WalkDaysFewerPerActiveType", "WalkDaysFewerOnFallenCities",
@@ -138,7 +143,9 @@ OTHER_WORDS = {"WalkDaysFewer": "by {:g}", "WalkTimeHalvedAboveFloors": "more th
                # Slice 6b: Stimulus Package's 1 is its "doubled", and Salvage
                # Rights' 50 is "50 Gold for every" floor.
                "GoldDoubledBelowHalfPopulation": "Gold drops doubled",
-               "GoldPerFloorAtClear": "{:g} Gold for every"}
+               "GoldPerFloorAtClear": "{:g} Gold for every",
+               # Slice 6c: Pax Imperialis' 5 is "5 Gold every 1 day".
+               "GoldPerThousandCitizensDaily": "{:g} Gold every 1 day"}
 
 #: AN EFFECT WHOSE VALUE IS A DEFENCE, found in its text as "at <value>": Last
 #: Stand Protocols' "survive at 1".
@@ -186,16 +193,17 @@ def test_the_effect_names_agree_with_the_cpp_enum() -> None:
         f"{list(gen.EMPIRE_TREE_EFFECT_KINDS)}; they must be the same names in the same order")
 
 
-def test_exactly_the_93_nodes_of_slices_3a_3b_4_5a_5b_6a_and_6b_act() -> None:
+def test_exactly_the_98_nodes_of_slices_3a_3b_4_5a_5b_6a_6b_and_6c_act() -> None:
     named = set(gen.EMPIRE_TREE_EFFECTS)
     assert len(SLICE_3A) == 31 and len(SLICE_3B) == 7 and len(SLICE_4) == 19 and len(SLICE_5A) == 15
-    assert len(SLICE_5B) == 5 and len(SLICE_6A) == 11 and len(SLICE_6B) == 5
+    assert len(SLICE_5B) == 5 and len(SLICE_6A) == 11 and len(SLICE_6B) == 5 and len(SLICE_6C) == 5
     assert not SLICE_3A & SLICE_3B and not (SLICE_3A | SLICE_3B) & SLICE_4
     assert not (SLICE_3A | SLICE_3B | SLICE_4) & SLICE_5A
     assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A) & SLICE_5B
     assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B) & SLICE_6A
     assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A) & SLICE_6B
-    built = SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B
+    assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B) & SLICE_6C
+    built = SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C
     assert named == built, (
         f"EMPIRE_TREE_EFFECTS names {sorted(named - built)} beyond slice 3 and "
         f"leaves out {sorted(built - named)}")
@@ -205,7 +213,7 @@ def test_exactly_the_93_nodes_of_slices_3a_3b_4_5a_5b_6a_and_6b_act() -> None:
         "every slice 4 node with an effect is one EMPIRE_TREE_BUILT gives to slice 4")
     assert all(gen.EMPIRE_TREE_BUILT.get(name) == 5 for name in SLICE_5A | SLICE_5B), (
         "every slice 5a node with an effect is one EMPIRE_TREE_BUILT gives to slice 5")
-    assert all(gen.EMPIRE_TREE_BUILT.get(name) == 6 for name in SLICE_6A | SLICE_6B), (
+    assert all(gen.EMPIRE_TREE_BUILT.get(name) == 6 for name in SLICE_6A | SLICE_6B | SLICE_6C), (
         "every slice 6a node with an effect is one EMPIRE_TREE_BUILT gives to slice 6")
 
 
@@ -243,7 +251,7 @@ def test_every_value_is_in_its_own_words(texts) -> None:
     assert not wrong, "\n".join(wrong)
 
 
-def test_the_ten_caps_are_the_rulings_and_nothing_else_is_capped(texts) -> None:
+def test_the_thirteen_caps_are_the_rulings_and_nothing_else_is_capped(texts) -> None:
     caps = {name: effect[4]
             for name, effects in gen.EMPIRE_TREE_EFFECTS.items()
             for effect in effects if len(effect) > 4 and effect[4]}
@@ -258,7 +266,15 @@ def test_the_ten_caps_are_the_rulings_and_nothing_else_is_capped(texts) -> None:
                     "Global Vigilance": 0.15, "Reclaimer's Resolve": 0.15,
                     "Architectural Insight": 10.0, "Sovereign's Haste": 30.0,
                     "Speed Runner": 1.00, "Efficiency Premium": 0.50,
-                    "Temporal Efficiency": 0.50, "Relentless Pursuit": 1.00}, caps
+                    "Temporal Efficiency": 0.50, "Relentless Pursuit": 1.00,
+                    # Slice 6c, each its own text's: Venture Capital's "cap 20%",
+                    # Imperial Reserve's "25% cap", Wealth Interest's "capped at
+                    # 5,000 gold per tick" (a tier 1 figure, R10).
+                    "Venture Capital": 0.20, "Imperial Reserve": 0.25,
+                    "Wealth Interest": 5000.0}, caps
+    assert "cap 20%" in texts["Venture Capital"]
+    assert "25% cap" in texts["Imperial Reserve"]
+    assert "capped at 5,000 gold per tick" in texts["Wealth Interest"]
     assert "15% cap" in texts["Global Vigilance"]
     assert "Max of -30" in texts["Sovereign's Haste"]
     assert "cap 100%" in texts["Speed Runner"]
