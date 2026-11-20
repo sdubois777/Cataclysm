@@ -6636,6 +6636,16 @@ public:
 	int32 ModifierSeedForPlacement(int32 Index, int32 Salt) const;
 
 	/**
+	 * THE TWO PLACEMENT SEEDS OF A FLOOR OF PLAN SEED `FloorSeed`, pure, so `Cataclysm.Seeding.` measures what a floor
+	 * draws without building one. `RarityStreamForPlacement` and `ModifierSeedForPlacement` are these with the current
+	 * floor's seed. Through `CataclysmSeedMix::Mix` since issue #2749's placement seeding slice: until it the seeds were
+	 * `FloorSeed ^ (Salt + Index)` with salts whose low 16 bits are nought, a fixed distance apart, which put every
+	 * Elite's first modifier on a floor in a band of a few adjacent rows. Neither is ever nought.
+	 */
+	static int32 RaritySeedForPlacementOn(int32 FloorSeed, int32 Index);
+	static int32 ModifierSeedForPlacementOn(int32 FloorSeed, int32 Index, int32 Salt);
+
+	/**
 	 * How many creatures the dark floor's build has raised to a rung that added modifiers, since the game mode was
 	 * made. A raise that adds none draws nothing, so only these can show where the added draw comes from. A test
 	 * reads it.

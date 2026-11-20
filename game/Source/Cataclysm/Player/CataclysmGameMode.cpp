@@ -27,6 +27,7 @@
 #include "Player/CataclysmGameInstance.h"
 #include "Save/CataclysmSaveLoad.h"
 #include "Save/CataclysmSaveStorage.h"
+#include "Empire/CataclysmSeedMix.h"
 
 /**
  * Play at a difficulty tier without editing the game mode's default.
@@ -411,8 +412,10 @@ int32 ACataclysmGameMode::RarityStepFor(int32 Setting,
 		? *FromTheFloor
 		: RarityRollSeed != 0
 		? FRandomStream(static_cast<int32>(HashCombine(GetTypeHash(RarityRollSeed), GetTypeHash(RarityRollsMade++))))
-		: FRandomStream(Spawned->GetUniqueID()
-			  ^ static_cast<int32>(World->GetTimeSeconds() * 1000.0f));
+		// Its identity, a salt of its own ("rr") and the clock, through the mix since issue #2749's placement seeding
+		// slice; until it this was their XOR, so creatures spawned together drew related rungs.
+		: FRandomStream(CataclysmSeedMix::Mix(static_cast<int32>(Spawned->GetUniqueID()), 0x7272,
+			  static_cast<int32>(World->GetTimeSeconds() * 1000.0f)));
 
 	// EVERY CREATURE DRAWS ITS OWN, INDEPENDENTLY. See UCataclysmEnemyRarity for
 	// why an independent draw rather than a guaranteed count per floor.

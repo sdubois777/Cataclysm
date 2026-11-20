@@ -88,6 +88,7 @@
 // For Reaper's Embrace's ten-piece: a minion's own blow does not cull, and a kill spawns a minion. Ruled 2026-10-19.
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
+#include "Empire/CataclysmSeedMix.h"
 
 namespace
 {
@@ -710,7 +711,10 @@ float ACataclysmPlayerCharacter::PlayDeathAnimation()
 	// would be decided -- so there is no second stream to be kept apart from.
 	const UWorld* World = GetWorld();
 	const float Now = World ? World->GetTimeSeconds() : 0.0f;
-	FRandomStream Stream(GetUniqueID() ^ static_cast<int32>(Now * 1000.0f));
+	// Its identity, a salt of its own ("pd") and the clock, through the mix since issue #2749's placement seeding
+	// slice; until it this was their XOR.
+	FRandomStream Stream(CataclysmSeedMix::Mix(static_cast<int32>(GetUniqueID()), 0x7064,
+		static_cast<int32>(Now * 1000.0f)));
 
 	const int32 Index =
 		UCataclysmEnemyDeath::ClipToPlay(DeathAnimations.Num(), Stream);

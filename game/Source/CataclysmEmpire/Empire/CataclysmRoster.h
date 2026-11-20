@@ -211,9 +211,21 @@ public:
 	 * copy of the next run's wave draws, which is a correlation nobody asked
 	 * for and which a test comparing two runs could easily trip over.
 	 *
-	 * KNUTH'S MULTIPLICATIVE HASH. `Salt` separates the uses -- the order draw
-	 * and the per-dungeon draw take different ones -- so both derive from the
-	 * run's seed and neither is the other.
+	 * KNUTH'S MULTIPLICATIVE HASH, AND IT IS LINEAR. `Salt` makes the uses'
+	 * seeds different, but `(Seed + Salt * Offset) * Mix + Offset` gives two
+	 * salts of one seed a FIXED DISTANCE APART for every seed, and two streams a
+	 * fixed distance apart draw related numbers. The run's Cataclysm stream and
+	 * modifier stream were seeded this way until issue #2749's placement seeding
+	 * slice, which put them, and every other stream that was derived from a
+	 * related seed, through `CataclysmSeedMix::Mix`.
+	 *
+	 * STILL USED, AND SAFE THERE, as ruled on 2026-11-19: `OrderFor`, whose one
+	 * stream a character is the only stream made from that seed this way, so
+	 * there is no second stream for it to be related to; and two seeds that are
+	 * not streams, the run's Stalker seed and its walk seed mask, which reach a
+	 * stream only through `CataclysmSeedMix::Mix` or
+	 * `FCataclysmFloorGenerator::SeedForFloor`. Left unchanged so the Unreal
+	 * tests whose seeds were chosen for their Cataclysm orders keep them.
 	 */
 	static int32 MixedSeed(int32 Seed, int32 Salt);
 

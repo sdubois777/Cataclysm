@@ -27,6 +27,7 @@
 #include "GameplayEffect.h"
 #include "GameplayEffectComponents/TargetTagsGameplayEffectComponent.h"
 #include "UObject/Package.h"
+#include "Empire/CataclysmSeedMix.h"
 
 const TCHAR* UCataclysmEnemyModifiers::GenericCataclysm = TEXT("Generic");
 
@@ -360,8 +361,9 @@ bool UCataclysmEnemyModifiers::PhaseStep(AActor* Character, float StepSeconds)
 	// step do not both go the same way. The same shape the modifier draw uses.
 	const UWorld* World = Enemy->GetWorld();
 	const float Now = World ? World->GetTimeSeconds() : 0.0f;
-	FRandomStream Stream(Enemy->GetUniqueID()
-		^ static_cast<int32>(Now * 1000.0f) ^ PhaseDrawSalt);
+	// Its identity, the draw's salt and the clock, through the mix: issue #2749's placement seeding slice; until it this was their XOR, so creatures made or killed together, with neighbouring identities and one clock, drew related rolls.
+	FRandomStream Stream(CataclysmSeedMix::Mix(static_cast<int32>(Enemy->GetUniqueID()), PhaseDrawSalt,
+		static_cast<int32>(Now * 1000.0f)));
 
 	const float Angle = Stream.FRandRange(0.0f, 360.0f);
 	const FVector Step(FMath::Cos(FMath::DegreesToRadians(Angle)),

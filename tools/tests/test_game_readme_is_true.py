@@ -214,6 +214,10 @@ def test_the_empire_layer_claim_is_still_true() -> None:
         # rules are this file. The readme's empire bullet now says the layer
         # reads the tree's city nodes and saves none of it.
         "CataclysmEmpireTreeBonuses.cpp",
+        # The seed mix every derived random stream takes its seed from, added
+        # 2026-11-19 for issue #2749's placement seeding slice. The readme's
+        # empire bullet now names it.
+        "CataclysmSeedMix.h",
     }
     unexpected = sorted(
         path.relative_to(REPO_ROOT).as_posix()

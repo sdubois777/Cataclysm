@@ -54,6 +54,7 @@
 // For loading the hit-reaction clips by path. Issue #745.
 #include "UObject/SoftObjectPath.h"
 #include "Save/CataclysmSaveWriter.h"
+#include "Empire/CataclysmSeedMix.h"
 
 namespace
 {
@@ -309,8 +310,9 @@ void ACataclysmEnemyCharacter::HandleDeath()
 		// payments, and both ask this; nothing else on this path changes.
 		const bool bPays = PaysForItsDeath();
 
-		FRandomStream Stream(GetUniqueID()
-			^ static_cast<int32>(World->GetTimeSeconds() * 1000.0f));
+		// Its identity, a salt of its own ("dr") and the clock, through the mix: issue #2749's placement seeding slice; until it this was their XOR, so creatures made or killed together, with neighbouring identities and one clock, drew related rolls.
+		FRandomStream Stream(CataclysmSeedMix::Mix(static_cast<int32>(GetUniqueID()), 0x6472,
+			static_cast<int32>(World->GetTimeSeconds() * 1000.0f)));
 
 		// THE EMPIRE UPGRADE TREE'S DROP RULES FOR THIS FLOOR, none outside a dungeon of the empire. Issue #2741 slice 5b:
 		// Scavenger's chance reaches the kill's own materials below; the other three are rolled after the gold. Asked
@@ -537,8 +539,9 @@ float ACataclysmEnemyCharacter::PlayDeathAnimation()
 	// why those must not be the same stream.
 	const UWorld* World = GetWorld();
 	const float Now = World ? World->GetTimeSeconds() : 0.0f;
-	FRandomStream Stream(GetUniqueID()
-		^ static_cast<int32>(Now * 1000.0f) ^ DeathDrawSalt);
+	// Its identity, the draw's salt and the clock, through the mix: issue #2749's placement seeding slice; until it this was their XOR, so creatures made or killed together, with neighbouring identities and one clock, drew related rolls.
+	FRandomStream Stream(CataclysmSeedMix::Mix(static_cast<int32>(GetUniqueID()), DeathDrawSalt,
+		static_cast<int32>(Now * 1000.0f)));
 
 	const int32 Index =
 		UCataclysmEnemyDeath::ClipToPlay(DeathAnimations.Num(), Stream);
@@ -1982,8 +1985,8 @@ void ACataclysmEnemyCharacter::DrawModifiersForRarity(int32 FromTheFloor)
 	// floor. Issue #2669, ruled 2026-11-01, as #2490 did for the rung.
 	FRandomStream Stream(ModifierSeedForTests != 0 ? ModifierSeedForTests
 		: FromTheFloor != 0 ? FromTheFloor // A creature's modifiers: the floor's seed when the floor places it.
-		: (GetUniqueID() ^ static_cast<int32>(Now * 1000.0f)
-		   ^ ModifierDrawSalt));
+		: CataclysmSeedMix::Mix(static_cast<int32>(GetUniqueID()), ModifierDrawSalt,
+			static_cast<int32>(Now * 1000.0f))); // Through the mix since #2749's seeding slice; it was their XOR.
 
 	const TArray<FName> Drawn = UCataclysmEnemyModifiers::Draw(
 		UCataclysmEnemyModifiers::LoadEnemyModifierTable(), DamageType,

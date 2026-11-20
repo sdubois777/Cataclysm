@@ -122,7 +122,9 @@ def test_the_warlord_rolls_a_stream_of_its_own_and_removes_through_remove_dungeo
     start = clear.find("TreeBonuses.RemoveAnotherDungeonChance > 0.0f")
     assert start != -1, "ClearDungeon no longer has The Warlord"
     warlord = body(clear[start:], "")
-    assert "FRandomStream Roll(UCataclysmRoster::MixedSeed(WalkSeedMask ^ (DungeonId + 1), WarlordSalt));" in warlord
+    # THROUGH THE SEED MIX since issue #2749's placement seeding slice (it was `MixedSeed`, which is linear, so one
+    # run's dungeons drew related rolls); still a stream of its own, keyed on the dungeon and the rule's salt.
+    assert "FRandomStream Roll(CataclysmSeedMix::Mix(WalkSeedMask ^ (DungeonId + 1), WarlordSalt, 0));" in warlord
     for stream in ("Stream.", "CataclysmStream.", "ModifierStream."):
         assert not re.search(rf"(?<![\w]){re.escape(stream)}", warlord), (
             f"The Warlord draws from the run's {stream.rstrip('.')}, which moves every later draw on it")

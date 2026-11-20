@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Empire/CataclysmEmpireRun.h"
+#include "Empire/CataclysmSeedMix.h"
 
 namespace
 {
@@ -217,14 +218,16 @@ void UCataclysmEmpireRun::BeginForCharacter(int32 InSeed, int32 InCataclysmOrder
 	// for why it is separate from `Stream`, and `UCataclysmRoster::MixedSeed` for
 	// why deriving it by adding to the seed would have made one run's Cataclysm
 	// draws a copy of the next run's waves.
-	CataclysmStream.Initialize(
-		UCataclysmRoster::MixedSeed(InSeed, UCataclysmRoster::WaveSalt));
+	// THROUGH THE MIX since issue #2749's placement seeding slice, ruled by the coordinating session on 2026-11-19. Until
+	// it, this and `ModifierStream` were `MixedSeed(InSeed, WaveSalt)` and `MixedSeed(InSeed, ModifierSalt)`; `MixedSeed`
+	// is linear, so the two seeds were a fixed distance apart in every run and their draws at one index related. A RUN
+	// LOADED FROM A SAVE KEEPS ITS DRAWS: the save stores each stream's current state, not this seed.
+	CataclysmStream.Initialize(CataclysmSeedMix::Mix(InSeed, UCataclysmRoster::WaveSalt, 0));
 
 	// AND A THIRD, FOR THE MODIFIER DRAW. See `ModifierStream`: taking those
 	// draws from either of the streams above would shift every later draw made
 	// on it, and re-roll every fixed-seed test in the project.
-	ModifierStream.Initialize(
-		UCataclysmRoster::MixedSeed(InSeed, UCataclysmRoster::ModifierSalt));
+	ModifierStream.Initialize(CataclysmSeedMix::Mix(InSeed, UCataclysmRoster::ModifierSalt, 0));
 
 	// AND THE CORRUPTED STALKER'S SEED, which is not a stream: each dungeon makes its own from it. See
 	// `UCataclysmDungeonModifierRules::CarriesTheCorruptedStalker`.
@@ -1898,7 +1901,9 @@ bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)
 	// and a clear of it has no city, so neither reaches this. Issue #2741 slice 4.
 	if (TreeBonuses.RemoveAnotherDungeonChance > 0.0f && CityId != INDEX_NONE)
 	{
-		FRandomStream Roll(UCataclysmRoster::MixedSeed(WalkSeedMask ^ (DungeonId + 1), WarlordSalt));
+		// Through the mix since issue #2749's placement seeding slice; it was `MixedSeed(...)`, linear, so one run's
+		// dungeons drew related rolls.
+		FRandomStream Roll(CataclysmSeedMix::Mix(WalkSeedMask ^ (DungeonId + 1), WarlordSalt, 0));
 		if (Roll.FRand() < TreeBonuses.RemoveAnotherDungeonChance)
 		{
 			const int32 Soonest = TheWarlordsDungeonOn(CityId);

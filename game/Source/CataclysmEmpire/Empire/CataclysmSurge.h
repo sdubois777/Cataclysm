@@ -657,10 +657,14 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
  *     unless it is the Void: since 2026-10-22 a wave slot the Void sends
  *     weighs each city by its Void stacks as well, `TargetWeightForSender`.
  *     Issue #53.
- *   - **The Demonic Cataclysm's rifts, which ignore the frontier entirely.**
- *     That is the one pattern the vertical slice would actually use, and it
- *     belongs with the Hell on Earth quest mechanic, issue #51. Issue #1085
- *     records what it would mean for the lane rule.
+ *   - **The Demonic Cataclysm's Rifts**, which the design document says open
+ *     dungeons "without needing a direct path". They are the Hell on Earth
+ *     quest mechanic, issue #51, and NOT how a Demonic wave lands: by the
+ *     ruling on issue #1085 (2026-09-14) a Demonic wave keeps the lane rule
+ *     and lands on the exposed frontier like every other, which is what
+ *     `PickTargets` does for every sender. The simulation follows the same
+ *     ruling since issue #2749 (`patterns._demonic`). Until then this bullet
+ *     called the Rifts the one pattern the vertical slice would use.
  *   - **The 123 dungeon modifiers**, which THIS CLASS does not do and
  *     `UCataclysmEmpireRun::GiveModifiers` does. They are drawn where the
  *     Cataclysm that sent a dungeon is stamped, and for the same reason: the
