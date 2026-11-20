@@ -3,7 +3,8 @@
 WHY THIS EXISTS. Issue #2741 slice 6c, the coordinating session's B6 to B8 of 2026-11-20. The Gilded Path and Venture
 Capital give a kill magic find from the gold held, Imperial Reserve reduces every city's damage by it, and Pax Imperialis
 and Wealth Interest pay into the balance as days pass. The balance is the Cataclysm module's and the days and the damage
-are the empire module's, so the game instance hands the run two functions; Tax Collection waits on the owner.
+are the empire module's, so the game instance hands the run two functions. Tax Collection, ruled by the owner after
+this slice was written, is slice 6d's, in `tools/tests/test_empire_tree_treasury_and_tax.py`.
 
 WHY IT IS CHECKED FROM PYTHON. Continuous integration compiles no C++, so the `Cataclysm.EmpireTreeGoldHeld.` automation
 tests never run on a pull request. And the hand-over -- the functions the game instance sets, and where the run calls
@@ -17,7 +18,7 @@ WHAT IS CHECKED:
   3. the run calls the day's function after the day's resolutions, and every city's damage takes Imperial Reserve's
      factor from the gold held;
   4. a kill adds the gold held's magic find before its paying branch, from the gold held and the tier's scale;
-  5. Tax Collection waits on a ruling, and no node waits on its gold rules any more.
+  5. no node waits on its gold rules any more.
 """
 
 from __future__ import annotations
@@ -126,7 +127,5 @@ def test_a_kill_adds_the_gold_helds_magic_find_before_it_rolls() -> None:
         assert filled in here, f"the kill's rules do not fill {filled}"
 
 
-def test_tax_collection_waits_on_a_ruling_and_no_node_on_its_gold_rules() -> None:
-    assert gen.EMPIRE_TREE_REFUSED.get("Tax Collection") == "gold ruling", (
-        "Tax Collection is built or refused for another reason; its payout's size waits on the owner (2026-11-20)")
+def test_no_node_waits_on_its_gold_rules_any_more() -> None:
     assert "gold rules" not in gen.EMPIRE_TREE_SYSTEMS and "gold rules" not in gen.EMPIRE_TREE_REFUSED.values()

@@ -126,11 +126,17 @@ float FCataclysmEmpireTreeBonuses::EventDamageFactorFor(int32 ClearsSinceLastSur
 
 float FCataclysmEmpireTreeBonuses::GoldDamageFactorFor(double GoldHeldAtTierOne) const
 {
-	// WHOLE STEPS OF 100,000 TIER 1 GOLD, compounded per point and held at the node's 25% (B7), as `KeptAfter` holds
-	// Reclaimer's Resolve.
-	const int32 Steps = static_cast<int32>(FMath::Min(
-		FMath::Max(0.0, GoldHeldAtTierOne) / static_cast<double>(ImperialReserveGoldAStep), 1000000.0));
-	return CataclysmEmpireTreeBonuses::KeptAfter(ReductionPerGoldStep, GoldStepPoints, Steps, GoldReductionCap);
+	// IMPERIAL RESERVE'S WHOLE STEPS OF 100,000 TIER 1 GOLD, compounded per point and held at its 25% (B7), and
+	// TREASURY GUARD'S OF 50,000, held at its own 20% (slice 6d, D9); the two then multiplied, as its text's
+	// "(multiplicative)" says and as every other reduction multiplies (S5).
+	const double Held = FMath::Max(0.0, GoldHeldAtTierOne);
+	const int32 ReserveSteps = static_cast<int32>(FMath::Min(Held / static_cast<double>(ImperialReserveGoldAStep),
+															 1000000.0));
+	const int32 GuardSteps = static_cast<int32>(FMath::Min(Held / static_cast<double>(TreasuryGuardGoldAStep),
+														   1000000.0));
+	return CataclysmEmpireTreeBonuses::KeptAfter(ReductionPerGoldStep, GoldStepPoints, ReserveSteps, GoldReductionCap)
+		* CataclysmEmpireTreeBonuses::KeptAfter(ReductionPerHeldGoldStep, HeldGoldStepPoints, GuardSteps,
+												HeldGoldReductionCap);
 }
 
 bool FCataclysmEmpireTreeBonuses::ReachesTheWalk() const

@@ -39,7 +39,8 @@ sys.path.insert(0, str(REPO_ROOT / "tools"))
 
 import generate_datatables as gen  # noqa: E402
 
-#: NONE: slice 6c built the last nodes its gold rules reached, and Tax Collection waits on the owner (2026-11-20).
+#: NONE: slice 6c built the last nodes its gold rules reached; the owner's rulings of 2026-11-20 sent the rest to 6d
+#: and 6e.
 SLICE_6B: set[str] = set()
 
 #: WORDS NO SCREEN OR COMMENT MAY SAY ANY MORE, each true until #2742 and false since.

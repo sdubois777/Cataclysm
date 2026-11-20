@@ -549,7 +549,8 @@ void UCataclysmGameInstance::WireTheRunToTheBalance(const UObject* WorldContext,
 		}
 		UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::InventoryChanged);
 		UE_LOG(LogCataclysm, Log, TEXT("Day %d: the empire upgrade tree paid %lld gold (Pax Imperialis %lld, Wealth "
-									   "Interest %lld)."), Day, Income.Total(), Income.Pax, Income.Interest);
+									   "Interest %lld, Tax Collection %lld)."),
+			   Day, Income.Total(), Income.Pax, Income.Interest, Income.Tax);
 	};
 }
 

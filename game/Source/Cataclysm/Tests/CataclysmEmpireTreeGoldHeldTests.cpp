@@ -20,7 +20,8 @@
  *   Pax Imperialis     5 gold every day for each whole 1,000 citizens of the standing cities (B8)
  *   Wealth Interest    every 20th day, 0.5% a point of the gold held, to 5,000 a payment (B8)
  *
- * The income is raised by the "all sources" increases G2 sends to it. Tax Collection waits on the owner.
+ * The income is raised by the "all sources" increases G2 sends to it. Tax Collection and Treasury Guard, ruled by the
+ * owner after this slice was written, are slice 6d's (`Cataclysm.EmpireTreeTreasury.`).
  * `Cataclysm.EmpireTreeGoldHeld.` IS A NEW GROUP and selects these and nothing else.
  *
  * WRITTEN WITHOUT A BUILD. Phase 1 of the slice: every figure below is reasoned from the code, and the run that proves
