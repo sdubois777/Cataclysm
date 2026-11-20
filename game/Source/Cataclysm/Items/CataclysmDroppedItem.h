@@ -318,6 +318,10 @@ public:
 	 *            Everyday, every caller's but The High Roller's, is the
 	 *            ordinary roll
 	 *
+	 * A CITY'S "MORE CRAFTING MATERIALS", `MaterialsMore` (issue #2781, X2): the material roll's expected count is
+	 * multiplied, its gear's is not, and the tree's per-kill material chance is another roll. Exactly 1, the default,
+	 * rolls what it rolled before.
+	 *
 	 * @return how many actors were spawned
 	 */
 	static int32 SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
@@ -326,7 +330,8 @@ public:
 							   bool bMarked = false, bool bInfested = false,
 							   int32 GearCountGiven = -1, int32 MaterialCountGiven = -1,
 							   float LowTierMaterialExtraChance = 0.0f,
-							   ECataclysmRarity LowestRarity = ECataclysmRarity::Everyday);
+							   ECataclysmRarity LowestRarity = ECataclysmRarity::Everyday,
+							   float MaterialsMore = 1.0f);
 
 	/** The rung named Elite, which Opportunistic Looting asks for; and the first boss rung, as
 	 *  `ACataclysmEnemyCharacter::IsBoss` reads it, which The High Roller asks for. Issue #2741 slice 5b. */

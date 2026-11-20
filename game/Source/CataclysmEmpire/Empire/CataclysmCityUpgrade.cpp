@@ -42,6 +42,15 @@ bool UCataclysmCityUpgradeRules::IsBuilt(ECataclysmCityUpgradeEffect Effect)
 	case ECataclysmCityUpgradeEffect::DungeonWalkDaysFewer:
 	case ECataclysmCityUpgradeEffect::DungeonFloorsMore:
 	case ECataclysmCityUpgradeEffect::DungeonFloorsFewer:
+
+	// AND THE FIVE THAT CHANGE WHAT A KILL THERE PAYS, issue #2781: the four
+	// Treasurer upgrades and the Artisan one. A kill in a dungeon standing on the
+	// city reads them through `DungeonRewardsOf`.
+	case ECataclysmCityUpgradeEffect::DungeonExperience:
+	case ECataclysmCityUpgradeEffect::DungeonMagicFind:
+	case ECataclysmCityUpgradeEffect::DungeonGold:
+	case ECataclysmCityUpgradeEffect::DungeonLoot:
+	case ECataclysmCityUpgradeEffect::DungeonCraftingMaterials:
 		return true;
 
 	// EVERYTHING ELSE IS WAITING ON A SYSTEM THAT DOES NOT EXIST. Listed rather
@@ -53,17 +62,6 @@ bool UCataclysmCityUpgradeRules::IsBuilt(ECataclysmCityUpgradeEffect Effect)
 	case ECataclysmCityUpgradeEffect::SubTypeChanceSacrificial:
 	case ECataclysmCityUpgradeEffect::SubTypeChanceVolatile:
 		// Issue #41. Nothing rolls a dungeon sub-type.
-		return false;
-
-	case ECataclysmCityUpgradeEffect::DungeonExperience:
-	case ECataclysmCityUpgradeEffect::DungeonMagicFind:
-	case ECataclysmCityUpgradeEffect::DungeonGold:
-	case ECataclysmCityUpgradeEffect::DungeonLoot:
-	case ECataclysmCityUpgradeEffect::DungeonCraftingMaterials:
-		// Issue #2781. Nothing reads these yet. Experience, magic find, gold
-		// (#2742), loot and crafting materials all exist where a dungeon
-		// standing on the city is walked, and a kill there is what would read
-		// them; that wiring is not written.
 		return false;
 
 	case ECataclysmCityUpgradeEffect::CleanseEveryCity:
@@ -100,6 +98,37 @@ TArray<ECataclysmCityUpgradeEffect> UCataclysmCityUpgradeRules::AllEffects()
 	}
 
 	return Effects;
+}
+
+FCataclysmCityDungeonRewards UCataclysmCityUpgradeRules::DungeonRewardsOf(const TArray<FCataclysmCityUpgrade>& Upgrades)
+{
+	// EACH UPGRADE AT ITS OWN FIGURE, the tier 1 one (ruling 3). EVERY "MORE" MULTIPLIES AND THE MAGIC FIND ADDS (ruling
+	// 2): a percentage of 0.25 is 25% more, a multiplier of 2 is twice, and 0.10 of magic find is ten points.
+	FCataclysmCityDungeonRewards Rewards;
+	for (const FCataclysmCityUpgrade& Upgrade : Upgrades)
+	{
+		switch (Upgrade.Effect)
+		{
+		case ECataclysmCityUpgradeEffect::DungeonExperience:
+			Rewards.ExperienceMore *= FMath::Max(0.0f, Upgrade.Value);
+			break;
+		case ECataclysmCityUpgradeEffect::DungeonMagicFind:
+			Rewards.MagicFindIncreased += 100.0f * Upgrade.Value;
+			break;
+		case ECataclysmCityUpgradeEffect::DungeonGold:
+			Rewards.GoldMore *= 1.0f + FMath::Max(0.0f, Upgrade.Value);
+			break;
+		case ECataclysmCityUpgradeEffect::DungeonLoot:
+			Rewards.LootMore *= 1.0f + FMath::Max(0.0f, Upgrade.Value);
+			break;
+		case ECataclysmCityUpgradeEffect::DungeonCraftingMaterials:
+			Rewards.MaterialsMore *= 1.0f + FMath::Max(0.0f, Upgrade.Value);
+			break;
+		default:
+			break;
+		}
+	}
+	return Rewards;
 }
 
 int32 UCataclysmCityUpgradeRules::BuiltEffectCount()

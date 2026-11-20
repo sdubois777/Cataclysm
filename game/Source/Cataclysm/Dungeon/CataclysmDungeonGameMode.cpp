@@ -15596,6 +15596,26 @@ FCataclysmEmpireTreeDropRules ACataclysmDungeonGameMode::EmpireTreeDropRulesIn(U
 	return Mode ? Mode->EmpireTreeDropRulesHere() : FCataclysmEmpireTreeDropRules();
 }
 
+FCataclysmCityDungeonRewards ACataclysmDungeonGameMode::CityRewardsHere() const
+{
+	const UCataclysmEmpireRun* Run = EmpireRun();
+	const FCataclysmDungeon* Dungeon = BoundDungeon();
+	const FCataclysmCity* City = Run && Run->Map && Dungeon ? Run->Map->Find(Dungeon->CityId) : nullptr;
+
+	// A FALLEN CITY'S UPGRADES PAY NOTHING (X1): it keeps them, and they pay again once it is reclaimed.
+	if (!City || City->bFallen)
+	{
+		return FCataclysmCityDungeonRewards();
+	}
+	return UCataclysmCityUpgradeRules::DungeonRewardsOf(City->Upgrades);
+}
+
+FCataclysmCityDungeonRewards ACataclysmDungeonGameMode::CityRewardsIn(UWorld* World)
+{
+	const ACataclysmDungeonGameMode* Mode = InWorld(World);
+	return Mode ? Mode->CityRewardsHere() : FCataclysmCityDungeonRewards();
+}
+
 UCataclysmEmpireRun* ACataclysmDungeonGameMode::EmpireRun() const
 {
 	// THE GAME'S OWN RUN FIRST, ALWAYS. The test seam is only reached when there

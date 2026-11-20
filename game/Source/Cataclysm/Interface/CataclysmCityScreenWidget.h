@@ -34,9 +34,9 @@ class UTextBlock;
  * covered; **whether the result is legible is not, and no test on this project
  * can tell anyone that.**
  *
- * IT SHOWS THE FOURTEEN UPGRADES THAT DO NOTHING YET, in a section of their own
+ * IT SHOWS THE FIVE UPGRADES THAT DO NOTHING YET, in a section of their own
  * with the reason beside each. Hiding them would make the game look as though it
- * has ten city upgrades rather than twenty-four with fourteen waiting on systems
+ * has nineteen city upgrades rather than twenty-four with five waiting on systems
  * that do not exist.
  *
  * WHAT IT DOES NOT DO YET:
