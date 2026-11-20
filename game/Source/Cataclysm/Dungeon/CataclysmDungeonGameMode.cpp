@@ -15568,9 +15568,15 @@ FCataclysmEmpireTreeDropRules ACataclysmDungeonGameMode::EmpireTreeDropRulesHere
 
 	// THE SAME STATE THE STAT LINES ARE WORKED OUT FROM, for the floor being walked: the floors added and the one-day
 	// walk are the dungeon's, and they do not move during a walk.
-	return UCataclysmEmpireTree::DropRulesFor(
-		EmpireTreePlayerBonusesHere(),
-		UCataclysmEmpireTree::DungeonStateFor(*Run, *Dungeon, FloorBrief.Modifiers, FloorNumber));
+	FCataclysmEmpireTreeDungeonState State =
+		UCataclysmEmpireTree::DungeonStateFor(*Run, *Dungeon, FloorBrief.Modifiers, FloorNumber);
+
+	// AND THE GOLD HELD NOW, with the tier's scale, which The Gilded Path and Venture Capital read at each kill (slice 6c,
+	// B6): a pickup on this floor counts at the next kill.
+	int64 Held = 0;
+	State.GoldHeld = UCataclysmGameInstance::GoldHeldBy(this, Held) ? Held : 0;
+	State.GoldScale = UCataclysmDropRoll::GoldScaleFor(Run->DifficultyTier);
+	return UCataclysmEmpireTree::DropRulesFor(EmpireTreePlayerBonusesHere(), State);
 }
 
 FCataclysmEmpireTreeDropRules ACataclysmDungeonGameMode::EmpireTreeDropRulesIn(UWorld* World)

@@ -578,6 +578,13 @@ FCataclysmDayReport UCataclysmEmpireRun::AdvanceDay()
 	// AND STIMULUS PACKAGE'S CHECK, AFTER THE DAY'S BITES (issue #2741 slice 6b, B2).
 	NotePopulationAgainstHalf();
 
+	// AND THE DAY'S INCOME, AFTER THEM TOO: Pax Imperialis and Wealth Interest pay through the game instance (issue #2741
+	// slice 6c, B8).
+	if (OnDayPassed)
+	{
+		OnDayPassed(*this, Day());
+	}
+
 	Report.bPillarExposed = Map->IsPillarExposed();
 
 	// THE BOARD IS EMPTY, SO THE NEXT WAVE COMES NOW. The project owner's rule
@@ -2013,6 +2020,11 @@ FCataclysmTreeDamageFactors UCataclysmEmpireRun::TreeDamageFactorsFor(int32 City
 	const float ByEvents = TreeBonuses.EventDamageFactorFor(ClearsSinceLastSurge, CitiesReclaimed);
 	Taken.Defence *= ByEvents;
 	Taken.Population *= ByEvents;
+
+	// AND IMPERIAL RESERVE, which reads the gold held (issue #2741 slice 6c, B7): every city, defence and population.
+	const float ByGold = TreeBonuses.GoldDamageFactorFor(GoldHeldAtTierOne ? GoldHeldAtTierOne() : 0.0);
+	Taken.Defence *= ByGold;
+	Taken.Population *= ByGold;
 	return Taken;
 }
 

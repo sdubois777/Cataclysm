@@ -96,3 +96,8 @@ keystone_00000049#1,keystone_00000049,0,GoldDoubledBelowHalfPopulation,1.0,0,,0.
 keystone_0000003t#1,keystone_0000003t,0,UnpickedGoldShareAtClear,0.1,0,,0.0
 basic_0000003z#1,basic_0000003z,0,GoldPerFloorAtClear,50.0,0,,0.0
 basic_tres_t2c#1,basic_tres_t2c,0,ClearPayoutIncreased,0.1,0,,0.0
+keystone_00000048#1,keystone_00000048,0,MagicFindPerTenThousandGoldHeld,0.01,0,,0.0
+basic_tres_t3f#1,basic_tres_t3f,0,MagicFindPerFiftyThousandGoldHeld,0.01,0,,0.2
+basic_00000045#1,basic_00000045,0,DamageTakenPerHundredThousandGold,0.01,0,,0.25
+keystone_0000004a#1,keystone_0000004a,0,GoldPerThousandCitizensDaily,5.0,0,,0.0
+basic_00000041#1,basic_00000041,0,GoldInterestEveryTwentyDays,0.005,0,,5000.0

@@ -288,6 +288,13 @@ FCataclysmEmpireTreeBonuses UCataclysmEmpireTree::CityBonusesFor(const UDataTabl
 			Bonuses.ReclaimPoints += Points;
 			Bonuses.ReclaimReductionCap = Row->Cap;
 			break;
+
+		// SLICE 6C. Imperial Reserve, compounded per point for each whole 100,000 tier 1 gold held (B7).
+		case ECataclysmEmpireTreeEffect::DamageTakenPerHundredThousandGold:
+			Bonuses.ReductionPerGoldStep = Row->PerPoint;
+			Bonuses.GoldStepPoints += Points;
+			Bonuses.GoldReductionCap = Row->Cap;
+			break;
 		case ECataclysmEmpireTreeEffect::SanctuarySurvivesAt:
 			Bonuses.SanctuarySurvivesAt = FMath::Max(Bonuses.SanctuarySurvivesAt, Row->PerPoint);
 			break;
@@ -484,6 +491,22 @@ FCataclysmEmpireTreePlayerBonuses UCataclysmEmpireTree::PlayerBonusesFor(const U
 		case ECataclysmEmpireTreeEffect::ClearPayoutIncreased:
 			Bonuses.ClearPayoutIncreased += Total;
 			break;
+
+		// SLICE 6C. The gold held (B6) and the day's income (B8).
+		case ECataclysmEmpireTreeEffect::MagicFindPerTenThousandGoldHeld:
+			Bonuses.MagicFindPerTenThousandGoldHeld += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::MagicFindPerFiftyThousandGoldHeld:
+			Bonuses.MagicFindPerFiftyThousandGoldHeld += Row->PerPoint * static_cast<float>(Points);
+			Bonuses.MagicFindFromGoldCap = Row->Cap;
+			break;
+		case ECataclysmEmpireTreeEffect::GoldPerThousandCitizensDaily:
+			Bonuses.GoldPerThousandCitizensDaily += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::GoldInterestEveryTwentyDays:
+			Bonuses.GoldInterestEveryTwentyDays += Row->PerPoint * static_cast<float>(Points);
+			Bonuses.GoldInterestCap = Row->Cap;
+			break;
 		default:
 			break;
 		}
@@ -496,8 +519,8 @@ FCataclysmEmpireTreeDungeonState UCataclysmEmpireTree::DungeonStateFor(const UCa
 																	   const TArray<FName>& FloorModifiers,
 																	   int32 FloorNumber)
 {
-	FCataclysmEmpireTreeDungeonState State;
-	State.ActiveTypes = Run.ActiveCataclysms.Num();
+	// THE RUN-WIDE PART FIRST: the active types, slice 6a's counts and slice 6b's flag (`EmpireStateFor`).
+	FCataclysmEmpireTreeDungeonState State = EmpireStateFor(Run);
 
 	// THE DEFAULT WALK IS THE STARTING RATE, ONE FLOOR A DAY, OVER THE FLOORS THE DUNGEON HAS -- the city's and the
 	// tree's included, as the #1390 analysis counted "days under default run time" -- and a Cow Level's double, which
@@ -543,23 +566,6 @@ FCataclysmEmpireTreeDungeonState UCataclysmEmpireTree::DungeonStateFor(const UCa
 
 	if (Run.Map)
 	{
-		// SLICE 6A'S COUNTS (G3): the cities not fallen, the fallen ones that can still be reclaimed, the citizens of the
-		// standing cities as the map totals them, and the upgrades the standing cities hold.
-		State.Citizens = Run.Map->TotalPopulation();
-		for (const FCataclysmCity& City : Run.Map->Cities)
-		{
-			if (City.bFallen)
-			{
-				State.FallenCitiesNotErased += City.bErased ? 0 : 1;
-				continue;
-			}
-			++State.StandingCities;
-			State.StandingCityUpgrades += City.Upgrades.Num();
-		}
-
-		// AND STIMULUS PACKAGE'S FLAG, the run's (slice 6b, B2).
-		State.bPopulationBelowHalf = Run.bPopulationFellBelowHalf;
-
 		for (const FCataclysmCity& City : Run.Map->Cities)
 		{
 			if (City.bFallen)
@@ -655,7 +661,91 @@ FCataclysmEmpireTreeDropRules UCataclysmEmpireTree::DropRulesFor(const FCataclys
 
 	// AND WHAT THE KILL'S GOLD PILES ARE MULTIPLIED BY (slice 6a), which draws nothing.
 	Rules.GoldMultiplier = GoldMultiplierFor(Bonuses, State);
+
+	// AND THE MAGIC FIND THE GOLD HELD GIVES THE KILL (slice 6c, B6), which draws nothing either.
+	Rules.MagicFindFromGold = MagicFindFromGoldFor(Bonuses, State);
 	return Rules;
+}
+
+FCataclysmEmpireTreeDungeonState UCataclysmEmpireTree::EmpireStateFor(const UCataclysmEmpireRun& Run)
+{
+	FCataclysmEmpireTreeDungeonState State;
+	State.ActiveTypes = Run.ActiveCataclysms.Num();
+
+	// STIMULUS PACKAGE'S FLAG, the run's (slice 6b, B2).
+	State.bPopulationBelowHalf = Run.bPopulationFellBelowHalf;
+
+	// SLICE 6A'S COUNTS (G3): the cities not fallen, the fallen ones that can still be reclaimed, the citizens of the
+	// standing cities as the map totals them, and the upgrades the standing cities hold.
+	if (Run.Map)
+	{
+		State.Citizens = Run.Map->TotalPopulation();
+		for (const FCataclysmCity& City : Run.Map->Cities)
+		{
+			if (City.bFallen)
+			{
+				State.FallenCitiesNotErased += City.bErased ? 0 : 1;
+				continue;
+			}
+			++State.StandingCities;
+			State.StandingCityUpgrades += City.Upgrades.Num();
+		}
+	}
+	return State;
+}
+
+float UCataclysmEmpireTree::MagicFindFromGoldFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
+												 const FCataclysmEmpireTreeDungeonState& State)
+{
+	// IN TIER 1 GOLD (R10), IN WHOLE STEPS (B6). THE GILDED PATH HAS NO CAP: its text names none. Venture Capital's is
+	// its text's 20%.
+	const double AtTierOne = static_cast<double>(FMath::Max<int64>(0, State.GoldHeld)) / FMath::Max(1.0e-6, State.GoldScale);
+	const float GildedSteps = static_cast<float>(FMath::FloorToDouble(AtTierOne / GildedPathGoldAStep));
+	const float VentureSteps = static_cast<float>(FMath::FloorToDouble(AtTierOne / VentureCapitalGoldAStep));
+	const float Gilded = FMath::Max(0.0f, Bonuses.MagicFindPerTenThousandGoldHeld) * GildedSteps;
+	float Venture = FMath::Max(0.0f, Bonuses.MagicFindPerFiftyThousandGoldHeld) * VentureSteps;
+	if (Bonuses.MagicFindFromGoldCap > 0.0f)
+	{
+		Venture = FMath::Min(Venture, Bonuses.MagicFindFromGoldCap);
+	}
+	return 100.0f * (Gilded + Venture);
+}
+
+FCataclysmEmpireTreeDailyIncome UCataclysmEmpireTree::DailyIncomeFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
+																	 const FCataclysmEmpireTreeDungeonState& State,
+																	 int32 Day, int64 GoldHeld, double GoldScale)
+{
+	FCataclysmEmpireTreeDailyIncome Income;
+	const double Scale = FMath::Max(0.0, GoldScale);
+
+	// THE "ALL SOURCES" INCREASES G2 SENDS TO INCOME: Untouchable Wealth, Fiscal Policy, Prosperity Index.
+	const float CitizenSteps = FMath::FloorToFloat(FMath::Max(0.0f, State.Citizens)
+												   / static_cast<float>(ProsperityCitizensAStep));
+	const float UpgradeSteps = static_cast<float>(FMath::Max(0, State.StandingCityUpgrades) / FiscalPolicyUpgradesAStep);
+	const double Raised = 1.0 + FMath::Max(0.0f, Bonuses.GoldPerStandingCity * static_cast<float>(
+		FMath::Max(0, State.StandingCities)) + Bonuses.GoldPerFiveCityUpgrades * UpgradeSteps
+		+ Bonuses.GoldPerTenThousandCitizens * CitizenSteps);
+
+	// PAX IMPERIALIS, EVERY DAY: its tier 1 gold for each whole 1,000 citizens of the standing cities.
+	if (Bonuses.GoldPerThousandCitizensDaily > 0.0f)
+	{
+		const double Thousands = FMath::FloorToDouble(FMath::Max(0.0f, State.Citizens) / PaxCitizensAStep);
+		Income.Pax = FMath::RoundToInt64(static_cast<double>(Bonuses.GoldPerThousandCitizensDaily) * Thousands * Scale
+										 * Raised);
+	}
+
+	// WEALTH INTEREST, EVERY 20TH DAY: its share of the gold held, held at its tier 1 cap a payment, and then raised.
+	if (Bonuses.GoldInterestEveryTwentyDays > 0.0f && Day > 0 && Day % WealthInterestDaysAStep == 0)
+	{
+		double Interest = static_cast<double>(Bonuses.GoldInterestEveryTwentyDays)
+			* static_cast<double>(FMath::Max<int64>(0, GoldHeld));
+		if (Bonuses.GoldInterestCap > 0.0f)
+		{
+			Interest = FMath::Min(Interest, static_cast<double>(Bonuses.GoldInterestCap) * Scale);
+		}
+		Income.Interest = FMath::RoundToInt64(Interest * Raised);
+	}
+	return Income;
 }
 
 float UCataclysmEmpireTree::GoldMultiplierFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
