@@ -754,7 +754,7 @@ PORTED" bullet on the Demonic Cataclysm's Rifts in `game/Source/CataclysmEmpire/
   Phase 1 was written without a compile, as ruled, at `31a879a99` on `0b7b554d1`. It was rebased twice, onto
   `e583b0788` as `-2` and onto `3d0193bfa` as `-3`, and at its turn compiled three ways at `6e4ca7d41` with no
   warning. The diagnostic window then ran 5,001 tests and 5,000 passed; the loaded-run test could not load its
-  fixture, and is corrected below, not yet compiled.
+  fixture, and is corrected below and compiled again.
 - **THE DIAGNOSTIC WINDOW PROVES NOTHING ABOUT THE FIX, AND ITS FAILURES ARE EXPECTED** (ruled Q2, below). Changing how
   22 streams are seeded changes what they draw, so any test that pins a draw from one of them moves. The window lists
   those tests by name, from evidence. The real window comes after the commit that corrects them, registers each moved
@@ -1008,6 +1008,21 @@ city 7, which a whole map has. `RunInto`'s two other refusals, a city out of its
 one timer, do not apply to it. Each call's result is now taken before its message is formatted, so the message carries
 `RunInto`'s reason: the window showed MSVC making the call first, but C++ does not fix the order a function's arguments
 are evaluated in. The assertions are unchanged: the stream's state 1357924680, then Demonic, then War.
+
+### Compiled again at `4789167b5`, 2026-11-20
+
+The same three builds, on the coordinating session's GO, under `seed-compile`, released after the third.
+
+- Build 1, the branch: "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.33.cpp", the unity file that
+  holds `CataclysmSeedingTests.cpp`.
+- Build 2, each changed file alone: "Build: Succeeded - 16 actions, 11 files compiled: CataclysmSeedingTests.cpp, ...".
+  The corrected file compiled alone, so its own include of `Save/CataclysmSaveGather.h` is enough. The seven other
+  changed `Cataclysm` files were not compiled again: their source is unchanged since the first round's build 2.
+- Build 3, the unity files again: "Build: Succeeded - 15 actions, 10 files compiled", the five unity files that hold the
+  changed files among them.
+
+No compiler warning or error line in any of the three. Python at `4789167b5`: "7776 passed, 9 skipped", the JUnit file
+agreeing (7,785 tests, no failure, 9 skipped); ruff clean.
 
 ### Registered before the proof window
 
