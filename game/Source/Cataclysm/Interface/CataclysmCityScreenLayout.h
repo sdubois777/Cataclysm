@@ -12,8 +12,8 @@ class UCataclysmEmpireRun;
 /**
  * One upgrade the city screen offers, and whether it can be bought.
  *
- * A REASON RATHER THAN JUST A FLAG. Fourteen of the twenty-four upgrades cannot
- * be bought because their effect is not built, and a player looking at a greyed
+ * A REASON RATHER THAN JUST A FLAG. Five of the twenty-four upgrades cannot be
+ * bought because their effect is not built (issue #2781 built five more), and a player looking at a greyed
  * row wants to know which of the several possible reasons applies. The reason is
  * the same text `UCataclysmCityUpgradeRules::ResultText` gives, so the screen and
  * the console command say the same thing about the same refusal.
@@ -178,8 +178,8 @@ public:
 	 *
 	 * ALL TWENTY-FOUR AND NOT ONLY THE BUYABLE ONES. The screen shows the ones
 	 * that cannot be built in a section of their own; hiding them would make the
-	 * game look as though it has ten city upgrades rather than twenty-four with
-	 * fourteen waiting on other systems.
+	 * game look as though it has nineteen city upgrades rather than twenty-four
+	 * with five waiting on other systems.
 	 *
 	 * EMPTY WHEN THE DATATABLE IS MISSING, which is the same answer
 	 * `UCataclysmCityUpgradeMapping::AllRowNames` gives, and the screen says so

@@ -309,6 +309,13 @@ void ACataclysmEnemyCharacter::HandleDeath()
 		// payments, and both ask this; nothing else on this path changes.
 		const bool bPays = PaysForItsDeath();
 
+		// AND WHAT THE CITY THE DUNGEON STANDS ON GIVES (issue #2781): its Treasurer and Artisan upgrades, none for a
+		// fallen city (X1). The magic find adds and the loot quantity multiplies here, before anything rolls (X2, X3);
+		// the materials, the gold and the experience take theirs below. Asking draws nothing.
+		const FCataclysmCityDungeonRewards CityRewards = ACataclysmDungeonGameMode::CityRewardsIn(World);
+		MagicFind += CityRewards.MagicFindIncreased;
+		LootQuantity *= CityRewards.LootMore;
+
 		FRandomStream Stream(GetUniqueID()
 			^ static_cast<int32>(World->GetTimeSeconds() * 1000.0f));
 
@@ -324,7 +331,8 @@ void ACataclysmEnemyCharacter::HandleDeath()
 			UCataclysmDropSpawner::SpawnDropsFor(
 				World, RarityStepItPaysAs(), MagicFind, LootQuantity, GetActorLocation(),
 				Stream, /*bMarked=*/bRaisedByARule, /*bInfested=*/false, RandomGearDropsGiven(),
-				/*MaterialCountGiven=*/-1, TreeDrops.LowTierMaterialExtraChance);
+				/*MaterialCountGiven=*/-1, TreeDrops.LowTierMaterialExtraChance, ECataclysmRarity::Everyday,
+				CityRewards.MaterialsMore);
 			DropWhatItWore(World, GetActorLocation(), Stream);
 
 			// AND ITS GOLD, LAST, so the piles draw on the stream after every item and leave each item as it was. The
@@ -334,7 +342,7 @@ void ACataclysmEnemyCharacter::HandleDeath()
 			if (UCataclysmDropSpawner::GoldDropsIn(World))
 			{
 				UCataclysmDropSpawner::SpawnGoldFor(World, RarityStepItPaysAs(), GetActorLocation(), Stream,
-													TreeDrops.GoldMultiplier);
+													TreeDrops.GoldMultiplier * CityRewards.GoldMore);
 			}
 
 			// AND THE TREE'S EXTRA DROPS AFTER THE GOLD, so every draw above is as it was, and a kill with none of the
@@ -376,14 +384,17 @@ void ACataclysmEnemyCharacter::HandleDeath()
 			// thing inside the gate, which a Python test reads as text.
 			if (State && bPays)
 			{
-				State->GrantExperience(State->ExperienceAfterGain(UCataclysmEnemyScore::ScoreFor(
-					UCataclysmEnemyScore::FloorIn(World), RarityStepItPaysAs())));
+				// THE CITY'S "MORE EXPERIENCE" DOUBLES THE CREATURE'S FIGURE (issue #2781, X4), and the skills' share
+				// below follows it (ruling 1).
+				State->GrantExperience(State->ExperienceAfterGain(CityRewards.ExperienceFrom(UCataclysmEnemyScore::ScoreFor(
+					UCataclysmEnemyScore::FloorIn(World), RarityStepItPaysAs()))));
 
 				// AND THE SAME EXPERIENCE TO THE SKILLS THAT HURT IT, by the share of its health each removed. Issue
 				// #2764, ruled 2026-11-19. The character's own grant above is unchanged; a creature no levelling skill
 				// touched -- killed by the basic attack alone -- gives its skills nothing.
-				State->GrantSkillExperience(State->ExperienceAfterGain(UCataclysmEnemyScore::ScoreFor(
-												UCataclysmEnemyScore::FloorIn(World), RarityStepItPaysAs())),
+				State->GrantSkillExperience(State->ExperienceAfterGain(CityRewards.ExperienceFrom(
+												UCataclysmEnemyScore::ScoreFor(UCataclysmEnemyScore::FloorIn(World),
+																			   RarityStepItPaysAs()))),
 											HealthRemovedBySkill, MaxHealthForTheSkillSplit());
 			}
 

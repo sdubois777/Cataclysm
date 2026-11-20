@@ -2502,7 +2502,7 @@ ECataclysmCityUpgradeResult UCataclysmEmpireRun::WouldBuyCityUpgrade(
 
 	if (!UCataclysmCityUpgradeRules::IsBuilt(Upgrade.Effect))
 	{
-		// REFUSED RATHER THAN SOLD. Fourteen of the 24 upgrades are waiting on a
+		// REFUSED RATHER THAN SOLD. Five of the 24 upgrades are waiting on a
 		// system that does not exist, and a slot spent on one of those would buy
 		// the player nothing at all.
 		return ECataclysmCityUpgradeResult::EffectNotBuiltYet;

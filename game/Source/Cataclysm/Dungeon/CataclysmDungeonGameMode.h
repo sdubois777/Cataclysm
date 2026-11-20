@@ -914,6 +914,18 @@ public:
 	static FCataclysmEmpireTreeDropRules EmpireTreeDropRulesIn(UWorld* World);
 
 	/**
+	 * What the upgrades of the city the bound dungeon stands on give a kill here
+	 * (`UCataclysmCityUpgradeRules::DungeonRewardsOf`). Issue #2781. NONE WITH NO RUN, NO DUNGEON BOUND, OR THE CITY
+	 * FALLEN: a fallen city's upgrades pay nothing until it is reclaimed (X1, a judgement of 2026-11-20 -- the design
+	 * document says nothing of a fallen city's upgrades, and Fiscal Policy and The Cartographer's Blessing count
+	 * standing cities only).
+	 */
+	FCataclysmCityDungeonRewards CityRewardsHere() const;
+
+	/** The same, for a kill in this world: what `ACataclysmEnemyCharacter::HandleDeath` asks. Issue #2781. */
+	static FCataclysmCityDungeonRewards CityRewardsIn(UWorld* World);
+
+	/**
 	 * The player bonuses to use when there is no game instance to ask, for the reason `SetEmpireRunForTests` gives: a
 	 * world built by `UWorld::CreateWorld` has no game instance of this project's class, so without this every test of
 	 * the tree on a floor would be a test of the case with no tree. Issue #2741 slice 5a.

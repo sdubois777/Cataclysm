@@ -276,8 +276,8 @@ void UCataclysmCityScreenWidget::WriteDetailRows()
 	}
 
 	// AND WHAT IS DESIGNED BUT DOES NOTHING. Shown rather than hidden, because
-	// hiding them would make the game look as though it has ten city upgrades
-	// rather than twenty-four with fourteen waiting on other systems.
+	// hiding them would make the game look as though it has nineteen city
+	// upgrades rather than twenty-four with five waiting on other systems.
 	TArray<FCataclysmCityUpgradeOffer> NotBuilt;
 
 	for (const FCataclysmCityUpgradeOffer& Offer :
