@@ -162,16 +162,6 @@ public:
 	float RisenAtSeconds = -1.0f;
 
 	/**
-	 * True for a minion that holds no place under any summon cap: one raised by
-	 * "Enemies killed by necrosis rise as temporary minions for 5-10 seconds".
-	 * Issue #1833 group E part 4b, ruled 2026-10-02: it is raised by the rule,
-	 * lasts only its seconds, and neither fills a cap nor is destroyed to make
-	 * room. `UCataclysmCommand::MinionsOfTypeCommandedBy`, which both cap counts
-	 * read, leaves it out.
-	 */
-	bool bOutsideSummonCaps = false;
-
-	/**
 	 * Its type row's Tags, such as `Type.Minion, Type.Deployable,
 	 * Minion.Machine`. Issue #1833, deployable Part 1. Empty for a minion with
 	 * no type row.
@@ -455,7 +445,7 @@ public:
 	 * slot's key PLACES its gadget where the player stands, one gadget per converted slot, a new press moves it, and
 	 * the player no longer casts that skill.
 	 *
-	 * A GADGET OF ITS OWN TYPE ROW, `SkillGadgetTypeName`, and outside every summon cap. It has no lifespan: the floor
+	 * A GADGET OF ITS OWN TYPE ROW, `SkillGadgetTypeName`, one per converted slot. It has no lifespan: the floor
 	 * being cleared destroys it as every deployable is destroyed (`UCataclysmFloorContents::ClearTheFloor`), and it
 	 * can be struck and killed as any gadget can. EVERY OTHER GADGET ROW REACHES IT, because it is a gadget (S9).
 	 *
@@ -732,7 +722,7 @@ public:
 	 * on the gadget's own ability system, renewed on each step while the flag is held. It was chosen as the least
 	 * change: `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` already empties every blow and every tick
 	 * inside it, and nothing in that file is touched. The window empties DAMAGE and nothing else: a stun, a
-	 * knockback, the summon cap removing the gadget and an enemy choosing it as a target do not read it.
+	 * knockback and an enemy choosing it as a target do not read it.
 	 *
 	 * THE DRAIN IS A DIRECT WRITE OF HEALTH, as the delayed share of damage taken is drained
 	 * (`UCataclysmDelayedDamage::DrainStep`), so the window above does not stop it. It is counted by the gadget's
@@ -868,12 +858,6 @@ public:
 	TObjectPtr<UStaticMeshComponent> PlaceholderBody;
 
 	/**
-	 * Blow up, hurting everything within RadiusCm, then be destroyed.
-	 *
-	 * Summon Imp: "Summoning a fourth destroys the oldest, which explodes for
-	 * damage in a 3 meter radius."
-	 */
-	/**
 	 * Blow up, hurting everything within the radius it was told, then be
 	 * destroyed.
 	 *
@@ -887,16 +871,17 @@ public:
 	 * minion's type tags, read once with no target, multiplies it. Ruled
 	 * 2026-11-02; the definition has the reasoning.
 	 *
-	 * @param bSetOffByTheSummonCap  true only where the summon cap destroys the
-	 *        oldest (`UCataclysmSummonSkill::SummonOne`). Issue #2764, slice 2b,
-	 *        ruled 2026-11-20 (Q-B, option b): that explosion is Summon Imp's own
-	 *        row's, so it credits the skill that summoned this minion; one a
-	 *        passive sets off -- `minion_explodes_on_death` -- credits nothing, by
-	 *        judgement 2. Both are sized by the summoning skill's level, the
-	 *        figure being a share of this minion's own blow.
+	 * IT CREDITS NO SKILL, AND IS SIZED BY THE SUMMONING SKILL'S LEVEL. Every
+	 * explosion a passive sets off -- `minion_explodes_on_death`, a death blast
+	 * -- is damage the passive adds on top, which credits nothing (issue #2764,
+	 * judgement 2). Summon Imp's own cap explosion, "Summoning a fourth destroys
+	 * the oldest, which explodes", credited the skill until issue #2787 removed
+	 * the cap and that sentence with it (the owner's ruling of 2026-11-20, "Drop
+	 * it with the cap"). The figure, a share of this minion's own blow, still
+	 * takes the factor the blow takes (#2764, slice 2b, Q-B).
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Minion")
-	void Explode(bool bSetOffByTheSummonCap = false);
+	void Explode();
 
 	/**
 	 * The share of the dying creature's own maximum health its death deals,
@@ -991,7 +976,7 @@ public:
 	/**
 	 * The Fervour one Tyrant's Minion reserves while it stands, before Crowned. Issue #2787, a number under the
 	 * owner's delegation: an imp's 10, for a creature that lasts half an imp's time and hits about three times as
-	 * hard. Refreshing the one standing reserves nothing more.
+	 * hard. Each one summoned reserves it; several may stand (#2787).
 	 */
 	static constexpr float TyrantsMinionFervourReserve = 10.0f;
 
@@ -1002,24 +987,21 @@ public:
 	 */
 	bool bIsTyrantsMinion = false;
 
-	/** The Tyrant's Minion `Commander` has standing, alive, or null. At most one stands (ruling #3). */
+	/** A Tyrant's Minion `Commander` has standing, alive, the nearest of any, or null. Several may stand (#2787). */
 	static ACataclysmMinion* TyrantsMinionOf(const AActor* Commander);
 
 	/**
-	 * Summon `Commander`'s Tyrant's Minion at `Where`, where a minion or thrall of its has just died, or refresh
-	 * the one standing. Called by the commander's death hook, `UCataclysmVitalAttributeSet::
+	 * Summon a Tyrant's Minion for `Commander` at `Where`, where a minion or thrall of its has just died. Called by the commander's death hook, `UCataclysmVitalAttributeSet::
 	 * NotifyIfHealthReachedZero`, after the death is handled, so for exactly the deaths `DeathBlast` fires for (Q3).
 	 *
 	 * NOTHING WHEN THE LOST ONE WAS A TYRANT'S MINION (ruling #3: it explodes but summons none), when the
 	 * commander's `TyrantsMinionSecondsStat` is nought, or when the commander is dead.
 	 *
-	 * ONE AT MOST (ruling #3). With one standing, no second is summoned: the standing one's time restarts at the
-	 * full length and its health is kept (Q5). The length is raised by `minion_duration` as `Spawn` raises it.
+	 * A NEW ONE EVERY TIME, BESIDE ANY STANDING, AND NOTHING WHEN THE POOL CANNOT HOLD ITS RESERVE. Issue #2787: the
+	 * owner's ruling of 2026-11-20 removed every count cap on what reserves the class resource, which replaced ruling
+	 * #3's "one at most" and its refresh (Q5). It is in no summon skill's list.
 	 *
-	 * OUTSIDE EVERY SUMMON CAP (Q4): it fills none, is never destroyed to make room in one, and is in no summon
-	 * skill's list.
-	 *
-	 * @return the one summoned or refreshed, or null
+	 * @return the one summoned, or null
 	 */
 	static ACataclysmMinion* SummonTyrantsMinion(AActor* Commander, bool bLostWasTyrantsMinion,
 												 const FVector& Where);
@@ -1049,7 +1031,7 @@ public:
 	/**
 	 * The Fervour one Warhound reserves while it stands, before Crowned. Issue #2787, a number under the owner's
 	 * delegation: half an imp's 10, for a creature that lasts half an imp's time and comes from a chance on a blow
-	 * taken rather than a choice. Refreshing the one standing reserves nothing more.
+	 * taken rather than a choice. Each one summoned reserves it; several may stand (#2787).
 	 */
 	static constexpr float WarhoundFervourReserve = 5.0f;
 
@@ -1067,16 +1049,15 @@ public:
 	 */
 	bool bIsWarhound = false;
 
-	/** The Warhound `Summoner` has standing, alive, or null. At most one stands (Q3). */
+	/** A Warhound `Summoner` has standing, alive, the nearest of any, or null. Several may stand (#2787). */
 	static ACataclysmMinion* WarhoundOf(const AActor* Summoner);
 
 	/**
-	 * Summon `Summoner`'s Warhound beside it, or refresh the one standing, as `SummonTyrantsMinion` does a Tyrant's
-	 * Minion (Q3): for the summoner's `WarhoundSecondsStat` raised by `minion_duration`, at most one, a new summon
-	 * restarting the standing one's time at the full length and keeping its health, outside every summon cap.
-	 * Nothing for a summoner that is dead or holds the seconds at nought.
+	 * Summon a Warhound beside `Summoner`, for the summoner's `WarhoundSecondsStat` raised by `minion_duration`: a new
+	 * one every time, beside any standing, since issue #2787 removed Q3's "at most one" and its refresh. Nothing for a
+	 * summoner that is dead, holds the seconds at nought, or whose pool cannot hold the Warhound's reserve.
 	 *
-	 * @return the one summoned or refreshed, or null
+	 * @return the one summoned, or null
 	 */
 	static ACataclysmMinion* SummonWarhound(AActor* Summoner);
 
@@ -1186,10 +1167,10 @@ public:
 	 * gadget behaviour reaches it, the skill gadget's step and pricing included. It ARMS after `SkillTrapArmSeconds`
 	 * (T1), TRIGGERS on the first enemy within `SkillTrapTriggerRadiusCm` (T2) on the quarter-second step, CASTS the
 	 * player's skill held in its slot once, free (M5), and is USED UP: destroyed, with no explosion and no
-	 * `gadget_destroyed` (T14). It lasts `SkillTrapSeconds` and A TRAP THAT EXPIRES DOES NOT TRIGGER (T4). At most
-	 * `SkillTrapsMostPerPlayer` stand for one player across all converted slots, and over the cap the oldest is
-	 * destroyed without triggering (T6). 1.0 s, 3 m, 20 s, 5 and the row's health of 40 are numbers under the owner's
-	 * delegation of unstated numbers.
+	 * `gadget_destroyed` (T14). It lasts `SkillTrapSeconds` and A TRAP THAT EXPIRES DOES NOT TRIGGER (T4). HOW MANY STAND
+	 * IS LIMITED BY THE RESERVE ALONE, since issue #2787 removed T6's cap of five (the owner's ruling of 2026-11-20 on
+	 * count caps). 1.0 s, 3 m, 20 s and the row's health of 40 are numbers under the owner's delegation of unstated
+	 * numbers.
 	 *
 	 * ITS TYPE ROW IS THE ENCHANTMENT SESSION'S, `SkillTrap` in `game/Data/MinionTypes.csv`. Without it a press places
 	 * nothing and logs why, as a skill gadget's does. NOTHING HERE IS FOR IRON FORTRESS'S `SpikeTrap` (T15): every rule
@@ -1206,13 +1187,10 @@ public:
 	/** Seconds a trap lasts, before the summoner's `minion_duration` rows that name its tags (T4). */
 	static constexpr float SkillTrapSeconds = 20.0f;
 
-	/** The most skill traps one player has standing, across every converted slot (T6). */
-	static constexpr int32 SkillTrapsMostPerPlayer = 5;
-
 	/**
 	 * The Fervour one skill trap reserves while it stands, before Crowned. Issue #2787, a number under the owner's
-	 * delegation: the War gadgets' 5, for a machine that lasts 20 s and is used up by one cast. Over the cap the
-	 * oldest traps' reserves are counted as freed before the new one is asked to fit, as an evicted imp's are.
+	 * delegation: the War gadgets' 5, for a machine that lasts 20 s and is used up by one cast. It is the only limit on
+	 * how many stand (#2787).
 	 */
 	static constexpr float SkillTrapFervourReserve = 5.0f;
 
@@ -1232,9 +1210,9 @@ public:
 
 	/**
 	 * Place a skill trap for `Player`'s `Slot` at `Location`, or null with the reason logged. NULL, AND NOTHING LEFT
-	 * STANDING AND NOTHING DESTROYED, WHEN THE TYPE ROW IS MISSING, as `PlaceSkillGadget` refuses. Over the cap the
-	 * player's oldest skill traps are destroyed without triggering (T6). Raises `trap_placed` on the player with the
-	 * trap's type tags. Free: the press that calls this is what pays.
+	 * STANDING AND NOTHING DESTROYED, WHEN THE TYPE ROW IS MISSING OR THE POOL CANNOT HOLD ITS RESERVE, as
+	 * `PlaceSkillGadget` refuses. No count cap: T6's five went in issue #2787. Raises `trap_placed` on the player with
+	 * the trap's type tags. Free: the press that calls this is what pays.
 	 */
 	static ACataclysmMinion* PlaceSkillTrap(AActor* Player, ECataclysmAbilitySlot Slot, const FVector& Location);
 
@@ -1334,18 +1312,13 @@ public:
 	AActor* SkillTrapNearestEnemyTo(AActor* TriggeringEnemy) const;
 
 	/**
-	 * TRAPS LAYER 3 (ruled 2026-10-21, M1 and M2): the two reads layer 1 left. "Your trap skills get +1-6 to max trap
-	 * count" is `TrapCapBonusStat`, a flat bonus added to `SkillTrapsMostPerPlayer`: ONE CAP ACROSS EVERY CONVERTED SLOT
-	 * (M1 (a)), which `PlaceSkillTrap` counts and the skill bar shows as "Traps N/M". "Traps do not expire, they remain
-	 * armed until triggered" is `TrapsDoNotExpireStat`, a flag: A TRAP PLACED WHILE IT IS HELD HAS NO LIFE SPAN (M2 (a)),
-	 * taken at placing, and the cap still destroys the oldest. Both are the player's, asked with `Type.Trap` alone, so
-	 * a row requiring nothing or `Type.Trap` reaches them. No gameplay attribute and no base.
+	 * TRAPS LAYER 3 (ruled 2026-10-21, M2): "Traps do not expire, they remain armed until triggered" is
+	 * `TrapsDoNotExpireStat`, a flag: A TRAP PLACED WHILE IT IS HELD HAS NO LIFE SPAN (M2 (a)), taken at placing. It is
+	 * the player's, asked with `Type.Trap` alone, so a row requiring nothing or `Type.Trap` reaches it. No gameplay
+	 * attribute and no base. M1's "+1-6 to max trap count" went with the cap in issue #2787 and became "Your traps
+	 * reserve 5%-25% less Fervour", read by `UCataclysmCommand::ReserveFor`.
 	 */
-	static const TCHAR* TrapCapBonusStat;
 	static const TCHAR* TrapsDoNotExpireStat;
-
-	/** The most skill traps `Player` may have standing: `SkillTrapsMostPerPlayer` plus the cap bonus, rounded, at least 1. */
-	static int32 SkillTrapsMostFor(const AActor* Player);
 
 	/** Whether a skill trap `Player` places now has no life span: the no-expire flag, read as above nought. */
 	static bool SkillTrapsDoNotExpireFor(const AActor* Player);
@@ -1531,8 +1504,8 @@ public:
 	 * Leave this minion's chaos pool where it stands, if its commander's row says so and it is a minion by its
 	 * type's tags. Called by `HandleDeath`, which is the one way a minion is killed.
 	 *
-	 * NOT CALLED FOR A MINION THAT IS REMOVED WITHOUT BEING KILLED. One whose time ran out, one the summon cap
-	 * removed to make room and one a closing rift took are destroyed without `HandleDeath`, and leave nothing.
+	 * NOT CALLED FOR A MINION THAT IS REMOVED WITHOUT BEING KILLED. One whose time ran out and one a closing rift
+	 * took are destroyed without `HandleDeath`, and leave nothing.
 	 *
 	 * THE POOL IS ITS COMMANDER'S, so every row of the commander's that a zone reads reaches it, asked with the
 	 * dead minion's type tags. It deals Chaos damage.
@@ -1543,7 +1516,7 @@ public:
 
 	/**
 	 * Remember what the skill that summoned this one states its explosion is,
-	 * so a death can use the figures the summon cap already uses.
+	 * so a death can use them.
 	 *
 	 * TOLD AT THE SUMMONING RATHER THAN READ AT THE DEATH. The radius and the
 	 * damage are the skill row's, and a dying minion has no way back to the

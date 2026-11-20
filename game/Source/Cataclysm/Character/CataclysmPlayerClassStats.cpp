@@ -982,14 +982,18 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("skill_slot_is_a_trap"),
 		TEXT("trap_arming_speed"),
 		TEXT("trap_trigger_radius"),
-		// Traps layer 3, ruled 2026-10-21 (M1, M2), for "Your trap skills get +1-6
-		// to max trap count" and "Traps do not expire, they remain armed until
-		// triggered": the flat bonus added to the cap of five, and the flag under
-		// which a trap is placed with no life span, both read off the player with
-		// `Type.Trap` by ACataclysmMinion::SkillTrapsMostFor and
-		// SkillTrapsDoNotExpireFor. No gameplay attribute and no base.
-		TEXT("trap_cap_bonus"),
+		// Traps layer 3, ruled 2026-10-21 (M2), for "Traps do not expire, they
+		// remain armed until triggered": the flag under which a trap is placed
+		// with no life span, read off the player with `Type.Trap` by
+		// ACataclysmMinion::SkillTrapsDoNotExpireFor. No gameplay attribute and no
+		// base. (M1's trap cap bonus went with the cap, issue #2787.)
 		TEXT("traps_do_not_expire"),
+		// Issue #2787, the owner's rulings of 2026-11-20: what raised a count cap
+		// lowers the reserve instead. The percent LESS one minion, gadget or trap
+		// reserves, a negative row being that many percent more, read with the
+		// kind's tags by UCataclysmCommand::ReserveFor. No gameplay attribute and no
+		// base: a negative figure would be floored at nought in the combat set.
+		TEXT("minion_reserve_percent_less"),
 		// Traps layer 4, ruled 2026-10-21 (F1 to F9), for "Triggered traps have a
 		// 25%-50% chance to reset and rearm instead of being consumed", "Traps deal
 		// 100%-200% increased damage to the first enemy that triggers them",
@@ -1688,13 +1692,11 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			// MUST LEAVE A TARGET UNDER TO TAKE IT AS A THRALL. Issue #1718.
 			{UCataclysmCommand::PossessionThresholdBonusStat,
 			 Combat::GetPossessionThresholdBonusAttribute()},
-			// AND WHAT ONE MINION RESERVES, AND HOW MANY MINIONS MAY BE ACTIVE.
-			// Issue #1718. Both are applied to a figure the skill's own row
-			// states.
+			// AND WHAT ONE MINION RESERVES. Issue #1718. Applied to a figure the
+			// skill's own row states. (How many minions may be active had a stat
+			// here too, until issue #2787 removed the count caps.)
 			{UCataclysmCommand::MinionReserveReductionStat,
 			 Combat::GetMinionReserveReductionAttribute()},
-			{UCataclysmCommand::MinionCapBonusStat,
-			 Combat::GetMinionCapBonusAttribute()},
 			// AND THE THREE ENERGY-SHIELD KEYSTONES, WHICH ARE FLAGS. Issue
 			// #1515. Each is zero or above zero and nothing in between means
 			// anything, because each node states a RULE rather than a magnitude.

@@ -1853,8 +1853,8 @@ public:
 	 * gadget and carrying its type tags. Issue #1833 group D part 5, ruled
 	 * 2026-10-01: "destroyed" means killed. Called from
 	 * `ACataclysmMinion::HandleDeath` for a minion that `IsDeployable`, traps
-	 * included; a gadget whose lifespan runs out, or one the summon cap removes to
-	 * make room, never reaches that function and raises nothing.
+	 * included; a gadget whose lifespan runs out, or one destroyed without being
+	 * killed, never reaches that function and raises nothing.
 	 */
 	void NoteGadgetDestroyed(const AActor* Gadget, const FGameplayTagContainer& GadgetTags);
 
@@ -3037,7 +3037,7 @@ public:
 	/**
 	 * Record that a lost minion was replaced, so the next waits
 	 * `IntervalSeconds`. Only a replacement actually made is recorded: one the
-	 * summon cap refused leaves the clock as it was.
+	 * pool's reserve refused leaves the clock as it was.
 	 */
 	void NoteMinionReplaced(bool bForExplosion, float IntervalSeconds);
 

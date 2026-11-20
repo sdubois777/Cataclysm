@@ -483,7 +483,7 @@ FString UCataclysmSkillBar::SkillTrapTextFor(const FCataclysmSkillBarSlot& Slot)
 	}
 	return Slot.bSkillTrapCastsNothing
 		? FString(TEXT("Trap casts nothing"))
-		: FString::Printf(TEXT("Traps %d/%d"), Slot.SkillTrapsStanding, Slot.SkillTrapsMost);
+		: FString::Printf(TEXT("Traps %d"), Slot.SkillTrapsStanding);
 }
 
 FString UCataclysmSkillBar::BasicGadgetTextFor(bool bConverted, bool bCastsNothing, bool bPlaced,
@@ -535,7 +535,7 @@ FString UCataclysmSkillBar::BasicGadgetTextOf(const AActor* Player)
 }
 
 FString UCataclysmSkillBar::BasicTrapTextFor(bool bConverted, bool bCastsNothing, float RemainingSeconds,
-											 int32 TrapsStanding, int32 TrapsMost)
+											 int32 TrapsStanding)
 {
 	if (!bConverted)
 	{
@@ -547,8 +547,8 @@ FString UCataclysmSkillBar::BasicTrapTextFor(bool bConverted, bool bCastsNothing
 	}
 	const FString Wait = CooldownTextFor(RemainingSeconds);
 	return Wait.IsEmpty()
-		? FString::Printf(TEXT("Basic trap ready, traps %d/%d"), TrapsStanding, TrapsMost)
-		: FString::Printf(TEXT("Basic trap %ss, traps %d/%d"), *Wait, TrapsStanding, TrapsMost);
+		? FString::Printf(TEXT("Basic trap ready, traps %d"), TrapsStanding)
+		: FString::Printf(TEXT("Basic trap %ss, traps %d"), *Wait, TrapsStanding);
 }
 
 FString UCataclysmSkillBar::BasicTrapTextOf(const AActor* Player)
@@ -571,7 +571,7 @@ FString UCataclysmSkillBar::BasicTrapTextOf(const AActor* Player)
 	const bool bCastsNothing = !Row || !ACataclysmMinion::SkillGadgetMayCast(*Row)
 		|| UCataclysmBasicAttack::SecondsBetweenSwingsFor(Converting) <= 0.0f;
 	return BasicTrapTextFor(/*bConverted=*/true, bCastsNothing, Converting->BasicSkillTrapSecondsLeft(),
-							ACataclysmMinion::SkillTrapsOf(Player).Num(), ACataclysmMinion::SkillTrapsMostFor(Player));
+							ACataclysmMinion::SkillTrapsOf(Player).Num());
 }
 
 FString UCataclysmSkillBar::LockedNotice()
@@ -801,7 +801,6 @@ TArray<FCataclysmSkillBarSlot> UCataclysmSkillBar::Read(const AActor* Player)
 				Box.bIsASkillTrap = true;
 				Box.Name = SkillTrapName();
 				Box.SkillTrapsStanding = ACataclysmMinion::SkillTrapsOf(Player).Num();
-				Box.SkillTrapsMost = ACataclysmMinion::SkillTrapsMostFor(Player);
 				const UCataclysmWeaponSlotsComponent* Held =
 					Player->FindComponentByClass<UCataclysmWeaponSlotsComponent>();
 				const FCataclysmWeaponSkill* Row = Held
