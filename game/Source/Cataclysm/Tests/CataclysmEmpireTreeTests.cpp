@@ -29,15 +29,15 @@ namespace CataclysmEmpireTreeTestNodes
 	const FName MasonryTechniques(TEXT("basic_00000010"));		// <- Fortified Gates at 6, or Enduring Foundations at 8
 	const FName UrbanPlanning(TEXT("basic_0000000x"));			// <- Enduring Foundations at 2
 	const FName Foundation(TEXT("basic_0000000v"));				// <- Urban Planning at 2, 10 points
-	const FName Scaffolding(TEXT("keystone_0000000z"));			// <- Foundation full; waits on city upgrade costs
+	const FName Scaffolding(TEXT("keystone_0000000z"));			// <- Foundation full; waits on a build time
 	const FName RoyalEngineersBlessing(TEXT("capstone_0000001i"));	// the Architect branch's capstone
 
 	// Explorer.
 	const FName Pacing(TEXT("basic_00000029"));					// a root, 10 points
 	const FName FleetFooted(TEXT("keystone_0000002b"));			// <- Pacing full
 
-	// Treasury.
-	const FName Coinage(TEXT("basic_0000003q"));				// a root; waits on gold
+	// Artisan. (Coinage was the Treasury root used here until gold existed: issue #2741 slice 6 builds it.)
+	const FName RoughDraft(TEXT("basic_arts_t1d"));			// a root; waits on crafting
 
 	// The centre.
 	const FName Foundations(TEXT("capstone_0000000m"));			// 25: Aegis of Hope, The Delver, The Hoarder
@@ -208,19 +208,19 @@ bool FCataclysmEmpireTreeWaitsOnTest::RunTest(const FString& Parameters)
 	FCataclysmPassiveAllocation Allocation;
 	double Bank = 50.0;
 	FString Reason;
-	TestFalse(TEXT("Coinage, a root with a full bank, is refused"),
-			  UCataclysmEmpireTree::Spend(Nodes, Edges, Allocation, Coinage, Bank, Reason));
-	TestEqual(TEXT("and the refusal names gold and its issue"), Reason,
-			  FString(TEXT("Coinage cannot be bought yet: it needs gold, which the game does not have yet "
-						   "(issue #2742).")));
+	TestFalse(TEXT("Rough Draft, a root with a full bank, is refused"),
+			  UCataclysmEmpireTree::Spend(Nodes, Edges, Allocation, RoughDraft, Bank, Reason));
+	TestEqual(TEXT("and the refusal names crafting and its issue"), Reason,
+			  FString(TEXT("Rough Draft cannot be bought yet: it needs crafting, which the game does not have yet "
+						   "(issue #47).")));
 	TestEqual(TEXT("the bank is untouched"), Bank, 50.0);
 	TestEqual(TEXT("nothing is spent"), Allocation.Total(), 0);
 
 	// AND EVEN WITH EVERY EDGE INTO IT SATISFIED.
 	Allocation.Add(Foundation, 10);
 	const FString Keystone = UCataclysmEmpireTree::RefusalForSpending(Nodes, Edges, Allocation, Scaffolding, 50.0);
-	TestTrue(TEXT("Scaffolding, with Foundation full, still waits on city upgrade costs"),
-			 Keystone.Contains(TEXT("a gold cost for city upgrades")));
+	TestTrue(TEXT("Scaffolding, with Foundation full, still waits on a build time for city upgrades"),
+			 Keystone.Contains(TEXT("a build time for city upgrades")));
 	TestTrue(TEXT("Scaffolding's edge is satisfied, so only its system refuses it"),
 			 UCataclysmEmpireTree::EdgesAllow(Nodes, Edges, Allocation, Scaffolding));
 

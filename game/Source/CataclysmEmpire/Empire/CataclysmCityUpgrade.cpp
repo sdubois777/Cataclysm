@@ -60,8 +60,10 @@ bool UCataclysmCityUpgradeRules::IsBuilt(ECataclysmCityUpgradeEffect Effect)
 	case ECataclysmCityUpgradeEffect::DungeonGold:
 	case ECataclysmCityUpgradeEffect::DungeonLoot:
 	case ECataclysmCityUpgradeEffect::DungeonCraftingMaterials:
-		// Issues #41 and #1264. A dungeon in this layer is a timer and a bite;
-		// it grants no reward of any kind, and there is no gold.
+		// Issue #2781. Nothing reads these yet. Experience, magic find, gold
+		// (#2742), loot and crafting materials all exist where a dungeon
+		// standing on the city is walked, and a kill there is what would read
+		// them; that wiring is not written.
 		return false;
 
 	case ECataclysmCityUpgradeEffect::CleanseEveryCity:

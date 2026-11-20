@@ -2071,7 +2071,7 @@ struct FCataclysmEmpireTreeNodeRow : public FTableRowBase
 
 	/**
 	 * Empty when the node can be bought; otherwise what it needs that the game does not have, in words that follow
-	 * "it needs" -- "gold, which the game does not have yet (issue #2742)".
+	 * "it needs" -- "crafting, which the game does not have yet (issue #47)".
 	 *
 	 * THE OWNER'S SCOPE RULING OF 2026-11-18: "The other nodes are shown but cannot be bought until their system is
 	 * built, as unbuilt city upgrades are refused today." EMPTY FOR A CENTRE CAPSTONE, whose options carry it instead.
