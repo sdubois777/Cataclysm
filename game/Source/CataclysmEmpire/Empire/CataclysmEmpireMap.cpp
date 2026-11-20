@@ -624,6 +624,13 @@ bool UCataclysmEmpireMap::Damage(int32 CityId, float DefencePoints,
 	const float PopulationTaken =
 		FMath::Max(0.0f, PopulationPoints) * (1.0f - PopulationResisted);
 
+	// MARKED FOR PRICE CONTROLS whenever this bite takes anything (issue #2741 slice 6b, B1): every caller of this is a
+	// dungeon damaging its city (C4).
+	if (DefenceTaken > 0.0f || PopulationTaken > 0.0f)
+	{
+		City->bTookSurgeDamage = true;
+	}
+
 	// FROM WHAT THE CITY IS READ AS HOLDING, so a hit after a respec lowered a maximum starts from that maximum rather
 	// than from a figure above it (S1). Issue #2741 slice 3a.
 	City->Defence = DefenceOf(*City);

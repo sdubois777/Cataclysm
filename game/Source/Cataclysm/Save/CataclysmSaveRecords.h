@@ -611,6 +611,14 @@ struct CATACLYSM_API FCataclysmSavedWalk
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	TArray<float> ConsumptionDoublePotionCharges;
+
+	/** The gold the walk's kills have dropped, and the gold picked up in it, which Cleanup Crew pays a tenth of the
+	 *  difference of at a clear. Issue #2741 slice 6b (B3). RUN RECORD VERSION 12: `Migrate_11_to_12` writes 0 and 0. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int64 GoldDroppedThisWalk = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int64 GoldPickedUpThisWalk = 0;
 };
 
 /**
@@ -1783,8 +1791,16 @@ public:
 	 * (issue #2741 slice 5b, Relentless Pursuit), and `Migrate_10_to_11` writes into a run written at 10 the run's own
 	 * `DungeonsCleared` when it records no death (an empty `LastDeathDungeonName`), every clear having been made
 	 * without dying, and 0 when it records one, because the clears after it cannot be told from the clears before.
+	 *
+	 * 12 SINCE 2026-11-20. Issue #2741 slice 6b: each city carries whether a dungeon has damaged it this run,
+	 * `bTookSurgeDamage` (Price Controls); the run carries whether its population has fallen below half since a city
+	 * was last reclaimed, `bPopulationFellBelowHalf` (Stimulus Package); and the walk carries the gold dropped and
+	 * picked up in it, `GoldDroppedThisWalk` and `GoldPickedUpThisWalk` (Cleanup Crew). `Migrate_11_to_12` writes false
+	 * on every city, false on the run and 0 and 0 on the walk: the record cannot prove a city's past damage (a city
+	 * below its maximum may be one whose maximum the tree raised), the effective maximum the run's flag compares against
+	 * depends on the tree, which the record does not hold, and a walk resumed from it counts its gold from the load.
 	 */
-	static constexpr int32 SchemaVersionNow = 11;
+	static constexpr int32 SchemaVersionNow = 12;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
@@ -2256,6 +2272,12 @@ public:
 	/** `UCataclysmEmpireRun::ClearsSinceLastDeath`, which Relentless Pursuit reads. */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	int32 ClearsSinceLastDeath = 0;
+
+	// ---- STIMULUS PACKAGE'S FLAG, issue #2741 slice 6b. RUN RECORD VERSION 12: `Migrate_11_to_12` writes false. ----
+
+	/** `UCataclysmEmpireRun::bPopulationFellBelowHalf`, which Stimulus Package reads. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	bool bPopulationFellBelowHalf = false;
 };
 
 /**

@@ -15616,6 +15616,59 @@ FCataclysmCityDungeonRewards ACataclysmDungeonGameMode::CityRewardsIn(UWorld* Wo
 	return Mode ? Mode->CityRewardsHere() : FCataclysmCityDungeonRewards();
 }
 
+FCataclysmEmpireTreeClearPay ACataclysmDungeonGameMode::EmpireTreeClearPayHere() const
+{
+	const UCataclysmEmpireRun* Run = EmpireRun();
+	const FCataclysmDungeon* Dungeon = BoundDungeon();
+	if (!Run || !Dungeon)
+	{
+		return FCataclysmEmpireTreeClearPay();
+	}
+
+	// THE DUNGEON'S OWN FLOORS, read while it is still on the map (B4), and the tier's gold scale (R10).
+	return UCataclysmEmpireTree::ClearPayFor(
+		EmpireTreePlayerBonusesHere(),
+		UCataclysmEmpireTree::DungeonStateFor(*Run, *Dungeon, FloorBrief.Modifiers, FloorNumber), Dungeon->Floors,
+		UCataclysmDropRoll::GoldScaleFor(Run->DifficultyTier), GoldDroppedThisWalk, GoldPickedUpThisWalk);
+}
+
+void ACataclysmDungeonGameMode::PayTheTreesClearGold(const FCataclysmEmpireTreeClearPay& Pay)
+{
+	UWorld* World = GetWorld();
+	const int64 Gold = Pay.Total();
+	bool bIntoTheCharacter = false;
+	if (Gold <= 0 || World == nullptr || !UCataclysmGameInstance::AddGoldFor(World, Gold, bIntoTheCharacter))
+	{
+		return;
+	}
+
+	// THE SAVES A GOLD PICKUP RAISES (`UCataclysmDropPickup::BankGold`): the account record when the gold went there,
+	// and the character record through `InventoryChanged`, which holds a Solo Self-Found character's balance.
+	if (!bIntoTheCharacter)
+	{
+		UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::AccountChanged);
+	}
+	UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::InventoryChanged);
+	UE_LOG(LogCataclysm, Log, TEXT("The empire upgrade tree paid %lld gold at the clear: Salvage Rights %lld, Cleanup "
+								   "Crew %lld."), Gold, Pay.Salvage, Pay.Cleanup);
+}
+
+void ACataclysmDungeonGameMode::NoteGoldDroppedIn(UWorld* World, int64 Gold)
+{
+	if (ACataclysmDungeonGameMode* Mode = InWorld(World))
+	{
+		Mode->GoldDroppedThisWalk += FMath::Max<int64>(0, Gold);
+	}
+}
+
+void ACataclysmDungeonGameMode::NoteGoldPickedUpIn(UWorld* World, int64 Gold)
+{
+	if (ACataclysmDungeonGameMode* Mode = InWorld(World))
+	{
+		Mode->GoldPickedUpThisWalk += FMath::Max<int64>(0, Gold);
+	}
+}
+
 UCataclysmEmpireRun* ACataclysmDungeonGameMode::EmpireRun() const
 {
 	// THE GAME'S OWN RUN FIRST, ALWAYS. The test seam is only reached when there
@@ -15759,7 +15812,10 @@ bool ACataclysmDungeonGameMode::EnterEmpireDungeon(int32 DungeonId)
 	// `WalkDaysPerFloor`, which a city upgrade can have lowered.
 	SpendFloorTimeInTheEmpire();
 
-	// A WALK BEGINS HAVING PICKED UP NO GOLD, for the PLAY LOOP line its end says. Issue #2742.
+	// A WALK BEGINS HAVING PICKED UP NO GOLD, for the PLAY LOOP line its end says. Issue #2742. AND HAVING DROPPED NONE,
+	// for Cleanup Crew (issue #2741 slice 6b, B3).
+	GoldDroppedThisWalk = 0;
+	GoldPickedUpThisWalk = 0;
 	if (UCataclysmGameInstance* Instance = UCataclysmGameInstance::In(this))
 	{
 		Instance->GoldPickedUpThisWalk = 0;
@@ -15885,6 +15941,8 @@ bool ACataclysmDungeonGameMode::ResumeEmpireDungeon(int32 DungeonId, int32 Floor
 FCataclysmSavedWalk ACataclysmDungeonGameMode::WalkStateNow() const
 {
 	FCataclysmSavedWalk Walk;
+	Walk.GoldDroppedThisWalk = GoldDroppedThisWalk;
+	Walk.GoldPickedUpThisWalk = GoldPickedUpThisWalk;
 	Walk.MarchOfProgressCommandersKilled = MarchOfProgressCommandersKilled;
 	Walk.PactBuffNow = PactBuffNow;
 	Walk.PactBuffNext = PactBuffNext;
@@ -15988,6 +16046,8 @@ FCataclysmSavedWalk ACataclysmDungeonGameMode::WalkStateNow() const
 
 void ACataclysmDungeonGameMode::RestoreWalkState(const FCataclysmSavedWalk& Walk)
 {
+	GoldDroppedThisWalk = Walk.GoldDroppedThisWalk;
+	GoldPickedUpThisWalk = Walk.GoldPickedUpThisWalk;
 	MarchOfProgressCommandersKilled = Walk.MarchOfProgressCommandersKilled;
 	PactBuffNow = Walk.PactBuffNow;
 	PactBuffNext = Walk.PactBuffNext;
@@ -25317,6 +25377,10 @@ bool ACataclysmDungeonGameMode::ClearEmpireDungeon()
 	// days resolve is no longer on the run to be named afterwards. Issue #2733 slice 4.
 	const TMap<int32, FString> NamesBeforeTheDays = FCataclysmPlayLoopLog::NamesStanding(Run);
 
+	// WHAT THE EMPIRE UPGRADE TREE PAYS AT THIS CLEAR, WORKED OUT BEFORE THE CLEAR: it takes the dungeon off the map, and
+	// Salvage Rights' floors with it. Issue #2741 slice 6b (B3 to B5); paid below once the clear stands.
+	const FCataclysmEmpireTreeClearPay ClearPay = EmpireTreeClearPayHere();
+
 	const bool bCleared = Run->ClearDungeon(EmpireDungeonId);
 
 	// AND THE DEFEAT'S EMPIRE UPGRADE POINTS GO INTO THE ACCOUNT'S BANK, measured by `ClearDungeon` at the defeat and
@@ -25329,6 +25393,7 @@ bool ACataclysmDungeonGameMode::ClearEmpireDungeon()
 	if (bCleared)
 	{
 		BankTheDefeatsEmpirePoints(*Run, Cleared);
+		PayTheTreesClearGold(ClearPay);
 		Run->NoteClear(DayOfTheClear, NameOfTheDungeon, DaysTheWalkOwed); // A clear's: for the map's line.
 	}
 
