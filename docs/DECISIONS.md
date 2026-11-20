@@ -635,7 +635,23 @@ row. Issue [#2764](https://github.com/sdubois777/Cataclysm/issues/2764).
 
 ### SAID FIRST
 
-- **NOT COMPILED OR RUN YET.** Its window comes after the empire upgrade tree's slices 6a, 6b and 6c and issue #2781.
+- **COMPILED AND RUN; THE SECOND WINDOW PASSED EVERYTHING.** At `bbf9340a6` on development `27a995d60`, window
+  skills-2b-w2: the eight groups alone at their registered counts, the whole suite "5041 tests performed, 5041
+  succeeded, 0 failed", Python 7799 passed and 9 skipped, ruff clean, and proofs L8 to L13 all PROVED, each failing
+  exactly its registered tests. The window record is at the end of this entry.
+- **THE FIRST WINDOW FAILED TWO OF THESE TESTS, ON THE TESTS' OWN ROUNDING.** skills-2b-w1, at `f2b548152`:
+  `ASummonedImpsBlowCreditsSummonImpAndIsScaledByItsLevel` and `AThrallsBlowCreditsSubjugateAndIsScaledByItsLevel`.
+  The game was right; the tests read a blow as the difference of two health readings on a creature of 50,000 health,
+  where a float moves in steps of 1/256 (about 0.0039), and compared it within 0.001. The struck creature now has
+  2,000 health, where the step is 1/8192 (about 0.00012). This repeated a lesson already in the project's notes, "a
+  delta of two large floats cannot resolve a small tolerance", whose fix is the one made: change the measurement,
+  not the tolerance.
+- **ONE COMMIT DID NOT CONTAIN WHAT ITS MESSAGE SAID.** `372505551` says it lowers the creature's health; it only
+  undid `a056a9eaa`'s wider tolerance. The health edit was made after `git revert --no-commit` and never staged, and
+  the read-back compared the commit with the working file (`git diff <commit> -- <file>`) rather than with another
+  commit. The coordinating session found it with `git diff --stat f2b548152 372505551`, which printed nothing;
+  `bbf9340a6` carries the change. A read-back of a commit compares two commits, `git diff <a> <b>`, never a commit
+  with the working tree.
 - **THE EXPLOSION RULING STATED A FACT ABOUT THE CODE THAT WAS NOT TRUE, AND THE CODE WAS CHANGED TO MAKE ITS
   OUTCOME TRUE.** The ruling (Q-B, below): "Scaling follows the figure: an explosion computed from the imp's own
   (already scaled) blow carries that factor, and no second factor is applied." The finding, on reading the code:
@@ -726,6 +742,76 @@ PROVED: 1 failed in 0.58s | restored: 1 passed in 0.39s
 named_failures: ('tools/tests/test_damage_over_time_names_its_skill.py::test_every_call_names_its_skill_or_is_listed_with_its_reason',)
 proved: True
 ```
+
+### The windows
+
+**The compiles, at `f2b548152`** (lock skills-2b-compile, 2026-11-20, 12:01 to 12:09): the branch as committed,
+"Succeeded - 66 actions, 59 files compiled"; each changed file alone, "Succeeded - 16 actions, 13 files compiled",
+the build tool naming `CataclysmMinion.cpp`, `CataclysmSkillEffects.cpp`, `CataclysmSkillTemplate.cpp`,
+`CataclysmSkillTemplates.cpp`, `CataclysmEnemyCharacter.cpp`, `CataclysmSkillLevels.cpp` and
+`CataclysmSkillLevelSourcesTests.cpp` as excluded from the unity file; and the unity build again, "Succeeded - 9
+actions, 6 files compiled". 0 compiler warning or error lines in each.
+
+**Before the compiles:** the rebase onto `27a995d60` left slice 2b's changes outside this file byte for byte as they
+were (equal patch IDs). Since the old base, `SpawnDropsFor` and `SpawnGoldFor` had gained defaulted parameters;
+neither branch's lines call either, and the new base changed none of slice 2b's ten source files.
+
+**skills-2b-w1, at `f2b548152`, did not pass:** "19 tests performed, 17 succeeded, 2 failed" for
+`Cataclysm.SkillLevelSources.`, every other group at its count, and the whole suite "5041 tests performed, 5039
+succeeded, 2 failed". The two failures read: "Expected 'AND THE LEVEL 3 IMP'S' to be 58.621094, but it was 58.622284
+and outside tolerance 0.001000" and "Expected 'AND THE LEVEL 3 THRALL'S' to be 111.660156, but it was 111.661491
+and outside tolerance 0.001000". No proof ran.
+
+**The second window ran without the three separate compiles**, by the coordinating session's ruling: `bbf9340a6`
+changes one test helper's number and its comment, with no `#include`, so the window's own build compiles it and a
+problem stops the window at its first step, as for skills-w2 and tree-2781-w2. That build: "Succeeded - 4 actions,
+1 file compiled: Module.Cataclysm.35.cpp".
+
+**skills-2b-w2, at `bbf9340a6`** (12:47 to 13:20), every line measured:
+
+| Run | Result |
+| :-- | :-- |
+| `Cataclysm.SkillLevelSources.` alone | 19 performed, 19 succeeded, 0 failed |
+| `Cataclysm.SkillLevels.` alone | 12, 12, 0 |
+| `Cataclysm.Command.` alone | 22, 22, 0 |
+| `Cataclysm.MinionDeath.` alone | 19, 19, 0 |
+| `Cataclysm.FervourReserve.` alone | 5, 5, 0 |
+| `Cataclysm.RisenImps.` alone | 11, 11, 0 |
+| `Cataclysm.SecondSelf.` alone | 6, 6, 0 |
+| `Cataclysm.Resummon.` alone | 6, 6, 0 |
+| The whole suite | "5041 tests performed, 5041 succeeded, 0 failed. 47 skipped part of what they check"; "Test saves: 852 written and deleted, 0 left behind"; "Declared: 5041 tests in the tree at bbf9340a6; 5041 performed, gap 0" |
+| Python | "7799 passed, 9 skipped"; JUnit tests 7808, failures 0, errors 0, skipped 9 |
+| Ruff | "All checks passed!" |
+
+The base was the empire tree's slice 6b window, tree-6b-w1, measured "5036 tests performed, 5036 succeeded" at
+`9483c2a10`; every group above was counted from its kept engine log, and the whole suite registered as 5036 + 5.
+
+**What the new tests measured**, from their own lines in the suite's log: a level 1 imp's swing took 52.500 and a
+level 3 imp's 58.622 (x1.1166), each credited to Summon Imp in full, and the first imp swung for 52.500 again after
+the level; a thrall's blow took 100.000 at level 1 and 111.661 at level 3, each credited to Subjugate; a minion no
+skill made carried no row and credited none; a kill worth 468 split 406.957 to Compel and 61.043 to Summon Imp; and
+the cap's explosions took 157.500 at level 1 and 175.867 at level 3, the near creature losing 648.367 and Summon Imp
+credited 648.367, while the passive's took 175.867 and credited no row.
+
+**The proofs**, each with the prefix `Cataclysm.SkillLevelSources.`, each failing exactly its registered tests with
+the break in and passing all 19 restored:
+
+| Proof | With the break in |
+| :-- | :-- |
+| L8 | 2 failed: `AKillIsSplitBetweenAHitSkillAndAMinionSkill`, `ASummonedImpsBlowCreditsSummonImpAndIsScaledByItsLevel` |
+| L9 | 1 failed: `ASummonedImpsBlowCreditsSummonImpAndIsScaledByItsLevel` |
+| L10 | 1 failed: `AThrallsBlowCreditsSubjugateAndIsScaledByItsLevel` |
+| L11 | 1 failed: `AThrallsBlowCreditsSubjugateAndIsScaledByItsLevel` |
+| L12 | 1 failed: `TheSummonCapsExplosionCreditsSummonImpAndAPassivesDoesNot` |
+| L13 | 1 failed: `TheSummonCapsExplosionCreditsSummonImpAndAPassivesDoesNot` |
+
+No log of the window, its eight groups or its twelve proof halves holds a "server/discover" line (#2745). The lock
+was released when the window ended.
+
+**Slice 2a's tests in the same file cannot fail this way today.** Its two comparisons of a health drop, the Void
+Splinter test's and the burst's, measure a default enemy of about 326 health (its 1% share read "lost 3.2638"),
+where a float moves in steps of about 0.00003; its other 0.001 comparisons read the blow's own resolved figure. They
+would become fragile only if a default enemy's health rose above about 4,096, where the step reaches 0.0005.
 
 ---
 
