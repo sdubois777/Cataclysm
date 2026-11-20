@@ -28,7 +28,7 @@
  * WHAT THEY CANNOT CHECK, AND IT IS THE THING THAT MATTERS MOST. The automation
  * test command in `tools/unreal_build.py` passes `-nullrhi`, so nothing is drawn
  * and no test here can say whether the screen is legible, whether a player can
- * find the upgrade they came for, or whether ten greyed rows read as
+ * find the upgrade they came for, or whether the greyed rows read as
  * unfinished work rather than as a broken screen. **Somebody has to look.**
  *
  * WHICH IS WHY MOST OF THEM ARE ABOUT `UCataclysmCityScreenLayout` RATHER THAN
@@ -535,7 +535,7 @@ bool FCataclysmCityScreenHeldTest::RunTest(const FString& Parameters)
 	// AND IT IS NOT OFFERED A SECOND TIME.
 	const TArray<FCataclysmCityUpgradeOffer> After = Offers(Run, 0);
 
-	TestEqual(TEXT("one fewer can be bought"), CountBuyable(After), 13);
+	TestEqual(TEXT("one fewer can be bought"), CountBuyable(After), 18);
 
 	for (const FCataclysmCityUpgradeOffer& Offer : After)
 	{
@@ -610,8 +610,8 @@ bool FCataclysmCityScreenFullTest::RunTest(const FString& Parameters)
 					  ECataclysmCityUpgradeResult::NoSlotsLeft));
 	}
 
-	TestEqual(TEXT("the eleven built upgrades it did not buy say so"), SaidFull,
-			  11);
+	TestEqual(TEXT("the sixteen built upgrades it did not buy say so"), SaidFull,
+			  16);
 
 	return true;
 }
