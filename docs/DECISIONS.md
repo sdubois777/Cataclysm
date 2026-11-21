@@ -22,7 +22,13 @@ new. Issue [#2790](https://github.com/sdubois777/Cataclysm/issues/2790).
   proof ran. The guide did what the change says -- it walked at 368, which is 0.8 of the 460 the test's player walked
   at -- but the test's player is a Ravager, whose class walk is 4.6 m/s, and the test moved the player's speed by setting
   the movement speed attribute's base, which the player's walk does not read. The test is corrected; the section on the
-  windows has the lines. **The second window has not run.**
+  windows has the lines.
+- **COMPILED, RUN AND PROVED IN THE SECOND WINDOW, tree-2790-w2**, at `b4e3f1c05` on development `3b37878bf`: its build
+  compiled the corrected test file; the five groups each passed alone at their registered counts; the whole Unreal suite
+  performed the registered 5056, all succeeding, with 47 skipped halves and "854 written and deleted, 0 left behind";
+  Python passed, 7817 with 9 skipped, and ruff passed; the four C++ guard proofs each proved, failing exactly the
+  registered test with exactly the registered number of assertions, 3, 3, 4 and 2. The five Python guard proofs were
+  proved in phase 1.
 - **THE OWNER'S REPORT**, from the play-test of 2026-11-20, verbatim: "the demonic guide dungeon mechanic is wonky,
   that dude is SPRINTING. It's impossible to keep up with him." The owner's log (`game/Saved/Logs/Cataclysm.log` in the
   main checkout) shows the rule on two dungeons, with the line "Demonic Guide: CataclysmImpCharacter_130 at floor 1's
@@ -195,7 +201,40 @@ for a stat with no inputs. The test now reads the class walk first and checks th
 the player's walk through `SetStatInputs` and `RefreshMovementSpeed`, and reads the player's walk again after each step
 so a step that put the class speed back would fail a set-up line. The guide's code is unchanged.
 
-**tree-2790-w2.** Not run yet.
+**tree-2790-w2, at `b4e3f1c05` on 2026-11-20, 19:13 to 19:53. PASSED, and every proof proved.** Its lock was
+named `tree-2790-w1`, as the first window's was: the run script's lock name was not changed between the two.
+
+- Pre-checks "ALL PASS"; the five groups' recount MATCH; the version sweep "28 lines stating a version; NO MISMATCH";
+  the build "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.41.cpp | exit 0", the unity file holding
+  the corrected test file.
+- Each group alone, at its registered count:
+
+  | Group | Line |
+  |---|---|
+  | `Cataclysm.DungeonModifierEffects.` | "775 tests performed, 775 succeeded, 0 failed" |
+  | `Cataclysm.AI.` | "51 tests performed, 51 succeeded, 0 failed", 2 skipped halves |
+  | `Cataclysm.Brute.` | "23 tests performed, 23 succeeded, 0 failed", 10 skipped halves |
+  | `Cataclysm.Enemy.` | "19 tests performed, 19 succeeded, 0 failed" |
+  | `Cataclysm.GroundDown.` | "3 tests performed, 3 succeeded, 0 failed" |
+
+- The whole suite: "5056 tests performed, 5056 succeeded, 0 failed", 47 skipped halves, "Test saves: 854 written and
+  deleted, 0 left behind" (854 registered), "Declared: 5056 tests in the tree at b4e3f1c05; 5056 performed, gap 0".
+- The two new tests printed "GUIDE PACE: raised at 320; the player at 460 gives 368, at 500 gives 400, at 200 gives
+  160; not a guide 650" and "GUIDE WAIT: 15.1 m waits, 14.9 m waits, 12.1 m waits, 11.9 m walks; then 14.9 m walks".
+- Python "7817 passed, 9 skipped in 323.68s", JUnit 7826 tests, 0 failures, 0 errors, 9 skipped; ruff "All checks
+  passed!".
+- The four C++ guard proofs, each "PROVED: with the break in: 2 tests performed, 1 succeeded, 1 failed ... restored: 2
+  tests performed, 2 succeeded, 0 failed", none crashed, the source hash the same before and after each. The failed
+  assertions, counted on "Error: Expected" lines in each proof's broken-half log:
+
+  | Proof | Test that failed | Assertions, registered | What the test printed with the break in |
+  |---|---|---|---|
+  | F1 | `TheGuideKeepsPaceAtFourFifthsOfThePlayersWalk` | 3, registered 3 | "the player at 460 gives 320, at 500 gives 320, at 200 gives 320" |
+  | F2 | `TheGuideKeepsPaceAtFourFifthsOfThePlayersWalk` | 3, registered 3 | "the player at 460 gives 460, at 500 gives 500, at 200 gives 200" |
+  | F3 | `TheGuideKeepsPaceAtFourFifthsOfThePlayersWalk` | 4, registered 4 | "raised at 650; the player at 460 gives 650, at 500 gives 650, at 200 gives 650" |
+  | F4 | `TheGuideKeepsPaceWaitingUntilThePlayerIsBackInsideItsChain` | 2, registered 2 | "15.1 m waits, 14.9 m walks, 12.1 m walks, 11.9 m walks" |
+
+- The lock released; the tested head and the head after the window both `b4e3f1c0`.
 
 ---
 
