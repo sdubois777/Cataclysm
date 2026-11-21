@@ -4225,8 +4225,7 @@ namespace CataclysmStatExemptionTest
 	 *
 	 * TWO COMMANDERS A HUNDRED METRES APART, as `ProbeExplodesOnDeath` has. The plain one loses an imp and is left
 	 * no zone. The flagged one loses an imp and a ballista, each of which leaves a pool, and has a third imp
-	 * destroyed without being killed -- which is how one whose time ran out or one removed to make room goes --
-	 * and that one leaves none.
+	 * destroyed without being killed -- which is how one whose time ran out goes -- and that one leaves none.
 	 */
 	void ProbeMinionsLeaveChaosPools(FAutomationTestBase& Test)
 	{

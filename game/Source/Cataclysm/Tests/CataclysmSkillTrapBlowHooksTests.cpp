@@ -475,7 +475,7 @@ CATACLYSM_TEST(FCataclysmTrapBlowHookRearmTest,
 	TestTrue(TEXT("and drawn dim as an arming trap is"),
 		RearmingTrap->SkillTrapTintShown.Equals(ACataclysmMinion::SkillTrapTintFor(/*bArmed=*/false)));
 	TestEqual(TEXT("it is not kept among the used-up traps (F3)"), Rearming.System->SpentSkillTraps.Num(), 0);
-	TestEqual(TEXT("and it still counts against the cap: one trap stands for its player"),
+	TestEqual(TEXT("and it still counts among its player's traps: one trap stands for its player"),
 		ACataclysmMinion::SkillTrapsOf(Rearming.Player).Num(), 1);
 	TestTrue(*FString::Printf(TEXT("it arms again after the ordinary arming time: at the age %.3f, now %.3f"),
 							  RearmingTrap->SkillTrapArmsAtAgeSeconds, RearmingTrap->GetGameTimeSinceCreation()),

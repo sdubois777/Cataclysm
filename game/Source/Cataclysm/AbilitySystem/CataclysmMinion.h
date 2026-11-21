@@ -1346,8 +1346,8 @@ public:
 	 * "Triggered traps have a 25%-50% chance to reset and rearm instead of being consumed" is `TrapRearmChanceStat`, a
 	 * chance in per cent ROLLED AT EVERY TRIGGER (F2). A trap that passes STAYS where it is, unarmed, and ARMS AGAIN after
 	 * the ordinary arming time, so it cannot trigger twice on one step; its life span runs on from its placing and it
-	 * still counts against the cap (F1). Its `trap_triggered` is raised as at every trigger, and it is not kept among
-	 * its player's used-up traps, since it is not used up (F3).
+	 * still counts among its player's traps (F1). Its `trap_triggered` is raised as at every trigger, and it is not
+	 * kept among its player's used-up traps, since it is not used up (F3).
 	 *
 	 * "Traps deal 100%-200% increased damage to the first enemy that triggers them" is `TrapDamageToTriggeringEnemyStat`,
 	 * an increase joined to the trap rows' increases on every blow of a trigger's cast on THE ENEMY THAT SET THAT TRIGGER

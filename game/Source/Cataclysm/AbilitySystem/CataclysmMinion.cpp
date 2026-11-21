@@ -2828,8 +2828,8 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy, bool bEvenForAD
 	// OR IT REARMS, "Triggered traps have a 25%-50% chance to reset and rearm instead of being consumed" (traps layer 4,
 	// F1 to F3): ROLLED AT EVERY TRIGGER, after the event above, which is raised at every trigger. A trap that passes
 	// STAYS where it is and is ARMED AGAIN after the ordinary arming time, so it cannot trigger twice on one step; it
-	// keeps the life span it was placed with and still counts against the cap; and, not used up, it is not kept among the
-	// used-up traps, so a later blow of its cast finds it standing.
+	// keeps the life span it was placed with and still counts among its player's traps; and, not used up, it is not
+	// kept among the used-up traps, so a later blow of its cast finds it standing.
 	if (!IsActorBeingDestroyed() && SkillTrapRollsToRearm(Player))
 	{
 		bSkillTrapArmed = false;

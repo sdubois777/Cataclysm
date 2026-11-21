@@ -790,8 +790,8 @@ words, "Traps N" (`game/Source/Cataclysm/Interface/CataclysmSkillBar.h` and `.cp
 `refuse_a_reserve_percent_row_the_game_cannot_read` and `refuse_a_count_cap_on_a_summon`, new);
 `docs/Cataclysm_GDD_v2.md` (the paragraph "Every minion, gadget and trap the player makes reserves Fervour", Summon
 Imp's row of the Staff's skills, and "WHAT EARNS A SKILL EXPERIENCE"). Tests: the new group `Cataclysm.NoCaps.`, six,
-at the end of `game/Source/Cataclysm/Tests/CataclysmKindReservesTests.cpp`; eight deleted and twenty-one renamed and
-rewritten in seventeen test files, listed under Tests below; `tools/tests/test_damage_over_time_names_its_skill.py`,
+at the end of `game/Source/Cataclysm/Tests/CataclysmKindReservesTests.cpp`; eight deleted, twenty-two renamed and
+rewritten, and two assertion messages reworded, in twenty test files, listed under Tests below; `tools/tests/test_damage_over_time_names_its_skill.py`,
 `test_generate_datatables.py` and `test_minion_skill_shapes.py`. Issue
 [#2787](https://github.com/sdubois777/Cataclysm/issues/2787).
 
@@ -924,10 +924,17 @@ percentage a share of what is reserved. 30% less of an imp under Crowned is (10 
   Command.TheSwarmLetsADeployable..., MinionDeath.TheExplosionTheSummonCapSetsOff..., FervourReserve.AtTheCapTheOldest...,
   RisenImps.NothingRisesWhileYouHoldSummonImpsCap, RisenImps.TheSwarmRaisesTheCap..., RisenImps.SummoningAtTheCapDestroys...,
   Skills.SummoningPastTheCapExplodesTheOldest.
-- **Twenty-one renamed and rewritten** to read the pool as the limit, among them branch A's tests 5, 6 and 8 in
+- **Twenty-two renamed and rewritten** to read the pool as the limit, among them branch A's tests 5, 6 and 8 in
   `Cataclysm.KindReserves.`, the Tyrant's Chains and Warlord's Will six-piece refresh tests, the Reaper's Embrace
   ten-piece spawn tests, the three trap-cap tests in `Cataclysm.Traps.`, three enchantment tests and The Swarm's
   passive test. The full list, old name and new, is in the registration sent to the coordinating session.
+- **Found at the rebase onto `development` at 156f2b9e8, by a sweep of every test file that calls a maker and that
+  this branch had not changed.** `Cataclysm.SetBonus.Reaper6.EachDeathTheHookAnswersLeavesOneSoulWhereItDiedAndTheSummonCapsRemovalLeavesNone`
+  is renamed `...AndAnExplosionLeavesNoneOfItsOwn`, the twenty-second: it calls `Explode` itself, which still writes
+  no health, so it passes unchanged, but its name and messages called that the summon cap's removal. Two assertion
+  messages that named the trap cap are reworded, in `CataclysmSkillTrapNearbyTrapsTests.cpp` and
+  `CataclysmSkillTrapBlowHooksTests.cpp`, as are two comments in `CataclysmMinion.h` and `.cpp` and one in
+  `CataclysmStatExemptionTests.cpp`. What each test asserts is unchanged.
 - **Python:** `test_generate_datatables.py` holds `TestTheNoExpireFlag` (formerly with the trap cap) and
   `TestTheReservePercentage`, new; `test_minion_skill_shapes.py` holds three tests of the Summon cap refusal, one of
   them on the shipped rows.

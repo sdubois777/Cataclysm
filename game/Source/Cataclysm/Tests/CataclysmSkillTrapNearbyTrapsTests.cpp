@@ -450,7 +450,7 @@ CATACLYSM_TEST(FCataclysmNearbyTrapsArmTheNearestTest,
 	TestTrue(TEXT("the armed trap 4 m away, nearer than either, is left armed"), NearbyTrapsArmed(RowArmed));
 	TestEqual(TEXT("and is not set off"), RowArmed->SkillTrapTriggersMade, 0);
 	TestEqual(TEXT("arming raises no trap_placed (H2)"), RowPlaced.Count, 0);
-	TestEqual(TEXT("and changes nothing of the cap: the player's other three traps stand"),
+	TestEqual(TEXT("and removes no trap: the player's other three traps stand"),
 		ACataclysmMinion::SkillTrapsOf(Arming.Player).Num(), 3);
 	return true;
 }
