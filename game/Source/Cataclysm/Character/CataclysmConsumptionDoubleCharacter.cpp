@@ -29,6 +29,9 @@ bool ACataclysmConsumptionDoubleCharacter::WearThePlayersBuild(const FCataclysmP
 	UCataclysmEquipmentComponent* Wardrobe = NewObject<UCataclysmEquipmentComponent>(GetTransientPackage());
 	Wardrobe->RestoreWornGear(HeldBuild.WornPairs());
 
+	// THE WEAPONS THE PLAYER WORE, IN ITS HANDS, as the player's own hands draw them. Issue #2806.
+	DrawWornWeapons(Wardrobe);
+
 	// THE ONE GATHERER (issue #1054): the items, the attribute points, the passive tree counted up to the points the
 	// build earned, and the class line at the build's level, with the pools filled. NO PER-TIER MULTIPLIER (R4).
 	if (Wardrobe->RefreshAttributesAs(Abilities, &HeldBuild, ECataclysmPoolFill::FillToMaximum) <= 0)
